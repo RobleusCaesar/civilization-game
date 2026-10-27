@@ -350,7 +350,7 @@
        in world coordinates), outlined in the ink ramp, then blitted: the
        world's transform scales it up nearest-neighbour like everything else. */
     _ink: null,
-    inked(g, x, y, w, h, fn) {
+    inked(g, x, y, w, h, fn, dis) {
       x = sn(x); y = sn(y); w = sn(w) + PX; h = sn(h) + PX;
       let K = this._ink;
       if (!K) K = this._ink = { a: document.createElement('canvas'), b: document.createElement('canvas') };
@@ -364,6 +364,15 @@
       gb.globalCompositeOperation = 'copy'; gb.drawImage(K.a, 0, 0, w, h, 0, 0, w, h);
       gb.globalCompositeOperation = 'source-in'; gb.fillStyle = AP().ink[0]; gb.fillRect(0, 0, w, h);
       gb.globalCompositeOperation = 'source-over';
+      // `dis` 0..1: the picture dissolving in hard dither steps (TX.holes),
+      // the outline with it — cut on the world's 2px grid, never an alpha
+      const hole = dis > 0 && this.holes ? this.holes(dis) : null;
+      if (hole) for (const c of [ga, gb]) {
+        c.save(); c.globalCompositeOperation = 'destination-out';
+        c.translate(-x % (8 * PX), -y % (8 * PX));
+        c.fillStyle = c.createPattern(hole, 'repeat'); c.fillRect(0, 0, w + 8 * PX, h + 8 * PX);
+        c.restore();
+      }
       for (const [dx, dy] of [[-PX, 0], [PX, 0], [0, -PX], [0, PX]]) g.drawImage(K.b, 0, 0, w, h, x + dx, y + dy, w, h);
       g.drawImage(K.a, 0, 0, w, h, x, y, w, h);
     },
@@ -384,12 +393,14 @@
        frame its time comes, culled or not (the bar never waits on the
        camera). Guarded on the method it calls: an older deckui.js beside
        this file pays nothing, and its bar simply counts up at the play. */
-    settle(s, list) {
+    settle(s, list, fly) {
       const done = s.paid || (s.paid = {});
       for (let i = 0; i < list.length; i++) {
-        const [t, res, n] = list[i];
+        const [t, res, n, how] = list[i];
         if (done[i] || s.t < t) continue;
         done[i] = 1;
+        // a piece that FLIES into the bar pays when it gets there (TX.flyToBar)
+        if (how === 'fly' && fly && fly(list[i], i)) continue;
         if (window.DeckUI && DeckUI.pay) DeckUI.pay(res, n);
       }
     },
@@ -501,34 +512,196 @@
     }
     g.globalAlpha = 1;
   }
-  // the pile and its falling: `items` [{dx, dy, t0, fall, draw(g,x,y,f)}], foot at (px, py) world px
-  function fallPile(g, s, items, px, py, H, col, bare) {
-    const t = s.t;
-    // a hard contact shadow under what has landed — as wide as the pile and
-    // no wider, or it reads as a line ruled under the goods
-    const down = items.filter(it => t - it.t0 >= it.fall && !it.dy);
-    if (down.length) {
-      const x0 = Math.min(...down.map(it => it.dx)) - 8, x1 = Math.max(...down.map(it => it.dx)) + 8;
-      g.fillStyle = 'rgba(20,14,8,0.32)'; g.fillRect(sn(px + x0), sn(py - 1), sn(x1 - x0), PX);
-    }
-    // `bare`: art that carries its own outline (the rock stamps) is laid as it is
-    (bare ? (g0, x0, y0, w, h, fn) => fn(g0) : TX.inked.bind(TX))(g, px - 34, py - H - 24, 68, H + 28, gg => {
-      for (const it of items) {
-        const tl = t - it.t0;
-        if (tl < 0) continue;
-        const land = it.fall, x = px + it.dx;
-        if (tl < land) {
-          const f = tl / land;
-          it.draw(gg, x, py + it.dy - H * (1 - f * f), f);
-        } else {
-          const b = tl - land, bounce = b < 0.1 ? Math.sin(b / 0.1 * Math.PI) * (it.bounce || 2) : 0;
-          it.draw(gg, x, py + it.dy - bounce, 1);
-        }
-      }
-    });
-    for (const it of items) dust(g, px + it.dx, py, t - it.t0 - it.fall, it.dust || 4, col);
-  }
   const fade = (g, p, from) => { g.globalAlpha = p > from ? stp(1 - (p - from) / (1 - from), 3) : 1; };
+
+  /* ================= THE GOODS COME DOWN (the playtest's critics: "a hard
+     cream RECTANGLE with a flat bottom and a flat top cut ~250 px above the
+     ground — it reads as a stray UI bar, and over grass it reads olive";
+     "the heaviest drop has no impact at all") ================= */
+  /* THE LIGHT FROM THE SKY: a TAPERED shaft — a thread at the top of the
+     view widening to the pile's breadth at the ground — that runs the FULL
+     height of the view (the show is clipped to the board, R.drawCardShows),
+     cut in 2px cells whose bands thin out to its edge by ORDERED DITHER: a
+     hot thread at the heart, then three bands lit at 1/2, 1/4 and 1/8 of
+     their cells in the tier's ramp, darker as they go out. Every lit cell is
+     OPAQUE ink — the light is never gold laid over the meadow at an alpha,
+     which is the olive and the lime — and the grass between the cells is
+     the shaft's translucency. Three frames of flicker (the dither's phase
+     and a breath of width), cached per (tone, width, height, frame): a
+     frame of the shaft is one drawImage. */
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const lit = (cx, cy, k) => BAYER[((cy & 3) << 2) | (cx & 3)] < k * 16;
+  TX.SHAFT = { TOP: 4, FLICK: [1, 0.9, 1.08], FPS: 12 };
+  TX._shafts = new Map();
+  TX.shaftArt = function (tone, wBot, h, f) {
+    wBot = Math.max(4, sn(wBot)); h = Math.max(16, Math.ceil(h / 16) * 16);
+    const key = tone + '|' + wBot + '|' + h + '|' + f, hit = this._shafts.get(key);
+    if (hit) return hit;
+    const T = R.LIGHT.TONE[tone] || R.LIGHT.TONE.gold, W = wBot + 8;
+    const c = document.createElement('canvas'); c.width = W; c.height = h;
+    const x = c.getContext('2d'), mid = W / 2;
+    const band = [[0.08, 1, T.hot], [0.36, 0.5, T.ramp[3]], [0.66, 0.25, T.ramp[2]], [1, 0.125, T.ramp[1]]];
+    for (let r = 0; r < h; r += PX) {
+      const q = r / h, hw = (this.SHAFT.TOP + (wBot - this.SHAFT.TOP) * Math.pow(q, 1.35)) / 2;
+      for (let cx = 0; cx < W / PX; cx++) {
+        const d = Math.abs(cx * PX + PX / 2 - mid) / Math.max(1, hw);
+        if (d > 1) continue;
+        const b = band.find(e => d <= e[0]);
+        if (b[1] < 1 && !lit(cx + f, (r >> 1) + f * 2, b[1])) continue;
+        x.fillStyle = b[2]; x.fillRect(cx * PX, r, PX, PX);
+      }
+    }
+    if (this._shafts.size > 24) this._shafts.delete(this._shafts.keys().next().value);
+    this._shafts.set(key, c);
+    return c;
+  };
+  /* the shaft over (x, foot), world px, `t` seconds into its life: down out
+     of the sky in a breath (its foot falls from the top of the view to the
+     ground), held to `hold`, then narrowed in three hard steps to its thread
+     and gone. False once it is over. */
+  TX.shaft = function (g, x, foot, t, tone, wBot, hold) {
+    if (t < 0) return true;
+    const SLAM = 0.09, OUT = 0.3;
+    if (t > hold + OUT) return false;
+    const top = R.cam.y - 8, h = foot - top;
+    if (h < 16) return true;
+    const f = ((performance.now() / 1000 * this.SHAFT.FPS) | 0) % 3;
+    const k = t <= hold ? 1 : [0.66, 0.33, 0.1][Math.min(2, ((t - hold) / OUT * 3) | 0)];
+    const a = this.shaftArt(tone, wBot * k * this.SHAFT.FLICK[f], h, f);
+    const dh = Math.max(PX, sn(a.height * (t < SLAM ? eo(t / SLAM) : 1)));
+    g.drawImage(a, 0, 0, a.width, dh, sn(x - a.width / 2), sn(foot - a.height), a.width, dh);
+    return true;
+  };
+
+  /* A PICTURE DISSOLVED IN HARD STEPS (never an alpha crossfade: two half-
+     transparent piles read as a ghost): `k` 0..1 of its 2px cells gone, in
+     the ordered dither's order, four steps — the hole pattern TX.inked cuts */
+  TX._holes = [];
+  TX.holes = function (k) {
+    const n = Math.min(4, Math.max(0, Math.round(k * 4)));
+    if (!n) return null;
+    let c = this._holes[n];
+    if (!c) {
+      // the cells go in a SCATTERED order (a hash per cell of an 8×8 tile), so
+      // the pile crumbles away rather than turning into a regular mesh
+      c = this._holes[n] = document.createElement('canvas'); c.width = c.height = 8 * PX;
+      const x = c.getContext('2d'); x.fillStyle = '#000';
+      for (let cy = 0; cy < 8; cy++) for (let cx = 0; cx < 8; cx++) if (hs(cx * 13 + 5, cy * 7 + 3) < n / 4) x.fillRect(cx * PX, cy * PX, PX, PX);
+    }
+    return c;
+  };
+
+  /* THE PIECES at the villagers' own density — ONE WORLD PIXEL A CELL (the
+     first cut drew on a 2px grid and the critics read "four dark planks").
+     Each a small canvas built once, outlined in the ink like everything that
+     stands off the grass (TX.inked). */
+  const art = (w, h, fn) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    fn((px, py, pw, ph, col) => { x.fillStyle = col; x.fillRect(px, py, pw || 1, ph || 1); }, x);
+    return c;
+  };
+  const rowsArt = (rows, pal) => art(rows[0].length, rows.length, f => rows.forEach((r, y) => { for (let i = 0; i < r.length; i++) if (r[i] !== '.') f(i, y, 1, 1, pal[r[i]]); }));
+  const GA = {
+    get(k) { return this['_' + k] || (this['_' + k] = this[k]()); },
+    // a log seen END-ON, the way a woodpile shows itself from the high front
+    // camera (and the card's own art): the cut face with its rings, the bark
+    // running back behind it — 9 wide, 13 tall
+    logEnd() {
+      const W = AP().wood;
+      return art(9, 13, f => {
+        f(1, 0, 7, 6, W[1]); f(1, 0, 2, 6, W[3]); f(3, 0, 1, 6, W[2]); f(6, 0, 2, 6, W[0]);
+        f(4, 1, 1, 3, W[0]); f(2, 2, 1, 2, W[4]);
+        for (const [x, y, w, h] of [[2, 4, 5, 1], [1, 5, 7, 1], [0, 6, 9, 5], [1, 11, 7, 1], [2, 12, 5, 1]]) f(x, y, w, h, '#7a5a30');
+        f(2, 5, 5, 1, '#d4b583'); f(1, 6, 7, 5, '#c8a978'); f(2, 11, 5, 1, '#b8955f');
+        f(2, 7, 5, 1, '#a88450'); f(2, 9, 5, 1, '#a88450'); f(2, 7, 1, 3, '#a88450'); f(6, 7, 1, 3, '#a88450');
+        f(4, 8, 1, 1, '#6e4a26'); f(1, 6, 1, 2, '#e2c898');
+      });
+    },
+    // a log in the air, side-on, and the four turns of its tumble (45° apart)
+    logSide() {
+      const W = AP().wood;
+      return art(20, 7, f => {
+        f(0, 1, 17, 5, W[1]); f(0, 1, 17, 1, W[3]); f(0, 2, 17, 1, W[2]); f(0, 5, 17, 1, W[0]);
+        f(5, 3, 3, 1, W[0]); f(11, 2, 1, 3, W[0]);
+        f(16, 0, 4, 7, '#7a5a30'); f(17, 1, 3, 5, '#c8a978'); f(18, 3, 1, 1, '#6e4a26');
+      });
+    },
+    turns() {
+      const src = this.get('logSide');
+      return [0, 1, 2, 3].map(q => art(24, 24, (f, x) => {
+        x.imageSmoothingEnabled = false;
+        x.translate(12, 12); x.rotate(q * Math.PI / 4); x.drawImage(src, -10, -4);
+      }));
+    },
+    // the nugget: a lumpy, faceted lump of gold lit up-left — 12 × 10
+    nugget() {
+      const Gd = AP().gold;
+      return rowsArt(['...aaab.....', '..aabbbbc...', '.aabbccbbc..', 'aabbcdccbbc.', 'abbccddcbbcc', 'abbcccccbbcc', '.abbbccbbbcc', '..abbbbbbcc.', '...aabbbcc..', '.....aaa....'],
+        { a: Gd[0], b: Gd[1], c: Gd[2], d: Gd[3] });
+    },
+    // a coin turning over: face, three-quarter, edge — 5 tall
+    coins() {
+      const Gd = AP().gold;
+      return [
+        rowsArt(['.bbb.', 'bddcb', 'bdcca', 'bccaa', '.baa.'], { a: Gd[0], b: Gd[1], c: Gd[2], d: Gd[3] }),
+        rowsArt(['.bb.', 'bdcb', 'bdca', 'bcca', '.ba.'], { a: Gd[0], b: Gd[1], c: Gd[2], d: Gd[3] }),
+        rowsArt(['b', 'd', 'c', 'c', 'a'], { a: Gd[0], b: Gd[1], c: Gd[2], d: Gd[3] }),
+      ];
+    },
+  };
+  TX.goodsArt = GA;
+
+  /* A PIECE OF THE GOODS FLIES INTO THE BAR (the nugget's coins, the
+     forager's food): a small picture of it lifted off the world at (wx, wy)
+     and flown to its resource's chip ABOVE the HUD — a fixed element, since a
+     mark on the canvas would pass under the top bar — and the bar's held
+     number steps by `n` when it ARRIVES (DeckUI.pay). Render state on the
+     page, never in S; with no chip on the page it pays at once. */
+  TX.flyToBar = function (res, wx, wy, n, pic, delay) {
+    const pay = () => { if (window.DeckUI && DeckUI.pay) DeckUI.pay(res, n); };
+    const chip = document.querySelector('#topbar .ric[data-ic="' + res + '"]');
+    const r = chip && chip.getBoundingClientRect();
+    if (!r || !r.width || !pic) { pay(); return; }
+    const z = R.cam.z, sx = (wx - R.cam.x) * z, sy = (wy - R.cam.y) * z, S2 = 14;
+    const el = document.createElement('canvas');
+    el.width = pic.width; el.height = pic.height;
+    el.getContext('2d').drawImage(pic, 0, 0);
+    Object.assign(el.style, { position: 'fixed', left: (sx - S2 / 2) + 'px', top: (sy - S2 / 2) + 'px', width: S2 + 'px',
+      height: (S2 * pic.height / pic.width) + 'px', imageRendering: 'pixelated', zIndex: 27, pointerEvents: 'none' });
+    document.body.appendChild(el);
+    const dx = r.left + r.width / 2 - sx, dy = r.top + r.height / 2 - sy;
+    const an = el.animate([{ transform: 'translate(0,0) scale(1)' },
+      { transform: `translate(${dx * 0.2}px,${dy * 0.2 - 36}px) scale(1.35)`, offset: 0.35 },
+      { transform: `translate(${dx}px,${dy}px) scale(.8)` }],
+      { duration: 560, delay: delay || 0, easing: 'cubic-bezier(.4,0,.7,1)', fill: 'both' });
+    const done = () => { el.remove(); pay(); };
+    an.finished.then(done, done);
+  };
+
+  /* A PIECE LANDS: a thud you hear and a puff of the place-poof's own dust
+     under it (R.startPlacePoof, render state) — the bar's step rides
+     TX.settle's list at the same instant */
+  TX.thud = function (wx, wy, sc, voice) {
+    if (typeof R !== 'undefined' && R.startPlacePoof) R.startPlacePoof(wx / TLs() - 0.5, wy / TLs() - 0.5, 1, { scale: sc || 0.45 });
+    this.sound(voice || 'cardThud');
+  };
+  /* the pieces in the air and down: `items` [{dx, dy, t0, fall, H, bounce,
+     onLand}] → where each is now, its fall's progress q, and whether it is
+     down; a landing calls onLand once (render state on the show) */
+  TX.fall = function (s, items, px, py) {
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i], tl = s.t - it.t0;
+      if (tl < 0) continue;
+      const x = px + it.dx;
+      if (tl < it.fall) { const q = tl / it.fall; out.push({ it, i, x, y: py + it.dy - it.H * (1 - q * q), q, down: false }); continue; }
+      const b = tl - it.fall, bounce = b < 0.12 ? Math.sin(b / 0.12 * Math.PI) * (it.bounce || 0) : 0;
+      out.push({ it, i, x, y: py + it.dy - bounce, q: 1, down: true, age: b });
+      if (!(s.landed || (s.landed = {}))[i]) { s.landed[i] = 1; if (it.onLand) it.onLand(x, py + it.dy); }
+    }
+    return out;
+  };
 
   /* ---------------- the caravan ---------------- */
   /* A picture drawn from rows of letters, one letter a 2px cell ('.' is
@@ -691,148 +864,178 @@
   });
 
   Object.assign(Deck.FX, {
-    /* STONE — Fallen Timber: +200 wood. Six logs tumble down end over end
-       onto a pile at the hall's door, leaves drifting after them. */
+    /* STONE — Fallen Timber: +200 wood. The light comes down out of the sky
+       at the hall's door, and five logs come tumbling down it one after
+       another — turning end over end in the air — each landing with a
+       woody thud, a puff of dust and a step of the wood count, until they
+       stand as a stacked woodpile, cut ends to the camera like the card's
+       own art; the pile dissolves when the moment is over. */
     fallen_timber: goods('fallen_timber', 'wood', 200, '🪵', 'Fallen timber carried home', {
-      ms: 3000, layer: 'world', sound: 'cardWood',
-      LOGS: [[-16, 0], [0, 0], [16, 0], [-8, -6], [8, -6], [0, -12]],
-      // each log steps the bar as it lands (TX.settle): a sixth of the wood, the last the rest
-      pays() { return this.show.LOGS.map((_, i, a) => [0.05 + i * 0.11 + 0.34, 'wood', i < a.length - 1 ? Math.floor(200 / a.length) : 0]); },
+      ms: 3200, layer: 'world', sound: 'cardWood',
+      // the woodpile: three on the ground, two in their grooves — [dx, dy] off its foot
+      LOGS: [[-10, 0], [0, 0], [10, 0], [-5, -7], [5, -7]],
+      T0: 0.14, STEP: 0.15, FALL: 0.36,
+      land(i) { return this.T0 + i * this.STEP + this.FALL; },
+      pays() { const K = this.show; return K.LOGS.map((_, i) => [K.land(i), 'wood', i < K.LOGS.length - 1 ? 40 : 0]); },
       draw(g, s, p) {
         TX.settle(s, TX.pays('fallen_timber', s));
         const tc = Bld.get(s.tc); if (!tc) return;
-        const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
+        const K = this.show, TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
+        const items = K.LOGS.map(([dx, dy], i) => ({ dx, dy, t0: K.T0 + i * K.STEP, fall: K.FALL, H: TL * 3.2, bounce: 2,
+          onLand: (x, y) => TX.thud(x, y, i < 3 ? 0.45 : 0.32) }));
+        const now = TX.fall(s, items, px, py);   // landings (and their dust) happen culled or not
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
-        TX.arrive(g, px, py, s.t, TX.STONE_LIGHT, TL * 2.6);
-        fade(g, p, 0.82);
-        const items = this.show.LOGS.map(([dx, dy], i) => ({ dx, dy, t0: 0.05 + i * 0.11, fall: 0.34, bounce: 2, dust: 4,
-          draw: (gg, x, y, f) => log(gg, x, y, f >= 1 ? 0 : [1, 2, 1, 2, 1][Math.min(4, (f * 5) | 0)]) }));
-        fallPile(g, s, items, px, py, TL * 1.9, AP().soil[3]);
-        // the storm's leaves, drifting down after the wood
-        const L = AP().leaf, T2 = AP().thatch;
+        TX.shaft(g, px, py, s.t, TX.STONE_LIGHT, TL * 1.2, K.land(K.LOGS.length - 1) + 0.15);
+        const turns = GA.get('turns'), end = GA.get('logEnd'), dis = cl((p - 0.84) / 0.16);
+        // the pile's hard shadow, as wide as what is down
+        const down = now.filter(n => n.down && !n.it.dy);
+        if (down.length && dis < 0.5) {
+          const x0 = Math.min(...down.map(n => n.x)) - 6, x1 = Math.max(...down.map(n => n.x)) + 6;
+          g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(sn(x0), sn(py - 1), sn(x1 - x0), PX);
+        }
+        TX.inked(g, px - 26, py - TL * 3.4, 52, TL * 3.4 + 4, gg => {
+          for (const n of now) {
+            if (n.down) gg.drawImage(end, Math.round(n.x - 4.5), Math.round(n.y - 13));
+            else gg.drawImage(turns[((n.q * 6) | 0) % 4], Math.round(n.x - 12), Math.round(n.y - 16));
+          }
+        }, dis);
+        // the storm's leaves, drifting down the light after the wood
+        const L2 = AP().leaf, T2 = AP().thatch;
         for (let k = 0; k < 7; k++) {
-          const t0 = 0.1 + hs(k, 3) * 0.5, tl = s.t - t0;
-          if (tl < 0) continue;
-          const y = Math.min(py - 2, py - TL * 2.3 + tl * TL * 1.3), x = px + (hs(k, 5) - 0.5) * 44 + Math.sin(tl * 5 + k) * 5;
-          g.fillStyle = k % 3 === 0 ? T2[2] : L[k % 2 ? 3 : 4];
+          const t0 = 0.2 + hs(k, 3) * 0.6, tl = s.t - t0;
+          if (tl < 0 || dis >= 1) continue;
+          const y = Math.min(py - 2, py - TL * 2.6 + tl * TL * 1.3), x = px + (hs(k, 5) - 0.5) * 40 + Math.sin(tl * 5 + k) * 5;
+          g.fillStyle = k % 3 === 0 ? T2[2] : L2[k % 2 ? 3 : 4];
           g.fillRect(sn(x), sn(y), PX, PX);
         }
-        g.globalAlpha = 1;
-        TX.count(g, s, sp, [{ t: '+200 wood' }], 0.05 + 5 * 0.11 + 0.4, 1.9);
+        TX.count(g, s, sp, [{ t: '+200 wood' }], K.land(K.LOGS.length - 1) + 0.1, 1.9);
       },
     }),
 
-    /* STONE — Loose Stone: +150 stone. Five broken blocks come down hard,
-       one after another, each landing in its own dust — the biggest with a
-       jolt you feel. The blocks are the map's own ORE (Sprites.oreStamp —
-       the round, outlined boulder with its quarried facet that every stone
-       deposit is built of), so what lands at the door reads at a glance as
-       the stuff a quarry cuts, never as a stray crag. */
+    /* STONE — Loose Stone: +150 stone. The heaviest of the four: five
+       blocks of the map's own ORE (Sprites.oreStamp — the round, outlined
+       boulder with its quarried facet every deposit is built of) come down
+       the light HARD, one after another, each landing in its own dust with
+       chips of itself flying and a step of the stone count — the first and
+       biggest with a jolt of the ground you feel (two frames of shake). Once
+       the pile is down its fresh faces wink in the pale light; a natural
+       knot of ore has neither the chips nor the wink. */
     loose_stone: goods('loose_stone', 'stone', 150, '🪨', 'Loose stone hauled in', {
-      ms: 3000, layer: 'world', sound: 'cardStone',
-      // dx, dy (world px off the pile's foot), radius, the stamp's variant
-      BLOCKS: [[-12, 0, 7, 1], [2, 0, 8, 4], [14, 0, 6, 2], [-5, -7, 6, 6], [8, -8, 5, 3]],
-      pays() { return this.show.BLOCKS.map((_, i, a) => [0.05 + i * 0.16 + 0.26, 'stone', i < a.length - 1 ? Math.floor(150 / a.length) : 0]); },
+      ms: 3200, layer: 'world', sound: 'cardStone',
+      // dx, dy (world px off the pile's foot), radius, the stamp's variant — the biggest first
+      BLOCKS: [[0, 0, 8, 4], [-12, 0, 7, 1], [12, 0, 6, 2], [-5, -8, 6, 6], [7, -8, 5, 3]],
+      T0: 0.14, STEP: 0.17, FALL: 0.28,
+      land(i) { return this.T0 + i * this.STEP + this.FALL; },
+      pays() { const K = this.show; return K.BLOCKS.map((_, i) => [K.land(i), 'stone', i < K.BLOCKS.length - 1 ? 30 : 0]); },
       draw(g, s, p) {
         TX.settle(s, TX.pays('loose_stone', s));
         const tc = Bld.get(s.tc); if (!tc) return;
-        const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
+        const K = this.show, TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
+        const items = K.BLOCKS.map(([dx, dy, rr], i) => ({ dx, dy, t0: K.T0 + i * K.STEP, fall: K.FALL, H: TL * 3.4, bounce: 1,
+          onLand: (x, y) => {
+            TX.thud(x, y, 0.4 + rr * 0.03, 'cardThunk');
+            if (i === 0 && R.shakeAt) R.shakeAt(2.4, 0.035);   // the biggest: two frames of the ground jumping
+          } }));
+        const now = TX.fall(s, items, px, py);
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
-        TX.arrive(g, px, py, s.t, TX.STONE_LIGHT, TL * 2.8);
-        fade(g, p, 0.82);
+        TX.shaft(g, px, py, s.t, TX.STONE_LIGHT, TL * 1.3, K.land(K.BLOCKS.length - 1) + 0.15);
+        const dis = cl((p - 0.84) / 0.16);
+        const down = now.filter(n => n.down && !n.it.dy);
+        if (down.length && dis < 0.5) {
+          const x0 = Math.min(...down.map(n => n.x)) - 8, x1 = Math.max(...down.map(n => n.x)) + 8;
+          g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(sn(x0), sn(py - 1), sn(x1 - x0), PX);
+        }
         const stamps = typeof Sprites !== 'undefined' && Sprites.oreStamp;
-        const items = this.show.BLOCKS.map(([dx, dy, rr, v], i) => ({ dx, dy, t0: 0.05 + i * 0.16, fall: 0.26, bounce: 1, dust: 6,
-          draw: stamps ? (gg, x, y) => {
-            const st = Sprites.oreStamp(rr, v, false);
-            gg.drawImage(st, sn(x - st._ox), sn(y - st._oy - rr));
-          } : (gg, x, y) => block(gg, x, y, rr * 2, rr + 2, i) }));
-        fallPile(g, s, items, px, py, TL * 2.2, AP().stone[3], !!stamps);
-        /* what makes it a DELIVERY and not a deposit: every block lands
-           throwing chips of itself, and once the pile is down its fresh-cut
-           faces wink in the card's pale light — a natural knot of ore has
-           neither, and at rest the first cut read exactly like one */
+        TX.inked(g, px - 30, py - TL * 3.6, 60, TL * 3.6 + 4, gg => {
+          for (const n of now) {
+            const [, , rr, v] = K.BLOCKS[n.i];
+            if (stamps) { const st = Sprites.oreStamp(rr, v, false); gg.drawImage(st, Math.round(n.x - st._ox), Math.round(n.y - st._oy - rr)); }
+            else block(gg, n.x, n.y, rr * 2, rr + 2, n.i);
+          }
+        }, dis);
+        // every block lands throwing chips of itself: rubble bouncing out
         const O = AP().oreD;
-        this.show.BLOCKS.forEach(([dx, dy, rr], i) => {
-          const age = s.t - (0.05 + i * 0.16) - 0.26;
-          if (age < 0 || age > 0.42) return;
-          const q = age / 0.42;
-          g.globalAlpha = stp(1 - q * q, 3);
-          for (let k = 0; k < 7; k++) {
-            const a = -Math.PI * (0.08 + 0.84 * hs(i * 7 + k, 17)), v = 18 + hs(k, i + 31) * 26;
-            const cx = px + dx + Math.cos(a) * v * age * 1.6, cy = py + dy - rr - Math.sin(a) * v * age * 1.6 + 60 * age * age;
+        K.BLOCKS.forEach(([dx, dy, rr], i) => {
+          const age = s.t - K.land(i);
+          if (age < 0 || age > 0.46) return;
+          for (let k = 0; k < 8; k++) {
+            const a = -Math.PI * (0.06 + 0.88 * hs(i * 7 + k, 17)), v = 20 + hs(k, i + 31) * 30;
+            const cx = px + dx + Math.cos(a) * v * age * 1.5, cy = py + dy - rr - Math.sin(a) * v * age * 1.5 + 90 * age * age;
             g.fillStyle = k % 3 === 0 ? O[5] : k % 3 === 1 ? O[3] : O[1];
-            g.fillRect(sn(cx), sn(Math.min(py, cy)), PX, PX);
+            g.fillRect(sn(cx), sn(Math.min(py + 2, cy)), PX, PX);
           }
         });
-        g.globalAlpha = 1;
-        const settled = s.t - (0.05 + 4 * 0.16 + 0.26);
-        if (settled > 0) {
+        // and once down, the fresh faces wink in the pale light, one after another
+        const settled = s.t - K.land(K.BLOCKS.length - 1);
+        if (settled > 0 && dis < 0.5) {
           g.save();
-          // the pale ring the last block lands in, in the Stone tier's ink
-          if (settled < 0.6) {
-            const q = settled / 0.6;
-            if (R.inkOn(g, 0.8 * (1 - q), TX.STONE_LIGHT)) TX.ring(g, px, py - 2, 10 + eo(q) * 34, 0.5);
-          }
-          g.globalCompositeOperation = 'lighter';
-          // and the fresh faces catch the light, one after another
-          this.show.BLOCKS.forEach(([dx, dy, rr], i) => {
+          if (settled < 0.6 && R.inkOn(g, 0.8 * (1 - settled / 0.6), TX.STONE_LIGHT)) TX.ring(g, px, py - 2, 10 + eo(settled / 0.6) * 34, 0.5);
+          K.BLOCKS.forEach(([dx, dy, rr], i) => {
             const ph = (settled * 1.6 + i * 0.37) % 1;
             if (ph > 0.4) return;
             const k = Math.sin(ph / 0.4 * Math.PI);
-            g.globalAlpha = stp(k * (p < 0.82 ? 1 : 1 - (p - 0.82) / 0.18), 3);
             TX.star(g, px + dx - rr * 0.35, py + dy - rr * 1.25, k > 0.6 ? 2 : 1, '#e6e2d6', '#ffffff');
           });
           g.restore();
         }
-        // the biggest block lands with a jolt
-        if (!s.jolt && s.t > 0.05 + 0.16 + 0.26) { s.jolt = true; if (R.shakeAt) R.shakeAt(1.6, 0.16); }
-        g.globalAlpha = 1;
-        TX.count(g, s, sp, [{ t: '+150 stone' }], 0.05 + 4 * 0.16 + 0.36, 1.9);
+        TX.count(g, s, sp, [{ t: '+150 stone' }], K.land(K.BLOCKS.length - 1) + 0.1, 1.9);
       },
     }),
 
-    /* STONE — Gold Nugget: +60 gold. One nugget drops, bounces twice, comes
-       to rest — and catches the light: a hard four-point glint and a ring of
-       gold dots running out from it. */
+    /* STONE — Gold Nugget: +60 gold. One nugget drops down the gold light,
+       bounces twice — each lower — and comes to rest; it catches the light
+       in a hard four-point star, and four coins flip up out of it, turning
+       over, and fly off into the gold count, which steps as each one
+       arrives (TX.flyToBar). */
     gold_nugget: goods('gold_nugget', 'gold', 60, '🪙', 'A gold nugget turned up', {
-      ms: 2800, layer: 'world', sound: 'cardGold',
-      pays() { return [[0.32, 'gold', 0]]; },
+      ms: 3000, layer: 'world', sound: 'cardGold',
+      LAND: 0.42, B1: 0.22, B2: 0.14, COIN: 0.88, COIN_STEP: 0.1, COINS: 4,
+      // the coins pay as they ARRIVE (each flight hands its own coin in): listed
+      // here at their launch, so the bar is known to be holding until then
+      pays() { const K = this.show; return Array.from({ length: K.COINS }, (_, i) => [K.COIN + i * K.COIN_STEP, 'gold', i < K.COINS - 1 ? 15 : 0, 'fly']); },
       draw(g, s, p) {
-        TX.settle(s, TX.pays('gold_nugget', s));
         const tc = Bld.get(s.tc); if (!tc) return;
-        const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
+        const K = this.show, TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
+        const t = s.t, rest = K.LAND + K.B1 + K.B2;
+        // the coins leave on their beats, culled or not (the bar waits for them)
+        TX.settle(s, TX.pays('gold_nugget', s), (e, i) => {
+          const a = -Math.PI / 2 + (i - 1.5) * 0.5;
+          TX.flyToBar('gold', px + Math.cos(a) * 14, py - 8 + Math.sin(a) * 14, e[2], GA.get('coins')[0], 160);
+          TX.sound('cardCoin');
+          return true;
+        });
+        if (!s.hit && t >= K.LAND) { s.hit = 1; TX.thud(px, py, 0.4, 'cardCoin'); }
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
-        TX.arrive(g, px, py, s.t, 'gold', TL * 2.2);
-        fade(g, p, 0.84);
-        const t = s.t, land = 0.32;
+        TX.shaft(g, px, py, t, 'gold', TL * 1.05, rest + 0.1);
         // the fall and two bounces, each lower than the last
         let y = py;
-        if (t < land) y = py - TL * 1.7 * (1 - (t / land) * (t / land));
-        else if (t < land + 0.22) y = py - Math.sin((t - land) / 0.22 * Math.PI) * 10;
-        else if (t < land + 0.36) y = py - Math.sin((t - land - 0.22) / 0.14 * Math.PI) * 4;
-        g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(px - 6), sn(py - 1), 12, 2);
-        TX.inked(g, px - 10, y - 12, 20, 16, gg => nugget(gg, px, y));
-        dust(g, px, py, t - land, 4, AP().soil[3], 24);
-        // the glint: the light caught, held, let go
-        const gt = (t - (land + 0.42)) / 0.5;
-        if (gt > 0 && gt < 1) {
-          g.save(); g.globalCompositeOperation = 'lighter';
-          const arm = Math.max(1, Math.round(Math.sin(gt * Math.PI) * 6));
-          g.globalAlpha = stp(Math.sin(gt * Math.PI) + 0.25, 4);
-          TX.star(g, px - 2, py - 7, arm, '#fff2c0');
-          // the ring of gold dots running out from it, in the gold's ink
+        if (t < K.LAND) y = py - TL * 3 * (1 - (t / K.LAND) * (t / K.LAND));
+        else if (t < K.LAND + K.B1) y = py - Math.sin((t - K.LAND) / K.B1 * Math.PI) * 11;
+        else if (t < rest) y = py - Math.sin((t - K.LAND - K.B1) / K.B2 * Math.PI) * 4;
+        const dis = cl((p - 0.86) / 0.14);
+        if (dis < 0.5) { g.fillStyle = 'rgba(20,14,8,0.32)'; g.fillRect(sn(px - 6), sn(py - 1), 12, 2); }
+        const nug = GA.get('nugget');
+        TX.inked(g, px - 10, y - 14, 20, 16, gg => gg.drawImage(nug, Math.round(px - 6), Math.round(y - 10)), dis);
+        if (t >= K.LAND && t < rest) dust(g, px, py, t - K.LAND, 4, AP().soil[3], 24);
+        // the glint: a hard four-point star caught, held and let go, its arms in steps
+        const gt = (t - rest) / 0.6;
+        if (gt > 0 && gt < 1 && dis < 0.5) {
+          const arm = [1, 2, 4, 5, 4, 2, 1][Math.min(6, (gt * 7) | 0)];
+          TX.star(g, px - 2, py - 7, arm, '#fff2c0', '#ffffff');
+          g.save();
           if (R.inkOn(g, (1 - gt) * 0.95)) TX.ring(g, px, py - 4, 6 + gt * 26, 0.55, 14);
           g.restore();
         }
-        // a few motes rising off it as it settles
-        for (let k = 0; k < 6; k++) {
-          const tl = t - (land + 0.45 + k * 0.06);
-          if (tl < 0 || tl > 0.5) continue;
-          g.fillStyle = k % 2 ? '#ffd45e' : '#fff2c0';
-          g.fillRect(sn(px + (hs(k, 9) - 0.5) * 16), sn(py - 6 - tl * 30), PX, PX);
+        // the coins flip up out of it, turning over, before they make for the bar
+        const coins = GA.get('coins');
+        for (let i = 0; i < K.COINS; i++) {
+          const tl = t - (K.COIN + i * K.COIN_STEP);
+          if (tl < 0 || tl > 0.16) continue;
+          const a = -Math.PI / 2 + (i - 1.5) * 0.5, q = tl / 0.16;
+          const cx = px + Math.cos(a) * 14 * q, cy = py - 8 + Math.sin(a) * 14 * q;
+          g.drawImage(coins[((tl * 30) | 0) % 3], Math.round(cx - 2), Math.round(cy - 2));
         }
-        g.globalAlpha = 1;
-        TX.count(g, s, sp, [{ t: '+60 gold' }], land + 0.5, 1.9);
+        TX.count(g, s, sp, [{ t: '+60 gold' }], K.COIN + K.COINS * K.COIN_STEP + 0.45, 1.6);
       },
     }),
 
@@ -1591,30 +1794,41 @@
   if (typeof Sound !== 'undefined' && Sound._VOICES && Sound.GAP) {
     Object.assign(Sound.GAP, {
       cardWood: 0.4, cardStone: 0.4, cardGold: 0.4, cardCaravan: 0.8, cardMend: 0.4, cardBuild: 0.25,
+      cardThud: 0.06, cardThunk: 0.08, cardCoin: 0.05,
       cardFire: 0.4, cardSkin: 0.6, cardGlance: 0.6, cardRise: 0.6, cardHall: 1.6, cardWard: 0.9,
     });
     Object.assign(Sound._VOICES, {
-      // six logs landing in turn, the woody knock of each
+      /* THE LIGHT COMING DOWN (the goods' arrival — each piece's own landing
+         is its own voice below, struck by TX.thud on the frame it lands, so a
+         sound can never run ahead of the picture) */
       cardWood(t, v) {
-        for (let i = 0; i < 6; i++) {
-          const d = 0.39 + i * 0.11;
-          this._noise({ at: t, delay: d, hz: 340 - i * 14, to: 120, dur: 0.12, q: 1.1, gain: 0.17 * v });
-          this._note({ at: t, delay: d, hz: 150 + (i % 3) * 14, to: 92, dur: 0.12, type: 'triangle', gain: 0.08 * v, lp: 900 });
-        }
+        this._noise({ at: t, hz: 900, to: 2600, dur: 0.35, q: 0.6, gain: 0.07 * v, atk: 0.08, filter: 'highpass' });
+        [659, 784, 988].forEach((hz, i) => this._note({ at: t, delay: 0.04 + i * 0.05, hz, dur: 0.4, type: 'sine', gain: 0.045 * v }));
       },
-      // broken stone coming down, each block a deep thud
       cardStone(t, v) {
-        for (let i = 0; i < 5; i++) {
-          const d = 0.31 + i * 0.16;
-          this._noise({ at: t, delay: d, hz: 220, to: 60, dur: 0.24, q: 0.8, gain: (i === 1 ? 0.3 : 0.22) * v, filter: 'lowpass' });
-          this._note({ at: t, delay: d, hz: 82, to: 42, dur: 0.22, type: 'sine', gain: 0.16 * v });
-          this._noise({ at: t, delay: d + 0.02, hz: 1600, to: 700, dur: 0.07, q: 2, gain: 0.05 * v });
-        }
+        this._noise({ at: t, hz: 160, to: 70, dur: 0.6, q: 0.7, gain: 0.12 * v, atk: 0.1, filter: 'lowpass', rate: 0.6 });
+        [523, 659].forEach((hz, i) => this._note({ at: t, delay: 0.04 + i * 0.06, hz, dur: 0.35, type: 'sine', gain: 0.04 * v }));
       },
-      // a nugget's two clinks, then the light it catches
+      // a nugget comes down the gold light; the glint it catches when it rests
       cardGold(t, v) {
-        for (const [d, g0] of [[0.32, 0.1], [0.54, 0.06]]) this._note({ at: t, delay: d, hz: 2349, to: 2093, dur: 0.12, type: 'triangle', gain: g0 * v });
-        [1568, 2093, 2637, 3136].forEach((hz, i) => this._note({ at: t, delay: 0.74 + i * 0.06, hz, dur: 0.5, type: 'sine', gain: 0.07 * v }));
+        this._noise({ at: t, hz: 1400, to: 3600, dur: 0.35, q: 0.6, gain: 0.06 * v, atk: 0.08, filter: 'highpass' });
+        [1568, 2093, 2637, 3136].forEach((hz, i) => this._note({ at: t, delay: 0.84 + i * 0.06, hz, dur: 0.5, type: 'sine', gain: 0.07 * v }));
+      },
+      // a log landing on the pile: the woody knock
+      cardThud(t, v) {
+        this._noise({ at: t, hz: 340, to: 120, dur: 0.12, q: 1.1, gain: 0.18 * v });
+        this._note({ at: t, hz: 150, to: 92, dur: 0.12, type: 'triangle', gain: 0.09 * v, lp: 900 });
+      },
+      // a block of stone landing: the deep thud, and the crack of a chip off it
+      cardThunk(t, v) {
+        this._noise({ at: t, hz: 220, to: 60, dur: 0.24, q: 0.8, gain: 0.26 * v, filter: 'lowpass' });
+        this._note({ at: t, hz: 82, to: 42, dur: 0.22, type: 'sine', gain: 0.18 * v });
+        this._noise({ at: t, delay: 0.02, hz: 1600, to: 700, dur: 0.07, q: 2, gain: 0.05 * v });
+      },
+      // a coin's clink
+      cardCoin(t, v) {
+        this._note({ at: t, hz: 2349, to: 2093, dur: 0.12, type: 'triangle', gain: 0.08 * v });
+        this._note({ at: t, delay: 0.02, hz: 3520, dur: 0.06, type: 'sine', gain: 0.03 * v });
       },
       // a cart rumbling in, the wheels' knock, coin pouring out, the good news
       cardCaravan(t, v) {

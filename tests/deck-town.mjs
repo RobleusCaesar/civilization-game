@@ -935,7 +935,8 @@ await p.evaluate(({ TOWN }) => {
     }
     out.caught = caught.filter(m => /card show|card look/.test(m));
     // every voice is synthesized, gapped, and plays without a fault
-    const V = ['cardWood', 'cardStone', 'cardGold', 'cardCaravan', 'cardMend', 'cardBuild', 'cardFire', 'cardSkin', 'cardGlance', 'cardRise', 'cardHall', 'cardWard'];
+    const V = ['cardWood', 'cardStone', 'cardGold', 'cardCaravan', 'cardMend', 'cardBuild', 'cardFire', 'cardSkin', 'cardGlance', 'cardRise', 'cardHall', 'cardWard',
+      'cardThud', 'cardThunk', 'cardCoin'];
     out.voices = V.every(k => typeof Sound._VOICES[k] === 'function' && Sound.GAP[k] > 0);
     let vthrew = null;
     try { for (const k of V) Sound.play(k); } catch (e) { vthrew = String(e); }
@@ -951,7 +952,7 @@ await p.evaluate(({ TOWN }) => {
     JSON.stringify(r.live) + `; a blow glances and the ward flares ${r.struck}`);
   ck('aFrameWithNoCardInPlayPaysNothing', r.idleCalls === 0, `${r.idleCalls} card-world passes over six frames (three with a charge in hand)`);
   ck('theShowsAreRenderStateAndDrainAway', r.drained && !r.inS);
-  ck('everyVoiceIsSynthesized', r.voices && !r.vthrew, r.vthrew || 'twelve voices, each with its gap');
+  ck('everyVoiceIsSynthesized', r.voices && !r.vthrew, r.vthrew || 'fifteen voices (a landing\'s thud, a block\'s thunk, a coin\'s clink among them), each with its gap');
 }
 
 // ---------------- 10. WHAT THE PICTURE STANDS ON ----------------
@@ -1222,19 +1223,25 @@ await p.evaluate(({ TOWN }) => {
         const sh = R.cardShows.find(s => s.id === id);
         const list = Deck._townTX.pays ? Deck._townTX.pays(id, sh) : [[0.3]];
         const first = Math.min(...list.map(e => e[0]));
-        // the show, up to just before its first piece lands
-        while (sh.t + 1 / 60 < first) { R.draw(1 / 60); DeckUI._tickNumbers(); }
+        // the show, up to just before its first piece lands — driven through
+        // the shows' own pass (a whole frame of the world sixty times a second
+        // on a loaded machine outran the bar's own failsafe, real time)
+        const g0 = R.cv.getContext('2d'), step = () => { g0.save(); R.drawCardShows(g0, 1 / 60, 'world'); g0.restore(); };
+        while (sh.t + 1 / 60 < first) { step(); DeckUI._tickNumbers(); }
         const held = gained.every(k => read(k) === before[k]);
         // …then through to its end, every number read as it steps
         const seen = {}; gained.forEach(k => seen[k] = new Set([read(k)]));
         for (let i = 0; i < 600 && R.cardShows.indexOf(sh) >= 0; i++) {
-          R.draw(1 / 60); DeckUI._tickNumbers();
+          step(); DeckUI._tickNumbers();
           gained.forEach(k => seen[k].add(read(k)));
         }
-        await wait(DeckUI.TICK_MS + 80); DeckUI._tickNumbers();
+        // a piece that flies to the bar (the nugget's coins) pays when it arrives:
+        // waited for by its result, never a fixed timer (bounded by the failsafe)
+        for (let i = 0; i < 160 && DeckUI._ticks.length; i++) { await wait(40); DeckUI._tickNumbers(); gained.forEach(k => seen[k].add(read(k))); }
         const end = gained.every(k => read(k) === S.res[k]);
         // a step is a held number moving between two pieces: more than one value short of the total
-        const steps = gained.map(k => [...seen[k]].filter(v => v > before[k] && v < S.res[k]).length);
+        // (asked only of a resource that lands in two or more pieces)
+        const steps = gained.map(k => list.filter(e => e[1] === k).length < 2 ? 1 : [...seen[k]].filter(v => v > before[k] && v < S.res[k]).length);
         out[id + (away ? '@away' : '')] = { held, end, steps, pieces: list.length, gained, before: gained.map(k => before[k]), now: gained.map(k => S.res[k]) };
         L.remove(); DeckUI.reset();
       }
@@ -1247,6 +1254,95 @@ await p.evaluate(({ TOWN }) => {
     E.map(([id, x]) => `${id}: held ${x.held} (${x.before} → ${x.now})`).join('; '));
   ck('andStepsUpAsEachPieceLands', E.every(([, x]) => x.pieces < 2 || x.steps.every(n => n >= 1)), E.map(([id, x]) => `${id} ${x.steps} over ${x.pieces} pieces`).join('; '));
   ck('andAlwaysEndsOnTheStockpile', E.every(([, x]) => x.end), E.map(([id, x]) => `${id} ${x.end}`).join('; '));
+}
+
+// ---------------- 13. THE LIGHT FROM THE SKY, AND THE WEIGHT OF WHAT LANDS ----------------
+/* The critics: the goods' beam was "a hard cream RECTANGLE with a flat
+   bottom and a flat top cut ~250 px above the ground — a stray UI bar, and
+   over grass it reads olive"; the pieces landed with no weight. Measured on
+   the show itself, drawn over flat meadow at the moment every piece is
+   down and the light still held: the shaft runs to the TOP of the view, it
+   TAPERS (narrower up there than at the ground), and every pixel it changes
+   is one of the tier's own ink colours laid opaque — not one blend of light
+   over grass. Each piece lands with its own dust (a place-poof), Loose
+   Stone's biggest with a jolt, the nugget's coins fly to the gold chip; and
+   the pile goes in hard steps, never at an alpha. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, TX = Deck._townTX;
+    const GRASS = [91, 132, 57];
+    for (const id of ['fallen_timber', 'loose_stone', 'gold_nugget']) {
+      __tw.fresh('town-shaft-' + id);
+      Screens.show('playing'); S.paused = true;
+      const tc = __tw.flat();
+      R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+      R.placePoofs = []; R.cardShows = [];
+      let shakes = 0, flown = 0;
+      const sk = R.shakeAt, fl = TX && TX.flyToBar;
+      R.shakeAt = function () { shakes++; return sk.apply(this, arguments); };
+      if (fl) TX.flyToBar = function () { flown++; };
+      try {
+        Deck.play(id);
+        const sh = R.cardShows.find(s => s.id === id);
+        const K = Deck.FX[id].show;
+        // walk the show through to the moment the last piece is down
+        const lastDown = K.land ? K.land((K.LOGS || K.BLOCKS).length - 1) + 0.05 : (K.LAND + K.B1 + K.B2 + 0.02);
+        while (sh.t < lastDown) R.drawCardShows(R.cv.getContext('2d'), 1 / 60, 'world');
+        const poofs = R.placePoofs.length;
+        // the show alone, over flat meadow, in a world-px canvas covering the view
+        const vw = Math.ceil(R.viewW() / R.cam.z), vh = Math.ceil(R.viewH() / R.cam.z);
+        const cv = document.createElement('canvas'); cv.width = vw; cv.height = vh;
+        const cg = cv.getContext('2d');
+        cg.fillStyle = 'rgb(' + GRASS + ')'; cg.fillRect(0, 0, vw, vh);
+        cg.setTransform(1, 0, 0, 1, -Math.round(R.cam.x), -Math.round(R.cam.y));
+        R.drawCardShows(cg, 0, 'world');
+        const sp = sh.at, px = Math.round(sp.x * TL - R.cam.x), py = Math.round(sp.y * TL - R.cam.y);
+        const d = cg.getImageData(0, 0, vw, vh).data;
+        const tone = R.LIGHT.TONE[id === 'gold_nugget' ? 'gold' : TX.STONE_LIGHT];
+        // the light's own ink; the timber's leaves drift down it in their own colours
+        const ok = new Set([tone.hot, ...tone.ramp, ...(id === 'fallen_timber' ? [...ART.PALETTE.leaf, ...ART.PALETTE.thatch] : [])].map(h => h.toLowerCase()));
+        const hex = i => '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+        let blend = 0, lit = 0, topLit = 0;
+        const rowW = y => { let n = 0; for (let x = px - 30; x <= px + 30; x++) { const i = (y * vw + x) * 4; if (d[i] !== GRASS[0] || d[i + 1] !== GRASS[1] || d[i + 2] !== GRASS[2]) n++; } return n; };
+        const yTop = 0, yBot = Math.max(1, py - Math.round(TL * 2.4));
+        for (let y = yTop; y < yBot; y++) for (let x = px - 30; x <= px + 30; x++) {
+          if (x < 0 || x >= vw) continue;
+          const i = (y * vw + x) * 4;
+          if (d[i] === GRASS[0] && d[i + 1] === GRASS[1] && d[i + 2] === GRASS[2]) continue;
+          lit++;
+          if (y < 24) topLit++;
+          if (!ok.has(hex(i))) blend++;
+        }
+        let wTop = 0, wBot = 0;
+        for (let y = 0; y < 24; y++) wTop = Math.max(wTop, rowW(y));
+        for (let y = yBot - 24; y < yBot; y++) wBot = Math.max(wBot, rowW(y));
+        // the pile goes in hard steps: drawn late in its dissolve, nothing translucent above its shadow line
+        sh.t = 0.93 * sh.ms / 1000;
+        const cv2 = document.createElement('canvas'); cv2.width = vw; cv2.height = vh;
+        const c2 = cv2.getContext('2d');
+        c2.setTransform(1, 0, 0, 1, -Math.round(R.cam.x), -Math.round(R.cam.y));
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        const lab = TX.label; TX.label = () => {};   // the count is type, anti-aliased by the browser: not the pile
+        try { R.drawCardShows(c2, 0, 'world'); } finally { TX.label = lab; }
+        const d2 = c2.getImageData(px - 34, py - 40, 68, 37).data;
+        let soft = 0;
+        for (let i = 3; i < d2.length; i += 4) if (d2[i] > 0 && d2[i] < 250) soft++;
+        out[id] = { lit, topLit, blend, wTop, wBot, poofs, shakes, flown, soft };
+      } finally { R.shakeAt = sk; if (fl) TX.flyToBar = fl; }
+    }
+    R.cardShows = []; R.placePoofs = [];
+    return out;
+  });
+  const E = Object.entries(r);
+  ck('theLightRunsDownFromTheTopOfTheView', E.every(([, x]) => x.topLit > 0 && x.lit > 200),
+    E.map(([id, x]) => `${id}: ${x.lit} lit px above the pile, ${x.topLit} in the view's top rows`).join('; '));
+  ck('andTapersToTheSky', E.every(([, x]) => x.wTop > 0 && x.wTop < x.wBot), E.map(([id, x]) => `${id} ${x.wTop} px wide up top, ${x.wBot} at the ground`).join('; '));
+  ck('everyCellOfItIsInkNeverABlend', E.every(([, x]) => x.lit > 0 && x.blend === 0), E.map(([id, x]) => `${id} ${x.blend} blended of ${x.lit}`).join('; '));
+  ck('eachPieceLandsInItsOwnDust', r.fallen_timber.poofs >= 4 && r.loose_stone.poofs >= 4 && r.gold_nugget.poofs >= 1,
+    E.map(([id, x]) => `${id} ${x.poofs} poofs`).join('; '));
+  ck('theStoneJoltsAndTheNuggetsCoinsFly', r.loose_stone.shakes >= 1 && r.gold_nugget.flown >= 3 && r.gold_nugget.flown <= 5,
+    `stone shakes ${r.loose_stone.shakes}, coins flown ${r.gold_nugget.flown}`);
+  ck('thePileGoesInHardStepsNeverAnAlpha', E.every(([, x]) => x.soft === 0), E.map(([id, x]) => `${id} ${x.soft} translucent px`).join('; '));
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
