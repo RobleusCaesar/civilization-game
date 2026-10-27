@@ -436,15 +436,38 @@ Object.assign(Deck.FX, {
         g.restore();
       },
     },
-    // the ground within the ring visibly lush while the card runs: sprigs and
-    // blossoms on open ground the player has seen, a faint gold ring of dots at the edge
+    /* the ground within the ring visibly lush while the card runs: sprigs and
+       blossoms on open ground the player has seen, a faint gold ring of dots
+       at the edge. TWENTY DAYS IS A LONG TIME TO PAY FOR A PICTURE: drawn
+       sprig by sprig it measured ~12ms a frame on a desktop's software canvas
+       (a few hundred sprigs, a handful of fills each), so once the land has
+       woken it is painted ONCE into a layer and blitted — one drawImage a
+       frame — and painted again only when the ground under it changes (a
+       hall moved, a tree felled, a hut raised: a checksum of the ring's own
+       tiles says so). Only while the show's wave is still rolling out are the
+       sprigs drawn live, growing in behind its front. */
     drawLive(g, e) {
       const c = this.centre();
       if (!c) return;
-      const TL = CFG.TILE, F = GrowFX, v = F.view(1), Rr = this.R, fade = F.tail(e), t = performance.now() / 1000;
-      const p = F.liveP('bountiful_land'), grow = p >= 0 ? Rr * F.ease(p / 0.62) : Rr;
+      const TL = CFG.TILE, F = GrowFX, Rr = this.R, fade = F.tail(e), t = performance.now() / 1000;
+      const p = F.liveP('bountiful_land');
+      if (p >= 0 && p <= 0.62) { this.sprigs(g, c, Rr * F.ease(p / 0.62), fade, t, F.view(1)); return; }
+      const L = this.layer(c, t);
+      if (L.any) {
+        g.save();
+        g.imageSmoothingEnabled = false;
+        g.globalAlpha = F.step(fade);
+        g.drawImage(L.cv, L.x0 * TL, L.y0 * TL);
+        g.restore();
+      }
+      F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#ffd45e', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
+    },
+    // every sprig on the ring's open ground out to `grow` (within `v`, the tiles in view)
+    sprigs(g, c, grow, fade, t, v) {
+      const TL = CFG.TILE, F = GrowFX, Rr = this.R;
       const x0 = Math.max(Math.floor(c.x - Rr), Math.floor(v.x0)), x1 = Math.min(Math.ceil(c.x + Rr), Math.ceil(v.x1));
       const y0 = Math.max(Math.floor(c.y - Rr), Math.floor(v.y0)), y1 = Math.min(Math.ceil(c.y + Rr), Math.ceil(v.y1));
+      let any = false;
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         if (!MapGen.onBoard(x, y)) continue;
         const d = Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y);
@@ -456,9 +479,32 @@ Object.assign(Deck.FX, {
           const h = F.hash(x * 7 + j, y * 13 + 5);
           if (h > 0.46) continue;
           this.sprig(g, (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL, h / 0.46, k, t);
+          any = true;
         }
       }
-      if (p < 0 || p > 0.62) F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#ffd45e', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
+      return any;
+    },
+    // the grown land, painted once (render state — never in S)
+    _layer: null,
+    layer(c, t) {
+      const TL = CFG.TILE, Rr = this.R, x0 = Math.floor(c.x - Rr) - 1, y0 = Math.floor(c.y - Rr) - 1, n = Math.ceil(Rr * 2) + 3;
+      // the ring's own ground, summed: what the sprigs stand on, and whether it is known
+      let sum = x0 * 7919 + y0 * 104729;
+      for (let y = y0; y < y0 + n; y++) for (let x = x0; x < x0 + n; x++) {
+        if (!MapGen.onBoard(x, y)) continue;
+        const i = MapGen.idx(x, y);
+        sum = (Math.imul(sum, 31) + (S.map.terrain[i] + 1) * (S.map.explored[i] ? 3 : 5) + (Bld.at(x, y) ? 977 : 0)) | 0;
+      }
+      let L = this._layer;
+      if (L && L.sum === sum && L.x0 === x0 && L.y0 === y0) return L;
+      if (!L) { const cv = document.createElement('canvas'); L = this._layer = { cv, g: cv.getContext('2d') }; }
+      if (L.cv.width !== n * TL) { L.cv.width = n * TL; L.cv.height = n * TL; }
+      L.g.setTransform(1, 0, 0, 1, 0, 0);
+      L.g.clearRect(0, 0, L.cv.width, L.cv.height);
+      L.g.translate(-x0 * TL, -y0 * TL);
+      L.any = this.sprigs(L.g, c, Rr, 1, t, { x0: x0, y0: y0, x1: x0 + n, y1: y0 + n });
+      L.sum = sum; L.x0 = x0; L.y0 = y0;
+      return L;
     },
   },
 
@@ -740,15 +786,20 @@ Object.assign(Deck.FX, {
            field shows, as wisps; and where it has passed a grey haze hangs
            over the land until the end. */
         const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1, cell = Math.max(4, Math.round(10 * dpr));
-        const haze = F.step(0.2 * fade), T = s.t, M = this.MURK;
-        for (let y = 0; y < Hd; y += cell) for (let x = 0; x < Wd; x += cell) {
-          const gx = (x / cell) | 0, gy = (y / cell) | 0;
-          const depth = (fr.front - ((x + cell / 2) * fr.ux + (y + cell / 2) * fr.uy)) / fr.band;
+        const haze = F.step(0.2 * fade), T = s.t, M = this.murkRGB();
+        /* ONE PIXEL A CELL: the murk is written into a small buffer, a pixel
+           per cell, and laid over the frame in one blit scaled up with
+           smoothing off — the same hard cells, without a few thousand fills
+           (measured ~15ms a frame drawn cell by cell on a software canvas) */
+        const cw = Math.ceil(Wd / cell), ch = Math.ceil(Hd / cell), buf = this.murkBuf(cw, ch), px = buf.img.data;
+        px.fill(0);
+        const put = (gx, gy, rgb, a) => { const o = (gy * cw + gx) * 4; px[o] = rgb[0]; px[o + 1] = rgb[1]; px[o + 2] = rgb[2]; px[o + 3] = Math.round(a * 255); };
+        for (let gy = 0; gy < ch; gy++) for (let gx = 0; gx < cw; gx++) {
+          const depth = (fr.front - ((gx + 0.5) * cell * fr.ux + (gy + 0.5) * cell * fr.uy)) / fr.band;
           if (depth < -0.14) continue;
           if (depth > 1.04) {
             if (haze <= 0 || (depth < 1.16 && F.hash(gx * 7 + 3, gy * 11 + 1) > 0.5)) continue;
-            g.globalAlpha = haze; g.fillStyle = M[3];
-            g.fillRect(x, y, cell, cell);
+            put(gx, gy, M[3], haze);
             continue;
           }
           const n = F.blob(gx, gy, 6, T * 0.5) * 0.65 + F.blob(gx + 57, gy + 31, 2.5, T * 0.9) * 0.35;
@@ -756,10 +807,11 @@ Object.assign(Deck.FX, {
           const e = n - thr;
           if (e <= 0) continue;
           const tone = e > 0.2 ? 2 : e > 0.07 ? 1 : 0, back = depth > 0.7 ? 0.7 : 1;
-          g.globalAlpha = F.step(fade * back * [0.66, 0.56, 0.6][tone]);
-          g.fillStyle = M[tone];
-          g.fillRect(x, y, cell, cell);
+          put(gx, gy, M[tone], F.step(fade * back * [0.66, 0.56, 0.6][tone]));
         }
+        buf.g.putImageData(buf.img, 0, 0);
+        g.imageSmoothingEnabled = false;
+        g.drawImage(buf.cv, 0, 0, cw * cell, ch * cell);
         g.globalAlpha = 1;
         // spores riding the murk, swirling up as it rolls, a dark underside
         // to each so they read against bright grass and dark woods alike
@@ -795,6 +847,18 @@ Object.assign(Deck.FX, {
     // the murk's bands by depth behind its edge: [up to, density, alpha, colour]
     // the murk's tones: underside, body, crown — and the haze it leaves
     MURK: ['#3c4430', '#77805f', '#aab28a', '#6f7658'],
+    murkRGB() { return this._rgb || (this._rgb = this.MURK.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)))); },
+    // the murk's one-pixel-a-cell buffer (render state — never in S)
+    _buf: null,
+    murkBuf(w, h) {
+      let B = this._buf;
+      if (!B || B.w !== w || B.h !== h) {
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        const g = cv.getContext('2d');
+        B = this._buf = { cv, g, w, h, img: g.createImageData(w, h) };
+      }
+      return B;
+    },
     SPORE: ['#b6bba2', '#9aa27a', '#d4d8bf'],
     /* while it lasts, every rival field and station IN SIGHT stands greyed
        and withered — its own silhouette washed a dead grey-green, dull specks

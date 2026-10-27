@@ -1021,6 +1021,28 @@ await p.evaluate(() => {
   ck('andCostNothingWithNoCardInPlay', r.idleCalls === 0 && r.idleWorld === 0, `${r.idleCalls} show/look calls, ${r.idleWorld} card-world passes in 20 frames`);
 }
 
+// ---------------- 10b. TWENTY DAYS IS A LONG TIME TO PAY FOR A PICTURE ----------------
+{
+  const r = await p.evaluate(() => {
+    __g.fresh('growth-lush', 'calm'); const { P } = __g.flat();
+    Screens.show('playing');
+    R.cam.z = 1.5; R.centerOn(Bld.cx(P), Bld.cy(P));
+    Deck.play('bountiful_land'); R.cardShows.length = 0;
+    const d = Deck.FX.bountiful_land, e = Deck.timed('bountiful_land'), g = R.cv.getContext('2d');
+    let paints = 0; const sp = d.sprigs; d.sprigs = function () { paints++; return sp.apply(this, arguments); };
+    const frames = n => { for (let i = 0; i < n; i++) { g.save(); d.drawLive(g, e, 1 / 60); g.restore(); } };
+    frames(1); const first = paints;
+    frames(60); const steady = paints - first;
+    // a tree in the ring felled to stumps (open ground a sprig may take)
+    __g.terr(P.x + 5, P.y + 1, T.STUMPS);
+    frames(30); const afterEdit = paints - first - steady;
+    d.sprigs = sp;
+    return { first, steady, afterEdit };
+  });
+  ck('theLushGroundIsPaintedOnceNotEveryFrame', r.first === 1 && r.steady === 0 && r.afterEdit === 1,
+    `painted ${r.first} on the first frame, ${r.steady} over the next 60, ${r.afterEdit} when the ground under it changed`);
+}
+
 // ---------------- 11. NOTHING IS DRAWN IN THE BLACK ----------------
 {
   const r = await p.evaluate(() => {
