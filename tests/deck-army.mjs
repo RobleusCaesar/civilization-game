@@ -317,6 +317,19 @@ await p.evaluate(({ ARMY }) => {
     out.legion = pairs(lg, 0.97);
     out.garrison = pairs(lg.concat(gar), 0.6).bad;
     out.lgOn = lg.filter(whole).length;
+    // SWIFT RAIDERS (playtest g2 #8): they used to ride out and park at the
+    // screen's edge half cut off — now they wheel once round the hall at a
+    // gallop and pull up on their places, every one of them whole on the screen
+    __ar.fresh('army-fan4'); __ar.flat();
+    const tc4 = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc4), Bld.cy(tc4) + 0.6);
+    const sr = __ar.play('swift_raiders').units, hx = Bld.cx(tc4), hy = Bld.cy(tc4);
+    const sw = sr.map(() => 0), an = sr.map(u => Math.atan2(u.y - hy, u.x - hx));
+    for (let i = 0; i < 160; i++) {
+      Units.update(0.05);
+      sr.forEach((u, k) => { const a = Math.atan2(u.y - hy, u.x - hx); sw[k] += Math.atan2(Math.sin(a - an[k]), Math.cos(a - an[k])); an[k] = a; });
+    }
+    out.raiders = { sweep: sw.map(s => Math.round(Math.abs(s) * 180 / Math.PI)), on: sr.filter(whole).length, free: sr.every(u => !u.task), apart: pairs(sr, 0.97) };
     // the CONTROL: the yards' formation step, asked for five, marches them to
     // one muster spot — the old muster's end, where the heaps came from
     __ar.fresh('army-fan3'); __ar.flat();
@@ -330,6 +343,8 @@ await p.evaluate(({ ARMY }) => {
     `the War Band: the nearest two ${r.wb.near} apart, in ${r.wbRanks} ranks, facing out ${r.face}, all five whole on the screen ${r.onScreen}`);
   ck('enginesStandATileAndAHalfApart', r.engines.bad === 0 && r.engOn && r.control > 0,
     `the Siege Train then the Battery: the nearest two engines ${r.engines.near} apart (${r.engines.bad} pairs under 1.45), all on the screen ${r.engOn}; the old march to one spot: ${r.control} pairs under 1.45`);
+  ck('theRaidersWheelRoundTheHallAndPullUpInSight', r.raiders.sweep.every(a => a >= 330) && r.raiders.on === 5 && r.raiders.free && r.raiders.apart.bad === 0,
+    `each rider swept ${r.raiders.sweep.join('/')}° round the hall; after it ${r.raiders.on} of 5 whole on the screen, free ${r.raiders.free}, the nearest two ${r.raiders.apart.near} apart`);
   ck('aLegionFormsClearOfTheGarrison', r.legion.bad === 0 && r.garrison === 0 && r.lgOn >= 11,
     `the twelve: the nearest two ${r.legion.near} apart, ${r.garrison} closer than 0.6 to a garrison man, ${r.lgOn} of 12 whole on the screen`);
 }

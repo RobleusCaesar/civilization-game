@@ -1337,6 +1337,9 @@ const Units = {
     // a raised mound is passable but slow going — crossing one (or stepping onto
     // it) drags every land unit to a quarter speed, friend and foe alike
     let sp = u.speed;
+    // a card's riders wheeling round the hall go at a gallop (the walk's own
+    // `gallop`: Deck.fanWheel, js/deckfx-army.js) — the task's, so it ends with it
+    if (u.task && u.task.gallop) sp *= u.task.gallop;
     if (this.domain(u) !== 'water') {
       const here = S.map.terrain[MapGen.idx(u.x | 0, u.y | 0)];
       const next = S.map.terrain[MapGen.idx(wp.x, wp.y)];
@@ -1529,6 +1532,9 @@ const Units = {
           // js/deckfx-army.js) holds there for the beat and is then simply
           // free, where it formed — never marched to a heap
           if (t.stay) { u.task = null; u.anchor = { x: u.x, y: u.y }; }
+          // …or WHEELS round the hall at a gallop on the ring it was dealt
+          // (`via`, tile waypoints) and pulls up on its own place again
+          else if (t.via && t.via.length) { u.task = { type: 'move', x: t.x, y: t.y, gallop: t.gallop }; u.path = t.via; u.pathI = 0; }
           else {
             this.moveTo(u, t.x, t.y);
             // a war-wolf's march to its place is the PACK's own walk, not an

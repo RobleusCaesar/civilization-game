@@ -335,6 +335,10 @@ Object.assign(Deck, {
     const d = this.summonDoor(kinds[0]);
     if (d.why) return { ok: false, why: d.why };
     const { tc, first } = d, plan = this.fanPlan(tc, first, kinds);
+    // a wheel ends on a tile's middle (a path's last step): its riders' slots
+    // are stood there first, when every one has a tile of its own
+    if (opts.wheel && new Set(plan.map(s => Math.floor(s.x) + ',' + Math.floor(s.y))).size === plan.length)
+      for (const s of plan) { s.x = Math.floor(s.x) + 0.5; s.y = Math.floor(s.y) + 0.5; }
     // the first lands only once its beam has fallen (BEAM_T.drop)
     const hx = Bld.cx(tc), hy = Bld.cy(tc), stag = (opts.stagger || 0) / 1000,
       lead = opts.lead != null ? opts.lead : (opts.beam === false ? 0 : Deck.armyFx.BEAM_T.drop);
@@ -351,15 +355,73 @@ Object.assign(Deck, {
       units.push(u); at.push(lead + i * stag);
     });
     const free = (at.length ? at[at.length - 1] : 0) + (opts.hold != null ? opts.hold : this.FAN.hold);
+    // a WHEEL (Swift Raiders): once the last is down they gallop once round
+    // the hall together and pull up on their places — all of them or none
+    const wheel = opts.wheel ? this.fanWheel(tc, units, at, opts.wheel) : null;
     units.forEach((u, i) => {
-      u.task = { type: 'muster', x: Math.floor(u.x), y: Math.floor(u.y), wait: free, stay: true };
+      u.task = wheel ? wheel[i] : { type: 'muster', x: Math.floor(u.x), y: Math.floor(u.y), wait: free, stay: true };
       u.path = null; u.pathI = 0;
       // unseen until its beam lands (the card's show draws the beam itself)
       if (window.R && opts.beam !== false && R.startSummon) R.startSummon(u.x, u.y, at[i] * 1000, u.id, 'none');
       if (window.R && R.startPlacePoof && opts.dust !== false && i < 12)
         R.startPlacePoof(u.x - 0.5, u.y - 0.5, 1, { delay: at[i] * 1000, scale: this.fanClass(u.kind) === 'engine' ? 1 : 0.7 });
     });
-    return { ok: true, units, at, free, tc, first, side: plan.side, x: hx, y: hy };
+    return { ok: true, units, at, free, wheel: !!wheel, go: wheel ? wheel.go : null, tc, first, side: plan.side, x: hx, y: hy };
+  },
+  /* THE WHEEL (Swift Raiders, playtest g2 #8 / judge g2): the riders used to
+     ride straight out to a muster four tiles off and park half under the
+     screen's edge. Now they land on their places, and the moment the last is
+     down they BURST OUT together and wheel ONCE round the hall at a gallop
+     (the task's `gallop`, a multiple of their own pace read by followPath)
+     — a carousel, each from its own place round the whole ring and back to
+     it — and pull up there. A rider's place is its slot's own tile (a path
+     ends on a tile's middle), so the slots are first stood on their tiles'
+     middles; a ring the town has built across (more than a short detour
+     round a hut), or two riders whose slots share a tile, and nobody wheels:
+     they hold on the fan like every other card's people. Returns one
+     'muster' task per rider (its `via` the ring, sim state that rides a
+     save), or null. */
+  WHEEL: { gallop: 2.2, delay: 0.15, steps: 28, detour: 6 },
+  fanWheel(tc, units, at, o) {
+    const Wh = Object.assign({}, this.WHEEL, o === true ? {} : o), hx = Bld.cx(tc), hy = Bld.cy(tc);
+    const tiles = new Set();
+    for (const u of units) { const k = Math.floor(u.x) + ',' + Math.floor(u.y); if (tiles.has(k)) return null; tiles.add(k); }
+    if (!units.every(u => u.x % 1 === 0.5 && u.y % 1 === 0.5)) return null;   // stood on their tiles' middles (summonFan)
+    const go = (at.length ? at[at.length - 1] : 0) + Wh.delay, out = [];
+    // the ring clears the hall's corners by a good tile, whatever the slot
+    const rMin = Bld.size(tc) / 2 * Math.SQRT2 + 1.1;
+    for (const u of units) {
+      const slot = { x: Math.floor(u.x), y: Math.floor(u.y) };
+      const via = this.wheelPath(tc, slot, Math.max(rMin, Math.hypot(slot.x + 0.5 - hx, slot.y + 0.5 - hy)), Wh);
+      if (!via) return null;
+      out.push({ type: 'muster', x: slot.x, y: slot.y, wait: go, via, gallop: Wh.gallop });
+    }
+    out.go = go;
+    return out;
+  },
+  // once round the hall at radius R from `from` back to it, as tile waypoints
+  // (Path.find stitches each step round anything standing on the ring)
+  wheelPath(tc, from, R, Wh) {
+    const hx = Bld.cx(tc), hy = Bld.cy(tc), out = [];
+    const a0 = Math.atan2(from.x + 0.5 - hx, from.y + 0.5 - hy);
+    let cur = { x: from.x, y: from.y };
+    const leg = (tx, ty) => {
+      const seg = Path.find(cur.x, cur.y, tx, ty, 'P', 'land');
+      if (!seg || !seg.length || seg.length > Wh.detour) return false;
+      const end = seg[seg.length - 1];
+      if (end.x !== tx || end.y !== ty) return false;
+      out.push(...seg); cur = { x: tx, y: ty };
+      return true;
+    };
+    for (let k = 1; k < Wh.steps; k++) {
+      const a = a0 - 2 * Math.PI * k / Wh.steps;   // round the hall the sun's way, as the screen sees it
+      const tx = Math.floor(hx + Math.sin(a) * R), ty = Math.floor(hy + Math.cos(a) * R);
+      if (tx === cur.x && ty === cur.y) continue;
+      if (!Path.passable(tx, ty, 'P') || Bld.at(tx, ty)) continue;   // a tree on the ring: ride round it
+      if (!leg(tx, ty)) return null;
+    }
+    if ((cur.x !== from.x || cur.y !== from.y) && !leg(from.x, from.y)) return null;
+    return out.length >= Wh.steps / 2 ? out : null;
   },
 
   /* THE VETERANS */
@@ -1753,13 +1815,44 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   /* SWIFT RAIDERS' moment (the card lives in js/deckfx.js; its look lives
      with the rest of the army's): they come out together and ride — a
      steel-blue ring, the drum of hooves in the ground, dust off every horse */
+  /* …now: five steel beams, a rider landing in each on its place by the hall;
+     the moment the last is down they BURST OUT and wheel once round the hall
+     together at a gallop (Deck.fanWheel), the drum of hooves in the ground
+     and a trail of kicked-up dust behind every horse — hard clods of earth
+     in three browns, thrown up and settling, laid in the ground pass under
+     the horses — and pull up on their places. */
   if (Deck.FX.swift_raiders) Deck.FX.swift_raiders.show = {
-    ms: 2200, layers: ['ground', 'world'],
+    ms: 3600, layers: ['ground', 'world'],
     draw(g, s, p, dt, layer) {
       if (s.units) A.arrive(g, s, layer, 'steel');   // the Iron tier's steel light
+      if (layer === 'ground') { hoofDust(g, s); return; }
       if (layer !== 'world') return;
-      // a gallop: a stride on every beat, the ground felt under the first four
-      A.beats(s, p, [0.05, 0.18, 0.31, 0.44, 0.57, 0.70, 0.83], [2, 2, 2, 1.5, 0, 0, 0], 0.15, 'cardHoof');
+      // a gallop: a stride on every beat of the wheel, the ground felt under the first four
+      const go = s.go != null ? s.go : 0.2, at = [0, 1, 2, 3, 4, 5, 6].map(k => go + k * 0.34);
+      A.beats(s, s.t, at, [2, 2, 2, 1.5, 0, 0, 0], 0.15, 'cardHoof');
     },
   };
+  /* THE DUST OFF EVERY HORSE: a few positions behind each galloping rider
+     (sampled on the show, render state), each a clump of hard 2px squares
+     thrown up behind the hooves and settling as it ages — opaque, in the
+     earth's own browns (a translucent dust over the meadow is olive) */
+  function hoofDust(g, s) {
+    const TL = CFG.TILE, T = s.trail || (s.trail = {});
+    for (const id of s.ids || []) {
+      const u = live(id), tr = T[id] || (T[id] = []);
+      if (u && u.task && u.task.gallop && Units.moving(u) && (!tr.length || s.t - tr[tr.length - 1].t >= 0.05)) tr.push({ x: u.x, y: u.y, t: s.t });
+      while (tr.length && s.t - tr[0].t > 0.6) tr.shift();
+      R.clipBoard(g, () => {
+        for (const q of tr) {
+          const a = s.t - q.t, h = (Math.imul(id * 31 + ((q.t * 100) | 0), 0x9e3779b1) >>> 0);
+          const n = a < 0.15 ? 4 : a < 0.35 ? 3 : 2;
+          g.fillStyle = a < 0.15 ? '#c9ad80' : a < 0.35 ? '#a6885e' : '#7f6646';
+          for (let k = 0; k < n; k++) {
+            const ox = (((h >>> (k * 4)) & 15) - 7.5) * 0.9, oy = (((h >>> (k * 4 + 2)) & 7) - 3.5) * 0.6;
+            g.fillRect(A.snap(q.x * TL + ox), A.snap(q.y * TL + TL * 0.3 + oy - a * 10), a < 0.2 ? 4 : 2, a < 0.2 ? 4 : 2);
+          }
+        }
+      });
+    }
+  }
 }

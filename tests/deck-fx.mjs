@@ -286,15 +286,21 @@ await p.evaluate(() => {
     out.pop = { cap, before: pop0, after: Units.popUsed('P') };
     out.eats = +(Units.foodUpkeep('P') - eat0).toFixed(6);
     out.eatsWant = 5 * CFG.FOOD_UPKEEP.cavalry;
-    // they land on the army's fan round the hall and hold it (js/deckfx-army.js
-    // Deck.summonFan): each its own place, a horse's room apart, never marched
-    // to one spot
-    out.march = riders.every(u => u.task && u.task.type === 'muster' && u.task.stay);
+    // they land on the army's fan round the hall (js/deckfx-army.js
+    // Deck.summonFan), wheel once round it at a gallop and pull up on their
+    // own places again: a horse's room apart, never marched to one spot
+    out.march = riders.every(u => u.task && u.task.type === 'muster' && u.task.via && u.task.gallop > 1);
     const at0 = riders.map(u => [u.x, u.y]);
     out.flash = R.summons.length;
     out.flashInS = /summon/i.test(JSON.stringify(S));
     out.trained = S.stats.trained - trained0;
-    for (let i = 0; i < 80; i++) Units.update(0.1);
+    // the angle each one sweeps round the hall's middle as it rides
+    const hx = Bld.cx(tc), hy = Bld.cy(tc), sweep = riders.map(() => 0), ang = riders.map(u => Math.atan2(u.y - hy, u.x - hx));
+    for (let i = 0; i < 80; i++) {
+      Units.update(0.1);
+      riders.forEach((u, k) => { const a = Math.atan2(u.y - hy, u.x - hx); let d = a - ang[k]; d = Math.atan2(Math.sin(d), Math.cos(d)); sweep[k] += d; ang[k] = a; });
+    }
+    out.sweep = sweep.map(s => Math.round(Math.abs(s) * 180 / Math.PI));
     out.out = riders.map((u, i) => +Math.hypot(u.x - at0[i][0], u.y - at0[i][1]).toFixed(2));
     let near = 9;
     for (let i = 0; i < riders.length; i++) for (let j = i + 1; j < riders.length; j++) near = Math.min(near, Math.hypot(riders[i].x - riders[j].x, riders[i].y - riders[j].y));
@@ -338,8 +344,8 @@ await p.evaluate(() => {
   ck('eachOnReallyOpenGroundAtTheDoorstep', r.open && r.tiles === 5 && r.near <= 6.8, `${r.tiles} tiles, farthest ${r.near.toFixed(2)} from the doorstep`);
   ck('overTheCapAndEating', r.pop.before >= r.pop.cap && r.pop.after === r.pop.before + 5 && r.eats === r.eatsWant,
     `pop ${r.pop.before} → ${r.pop.after} of ${r.pop.cap}, +${r.eats} food a day`);
-  ck('andTheyFormOnTheFan', r.march && r.free && r.apart >= 1.25 && r.out.every(d => d < 0.05) && r.standing,
-    `held on landing ${r.march}; after 8s free ${r.free}, each on the place it landed on (moved ${r.out.join(', ')}), the nearest two ${r.apart} apart`);
+  ck('andTheyWheelRoundTheHallOntoTheFan', r.march && r.sweep.every(a => a >= 330) && r.free && r.apart >= 1 && r.out.every(d => d < 0.05) && r.standing,
+    `a gallop round the hall dealt on landing ${r.march}; each swept ${r.sweep.join('/')}° round it; after 8s free ${r.free}, each back on the place it landed on (off by ${r.out.join(', ')}), the nearest two ${r.apart} apart`);
   ck('theirFlashIsRenderStateOnly', r.flash === 5 && !r.flashInS, `${r.flash} summonings on R, in S: ${r.flashInS}`);
   ck('raisingThemIsNotTraining', r.trained === 0, `units trained ${r.trained}`);
   ck('andTheRaidersDrawNoRng', r.rng);
