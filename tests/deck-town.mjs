@@ -1470,9 +1470,15 @@ await p.evaluate(({ TOWN }) => {
     out.worst = worst; out.silN = silN;
     // the landing's flash: hard rings, nothing laid over its middle
     const rules = [...document.styleSheets].flatMap(ss => { try { return [...ss.cssRules]; } catch (e) { return []; } });
-    // (the flight's lights are pixel canvases — DeckUI._px — so no rule of
-    // the flying layer may carry a smooth gradient or a screen blend)
-    const fly = rules.filter(rr => rr.selectorText && /#dkFly/.test(rr.selectorText)).map(rr => rr.cssText);
+    // (no rule of the flying layer lays a soft disc or a screen blend over
+    // the WORLD. The one blend in it is the card's own glaze as it burns into
+    // light — a rule INSIDE the card's holder, which is an isolated group, so
+    // it screens over the card's face alone; the operator's ruling of
+    // 2026-10-27 drew the flight's lights smooth and the card leaves in light,
+    // where this read "the lights are pixel canvases, no rule may blend")
+    const flyR = rules.filter(rr => rr.selectorText && /#dkFly/.test(rr.selectorText));
+    const iso = flyR.some(rr => rr.selectorText.trim() === '#dkFly .dkFCard' && /isolation:\s*isolate/.test(rr.cssText));
+    const fly = flyR.filter(rr => !(iso && /\.dkFCard\s+\./.test(rr.selectorText))).map(rr => rr.cssText);
     const soft = fly.filter(t => /radial-gradient|mix-blend-mode:\s*screen|blur\(/.test(t));
     out.hitHard = fly.length > 0 && soft.length === 0;
     out.ringSoft = true;
