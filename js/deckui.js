@@ -863,8 +863,9 @@ const DeckUI = {
     // the dissolve's cells are two of the card's own art pixels a side
     this._dzMasks(L, 2 * fwPx / Deck.W);
     L.appendChild(hold);   // THE TOP LAYER: every light below goes in under it (_bit)
-    // the light the card brings with it: a dithered halo of the tier's pixels
-    const glow = this._px(L, 'halo', t.col, Math.round(Math.min(vw, vh, 520) * 0.92), 4);
+    // the shadow the card casts as it comes: the world under it darkened a
+    // step in an ordered dither of ink — never lit (the light is its own)
+    const glow = this._px(L, 'shade', t.col, Math.round(Math.min(vw, vh, 520) * 0.92), 2);
     // a card shown by its back turns face-up as it flies
     if (showingBack) requestAnimationFrame(() => card.classList.remove('flip'));
     const s0 = r0.width / fwPx;
@@ -897,7 +898,7 @@ const DeckUI = {
              { transform: `translate(${ddx}px,${ddy}px) scale(.12) rotate(14deg)` }]
           : [{ transform: 'scale(1.1)' }]),
       ], { duration: land, fill: 'forwards' });
-      // the halo comes with the card and flares in hard steps with it
+      // the shade comes with the card and swells in hard steps with it
       const flareAt = F + X * 0.45;
       show(glow, F * 0.5, exitAt + B * 0.5 - F * 0.5, [{ opacity: 1, transform: 'scale(.72)' }, { opacity: 1, transform: 'scale(1.18)' }],
         { easing: 'steps(4, end)' });
@@ -974,13 +975,26 @@ const DeckUI = {
   },
 
   /* THE LIGHT, IN PIXELS: a canvas of solid cells (`cell` CSS px each, drawn
-     pixelated) centred on the flight's middle, or wherever it is put. The
-     falloff is an ordered dither — the cells thin out, they never fade.
-       halo  a disc, thick at its heart, thinning in three bands
-       ring  a ring of separate cells
-       rays  twelve wedges, thinning outward
-       hit   the landing: a ring and eight spokes, a pale core
-     `thin` scales the density (the inspector's halo is a quieter one). */
+     pixelated) centred on the flight's middle, or wherever it is put.
+       shade  the card's SHADOW on the world: a disc of ink cells in an
+              ordered dither, thick at its heart, thinning in three bands
+       halo   a disc of the tier's cells, thinning the same way — the
+              inspector's alone, laid on its own dark backdrop
+       ring   a band of solid cells
+       rays   twelve solid wedges, long and short in turn
+       hit    the landing: a ring and eight spokes, a pale core
+     `thin` scales the density (the inspector's halo is a quieter one) and,
+     for rays, the wedges' width.
+
+     LIGHT OVER THE WORLD NEVER WASHES IT (judges g3/g4, house style: a
+     landing burst lightened 44-48% of the play area toward lime). A dither
+     of gold cells over grass is gold and green mixed by the eye — olive —
+     and so is the soft rim of any shape whose cells thin into the meadow.
+     So the light that falls on the world (ring, rays, hit) is drawn SOLID,
+     and every shape wears a one-cell INK EDGE: what meets the grass is
+     dark, never a half-lit cell; the only dither left on the world is the
+     shade, which darkens it. */
+  INK: '#0d0b08',
   _px(parent, kind, col, sizeCss, cell, thin) {
     const n = Math.max(8, Math.round(sizeCss / cell)), cv = document.createElement('canvas');
     cv.width = cv.height = n;
@@ -998,29 +1012,45 @@ const DeckUI = {
       return cv;
     }
     const on = (x, y, dens) => B[(y & 3) * 4 + (x & 3)] < dens * k * 16;
-    const PALE = '#fff6d8';
+    const PALE = '#fff6d8', INK = this.INK;
+    const cells = new Array(n * n).fill(null);
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
       const dx = x + 0.5 - R, dy = y + 0.5 - R, d = Math.hypot(dx, dy) / R;
       let fill = null;
-      if (kind === 'halo') {
-        const dens = d < 0.3 ? 0.75 : d < 0.55 ? 0.5 : d < 0.8 ? 0.25 : 0;
-        if (dens && on(x, y, dens)) fill = col;
+      if (kind === 'halo' || kind === 'shade') {
+        const dens = kind === 'shade' ? (d < 0.4 ? 0.5 : d < 0.68 ? 0.25 : d < 0.92 ? 0.125 : 0)
+          : (d < 0.3 ? 0.75 : d < 0.55 ? 0.5 : d < 0.8 ? 0.25 : 0);
+        if (dens && on(x, y, dens)) fill = kind === 'shade' ? INK : col;
       } else if (kind === 'rays') {
-        if (d < 0.14 || d > 0.95) continue;
-        const a = (Math.atan2(dy, dx) + Math.PI * 2) % (Math.PI / 6);
-        if (a > Math.PI / 6 * 0.34) continue;
-        const dens = d < 0.4 ? 0.75 : d < 0.68 ? 0.5 : 0.25;
-        if (on(x, y, dens)) fill = col;
+        const sec = Math.PI / 6, at = Math.atan2(dy, dx) + Math.PI * 2, i = Math.floor(at / sec + 0.5) % 12;
+        const off = Math.abs(at - Math.round(at / sec) * sec), len = i & 1 ? 0.72 : 0.94;
+        // a wedge narrowing to its tip, never thinning into the grass
+        if (d >= 0.14 && d <= len && off <= sec * 0.17 * k * (1 - 0.55 * d / len)) fill = col;
       } else if (kind === 'ring') {
-        if (Math.abs(d - 0.82) * R < 0.75 && ((x + y) & 1) === 0) fill = col;
+        if (Math.abs(d - 0.82) * R < 0.75) fill = col;
       } else if (kind === 'hit') {
         const a = Math.atan2(dy, dx), spoke = Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.42;
-        if (Math.abs(d - 0.78) * R < 0.75) fill = (x + y) & 1 ? col : null;
+        if (Math.abs(d - 0.78) * R < 0.75) fill = col;
         else if (spoke && d > 0.22 && d < 0.55) fill = PALE;
         else if (d < 0.14) fill = PALE;
       }
-      if (fill) { g.fillStyle = fill; g.fillRect(x, y, 1, 1); }
+      cells[y * n + x] = fill;
     }
+    // the ink edge: every empty cell touching a lit one (the shade and the
+    // inspector's halo are not light on the world, and wear none)
+    if (kind !== 'shade' && kind !== 'halo') {
+      const lit = c => c && c !== INK;
+      const near = (x, y) => {
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const X = x + dx, Y = y + dy;
+          if (X >= 0 && Y >= 0 && X < n && Y < n && lit(cells[Y * n + X])) return true;
+        }
+        return false;
+      };
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++)
+        if (!lit(cells[y * n + x]) && near(x, y)) cells[y * n + x] = INK;
+    }
+    for (let i = 0; i < n * n; i++) if (cells[i]) { g.fillStyle = cells[i]; g.fillRect(i % n, (i / n) | 0, 1, 1); }
     const keep = document.createElement('canvas');
     keep.width = keep.height = n;
     keep.getContext('2d').drawImage(cv, 0, 0);
@@ -1030,11 +1060,15 @@ const DeckUI = {
   },
   _pxCache: {},
 
-  /* THE SPECTACLE SCALES WITH THE TIER: Stone gets its halo and its rim and
+  /* THE SPECTACLE SCALES WITH THE TIER: Stone gets its shade and its rim and
      nothing else; every tier above adds something — sparks, a ring, rays,
-     and for Enlightenment a second fan of rays, a two-frame dithered flash
-     and embers rising off the card. All of it hard pixels, all of it under
-     the card. */
+     and for Enlightenment a second fan of rays, a two-frame flash and embers
+     rising off the card. All of it hard pixels, all of it under the card.
+     The rays reach just past the card's own corners (a fan across the whole
+     meadow was a carpet of light over the grass), and the flash is the
+     WORLD dropping a step dark for two frames while the card blazes — the
+     old one lit a quarter of the screen's cells pale, which read as the
+     whole map going lime. */
   _spectacle(L, rank, cx, cy, flareAt, land) {
     const show = (el, from, dur, kf, timing) => el.animate(kf || [{ opacity: 1 }, { opacity: 1 }],
       Object.assign({ delay: Math.max(0, from), duration: Math.max(1, dur), fill: 'none' }, timing || {}));
@@ -1045,15 +1079,17 @@ const DeckUI = {
       show(ring, flareAt, 420, [{ opacity: 1, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(2.1)' }], { easing: 'steps(6, end)' });
     }
     if (rank >= 3) {
-      const rays = this._px(L, 'rays', col, Math.round(Math.min(m * 1.2, 640)), 4);
+      const rays = this._px(L, 'rays', col, Math.round(Math.min(m * 0.96, 500)), 4);
       show(rays, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(0deg) scale(.7)' }, { opacity: 1, transform: 'rotate(30deg) scale(1.1)' }],
         { easing: 'steps(5, end)' });
       if (rank >= 4) {
-        const rays2 = this._px(L, 'rays', '#fff6d8', Math.round(Math.min(m * 1.05, 560)), 4, 0.6);
+        const rays2 = this._px(L, 'rays', '#fff6d8', Math.round(Math.min(m * 0.84, 440)), 4, 0.6);
         show(rays2, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(15deg) scale(.8)' }, { opacity: 1, transform: 'rotate(-12deg) scale(1.15)' }],
           { easing: 'steps(5, end)' });
-        // the flash: a quarter of the screen's cells lit pale, for two frames
+        // the flash: the world drops one hard step dark for two frames —
+        // laid at the very bottom of the layer, so the light blazes over it
         const flash = this._bit(L, 'dkFlash');
+        L.insertBefore(flash, L.firstChild);
         show(flash, flareAt - 20, 36);
       }
     }
@@ -1230,11 +1266,14 @@ const DeckUI = {
 
   // the light hits the ground: a ring of the tier's pixels and eight pale
   // spokes, thrown out in hard steps and gone at once (never a fading disc)
+  // (drawn at its full size and thrown out FROM a fraction of it: blown up
+  // two-fold, its cells were 8px slabs laid over the hall it lands on)
   _impact(L, dest, rank, calm) {
-    const hit = this._px(L, 'hit', L.style.getPropertyValue('--tc') || '#e8c15a', 112 + rank * 16, 4);
+    const full = 1.15 + rank * 0.2;
+    const hit = this._px(L, 'hit', L.style.getPropertyValue('--tc') || '#e8c15a', Math.round((112 + rank * 16) * full), 4);
     hit.style.left = dest.x + 'px'; hit.style.top = dest.y + 'px';
-    if (calm) { hit.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 240, fill: 'none' }); return; }
-    hit.animate([{ opacity: 1, transform: 'scale(.4)' }, { opacity: 1, transform: `scale(${1.15 + rank * 0.2})` }],
+    if (calm) { hit.animate([{ opacity: 1, transform: `scale(${(1 / full).toFixed(3)})` }, { opacity: 1, transform: `scale(${(1 / full).toFixed(3)})` }], { duration: 240, fill: 'none' }); return; }
+    hit.animate([{ opacity: 1, transform: `scale(${(0.4 / full).toFixed(3)})` }, { opacity: 1, transform: 'none' }],
       { duration: 300, easing: 'steps(4, end)', fill: 'none' });
   },
 
@@ -2039,8 +2078,8 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkFly .dkRim.b { left: -6px; top: -6px; right: -6px; bottom: -6px; border: 3px solid #fff6d8; box-shadow: 0 0 0 3px var(--tc); }
 /* every light below the card is solid pixels, hidden but for its moment */
 #dkFly .dkPx { left: var(--cx); top: var(--cy); image-rendering: pixelated; opacity: 0; }
-#dkFly .dkFlash { inset: 0; opacity: 0; image-rendering: pixelated;
-  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' shape-rendering='crispEdges'><rect width='2' height='2' fill='%23fff3c4'/></svg>") 0 0 / 4px 4px repeat; }
+/* the flash darkens the world a flat step (a lit dither here was lime over the meadow) */
+#dkFly .dkFlash { inset: 0; opacity: 0; background: rgba(13,11,8,.42); }
 #dkFly .dkSpark { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--tc); opacity: 0; }
 #dkFly .dkSpark.ember { background: #ffe7a0; }
 #dkFly .dkSpark.trail { width: 6px; height: 6px; margin: -3px 0 0 -3px; }

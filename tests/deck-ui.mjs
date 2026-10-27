@@ -43,6 +43,9 @@
      THE PLATES        every card's name (and tier, on the back) inside its
                        plate in at most two lines at 320 and 390 (Deck.nmFit);
                        a refusal may take a third line, never an ellipsis
+     THE LANDING       never washes the meadow: the flight's and the impact's
+                       own light, read off a frozen world at 390x844 dpr 2,
+                       shifts at most 1% of the play area toward olive/lime
 
    Run after touching: js/deckui.js, Deck.face in js/deck.js, the DeckUI
    hooks in js/game.js (frame, newGame, loadJSON), Screens.modalUp.
@@ -1374,6 +1377,134 @@ ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 &&
   await fctx.close();
   ck('theFoilNeverCrossesTheNamePlate', box.n > 0 && plateHit === 0 && goldShone > 0,
     `${box.n} sheen held through its sweep: plate pixels changed ${plateHit}; the gold frame still shines (${goldShone} px)`);
+}
+
+/* ================= 15. THE LANDING NEVER WASHES THE MEADOW =================
+   Judges g3/g4 measured a card's landing lightening 44-48% of the play area
+   toward lime (a full-screen flash of pale cells, a halo and rays of the
+   tier's colour dithered over the grass — gold and green, mixed by the eye,
+   is olive). The flight now shades the world under the card in ink, draws
+   its light solid with an ink edge, and darkens for its flash. Measured at
+   390x844, dpr 2: a Legendary card and a Bronze one are played through the
+   real sequence with the WORLD CANVAS FROZEN (R.draw stood down), the flight
+   and its impact stepped through their own clocks, and the screen read with
+   the flight's layer shown and hidden — the pair's difference is the
+   landing's own light. Across every step, the share of the play area
+   shifted toward olive/lime must stay at or under 1%, read per device pixel
+   and in 8x8 blocks (what the eye mixes a dither into); the flying card's
+   own box is left out of the read — it is the card, not light. */
+{
+  const { ctx: lctx, p: lp } = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await lp.evaluate(() => { CFG.CARDS.ON = true; Deck._col = null; Deck._del(Deck.KEY); });
+  await lp.evaluate(fixtures);
+  await lp.evaluate(enterGame, 'land-wash');
+  await lp.evaluate(() => window.__until(() => DeckUI.built));
+  await settle(lp);
+  const area = await lp.evaluate(() => {
+    for (const [id, tier] of [['__lgTc', 'enlight'], ['__brTc', 'bronze']]) {
+      if (!Deck.card(id)) Deck.CATALOG.push({ id, tier, cat: 'army', target: 'none', name: 'Test ' + id, text: 'Riders ride out.', flavor: 'f', when: 'w' });
+      Deck.FX[id] = { at: 'tc', apply: () => ({ ok: true, msg: 'landed' }) };
+    }
+    Deck._byId = null;
+    const tc = Bld.tcOf('P');
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    // the sequence's own timeouts wait while it is held (its failsafe would land it)
+    const orig = DeckUI._after;
+    window.__lq = [];
+    DeckUI._after = function (ms, fn) { if (window.__lq) { window.__lq.push([ms, fn]); return; } return orig.call(this, ms, fn); };
+    window.__lflush = () => { const q = window.__lq; window.__lq = []; for (const [, fn] of q) fn(); };
+    window.__lrestore = () => { DeckUI._after = orig; window.__lq = null; };
+    const tb = document.getElementById('topbar').getBoundingClientRect(), bb = document.getElementById('bottombar').getBoundingClientRect();
+    return { y0: Math.ceil(tb.bottom * devicePixelRatio), y1: Math.floor(bb.top * devicePixelRatio) };
+  });
+  const shot = async () => (await lp.screenshot()).toString('base64');
+  const read = (on, off, ex) => lp.evaluate(async ([on, off, area, ex]) => {
+    const dec = async s => { const im = new Image(); im.src = 'data:image/png;base64,' + s; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0); return { w: c.width, d: g.getImageData(0, 0, c.width, c.height).data }; };
+    const F = await dec(on), B = await dec(off), w = F.w, fd = F.d, bd = B.d;
+    const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+    const olive = (br, bg, bb, ar, ag, ab) => {
+      if (lum(ar, ag, ab) - lum(br, bg, bb) < 10) return false;
+      const mx = Math.max(ar, ag, ab), mn = Math.min(ar, ag, ab), d = mx - mn;
+      if (!mx || !d || d / mx < 0.2) return false;
+      let h = mx === ar ? ((ag - ab) / d) % 6 : mx === ag ? (ab - ar) / d + 2 : (ar - ag) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+      return h >= 48 && h <= 115;
+    };
+    const out = (x, y) => ex && x >= ex.x0 && x < ex.x1 && y >= ex.y0 && y < ex.y1;
+    let n = 0, px = 0, nb = 0, blk = 0;
+    for (let y = area.y0; y < area.y1; y++) for (let x = 0; x < w; x++) {
+      if (out(x, y)) continue;
+      const i = (y * w + x) * 4;
+      n++;
+      if (olive(bd[i], bd[i + 1], bd[i + 2], fd[i], fd[i + 1], fd[i + 2])) px++;
+    }
+    for (let y = area.y0; y + 8 <= area.y1; y += 8) for (let x = 0; x + 8 <= w; x += 8) {
+      if (ex && x + 8 > ex.x0 && x < ex.x1 && y + 8 > ex.y0 && y < ex.y1) continue;
+      const s = [0, 0, 0, 0, 0, 0];
+      for (let yy = 0; yy < 8; yy++) for (let xx = 0; xx < 8; xx++) {
+        const i = ((y + yy) * w + x + xx) * 4;
+        s[0] += bd[i]; s[1] += bd[i + 1]; s[2] += bd[i + 2]; s[3] += fd[i]; s[4] += fd[i + 1]; s[5] += fd[i + 2];
+      }
+      nb++;
+      if (olive(s[0] / 64, s[1] / 64, s[2] / 64, s[3] / 64, s[4] / 64, s[5] / 64)) blk++;
+    }
+    return { px: px / n, blk: blk / nb };
+  }, [on, off, area, ex]);
+  const pair = async (setT) => {
+    const ex = await lp.evaluate((t) => {
+      for (const a of window.__la) { try { a.currentTime = t; } catch (e) {} }
+      const c = document.querySelector('#dkFly .dkFCard');
+      if (!c || c.classList.contains('dz4')) return null;
+      const r = c.getBoundingClientRect(), d = devicePixelRatio;
+      return { x0: Math.floor(r.left * d) - 14, y0: Math.floor(r.top * d) - 14, x1: Math.ceil(r.right * d) + 14, y1: Math.ceil(r.bottom * d) + 14 };
+    }, setT);
+    await lp.waitForTimeout(30);
+    const on = await shot();
+    await lp.evaluate(() => { document.getElementById('dkFly').style.visibility = 'hidden'; });
+    await lp.waitForTimeout(30);
+    const off = await shot();
+    await lp.evaluate(() => { document.getElementById('dkFly').style.visibility = ''; });
+    return read(on, off, ex);
+  };
+  const worst = {};
+  for (const id of ['__lgTc', '__brTc']) {
+    let wpx = 0, wblk = 0, steps = 0;
+    const land = await lp.evaluate((id) => {
+      Deck._add(id, 1);
+      // the tap: the world canvas holds its last frame from here on
+      window.__ldraw = R.draw; R.draw = function () {};
+      document.getElementById('toasts').style.visibility = 'hidden';
+      DeckUI._run(id, null, null, false);
+      window.__la = document.getElementById('dkFly').getAnimations({ subtree: true });
+      for (const a of window.__la) a.pause();
+      return DeckUI.FLY_MS + DeckUI.FLARE_MS + DeckUI.BURST_MS;
+    }, id);
+    for (let t = 0; t <= land; t += 50) {
+      const s = await pair(t);
+      wpx = Math.max(wpx, s.px); wblk = Math.max(wblk, s.blk); steps++;
+    }
+    // the landing: Deck.play, the impact on the hall, stepped the same way
+    await lp.evaluate((land) => {
+      for (const a of window.__la) { try { a.currentTime = land; } catch (e) {} }
+      window.__lflush();
+      window.__la = document.getElementById('dkFly').getAnimations({ subtree: true }).filter(a => a.playState !== 'finished');
+      for (const a of window.__la) a.pause();
+    }, land);
+    const landed = await lp.evaluate(() => !!(DeckUI.playing && DeckUI.playing.landed) && !!document.querySelector('#dkFly .dk-hit'));
+    for (let t = 0; t <= 300; t += 60) {
+      const s = await pair(t);
+      wpx = Math.max(wpx, s.px); wblk = Math.max(wblk, s.blk); steps++;
+    }
+    await lp.evaluate(() => { window.__lflush(); R.draw = window.__ldraw; document.getElementById('toasts').style.visibility = ''; });
+    await lp.evaluate(() => window.__idle());
+    worst[id] = { px: wpx, blk: wblk, steps, landed };
+  }
+  await lp.evaluate(() => window.__lrestore());
+  await lctx.close();
+  const f = v => (v * 100).toFixed(2) + '%';
+  ck('theLandingNeverWashesTheMeadow',
+    Object.values(worst).every(w => w.landed && w.steps > 15 && w.px <= 0.01 && w.blk <= 0.01),
+    Object.entries(worst).map(([id, w]) => `${id}: ${w.steps} steps${w.landed ? '' : ' (NEVER LANDED)'}, olive ${f(w.px)} of pixels, ${f(w.blk)} of 8px blocks`).join('; ') + ' (bar 1%)');
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
