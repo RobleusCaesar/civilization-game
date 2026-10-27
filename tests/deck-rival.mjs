@@ -777,6 +777,7 @@ await p.evaluate(() => {
     const rng = S.rngState, n0 = Deck.count('krakens_call');
     out.play = Deck.play('krakens_call');
     out.rng = S.rngState === rng;
+    const rngPlay = S.rngState;
     out.acts = S.deck.kraken.acts.map(a => Units.get(a.id).kind);
     out.risen = Deck.canPlay('krakens_call');
     // nothing is struck at the play: the deep rises on sim time
@@ -792,6 +793,7 @@ await p.evaluate(() => {
     const bd2 = Bld.damage;
     Bld.damage = function (bb, amt, cause) { causes.add(String(cause)); return bd2.apply(this, arguments); };
     __rv.sea_done();
+    out.rngAct = S.rngState === rngPlay;
     Bld.damage = bd;
     const live = id => S.units.some(u => u.id === id);
     out.sunk = ships.map(s => s.kind + (live(s.id) ? '' : '†')).join(',');
@@ -831,7 +833,7 @@ await p.evaluate(() => {
     `nothing at the play ${r.untouched}; mid-act save ${r.midSave}; in sight ${r.seen}`);
   ck('oneKrakenAtATime', !r.risen.ok && /still risen/.test(r.risen.why), r.risen.why);
   ck('nothingToStrikeHandsItBack', !r.empty.ok && /come up empty/.test(r.empty.why) && r.emptyKept, `${r.empty.ok} "${r.empty.why}"`);
-  ck('andTheKrakenDrawsNoRng', r.rng);
+  ck('andTheKrakenDrawsNoRng', r.rng && r.rngAct, `at the play ${r.rng}, through the whole act ${r.rngAct}`);
 }
 
 // …and THE TRUCE: asked of what the player knows
@@ -883,6 +885,28 @@ await p.evaluate(() => {
   ck('aHiddenRivalNeitherWarnsNorBreaksThePeace', r.hidden && r.quiet === null && !r.refused.ok && /truce holds/.test(r.refused.why) && r.kept,
     `warn ${r.quiet}; "${r.refused.why}"; kept, peace and hull whole ${r.kept}`);
   ck('whatASpySeesOrTheMemoryHoldsIsKnown', r.spyWarn === r.TRUCE && r.memWarn === r.TRUCE, `spy ${!!r.spyWarn}, memory ${!!r.memWarn}`);
+}
+
+// …and the deck itself asks twice before an untargeted card ends the truce
+{
+  const r1 = await p.evaluate(() => {
+    __rv.fresh('rv-ui', 'calm'); const { P, A } = __rv.flat(false);
+    __rv.sea(27); A.x = 30; A.y = 4; Bld._block = null;
+    __rv.unit('fireship', 'A', 20.5, 28.5);
+    __rv.unit('rider', 'P', 20.5, 26.5);
+    G.updateVisibility();
+    Screens.show('playing'); S.paused = false;
+    const n = Deck.count('krakens_call');
+    DeckUI.play('krakens_call');
+    const first = { armed: !!DeckUI._armed, kept: Deck.count('krakens_call') === n, peace: S.peace === true, running: !!DeckUI.playing };
+    DeckUI.play('krakens_call');
+    return { first, n, running: !!DeckUI.playing };
+  });
+  let landed = true;
+  await p.waitForFunction(() => S.peace === false && !!S.deck.kraken, null, { timeout: 10000 }).catch(() => { landed = false; });
+  const r2 = await p.evaluate(() => { const o = { n: Deck.count('krakens_call'), peace: S.peace }; S.paused = true; return o; });
+  ck('theDeckAsksTwiceBeforeTheTruceEnds', r1.first.armed && r1.first.kept && r1.first.peace && !r1.first.running && r1.running && landed && r2.n === r1.n - 1 && r2.peace === false,
+    `first tap: armed ${r1.first.armed}, card kept ${r1.first.kept}, peace ${r1.first.peace}; second tap plays ${r1.running}; landed ${landed}, ${r1.n} → ${r2.n} cards`);
 }
 
 // ---------------- 8. THE PICTURE ----------------
