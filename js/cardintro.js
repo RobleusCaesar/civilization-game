@@ -942,7 +942,8 @@ CardIntro.CSS = `
 #cardIntro .ciPages .ciPage.tight .ciRoadTx { gap: 3px; }
 #cardIntro .ciPages .ciPage.tight .ciEmb { width: 52px; height: 52px; image-rendering: auto; }
 #cardIntro .ciPages .ciPage.tight .ciRoad h3 { font-size: 15px; }
-#cardIntro .ciPages .ciPage.tight .ciRoad p { font-size: 13.5px; }
+#cardIntro .ciPages .ciPage.tight .ciRoad p:not(.ciNote) { font-size: 13.5px; }
+#cardIntro .ciPages .ciPage.tight .ciRoad .ciNote { font-size: 11px; }
 #cardIntro .ciPages .ciPage.tight .ciFoot { font-size: 12px; }
 /* …and if it still spills, its hero scrolls inside the panel */
 #cardIntro .ciPages .ciPage.scroll .ciHero { overflow-y: auto; align-items: flex-start; overscroll-behavior: contain; padding: 4px 0;
