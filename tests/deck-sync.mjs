@@ -916,7 +916,213 @@ function CFG_HARD_FALLBACK() { return 120; }
     `run ${r.runId}: ${r.cards.join(',')} → grant_card(${r.body && JSON.stringify(r.body.p_cards)}), cloud ${r.cloud.join(',')}`);
   ck('andTheDeckReportsItAsTelemetry', r.track === r.cards.length, `${r.track} card_granted rows`);
 }
+/* ---- 11b. ONE LINEAGE, ONE RUN: an old save with no id, loaded and won again and again, pays once ---- */
+{
+  const r = await p.evaluate(async () => {
+    Screens._demo = false;
+    G.newGame('sync-legacy', 'hard', 'medium');
+    Screens._enterNow();
+    S.runId = null; Backend.runId = null;          // a save from before the id rode in it
+    S.playtime = 1300; S.day = 40;
+    const json = G.saveJSON();
+    const m0 = __t.mark();
+    const before = Deck.total();
+    const ids = [], settled = [];
+    for (let i = 0; i < 3; i++) {
+      G.loadJSON(json);
+      Screens._demo = false;
+      G.end(true, 'test', 'razed_rival_tc');
+      const rep = Deck.report(true, 'razed_rival_tc');
+      ids.push(rep.runId);
+      settled.push(Deck.settle(Object.assign(rep, { subtotal: 5000, seconds: 1300 })));
+      await new Promise(r => setTimeout(r, 150));
+      await Deck.sync('legacy');
+    }
+    const grants = __MOCK.st.calls.slice(m0).filter(c => c.path === '/rpc/grant_card');
+    const runIds = [...new Set(grants.map(c => c.body.p_run_id))];
+    const paid = __MOCK.rec('uid-A').grants[ids[0]] || [];
+    const want = Backend.legacyRunId(S.seed, S.mode, S.sizeKey);
+    Screens.show('title');
+    return { ids, runIds, paid, gained: Deck.total() - before, again: settled.slice(1).every(s => s.again),
+      want, ledger: Object.keys(Deck.col().runs).filter(k => k === ids[0]).length };
+  });
+  ck('anOldSaveFinishedThreeTimesIsOneRunAndPaysOnce',
+    new Set(r.ids).size === 1 && r.ids[0] === r.want && r.runIds.length === 1 && r.runIds[0] === r.want &&
+    r.paid.length >= 1 && r.gained === r.paid.length && r.again && r.ledger === 1,
+    `run ids ${[...new Set(r.ids)].join(',')}; grant_card run ids ${r.runIds.join(',')}; paid ${r.paid.join(',')}; device +${r.gained}`);
+}
 await ctx.close();
+
+/* ================= 13. TWO TABS, ONE DISK: neither erases the other's unsent ops ================= */
+{
+  // tab A talks to the cloud; tab B is a second tab on the same device that
+  // never reaches it (no backend at all: everything it does stays on disk)
+  const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  const A = await ctx.newPage();
+  A.on('pageerror', e => errs.push('tab A: ' + e));
+  await A.addInitScript(MOCK);
+  await A.goto(url + '?cards=1', { waitUntil: 'domcontentloaded' });
+  await A.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 60000 });
+  await A.waitForFunction(() => Deck.col().synced && !Deck.col().queue.length && !(Deck._sy && Deck._sy.busy), null, { timeout: 20000 }).catch(() => {});
+  await A.evaluate(() => { Backend.RETRIES = 1; Deck.SYNC.WAIT_MS = [600000]; });
+  const B = await ctx.newPage();
+  B.on('pageerror', e => errs.push('tab B: ' + e));
+  await B.goto(url + '?cards=1', { waitUntil: 'domcontentloaded' });
+  await B.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
+  // B, offline, earns a card and plays one: both ops on the disk — then the tab closes
+  const bSaw = await B.evaluate(async () => {
+    const c = Deck.col();
+    Deck._add('watchfires', 1);
+    Deck._queue({ op: 'grant', run: 'tab-b', key: 'tab-b', outcome: 'win', mode: 'moderate', cards: ['watchfires'] });
+    Deck._add('forager_cache', -1);
+    Deck._queue({ op: 'consume', card: 'forager_cache', play: 'p-tab-b', run: 'tab-b', day: 9 });
+    Deck.saveCol();
+    const queued = JSON.parse(localStorage.getItem('neo-deck')).queue.map(o => o.op + ':' + (o.run || o.play));
+    await new Promise(r => setTimeout(r, 200));
+    const why = (await Deck.sync('b')).why;
+    return { uid: c.uid, queued, queue: JSON.parse(localStorage.getItem('neo-deck')).queue.map(o => o.op + ':' + (o.run || o.play) + ':' + (o.why || '')), why };
+  });
+  await B.close();
+  const r = await A.evaluate(async () => {
+    const out = {};
+    await new Promise(r => setTimeout(r, 200));   // B's write reaches A as a storage event
+    __MOCK.rec('uid-A').ends['tab-b'] = 'win';
+    const m0 = __MOCK.st.calls.length;
+    // THE NETWORK COMES BACK — in every tab at once: A's own copy must not be
+    // what goes back to the disk
+    window.dispatchEvent(new Event('online'));
+    await new Promise(r => setTimeout(r, 100));
+    await Deck.sync('after-online');
+    out.sent = __MOCK.st.calls.slice(m0).filter(c => c.path.startsWith('/rpc/')).map(c => c.path.slice(5) + ':' + ((c.body && (c.body.p_run_id || c.body.p_play_id)) || ''));
+    out.disk = JSON.parse(localStorage.getItem('neo-deck')).queue.length;
+    out.cloud = { watchfires: __MOCK.rec('uid-A').counts.watchfires || 0, play: !!__MOCK.rec('uid-A').plays['p-tab-b'] };
+    // A TAB THAT SLEPT THROUGH THE WRITE (no storage event ever came): the
+    // drain finds the disk moved and reads it again before it saves anything
+    const d = JSON.parse(localStorage.getItem('neo-deck'));
+    d.counts.hunters_pack = (d.counts.hunters_pack || 0) + 1;
+    d.queue.push({ at: Date.now(), op: 'grant', run: 'tab-c', key: 'tab-c', outcome: 'win', mode: 'moderate', cards: ['hunters_pack'] });
+    localStorage.setItem('neo-deck', JSON.stringify(d));     // same page: no storage event
+    __MOCK.rec('uid-A').ends['tab-c'] = 'win';
+    const m1 = __MOCK.st.calls.length;
+    await Deck.sync('slept');
+    out.slept = __MOCK.st.calls.slice(m1).filter(c => c.path === '/rpc/grant_card').map(c => c.body.p_run_id);
+    out.sleptDisk = JSON.parse(localStorage.getItem('neo-deck')).queue.length;
+    // A WRITE MID-DRAIN: another tab saves while this drain is waiting on the
+    // network; the drain saves nothing over it and runs again from the disk
+    __MOCK.rec('uid-A').ends['tab-d'] = 'win'; __MOCK.rec('uid-A').ends['tab-e'] = 'win';
+    const d2 = JSON.parse(localStorage.getItem('neo-deck'));
+    d2.queue.push({ at: Date.now(), op: 'grant', run: 'tab-d', key: 'tab-d', outcome: 'win', mode: 'moderate', cards: ['bountiful_land'] });
+    localStorage.setItem('neo-deck', JSON.stringify(d2));
+    Deck._col = null;
+    let once = true;
+    __MOCK.st.onCall = (name, a) => {
+      if (!once || name !== 'grant_card' || a.p_run_id !== 'tab-d') return;
+      once = false;
+      const d3 = JSON.parse(localStorage.getItem('neo-deck'));
+      d3.queue.push({ at: Date.now(), op: 'grant', run: 'tab-e', key: 'tab-e', outcome: 'win', mode: 'moderate', cards: ['master_builders'] });
+      localStorage.setItem('neo-deck', JSON.stringify(d3));
+    };
+    const moved = [], realMoved = Deck._syncMoved;
+    Deck._syncMoved = function (o, w, c) { moved.push(w); return realMoved.call(this, o, w, c); };
+    const m2 = __MOCK.st.calls.length;
+    await Deck.sync('mid');
+    __MOCK.st.onCall = null;
+    Deck._syncMoved = realMoved;
+    // the rerun the moved drain asked for may still be settling
+    for (let i = 0; i < 40 && (Deck._sy.busy || JSON.parse(localStorage.getItem('neo-deck')).queue.length); i++) {
+      await new Promise(r => setTimeout(r, 50));
+      if (!Deck._sy.busy && JSON.parse(localStorage.getItem('neo-deck')).queue.length) await Deck.sync('mid-again');
+    }
+    out.mid = { first: moved[0] || '', granted: __MOCK.st.calls.slice(m2).filter(c => c.path === '/rpc/grant_card').map(c => c.body.p_run_id),
+      cloud: ['bountiful_land', 'master_builders'].map(k => __MOCK.rec('uid-A').counts[k] || 0),
+      disk: JSON.parse(localStorage.getItem('neo-deck')).queue.length };
+    return out;
+  });
+  ck('aSecondTabsUnsentOpsSurviveTheFirstTabsSync',
+    bSaw.queued.length === 2 && r.sent.includes('grant_card:tab-b') && r.disk === 0 &&
+    r.cloud.watchfires === 1 && r.cloud.play,
+    `B queued ${bSaw.queued.join(',')} (A, told by the storage event, sent the play at once: on disk ${bSaw.queue.join(',')}; B's own sync: ${bSaw.why}); ` +
+    `back online A sent ${r.sent.join(', ')}; cloud ${JSON.stringify(r.cloud)}; disk queue ${r.disk}`);
+  ck('aTabThatSleptThroughTheWriteReadsTheDiskFirst', JSON.stringify(r.slept) === JSON.stringify(['tab-c']) && r.sleptDisk === 0,
+    `granted ${r.slept.join(',')}; disk queue ${r.sleptDisk}`);
+  ck('aWriteMidDrainIsNeverSavedOver', r.mid.first === 'moved' && r.mid.granted.includes('tab-d') && r.mid.granted.includes('tab-e') &&
+    r.mid.cloud.every(n => n === 1) && r.mid.disk === 0, JSON.stringify(r.mid));
+  await ctx.close();
+}
+
+/* ================= 14. A TEST DEAL PARKS THE REAL COLLECTION, AND LEAVING THE LINK BRINGS IT BACK ================= */
+{
+  const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  const real = { v: 1, uid: 'uid-A', starter: 1, counts: { starfall: 2, forager_cache: 1 }, seen: {}, runs: {}, medians: {},
+    queue: [{ op: 'grant', run: 'r-real', key: 'r-real', outcome: 'win', mode: 'hard', cards: ['starfall'] }] };
+  await ctx.addInitScript((m) => {
+    try { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('neo-deck', JSON.stringify(m)); localStorage.setItem('neo-cards-dev', '1'); } } catch (e) {}
+  }, real);
+  const p1 = await ctx.newPage();
+  p1.on('pageerror', e => errs.push('park: ' + e));
+  await p1.goto(url + '?cards=1', { waitUntil: 'domcontentloaded' });
+  await p1.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
+  const r1 = await p1.evaluate(() => {
+    const out = {};
+    // the platform's deal (Deck.dealAll, on its own branch): a stand-in that
+    // does exactly what it does — reset counts AND the cloud queue, mark it test
+    Deck.dealAll = function () {
+      const c = this.col();
+      c.counts = {}; c.seen = {}; c.runs = {}; c.queue = []; c.pity = 0; c.test = Date.now();
+      for (const card of this.CATALOG) this._add(card.id, 1);
+      this.saveCol();
+      return this.total();
+    };
+    out.wrapped = Deck._wrapDeal();
+    out.dealt = Deck.dealAll();
+    out.parked = JSON.parse(localStorage.getItem(Deck.REAL_KEY) || 'null');
+    out.again = Deck.dealAll();                         // a deal over a test deck parks nothing new
+    out.parked2 = JSON.parse(localStorage.getItem(Deck.REAL_KEY) || 'null');
+    return out;
+  });
+  // the tester leaves the link: ?cards=0 — the real collection comes back, queue and all
+  await p1.goto(url + '?cards=0', { waitUntil: 'domcontentloaded' });
+  await p1.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
+  const r2 = await p1.evaluate(() => ({ back: JSON.parse(localStorage.getItem('neo-deck') || 'null'), parked: localStorage.getItem(Deck.REAL_KEY) }));
+  // …and ?cards=0 over a REAL collection never overwrites it with a parked one
+  await p1.evaluate(() => { localStorage.setItem(Deck.REAL_KEY, JSON.stringify({ v: 1, counts: { gold_nugget: 9 }, queue: [] })); });
+  await p1.goto(url + '?cards=0&again=1', { waitUntil: 'domcontentloaded' });
+  await p1.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
+  const r3 = await p1.evaluate(() => JSON.parse(localStorage.getItem('neo-deck') || 'null'));
+  ck('aTestDealParksTheRealCollectionQueueAndAll',
+    r1.wrapped && r1.dealt === 36 && r1.parked && r1.parked.queue.length === 1 && r1.parked.queue[0].run === 'r-real' && r1.parked.counts.starfall === 2 &&
+    !r1.parked.test && r1.again === 36 && r1.parked2 && r1.parked2.counts.starfall === 2,
+    r1.parked ? `parked ${JSON.stringify(r1.parked.counts)}, ${r1.parked.queue.length} op` : 'nothing parked');
+  ck('andLeavingTheLinkBringsItBack',
+    r2.back && !r2.back.test && r2.back.counts.starfall === 2 && r2.back.queue.length === 1 && r2.back.queue[0].run === 'r-real' && r2.parked === null &&
+    r3 && r3.counts.starfall === 2 && !r3.counts.gold_nugget,
+    `restored ${r2.back && JSON.stringify(r2.back.counts)}; a real collection kept over a stale park: ${r3 && JSON.stringify(r3.counts)}`);
+  await ctx.close();
+}
+
+/* ================= 15. THE SWITCH OFF: not even the boot's inert listener ================= */
+{
+  const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await ctx.addInitScript(() => {
+    try { localStorage.removeItem('neo-cards-dev'); } catch (e) {}
+    window.__loads = 0;
+    const add = window.addEventListener;
+    window.addEventListener = function (type, fn) {
+      if (type === 'load' && /Deck\.sync\('boot'\)/.test(String(fn))) window.__loads++;
+      return add.apply(this, arguments);
+    };
+  });
+  const p0 = await ctx.newPage();
+  await p0.goto(url, { waitUntil: 'domcontentloaded' });
+  await p0.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
+  const off = await p0.evaluate(() => ({ on: Deck.on(), loads: window.__loads }));
+  await p0.goto(url + '?cards=1', { waitUntil: 'domcontentloaded' });
+  await p0.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
+  const on = await p0.evaluate(() => ({ on: Deck.on(), loads: window.__loads }));
+  ck('offTheDeckAddsNoListenerAtAll', !off.on && on.on && off.loads === 0 && on.loads === 1,
+    `the deck's boot listener: off ${off.loads}, on ${on.loads}`);
+  await ctx.close();
+}
 
 /* ================= 12. THE MIGRATION, on the source ================= */
 let deedsCheck = 0;
@@ -971,6 +1177,31 @@ let deedsCheck = 0;
   ck('aWinAlwaysEarnsAndABannerNever', /v_end\.outcome = 'loss' and v_deeds < public\.card_loss_min_deeds\(\)/.test(g) &&
     /coalesce\(t\.cause, ''\) <> 'closed_tab'/.test(g) && /'not_finished'/.test(g) && /'no_run'/.test(g) && /'outcome_mismatch'/.test(g),
     'the earn rule reads only the deeds of a LOSS; closed_tab is never evidence');
+  // THE RESEND'S GUARD (report_run_end): a retry can never make a second
+  // ending for 0007's dashboard to count twice — an ending of this run with
+  // this outcome already there answers 'already' BEFORE anything is inserted
+  const rre = fn('report_run_end');
+  const guard = /if exists \(select 1 from public\.telemetry t\s+where t\.user_id = v_uid and t\.run_id = v_run and t\.kind = 'run_end'\s+and coalesce\(t\.cause, ''\) <> 'closed_tab'\s+and coalesce\(t\.outcome, ''\) = coalesce\(p_row ->> 'outcome', ''\)\) then\s+return jsonb_build_object\('ok', true, 'already', true\);/;
+  ck('aResendNeverMakesASecondEnding', guard.test(rre) && rre.search(guard) < rre.indexOf('insert into public.telemetry') &&
+    /'closed_tab' then\s+return jsonb_build_object\('ok', false, 'reason', 'bad_input'\)/.test(rre),
+    'kind run_end, closed_tab never counted, the same outcome already there → already, before the insert');
+  ck('andAGrantNeverWritesItsOwnEvidence', g.length > 0 && !/insert into public\.telemetry/.test(g) && !/update public\.telemetry/.test(g),
+    'the evidence is what the game sent, never what the grant says');
+  ck('theEvidenceIsTheEndingWithTheGrantsOutcome', /order by \(coalesce\(t\.outcome, ''\) = p_outcome\) desc, t\.id desc\s+limit 1/.test(g),
+    'a matching real ending first, then the latest');
+  // THE PITY NUMBER and THE PITY COUNT: one place each, internal, and the
+  // pity card on a table that cannot roll it only when the ledger says so
+  const pityDefs = (lc.match(/create or replace function public\.card_pity_wins\(\)/g) || []).length;
+  const pityOfDefs = (lc.match(/create or replace function public\.card_pity_of\(p_uid uuid\)/g) || []).length;
+  const mc = fn('my_cards');
+  ck('aCalmLegendNeedsTheLedgersPity', pityDefs === 1 && pityOfDefs === 1 &&
+    /v_pity := public\.card_pity_of\(v_uid\)/.test(g) && /c\.tier = 'enlight'\s+and v_pity >= public\.card_pity_wins\(\) - 1/.test(g) &&
+    /v_pity := public\.card_pity_of\(v_uid\)/.test(mc) && !/with runs as/.test(mc) &&
+    !/grant execute on function public\.card_pity_(of|wins)/.test(lc) &&
+    /revoke all on function public\.card_pity_of\(uuid\) from anon, authenticated;/.test(lc) &&
+    /revoke all on function public\.card_pity_wins\(\) from anon, authenticated;/.test(lc),
+    'card_pity_wins() and card_pity_of() defined once, internal; grant_card and my_cards share the count');
+  var sqlPity = +((code.match(/create or replace function public\.card_pity_wins\(\)[\s\S]*?as \$\$\s*select (\d+)\s*\$\$/i) || [])[1]);
   ck('aRunPaysAtMostTwiceAndNeverAgain', /slot\s+smallint not null check \(slot between 0 and 1\)/.test(lc) && /unique \(user_id, run_id, slot\)/.test(lc) &&
     /'already', true/.test(g) && /unique \(user_id, play_id\)/.test(lc) && /qty > 0/.test(fn('consume_card')), 'slots 0/1, one play per play id, never below zero');
 
@@ -981,7 +1212,7 @@ let deedsCheck = 0;
   // CFG is a script-level const: window.CFG is undefined (the window.G trap)
   await p2.waitForFunction(() => window.Deck && typeof CFG !== 'undefined', null, { timeout: 30000 });
   const game = await p2.evaluate(() => ({
-    lossDeeds: CFG.CARDS.LOSS_DEEDS,
+    lossDeeds: CFG.CARDS.LOSS_DEEDS, pity: CFG.CARDS.PITY,
     cat: Deck.CATALOG.map(c => c.id + ':' + c.tier).sort(), starter: CFG.CARDS.STARTER.slice().sort(),
     drops: Object.fromEntries(Object.entries(CFG.CARDS.DROPS).map(([k, w]) => [k, Deck.TIERS.filter((t, i) => w[i] > 0).map(t => t.k).sort()])),
   }));
@@ -1004,6 +1235,7 @@ let deedsCheck = 0;
   // there is nothing to compare, and the check says so.)
   ck('theServersLossDeedsAreTheGames', deedsCheck > 0 && (game.lossDeeds == null || game.lossDeeds === deedsCheck),
     game.lossDeeds == null ? `server ${deedsCheck}; the game has no LOSS_DEEDS yet` : `server ${deedsCheck}, game ${game.lossDeeds}`);
+  ck('theServersPityIsTheGames', sqlPity > 0 && sqlPity === game.pity, `server ${sqlPity}, game ${game.pity}`);
   ck('andItsDropTiers', JSON.stringify(Object.keys(sqlDrops).sort().map(k => [k, sqlDrops[k]])) === JSON.stringify(Object.keys(game.drops).sort().map(k => [k, game.drops[k]])),
     JSON.stringify(sqlDrops));
 }
