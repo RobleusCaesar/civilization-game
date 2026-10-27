@@ -935,37 +935,42 @@ Object.assign(Deck.FX, {
            smoothing off — the same hard cells, without tens of thousands of
            fills (measured ~15ms a frame drawn cell by cell on a software
            canvas) */
-        const cw = Math.ceil(Wd / cell), ch = Math.ceil(Hd / cell), buf = this.murkBuf(cw, ch), px = buf.img.data;
-        px.fill(0);
-        const put = (gx, gy, rgb, a) => { const o = (gy * cw + gx) * 4; px[o] = rgb[0]; px[o + 1] = rgb[1]; px[o + 2] = rgb[2]; px[o + 3] = Math.round(a * 255); };
-        const depthOf = (gx, gy) => (fr.front - ((gx + 0.5) * cell * fr.ux + (gy + 0.5) * cell * fr.uy)) / fr.band;
-        /* the churning field on EVERY OTHER cell, eased between: it is smooth
-           value noise, so halving its samples each way moves nothing the eye
-           can see, and the cells stay hard where the threshold cuts them.
-           Sampled only near the front (past it there is haze or nothing). */
-        const qw = (cw >> 1) + 2, qh = (ch >> 1) + 2, fld = this.murkField(qw * qh);
-        const marg = 2 * cell * (Math.abs(fr.ux) + Math.abs(fr.uy)) / fr.band;
+        const cw = Math.ceil(Wd / cell), ch = Math.ceil(Hd / cell), buf = this.murkBuf(cw, ch), u32 = buf.u32;
+        u32.fill(0);
+        // a cell's colour as one little-endian word (ABGR in memory: R, G, B, A bytes)
+        const word = (rgb, a) => ((Math.round(a * 255) << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0]) >>> 0;
+        // depth behind the edge is LINEAR across the grid: one add a cell, never a recompute
+        const dx = -cell * fr.ux / fr.band, dy = -cell * fr.uy / fr.band, d00 = (fr.front - 0.5 * cell * (fr.ux + fr.uy)) / fr.band;
+        /* the churning field on every second cell (every third where the
+           cells are small — a big screen at a far zoom), eased between: it
+           is smooth value noise, its lumps a dozen cells across, so thinning
+           its samples moves nothing the eye can see, and the cells stay hard
+           where the threshold cuts them. Sampled only near the front (past
+           it there is haze or nothing). */
+        const st = cell < 8 ? 3 : 2, qw = Math.ceil(cw / st) + 2, qh = Math.ceil(ch / st) + 2, fld = this.murkField(qw * qh);
+        const marg = st * (Math.abs(dx) + Math.abs(dy));
         for (let qy = 0; qy < qh; qy++) for (let qx = 0; qx < qw; qx++) {
-          const gx = qx * 2, gy = qy * 2, d = depthOf(gx, gy);
+          const gx = qx * st, gy = qy * st, d = d00 + gx * dx + gy * dy;
           fld[qy * qw + qx] = d < -0.14 - marg || d > 1.04 + marg ? 0
             : F.blob(gx * sc, gy * sc, 6, T * 0.5) * 0.65 + F.blob(gx * sc + 57, gy * sc + 31, 2.5, T * 0.9) * 0.35;
         }
-        for (let gy = 0; gy < ch; gy++) for (let gx = 0; gx < cw; gx++) {
-          const depth = depthOf(gx, gy);
-          if (depth < -0.14) continue;
-          if (depth > 1.04) {
-            if (haze <= 0 || (depth < 1.16 && F.hash(gx * 7 + 3, gy * 11 + 1) > 0.5)) continue;
-            put(gx, gy, M[3], haze);
-            continue;
+        const hazeW = haze > 0 ? word(M[3], haze) : 0;
+        const tones = [0, 1, 2].map(k => [word(M[k], F.step(fade * [0.66, 0.56, 0.6][k])), word(M[k], F.step(fade * 0.7 * [0.66, 0.56, 0.6][k]))]);
+        for (let gy = 0; gy < ch; gy++) {
+          const qy = (gy / st) | 0, row = gy * cw, qrow = qy * qw, ey = (gy - qy * st) / st;
+          let depth = d00 + gy * dy;
+          for (let gx = 0; gx < cw; gx++, depth += dx) {
+            if (depth < -0.14) continue;
+            if (depth > 1.04) {
+              if (hazeW && (depth >= 1.16 || F.hash(gx * 7 + 3, gy * 11 + 1) <= 0.5)) u32[row + gx] = hazeW;
+              continue;
+            }
+            const qx = (gx / st) | 0, q = qrow + qx, ex = (gx - qx * st) / st;
+            const top = fld[q] + (fld[q + 1] - fld[q]) * ex, bot = fld[q + qw] + (fld[q + qw + 1] - fld[q + qw]) * ex;
+            const e = top + (bot - top) * ey - (depth < 0 ? 0.6 - depth * 2.4 : 0.26 + depth * 0.42);
+            if (e <= 0) continue;
+            u32[row + gx] = tones[e > 0.2 ? 2 : e > 0.07 ? 1 : 0][depth > 0.7 ? 1 : 0];
           }
-          const q = (gy >> 1) * qw + (gx >> 1), ex = (gx & 1) * 0.5, ey = (gy & 1) * 0.5;
-          const top = fld[q] + (fld[q + 1] - fld[q]) * ex, bot = fld[q + qw] + (fld[q + qw + 1] - fld[q + qw]) * ex;
-          const n = top + (bot - top) * ey;
-          const thr = depth < 0 ? 0.6 - depth * 2.4 : 0.26 + depth * 0.42;
-          const e = n - thr;
-          if (e <= 0) continue;
-          const tone = e > 0.2 ? 2 : e > 0.07 ? 1 : 0, back = depth > 0.7 ? 0.7 : 1;
-          put(gx, gy, M[tone], F.step(fade * back * [0.66, 0.56, 0.6][tone]));
         }
         buf.g.putImageData(buf.img, 0, 0);
         g.imageSmoothingEnabled = false;
@@ -1015,7 +1020,8 @@ Object.assign(Deck.FX, {
       if (!B || B.w !== w || B.h !== h) {
         const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
         const g = cv.getContext('2d');
-        B = this._buf = { cv, g, w, h, img: g.createImageData(w, h) };
+        const img = g.createImageData(w, h);
+        B = this._buf = { cv, g, w, h, img, u32: new Uint32Array(img.data.buffer) };
       }
       return B;
     },
