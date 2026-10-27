@@ -1195,6 +1195,88 @@ await p.evaluate(({ ARMY }) => {
     `in the man's box through the flash: ${r.flash.inside} px on him and his edge, ${r.flash.outside} px of box round him` + (r.flash.outside ? ' (box ' + r.flash.B + ': ' + r.flash.where.join(' ') + ')' : ''));
 }
 
+{
+  /* THE CUT IS A CINEMA LETTERBOX (judge g3: "thin dark strips with a
+     light line along them, stuck to the glass"): the Imperial and
+     Enlightenment acts close two plain bars of the shell's own black over
+     the open frame — about an eighth of it each, in under a fifth of a
+     second, nothing drawn along them — and the card's own name stands in
+     the lower one, gold, at least 13 CSS px tall in its capitals' height
+     range; they are gone once the formation is let go. The Iron Legion has
+     no bars at all (the cut is a step up the tiers). And the fan stands its
+     people INSIDE the cut: none lands under a bar. Measured on the sky
+     layer the show really draws, with the HUD up. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    const scene = (id, setup) => {
+      __ar.fresh('army-cinema-' + id); __ar.flat();
+      const P = Bld.tcOf('P'); P.x = (CFG.W / 2) | 0; P.y = (CFG.H / 2) | 0; Bld._block = null;
+      Screens.show('playing');
+      R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+      if (setup) setup(P);
+      G.updateVisibility();
+      R.cardShows = [];
+      const { units } = __ar.play(id);
+      const s = R.cardShows.find(x => x.id === id), sh = Deck.FX[id].show;
+      const dpr = R.dpr || 1, W = R.cv.width, H = R.cv.height;
+      const tb = document.getElementById('topbar').getBoundingClientRect(), bb = document.getElementById('bottombar').getBoundingClientRect();
+      const top = Math.round(tb.bottom * dpr), bot = Math.round(bb.top * dpr), open = bot - top;
+      const at = t => {
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const g = cv.getContext('2d');
+        s.t = t; sh.draw.call(Deck.FX[id], g, s, t / (s.ms / 1000), 0, 'sky');
+        const d = g.getImageData(0, 0, W, H).data, ink = i => d[i + 3] === 255 && d[i] < 32 && d[i + 1] < 32 && d[i + 2] < 40;
+        const shell = i => d[i] === 13 && d[i + 1] === 11 && d[i + 2] === 8 && d[i + 3] === 255;
+        // the bar: rows from `top` down that are the shell's black end to end
+        const solid = y => { for (let x = 0; x < W; x += 3) if (!ink((y * W + x) * 4)) return false; return true; };
+        let hTop = 0; while (hTop < open && solid(top + hTop)) hTop++;
+        // the lower bar: rows up from `bot` that are black but for the title
+        const black = y => { let n = 0; for (let x = 0; x < W; x += 3) if (ink((y * W + x) * 4)) n++; return n / Math.ceil(W / 3); };
+        let hBot = 0; while (hBot < open && black(bot - 1 - hBot) > 0.6) hBot++;
+        // the row just inside each bar: a gilded rule there is the old look
+        const ruleRow = y => { let n = 0; for (let x = 0; x < W; x += 3) { const i = (y * W + x) * 4; if (d[i + 3] && d[i] > 150 && d[i + 1] > 120 && d[i + 2] < 140) n++; } return n; };
+        // the title: gold pixels in the lower bar, and their height in CSS px
+        let gold = 0, y0 = 1e9, y1 = -1, shN = 0, all = 0;
+        for (let y = bot - hBot; y < bot; y++) for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (d[i] === 255 && d[i + 1] === 212 && d[i + 2] === 94) gold++;
+          if (d[i + 3] && d[i] > 120 && d[i + 1] > 90 && d[i + 2] < 120 && d[i] > d[i + 2] + 60) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        }
+        for (let y = top; y < top + hTop; y++) for (let x = 0; x < W; x += 3) { all++; if (shell((y * W + x) * 4)) shN++; }
+        return { top: +(hTop / open).toFixed(3), bot: +(hBot / open).toFixed(3), rule: hTop ? ruleRow(top + hTop) + ruleRow(bot - hBot - 1) : 0, gold,
+          capPx: y1 >= 0 ? +((y1 - y0 + 1) / dpr).toFixed(1) : 0, shell: all ? +(shN / all).toFixed(2) : 0 };
+      };
+      const free = s.free || 0;
+      const res = { half: at(0.09), held: at(Math.max(0.5, free - 0.4)), gone: at(free + 0.25) };
+      // nobody stands under a bar: every new unit's drawn box, on the screen
+      // the cut frames, lies inside it
+      const cut = Math.round(open * 0.12), TL = CFG.TILE, z = R.cam.z;
+      res.under = units.filter(u => {
+        const B = R.unitBox(u), foot = (u.y * TL + TL / 2 - CFG.SPRITE_LIFT - R.cam.y) * z * dpr, head = foot - B * z * dpr;
+        return head < top + cut || foot > bot - cut;
+      }).length;
+      res.n = units.length;
+      return res;
+    };
+    // the hall low on the screen, the camera where the player left it: the
+    // cut must still frame the legion (the camera cuts to it)
+    out.legion = scene('legion_marches', P => R.centerOn(Bld.cx(P), Bld.cy(P) - 4));
+    // a garrison standing on the hall's south side: the fan must still keep
+    // its people inside the cut (and the camera frames them)
+    out.battery = scene('trebuchet_battery', P => { for (let i = 0; i < 6; i++) __ar.unit('defender', 'P', P.x - 1 + i + 0.5, P.y + 3.5); });
+    out.iron = scene('iron_legion');
+    return out;
+  });
+  const bars = (x, lo, hi) => x.top >= lo && x.top <= hi && x.bot >= lo && x.bot <= hi + 0.06;
+  ck('theHeldBeatIsACinemaCut', ['legion', 'battery'].every(k => bars(r[k].held, 0.1, 0.14) && r[k].held.rule === 0 && r[k].held.shell === 1 && r[k].gone.top === 0 && r[k].gone.bot === 0 &&
+      r[k].half.top > 0 && r[k].half.top < r[k].held.top) && r.iron.held.top === 0 && r.iron.half.top === 0,
+    ['legion', 'battery', 'iron'].map(k => `${k}: half-way ${r[k].half.top}, held ${r[k].held.top}/${r[k].held.bot} of the frame (rule px ${r[k].held.rule}, shell black ${r[k].held.shell}), after ${r[k].gone.top}/${r[k].gone.bot}`).join('; '));
+  ck('andTheCardsNameIsItsTitle', ['legion', 'battery'].every(k => r[k].held.gold >= 150 && r[k].held.capPx >= 9 && r[k].half.gold === 0),
+    ['legion', 'battery'].map(k => `${k}: ${r[k].held.gold} gold px in the lower bar, capitals ${r[k].held.capPx} CSS px tall, mid-slide ${r[k].half.gold}`).join('; '));
+  ck('andNobodyLandsUnderABar', r.legion.under === 0 && r.battery.under === 0 && r.legion.n === 12 && r.battery.n === 3,
+    `under a bar: the legion ${r.legion.under} of ${r.legion.n}, the battery (a garrison at the door) ${r.battery.under} of ${r.battery.n}`);
+}
+
 // ---------------- 6. THE ANCESTORS' HOST ----------------
 {
   const r = await p.evaluate(() => {

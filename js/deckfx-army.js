@@ -261,7 +261,7 @@ Object.assign(Deck, {
      lazily) and clear of the minimap? R.onScreen counts a unit half off the
      edge as seen (the army banners' "slightly in frame"), which is exactly
      how the riders came to rest half cut off by the screen's edge. */
-  fanView() {
+  fanView(inset) {
     if (!window.R || !R.cv || !R.cv.width || typeof document === 'undefined') return null;
     const vw = R.viewW(), vh = R.viewH(), rect = id => {
       const el = document.getElementById(id);
@@ -269,7 +269,11 @@ Object.assign(Deck, {
       return el.getBoundingClientRect();
     };
     const tb = rect('topbar'), bb = rect('bottombar'), mm = rect('miniWrap');
-    return { vw, vh, top: Math.max(tb ? tb.bottom : 0, R.topReserve || 0), bot: Math.min(bb ? bb.top : vh, vh - (R.bottomReserve || 0)), mm };
+    let top = Math.max(tb ? tb.bottom : 0, R.topReserve || 0), bot = Math.min(bb ? bb.top : vh, vh - (R.bottomReserve || 0));
+    // a cinema cut's bars come in over the open frame (armyFx.CINEMA): its
+    // people are stood inside them
+    if (inset) { const cut = Math.round((bot - top) * inset); top += cut; bot -= cut; }
+    return { vw, vh, top, bot, mm };
   },
   fanOnScreen(V, x, y, cls) {
     const TL = CFG.TILE, z = R.cam.z, B = cls === 'engine' || cls === 'horse' ? 48 : 32, m = 6;
@@ -280,10 +284,10 @@ Object.assign(Deck, {
     return true;
   },
   // the whole plan: the best side, scored on what the player will see
-  fanPlan(tc, first, kinds) {
+  fanPlan(tc, first, kinds, inset) {
     const reach = Path.reachFrom([first]);
     const stand = S.units.filter(o => !Units.isNaval(o)).map(o => ({ x: o.x, y: o.y, gap: this.FAN.gap[this.fanClass(o.kind)] }));
-    const V = this.fanView(), scr = V ? (x, y, cls) => this.fanOnScreen(V, x, y, cls) : null;
+    const V = this.fanView(inset), scr = V ? (x, y, cls) => this.fanOnScreen(V, x, y, cls) : null;
     /* every side, and each a rank or two further out (a garrison already
        standing at the door: the fan forms in front of it, never threaded
        through it), scored: a slot on the open screen counts most, then a slot
@@ -335,7 +339,19 @@ Object.assign(Deck, {
     for (const g of list) for (let k = 0; k < g.n; k++) kinds.push(g.kind);
     const d = this.summonDoor(kinds[0]);
     if (d.why) return { ok: false, why: d.why };
-    const { tc, first } = d, plan = this.fanPlan(tc, first, kinds);
+    const { tc, first } = d, cine = opts.cinema && window.R && R.centerOn && R.cv;
+    /* A CINEMA CUT FRAMES ITS SCENE (the Imperial acts): the side is chosen
+       with the hall in the middle of the view — no side favoured for where
+       the player happened to be looking — inside the bars, and the camera
+       then cuts to the hall and the formation together as the bars come in */
+    if (cine) R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    const plan = this.fanPlan(tc, first, kinds, opts.cinema ? this.armyFx.CINEMA.bar : 0);
+    if (cine && plan.length) {
+      const sz = Bld.size(tc);
+      let x0 = tc.x, x1 = tc.x + sz, y0 = tc.y - 0.5, y1 = tc.y + sz;
+      for (const s of plan) { x0 = Math.min(x0, s.x - 0.5); x1 = Math.max(x1, s.x + 0.5); y0 = Math.min(y0, s.y - 1); y1 = Math.max(y1, s.y + 0.5); }
+      R.centerOn((x0 + x1) / 2, (y0 + y1) / 2);
+    }
     // a wheel ends on a tile's middle (a path's last step): its riders' slots
     // are stood there first, when every one has a tile of its own
     if (opts.wheel && new Set(plan.map(s => Math.floor(s.x) + ',' + Math.floor(s.y))).size === plan.length)
@@ -942,14 +958,22 @@ Deck.armyFx = {
     g.fillStyle = this.rgba(col || '6,8,18', a);
     g.fillRect(0, 0, R.cv.width, R.cv.height);
   },
-  /* THE HELD BEAT is a LETTERBOX: two solid bars slide in over the open
-     frame — below the status bar, above the build menu, whose heights are
-     measured off the DOM (R.topReserve/bottomReserve are learned lazily and
-     can still read 0) — each edged with a gilded rule, and slide back out
-     when the march lets the beat go. The first cut closed the screen in with
-     three stepped vignette bands down every side, which on a phone read as
-     dark stripes stuck to the glass. Hard-edged and opaque, a letterbox
-     reads as a cut to the moment, which is what the beat is. */
+  /* THE HELD BEAT is a CINEMA LETTERBOX (judge g3: the first bars were
+     thin dark strips with a gilded line along them, and read as a stripe of
+     UI stuck to the glass): two plain bars of the shell's own black slide in
+     over the open frame — below the status bar, above the build menu, whose
+     heights are measured off the DOM (R.topReserve/bottomReserve are learned
+     lazily and can still read 0) — CINEMA.bar of it each, in CINEMA.slide
+     seconds, by whole grains (a hard edge on every frame); nothing drawn
+     along them, no light rule; and the card's own name stands in the lower
+     bar in the menu's lettering — Cinzel caps, gold with an ink edge — as
+     the title of the scene, until the bars slide back out and the world is
+     the player's again. Only the Imperial and Enlightenment acts are cut
+     this way (The Legion Marches, Trebuchet Battery, Ancestors' Host); the
+     Iron Legion's half-bars are gone, which leaves the cut a step up the
+     tiers. The fan stands its people INSIDE the cut (summonFan's
+     `cinema`), so nobody lands under a bar. */
+  CINEMA: { bar: 0.12, slide: 0.18, col: '#0d0b08', gold: '#ffd45e', ink: '#0d0b08', px: 15 },
   frame() {
     const now = performance.now();
     if (this._frame && now - this._frame.at < 500) return this._frame;
@@ -957,22 +981,35 @@ Deck.armyFx = {
     const vis = el => el && el.offsetParent !== null ? el.offsetHeight : 0;
     return (this._frame = { at: now, top: (vis(tb) * dpr) || (R.topReserve || 0) * dpr, bot: (vis(bb) * dpr) || (R.bottomReserve || 0) * dpr });
   },
-  edges(g, a, col, rule, size) {
-    if (a <= 0.01) return;
-    const W = R.cv.width, H = R.cv.height, f = this.frame(), gr = this.grain();
+  // how far in the bars are (0..1) at show time `t`: in from `from` over the
+  // slide, out from `out` over the slide (seconds, the show's own clock)
+  cinemaIn(t, from, out) {
+    const C = this.CINEMA, a = Math.min(1, Math.max(0, (t - from) / C.slide)), b = Math.min(1, Math.max(0, (t - out) / C.slide));
+    return Math.min(a, 1 - b);
+  },
+  cinema(g, k, title) {
+    if (k <= 0) return null;
+    const C = this.CINEMA, W = R.cv.width, H = R.cv.height, f = this.frame(), gr = this.grain();
     const open = Math.max(1, H - f.top - f.bot);
-    // the bars come in by whole grains, eased: a hard edge on every frame
-    // (`size`: the bar's share of the open frame — the Iron tier's is half)
-    const e = 1 - (1 - Math.min(1, a)) * (1 - Math.min(1, a));
-    const h = Math.round(open * (size || 0.085) * e / gr) * gr;
-    if (h <= 0) return;
-    g.fillStyle = 'rgb(' + (col || '10,8,6') + ')';
+    const e = 1 - (1 - Math.min(1, k)) * (1 - Math.min(1, k));
+    const full = Math.round(open * C.bar / gr) * gr, h = Math.round(full * e / gr) * gr;
+    if (h <= 0) return null;
+    g.fillStyle = C.col;
     g.fillRect(0, f.top, W, h); g.fillRect(0, H - f.bot - h, W, h);
-    // the gilded rule along each bar's inner edge, a grain thick
-    g.fillStyle = this.rgba(rule || '255,212,94', 0.85 * e);
-    g.fillRect(0, f.top + h - gr, W, gr); g.fillRect(0, H - f.bot - h, W, gr);
-    g.fillStyle = this.rgba('120,80,24', 0.9 * e);
-    g.fillRect(0, f.top + h, W, Math.max(1, gr >> 1)); g.fillRect(0, H - f.bot - h - Math.max(1, gr >> 1), W, Math.max(1, gr >> 1));
+    // the title, once the bars are home: set in the lower bar, centred in it
+    if (title && h >= full) {
+      const dpr = R.dpr || 1, px = Math.max(13, C.px) * dpr, y = Math.round(H - f.bot - full / 2);
+      g.save();
+      g.font = '700 ' + Math.round(px) + 'px ' + "Cinzel, 'Times New Roman', Georgia, serif";
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      try { g.letterSpacing = Math.round(px * 0.12) + 'px'; } catch (err) { /* older canvases: tight caps */ }
+      const s = String(title).toUpperCase();
+      g.lineJoin = 'round'; g.lineWidth = 2 * dpr; g.strokeStyle = C.ink;
+      g.strokeText(s, Math.round(W / 2), y);
+      g.fillStyle = C.gold; g.fillText(s, Math.round(W / 2), y);
+      g.restore();
+    }
+    return { top: f.top, bot: H - f.bot, h, full };
   },
   /* light coming down out of the sky onto a point on the screen: a cone of
      shafts from high above it, cut in scanlines the height of the world's
@@ -1302,7 +1339,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
      Stone tier's villagers (o.fan unset) keep the old doorstep muster */
   const summonCard = (id, list, o) => {
     const fan = o.fan && Deck.summonFan;
-    const r = fan ? Deck.summonFan(list, { stagger: o.stagger, hold: o.hold, beam: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone })
+    const r = fan ? Deck.summonFan(list, { stagger: o.stagger, hold: o.hold, beam: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone, cinema: o.cinema })
       : Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone });
     if (!r.ok) return r;
     if (o.after) o.after(r);
@@ -1487,9 +1524,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 2600, layers: ['ground', 'world', 'sky'],
         draw(g, s, p, dt, layer) {
           if (layer === 'sky') {
+            // (no bars: the cinema cut is the Imperial tier's — CINEMA)
             const hold = p < 0.06 ? p / 0.06 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.2);
             g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '12,10,8'); g.restore();
-            A.edges(g, hold, '10,8,6', '200,214,236', 0.045);   // half the Imperial bars, a steel rule
             return;
           }
           // a drum on every other landing, the ground answering each
@@ -1672,7 +1709,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan('elite'); },
       apply() {
         return summonCard('legion_marches', this.LIST, {
-          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 16,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 16, cinema: true,
           log: () => '🦅 The Legion marches: five Bronze Champions, four Fire Archers and three Lancers leave your Town Center.',
         });
       },
@@ -1687,7 +1724,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (layer === 'sky') {
             const hold = p < 0.06 ? p / 0.06 : p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
             g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
-            A.edges(g, hold);   // last: the bars are clean black over the light
+            // last: the cut, over the light, until the legion is let go
+            A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.4), Deck.card('legion_marches').name);
             return;
           }
           A.arrive(g, s, layer, 'gold');
@@ -1710,7 +1748,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan('trebuchet'); },
       apply() {
         return summonCard('trebuchet_battery', this.LIST, {
-          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 14,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 14, cinema: true,
           log: () => '🏰 Two Trebuchets and a Siege Tower roll out of your Town Center.',
         });
       },
@@ -1724,7 +1762,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (layer === 'sky') {
             const hold = p < 0.08 ? p / 0.08 : p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.2);
             g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
-            A.edges(g, hold);
+            A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.3), Deck.card('trebuchet_battery').name);
             return;
           }
           A.arrive(g, s, layer, 'gold');
@@ -1753,7 +1791,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         // they rise on the fan, each from its own ground, and hold their
         // ranks until the last is up (Deck.summonFan; the rise is their beam)
         const r = Deck.summonFan([{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, lead: 0.25, beam: false, dust: false, stamp(u) { u.spectral = true; } });
+          stagger: this.STAGGER, hold: this.HOLD, lead: 0.25, beam: false, dust: false, cinema: true, stamp(u) { u.spectral = true; } });
         if (!r.ok) return r;
         const e = Deck.addTimed('ancestors_host', days);
         sound('cardHost');
@@ -1834,7 +1872,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           A.rays(g, h.x, h.y, 5, s.t * 0.3, '170,235,255', 0.75 * dk, 0.1);
           A.spirits(g, h.x, h.y - 10 * h.z, s.t, 26, '215,240,255', dk * (p < 0.7 ? 1 : 0.5));
           g.restore();
-          A.edges(g, dk, '4,6,20', '160,225,255');
+          A.cinema(g, A.cinemaIn(s.t, 0, s.free || 4.4), Deck.card('ancestors_host').name);
         },
       },
       /* WHILE THE HOST WALKS: pale motes rising off every ghost and a ring of
