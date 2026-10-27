@@ -905,14 +905,21 @@ await p.evaluate(({ TOWN }) => {
       }
       R.drawCardShows = dcs;
       R.cardShows = [];
-      // every running card's look: drawn while it runs, gone when it ends
+      // every running card's look: drawn while it runs, gone when it ends —
+      // in the air (drawLive) or ON a building, in the building loop (drawBld:
+      // Stone Skin's sleeve, under whoever stands in front of the wall) — the
+      // building loop draws only what is in sight, so the sight is brought up
+      // to the moved hall first, as the frame loop would
+      G.updateVisibility();
       for (const id of ['watchfires', 'stone_skin', 'unbreakable_hall']) {
-        const d = Deck.FX[id], dl = d.drawLive;
+        const d = Deck.FX[id], dl = d.drawLive, db = d.drawBld;
         let n = 0;
         d.drawLive = function () { const o0 = ops; const v = dl.apply(this, arguments); n += ops - o0; return v; };
+        if (db) d.drawBld = function () { const o0 = ops; const v = db.apply(this, arguments); n += ops - o0; return v; };
         R._liveErr = 0;
         for (let i = 0; i < 6; i++) R.draw(1 / 30);
         d.drawLive = dl;
+        if (db) d.drawBld = db;
         out.live[id] = R._liveErr ? -1 : n;
       }
       // a blow glances off the skin and the ward flares: the looks answer it
@@ -1591,6 +1598,145 @@ await p.evaluate(({ TOWN }) => {
     `tones ${JSON.stringify(r.tones)}; widest ${r.widest}px against half the footprint ${r.half}px`);
   ck('andTheCountFloatsCreamOnADarkRim', r.said && r.said.length && r.said.every(t => /\|#f2e6cd$/.test(t)) && r.said.some(t => /2 left/.test(t)),
     JSON.stringify(r.said && r.said.slice(0, 3)));
+}
+
+// ---------------- 11. THE LOOKS SPEAK THE HOUSE STYLE (the five-player playtest's judges) ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __tw.fresh('town-style');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.5);
+    const town = [__tw.bld('P', 'house', 6, 8), __tw.bld('P', 'house', 11, 10), __tw.bld('P', 'barracks', 12, 6)];
+    for (const z of town) z.hp = z.maxhp = 5000;
+    // every mark a card lays ON THE FRAME (R.cv's own context — a scratch
+    // canvas may blend as it likes), with its composite, alpha and colour
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage, rc = P2.rect;
+    let depth = 0, marks = [], rects = null;
+    P2.fillRect = function () { if (depth && this.canvas === R.cv) marks.push(['f', this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return fr.apply(this, arguments); };
+    P2.drawImage = function () { if (depth && this.canvas === R.cv) marks.push(['d', this.globalCompositeOperation, this.globalAlpha]); return di.apply(this, arguments); };
+    P2.rect = function () { if (rects) rects.push(Array.from(arguments)); return rc.apply(this, arguments); };
+    const inCard = (o, k) => { const f = o && o[k]; if (!f) return () => {}; o[k] = function () { depth++; try { return f.apply(this, arguments); } finally { depth--; } }; return () => { o[k] = f; }; };
+    const SK = Deck.FX.stone_skin;
+    try {
+      /* (a) STONE SKIN IS STONE, NOT LIGHT: the play's wave and casing, the
+         eight days' sleeve and sheen, and a blow glancing off — every mark
+         laid on the frame is opaque and source-over. The first cut ADDED cold
+         white ('lighter') at fractional alpha: mint over the meadow, a
+         "selected" ring round every roof, a flat white bar of a sheen. */
+      const undo = [inCard(SK.show, 'draw'), inCard(SK.show, 'drawBld'), inCard(SK, 'drawLive'), inCard(SK, 'drawBld')];
+      try {
+        Deck.play('stone_skin');
+        const sh = R.cardShows.find(s => s.id === 'stone_skin');
+        for (let k = 0; k <= 16 && sh; k++) {
+          sh.t = k / 16 * sh.ms / 1000 * 0.98;
+          if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+          R.draw(0);
+        }
+        R.cardShows = [];
+        const pn = performance.now;
+        try {
+          for (let k = 0; k < 24; k++) { performance.now = () => 1000 + k * 150; R.draw(1 / 30); }   // the sheen's turn comes round
+          performance.now = () => 9000;
+          Combat.hitBuilding(town[0], 40);
+          R.draw(1 / 30);
+          const f = R.floats[R.floats.length - 1];
+          out.dyed = !!SK.HIT && !!f && f.txt === '-20' && f.col === SK.HIT;
+          out.floatCol = f && f.col;
+          performance.now = () => 9150;
+          const m0 = marks.length;
+          R.draw(1 / 30);
+          const ST = SK.STONE || [];
+          out.chips = marks.slice(m0).filter(m => m[0] === 'f' && ST.includes(m[3])).length;
+        } finally { performance.now = pn; }
+      } finally { undo.forEach(f => f()); }
+      out.marks = marks.length;
+      out.light = marks.filter(m => m[1] !== 'source-over' || m[2] < 1).map(m => m.join(':')).slice(0, 4);
+      /* (b) THE SHEEN IS A STEPPED DIAGONAL, one cell a row — never a bar */
+      rects = [];
+      const a = Deck._townTX.art(town[2]);
+      if (SK.sheen) SK.sheen(R.cv.getContext('2d'), town[2], a, 0.5);
+      const PX = 2, byRow = new Map();
+      for (const [x, y, w, h] of rects) if (w === PX && h === PX) byRow.set(y, (byRow.get(y) || []).concat(x));
+      const rows = [...byRow.keys()].sort((u, v) => u - v);
+      out.sheenRows = rows.length;
+      out.oneCellARow = rows.length >= 4 && rows.every(y => byRow.get(y).length === 1);
+      out.diagonal = rows.length >= 4 && rows.slice(1).every((y, i) => byRow.get(y)[0] === byRow.get(rows[i])[0] - (y - rows[i]));
+      rects = null;
+
+      /* (c) THE UNBREAKABLE HALL'S LANCE TAPERS ONTO THE ROOF: at the blow,
+         the light's rows narrow toward their foot, and the foot is the hall's
+         ROOF — the first cut's pillar was half a screen wide, one width top to
+         bottom, its flat foot floating at the ground line */
+      const U = Deck.FX.unbreakable_hall;
+      R.cardShows = []; S.deck.fx = [];
+      tc.hp = tc.maxhp;
+      Deck.play('unbreakable_hall');
+      const sh = R.cardShows.find(s => s.id === 'unbreakable_hall');
+      const D = U.geom(tc), TX = Deck._townTX, W = R.cv.width, ground = TX.scr(D.cx, D.gy), roof = TX.scr(D.cx, D.roof != null ? D.roof : D.gy);
+      const lanceRows = [];
+      sh.t = U.IMPACT * sh.ms / 1000;
+      P2.fillRect = function (x, y, w, h) { if (this.canvas === R.cv && w < W && Math.abs(x + w / 2 - ground.x) < 4 * CFG.TILE * ground.z) lanceRows.push([x, y, w, h]); return fr.apply(this, arguments); };
+      const g2 = R.cv.getContext('2d');
+      g2.save(); g2.setTransform(1, 0, 0, 1, 0, 0);
+      try { U.show.draw.call(U, g2, sh, U.IMPACT, 0, 'sky'); } finally { g2.restore(); P2.fillRect = fr; }
+      const foot = lanceRows.reduce((m, q) => Math.max(m, q[1] + q[3]), 0);
+      const widest = lanceRows.reduce((m, q) => Math.max(m, q[2]), 0);
+      const topW = lanceRows.filter(q => q[1] < foot * 0.15).reduce((m, q) => Math.max(m, q[2]), 0);
+      const lowW = lanceRows.filter(q => q[1] > foot * 0.8 && q[1] + q[3] <= foot).reduce((m, q) => Math.max(m, q[2]), 0);
+      out.lance = { foot: Math.round(foot), roof: Math.round(roof.y), ground: Math.round(ground.y), widest: Math.round(widest), tile: Math.round(CFG.TILE * ground.z), topW, lowW };
+      out.onTheRoof = D.roof != null && foot > 0 && Math.abs(foot - roof.y) <= 8 * ground.z * 2 && foot < ground.y - CFG.TILE * ground.z * 0.5;
+      out.tapers = topW > 0 && lowW > 0 && lowW < topW * 0.7 && widest <= 1.6 * CFG.TILE * ground.z;
+
+      /* (d) A SWALLOWED BLOW FLASHES THE DOME'S OUTLINE, NEVER A FILL: every
+         mark the ward lays in the flash is a hard cell — the first cut filled
+         an amber half-dome cut flat along the ground */
+      R.cardShows = [];
+      const pn = performance.now;
+      const flash = [];
+      try {
+        performance.now = () => 50000;
+        tc.hp = U.sliver(tc);
+        R.floats = [];
+        Combat.hitBuilding(tc, 400);                       // swallowed whole: "Held!"
+        P2.fillRect = function (x, y, w, h) { if (depth && this.canvas === R.cv) flash.push([w, h]); return fr.apply(this, arguments); };
+        const texts = [], ft = P2.fillText;
+        P2.fillText = function (t) { if (depth && this.canvas === R.cv) texts.push([t, String(this.fillStyle)]); return ft.apply(this, arguments); };
+        const undoU = inCard(U, 'drawLive');
+        try { R.draw(1 / 30); } finally { undoU(); P2.fillText = ft; P2.fillRect = fr; }
+        out.flashMarks = flash.length;
+        out.flashBig = flash.filter(([w, h]) => w > 2 || h > 2).length;
+        /* (e) …and it is HELD! in gold with a hard dark edge, taking over the
+           pale float the blow wrote ("Held!" stays the contract's word) */
+        const held = texts.filter(t => t[0] === 'HELD!');
+        out.heldGold = held.some(t => t[1] === U.HELD.col || t[1] === U.HELD.hot) && held.filter(t => t[1] === U.HELD.ink).length >= 4;
+        out.paleGone = !R.floats.some(f => f.txt === 'Held!');
+        out.heldTexts = held.length;
+      } finally { performance.now = pn; P2.fillRect = fr; }
+
+      /* (f) THE WARD'S END IS NEWS: a note on the screen (never the red alarm),
+         and the dome breaks where it stood */
+      const box = document.getElementById('toasts'), n0 = box.children.length;
+      R.cardShows = [];
+      const e = Deck.timed('unbreakable_hall');
+      e.until = Deck.now() - 1e-6;
+      Deck.tick();
+      const last = box.children[box.children.length - 1];
+      out.endToast = box.children.length > n0 && /ward on your Town Center fades/.test(last.textContent) && !last.classList.contains('warn');
+      out.endFall = R.cardShows.some(s => s.id === 'unbreakable_hall' && s.fall);
+      R.cardShows = [];
+    } finally { P2.fillRect = fr; P2.drawImage = di; P2.rect = rc; }
+    return out;
+  });
+  ck('stoneSkinIsStoneNotLight', r.marks > 200 && r.light.length === 0,
+    `${r.marks} marks on the frame; added or translucent: ${r.light.length ? r.light.join(' | ') : 'none'}`);
+  ck('aHalvedBlowFloatsInTheSkinsBlueAndThrowsStone', r.dyed && r.chips >= 5, `the float ${r.floatCol}; ${r.chips} chips of stone`);
+  ck('theSkinsSheenIsASteppedDiagonalNeverABar', r.oneCellARow && r.diagonal, `${r.sheenRows} rows, one 2px cell a row ${r.oneCellARow}, each a cell along ${r.diagonal}`);
+  ck('theHallsLanceTapersOntoTheRoof', r.onTheRoof && r.tapers, JSON.stringify(r.lance));
+  ck('aSwallowedBlowFlashesTheDomesOutlineNeverAFill', r.flashMarks > 60 && r.flashBig === 0, `${r.flashMarks} marks, ${r.flashBig} bigger than a cell`);
+  ck('heldIsGoldWithADarkEdge', r.heldGold && r.paleGone, `HELD! drawn ${r.heldTexts}× (gold over a dark edge ${r.heldGold}); the pale float taken over ${r.paleGone}`);
+  ck('theWardsEndIsNewsOnTheScreen', r.endToast && r.endFall, `a note toast ${r.endToast}; the dome breaks ${r.endFall}`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

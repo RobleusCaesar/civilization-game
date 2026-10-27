@@ -1658,12 +1658,34 @@
     /* IRON — Stone Skin: the player's buildings take half damage for the
        card's 8 days — every blow, an attack or the wilds' fire, halved in
        Bld.damage before the subtraction (Deck.bldTakes), and the float says
-       the half. A cold flash and a jolt at the play, a wave of runes rolling
-       out from the hall, each building encased in grey as it passes; while
-       it runs a cold sheen climbs each one in turn and a blow that glances
-       off throws a spark. */
+       the half, in the skin's own cold blue. A dark cold breath and a jolt at
+       the play, a wave of carved runes rolling out from the hall, and each
+       building TURNED TO STONE as it passes — its own picture, every beam
+       and doorway of it, gone grey granite from the foot up — held, then the
+       stone crumbling away in hard dither steps, shedding chips, down to the
+       SLEEVE it keeps: a course of the same stone round its foot, cut in
+       blocks, for all eight days. While it runs a stepped sheen crosses each
+       sleeve in its turn with a rune cut in it, and a blow that glances off
+       throws grey chips of stone.
+       THE SKIN IS STONE, NOT LIGHT: every mark is the building's own picture
+       turned to stone, or laid opaque (source-over) in the grey-blue STONE
+       ramp. The first cut drew it all in cold white ADDED ('lighter') — over
+       the meadow it came out mint; a cold rim round every roof read as "this
+       building is selected"; its sheen was a flat white bar across each one.
+       What is ON a building is drawn ON it (drawBld, in the building loop —
+       under whoever stands in front of it); only what flies (the chips, the
+       glint) is drawn in the air (drawLive). */
     stone_skin: {
       at: 'tc', mult: { bldHurt: 0.5 },
+      // the stone: crevice, dark, mid, light, lit, crest — a cold grey-blue granite
+      STONE: ['#262b34', '#434b58', '#646e7d', '#8892a1', '#b0b9c6', '#d9dfe7'],
+      // a halved blow's float: the skin's own cold blue (Combat.hitBuilding
+      // writes the number, drawLive dyes it the frame it appears)
+      HIT: '#a4cfff',
+      // the sleeve's height, a fraction of the building's drawn height
+      SLEEVE: 0.3,
+      // a 4×4 ordered dither: the stone crumbles in hard steps, never an alpha fade
+      BAYER: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
       can() { return { ok: true }; },
       apply() {
         const days = Deck.card('stone_skin').days, was = !!Deck.timed('stone_skin');
@@ -1673,110 +1695,224 @@
         const mine = S.buildings.filter(b => b.owner === 'P' && !(b.construction > 0));
         if (tc && mine.length) {
           const hit = mine.map(b => ({ id: b.id, d: Math.hypot(Bld.cx(b) - Bld.cx(tc), Bld.cy(b) - Bld.cy(tc)) })).sort((a, b) => a.d - b.d);
-          const far = hit[hit.length - 1].d, speed = Math.max(12, far / 1.3);
-          TX.show('stone_skin', { cx: Bld.cx(tc), cy: Bld.cy(tc), hit, speed, ms: Math.min(3400, (far / speed + 1.2) * 1000) });
+          const far = hit[hit.length - 1].d, speed = Math.max(9, far / 1.2);
+          TX.show('stone_skin', { cx: Bld.cx(tc), cy: Bld.cy(tc), hit, speed, ms: Math.min(3600, (far / speed + this.AGE + 0.2) * 1000) });
         }
         TX.sound('cardSkin');
         return { ok: true, until: e.until };
       },
       end() { G.log('🪨 Stone Skin wears off — your buildings take blows in full again.'); },
-      // a blow glanced off: where, and when (render state — never in S)
+      // a blow glanced off: where, when, and the float it wrote (render state — never in S)
       _glints: [],
       glance(b) {
         if (this._glints.length > 15) this._glints.shift();
         const s = Bld.size(b);
-        this._glints.push({ x: Bld.cx(b) + (Math.random() - 0.5) * 0.7 * s, y: b.y + s * 0.5 + (Math.random() - 0.5) * 0.5 * s, t: performance.now() });
+        this._glints.push({ x: Bld.cx(b) + (Math.random() - 0.5) * 0.7 * s, y: b.y + s * 0.5 + (Math.random() - 0.5) * 0.5 * s, t: performance.now(),
+          fx: Bld.cx(b), fy: b.y - 0.15, n: this._n = ((this._n | 0) + 1) % 997 });
         TX.sound('cardGlance');
       },
       RUNES: [['#.#', '.#.', '#.#', '.#.'], ['##.', '#.#', '##.', '#..'], ['.#.', '###', '.#.', '.#.'], ['#..', '##.', '#.#', '#..'], ['###', '.#.', '.#.', '###']],
-      rune(g, x, y, i) {
-        const R0 = this.RUNES[i % this.RUNES.length];
-        for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) if (R0[r][c] === '#') g.fillRect(sn(x) + c * PX, sn(y) + r * PX, PX, PX);
-      },
-      drawLive(g, e) {
-        const now = performance.now() / 1000;
-        // the whole town breathes together, slow and cold — one phase for every
-        // building, so the skin reads as one ward and never as a flicker
-        const breath = stp(0.5 + 0.12 * Math.sin(now * 1.9), 10);
-        let n = 0;
-        g.save(); g.globalCompositeOperation = 'lighter';
-        for (const b of S.buildings) {
-          if (b.owner !== 'P' || b.construction > 0 || !TX.bNear(b)) continue;
-          if (++n > 60) break;
-          const a = TX.art(b);
-          if (!a.spr) continue;
-          /* THE SKIN ITSELF, for all eight days: a cold rim of stone-light
-             round every roof and wall. Without it a warded town read as an
-             ordinary one — a sheen on each building a quarter of the time,
-             faint, was 48 marks over six frames for a whole town. */
-          g.globalAlpha = breath; TX.rim(g, a, '#7fa6d2');
-          // the sheen climbs each building in its own turn, every few seconds
-          const ph = (now / 3.4 + (b.id * 0.618) % 1) % 1;
-          if (ph > 0.3) continue;
-          const k = ph / 0.3, f = a.box.b - (a.box.b - a.box.t) * k;
-          g.globalAlpha = 0.4; TX.paint(g, a, '#d8e8f8', f - 0.1, f);
-          // and a rune shows on its face for a moment
-          if (k > 0.3 && k < 0.8) {
-            g.globalAlpha = stp(0.8 * Math.sin((k - 0.3) / 0.5 * Math.PI), 3); g.fillStyle = '#e6f2ff';
-            this.rune(g, a.rc.x + (a.box.l + (a.box.r - a.box.l) * hs(b.id, 3)) * a.rc.w - 3,
-              a.rc.y + (a.box.t + (a.box.b - a.box.t) * (0.3 + 0.4 * hs(3, b.id))) * a.rc.h, b.id);
-          }
+      // a rune in the stone's own hard pixels: strokes in `ink`, and under each
+      // stroke's foot a `lip` (a cut catching the light, or a glyph's shadow)
+      rune(g, x, y, i, ink, lip) {
+        const R0 = this.RUNES[i % this.RUNES.length], x0 = sn(x), y0 = sn(y);
+        if (lip) {
+          g.fillStyle = lip;
+          for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) if (R0[r][c] === '#' && (r === 3 || R0[r + 1][c] !== '#')) g.fillRect(x0 + c * PX, y0 + (r + 1) * PX, PX, PX);
         }
-        g.globalAlpha = 1;
-        // a blow that glances off: a cold spark, thrown wide
-        const ms = performance.now(), TL = TLs();
+        g.fillStyle = ink;
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) if (R0[r][c] === '#') g.fillRect(x0 + c * PX, y0 + r * PX, PX, PX);
+      },
+      // TX's shared scratch, at least w×h (its 0..w × 0..h corner is ours for the call)
+      _scr(w, h) {
+        let t = TX._tint;
+        if (!t) t = TX._tint = document.createElement('canvas');
+        if (t.width < w || t.height < h) { t.width = Math.max(t.width, w); t.height = Math.max(t.height, h); }
+        return t;
+      },
+      // where the stone stands in column `cx` (world px of the art): `top` (a
+      // fraction from the art's top) lifted or dropped a cell by the block the
+      // column belongs to — a course of cut blocks, never a ruled line
+      _edge(cx, top, h, b) { return sn(top * h) - (hs((cx / (3 * PX)) | 0, b) * 3 | 0) * PX; },
+      /* THE BUILDING TURNED TO STONE, from row `top` (a fraction of its art)
+         down: its OWN picture (TX.mask is the sprite at world size) taken to
+         grey and cooled to the granite's blue in the shared scratch, so every
+         beam, door and thatch line stays and only the material changes; its
+         upper edge cut in blocks with a lit crest; crumbling away in hard
+         dither steps as `keep` falls 1 → 0 above row `floor` (the sleeve,
+         which stays). No canvas of its own: one copy per sprite (rule 7). */
+      stone(g, b, a, top, keep, floor) {
+        const w = Math.max(1, Math.round(a.rc.w)), h = Math.max(1, Math.round(a.rc.h)), m = TX.mask(a.spr, w, h);
+        const t = this._scr(w, h), y = t.getContext('2d'), ST = this.STONE, B = this.BAYER;
+        y.globalCompositeOperation = 'copy'; y.drawImage(m.c, 0, 0);
+        y.globalCompositeOperation = 'saturation'; y.fillStyle = '#808080'; y.fillRect(0, 0, w, h);
+        y.globalCompositeOperation = 'color'; y.globalAlpha = 0.55;
+        if (y.globalCompositeOperation === 'color') {
+          y.fillStyle = ST[3]; y.fillRect(0, 0, w, h);
+          // …and a shade deeper, granite rather than snow (a pale thatch went white)
+          y.globalAlpha = 1; y.globalCompositeOperation = 'multiply'; y.fillStyle = '#b4bcc8'; y.fillRect(0, 0, w, h);
+        } else {
+          // (a browser without the blend modes keeps the cut shape in plain stone)
+          y.globalAlpha = 1; y.globalCompositeOperation = 'source-over'; y.fillStyle = ST[3]; y.fillRect(0, 0, w, h);
+        }
+        y.globalAlpha = 1;
+        // a blend fills the clear ground round the shape as well: the shape again
+        y.globalCompositeOperation = 'destination-in'; y.drawImage(m.c, 0, 0);
+        y.globalCompositeOperation = 'destination-out';
+        y.beginPath();
+        const lv = Math.round(cl(keep) * 16), fl = floor == null ? 2 : floor;
+        for (let cx = 0; cx < w; cx += PX) {
+          const e = this._edge(cx, top, h, b.id);
+          if (e > 0) y.rect(cx, 0, PX, e);
+          if (lv < 16) { const fe = this._edge(cx, fl, h, b.id);
+            for (let cy = Math.max(0, e); cy < Math.min(h, fe); cy += PX) if (B[((cy / PX) & 3) * 4 + ((cx / PX) & 3)] >= lv) y.rect(cx, cy, PX, PX); }
+        }
+        y.fill();
+        // the crest of the course: lit stone along each block's top
+        y.globalCompositeOperation = 'source-atop'; y.fillStyle = ST[4];
+        y.beginPath();
+        for (let cx = 0; cx < w; cx += PX) { const e = this._edge(cx, top, h, b.id); if (e >= 0 && e < h) y.rect(cx, e, PX, PX); }
+        y.fill();
+        y.globalCompositeOperation = 'source-over';
+        g.drawImage(t, 0, 0, w, h, a.rc.x, a.rc.y, a.rc.w, a.rc.h);
+        return { w, h };
+      },
+      // the sleeve's top on this building, as a fraction of its art
+      _sleeve(a) { return a.box.b - (a.box.b - a.box.t) * this.SLEEVE; },
+      // a sheen of light off the stone: ONE stepped diagonal band, two world
+      // pixels wide, crossing the sleeve from its lit corner as k runs 0 → 1
+      sheen(g, b, a, k) {
+        const w = Math.max(1, Math.round(a.rc.w)), h = Math.max(1, Math.round(a.rc.h)), m = TX.mask(a.spr, w, h);
+        const t = this._scr(w, h), y = t.getContext('2d'), top = this._sleeve(a), y0 = sn(top * h) - 3 * PX, y1 = sn(a.box.b * h) + PX;
+        const c = sn(a.box.l * w + k * ((a.box.r - a.box.l) * w + (y1 - y0)));
+        y.globalCompositeOperation = 'copy'; y.drawImage(m.c, 0, 0);
+        y.globalCompositeOperation = 'source-in'; y.fillStyle = this.STONE[5];
+        y.beginPath();
+        for (let r = y0; r < y1; r += PX) {
+          const x0 = c - (r - y0);
+          if (x0 > -PX && x0 < w && r >= this._edge(x0, top, h, b.id)) y.rect(x0, r, PX, PX);
+        }
+        y.fill();
+        y.globalCompositeOperation = 'source-over';
+        g.drawImage(t, 0, 0, w, h, a.rc.x, a.rc.y, a.rc.w, a.rc.h);
+      },
+      // grey chips of stone thrown off a struck wall, falling (world px, `q` 0 → 1 over the chip's life)
+      chips(g, x, y, q, seed, n) {
+        const ST = this.STONE;
+        for (let k = 0; k < (n || 7); k++) {
+          const th = -Math.PI * (0.15 + 0.7 * hs(seed, k)), v = 26 + 30 * hs(k, seed);
+          const cx = x + Math.cos(th) * v * q * (k % 2 ? 1 : -1), cy = y + Math.sin(th) * v * q + 70 * q * q;
+          const big = k % 3 ? PX : 2 * PX;
+          g.fillStyle = ST[0]; g.fillRect(sn(cx), sn(cy) + PX, big, PX);
+          g.fillStyle = ST[k % 3 === 0 ? 4 : k % 3 === 1 ? 3 : 2]; g.fillRect(sn(cx), sn(cy), big, PX);
+        }
+      },
+      /* THE SKIN, for all eight days, ON the building (R.drawCardBld, right
+         after its own art): the sleeve of stone round its foot, and in its
+         turn every few seconds a sheen crossing it and a rune cut in it */
+      drawBld(g, b, e) {
+        if (b.owner !== 'P' || b.construction > 0) return;
+        const a = TX.art(b);
+        if (!a.spr) return;
+        // the sleeve rises out of the casing as the play's stone crumbles (the
+        // show draws the rest of the building's stone above it)
+        const sh = TX.fresh('stone_skin'), hit = sh && sh.hit && sh.hit.find(z => z.id === b.id);
+        if (hit && (sh.t * sh.speed - hit.d) / sh.speed < this.UP) return;
+        const top = this._sleeve(a);
+        this.stone(g, b, a, top, 1);
+        const ph = (performance.now() / 1000 / 3.4 + (b.id * 0.618) % 1) % 1;
+        if (ph > 0.3) return;
+        const k = ph / 0.3;
+        this.sheen(g, b, a, k);
+        if (k > 0.25 && k < 0.85) {
+          const ST = this.STONE, w = a.rc.w, h = a.rc.h;
+          this.rune(g, a.rc.x + (a.box.l + (a.box.r - a.box.l) * (0.3 + 0.4 * hs(b.id, 3))) * w - 3,
+            a.rc.y + (top + (a.box.b - top) * 0.25) * h, b.id, ST[0], ST[4]);
+        }
+      },
+      // what flies: a blow that glances off — the float dyed the skin's cold
+      // blue, a hard glint where it struck, grey chips of stone flying off
+      drawLive(g, e) {
+        const ST = this.STONE, ms = performance.now(), TL = TLs(), F = typeof R !== 'undefined' && R.floats;
+        g.save();
         for (let i = this._glints.length - 1; i >= 0; i--) {
           const gl = this._glints[i], tl = (ms - gl.t) / 1000;
-          if (tl > 0.4) { this._glints.splice(i, 1); continue; }
-          const x = gl.x * TL, y = gl.y * TL, q = tl / 0.4;
-          g.globalAlpha = stp(1 - q, 3);
-          TX.star(g, x, y, q < 0.4 ? 3 : 2, '#cfe0f4', '#ffffff');
-          g.fillStyle = '#e6f2ff';
-          for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + 0.4; g.fillRect(sn(x + Math.cos(a) * (4 + q * 14)), sn(y + Math.sin(a) * (3 + q * 10)), PX, PX); }
+          if (tl > 0.7) { this._glints.splice(i, 1); continue; }
+          if (!gl.dyed && F) {
+            for (let j = F.length - 1; j >= 0; j--) {
+              const f = F[j];
+              if (f.x === gl.fx && Math.abs(f.y - gl.fy) < 0.4 && f.t > 0.6 && /^-\d/.test(f.txt)) { f.col = this.HIT; gl.dyed = 1; break; }
+            }
+          }
+          const x = gl.x * TL, y = gl.y * TL, q = tl / 0.7;
+          if (q < 0.3) TX.star(g, x, y, q < 0.12 ? 3 : 2, ST[4], '#ffffff');
+          this.chips(g, x, y, q, gl.n);
         }
         g.restore();
       },
+      // the play's beats on each building, seconds after the wave reaches it:
+      // the stone climbs (UP), holds, crumbles back to the sleeve by AGE
+      UP: 0.3, HOLD: 0.85, AGE: 1.5,
       show: {
         ms: 2600, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
           if (layer === 'sky') {
             if (!s.boom) {
               s.boom = true;
-              if (R.flashAt) R.flashAt(0.24, 0.5, '200,216,236');
+              // a cold DARK breath, never a pale one: a pale flash over the
+              // meadow is a mint frame — the runes and the stone carry the light
+              if (R.flashAt) R.flashAt(0.34, 0.7, '18,24,36');
               if (R.shakeAt) R.shakeAt(3, 0.4);
             }
             return;
           }
           const TL = TLs(), r = s.t * s.speed, far = s.hit[s.hit.length - 1].d + 1.5;
-          const SK = Deck.FX.stone_skin;
-          // the runes roll out over the town, cold and quick
+          const SK = Deck.FX.stone_skin, ST = SK.STONE;
+          // the runes roll out over the town — pale stone glyphs set in the
+          // turf, a crevice under each, stepping down the ramp as they spread
           if (r < far + 1) {
-            g.save(); g.globalCompositeOperation = 'lighter';
-            g.globalAlpha = stp(1.1 * (1 - r / (far + 1)), 4); g.fillStyle = '#dbe8f8';
-            const rr = r * TL, n = Math.max(10, Math.min(160, Math.round(rr / 4.5)));
+            g.save();
+            const q = r / (far + 1), rr = r * TL, n = Math.max(10, Math.min(160, Math.round(rr / 4.5)));
+            const lit = ST[q < 0.4 ? 5 : q < 0.7 ? 4 : 3];
             for (let i = 0; i < n; i++) {
               const th = i / n * Math.PI * 2 + s.t * 0.4;
-              SK.rune(g, s.cx * TL + Math.cos(th) * rr - 3, s.cy * TL + Math.sin(th) * rr * 0.62 - 4, i);
+              SK.rune(g, s.cx * TL + Math.cos(th) * rr - 3, s.cy * TL + Math.sin(th) * rr * 0.62 - 4, i, lit, ST[0]);
             }
-            g.globalAlpha = stp(0.7 * (1 - r / (far + 1)), 4);
+            g.fillStyle = ST[q < 0.5 ? 4 : 3];
             TX.ring(g, s.cx * TL, s.cy * TL, Math.max(2, rr - 10), 0.62, 0, 4);
+            g.fillStyle = ST[q < 0.5 ? 3 : 2];
             TX.ring(g, s.cx * TL, s.cy * TL, rr + 12, 0.62, 0, 4);
             g.restore();
           }
-          // each building, encased in grey as the wave passes, then the grey sinks in
+          // the stone crumbling off each building flies (the stone itself is ON
+          // the building — show.drawBld)
           for (const h of s.hit) {
             const age = (r - h.d) / s.speed;
-            if (age < 0 || age > 1.0) continue;
+            if (age < SK.HOLD || age > SK.AGE) continue;
             const b = Bld.get(h.id);
             if (!b || !TX.bNear(b)) continue;
-            const a = TX.art(b);
-            if (!a.spr) continue;
-            const up = cl(age / 0.22), f = a.box.b - (a.box.b - a.box.t) * eo(up);
-            g.globalAlpha = age < 0.4 ? 0.6 : stp(0.6 * (1 - (age - 0.4) / 0.6), 4);
-            if (g.globalAlpha > 0) TX.paint(g, a, '#8ea2b6', f, 1);
-            if (up < 1) { g.globalAlpha = 1; g.save(); g.globalCompositeOperation = 'lighter'; TX.paint(g, a, '#eef6ff', f, f + 2 / a.rc.h); g.restore(); }
-            g.globalAlpha = 1;
+            const a = TX.art(b), q = (age - SK.HOLD) / (SK.AGE - SK.HOLD), cx = a.rc.x + (a.box.l + a.box.r) / 2 * a.rc.w;
+            const ty = a.rc.y + a.box.t * a.rc.h, bh = (a.box.b - a.box.t) * a.rc.h;
+            SK.chips(g, cx - a.rc.w * 0.22, ty + bh * 0.25, q, h.id, 6);
+            SK.chips(g, cx + a.rc.w * 0.22, ty + bh * 0.45, q, h.id + 31, 6);
+            SK.chips(g, cx, ty + bh * 0.1, q, h.id + 57, 5);
           }
+        },
+        /* each building TURNS TO STONE as the wave reaches it — from its foot
+           up, a crest of lit stone climbing it — holds, and crumbles back in
+           hard dither steps to the sleeve it keeps (drawn on the building,
+           under whoever stands in front of it) */
+        drawBld(g, b, s, p) {
+          const SK = Deck.FX.stone_skin, h = s.hit && s.hit.find(z => z.id === b.id);
+          if (!h || b.owner !== 'P') return;
+          const age = (s.t * s.speed - h.d) / s.speed;
+          if (age < 0 || age > SK.AGE) return;
+          const a = TX.art(b);
+          if (!a.spr) return;
+          const sl = SK._sleeve(a);
+          if (age < SK.UP) {
+            SK.stone(g, b, a, a.box.b - (a.box.b - a.box.t + 0.06) * eo(age / SK.UP), 1);
+          } else SK.stone(g, b, a, a.box.t - 0.06, age < SK.HOLD ? 1 : 1 - (age - SK.HOLD) / (SK.AGE - SK.HOLD), sl);
         },
       },
     },
@@ -1786,10 +1922,17 @@
        1 hp): Deck.bldTakes caps every blow at what stands above it, on the
        attack path and the wilds' fire alike, and never raises a hall already
        lower. The rival's Wonder still ends the run — that is a race lost,
-       not a hall fallen. The play is held: the sky darkens, a pillar of gold
-       comes down on the hall, the ground shakes as it lands and a dome of
-       light rises over it; while it runs the dome stands, and flares where
-       a blow is swallowed. */
+       not a hall fallen. The play is held: the sky darkens, a tapered LANCE
+       of gold comes down out of it onto the hall's ROOF, the ground shakes as
+       it lands, short stepped rays break from the crown and a dome rises over
+       the hall; while it runs the dome stands, and a blow it swallows flashes
+       its outline in hard steps and throws a gold "HELD!" with a dark edge.
+       When the ward ends the dome breaks and falls, and a note says so — a
+       hall under siege must be told its protection is gone.
+       The first cut's pillar opened as a flat orange slab under the top bar
+       and stood half a screen wide with a flat foot floating over the hall;
+       its flash was a FILLED amber half-dome cut flat along the ground; its
+       "Held!" was pale; its end was a log line nobody saw. */
     unbreakable_hall: {
       at: 'tc', SLIVER: 0.02, IMPACT: 0.2,
       sliver(b) { return Math.max(1, Math.round(b.maxhp * this.SLIVER)); },
@@ -1805,89 +1948,90 @@
         TX.sound('cardRise');
         return { ok: true, until: e.until };
       },
-      end() { G.log('🏛 The ward on your Town Center fades — it can fall again.'); },
-      // a blow on the warded hall (render state): the dome flares
-      _hit: 0, _took: 0,
+      // the ward's end is NEWS (a note toast, never the red alarm), and the dome breaks where it stood
+      end() {
+        G.log('🏛 The ward on your Town Center fades — it can fall again.', 'note', 4200);
+        const tc = TX.tc();
+        if (tc) TX.show('unbreakable_hall', { tc: tc.id, fall: 1, ms: 1500 });
+      },
+      // a blow on the warded hall (render state): the dome flares; one it
+      // swallows whole is HELD — its float taken over by the ward's own gold
+      _hit: 0, _took: 0, _held: [],
       struck(b, took) {
         this._hit = performance.now(); this._took = took;
         TX.sound('cardWard');
       },
-      // the dome over the hall, world px: centre, ground, radius, height
+      HELD: { col: '#ffd45e', hot: '#fff3cf', ink: '#2a1606', ms: 1300 },
+      // the dome over the hall, world px: centre, ground, radius, height — and the roof the lance lands on
       geom(tc) {
         const TL = TLs(), sz = Bld.size(tc), c = TX.crown(tc);
         const cx = Bld.cx(tc) * TL, gy = (tc.y + sz) * TL - 4, rx = (sz / 2 + 0.6) * TL;
-        return { cx, gy, rx, ry: rx * 0.42, hd: Math.max(rx * 0.9, gy - c.y + TL * 0.35) };
+        return { cx, gy, rx, ry: rx * 0.42, hd: Math.max(rx * 0.9, gy - c.y + TL * 0.35), roof: c.y + TL * 0.15 };
       },
-      /* ONE RAY OF THE SKY, in hard pixels (device px, the sky layer): the
-         wedge between angles a±wa from (ax, ay), cut into px-wide columns —
-         or rows, for a ray nearer the vertical — each column the wedge's own
-         span snapped to the px grid. A stepped band of light in the dome's
-         language; a vector wedge was the one soft edge in the show. */
-      ray(g, ax, ay, a, wa, px, W, H) {
-        const c = Math.cos(a), s0 = Math.sin(a), t0 = Math.tan(a - wa), t1 = Math.tan(a + wa);
-        const snap = v => Math.round(v / px) * px;
-        if (Math.abs(c) >= Math.abs(s0)) {
-          const sg = c > 0 ? 1 : -1;
-          for (let k = 0; ; k++) {
-            const x = ax + sg * k * px;
-            if (x < -px || x > W + px) break;
-            const dx = x - ax, y0 = ay + dx * t0, y1 = ay + dx * t1;
-            const lo = snap(Math.min(y0, y1)), hi = snap(Math.max(y0, y1));
-            if (hi < 0 || lo > H) continue;              // off the screen here: the ray may still come on
-            g.fillRect(snap(x), lo, px, Math.max(px, hi - lo));
-          }
-        } else {
-          const sg = s0 > 0 ? 1 : -1, c0 = 1 / t0, c1 = 1 / t1;
-          for (let k = 0; ; k++) {
-            const y = ay + sg * k * px;
-            if (y < -px || y > H + px) break;
-            const dy = y - ay, x0 = ax + dy * c0, x1 = ax + dy * c1;
-            const lo = snap(Math.min(x0, x1)), hi = snap(Math.max(x0, x1));
-            if (hi < 0 || lo > W) continue;
-            g.fillRect(lo, snap(y), Math.max(px, hi - lo), px);
-          }
-        }
-      },
+      /* the dome's ribs in hard dots, in the gold's ink (never a fill: a body
+         of gold over the meadow was a lime blister, then an amber half-dome
+         cut flat along the ground). A blow swallowed (`boost`, in hard
+         quarters) closes the outline up — every cell along it lit, a second
+         skin just inside — and steps it hot, then back down the ramp. */
       dome(g, D, rise, boost, now) {
         const { cx, gy, rx, ry } = D, hd = D.hd * rise;
         if (hd < 2) return;
-        /* the light inside it: two hard bands, stepped, never a gradient —
-           and only while it is LIT (rising, or a blow being swallowed): a
-           dome of gold ADDED stood over the town for twelve days as a lime
-           blister, and any standing tint of the meadow under it reads olive.
-           Lit, it is the card's light at its faint steps (R.glow: the hall in
-           it turns gold and its thatch still shows through) */
-        if (boost > 0) for (const [k, sv] of [[1, 0.35], [0.62, 0.55]]) {
-          R.glow(g, boost * sv, () => {
-            for (let y = 0; y < hd * k; y += PX) {
-              const w = Math.sqrt(Math.max(0, 1 - (y / (hd * k)) * (y / (hd * k)))) * rx * k;
-              g.fillRect(sn(cx - w), sn(gy - y), Math.max(PX, sn(w * 2)), PX);
-            }
-          });
-        }
         g.save();
-        // its ribs: the outline, two meridians and a girdle, made of dots, a
-        // shimmer running round — opaque gold ink, faded down the ramp
         const dots = (fx, fy, n, base) => {
           for (let i = 0; i <= n; i++) {
-            const th = i / n * Math.PI, x = fx(th), y = fy(th);
-            const sh = Math.max(0, Math.sin(th * 3 - now * 2.2));
-            if (!R.inkOn(g, base + sh * 0.35 + boost * 0.4)) continue;
-            g.fillRect(sn(x), sn(y), PX, PX);
+            const th = i / n * Math.PI, sh = Math.max(0, Math.sin(th * 3 - now * 2.2));
+            if (!R.inkOn(g, base + sh * 0.35 + boost * 0.55)) continue;
+            g.fillRect(sn(fx(th)), sn(fy(th)), PX, PX);
           }
         };
-        const nO = Math.max(16, Math.round((rx + hd) / 2));
-        dots(th => cx + Math.cos(th) * rx, th => gy - Math.sin(th) * hd, nO, 0.6);
+        const nO = Math.max(16, Math.round((rx + hd) / 2)), dense = boost > 0 ? 2.6 : 1;
+        dots(th => cx + Math.cos(th) * rx, th => gy - Math.sin(th) * hd, Math.round(nO * dense), 0.6);
+        if (boost > 0) dots(th => cx + Math.cos(th) * (rx - 2 * PX), th => gy - Math.sin(th) * (hd - 2 * PX), Math.round(nO * dense * 0.95), boost * 0.5);
         dots(th => cx + Math.cos(th) * rx * 0.55, th => gy - Math.sin(th) * hd, Math.round(nO * 0.7), 0.25);
-        dots(th => cx + Math.cos(th + Math.PI) * rx, th => gy + Math.sin(th) * ry, nO, 0.4);     // the ring on the ground, in front
+        dots(th => cx + Math.cos(th + Math.PI) * rx, th => gy + Math.sin(th) * ry, Math.round(nO * (boost > 0 ? 1.8 : 1)), 0.4);   // the ring on the ground, in front
         dots(th => cx + Math.cos(th) * rx * 0.86, th => gy - hd * 0.5 + Math.sin(th) * ry * 0.7, Math.round(nO * 0.8), 0.22);
         g.restore();
         g.globalAlpha = 1;
       },
+      /* "HELD!": a blow the ward swallows whole writes the plain float
+         Combat.hitBuilding writes for every blow ("Held!" — the contract's
+         word); the ward takes it over the frame it appears and throws its own,
+         in gold with a hard dark edge, rising off the roof (render state) */
+      _labels: [],
+      takeHeld() {
+        const F = typeof R !== 'undefined' && R.floats;
+        if (!F) return;
+        for (let j = F.length - 1; j >= 0; j--) {
+          const f = F[j];
+          if (f.txt !== 'Held!' || f.t < 0.8) continue;
+          F.splice(j, 1);
+          if (this._labels.length > 6) this._labels.shift();
+          this._labels.push({ x: f.x, y: f.y, t: performance.now() });
+        }
+      },
+      drawHeld(g) {
+        const TL = TLs(), H = this.HELD, now = performance.now();
+        g.save();
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        for (let i = this._labels.length - 1; i >= 0; i--) {
+          const L = this._labels[i], q = (now - L.t) / H.ms;
+          if (q >= 1) { this._labels.splice(i, 1); continue; }
+          const x = sn(L.x * TL), y = sn(L.y * TL - eo(Math.min(1, q * 1.6)) * TL * 0.7), big = q < 0.12;
+          if (q > 0.8 && ((now / 90) | 0) % 2) continue;      // it goes out in hard blinks, never a fade
+          g.font = 'bold ' + (big ? 13 : 11) + 'px sans-serif';
+          g.fillStyle = H.ink;
+          for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, 2]]) g.fillText('HELD!', x + dx, y + dy);
+          g.fillStyle = big ? H.hot : H.col;
+          g.fillText('HELD!', x, y);
+        }
+        g.restore();
+      },
       drawLive(g, e) {
+        this.takeHeld();
+        if (this._labels.length) this.drawHeld(g);
         const tc = TX.tc();
         if (!tc || !TX.bNear(tc)) return;
-        // the dome rises on the play's own clock (render time) after the pillar
+        // the dome rises on the play's own clock (render time) after the lance
         // lands; with no fresh play on screen it simply stands
         const now = performance.now() / 1000, sh = TX.fresh('unbreakable_hall');
         const rise = sh ? eo(cl((sh.t - this.IMPACT * sh.ms / 1000) / 1.2)) : 1;
@@ -1902,11 +2046,48 @@
           g.restore();
         }
       },
+      /* THE LANCE (device px, the sky layer): a body of the card's light cut
+         in rows of the art's own pixel, wide where it leaves the sky and
+         narrowing in hard steps to where it strikes, its point drawn down to
+         a single cell — it lands ON the roof, never a slab with a flat foot */
+      lance(g, x, tip, w0, w1, unit) {
+        const snap = v => Math.round(v / unit) * unit;
+        for (const [wf, sv] of [[1, 0.5], [0.62, 0.75], [0.3, 1]]) {
+          R.glow(g, sv, () => {
+            for (let y = 0; y < tip; y += unit) {
+              const k = y / Math.max(1, tip), w = Math.max(unit, snap((w0 + (w1 - w0) * k) * wf));
+              g.fillRect(snap(x - w / 2), y, w, unit);
+            }
+            for (let j = 1; j <= 3; j++) {
+              const w = Math.max(unit, snap(w1 * wf * (1 - j / 4)));
+              g.fillRect(snap(x - w / 2), snap(tip) + (j - 1) * unit, w, unit);
+            }
+          });
+        }
+        R.glowHot(g, 0.75, () => g.fillRect(snap(x - unit / 2), 0, unit, snap(tip) + 2 * unit));
+      },
       show: {
         ms: 4200, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
           const tc = Bld.get(s.tc); if (!tc) return;
           const U = Deck.FX.unbreakable_hall, TL = TLs(), D = U.geom(tc), imp = U.IMPACT;
+          if (s.fall) {
+            // THE WARD BREAKS: the dome's outline cracks into its dots and they
+            // fall, stepping down the ramp, and are gone
+            if (layer !== 'world') return;
+            if (!s.boom) { s.boom = 1; if (R.shakeAt) R.shakeAt(2, 0.3); TX.sound('cardWard'); }
+            g.save();
+            const nO = Math.max(16, Math.round((D.rx + D.hd) / 2)) * 2;
+            for (let i = 0; i <= nO; i++) {
+              const th = i / nO * Math.PI, h0 = hs(i, 41), q = cl(p * 1.15 - h0 * 0.15);
+              if (!R.inkOn(g, (1 - q) * (i % 3 ? 0.7 : 1))) continue;
+              const x = D.cx + Math.cos(th) * D.rx + (h0 - 0.5) * 18 * q, y = D.gy - Math.sin(th) * D.hd + (40 + 90 * h0) * q * q;
+              if (y > D.gy + 6) continue;
+              g.fillRect(sn(x), sn(y), PX, PX);
+            }
+            g.restore();
+            return;
+          }
           if (layer === 'world') {
             // the ground answers the blow: rings of gold rolling out from the hall
             if (p > imp) {
@@ -1919,18 +2100,18 @@
               }
               g.restore();
             }
-            // motes of gold coming down in the pillar, in the gold's ink
+            // motes of gold coming down with the lance, in the gold's ink
             if (p > 0.04 && p < 0.7) {
               g.save();
               for (let k = 0; k < 14; k++) {
                 const ph = (s.t * 0.9 + hs(k, 21)) % 1;
                 if (!R.inkOn(g, Math.sin(ph * Math.PI))) continue;
-                g.fillRect(sn(D.cx + (hs(21, k) - 0.5) * D.rx * 1.3), sn(D.gy - D.hd * 2.6 * (1 - ph)), PX, PX);
+                g.fillRect(sn(D.cx + (hs(21, k) - 0.5) * D.rx * 1.1), sn(D.roof - D.hd * 2.2 * (1 - ph)), PX, PX);
               }
               g.restore();
             }
-            // the dome rises brighter than it will stand
-            if (p > imp && p < 0.75) U.dome(g, D, eo(cl((p - imp) / 0.3)), stp(0.6 * (1 - cl((p - imp) / 0.55)), 4), performance.now() / 1000);
+            // the dome rises brighter than it will stand — its outline, never a fill
+            if (p > imp && p < 0.75) U.dome(g, D, eo(cl((p - imp) / 0.3)), stp(0.75 * (1 - cl((p - imp) / 0.55)), 4), performance.now() / 1000);
             return;
           }
           // ---- the sky (device pixels) ----
@@ -1938,46 +2119,44 @@
             s.boom = true;
             if (R.shakeAt) R.shakeAt(7, 0.8);
             // (no whole-frame flash: gold laid over the meadow was the sepia
-            // wash, milk would be a pale green one — the pillar landing in
-            // the darkened sky, the shake, the rings and the halo of dots
-            // bursting across the screen are the blow)
+            // wash, milk would be a pale green one — the lance striking the
+            // roof in the darkened sky, the shake, the rings and the halo of
+            // dots bursting across the screen are the blow)
             if (R.startle) R.startle(Bld.cx(tc), Bld.cy(tc), 14);
             TX.sound('cardHall');
           }
-          const W = R.cv.width, H = R.cv.height, A = TX.scr(D.cx, D.gy), apex = TX.scr(D.cx, D.gy - D.hd);
+          const W = R.cv.width, H = R.cv.height, A = TX.scr(D.cx, D.gy), roof = TX.scr(D.cx, D.roof), apex = TX.scr(D.cx, D.gy - D.hd);
+          const unit = Math.max(2, Math.round(2 * A.z));      // the art's own pixel, in device px
           // the sky darkens for it, and lifts after
           const veil = p < 0.25 ? cl(p / 0.25) : p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.3);
           if (veil > 0) { g.fillStyle = 'rgba(12,8,24,' + stp(0.3 * veil, 6) + ')'; g.fillRect(0, 0, W, H); }
           g.save();
-          // the pillar: down from the top of the sky onto the hall, held, then
-          // a thread, then gone — the card's light (R.glow: what stands in it
-          // turns gold, then cream), a white-hot thread at its heart
+          // the lance: down out of the sky onto the roof, held, drawn in to a thread, gone
           const down = cl((p - 0.03) / (imp - 0.03)), narrow = p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.26);
-          if (down > 0 && narrow > 0) {
-            const bottom = A.y * eo(down), wide = D.rx * 2 * A.z;
-            for (const [wf, sv] of [[1.25, 0.5], [0.7, 0.7], [0.3, 0.9], [0.08, 1]]) {
-              const ww = Math.max(2, Math.round(wide * wf * narrow / 2) * 2);
-              R.glow(g, sv, () => g.fillRect(Math.round(A.x - ww / 2), 0, ww, Math.round(bottom)));
-            }
-            const hw = Math.max(2, Math.round(wide * 0.03 * narrow / 2) * 2);
-            R.glowHot(g, 0.75, () => g.fillRect(Math.round(A.x - hw / 2), 0, hw, Math.round(bottom)));
-          }
-          // rays from the dome's crown, turning slowly, while it rises and
-          // holds — NARROW bands of the card's light (added, they were lime;
-          // laid solid at their old width across the meadow, orange slabs)
+          if (down > 0 && narrow > 0) U.lance(g, A.x, roof.y * eo(down), TL * 1.25 * A.z * narrow, TL * 0.4 * A.z * narrow, unit);
+          // rays break from the crown, turning slowly: SHORT stepped dashes of
+          // the gold's ink near it, fading down the ramp — run across the whole
+          // screen as wedges of light they read as orange road lines
           if (p > imp && p < 0.9) {
-            const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3);
-            const rot = s.t * 0.12, px = Math.max(2, Math.round(A.z * 2));
-            for (let i = 0; i < 14; i++)
-              R.glow(g, (i % 2 ? 0.4 : 0.6) * k, () => U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.012 + (i % 2) * 0.006, px, W, H));
+            const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3), rot = s.t * 0.12;
+            const r0 = D.rx * 0.45 * A.z, step = unit * 5;
+            for (let i = 0; i < 16; i++) {
+              const a = rot + i / 16 * Math.PI * 2, long = i % 2 ? 3 : 5;
+              for (let d = 0; d < long; d++) {
+                if (!R.inkOn(g, k * (1 - d / long) * (i % 2 ? 0.7 : 1))) break;
+                const r = r0 + d * step;
+                for (let u = 0; u < 2; u++)
+                  g.fillRect(Math.round((apex.x + Math.cos(a) * (r + u * unit)) / unit) * unit, Math.round((apex.y + Math.sin(a) * (r + u * unit)) / unit) * unit, unit, unit);
+              }
+            }
           }
           // a halo of hard dots bursting out across the whole screen at the blow
           if (p > imp && p < imp + 0.35) {
-            const q = (p - imp) / 0.35, rr = q * Math.hypot(W, H) * 0.7, px = Math.max(2, Math.round(A.z * 2));
+            const q = (p - imp) / 0.35, rr = q * Math.hypot(W, H) * 0.7, px = unit;
             const n = Math.min(220, Math.max(24, Math.round(rr / (px * 3))));
             if (R.inkOn(g, 1 - q)) for (let i = 0; i < n; i++) {
               const th = i / n * Math.PI * 2;
-              g.fillRect(Math.round((A.x + Math.cos(th) * rr) / px) * px, Math.round((A.y + Math.sin(th) * rr * 0.6) / px) * px, px, px);
+              g.fillRect(Math.round((roof.x + Math.cos(th) * rr) / px) * px, Math.round((roof.y + Math.sin(th) * rr * 0.6) / px) * px, px, px);
             }
           }
           g.restore();

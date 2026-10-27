@@ -88,8 +88,11 @@
    the meat in Units.damage, Units.workReport), Bld.dailyProduction,
    Bld.effCost / place / finishUpgrade / finishWallUpgrade / update (the wall
    works), AI.daily's hall trickle, UI.panelSub / wonderSavedLine,
-   R.drawCardGround / cardBldLooks / drawCardBld (the ground pass and the
-   building loop's card hooks) and DeckUI._dest (an effect's own dest).
+   R.drawCardGround / cardBldLooks / drawCardBld / cardHeldLevels (the ground
+   pass and the building loop's card hooks — R.wornSprite's held level and
+   the work-site branch's held stage), GrowFX.plaque / frame (the acts'
+   captions and the works brought into view) and DeckUI._dest (an effect's
+   own dest).
 
      node tests/deck-growth.mjs      # exits non-zero on any regression */
 
@@ -1542,6 +1545,368 @@ await p.evaluate(() => {
   ck('andItsHearthFlares', r.flare, 'a flame at the hall\'s own fire on the play');
   ck('andEachHandsNextFloatCarriesTheBonus', r.first === '+wood ×1.4' && r.second === '+wood' && r.none === '+wood',
     `"${r.first}", then "${r.second}"; with no festival "${r.none}"`);
+}
+
+// ---------------- 13. THE LOOKS SPEAK THE HOUSE STYLE (the five-player playtest's judges) ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-style');
+    Screens.show('playing'); S.paused = true;
+    const { P: tc } = __g.flat();
+    const town = [__g.bld('P', 'house', 8, 4), __g.bld('P', 'house', 4, 8), __g.bld('P', 'barracks', 9, 8)];
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc) + 1.5, Bld.cy(tc) + 1.5);
+    G.updateVisibility();
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+    let rec = null;
+    P2.fillRect = function (x, y, w, h) { if (rec && (!rec.cv || this.canvas === rec.cv)) rec.push([x, y, w, h, this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return fr.apply(this, arguments); };
+    try {
+      /* (a) THE DAWN'S RAYS ARE SHORT DASHES OF INK NEAR THE SUN: every mark
+         opaque and source-over (a wedge of the card's light run down the
+         whole screen read as an orange road line, and its faint edge over
+         the grass sampled olive-mustard), every mark one cell, and none
+         farther from the sun than its halo and a sixth of the screen */
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d'), ox = c.width / 2, oy = 300, H = c.height;
+      rec = []; rec.cv = c;
+      GrowFX.rays(g, ox, oy, 15, 0.17, 'gold', 0.9, 1.0, 0.215);
+      const gr = Math.max(2, Math.round(2 * R.cam.z * (R.dpr || 1)));
+      out.rayMarks = rec.length;
+      out.rayLight = rec.filter(m => m[4] !== 'source-over' || m[5] < 1).length;
+      out.rayBig = rec.filter(m => m[2] > gr || m[3] > gr).length;
+      out.rayReach = +(rec.reduce((mx, m) => Math.max(mx, Math.hypot(m[0] + m[2] / 2 - ox, m[1] + m[3] / 2 - oy)), 0) / H).toFixed(3);
+      /* (b) THE GOLDEN AGE IS SEEN FOR ALL TWENTY DAYS: with the age running
+         (its play long over), every roof in view glints in its turn — a gold
+         star with a white-hot heart — and sheds gold, over three seconds;
+         the first cut left two faint specks a roof and nothing else */
+      __g.live('golden_age', 20);
+      R.cardShows = [];
+      const GA = Deck.FX.golden_age, hot = R.LIGHT.TONE.gold.hot.toLowerCase();
+      const dl = GA.drawLive;
+      let depth = 0;
+      GA.drawLive = function () { depth++; try { return dl.apply(this, arguments); } finally { depth--; } };
+      const pn = performance.now;
+      rec = []; rec.cv = R.cv;
+      const live = [];
+      P2.fillRect = function (x, y, w, h) { if (depth && this.canvas === R.cv) live.push(String(this.fillStyle).toLowerCase()); return fr.apply(this, arguments); };
+      try { for (let k = 0; k < 30; k++) { performance.now = () => 5000 + k * 100; R.draw(0.1); } }
+      finally { performance.now = pn; GA.drawLive = dl; }
+      const inView = S.buildings.filter(z => z.owner === 'P' && R.onScreen(Bld.cx(z), Bld.cy(z))).length;
+      out.inView = inView;
+      out.liveMarks = live.length;
+      out.glintHearts = live.filter(c0 => c0 === hot).length;
+      rec = null;
+    } finally { P2.fillRect = fr; }
+    return out;
+  });
+  ck('theDawnsRaysAreShortDashesOfInk', r.rayMarks > 30 && r.rayLight === 0 && r.rayBig === 0 && r.rayReach <= 0.215 + 0.17 + 0.02,
+    `${r.rayMarks} marks, ${r.rayLight} added or translucent, ${r.rayBig} bigger than a cell, the farthest ${r.rayReach} of the screen from the sun`);
+  ck('theGoldenAgeIsSeenForAllTwentyDays', r.inView >= 3 && r.glintHearts >= r.inView && r.liveMarks >= 12 * r.inView,
+    `${r.inView} buildings in view: ${r.glintHearts} glints, ${r.liveMarks} marks over three seconds`);
+}
+
+// ---------------- 13b. THE BLIGHT'S PALL IS WEATHER, NOT A WIPE ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-blight-style'); const { P, A } = __g.flat();
+    Screens.show('playing'); S.paused = true;
+    R.cam.z = 1.7;
+    const BL = Deck.FX.blight;
+    // the pall's sky drawn alone on a clean canvas (no art has touched it, so
+    // it can be read even from file://), rolling straight up the screen
+    const sky = (s, pp) => {
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d');
+      s.t = pp * BL.show.ms / 1000;
+      BL.show.draw.call(BL, g, s, pp, 1 / 30, 'sky');
+      return { c, d: g.getImageData(0, 0, c.width, c.height).data };
+    };
+    /* (a) ITS FACE IS RAGGED AND IT IS NEAR-OPAQUE: down each column, the
+       first cell of the pall from the side it rolls toward — a ruled line
+       puts most columns' first cell on one row (the first cut's threshold
+       jumped where the depth crossed zero: one straight line across the
+       screen, a screen wipe); and the pall's cells are laid near-opaque
+       (half-clear green-greys over the meadow read as camouflage) */
+    {
+      R.centerOn(CFG.W / 2, CFG.H / 2);
+      const { c, d } = sky({ id: 'blight', dx: 0, dy: -1, ms: BL.show.ms }, 0.4);
+      const cell = Math.max(4, Math.round(2 * R.cam.z * (R.dpr || 1))), rows = new Map(), alphas = [];
+      let cols = 0;
+      for (let x = Math.floor(cell / 2); x < c.width; x += cell) {
+        for (let y = 0; y < c.height; y += cell) {
+          const a = d[(y * c.width + x) * 4 + 3];
+          if (a > 0) { const k = Math.floor(y / cell); rows.set(k, (rows.get(k) || 0) + 1); cols++; break; }
+        }
+      }
+      for (let i = 3; i < d.length; i += 4 * 97) if (d[i] > 0) alphas.push(d[i]);
+      alphas.sort((u, v) => u - v);
+      out.cols = cols;
+      out.modal = cols ? Math.max(...rows.values()) / cols : 1;
+      out.alphaMedian = alphas.length ? alphas[alphas.length >> 1] : 0;
+    }
+    /* (b) WITH NO FIELD OF THEIRS IN VIEW THE PALL IS SENT, and seen to go:
+       it gathers over the view and rolls off the screen toward the rival,
+       leaving the view clear — the first cut swept the player's own town and
+       showed nothing of where it went */
+    {
+      R.centerOn(Bld.cx(P), Bld.cy(P));
+      G.updateVisibility();
+      R.cardShows = []; S.deck.fx = [];
+      Deck.play('blight');
+      const s0 = R.cardShows.find(s => s.id === 'blight');
+      out.awayHome = !!s0 && s0.away === 1;
+      // their farm in sight and on the screen: the pall sweeps over it instead
+      const farm = __g.bld('A', 'farm', A.x - 3, A.y + 1);
+      R.centerOn(farm.x + 0.5, farm.y + 0.5);
+      G.vis[MapGen.idx(farm.x, farm.y)] = 1;
+      R.cardShows = []; S.deck.fx = [];
+      Deck.play('blight');
+      const s1 = R.cardShows.find(s => s.id === 'blight');
+      out.overFields = !!s1 && !s1.away;
+      R.cardShows = [];
+      R.centerOn(CFG.W / 2, CFG.H / 2);
+      // sent up the screen: its covered mass climbs, and at the end the screen is clear
+      const mass = pp => {
+        const { c, d } = sky({ id: 'blight', dx: 0, dy: -1, away: 1, ms: BL.show.ms }, pp);
+        let n = 0, sy = 0;
+        for (let y = 0; y < c.height; y += 8) for (let x = 0; x < c.width; x += 8) if (d[(y * c.width + x) * 4 + 3] > 150) { n++; sy += y; }
+        return { cover: n / ((c.height / 8) * (c.width / 8)), y: n ? sy / n / c.height : 1 };
+      };
+      const m1 = mass(0.3), m2 = mass(0.6), m3 = mass(0.95);
+      out.away = { early: +m1.cover.toFixed(3), mid: +m2.cover.toFixed(3), end: +m3.cover.toFixed(3), y1: +m1.y.toFixed(3), y2: +m2.y.toFixed(3) };
+      out.rollsOff = m1.cover > 0.2 && m2.y < m1.y - 0.05 && m3.cover < 0.02;
+    }
+    return out;
+  });
+  ck('theBlightsFaceIsRaggedAndItsPallNearOpaque', r.cols > 40 && r.modal < 0.4 && r.alphaMedian >= 200,
+    `${r.cols} columns, ${(r.modal * 100).toFixed(1)}% of them on the commonest row; the pall's median alpha ${r.alphaMedian}/255`);
+  ck('withNoFieldInViewThePallIsSentAndSeenToGo', r.awayHome && r.overFields && r.rollsOff,
+    `at home: sent ${r.awayHome}; their field in sight: sweeps over it ${r.overFields}; ${JSON.stringify(r.away)}`);
+}
+
+// ---------------- 13c. THE AGE OF MARBLE SAYS WHAT IT DID ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    const MB = Deck.FX.age_of_marble;
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, ft = P2.fillText;
+    const fa = R.flashAt, gw = R.goldWash;
+    let flashes = 0, washes = 0;
+    R.flashAt = function () { flashes++; return fa.apply(this, arguments); };
+    R.goldWash = function () { washes++; return gw.apply(this, arguments); };
+    try {
+      /* (a) NO WASH, AND THE PRICE IS SAID ON SCREEN: with no works laid the
+         play throws no whole-frame flash and the act grades nothing (the first
+         cut faded the whole view to a cream fog for the act, which read as a
+         render failure), and its own caption strikes the old price through to
+         the new one — the price the card changed was never shown anywhere */
+      __g.fresh('growth-marble-style', 'calm'); const { P } = __g.flat();
+      Screens.show('playing'); S.paused = true;
+      R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+      G.updateVisibility();
+      const was = Bld.effCost('P', 'wonder');
+      R.cardShows = [];
+      const play = Deck.play('age_of_marble');
+      const now = Bld.effCost('P', 'wonder');
+      const s = R.cardShows.find(z => z.id === 'age_of_marble');
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d'), texts = [], strikes = [], fills = new Set();
+      P2.fillText = function (t) { if (this.canvas === c) texts.push([String(t), String(this.fillStyle).toLowerCase()]); return ft.apply(this, arguments); };
+      P2.fillRect = function (x, y, w) {
+        if (this.canvas === c) { const col = String(this.fillStyle).toLowerCase(); fills.add(col); if (col === '#d0503a' && w > 0) strikes.push(w); }
+        return fr.apply(this, arguments);
+      };
+      try {
+        for (let k = 1; k < 20; k++) {
+          const pp = k / 20; s.t = pp * MB.show.ms / 1000;
+          for (const L of ['world', 'sky']) { g.save(); MB.show.draw.call(MB, g, s, pp, 1 / 30, L); g.restore(); }
+        }
+      } finally { P2.fillText = ft; P2.fillRect = fr; }
+      out.flashes = flashes; out.washes = washes;
+      const said = t => texts.some(([u]) => u === t);
+      out.oldSaid = ['food', 'wood', 'stone', 'gold'].filter(k => was[k] && said(String(was[k]))).length;
+      out.newSaid = ['food', 'wood', 'stone', 'gold'].filter(k => now[k] && texts.some(([u, col]) => u === String(now[k]) && col === '#ffd45e')).length;
+      out.struck = strikes.length;
+      /* (b) THE MARBLE IS STONE: its blocks are shaded in the stone ramp (a
+         dark joint, the face, its flank) — the first cut's were flat white
+         rectangles in a grey frame, which read as icons laid on the map */
+      const ST = ART.PALETTE.stone.map(x => x.toLowerCase());
+      out.stoneSteps = [0, 2, 3, 4].filter(i => fills.has(ST[i])).length;
+      // (c) the toast says what happened: the price fell
+      out.msgPrice = play.ok && typeof play.msg === 'string' && /quarter less/.test(play.msg) ? play.msg : null;
+      /* (d) LAID, WHAT CAME BACK IS SAID, and the works are brought to the
+         middle of the view before the card flies — at the screen's top edge
+         the courses landed under the toast */
+      __g.fresh('growth-marble-style2', 'calm'); const q = __g.flat();
+      Screens.show('playing'); S.paused = true;
+      for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 20000;
+      const w = Bld.place('P', 'wonder', q.P.x + 6, q.P.y + 6, { noAutoAssign: true }); Bld._block = null;
+      out.paid = !!(w && w.paid && w.paid.food > 0);
+      R.cam.z = 1.7;
+      const TL = CFG.TILE, z = R.cam.z;
+      R.centerOn(Bld.cx(w), Bld.cy(w));
+      R.cam.y = Bld.cy(w) * TL - ((R.topReserve || 0) + 30) / z;   // the works just under the top bar
+      const pt = DeckUI._dest('tc', 'age_of_marble');
+      const top = (R.topReserve || 0) + 80, bot = R.viewH() - (R.bottomReserve || 0) - 30;
+      out.framedY = +((pt.y - top) / (bot - top)).toFixed(3);
+      out.framedX = +(pt.x / R.viewW()).toFixed(3);
+      const r0 = Object.assign({}, S.res);
+      const lay = Deck.play('age_of_marble');
+      const back = {}; for (const k in r0) if (S.res[k] > r0[k]) back[k] = S.res[k] - r0[k];
+      out.msgBack = lay.ok && typeof lay.msg === 'string' && Object.keys(back).length && lay.msg.includes(Bld.costStr(back)) && /comes back/.test(lay.msg) ? lay.msg : (lay.msg || null);
+      out.backOk = !!(lay.ok && Object.keys(back).length && typeof lay.msg === 'string' && lay.msg.includes(Bld.costStr(back)));
+    } finally { R.flashAt = fa; R.goldWash = gw; }
+    return out;
+  });
+  ck('theAgeOfMarbleWashesNothingOverTheFrame', r.flashes === 0 && r.washes === 0,
+    `${r.flashes} whole-frame flashes, ${r.washes} grades over the act`);
+  ck('withNoWorksItsCaptionStrikesTheOldPriceToTheNew', r.oldSaid === 4 && r.newSaid === 4 && r.struck >= 4,
+    `old price said for ${r.oldSaid}/4 goods, new price in gold for ${r.newSaid}/4, ${r.struck} strike-throughs`);
+  ck('theMarbleIsShadedStone', r.stoneSteps >= 3, `${r.stoneSteps} of the stone ramp's steps in the blocks`);
+  ck('itsToastSaysWhatChanged', !!r.msgPrice && r.backOk, `none laid: "${r.msgPrice}"; laid: "${r.msgBack}"`);
+  ck('laidTheWorksAreBroughtToTheMiddleFirst', r.paid && r.framedY > 0.2 && r.framedY < 0.8 && r.framedX > 0.2 && r.framedX < 0.8,
+    `the works land at ${r.framedX} across, ${r.framedY} down the open view`);
+}
+
+// ---------------- 13d. ENLIGHTENMENT RAISES THE TOWN ONE BUILDING AT A TIME ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-enl-style'); const { P: tc } = __g.flat();
+    Screens.show('playing'); S.paused = true;
+    const town = [[8, 4], [4, 8], [8, 8], [11, 5], [6, 11], [11, 10]].map(([x, y]) => __g.bld('P', 'house', x, y));
+    R.cam.z = 1.2; R.centerOn(Bld.cx(tc) + 3, Bld.cy(tc) + 3);
+    G.updateVisibility();
+    R.cardShows = [];
+    const TL = CFG.TILE, all = [tc].concat(town);
+    // the art each one wore before the card: what the act must hold until its beam lands
+    const was = new Map(all.map(b => [b.id, R.bldSprite(b, 1)]));
+    const play = Deck.play('enlightenment');
+    out.msg = play.ok ? play.msg || null : 'refused: ' + play.why;
+    out.levels = all.map(b => b.level).join('');
+    const s = R.cardShows.find(z => z.id === 'enlightenment');
+    /* (a) THE STATE CHANGES AT ONCE, THE PICTURE IN TURN: through the real
+       building pass, each building is drawn in its OLD art until its own
+       beam comes down on it — and they rise one at a time (the first cut
+       swapped the whole town's art the frame the card landed, under one
+       pillar, and the run of the light to each building lit art that had
+       already changed) */
+    const bb = R.blitBld;
+    let drawn = null;
+    R.blitBld = function (g, spr, x, y) { if (drawn) drawn.push([spr, x, y]); return bb.apply(this, arguments); };
+    const counts = [];
+    try {
+      for (let k = 0; k < 100; k++) {
+        const pp = k / 100; s.t = pp * s.ms / 1000;
+        drawn = [];
+        R.draw(0);
+        counts.push(all.filter(b => drawn.some(d => d[0] === was.get(b.id) && d[1] === b.x * TL && d[2] === b.y * TL)).length);
+      }
+    } finally { R.blitBld = bb; drawn = null; }
+    out.first = counts[2]; out.last = counts[99];
+    let worst = 0, up = 0;
+    for (let k = 1; k < counts.length; k++) { worst = Math.max(worst, counts[k - 1] - counts[k]); if (counts[k] > counts[k - 1]) up++; }
+    out.worstDrop = worst; out.rises = up;
+    out.counts = counts.filter((c, k) => k % 10 === 0).join(',');
+    /* (b) THE SUN AT THE TOP OF THE WORLD COMES AND GOES BY SIZE: its gold
+       discs keep their strength as it leaves (faded through the faint steps
+       the gold went olive) and grow smaller instead */
+    const ED = Deck.FX.enlightenment, gl = R.glow, pd = R.pxDisc, discs = [];
+    let a = null;
+    R.glow = function (g, s0) { const was0 = a; a = s0; try { return gl.apply(this, arguments); } finally { a = was0; } };
+    R.pxDisc = function (g, x, y, rr) { if (a != null) discs.push([rr, a]); return pd.apply(this, arguments); };
+    try {
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d');
+      for (const pp of [0.4, 0.95]) {
+        discs.length = 0;
+        const s2 = { id: 'enlightenment', x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + 2, tc: tc.id, items: [], maxD: 1, ms: ED.show.ms, t: pp * ED.show.ms / 1000 };
+        ED.show.draw.call(ED, g, s2, pp, 1 / 30, 'sky');
+        out['sun' + pp] = { r: discs.length ? Math.max(...discs.map(d => d[0])) : 0, a: discs.length ? Math.min(...discs.map(d => d[1])) : 0 };
+      }
+    } finally { R.glow = gl; R.pxDisc = pd; }
+    return out;
+  });
+  ck('eachBuildingRisesInItsOwnBeamOneAtATime', r.levels === '2222222' && r.first === 7 && r.last === 0 && r.worstDrop === 1 && r.rises === 0,
+    `levels ${r.levels} at once; drawn in their old art (every tenth of the act): ${r.counts}; most to rise in one step ${r.worstDrop}`);
+  ck('itsToastSaysWhatRose', /^✨ Town Center Lv 2 — 6 buildings rose with it/.test(r.msg || ''), `"${r.msg}"`);
+  ck('itsSunLeavesBySizeNotByFading', r['sun0.4'].a >= 0.6 && r['sun0.95'].a >= 0.6 && r['sun0.95'].r > 0 && r['sun0.95'].r < r['sun0.4'].r,
+    `the sun at 0.4: ${JSON.stringify(r['sun0.4'])}; leaving at 0.95: ${JSON.stringify(r['sun0.95'])}`);
+}
+
+// ---------------- 13e. WONDER'S FOUNDATION: THE OLD STONES, UNDER THE WORKS, AND WHAT THEY GAVE ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    const FD = Deck.FX.wonders_foundation, STONE = ['#2e2a22', '#5f574a', '#7d7363', '#9a8f7a', '#b3a78f'];
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, ft = P2.fillText;
+    // one layer of a show drawn on a clean canvas: how many of its marks are
+    // the old stones' own colours, and what it wrote
+    const layerOf = (s, pp, layer) => {
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d'), o = { stone: 0, texts: [] };
+      P2.fillRect = function () { if (this.canvas === c && STONE.includes(String(this.fillStyle).toLowerCase())) o.stone++; return fr.apply(this, arguments); };
+      P2.fillText = function (t) { if (this.canvas === c) o.texts.push(String(t)); return ft.apply(this, arguments); };
+      try { s.t = pp * s.ms / 1000; g.save(); FD.show.draw.call(FD, g, s, pp, 1 / 30, layer); g.restore(); }
+      finally { P2.fillRect = fr; P2.fillText = ft; }
+      return o;
+    };
+    /* (a) NOT LAID YET, THE FIRST STONES SURFACE AND SAY SO: the Wonder's 3×3
+       foundation lifts out of the grass before the hall and the act's plaque
+       says the first stones wait — the first cut drew a ring of gold dots
+       sinking into the hall and said nothing on the screen */
+    __g.fresh('growth-found-style', 'calm'); const { P: tc } = __g.flat();
+    Screens.show('playing'); S.paused = true;
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    G.updateVisibility();
+    R.cardShows = [];
+    const wait = Deck.play('wonders_foundation');
+    out.waitMsg = wait.ok ? wait.msg || null : 'refused';
+    const sw = R.cardShows.find(z => z.id === 'wonders_foundation');
+    const wl = (FD.show.layers || []).map(L => layerOf(Object.assign({}, sw), 0.5, L));
+    out.waitStone = wl.reduce((n, o) => n + o.stone, 0);
+    out.waitSaid = wl.some(o => o.texts.some(t => /FIRST STONES WAIT/.test(t))) && wl.some(o => o.texts.some(t => /FOR YOUR WONDER/.test(t)));
+    /* (b) LAID BY THE GROUND BREAKING: the site holds the stage it showed and
+       rises through what it gained under the pillar, through the real
+       building pass (the first cut's stage jumped the instant the ground
+       broke, under nothing); the old stones stand in the GROUND pass, under
+       the works, never drawn over them; and since no card is landing then,
+       a note says what was gained */
+    for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 20000;
+    const logs = [], gl = G.log;
+    G.log = function (msg, kind) { logs.push([String(msg), kind]); return gl.apply(this, arguments); };
+    let w;
+    try { w = Bld.place('P', 'wonder', tc.x + 3, tc.y + 3, { noAutoAssign: true }); Bld._block = null; }
+    finally { G.log = gl; }
+    out.laidStage = w ? Bld.stageOf(w) : null;
+    out.note = logs.filter(([m, k]) => k === 'note' && /days of work/.test(m) && /% raised/.test(m)).map(([m]) => m)[0] || null;
+    const sl = R.cardShows.find(z => z.id === 'wonders_foundation' && !z.pending);
+    R.cardShows = sl ? [sl] : [];
+    R.centerOn(Bld.cx(w), Bld.cy(w));
+    G.updateVisibility();
+    const ds = Assets.drawSprite, seen = {};
+    let rec = null;
+    Assets.drawSprite = function (g, key) { if (rec && /^misc\/wonderBuild/.test(key)) rec.push(key); return ds.apply(this, arguments); };
+    try {
+      for (const pp of [0.2, 0.7]) { rec = []; sl.t = pp * sl.ms / 1000; R.draw(0); seen[pp] = rec.join(','); }
+    } finally { Assets.drawSprite = ds; rec = null; }
+    out.stages = seen;
+    const world = layerOf(Object.assign({}, sl, { dust: 1 }), 0.5, 'world'), ground = (FD.show.layers || []).includes('ground') ? layerOf(Object.assign({}, sl, { dust: 1 }), 0.5, 'ground') : { stone: 0 };
+    out.stonesWorld = world.stone; out.stonesGround = ground.stone;
+    // (c) PLAYED ON A STANDING SITE, its toast says what the works gained
+    const play = Deck.play('wonders_foundation');
+    out.playMsg = play.ok ? play.msg || null : 'refused: ' + play.why;
+    return out;
+  });
+  ck('notLaidYetTheFirstStonesSurfaceAndSaySo', r.waitStone > 30 && r.waitSaid && /first stones wait for your Wonder/.test(r.waitMsg || ''),
+    `${r.waitStone} marks of old stone, said on screen ${r.waitSaid}; "${r.waitMsg}"`);
+  ck('laidTheSiteRisesThroughItsStagesUnderTheBeam', r.laidStage === 1 && r.stages[0.2] === 'misc/wonderBuild1' && r.stages[0.7] === 'misc/wonderBuild2',
+    `stage ${r.laidStage} at once; drawn ${JSON.stringify(r.stages)}`);
+  ck('theOldStonesStandUnderTheWorks', r.stonesGround > 30 && r.stonesWorld === 0,
+    `${r.stonesGround} marks of stone in the ground pass, ${r.stonesWorld} drawn over the works`);
+  ck('itSaysWhatTheWorksGained', !!r.note && /gains \d+ days of work — \d+% raised/.test(r.playMsg || ''),
+    `ground broken: "${r.note}"; played on the works: "${r.playMsg}"`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
