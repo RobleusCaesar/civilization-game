@@ -813,10 +813,22 @@ const Deck = {
 .ccard.unknown .cc-art { background: radial-gradient(ellipse at 50% 40%, #241b12, #0b0805 80%); }
 .ccard.unknown .cc-f { filter: brightness(.42) saturate(.4); }
 .ccard.unknown .cc-nm { font-size: calc(var(--u) * 16); }
-.ccard .cc-foil { inset: 0; overflow: hidden; pointer-events: none; -webkit-mask-image: var(--fr); mask-image: var(--fr);
-  -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+/* THE FOIL RUNS ON THE GOLD, NEVER ON THE NAME PLATE (playtest earn, f-sheen):
+   masked by the frame alone, the sheen crossed the plate too — and inside the
+   mask's own isolated group its overlay blend had nothing to blend with, so
+   over the dark plate it was a hard-edged grey slab every 3.2 s that read as
+   a rendering fault. The mask is now the frame MINUS the plate (Deck.PLATE,
+   exclude), and the band is three hard steps of light rather than a soft
+   vector gradient. */
+.ccard .cc-foil { inset: 0; overflow: hidden; pointer-events: none;
+  -webkit-mask-image: var(--fr), linear-gradient(#000, #000); mask-image: var(--fr), linear-gradient(#000, #000);
+  -webkit-mask-size: 100% 100%, calc(var(--u) * 144) calc(var(--u) * 42); mask-size: 100% 100%, calc(var(--u) * 144) calc(var(--u) * 42);
+  -webkit-mask-position: 0 0, calc(var(--u) * 16) calc(var(--u) * 184); mask-position: 0 0, calc(var(--u) * 16) calc(var(--u) * 184);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-composite: xor; mask-composite: exclude; }
 .ccard .cc-foil::before { content: ""; position: absolute; top: -10%; bottom: -10%; left: -60%; width: 60%;
-  background: linear-gradient(105deg, transparent, rgba(255,255,240,.75) 50%, transparent); mix-blend-mode: overlay;
+  background: linear-gradient(105deg, transparent 0 30%, rgba(255,250,225,.2) 30% 40%, rgba(255,250,225,.42) 40% 60%,
+    rgba(255,250,225,.2) 60% 70%, transparent 70%);
   animation: ccSheen 3.2s cubic-bezier(.4,.1,.3,1) infinite; }
 @keyframes ccSheen { 0% { transform: translateX(0) } 60%, 100% { transform: translateX(380%) } }
 @media (prefers-reduced-motion: reduce) {

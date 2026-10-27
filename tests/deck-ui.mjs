@@ -1278,6 +1278,52 @@ ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 &&
     (specky.map(([t, s]) => `${t}: speck at ${s.join(' / ')}`).join('; ') || 'no specks') + (rim.length ? `; stone rim lit at ${rim.join(' ')}` : '; the stone rim is its outline'));
 }
 
+/* ================= 14. THE FOIL NEVER CROSSES THE NAME PLATE =================
+   The Enlightenment foil's sheen ran over the dark name plate too, and inside
+   the mask's isolated group its overlay blend had nothing to blend with — a
+   hard-edged grey slab across the plate every 3.2 s (playtest earn, f-sheen-
+   11/12). The sheen is held at every point of its sweep and the plate is
+   read off the screen with the foil and without it: the plate must not
+   change, while the gold frame beside it still shines. */
+{
+  const { ctx: fctx, p: fp } = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const box = await fp.evaluate(async () => {
+    const f = Deck.face('dragonfire', { w: 264 });
+    f.id = '__foil';
+    f.style.position = 'fixed'; f.style.left = '20px'; f.style.top = '20px'; f.style.zIndex = 99999;
+    document.body.appendChild(f);
+    await new Promise(r => setTimeout(r, 900));
+    const r = f.getBoundingClientRect(), u = r.width / Deck.W, P = Deck.PLATE;
+    window.__sheen = document.getAnimations().filter(a => a.animationName === 'ccSheen' && a.effect && a.effect.target === f.querySelector('.cc-foil'));
+    for (const a of window.__sheen) a.pause();
+    // the plate's interior (inset two art pixels) and a strip of the gold frame beside it
+    return { plate: { x: r.left + (P.x + 2) * u, y: r.top + (P.y + 2) * u, width: (P.w - 4) * u, height: (P.h - 4) * u },
+      gold: { x: r.left + 2 * u, y: r.top + 60 * u, width: 8 * u, height: 100 * u }, n: window.__sheen.length };
+  });
+  const grab = async (clip) => (await fp.screenshot({ clip })).toString('base64');
+  const diff = (a, b) => fp.evaluate(async ([a, b]) => {
+    const dec = async s => { const im = new Image(); im.src = 'data:image/png;base64,' + s; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0); return g.getImageData(0, 0, c.width, c.height).data; };
+    const A = await dec(a), B = await dec(b);
+    let n = 0;
+    for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 9) n++;
+    return n;
+  }, [a, b]);
+  let plateHit = 0, goldShone = 0;
+  for (let t = 0; t <= 2000; t += 100) {
+    await fp.evaluate((t) => { for (const a of window.__sheen) a.currentTime = t; document.querySelector('#__foil .cc-foil').style.display = ''; }, t);
+    await fp.waitForTimeout(40);
+    const withP = await grab(box.plate), withG = await grab(box.gold);
+    await fp.evaluate(() => { document.querySelector('#__foil .cc-foil').style.display = 'none'; });
+    await fp.waitForTimeout(40);
+    const noP = await grab(box.plate), noG = await grab(box.gold);
+    plateHit = Math.max(plateHit, await diff(withP, noP));
+    goldShone = Math.max(goldShone, await diff(withG, noG));
+  }
+  await fctx.close();
+  ck('theFoilNeverCrossesTheNamePlate', box.n > 0 && plateHit === 0 && goldShone > 0,
+    `${box.n} sheen held through its sweep: plate pixels changed ${plateHit}; the gold frame still shines (${goldShone} px)`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 const pageErrs = errs.filter(e => !/ERR_FILE_NOT_FOUND/.test(e));
 if (pageErrs.length) console.log('PAGE ERRORS:', pageErrs.slice(0, 4));
