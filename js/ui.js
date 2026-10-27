@@ -2353,7 +2353,7 @@ const UI = {
       if (left) {
         const u = Units.get(this.sel.id), wb = u && this.villagerResBld(u);
         if (wb && wb.upgrading > 0) {
-          left.textContent = Math.ceil(wb.upgrading) + 'd';
+          left.textContent = Math.ceil(wb.upgrading / Units.buildRate(wb)) + 'd';   // at the pace the works really go
           const bar = document.getElementById('upresBar');
           if (bar) bar.style.width = Math.round(Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading))) * 100) + '%';
         }
@@ -2805,7 +2805,8 @@ const UI = {
       if (own && works) {
         // the works are standing: show the clock, and say plainly whose hands
         // it is waiting on. A span is reinforced by SAPPERS, like it was built.
-        const left = Math.max(0, br.upgrading).toFixed(1);
+        // the days left at the pace the works really go (a running card's quicker hands — Units.buildRate)
+        const left = Math.max(0, br.upgrading / Units.buildRate(br)).toFixed(1);
         html += `<span class="psub">⬆ Reinforcing to Lv ${br.upTo} — ${left} of ${br.upTotal} days left` +
           (onWorks ? ` · ${onWorks} sapper${onWorks > 1 ? 's' : ''} on site` : ' · <b>no sapper on site</b> — tap a sapper, then the bridge') +
           `</span>`;
@@ -3073,7 +3074,7 @@ const UI = {
         if (wb.upgrading > 0) {
           const frac = Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading)));
           html += `<div class="abtn cant" style="pointer-events:none">🏗 Upgrading ${rn} → Lv ${wb.level + 1}` +
-            `<small><span id="upresLeft">${Math.ceil(wb.upgrading)}d</span> left</small>` +
+            `<small><span id="upresLeft">${Math.ceil(wb.upgrading / Units.buildRate(wb))}d</span> left</small>` +
             `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
             `<div id="upresBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
         } else if (wb.level >= 3) {
