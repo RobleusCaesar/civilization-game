@@ -10757,8 +10757,9 @@ const R = {
       }
     }
     // …and what a card left on the world that is no timer: a kraken mid-act,
-    // the lost relic marked on the map (js/deckfx-rival.js)
-    if (S.deck && (S.deck.kraken || S.deck.relicMark) && window.Deck && Deck.drawRivalWorld) {
+    // the lost relic marked on the map, the buildings a spy marked for good
+    // (js/deckfx-rival.js)
+    if (S.deck && (S.deck.kraken || S.deck.relicMark || (S.deck.spied && S.deck.spied.length)) && window.Deck && Deck.drawRivalWorld) {
       g.save();
       try { Deck.drawRivalWorld(g, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card world', err); } }
       g.restore();
@@ -10981,14 +10982,23 @@ const R = {
      giving onto the next through a one-cell checker seam. Built once per
      size and colour at a quarter of the screen's resolution and blown up
      nearest-neighbour, so a cell is 4 device px; `a` scales it in quarter
-     steps. Screen space; it sets its own transform. */
+     steps. Screen space; it sets its own transform. `box` ({x0, y0, x1, y1},
+     device px) fits it to a part of the screen — the OPEN BAND between the
+     bars (openBand): drawn edge to edge, its top and bottom bands lay under
+     the HUD and only the two sides showed, as bars. */
   _vig: null,
-  stepVignette(g, rgb, a, lv, depth) {
+  openBand() {
+    const dpr = this.dpr || 1, W = this.cv.width, H = this.cv.height;
+    const y0 = Math.round((this.topReserve || 0) * dpr), y1 = H - Math.round((this.bottomReserve || 0) * dpr);
+    return { x0: 0, y0, x1: W, y1: Math.max(y0 + 8, y1) };
+  },
+  stepVignette(g, rgb, a, lv, depth, box) {
     a = Math.round(Math.max(0, Math.min(1, a || 0)) * 4) / 4;
     if (!a || !this.cv) return;
     lv = lv || [0, 0.22, 0.4, 0.58];
     depth = depth || 0.07;
-    const Q = 4, W = this.cv.width, H = this.cv.height, w = Math.ceil(W / Q), h = Math.ceil(H / Q);
+    const B = box || { x0: 0, y0: 0, x1: this.cv.width, y1: this.cv.height };
+    const Q = 4, W = Math.max(Q, B.x1 - B.x0), H = Math.max(Q, B.y1 - B.y0), w = Math.ceil(W / Q), h = Math.ceil(H / Q);
     const key = w + 'x' + h + ':' + rgb + ':' + lv.join(',') + ':' + depth;
     const cache = this._vig || (this._vig = {});
     let c = cache[key];
@@ -11009,9 +11019,10 @@ const R = {
     }
     g.save();
     g.setTransform(1, 0, 0, 1, 0, 0);
+    if (box) { g.beginPath(); g.rect(B.x0, B.y0, W, H); g.clip(); }
     g.imageSmoothingEnabled = false;
     g.globalAlpha = a;
-    g.drawImage(c, 0, 0, w * Q, h * Q);
+    g.drawImage(c, B.x0, B.y0, w * Q, h * Q);
     g.restore();
   },
   drawSummons(g, dt) {
@@ -14620,7 +14631,7 @@ const R = {
     this.drawHorns(g, dt);
     // THE CARD SYSTEM's world cues (js/deckfx.js) — nothing while no card is in play
     if (this.summons.length || this.cardShows.length ||
-        (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark))) this.drawCardWorld(g, dt);
+        (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark || (S.deck.spied && S.deck.spied.length)))) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 

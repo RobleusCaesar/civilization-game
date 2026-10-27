@@ -700,10 +700,10 @@ await p.evaluate(() => {
     out.tapSeen = !!(UI.sel && UI.sel.id === sneak.id);
     UI.deselect(); G.vis[MapGen.idx(25, 10)] = 0;
     // the silhouettes are drawn while the spy sits there (render state only)
-    let sil = 0; const silF = Deck.FX.spy_hall.silhouette;
-    Deck.FX.spy_hall.silhouette = function (img) { const c = silF.call(this, img); if (c) sil++; return c; };
+    let sil = 0; const silF = Deck.FX.spy_hall.outlined;
+    Deck.FX.spy_hall.outlined = function (img) { const c = silF.call(this, img); if (c) sil++; return c; };
     S.dayT += 2000;   // they fade in over the first moments of game time after the play
-    try { R.draw(1 / 30); } finally { Deck.FX.spy_hall.silhouette = silF; }
+    try { R.draw(1 / 30); } finally { Deck.FX.spy_hall.outlined = silF; }
     out.sil = sil;
     out.inS = /silhouette|_sil/.test(JSON.stringify(S.deck));
     // a save mid-watch
@@ -719,7 +719,7 @@ await p.evaluate(() => {
     S.draft = S.draft || {}; S.draft.rival = S.draft.rival || {};
     S.draft.rival.pick = { key: 'forager', roll: { food: 20, wood: 20, stone: 15, kick: 30, pm: 1.12 } };
     const fm = Deck.play('spy_hall').msg;
-    out.forager = { msg: fm, theirs: /Forager — mixed stores; their folk walk 12% faster/.test(fm) && !/\byour\b/.test(fm.split('drafted')[1] || 'your'),
+    out.forager = { msg: fm, theirs: /they drafted the Forager origin card — for them: “mixed stores; their folk walk 12% faster for good”\./.test(fm) && !/\byour\b/.test(fm.split('drafted')[1] || 'your'),
       naive: /\byour\b/.test(Cards.DEFS.forager.text(S.draft.rival.pick.roll)) };
     // a save from before the draft: something true about the origin card
     S.draft.rival.pick = null;
@@ -1377,6 +1377,258 @@ await p.evaluate(() => {
   ck('oneBeastToACluster', r.cluster.body === 2 && r.cluster.arm === 1 && r.cluster.act === 2,
     `three hulls, two of them side by side: ${r.cluster.body} bodies and ${r.cluster.arm} arm (the naive draw: 3 bodies); with the beast art, its act drawing is asked ${r.cluster.act} times`);
   ck('theShowsAreRenderStateOnly', !r.inS);
+}
+
+// ---------------- 9. THE ACTS' LOOKS (the playtest's fix list) ----------------
+/* What the playtest saw, pinned on the drawn picture:
+     THE PACT      sealed with the card's OWN clasped forearms (the old stamp
+                   was "a crude palm"), at a whole number of device px a cell;
+                   its drum pulses the edges of the OPEN BAND on all four
+                   sides (drawn edge to edge, only the side bars showed); a
+                   band it turns flies a war banner over itself and pings the
+                   minimap where it marches
+     THE SUN       no dotted ring thrown off the disc (the old burst read as a
+                   dashed UI ring), nothing light-ADDED, the corona clear of
+                   the toasts and the minimap and the title under it, and no
+                   small black sun left hanging over the map for the four days
+     THE SPY       its eye's white is SOLID at the game's own fractional zoom
+                   (it came apart into a net of squares), their people drawn
+                   as THEMSELVES in a dark outline (flat maroon blobs read as
+                   placeholders), the buildings it marked keep gold brackets
+                   in the fog after the ten days, its burst lands only on a
+                   town the player already knows, and the view goes home
+     ONE TITLE     every one of these acts letters its words through
+                   R.actTitle alone — Cinzel, a subtitle of 13 CSS px or more,
+                   below the toasts and the minimap */
+{
+  // the seal's art (the card face's own file), asked for and decoded before the act is drawn
+  await p.evaluate(() => { const fx = Deck.FX.barbarian_pact; if (fx.sealArt) fx.sealArt(); });
+  await p.waitForFunction(() => { const im = Deck.FX.barbarian_pact._sealImg; return !im || (im.complete && im.naturalWidth > 0); }, null, { timeout: 30000 }).catch(() => {});
+  const r = await p.evaluate(async () => {
+    const wait = ms => new Promise(f => setTimeout(f, ms));
+    const out = {};
+    __rv.fresh('rv-looks'); const { P, A } = __rv.flat(true);
+    Screens.show('playing'); S.paused = true;
+    G.freeVis = true; G.updateVisibility();
+    G.log('A toast stands up over the world while the acts play.', 'note', 60000);
+    await wait(60);
+    const g = R.cv.getContext('2d'), CW = R.cv.width, CH = R.cv.height, dpr = R.dpr;
+    // where the DOM's own chrome ends (the toasts, the minimap): measured here, not asked of R
+    const cvTop = R.cv.getBoundingClientRect().top;
+    let chrome = 0;
+    for (const id of ['toasts', 'miniWrap', 'miniToggle']) { const el = document.getElementById(id); if (el && el.offsetHeight) chrome = Math.max(chrome, (el.getBoundingClientRect().bottom - cvTop) * dpr); }
+    out.chrome = Math.round(chrome);
+    const fillsOf = (fn) => {
+      const fr = g.fillRect, rec = [];
+      g.fillRect = function (x, y, w, h) { const T = this.getTransform(); rec.push({ x: T.a * x + T.e, y: T.d * y + T.f, w: w * T.a, h: h * T.d, col: String(this.fillStyle), a: this.globalAlpha, op: this.globalCompositeOperation }); return fr.apply(this, arguments); };
+      try { fn(); } finally { g.fillRect = fr; }
+      return rec;
+    };
+    const drawShow = (id, s, ps, layer) => {
+      const sh = Deck.FX[id].show;
+      // (the sky is screen space: R.draw hands its sky pass an identity transform)
+      for (const pp of ps) { s.t = pp * s.ms / 1000; g.save(); if (layer === 'sky') g.setTransform(1, 0, 0, 1, 0, 0); try { sh.draw.call(Deck.FX[id], g, s, pp, 1 / 30, layer); } finally { g.restore(); } }
+    };
+    /* ONE TITLE: every word these acts letter, and where */
+    const texts = [], ft = g.fillText, at = R.actTitle;
+    let inTitle = 0, tops = [];
+    g.fillText = function (t) { texts.push({ t: String(t), font: this.font, inTitle: inTitle > 0 }); return ft.apply(this, arguments); };
+    if (at) R.actTitle = function () { inTitle++; try { const b = at.apply(this, arguments); if (b) tops.push(b.y0); return b; } finally { inTitle--; } };
+    const fresh = (id, data) => { R.cardShows.length = 0; return R.startCardShow(id, data); };
+    // THE PACT, its stamp, and a band it turns
+    let vig = [], sealDraws = 0;
+    const sv = R.stepVignette, di = g.drawImage;
+    if (sv) R.stepVignette = function (gg, rgb, a, lv, depth, box) { vig.push({ box: !!box, top: box ? box.y0 : 0, bot: box ? box.y1 : CH }); return sv.apply(this, arguments); };
+    const fx = Deck.FX.barbarian_pact, seals = new Set();
+    g.drawImage = function (img) {
+      if (fx._seal && (img === fx._seal || Object.values(fx._sealD || {}).includes(img))) {
+        const T = this.getTransform(), a = [...arguments], w = a.length === 5 ? a[3] : a.length === 9 ? a[7] : img.width;
+        seals.add(+(w / img.width).toFixed(4)); sealDraws++;
+      }
+      return di.apply(this, arguments);
+    };
+    try {
+      const tc = Bld.tcOf('P');
+      const ps = fresh('barbarian_pact', { x: Bld.cx(tc), y: Bld.cy(tc), fx: tc.x + 2.55, fy: tc.y + 1.65 });
+      if (fx.sealArt) fx.sealArt();
+      const pulse = fillsOf(() => drawShow('barbarian_pact', ps, [0.09, 0.29, 0.6, 0.66, 0.72, 0.8, 0.9], 'sky'));
+      // the old drum's bars: full-height rects pinned to a screen side
+      out.pactBars = pulse.filter(f => f.h >= CH * 0.8 && f.w < CW * 0.2 && (f.x <= 1 || f.x + f.w >= CW - 1)).length;
+    } finally { g.drawImage = di; if (sv) R.stepVignette = sv; }
+    const ob = R.openBand ? R.openBand() : null;
+    out.pact = { vig: vig.length, boxed: vig.length > 0 && vig.every(v => v.box && ob && v.top === ob.y0 && v.bot === ob.y1), seals: [...seals], sealDraws };
+    // …a band it turns: its banner over the band, its ping on the minimap
+    {
+      const ids = [];
+      for (let i = 0; i < 3; i++) { const u = __rv.unit('raider', 'R', 20.5 + i, 20.5); u.hostileTo = 'A'; ids.push(u.id); }
+      Screens.show('playing');
+      R.cardShows.length = 0;
+      Deck.pactTurned('wolf', 3);
+      const ts = R.cardShows.find(z => z.id === 'barbarian_pact' && z.turn);
+      out.turn = { ids: ts && ts.ids ? ts.ids.slice().sort((a, b) => a - b).join(',') : null, want: ids.slice().sort((a, b) => a - b).join(',') };
+      R.centerOn(21.5, 20.5);
+      if (ts) ts.t = 1;
+      const banner = ts ? fillsOf(() => { g.save(); R.applyCam ? R.applyCam(g) : g.setTransform(R.cam.z * dpr, 0, 0, R.cam.z * dpr, -R.cam.x * R.cam.z * dpr, -R.cam.y * R.cam.z * dpr); try { Deck.FX.barbarian_pact.show.draw.call(Deck.FX.barbarian_pact, g, ts, 1 / 30, 1 / 30, 'world'); } finally { g.restore(); } }) : [];
+      out.turn.banner = banner.filter(f => /#8e1c12|#b8301c|#5a120c/i.test(f.col)).length;
+      const mc = document.createElement('canvas'); mc.width = CFG.W * 2; mc.height = CFG.H * 2;
+      const mg = mc.getContext('2d'), mfr = mg.fillRect;
+      let ping = 0;
+      mg.fillRect = function () { if (/#ff5a3a|#b8301c/i.test(String(this.fillStyle))) ping++; return mfr.apply(this, arguments); };
+      Deck.drawMini(mg);
+      out.turn.ping = ping;
+      R.cardShows.length = 0;
+    }
+    // THE SUN: the burst, light added, where it stands, and nothing left over the map
+    {
+      const fxs = Deck.FX.swallowed_sun, ss = fresh('swallowed_sun', {});
+      const sp = fxs.sunSpot ? fxs.sunSpot() : null;
+      let lighter = 0;
+      // a ring: 24+ dots at one radius round the sun's own middle in ONE frame
+      // (6px bins, measured to each dot's own corner — the ring helper's anchor)
+      const W = CW, H = CH;
+      const cx = sp ? sp.x + 24 * sp.k : W / 2, cy = sp ? sp.y + 24 * sp.k : H * 0.18;
+      let ringMax = 0;
+      for (const T of [2.1, 2.3, 2.5, 2.7]) {
+        const recs = fillsOf(() => {
+          ss.t = T; g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+          try { fxs.show.draw.call(fxs, g, ss, T / (ss.ms / 1000), 1 / 30, 'sky'); } finally { g.restore(); }
+        });
+        lighter += recs.filter(f => f.op === 'lighter').length;
+        const bins = {};
+        for (const f of recs) { if (f.w > 16 || f.h > 16) continue; const r = Math.round(Math.hypot(f.x - cx, f.y - cy) / 6); if (sp && r * 6 < 26 * sp.k) continue; bins[r] = (bins[r] || 0) + 1; }
+        ringMax = Math.max(ringMax, ...Object.values(bins));
+      }
+      out.sun = { lighter, ring: ringMax, top: sp ? sp.y : null };
+      // the four days: no sun drawn over the map
+      R.cardShows.length = 0;
+      Deck.play('swallowed_sun');
+      R.cardShows.length = 0;
+      const e = Deck.timed('swallowed_sun');
+      let sunOver = 0;
+      const di2 = g.drawImage;
+      g.drawImage = function (img) { if (img === fxs._sky) sunOver++; return di2.apply(this, arguments); };
+      try { g.save(); fxs.drawLive(g, Object.assign({}, e, { from: Deck.now() - 1 }), 1 / 30); g.restore(); } finally { g.drawImage = di2; }
+      out.sun.lingers = sunOver;
+    }
+    // THE SPY: the eye's white, their people, the marks that stay, the burst, the view
+    {
+      const fy = Deck.FX.spy_hall;
+      // the eye at the game's own fractional zoom, on a clean canvas: its white must be one piece
+      const ec = document.createElement('canvas'); ec.width = 480; ec.height = 320;
+      const eg = ec.getContext('2d'), Z = 3.4, OX = 0.7, OY = 0.3, X = 70.3, Y = 47.1;
+      eg.setTransform(Z, 0, 0, Z, OX, OY);
+      fy.eye(eg, X, Y, 1, 0.2);                       // wide open, looking straight ahead
+      const d = eg.getImageData(0, 0, 480, 320).data, WH = [0xe9, 0xe2, 0xcf];
+      // the band of white either side of the iris (cells 6..10 out, the middle
+      // row): every pixel there is the white, whole — or the eye is a net
+      let white = 0, seam = 0;
+      const cx = (Math.round(X / 2) * 2) * Z + OX, cy = (Math.round(Y / 2) * 2) * Z + OY, C = 4 * Z;
+      for (let yy = Math.round(cy - C * 0.6); yy <= Math.round(cy + C * 0.6); yy++)
+        for (const sgn of [-1, 1]) for (let xx = Math.round(cx + sgn * 6 * C); sgn < 0 ? xx >= Math.round(cx - 10 * C) : xx <= Math.round(cx + 10 * C); xx += sgn) {
+          const i = (yy * 480 + xx) * 4;
+          if (d[i + 3] === 255 && Math.abs(d[i] - WH[0]) < 3 && Math.abs(d[i + 1] - WH[1]) < 3 && Math.abs(d[i + 2] - WH[2]) < 3) white++;
+          else seam++;
+        }
+      out.eye = { white, seam };
+      // their people: a hidden soul, drawn as itself
+      __rv.fresh('rv-spy2'); __rv.flat(false);
+      const ghost = __rv.unit('defender', 'A', 20.5, 20.5);
+      const hut = __rv.bld('A', 'house', 24, 20);
+      G.freeVis = false; G.updateVisibility();
+      out.focusBlind = fy.focus();
+      Screens.show('playing'); S.paused = true;
+      R.cam.z = 1.2; R.centerOn(5, 5); R.clampCam();
+      const home = { x: R.cam.x, y: R.cam.y, z: R.cam.z };
+      fy.focus();
+      Deck.play('spy_hall');
+      out.focusKnown = fy.focus();
+      R.centerOn(21, 20);
+      const drawn = [];
+      const di3 = g.drawImage;
+      g.drawImage = function (img) { if (img && img.width && img.width <= 256) drawn.push({ img, a: this.globalAlpha }); return di3.apply(this, arguments); };
+      const e2 = Deck.timed('spy_hall');
+      try { g.save(); R.applyCam ? R.applyCam(g) : g.setTransform(R.cam.z * dpr, 0, 0, R.cam.z * dpr, -R.cam.x * R.cam.z * dpr, -R.cam.y * R.cam.z * dpr); fy.drawLive(g, Object.assign({}, e2, { from: Deck.now() - 1 }), 1 / 30); g.restore(); } finally { g.drawImage = di3; }
+      const pic = drawn.find(z => Math.abs(z.a - 0.6) < 0.05);
+      let colours = 0, dark = 0;
+      if (pic) {
+        const c = pic.img, q = c.getContext ? c.getContext('2d') : null;
+        if (q) { const px = q.getImageData(0, 0, c.width, c.height).data, set = new Set(); for (let i = 0; i < px.length; i += 4) if (px[i + 3] > 128) { set.add(px[i] + ',' + px[i + 1] + ',' + px[i + 2]); if (px[i] + px[i + 1] + px[i + 2] < 60) dark++; } colours = set.size; }
+      }
+      out.people = { drawn: !!pic, colours, dark };
+      // the view: through the act on their town, then home
+      R.cam.x = home.x; R.cam.y = home.y; R.cam.z = home.z;
+      R.cardShows.length = 0;
+      fy.focus();
+      Deck.play('spy_hall');
+      let farthest = 0;
+      for (let i = 0; i < 200; i++) {
+        if (Deck.view && Deck.view.tick) Deck.view.tick(1 / 30);
+        R.draw(1 / 30);
+        farthest = Math.max(farthest, Math.hypot(R.cam.x - home.x, R.cam.y - home.y));
+        if (!(Deck.view && Deck.view.s) && !R.cardShows.length) break;
+      }
+      out.view = { went: Math.round(farthest), back: Math.abs(R.cam.x - home.x) < 2 && Math.abs(R.cam.y - home.y) < 2 && Math.abs(R.cam.z - home.z) < 0.01 };
+      // the ten days over: the marked hut, in the fog, keeps its gold brackets — and loses them in sight
+      S.day += 11; Deck.tick(); G.updateVisibility();
+      R.cardShows.length = 0;
+      R.centerOn(24.5, 20.5);
+      const gold = () => fillsOf(() => R.draw(1 / 30)).filter(f => /#ffd45e/i.test(f.col)).length;
+      out.marks = { fog: gold() };
+      G.vis[MapGen.idx(24, 20)] = 1; G.freeVis = true; G.updateVisibility();
+      out.marks.sight = gold();
+      G.freeVis = false;
+    }
+    g.fillText = ft; if (at) R.actTitle = at;
+    // ONE TITLE, across the acts: the dragon's, the kraken's, the pact's (both), the sun's, the spy's
+    {
+      texts.length = 0; tops = [];
+      g.fillText = function (t) { texts.push({ t: String(t), font: this.font, inTitle: inTitle > 0 }); return ft.apply(this, arguments); };
+      if (at) R.actTitle = function () { inTitle++; try { const b = at.apply(this, arguments); if (b) tops.push(b.y0); return b; } finally { inTitle--; } };
+      try {
+        const T0 = { x: 20.5, y: 20.5 };
+        const shows = [
+          ['dragonfire', { ev: (S.dragon = Object.assign(S.dragon || {}, { ev: { phase: 'fly', t: 1.2, x: 18, y: 20.5, tx: 20.5, ty: 20.5, dir: 1, victims: [], card: { x: 20.5, y: 20.5 } } })).ev }, [0.08, 0.12]],
+          ['krakens_call', { at: { x: 20, y: 20, wl: 20.2 } }, [0.5, 0.6, 0.7]],
+          ['barbarian_pact', { x: 20, y: 20, fx: 21, fy: 20 }, [0.66, 0.72, 0.8]],
+          ['barbarian_pact', { turn: true, ms: 30000, ids: [] }, [0.02, 0.04]],
+          ['swallowed_sun', {}, [0.45, 0.55, 0.65]],
+          ['spy_hall', { x: 20, y: 20, marks: [] }, [0.4, 0.6, 0.8]],
+        ];
+        for (const [id, data, ps] of shows) {
+          if (!Deck.FX[id] || !Deck.FX[id].show) continue;
+          const s = fresh(id, data);
+          if (s) drawShow(id, s, ps, 'sky');
+        }
+      } finally { g.fillText = ft; if (at) R.actTitle = at; if (S.dragon) S.dragon.ev = null; }
+      const subPx = texts.filter(t => t.inTitle).map(t => +((/(\d+(?:\.\d+)?)px/.exec(t.font) || [0, 0])[1]));
+      out.title = { n: texts.length, outside: texts.filter(t => !t.inTitle).map(t => t.t).slice(0, 4), cinzel: texts.every(t => /Cinzel/.test(t.font)),
+        minPx: subPx.length ? Math.min(...subPx) / dpr : 0, topMin: tops.length ? Math.min(...tops) : -1, titles: tops.length };
+    }
+    R.cardShows.length = 0;
+    return out;
+  });
+  const pc = r.pact, tu = r.turn, su = r.sun, ey = r.eye, pe = r.people, ti = r.title;
+  ck('thePactIsSealedWithTheCardsOwnClasp', pc.sealDraws > 0 && pc.seals.length > 0 && pc.seals.every(k => Math.abs(k - Math.round(k)) < 1e-6 && k >= 2),
+    `the seal drawn ${pc.sealDraws} times at ${pc.seals.join('/')} device px a cell`);
+  ck('itsDrumPulsesTheOpenBandOnAllFourSides', pc.vig > 0 && pc.boxed && r.pactBars === 0,
+    `${pc.vig} stepped vignettes fitted to the open band ${pc.boxed}; full-height side bars ${r.pactBars}`);
+  ck('aBandItTurnsFliesABannerAndPingsTheMap', tu.ids === tu.want && tu.banner > 0 && tu.ping > 0,
+    `the band ${tu.ids} (raised ${tu.want}); banner cells ${tu.banner}; minimap ping cells ${tu.ping}`);
+  ck('theSunThrowsNoDottedRingAndAddsNoLight', su.ring < 24 && su.lighter === 0,
+    `the most dots at one radius round the disc ${su.ring}; 'lighter' draws ${su.lighter}`);
+  ck('itsCoronaStandsClearOfTheToastsAndTheMap', su.top != null && su.top >= r.chrome,
+    `the sun's top at ${su.top}px, the chrome ends at ${r.chrome}px`);
+  ck('andNoSunHangsOverTheMapForTheFourDays', su.lingers === 0, `sun drawn over the map ${su.lingers} times`);
+  ck('theSpysEyeIsSolid', ey.white > 200 && ey.seam === 0, `${ey.white} px of white, ${ey.seam} seam px through it`);
+  ck('theirPeopleAreDrawnAsThemselvesOutlined', pe.drawn && pe.colours >= 8 && pe.dark > 0,
+    `drawn at 60% ${pe.drawn}, ${pe.colours} colours of their own, ${pe.dark} px of dark outline`);
+  ck('theSpysBurstLandsOnlyOnATownYouKnow', r.focusBlind === null && !!r.focusKnown,
+    `before the spy ${JSON.stringify(r.focusBlind)}; once the town is on the map ${JSON.stringify(r.focusKnown)}`);
+  ck('theSpyCarriesTheViewToTheirTownAndHome', r.view.went > 200 && r.view.back, `went ${r.view.went}px out, handed back ${r.view.back}`);
+  ck('whatTheSpyMarkedKeepsItsBracketsInTheFog', r.marks.fog > 0 && r.marks.sight === 0,
+    `after the ten days: gold bracket cells in the fog ${r.marks.fog}, in sight ${r.marks.sight}`);
+  ck('everyActLettersItsWordsThroughOneTitle', ti.n > 0 && ti.titles >= 5 && !ti.outside.length && ti.cinzel && ti.minPx >= 13 && ti.topMin >= r.chrome,
+    `${ti.n} words drawn, outside the one title: ${JSON.stringify(ti.outside)}; Cinzel ${ti.cinzel}; smallest ${ti.minPx} CSS px; highest title top ${ti.topMin}px under the chrome's ${r.chrome}px`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
