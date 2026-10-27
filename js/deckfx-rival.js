@@ -935,6 +935,8 @@
         if (window.R && R.startCardShow) {
           // the view: kept on their town through the act, then handed back
           if (Deck.view.take('spy', home)) Deck.view.aim('spy', at.x, at.y, R.cam.z, 0.62, 0, 8);
+          // (reduced motion borrows nothing: the view CUTS to the town, as the deck's own flight would)
+          else if (R.onScreen && R.centerOn && !R.onScreen(at.x, at.y)) R.centerOn(at.x, at.y);
           R.startCardShow('spy_hall', { x: at.x, y: at.y, marks: marks.slice(0, 80) });
         }
         sfx('cardEye');
@@ -1818,11 +1820,11 @@
          of what the player knows (never the hidden sea, so the grey is no
          probe of the fog), so it is asked here, in the sheet — the card used
          to fly, flare and land before a red toast handed it back. */
-      BLIND() {
-        return S.peace
-          ? 'The truce holds, and you know of nothing of theirs on the open sea or beside it — the deep would take nothing.'
-          : 'You know of nothing of theirs on the open sea or beside it — the deep would not know where to rise.';
-      },
+      /* ONE SHORT LINE, at peace and at war alike: it is the card's caption in
+         the sheet (three lines of a phone's card at most — deck-ui's
+         aRefusalTakesAThirdLineNeverAnEllipsis), and the same words whatever
+         the hidden sea holds */
+      BLIND() { return 'You know of nothing of theirs at sea.'; },
       can() {
         this.prepare();
         if (!this.openSea()) return { ok: false, why: 'Needs open water' };

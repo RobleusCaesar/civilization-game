@@ -1209,7 +1209,7 @@ await p.evaluate(() => {
   });
   ck('aKnownHullWarnsAndTheTruceEndsAtThePlay', r.visible && r.warn === r.TRUCE && r.play.ok && r.broken && r.before && r.before.kraken === false && r.took,
     `warned "${r.warn}"; peace broken before the deep rose ${JSON.stringify(r.before)}; the hull taken ${r.took}`);
-  ck('aHiddenRivalNeitherWarnsNorBreaksThePeace', r.hidden && r.quiet === null && !r.refused.ok && /truce holds/.test(r.refused.why) && r.kept,
+  ck('aHiddenRivalNeitherWarnsNorBreaksThePeace', r.hidden && r.quiet === null && !r.refused.ok && /know of nothing/.test(r.refused.why) && r.kept,
     `warn ${r.quiet}; "${r.refused.why}"; kept, peace and hull whole ${r.kept}`);
   ck('whatASpySeesOrTheMemoryHoldsIsKnown', r.spyWarn === r.TRUCE && r.memWarn === r.TRUCE, `spy ${!!r.spyWarn}, memory ${!!r.memWarn}`);
 }
