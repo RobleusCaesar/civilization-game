@@ -43,15 +43,16 @@
       (G.visibleAt), and its pall rolls toward the rival as the player knows
       them — their hall if it is remembered, else the far side of the world
       from the player's own seat — so the card is never a lamp in the fog.
-      The lush ground of Bountiful Land is asked of the player's memory the
-      same way (bountiful_land.grows).
+      Bountiful Land's orbit is drawn under the fog, which dims and hides it
+      like the land it marks (bountiful_land.drawGround).
 
    WHAT BELONGS TO THE LAND IS DRAWN WITH THE LAND. R.drawCardWorld runs
    after the units and over the fog — right for light in the air, wrong for
-   the ground: Bountiful Land's sprigs grew through the villagers' bodies
-   and stood lit on remembered ground the fog dims, and the Blight's grey
-   wash was laid over the rival's hands on their own fields. So the grown
-   meadow and the wave that wakes it draw in the GROUND pass
+   the ground: Bountiful Land's sprigs (gone now — the operator's ruling)
+   grew through the villagers' bodies and stood lit on remembered ground the
+   fog dims, and the Blight's grey wash was laid over the rival's hands on
+   their own fields. So what marks the land (Bountiful Land's ring and its
+   orbit) draws in the GROUND pass
    (drawGround / a show's 'ground' layer — R.drawCardGround, under bridges,
    buildings, units and the fog), and the withered fields ON their building
    (drawBld — R.drawCardBld, right after its own art). Only light and what
@@ -605,226 +606,41 @@ Object.assign(Deck.FX, {
         : 'The land within ' + this.R + ' tiles of your hall turns bountiful: 50% richer for ' + days + ' days.' };
     },
     end() { G.log('🌱 The bounty near the fire fades — the land gives its ordinary yield again.'); },
-    // ground a sprig may stand on: open meadow, spent soil, a felled stand
-    OPEN: (() => { const o = {}; o[T.GRASS] = 1; o[T.BARREN] = 1; o[T.STUMPS] = 1; return o; })(),
-    BLOOM: ['#f4efe0', '#dcc4ec', '#f2c8d0'],
-    /* the new growth's greens: the meadow's own leaf ramp a step up, foot to
-       tip — never the lime the first cut drew its tufts in (the playtest's
-       critics: "the banned upright tufts, in the banned lime") */
-    GREEN: ['#2e4a1e', '#3c6f2d', '#4d8a3a', '#5a9640'],
-    /* MAY A SPRIG GROW HERE — asked of what the PLAYER knows. A tile in sight
-       now reads the live ground and whatever stands on it; a tile the fog
-       holds reads the player's MEMORY (S.map.seenTerrain, and S.map.seenB's
-       ghosts for what stood there) plus the player's own works, which they
-       always know. Read from the truth, the lush ground was a lamp in the fog:
-       a rival War Camp raised out of sight inside the ring left a sprig-less
-       hole in its own footprint's shape, and a stand felled out of sight
-       sprouted. */
-    grows(x, y) {
-      const i = MapGen.idx(x, y);
-      if (!S.map.explored[i]) return false;
-      if (G.visibleAt(x, y)) return !!this.OPEN[S.map.terrain[i]] && !Bld.at(x, y);
-      if (!this.OPEN[(S.map.seenTerrain || S.map.terrain)[i]]) return false;
-      const b = Bld.at(x, y);
-      if (b && b.owner === 'P') return false;
-      return !this.ghostAt(x, y);
-    },
-    // a remembered building's footprint covers (x, y) — seenB is keyed by its top-left tile
-    ghostAt(x, y) {
-      const seen = S.map.seenB;
-      if (!seen) return false;
-      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
-        if (!MapGen.inB(x - dx, y - dy)) continue;
-        const m = seen[MapGen.idx(x - dx, y - dy)];
-        if (m) { const s = Bld.size(m); if (s > dx && s > dy) return true; }
-      }
-      return false;
-    },
-    /* one sprig at its foot (world px), grown `k` of the way: a dark foot so
-       it stands ON the ground, then one of three kinds of new growth, chosen
-       by the spot's own hash: a TUFT of young blades (the most of it), a
-       leafy SPRIG, and now and then a FLOWER — a cross of petals round a pale
-       eye (never gold, fire or berry: the ground may not speak the resource
-       language). The greens are a step brighter and more saturated than the
-       meadow's, so the ring reads as lusher ground, not as more of the same
-       grass. `f` (0 or 1) is the breeze's beat: each sprig leans one way on
-       one beat and the other on the next, half of them out of step. */
-    sprig(g, x, y, h, k, f) {
-      if (k <= 0.05) return;
-      const F = GrowFX, sx = F.snap(x), sy = F.snap(y), kind = (h * 7.3) % 1;
-      const lean = ((((h * 977) | 0) + f) & 1) ? 2 : 0;
-      g.globalAlpha = F.step(Math.min(1, k * 1.5));
-      g.fillStyle = this.GREEN[0]; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
-      if (kind < 0.55) {
-        // the tuft: three blades, the middle tallest, the tips leaning with the wind
-        const hh = Math.max(2, F.snap((4 + ((h * 97) % 1) * 5) * k));
-        g.fillStyle = this.GREEN[1];
-        g.fillRect(sx - 2, sy - F.snap(hh * 0.6), 2, F.snap(hh * 0.6));
-        g.fillRect(sx + 2, sy - F.snap(hh * 0.7), 2, F.snap(hh * 0.7));
-        g.fillStyle = this.GREEN[2]; g.fillRect(sx, sy - hh + 2, 2, hh - 2);
-        g.fillRect(sx + lean, sy - hh, 2, 2);   // the tip, bent with the breeze or upright
-        if (k > 0.5) { g.fillStyle = this.GREEN[3]; g.fillRect(sx + lean, sy - hh - 2, 2, 2); }
-      } else if (kind < 0.85) {
-        const hh = Math.max(2, F.snap((5 + ((h * 97) % 1) * 6) * k));
-        g.fillStyle = this.GREEN[1]; g.fillRect(sx, sy - hh, 2, hh);
-        if (k > 0.45) {
-          g.fillStyle = this.GREEN[2];
-          g.fillRect(sx - 2, sy - F.snap(hh * 0.55) + (lean ? 2 : 0), 2, 2);
-          g.fillRect(sx + 2, sy - F.snap(hh * 0.8) + (lean ? 0 : 2), 2, 2);
-          g.fillStyle = this.GREEN[3]; g.fillRect(sx - 4 + lean, sy - F.snap(hh * 0.55) - 2, 2, 2);
-        }
-      } else {
-        // the flower: a stem, then the petals open once it has grown; it nods with the breeze
-        const hh = Math.max(2, F.snap(6 * k)), fx = sx + (lean ? 2 : 0);
-        g.fillStyle = this.GREEN[1]; g.fillRect(sx, sy - hh, 2, hh);
-        if (k > 0.75) {
-          const col = F.hash((h * 1e4) | 0, f + 3) > 0.92 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
-          // three petals round the stem's tip, never a cross with an eye in it
-          // (a '+' of pale cells read as a dead pixel — the playtest's critics)
-          g.fillStyle = col;
-          g.fillRect(fx - 2, sy - hh - 2, 2, 2); g.fillRect(fx + 2, sy - hh - 2, 2, 2); g.fillRect(fx, sy - hh - 4, 2, 2);
-        }
-      }
-      g.globalAlpha = 1;
-    },
-    BEAT: 0.7,   // seconds between the breeze's two beats
-    /* the land wakes: a wave of green rolls out from the fire along the
-       ground to the ring's edge, fresh shoots breaking out behind it
-       (drawGround grows the sprigs in behind the front), and the edge flares
-       gold and settles to the faint ring the card wears while it lasts. The
-       WAVE IS GROUND LIGHT, drawn in the ground pass under the town and the
-       fog; only the pollen the land breathes out rises into the air over the
-       people — and only off ground the player can see now. */
+    /* WHAT THE LAND WEARS — AN ORBIT, AND NOTHING GROWS (operator ruling, on
+       their phone with the card running: "I don't love all the dancing
+       grass. I like the gold circle and the effect, but the dancing grass is
+       distracting. Can we get rid of that?" — and of the gold ring's dots:
+       "a little pixelated and low quality… a small glittering gold orb that
+       travels along that circle with a trail behind it… a subtle reminder,
+       but not super obvious"). The first cut held hundreds of upright tufts
+       and white '+' crosses over the whole ring for twenty days; the second
+       grew them only through the play and left a dozen clover clumps at the
+       heart, its edge shown only while the hall was selected. Now NO GRASS,
+       sprout, tuft, flower or sparkle is drawn over the zone, at the play or
+       after it: the play sweeps one fine gold ring out from the fire to the
+       edge, and the ring unwinds into the ORB (R.drawOrbit) — one bead of
+       gold going round the eight tiles for all twenty days, its thread gone
+       by three quarters of the way round, drawn at device resolution. Drawn
+       in the GROUND pass (R.drawCardGround) — under the town, its people and
+       the fog, which dims it on remembered ground and hides it where the
+       ring runs through ground the player has never seen. */
+    PHASE: 0.37,       // this circle's place on the orbit's lap (its own, never another card's)
+    OPEN_AT: 0.6,      // the share of the play the ring takes to sweep out to the edge
     show: {
-      ms: 2600, layers: ['ground', 'world'],
-      draw(g, s, p, dt, layer) {
-        const TL = CFG.TILE, F = GrowFX, cx = s.x * TL, cy = s.y * TL, Rp = this.R * TL, vp = F.viewPx(1);
-        const rad = Rp * F.ease(p / 0.62);
-        if (layer === 'world') {
-          // pollen and seed-fluff lifted off the new growth behind the front
-          for (let k = 0; k < 90; k++) {
-            const born = 0.05 + F.hash(k, 41) * 0.6, q = (p - born) / 0.4;
-            if (q <= 0 || q >= 1) continue;
-            const th = F.hash(k, 43) * Math.PI * 2, rr = this.R * F.ease(born / 0.62) * (0.35 + F.hash(k, 47) * 0.6);
-            const tx = s.x + Math.cos(th) * rr, ty = s.y + Math.sin(th) * rr;
-            if (!MapGen.onBoard(tx | 0, ty | 0) || !G.visibleAt(tx | 0, ty | 0)) continue;
-            const x = tx * TL + Math.sin(q * 6 + k) * 4, y = ty * TL - q * TL * (1.2 + F.hash(k, 53));
-            if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-            F.mote(g, x, y, k % 3 ? '#f4efe0' : '#fff8d6', null, q < 0.3 ? 1 : (1 - q) / 0.7);
-          }
-          return;
-        }
-        g.save();
-        // the wave of new green: opaque cells of the growth's own greens, laid
-        // ON the meadow (never light ADDED to it, which was the lime), thinning
-        // out behind the front by hash, never by alpha
-        if (p < 0.66) {
-          F.ring(g, cx, cy, rad, this.GREEN[3], 1, 2, 1, vp);
-          F.ring(g, cx, cy, Math.max(0, rad - 6), this.GREEN[2], 1, 2, 1, vp);
-          for (let k = 0; k < 160; k++) {
-            const th = F.hash(k, 11) * Math.PI * 2, rr = rad - TL * (0.15 + F.hash(k, 23) * 1.3);
-            if (rr <= 0 || F.hash(k, 29) > 1 - (rad - rr) / (TL * 1.5)) continue;
-            const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr;
-            if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-            g.fillStyle = this.GREEN[k % 3 ? 2 : 3];
-            g.fillRect(F.snap(x), F.snap(y), 2, 2);
-          }
-        }
-        if (p > 0.5) {
-          const k = (p - 0.5) / 0.5;
-          // the edge flares GOLD (in the ring's ink — added over the meadow it was lime)
-          F.ring(g, cx, cy, Rp, 'gold', 0.95 - k * 0.6, 2, 1, vp);
-          F.ring(g, cx, cy, Rp + 4, 'gold', (1 - k) * 1.0, 2, 1, vp);
-          F.ring(g, cx, cy, Rp - 4, 'gold', (1 - k) * 0.5, 2, 1, vp, 0.5);
-        }
-        g.restore();
+      ms: 2600, layer: 'ground',
+      draw(g, s, p) {
+        if (!(p >= 0 && p < 1)) return;
+        const t = performance.now() / 1000, A = this.OPEN_AT;
+        // the ring sweeps out from the fire, whole and even, then unwinds into the orb
+        R.drawOrbit(g, s.x, s.y, this.R, t, {
+          phase: this.PHASE, grow: GrowFX.ease(p / A), open: p < A ? 0 : GrowFX.ease((p - A) / (1 - A)) });
       },
     },
-    /* WHAT THE LAND WEARS FOR ITS TWENTY DAYS (the playtest's critics: the
-       first cut held hundreds of upright tufts in lime and white '+' crosses
-       over the whole 8-tile radius for all twenty days — a texture glitch,
-       not lush ground). The sprouting is the PLAY's: the sprigs grow in
-       behind the wave and, once it has reached the edge, crumble back into
-       the meadow in hard steps by the show's end. Then the zone is marked
-       with what the house allows and the eye can find: a few CLOVER AND
-       FLOWER patches at its heart round the fire (the ground decals'
-       language — low, flat, no lime), and the edge itself as a ring of
-       muted-gold dots ONLY while the hall is selected — the panel the
-       player opens to ask what the hall is doing. Drawn in the GROUND pass
-       (R.drawCardGround), under the town, its people and the fog, on ground
-       the player knows (grows). */
-    CORE_R: 2.6,          // tiles from the fire the lasting patches lie within
-    CORE_N: 12,           // …and how many of them, at most
+    // the twenty days: the orb on its lap (the play draws it while it runs)
     drawGround(g, e) {
-      const c = this.centre();
-      if (!c) return;
-      const TL = CFG.TILE, F = GrowFX, Rr = this.R, fade = F.tail(e), t = performance.now() / 1000;
-      const beat = ((t / this.BEAT) | 0) & 1;
-      const p = F.liveP('bountiful_land');
-      // the play: sprigs grow in behind the front, then go back into the meadow
-      if (p >= 0 && p < 1) {
-        const crumble = p < 0.7 ? 0 : (p - 0.7) / 0.3;
-        this.sprigs([g], c, Rr * F.ease(p / 0.62), fade, beat, F.view(1), crumble);
-      }
-      // the twenty days: the patches at the heart, from the moment the wave has passed them
-      if (p < 0 || p > 0.3) this.core(g, c, fade);
-      // …and the edge, while the hall is selected
-      const tc = Bld.tcOf('P');
-      if (tc && typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' && UI.sel.id === tc.id)
-        F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#b8923a', fade, 2, 1, F.viewPx(1), t * 0.6);
-    },
-    /* the clover and flowers at the heart: a dozen small flat patches on the
-       open ground the player knows within CORE_R of the fire, each where its
-       tile's hash puts it (the same patch every frame, no RNG) */
-    core(g, c, fade) {
-      if (fade <= 0) return;
-      const TL = CFG.TILE, F = GrowFX, r0 = Math.ceil(this.CORE_R);
-      let n = 0;
-      for (let dy = -r0; dy <= r0 && n < this.CORE_N; dy++) for (let dx = -r0; dx <= r0 && n < this.CORE_N; dx++) {
-        const x = Math.floor(c.x) + dx, y = Math.floor(c.y) + dy;
-        if (!MapGen.onBoard(x, y) || Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y) > this.CORE_R) continue;
-        const h = F.hash(x * 31 + 7, y * 17 + 3);
-        if (h > 0.42 || !this.grows(x, y)) continue;
-        n++;
-        const px = F.snap((x + 0.2 + F.hash(x, y + 9) * 0.6) * TL), py = F.snap((y + 0.35 + F.hash(y, x + 5) * 0.5) * TL);
-        // a clump, never a lone cross: a low spread of leaves with, on half
-        // of them, a few blossoms of clover or meadow flower among them
-        const L2 = [[-4, 2], [-2, 0], [0, 2], [2, 0], [4, 2], [0, -2]];
-        g.fillStyle = this.GREEN[0]; g.fillRect(px - 4, py + 4, 10, 2);       // its shade on the ground
-        for (let k = 0; k < L2.length; k++) {
-          if (F.hash(x * 13 + k, y * 7) < 0.25) continue;
-          g.fillStyle = this.GREEN[k % 2 ? 2 : 3]; g.fillRect(px + L2[k][0], py + L2[k][1], 2, 2);
-        }
-        if (h >= 0.18) {
-          const col = h < 0.3 ? '#f4efe0' : this.BLOOM[1 + (((h * 97) | 0) % 2)];   // white clover, or pink and lilac
-          g.fillStyle = col;
-          g.fillRect(px - 2, py - 2, 2, 2); g.fillRect(px + 2, py - 4, 2, 2);
-          if (h > 0.24) g.fillRect(px + 4, py, 2, 2);
-        }
-      }
-    },
-    // every sprig on the ring's open ground out to `grow` (within `v`, the tiles
-    // in view), into each target in turn on its own beat (f0, f0 + 1, …) —
-    // `crumble` 0..1 of them gone back into the meadow, each on its own hash
-    sprigs(gs, c, grow, fade, f0, v, crumble) {
-      const TL = CFG.TILE, F = GrowFX, Rr = this.R;
-      const x0 = Math.max(Math.floor(c.x - Rr), Math.floor(v.x0)), x1 = Math.min(Math.ceil(c.x + Rr), Math.ceil(v.x1));
-      const y0 = Math.max(Math.floor(c.y - Rr), Math.floor(v.y0)), y1 = Math.min(Math.ceil(c.y + Rr), Math.ceil(v.y1));
-      let any = false;
-      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-        if (!MapGen.onBoard(x, y)) continue;
-        const d = Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y);
-        if (d > Rr || d > grow || !this.grows(x, y)) continue;
-        const k = Math.min(1, (grow - d) / 1.2) * fade;
-        for (let j = 0; j < 3; j++) {
-          const h = F.hash(x * 7 + j, y * 13 + 5);
-          if (h > 0.46 || (crumble > 0 && F.hash(x * 5 + j, y * 11 + 2) < crumble)) continue;
-          const sx = (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, sy = (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL;
-          for (let m = 0; m < gs.length; m++) this.sprig(gs[m], sx, sy, h / 0.46, k, (f0 + m) & 1);
-          any = true;
-        }
-      }
-      return any;
+      const c = this.centre(), p = GrowFX.liveP('bountiful_land');
+      if (!c || (p >= 0 && p < 1)) return;
+      R.drawOrbit(g, c.x, c.y, this.R, performance.now() / 1000, { phase: this.PHASE, fade: GrowFX.tail(e) });
     },
   },
 

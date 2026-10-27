@@ -73,14 +73,20 @@
                        at every beat without throwing, paints something, is
                        render state only, costs nothing with no card in play,
                        and never paints the off-map black (a control widens
-                       the board and must see it lit); the lush ground is
-                       painted once, in two breeze beats, and drawn from what
-                       the player KNOWS (a rival barracks or a felled stand
-                       out of sight changes nothing); and, read off the real
-                       frame over HTTP, the meadow and the withered fields lie
+                       the board and must see it lit); Bountiful Land grows
+                       NOTHING over its zone (the operator's ruling) — its
+                       play sweeps one ring out and unwinds it into the
+                       ORBIT, and every card that marks a radius for its
+                       days (Bountiful Land, the Watchfires' reach) wears
+                       that orbit and nothing else: a fading arc of at most
+                       three quarters of the circle, finer than one of the
+                       world's art pixels, never 'lighter', nothing in S, no
+                       G.rand, in the GROUND pass; and, read off the real
+                       frame over HTTP, the ring and the withered fields lie
                        UNDER the people standing on them (their opaque pixels
-                       byte-identical) and the fog dims the lush ground on
-                       remembered ground like the land under it
+                       byte-identical), the twenty days change nothing over
+                       the zone but the orbit's circle, and the fog dims the
+                       ring on remembered ground like the land under it
 
    Run after touching: js/deckfx-growth.js, Units.gatherYield / buildRate and
    their call sites (the gather, fish and shorefish tasks, the build task,
@@ -1071,11 +1077,15 @@ await p.evaluate(() => {
     G.updateVisibility();
     R.cam.z = 2; R.centerOn(Bld.cx(P) + 3, Bld.cy(P) + 4);
     const g = R.cv.getContext('2d');
+    // (fills and strokes count too: the orbit is laid as paths at device
+    // resolution, never as rects — the operator's ruling on the area cards)
     const count = (fn) => {
-      let n = 0; const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage;
+      let n = 0; const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage, fi = P2.fill, sk = P2.stroke;
       P2.fillRect = function () { n++; return fr.apply(this, arguments); };
       P2.drawImage = function () { n++; return di.apply(this, arguments); };
-      try { fn(); } finally { P2.fillRect = fr; P2.drawImage = di; }
+      P2.fill = function () { n++; return fi.apply(this, arguments); };
+      P2.stroke = function () { n++; return sk.apply(this, arguments); };
+      try { fn(); } finally { P2.fillRect = fr; P2.drawImage = di; P2.fill = fi; P2.stroke = sk; }
       return n;
     };
     const sBefore = JSON.stringify(S.deck);
@@ -1093,7 +1103,7 @@ await p.evaluate(() => {
           try {
             n += count(() => {
               g.save();
-              if (L === 'world') { const z = R.cam.z * R.dpr; g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z); }
+              if (L !== 'sky') { const z = R.cam.z * R.dpr; g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z); }
               else g.setTransform(1, 0, 0, 1, 0, 0);
               d.show.draw.call(d, g, s, pp, 1 / 30, L);
               g.restore();
@@ -1167,102 +1177,194 @@ await p.evaluate(() => {
   ck('andCostNothingWithNoCardInPlay', r.idleCalls === 0 && r.idleWorld === 0, `${r.idleCalls} show/look calls, ${r.idleWorld} card ground/building/world passes in 20 frames`);
 }
 
-// ---------------- 10b. TWENTY DAYS IS A LONG TIME TO WEAR A PICTURE ----------------
-/* The playtest's critics: for all twenty days the whole 8-tile ring wore
-   hundreds of upright tufts in lime and white '+' crosses — "the banned
-   upright tufts, in the banned lime", a texture glitch, not lush ground.
-   The sprouting is the PLAY's: the sprigs grow in behind the wave and go
-   back into the meadow by its end. For the twenty days the land wears only
-   a dozen low clumps of clover and flowers at its heart round the fire, and
-   its edge as a ring of muted-gold dots while the hall is selected — and
-   nothing in all of it is lime. Measured on the ground pass itself. */
+// ---------------- 10b. THE LAND WEARS AN ORBIT, AND NOTHING GROWS ----------------
+/* OPERATOR RULING (on their phone, Bountiful Land running): "I don't love
+   all the dancing grass. I like the gold circle and the effect, but the
+   dancing grass is distracting" — and of the ring of gold dots: "a little
+   pixelated and low quality. For these type of area of effect cards, let's
+   do something again subtler, and higher pixel count… a small glittering
+   gold orb that travels along that circle with a trail behind it. Very
+   faint and subtle, it fades behind it, after 3/4 of the circle it's gone.
+   It rotates in a circle for the duration". The first cut wore hundreds of
+   tufts and '+' crosses for twenty days; the second grew them through the
+   play and left clover at the heart. Now nothing grows anywhere over the
+   zone — at the play or after it — and every card that marks a RADIUS for
+   as long as it runs (Bountiful Land's ring; the Watchfires' longer reach
+   round a selected tower) wears the ORBIT (R.drawOrbit) and nothing else:
+   a fading arc of at most three quarters of the circle, drawn at DEVICE
+   resolution (its stroke narrower than one of the world's art pixels, two
+   world px), never 'lighter', nothing in S, no G.rand. */
 {
   const r = await p.evaluate(() => {
-    const out = {};
-    __g.fresh('growth-lush', 'calm'); const { P } = __g.flat();
+    const out = { ok: !!R.drawOrbit };
+    __g.fresh('growth-orbit', 'calm'); const { P } = __g.flat();
+    P.x = 15; P.y = 15; Bld._block = null;   // the whole ring on the board
     Screens.show('playing');
-    R.cam.z = 1; R.centerOn(Bld.cx(P), Bld.cy(P));
-    Deck.play('bountiful_land');
-    const sh = R.cardShows.find(s => s.id === 'bountiful_land');
-    const d = Deck.FX.bountiful_land, e = Deck.timed('bountiful_land'), c = d.centre(), TL = CFG.TILE;
-    const S2 = Math.ceil((d.R + 2) * 2 * TL);
-    const cv = document.createElement('canvas'); cv.width = cv.height = S2;
-    const g = cv.getContext('2d');
-    const LIME = (r2, g2, b2) => g2 > 150 && g2 > r2 + 30 && g2 > b2 + 60;   // a bright yellow-green: the lime
-    const shot = () => {
-      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S2, S2);
-      g.setTransform(1, 0, 0, 1, -(c.x * TL - S2 / 2), -(c.y * TL - S2 / 2));
-      g.save(); d.drawGround(g, e, 1 / 60); g.restore();
-      const px = g.getImageData(0, 0, S2, S2).data;
-      let n = 0, far = 0, edge = 0, lime = 0;
-      for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
-        const i = (y * S2 + x) * 4;
-        if (!px[i + 3]) continue;
-        n++;
-        const rr = Math.hypot(x - S2 / 2, y - S2 / 2) / TL;
-        if (rr > d.CORE_R + 0.6) far++;
-        if (Math.abs(rr - d.R) < 0.15) edge++;
-        if (LIME(px[i], px[i + 1], px[i + 2])) lime++;
+    const TL = CFG.TILE;
+    // a tower of the player's, finished, for the Watchfires' reach
+    const tw = __g.bld('P', 'tower', P.x + 4, P.y + 4);
+    Deck._add('watchfires', 3);
+    Deck.play('bountiful_land'); Deck.play('watchfires');
+    R.cardShows.length = 0;   // the looks as they stand once the plays have played
+    const looks = [
+      { id: 'bountiful_land', sel: null, c: () => Deck.FX.bountiful_land.centre(), r: () => Deck.FX.bountiful_land.R },
+      { id: 'watchfires', sel: tw.id, c: () => ({ x: Bld.cx(tw), y: Bld.cy(tw) }), r: () => Bld.lv(tw).range * Deck.FX.watchfires.mult.towerRange },
+    ];
+    const C2 = CanvasRenderingContext2D.prototype;
+    out.cards = {};
+    for (const L of looks) {
+      const d = Deck.FX[L.id], e = Deck.timed(L.id), o = out.cards[L.id] = {};
+      UI.sel = L.sel ? { type: 'bld', id: L.sel } : null;
+      // at the play zoom on a phone and zoomed out, at dpr 2
+      for (const z of [1.7, 1]) {
+        const k = z * R.dpr, cc = L.c(), rr = L.r() * TL * k, S2 = Math.ceil(rr * 2 + 60);
+        const cv = document.createElement('canvas'); cv.width = cv.height = S2;
+        const g = cv.getContext('2d');
+        const wx = cc.x * TL, wy = cc.y * TL;
+        const ops = { lighter: 0, rects: 0, orbits: 0, maxSpan: 0, gco: new Set(), head: 0 };
+        const fr = C2.fillRect, fi = C2.fill, st = C2.stroke, dO = R.drawOrbit, gr = G.rand, pn = performance.now;
+        let rand = 0;
+        C2.fillRect = function () { if (this === g) ops.rects++; return fr.apply(this, arguments); };
+        C2.fill = function () { if (this === g) { ops.gco.add(this.globalCompositeOperation); if (this.globalCompositeOperation === 'lighter') ops.lighter++; } return fi.apply(this, arguments); };
+        C2.stroke = function () { if (this === g) { ops.gco.add(this.globalCompositeOperation); if (this.globalCompositeOperation === 'lighter') ops.lighter++; } return st.apply(this, arguments); };
+        if (dO) R.drawOrbit = function () { const v = dO.apply(this, arguments); if (v) { ops.orbits++; ops.maxSpan = Math.max(ops.maxSpan, v.span); ops.head = v.head; } return v; };
+        G.rand = function () { rand++; return gr.apply(this, arguments); };
+        const sBefore = JSON.stringify(S);
+        let worstArc = 0, worstW = 0, lit = 0, off = 0, near = 0, far = 0;
+        try {
+          for (let f = 0; f < 6; f++) {
+            const t = 1000 + f * 1700;
+            performance.now = () => t;
+            g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S2, S2);
+            g.setTransform(k, 0, 0, k, S2 / 2 - wx * k, S2 / 2 - wy * k);
+            g.save();
+            if (d.drawGround) d.drawGround(g, e, 1 / 60);
+            g.restore();
+            const px = g.getImageData(0, 0, S2, S2).data;
+            // where the lit pixels lie: their angle round the centre, and how thick the thread is
+            const bins = new Uint8Array(360), cnt = new Uint32Array(360), band = {};
+            for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
+              const a = px[(y * S2 + x) * 4 + 3];
+              if (a < 24) continue;
+              lit++;
+              const dx = x + 0.5 - S2 / 2, dy = y + 0.5 - S2 / 2, dd = Math.hypot(dx, dy);
+              if (Math.abs(dd - rr) > 3.2 * 2 * R.dpr + 2) { off++; continue; }   // nothing but the circle
+              const b = ((Math.round(Math.atan2(dy, dx) * 180 / Math.PI) % 360) + 360) % 360;
+              bins[b] = 1; cnt[b]++;
+              if (a >= 128) (band[b] || (band[b] = [])).push(dd);   // the thread at half coverage and more
+            }
+            let arc = 0; for (const v of bins) arc += v;
+            worstArc = Math.max(worstArc, arc);
+            // the thread's thickness, measured across it where the bead is not (≥ 8° behind it)
+            const head = ops.head * 180 / Math.PI;
+            // IT FADES BEHIND THE BEAD: the ink a degree of the circle carries just
+            // behind the bead (12°..40°) against half way round (150°..200°) —
+            // with no bead to measure from (no orbit at all), the whole circle's
+            // brightest stretch against its faintest, which an even ring fails too
+            const run = (a0, a1, from) => { let n = 0, k = 0; for (let d = a0; d <= a1; d++) { n += cnt[(((Math.round(from - d)) % 360) + 360) % 360]; k++; } return n / k; };
+            if (ops.orbits) { near += run(12, 40, head); far += run(150, 200, head); }
+            else { let hi = 0, lo = Infinity; for (let b = 0; b < 360; b += 30) { const v = run(0, 29, b + 29); hi = Math.max(hi, v); lo = Math.min(lo, v); } near += hi; far += lo; }
+            for (const bs in band) {
+              const behind = ((head - +bs) % 360 + 360) % 360;
+              if (behind < 8 || behind > 300) continue;
+              const ds = band[bs]; worstW = Math.max(worstW, Math.max(...ds) - Math.min(...ds) + 1);
+            }
+          }
+        } finally {
+          C2.fillRect = fr; C2.fill = fi; C2.stroke = st; R.drawOrbit = dO; G.rand = gr; performance.now = pn;
+        }
+        o['z' + z] = { orbits: ops.orbits, rects: ops.rects, lighter: ops.lighter, gco: [...ops.gco].join('/'), span: +(ops.maxSpan * 180 / Math.PI).toFixed(1),
+          arc: worstArc, width: worstW, artPx: 2 * k, lit, off, rand, sKept: JSON.stringify(S) === sBefore,
+          near: +(near / 6).toFixed(1), far: +(far / 6).toFixed(1) };
       }
-      return { n, far, edge, lime };
-    };
-    // the play at its height (the sprigs grown out to the edge), then the twenty days
-    sh.t = 0.62 * sh.ms / 1000;
-    const height = shot();
-    R.cardShows.length = 0;
-    let paints = 0; const sp = d.sprigs; d.sprigs = function () { paints++; return sp.apply(this, arguments); };
+    }
     UI.sel = null;
-    const after = shot();
-    for (let i = 0; i < 30; i++) shot();
-    d.sprigs = sp;
-    UI.sel = { type: 'bld', id: P.id };
-    const selected = shot();
-    UI.sel = null;
-    out.height = height; out.after = after; out.selected = selected; out.paints = paints;
+    // …and with nothing selected, the Watchfires' reach is not worn (it answers a selected tower)
+    {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      const g = cv.getContext('2d'); let n = 0; const dO = R.drawOrbit;
+      if (dO) R.drawOrbit = function () { n++; return dO.apply(this, arguments); };
+      try { Deck.FX.watchfires.drawGround && Deck.FX.watchfires.drawGround(g, Deck.timed('watchfires')); } finally { R.drawOrbit = dO; }
+      out.wfUnselected = n;
+    }
+    S.deck.fx = []; R.cardShows.length = 0;
     return out;
   });
-  ck('theLandSproutsDuringThePlay', r.height.n > 1500 && r.height.far > 800, `at the wave's height ${r.height.n} px of new growth, ${r.height.far} of them out past the heart`);
-  ck('thenWearsOnlyAFewClumpsAtItsHeart', r.paints === 0 && r.after.n > 30 && r.after.far === 0 && r.after.edge === 0,
-    `after the play: no sprig drawn (${r.paints}), ${r.after.n} px of clumps, ${r.after.far} beyond the heart, ${r.after.edge} at the edge`);
-  ck('andItsEdgeWhileTheHallIsSelected', r.selected.edge > 40 && r.selected.far === r.selected.edge,
-    `the hall selected: ${r.selected.edge} px of the ring at 8 tiles, nothing else out there`);
-  ck('andNothingOfItIsLime', r.height.lime === 0 && r.after.lime === 0 && r.selected.lime === 0,
-    `lime px: ${r.height.lime} at the height, ${r.after.lime} after, ${r.selected.lime} selected`);
+  const z = (id, k) => r.cards[id] && r.cards[id][k];
+  const per = id => ['z1.7', 'z1'].map(k => z(id, k)).filter(Boolean);
+  const orbitOk = id => r.ok && per(id).length === 2 && per(id).every(o => o.orbits >= 6 && o.rects <= 6 * 2 && o.lighter === 0 && o.off === 0 && o.arc >= 60 && o.arc <= 276 && o.span <= 270.01
+    && o.near > 0 && o.far * 2 < o.near);   // a FADING arc: half way round carries under half the ink just behind the bead
+  const fine = id => r.ok && per(id).every(o => o.width > 0 && o.width < o.artPx);
+  const clean = id => per(id).every(o => o.sKept && o.rand === 0);
+  const say = id => per(id).map(o => `${o.orbits} orbits, ${o.rects} rects, arc ${o.arc}°/${o.span}°, ink ${o.near} px/° behind the bead → ${o.far} half way round, thread ${o.width}px < art px ${o.artPx}, ${o.off} px off the circle, gco ${o.gco}`).join(' | ')
+    + (r.ok ? '' : ' (no R.drawOrbit)');
+  ck('bountifulLandWearsTheOrbitAndNothingElse', orbitOk('bountiful_land'), say('bountiful_land'));
+  ck('andTheWatchfiresReachIsTheOrbit', orbitOk('watchfires') && r.wfUnselected === 0, say('watchfires') + `; unselected: ${r.wfUnselected} orbits`);
+  ck('theOrbitIsFinerThanTheWorldsPixelArt', fine('bountiful_land') && fine('watchfires'),
+    ['bountiful_land', 'watchfires'].map(id => id + ' ' + per(id).map(o => o.width + '/' + o.artPx).join(', ')).join('; ') + (r.ok ? '' : ' (no R.drawOrbit)'));
+  ck('andIsRenderStateOnly', r.ok && clean('bountiful_land') && clean('watchfires'),
+    ['bountiful_land', 'watchfires'].map(id => id + ' ' + per(id).map(o => `S kept ${o.sKept}, ${o.rand} G.rand`).join(', ')).join('; '));
 }
 
-// ---------------- 10c. THE LUSH GROUND IS ASKED OF WHAT YOU KNOW ----------------
+// ---------------- 10c. THE ORBIT IS DRAWN WITH THE LAND ----------------
+/* …in the GROUND pass (R.drawCardGround — under the town, its people and
+   the fog, which dims it on remembered ground and hides it on ground never
+   seen), never in the pass over the fog; the play sweeps a whole ring out
+   to the edge and UNWINDS it into the orb, on the same lap the twenty days
+   keep (no jump when the play ends); and the play itself grows nothing —
+   every pixel it lays lies on the ring it is sweeping. */
 {
   const r = await p.evaluate(() => {
-    __g.fresh('growth-lush-fog', 'calm'); const { P } = __g.flat();
+    const out = { ok: !!R.drawOrbit };
+    if (!out.ok) return out;
+    __g.fresh('growth-orbit-pass', 'calm'); const { P } = __g.flat();
+    P.x = 15; P.y = 15; Bld._block = null;   // the whole ring on the board
     Screens.show('playing');
-    const d = Deck.FX.bountiful_land;
-    // a stand the player knows, inside the ring
-    const fx = P.x + 7, fy = P.y + 1;
-    __g.terr(fx, fy, T.FOREST, 200);
-    Deck.play('bountiful_land'); R.cardShows.length = 0;
-    const c = d.centre(), W = CFG.W, n = d.R + 1;
-    // the ring's own ground, as the card asks it (grows: where the growth may stand)
-    const ask = () => { let k = ''; for (let y = Math.floor(c.y - n); y <= c.y + n; y++) for (let x = Math.floor(c.x - n); x <= c.x + n; x++) k += MapGen.onBoard(x, y) && d.grows(x, y) ? 1 : 0; return k; };
-    G.vis = new Uint8Array(W * CFG.H);             // the ring known, none of it in sight now
-    const before = ask();
-    // OUT OF SIGHT: the rival raises a barracks inside the ring, and the stand is felled
-    const camp = __g.bld('A', 'barracks', P.x + 6, P.y + 4);
-    const i = MapGen.idx(fx, fy); S.map.terrain[i] = T.STUMPS;   // the truth only — the memory still holds the wood
-    const hidden = ask();
-    // IN SIGHT: now the player sees both, and the ground answers
-    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) G.vis[MapGen.idx(camp.x + x, camp.y + y)] = 1;
-    G.vis[i] = 1;
-    const seen = ask();
-    // the sprigs of the play sway on the breeze's two beats
-    const cv = document.createElement('canvas'), TL = CFG.TILE; cv.width = cv.height = Math.ceil(n * 2 * TL);
-    const beat = f => { const g = cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
-      g.translate(-(c.x - n) * TL, -(c.y - n) * TL); d.sprigs([g], c, d.R, 1, f, { x0: c.x - n, y0: c.y - n, x1: c.x + n, y1: c.y + n }, 0);
-      return Array.from(g.getImageData(0, 0, cv.width, cv.height).data).join(','); };
-    return { same: hidden === before, moved: seen !== before, beats: beat(0) !== beat(1) };
+    Deck.play('bountiful_land');
+    const d = Deck.FX.bountiful_land, e = Deck.timed('bountiful_land'), sh = R.cardShows.find(s => s.id === 'bountiful_land');
+    const calls = [], dO = R.drawOrbit;
+    R.drawOrbit = function (g, cx, cy, rr, t, opts) { const v = dO.apply(this, arguments); calls.push({ opts: Object.assign({}, opts), v }); return v; };
+    const TL = CFG.TILE, k = 2 * R.dpr, c = d.centre(), RR = d.R * TL * k, S2 = Math.ceil(RR * 2 + 60);
+    const cv = document.createElement('canvas'); cv.width = cv.height = S2;
+    const g = cv.getContext('2d');
+    const pn = performance.now; performance.now = () => 4321;
+    try {
+      // the pass over the fog draws no orbit; the ground pass does
+      g.setTransform(k, 0, 0, k, S2 / 2 - c.x * TL * k, S2 / 2 - c.y * TL * k);
+      sh.t = 0.3 * sh.ms / 1000;
+      calls.length = 0; R.drawCardWorld(g, 0); out.inWorld = calls.length;
+      calls.length = 0; R.drawCardGround(g, 0); out.inGround = calls.length;
+      // the play: every pixel it lays lies on the ring it is sweeping (nothing grows)
+      out.stray = 0; out.lit = 0;
+      for (const pp of [0.1, 0.3, 0.5, 0.62, 0.8, 0.95]) {
+        sh.t = pp * sh.ms / 1000;
+        g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S2, S2);
+        g.setTransform(k, 0, 0, k, S2 / 2 - c.x * TL * k, S2 / 2 - c.y * TL * k);
+        calls.length = 0;
+        R.drawCardShows(g, 0, 'ground');
+        const v = calls[0] && calls[0].v;
+        if (!v) { out.stray = -1; break; }
+        const px = g.getImageData(0, 0, S2, S2).data;
+        for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
+          if (px[(y * S2 + x) * 4 + 3] < 24) continue;
+          out.lit++;
+          if (Math.abs(Math.hypot(x + 0.5 - S2 / 2, y + 0.5 - S2 / 2) - v.r) > 3.2 * 2 * R.dpr + 2) out.stray++;
+        }
+      }
+      // the hand-over: the last of the play and the first of the twenty days are one lap
+      sh.t = 0.999 * sh.ms / 1000;
+      calls.length = 0; R.drawCardShows(g, 0, 'ground'); const end = calls[0] && calls[0].v;
+      R.cardShows.length = 0;
+      calls.length = 0; d.drawGround(g, e); const run = calls[0] && calls[0].v;
+      out.handover = !!(end && run) && Math.abs(end.head - run.head) < 1e-6 && Math.abs(end.r - run.r) < 1e-6 && Math.abs(end.span - run.span) < 0.01;
+      out.spans = end && run ? [end.span, run.span].map(s => +(s * 180 / Math.PI).toFixed(1)) : null;
+    } finally { performance.now = pn; R.drawOrbit = dO; }
+    S.deck.fx = []; R.cardShows.length = 0;
+    return out;
   });
-  ck('theLushGroundIsDrawnFromWhatYouKnow', r.same && r.moved,
-    `a rival barracks raised and a stand felled out of sight change the lush ground: ${!r.same}; once they are in sight: ${r.moved}`);
-  ck('andItSwaysOnTwoBeats', r.beats, 'the breeze\'s two beats are two different pictures');
+  ck('theOrbitIsDrawnWithTheLand', r.ok && r.inWorld === 0 && r.inGround >= 1, r.ok ? `${r.inGround} in the ground pass, ${r.inWorld} over the fog` : 'no R.drawOrbit');
+  ck('thePlaySweepsTheRingAndGrowsNothing', r.ok && r.lit > 2000 && r.stray === 0, r.ok ? `${r.lit} px laid over six beats of the play, ${r.stray} of them off the ring` : 'no R.drawOrbit');
+  ck('andHandsOverToTheTwentyDaysOnOneLap', r.ok && r.handover, r.ok ? `the play's last frame and the first running frame: ${r.handover ? 'the same bead' : 'a jump'} (${JSON.stringify(r.spans)})` : 'no R.drawOrbit');
 }
 
 // ---------------- 11. NOTHING IS DRAWN IN THE BLACK ----------------
@@ -1280,14 +1382,14 @@ await p.evaluate(() => {
       // across the rim, each on a fresh canvas (no art has touched it, so its
       // pixels can be read even from file://)
       for (const [id, pp, layer] of [['golden_age', 0.3, 'sky'], ['enlightenment', 0.4, 'sky'], ['age_of_marble', 0.3, 'sky'],
-        ['wonders_foundation', 0.45, 'sky'], ['blight', 0.3, 'sky'], ['bountiful_land', 0.75, 'world']]) {
+        ['wonders_foundation', 0.45, 'sky'], ['blight', 0.3, 'sky'], ['bountiful_land', 0.75, 'ground']]) {
         const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
         const g = c.getContext('2d');
         g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
         const d = Deck.FX[id];
         const s = { id, t: pp * d.show.ms / 1000, ms: d.show.ms, x: Bld.cx(P), y: Bld.cy(P), foot: P.y + 2, sz: 3, bx: P.x + 4, by: P.y + 4,
           tc: P.id, items: [], maxD: 1, reach: 10, dx: -0.7, dy: -0.7, boom: 1, dust: 1 };
-        if (layer === 'world') g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+        if (layer !== 'sky') g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
         d.show.draw.call(d, g, s, pp, 1 / 30, layer);
         g.setTransform(1, 0, 0, 1, 0, 0);
         const top = g.getImageData(0, 0, c.width, rim).data, left = g.getImageData(0, 0, rim, c.height).data;
@@ -1325,12 +1427,14 @@ await p.evaluate(() => {
 
 // ---------------- 12. WHAT BELONGS TO THE LAND IS DRAWN WITH THE LAND ----------------
 /* Served over HTTP: under file:// a canvas a PNG has touched cannot be read
-   back, and these checks read the real frame. The lush ground and the
+   back, and these checks read the real frame. Bountiful Land's ring and the
    withered fields must lie UNDER the people standing on them — a unit's own
-   opaque pixels byte-identical with the card running and not — and the lush
-   ground on remembered ground must be dimmed by the fog like the land under
-   it (the change it makes there a fraction of the change it makes in sight;
-   drawn over the fog, it is all of it and more). */
+   opaque pixels byte-identical with the card running and not — the twenty
+   days draw NOTHING over the zone but the orbit on its circle (the
+   operator's ruling: no grass, no sprig, no sparkle), and the ring on
+   remembered ground must be dimmed by the fog like the land under it (the
+   change it makes there a fraction of the change it makes in sight; drawn
+   over the fog, it is all of it and more). */
 {
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png',
     '.webp': 'image/webp', '.jpg': 'image/jpeg', '.css': 'text/css', '.json': 'application/json',
@@ -1390,31 +1494,66 @@ await p.evaluate(() => {
       for (let i = 0; i < withU.length; i += 4) if (!same(withU, noU, i) && same(withU, altU, i)) opaque.push(i);
       out.opaque = opaque.length;
       const count = (fr, ref) => { let n = 0; for (let i = 0; i < fr.length; i += 4) if (!same(fr, ref, i)) n++; return n; };
-      // BOUNTIFUL LAND at its height: the meadow grows round the people's feet
-      // (the GROUND pass alone — the pollen it breathes out is light in the air)
-      const BLs = Deck.FX.bountiful_land.show, lay0 = BLs.layers;
-      BLs.layers = ['ground'];
-      const atHeight = () => { const sh = R.cardShows.find(s => s.id === 'bountiful_land'); if (sh) sh.t = 0.6 * sh.ms / 1000; };
-      Deck.play('bountiful_land'); atHeight();
-      const lush = grab();
-      out.lushPainted = count(lush, withU);
-      out.lushOnUnits = opaque.filter(i => !same(lush, withU, i)).length;
       // THE BLIGHT on its own: their farm withers under the hands working it
       S.deck.fx = [];
       Deck.play('blight'); R.cardShows.length = 0;
       const bl = grab();
       out.blightPainted = count(bl, withU);
       out.blightOnUnits = opaque.filter(i => !same(bl, withU, i)).length;
-      // THE FOG: the change the lush ground makes on remembered ground, against
-      // the change it makes in sight (the people stood out of it — this is the ground)
-      S.deck.fx = []; R.cardShows.length = 0; Deck.play('bountiful_land'); atHeight();
+      S.deck.fx = []; R.cardShows.length = 0;
+      // BOUNTIFUL LAND: the whole ring in view at the operator's zoom, the
+      // player's eight hands standing ON it, the play at the moment its ring
+      // has swept out to the edge (whole and even, before it unwinds)
+      const tcP = Bld.tcOf('P'), hx = Bld.cx(tcP), hy = Bld.cy(tcP), RB = Deck.FX.bountiful_land.R;
+      R.cam.z = 1; R.centerOn(hx, hy);
+      S.units.filter(u => u.owner === 'P').forEach((u, k) => {
+        const a = -Math.PI / 2 + (k % 2 ? Math.PI : 0) + (Math.floor(k / 2) - 1.5) * 0.12;
+        u.x = hx + Math.cos(a) * RB; u.y = hy + Math.sin(a) * RB;
+      });
+      G.updateVisibility();
+      const withU2 = grab();
+      S.units = []; const noU2 = grab(); S.units = keep;
+      const tc1 = R.terrainCache, bb1 = R.blitBld;
+      R.blitBld = function (gg, spr, x, y, w, h) { gg.fillStyle = '#00ffff'; gg.fillRect(x, y, w, h); };
+      R.terrainCache = alt; const altU2 = grab(); R.terrainCache = tc1; R.blitBld = bb1;
+      const opaque2 = [];
+      for (let i = 0; i < withU2.length; i += 4) if (!same(withU2, noU2, i) && same(withU2, altU2, i)) opaque2.push(i);
+      out.opaque2 = opaque2.length;
+      const atHeight = () => { const sh = R.cardShows.find(s => s.id === 'bountiful_land'); if (sh) sh.t = 0.6 * sh.ms / 1000; };
+      Deck.play('bountiful_land'); atHeight();
+      const lush = grab();
+      out.lushPainted = count(lush, withU2);
+      out.lushOnUnits = opaque2.filter(i => !same(lush, withU2, i)).length;
+      // AFTER THE PLAY: the twenty days' frame against the same frame without
+      // the card — every pixel it changes lies on the orbit's circle; nothing
+      // over the zone inside it (no sprig, clump, flower or sparkle), nothing
+      // beyond it
+      R.cardShows.length = 0;
       S.units = [];
       const fxs = S.deck.fx;
-      const visLive = grab(); S.deck.fx = []; const visNo = grab(); S.deck.fx = fxs;
-      const vis0 = G.vis; G.vis = new Uint8Array(W * CFG.H); R.fogDirty = true;
-      const fogLive = grab(); S.deck.fx = []; const fogNo = grab(); S.deck.fx = fxs;
+      const runLive = grab(); S.deck.fx = []; const runNo = grab(); S.deck.fx = fxs;
+      {
+        const Wc = R.cv.width, z = R.cam.z * R.dpr, ox = (hx * CFG.TILE - R.cam.x) * z, oy = (hy * CFG.TILE - R.cam.y) * z, rr = RB * CFG.TILE * z;
+        const tol = 3.2 * 2 * R.dpr + 2;
+        out.zoneIn = 0; out.zoneOut = 0; out.onRing = 0;
+        for (let i = 0; i < runLive.length; i += 4) {
+          if (same(runLive, runNo, i)) continue;
+          const px = (i >> 2) % Wc, py = ((i >> 2) / Wc) | 0, dd = Math.hypot(px + 0.5 - ox, py + 0.5 - oy);
+          if (dd < rr - tol) out.zoneIn++; else if (dd > rr + tol) out.zoneOut++; else out.onRing++;
+        }
+      }
+      // THE FOG: the change the ring makes on remembered ground, against the
+      // change it makes in sight (the people stood out of it — this is the ground)
+      // (the twenty days' orbit: the play has gone, so the card is the only difference)
+      R.cardShows.length = 0;
+      const fxs2 = S.deck.fx;
+      // in sight: the whole ring (the hall alone sees ~6 tiles, the ring lies at 8)
+      const vis0 = G.vis; G.vis = new Uint8Array(W * CFG.H).fill(1); R.fogDirty = true;
+      const visLive = grab(); S.deck.fx = []; const visNo = grab(); S.deck.fx = fxs2;
+      G.vis = new Uint8Array(W * CFG.H); R.fogDirty = true;
+      const fogLive = grab(); S.deck.fx = []; const fogNo = grab(); S.deck.fx = fxs2;
       G.vis = vis0; R.fogDirty = true; S.units = keep;
-      BLs.layers = lay0; R.cardShows.length = 0;
+      R.cardShows.length = 0;
       let dv = 0, df = 0;
       for (let i = 0; i < visLive.length; i += 4) for (let c = 0; c < 3; c++) {
         dv += Math.abs(visLive[i + c] - visNo[i + c]); df += Math.abs(fogLive[i + c] - fogNo[i + c]);
@@ -1425,12 +1564,14 @@ await p.evaluate(() => {
   });
   await p2.close();
   srv.close();
-  ck('theLushGroundLiesUnderThePeopleOnIt', r.opaque > 500 && r.lushPainted > 2000 && r.lushOnUnits === 0,
-    `${r.lushOnUnits} of ${r.opaque} opaque unit pixels touched; the meadow changed ${r.lushPainted} pixels of the frame`);
+  ck('theOrbitLiesUnderThePeopleOnIt', r.opaque2 > 500 && r.lushPainted > 2000 && r.lushOnUnits === 0,
+    `${r.lushOnUnits} of ${r.opaque2} opaque pixels of the hands standing on the ring touched; the ring changed ${r.lushPainted} pixels of the frame`);
+  ck('bountifulLandDrawsNothingOverItsZone', r.zoneIn === 0 && r.zoneOut === 0 && r.onRing > 0,
+    `after the play, against the frame without the card: ${r.zoneIn} px changed over the zone, ${r.zoneOut} beyond it, ${r.onRing} on the orbit's circle`);
   ck('theWitheredFieldLiesUnderTheHandsWorkingIt', r.farmSeen && r.blightPainted > 200 && r.blightOnUnits === 0,
     `${r.blightOnUnits} of ${r.opaque} opaque unit pixels touched; the blight changed ${r.blightPainted} pixels of the frame (their farm in sight ${r.farmSeen})`);
   ck('andOnRememberedGroundTheFogDimsIt', r.dv > 10000 && r.fogRatio < 0.8,
-    `the lush ground's change under the fog is ${(r.fogRatio * 100).toFixed(1)}% of its change in sight`);
+    `the orbit's change under the fog is ${(r.fogRatio * 100).toFixed(1)}% of its change in sight`);
 }
 
 // ---------------- 13. THE FLAT PLAYS, LIFTED ----------------

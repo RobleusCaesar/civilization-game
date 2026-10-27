@@ -1040,8 +1040,10 @@ for (const w of [320, 360, 375, 390, 430]) {
    a "+1" with room going spare; with four, the "+k" badge must be whole
    (the strip's clip cut its top half off); every card wears its OWN glyph
    (three bronze buffs were three identical suns); the time reads as bright
-   as the HUD's own numbers; and a tap answers in one short line, never the
-   card's whole rules text. */
+   as the HUD's own numbers; a tap answers in one short line, never the
+   card's whole rules text; and (the operator's ruling: "pixelated… a little
+   more subtle and a slightly higher pixel count") the chip is drawn at the
+   device's own pixel ratio — vector glyph, fine ring — never in blocks. */
 await p.setViewportSize({ width: 390, height: 844 });
 await p.waitForTimeout(200);
 const strip = await p.evaluate(async () => {
@@ -1078,6 +1080,16 @@ const strip = await p.evaluate(async () => {
     await new Promise(r => setTimeout(r, 320));
     const pics = ids.map(id => DeckUI._chips[id].cv.toDataURL());
     out.distinct = new Set(pics).size;
+    // THE GLYPH IS CRISP (operator ruling): each chip's canvas is laid at the
+    // device's own pixel ratio, never upscaled in blocks, and its edges are
+    // antialiased lines (some pixels part-covered), not hard pixel cells
+    out.crisp = ids.map(id => {
+      const cv = DeckUI._chips[id].cv, css = cv.getBoundingClientRect().width || parseFloat(getComputedStyle(cv).width) || 0;
+      const a = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let part = 0, on = 0;
+      for (let i = 3; i < a.length; i += 4) if (a[i]) { on++; if (a[i] < 250) part++; }
+      return { id, w: cv.width, css: +css.toFixed(2), dpr: devicePixelRatio, ir: getComputedStyle(cv).imageRendering, soft: on ? part / on : 0 };
+    });
     out.lum = lum(DeckUI._chips.quick_hands.lab);
     DeckUI._fitChips();
     const badge = document.querySelector('#dkTimers .dkMoreB');
@@ -1097,6 +1109,8 @@ ck('twoRunningCardsFitAPhonesRow', strip.two.length === 2 && !strip.twoK && stri
   `390px, "6/13", "Day 12": ${strip.two.join(' + ') || 'none'} shown${strip.twoK ? ' and a +k' : ''}`);
 ck('andTheBadgeIsWhole', strip.badge && strip.badgeWhole, `badge ${strip.badge ? (strip.badgeWhole ? 'whole' : 'CLIPPED') : 'missing'}`);
 ck('eachRunningCardWearsItsOwnGlyph', strip.distinct === 4, `${strip.distinct} different chips for 4 cards (3 bronze buffs, 1 stone)`);
+ck('theChipIsDrawnAtTheDevicesOwnResolution', strip.crisp.length === 4 && strip.crisp.every(c => c.css >= 16 && c.w >= Math.floor(c.css * c.dpr) && !/pixelated|crisp-edges/.test(c.ir) && c.soft > 0.05),
+  strip.crisp.map(c => `${c.id} ${c.w}px for ${c.css} css at dpr ${c.dpr} (${c.ir}, ${(100 * c.soft).toFixed(0)}% soft edge)`).join('; '));
 ck('theTimeReadsAsBrightAsTheHud', strip.lum >= 0.5, `label luminance ${strip.lum.toFixed(2)} on a stone card`);
 ck('aChipTapIsOneShortLine', /^Harvest Festival — \d+ days? left\. [^.]+\.$/.test(strip.tap) && strip.tap.length <= 100 && !strip.fullText,
   `"${strip.tap}"`);

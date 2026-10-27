@@ -1431,7 +1431,9 @@ await p.evaluate(({ TOWN }) => {
    of gold pixels running down it — at no beat does the light cover more
    than a band of its silhouette; the landing's flash is hard rings with
    nothing over the middle; a beacon lights nothing below its brazier; and a
-   tower the player selects while the fires burn shows its longer reach. */
+   tower the player selects while the fires burn shows its longer reach —
+   as the ORBIT (R.drawOrbit, pinned in tests/deck-growth.mjs §10b), the
+   operator's one reminder for every card that marks a radius. */
 {
   const r = await p.evaluate(() => {
     const out = {}, TL = CFG.TILE, TX = Deck._townTX;
@@ -1488,11 +1490,16 @@ await p.evaluate(({ TOWN }) => {
     let above = 0, below = 0;
     for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) { if (!d[(y * 160 + x) * 4 + 3]) continue; if (y > 80 + 6) below++; else above++; }
     out.above = above; out.below = below;
-    // …and selected, it shows its reach: dots on the ring at range × 1.5
+    // …and selected, it shows its reach: the ORBIT on the ring at range × 1.5
+    // (the operator's ruling on every area card — one bead of gold and its
+    // fading thread, in the GROUND pass, where the two rings of fire-dots
+    // were "a little pixelated and low quality")
     const big = document.createElement('canvas'), R1 = Bld.lv(tw).range * WF.mult.towerRange * TL, S2 = Math.ceil(R1 * 2 + 40);
     big.width = big.height = S2;
     const bg = big.getContext('2d'); bg.translate(-(Bld.cx(tw) * TL - S2 / 2), -(Bld.cy(tw) * TL - S2 / 2));
-    const reach = () => { bg.clearRect(-1e5, -1e5, 2e5, 2e5); WF.drawLive(bg, e); const dd = bg.getImageData(0, 0, S2, S2).data; let n = 0;
+    const reach = () => { bg.save(); bg.setTransform(1, 0, 0, 1, 0, 0); bg.clearRect(0, 0, S2, S2); bg.restore();
+      WF.drawLive(bg, e); if (WF.drawGround) WF.drawGround(bg, e);
+      const dd = bg.getImageData(0, 0, S2, S2).data; let n = 0;
       for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) { if (!dd[(y * S2 + x) * 4 + 3]) continue; if (Math.abs(Math.hypot(x - S2 / 2, y - S2 / 2) - R1) < 3) n++; } return n; };
     UI.sel = null; out.ringOff = reach();
     UI.sel = { type: 'bld', id: tw.id }; out.ringOn = reach();
@@ -1504,7 +1511,7 @@ await p.evaluate(({ TOWN }) => {
     `at its height the light covers ${(100 * r.worst).toFixed(0)}% of the house's ${r.silN} silhouette pixels (a flat flash: all of them)`);
   ck('theLandingFlashIsHardRingsNotADisc', r.hitHard && r.ringSoft, r.hitCss);
   ck('aBeaconLightsNothingBelowItsBrazier', r.above > 30 && r.below === 0, `${r.above} px of flame and embers above, ${r.below} below the brazier`);
-  ck('andASelectedTowerShowsItsLongerReach', r.ringOff === 0 && r.ringOn > 40, `ring dots at range × 1.5: ${r.ringOff} unselected, ${r.ringOn} selected`);
+  ck('andASelectedTowerShowsItsLongerReach', r.ringOff === 0 && r.ringOn > 40, `the orbit's pixels at range × 1.5: ${r.ringOff} unselected, ${r.ringOn} selected`);
 }
 
 // ---------------- 16. MASTER BUILDERS: THE MARK, AND A BUILD RATHER THAN A SWAP ----------------

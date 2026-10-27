@@ -1591,16 +1591,26 @@
         }
       },
       /* …and while it runs, a tower or camp the player selects shows its
-         reach: the ring of fire-dots at the longer range (and the old one
-         faint inside it), so the half again is there to see for all six days */
-      reach(g, b) {
-        const TL = TLs(), lv = Bld.lv(b);
-        if (!lv || !lv.range) return;
-        const cx = Bld.cx(b) * TL, cy = Bld.cy(b) * TL, r1 = lv.range * this.mult.towerRange;
-        g.save();
-        if (R.inkOn(g, 0.15, 'bronze')) TX.ring(g, cx, cy, lv.range * TL, 1);   // the old reach, the darkest of the fire's ink
-        if (R.inkOn(g, 0.7, 'bronze')) TX.ring(g, cx, cy, r1 * TL, 1);          // the new one, in its flame
-        g.restore();
+         reach as the ORBIT (R.drawOrbit — the operator's ruling on every
+         area card's reminder: one bead of gold going round the longer
+         range with its thread fading behind it, drawn at device
+         resolution, where the two rings of fire-dots were "a little
+         pixelated and low quality"). Drawn in the GROUND pass, where the
+         arrows land — under the town and the fog. Each tower on its own
+         place on the lap. */
+      reach(g, b, e) {
+        const lv = Bld.lv(b);
+        if (!lv || !lv.range) return null;
+        return R.drawOrbit(g, Bld.cx(b), Bld.cy(b), lv.range * this.mult.towerRange, performance.now() / 1000,
+          { phase: (b.id * 0.618034) % 1, fade: e ? Math.min(1, Math.max(0, (e.until - Deck.now()) / 0.5)) : 1 });
+      },
+      selected() {
+        const sel = typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' ? Bld.get(UI.sel.id) : null;
+        return sel && sel.owner === 'P' && (sel.key === 'tower' || sel.key === 'warcamp') && Bld.done(sel) ? sel : null;
+      },
+      drawGround(g, e) {
+        const b = this.selected();
+        if (b) this.reach(g, b, e);
       },
       drawLive(g, e) {
         // the kindling runs on the play's own clock (render time); with no fresh
@@ -1616,8 +1626,6 @@
           const k = cl((age - Math.hypot(Bld.cx(b) - hx, Bld.cy(b) - hy) / this.IGNITE) / 0.35);
           if (k > 0) this.beacon(g, b, k, now);
         }
-        const sel = typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' ? Bld.get(UI.sel.id) : null;
-        if (sel && sel.owner === 'P' && (sel.key === 'tower' || sel.key === 'warcamp') && Bld.done(sel)) this.reach(g, sel);
       },
       show: {
         ms: 2600, layer: 'world',
