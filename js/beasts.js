@@ -287,21 +287,21 @@ Object.assign(R, {
   },
   /* THE BREATH. A sagging column of flame from the jaws to the ground:
      squares of fire in three heats (red outer, orange-gold body, white-hot
-     core), streaming along the curve and widening as it falls, the light it
-     throws ADDED to the scene in hard steps, and where it lands a burst of
-     tongues. All hard pixels on the 2px grid. */
+     core), streaming along the curve and widening as it falls, the column's
+     own glow ADDED in hard steps — and nothing laid on the ground round it —
+     and where it lands a heap of the burning-town flames. All hard pixels on
+     the 2px grid. */
   drawDragonBreath(g, mx, my, tx, ty, t, dir, fade) {
     const F = ART.PALETTE.fire, N = 30, snap = Beasts.snap;
     const cx = (mx + tx) / 2 + dir * 24, cy = Math.max(my, ty) - 6;      // the sag
     const at = u => [ (1 - u) * (1 - u) * mx + 2 * (1 - u) * u * cx + u * u * tx,
                       (1 - u) * (1 - u) * my + 2 * (1 - u) * u * cy + u * u * ty ];
     const flow = (t * 2.4) % (1 / N);
-    // the light: a warm pool on the ground where it lands, in hard steps
+    // the light: the COLUMN's own glow, added in hard steps — and only the
+    // column. No pool of light on the ground where it lands: a warm glow
+    // laid over the meadow reads as sand (the dry summer's ruling)
     g.save();
     g.globalCompositeOperation = 'lighter';
-    // (no pool of light on the ground: a warm glow laid over the meadow
-    // reads as sand — the dry summer's ruling — so only the column glows)
-    // the column's glow
     for (let i = 0; i < N; i++) {
       const u = i / N + flow, [px, py] = at(Math.min(1, u)), s = 8 + u * 30;
       g.fillStyle = 'rgba(255,140,50,' + (0.07 * fade).toFixed(3) + ')';

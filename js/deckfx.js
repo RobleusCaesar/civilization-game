@@ -50,10 +50,11 @@
       ENDS the truce, at the play, exactly as an attack order does — and warn()
       says so before the player confirms.
    3. NO ONE-CARD WINS. A strike can bring the rival's hall low, never down.
-   4. NOTHING HERE DRAWS FROM THE RUN'S RNG (S.rngState). The one exception is
-      the borrowed dragon act, whose fire line and ash were always G.rand
-      draws in G.dragonTick (about four a fire point, one an ash pile) and
-      stay so: the card sends the dragon, the dragon is the dragon.
+   4. NOTHING HERE DRAWS FROM THE RUN'S RNG (S.rngState) — the borrowed
+      dragon act included: G.dragonTick draws a CARD's dragon's fire line and
+      ash (the flames' jitter, their lifetimes, the piles') from Math.random
+      (`ev.card ? Math.random : G.rand`), so a card never re-deals the rest of
+      the run; only the ROLLED dragon keeps the G.rand draws it always made.
 
    Effects already in a run's state run to their end whatever the kill switch
    says — the switch gates PLAYING (js/deck.js canPlay), the same way the
