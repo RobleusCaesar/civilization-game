@@ -54,6 +54,8 @@
                      back and it syncs; a re-dealt toy never banks a run twice
      THE LESSON      while the tutorial's spine runs the door refuses (the
                      deck is not in the game yet) and the card stays
+     ONE WORD        "deck" is the card collection alone: the origin
+                     draft's help deals three ORIGIN cards
 
    Run after touching: js/deck.js, CFG.CARDS, S.deck in game.js, and the
    deeds' tallies — S.stats.handGathered (units.js: the gather and shore-fish
@@ -949,6 +951,16 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
     `won on the toy deck: ${a7.cards.join('+')} (toy queue ${a7.toyQueue}); after ?cards=0 and ?cards=1: ${a8.total} cards ${JSON.stringify(a8.counts)}, ` +
     `test ${a8.test}, starter marked ${a8.starter} (dealt again ${a8.dealt}), queued ${JSON.stringify(a8.queue)}`);
   await ctx2.close();
+}
+
+/* ONE WORD, ONE THING (the playtest): "the deck" is the card collection
+   now — the HUD button, the sheet, the deck's own lesson. The origin draft
+   used to say it dealt "three cards from the deck", so the word named two
+   different piles of cards on two screens a minute apart. The draft's help,
+   as the page renders it, deals ORIGIN cards and never says "deck". */
+{
+  const help = await p.evaluate(() => { const el = document.getElementById('draftOverlay'); return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; });
+  ck('theOriginDraftNeverCallsItsCardsTheDeck', !!help && !/\bdeck\b/i.test(help) && /three origin cards/i.test(help), help.slice(0, 140));
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
