@@ -262,7 +262,10 @@ const Feedback = {
     this._saveOutbox(list);
     this._noteSent(it.at);
     await this.flush();
-    const left = this.outbox().find(x => x.id === it.id);
+    let left = this.outbox().find(x => x.id === it.id);
+    // a flush already in flight (the load's retry) read the outbox before
+    // this report was in it — walk it once more so this one is tried now
+    if (left && !left.tries) { await this.flush(); left = this.outbox().find(x => x.id === it.id); }
     if (!left || left.mailed) return { state: 'sent', id: it.id };
     const offline = navigator.onLine === false || left.lastWhy === 'network';
     return { state: 'saved', id: it.id, offline,

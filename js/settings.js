@@ -75,9 +75,16 @@ const SettingsPage = {
   },
   paintDots() {
     const unseen = this.notesUnseen();
+    /* the dot is a CHILD of the plaque, never a ::before/::after on it — the
+       carved plaque draws its own body (::before) and nailheads (::after),
+       and borrowing either strips the plaque bare */
     for (const id of ['btnTitleSettings', 'btnPauseSettings']) {
       const b = document.getElementById(id);
-      if (b) b.classList.toggle('sxNew', unseen);
+      if (!b) continue;
+      b.classList.toggle('sxNew', unseen);
+      let d = b.querySelector('.sxDoorDot');
+      if (unseen && !d) { d = document.createElement('i'); d.className = 'sxDoorDot'; d.setAttribute('aria-hidden', 'true'); b.appendChild(d); }
+      else if (!unseen && d) d.remove();
     }
     if (this.el) {
       const t = this.el.querySelector('.sxTab[data-tab="notes"]');
@@ -108,6 +115,7 @@ const SettingsPage = {
               `<span class="sxTn">${this.esc(t.name)}</span>${t.short ? `<span class="sxTs">${this.esc(t.short)}</span>` : ''}` +
               '<i class="sxDot" aria-label="New"></i><i class="sxChev" aria-hidden="true"></i>' +
             '</button>').join('') +
+          `<p class="sxRailFoot">Clanfire<br>${this.esc(this.versionLine(window.PATCH_NOTES && PATCH_NOTES[0]))}</p>` +
         '</nav>' +
         '<div class="sxPane" role="tabpanel"></div>' +
       '</div>';
@@ -489,9 +497,8 @@ const SettingsPage = {
 
 SettingsPage.CSS = `
 /* the doors wear a red dot while a patch note is unread (staged devices only) */
-#btnTitleSettings.sxNew, #btnPauseSettings.sxNew { position: relative; }
-#btnTitleSettings.sxNew::before, #btnPauseSettings.sxNew::before { content: ''; position: absolute; z-index: 2; top: 5px; right: 6px;
-  width: 9px; height: 9px; border-radius: 50%; background: #e2412b; box-shadow: 0 0 0 2px #1d1007, 0 0 7px rgba(255,90,60,0.75); }
+.sxDoorDot { position: absolute; z-index: 2; top: 7px; right: 8px; width: 10px; height: 10px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 35% 30%, #ff8a6e, #e2412b 60%, #a8220f); box-shadow: 0 0 0 2px #1d1007, 0 0 8px rgba(255,90,60,0.75); }
 
 #scrSetx { --chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
     calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
@@ -550,6 +557,7 @@ SettingsPage.CSS = `
   box-shadow: 0 0 0 2px #1d1007, 0 0 7px rgba(255,90,60,0.75); }
 #scrSetx .sxTab.hasDot .sxDot { display: block; }
 #scrSetx .sxChev { display: none; }
+#scrSetx .sxRailFoot { display: none; }
 
 /* ---- the pane ---- */
 #scrSetx .sxPane { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
@@ -730,6 +738,8 @@ SettingsPage.CSS = `
   #scrSetx .sxTab img { width: 34px; height: 34px; }
   #scrSetx .sxTab .sxDot { top: 7px; right: 8px; }
   #scrSetx .sxTab.on .sxChev { display: block; margin-left: auto; width: 8px; height: 8px; border-right: 2px solid #f2cf6c; border-top: 2px solid #f2cf6c; transform: rotate(45deg); }
+  #scrSetx .sxRailFoot { display: block; margin: auto 0 0; padding: 14px 4px 2px; text-align: center; font: 600 11px/1.5 var(--menufont);
+    letter-spacing: 1.5px; text-transform: uppercase; color: #7d6f55; }
   #scrSetx .sxPane { padding: 16px 18px 16px 18px; }
   #scrSetx .sxKind { height: 62px; font-size: 11px; }
   #scrSetx .sxKind img { width: 28px; height: 28px; }

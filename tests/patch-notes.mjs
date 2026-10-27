@@ -104,6 +104,12 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
     const tabDot = () => { const t = document.querySelector('#scrSetx .sxTab[data-tab="notes"]'); return !!(t && t.classList.contains('hasDot')); };
     o.unseenFresh = SettingsPage.notesUnseen();
     o.titleDotFresh = titleDot();
+    // the dot rides ON the carved plaque and leaves its body and nailheads alone
+    const plaque = document.getElementById('btnTitleSettings');
+    const bef = getComputedStyle(plaque, '::before'), aft = getComputedStyle(plaque, '::after');
+    const other = getComputedStyle(document.getElementById('btnTitleHow'), '::before');
+    o.plaque = { child: !!plaque.querySelector('.sxDoorDot'), body: bef.backgroundImage === other.backgroundImage && bef.clipPath === other.clipPath,
+      studs: aft.backgroundImage === getComputedStyle(document.getElementById('btnTitleHow'), '::after').backgroundImage };
     Screens.backTo = 'title'; Screens.show('settings');
     o.tabDotBefore = tabDot();
     SettingsPage.open('notes');
@@ -137,7 +143,8 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
     return o;
   });
   ck('aFreshDeviceHasUnreadNotes', r.unseenFresh === true && r.tabDotBefore === true, JSON.stringify({ unseen: r.unseenFresh, tab: r.tabDotBefore }));
-  ck('andTheDoorWearsTheDotToo', r.titleDotFresh === true, 'title Settings plaque');
+  ck('andTheDoorWearsTheDotToo', r.titleDotFresh === true && r.plaque.child, 'title Settings plaque');
+  ck('andThePlaqueKeepsItsCarving', r.plaque.body && r.plaque.studs, JSON.stringify(r.plaque) + ' — the dot is a child, never the plaque\'s own ::before/::after');
   ck('openingTheTabClearsIt', r.tabDotAfter === false && r.unseenAfter === false && r.titleDotAfter === false && +r.stored === codeV,
     JSON.stringify({ tab: r.tabDotAfter, unseen: r.unseenAfter, door: r.titleDotAfter, stored: r.stored }));
   ck('aNewerBuildBringsItBack', r.tabDotNewer === true && r.titleDotNewer === true, JSON.stringify({ tab: r.tabDotNewer, door: r.titleDotNewer }));

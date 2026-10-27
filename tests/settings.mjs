@@ -166,6 +166,23 @@ const open = async (opts) => {
   await ctx.close();
 }
 
+/* ---- 1d. the two pieces that run for EVERYONE cost nothing and send
+   nothing: the error ring is two listeners that do no work until an error,
+   and the outbox retry is one storage read — with the mock answering every
+   door, a device that never wrote a report sends nothing past the retry's
+   moment, and writes nothing to the device ---- */
+{
+  const { ctx, p } = await open({ mock: true, tag: 'everyone' });
+  await p.waitForFunction(() => performance.now() > 8000, null, { timeout: 30000, polling: 250 });
+  const r = await p.evaluate(() => ({
+    mails: __MOCK.st.mails.length, rpcs: __MOCK.st.rpcs.length, live: SettingsPage.live(),
+    keys: ['neo-feedback-outbox', 'neo-errlog', 'neo-feedback-sent'].filter(k => localStorage.getItem(k) != null),
+    ring: Feedback.errors().length,
+  }));
+  ck('forEveryoneTheRingAndTheRetrySendNothing', !r.live && r.mails === 0 && r.rpcs === 0 && r.keys.length === 0 && r.ring === 0, JSON.stringify(r));
+  await ctx.close();
+}
+
 /* ---- 1c, 2, 3. staged: the new page, its doors, and only real settings ---- */
 {
   const { ctx, p } = await open({ q: '?cards=1', mock: true, tag: 'staged' });
