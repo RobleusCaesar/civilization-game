@@ -134,13 +134,18 @@ Object.assign(Deck, {
   RANK: { defender: 'elite', axeman: 'elite', archer: 'marksman', longbow: 'marksman',
           rider: 'lancer', horsearcher: 'lancer', catapult: 'trebuchet' },
   // every land soldier the player has — the ones riding a hull included
-  // ({u, hull}: a soldier below deck is in its transport's cargo, never in S.units)
+  // ({u, hull}: a soldier below deck is in its transport's cargo, never in S.units).
+  // A REAL soldier: the Ancestors' Host's ghosts (u.spectral, Bronze
+  // Champions — military by kind) are another card's summons for six days
+  // and never rise a rank, nor does a war-wolf; the count Veterans reports
+  // is the soldiers it really raised
   landSoldiers() {
     const out = [];
+    const real = u => Units.isMilitary(u) && !Units.isNaval(u) && !u.spectral && !u.warWolf;
     for (const u of S.units) {
       if (u.owner !== 'P') continue;
-      if (Units.isMilitary(u) && !Units.isNaval(u)) out.push({ u, hull: null });
-      if (u.cargo && u.cargo.length) for (const c of u.cargo) if (Units.isMilitary(c) && !Units.isNaval(c)) out.push({ u: c, hull: u });
+      if (real(u)) out.push({ u, hull: null });
+      if (u.cargo && u.cargo.length) for (const c of u.cargo) if (real(c)) out.push({ u: c, hull: u });
     }
     return out;
   },
