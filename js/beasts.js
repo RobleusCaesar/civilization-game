@@ -342,7 +342,7 @@ Object.assign(R, {
       if (typeof Sound !== 'undefined') Sound.play('kraken');
       if (Beasts.inView(ev.x, ev.y, 2)) this.shakeAt(5, 1.4);
     }
-    this.drawKraken(g, st.body.x, st.body.y, rise, ev.t + (ev.phase === 'thrash' ? 1.6 : ev.phase === 'sink' ? 3.8 : 0));
+    this.drawKrakenBody(g, st.body.x, st.body.y, rise, ev.t + (ev.phase === 'thrash' ? 1.6 : ev.phase === 'sink' ? 3.8 : 0));
     if (tent != null) {
       this.drawTentacle(g, ev.x, ev.y, tent, st.body.x < ev.x ? 1 : -1);
       if (tent >= 7.5 && !st.slammed.boat) {
@@ -374,7 +374,7 @@ Object.assign(R, {
     return best ? { x: best.x, y: best.y } : { x, y };
   },
   // the body at (x, y) in tiles, `rise` 0 (under) → 1 (up), its own clock t
-  drawKraken(g, x, y, rise, t) {
+  drawKrakenBody(g, x, y, rise, t) {
     const C = Beasts.KRAKEN, TL = CFG.TILE, fr = Beasts.ready('kraken');
     if (!fr || rise <= 0.001) return;
     const f = fr[((t * C.fps) | 0) % fr.length], sc = C.scale * (0.7 + 0.3 * rise);
