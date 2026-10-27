@@ -11885,6 +11885,8 @@ const R = {
      (the deer's lesson, pinned in tests/animal-art.mjs). */
   unitArtKey(u) {
     if (u.kind === 'wolf' && u.coat === 'pale') return this.paleWolfKey();
+    // a war-wolf (Hunter's Pack) wears the tribe's collar in its own frames
+    if (u.kind === 'wolf' && u.warWolf && window.Deck && Deck.warWolfKey) return Deck.warWolfKey();
     if (u.kind !== 'villager') {
       // the sapper tiers by its camp like the villager tiers by its hall
       if (u.kind === 'sapper')

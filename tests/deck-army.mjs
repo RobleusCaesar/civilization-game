@@ -737,21 +737,69 @@ await p.evaluate(({ ARMY }) => {
     for (const u of pack) { u.task = null; u.path = null; }
     Combat.acquire();
     out.peace = S.peace && !pack.some(u => u.tUnit === a.id);
-    // THE DYE: a ring of the tribe's colour at its feet (drawn, measured)
-    const cv = document.createElement('canvas'); cv.width = cv.height = 40;
-    const g = cv.getContext('2d');
-    Deck.drawCollar(g, pack[0], 4, 4, 32);
-    const dye = Sprites.tunicCol[G.tunicOf('P')].body;
-    const want = [1, 3, 5].map(i => parseInt(dye.slice(i, i + 2), 16));
-    const d = g.getImageData(0, 0, 40, 40).data;
-    let n = 0;
-    for (let i = 0; i < d.length; i += 4) if (d[i + 3] && Math.abs(d[i] - want[0]) + Math.abs(d[i + 1] - want[1]) + Math.abs(d[i + 2] - want[2]) < 6) n++;
-    out.dye = n;
     out.named = Deck.unitName(pack[0]) === 'War-wolf' && !!Deck.unitHint(pack[0]) && Deck.unitName(a) === null;
+    /* THE COLLAR IS ON THE WOLF (judge g3: "cyan dots on the ground"): a
+       war-wolf's frames are the wolf's own with a band of the tribe's dye
+       across the neck — on its own pixels, every alpha kept — and it
+       FOLLOWS THE HEAD through a pose (measured on a synthetic strip, whose
+       head is known: a file:// page cannot read the shipped art); a wild
+       wolf wears nothing, and nothing is drawn on the ground round it. */
+    const realWolf = Assets.unitArt.wolf;
+    const frame = (S, ox, oy, view) => {
+      const c = document.createElement('canvas'); c.width = c.height = S;
+      const q = c.getContext('2d'); q.fillStyle = '#3a3a3a';
+      if (view === 's') { q.fillRect(ox + 16, oy + 27, 14, 13); q.fillRect(ox + 18, oy + 40, 12, 10); q.fillRect(ox + 19, oy + 50, 3, 12); q.fillRect(ox + 26, oy + 50, 3, 12);
+        q.fillStyle = '#bbbbbb'; q.fillRect(ox + 19, oy + 31, 1, 1); q.fillRect(ox + 26, oy + 31, 1, 1); }
+      else { q.fillRect(ox + 10, oy + 30, 36, 14); q.fillRect(ox + 46, oy + 24, 12, 14); q.fillRect(ox + 12, oy + 44, 4, 14); q.fillRect(ox + 40, oy + 44, 4, 14); }
+      return c;
+    };
+    const fake = { dirs: {} };
+    for (const dir of ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw']) {
+      const v = dir === 's' ? 's' : 'side';
+      // walk: frame 1 the same wolf a little along; fight: 96px frames, the
+      // walk window bottom-centred, the head thrown forward and up
+      fake.dirs[dir] = { walk: [frame(64, 0, 0, v), frame(64, 2, 1, v)], fight: [frame(96, 16 + 8, 32 - 6, v), frame(96, 16 + 3, 32 - 2, v)] };
+    }
+    Assets.unitArt.wolf = fake;
+    try {
+      const wild = __ar.unit('wolf', 'W', pack[0].x + 3, pack[0].y);
+      const key = R.unitArtKey(pack[0]), art = Assets.unitArt[key];
+      out.keys = [key, R.unitArtKey(wild)];
+      const dye = Sprites.tunicCol[G.tunicOf('P')], hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+      const body = hex(dye.body), cols = [body, hex(dye.accent), body.map(v => Math.min(255, v + 24))].map(c => c.join());
+      const look = (f, src) => {
+        const W = f.width, d = f.getContext('2d').getImageData(0, 0, W, W).data, s = src.getContext('2d').getImageData(0, 0, W, W).data;
+        let n = 0, x = 0, y = 0, alphaMoved = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] !== s[i + 3]) alphaMoved++;
+          if (d[i + 3] && cols.includes([d[i], d[i + 1], d[i + 2]].join())) { n++; x += (i / 4) % W; y += Math.floor(i / 4 / W); }
+        }
+        return { n, x: n ? x / n : 0, y: n ? y / n : 0, alphaMoved };
+      };
+      const L = (dir, pose, k) => art && art.dirs[dir] ? look(art.dirs[dir][pose][k], fake.dirs[dir][pose][k]) : { n: 0, x: 0, y: 0, alphaMoved: 0 };
+      const e0 = L('e', 'walk', 0), e1 = L('e', 'walk', 1), ef = L('e', 'fight', 0), s0 = L('s', 'walk', 0), s1 = L('s', 'walk', 1), sf = L('s', 'fight', 1);
+      const off = (a, b) => [+(b.x - a.x).toFixed(1), +(b.y - a.y).toFixed(1)];
+      out.collar = { n: [e0.n, s0.n], alpha: e0.alphaMoved + ef.alphaMoved + s0.alphaMoved + sf.alphaMoved,
+        e1: off(e0, e1), ef: off(e0, ef), s1: off(s0, s1), sf: off(s0, sf) };
+      // the unit pass for a war-wolf: nothing of the dye laid round it
+      const cv = document.createElement('canvas'); cv.width = cv.height = 48;
+      const g = cv.getContext('2d');
+      Deck.drawUnit(g, pack[0], fake.dirs.e.walk[0], 8, 8, 32);
+      const d = g.getImageData(0, 0, 48, 48).data;
+      let ring = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] && cols.includes([d[i], d[i + 1], d[i + 2]].join())) ring++;
+      out.ring = ring;
+    } finally { Assets.unitArt.wolf = realWolf; for (const k in Assets.unitArt) if (/^wolf-war-/.test(k)) delete Assets.unitArt[k]; }
     return out;
   });
   ck('thePackKeepsTheTruce', r.peace);
-  ck('andWearsTheTribesDye', r.dye >= 12 && r.named, `${r.dye} dyed pixels in the ring; named a War-wolf with its own hint ${r.named}`);
+  const near = (v, w) => Math.abs(v[0] - w[0]) <= 1 && Math.abs(v[1] - w[1]) <= 1;
+  ck('andWearsTheTribesDye', r.named && r.keys[0] === 'wolf-war-' + r.keys[0].split('-').pop() && r.keys[0] !== 'wolf' && r.keys[1] === 'wolf' &&
+    r.collar.n[0] >= 18 && r.collar.n[1] >= 18 && r.collar.alpha === 0 && r.ring === 0,
+    `a war-wolf draws as ${r.keys[0]}, a wild one as ${r.keys[1]}; ${r.collar.n.join('/')} px of dye on the neck (side/face-on), ` +
+    `${r.collar.alpha} alpha moved, ${r.ring} px of dye laid round it; named a War-wolf with its own hint ${r.named}`);
+  ck('andTheCollarFollowsTheHead', near(r.collar.e1, [2, 1]) && near(r.collar.ef, [24, 26]) && near(r.collar.s1, [2, 1]) && near(r.collar.sf, [19, 30]),
+    `the collar moved with the head: side walk ${r.collar.e1} (head 2,1), side lunge ${r.collar.ef} (24,26), face-on walk ${r.collar.s1} (2,1), face-on fight ${r.collar.sf} (19,30)`);
 }
 {
   const r = await p.evaluate(() => {

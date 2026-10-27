@@ -29,7 +29,8 @@
      nothing, scores no "greatest tribe" (game.js counts popUsed now), is no
      game (owner 'P' is never wild: no meat, no corpse, no hunting ground),
      and its own soldiers can never mistake it for a foe (same owner). The
-     wild sheet is undyed, so it wears a ring of the tribe's dye at its feet.
+     wild sheet is undyed, so it wears a collar of the tribe's dye, painted
+     into its own frames (warWolfKey).
    THE SPECTRAL HOST (u.spectral, Ancestors' Host): fifteen Bronze Champions
      that are not people. Units.mortal() keeps them out of the census, the
      larder and the famine (popUsed, foodUpkeep, desertHungry — the cargo of
@@ -48,8 +49,8 @@
      an engine's stone with it (combat.js reads u.vet where it reads bldAtk).
      A veteran never stacks: a second card finds it already at the top. The
      soldiers aboard a transport rise with the rest. The rank is worn for
-     good: two gold chevrons for a veteran, one for a soldier the card raised
-     to champion (u.ranked). A Catapult becomes a
+     good: a gold pip over the head for a veteran, a steel one for a soldier
+     the card raised to champion (u.ranked; drawRank). A Catapult becomes a
      Trebuchet, which had no heal price (CFG.HEAL_FOOD) — it has one now.
 
    NO CARD DRAWS THE RUN'S RNG: every roll here is Math.random or a hash of
@@ -486,8 +487,7 @@ Object.assign(Deck, {
     if (this._swingUntil) img = this.swingFrame(u) || img;   // an engine set down swings its arm once
     const rank = u.vet ? 2 : u.ranked ? 1 : 0;
     if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (rank) this.drawRank(g, x, y, D, rank, img); return; }
-    if (u.warWolf) this.drawCollar(g, u, x, y, D);     // under the wolf, as a ring on the ground is
-    g.drawImage(img, x, y, D, D);
+    g.drawImage(img, x, y, D, D);   // (a war-wolf's collar is in its frames: warWolfKey)
     // (a rank the Veterans wave has not reached yet is not worn yet)
     if (rank && !(this._rankAt && this._rankAt.get(u.id) > performance.now())) this.drawRank(g, x, y, D, rank, img);
   },
@@ -520,16 +520,129 @@ Object.assign(Deck, {
   },
   // the player's tribe's dye ({body, accent}), as its tunics wear it
   dyeOf() { return (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99', accent: '#2c4e70' }; },
-  // the tribe's dye: a ring of it on the ground at a war-wolf's feet, never
-  // on a wild one — the wild sheet is undyed, and this is what says "yours"
-  drawCollar(g, u, x, y, D) {
-    const dye = (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99', accent: '#2c4e70' };
-    const cx = x + D / 2, cy = y + D - 3, n = 12, rx = D * 0.36, ry = rx * 0.4;
-    for (let k = 0; k < n; k++) {
-      const th = k / n * Math.PI * 2, px = Math.round((cx + Math.cos(th) * rx) / 2) * 2, py = Math.round((cy + Math.sin(th) * ry) / 2) * 2;
-      g.fillStyle = dye.accent || '#2c4e70'; g.fillRect(px, py + 1, 2, 1);
-      g.fillStyle = dye.body || '#3f6d99'; g.fillRect(px, py, 2, 1);
+  /* THE WAR-WOLF WEARS THE TRIBE'S COLLAR (judge g3: "cyan dots on the
+     ground"; the first cut put a dotted ring of dye at its feet, which read
+     as a selection marker and pointed at nothing). The collar is ON the
+     wolf: a three-pixel band of the tribe's dye — lit, the dye, its shade —
+     across the neck, painted into the wolf's own frames on its own pixels
+     (source-atop: nothing is drawn where the wolf is not), once per strip,
+     cached under its own unitArt key ('wolf-war-<tunic>' — the tunic rides
+     in the key, R.unitArtKey's staleness armour) exactly the way
+     R.paleWolfKey derives the pale coat. Nothing is authored.
+     WHERE THE NECK IS, per view: the collar's middle, its line and its
+     length are set on walk frame 0 (COLLAR, in that frame's 64px space),
+     and every other frame of every pose finds its own — in a side or
+     three-quarter view the head LEADS (the snout is the silhouette's
+     extreme along `l`, in its upper 60%, so a striding paw never stands in
+     for it — and that holds through a lunge or a leap), and the collar
+     keeps its walk-frame offset from the snout; face-on and from behind
+     nothing leads, so the head patch `p` is tracked from frame to frame. A
+     strip the page may not read (a file:// page taints its canvases) keeps
+     the walk frame's anchor for every frame — the collar still sits on the
+     neck, if a pixel or two adrift in a leap. */
+  COLLAR: {
+    s:  { p: [12, 25, 22, 22], c: [23, 45], a: 0, n: 12 },
+    n:  { p: [28, 19, 22, 18], c: [39, 34], a: 0, n: 12 },
+    se: { l: [1, 0.35], c: [41, 37], a: 80, n: 10 },
+    e:  { l: [1, 0], c: [50, 35], a: 90, n: 9 },
+    ne: { l: [1, -0.5], c: [51, 30], a: 70, n: 8 },
+    nw: { l: [-1, -0.5], c: [34, 36], a: 12, n: 11 },
+    w:  { l: [-1, 0], c: [25, 36], a: 90, n: 11 },
+    sw: { l: [-1, 0.35], c: [27, 38], a: 100, n: 11 },
+  },
+  warWolfKey() {
+    const src = window.Assets && Assets.unitArt && Assets.unitArt.wolf;
+    if (!src || !src.dirs) return 'wolf';
+    const tun = G.tunicOf('P'), key = 'wolf-war-' + tun;
+    const dst = Assets.unitArt[key] || (Assets.unitArt[key] = { dirs: {} });
+    for (const dir in src.dirs) {
+      const A = this.COLLAR[dir], sd = src.dirs[dir], w0 = sd.walk && sd.walk[0];
+      const d = dst.dirs[dir] || (dst.dirs[dir] = {});
+      const stale = Object.keys(sd).filter(pose => !(d[pose] && d[pose]._of === sd[pose]));
+      if (!stale.length) continue;
+      for (const pose of stale) {
+        // no anchor for this view (or no walk to set it on): the plain frames
+        if (!A || !w0) { d[pose] = sd[pose].slice(); d[pose]._of = sd[pose]; continue; }
+        d[pose] = this.collarStrip(sd[pose], w0, A);
+        d[pose]._of = sd[pose];
+      }
     }
+    return key;
+  },
+  collarStrip(frames, w0, A) {
+    const dye = this.dyeOf(), hex = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16) || 0);
+    const body = hex(dye.body), acc = hex(dye.accent), lit = body.map(v => Math.min(255, v + 24));
+    const css = c => 'rgb(' + c.join(',') + ')';
+    const read = fr => {
+      try {
+        const c = document.createElement('canvas'); c.width = fr.width; c.height = fr.height;
+        const q = c.getContext('2d'); q.drawImage(fr, 0, 0);
+        return q.getImageData(0, 0, c.width, c.height);
+      } catch (e) { return null; }   // a tainted strip: the walk frame's anchor stands
+    };
+    const T = read(w0);
+    const E0 = T && A.l ? this.snout(T, A.l) : null;
+    let tmpl = null;
+    if (T && A.p) {
+      const [px, py, pw, ph] = A.p; tmpl = [];
+      for (let y = py; y < py + ph; y++) for (let x = px; x < px + pw; x++) {
+        const i = (y * T.width + x) * 4; tmpl.push([x, y, T.data[i + 3] > 128, (T.data[i] + T.data[i + 1] + T.data[i + 2]) / 3]);
+      }
+    }
+    let sx = 0, sy = 0;
+    return frames.map((fr, k) => {
+      const W = fr.width, H = fr.height, ox = (W - 64) / 2, oy = H - 64;
+      const im = (E0 || tmpl) ? read(fr) : null;
+      if (im && E0) {
+        // the head leads: the collar keeps its walk-frame offset from the snout
+        const E = this.snout(im, A.l);
+        if (E) { sx = Math.round(E[0] - E0[0] - ox); sy = Math.round(E[1] - E0[1] - oy); }
+      } else if (im && tmpl) {
+        // face-on and from behind: the head patch's best match near the last frame's
+        const P = im.data, R0 = k === 0 ? 8 : 6;
+        let best = 1e9, bx = sx, by = sy;
+        for (let dy = sy - R0; dy <= sy + R0; dy++) for (let dx = sx - R0; dx <= sx + R0; dx++) {
+          let e = (Math.abs(dx - sx) + Math.abs(dy - sy)) * 0.05;
+          for (const [x, y, on, v] of tmpl) {
+            const X = x + ox + dx, Y = y + oy + dy, i = (Y * W + X) * 4;
+            const on2 = X >= 0 && Y >= 0 && X < W && Y < H && P[i + 3] > 128;
+            if (on !== on2) e += 2; else if (on) e += Math.abs(v - (P[i] + P[i + 1] + P[i + 2]) / 3) / 48;
+          }
+          if (e < best) { best = e; bx = dx; by = dy; }
+        }
+        sx = bx; sy = by;
+      }
+      // the band, laid on the wolf's own pixels (source-atop: no read needed)
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const q = c.getContext('2d'); q.imageSmoothingEnabled = false;
+      q.drawImage(fr, 0, 0);
+      q.globalCompositeOperation = 'source-atop';
+      const th = A.a * Math.PI / 180, ux = Math.cos(th), uy = Math.sin(th), vx = -uy, vy = ux;
+      const cx = A.c[0] + ox + sx, cy = A.c[1] + oy + sy, done = new Set();
+      for (let s = 2; s >= 0; s--) {
+        q.fillStyle = css(s === 0 ? lit : s === 1 ? body : acc);
+        for (let t = -A.n / 2; t <= A.n / 2; t += 0.5) {
+          const x = Math.round(cx + ux * t + vx * (s - 1)), y = Math.round(cy + uy * t + vy * (s - 1)), id = y * W + x;
+          if (done.has(id)) continue;
+          done.add(id); q.fillRect(x, y, 1, 1);
+        }
+      }
+      return c;
+    });
+  },
+  // the snout: the opaque pixels within 3 of the silhouette's extreme along
+  // `l`, in its upper 60% (a striding paw never stands in for the head)
+  snout(im, l) {
+    const W = im.width, H = im.height, P = im.data;
+    let y0 = H, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (P[(y * W + x) * 4 + 3] > 128) { if (y < y0) y0 = y; y1 = y; }
+    if (y1 < 0) return null;
+    const yMax = y0 + (y1 - y0) * 0.6, pts = [];
+    let best = -1e9;
+    for (let y = y0; y <= yMax; y++) for (let x = 0; x < W; x++) if (P[(y * W + x) * 4 + 3] > 128) { const dd = x * l[0] + y * l[1]; pts.push([x, y, dd]); if (dd > best) best = dd; }
+    let ax = 0, ay = 0, n = 0;
+    for (const [x, y, dd] of pts) if (dd >= best - 3) { ax += x; ay += y; n++; }
+    return n ? [ax / n, ay / n] : null;
   },
   /* THE RANK A CARD GAVE, WORN FOR GOOD (judge g3: "the promoted army
      looks identical in a crowd" — the first cut's two one-pixel chevrons sat
@@ -1271,7 +1384,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     },
 
     /* BRONZE — Hunter's Pack: three war-wolves (the rules are on Deck above:
-       PACK, packSense, packLeash, packHome; the look is drawCollar). Each
+       PACK, packSense, packLeash, packHome; the look is warWolfKey). Each
        one's own place by the hall (u.den) is where its march out ends. */
     hunters_pack: {
       at: 'tc', KIND: 'wolf', N: 3, STAGGER: 120, HOLD: 1.5,
@@ -1315,8 +1428,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       /* AT HEEL: three bronze beams come down at the hall's side, one after
          another, and each wolf lands on its own place IN the beam — at heel,
          facing out, held there for its beat (FAN: hold) — and as it lands it
-         HOWLS: one ring of hard pixels in the tribe's dye going out from its
-         feet, and its breath rising off the muzzle. No boots, no dust
+         HOWLS: two arcs of hard pale pixels going up off its head, the second
+         a beat behind the first, and its breath rising off the muzzle. The
+         tribe's dye is worn on the wolf (its collar, Deck.warWolfKey) and
+         nowhere on the ground: the first cut's dotted dye rings at its feet
+         read as "cyan dots" pointing at nothing. No boots, no dust
          (`dust: false`): the first cut's grey doorstep clouds were the loudest
          thing in the still, and the dash out to a den four tiles off — half
          off the screen — is gone with the march. */
@@ -1325,13 +1441,19 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         draw(g, s, p, dt, layer) {
           A.arrive(g, s, layer, 'bronze');
           if (layer !== 'world') return;
-          const TL = CFG.TILE, dye = Deck.dyeOf();
+          const TL = CFG.TILE;
           for (const m of s.units) {
             const u = live(m.id), hq = (s.t - m.d - 0.15) / 0.6;
             if (!u || hq <= 0 || hq >= 1) continue;
-            const r = TL * (0.35 + hq * 1.1);
-            g.fillStyle = hq < 0.5 ? dye.body : dye.accent;
-            A.ellipseDots(g, u.x * TL, u.y * TL + 6, r, r * 0.42);
+            // the howl: arcs over the head, widening and climbing as they go
+            const B = R.unitBox(u), hx = u.x * TL, hy = R.frameTop(u.y, B, B) + B * 0.3;
+            for (let w = 0; w < 2; w++) {
+              const q = hq * 1.25 - w * 0.3;
+              if (q <= 0 || q >= 1) continue;
+              const rr = 4 + q * 12, cy = hy - q * 6;
+              g.fillStyle = q < 0.55 ? '#f4efe2' : '#c9c4b8';
+              for (let a = -2.5; a <= -0.64; a += 0.31) g.fillRect(A.snap(hx + Math.cos(a) * rr), A.snap(cy + Math.sin(a) * rr * 0.8), 2, 2);
+            }
             // its breath, rising off the muzzle in hard pale steps
             for (let k = 0; k < 3; k++) {
               const lift = (hq * 1.3 + k * 0.22) % 1;
