@@ -60,8 +60,9 @@
                        card draws from S.rngState at the play
      THE PICTURE       every card's show and every running card's look draws
                        at every beat without throwing, paints something, is
-                       render state only, and costs nothing with no card in
-                       play
+                       render state only, costs nothing with no card in play,
+                       and never paints the off-map black (a control widens
+                       the board and must see it lit)
 
    Run after touching: js/deckfx-growth.js, Units.gatherYield / buildRate and
    their call sites (the gather, fish and shorefish tasks, the build task,
@@ -1003,6 +1004,49 @@ await p.evaluate(() => {
     Object.entries(r.live).map(([k, n]) => k + ' ' + n).join(', '));
   ck('theShowsAreRenderStateOnly', r.renderOnly);
   ck('andCostNothingWithNoCardInPlay', r.idleCalls === 0 && r.idleWorld === 0, `${r.idleCalls} show/look calls, ${r.idleWorld} card-world passes in 20 frames`);
+}
+
+// ---------------- 11. NOTHING IS DRAWN IN THE BLACK ----------------
+{
+  const r = await p.evaluate(() => {
+    __g.fresh('growth-rim', 'calm'); const { P } = __g.flat();
+    Screens.show('playing');
+    __g.site('P', 'wonder', P.x + 4, P.y + 4);
+    // the camera at the world's corner, the off-map rim in view
+    R.cam.z = 1.5; R.cam.x = 0; R.cam.y = 0;
+    const z = R.cam.z * R.dpr, TL = CFG.TILE, rim = Math.floor(TL * z) - 2;
+    const probe = () => {
+      let lit = 0;
+      // the sky of every show at its height, and the bounty's ring rolling out
+      // across the rim, each on a fresh canvas (no art has touched it, so its
+      // pixels can be read even from file://)
+      for (const [id, pp, layer] of [['golden_age', 0.3, 'sky'], ['enlightenment', 0.4, 'sky'], ['age_of_marble', 0.3, 'sky'],
+        ['wonders_foundation', 0.45, 'sky'], ['blight', 0.3, 'sky'], ['bountiful_land', 0.75, 'world']]) {
+        const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+        const g = c.getContext('2d');
+        g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+        const d = Deck.FX[id];
+        const s = { id, t: pp * d.show.ms / 1000, ms: d.show.ms, x: Bld.cx(P), y: Bld.cy(P), foot: P.y + 2, sz: 3, bx: P.x + 4, by: P.y + 4,
+          tc: P.id, items: [], maxD: 1, reach: 10, dx: -0.7, dy: -0.7, boom: 1, dust: 1 };
+        if (layer === 'world') g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+        d.show.draw.call(d, g, s, pp, 1 / 30, layer);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        const top = g.getImageData(0, 0, c.width, rim).data, left = g.getImageData(0, 0, rim, c.height).data;
+        let n = 0;
+        for (const data of [top, left]) for (let i = 0; i < data.length; i += 4) if (data[i] + data[i + 1] + data[i + 2] > 0) n++;
+        lit += n;
+      }
+      return lit;
+    };
+    const inBlack = probe();
+    // the control: widen the board and the same draws must light the rim
+    const bp = R.boardPx;
+    R.boardPx = () => ({ x0: -1e5, y0: -1e5, x1: 1e5, y1: 1e5 });
+    const control = probe();
+    R.boardPx = bp;
+    return { inBlack, control };
+  });
+  ck('nothingIsDrawnInTheBlack', r.inBlack === 0 && r.control > 1000, `${r.inBlack} lit pixels on the off-map rim; with the board widened ${r.control}`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

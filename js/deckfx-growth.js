@@ -201,6 +201,23 @@ const GrowFX = {
   // brings a world point on screen if it is off it (the play sequence does
   // this for the hall; a card whose work is elsewhere does it for that work)
   look(x, y) { if (window.R && R.onScreen && !R.onScreen(x, y)) R.centerOn(x, y); },
+  /* NOTHING IS DRAWN IN THE BLACK (CLAUDE.md, R.boardPx): the off-map rim is
+     void, and light ADDED over black shows as a brown smear — the sky's bands
+     and its glitter are exactly the eclipse's stars-in-the-black fault. Every
+     growth show and look is drawn clipped to the board: in world space as
+     R.clipBoard does it, in the sky (device px) through the camera. */
+  clipped(g, layer, fn) {
+    const b = window.R && R.boardPx ? R.boardPx() : null;
+    if (!b) return fn();
+    g.save();
+    g.beginPath();
+    if (layer === 'sky') {
+      const z = R.cam.z * (R.dpr || 1);
+      g.rect((b.x0 - R.cam.x) * z, (b.y0 - R.cam.y) * z, (b.x1 - b.x0) * z, (b.y1 - b.y0) * z);
+    } else g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    g.clip();
+    try { return fn(); } finally { g.restore(); }
+  },
 };
 
 /* ---------------- the engine pieces the growth cards add ---------------- */
@@ -1233,6 +1250,21 @@ Object.assign(Deck.FX, {
     },
   },
 });
+
+/* every growth show and running look is drawn inside the board (GrowFX.clipped) */
+for (const id of ['harvest_festival', 'bountiful_land', 'golden_age', 'quick_hands', 'blight', 'enlightenment', 'age_of_marble', 'wonders_foundation']) {
+  const d = Deck.FX[id];
+  if (d.show) {
+    const sh = d.show, draw = sh.draw;
+    sh.draw = function (g, s, p, dt, layer) {
+      return GrowFX.clipped(g, layer || sh.layer || 'world', () => draw.call(this, g, s, p, dt, layer));
+    };
+  }
+  if (d.drawLive) {
+    const live = d.drawLive;
+    d.drawLive = function (g, e, dt) { return GrowFX.clipped(g, 'world', () => live.call(this, g, e, dt)); };
+  }
+}
 
 /* ---------------- THE VOICES (js/audio.js's one door: synthesized, never a file) ---------------- */
 if (typeof Sound !== 'undefined' && Sound._VOICES) {
