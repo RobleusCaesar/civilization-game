@@ -662,8 +662,10 @@ window.Deck = Deck;
                  no listener, no read, no request.
    THE SITE      only the shipped site talks to the cloud (Backend's own
                  telemetryAllowed gate; the test mock is exempt). A page from
-                 disk, a local server, ?dev= and a review deal (?cards=slice |
-                 all, whose cards were never earned) stay on the device.
+                 disk, a local server and ?dev= stay on the device — and so
+                 does a TEST deck (?cards=all / slice, or a mirror marked
+                 `test`), whose cards were never earned and which the record
+                 must never take back mid-playtest.
    IN ORDER, AND ONLY WHAT WAS ANSWERED LEAVES THE QUEUE. Answered ok — or
                  ok + already, a DUPLICATE (an answer lost on the way back) —
                  the op is done. Refused for good (not earned, not a card that
@@ -695,7 +697,7 @@ Object.assign(Deck, {
   },
   _sy: null,
   _syncState() {
-    return this._sy || (this._sy = { busy: null, again: false, timer: 0, nudge: 0, fails: 0, armed: false, last: null });
+    return this._sy || (this._sy = { busy: null, again: false, timer: 0, nudge: 0, fails: 0, armed: false, last: null, seenUid: null });
   },
   /* the listeners, installed once and only while the switch is on: a new op
      queued (a grant, a play, the starter hand), the network coming back, and
@@ -707,7 +709,18 @@ Object.assign(Deck, {
     try {
       this.onChange(() => this._syncNudge());
       window.addEventListener('online', () => this.sync('online'));
-      window.addEventListener('backend-status', e => { if (e && e.detail && e.detail.uid) this.sync('signin'); });
+      /* a SIGN-IN, not every status word: the transport emits backend-status
+         on every request that fails, so answering each one with a sync made
+         an offline device chase its own failures — the failing drain's emit
+         asked for another drain, which failed and emitted again, forever.
+         Only a uid this deck has not yet seen (the boot's sign-in, a
+         recovery token, the second chance) is news. */
+      window.addEventListener('backend-status', e => {
+        const uid = e && e.detail && e.detail.uid;
+        if (!uid || uid === st.seenUid) return;
+        st.seenUid = uid;
+        this.sync('signin');
+      });
     } catch (e) { /* headless */ }
     return true;
   },
@@ -722,17 +735,23 @@ Object.assign(Deck, {
       st.nudge = setTimeout(() => { st.nudge = 0; this.sync('change'); }, 40);
     } catch (e) {}
   },
-  _reviewDeal() {
+  /* A TEST DECK is the tester's toy, never the player's record: the review
+     links (?cards=all deals one of every card, ?cards=slice the gate's five)
+     and any mirror marked `test` (Deck.dealAll stamps it, and it outlives
+     the link) neither deliver nor reconcile — the cloud would otherwise
+     take the dealt cards back at the first answer, mid-playtest. */
+  _testDeck() {
     let q = '';
     try { q = String(location.search || ''); } catch (e) {}
-    return /[?&]cards=(slice|all)\b/.test(q);
+    if (/[?&]cards=(slice|all)\b/.test(q)) return true;
+    try { return !!this.col().test; } catch (e) { return false; }
   },
   // '' when this device may talk to the cloud now, else the reason it may not
   _syncGate() {
     if (!this.on()) return 'off';
     const B = window.Backend;
     if (!B || !B.rpc) return 'no_backend';
-    if (this._reviewDeal()) return 'review';
+    if (this._testDeck()) return 'test';
     if (!B.configured) return 'not_configured';
     if (!B.mock && !(B.telemetryAllowed && B.telemetryAllowed())) return 'not_site';
     if (!B.isReady() || !B.uid) return 'not_ready';
@@ -891,7 +910,13 @@ Object.assign(Deck, {
     const seen = (d.seen && typeof d.seen === 'object') ? d.seen : {};
     for (const id of Object.keys(seen)) if (this.card(id) && !c.seen[id]) c.seen[id] = +seen[id] || Date.now();
     for (const id of Object.keys(counts)) if (!c.seen[id]) c.seen[id] = Date.now();
-    if (d.starter) c.starter = c.starter || +d.starter_at || Date.now();
+    /* the starter hand as the RECORD has it: claimed there, it is claimed
+       here; NOT claimed there with nothing waiting (its op lost to the
+       queue's cap), the mark comes off so the next ensureStarter deals the
+       hand again and its op claims it — the record never claims three
+       cards the device was shown and the cloud was not */
+    if (d.starter === true) c.starter = c.starter || +d.starter_at || Date.now();
+    else if (d.starter === false && c.starter) delete c.starter;
     if (d.pity >= 0) c.pity = Math.floor(+d.pity);
     if (d.medians && typeof d.medians === 'object') {
       const m = { at: Date.now() };

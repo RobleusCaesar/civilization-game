@@ -312,6 +312,17 @@ const Backend = {
   // finding.
   logRunEnd(info) {
     info = info || {};
+    /* A RUN WITH NO ID ends under a fresh one (tests/telemetry.mjs §5): a save
+       from before the id rode in it (0007) used to end with run_id null — one
+       row nobody could ever match, and a card the server could never check
+       against it, so the grant was given up and the card left the collection
+       at the next reconcile. The ending is still ONE row; it is simply a row
+       with a name. S.runId takes it too, so the end screen's grant asks for
+       the run the row was sent under. */
+    if (!this.runId) {
+      this.runId = this.newRunId();
+      try { if (typeof S !== 'undefined' && S && !S.runId) S.runId = this.runId; } catch (e) {}
+    }
     this._emitEnd({
       run_id: this.runId, kind: 'run_end',
       outcome: info.outcome || null, cause: info.cause || null,
