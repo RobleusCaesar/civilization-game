@@ -299,16 +299,36 @@ Deck.armyFx = {
     g.fillStyle = this.rgba(col || '6,8,18', a);
     g.fillRect(0, 0, R.cv.width, R.cv.height);
   },
-  // the held beat: the screen's edges closed in by three hard bands
-  edges(g, a, col) {
+  /* THE HELD BEAT is a LETTERBOX: two solid bars slide in over the open
+     frame — below the status bar, above the build menu, whose heights are
+     measured off the DOM (R.topReserve/bottomReserve are learned lazily and
+     can still read 0) — each edged with a gilded rule, and slide back out
+     when the march lets the beat go. The first cut closed the screen in with
+     three stepped vignette bands down every side, which on a phone read as
+     dark stripes stuck to the glass. Hard-edged and opaque, a letterbox
+     reads as a cut to the moment, which is what the beat is. */
+  frame() {
+    const now = performance.now();
+    if (this._frame && now - this._frame.at < 500) return this._frame;
+    const dpr = R.dpr || 1, tb = document.getElementById('topbar'), bb = document.getElementById('bottombar');
+    const vis = el => el && el.offsetParent !== null ? el.offsetHeight : 0;
+    return (this._frame = { at: now, top: (vis(tb) * dpr) || (R.topReserve || 0) * dpr, bot: (vis(bb) * dpr) || (R.bottomReserve || 0) * dpr });
+  },
+  edges(g, a, col, rule) {
     if (a <= 0.01) return;
-    const W = R.cv.width, H = R.cv.height, b = Math.round(Math.min(W, H) * 0.06);
-    for (let k = 0; k < 3; k++) {
-      g.fillStyle = this.rgba(col || '8,6,4', a * (0.55 - k * 0.15));
-      const i = b * k;
-      g.fillRect(i, i, W - i * 2, b); g.fillRect(i, H - i - b, W - i * 2, b);
-      g.fillRect(i, i + b, b, H - i * 2 - b * 2); g.fillRect(W - i - b, i + b, b, H - i * 2 - b * 2);
-    }
+    const W = R.cv.width, H = R.cv.height, f = this.frame(), gr = this.grain();
+    const open = Math.max(1, H - f.top - f.bot);
+    // the bars come in by whole grains, eased: a hard edge on every frame
+    const e = 1 - (1 - Math.min(1, a)) * (1 - Math.min(1, a));
+    const h = Math.round(open * 0.085 * e / gr) * gr;
+    if (h <= 0) return;
+    g.fillStyle = 'rgb(' + (col || '10,8,6') + ')';
+    g.fillRect(0, f.top, W, h); g.fillRect(0, H - f.bot - h, W, h);
+    // the gilded rule along each bar's inner edge, a grain thick
+    g.fillStyle = this.rgba(rule || '255,212,94', 0.85 * e);
+    g.fillRect(0, f.top + h - gr, W, gr); g.fillRect(0, H - f.bot - h, W, gr);
+    g.fillStyle = this.rgba('120,80,24', 0.9 * e);
+    g.fillRect(0, f.top + h, W, Math.max(1, gr >> 1)); g.fillRect(0, H - f.bot - h - Math.max(1, gr >> 1), W, Math.max(1, gr >> 1));
   },
   /* light coming down out of the sky onto a point on the screen: a cone of
      shafts from high above it, cut in scanlines the height of the world's
@@ -317,7 +337,8 @@ Deck.armyFx = {
      shaft, added. `spread` is the cone's half-angle in radians. */
   rays(g, sx, sy, n, spin, col, a, spread) {
     if (a <= 0.02 || sy < 0) return;
-    const H = R.cv.height, gr = this.grain() * 2, oy = -H * 0.3, sp = spread || 0.21;
+    // cut on the world's own 2px grain: coarser steps read as a glitch
+    const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21;
     g.save(); g.globalCompositeOperation = 'lighter';
     for (let k = 0; k < n; k++) {
       const th = (-1 + (2 * k + 1) / n) * sp + Math.sin(spin + k * 1.7) * 0.02, w = 0.016 + (k % 3) * 0.008;
@@ -328,6 +349,25 @@ Deck.armyFx = {
         const X1 = Math.round((sx + t1 * dy) / gr) * gr, X2 = Math.round((sx + t2 * dy) / gr) * gr;
         if (X2 > X1) g.fillRect(X1, y, X2 - X1, gr);
       }
+    }
+    g.restore();
+  },
+  /* dust hanging in the light: motes drifting slowly down inside the cone
+     the rays cut (the same geometry), each a hard square, a fixed number,
+     positions a pure function of the clock — what makes a shaft of light
+     read as air rather than as paint */
+  dust(g, sx, sy, t, n, col, a, spread) {
+    if (a <= 0.02 || sy < 0) return;
+    const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21;
+    g.save(); g.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < n; k++) {
+      const h = (k * 0.618034) % 1, h2 = (k * 0.381966 + 0.5) % 1;
+      const ph = (t * (0.05 + h2 * 0.06) + h) % 1;
+      const y = ph * sy, th = (h2 * 2 - 1) * sp * 0.9 + Math.sin(t * 0.7 + k) * 0.01;
+      const x = sx + Math.tan(th) * (y - oy) + Math.sin(t * 1.3 + k * 2.3) * gr;
+      const tw = ((t * 2.1 + k * 0.37) % 1) < 0.5 ? 1 : 0.55;
+      g.fillStyle = this.rgba(col, a * tw * (ph < 0.1 ? ph / 0.1 : ph > 0.9 ? (1 - ph) / 0.1 : 1));
+      g.fillRect(Math.round(x / gr) * gr, Math.round(y / gr) * gr, gr, gr);
     }
     g.restore();
   },
@@ -768,9 +808,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             // the held beat: the edges close in and the sky's light comes
             // down on the hall, then the march lets it go
             const hold = p < 0.08 ? p / 0.08 : p < 0.55 ? 1 : Math.max(0, 1 - (p - 0.55) / 0.3);
-            A.edges(g, 0.85 * hold);
             const h = A.scr(s.x, s.y);
-            A.rays(g, h.x, h.y, 9, s.t * 0.6, '255,222,140', 0.75 * hold);
+            A.rays(g, h.x, h.y, 11, s.t * 0.6, '255,222,140', 0.7 * hold);
+            A.dust(g, h.x, h.y, s.t, 30, '255,240,190', 0.9 * hold);
+            A.edges(g, hold);   // last: the bars are clean black over the light
             return;
           }
           // the first shake as the horn sounds; then the march, foot by foot,
@@ -783,6 +824,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           const k = p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.25);
           A.shaft(g, s.mx * TL, s.my * TL + 6, TL * 3.2 * Math.min(1, p * 8), TL * 1.4, '255,214,120', 0.7 * k);
           g.restore();
+          stamp(g, s, p, [0.5, 0.588, 0.675, 0.763, 0.85]);
         },
       },
     },
@@ -805,9 +847,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           const TL = CFG.TILE;
           if (layer === 'sky') {
             const hold = p < 0.1 ? p / 0.1 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.3);
-            A.edges(g, 0.8 * hold);
             const h = A.scr(s.x, s.y);
-            A.rays(g, h.x, h.y, 7, s.t * 0.5, '255,214,150', 0.7 * hold);
+            A.rays(g, h.x, h.y, 9, s.t * 0.5, '255,214,150', 0.65 * hold);
+            A.dust(g, h.x, h.y, s.t, 24, '255,232,190', 0.85 * hold);
+            A.edges(g, hold);
             return;
           }
           // a shake as each engine lands in its light, then the battery rolling out
@@ -818,6 +861,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           muster(g, s, p, '255,206,120', 3, false);
           if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 150, scale: 1.25 }); }
           flashUnits(g, s, '255,232,180', 0.5, 0.35);
+          stamp(g, s, p, [0.43, 0.56, 0.69, 0.82]);
         },
       },
     },
@@ -887,10 +931,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             // it, and holds while the host rises; then the day comes back
             const dk = p < 0.06 ? p / 0.06 : p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
             A.dim(g, [0, 0.2, 0.34, 0.46][Math.min(3, Math.ceil(dk * 3))], '6,10,28');
-            A.edges(g, 0.6 * dk, '4,6,20');
             const h = A.scr(s.mx, s.my);
             A.rays(g, h.x, h.y, 5, s.t * 0.3, '190,220,255', 0.7 * dk, 0.12);
             A.spirits(g, h.x, h.y - 10 * h.z, s.t, 26, '215,235,255', dk * (p < 0.7 ? 1 : 0.5));
+            A.edges(g, dk, '4,6,20', '190,220,255');
             return;
           }
           A.beats(s, p, [0.03, 0.2, 0.4, 0.6], 2, 0.3, ['cardDrum']);
@@ -951,6 +995,23 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       g.drawImage(R.tintOf(img, hex), u.x * TL - D / 2, R.frameTop(u.y, B, D), D, D);
     }
     g.restore();
+  }
+
+  /* THE MARCH STAMPS: on each drum of the march a ring of dust goes out
+     along the ground round the marching column (its live middle — the
+     column moves), the dust the feet throw up in step */
+  function stamp(g, s, p, at) {
+    const TL = CFG.TILE;
+    let n = 0, x = 0, y = 0;
+    for (const m of s.units) { const u = live(m.id); if (u) { n++; x += u.x; y += u.y; } }
+    if (!n) return;
+    x = x / n * TL; y = y / n * TL + TL * 0.35;
+    for (const b0 of at) {
+      const q = (p - b0) / 0.12;
+      if (q <= 0 || q >= 1) continue;
+      A.ring(g, x, y, TL * (1.2 + q * 2.4), 30, '196,164,116', 0.75 * (1 - q), 0.42);
+      A.ring(g, x, y, TL * (0.8 + q * 1.6), 22, '226,200,150', 0.5 * (1 - q), 0.42);
+    }
   }
 
   /* the host fading: each ghost goes up out of where it stood in its own
