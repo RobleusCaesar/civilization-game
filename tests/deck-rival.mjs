@@ -18,13 +18,18 @@
                        — and must see the leak); real sight clears the mark;
                        the board's rim is never charted; the memory of the
                        land (seenTerrain) is never synced from the live map;
-                       the mask is compact and rides the save
+                       the mask is compact and rides the save; PLACEMENT asks
+                       for eyes too (canPlace, the grid, the wall ghost) and
+                       the live layers (bridges, ash, carcasses) are never
+                       drawn on ground only a card charted; the world's own
+                       reveal hands charted ground back
      SCOUT'S FIRE      any point, explored or not; 9 tiles charted for good; a
                        3-day watch that is real sight from the play on (the
                        sheet holds the world still, so the card runs the
                        vision pass itself); a relic in the ring is found, one
-                       outside is not; a second fire lights a second hill;
-                       never the rim
+                       outside is not; a second fire lights a second hill,
+                       the same fire fed again burns 3 more days; never the
+                       rim
      PATHFINDER'S MAP  every tile but the relic's footprint; the relic marked
                        (map and minimap) and unfound; nothing standing shown;
                        its "when", in words
@@ -39,7 +44,9 @@
                        difficulty; a band the wilds would spare WAITS (no
                        muster, not one draw, the charge kept) where the naive
                        flip would send it at the player; a band with no road
-                       to the rival disperses, charge kept; deniable at peace
+                       to the rival scatters, the charge spent and said; the
+                       wait is capped (a wave PACT_WAIT days late runs its
+                       ordinary course, charge kept); deniable at peace
      THE SWALLOWED SUN 4 days: the rival sees half as far (its own vision),
                        strikes 30% softer (unit blows AND the engines' bldAtk
                        AND the towers' arrows — the two bypasses), musters no
@@ -53,20 +60,27 @@
                        hall at most 40% (an L1 hall a naive 600 would raze),
                        never cause 'fire'; kills and razes credited, no
                        krakenSlain, no specialFired, the world's kraken
-                       untouched; nothing to strike hands it back; the truce
-                       ends at the play — asked of what the player knows; the
-                       act is seen; a save mid-act finishes after the load
+                       untouched; at war as at peace it is asked of what the
+                       player knows (the refusal is never a probe of the fog,
+                       the burst lands only on a known target, a known ghost
+                       plays and comes up empty); the truce ends at the play;
+                       the act is seen; a save mid-act finishes after the
+                       load; a put-back confirm is no confirm
      THE PICTURE       every show at several p and every drawLive, through
                        the real frame, without a throw; nothing drawn and no
                        pass entered with no card in play; R.drawKraken is the
                        one kraken drawing for the world's act and the card's
+                       (R.drawKrakenAct asked first where the beast art has
+                       landed); one beast to a cluster
      NO RNG            no card draws from S.rngState at the play
 
    Run after touching: js/deckfx-rival.js, Deck.light / eyesAt / eyesKnow /
    eyesClear, G.updateVisibility's card passes, G.sightIn / eclipseAwe,
    AI.sunHush and the war section of AI.daily, AI.updateVision,
    Combat.maybeWave, Combat.bldAtkOf, the tower's arrow, Units.effAtk,
-   Score.compute's exploration line, Bld.foreignHome, R.drawKraken.
+   Score.compute's exploration line, Bld.foreignHome, R.drawKraken,
+   Bld.canPlace's eyes gate, UI.buildPlaceMap and the wall/trench ghosts,
+   R.rememberedAt, G.reveal, G.runReport's explored line, DeckUI's confirm.
 
      node tests/deck-rival.mjs      # exits non-zero on any regression */
 
@@ -1217,7 +1231,25 @@ await p.evaluate(() => {
       out.drawKraken = { card: viaCard, world: dk - viaCard };
       S.kraken.ev = null;
     } finally { R.drawKraken = dkF; }
-    out.inS = /cardShows|_sky|silhouette/.test(JSON.stringify(S.deck));
+    // ONE BEAST TO A CLUSTER: two hulls side by side are one beast and an
+    // arm (the naive draw raised a body per act — two half-stacked beasts)
+    {
+      const fx = Deck.FX.krakens_call;
+      const mk = (id, x, y) => ({ id, x, y, at: 0, phase: 'thrash', t: 0.3 });
+      const K = { t: 3, n: 1, hit: true, took: 0, struck: 0, razed: 0, acts: [mk(9001, 14.5, 31.5), mk(9002, 16, 31.5), mk(9003, 26.5, 31.5)], coast: [] };
+      for (const a of K.acts) G.vis[MapGen.idx(a.x | 0, a.y | 0)] = 1;
+      let body = 0, arm = 0; const dkF2 = R.drawKraken, gr = fx.grab;
+      R.drawKraken = function () { body++; return dkF2.apply(this, arguments); };
+      fx.grab = function () { arm++; return gr.apply(this, arguments); };
+      try { R.g.save(); fx.draw(R.g, 1 / 30, K); R.g.restore(); } finally { R.drawKraken = dkF2; fx.grab = gr; }
+      // …and the beast art's own act drawing is asked first where it has landed
+      let viaAct = 0; const had = R.drawKrakenAct;
+      R.drawKrakenAct = function () { viaAct++; };
+      try { R.g.save(); fx.draw(R.g, 1 / 30, Object.assign({}, K, { acts: K.acts.map(a => Object.assign({}, a)) })); R.g.restore(); }
+      finally { if (had) R.drawKrakenAct = had; else delete R.drawKrakenAct; }
+      out.cluster = { body, arm, act: viaAct };
+    }
+    out.inS = /cardShows|_sky|silhouette|_host|head/.test(JSON.stringify(S.deck));
     return out;
   });
   ck('nothingIsDrawnWithNoCardInPlay', r.idle === 0, `the card world pass entered ${r.idle} times`);
@@ -1225,6 +1257,8 @@ await p.evaluate(() => {
   ck('everyRunningLookDraws', !r.live && Object.values(r.lives).every(v => v === 'ok'), r.live || JSON.stringify(r.lives));
   ck('thePactsSignalFireBurnsBesideTheHall', r.fireBeside);
   ck('theKrakenIsDrawnInOnePlace', r.drawKraken.card > 0 && r.drawKraken.world > 0, JSON.stringify(r.drawKraken));
+  ck('oneBeastToACluster', r.cluster.body === 2 && r.cluster.arm === 1 && r.cluster.act === 2,
+    `three hulls, two of them side by side: ${r.cluster.body} bodies and ${r.cluster.arm} arm (the naive draw: 3 bodies); with the beast art, its act drawing is asked ${r.cluster.act} times`);
   ck('theShowsAreRenderStateOnly', !r.inS);
 }
 
