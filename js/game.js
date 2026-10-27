@@ -313,6 +313,7 @@ const G = {
                          // inherit a stale cooldown on whatever unit id collides with an old one
     if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
+    if (window.DeckUI) DeckUI.onWorldChange();      // the deck's sheet, aim and flight (nothing, with cards off)
     document.getElementById('btnPause').textContent = '⏸';
     // opening notes linger twice as long — there's a lot to take in on day 1
     const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
@@ -2886,6 +2887,7 @@ const G = {
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     if (window.Tutorial) Tutorial.onWorldChange();
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
+    if (window.DeckUI) DeckUI.onWorldChange();      // a load mid-aim puts the card back, untouched
     this._marvel = false;   // a save loaded mid-marvel is just a save
     this._dying = null;     // …and an announced-but-unfallen villager lives
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
@@ -3041,6 +3043,10 @@ const G = {
       // one falsy check and nothing else — no DOM, no listeners, no scans
       if (S.tut && S.tut.on && window.Tutorial)
         G._safe(() => Tutorial.tick(dt), 'tutorial');
+      // THE CARD SYSTEM's in-game deck (js/deckui.js): with the switch off this
+      // is one falsy read — no DOM, no listeners, nothing built. It runs after
+      // UI.refresh on purpose: a resource number counting up holds the bar.
+      if (window.DeckUI && Deck.on()) G._safe(() => DeckUI.frame(dt), 'deck');
     }
     requestAnimationFrame(G.frame);
   },
