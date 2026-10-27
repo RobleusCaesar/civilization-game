@@ -56,9 +56,12 @@ const Combat = {
     /* THE NUMBER IS WHAT THE BUILDING TOOK (Bld.damage returns it): a card
        may halve a blow on the player's works, or hold their hall at its last
        sliver, and the float says so — "Held!" for a blow swallowed whole
-       (js/deckfx-town.js). With no card running it is the blow itself. */
+       (js/deckfx-town.js). With no card running it is the blow itself. The
+       hp keeps the exact fraction (a halved odd blow); the float shows a
+       WHOLE number like every other float in the game, and a sliver of a
+       blow still reads as a hit (-1), never "-0". */
     const took = Bld.damage(b, dmg);
-    R.float(Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.round(took * 10) / 10 : 'Held!',
+    R.float(Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
       flame ? '#f2963a' : '#e8d2a0');
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
@@ -1546,16 +1549,21 @@ const Combat = {
          its sight, and the farther band can poke past it, so a mark out
          there must be on ground in view — an arrow (and its float) never
          lands on a soldier hidden in the fog (the trebuchet's rule: an
-         engine never shells ground it can't watch). Base range: untouched. */
+         engine never shells ground it can't watch). Base range: untouched.
+         The fog is the PLAYER's, so that gate is asked of the player's towers
+         alone, and so is the burning arrow: it is Watchfires' own look, and a
+         multiplier from another card (a rival tower SOFTENED, a factor under
+         1) must never dress the rival's arrows as a buff. */
       const wfR = window.Deck && Deck.mult ? Deck.mult('towerRange', b.owner, b) : 1;
       const tgt = this.nearestUnit(cx, cy, lv.range * wfR,
         o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower' &&
-          (wfR === 1 || Math.hypot(o.x - cx, o.y - cy) <= lv.range || G.visibleAt(o.x | 0, o.y | 0)));
+          (b.owner !== 'P' || wfR === 1 || Math.hypot(o.x - cx, o.y - cy) <= lv.range || G.visibleAt(o.x | 0, o.y | 0)));
       if (tgt) {
         b.cd = 1.4;
         const wfA = window.Deck && Deck.mult ? Deck.mult('towerAtk', b.owner, b) : 1;
         const sh = { x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24 };
-        if (wfA !== 1) sh.fire = true;   // pitch on every arrow: it lands burning (R.arrowStrike)
+        // pitch on every arrow: it lands burning (R.arrowStrike)
+        if (b.owner === 'P' && wfA > 1 && window.Deck && Deck.timed && Deck.timed('watchfires')) sh.fire = true;
         this.shots.push(sh);
         // A LEVEL-1 TOWER FUMBLES 1 IN 3 SHOTS — the cheap early shield, not the
         // Lv2/Lv3 upgrades (untouched). A War Camp fires exactly like a Watchtower
@@ -1566,7 +1574,7 @@ const Combat = {
           this.overshoot(sh);
           R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
         } else {
-          const dmg = Math.max(1, (wfA === 1 ? lv.atk : Math.round(lv.atk * wfA)) - Units.effDef(tgt));
+          const dmg = Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt));
           R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
           Units.damage(tgt, dmg, 0, b.owner);
         }
