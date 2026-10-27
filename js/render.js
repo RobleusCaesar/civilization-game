@@ -8082,8 +8082,13 @@ const R = {
     opts = opts || {};
     this.placePoofs.push({ x, y, sz: sz || 1, t: -(opts.delay || 0), scale: opts.scale || 1 });
   },
+  // CLIPPED TO THE BOARD: a site laid against the world's edge (or a card's
+  // courses landing on one) threw its dust out over the off-map black
   drawPlacePoofs(g, dt) {
     if (!this.placePoofs.length) return;
+    this.clipBoard(g, () => this._drawPlacePoofs(g, dt));
+  },
+  _drawPlacePoofs(g, dt) {
     const TL = CFG.TILE;
     for (let i = this.placePoofs.length - 1; i >= 0; i--) {
       const p = this.placePoofs[i];

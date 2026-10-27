@@ -1244,6 +1244,21 @@ await p.evaluate(() => {
         for (const data of [top, left]) for (let i = 0; i < data.length; i += 4) if (data[i] + data[i + 1] + data[i + 2] > 0) n++;
         lit += n;
       }
+      // …and the dust the Wonder cards' courses and stones throw up (the
+      // engine's placement poof), landing on works laid at the world's corner
+      {
+        const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+        const g = c.getContext('2d');
+        g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+        g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+        const keep = R.placePoofs; R.placePoofs = [];
+        R.startPlacePoof(1, 1, 3); R.placePoofs[0].t = R.POOF_MS * 0.3;
+        R.drawPlacePoofs(g, 0);
+        R.placePoofs = keep;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        const top = g.getImageData(0, 0, c.width, rim).data, left = g.getImageData(0, 0, rim, c.height).data;
+        for (const data of [top, left]) for (let i = 0; i < data.length; i += 4) if (data[i] + data[i + 1] + data[i + 2] > 0) lit++;
+      }
       return lit;
     };
     const inBlack = probe();
