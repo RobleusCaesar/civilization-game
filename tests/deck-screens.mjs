@@ -406,6 +406,71 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   await p.close();
 }
 
+/* ================= 4b. IMPATIENT HANDS ================= */
+/* A great victory's bonus is the rarest moment on the screen, and a double tap
+   on CLAIM across the first card's landing used to claim it unseen; a tap
+   where CLAIM is about to appear, mid-reveal, claimed a card before it rose.
+   And a player who asks for less motion still hears the ending. */
+{
+  const p = await page();
+  await p.evaluate(SETUP);
+  const a = await p.evaluate(async () => {
+    const out = {};
+    CFG.CARDS.ON = true;
+    __fresh();
+    const cues = [];
+    const cue0 = UI.cue; UI.cue = function (k) { cues.push(k); return cue0.apply(this, arguments); };
+    const until = (f, ms) => new Promise(r => { const t0 = performance.now(); const k = () => (f() || performance.now() - t0 > ms) ? r(f()) : setTimeout(k, 30); k(); });
+    window.__run({ seed: 'ds-hands', mode: 'hard', win: true, cards: [['iron', 'swift_raiders'], ['imperial', 'starfall']] });
+    const root = document.getElementById('cardEnd');
+    // mid-reveal, a tap on the (still invisible) CLAIM only hurries it along
+    const n0 = DeckScreens._view.claimed;
+    root.querySelector('[data-act="claim"]').click();
+    out.introClaimed = DeckScreens._view.claimed - n0;
+    out.stung = cues.includes('win');
+    await until(() => DeckScreens._ready, 15000);
+    // CLAIM, then CLAIM again the moment the first lands, before the bonus is staged
+    root.querySelector('[data-act="claim"]').click();
+    await until(() => !DeckScreens._flying, 5000);
+    root.querySelector('[data-act="claim"]').click();
+    out.afterDouble = { claimed: DeckScreens._view.claimed, onPlinth: (root.querySelector('.ceMove .ccard') || {}).dataset ? root.querySelector('.ceMove .ccard').dataset.card : null };
+    // …and the same gap left by LEADERBOARD and back: the bonus waits on the plinth
+    UI.cue = cue0;
+    return out;
+  });
+  ck('aTapMidRevealNeverClaims', a.introClaimed === 0 && a.stung, `claimed ${a.introClaimed} during the reveal; the sting played ${a.stung}`);
+  ck('aDoubleTapNeverClaimsTheBonusUnseen', a.afterDouble.claimed === 1 && a.afterDouble.onPlinth === 'starfall',
+    `after two quick taps: ${a.afterDouble.claimed} claimed, on the plinth ${a.afterDouble.onPlinth}`);
+  await p.close();
+  const q = await page({ reduce: true });
+  await q.evaluate(SETUP);
+  const r = await q.evaluate(() => {
+    CFG.CARDS.ON = true;
+    __fresh();
+    const cues = [];
+    const cue0 = UI.cue; UI.cue = function (k) { cues.push(k); return cue0.apply(this, arguments); };
+    window.__run({ seed: 'ds-quiet', win: false, cards: [['stone', 'gold_nugget']] });
+    UI.cue = cue0;
+    /* a retired card left in a finished run's grant ledger never reaches a
+       renderer: the run is granted, its ledger is made to name a card the
+       catalog no longer carries, and the ending is shown again as a reload
+       of that finished save would show it */
+    window.__run({ seed: 'ds-retired', win: true, cards: [['stone', 'gold_nugget']] });
+    const key = DeckScreens._view.key, c = Deck.col();
+    const led = c.runs[key];
+    if (Array.isArray(led)) led.push(typeof led[0] === 'string' ? 'a_card_no_longer_made' : Object.assign({}, led[0], { id: 'a_card_no_longer_made' }));
+    Deck.saveCol();
+    DeckScreens._runs = {}; DeckScreens._view = null;
+    let threw = null;
+    try { Screens.show('endgame', { win: true, msg: 'again' }); } catch (e) { threw = String(e); }
+    const drawn = !!document.querySelector('#cardEnd .cePlate b');
+    return { cues, threw, shown: Screens.current, drawn, ledger: JSON.stringify(c.runs[key]).slice(0, 120) };
+  });
+  ck('lessMotionStillSoundsTheEnding', r.cues.includes('lose'), r.cues.join(',') || 'no cue');
+  ck('aRetiredCardNeverBreaksTheEnding', !r.threw && r.shown === 'endgame' && r.drawn, (r.threw || 'the ending drew') + '; ledger ' + r.ledger);
+  await q.close();
+}
+
 /* ================= 5. THE COLLECTION ================= */
 {
   const p = await page({ q: '?cards=1' });
@@ -505,6 +570,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
       // two played cards with long names: the line wraps, and the screen must still fit
       const played = [{ id: 'harvest_festival', day: 9 }, { id: 'wonders_foundation', day: 30 }];
       window.__run({ seed: 'ds-fit', win: true, cards: [['enlight', 'wonders_foundation']], played });
+      // the live site's first-time winner: the board's rank, name box and note are lent in
+      Screens._promptName('Name your chief for the world board.');
+      const rank = document.getElementById('vicRank'); if (rank) { rank.style.display = 'block'; rank.textContent = '#12 of 340 this week'; }
       const root = document.getElementById('cardEnd'), sc = root.querySelector('.ceScroll');
       const sz = el => { const r = el.getBoundingClientRect(); return Math.min(r.width, r.height); };
       const small = [...root.querySelectorAll('button')].filter(el => el.getClientRects().length && sz(el) < 44).map(el => el.dataset.act);

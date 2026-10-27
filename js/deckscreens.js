@@ -123,7 +123,8 @@ const DeckScreens = {
     // back from the board or the collection: the screen is exactly as it was left
     if (opts.back && this._view && this._view.key === rep.key && document.getElementById('cardEnd')) return true;
     const res = Deck.settle(rep);
-    const cards = res.ok ? res.cards : [];
+    // a card the catalog no longer carries (an older run's grant) never reaches a renderer
+    const cards = (res.ok ? res.cards : []).filter(c => c && Deck.card(c.id));
     const prior = this._runs[rep.key];
     const claimed = prior != null ? prior : (res.again ? cards.length : 0);
     this._runs[rep.key] = claimed;
@@ -133,9 +134,9 @@ const DeckScreens = {
       ok: !!res.ok, why: res.why || '', score: sc.total, cw: this._cardW(),
     };
     // a fresh run plays its reveal; a resumed or already-told one just stands there
-    const play = prior == null && !res.again && !this.reduced();
+    const fresh = prior == null && !res.again, play = fresh && !this.reduced();
     this._armBoard(win, sc, opts.msg);
-    this._render(play);
+    this._render(play, fresh);
     // the world board, exactly as the victory scene posts it (Screens._offerSubmit)
     if (win) Screens._offerSubmit();
     return true;
@@ -226,11 +227,12 @@ const DeckScreens = {
     return E[S.mode] || E.moderate;
   },
 
-  _render(play) {
+  _render(play, fresh) {
     const v = this._view;
     this._clearTimers();
     this._gen++;
     this._ready = !play;
+    this._cued = !fresh;   // the ending's sting is owed once, to a fresh run
     this._flying = false;
     // the lent nodes leave before the old markup does, or they would be destroyed with it
     this._giveBack();
@@ -298,10 +300,12 @@ const DeckScreens = {
     if (!play) {
       scoreEl.textContent = v.score.toLocaleString();
       if (this.reduced()) root.classList.add('ceCalm');
+      // less motion is not less sound: a fresh ending still sounds its sting
+      this._sting();
       return;
     }
     root.classList.add('ceIntro');
-    this._after(400, () => this.cue(v.win ? 'win' : 'lose'));
+    this._after(400, () => this._sting());
     this._after(T.info + 70, () => this._countUp(scoreEl, v.score, 720));
     this._after(T.info + 5 * 70 + 420, () => root.classList.remove('ceIntro'));
   },
@@ -365,6 +369,11 @@ const DeckScreens = {
     this._after(T.settle, () => this._settled());
     this._after(T.settle + 720, () => st.classList.remove('ceReveal'));
   },
+  _sting() {
+    if (this._cued || !this._view) return;
+    this._cued = true;
+    this.cue(this._view.win ? 'win' : 'lose');
+  },
   _settled() {
     const root = this._rootEl(), st = root && root.querySelector('.ceStage');
     if (!st) return;
@@ -385,7 +394,14 @@ const DeckScreens = {
     if (st) st.classList.remove('ceReveal', 'ceRising');
     if (this._view && (counting || root.querySelector('.ceScoreN').textContent === '0'))
       root.querySelector('.ceScoreN').textContent = this._view.score.toLocaleString();
+    this._sting();
     this._ready = true;
+    /* a card the skip caught between two (the bonus, staged on a timer
+       after the first one lands) is put on the plinth now: whatever the
+       player does next, the bonus is SEEN before it can be claimed */
+    const v = this._view;
+    if (v && v.claimed < v.cards.length && !this._flying && !root.querySelector('.ceMove .ccard'))
+      this._stageCard(v.claimed, false, false);
   },
 
   _plate(c) {
@@ -419,8 +435,9 @@ const DeckScreens = {
   },
 
   _setButtons(state) {
-    const b = this._rootEl().querySelector('.ceBtns');
+    const root = this._rootEl(), b = root.querySelector('.ceBtns');
     b.dataset.s = state;
+    root.classList.toggle('ceDone', state === 'done');
   },
 
   /* the deck's count as the player should SEE it: the collection minus the
@@ -493,7 +510,12 @@ const DeckScreens = {
   claim() {
     const v = this._view, root = this._rootEl();
     if (!v || !root || this._flying || v.claimed >= v.cards.length) return;
-    if (!this._ready) this._skip();
+    /* a tap during the reveal only hurries it along — the button is
+       still invisible then, and a tap where it is about to appear must
+       not take a card the player has not yet seen rise */
+    if (!this._ready) { this._skip(); return; }
+    // nothing on the plinth means nothing to claim: show it first (the skip stages it)
+    if (!root.querySelector('.ceMove .ccard')) { this._skip(); return; }
     v.claimed++;
     this._runs[v.key] = v.claimed;
     this._flying = true;
@@ -907,7 +929,7 @@ const DeckScreens = {
       const all = Deck.ofTier(t.k), held = all.reduce((n, c) => n + Deck.count(c.id), 0), seen = all.filter(c => Deck.seen(c.id)).length;
       return `<button class="clTab${t.k === sel ? ' sel' : ''}" type="button" role="tab" data-tier="${t.k}" aria-selected="${t.k === sel}" ` +
         `aria-label="${this.esc(t.name)}: ${held} held, ${seen} of ${all.length} discovered" style="--tc:${t.col};--tg:${t.glow}">` +
-        `<i class="clGem${seen ? '' : ' dim'}"></i><span class="clTabNm">${this.esc(t.name)}</span><b class="clTabN">${held}</b></button>`;
+        `<i class="clGem${seen ? '' : ' dim'}"></i><span class="clTabNm">${this.esc(t.name)}</span><span class="clTabAb" aria-hidden="true">${['I', 'II', 'III', 'IV', 'V'][t.rank]}</span><b class="clTabN">${held}</b></button>`;
     }).join('');
     const t = Deck.tier(sel), cards = Deck.ofTier(sel);
     const seenN = cards.filter(c => Deck.seen(c.id)).length, pct = Math.round(100 * seenN / cards.length);
@@ -932,7 +954,7 @@ const DeckScreens = {
         cell.setAttribute('aria-label', c.name + (n ? ', ' + n + ' held' : ', none held'));
         cell.appendChild(Deck.face(c.id, { w: gs.w, n, off: !n }));
       } else {
-        cell.dataset.unknown = String(Deck.CATALOG.indexOf(c));
+        cell.dataset.unknown = c.tier;   // the tier only: nothing in the page names the card
         cell.setAttribute('role', 'button');
         cell.setAttribute('aria-label', 'Undiscovered ' + t.name + ' card');
         cell.appendChild(this._silhouette(c.id, gs.w));
@@ -964,8 +986,8 @@ const DeckScreens = {
       face = Deck.face(id, { w, n, off: !n });
       cap = (n ? (n > 1 ? `${n} in your deck` : 'In your deck') : 'Played — none in your deck') + ' · tap to turn it over';
     } else {
-      const c = Deck.CATALOG[+cell.dataset.unknown];
-      face = this._silhouette(c.id, w);
+      // any card of the tier makes the same silhouette (frame only, nothing named)
+      face = this._silhouette(Deck.ofTier(cell.dataset.unknown)[0].id, w);
       cap = 'Not yet discovered — finish a game to earn a card';
     }
     host.innerHTML = '';
@@ -1157,6 +1179,11 @@ DeckScreens.CSS = `
 #cardEnd .ceMove { position: absolute; left: 40px; bottom: 0; width: var(--cw); height: var(--ch); pointer-events: auto; cursor: pointer; }
 #cardEnd .ceEmpty .ceMove { pointer-events: none; }
 #cardEnd .ceSparks { left: 50%; top: 0; width: calc(var(--cw) * 2); height: var(--ch); margin-left: calc(var(--cw) * -1); }
+/* every card claimed: the light holds still — no endless masked spin on a phone parked here */
+#cardEnd.ceDone .ceRays > i, #cardEnd.ceDone .ceSparks > i { animation-play-state: paused; }
+/* the board's name box (lent in on a first win) needs the room: the played
+   line and the deck tile step aside, the corner deck still carries the count */
+#cardEnd:has(.ceBoard #nameRow[style*="flex"]) .cePlayed, #cardEnd:has(.ceBoard #nameRow[style*="flex"]) .ceTile { display: none; }
 #cardEnd .ceSparks > i { position: absolute; width: var(--s); height: var(--s); background: var(--sc);
   box-shadow: 0 0 6px var(--sc); animation: ceFloat 3s linear infinite; }
 #cardEnd .ceIdle .ceGlow, #cardEnd .ceIdle .ceRays, #cardEnd .ceIdle .ceTopGlow { opacity: 0.3; transition: opacity .5s ease-out; }
@@ -1310,7 +1337,11 @@ DeckScreens.CSS = `
 #scrCards .clGem.dim { background: #3b342a; box-shadow: 0 0 0 1px #0d0905; }
 #scrCards .clTabNm { display: none; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
 #scrCards .clTabN { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
-@media (min-width: 600px) { #scrCards .clTabNm { display: inline; } }
+@media (min-width: 600px) { #scrCards .clTabNm { display: inline; } #scrCards .clTabAb { display: none; } }
+/* a phone's tabs drop the tier names: the tier's ORDER (I-V) stands in, so
+   the pale Stone and Imperial gems are never told apart by colour alone */
+#scrCards .clTabAb { font: 700 10px/1 var(--menufont); letter-spacing: .5px; opacity: .8; }
+#scrCards .cc-n { font-size: max(calc(var(--u) * 10), 10px); }
 #scrCards .clBody { max-width: 820px; padding: 10px var(--pad, 10px) calc(env(safe-area-inset-bottom, 0px) + 24px); }
 #scrCards .clHead { margin: 2px 4px 14px; color: var(--text); }
 #scrCards .clHead p { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0; }

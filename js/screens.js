@@ -196,7 +196,7 @@ const Screens = {
     } else if (snap && snap.json) { this._newestSlot = 'local'; finish('recover last session (day ' + snap.day + ')', true); }
     else finish(window.Backend && Backend.configured ? 'no saves yet' : 'cloud saves off', false);
     // THE CARD SYSTEM's plaque and starter hand (js/deckscreens.js) — an early return with the switch off
-    if (window.DeckScreens) DeckScreens.onTitle();
+    if (window.DeckScreens) { try { DeckScreens.onTitle(); } catch (e) { console.error('card title plaque', e); } }
   },
 
   async continueGame() {
@@ -1127,13 +1127,22 @@ const Screens = {
   /* ---------------- endgame: the arcade tally ---------------- */
   showEnd(win, msg) {
     this.show('endgame', { win, msg });
-    if (window.Competition) Competition.offer(!!win);   // the prize draw (js/competition.js) — delete this line with the file
+    // the prize draw (js/competition.js) — delete this line with the file. It
+    // draws into the old scenes, so it stands down while the card system's
+    // reward screen has the end (ceMode): an entry offered there is invisible
+    if (window.Competition && !this.el('scrEndgame').classList.contains('ceMode')) Competition.offer(!!win);
   },
   onEndgame(opts) {
     /* THE CARD SYSTEM's reward screen takes the end when its switch is on
        (js/deckscreens.js); off, it answers false and everything below runs
        exactly as it always has */
-    if (window.DeckScreens && DeckScreens.takeEnd(opts)) return;
+    /* …and a fault in it must cost the cards, never the ending: the old
+       scenes are drawn instead (a painter stands down rather than throwing) */
+    try { if (window.DeckScreens && DeckScreens.takeEnd(opts)) return; }
+    catch (e) {
+      console.error('card reward screen', e);
+      try { DeckScreens._giveBack(); this.el('scrEndgame').classList.remove('ceMode'); } catch (e2) {}
+    }
     const def = this.el('defeatScene'), vic = this.el('victoryPane'), scr = this.el('scrEndgame');
     const vs = this.el('victoryScene');
     if (!opts.win) {
@@ -1332,7 +1341,11 @@ const Screens = {
     if (this._entry && !this._submitted && window.Backend && Backend.isReady() && !this._leaveWarned
         && !Score.cleanName(this.el('arcadeName').value).ok) {
       this._leaveWarned = true;
-      UI.toast(`Name your chief for the board — or tap again to leave and go up as ${Score.fallbackName(Backend.uid)}`, true, 4200);
+      /* said in the score box's own note line: toasts are hidden on every
+         screen but the playing one, so a toast here was a silent first tap */
+      const warn = `Name your chief for the board — or tap again to leave and go up as ${Score.fallbackName(Backend.uid)}`;
+      this._note(warn, 'var(--warn, #e39a5b)');
+      UI.toast(warn, true, 4200);
       return;
     }
     this._postBeforeLeaving(false);
