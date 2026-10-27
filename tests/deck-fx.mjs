@@ -1074,6 +1074,72 @@ await p.evaluate(() => {
     `"${r.msgs.mending}"; the burning site passed over ${r.left}, its smoke up ${r.smoke}`);
 }
 
+// ---------------- 13. SCOUT'S FIRE: THE REACH ON SCREEN, THE FIND AFTER THE FOG ----------------
+/* The playtest's critics: the 9-tile reach ring was 490 px wide on a 390 px
+   phone, so aiming showed "only a reticle over black"; and a relic the fire
+   found floated its "+75 stone" in the black before the fog rolled back
+   off it. Now aiming steps the view back until the ring fits (fx.aimFit —
+   DeckUI._aimFit), a cancel gives the zoom straight back and a play has the
+   fire's own moment hand it back; and the find is shown as the fog's front
+   passes the relic. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE;
+    __fx.fresh('fx-scout-aim'); __fx.flat();
+    Screens.show('playing'); S.paused = false;
+    Deck._add('scouts_fire', 4);
+    DeckUI._t = 0; DeckUI.frame(1);
+    const P = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(P) + 4, Bld.cy(P) + 4);
+    const vw = document.documentElement.clientWidth, z0 = R.cam.z;
+    // AIMING: the whole ring on screen, and a cancel hands the zoom back
+    DeckUI.startAim('scouts_fire');
+    const A = DeckUI.aim;
+    out.ring = A ? 2 * A.radius * TL * R.cam.z : -1;
+    out.vw = vw;
+    DeckUI.endAim();
+    out.back = +R.cam.z.toFixed(4) === +z0.toFixed(4);
+    // A PLAY: the zoom rides to the card's moment, which gives it back as it ends
+    DeckUI.startAim('scouts_fire');
+    const zFit = R.cam.z;
+    DeckUI.endAim(true, true);
+    for (let y = 0; y < CFG.H; y++) for (let x = 0; x < CFG.W; x++) if (Math.hypot(x - (P.x + 14), y - (P.y + 12)) < 11) S.map.explored[MapGen.idx(x, y)] = 0;
+    S.relic = { key: 'aqueduct', x: P.x + 18, y: P.y + 13, w: 2, h: 2, found: 0, amount: 0 };
+    const floats = [], fl = R.float;
+    R.float = function (x, y, txt) { floats.push({ x, y, txt, at: 'play' }); return fl.apply(this, arguments); };
+    R.cardShows = [];
+    let play;
+    try { play = Deck.play('scouts_fire', { x: P.x + 14.5, y: P.y + 12.5 }); } finally { R.float = fl; }
+    const sh = R.cardShows.find(z => z.id === 'scouts_fire');
+    out.play = !!play && play.ok && !!sh;
+    out.found = !!S.relic.found;
+    out.atPlay = floats.length;
+    out.zoomCarried = !!(sh && sh.zoom) && Math.abs(zFit - z0) > 0.05;
+    // the show, beat by beat: the find appears once the front has passed it
+    const seen = [];
+    R.float = function (x, y, txt) { seen.push({ x, y, txt }); return fl.apply(this, arguments); };
+    const g = R.cv.getContext('2d');
+    let firstAt = -1;
+    try {
+      if (sh) for (let pp = 0.02; pp < 1; pp += 0.02) {
+        sh.t = pp * sh.ms / 1000;
+        g.save(); Deck.FX.scouts_fire.show.draw.call(Deck.FX.scouts_fire, g, sh, pp, 0.02, 'world'); g.restore();
+        if (seen.length && firstAt < 0) firstAt = pp;
+      }
+    } finally { R.float = fl; }
+    out.firstAt = +firstAt.toFixed(2);
+    out.seenAt = seen.length ? [seen[0].x - (S.relic.x + 1), seen[0].y - (S.relic.y + 1)] : null;
+    out.zEnd = +R.cam.z.toFixed(4); out.z0 = +z0.toFixed(4);
+    R.cardShows = [];
+    return out;
+  });
+  ck('scoutsFiresAimShowsItsWholeReach', r.ring > 0 && r.ring <= r.vw && r.back,
+    `the ring ${Math.round(r.ring)} px across on a ${r.vw} px screen; a cancel gives the zoom back ${r.back}`);
+  ck('andAPlayHandsTheViewBackAfterItsMoment', r.play && r.zoomCarried && r.zEnd === r.z0, `zoom ${r.z0} → aimed → ${r.zEnd} once the fire has burned up`);
+  ck('aRelicTheFireFindsIsShownOnlyAfterTheFog', r.play && r.found && r.atPlay === 0 && r.firstAt > 0.05 && r.seenAt && Math.abs(r.seenAt[0]) < 1 && Math.abs(r.seenAt[1]) < 1.2,
+    `found ${r.found}; ${r.atPlay} floats at the play; the find shown at p ${r.firstAt}, at the relic ${JSON.stringify(r.seenAt)}`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

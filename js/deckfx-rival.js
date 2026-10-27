@@ -346,6 +346,7 @@
        to the later of the two). */
     scouts_fire: {
       at: 'target', radius: 9, R: 9, DAYS: 3, SEAT_R: 4,
+      aimFit: true,   // the 9-tile ring is wider than a phone: aiming steps the view back to show it whole (DeckUI._aimFit)
       can() { return { ok: true }; },
       valid() { return true; },
       /* THE FIRE IS SEATED ON OPEN GROUND. Aimed at a building, a fire drawn
@@ -381,8 +382,18 @@
         /* …found HERE, by the card's light, so its reward rolls on
            Math.random: left to the vision pass below, the find would roll
            G.rand and the play would re-deal the rest of the run (NO CARD
-           DRAWS THE RUN'S RNG). A relic a hand walks to keeps its G.rand. */
-        if (window.Relics && Relics.checkDiscovery) Relics.checkDiscovery(Math.random);
+           DRAWS THE RUN'S RNG). A relic a hand walks to keeps its G.rand.
+           Its PICTURE waits for the fog: the '+75 stone' and the sparks of
+           the find used to float in the black before the ring rolled back
+           over it, so they are held (render state) and given to the frame
+           as the front passes the relic (show.draw). */
+        const found = [];
+        if (window.Relics && Relics.checkDiscovery) {
+          const fl = R.float, sp = R.startBondSpark;
+          R.float = function () { found.push({ f: 'float', a: [...arguments] }); };
+          if (sp) R.startBondSpark = function () { found.push({ f: 'startBondSpark', a: [...arguments] }); };
+          try { Relics.checkDiscovery(Math.random); } finally { R.float = fl; if (sp) R.startBondSpark = sp; }
+        }
         const now = Deck.now(), st = this.seat(cx, cy);
         let until = now + this.DAYS;
         const live = Deck.timed('scouts_fire');
@@ -400,7 +411,9 @@
         if (window.R) {
           // the pillar stands on its seat; the fog rolls back from the point
           // aimed, over the ring the card charted (rx, ry)
-          if (R.startCardShow) R.startCardShow('scouts_fire', { x: st.x + 0.5, y: st.y + 0.5, rx: tgt.x, ry: tgt.y, dark, dim });
+          const zoom = Deck._aimZoom || null; Deck._aimZoom = null;   // a view stepped back to fit the ring, handed back after the moment
+          const sh = R.startCardShow ? R.startCardShow('scouts_fire', { x: st.x + 0.5, y: st.y + 0.5, rx: tgt.x, ry: tgt.y, dark, dim, found, zoom }) : null;
+          if (!sh) for (const q of found) if (R[q.f]) R[q.f].apply(R, q.a);   // no moment to wait for: say it now
           if (R.startle) R.startle(st.x + 0.5, st.y + 0.5, 10);
         }
         sfx('cardBeacon');
@@ -431,6 +444,22 @@
           };
           fogBack(g, s.dark, '#0d0b08', front);
           fogBack(g, s.dim, 'rgba(16,16,22,0.45)', front);
+          // a relic the fire found is shown once the fog has rolled back off it
+          if (s.found && s.found.length && S.relic) {
+            const r = S.relic;
+            if (front(r.x + r.w / 2, r.y + r.h / 2, 0.5) === 0 || p > 0.7) { for (const q of s.found) if (R[q.f]) R[q.f].apply(R, q.a); s.found = null; }
+          }
+          // a view stepped back to fit the ring while aiming is handed back as the moment ends
+          if (s.zoom && !s.zoomDone && p >= 0.78) {
+            if (s.zAt != null && Math.abs(R.cam.z - s.zAt) > 1e-4) s.zoomDone = true;   // the player's own pinch stands
+            else {
+              const q = p >= 0.96 ? 1 : ease((p - 0.78) / 0.18), z = s.zoom.z1 + (s.zoom.z0 - s.zoom.z1) * q;
+              const sx = (s.x * TL - R.cam.x) * R.cam.z, sy = (s.y * TL - R.cam.y) * R.cam.z;
+              if (typeof UI !== 'undefined' && UI.zoomAt && R.cam.z > 0) UI.zoomAt(sx, sy, z / R.cam.z);
+              s.zAt = R.cam.z;
+              if (q >= 1) s.zoomDone = true;
+            }
+          }
           g.save();
           // the ring of firelight riding the front, in the fire's own ink —
           // opaque bronze dots (added over the meadow they rode in as lime)

@@ -697,7 +697,7 @@ const DeckUI = {
     const r0 = fromEl ? fromEl.getBoundingClientRect() : { left: vw / 2 - 40, top: vh - 140, width: 80, height: 111 };
     this.putBack(true);
     if (this.open) this.closeSheet(true);
-    if (this.aim) this.endAim(true);
+    if (this.aim) this.endAim(true, true);
     this._hold();
     // where the burst lands (the world is still: a hall or a target off the
     // screen is brought into view first)
@@ -954,6 +954,8 @@ const DeckUI = {
     const before = {};
     for (const k of this.RES) before[k] = S.res[k] || 0;
     const r = Deck.play(id, tgt);
+    // a view stepped back for the aim that the card did not take to hand back itself (refused): back now
+    if (Deck._aimZoom) { const f = Deck._aimZoom; Deck._aimZoom = null; this._aimUnfit({ fit: f }); }
     this._release();
     const L = P.layer;
     if (!r.ok) {
@@ -1116,6 +1118,8 @@ const DeckUI = {
       // a strike that reaches buildings less far than people (Starfall 2 of
       // 3, Dragonfire 2.5) draws that reach as a second, fainter ring
       inner: +fx.inner > 0 && +fx.inner < (+fx.radius || 3) ? +fx.inner : 0 };
+    // a reach wider than the screen is drawn in full: the view steps back to fit it (fx.aimFit)
+    if (fx.aimFit) this._aimFit(A);
     const layer = document.createElement('div');
     layer.id = 'dkAim';
     const ret = document.createElement('canvas');
@@ -1163,15 +1167,39 @@ const DeckUI = {
   },
 
   // cancelled: the card was never touched. keep: the world stays paused
-  // (the deck reopens over it, or the card is on its way to land)
-  endAim(keep) {
+  // (the deck reopens over it, or the card is on its way to land). played:
+  // the card is on its way — a view stepped back to fit its reach is handed
+  // back by the card's own moment (Deck._aimZoom), not snapped back here
+  endAim(keep, played) {
     const A = this.aim;
     if (!A) return;
     this.aim = null;
     A.layer.remove();
     A.bar.remove();
+    if (A.fit) { if (played) Deck._aimZoom = A.fit; else this._aimUnfit(A); }
     if (!keep) this._release();
     this._floor();
+  },
+  /* THE REACH ON SCREEN (the playtest: Scout's Fire's 9-tile ring was 490 px
+     wide on a 390 px phone, so aiming showed a reticle over black). A card
+     that asks (fx.aimFit) has the view step back until its ring fits the
+     open band, never past the world's own floor (R.minZoom); the zoom it
+     came from rides on the aim and is given back — at once on a cancel, by
+     the card's moment after a play — unless the player set one of their own. */
+  _aimFit(A) {
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    const top = R.topReserve || 0, bot = (R.bottomReserve || 0) + 90;   // the aim bar
+    const room = Math.min(vw, vh - top - bot), z0 = R.cam.z;
+    const want = room * 0.92 / (2 * (A.radius + 0.5) * CFG.TILE);
+    const z1 = Math.max(R.minZoom ? R.minZoom() : 0.5, Math.min(z0, want));
+    if (!(z1 < z0 - 1e-4)) return;
+    UI.zoomAt(vw / 2, (top + vh - bot) / 2, z1 / z0);
+    A.fit = { z0, z1: R.cam.z };
+  },
+  _aimUnfit(A) {
+    if (Math.abs(R.cam.z - A.fit.z1) > 1e-4) return;   // the player's own pinch stands
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    UI.zoomAt(vw / 2, ((R.topReserve || 0) + vh - (R.bottomReserve || 0)) / 2, A.fit.z0 / R.cam.z);
   },
 
   confirmAim() {
