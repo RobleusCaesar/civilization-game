@@ -53,8 +53,13 @@ const Combat = {
   // apply damage to a building + show it landing (shared by instant melee hits
   // and projectile impacts, so buildings always read the hit)
   hitBuilding(b, dmg, flame) {
-    Bld.damage(b, dmg);
-    R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, flame ? '#f2963a' : '#e8d2a0');
+    /* THE NUMBER IS WHAT THE BUILDING TOOK (Bld.damage returns it): a card
+       may halve a blow on the player's works, or hold their hall at its last
+       sliver, and the float says so — "Held!" for a blow swallowed whole
+       (js/deckfx-town.js). With no card running it is the blow itself. */
+    const took = Bld.damage(b, dmg);
+    R.float(Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.round(took * 10) / 10 : 'Held!',
+      flame ? '#f2963a' : '#e8d2a0');
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
     /* THE HORN. This is the only unprompted defensive alarm the game has —
@@ -1533,11 +1538,18 @@ const Combat = {
       if (b.cd > 0) { b.cd -= dt; continue; }
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;
-      const tgt = this.nearestUnit(cx, cy, lv.range,
+      /* WATCHFIRES (js/deckfx-town.js): a card may lengthen the reach and
+         weight the arrows of the PLAYER's towers and camps — Deck.mult's
+         numbers answer 1 for the rival and with no card running. The L1
+         fumble below draws exactly as it always did. */
+      const wfR = window.Deck && Deck.mult ? Deck.mult('towerRange', b.owner, b) : 1;
+      const tgt = this.nearestUnit(cx, cy, lv.range * wfR,
         o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower');
       if (tgt) {
         b.cd = 1.4;
+        const wfA = window.Deck && Deck.mult ? Deck.mult('towerAtk', b.owner, b) : 1;
         const sh = { x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24 };
+        if (wfA !== 1) sh.fire = true;   // pitch on every arrow: it lands burning (R.arrowStrike)
         this.shots.push(sh);
         // A LEVEL-1 TOWER FUMBLES 1 IN 3 SHOTS — the cheap early shield, not the
         // Lv2/Lv3 upgrades (untouched). A War Camp fires exactly like a Watchtower
@@ -1548,7 +1560,7 @@ const Combat = {
           this.overshoot(sh);
           R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
         } else {
-          const dmg = Math.max(1, lv.atk - Units.effDef(tgt));
+          const dmg = Math.max(1, (wfA === 1 ? lv.atk : Math.round(lv.atk * wfA)) - Units.effDef(tgt));
           R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
           Units.damage(tgt, dmg, 0, b.owner);
         }

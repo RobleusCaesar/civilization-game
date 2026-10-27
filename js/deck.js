@@ -107,7 +107,7 @@ const Deck = {
       when: "You have at least one finished tower or War Camp." },
     { id: "master_builders", tier: "bronze", cat: "buff", target: "none",
       name: "Master Builders",
-      text: "The next 3 buildings you place stand complete the moment they are placed, at full strength. You still pay for them. (Not the Wonder.)",
+      text: "The next 3 buildings you place stand complete the moment they are placed, at full strength. You still pay for them. (Not walls, gates or the Wonder.)",
       flavor: "Three halls, one morning, no arguments.",
       when: "Always." },
     { id: "pathfinders_map", tier: "bronze", cat: "intel", target: "none",

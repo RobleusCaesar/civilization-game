@@ -1945,10 +1945,17 @@ const Bld = {
      burns a building down like any other, ash and all, but it rings no
      alarm, breaches no line (S.breachedP opens the positive specials),
      credits nobody's razed score, stamps no AI loss or barbarian-ease
-     ledger — nobody did this, and no ledger may say somebody did. */
+     ledger — nobody did this, and no ledger may say somebody did.
+     It RETURNS what the building actually took, which is what a hit's float
+     must say (Combat.hitBuilding): THE CARD SYSTEM may halve a blow on the
+     player's works (Stone Skin) or hold the player's hall at its last sliver
+     (the Unbreakable Hall) — both asked here, before the one subtraction, so
+     an attack and the wilds' fire meet the same rule (js/deckfx-town.js).
+     With no card running the blow comes back untouched. */
   damage(b, amt, cause) {
     if (!this.attackable(b)) return;   // the seam's works change hands, they never come down
     const wild = cause === 'fire';
+    if (b.owner === 'P' && window.Deck && Deck.bldTakes) amt = Deck.bldTakes(b, amt, cause);
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
@@ -1979,7 +1986,7 @@ const Bld = {
       if (wild) {
         if (owner === 'P' || G.visibleAt(b.x, b.y)) G.log('🔥 ' + (owner === 'P' ? 'Your ' : 'The rival\'s ') + name + ' burned down in the wildfire.', owner === 'P');
         if (owner === 'P' && key === 'tc') G.end(false, 'Your Town Center burned down.', 'tc_destroyed');
-        return;
+        return amt;
       }
       /* the loss ledger the barbarian ease reads (G.noteWorkLost) — finished
          non-fortification works only: a razed wall section is not a town
@@ -2007,6 +2014,7 @@ const Bld = {
         if (S.stats) S.stats.razed = (S.stats.razed || 0) + 1;
       }
     }
+    return amt;
   },
 
   demolishRefund(b) {
