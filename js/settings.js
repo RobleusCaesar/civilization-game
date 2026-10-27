@@ -542,7 +542,7 @@ SettingsPage.CSS = `
   border-bottom: 1px solid rgba(214,170,74,0.22); box-shadow: 0 1px 0 rgba(0,0,0,0.5); }
 #scrSetx .sxTab { position: relative; isolation: isolate; flex: 1 1 0; min-width: 0; height: 62px; padding: 6px 2px 5px; border: 0; background: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #d9caa6;
-  font: 700 10px/1 var(--menufont); letter-spacing: 0.3px; text-transform: uppercase; -webkit-appearance: none; appearance: none; }
+  font: 700 clamp(8.5px, 2.4vw, 10px)/1 var(--menufont); letter-spacing: 0; text-transform: uppercase; -webkit-appearance: none; appearance: none; }
 #scrSetx .sxTab::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
   background: linear-gradient(#33281a, #231a0f); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.3), inset 0 10px 0 rgba(255,240,200,0.04), inset 0 -8px 0 rgba(0,0,0,0.25); }
 #scrSetx .sxTab img { width: 28px; height: 28px; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)) saturate(0.8) brightness(0.86); }

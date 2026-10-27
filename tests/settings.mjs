@@ -513,7 +513,7 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900]]) {
       for (const tab of el.querySelectorAll('.sxTab')) {
         const lab = Array.from(tab.querySelectorAll('.sxTn, .sxTs')).find(x => getComputedStyle(x).display !== 'none');
         const tr = tab.getBoundingClientRect(), lr = lab.getBoundingClientRect();
-        if (lr.left < tr.left - 0.5 || lr.right > tr.right + 0.5) bad.push(t.k + ': label "' + lab.textContent + '" runs off its tab');
+        if (lr.left < tr.left + 4 || lr.right > tr.right - 4) bad.push(t.k + ': label "' + lab.textContent + '" crowds its tab ' + [lr.left - tr.left, tr.right - lr.right].map(v => v.toFixed(1)).join('/'));  // a clear 4px each side, or it reads as touching the plaque's rim
       }
       for (const x of pane.querySelectorAll('.sxCard, .sxSeg, .sxSend, .sxKinds')) {
         const xr = x.getBoundingClientRect(), pr = pane.getBoundingClientRect();
