@@ -1164,27 +1164,67 @@ await p.evaluate(() => {
   ck('andCostNothingWithNoCardInPlay', r.idleCalls === 0 && r.idleWorld === 0, `${r.idleCalls} show/look calls, ${r.idleWorld} card ground/building/world passes in 20 frames`);
 }
 
-// ---------------- 10b. TWENTY DAYS IS A LONG TIME TO PAY FOR A PICTURE ----------------
+// ---------------- 10b. TWENTY DAYS IS A LONG TIME TO WEAR A PICTURE ----------------
+/* The playtest's critics: for all twenty days the whole 8-tile ring wore
+   hundreds of upright tufts in lime and white '+' crosses — "the banned
+   upright tufts, in the banned lime", a texture glitch, not lush ground.
+   The sprouting is the PLAY's: the sprigs grow in behind the wave and go
+   back into the meadow by its end. For the twenty days the land wears only
+   a dozen low clumps of clover and flowers at its heart round the fire, and
+   its edge as a ring of muted-gold dots while the hall is selected — and
+   nothing in all of it is lime. Measured on the ground pass itself. */
 {
   const r = await p.evaluate(() => {
+    const out = {};
     __g.fresh('growth-lush', 'calm'); const { P } = __g.flat();
     Screens.show('playing');
-    R.cam.z = 1.5; R.centerOn(Bld.cx(P), Bld.cy(P));
-    __g.terr(P.x + 5, P.y + 1, T.FOREST, 200);   // a stand in the ring, to be felled
-    Deck.play('bountiful_land'); R.cardShows.length = 0;
-    const d = Deck.FX.bountiful_land, e = Deck.timed('bountiful_land'), g = R.cv.getContext('2d');
+    R.cam.z = 1; R.centerOn(Bld.cx(P), Bld.cy(P));
+    Deck.play('bountiful_land');
+    const sh = R.cardShows.find(s => s.id === 'bountiful_land');
+    const d = Deck.FX.bountiful_land, e = Deck.timed('bountiful_land'), c = d.centre(), TL = CFG.TILE;
+    const S2 = Math.ceil((d.R + 2) * 2 * TL);
+    const cv = document.createElement('canvas'); cv.width = cv.height = S2;
+    const g = cv.getContext('2d');
+    const LIME = (r2, g2, b2) => g2 > 150 && g2 > r2 + 30 && g2 > b2 + 60;   // a bright yellow-green: the lime
+    const shot = () => {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S2, S2);
+      g.setTransform(1, 0, 0, 1, -(c.x * TL - S2 / 2), -(c.y * TL - S2 / 2));
+      g.save(); d.drawGround(g, e, 1 / 60); g.restore();
+      const px = g.getImageData(0, 0, S2, S2).data;
+      let n = 0, far = 0, edge = 0, lime = 0;
+      for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) {
+        const i = (y * S2 + x) * 4;
+        if (!px[i + 3]) continue;
+        n++;
+        const rr = Math.hypot(x - S2 / 2, y - S2 / 2) / TL;
+        if (rr > d.CORE_R + 0.6) far++;
+        if (Math.abs(rr - d.R) < 0.15) edge++;
+        if (LIME(px[i], px[i + 1], px[i + 2])) lime++;
+      }
+      return { n, far, edge, lime };
+    };
+    // the play at its height (the sprigs grown out to the edge), then the twenty days
+    sh.t = 0.62 * sh.ms / 1000;
+    const height = shot();
+    R.cardShows.length = 0;
     let paints = 0; const sp = d.sprigs; d.sprigs = function () { paints++; return sp.apply(this, arguments); };
-    const frames = n => { for (let i = 0; i < n; i++) { g.save(); d.drawGround(g, e, 1 / 60); g.restore(); } };
-    frames(1); const first = paints;
-    frames(60); const steady = paints - first;
-    // the tree in the ring felled to stumps (open ground a sprig may take)
-    __g.terr(P.x + 5, P.y + 1, T.STUMPS);
-    frames(30); const afterEdit = paints - first - steady;
+    UI.sel = null;
+    const after = shot();
+    for (let i = 0; i < 30; i++) shot();
     d.sprigs = sp;
-    return { first, steady, afterEdit };
+    UI.sel = { type: 'bld', id: P.id };
+    const selected = shot();
+    UI.sel = null;
+    out.height = height; out.after = after; out.selected = selected; out.paints = paints;
+    return out;
   });
-  ck('theLushGroundIsPaintedOnceNotEveryFrame', r.first === 1 && r.steady === 0 && r.afterEdit === 1,
-    `painted ${r.first} on the first frame, ${r.steady} over the next 60, ${r.afterEdit} when the ground under it changed`);
+  ck('theLandSproutsDuringThePlay', r.height.n > 1500 && r.height.far > 800, `at the wave's height ${r.height.n} px of new growth, ${r.height.far} of them out past the heart`);
+  ck('thenWearsOnlyAFewClumpsAtItsHeart', r.paints === 0 && r.after.n > 30 && r.after.far === 0 && r.after.edge === 0,
+    `after the play: no sprig drawn (${r.paints}), ${r.after.n} px of clumps, ${r.after.far} beyond the heart, ${r.after.edge} at the edge`);
+  ck('andItsEdgeWhileTheHallIsSelected', r.selected.edge > 40 && r.selected.far === r.selected.edge,
+    `the hall selected: ${r.selected.edge} px of the ring at 8 tiles, nothing else out there`);
+  ck('andNothingOfItIsLime', r.height.lime === 0 && r.after.lime === 0 && r.selected.lime === 0,
+    `lime px: ${r.height.lime} at the height, ${r.after.lime} after, ${r.selected.lime} selected`);
 }
 
 // ---------------- 10c. THE LUSH GROUND IS ASKED OF WHAT YOU KNOW ----------------
@@ -1197,25 +1237,25 @@ await p.evaluate(() => {
     const fx = P.x + 7, fy = P.y + 1;
     __g.terr(fx, fy, T.FOREST, 200);
     Deck.play('bountiful_land'); R.cardShows.length = 0;
-    const c = d.centre(), W = CFG.W;
-    // the layer's own pixels (its canvases only ever take fills, so they read back from file://)
-    const pix = () => {
-      d._layer = null;
-      const L = d.layer(c);
-      return L.g.map((g, i) => Array.from(g.getImageData(0, 0, L.cv[i].width, L.cv[i].height).data).join(','));
-    };
+    const c = d.centre(), W = CFG.W, n = d.R + 1;
+    // the ring's own ground, as the card asks it (grows: where the growth may stand)
+    const ask = () => { let k = ''; for (let y = Math.floor(c.y - n); y <= c.y + n; y++) for (let x = Math.floor(c.x - n); x <= c.x + n; x++) k += MapGen.onBoard(x, y) && d.grows(x, y) ? 1 : 0; return k; };
     G.vis = new Uint8Array(W * CFG.H);             // the ring known, none of it in sight now
-    const before = pix();
-    // OUT OF SIGHT: the rival raises a barracks inside the ring (a War Camp would
-    // be revealed by its own rule), and the stand is felled
+    const before = ask();
+    // OUT OF SIGHT: the rival raises a barracks inside the ring, and the stand is felled
     const camp = __g.bld('A', 'barracks', P.x + 6, P.y + 4);
     const i = MapGen.idx(fx, fy); S.map.terrain[i] = T.STUMPS;   // the truth only — the memory still holds the wood
-    const hidden = pix();
+    const hidden = ask();
     // IN SIGHT: now the player sees both, and the ground answers
     for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) G.vis[MapGen.idx(camp.x + x, camp.y + y)] = 1;
     G.vis[i] = 1;
-    const seen = pix();
-    return { same: hidden[0] === before[0] && hidden[1] === before[1], moved: seen[0] !== before[0], beats: before[0] !== before[1] };
+    const seen = ask();
+    // the sprigs of the play sway on the breeze's two beats
+    const cv = document.createElement('canvas'), TL = CFG.TILE; cv.width = cv.height = Math.ceil(n * 2 * TL);
+    const beat = f => { const g = cv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
+      g.translate(-(c.x - n) * TL, -(c.y - n) * TL); d.sprigs([g], c, d.R, 1, f, { x0: c.x - n, y0: c.y - n, x1: c.x + n, y1: c.y + n }, 0);
+      return Array.from(g.getImageData(0, 0, cv.width, cv.height).data).join(','); };
+    return { same: hidden === before, moved: seen !== before, beats: beat(0) !== beat(1) };
   });
   ck('theLushGroundIsDrawnFromWhatYouKnow', r.same && r.moved,
     `a rival barracks raised and a stand felled out of sight change the lush ground: ${!r.same}; once they are in sight: ${r.moved}`);
@@ -1347,8 +1387,12 @@ await p.evaluate(() => {
       for (let i = 0; i < withU.length; i += 4) if (!same(withU, noU, i) && same(withU, altU, i)) opaque.push(i);
       out.opaque = opaque.length;
       const count = (fr, ref) => { let n = 0; for (let i = 0; i < fr.length; i += 4) if (!same(fr, ref, i)) n++; return n; };
-      // BOUNTIFUL LAND, its wave over: the meadow grows round the people's feet
-      Deck.play('bountiful_land'); R.cardShows.length = 0;
+      // BOUNTIFUL LAND at its height: the meadow grows round the people's feet
+      // (the GROUND pass alone — the pollen it breathes out is light in the air)
+      const BLs = Deck.FX.bountiful_land.show, lay0 = BLs.layers;
+      BLs.layers = ['ground'];
+      const atHeight = () => { const sh = R.cardShows.find(s => s.id === 'bountiful_land'); if (sh) sh.t = 0.6 * sh.ms / 1000; };
+      Deck.play('bountiful_land'); atHeight();
       const lush = grab();
       out.lushPainted = count(lush, withU);
       out.lushOnUnits = opaque.filter(i => !same(lush, withU, i)).length;
@@ -1360,13 +1404,14 @@ await p.evaluate(() => {
       out.blightOnUnits = opaque.filter(i => !same(bl, withU, i)).length;
       // THE FOG: the change the lush ground makes on remembered ground, against
       // the change it makes in sight (the people stood out of it — this is the ground)
-      S.deck.fx = []; Deck.play('bountiful_land'); R.cardShows.length = 0;
+      S.deck.fx = []; R.cardShows.length = 0; Deck.play('bountiful_land'); atHeight();
       S.units = [];
       const fxs = S.deck.fx;
       const visLive = grab(); S.deck.fx = []; const visNo = grab(); S.deck.fx = fxs;
       const vis0 = G.vis; G.vis = new Uint8Array(W * CFG.H); R.fogDirty = true;
       const fogLive = grab(); S.deck.fx = []; const fogNo = grab(); S.deck.fx = fxs;
       G.vis = vis0; R.fogDirty = true; S.units = keep;
+      BLs.layers = lay0; R.cardShows.length = 0;
       let dv = 0, df = 0;
       for (let i = 0; i < visLive.length; i += 4) for (let c = 0; c < 3; c++) {
         dv += Math.abs(visLive[i + c] - visNo[i + c]); df += Math.abs(fogLive[i + c] - fogNo[i + c]);

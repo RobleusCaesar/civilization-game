@@ -1404,6 +1404,90 @@ await p.evaluate(({ TOWN }) => {
   ck('andItIsNoLongerOversized', r.road && r.len > 0 && r.len <= r.TL * 2.75, `${r.len} world px end to end (${(r.len / r.TL).toFixed(2)} tiles)`);
 }
 
+// ---------------- 15. THE HOUSE STYLE: MENDING AND THE WATCHFIRES ----------------
+/* The critics: Mending washed the hall out with a smooth white radial disc
+   and flashed every damaged building as a flat cream SILHOUETTE ("art that
+   failed to load"), the hall tinted solid yellow; the Watchfires kept a
+   large flat translucent orange disc round every tower top for six days,
+   its lower half over the meadow, and the longer reach was never seen
+   again after the play. Now a building being mended is SCANNED by a band
+   of gold pixels running down it — at no beat does the light cover more
+   than a band of its silhouette; the landing's flash is hard rings with
+   nothing over the middle; a beacon lights nothing below its brazier; and a
+   tower the player selects while the fires burn shows its longer reach. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, TX = Deck._townTX;
+    __tw.fresh('town-style');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+    const house = __tw.bld('P', 'house', tc.x + 3, tc.y + 3);
+    house.hp = Math.round(house.maxhp * 0.3);
+    R.cardShows = [];
+    Deck.play('mending');
+    const sh = R.cardShows.find(s => s.id === 'mending');
+    const a = TX.art(house), X0 = Math.floor(a.rc.x) - 4, Y0 = Math.floor(a.rc.y) - 4, Wd = Math.ceil(a.rc.w) + 8, Ht = Math.ceil(a.rc.h) + 8;
+    // the silhouette, in its own canvas: what the light may at most cover
+    const sil = document.createElement('canvas'); sil.width = Wd; sil.height = Ht;
+    const sg = sil.getContext('2d'); sg.translate(-X0, -Y0); TX.paint(sg, a, '#ff00ff', 0, 1);
+    const sd = sg.getImageData(0, 0, Wd, Ht).data;
+    let silN = 0; for (let i = 3; i < sd.length; i += 4) if (sd[i] > 128) silN++;
+    // the mending's light over the house at every beat it plays there
+    const h = sh.hit.find(e => e.id === house.id);
+    let worst = 0;
+    for (let k = 0; k <= 10; k++) {
+      const age = k / 10 * 0.6;
+      sh.t = (h.d + age * sh.speed) / sh.speed;
+      const cv = document.createElement('canvas'); cv.width = Wd; cv.height = Ht;
+      const cg = cv.getContext('2d'); cg.translate(-X0, -Y0);
+      if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+      R.drawCardShows(cg, 0, 'world');
+      const d = cg.getImageData(0, 0, Wd, Ht).data;
+      let on = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0 && sd[i] > 128) on++;
+      worst = Math.max(worst, on / Math.max(1, silN));
+    }
+    out.worst = worst; out.silN = silN;
+    // the landing's flash: hard rings, nothing laid over its middle
+    const rules = [...document.styleSheets].flatMap(ss => { try { return [...ss.cssRules]; } catch (e) { return []; } });
+    const css = rules.filter(rr => rr.selectorText && /dkRingHit/.test(rr.selectorText)).map(rr => rr.cssText).join(' ');
+    const hit = rules.filter(rr => rr.selectorText === '#dkFly .dkHit').map(rr => rr.cssText).join(' ');
+    out.hitHard = /radial-gradient\(\s*circle,\s*transparent 0(px)? 4\d%/.test(hit) && !/rgba\(255, 250, 230, 0\.95\)/.test(hit);
+    out.ringSoft = /\.dkRingHit\s*\{[^}]*box-shadow:\s*none/.test(css);
+    out.hitCss = hit.slice(0, 160);
+    // the beacon: nothing below its brazier
+    R.cardShows = []; S.deck.fx = [];
+    const tw = __tw.bld('P', 'tower', tc.x - 3, tc.y + 2);
+    Deck.play('watchfires'); R.cardShows = [];
+    const e = Deck.timed('watchfires'), WF = Deck.FX.watchfires, c = TX.crown(tw);
+    const cv = document.createElement('canvas'); cv.width = 160; cv.height = 160;
+    const cg = cv.getContext('2d'); cg.translate(-(Math.round(c.x) - 80), -(Math.round(c.y) - 80));
+    UI.sel = null;
+    WF.drawLive(cg, e);
+    const d = cg.getImageData(0, 0, 160, 160).data;
+    let above = 0, below = 0;
+    for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) { if (!d[(y * 160 + x) * 4 + 3]) continue; if (y > 80 + 6) below++; else above++; }
+    out.above = above; out.below = below;
+    // …and selected, it shows its reach: dots on the ring at range × 1.5
+    const big = document.createElement('canvas'), R1 = Bld.lv(tw).range * WF.mult.towerRange * TL, S2 = Math.ceil(R1 * 2 + 40);
+    big.width = big.height = S2;
+    const bg = big.getContext('2d'); bg.translate(-(Bld.cx(tw) * TL - S2 / 2), -(Bld.cy(tw) * TL - S2 / 2));
+    const reach = () => { bg.clearRect(-1e5, -1e5, 2e5, 2e5); WF.drawLive(bg, e); const dd = bg.getImageData(0, 0, S2, S2).data; let n = 0;
+      for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) { if (!dd[(y * S2 + x) * 4 + 3]) continue; if (Math.abs(Math.hypot(x - S2 / 2, y - S2 / 2) - R1) < 3) n++; } return n; };
+    UI.sel = null; out.ringOff = reach();
+    UI.sel = { type: 'bld', id: tw.id }; out.ringOn = reach();
+    UI.sel = null;
+    S.deck.fx = []; R.cardShows = [];
+    return out;
+  });
+  ck('mendingScansTheBuildingNeverFlashesItsSilhouette', r.silN > 100 && r.worst > 0 && r.worst <= 0.6,
+    `at its height the light covers ${(100 * r.worst).toFixed(0)}% of the house's ${r.silN} silhouette pixels (a flat flash: all of them)`);
+  ck('theLandingFlashIsHardRingsNotADisc', r.hitHard && r.ringSoft, r.hitCss);
+  ck('aBeaconLightsNothingBelowItsBrazier', r.above > 30 && r.below === 0, `${r.above} px of flame and embers above, ${r.below} below the brazier`);
+  ck('andASelectedTowerShowsItsLongerReach', r.ringOff === 0 && r.ringOn > 40, `ring dots at range × 1.5: ${r.ringOff} unselected, ${r.ringOn} selected`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

@@ -305,19 +305,28 @@
      ty)` is the front's verdict for an 8px block's centre (in tiles). Rows of
      whole tiles are merged into one rect; only tiles the front is crossing
      are cut into 8px blocks. */
+  /* ONE PATH, ONE FILL (the playtest: a faint tile grid showed over the
+     unexplored black while the fog rolled back). Filled rect by rect, every
+     tile's edge falls on a fractional device pixel at the play zoom and is
+     anti-aliased on its own — and two half-covered edges side by side let
+     the ground through as a hairline seam round every tile. Gathered into
+     one path and filled once, the shared edges are one coverage and the
+     black is whole. */
   const fogBack = (g, tiles, col, front) => {
     if (!tiles || !tiles.length) return;
     const TL = CFG.TILE, W = CFG.W, v = view(1), B = 8, nb = TL / B;
     g.fillStyle = col;
+    g.beginPath();
     for (const i of tiles) {
       const tx = i % W, ty = (i / W) | 0;
       if (!inView(v, tx, ty)) continue;
       const f = front(tx + 0.5, ty + 0.5, 0.75);
-      if (f === 1) { g.fillRect(tx * TL, ty * TL, TL, TL); continue; }
+      if (f === 1) { g.rect(tx * TL, ty * TL, TL, TL); continue; }
       if (f === 0) continue;
       for (let by = 0; by < nb; by++) for (let bx = 0; bx < nb; bx++)
-        if (front(tx + (bx + 0.5) / nb, ty + (by + 0.5) / nb, 0) === 1) g.fillRect(tx * TL + bx * B, ty * TL + by * B, B, B);
+        if (front(tx + (bx + 0.5) / nb, ty + (by + 0.5) / nb, 0) === 1) g.rect(tx * TL + bx * B, ty * TL + by * B, B, B);
     }
+    g.fill();
   };
 
   /* ================= THE CARDS ================= */
@@ -424,9 +433,21 @@
             ring(g, ox * TL, oy * TL, rf * TL, Math.max(24, Math.round(rf * 9)), 1);
           g.restore();
           // NO LIGHT POOLED ON THE GROUND (a warm glow over the meadow reads
-          // as sand): the fire lights only itself, its sparks and the ring
-          if (p < 0.1)                                   // the catch: a flash at the foot, in the fire's light
-            R.glow(g, 1 - p / 0.1, () => R.pxDisc(g, x, y - TL * 0.4, TL * (0.6 + p * 8), 2), 'bronze');
+          // as sand; the first cut's catch was a flat orange disc two and a
+          // half tiles across with a soft white glow at its base — the
+          // playtest's critics): the fire lights only itself and its embers.
+          // The catch is a burst of embers thrown out of the kindling, hard
+          // pixels of the fire's own colours, dying down its ramp
+          if (t < 0.45) {
+            const F0 = FIRE();
+            for (let k = 0; k < 18; k++) {
+              const a = -Math.PI * (0.05 + 0.9 * rnd(k, 31)), v = 40 + rnd(k, 37) * 70, age = t - rnd(k, 41) * 0.08;
+              if (age < 0) continue;
+              const ex = x + Math.cos(a) * v * age, ey = y - 4 - Math.sin(a) * v * age + 120 * age * age;
+              g.fillStyle = F0[age < 0.12 ? 3 : age < 0.25 ? 2 : age < 0.36 ? 1 : 0];
+              g.fillRect(snap(ex), snap(Math.min(y + 2, ey)), 2, 2);
+            }
+          }
           // the pillar: up in a breath, held, then settling to a watch fire
           const H = p < 0.12 ? 3.8 * ease(p / 0.12) : p < 0.5 ? 3.8 : 3.8 - 2.6 * ease((p - 0.5) / 0.5);
           const Wd = TL * (p < 0.5 ? 0.95 : 0.95 - 0.45 * ease((p - 0.5) / 0.5));

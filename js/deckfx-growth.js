@@ -409,6 +409,10 @@ Object.assign(Deck.FX, {
     // ground a sprig may stand on: open meadow, spent soil, a felled stand
     OPEN: (() => { const o = {}; o[T.GRASS] = 1; o[T.BARREN] = 1; o[T.STUMPS] = 1; return o; })(),
     BLOOM: ['#f4efe0', '#dcc4ec', '#f2c8d0'],
+    /* the new growth's greens: the meadow's own leaf ramp a step up, foot to
+       tip — never the lime the first cut drew its tufts in (the playtest's
+       critics: "the banned upright tufts, in the banned lime") */
+    GREEN: ['#2e4a1e', '#3c6f2d', '#4d8a3a', '#5a9640'],
     /* MAY A SPRIG GROW HERE — asked of what the PLAYER knows. A tile in sight
        now reads the live ground and whatever stands on it; a tile the fog
        holds reads the player's MEMORY (S.map.seenTerrain, and S.map.seenB's
@@ -451,35 +455,35 @@ Object.assign(Deck.FX, {
       const F = GrowFX, sx = F.snap(x), sy = F.snap(y), kind = (h * 7.3) % 1;
       const lean = ((((h * 977) | 0) + f) & 1) ? 2 : 0;
       g.globalAlpha = F.step(Math.min(1, k * 1.5));
-      g.fillStyle = '#2e4a1e'; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
+      g.fillStyle = this.GREEN[0]; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
       if (kind < 0.55) {
         // the tuft: three blades, the middle tallest, the tips leaning with the wind
         const hh = Math.max(2, F.snap((4 + ((h * 97) % 1) * 5) * k));
-        g.fillStyle = '#4f8a32';
+        g.fillStyle = this.GREEN[1];
         g.fillRect(sx - 2, sy - F.snap(hh * 0.6), 2, F.snap(hh * 0.6));
         g.fillRect(sx + 2, sy - F.snap(hh * 0.7), 2, F.snap(hh * 0.7));
-        g.fillStyle = '#6fbc42'; g.fillRect(sx, sy - hh + 2, 2, hh - 2);
+        g.fillStyle = this.GREEN[2]; g.fillRect(sx, sy - hh + 2, 2, hh - 2);
         g.fillRect(sx + lean, sy - hh, 2, 2);   // the tip, bent with the breeze or upright
-        if (k > 0.5) { g.fillStyle = '#b4ea78'; g.fillRect(sx + lean, sy - hh - 2, 2, 2); }
+        if (k > 0.5) { g.fillStyle = this.GREEN[3]; g.fillRect(sx + lean, sy - hh - 2, 2, 2); }
       } else if (kind < 0.85) {
         const hh = Math.max(2, F.snap((5 + ((h * 97) % 1) * 6) * k));
-        g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
+        g.fillStyle = this.GREEN[1]; g.fillRect(sx, sy - hh, 2, hh);
         if (k > 0.45) {
-          g.fillStyle = '#86d052';
+          g.fillStyle = this.GREEN[2];
           g.fillRect(sx - 2, sy - F.snap(hh * 0.55) + (lean ? 2 : 0), 2, 2);
           g.fillRect(sx + 2, sy - F.snap(hh * 0.8) + (lean ? 0 : 2), 2, 2);
-          g.fillStyle = '#b4ea78'; g.fillRect(sx - 4 + lean, sy - F.snap(hh * 0.55) - 2, 2, 2);
+          g.fillStyle = this.GREEN[3]; g.fillRect(sx - 4 + lean, sy - F.snap(hh * 0.55) - 2, 2, 2);
         }
       } else {
         // the flower: a stem, then the petals open once it has grown; it nods with the breeze
         const hh = Math.max(2, F.snap(6 * k)), fx = sx + (lean ? 2 : 0);
-        g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
+        g.fillStyle = this.GREEN[1]; g.fillRect(sx, sy - hh, 2, hh);
         if (k > 0.75) {
           const col = F.hash((h * 1e4) | 0, f + 3) > 0.92 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
+          // three petals round the stem's tip, never a cross with an eye in it
+          // (a '+' of pale cells read as a dead pixel — the playtest's critics)
           g.fillStyle = col;
-          g.fillRect(fx - 2, sy - hh - 2, 2, 2); g.fillRect(fx + 2, sy - hh - 2, 2, 2);
-          g.fillRect(fx, sy - hh - 4, 2, 2); g.fillRect(fx, sy - hh, 2, 2);
-          g.fillStyle = '#fbf6e2'; g.fillRect(fx, sy - hh - 2, 2, 2);
+          g.fillRect(fx - 2, sy - hh - 2, 2, 2); g.fillRect(fx + 2, sy - hh - 2, 2, 2); g.fillRect(fx, sy - hh - 4, 2, 2);
         }
       }
       g.globalAlpha = 1;
@@ -507,24 +511,25 @@ Object.assign(Deck.FX, {
             if (!MapGen.onBoard(tx | 0, ty | 0) || !G.visibleAt(tx | 0, ty | 0)) continue;
             const x = tx * TL + Math.sin(q * 6 + k) * 4, y = ty * TL - q * TL * (1.2 + F.hash(k, 53));
             if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-            F.mote(g, x, y, k % 3 ? '#e8f4b8' : '#fff8d6', null, q < 0.3 ? 1 : (1 - q) / 0.7);
+            F.mote(g, x, y, k % 3 ? '#f4efe0' : '#fff8d6', null, q < 0.3 ? 1 : (1 - q) / 0.7);
           }
           return;
         }
-        g.save(); g.globalCompositeOperation = 'lighter';
+        g.save();
+        // the wave of new green: opaque cells of the growth's own greens, laid
+        // ON the meadow (never light ADDED to it, which was the lime), thinning
+        // out behind the front by hash, never by alpha
         if (p < 0.66) {
-          F.ring(g, cx, cy, rad, '#b8f080', 0.95, 2, 1, vp);
-          F.ring(g, cx, cy, Math.max(0, rad - 6), '#5fa83a', 0.7, 2, 1, vp);
+          F.ring(g, cx, cy, rad, this.GREEN[3], 1, 2, 1, vp);
+          F.ring(g, cx, cy, Math.max(0, rad - 6), this.GREEN[2], 1, 2, 1, vp);
           for (let k = 0; k < 160; k++) {
             const th = F.hash(k, 11) * Math.PI * 2, rr = rad - TL * (0.15 + F.hash(k, 23) * 1.3);
-            if (rr <= 0) continue;
+            if (rr <= 0 || F.hash(k, 29) > 1 - (rad - rr) / (TL * 1.5)) continue;
             const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr;
             if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-            g.globalAlpha = F.step(0.6 * (1 - (rad - rr) / (TL * 1.5)));
-            g.fillStyle = k % 3 ? '#7cc850' : '#d8f0a0';
+            g.fillStyle = this.GREEN[k % 3 ? 2 : 3];
             g.fillRect(F.snap(x), F.snap(y), 2, 2);
           }
-          g.globalAlpha = 1;
         }
         if (p > 0.5) {
           const k = (p - 0.5) / 0.5;
@@ -536,41 +541,73 @@ Object.assign(Deck.FX, {
         g.restore();
       },
     },
-    /* the ground within the ring visibly lush while the card runs: sprigs and
-       blossoms on open ground the player knows, a faint gold ring of dots at
-       the edge — drawn in the GROUND pass (R.drawCardGround), under the town,
-       its people and the fog. TWENTY DAYS IS A LONG TIME TO PAY FOR A
-       PICTURE: drawn sprig by sprig it measured ~12ms a frame on a desktop's
-       software canvas (a few hundred sprigs, a handful of fills each), so
-       once the land has woken it is painted ONCE into a layer — two frames
-       of it, the breeze's two beats, so the meadow still sways — and blitted,
-       one drawImage a frame. It is painted again only when the ground under
-       it changes as the player knows it (a hall moved, a tree felled in
-       sight, a hut raised: a checksum of the ring's own `grows` answers says
-       so). Only while the show's wave is still rolling out are the sprigs
-       drawn live, growing in behind its front. */
+    /* WHAT THE LAND WEARS FOR ITS TWENTY DAYS (the playtest's critics: the
+       first cut held hundreds of upright tufts in lime and white '+' crosses
+       over the whole 8-tile radius for all twenty days — a texture glitch,
+       not lush ground). The sprouting is the PLAY's: the sprigs grow in
+       behind the wave and, once it has reached the edge, crumble back into
+       the meadow in hard steps by the show's end. Then the zone is marked
+       with what the house allows and the eye can find: a few CLOVER AND
+       FLOWER patches at its heart round the fire (the ground decals'
+       language — low, flat, no lime), and the edge itself as a ring of
+       muted-gold dots ONLY while the hall is selected — the panel the
+       player opens to ask what the hall is doing. Drawn in the GROUND pass
+       (R.drawCardGround), under the town, its people and the fog, on ground
+       the player knows (grows). */
+    CORE_R: 2.6,          // tiles from the fire the lasting patches lie within
+    CORE_N: 12,           // …and how many of them, at most
     drawGround(g, e) {
       const c = this.centre();
       if (!c) return;
       const TL = CFG.TILE, F = GrowFX, Rr = this.R, fade = F.tail(e), t = performance.now() / 1000;
       const beat = ((t / this.BEAT) | 0) & 1;
       const p = F.liveP('bountiful_land');
-      if (p >= 0 && p <= 0.62) this.sprigs([g], c, Rr * F.ease(p / 0.62), fade, beat, F.view(1));
-      else {
-        const L = this.layer(c);
-        if (L.any) {
-          g.save();
-          g.imageSmoothingEnabled = false;
-          g.globalAlpha = F.step(fade);
-          g.drawImage(L.cv[beat], L.x0 * TL, L.y0 * TL);
-          g.restore();
+      // the play: sprigs grow in behind the front, then go back into the meadow
+      if (p >= 0 && p < 1) {
+        const crumble = p < 0.7 ? 0 : (p - 0.7) / 0.3;
+        this.sprigs([g], c, Rr * F.ease(p / 0.62), fade, beat, F.view(1), crumble);
+      }
+      // the twenty days: the patches at the heart, from the moment the wave has passed them
+      if (p < 0 || p > 0.3) this.core(g, c, fade);
+      // …and the edge, while the hall is selected
+      const tc = Bld.tcOf('P');
+      if (tc && typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' && UI.sel.id === tc.id)
+        F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#b8923a', fade, 2, 1, F.viewPx(1), t * 0.6);
+    },
+    /* the clover and flowers at the heart: a dozen small flat patches on the
+       open ground the player knows within CORE_R of the fire, each where its
+       tile's hash puts it (the same patch every frame, no RNG) */
+    core(g, c, fade) {
+      if (fade <= 0) return;
+      const TL = CFG.TILE, F = GrowFX, r0 = Math.ceil(this.CORE_R);
+      let n = 0;
+      for (let dy = -r0; dy <= r0 && n < this.CORE_N; dy++) for (let dx = -r0; dx <= r0 && n < this.CORE_N; dx++) {
+        const x = Math.floor(c.x) + dx, y = Math.floor(c.y) + dy;
+        if (!MapGen.onBoard(x, y) || Math.hypot(x + 0.5 - c.x, y + 0.5 - c.y) > this.CORE_R) continue;
+        const h = F.hash(x * 31 + 7, y * 17 + 3);
+        if (h > 0.42 || !this.grows(x, y)) continue;
+        n++;
+        const px = F.snap((x + 0.2 + F.hash(x, y + 9) * 0.6) * TL), py = F.snap((y + 0.35 + F.hash(y, x + 5) * 0.5) * TL);
+        // a clump, never a lone cross: a low spread of leaves with, on half
+        // of them, a few blossoms of clover or meadow flower among them
+        const L2 = [[-4, 2], [-2, 0], [0, 2], [2, 0], [4, 2], [0, -2]];
+        g.fillStyle = this.GREEN[0]; g.fillRect(px - 4, py + 4, 10, 2);       // its shade on the ground
+        for (let k = 0; k < L2.length; k++) {
+          if (F.hash(x * 13 + k, y * 7) < 0.25) continue;
+          g.fillStyle = this.GREEN[k % 2 ? 2 : 3]; g.fillRect(px + L2[k][0], py + L2[k][1], 2, 2);
+        }
+        if (h >= 0.18) {
+          const col = h < 0.3 ? '#f4efe0' : this.BLOOM[1 + (((h * 97) | 0) % 2)];   // white clover, or pink and lilac
+          g.fillStyle = col;
+          g.fillRect(px - 2, py - 2, 2, 2); g.fillRect(px + 2, py - 4, 2, 2);
+          if (h > 0.24) g.fillRect(px + 4, py, 2, 2);
         }
       }
-      F.ring(g, c.x * TL, c.y * TL, Rr * TL, 'gold', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
     },
     // every sprig on the ring's open ground out to `grow` (within `v`, the tiles
-    // in view), into each target in turn on its own beat (f0, f0 + 1, …)
-    sprigs(gs, c, grow, fade, f0, v) {
+    // in view), into each target in turn on its own beat (f0, f0 + 1, …) —
+    // `crumble` 0..1 of them gone back into the meadow, each on its own hash
+    sprigs(gs, c, grow, fade, f0, v, crumble) {
       const TL = CFG.TILE, F = GrowFX, Rr = this.R;
       const x0 = Math.max(Math.floor(c.x - Rr), Math.floor(v.x0)), x1 = Math.min(Math.ceil(c.x + Rr), Math.ceil(v.x1));
       const y0 = Math.max(Math.floor(c.y - Rr), Math.floor(v.y0)), y1 = Math.min(Math.ceil(c.y + Rr), Math.ceil(v.y1));
@@ -582,40 +619,13 @@ Object.assign(Deck.FX, {
         const k = Math.min(1, (grow - d) / 1.2) * fade;
         for (let j = 0; j < 3; j++) {
           const h = F.hash(x * 7 + j, y * 13 + 5);
-          if (h > 0.46) continue;
+          if (h > 0.46 || (crumble > 0 && F.hash(x * 5 + j, y * 11 + 2) < crumble)) continue;
           const sx = (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, sy = (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL;
           for (let m = 0; m < gs.length; m++) this.sprig(gs[m], sx, sy, h / 0.46, k, (f0 + m) & 1);
           any = true;
         }
       }
       return any;
-    },
-    // the grown land, painted once — both beats (render state, never in S)
-    _layer: null,
-    layer(c) {
-      const TL = CFG.TILE, Rr = this.R, x0 = Math.floor(c.x - Rr) - 1, y0 = Math.floor(c.y - Rr) - 1, n = Math.ceil(Rr * 2) + 3;
-      // the ring's own ground, summed: where a sprig may grow, as the player knows it
-      let sum = x0 * 7919 + y0 * 104729;
-      for (let y = y0; y < y0 + n; y++) for (let x = x0; x < x0 + n; x++) {
-        if (!MapGen.onBoard(x, y)) continue;
-        sum = (Math.imul(sum, 31) + (this.grows(x, y) ? 3 : 5)) | 0;
-      }
-      let L = this._layer;
-      if (L && L.sum === sum && L.x0 === x0 && L.y0 === y0) return L;
-      if (!L) {
-        const cv = [document.createElement('canvas'), document.createElement('canvas')];
-        L = this._layer = { cv, g: cv.map(k => k.getContext('2d')) };
-      }
-      for (let m = 0; m < 2; m++) {
-        const cv = L.cv[m], g = L.g[m];
-        if (cv.width !== n * TL) { cv.width = n * TL; cv.height = n * TL; }
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.clearRect(0, 0, cv.width, cv.height);
-        g.translate(-x0 * TL, -y0 * TL);
-      }
-      L.any = this.sprigs(L.g, c, Rr, 1, 0, { x0: x0, y0: y0, x1: x0 + n, y1: y0 + n });
-      L.sum = sum; L.x0 = x0; L.y0 = y0;
-      return L;
     },
   },
 

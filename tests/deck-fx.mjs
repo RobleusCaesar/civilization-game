@@ -771,6 +771,82 @@ await p.evaluate(() => {
   ck('andTheCardsSkyDrainsAway', r.drained && !r.threw2, r.threw2 || 'gone once its smoke has thinned');
 }
 
+// ---------------- 9. SCOUT'S FIRE: THE FIRE LIGHTS ITSELF, THE DARK IS WHOLE ----------------
+/* The playtest's critics on Scout's Fire (a Stone card whose effect lives in
+   js/deckfx-rival.js): at the catch a FLAT ORANGE DISC two and a half tiles
+   across lay on the ground with a soft white glow at its base — warm light
+   pooled on the meadow, the house style's one forbidden thing — and while
+   the fog rolled back a faint TILE GRID showed across the unexplored black
+   (every tile of it a rect of its own, each edge anti-aliased on its own at
+   the play zoom, the ground showing through every seam). Measured on the
+   show: round the fire's foot, out past its own flame, the ground is left
+   alone; and the black it draws over the dark is one unbroken black at a
+   fractional zoom. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE;
+    __fx.fresh('fx-scoutfire'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    Deck._add('scouts_fire', 2);
+    const P = Bld.tcOf('P'), ax = P.x + 12, ay = P.y + 10;
+    // the far ground unexplored, the fire's own few tiles known
+    for (let y = ay - 9; y <= ay + 9; y++) for (let x = ax - 9; x <= ax + 9; x++) if (MapGen.inB(x, y)) S.map.explored[MapGen.idx(x, y)] = 0;
+    for (let y = ay - 1; y <= ay + 1; y++) for (let x = ax - 1; x <= ax + 1; x++) S.map.explored[MapGen.idx(x, y)] = 1;
+    R.cardShows = [];
+    const play = Deck.play('scouts_fire', { x: ax + 0.5, y: ay + 0.5 });
+    const sh = R.cardShows.find(s => s.id === 'scouts_fire');
+    out.play = play.ok && !!sh;
+    if (!sh) return out;
+    // (a) the catch, on flat meadow at world scale: the annulus round the fire's
+    // foot, outside its flame's own column, left as it was
+    const GR = [91, 132, 57], fx = sh.x * TL, fy = sh.y * TL + TL * 0.25;
+    const cv = document.createElement('canvas'); cv.width = 200; cv.height = 200;
+    const cg = cv.getContext('2d');
+    sh.dark = []; sh.dim = [];          // the fog-back is (b)'s question
+    let worst = 0;
+    for (const t of [0.02, 0.06, 0.1, 0.16, 0.22]) {
+      cg.setTransform(1, 0, 0, 1, 0, 0); cg.fillStyle = 'rgb(' + GR + ')'; cg.fillRect(0, 0, 200, 200);
+      cg.setTransform(1, 0, 0, 1, 100 - fx, 100 - fy);
+      sh.t = t; if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+      R.drawCardShows(cg, 0, 'world');
+      const d = cg.getImageData(0, 0, 200, 200).data;
+      let n = 0, m = 0;
+      for (let y = 0; y < 200; y++) for (let x = 0; x < 200; x++) {
+        const dx = x - 100, dy = y - (100 - TL * 0.4), rr = Math.hypot(dx, dy);
+        if (rr < TL * 0.75 || rr > TL * 1.1 || Math.abs(dx) < TL * 0.55) continue;
+        m++;
+        const i = (y * 200 + x) * 4;
+        if (d[i] !== GR[0] || d[i + 1] !== GR[1] || d[i + 2] !== GR[2]) n++;
+      }
+      worst = Math.max(worst, n / Math.max(1, m));
+    }
+    out.disc = worst;
+    // (b) the fog rolling back: the black over a block of dark tiles four to
+    // seven tiles off, at the play zoom on a phone (a fractional device scale)
+    const blk = [];
+    for (let y = ay - 2; y <= ay + 2; y++) for (let x = ax + 4; x <= ax + 7; x++) blk.push(MapGen.idx(x, y));
+    sh.dark = blk; sh.t = 0.05;
+    const Z = 3.4, bx = (ax + 4) * TL, by = (ay - 2) * TL, W2 = Math.ceil(4 * TL * Z), H2 = Math.ceil(5 * TL * Z);
+    const c2 = document.createElement('canvas'); c2.width = W2; c2.height = H2;
+    const g2 = c2.getContext('2d');
+    g2.fillStyle = '#ffffff'; g2.fillRect(0, 0, W2, H2);
+    g2.setTransform(Z, 0, 0, Z, -bx * Z + 0.37, -by * Z + 0.61);
+    const vt = R.viewTiles; R.viewTiles = () => ({ x0: -2, y0: -2, x1: CFG.W + 2, y1: CFG.H + 2 });
+    try { if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh); R.drawCardShows(g2, 0, 'world'); } finally { R.viewTiles = vt; }
+    const d2 = g2.getImageData(0, 0, W2, H2).data;
+    let seams = 0;
+    for (let y = 4; y < H2 - 4; y++) for (let x = 4; x < W2 - 4; x++) {
+      const i = (y * W2 + x) * 4;
+      if (d2[i] !== 13 || d2[i + 1] !== 11 || d2[i + 2] !== 8) seams++;
+    }
+    out.seams = seams;
+    R.cardShows = [];
+    return out;
+  });
+  ck('scoutsFireLightsOnlyItselfNoPoolOnTheGround', r.play && r.disc < 0.12, `at most ${(100 * (r.disc || 0)).toFixed(0)}% of the ground round its foot touched (the old catch: a disc over all of it)`);
+  ck('andTheDarkItDrawsIsWholeNoTileGrid', r.play && r.seams === 0, `${r.seams} pixels of seam inside a block of dark tiles at a fractional zoom`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

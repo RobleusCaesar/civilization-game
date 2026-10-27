@@ -311,6 +311,34 @@
       const t = this.tinted(this.mask(a.spr, w, h).c, w, h, col);
       g.drawImage(t, 0, s0, w, s1 - s0, a.rc.x, a.rc.y + s0 / h * a.rc.h, a.rc.w, (s1 - s0) / h * a.rc.h);
     },
+    // rows f0..f1 of a building's shape in `col`, only `k` of its 2px cells lit
+    // (TX.holes' scattered order): a band of light the real sprite shows through
+    paintDither(g, a, col, f0, f1, k) {
+      if (!a.spr || !(k > 0)) return;
+      if (k >= 1) return this.paint(g, a, col, f0, f1);
+      const w = Math.max(1, Math.round(a.rc.w)), h = Math.max(1, Math.round(a.rc.h));
+      const s0 = Math.max(0, Math.floor(cl(f0) * h)), s1 = Math.min(h, Math.ceil(cl(f1) * h));
+      if (s1 <= s0) return;
+      const t = this.tinted(this.mask(a.spr, w, h).c, w, h, col), hole = this.holes && this.holes(1 - k);
+      if (hole) {
+        const x = t.getContext('2d');
+        x.save(); x.globalCompositeOperation = 'destination-out';
+        x.fillStyle = x.createPattern(hole, 'repeat'); x.fillRect(0, 0, w, h);
+        x.restore();
+      }
+      g.drawImage(t, 0, s0, w, s1 - s0, a.rc.x, a.rc.y + s0 / h * a.rc.h, a.rc.w, (s1 - s0) / h * a.rc.h);
+    },
+    /* A SCAN OF GOLD down a building, `k` 0..1 of the way from its crown to
+       its foot: a hard bright leading edge, then a trailing band of the gold
+       ramp lit at half and then a quarter of its cells — opaque ink, the real
+       sprite showing between them, never a flat colour laid over the lot */
+    scan(g, a, k) {
+      if (!a.spr || k < 0 || k > 1) return;
+      const T = R.LIGHT.TONE.gold, h = Math.max(1, a.rc.h), f = a.box.t + (a.box.b - a.box.t) * eo(k), row = PX / h;
+      this.paintDither(g, a, T.ramp[1], f - 0.34, f - 0.18, 0.25);
+      this.paintDither(g, a, T.ramp[2], f - 0.18, f - row, 0.5);
+      this.paintDither(g, a, T.ramp[3], f - row, f + row, 0.75);   // the leading edge: one cell of the hottest gold
+    },
     /* the building's EDGE, two world pixels proud of its roof and walls and
        never along its foot (the ground line is not an edge anyone sees): the
        shape stepped left, right and up, less the shape itself — cached with
@@ -1265,9 +1293,11 @@
             const b = Bld.get(h.id);
             if (!b || !TX.bNear(b)) continue;
             const a = TX.art(b);
-            // the building flares GOLD as it is made whole (R.glow over its own
-            // worn shape: it turns gold in its own light and shade, then bright)
-            if (age < 0.6) R.glow(g, 1 - age / 0.6, c => TX.paint(g, a, c, 0, 1));
+            // the mending RUNS DOWN the building as it is made whole: a scan of
+            // gold pixels from its crown to its foot over its own worn picture
+            // (TX.scan) — never the flat cream silhouette of the first cut,
+            // which the playtest's critics read as art that failed to load
+            if (age < 0.6) TX.scan(g, a, age / 0.6);
             g.save();
             // the sparks of a town patched up: crosses rising off the roof, a mending + above it
             for (let k = 0; k < 6; k++) {
@@ -1276,7 +1306,7 @@
               const x = a.rc.x + (a.box.l + (a.box.r - a.box.l) * hs(h.id, k)) * a.rc.w;
               const y = a.rc.y + (a.box.t + (a.box.b - a.box.t) * hs(k, h.id) * 0.8) * a.rc.h - tl * 22;
               const ink = R.goldInk(1 - tl / 0.55);
-              if (ink) TX.star(g, x, y, tl < 0.25 ? 2 : 1, ink, '#fff8e8');
+              if (ink) TX.star(g, x, y, tl < 0.12 ? 2 : 1, ink, '#fff8e8');
             }
             const cx = a.rc.x + (a.box.l + a.box.r) / 2 * a.rc.w, cy = a.rc.y + a.box.t * a.rc.h - 4 - age * 16;
             if (R.inkOn(g, 1.2 * (1 - age / 0.9))) { g.fillRect(sn(cx) - 1, sn(cy) - 5, 2, 6); g.fillRect(sn(cx) - 3, sn(cy) - 3, 6, 2); }
@@ -1407,26 +1437,40 @@
         return { ok: true, until: e.until };
       },
       end() { G.log('🔥 The watchfires burn down — your towers shoot as they did before.'); },
-      // the beacon on one tower: a brazier, its flame, its light, its embers
+      /* THE BEACON ON ONE TOWER: an iron brazier and a big flame in the burning
+         town's own hard-pixel strip (flameBig, half again a hall fire's size)
+         with a few embers going up off it — and NO LIGHT round it (the
+         playtest's critics: a flat translucent orange disc round every tower
+         top for six days, its lower half laid over the meadow). The fire
+         lights itself. */
+      BEACON: 1.5,
       beacon(g, b, k, now) {
-        const TL = TLs(), c = TX.crown(b), s = TL * (b.key === 'warcamp' ? 0.62 : 0.5) * k;
+        const TL = TLs(), c = TX.crown(b), s = TL * (b.key === 'warcamp' ? 0.62 : 0.5) * this.BEACON * k;
         if (s < 2) return;
         const fx = c.x, fy = c.y + 2;
-        // its light round the crown: the bronze of firelight, never lime
-        const fl = 0.9 + 0.1 * Math.sin(now * 9 + b.id);
-        R.glow(g, 0.12, () => R.pxDisc(g, fx, fy - s * 0.35, TL * 0.95 * k * fl, 2, 0.8), 'bronze');
-        R.glow(g, 0.3, () => R.pxDisc(g, fx, fy - s * 0.35, TL * 0.5 * k * fl, 2, 0.8), 'bronze');
         // the iron basket it burns in
-        g.fillStyle = AP().ink[1]; g.fillRect(sn(fx - 5), sn(fy - 2), 10, 2); g.fillRect(sn(fx - 3), sn(fy), 6, 2);
+        g.fillStyle = AP().ink[1]; g.fillRect(sn(fx - 6), sn(fy - 2), 12, 2); g.fillRect(sn(fx - 4), sn(fy), 8, 2);
+        g.fillStyle = AP().ink[2]; g.fillRect(sn(fx - 6), sn(fy - 2), 2, 2); g.fillRect(sn(fx + 4), sn(fy - 2), 2, 2);
         TX.flame(g, fx, fy - 1, s, ((now * 7.7) | 0) + b.id);
-        // embers rising off it
+        // two or three embers rising off it, dying down the fire's ramp
         const F = AP().fire;
-        for (let i = 0; i < 4; i++) {
-          const ph = (now * 0.8 + i / 4 + (b.id * 0.37) % 1) % 1;
-          g.fillStyle = F[i % 2 ? 2 : 3]; g.globalAlpha = stp(1 - ph, 3);
-          g.fillRect(sn(fx + Math.sin(ph * 7 + i * 2 + b.id) * 5), sn(fy - s * 0.8 - ph * TL * 1.1), PX, PX);
+        for (let i = 0; i < 3; i++) {
+          const ph = (now * 0.7 + i / 3 + (b.id * 0.37) % 1) % 1;
+          g.fillStyle = F[ph < 0.3 ? 3 : ph < 0.6 ? 2 : 1];
+          g.fillRect(sn(fx + Math.sin(ph * 7 + i * 2 + b.id) * 5), sn(fy - s * 0.85 - ph * TL * 1.2), PX, PX);
         }
-        g.globalAlpha = 1;
+      },
+      /* …and while it runs, a tower or camp the player selects shows its
+         reach: the ring of fire-dots at the longer range (and the old one
+         faint inside it), so the half again is there to see for all six days */
+      reach(g, b) {
+        const TL = TLs(), lv = Bld.lv(b);
+        if (!lv || !lv.range) return;
+        const cx = Bld.cx(b) * TL, cy = Bld.cy(b) * TL, r1 = lv.range * this.mult.towerRange;
+        g.save();
+        if (R.inkOn(g, 0.15, 'bronze')) TX.ring(g, cx, cy, lv.range * TL, 1);   // the old reach, the darkest of the fire's ink
+        if (R.inkOn(g, 0.7, 'bronze')) TX.ring(g, cx, cy, r1 * TL, 1);          // the new one, in its flame
+        g.restore();
       },
       drawLive(g, e) {
         // the kindling runs on the play's own clock (render time); with no fresh
@@ -1442,6 +1486,8 @@
           const k = cl((age - Math.hypot(Bld.cx(b) - hx, Bld.cy(b) - hy) / this.IGNITE) / 0.35);
           if (k > 0) this.beacon(g, b, k, now);
         }
+        const sel = typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' ? Bld.get(UI.sel.id) : null;
+        if (sel && sel.owner === 'P' && (sel.key === 'tower' || sel.key === 'warcamp') && Bld.done(sel)) this.reach(g, sel);
       },
       show: {
         ms: 2600, layer: 'world',

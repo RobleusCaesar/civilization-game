@@ -1678,7 +1678,9 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkFly .dkFlash { inset: 0; background: radial-gradient(circle at var(--cx) var(--cy), rgba(255,236,170,.95), rgba(255,214,94,.45) 45%, transparent 85%); opacity: 0; }
 #dkFly .dkRing, #dkFly .dkHit { left: var(--cx); top: var(--cy); width: 160px; height: 160px; margin: -80px 0 0 -80px; opacity: 0; }
 #dkFly .dkRing { border-radius: 50%; border: 3px dotted var(--tc); box-shadow: 0 0 14px var(--tg), inset 0 0 14px var(--tg); }
-#dkFly .dkHit { border-radius: 50%; background: radial-gradient(circle, rgba(255,250,230,.95), var(--tg) 35%, transparent 68%); }
+#dkFly .dkHit { border-radius: 50%; background: radial-gradient(circle, transparent 0 44%, var(--tc) 44% 47%, transparent 47% 50%, #fff3cf 50% 53%, transparent 53% 56%, var(--tc) 56% 58%, transparent 58%); }
+/* the landing lights the ground in hard rings, never a soft disc over what it lands on (the hall) */
+#dkFly .dkRingHit { box-shadow: none; }
 #dkFly .dkSpark { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--tc); box-shadow: 0 0 4px var(--tg); opacity: 0; }
 #dkFly .dkSpark.ember { width: 3px; height: 3px; background: #ffe7a0; }
 #dkFly .dkSpark.trail { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; }
