@@ -1098,7 +1098,7 @@ Object.assign(Deck.FX, {
         if (n > 0) { back[k] = n; w.paid[k] -= n; S.res[k] = (S.res[k] || 0) + n; }
       }
       const tc = Bld.tcOf('P');
-      const at = w ? { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), site: 1 }
+      const at = w ? { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), site: 1, bx: w.x, by: w.y }
         : tc ? { x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + Bld.size(tc), sz: Bld.size(tc), site: 0 }
         : Object.assign(GrowFX.mid(), { foot: GrowFX.mid().y + 1, sz: 2, site: 0 });
       if (w) GrowFX.look(at.x, at.y);
@@ -1126,6 +1126,15 @@ Object.assign(Deck.FX, {
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL, half = s.sz * TL / 2, M = this.MARBLE;
+        // each course lands with a thud: dust rolls out from under the works
+        // (the placement dust — render one-shots, never in S) and the ground shakes
+        for (const [at, k] of [[0.24, 'd1'], [0.42, 'd2'], [0.6, 'd3']]) {
+          if (p < at || s[k]) continue;
+          s[k] = 1;
+          if (s.site && R.startPlacePoof) R.startPlacePoof(s.bx, s.by, s.sz, { scale: 0.75 + at * 0.4 });
+          if (R.shakeAt) R.shakeAt(2 + at * 4, 0.35);
+          F.sfx('rise');
+        }
         g.save(); g.globalCompositeOperation = 'lighter';
         F.column(g, cx, foot, foot - TL * (3 + s.sz) * F.ease(p / 0.15), TL * s.sz * 0.9 * (1 - p), F.env(p, 0, 0.08, 0.3, 0.7),
           ['200,196,186', '236,232,222', '255,255,252']);
