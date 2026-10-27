@@ -785,7 +785,9 @@ await p.evaluate(({ ARMY }) => {
   const r = await p.evaluate(() => {
     const out = {};
     __ar.fresh('army-save'); __ar.flat();
-    const lg = __ar.play('legion_marches').units.map(u => u.id);
+    const lgU = __ar.play('legion_marches').units, lg = lgU.map(u => u.id);
+    // the slot each was dealt (the formation the held beat will march to)
+    const slot = Object.fromEntries(lgU.map(u => [u.id, u.task && u.task.type === 'muster' ? { x: u.task.x, y: u.task.y } : null]));
     const pack = __ar.play('hunters_pack').units.map(u => u.id);
     __ar.unit('defender', 'P', 4.5, 16.5);
     Deck.play('veterans');
@@ -800,12 +802,20 @@ await p.evaluate(({ ARMY }) => {
     out.vets = S.units.filter(u => u.vet === 1.25).length;
     out.host = host.every(id => get(id) && get(id).spectral) && Deck.timed('ancestors_host') && Deck.timed('ancestors_host').until === until;
     __ar.sim(3);
-    out.marched = lg.every(id => get(id).task && get(id).task.type === 'move');
+    // marched: nobody still waiting, every one walking to its own slot or
+    // already standing on it (a slot a tile off the door is reached in a beat)
+    out.marched = lg.every(id => {
+      const u = get(id), t = u.task, sl = slot[id];
+      if (!sl || (t && t.type === 'muster')) return false;
+      if (t && t.type === 'move') return t.x === sl.x && t.y === sl.y;
+      return !t && (u.x | 0) === sl.x && (u.y | 0) === sl.y;
+    });
+    out.moved = lg.filter(id => { const u = get(id), sl = slot[id]; return sl && ((u.x | 0) !== sl.x || (u.y | 0) !== sl.y); }).length;
     S.day = Math.ceil(until) + 1; Deck.tick();
     out.faded = S.units.filter(u => u.spectral).length === 0;
     return out;
   });
-  ck('aMusterMidBeatMarchesAfterTheLoad', r.muster && r.marched, `waiting after the load ${r.muster}, marching after ${r.marched}`);
+  ck('aMusterMidBeatMarchesAfterTheLoad', r.muster && r.marched, `waiting after the load ${r.muster}; after it every one walking to its own slot or on it ${r.marched} (${r.moved} still on the road)`);
   ck('thePackRemembersHomeAcrossASave', r.pack);
   ck('aVeteranStaysAVeteran', r.vets > 0, `${r.vets} veterans after the load`);
   ck('aHostOnTheMarchRidesTheSave', r.host && r.faded, `ghosts and their day kept ${r.host}; they fade on it after the load ${r.faded}`);
@@ -874,6 +884,7 @@ await p.evaluate(({ ARMY }) => {
     try {
       const e = Deck.timed('ancestors_host'); e.until = Deck.now() - 1e-6;
       R.centerOn(Bld.cx(tc), Bld.cy(tc) + 2);
+      G.updateVisibility();   // the ghosts are in sight: they are the player's own
       Deck.tick();
       sweep('ancestors_host');
       out.fadeShow = R.cardShows.some(s => s.id === 'ancestors_host' && s.mode === 'fade' && s.ghosts.length > 0);
