@@ -289,12 +289,27 @@ const Units = {
      the player's. */
   gatherMode(u) {
     const m = G.modeCfg();
-    const k = (u && u.owner === 'P') ? m.gather : (m.aiGather == null ? 1 : m.aiGather);
-    /* …and a CARD's richer harvest (Deck.mult, js/deckfx.js) rides the same
-       ONE helper for the same reason: hand gathering, both kinds of fishing
-       and the panel's work line all ask here, so a card can never pay one of
-       them and forget another. Exactly 1 while no timed card is running. */
-    return window.Deck && Deck.mult ? k * Deck.mult('gather', u && u.owner, u) : k;
+    return (u && u.owner === 'P') ? m.gather : (m.aiGather == null ? 1 : m.aiGather);
+  },
+  /* A CARD'S RICHER HARVEST IS MORE IN TOTAL, NOT FASTER (the operator's
+     ruling, tests/deck-growth.mjs). gatherMode is the PACE — how fast a hand
+     strips a tile — and a card that paid through it (as the first cut did)
+     only emptied the ground sooner: a stand gave exactly its stock either
+     way, and a stone seam, the map's one finite resource, gave not one stone
+     more. So a card is a separate factor on the CREDIT alone: every load comes
+     home richer (or, for a blighted rival, poorer) while the tile depletes at
+     its own rate. Hand gathering, both kinds of fishing, the meat of a kill
+     and the panel's work line all ask HERE, so a card can never pay one of
+     them and forget another. `ctx` is where the work is done (the gatherer,
+     the kill's spot) for a card that reaches only part of the map. Exactly 1
+     while no timed card is running. */
+  gatherYield(owner, ctx) {
+    return window.Deck && Deck.mult ? Deck.mult('gather', owner, ctx) : 1;
+  },
+  // how much faster a work site, upgrade, wall works or bridge works rises
+  // under a running card (Deck.buildRate, js/deckfx-growth.js) — 1 with none
+  buildRate(b) {
+    return window.Deck && Deck.buildRate ? Deck.buildRate(b) : 1;
   },
 
   workReport(u) {
@@ -318,7 +333,8 @@ const Units = {
       const name = { wood: 'Felling timber', stone: 'Quarrying stone', food: 'Harvesting food' };
       const ico = { wood: '🪓', stone: '⛏️', food: '🧺' };
       if (!g) return { icon: '🚶', what: 'Heading out', rate: null, working: false };
-      const n = g.rate * this.dayLen() * this.gatherMode(u) * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1);
+      const n = g.rate * this.dayLen() * this.gatherMode(u) * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1) *
+        this.gatherYield(u.owner, u);
       return { icon: ico[g.res] || '🧺', what: on ? name[g.res] : 'Walking to the ' + g.res,
         rate: on ? { res: g.res, n } : null, working: on };
     }
@@ -326,7 +342,7 @@ const Units = {
       const shore = t.type === 'shorefish';
       const on = shore ? at(t.sx, t.sy) : at(t.x, t.y);
       const n = (shore ? CFG.SHORE_FISH.rate : CFG.FISH.rate) * this.dayLen() * this.gatherMode(u) *
-        (window.Cards ? Cards.fishMult(u.owner) : 1);
+        (window.Cards ? Cards.fishMult(u.owner) : 1) * this.gatherYield(u.owner, u);
       return { icon: '🎣', what: on ? (shore ? 'Line-fishing the shoal' : 'Nets out') : 'Rowing to the shoal',
         rate: on ? { res: 'food', n } : null, working: on };
     }
@@ -354,8 +370,9 @@ const Units = {
       const nm = Bld.def(b.key).name;
       const near = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y) <= 1.55 + Bld.reach(b);
       if (!near) return { icon: '🚶', what: 'Walking to the ' + nm, rate: null, working: false };
-      if (b.construction > 0) return { icon: '🔨', what: 'Raising the ' + nm, rate: null, working: true, left: b.construction };
-      if (b.upgrading > 0) return { icon: '🔨', what: 'Upgrading the ' + nm, rate: null, working: true, left: b.upgrading };
+      // the days left at the pace the works are really going (a card's quicker hands included)
+      if (b.construction > 0) return { icon: '🔨', what: 'Raising the ' + nm, rate: null, working: true, left: b.construction / this.buildRate(b) };
+      if (b.upgrading > 0) return { icon: '🔨', what: 'Upgrading the ' + nm, rate: null, working: true, left: b.upgrading / this.buildRate(b) };
       return { icon: '🔧', what: 'Mending the ' + nm, rate: null, working: true,
         pct: Math.round(b.hp / b.maxhp * 100) };
     }
@@ -1537,7 +1554,9 @@ const Units = {
           const before = store[g.res];
           const take = Math.min(S.map.resAmount[idx], g.rate * dt * this.gatherMode(u) *
             (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1));   // ORIGIN CARDS pace
-          store[g.res] += take;
+          // the tile gives `take`; a running card makes the load richer, never the
+          // tile emptier (gatherYield) — and only the work itself is scored
+          store[g.res] += take * this.gatherYield(u.owner, u);
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           /* A DEPOSIT SHOWS THE WORK. Stone cracks open in thirds as it is
@@ -1605,7 +1624,8 @@ const Units = {
              same works genuinely halves it, exactly as two builders do. */
           if (t.job === 'bridgeup') {
             const br = this._bridgeWorks(u.owner, t.x, t.y);
-            br.upgrading -= dt * 1000 / CFG.DAY_MS;
+            // reinforcing a span IS an upgrade — a card's quicker hands speed it too
+            br.upgrading -= dt * 1000 / CFG.DAY_MS * this.buildRate(br);
             t.t = Math.max(0, br.upgrading); t.total = br.upTotal || t.total;
             if (Math.random() < 0.10) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#adada2');   // stone dust
             if (br.upgrading <= 0) { Bld.finishBridgeUpgrade(br); this.startNextTerraform(u); }
@@ -1654,7 +1674,7 @@ const Units = {
           const before = bag.food;
           const take = Math.min(S.map.resAmount[idx], CFG.FISH.rate * dt * this.gatherMode(u) *
             (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn nets
-          bag.food += take;
+          bag.food += take * this.gatherYield(u.owner, u);   // a card's richer catch (yield, not pace)
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
@@ -1712,7 +1732,7 @@ const Units = {
           const before = bag.food;
           const take = Math.min(S.map.resAmount[idx], CFG.SHORE_FISH.rate * dt * this.gatherMode(u) *
             (window.Cards ? Cards.fishMult(u.owner) : 1));   // ORIGIN CARDS: Riverborn lines
-          bag.food += take;
+          bag.food += take * this.gatherYield(u.owner, u);   // a card's richer catch (yield, not pace)
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
           if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
@@ -1766,8 +1786,14 @@ const Units = {
             }
           }
           const dtDays = dt * 1000 / CFG.DAY_MS;
+          /* a running card's quicker hands (Quick Hands, the Golden Age, the
+             Age of Marble on the Wonder — Deck.buildRate) speed what RISES —
+             construction and upgrades — and never the repair branch below:
+             mending is not building. Still only ever the builders' own work,
+             so no card finishes anything by itself (a Wonder above all). */
+          const rise = dtDays * this.buildRate(b);
           if (b.construction > 0) {
-            b.construction -= dtDays;
+            b.construction -= rise;
             if (b.construction <= 0) {
               Bld.finish(b, u);   // may station the builder as the worker
               if (u.task && u.task.type === 'build') {
@@ -1793,7 +1819,7 @@ const Units = {
               }
             }
           } else if (b.upgrading > 0) {
-            b.upgrading -= dtDays;
+            b.upgrading -= rise;
             if (b.upgrading <= 0) {
               // finishUpgrade sends EVERY hand that downed tools back to its post
               // (Bld.resumeCrew) — with two builders only one of us gets here, and
@@ -2533,8 +2559,9 @@ const Units = {
         const cut = (CFG.MEAT && CFG.MEAT[u.kind] != null) ? CFG.MEAT[u.kind] : CFG.MEAT_DROP;
         const meat = Math.round(cut *
           (window.Cards ? Cards.huntMult(owner) : 1) *   // ORIGIN CARDS: Beastward hunts
-          // a card's richer harvest: the hunt is gathering too (gatherMode)
-          (window.Deck && Deck.mult ? Deck.mult('gather', owner, { x: u.x, y: u.y, res: 'food' }) : 1));
+          // a card's richer harvest: the hunt is gathering too (gatherYield),
+          // asked at the spot the beast fell
+          this.gatherYield(owner, { x: u.x, y: u.y, res: 'food' }));
         if (owner === 'P') {
           S.res.food += meat;
           R.float(u.x, u.y - 0.5, '+' + meat + ' food', '#d8e8b0');

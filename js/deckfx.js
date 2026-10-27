@@ -23,9 +23,14 @@
 
      Deck.mult(kind, owner, ctx)  the product of every LIVE timed card's
                                   multiplier for that kind of work —
-                                  'gather' (Units.gatherMode, the meat of a
-                                  kill) and 'produce' (Bld.dailyProduction,
-                                  Units.workReport's station line)
+                                  'gather' (Units.gatherYield: hand gathering,
+                                  both fishings, the meat of a kill — a YIELD
+                                  on the credit, never the pace), 'produce'
+                                  (Bld.dailyProduction, the rival hall's
+                                  trickle, Units.workReport's station line)
+                                  and 'build' (Deck.buildRate,
+                                  js/deckfx-growth.js); two DIFFERENT live
+                                  cards multiply, the same card extends
      Deck.cue(name)               whether a live timed card wants a world cue
                                   drawn (R.drawCardWorld)
      the STRIKE slot              S.deck.strike: one thing falling out of the
@@ -62,7 +67,8 @@ Object.assign(Deck, {
      for a card that reaches part of a town or the rival's (ground near the
      hall, a blight). `ctx` is what the work is done by or at — the unit for
      'gather', a {x, y, res} point for a kill's meat, the building for
-     'produce'. Asked per gatherer per frame, so the fast path is the whole
+     'produce' and 'build' (the rival's hall for its trickle). Asked per
+     gatherer per frame, so the fast path is the whole
      cost of a run with no card running: one length check. A timer is live
      until `until` even if the expiry pass (Deck.tick) runs a frame later. */
   mult(kind, owner, ctx) {
@@ -224,26 +230,8 @@ Object.assign(Deck.FX, {
     },
   },
 
-  /* BRONZE — Harvest Festival: everything the player's people gather or
-     produce comes in 40% richer for the card's 12 days (Deck.card().days —
-     the catalog's number, never a second copy of it). Hand gathering, both
-     kinds of fishing, the meat of a hunt, every station and the hall's own
-     gold, and the panel's work line with them; the rival's work never. A
-     second festival while one runs lengthens it — the strength never stacks
-     (Deck.addTimed). */
-  harvest_festival: {
-    at: 'bar', cue: 'motes',
-    mult: { gather: 1.4, produce: 1.4 },
-    can() { return { ok: true }; },
-    apply() {
-      const days = Deck.card('harvest_festival').days, was = !!Deck.timed('harvest_festival');
-      const e = Deck.addTimed('harvest_festival', days);
-      Deck.say(was ? '🌾 The Harvest Festival runs on — ' + days + ' more days of richer work.'
-        : '🌾 The Harvest Festival begins: everything your people gather or produce comes in 40% richer for ' + days + ' days.');
-      return { ok: true, until: e.until };
-    },
-    end() { G.log('🌾 The Harvest Festival is over — the work comes in at its ordinary yield again.'); },
-  },
+  /* BRONZE — Harvest Festival lives with the other cards of richer work and
+     faster building (js/deckfx-growth.js). */
 
   /* IRON — Swift Raiders: five Horse Archers ride out of the Town Center.
      Each stands on REALLY open ground (Bld.spawnRoom — the training yards'

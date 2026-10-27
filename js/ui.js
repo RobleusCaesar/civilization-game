@@ -259,7 +259,9 @@ const UI = {
     // once the ground is broken the goods are SPENT — the card would drop to
     // "0% saved" the moment the player paid; it reports the works instead
     const own = S && S.buildings && S.buildings.find(b => b.owner === 'P' && b.key === 'wonder');
-    if (own) return own.construction > 0 ? 'Rising — ' + Math.ceil(own.construction) + ' days' : 'Raised';
+    // (the days at the pace the works really go — the Age of Marble's double
+    // speed and any running card's quicker hands, Units.buildRate)
+    if (own) return own.construction > 0 ? 'Rising — ' + Math.ceil(own.construction / Units.buildRate(own)) + ' days' : 'Raised';
     const f = this.wonderSavedFrac();
     return f >= 1 ? 'Ready to raise' : Math.floor(f * 100) + '% saved';
   },
@@ -2390,7 +2392,7 @@ const UI = {
       // tick the wall-reinforcement countdown in place
       const wallLeft = document.getElementById('wallLeft');
       if (wallLeft && b.wallUp > 0) {
-        wallLeft.textContent = Math.ceil(b.wallUp) + 'd';
+        wallLeft.textContent = Math.ceil(b.wallUp / Units.buildRate(b)) + 'd';
         const wb = document.getElementById('wallBar');
         if (wb) wb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1))) * 100) + '%';
       }
@@ -2402,10 +2404,11 @@ const UI = {
       if (!b) return '';
       const lv = Bld.lv(b);
       let sub = `HP ${Math.ceil(b.hp)}/${b.maxhp}`;
+      // days at the pace the works really go (a running card's quicker hands — Units.buildRate)
       if (b.construction > 0)
-        sub += ` — ${Math.ceil(b.construction)}d of work left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
+        sub += ` — ${Math.ceil(b.construction / Units.buildRate(b))}d of work left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
       else if (b.upgrading > 0)
-        sub += ` — upgrading ${Math.ceil(b.upgrading)}d left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
+        sub += ` — upgrading ${Math.ceil(b.upgrading / Units.buildRate(b))}d left${Bld.hasWorker(b) ? '' : ' (awaiting builder)'}`;
       else if (b.hp < b.maxhp && Bld.hasWorker(b)) sub += ' — under repair';
       if (b.owner === 'P' && !b.construction && Bld.def(b.key).needsWorker) {
         const w = Bld.workersActive(b), max = Bld.maxWorkers(b);
@@ -2577,7 +2580,7 @@ const UI = {
           if (b.wallUp > 0) {
             const frac = Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1)));
             html += `<div class="abtn cant wide" style="pointer-events:none">🧱 Reinforcing walls → Lv ${b.wallUpTarget}` +
-              `<small>Town Center busy — <span id="wallLeft">${Math.ceil(b.wallUp)}d</span> left</small>` +
+              `<small>Town Center busy — <span id="wallLeft">${Math.ceil(b.wallUp / Units.buildRate(b))}d</span> left</small>` +
               `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
               `<div id="wallBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
           } else if ((S.wallLevel || 1) < 3 && Bld.forts().length) {

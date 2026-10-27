@@ -1004,6 +1004,10 @@ const Bld = {
           : Math.round(cost[k] * CFG.WONDER.aiCostFrac * (k === 'stone' ? 0.35 : 1));
       cost = sc;
     }
+    // THE AGE OF MARBLE (js/deckfx-growth.js): the player's Wonder a quarter
+    // cheaper for the rest of the run — the one cost point, so the menu, the
+    // ghost, the "% saved" line and the payment all read the same price
+    if (owner === 'P' && key === 'wonder' && window.Deck && Deck.wonderCost) cost = Deck.wonderCost(cost);
     return window.Cards ? Cards.buildCost(owner, key, cost) : cost;
   },
 
@@ -1071,6 +1075,9 @@ const Bld = {
       if (owner === 'P' && S.ai) S.ai.wonderAlarm = { x: b.x, y: b.y, day: S.day, id: b.id };
       if (owner === 'A') G.log('The rival is raising a monument of their own!', true);
       else G.foeNote(`Word of your great work is carried over the hills — the rival is coming.`);
+      // a WONDER'S FOUNDATION played before the ground was broken waits for
+      // this moment (js/deckfx-growth.js): the site starts with its stones laid
+      if (owner === 'P' && window.Deck && Deck.onWonderLaid) Deck.onWonderLaid(b);
     }
     this._block = null;
     // fresh construction clears old stumps/rubble — only the new building shows
@@ -1318,11 +1325,15 @@ const Bld = {
     return back;
   },
 
-  finishUpgrade(b) {
+  /* `byCard`: a level a CARD raised (Enlightenment, js/deckfx-growth.js) —
+     the building is every bit as raised, but it scores no "upgrade finished"
+     (a card's gift is not the town's feat) and says nothing per building:
+     the card says it once, itself, and its own light shows each one rising. */
+  finishUpgrade(b, byCard) {
     b.upgrading = 0;
     b.level++;
     this.resumeCrew(b);
-    if (b.owner === 'P' && S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;
+    if (b.owner === 'P' && S.stats && !byCard) S.stats.upgrades = (S.stats.upgrades || 0) + 1;
     const lv = this.lv(b);
     b.maxhp = lv.hp; b.hp = lv.hp;
     /* THE LIVE RE-SKIN (villager tiers): a hall reaching a new level
@@ -1341,7 +1352,9 @@ const Bld = {
       if (window.R) R._sTier = null;
       if (window.Assets && Assets.loadSapperArt) Assets.loadSapperArt(b.owner);
     }
-    if (b.owner === 'P') {
+    // (a card's raising charts nothing itself: the taller building's own
+    // sight opens the ground on the next visibility pass, as any building's does)
+    if (b.owner === 'P' && !byCard) {
       G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
@@ -1703,7 +1716,8 @@ const Bld = {
       }
       // village-wide wall reinforcement ties up the Town Center until it's done
       if (b.wallUp > 0) {
-        b.wallUp -= dtDays;
+        // the masons' works are an upgrade: a card's quicker hands speed them too
+        b.wallUp -= dtDays * (window.Deck && Deck.buildRate ? Deck.buildRate(b) : 1);
         if (b.wallUp <= 0) this.finishWallUpgrade(b);
       }
       // anyone finished while the ground outside was blocked waits at the gate
@@ -2150,14 +2164,16 @@ const Bld = {
     tc.wallUp = days;
     tc.wallUpTotal = days;                       // progress bar span
     tc.wallUpTarget = (S.wallLevel || 1) + 1;    // the level being built toward
+    tc.wallUpPaid = c.cost;                      // what the masons were paid (a card that finishes the works hands it back)
     G.log(`⚒ Masons set to work — every wall & gate reinforcing to Lv ${tc.wallUpTarget}. The Town Center is busy (${Math.ceil(days)}d).`);
     return true;
   },
-  finishWallUpgrade(tc) {
+  // `byCard`: a tier a CARD raised (Enlightenment) — no feat scored, no line said
+  finishWallUpgrade(tc, byCard) {
     const target = tc.wallUpTarget || (S.wallLevel || 1) + 1;
-    tc.wallUp = 0; tc.wallUpTotal = 0; tc.wallUpTarget = 0;
+    tc.wallUp = 0; tc.wallUpTotal = 0; tc.wallUpTarget = 0; delete tc.wallUpPaid;
     S.wallLevel = target;
-    if (S.stats) S.stats.upgrades = (S.stats.upgrades || 0) + 1;   // village-wide, still one feat
+    if (S.stats && !byCard) S.stats.upgrades = (S.stats.upgrades || 0) + 1;   // village-wide, still one feat
     for (const b of this.forts()) {
       const lv = CFG.BUILDINGS[b.key].levels[S.wallLevel - 1];
       b.hp = Math.max(1, Math.round(lv.hp * (b.hp / b.maxhp)));
@@ -2180,7 +2196,7 @@ const Bld = {
       for (const b of this.forts())    // stepping off must read the shut gates as solid
         if (this.bridgeRaised(b)) this.stepOffFootprint(b);
     }
-    G.log(`⚒ Every wall and gate reinforced to Lv ${S.wallLevel}!`);
+    if (!byCard) G.log(`⚒ Every wall and gate reinforced to Lv ${S.wallLevel}!`);
   },
 
   /* ---- CALLING THE WORKS OFF (tests/build-cancel.mjs) ----
