@@ -41,7 +41,10 @@
                      every load carrying it, resets the collection and deals
                      one of every card — the starter marked as given; a
                      test deck writes nothing for the cloud; the link is
-                     read with the switch thrown on too
+                     read with the switch thrown on too; ?cards=0 forgets
+                     the toy deck with the switch, never a real collection
+     THE LESSON      while the tutorial's spine runs the door refuses (the
+                     deck is not in the game yet) and the card stays
 
    Run after touching: js/deck.js, CFG.CARDS, S.deck in game.js, and the
    deeds' tallies — S.stats.handGathered (units.js: the gather and shore-fish
@@ -206,6 +209,17 @@ const d = await p.evaluate((counts) => {
   out.played = JSON.stringify(S.deck.played);
   out.consumeQueued = Deck.col().queue.filter(q => q.op === 'consume').length;
   out.rngSame = S.rngState === rng0;
+  // THE LESSON HAS THE FLOOR (ruling 12): while the tutorial's spine runs the
+  // door refuses and the card stays; once the spine is done it plays
+  Deck._add('__ok', 1);
+  const tut0 = S.tut, food0 = S.res.food;
+  S.tut = { on: true, phase: 1, step: 3, done: {}, fired: {} };
+  const held = Deck.play('__ok');
+  out.lesson = { ok: held.ok, why: held.why, left: Deck.count('__ok'), food: S.res.food - food0 };
+  S.tut.phase = 2;
+  out.lesson.after = Deck.play('__ok').ok;
+  S.tut = tut0;
+  S.deck.played.pop();
   // S.deck rides the save, and an old save is backfilled
   const json = G.saveJSON();
   G.loadJSON(json);
@@ -246,6 +260,8 @@ ck('theStarterHandComesOnce', d.first && !d.second && d.hand === d.handAfter &&
 ck('aCardIsTakenOnlyWhenItApplies', d.door.ok && d.door.okLeft === 0 && !d.door.no && d.door.noLeft === 1 && d.door.noWhy === 'no room' &&
   !d.door.boom && d.door.boomLeft === 1, JSON.stringify(d.door));
 ck('aCardYouDoNotHoldCannotBePlayed', !d.none.ok, d.none.why);
+ck('theLessonHasTheFloor', !d.lesson.ok && d.lesson.why === 'Finish the lesson first — your deck opens when it ends.' &&
+  d.lesson.left === 1 && d.lesson.food === 0 && d.lesson.after, JSON.stringify(d.lesson));
 ck('theRunRemembersWhatItPlayed', JSON.parse(d.played).length === 1 && d.consumeQueued === 1, d.played);
 ck('nothingDrawsFromTheRunsRng', d.rngSame);
 ck('theRunStateRidesASave', d.rides && d.backfill, `rides ${d.rides}, backfill ${d.backfill}`);
@@ -511,6 +527,20 @@ ck('theTalliesRideASave', t.rides && t.backfill, `rides ${t.rides}, backfill ${t
   await load('');
   const a3 = await p2.evaluate(() => { Deck.ensureStarter(); return { on: Deck.on(), total: Deck.total() }; });
   ck('andAPlainLoadKeepsIt', a3.on && a3.total === 36, `on ${a3.on}, ${a3.total}`);
+  // ?cards=0 forgets the device switch AND the toy deck (a test deck never
+  // syncs, so a device left holding one would never sync again) — and
+  // ?cards=1 after it starts a real collection with the starter hand
+  await load('?cards=0');
+  const a4 = await p2.evaluate(() => ({ on: Deck.on(), stored: Deck._get(Deck.KEY) }));
+  await load('?cards=1');
+  const a5 = await p2.evaluate(() => { Deck.ensureStarter(); return { on: Deck.on(), total: Deck.total(), test: Deck.isTest(), queue: Deck.col().queue.length }; });
+  ck('andCardsZeroForgetsTheToyDeck', !a4.on && a4.stored === null && a5.on && a5.total === 3 && !a5.test && a5.queue === 1,
+    `off ${!a4.on}, stored ${a4.stored === null ? 'gone' : 'kept'}; then ?cards=1: ${a5.total} cards, test ${a5.test}, queued ${a5.queue}`);
+  // …while a REAL collection survives ?cards=0 untouched
+  await p2.evaluate(() => { Deck._add('swift_raiders', 2); Deck.saveCol(); });
+  await load('?cards=0');
+  const a6 = await p2.evaluate(() => { const c = JSON.parse(Deck._get(Deck.KEY) || 'null'); return c && c.counts && c.counts.swift_raiders; });
+  ck('butARealCollectionSurvivesIt', a6 === 2, `swift raiders kept: ${a6}`);
   await ctx2.close();
 }
 

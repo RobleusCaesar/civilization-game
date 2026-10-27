@@ -239,7 +239,16 @@ const Deck = {
       let q = '';
       try { q = String(location.search || ''); } catch (e) {}
       if (/[?&]cards=(1|all)\b/.test(q)) this._set('neo-cards-dev', '1');
-      if (/[?&]cards=0\b/.test(q)) this._del('neo-cards-dev');
+      if (/[?&]cards=0\b/.test(q)) {
+        this._del('neo-cards-dev');
+        /* …and forgets the TEST deck with it: ?cards=all's toy collection
+           queues nothing for the cloud and reports nothing (the `test` mark),
+           so a device left holding one would never sync again. Leaving the
+           test link leaves its toys; a real collection is never touched. */
+        let c = null;
+        try { c = JSON.parse(this._get(this.KEY) || 'null'); } catch (e) { c = null; }
+        if (c && c.test) { this._del(this.KEY); this._col = null; }
+      }
       /* THE TEST LINK: ?cards=all turns the deck on for the device AND, on
          every load that carries it, deals a fresh TEST deck — one of every
          card in the catalog (ensureStarter, the door every screen passes) —
@@ -333,8 +342,10 @@ const Deck = {
      marked as given so it adds no three more — then one of every card in the
      catalog. It is marked `test`: a test deck is the tester's toy, never the
      player's record, so nothing it grants or plays is queued for the cloud
-     or reported as telemetry (_queue, track), and the cloud must never
-     overwrite it either (Deck.sync reads the mark). */
+     or reported as telemetry (_queue, track) — and the cloud must neither
+     overwrite it nor be written from it (Deck.sync asks Deck.isTest()).
+     ?cards=0 forgets it (devOn), so a tester's device goes back to a real
+     collection with a fresh starter hand. */
   dealAll() {
     const c = this.col();
     c.counts = {}; c.seen = {}; c.runs = {}; c.queue = []; c.pity = 0;
@@ -478,6 +489,14 @@ const Deck = {
      for a targeted card, apply(tgt) → {ok, why}, at: 'tc'|'bar'|'target' —
      where the play animation bursts, end(entry) for a timed card's expiry }. */
   FX: {},
+  /* THE LESSON HAS THE FLOOR (operator ruling 12): while the tutorial's
+     spine runs (S.tut on, phase 1) the deck is not in the game — DeckUI
+     builds no button and no sheet (DeckUI.tutHides asks this), and the door
+     refuses as a backstop. The moment the spine is done (the capstone
+     answered, or the lesson skipped) the deck walks in, in the same run. */
+  lessonHolds() {
+    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1;
+  },
   canPlay(id) {
     if (!this.on()) return { ok: false, why: 'Cards are not available.' };
     const c = this.card(id);
@@ -485,6 +504,7 @@ const Deck = {
     if (this.count(id) < 1) return { ok: false, why: 'You hold no such card.' };
     if (typeof S === 'undefined' || !S || !S.map || S.over) return { ok: false, why: 'Play it in a game.' };
     if (window.Screens && Screens._demo) return { ok: false, why: 'Play it in a game.' };
+    if (this.lessonHolds()) return { ok: false, why: 'Finish the lesson first — your deck opens when it ends.' };
     const fx = this.FX[id];
     if (!fx) return { ok: false, why: 'This card cannot be played yet.' };
     const r = fx.can ? fx.can() : { ok: true };

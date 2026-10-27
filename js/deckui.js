@@ -75,7 +75,9 @@ const DeckUI = {
      answered, or the lesson skipped — the deck walks in, in that same run,
      and the tutorial's last note rings it (Tutorial.EVENTS 'deck'). */
   tutHides() {
-    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1;
+    // one predicate, in deck.js beside the door that refuses on it (guarded on
+    // the method it calls: a cached older deck.js must stand down, not throw)
+    return !!(window.Deck && Deck.lessonHolds && Deck.lessonHolds());
   },
   _shy: false,             // the chrome is built but stood down for the lesson
   _waited: false,          // this world kept the deck back: it ARRIVES when the lesson lets go
@@ -306,7 +308,7 @@ const DeckUI = {
   },
 
   openSheet() {
-    if (this.open || this.playing || !this.live()) return;
+    if (this.open || this.playing || !this.live() || this.tutHides()) return;
     if (UI.exitPlacement) UI.exitPlacement();   // a ghost under the sheet would be two modes at once
     this._hold();
     this.open = true;
