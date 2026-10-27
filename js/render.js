@@ -8180,26 +8180,24 @@ const R = {
     const wash = state === 'ok' ? 'rgba(125,187,94,0.30)'
                : state === 'amber' ? 'rgba(226,178,74,0.30)' : 'rgba(220,80,58,0.34)';
 
-    // EFFECT RADIUS — a soft ring under everything: a tower's arrows, a war
-    // camp's arrows + its forward build reach, a farm's orchard bonus reach
+    /* EFFECT RADIUS — a tower's arrows, a war camp's arrows and its forward
+       build reach, a farm's orchard bonus reach — WEARS THE ORBIT (operator,
+       2026-10-27: "lets swap out the same boring circle for the gold circle
+       we talked about previously, we can re-use it"): one gold bead on its
+       slow lap round each radius, its thread fading by three quarters
+       (R.drawOrbit, the area cards' own reminder), each ring at its own
+       phase so two never run as one. It used to be a dashed stroke with a
+       faint wash of the ring's colour over the whole disc. */
     const d = CFG.BUILDINGS[key];
     const spec = Bld.buildSpec(key, 'P');
     const lv = (spec.level || 1);
     const rings = [];
     const lvDef = d.levels[Math.min(lv, d.levels.length) - 1];
-    if (lvDef && lvDef.range) rings.push({ r: lvDef.range, col: 'rgba(224,140,96,0.55)' });
-    if (d.near && d.near.radius) rings.push({ r: d.near.radius, col: 'rgba(150,210,110,0.5)' });
-    if (key === 'warcamp') rings.push({ r: CFG.BUILD_RANGE, col: 'rgba(210,190,140,0.4)' });
-    const cx = bx + bw / 2, cy = by + bw / 2;
-    for (const ring of rings) {
-      g.beginPath();
-      g.setLineDash([6, 5]);
-      g.arc(cx, cy, ring.r * TL, 0, Math.PI * 2);
-      g.strokeStyle = ring.col; g.lineWidth = 1.5; g.stroke();
-      g.setLineDash([]);
-      g.fillStyle = ring.col.replace(/[\d.]+\)$/, '0.05)');
-      g.fill();
-    }
+    if (lvDef && lvDef.range) rings.push(lvDef.range);
+    if (d.near && d.near.radius) rings.push(d.near.radius);
+    if (key === 'warcamp') rings.push(CFG.BUILD_RANGE);
+    const now = performance.now() / 1000;
+    rings.forEach((r, i) => this.drawOrbit(g, gh.x + sz / 2, gh.y + sz / 2, r, now, { phase: this.RING_PHASE[i % this.RING_PHASE.length] }));
 
     // footprint pane + strong outline
     g.fillStyle = wash.replace(/[\d.]+\)$/, '0.16)');
@@ -11309,6 +11307,9 @@ const R = {
     glintS: 0.32,      // …and how long one lasts
     glintL: 1.5,       // CSS px — the twinkle's arm at its height (past the bead's own 0.6)
   },
+  // the laps' own places for the UI's radius rings (a ghost's two, a heal
+  // zone's), so two rings at once never run their beads side by side
+  RING_PHASE: [0.08, 0.58, 0.33, 0.83],
   drawOrbit(g, cx, cy, rTiles, t, opts) {
     opts = opts || {};
     const O = this.ORBIT, TL = CFG.TILE, cl = v => v < 0 ? 0 : v > 1 ? 1 : v;
@@ -14412,11 +14413,12 @@ const R = {
       : UI.sel.type === 'unit' ? new Set([UI.sel.id])
       : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
     // heal-zone ring: when a hurt, healable friendly unit is selected, show where
-    // it can be healed — the town-center grounds for land units, a dock for ships
+    // it can be healed — the town-center grounds for land units, a dock for ships.
+    // It WEARS THE ORBIT (operator, 2026-10-27: "swap out the same boring
+    // circle for the gold circle… we can re-use it"): a gold bead on its slow
+    // lap round the zone, never the green dashed stroke it was (R.drawOrbit)
     if (selIds && [...selIds].some(id => { const u = Units.get(id); return u && u.owner === 'P' && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind] && !u.spectral; })) {
-      const seen = new Set();
-      g.save();
-      g.strokeStyle = 'rgba(138,224,138,0.45)'; g.lineWidth = 1.5; g.setLineDash([6, 5]);
+      const seen = new Set(), now = performance.now() / 1000;
       for (const id of selIds) {
         const u = Units.get(id);
         if (!u || u.owner !== 'P' || u.hp >= u.maxhp || !CFG.HEAL_FOOD[u.kind] || u.spectral) continue;
@@ -14424,9 +14426,8 @@ const R = {
         if (!z) continue;
         const k = z.x + ',' + z.y + ',' + z.r;
         if (seen.has(k)) continue; seen.add(k);
-        g.beginPath(); g.ellipse(z.x * TL, z.y * TL, z.r * TL, z.r * TL, 0, 0, Math.PI * 2); g.stroke();
+        this.drawOrbit(g, z.x, z.y, z.r, now, { phase: this.RING_PHASE[seen.size % this.RING_PHASE.length] });
       }
-      g.restore();
     }
     // living water: the lapping waterline, drifting sparkles, blinking
     // shoreline foam, jumping fish — viewport-only, in its own method so the
@@ -15139,15 +15140,11 @@ const R = {
       }
     }
 
-    // rally point flag / rally-setting range ring
+    // rally point flag / rally-setting range ring — the orbit, like every
+    // radius the game marks (operator, 2026-10-27; R.drawOrbit)
     if (UI.settingRally) {
       const rb = Bld.get(UI.settingRally);
-      if (rb) {
-        g.strokeStyle = 'rgba(232,193,90,0.6)'; g.lineWidth = 2;
-        g.beginPath();
-        g.arc((rb.x + 0.5) * TL, (rb.y + 0.5) * TL, CFG.RALLY_RANGE * TL, 0, Math.PI * 2);
-        g.stroke();
-      }
+      if (rb) this.drawOrbit(g, rb.x + 0.5, rb.y + 0.5, CFG.RALLY_RANGE, performance.now() / 1000, { phase: this.RING_PHASE[0] });
     }
     if (UI.sel && UI.sel.type === 'bld') {
       const rb = Bld.get(UI.sel.id);

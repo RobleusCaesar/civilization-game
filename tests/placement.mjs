@@ -368,6 +368,58 @@ const out = await p.evaluate(() => {
     UI.exitPlacement();
   }
 
+  /* ---- 15. EVERY RADIUS WEARS THE ORBIT (operator, 2026-10-27: "lets
+     swap out the same boring circle for the gold circle we talked about
+     previously, we can re-use it") ----
+     The ghost's effect radii (a tower's arrows; a war camp's arrows and its
+     build reach), a hurt unit's heal zone and the rally-setting reach are
+     each ONE R.drawOrbit — the area cards' gold bead on its slow lap — round
+     the right middle at the right radius, each ring at its own phase, and no
+     dashed stroke or tinted wash is laid for any of them. Drawn through the
+     real frame (R.draw). */
+  {
+    const tc = arena('pl15');
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    G.updateVisibility();
+    const dO = R.drawOrbit, P2 = CanvasRenderingContext2D.prototype, sld = P2.setLineDash;
+    let orbits = [], dashed = 0;
+    if (dO) R.drawOrbit = function (g, cx, cy, r, t, o) { orbits.push({ cx, cy, r, phase: o && o.phase }); return dO.apply(this, arguments); };
+    P2.setLineDash = function (a) { if (a && a.length) dashed++; return sld.apply(this, arguments); };
+    const frame = () => { orbits = []; dashed = 0; R.draw(1 / 30); return { orbits: orbits.slice(), dashed }; };
+    try {
+      tc.level = 3;   // a war camp wants a third-tier hall
+      UI.enterPlacement('warcamp');
+      const gh = UI.placeGhost || {}, sz = Bld.size('warcamp'), lv = CFG.BUILDINGS.warcamp.levels[0];
+      const wc = frame();
+      const want = [lv.range, CFG.BUILD_RANGE].filter(Boolean);
+      ck('aGhostsRadiiAreOrbitsRoundItsMiddle', !!dO && wc.orbits.length === want.length && wc.dashed === 0 &&
+        want.every(r => wc.orbits.some(o => o.r === r && Math.abs(o.cx - (gh.x + sz / 2)) < 1e-9 && Math.abs(o.cy - (gh.y + sz / 2)) < 1e-9)) &&
+        new Set(wc.orbits.map(o => o.phase)).size === wc.orbits.length,
+        `war camp: ${wc.orbits.length} orbit(s) (want ${want.length}), radii ${wc.orbits.map(o => o.r)}, phases ${wc.orbits.map(o => o.phase)}; ${wc.dashed} dashed strokes`);
+      UI.exitPlacement();
+      UI.enterPlacement('tower');
+      const tw = frame(), tlv = CFG.BUILDINGS.tower.levels[Math.min(Bld.buildSpec('tower', 'P').level || 1, CFG.BUILDINGS.tower.levels.length) - 1];
+      ck('andATowersRangeToo', tw.orbits.length === 1 && tw.orbits[0].r === tlv.range && tw.dashed === 0,
+        `${tw.orbits.length} orbit(s), radius ${tw.orbits[0] && tw.orbits[0].r} (range ${tlv.range}); ${tw.dashed} dashed`);
+      UI.exitPlacement();
+      // the heal zone: a hurt villager selected by the hall
+      const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+      v.hp = Math.max(1, Math.round(v.maxhp / 2));
+      UI.select('unit', v.id);
+      const z = Bld.healZoneFor(v), hz = frame();
+      ck('aHealZoneIsTheOrbitNotAGreenDashedRing', !!z && hz.orbits.length === 1 && hz.dashed === 0 &&
+        Math.abs(hz.orbits[0].cx - z.x) < 1e-9 && Math.abs(hz.orbits[0].cy - z.y) < 1e-9 && hz.orbits[0].r === z.r,
+        `${hz.orbits.length} orbit(s) ${JSON.stringify(hz.orbits[0] || null)} for the zone ${JSON.stringify(z)}; ${hz.dashed} dashed`);
+      UI.deselect();
+      // the rally reach, while a rally point is being set
+      UI.settingRally = tc.id;
+      const rl = frame();
+      ck('andTheRallyReachIsTheOrbitToo', rl.orbits.length === 1 && rl.orbits[0].r === CFG.RALLY_RANGE,
+        `${rl.orbits.length} orbit(s), radius ${rl.orbits[0] && rl.orbits[0].r} (reach ${CFG.RALLY_RANGE})`);
+      UI.settingRally = null;
+    } finally { if (dO) R.drawOrbit = dO; P2.setLineDash = sld; UI.settingRally = null; }
+  }
+
   return { res, fails };
 });
 
