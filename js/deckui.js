@@ -988,6 +988,14 @@ const DeckUI = {
     cv.style.width = cv.style.height = css + 'px';
     cv.style.margin = (-css / 2) + 'px 0 0 ' + (-css / 2) + 'px';
     const g = cv.getContext('2d'), R = n / 2, B = this._BAYER, k = thin || 1;
+    // drawn once per look and copied after: a play or a lift pays a blit,
+    // never the cell loop (a lifted card's halo is ~17,000 cells)
+    const ck = kind + '|' + col + '|' + n + '|' + k, hit = this._pxCache[ck];
+    if (hit) {
+      g.drawImage(hit, 0, 0);
+      parent.insertBefore(cv, parent.querySelector(':scope > .dkFCard'));
+      return cv;
+    }
     const on = (x, y, dens) => B[(y & 3) * 4 + (x & 3)] < dens * k * 16;
     const PALE = '#fff6d8';
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
@@ -1012,9 +1020,14 @@ const DeckUI = {
       }
       if (fill) { g.fillStyle = fill; g.fillRect(x, y, 1, 1); }
     }
+    const keep = document.createElement('canvas');
+    keep.width = keep.height = n;
+    keep.getContext('2d').drawImage(cv, 0, 0);
+    this._pxCache[ck] = keep;
     parent.insertBefore(cv, parent.querySelector(':scope > .dkFCard'));
     return cv;
   },
+  _pxCache: {},
 
   /* THE SPECTACLE SCALES WITH THE TIER: Stone gets its halo and its rim and
      nothing else; every tier above adds something — sparks, a ring, rays,
