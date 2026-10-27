@@ -508,8 +508,6 @@ const Combat = {
            own ladder, strike waits for the one ordered mark. hostileUnits is
            the peace-gated funnel, so a levy raised at peace threatens only
            the wilds until the player breaks the calm themselves. */
-        // THE ANCESTORS' HOST keeps its post's ground (js/deckfx-army.js)
-        if (u.spectral && u.den && window.Deck && Deck.hostSense && Deck.hostSense(u)) continue;
         if (u.strat === 'strike') continue;
         if (u.strat === 'chaos') { this.chaosSeek(u); continue; }
         /* A SPENT ORDER IS SPENT. An explicit attack sets task
