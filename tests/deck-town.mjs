@@ -55,7 +55,17 @@
      THE PICTURE       every show draws at every beat of every layer, every
                        running card's look draws, a frame with no card pays
                        nothing, the shows are render state only, every voice
-                       is synthesized
+                       is synthesized; the looks answer blows and never the
+                       summer's fire; the burning arrow is the player's alone
+                       (another card's factor on the rival's arrows never
+                       dresses them as the watchfires) and so is the fog gate
+     WHAT IT STANDS ON a burned building wears its own picture under a
+                       card's light; one world-sized copy per sprite whatever
+                       the colours; the goods bring the hall on screen; the
+                       caravan's road is land the cart can carry, shortened
+                       before water, off the row people stand on, and with
+                       no road the load still comes; a charge kept under
+                       another key (the pact's) still wears its card's chip
 
    Run after touching: js/deckfx-town.js, Bld.damage's card hook and its
    return, Combat.hitBuilding's float, the tower fire in Combat.update,

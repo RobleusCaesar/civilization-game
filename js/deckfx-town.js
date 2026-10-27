@@ -24,13 +24,18 @@
       Deck.mult's numbers are the player's by construction — and the L1
       fumble's G.rand draw stays exactly where it was; the farther band
       only takes a mark on ground the player can see, since it can poke
-      past the tower's own sight); the placement confirm asks
-      Deck.masterHand and hands a charge to Deck.masterRaise.
+      past the tower's own sight — the PLAYER's sight, so that gate, and
+      the burning arrow that is the card's look, are asked of the player's
+      towers alone: another card's factor on the rival's arrows, a softener
+      under 1 included, must never dress them as the watchfires); the
+      placement confirm asks Deck.masterHand and hands a charge to
+      Deck.masterRaise.
    3. THE NUMBER SHOWN IS THE NUMBER TAKEN. Bld.damage now returns what the
       building actually lost, and Combat.hitBuilding floats THAT — a halved
       blow reads as half, and a blow the ward swallows whole reads "Held!".
       With no card running the return is the blow itself, so the float is
-      byte for byte the old one.
+      byte for byte the old one. The hp keeps the exact fraction; the float
+      is a whole number like every other, and a sliver of a blow reads -1.
    4. A CHARGE IS SPENT ONLY ON A BUILDING THE PLAYER PLACES AND PAYS FOR.
       Master Builders lives on the placement confirm — never inside
       Bld.place, where the rival's ten placements and a wall line-drag (one
@@ -52,6 +57,13 @@
    6. EVERYTHING HERE THAT IS NOT THE RUN IS RENDER STATE. Shows, the
       beacons' ignition, the glints off stone, the ward's flare: none of it
       is in S, so a save mid-show simply loads without it.
+   7. AN OVERLAY WEARS THE PICTURE THE BUILDING PASS DREW (R.wornSprite),
+      so a burned building under a card's light is still burned, and its
+      silhouette is ONE world-pixel-sized copy per sprite, coloured at draw
+      time (TX.mask / TX.paint) — never a full-size copy per colour held for
+      the session, on the frames a phone is likeliest to purge canvases.
+   8. THE GOODS' MOMENT IS NEVER CULLED: they play at the bar, and the play
+      brings the hall on screen first (showAtHall, js/deckui.js _dest).
 
    PRESENTATION scales with the tier: Stone a small, satisfying beat at the
    hall's door (the goods come down in a shaft of the tier's own light onto
