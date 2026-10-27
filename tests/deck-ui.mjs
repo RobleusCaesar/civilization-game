@@ -1225,8 +1225,9 @@ await sctx.close();
    The sheet's smallest face is 88px wide (a 320px phone at 2x): there the
    plate's 7.5px floor broke THE SWALLOWED SUN into three lines over the
    plate's rim and ran ENLIGHTENMENT past both its ends. Every card's name —
-   and every tier's, on the back — must sit inside its plate in at most two
-   lines (Deck.nmFit steps the size down), at 320 and at 390; and a refusal
+   on the front, and on the back under its tier's small caps (Deck.NMT) —
+   must sit inside its plate in at most two lines (Deck.nmFit steps the
+   size down, the tier's line held in reserve), at 320 and at 390; and a refusal
    may take a third line, so "The Wonder rises only in Calm worlds." is read
    whole (with its period), never cut off in an ellipsis. */
 const plates = [];
@@ -1246,21 +1247,37 @@ for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3]]) {
       const tb = r.getBoundingClientRect(), padX = parseFloat(getComputedStyle(el).paddingLeft) || 0;
       return tb.top >= box.top - 0.5 && tb.bottom <= box.bottom + 0.5 && tb.left >= box.left + padX - 1 && tb.right <= box.right - padX + 1;
     };
-    const bad = [], cells = [...document.querySelectorAll('#dkSheet .dkCell')];
+    const bad = [], cells = [...document.querySelectorAll('#dkSheet .dkCell')], backs = [];
     for (const cell of cells) for (const nm of cell.querySelectorAll('.cc-nm')) {
       // (the back plate is measured where it stands, turned away: a half
       // turn about the card's axis mirrors its box, which the test is blind to)
       const back = !!nm.closest('.cc-b');
-      const n = lines(nm), ok = n <= 2 && inside(nm);
-      if (!ok) bad.push(`${cell.dataset.card}${back ? ' (back)' : ''}: ${n} lines, ${getComputedStyle(nm).fontSize}`);
+      // the back's plate is the tier in small caps over the card's name: the
+      // name takes at most two lines, the tier one, and both sit in the plate
+      const nmn = back ? nm.querySelector('.cc-nmn') : null, nmt = back ? nm.querySelector('.cc-nmt') : null;
+      const n = lines(nmn || nm), nt = nmt ? lines(nmt) : 1, ok = n <= 2 && nt === 1 && inside(nm);
+      if (!ok) bad.push(`${cell.dataset.card}${back ? ' (back)' : ''}: ${n} lines${back ? ` + ${nt} tier` : ''}, ${getComputedStyle(nmn || nm).fontSize}`);
+      if (back) {
+        const c = Deck.card(cell.dataset.card);
+        backs.push({ id: c.id, name: nmn ? nmn.textContent : nm.textContent, tier: nmt ? nmt.textContent : '',
+          wantName: c.name, wantTier: Deck.tier(c.tier).name });
+      }
     }
     const caps = cells.filter(c => c.querySelector('.dkCap.no')).map(c => {
       const cap = c.querySelector('.dkCap');
       return { id: c.dataset.card, why: cap.textContent, n: lines(cap), whole: cap.scrollHeight <= cap.clientHeight + 1 };
     });
-    return { w, cardW: Math.round(cells[0].getBoundingClientRect().width), n: cells.length, bad, caps };
+    return { w, cardW: Math.round(cells[0].getBoundingClientRect().width), n: cells.length, bad, caps, backs };
   }, { enter: enterGame.toString(), w }));
   await pctx.close();
+}
+/* THE BACK PLATE NAMES THE CARD (judge g4 C): every Legendary back read
+   ENLIGHTENMENT — also a card's own name — and every Imperial back IMPERIAL.
+   The plate on the back carries the card's name, its tier in small caps above */
+{
+  const wrong = plates.flatMap(pl => pl.backs.filter(b => b.name !== b.wantName || b.tier !== b.wantTier).map(b => `${pl.w}: ${b.id} reads "${b.tier ? b.tier + ' / ' : ''}${b.name}"`));
+  ck('theBackPlateNamesTheCard', plates.every(pl => pl.backs.length === 36) && !wrong.length,
+    wrong.length ? wrong.slice(0, 4).join('; ') : `all 36 backs at ${plates.map(pl => pl.w).join(' and ')}: the card's name, the tier in small caps above it`);
 }
 const wonderCap = plates[0].caps.find(c => c.id === 'age_of_marble');
 ck('everyNameFitsItsPlate', plates.every(pl => pl.n === 36 && !pl.bad.length) && plates[0].cardW <= 90,
