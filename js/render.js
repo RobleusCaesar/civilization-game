@@ -6917,6 +6917,17 @@ const R = {
   },
 
   explored(x, y) { return S.map.explored[MapGen.idx(x, y)]; },
+  /* GROUND THE PLAYER REMEMBERS: explored, and not merely charted by a card
+     (Deck.blindIdx, js/deckfx-rival.js — Pathfinder's Map, a spent Scout's
+     Fire). A card's map shows the LAND, drawn from the memory of the world
+     as it was made; what stands or lies on it — a bridge, an ash heap, a
+     carcass, a burning wood, a buried hoard — is the eyes' business, so
+     every live layer that used to gate on explored ground asks this
+     instead. Exactly `explored` with no card ever played. */
+  rememberedAt(i) {
+    if (!S.map.explored[i]) return false;
+    return !(window.Deck && Deck.blindIdx && Deck.blindIdx(i));
+  },
 
   /* ---- THE WOOD REACTS (tests/wild-life.mjs) ----
      Ambience that only ever ignores the world is wallpaper; ambience that
@@ -9384,7 +9395,7 @@ const R = {
       cx: F.x + 1, cy: F.y + 1, phase: F.phase, t: F.t, fallS: CFG.STARFALL.fallS, now, key: F.x + ',' + F.y,
       // a claimed crater's sky still drains (the debris settles, the smoke thins)
       after: !!F.claimed,
-      seen: !!S.map.explored[F.y * CFG.W + F.x] || (F.phase === 'down' && F.t < 2),
+      seen: this.rememberedAt(F.y * CFG.W + F.x) || (F.phase === 'down' && F.t < 2),
       hot: 1,                                                   // the pit breathes until a hand claims it
       smoke: F.t < C.smokeS ? 0.08 + 0.5 * (F.t / C.smokeS) : 1.2,
     });
@@ -9813,7 +9824,7 @@ const R = {
     for (const k in F.burning) {
       const i = +k, x = i % W, y = (i / W) | 0;
       if (x < v.x0 - 2 || x > v.x1 + 2 || y < v.y0 - 2 || y > v.y1 + 3) continue;
-      if (!S.map.explored[i] || terr[i] !== T.FOREST) continue;
+      if (!this.rememberedAt(i) || terr[i] !== T.FOREST) continue;
       const tileS = F.burning[k];
       let L = lay.m.get(i);
       if (!L) { L = this.forestLayoutAt(x, y, this._fireTerr(terr), true); lay.m.set(i, L); }
@@ -9936,7 +9947,7 @@ const R = {
       const live = [];
       for (const k in F.burning) {
         const i = +k, x = i % W, y = (i / W) | 0;
-        if (!S.map.explored[i]) continue;
+        if (!this.rememberedAt(i)) continue;
         const f = F.burning[k] / C.burnS;
         live.push({ x, y, f, i });
         if (x < v.x0 - 1 || x > v.x1 + 1 || y < v.y0 - 1 || y > v.y1 + 2) continue;
@@ -10371,6 +10382,32 @@ const R = {
                       the unit's id, culled to the camera; nothing is kept
                       between frames and nothing is ever filtered (ctx.filter
                       costs hundreds of ms and iOS ignores it). */
+  /* THE KRAKEN, drawn: ONE function for the world's own kraken (S.kraken.ev,
+     the special event) and a card's (Kraken's Call, js/deckfx-rival.js), so
+     the beast's look can be redrawn in one place. `ev` is { x, y, phase:
+     'rise' | 'thrash' | 'sink', t } in tiles and seconds; the caller decides
+     whether the spot is in sight. */
+  drawKraken(g, ev) {
+    const TL = CFG.TILE;
+    const k = ev.phase === 'rise' ? Math.min(1, ev.t / 1.0)
+      : ev.phase === 'sink' ? Math.max(0, 1 - ev.t / 1.2) : 1;
+    const fr = Sprites.misc.kraken[((ev.t * 5) | 0) % 4];
+    const size = TL * 3;                                   // 96px native — pixel-perfect at zoom 1
+    g.globalAlpha = k;
+    g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
+    g.globalAlpha = 1;
+    // the churn round it: two rings MADE OF DOTS on the 2px grid, in hard
+    // alpha steps — never a stroked soft arc (the house's rule)
+    const churn = (rx, ry, n, a, spin) => {
+      g.fillStyle = 'rgba(235,244,248,' + (Math.round(a * 4) / 4).toFixed(2) + ')';
+      for (let i = 0; i < n; i++) {
+        const an = i / n * Math.PI * 2 + spin;
+        g.fillRect(Math.round((ev.x * TL + Math.cos(an) * rx) / 2) * 2, Math.round((ev.y * TL + 12 + Math.sin(an) * ry) / 2) * 2, 2, 2);
+      }
+    };
+    churn(24 + Math.sin(ev.t * 5) * 5, 9, 24, 0.5 * k, ev.t * 0.9);
+    churn(34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 32, 0.3 * k, -ev.t * 0.6);
+  },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
   /* `delay` (ms) staggers a muster's flashes one after another, and `id`
@@ -10411,6 +10448,13 @@ const R = {
         try { d.drawLive(g, e, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', e.id, err); } }
         g.restore();
       }
+    }
+    // …and what a card left on the world that is no timer: a kraken mid-act,
+    // the lost relic marked on the map (js/deckfx-rival.js)
+    if (S.deck && (S.deck.kraken || S.deck.relicMark) && window.Deck && Deck.drawRivalWorld) {
+      g.save();
+      try { Deck.drawRivalWorld(g, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card world', err); } }
+      g.restore();
     }
   },
   /* A CARD ON THE GROUND AND ON A BUILDING. drawCardWorld runs after the
@@ -12838,7 +12882,7 @@ const R = {
     if (S.bridges && S.bridges.length) {
       const WP = ART.PALETTE.wood, ST = ART.PALETTE.stone;
       for (const br of S.bridges) {
-        if (!S.map.explored[MapGen.idx(br.x, br.y)]) continue;
+        if (!this.rememberedAt(MapGen.idx(br.x, br.y))) continue;
         const bx = br.x * TL, by = br.y * TL, lv = br.level || 1, dir = br.dir || 'h';
         const stone = lv >= 3;                                            // L3 deck is dressed stone
         const deck = stone ? ST[2] : WP[2], lit = stone ? ST[3] : WP[3], seam = stone ? ST[1] : WP[1];
@@ -12893,7 +12937,7 @@ const R = {
           const x = (su.x | 0) + dx, y = (su.y | 0) + dy;
           if (!MapGen.inB(x, y)) continue;
           const i = MapGen.idx(x, y), terr = S.map.terrain[i];
-          if ((terr !== T.WATER && terr !== T.MOAT) || !S.map.explored[i] || Bld.bridgeAt(x, y)) continue;
+          if ((terr !== T.WATER && terr !== T.MOAT) || !this.rememberedAt(i) || Bld.bridgeAt(x, y)) continue;
           g.fillStyle = Terraform.bridgeCrossing(x, y, 'P') ? 'rgba(120,224,120,0.42)' : 'rgba(220,92,80,0.38)';
           g.fillRect(x * TL, y * TL, TL, TL);
         }
@@ -13027,7 +13071,7 @@ const R = {
     // IN THE BLACK — the fourth geometry-drawn layer to leak)
     if (S.corpses && S.corpses.length) this.clipBoard(g, () => {
       for (const c of S.corpses) {
-        if (!S.map.explored[MapGen.idx(c.x | 0, c.y | 0)]) continue;
+        if (!this.rememberedAt(MapGen.idx(c.x | 0, c.y | 0))) continue;
         // the drawn carcass (W12) when its strip has landed; the procedural
         // one cut from the cast is the fallback
         const art = window.Assets && Assets.carcass && Assets.carcass[c.kind];
@@ -13043,7 +13087,7 @@ const R = {
     // (drawn under everything that walks or stands; explored memory is enough,
     // a cold heap doesn't move)
     if (S.ashes) for (const a of S.ashes) {
-      if (!S.map.explored[MapGen.idx(a.x, a.y)]) continue;
+      if (!this.rememberedAt(MapGen.idx(a.x, a.y))) continue;
       // a building still TOPPLING owns its own ground — the ash is what it
       // leaves, and showing it under a tower that is visibly still falling
       // gives the ending away a second and a half early
@@ -13523,7 +13567,7 @@ const R = {
     // beckoning golden shimmer so the player can't miss the errand
     if (S.cache && S.cache.ev) {
       const ev = S.cache.ev;
-      if (S.map.explored[MapGen.idx(ev.x, ev.y)]) {
+      if (this.rememberedAt(MapGen.idx(ev.x, ev.y))) {
         const now2 = performance.now() / 1000;
         const fr = Sprites.misc.cache[((now2 * 2) | 0) % 2];
         g.drawImage(fr, ev.x * TL, ev.y * TL - 4, TL, TL);
@@ -14111,7 +14155,8 @@ const R = {
     this.drawTreeFalls(g, dt);
     this.drawHorns(g, dt);
     // THE CARD SYSTEM's world cues (js/deckfx.js) — nothing while no card is in play
-    if (this.summons.length || this.cardShows.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardWorld(g, dt);
+    if (this.summons.length || this.cardShows.length ||
+        (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark))) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 
@@ -14228,6 +14273,9 @@ const R = {
     }
     // a DISCOVERED wilderness relic is a landmark worth finding again
     if (window.Relics) Relics.drawMini(g);
+    // …and what a card put on the map: a relic marked, the rival's people seen
+    // through a spy in their hall (js/deckfx-rival.js) — nothing with none
+    if (window.Deck && Deck.drawMini && S.deck) Deck.drawMini(g);
     // camera rect
     const TL = CFG.TILE;
     g.strokeStyle = '#f0e6d0'; g.lineWidth = 1;

@@ -436,6 +436,9 @@ const G = {
   },
 
   reveal(cx, cy, r) {
+    // ground a card only charted becomes the tribe's own knowledge when the
+    // world reveals it (Deck.eyesGive, js/deckfx-rival.js) — nothing with no card
+    const lit = window.Deck && Deck.eyesGive && Deck.litMask && Deck.litMask() ? [] : null;
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       if (dx * dx + dy * dy > r * r + r) continue;
       const x = cx + dx, y = cy + dy;
@@ -443,7 +446,9 @@ const G = {
         S.map.explored[MapGen.idx(x, y)] = 1;
         R.fogDirty = true;
       }
+      if (lit && MapGen.inB(x, y)) lit.push(MapGen.idx(x, y));
     }
+    if (lit && lit.length) { Deck.eyesGive(lit); R.fogDirty = true; }
   },
 
   /* ---- three-state fog: black (unexplored), grey (remembered), clear (visible).
@@ -495,11 +500,18 @@ const G = {
       // the animal strife is heard across the valley: its ground is in sight while it rages
       const sf = S.strife;
       if (sf && sf.phase === 'fight') mark(sf.x, sf.y, CFG.STRIFE.watchR);
+      /* THE CARD-LIT MAP (js/deckfx-rival.js): ground a card put on the map
+         is not ground the player's own people have seen — until they do.
+         Everything marked above is REAL sight, so it clears the card's mark
+         here, before any card's own watch is lit below. */
+      if (window.Deck && Deck.eyesClear) Deck.eyesClear(vis);
       /* THE CARD SYSTEM (js/deckfx.js): a strike's ground is watched while it
          lands, or the player would see a star burst over empty grass with the
          enemy it struck hidden under the fog. Ground ALREADY EXPLORED only —
-         a card never charts the map, so it never moves the exploration score. */
-      if (window.Deck && Deck.sights && S.deck && (S.deck.strike || (S.dragon && S.dragon.ev && S.dragon.ev.card)))
+         a card never charts the map, so it never moves the exploration score
+         (a card that does chart it — Scout's Fire — marks what it charted as
+         card-lit first, which the score never counts). */
+      if (window.Deck && Deck.sights && S.deck)
         for (const s of Deck.sights())
           for (let dy = -s.r; dy <= s.r; dy++) for (let dx = -s.r; dx <= s.r; dx++) {
             const x = s.x + dx, y = s.y + dy;
@@ -1408,9 +1420,12 @@ const G = {
     if (!E || !E.phase) return 0;
     return E.phase === 'dim' ? Math.min(1, E.t / C.dimS) : E.phase === 'dark' ? 1 : Math.max(0, 1 - E.t / C.backS);
   },
-  // a sighted thing in the dark sees this far (halls and level-3 towers keep their sight)
-  sightIn(r, b) {
-    if (this.eclipseDark() < 0.5) return r;
+  // a sighted thing in the dark sees this far (halls and level-3 towers keep their sight).
+  // `owner` is asked by the RIVAL's own vision (AI.updateVision): THE SWALLOWED
+  // SUN, the card (js/deckfx-rival.js), darkens their sky alone
+  sightIn(r, b, owner) {
+    if (this.eclipseDark() < 0.5 &&
+        !(owner === 'A' && window.Deck && Deck.sunOver && Deck.sunOver('A'))) return r;
     if (b && (b.key === 'tc' || (b.key === 'tower' && b.level >= 3))) return r;
     return Math.max(1, Math.floor(r * CFG.ECLIPSE.vision + 0.25));   // 3 → 1, 4 → 2, 6 → 3
   },
@@ -1445,6 +1460,11 @@ const G = {
      band on the march waits — anything already in a fight keeps fighting. */
   _eclFree: null,
   eclipseAwe(u) {
+    /* THE SWALLOWED SUN, the card (js/deckfx-rival.js): the dark is over the
+       RIVAL alone, and every one of their people not already fighting stands
+       and stares. Never the wild, never the war bands, never the player's
+       own — their seers warned them. */
+    if (u.owner === 'A' && !u.tUnit && !u.tBld && window.Deck && Deck.sunOver && Deck.sunOver('A')) return true;
     const E = S.eclipse;
     if (!E || !E.phase || !E.cut) return false;
     // the two tribes by their warning; the wild and the war bands have none
@@ -2562,9 +2582,12 @@ const G = {
   runReport(outcome, cause, win) {
     const st = S.stats || {};
     const tc = (typeof Bld !== 'undefined' && Bld.tcOf) ? Bld.tcOf('P') : null;
-    let seen = 0;
+    let seen = 0, charted = 0;
     const ex = S.map && S.map.explored;
-    if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) seen++; }
+    // ground a CARD put on the map is not ground the tribe explored — the
+    // score's own rule (ruling 6, js/score.js); the chart is reported apart
+    const lit = window.Deck && Deck.litMask ? Deck.litMask() : null;
+    if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) { if (lit && lit[i]) charted++; else seen++; } }
     const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
       && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
     return {
@@ -2577,6 +2600,7 @@ const G = {
         built: st.built || 0, trained: st.trained || 0, kills: st.kills || 0,
         walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,
         explored: ex && ex.length ? Math.round(100 * seen / ex.length) : 0,
+        ...(charted ? { explored_card: Math.round(100 * charted / ex.length) } : {}),
         tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null,
         // S.wonder is the run's OFFERED wonder key, not a built flag —
         // "did they raise it" is already carried by cause === 'wonder'
@@ -2990,6 +3014,8 @@ const G = {
           if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
           // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
           if (S.deck && S.deck.strike && window.Deck && Deck.strikeTick) Deck.strikeTick(sdt);
+          // …and a card's kraken risen against the rival (js/deckfx-rival.js)
+          if (S.deck && S.deck.kraken && window.Deck && Deck.krakenTick) Deck.krakenTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {
             G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state

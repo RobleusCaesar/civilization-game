@@ -740,7 +740,10 @@ const Bld = {
     for (const b of S.buildings) {
       if (b.key !== 'tc' || b.owner === owner) continue;
       if (owner === 'A') { if (!AI.knownPlayerTC()) continue; }
-      else if (!S.map.explored || !S.map.explored[MapGen.idx(b.x, b.y)]) continue;
+      // the player knows the hall: explored (the old read, exactly, with no card
+      // ever played) — but a card's map is not the player's own eyes
+      // (Deck.eyesKnow, js/deckfx-rival.js: Pathfinder's Map charts every tile)
+      else if (window.Deck && Deck.eyesKnow ? !Deck.eyesKnow(b) : (!S.map.explored || !S.map.explored[MapGen.idx(b.x, b.y)])) continue;
       if (Math.hypot(x - this.cx(b), y - this.cy(b)) <= this.HOME_GROUND_R) return true;
     }
     return false;
@@ -767,6 +770,17 @@ const Bld = {
     const d = this.def(key);
     if (!d) return { ok: false, code: 'key', why: '?' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
+    /* A CARD'S MAP IS NOT THE TRIBE'S EYES (tests/deck-rival.mjs): ground a
+       card charted that nobody of the player's has seen is refused like the
+       fog — and asked FIRST, before anything below reads the live map, so
+       the refusal can never say what stands there (the rival's felled stand,
+       a hut hidden beside their hall). Nothing is card-lit until a card is
+       played, so with none it asks nothing. */
+    if (owner === 'P' && window.Deck && Deck.blindAt) {
+      const s = this.size(key);
+      for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
+        if (Deck.blindAt(x + dx, y + dy)) return { ok: false, code: 'unexplored', why: Deck.EYES_BUILD || 'Unexplored' };
+    }
     if (key === 'dock') {
       const site = this.dockSiteOk(x, y, owner);
       if (!site.ok) return site;

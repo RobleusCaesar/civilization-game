@@ -259,6 +259,9 @@ const Units = {
       if (tc && Math.hypot(Bld.cx(tc) - u.x, Bld.cy(tc) - u.y) <= CFG.HOME_TURF.range + Bld.reach(tc))
         atk *= CFG.HOME_TURF.mult;
     }
+    // THE CARD SYSTEM: a live card that changes how hard a tribe strikes (the
+    // Swallowed Sun's dark, js/deckfx-rival.js) — 1 with no card running
+    if (window.Deck && Deck.mult) atk *= Deck.mult('atk', u.owner, u);
     return atk;
   },
   // a raised tool turns a blow: the levy's def rides on top of the stamped

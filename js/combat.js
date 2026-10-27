@@ -74,6 +74,19 @@ const Combat = {
     if (b.hp > 0 && b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('raid');
   },
 
+  /* an engine's OWN anti-building blow (catapult, trebuchet, bombard), or 0.
+     It never passes through Units.effAtk, so a card that softens a tribe's
+     blows (the Swallowed Sun, js/deckfx-rival.js) is asked here too — the
+     stat exactly, with no card running. */
+  bldAtkOf(u) {
+    const ba = CFG.UNITS[u.kind].bldAtk;
+    if (!ba) return 0;
+    // a VETERAN engine (js/deckfx-army.js, u.vet) throws its stone a quarter
+    // harder; a live card may soften a tribe's engines (the Swallowed Sun)
+    const vet = u.vet || 1;
+    return window.Deck && Deck.mult ? Math.round(ba * vet * Deck.mult('bldAtk', u.owner, u)) : Math.round(ba * vet);
+  },
+
   // hostility matrix: P<->A, P<->R, P<->W, A<->W
   hostile(a, b) {
     if (a === b) return false;
@@ -1496,9 +1509,7 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           // catapults/trebuchets break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch
-          // (a VETERAN engine — js/deckfx-army.js, u.vet — throws its stone a
-          // quarter harder; everything else rides its stamped atk)
-          const dmg = (CFG.UNITS[u.kind].bldAtk ? Math.round(CFG.UNITS[u.kind].bldAtk * (u.vet || 1)) : 0) ||
+          const dmg = this.bldAtkOf(u) ||
             Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           if (CFG.UNITS[u.kind].proj) {
             // siege engine: the boulder/bolt/flaming ball flies and lands the
@@ -1535,8 +1546,7 @@ const Combat = {
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
-          const dmg = (CFG.UNITS[u.kind].bldAtk ? Math.round(CFG.UNITS[u.kind].bldAtk * (u.vet || 1)) : 0) ||
-            Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
+          const dmg = this.bldAtkOf(u) || Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
           R.float(bx, by - 0.3, '-' + dmg, '#e8d2a0');
           Bld.damageBridge(br, dmg);   // removes the span (and re-severs the crossing) at 0 hp
@@ -1657,6 +1667,19 @@ const Combat = {
   maybeWave() {
     if (S.day < S.wave.next) return;
     if (G.eclipseDark() > 0) return;   // no war band musters under a swallowed sun — it waits for the light
+    /* THE CARD SYSTEM — BARBARIAN PACT (js/deckfx-rival.js): while the pact
+       holds a charge, the band that musters marches on the RIVAL. It never
+       turns on the player for it — and the wilds still never finish a town
+       they are sparing: with the rival eased the band WAITS (no muster, not
+       one draw, the charge kept) and is asked again tomorrow. But NEVER FOR
+       LONG (Deck.pactHold): a pact is three bands, not a shield — a wave
+       that has waited its days runs its ordinary course, the charge kept for
+       a rival back on its feet, and the log says why. */
+    let pact = !!(window.Deck && Deck.pactPending && Deck.pactPending()), pactWaited = false;
+    if (pact && G.barbEase('A')) {
+      if (Deck.pactHold ? Deck.pactHold(S.day - S.wave.next) : true) return;
+      pact = false; pactWaited = true;
+    }
     const m = G.modeCfg();
     S.wave.count++;
     S.wave.lastDay = S.day;   // so the rival can avoid piling a raid onto a fresh wave
@@ -1689,6 +1712,7 @@ const Combat = {
     if (easeP && easeA) { G.foeNote('🌫 The war bands keep to the deep country — there is nothing left worth taking.'); return; }
     if (disp === 'ALL' && (easeP || easeA)) disp = easeP ? 'A' : 'P';
     if ((disp === 'P' && easeP) || (disp === 'A' && easeA)) disp = easeP ? 'A' : 'P';
+    if (pact) disp = 'A';   // the pact's band (the rival is not eased — that waited above)
     const brute = i => (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
     /* WHICH PEOPLE IS ON THE MOVE (CFG.TRIBES, tests/raider-camps.mjs). A band
        mustered AT a camp is that camp's own people — walk up to the northern
@@ -1733,7 +1757,8 @@ const Combat = {
             tr.cargo.push(ru);
           }
           Units.orderUnload(tr, landing.x, landing.y);
-          G.foeNote('⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore!');
+          if (pact) Deck.pactTurned(bandTribe, aboard);   // the player bought this band: told at every difficulty
+          else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + '⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore!');
           return;
         }
       }
@@ -1779,7 +1804,9 @@ const Combat = {
        which is exactly "their radius expands to find me". */
     const fightSeeds = [];
     for (const fb of S.buildings) {
-      if (fb.owner !== 'P' && fb.owner !== 'A') continue;
+      // a pact band's fight is the rival's town alone: ground that only reaches
+      // the player's would muster it to walk off the map (or worse)
+      if (pact ? fb.owner !== 'A' : (fb.owner !== 'P' && fb.owner !== 'A')) continue;
       const sz = Bld.size(fb);
       for (let i = -1; i <= sz; i++) {
         for (const [ox, oy] of [[i, -1], [i, sz], [-1, i], [sz, i]]) {
@@ -1802,12 +1829,18 @@ const Combat = {
     const spot = MapGen.findNear(sx, sy, 6, farOk) || MapGen.findNear(sx, sy, max, farOk) ||
                  MapGen.findNear(sx, sy, max, inNet) ||
                  MapGen.findNear(sx, sy, max, (x, y) => Path.passable(x, y));
+    /* a pact band with no ground that reaches the rival's town musters
+       nowhere: it scatters into the wilds — and it was one of the three the
+       pact bought (Deck.pactLost spends the charge and says so), or a world
+       with no road to the rival would make the pact a shield for ever */
+    if (pact && (!spot || !fight || !inNet(spot.x, spot.y))) { if (Deck.pactLost) Deck.pactLost(); return; }
     if (!spot) return;
     for (let i = 0; i < n; i++) {
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
       Units.spawn(brute(i), 'R', p.x, p.y, { scale, tribe: bandTribe }).hostileTo = disp;
     }
-    G.foeNote(`⚔ A war band of ${G.tribeName(bandTribe)} is on the move (${n})!`);
+    if (pact) Deck.pactTurned(bandTribe, n);   // the player bought this band: told at every difficulty
+    else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + `⚔ A war band of ${G.tribeName(bandTribe)} is on the move (${n})!`);
   },
 };

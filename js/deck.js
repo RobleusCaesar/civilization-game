@@ -182,7 +182,7 @@ const Deck = {
       when: "Any explored point." },
     { id: "krakens_call", tier: "imperial", cat: "strike", target: "none",
       name: "Kraken's Call",
-      text: "The kraken rises against the rival: it drags down up to 4 of their ships and batters every building of theirs within 2 tiles of open water for 600 damage.",
+      text: "The kraken rises against the rival: it drags down up to 4 of their ships and batters every building of theirs within 2 tiles of open water for 600 damage. A rival Town Center loses at most 40% of its strength.",
       flavor: "Something answers from the deep, and it is hungry for their boats.",
       when: "The world has open sea (otherwise greyed: “Needs open water”)." },
     { id: "barbarian_pact", tier: "imperial", cat: "curse", target: "none",
@@ -416,6 +416,12 @@ const Deck = {
     if (!Array.isArray(S.deck.played)) S.deck.played = [];
     if (!Array.isArray(S.deck.fx)) S.deck.fx = [];
     if (!S.deck.charges || typeof S.deck.charges !== 'object') S.deck.charges = {};
+    // THE CARD-LIT MAP (js/deckfx-rival.js): a packed bitset, '' for none
+    if (typeof S.deck.lit !== 'string') S.deck.lit = '';
+    // …a kraken risen against the rival, mid-act (null for none)
+    if (S.deck.kraken === undefined) S.deck.kraken = null;
+    // …and the lost relic marked on the map by a pathfinder (false for none)
+    if (typeof S.deck.relicMark !== 'boolean') S.deck.relicMark = false;
     return S.deck;
   },
   playedCount() { return (S && S.deck && S.deck.played) ? S.deck.played.length : 0; },
@@ -443,7 +449,10 @@ const Deck = {
     const fx = this.FX[id], c = this.card(id);
     if (!fx || !c || c.target === 'none') return true;
     if (typeof MapGen !== 'undefined' && !MapGen.onBoard(x | 0, y | 0)) return false;
-    if (c.target === 'explored' && !(S.map.explored && S.map.explored[(y | 0) * CFG.W + (x | 0)])) return false;
+    // 'explored' is ground the player's OWN people have seen — a card's map
+    // or a spy's word charts it without eyes (Deck.eyesAt, js/deckfx-rival.js)
+    if (c.target === 'explored' && !(this.eyesAt ? this.eyesAt(x | 0, y | 0)
+      : (S.map.explored && S.map.explored[(y | 0) * CFG.W + (x | 0)]))) return false;
     return fx.valid ? !!fx.valid(x, y) : true;
   },
   /* THE ONE DOOR. Applies the effect and takes the card only if it applied. */
@@ -452,7 +461,8 @@ const Deck = {
     if (!ok.ok) return ok;
     const c = this.card(id);
     if (c.target !== 'none' && (!tgt || !this.validTarget(id, tgt.x, tgt.y)))
-      return { ok: false, why: c.target === 'explored' ? 'Choose ground you have explored.' : 'Choose a point on the map.' };
+      return { ok: false, why: c.target !== 'explored' ? 'Choose a point on the map.'
+        : (tgt && this.litAt && this.litAt(tgt.x | 0, tgt.y | 0)) ? this.EYES_WHY : 'Choose ground you have explored.' };
     let r;
     try { r = this.FX[id].apply(tgt || null) || { ok: false }; }
     catch (e) { console.error('card effect failed', id, e); r = { ok: false, why: 'The card fizzled — it is still yours.' }; }

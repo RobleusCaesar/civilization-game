@@ -523,9 +523,13 @@ const UI = {
     }
     const R2 = CFG.BUILD_RANGE + 1;
     const ok = [];
+    // a card's chart is not the tribe's eyes: ground only a card put on the
+    // map stays as clean as the fog (Deck.blindIdx, js/deckfx-rival.js)
+    const blind = window.Deck && Deck.blindIdx ? i => Deck.blindIdx(i) : null;
     for (let y = 1; y < H - 1 - (sz - 1); y++) for (let x = 1; x < W - 1 - (sz - 1); x++) {
       const i = MapGen.idx(x, y);
       if (!S.map.explored[i]) continue;                       // fog stays clean — no grid, no hints
+      if (blind && blind(i)) continue;
       if (anchors) {
         let near = false;
         for (const b of anchors) if (Math.hypot(b.x - x, b.y - y) <= R2) { near = true; break; }
@@ -894,7 +898,9 @@ const UI = {
     const fee = CFG.TERRAFORM[job + 'Cost'];
     const budget = Object.assign({}, S.res);
     this.terraGhost = chain.map(t => {
-      let ok = !!S.map.explored[MapGen.idx(t.x, t.y)] && Units.canTerraform(u.owner, t.x, t.y, job);
+      // seen ground only: a card's chart is not the tribe's eyes (Deck.blindAt)
+      let ok = !!S.map.explored[MapGen.idx(t.x, t.y)] && !(window.Deck && Deck.blindAt && Deck.blindAt(t.x, t.y)) &&
+        Units.canTerraform(u.owner, t.x, t.y, job);
       if (ok && job === 'dig' && Terraform.digWouldSeal(t.x, t.y)) ok = false;
       if (ok && fee) {
         for (const k in fee) if ((budget[k] || 0) < fee[k]) { ok = false; break; }
@@ -963,7 +969,10 @@ const UI = {
     this.wallGhost = chain.map(t => {
       // walls raise anywhere explored (no build-range gate) — just clear ground
       // you can afford; canPlace re-checks on commit
-      let ok = Bld.tileFree(t.x, t.y) && !!S.map.explored[MapGen.idx(t.x, t.y)];
+      // (seen ground only — a card's chart is not the tribe's eyes, Deck.blindAt —
+      // asked before the live map is, so the ghost never says what stands there)
+      let ok = !!S.map.explored[MapGen.idx(t.x, t.y)] && !(window.Deck && Deck.blindAt && Deck.blindAt(t.x, t.y)) &&
+        Bld.tileFree(t.x, t.y);
       if (ok) {
         for (const k in cost) if ((budget[k] || 0) < cost[k]) { ok = false; break; }
         if (ok) for (const k in cost) budget[k] -= cost[k];

@@ -457,6 +457,7 @@ const DeckUI = {
      over; PLAY plays it; anywhere else puts it back. */
   lift(id, cell) {
     if (this.playing || this.lifted || !this.open) return;
+    this._armed = null;   // a fresh lift is a fresh first tap
     const c = Deck.card(id);
     if (!c || Deck.count(id) < 1) return;
     const can = Deck.canPlay(id), t = Deck.tier(c.tier);
@@ -509,6 +510,9 @@ const DeckUI = {
   },
 
   putBack(instant) {
+    // a confirm the player walked away from is no confirm: a card put back
+    // (or the sheet closed under it) asks twice again the next time
+    this._armed = null;
     const lf = this.lifted;
     if (!lf) return;
     this.lifted = null;
@@ -533,6 +537,27 @@ const DeckUI = {
     const can = Deck.canPlay(id);
     if (!can.ok) { this._refuse(can.why, this.lifted && this.lifted.play); return; }
     if (Deck.card(id).target !== 'none') { this.startAim(id); return; }
+    /* an untargeted card that would END SOMETHING (Kraken's Call reaching the
+       rival at peace, js/deckfx-rival.js) says so and asks twice — the aim's
+       own two-tap confirm, on the Play button. The warning is the effect's
+       warn(), asked of what the player knows. */
+    let warn = null;
+    try { const fx = Deck.FX[id]; warn = fx && fx.warn ? fx.warn(null) || null : null; } catch (e) { warn = null; }
+    if (warn) {
+      const A = this._armed;
+      if (!A || A.id !== id || performance.now() - A.at > 8000) {
+        this._armed = { id, at: performance.now() };
+        if (this.lifted) {
+          this.lifted.why.textContent = warn + ' Tap Play again to confirm.';
+          const lb = this.lifted.play.querySelector('.blab');
+          if (lb) lb.textContent = 'Confirm';
+        }
+        this._say(warn, true);
+        UI.cue('bad');
+        return;
+      }
+    }
+    this._armed = null;
     const from = this.lifted ? this.lifted.big : null;
     this._run(id, null, from, from && from.classList.contains('flip'));
   },
@@ -778,7 +803,14 @@ const DeckUI = {
     }
     let w = null;
     if (at === 'target' && tgt) w = { x: tgt.x, y: tgt.y };   // already a world point
-    else {
+    else if (at === 'focus') {
+      // the effect names the ground it is about to change (a world point), or
+      // nothing — and then the light bursts in the middle of the screen
+      // without moving the view (js/deckfx-rival.js: the kraken's sea, the
+      // spied town, the sun's known ground)
+      const f = Deck.FX[id] && Deck.FX[id].focus;
+      try { w = f ? Deck.FX[id].focus() : null; } catch (e) { w = null; }
+    } else {
       // a card whose work stands somewhere of its own (the Wonder cards: the
       // Wonder's works) names its landing point; else it lands on the hall
       const fx = window.Deck && Deck.FX[id], own = fx && fx.dest ? fx.dest() : null;
@@ -1007,6 +1039,8 @@ const DeckUI = {
     const c = Deck.card(A.id);
     if (typeof MapGen !== 'undefined' && !MapGen.onBoard(A.x, A.y)) return 'That is beyond the edge of the world.';
     if (c.target === 'explored' && !(S.map.explored && S.map.explored[A.y * CFG.W + A.x])) return 'Choose ground you have explored.';
+    // charted by a card, never seen by the tribe's own eyes (js/deckfx-rival.js)
+    if (c.target === 'explored' && Deck.litAt && Deck.litAt(A.x, A.y)) return Deck.EYES_WHY;
     return 'That ground will not take it.';
   },
 
