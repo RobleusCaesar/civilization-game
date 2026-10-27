@@ -319,7 +319,8 @@ ck('andEveryFaceIsAWholeMultiple', sh.whole.every(k => Math.abs(k - Math.round(k
 // the earn rule in the player's words (Deck.eligible): a win always earns,
 // a defeat for a real fight counted in deeds — with this run's count so far
 ck('anEmptyDeckSaysHowToEarnOne', /win a game/i.test(sh.empty) && /lose/i.test(sh.empty) &&
-  new RegExp(sh.need + ' deeds').test(sh.empty) && /this run: \d+ of \d+/.test(sh.empty) && !/minutes/.test(sh.empty) && sh.emptyBadge,
+  new RegExp(sh.need + ' deeds').test(sh.empty) && /gathering/.test(sh.empty) && /orders given on 6 different days/.test(sh.empty) &&
+  /this run: \d+ of \d+ deeds, \d+ of 6 days/.test(sh.empty) && !/minutes/.test(sh.empty) && sh.emptyBadge,
   sh.empty.slice(0, 160));
 
 /* ================= 5. LIFT, FLIP, PLAY ================= */

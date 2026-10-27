@@ -970,7 +970,7 @@ const out = await p.evaluate(async () => {
       Tutorial._lastEvAt = -1e9; tick(6, 0.3);
       const a = Tutorial._anchor();
       ck('andTheLastNoteRingsIt', Tutorial._show && Tutorial._show.id === 'deck' && a && a.sel === '#deckBtn' &&
-        /kept until you play it/.test(txtOf('tutTxt')) && /gone for good/.test(txtOf('tutTxt')),
+        /tap it and play a card/.test(txtOf('tutTxt')) && /kept until played/.test(txtOf('tutTxt')) && /gone for good/.test(txtOf('tutTxt')),
         JSON.stringify(Tutorial._show) + ' ' + txtOf('tutTxt'));
       ck('inTwoSentences', (Tutorial.TEXT.deck.replace(/<[^>]+>/g, '').match(/[.!?](\s|$)/g) || []).length <= 2, Tutorial.TEXT.deck);
       clickNext();
@@ -1000,6 +1000,25 @@ const out = await p.evaluate(async () => {
         JSON.stringify({ hiddenFirst, up: btnUp(), skipped: S.tut.skipped, show: Tutorial._show }));
       clickNext();
       ck('andThenItIsGone', S.tut.on === false && S.tut.fired.deck === 1 && !document.getElementById('tutUI'), 'on ' + S.tut.on);
+      /* A SKIP ON THE DECK'S OWN NOTE is the player's answer to it: in phase
+         2 that note wears a Skip button, and tapping it must not bring the
+         same note straight back without one (fired is only set on an answer,
+         so the naive skip re-armed the teacher for the "owed" deck) */
+      fresh('145', 'calm', true);
+      DeckUI.frame(0.1);
+      toCapstone();
+      for (const e of Tutorial.EVENTS) if (e.id !== 'deck') S.tut.fired[e.id] = 1;
+      clickNext();                                       // the capstone answered: the deck walks in
+      DeckUI.frame(0.1);
+      Tutorial._lastEvAt = -1e9; tick(6, 0.3);
+      const onDeck = !!(Tutorial._show && Tutorial._show.id === 'deck');
+      const sk = document.getElementById('tutSkip');
+      const skipShown = !!sk && sk.style.display !== 'none';
+      if (sk) { sk.click(); sk.click(); }                // the Skip's own confirm: tap, then tap again
+      Tutorial._lastEvAt = -1e9; tick(8, 0.3);
+      ck('aSkipOnTheDeckNoteSkipsIt', onDeck && skipShown && S.tut.on === false && S.tut.fired.deck === 1 && !S.tut.deckOnly &&
+        !(Tutorial._show && Tutorial._show.id === 'deck') && !document.getElementById('tutUI'),
+        JSON.stringify({ onDeck, skipShown, on: S.tut.on, deck: S.tut.fired.deck, deckOnly: S.tut.deckOnly, show: Tutorial._show }));
       // a skip once the deck was told is an ordinary skip
       fresh('144', 'calm', true);
       S.tut.fired.deck = 1;
