@@ -25,7 +25,11 @@
                      rival work a barbarian burns, or a camp the RIVAL
                      burns, is no deed of the player's; a fishing boat's
                      nets are no hand-gathering. A struck banner earns
-                     nothing; the deeds ride the run report and a save
+                     nothing; the deeds ride the run report, the grant's
+                     cloud op and a save; and NO CARD BUYS A CARD — every
+                     card with an effect is played on a fresh town and run
+                     three days, and the deeds may not move (a control card
+                     raising a house through Bld.finish must read +1)
      ONCE PER RUN    settling the same run twice pays once
      THE COLLECTION  survives a reload, takes the starter hand once,
                      queues every write for the cloud
@@ -158,6 +162,9 @@ const c = await p.evaluate(() => {
   Deck.settle(rep({ win: false, cause: 'tc_destroyed', key: 'pl' }), rng);
   out.lossPity = Deck.col().pity;
   out.queue = Deck.col().queue.filter(q => q.op === 'grant').length;
+  // the grant op carries what the server needs to re-run the earn rule
+  const lossOp = Deck.col().queue.find(q => q.op === 'grant' && q.key === 'g6');
+  out.opRule = !!lossOp && lossOp.cause === 'tc_destroyed' && lossOp.deeds === CFG.CARDS.LOSS_DEEDS && lossOp.outcome === 'loss';
   out.counts = JSON.stringify(Deck.col().counts);
   return out;
 });
@@ -176,7 +183,7 @@ ck('aGreatVictoryEarnsASecondCard', c.wonder === 2 && c.hard === 2 && c.fast ===
 ck('aRunIsPaidOnce', c.once.gained === 1 && c.once.again === 0 && c.once.same, JSON.stringify(c.once));
 ck('fifteenWinsWithoutALegendGuaranteeOne', c.pity.legends === 0 && c.pity.at15 === 15 && c.pity.forced === 'enlight' && c.pity.flag && c.pity.reset === 0, JSON.stringify(c.pity));
 ck('aLossNeverMovesThePity', c.lossPity === 7, 'pity ' + c.lossPity);
-ck('everyGrantIsQueuedForTheCloud', c.queue >= 20, c.queue + ' grant ops');
+ck('everyGrantIsQueuedForTheCloud', c.queue >= 20 && c.opRule, c.queue + ' grant ops; a defeat\'s op carries its cause and deeds ' + c.opRule);
 
 // THE COLLECTION survives a reload, and the starter hand comes once
 const counts = c.counts;

@@ -463,8 +463,10 @@ const Deck = {
     if (cards.some(c => c.tier === 'enlight')) col.pity = 0;
     else if (rep.win) col.pity++;
     col.runs[rep.key] = cards.map(c => ({ id: c.id, tier: c.tier, bonus: c.bonus }));
+    // the cause and the deeds ride the op, so the server can re-run the earn
+    // rule (Deck.eligible) on the grant itself as well as on the run's row
     this._queue({ op: 'grant', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', mode: rep.mode,
-      cards: cards.map(c => c.id), great, pity: forced });
+      cause: rep.cause, deeds: rep.deeds | 0, cards: cards.map(c => c.id), great, pity: forced });
     this.saveCol();
     for (const c of cards) this.track('card_granted', { card: c.id, tier: c.tier, outcome: rep.win ? 'win' : 'loss', difficulty: rep.mode, bonus: c.bonus, run: rep.runId });
     return { ok: true, cards, great, pity: forced };
