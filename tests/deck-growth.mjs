@@ -1086,6 +1086,11 @@ await p.evaluate(() => {
               else g.setTransform(1, 0, 0, 1, 0, 0);
               d.show.draw.call(d, g, s, pp, 1 / 30, L);
               g.restore();
+              // a show that lights the buildings does it in the building pass
+              if (L === layers[0] && d.show.drawBld) {
+                const z = R.cam.z * R.dpr;
+                for (const bb of S.buildings) { g.save(); g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z); d.show.drawBld.call(d, g, bb, s, pp); g.restore(); }
+              }
             });
           } catch (e) { out.threw.push(id + ' @' + pp + ' ' + L + ': ' + e); try { g.restore(); } catch (e2) { /* */ } }
         }

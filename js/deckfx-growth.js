@@ -647,11 +647,14 @@ Object.assign(Deck.FX, {
           const e = F.env(p, 0, 0.14, 0.7, 1);
           if (e <= 0) return;
           F.skyBands(g, '255,196,80', 0.3 * e, 7, 0.55);
-          // the sun, rising into the top of the world over the hall, then held
+          // the sun, rising over the hall into the top of the world — below the
+          // top bar, which is measured once (R.topReserve is learned lazily
+          // and reads 0 early in a session: the marvel caption's lesson)
+          if (s.topPx == null) { const tb = document.getElementById('topbar'); s.topPx = tb ? Math.max(0, tb.getBoundingClientRect().bottom) * dpr : 0; }
           const sc = F.toScreen(s.x, s.y), ox = Math.max(W * 0.15, Math.min(W * 0.85, sc.x));
-          const oy = -H * 0.12 + H * 0.12 * F.ease(p / 0.3), px = Math.max(2, Math.round(4 * dpr));
+          const oy = s.topPx - H * 0.1 + H * 0.17 * F.ease(p / 0.3), px = Math.max(2, Math.round(4 * dpr));
           g.save(); g.globalCompositeOperation = 'lighter';
-          for (const [r, a, c] of [[0.26, 0.12, '255,170,60'], [0.17, 0.2, '255,206,110'], [0.09, 0.38, '255,244,206']]) {
+          for (const [r, a, c] of [[0.2, 0.12, '255,170,60'], [0.13, 0.2, '255,206,110'], [0.065, 0.42, '255,244,206']]) {
             g.fillStyle = 'rgba(' + c + ',' + (a * e).toFixed(3) + ')';
             R.pxDisc(g, ox, oy, H * r, px, 1);
           }
@@ -662,7 +665,7 @@ Object.assign(Deck.FX, {
         }
         const TL = CFG.TILE, cx = s.x * TL, cy = s.y * TL, vp = F.viewPx(2), v = F.view(2), reach = s.reach || this.REACH;
         if (p >= 0.05 && !s.boom) { s.boom = 1; if (R.shakeAt) R.shakeAt(3, 0.6); }
-        const run = q => Math.pow(Math.max(0, Math.min(1, q)), 0.85);   // the light keeps its pace across the town
+        const run = this.run;
         g.save(); g.globalCompositeOperation = 'lighter';
         // the amber pillar out of the hall, up to the top of the world
         const pl = F.env(p, 0, 0.06, 0.36, 0.56);
@@ -678,16 +681,12 @@ Object.assign(Deck.FX, {
           F.ring(g, cx, cy, reach * TL * run(q), k ? '#ffcc40' : '#fff1b8', (1 - q * 0.7) * (k ? 0.7 : 1), 2, 1, vp);
         }
         g.restore();
-        const front = reach * run((p - 0.08) / 0.7), held = F.env(p, 0.1, 0.2, 0.78, 1);
         for (const b of S.buildings) {
           if (b.owner !== 'P' || !Bld.done(b)) continue;
           const bx = Bld.cx(b), by = Bld.cy(b);
           if (!F.inV(v, bx, by)) continue;
-          const k = (front - Math.hypot(bx - s.x, by - s.y)) / 1.8;
-          if (k <= 0) continue;
-          // the flash as the light arrives, then the sheen it leaves
-          F.flashBld(g, b, '#ffe9a0', k < 1 ? 0.85 * (1 - k * 0.45) : Math.max(0.24 * held, k < 1.6 ? 0.45 * (1.6 - k) / 0.6 : 0));
-          if (k >= 1.6) continue;
+          const k = this.lightOn(s, p, b);
+          if (k <= 0 || k >= 1.6) continue;
           const box = F.artBox(b), foot = (b.y + Bld.size(b)) * TL;
           g.save(); g.globalCompositeOperation = 'lighter';
           F.ring(g, bx * TL, foot - 2, TL * (0.4 + Bld.size(b) * 0.6 * F.ease(k / 1.6)), '#ffd45e', 1 - k / 1.6, 2, 0.5, vp);
@@ -699,6 +698,24 @@ Object.assign(Deck.FX, {
           }
         }
       },
+      /* each building CATCHES the light — its own silhouette flashing gold as
+         the front reaches it, then the sheen it keeps until the dawn passes —
+         laid on its own art in the building pass (R.drawCardBld), so the
+         hands at work on a field stand in front of the glow, not inside it */
+      drawBld(g, b, s, p) {
+        if (b.owner !== 'P' || !Bld.done(b)) return;
+        const k = this.lightOn(s, p, b);
+        if (k <= 0) return;
+        const held = GrowFX.env(p, 0.1, 0.2, 0.78, 1);
+        GrowFX.flashBld(g, b, '#ffe9a0', k < 1 ? 0.85 * (1 - k * 0.45) : Math.max(0.24 * held, k < 1.6 ? 0.45 * (1.6 - k) / 0.6 : 0));
+      },
+    },
+    // the light keeps its pace across the town
+    run(q) { return Math.pow(Math.max(0, Math.min(1, q)), 0.85); },
+    // how far past a building the dawn's front has rolled, in its own beats (≤ 0: not yet)
+    lightOn(s, p, b) {
+      const front = (s.reach || this.REACH) * this.run((p - 0.08) / 0.7);
+      return (front - Math.hypot(Bld.cx(b) - s.x, Bld.cy(b) - s.y)) / 1.8;
     },
     // while the age lasts, the town's roofs shed a slow gold (and every hand
     // at work wears the motes — cue 'motes', the festival's look)
@@ -1195,9 +1212,8 @@ Object.assign(Deck.FX, {
           }
           g.restore();
         }
-        // THE HALL RISES IN ITS OWN LIGHT
-        if (p > 0.06 && p < 0.5) F.flashBld(g, Bld.get(s.tc), '#ffe9a0', 0.8 * F.env(p, 0.06, 0.12, 0.3, 0.5));
-        // THE LIGHT RUNS OUT TO EVERY BUILDING
+        // THE LIGHT RUNS OUT TO EVERY BUILDING (each rises in its own light in
+        // the building pass — show.drawBld below)
         for (const it of s.items) {
           const a0 = 0.2 + 0.46 * (it.d / s.maxD), land = a0 + 0.07;
           if (p < a0) continue;
@@ -1218,7 +1234,6 @@ Object.assign(Deck.FX, {
           const k = (p - land) / 0.2;
           if (k >= 1 || bx < vp.x0 || bx > vp.x1 || by < vp.y0 || by > vp.y1 + TL) continue;
           if (!it.rung) { it.rung = 1; F.sfx('rise'); }
-          F.flashBld(g, Bld.get(it.id), '#ffe9a0', 0.85 * (1 - k));
           const bf = by + it.sz * TL * 0.5;
           g.save(); g.globalCompositeOperation = 'lighter';
           F.column(g, bx, bf, bf - TL * (1.4 + it.sz * 0.7) * F.ease(k * 2.5), TL * 0.75 * it.sz * (1 - k), 1 - k);
@@ -1229,6 +1244,17 @@ Object.assign(Deck.FX, {
             F.mote(g, bx + (h - 0.5) * TL * it.sz, bf - TL * 0.4 - k * TL * (0.8 + h), m % 2 ? '#fff1b8' : '#ffd45e', '#7a4a0a', 1 - k);
           }
         }
+      },
+      /* the hall, then every building, RISES IN ITS OWN LIGHT — its silhouette
+         flashed gold on its own art in the building pass (R.drawCardBld), so
+         whoever is at work on it stands in front of the light */
+      drawBld(g, b, s, p) {
+        const F = GrowFX;
+        if (b.id === s.tc) { if (p > 0.06 && p < 0.5) F.flashBld(g, b, '#ffe9a0', 0.8 * F.env(p, 0.06, 0.12, 0.3, 0.5)); return; }
+        const it = (s._byId || (s._byId = new Map(s.items.map(z => [z.id, z])))).get(b.id);
+        if (!it) return;
+        const k = (p - (0.2 + 0.46 * (it.d / s.maxD) + 0.07)) / 0.2;
+        if (k > 0 && k < 1) F.flashBld(g, b, '#ffe9a0', 0.85 * (1 - k));
       },
     },
   },

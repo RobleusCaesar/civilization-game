@@ -10401,7 +10401,9 @@ const R = {
                                FINISHED building's own art is laid (only for
                                the buildings the frame draws — in sight, on
                                camera), so a look on a building stays under
-                               whoever stands on it.
+                               whoever stands on it — and a show may carry
+                               show.drawBld(g, b, s, p) for the same pass
+                               (a building catching the card's light).
      Both cost nothing with no card in play (R.draw's length checks). */
   drawCardGround(g, dt) {
     if (this.cardShows.length) this.drawCardShows(g, dt, 'ground');
@@ -10418,19 +10420,30 @@ const R = {
   },
   cardBldLooks() {
     if (!window.Deck) return null;
-    const now = Deck.now();
     let out = null;
-    for (const e of S.deck.fx) {
-      const d = Deck.FX[e.id];
-      if (!(e.until > now) || !d || !d.drawBld) continue;
-      (out || (out = [])).push(e);
+    const fx = S.deck && S.deck.fx;
+    if (fx && fx.length) {
+      const now = Deck.now();
+      for (const e of fx) {
+        const d = Deck.FX[e.id];
+        if (!(e.until > now) || !d || !d.drawBld) continue;
+        (out || (out = [])).push({ e });
+      }
+    }
+    for (const s of this.cardShows) {
+      const d = Deck.FX[s.id], sh = d && d.show;
+      if (!sh || !sh.drawBld) continue;
+      const p = s.t / (s.ms / 1000);
+      if (p < 1) (out || (out = [])).push({ s, p });
     }
     return out;
   },
   drawCardBld(g, b, list) {
-    for (const e of list) {
+    for (const it of list) {
+      const id = it.e ? it.e.id : it.s.id, d = Deck.FX[id];
       g.save();
-      try { Deck.FX[e.id].drawBld(g, b, e); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', e.id, err); } }
+      try { if (it.e) d.drawBld(g, b, it.e); else d.show.drawBld.call(d, g, b, it.s, it.p); }
+      catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', id, err); } }
       g.restore();
     }
   },
@@ -13041,7 +13054,7 @@ const R = {
     blds.sort((a, b) => ((a.y + Bld.size(a)) - (b.y + Bld.size(b))) || (rk.get(a) - rk.get(b)));
     // a running card that wears a look ON a building (the Blight's withered
     // fields) — laid over that building's own art, so under whoever stands on it
-    const cardBld = S.deck && S.deck.fx && S.deck.fx.length ? this.cardBldLooks() : null;
+    const cardBld = (S.deck && S.deck.fx && S.deck.fx.length) || this.cardShows.length ? this.cardBldLooks() : null;
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;
