@@ -183,20 +183,40 @@ const GrowFX = {
      which a warm grade reads olive and a warm paint sand. The sun or the
      burst at the top of the world, its rays of dots and its glitter carry
      the light there now.) */
-  /* rays of light as rows of dots fanning down from (ox, oy), device px —
-     each dot laid opaque in the tone's ink, the ray fading down the ramp as
-     it reaches out (R.goldInk) */
+  /* rays of light fanning down from (ox, oy), device px: each a NARROW
+     wedge of the card's light (R.glow — the meadow under it turned gold,
+     then brightened), cut in rows of the world's grain so its edges are hard
+     pixel steps, in four bands that step down as it reaches out — and a
+     bead of the tone's ink every few rows along its spine. Laid wide it
+     was a slab, added it was lime. */
   rays(g, ox, oy, n, spread, tone, a, t) {
-    const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1))), stepL = px * 6, L = H * 1.15;
+    const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1)));
+    const gr = Math.max(px, Math.round(2 * R.cam.z * (R.dpr || 1))), top = Math.max(0, Math.ceil(oy / gr) * gr);
+    const L = H - top, BANDS = 4;
+    if (L <= 0) return;
     g.save();
     for (let r = 0; r < n; r++) {
-      const th = Math.PI / 2 + (r - (n - 1) / 2) * spread + Math.sin(t * 0.8 + r * 1.7) * 0.012;
-      const ux = Math.cos(th), uy = Math.sin(th), ar = a * (r % 2 ? 0.55 : 1);
-      for (let d = stepL; d < L; d += stepL) {
-        const x = ox + ux * d, y = oy + uy * d;
-        if (x < 0 || x > W || y < 0 || y > H) continue;
-        if (!R.inkOn(g, ar * (1 - d / L), tone)) break;
-        g.fillRect(Math.round(x / px) * px, Math.round(y / px) * px, px, px);
+      const th = (r - (n - 1) / 2) * spread + Math.sin(t * 0.8 + r * 1.7) * 0.012;   // from the vertical
+      if (Math.abs(th) > 1.3) continue;                    // too flat to cut in rows
+      const ar = a * (r % 2 ? 0.55 : 1), w = r % 2 ? 0.006 : 0.01;
+      const t1 = Math.tan(th - w), t2 = Math.tan(th + w), tc = Math.tan(th);
+      for (let b = 0; b < BANDS; b++) {
+        const y0 = top + Math.round(L * b / BANDS / gr) * gr, y1 = top + Math.round(L * (b + 1) / BANDS / gr) * gr;
+        R.glow(g, ar * 0.75 * (1 - b / BANDS), () => {
+          for (let y = y0; y < y1; y += gr) {
+            const dy = y + gr / 2 - oy;
+            let X1 = Math.round((ox + t1 * dy) / gr) * gr, X2 = Math.round((ox + t2 * dy) / gr) * gr;
+            if (X2 <= X1) X2 = X1 + gr;
+            if (X2 < 0 || X1 > W) continue;
+            g.fillRect(X1, y, X2 - X1, gr);
+          }
+        }, tone);
+      }
+      // the beads along its spine
+      for (let y = top + gr * 3; y < H; y += gr * 6) {
+        const d = (y - top) / L;
+        if (!R.inkOn(g, ar * (1 - d), tone)) break;
+        g.fillRect(Math.round((ox + tc * (y - oy)) / px) * px, y, px, px);
       }
     }
     g.restore();
