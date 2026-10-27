@@ -818,9 +818,12 @@ const DeckUI = {
   },
   // the toast's line: the effect's first sentence ("+250 food.", "Five
   // Horse Archers ride out of your Town Center.") — the card names the rest
+  // — and a sentence that runs on into its rules ("A falling star strikes
+  // the chosen ground: 900 damage to…") is cut at the colon: the numbers are
+  // on the card, and the strike's own narration says what it hit
   _line(text) {
-    const m = /^.*?[.!](?=\s|$)/.exec(text);
-    return m ? m[0] : text;
+    const m = /^.*?(?:[.!](?=\s|$)|:(?=\s))/.exec(text);
+    return m ? m[0].replace(/:$/, '.') : text;
   },
 
   // the light hits the ground: a ring of the tier's pixels and a flash
