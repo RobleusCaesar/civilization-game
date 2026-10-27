@@ -47,6 +47,11 @@
                      test deck writes nothing for the cloud; the link is
                      read with the switch thrown on too; ?cards=0 forgets
                      the toy deck with the switch, never a real collection
+     EARNED IS EARNED a card won while the toy deck is held (a plain visit
+                     keeps it) is banked in the set-aside real collection
+                     too, its grant op in that collection's own queue — one
+                     made for a device that had none — so ?cards=0 gives it
+                     back and it syncs; a re-dealt toy never banks a run twice
      THE LESSON      while the tutorial's spine runs the door refuses (the
                      deck is not in the game yet) and the card stays
 
@@ -809,6 +814,14 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
     const r = Deck.play('forager_cache');
     const g = Deck.settle(Object.assign(Deck.report(true, 'razed_rival_tc'), { key: 'cards-all-win' }));
     o.played = r.ok; o.granted = g.ok; o.queued = Deck.col().queue.length;
+    // EARNED IS EARNED: the win is banked in the set-aside real collection too
+    o.cards = (g.cards || []).map(c => c.id);
+    o.legend = (g.cards || []).some(c => c.tier === 'enlight');
+    o.toy = Deck.total();
+    o.stashRaw = Deck._get(Deck.REAL_KEY);
+    o.stash = JSON.parse(o.stashRaw || 'null');
+    o.reSettle = Deck.settle(Object.assign(Deck.report(true, 'razed_rival_tc'), { key: 'cards-all-win' })).again === true;
+    o.stashAfterAgain = Deck._get(Deck.REAL_KEY);
     return o;
   });
   // …and every card it deals can be played: each has its effect built
@@ -819,12 +832,43 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   ck('andResetsTheCollectionFirst', a1.runs === 0 && a1.pity === 0 && a1.queue === 0 && a1.starter && a1.again === false,
     `ledger ${a1.runs}, pity ${a1.pity}, queue ${a1.queue}, starter marked ${a1.starter} (a second ask deals ${a1.again})`);
   ck('aTestDeckWritesNothingForTheCloud', a1.played && a1.granted && a1.queued === 0, `played ${a1.played}, granted ${a1.granted}, queued ${a1.queued}`);
+  /* EARNED IS EARNED (the playtest's test-link slice): a WIN settled while
+     the toy deck is held used to be granted into the toy alone — queued
+     nowhere, wiped by ?cards=0. It lands in the toy AND in the set-aside
+     real collection, its grant op queued in that collection's own queue
+     behind what it was already waiting to send; everything the stash held
+     is kept, and settling the run again pays nobody twice. */
+  {
+    const R0 = JSON.parse(REAL), st = a1.stash || {};
+    const want = {};
+    for (const id in R0.counts) want[id] = R0.counts[id];
+    for (const id of a1.cards) want[id] = (want[id] || 0) + 1;
+    const countsOk = !!a1.stash && Object.keys(want).every(id => st.counts[id] === want[id]) &&
+      Object.keys(st.counts).every(id => want[id] === st.counts[id]);
+    const q = st.queue || [];
+    const opOk = q.length === 2 && q[0].op === 'grant' && q[0].at === 7 && q[1].op === 'grant' && q[1].key === 'cards-all-win' &&
+      JSON.stringify(q[1].cards) === JSON.stringify(a1.cards);
+    const keptOk = st.starter === 5 && st.seen.swift_raiders === 1 && !!st.runs.k1 && !!st.runs['cards-all-win'] &&
+      a1.cards.every(id => st.seen[id] > 0) && !st.test;
+    // the REAL count moves (9 → 10 on a win, 0 on a legend), never the toy's alone
+    const pityOk = st.pity === (a1.legend ? 0 : R0.pity + 1);
+    ck('aCardEarnedOnATestDeckIsBankedInTheRealCollection',
+      a1.cards.length >= 1 && countsOk && opOk && keptOk && pityOk && a1.toy === 35 + a1.cards.length,
+      `granted ${a1.cards.join('+')}; real counts ${JSON.stringify(st.counts)}; its queue ${q.map(o => o.op + (o.key ? ':' + o.key : '')).join(', ')}; ` +
+      `kept ${keptOk}, pity ${st.pity}; the toy holds ${a1.toy}`);
+    ck('andSettlingTheRunAgainBanksNothing', a1.reSettle && a1.stashAfterAgain === a1.stashRaw, `again ${a1.reSettle}`);
+  }
   // every load carrying it deals afresh — and the switch thrown at launch must
   // not stop the link being read (an on() that asked the switch first never
   // read the address at all)
   await load('?cards=all');
   const a2 = await p2.evaluate(() => {
     const o = { reloaded: (Deck.ensureStarter(), Deck.total()) };
+    // the re-dealt toy forgot the run it banked: settled again, the real
+    // collection is never paid twice
+    const st0 = Deck._get(Deck.REAL_KEY);
+    const g2 = Deck.settle(Object.assign(Deck.report(true, 'razed_rival_tc'), { key: 'cards-all-win' }));
+    o.rebank = { again: g2.again === true, same: Deck._get(Deck.REAL_KEY) === st0, toy: Deck.total() };
     Deck._add('gold_nugget', -1); Deck.saveCol();
     o.spent = Deck.total();
     Deck._dev = null; Deck._all = false; CFG.CARDS.ON = true;
@@ -833,6 +877,7 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
     return o;
   });
   ck('everyLoadOfTheLinkDealsAfresh', a2.reloaded === 36, `${a2.reloaded} after a reload`);
+  ck('andARedealtToyNeverBanksARunTwice', a2.rebank.again && a2.rebank.same && a2.rebank.toy === 36, JSON.stringify(a2.rebank));
   ck('andTheLinkIsReadWithTheSwitchOn', a2.spent === 35 && a2.switchOn === 36, `${a2.spent} → ${a2.switchOn} with CFG.CARDS.ON`);
   // a load WITHOUT it keeps the deck it dealt and the device's switch — and
   // a TEST deck never hides behind the lesson: a tester on a fresh device gets
@@ -853,8 +898,9 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
      its cards, its pity, its run ledger and the cloud op still waiting */
   await load('?cards=0');
   const a4 = await p2.evaluate(() => ({ on: Deck.on(), stored: Deck._get(Deck.KEY), stash: Deck._get(Deck.REAL_KEY) }));
-  ck('andCardsZeroGivesTheRealCollectionBack', !a4.on && a4.stored === REAL && a4.stash === null,
-    `off ${!a4.on}; the real collection back exactly: ${a4.stored === REAL}${a4.stored === REAL ? '' : ' (' + String(a4.stored).slice(0, 90) + ')'}; stash cleared ${a4.stash === null}`);
+  // …exactly as it was set aside — with the card earned on the toy deck in it
+  ck('andCardsZeroGivesTheRealCollectionBack', !a4.on && a4.stored === a1.stashRaw && a4.stash === null,
+    `off ${!a4.on}; the real collection back exactly, earnings and all: ${a4.stored === a1.stashRaw}${a4.stored === a1.stashRaw ? '' : ' (' + String(a4.stored).slice(0, 90) + ')'}; stash cleared ${a4.stash === null}`);
   // …and a device that had NO collection before the link starts afresh: the
   // toy deck gone, and ?cards=1 deals the starter hand to a real collection
   await p2.evaluate(() => { Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); });
@@ -871,6 +917,37 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   await load('?cards=0');
   const a6 = await p2.evaluate(() => { const c = JSON.parse(Deck._get(Deck.KEY) || 'null'); return c && c.counts && c.counts.swift_raiders; });
   ck('butARealCollectionSurvivesIt', a6 === 2, `swift raiders kept: ${a6}`);
+  /* …and the playtest's own repro, on a device that had NO real collection:
+     ?cards=all, then a PLAIN visit (the toy deck still held — a phone
+     relaunch drops the query), a win there, ?cards=0, ?cards=1 — the won
+     cards are still the player's, with the grant waiting to sync and the
+     starter hand marked as given (the test deck's mark), no toys left */
+  await p2.evaluate(() => { Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); });
+  await load('?cards=all');
+  await p2.evaluate(() => Deck.ensureStarter());
+  await load('');
+  const a7 = await p2.evaluate(() => {
+    Deck.ensureStarter();
+    Screens._demo = false;
+    G.newGame('cards-plain-win', 'moderate', 'medium');
+    Screens.show('playing'); S.paused = true;
+    const g = Deck.settle(Object.assign(Deck.report(true, 'razed_rival_tc'), { key: 'plain-visit-win' }));
+    return { test: Deck.isTest(), cards: (g.cards || []).map(c => c.id), toyQueue: Deck.col().queue.length };
+  });
+  await load('?cards=0');
+  await load('?cards=1');
+  const a8 = await p2.evaluate(() => {
+    const dealt = Deck.ensureStarter(), c = Deck.col();
+    return { test: Deck.isTest(), total: Deck.total(), counts: c.counts, starter: !!c.starter, dealt,
+      queue: c.queue.map(o => ({ op: o.op, key: o.key, cards: o.cards })) };
+  });
+  const sumOk = a7.cards.length >= 1 && a7.cards.every(id => a8.counts[id] >= 1) && a8.total === a7.cards.length;
+  ck('andAWinOnAPlainVisitIsStillThePlayersAfterCardsZero',
+    a7.test && a7.toyQueue === 0 && !a8.test && sumOk && a8.starter && a8.dealt === false &&
+    a8.queue.length === 1 && a8.queue[0].op === 'grant' && a8.queue[0].key === 'plain-visit-win' &&
+    JSON.stringify(a8.queue[0].cards) === JSON.stringify(a7.cards),
+    `won on the toy deck: ${a7.cards.join('+')} (toy queue ${a7.toyQueue}); after ?cards=0 and ?cards=1: ${a8.total} cards ${JSON.stringify(a8.counts)}, ` +
+    `test ${a8.test}, starter marked ${a8.starter} (dealt again ${a8.dealt}), queued ${JSON.stringify(a8.queue)}`);
   await ctx2.close();
 }
 

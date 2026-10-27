@@ -246,9 +246,11 @@ const Deck = {
            so a device left holding one would never sync again. Leaving the
            test link leaves its toys and gives back the REAL collection the
            link put aside (dealAll's REAL_KEY — its cards, its run ledger and
-           the cloud ops still waiting in its queue), exactly as it was; a
-           device that had none starts afresh. A real collection standing in
-           the slot is never touched. */
+           the cloud ops still waiting in its queue), exactly as it was plus
+           any card EARNED meanwhile (settle's _stashGrant: a real win on a
+           toy deck is still a real win); a device that had none and earned
+           nothing starts afresh. A real collection standing in the slot is
+           never touched. */
         let c = null;
         try { c = JSON.parse(this._get(this.KEY) || 'null'); } catch (e) { c = null; }
         if (c && c.test) {
@@ -356,8 +358,11 @@ const Deck = {
      marked as given so it adds no three more — then one of every card in the
      catalog. It is marked `test`: a test deck is the tester's toy, never the
      player's record, so nothing it grants or plays is queued for the cloud
-     or reported as telemetry (_queue, track) — and the cloud must neither
-     overwrite it nor be written from it (Deck.sync asks Deck.isTest()).
+     from it or reported as telemetry (_queue, track) — and the cloud must
+     neither overwrite it nor be written from it (Deck.sync asks
+     Deck.isTest()). A card EARNED while it is held is the one exception:
+     that grant is banked in the set-aside real collection too, with its op
+     in that collection's own queue (settle → _stashGrant).
      A REAL collection is never thrown away to make room: a deal over it
      puts it aside, exactly as stored (its queue of unsynced ops included),
      under REAL_KEY, and ?cards=0 gives it back (devOn); a later deal over a
@@ -491,12 +496,23 @@ const Deck = {
     if (col.runs[rep.key]) return { ok: true, again: true, cards: col.runs[rep.key].map(x => Object.assign({}, x)), great: col.runs[rep.key].length > 1 };
     const el = this.eligible(rep);
     if (!el.ok) return { ok: false, why: el.why, cards: [] };
+    // a TEST deck held: the earning is real all the same (_stashRead, below)
+    const real = col.test ? this._stashRead() : null;
+    if (real && real.runs[rep.key]) {
+      // banked before (a re-dealt toy deck forgot it): the record is never paid twice
+      col.runs[rep.key] = real.runs[rep.key].map(x => Object.assign({}, x));
+      this.saveCol();
+      return { ok: true, again: true, cards: col.runs[rep.key].map(x => Object.assign({}, x)), great: col.runs[rep.key].length > 1 };
+    }
     const w = this.table(rep), great = this.great(rep);
     const cards = [];
     let forced = false;
+    // the pity that may force a legend is the REAL collection's when a toy
+    // deck is held — the record's count, and the one the server re-derives
+    const pity = real ? real.pity : col.pity;
     for (let i = 0; i < (great ? 2 : 1); i++) {
       let tier;
-      if (i === 0 && rep.win && col.pity >= CFG.CARDS.PITY) { tier = 'enlight'; forced = true; }
+      if (i === 0 && rep.win && pity >= CFG.CARDS.PITY) { tier = 'enlight'; forced = true; }
       else tier = this.rollTier(w, rng);
       cards.push({ id: this.rollCard(tier, rng), tier, bonus: i > 0 });
     }
@@ -506,11 +522,55 @@ const Deck = {
     col.runs[rep.key] = cards.map(c => ({ id: c.id, tier: c.tier, bonus: c.bonus }));
     // the cause and the deeds ride the op, so the server can re-run the earn
     // rule (Deck.eligible) on the grant itself as well as on the run's row
-    this._queue({ op: 'grant', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', mode: rep.mode,
-      cause: rep.cause, deeds: rep.deeds | 0, act_days: rep.actDays | 0, cards: cards.map(c => c.id), great, pity: forced });
+    const op = { op: 'grant', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', mode: rep.mode,
+      cause: rep.cause, deeds: rep.deeds | 0, act_days: rep.actDays | 0, cards: cards.map(c => c.id), great, pity: forced };
+    this._queue(op);
+    if (real) this._stashGrant(real, rep, cards, op);
     this.saveCol();
     for (const c of cards) this.track('card_granted', { card: c.id, tier: c.tier, outcome: rep.win ? 'win' : 'loss', difficulty: rep.mode, bonus: c.bonus, run: rep.runId });
     return { ok: true, cards, great, pity: forced };
+  },
+  /* EARNED IS EARNED (tests/deck-core.mjs — the playtest's test-link slice).
+     ?cards=all's toy deck outlives the link on purpose (a phone relaunched
+     from the home screen drops the query, and the tester's deck must still
+     be there), so a PLAIN visit can still be holding it — and a card won on
+     that visit used to be granted into the toy alone, queued nowhere, and
+     wiped at ?cards=0 with the rest of the toys. A real win is not a toy:
+     a grant settled while a test deck is held ALSO lands in the set-aside
+     real collection (REAL_KEY) — the cards, their first-seen, the run's
+     line in its ledger and its pity — with the cloud op queued in the
+     STASH'S OWN queue, behind whatever it was already waiting to send, so
+     it syncs the moment ?cards=0 gives the real collection back. A device
+     that had no real collection gets one made: the starter hand marked as
+     given (the test deck's own mark — the record's reconcile takes it off
+     again if the cloud never claimed it) and the grant. The toy deck still
+     shows the card too, and still queues nothing of its own. */
+  _stashRead() {
+    let s = null;
+    try { s = JSON.parse(this._get(this.REAL_KEY) || 'null'); } catch (e) { s = null; }
+    if (!s || typeof s !== 'object') s = { v: 1, counts: {}, seen: {}, pity: 0, starter: this.col().starter || Date.now(), runs: {}, queue: [], medians: {} };
+    if (!s.counts || typeof s.counts !== 'object') s.counts = {};
+    if (!s.seen || typeof s.seen !== 'object') s.seen = {};
+    if (!(s.pity >= 0)) s.pity = 0;
+    if (!s.runs || typeof s.runs !== 'object') s.runs = {};
+    if (!Array.isArray(s.queue)) s.queue = [];
+    if (!s.medians || typeof s.medians !== 'object') s.medians = {};
+    return s;
+  },
+  _stashGrant(s, rep, cards, op) {
+    for (const c of cards) {
+      s.counts[c.id] = (s.counts[c.id] || 0) + 1;
+      if (!s.seen[c.id]) s.seen[c.id] = Date.now();
+    }
+    if (cards.some(c => c.tier === 'enlight')) s.pity = 0;
+    else if (rep.win) s.pity++;
+    s.runs[rep.key] = cards.map(c => ({ id: c.id, tier: c.tier, bonus: c.bonus }));
+    s.queue.push(Object.assign({ at: Date.now() }, op));
+    // capped as the slot is (saveCol)
+    const keys = Object.keys(s.runs);
+    if (keys.length > 60) for (const k of keys.slice(0, keys.length - 60)) delete s.runs[k];
+    if (s.queue.length > CFG.CARDS.QUEUE_MAX) s.queue.splice(0, s.queue.length - CFG.CARDS.QUEUE_MAX);
+    this._set(this.REAL_KEY, JSON.stringify(s));
   },
 
   /* ---------------- the RUN (S.deck rides in every save) ---------------- */
