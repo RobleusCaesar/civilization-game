@@ -787,7 +787,8 @@
             const x0 = Math.min(...down.map(it => it[0])) - 8, x1 = Math.max(...down.map(it => it[0])) + 10;
             g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(pile.x + x0), sn(pile.y - 1), sn(x1 - x0), PX);
           }
-          TX.inked(g, Math.min(pile.x, bedX) - 40, Math.min(pile.y, bedY) - 60, Math.abs(pile.x - bedX) + 80, Math.abs(rowY - pile.y) + 80, gg => {
+          const iy0 = Math.min(pile.y, bedY) - 60, iy1 = Math.max(pile.y, bedY) + 20;   // the arcs' peaks to the pile's foot
+          TX.inked(g, Math.min(pile.x, bedX) - 40, iy0, Math.abs(pile.x - bedX) + 80, iy1 - iy0, gg => {
             for (let k = 0; k < PILE.length; k++) {
               const tl = t - U[k], [dx, dy, fn] = PILE[k];
               if (tl < 0) continue;
