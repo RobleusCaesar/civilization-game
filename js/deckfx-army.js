@@ -315,34 +315,55 @@ Object.assign(Deck, {
 });
 
 /* ---------------- THE LOOK: shared house-style strokes for the shows ----------------
-   Hard pixels snapped to a 2px grid in the world, hard alpha steps, light
-   ADDED where it is light, rings made OF dots, never a stroked arc, never a
-   soft radial gradient, never ctx.filter. World-space helpers take tiles ×
-   CFG.TILE; the sky helpers take device pixels. Every helper bounds its own
-   count, so a show's cost is fixed whatever the town looks like. */
+   Hard pixels snapped to a 2px grid in the world, hard alpha steps, rings
+   made OF dots, never a stroked arc, never a soft radial gradient, never
+   ctx.filter. World-space helpers take tiles × CFG.TILE; the sky helpers
+   take device pixels. Every helper bounds its own count, so a show's cost is
+   fixed whatever the town looks like.
+   THE LIGHT IS GOLD, NOT LIME: a helper handed a TONE ('gold', 'bronze',
+   'pale' — R.LIGHT.TONE) in place of an "r,g,b" draws the card's own light
+   (render.js): a body (shaft, pool, the sky's rays) is an R.glow — what it
+   falls on turns gold, then bright — and a mark (a ring's dots, a glint, a
+   mote) opaque ink faded down the tone's ramp, whatever composite the
+   caller holds. Any other colour (a ghost's cold blue, steel, white) keeps
+   its own additive look, in the caller's composite, as before. */
 Deck.armyFx = {
   snap(v) { return Math.round(v / 2) * 2; },
   // every alpha in hard steps of a sixth — a fade the eye reads in steps,
   // never a smooth ramp beside the hard-pixel art
   rgba(col, a) { return 'rgba(' + col + ',' + (Math.round(Math.max(0, Math.min(1, a)) * 6) / 6).toFixed(3) + ')'; },
+  // set g for marks in `col` at `a`: a tone's ink (opaque, source-over) or
+  // the colour itself; false when there is nothing to draw. The caller hands
+  // back the composite and alpha it held (a tone's ink changes both)
+  mark(g, col, a) {
+    if (R.isTone(col)) return R.inkOn(g, a, col);
+    g.fillStyle = this.rgba(col, a);
+    return true;
+  },
   ring(g, cx, cy, rad, n, col, a, sy) {
     if (a <= 0.02 || rad < 1) return;
-    g.fillStyle = this.rgba(col, a);
-    for (let k = 0; k < n; k++) {
+    const op = g.globalCompositeOperation, ga = g.globalAlpha;
+    if (this.mark(g, col, a)) for (let k = 0; k < n; k++) {
       const th = k / n * Math.PI * 2;
       g.fillRect(this.snap(cx + Math.cos(th) * rad), this.snap(cy + Math.sin(th) * rad * (sy || 0.5)), 2, 2);
     }
+    g.globalCompositeOperation = op; g.globalAlpha = ga;
   },
-  // a column of light standing on the ground at (cx, foot): stepped bands, a white thread
+  /* a column of light standing on the ground at (cx, foot): stepped bands,
+     a white thread. In a tone, the bands are the card's light (R.glow,
+     strongest at the heart) and the thread its white-hot core */
   shaft(g, cx, foot, h, w, col, a) {
     if (a <= 0.02 || h < 2) return;
-    for (const [wf, al] of [[1, 0.26], [0.55, 0.42], [0.25, 0.6]]) {
-      const ww = Math.max(2, this.snap(w * wf));
+    const tone = R.isTone(col), y0 = this.snap(foot - h), hh = this.snap(h);
+    for (const [wf, al, sv] of [[1, 0.26, 0.6], [0.55, 0.42, 0.8], [0.25, 0.6, 1]]) {
+      const ww = Math.max(2, this.snap(w * wf)), x0 = this.snap(cx - ww / 2);
+      if (tone) { R.glow(g, sv * a, () => g.fillRect(x0, y0, ww, hh), col); continue; }
       g.fillStyle = this.rgba(col, al * a);
-      g.fillRect(this.snap(cx - ww / 2), this.snap(foot - h), ww, this.snap(h));
+      g.fillRect(x0, y0, ww, hh);
     }
+    if (tone) { R.glowHot(g, 0.85 * a, () => g.fillRect(this.snap(cx - 1), y0, 2, hh), col); return; }
     g.fillStyle = this.rgba('255,252,240', 0.85 * a);
-    g.fillRect(this.snap(cx - 1), this.snap(foot - h), 2, this.snap(h));
+    g.fillRect(this.snap(cx - 1), y0, 2, hh);
   },
   /* a beam rising OUT of the ground: brightest at the foot, stepping down
      as it climbs (three hard bands), a white thread up its middle — light
@@ -363,29 +384,37 @@ Deck.armyFx = {
       g.fillRect(this.snap(cx - 1), top, 2, bot - top);
     }
   },
+  /* a pool of light on the ground — in a colour only: the card's own light
+     never pools on the meadow (a warm patch there reads as sand); it lands in
+     a ring of dots */
   pool(g, cx, cy, r, col, a) {
-    if (a <= 0.02) return;
+    if (a <= 0.02 || R.isTone(col)) return;
     g.fillStyle = this.rgba(col, a);
     R.pxDisc(g, cx, cy, r, 2, 0.5);
   },
   // a four-point glint
   glint(g, x, y, s, col, a) {
     if (a <= 0.02) return;
-    g.fillStyle = this.rgba(col, a);
-    const X = this.snap(x), Y = this.snap(y);
-    g.fillRect(X, Y - s * 2, 2, s * 4 + 2); g.fillRect(X - s * 2, Y, s * 4 + 2, 2);
+    const op = g.globalCompositeOperation, ga = g.globalAlpha;
+    if (this.mark(g, col, a)) {
+      const X = this.snap(x), Y = this.snap(y);
+      g.fillRect(X, Y - s * 2, 2, s * 4 + 2); g.fillRect(X - s * 2, Y, s * 4 + 2, 2);
+    }
+    g.globalCompositeOperation = op; g.globalAlpha = ga;
   },
   // motes rising off a point: n of them, each on its own loop by its seed
   motes(g, cx, cy, n, t, seed, col, a, spread, rise) {
     if (a <= 0.02) return;
+    const op = g.globalCompositeOperation, ga = g.globalAlpha;
     for (let k = 0; k < n; k++) {
       const ph = (t * 0.6 + k / n + ((seed * 0.618 + k * 0.37) % 1)) % 1;
       const ma = (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8) * a;
       if (ma <= 0.05) continue;
-      g.fillStyle = this.rgba(col, ma > 0.6 ? 0.9 : ma > 0.3 ? 0.6 : 0.32);
+      if (!this.mark(g, col, ma > 0.6 ? 0.9 : ma > 0.3 ? 0.6 : 0.32)) continue;
       const mx = cx + Math.sin(ph * 6.28 + seed + k * 2.1) * spread + (k - n / 2) * 2;
       g.fillRect(this.snap(mx), this.snap(cy - ph * rise), 2, 2);
     }
+    g.globalCompositeOperation = op; g.globalAlpha = ga;
   },
   // the world point (tiles) on the screen (device px), for the sky layer
   scr(wx, wy) {
@@ -445,21 +474,29 @@ Deck.armyFx = {
      shafts from high above it, cut in scanlines the height of the world's
      grain so every edge is a hard pixel step (a filled polygon's edge is
      antialiased — the soft line this file never draws), two strengths of
-     shaft, added. `spread` is the cone's half-angle in radians. */
+     shaft. `spread` is the cone's half-angle in radians. In a tone each
+     shaft is the card's light (R.glow: the meadow under it turned gold, then
+     brightened); any other colour is added, as before. */
   rays(g, sx, sy, n, spin, col, a, spread) {
     if (a <= 0.02 || sy < 0) return;
     // cut on the world's own 2px grain: coarser steps read as a glitch
-    const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21;
+    const H = R.cv.height, gr = this.grain(), oy = -H * 0.3, sp = spread || 0.21, tone = R.isTone(col);
     g.save(); g.globalCompositeOperation = 'lighter';
     for (let k = 0; k < n; k++) {
-      const th = (-1 + (2 * k + 1) / n) * sp + Math.sin(spin + k * 1.7) * 0.02, w = 0.016 + (k % 3) * 0.008;
+      // a tone's shaft is NARROW (under half the width): laid solid across the
+      // meadow at the old width it was a slab, and spread thin it is olive
+      const th = (-1 + (2 * k + 1) / n) * sp + Math.sin(spin + k * 1.7) * 0.02, w = (0.016 + (k % 3) * 0.008) * (tone ? 0.42 : 1);
       const t1 = Math.tan(th - w), t2 = Math.tan(th + w);
+      const cut = () => {
+        for (let y = 0; y < sy; y += gr) {
+          const dy = y + gr / 2 - oy;
+          const X1 = Math.round((sx + t1 * dy) / gr) * gr, X2 = Math.round((sx + t2 * dy) / gr) * gr;
+          if (X2 > X1) g.fillRect(X1, y, X2 - X1, gr);
+        }
+      };
+      if (tone) { R.glow(g, a * (k % 2 ? 0.45 : 0.7), cut, col); continue; }
       g.fillStyle = this.rgba(col, a * (k % 2 ? 0.17 : 0.3));
-      for (let y = 0; y < sy; y += gr) {
-        const dy = y + gr / 2 - oy;
-        const X1 = Math.round((sx + t1 * dy) / gr) * gr, X2 = Math.round((sx + t2 * dy) / gr) * gr;
-        if (X2 > X1) g.fillRect(X1, y, X2 - X1, gr);
-      }
+      cut();
     }
     g.restore();
   },
@@ -477,7 +514,7 @@ Deck.armyFx = {
       const y = ph * sy, th = (h2 * 2 - 1) * sp * 0.9 + Math.sin(t * 0.7 + k) * 0.01;
       const x = sx + Math.tan(th) * (y - oy) + Math.sin(t * 1.3 + k * 2.3) * gr;
       const tw = ((t * 2.1 + k * 0.37) % 1) < 0.5 ? 1 : 0.55;
-      g.fillStyle = this.rgba(col, a * tw * (ph < 0.1 ? ph / 0.1 : ph > 0.9 ? (1 - ph) / 0.1 : 1));
+      if (!this.mark(g, col, a * tw * (ph < 0.1 ? ph / 0.1 : ph > 0.9 ? (1 - ph) / 0.1 : 1))) continue;   // a tone's mote: opaque ink
       g.fillRect(Math.round(x / gr) * gr, Math.round(y / gr) * gr, gr, gr);
     }
     g.restore();
@@ -639,7 +676,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   /* the army cards share ONE apply: summon the list, stamp what the card
      stamps, start the show, sound the voice, say it plainly in the log */
   const summonCard = (id, list, o) => {
-    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp });
+    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone });
     if (!r.ok) return r;
     if (o.after) o.after(r);
     for (const k of o.voices || []) sound(k);
@@ -664,7 +701,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         return summonCard('willing_hands', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'],
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHands'], tone: 'pale',   // the Stone tier's pale light
           log: () => '👥 Three strangers walk up to your Town Center, asking for a roof and a job. They are yours now.',
         });
       },
@@ -674,11 +711,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 1800, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE;
-          muster(g, s, p, '255,206,128', 1, true);
-          g.save(); g.globalCompositeOperation = 'lighter';
-          A.pool(g, s.mx * TL, s.my * TL + 4, TL * 0.9, '255,190,110', 0.22 * (1 - p));
-          A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, '255,214,140', 1 - p, 10, TL * 1.2);
-          g.restore();
+          // the Stone tier's pale light, the hearth's warmth in the motes —
+          // in ink (added, it was lime), and no pool on the doorstep (a warm
+          // patch on the meadow reads as sand)
+          muster(g, s, p, 'pale', 1, true);
+          A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, 'bronze', 1 - p, 10, TL * 1.2);
         },
       },
     },
@@ -698,7 +735,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const k = this.kind();
         return summonCard('war_band', [{ kind: k, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true,
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true, tone: 'bronze',   // the Bronze tier's light
           log: () => '⚔️ The war band: five ' + PLURAL[k] + ' march out of your Town Center.',
           msg: () => 'War Band: five ' + PLURAL[k] + ' march out of your Town Center.',
         });
@@ -710,14 +747,13 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 2400, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE;
-          muster(g, s, p, '232,150,80', 2, true);
-          g.save(); g.globalCompositeOperation = 'lighter';
+          muster(g, s, p, 'bronze', 2, true);
+          // the dust of their feet is DUST, laid as itself (added, it went lime)
           for (const m of s.units) {
             const u = live(m.id), q = s.t - m.d;
             if (!u || q < 0.4 || q > 1.6) continue;
             A.motes(g, u.x * TL, u.y * TL + 6, 3, s.t, m.id, '200,160,110', 0.6 * (1 - (q - 0.4) / 1.2), 6, 6);
           }
-          g.restore();
         },
       },
     },
@@ -731,7 +767,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const P = Deck.PACK;
         return summonCard('hunters_pack', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false,
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false, tone: 'bronze',
           stamp(u) { u.warWolf = true; u.hp = u.maxhp = P.hp; u.atk = P.atk; u.speed = P.speed; },
           after: r => Deck.FX.hunters_pack.dens(r),
           log: () => '🐺 Three war-wolves join you at your Town Center. They keep the ground round the hall.',
@@ -773,7 +809,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 3200, layer: 'world',
         draw(g, s, p, dt) {
           const TL = CFG.TILE;
-          muster(g, s, p, '226,214,170', 1, false);
+          muster(g, s, p, 'pale', 1, false);
           const dye = (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99' };
           const hx = dye.body || '#3f6d99', dyeRgb = [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16)).join(',');
           s.prev = s.prev || {}; s.howl = s.howl || {};
@@ -784,7 +820,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const q = (s.t - m.d + 0.35) / 0.7;
             if (q > 0 && q < 1) for (let k = 0; k < 10; k++) {
               const th = k / 10 * 6.283 + q * 4, rr = TL * 1.4 * (1 - q);
-              g.fillStyle = A.rgba('255,236,180', 0.85 * q);
+              if (!A.mark(g, 'gold', 0.85 * q)) continue;   // pale-gold ink, opaque
               g.fillRect(A.snap(m.x * TL + Math.cos(th) * rr), A.snap(m.y * TL + Math.sin(th) * rr * 0.55 - TL * 0.3), 2, 2);
             }
             if (!u) continue;
@@ -796,7 +832,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
               if (sp > 0.8) {
                 const ux = vx / sp, uy = vy / sp;
                 for (let j = 1; j <= 5; j++) {
-                  g.fillStyle = A.rgba(j < 3 ? '255,240,200' : '226,214,170', 0.9 * (1 - j / 6));
+                  if (!A.mark(g, j < 3 ? 'gold' : 'pale', 0.9 * (1 - j / 6))) continue;
                   const bx = (u.x - ux * j * 0.2) * TL, by = (u.y - uy * j * 0.2) * TL + 4;
                   g.fillRect(A.snap(bx - uy * 4), A.snap(by + ux * 2), 2, 2);
                   g.fillRect(A.snap(bx + uy * 4), A.snap(by - ux * 2), 2, 2);
@@ -810,8 +846,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             if (h0 == null) continue;
             const hq = (s.t - h0) / 0.9;
             if (hq >= 1) continue;
+            g.globalCompositeOperation = 'lighter';   // the tribe's dye, added as before
             A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.35 + hq * 1.5), 16, dyeRgb, 0.9 * (1 - hq));
-            if (hq > 0.15) A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.3 + (hq - 0.15) * 1.1), 12, '255,240,200', 0.75 * (1 - hq));
+            if (hq > 0.15) A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.3 + (hq - 0.15) * 1.1), 12, 'gold', 0.75 * (1 - hq));
+            g.globalCompositeOperation = 'lighter';
             for (let k = 0; k < 4; k++) {
               const lift = (hq * 1.4 + k * 0.18) % 1;
               g.fillStyle = A.rgba('240,236,220', 0.8 * (1 - lift));
@@ -852,10 +890,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             return;
           }
           A.beats(s, p, [0.02, 0.16, 0.30, 0.39], 3, 0.22, 'cardDrum');
-          muster(g, s, p, '232,150,80', 1, true);
+          muster(g, s, p, 'bronze', 1, true);
           const q2 = (p - 0.1) / 0.6;
           if (q2 > 0 && q2 < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (1 + q2 * 3.4), 32, '170,200,240', 0.7 * (1 - q2));
-          flashUnits(g, s, '255,236,190', 0.45, 0.32);
+          flashUnits(g, s, 'gold', 0.45, 0.32);
           shields(g, s, 0.4);
         },
       },
@@ -881,7 +919,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         draw(g, s, p) {
           const TL = CFG.TILE;
           A.beats(s, p, [0.03, 0.18, 0.33, 0.48], 4, 0.4);
-          muster(g, s, p, '210,170,120', 2, false);
+          muster(g, s, p, 'bronze', 2, false);
           // dust at half the first cut's (it swallowed the two engines it was
           // there to announce); the sparks are what says iron
           if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 120, scale: 0.55 }); }
@@ -891,15 +929,19 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             if (q <= 0 || q >= 1) continue;
             const cx = m.x * TL, cy = m.y * TL;
             if (q < 0.22) A.glint(g, cx, cy - 4, 4, '255,252,230', 1);   // the axle strikes
+            // the sparks: white-hot added, the rest opaque in the gold and the
+            // bronze inks, fading down their ramps (added, they went lime)
             for (let k = 0; k < 14; k++) {
               const th = k * 0.4488 + m.id, sp = 0.8 + ((k * 7) % 5) * 0.12, rr = TL * (0.25 + q * 1.15 * sp);
               const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr * 0.5 - q * 10 + q * q * 14;   // flung up, falling back
               const a = q < 0.5 ? 1 : 1 - (q - 0.5) / 0.5;
-              g.fillStyle = A.rgba(k % 3 === 0 ? '255,255,240' : k % 3 === 1 ? '255,214,110' : '255,160,60', a);
-              const z = q < 0.45 && k % 2 === 0 ? 4 : 2;
-              g.fillRect(A.snap(x), A.snap(y), z, z);
-              g.fillStyle = A.rgba('255,190,90', a * 0.5);   // its trail
-              g.fillRect(A.snap(cx + Math.cos(th) * rr * 0.78), A.snap(cy + Math.sin(th) * rr * 0.39 - q * 8), 2, 2);
+              g.globalCompositeOperation = 'lighter';
+              if (A.mark(g, k % 3 === 0 ? '255,255,240' : k % 3 === 1 ? 'gold' : 'bronze', k % 3 === 0 ? a : 0.85 * a)) {
+                const z = q < 0.45 && k % 2 === 0 ? 4 : 2;
+                g.fillRect(A.snap(x), A.snap(y), z, z);
+              }
+              if (A.mark(g, 'bronze', a * 0.5))   // its trail
+                g.fillRect(A.snap(cx + Math.cos(th) * rr * 0.78), A.snap(cy + Math.sin(th) * rr * 0.39 - q * 8), 2, 2);
             }
           }
           g.restore();
@@ -936,7 +978,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         // the panel names a kind it no longer has (panelSig does not carry it)
         if (UI.sel) UI.renderPanel();
         sound('cardRanks');
-        if (window.R && R.flashAt) R.flashAt(0.22, 0.5, '255,226,140');
+        // (no whole-frame flash: gold laid over the meadow is a yellow-green
+        // frame — the pillars are the light)
         show('veterans', { x: hx, y: hy, lit });
         const n = ranks + vets;
         Deck.say('🎖️ ' + n + ' soldier' + (n > 1 ? 's' : '') + ' rise a rank' +
@@ -952,9 +995,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 3600, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE, v = R.viewTiles();
-          g.save(); g.globalCompositeOperation = 'lighter';
+          g.save();
           const q0 = p / 0.7;
-          if (q0 < 1) A.ring(g, s.x * TL, s.y * TL, TL * (1 + q0 * 9), 48, '255,214,110', 0.7 * (1 - q0));
+          if (q0 < 1) A.ring(g, s.x * TL, s.y * TL, TL * (1 + q0 * 9), 48, 'gold', 0.85 * (1 - q0));
           // pass 1, the light: each soldier's pillar as the wave reaches it,
           // and its new rank rising off it
           const lit = [];
@@ -964,11 +1007,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const u = live(l.hull || l.id);
             if (!u || !A.near(v, u.x, u.y, 2) || !G.visibleAt(u.x | 0, u.y | 0)) continue;
             const cx = u.x * TL, foot = u.y * TL + TL * 0.3, a = q < 0.2 ? 1 : 1 - (q - 0.2) / 0.8;
-            A.shaft(g, cx, foot, TL * 2.6 * Math.min(1, q * 6), TL * 0.8 * (1 - q * 0.6), '255,214,120', a);
-            A.pool(g, cx, foot, TL * 0.5, '255,206,110', 0.4 * a);
+            A.ring(g, cx, foot, TL * (0.4 + q * 0.5), 14, 'gold', 0.9 * a, 0.45);   // the light lands in a ring, never a pool
+            A.shaft(g, cx, foot, TL * 2.6 * Math.min(1, q * 6), TL * 0.8 * (1 - q * 0.6), 'gold', a);
             const ry = u.y * TL - TL * (0.8 + q * 0.7), n = u.vet ? 2 : 1;   // the rank it now wears
-            g.fillStyle = A.rgba('255,226,140', a);
-            for (let c = 0; c < n; c++) for (const [dx, dy] of [[-4, 0], [-2, -2], [0, -4], [2, -2], [4, 0]])
+            if (A.mark(g, 'gold', a)) for (let c = 0; c < n; c++) for (const [dx, dy] of [[-4, 0], [-2, -2], [0, -4], [2, -2], [4, 0]])
               g.fillRect(A.snap(cx + dx), A.snap(ry + c * 4 + dy), 2, 2);
             if (!l.hull && q < 0.45) lit.push([u, q]);
           }
@@ -1015,8 +1057,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const hold = p < 0.08 ? p / 0.08 : p < 0.55 ? 1 : Math.max(0, 1 - (p - 0.55) / 0.3);
             const h = A.scr(s.x, s.y);
             g.save(); A.skyClip(g);
-            A.rays(g, h.x, h.y, 11, s.t * 0.6, '255,222,140', 0.7 * hold);
-            A.dust(g, h.x, h.y, s.t, 30, '255,240,190', 0.9 * hold);
+            A.rays(g, h.x, h.y, 11, s.t * 0.6, 'gold', 0.7 * hold);
+            A.dust(g, h.x, h.y, s.t, 30, 'gold', 0.9 * hold);
             g.restore();
             A.edges(g, hold);   // last: the bars are clean black over the light
             return;
@@ -1024,13 +1066,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           // the first shake as the horn sounds; then the march, foot by foot,
           // on the drums of the fanfare (Sound cardFanfare: 2.4s, every 0.42s)
           A.beats(s, p, [0.02, 0.5, 0.588, 0.675, 0.763, 0.85], 4, 0.2, [null, 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum']);
-          muster(g, s, p, '255,214,110', 3, true);
-          flashUnits(g, s, '255,240,200', 0.4, 0.3);
+          muster(g, s, p, 'gold', 3, true);
+          flashUnits(g, s, 'gold', 0.4, 0.3);
           // the standards: a column of light over the doorstep through the beat
-          g.save(); g.globalCompositeOperation = 'lighter';
           const k = p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.25);
-          A.shaft(g, s.mx * TL, s.my * TL + 6, TL * 3.2 * Math.min(1, p * 8), TL * 1.4, '255,214,120', 0.7 * k);
-          g.restore();
+          A.shaft(g, s.mx * TL, s.my * TL + 6, TL * 3.2 * Math.min(1, p * 8), TL * 1.4, 'gold', 0.7 * k);
           stamp(g, s, p, [0.5, 0.588, 0.675, 0.763, 0.85]);
         },
       },
@@ -1056,8 +1096,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const hold = p < 0.1 ? p / 0.1 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.3);
             const h = A.scr(s.x, s.y);
             g.save(); A.skyClip(g);
-            A.rays(g, h.x, h.y, 9, s.t * 0.5, '255,214,150', 0.65 * hold);
-            A.dust(g, h.x, h.y, s.t, 24, '255,232,190', 0.85 * hold);
+            A.rays(g, h.x, h.y, 9, s.t * 0.5, 'gold', 0.65 * hold);
+            A.dust(g, h.x, h.y, s.t, 24, 'gold', 0.85 * hold);
             g.restore();
             A.edges(g, hold);
             return;
@@ -1067,9 +1107,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           // and every landing after it is a drum)
           A.beats(s, p, [0.02, 0.13, 0.24, 0.43, 0.56, 0.69, 0.82], 5, 0.35,
             [null, 'cardRumble', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum']);
-          muster(g, s, p, '255,206,120', 3, false);
+          muster(g, s, p, 'gold', 3, false);
           if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 150, scale: 1.25 }); }
-          flashUnits(g, s, '255,232,180', 0.5, 0.35);
+          flashUnits(g, s, 'gold', 0.5, 0.35);
           stamp(g, s, p, [0.43, 0.56, 0.69, 0.82]);
         },
       },
@@ -1193,18 +1233,21 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   });
 
   /* a unit's own silhouette blazing as it steps out of its light — the
-     shield catching the sun (iron and imperial musters) */
+     shield catching the sun (iron and imperial musters). In a tone it is the
+     card's light (R.glow over its tinted frame): the soldier turns gold in
+     his own light and shade, then bright — added, he flashed lime */
   function flashUnits(g, s, col, a, life) {
-    const TL = CFG.TILE, hex = '#' + col.split(',').map(n => (+n).toString(16).padStart(2, '0')).join('');
+    const TL = CFG.TILE, tone = R.isTone(col), hex = tone ? null : '#' + col.split(',').map(n => (+n).toString(16).padStart(2, '0')).join('');
     g.save(); g.globalCompositeOperation = 'lighter';
     for (const m of s.units) {
       const q = (s.t - m.d - 0.12) / life;
       if (q <= 0 || q >= 1) continue;
       const u = live(m.id);
       if (!u) continue;
-      const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+      const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B), x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D);
+      if (tone) { R.glow(g, a * (q < 0.5 ? 1 : 0.5) / 0.6, c => g.drawImage(R.tintOf(img, c), x, y, D, D), col); continue; }
       g.globalAlpha = a * (q < 0.5 ? 1 : 0.5);
-      g.drawImage(R.tintOf(img, hex), u.x * TL - D / 2, R.frameTop(u.y, B, D), D, D);
+      g.drawImage(R.tintOf(img, hex), x, y, D, D);
     }
     g.restore();
   }
@@ -1260,7 +1303,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       const x = u.x * TL + D * 0.16, y = R.frameTop(u.y, B, D) + D * 0.56;
       const a = q < 0.3 ? 1 : 1 - (q - 0.3) / 0.7;
       A.glint(g, x, y, q < 0.3 ? 5 : 3, '255,250,225', a);
-      A.ring(g, x, y, 4 + q * TL * 0.5, 12, '255,226,150', a * 0.85, 0.8);
+      A.ring(g, x, y, 4 + q * TL * 0.5, 12, 'gold', a * 0.85, 0.8);
       if (q < 0.15) { g.fillStyle = 'rgb(255,255,240)'; R.pxDisc(g, x, y, 4, 2, 1); }
     }
     g.restore();
@@ -1370,13 +1413,12 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       A.beats(s, p, [0.05, 0.18, 0.31, 0.44, 0.57, 0.70, 0.83], [2, 2, 2, 1.5, 0, 0, 0], 0.15, 'cardHoof');
       const q = p / 0.6;
       if (q < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (0.7 + q * 3.2), 30, '160,195,240', 0.8 * (1 - q));
-      g.save(); g.globalCompositeOperation = 'lighter';
+      // the dust off every horse is DUST, laid as itself (added, it went lime)
       for (const id of s.ids || []) {
         const u = live(id);
         if (!u || !Units.moving(u)) continue;
         A.motes(g, u.x * TL, u.y * TL + 8, 3, s.t * 1.6, id, '210,180,130', 0.7 * (1 - p), 8, 6);
       }
-      g.restore();
     },
   };
 }

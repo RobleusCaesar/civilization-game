@@ -278,7 +278,7 @@ Object.assign(Deck, {
       // each arrives in a shaft of light and kicks up the doorstep's dust
       // (render one-shots — never in S)
       if (window.R && opts.flash !== false) {
-        if (R.startSummon) R.startSummon(u.x, u.y, i * stag, stag ? u.id : 0);
+        if (R.startSummon) R.startSummon(u.x, u.y, i * stag, stag ? u.id : 0, opts.tone);   // the tier's light (R.LIGHT.TONE; gold unless named)
         if (R.startPlacePoof && i < 8 && opts.dust !== false) R.startPlacePoof(s.x, s.y, 1, { delay: i * Math.max(60, stag), scale: 0.8 });
       }
     }

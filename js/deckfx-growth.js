@@ -60,7 +60,9 @@
    Every show is render state (R.cardShows, never in S); a run with no card
    in play pays nothing for any of it (R.draw's length checks). The looks
    speak the house style: hard pixels on a 2px grid, alpha in hard steps,
-   light ADDED ('lighter') where it is light, rings made of dots. */
+   rings made of dots — and THE LIGHT IS GOLD, NOT LIME (R.glow, render.js):
+   a body of light turns what it falls on gold, then brightens it, and a
+   gold mark is laid opaque in the ramp's ink, never added over the grass. */
 
 /* ---------------- the pixel toolkit the growth cards draw with ---------------- */
 const GrowFX = {
@@ -93,65 +95,77 @@ const GrowFX = {
   view(pad) { const v = R.viewTiles(); pad = pad || 0; return { x0: v.x0 - pad, y0: v.y0 - pad, x1: v.x1 + pad, y1: v.y1 + pad }; },
   viewPx(pad) { const v = this.view(pad), TL = CFG.TILE; return { x0: v.x0 * TL, y0: v.y0 * TL, x1: v.x1 * TL, y1: v.y1 * TL }; },
   inV(v, x, y) { return x >= v.x0 && x <= v.x1 && y >= v.y0 && y <= v.y1; },
-  // a ring made OF dots (never a stroked arc), culled to `vp`; squash < 1 lays it on the ground
+  /* a ring made OF dots (never a stroked arc), culled to `vp`; squash < 1
+     lays it on the ground. `col` a TONE ('gold', 'pale', 'bronze') is light:
+     its dots are laid opaque in the tone's ink, fading down the ramp
+     (R.goldInk) whatever composite the caller holds; any other colour (the
+     land's green) keeps its own look */
   ring(g, cx, cy, rad, col, a, px, squash, vp, spin) {
-    a = this.step(a);
+    const tone = R.isTone(col);
+    if (!tone) a = this.step(a);
     if (a <= 0 || rad < 1) return;
     px = px || 2; squash = squash || 1;
     const n = Math.max(12, Math.min(360, Math.round(rad * 2 * Math.PI / (px * 3))));
-    g.fillStyle = col; g.globalAlpha = a;
+    const op = g.globalCompositeOperation;
+    if (tone) { if (!R.inkOn(g, a, col)) return; }
+    else { g.fillStyle = col; g.globalAlpha = a; }
     for (let i = 0; i < n; i++) {
       const th = (i + (spin || 0)) / n * Math.PI * 2, x = cx + Math.cos(th) * rad, y = cy + Math.sin(th) * rad * squash;
       if (vp && (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1)) continue;
       g.fillRect(this.snap(x, px), this.snap(y, px), px, px);
     }
-    g.globalAlpha = 1;
+    g.globalAlpha = 1; g.globalCompositeOperation = op;
   },
-  // a lit grain with a dark underside (the motes' language: it reads on grass)
+  /* a lit grain with a dark underside (the motes' language: it reads on
+     grass). A GOLD grain fades down the ramp, opaque (R.inkFade) — at half
+     alpha over the meadow it was a lime speck */
   mote(g, x, y, col, dark, a) {
     a = this.step(a);
     if (a <= 0) return;
-    const sx = this.snap(x), sy = this.snap(y);
+    const sx = this.snap(x), sy = this.snap(y), [c, ca] = R.inkFade(col, a);
+    if (ca <= 0) return;
     if (dark) { g.globalAlpha = a * 0.6; g.fillStyle = dark; g.fillRect(sx, sy + 2, 2, 1); }
-    g.globalAlpha = a; g.fillStyle = col; g.fillRect(sx, sy, 2, 2);
+    g.globalAlpha = ca; g.fillStyle = c; g.fillRect(sx, sy, 2, 2);
     g.globalAlpha = 1;
   },
-  // a pale cross, one cell each way: something catching the light
-  glint(g, x, y, col, a, px) {
+  // a pale cross, one cell each way: something catching the light (a gold one in the ramp's ink)
+  glint(g, x, y, col, a, px, tone) {
     a = this.step(a);
     if (a <= 0) return;
     px = px || 2;
-    const sx = this.snap(x, px), sy = this.snap(y, px);
-    g.globalAlpha = a; g.fillStyle = col;
+    const sx = this.snap(x, px), sy = this.snap(y, px), [c, ca] = R.inkFade(col, a, tone);
+    if (ca <= 0) return;
+    g.globalAlpha = ca; g.fillStyle = c;
     g.fillRect(sx, sy, px, px);
     g.fillRect(sx - px, sy, px, px); g.fillRect(sx + px, sy, px, px);
     g.fillRect(sx, sy - px, px, px); g.fillRect(sx, sy + px, px, px);
     g.globalAlpha = 1;
   },
-  // a column of light standing on (x, foot): three stepped widths, light ADDED
-  column(g, x, foot, top, w, a, pal) {
+  /* a column of light standing on (x, foot): three stepped widths of the
+     card's light (R.glow — whatever stands in it turns gold, then bright),
+     strongest in the middle, a white-hot thread up its heart. `tone`:
+     'gold' (the default), 'bronze' (the amber of a dawn), 'pale' (marble). */
+  column(g, x, foot, top, w, a, tone) {
     a = this.step(a);
     if (a <= 0 || foot - top < 2 || w < 2) return;
-    pal = pal || ['255,190,80', '255,222,130', '255,251,232'];
-    const h = this.snap(foot - top);
-    const parts = [[1, 0.24], [0.55, 0.4], [0.18, 0.85]];
-    for (let i = 0; i < 3; i++) {
-      const ww = Math.max(2, this.snap(w * parts[i][0]));
-      g.fillStyle = 'rgba(' + pal[i] + ',' + (parts[i][1] * a).toFixed(3) + ')';
-      g.fillRect(this.snap(x - ww / 2), this.snap(top), ww, h);
+    tone = tone || 'gold';
+    const h = this.snap(foot - top), y0 = this.snap(top);
+    for (const [wf, sv] of [[1, 0.6], [0.55, 0.8], [0.18, 1]]) {
+      const ww = Math.max(2, this.snap(w * wf));
+      R.glow(g, sv * a, () => g.fillRect(this.snap(x - ww / 2), y0, ww, h), tone);
     }
+    R.glowHot(g, 0.6 * a, () => g.fillRect(this.snap(x - 1), y0, 2, h), tone);
   },
-  // a building's own silhouette flashed in light, ADDED to the scene
-  flashBld(g, b, col, a) {
+  /* a building's own silhouette flashed in the card's light (R.glow over its
+     tinted picture): the building turns gold in its own light and shade and
+     brightens toward cream as the flash strengthens — added, it went lime */
+  flashBld(g, b, a, tone) {
     a = this.step(a);
     if (a <= 0 || !b) return;
     const spr = R.bldSprite(b);
     if (!spr || !(spr.width > 0)) return;
     const TL = CFG.TILE, sz = Bld.size(b);
-    g.save();
-    g.globalCompositeOperation = 'lighter'; g.globalAlpha = a;
-    R.blitBld(g, R.tintOf(spr, col), b.x * TL, b.y * TL, sz * TL, sz * TL);
-    g.restore();
+    R.glow(g, a, c => R.blitBld(g, R.tintOf(spr, c), b.x * TL, b.y * TL, sz * TL, sz * TL), tone || 'gold');
   },
   // where a building's art stands, in world px — its roof is the top of the box
   artBox(b) {
@@ -163,44 +177,58 @@ const GrowFX = {
     const TL = CFG.TILE, z = R.cam.z * (R.dpr || 1);
     return { x: (wx * TL - R.cam.x) * z, y: (wy * TL - R.cam.y) * z };
   },
-  // the sky lit from above: n flat bands, each a little fainter — never a gradient
-  skyBands(g, col, a0, n, frac) {
-    const W = R.cv.width, H = R.cv.height, bh = Math.max(2, Math.round(H * frac / n));
-    g.save(); g.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < n; i++) {
-      const a = a0 * (1 - i / n);
-      if (a <= 0.004) continue;
-      g.fillStyle = 'rgba(' + col + ',' + a.toFixed(3) + ')';
-      g.fillRect(0, i * bh, W, bh);
-    }
-    g.restore();
-  },
-  // rays of light as rows of dots fanning down from (ox, oy), device px
-  rays(g, ox, oy, n, spread, col, a, t) {
-    const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1))), stepL = px * 6, L = H * 1.15;
-    g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = col;
+  /* (THE SKY BANDS ARE GONE: flat bands of light down the top of the screen
+     were gold ADDED over the meadow — the acid yellow-green of the first
+     cut — and a day seen from above has no sky to light, only grass, over
+     which a warm grade reads olive and a warm paint sand. The sun or the
+     burst at the top of the world, its rays of dots and its glitter carry
+     the light there now.) */
+  /* rays of light fanning down from (ox, oy), device px: each a NARROW
+     wedge of the card's light (R.glow — the meadow under it turned gold,
+     then brightened), cut in rows of the world's grain so its edges are hard
+     pixel steps, in four bands that step down as it reaches out — and a
+     bead of the tone's ink every few rows along its spine. Laid wide it
+     was a slab, added it was lime. */
+  rays(g, ox, oy, n, spread, tone, a, t) {
+    const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1)));
+    const gr = Math.max(px, Math.round(2 * R.cam.z * (R.dpr || 1))), top = Math.max(0, Math.ceil(oy / gr) * gr);
+    const L = H - top, BANDS = 4;
+    if (L <= 0) return;
+    g.save();
     for (let r = 0; r < n; r++) {
-      const th = Math.PI / 2 + (r - (n - 1) / 2) * spread + Math.sin(t * 0.8 + r * 1.7) * 0.012;
-      const ux = Math.cos(th), uy = Math.sin(th), ar = a * (r % 2 ? 0.55 : 1);
-      for (let d = stepL; d < L; d += stepL) {
-        const x = ox + ux * d, y = oy + uy * d;
-        if (x < 0 || x > W || y < 0 || y > H) continue;
-        const al = this.step(ar * (1 - d / L));
-        if (al <= 0) break;
-        g.globalAlpha = al;
-        g.fillRect(Math.round(x / px) * px, Math.round(y / px) * px, px, px);
+      const th = (r - (n - 1) / 2) * spread + Math.sin(t * 0.8 + r * 1.7) * 0.012;   // from the vertical
+      if (Math.abs(th) > 1.3) continue;                    // too flat to cut in rows
+      const ar = a * (r % 2 ? 0.55 : 1), w = r % 2 ? 0.006 : 0.01;
+      const t1 = Math.tan(th - w), t2 = Math.tan(th + w), tc = Math.tan(th);
+      for (let b = 0; b < BANDS; b++) {
+        const y0 = top + Math.round(L * b / BANDS / gr) * gr, y1 = top + Math.round(L * (b + 1) / BANDS / gr) * gr;
+        R.glow(g, ar * 0.75 * (1 - b / BANDS), () => {
+          for (let y = y0; y < y1; y += gr) {
+            const dy = y + gr / 2 - oy;
+            let X1 = Math.round((ox + t1 * dy) / gr) * gr, X2 = Math.round((ox + t2 * dy) / gr) * gr;
+            if (X2 <= X1) X2 = X1 + gr;
+            if (X2 < 0 || X1 > W) continue;
+            g.fillRect(X1, y, X2 - X1, gr);
+          }
+        }, tone);
+      }
+      // the beads along its spine
+      for (let y = top + gr * 3; y < H; y += gr * 6) {
+        const d = (y - top) / L;
+        if (!R.inkOn(g, ar * (1 - d), tone)) break;
+        g.fillRect(Math.round((ox + tc * (y - oy)) / px) * px, y, px, px);
       }
     }
     g.restore();
   },
-  // stars of light twinkling across the upper sky (device px)
-  glitter(g, n, col, a, t) {
+  // stars of light twinkling across the upper sky (device px), in the tone's ink
+  glitter(g, n, tone, a, t) {
     const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1)));
-    g.save(); g.globalCompositeOperation = 'lighter';
+    g.save();
     for (let i = 0; i < n; i++) {
       const tw = (Math.sin(t * (2 + this.hash(i, 5) * 3) + i * 2.3) + 1) / 2;
       if (tw < 0.55) continue;
-      this.glint(g, this.hash(i, 1) * W, this.hash(i, 2) * H * 0.62, col, a * (tw - 0.45) * 1.8, px);
+      this.glint(g, this.hash(i, 1) * W, this.hash(i, 2) * H * 0.62, R.LIGHT.TONE[tone].ramp[3], a * (tw - 0.45) * 1.8, px, tone);
     }
     g.restore();
   },
@@ -331,9 +359,7 @@ Object.assign(Deck.FX, {
           if (q <= 0 || q >= 1) continue;
           const cx = sp.x * TL, foot = sp.y * TL;
           if (cx < vp.x0 || cx > vp.x1 || foot < vp.y0 || foot > vp.y1 + TL) continue;
-          g.save(); g.globalCompositeOperation = 'lighter';
-          F.ring(g, cx, foot, TL * (0.25 + sp.sz * 0.8 * F.ease(q / 0.7)), '#f0b050', (1 - q) * 0.9, 2, 0.5);
-          g.restore();
+          F.ring(g, cx, foot, TL * (0.25 + sp.sz * 0.8 * F.ease(q / 0.7)), 'bronze', (1 - q) * 0.9, 2, 0.5);
           for (let k = 0; k < 10; k++) {
             const h1 = F.hash(i * 31 + k, 7), h2 = F.hash(k, i * 13 + 3);
             const a = -Math.PI / 2 + (h1 - 0.5) * 1.6, v = TL * (2.2 + h2 * 1.4), t = q * 1.15;
@@ -502,9 +528,10 @@ Object.assign(Deck.FX, {
         }
         if (p > 0.5) {
           const k = (p - 0.5) / 0.5;
-          F.ring(g, cx, cy, Rp, '#ffd45e', 0.95 - k * 0.6, 2, 1, vp);
-          F.ring(g, cx, cy, Rp + 4, '#fff1b8', (1 - k) * 0.7, 2, 1, vp);
-          F.ring(g, cx, cy, Rp - 4, '#ffcc40', (1 - k) * 0.5, 2, 1, vp, 0.5);
+          // the edge flares GOLD (in the ring's ink — added over the meadow it was lime)
+          F.ring(g, cx, cy, Rp, 'gold', 0.95 - k * 0.6, 2, 1, vp);
+          F.ring(g, cx, cy, Rp + 4, 'gold', (1 - k) * 1.0, 2, 1, vp);
+          F.ring(g, cx, cy, Rp - 4, 'gold', (1 - k) * 0.5, 2, 1, vp, 0.5);
         }
         g.restore();
       },
@@ -539,7 +566,7 @@ Object.assign(Deck.FX, {
           g.restore();
         }
       }
-      F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#ffd45e', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
+      F.ring(g, c.x * TL, c.y * TL, Rr * TL, 'gold', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
     },
     // every sprig on the ring's open ground out to `grow` (within `v`, the tiles
     // in view), into each target in turn on its own beat (f0, f0 + 1, …)
@@ -615,7 +642,8 @@ Object.assign(Deck.FX, {
         if (d <= this.REACH) far = Math.max(far, d);
       }
       GrowFX.show('golden_age', { x: c.x, y: c.y, reach: Math.max(6, far + 2) });
-      if (window.R && R.flashAt) R.flashAt(0.3, 0.8, '255,224,150');
+      // (no whole-frame flash: a fill of gold over the meadow, however brief,
+      // is a yellow-green or a sepia frame — the dawn's light is the sun's)
       GrowFX.sfx('goldenage');
       return { ok: true, x: c.x, y: c.y, until: e.until };
     },
@@ -636,51 +664,45 @@ Object.assign(Deck.FX, {
         const F = GrowFX;
         if (layer === 'sky') {
           const W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1;
-          // the wash: the whole sky warm in one flat step for a breath
-          const wash = F.step(F.env(p, 0, 0.03, 0.14, 0.28));
-          if (wash > 0) {
-            g.save(); g.globalCompositeOperation = 'lighter';
-            g.fillStyle = 'rgba(255,170,60,' + (0.2 * wash).toFixed(3) + ')';
-            g.fillRect(0, 0, W, H);
-            g.restore();
-          }
+          // (the breath of warm light over the whole world is the play's gold
+          // flash, R.flashAt's amber grade: a fill of orange over the meadow
+          // was lime, and any wash over it reads olive)
           const e = F.env(p, 0, 0.14, 0.7, 1);
           if (e <= 0) return;
-          F.skyBands(g, '255,196,80', 0.3 * e, 7, 0.55);
           // the sun, rising over the hall into the top of the world — below the
           // top bar, which is measured once (R.topReserve is learned lazily
           // and reads 0 early in a session: the marvel caption's lesson)
           if (s.topPx == null) { const tb = document.getElementById('topbar'); s.topPx = tb ? Math.max(0, tb.getBoundingClientRect().bottom) * dpr : 0; }
           const sc = F.toScreen(s.x, s.y), ox = Math.max(W * 0.15, Math.min(W * 0.85, sc.x));
           const oy = s.topPx - H * 0.1 + H * 0.17 * F.ease(p / 0.3), px = Math.max(2, Math.round(4 * dpr));
-          g.save(); g.globalCompositeOperation = 'lighter';
-          for (const [r, a, c] of [[0.2, 0.12, '255,170,60'], [0.13, 0.2, '255,206,110'], [0.065, 0.42, '255,244,206']]) {
-            g.fillStyle = 'rgba(' + c + ',' + (a * e).toFixed(3) + ')';
-            R.pxDisc(g, ox, oy, H * r, px, 1);
-          }
-          g.restore();
-          F.rays(g, ox, oy, 15, 0.17, '#ffd877', 0.6 * e, s.t);
-          F.glitter(g, 48, '#fff4c8', e, s.t);
+          // three stepped discs of the card's own light: a halo of gold dots
+          // round a gold disc round a cream heart (a great disc of light laid
+          // solid over the meadow read as a pumpkin, added as lime)
+          F.ring(g, ox, oy, H * 0.2, 'gold', 0.8 * e, px, 1);
+          F.ring(g, ox, oy, H * 0.17, 'gold', 0.45 * e, px, 1, null, 0.5);
+          for (const [r, a] of [[0.13, 0.62], [0.065, 1]])
+            R.glow(g, a * e, () => R.pxDisc(g, ox, oy, H * r, px, 1));
+          R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, oy, H * 0.03, px, 1));
+          F.rays(g, ox, oy, 15, 0.17, 'gold', 0.9 * e, s.t);
+          F.glitter(g, 48, 'gold', e, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, cy = s.y * TL, vp = F.viewPx(2), v = F.view(2), reach = s.reach || this.REACH;
         if (p >= 0.05 && !s.boom) { s.boom = 1; if (R.shakeAt) R.shakeAt(3, 0.6); }
         const run = this.run;
-        g.save(); g.globalCompositeOperation = 'lighter';
-        // the amber pillar out of the hall, up to the top of the world
+        // the gold pillar out of the hall, up to the top of the world
         const pl = F.env(p, 0, 0.06, 0.36, 0.56);
         if (pl > 0) {
           const topY = R.cam.y - 60 / R.cam.z, h = (cy - topY) * F.ease(p / 0.08);
-          F.column(g, cx, cy, cy - h, TL * (1.5 + Math.sin(s.t * 8) * 0.1) * pl, pl, ['255,140,30', '255,190,80', '255,238,176']);
-          g.fillStyle = 'rgba(255,150,40,' + (0.4 * pl).toFixed(2) + ')';
-          R.pxDisc(g, cx, cy + TL * 0.4, TL * 1.1, 2, 0.5);
+          F.column(g, cx, cy, cy - h, TL * (1.5 + Math.sin(s.t * 8) * 0.1) * pl, pl);
+          // it lands in a ring of dots, never a pool (a warm patch reads as sand)
+          F.ring(g, cx, cy + TL * 0.4, TL * 1.1, 'gold', 0.9 * pl, 2, 0.5);
         }
         for (let k = 0; k < 3; k++) {
           const q = (p - 0.08 - k * 0.07) / 0.7;
           if (q <= 0 || q >= 1) continue;
-          F.ring(g, cx, cy, reach * TL * run(q), k ? '#ffcc40' : '#fff1b8', (1 - q * 0.7) * (k ? 0.7 : 1), 2, 1, vp);
+          F.ring(g, cx, cy, reach * TL * run(q), 'gold', (1 - q * 0.7) * (k ? 0.7 : 1), 2, 1, vp);
         }
-        g.restore();
         for (const b of S.buildings) {
           if (b.owner !== 'P' || !Bld.done(b)) continue;
           const bx = Bld.cx(b), by = Bld.cy(b);
@@ -688,9 +710,7 @@ Object.assign(Deck.FX, {
           const k = this.lightOn(s, p, b);
           if (k <= 0 || k >= 1.6) continue;
           const box = F.artBox(b), foot = (b.y + Bld.size(b)) * TL;
-          g.save(); g.globalCompositeOperation = 'lighter';
-          F.ring(g, bx * TL, foot - 2, TL * (0.4 + Bld.size(b) * 0.6 * F.ease(k / 1.6)), '#ffd45e', 1 - k / 1.6, 2, 0.5, vp);
-          g.restore();
+          F.ring(g, bx * TL, foot - 2, TL * (0.4 + Bld.size(b) * 0.6 * F.ease(k / 1.6)), 'gold', 1 - k / 1.6, 2, 0.5, vp);
           for (let m = 0; m < 8; m++) {
             const h = F.hash(b.id * 7 + m, 3);
             F.mote(g, box.x + box.w * (0.15 + h * 0.7), box.y + box.h * 0.25 - k * TL * (0.6 + h * 0.9),
@@ -707,7 +727,7 @@ Object.assign(Deck.FX, {
         const k = this.lightOn(s, p, b);
         if (k <= 0) return;
         const held = GrowFX.env(p, 0.1, 0.2, 0.78, 1);
-        GrowFX.flashBld(g, b, '#ffe9a0', k < 1 ? 0.85 * (1 - k * 0.45) : Math.max(0.24 * held, k < 1.6 ? 0.45 * (1.6 - k) / 0.6 : 0));
+        GrowFX.flashBld(g, b, k < 1 ? 0.85 * (1 - k * 0.45) : Math.max(0.3 * held, k < 1.6 ? 0.45 * (1.6 - k) / 0.6 : 0));
       },
     },
     // the light keeps its pace across the town
@@ -783,9 +803,8 @@ Object.assign(Deck.FX, {
           if (q <= 0 || q >= 1) continue;
           const cx = sp.x * TL, foot = sp.y * TL - 2;
           if (cx < vp.x0 || cx > vp.x1 || foot < vp.y0 || foot > vp.y1 + TL) continue;
-          g.save(); g.globalCompositeOperation = 'lighter';
-          F.ring(g, cx, foot, TL * (0.3 + sp.sz * 0.7 * F.ease(q / 0.6)), '#e8e2d2', (1 - q) * 0.85, 2, 0.5);
-          g.restore();
+          // the Stone tier's pale light: the ring in pale stone's ink
+          F.ring(g, cx, foot, TL * (0.3 + sp.sz * 0.7 * F.ease(q / 0.6)), 'pale', (1 - q) * 0.85, 2, 0.5);
           const t = q * 1.0, top = foot - TL * 0.35 * sp.sz;
           for (let k = 0; k < 14; k++) {
             const h1 = F.hash(i * 17 + k, 5), h2 = F.hash(k * 3, i + 11);
@@ -1175,48 +1194,49 @@ Object.assign(Deck.FX, {
         if (layer === 'sky') {
           const e = F.env(p, 0.02, 0.14, 0.7, 0.98);
           if (e <= 0) return;
-          F.skyBands(g, '255,214,120', 0.26 * e, 8, 0.65);
           const sc = F.toScreen(s.x, s.foot), W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1;
           const ox = Math.max(0, Math.min(W, sc.x)), px = Math.max(2, Math.round(4 * dpr));
-          g.save(); g.globalCompositeOperation = 'lighter';
-          for (const [r, a, c] of [[0.24, 0.1, '255,200,90'], [0.15, 0.16, '255,226,140'], [0.075, 0.3, '255,250,226']]) {
-            g.fillStyle = 'rgba(' + c + ',' + (a * e).toFixed(3) + ')';
-            R.pxDisc(g, ox, 0, H * r, px, 1);
-          }
-          g.restore();
-          F.rays(g, ox, -H * 0.04, 15, 0.2, '#ffe9a0', 0.55 * e, s.t);
-          F.glitter(g, 56, '#fff6d8', e, s.t);
+          // where the pillar meets the top of the world: a burst of the card's
+          // light in three stepped discs — a halo of gold dots round a gold
+          // disc round a cream heart
+          F.ring(g, ox, 0, H * 0.24, 'gold', 0.8 * e, px, 1);
+          F.ring(g, ox, 0, H * 0.2, 'gold', 0.45 * e, px, 1, null, 0.5);
+          for (const [r, a] of [[0.15, 0.62], [0.075, 1]])
+            R.glow(g, a * e, () => R.pxDisc(g, ox, 0, H * r, px, 1));
+          R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, 0, H * 0.035, px, 1));
+          F.rays(g, ox, -H * 0.04, 15, 0.2, 'gold', 0.9 * e, s.t);
+          F.glitter(g, 56, 'gold', e, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL, vp = F.viewPx(2);
         if (p >= 0.1 && !s.boom) {
           s.boom = 1;
           if (R.shakeAt) R.shakeAt(8, 1.0);
-          if (R.flashAt) R.flashAt(0.55, 0.7, '255,236,170');
+          // (no whole-frame flash: gold over the meadow is a sepia frame —
+          // the pillar landing, the shake and its rings are the blow)
         }
         // THE PILLAR
         const up = Math.min(1, p / 0.1), thin = p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
         if (thin > 0) {
           // it stands up out of the hall's middle, so the hall's own face shows lit beneath it
           const base = s.y * TL, topY = R.cam.y - 60 / R.cam.z, h = (base - topY) * F.ease(up), w = TL * (1.7 + Math.sin(s.t * 9) * 0.12) * thin;
-          g.save(); g.globalCompositeOperation = 'lighter';
+          // NO POOL at its foot (a warm patch on the meadow reads as sand, a
+          // pale one added over it as lime): it lands in two rings of dots and
+          // the three that keep rolling out below
+          F.ring(g, cx, foot, TL * (0.85 + up * 0.45), 'gold', 0.95 * thin, 2, 0.5);
+          F.ring(g, cx, foot, TL * (0.5 + up * 0.3), 'gold', thin, 2, 0.5, null, 0.5);
           F.column(g, cx, base, base - h, w, 1);
-          g.fillStyle = 'rgba(255,252,236,' + (0.5 * thin).toFixed(2) + ')';
-          for (let k = 0; k < 16 && h > 4; k++) {
-            const yy = base - ((s.t * 240 + k * 64) % h);
-            g.fillRect(F.snap(cx - w * 0.28), F.snap(yy), Math.max(2, F.snap(w * 0.56)), 2);
-          }
-          // the pool of light at its foot is GOLD, not a pale wash (added over
-          // grass a pale yellow comes out green): red-heavy, two stepped discs
-          g.fillStyle = 'rgba(255,150,40,' + (0.34 * thin).toFixed(2) + ')';
-          R.pxDisc(g, cx, foot, TL * (0.85 + up * 0.45), 2, 0.5);
-          g.fillStyle = 'rgba(255,206,110,' + (0.3 * thin).toFixed(2) + ')';
-          R.pxDisc(g, cx, foot, TL * (0.5 + up * 0.3), 2, 0.5);
+          // the light climbing it: hot bars running up the cream heart
+          R.glowHot(g, 0.5 * thin, () => {
+            for (let k = 0; k < 16 && h > 4; k++) {
+              const yy = base - ((s.t * 240 + k * 64) % h);
+              g.fillRect(F.snap(cx - w * 0.28), F.snap(yy), Math.max(2, F.snap(w * 0.56)), 2);
+            }
+          });
           for (let k = 0; k < 3; k++) {
             const q = (p * 2.2 + k / 3) % 1;
-            F.ring(g, cx, foot, TL * (0.8 + q * 4.6), '#ffd45e', (1 - q) * 0.85 * thin, 2, 0.5, vp);
+            F.ring(g, cx, foot, TL * (0.8 + q * 4.6), 'gold', (1 - q) * 0.95 * thin, 2, 0.5, vp);
           }
-          g.restore();
         }
         // THE LIGHT RUNS OUT TO EVERY BUILDING (each rises in its own light in
         // the building pass — show.drawBld below)
@@ -1226,11 +1246,12 @@ Object.assign(Deck.FX, {
           const bx = it.x * TL, by = it.y * TL;
           if (p < land) {
             const k = (p - a0) / 0.07;
-            g.save(); g.globalCompositeOperation = 'lighter';
+            // the runner: a cream head and a gold trail fading down the ramp
+            g.save();
             for (let m = 5; m >= 0; m--) {
               const km = Math.max(0, k - m * 0.05), x = cx + (bx - cx) * km, y = foot + (by - foot) * km;
               if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-              g.fillStyle = m ? '#ffcc40' : '#fffbe8'; g.globalAlpha = F.step(1 - m * 0.15);
+              if (!R.inkOn(g, 1 - m * 0.15)) continue;
               const sz = m ? 2 : 4;
               g.fillRect(F.snap(x) - sz / 2, F.snap(y) - sz / 2, sz, sz);
             }
@@ -1241,10 +1262,8 @@ Object.assign(Deck.FX, {
           if (k >= 1 || bx < vp.x0 || bx > vp.x1 || by < vp.y0 || by > vp.y1 + TL) continue;
           if (!it.rung) { it.rung = 1; F.sfx('rise'); }
           const bf = by + it.sz * TL * 0.5;
-          g.save(); g.globalCompositeOperation = 'lighter';
           F.column(g, bx, bf, bf - TL * (1.4 + it.sz * 0.7) * F.ease(k * 2.5), TL * 0.75 * it.sz * (1 - k), 1 - k);
-          F.ring(g, bx, bf - 2, TL * (0.4 + it.sz * 0.9 * F.ease(k)), '#ffd45e', (1 - k) * 0.9, 2, 0.5, vp);
-          g.restore();
+          F.ring(g, bx, bf - 2, TL * (0.4 + it.sz * 0.9 * F.ease(k)), 'gold', (1 - k) * 0.95, 2, 0.5, vp);
           for (let m = 0; m < 6; m++) {
             const h = F.hash(it.id, m + 3);
             F.mote(g, bx + (h - 0.5) * TL * it.sz, bf - TL * 0.4 - k * TL * (0.8 + h), m % 2 ? '#fff1b8' : '#ffd45e', '#7a4a0a', 1 - k);
@@ -1256,11 +1275,11 @@ Object.assign(Deck.FX, {
          whoever is at work on it stands in front of the light */
       drawBld(g, b, s, p) {
         const F = GrowFX;
-        if (b.id === s.tc) { if (p > 0.06 && p < 0.5) F.flashBld(g, b, '#ffe9a0', 0.8 * F.env(p, 0.06, 0.12, 0.3, 0.5)); return; }
+        if (b.id === s.tc) { if (p > 0.06 && p < 0.5) F.flashBld(g, b, 0.9 * F.env(p, 0.06, 0.12, 0.3, 0.5)); return; }
         const it = (s._byId || (s._byId = new Map(s.items.map(z => [z.id, z])))).get(b.id);
         if (!it) return;
         const k = (p - (0.2 + 0.46 * (it.d / s.maxD) + 0.07)) / 0.2;
-        if (k > 0 && k < 1) F.flashBld(g, b, '#ffe9a0', 0.85 * (1 - k));
+        if (k > 0 && k < 1) F.flashBld(g, b, 0.95 * (1 - k));
       },
     },
   },
@@ -1320,16 +1339,13 @@ Object.assign(Deck.FX, {
           const e = F.env(p, 0, 0.08, 0.66, 0.96);
           if (e <= 0) return;
           const fl = F.step(F.env(p, 0, 0.03, 0.1, 0.22));
-          if (fl > 0) {
-            g.save(); g.globalCompositeOperation = 'lighter';
-            g.fillStyle = 'rgba(240,236,226,' + (0.22 * fl).toFixed(3) + ')';
-            g.fillRect(0, 0, R.cv.width, R.cv.height);
-            g.restore();
-          }
-          F.skyBands(g, '236,232,222', 0.3 * e, 7, 0.5);
+          // marble light is PALE, not lime: the frame graded toward stone-white
+          // (R.goldWash in the pale tone) — a pale fill added over the meadow went green
+          if (fl > 0) R.goldWash(g, 0.3 * fl, 0, 0, null, null, 'pale');
+
           const sc = F.toScreen(s.x, s.foot);
-          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.05, 9, 0.16, '#f6f2e8', 0.4 * e, s.t);
-          F.glitter(g, 36, '#ffffff', e * 0.85, s.t);
+          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.05, 9, 0.16, 'pale', 0.7 * e, s.t);
+          F.glitter(g, 36, 'pale', e * 0.85, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL, half = s.sz * TL / 2, M = this.MARBLE;
@@ -1342,11 +1358,8 @@ Object.assign(Deck.FX, {
           if (R.shakeAt) R.shakeAt(2 + at * 4, 0.35);
           F.sfx('rise');
         }
-        g.save(); g.globalCompositeOperation = 'lighter';
-        F.column(g, cx, foot, foot - TL * (3 + s.sz) * F.ease(p / 0.15), TL * s.sz * 0.9 * (1 - p), F.env(p, 0, 0.08, 0.3, 0.7),
-          ['200,196,186', '236,232,222', '255,255,252']);
-        F.ring(g, cx, foot - 2, TL * (0.4 + s.sz * 0.9 * F.ease(p / 0.5)), '#f4f0e6', (1 - p) * 0.9, 2, 0.5);
-        g.restore();
+        F.column(g, cx, foot, foot - TL * (3 + s.sz) * F.ease(p / 0.15), TL * s.sz * 0.9 * (1 - p), F.env(p, 0, 0.08, 0.3, 0.7), 'pale');
+        F.ring(g, cx, foot - 2, TL * (0.4 + s.sz * 0.9 * F.ease(p / 0.5)), 'pale', (1 - p) * 0.9, 2, 0.5);
         const per = Math.max(2, s.sz * 2), N = per * 3, fadeOut = p < 0.82 ? 1 : Math.max(0, (1 - p) / 0.18);
         for (let k = 0; k < N; k++) {
           const st = 0.05 + (k / N) * 0.55, q = (p - st) / 0.16;
@@ -1434,19 +1447,16 @@ Object.assign(Deck.FX, {
           if (s.pending) return;
           const e = F.env(p, 0.2, 0.32, 0.62, 0.95);
           if (e <= 0) return;
-          F.skyBands(g, '255,210,110', 0.26 * e, 7, 0.55);
           const sc = F.toScreen(s.x, s.foot);
-          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.04, 13, 0.18, '#ffe9a0', 0.45 * e, s.t);
-          F.glitter(g, 40, '#fff6d8', e, s.t);
+          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.04, 13, 0.18, 'gold', 0.75 * e, s.t);
+          F.glitter(g, 40, 'gold', e, s.t);
           return;
         }
         const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL;
         if (s.pending) {
           const q = F.ease(p / 0.8);
-          g.save(); g.globalCompositeOperation = 'lighter';
-          F.ring(g, cx, foot, TL * (2.6 - q * 2.2), '#ffd45e', 1 - p, 2, 0.5, null, p * 12);
-          F.ring(g, cx, foot, TL * (1.8 - q * 1.6), '#fff1b8', (1 - p) * 0.8, 2, 0.5, null, -p * 9);
-          g.restore();
+          F.ring(g, cx, foot, TL * (2.6 - q * 2.2), 'gold', 1 - p, 2, 0.5, null, p * 12);
+          F.ring(g, cx, foot, TL * (1.8 - q * 1.6), 'gold', (1 - p) * 0.8, 2, 0.5, null, -p * 9);
           for (let m = 0; m < 12; m++) {
             const th = m / 12 * Math.PI * 2 + p * 3, rr = TL * (2.2 - q * 2);
             F.mote(g, cx + Math.cos(th) * rr, foot + Math.sin(th) * rr * 0.5 + q * 6, '#ffd45e', '#7a4a0a', 1 - p);
@@ -1457,9 +1467,9 @@ Object.assign(Deck.FX, {
         // 1. the outline and the cracks, gold light coming up through them
         const cr = F.env(p, 0, 0.1, 0.55, 0.8);
         if (cr > 0) {
-          g.save(); g.globalCompositeOperation = 'lighter';
-          g.globalAlpha = F.step(cr);
-          g.fillStyle = '#ffd45e';
+          // in the ramp's ink, laid opaque: gold added over the earth went lime
+          g.save();
+          R.inkOn(g, 0.8 * cr);
           for (let d = 0; d < n * TL; d += 4) {
             g.fillRect(F.snap(x0 + d), F.snap(y0), 2, 2); g.fillRect(F.snap(x0 + d), F.snap(foot) - 2, 2, 2);
             g.fillRect(F.snap(x0), F.snap(y0 + d), 2, 2); g.fillRect(F.snap(x0 + n * TL) - 2, F.snap(y0 + d), 2, 2);
@@ -1472,7 +1482,7 @@ Object.assign(Deck.FX, {
             for (let st = 0; st < len; st++) {
               x += (cx - x) * 0.12 + (F.hash(c, st) - 0.5) * 8;
               y += (foot - n * TL / 2 - y) * 0.12 + (F.hash(st, c) - 0.5) * 8;
-              g.fillStyle = st % 3 ? '#ffcc40' : '#fffbe8';
+              g.fillStyle = R.goldInk(st % 3 ? 0.7 * cr : cr) || g.fillStyle;
               g.fillRect(F.snap(x), F.snap(y), 2, 2);
             }
           }
@@ -1553,16 +1563,15 @@ Object.assign(Deck.FX, {
         // 3. the pillar out of the middle, and rings of dots across the ground
         const pl = F.env(p, 0.28, 0.36, 0.7, 0.9);
         if (pl > 0) {
-          g.save(); g.globalCompositeOperation = 'lighter';
           const topY = R.cam.y - 60 / R.cam.z, mid = foot - n * TL / 2;
           F.column(g, cx, mid, mid - (mid - topY) * F.ease((p - 0.28) / 0.1), TL * 1.8 * pl, pl);
           for (let k = 0; k < 3; k++) {
             const q = (p * 2 + k / 3) % 1;
-            F.ring(g, cx, mid, TL * (1 + q * 4), '#ffd45e', (1 - q) * 0.8 * pl, 2, 0.6, F.viewPx(2));
+            F.ring(g, cx, mid, TL * (1 + q * 4), 'gold', (1 - q) * 0.9 * pl, 2, 0.6, F.viewPx(2));
           }
-          g.restore();
         }
-        if (p >= 0.32 && !s.boom) { s.boom = 1; if (R.flashAt) R.flashAt(0.5, 0.7, '255,236,170'); }
+        // (the pillar's landing is the blow: no whole-frame flash, which over
+        // the meadow is a sepia frame)
         // 4. gold rising off the settled stones
         if (p > 0.55) for (let m = 0; m < 14; m++) {
           const h = F.hash(m, 77), k = ((p - 0.55) / 0.45 + h) % 1;
