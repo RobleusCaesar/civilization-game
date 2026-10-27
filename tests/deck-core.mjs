@@ -238,7 +238,9 @@ ck('aDuplicateWearsItsCount', d.badge === '×3', String(d.badge));
       unbuilt: Deck.CATALOG.filter(c => !Deck.FX[c.id] && Deck.count(c.id) > 0 && !CFG.CARDS.STARTER.includes(c.id)).map(c => c.id) };
   });
   ck('theReviewLinkDealsTheBuiltCards', sl.on && sl.held && sl.unbuilt.length === 0 &&
-    sl.built === 'dragonfire,forager_cache,harvest_festival,starfall,swift_raiders',
+    // the gate-2 five, and the town group's nine (js/deckfx-town.js)
+    sl.built === 'dragonfire,fallen_timber,forager_cache,gold_nugget,harvest_festival,loose_stone,master_builders,mending,' +
+      'starfall,stone_skin,swift_raiders,trade_caravan,unbreakable_hall,watchfires',
     `on ${sl.on}; dealt ${sl.built}; unbuilt dealt ${sl.unbuilt.join(',') || 'none'}`);
   await ctx2.close();
 }

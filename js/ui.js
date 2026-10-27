@@ -624,7 +624,13 @@ const UI = {
       this._placeCheck();
       return;
     }
-    Bld.place('P', key, g.x, g.y, { builderId: this.builderFor });
+    /* MASTER BUILDERS (js/deckfx-town.js): with a charge in hand the works
+       stand complete at once — so no builder is pulled off anything to walk
+       to a site that is already finished; a station takes its hand from
+       Deck.masterRaise. The rival and a wall line never come through here. */
+    const mb = window.Deck && Deck.masterHand ? Deck.masterHand('P', key) : 0;
+    const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true } : { builderId: this.builderFor });
+    if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, this.builderFor);
     // a sealing placement was allowed, and is ACKNOWLEDGED — the player chose
     // to shut their own people in, and the toast marks the moment they did
     if (r.warn === 'sealed') this.toast('Your town is walled in — only a gate lets your people out', true);
@@ -790,6 +796,9 @@ const UI = {
        that WOULD bond, the chip says so — the same gold the panels use, on the
        one screen where the choice is still yours to move. */
     else if (v && v.ok && this.placeWouldBond(g)) msg = '🌾 Homestead — beside the field';
+    // …and a Master Builders charge about to be spent says so (js/deckfx-town.js)
+    else if (v && v.ok && window.Deck && Deck.masterHand && Deck.masterHand('P', this.placing))
+      msg = '⚒ Master Builders: stands complete at once (' + Deck.masterHand('P', this.placing) + ' in hand)';
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;

@@ -756,10 +756,21 @@ const DeckUI = {
       });
       if (!chips.length) {
         // nothing named: a TIMED card lands where its countdown is about to
-        // appear (beside the tribe), anything else on the resource bar itself
-        const at = Deck.card(id).days ? document.getElementById('rPopChip') : document.querySelector('#topbar .trow');
+        // appear (beside the tribe) — and so does one held as charges, whose
+        // chip appears there too — anything else on the resource bar itself
+        const chipped = Deck.card(id).days || (Deck.FX[id] && Deck.FX[id].chip);
+        const at = chipped ? document.getElementById('rPopChip') : document.querySelector('#topbar .trow');
         const r = at ? at.getBoundingClientRect() : { left: 0, top: 0, width: vw, height: 30 };
-        chips.push({ res: null, x: Deck.card(id).days ? r.right + 20 : r.left + r.width / 2, y: r.top + r.height / 2 });
+        chips.push({ res: null, x: chipped ? r.right + 20 : r.left + r.width / 2, y: r.top + r.height / 2 });
+      }
+      /* a card whose goods ARRIVE in the world (Deck.FX[id].showAtHall — the
+         town's goods land in a moment at the hall's door) brings the hall on
+         screen first, the way 'tc' does: the moment and the count are one
+         sequence, never a show culled off camera while the bar ticks up */
+      const fx = Deck.FX[id];
+      if (fx && fx.showAtHall && typeof Bld !== 'undefined') {
+        const tc = Bld.tcOf('P');
+        if (tc) { const hx = Bld.cx(tc), hy = Bld.cy(tc) + Bld.size(tc) / 2; if (!R.onScreen(hx, hy)) R.centerOn(hx, hy); }
       }
       const x = chips.reduce((a, ch) => a + ch.x, 0) / chips.length, y = chips.reduce((a, ch) => a + ch.y, 0) / chips.length;
       return { kind: 'bar', chips, x, y };
@@ -1172,7 +1183,18 @@ const DeckUI = {
      (a game day is ten seconds). Tap it to hear what it is. Gone the moment
      Deck.tick expires the effect. */
   _timers() {
-    const list = (typeof S !== 'undefined' && S && S.deck) ? Deck.timers() : [];
+    const live = typeof S !== 'undefined' && S && S.deck;
+    const list = live ? Deck.timers() : [];
+    /* A CARD HELD AS CHARGES wears a chip too (Master Builders' next
+       buildings): its count where the days would be, its ring the share of a
+       card's worth still in hand. The card says so by carrying chip(n) →
+       {label, frac, words} (js/deckfx-town.js); everything else is a timer. */
+    if (live && S.deck.charges) for (const key in S.deck.charges) {
+      // a card may keep its charges under a key of its own (`chargeKey`, e.g.
+      // the pact's bands under 'pact'): the chip still belongs to the CARD
+      const id = this._chargeCard(key), fx = id && Deck.FX[id], c = fx && fx.chip ? fx.chip(S.deck.charges[key]) : null;
+      if (c) list.push({ id, charge: c });
+    }
     const seen = {};
     let moved = false;
     for (const tm of list) {
@@ -1180,10 +1202,11 @@ const DeckUI = {
       seen[tm.id] = 1;
       if (!this._chips[tm.id]) moved = true;
       const ch = this._chips[tm.id] || this._chip(tm.id);
-      const label = this._left(tm.left);
+      const label = tm.charge ? tm.charge.label : this._left(tm.left);
       if (ch.lab.textContent !== label) { ch.lab.textContent = label; moved = true; }
       ch.left = tm.left;
-      this._ringDraw(ch, Math.max(0, Math.min(1, tm.frac)));
+      ch.charge = tm.charge || null;
+      this._ringDraw(ch, Math.max(0, Math.min(1, tm.charge ? tm.charge.frac : tm.frac)));
     }
     for (const id in this._chips) {
       if (seen[id]) continue;
@@ -1243,11 +1266,18 @@ const DeckUI = {
     more.setAttribute('aria-label', k + ' cards running');
     tm.appendChild(more);
   },
+  // the card a key of S.deck.charges belongs to: its own id, or the card that
+  // names it as its `chargeKey`; null for a key no card wears a chip for
+  _chargeCard(key) {
+    if (Deck.FX[key] && Deck.card(key)) return key;
+    for (const id in Deck.FX) if (Deck.FX[id] && Deck.FX[id].chargeKey === key && Deck.card(id)) return id;
+    return null;
+  },
   // the cards the strip had no room to show, named with their time left
   _alsoRunning() {
     const names = (this._hidden || []).map(id => {
       const ch = this._chips[id];
-      return ch ? `${Deck.card(id).name} (${this._left(ch.left, true)} left)` : null;
+      return ch ? `${Deck.card(id).name} (${ch.charge ? ch.charge.words : this._left(ch.left, true)} left)` : null;
     }).filter(Boolean);
     return names.length ? 'Also running: ' + names.join(', ') + '.' : '';
   },
@@ -1272,7 +1302,7 @@ const DeckUI = {
     el.append(cv, lab);
     el.setAttribute('aria-label', c.name);
     el.addEventListener('click', () => {
-      const ch = this._chips[id], span = this._left(ch ? ch.left : 0, true);
+      const ch = this._chips[id], span = ch && ch.charge ? ch.charge.words : this._left(ch ? ch.left : 0, true);
       // the chip wearing the "+k" names the cards folded behind it too
       const also = this._badgeOn === id ? ' ' + this._alsoRunning() : '';
       this._say(`${c.name} — ${span} left. ${c.text}${also}`, 'note', 4200);

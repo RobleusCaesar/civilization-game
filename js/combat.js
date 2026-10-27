@@ -53,8 +53,16 @@ const Combat = {
   // apply damage to a building + show it landing (shared by instant melee hits
   // and projectile impacts, so buildings always read the hit)
   hitBuilding(b, dmg, flame) {
-    Bld.damage(b, dmg);
-    R.float(Bld.cx(b), b.y - 0.15, '-' + dmg, flame ? '#f2963a' : '#e8d2a0');
+    /* THE NUMBER IS WHAT THE BUILDING TOOK (Bld.damage returns it): a card
+       may halve a blow on the player's works, or hold their hall at its last
+       sliver, and the float says so — "Held!" for a blow swallowed whole
+       (js/deckfx-town.js). With no card running it is the blow itself. The
+       hp keeps the exact fraction (a halved odd blow); the float shows a
+       WHOLE number like every other float in the game, and a sliver of a
+       blow still reads as a hit (-1), never "-0". */
+    const took = Bld.damage(b, dmg);
+    R.float(Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
+      flame ? '#f2963a' : '#e8d2a0');
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
     /* THE HORN. This is the only unprompted defensive alarm the game has —
@@ -1533,11 +1541,29 @@ const Combat = {
       if (b.cd > 0) { b.cd -= dt; continue; }
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;
-      const tgt = this.nearestUnit(cx, cy, lv.range,
-        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower');
+      /* WATCHFIRES (js/deckfx-town.js): a card may lengthen the reach and
+         weight the arrows of the PLAYER's towers and camps — Deck.mult's
+         numbers answer 1 for the rival and with no card running. The L1
+         fumble below draws exactly as it always did. The longer reach only
+         takes what the watch can SEE: a tower's own range always sat inside
+         its sight, and the farther band can poke past it, so a mark out
+         there must be on ground in view — an arrow (and its float) never
+         lands on a soldier hidden in the fog (the trebuchet's rule: an
+         engine never shells ground it can't watch). Base range: untouched.
+         The fog is the PLAYER's, so that gate is asked of the player's towers
+         alone, and so is the burning arrow: it is Watchfires' own look, and a
+         multiplier from another card (a rival tower SOFTENED, a factor under
+         1) must never dress the rival's arrows as a buff. */
+      const wfR = window.Deck && Deck.mult ? Deck.mult('towerRange', b.owner, b) : 1;
+      const tgt = this.nearestUnit(cx, cy, lv.range * wfR,
+        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower' &&
+          (b.owner !== 'P' || wfR === 1 || Math.hypot(o.x - cx, o.y - cy) <= lv.range || G.visibleAt(o.x | 0, o.y | 0)));
       if (tgt) {
         b.cd = 1.4;
+        const wfA = window.Deck && Deck.mult ? Deck.mult('towerAtk', b.owner, b) : 1;
         const sh = { x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24 };
+        // pitch on every arrow: it lands burning (R.arrowStrike)
+        if (b.owner === 'P' && wfA > 1 && window.Deck && Deck.timed && Deck.timed('watchfires')) sh.fire = true;
         this.shots.push(sh);
         // A LEVEL-1 TOWER FUMBLES 1 IN 3 SHOTS — the cheap early shield, not the
         // Lv2/Lv3 upgrades (untouched). A War Camp fires exactly like a Watchtower
@@ -1548,7 +1574,7 @@ const Combat = {
           this.overshoot(sh);
           R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
         } else {
-          const dmg = Math.max(1, lv.atk - Units.effDef(tgt));
+          const dmg = Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt));
           R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
           Units.damage(tgt, dmg, 0, b.owner);
         }
