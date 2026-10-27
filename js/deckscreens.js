@@ -103,6 +103,8 @@ const DeckScreens = {
       row.classList.add('clFour');
     }
     this._paintCounts();
+    // the first title with the deck on announces it, once per device (js/cardintro.js)
+    if (window.CardIntro) { try { CardIntro.maybeShow(); } catch (e) { console.error('card announcement', e); } }
   },
 
   /* ================= THE END SCREEN ================= */
@@ -935,6 +937,8 @@ const DeckScreens = {
       '<header class="shead"><button class="abtn back" type="button" data-act="back" aria-label="Back">‹</button>' +
         '<h2>Your cards</h2><b class="clHeld"></b></header>' +
       '<p class="clSum"></p>' +
+      // the card announcement, on purpose this time (js/cardintro.js)
+      '<button class="clHow" type="button" data-act="intro">How cards work</button>' +
       '<div class="clTabs" role="tablist"></div>' +
       '<div class="sbody clBody"><div class="clHead"></div><div class="clGrid"></div></div>' +
       `<div class="clZoom" hidden><button class="clX" type="button" data-act="unzoom" aria-label="Close">${this.CLOSE_SVG}</button>` +
@@ -949,6 +953,7 @@ const DeckScreens = {
       if (act === 'back') this.closeCollection();
       else if (act === 'unzoom') this._zoomClose(false);
       else if (act === 'zflip') this._zoomFlip();
+      else if (act === 'intro' && window.CardIntro) { this._zoomClose(true); CardIntro.show('cards'); }
     });
     // a tap on the dark around the enlarged card puts it back
     scr.querySelector('.clZoom').addEventListener('click', e => { if (e.target.classList.contains('clZoom')) this._zoomClose(false); });
@@ -1416,6 +1421,13 @@ DeckScreens.CSS = `
 #scrCards .clHeld { flex: 0 0 auto; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(214,170,74,0.5);
   color: var(--text); font: 700 12px/1.2 var(--menufont); letter-spacing: 1px; background: #1c140c; }
 #scrCards .clSum { width: 100%; max-width: 820px; margin: -4px auto 8px; padding: 0 16px; color: var(--dim); font-size: 12px; text-align: center; }
+/* "How cards work": the card announcement, again — small on the page, a
+   44px target under the finger (the invisible ::after) */
+#scrCards .clHow { position: relative; display: flex; align-items: center; gap: 7px; flex: 0 0 auto; margin: -4px auto 10px; height: 26px; padding: 0 12px;
+  border: 1px solid rgba(214,170,74,0.45); border-radius: 999px; background: #1c140c; color: #f2cd62; cursor: pointer;
+  font: 700 11px/1 var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; }
+#scrCards .clHow::before { content: ''; width: 7px; height: 7px; transform: rotate(45deg); background: #f2cd62; box-shadow: 0 0 6px rgba(255,210,100,.6); }
+#scrCards .clHow::after { content: ''; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
 #scrCards .clTabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 820px; margin: 0 auto; padding: 0 10px; flex: 0 0 auto; }
 #scrCards .clTab { min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
   display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; font-family: var(--menufont); }

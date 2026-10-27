@@ -90,6 +90,9 @@ const Screens = {
     // leaving the game takes the victory modal with it (it was stamped seen
     // when shown, so it never comes back over a resumed or reloaded world)
     if (name !== 'playing' && this.hideVictoryPaths) this.hideVictoryPaths();
+    // the card announcement stands over one screen only (js/cardintro.js):
+    // leaving it takes the announcement away — a no-op when none is open
+    if (window.CardIntro) { try { CardIntro.onScreen(name); } catch (e) {} }
   },
 
   /* ---------------- title ---------------- */
