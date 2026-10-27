@@ -425,6 +425,8 @@ const Combat = {
                       ground when its ordered target falls, waits for orders
              chaos  — falls on everything in reach, by the priority ladder
              siege  — holds a picket post and guards the guns (siegeGuard) */
+        // THE ANCESTORS' HOST keeps its post's ground (js/deckfx-army.js)
+        if (u.spectral && u.den && window.Deck && Deck.hostSense && Deck.hostSense(u)) continue;
         if (u.strat === 'strike') continue;
         if (u.strat === 'chaos') { this.chaosSeek(u); continue; }
         if (u.strat === 'siege') { this.siegeGuard(u); continue; }
@@ -1296,7 +1298,7 @@ const Combat = {
           // a defender falls back to its perimeter the moment its target drops;
           // an ordered attack ends where the fight ended — hold this ground
           if (u.defend) Units.returnToGuard(u);
-          else if (u.warWolf) { if (u.task && u.task.type === 'attack') u.task = null; Units.resolveAfterFight(u); }   // home after the fight
+          else if (u.warWolf || (u.spectral && u.den && !u.strat)) { if (u.task && u.task.type === 'attack') u.task = null; Units.resolveAfterFight(u); }   // home after the fight
           else if (u.task && u.task.type === 'attack') { u.task = null; u.anchor = { x: u.x, y: u.y }; }
           continue;
         }
@@ -1348,7 +1350,7 @@ const Combat = {
           }
         } else if (u.campId && this.campLeash(u, tgt)) {
           continue;   // a tender let its quarry go and is walking back to its fire
-        } else if (u.warWolf && window.Deck && Deck.packLeash && Deck.packLeash(u, tgt)) {
+        } else if ((u.warWolf || (u.spectral && u.den && !u.strat)) && window.Deck && Deck.packLeash && Deck.packLeash(u, tgt)) {
           continue;   // a war-wolf lets a runner go at the edge of home and trots back
         } else {
           // A BOMBARD ENGINE MINDS ITS GROUND: unordered (no raid/attack task),

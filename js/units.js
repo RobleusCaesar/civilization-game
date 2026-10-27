@@ -594,8 +594,9 @@ const Units = {
       o.task = { type: 'move', x: o.siegePost.x, y: o.siegePost.y, guard: true };
       this.setPath(o, o.siegePost.x, o.siegePost.y);
     }
-    // a card's war-wolf trots home to the hall after every fight (js/deckfx-army.js)
-    else if (o.warWolf && window.Deck && Deck.packHome) Deck.packHome(o);
+    // a card's war-wolf trots home to the hall after every fight, and a
+    // ghost of the Ancestors' Host back to its post (js/deckfx-army.js)
+    else if ((o.warWolf || (o.spectral && o.den && !o.strat)) && window.Deck && Deck.packHome) Deck.packHome(o);
   },
   // toggle the stance; turning it on pulls a strayed unit back to its perimeter
   setDefend(u, on) {
@@ -1354,6 +1355,9 @@ const Units = {
     // a raised mound is passable but slow going — crossing one (or stepping onto
     // it) drags every land unit to a quarter speed, friend and foe alike
     let sp = u.speed;
+    // a card's riders wheeling round the hall go at a gallop (the walk's own
+    // `gallop`: Deck.fanWheel, js/deckfx-army.js) — the task's, so it ends with it
+    if (u.task && u.task.gallop) sp *= u.task.gallop;
     if (this.domain(u) !== 'water') {
       const here = S.map.terrain[MapGen.idx(u.x | 0, u.y | 0)];
       const next = S.map.terrain[MapGen.idx(wp.x, wp.y)];
@@ -1534,6 +1538,9 @@ const Units = {
         if (this.followPath(u, dt)) {
           u.task = null; u.anchor = { x: u.x, y: u.y };
           if (t.guard) u.guardPost = null;   // back at the post — forget it (a fresh fight stamps a new one)
+          // a ghost the player walked somewhere keeps THAT ground now (its post,
+          // js/deckfx-army.js hostSense) — a walk home is the post already
+          if (u.spectral && u.den && !t.home && !t.guard) u.den = { x: u.x | 0, y: u.y | 0 };
         }
       } else if (t.type === 'muster') {
         /* A CARD'S MUSTER (js/deckfx.js Deck.summon): a unit a card brings out
@@ -1542,10 +1549,19 @@ const Units = {
            was dealt. Sim time, in the unit's task, so a save mid-beat marches
            on after the load. */
         if ((t.wait -= dt) <= 0) {
-          this.moveTo(u, t.x, t.y);
-          // a war-wolf's march to its place is the PACK's own walk, not an
-          // order: a foe near the hall breaks it off (js/deckfx-army.js packSense)
-          if (u.warWolf && u.task && u.task.type === 'move') u.task.home = true;
+          // a unit that LANDED on its own slot of the fan (Deck.summonFan,
+          // js/deckfx-army.js) holds there for the beat and is then simply
+          // free, where it formed — never marched to a heap
+          if (t.stay) { u.task = null; u.anchor = { x: u.x, y: u.y }; }
+          // …or WHEELS round the hall at a gallop on the ring it was dealt
+          // (`via`, tile waypoints) and pulls up on its own place again
+          else if (t.via && t.via.length) { u.task = { type: 'move', x: t.x, y: t.y, gallop: t.gallop }; u.path = t.via; u.pathI = 0; }
+          else {
+            this.moveTo(u, t.x, t.y);
+            // a war-wolf's march to its place is the PACK's own walk, not an
+            // order: a foe near the hall breaks it off (js/deckfx-army.js packSense)
+            if (u.warWolf && u.task && u.task.type === 'move') u.task.home = true;
+          }
         }
       } else if (t.type === 'banish') {
         /* BANISHED (tests/banish.mjs): they down tools and walk off the map for
@@ -2696,7 +2712,7 @@ const Units = {
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
       // a card's war-wolf struck fights it out where it stands — never on the
       // home-ground leash of a mark it chose itself (js/deckfx-army.js packLeash)
-      if (u.warWolf) { u.packMark = false; u.packFrom = null; }
+      if (u.warWolf || u.spectral) { u.packMark = false; u.packFrom = null; }
     }
   },
 

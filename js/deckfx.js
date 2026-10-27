@@ -376,13 +376,20 @@ Object.assign(Deck.FX, {
      ordinary kills; raising them is not training, so no "units trained"
      point is earned by the card. */
   swift_raiders: {
-    at: 'tc', KIND: 'horsearcher', N: 5,
+    at: 'tc', KIND: 'horsearcher', N: 5, STAGGER: 90, HOLD: 1.2,
     can() { return Deck.summonCan(this.KIND); },
     apply() {
-      const r = Deck.summon([{ kind: this.KIND, n: this.N }]);
+      // they land on the army's fan round the hall (Deck.summonFan,
+      // js/deckfx-army.js) — guarded on the method, the shared-?v= lesson
+      const fan = !!Deck.summonFan;
+      const r = fan ? Deck.summonFan([{ kind: this.KIND, n: this.N }], { stagger: this.STAGGER, hold: this.HOLD, tone: 'steel', wheel: true })
+        : Deck.summon([{ kind: this.KIND, n: this.N }]);
       if (!r.ok) return r;
       if (typeof Sound !== 'undefined') Sound.play('train');   // the hooves are struck on the show's beats
-      if (window.R && R.startCardShow) R.startCardShow('swift_raiders', { x: r.x, y: r.y, ids: r.units.map(u => u.id), mx: r.first.x + 0.5, my: r.first.y + 0.5 });
+      const mid = fan ? { x: r.units.reduce((a, u) => a + u.x, 0) / r.units.length, y: r.units.reduce((a, u) => a + u.y, 0) / r.units.length }
+        : { x: r.first.x + 0.5, y: r.first.y + 0.5 };
+      if (window.R && R.startCardShow) R.startCardShow('swift_raiders', { x: r.x, y: r.y, ids: r.units.map(u => u.id), at: r.at, free: r.free, go: r.go,
+        units: r.units.map((u, i) => ({ id: u.id, x: u.x, y: u.y, d: r.at ? r.at[i] : 0 })), mx: mid.x, my: mid.y });
       Deck.say('🏹 Five Horse Archers ride out of your Town Center.');
       return { ok: true, x: r.x, y: r.y, units: r.units.map(u => u.id) };
     },

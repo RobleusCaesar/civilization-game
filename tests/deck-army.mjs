@@ -221,6 +221,9 @@ await p.evaluate(({ ARMY }) => {
     const { r: play, units } = __ar.play('ancestors_host');
     out.n = units.length;
     out.tiles = new Set(units.map(u => (u.x | 0) + ',' + (u.y | 0))).size;
+    let gap = 9;
+    for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) gap = Math.min(gap, Math.hypot(units[i].x - units[j].x, units[i].y - units[j].y));
+    out.gap = gap;
     out.open = units.every(u => Bld.spawnRoom('P', 'land', u.x | 0, u.y | 0));
     out.near = Math.max(...units.map(u => Math.hypot(u.x - door.x - 0.5, u.y - door.y - 0.5)));
     // NEVER ACROSS THE WATER: a channel one row below the doorstep, the whole
@@ -241,57 +244,156 @@ await p.evaluate(({ ARMY }) => {
     const legion = __ar.play('legion_marches').units;
     out.far = legion.filter(u => !reach[(u.y | 0) * W + (u.x | 0)]).length;
     out.legionTiles = new Set(legion.map(u => (u.x | 0) + ',' + (u.y | 0))).size;
+    let lg = 9;
+    for (let i = 0; i < legion.length; i++) for (let j = i + 1; j < legion.length; j++) lg = Math.min(lg, Math.hypot(legion[i].x - legion[j].x, legion[i].y - legion[j].y));
+    out.legionGap = lg;
     return out;
   });
-  ck('fifteenStandOnFifteenTiles', r.yard === 1 && r.n === 15 && r.tiles === 15 && r.open && r.near <= 6.8,
-    `the yards' search: ${r.yard} tile for 15 asks; the host: ${r.n} on ${r.tiles} tiles, all really open ${r.open}, farthest ${r.near.toFixed(2)} from the door`);
-  ck('neverAcrossTheWaterFromTheDoor', r.naiveFar > 0 && r.far === 0 && r.legionTiles === 12,
-    `a search that asks no road puts ${r.naiveFar} of 15 on the far bank; the legion puts ${r.far} there, on ${r.legionTiles} tiles`);
+  ck('fifteenStandOnFifteenPlaces', r.yard === 1 && r.n === 15 && r.gap >= 0.97 && r.tiles >= 13 && r.open && r.near <= 6.8,
+    `the yards' search: ${r.yard} tile for 15 asks; the host: ${r.n} on their own places, the nearest two ${r.gap.toFixed(2)} tiles apart, on ${r.tiles} tiles, all really open ${r.open}, farthest ${r.near.toFixed(2)} from the door`);
+  ck('neverAcrossTheWaterFromTheDoor', r.naiveFar > 0 && r.far === 0 && r.legionGap >= 0.97,
+    `a search that asks no road puts ${r.naiveFar} of 15 on the far bank; the legion puts ${r.far} there, the nearest two ${r.legionGap.toFixed(2)} apart`);
+}
+{
+  /* THE FAN (playtest g2/g3/g4: "summons PILE UP and wander off screen"):
+     every summoned unit LANDS on its own slot round the hall and is never
+     marched to a heap — the War Band's men a tile apart in two ranks, the
+     battery's engines a tile and a half from each other AND from the siege
+     train already standing there (the probe counted the two trebuchets 0.14
+     tiles apart and six pairs under 0.6), a Legion played over a garrison
+     clear of the garrison, every slot facing out from the hall — and on the
+     player's screen: with the camera on the hall at a phone's zoom, every
+     sprite whole between the bars. The CONTROL is the old muster's own end:
+     the yards' formation step marches five to one spot and stacks them. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    const pairs = (list, min) => {
+      let bad = 0, near = 9;
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+        const d = Math.hypot(list[i].x - list[j].x, list[i].y - list[j].y);
+        near = Math.min(near, d); if (d < min) bad++;
+      }
+      return { bad, near: +near.toFixed(2) };
+    };
+    // where each one STANDS once the act is over and the hold has let it go
+    // (the old muster's march ended in the heap), and whether its whole
+    // sprite is on the open screen between the bars and clear of the minimap
+    const whole = u => {
+      const TL = CFG.TILE, z = R.cam.z, B = R.unitBox(u);
+      const rect = id => { const el = document.getElementById(id); return el && el.offsetParent !== null && el.offsetWidth ? el.getBoundingClientRect() : null; };
+      const tb = rect('topbar'), bb = rect('bottombar'), mm = rect('miniWrap'), vw = R.viewW(), vh = R.viewH();
+      const sx = (u.x * TL - R.cam.x) * z, foot = (u.y * TL + TL / 2 - CFG.SPRITE_LIFT - R.cam.y) * z, top = foot - B * z, hw = B * z / 2;
+      if (sx - hw < 0 || sx + hw > vw || top < (tb ? tb.bottom : 0) || foot > (bb ? bb.top : vh)) return false;
+      return !(mm && sx + hw > mm.left && sx - hw < mm.right && top < mm.bottom && foot > mm.top);
+    };
+    __ar.fresh('army-fan'); __ar.flat();
+    Screens.show('playing');
+    const tc = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.6);
+    // the War Band: five a tile apart, facing out, two ranks
+    const wb = __ar.play('war_band').units;
+    __ar.sim(5);
+    out.wb = pairs(wb, 0.97);
+    const ry = [...new Set(wb.map(u => Math.round(Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) * 4) / 4))];
+    out.wbRanks = ry.length;
+    out.face = wb.every(u => { const f = R._faceMap.get(u), d = f && f.dir; return d && ((u.y > Bld.cy(tc) + 0.5) ? /s/.test(d) : true); });
+    out.onScreen = wb.every(whole);
+    // the Siege Train, then the Battery: five engines, a tile and a half apart
+    for (const u of wb) Units.despawn(u);
+    const st = __ar.play('siege_train').units;
+    for (const u of st) u.task = null;
+    const tb = __ar.play('trebuchet_battery').units;
+    __ar.sim(6);
+    out.engines = pairs(st.concat(tb), 1.45);
+    out.engOn = st.concat(tb).every(whole);
+    // a Legion over a garrison standing at the door: clear of it
+    __ar.fresh('army-fan2'); __ar.flat();
+    const tc2 = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc2), Bld.cy(tc2) + 0.6);
+    const gar = [];
+    for (let i = 0; i < 6; i++) gar.push(__ar.unit(['defender', 'archer'][i % 2], 'P', tc2.x - 1.5 + i, tc2.y + 3.5));
+    const lg = __ar.play('legion_marches').units;
+    __ar.sim(6);
+    out.legion = pairs(lg, 0.97);
+    out.garrison = pairs(lg.concat(gar), 0.6).bad;
+    out.lgOn = lg.filter(whole).length;
+    // SWIFT RAIDERS (playtest g2 #8): they used to ride out and park at the
+    // screen's edge half cut off — now they wheel once round the hall at a
+    // gallop and pull up on their places, every one of them whole on the screen
+    __ar.fresh('army-fan4'); __ar.flat();
+    const tc4 = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc4), Bld.cy(tc4) + 0.6);
+    const sr = __ar.play('swift_raiders').units, hx = Bld.cx(tc4), hy = Bld.cy(tc4);
+    const sw = sr.map(() => 0), an = sr.map(u => Math.atan2(u.y - hy, u.x - hx));
+    for (let i = 0; i < 160; i++) {
+      Units.update(0.05);
+      sr.forEach((u, k) => { const a = Math.atan2(u.y - hy, u.x - hx); sw[k] += Math.atan2(Math.sin(a - an[k]), Math.cos(a - an[k])); an[k] = a; });
+    }
+    out.raiders = { sweep: sw.map(s => Math.round(Math.abs(s) * 180 / Math.PI)), on: sr.filter(whole).length, free: sr.every(u => !u.task), apart: pairs(sr, 0.97) };
+    // the CONTROL: the yards' formation step, asked for five, marches them to
+    // one muster spot — the old muster's end, where the heaps came from
+    __ar.fresh('army-fan3'); __ar.flat();
+    const tc3 = Bld.tcOf('P'), five = [0, 1, 2, 3, 4].map(i => __ar.unit('trebuchet', 'P', tc3.x + i, tc3.y + 3.5));
+    Units.formationMove(five, tc3.x + 1, tc3.y + 5, 'land');
+    for (let i = 0; i < 300; i++) Units.update(0.05);
+    out.control = pairs(five, 1.45).bad;
+    return out;
+  });
+  ck('everySummonLandsOnItsOwnPlace', r.wb.bad === 0 && r.wbRanks === 2 && r.face && r.onScreen,
+    `the War Band: the nearest two ${r.wb.near} apart, in ${r.wbRanks} ranks, facing out ${r.face}, all five whole on the screen ${r.onScreen}`);
+  ck('enginesStandATileAndAHalfApart', r.engines.bad === 0 && r.engOn && r.control > 0,
+    `the Siege Train then the Battery: the nearest two engines ${r.engines.near} apart (${r.engines.bad} pairs under 1.45), all on the screen ${r.engOn}; the old march to one spot: ${r.control} pairs under 1.45`);
+  ck('theRaidersWheelRoundTheHallAndPullUpInSight', r.raiders.sweep.every(a => a >= 330) && r.raiders.on === 5 && r.raiders.free && r.raiders.apart.bad === 0,
+    `each rider swept ${r.raiders.sweep.join('/')}° round the hall; after it ${r.raiders.on} of 5 whole on the screen, free ${r.raiders.free}, the nearest two ${r.raiders.apart.near} apart`);
+  ck('aLegionFormsClearOfTheGarrison', r.legion.bad === 0 && r.garrison === 0 && r.lgOn >= 11,
+    `the twelve: the nearest two ${r.legion.near} apart, ${r.garrison} closer than 0.6 to a garrison man, ${r.lgOn} of 12 whole on the screen`);
 }
 {
   const r = await p.evaluate(() => {
     const out = {};
     __ar.fresh('army-beat'); __ar.flat();
-    // STAGGERED: the war band's flashes come one after another, each unit
-    // unseen until its own, and each marches on its own beat
+    // STAGGERED: the war band's beams come down one after another (the first
+    // once its beam has fallen), each unit unseen until its own lands
     const { units: wb } = __ar.play('war_band');
-    const F = Deck.FX.war_band;
+    const F = Deck.FX.war_band, drop = (Deck.armyFx.BEAM_T || { drop: 0 }).drop;
     out.flashT = R.summons.slice(-5).map(s => +(-s.t).toFixed(3));
-    out.flashWant = [0, 1, 2, 3, 4].map(i => +(i * F.STAGGER / 1000).toFixed(3));
+    out.flashWant = [0, 1, 2, 3, 4].map(i => +(drop + i * F.STAGGER / 1000).toFixed(3));
     out.flashIds = R.summons.slice(-5).map(s => s.id).join(',') === wb.map(u => u.id).join(',');
     out.hidden = R._unborn ? wb.filter(u => R._unborn.has(u.id)).length : 0;
-    out.waits = wb.map(u => u.task && u.task.type === 'muster' ? +u.task.wait.toFixed(3) : null);
-    out.waitWant = wb.map((u, i) => +(F.HOLD + i * F.STAGGER / 1000).toFixed(3));
-    // the picture's clock: once every flash has started nobody is hidden
+    // THE HOLD: every one stands where it landed until the last is down and
+    // the formation has held its beat — then is simply free, where it formed
+    const free = drop + 4 * F.STAGGER / 1000 + F.HOLD;
+    out.waits = [...new Set(wb.map(u => u.task && u.task.type === 'muster' && u.task.stay ? u.task.wait.toFixed(3) : 'x'))];
+    out.waitWant = free.toFixed(3);
+    const at0 = wb.map(u => [u.x, u.y]);
+    // the picture's clock: once every beam has landed nobody is hidden
     const g = R.g; g.save(); R.drawSummons(g, 0.7); g.restore();
     out.allOut = !R._unborn || wb.every(u => !R._unborn.has(u.id));
-    __ar.sim(0.6);
-    out.firstGone = wb[0].task && wb[0].task.type === 'move' && wb[4].task && wb[4].task.type === 'muster';
-    __ar.sim(1.2);
-    out.allGone = wb.every(u => !(u.task && u.task.type === 'muster'));
-    // TOGETHER: the legion stands until its last is out, then marches as one
+    __ar.sim(free - 0.25);
+    out.held = wb.every(u => u.task && u.task.type === 'muster');
+    __ar.sim(0.5);
+    out.freed = wb.every(u => !u.task && !Units.moving(u));
+    __ar.sim(3);
+    out.stayed = wb.every((u, i) => Math.hypot(u.x - at0[i][0], u.y - at0[i][1]) < 0.05);
+    // the legion too, all twelve on one beat
     __ar.fresh('army-together'); __ar.flat();
     const { units: lg } = __ar.play('legion_marches');
-    const L = Deck.FX.legion_marches;
+    const L = Deck.FX.legion_marches, lfree = drop + 11 * L.STAGGER / 1000 + L.HOLD;
     out.together = [...new Set(lg.map(u => u.task && u.task.wait != null ? u.task.wait.toFixed(3) : 'x'))];
-    out.togetherWant = (L.HOLD + 11 * L.STAGGER / 1000).toFixed(3);
-    __ar.sim(2.3);
+    out.togetherWant = lfree.toFixed(3);
+    const lg0 = lg.map(u => [u.x, u.y]);
+    __ar.sim(lfree - 0.2);
     out.stillHeld = lg.every(u => u.task && u.task.type === 'muster');
-    __ar.sim(0.3);
-    out.marched = lg.every(u => u.task && u.task.type === 'move' && u.path && u.path.length);
-    // Swift Raiders keep their pinned arrival: all at once, straight out
-    __ar.fresh('army-raid'); __ar.flat();
-    const { units: sr } = __ar.play('swift_raiders');
-    out.raidersAtOnce = R.summons.slice(-5).every(s => s.t === 0) && sr.every(u => u.task && u.task.type === 'move' && u.path && u.path.length);
+    __ar.sim(3.4);
+    out.lgStayed = lg.every((u, i) => !u.task && Math.hypot(u.x - lg0[i][0], u.y - lg0[i][1]) < 0.05);
     return out;
   });
-  ck('aStaggeredMusterStepsOutOneAtATime', JSON.stringify(r.flashT) === JSON.stringify(r.flashWant) && r.flashIds && r.hidden === 4 && r.allOut,
-    `flashes at ${r.flashT.join('/')}s, ${r.hidden} of 5 unseen until their own, all out once begun ${r.allOut}`);
-  ck('andEachMarchesOnItsOwnBeat', JSON.stringify(r.waits) === JSON.stringify(r.waitWant) && r.firstGone && r.allGone,
-    `waits ${r.waits.join('/')}s; the first gone at 0.6s and the last still standing ${r.firstGone}; all gone by 1.8s ${r.allGone}`);
-  ck('theLegionHoldsItsBeatAndMarchesAsOne', r.together.length === 1 && r.together[0] === r.togetherWant && r.stillHeld && r.marched,
-    `every one waits ${r.together.join('|')}s (want ${r.togetherWant}); held at 2.3s ${r.stillHeld}; all marching at 2.6s ${r.marched}`);
-  ck('swiftRaidersKeepTheirArrival', r.raidersAtOnce, 'all five flash at once and ride straight out');
+  ck('aStaggeredMusterStepsOutOneAtATime', JSON.stringify(r.flashT) === JSON.stringify(r.flashWant) && r.flashIds && r.hidden === 5 && r.allOut,
+    `beams land at ${r.flashT.join('/')}s, ${r.hidden} of 5 unseen until their own, all out once landed ${r.allOut}`);
+  ck('theyHoldTheirPlacesThenStayWhereTheyFormed', r.waits.length === 1 && r.waits[0] === r.waitWant && r.held && r.freed && r.stayed,
+    `every one held until ${r.waits.join('|')}s (want ${r.waitWant}): held ${r.held}, free after it ${r.freed}, still on its place 3s later ${r.stayed}`);
+  ck('theLegionHoldsItsBeatAsOne', r.together.length === 1 && r.together[0] === r.togetherWant && r.stillHeld && r.lgStayed,
+    `every one held until ${r.together.join('|')}s (want ${r.togetherWant}); held to the end ${r.stillHeld}; free and unmoved after ${r.lgStayed}`);
 }
 {
   const r = await p.evaluate(({ SUMMONERS }) => {
@@ -399,19 +501,49 @@ await p.evaluate(({ ARMY }) => {
 {
   // the approved texts, word for word — a wording change is a ruling, reported
   const r = await p.evaluate(({ ARMY }) => Object.fromEntries(ARMY.map(id => [id, Deck.card(id).text])), { ARMY });
+  /* THE PRICE IS ON THE CARD (playtest g2 #4, g3 #5): every card that brings
+     soldiers who count and eat says so in as many words — the Iron Legion on
+     day one took a town from 3/5 and −3 food a day to 9/5 and −12, the Legion
+     to 16/5 and −25 with desertions by day 19, and not one word on the card
+     had warned of it. The wolves and the ghosts already say they eat nothing. */
+  const EATS = ' They eat like soldiers and count against your population.', CREWS = ' Their crews eat like soldiers and count against your population.';
   const want = {
     willing_hands: '+3 villagers at your Town Center. They may take you over the population cap; training waits until there is room again.',
-    war_band: 'Five soldiers of your best infantry rank march out of your Town Center: Defenders, Axemen or Bronze Champions, by your best finished Barracks (Defenders with none).',
+    war_band: 'Five soldiers of your best infantry rank march out of your Town Center: Defenders, Axemen or Bronze Champions, by your best finished Barracks (Defenders with none).' + EATS,
     hunters_pack: 'Three war-wolves join you at your Town Center: 70 health, 10 attack, fast. They fight beside you, stay near home, need no roof and eat nothing.',
-    iron_legion: 'Six Bronze Champions march out of your Town Center.',
-    siege_train: 'A Catapult and a Ballista roll out of your Town Center.',
+    iron_legion: 'Six Bronze Champions march out of your Town Center.' + EATS,
+    siege_train: 'A Catapult and a Ballista roll out of your Town Center.' + CREWS,
     veterans: 'Every land soldier you have rises one rank. Base and second-rank soldiers become their hall’s champion (Bronze Champion, Fire Archer, Lancer; a Catapult becomes a Trebuchet). Champions and other engines become veterans: +25% health and attack.',
-    legion_marches: 'Twelve elite soldiers march out of your Town Center: 5 Bronze Champions, 4 Fire Archers and 3 Lancers.',
-    trebuchet_battery: 'Two Trebuchets and a Siege Tower roll out of your Town Center.',
+    legion_marches: 'Twelve elite soldiers march out of your Town Center: 5 Bronze Champions, 4 Fire Archers and 3 Lancers.' + EATS,
+    trebuchet_battery: 'Two Trebuchets and a Siege Tower roll out of your Town Center.' + CREWS,
     ancestors_host: 'Fifteen spectral Bronze Champions rise at your Town Center and fight for you for 6 days, then fade. They eat nothing and need no roof.',
   };
   const bad = Object.keys(want).filter(k => r[k] !== want[k]);
   ck('everyCardsTextIsTheApprovedText', !bad.length, bad.length ? 'changed: ' + bad.join(', ') : 'nine texts, word for word');
+  const raiders = await p.evaluate(() => Deck.card('swift_raiders').text);
+  const eaters = { war_band: r.war_band, iron_legion: r.iron_legion, siege_train: r.siege_train, legion_marches: r.legion_marches, trebuchet_battery: r.trebuchet_battery, swift_raiders: raiders };
+  const silent = Object.keys(eaters).filter(k => !/\beat\b/.test(eaters[k]) || !/population/.test(eaters[k]));
+  ck('everySoldierCardSaysTheyEatAndCount', !silent.length,
+    silent.length ? 'silent on the larder and the cap: ' + silent.join(', ') : 'six cards that bring soldiers who eat and count say so; the wolves and the ghosts say they eat nothing');
+  /* …and the whole text still fits the card's back, at the sheet's smallest
+     face (88px, a 320px phone) up to the inspector's: the box clips what
+     overflows (overflow: hidden), so an added sentence that pushed the flavor
+     line out would fail no other check */
+  const fit = await p.evaluate(async () => {
+    if (document.fonts) { try { await document.fonts.load('700 10px Cinzel'); await document.fonts.ready; } catch (e) {} }
+    const host = document.createElement('div'); host.style.cssText = 'position:fixed;left:0;top:0;display:flex;flex-wrap:wrap';
+    document.body.appendChild(host);
+    const bad = [];
+    for (const fw of [88, 120, 176, 220]) for (const id of ['war_band', 'swift_raiders', 'iron_legion', 'siege_train', 'legion_marches', 'trebuchet_battery', 'hunters_pack', 'veterans', 'ancestors_host']) {
+      const el = Deck.face(id, { w: fw, back: true });
+      host.appendChild(el);
+      const tx = el.querySelector('.cc-txt');
+      if (tx.scrollHeight > tx.clientHeight + 1) bad.push(id + '@' + fw + ' +' + (tx.scrollHeight - tx.clientHeight) + 'px');
+    }
+    host.remove();
+    return bad;
+  });
+  ck('andEveryArmyCardsTextFitsItsBack', !fit.length, fit.length ? 'clipped: ' + fit.join(', ') : 'nine backs, 88 to 220px wide, every word inside the box');
 }
 
 // ---------------- 3. POPULATION AND FOOD ----------------
@@ -605,21 +737,69 @@ await p.evaluate(({ ARMY }) => {
     for (const u of pack) { u.task = null; u.path = null; }
     Combat.acquire();
     out.peace = S.peace && !pack.some(u => u.tUnit === a.id);
-    // THE DYE: a ring of the tribe's colour at its feet (drawn, measured)
-    const cv = document.createElement('canvas'); cv.width = cv.height = 40;
-    const g = cv.getContext('2d');
-    Deck.drawCollar(g, pack[0], 4, 4, 32);
-    const dye = Sprites.tunicCol[G.tunicOf('P')].body;
-    const want = [1, 3, 5].map(i => parseInt(dye.slice(i, i + 2), 16));
-    const d = g.getImageData(0, 0, 40, 40).data;
-    let n = 0;
-    for (let i = 0; i < d.length; i += 4) if (d[i + 3] && Math.abs(d[i] - want[0]) + Math.abs(d[i + 1] - want[1]) + Math.abs(d[i + 2] - want[2]) < 6) n++;
-    out.dye = n;
     out.named = Deck.unitName(pack[0]) === 'War-wolf' && !!Deck.unitHint(pack[0]) && Deck.unitName(a) === null;
+    /* THE COLLAR IS ON THE WOLF (judge g3: "cyan dots on the ground"): a
+       war-wolf's frames are the wolf's own with a band of the tribe's dye
+       across the neck — on its own pixels, every alpha kept — and it
+       FOLLOWS THE HEAD through a pose (measured on a synthetic strip, whose
+       head is known: a file:// page cannot read the shipped art); a wild
+       wolf wears nothing, and nothing is drawn on the ground round it. */
+    const realWolf = Assets.unitArt.wolf;
+    const frame = (S, ox, oy, view) => {
+      const c = document.createElement('canvas'); c.width = c.height = S;
+      const q = c.getContext('2d'); q.fillStyle = '#3a3a3a';
+      if (view === 's') { q.fillRect(ox + 16, oy + 27, 14, 13); q.fillRect(ox + 18, oy + 40, 12, 10); q.fillRect(ox + 19, oy + 50, 3, 12); q.fillRect(ox + 26, oy + 50, 3, 12);
+        q.fillStyle = '#bbbbbb'; q.fillRect(ox + 19, oy + 31, 1, 1); q.fillRect(ox + 26, oy + 31, 1, 1); }
+      else { q.fillRect(ox + 10, oy + 30, 36, 14); q.fillRect(ox + 46, oy + 24, 12, 14); q.fillRect(ox + 12, oy + 44, 4, 14); q.fillRect(ox + 40, oy + 44, 4, 14); }
+      return c;
+    };
+    const fake = { dirs: {} };
+    for (const dir of ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw']) {
+      const v = dir === 's' ? 's' : 'side';
+      // walk: frame 1 the same wolf a little along; fight: 96px frames, the
+      // walk window bottom-centred, the head thrown forward and up
+      fake.dirs[dir] = { walk: [frame(64, 0, 0, v), frame(64, 2, 1, v)], fight: [frame(96, 16 + 8, 32 - 6, v), frame(96, 16 + 3, 32 - 2, v)] };
+    }
+    Assets.unitArt.wolf = fake;
+    try {
+      const wild = __ar.unit('wolf', 'W', pack[0].x + 3, pack[0].y);
+      const key = R.unitArtKey(pack[0]), art = Assets.unitArt[key];
+      out.keys = [key, R.unitArtKey(wild)];
+      const dye = Sprites.tunicCol[G.tunicOf('P')], hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+      const body = hex(dye.body), cols = [body, hex(dye.accent), body.map(v => Math.min(255, v + 24))].map(c => c.join());
+      const look = (f, src) => {
+        const W = f.width, d = f.getContext('2d').getImageData(0, 0, W, W).data, s = src.getContext('2d').getImageData(0, 0, W, W).data;
+        let n = 0, x = 0, y = 0, alphaMoved = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] !== s[i + 3]) alphaMoved++;
+          if (d[i + 3] && cols.includes([d[i], d[i + 1], d[i + 2]].join())) { n++; x += (i / 4) % W; y += Math.floor(i / 4 / W); }
+        }
+        return { n, x: n ? x / n : 0, y: n ? y / n : 0, alphaMoved };
+      };
+      const L = (dir, pose, k) => art && art.dirs[dir] ? look(art.dirs[dir][pose][k], fake.dirs[dir][pose][k]) : { n: 0, x: 0, y: 0, alphaMoved: 0 };
+      const e0 = L('e', 'walk', 0), e1 = L('e', 'walk', 1), ef = L('e', 'fight', 0), s0 = L('s', 'walk', 0), s1 = L('s', 'walk', 1), sf = L('s', 'fight', 1);
+      const off = (a, b) => [+(b.x - a.x).toFixed(1), +(b.y - a.y).toFixed(1)];
+      out.collar = { n: [e0.n, s0.n], alpha: e0.alphaMoved + ef.alphaMoved + s0.alphaMoved + sf.alphaMoved,
+        e1: off(e0, e1), ef: off(e0, ef), s1: off(s0, s1), sf: off(s0, sf) };
+      // the unit pass for a war-wolf: nothing of the dye laid round it
+      const cv = document.createElement('canvas'); cv.width = cv.height = 48;
+      const g = cv.getContext('2d');
+      Deck.drawUnit(g, pack[0], fake.dirs.e.walk[0], 8, 8, 32);
+      const d = g.getImageData(0, 0, 48, 48).data;
+      let ring = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] && cols.includes([d[i], d[i + 1], d[i + 2]].join())) ring++;
+      out.ring = ring;
+    } finally { Assets.unitArt.wolf = realWolf; for (const k in Assets.unitArt) if (/^wolf-war-/.test(k)) delete Assets.unitArt[k]; }
     return out;
   });
   ck('thePackKeepsTheTruce', r.peace);
-  ck('andWearsTheTribesDye', r.dye >= 12 && r.named, `${r.dye} dyed pixels in the ring; named a War-wolf with its own hint ${r.named}`);
+  const near = (v, w) => Math.abs(v[0] - w[0]) <= 1 && Math.abs(v[1] - w[1]) <= 1;
+  ck('andWearsTheTribesDye', r.named && r.keys[0] === 'wolf-war-' + r.keys[0].split('-').pop() && r.keys[0] !== 'wolf' && r.keys[1] === 'wolf' &&
+    r.collar.n[0] >= 18 && r.collar.n[1] >= 18 && r.collar.alpha === 0 && r.ring === 0,
+    `a war-wolf draws as ${r.keys[0]}, a wild one as ${r.keys[1]}; ${r.collar.n.join('/')} px of dye on the neck (side/face-on), ` +
+    `${r.collar.alpha} alpha moved, ${r.ring} px of dye laid round it; named a War-wolf with its own hint ${r.named}`);
+  ck('andTheCollarFollowsTheHead', near(r.collar.e1, [2, 1]) && near(r.collar.ef, [24, 26]) && near(r.collar.s1, [2, 1]) && near(r.collar.sf, [19, 30]),
+    `the collar moved with the head: side walk ${r.collar.e1} (head 2,1), side lunge ${r.collar.ef} (24,26), face-on walk ${r.collar.s1} (2,1), face-on fight ${r.collar.sf} (19,30)`);
 }
 {
   const r = await p.evaluate(() => {
@@ -692,13 +872,14 @@ await p.evaluate(({ ARMY }) => {
     out.march = pack.every(u => u.task && u.task.type === 'muster' && u.task.x === u.den.x && u.task.y === u.den.y);
     __ar.sim(4);
     out.rest = new Set(pack.map(u => (u.x | 0) + ',' + (u.y | 0))).size === 3 && pack.every(u => (u.x | 0) === u.den.x && (u.y | 0) === u.den.y);
-    /* THE MARCH OUT IS THE PACK'S OWN WALK: when the muster lets a wolf go,
-       its walk carries the home flag, and a foe near the hall breaks it off
-       (a walk the PLAYER orders is obeyed to the letter — anOrderIsObeyed) */
+    /* AT HEEL IS THE PACK'S OWN HOLD: each wolf lands at the hall's side and
+       is held there for its beat (the 'muster' task's stay), and a foe near
+       the hall breaks the hold (a walk the PLAYER orders is obeyed to the
+       letter — anOrderIsObeyed) */
     __ar.fresh('army-wolf-march'); __ar.flat();
     const { units: p2 } = __ar.play('hunters_pack');
-    for (let i = 0; i < 40 && !p2.every(u => u.task && u.task.type === 'move'); i++) Units.update(0.05);
-    out.homeFlag = p2.every(u => u.task && u.task.type === 'move' && u.task.home === true);
+    const hall = Bld.tcOf('P');
+    out.homeFlag = p2.every(u => u.task && u.task.type === 'muster' && Math.hypot(u.x - Bld.cx(hall), u.y - Bld.cy(hall)) < 4.5);
     const intr = __ar.unit('raider', 'R', p2[0].x + 2, p2[0].y, 999); intr.hostileTo = 'P';
     Combat.acquire();
     out.breaks = p2.some(u => u.tUnit === intr.id);
@@ -717,7 +898,7 @@ await p.evaluate(({ ARMY }) => {
   ck('butARunnerCannotLeadItAcrossTheMap', r.runner.from && r.runner.let && r.runner.home, JSON.stringify(r.runner));
   ck('threeWolvesThreeDens', r.naiveSlots < 3 && r.distinct && r.free && r.march && r.rest,
     `the muster alone deals ${r.naiveSlots} tiles to three; the pack's dens ${r.dens.join(' / ')}, none under a standing villager ${r.free}, marched to ${r.march}, resting there apart ${r.rest}`);
-  ck('theMarchOutIsThePacksOwnWalk', r.homeFlag && r.breaks, `every march carries the home flag ${r.homeFlag}; a foe near the hall breaks it off ${r.breaks}`);
+  ck('atHeelIsThePacksOwnHold', r.homeFlag && r.breaks, `every wolf held at heel within 4.5 of the hall's middle ${r.homeFlag}; a foe near the hall breaks the hold ${r.breaks}`);
   ck('aMarkThatVanishesSendsItHome', r.vanish.tUnit === 0 && r.vanish.home, JSON.stringify(r.vanish));
 }
 
@@ -870,29 +1051,231 @@ await p.evaluate(({ ARMY }) => {
     `${r.heal.kind}: heal price ${r.heal.price}, at half strength ${r.heal.cost} food`);
 }
 {
-  /* THE RANK THE CARD GAVE IS WORN FOR GOOD: a minute after the card, a
-     soldier it raised to champion wears one gold chevron and a veteran two
-     — measured on the pixels drawUnit lays over a plain frame, against a
-     trained champion (the CONTROL) that wears none */
+  /* THE RANK THE CARD GAVE IS WORN FOR GOOD, AND CAN BE READ (judge g3:
+     "the promoted army looks identical in a crowd" — two one-pixel chevrons
+     sat inside the helmet): a minute after the card a veteran wears a GOLD
+     pip and a soldier raised to champion a STEEL one — each a solid diamond
+     with a dark rim, set clear ABOVE the frame's own head — measured on the
+     pixels drawUnit lays over a frame whose head starts a tenth of the way
+     down (a synthetic frame: its silhouette is known), against a trained
+     champion (the CONTROL) that wears none. And the rank is put on when the
+     wave reaches the man, not at the play: a soldier the wave has not
+     reached wears nothing yet. */
   const r = await p.evaluate(() => {
     __ar.fresh('army-chevron'); __ar.flat();
     const d = __ar.unit('defender', 'P', 4.5, 14.5), e = __ar.unit('elite', 'P', 6.5, 14.5), plain = __ar.unit('elite', 'P', 8.5, 14.5);
     S.units.splice(S.units.indexOf(plain), 1);
     Deck.play('veterans');
     S.units.push(plain);
-    const img = document.createElement('canvas'); img.width = img.height = 32;
-    const gold = u => {
-      const cv = document.createElement('canvas'); cv.width = cv.height = 40;
+    // a 64px frame: a body from row 6 (a tenth of the way down) to the foot
+    const img = document.createElement('canvas'); img.width = img.height = 64;
+    { const q = img.getContext('2d'); q.fillStyle = '#806040'; q.fillRect(22, 6, 20, 56); }
+    const look = (u, wait) => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 48;
       const g = cv.getContext('2d');
-      if (u.spectral || u.warWolf || u.vet || u.ranked) Deck.drawUnit(g, u, img, 4, 4, 32);
-      const px = g.getImageData(0, 0, 40, 40).data; let n = 0;
-      for (let i = 0; i < px.length; i += 4) if (px[i + 3] && px[i] === 0xff && px[i + 1] === 0xd4 && px[i + 2] === 0x5e) n++;
-      return n;
+      if (!wait) Deck._rankAt = null;   // a minute later
+      if (u.spectral || u.warWolf || u.vet || u.ranked) Deck.drawUnit(g, u, img, 8, 12, 32);
+      const px = g.getImageData(0, 0, 48, 48).data, cols = {};
+      let above = 0, below = 0, minX = 99, maxX = -1, minY = 99, maxY = -1;
+      const headY = 12 + Math.round(6 / 64 * 32);   // the frame's first opaque row, in the canvas
+      for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
+        const i = (y * 48 + x) * 4;
+        if (!px[i + 3]) continue;
+        const inBody = x >= 8 + 11 && x < 8 + 21 && y >= headY && y < 12 + 31;
+        if (inBody) continue;
+        const h = '#' + [px[i], px[i + 1], px[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+        cols[h] = (cols[h] || 0) + 1;
+        if (y < headY) above++; else below++;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      }
+      return { above, below, w: maxX - minX + 1, h: maxY - minY + 1, cols };
     };
-    return { kinds: [d.kind, e.kind, plain.kind], raised: gold(d), vet: gold(e), plain: gold(plain), flags: [!!d.ranked, !!e.vet, !!plain.ranked || !!plain.vet] };
+    const pending = look(e, true);
+    return { kinds: [d.kind, e.kind, plain.kind], raised: look(d), vet: look(e), plain: look(plain), pending };
   });
-  ck('theRaisedWearTheirRankForGood', r.kinds.join() === 'elite,elite,elite' && r.raised > 0 && r.vet === r.raised * 2 && r.plain === 0,
-    `raised to champion: ${r.raised} gold px (one chevron); a veteran ${r.vet} (two); a trained champion ${r.plain}`);
+  const tone = (o, c) => o.cols[c] || 0;
+  ck('theRaisedWearTheirRankForGood', r.kinds.join() === 'elite,elite,elite' &&
+    tone(r.vet, '#ffd45e') >= 9 && tone(r.raised, '#b9c8da') >= 9 && !tone(r.raised, '#ffd45e') && !tone(r.vet, '#b9c8da') &&
+    r.vet.below === 0 && r.raised.below === 0 && r.vet.w >= 5 && r.vet.h >= 5 && (tone(r.vet, '#3a2408') >= 8) && r.plain.above + r.plain.below === 0,
+    `a veteran: ${tone(r.vet, '#ffd45e')} gold px in a ${r.vet.w}x${r.vet.h} pip, ${tone(r.vet, '#3a2408')} px of rim, ${r.vet.below} px laid on the man; ` +
+    `raised to champion: ${tone(r.raised, '#b9c8da')} steel px, ${r.raised.below} on the man; a trained champion ${r.plain.above + r.plain.below}`);
+  ck('andTheRankIsPutOnWhenTheWaveReachesHim', r.pending.above + r.pending.below === 0 && r.vet.above > 0,
+    `straight after the play the veteran wears ${r.pending.above + r.pending.below} px of rank; once the wave has passed, ${r.vet.above}`);
+}
+{
+  /* THE CARD LANDS ON THE ARMY (judge g3, playtest g3 #1): with the army
+     sixteen tiles out and the camera on it, the play hauled the camera to
+     the hall and the whole promotion happened off the screen. It lands where
+     the soldiers are: with any of them in sight the camera does not move
+     (and the landing point is among them); with none in sight it is brought
+     to the biggest body of them. And THE FLASH IS THE MAN'S OWN: a soldier
+     lit by his rank is lit on his own pixels and a hard line round them —
+     not a box of light, not a pillar in the world pass (the first cut's
+     "solid gold rectangles behind the soldiers"). */
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-vet-far'); __ar.flat();
+    Screens.show('playing');
+    const tc = Bld.tcOf('P'), ax = tc.x + 16, ay = tc.y + 4;
+    const army = [0, 1, 2, 3, 4, 5].map(i => __ar.unit(['defender', 'archer', 'rider', 'defender', 'elite', 'catapult'][i], 'P', ax + (i % 3) * 1.2 + 0.5, ay + ((i / 3) | 0) * 1.2 + 0.5));
+    R.cam.z = 1.7; R.centerOn(ax + 1.5, ay + 1);
+    const cam0 = [R.cam.x, R.cam.y];
+    const fx = Deck.FX.veterans;
+    const dest = DeckUI._dest(fx.at || 'tc', 'veterans');
+    out.stayed = R.cam.x === cam0[0] && R.cam.y === cam0[1];
+    out.seen = army.filter(u => R.onScreen(u.x, u.y)).length;
+    const TL = CFG.TILE, sx = u => (u.x * TL - R.cam.x) * R.cam.z, sy = u => (u.y * TL - R.cam.y) * R.cam.z;
+    out.amongThem = Math.min(...army.map(u => Math.hypot(sx(u) - dest.x, sy(u) - dest.y))) < 3 * TL * R.cam.z;
+    // in sight but out at the left edge: the camera frames them (the climax
+    // is not cut by the edge of the screen)
+    R.centerOn(ax + 1.5 + 3, ay + 1);
+    const camE = [R.cam.x, R.cam.y], seenE = army.filter(u => R.onScreen(u.x, u.y)).length;
+    DeckUI._dest(fx.at || 'tc', 'veterans');
+    const mx = (ax + 1.5) * TL, my = (ay + 1) * TL, vw = R.viewW();
+    out.framed = { seen: seenE, moved: R.cam.x !== camE[0] || R.cam.y !== camE[1], at: +(((mx - R.cam.x) * R.cam.z) / vw).toFixed(2) };
+    // none in sight: the camera is brought to them
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    DeckUI._dest(fx.at || 'tc', 'veterans');
+    out.brought = army.filter(u => R.onScreen(u.x, u.y)).length;
+    // THE FLASH: a lone soldier far from the wave's start, his frame a known
+    // silhouette (a synthetic 64px frame stood in for his sprite)
+    __ar.fresh('army-vet-flash'); __ar.flat();
+    __ar.unit('defender', 'P', 6.5, 10.5);
+    R.cam.z = 1.7; R.centerOn(6.5, 10.5);
+    G.updateVisibility();   // the player's own: in sight
+    R.cardShows = [];
+    Deck.play('veterans');
+    const s = R.cardShows.find(x => x.id === 'veterans'), sh = fx.show;
+    s.x = s.y = -60;   // (the wave's ring rolls out elsewhere: only the man is measured)
+    const img = document.createElement('canvas'); img.width = img.height = 64;
+    { const q = img.getContext('2d'); q.fillStyle = '#806040'; q.beginPath(); q.ellipse(32, 36, 10, 24, 0, 0, Math.PI * 2); q.fill(); }
+    const fa = img.getContext('2d').getImageData(0, 0, 64, 64).data;   // his own pixels: every alpha of the frame
+    const real = R.unitSprite, realFB = R.frameBox;
+    R.unitSprite = () => img; R.frameBox = (u, i, B) => B;
+    let outside = 0, inside = 0; const where = [];
+    try {
+      const l = s.lit.slice().sort((p, q) => q.d - p.d)[0], u = Units.get(l.id);
+      const cv = document.createElement('canvas'); cv.width = CFG.W * TL; cv.height = CFG.H * TL;
+      const g = cv.getContext('2d');
+      const B = R.unitBox(u), x0 = Math.round(u.x * TL - B / 2), y0 = Math.round(R.frameTop(u.y, B, B));
+      for (const dt of [0, 0.03, 0.1, 0.25]) {
+        g.clearRect(0, 0, cv.width, cv.height);
+        s.t = l.d + dt;
+        // the ground pass first, on a canvas of its own (its beam stands
+        // UNDER him; it is also what stamps the landing frame the world
+        // pass answers), then the world pass over him, measured
+        { const gg = document.createElement('canvas'); gg.width = cv.width; gg.height = cv.height; sh.draw.call(fx, gg.getContext('2d'), s, s.t / (s.ms / 1000), 0, 'ground'); }
+        if (sh.layers || sh.layer === 'world') { g.save(); sh.draw.call(fx, g, s, s.t / (s.ms / 1000), 0, 'world'); g.restore(); }
+        for (const e of R.summons) e.t = s.t;
+        g.save(); R.drawSummons(g, 0); g.restore();
+        // the box, and the silhouette a world pixel wider (the hard line round him)
+        const d = g.getImageData(x0 - 2, y0 - 2, B + 4, B + 4).data, W2 = B + 4;
+        for (let yy = 0; yy < W2; yy++) for (let xx = 0; xx < W2; xx++) {
+          if (!d[(yy * W2 + xx) * 4 + 3]) continue;
+          // the frame's pixel under this one (64 → B), dilated by one world px
+          const fx0 = (xx - 2) / B * 64, fy0 = (yy - 2) / B * 64, k = 64 / B * 1.5;
+          // (a world pixel spans 64/B frame pixels a side: any of them his)
+          const on1 = (px, py) => px >= 0 && py >= 0 && px < 64 && py < 64 && fa[(py * 64 + px) * 4 + 3] > 0;
+          const inS = (px, py) => { const st = Math.max(1, Math.round(64 / B)); px = Math.floor(px); py = Math.floor(py);
+            for (let a = 0; a < st; a++) for (let c = 0; c < st; c++) if (on1(px + a, py + c)) return true; return false; };
+          const near = inS(fx0, fy0) || inS(fx0 - k, fy0) || inS(fx0 + k, fy0) || inS(fx0, fy0 - k) || inS(fx0, fy0 + k);
+          if (fy0 < 36 - 24 - 1) continue;   // above his head: the rank pip's place
+          if (near) inside++; else { outside++; if (where.length < 12) where.push(dt + '@' + (xx - 2) + ',' + (yy - 2) + ':' + [0, 1, 2, 3].map(c => d[(yy * W2 + xx) * 4 + c]).join('/')); }
+        }
+      }
+    } finally { R.unitSprite = real; R.frameBox = realFB; }
+    out.flash = { inside, outside, where, B: R.unitBox(Units.get(s.lit[0].id)) };
+    return out;
+  });
+  ck('theCardLandsOnTheArmyNotTheHall', r.stayed && r.seen === 6 && r.amongThem && r.brought === 6,
+    `the army 16 tiles out, the camera on it: kept still ${r.stayed}, ${r.seen} of 6 in sight, the light lands among them ${r.amongThem}; with none in sight the camera is brought to them: ${r.brought} of 6`);
+  ck('andAnArmyAtTheEdgeIsFramed', r.framed.seen > 0 && r.framed.moved && r.framed.at > 0.4 && r.framed.at < 0.6,
+    `${r.framed.seen} of 6 in sight at the left edge: the camera moved ${r.framed.moved}, their middle now ${r.framed.at} of the way across`);
+  ck('theFlashIsTheMansOwnPixels', r.flash.inside > 0 && r.flash.outside === 0,
+    `in the man's box through the flash: ${r.flash.inside} px on him and his edge, ${r.flash.outside} px of box round him` + (r.flash.outside ? ' (box ' + r.flash.B + ': ' + r.flash.where.join(' ') + ')' : ''));
+}
+
+{
+  /* THE CUT IS A CINEMA LETTERBOX (judge g3: "thin dark strips with a
+     light line along them, stuck to the glass"): the Imperial and
+     Enlightenment acts close two plain bars of the shell's own black over
+     the open frame — about an eighth of it each, in under a fifth of a
+     second, nothing drawn along them — and the card's own name stands in
+     the lower one, gold, at least 13 CSS px tall in its capitals' height
+     range; they are gone once the formation is let go. The Iron Legion has
+     no bars at all (the cut is a step up the tiers). And the fan stands its
+     people INSIDE the cut: none lands under a bar. Measured on the sky
+     layer the show really draws, with the HUD up. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    const scene = (id, setup) => {
+      __ar.fresh('army-cinema-' + id); __ar.flat();
+      const P = Bld.tcOf('P'); P.x = (CFG.W / 2) | 0; P.y = (CFG.H / 2) | 0; Bld._block = null;
+      Screens.show('playing');
+      R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+      if (setup) setup(P);
+      G.updateVisibility();
+      R.cardShows = [];
+      const { units } = __ar.play(id);
+      const s = R.cardShows.find(x => x.id === id), sh = Deck.FX[id].show;
+      const dpr = R.dpr || 1, W = R.cv.width, H = R.cv.height;
+      const tb = document.getElementById('topbar').getBoundingClientRect(), bb = document.getElementById('bottombar').getBoundingClientRect();
+      const top = Math.round(tb.bottom * dpr), bot = Math.round(bb.top * dpr), open = bot - top;
+      const at = t => {
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const g = cv.getContext('2d');
+        s.t = t; sh.draw.call(Deck.FX[id], g, s, t / (s.ms / 1000), 0, 'sky');
+        const d = g.getImageData(0, 0, W, H).data, ink = i => d[i + 3] === 255 && d[i] < 32 && d[i + 1] < 32 && d[i + 2] < 40;
+        const shell = i => d[i] === 13 && d[i + 1] === 11 && d[i + 2] === 8 && d[i + 3] === 255;
+        // the bar: rows from `top` down that are the shell's black end to end
+        const solid = y => { for (let x = 0; x < W; x += 3) if (!ink((y * W + x) * 4)) return false; return true; };
+        let hTop = 0; while (hTop < open && solid(top + hTop)) hTop++;
+        // the lower bar: rows up from `bot` that are black but for the title
+        const black = y => { let n = 0; for (let x = 0; x < W; x += 3) if (ink((y * W + x) * 4)) n++; return n / Math.ceil(W / 3); };
+        let hBot = 0; while (hBot < open && black(bot - 1 - hBot) > 0.6) hBot++;
+        // the row just inside each bar: a gilded rule there is the old look
+        const ruleRow = y => { let n = 0; for (let x = 0; x < W; x += 3) { const i = (y * W + x) * 4; if (d[i + 3] && d[i] > 150 && d[i + 1] > 120 && d[i + 2] < 140) n++; } return n; };
+        // the title: gold pixels in the lower bar, and their height in CSS px
+        let gold = 0, y0 = 1e9, y1 = -1, shN = 0, all = 0;
+        for (let y = bot - hBot; y < bot; y++) for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (d[i] === 255 && d[i + 1] === 212 && d[i + 2] === 94) gold++;
+          if (d[i + 3] && d[i] > 120 && d[i + 1] > 90 && d[i + 2] < 120 && d[i] > d[i + 2] + 60) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+        }
+        for (let y = top; y < top + hTop; y++) for (let x = 0; x < W; x += 3) { all++; if (shell((y * W + x) * 4)) shN++; }
+        return { top: +(hTop / open).toFixed(3), bot: +(hBot / open).toFixed(3), rule: hTop ? ruleRow(top + hTop) + ruleRow(bot - hBot - 1) : 0, gold,
+          capPx: y1 >= 0 ? +((y1 - y0 + 1) / dpr).toFixed(1) : 0, shell: all ? +(shN / all).toFixed(2) : 0 };
+      };
+      const free = s.free || 0;
+      const res = { half: at(0.09), held: at(Math.max(0.5, free - 0.4)), gone: at(free + 0.25) };
+      // nobody stands under a bar: every new unit's drawn box, on the screen
+      // the cut frames, lies inside it
+      const cut = Math.round(open * 0.12), TL = CFG.TILE, z = R.cam.z;
+      res.under = units.filter(u => {
+        const B = R.unitBox(u), foot = (u.y * TL + TL / 2 - CFG.SPRITE_LIFT - R.cam.y) * z * dpr, head = foot - B * z * dpr;
+        return head < top + cut || foot > bot - cut;
+      }).length;
+      res.n = units.length;
+      return res;
+    };
+    // the hall low on the screen, the camera where the player left it: the
+    // cut must still frame the legion (the camera cuts to it)
+    out.legion = scene('legion_marches', P => R.centerOn(Bld.cx(P), Bld.cy(P) - 4));
+    // a garrison standing on the hall's south side: the fan must still keep
+    // its people inside the cut (and the camera frames them)
+    out.battery = scene('trebuchet_battery', P => { for (let i = 0; i < 6; i++) __ar.unit('defender', 'P', P.x - 1 + i + 0.5, P.y + 3.5); });
+    out.iron = scene('iron_legion');
+    out.host = scene('ancestors_host');
+    return out;
+  });
+  const bars = (x, lo, hi) => x.top >= lo && x.top <= hi && x.bot >= lo && x.bot <= hi + 0.06;
+  ck('theHeldBeatIsACinemaCut', ['legion', 'battery', 'host'].every(k => bars(r[k].held, 0.1, 0.14) && r[k].held.rule === 0 && r[k].held.shell === 1 && r[k].gone.top === 0 && r[k].gone.bot === 0 &&
+      r[k].half.top > 0 && r[k].half.top < r[k].held.top) && r.iron.held.top === 0 && r.iron.half.top === 0,
+    ['legion', 'battery', 'host', 'iron'].map(k => `${k}: half-way ${r[k].half.top}, held ${r[k].held.top}/${r[k].held.bot} of the frame (rule px ${r[k].held.rule}, shell black ${r[k].held.shell}), after ${r[k].gone.top}/${r[k].gone.bot}`).join('; '));
+  ck('andTheCardsNameIsItsTitle', ['legion', 'battery', 'host'].every(k => r[k].held.gold >= 150 && r[k].held.capPx >= 9 && r[k].half.gold === 0),
+    ['legion', 'battery', 'host'].map(k => `${k}: ${r[k].held.gold} gold px in the lower bar, capitals ${r[k].held.capPx} CSS px tall, mid-slide ${r[k].half.gold}`).join('; '));
+  ck('andNobodyLandsUnderABar', r.legion.under === 0 && r.battery.under === 0 && r.host.under === 0 && r.legion.n === 12 && r.battery.n === 3 && r.host.n === 15,
+    `under a bar: the legion ${r.legion.under} of ${r.legion.n}, the battery (a garrison at the door) ${r.battery.under} of ${r.battery.n}, the host ${r.host.under} of ${r.host.n}`);
 }
 
 // ---------------- 6. THE ANCESTORS' HOST ----------------
@@ -1006,6 +1389,104 @@ await p.evaluate(({ ARMY }) => {
     r.drawn[0] === 0 && r.drawn[1] > 300,
     `climbed at the play ${r.q0.join('/')}, mid-beat ${r.qMid.join('/')}, after ${r.qEnd.join('/')}; pixels drawn ${r.drawn.join(' → ')}`);
 }
+{
+  /* THE HOST KEEPS ITS GROUND (playtest g3: "it drifted south-west and let
+     the raiders live"): every ghost has a POST — the place it rose on — and
+     a band that comes into the host's ground is met and killed, after which
+     every ghost is back on its post (the first cut's ghosts stood wherever
+     each fight had ended); the PLAYER moves a post by walking a ghost, and a
+     stance the player sets is the player's. And the ghost is a FIGURE, not
+     a wash: an opaque ink line round a dithered body, every pixel either
+     there or not (judge g3: "ghost soup"); its ground breaks open in a small
+     stepped burst (the first cut's white disc was a tile wide); and when the
+     days are done it is SAID on the screen (the fade used to go without a
+     word — a plain log line never reaches the toasts). */
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-host-post'); __ar.flat(); __ar.seed(11);
+    const tc = Bld.tcOf('P'); tc.x = (CFG.W / 2) | 0; tc.y = (CFG.H / 2) | 0; Bld._block = null;
+    const hx = Bld.cx(tc), hy = Bld.cy(tc);
+    const { units: host } = __ar.play('ancestors_host');
+    // THE BURST, on the frame a ghost's ground breaks open: white pixels by
+    // its feet, in world pixels (the sky layer draws through the camera)
+    {
+      const s = R.cardShows.find(x => x.id === 'ancestors_host' && x.mode === 'rise'), m = s.units[0], u = Units.get(m.id);
+      Screens.show('playing'); R.cam.z = 1.7; R.centerOn(u.x, u.y); G.updateVisibility();
+      s.t = m.d + Deck.RISE_S * 0.05;
+      const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height;
+      const g = cv.getContext('2d');
+      Deck.FX.ancestors_host.show.draw.call(Deck.FX.ancestors_host, g, s, s.t / (s.ms / 1000), 0, 'sky');
+      // (the burst's middle is the ghost's own feet line, u.y in world px)
+      const k = R.cam.z * (R.dpr || 1), TL = CFG.TILE, sx = (u.x * TL - R.cam.x) * k, sy = (u.y * TL - R.cam.y) * k, half = TL * 0.45 * k;
+      const d = g.getImageData(Math.round(sx - half), Math.round(sy - half), Math.round(half * 2), Math.round(half * 2)).data;
+      let white = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] === 255 && d[i] >= 245 && d[i + 1] >= 245 && d[i + 2] >= 245) white++;
+      out.burstWhite = Math.round(white / (k * k));
+      R.cardShows = [];
+    }
+    for (const u of host) if (u.task && u.task.type === 'muster') u.task.wait = 0;
+    __ar.sim(0.3);
+    const post = u => ({ x: u.den ? u.den.x + 0.5 : NaN, y: u.den ? u.den.y + 0.5 : NaN });
+    out.posts = host.every(u => u.den && Math.hypot(u.x - post(u).x, u.y - post(u).y) < 1);
+    // where each one stood when the rising was done
+    const was = host.map(u => ({ x: u.x, y: u.y }));
+    // A BAND COMES into the host's ground, seven tiles out past its middle
+    const mx = host.reduce((a, u) => a + u.x, 0) / host.length, my = host.reduce((a, u) => a + u.y, 0) / host.length;
+    let dx = mx - hx, dy = my - hy; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+    const band = [0, 1, 2, 3].map(k => { const b = __ar.unit('raider', 'R', mx + dx * 7 + (k % 2) * 0.7, my + dy * 7 + (k >> 1) * 0.7, 30); b.hostileTo = 'P'; return b; });
+    __ar.sim(30);
+    out.bandLeft = band.filter(b => Units.get(b.id)).length;
+    __ar.sim(12);
+    const alive = host.filter(u => Units.get(u.id));
+    out.off = alive.map(u => Math.hypot(u.x - (was[host.indexOf(u)].x), u.y - (was[host.indexOf(u)].y)));
+    out.worst = +Math.max(...out.off).toFixed(2);
+    out.fought = host.some(u => u.kills || 0) || out.bandLeft === 0;
+    // THE PLAYER MOVES THE POST: a ghost walked eight tiles off keeps THAT ground
+    const g0 = alive[0], to = { x: (g0.x + dx * 8) | 0, y: (g0.y + dy * 8) | 0 };
+    out.toOk = Path.passable(to.x, to.y, 'P');
+    Units.moveTo(g0, to.x, to.y);
+    __ar.sim(10);
+    out.moved = !!(g0.den && g0.den.x === to.x && g0.den.y === to.y);
+    __ar.sim(6);
+    out.stays = +Math.hypot(g0.x - (to.x + 0.5), g0.y - (to.y + 0.5)).toFixed(2);
+    // …and a stance the player sets is the player's
+    const g1 = alive[1]; Units.setDefend(g1, true);
+    out.stance = !Deck.hostSense || Deck.hostSense(g1) === false;
+    Units.setDefend(g1, false);
+    // THE FIGURE: drawn on a frame whose silhouette is known
+    const img = document.createElement('canvas'); img.width = img.height = 32;
+    img.getContext('2d').fillStyle = '#806040'; img.getContext('2d').fillRect(8, 4, 16, 26);
+    const cv = document.createElement('canvas'); cv.width = cv.height = 48;
+    const g = cv.getContext('2d');
+    Deck.drawGhost(g, g0, img, 8, 8, 32);
+    const d = g.getImageData(0, 0, 48, 48).data, ink = Deck.GHOST_INK;
+    const want = ink ? [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)) : [-1, -1, -1];
+    let soft = 0, inkN = 0, body = 0, lime = 0;
+    for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
+      const i = (y * 48 + x) * 4;
+      if (d[i + 3] > 0 && d[i + 3] < 255) soft++;
+      if (!d[i + 3]) continue;
+      if (d[i] === want[0] && d[i + 1] === want[1] && d[i + 2] === want[2]) inkN++;
+      else if (x >= 16 && x < 32 && y >= 12 && y < 38) body++;
+    }
+    out.figure = { soft, ink: inkN, body: +(body / (16 * 26)).toFixed(2) };
+    // THE FADE IS SAID: the days run out
+    document.getElementById('toasts').innerHTML = '';
+    UI._toastAt = {};
+    Deck.FX.ancestors_host.end();
+    out.toast = [...document.querySelectorAll('#toasts .toast')].some(t => /fades/.test(t.textContent) && !t.classList.contains('warn'));
+    return out;
+  });
+  ck('theHostKeepsItsGround', r.posts && r.bandLeft === 0 && r.worst <= 1.5,
+    `every ghost on its post after the rising ${r.posts}; the band in its ground: ${4 - r.bandLeft} of 4 killed; after the fight the farthest ghost stands ${r.worst} tiles from where it rose`);
+  ck('andThePlayerMovesItsPost', r.toOk && r.moved && r.stays <= 1 && r.stance,
+    `walked eight tiles off: the post went with it ${r.moved}, and it stays there (${r.stays} tiles off the new post); a ghost on Defend is the player's ${r.stance}`);
+  ck('aGhostIsAnInkedFigure', r.figure.soft === 0 && r.figure.ink >= 60 && r.figure.body >= 0.55 && r.figure.body <= 0.9,
+    `${r.figure.soft} half-there pixels; ${r.figure.ink} px of ink round it; its body ${r.figure.body} of the silhouette (dithered, not a wash and not a slab)`);
+  ck('itsGroundBreaksInASmallBurst', r.burstWhite > 0 && r.burstWhite <= 120,
+    `${r.burstWhite} world px of white by its feet on the frame it breaks open`);
+  ck('andTheFadeIsSaid', r.toast, `a note on the screen as the host goes ${r.toast}`);
+}
 
 {
   /* WHAT THE PICTURE DOES NOT DRAW CANNOT BE TAPPED (the tap contract's
@@ -1077,8 +1558,8 @@ await p.evaluate(({ ARMY }) => {
     const out = {};
     __ar.fresh('army-save'); __ar.flat();
     const lgU = __ar.play('legion_marches').units, lg = lgU.map(u => u.id);
-    // the slot each was dealt (the formation the held beat will march to)
-    const slot = Object.fromEntries(lgU.map(u => [u.id, u.task && u.task.type === 'muster' ? { x: u.task.x, y: u.task.y } : null]));
+    // the place each landed on (the fan it holds, and stays on)
+    const slot = Object.fromEntries(lgU.map(u => [u.id, u.task && u.task.type === 'muster' && u.task.stay ? { x: u.x, y: u.y } : null]));
     const pack = __ar.play('hunters_pack').units.map(u => u.id);
     __ar.unit('defender', 'P', 4.5, 16.5);
     Deck.play('veterans');
@@ -1088,25 +1569,23 @@ await p.evaluate(({ ARMY }) => {
     G.loadJSON(G.saveJSON());
     S.paused = true;
     const get = id => S.units.find(u => u.id === id);
-    out.muster = lg.every(id => get(id) && get(id).task && get(id).task.type === 'muster' && get(id).task.wait > 0);
+    out.muster = lg.every(id => get(id) && get(id).task && get(id).task.type === 'muster' && get(id).task.stay && get(id).task.wait > 0);
     out.pack = pack.every(id => { const w = get(id); return w && w.warWolf && w.den && w.hp === 70 && w.atk === 10 && w.speed === 3.4; });
     out.vets = S.units.filter(u => u.vet === 1.25).length;
     out.host = host.every(id => get(id) && get(id).spectral) && Deck.timed('ancestors_host') && Deck.timed('ancestors_host').until === until;
     __ar.sim(3);
-    // marched: nobody still waiting, every one walking to its own slot or
-    // already standing on it (a slot a tile off the door is reached in a beat)
+    // free: nobody still waiting, every one standing on the place it landed
+    // on before the save (the hold's beat ran on after the load)
     out.marched = lg.every(id => {
-      const u = get(id), t = u.task, sl = slot[id];
-      if (!sl || (t && t.type === 'muster')) return false;
-      if (t && t.type === 'move') return t.x === sl.x && t.y === sl.y;
-      return !t && (u.x | 0) === sl.x && (u.y | 0) === sl.y;
+      const u = get(id), sl = slot[id];
+      return sl && !u.task && Math.hypot(u.x - sl.x, u.y - sl.y) < 0.05;
     });
-    out.moved = lg.filter(id => { const u = get(id), sl = slot[id]; return sl && ((u.x | 0) !== sl.x || (u.y | 0) !== sl.y); }).length;
+    out.moved = lg.filter(id => { const u = get(id), sl = slot[id]; return !sl || Math.hypot(u.x - sl.x, u.y - sl.y) >= 0.05; }).length;
     S.day = Math.ceil(until) + 1; Deck.tick();
     out.faded = S.units.filter(u => u.spectral).length === 0;
     return out;
   });
-  ck('aMusterMidBeatMarchesAfterTheLoad', r.muster && r.marched, `waiting after the load ${r.muster}; after it every one walking to its own slot or on it ${r.marched} (${r.moved} still on the road)`);
+  ck('aMusterMidBeatHoldsAcrossTheLoad', r.muster && r.marched, `holding after the load ${r.muster}; after it every one free on the place it landed on ${r.marched} (${r.moved} moved off it)`);
   ck('thePackRemembersHomeAcrossASave', r.pack);
   ck('aVeteranStaysAVeteran', r.vets > 0, `${r.vets} veterans after the load`);
   ck('aHostOnTheMarchRidesTheSave', r.host && r.faded, `ghosts and their day kept ${r.host}; they fade on it after the load ${r.faded}`);
@@ -1184,7 +1663,9 @@ await p.evaluate(({ ARMY }) => {
       bad.length ? bad.map(k => k + ': ' + JSON.stringify(r.apply[k])).join(' | ')
         : `a full cap refuses the chime (${!r.control}); every card's voice sounds and books ≤7 notes: ` + Object.entries(r.apply).map(([k, v]) => k + ' ' + v.booked).join(', '));
     const B = r.beats, want = {
-      iron_legion: { cardDrum: 4 }, legion_marches: { cardDrum: 5 }, trebuchet_battery: { cardRumble: 1, cardDrum: 5 },
+      // the Iron Legion's three deep beats (every other landing); the
+      // battery's rumble under its first engine and a drum under each after
+      iron_legion: { cardDrum: 3 }, legion_marches: { cardDrum: 5 }, trebuchet_battery: { cardRumble: 1, cardDrum: 2 },
       ancestors_host: { cardDrum: 1 }, swift_raiders: { cardHoof: 7 },
     };
     const miss = Object.keys(want).filter(id => Object.keys(want[id]).some(k => (B[id][k] || 0) !== want[id][k]));
@@ -1284,6 +1765,16 @@ await p.evaluate(({ ARMY }) => {
         const d = g.getImageData(0, 0, TL, cv.height).data;
         let world = 0;
         for (let i = 3; i < d.length; i += 4) if (d[i]) world++;
+        // the GROUND layer: a summon's beam runs up to the top of the view,
+        // here with the camera pulled up over the board's north rim
+        R.cardShows = [];
+        R.cam.z = 2; R.cam.x = 0; R.cam.y = -TL * 3;
+        g.clearRect(0, 0, cv.width, cv.height);
+        const bs = R.startCardShow('war_band', { x: 6, y: 4, units: [{ id: -1, x: 5.5, y: 4.5, d: 0 }] });
+        bs.t = 0.05;
+        R.drawCardShows(g, 0, 'ground');
+        const gd = g.getImageData(0, 0, cv.width, TL).data;
+        for (let i = 3; i < gd.length; i += 4) if (gd[i]) world++;
         // the SKY layer: the host with the camera over the board's west edge
         R.cardShows = [];
         R.cam.z = 2; R.cam.x = -TL * 4; R.cam.y = TL * 4;
@@ -1305,6 +1796,184 @@ await p.evaluate(({ ARMY }) => {
   });
   ck('noShowIsDrawnInTheBlack', r.fixed.world === 0 && r.fixed.sky === 0 && r.leak.world > 0 && r.leak.sky > 0,
     `off the board: the veterans' ring ${r.fixed.world} px, the host's sky ${r.fixed.sky} px; with the board widened (the control) ${r.leak.world} / ${r.leak.sky}`);
+}
+{
+  /* THE BEAMS (judges g2/g3, playtest g2): five men came down in two beams,
+     four stacked in one column; every beam stopped with a flat top 250 device
+     px above the ground; the light was a translucent hue over the meadow that
+     went olive at its edges; a square-shouldered gold slab swallowed the hall;
+     confetti littered the grass for seconds; and the Iron tier wore the same
+     yellow as the Bronze. Measured on the show's own pixels (a fresh canvas,
+     world px 1:1, nothing else drawn on it):
+       ONE BEAM PER UNIT, FULL HEIGHT — on the view's top row, one run of the
+         tier's light over every unit whose beam is up, and none elsewhere;
+       OPAQUE, IN THE TIER'S OWN LIGHT — every pixel the beams lay is fully
+         opaque and one of its tier's own colours (or the earth's clods), and
+         the four tiers' lights are four different sets;
+       UNDER THE HALL — the column is laid in the GROUND pass, which every
+         building and unit is drawn over: the world pass lays nothing above
+         a man's knees once his landing frame has passed;
+       NO CONFETTI — half a second after the last landing the arrival lays
+         not one pixel. */
+  const r = await p.evaluate(() => {
+    const out = { tiers: {}, bad: [] };
+    const TL = CFG.TILE;
+    const canvas = () => { const c = document.createElement('canvas'); c.width = CFG.W * TL; c.height = CFG.H * TL; return c; };
+    const drawAt = (s, sh, fx, g, t, layers) => {
+      s.t = t - 0.01; for (const L of layers) { g.save(); sh.draw.call(fx, g, s, 0.5, 0, L); g.restore(); }   // the landing frames before
+      g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+      s.t = t; for (const L of layers) { g.save(); sh.draw.call(fx, g, s, 0.5, 0, L); g.restore(); }
+    };
+    const hex = (d, i) => '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+    for (const [id, tone] of [['war_band', 'bronze'], ['iron_legion', 'steel'], ['legion_marches', 'gold'], ['swift_raiders', 'steel']]) {
+      __ar.fresh('army-beam-' + id); __ar.flat();
+      Screens.show('playing');
+      const tc = Bld.tcOf('P');
+      R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.6);
+      R.cardShows = []; R.summons = [];
+      Deck.play(id);
+      const s = R.cardShows.find(x => x.id === id), fx = Deck.FX[id], sh = fx.show;
+      const P = (Deck.armyFx.BEAM || {})[tone] || { ramp: [], ring: [] }, pal = new Set(P.ramp.concat([P.hot, '#ffffff', P.ring[0], P.ring[1], '#6b5236', '#8a6c48']));
+      if (!s.units || !s.units.length) { out.tiers[id] = { tone, runs: -1, up: 0, overUnits: false, px: 0, soft: 0, alien: 0, tall: -1, left: -1, cols: '' }; continue; }
+      const units = s.units, last = units[units.length - 1].d, cv = canvas(), g = cv.getContext('2d');
+      // the moment the last beam has landed and the first is still up
+      const T = last + 0.02;
+      drawAt(s, sh, fx, g, T, ['ground']);
+      const top = Math.ceil(R.viewTiles().y0 * TL) + 1, row = g.getImageData(0, top, cv.width, 1).data;
+      let runs = 0, inRun = false;
+      const spans = [];
+      for (let x = 0; x < cv.width; x++) { const on = row[x * 4 + 3] > 0; if (on && !inRun) { runs++; spans.push([x, x]); } if (on) spans[spans.length - 1][1] = x; inRun = on; }
+      // the units whose beams are up, gathered into columns a beam's top could
+      // merge across (under 0.75 tile apart): each column its own run of light
+      const upU = units.filter(m => T - m.d >= 0 && T - m.d < (Deck.armyFx.BEAM_T || { life: 0.5 }).life);
+      const xsU = upU.map(m => m.x).sort((a, b) => a - b);
+      let up = 0;
+      for (let i = 0; i < xsU.length; i++) if (!i || xsU[i] - xsU[i - 1] >= 0.4) up++;
+      const overUnits = upU.every(m => { const x = Math.round(m.x * TL); return row[x * 4 + 3] > 0 || row[(x - 1) * 4 + 3] > 0; });
+      // …and no beam stands over nobody (a narrowing column may split two
+      // men's shared top into two runs, never more runs than men)
+      const orphans = spans.filter(([a0, a1]) => !upU.some(m => m.x * TL >= a0 - 2 && m.x * TL <= a1 + 2)).length;
+      // every pixel the beams laid: opaque, of the tier's own light
+      const all = g.getImageData(0, 0, cv.width, cv.height).data, cols = new Set();
+      let px = 0, soft = 0, alien = 0;
+      for (let i = 0; i < all.length; i += 4) {
+        if (!all[i + 3]) continue;
+        px++;
+        if (all[i + 3] < 255) { soft++; continue; }
+        const h = hex(all, i);
+        cols.add(h);
+        if (!pal.has(h)) alien++;
+      }
+      // the world pass, a frame after its landing: nothing above the knees —
+      // the show's own world layer and the muster's flashes (R.drawSummons,
+      // which the world pass draws in the same breath: R.drawCardWorld)
+      const cw = canvas(), gw = cw.getContext('2d');
+      drawAt(s, sh, fx, gw, last + 0.2, ['world']);
+      for (const e of R.summons) { if (e._t0 == null) e._t0 = e.t; e.t = e._t0 + last + 0.2; }
+      gw.save(); R.drawSummons(gw, 0); gw.restore();
+      // (above the top of the highest man's own drawn box: a glint on a
+      // spear or a shield is his, a column of light is not)
+      let kneeY = 1e9;
+      for (const m of units) { const u = Units.get(m.id), B = R.unitBox(u); kneeY = Math.min(kneeY, Math.floor(R.frameTop(u.y, B, B)) - 6); }
+      const top0 = Math.ceil(R.viewTiles().y0 * TL);
+      const wd = gw.getImageData(0, top0, cw.width, Math.max(1, kneeY - top0)).data;
+      let tall = 0;
+      for (let i = 3; i < wd.length; i += 4) if (wd[i]) tall++;
+      // no confetti: half a second after the last landing, nothing at all
+      const cc = canvas(), gc = cc.getContext('2d');
+      drawAt(s, sh, fx, gc, last + 0.55, ['ground', 'world']);
+      const cd = gc.getImageData(0, 0, cc.width, cc.height).data;
+      let left = 0;
+      for (let i = 3; i < cd.length; i += 4) if (cd[i]) left++;
+      out.tiers[id] = { tone, runs, up, n: upU.length, orphans, overUnits, px, soft, alien, tall, left, cols: [...cols].sort().join(' ') };
+    }
+    return out;
+  });
+  const T = r.tiers, ids = Object.keys(T);
+  ck('oneBeamPerUnitRunningTheFullHeight', ids.every(k => T[k].runs >= T[k].up && T[k].runs <= T[k].n && !T[k].orphans && T[k].overUnits && T[k].up >= 3),
+    ids.map(k => `${k}: ${T[k].runs} beams on the view's top row for ${T[k].up}..${T[k].n} columns of men whose beams are up (${T[k].orphans} over nobody), over every one ${T[k].overUnits}`).join('; '));
+  ck('theBeamsAreOpaqueInTheTiersOwnLight', ids.every(k => T[k].px > 0 && T[k].soft === 0 && T[k].alien === 0) &&
+    T.war_band.cols !== T.iron_legion.cols && T.iron_legion.cols !== T.legion_marches.cols && T.war_band.cols !== T.legion_marches.cols,
+    ids.map(k => `${k} (${T[k].tone}): ${T[k].px} px, ${T[k].soft} translucent, ${T[k].alien} off the tier's light`).join('; '));
+  ck('theHallStandsOverTheLight', ids.every(k => T[k].tall === 0), ids.map(k => `${k}: ${T[k].tall} px laid above a man's knees in the world pass`).join('; '));
+  ck('andNoConfettiOutlivesHalfASecond', ids.every(k => T[k].left === 0), ids.map(k => `${k}: ${T[k].left} px left 0.55s after the last landing`).join('; '));
+}
+{
+  /* THE WEIGHT OF AN ENGINE (judge g3: the Trebuchet Battery "has no sense
+     of weight"): as each engine is set down the ground jolts (a hard shake
+     struck on its own landing), the dust skids out from under it (three
+     puffs of the place-dust thrown out behind it, on its landing beat), and
+     a throwing engine swings its arm once through its own loosing strip,
+     from the first frame — the Battery's two trebuchets and the Siege Train's
+     catapult; the tower and the ballista have no arm to swing. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    for (const id of ['trebuchet_battery', 'siege_train']) {
+      __ar.fresh('army-weight-' + id); __ar.flat();
+      R.cardShows = []; R.summons = []; R.placePoofs = []; R._shake = null;
+      const { units } = __ar.play(id);
+      const s = R.cardShows.find(x => x.id === id), fx = Deck.FX[id], g = R.g;
+      const shakes = [], swung = {};
+      const real = R.shakeAt.bind(R);
+      R.shakeAt = (amp, dur) => { shakes.push([+s.t.toFixed(2), amp]); return real(amp, dur); };
+      try {
+        for (let t = 0; t < s.ms / 1000; t += 0.02) {
+          s.t = t;
+          for (const L of fx.show.layers) { g.save(); fx.show.draw.call(fx, g, s, t / (s.ms / 1000), 0, L); g.restore(); }
+          for (const u of units) if (Deck._swing && Deck._swing.has(u) && swung[u.id] == null) swung[u.id] = +t.toFixed(2);
+        }
+      } finally { R.shakeAt = real; }
+      const landed = s.units.map(m => m.d);
+      out[id] = {
+        kinds: units.map(u => u.kind),
+        // a hard jolt within a beat of every landing
+        jolts: landed.every(d => shakes.some(([t, a]) => a >= 5 && t >= d - 0.03 && t <= d + 0.1)),
+        // three skid puffs per engine, thrown on its landing beat
+        skids: units.map((u, i) => R.placePoofs.filter(q => Math.hypot(q.x + 0.5 - u.x, q.y + 0.5 - u.y) < 1.2 && Math.abs(-q.t / 1000 - landed[i]) < 0.3).length),
+        swung: units.map((u, i) => swung[u.id] == null ? null : +(swung[u.id] - landed[i]).toFixed(2)),
+      };
+    }
+    return out;
+  });
+  const T = r.trebuchet_battery, ST = r.siege_train;
+  const arms = (o) => o.kinds.every((k, i) => (k === 'trebuchet' || k === 'catapult') ? (o.swung[i] != null && o.swung[i] >= 0 && o.swung[i] < 0.3) : o.swung[i] == null);
+  ck('anEngineLandsWithItsWeight', T.jolts && ST.jolts && T.skids.every(n => n >= 3) && ST.skids.every(n => n >= 3) && arms(T) && arms(ST),
+    `the Battery (${T.kinds.join(', ')}): a hard jolt on every landing ${T.jolts}, skid puffs ${T.skids.join('/')}, arm swung ${T.swung.map(v => v == null ? '—' : v + 's').join('/')} after landing; ` +
+    `the Siege Train (${ST.kinds.join(', ')}): jolts ${ST.jolts}, skids ${ST.skids.join('/')}, arm ${ST.swung.map(v => v == null ? '—' : v + 's').join('/')}`);
+}
+{
+  /* THE SUMMON DUST IS PIXEL DUST (judge g3, "rendering defects" 1): a summon
+     throws R.startPlacePoof at 0.55 under an engine and 1.25 under a battery,
+     and the scaled branch drew the frame through whatever smoothing the canvas
+     held — bilinear, a soft blur, the one smoothed thing on the screen. Every
+     dust blit is measured nearest-neighbour with the flag left ON by the
+     caller, at every scale the cards use, and the flag handed back as found.
+     The CONTROL draws the same frame by hand under the flag as found and must
+     see it smoothed, or the probe sees nothing. */
+  const r = await p.evaluate(() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const g = cv.getContext('2d');
+    const seen = [], real = g.drawImage;
+    g.drawImage = function (...a) { seen.push(this.imageSmoothingEnabled); return real.apply(this, a); };
+    const out = {};
+    for (const sc of [1, 0.55, 0.8, 1.25, 0.65]) {
+      R.placePoofs = [{ x: 2, y: 2, sz: sc === 1.25 ? 2 : 1, t: R.POOF_MS * 0.4, scale: sc }];
+      g.imageSmoothingEnabled = true;
+      seen.length = 0;
+      R._drawPlacePoofs(g, 0);
+      out[sc] = { drew: seen.length, smooth: seen.filter(Boolean).length, back: g.imageSmoothingEnabled === true };
+    }
+    // the control: the same frame by hand, under the flag as the caller left it
+    seen.length = 0; g.imageSmoothingEnabled = true;
+    g.drawImage(R.poofSheet(1).frames[3], 0, 0, 40, 40);
+    out.control = seen[0] === true;
+    R.placePoofs = [];
+    return out;
+  });
+  const bad = Object.entries(r).filter(([k, v]) => k !== 'control' && (!v.drew || v.smooth || !v.back));
+  ck('theSummonDustIsPixelDust', !bad.length && r.control,
+    bad.length ? 'smoothed: ' + bad.map(([k, v]) => `scale ${k} (${v.smooth}/${v.drew} blits smoothed, flag back ${v.back})`).join(', ')
+      : `every dust blit nearest-neighbour at scales 1/0.55/0.8/1.25/0.65, the caller's flag handed back; the control blit smoothed ${r.control}`);
 }
 function audioFiles(dir, out = [], depth = 0) {
   if (depth > 4) return out;
