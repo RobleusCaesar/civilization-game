@@ -13580,7 +13580,8 @@ const R = {
 
     // the kraken: a once-a-game terror breaking the surface
     // SPECIAL EVENT — the kraken, over the boats it takes (js/beasts.js)
-    if (S.kraken && S.kraken.ev) this.drawKrakenAct(g, dt);
+    // (clipped to the board: a beast breaking the surface by the rim draws nothing in the black)
+    if (S.kraken && S.kraken.ev) this.clipBoard(g, () => this.drawKrakenAct(g, dt));
 
     // hearth smoke drifting from settled buildings, embers over camp fires —
     // transient render-side particles, bounded, visible tiles only

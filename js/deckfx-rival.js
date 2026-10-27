@@ -1632,10 +1632,17 @@
          bodies half over each other read as a glitch, never as one monster
          (the host is render state, a WeakMap on the act, never in S). The
          body is the beast art's (R.drawKrakenAct, js/beasts.js) where it has
-         landed, else R.drawKraken — the two swap points of the art pass. */
-      CLUSTER: 2.5,
+         landed, else R.drawKraken — the two swap points of the art pass.
+         The cluster is as wide as the DRAWN beast: the body is ~5.5 tiles
+         across with its ring of white water, and at 2.5 two hulls four tiles
+         apart raised two bodies stacked half over each other. And the whole
+         act is clipped to the board: nothing is drawn in the black. */
+      CLUSTER: 6,
       _host: new WeakMap(),
       draw(g, dt, K) {
+        R.clipBoard(g, () => this.drawAct(g, dt, K));
+      },
+      drawAct(g, dt, K) {
         const TL = CFG.TILE, W = CFG.W, v = view(2), tt = K.t, end = this.endT(K);
         const a = qa(0.42 * Math.min(1, tt / 0.6) * c01((end - tt) / 1.0), 8);
         if (a > 0) {
@@ -2005,7 +2012,14 @@
             g.globalAlpha = a;
             g.font = 'bold ' + fs + 'px sans-serif';
             g.textAlign = 'center'; g.textBaseline = 'top';
-            const ty = Math.round(H * 0.2), sh2 = Math.max(2, Math.round(fs / 10));
+            /* under the minimap, never behind it (the map is DOM over the
+               canvas: on a phone it hid the end of the words) — measured once */
+            if (s.capY == null) {
+              const mw = document.getElementById('miniWrap'), r = mw && mw.offsetHeight ? mw.getBoundingClientRect() : null;
+              const cv = R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { top: 0 };
+              s.capY = r ? Math.round((r.bottom - cv.top) * (R.dpr || 1) + fs * 0.4) : 0;
+            }
+            const ty = Math.max(Math.round(H * 0.2), Math.min(s.capY, Math.round(H * 0.34))), sh2 = Math.max(2, Math.round(fs / 10));
             g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE DEEP ANSWERS', W / 2 + sh2, ty + sh2);
             g.fillStyle = '#e6bac6'; g.fillText('THE DEEP ANSWERS', W / 2, ty);
             g.font = Math.round(fs * 0.45) + 'px sans-serif';
@@ -2149,10 +2163,15 @@
                [[88, 99, 96, 110], [127, 99, 135, 110]], [[88, 97, 96, 108], [127, 97, 135, 108]],
                [[88, 97, 96, 108], [127, 97, 135, 108]], [[88, 99, 96, 109], [127, 98, 135, 110]]],
         BASE: [80, 132],     // where a tentacle leaves the water, in its 160px frame
-        // [x (×W), size (the head's multiple + this), mirrored, comes up at (s),
-        //  slams at (s; 0 never), goes down at (s), behind the head]
-        ARMS: [[0.17, -1, 1, 0.45, 0, 2.5, 1], [0.83, -1, 0, 0.6, 0, 2.58, 1],
-               [0.13, 1, 0, 0.72, 1.62, 2.66, 0], [0.94, 0, 1, 0.92, 0, 2.76, 0]],
+        /* the arms: `off` from the middle in widths of the head's frame, but
+           never further out than `cap` of the screen (a phone is narrower than
+           the head; a wide window must not fling them off on their own),
+           `dk` the head's multiple + this, mirrored, up / slam / down times (s),
+           behind the head or before it */
+        ARMS: [{ off: -0.36, cap: 0.33, dk: -1, mir: 1, at: 0.45, slam: 0, out: 2.5, back: 1 },
+               { off: 0.36, cap: 0.33, dk: -1, mir: 0, at: 0.6, slam: 0, out: 2.58, back: 1 },
+               { off: -0.55, cap: 0.37, dk: 1, mir: 0, at: 0.72, slam: 1.62, out: 2.66, back: 0 },
+               { off: 0.6, cap: 0.44, dk: 0, mir: 1, at: 0.92, slam: 0, out: 2.76, back: 0 }],
         // the sea and the foam, in the strip's own colours
         SEA: ['#09041e', '#141531', '#1a203d', '#212f4c'],
         FOAM: ['#f0fbfe', '#e3f3fd', '#b1cfe8', '#9fc1dd'],
@@ -2196,7 +2215,7 @@
          greatest — PLUNGES (7) and splashes (8) on the slam before rising
          again (9→12); then it goes down the way it came (…0, 11→8) */
       skyArmFrame(T, a) {
-        const [, , , at, slam, out] = a;
+        const { at, slam, out } = a;
         const live = t => {
           const e = t - at;
           if (e < 0) return -1;
@@ -2229,10 +2248,12 @@
         // THE SHAKE moves the world's camera; the beast in the sky jolts with it
         const sh = R._shake ? R.shakeOffset(0) : null, zz = (R.cam && R.cam.z || 1) * (R.dpr || 1);
         if (sh) g.translate(Math.round(sh.x * zz), Math.round(sh.y * zz));
-        /* THE SIZE, by whole multiples: about the width of a phone, never so
-           tall the eyes go under the bar (a wide window is bounded by height) */
-        const hk = Math.max(2, Math.min(Math.round(W / 215), Math.round(H / 380)));
+        /* THE SIZE, by whole multiples: about the width of a phone, and on a
+           wide window as tall as the sea line allows (it is bounded by height
+           there), the head always clear of the top bar */
+        const hk = Math.max(2, Math.min(Math.round(W / 215), Math.round(H / 300)));
         const FW = 224 * hk, cell = hk;
+        const armX = a => snap(W / 2 + Math.sign(a.off) * Math.min(Math.abs(a.off) * FW, a.cap * W));
         const hr = T < 0.3 ? 0 : T < 1.3 ? ease((T - 0.3) / 1.0) : T < 2.75 ? 1 : 1 - ease((T - 2.75) / 0.8);
         const bob = Math.round(Math.sin(T * 1.6)) * hk;
         const hx = snap(W / 2 - FW / 2), restY = H - FW + 26 * hk;
@@ -2270,15 +2291,15 @@
         const arm = (a, front) => {
           const f = this.skyArmFrame(T, a);
           if (f < 0) return;
-          const ka = Math.max(2, hk + a[1]), img = F.arm[f];
-          const bx = snap(W * a[0]), by = front ? H - 4 * ka : hy + 98 * hk;
+          const ka = Math.max(2, hk + a.dk), img = F.arm[f];
+          const bx = armX(a), by = front ? H - 4 * ka : hy + 98 * hk;
           g.save();
           g.translate(bx, by);
-          if (a[2]) g.scale(-1, 1);
+          if (a.mir) g.scale(-1, 1);
           g.drawImage(img, -Q.BASE[0] * ka, -Q.BASE[1] * ka, img.width * ka, img.height * ka);
           g.restore();
         };
-        if (hr > 0) for (const a of Q.ARMS) if (a[6]) arm(a, false);
+        if (hr > 0) for (const a of Q.ARMS) if (a.back) arm(a, false);
         // THE HEAD: surfacing from the middle out, its own frames writhing
         if (hr > 0) {
           const fi = ((T * Q.HEAD_FPS) | 0) % F.head.length, fr = F.head[fi];
@@ -2339,9 +2360,9 @@
           }
         }
         // THE ARMS before it
-        for (const a of Q.ARMS) if (!a[6]) arm(a, true);
+        for (const a of Q.ARMS) if (!a.back) arm(a, true);
         // THE SLAM: the camera jolts, the water answers
-        const slamA = Q.ARMS.find(a => a[4]), SL = slamA[4];
+        const slamA = Q.ARMS.find(a => a.slam), SL = slamA.slam;
         if (T >= SL && !s.slam) {
           s.slam = 1;
           if (R.shakeAt) R.shakeAt(10, 0.7);
@@ -2359,7 +2380,7 @@
           }
         };
         rings(cx, H - 6 * hk, 0.35, 3, 70 * hk, 190 * hk, 1.3, hk);
-        const ka = Math.max(2, hk + slamA[1]), sx0 = snap(W * slamA[0]), sy0 = H - 4 * ka;
+        const ka = Math.max(2, hk + slamA.dk), sx0 = armX(slamA), sy0 = H - 4 * ka;
         rings(sx0, sy0, SL, 3, 20 * ka, 120 * ka, 1.0, ka);
         const spray = (x0, y0, t0, n, spread, up, seed, sz) => {
           for (let k = 0; k < n; k++) {
