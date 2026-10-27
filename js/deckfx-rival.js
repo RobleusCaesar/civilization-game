@@ -1237,7 +1237,9 @@
           const travel = 28, tot = 2.0;
           const total = T >= tot, f = ease((T - 0.4) / 1.6);
           const off = total ? 0 : travel * (1 - f);
-          if (T > 1.86 && !s.ring) { s.ring = 1; if (R.flashAt) R.flashAt(0.5, 0.35, '255,250,236'); }   // the diamond ring
+          // (the diamond ring is a burst of DOTS off its own bead, below —
+          // never a full-screen wash: a pale flash over the world at the very
+          // moment of totality greyed out the darkest beat of the act)
           if (total && !s.beat) {
             s.beat = 1;
             if (R.shakeAt) R.shakeAt(10, 1.2);
@@ -1291,6 +1293,22 @@
           const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
           g.globalAlpha = fin;
           g.drawImage(art, x, y, 48 * k, 48 * k);
+          // THE DIAMOND RING: the last bead of sun throws its light in rays of
+          // dots, light added, hard steps, gone in under half a second
+          if (T > 1.86 && T < 2.3) {
+            const q = (T - 1.86) / 0.44, bx = x + 11 * k, by = y + 24 * k, maxR = Math.max(W, H) * 0.32, dz = Math.max(2, snap(k));
+            g.save(); g.globalCompositeOperation = 'lighter';
+            for (let ray = 0; ray < 16; ray++) {
+              const an = ray / 16 * Math.PI * 2 + 0.2, len = maxR * (ray % 2 ? 0.55 : 1) * ease(Math.min(1, q * 2.2));
+              for (let r = 6 * k; r < len; r += dz * 2.5) {
+                g.fillStyle = 'rgba(255,250,236,' + qa(0.95 * (1 - q) * (1 - r / maxR), 4) + ')';
+                g.fillRect(snap(bx + Math.cos(an) * r), snap(by + Math.sin(an) * r), dz, dz);
+              }
+            }
+            g.fillStyle = 'rgba(255,255,255,' + qa(1 - q, 4) + ')';
+            R.pxDisc(g, bx, by, k * (3 + 3 * (1 - q)), dz);
+            g.restore();
+          }
           if (total && blaze > 0) {                   // the corona BLAZES: light added over itself
             g.globalCompositeOperation = 'lighter';
             g.globalAlpha = qa(0.7 * blaze, 6);
@@ -1351,6 +1369,35 @@
         this._dusk = { W: CFG.W, map: S.map, at: now, key, cv };
         return cv;
       },
+      /* …AND WHEN THEIR GROUND IS OFF THE SCREEN, the dusk still leans in
+         at the edge that faces it: three hard steps of the same dark, so the
+         curse is felt wherever the player is looking. Asked of the KNOWN
+         ground alone (the dusk's own centre) — a player who knows nothing of
+         them gets no direction, only the small black sun. */
+      edgeDusk(g, fade) {
+        const f = this.focus();
+        if (!f) return;
+        const TL = CFG.TILE, z = R.cam.z * (R.dpr || 1), W = R.cv.width, H = R.cv.height;
+        const sx = (f.x * TL - R.cam.x) * z, sy = (f.y * TL - R.cam.y) * z;
+        const pad = this.DUSK_R * TL * z;
+        if (sx > -pad && sx < W + pad && sy > -pad && sy < H + pad) return;   // the dusk itself is on screen
+        const dx = sx - W / 2, dy = sy - H / 2, ax = Math.abs(dx) / W, ay = Math.abs(dy) / H;
+        const sides = [];
+        if (ax >= ay * 0.6) sides.push(dx < 0 ? 'l' : 'r');
+        if (ay >= ax * 0.6) sides.push(dy < 0 ? 't' : 'b');
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        // inside the bars the HUD leaves open, so the band is never under them
+        const dpr = R.dpr || 1, y0 = Math.round((R.topReserve || 0) * dpr), y1 = H - Math.round((R.bottomReserve || 0) * dpr);
+        const u = Math.max(4, snap(Math.min(W, H) * 0.018));
+        for (let b = 0; b < 3; b++) {
+          const w = u * (3 - b);
+          g.fillStyle = 'rgba(8,10,30,' + qa([0.14, 0.2, 0.28][b] * fade, 8) + ')';
+          for (const sd of sides) {
+            if (sd === 'l') g.fillRect(0, y0, w, y1 - y0); else if (sd === 'r') g.fillRect(W - w, y0, w, y1 - y0);
+            else if (sd === 't') g.fillRect(0, y0, W, w); else g.fillRect(0, y1 - w, W, w);
+          }
+        }
+      },
       drawLive(g, e) {
         const now = Deck.now(), TL = CFG.TILE;
         const fade = qa(Math.min(1, (now - e.from) / 0.12, (e.until - now) / 0.12), 4);
@@ -1366,6 +1413,7 @@
         // the small black sun: not while the play's own sun is still climbing
         // to its place, and not over the world's own eclipse
         if (R.cardShows.some(s => s.id === 'swallowed_sun') || (S.eclipse && S.eclipse.phase)) return;
+        this.edgeDusk(g, fade);
         const t = performance.now() / 1000, sp = this.skySpot(), art = this.sunArt(0, true, false, 0.25, t);
         g.setTransform(1, 0, 0, 1, 0, 0);
         const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
