@@ -877,17 +877,39 @@ ck('andTheRefusalLeavesWithAValidMark', ux.toast && ux.validNow && ux.staleLeft 
    the reach's floor was a 14% wash of the card's colour — grass under a
    gold aim went olive, under the truce's orange khaki — and the buildings'
    reach (Starfall 2 of 3, Dragonfire 2.5) was sparse dots at 60%, lost on
-   grass. Read off the reticle's own canvas, laid over meadow (42,66,34):
-   no pixel of it, in the tier's gold or the warning's orange, comes out
-   lighter and olive; and the inner ring is opaque hard pixels, inked. */
+   grass. Read off the reticle itself at twice its world size (about what a
+   phone shows), laid over meadow (42,66,34): no pixel of it, in the tier's
+   gold or the warning's orange, comes out lighter and olive; and the inner
+   ring is opaque, inked all round, never half-lit over the grass.
+   AND IT IS DRAWN AT THE SCREEN'S OWN RESOLUTION (operator ruling,
+   2026-10-27): the mark is an SVG with a viewBox the camera's zoom scales
+   as a vector — never a canvas of 2px cells stretched pixelated — and it
+   breathes by dimming (a filter), never by turning translucent. */
 await aimOpen();
-const rt = await p.evaluate(() => {
+const rt = await p.evaluate(async () => {
   const A = DeckUI.aim, out = {};
   A.inner = 2;
+  const cs = getComputedStyle(A.ret), anim = A.ret.getAnimations()[0];
+  out.vec = { svg: A.ret.tagName === 'svg', vb: !!(A.ret.getAttribute && A.ret.getAttribute('viewBox')), ir: cs.imageRendering,
+    thins: !!anim && anim.effect.getKeyframes().some(k => k.opacity != null && +k.opacity < 1) };
   const grass = [42, 66, 34], lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+  // the reticle's pixels at scale K: a canvas is read as it stands, an SVG drawn afresh
+  const pixels = async (K) => {
+    if (A.ret.tagName !== 'svg') return { cv: A.ret, K: 1 };
+    const src = A.ret.cloneNode(true), S = +A.ret.getAttribute('width');
+    src.removeAttribute('style');   // the camera's transform is the page's, not the picture's
+    src.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); src.setAttribute('width', S * K); src.setAttribute('height', S * K);
+    const im = new Image();
+    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(src));
+    await im.decode();
+    const cv = document.createElement('canvas'); cv.width = cv.height = S * K;
+    cv.getContext('2d').drawImage(im, 0, 0);
+    return { cv, K };
+  };
   for (const [k, col] of [['gold', '#ffd45e'], ['warn', '#f0a040']]) {
     DeckUI._drawReticle(A, col);
-    const cv = A.ret, d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, half = A.half, R1 = A.inner * CFG.TILE;
+    const { cv, K } = await pixels(2);
+    const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, half = A.half * K, R1 = A.inner * CFG.TILE * K;
     const [cr, cg, cb] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
     let olive = 0, innerCol = 0, innerInk = 0, innerSoft = 0;
     for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
@@ -901,7 +923,7 @@ const rt = await p.evaluate(() => {
         if (h >= 48 && h <= 115) olive++;
       }
       const r = Math.hypot(x + 0.5 - half, y + 0.5 - half);
-      if (Math.abs(r - R1) <= 2.5) {
+      if (Math.abs(r - R1) <= 2.5 * K) {
         const isCol = Math.abs(d[i] - cr) + Math.abs(d[i + 1] - cg) + Math.abs(d[i + 2] - cb) < 12;
         if (isCol && d[i + 3] === 255) innerCol++;
         else if (isCol) innerSoft++;
@@ -914,6 +936,8 @@ const rt = await p.evaluate(() => {
   document.querySelector('#dkAimBar .dkANo').click();
   return out;
 });
+ck('theAimIsDrawnAtTheScreensResolution', rt.vec.svg && rt.vec.vb && !/pixelated|crisp-edges/.test(rt.vec.ir) && !rt.vec.thins,
+  `${rt.vec.svg ? 'an SVG' : 'a bitmap'}${rt.vec.vb ? ' with a viewBox' : ''}, rendering ${rt.vec.ir}, breathes by ${rt.vec.thins ? 'TURNING TRANSLUCENT' : 'dimming'}`);
 ck('theAimNeverLightsTheGround', rt.gold.olive === 0 && rt.warn.olive === 0,
   `olive pixels over meadow: ${rt.gold.olive} under a gold aim, ${rt.warn.olive} under the warning's orange`);
 ck('andItsInnerRingReads', ['gold', 'warn'].every(k => rt[k].innerCol >= rt[k].around && rt[k].innerInk >= rt[k].around && rt[k].innerSoft === 0),

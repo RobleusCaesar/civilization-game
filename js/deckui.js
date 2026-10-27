@@ -1460,8 +1460,9 @@ const DeckUI = {
     if (fx.aimFit) this._aimFit(A);
     const layer = document.createElement('div');
     layer.id = 'dkAim';
-    const ret = document.createElement('canvas');
-    ret.className = 'dkRet';
+    const ret = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    ret.setAttribute('class', 'dkRet');
+    ret.setAttribute('aria-hidden', 'true');
     layer.appendChild(ret);
     document.body.appendChild(layer);
     const bar = document.createElement('div');
@@ -1603,56 +1604,52 @@ const DeckUI = {
     if (A.drawn !== key) { A.drawn = key; this._drawReticle(A, !A.ok ? '#e06550' : warn ? '#f0a040' : Deck.tier(c.tier).col); }
   },
 
-  /* the mark: a ring of hard pixels at the card's reach, the tile itself
-     framed, a cross at its heart — drawn once per colour in WORLD pixels and
-     scaled with the camera, so it reads like the ground it lies on */
+  /* the mark: a dotted ring at the card's reach, the tile itself framed, a
+     cross at its heart — laid out once per colour in WORLD pixels and scaled
+     with the camera, so it lies on the ground it marks. It is an SVG (the
+     operator's ruling, 2026-10-27: the effects and the card's chrome are
+     drawn at the screen's own resolution, never in blown-up cells): at any
+     zoom, on any screen, the browser draws it afresh at the pixels it has —
+     it was a canvas of 2px cells stretched pixelated by the camera's zoom. */
   _drawReticle(A, col) {
-    const TL = CFG.TILE, R0 = A.radius * TL, pad = 6, half = R0 + pad;
-    const cv = A.ret;
-    cv.width = cv.height = half * 2;
-    const g = cv.getContext('2d');
-    g.clearRect(0, 0, cv.width, cv.height);
-    const dot = (x, y, s, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), s, s); };
+    const TL = CFG.TILE, R0 = A.radius * TL, pad = 6, half = R0 + pad, S = half * 2, INK = this.INK, SH = 'rgba(0,0,0,0.55)';
+    const f = v => +v.toFixed(2), TAU = Math.PI * 2;
+    const ret = A.ret;
+    ret.setAttribute('viewBox', `0 0 ${S} ${S}`);
+    ret.setAttribute('width', S); ret.setAttribute('height', S);
+    const circ = (r, a) => `<circle cx="${half}" cy="${half}" r="${f(r)}" fill="none" ${a}/>`;
     /* THE FLOOR OF THE REACH DARKENS THE GROUND, never lights it: a faint
        wash of the card's colour lifted grass to olive under a gold aim
        (dragonfire-aim: (76,96,43) inside against (42,66,34)) and to khaki
-       under the truce's orange. One flat hard-edged step of ink instead,
-       laid first so every mark stands on it at full strength. */
-    g.globalAlpha = 0.16;
-    g.fillStyle = this.INK;
-    R.pxDisc(g, half, half, R0 - 2, 2);
-    g.globalAlpha = 1;
-    // the reach: a dotted ring, a shadow under every dot so it reads on snow and sand alike
-    const steps = Math.max(24, Math.round(2 * Math.PI * R0 / 7));
-    for (let i = 0; i < steps; i++) {
-      const a = i / steps * Math.PI * 2, x = half + Math.cos(a) * R0 - 1, y = half + Math.sin(a) * R0 - 1;
-      dot(x + 1, y + 1, 2, 'rgba(0,0,0,0.55)');
-      dot(x, y, 2, col);
-    }
+       under the truce's orange. One flat step of ink instead, laid first so
+       every mark stands on it at full strength. */
+    let h = `<circle cx="${half}" cy="${half}" r="${f(R0 - 2)}" fill="${INK}" fill-opacity="0.16"/>`;
+    /* the reach: a ring of round dots, each on an ink bead with a shadow
+       under it, so it reads on snow and sand alike — and so the antialiased
+       rim of a gold dot lies on ink, never half-lit over the grass */
+    const steps = Math.max(24, Math.round(TAU * R0 / 7)), dots = `pathLength="${steps}" stroke-dasharray="0 1" stroke-linecap="round"`;
+    h += `<g transform="translate(1 1)">${circ(R0, `stroke="${SH}" stroke-width="3" ${dots}`)}</g>` +
+      circ(R0, `stroke="${INK}" stroke-width="3.6" ${dots}`) + circ(R0, `stroke="${col}" stroke-width="2.2" ${dots}`);
     /* THE BUILDINGS' REACH, when it is shorter (Starfall 2 of 3, Dragonfire
-       2.5): a DASHED ring of the same hard pixels, every one of them inked
-       all round — the old sparse dots at 60% were invisible on grass
-       (playtest g4) */
+       2.5): a DASHED ring, opaque, on a band of ink all round — the old
+       sparse dots at 60% were invisible on grass (playtest g4) */
     if (A.inner > 0) {
-      const R1 = A.inner * TL, n1 = Math.max(24, Math.round(2 * Math.PI * R1 / 3));
-      const pts = [];
-      for (let i = 0; i < n1; i++) {
-        if (i % 4 === 3) continue;   // three on, one off: a dash, never the outer ring's dots
-        const a = i / n1 * Math.PI * 2;
-        pts.push([Math.round(half + Math.cos(a) * R1 - 1), Math.round(half + Math.sin(a) * R1 - 1)]);
-      }
-      for (const [x, y] of pts) dot(x - 1, y - 1, 4, this.INK);
-      for (const [x, y] of pts) dot(x, y, 2, col);
+      const R1 = A.inner * TL, n1 = Math.max(24, Math.round(TAU * R1 / 4));
+      h += circ(R1, `stroke="${INK}" stroke-width="4.4"`) +
+        circ(R1, `stroke="${col}" stroke-width="2.2" pathLength="${n1}" stroke-dasharray="0.72 0.28"`);
     }
-    // the chosen tile, framed by its corners
-    const t0 = half - TL / 2, t1 = half + TL / 2 - 2;
+    // the chosen tile, framed by its corners; the cross at its heart
+    const t0 = half - TL / 2 + 1, t1 = half + TL / 2 - 1, L = 7;
+    let d = '';
     for (const [x, y] of [[t0, t0], [t1, t0], [t0, t1], [t1, t1]]) {
       const sx = x === t0 ? 1 : -1, sy = y === t0 ? 1 : -1;
-      for (let k = 0; k < 6; k++) { dot(x + sx * k + 1, y + 1, 2, 'rgba(0,0,0,0.55)'); dot(x + 1, y + sy * k + 1, 2, 'rgba(0,0,0,0.55)'); }
-      for (let k = 0; k < 6; k++) { dot(x + sx * k, y, 2, col); dot(x, y + sy * k, 2, col); }
+      d += `M${f(x)} ${f(y + sy * L)}L${f(x)} ${f(y)}L${f(x + sx * L)} ${f(y)}`;
     }
-    // the cross at its heart
-    for (let k = -4; k <= 4; k += 2) { dot(half + k, half - 1, 2, col); dot(half - 1, half + k, 2, col); }
+    d += `M${half - 4.5} ${half}H${half + 4.5}M${half} ${half - 4.5}V${half + 4.5}`;
+    h += `<path d="${d}" fill="none" stroke="${SH}" stroke-width="2" stroke-linecap="square" transform="translate(1 1)"/>` +
+      `<path d="${d}" fill="none" stroke="${INK}" stroke-width="3.4" stroke-linecap="square" stroke-opacity="0.7"/>` +
+      `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="square"/>`;
+    ret.innerHTML = h;
     A.half = half;
     A.tr = ''; A.placed = null;
   },
@@ -2160,9 +2157,11 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkInsp .dkIClose { position: absolute; top: calc(var(--safe-top) + 8px); right: 8px; width: 46px; height: 46px; font-size: 16px; }
 
 #dkAim { position: fixed; inset: 0; z-index: 7; touch-action: none; cursor: crosshair; }
-#dkAim .dkRet { position: absolute; left: 0; top: 0; transform-origin: 0 0; image-rendering: pixelated; pointer-events: none;
+#dkAim .dkRet { position: absolute; left: 0; top: 0; display: block; overflow: visible; transform-origin: 0 0; pointer-events: none;
   animation: dkBreathe 1.3s ease-in-out infinite; }
-@keyframes dkBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
+/* the mark breathes by DIMMING, never by thinning: a gold gone translucent
+   over the meadow is olive */
+@keyframes dkBreathe { 0%, 100% { filter: none; } 50% { filter: brightness(.74); } }
 #dkAimBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; display: flex; align-items: center; gap: 10px;
   padding: 10px 10px calc(env(safe-area-inset-bottom, 0px) / 2 + 10px);
   background: var(--panel-bg); background-image: var(--wood-tex); border-top: 2px solid var(--tc);
