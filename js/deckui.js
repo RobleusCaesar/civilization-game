@@ -939,8 +939,11 @@ const DeckUI = {
       UI.cue('bad');
     } else {
       // the effect itself writes the event log (Deck.say); the landing only
-      // says it on screen, so one play is one log line, never two
-      this._say(typeof r.msg === 'string' && r.msg ? r.msg : `${c.name}: ${this._line(c.text)}`, 'note', 4200);
+      // says it on screen, so one play is one log line, never two — and a
+      // strike whose act narrates itself (`narrates`: the star's blow, the
+      // dragon's ash) leaves the saying to the act, one toast, never a stack
+      const fx = Deck.FX[id] || {};
+      if (!fx.narrates) this._say(typeof r.msg === 'string' && r.msg ? r.msg : `${c.name}: ${this._line(c.text)}`, 'note', 4200);
       UI.cue(t.rank >= 2 ? 'bond' : 'done');
       if (dest.kind === 'point') this._impact(L, dest, t.rank, calm);
       this._count(before, r.fly, calm, L);

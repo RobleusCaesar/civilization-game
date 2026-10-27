@@ -2002,8 +2002,11 @@ const G = {
            called. Everything after this is the event's own act. */
         if (ev.card && window.Deck && Deck.FX.dragonfire && Deck.FX.dragonfire.breathe) Deck.FX.dragonfire.breathe(ev);
         for (const id of ev.victims) { const u = Units.get(id); if (u) u.burnT = 1.6; }
+        /* a CARD's breath is logged, not toasted: the flame is on screen, and
+           its ash line below says what it did (one play, one toast — and
+           never the red alarm, which is for being attacked: js/deckfx.js) */
         this.log(ev.card ? '🐉 Dragonfire! The ground you chose is a wall of flame.'
-          : '🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', true, 5200);
+          : '🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', ev.card ? false : true, 5200);
       }
     } else if (ev.phase === 'burn') {
       ev.x += ev.dir * 3.2 * dt;                  // a slow strafe along the line

@@ -36,6 +36,10 @@
                        and the information (toast, count) is all there
      THE WORLD CHANGES a new game or a load drops the deck where it stands;
                        a screen that takes over owns the pause from then on
+     A STRIKE SAYS IT ONCE  Starfall and Dragonfire narrate their own act:
+                       no landing toast, one toast at a time on a 390px
+                       phone, never the red alarm (the real effects, played
+                       through the real sequence)
 
    Run after touching: js/deckui.js, Deck.face in js/deck.js, the DeckUI
    hooks in js/game.js (frame, newGame, loadJSON), Screens.modalUp.
@@ -834,6 +838,47 @@ const rm = await rp.evaluate(async () => {
 ck('reducedMotionMovesNothing', rm.anims > 0 && rm.moving === 0, `${rm.anims} animations, ${rm.moving} with a transform`);
 ck('butTheInformationIsAllThere', rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim && rm.total <= 1200, `${rm.total}ms`);
 await rctx.close();
+
+/* ================= 11. A STRIKE SAYS IT ONCE, AND NEVER AS AN ALARM =================
+   Starfall and Dragonfire narrate their own act (the star's blow, the
+   dragon's ash), so the landing's toast stands down (`narrates`) and the
+   act's line wears the NOTE style — the red alarm is for being attacked,
+   never for the player's own blow. Played through the real sequence with
+   the real effects on a 390px phone and watched for the whole act: one toast
+   on screen at a time, none of them an alarm, and the result is said.
+   (The old code stacked three — the card's name, the breath in red, the ash.) */
+const { ctx: sctx, p: sp } = await page({ viewport: { width: 390, height: 844 } });
+const strikes = await sp.evaluate(async (enter) => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  CFG.CARDS.ON = true;
+  const out = {};
+  for (const id of ['starfall', 'dragonfire']) {
+    eval('(' + enter + ')')('dk-narrate-' + id);
+    Deck._col = null; Deck._del(Deck.KEY); Deck._add(id, 1);
+    // something of theirs in the open, in sight, to strike
+    const tc = Bld.tcOf('P');
+    const spot = MapGen.findNear(tc.x + 9, tc.y + 2, 8, (x, y) => Path.passable(x, y) && !Bld.at(x, y) && !Bld.at(x + 1, y + 1));
+    Bld.place('A', 'house', spot.x, spot.y, { free: true, instant: true }); Bld._block = null;
+    G.updateVisibility();
+    UI._toastAt = {}; document.getElementById('toasts').innerHTML = '';
+    S.paused = false;
+    DeckUI._run(id, { x: spot.x + 0.5, y: spot.y + 0.5 }, null, false);
+    const t0 = performance.now(), said = new Set();
+    let max = 0, alarms = 0;
+    while (performance.now() - t0 < 7000) {
+      const ts = [...document.querySelectorAll('#toasts .toast')].filter(t => getComputedStyle(t).opacity !== '0');
+      max = Math.max(max, ts.length);
+      for (const t of ts) { if (t.classList.contains('warn')) alarms++; said.add(t.textContent); }
+      await wait(50);
+    }
+    out[id] = { played: Deck.count(id) === 0, max, alarms, said: [...said] };
+  }
+  return out;
+}, enterGame.toString());
+ck('aStrikeSaysItOnceNeverAsAnAlarm', ['starfall', 'dragonfire'].every(id => strikes[id].played && strikes[id].max === 1 && strikes[id].alarms === 0) &&
+  strikes.starfall.said.some(t => /star strikes/.test(t)) && strikes.dragonfire.said.some(t => /Ash where they stood/.test(t)),
+  ['starfall', 'dragonfire'].map(id => `${id}: ${strikes[id].max} at once, ${strikes[id].alarms} alarm samples — ${strikes[id].said.map(t => t.slice(0, 40)).join(' | ')}`).join('; '));
+await sctx.close();
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 const pageErrs = errs.filter(e => !/ERR_FILE_NOT_FOUND/.test(e));
