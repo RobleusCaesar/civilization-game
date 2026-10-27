@@ -10495,6 +10495,28 @@ const R = {
     const r = (this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold).ramp;
     return r[k >= 6 ? 3 : k >= 4 ? 2 : k >= 2 ? 1 : 0];
   },
+  /* set g up for the marks that follow (dots, glints, a ring's beads) in
+     the tone's ink at strength s: opaque, source-over. False when there is
+     nothing left to draw. The caller owns the save/restore. */
+  inkOn(g, s, tone) {
+    const c = this.goldInk(s, tone);
+    if (!c) return false;
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = c;
+    return true;
+  },
+  /* a mark drawn in a FIXED warm colour at a faded alpha (a mote, a grain):
+     at a step under 0.8 it takes the ramp's ink instead, opaque — a gold
+     speck at half alpha on grass is a lime one. Returns [colour, alpha]. */
+  inkFade(col, a, tone) {
+    if (a >= 0.8 || !(tone || this.warmLight(this.rgbOf(col)))) return [col, a];
+    const c = this.goldInk(a, tone);
+    return c ? [c, 1] : [col, 0];
+  },
+  // "#rrggbb" → "r,g,b" (an "r,g,b" string passes through)
+  rgbOf(col) {
+    if (typeof col !== 'string' || col[0] !== '#' || col.length < 7) return col;
+    return [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16)).join(',');
+  },
   /* a whole-frame warm grade at strength s: the hue pass alone at a low
      step, so the meadow warms toward amber rather than being painted over
      (a fill of gold over a frame of green is the yellow-green wash this
@@ -10511,13 +10533,12 @@ const R = {
     }
     g.restore();
   },
-  /* is an "r,g,b" light warm (a gold, an amber, a cream)? The shared
-     helpers of the card files take their light's colour as a string; a warm
-     one goes through glow/goldInk, a cold one (a ghost's blue, steel) keeps
-     its own additive look, which is not the lime this cures. */
+  /* is an "r,g,b" colour a warm LIGHT (a gold, an amber, a cream — bright,
+     red-led, blue well under it)? An earth or a dust is not light, and a
+     cold one (a ghost's blue, steel) keeps its own look. */
   warmLight(col) {
     const m = /^\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(col || '');
-    return !!m && +m[1] >= +m[3] + 40 && +m[1] >= +m[2];
+    return !!m && +m[1] >= 200 && +m[1] >= +m[3] + 40 && +m[1] >= +m[2];
   },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
@@ -10725,12 +10746,16 @@ const R = {
         const mx = Math.round(u.x * TL + (k - 1.5) * 4 + Math.sin(ph * 6.28 + u.id + k * 2.1) * 3);
         const my = Math.round(u.y * TL - TL * 0.2 - ph * TL * 1.05);
         // a gold grain, its dark underside giving it an edge against the grass
-        // (constant colours, faded by globalAlpha — no strings built per mote)
+        // (constant colours — no strings built per mote). The grain itself is
+        // OPAQUE, fading DOWN the ramp as it rises (R.goldInk): a gold grain
+        // at half alpha over the meadow is a lime one (CARD LIGHT IS GOLD)
+        const ink = a >= 0.8 ? '#ffcc40' : this.goldInk(a);
+        if (!ink) continue;
         g.globalAlpha = 0.55 * a;
         g.fillStyle = '#7a4a0a';
         g.fillRect(mx, my + 2, 2, 1);
-        g.globalAlpha = a;
-        g.fillStyle = '#ffcc40';
+        g.globalAlpha = 1;
+        g.fillStyle = ink;
         g.fillRect(mx, my, 2, 2);
         // …and at its brightest it glints: a pale cross, one pixel each way
         if (a > 0.75) {
