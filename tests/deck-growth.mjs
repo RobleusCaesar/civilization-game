@@ -33,7 +33,9 @@
                        never the rival's
      QUICK HANDS       x2 construction and upgrades for 6 days, the same
                        reach; a site with nobody at it rises no faster; the
-                       days-left lines tell the truth
+                       days-left lines tell the truth; a sapper RAISING a
+                       span works at the card's pace (it is construction),
+                       a trench at its own (an earthwork is not)
      BLIGHT            the rival's hand loads, fishing, kills, stations and
                        hall trickle -40% for 15 days, its ground stripped at
                        its own pace; the inner market left alone; the
@@ -45,27 +47,43 @@
                        three-building rule; every building to the hall's new
                        level — two steps where it stands two behind — walls
                        and gates through the village-wide tier; works under
-                       way finished and paid back; no upgrade scored; at
-                       hall Lv 3 everything to Lv 3; "Everything stands at
+                       way finished and paid back (a save from before the
+                       masons kept their bill is paid the honest list
+                       price; nothing to hand back is never called "free");
+                       no upgrade scored; at hall Lv 3 everything to Lv 3; "Everything stands at
                        its height"
      AGE OF MARBLE     Calm only (kept, greyed, outside it); the Wonder a
                        quarter cheaper at the one cost point and twice as
-                       fast under its builders; laid already, a quarter of
-                       what was PAID comes back and never more; once a run
+                       fast under its builders — the PLAYER's Wonder alone,
+                       never a house site or the rival's monument; laid
+                       already, a quarter of what was PAID comes back and
+                       never more; once a run; with a site standing the
+                       card LANDS on the works (its dest) and the play never
+                       cuts the camera away from them
      WONDER'S FOUNDATION  +35% of the works now, or the moment the Wonder is
                        laid (the charge waits, rides the save, and the
                        rival's monument never takes it) — and never past 95%:
-                       no card lays the last stone
+                       no card lays the last stone; it lands on a standing
+                       site, and brings the works on screen only when the
+                       ground breaking lays it
      SAVES / RNG       every timer and charge rides a save mid-flight; no
                        card draws from S.rngState at the play
      THE PICTURE       every card's show and every running card's look draws
                        at every beat without throwing, paints something, is
                        render state only, costs nothing with no card in play,
                        and never paints the off-map black (a control widens
-                       the board and must see it lit)
+                       the board and must see it lit); the lush ground is
+                       painted once, in two breeze beats, and drawn from what
+                       the player KNOWS (a rival barracks or a felled stand
+                       out of sight changes nothing); and, read off the real
+                       frame over HTTP, the meadow and the withered fields lie
+                       UNDER the people standing on them (their opaque pixels
+                       byte-identical) and the fog dims the lush ground on
+                       remembered ground like the land under it
 
    Run after touching: js/deckfx-growth.js, Units.gatherYield / buildRate and
    their call sites (the gather, fish and shorefish tasks, the build task,
+   the sapper's span,
    the meat in Units.damage, Units.workReport), Bld.dailyProduction,
    Bld.effCost / place / finishUpgrade / finishWallUpgrade / update (the wall
    works), AI.daily's hall trickle, UI.panelSub / wonderSavedLine.
