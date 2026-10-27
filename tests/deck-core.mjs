@@ -115,7 +115,7 @@ const c = await p.evaluate(() => {
   CFG.CARDS.ON = true;
   Deck._col = null; Deck._del(Deck.KEY);
   const rng = mulberry32(1234);
-  const rep = (o) => Object.assign({ win: true, cause: 'razed_rival_tc', mode: 'moderate', day: 400, seconds: 900, subtotal: 4000, deeds: 20, runId: null }, o);
+  const rep = (o) => Object.assign({ win: true, cause: 'razed_rival_tc', mode: 'moderate', day: 400, seconds: 900, subtotal: 4000, deeds: 20, actDays: 30, runId: null }, o);
   // gates
   out.banner = Deck.settle(rep({ win: false, cause: 'struck_banner', key: 'g1' }), rng).ok;
   out.bannerDeeds = Deck.settle(rep({ win: false, cause: 'struck_banner', deeds: 99, key: 'g1b' }), rng).ok;
@@ -128,7 +128,20 @@ const c = await p.evaluate(() => {
   out.under = Deck.settle(rep({ win: false, cause: 'tc_destroyed', deeds: need - 1, key: 'g5' }), rng);
   out.at = Deck.settle(rep({ win: false, cause: 'tc_destroyed', deeds: need, seconds: 60, subtotal: 0, key: 'g6' }), rng).ok;
   out.why2 = Deck.eligible(rep({ win: false, cause: 'tc_destroyed', deeds: 2 })).why;
+  out.underPips = Deck.eligible(rep({ win: false, cause: 'tc_destroyed', deeds: need - 1 })).pips;
   out.gatesGone = !('MIN_SECONDS' in CFG.CARDS) && !('MIN_SCORE' in CFG.CARDS);
+  // …and the fight has to LAST: deeds galore given on too few days earn
+  // nothing; a win needs no days at all
+  const needD = CFG.CARDS.LOSS_DAYS;
+  out.needD = needD;
+  const burstRep = rep({ win: false, cause: 'tc_destroyed', deeds: 10, actDays: needD - 1, key: 'g7' });
+  out.burst = Object.assign({}, Deck.eligible(burstRep), { settled: Deck.settle(burstRep, rng).ok });
+  out.lasted = Deck.settle(rep({ win: false, cause: 'tc_destroyed', deeds: CFG.CARDS.LOSS_DEEDS, actDays: needD, key: 'g8' }), rng).ok;
+  out.both = Deck.eligible(rep({ win: false, cause: 'tc_destroyed', deeds: 2, actDays: 1 }));
+  out.quickWinNoDays = Deck.eligible(rep({ win: true, deeds: 0, actDays: 0 })).ok;
+  // THE NO WAY BACK RESIGN is a defeat, judged like one; a struck banner never
+  out.doomed = Deck.eligible(rep({ win: false, cause: 'doomed' })).ok;
+  out.doomedShort = Deck.eligible(rep({ win: false, cause: 'doomed', deeds: 1 })).ok;
   // the measured roll: 20,000 tier rolls per table against the approved weights
   const tiers = Deck.TIERS.map(t => t.k);
   out.dev = {};
@@ -164,7 +177,7 @@ const c = await p.evaluate(() => {
   out.queue = Deck.col().queue.filter(q => q.op === 'grant').length;
   // the grant op carries what the server needs to re-run the earn rule
   const lossOp = Deck.col().queue.find(q => q.op === 'grant' && q.key === 'g6');
-  out.opRule = !!lossOp && lossOp.cause === 'tc_destroyed' && lossOp.deeds === CFG.CARDS.LOSS_DEEDS && lossOp.outcome === 'loss';
+  out.opRule = !!lossOp && lossOp.cause === 'tc_destroyed' && lossOp.deeds === CFG.CARDS.LOSS_DEEDS && lossOp.act_days === 30 && lossOp.outcome === 'loss';
   out.counts = JSON.stringify(Deck.col().counts);
   return out;
 });
@@ -174,8 +187,16 @@ ck('aWinAlwaysEarnsEvenAtFiveMinutes', c.quickWin.ok && c.quickWin.cards.length 
 ck('aLossEarnsACard', c.lossOk.ok && c.lossOk.cards.length === 1 && ['stone', 'bronze'].includes(c.lossOk.cards[0].tier), JSON.stringify(c.lossOk.cards));
 ck('aDefeatIsJudgedOnDeedsNotTime', c.need === 5 && !c.under.ok && c.at,
   `bar ${c.need}: ${c.need - 1} deeds ${c.under.ok}, ${c.need} deeds at one minute and score 0 ${c.at}`);
-ck('andAShortDefeatIsToldHowFarItGot', c.under.why === 'Build, train, upgrade or raze to earn a card from a defeat — 4 of 5 deeds.' &&
-  c.why2 === 'Build, train, upgrade or raze to earn a card from a defeat — 2 of 5 deeds.', `"${c.under.why}" / "${c.why2}"`);
+ck('andAShortDefeatIsToldHowFarItGot', c.under.why === 'Build, train, gather, upgrade or raze to earn a card from a defeat — 4 of 5 deeds.' &&
+  c.why2 === 'Build, train, gather, upgrade or raze to earn a card from a defeat — 2 of 5 deeds.' &&
+  c.underPips && c.underPips.n === 4 && c.underPips.of === 5, `"${c.under.why}" / "${c.why2}"; pips ${JSON.stringify(c.underPips)}`);
+ck('andTheFightHasToLast', c.needD === 6 && !c.burst.ok && !c.burst.settled && c.lasted && c.quickWinNoDays &&
+  c.burst.why === 'Keep up the fight across the days to earn a card from a defeat — orders given on 5 of 6 days.' &&
+  c.burst.pips.n === 5 && c.burst.pips.of === 6 &&
+  c.both.why === 'Build, train, gather, upgrade or raze to earn a card from a defeat — 2 of 5 deeds, orders given on 1 of 6 days.' &&
+  c.both.pips.n === 2 && c.both.pips.of === 5,
+  `bar ${c.needD} days: 10 deeds on 5 days ${c.burst.ok} "${c.burst.why}"; 5 deeds on 6 days ${c.lasted}; a win on 0 days ${c.quickWinNoDays}; both short "${c.both.why}"`);
+ck('theNoWayBackResignIsADefeatNotAStruckBanner', c.doomed && !c.doomedShort, `doomed with its deeds ${c.doomed}, with one deed ${c.doomedShort}`);
 ck('theRollLandsOnItsTable', Object.keys(c.dev).filter(k => !k.endsWith('Zero')).every(k => +c.dev[k] < 1.2) &&
   Object.keys(c.dev).filter(k => k.endsWith('Zero')).every(k => c.dev[k]), JSON.stringify(c.dev));
 ck('aGreatVictoryEarnsASecondCard', c.wonder === 2 && c.hard === 2 && c.fast === 2 && c.slow === 1 && c.lossNoBonus === 1,
@@ -183,7 +204,7 @@ ck('aGreatVictoryEarnsASecondCard', c.wonder === 2 && c.hard === 2 && c.fast ===
 ck('aRunIsPaidOnce', c.once.gained === 1 && c.once.again === 0 && c.once.same, JSON.stringify(c.once));
 ck('fifteenWinsWithoutALegendGuaranteeOne', c.pity.legends === 0 && c.pity.at15 === 15 && c.pity.forced === 'enlight' && c.pity.flag && c.pity.reset === 0, JSON.stringify(c.pity));
 ck('aLossNeverMovesThePity', c.lossPity === 7, 'pity ' + c.lossPity);
-ck('everyGrantIsQueuedForTheCloud', c.queue >= 20 && c.opRule, c.queue + ' grant ops; a defeat\'s op carries its cause and deeds ' + c.opRule);
+ck('everyGrantIsQueuedForTheCloud', c.queue >= 20 && c.opRule, c.queue + ' grant ops; a defeat\'s op carries its cause, deeds and days ' + c.opRule);
 
 // THE COLLECTION survives a reload, and the starter hand comes once
 const counts = c.counts;
@@ -309,6 +330,14 @@ const SIM = `window.__sim = (o) => {
   let house = false, villager = false;
   const act = () => {
     const tc = Bld.tcOf('P'); if (!tc) return;
+    /* THE BURST: every house the opening pile buys and every villager the
+       food queues, on the first tick, and then no order ever again */
+    if (o.bot === 'burst') {
+      if (o._done) return; o._done = true;
+      let n = 0; while (n < 12 && Bld.canAfford(Bld.effCost('P', 'house'), S.res) && lay('house')) n++;
+      let k = 0; while (k < 12 && Bld.train(tc, 'villager')) k++;
+      return;
+    }
     if (o.bot === 'token') {
       if (!house && Bld.canAfford(Bld.effCost('P', 'house'), S.res) && lay('house')) house = true;
       if (!villager && Bld.train(tc, 'villager')) villager = true;
@@ -318,7 +347,9 @@ const SIM = `window.__sim = (o) => {
     for (const v of vills()) {
       if (v.task) continue;
       const t = near([[T.FOREST], [T.FERTILE], [T.HILLS]][j++ % 3], 16) || near([T.FOREST, T.FERTILE, T.HILLS], 20);
-      if (t) Units.assignGather(v, t.x, t.y);
+      // a tap on the ground: the real pointerup stamps the day (UI._orderMoved
+      // → G.noteAct, pinned on its own below) — the bot taps the model directly
+      if (t && Units.assignGather(v, t.x, t.y)) G.noteAct();
     }
     if (tc.queue.length < 1) Bld.train(tc, 'villager');
     if (S.buildings.filter(b => b.owner === 'P' && b.construction > 0).length < 2) {
@@ -330,7 +361,7 @@ const SIM = `window.__sim = (o) => {
     if (bk && bk.queue.length < 1) Bld.train(bk, 'defender');
     for (const st of S.buildings.filter(b => b.owner === 'P' && b.construction > 0))
       if (!S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'build' && u.task.id === st.id)) {
-        const v = vills()[0]; if (v) Units.assignBuild(v, st);
+        const v = vills()[0]; if (v && Units.assignBuild(v, st)) G.noteAct();
       }
   };
   const dt = 0.25;
@@ -352,7 +383,7 @@ const SIM = `window.__sim = (o) => {
   // the hall falls to the world — through the real door, so the end screen settles it
   if (!S.over) { const tc = Bld.tcOf('P'); if (tc) Bld.damage(tc, 1e7); }
   const st = S.stats, d = Deck.deeds(), rep = Deck.report(false, 'tc_destroyed');
-  return { day: S.day, cause: S.over && S.over.cause, win: !!(S.over && S.over.win), deeds: d.n, parts: d.parts,
+  return { day: S.day, cause: S.over && S.over.cause, win: !!(S.over && S.over.win), deeds: d.n, parts: d.parts, act: st.actDays,
     razed: st.razed, gathered: Math.round(st.gathered), built: st.built, trained: st.trained, secs: Math.round(S.playtime),
     granted: !!Deck.col().runs[rep.key], why: (DeckScreens._view && DeckScreens._view.why) || '',
     tut: !!(S.tut && S.tut.on), report: G.runReport('loss', 'tc_destroyed', false).props };
@@ -383,16 +414,30 @@ const e = await p.evaluate(async (SIM) => {
   // game days (five real minutes) and is then razed
   out.active = __sim(N({ seed: 'active-active-0', origin: 'homesteader', bot: 'active', act: 30, raze: true, rs: 7 }));
   out.active2 = __sim(N({ seed: 'active-active-2', origin: 'refugeehost', bot: 'active', act: 30, raze: true, rs: 9 }));
+  /* THE BURST (the review's probe): four of the runs that EARNED under the
+     deeds alone — 8, 9, 6 and 7 deeds bought in the first tick — and then
+     no order for between 28 and 86 game days */
+  out.burst = [];
+  for (const [origin, s, rs] of [['homesteader', 0, 3], ['mariner', 0, 11], ['bowyer', 1, 14], ['refugeehost', 0, 7]])
+    out.burst.push(Object.assign({ origin }, __sim(N({ seed: 'cheese-' + origin + '-' + s, origin, bot: 'burst', act: 400, rs }))));
   return out;
 }, SIM);
-const pv = e.passive;
-ck('aPassiveHardDefeatEarnsNothing', pv.every(r => !r.win && r.deeds === 0 && !r.granted) && e.tutPassive.deeds === 0 && !e.tutPassive.granted,
-  pv.map(r => `${r.origin} d${r.day} ${r.deeds} deeds (razed ${r.razed}, gathered ${r.gathered})`).join('; ') + `; tutorial d${e.tutPassive.day} ${e.tutPassive.deeds}`);
-ck('aTokenEffortIsToldHowFarItGot', e.token.deeds === 2 && !e.token.granted &&
-  e.token.why === 'Build, train, upgrade or raze to earn a card from a defeat — 2 of 5 deeds.',
-  `${e.token.deeds} deeds (${JSON.stringify(e.token.parts)}), granted ${e.token.granted}, "${e.token.why}"`);
-ck('fiveMinutesOfRealPlayOnHardEarns', [e.active, e.active2].every(r => !r.win && r.cause === 'tc_destroyed' && r.deeds >= 7 && r.granted && r.secs <= 320),
-  [e.active, e.active2].map(r => `${r.deeds} deeds ${JSON.stringify(r.parts)} at ${r.secs}s, granted ${r.granted}`).join('; '));
+const pv = e.passive, CFG_LOSS = 5;
+ck('aPassiveHardDefeatEarnsNothing', pv.every(r => !r.win && r.deeds === 0 && r.act === 0 && !r.granted) &&
+  e.tutPassive.deeds === 0 && e.tutPassive.act === 0 && !e.tutPassive.granted,
+  pv.map(r => `${r.origin} d${r.day} ${r.deeds} deeds on ${r.act} days (razed ${r.razed}, gathered ${r.gathered})`).join('; ') +
+  `; tutorial d${e.tutPassive.day} ${e.tutPassive.deeds} on ${e.tutPassive.act} days — no automation stamps a day`);
+ck('aTokenEffortIsToldHowFarItGot', e.token.deeds === 2 && e.token.act === 1 && !e.token.granted &&
+  e.token.why === 'Build, train, gather, upgrade or raze to earn a card from a defeat — 2 of 5 deeds, orders given on 1 of 6 days.',
+  `${e.token.deeds} deeds (${JSON.stringify(e.token.parts)}) on ${e.token.act} days, granted ${e.token.granted}, "${e.token.why}"`);
+ck('fiveMinutesOfRealPlayOnHardEarns', [e.active, e.active2].every(r => !r.win && r.cause === 'tc_destroyed' && r.deeds >= 7 &&
+  r.act >= 12 && r.granted && r.secs <= 320),
+  [e.active, e.active2].map(r => `${r.deeds} deeds ${JSON.stringify(r.parts)} on ${r.act} days at ${r.secs}s, granted ${r.granted}`).join('; '));
+// the deeds alone would have paid every one of these (each reads 5+): the
+// days are what refuse them — and the screen says which half was missing
+ck('aFrontLoadedBurstEarnsNothing', e.burst.every(r => !r.win && r.deeds >= CFG_LOSS && r.act === 1 && !r.granted &&
+  r.why === 'Keep up the fight across the days to earn a card from a defeat — orders given on 1 of 6 days.'),
+  e.burst.map(r => `${r.origin} razed d${r.day}: ${r.deeds} deeds on ${r.act} day${r.act === 1 ? '' : 's'}, granted ${r.granted}`).join('; '));
 ck('theDeedsRideTheRunReport', [e.active, e.token, ...pv].every(r => r.report.deeds === r.deeds &&
   r.report.hand_razed === r.parts.razed && Number.isFinite(r.report.hand_gathered)),
   `active report deeds ${e.active.report.deeds}, hand_gathered ${e.active.report.hand_gathered}`);
@@ -457,13 +502,18 @@ const t = await p.evaluate(() => {
   out.allow = [0, 299, 300, 899, 900, 5000].map(n => Deck.deeds({ handGathered: n }).parts.gathered);
   out.naiveBoatDeeds = Math.min(3, Math.floor(out.boat.all / 300));
   // the tallies ride a save, and a pre-deeds save gives the benefit of the doubt
-  S.stats.handGathered = 640; S.stats.handRazed = 3;
+  S.stats.handGathered = 640; S.stats.handRazed = 3; S.stats.handKills = 4; S.stats.actDays = 7; S.stats.actDay = S.day;
   const json = G.saveJSON();
   G.loadJSON(json);
-  out.rides = S.stats.handGathered === 640 && S.stats.handRazed === 3;
-  const old = JSON.parse(json); delete old.stats.handGathered; delete old.stats.handRazed; old.stats.gathered = 900; old.stats.razed = 2;
+  out.rides = S.stats.handGathered === 640 && S.stats.handRazed === 3 && S.stats.handKills === 4 && S.stats.actDays === 7;
+  const old = JSON.parse(json); delete old.stats.handGathered; delete old.stats.handRazed; delete old.stats.handKills;
+  delete old.stats.actDays; delete old.stats.actDay;
+  old.stats.gathered = 900; old.stats.razed = 2; old.day = 41;
   G.loadJSON(JSON.stringify(old));
-  out.backfill = S.stats.handGathered === 900 && S.stats.handRazed === 2;
+  // an older save could not tell whose hand it was, nor which days had an
+  // order: the run somebody saved gets the benefit of the doubt (every day
+  // it reached) — but no kill can be told for an ordered one, so none is
+  out.backfill = S.stats.handGathered === 900 && S.stats.handRazed === 2 && S.stats.handKills === 0 && S.stats.actDays === 41;
   return out;
 });
 ck('aWorkTheWildsOrTheRivalBurnedIsNoDeed', t.notMine.razed === 3 && t.notMine.hand === 0,
@@ -475,70 +525,256 @@ ck('aVillagersOwnHandsAre', t.hand > 0, `+${t.hand} by hand`);
 ck('theGatheringAllowanceIsCapped', JSON.stringify(t.allow) === '[0,0,1,2,3,3]', JSON.stringify(t.allow));
 ck('theTalliesRideASave', t.rides && t.backfill, `rides ${t.rides}, backfill ${t.backfill}`);
 
+/* THE ORDERED KILL, A CARD'S RICHER HARVEST, AND THE DAYS THE TAPS STAMP.
+   (1) a foe the player SENT a soldier at falling to it is a deed (one per
+   three, at most two); the same kill by a soldier who found the foe on its
+   own — a Defend stance, an assault's next mark — is a kill for the score
+   and no deed. (2) A running Harvest Festival fills the larder 40% fuller
+   and lengthens the deeds by NOTHING: the hand's allowance credits the base
+   take (a naive `+= take` reads ×1.4 here). (3) A day is stamped where the
+   player's input lands — through the REAL pointer handler and the panel's
+   buttons — and only when an order actually changed: a selection, a pan or
+   the panel's ✕ stamps nothing, and a second order the same day adds no day. */
+const k = await p.evaluate(async () => {
+  const out = {};
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  CFG.CARDS.ON = true;
+  Screens._demo = false;
+  G.newGame('deeds-kills', 'moderate', 'medium');
+  Screens.show('playing'); S.paused = true;
+  Combat.scanT = 0; Units.herdClock = 0;
+  const tc = Bld.tcOf('P');
+  const open = (x0, y0, r, skip) => MapGen.findNear(x0, y0, r, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && !(skip && skip(x, y)));
+  const duel = (ordered) => {
+    const at = open(tc.x + 6, tc.y + 6, 12, (x, y) => S.units.some(u => Math.hypot(u.x - x - 0.5, u.y - y - 0.5) < 3));
+    const sol = Units.spawn('axeman', 'P', at.x + 0.5, at.y + 0.5);
+    const foe = Units.spawn('defender', 'A', at.x + 1.3, at.y + 0.5);
+    sol.atk = 9999; foe.atk = 0;
+    if (ordered) { sol.task = { type: 'attack', on: foe.id }; sol.tUnit = foe.id; sol.tBld = 0; }
+    else { sol.task = null; sol.tUnit = foe.id; }            // marked by acquisition, as a Defend stance does
+    for (let i = 0; i < 400 && S.units.includes(foe); i++) Combat.update(0.05);
+    Units.despawn(sol);
+    return !S.units.includes(foe);
+  };
+  const k0 = { kills: S.stats.kills, hand: S.stats.handKills };
+  out.unorderedDied = duel(false);
+  out.unordered = { kills: S.stats.kills - k0.kills, hand: S.stats.handKills - k0.hand };
+  out.orderedDied = duel(true);
+  out.ordered = { kills: S.stats.kills - k0.kills, hand: S.stats.handKills - k0.hand };
+  out.fought = [0, 2, 3, 5, 6, 99].map(n => Deck.deeds({ handKills: n }).parts.fought);
+  // (2) the festival: the same villager on the same stand, before and during
+  const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+  const f = MapGen.findNear(Math.round(v.x), Math.round(v.y), 20, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.FOREST);
+  S.map.resAmount[MapGen.idx(f.x, f.y)] = 1e6;
+  Units.assignGather(v, f.x, f.y);
+  const h00 = S.stats.handGathered;
+  for (let i = 0; i < 2400 && S.stats.handGathered === h00; i++) Units.update(0.25);   // walked out, first stroke
+  for (let i = 0; i < 40; i++) Units.update(0.25);           // settled at the stand
+  const leg = () => { const h0 = S.stats.handGathered, w0 = S.res.wood; for (let i = 0; i < 200; i++) Units.update(0.25);
+    return { hand: S.stats.handGathered - h0, wood: S.res.wood - w0 }; };
+  out.plain = leg();
+  Deck._add('harvest_festival', 1);
+  out.played = Deck.play('harvest_festival').ok;
+  out.fest = leg();
+  S.deck.fx = [];                                            // the festival over
+  // (3) the days, through the real pointer handler and the panel
+  S.deck.played = []; S.stats.actDays = 0; S.stats.actDay = 0; S.day = 3;
+  UI.deselect();
+  const TL = CFG.TILE;
+  const scr = (wx, wy) => ({ x: (wx * TL - R.cam.x) * R.cam.z, y: (wy * TL - R.cam.y) * R.cam.z });
+  const stand = MapGen.findNear(tc.x + 1, tc.y + 1, 14, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.FOREST && S.map.resAmount[MapGen.idx(x, y)] > 0 &&
+    !S.units.some(u => Math.hypot(u.x - x - 0.5, u.y - y - 0.5) < 2));
+  S.map.explored.fill(1); G.updateVisibility();
+  R.centerOn(stand.x + 0.5, stand.y + 0.5);
+  out.stand = scr(stand.x + 0.5, stand.y + 0.5);
+  const grass = open(stand.x, stand.y, 6, (x, y) => S.map.terrain[MapGen.idx(x, y)] !== T.GRASS ||
+    S.units.some(u => Math.hypot(u.x - x - 0.5, u.y - y - 0.5) < 1.5) || Math.abs(x - stand.x) + Math.abs(y - stand.y) < 2);
+  out.grass = scr(grass.x + 0.5, grass.y + 0.5);
+  const vs = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).slice(0, 2);
+  for (const u of vs) { u.task = null; u.path = null; }
+  out.vs = vs.map(u => u.id);
+  return out;
+});
+const click = async (pt) => { await p.mouse.click(pt.x, pt.y); await p.waitForTimeout(420); };   // never a double-tap
+const days = () => p.evaluate(() => S.stats.actDays);
+const d0 = await days();
+await click(k.grass);                                                       // nothing selected: no order
+const dSel0 = await days();
+await p.evaluate((id) => UI.select('unit', id), k.vs[0]);
+await click(k.stand);                                                       // a villager sent to the stand
+const dOrd = await days();
+await p.evaluate((id) => UI.select('unit', id), k.vs[1]);
+await click(k.stand);                                                       // a second order, the same day
+const dSame = await days();
+// the villager walks into view (paused: it is placed) — a tap must land on it
+const vScr = await p.evaluate(({ id, g }) => {
+  S.day = 4; UI.deselect();
+  const u = Units.get(id), TL = CFG.TILE;
+  const gx = (g.x / R.cam.z + R.cam.x) / TL, gy = (g.y / R.cam.z + R.cam.y) / TL;
+  const at = MapGen.findNear(Math.floor(gx), Math.floor(gy) - 2, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) &&
+    Math.hypot(x + 0.5 - gx, y + 0.5 - gy) >= 1.5 && !S.units.some(o => o !== u && Math.hypot(o.x - x - 0.5, o.y - y - 0.5) < 1.5));
+  u.x = at.x + 0.5; u.y = at.y + 0.5; u.path = null;
+  G.updateVisibility();                                      // it sees where it stands (a tap hits only what is seen)
+  return { x: (u.x * TL - R.cam.x) * R.cam.z, y: (u.y * TL - CFG.SPRITE_LIFT - R.cam.y) * R.cam.z };
+}, { id: k.vs[0], g: k.grass });
+await click(vScr);                                                          // a tap that only SELECTS
+const dLook = await p.evaluate(() => ({ n: S.stats.actDays, sel: !!(UI.sel && UI.sel.type === 'unit') }));
+await p.evaluate((id) => UI.select('unit', id), k.vs[0]);
+await click(k.grass);                                                       // a walk order on a new day
+const dWalk = await days();
+const pn = await p.evaluate(async () => {
+  const out = {};
+  const tc = Bld.tcOf('P');
+  S.day = 5;
+  const sol = Units.spawn('defender', 'P', tc.x + 0.5, tc.y + 2.5);
+  sol.defend = false;
+  UI.select('unit', sol.id); UI.renderPanel();
+  const close = document.querySelector('#panel #panelClose');
+  out.def = !!document.querySelector('#panel [data-act="defend"]');
+  if (close) close.click();                                                // the ✕ is no order
+  out.afterClose = S.stats.actDays;
+  UI.select('unit', sol.id); UI.renderPanel();
+  const def = document.querySelector('#panel [data-act="defend"]');
+  if (def) def.click();                                                     // Defend is
+  out.afterDefend = S.stats.actDays;
+  out.defending = !!sol.defend;
+  return out;
+});
+ck('anOrderedKillIsADeedAndNoOtherKillIs', k.unorderedDied && k.orderedDied && k.unordered.kills === 1 && k.unordered.hand === 0 &&
+  k.ordered.kills === 2 && k.ordered.hand === 1 && JSON.stringify(k.fought) === '[0,0,1,1,2,2]',
+  `found on its own: kills +${k.unordered.kills}, ordered +${k.unordered.hand}; sent at it: kills +${k.ordered.kills}, ordered +${k.ordered.hand}; allowance ${JSON.stringify(k.fought)}`);
+ck('aRicherHarvestIsNoLongerADeed', k.played && k.plain.hand > 1 && k.fest.wood > k.plain.wood * 1.35 &&
+  Math.abs(k.fest.hand - k.plain.hand) < 1e-6 * Math.max(1, k.plain.hand),
+  `plain: +${k.plain.wood.toFixed(2)} wood, +${k.plain.hand.toFixed(2)} to the hand; festival: +${k.fest.wood.toFixed(2)} wood, +${k.fest.hand.toFixed(2)} to the hand`);
+ck('aDayIsStampedByAnOrderNotATap', d0 === 0 && dSel0 === 0 && dOrd === 1 && dSame === 1 && dLook.n === 1 && dLook.sel && dWalk === 2,
+  `start ${d0}; an empty tap ${dSel0}; an order ${dOrd}; a second the same day ${dSame}; a tap that selects ${dLook.n} (selected ${dLook.sel}); a walk the next day ${dWalk}`);
+ck('andAPanelButtonThatActsIsAnOrder', pn.def && pn.afterClose === 2 && pn.afterDefend === 3 && pn.defending,
+  `Defend offered ${pn.def}; after ✕ ${pn.afterClose}; after Defend ${pn.afterDefend} (defending ${pn.defending})`);
+
 /* NO CARD BUYS A CARD. Every deed is something the player's own hand
    started; a card's free building, free upgrade or summoned soldier is the
    card's (ruling 6 — and a slip there would let one card's play buy the
    next one from a defeat). Every card with an effect is played in a fresh
-   world — aimed cards at the first valid ground beside the hall — and the
-   world run on for three days with no input: the deeds may not move. Cards
-   whose can() refuses on a bare day-1 town are named, never failed. */
+   world — aimed cards at the first valid ground beside the hall — with the
+   player's own work already standing: a house site they laid and PAID for,
+   nobody building it, and a house mid-upgrade they ordered, nobody on the
+   scaffold. After the play the player lays one more house through the real
+   placement confirm, and the world runs three days with no other input.
+   Every deed that moves is then ATTRIBUTED: a finish of a site the player
+   placed, or an upgrade they ordered, is theirs (the RULING: a card may
+   hasten the player's own paid work — Master Builders standing up a house
+   they placed, Quick Hands doubling the builders — because the deed is the
+   order's and the card only spares the wait); anything else is the card
+   conjuring a deed out of work nobody ordered, and fails. Deferred and
+   charge cards are seen this way too, since the placement after the play is
+   the one their effect lands on. A card's play also stamps no day of
+   orders. Two controls must be caught, or a pass means nothing: a card that
+   raises a FREE house through Bld.finish, and one that bills a free
+   upgrade's deed through Bld.finishUpgrade. Cards whose can() refuses on a
+   bare day-1 town are named, never failed. */
 const nc = await p.evaluate(() => {
-  const out = { moved: [], measured: [], refused: [] };
+  const out = { moved: [], measured: [], refused: [], control: {}, hastened: [] };
   CFG.CARDS.ON = true;
-  /* the CONTROL: a card that raises its house the naive way, through the
-     builders' own Bld.finish — the probe must see it, or a pass means nothing */
-  Deck.FX.__builds = { apply() {
+  const spotFor = (key, avoid) => {
     const tc = Bld.tcOf('P');
-    const sp = MapGen.findNear(tc.x + 1, tc.y + 1, 9, (x, y) => Bld.canPlace('P', 'house', x, y).ok);
+    return MapGen.findNear(tc.x + 1, tc.y + 1, 10, (x, y) => Bld.canPlace('P', key, x, y).ok && !(avoid && avoid(x, y)));
+  };
+  Deck.FX.__builds = { apply() {
+    const sp = spotFor('house');
     const b = sp && Bld.place('P', 'house', sp.x, sp.y, { free: true, noAutoAssign: true });
     if (!b) return { ok: false, why: 'no ground' };
     Bld.finish(b);
     return { ok: true };
   } };
-  Deck.CATALOG.push({ id: '__builds', tier: 'stone', cat: 'econ', target: 'none', name: 'b', text: 't', flavor: 'f', when: 'w' });
+  Deck.FX.__upgrades = { apply() {
+    const h = S.buildings.find(b => b.owner === 'P' && b.key === 'tc');
+    h.upgrading = 1; Bld.finishUpgrade(h);
+    return { ok: true };
+  } };
+  for (const id of ['__builds', '__upgrades'])
+    Deck.CATALOG.push({ id, tier: 'stone', cat: 'econ', target: 'none', name: 'b', text: 't', flavor: 'f', when: 'w' });
   Deck._byId = null;
-  const ids = Object.keys(Deck.FX).filter(k => Deck.card(k) && !k.startsWith('__')).sort();
-  for (const id of ids.concat('__builds')) {
-    Screens._demo = false;
-    G.newGame('no-card-buys-' + id, 'moderate', 'medium');
-    Screens.show('playing'); S.paused = false;
-    Combat.scanT = 0; Units.herdClock = 0;
-    for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 5000;
-    Deck._col = null; Deck._del(Deck.KEY);
-    Deck._add(id, 1);
-    const c = Deck.card(id), tc = Bld.tcOf('P');
-    let tgt = null;
-    if (c.target !== 'none') {
-      const sp = MapGen.findNear(tc.x + 1, tc.y + 1, 12, (x, y) => Deck.validTarget(id, x + 0.5, y + 0.5) &&
-        Math.hypot(x - tc.x, y - tc.y) > 4);
-      if (sp) tgt = { x: sp.x + 0.5, y: sp.y + 0.5 };
+  // THE LEDGER: every deed is booked to the call that moved it
+  let orderedBuild = new Set(), orderedUpg = new Set(), explained = 0;
+  const real = { place: Bld.place, finish: Bld.finish, finishUpgrade: Bld.finishUpgrade };
+  Bld.place = function (owner, key, x, y, opts) {
+    const d0 = Deck.deeds().n, b = real.place.call(this, owner, key, x, y, opts);
+    if (b && owner === 'P' && !(opts && opts.free)) { orderedBuild.add(b.id); explained += Deck.deeds().n - d0; }
+    return b;
+  };
+  Bld.finish = function (b, ...r) {
+    const d0 = Deck.deeds().n, v = real.finish.call(this, b, ...r);
+    if (b && orderedBuild.has(b.id)) explained += Deck.deeds().n - d0;
+    return v;
+  };
+  Bld.finishUpgrade = function (b, ...r) {
+    const d0 = Deck.deeds().n, v = real.finishUpgrade.call(this, b, ...r);
+    if (b && orderedUpg.has(b.id)) explained += Deck.deeds().n - d0;
+    return v;
+  };
+  try {
+    const ids = Object.keys(Deck.FX).filter(k => Deck.card(k) && !k.startsWith('__')).sort();
+    for (const id of ids.concat('__builds', '__upgrades')) {
+      Screens._demo = false;
+      G.newGame('no-card-buys-' + id, 'moderate', 'medium');
+      Screens.show('playing'); S.paused = false;
+      Combat.scanT = 0; Units.herdClock = 0;
+      for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 5000;
+      Deck._col = null; Deck._del(Deck.KEY);
+      Deck._add(id, 1);
+      orderedBuild = new Set(); orderedUpg = new Set(); explained = 0;
+      // the player's own work, standing when the card is played
+      const s1 = spotFor('house'), site = Bld.place('P', 'house', s1.x, s1.y, { noAutoAssign: true });
+      const s2 = spotFor('house', (x, y) => Math.abs(x - s1.x) + Math.abs(y - s1.y) < 3);
+      const upg = Bld.place('P', 'house', s2.x, s2.y, { free: true, instant: true, noAutoAssign: true });
+      upg.upgrading = upg.upgTotal = 3; orderedUpg.add(upg.id);
+      const c = Deck.card(id), tc = Bld.tcOf('P');
+      let tgt = null;
+      if (c.target !== 'none') {
+        const sp = MapGen.findNear(tc.x + 1, tc.y + 1, 12, (x, y) => Deck.validTarget(id, x + 0.5, y + 0.5) &&
+          Math.hypot(x - tc.x, y - tc.y) > 4);
+        if (sp) tgt = { x: sp.x + 0.5, y: sp.y + 0.5 };
+      }
+      const d0 = Deck.deeds().n, a0 = S.stats.actDays, e0 = explained;
+      const r = Deck.play(id, tgt);
+      if (!r.ok) { out.refused.push(id + ': ' + r.why); continue; }
+      const a1 = S.stats.actDays;
+      // …then the player lays one more house, through the real confirm
+      const s3 = spotFor('house', (x, y) => Math.abs(x - s1.x) + Math.abs(y - s1.y) < 3 || Math.abs(x - s2.x) + Math.abs(y - s2.y) < 3);
+      UI.enterPlacement('house');
+      if (UI.placeGhost) { UI.placeGhost.x = s3.x; UI.placeGhost.y = s3.y; UI.placeGhost.set = true; }
+      UI.confirmPlacement();
+      UI.exitPlacement();
+      const laid = S.buildings.some(b => b.owner === 'P' && b.key === 'house' && b.x === s3.x && b.y === s3.y);
+      // G.frame's own sim step, strikes and timers included, for three days
+      const dt = 0.25;
+      for (let i = 0; i < 3 * CFG.DAY_MS / 250 && !S.over; i++) {
+        S.playtime += dt; S.dayT += dt * 1000;
+        while (S.dayT >= CFG.DAY_MS) { S.dayT -= CFG.DAY_MS; G.dayTick(); if (S.over) break; }
+        if (S.over) break;
+        Bld.update(dt * 1000 / CFG.DAY_MS); Units.update(dt); Combat.update(dt);
+        G.dyingTick(dt); G.krakenTick(dt); G.eclipseTick(dt); G.fireTick(dt); G.strifeTick(dt); G.starfallTick(dt); G.dragonTick(dt);
+        if (S.deck.fx.length) Deck.tick();
+        if (S.deck.strike && Deck.strikeTick) Deck.strikeTick(dt);
+        G.visT -= dt; if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+      }
+      const moved = Deck.deeds().n - d0, mine = explained - e0, conjured = moved - mine;
+      if (id.startsWith('__')) { out.control[id] = conjured; continue; }
+      out.measured.push(id);
+      if (!laid) out.moved.push(`${id}: the player's own placement never landed`);
+      if (conjured !== 0 || a1 !== a0)
+        out.moved.push(`${id}: deeds ${moved > 0 ? '+' : ''}${moved}, the player's own work explains ${mine}; days ${a0}→${a1} at the play ${JSON.stringify(Deck.deeds().parts)}`);
+      if (mine) out.hastened.push(`${id} +${mine}`);
     }
-    const d0 = Deck.deeds().n;
-    const r = Deck.play(id, tgt);
-    if (!r.ok) { out.refused.push(id + ': ' + r.why); continue; }
-    const d1 = Deck.deeds().n;
-    // G.frame's own sim step, strikes and timers included, for three days
-    const dt = 0.25;
-    for (let i = 0; i < 3 * CFG.DAY_MS / 250 && !S.over; i++) {
-      S.playtime += dt; S.dayT += dt * 1000;
-      while (S.dayT >= CFG.DAY_MS) { S.dayT -= CFG.DAY_MS; G.dayTick(); if (S.over) break; }
-      if (S.over) break;
-      Bld.update(dt * 1000 / CFG.DAY_MS); Units.update(dt); Combat.update(dt);
-      G.dyingTick(dt); G.krakenTick(dt); G.eclipseTick(dt); G.fireTick(dt); G.strifeTick(dt); G.starfallTick(dt); G.dragonTick(dt);
-      if (S.deck.fx.length) Deck.tick();
-      if (S.deck.strike && Deck.strikeTick) Deck.strikeTick(dt);
-      G.visT -= dt; if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
-    }
-    const d2 = Deck.deeds().n;
-    if (id === '__builds') { out.control = d1 - d0; continue; }
-    out.measured.push(id);
-    if (d1 !== d0 || d2 !== d0) out.moved.push(`${id} ${d0}→${d1}→${d2} ${JSON.stringify(Deck.deeds().parts)}`);
+  } finally {
+    Object.assign(Bld, real);
   }
   return out;
 });
-ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.control === 1,
-  `${nc.measured.length} cards played and run three days: ${nc.moved.join('; ') || 'no deed moved'}; ` +
-  `the control (a free house raised through Bld.finish) read +${nc.control}` +
+ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.control.__builds === 1 && nc.control.__upgrades === 1,
+  `${nc.measured.length} cards played over a staged site, a staged upgrade and a placement after the play, run three days: ` +
+  `${nc.moved.join('; ') || 'no deed but the player\'s own'}${nc.hastened.length ? ' (the player\'s own work: ' + nc.hastened.join(', ') + ')' : ''}; ` +
+  `the controls (a free house through Bld.finish, a free upgrade through finishUpgrade) read +${nc.control.__builds} / +${nc.control.__upgrades}` +
   (nc.refused.length ? ` (refused on a bare town: ${nc.refused.join(' | ')})` : ''));
 
 /* THE TEST LINK: ?cards=all turns the deck on for the device and, on EVERY
@@ -552,10 +788,9 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   // a device with a real collection first: two Swift Raiders and a run ledger
   await p2.goto(url, { waitUntil: 'domcontentloaded' });
   await p2.waitForFunction(() => window.Deck && window.Screens && Screens.current, null, { timeout: 15000 });
-  await p2.evaluate(() => {
-    Deck._set(Deck.KEY, JSON.stringify({ v: 1, counts: { swift_raiders: 2, gold_nugget: 1 }, seen: { swift_raiders: 1 }, pity: 9,
-      starter: 0, runs: { k1: [{ id: 'swift_raiders', tier: 'iron' }] }, queue: [{ op: 'grant' }], medians: {} }));
-  });
+  const REAL = JSON.stringify({ v: 1, counts: { swift_raiders: 2, gold_nugget: 1 }, seen: { swift_raiders: 1 }, pity: 9,
+    starter: 5, runs: { k1: [{ id: 'swift_raiders', tier: 'iron' }] }, queue: [{ op: 'grant', at: 7 }], medians: {} });
+  await p2.evaluate((REAL) => { Deck._set(Deck.KEY, REAL); }, REAL);
   const load = async (q) => {
     await p2.goto(url + q, { waitUntil: 'domcontentloaded' });
     await p2.waitForFunction(() => window.Deck && window.Screens && Screens.current, null, { timeout: 15000 });
@@ -596,19 +831,38 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   });
   ck('everyLoadOfTheLinkDealsAfresh', a2.reloaded === 36, `${a2.reloaded} after a reload`);
   ck('andTheLinkIsReadWithTheSwitchOn', a2.spent === 35 && a2.switchOn === 36, `${a2.spent} → ${a2.switchOn} with CFG.CARDS.ON`);
-  // a load WITHOUT it keeps the deck it dealt and the device's switch
+  // a load WITHOUT it keeps the deck it dealt and the device's switch — and
+  // a TEST deck never hides behind the lesson: a tester on a fresh device gets
+  // the tutorial switched on by itself, and the link must not read as broken
   await load('');
-  const a3 = await p2.evaluate(() => { Deck.ensureStarter(); return { on: Deck.on(), total: Deck.total() }; });
+  const a3 = await p2.evaluate(() => {
+    Deck.ensureStarter();
+    const tut0 = S.tut; S.tut = { on: true, phase: 1, step: 3, done: {}, fired: {} };
+    const o = { on: Deck.on(), total: Deck.total(), held: Deck.lessonHolds() };
+    S.tut = tut0;
+    return o;
+  });
   ck('andAPlainLoadKeepsIt', a3.on && a3.total === 36, `on ${a3.on}, ${a3.total}`);
-  // ?cards=0 forgets the device switch AND the toy deck (a test deck never
-  // syncs, so a device left holding one would never sync again) — and
-  // ?cards=1 after it starts a real collection with the starter hand
+  ck('andATestDeckNeverWaitsForTheLesson', a3.held === false, `held behind the spine: ${a3.held}`);
+  /* ?cards=0 forgets the device switch AND the toy deck (a test deck never
+     syncs, so a device left holding one would never sync again) — and hands
+     back the REAL collection the link put aside, exactly as it was stored:
+     its cards, its pity, its run ledger and the cloud op still waiting */
   await load('?cards=0');
-  const a4 = await p2.evaluate(() => ({ on: Deck.on(), stored: Deck._get(Deck.KEY) }));
+  const a4 = await p2.evaluate(() => ({ on: Deck.on(), stored: Deck._get(Deck.KEY), stash: Deck._get(Deck.REAL_KEY) }));
+  ck('andCardsZeroGivesTheRealCollectionBack', !a4.on && a4.stored === REAL && a4.stash === null,
+    `off ${!a4.on}; the real collection back exactly: ${a4.stored === REAL}${a4.stored === REAL ? '' : ' (' + String(a4.stored).slice(0, 90) + ')'}; stash cleared ${a4.stash === null}`);
+  // …and a device that had NO collection before the link starts afresh: the
+  // toy deck gone, and ?cards=1 deals the starter hand to a real collection
+  await p2.evaluate(() => { Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); });
+  await load('?cards=all');
+  await p2.evaluate(() => Deck.ensureStarter());
+  await load('?cards=0');
+  const a5a = await p2.evaluate(() => ({ stored: Deck._get(Deck.KEY), stash: Deck._get(Deck.REAL_KEY) }));
   await load('?cards=1');
   const a5 = await p2.evaluate(() => { Deck.ensureStarter(); return { on: Deck.on(), total: Deck.total(), test: Deck.isTest(), queue: Deck.col().queue.length }; });
-  ck('andCardsZeroForgetsTheToyDeck', !a4.on && a4.stored === null && a5.on && a5.total === 3 && !a5.test && a5.queue === 1,
-    `off ${!a4.on}, stored ${a4.stored === null ? 'gone' : 'kept'}; then ?cards=1: ${a5.total} cards, test ${a5.test}, queued ${a5.queue}`);
+  ck('andCardsZeroForgetsTheToyDeck', a5a.stored === null && a5a.stash === null && a5.on && a5.total === 3 && !a5.test && a5.queue === 1,
+    `stored ${a5a.stored === null ? 'gone' : 'kept'}; then ?cards=1: ${a5.total} cards, test ${a5.test}, queued ${a5.queue}`);
   // …while a REAL collection survives ?cards=0 untouched
   await p2.evaluate(() => { Deck._add('swift_raiders', 2); Deck.saveCol(); });
   await load('?cards=0');
