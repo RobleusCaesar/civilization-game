@@ -1173,7 +1173,12 @@ const DeckUI = {
                : 'Tap the ground, or drag the mark.');
     A.bar.classList.toggle('bad', !A.ok);
     A.bar.classList.toggle('warn', !!warn);
-    const pick = A.hover && !A.set;   // a mouse that has only hovered has chosen nothing yet
+    /* a mouse that has only hovered has chosen nothing yet. BOOLEANS, always:
+       a finger never hovers, so A.hover is undefined on touch, and
+       classList.toggle(cls, undefined) FLIPS the class instead of setting it —
+       every sync turned a good ✓ grey and back again (playtest g1: after a
+       normal tap the button read disabled, the same tile tapped twice lit it) */
+    const pick = !!A.hover && !A.set;
     A.go.classList.toggle('off', !A.ok || pick);
     A.go.textContent = pick ? 'Click the ground' : A.armed ? '✓ Confirm' : '✓ Here';
     const key = (A.ok ? (warn ? 'w' : 'v') : 'x') + A.radius;

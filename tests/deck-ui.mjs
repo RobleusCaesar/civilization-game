@@ -660,6 +660,49 @@ ck('aMouseHoverIsAPreviewNotAChoice', /Click the ground/.test(hv1.label) && hv2.
 ck('andAClickChoosesTheGround', hv3.x === hv.t.x && hv3.y === hv.t.y && /Here/.test(hv3.label) && hv4.got &&
   hv4.got.x === hv.t.x + 0.5 && hv4.got.y === hv.t.y + 0.5,
   `clicked ${hv.t.x},${hv.t.y}; played at ${JSON.stringify(hv4.got)} after sweeping the cursor down to ✓`);
+/* A FINGER CHOOSES BY TAPPING, and ✓ LIGHTS AT ONCE (playtest g1, MAJOR):
+   a finger never hovers, so the hover flag was undefined on a phone and
+   classList.toggle('off', undefined) FLIPPED the class on every sync — after
+   an ordinary tap on the ground ✓ read grey and disabled, and only tapping
+   the same tile again lit it. A real touch context, real taps: ✓ is lit on
+   the seeded mark, after a tap, after another, after the same tile again —
+   and it plays where the finger chose. */
+const { ctx: hctx, p: hp } = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+await hp.evaluate(({ enter, fx }) => {
+  CFG.CARDS.ON = true;
+  Deck._col = null; Deck._del(Deck.KEY);
+  eval('(' + fx + ')')();
+  eval('(' + enter + ')')('dk-touch');
+}, { enter: enterGame.toString(), fx: fixtures.toString() });
+await hp.evaluate(async () => { await __until(() => DeckUI.built); Deck.col().counts.__aim = 2; Deck.saveCol(); S.paused = false; });
+await hp.tap('#deckBtn'); await hp.waitForTimeout(450);
+await hp.tap('#dkSheet .dkCell[data-card="__aim"]'); await hp.waitForTimeout(300);
+await hp.tap('#dkInsp .dkPlay'); await hp.waitForTimeout(350);
+const goState = () => hp.evaluate(() => {
+  const g = document.querySelector('#dkAimBar .dkAGo');
+  return { off: g.classList.contains('off'), label: g.textContent, x: DeckUI.aim.x, y: DeckUI.aim.y, set: DeckUI.aim.set };
+});
+const touchSeq = [Object.assign({ at: 'seeded' }, await goState())];
+const tt = await hp.evaluate(() => {
+  R.centerOn(CFG.W / 2, CFG.H / 2);
+  const TL = CFG.TILE, z = R.cam.z, vx = R.viewW() / 2, vy = R.viewH() / 2;
+  const at = (dx, dy) => { const x = Math.round(vx + dx * TL * z), y = Math.round(vy + dy * TL * z); return { x, y, t: R.screenToTile(x, y) }; };
+  return [at(1.5, -1.5), at(-2.5, 0.5)];
+});
+for (const [i, q] of [tt[0], tt[1], tt[1]].entries()) {
+  await hp.touchscreen.tap(q.x, q.y);
+  await hp.waitForTimeout(120);
+  touchSeq.push(Object.assign({ at: ['a tap', 'another tile', 'the same tile again'][i], want: q.t }, await goState()));
+}
+await hp.evaluate(() => { window.__got.length = 0; });
+await hp.tap('#dkAimBar .dkAGo');
+await hp.evaluate(() => __idle());
+const touchGot = await hp.evaluate(() => window.__got[0] || null);
+await hctx.close();
+ck('aFingerTapLightsTheGoButton', touchSeq.every(s => !s.off && /✓ Here/.test(s.label)) &&
+  touchSeq.slice(1).every(s => s.set && s.x === s.want.x && s.y === s.want.y) &&
+  !!touchGot && touchGot.x === tt[1].t.x + 0.5 && touchGot.y === tt[1].t.y + 0.5,
+  touchSeq.map(s => `${s.at}: ${s.off ? 'GREY' : 'lit'} "${s.label}"`).join('; ') + ` → played at ${JSON.stringify(touchGot)}`);
 // a tutorial note already on screen steps aside while the deck has the floor
 await aimOpen();
 const tut = await p.evaluate(async () => {
