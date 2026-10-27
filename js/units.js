@@ -1525,10 +1525,16 @@ const Units = {
            was dealt. Sim time, in the unit's task, so a save mid-beat marches
            on after the load. */
         if ((t.wait -= dt) <= 0) {
-          this.moveTo(u, t.x, t.y);
-          // a war-wolf's march to its place is the PACK's own walk, not an
-          // order: a foe near the hall breaks it off (js/deckfx-army.js packSense)
-          if (u.warWolf && u.task && u.task.type === 'move') u.task.home = true;
+          // a unit that LANDED on its own slot of the fan (Deck.summonFan,
+          // js/deckfx-army.js) holds there for the beat and is then simply
+          // free, where it formed — never marched to a heap
+          if (t.stay) { u.task = null; u.anchor = { x: u.x, y: u.y }; }
+          else {
+            this.moveTo(u, t.x, t.y);
+            // a war-wolf's march to its place is the PACK's own walk, not an
+            // order: a foe near the hall breaks it off (js/deckfx-army.js packSense)
+            if (u.warWolf && u.task && u.task.type === 'move') u.task.home = true;
+          }
         }
       } else if (t.type === 'banish') {
         /* BANISHED (tests/banish.mjs): they down tools and walk off the map for

@@ -10724,6 +10724,9 @@ const R = {
       if (s.t < 0) { if (s.id) (unborn || (unborn = new Set())).add(s.id); continue; }   // still waiting its beat
       const p = s.t / (cfg.ms / 1000);
       if (p >= 1) { this.summons.splice(i, 1); continue; }
+      // a tone of 'none' only holds its unit back until its beat: the army's
+      // cards draw their own beams (Deck.armyFx.arrive, js/deckfx-army.js)
+      if (s.tone === 'none') continue;
       const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
       // (no pool of light on the ground: a warm patch on the meadow reads as
       // sand — the light lands in the two rings of dots below)

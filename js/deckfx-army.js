@@ -129,6 +129,239 @@ Object.assign(Deck, {
     return true;
   },
 
+  /* THE FORMATION (playtest g2/g3/g4: "summons PILE UP and wander off
+     screen"). The muster every card used to share (Deck.summon) put the
+     first unit on the doorstep and the rest on the next open tiles round
+     it, then marched the lot to ONE spot three tiles out: a War Band stood
+     four men in one column, the battery's two trebuchets came to rest 0.14
+     tiles apart (six pairs closer than 0.6), the riders and wolves settled
+     4-6 tiles off half under the screen's edge, and a Legion played over a
+     garrison heaped under the build bar. Now every summoned unit LANDS ON
+     ITS OWN SLOT of a fan round the hall and is never marched anywhere:
+
+       THE SIDE   the fan opens on the hall's open side — the side whose
+                  slots stand on really open ground the doorstep can walk to
+                  (Bld.spawnRoom, Path.reachFrom), ON THE SCREEN between the
+                  bars (R.onScreen, which leaves out what the HUD covers) and
+                  clear of a standing unit, with the doorstep's own south
+                  side first among equals and the north (behind the hall's
+                  roof) last;
+       THE RANKS  arcs about the hall's middle: the foot in front — two
+                  ranks when there are four or more and no bows behind them —
+                  then the bows, the horse, the engines; each unit facing
+                  OUTWARD (its facing set at draw-time state, R._faceMap);
+       THE ROOM   a slot keeps its kind's elbow room from every other slot —
+                  FAN.gap: a tile for a man or a wolf, 1.3 for a horse, 1.55
+                  for an engine — so no two land within a tile and no two
+                  engines within a tile and a half;
+       THE HOLD   each one stands where it landed until the whole muster is
+                  out and the formation has held its beat (FAN.hold after the
+                  last), and then it is simply free: it stays where it
+                  formed (the 'muster' task's `stay`, js/units.js).
+
+     A pure function of the ground, the camera and the units standing — no
+     RNG of any kind. When the fan runs out of good ground the rest spill to
+     the next arc out, and with no arc left at all to the nearest open tiles
+     round the doorstep, shared in turn, as the old muster did. */
+  FAN: { r0: 2.3, arc: 1.35, gap: { foot: 1.0, bow: 1.0, horse: 1.3, engine: 1.55 }, hold: 1.2, spill: 6 },
+  fanClass(kind) {
+    if (kind === 'catapult' || kind === 'trebuchet' || kind === 'siegetower' || kind === 'ballista') return 'engine';
+    if (kind === 'rider' || kind === 'horsearcher' || kind === 'lancer') return 'horse';
+    if (CFG.UNITS[kind] && CFG.UNITS[kind].rng) return 'bow';
+    return 'foot';
+  },
+  // the ranks, front to back: [{cls, kinds}] — the foot split in two when
+  // there are enough of them and no bows to stand behind them
+  fanRanks(kinds) {
+    const by = { foot: [], bow: [], horse: [], engine: [] };
+    for (const k of kinds) by[this.fanClass(k)].push(k);
+    const ranks = [];
+    if (by.foot.length >= 4 && !by.bow.length) {
+      const front = Math.ceil(by.foot.length / 2);
+      ranks.push({ cls: 'foot', kinds: by.foot.slice(0, front) }, { cls: 'foot', kinds: by.foot.slice(front) });
+    } else if (by.foot.length) ranks.push({ cls: 'foot', kinds: by.foot });
+    for (const c of ['bow', 'horse', 'engine']) if (by[c].length) ranks.push({ cls: c, kinds: by[c] });
+    return ranks;
+  },
+  /* the plan for one side `a` (radians from due south, +x toward the east):
+     every slot {kind, cls, x, y, rank, spill, on} in arrival order — the
+     front rank first, each rank from its middle outwards */
+  fanSide(tc, kinds, a, ctx) {
+    const F = this.FAN, hx = Bld.cx(tc), hy = Bld.cy(tc), sz = Bld.size(tc), W = CFG.W;
+    const north = Math.abs(a) > 2.2;
+    let R = (sz / 2) * Math.max(Math.abs(Math.sin(a)), Math.abs(Math.cos(a))) + F.r0 - 1 + (north ? 1.2 : 0) + (ctx.out || 0);
+    const taken = [], plan = [];
+    // its kind's room from every slot laid (the larger of the two kinds': an
+    // engine keeps its tile and a half from a man as well as from an engine)
+    const roomOk = (x, y, gap) => taken.every(t => Math.hypot(t.x - x, t.y - y) >= Math.max(gap, t.gap) * 0.98);
+    const ok = (x, y, gap) => {
+      const tx = Math.floor(x), ty = Math.floor(y);
+      if (!MapGen.onBoard(tx, ty) || !Bld.spawnRoom('P', 'land', tx, ty)) return false;
+      if (ctx.reach && !ctx.reach[ty * W + tx]) return false;
+      // never on the hall's own ground, nor tucked under its roof to the north
+      if (x > tc.x - 0.45 && x < tc.x + sz + 0.45 && y > tc.y - 1.3 && y < tc.y + sz + 0.4) return false;
+      // clear of whoever already stands there: their kind's room too (strict),
+      // and at the least an engine's tile and a half from any engine (always)
+      for (const o of ctx.stand) {
+        const d = Math.hypot(o.x - x, o.y - y), big = Math.max(gap, o.gap);
+        if (ctx.strict ? d < big * 0.95 : (big > 1.4 && d < big * 0.95)) return false;
+      }
+      return roomOk(x, y, gap);
+    };
+    const ranks = this.fanRanks(kinds);
+    let spill = 0;
+    for (let ri = 0; ri < ranks.length; ri++) {
+      const rk = ranks[ri], gap = F.gap[rk.cls];
+      if (ri) R += Math.max(gap, F.gap[ranks[ri - 1].cls]);
+      let todo = rk.kinds.slice(), r = R, guard = 0;
+      while (todo.length && guard++ < F.spill) {
+        // the arc's step for this kind's room at this radius (a chord, so the
+        // straight-line room is what is kept), the rank centred on the side
+        const step = 2 * Math.asin(Math.min(1, gap / (2 * r)));
+        const fit = Math.max(1, Math.floor((2 * F.arc) / step) + 1);
+        const want = Math.min(todo.length, fit);
+        // the rank's own places first, centred on the side (an even rank
+        // straddles the middle), then every half-step between and beyond
+        // them, nearest the middle first — so a place blocked by a tree gives
+        // way to the next open spot beside it, never to a heap
+        const offs = [];
+        for (let k = 0; k <= fit + 1; k++) offs.push((want % 2 ? k : k + 0.5) * step);
+        const more = [];
+        for (let k = 0; k <= 2 * fit + 4; k++) more.push(k * step / 2);
+        more.sort((p, q) => p - q);
+        const cand = [];
+        let lattice = 0;   // how many of the candidates are the rank's own evenly spaced places
+        offs.concat(more).forEach((o, oi) => {
+          if (o > F.arc + step * 0.5) return;
+          for (const th of [a + o, a - o]) if (!cand.some(c => Math.abs(c - th) < 1e-6)) { cand.push(th); if (oi < offs.length) lattice = cand.length; }
+        });
+        const got = [], nPrim = lattice;
+        for (let ci = 0; ci < cand.length && got.length < want; ci++) {
+          const th = cand[ci], x = hx + Math.sin(th) * r, y = hy + Math.cos(th) * r;
+          if (!ok(x, y, gap)) continue;
+          taken.push({ x, y, gap });
+          got.push({ x, y, th, prim: ci < nPrim });
+        }
+        // the rank reads left to right of its middle: middle first, then out
+        got.sort((p, q) => Math.abs(p.th - a) - Math.abs(q.th - a));
+        for (const s of got) {
+          const kind = todo.shift();
+          plan.push({ kind, cls: rk.cls, x: s.x, y: s.y, rank: ri, spill, prim: s.prim, on: !!ctx.on && ctx.on(s.x, s.y, rk.cls) });
+        }
+        if (todo.length) { r += gap; spill++; }
+      }
+      for (const kind of todo) plan.push({ kind, cls: rk.cls, x: null, y: null, rank: ri, spill: 99, on: false });
+    }
+    return plan;
+  },
+  /* is a slot's WHOLE sprite on the open screen — inside the frame by a
+     margin, below the top bar, above the bottom bar (measured off the DOM,
+     as the letterbox measures them: R.topReserve/bottomReserve are learned
+     lazily) and clear of the minimap? R.onScreen counts a unit half off the
+     edge as seen (the army banners' "slightly in frame"), which is exactly
+     how the riders came to rest half cut off by the screen's edge. */
+  fanView() {
+    if (!window.R || !R.cv || !R.cv.width || typeof document === 'undefined') return null;
+    const vw = R.viewW(), vh = R.viewH(), rect = id => {
+      const el = document.getElementById(id);
+      if (!el || el.offsetParent === null || !el.offsetWidth) return null;
+      return el.getBoundingClientRect();
+    };
+    const tb = rect('topbar'), bb = rect('bottombar'), mm = rect('miniWrap');
+    return { vw, vh, top: Math.max(tb ? tb.bottom : 0, R.topReserve || 0), bot: Math.min(bb ? bb.top : vh, vh - (R.bottomReserve || 0)), mm };
+  },
+  fanOnScreen(V, x, y, cls) {
+    const TL = CFG.TILE, z = R.cam.z, B = cls === 'engine' || cls === 'horse' ? 48 : 32, m = 6;
+    // the drawn box (R.frameTop): its bottom SPRITE_LIFT above the tile's middle line
+    const sx = (x * TL - R.cam.x) * z, foot = (y * TL + TL / 2 - CFG.SPRITE_LIFT - R.cam.y) * z, top = foot - B * z, hw = B * z / 2;
+    if (sx - hw < m || sx + hw > V.vw - m || top < V.top + m || foot > V.bot - m) return false;
+    if (V.mm && sx + hw > V.mm.left && sx - hw < V.mm.right && top < V.mm.bottom && foot > V.mm.top) return false;
+    return true;
+  },
+  // the whole plan: the best side, scored on what the player will see
+  fanPlan(tc, first, kinds) {
+    const reach = Path.reachFrom([first]);
+    const stand = S.units.filter(o => !Units.isNaval(o)).map(o => ({ x: o.x, y: o.y, gap: this.FAN.gap[this.fanClass(o.kind)] }));
+    const V = this.fanView(), scr = V ? (x, y, cls) => this.fanOnScreen(V, x, y, cls) : null;
+    /* every side, and each a rank or two further out (a garrison already
+       standing at the door: the fan forms in front of it, never threaded
+       through it), scored: a slot on the open screen counts most, then a slot
+       at all, then a slot on its rank's own evenly spaced place; a slot pushed
+       out an arc, a side away from the doorstep and the far reach cost */
+    let best = null;
+    for (const strict of [true, false]) {
+      for (const out of [0, 1, 2]) for (const a of [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, 3 * Math.PI / 4, -3 * Math.PI / 4, Math.PI]) {
+        const plan = this.fanSide(tc, kinds, a, { reach, stand, strict, on: scr, out });
+        let sc = -Math.abs(a) * 0.35 - (Math.abs(a) > 2.2 ? 1.5 : 0) - out * 0.25 * plan.length;
+        for (const s of plan) sc += s.x == null ? -6 : (s.on ? 3 : 0) + 1 + (s.prim ? 0.5 : 0) - Math.min(3, s.spill) * 0.6;
+        if (!best || sc > best.sc + 1e-9) best = { sc, plan, a };
+      }
+      if (best && best.plan.every(s => s.x != null)) break;
+    }
+    // with no arc left at all: the nearest open tiles round the doorstep,
+    // shared in turn when there are too few (the old muster's last word)
+    const plan = best.plan, W = CFG.W, used = new Set(), spots = [];
+    for (const s of plan) if (s.x != null) {
+      const k = Math.floor(s.y) * W + Math.floor(s.x);
+      if (!used.has(k)) { used.add(k); spots.push({ x: Math.floor(s.x), y: Math.floor(s.y) }); }
+    }
+    let turn = 0;
+    for (const s of plan) {
+      if (s.x != null) continue;
+      const f = MapGen.findNear(first.x, first.y, Bld.SPAWN_R,
+        (x, y) => !used.has(y * W + x) && (!reach || !!reach[y * W + x]) && Bld.spawnRoom('P', 'land', x, y));
+      const t = f || (spots.length ? spots[turn++ % spots.length] : first);
+      if (f) { used.add(f.y * W + f.x); spots.push(f); }
+      s.x = t.x + 0.5; s.y = t.y + 0.5;
+    }
+    plan.side = best.a;
+    return plan;
+  },
+  /* THE MUSTER ON THE FAN: every army card that brings people out of the
+     hall (Swift Raiders too) comes through here. The refusals are the old
+     muster's own (Deck.summonDoor): no hall, or no open ground beside it, and
+     the card is kept in as many words. Units.spawn's card opt keeps the
+     origin card's stamps and refuses Starfall's sky-iron, exactly as before.
+     `opts`: stamp(u, i) as before; stagger (ms) between ARRIVALS; tone (the
+     tier's light); hold (s) after the last arrival before they are free;
+     beam: false — the card draws its own arrival (the host rises out of the
+     ground); dust: false — no landing dust (the wolves). Returns the units in
+     arrival order with each one's arrival beat (`at`, seconds after the play)
+     and the moment the hold lets go (`free`). */
+  summonFan(list, opts) {
+    opts = opts || {};
+    const kinds = [];
+    for (const g of list) for (let k = 0; k < g.n; k++) kinds.push(g.kind);
+    const d = this.summonDoor(kinds[0]);
+    if (d.why) return { ok: false, why: d.why };
+    const { tc, first } = d, plan = this.fanPlan(tc, first, kinds);
+    // the first lands only once its beam has fallen (BEAM_T.drop)
+    const hx = Bld.cx(tc), hy = Bld.cy(tc), stag = (opts.stagger || 0) / 1000,
+      lead = opts.lead != null ? opts.lead : (opts.beam === false ? 0 : Deck.armyFx.BEAM_T.drop);
+    const units = [], at = [];
+    plan.forEach((sl, i) => {
+      const u = Units.spawn(sl.kind, 'P', Math.floor(sl.x), Math.floor(sl.y), { card: true });
+      u.x = sl.x; u.y = sl.y; u.anchor = { x: sl.x, y: sl.y };
+      if (opts.stamp) opts.stamp(u, i);
+      // facing OUTWARD from the hall, held until it really moves
+      if (window.R && R._faceMap) {
+        const oct = ((Math.round(Math.atan2(sl.y - hy, sl.x - hx) / (Math.PI / 4)) % 8) + 8) % 8;
+        R._faceMap.set(u, { x: u.x, y: u.y, dir: R.FACE8[oct] });
+      }
+      units.push(u); at.push(lead + i * stag);
+    });
+    const free = (at.length ? at[at.length - 1] : 0) + (opts.hold != null ? opts.hold : this.FAN.hold);
+    units.forEach((u, i) => {
+      u.task = { type: 'muster', x: Math.floor(u.x), y: Math.floor(u.y), wait: free, stay: true };
+      u.path = null; u.pathI = 0;
+      // unseen until its beam lands (the card's show draws the beam itself)
+      if (window.R && opts.beam !== false && R.startSummon) R.startSummon(u.x, u.y, at[i] * 1000, u.id, 'none');
+      if (window.R && R.startPlacePoof && opts.dust !== false && i < 12)
+        R.startPlacePoof(u.x - 0.5, u.y - 0.5, 1, { delay: at[i] * 1000, scale: this.fanClass(u.kind) === 'engine' ? 1 : 0.7 });
+    });
+    return { ok: true, units, at, free, tc, first, side: plan.side, x: hx, y: hy };
+  },
+
   /* THE VETERANS */
   VET: 1.25,
   RANK: { defender: 'elite', axeman: 'elite', archer: 'marksman', longbow: 'marksman',
@@ -194,6 +427,8 @@ Object.assign(Deck, {
     g.drawImage(img, x, y, D, D);
     if (rank) this.drawRank(g, x, y, D, rank);
   },
+  // the player's tribe's dye ({body, accent}), as its tunics wear it
+  dyeOf() { return (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99', accent: '#2c4e70' }; },
   // the tribe's dye: a ring of it on the ground at a war-wolf's feet, never
   // on a wild one — the wild sheet is undyed, and this is what says "yours"
   drawCollar(g, u, x, y, D) {
@@ -566,6 +801,123 @@ Deck.armyFx = {
   },
   // is world point (tiles) on screen, with a margin
   near(v, x, y, m) { return x >= v.x0 - m && x <= v.x1 + m && y >= v.y0 - m && y <= v.y1 + m; },
+
+  /* THE BEAM THAT BRINGS EACH ONE (judges g2/g3, playtest g2): the summons
+     came down in two beams for five men (four stacked in one column, a
+     totem pole), each a pillar with a FLAT TOP 250 device px off the ground,
+     the light a translucent hue laid over the meadow that went olive at its
+     edges, the hall swallowed by a square-shouldered gold slab, confetti on
+     the grass for seconds after — and every tier the same yellow. Now:
+       ONE BEAM PER UNIT, on its own beat, running the FULL HEIGHT of the
+         view down onto the slot (so it has no top to see), clipped to the
+         board like every geometry pass;
+       TAPERED IN HARD STEPS (beamTaper: the foot widest, three narrower
+         courses as it climbs), its body OPAQUE stepped bands of the tier's
+         own ramp — never alpha over grass — and it narrows away band by band
+         (outer, middle, core, then the white thread) in about half a second;
+       IT DROPS, then STRIKES: the leading edge falls from the top of the view
+         in BEAM_T.drop, and the frame it lands is one white frame — the
+         column and a burst at the feet — then a hard-pixel SHOCK RING runs
+         out along the ground and a few clods are thrown, all gone within
+         BEAM_T.ring (no confetti left on the grass after half a second);
+       DRAWN IN THE GROUND PASS (a show's 'ground' layer), under every
+         building and unit: the hall stands OVER the light, the soldier
+         stands in front of his own, and only the foot burst is laid over
+         him, for its one frame;
+       THE TIER ESCALATES IN THE LIGHT ITSELF: bronze for the Bronze cards,
+         steel-white for Iron, gold for Imperial, white-gold for the
+         Enlightenment. */
+  BEAM: {
+    bronze: { ramp: ['#a2582a', '#d98c4e', '#f6c08a'], hot: '#fff0dc', ring: ['#b8642e', '#f6c08a'] },
+    steel:  { ramp: ['#7a8ea6', '#b9c8da', '#e6eef8'], hot: '#ffffff', ring: ['#8ea2bc', '#eef4fb'] },
+    gold:   { ramp: ['#c88a26', '#f2be4a', '#ffe7a2'], hot: '#fffbea', ring: ['#d89a30', '#ffe7a2'] },
+    white:  { ramp: ['#e0c88a', '#f8ecc4', '#fffbf2'], hot: '#ffffff', ring: ['#ead8a4', '#fffbf2'] },
+  },
+  BEAM_T: { drop: 0.08, life: 0.5, ring: 0.34 },
+  // the beam's width at h tiles above the feet, in hard steps
+  beamTaper(h) { return h < 1.1 ? 1 : h < 2.4 ? 0.78 : h < 4.4 ? 0.58 : 0.42; },
+  // one tapered column from `top` (world px) down to `foot`, `w` wide at the foot
+  beamColumn(g, cx, foot, top, w) {
+    const TL = CFG.TILE, steps = [[0, 1.1], [1.1, 2.4], [2.4, 4.4], [4.4, 1e4]];
+    for (const [h0, h1] of steps) {
+      const yb = this.snap(foot - h0 * TL), yt = Math.max(top, this.snap(foot - h1 * TL));
+      if (yb <= yt) continue;
+      const ww = Math.max(2, this.snap(w * this.beamTaper(h0)));
+      g.fillRect(this.snap(cx - ww / 2), yt, ww, yb - yt);
+    }
+  },
+  /* the arrivals of a show's units (s.units: {id, x, y, d — the beat it
+     lands}) in `layer`: 'ground' the columns, the shock rings and the clods;
+     'world' the one-frame burst at the feet. `tone` names a BEAM ramp;
+     `wide` multiplies the width (an engine is a broad thing to set down). */
+  arrive(g, s, layer, tone, wide) {
+    const TL = CFG.TILE, P = this.BEAM[tone] || this.BEAM.gold, T = this.BEAM_T;
+    const top = R.viewTiles().y0 * TL - TL;
+    s.fl = s.fl || {};
+    if (layer === 'world') {
+      // the frame it lands: a white burst over the feet (one frame, by the
+      // ground pass's own stamp — the same frame the column went white)
+      for (const m of s.units) {
+        if (s.fl[m.id] !== s.t) continue;
+        const u = Units.get(m.id), x = (u ? u.x : m.x) * TL, y = (u ? u.y : m.y) * TL + TL * 0.3, k = this.engine(u) ? 1.5 : 1;
+        g.fillStyle = P.hot; R.pxDisc(g, x, y - TL * 0.2, TL * 0.42 * k, 2, 0.8);
+        g.fillStyle = '#ffffff'; R.pxDisc(g, x, y - TL * 0.2, TL * 0.24 * k, 2, 0.8);
+        this.glint(g, x, y - TL * 0.55 * k, 4, '255,255,255', 1);
+      }
+      return;
+    }
+    if (layer !== 'ground') return;
+    R.clipBoard(g, () => {
+      for (const m of s.units) {
+        const t = s.t - m.d;
+        if (t < -T.drop || t > T.life + 0.1) continue;
+        const u = Units.get(m.id), eng = this.engine(u) || (wide && wide > 1);
+        const x = (u ? u.x : m.x) * TL, foot = (u ? u.y : m.y) * TL + TL * 0.3;
+        const w = TL * 0.78 * (eng ? 1.6 : 1) * (wide || 1);
+        if (t < 0) {
+          // THE DROP: the leading edge falls out of the top of the view
+          const bot = top + (foot - top) * (1 + t / T.drop);
+          g.fillStyle = P.ramp[2]; g.fillRect(this.snap(x - w * 0.15), this.snap(top), Math.max(2, this.snap(w * 0.3)), Math.max(2, this.snap(bot - top)));
+          g.fillStyle = P.hot; g.fillRect(this.snap(x - w * 0.15), this.snap(bot - 6), Math.max(2, this.snap(w * 0.3)), 6);
+          continue;
+        }
+        // THE STRIKE: its first frame is white, then the bands go out in turn
+        if (s.fl[m.id] == null) s.fl[m.id] = s.t;
+        const first = s.fl[m.id] === s.t;
+        const ph = first ? -1 : Math.floor(t / (T.life / 4));
+        if (ph < 4) {
+          const bands = first ? [[1.15, P.hot], [0.5, '#ffffff']] : [[1, P.ramp[0]], [0.62, P.ramp[1]], [0.34, P.ramp[2]]].slice(Math.max(0, ph));
+          for (const [f, c] of bands) { g.fillStyle = c; this.beamColumn(g, x, foot, top, w * f); }
+          g.fillStyle = P.hot; this.beamColumn(g, x, foot, top, 2 / this.beamTaper(0));
+        }
+        // the shock ring along the ground, and its trailing twin
+        for (const [lag, c, sp] of [[0, P.ring[1], 1], [0.06, P.ring[0], 0.7]]) {
+          const q = (t - lag) / T.ring;
+          if (q < 0 || q >= 1) continue;
+          const rx = TL * (0.3 + Math.pow(q, 0.6) * 1.15 * sp) * (eng ? 1.4 : 1);
+          g.fillStyle = c; this.ellipseDots(g, x, foot, rx, rx * 0.42);
+        }
+        // a few clods thrown off the ground, up and back down
+        const q = t / T.ring;
+        if (q < 1) for (let k = 0; k < 7; k++) {
+          const th = k * 0.897 + m.id * 1.3, dd = TL * (0.3 + q * (0.8 + (k % 3) * 0.2)) * (eng ? 1.3 : 1);
+          g.fillStyle = k % 2 ? '#6b5236' : '#8a6c48';
+          g.fillRect(this.snap(x + Math.cos(th) * dd), this.snap(foot + Math.sin(th) * dd * 0.42 - Math.sin(q * Math.PI) * 10), 2, 2);
+        }
+      }
+    });
+  },
+  engine(u) { return !!u && Deck.fanClass(u.kind) === 'engine'; },
+  // an ellipse's outline in touching 2px squares — a ring, never a dotted one
+  ellipseDots(g, cx, cy, rx, ry) {
+    const n = Math.max(16, Math.ceil(Math.PI * (rx + ry) / 2));
+    let px = null, py = null;
+    for (let k = 0; k < n; k++) {
+      const th = k / n * Math.PI * 2, x = this.snap(cx + Math.cos(th) * rx), y = this.snap(cy + Math.sin(th) * ry);
+      if (x === px && y === py) continue;
+      g.fillRect(x, y, 2, 2); px = x; py = y;
+    }
+  },
 };
 
 /* ---------------- THE SOUND: synthesized voices for the cards' moments ----------------
@@ -680,14 +1032,22 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
 
   /* the army cards share ONE apply: summon the list, stamp what the card
      stamps, start the show, sound the voice, say it plainly in the log */
+  /* the army cards land on the FAN (Deck.summonFan) and hold there; the
+     Stone tier's villagers (o.fan unset) keep the old doorstep muster */
   const summonCard = (id, list, o) => {
-    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone });
+    const fan = o.fan && Deck.summonFan;
+    const r = fan ? Deck.summonFan(list, { stagger: o.stagger, hold: o.hold, beam: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone })
+      : Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp, tone: o.tone });
     if (!r.ok) return r;
     if (o.after) o.after(r);
     for (const k of o.voices || []) sound(k);
     if (o.horn && window.R && R.startHorn) R.startHorn(r.x, r.y);
     if (o.startle && window.R && R.startle) R.startle(r.x, r.y, o.startle);
-    show(id, Object.assign({ x: r.x, y: r.y, mx: r.first.x + 0.5, my: r.first.y + 0.5, units: roster(r, o.stagger) }, o.data || {}));
+    const units = fan ? r.units.map((u, i) => ({ id: u.id, x: u.x, y: u.y, d: r.at[i] })) : roster(r, o.stagger);
+    // the muster's middle: the fan's own centre, or the old doorstep
+    const mid = fan ? { x: units.reduce((a, m) => a + m.x, 0) / units.length, y: units.reduce((a, m) => a + m.y, 0) / units.length }
+      : { x: r.first.x + 0.5, y: r.first.y + 0.5 };
+    show(id, Object.assign({ x: r.x, y: r.y, mx: mid.x, my: mid.y, units, free: r.free }, o.data || {}));
     Deck.say(o.log(r));
     return { ok: true, x: r.x, y: r.y, units: r.units.map(u => u.id), msg: o.msg ? o.msg(r) : undefined };
   };
@@ -730,7 +1090,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        old level, so it still counts at its old level): Defenders at Lv 1 or
        with no Barracks at all, Axemen at Lv 2, Bronze Champions at Lv 3. */
     war_band: {
-      at: 'tc', N: 5, STAGGER: 140, HOLD: 0.5, KINDS: ['defender', 'defender', 'axeman', 'elite'],
+      at: 'tc', N: 5, STAGGER: 100, HOLD: 1.2, KINDS: ['defender', 'defender', 'axeman', 'elite'],
       kind() {
         let lv = 0;
         for (const b of S.buildings) if (b.owner === 'P' && b.key === 'barracks' && Bld.done(b)) lv = Math.max(lv, b.level || 1);
@@ -740,25 +1100,19 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const k = this.kind();
         return summonCard('war_band', [{ kind: k, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true, tone: 'bronze',   // the Bronze tier's light
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true, tone: 'bronze',   // the Bronze tier's light
           log: () => '⚔️ The war band: five ' + PLURAL[k] + ' march out of your Town Center.',
           msg: () => 'War Band: five ' + PLURAL[k] + ' march out of your Town Center.',
         });
       },
-      // the horn's gold rings go out over the village (R.startHorn); here, a
-      // bronze ring on the doorstep, a spear's glint as each one steps out,
-      // and the dust of five pairs of feet
+      // the horn's gold rings go out over the village (R.startHorn); five
+      // bronze beams come down one after another, one on each man's place,
+      // and the band holds its two ranks facing out before it is free
       show: {
-        ms: 2400, layer: 'world',
-        draw(g, s, p) {
-          const TL = CFG.TILE;
-          muster(g, s, p, 'bronze', 2, true);
-          // the dust of their feet is DUST, laid as itself (added, it went lime)
-          for (const m of s.units) {
-            const u = live(m.id), q = s.t - m.d;
-            if (!u || q < 0.4 || q > 1.6) continue;
-            A.motes(g, u.x * TL, u.y * TL + 6, 3, s.t, m.id, '200,160,110', 0.6 * (1 - (q - 0.4) / 1.2), 6, 6);
-          }
+        ms: 2000, layers: ['ground', 'world'],
+        draw(g, s, p, dt, layer) {
+          A.arrive(g, s, layer, 'bronze');
+          if (layer === 'world') spears(g, s, 0.35);
         },
       },
     },
@@ -767,12 +1121,12 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        PACK, packSense, packLeash, packHome; the look is drawCollar). Each
        one's own place by the hall (u.den) is where its march out ends. */
     hunters_pack: {
-      at: 'tc', KIND: 'wolf', N: 3, STAGGER: 260, HOLD: 0.3,
+      at: 'tc', KIND: 'wolf', N: 3, STAGGER: 120, HOLD: 1.5,
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         const P = Deck.PACK;
         return summonCard('hunters_pack', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false, tone: 'bronze',
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false, tone: 'bronze',
           stamp(u) { u.warWolf = true; u.hp = u.maxhp = P.hp; u.atk = P.atk; u.speed = P.speed; },
           after: r => Deck.FX.hunters_pack.dens(r),
           log: () => '🐺 Three war-wolves join you at your Town Center. They keep the ground round the hall.',
@@ -799,69 +1153,39 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           }
           taken.add(d.y * W + d.x);
           u.den = { x: d.x, y: d.y };
-          if (t && t.type === 'muster') { t.x = d.x; t.y = d.y; }
+          // a wolf that landed on its den holds there; one whose place gave
+          // way walks to its den when the hold lets it go
+          if (t && t.type === 'muster') { t.x = d.x; t.y = d.y; if ((u.x | 0) !== d.x || (u.y | 0) !== d.y) t.stay = false; }
           else if (t && t.type === 'move' && (t.x !== d.x || t.y !== d.y)) { Units.moveTo(u, d.x, d.y); if (u.task) u.task.home = true; }
         }
       },
-      /* THE WIND BRINGS THEM: pale-gold motes spiral in to where each wolf
-         will step out of the light; then each one DASHES out to its place —
-         a streak of hard dots flung out behind it — and as it pulls up at
-         its den it howls: two rings of dots going out from it, the tribe's
-         dye and a pale one, and a few notes of breath rising off its muzzle.
-         No boots, no dust (Deck.summon's `dust: false`): the first cut's
-         grey doorstep clouds were the loudest thing in the still. */
+      /* AT HEEL: three bronze beams come down at the hall's side, one after
+         another, and each wolf lands on its own place IN the beam — at heel,
+         facing out, held there for its beat (FAN: hold) — and as it lands it
+         HOWLS: one ring of hard pixels in the tribe's dye going out from its
+         feet, and its breath rising off the muzzle. No boots, no dust
+         (`dust: false`): the first cut's grey doorstep clouds were the loudest
+         thing in the still, and the dash out to a den four tiles off — half
+         off the screen — is gone with the march. */
       show: {
-        ms: 3200, layer: 'world',
-        draw(g, s, p, dt) {
-          const TL = CFG.TILE;
-          muster(g, s, p, 'pale', 1, false);
-          const dye = (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99' };
-          const hx = dye.body || '#3f6d99', dyeRgb = [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16)).join(',');
-          s.prev = s.prev || {}; s.howl = s.howl || {};
-          g.save(); g.globalCompositeOperation = 'lighter';
+        ms: 2200, layers: ['ground', 'world'],
+        draw(g, s, p, dt, layer) {
+          A.arrive(g, s, layer, 'bronze');
+          if (layer !== 'world') return;
+          const TL = CFG.TILE, dye = Deck.dyeOf();
           for (const m of s.units) {
-            const u = live(m.id);
-            // the spiral in, to the spot it steps out of
-            const q = (s.t - m.d + 0.35) / 0.7;
-            if (q > 0 && q < 1) for (let k = 0; k < 10; k++) {
-              const th = k / 10 * 6.283 + q * 4, rr = TL * 1.4 * (1 - q);
-              if (!A.mark(g, 'gold', 0.85 * q)) continue;   // pale-gold ink, opaque
-              g.fillRect(A.snap(m.x * TL + Math.cos(th) * rr), A.snap(m.y * TL + Math.sin(th) * rr * 0.55 - TL * 0.3), 2, 2);
-            }
-            if (!u) continue;
-            // the dash: a streak flung out behind it while it runs
-            const pv = s.prev[m.id];
-            s.prev[m.id] = { x: u.x, y: u.y };
-            if (pv && dt > 0 && Units.moving(u)) {
-              const vx = (u.x - pv.x) / dt, vy = (u.y - pv.y) / dt, sp = Math.hypot(vx, vy);
-              if (sp > 0.8) {
-                const ux = vx / sp, uy = vy / sp;
-                for (let j = 1; j <= 5; j++) {
-                  if (!A.mark(g, j < 3 ? 'gold' : 'pale', 0.9 * (1 - j / 6))) continue;
-                  const bx = (u.x - ux * j * 0.2) * TL, by = (u.y - uy * j * 0.2) * TL + 4;
-                  g.fillRect(A.snap(bx - uy * 4), A.snap(by + ux * 2), 2, 2);
-                  g.fillRect(A.snap(bx + uy * 4), A.snap(by - ux * 2), 2, 2);
-                }
-              }
-            }
-            // the howl, the moment it pulls up at its own place
-            const home = u.den && (u.x | 0) === u.den.x && (u.y | 0) === u.den.y && !Units.moving(u);
-            if (home && s.howl[m.id] == null) s.howl[m.id] = s.t;
-            const h0 = s.howl[m.id];
-            if (h0 == null) continue;
-            const hq = (s.t - h0) / 0.9;
-            if (hq >= 1) continue;
-            g.globalCompositeOperation = 'lighter';   // the tribe's dye, added as before
-            A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.35 + hq * 1.5), 16, dyeRgb, 0.9 * (1 - hq));
-            if (hq > 0.15) A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.3 + (hq - 0.15) * 1.1), 12, 'gold', 0.75 * (1 - hq));
-            g.globalCompositeOperation = 'lighter';
-            for (let k = 0; k < 4; k++) {
-              const lift = (hq * 1.4 + k * 0.18) % 1;
-              g.fillStyle = A.rgba('240,236,220', 0.8 * (1 - lift));
-              g.fillRect(A.snap(u.x * TL + (k - 1.5) * 3 + lift * 4), A.snap(u.y * TL - TL * 0.55 - lift * TL * 0.6), 2, 2);
+            const u = live(m.id), hq = (s.t - m.d - 0.15) / 0.6;
+            if (!u || hq <= 0 || hq >= 1) continue;
+            const r = TL * (0.35 + hq * 1.1);
+            g.fillStyle = hq < 0.5 ? dye.body : dye.accent;
+            A.ellipseDots(g, u.x * TL, u.y * TL + 6, r, r * 0.42);
+            // its breath, rising off the muzzle in hard pale steps
+            for (let k = 0; k < 3; k++) {
+              const lift = (hq * 1.3 + k * 0.22) % 1;
+              g.fillStyle = lift < 0.5 ? '#eeeae0' : '#c9c4b8';
+              g.fillRect(A.snap(u.x * TL + (k - 1) * 3 + lift * 4), A.snap(u.y * TL - TL * 0.5 - lift * TL * 0.5), 2, 2);
             }
           }
-          g.restore();
         },
       },
     },
@@ -869,11 +1193,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     /* IRON — Iron Legion: six Bronze Champions. Their arrival is a drum's:
        three deep beats under the horn, the ground answering each. */
     iron_legion: {
-      at: 'tc', KIND: 'elite', N: 6, STAGGER: 180, HOLD: 0.6,
+      at: 'tc', KIND: 'elite', N: 6, STAGGER: 100, HOLD: 1.2,
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         return summonCard('iron_legion', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true,
           log: () => '🛡️ Six Bronze Champions march out of your Town Center.',
         });
       },
@@ -885,21 +1209,17 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
          first cut was the War Band's muster with a second ring, and read as
          the same card.) */
       show: {
-        ms: 3000, layers: ['world', 'sky'],
+        ms: 2600, layers: ['ground', 'world', 'sky'],
         draw(g, s, p, dt, layer) {
-          const TL = CFG.TILE;
           if (layer === 'sky') {
-            const hold = p < 0.06 ? p / 0.06 : p < 0.45 ? 1 : Math.max(0, 1 - (p - 0.45) / 0.2);
+            const hold = p < 0.06 ? p / 0.06 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.2);
             g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '12,10,8'); g.restore();
             A.edges(g, hold, '10,8,6', '200,214,236', 0.045);   // half the Imperial bars, a steel rule
             return;
           }
-          A.beats(s, p, [0.02, 0.16, 0.30, 0.39], 3, 0.22, 'cardDrum');
-          muster(g, s, p, 'bronze', 1, true);
-          const q2 = (p - 0.1) / 0.6;
-          if (q2 > 0 && q2 < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (1 + q2 * 3.4), 32, '170,200,240', 0.7 * (1 - q2));
-          flashUnits(g, s, 'gold', 0.45, 0.32);
-          shields(g, s, 0.4);
+          // a drum on every other landing, the ground answering each
+          if (layer === 'world') { A.beats(s, s.t, landings(s, 2), 3, 0.22, 'cardDrum'); shields(g, s, 0.4, 'steel'); }
+          A.arrive(g, s, layer, 'steel');
         },
       },
     },
@@ -907,30 +1227,30 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     /* IRON — Siege Train: a Catapult and a Ballista — the engines without the
        hall Lv 3 and the Workshop they normally need, which is the card. */
     siege_train: {
-      at: 'tc', LIST: [{ kind: 'catapult', n: 1 }, { kind: 'ballista', n: 1 }], STAGGER: 520, HOLD: 0.5,
+      at: 'tc', LIST: [{ kind: 'catapult', n: 1 }, { kind: 'ballista', n: 1 }], STAGGER: 450, HOLD: 1.2,
       can() { return Deck.summonCan('catapult'); },
       apply() {
         return summonCard('siege_train', this.LIST, {
           // the show lays its own (smaller) dust under each engine: the
           // doorstep's boot-dust on top of it buried them
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardRumble'], dust: false,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardRumble'], dust: false,
           log: () => '🪨 A Catapult and a Ballista roll out of your Town Center.',
         });
       },
-      // timber and iron: the ground rolls under them, big dust, sparks off
-      // the axles as each one lands in its light
+      // timber and iron: each engine set down hard in its own steel beam —
+      // the ground shakes, the dust skids out from under it, sparks fly off
+      // the axles — a tile and a half from its fellow
       show: {
-        ms: 3200, layer: 'world',
-        draw(g, s, p) {
+        ms: 2600, layers: ['ground', 'world'],
+        draw(g, s, p, dt, layer) {
           const TL = CFG.TILE;
-          A.beats(s, p, [0.03, 0.18, 0.33, 0.48], 4, 0.4);
-          muster(g, s, p, 'bronze', 2, false);
-          // dust at half the first cut's (it swallowed the two engines it was
-          // there to announce); the sparks are what says iron
-          if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 120, scale: 0.55 }); }
+          A.arrive(g, s, layer, 'steel');
+          if (layer !== 'world') return;
+          A.beats(s, s.t, landings(s, 1), 5, 0.4);
+          skid(s);
           g.save(); g.globalCompositeOperation = 'lighter';
           for (const m of s.units) {
-            const q = (s.t - m.d) / 0.6;
+            const q = (s.t - m.d) / 0.45;
             if (q <= 0 || q >= 1) continue;
             const cx = m.x * TL, cy = m.y * TL;
             if (q < 0.22) A.glint(g, cx, cy - 4, 4, '255,252,230', 1);   // the axle strikes
@@ -1044,39 +1364,36 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        stand in their light under the horn until the last is out, and march
        together, the ground shaking under them. */
     legion_marches: {
-      at: 'tc', LIST: [{ kind: 'elite', n: 5 }, { kind: 'marksman', n: 4 }, { kind: 'lancer', n: 3 }], STAGGER: 120, HOLD: 1.1,
+      at: 'tc', LIST: [{ kind: 'elite', n: 5 }, { kind: 'marksman', n: 4 }, { kind: 'lancer', n: 3 }], STAGGER: 90, HOLD: 1.4,
       can() { return Deck.summonCan('elite'); },
       apply() {
         return summonCard('legion_marches', this.LIST, {
-          stagger: this.STAGGER, hold: this.HOLD, together: true, voices: ['cardFanfare'], horn: true, startle: 16,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 16,
           log: () => '🦅 The Legion marches: five Bronze Champions, four Fire Archers and three Lancers leave your Town Center.',
         });
       },
+      /* THE HELD BEAT: the day dims and the bars close in; twelve gold beams
+         come down one after another, each on its own place in the fan — the
+         champions in front, the archers behind them, the lancers last — and
+         the legion stands its ranks, stamping in step on the fanfare's drums,
+         before the bars open and it is free where it stands. */
       show: {
-        ms: 4800, layers: ['world', 'sky'],
+        ms: 3400, layers: ['ground', 'world', 'sky'],
         draw(g, s, p, dt, layer) {
-          const TL = CFG.TILE;
           if (layer === 'sky') {
-            // the held beat: the edges close in and the sky's light comes
-            // down on the hall, then the march lets it go
-            const hold = p < 0.08 ? p / 0.08 : p < 0.55 ? 1 : Math.max(0, 1 - (p - 0.55) / 0.3);
-            const h = A.scr(s.x, s.y);
-            g.save(); A.skyClip(g);
-            A.rays(g, h.x, h.y, 11, s.t * 0.6, 'gold', 0.7 * hold);
-            A.dust(g, h.x, h.y, s.t, 30, 'gold', 0.9 * hold);
-            g.restore();
+            const hold = p < 0.06 ? p / 0.06 : p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
+            g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
             A.edges(g, hold);   // last: the bars are clean black over the light
             return;
           }
-          // the first shake as the horn sounds; then the march, foot by foot,
-          // on the drums of the fanfare (Sound cardFanfare: 2.4s, every 0.42s)
-          A.beats(s, p, [0.02, 0.5, 0.588, 0.675, 0.763, 0.85], 4, 0.2, [null, 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum']);
-          muster(g, s, p, 'gold', 3, true);
-          flashUnits(g, s, 'gold', 0.4, 0.3);
-          // the standards: a column of light over the doorstep through the beat
-          const k = p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.25);
-          A.shaft(g, s.mx * TL, s.my * TL + 6, TL * 3.2 * Math.min(1, p * 8), TL * 1.4, 'gold', 0.7 * k);
-          stamp(g, s, p, [0.5, 0.588, 0.675, 0.763, 0.85]);
+          A.arrive(g, s, layer, 'gold');
+          if (layer !== 'world') return;
+          // the first shake as the horn sounds; then the held ranks stamp in
+          // step on the fanfare's drums (Sound cardFanfare)
+          const st = stampBeats(s, 5, 0.42);
+          A.beats(s, s.t, [0.02].concat(st), 4, 0.2, [null].concat(st.map(() => 'cardDrum')));
+          spears(g, s, 0.35, 'gold');
+          stamp(g, s, st);
         },
       },
     },
@@ -1085,37 +1402,33 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        workshop's whole top tier, out of a hall that never built one. They
        come slow and heavy: a beat between each, the ground rolling. */
     trebuchet_battery: {
-      at: 'tc', LIST: [{ kind: 'trebuchet', n: 2 }, { kind: 'siegetower', n: 1 }], STAGGER: 520, HOLD: 0.9,
+      at: 'tc', LIST: [{ kind: 'trebuchet', n: 2 }, { kind: 'siegetower', n: 1 }], STAGGER: 450, HOLD: 1.3,
       can() { return Deck.summonCan('trebuchet'); },
       apply() {
         return summonCard('trebuchet_battery', this.LIST, {
-          stagger: this.STAGGER, hold: this.HOLD, together: true, voices: ['cardFanfare'], horn: true, startle: 14,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 14,
           log: () => '🏰 Two Trebuchets and a Siege Tower roll out of your Town Center.',
         });
       },
+      /* EACH ENGINE IS SET DOWN WITH ITS WEIGHT: a broad gold beam, the
+         ground jolting (a hard shake), the dust skidding out from under it,
+         and a trebuchet's arm swinging once over as if loosing — the timber's
+         rumble under the first landing, a drum under every one after. */
       show: {
-        ms: 4600, layers: ['world', 'sky'],
+        ms: 3400, layers: ['ground', 'world', 'sky'],
         draw(g, s, p, dt, layer) {
-          const TL = CFG.TILE;
           if (layer === 'sky') {
-            const hold = p < 0.1 ? p / 0.1 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.3);
-            const h = A.scr(s.x, s.y);
-            g.save(); A.skyClip(g);
-            A.rays(g, h.x, h.y, 9, s.t * 0.5, 'gold', 0.65 * hold);
-            A.dust(g, h.x, h.y, s.t, 24, 'gold', 0.85 * hold);
-            g.restore();
+            const hold = p < 0.08 ? p / 0.08 : p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.2);
+            g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
             A.edges(g, hold);
             return;
           }
-          // a shake as each engine lands in its light, then the battery rolling out
-          // (the timber's rumble comes in with the first engine's landing,
-          // and every landing after it is a drum)
-          A.beats(s, p, [0.02, 0.13, 0.24, 0.43, 0.56, 0.69, 0.82], 5, 0.35,
-            [null, 'cardRumble', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum']);
-          muster(g, s, p, 'gold', 3, false);
-          if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 150, scale: 1.25 }); }
-          flashUnits(g, s, 'gold', 0.5, 0.35);
-          stamp(g, s, p, [0.43, 0.56, 0.69, 0.82]);
+          A.arrive(g, s, layer, 'gold');
+          if (layer !== 'world') return;
+          const at = landings(s, 1);
+          A.beats(s, s.t, [0.02].concat(at), [0].concat(at.map(() => 7)), 0.45, [null].concat(at.map((x, i) => i ? 'cardDrum' : 'cardRumble')));
+          skid(s);
+          swing(g, s);
         },
       },
     },
@@ -1129,12 +1442,14 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        doorstep's gold: they RISE out of the ground, one after another, in a
        column of pale light under a darkened sky (drawGhost, riseOf). */
     ancestors_host: {
-      at: 'tc', KIND: 'elite', N: 15, STAGGER: 300, HOLD: 1.4,
+      at: 'tc', KIND: 'elite', N: 15, STAGGER: 200, HOLD: 1.4,
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         const days = Deck.card('ancestors_host').days, was = !!Deck.timed('ancestors_host');
-        const r = Deck.summon([{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, together: true, flash: false, stamp(u) { u.spectral = true; } });
+        // they rise on the fan, each from its own ground, and hold their
+        // ranks until the last is up (Deck.summonFan; the rise is their beam)
+        const r = Deck.summonFan([{ kind: this.KIND, n: this.N }], {
+          stagger: this.STAGGER, hold: this.HOLD, lead: 0.25, beam: false, dust: false, stamp(u) { u.spectral = true; } });
         if (!r.ok) return r;
         const e = Deck.addTimed('ancestors_host', days);
         sound('cardHost');
@@ -1146,8 +1461,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (R.startle) R.startle(r.x, r.y, 18);
         }
         const rise = {};
-        r.units.forEach((u, i) => { rise[u.id] = 0.25 + i * this.STAGGER / 1000; });
-        show('ancestors_host', { mode: 'rise', x: r.x, y: r.y, mx: r.first.x + 0.5, my: r.first.y + 0.5,
+        r.units.forEach((u, i) => { rise[u.id] = r.at[i]; });
+        const mx = r.units.reduce((a, u) => a + u.x, 0) / r.units.length, my = r.units.reduce((a, u) => a + u.y, 0) / r.units.length;
+        show('ancestors_host', { mode: 'rise', x: r.x, y: r.y, mx, my, free: r.free,
           units: r.units.map(u => ({ id: u.id, x: u.x, y: u.y, d: rise[u.id] })), rise });
         Deck.say(was ? '👻 Fifteen more of your ancestors rise at the Town Center — the host walks ' + days + ' days longer.'
           : '👻 Fifteen of your ancestors rise at the Town Center. They will fight for you for ' + days + ' days.');
@@ -1237,24 +1553,31 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     },
   });
 
-  /* a unit's own silhouette blazing as it steps out of its light — the
-     shield catching the sun (iron and imperial musters). In a tone it is the
-     card's light (R.glow over its tinted frame): the soldier turns gold in
-     his own light and shade, then bright — added, he flashed lime */
-  function flashUnits(g, s, col, a, life) {
-    const TL = CFG.TILE, tone = R.isTone(col), hex = tone ? null : '#' + col.split(',').map(n => (+n).toString(16).padStart(2, '0')).join('');
-    g.save(); g.globalCompositeOperation = 'lighter';
+  /* the beats a show strikes on its units' landings: every `every`-th one
+     (seconds after the play, as s.t runs) */
+  function landings(s, every) {
+    return s.units.filter((m, i) => i % (every || 1) === 0).map(m => m.d);
+  }
+  // `n` drums `gap` apart, starting a beat after the last one has landed
+  function stampBeats(s, n, gap) {
+    const last = s.units.length ? s.units[s.units.length - 1].d : 0;
+    return Array.from({ length: n }, (x, k) => last + 0.18 + k * gap);
+  }
+  /* A SPEAR'S GLINT as each one lands — over its head, a hard four-point
+     star in the tier's own hottest step, gone in `life` (opaque: a glint
+     added over grass is a lime one) */
+  function spears(g, s, life, tone) {
+    const TL = CFG.TILE, P = A.BEAM[tone] || A.BEAM.bronze;
     for (const m of s.units) {
-      const q = (s.t - m.d - 0.12) / life;
+      const q = (s.t - m.d - 0.1) / life;
       if (q <= 0 || q >= 1) continue;
       const u = live(m.id);
       if (!u) continue;
-      const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B), x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D);
-      if (tone) { R.glow(g, a * (q < 0.5 ? 1 : 0.5) / 0.6, c => g.drawImage(R.tintOf(img, c), x, y, D, D), col); continue; }
-      g.globalAlpha = a * (q < 0.5 ? 1 : 0.5);
-      g.drawImage(R.tintOf(img, hex), x, y, D, D);
+      const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+      const x = A.snap(u.x * TL + D * 0.22), y = A.snap(R.frameTop(u.y, B, D) + D * 0.12), s2 = q < 0.4 ? 2 : 1;
+      g.fillStyle = q < 0.5 ? P.hot : P.ramp[2];
+      g.fillRect(x, y - s2 * 2, 2, s2 * 4 + 2); g.fillRect(x - s2 * 2, y, s2 * 4 + 2, 2);
     }
-    g.restore();
   }
 
   /* the host's light, in world space over the darkened sky (see the show) */
@@ -1293,26 +1616,44 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   }
 
   /* EACH SHIELD CATCHES THE SUN IN TURN (Iron Legion): as each champion
-     steps out of its light, a big four-point flare on its shield-arm and a
-     ring of light round the boss — one after another down the line, on the
-     muster's own stagger. Light, added. */
-  function shields(g, s, life) {
-    const TL = CFG.TILE;
-    g.save(); g.globalCompositeOperation = 'lighter';
+     lands, a big four-point flare on its shield-arm and a ring of hard
+     pixels round the boss — one after another down the ranks, on the
+     muster's own stagger. Opaque, in the tier's steel (cold light ADDED over
+     the meadow went mint). */
+  function shields(g, s, life, tone) {
+    const TL = CFG.TILE, P = A.BEAM[tone] || A.BEAM.steel;
     for (const m of s.units) {
-      const q = (s.t - m.d - 0.15) / life;
+      const q = (s.t - m.d - 0.12) / life;
       if (q <= 0 || q >= 1) continue;
       const u = live(m.id);
       if (!u) continue;
       const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-      const x = u.x * TL + D * 0.16, y = R.frameTop(u.y, B, D) + D * 0.56;
-      const a = q < 0.3 ? 1 : 1 - (q - 0.3) / 0.7;
-      A.glint(g, x, y, q < 0.3 ? 5 : 3, '255,250,225', a);
-      A.ring(g, x, y, 4 + q * TL * 0.5, 12, 'gold', a * 0.85, 0.8);
-      if (q < 0.15) { g.fillStyle = 'rgb(255,255,240)'; R.pxDisc(g, x, y, 4, 2, 1); }
+      const x = u.x * TL + D * 0.16, y = R.frameTop(u.y, B, D) + D * 0.56, k = q < 0.3 ? 5 : 3;
+      g.fillStyle = q < 0.3 ? '#ffffff' : P.ramp[2];
+      g.fillRect(A.snap(x), A.snap(y) - k * 2, 2, k * 4 + 2); g.fillRect(A.snap(x) - k * 2, A.snap(y), k * 4 + 2, 2);
+      g.fillStyle = q < 0.5 ? P.ramp[2] : P.ramp[1];
+      A.ellipseDots(g, x, y, 4 + q * TL * 0.45, (4 + q * TL * 0.45) * 0.8);
+      if (q < 0.15) { g.fillStyle = '#ffffff'; R.pxDisc(g, x, y, 4, 2, 1); }
     }
-    g.restore();
   }
+  /* THE DUST SKIDS OUT from under an engine as it is set down: a short
+     streak of the place-dust thrown out behind it along the ground (away
+     from the hall — the way it faces), one puff after another, once a show */
+  function skid(s) {
+    if (s.skid || !window.R || !R.startPlacePoof) return;
+    s.skid = 1;
+    for (const m of s.units) {
+      const u = live(m.id);
+      if (!u || !A.engine(u)) continue;
+      let dx = m.x - s.x, dy = m.y - s.y;
+      const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+      for (let k = 0; k < 3; k++)
+        R.startPlacePoof(m.x - 0.5 - dy * (k - 1) * 0.55 + dx * 0.15 * k, m.y - 0.5 + dx * (k - 1) * 0.55 * 0.5 + dy * 0.15 * k, 1,
+          { delay: m.d * 1000 + 30 + k * 70, scale: k === 1 ? 1 : 0.7 });
+    }
+  }
+  // a trebuchet's arm swinging over once as it lands (issue 7 of the playtest)
+  function swing(g, s) { /* drawn in its own commit */ }
 
   /* A GHOST'S GROUND CRACKS before it rises (c: 0 → 1 as its beat comes):
      a jagged seam of light across its tile, hashed off its id so every
@@ -1362,20 +1703,22 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     }
   }
 
-  /* THE MARCH STAMPS: on each drum of the march a ring of dust goes out
-     along the ground round the marching column (its live middle — the
-     column moves), the dust the feet throw up in step */
-  function stamp(g, s, p, at) {
+  /* THE RANKS STAMP IN STEP: on each drum of the held beat every man's feet
+     throw a small ring of dust along the ground — touching hard pixels in
+     the earth's own browns, opaque (a translucent dust ring over the meadow
+     is an olive one), gone before the next drum */
+  function stamp(g, s, at) {
     const TL = CFG.TILE;
-    let n = 0, x = 0, y = 0;
-    for (const m of s.units) { const u = live(m.id); if (u) { n++; x += u.x; y += u.y; } }
-    if (!n) return;
-    x = x / n * TL; y = y / n * TL + TL * 0.35;
     for (const b0 of at) {
-      const q = (p - b0) / 0.12;
+      const q = (s.t - b0) / 0.2;
       if (q <= 0 || q >= 1) continue;
-      A.ring(g, x, y, TL * (1.2 + q * 2.4), 30, '196,164,116', 0.75 * (1 - q), 0.42);
-      A.ring(g, x, y, TL * (0.8 + q * 1.6), 22, '226,200,150', 0.5 * (1 - q), 0.42);
+      g.fillStyle = q < 0.5 ? '#9a7a52' : '#7a5e3e';
+      for (const m of s.units) {
+        const u = live(m.id);
+        if (!u) continue;
+        const r = TL * (0.28 + q * 0.32);
+        A.ellipseDots(g, u.x * TL, u.y * TL + TL * 0.32, r, r * 0.4);
+      }
     }
   }
 
@@ -1411,19 +1754,12 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
      with the rest of the army's): they come out together and ride — a
      steel-blue ring, the drum of hooves in the ground, dust off every horse */
   if (Deck.FX.swift_raiders) Deck.FX.swift_raiders.show = {
-    ms: 2200, layer: 'world',
-    draw(g, s, p) {
-      const TL = CFG.TILE;
+    ms: 2200, layers: ['ground', 'world'],
+    draw(g, s, p, dt, layer) {
+      if (s.units) A.arrive(g, s, layer, 'steel');   // the Iron tier's steel light
+      if (layer !== 'world') return;
       // a gallop: a stride on every beat, the ground felt under the first four
       A.beats(s, p, [0.05, 0.18, 0.31, 0.44, 0.57, 0.70, 0.83], [2, 2, 2, 1.5, 0, 0, 0], 0.15, 'cardHoof');
-      const q = p / 0.6;
-      if (q < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (0.7 + q * 3.2), 30, '160,195,240', 0.8 * (1 - q));
-      // the dust off every horse is DUST, laid as itself (added, it went lime)
-      for (const id of s.ids || []) {
-        const u = live(id);
-        if (!u || !Units.moving(u)) continue;
-        A.motes(g, u.x * TL, u.y * TL + 8, 3, s.t * 1.6, id, '210,180,130', 0.7 * (1 - p), 8, 6);
-      }
     },
   };
 }

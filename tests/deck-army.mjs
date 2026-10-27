@@ -221,6 +221,9 @@ await p.evaluate(({ ARMY }) => {
     const { r: play, units } = __ar.play('ancestors_host');
     out.n = units.length;
     out.tiles = new Set(units.map(u => (u.x | 0) + ',' + (u.y | 0))).size;
+    let gap = 9;
+    for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) gap = Math.min(gap, Math.hypot(units[i].x - units[j].x, units[i].y - units[j].y));
+    out.gap = gap;
     out.open = units.every(u => Bld.spawnRoom('P', 'land', u.x | 0, u.y | 0));
     out.near = Math.max(...units.map(u => Math.hypot(u.x - door.x - 0.5, u.y - door.y - 0.5)));
     // NEVER ACROSS THE WATER: a channel one row below the doorstep, the whole
@@ -241,57 +244,141 @@ await p.evaluate(({ ARMY }) => {
     const legion = __ar.play('legion_marches').units;
     out.far = legion.filter(u => !reach[(u.y | 0) * W + (u.x | 0)]).length;
     out.legionTiles = new Set(legion.map(u => (u.x | 0) + ',' + (u.y | 0))).size;
+    let lg = 9;
+    for (let i = 0; i < legion.length; i++) for (let j = i + 1; j < legion.length; j++) lg = Math.min(lg, Math.hypot(legion[i].x - legion[j].x, legion[i].y - legion[j].y));
+    out.legionGap = lg;
     return out;
   });
-  ck('fifteenStandOnFifteenTiles', r.yard === 1 && r.n === 15 && r.tiles === 15 && r.open && r.near <= 6.8,
-    `the yards' search: ${r.yard} tile for 15 asks; the host: ${r.n} on ${r.tiles} tiles, all really open ${r.open}, farthest ${r.near.toFixed(2)} from the door`);
-  ck('neverAcrossTheWaterFromTheDoor', r.naiveFar > 0 && r.far === 0 && r.legionTiles === 12,
-    `a search that asks no road puts ${r.naiveFar} of 15 on the far bank; the legion puts ${r.far} there, on ${r.legionTiles} tiles`);
+  ck('fifteenStandOnFifteenPlaces', r.yard === 1 && r.n === 15 && r.gap >= 0.97 && r.tiles >= 13 && r.open && r.near <= 6.8,
+    `the yards' search: ${r.yard} tile for 15 asks; the host: ${r.n} on their own places, the nearest two ${r.gap.toFixed(2)} tiles apart, on ${r.tiles} tiles, all really open ${r.open}, farthest ${r.near.toFixed(2)} from the door`);
+  ck('neverAcrossTheWaterFromTheDoor', r.naiveFar > 0 && r.far === 0 && r.legionGap >= 0.97,
+    `a search that asks no road puts ${r.naiveFar} of 15 on the far bank; the legion puts ${r.far} there, the nearest two ${r.legionGap.toFixed(2)} apart`);
+}
+{
+  /* THE FAN (playtest g2/g3/g4: "summons PILE UP and wander off screen"):
+     every summoned unit LANDS on its own slot round the hall and is never
+     marched to a heap — the War Band's men a tile apart in two ranks, the
+     battery's engines a tile and a half from each other AND from the siege
+     train already standing there (the probe counted the two trebuchets 0.14
+     tiles apart and six pairs under 0.6), a Legion played over a garrison
+     clear of the garrison, every slot facing out from the hall — and on the
+     player's screen: with the camera on the hall at a phone's zoom, every
+     sprite whole between the bars. The CONTROL is the old muster's own end:
+     the yards' formation step marches five to one spot and stacks them. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    const pairs = (list, min) => {
+      let bad = 0, near = 9;
+      for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+        const d = Math.hypot(list[i].x - list[j].x, list[i].y - list[j].y);
+        near = Math.min(near, d); if (d < min) bad++;
+      }
+      return { bad, near: +near.toFixed(2) };
+    };
+    // where each one STANDS once the act is over and the hold has let it go
+    // (the old muster's march ended in the heap), and whether its whole
+    // sprite is on the open screen between the bars and clear of the minimap
+    const whole = u => {
+      const TL = CFG.TILE, z = R.cam.z, B = R.unitBox(u);
+      const rect = id => { const el = document.getElementById(id); return el && el.offsetParent !== null && el.offsetWidth ? el.getBoundingClientRect() : null; };
+      const tb = rect('topbar'), bb = rect('bottombar'), mm = rect('miniWrap'), vw = R.viewW(), vh = R.viewH();
+      const sx = (u.x * TL - R.cam.x) * z, foot = (u.y * TL + TL / 2 - CFG.SPRITE_LIFT - R.cam.y) * z, top = foot - B * z, hw = B * z / 2;
+      if (sx - hw < 0 || sx + hw > vw || top < (tb ? tb.bottom : 0) || foot > (bb ? bb.top : vh)) return false;
+      return !(mm && sx + hw > mm.left && sx - hw < mm.right && top < mm.bottom && foot > mm.top);
+    };
+    __ar.fresh('army-fan'); __ar.flat();
+    Screens.show('playing');
+    const tc = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.6);
+    // the War Band: five a tile apart, facing out, two ranks
+    const wb = __ar.play('war_band').units;
+    __ar.sim(5);
+    out.wb = pairs(wb, 0.97);
+    const ry = [...new Set(wb.map(u => Math.round(Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) * 4) / 4))];
+    out.wbRanks = ry.length;
+    out.face = wb.every(u => { const f = R._faceMap.get(u), d = f && f.dir; return d && ((u.y > Bld.cy(tc) + 0.5) ? /s/.test(d) : true); });
+    out.onScreen = wb.every(whole);
+    // the Siege Train, then the Battery: five engines, a tile and a half apart
+    for (const u of wb) Units.despawn(u);
+    const st = __ar.play('siege_train').units;
+    for (const u of st) u.task = null;
+    const tb = __ar.play('trebuchet_battery').units;
+    __ar.sim(6);
+    out.engines = pairs(st.concat(tb), 1.45);
+    out.engOn = st.concat(tb).every(whole);
+    // a Legion over a garrison standing at the door: clear of it
+    __ar.fresh('army-fan2'); __ar.flat();
+    const tc2 = Bld.tcOf('P');
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc2), Bld.cy(tc2) + 0.6);
+    const gar = [];
+    for (let i = 0; i < 6; i++) gar.push(__ar.unit(['defender', 'archer'][i % 2], 'P', tc2.x - 1.5 + i, tc2.y + 3.5));
+    const lg = __ar.play('legion_marches').units;
+    __ar.sim(6);
+    out.legion = pairs(lg, 0.97);
+    out.garrison = pairs(lg.concat(gar), 0.6).bad;
+    out.lgOn = lg.filter(whole).length;
+    // the CONTROL: the yards' formation step, asked for five, marches them to
+    // one muster spot — the old muster's end, where the heaps came from
+    __ar.fresh('army-fan3'); __ar.flat();
+    const tc3 = Bld.tcOf('P'), five = [0, 1, 2, 3, 4].map(i => __ar.unit('trebuchet', 'P', tc3.x + i, tc3.y + 3.5));
+    Units.formationMove(five, tc3.x + 1, tc3.y + 5, 'land');
+    for (let i = 0; i < 300; i++) Units.update(0.05);
+    out.control = pairs(five, 1.45).bad;
+    return out;
+  });
+  ck('everySummonLandsOnItsOwnPlace', r.wb.bad === 0 && r.wbRanks === 2 && r.face && r.onScreen,
+    `the War Band: the nearest two ${r.wb.near} apart, in ${r.wbRanks} ranks, facing out ${r.face}, all five whole on the screen ${r.onScreen}`);
+  ck('enginesStandATileAndAHalfApart', r.engines.bad === 0 && r.engOn && r.control > 0,
+    `the Siege Train then the Battery: the nearest two engines ${r.engines.near} apart (${r.engines.bad} pairs under 1.45), all on the screen ${r.engOn}; the old march to one spot: ${r.control} pairs under 1.45`);
+  ck('aLegionFormsClearOfTheGarrison', r.legion.bad === 0 && r.garrison === 0 && r.lgOn >= 11,
+    `the twelve: the nearest two ${r.legion.near} apart, ${r.garrison} closer than 0.6 to a garrison man, ${r.lgOn} of 12 whole on the screen`);
 }
 {
   const r = await p.evaluate(() => {
     const out = {};
     __ar.fresh('army-beat'); __ar.flat();
-    // STAGGERED: the war band's flashes come one after another, each unit
-    // unseen until its own, and each marches on its own beat
+    // STAGGERED: the war band's beams come down one after another (the first
+    // once its beam has fallen), each unit unseen until its own lands
     const { units: wb } = __ar.play('war_band');
-    const F = Deck.FX.war_band;
+    const F = Deck.FX.war_band, drop = (Deck.armyFx.BEAM_T || { drop: 0 }).drop;
     out.flashT = R.summons.slice(-5).map(s => +(-s.t).toFixed(3));
-    out.flashWant = [0, 1, 2, 3, 4].map(i => +(i * F.STAGGER / 1000).toFixed(3));
+    out.flashWant = [0, 1, 2, 3, 4].map(i => +(drop + i * F.STAGGER / 1000).toFixed(3));
     out.flashIds = R.summons.slice(-5).map(s => s.id).join(',') === wb.map(u => u.id).join(',');
     out.hidden = R._unborn ? wb.filter(u => R._unborn.has(u.id)).length : 0;
-    out.waits = wb.map(u => u.task && u.task.type === 'muster' ? +u.task.wait.toFixed(3) : null);
-    out.waitWant = wb.map((u, i) => +(F.HOLD + i * F.STAGGER / 1000).toFixed(3));
-    // the picture's clock: once every flash has started nobody is hidden
+    // THE HOLD: every one stands where it landed until the last is down and
+    // the formation has held its beat — then is simply free, where it formed
+    const free = drop + 4 * F.STAGGER / 1000 + F.HOLD;
+    out.waits = [...new Set(wb.map(u => u.task && u.task.type === 'muster' && u.task.stay ? u.task.wait.toFixed(3) : 'x'))];
+    out.waitWant = free.toFixed(3);
+    const at0 = wb.map(u => [u.x, u.y]);
+    // the picture's clock: once every beam has landed nobody is hidden
     const g = R.g; g.save(); R.drawSummons(g, 0.7); g.restore();
     out.allOut = !R._unborn || wb.every(u => !R._unborn.has(u.id));
-    __ar.sim(0.6);
-    out.firstGone = wb[0].task && wb[0].task.type === 'move' && wb[4].task && wb[4].task.type === 'muster';
-    __ar.sim(1.2);
-    out.allGone = wb.every(u => !(u.task && u.task.type === 'muster'));
-    // TOGETHER: the legion stands until its last is out, then marches as one
+    __ar.sim(free - 0.25);
+    out.held = wb.every(u => u.task && u.task.type === 'muster');
+    __ar.sim(0.5);
+    out.freed = wb.every(u => !u.task && !Units.moving(u));
+    __ar.sim(3);
+    out.stayed = wb.every((u, i) => Math.hypot(u.x - at0[i][0], u.y - at0[i][1]) < 0.05);
+    // the legion too, all twelve on one beat
     __ar.fresh('army-together'); __ar.flat();
     const { units: lg } = __ar.play('legion_marches');
-    const L = Deck.FX.legion_marches;
+    const L = Deck.FX.legion_marches, lfree = drop + 11 * L.STAGGER / 1000 + L.HOLD;
     out.together = [...new Set(lg.map(u => u.task && u.task.wait != null ? u.task.wait.toFixed(3) : 'x'))];
-    out.togetherWant = (L.HOLD + 11 * L.STAGGER / 1000).toFixed(3);
-    __ar.sim(2.3);
+    out.togetherWant = lfree.toFixed(3);
+    const lg0 = lg.map(u => [u.x, u.y]);
+    __ar.sim(lfree - 0.2);
     out.stillHeld = lg.every(u => u.task && u.task.type === 'muster');
-    __ar.sim(0.3);
-    out.marched = lg.every(u => u.task && u.task.type === 'move' && u.path && u.path.length);
-    // Swift Raiders keep their pinned arrival: all at once, straight out
-    __ar.fresh('army-raid'); __ar.flat();
-    const { units: sr } = __ar.play('swift_raiders');
-    out.raidersAtOnce = R.summons.slice(-5).every(s => s.t === 0) && sr.every(u => u.task && u.task.type === 'move' && u.path && u.path.length);
+    __ar.sim(3.4);
+    out.lgStayed = lg.every((u, i) => !u.task && Math.hypot(u.x - lg0[i][0], u.y - lg0[i][1]) < 0.05);
     return out;
   });
-  ck('aStaggeredMusterStepsOutOneAtATime', JSON.stringify(r.flashT) === JSON.stringify(r.flashWant) && r.flashIds && r.hidden === 4 && r.allOut,
-    `flashes at ${r.flashT.join('/')}s, ${r.hidden} of 5 unseen until their own, all out once begun ${r.allOut}`);
-  ck('andEachMarchesOnItsOwnBeat', JSON.stringify(r.waits) === JSON.stringify(r.waitWant) && r.firstGone && r.allGone,
-    `waits ${r.waits.join('/')}s; the first gone at 0.6s and the last still standing ${r.firstGone}; all gone by 1.8s ${r.allGone}`);
-  ck('theLegionHoldsItsBeatAndMarchesAsOne', r.together.length === 1 && r.together[0] === r.togetherWant && r.stillHeld && r.marched,
-    `every one waits ${r.together.join('|')}s (want ${r.togetherWant}); held at 2.3s ${r.stillHeld}; all marching at 2.6s ${r.marched}`);
-  ck('swiftRaidersKeepTheirArrival', r.raidersAtOnce, 'all five flash at once and ride straight out');
+  ck('aStaggeredMusterStepsOutOneAtATime', JSON.stringify(r.flashT) === JSON.stringify(r.flashWant) && r.flashIds && r.hidden === 5 && r.allOut,
+    `beams land at ${r.flashT.join('/')}s, ${r.hidden} of 5 unseen until their own, all out once landed ${r.allOut}`);
+  ck('theyHoldTheirPlacesThenStayWhereTheyFormed', r.waits.length === 1 && r.waits[0] === r.waitWant && r.held && r.freed && r.stayed,
+    `every one held until ${r.waits.join('|')}s (want ${r.waitWant}): held ${r.held}, free after it ${r.freed}, still on its place 3s later ${r.stayed}`);
+  ck('theLegionHoldsItsBeatAsOne', r.together.length === 1 && r.together[0] === r.togetherWant && r.stillHeld && r.lgStayed,
+    `every one held until ${r.together.join('|')}s (want ${r.togetherWant}); held to the end ${r.stillHeld}; free and unmoved after ${r.lgStayed}`);
 }
 {
   const r = await p.evaluate(({ SUMMONERS }) => {
@@ -722,13 +809,14 @@ await p.evaluate(({ ARMY }) => {
     out.march = pack.every(u => u.task && u.task.type === 'muster' && u.task.x === u.den.x && u.task.y === u.den.y);
     __ar.sim(4);
     out.rest = new Set(pack.map(u => (u.x | 0) + ',' + (u.y | 0))).size === 3 && pack.every(u => (u.x | 0) === u.den.x && (u.y | 0) === u.den.y);
-    /* THE MARCH OUT IS THE PACK'S OWN WALK: when the muster lets a wolf go,
-       its walk carries the home flag, and a foe near the hall breaks it off
-       (a walk the PLAYER orders is obeyed to the letter — anOrderIsObeyed) */
+    /* AT HEEL IS THE PACK'S OWN HOLD: each wolf lands at the hall's side and
+       is held there for its beat (the 'muster' task's stay), and a foe near
+       the hall breaks the hold (a walk the PLAYER orders is obeyed to the
+       letter — anOrderIsObeyed) */
     __ar.fresh('army-wolf-march'); __ar.flat();
     const { units: p2 } = __ar.play('hunters_pack');
-    for (let i = 0; i < 40 && !p2.every(u => u.task && u.task.type === 'move'); i++) Units.update(0.05);
-    out.homeFlag = p2.every(u => u.task && u.task.type === 'move' && u.task.home === true);
+    const hall = Bld.tcOf('P');
+    out.homeFlag = p2.every(u => u.task && u.task.type === 'muster' && Math.hypot(u.x - Bld.cx(hall), u.y - Bld.cy(hall)) < 4.5);
     const intr = __ar.unit('raider', 'R', p2[0].x + 2, p2[0].y, 999); intr.hostileTo = 'P';
     Combat.acquire();
     out.breaks = p2.some(u => u.tUnit === intr.id);
@@ -747,7 +835,7 @@ await p.evaluate(({ ARMY }) => {
   ck('butARunnerCannotLeadItAcrossTheMap', r.runner.from && r.runner.let && r.runner.home, JSON.stringify(r.runner));
   ck('threeWolvesThreeDens', r.naiveSlots < 3 && r.distinct && r.free && r.march && r.rest,
     `the muster alone deals ${r.naiveSlots} tiles to three; the pack's dens ${r.dens.join(' / ')}, none under a standing villager ${r.free}, marched to ${r.march}, resting there apart ${r.rest}`);
-  ck('theMarchOutIsThePacksOwnWalk', r.homeFlag && r.breaks, `every march carries the home flag ${r.homeFlag}; a foe near the hall breaks it off ${r.breaks}`);
+  ck('atHeelIsThePacksOwnHold', r.homeFlag && r.breaks, `every wolf held at heel within 4.5 of the hall's middle ${r.homeFlag}; a foe near the hall breaks the hold ${r.breaks}`);
   ck('aMarkThatVanishesSendsItHome', r.vanish.tUnit === 0 && r.vanish.home, JSON.stringify(r.vanish));
 }
 
@@ -1106,8 +1194,8 @@ await p.evaluate(({ ARMY }) => {
     const out = {};
     __ar.fresh('army-save'); __ar.flat();
     const lgU = __ar.play('legion_marches').units, lg = lgU.map(u => u.id);
-    // the slot each was dealt (the formation the held beat will march to)
-    const slot = Object.fromEntries(lgU.map(u => [u.id, u.task && u.task.type === 'muster' ? { x: u.task.x, y: u.task.y } : null]));
+    // the place each landed on (the fan it holds, and stays on)
+    const slot = Object.fromEntries(lgU.map(u => [u.id, u.task && u.task.type === 'muster' && u.task.stay ? { x: u.x, y: u.y } : null]));
     const pack = __ar.play('hunters_pack').units.map(u => u.id);
     __ar.unit('defender', 'P', 4.5, 16.5);
     Deck.play('veterans');
@@ -1117,25 +1205,23 @@ await p.evaluate(({ ARMY }) => {
     G.loadJSON(G.saveJSON());
     S.paused = true;
     const get = id => S.units.find(u => u.id === id);
-    out.muster = lg.every(id => get(id) && get(id).task && get(id).task.type === 'muster' && get(id).task.wait > 0);
+    out.muster = lg.every(id => get(id) && get(id).task && get(id).task.type === 'muster' && get(id).task.stay && get(id).task.wait > 0);
     out.pack = pack.every(id => { const w = get(id); return w && w.warWolf && w.den && w.hp === 70 && w.atk === 10 && w.speed === 3.4; });
     out.vets = S.units.filter(u => u.vet === 1.25).length;
     out.host = host.every(id => get(id) && get(id).spectral) && Deck.timed('ancestors_host') && Deck.timed('ancestors_host').until === until;
     __ar.sim(3);
-    // marched: nobody still waiting, every one walking to its own slot or
-    // already standing on it (a slot a tile off the door is reached in a beat)
+    // free: nobody still waiting, every one standing on the place it landed
+    // on before the save (the hold's beat ran on after the load)
     out.marched = lg.every(id => {
-      const u = get(id), t = u.task, sl = slot[id];
-      if (!sl || (t && t.type === 'muster')) return false;
-      if (t && t.type === 'move') return t.x === sl.x && t.y === sl.y;
-      return !t && (u.x | 0) === sl.x && (u.y | 0) === sl.y;
+      const u = get(id), sl = slot[id];
+      return sl && !u.task && Math.hypot(u.x - sl.x, u.y - sl.y) < 0.05;
     });
-    out.moved = lg.filter(id => { const u = get(id), sl = slot[id]; return sl && ((u.x | 0) !== sl.x || (u.y | 0) !== sl.y); }).length;
+    out.moved = lg.filter(id => { const u = get(id), sl = slot[id]; return !sl || Math.hypot(u.x - sl.x, u.y - sl.y) >= 0.05; }).length;
     S.day = Math.ceil(until) + 1; Deck.tick();
     out.faded = S.units.filter(u => u.spectral).length === 0;
     return out;
   });
-  ck('aMusterMidBeatMarchesAfterTheLoad', r.muster && r.marched, `waiting after the load ${r.muster}; after it every one walking to its own slot or on it ${r.marched} (${r.moved} still on the road)`);
+  ck('aMusterMidBeatHoldsAcrossTheLoad', r.muster && r.marched, `holding after the load ${r.muster}; after it every one free on the place it landed on ${r.marched} (${r.moved} moved off it)`);
   ck('thePackRemembersHomeAcrossASave', r.pack);
   ck('aVeteranStaysAVeteran', r.vets > 0, `${r.vets} veterans after the load`);
   ck('aHostOnTheMarchRidesTheSave', r.host && r.faded, `ghosts and their day kept ${r.host}; they fade on it after the load ${r.faded}`);
@@ -1213,7 +1299,9 @@ await p.evaluate(({ ARMY }) => {
       bad.length ? bad.map(k => k + ': ' + JSON.stringify(r.apply[k])).join(' | ')
         : `a full cap refuses the chime (${!r.control}); every card's voice sounds and books ≤7 notes: ` + Object.entries(r.apply).map(([k, v]) => k + ' ' + v.booked).join(', '));
     const B = r.beats, want = {
-      iron_legion: { cardDrum: 4 }, legion_marches: { cardDrum: 5 }, trebuchet_battery: { cardRumble: 1, cardDrum: 5 },
+      // the Iron Legion's three deep beats (every other landing); the
+      // battery's rumble under its first engine and a drum under each after
+      iron_legion: { cardDrum: 3 }, legion_marches: { cardDrum: 5 }, trebuchet_battery: { cardRumble: 1, cardDrum: 2 },
       ancestors_host: { cardDrum: 1 }, swift_raiders: { cardHoof: 7 },
     };
     const miss = Object.keys(want).filter(id => Object.keys(want[id]).some(k => (B[id][k] || 0) !== want[id][k]));
@@ -1313,6 +1401,16 @@ await p.evaluate(({ ARMY }) => {
         const d = g.getImageData(0, 0, TL, cv.height).data;
         let world = 0;
         for (let i = 3; i < d.length; i += 4) if (d[i]) world++;
+        // the GROUND layer: a summon's beam runs up to the top of the view,
+        // here with the camera pulled up over the board's north rim
+        R.cardShows = [];
+        R.cam.z = 2; R.cam.x = 0; R.cam.y = -TL * 3;
+        g.clearRect(0, 0, cv.width, cv.height);
+        const bs = R.startCardShow('war_band', { x: 6, y: 4, units: [{ id: -1, x: 5.5, y: 4.5, d: 0 }] });
+        bs.t = 0.05;
+        R.drawCardShows(g, 0, 'ground');
+        const gd = g.getImageData(0, 0, cv.width, TL).data;
+        for (let i = 3; i < gd.length; i += 4) if (gd[i]) world++;
         // the SKY layer: the host with the camera over the board's west edge
         R.cardShows = [];
         R.cam.z = 2; R.cam.x = -TL * 4; R.cam.y = TL * 4;
@@ -1334,6 +1432,103 @@ await p.evaluate(({ ARMY }) => {
   });
   ck('noShowIsDrawnInTheBlack', r.fixed.world === 0 && r.fixed.sky === 0 && r.leak.world > 0 && r.leak.sky > 0,
     `off the board: the veterans' ring ${r.fixed.world} px, the host's sky ${r.fixed.sky} px; with the board widened (the control) ${r.leak.world} / ${r.leak.sky}`);
+}
+{
+  /* THE BEAMS (judges g2/g3, playtest g2): five men came down in two beams,
+     four stacked in one column; every beam stopped with a flat top 250 device
+     px above the ground; the light was a translucent hue over the meadow that
+     went olive at its edges; a square-shouldered gold slab swallowed the hall;
+     confetti littered the grass for seconds; and the Iron tier wore the same
+     yellow as the Bronze. Measured on the show's own pixels (a fresh canvas,
+     world px 1:1, nothing else drawn on it):
+       ONE BEAM PER UNIT, FULL HEIGHT — on the view's top row, one run of the
+         tier's light over every unit whose beam is up, and none elsewhere;
+       OPAQUE, IN THE TIER'S OWN LIGHT — every pixel the beams lay is fully
+         opaque and one of its tier's own colours (or the earth's clods), and
+         the four tiers' lights are four different sets;
+       UNDER THE HALL — the column is laid in the GROUND pass, which every
+         building and unit is drawn over: the world pass lays nothing above
+         a man's knees once his landing frame has passed;
+       NO CONFETTI — half a second after the last landing the arrival lays
+         not one pixel. */
+  const r = await p.evaluate(() => {
+    const out = { tiers: {}, bad: [] };
+    const TL = CFG.TILE;
+    const canvas = () => { const c = document.createElement('canvas'); c.width = CFG.W * TL; c.height = CFG.H * TL; return c; };
+    const drawAt = (s, sh, fx, g, t, layers) => {
+      s.t = t - 0.01; for (const L of layers) { g.save(); sh.draw.call(fx, g, s, 0.5, 0, L); g.restore(); }   // the landing frames before
+      g.clearRect(0, 0, g.canvas.width, g.canvas.height);
+      s.t = t; for (const L of layers) { g.save(); sh.draw.call(fx, g, s, 0.5, 0, L); g.restore(); }
+    };
+    const hex = (d, i) => '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+    for (const [id, tone] of [['war_band', 'bronze'], ['iron_legion', 'steel'], ['legion_marches', 'gold'], ['swift_raiders', 'steel']]) {
+      __ar.fresh('army-beam-' + id); __ar.flat();
+      Screens.show('playing');
+      const tc = Bld.tcOf('P');
+      R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.6);
+      R.cardShows = []; R.summons = [];
+      Deck.play(id);
+      const s = R.cardShows.find(x => x.id === id), fx = Deck.FX[id], sh = fx.show;
+      const P = (Deck.armyFx.BEAM || {})[tone] || { ramp: [], ring: [] }, pal = new Set(P.ramp.concat([P.hot, '#ffffff', P.ring[0], P.ring[1], '#6b5236', '#8a6c48']));
+      if (!s.units || !s.units.length) { out.tiers[id] = { tone, runs: -1, up: 0, overUnits: false, px: 0, soft: 0, alien: 0, tall: -1, left: -1, cols: '' }; continue; }
+      const units = s.units, last = units[units.length - 1].d, cv = canvas(), g = cv.getContext('2d');
+      // the moment the last beam has landed and the first is still up
+      const T = last + 0.02;
+      drawAt(s, sh, fx, g, T, ['ground']);
+      const top = Math.ceil(R.viewTiles().y0 * TL) + 1, row = g.getImageData(0, top, cv.width, 1).data;
+      let runs = 0, inRun = false;
+      for (let x = 0; x < cv.width; x++) { const on = row[x * 4 + 3] > 0; if (on && !inRun) runs++; inRun = on; }
+      // the units whose beams are up, gathered into columns a beam's top could
+      // merge across (under 0.75 tile apart): each column its own run of light
+      const upU = units.filter(m => T - m.d >= 0 && T - m.d < (Deck.armyFx.BEAM_T || { life: 0.5 }).life);
+      const xsU = upU.map(m => m.x).sort((a, b) => a - b);
+      let up = 0;
+      for (let i = 0; i < xsU.length; i++) if (!i || xsU[i] - xsU[i - 1] >= 0.4) up++;
+      const overUnits = upU.every(m => { const x = Math.round(m.x * TL); return row[x * 4 + 3] > 0 || row[(x - 1) * 4 + 3] > 0; });
+      // every pixel the beams laid: opaque, of the tier's own light
+      const all = g.getImageData(0, 0, cv.width, cv.height).data, cols = new Set();
+      let px = 0, soft = 0, alien = 0;
+      for (let i = 0; i < all.length; i += 4) {
+        if (!all[i + 3]) continue;
+        px++;
+        if (all[i + 3] < 255) { soft++; continue; }
+        const h = hex(all, i);
+        cols.add(h);
+        if (!pal.has(h)) alien++;
+      }
+      // the world pass, a frame after its landing: nothing above the knees —
+      // the show's own world layer and the muster's flashes (R.drawSummons,
+      // which the world pass draws in the same breath: R.drawCardWorld)
+      const cw = canvas(), gw = cw.getContext('2d');
+      drawAt(s, sh, fx, gw, last + 0.2, ['world']);
+      for (const e of R.summons) { if (e._t0 == null) e._t0 = e.t; e.t = e._t0 + last + 0.2; }
+      gw.save(); R.drawSummons(gw, 0); gw.restore();
+      // (above the top of the highest man's own drawn box: a glint on a
+      // spear or a shield is his, a column of light is not)
+      let kneeY = 1e9;
+      for (const m of units) { const u = Units.get(m.id), B = R.unitBox(u); kneeY = Math.min(kneeY, Math.floor(R.frameTop(u.y, B, B)) - 6); }
+      const top0 = Math.ceil(R.viewTiles().y0 * TL);
+      const wd = gw.getImageData(0, top0, cw.width, Math.max(1, kneeY - top0)).data;
+      let tall = 0;
+      for (let i = 3; i < wd.length; i += 4) if (wd[i]) tall++;
+      // no confetti: half a second after the last landing, nothing at all
+      const cc = canvas(), gc = cc.getContext('2d');
+      drawAt(s, sh, fx, gc, last + 0.55, ['ground', 'world']);
+      const cd = gc.getImageData(0, 0, cc.width, cc.height).data;
+      let left = 0;
+      for (let i = 3; i < cd.length; i += 4) if (cd[i]) left++;
+      out.tiers[id] = { tone, runs, up, overUnits, px, soft, alien, tall, left, cols: [...cols].sort().join(' ') };
+    }
+    return out;
+  });
+  const T = r.tiers, ids = Object.keys(T);
+  ck('oneBeamPerUnitRunningTheFullHeight', ids.every(k => T[k].runs === T[k].up && T[k].overUnits && T[k].up >= 3),
+    ids.map(k => `${k}: ${T[k].runs} beams on the view's top row for ${T[k].up} columns of men whose beams are up, over every one ${T[k].overUnits}`).join('; '));
+  ck('theBeamsAreOpaqueInTheTiersOwnLight', ids.every(k => T[k].px > 0 && T[k].soft === 0 && T[k].alien === 0) &&
+    T.war_band.cols !== T.iron_legion.cols && T.iron_legion.cols !== T.legion_marches.cols && T.war_band.cols !== T.legion_marches.cols,
+    ids.map(k => `${k} (${T[k].tone}): ${T[k].px} px, ${T[k].soft} translucent, ${T[k].alien} off the tier's light`).join('; '));
+  ck('theHallStandsOverTheLight', ids.every(k => T[k].tall === 0), ids.map(k => `${k}: ${T[k].tall} px laid above a man's knees in the world pass`).join('; '));
+  ck('andNoConfettiOutlivesHalfASecond', ids.every(k => T[k].left === 0), ids.map(k => `${k}: ${T[k].left} px left 0.55s after the last landing`).join('; '));
 }
 {
   /* THE SUMMON DUST IS PIXEL DUST (judge g3, "rendering defects" 1): a summon
