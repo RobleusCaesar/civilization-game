@@ -317,6 +317,23 @@ const Units = {
   gatherYield(owner, ctx) {
     return window.Deck && Deck.mult ? Deck.mult('gather', owner, ctx) : 1;
   },
+  /* THE WORK TICK IS FOG-HONEST (tests/wild-life.mjs §5 — found by the
+     five-player playtest with no card running: the rival's gatherers floated
+     "+wood"/"+food" out of the unexplored dark, five in 25 seconds). The
+     floats are drawn AFTER the fog, and the gather tick was owner-blind (the
+     rival hand-gathers too — AI.workTheLand), so every rival woodcutter in
+     the black wrote where it was working across the map: exactly what the
+     fog exists to hide. A unit's work cue — the "+res" glance-tick
+     (R.workFloat) and a sapper's spadefuls and stone dust — is drawn only
+     where the PLAYER can see the unit's own tile. The player's own hands
+     are never in the fog (their people are where the light comes from), so
+     theirs always float; anyone else's floats in sight and never out of it.
+     Asked BEFORE the throttle, so a hand first seen is due its tick at once
+     (R.workFloat's own rule: a missing entry means "due now"). */
+  seenWork(u) {
+    return !!u && (u.owner === 'P' || G.visibleAt(u.x | 0, u.y | 0));
+  },
+  workFloat(u, txt) { return this.seenWork(u) ? R.workFloat(u, txt) : false; },
   // how much faster a work site, upgrade, wall works or bridge works rises
   // under a running card (Deck.buildRate, js/deckfx-growth.js) — 1 with none
   buildRate(b) {
@@ -1602,7 +1619,7 @@ const Units = {
               R.updateTile(t.x, t.y);
           }
           // an occasional glance-tick, throttled per worker (R.workFloat)
-          if ((before | 0) !== (store[g.res] | 0)) R.workFloat(u, '+' + g.res);
+          if ((before | 0) !== (store[g.res] | 0)) this.workFloat(u, '+' + g.res);
           if (S.map.resAmount[idx] <= 0.001) {
             // tile exhausted — it turns to stumps/pebbles/spent soil, which is
             // now PASSABLE (felling the wood opens a new route through it) and,
@@ -1657,7 +1674,8 @@ const Units = {
             // reinforcing a span IS an upgrade — a card's quicker hands speed it too
             br.upgrading -= dt * 1000 / CFG.DAY_MS * this.buildRate(br);
             t.t = Math.max(0, br.upgrading); t.total = br.upTotal || t.total;
-            if (Math.random() < 0.10) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#adada2');   // stone dust
+            // stone dust — the jitter is drawn whether or not it is seen, so the fog moves no roll
+            if (Math.random() < 0.10) { const jx = u.x + (Math.random() - 0.5); if (this.seenWork(u)) R.float(jx, u.y - 0.4, '·', '#adada2'); }
             if (br.upgrading <= 0) { Bld.finishBridgeUpgrade(br); this.startNextTerraform(u); }
             continue;
           }
@@ -1665,7 +1683,8 @@ const Units = {
           // reinforces — so a card's quicker hands raise it faster too, as they
           // do its reinforcing; the earthworks (dig, clear, mound) are not
           t.t -= t.job === 'bridge' ? dt * this.buildRate({ owner: u.owner, key: 'bridge' }) : dt;
-          if (Math.random() < 0.16) R.float(u.x + (Math.random() - 0.5), u.y - 0.4, '·', '#cdbb90');   // spadefuls of earth
+          // spadefuls of earth (the jitter drawn seen or not: the fog moves no roll)
+          if (Math.random() < 0.16) { const jx = u.x + (Math.random() - 0.5); if (this.seenWork(u)) R.float(jx, u.y - 0.4, '·', '#cdbb90'); }
           if (t.t <= 0) {
             let done = false, moat = false, berm = false, cost = false;
             // SERVICE FEES (tests/sapper-fees.mjs): every job bills per tile —
@@ -1710,7 +1729,7 @@ const Units = {
           bag.food += take * this.gatherYield(u.owner, u);   // a card's richer catch (yield, not pace)
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           S.map.resAmount[idx] -= take;
-          if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
+          if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) this.workFloat(u, '+food');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
@@ -1771,7 +1790,7 @@ const Units = {
           // boat's nets are not — an origin card can put one out unasked
           if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + take;
           S.map.resAmount[idx] -= take;
-          if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
+          if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) this.workFloat(u, '+food');
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
@@ -1906,7 +1925,7 @@ const Units = {
              treatment of its own. Production itself is still the once-a-day
              lump in Bld.dailyProduction; this only SAYS so. */
           const out = Bld.lv(b).out;
-          if (out && !b.upgrading) R.workFloat(u, '+' + Object.keys(out)[0]);
+          if (out && !b.upgrading) this.workFloat(u, '+' + Object.keys(out)[0]);
         }
       } else if (t.type === 'board') {
         // march to the pier and step aboard the transport

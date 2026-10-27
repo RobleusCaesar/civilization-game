@@ -38,8 +38,15 @@
       sprite set is baked in), so R.BANNER_AT must have an anchor for every
       building whose sprite bakes a pole.
 
+   7. THE WORK TICK IS FOG-HONEST. A unit's work cue — the "+res" tick
+      (Units.workFloat → R.workFloat) and a sapper's spadefuls — is drawn
+      only where the player can see the unit's tile; the player's own hands
+      always tick. A rival hand in the fog floats nothing (its work goes on),
+      ticks at once when brought into sight, and the fog moves no roll.
+
    Run this after touching any of:
-     units.js — wildIdle / grazeIdle / spook / workReport
+     units.js — wildIdle / grazeIdle / spook / workReport / seenWork /
+                workFloat (the gather, fish, station and terraform ticks)
      combat.js — hostileUnits, acquire's wild branches, the noteFights hook
      render.js — startle / noteFights / BANNER_AT / SMOKE_AT / drawBanners
      sprites.js — the banner() helper and the inline banner poles
@@ -539,6 +546,9 @@ const out = await p.evaluate(() => {
     S.tunic = { P: 'purple', A: 'red' };
     const bar = Bld.place('P', 'barracks', 20, 20, { free: true });
     Bld.finish(bar);
+    // the banner draws only where it is seen — stood in for here, and HANDED
+    // BACK at the end of the section (§7 measures the real sight)
+    const realVisibleAt = G.visibleAt;
     G.visibleAt = () => true;
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;
     const g2 = cv.getContext('2d');
@@ -558,6 +568,7 @@ const out = await p.evaluate(() => {
     ck('workSitesFlyNoColours', seen2.length === 0, 'no cloth over an unfinished hall');
     ck('hearthsAreKeyedForHomesAndHalls',
       ['house', 'tc', 'lodge', 'warcamp'].every(k => R.SMOKE_AT[k]), '');
+    G.visibleAt = realVisibleAt;
   }
 
   // ---- 5. the work report: what a unit does, and what it nets ----
@@ -668,6 +679,72 @@ const out = await p.evaluate(() => {
     const put = Units.seedGameNear(30, 30, 3);                     // only the nook in reach
     ck('nothingIsSeededIntoASealedPocket', put === 0,
       put + ' seeded around a 1-tile nook (every stranded starting cow came from here)');
+  }
+
+  /* ---- 7. the work tick is fog-honest (the five-player playtest, with no
+     card running: the rival's gatherers floated "+wood"/"+food" out of the
+     unexplored dark, five in 25 seconds — the floats are drawn after the
+     fog, so each one wrote where the rival was working). A rival hand in the
+     fog floats nothing, its work going on all the same; brought into sight
+     it ticks AT ONCE (the throttle was never spent in the dark); the
+     player's own hands always tick; and a rival sapper's spadefuls follow
+     the same rule ---- */
+  {
+    // the only light is the hall in its corner: the start package and an
+    // origin card's gifts stood round the old hall, and the Seer's eye too
+    const dark = (seed) => {
+      arena(seed);
+      S.buildings = S.buildings.filter(b => b.owner !== 'P' || b.key === 'tc'); Bld._block = null;
+      if (S.boons && S.boons.P) S.boons.P.seer = null;
+    };
+    dark('wl7');
+    const fx = 40, fy = 30, fi = MapGen.idx(fx, fy);
+    S.map.terrain[fi] = T.FOREST; S.map.resAmount[fi] = 500;
+    const rv = Units.spawn('villager', 'A', fx - 1, fy); rv.x = fx - 0.5; rv.y = fy + 0.5;
+    rv.task = { type: 'gather', x: fx, y: fy, sx: fx - 1, sy: fy };
+    G.updateVisibility();
+    R.floats = []; R._workFloatAt = {};
+    const ticks = (u) => R.floats.filter(f => f.txt === '+wood' && Math.abs(f.x - u.x) < 1.5 && Math.abs(f.y - u.y) < 2).length;
+    const wood0 = S.ai.res.wood;
+    for (let t = 0; t < 30; t += 0.1) Units.update(0.1);
+    const darkTicks = ticks(rv), worked = S.ai.res.wood - wood0;
+    ck('aRivalHandInTheFogFloatsNothing', !G.visibleAt(fx - 1, fy) && worked > 1 && darkTicks === 0,
+      `in sight ${G.visibleAt(fx - 1, fy)}; ${Math.round(worked)} wood cut in the dark, ${darkTicks} "+wood" written over it`);
+    // a soldier of the player's walks up: the same hand, the same work — now it shows
+    const eye = Units.spawn('defender', 'P', fx - 3, fy); eye.x = fx - 2.5; eye.y = fy + 0.5;
+    G.updateVisibility();
+    R.floats = [];
+    for (let t = 0; t < 3; t += 0.1) Units.update(0.1);
+    ck('inSightItTicksAtOnce', G.visibleAt(fx - 1, fy) && ticks(rv) >= 1,
+      `in sight ${G.visibleAt(fx - 1, fy)}; ${ticks(rv)} tick(s) in its first 3 seconds seen`);
+    // the player's own hand ticks wherever it works
+    dark('wl7b');
+    S.map.terrain[fi] = T.FOREST; S.map.resAmount[fi] = 500;
+    const pv = Units.spawn('villager', 'P', fx - 1, fy); pv.x = fx - 0.5; pv.y = fy + 0.5;
+    pv.task = { type: 'gather', x: fx, y: fy, sx: fx - 1, sy: fy };
+    G.updateVisibility();
+    R.floats = []; R._workFloatAt = {};
+    for (let t = 0; t < 3; t += 0.1) Units.update(0.1);
+    ck('thePlayersOwnHandsAlwaysTick', ticks(pv) >= 1, `${ticks(pv)} tick(s)`);
+    // a rival sapper's spadefuls: none in the dark, some in sight — and the
+    // jitter is drawn either way, so the fog moves no Math.random roll
+    const dig = (seen) => {
+      dark('wl7c');
+      const sp = Units.spawn('sapper', 'A', fx - 1, fy); sp.x = fx - 0.5; sp.y = fy + 0.5;
+      sp.task = { type: 'terraform', job: 'dig', x: fx, y: fy, sx: fx - 1, sy: fy, t: 999, total: 999 };
+      // the same eye either way — beside the sapper, or a long way off
+      const ex = seen ? fx - 3 : 12, e2 = Units.spawn('defender', 'P', ex, fy); e2.x = ex + 0.5; e2.y = fy + 0.5;
+      G.updateVisibility();
+      R.floats = [];
+      const mr = Math.random; let sd = 77, draws = 0;
+      Math.random = () => { draws++; return (sd = (sd * 1103515245 + 12345) >>> 0) / 4294967296; };
+      try { for (let t = 0; t < 10; t += 0.1) Units.update(0.1); } finally { Math.random = mr; }
+      return { dust: R.floats.filter(f => f.txt === '·').length, draws, seen: G.visibleAt(fx - 1, fy) };
+    };
+    const dk = dig(false), lt = dig(true);
+    ck('aRivalSappersSpadefulsStayInTheDark', !dk.seen && dk.dust === 0 && lt.seen && lt.dust > 0 && dk.draws === lt.draws,
+      `in the dark ${dk.dust}, in sight ${lt.dust}; Math.random drawn ${dk.draws} / ${lt.draws} times (the fog moves no roll)`);
+    R.floats = []; R._workFloatAt = {};
   }
 
   return { res, fails };
