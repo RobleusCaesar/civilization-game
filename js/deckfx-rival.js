@@ -922,10 +922,57 @@
          later gets two strokes and its own pulse (no smoke and no stamp: the
          muster is not the player's to see). */
       BEATS: [0.08, 0.28, 0.48, 0.57],
-      // a hand stencil, the oldest mark there is: four fingers, a thumb, a palm, a wrist
-      HAND: ['.....XX......', '..XX.XX......', '..XX.XX.XX...', '..XX.XX.XX...', '..XX.XX.XX...',
-             '..XX.XX.XX.XX', '..XX.XX.XX.XX', 'X.XXXXXXXXXXX', 'XXXXXXXXXXXXX', '.XXXXXXXXXXXX',
-             '..XXXXXXXXXXX', '..XXXXXXXXXX.', '...XXXXXXXXX.', '....XXXXXXX..', '.....XXXXX...'],
+      /* A HAND STENCIL, the oldest mark there is — and a STENCIL, not a
+         print: ochre blown AROUND a splayed hand held to the rock, the hand
+         itself left as bare ground (the Cueva de las Manos way). Built once,
+         one pixel a cell, from the hand's own shape (a palm, a wrist, four
+         fingers and a thumb, splayed), the spray thickest at the hand's edge
+         and thinning out into the stone; blown up nearest-neighbour. */
+      STENCIL: { w: 76, h: 78 },
+      _stencil: null,
+      stencilArt() {
+        if (this._stencil) return this._stencil;
+        const { w, h } = this.STENCIL, OX = 12, OY = 8;
+        const cap = (px, py, ax, ay, bx, by, r) => {
+          ax += OX; bx += OX; ay += OY; by += OY;
+          const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+          const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+          return Math.hypot(px - ax - t * dx, py - ay - t * dy) - r;
+        };
+        const hand = (x, y) => Math.min(
+          (Math.hypot((x - 26 - OX) / 9.5, (y - 36 - OY) / 10.5) - 1) * 9.5,     // the palm
+          cap(x, y, 26, 44, 26, 80, 6.2),                                        // the wrist, off the foot of the rock
+          cap(x, y, 17, 38, 7, 26, 2.7),                                         // the thumb, thrown wide
+          cap(x, y, 20.5, 28, 16.5, 9, 2.5),                                     // the fingers, splayed
+          cap(x, y, 25.5, 26, 25, 5, 2.6),
+          cap(x, y, 30.5, 27, 33.5, 8, 2.5),
+          cap(x, y, 34, 31, 41, 16, 2.1));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data;
+        const DEEP = [104, 26, 16], RED = [138, 42, 26], OCHRE = [170, 52, 30], PALE = [190, 92, 56];
+        const ROCK = [206, 186, 148], ROCK2 = [186, 164, 126];
+        const put = (x, y, col) => { const i = (y * w + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255; };
+        const drips = [];
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const dd = hand(x + 0.5, y + 0.5);
+          const hz = hash(x * 7919 + y * 104729) / 4294967296;
+          // the arm runs off the foot of the painting, raggedly
+          const foot = c01((70 - y - 3 * Math.sin(x * 0.9)) / 9);
+          if (dd <= 0) { if (hz < foot * 1.4) put(x, y, hz < 0.18 ? ROCK2 : ROCK); continue; }   // the hand: bare rock
+          // the cloud of spray: thick at the edge, thinning, ragged at its rim
+          const cloud = 12 + 2.6 * Math.sin(x * 0.45 + y * 0.21) + 1.6 * Math.sin(y * 0.7 - x * 0.33);
+          const pr = foot * (dd < 2 ? 0.98 : dd < 5 ? 0.95 : dd < cloud ? 0.95 * Math.exp(-(dd - 5) / 3.2) : 0);
+          if (hz >= pr) continue;
+          const col = dd < 1.6 ? DEEP : dd < 5 ? (hz < pr * 0.45 ? RED : OCHRE) : (hz < pr * 0.4 ? OCHRE : PALE);
+          put(x, y, col);
+        }
+        // where the paint ran: the lowest spray in a few columns beside the wrist
+        for (const cx of [OX + 6, OX + 10, OX + 41, OX + 45]) {
+          for (let y = h - 1; y >= 30; y--) if (d[(y * w + cx) * 4 + 3]) { drips.push({ x: cx, y: y + 1, len: 2 + (hash(cx * 31) % 4) }); break; }
+        }
+        q.putImageData(im, 0, 0);
+        return (this._stencil = { cv: c, drips });
+      },
       show: {
         ms: 3400, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
@@ -966,42 +1013,37 @@
         const t0 = this.BEATS[3], q = (p - t0) / 0.05;
         if (q < 0 || p > 0.97) return;
         const fade = p < 0.84 ? 1 : 1 - (p - 0.84) / 0.13;
-        const sc = q < 1 ? 1 + 0.7 * (1 - ease(q)) : 1;
-        const rows = this.HAND, cols = rows[0].length;
-        const cell = Math.max(4, Math.round(Math.min(W, H) / 36 * sc / 2) * 2);
-        const hw = cols * cell, hh = rows.length * cell, x0 = Math.round(W / 2 - hw / 2), y0 = Math.round(H * 0.4 - hh / 2);
+        const sc = q < 1 ? 1 + 0.6 * (1 - ease(q)) : 1;
+        const art = this.stencilArt(), { w, h } = this.STENCIL;
+        const cell = Math.max(4, Math.round(Math.min(W, H) * 0.8 / w * sc / 2) * 2);
+        const hw = w * cell, hh = h * cell, x0 = Math.round(W / 2 - hw / 2), y0 = Math.round(H * 0.42 - hh / 2);
         // the world goes still under it
-        g.fillStyle = 'rgba(14,6,3,' + qa(0.38 * fade * Math.min(1, q), 6) + ')';
+        g.fillStyle = 'rgba(14,6,3,' + qa(0.42 * fade * Math.min(1, q), 6) + ')';
         g.fillRect(0, 0, W, H);
-        g.globalAlpha = qa(0.92 * fade, 6);
-        // the paint: two reds, a ragged edge (a cell skipped here and there), a darker heart
-        for (let r = 0; r < rows.length; r++) for (let c = 0; c < cols; c++) {
-          if (rows[r][c] !== 'X') continue;
-          const edge = c === 0 || c === cols - 1 || rows[r][c - 1] !== 'X' || rows[r][c + 1] !== 'X' ||
-            !rows[r - 1] || rows[r - 1][c] !== 'X' || !rows[r + 1] || rows[r + 1][c] !== 'X';
-          if (edge && hash(r * 31 + c * 7) % 5 === 0) continue;
-          g.fillStyle = edge ? '#b0331f' : (hash(r * 13 + c) % 4 === 0 ? '#6e1d12' : '#8e2e1e');
-          g.fillRect(x0 + c * cell, y0 + r * cell, cell, cell);
-        }
-        // drips running down from the palm's heel, longer the longer it holds
+        g.globalAlpha = qa(0.95 * fade, 6);
+        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+        g.drawImage(art.cv, x0, y0, hw, hh);
+        g.imageSmoothingEnabled = sm;
+        // the paint running down from the foot of the spray, longer the longer it holds
         const run = Math.min(1, Math.max(0, (p - t0 - 0.03) / 0.2));
         g.fillStyle = '#8e2e1e';
-        for (const [c, len] of [[5, 3], [7, 5], [9, 2]]) {
-          const n = Math.round(len * run);
-          for (let k = 0; k < n; k++) g.fillRect(x0 + c * cell + (k === n - 1 ? 0 : cell / 4), y0 + (rows.length + k) * cell, k === n - 1 ? cell : cell / 2, cell);
+        for (const dr of art.drips) {
+          const n = Math.round(dr.len * run);
+          for (let k = 0; k < n; k++) g.fillRect(x0 + dr.x * cell + (k === n - 1 ? 0 : cell / 4), y0 + (dr.y + k) * cell, k === n - 1 ? cell : cell / 2, cell);
         }
-        // spatter thrown off the slam
+        // the spray's mist blown wide on the slam
         if (q < 3) {
-          for (let k = 0; k < 16; k++) {
-            const an = k / 16 * Math.PI * 2 + 0.3, rr = (hw * 0.55 + cell * 3 * Math.min(1, q)) * (0.8 + 0.4 * rnd(k, 5));
-            g.fillRect(snapTo(W / 2 + Math.cos(an) * rr, cell / 2), snapTo(H * 0.4 + Math.sin(an) * rr * 0.9, cell / 2), cell / 2, cell / 2);
+          g.fillStyle = '#b0331f';
+          for (let k = 0; k < 28; k++) {
+            const an = k / 28 * Math.PI * 2 + 0.3, rr = (hw * 0.5 + cell * 4 * Math.min(1, q)) * (0.75 + 0.45 * rnd(k, 5));
+            g.fillRect(snapTo(W / 2 + Math.cos(an) * rr, cell / 2), snapTo(y0 + hh * 0.5 + Math.sin(an) * rr * 0.9, cell / 2), cell / 2, cell / 2);
           }
         }
         // the words
         const fs = Math.round(Math.min(34, W / 15));
         g.font = 'bold ' + fs + 'px sans-serif';
         g.textAlign = 'center'; g.textBaseline = 'top';
-        const ty = y0 + hh + cell * 6, sh2 = Math.max(2, Math.round(fs / 10));
+        const ty = Math.min(H - fs * 3, y0 + hh + cell * 2), sh2 = Math.max(2, Math.round(fs / 10));
         g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE PACT IS SEALED', W / 2 + sh2, ty + sh2);
         g.fillStyle = '#e8c39a'; g.fillText('THE PACT IS SEALED', W / 2, ty);
         g.font = Math.round(fs * 0.5) + 'px sans-serif';
