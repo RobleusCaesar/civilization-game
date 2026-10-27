@@ -784,36 +784,6 @@ Object.assign(Deck, {
     if (/[?&]cards=(slice|all)\b/.test(q)) return true;
     try { return !!this.col().test; } catch (e) { return false; }
   },
-  /* THE REAL COLLECTION IS PARKED, NEVER OVERWRITTEN, while a test deck is
-     dealt over it: the test link's deal resets counts AND the cloud queue, so
-     a real player's undelivered grants and plays would be gone for good when
-     the test deck is later forgotten. parkReal() keeps the real mirror (queue
-     and all) under neo-deck@real before a deal — once: a test deck dealt over
-     a test deck parks nothing — and restoreReal() puts it back when the test
-     deck is forgotten (?cards=0), to be delivered and reconciled as ever.
-     Both answer whether they moved anything. */
-  REAL_KEY: 'neo-deck@real',
-  parkReal() {
-    try {
-      const raw = this._get(this.KEY);
-      if (!raw || this._get(this.REAL_KEY)) return false;
-      const c = JSON.parse(raw);
-      if (!c || typeof c !== 'object' || c.test) return false;
-      this._set(this.REAL_KEY, raw);
-      return true;
-    } catch (e) { return false; }
-  },
-  restoreReal() {
-    try {
-      const raw = this._get(this.REAL_KEY);
-      if (!raw) return false;
-      this._set(this.KEY, raw);
-      this._del(this.REAL_KEY);
-      this._col = null;
-      this._changed();
-      return true;
-    } catch (e) { return false; }
-  },
   // '' when this device may talk to the cloud now, else the reason it may not
   _syncGate() {
     if (!this.on()) return 'off';
@@ -1134,30 +1104,7 @@ Object.assign(Deck, {
     st.timer = setTimeout(() => { st.timer = 0; this.sync('retry'); }, ms);
   },
 });
-/* THE TEST DEAL PARKS THE REAL COLLECTION FIRST, and leaving the test link
-   brings it back (parkReal / restoreReal above). The deal itself is the
-   platform's (Deck.dealAll, where it exists): wrapped once here so whatever
-   deals a test deck parks first, and ?cards=0 restores the parked mirror
-   over a test deck (or over nothing) — never over a real collection. */
-Deck._wrapDeal = function () {
-  if (typeof this.dealAll !== 'function' || this.dealAll._parks) return false;
-  const deal = this.dealAll;
-  this.dealAll = function () { this.parkReal(); return deal.apply(this, arguments); };
-  this.dealAll._parks = true;
-  return true;
-};
-Deck._leaveTest = function () {
-  try {
-    if (!/[?&]cards=0\b/.test(String(location.search || '')) || !this._get(this.REAL_KEY)) return false;
-    let c = null;
-    try { c = JSON.parse(this._get(this.KEY) || 'null'); } catch (e) { c = null; }
-    if (c && !c.test) return false;     // a real collection stands: never overwritten
-    return this.restoreReal();
-  } catch (e) { return false; }
-};
-try { Deck._wrapDeal(); } catch (e) {}
 /* at boot the deck asks for a delivery and arms its listeners — registered
    only when the deck is already on as the script parses: with the switch
    off there is not even an inert listener (the house rule) */
 try { if (Deck.on()) window.addEventListener('load', () => { if (Deck.on()) Deck.sync('boot'); }); } catch (e) {}
-try { Deck._leaveTest(); } catch (e) {}

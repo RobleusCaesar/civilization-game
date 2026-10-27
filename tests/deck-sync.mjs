@@ -1059,57 +1059,7 @@ await ctx.close();
   await ctx.close();
 }
 
-/* ================= 14. A TEST DEAL PARKS THE REAL COLLECTION, AND LEAVING THE LINK BRINGS IT BACK ================= */
-{
-  const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
-  const real = { v: 1, uid: 'uid-A', starter: 1, counts: { starfall: 2, forager_cache: 1 }, seen: {}, runs: {}, medians: {},
-    queue: [{ op: 'grant', run: 'r-real', key: 'r-real', outcome: 'win', mode: 'hard', cards: ['starfall'] }] };
-  await ctx.addInitScript((m) => {
-    try { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('neo-deck', JSON.stringify(m)); localStorage.setItem('neo-cards-dev', '1'); } } catch (e) {}
-  }, real);
-  const p1 = await ctx.newPage();
-  p1.on('pageerror', e => errs.push('park: ' + e));
-  await p1.goto(url + '?cards=1', { waitUntil: 'domcontentloaded' });
-  await p1.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
-  const r1 = await p1.evaluate(() => {
-    const out = {};
-    // the platform's deal (Deck.dealAll, on its own branch): a stand-in that
-    // does exactly what it does — reset counts AND the cloud queue, mark it test
-    Deck.dealAll = function () {
-      const c = this.col();
-      c.counts = {}; c.seen = {}; c.runs = {}; c.queue = []; c.pity = 0; c.test = Date.now();
-      for (const card of this.CATALOG) this._add(card.id, 1);
-      this.saveCol();
-      return this.total();
-    };
-    out.wrapped = Deck._wrapDeal();
-    out.dealt = Deck.dealAll();
-    out.parked = JSON.parse(localStorage.getItem(Deck.REAL_KEY) || 'null');
-    out.again = Deck.dealAll();                         // a deal over a test deck parks nothing new
-    out.parked2 = JSON.parse(localStorage.getItem(Deck.REAL_KEY) || 'null');
-    return out;
-  });
-  // the tester leaves the link: ?cards=0 — the real collection comes back, queue and all
-  await p1.goto(url + '?cards=0', { waitUntil: 'domcontentloaded' });
-  await p1.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
-  const r2 = await p1.evaluate(() => ({ back: JSON.parse(localStorage.getItem('neo-deck') || 'null'), parked: localStorage.getItem(Deck.REAL_KEY) }));
-  // …and ?cards=0 over a REAL collection never overwrites it with a parked one
-  await p1.evaluate(() => { localStorage.setItem(Deck.REAL_KEY, JSON.stringify({ v: 1, counts: { gold_nugget: 9 }, queue: [] })); });
-  await p1.goto(url + '?cards=0&again=1', { waitUntil: 'domcontentloaded' });
-  await p1.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Deck, null, { timeout: 60000 });
-  const r3 = await p1.evaluate(() => JSON.parse(localStorage.getItem('neo-deck') || 'null'));
-  ck('aTestDealParksTheRealCollectionQueueAndAll',
-    r1.wrapped && r1.dealt === 36 && r1.parked && r1.parked.queue.length === 1 && r1.parked.queue[0].run === 'r-real' && r1.parked.counts.starfall === 2 &&
-    !r1.parked.test && r1.again === 36 && r1.parked2 && r1.parked2.counts.starfall === 2,
-    r1.parked ? `parked ${JSON.stringify(r1.parked.counts)}, ${r1.parked.queue.length} op` : 'nothing parked');
-  ck('andLeavingTheLinkBringsItBack',
-    r2.back && !r2.back.test && r2.back.counts.starfall === 2 && r2.back.queue.length === 1 && r2.back.queue[0].run === 'r-real' && r2.parked === null &&
-    r3 && r3.counts.starfall === 2 && !r3.counts.gold_nugget,
-    `restored ${r2.back && JSON.stringify(r2.back.counts)}; a real collection kept over a stale park: ${r3 && JSON.stringify(r3.counts)}`);
-  await ctx.close();
-}
-
-/* ================= 15. THE SWITCH OFF: not even the boot's inert listener ================= */
+/* ================= 14. THE SWITCH OFF: not even the boot's inert listener ================= */
 {
   const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
   await ctx.addInitScript(() => {
