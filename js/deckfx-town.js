@@ -52,8 +52,10 @@
       is in S, so a save mid-show simply loads without it.
 
    PRESENTATION scales with the tier: Stone a small, satisfying beat at the
-   hall's door; Bronze warmer (a laden cart rolling in, a building rising in
-   gold, beacons catching on every tower); Iron dramatic (a cold flash, a
+   hall's door (the goods come down in a shaft of the tier's own light onto
+   ground nobody is standing on, the stone as the map's own ore boulders);
+   Bronze warmer (a laden cart rolling in beside its pile, a building rising
+   in gold, beacons catching on every tower); Iron dramatic (a cold flash, a
    shake, a wave of runes); Enlightenment held — the sky darkens, a pillar
    of gold comes down on the hall, the ground shakes, a dome rises. House
    style throughout: hard pixels on a 2px grid, hard alpha steps, light
