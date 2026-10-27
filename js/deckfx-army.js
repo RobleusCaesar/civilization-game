@@ -483,11 +483,38 @@ Object.assign(Deck, {
      sprite (render.js). Cheap by construction: one or two drawImage calls
      and a handful of 2px squares; the tinted frame is R.tintOf's cache. */
   drawUnit(g, u, img, x, y, D) {
+    if (this._swingUntil) img = this.swingFrame(u) || img;   // an engine set down swings its arm once
     const rank = u.vet ? 2 : u.ranked ? 1 : 0;
     if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (rank) this.drawRank(g, x, y, D, rank); return; }
     if (u.warWolf) this.drawCollar(g, u, x, y, D);     // under the wolf, as a ring on the ground is
     g.drawImage(img, x, y, D, D);
     if (rank) this.drawRank(g, x, y, D, rank);
+  },
+  /* THE ARM SWINGS ONCE AS IT LANDS (Trebuchet Battery, Siege Train — judge
+     g3: "there is no sense of weight"): an engine set down by a card plays
+     its own loosing strip (the fight sheet: the counterweight drops, the arm
+     whips over) once through, from its first frame, at the unit pass's own
+     draw (R's unit pass hands every unit to drawUnit while one is swinging).
+     Render state only — a WeakMap keyed by the unit and a count that keeps
+     the unit pass's fast path free the rest of the time; never in a save;
+     the tap hits the same box (the strip's frames are the walk's size). */
+  _swing: new WeakMap(), _swingUntil: 0, SWING_MS: 1100,
+  swingAt(u, ms) {
+    const t0 = performance.now(), d = ms || this.SWING_MS;
+    this._swing.set(u, { t0, ms: d });
+    this._swingUntil = Math.max(this._swingUntil, t0 + d);
+  },
+  // is any engine mid-swing? (the unit pass's one cheap question)
+  swinging() { return this._swingUntil > performance.now(); },
+  swingFrame(u) {
+    const sw = this._swing.get(u);
+    if (!sw) return null;
+    const el = performance.now() - sw.t0;
+    if (el >= sw.ms) { this._swing.delete(u); return null; }
+    const ua = window.Assets && Assets.unitArt && (Assets.unitArt[R.unitArtKey(u)] || Assets.unitArt[u.kind]);
+    const d = ua && ua.dirs && ua.dirs[R.unitFacing(u)], fr = d && d.fight;
+    if (!fr || !fr.length) return null;
+    return fr[Math.min(fr.length - 1, Math.floor(el / sw.ms * fr.length))];
   },
   // the player's tribe's dye ({body, accent}), as its tunics wear it
   dyeOf() { return (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99', accent: '#2c4e70' }; },
@@ -1309,7 +1336,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           A.arrive(g, s, layer, 'steel');
           if (layer !== 'world') return;
           A.beats(s, s.t, landings(s, 1), 5, 0.4);
-          skid(s);
+          skid(s); swing(s);
           g.save(); g.globalCompositeOperation = 'lighter';
           for (const m of s.units) {
             const q = (s.t - m.d) / 0.45;
@@ -1490,7 +1517,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           const at = landings(s, 1);
           A.beats(s, s.t, [0.02].concat(at), [0].concat(at.map(() => 7)), 0.45, [null].concat(at.map((x, i) => i ? 'cardDrum' : 'cardRumble')));
           skid(s);
-          swing(g, s);
+          swing(s);
         },
       },
     },
@@ -1714,8 +1741,18 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           { delay: m.d * 1000 + 30 + k * 70, scale: k === 1 ? 1 : 0.7 });
     }
   }
-  // a trebuchet's arm swinging over once as it lands (issue 7 of the playtest)
-  function swing(g, s) { /* drawn in its own commit */ }
+  /* …and AN ARM SWINGS ONCE as each throwing engine settles (Deck.swingAt:
+     a trebuchet's counterweight drops and its arm whips over, a catapult's
+     arm kicks up), a beat after it lands, once a show */
+  function swing(s) {
+    s.sw = s.sw || {};
+    for (const m of s.units) {
+      if (s.sw[m.id] || s.t - m.d < 0.12) continue;
+      s.sw[m.id] = 1;
+      const u = live(m.id);
+      if (u && (u.kind === 'trebuchet' || u.kind === 'catapult')) Deck.swingAt(u);
+    }
+  }
 
   /* A GHOST'S GROUND CRACKS before it rises (c: 0 → 1 as its beat comes):
      a jagged seam of light across its tile, hashed off its id so every

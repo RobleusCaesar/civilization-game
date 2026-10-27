@@ -1546,6 +1546,49 @@ await p.evaluate(({ ARMY }) => {
   ck('andNoConfettiOutlivesHalfASecond', ids.every(k => T[k].left === 0), ids.map(k => `${k}: ${T[k].left} px left 0.55s after the last landing`).join('; '));
 }
 {
+  /* THE WEIGHT OF AN ENGINE (judge g3: the Trebuchet Battery "has no sense
+     of weight"): as each engine is set down the ground jolts (a hard shake
+     struck on its own landing), the dust skids out from under it (three
+     puffs of the place-dust thrown out behind it, on its landing beat), and
+     a throwing engine swings its arm once through its own loosing strip,
+     from the first frame — the Battery's two trebuchets and the Siege Train's
+     catapult; the tower and the ballista have no arm to swing. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    for (const id of ['trebuchet_battery', 'siege_train']) {
+      __ar.fresh('army-weight-' + id); __ar.flat();
+      R.cardShows = []; R.summons = []; R.placePoofs = []; R._shake = null;
+      const { units } = __ar.play(id);
+      const s = R.cardShows.find(x => x.id === id), fx = Deck.FX[id], g = R.g;
+      const shakes = [], swung = {};
+      const real = R.shakeAt.bind(R);
+      R.shakeAt = (amp, dur) => { shakes.push([+s.t.toFixed(2), amp]); return real(amp, dur); };
+      try {
+        for (let t = 0; t < s.ms / 1000; t += 0.02) {
+          s.t = t;
+          for (const L of fx.show.layers) { g.save(); fx.show.draw.call(fx, g, s, t / (s.ms / 1000), 0, L); g.restore(); }
+          for (const u of units) if (Deck._swing && Deck._swing.has(u) && swung[u.id] == null) swung[u.id] = +t.toFixed(2);
+        }
+      } finally { R.shakeAt = real; }
+      const landed = s.units.map(m => m.d);
+      out[id] = {
+        kinds: units.map(u => u.kind),
+        // a hard jolt within a beat of every landing
+        jolts: landed.every(d => shakes.some(([t, a]) => a >= 5 && t >= d - 0.03 && t <= d + 0.1)),
+        // three skid puffs per engine, thrown on its landing beat
+        skids: units.map((u, i) => R.placePoofs.filter(q => Math.hypot(q.x + 0.5 - u.x, q.y + 0.5 - u.y) < 1.2 && Math.abs(-q.t / 1000 - landed[i]) < 0.3).length),
+        swung: units.map((u, i) => swung[u.id] == null ? null : +(swung[u.id] - landed[i]).toFixed(2)),
+      };
+    }
+    return out;
+  });
+  const T = r.trebuchet_battery, ST = r.siege_train;
+  const arms = (o) => o.kinds.every((k, i) => (k === 'trebuchet' || k === 'catapult') ? (o.swung[i] != null && o.swung[i] >= 0 && o.swung[i] < 0.3) : o.swung[i] == null);
+  ck('anEngineLandsWithItsWeight', T.jolts && ST.jolts && T.skids.every(n => n >= 3) && ST.skids.every(n => n >= 3) && arms(T) && arms(ST),
+    `the Battery (${T.kinds.join(', ')}): a hard jolt on every landing ${T.jolts}, skid puffs ${T.skids.join('/')}, arm swung ${T.swung.map(v => v == null ? '—' : v + 's').join('/')} after landing; ` +
+    `the Siege Train (${ST.kinds.join(', ')}): jolts ${ST.jolts}, skids ${ST.skids.join('/')}, arm ${ST.swung.map(v => v == null ? '—' : v + 's').join('/')}`);
+}
+{
   /* THE SUMMON DUST IS PIXEL DUST (judge g3, "rendering defects" 1): a summon
      throws R.startPlacePoof at 0.55 under an engine and 1.25 under a battery,
      and the scaled branch drew the frame through whatever smoothing the canvas
