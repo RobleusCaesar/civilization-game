@@ -788,6 +788,21 @@ const DeckUI = {
   _say(msg, kind, ms) {
     if (UI._toastAt) delete UI._toastAt[String(msg).replace(/\d+/g, '#')];
     UI.toast(msg, kind, ms);
+    // the line just said, so a refusal the player has since answered can be
+    // taken back (_unsay)
+    const box = document.getElementById('toasts'), el = box && box.lastElementChild;
+    return el && el.textContent === String(msg) ? el : null;
+  },
+  /* A REFUSAL THE PLAYER HAS ANSWERED IS TAKEN BACK (playtest g4, starfall-
+     aim: "Choose ground you have explored." stayed up through the valid aim
+     that followed and on into the play). The moment the mark stands on
+     ground that will take the card — or the card flies — the refusal toast
+     the deck raised goes. */
+  _refusal: null,
+  _unsay() {
+    const el = this._refusal;
+    this._refusal = null;
+    if (el && el.isConnected) el.remove();
   },
   /* A WARNING IS A SENTENCE, and the ask comes after it as another one: the
      truce's own words end in a full stop ("…from today the rival fights
@@ -803,7 +818,8 @@ const DeckUI = {
      alarm: red is the town under attack (CLAUDE.md's foe-notes rule), and a
      card that cannot be played now is not an emergency (playtest nit 9) */
   _refuse(why, shakeEl) {
-    this._say(why || 'Not now.', 'note');
+    this._unsay();
+    this._refusal = this._say(why || 'Not now.', 'note');
     UI.cue('bad');
     if (this.lifted) this.lifted.why.textContent = why || '';
     if (shakeEl && !this._calm())
@@ -840,6 +856,7 @@ const DeckUI = {
     const world = S, calm = this._calm(), rank = t.rank;
     const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
     const r0 = fromEl ? fromEl.getBoundingClientRect() : { left: vw / 2 - 40, top: vh - 140, width: 80, height: 111 };
+    this._unsay();   // a refusal answered by this very play is not carried into it
     this.putBack(true);
     if (this.open) this.closeSheet(true);
     if (this.aim) this.endAim(true, true);
@@ -1490,7 +1507,11 @@ const DeckUI = {
     const can = Deck.canPlay(A.id);
     if (!can.ok) { this._refuse(can.why, A.go); this.endAim(); return; }
     // RE-VALIDATED FROM SCRATCH: the tint is never trusted (placement's rule)
-    if (!Deck.validTarget(A.id, A.x, A.y)) { this._refuse(this._badGround(A), A.go); return; }
+    if (!Deck.validTarget(A.id, A.x, A.y)) {
+      this._refuse(this._badGround(A), A.go);
+      if (this._refusal) this._refusal.dataset.ground = '1';   // answered by ground that will take it
+      return;
+    }
     if (A.hover && !A.set) { this._refuse('Click the ground to choose where it lands.', A.go); return; }
     this._aimSync();
     // a card that would END SOMETHING says so, and asks twice (the two-tap
@@ -1520,6 +1541,7 @@ const DeckUI = {
     const A = this.aim;
     const c = Deck.card(A.id), fx = Deck.FX[A.id] || {};
     A.ok = Deck.validTarget(A.id, A.x, A.y);
+    if (A.ok && this._refusal && this._refusal.dataset.ground) this._unsay();
     let warn = null;
     if (A.ok && fx.warn) { try { warn = fx.warn({ x: A.x + 0.5, y: A.y + 0.5 }) || null; } catch (e) { warn = null; } }
     A.warn = warn;
@@ -1552,6 +1574,15 @@ const DeckUI = {
     const g = cv.getContext('2d');
     g.clearRect(0, 0, cv.width, cv.height);
     const dot = (x, y, s, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), s, s); };
+    /* THE FLOOR OF THE REACH DARKENS THE GROUND, never lights it: a faint
+       wash of the card's colour lifted grass to olive under a gold aim
+       (dragonfire-aim: (76,96,43) inside against (42,66,34)) and to khaki
+       under the truce's orange. One flat hard-edged step of ink instead,
+       laid first so every mark stands on it at full strength. */
+    g.globalAlpha = 0.16;
+    g.fillStyle = this.INK;
+    R.pxDisc(g, half, half, R0 - 2, 2);
+    g.globalAlpha = 1;
     // the reach: a dotted ring, a shadow under every dot so it reads on snow and sand alike
     const steps = Math.max(24, Math.round(2 * Math.PI * R0 / 7));
     for (let i = 0; i < steps; i++) {
@@ -1559,22 +1590,21 @@ const DeckUI = {
       dot(x + 1, y + 1, 2, 'rgba(0,0,0,0.55)');
       dot(x, y, 2, col);
     }
-    // the buildings' reach, when it is shorter: sparser dots, half as bright
+    /* THE BUILDINGS' REACH, when it is shorter (Starfall 2 of 3, Dragonfire
+       2.5): a DASHED ring of the same hard pixels, every one of them inked
+       all round — the old sparse dots at 60% were invisible on grass
+       (playtest g4) */
     if (A.inner > 0) {
-      const R1 = A.inner * TL, n1 = Math.max(16, Math.round(2 * Math.PI * R1 / 11));
-      g.globalAlpha = 0.6;
+      const R1 = A.inner * TL, n1 = Math.max(24, Math.round(2 * Math.PI * R1 / 3));
+      const pts = [];
       for (let i = 0; i < n1; i++) {
-        const a = i / n1 * Math.PI * 2, x = half + Math.cos(a) * R1 - 1, y = half + Math.sin(a) * R1 - 1;
-        dot(x + 1, y + 1, 2, 'rgba(0,0,0,0.55)');
-        dot(x, y, 2, col);
+        if (i % 4 === 3) continue;   // three on, one off: a dash, never the outer ring's dots
+        const a = i / n1 * Math.PI * 2;
+        pts.push([Math.round(half + Math.cos(a) * R1 - 1), Math.round(half + Math.sin(a) * R1 - 1)]);
       }
-      g.globalAlpha = 1;
+      for (const [x, y] of pts) dot(x - 1, y - 1, 4, this.INK);
+      for (const [x, y] of pts) dot(x, y, 2, col);
     }
-    // the faint floor of the reach
-    g.globalAlpha = 0.14;
-    g.fillStyle = col;
-    R.pxDisc(g, half, half, R0 - 2, 2);
-    g.globalAlpha = 1;
     // the chosen tile, framed by its corners
     const t0 = half - TL / 2, t1 = half + TL / 2 - 2;
     for (const [x, y] of [[t0, t0], [t1, t0], [t0, t1], [t1, t1]]) {

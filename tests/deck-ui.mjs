@@ -847,12 +847,65 @@ const ux = await p.evaluate(async () => {
   out.toast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => /explored/.test(t.textContent)) &&
     ![...document.querySelectorAll('#toasts .toast.warn')].some(t => /explored/.test(t.textContent));
   S.map.explored[A.y * CFG.W + A.x] = 1;
+  // …and the refusal leaves the moment the mark stands on ground that takes
+  // the card (playtest g4: it stayed up through the valid aim and the play)
+  { const TL = CFG.TILE, z = R.cam.z;
+    DeckUI._aimTo(((A.x + 1.5) * TL - R.cam.x) * z, ((A.y + 0.5) * TL - R.cam.y) * z); }
+  out.validNow = DeckUI.aim && DeckUI.aim.ok;
+  out.staleLeft = [...document.querySelectorAll('#toasts .toast')].filter(t => /explored/.test(t.textContent)).length;
   // ✕ puts the card back, untouched, and gives the pause back
   document.querySelector('#dkAimBar .dkANo').click();
   out.cancel = { aim: !!DeckUI.aim, kept: Deck.count('__aim') === n0, paused: S.paused, layer: !!document.getElementById('dkAim') };
   return out;
 });
 ck('unexploredGroundIsRefused', ux.bad && /explored/.test(ux.stat) && !ux.flew && ux.kept && ux.still && ux.toast, ux.stat);
+ck('andTheRefusalLeavesWithAValidMark', ux.toast && ux.validNow && ux.staleLeft === 0,
+  `mark valid: ${ux.validNow}; "explored" toasts still up: ${ux.staleLeft}`);
+/* THE AIM NEVER LIGHTS THE GROUND, AND ITS INNER RING READS (playtest g4):
+   the reach's floor was a 14% wash of the card's colour — grass under a
+   gold aim went olive, under the truce's orange khaki — and the buildings'
+   reach (Starfall 2 of 3, Dragonfire 2.5) was sparse dots at 60%, lost on
+   grass. Read off the reticle's own canvas, laid over meadow (42,66,34):
+   no pixel of it, in the tier's gold or the warning's orange, comes out
+   lighter and olive; and the inner ring is opaque hard pixels, inked. */
+await aimOpen();
+const rt = await p.evaluate(() => {
+  const A = DeckUI.aim, out = {};
+  A.inner = 2;
+  const grass = [42, 66, 34], lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+  for (const [k, col] of [['gold', '#ffd45e'], ['warn', '#f0a040']]) {
+    DeckUI._drawReticle(A, col);
+    const cv = A.ret, d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, half = A.half, R1 = A.inner * CFG.TILE;
+    const [cr, cg, cb] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
+    let olive = 0, innerCol = 0, innerInk = 0, innerSoft = 0;
+    for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+      const i = (y * cv.width + x) * 4, a = d[i + 3] / 255;
+      if (!a) continue;
+      const o = [0, 1, 2].map(c => d[i + c] * a + grass[c] * (1 - a));
+      const mx = Math.max(...o), mn = Math.min(...o), dd = mx - mn;
+      if (lum(...o) - lum(...grass) >= 10 && dd / mx >= 0.2) {
+        let h = mx === o[0] ? ((o[1] - o[2]) / dd) % 6 : mx === o[1] ? (o[2] - o[0]) / dd + 2 : (o[0] - o[1]) / dd + 4;
+        h *= 60; if (h < 0) h += 360;
+        if (h >= 48 && h <= 115) olive++;
+      }
+      const r = Math.hypot(x + 0.5 - half, y + 0.5 - half);
+      if (Math.abs(r - R1) <= 2.5) {
+        const isCol = Math.abs(d[i] - cr) + Math.abs(d[i + 1] - cg) + Math.abs(d[i + 2] - cb) < 12;
+        if (isCol && d[i + 3] === 255) innerCol++;
+        else if (isCol) innerSoft++;
+        if (d[i + 3] === 255 && lum(d[i], d[i + 1], d[i + 2]) < 20) innerInk++;
+      }
+    }
+    out[k] = { olive, innerCol, innerInk, innerSoft, around: Math.round(2 * Math.PI * R1) };
+  }
+  A.inner = 0; A.drawn = null; DeckUI._aimSync();
+  document.querySelector('#dkAimBar .dkANo').click();
+  return out;
+});
+ck('theAimNeverLightsTheGround', rt.gold.olive === 0 && rt.warn.olive === 0,
+  `olive pixels over meadow: ${rt.gold.olive} under a gold aim, ${rt.warn.olive} under the warning's orange`);
+ck('andItsInnerRingReads', ['gold', 'warn'].every(k => rt[k].innerCol >= rt[k].around && rt[k].innerInk >= rt[k].around && rt[k].innerSoft === 0),
+  ['gold', 'warn'].map(k => `${k}: ${rt[k].innerCol} opaque ring px, ${rt[k].innerInk} ink px, ${rt[k].innerSoft} half-lit (round ${rt[k].around})`).join('; '));
 ck('cancelKeepsTheCardAndTheWorld', !ux.cancel.aim && ux.cancel.kept && ux.cancel.paused === false && !ux.cancel.layer, JSON.stringify(ux.cancel));
 await aimOpen();
 await p.keyboard.press('Escape');
