@@ -1362,10 +1362,17 @@
        1 hp): Deck.bldTakes caps every blow at what stands above it, on the
        attack path and the wilds' fire alike, and never raises a hall already
        lower. The rival's Wonder still ends the run — that is a race lost,
-       not a hall fallen. The play is held: the sky darkens, a pillar of gold
-       comes down on the hall, the ground shakes as it lands and a dome of
-       light rises over it; while it runs the dome stands, and flares where
-       a blow is swallowed. */
+       not a hall fallen. The play is held: the sky darkens, a tapered LANCE
+       of gold comes down out of it onto the hall's ROOF, the ground shakes as
+       it lands, short stepped rays break from the crown and a dome rises over
+       the hall; while it runs the dome stands, and a blow it swallows flashes
+       its outline in hard steps and throws a gold "HELD!" with a dark edge.
+       When the ward ends the dome breaks and falls, and a note says so — a
+       hall under siege must be told its protection is gone.
+       The first cut's pillar opened as a flat orange slab under the top bar
+       and stood half a screen wide with a flat foot floating over the hall;
+       its flash was a FILLED amber half-dome cut flat along the ground; its
+       "Held!" was pale; its end was a log line nobody saw. */
     unbreakable_hall: {
       at: 'tc', SLIVER: 0.02, IMPACT: 0.2,
       sliver(b) { return Math.max(1, Math.round(b.maxhp * this.SLIVER)); },
@@ -1381,89 +1388,90 @@
         TX.sound('cardRise');
         return { ok: true, until: e.until };
       },
-      end() { G.log('🏛 The ward on your Town Center fades — it can fall again.'); },
-      // a blow on the warded hall (render state): the dome flares
-      _hit: 0, _took: 0,
+      // the ward's end is NEWS (a note toast, never the red alarm), and the dome breaks where it stood
+      end() {
+        G.log('🏛 The ward on your Town Center fades — it can fall again.', 'note', 4200);
+        const tc = TX.tc();
+        if (tc) TX.show('unbreakable_hall', { tc: tc.id, fall: 1, ms: 1500 });
+      },
+      // a blow on the warded hall (render state): the dome flares; one it
+      // swallows whole is HELD — its float taken over by the ward's own gold
+      _hit: 0, _took: 0, _held: [],
       struck(b, took) {
         this._hit = performance.now(); this._took = took;
         TX.sound('cardWard');
       },
-      // the dome over the hall, world px: centre, ground, radius, height
+      HELD: { col: '#ffd45e', hot: '#fff3cf', ink: '#2a1606', ms: 1300 },
+      // the dome over the hall, world px: centre, ground, radius, height — and the roof the lance lands on
       geom(tc) {
         const TL = TLs(), sz = Bld.size(tc), c = TX.crown(tc);
         const cx = Bld.cx(tc) * TL, gy = (tc.y + sz) * TL - 4, rx = (sz / 2 + 0.6) * TL;
-        return { cx, gy, rx, ry: rx * 0.42, hd: Math.max(rx * 0.9, gy - c.y + TL * 0.35) };
+        return { cx, gy, rx, ry: rx * 0.42, hd: Math.max(rx * 0.9, gy - c.y + TL * 0.35), roof: c.y + TL * 0.15 };
       },
-      /* ONE RAY OF THE SKY, in hard pixels (device px, the sky layer): the
-         wedge between angles a±wa from (ax, ay), cut into px-wide columns —
-         or rows, for a ray nearer the vertical — each column the wedge's own
-         span snapped to the px grid. A stepped band of light in the dome's
-         language; a vector wedge was the one soft edge in the show. */
-      ray(g, ax, ay, a, wa, px, W, H) {
-        const c = Math.cos(a), s0 = Math.sin(a), t0 = Math.tan(a - wa), t1 = Math.tan(a + wa);
-        const snap = v => Math.round(v / px) * px;
-        if (Math.abs(c) >= Math.abs(s0)) {
-          const sg = c > 0 ? 1 : -1;
-          for (let k = 0; ; k++) {
-            const x = ax + sg * k * px;
-            if (x < -px || x > W + px) break;
-            const dx = x - ax, y0 = ay + dx * t0, y1 = ay + dx * t1;
-            const lo = snap(Math.min(y0, y1)), hi = snap(Math.max(y0, y1));
-            if (hi < 0 || lo > H) continue;              // off the screen here: the ray may still come on
-            g.fillRect(snap(x), lo, px, Math.max(px, hi - lo));
-          }
-        } else {
-          const sg = s0 > 0 ? 1 : -1, c0 = 1 / t0, c1 = 1 / t1;
-          for (let k = 0; ; k++) {
-            const y = ay + sg * k * px;
-            if (y < -px || y > H + px) break;
-            const dy = y - ay, x0 = ax + dy * c0, x1 = ax + dy * c1;
-            const lo = snap(Math.min(x0, x1)), hi = snap(Math.max(x0, x1));
-            if (hi < 0 || lo > W) continue;
-            g.fillRect(lo, snap(y), Math.max(px, hi - lo), px);
-          }
-        }
-      },
+      /* the dome's ribs in hard dots, in the gold's ink (never a fill: a body
+         of gold over the meadow was a lime blister, then an amber half-dome
+         cut flat along the ground). A blow swallowed (`boost`, in hard
+         quarters) closes the outline up — every cell along it lit, a second
+         skin just inside — and steps it hot, then back down the ramp. */
       dome(g, D, rise, boost, now) {
         const { cx, gy, rx, ry } = D, hd = D.hd * rise;
         if (hd < 2) return;
-        /* the light inside it: two hard bands, stepped, never a gradient —
-           and only while it is LIT (rising, or a blow being swallowed): a
-           dome of gold ADDED stood over the town for twelve days as a lime
-           blister, and any standing tint of the meadow under it reads olive.
-           Lit, it is the card's light at its faint steps (R.glow: the hall in
-           it turns gold and its thatch still shows through) */
-        if (boost > 0) for (const [k, sv] of [[1, 0.35], [0.62, 0.55]]) {
-          R.glow(g, boost * sv, () => {
-            for (let y = 0; y < hd * k; y += PX) {
-              const w = Math.sqrt(Math.max(0, 1 - (y / (hd * k)) * (y / (hd * k)))) * rx * k;
-              g.fillRect(sn(cx - w), sn(gy - y), Math.max(PX, sn(w * 2)), PX);
-            }
-          });
-        }
         g.save();
-        // its ribs: the outline, two meridians and a girdle, made of dots, a
-        // shimmer running round — opaque gold ink, faded down the ramp
         const dots = (fx, fy, n, base) => {
           for (let i = 0; i <= n; i++) {
-            const th = i / n * Math.PI, x = fx(th), y = fy(th);
-            const sh = Math.max(0, Math.sin(th * 3 - now * 2.2));
-            if (!R.inkOn(g, base + sh * 0.35 + boost * 0.4)) continue;
-            g.fillRect(sn(x), sn(y), PX, PX);
+            const th = i / n * Math.PI, sh = Math.max(0, Math.sin(th * 3 - now * 2.2));
+            if (!R.inkOn(g, base + sh * 0.35 + boost * 0.55)) continue;
+            g.fillRect(sn(fx(th)), sn(fy(th)), PX, PX);
           }
         };
-        const nO = Math.max(16, Math.round((rx + hd) / 2));
-        dots(th => cx + Math.cos(th) * rx, th => gy - Math.sin(th) * hd, nO, 0.6);
+        const nO = Math.max(16, Math.round((rx + hd) / 2)), dense = boost > 0 ? 2.6 : 1;
+        dots(th => cx + Math.cos(th) * rx, th => gy - Math.sin(th) * hd, Math.round(nO * dense), 0.6);
+        if (boost > 0) dots(th => cx + Math.cos(th) * (rx - 2 * PX), th => gy - Math.sin(th) * (hd - 2 * PX), Math.round(nO * dense * 0.95), boost * 0.5);
         dots(th => cx + Math.cos(th) * rx * 0.55, th => gy - Math.sin(th) * hd, Math.round(nO * 0.7), 0.25);
-        dots(th => cx + Math.cos(th + Math.PI) * rx, th => gy + Math.sin(th) * ry, nO, 0.4);     // the ring on the ground, in front
+        dots(th => cx + Math.cos(th + Math.PI) * rx, th => gy + Math.sin(th) * ry, Math.round(nO * (boost > 0 ? 1.8 : 1)), 0.4);   // the ring on the ground, in front
         dots(th => cx + Math.cos(th) * rx * 0.86, th => gy - hd * 0.5 + Math.sin(th) * ry * 0.7, Math.round(nO * 0.8), 0.22);
         g.restore();
         g.globalAlpha = 1;
       },
+      /* "HELD!": a blow the ward swallows whole writes the plain float
+         Combat.hitBuilding writes for every blow ("Held!" — the contract's
+         word); the ward takes it over the frame it appears and throws its own,
+         in gold with a hard dark edge, rising off the roof (render state) */
+      _labels: [],
+      takeHeld() {
+        const F = typeof R !== 'undefined' && R.floats;
+        if (!F) return;
+        for (let j = F.length - 1; j >= 0; j--) {
+          const f = F[j];
+          if (f.txt !== 'Held!' || f.t < 0.8) continue;
+          F.splice(j, 1);
+          if (this._labels.length > 6) this._labels.shift();
+          this._labels.push({ x: f.x, y: f.y, t: performance.now() });
+        }
+      },
+      drawHeld(g) {
+        const TL = TLs(), H = this.HELD, now = performance.now();
+        g.save();
+        g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        for (let i = this._labels.length - 1; i >= 0; i--) {
+          const L = this._labels[i], q = (now - L.t) / H.ms;
+          if (q >= 1) { this._labels.splice(i, 1); continue; }
+          const x = sn(L.x * TL), y = sn(L.y * TL - eo(Math.min(1, q * 1.6)) * TL * 0.7), big = q < 0.12;
+          if (q > 0.8 && ((now / 90) | 0) % 2) continue;      // it goes out in hard blinks, never a fade
+          g.font = 'bold ' + (big ? 13 : 11) + 'px sans-serif';
+          g.fillStyle = H.ink;
+          for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, 2]]) g.fillText('HELD!', x + dx, y + dy);
+          g.fillStyle = big ? H.hot : H.col;
+          g.fillText('HELD!', x, y);
+        }
+        g.restore();
+      },
       drawLive(g, e) {
+        this.takeHeld();
+        if (this._labels.length) this.drawHeld(g);
         const tc = TX.tc();
         if (!tc || !TX.bNear(tc)) return;
-        // the dome rises on the play's own clock (render time) after the pillar
+        // the dome rises on the play's own clock (render time) after the lance
         // lands; with no fresh play on screen it simply stands
         const now = performance.now() / 1000, sh = TX.fresh('unbreakable_hall');
         const rise = sh ? eo(cl((sh.t - this.IMPACT * sh.ms / 1000) / 1.2)) : 1;
@@ -1478,11 +1486,48 @@
           g.restore();
         }
       },
+      /* THE LANCE (device px, the sky layer): a body of the card's light cut
+         in rows of the art's own pixel, wide where it leaves the sky and
+         narrowing in hard steps to where it strikes, its point drawn down to
+         a single cell — it lands ON the roof, never a slab with a flat foot */
+      lance(g, x, tip, w0, w1, unit) {
+        const snap = v => Math.round(v / unit) * unit;
+        for (const [wf, sv] of [[1, 0.5], [0.62, 0.75], [0.3, 1]]) {
+          R.glow(g, sv, () => {
+            for (let y = 0; y < tip; y += unit) {
+              const k = y / Math.max(1, tip), w = Math.max(unit, snap((w0 + (w1 - w0) * k) * wf));
+              g.fillRect(snap(x - w / 2), y, w, unit);
+            }
+            for (let j = 1; j <= 3; j++) {
+              const w = Math.max(unit, snap(w1 * wf * (1 - j / 4)));
+              g.fillRect(snap(x - w / 2), snap(tip) + (j - 1) * unit, w, unit);
+            }
+          });
+        }
+        R.glowHot(g, 0.75, () => g.fillRect(snap(x - unit / 2), 0, unit, snap(tip) + 2 * unit));
+      },
       show: {
         ms: 4200, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
           const tc = Bld.get(s.tc); if (!tc) return;
           const U = Deck.FX.unbreakable_hall, TL = TLs(), D = U.geom(tc), imp = U.IMPACT;
+          if (s.fall) {
+            // THE WARD BREAKS: the dome's outline cracks into its dots and they
+            // fall, stepping down the ramp, and are gone
+            if (layer !== 'world') return;
+            if (!s.boom) { s.boom = 1; if (R.shakeAt) R.shakeAt(2, 0.3); TX.sound('cardWard'); }
+            g.save();
+            const nO = Math.max(16, Math.round((D.rx + D.hd) / 2)) * 2;
+            for (let i = 0; i <= nO; i++) {
+              const th = i / nO * Math.PI, h0 = hs(i, 41), q = cl(p * 1.15 - h0 * 0.15);
+              if (!R.inkOn(g, (1 - q) * (i % 3 ? 0.7 : 1))) continue;
+              const x = D.cx + Math.cos(th) * D.rx + (h0 - 0.5) * 18 * q, y = D.gy - Math.sin(th) * D.hd + (40 + 90 * h0) * q * q;
+              if (y > D.gy + 6) continue;
+              g.fillRect(sn(x), sn(y), PX, PX);
+            }
+            g.restore();
+            return;
+          }
           if (layer === 'world') {
             // the ground answers the blow: rings of gold rolling out from the hall
             if (p > imp) {
@@ -1495,18 +1540,18 @@
               }
               g.restore();
             }
-            // motes of gold coming down in the pillar, in the gold's ink
+            // motes of gold coming down with the lance, in the gold's ink
             if (p > 0.04 && p < 0.7) {
               g.save();
               for (let k = 0; k < 14; k++) {
                 const ph = (s.t * 0.9 + hs(k, 21)) % 1;
                 if (!R.inkOn(g, Math.sin(ph * Math.PI))) continue;
-                g.fillRect(sn(D.cx + (hs(21, k) - 0.5) * D.rx * 1.3), sn(D.gy - D.hd * 2.6 * (1 - ph)), PX, PX);
+                g.fillRect(sn(D.cx + (hs(21, k) - 0.5) * D.rx * 1.1), sn(D.roof - D.hd * 2.2 * (1 - ph)), PX, PX);
               }
               g.restore();
             }
-            // the dome rises brighter than it will stand
-            if (p > imp && p < 0.75) U.dome(g, D, eo(cl((p - imp) / 0.3)), stp(0.6 * (1 - cl((p - imp) / 0.55)), 4), performance.now() / 1000);
+            // the dome rises brighter than it will stand — its outline, never a fill
+            if (p > imp && p < 0.75) U.dome(g, D, eo(cl((p - imp) / 0.3)), stp(0.75 * (1 - cl((p - imp) / 0.55)), 4), performance.now() / 1000);
             return;
           }
           // ---- the sky (device pixels) ----
@@ -1514,46 +1559,44 @@
             s.boom = true;
             if (R.shakeAt) R.shakeAt(7, 0.8);
             // (no whole-frame flash: gold laid over the meadow was the sepia
-            // wash, milk would be a pale green one — the pillar landing in
-            // the darkened sky, the shake, the rings and the halo of dots
-            // bursting across the screen are the blow)
+            // wash, milk would be a pale green one — the lance striking the
+            // roof in the darkened sky, the shake, the rings and the halo of
+            // dots bursting across the screen are the blow)
             if (R.startle) R.startle(Bld.cx(tc), Bld.cy(tc), 14);
             TX.sound('cardHall');
           }
-          const W = R.cv.width, H = R.cv.height, A = TX.scr(D.cx, D.gy), apex = TX.scr(D.cx, D.gy - D.hd);
+          const W = R.cv.width, H = R.cv.height, A = TX.scr(D.cx, D.gy), roof = TX.scr(D.cx, D.roof), apex = TX.scr(D.cx, D.gy - D.hd);
+          const unit = Math.max(2, Math.round(2 * A.z));      // the art's own pixel, in device px
           // the sky darkens for it, and lifts after
           const veil = p < 0.25 ? cl(p / 0.25) : p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.3);
           if (veil > 0) { g.fillStyle = 'rgba(12,8,24,' + stp(0.3 * veil, 6) + ')'; g.fillRect(0, 0, W, H); }
           g.save();
-          // the pillar: down from the top of the sky onto the hall, held, then
-          // a thread, then gone — the card's light (R.glow: what stands in it
-          // turns gold, then cream), a white-hot thread at its heart
+          // the lance: down out of the sky onto the roof, held, drawn in to a thread, gone
           const down = cl((p - 0.03) / (imp - 0.03)), narrow = p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.26);
-          if (down > 0 && narrow > 0) {
-            const bottom = A.y * eo(down), wide = D.rx * 2 * A.z;
-            for (const [wf, sv] of [[1.25, 0.5], [0.7, 0.7], [0.3, 0.9], [0.08, 1]]) {
-              const ww = Math.max(2, Math.round(wide * wf * narrow / 2) * 2);
-              R.glow(g, sv, () => g.fillRect(Math.round(A.x - ww / 2), 0, ww, Math.round(bottom)));
-            }
-            const hw = Math.max(2, Math.round(wide * 0.03 * narrow / 2) * 2);
-            R.glowHot(g, 0.75, () => g.fillRect(Math.round(A.x - hw / 2), 0, hw, Math.round(bottom)));
-          }
-          // rays from the dome's crown, turning slowly, while it rises and
-          // holds — NARROW bands of the card's light (added, they were lime;
-          // laid solid at their old width across the meadow, orange slabs)
+          if (down > 0 && narrow > 0) U.lance(g, A.x, roof.y * eo(down), TL * 1.25 * A.z * narrow, TL * 0.4 * A.z * narrow, unit);
+          // rays break from the crown, turning slowly: SHORT stepped dashes of
+          // the gold's ink near it, fading down the ramp — run across the whole
+          // screen as wedges of light they read as orange road lines
           if (p > imp && p < 0.9) {
-            const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3);
-            const rot = s.t * 0.12, px = Math.max(2, Math.round(A.z * 2));
-            for (let i = 0; i < 14; i++)
-              R.glow(g, (i % 2 ? 0.4 : 0.6) * k, () => U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.012 + (i % 2) * 0.006, px, W, H));
+            const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3), rot = s.t * 0.12;
+            const r0 = D.rx * 0.45 * A.z, step = unit * 5;
+            for (let i = 0; i < 16; i++) {
+              const a = rot + i / 16 * Math.PI * 2, long = i % 2 ? 3 : 5;
+              for (let d = 0; d < long; d++) {
+                if (!R.inkOn(g, k * (1 - d / long) * (i % 2 ? 0.7 : 1))) break;
+                const r = r0 + d * step;
+                for (let u = 0; u < 2; u++)
+                  g.fillRect(Math.round((apex.x + Math.cos(a) * (r + u * unit)) / unit) * unit, Math.round((apex.y + Math.sin(a) * (r + u * unit)) / unit) * unit, unit, unit);
+              }
+            }
           }
           // a halo of hard dots bursting out across the whole screen at the blow
           if (p > imp && p < imp + 0.35) {
-            const q = (p - imp) / 0.35, rr = q * Math.hypot(W, H) * 0.7, px = Math.max(2, Math.round(A.z * 2));
+            const q = (p - imp) / 0.35, rr = q * Math.hypot(W, H) * 0.7, px = unit;
             const n = Math.min(220, Math.max(24, Math.round(rr / (px * 3))));
             if (R.inkOn(g, 1 - q)) for (let i = 0; i < n; i++) {
               const th = i / n * Math.PI * 2;
-              g.fillRect(Math.round((A.x + Math.cos(th) * rr) / px) * px, Math.round((A.y + Math.sin(th) * rr * 0.6) / px) * px, px, px);
+              g.fillRect(Math.round((roof.x + Math.cos(th) * rr) / px) * px, Math.round((roof.y + Math.sin(th) * rr * 0.6) / px) * px, px, px);
             }
           }
           g.restore();

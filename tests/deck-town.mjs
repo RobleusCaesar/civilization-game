@@ -1179,6 +1179,68 @@ await p.evaluate(({ TOWN }) => {
       out.oneCellARow = rows.length >= 4 && rows.every(y => byRow.get(y).length === 1);
       out.diagonal = rows.length >= 4 && rows.slice(1).every((y, i) => byRow.get(y)[0] === byRow.get(rows[i])[0] - (y - rows[i]));
       rects = null;
+
+      /* (c) THE UNBREAKABLE HALL'S LANCE TAPERS ONTO THE ROOF: at the blow,
+         the light's rows narrow toward their foot, and the foot is the hall's
+         ROOF — the first cut's pillar was half a screen wide, one width top to
+         bottom, its flat foot floating at the ground line */
+      const U = Deck.FX.unbreakable_hall;
+      R.cardShows = []; S.deck.fx = [];
+      tc.hp = tc.maxhp;
+      Deck.play('unbreakable_hall');
+      const sh = R.cardShows.find(s => s.id === 'unbreakable_hall');
+      const D = U.geom(tc), TX = Deck._townTX, W = R.cv.width, ground = TX.scr(D.cx, D.gy), roof = TX.scr(D.cx, D.roof != null ? D.roof : D.gy);
+      const lanceRows = [];
+      sh.t = U.IMPACT * sh.ms / 1000;
+      P2.fillRect = function (x, y, w, h) { if (this.canvas === R.cv && w < W && Math.abs(x + w / 2 - ground.x) < 4 * CFG.TILE * ground.z) lanceRows.push([x, y, w, h]); return fr.apply(this, arguments); };
+      const g2 = R.cv.getContext('2d');
+      g2.save(); g2.setTransform(1, 0, 0, 1, 0, 0);
+      try { U.show.draw.call(U, g2, sh, U.IMPACT, 0, 'sky'); } finally { g2.restore(); P2.fillRect = fr; }
+      const foot = lanceRows.reduce((m, q) => Math.max(m, q[1] + q[3]), 0);
+      const widest = lanceRows.reduce((m, q) => Math.max(m, q[2]), 0);
+      const topW = lanceRows.filter(q => q[1] < foot * 0.15).reduce((m, q) => Math.max(m, q[2]), 0);
+      const lowW = lanceRows.filter(q => q[1] > foot * 0.8 && q[1] + q[3] <= foot).reduce((m, q) => Math.max(m, q[2]), 0);
+      out.lance = { foot: Math.round(foot), roof: Math.round(roof.y), ground: Math.round(ground.y), widest: Math.round(widest), tile: Math.round(CFG.TILE * ground.z), topW, lowW };
+      out.onTheRoof = D.roof != null && foot > 0 && Math.abs(foot - roof.y) <= 8 * ground.z * 2 && foot < ground.y - CFG.TILE * ground.z * 0.5;
+      out.tapers = topW > 0 && lowW > 0 && lowW < topW * 0.7 && widest <= 1.6 * CFG.TILE * ground.z;
+
+      /* (d) A SWALLOWED BLOW FLASHES THE DOME'S OUTLINE, NEVER A FILL: every
+         mark the ward lays in the flash is a hard cell — the first cut filled
+         an amber half-dome cut flat along the ground */
+      R.cardShows = [];
+      const pn = performance.now;
+      const flash = [];
+      try {
+        performance.now = () => 50000;
+        tc.hp = U.sliver(tc);
+        R.floats = [];
+        Combat.hitBuilding(tc, 400);                       // swallowed whole: "Held!"
+        P2.fillRect = function (x, y, w, h) { if (depth && this.canvas === R.cv) flash.push([w, h]); return fr.apply(this, arguments); };
+        const texts = [], ft = P2.fillText;
+        P2.fillText = function (t) { if (depth && this.canvas === R.cv) texts.push([t, String(this.fillStyle)]); return ft.apply(this, arguments); };
+        const undoU = inCard(U, 'drawLive');
+        try { R.draw(1 / 30); } finally { undoU(); P2.fillText = ft; P2.fillRect = fr; }
+        out.flashMarks = flash.length;
+        out.flashBig = flash.filter(([w, h]) => w > 2 || h > 2).length;
+        /* (e) …and it is HELD! in gold with a hard dark edge, taking over the
+           pale float the blow wrote ("Held!" stays the contract's word) */
+        const held = texts.filter(t => t[0] === 'HELD!');
+        out.heldGold = held.some(t => t[1] === U.HELD.col || t[1] === U.HELD.hot) && held.filter(t => t[1] === U.HELD.ink).length >= 4;
+        out.paleGone = !R.floats.some(f => f.txt === 'Held!');
+        out.heldTexts = held.length;
+      } finally { performance.now = pn; P2.fillRect = fr; }
+
+      /* (f) THE WARD'S END IS NEWS: a note on the screen (never the red alarm),
+         and the dome breaks where it stood */
+      const box = document.getElementById('toasts'), n0 = box.children.length;
+      R.cardShows = [];
+      const e = Deck.timed('unbreakable_hall');
+      e.until = Deck.now() - 1e-6;
+      Deck.tick();
+      const last = box.children[box.children.length - 1];
+      out.endToast = box.children.length > n0 && /ward on your Town Center fades/.test(last.textContent) && !last.classList.contains('warn');
+      out.endFall = R.cardShows.some(s => s.id === 'unbreakable_hall' && s.fall);
+      R.cardShows = [];
     } finally { P2.fillRect = fr; P2.drawImage = di; P2.rect = rc; }
     return out;
   });
@@ -1186,6 +1248,10 @@ await p.evaluate(({ TOWN }) => {
     `${r.marks} marks on the frame; added or translucent: ${r.light.length ? r.light.join(' | ') : 'none'}`);
   ck('aHalvedBlowFloatsInTheSkinsBlueAndThrowsStone', r.dyed && r.chips >= 5, `the float ${r.floatCol}; ${r.chips} chips of stone`);
   ck('theSkinsSheenIsASteppedDiagonalNeverABar', r.oneCellARow && r.diagonal, `${r.sheenRows} rows, one 2px cell a row ${r.oneCellARow}, each a cell along ${r.diagonal}`);
+  ck('theHallsLanceTapersOntoTheRoof', r.onTheRoof && r.tapers, JSON.stringify(r.lance));
+  ck('aSwallowedBlowFlashesTheDomesOutlineNeverAFill', r.flashMarks > 60 && r.flashBig === 0, `${r.flashMarks} marks, ${r.flashBig} bigger than a cell`);
+  ck('heldIsGoldWithADarkEdge', r.heldGold && r.paleGone, `HELD! drawn ${r.heldTexts}× (gold over a dark edge ${r.heldGold}); the pale float taken over ${r.paleGone}`);
+  ck('theWardsEndIsNewsOnTheScreen', r.endToast && r.endFall, `a note toast ${r.endToast}; the dome breaks ${r.endFall}`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
