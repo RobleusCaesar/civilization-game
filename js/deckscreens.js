@@ -182,17 +182,13 @@ const DeckScreens = {
   _armBoard(win, sc, msg) {
     Screens._score = win ? sc : null;
     /* `cards_played`: how many this run played — a card-assisted run is
-       MARKED on the board (approved at Gate 1). Two wins never go up at all:
-       a TEST deck's (?cards=all — every card in the catalog, dealt free, is
-       nobody's record), and any card-assisted win while the board cannot
-       wear the mark: Backend.submitScore sends named parameters only, and
-       until submit_score learns p_cards_played (Backend.BOARD_MARKS_CARDS)
-       an assisted score would stand UNMARKED beside real players' — the one
-       thing the mark exists to prevent. Said in the score box's note line,
-       so the missing name box is never a mystery. */
-    const played = this._playedN();
-    const hold = !win ? '' : (played && Deck.isTest()) ? 'Test-deck run — not posted to the world board.'
-      : (played && !(window.Backend && Backend.BOARD_MARKS_CARDS)) ? 'Not posted to the world board — it cannot wear the card mark yet.' : '';
+       MARKED on the board (approved at Gate 1), and held off it while the
+       board cannot wear the mark or the deck is a test deck. The rule is
+       Screens.boardHold, the ONE answer the old victory scene asks too (a
+       run that played cards and ended with the switch off is held there by
+       the same words). Said in the score box's note line, so the missing
+       name box is never a mystery. */
+    const { hold, played } = Screens.boardHold(win);
     Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
