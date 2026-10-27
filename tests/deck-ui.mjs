@@ -618,6 +618,9 @@ const rf = await p.evaluate(async () => {
   // the reason is on the line above PLAY — and NOT also laid across the art
   out.banner = !!document.querySelector('#dkInsp .cc-why');
   out.lineFirst = document.querySelector('#dkInsp .dkWhy').textContent;
+  { const pb = document.querySelector('#dkInsp .dkPlay');
+    out.cantBtn = { lab: pb.querySelector('.blab').textContent, small: pb.querySelector('small').textContent,
+      aria: pb.getAttribute('aria-disabled'), shown: getComputedStyle(pb.querySelector('small')).display !== 'none' && pb.querySelector('small').textContent !== '' }; }
   window.__anims.length = 0;
   document.querySelector('#dkInsp .dkPlay').click();
   await wait(100);
@@ -640,6 +643,12 @@ ck('aCardThatCannotBePlayedSaysWhy', rf.cantGreyed && !rf.cantFlew && rf.cantKep
    the toast is a note. */
 ck('aRefusalIsSaidOnceOnTheCard', !rf.banner && rf.lineFirst === 'Nothing needs mending' && rf.shook,
   `banner over the art: ${rf.banner}; line "${rf.lineFirst}"; shook ${rf.shook}`);
+/* …AND ITS BUTTON CONTRADICTS NOTHING (judge g3 #9): the greyed PLAY still
+   read "Plays at once" under the reason it could not. It is plainly
+   disabled, says it cannot, and makes no promise of how it would play. */
+ck('aRefusedPlayButtonPromisesNothing', !!rf.cantBtn && rf.cantBtn.aria === 'true' && !rf.cantBtn.shown && !/^play$/i.test(rf.cantBtn.lab.trim()) &&
+  !/plays at once|choose where/i.test(rf.cantBtn.lab + ' ' + rf.cantBtn.small),
+  rf.cantBtn ? `"${rf.cantBtn.lab}"${rf.cantBtn.shown ? ` over "${rf.cantBtn.small}"` : ''}, aria-disabled ${rf.cantBtn.aria}` : 'no button');
 /* …AND THE SCREEN AROUND IT AGREES. The disabled PLAY must read disabled
    (it was a lit sage slab), and the sheet under the inspector must never
    show through it ("QUICK HANDS" ran into "Nothing needs mending."). Read

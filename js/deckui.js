@@ -691,8 +691,15 @@ const DeckUI = {
        on one screen, and the banner hid the art the player lifted it to see */
     const big = Deck.face(id, { w: this._faceW(w, false), n: Deck.count(id), off: !can.ok });
     slot.appendChild(big);
-    play.querySelector('small').textContent = c.target === 'none' ? this._kindLine(c) : 'Then choose where';
+    /* A REFUSED CARD'S BUTTON CONTRADICTS NOTHING (judge g3 #9): it used to
+       read PLAY — "Plays at once" under the reason it could not. It is the
+       unlit plank, says plainly that it cannot, and carries no promise; the
+       reason is the line above it, and a tap still shakes its head and says
+       it once more in the toast */
+    play.querySelector('small').textContent = !can.ok ? '' : c.target === 'none' ? this._kindLine(c) : 'Then choose where';
+    if (!can.ok) play.querySelector('.blab').textContent = 'Can’t play now';
     play.classList.toggle('cant', !can.ok);
+    play.setAttribute('aria-disabled', can.ok ? 'false' : 'true');
     why.textContent = can.ok ? '' : can.why;
     this.lifted = { id, cell, layer: L, big, why, play };
     cell.classList.add('dkOut');
@@ -2033,6 +2040,7 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkInsp .dkPlay.cant::after { opacity: .3; }
 #dkInsp .dkPlay.cant .blab { color: #8a8273; text-shadow: none; }
 #dkInsp .dkPlay.cant small { color: #6e675a; }
+#dkInsp .dkPlay small:empty { display: none; }
 #dkInsp .dkWhy { min-height: 0; color: #f0c48a; font-size: 13px; line-height: 1.35; text-align: center; text-shadow: 0 1px 0 #000; }
 #dkInsp .dkWhy:empty { display: none; }
 #dkInsp .dkTip { color: var(--dim); font-size: 11px; }
