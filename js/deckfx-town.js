@@ -475,6 +475,8 @@
   const CART_BACK = 38, CART_FRONT = 74;
 
   /* ---------------- the hooks' engine (asked from Bld.damage and the placement confirm) ---------------- */
+  // the shared pictures, reachable by the contract (tests/deck-town.mjs) and by nothing else
+  Deck._townTX = TX;
   Object.assign(Deck, {
     /* THE BLOW A PLAYER BUILDING ACTUALLY TAKES. Asked by Bld.damage for the
        player's works only, before the subtraction, whatever the cause — an
@@ -681,6 +683,7 @@
        road at all the load comes down in the card's own light instead. */
     trade_caravan: {
       at: 'bar', showAtHall: true, FOOD: 250, WOOD: 250, GOLD: 100,
+      CART: { back: CART_BACK, front: CART_FRONT },   // what the road must carry (the contract reads it)
       can() { return { ok: true }; },
       apply() {
         S.res.food += this.FOOD; S.res.wood += this.WOOD; S.res.gold += this.GOLD;
