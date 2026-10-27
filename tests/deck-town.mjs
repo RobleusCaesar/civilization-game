@@ -387,6 +387,14 @@ await p.evaluate(({ TOWN }) => {
     out.zero = !S.deck.charges.master_builders && !('master_builders' in S.deck.charges);
     DeckUI._t = 0; DeckUI.frame(1);
     out.chipGone = !DeckUI._chips.master_builders;
+    // under the levy no hand is put to work, chosen or not: the levy works nothing
+    S.deck.charges.master_builders = 1;
+    S.levy = true;
+    const levied = __tw.unit('villager', 'P', tc.x + 9.5, tc.y + 2.5);
+    S.map.terrain[MapGen.idx(tc.x + 10, tc.y + 4)] = T.BARREN; Bld._block = null;
+    const farm3 = __tw.confirm('farm', tc.x + 10, tc.y + 4, levied.id);
+    out.levy = !!farm3 && farm3.construction === 0 && !levied.task && /needs a villager/.test(S.log.slice(0, 4).map(l => l.msg).join('|'));
+    S.levy = false;
     // never a wall line, never a gate, never the rival, never the Wonder
     S.deck.charges.master_builders = 2;
     UI.wallGhost = [{ x: 20, y: 6, ok: true }, { x: 21, y: 6, ok: true }, { x: 22, y: 6, ok: true }];
@@ -415,6 +423,7 @@ await p.evaluate(({ TOWN }) => {
     `complete & full ${r.house}, paid ${r.paid}, one charge spent ${r.two}, its moment ${r.mbShow}`);
   ck('noBuilderWalksToASiteAlreadyStanding', r.noBuilder, 'the idle villager stays idle; no build task names the house');
   ck('aStationTakesItsHand', r.farm && r.chosen && r.nearest, `the chosen hand walks to work ${r.chosen}; else the nearest idle one ${r.nearest}`);
+  ck('butNeverALeviedHand', r.levy, 'raised at once under the levy, and it says it needs a villager');
   ck('theLastChargeClearsItsKey', r.zero);
   ck('neverAWallLineAGateTheRivalOrTheWonder', r.wallLine && r.handGate && r.gate && r.rival && r.raiseRefuses,
     `a three-section drag spends nothing ${r.wallLine}, hands ${r.handGate}, a gate site${r.gateTried ? '' : ' (no gate ground)'} ${r.gate}, rival ${r.rival}, raise refuses ${r.raiseRefuses}`);
