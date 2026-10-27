@@ -1002,7 +1002,8 @@ await p.evaluate(() => {
     __rv.paint(4, 12, 6, 14, T.WATER);                       // a pond: never the deep's
     A.x = 14; A.y = 23; A.level = 1; A.hp = A.maxhp = 500;    // footprint rows 23-24: 2 from row 27
     Bld._block = null; G._wb = null;
-    out.open = Deck.canPlay('krakens_call');
+    // the sea, with nothing of theirs known on it: greyed in the blind's words, never 'Needs open water'
+    out.openBlind = Deck.canPlay('krakens_call'); out.BLIND = Deck.FX.krakens_call.BLIND ? Deck.FX.krakens_call.BLIND() : '(no blind words)';
     const H = [__rv.bld('A', 'house', 3, 26, 5000),           // d 0
                __rv.bld('A', 'house', 5, 25, 5000),           // d 1
                __rv.bld('A', 'house', 7, 24, 5000),           // d 2 — the edge
@@ -1016,6 +1017,7 @@ await p.evaluate(() => {
     const pondBoat = __rv.unit('fishboat', 'A', 5.5, 13.5);
     const ours = __rv.unit('fireship', 'P', 30.5, 31.5);
     G.updateVisibility();
+    out.open = Deck.canPlay('krakens_call');
     const kr0 = JSON.stringify(S.kraken), sd0 = S.specialDay, kills0 = S.stats.kills, razed0 = S.stats.razed, slain0 = S.stats.krakenSlain;
     const causes = new Set(), bd = Bld.damage;
     Bld.damage = function (bb, amt, cause) { causes.add(String(cause)); return bd.apply(this, arguments); };
@@ -1071,6 +1073,7 @@ await p.evaluate(() => {
       const n2 = Deck.count('krakens_call');
       const fx = Deck.FX.krakens_call;
       const o = { hidden: h ? !G.visibleAt(28, 31) : null, focus: fx.focus(), naive: fx.targets().ships.length };
+      o.can = Deck.canPlay('krakens_call');
       o.res = Deck.play('krakens_call');
       o.kept = Deck.count('krakens_call') === n2 && !S.deck.kraken && (!h || h.hp === h.maxhp);
       return o;
@@ -1094,8 +1097,16 @@ await p.evaluate(() => {
     out.ghost.over = __rv.since(top).some(l => /nothing to show for it/.test(l.msg));
     return out;
   });
-  ck('itNeedsOpenWater', !r.dry.ok && r.dry.why === 'Needs open water' && !r.pond.ok && r.pond.why === 'Needs open water' && r.open.ok,
-    `dry "${r.dry.why}", a pond "${r.pond.why}", the sea ${r.open.ok}`);
+  ck('itNeedsOpenWater', !r.dry.ok && r.dry.why === 'Needs open water' && !r.pond.ok && r.pond.why === 'Needs open water' &&
+    !r.openBlind.ok && r.openBlind.why === r.BLIND && r.open.ok,
+    `dry "${r.dry.why}", a pond "${r.pond.why}"; the sea with nothing of theirs known "${r.openBlind.why}", with their hulls in sight ${r.open.ok}`);
+  /* KNOWING OF NOTHING IT IS GREYED, NOT BOUNCED (the playtest: the card
+     flew, flared and landed before a red toast handed it back) — asked in the
+     sheet, of what the player knows, in the SAME words whether the hidden sea
+     is empty or holds a hull (the grey is no probe of the fog) */
+  ck('knowingOfNothingItIsGreyedInTheSheet', !r.empty.can.ok && r.empty.can.why === r.empty.res.why &&
+    !r.hiddenHull.can.ok && r.hiddenHull.can.why === r.empty.can.why,
+    `empty sea: canPlay "${r.empty.can.why}"; a hidden hull: "${r.hiddenHull.can.why}"`);
   ck('upToFourShipsWarshipsFirst', r.play.ok && r.c.target === 'none' && r.acts.join(',') === 'fireship,fireship,bombard,transport' &&
     r.sunk === 'fishboat,transport†,fireship†,bombard†,fishboat,fireship†' && r.pondBoat && r.ours,
     `taken in turn ${r.acts.join(', ')}; after: ${r.sunk}; the pond's boat ${r.pondBoat}, ours ${r.ours}`);
@@ -1120,6 +1131,36 @@ await p.evaluate(() => {
     r.ghost.naiveFocus && r.ghost.naiveFocus.x === 28.5,
     `hidden hull only → ${JSON.stringify(r.hiddenHull.focus)}; a known ghost → ${JSON.stringify(r.ghost.focus)} (the naive pick: the hidden hull at ${JSON.stringify(r.ghost.naiveFocus)})`);
   ck('andTheKrakenDrawsNoRng', r.rng && r.rngAct, `at the play ${r.rng}, through the whole act ${r.rngAct}`);
+}
+
+// …and the grey is the SHEET's: the cell says why under the card, and the
+// closer look's Play is greyed with the same words — never a flight and a bounce
+{
+  const r = await p.evaluate(async () => {
+    const wait = ms => new Promise(f => setTimeout(f, ms));
+    __rv.fresh('rv-krs'); const { A } = __rv.flat(false);
+    A.x = 30; A.y = 4; Bld._block = null; __rv.sea(27);
+    __rv.unit('fishboat', 'A', 28.5, 31.5);        // a hull the fog hides
+    G.updateVisibility();
+    Screens.show('playing'); S.paused = false;
+    if (!DeckUI.open) DeckUI.openSheet();
+    await wait(80);
+    const cell = document.querySelector('#dkSheet .dkCell[data-card="krakens_call"]');
+    const cap = cell && cell.querySelector('.dkCap');
+    const o = { cap: cap && cap.textContent, no: !!(cap && cap.classList.contains('no')), BLIND: Deck.FX.krakens_call.BLIND ? Deck.FX.krakens_call.BLIND() : '(no blind words)' };
+    if (cell) { cell.click(); await wait(80); }
+    const play = document.querySelector('#dkInsp .dkPlay'), why = document.querySelector('#dkInsp .dkWhy');
+    o.cant = !!(play && play.classList.contains('cant')); o.why = why && why.textContent;
+    const n = Deck.count('krakens_call');
+    if (play) play.click();
+    await wait(120);
+    o.flew = !!DeckUI.playing; o.kept = Deck.count('krakens_call') === n;
+    DeckUI.putBack(true); if (DeckUI.open) DeckUI.closeSheet();
+    S.paused = true;
+    return o;
+  });
+  ck('andTheGreyIsInTheSheet', r.no && r.cap === r.BLIND && r.cant && r.why === r.BLIND && !r.flew && r.kept,
+    `cell "${r.cap}" greyed ${r.no}; closer look greyed ${r.cant} "${r.why}"; a tap flew ${r.flew}, kept ${r.kept}`);
 }
 
 // …and THE TRUCE: asked of what the player knows

@@ -600,6 +600,9 @@ Object.assign(Deck.FX, {
       return { x: Math.max(lo, Math.min(hi, ev.x - d * back)), y: c.y - this.CAM.rise };
     },
     cam(dt) {
+      // the other acts' borrowed views ride this one call too (Deck.view —
+      // js/deckfx-rival.js: Kraken's Call, Spy in the Hall), outside R.draw
+      if (Deck.view && Deck.view.tick) Deck.view.tick(dt);
       const ev = S.dragon && S.dragon.ev, Rr = window.R;
       if (!Rr || !Rr.cam || !Rr.viewW) return;
       let c = this._cam;

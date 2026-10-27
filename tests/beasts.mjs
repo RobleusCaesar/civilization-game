@@ -43,10 +43,18 @@
                        beast is on screen 3.5s+; each building the fire
                        reaches catches on its own beat with a shake; no warm
                        light on the ground, no radial gradient
+     KRAKEN'S CALL     over a narrow sea, nothing of the frame's own sea and
+                       nothing of the beast below its waterline lands on the
+                       land (the card's act and the world's); its blows throw
+                       water, never pale shards; every hull it takes is drawn
+                       seized, heeling over, into a splash; the view goes in
+                       on the deep, the sky's head stands on real water in
+                       the open band, and the view is handed back after
 
    Run after touching: js/beasts.js, the dragon/kraken blocks of R.draw,
    Assets.FX_SETS / wantFx / whenFx, Deck.wantArt, DeckUI._run's landing,
-   G.warmFx, G.dragonTick / G.krakenTick's phases, dragonfire in js/deckfx.js.
+   G.warmFx, G.dragonTick / G.krakenTick's phases, dragonfire in js/deckfx.js,
+   krakens_call and Deck.view in js/deckfx-rival.js.
 
      node tests/beasts.mjs      # exits non-zero on any regression */
 
@@ -153,7 +161,13 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
   const r = await p.evaluate(() => {
     const names = ['dragon-fly', 'dragon-breath', 'kraken-thrash', 'kraken-tentacle'];
     const of = new Map();
-    for (const n of names) for (const f of Assets.fxFrames(n) || []) of.set(f, n);
+    for (const n of names) for (const f of Assets.fxFrames(n) || []) {
+      of.set(f, n);
+      // a kraken frame is drawn as its two halves (Beasts.split: the beast, and the sea
+      // laid only on the water) — each the frame's own size, so each is the frame here
+      const sp = window.Beasts && Beasts.split && /^kraken/.test(n) ? Beasts.split(f) : null;
+      if (sp) { of.set(sp.dry, n); of.set(sp.wet, n); }
+    }
     const cv = document.createElement('canvas'); cv.width = 900; cv.height = 900;
     const g = cv.getContext('2d');
     const seen = {};
@@ -439,9 +453,13 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
        counts the rim), and every pixel the world's act and the card's act
        write lands on the board: each draw call is diffed against the canvas
        it was handed, its changed pixels mapped back through the call's own
-       transform. The control widens R.boardPx — one patch opens every clip
-       at once — and the same probe must then see the kraken out there, or a
-       probe that never looks at the rim would read as a pass forever. */
+       transform. The control widens R.boardPx — one patch opens every board
+       clip at once — and takes the water's own outline away (the sea the
+       act lays is laid through it, R.waterBodyPath, and a rim of open water
+       is outside it, so with the outline in place the card's act has nothing
+       left to lay in the black for the board clip to catch); the same probe
+       must then see the kraken out there, or a probe that never looks at the
+       rim would read as a pass forever. */
     const void8 = await q.evaluate(() => {
       G.newGame('beasts-void', 'moderate', 'medium');
       Screens.show('playing'); S.paused = true;
@@ -484,8 +502,8 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
       };
       const out = { body };
       for (const wide of [false, true]) {
-        const bp = R.boardPx;
-        if (wide) R.boardPx = function () { const b = bp.call(this), p = 6 * CFG.TILE; return { x0: b.x0 - p, y0: b.y0 - p, x1: b.x1 + p, y1: b.y1 + p }; };
+        const bp = R.boardPx, wbp = R.waterBodyPath;
+        if (wide) { R.boardPx = function () { const b = bp.call(this), p = 6 * CFG.TILE; return { x0: b.x0 - p, y0: b.y0 - p, x1: b.x1 + p, y1: b.y1 + p }; }; R.waterBodyPath = () => null; }
         try {
           // THE WORLD'S KRAKEN, mid-thrash over its boat at the edge
           S.kraken = S.kraken || {};
@@ -506,7 +524,7 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
           S.deck.kraken = null;
           const u2 = Units.spawn('fireship', 'A', 15, edge); u2.x = prey.x; u2.y = prey.y;
           G.updateVisibility();
-        } finally { R.boardPx = bp; }
+        } finally { R.boardPx = bp; R.waterBodyPath = wbp; }
       }
       return out;
     });
@@ -699,6 +717,182 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
         Object.entries(C).map(([z, c]) => `${z}: caught at ${c.caught.join('/')}s, ${c.shook} shaken`).join('; '));
       ck('andNoWarmLightIsLaidOverTheGround', [0.8, 1.7].every(z => C[z].warm === 0 && C[z].radial === 0),
         Object.entries(C).map(([z, c]) => `${z}: ${c.warm} warm flashes, ${c.radial} radial gradients`).join('; '));
+    }
+
+    /* ---------------- 10. KRAKEN'S CALL: OUT OF THE REAL SEA ----------------
+       (the playtest: on a narrow sea the beast's own disc of dark water lay
+       on the meadow beside it — a navy coin on the grass — it surfaced
+       through a hard circle cut out of itself, its blows threw pale shards
+       that read as ICE, the hulls simply vanished, and the view sat where it
+       was, the beast half under the minimap.) Played with the real Deck.play
+       on this served phone page over a NARROW SEA (four rows, land on both
+       sides), the act's sim and the borrowed view ticked frame by frame and
+       drawn through the real R.draw, every body draw's changed pixels mapped
+       back to the world through its own transform:
+         ITS SEA ON THE SEA   no pixel of the frame's own sea (blue-led or
+                              near-white) lands on land, and nothing of the
+                              beast below its waterline does — the card's
+                              act and the world's alike (R.drawKrakenBody)
+         WATER, NOT ICE       the arm's blow frames (7-10) carry no pale
+                              shard; a blow on the sea throws a splash in the
+                              water's own ramp (R.drawSplash)
+         HULL BY HULL         every hull the deep takes is drawn after the
+                              take — its own sprite, heeling over — with a
+                              splash where it goes down
+         FRAMED, HANDED BACK  from a player's zoom of 0.8 the view goes in on
+                              the deep (1.3+); the sky's head comes up out of
+                              real water, its waterline in the open band; and
+                              after the act the view is handed back */
+    const k10 = await q.evaluate(() => {
+      const out = {};
+      G.newGame('beasts-kraken', 'moderate', 'medium');
+      Screens.show('playing'); S.paused = true;
+      const W = CFG.W, H = CFG.H, TL = CFG.TILE, KC = Deck.FX.krakens_call, row = Math.floor(H / 2);
+      S.units = S.units.filter(u => Math.abs(u.y - row) > 8);
+      S.buildings = S.buildings.filter(b => b.key === 'tc' && Math.abs(b.y - row) > 8);
+      for (let y = row - 7; y <= row + 7; y++) for (let x = 1; x < W - 1; x++) {
+        const i = y * W + x, sea = y >= row - 2 && y <= row + 1 && x >= 3 && x <= W - 4;
+        S.map.terrain[i] = sea ? T.WATER : T.GRASS; S.map.resAmount[i] = 0;
+      }
+      Bld._block = null; G._wb = null; R.rebuildTerrain();
+      G.freeVis = true;
+      for (let i = 0; i < W * H; i++) S.map.explored[i] = 1;
+      const cx0 = Math.floor(W / 2);
+      const hulls = [[-7, 'fireship'], [0, 'bombard'], [7, 'transport']].map(([dx, k]) => { const u = Units.spawn(k, 'A', cx0 + dx, row); u.x = cx0 + dx + 0.5; u.y = row + 0.5; return u; });
+      Bld.place('A', 'house', cx0 + 3, row - 3, { free: true, instant: true }).hp = 5000;
+      Bld._block = null; G.updateVisibility();
+      out.knows = KC.knows ? KC.knows() : null;
+      R.cam.z = 0.8; R.centerOn(cx0 + 0.5, row + 0.5); R.clampCam();
+      const home = { x: R.cam.x, y: R.cam.y, z: R.cam.z };
+      const g = R.cv.getContext('2d'), CW = R.cv.width, CH = R.cv.height, dpr = R.dpr;
+      const wet = (wx, wy) => { for (const [ox, oy] of [[0, 0], [-0.3, 0], [0.3, 0], [0, -0.3], [0, 0.3]]) if (G.wetAt(wx / TL + ox, wy / TL + oy)) return true; return false; };
+      // every body draw on the probed frames: its changed pixels, through its own transform
+      const body = { calls: 0, px: 0, seaOnLand: 0, belowOnLand: 0 };
+      const dkb = R.drawKrakenBody;
+      let probeOn = false;
+      R.drawKrakenBody = function (gg, x, y) {
+        if (!probeOn || gg !== g) return dkb.apply(this, arguments);
+        const T0 = gg.getTransform(), a = g.getImageData(0, 0, CW, CH).data;
+        const ret = dkb.apply(this, arguments);
+        const z = g.getImageData(0, 0, CW, CH).data, det = T0.a * T0.d - T0.b * T0.c;
+        const wl = Beasts.snap(y * TL) + (Beasts.KRAKEN.waterline || 0) * Beasts.KRAKEN.scale;
+        body.calls++;
+        for (let i = 0; i < z.length; i += 4) {
+          if (z[i] === a[i] && z[i + 1] === a[i + 1] && z[i + 2] === a[i + 2] && z[i + 3] === a[i + 3]) continue;
+          const qx = (i >> 2) % CW + 0.5 - T0.e, qy = ((i >> 2) / CW | 0) + 0.5 - T0.f;
+          const wx = (T0.d * qx - T0.c * qy) / det, wy = (-T0.b * qx + T0.a * qy) / det;
+          body.px++;
+          if (wet(wx, wy)) continue;
+          const r = z[i], gr = z[i + 1], bl = z[i + 2];
+          if ((gr >= r && bl > r + 8 && r + gr + bl > 30) || (r > 196 && gr > 196 && bl > 196)) body.seaOnLand++;
+          if (wy > wl + 1) body.belowOnLand++;
+        }
+        return ret;
+      };
+      // the hulls as drawn before the take — and every heeled-over draw of one after it
+      const hullImg = new Set(), us = R.unitSprite;
+      R.unitSprite = function (u) { const im = us.apply(this, arguments); if (u && u.owner === 'A' && Units.isNaval(u) && im) hullImg.add(im); return im; };
+      const di = g.drawImage, seizedAt = {}, splashes = {}, ds = R.drawSplash;
+      let tNow = 0;
+      const nearHull = wx => hulls.find(h => Math.abs(h.x * TL - wx) < TL * 1.3);
+      g.drawImage = function (img, ...rest) {
+        if (hullImg.has(img)) {
+          const Tm = this.getTransform();
+          if (Math.abs(Tm.b) > 0.01) {
+            const h = nearHull(Tm.e / (R.cam.z * dpr) + R.cam.x);
+            if (h && !S.units.includes(h)) (seizedAt[h.id] = seizedAt[h.id] || []).push(tNow);
+          }
+        }
+        return di.call(this, img, ...rest);
+      };
+      if (ds) R.drawSplash = function (gg, x, y, t) { const h = nearHull(x); if (h && t >= 0 && t < 0.8) (splashes[h.id] = splashes[h.id] || []).push(tNow); return ds.apply(this, arguments); };
+      const zs = [], sky = [];
+      try {
+        Deck._add('krakens_call', 1);
+        out.play = Deck.play('krakens_call');
+        out.at = KC.skyAt ? KC.skyAt() : null;
+        const B = Deck.view && Deck.view.band ? Deck.view.band() : null;
+        out.band = B && { top: Math.round(B.top), bot: Math.round(B.bot) };
+        for (let i = 0; i < 900; i++) {
+          const dt = 1 / 30;
+          tNow = i * dt;
+          if (S.deck.kraken) Deck.krakenTick(dt);
+          if (Deck.view && Deck.view.tick) Deck.view.tick(dt);
+          probeOn = i % 4 === 2;
+          R.draw(dt);
+          const s = R.cardShows.find(z => z.id === 'krakens_call');
+          if (tNow >= 1.3 && tNow <= 3.4) zs.push(R.cam.z);
+          if (s && s.wlY != null && tNow >= 1.5 && tNow <= 3.2) sky.push(s.wlY / dpr);
+          if (!S.deck.kraken && !(Deck.view && Deck.view.s) && !R.cardShows.length) break;
+        }
+        out.taken = hulls.filter(h => !S.units.includes(h)).map(h => h.id);
+        out.seized = out.taken.map(id => (seizedAt[id] || []).length);
+        out.splashed = out.taken.map(id => (splashes[id] || []).length);
+        out.zMin = zs.length ? +Math.min(...zs).toFixed(3) : null;
+        out.sky = sky.length ? { lo: Math.round(Math.min(...sky)), hi: Math.round(Math.max(...sky)) } : null;
+        out.headOnWater = !!(out.at && out.at.wl != null && G.wetAt(out.at.x, out.at.wl - 0.15));
+        out.back = Math.abs(R.cam.z - home.z) < 0.01 && Math.abs(R.cam.x - home.x) < 2 && Math.abs(R.cam.y - home.y) < 2;
+        out.cardBody = { ...body };
+        // THE WORLD'S KRAKEN over the same channel, rising and mid-thrash
+        Object.assign(body, { calls: 0, px: 0, seaOnLand: 0, belowOnLand: 0 });
+        R.cam.z = 1.4; R.centerOn(cx0 + 0.5, row); R.clampCam();
+        S.kraken = S.kraken || {};
+        probeOn = true;
+        for (const [ph, t] of [['rise', 1.0], ['thrash', 0.5]]) {
+          S.kraken.ev = { phase: ph, t, x: cx0 - 3.5, y: row + 0.5, boatId: -1, owner: 'P' };
+          R.draw(0);
+        }
+        S.kraken.ev = null;
+        out.worldBody = { ...body };
+      } finally { R.drawKrakenBody = dkb; R.unitSprite = us; g.drawImage = di; if (ds) R.drawSplash = ds; probeOn = false; if (S.kraken) S.kraken.ev = null; }
+      // WATER, NOT ICE: the arm's blow frames, laid on the board one by one
+      const world = () => g.setTransform(R.cam.z * dpr, 0, 0, R.cam.z * dpr, -R.cam.x * R.cam.z * dpr, -R.cam.y * R.cam.z * dpr);
+      const pale = [];
+      for (let f = 7; f <= 10; f++) {
+        R.draw(0);
+        g.save(); world();
+        const a = g.getImageData(0, 0, CW, CH).data;
+        R.drawTentacle(g, cx0 + 4.5, row - 2.5, f, 1);
+        const z = g.getImageData(0, 0, CW, CH).data;
+        g.restore();
+        let n = 0;
+        for (let i = 0; i < z.length; i += 4) if ((z[i] !== a[i] || z[i + 1] !== a[i + 1] || z[i + 2] !== a[i + 2]) && z[i] > 196 && z[i + 1] > 196 && z[i + 2] > 196) n++;
+        pale.push(n);
+      }
+      out.pale = pale;
+      // …and a blow on the sea throws the water's own colours
+      {
+        R.draw(0);
+        g.save(); world();
+        const a = g.getImageData(0, 0, CW, CH).data, WR = new Set(ART.PALETTE.water.map(h => h.toLowerCase()));
+        let calls = 0;
+        const ds2 = R.drawSplash;
+        if (ds2) R.drawSplash = function () { calls++; return ds2.apply(this, arguments); };
+        try { R.drawTentacle(g, cx0 + 0.5, row - 0.5, 8, 1, 0.12); } finally { if (ds2) R.drawSplash = ds2; }
+        const z = g.getImageData(0, 0, CW, CH).data;
+        g.restore();
+        const hex = i => '#' + [z[i], z[i + 1], z[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+        let ramp = 0;
+        for (let i = 0; i < z.length; i += 4) if ((z[i] !== a[i] || z[i + 1] !== a[i + 1] || z[i + 2] !== a[i + 2]) && WR.has(hex(i))) ramp++;
+        out.seaBlow = { calls, ramp };
+      }
+      G.freeVis = false;
+      return out;
+    });
+    {
+      const k = k10;
+      ck('theKrakensSeaLiesOnTheSea', k.play && k.play.ok && k.cardBody.calls > 0 && k.cardBody.seaOnLand === 0 && k.worldBody.calls > 0 && k.worldBody.seaOnLand === 0,
+        `the card's act: ${k.cardBody.seaOnLand} sea-coloured px on land of ${k.cardBody.px} (${k.cardBody.calls} draws); the world's: ${k.worldBody.seaOnLand} of ${k.worldBody.px}`);
+      ck('andItRisesOutOfItsWaterlineNeverThroughTheLand', k.cardBody.belowOnLand === 0 && k.worldBody.belowOnLand === 0 && k.worldBody.px > 0,
+        `below its waterline on land: the card's ${k.cardBody.belowOnLand}, the world's ${k.worldBody.belowOnLand}`);
+      ck('theBlowThrowsWaterNeverIce', k.pale.every(n => n === 0) && k.seaBlow.calls === 1 && k.seaBlow.ramp > 0,
+        `pale shard px on frames 7-10: ${k.pale.join('/')}; a blow on the sea: ${k.seaBlow.calls} splash, ${k.seaBlow.ramp} px in the water's ramp`);
+      ck('everyHullTakenIsSeenSeizedAndGoesDownInASplash', k.taken.length === 3 && k.seized.every(n => n >= 3) && k.splashed.every(n => n >= 3),
+        `taken ${k.taken.length}; heeling-over draws after the take ${k.seized.join('/')}; splash frames ${k.splashed.join('/')}`);
+      ck('theViewGoesInOnTheDeepAndIsHandedBack', k.knows && k.zMin != null && k.zMin >= 1.25 && k.back,
+        `knows ${k.knows}; zoom through the sky's moment from 0.8: ${k.zMin}; handed back ${k.back}`);
+      ck('theHeadComesUpOutOfRealWaterInTheOpenBand', k.headOnWater && k.sky && k.band && k.sky.lo >= k.band.top && k.sky.hi <= k.band.bot,
+        `the head's waterline on water ${k.headOnWater}; on screen at ${JSON.stringify(k.sky)} css px, the open band ${JSON.stringify(k.band)}`);
     }
   } finally {
     await cx2.close();
