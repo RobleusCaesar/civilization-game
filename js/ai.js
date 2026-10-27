@@ -4813,10 +4813,15 @@ const AI = {
        the fields are empty the whole village turns out to forage: enough to put
        a hand back on a plot in a week or so, never enough to fight from. */
     const relief = Units.count('A', u => Units.isVillager(u)) === 0 && Bld.tcOf('A') ? 4 : 1;
-    ai.res.food += 2 * m.aiOutput * boomMult * relief;
-    ai.res.wood += 2 * m.aiOutput * boomMult * relief;
-    ai.res.stone += 1 * m.aiOutput * boomMult;
-    ai.res.gold += 3 * m.aiOutput;   // gold has no worker source for the rival — it trickles here
+    /* …and a player's BLIGHT (js/deckfx-growth.js) withers the hall's trickle
+       too: it is the tribe's production as surely as a farm's is. Exactly 1
+       with no card running. (The inner market below is CONVERSION, not
+       production — a blight never reaches it.) */
+    const blight = window.Deck && Deck.mult ? Deck.mult('produce', 'A', tc) : 1;
+    ai.res.food += 2 * m.aiOutput * boomMult * relief * blight;
+    ai.res.wood += 2 * m.aiOutput * boomMult * relief * blight;
+    ai.res.stone += 1 * m.aiOutput * boomMult * blight;
+    ai.res.gold += 3 * m.aiOutput * blight;   // gold has no worker source for the rival — it trickles here
     Bld.dailyProduction('A');
     this.autoConvert();              // the inner market: surplus becomes the bottleneck resource
 

@@ -10,9 +10,13 @@
                        and nothing is put on the page
      FORAGER'S CACHE   +250 food, flown to the bar
      HARVEST FESTIVAL  a player gatherer and a station each bring in exactly
-                       40% more over a day; the panel says so; the rival's
-                       work is untouched; a hunt's meat comes richer too; it
-                       ends on its day and the work drops back
+                       40% more over a day — the gatherer's load RICHER while
+                       the stand is stripped at its own pace (the operator's
+                       ruling: richer is more in total, never faster; the
+                       whole of that rule is tests/deck-growth.mjs); the
+                       panel says so; the rival's work is untouched; a hunt's
+                       meat comes richer too; it ends on its day and the work
+                       drops back
      SWIFT RAIDERS     five Horse Archers on really-open ground at the hall's
                        doorstep — never one stack, though the yards' own
                        search answers one tile however often it is asked —
@@ -46,7 +50,7 @@
      SAVES             a running festival, a star in mid-air and a dragon on
                        the wing all survive a save and finish after the load
 
-   Run after touching: js/deckfx.js, Deck.mult's hooks (Units.gatherMode,
+   Run after touching: js/deckfx.js, Deck.mult's hooks (Units.gatherYield,
    Units.workReport, the meat in Units.damage, Bld.dailyProduction),
    G.dragonTick, G.updateVisibility's card sights, R.starAct /
    drawCardStrike / drawCardWorld.
@@ -194,15 +198,17 @@ await p.evaluate(() => {
     const camp = __fx.bld('P', 'lumber', sx, sy);
     const hand = __fx.unit('villager', 'P', sx + 0.5, sy + 0.5); hand.task = { type: 'work', id: camp.id };
     for (let i = 0; i < 40; i++) Units.update(0.1);                 // everybody to work
+    const iP = MapGen.idx(fx, fy);
     const day = () => {
-      const p0 = S.res.wood, a0 = S.ai.res.wood;
+      const p0 = S.res.wood, a0 = S.ai.res.wood, g0 = S.map.resAmount[iP];
       for (let i = 0; i < 100; i++) Units.update(0.1);              // one day: 100 x 0.1s = 10 real seconds
+      const stand = g0 - S.map.resAmount[iP];
       const mid = Object.assign({}, S.res), aMid = Object.assign({}, S.ai.res);
       Bld.dailyProduction('P'); Bld.dailyProduction('A');
       const prod = {}, aProd = {};
       for (const k in S.res) prod[k] = S.res[k] - mid[k];
       for (const k in S.ai.res) aProd[k] = S.ai.res[k] - aMid[k];
-      return { hand: mid.wood - p0, rival: aMid.wood - a0, prod, aProd,
+      return { hand: mid.wood - p0, rival: aMid.wood - a0, prod, aProd, stand,
         rate: Units.workReport(vP).rate && Units.workReport(vP).rate.n, station: Units.workReport(hand).rate && Units.workReport(hand).rate.n };
     };
     out.working = vP.task && vP.task.type === 'gather' && vA.task && vA.task.type === 'gather' && Bld.workersActive(camp) === 1;
@@ -215,6 +221,7 @@ await p.evaluate(() => {
     const rich = day();
     out.base = base; out.rich = rich;
     out.handRatio = rich.hand / base.hand;
+    out.standRatio = rich.stand / base.stand;
     out.stationRatio = rich.prod.wood / base.prod.wood;
     out.goldRatio = rich.prod.gold / base.prod.gold;
     out.rivalSame = rich.rival === base.rival && JSON.stringify(rich.aProd) === JSON.stringify(base.aProd);
@@ -242,6 +249,13 @@ await p.evaluate(() => {
   ck('theFestivalRunsTwelveDays', r.play.ok && r.days === 12 && r.at === 'bar' && r.cue, `${r.days} days, at '${r.at}', motes ${r.cue}`);
   ck('aGathererBringsIn40PercentMore', r.working && Math.abs(r.handRatio - 1.4) < 1e-6,
     `${r.base.hand.toFixed(3)} → ${r.rich.hand.toFixed(3)} wood a day (x${r.handRatio.toFixed(4)})`);
+  /* (the festival moved to js/deckfx-growth.js and its multiplier from the
+     gatherer's PACE to the load's YIELD — Units.gatherYield. The two checks
+     above held either way, which is exactly why this one was added: under the
+     old pace multiplier the stand emptied 40% sooner and gave not one log
+     more over its life) */
+  ck('butTheStandIsStrippedAtItsOwnPace', r.standRatio > 0 && Math.abs(r.standRatio - 1) < 1e-9,
+    `the stand gives ${r.base.stand.toFixed(3)} → ${r.rich.stand.toFixed(3)} a day (x${r.standRatio.toFixed(6)})`);
   ck('andAStationProduces40PercentMore', Math.abs(r.stationRatio - 1.4) < 1e-9 && Math.abs(r.goldRatio - 1.4) < 1e-9,
     `camp ${r.base.prod.wood} → ${r.rich.prod.wood} wood, hall ${r.base.prod.gold} → ${r.rich.prod.gold} gold`);
   ck('andThePanelSaysSo', r.panel.every(k => Math.abs(k - 1.4) < 1e-9), r.panel.map(k => 'x' + k.toFixed(4)).join(', '));

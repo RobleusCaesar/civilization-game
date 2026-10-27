@@ -740,7 +740,8 @@ const DeckUI = {
     }
   },
 
-  /* WHERE A CARD LANDS: FX.at names it. 'tc' is the hall, 'target' the
+  /* WHERE A CARD LANDS: FX.at names it. 'tc' is the hall (or the world
+     point the effect's own dest() names, where its work stands), 'target' the
      chosen ground — both brought on screen first if they are off it (the
      world is paused, so the cut costs nothing) — and 'bar' is the resource
      chips the card fills, read off its own effect text ("+250 food."): the
@@ -778,8 +779,12 @@ const DeckUI = {
     let w = null;
     if (at === 'target' && tgt) w = { x: tgt.x, y: tgt.y };   // already a world point
     else {
-      const tc = Bld.tcOf('P');
-      if (tc) w = { x: Bld.cx(tc), y: Bld.cy(tc) };
+      // a card whose work stands somewhere of its own (the Wonder cards: the
+      // Wonder's works) names its landing point; else it lands on the hall
+      const fx = window.Deck && Deck.FX[id], own = fx && fx.dest ? fx.dest() : null;
+      const tc = own ? null : Bld.tcOf('P');
+      if (own) w = { x: own.x, y: own.y };
+      else if (tc) w = { x: Bld.cx(tc), y: Bld.cy(tc) };
     }
     if (!w) return { kind: 'point', x: vw / 2, y: vh / 2 };
     if (!R.onScreen(w.x, w.y)) R.centerOn(w.x, w.y);

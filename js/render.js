@@ -8083,8 +8083,13 @@ const R = {
     opts = opts || {};
     this.placePoofs.push({ x, y, sz: sz || 1, t: -(opts.delay || 0), scale: opts.scale || 1 });
   },
+  // CLIPPED TO THE BOARD: a site laid against the world's edge (or a card's
+  // courses landing on one) threw its dust out over the off-map black
   drawPlacePoofs(g, dt) {
     if (!this.placePoofs.length) return;
+    this.clipBoard(g, () => this._drawPlacePoofs(g, dt));
+  },
+  _drawPlacePoofs(g, dt) {
     const TL = CFG.TILE;
     for (let i = this.placePoofs.length - 1; i >= 0; i--) {
       const p = this.placePoofs[i];
@@ -10408,6 +10413,65 @@ const R = {
       }
     }
   },
+  /* A CARD ON THE GROUND AND ON A BUILDING. drawCardWorld runs after the
+     units and over the fog, which is right for light in the air and wrong for
+     anything that belongs to the land: sprigs drawn there grew through the
+     villagers' bodies and stood lit at full brightness on remembered ground
+     the fog dims. So a card may also carry
+       drawGround(g, e, dt)    called in the GROUND pass (after the terrain
+                               bake, under bridges, buildings, units and the
+                               fog) for every live timed card — and a show
+                               may name a 'ground' layer for the same pass;
+       drawBld(g, b, e)        called in the building loop right after a
+                               FINISHED building's own art is laid (only for
+                               the buildings the frame draws — in sight, on
+                               camera), so a look on a building stays under
+                               whoever stands on it — and a show may carry
+                               show.drawBld(g, b, s, p) for the same pass
+                               (a building catching the card's light).
+     Both cost nothing with no card in play (R.draw's length checks). */
+  drawCardGround(g, dt) {
+    if (this.cardShows.length) this.drawCardShows(g, dt, 'ground');
+    const fx = S.deck && S.deck.fx;
+    if (!fx || !fx.length || !window.Deck) return;
+    const now = Deck.now();
+    for (const e of fx) {
+      const d = Deck.FX[e.id];
+      if (!(e.until > now) || !d || !d.drawGround) continue;
+      g.save();
+      try { d.drawGround(g, e, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card ground', e.id, err); } }
+      g.restore();
+    }
+  },
+  cardBldLooks() {
+    if (!window.Deck) return null;
+    let out = null;
+    const fx = S.deck && S.deck.fx;
+    if (fx && fx.length) {
+      const now = Deck.now();
+      for (const e of fx) {
+        const d = Deck.FX[e.id];
+        if (!(e.until > now) || !d || !d.drawBld) continue;
+        (out || (out = [])).push({ e });
+      }
+    }
+    for (const s of this.cardShows) {
+      const d = Deck.FX[s.id], sh = d && d.show;
+      if (!sh || !sh.drawBld) continue;
+      const p = s.t / (s.ms / 1000);
+      if (p < 1) (out || (out = [])).push({ s, p });
+    }
+    return out;
+  },
+  drawCardBld(g, b, list) {
+    for (const it of list) {
+      const id = it.e ? it.e.id : it.s.id, d = Deck.FX[id];
+      g.save();
+      try { if (it.e) d.drawBld(g, b, it.e); else d.show.drawBld.call(d, g, b, it.s, it.p); }
+      catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', id, err); } }
+      g.restore();
+    }
+  },
   /* A CARD'S OWN MOMENT (js/deckfx-*.js). The play sequence (js/deckui.js)
      carries every card to the spot it changes; what the card then DOES on
      the map is its own: an entry in Deck.FX may carry
@@ -10416,8 +10480,10 @@ const R = {
      the units summoned, the buildings mended…) is copied onto the show, and
      draw() is called every frame with p running 0 → 1 over `ms`. Layer
      'world' draws in world space after the units (x/y in tiles × CFG.TILE);
-     'sky' draws in SCREEN space (device pixels) over the night tint, for
-     what happens in the air: a flash, a darkened sky, a comet. A show may
+     'ground' in world space in the ground pass, under buildings, units and
+     the fog (drawCardGround) — for what happens IN the land; 'sky' draws
+     in SCREEN space (device pixels) over the night tint, for what happens
+     in the air: a flash, a darkened sky, a comet. A show may
      carry both (`layers: ['world', 'sky']`, with draw(g, s, p, dt, layer)).
      Render state only — never in S, cleared in onNewGame, capped — so a
      save taken mid-show simply loads without it. A draw that throws is
@@ -12762,6 +12828,10 @@ const R = {
     // THE DRY SUMMER: a burning stand is struck from the bake and drawn here,
     // where the wood it replaced lay — under every building and unit
     this.drawBurningWood(g);
+    // a played card that changes the GROUND (Bountiful Land's lush meadow) is
+    // ground: drawn here, under every bridge, building and unit — and so under
+    // the fog's dimming like the rest of the land (drawCardGround)
+    if (this.cardShows.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardGround(g, dt);
 
     // sapper bridges: faction-trimmed plank decks over water/moat (above terrain,
     // below units). Dynamic structures, so drawn per-frame, not baked into the cache.
@@ -13016,6 +13086,9 @@ const R = {
     const rk = new Map();
     for (const b of blds) rk.set(b, fortRank(b));
     blds.sort((a, b) => ((a.y + Bld.size(a)) - (b.y + Bld.size(b))) || (rk.get(a) - rk.get(b)));
+    // a running card that wears a look ON a building (the Blight's withered
+    // fields) — laid over that building's own art, so under whoever stands on it
+    const cardBld = (S.deck && S.deck.fx && S.deck.fx.length) || this.cardShows.length ? this.cardBldLooks() : null;
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;
@@ -13130,6 +13203,7 @@ const R = {
         // …and one that falls toward us swings over its own archway — the
         // early tiers' doors and portcullis ride the same two passes
         if (b.key === 'gate') { this.drawGateWorks(g, b, bx, by, bw, dt, true); this.drawDrawbridge(g, b, bx, by, bw, dt, true); }
+        if (cardBld) this.drawCardBld(g, b, cardBld);
         /* Owner tag. On a FORTIFICATION the tile's top-left corner is bare
            ground — the curtain runs down the middle of the tile — so the pip
            floated out on the grass beside the wall like a UI glitch, one per
