@@ -342,12 +342,8 @@
             g.fillStyle = 'rgba(255,170,70,' + qa(0.75 * (1 - p / 0.7)) + ')';
             ring(g, x, s.y * TL, rf * TL, Math.max(24, Math.round(rf * 9)), 1);
           }
-          // the ground glows under the fire
-          const glow = p < 0.08 ? 1 : 0.55 + 0.1 * Math.sin(t * 11);
-          g.fillStyle = 'rgba(255,150,60,' + qa(0.22 * glow) + ')';
-          R.pxDisc(g, x, y, TL * 1.8, 2, 0.5);
-          g.fillStyle = 'rgba(255,190,90,' + qa(0.3 * glow) + ')';
-          R.pxDisc(g, x, y, TL * 0.9, 2, 0.5);
+          // NO LIGHT POOLED ON THE GROUND (a warm glow over the meadow reads
+          // as sand): the fire lights only itself, its sparks and the ring
           if (p < 0.1) {                                 // the catch: a flash at the foot
             g.fillStyle = 'rgba(255,240,200,' + qa(0.8 * (1 - p / 0.1)) + ')';
             R.pxDisc(g, x, y - TL * 0.4, TL * (0.6 + p * 8), 2);
@@ -372,27 +368,52 @@
           g.restore();
         },
       },
-      /* the watch fire, burning on for the 3 days at every hill lit */
+      /* the watch fire, burning on for the 3 days at every hill lit: a ring
+         of hearth stones, a crossed stack of logs, three tongues of flame on
+         their own phases, sparks going up and a thread of smoke above — and
+         no light pooled on the ground round it */
       drawLive(g, e) {
-        const now = Deck.now(), TL = CFG.TILE, v = view(2), t = performance.now() / 1000;
+        const now = Deck.now(), TL = CFG.TILE, v = view(2), t = performance.now() / 1000, F = FIRE();
         for (const pt of e.pts || []) {
           if (!(pt.until > now) || !inView(v, pt.x, pt.y)) continue;
           const left = pt.until - now, k = left < 0.25 ? Math.max(0.25, left / 0.25) : 1;   // it gutters at the end
-          const x = (pt.x + 0.5) * TL, y = (pt.y + 0.5) * TL + TL * 0.25;
-          // a ring of hearth stones
-          g.fillStyle = '#5a554c';
-          ring(g, x - 1, y, TL * 0.32, 8, 0.45, 2);
-          // the glow on the ground, light ADDED
+          const x = (pt.x + 0.5) * TL, y = (pt.y + 0.5) * TL + TL * 0.25, sd = pt.x * 0.7 + pt.y;
+          // the hearth stones, lit on their inner faces
+          for (let n = 0; n < 9; n++) {
+            const a = n / 9 * Math.PI * 2, sx = snap(x + Math.cos(a) * TL * 0.38), sy = snap(y + Math.sin(a) * TL * 0.17);
+            g.fillStyle = '#4a4740'; g.fillRect(sx - 2, sy - 2, 4, 4);
+            g.fillStyle = Math.sin(a) < 0 ? '#8a8272' : '#6a655a'; g.fillRect(sx - 2, sy - 2, 4, 2);
+          }
+          // the logs, crossed
+          g.fillStyle = '#3a2614';
+          for (let d = -6; d <= 6; d += 2) { g.fillRect(snap(x + d), snap(y - 2 + d * 0.3), 2, 4); g.fillRect(snap(x + d), snap(y - 2 - d * 0.3), 2, 4); }
+          g.fillStyle = '#6e4a26'; g.fillRect(snap(x - 6), snap(y - 4), 4, 2); g.fillRect(snap(x + 4), snap(y - 4), 4, 2);
+          // embers in the bed, light ADDED — the bed only, never the ground
           g.save(); g.globalCompositeOperation = 'lighter';
-          g.fillStyle = 'rgba(255,150,60,' + qa(0.16 * k + 0.04 * Math.sin(t * 9 + pt.x)) + ')';
-          R.pxDisc(g, x, y, TL * 1.2, 2, 0.5);
+          for (let n = 0; n < 5; n++) {
+            g.fillStyle = 'rgba(255,' + (120 + n * 20) + ',40,' + qa((0.5 + 0.5 * Math.sin(t * 7 + n * 2.1 + sd)) * k) + ')';
+            g.fillRect(snap(x - 6 + n * 3), snap(y - 2), 2, 2);
+          }
           g.restore();
-          flame(g, x, y, TL * (1.1 + 0.15 * Math.sin(t * 5 + pt.y)) * k, TL * 0.5 * k, t, pt.x * 0.7 + pt.y);
-          // a thread of smoke going up
-          for (let n = 0; n < 6; n++) {
-            const ph = (t * 0.35 + n / 6) % 1;
-            g.fillStyle = 'rgba(90,86,80,' + qa(0.5 * (1 - ph)) + ')';
-            g.fillRect(snap(x + Math.sin(ph * 5 + n) * 4 * ph + ph * 6), snap(y - TL * 1.3 - ph * TL * 1.6), 2 + (ph > 0.5 ? 2 : 0), 2);
+          // three tongues
+          flame(g, x - 4, y - 2, TL * (0.75 + 0.12 * Math.sin(t * 6 + sd)) * k, TL * 0.3 * k, t * 1.1, sd + 2.1);
+          flame(g, x + 4, y - 2, TL * (0.7 + 0.12 * Math.sin(t * 5.3 + sd)) * k, TL * 0.28 * k, t * 0.93, sd + 4.4);
+          flame(g, x, y - 2, TL * (1.15 + 0.18 * Math.sin(t * 4.6 + sd)) * k, TL * 0.42 * k, t, sd);
+          // sparks going up, light ADDED
+          g.save(); g.globalCompositeOperation = 'lighter';
+          for (let n = 0; n < 7; n++) {
+            const ph = (t * 0.7 + n / 7 + (sd % 1)) % 1;
+            g.fillStyle = n % 2 ? F[3] : F[2];
+            g.globalAlpha = qa((1 - ph) * k);
+            g.fillRect(snap(x + Math.sin(ph * 7 + n * 1.7) * 6 * ph + (rnd(n, pt.x) - 0.5) * 8), snap(y - TL * 0.9 - ph * TL * 1.4), 2, 2);
+          }
+          g.restore();
+          // a thread of smoke above
+          for (let n = 0; n < 7; n++) {
+            const ph = (t * 0.3 + n / 7) % 1;
+            g.fillStyle = 'rgba(96,92,86,' + qa(0.55 * (1 - ph) * k) + ')';
+            const w = 2 + (ph > 0.45 ? 2 : 0);
+            g.fillRect(snap(x + Math.sin(ph * 5 + n) * 4 * ph + ph * 8), snap(y - TL * 1.5 - ph * TL * 1.8), w, w);
           }
         }
       },
@@ -629,7 +650,7 @@
           const s = Bld.size(b);
           for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
             if (MapGen.onBoard(b.x + dx, b.y + dy)) foot.push(MapGen.idx(b.x + dx, b.y + dy));
-          marks.push({ x: Bld.cx(b), y: Bld.cy(b) });
+          marks.push({ x: Bld.cx(b), y: Bld.cy(b), bx: b.x, by: b.y, s });
         }
         Deck.light(foot);
         if (window.R) R.fogDirty = true;
@@ -680,6 +701,15 @@
             }
             const fadeM = p > 0.9 ? qa(1 - (p - 0.9) / 0.1) : 1;
             g.globalAlpha = fadeM;
+            // the footprint MARKED: gold corner brackets, snapping in
+            if (m.s) {
+              const pad = 4 * (1 - Math.min(1, q * 3)) * TL / 8, x0 = m.bx * TL - pad, y0 = m.by * TL - pad, x1 = (m.bx + m.s) * TL + pad, y1 = (m.by + m.s) * TL + pad, L = Math.max(6, TL * 0.3);
+              g.fillStyle = '#ffd45e';
+              for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
+                g.fillRect(snap(sx > 0 ? cx : cx - L), snap(sy > 0 ? cy : cy - 2), snap(L), 2);
+                g.fillRect(snap(sx > 0 ? cx : cx - 2), snap(sy > 0 ? cy : cy - L), 2, snap(L));
+              }
+            }
             this.pip(g, mx, my - TL * 0.9, q < 0.3 ? 2 : 1);
             g.globalAlpha = 1;
           }
@@ -701,9 +731,20 @@
         x = snap(x); y = snap(y);
         const c = 4, HW = 12, look = p > 0.3 && p < 0.8 ? Math.sin((p - 0.3) / 0.5 * Math.PI * 2) : 0;
         const t = performance.now() / 1000;
+        // its halo: two rings of gold dots turning against each other, and rays
         g.save(); g.globalCompositeOperation = 'lighter';
-        g.fillStyle = 'rgba(255,200,90,' + qa(0.18 * open + 0.06 * Math.sin(t * 7)) + ')';
-        R.pxDisc(g, x, y, c * HW * 1.25, 2, 0.6);
+        for (const [rr, n, dir, al] of [[1.32, 36, 1, 0.75], [1.62, 48, -1, 0.45]]) {
+          g.fillStyle = 'rgba(255,212,94,' + qa(al * open) + ')';
+          for (let k = 0; k < n; k++) {
+            const a = k / n * Math.PI * 2 + dir * t * 0.6;
+            g.fillRect(snap(x + Math.cos(a) * c * HW * rr), snap(y + Math.sin(a) * c * HW * rr * 0.62), 4, 4);
+          }
+        }
+        g.fillStyle = 'rgba(255,233,160,' + qa(0.5 * open) + ')';
+        for (let k = 0; k < 12; k++) {
+          const a = k / 12 * Math.PI * 2 + t * 0.2, r0 = c * HW * 1.75, r1 = r0 + c * (3 + 2 * Math.sin(t * 3 + k));
+          for (let r = r0; r < r1; r += 4) g.fillRect(snap(x + Math.cos(a) * r), snap(y + Math.sin(a) * r * 0.62), 2, 2);
+        }
         g.restore();
         const ix = Math.round(look * 4), IR = 4.6, PR = 2;
         for (let cx = -HW; cx <= HW; cx++) {
@@ -730,12 +771,20 @@
         if (c) return c;
         const w = img.width || img.naturalWidth, h = img.height || img.naturalHeight;
         if (!w || !h) return null;
+        const tint = (col) => {
+          const t = document.createElement('canvas'); t.width = w; t.height = h;
+          const tq = t.getContext('2d');
+          tq.drawImage(img, 0, 0);
+          tq.globalCompositeOperation = 'source-in';
+          tq.fillStyle = col; tq.fillRect(0, 0, w, h);
+          return t;
+        };
+        const rim = tint('#e0a0a6'), body = tint('#7c3440');
         c = document.createElement('canvas'); c.width = w; c.height = h;
         const q = c.getContext('2d');
-        q.drawImage(img, 0, 0);
-        q.globalCompositeOperation = 'source-in';
-        q.fillStyle = '#8a3c48';
-        q.fillRect(0, 0, w, h);
+        const o = Math.max(1, Math.round(w / 48));   // about one world pixel
+        for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o]]) q.drawImage(rim, dx, dy);
+        q.drawImage(body, 0, 0);
         this._sil.set(img, c);
         return c;
       },
@@ -775,51 +824,139 @@
         const c = Deck.run().charges, again = (c.pact || 0) > 0;
         c.pact = (c.pact || 0) + this.N;
         const tc = Bld.tcOf('P');
-        if (window.R && R.startCardShow) R.startCardShow('barbarian_pact', tc ? { x: Bld.cx(tc), y: Bld.cy(tc) } : {});
+        // the signal fire burns on the GROUND beside the hall (never on its
+        // roof — a fire on a building is the game's one unprompted alarm)
+        if (window.R && R.startCardShow) {
+          const sz = tc ? Bld.size(tc) : 0;
+          R.startCardShow('barbarian_pact', tc ? { x: Bld.cx(tc), y: Bld.cy(tc), fx: tc.x + sz + 0.55, fy: tc.y + sz - 0.35 } : {});
+        }
         sfx('cardDrums');
         Deck.say(again ? '🥁 The pact is sealed again: the next ' + c.pact + ' barbarian war bands will march on the rival instead of you.'
           : '🥁 Gold for the wolves: the next ' + this.N + ' barbarian war bands will march on the rival instead of you.');
         return { ok: true };
       },
-      /* THE MOMENT: war drums — the screen's edges pulse red on every stroke
-         and the ground shakes — while a red smoke signal climbs off the hall.
-         A band turning later gets two strokes of its own (no smoke: the
+      /* THE MOMENT: four war-drum strokes. On every stroke the screen's edges
+         pulse red, the ground shakes and a ring of red dots rolls out across
+         the ground from the hall; a signal fire springs up beside it and
+         throws a column of RED smoke into the sky; and on the last stroke the
+         pact is STAMPED over the whole screen — a war-paint handprint in red
+         ochre, dripping, with the words under it — and fades. A band turning
+         later gets two strokes and its own pulse (no smoke and no stamp: the
          muster is not the player's to see). */
       BEATS: [0.08, 0.28, 0.48, 0.57],
+      // a hand stencil, the oldest mark there is: four fingers, a thumb, a palm, a wrist
+      HAND: ['.....XX......', '..XX.XX......', '..XX.XX.XX...', '..XX.XX.XX...', '..XX.XX.XX...',
+             '..XX.XX.XX.XX', '..XX.XX.XX.XX', 'X.XXXXXXXXXXX', 'XXXXXXXXXXXXX', '.XXXXXXXXXXXX',
+             '..XXXXXXXXXXX', '..XXXXXXXXXX.', '...XXXXXXXXX.', '....XXXXXXX..', '.....XXXXX...'],
       show: {
         ms: 3400, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
-          if (layer === 'world') { if (!s.turn && s.x != null) this.smoke(g, s, p); return; }
-          const beats = s.turn ? [0.1, 0.42] : this.BEATS, W = R.cv.width, H = R.cv.height;
+          const beats = s.turn ? [0.1, 0.42] : this.BEATS;
+          if (layer === 'world') {
+            if (s.turn || s.x == null) return;
+            // the drum rolling out across the ground, a ring per stroke
+            const TL = CFG.TILE;
+            for (let b = 0; b < beats.length; b++) {
+              const q = (p - beats[b]) / 0.22;
+              if (q < 0 || q > 1) continue;
+              g.fillStyle = 'rgba(176,40,24,' + qa(0.9 * (1 - q), 4) + ')';
+              ring(g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.8 + 5.5 * ease(q)), 44, 0.5, 4);
+              g.fillStyle = 'rgba(255,190,90,' + qa(0.6 * (1 - q), 4) + ')';
+              ring(g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.6 + 4.2 * ease(q)), 30, 0.5, 2);
+            }
+            this.smoke(g, s, p);
+            return;
+          }
+          const W = R.cv.width, H = R.cv.height;
           s.hit = s.hit || {};
           for (let b = 0; b < beats.length; b++) {
             const q = (p - beats[b]) / 0.16;
             if (q < 0 || q > 1) continue;
-            if (!s.hit[b]) { s.hit[b] = 1; if (R.shakeAt) R.shakeAt(b === beats.length - 1 ? 6 : 4, 0.3); }
-            const a = 0.42 * (1 - q) * (1 - q);
+            if (!s.hit[b]) { s.hit[b] = 1; if (R.shakeAt) R.shakeAt(b === beats.length - 1 ? 8 : 4, 0.35); }
+            const a = 0.46 * (1 - q) * (1 - q);
             for (let k = 0; k < 4; k++) {
               const w = Math.round(Math.min(W, H) * (0.03 + 0.03 * k) * (1 + 0.4 * (1 - q)));
               g.fillStyle = 'rgba(120,18,12,' + qa(a * (1 - k * 0.24), 8) + ')';
               g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
             }
           }
+          if (!s.turn) this.stamp(g, s, p, W, H);
         },
       },
+      // the pact, stamped: a war-paint handprint slammed down on the last stroke
+      stamp(g, s, p, W, H) {
+        const t0 = this.BEATS[3], q = (p - t0) / 0.05;
+        if (q < 0 || p > 0.97) return;
+        const fade = p < 0.84 ? 1 : 1 - (p - 0.84) / 0.13;
+        const sc = q < 1 ? 1 + 0.7 * (1 - ease(q)) : 1;
+        const rows = this.HAND, cols = rows[0].length;
+        const cell = Math.max(4, Math.round(Math.min(W, H) / 36 * sc / 2) * 2);
+        const hw = cols * cell, hh = rows.length * cell, x0 = Math.round(W / 2 - hw / 2), y0 = Math.round(H * 0.4 - hh / 2);
+        // the world goes still under it
+        g.fillStyle = 'rgba(14,6,3,' + qa(0.38 * fade * Math.min(1, q), 6) + ')';
+        g.fillRect(0, 0, W, H);
+        g.globalAlpha = qa(0.92 * fade, 6);
+        // the paint: two reds, a ragged edge (a cell skipped here and there), a darker heart
+        for (let r = 0; r < rows.length; r++) for (let c = 0; c < cols; c++) {
+          if (rows[r][c] !== 'X') continue;
+          const edge = c === 0 || c === cols - 1 || rows[r][c - 1] !== 'X' || rows[r][c + 1] !== 'X' ||
+            !rows[r - 1] || rows[r - 1][c] !== 'X' || !rows[r + 1] || rows[r + 1][c] !== 'X';
+          if (edge && hash(r * 31 + c * 7) % 5 === 0) continue;
+          g.fillStyle = edge ? '#b0331f' : (hash(r * 13 + c) % 4 === 0 ? '#6e1d12' : '#8e2e1e');
+          g.fillRect(x0 + c * cell, y0 + r * cell, cell, cell);
+        }
+        // drips running down from the palm's heel, longer the longer it holds
+        const run = Math.min(1, Math.max(0, (p - t0 - 0.03) / 0.2));
+        g.fillStyle = '#8e2e1e';
+        for (const [c, len] of [[5, 3], [7, 5], [9, 2]]) {
+          const n = Math.round(len * run);
+          for (let k = 0; k < n; k++) g.fillRect(x0 + c * cell + (k === n - 1 ? 0 : cell / 4), y0 + (rows.length + k) * cell, k === n - 1 ? cell : cell / 2, cell);
+        }
+        // spatter thrown off the slam
+        if (q < 3) {
+          for (let k = 0; k < 16; k++) {
+            const an = k / 16 * Math.PI * 2 + 0.3, rr = (hw * 0.55 + cell * 3 * Math.min(1, q)) * (0.8 + 0.4 * rnd(k, 5));
+            g.fillRect(snapTo(W / 2 + Math.cos(an) * rr, cell / 2), snapTo(H * 0.4 + Math.sin(an) * rr * 0.9, cell / 2), cell / 2, cell / 2);
+          }
+        }
+        // the words
+        const fs = Math.round(Math.min(34, W / 15));
+        g.font = 'bold ' + fs + 'px sans-serif';
+        g.textAlign = 'center'; g.textBaseline = 'top';
+        const ty = y0 + hh + cell * 6, sh2 = Math.max(2, Math.round(fs / 10));
+        g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE PACT IS SEALED', W / 2 + sh2, ty + sh2);
+        g.fillStyle = '#e8c39a'; g.fillText('THE PACT IS SEALED', W / 2, ty);
+        g.font = Math.round(fs * 0.5) + 'px sans-serif';
+        g.fillStyle = 'rgba(240,226,200,0.92)';
+        const left = (S.deck && S.deck.charges && S.deck.charges.pact) || 3;
+        g.fillText('The next ' + left + ' war band' + (left === 1 ? '' : 's') + ' march on the rival', W / 2, ty + Math.round(fs * 1.3));
+        g.globalAlpha = 1;
+      },
+      // the signal fire beside the hall, and its column of red smoke
       smoke(g, s, p) {
-        const TL = CFG.TILE, x0 = s.x * TL, y0 = s.y * TL - TL * 0.6, T0 = s.t, F = FIRE();
-        // embers at the signal's foot, light ADDED
-        g.save(); g.globalCompositeOperation = 'lighter';
-        g.fillStyle = 'rgba(255,90,40,' + qa(0.3 * (1 - p)) + ')';
-        R.pxDisc(g, x0, y0 + TL * 0.4, TL * 0.9, 2, 0.5);
-        g.restore();
-        if (p < 0.85) flame(g, x0, y0 + TL * 0.4, TL * 0.9 * (1 - p), TL * 0.45, T0, 3.3);
-        for (let i = 0; i < 26; i++) {
-          const t0 = (i / 26) * 2.4, age = T0 - t0;
-          if (age < 0 || age > 2.2) continue;
-          const q = age / 2.2, sway = Math.sin(age * 1.8 + i * 1.3) * (4 + q * 18) + q * 10;
-          const px = x0 + sway, py = y0 - q * TL * 5.5, r = 5 + q * 14;
-          g.fillStyle = q < 0.3 ? '#b02818' : q < 0.6 ? '#8a2a1e' : '#6a3a34';
-          g.globalAlpha = qa((q < 0.15 ? q / 0.15 : 1) * (1 - q) * 0.95);
+        const TL = CFG.TILE, x0 = (s.fx != null ? s.fx : s.x) * TL, y0 = (s.fy != null ? s.fy : s.y) * TL, T0 = s.t, F = FIRE();
+        const v = view(3);
+        if (!inView(v, x0 / TL, y0 / TL)) return;
+        // a ring of stones and the logs, then the fire on them
+        g.fillStyle = '#5a554c';
+        ring(g, x0, y0 + 2, TL * 0.36, 9, 0.45, 4);
+        g.fillStyle = '#4a3220';
+        g.fillRect(snap(x0 - TL * 0.3), snap(y0 - 2), snap(TL * 0.6), 4);
+        g.fillRect(snap(x0 - 4), snap(y0 - TL * 0.12), 8, 4);
+        const life = p < 0.08 ? ease(p / 0.08) : p < 0.85 ? 1 : 1 - (p - 0.85) / 0.15;
+        if (life > 0) {
+          flame(g, x0 - 5, y0, TL * 0.95 * life, TL * 0.36, T0, 3.3);
+          flame(g, x0 + 5, y0, TL * 0.8 * life, TL * 0.32, T0 * 1.13, 5.9);
+          flame(g, x0, y0, TL * 1.3 * life, TL * 0.42, T0 * 0.91, 1.1);
+        }
+        // the column of red smoke: puffs in hard steps, rising and spreading, drifting east
+        for (let i = 0; i < 30; i++) {
+          const t0 = (i / 30) * 2.6, age = T0 - t0;
+          if (age < 0 || age > 2.4) continue;
+          const q = age / 2.4, sway = Math.sin(age * 1.6 + i * 1.3) * (3 + q * 14) + q * q * TL * 1.2;
+          const px = x0 + sway, py = y0 - TL * 0.9 - q * TL * 6, r = 4 + q * 16;
+          g.fillStyle = q < 0.25 ? '#c0301c' : q < 0.55 ? '#962a1c' : '#6e3630';
+          g.globalAlpha = qa((q < 0.12 ? q / 0.12 : 1) * (1 - q) * 0.95);
           R.pxDisc(g, px, py, r, 2);
           if (i % 4 === 0 && q < 0.5) { g.fillStyle = F[2]; g.fillRect(snap(px + r * 0.3), snap(py - r * 0.2), 2, 2); }
         }
