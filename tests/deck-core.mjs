@@ -238,7 +238,9 @@ ck('aDuplicateWearsItsCount', d.badge === '×3', String(d.badge));
       unbuilt: Deck.CATALOG.filter(c => !Deck.FX[c.id] && Deck.count(c.id) > 0 && !CFG.CARDS.STARTER.includes(c.id)).map(c => c.id) };
   });
   ck('theReviewLinkDealsTheBuiltCards', sl.on && sl.held && sl.unbuilt.length === 0 &&
-    sl.built === 'dragonfire,forager_cache,harvest_festival,starfall,swift_raiders',
+    // the gate-2 five, and the army group's nine (js/deckfx-army.js)
+    sl.built === 'ancestors_host,dragonfire,forager_cache,harvest_festival,hunters_pack,iron_legion,legion_marches,' +
+      'siege_train,starfall,swift_raiders,trebuchet_battery,veterans,war_band,willing_hands',
     `on ${sl.on}; dealt ${sl.built}; unbuilt dealt ${sl.unbuilt.join(',') || 'none'}`);
   await ctx2.close();
 }
