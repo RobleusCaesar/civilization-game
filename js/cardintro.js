@@ -596,11 +596,11 @@ const CardIntro = {
     if (window.DeckUI && DeckUI.STACK_SVG) return DeckUI.STACK_SVG;
     return '<svg class="dkIco" viewBox="0 0 12 12"></svg>';
   },
-  CLOSE_SVG: '<svg viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true" fill="currentColor">' +
-    '<rect x="1" y="1" width="2" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/>' +
-    '<rect x="7" y="1" width="2" height="2"/><rect x="5" y="3" width="2" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="1" y="7" width="2" height="2"/></svg>',
-  ARROW_R: '<svg class="ciArr" viewBox="0 0 6 8" shape-rendering="crispEdges" aria-hidden="true" fill="currentColor"><rect x="0" y="0" width="2" height="8"/><rect x="2" y="1" width="2" height="6"/><rect x="4" y="3" width="2" height="2"/></svg>',
-  ARROW_L: '<svg class="ciArr" viewBox="0 0 6 8" shape-rendering="crispEdges" aria-hidden="true" fill="currentColor"><rect x="4" y="0" width="2" height="8"/><rect x="2" y="1" width="2" height="6"/><rect x="0" y="3" width="2" height="2"/></svg>',
+  // drawn at the device's own resolution (operator ruling: UI chrome is never chunky)
+  CLOSE_SVG: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' +
+    '<path d="M3.5 3.5 L12.5 12.5 M12.5 3.5 L3.5 12.5"/></svg>',
+  ARROW_R: '<svg class="ciArr" viewBox="0 0 6 8" aria-hidden="true" fill="currentColor"><path d="M0.6 0.4 L5.6 4 L0.6 7.6 Z"/></svg>',
+  ARROW_L: '<svg class="ciArr" viewBox="0 0 6 8" aria-hidden="true" fill="currentColor"><path d="M5.4 0.4 L0.4 4 L5.4 7.6 Z"/></svg>',
 
   _css() {
     if (document.getElementById('cardIntroCss')) return;
@@ -679,7 +679,7 @@ CardIntro.CSS = `
   display: flex; align-items: center; justify-content: center; color: #f2cd62; cursor: pointer; border-radius: 50%; }
 #cardIntro .ciX::before { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #2c2117, #120c07);
   box-shadow: 0 0 0 1px #0a0704, 0 0 0 2px #a67a34, 0 2px 6px rgba(0,0,0,.6); z-index: -1; }
-#cardIntro .ciX svg { width: 14px; height: 14px; filter: drop-shadow(0 1px 0 #000); }
+#cardIntro .ciX svg { width: 16px; height: 16px; filter: drop-shadow(0 1px 0 #000); }
 #cardIntro .ciX:hover::before { box-shadow: 0 0 0 1px #0a0704, 0 0 0 2px #f2cd62, 0 0 12px rgba(255,210,100,.5); }
 #cardIntro button:focus { outline: none; }
 #cardIntro.ciKeys button:focus-visible { outline: 2px solid #ffe9a8; outline-offset: 3px; }
