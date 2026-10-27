@@ -10461,8 +10461,9 @@ const R = {
      draw() is called every frame with p running 0 → 1 over `ms`. Layer
      'world' draws in world space after the units (x/y in tiles × CFG.TILE);
      'ground' in world space in the ground pass, under buildings, units and
-     the fog (drawCardGround) — for what happens IN the land; 'sky' draws in SCREEN space (device pixels) over the night tint, for
-     what happens in the air: a flash, a darkened sky, a comet. A show may
+     the fog (drawCardGround) — for what happens IN the land; 'sky' draws
+     in SCREEN space (device pixels) over the night tint, for what happens
+     in the air: a flash, a darkened sky, a comet. A show may
      carry both (`layers: ['world', 'sky']`, with draw(g, s, p, dt, layer)).
      Render state only — never in S, cleared in onNewGame, capped — so a
      save taken mid-show simply loads without it. A draw that throws is
