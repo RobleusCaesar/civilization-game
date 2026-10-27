@@ -122,6 +122,7 @@ const DeckUI = {
      without being "given back" into a game it never paused. */
   onWorldChange() {
     this._waited = false;
+    this._cells = {};   // a new run's cards are asked afresh what they can do
     if (!this.built) return;
     this.reset();
     if (this._shy) this._stand(true);   // a new world starts with the deck in it
@@ -138,7 +139,7 @@ const DeckUI = {
     if (!on) this.reset();
     this.el.btn.style.display = on ? '' : 'none';
     this.el.timers.style.display = on ? '' : 'none';
-    if (on) { this.syncBadge(true); this._fitChips(); }
+    if (on) { this.syncBadge(true); this._fitChips(); this._warm(); }
   },
   /* coming in mid-run, the deck ARRIVES: the button drops into the bar with
      a pop, so the eye has found it before the tutorial's note names it */
@@ -245,6 +246,7 @@ const DeckUI = {
     this.syncBadge(true);
     // the monsters' art for every card the player HOLDS, at the front of the wire
     if (Deck.wantArt) Deck.wantArt();
+    this._warm();   // the faces, built ahead in idle time
   },
 
   /* A PIXEL CARD STACK, not an emoji (the title menu's rule, boot.mjs
@@ -292,6 +294,7 @@ const DeckUI = {
     // the collection moved under an open sheet (a sync, a grant): show it,
     // unless a card is held up — re-rendering would pull the row from under it
     if (this.open && !this.lifted) this.render();
+    else if (!this.open) this._warm();
   },
 
   _key(e) {
@@ -367,8 +370,11 @@ const DeckUI = {
     const s = this.sheet;
     this.render();
     if (Deck.wantArt) Deck.wantArt();   // a held monster's art, if it is not in yet
-    s.root.classList.add('on');
+    // a closing slide still running is cancelled BEFORE the sheet is shown:
+    // asked of a shown sheet, getAnimations() forces the whole row's style
+    // in the tap (measured 44ms of a first open)
     for (const a of s.root.getAnimations({ subtree: true })) a.cancel();
+    s.root.classList.add('on');
     if (this._calm()) {
       s.back.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
       s.panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
@@ -423,6 +429,7 @@ const DeckUI = {
       '<div class="dkPanel">' +
         '<div class="dkGrab"><i class="dkGrip"></i>' +
           '<div class="dkHead"><b class="dkTitle">Your Cards</b><span class="dkCount"></span>' +
+          '<div class="dkTiers" role="tablist" aria-label="Jump to a tier"></div>' +
           '<button type="button" class="iconbtn dkClose" aria-label="Close">✕</button></div>' +
         '</div>' +
         '<div class="dkRow"></div>' +
@@ -430,14 +437,23 @@ const DeckUI = {
       '</div>';
     document.body.appendChild(root);
     const q = s => root.querySelector(s);
-    this.sheet = { root, back: q('.dkBack'), panel: q('.dkPanel'), row: q('.dkRow'), count: q('.dkCount'), hint: q('.dkHint'), grab: q('.dkGrab') };
+    this.sheet = { root, back: q('.dkBack'), panel: q('.dkPanel'), row: q('.dkRow'), count: q('.dkCount'), hint: q('.dkHint'), grab: q('.dkGrab'),
+      tiers: q('.dkTiers') };
     q('.dkBack').addEventListener('click', () => this.closeSheet());
     q('.dkClose').addEventListener('click', () => this.closeSheet());
+    // a tier's gem jumps the row to that tier's cards
+    this.sheet.tiers.addEventListener('click', e => {
+      const b = e.target.closest('.dkTier');
+      if (b) this.jumpTier(b.dataset.tier);
+    });
     // a mouse wheel scrolls the row sideways — a desktop has no thumb to swipe it
     const row = this.sheet.row;
     row.addEventListener('wheel', e => {
       if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { row.scrollLeft += e.deltaY; e.preventDefault(); }
     }, { passive: false });
+    // the gem of the tier in view is lit as the row moves (one read a frame at most)
+    let raf = 0;
+    row.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; this._litTier(); }); }, { passive: true });
     this._dragToClose(this.sheet.grab, this.sheet.panel);
   },
 
@@ -490,12 +506,25 @@ const DeckUI = {
   /* GROUPED BY TIER, HIGHEST FIRST: the rarest cards are the first thing
      the sheet shows, and a tier's name sits over its own cards in its own
      colour. A card that cannot be played now is greyed, with the reason
-     under it — the same words a PLAY tap would answer with. */
+     under it — the same words a PLAY tap would answer with.
+
+     A FULL DECK IS 36 CARDS IN ONE ROW (playtest g2: about nine swipes on a
+     390px phone to reach the bronze ones), so the sheet's head carries the
+     tiers as gems — one per tier held, in the row's order, with its count —
+     and a tap on one jumps the row to that tier (jumpTier); the gem of the
+     tier in view is lit as the row moves (_litTier).
+
+     AND A FACE IS BUILT ONCE (playtest g3: every open rebuilt all 36 faces
+     synchronously, 55-120ms on a desktop): each cell is kept under the card
+     it shows and handed back as long as nothing it shows has changed — its
+     width, its count, its playability and its reason (_cells). A cell is
+     rebuilt only when one of those moves. */
   render() {
     const s = this.sheet, owned = Deck.owned();
     const n = owned.reduce((a, o) => a + o.n, 0);
     s.count.textContent = n ? n + (n === 1 ? ' card' : ' cards') : '';
     s.row.textContent = '';
+    s.tiers.textContent = '';
     if (!n) {
       // THE EARN RULE in the player's words (Deck.eligible): a win always
       // earns; a defeat earns for a real fight, counted in deeds — and the
@@ -514,6 +543,7 @@ const DeckUI = {
     }
     const w = this._rowW();
     const tiers = Deck.TIERS.slice().sort((a, b) => b.rank - a.rank);
+    const keep = {};
     for (const t of tiers) {
       const mine = owned.filter(o => o.card.tier === t.k);
       if (!mine.length) continue;
@@ -521,16 +551,84 @@ const DeckUI = {
       g.className = 'dkGroup';
       g.dataset.tier = t.k;
       g.style.setProperty('--tc', t.col);
-      g.style.setProperty('--tg', t.glow);
       g.innerHTML = `<b class="dkGroupHd">${t.name}</b><div class="dkCards"></div>`;
       const cards = g.querySelector('.dkCards');
-      for (const o of mine) cards.appendChild(this._cell(o, w));
+      for (const o of mine) { cards.appendChild(this._cell(o, w)); keep[o.card.id] = 1; }
       s.row.appendChild(g);
+      // the tier's gem in the head, with how many of the tier are held
+      const held = mine.reduce((a, o) => a + o.n, 0);
+      const tb = document.createElement('button');
+      tb.type = 'button';
+      tb.className = 'dkTier';
+      tb.dataset.tier = t.k;
+      tb.setAttribute('role', 'tab');
+      tb.setAttribute('aria-label', `${t.name}: ${held} ${held === 1 ? 'card' : 'cards'}`);
+      tb.style.setProperty('--tc', t.col);
+      tb.innerHTML = `${this.GEM_SVG}<b>${held}</b>`;
+      s.tiers.appendChild(tb);
     }
+    // a card no longer held lets its cell go
+    for (const id in this._cells) if (!keep[id]) delete this._cells[id];
     s.hint.textContent = 'Tap a card to look closer';
+    // read on the next frame: a layout forced here would be paid in the tap
+    requestAnimationFrame(() => this._litTier());
   },
+  // a tier's gem: a hard-pixel diamond in the tier's colour (currentColor)
+  GEM_SVG: '<svg class="dkGem" viewBox="0 0 7 7" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v1h1v1h1v1h1v1h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1v-1h1v-1h1v-1h1z" fill="currentColor"/>' +
+    '<path d="M3 1h1v1h-1zM2 2h1v1h-1z" fill="#fff6d8" opacity=".85"/></svg>',
+  // the row brought round to a tier: its name at the row's left edge
+  jumpTier(k) {
+    const s = this.sheet, g = s && s.row.querySelector(`.dkGroup[data-tier="${k}"]`);
+    if (!g) return;
+    const pad = parseFloat(getComputedStyle(s.row).paddingLeft) || 0;
+    const left = g.getBoundingClientRect().left - s.row.getBoundingClientRect().left + s.row.scrollLeft - pad;
+    s.row.scrollTo({ left: Math.max(0, left), behavior: this._calm() ? 'auto' : 'smooth' });
+    this._lit = k;
+    for (const b of s.tiers.querySelectorAll('.dkTier')) b.classList.toggle('on', b.dataset.tier === k);
+    UI.cue('ok');
+  },
+  // the gem of the tier whose cards are at the row's left edge is lit
+  _litTier() {
+    const s = this.sheet;
+    if (!s) return;
+    const r0 = s.row.getBoundingClientRect().left + (parseFloat(getComputedStyle(s.row).paddingLeft) || 0) + 24;
+    let k = null;
+    for (const g of s.row.querySelectorAll('.dkGroup')) if (g.getBoundingClientRect().left <= r0 || !k) k = g.dataset.tier;
+    // at the row's end a tier asked for by its gem may never reach the edge
+    // (there is nothing left to scroll): the gem asked for stays lit
+    const atEnd = s.row.scrollLeft + s.row.clientWidth >= s.row.scrollWidth - 2;
+    const asked = this._lit && s.row.querySelector(`.dkGroup[data-tier="${this._lit}"]`);
+    if (atEnd && asked && asked.getBoundingClientRect().left > r0) k = this._lit;
+    for (const b of s.tiers.querySelectorAll('.dkTier')) b.classList.toggle('on', b.dataset.tier === k);
+  },
+  /* …and built AHEAD, in the page's idle time, a few faces a slice, so even
+     the first open of a full deck is cheap: the cells are ready under their
+     cards, and render() only checks they still say the right thing */
+  _warm() {
+    if (this._warming || !this.built || this.open) return;
+    const ric = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 6 }), 80));
+    let list = null, i = 0, w = 0;
+    this._warming = true;
+    const step = (dl) => {
+      if (this.open || this._shy || !this.built) { this._warming = false; return; }
+      // a world still being entered (the art plaque): try again in a moment
+      if (!this.live()) { ric(step, { timeout: 1000 }); return; }
+      if (!list) { list = Deck.owned(); w = this._rowW(); }
+      // two faces a slice at least (a page that is never idle still gets
+      // there), more while the idle time lasts
+      let n = 0;
+      while (i < list.length && (n < 2 || dl.timeRemaining() > 3)) { this._cell(list[i++], w); n++; }
+      if (i < list.length) ric(step, { timeout: 250 }); else this._warming = false;
+    };
+    ric(step, { timeout: 250 });
+  },
+  _cells: {},             // card id -> {key, el}: the faces already built (render)
   _cell(o, w) {
     const c = o.card, can = Deck.canPlay(c.id);
+    const dpr = (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1;
+    const key = [w, o.n, can.ok ? 1 : 0, can.ok ? '' : can.why, dpr].join('|');
+    const had = this._cells[c.id];
+    if (had && had.key === key) { had.el.classList.remove('dkOut'); return had.el; }
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'dkCell';
@@ -543,6 +641,7 @@ const DeckUI = {
     cap.textContent = can.ok ? this._kindLine(c) : can.why;
     b.appendChild(cap);
     b.addEventListener('click', () => this.lift(c.id, b));
+    this._cells[c.id] = { key, el: b };
     return b;
   },
   _kindLine(c) {
@@ -1741,14 +1840,27 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkSheet .dkTitle { font-family: var(--menufont); font-weight: 700; font-size: 17px; letter-spacing: 1.6px; text-transform: uppercase;
   color: #f2e6cd; text-shadow: 0 2px 0 rgba(20,12,4,.85); }
 #dkSheet .dkCount { color: var(--dim); font-size: 12px; font-weight: 700; }
-#dkSheet .dkClose { margin-left: auto; width: 46px; height: 46px; font-size: 16px; }
+#dkSheet .dkClose { margin-left: 0; width: 46px; height: 46px; font-size: 16px; flex: 0 0 auto; }
+/* the tiers as gems: a tap jumps the row to that tier (DeckUI.jumpTier) */
+#dkSheet .dkTitle { white-space: nowrap; flex: 0 0 auto; }
+#dkSheet .dkTiers { margin-left: auto; display: flex; gap: 1px; flex: 0 1 auto; min-width: 0; }
+#dkSheet .dkTier { position: relative; display: inline-flex; align-items: center; gap: 3px; height: 34px; min-width: 0; padding: 0 4px;
+  border: 0; border-radius: 6px; background: none; color: var(--tc); cursor: pointer;
+  font: 800 11.5px/1 -apple-system, "Segoe UI", Roboto, sans-serif; }
+#dkSheet .dkTier::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
+#dkSheet .dkTier b { color: #f3e2b4; text-shadow: 0 1px 0 #000; }
+#dkSheet .dkTier.on { background: rgba(0,0,0,.38); box-shadow: inset 0 -2px 0 var(--tc); }
+#dkSheet .dkGem { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
+@media (max-width: 430px) { #dkSheet .dkCount { display: none; } #dkSheet .dkTitle { font-size: 15px; letter-spacing: 1.1px; } }
+/* the narrowest phones give the head to the gems: the sheet is the deck either way */
+@media (max-width: 359px) { #dkSheet .dkTitle { display: none; } }
 #dkSheet .dkRow { display: flex; gap: 22px; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch; padding: 2px 16px 4px; scroll-padding: 0 16px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 #dkSheet .dkRow::before, #dkSheet .dkRow::after { content: ''; margin: auto; }
 #dkSheet .dkGroup { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
 #dkSheet .dkGroupHd { display: flex; align-items: center; gap: 7px; height: 18px; color: var(--tc);
   font: 700 11px var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; text-shadow: 0 1px 0 #000; }
-#dkSheet .dkGroupHd::before { content: ''; width: 7px; height: 7px; background: var(--tc); transform: rotate(45deg); box-shadow: 0 0 6px var(--tg); }
+#dkSheet .dkGroupHd::before { content: ''; width: 7px; height: 7px; background: var(--tc); transform: rotate(45deg); }
 #dkSheet .dkCards { display: flex; gap: 10px; }
 #dkSheet .dkCell { flex: 0 0 auto; width: var(--cw); display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 10px 0 0; border: 0; background: none; color: inherit; scroll-snap-align: start; cursor: pointer; }

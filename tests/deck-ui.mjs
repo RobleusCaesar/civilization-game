@@ -330,6 +330,58 @@ ck('anEmptyDeckSaysHowToEarnOne', /win a game/i.test(sh.empty) && /lose/i.test(s
   /this run: \d+ of \d+ deeds, \d+ of 6 days/.test(sh.empty) && !/minutes/.test(sh.empty) && sh.emptyBadge,
   sh.empty.slice(0, 160));
 
+/* A FULL DECK JUMPS BY TIER, AND ITS FACES ARE BUILT ONCE (playtest g2/g3):
+   36 cards in one row took about nine swipes on a 390px phone to reach the
+   bronze ones, and every open rebuilt all 36 faces in the tap (55-120ms).
+   The head carries the tiers held as gems, highest first; a tap on one
+   brings that tier's name to the row's left edge and lights its gem. A
+   second open hands back the very faces the first built; a card whose
+   count changes is the one face rebuilt. */
+const sj = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const out = {};
+  const c = Deck.col(), keep = Object.assign({}, c.counts);
+  c.counts = {};
+  for (const card of Deck.CATALOG) if (!card.id.startsWith('__')) c.counts[card.id] = 1;
+  Deck.saveCol();
+  document.getElementById('deckBtn').click(); await wait(450);
+  const tabs = [...document.querySelectorAll('#dkSheet .dkTier')];
+  out.tabs = tabs.map(t => t.dataset.tier).join(',');
+  out.counts = tabs.map(t => t.textContent).join(',');
+  const row = document.querySelector('#dkSheet .dkRow'), gem = document.querySelector('#dkSheet .dkTier[data-tier="bronze"]');
+  if (gem) gem.click();
+  // the row glides there: read once it has come to rest
+  let last = -1, rest = 0;
+  for (const t0 = performance.now(); performance.now() - t0 < 4000;) {
+    await wait(50);
+    if (row.scrollLeft > 0 && Math.abs(row.scrollLeft - last) < 0.5) { if (++rest >= 4) break; } else rest = 0;
+    last = row.scrollLeft;
+  }
+  const g = document.querySelector('#dkSheet .dkGroup[data-tier="bronze"]');
+  out.edge = Math.round(g.getBoundingClientRect().left - row.getBoundingClientRect().left - (parseFloat(getComputedStyle(row).paddingLeft) || 0));
+  out.lit = (document.querySelector('#dkSheet .dkTier.on') || {}).dataset;
+  out.lit = out.lit && out.lit.tier;
+  // the faces of this open, marked
+  for (const f of document.querySelectorAll('#dkSheet .dkCell .ccard')) f.__mark = 1;
+  document.querySelector('#dkSheet .dkClose').click(); await wait(350);
+  document.getElementById('deckBtn').click(); await wait(450);
+  const faces = [...document.querySelectorAll('#dkSheet .dkCell .ccard')];
+  out.n = faces.length;
+  out.reused = faces.filter(f => f.__mark).length;
+  // one card changes: that face alone is made again
+  Deck._add('harvest_festival', 1); Deck.saveCol();
+  await wait(100);
+  const after = [...document.querySelectorAll('#dkSheet .dkCell .ccard')];
+  out.rebuilt = after.filter(f => !f.__mark).map(f => f.dataset.card).join(',');
+  document.querySelector('#dkSheet .dkClose').click(); await wait(350);
+  c.counts = keep; Deck.saveCol();
+  return out;
+});
+ck('aFullDeckJumpsByTier', sj.tabs === 'enlight,imperial,iron,bronze,stone' && /^\d+(,\d+){4}$/.test(sj.counts) && Math.abs(sj.edge) <= 2 && sj.lit === 'bronze',
+  `gems ${sj.tabs} (${sj.counts}); bronze jumped to ${sj.edge}px from the edge, lit ${sj.lit}`);
+ck('andItsFacesAreBuiltOnce', sj.n === 36 && sj.reused === 36 && sj.rebuilt === 'harvest_festival',
+  `${sj.reused} of ${sj.n} faces handed back on the second open; rebuilt after a change: ${sj.rebuilt || 'none'}`);
+
 /* ================= 5. LIFT, FLIP, PLAY ================= */
 const playBar = (pg) => pg.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
