@@ -918,7 +918,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           below += n0 - tr.cargo.length;
         }
         if (gone.length) { show('ancestors_host', { mode: 'fade', ms: 2800, ghosts: gone }); sound('cardFade'); }
-        G.log('👻 The Ancestors’ Host fades — your ancestors go back to the earth.', true, 6000);
+        // a plain note, never the red alarm: nothing went wrong, the days are done
+        G.log('👻 The Ancestors’ Host fades — your ancestors go back to the earth.', false, 6000);
         return below;
       },
       show: {
