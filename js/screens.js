@@ -195,6 +195,8 @@ const Screens = {
       });
     } else if (snap && snap.json) { this._newestSlot = 'local'; finish('recover last session (day ' + snap.day + ')', true); }
     else finish(window.Backend && Backend.configured ? 'no saves yet' : 'cloud saves off', false);
+    // THE CARD SYSTEM's plaque and starter hand (js/deckscreens.js) — an early return with the switch off
+    if (window.DeckScreens) DeckScreens.onTitle();
   },
 
   async continueGame() {
@@ -1128,6 +1130,10 @@ const Screens = {
     if (window.Competition) Competition.offer(!!win);   // the prize draw (js/competition.js) — delete this line with the file
   },
   onEndgame(opts) {
+    /* THE CARD SYSTEM's reward screen takes the end when its switch is on
+       (js/deckscreens.js); off, it answers false and everything below runs
+       exactly as it always has */
+    if (window.DeckScreens && DeckScreens.takeEnd(opts)) return;
     const def = this.el('defeatScene'), vic = this.el('victoryPane'), scr = this.el('scrEndgame');
     const vs = this.el('victoryScene');
     if (!opts.win) {
@@ -1309,6 +1315,35 @@ const Screens = {
     this.submitScore(name, { remember: chk.ok, fallback: !chk.ok, keepalive: !!unloading, quiet: true });
   },
 
+  /* the end of a run is on screen: the end screen itself, or the board or
+     the collection the card system's reward screen opened from it (both of
+     which lead back to it) — closing the page from any of them posts the run */
+  atEnd() {
+    return this.current === 'endgame' || (this.current === 'leaders' && this.backTo === 'endgame') ||
+      (this.current === 'cards' && !!window.DeckScreens && DeckScreens._colFrom === 'endgame');
+  },
+  /* LEAVING THE END SCREEN, by REPLAY or MENU — the old scenes' buttons and
+     the card system's reward screen alike. Leaving a victory with the name
+     box empty: one warning that says exactly what the second tap does, then
+     the win goes up under the stand-in name on the way out (a typed name is
+     used as typed, no warning). Closing the page instead fires the same
+     post keepalive (the pagehide hook in bind). */
+  leaveEnd(go) {
+    if (this._entry && !this._submitted && window.Backend && Backend.isReady() && !this._leaveWarned
+        && !Score.cleanName(this.el('arcadeName').value).ok) {
+      this._leaveWarned = true;
+      UI.toast(`Name your chief for the board — or tap again to leave and go up as ${Score.fallbackName(Backend.uid)}`, true, 4200);
+      return;
+    }
+    this._postBeforeLeaving(false);
+    go();
+  },
+  // REPLAY, not Play Again (operator direction): "Play Again" rolled a
+  // DIFFERENT world, which reads as a broken replay — especially after a
+  // loss, when what the player wants is another go at the same one
+  endReplay() { this.leaveEnd(() => this.replayRun()); },
+  endMenu() { this.leaveEnd(() => { this._demo = false; this.show('title'); }); },
+
   // auto === the saved name for the automatic post; a manual Save reads the box
   async submitScore(auto, opts) {
     opts = opts || {};
@@ -1403,7 +1438,12 @@ const Screens = {
     on('btnTitleNew', () => { this.backTo = 'title'; this.show('newgame'); });
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
     on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
-    on('ldrBack', () => this.show(this.backTo === 'paused' ? 'paused' : 'title'));
+    on('ldrBack', () => {
+      // the card system's reward screen sends its LEADERBOARD here and is
+      // brought back to itself, as it was left (js/deckscreens.js)
+      if (this.backTo === 'endgame' && window.S && S.over) { this.show('endgame', { win: S.over.win, msg: S.over.msg, back: true }); return; }
+      this.show(this.backTo === 'paused' ? 'paused' : 'title');
+    });
     on('btnSubmitScore', () => (window.Backend && Backend.isReady()) ? this.submitScore() : this._offerSubmit());
     on('btnTitleSettings', () => { this.backTo = 'title'; this.show('settings'); });
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
@@ -1470,32 +1510,13 @@ const Screens = {
     on('btnDoomResign', () => this.doomResign());
     on('btnDoomStay', () => this.doomStay());
     // endgame
-    /* leaving a victory with the name box empty: one warning that says
-       exactly what the second tap does, then the win goes up under the
-       stand-in name on the way out (a typed name is used as typed, no
-       warning). Closing the page instead fires the same post keepalive. */
-    const leaveEnd = (go) => {
-      if (this._entry && !this._submitted && window.Backend && Backend.isReady() && !this._leaveWarned
-          && !Score.cleanName(this.el('arcadeName').value).ok) {
-        this._leaveWarned = true;
-        UI.toast(`Name your chief for the board — or tap again to leave and go up as ${Score.fallbackName(Backend.uid)}`, true, 4200);
-        return;
-      }
-      this._postBeforeLeaving(false);
-      go();
-    };
-    window.addEventListener('pagehide', () => { if (this.current === 'endgame') this._postBeforeLeaving(true); });
-    // REPLAY, not Play Again (operator direction): "Play Again" rolled a
-    // DIFFERENT world, which reads as a broken replay — especially after a
-    // loss, when what the player wants is another go at the same one
-    const goReplay = () => leaveEnd(() => this.replayRun());
-    const goTitle = () => leaveEnd(() => { this._demo = false; this.show('title'); });
+    window.addEventListener('pagehide', () => { if (this.atEnd()) this._postBeforeLeaving(true); });
     on('btnVicScore', () => this.openTally());   // "A New Dawn" victory buttons
     on('btnScoreBack', () => this.closeTally());
-    on('btnVicAgain', goReplay);
-    on('btnVicTitle', goTitle);
-    on('btnDefeatAgain', goReplay);  // "The Last Fire" defeat buttons — same actions
-    on('btnDefeatTitle', goTitle);
+    on('btnVicAgain', () => this.endReplay());
+    on('btnVicTitle', () => this.endMenu());
+    on('btnDefeatAgain', () => this.endReplay());  // "The Last Fire" defeat buttons — same actions
+    on('btnDefeatTitle', () => this.endMenu());
     // settings — the cadence is a segmented row now, same idiom as the
     // new-game pickers, so it reads as a game option instead of a form field
     /* AUDIO. Sound owns the state and the persistence; these rows only ask
