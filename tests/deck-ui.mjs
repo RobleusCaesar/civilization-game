@@ -303,6 +303,7 @@ const sh = await p.evaluate(async () => {
   await wait(350);
   out.empty = (document.querySelector('#dkSheet .dkEmpty') || {}).textContent || '';
   out.emptyBadge = document.getElementById('deckBtn').classList.contains('empty');
+  out.need = CFG.CARDS.LOSS_DEEDS;
   document.querySelector('#dkSheet .dkClose').click();
   await wait(350);
   c.counts = keep; Deck.saveCol();
@@ -315,7 +316,12 @@ ck('aDuplicateWearsItsCount', sh.dup === '×3', String(sh.dup));
 ck('everyFaceCarriesItsArt', /assets\/cards\/art\/swift_raiders\.png/.test(sh.art) && /url\("data:image\/svg/.test(sh.art) && /^url\(/.test(sh.ico),
   sh.art.slice(0, 90));
 ck('andEveryFaceIsAWholeMultiple', sh.whole.every(k => Math.abs(k - Math.round(k)) < 0.01 && k >= 1), sh.whole.join(','));
-ck('anEmptyDeckSaysHowToEarnOne', /finish a game/i.test(sh.empty) && /minutes/.test(sh.empty) && sh.emptyBadge, sh.empty.slice(0, 80));
+// the earn rule in the player's words (Deck.eligible): a win always earns,
+// a defeat for a real fight counted in deeds — with this run's count so far
+ck('anEmptyDeckSaysHowToEarnOne', /win a game/i.test(sh.empty) && /lose/i.test(sh.empty) &&
+  new RegExp(sh.need + ' deeds').test(sh.empty) && /gathering/.test(sh.empty) && /orders given on 6 different days/.test(sh.empty) &&
+  /this run: \d+ of \d+ deeds, \d+ of 6 days/.test(sh.empty) && !/minutes/.test(sh.empty) && sh.emptyBadge,
+  sh.empty.slice(0, 160));
 
 /* ================= 5. LIFT, FLIP, PLAY ================= */
 const playBar = (pg) => pg.evaluate(async () => {

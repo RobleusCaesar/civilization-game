@@ -132,6 +132,9 @@ const DeckScreens = {
     this._view = {
       key: rep.key, win, cause: rep.cause, cards, claimed, shown: claimed,
       ok: !!res.ok, why: res.why || '', score: sc.total, cw: this._cardW(),
+      // a defeat that fell short shows how far it got (Deck.eligible): the
+      // row of pips counts whatever is missing — the deeds, else the days
+      pips: (!res.ok && Deck.eligible(rep).pips) || null,
     };
     // a fresh run plays its reveal; a resumed or already-told one just stands there
     const fresh = prior == null && !res.again, play = fresh && !this.reduced();
@@ -178,7 +181,19 @@ const DeckScreens = {
      captured NOW, because a post can outlive this screen. */
   _armBoard(win, sc, msg) {
     Screens._score = win ? sc : null;
-    Screens._entry = win ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed } : null;
+    /* `cards_played`: how many this run played — a card-assisted run is
+       MARKED on the board (approved at Gate 1). Two wins never go up at all:
+       a TEST deck's (?cards=all — every card in the catalog, dealt free, is
+       nobody's record), and any card-assisted win while the board cannot
+       wear the mark: Backend.submitScore sends named parameters only, and
+       until submit_score learns p_cards_played (Backend.BOARD_MARKS_CARDS)
+       an assisted score would stand UNMARKED beside real players' — the one
+       thing the mark exists to prevent. Said in the score box's note line,
+       so the missing name box is never a mystery. */
+    const played = this._playedN();
+    const hold = !win ? '' : (played && Deck.isTest()) ? 'Test-deck run — not posted to the world board.'
+      : (played && !(window.Backend && Backend.BOARD_MARKS_CARDS)) ? 'Not posted to the world board — it cannot wear the card mark yet.' : '';
+    Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
     if (win) Screens._winMsg = msg || '';
@@ -188,6 +203,7 @@ const DeckScreens = {
     }
     const note = document.getElementById('savedNote');
     if (note) note.textContent = '';   // never let a prior run's note linger
+    if (hold && note) { note.textContent = hold; note.style.color = 'var(--dim)'; note.style.display = 'block'; }
     const board = document.getElementById('endBoard');
     if (board) board.innerHTML = '';
   },
@@ -262,12 +278,19 @@ const DeckScreens = {
             '<canvas class="cePlinth" aria-hidden="true"></canvas><i class="ceTopGlow"></i><i class="ceSlit"></i>' +
             '<div class="ceClip"><div class="ceMove" data-act="card"></div></div>' +
             '<div class="ceSparks" aria-hidden="true"></div>' +
-            '<div class="ceWhy"><b>No card this run</b><span></span></div>' +
+            '<div class="ceWhy"><b>No card this run</b><span></span><i class="cePips" aria-hidden="true"></i></div>' +
           '</div>' +
           '<div class="ceInfo">' +
             '<div class="cePlate" style="--i:0"><small></small><b></b></div>' +
             '<div class="ceScore" style="--i:1"><small>Final score</small><b class="ceScoreN">0</b>' +
-              `<p class="ceMeta">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</p><div class="ceRank"></div><div class="ceBoard"></div></div>` +
+              /* A CARD-ASSISTED RUN SAYS SO (approved at Gate 1: marked on the
+                 end screen, in telemetry and on the board), in the score's own
+                 box — the one block the board's name box never hides — and ON
+                 the day's line, so the mark costs the screen no height (a line
+                 of its own pushed the phone's reward past its fold) */
+              `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
+              (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
+              '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
             `<p class="cePlayed" style="--i:2"><small>Cards played this run</small><span>${this.esc(this._playedLine())}</span></p>` +
             `<div class="ceTile" style="--i:3">${this.DECK_SVG}<b class="ceTileN"></b><small>Cards in<br>your deck</small></div>` +
             '<div class="ceBtns" style="--i:4">' +
@@ -343,6 +366,15 @@ const DeckScreens = {
     const why = root.querySelector('.ceWhy');
     why.style.display = v.ok ? 'none' : '';
     why.querySelector('span').textContent = v.why;
+    /* …AND SHOWS IT: one pip a deed, the ones done lit — the words say the
+       count, the row lets the eye take it in before the words are read */
+    const pips = why.querySelector('.cePips');
+    pips.textContent = '';
+    if (v.pips) for (let i = 0; i < v.pips.of; i++) {
+      const e = document.createElement('i');
+      if (i < Math.min(v.pips.n, v.pips.of)) e.className = 'on';
+      pips.appendChild(e);
+    }
     this._plate(c);
     if (!c) {
       // nothing on the plinth: the light goes down to an ember, and the
@@ -426,6 +458,7 @@ const DeckScreens = {
     }
   },
 
+  _playedN() { return (S.deck && Array.isArray(S.deck.played)) ? S.deck.played.filter(x => x && Deck.card(x.id)).length : 0; },
   _playedLine() {
     const p = (S.deck && Array.isArray(S.deck.played)) ? S.deck.played : [];
     if (!p.length) return 'None';
@@ -988,7 +1021,7 @@ const DeckScreens = {
     } else {
       // any card of the tier makes the same silhouette (frame only, nothing named)
       face = this._silhouette(Deck.ofTier(cell.dataset.unknown)[0].id, w);
-      cap = 'Not yet discovered — finish a game to earn a card';
+      cap = 'Not yet discovered — win a game, or lose one fighting, to earn a card';
     }
     host.innerHTML = '';
     host.appendChild(face);
@@ -1194,6 +1227,10 @@ DeckScreens.CSS = `
 #cardEnd.ceLoss .ceWhy { border-color: rgba(140,156,178,0.32); }
 #cardEnd .ceWhy b { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink); }
 #cardEnd .ceWhy span { font: 600 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; color: #d8c8a4; }
+#cardEnd .cePips { display: flex; gap: 5px; }
+#cardEnd .cePips:empty { display: none; }
+#cardEnd .cePips i { width: 10px; height: 10px; background: rgba(140,156,178,0.16); box-shadow: inset 0 0 0 2px rgba(140,156,178,0.45); }
+#cardEnd .cePips i.on { background: #e8c15a; box-shadow: inset 0 -2px 0 #9a6e1c, inset 0 2px 0 #fff0b0; }
 
 #cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 8px;
   position: relative; z-index: 1; }
@@ -1227,6 +1264,11 @@ DeckScreens.CSS = `
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.75)); }
 #cardEnd.ceLoss .ceScoreN { background: linear-gradient(#f3efe2, #cfc6ad 52%, #9b917a); -webkit-background-clip: text; background-clip: text; }
 #cardEnd .ceMeta { margin: 1px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: #b5a888; }
+#cardEnd .ceMeta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 9px; row-gap: 2px; }
+#cardEnd .ceDay, #cardEnd .ceAssist { white-space: nowrap; }
+#cardEnd .ceAssist { display: inline-flex; align-items: center; gap: 4px; color: #e8c15a; }
+#cardEnd .ceAssist::before { content: '·'; color: #b5a888; margin-right: 5px; }
+#cardEnd .ceAssist svg { width: 13px; height: 13px; flex: 0 0 auto; image-rendering: pixelated; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
 #cardEnd .ceRank:empty { display: none; }
 #cardEnd #vicRank { margin: 5px auto 0; font-size: 12px; }
 #cardEnd .ceBoard { width: 100%; display: flex; flex-direction: column; align-items: center; }

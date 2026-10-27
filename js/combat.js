@@ -28,7 +28,7 @@ const Combat = {
     const t = p.tgt, flame = p.kind === 'flame';
     if (t.kind === 'bld') {
       const b = Bld.get(t.id);
-      if (b) this.hitBuilding(b, t.dmg, flame);
+      if (b) this.hitBuilding(b, t.dmg, flame, p.owner);
     } else {
       const tu = Units.get(t.id);
       if (tu) { R.float(tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a'); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
@@ -52,15 +52,21 @@ const Combat = {
   },
   // apply damage to a building + show it landing (shared by instant melee hits
   // and projectile impacts, so buildings always read the hit)
-  hitBuilding(b, dmg, flame) {
-    /* THE NUMBER IS WHAT THE BUILDING TOOK (Bld.damage returns it): a card
-       may halve a blow on the player's works, or hold their hall at its last
-       sliver, and the float says so — "Held!" for a blow swallowed whole
-       (js/deckfx-town.js). With no card running it is the blow itself. The
-       hp keeps the exact fraction (a halved odd blow); the float shows a
-       WHOLE number like every other float in the game, and a sliver of a
-       blow still reads as a hit (-1), never "-0". */
+  /* THE NUMBER IS WHAT THE BUILDING TOOK (Bld.damage returns it): a card
+     may halve a blow on the player's works, or hold their hall at its last
+     sliver, and the float says so — "Held!" for a blow swallowed whole
+     (js/deckfx-town.js). With no card running it is the blow itself. The
+     hp keeps the exact fraction (a halved odd blow); the float shows a
+     WHOLE number like every other float in the game, and a sliver of a
+     blow still reads as a hit (-1), never "-0".
+     `by` is the striker's owner: a building the PLAYER'S OWN soldiers bring
+     down is a deed (S.stats.handRazed, Deck.deeds) — the score's `razed`
+     counts every rival work that falls, a barbarian's torch included */
+  hitBuilding(b, dmg, flame, by) {
+    const was = b.hp;
     const took = Bld.damage(b, dmg);
+    if (by === 'P' && b.owner !== 'P' && was > 0 && b.hp <= 0 && S.stats)
+      S.stats.handRazed = (S.stats.handRazed || 0) + 1;
     R.float(Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
       flame ? '#f2963a' : '#e8d2a0');
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
@@ -1526,7 +1532,7 @@ const Combat = {
               if (sh) this.overshoot(sh);
               R.float(Bld.cx(b), b.y - 0.15, 'Miss!', '#cfcfcf');
             } else {
-              this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire);
+              this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire, u.owner);
             }
           }
         }

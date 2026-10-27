@@ -16,8 +16,13 @@
                        run's final score, the cards it played, the deck's
                        size, CLAIM and LEADERBOARD; the old scenes stand down
      THE GRANT         happens once, when the screen opens, however often it
-                       reopens; an ineligible run says why where the card
-                       would stand, and earns nothing
+                       reopens; a win earns however short (a two-minute one
+                       included); a defeat short of its deeds says how far it
+                       got where the card would stand — in words and in a
+                       row of pips, the deeds done lit — and earns nothing; a
+                       card-assisted run wears its mark on the score box's
+                       day line (no extra height) and carries its count to
+                       the board
      THE CEREMONY      the card rises (a real animation), settles, turns
                        over and back on a tap; CLAIM lands it in the deck and
                        the count ticks up; a great victory's bonus card rises
@@ -83,7 +88,8 @@ const SETUP = `window.__run = (o) => {
   G.newGame(o.seed, o.mode || 'moderate', 'medium');
   Screens.show('playing'); S.paused = true;
   S.playtime = o.secs == null ? 900 : o.secs;
-  S.stats.kills = 80; S.stats.built = 20; S.day = o.day || 140;
+  S.stats.kills = 80; S.stats.built = o.built == null ? 20 : o.built; S.day = o.day || 140;
+  S.stats.actDays = o.days == null ? 30 : o.days;
   if (o.played) S.deck.played.push(...o.played);
   if (o.cards) {
     let i = 0, j = 0;
@@ -217,6 +223,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.entry = !!Screens._entry && Screens._entry.score === Score.compute(true).total;
     out.ready = DeckScreens._ready;
     out.anim = !!root.querySelector('.ceReveal, .ceIntro') || root.classList.contains('ceIntro');
+    out.unassisted = !root.querySelector('.ceAssist') && Screens._entry && Screens._entry.cards_played === 0;
     // THE GRANT HAPPENS ONCE: the screen reopened, and the finished save loaded again
     UI.showEnd(true, 'again');
     out.again = Deck.total();
@@ -252,6 +259,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   ck('claimAndLeaderboardAreOffered', a.claim && a.board && !a.leave, `claim ${a.claim}, board ${a.board}, replay/menu before claim ${a.leave}`);
   ck('theBoardIsLentToTheScreen', a.nameLent && a.entry, `nodes lent ${a.nameLent}, entry armed ${a.entry}`);
   ck('lessMotionPlaysNothing', a.ready && !a.anim, `ready ${a.ready}, animating ${a.anim}`);
+  ck('aRunWithNoCardPlayedWearsNoMark', a.unassisted, `mark absent, board entry cards 0: ${a.unassisted}`);
   ck('theGrantHappensOnce', a.again === 4 && a.loaded === 4 && a.runs === 1 && a.stillCard, `reopened ${a.again}, reloaded ${a.loaded}, ${a.runs} run ledger`);
   ck('claimTicksTheCount', a.claimed.tile === a.claimed.before + 1 && a.claimed.deck === a.claimed.tile && a.claimed.tile === a.claimed.total,
     JSON.stringify(a.claimed));
@@ -300,36 +308,134 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.board = __shown(root.querySelector('[data-act="board"]'));
     out.entry = Screens._entry;
     out.played = root.querySelector('.cePlayed span').textContent;
+    const mk = root.querySelector('.ceAssist');
+    out.assist = __shown(mk) && /card-assisted/i.test(mk.textContent) && !!mk.closest('.ceScore') && !!mk.querySelector('svg');
+    // the mark rides the day's line — a line of its own pushed the phone's reward past its fold
+    const day = root.querySelector('.ceDay');
+    out.sameLine = !!mk && !!day && Math.abs(mk.getBoundingClientRect().top - day.getBoundingClientRect().top) < 3;
     return out;
   });
   ck('aDefeatWearsTheColdBanner', l.loss && /^defeat$/i.test(l.banner) && l.laurels === 0, `"${l.banner}", laurels ${l.laurels}`);
   ck('andStillRevealsItsCard', l.card === 'harvest_festival' && l.claim && l.board, `card ${l.card}, claim ${l.claim}, board ${l.board}`);
   ck('aDefeatShowsItsScoreAndPostsNothing', l.score === l.want && l.entry === null, `${l.score} vs ${l.want}, entry ${JSON.stringify(l.entry)}`);
   ck('thePlayedLineNamesTheRunsCards', l.played === "Forager's Cache ×2, Starfall", l.played);
+  ck('aCardAssistedRunSaysSoInTheScoresBox', l.assist && l.sameLine, `mark shown in the score box with its icon: ${l.assist}; on the day's line ${l.sameLine}`);
 
-  // ineligible: the reason stands where the card would, and nothing is earned
+  /* THE EARN RULE on the screen: a WIN earns however short — the old gate
+     told a two-minute victory "Play 10 minutes" — and A CARD-ASSISTED WIN
+     NEVER STANDS UNMARKED ON THE BOARD: until submit_score can carry the
+     mark (Backend.BOARD_MARKS_CARDS) it is kept off it, and says so in the
+     score box's note line; once it can, the entry carries its count. A TEST
+     deck's assisted win never goes up at all. */
+  const q = await p.evaluate(async () => {
+    const out = {};
+    const t0 = Deck.total();
+    const note = () => { const e = document.getElementById('savedNote'); return __shown(e) && !!e.closest('#cardEnd') ? e.textContent : ''; };
+    const was = Backend.BOARD_MARKS_CARDS;
+    Backend.BOARD_MARKS_CARDS = false;
+    window.__run({ seed: 'ds-short', win: true, secs: 120, played: [{ id: 'forager_cache', day: 2 }] });
+    const root = document.getElementById('cardEnd');
+    out.card = !!root.querySelector('.ceMove .ccard');
+    out.why = __shown(root.querySelector('.ceWhy'));
+    out.gained = Deck.total() - t0;
+    out.held = Screens._entry === null;
+    out.heldNote = note();
+    out.nameBox = __shown(document.getElementById('nameRow'));
+    out.assist = __shown(root.querySelector('.ceAssist'));
+    Backend.BOARD_MARKS_CARDS = true;
+    window.__run({ seed: 'ds-short-b', win: true, secs: 120, played: [{ id: 'forager_cache', day: 2 }] });
+    out.cards = Screens._entry && Screens._entry.cards_played;
+    out.markedNote = note();
+    // a TEST deck (?cards=all) played: never posted, mark or no mark
+    Deck.col().test = Date.now();
+    window.__run({ seed: 'ds-short-t', win: true, secs: 120, played: [{ id: 'forager_cache', day: 2 }] });
+    out.testHeld = Screens._entry === null;
+    out.testNote = note();
+    // …but a test deck's win with NO card played is an ordinary win
+    window.__run({ seed: 'ds-short-u', win: true, secs: 120 });
+    out.testUnassisted = !!Screens._entry && Screens._entry.cards_played === 0;
+    delete Deck.col().test;
+    Backend.BOARD_MARKS_CARDS = was;
+    return out;
+  });
+  ck('aShortWinStillEarns', q.card && !q.why && q.gained >= 1, `card ${q.card}, why shown ${q.why}, gained ${q.gained}`);
+  ck('aCardAssistedWinNeverStandsUnmarkedOnTheBoard', q.held && !q.nameBox && q.assist &&
+    q.heldNote === 'Not posted to the world board — it cannot wear the card mark yet.',
+    `entry held ${q.held}, name box ${q.nameBox}, mark ${q.assist}, note "${q.heldNote}"`);
+  ck('andOnceTheBoardCanMarkItTheEntryCarriesItsCount', q.cards === 1 && q.markedNote === '', `entry cards ${q.cards}, note "${q.markedNote}"`);
+  ck('aTestDecksAssistedWinIsNeverPosted', q.testHeld && q.testNote === 'Test-deck run — not posted to the world board.' && q.testUnassisted,
+    `held ${q.testHeld}, note "${q.testNote}"; an unassisted test-deck win posts as ever: ${q.testUnassisted}`);
+
+  // a defeat short of its deeds: the reason, with the count, stands where the
+  // card would — and nothing is earned
   const n = await p.evaluate(async () => {
     const out = {};
     const t0 = Deck.total();
-    window.__run({ seed: 'ds-short', win: true, secs: 120 });
+    window.__run({ seed: 'ds-token', win: false, built: 1 });
     let root = document.getElementById('cardEnd');
     out.why = __shown(root.querySelector('.ceWhy')) ? root.querySelector('.ceWhy span').textContent : '';
+    out.head = root.querySelector('.ceWhy b').textContent;
+    // …and the count as a row of pips, the deeds done lit
+    out.pips = root.querySelectorAll('.ceWhy .cePips i').length;
+    out.lit = root.querySelectorAll('.ceWhy .cePips i.on').length;
     out.card = !!root.querySelector('.ceMove .ccard');
     out.claim = __shown(root.querySelector('[data-act="claim"]'));
     out.leave = __shown(root.querySelector('[data-act="replay"]')) && __shown(root.querySelector('[data-act="menu"]'));
     out.board = __shown(root.querySelector('[data-act="board"]'));
     out.banner = root.querySelector('.ceRib b').textContent;
-    out.score = root.querySelector('.ceScoreN').textContent === Score.compute(true).total.toLocaleString();
+    out.score = root.querySelector('.ceScoreN').textContent === Score.compute(false).total.toLocaleString();
     window.__run({ seed: 'ds-struck', win: false, cause: 'struck_banner' });
     root = document.getElementById('cardEnd');
     out.struck = root.querySelector('.ceWhy span').textContent;
+    out.struckPips = root.querySelectorAll('.ceWhy .cePips i').length;
     out.struckCard = !!root.querySelector('.ceMove .ccard');
+    // a BURST: deeds to spare, given on one day — the pips count the days
+    window.__run({ seed: 'ds-burst', win: false, built: 9, days: 1 });
+    root = document.getElementById('cardEnd');
+    out.burst = root.querySelector('.ceWhy span').textContent;
+    out.burstPips = root.querySelectorAll('.ceWhy .cePips i').length;
+    out.burstLit = root.querySelectorAll('.ceWhy .cePips i.on').length;
+    out.burstCard = !!root.querySelector('.ceMove .ccard');
     out.gained = Deck.total() - t0;
     return out;
   });
-  ck('anIneligibleRunSaysWhy', n.why === 'Play 10 minutes to earn a card.' && !n.card && n.struck === 'A banner struck earns no card.' && !n.struckCard,
-    `"${n.why}" / "${n.struck}"`);
-  ck('andEarnsNothingButKeepsTheRest', n.gained === 0 && !n.claim && n.leave && n.board && /victory/i.test(n.banner) && n.score,
+  ck('anIneligibleRunSaysWhy', n.why === 'Build, train, gather, upgrade or raze to earn a card from a defeat — 1 of 5 deeds.' && !n.card &&
+    n.struck === 'A banner struck earns no card.' && !n.struckCard, `"${n.head}: ${n.why}" / "${n.struck}"`);
+  ck('andShowsHowFarItGot', n.pips === 5 && n.lit === 1 && n.struckPips === 0, `${n.lit} of ${n.pips} pips lit; a struck banner shows ${n.struckPips}`);
+  ck('aBurstIsToldTheFightMustLast', !n.burstCard && n.burstPips === 6 && n.burstLit === 1 &&
+    n.burst === 'Keep up the fight across the days to earn a card from a defeat — orders given on 1 of 6 days.',
+    `"${n.burst}", ${n.burstLit} of ${n.burstPips} pips`);
+
+  /* NO WAY BACK: the game's own offer to a village already lost. Accepting
+     it through its Resign is the defeat it is ('doomed', logged a loss) and
+     earns on the deeds like any defeat — it used to end as a struck banner,
+     the honest button the one that lost the card */
+  const dm = await p.evaluate(async () => {
+    const out = {};
+    const t0 = Deck.total();
+    let sent = null;
+    const keep = Backend.logRunEnd;
+    Backend.logRunEnd = (r) => { sent = r; };
+    try {
+      Screens._demo = false;
+      G.newGame('ds-doomed', 'hard', 'medium');
+      Screens.show('playing'); S.paused = true;
+      S.stats.built = 6; S.stats.actDays = 9; S.day = 30;
+      Screens.show('doomed');
+      document.getElementById('btnDoomResign').click();
+      await new Promise(r => setTimeout(r, 60));
+    } finally { Backend.logRunEnd = keep; }
+    const root = document.getElementById('cardEnd');
+    out.cause = S.over && S.over.cause;
+    out.card = !!(root && root.querySelector('.ceMove .ccard'));
+    out.gained = Deck.total() - t0;
+    out.outcome = sent && sent.outcome;
+    out.logged = sent && sent.cause;
+    return out;
+  });
+  ck('aDoomedResignIsADefeatAndEarnsOnItsDeeds', dm.cause === 'doomed' && dm.card && dm.gained >= 1 && dm.outcome === 'loss' && dm.logged === 'doomed',
+    `cause ${dm.cause}, card ${dm.card}, gained ${dm.gained}, logged ${dm.outcome}/${dm.logged}`);
+  ck('andEarnsNothingButKeepsTheRest', n.gained === 0 && !n.claim && n.leave && n.board && /defeat/i.test(n.banner) && n.score,
     `gained ${n.gained}, claim ${n.claim}, replay/menu ${n.leave}, board ${n.board}`);
 
   // and the switch thrown back hands every lent node home to the old scene

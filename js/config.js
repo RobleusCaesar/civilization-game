@@ -1318,11 +1318,41 @@ const CFG = {
      tester without turning it on for everyone. */
   CARDS: {
     ON: false,
-    // the competition's own gates (js/competition.js): ten real minutes and
-    // 500 score BEFORE the difficulty multiplier, so the effort is the same
-    // on every difficulty. Striking the banner or closing the tab earns nothing.
-    MIN_SECONDS: 600,
-    MIN_SCORE: 500,
+    /* THE EARN RULE (operator; Deck.eligible / Deck.deeds): a WIN always
+       earns — no minutes, no score. A DEFEAT earns when the player PLAYED,
+       counted in DEEDS, the things only their own hand starts: buildings
+       raised and finished, units trained, upgrades, enemy works their own
+       soldiers razed, and one deed per DEED_GATHER hand-gathered (at most
+       DEED_GATHER_CAP). Striking the banner or closing the tab earns nothing.
+       LOSS_DEEDS is MEASURED on Hard, the mode where a real effort dies
+       fastest: 104 passive runs (all 26 origin cards × 4 seeds, no input,
+       razed day 18–260) read 0 deeds every time; a token effort (one house,
+       one villager, 12 runs) reads 2; a scripted player who builds, trains
+       and gathers reads 6–19 (median 12) after 15 game days — two and a half
+       real minutes — and 7–22 (median 14) after 30, the five minutes the
+       operator named. 5 sits three clear of the token and under the worst
+       active run at either mark. */
+    LOSS_DEEDS: 5,
+    DEED_GATHER: 300,
+    DEED_GATHER_CAP: 3,
+    /* …and ordered kills: the foe the player SENT a soldier at, falling to it
+       (Units.damage; never a tower's or a Defend stance's kill) — one deed
+       per DEED_KILLS, at most DEED_KILL_CAP, so a player who only fought has
+       fought, and a passive run still reads 0. */
+    DEED_KILLS: 3,
+    DEED_KILL_CAP: 2,
+    /* AND THE FIGHT HAS TO LAST (G.noteAct): deeds count completions, and a
+       burst in the first twenty seconds — houses until the wood ran out,
+       villagers until the food did — read 5–10 deeds on 10 of 12 Hard runs
+       that then gave no order at all. So a defeat also asks on how many
+       DISTINCT GAME DAYS the player gave an order of their own. MEASURED on
+       Hard, six origins each: that burst reads 1 day on all 12 runs, razed
+       on day 28–228; the scripted player (its builds, its training and its
+       taps on the ground) reads 6–7 after 8 game days — seventy real
+       seconds — 9–14 after 15 and 17–29 after 30, the operator's five
+       minutes. 6 is six times the burst and at or under the shortest real
+       fight measured. */
+    LOSS_DAYS: 6,
     // [stone, bronze, iron, imperial, enlight] percentages, approved at Gate 1
     DROPS: {
       loss:     [85, 15, 0, 0, 0],

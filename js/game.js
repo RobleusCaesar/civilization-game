@@ -189,7 +189,16 @@ const G = {
       // run stats — the raw material of the arcade score (js/score.js)
       stats: { trained: 0, razed: 0, gathered: 0, kills: 0, built: 0,
                walls: 0, upgrades: 0, peakPop: 0, krakenSlain: 0, dragonSeen: 0, originBonus: 0,
-               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0, strifeSeen: 0 },
+               sonsAnswered: 0, cacheDug: 0, winterEndured: 0, plagueEndured: 0, eclipseEndured: 0, wildfireEndured: 0, migrationTaken: 0, starfallClaimed: 0, strifeSeen: 0,
+               // THE DEEDS (Deck.deeds — a defeat earns a card for a real fight):
+               // what the PLAYER'S OWN HAND did, where the score's tallies credit
+               // the world too — a villager's hand-gathering (never a boat an
+               // origin card set fishing) and the enemy works the player's own
+               // soldiers pulled down (never a camp the rival burned), and the
+               // kills their EXPLICIT attack orders made (never a tower's, never
+               // a Defend stance's) — plus the DAYS the player gave an order on
+               // (G.noteAct): a fight is engagement over time, never one burst
+               handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0 },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -429,6 +438,27 @@ const G = {
      first hostile act ends the peace for the rest of the run (S.peace rides
      in the save, so there is no walking it back). Plain G.log, never
      foeNote: this is the player's own declaration, told at every difficulty. */
+  /* THE DAYS A PLAYER GAVE ORDERS ON (Deck.eligible — a defeat earns a card
+     for a FIGHT). Deeds count completions, and completions can all be bought
+     in the first twenty seconds: lay houses until the wood runs out, queue
+     villagers until the food does, then touch nothing and let the hall fall
+     (measured: 10 of 12 such Hard runs read 5+ deeds). So the rule also asks
+     how many DISTINCT GAME DAYS carried an order of the player's own — the
+     worn-paths rule ("count distinct days, never raw counts"). Stamped ONLY
+     where the player's own input lands: placing a paid site, training,
+     upgrading (buildings.js — paths no automation takes for 'P'), and in
+     ui.js wherever a tap, a drag or a panel button actually changes an
+     order. Never by a rally point, a horn-less return to work, an origin
+     card's boats, the tutorial or a card: none of those is the player
+     playing that day. One stamp a day at most; rides the save in S.stats. */
+  noteAct() {
+    if (typeof S === 'undefined' || !S || !S.stats || S.over) return;
+    if (window.Screens && Screens._demo) return;
+    if (S.stats.actDay === S.day && S.stats.actDays) return;
+    S.stats.actDay = S.day;
+    S.stats.actDays = (S.stats.actDays || 0) + 1;
+  },
+
   breakPeace() {
     if (!S || !S.peace) return;
     S.peace = false;
@@ -2530,7 +2560,8 @@ const G = {
     const w = this.wonderDef();
     if (b.owner !== 'P') {
       this.log(`The rival has raised ${w.name}.`, true);
-      this.end(false, `The rival raised ${w.name} while your masons idled. The age will remember their name, not yours.`);
+      // its own cause: a NULL one fails every `cause NOT IN (…)` the server asks
+      this.end(false, `The rival raised ${w.name} while your masons idled. The age will remember their name, not yours.`, 'rival_wonder');
       return;
     }
     if (this._marvel) return;
@@ -2610,6 +2641,18 @@ const G = {
         // THE CARD SYSTEM: what this run played (the dashboard splits every win rate on it)
         cards_played: (S.deck && S.deck.played && S.deck.played.length) || 0,
         cards: (S.deck && S.deck.played) ? S.deck.played.map(p => p.id) : [],
+        // …and the DEEDS a defeat is judged on (Deck.deeds), with the two
+        // hand-only tallies beside the score's own, so the server can re-run
+        // the earn rule from the row alone. Guarded on the method it calls:
+        // a cached older deck.js beside this file must stand down, not throw
+        deeds: (window.Deck && Deck.deeds) ? Deck.deeds().n : 0,
+        // FLOORED, never rounded: the server's floor(hand_gathered / 300) must
+        // be exactly the client's (299.6 rounded up read as a deed there only)
+        hand_gathered: Math.floor(st.handGathered || 0), hand_razed: st.handRazed || 0,
+        hand_kills: st.handKills || 0, act_days: st.actDays || 0,
+        // a TEST deck's run (?cards=all) is the tester's, never the players':
+        // the dashboard leaves it out of every card split
+        cards_test: !!(window.Deck && Deck.on && Deck.isTest && Deck.on() && Deck.isTest()),
         // the special event this run rolled, whether it happened, and when
         // (EVD-V01) — the only way the roll's rate can be read off the board
         special: S.special || null,
@@ -2799,6 +2842,13 @@ const G = {
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
                      'sonsAnswered', 'cacheDug', 'winterEndured', 'plagueEndured', 'eclipseEndured', 'wildfireEndured', 'migrationTaken', 'starfallClaimed', 'strifeSeen'])
       if (!data.stats[k]) data.stats[k] = 0;
+    // a save from before the deeds could not tell whose hand it was: the run
+    // somebody saved gets the benefit of the doubt (Deck.deeds)
+    if (data.stats.handGathered == null) data.stats.handGathered = data.stats.gathered || 0;
+    if (data.stats.handRazed == null) data.stats.handRazed = data.stats.razed || 0;
+    if (data.stats.handKills == null) data.stats.handKills = 0;
+    // …and could not tell on which days orders were given: every day it reached
+    if (data.stats.actDays == null) { data.stats.actDays = Math.max(0, data.day | 0); data.stats.actDay = data.day | 0; }
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};

@@ -67,6 +67,22 @@ const DeckUI = {
     try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   },
 
+  /* THE TUTORIAL HAS THE FLOOR (operator ruling 12): while the lesson's
+     spine is still running (S.tut on, phase 1) the deck is not in the game —
+     no button, no timers, no sheet — because a first game already has more
+     to read than it can hold. The starter hand still lands (ensureStarter,
+     the title already dealt it). The moment the spine is done — the capstone
+     answered, or the lesson skipped — the deck walks in, in that same run,
+     and the tutorial's last note rings it (Tutorial.EVENTS 'deck'). */
+  tutHides() {
+    // one predicate, in deck.js beside the door that refuses on it (guarded on
+    // the method it calls: a cached older deck.js must stand down, not throw)
+    return !!(window.Deck && Deck.lessonHolds && Deck.lessonHolds());
+  },
+  _shy: false,             // the chrome is built but stood down for the lesson
+  _waited: false,          // this world kept the deck back: it ARRIVES when the lesson lets go
+  _starter: false,         // the starter hand has been asked for this session
+
   /* called from G.frame, only while Deck.on() */
   frame(dt) {
     if (!this.live()) {
@@ -75,7 +91,15 @@ const DeckUI = {
       if (this.hasFloor() || this._ticks.length) this.reset();
       return;
     }
+    if (this.tutHides()) {
+      if (!this._starter) { this._starter = true; Deck.ensureStarter(); }
+      if (this.built && !this._shy) this._stand(false);
+      this._waited = true;
+      return;
+    }
     if (!this.built) this.build();
+    if (this._shy) this._stand(true);
+    if (this._waited) { this._waited = false; this._arrive(); }
     if (this.aim) this._aimPlace();
     if (this._ticks.length) this._tickNumbers();
     if ((this._t -= dt) > 0) return;
@@ -87,12 +111,70 @@ const DeckUI = {
      The world change sets its own pause, so the deck's hold is dropped
      without being "given back" into a game it never paused. */
   onWorldChange() {
+    this._waited = false;
     if (!this.built) return;
     this.reset();
+    if (this._shy) this._stand(true);   // a new world starts with the deck in it
     for (const id in this._chips) this._chips[id].el.remove();
     this._chips = {};
     this._fitChips();
     this.syncBadge();
+  },
+
+  // stand the chrome down for the lesson, or bring it back
+  _stand(on) {
+    if (!this.el) return;
+    this._shy = !on;
+    if (!on) this.reset();
+    this.el.btn.style.display = on ? '' : 'none';
+    this.el.timers.style.display = on ? '' : 'none';
+    if (on) { this.syncBadge(true); this._fitChips(); }
+  },
+  /* coming in mid-run, the deck ARRIVES: the button drops into the bar with
+     a pop, so the eye has found it before the tutorial's note names it */
+  _arrive() {
+    if (!this.el) return;
+    this.arrivedAt = performance.now();
+    if (!this._calm() && this.el.btn.animate) {
+      this.el.btn.animate([{ transform: 'translateY(-14px) scale(.4)', opacity: 0 }, { transform: 'translateY(2px) scale(1.18)', opacity: 1, offset: 0.6 },
+        { transform: 'none', opacity: 1 }], { duration: 420, easing: this.SPRING });
+      this._arriveFlare();
+    }
+    UI.cue('ok');
+  },
+  /* …AND IT IS EARNED, NOT JUST THERE: as the button lands, a ring of hard
+     gold pixels bursts off it — the play sequence's own flare, in the deck's
+     gold, for one beat — and its icon flashes white-gold. Squares, never a
+     soft glow; motion and opacity in hard steps (steps()), never a fade.
+     Lives on the body for a second, then is gone: nothing outlasts the beat. */
+  _arriveFlare() {
+    const r = this.el.btn.getBoundingClientRect();
+    if (!r.width) return;
+    const cx = Math.round(r.left + r.width / 2), cy = Math.round(r.top + r.height / 2);
+    const host = document.createElement('i');
+    host.className = 'dkArrive';
+    host.style.left = cx + 'px'; host.style.top = cy + 'px';
+    const N = 14, PAL = ['#ffd45e', '#fff0b0', '#e8c15a', '#c98446'];
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + (i & 1 ? 0.12 : 0), big = !(i % 3);
+      const d = 26 + (i % 4) * 7, sz = big ? 6 : 4;
+      const sq = document.createElement('i');
+      sq.style.width = sq.style.height = sz + 'px';
+      sq.style.background = PAL[i % PAL.length];
+      sq.style.margin = (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px';
+      host.appendChild(sq);
+      // every position on the 2px grid; the ring is born OUTSIDE the button
+      // (a spark over the gold icon is gold on gold) and thrown clear of it
+      const at = (r) => `translate(${Math.round(Math.cos(a) * r / 2) * 2}px,${Math.round(Math.sin(a) * r / 2) * 2}px)`;
+      sq.animate([{ transform: at(16), opacity: 1 }, { transform: at(d), opacity: 1, offset: 0.6 },
+        { transform: at(d * 1.3), opacity: 0 }],
+        { duration: 640, delay: 200, easing: 'steps(8, end)', fill: 'both' });
+    }
+    document.body.appendChild(host);
+    const ico = this.el.btn.querySelector('.dkIco');
+    if (ico && ico.animate) ico.animate([{ filter: 'none' }, { filter: 'brightness(1.9) sepia(.6)', offset: 0.3 }, { filter: 'none' }],
+      { duration: 520, delay: 160, easing: 'steps(4, end)' });
+    setTimeout(() => host.remove(), 1100);
   },
 
   reset() {
@@ -119,6 +201,7 @@ const DeckUI = {
   build() {
     this.built = true;
     this.css();
+    this._starter = true;
     Deck.ensureStarter();   // the three Stone cards every new collection starts with (once, ever)
     /* THE BUTTON SITS IN THE TOP BAR'S SECOND ROW, before ⏸ — the one slot
        that fits every phone and the desktop's single-row bar without moving
@@ -261,7 +344,7 @@ const DeckUI = {
   },
 
   openSheet() {
-    if (this.open || this.playing || !this.live()) return;
+    if (this.open || this.playing || !this.live() || this.tutHides()) return;
     if (UI.exitPlacement) UI.exitPlacement();   // a ghost under the sheet would be two modes at once
     this._hold();
     this.open = true;
@@ -398,14 +481,17 @@ const DeckUI = {
     s.count.textContent = n ? n + (n === 1 ? ' card' : ' cards') : '';
     s.row.textContent = '';
     if (!n) {
-      const mins = Math.round(CFG.CARDS.MIN_SECONDS / 60);
-      // the gate is 500 BEFORE the multiplier; the player reads the score after it
-      const score = Math.round(CFG.CARDS.MIN_SCORE * ((CFG.SCORE.mult && CFG.SCORE.mult[S.mode]) || 1));
+      // THE EARN RULE in the player's words (Deck.eligible): a win always
+      // earns; a defeat earns for a real fight, counted in deeds — and the
+      // count so far this run, so the number to beat is never a mystery
+      const C = CFG.CARDS, need = C.LOSS_DEEDS, have = Math.min(need, Deck.deeds().n);
+      const needD = C.LOSS_DAYS, days = Math.min(needD, (S.stats && S.stats.actDays) | 0);
       const e = document.createElement('div');
       e.className = 'dkEmpty';
       e.innerHTML = `<i class="dkEmptyIco">${this.STACK_SVG}</i><b>No cards in your deck yet</b>` +
-        `<span>Finish a game — win or lose — and a card is yours to keep. ` +
-        `Play at least ${mins} minutes and score ${score.toLocaleString()} to earn one.</span>`;
+        `<span>Win a game and a card is yours to keep. Lose one, and it still is — if you put up a fight: ` +
+        `${need} deeds of building, training, gathering, upgrading or razing, with orders given on ${needD} different days ` +
+        `(this run: ${have} of ${need} deeds, ${days} of ${needD} days).</span>`;
       s.row.appendChild(e);
       s.hint.textContent = '';
       return;
@@ -1403,6 +1489,8 @@ body.dk-aiming #bottombar { visibility: hidden; }
   border-radius: 9px; background: #1c140c; border: 1.5px solid var(--gold); color: #f3e2b4; pointer-events: none;
   font: 800 11px/15px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.6); }
 #deckBtn.empty .dkBadge { display: none; }
+.dkArrive { position: fixed; width: 0; height: 0; z-index: 12; pointer-events: none; }
+.dkArrive i { position: absolute; left: 0; top: 0; box-shadow: 0 2px 0 #5c3a1c; image-rendering: pixelated; }
 #deckBtn.empty .dkIco { opacity: .55; }
 #dkTimers { display: flex; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; }
 #dkTimers:empty { display: none; }
