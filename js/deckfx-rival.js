@@ -1470,8 +1470,14 @@
     krakens_call: {
       at: 'focus', DMG: 600, TC_CAP: 0.4, SHIPS: 4, NEAR: 2,
       RISE: 1.6, THRASH: 1.4, SINK: 1.6,     // the world's own act's beats (R.drawKraken fades on them)
-      FIRST: 0.5, GAP: 0.85,                 // the first rise, then one every GAP seconds
-      COAST_S: 1.5, TAIL: 2.6,               // the shore is battered at COAST_S; its watch holds TAIL more
+      /* THE MAP'S ACTS WAIT FOR THE SKY'S MOMENT: the deep answers over the
+         whole screen first (the show, ~3.6s), and the first hull is reached
+         as the sky's beast goes down — the map's beast surfacing where the
+         sky's sank. Played under the moment, the takes and the blow on the
+         shore went on behind a colossal head and nobody saw the payoff. */
+      FIRST: 2.8, GAP: 0.85,                 // the first rise, then one every GAP seconds
+      COAST_S: 3.8, TAIL: 2.6,               // the shore is battered at COAST_S; its watch holds TAIL more
+      COAST_REAR: 1.1,                       // the arm that batters it breaks the surface this long before
       SIGHT: 3, COAST_SIGHT: 2,
       SOFT: { fireship: 0, bombard: 1, transport: 2, fishboat: 3 },
       openSea() {
@@ -1541,7 +1547,12 @@
         }
         return best ? { x: best.x, y: best.y } : null;
       },
+      // the beast's strips (js/beasts.js) are fetched on demand: the deck
+      // asking whether the card can be played is the moment to ask, well
+      // before the deep has to answer (idempotent — one request per strip)
+      prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('kraken'); },
       can() {
+        this.prepare();
         if (!this.openSea()) return { ok: false, why: 'Needs open water' };
         if (S.deck && S.deck.kraken) return { ok: false, why: 'The kraken is still risen.' };
         if (S.kraken && S.kraken.ev) return { ok: false, why: 'The deep is already stirring — wait for it to settle.' };
@@ -1690,6 +1701,7 @@
          out of the water on the far side from the body, up and over, DOWN on
          the hull at the take — then it drags it under and goes after it. */
       grab(g, ac, host) {
+        if (window.Beasts && Beasts.tentReady() && R.drawTentacle) return this.grabArt(g, ac, host);
         const TL = CFG.TILE, side = host && host.x > ac.x ? -1 : 1;
         const bx = ac.x * TL + side * TL * 1.05, by = ac.y * TL + TL * 0.45, hx = ac.x * TL, hy = ac.y * TL;
         let tipX, tipY, reach;
@@ -1726,6 +1738,30 @@
         g.globalAlpha = qa(0.85 * reach);
         ring(g, bx, by + 4, TL * (0.45 + 0.12 * Math.sin(ac.t * 12)), 16, 0.45);
         g.globalAlpha = 1;
+      },
+      /* …DRAWN: the kraken-tentacle strip (R.drawTentacle, js/beasts.js),
+         the world kraken's own arm. It breaks the surface half a tile out
+         from the hull on the far side from the body, rears over it, PLUNGES
+         (7) onto it and SPLASHES (8) on the take — R.krakenSlam, once, as it
+         lands — then heaves up out of its own splash where the hull was and
+         goes down after it (Beasts.strikeFrame). */
+      grabArt(g, ac, host) {
+        const side = host && host.x > ac.x ? -1 : 1;
+        const arm = ac.phase === 'rise' ? ac.t : ac.phase === 'thrash' ? this.RISE + ac.t : -1;
+        const f = arm >= 0 ? Beasts.strikeFrame(arm, this.RISE) : -1;
+        if (f < 0) return;
+        const before = arm < this.RISE, rx = ac.x + side * 0.55;
+        const x = !before ? ac.x : f === 7 ? rx + (ac.x - rx) * 0.6 : rx;
+        R.drawTentacle(g, x, ac.y, f, side);
+        if (!before && f === 8) this.slamOnce(ac, ac.x, ac.y, arm - this.RISE);
+      },
+      // the blow lands: heard and felt ONCE (render state on the act), and
+      // only as it lands — an act first seen half over does not slam on sight
+      _slam: new WeakMap(),
+      slamOnce(key, x, y, late) {
+        if (this._slam.has(key)) return;
+        this._slam.set(key, 1);
+        if (late < 0.3 && R.krakenSlam) R.krakenSlam(x, y);
       },
       /* AN ARM OF THE DEEP, drawn along a spine of points {x, y, r} from the
          water to the tip, at a `cell` pixel grid (2 in the world, ~8 device
@@ -1801,10 +1837,25 @@
       /* a tentacle: up out of the open water beside the building, over, and
          DOWN on it at the blow — then back into the sea. */
       tentacle(g, c, tt, v) {
-        const t0 = this.COAST_S - 0.7, t1 = this.COAST_S + 1.6;
-        if (tt < t0 || tt > t1) return;
         if (!inView(v, c.x, c.y) && !inView(v, c.wx, c.wy)) return;
         if (!G.visibleAt(c.x | 0, c.y | 0) && !G.visibleAt(c.wx | 0, c.wy | 0)) return;
+        /* DRAWN (the kraken-tentacle strip, R.drawTentacle): out of the open
+           water beside the building, rearing toward it, the PLUNGE (7)
+           reaching in, and the SPLASH (8) breaking over the building itself on
+           the blow — R.krakenSlam, once — then back to the sea it came from,
+           heaving up out of its own splash and going down (Beasts.strikeFrame) */
+        if (window.Beasts && Beasts.tentReady() && R.drawTentacle) {
+          const arm = tt - (this.COAST_S - this.COAST_REAR), f = Beasts.strikeFrame(arm, this.COAST_REAR);
+          if (f < 0) return;
+          const side = c.x >= c.wx ? 1 : -1, before = arm < this.COAST_REAR, on = !before && f === 8 && arm - this.COAST_REAR < 0.26;
+          const x = on ? c.x : f === 7 ? c.wx + (c.x - c.wx) * 0.55 : c.wx, y = on ? c.y : f === 7 ? c.wy + (c.y - c.wy) * 0.55 : c.wy;
+          R.drawTentacle(g, x, y, f, side);
+          if (on) this.slamOnce(c, c.x, c.y, arm - this.COAST_REAR);
+          if (!before) this.debris(g, c, tt);
+          return;
+        }
+        const t0 = this.COAST_S - 0.7, t1 = this.COAST_S + 1.6;
+        if (tt < t0 || tt > t1) return;
         const TL = CFG.TILE, ox = c.wx * TL, oy = c.wy * TL, bx = c.x * TL, by = c.y * TL;
         let tipX, tipY, reach;
         if (tt < this.COAST_S) {                          // rearing up out of the sea
@@ -1833,14 +1884,18 @@
         g.globalAlpha = qa(0.85 * reach);
         ring(g, ox, oy + 4, TL * (0.5 + 0.15 * Math.sin(tt * 12)), 16, 0.45);
         ring(g, ox, oy + 4, TL * (0.85 + 0.1 * Math.sin(tt * 9)), 22, 0.45);
-        if (tt >= this.COAST_S && tt < this.COAST_S + 0.6) {
-          const q = (tt - this.COAST_S) / 0.6;
-          g.globalAlpha = qa(1 - q);
-          g.fillStyle = '#c9b48a';
-          for (let k = 0; k < 14; k++) {                   // the shore thrown up where it lands
-            const an = k / 14 * Math.PI * 2, rr = TL * (0.3 + 1.3 * ease(q)) * (0.7 + 0.3 * rnd(c.id, k));
-            g.fillRect(snap(bx + Math.cos(an) * rr), snap(by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI)), 4, 4);
-          }
+        this.debris(g, c, tt);
+        g.globalAlpha = 1;
+      },
+      // the shore thrown up where the blow lands
+      debris(g, c, tt) {
+        if (tt < this.COAST_S || tt >= this.COAST_S + 0.6) return;
+        const TL = CFG.TILE, bx = c.x * TL, by = c.y * TL, q = (tt - this.COAST_S) / 0.6;
+        g.globalAlpha = qa(1 - q);
+        g.fillStyle = '#c9b48a';
+        for (let k = 0; k < 14; k++) {
+          const an = k / 14 * Math.PI * 2, rr = TL * (0.3 + 1.3 * ease(q)) * (0.7 + 0.3 * rnd(c.id, k));
+          g.fillRect(snap(bx + Math.cos(an) * rr), snap(by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI)), 4, 4);
         }
         g.globalAlpha = 1;
       },

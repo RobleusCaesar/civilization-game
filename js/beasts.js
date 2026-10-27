@@ -65,6 +65,28 @@ const Beasts = {
     const k = Assets.fxFrames('kraken-thrash'); return k && k.length >= 8 ? k : null;
   },
   want(kind) { if (typeof Assets !== 'undefined' && Assets.wantFx) Assets.wantFx(kind); },
+  /* A TENTACLE'S STRIKE, frame by frame on the kraken-tentacle strip, `t`
+     seconds from the moment it breaks the surface, the blow landing at
+     `hit`: up out of its own splash (8→12), rearing (0→6), the PLUNGE (7)
+     just before the blow, the SPLASH (8) on it, up out of that again (9→12)
+     and down the way it came (11→8). Never a pop in or out of the sea.
+     Answers -1 while it is under. */
+  strikeFrame(t, hit) {
+    if (t < 0) return -1;
+    if (t < 0.32) return 8 + Math.min(4, (t / 0.08) | 0);
+    if (t < hit - 0.12) return Math.min(6, ((t - 0.32) / Math.max(0.1, hit - 0.44) * 7) | 0);
+    if (t < hit) return 7;
+    const e = t - hit;
+    if (e < 0.26) return 8;
+    if (e < 0.58) return 9 + Math.min(3, ((e - 0.26) / 0.08) | 0);
+    if (e < 0.9) return 11 - Math.min(3, ((e - 0.58) / 0.08) | 0);
+    return -1;
+  },
+  STRIKE_AFTER: 0.9,      // how long a strike lasts past its blow (strikeFrame)
+  tentReady() {
+    const f = typeof Assets !== 'undefined' && Assets.fxFrames && Assets.fxFrames('kraken-tentacle');
+    return !!(f && f.length >= 13);
+  },
   snap(v) { return Math.round(v / 2) * 2; },
   smooth(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); },
   // the act is on the screen the player is looking at (a roar off screen is
@@ -335,9 +357,12 @@ Object.assign(R, {
     if (!Beasts.ready('kraken')) { Beasts.want('kraken'); this.drawKrakenOld(g, ev); return; }
     const st = Beasts.st(ev);
     if (!st.body) st.body = this.krakenBodyAt(ev.x, ev.y);
-    let rise, tent = null;
-    if (ev.phase === 'rise') { rise = Beasts.smooth((ev.t - 0.1) / 1.1); tent = Math.min(8, Math.max(0, (ev.t - 0.35) / 1.25 * 8)); }
-    else if (ev.phase === 'thrash') { rise = 1; tent = ev.t < 0.55 ? 8 + ev.t / 0.55 * 4 : null; }
+    /* the arm that takes the boat breaks the surface 0.35s into the rise and
+       its blow lands on the take — the rise's end (1.6s), when the act's
+       tick drags the boat under (Beasts.strikeFrame) */
+    let rise, arm = -1;
+    if (ev.phase === 'rise') { rise = Beasts.smooth((ev.t - 0.1) / 1.1); arm = ev.t - 0.35; }
+    else if (ev.phase === 'thrash') { rise = 1; arm = 1.25 + ev.t; }
     else rise = 1 - Beasts.smooth(ev.t / 1.3);
     if (!st.roared) {
       st.roared = true;
@@ -345,11 +370,14 @@ Object.assign(R, {
       if (Beasts.inView(ev.x, ev.y, 2)) this.shakeAt(5, 1.4);
     }
     this.drawKrakenBody(g, st.body.x, st.body.y, rise, ev.t + (ev.phase === 'thrash' ? 1.6 : ev.phase === 'sink' ? 3.8 : 0));
-    if (tent != null) {
+    const tent = arm >= 0 ? Beasts.strikeFrame(arm, 1.25) : -1;
+    if (tent >= 0) {
       this.drawTentacle(g, ev.x, ev.y, tent, st.body.x < ev.x ? 1 : -1);
-      if (tent >= 7.5 && !st.slammed.boat) {
+      // the blow — heard and felt once, and only as it lands (an act first
+      // seen half over does not slam on sight)
+      if (tent === 8 && arm >= 1.25 && !st.slammed.boat) {
         st.slammed.boat = true;
-        this.krakenSlam(ev.x, ev.y);
+        if (arm < 1.25 + 0.3) this.krakenSlam(ev.x, ev.y);
       }
     }
   },
