@@ -842,6 +842,64 @@ await p.evaluate(({ ARMY }) => {
   ck('aSummoningNeverBreaksTheTruce', !bad(r.peace).length, bad(r.peace).join(', ') || 'the Calm peace holds through all nine');
 }
 
+// ---------------- 8b. THE VOICE ----------------
+/* Sound lets MAX_VOICES (10) notes sound at once and counts each from the
+   moment it is SCHEDULED, and the landing's own chime (UI.cue, three notes)
+   follows the card's voice in the same frame. A voice that booked a whole
+   march of drums up front (the first cut's fanfare: seventeen notes) held the
+   cap for four seconds: the chime never sounded, nor did the battery's
+   rumble played after it. The drums are struck on the show's beats now. */
+{
+  const r = await p.evaluate(({ SUMMONERS }) => {
+    const out = { ac: !!Sound.ac(), apply: {}, beats: {} };
+    if (!out.ac) return out;
+    const real = Sound.play;
+    let calls = [];
+    Sound.play = function (k, o) { const ok = real.call(this, k, o); calls.push([k, ok]); return ok; };
+    try {
+      // the CONTROL: a cap that is full refuses the chime (the probe can see)
+      Sound._live = 0; Sound._last = {};
+      for (let i = 0; i < 5; i++) Sound._VOICES.cardDrum.call(Sound, 0, 1);
+      out.control = Sound.play('bond');
+      const g = R.g;
+      for (const id of SUMMONERS.concat(['veterans'])) {
+        __ar.fresh('army-voice-' + id); __ar.flat();
+        if (id === 'veterans') __ar.unit('defender', 'P', 4.5, 16.5);
+        Sound._live = 0; Sound._last = {}; calls = [];
+        Deck.play(id);
+        const booked = Sound._live, mine = calls.slice();
+        const chime = Sound.play('bond');
+        out.apply[id] = { ok: mine.every(c => c[1]), voices: mine.map(c => c[0] + (c[1] ? '' : ' REFUSED')).join('+'), booked, chime };
+        // the march: every beat of the show, with time passing between them
+        const s = R.cardShows.filter(x => x.id === id).pop(), sh = Deck.FX[id].show;
+        const struck = {};
+        for (let pp = 0; pp < 1; pp += 0.01) {
+          Sound._live = 0; Sound._last = {}; calls = [];
+          s.t = pp * s.ms / 1000;
+          for (const layer of sh.layers || [sh.layer || 'world']) { g.save(); try { sh.draw.call(Deck.FX[id], g, s, pp, 1 / 60, layer); } finally { g.restore(); } }
+          for (const [k, ok] of calls) if (ok) struck[k] = (struck[k] || 0) + 1;
+        }
+        out.beats[id] = struck;
+      }
+    } finally { Sound.play = real; Sound._live = 0; Sound._last = {}; }
+    return out;
+  }, { SUMMONERS });
+  if (!r.ac) ck('theOpeningVoiceLeavesRoomForTheLanding', true, 'no AudioContext on this page — skipped');
+  else {
+    const bad = Object.keys(r.apply).filter(k => !(r.apply[k].ok && r.apply[k].chime && r.apply[k].booked <= 7));
+    ck('theOpeningVoiceLeavesRoomForTheLanding', !r.control && !bad.length,
+      bad.length ? bad.map(k => k + ': ' + JSON.stringify(r.apply[k])).join(' | ')
+        : `a full cap refuses the chime (${!r.control}); every card's voice sounds and books ≤7 notes: ` + Object.entries(r.apply).map(([k, v]) => k + ' ' + v.booked).join(', '));
+    const B = r.beats, want = {
+      iron_legion: { cardDrum: 4 }, legion_marches: { cardDrum: 5 }, trebuchet_battery: { cardRumble: 1, cardDrum: 5 },
+      ancestors_host: { cardDrum: 1 }, swift_raiders: { cardHoof: 7 },
+    };
+    const miss = Object.keys(want).filter(id => Object.keys(want[id]).some(k => (B[id][k] || 0) !== want[id][k]));
+    ck('theMarchIsDrummedOnItsBeats', !miss.length,
+      miss.length ? miss.map(id => id + ' ' + JSON.stringify(B[id])).join(' | ') : Object.keys(want).map(id => id + ' ' + JSON.stringify(B[id])).join(', '));
+  }
+}
+
 // ---------------- 9. THE PICTURE ----------------
 {
   const r = await p.evaluate(({ SUMMONERS }) => {
@@ -896,7 +954,7 @@ await p.evaluate(({ ARMY }) => {
     // drained: a world with no card playing draws none of it
     for (let i = 0; i < 260; i++) G.frame(T += 33);
     out.drained = R.cardShows.length === 0 && R.summons.length === 0;
-    out.voices = ['cardHands', 'cardWarHorn', 'cardHowl', 'cardHooves', 'cardDrums', 'cardRumble', 'cardRanks', 'cardFanfare', 'cardHost', 'cardFade']
+    out.voices = ['cardHands', 'cardWarHorn', 'cardHowl', 'cardHoof', 'cardDrum', 'cardRumble', 'cardRanks', 'cardFanfare', 'cardHost', 'cardFade']
       .every(k => typeof Sound._VOICES[k] === 'function' && Sound.GAP[k] > 0);
     return out;
   }, { SUMMONERS });

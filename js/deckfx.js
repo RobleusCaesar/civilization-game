@@ -357,7 +357,7 @@ Object.assign(Deck.FX, {
     apply() {
       const r = Deck.summon([{ kind: this.KIND, n: this.N }]);
       if (!r.ok) return r;
-      if (typeof Sound !== 'undefined') { Sound.play('train'); Sound.play('cardHooves'); }
+      if (typeof Sound !== 'undefined') Sound.play('train');   // the hooves are struck on the show's beats
       if (window.R && R.startCardShow) R.startCardShow('swift_raiders', { x: r.x, y: r.y, ids: r.units.map(u => u.id), mx: r.first.x + 0.5, my: r.first.y + 0.5 });
       Deck.say('🏹 Five Horse Archers ride out of your Town Center.');
       return { ok: true, x: r.x, y: r.y, units: r.units.map(u => u.id) };

@@ -353,11 +353,23 @@ Deck.armyFx = {
     }
     g.restore();
   },
-  // the march shakes the ground: shake pulses fired once each as p passes
-  // its beat (render state on the show — never in S)
-  beats(s, p, at, amp, dur) {
+  /* the march shakes the ground: a shake (amp, one number or one per beat;
+     0 is a beat felt only in the ears) and a voice (one key, or one per beat,
+     null for none) fired once each as p passes its beat — render state on the
+     show, never in S. The DRUMS live here and not in the card's opening voice
+     because Sound caps the voices sounding at once (MAX_VOICES) and counts a
+     note from the moment it is scheduled: a fanfare that booked its whole
+     march up front held the cap for four seconds and silenced the landing's
+     own chime and the next voice after it. Struck on the beat, every drum
+     also lands on the very frame the ground shakes. */
+  beats(s, p, at, amp, dur, voice) {
     s.beat = s.beat || 0;
-    while (s.beat < at.length && p >= at[s.beat]) { R.shakeAt(amp, dur); s.beat++; }
+    while (s.beat < at.length && p >= at[s.beat]) {
+      const a = Array.isArray(amp) ? amp[s.beat] : amp, v = Array.isArray(voice) ? voice[s.beat] : voice;
+      if (a) R.shakeAt(a, dur);
+      if (v && typeof Sound !== 'undefined') Sound.play(v);
+      s.beat++;
+    }
   },
   // is world point (tiles) on screen, with a margin
   near(v, x, y, m) { return x >= v.x0 - m && x <= v.x1 + m && y >= v.y0 - m && y <= v.y1 + m; },
@@ -369,8 +381,13 @@ Deck.armyFx = {
    added through the one door's own table so the mute switch, the throttle and
    the voice cap hold for them too. */
 if (typeof Sound !== 'undefined' && Sound._VOICES) {
+  /* A CARD'S OPENING VOICE BOOKS AT MOST SIX NOTES (ARMY_VOICE_MAX): Sound
+     lets ten sound at once and counts each from the moment it is scheduled,
+     and the landing's own chime (js/deckui.js, UI.cue — three notes) comes
+     right after the card's voice. Anything longer is struck on the show's
+     beats (Deck.armyFx.beats), one drum or hoof at a time. */
   Object.assign(Sound.GAP, {
-    cardHands: 1.0, cardWarHorn: 1.5, cardHowl: 1.5, cardHooves: 1.5, cardDrums: 1.5,
+    cardHands: 1.0, cardWarHorn: 1.5, cardHowl: 1.5, cardHoof: 0.12, cardDrum: 0.12,
     cardRumble: 1.5, cardRanks: 1.5, cardFanfare: 2.0, cardHost: 2.5, cardFade: 1.5,
   });
   Object.assign(Sound._VOICES, {
@@ -394,19 +411,16 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         this._note({ at: t, delay: d + 0.42, hz: 520 * k, to: 380 * k, dur: 1.1, type: 'sine', gain: gn * v, atk: 0.02 });
       }
     },
-    // hooves: a gallop of muffled thuds
-    cardHooves(t, v) {
-      for (let i = 0; i < 10; i++) {
-        const d = (i >> 1) * 0.28 + (i & 1) * 0.09;
-        this._noise({ at: t, delay: d, hz: 180, to: 80, dur: 0.07, q: 1, gain: (0.13 - i * 0.008) * v, filter: 'lowpass' });
-      }
+    // a hoof-fall: the pair of muffled thuds one stride of a gallop makes
+    // (struck on the show's beats, a stride at a time)
+    cardHoof(t, v) {
+      this._noise({ at: t, hz: 180, to: 80, dur: 0.07, q: 1, gain: 0.13 * v, filter: 'lowpass' });
+      this._noise({ at: t, delay: 0.09, hz: 170, to: 76, dur: 0.07, q: 1, gain: 0.11 * v, filter: 'lowpass' });
     },
-    // three deep drums, the ground answering each
-    cardDrums(t, v) {
-      [0, 0.42, 0.84, 1.1].forEach((d, i) => {
-        this._note({ at: t, delay: d, hz: 96, to: 44, dur: 0.38, type: 'sine', gain: (i === 3 ? 0.26 : 0.2) * v });
-        this._noise({ at: t, delay: d, hz: 260, to: 90, dur: 0.16, q: 0.8, gain: 0.12 * v, filter: 'lowpass' });
-      });
+    // one deep drum, the ground answering it (struck on the show's beats)
+    cardDrum(t, v) {
+      this._note({ at: t, hz: 96, to: 44, dur: 0.38, type: 'sine', gain: 0.22 * v });
+      this._noise({ at: t, hz: 260, to: 90, dur: 0.16, q: 0.8, gain: 0.12 * v, filter: 'lowpass' });
     },
     // timber and iron rolling: a long low rumble and the creak of an axle
     cardRumble(t, v) {
@@ -416,27 +430,25 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     },
     // the ranks rise: a climbing run, then the chord it was climbing to
     cardRanks(t, v) {
-      [392, 494, 587, 784].forEach((hz, i) => this._note({ at: t, delay: i * 0.11, hz, dur: 0.3, type: 'triangle', gain: 0.08 * v }));
-      [392, 494, 587].forEach(hz => this._note({ at: t, delay: 0.55, hz: hz * 2, dur: 1.2, type: 'sine', gain: 0.06 * v, atk: 0.04 }));
-      this._note({ at: t, delay: 0.55, hz: 98, dur: 0.9, type: 'sine', gain: 0.18 * v });
+      [494, 587, 784].forEach((hz, i) => this._note({ at: t, delay: i * 0.12, hz, dur: 0.3, type: 'triangle', gain: 0.08 * v }));
+      [784, 1175].forEach(hz => this._note({ at: t, delay: 0.42, hz, dur: 1.2, type: 'sine', gain: 0.07 * v, atk: 0.04 }));
+      this._note({ at: t, delay: 0.42, hz: 98, dur: 0.9, type: 'sine', gain: 0.18 * v });
     },
-    // the legion: a brass chord swelling, a second a fourth higher, and drums
+    // the legion: a bare brass fifth swelling, then the full chord a fourth
+    // higher over a deep bass (the march's drums are struck on the show's
+    // beats, Deck.armyFx.beats)
     cardFanfare(t, v) {
-      [196, 247, 294].forEach(hz => this._note({ at: t, hz, dur: 0.9, type: 'sawtooth', gain: 0.06 * v, lp: 1100, atk: 0.12 }));
+      [196, 294].forEach(hz => this._note({ at: t, hz, dur: 0.9, type: 'sawtooth', gain: 0.07 * v, lp: 1100, atk: 0.12 }));
       [262, 330, 392].forEach(hz => this._note({ at: t, delay: 0.75, hz, dur: 1.5, type: 'sawtooth', gain: 0.065 * v, lp: 1300, atk: 0.1 }));
       this._note({ at: t, delay: 0.75, hz: 65, dur: 1.4, type: 'sine', gain: 0.2 * v });
-      [2.4, 2.82, 3.24, 3.66, 4.08].forEach(d => {
-        this._note({ at: t, delay: d, hz: 90, to: 42, dur: 0.34, type: 'sine', gain: 0.2 * v });
-        this._noise({ at: t, delay: d, hz: 240, to: 80, dur: 0.14, q: 0.8, gain: 0.1 * v, filter: 'lowpass' });
-      });
     },
     // the ancestors: a drone from under the ground, a pale choir, a shimmer
+    // (the ground's thud under it is the show's first beat: a drum)
     cardHost(t, v) {
       this._note({ at: t, hz: 55, dur: 5.5, type: 'sine', gain: 0.24 * v, atk: 0.8 });
       this._note({ at: t, hz: 82.5, dur: 5.0, type: 'sine', gain: 0.12 * v, atk: 1.0 });
-      [440, 523, 659, 880].forEach((hz, i) => this._note({ at: t, delay: 0.6 + i * 0.5, hz, dur: 3.2, type: 'sine', gain: 0.045 * v, atk: 0.9 }));
+      [440, 659, 880].forEach((hz, i) => this._note({ at: t, delay: 0.6 + i * 0.6, hz, dur: 3.2, type: 'sine', gain: 0.05 * v, atk: 0.9 }));
       this._noise({ at: t, delay: 0.3, hz: 5200, to: 2600, dur: 3.6, q: 0.6, gain: 0.04 * v, atk: 1.0 });
-      this._noise({ at: t, hz: 160, to: 50, dur: 1.6, q: 0.8, gain: 0.2 * v, filter: 'lowpass', atk: 0.3 });
     },
     // the host fades: an airy fall, the choir going home
     cardFade(t, v) {
@@ -606,7 +618,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         return summonCard('iron_legion', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn', 'cardDrums'], horn: true,
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardWarHorn'], horn: true,
           log: () => '🛡️ Six Bronze Champions march out of your Town Center.',
         });
       },
@@ -617,7 +629,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         ms: 3000, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE;
-          A.beats(s, p, [0.02, 0.16, 0.30, 0.39], 3, 0.22);
+          A.beats(s, p, [0.02, 0.16, 0.30, 0.39], 3, 0.22, 'cardDrum');
           muster(g, s, p, '232,150,80', 1, true);
           const q2 = (p - 0.1) / 0.6;
           if (q2 > 0 && q2 < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (1 + q2 * 3.4), 32, '170,200,240', 0.7 * (1 - q2));
@@ -763,7 +775,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           }
           // the first shake as the horn sounds; then the march, foot by foot,
           // on the drums of the fanfare (Sound cardFanfare: 2.4s, every 0.42s)
-          A.beats(s, p, [0.02, 0.5, 0.588, 0.675, 0.763, 0.85], 4, 0.2);
+          A.beats(s, p, [0.02, 0.5, 0.588, 0.675, 0.763, 0.85], 4, 0.2, [null, 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum']);
           muster(g, s, p, '255,214,110', 3, true);
           flashUnits(g, s, '255,240,200', 0.4, 0.3);
           // the standards: a column of light over the doorstep through the beat
@@ -783,7 +795,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       can() { return Deck.summonCan('trebuchet'); },
       apply() {
         return summonCard('trebuchet_battery', this.LIST, {
-          stagger: this.STAGGER, hold: this.HOLD, together: true, voices: ['cardFanfare', 'cardRumble'], horn: true, startle: 14,
+          stagger: this.STAGGER, hold: this.HOLD, together: true, voices: ['cardFanfare'], horn: true, startle: 14,
           log: () => '🏰 Two Trebuchets and a Siege Tower roll out of your Town Center.',
         });
       },
@@ -799,7 +811,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             return;
           }
           // a shake as each engine lands in its light, then the battery rolling out
-          A.beats(s, p, [0.02, 0.13, 0.24, 0.43, 0.56, 0.69, 0.82], 5, 0.35);
+          // (the timber's rumble comes in with the first engine's landing,
+          // and every landing after it is a drum)
+          A.beats(s, p, [0.02, 0.13, 0.24, 0.43, 0.56, 0.69, 0.82], 5, 0.35,
+            [null, 'cardRumble', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum', 'cardDrum']);
           muster(g, s, p, '255,206,120', 3, false);
           if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 150, scale: 1.25 }); }
           flashUnits(g, s, '255,232,180', 0.5, 0.35);
@@ -878,7 +893,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             A.spirits(g, h.x, h.y - 10 * h.z, s.t, 26, '215,235,255', dk * (p < 0.7 ? 1 : 0.5));
             return;
           }
-          A.beats(s, p, [0.03, 0.2, 0.4, 0.6], 2, 0.3);
+          A.beats(s, p, [0.03, 0.2, 0.4, 0.6], 2, 0.3, ['cardDrum']);
           const fx = s.mx * TL, fy = s.my * TL + 6;
           const k = p < 0.05 ? p / 0.05 : p < 0.8 ? 1 : Math.max(0, 1 - (p - 0.8) / 0.2);
           g.save(); g.globalCompositeOperation = 'lighter';
@@ -971,7 +986,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     ms: 2200, layer: 'world',
     draw(g, s, p) {
       const TL = CFG.TILE;
-      A.beats(s, p, [0.05, 0.18, 0.31, 0.44], 2, 0.15);
+      // a gallop: a stride on every beat, the ground felt under the first four
+      A.beats(s, p, [0.05, 0.18, 0.31, 0.44, 0.57, 0.70, 0.83], [2, 2, 2, 1.5, 0, 0, 0], 0.15, 'cardHoof');
       const q = p / 0.6;
       if (q < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (0.7 + q * 3.2), 30, '160,195,240', 0.8 * (1 - q));
       g.save(); g.globalCompositeOperation = 'lighter';
