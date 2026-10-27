@@ -55,6 +55,15 @@ const GrowFX = {
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
   },
   ease(p) { p = Math.max(0, Math.min(1, p)); return 1 - (1 - p) * (1 - p); },
+  // a smooth churning field over a cell grid: value noise on an `L`-cell
+  // lattice, eased between its corners, drifting with `t` — clouds come in
+  // lumps from this, where an independent hash per cell is only static
+  blob(gx, gy, L, t) {
+    const x = gx / L + t, y = gy / L - t * 0.6, x0 = Math.floor(x), y0 = Math.floor(y);
+    const fx = x - x0, fy = y - y0, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = this.hash(x0, y0 + 911), b = this.hash(x0 + 1, y0 + 911), c = this.hash(x0, y0 + 912), d = this.hash(x0 + 1, y0 + 912);
+    return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+  },
   // alpha in hard fifths: a fade that STEPS, never glides
   step(a) { return Math.max(0, Math.min(1, Math.round(a * 5) / 5)); },
   // rises over [a, b], holds, falls over [c, d]
@@ -336,21 +345,45 @@ Object.assign(Deck.FX, {
     // one sprig at its foot (world px), grown `k` of the way: a dark foot so
     // it stands ON the ground, a stem, two leaves, and now and then a blossom
     // (never gold, fire or berry — the ground may not speak the resource language)
+    /* three kinds of new growth, chosen by the spot's own hash: a TUFT of
+       young blades (the most of it, swaying in the breeze), a leafy SPRIG,
+       and now and then a FLOWER — a cross of petals round a pale eye. The
+       greens are a step brighter and more saturated than the meadow's, so
+       the ring reads as lusher ground, not as more of the same grass. */
     sprig(g, x, y, h, k, t) {
       if (k <= 0.05) return;
-      const F = GrowFX, sx = F.snap(x), sy = F.snap(y);
-      const hh = Math.max(2, F.snap((4 + ((h * 97) % 1) * 6) * k));
+      const F = GrowFX, sx = F.snap(x), sy = F.snap(y), kind = (h * 7.3) % 1;
+      const sway = Math.sin(t * 1.6 + h * 40) > 0.4 ? 2 : 0;
       g.globalAlpha = F.step(Math.min(1, k * 1.5));
-      g.fillStyle = '#2e4a1e'; g.fillRect(sx - 2, sy, 4, 2);
-      g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
-      if (k > 0.45) {
-        g.fillStyle = '#7cbf4a';
-        g.fillRect(sx - 2, sy - F.snap(hh * 0.55), 2, 2);
-        g.fillRect(sx + 2, sy - F.snap(hh * 0.8), 2, 2);
-      }
-      if (k > 0.8 && (h * 31) % 1 < 0.55) {
-        g.fillStyle = Math.sin(t * 2.1 + h * 60) > 0.93 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
-        g.fillRect(sx, sy - hh - 2, 2, 2);
+      g.fillStyle = '#2e4a1e'; g.fillRect(sx - 2, sy, 6, 2);   // its foot in the ground
+      if (kind < 0.55) {
+        // the tuft: three blades, the middle tallest, the tips leaning with the wind
+        const hh = Math.max(2, F.snap((4 + ((h * 97) % 1) * 5) * k));
+        g.fillStyle = '#4f8a32';
+        g.fillRect(sx - 2, sy - F.snap(hh * 0.6), 2, F.snap(hh * 0.6));
+        g.fillRect(sx + 2, sy - F.snap(hh * 0.7), 2, F.snap(hh * 0.7));
+        g.fillStyle = '#6fbc42'; g.fillRect(sx, sy - hh, 2, hh);
+        if (k > 0.5) { g.fillStyle = '#b4ea78'; g.fillRect(sx + sway, sy - hh - 2, 2, 2); }
+      } else if (kind < 0.85) {
+        const hh = Math.max(2, F.snap((5 + ((h * 97) % 1) * 6) * k));
+        g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
+        if (k > 0.45) {
+          g.fillStyle = '#86d052';
+          g.fillRect(sx - 2, sy - F.snap(hh * 0.55), 2, 2);
+          g.fillRect(sx + 2, sy - F.snap(hh * 0.8), 2, 2);
+          g.fillStyle = '#b4ea78'; g.fillRect(sx - 4, sy - F.snap(hh * 0.55) - 2, 2, 2);
+        }
+      } else {
+        // the flower: a stem, then the petals open once it has grown
+        const hh = Math.max(2, F.snap(6 * k));
+        g.fillStyle = '#4f8a32'; g.fillRect(sx, sy - hh, 2, hh);
+        if (k > 0.75) {
+          const col = Math.sin(t * 2.1 + h * 60) > 0.95 ? '#ffffff' : this.BLOOM[(((h * 53) % 1) * 3) | 0];
+          g.fillStyle = col;
+          g.fillRect(sx - 2, sy - hh - 2, 2, 2); g.fillRect(sx + 2, sy - hh - 2, 2, 2);
+          g.fillRect(sx, sy - hh - 4, 2, 2); g.fillRect(sx, sy - hh, 2, 2);
+          g.fillStyle = '#fbf6e2'; g.fillRect(sx, sy - hh - 2, 2, 2);
+        }
       }
       g.globalAlpha = 1;
     },
@@ -402,10 +435,10 @@ Object.assign(Deck.FX, {
         const i = MapGen.idx(x, y);
         if (!S.map.explored[i] || !this.OPEN[S.map.terrain[i]] || Bld.at(x, y)) continue;
         const k = Math.min(1, (grow - d) / 1.2) * fade;
-        for (let j = 0; j < 2; j++) {
+        for (let j = 0; j < 3; j++) {
           const h = F.hash(x * 7 + j, y * 13 + 5);
-          if (h > 0.34) continue;
-          this.sprig(g, (x + 0.2 + F.hash(x, y * 3 + j) * 0.6) * TL, (y + 0.35 + F.hash(y, x * 5 + j) * 0.55) * TL, h, k, t);
+          if (h > 0.46) continue;
+          this.sprig(g, (x + 0.15 + F.hash(x, y * 3 + j) * 0.7) * TL, (y + 0.3 + F.hash(y, x * 5 + j) * 0.6) * TL, h / 0.46, k, t);
         }
       }
       if (p < 0 || p > 0.62) F.ring(g, c.x * TL, c.y * TL, Rr * TL, '#ffd45e', 0.4 * fade, 2, 1, F.viewPx(1), t * 0.6);
@@ -616,6 +649,8 @@ Object.assign(Deck.FX, {
         : '🍂 A blight falls on the rival: their gathering and production fall by 40% for ' + days + ' days.');
       const d = this.towardRival();
       GrowFX.show('blight', { dx: d.x, dy: d.y });
+      // the light goes sour for a breath as the murk gathers
+      if (window.R && R.flashAt) R.flashAt(0.3, 1.4, '44,52,30');
       GrowFX.sfx('blight');
       return { ok: true, until: e.until };
     },
@@ -648,10 +683,9 @@ Object.assign(Deck.FX, {
     frontAt(s, p) {
       const Wd = R.cv.width, Hd = R.cv.height, ux = s.dx, uy = s.dy;
       const pr = [0, ux * Wd, uy * Hd, ux * Wd + uy * Hd];
-      const lo = Math.min.apply(null, pr), hi = Math.max.apply(null, pr), span = hi - lo, band = span * 0.5;
+      const lo = Math.min.apply(null, pr), hi = Math.max.apply(null, pr), span = hi - lo, band = span * 0.8;
       return { front: lo - band * 0.05 + (span + band * 1.1) * Math.min(1, p / 0.86), band, span, ux, uy };
     },
-    PALL: ['#8b9070', '#6c7452', '#4f573e'],
     /* the pall: a sickly green-grey murk rolling across the screen toward
        the rival's side — thick at its leading edge, thinning to dithered
        wisps behind (hard cells, never a gradient), spores riding it — and
@@ -677,34 +711,74 @@ Object.assign(Deck.FX, {
           }
           return;
         }
-        const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1, cell = Math.max(4, Math.round(12 * dpr));
+        /* THE MURK, cell by cell (hard cells, alpha in hard steps — never a
+           gradient). Not a dither: a checker of independent cells reads as
+           noise, and a green-grey murk over green grass is camouflage. The
+           cloud is a churning field (GrowFX.blob, two octaves, drifting with
+           the clock) cut against a threshold that rises with depth behind the
+           edge, so it comes as LUMPS — thick and close-packed at its leading
+           face, tearing into rags behind — each lump in three sour, ashen
+           tones (a dark underside, the body, a pale crown) that read on grass,
+           woods and water alike. Ahead of the edge only the highest of the
+           field shows, as wisps; and where it has passed a grey haze hangs
+           over the land until the end. */
+        const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1, cell = Math.max(4, Math.round(10 * dpr));
+        const haze = F.step(0.2 * fade), T = s.t, M = this.MURK;
         for (let y = 0; y < Hd; y += cell) for (let x = 0; x < Wd; x += cell) {
-          const gx = (x / cell) | 0, gy = (y / cell) | 0, h = F.hash(gx, gy);
-          const depth = (fr.front - ((x + cell / 2) * fr.ux + (y + cell / 2) * fr.uy)) / fr.band + (h - 0.5) * 0.16;
-          if (depth < 0 || depth > 1) continue;
-          const lvl = depth < 0.18 ? 2 : depth < 0.5 ? 1 : 0;
-          if (F.hash(gx * 3 + 1, gy * 5 + 2) > [0.22, 0.55, 0.92][lvl]) continue;
-          g.globalAlpha = fade * [0.2, 0.32, 0.46][lvl];
-          g.fillStyle = this.PALL[lvl];
+          const gx = (x / cell) | 0, gy = (y / cell) | 0;
+          const depth = (fr.front - ((x + cell / 2) * fr.ux + (y + cell / 2) * fr.uy)) / fr.band;
+          if (depth < -0.14) continue;
+          if (depth > 1.04) {
+            if (haze <= 0 || (depth < 1.16 && F.hash(gx * 7 + 3, gy * 11 + 1) > 0.5)) continue;
+            g.globalAlpha = haze; g.fillStyle = M[3];
+            g.fillRect(x, y, cell, cell);
+            continue;
+          }
+          const n = F.blob(gx, gy, 6, T * 0.5) * 0.65 + F.blob(gx + 57, gy + 31, 2.5, T * 0.9) * 0.35;
+          const thr = depth < 0 ? 0.6 - depth * 2.4 : 0.26 + depth * 0.42;
+          const e = n - thr;
+          if (e <= 0) continue;
+          const tone = e > 0.2 ? 2 : e > 0.07 ? 1 : 0, back = depth > 0.7 ? 0.7 : 1;
+          g.globalAlpha = F.step(fade * back * [0.66, 0.56, 0.6][tone]);
+          g.fillStyle = M[tone];
           g.fillRect(x, y, cell, cell);
         }
         g.globalAlpha = 1;
-        // spores riding the murk, drifting up as it rolls
+        // spores riding the murk, swirling up as it rolls, a dark underside
+        // to each so they read against bright grass and dark woods alike
         const sp = Math.max(2, Math.round(3 * dpr));
-        for (let k = 0; k < 80; k++) {
-          const along = fr.front - fr.band * F.hash(k, 1) * 0.95, perp = (F.hash(k, 2) - 0.5) * fr.span * 1.4;
-          const x = fr.ux * along - fr.uy * perp, y = fr.uy * along + fr.ux * perp - s.t * 26 * dpr * (0.5 + F.hash(k, 3));
+        for (let k = 0; k < 170; k++) {
+          const along = fr.front - fr.band * F.hash(k, 1) * 1.05, perp = (F.hash(k, 2) - 0.5) * fr.span * 1.4;
+          const sw = Math.sin(s.t * (1.5 + F.hash(k, 4) * 2) + k) * 14 * dpr;
+          const x = fr.ux * along - fr.uy * perp + fr.uy * sw, y = fr.uy * along + fr.ux * perp - s.t * 30 * dpr * (0.4 + F.hash(k, 3)) - fr.ux * sw;
           if (x < 0 || x > Wd || y < 0 || y > Hd) continue;
-          const a = F.step(fade * 0.8 * (1 - F.hash(k, 1)));
+          const a = F.step(fade * (1 - F.hash(k, 1) * 0.7));
           if (a <= 0) continue;
-          g.globalAlpha = a * 0.6; g.fillStyle = '#3d4232';
-          g.fillRect(Math.round(x / sp) * sp, Math.round(y / sp) * sp + sp, sp, sp);
-          g.globalAlpha = a; g.fillStyle = k % 3 ? '#b6bba2' : '#9aa27a';
-          g.fillRect(Math.round(x / sp) * sp, Math.round(y / sp) * sp, sp, sp);
+          const big = k % 5 === 0 ? 2 : 1, sx = Math.round(x / sp) * sp, sy = Math.round(y / sp) * sp;
+          g.globalAlpha = a * 0.7; g.fillStyle = '#2c3022';
+          g.fillRect(sx, sy + sp * big, sp * big, sp);
+          g.globalAlpha = a; g.fillStyle = this.SPORE[k % 3];
+          g.fillRect(sx, sy, sp * big, sp * big);
+        }
+        // and the season's last leaves, dead before they fell, tumbling with it
+        for (let k = 0; k < 46; k++) {
+          const along = fr.front - fr.band * (0.05 + F.hash(k, 31) * 0.6), perp = (F.hash(k, 32) - 0.5) * fr.span * 1.3;
+          const tum = s.t * (3 + F.hash(k, 33) * 4) + k;
+          const x = fr.ux * along - fr.uy * perp, y = fr.uy * along + fr.ux * perp + Math.sin(tum) * 10 * dpr;
+          if (x < 0 || x > Wd || y < 0 || y > Hd) continue;
+          const a = F.step(fade * 0.9);
+          if (a <= 0) continue;
+          const flat = Math.cos(tum) > 0, lx = Math.round(x / sp) * sp, ly = Math.round(y / sp) * sp;
+          g.globalAlpha = a; g.fillStyle = k % 2 ? '#7a6a48' : '#5e5238';
+          g.fillRect(lx, ly, sp * (flat ? 2 : 1), sp * (flat ? 1 : 2));
         }
         g.globalAlpha = 1;
       },
     },
+    // the murk's bands by depth behind its edge: [up to, density, alpha, colour]
+    // the murk's tones: underside, body, crown — and the haze it leaves
+    MURK: ['#3c4430', '#77805f', '#aab28a', '#6f7658'],
+    SPORE: ['#b6bba2', '#9aa27a', '#d4d8bf'],
     /* while it lasts, every rival field and station IN SIGHT stands greyed
        and withered — its own silhouette washed a dead grey-green, dull specks
        over the plot, grey spores drifting off it. Nothing the fog hides is
@@ -1011,7 +1085,7 @@ Object.assign(Deck.FX, {
     lay(w) {
       const before = w.construction;
       w.construction = Math.max(Math.min(before, this.floor()), before - this.GAIN * this.work());
-      const at = { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w) };
+      const at = { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), bx: w.x, by: w.y };
       GrowFX.look(at.x, at.y);
       GrowFX.show('wonders_foundation', at);
       if (window.R && R.shakeAt) R.shakeAt(6, 1.6);
@@ -1098,23 +1172,44 @@ Object.assign(Deck.FX, {
           }
           g.restore();
         }
-        // 2. the old stones rise out of the earth
+        // 2. the old stones rise out of the earth — weathered standing stones,
+        // each its own height and lean, lit from the upper left, mossed and
+        // chipped, shedding the earth they slept under as they come up
         const fadeOut = p < 0.78 ? 1 : Math.max(0, (1 - p) / 0.22);
-        for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) {
+        if (p >= 0.16 && !s.dust) {
+          s.dust = 1;
+          if (R.startPlacePoof) { R.startPlacePoof(s.bx, s.by, n); R.startPlacePoof(s.bx, s.by, n, { delay: 420, scale: 0.8 }); }
+        }
+        const order = [];
+        for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) order.push([tx, ty]);
+        for (const [tx, ty] of order) {
           const q = F.ease((p - 0.16 - (tx + ty) * 0.035) / 0.3);
           if (q <= 0) continue;
-          const bw = TL * 0.78, bh = TL * 0.62, gx = x0 + (tx + 0.5) * TL, gy = y0 + (ty + 0.92) * TL, top = gy - bh * q;
           const a = F.step(fadeOut);
           if (a <= 0) continue;
+          const hh = F.hash(tx * 5 + 1, ty * 7 + 3), hw = F.hash(ty * 3 + 2, tx * 11 + 5);
+          const bw = F.snap(TL * (0.42 + hw * 0.28)), bh = TL * (0.62 + hh * 0.5);
+          const gx = F.snap(x0 + (tx + 0.5) * TL + (hw - 0.5) * 6), gy = F.snap(y0 + (ty + 0.94) * TL);
+          const top = F.snap(gy - bh * q), lean = F.snap((hh - 0.5) * 6 * q), L = gx - bw / 2;
           g.globalAlpha = a;
-          g.fillStyle = '#4a4336'; g.fillRect(F.snap(gx - bw / 2) - 2, F.snap(top) - 2, F.snap(bw) + 4, F.snap(gy - top) + 2);
-          g.fillStyle = '#8c8270'; g.fillRect(F.snap(gx - bw / 2), F.snap(top), F.snap(bw), F.snap(gy - top));
-          g.fillStyle = '#a89c86'; g.fillRect(F.snap(gx - bw / 2), F.snap(top), F.snap(bw), 4);
+          // the body: an outline, a lit face, the shadowed side, a ragged crown
+          g.fillStyle = '#2e2a22';
+          g.fillRect(L - 2, top + 4, bw + 4, gy - top - 2);
+          g.fillRect(L + lean, top - 2, bw - 4, 8);
+          g.fillStyle = '#7d7363'; g.fillRect(L, top + 4, bw, gy - top - 4);
+          g.fillStyle = '#9a8f7a'; g.fillRect(L, top + 4, F.snap(bw * 0.45), gy - top - 4);
+          g.fillStyle = '#5f574a'; g.fillRect(L + bw - 4, top + 6, 4, gy - top - 6);
+          g.fillStyle = '#b3a78f'; g.fillRect(L + lean + 2, top, bw - 8, 4);
+          g.fillStyle = '#c9bea6'; g.fillRect(L + lean + 2, top, F.snap((bw - 8) * 0.5), 2);
+          // weathering: a crack down the face, lichen and moss low on the stone
+          g.fillStyle = '#4a4336';
+          for (let c = 0, cy0 = top + 8; c < 3 && cy0 < gy - 6; c++, cy0 += 6) g.fillRect(L + F.snap(bw * (0.35 + F.hash(tx + c, ty) * 0.3)), cy0, 2, 4);
           g.fillStyle = '#5f7a3a';
-          for (let m = 0; m < 3; m++) g.fillRect(F.snap(gx - bw / 2 + F.hash(tx * 3 + m, ty) * bw * 0.8), F.snap(top + 4 + F.hash(ty, m + tx) * (gy - top - 6)), 2, 2);
+          for (let m = 0; m < 4; m++) g.fillRect(F.snap(L + F.hash(tx * 3 + m, ty) * (bw - 2)), F.snap(gy - 4 - F.hash(ty, m + tx) * (gy - top) * 0.45), 2, 2);
+          g.fillStyle = '#9fb06a'; g.fillRect(F.snap(L + 2 + hw * (bw - 6)), F.snap(top + (gy - top) * 0.3), 2, 2);
           g.globalAlpha = 1;
-          if (q < 1) for (let m = 0; m < 3; m++)   // earth falling off the rising stone
-            F.mote(g, gx + (F.hash(m, tx + ty * 5) - 0.5) * bw, top + q * 10 * (m + 1), '#6e5638', null, (1 - q) * a);
+          if (q < 1) for (let m = 0; m < 4; m++)   // earth falling off the rising stone
+            F.mote(g, gx + (F.hash(m, tx + ty * 5) - 0.5) * bw, top + q * 10 * (m + 1), m % 2 ? '#6e5638' : '#8a6e46', null, (1 - q) * a);
         }
         // 3. the pillar out of the middle, and rings of dots across the ground
         const pl = F.env(p, 0.28, 0.36, 0.7, 0.9);
