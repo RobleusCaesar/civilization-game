@@ -287,7 +287,8 @@ const Deck = {
   col() {
     if (this._col) return this._col;
     let c = null;
-    try { c = JSON.parse(this._get(this.KEY) || 'null'); } catch (e) { c = null; }
+    const raw = this._get(this.KEY);
+    try { c = JSON.parse(raw || 'null'); } catch (e) { c = null; }
     if (!c || typeof c !== 'object') c = {};
     c.v = 1;
     if (!c.counts || typeof c.counts !== 'object') c.counts = {};
@@ -300,8 +301,10 @@ const Deck = {
     // reach a renderer that would look it up and find nothing
     for (const id of Object.keys(c.counts)) if (!this.card(id) || !(c.counts[id] > 0)) delete c.counts[id];
     this._col = c;
+    this._colRaw = raw;   // what the disk held when read — another tab's write shows as a difference (Deck.sync)
     return c;
   },
+  _colRaw: null,
   saveCol() {
     const c = this.col();
     // the run ledger only needs to outlive a reload of the end screen
@@ -309,6 +312,8 @@ const Deck = {
     if (keys.length > 60) for (const k of keys.slice(0, keys.length - 60)) delete c.runs[k];
     if (c.queue.length > CFG.CARDS.QUEUE_MAX) c.queue.splice(0, c.queue.length - CFG.CARDS.QUEUE_MAX);
     this._set(this.KEY, JSON.stringify(c));
+    // what the disk now READS (a write refused by a full disk leaves the old)
+    this._colRaw = this._get(this.KEY);
     this._changed();
   },
   count(id) { return this.col().counts[id] || 0; },
@@ -775,3 +780,456 @@ const Deck = {
   },
 };
 window.Deck = Deck;
+
+/* ================= THE CLOUD: Deck.sync (tests/deck-sync.mjs) =================
+   The collection lives on the device so it reads at once and plays offline;
+   the cloud is the RECORD once it answers. Every change the device makes is
+   queued (starter / grant / consume, above) and this block delivers the
+   queue through the doors of supabase/migrations/0008_cards.sql, then
+   reconciles the mirror against my_cards(). The rules:
+
+   THE SWITCH    off (CFG.CARDS.ON false, no ?cards=1), sync does NOTHING —
+                 no listener, no read, no request.
+   THE SITE      only the shipped site talks to the cloud (Backend's own
+                 telemetryAllowed gate; the test mock is exempt). A page from
+                 disk, a local server and ?dev= stay on the device — and so
+                 does a TEST deck (?cards=all / slice, or a mirror marked
+                 `test`), whose cards were never earned and which the record
+                 must never take back mid-playtest.
+   IN ORDER, AND ONLY WHAT WAS ANSWERED LEAVES THE QUEUE. Answered ok — or
+                 ok + already, a DUPLICATE (an answer lost on the way back) —
+                 the op is done. Refused for good (not earned, not a card that
+                 ending can roll, none left) it is dropped, and the reconcile
+                 shows what the server holds. Not REACHED (offline, a 5xx, the
+                 migration not yet applied, signed out, the hourly cap) it is
+                 kept and the drain stops there, to try again with backoff.
+                 'no_run' — the run_end row is still in flight, or was lost and
+                 is being resent (Backend.flushEnds) — keeps the grant and
+                 holds back only the plays of ITS cards; everything else goes.
+                 A grant that has said no_run for NO_RUN_DAYS and NO_RUN_TRIES
+                 is given up: its evidence is never coming.
+   A POISONED OP NEVER BLOCKS THE QUEUE. A 4xx that is not "not yet" (401
+                 signed out, 404 the migration not applied, 408, 429) is the
+                 server refusing THAT op's shape — a type error, a forbidden
+                 call, a unique violation. It is stepped past (its cards'
+                 plays held, as for no_run), and given up after BAD_TRIES and
+                 BAD_DAYS — but only once the server is seen answering
+                 something else, so a fault that refuses EVERY op (a missing
+                 grant) never throws a day's earnings away.
+   THE RECORD    with the queue empty, my_cards() REPLACES the device's counts
+                 (and merges what was seen, the pity count, the winning
+                 medians). An answer that comes back after anything was queued,
+                 or for a player no longer signed in, is thrown away. A card the
+                 record does not hold although the ceremony granted it is SAID,
+                 once, in the game's voice (Deck.tellLost) — in the event log if
+                 a game is being played, else on the collection screen.
+   ONE MIRROR PER PLAYER  neo-deck carries the uid it belongs to (an unowned
+                 mirror is the first signed-in player's). A different player
+                 signing in on this device parks it under neo-deck@<uid> and
+                 brings back theirs — or nothing: nobody inherits a collection.
+   TWO TABS, ONE DISK. Each tab mirrors neo-deck in memory, and a tab that
+                 saved its stale copy over another's would erase that tab's
+                 unsent grant or play. Another tab's write drops this tab's
+                 copy (the 'storage' event), a drain re-reads a disk that moved
+                 while it slept, and a drain that finds the disk moved under it
+                 saves NOTHING and runs again from the disk — what it delivered
+                 meanwhile comes back a duplicate, which is done.
+   It never blocks the game and never throws: everything is async, nothing
+   awaits it, and every failure is an op kept for later. It reads nothing
+   about the run (no S at all) — except to say a lost card in a live game. */
+Object.assign(Deck, {
+  SYNC: {
+    WAIT_MS: [5000, 15000, 45000, 135000, 600000],   // the retry after a drain that kept something
+    NO_RUN_DAYS: 7,                                   // a grant whose evidence never lands…
+    NO_RUN_TRIES: 8,                                  // …is given up after this long AND this many asks
+    BAD_DAYS: 1,                                      // an op the server refuses by its shape (a 4xx)…
+    BAD_TRIES: 8,                                     // …is given up after this long AND this many asks
+    MOVED_MAX: 3,                                     // drains in a row another tab's write may restart at once
+    LOST_KEEP: 10,                                    // lost-card notes kept for the telling
+  },
+  _sy: null,
+  _syncState() {
+    return this._sy || (this._sy = { busy: null, again: false, timer: 0, nudge: 0, fails: 0, moves: 0, armed: false, last: null, seenUid: null });
+  },
+  /* the listeners, installed once and only while the switch is on: a new op
+     queued (a grant, a play, the starter hand), the network coming back, a
+     player signing in (Backend's own status event), and another tab writing
+     the mirror */
+  syncArm() {
+    const st = this._syncState();
+    if (st.armed || !this.on()) return false;
+    st.armed = true;
+    try {
+      this.onChange(() => this._syncNudge());
+      window.addEventListener('online', () => this.sync('online'));
+      /* a SIGN-IN, not every status word: the transport emits backend-status
+         on every request that fails, so answering each one with a sync made
+         an offline device chase its own failures — the failing drain's emit
+         asked for another drain, which failed and emitted again, forever.
+         Only a uid this deck has not yet seen (the boot's sign-in, a
+         recovery token, the second chance) is news. */
+      window.addEventListener('backend-status', e => {
+        const uid = e && e.detail && e.detail.uid;
+        if (!uid || uid === st.seenUid) return;
+        st.seenUid = uid;
+        this.sync('signin');
+      });
+      /* ANOTHER TAB WROTE THE MIRROR: this tab's copy is stale. Drop it (the
+         next read is the disk's), let the badge and the collection repaint,
+         and a drain in flight runs again from the disk. Never a save here —
+         two tabs answering each other's writes with writes would ping-pong. */
+      window.addEventListener('storage', e => {
+        if (!e || (e.key !== this.KEY && e.key !== null)) return;
+        this._col = null;
+        if (st.busy) st.again = true;
+        this._changed();
+      });
+    } catch (e) { /* headless */ }
+    return true;
+  },
+  // only a NEW op asks for a delivery: the sync's own saves (an op's try
+  // count) must never re-trigger it, or an offline device spins
+  _syncNudge() {
+    try {
+      const st = this._syncState();
+      // mid-drain, the drain itself looks for new ops when it finishes
+      if (st.busy || st.nudge) return;
+      if (!this.col().queue.some(op => !op.q)) return;
+      st.nudge = setTimeout(() => { st.nudge = 0; this.sync('change'); }, 40);
+    } catch (e) {}
+  },
+  /* A TEST DECK is the tester's toy, never the player's record: the review
+     links (?cards=all deals one of every card, ?cards=slice the gate's five)
+     and any mirror marked `test` (Deck.dealAll stamps it, and it outlives
+     the link) neither deliver nor reconcile — the cloud would otherwise
+     take the dealt cards back at the first answer, mid-playtest. */
+  _testDeck() {
+    let q = '';
+    try { q = String(location.search || ''); } catch (e) {}
+    if (/[?&]cards=(slice|all)\b/.test(q)) return true;
+    try { return !!this.col().test; } catch (e) { return false; }
+  },
+  // '' when this device may talk to the cloud now, else the reason it may not
+  _syncGate() {
+    if (!this.on()) return 'off';
+    const B = window.Backend;
+    if (!B || !B.rpc) return 'no_backend';
+    if (this._testDeck()) return 'test';
+    if (!B.configured) return 'not_configured';
+    if (!B.mock && !(B.telemetryAllowed && B.telemetryAllowed())) return 'not_site';
+    if (!B.isReady() || !B.uid) return 'not_ready';
+    return '';
+  },
+  /* THE ONE ENTRY: deliver what is queued, then reconcile. Resolves to
+     { ok, why, sent, done, dropped, kept, reconciled }; a call while one is
+     in flight joins it and runs once more after. */
+  sync(why) {
+    try {
+      if (!this.on()) return Promise.resolve({ ok: false, why: 'off' });
+      this.syncArm();
+      const st = this._syncState();
+      if (st.busy) { st.again = true; return st.busy; }
+      st.busy = this._syncRun(why)
+        .catch(() => ({ ok: false, why: 'error' }))
+        .then(r => {
+          st.busy = null; st.last = r;
+          if (st.again) { st.again = false; return this.sync('again'); }
+          return r;
+        });
+      return st.busy;
+    } catch (e) { return Promise.resolve({ ok: false, why: 'error' }); }
+  },
+  // the disk holds something other than what this tab last read or wrote:
+  // another tab has written the mirror
+  _diskMoved() { return this._col != null && this._get(this.KEY) !== this._colRaw; },
+  async _syncRun(why) {
+    const out = { ok: false, why: '', sent: 0, done: 0, dropped: 0, kept: 0, reconciled: false };
+    out.why = this._syncGate();
+    if (out.why) return out;          // not_ready: the sign-in's status event brings us back
+    const B = window.Backend, uid = B.uid, st = this._syncState();
+    // a tab that slept through another's write (frozen in the background,
+    // its storage event never delivered) reads the disk again first
+    if (this._diskMoved()) this._col = null;
+    this._syncAdopt(uid);
+    // the EVIDENCE first: a run_end the game could not send goes up before
+    // the grant that waits on it
+    if (B.flushEnds) { try { await B.flushEnds(); } catch (e) {} }
+    const c = this.col();
+    const mine = () => this._col === c && B.uid === uid && !this._diskMoved();
+    const lost = () => (B.uid !== uid ? 'switched' : 'moved');
+    if (!mine()) return this._syncMoved(out, lost(), c);
+    for (const op of c.queue) op.q = 1;
+    const held = {};   // card id → its adding op is waiting (its run_end, or a refused shape)
+    const bad = [];    // ops the server refused by their shape this drain
+    let stop = '', heard = false;
+    for (const op of c.queue.slice()) {
+      if (op.op === 'consume' && held[op.card]) continue;
+      const v = await this._syncDeliver(op);
+      if (!mine()) { stop = lost(); break; }
+      if (v.asked) out.sent++;
+      op.n = (op.n || 0) + 1;
+      op.why = v.why;
+      if (v.verdict === 'wait' && op.op === 'grant') {
+        op.wait = op.wait || Date.now();
+        if (op.n >= this.SYNC.NO_RUN_TRIES && Date.now() - op.wait > this.SYNC.NO_RUN_DAYS * 864e5) {
+          v.verdict = 'drop';
+          v.why = op.why = 'no_run_expired';
+        }
+      }
+      // the server answered in its own words: it is up, and it can be heard
+      if (v.verdict === 'done' || v.verdict === 'wait' || (v.verdict === 'drop' && v.asked)) heard = true;
+      if (v.verdict === 'done' || v.verdict === 'drop') {
+        const i = c.queue.indexOf(op);
+        if (i >= 0) c.queue.splice(i, 1);
+        if (v.verdict === 'done') out.done++;
+        else { out.dropped++; this._syncNote(op, v.why); }
+      } else if (v.verdict === 'wait') {
+        for (const id of (op.cards || [])) held[id] = 1;
+      } else if (v.verdict === 'bad') {
+        op.bad = op.bad || Date.now();
+        if (op.op === 'grant') for (const id of (op.cards || [])) held[id] = 1;
+        bad.push(op);
+      } else { stop = v.why || 'network'; break; }
+    }
+    /* A POISONED OP is given up only once it is old AND the server is seen
+       answering: a drain where something else was answered, or failing that
+       one look at the record. A refusal of EVERYTHING (a lost grant on the
+       door) is the server's fault, not the op's, and gives up nothing. */
+    if (!stop) {
+      const due = bad.filter(op => op.n >= this.SYNC.BAD_TRIES && Date.now() - op.bad > this.SYNC.BAD_DAYS * 864e5);
+      if (due.length) {
+        if (!heard) {
+          let r = null;
+          try { r = await B.rpc('my_cards', {}); } catch (e) {}
+          heard = !!(r && r.ok && r.data && r.data.ok === true);
+          if (!mine()) stop = lost();
+        }
+        if (heard && !stop) for (const op of due) {
+          const i = c.queue.indexOf(op);
+          if (i >= 0) c.queue.splice(i, 1);
+          out.dropped++;
+          this._syncNote(op, op.why);
+        }
+      }
+    }
+    if (stop === 'moved' || stop === 'switched') return this._syncMoved(out, stop, c);
+    st.moves = 0;
+    out.kept = c.queue.length;
+    this._syncSave(c);
+    // the retry first: a reconcile that finds the disk moved schedules its own
+    this._syncLater(c.queue.length > 0);
+    if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
+    out.ok = !stop && !c.queue.length;
+    out.why = stop || (c.queue.length ? 'held' : '');
+    // an op queued while this drain was in flight goes out right behind it
+    if (mine() && c.queue.some(op => !op.q)) st.again = true;
+    return out;
+  },
+  /* the mirror moved under a drain: another player signed in (their sign-in
+     brings its own sync), or ANOTHER TAB wrote the disk — then this drain
+     saves nothing (its copy is stale) and runs again from the disk at once,
+     a few times in a row at most before it waits its turn like any retry */
+  _syncMoved(out, why, c) {
+    out.why = why;
+    out.kept = c ? c.queue.length : 0;
+    if (why !== 'moved') return out;
+    this._col = null;
+    const st = this._syncState();
+    if (st.moves < this.SYNC.MOVED_MAX) { st.moves++; st.again = true; }
+    else { st.moves = 0; this._syncLater(true); }
+    return out;
+  },
+  /* one op through its door. 'done' (answered ok, or a duplicate), 'drop'
+     (refused for good), 'wait' (no_run: ask again later, hold its cards'
+     plays), 'bad' (refused by its shape: step past it), 'stop' (not reached
+     — keep it and everything behind it) */
+  async _syncDeliver(op) {
+    const B = window.Backend;
+    let name, args;
+    if (op.op === 'starter') { name = 'claim_starter_hand'; args = {}; }
+    else if (op.op === 'grant') {
+      // a run with no id (a save from before the run id rode in it) can
+      // never be checked against its ending, so it can never be granted
+      if (!op.run) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_card';
+      args = { p_run_id: String(op.run), p_cards: (op.cards || []).slice(0, 2), p_outcome: op.outcome || null };
+    } else if (op.op === 'consume') {
+      name = 'consume_card';
+      args = { p_card_key: op.card, p_play_id: op.play, p_run_id: op.run || null,
+        p_day: Math.max(0, Math.min(100000, op.day | 0)) };
+    } else return { verdict: 'drop', why: 'unknown_op' };
+    let r;
+    try { r = await B.rpc(name, args); } catch (e) { r = null; }
+    const v = this._syncVerdict(r);
+    v.asked = true;
+    return v;
+  },
+  // the 4xx that mean "not yet", never "not this op": signed out, the door
+  // not there yet (0008 unapplied), a timeout, the rate limit
+  NOT_YET: [401, 404, 408, 429],
+  _syncVerdict(r) {
+    if (!r || !r.ok) {
+      const code = r && r.error && r.error.code;
+      // refused by its SHAPE (a type error, forbidden, a unique violation):
+      // the op itself, which no retry mends — stepped past, never a wall
+      if (typeof code === 'number' && code >= 400 && code < 500 && this.NOT_YET.indexOf(code) < 0)
+        return { verdict: 'bad', why: 'http_' + code };
+      // not reached: offline, a 5xx, a 404 (0008 not applied yet), signed out
+      return { verdict: 'stop', why: String(code || 'network') };
+    }
+    const d = r.data;
+    // an answer that is not one of ours is no answer (an unmocked RPC reads
+    // { ok:true, data:null } in a test — a silent pass, if it were believed)
+    if (!d || typeof d !== 'object' || typeof d.ok !== 'boolean') return { verdict: 'stop', why: 'no_answer' };
+    if (d.ok) return { verdict: 'done', why: d.already ? 'duplicate' : 'ok' };
+    const why = String(d.reason || 'refused');
+    if (why === 'no_run') return { verdict: 'wait', why };
+    // KEPT, never dropped: signed out, and the hourly cap — a grant past the
+    // cap dropped here would leave the collection at the next reconcile
+    if (why === 'not_authenticated' || why === 'slow_down') return { verdict: 'stop', why };
+    if (why === 'duplicate' || why === 'already') return { verdict: 'done', why: 'duplicate' };
+    return { verdict: 'drop', why };
+  },
+  // the refusals, kept short on the mirror for whoever comes looking (and
+  // weighed at the next reconcile: a granted card the record does not hold)
+  _syncNote(op, why) {
+    try {
+      const c = this.col();
+      if (!Array.isArray(c.refused)) c.refused = [];
+      c.refused.push({ at: Date.now(), op: op.op, card: op.card || (op.cards || []).join(','), run: op.run || null,
+        outcome: op.outcome || null, why });
+      if (c.refused.length > 20) c.refused.splice(0, c.refused.length - 20);
+    } catch (e) {}
+  },
+  /* ONE MIRROR PER PLAYER: an unowned mirror is adopted by the first player
+     to sign in on this device; a mirror owned by someone else is parked under
+     its owner's uid and the newcomer's own (or a bare one) comes back */
+  _syncAdopt(uid) {
+    if (!uid) return '';
+    const c = this.col();
+    if (!c.uid) { c.uid = uid; this._syncSave(c); return 'adopted'; }
+    if (c.uid === uid) return '';
+    try {
+      this._set(this.KEY + '@' + c.uid, JSON.stringify(c));
+      const theirs = this._get(this.KEY + '@' + uid);
+      this._del(this.KEY + '@' + uid);
+      this._set(this.KEY, theirs || JSON.stringify({ uid }));
+    } catch (e) {}
+    this._col = null;
+    const n = this.col();
+    n.uid = uid;
+    this._syncSave(n);    // the badge and the collection repaint for the player now signed in
+    return 'switched';
+  },
+  /* THE RECORD: my_cards() replaces the counts once nothing is waiting */
+  async _syncReconcile(c, uid) {
+    let r;
+    try { r = await window.Backend.rpc('my_cards', {}); } catch (e) { return false; }
+    if (!r || !r.ok || !r.data || r.data.ok !== true) return false;
+    const d = r.data;
+    // still about THIS mirror: the same player, the same disk, and nothing
+    // queued meanwhile (a card played while the answer was in flight would
+    // come back to life, and another tab's op would be saved over)
+    if (this._col !== c || window.Backend.uid !== uid || (d.uid && d.uid !== uid) || c.queue.length) return false;
+    if (this._diskMoved()) { this._syncMoved({}, 'moved'); return false; }
+    const before = Object.assign({}, c.counts);
+    const counts = {};
+    const src = (d.counts && typeof d.counts === 'object') ? d.counts : {};
+    for (const id of Object.keys(src)) {
+      const n = Math.min(999, Math.floor(+src[id] || 0));
+      if (this.card(id) && n > 0) counts[id] = n;
+    }
+    c.counts = counts;
+    const seen = (d.seen && typeof d.seen === 'object') ? d.seen : {};
+    for (const id of Object.keys(seen)) if (this.card(id) && !c.seen[id]) c.seen[id] = +seen[id] || Date.now();
+    for (const id of Object.keys(counts)) if (!c.seen[id]) c.seen[id] = Date.now();
+    /* the starter hand as the RECORD has it: claimed there, it is claimed
+       here; NOT claimed there with nothing waiting (its op lost to the
+       queue's cap), the mark comes off so the next ensureStarter deals the
+       hand again and its op claims it — the record never claims three
+       cards the device was shown and the cloud was not */
+    if (d.starter === true) c.starter = c.starter || +d.starter_at || Date.now();
+    else if (d.starter === false && c.starter) delete c.starter;
+    if (d.pity >= 0) c.pity = Math.floor(+d.pity);
+    if (d.medians && typeof d.medians === 'object') {
+      const m = { at: Date.now() };
+      for (const k of ['calm', 'moderate', 'hard']) if (+d.medians[k] > 0) m[k] = Math.round(+d.medians[k]);
+      c.medians = m;
+    }
+    this._syncLost(c, before);
+    c.synced = Date.now();
+    this._syncSave(c);
+    this._tellLost();
+    return true;
+  },
+  /* THE CARD THE RECORD DOES NOT HOLD. The ceremony granted it, the player
+     watched it land, and the server refused the grant (not earned, an
+     ending that never arrived, a shape it would not take): the reconcile
+     takes it off the device, and a card that simply VANISHES reads as a
+     bug and breaks "earned". So a count the record lowered, where a refused
+     grant had raised it, is written down once (c.lost) and told once. */
+  _syncLost(c, before) {
+    const ref = Array.isArray(c.refused) ? c.refused : [];
+    const drop = {};
+    for (const id in before) {
+      const n = (before[id] || 0) - (c.counts[id] || 0);
+      if (n > 0) drop[id] = n;
+    }
+    for (const r of ref) {
+      if (r.weighed) continue;
+      r.weighed = 1;
+      if (r.op !== 'grant') continue;
+      for (const id of String(r.card || '').split(',')) {
+        if (!(drop[id] > 0) || !this.card(id)) continue;
+        drop[id]--;
+        if (!Array.isArray(c.lost)) c.lost = [];
+        c.lost.push({ at: Date.now(), card: id, outcome: r.outcome || null, why: r.why || '' });
+      }
+    }
+    if (Array.isArray(c.lost) && c.lost.length > this.SYNC.LOST_KEEP) c.lost.splice(0, c.lost.length - this.SYNC.LOST_KEEP);
+  },
+  // the lost cards not yet told
+  lostNotes() { const l = this.col().lost; return Array.isArray(l) ? l.filter(x => x && !x.told) : []; },
+  lostLine(x) {
+    const c = this.card(x.card);
+    const from = x.outcome === 'win' ? 'that victory' : x.outcome === 'loss' ? 'that defeat' : 'that game';
+    const why = /^no_run/.test(x.why || '') ? 'its ending never reached the record' : 'it never counted';
+    return `The record does not hold your ${c ? c.name : 'card'} from ${from} — ${why}.`;
+  },
+  // tells every lost card not yet told: answers their lines and marks them
+  // told (once, wherever it was said)
+  tellLost() {
+    const notes = this.lostNotes();
+    if (!notes.length) return [];
+    const lines = notes.map(x => this.lostLine(x));
+    for (const x of notes) x.told = Date.now();
+    this.saveCol();
+    return lines;
+  },
+  // in a game being PLAYED, the event log says it at once; anywhere else it
+  // waits for the collection screen (DeckScreens.openCollection)
+  _tellLost() {
+    try {
+      if (!this.lostNotes().length || typeof S === 'undefined' || !S || !S.map || S.over || !S.played) return 0;
+      if (!window.Screens || Screens._demo || Screens.current !== 'playing' || typeof G === 'undefined' || !G.log) return 0;
+      const lines = this.tellLost();
+      for (const l of lines) G.log('📜 ' + l);
+      return lines.length;
+    } catch (e) { return 0; }
+  },
+  _syncSave(c) { if (this._col === c) this.saveCol(); },
+  // the retry, backing off while ops are kept; nothing pending, no timer
+  _syncLater(kept) {
+    const st = this._syncState();
+    if (st.timer) { clearTimeout(st.timer); st.timer = 0; }
+    if (!kept) { st.fails = 0; return; }
+    const W = this.SYNC.WAIT_MS;
+    const ms = W[Math.min(st.fails, W.length - 1)];
+    st.fails++;
+    st.timer = setTimeout(() => { st.timer = 0; this.sync('retry'); }, ms);
+  },
+});
+/* at boot the deck asks for a delivery and arms its listeners — registered
+   only when the deck is already on as the script parses: with the switch
+   off there is not even an inert listener (the house rule) */
+try { if (Deck.on()) window.addEventListener('load', () => { if (Deck.on()) Deck.sync('boot'); }); } catch (e) {}

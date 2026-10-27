@@ -71,7 +71,7 @@ const Backend = {
        exactly as it does with placeholder keys (the test mock still works). */
     if (this.configured && !this.mock && typeof location !== 'undefined' && location.protocol === 'file:')
       this.configured = false;
-    window.addEventListener('online', () => { this.online = true; this.emit(); });
+    window.addEventListener('online', () => { this.online = true; this.emit(); this.flushEnds(); });
     window.addEventListener('offline', () => { this.online = false; this.emit(); });
     try { this.activeSlot = +(localStorage.getItem('neo-active-slot') || 0) || null; } catch (e) {}
     try { this.autosaveDays = +(localStorage.getItem('neo-autosave-days') || 2); } catch (e) {}
@@ -99,6 +99,7 @@ const Backend = {
     this.session = session;
     this.uid = session.user && session.user.id;
     const prof = await this.ensureProfile();
+    this.flushEnds();   // a run that ended before this sign-in can now report its ending
     this.emit();
     return prof.ok ? { ok: true, data: { uid: this.uid } } : prof;
   },
@@ -235,6 +236,31 @@ const Backend = {
     } catch (e) { /* fall through */ }
     return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   },
+  /* A RUN WITH NO ID IS NAMED BY ITS LINEAGE, NEVER BY THE DICE
+     (tests/deck-sync.mjs §11b, tests/telemetry.mjs §5). A save from before
+     the id rode in it (0007) used to end with run_id null — one row nobody
+     could match, and a card the server could never check against it. The
+     first cure minted a FRESH random id at the end, and that was a card
+     farm: the save never learned the id, so every load-and-finish of the
+     same save ended under a new name, past the device's one-grant-per-run
+     ledger and the server's NEVER TWICE alike (six Hard great-victory cards
+     out of one save, measured). The name is now a pure function of what
+     the save already holds — its seed, its difficulty, its size — so every
+     ending of that save's lineage shares ONE id: the device dedupes it, the
+     server answers 'already'. G.loadJSON stamps it into S (so it rides every
+     later save) and G.end names an id-less run the same way. Two id-less
+     saves of one seed, mode and size share a name and so one card: the
+     price of a rule nobody can farm, paid only by pre-0007 saves. */
+  legacyRunId(seed, mode, size) {
+    const s = String(seed == null ? '' : seed) + '|' + String(mode || '') + '|' + String(size || '');
+    let a = 0x811c9dc5, b = 0x9747b28c;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      a = Math.imul(a ^ c, 16777619) >>> 0;
+      b = Math.imul(b ^ c, 0x5bd1e995) >>> 0; b = (b ^ (b >>> 15)) >>> 0;
+    }
+    return 'legacy-' + a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+  },
   deviceKind() {
     try {
       // the game is phone-first; "did this run happen on a phone" is the one
@@ -311,7 +337,10 @@ const Backend = {
   // finding.
   logRunEnd(info) {
     info = info || {};
-    this._emit({
+    /* the id is the run's own (S.runId, handed here by _enterNow or loadJSON);
+       a run that has none is NAMED by G.end before it gets here — by the
+       deterministic rule in legacyRunId, never a fresh random one (see it) */
+    this._emitEnd({
       run_id: this.runId, kind: 'run_end',
       outcome: info.outcome || null, cause: info.cause || null,
       mode: info.mode || null, landform: info.landform || null, size: info.size || null,
@@ -323,6 +352,113 @@ const Backend = {
     this.lastRunId = this.runId;   // the finished run's id, for whatever the end screen wants (the competition's one-entry-per-game key)
     this.runId = null;
     return { ok: true };
+  },
+
+  /* THE EVIDENCE A CARD WAITS ON (migration 0008; tests/telemetry.mjs §5).
+     The server grants a finished run's card only against the run_end row the
+     game sent for that run — and that row could be lost two ways: the boot
+     never signed in (offline for a moment, rate-limited), so there was no
+     identity to send it under; or the request itself died (a dead network at
+     the moment of victory). Either way the grant answered 'no_run' forever
+     and the card left the collection at the next reconcile. So THIS row,
+     alone among the telemetry, is KEPT on the device when it cannot go
+     (without its user id — that is stamped by whoever sends it), and
+     delivered later through report_run_end, which inserts it only if no real
+     ending for that run is on the table yet: a retry can never make a second
+     ending for the dashboard to count twice. Every other gate is _emit's own
+     — the site alone (or the test mock), the switch — so a page from disk
+     or a forced-ready test keeps nothing. */
+  END_KEY: 'neo-pending-ends',
+  END_KEEP: 6,                 // at most this many runs waiting…
+  END_DAYS: 30,                // …each for at most this long
+  _emitEnd(row) {
+    if (!this.telemetryOn || !this.configured) return;
+    if (!this.mock && !this.telemetryAllowed()) return;
+    if (!row.run_id) { this._emit(row); return; }   // nothing to key a resend on: one try, as ever
+    if (!this.isReady() || !this.uid) { this._keepEnd(row, null); return; }
+    const keep = () => this._keepEnd(row, this.uid);
+    const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, row);
+    try {
+      if (this.mock) {
+        let x;
+        try { x = this.mock.rest('POST', '/telemetry', [body], null); } catch (e) { keep(); return; }
+        Promise.resolve(x).then(v => {
+          if (!v || !v.error) return;
+          const st = +(v.error.status || v.error.code) || 0;
+          if (!st || this._endMendable(st)) keep();
+        }, keep);
+        return;
+      }
+      fetch(SUPA_CFG.url + '/rest/v1/telemetry', {
+        method: 'POST',
+        keepalive: true,
+        headers: Object.assign(
+          { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          this.session ? { Authorization: 'Bearer ' + this.session.access_token } : {}),
+        body: JSON.stringify([body]),
+      }).then(res => { if (!res.ok && this._endMendable(res.status)) keep(); }).catch(keep);
+    } catch (e) { keep(); }
+  },
+  /* which refused sends a later report_run_end can mend: a server fault, a
+     stale token, a timeout, the rate limit — and a 409, which on this table
+     is the profile's foreign key (ensureProfile failed at sign-in while the
+     uid stayed set): report_run_end inserts the profile first, and checks for
+     an existing ending before it inserts, so keeping it can never make two.
+     Any other 4xx is the row itself refused by a check; no resend mends it. */
+  _endMendable(status) {
+    return status >= 500 || status === 401 || status === 408 || status === 409 || status === 429;
+  },
+  pendingEnds() {
+    try {
+      const a = JSON.parse(localStorage.getItem(this.END_KEY) || '[]');
+      return Array.isArray(a) ? a.filter(p => p && p.row && p.row.run_id) : [];
+    } catch (e) { return []; }
+  },
+  _keepEnd(row, uid) {
+    try {
+      const list = this.pendingEnds().filter(p => p.row.run_id !== row.run_id);
+      list.push({ at: Date.now(), uid: uid || null, row });
+      localStorage.setItem(this.END_KEY, JSON.stringify(list.slice(-this.END_KEEP)));
+    } catch (e) { /* storage blocked: the row is lost, exactly as before */ }
+  },
+  _dropEnd(runId) {
+    try {
+      const list = this.pendingEnds().filter(p => p.row.run_id !== runId);
+      if (list.length) localStorage.setItem(this.END_KEY, JSON.stringify(list));
+      else localStorage.removeItem(this.END_KEY);
+    } catch (e) {}
+  },
+  /* send what was kept. Called on sign-in, on the network coming back and by
+     Deck.sync before it delivers a grant; never throws, joins a flush already
+     in flight. A row kept for ANOTHER player on this device waits for them. */
+  flushEnds() {
+    if (this._flushing) return this._flushing;
+    this._flushing = this._flushEnds().catch(() => ({ ok: false, data: 0 }))
+      .then(r => { this._flushing = null; return r; });
+    return this._flushing;
+  },
+  async _flushEnds() {
+    if (!this.telemetryOn || !this.configured || !this.isReady() || !this.uid) return { ok: false, data: 0 };
+    if (!this.mock && !this.telemetryAllowed()) return { ok: false, data: 0 };
+    let sent = 0;
+    for (const p of this.pendingEnds()) {
+      if (p.uid && p.uid !== this.uid) continue;
+      if (Date.now() - (+p.at || 0) > this.END_DAYS * 864e5) { this._dropEnd(p.row.run_id); continue; }
+      const row = Object.assign({ game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, p.row);
+      const r = await this.rpc('report_run_end', { p_row: row });
+      if (!r.ok) {
+        const code = r.error && r.error.code;
+        // THAT ROW refused by its shape (a 4xx that is not "not yet"): step
+        // past it — it ages out at END_DAYS — never a wall for the rows behind
+        if (typeof code === 'number' && code >= 400 && code < 500 && [401, 404, 408, 429].indexOf(code) < 0) continue;
+        break;   // not reached, or 0008 not applied yet (a 404): keep it, try again later
+      }
+      if (!r.data || typeof r.data.ok !== 'boolean') break;
+      if (!r.data.ok && r.data.reason === 'not_authenticated') break;
+      this._dropEnd(p.row.run_id);       // landed, was already there, or refused for good
+      if (r.data.ok && !r.data.already) sent++;
+    }
+    return { ok: true, data: sent };
   },
 
   /* …or where they LEFT it (G.noteLeaving, tests/telemetry.mjs §3). The tab

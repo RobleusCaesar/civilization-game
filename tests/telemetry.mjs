@@ -68,6 +68,10 @@ const MOCK = `
     const rest = (method, path, body) => {
       st.calls.push({ method, path, body });
       if (path.startsWith('/profiles') && method === 'GET') return [{ id: st.uid, chief_name: null }];
+      // §5: a run_end send that dies, and migration 0008's door for the resend
+      if (path === '/telemetry' && method === 'POST' && st.failEnds && body && body[0] && body[0].kind === 'run_end')
+        return { error: { status: 503, message: 'down' } };
+      if (path === '/rpc/report_run_end') return { ok: true };
       return method === 'GET' ? [] : null;
     };
     return { st, auth, rest };
@@ -318,6 +322,195 @@ const MOCK = `
   ck('theDashboardRendersWhereTheyLeave', /where_they_leave/.test(html) && /id="tLeaveDays"/.test(html) && /id="tLeaveMins"/.test(html) && /runs_closed_tab/.test(html), '');
   ck('theLeavingRowGoesKeepaliveWithItsToken', /logLeaving\(info\)/.test(bk) && /keepalive: true/.test(bk) && !/sendBeacon\(/.test(bk),
     'a beacon cannot carry the Bearer token the insert policy needs');
+}
+
+// ---- 5. THE CARDS (migration 0008): the evidence a grant waits on, the deck's own rows, the dashboard ----
+{
+  const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+  const r = await p.evaluate(async () => {
+    const tick = () => new Promise(r => setTimeout(r, 40));
+    const calls = () => __MOCK.st.calls;
+    const endsFor = id => calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end' && c.body[0].run_id === id);
+    const reports = id => calls().filter(c => c.path === '/rpc/report_run_end' && c.body && c.body.p_row && c.body.p_row.run_id === id);
+    const out = {};
+    localStorage.removeItem(Backend.END_KEY);
+
+    // A RUN THAT ENDS BEFORE THE BOOT EVER SIGNED IN: nobody to send it as —
+    // so it is KEPT, then delivered once through report_run_end on sign-in.
+    // (A loss, because a victory's own board calls reconnect at once and
+    // would deliver it before anyone could look.)
+    G.newGame('cards-e1', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+    const id1 = S.runId;
+    S.day = 44; S.playtime = 1400;
+    Backend.uid = null; Backend.session = null;           // the sign-in never happened
+    G.end(false, 'test', 'tc_destroyed');
+    await tick();
+    const kept = Backend.pendingEnds();
+    out.kept = { n: kept.length, run: kept[0] && kept[0].row.run_id === id1, noUser: kept[0] && !('user_id' in kept[0].row),
+      uid: kept[0] && kept[0].uid, outcome: kept[0] && kept[0].row.outcome, day: kept[0] && kept[0].row.day, sentRaw: endsFor(id1).length };
+    await Backend.reconnect();                             // the second chance signs in…
+    await Backend.flushEnds();                             // …and the kept row goes up (joined, never doubled)
+    await Backend.flushEnds();
+    out.flushed = { reports: reports(id1).length, raw: endsFor(id1).length, left: Backend.pendingEnds().length,
+      row: reports(id1)[0] && reports(id1)[0].body.p_row };
+
+    // A SEND THAT DIES (a dead network at the moment of victory): kept too
+    G.newGame('cards-e2', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+    const id2 = S.runId; S.day = 12;
+    __MOCK.st.failEnds = true;
+    G.end(false, 'test', 'tc_destroyed');
+    await tick();
+    __MOCK.st.failEnds = false;
+    out.died = { raw: endsFor(id2).length, kept: Backend.pendingEnds().filter(x => x.row.run_id === id2).length,
+      keptUid: (Backend.pendingEnds().find(x => x.row.run_id === id2) || {}).uid };
+    await Backend.flushEnds();
+    out.died.reports = reports(id2).length; out.died.left = Backend.pendingEnds().length;
+
+    // AN ENDING THAT LANDED keeps nothing, and sends nothing twice
+    G.newGame('cards-e3', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+    const id3 = S.runId;
+    G.end(true, 'test', 'wonder');
+    await tick();
+    await Backend.flushEnds();
+    out.landed = { raw: endsFor(id3).length, reports: reports(id3).length, kept: Backend.pendingEnds().length };
+
+    // A RUN WITH NO ID (a save from before the id rode in it) is NAMED BY ITS
+    // LINEAGE — seed, mode, size (Backend.legacyRunId) — never by the dice:
+    // the same old save loaded and finished again is the SAME run, so its card
+    // can be granted once and never again (a fresh random name per ending was
+    // a card farm). The name is in S from the end on, and in the row, and in
+    // the end screen's report.
+    G.newGame('cards-e5', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+    S.runId = null; Backend.runId = null;               // exactly what a pre-0007 save holds
+    const pre = G.saveJSON();
+    const want = Backend.legacyRunId(S.seed, S.mode, S.sizeKey);
+    G.end(false, 'test', 'tc_destroyed');
+    await tick();
+    const runEnds = id => calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end' && c.body[0].run_id === id).length;
+    const idl = calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end').slice(-1)[0];
+    const rowId = idl && idl.body[0].run_id;
+    out.idless = { want, rowId, named: S.runId === want, last: Backend.lastRunId === want, cleared: Backend.runId === null,
+      report: (window.Deck && Deck.report) ? Deck.report(false, 'tc_destroyed').runId === want : true,
+      rows: runEnds(want), deterministic: Backend.legacyRunId(S.seed, S.mode, S.sizeKey) === want,
+      apart: Backend.legacyRunId('cards-e5x', 'moderate', 'medium') !== want && Backend.legacyRunId(S.seed, 'hard', 'medium') !== want,
+      shape: /^legacy-[0-9a-f]{16}$/.test(want) };
+    // the same save loaded again — twice — and ended each time: one name
+    const named = [];
+    for (let i = 0; i < 2; i++) {
+      G.loadJSON(pre);
+      named.push(S.runId === want && Backend.runId === want);
+      Screens._demo = false;
+      G.end(true, 'test', 'razed_rival_tc');
+      await tick();
+    }
+    out.lineage = { named, rows: runEnds(want), ids: calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end').slice(-2).map(c => c.body[0].run_id === want) };
+    // …and a NEW world is never the old run: founded after that load, it
+    // owes nothing to the loaded save's name, and ends under its own
+    G.loadJSON(pre);
+    G.newGame('cards-e6', 'moderate', 'medium');
+    out.lineage.fresh = Backend.runId === null;
+    Screens._demo = false; Screens.show('playing');
+    G.end(false, 'test', 'tc_destroyed');
+    await tick();
+    out.lineage.own = S.runId === Backend.legacyRunId(S.seed, S.mode, S.sizeKey) && S.runId !== want && runEnds(S.runId) === 1;
+    Screens.show('title');
+
+    // A REFUSED SEND, BY ITS STATUS (the real wire, not the mock): a 409 is
+    // the profile's foreign key (ensureProfile failed at sign-in) — kept, as
+    // report_run_end inserts the profile first and mends it; a 400 is the row
+    // itself refused by a check — no resend can mend that, so nothing is kept
+    {
+      const mk = Backend.mock, allowed = Backend.telemetryAllowed, realFetch = window.fetch;
+      const seen = [];
+      let status = 409;
+      Backend.mock = null; Backend.telemetryAllowed = () => true;
+      window.fetch = (u, o) => { seen.push(String(u)); return Promise.resolve({ ok: false, status, json: async () => ({}), text: async () => '' }); };
+      try {
+        localStorage.removeItem(Backend.END_KEY);
+        out.wire = {};
+        for (const st of [409, 400, 503]) {
+          status = st;
+          G.newGame('cards-w' + st, 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+          const id = S.runId;
+          G.end(false, 'test', 'tc_destroyed');
+          await tick(); await tick();
+          out.wire[st] = Backend.pendingEnds().some(x => x.row.run_id === id);
+        }
+        out.wire.sent = seen.filter(u => /\/rest\/v1\/telemetry/.test(u)).length;
+      } finally {
+        Backend.mock = mk; Backend.telemetryAllowed = allowed; window.fetch = realFetch;
+        localStorage.removeItem(Backend.END_KEY);
+        Screens.show('title');
+      }
+    }
+
+    // OFF THE SITE nothing is kept, however it ends
+    G.newGame('cards-e4', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+    const mk = Backend.mock; Backend.mock = null;
+    Backend.uid = null;
+    G.end(true, 'test', 'razed_rival_tc');
+    await tick();
+    out.offSite = Backend.pendingEnds().length;
+    Backend.mock = mk; Backend.uid = __MOCK.st.uid;
+
+    // THE DECK'S OWN ROWS: card_granted / card_played, through the same door,
+    // carrying only what the 0003 checks (and 0008's widened kind) admit
+    Deck.track('card_granted', { card: 'starfall', tier: 'imperial', outcome: 'win', difficulty: 'hard', bonus: false, run: id3 });
+    Deck.track('card_played', { card: 'forager_cache', tier: 'stone', run: id3, day: 12 });
+    const rows = calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && /^card_/.test(c.body[0].kind)).map(c => c.body[0]);
+    out.deckRows = rows.map(x => ({ kind: x.kind, run: x.run_id === id3, user: x.user_id === __MOCK.st.uid,
+      modeOk: x.mode == null || ['calm', 'moderate', 'hard'].includes(x.mode), dayOk: x.day >= 0 && x.day <= 100000, card: x.props && x.props.card }));
+    localStorage.removeItem(Backend.END_KEY);
+    return out;
+  });
+  ck('aRunThatEndsBeforeSignInIsKeptNotLost', r.kept.n === 1 && r.kept.run && r.kept.noUser && r.kept.uid === null && r.kept.outcome === 'loss' && r.kept.day === 44 && r.kept.sentRaw === 0,
+    JSON.stringify(r.kept));
+  ck('andGoesUpOnceThroughReportRunEndOnSignIn', r.flushed.reports === 1 && r.flushed.raw === 0 && r.flushed.left === 0 &&
+    r.flushed.row && r.flushed.row.kind === 'run_end' && r.flushed.row.cause === 'tc_destroyed' && !('user_id' in r.flushed.row),
+    JSON.stringify({ reports: r.flushed.reports, raw: r.flushed.raw, left: r.flushed.left }));
+  ck('aSendThatDiesIsKeptAndResent', r.died.raw === 1 && r.died.kept === 1 && r.died.keptUid === 'mock-uid-0001' && r.died.reports === 1 && r.died.left === 0,
+    JSON.stringify(r.died));
+  ck('anEndingThatLandedKeepsNothing', r.landed.raw === 1 && r.landed.reports === 0 && r.landed.kept === 0, JSON.stringify(r.landed));
+  ck('offTheSiteNothingIsKept', r.offSite === 0, 'kept ' + r.offSite);
+  ck('aRunWithNoIdIsNamedByItsLineage', r.idless.rowId === r.idless.want && r.idless.named && r.idless.last && r.idless.cleared &&
+    r.idless.report && r.idless.rows === 1 && r.idless.deterministic && r.idless.apart && r.idless.shape,
+    JSON.stringify(r.idless));
+  ck('andEveryEndingOfThatSaveIsTheSameRun', r.lineage.named.length === 2 && r.lineage.named.every(Boolean) && r.lineage.rows === 3 &&
+    r.lineage.ids.every(Boolean), JSON.stringify(r.lineage));
+  ck('aNewWorldIsNeverTheLoadedRun', r.lineage.fresh && r.lineage.own, `Backend.runId cleared by newGame ${r.lineage.fresh}; ends under its own name ${r.lineage.own}`);
+  ck('aRefusedSendIsKeptOnlyWhenAResendCanMendIt', r.wire && r.wire[409] === true && r.wire[400] === false && r.wire[503] === true && r.wire.sent >= 3,
+    JSON.stringify(r.wire));
+  ck('theDecksRowsGoOutUnderTheirOwnKinds', r.deckRows.length === 2 && r.deckRows[0].kind === 'card_granted' && r.deckRows[1].kind === 'card_played' &&
+    r.deckRows.every(x => x.run && x.user && x.modeOk && x.dayOk), JSON.stringify(r.deckRows));
+  ck('theCardsPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
+
+  // …and on the source: 0008 admits them, and the dashboard reads the cards
+  const mig = readFileSync(join(root, 'supabase/migrations/0008_cards.sql'), 'utf8');
+  const html = readFileSync(join(root, 'analytics.html'), 'utf8');
+  const code = mig.replace(/--[^\n]*/g, '');
+  ck('0008AdmitsTheDecksKinds', /add constraint telemetry_kind_check\s+check \(kind in \('run_start', 'run_end', 'session', 'card_granted', 'card_played'\)\)/.test(code),
+    'Deck.track\'s rows were refused by the 0003 check, silently');
+  ck('0008LeavesAnalyticsSummaryAlone', !/analytics_summary/.test(code), '0007\'s dedupe cannot be reverted by a file that never re-creates it');
+  const ac = code.slice(code.indexOf('create or replace function public.analytics_cards('));
+  ck('theCardsFunctionKeeps0007sOneEndingPerRun', /coalesce\(r\.cause, ''\) <> 'closed_tab'/.test(ac) && /from public\.telemetry r/.test(ac) &&
+    /distinct on \(l\.run_id\)/.test(ac) && /union all select \* from last_left\) u\s+where coalesce\(u\.seconds, 0\) >= coalesce\(p_min_seconds, 0\)/.test(ac),
+    'a real ending beats a closed tab (whole table), the latest closed tab is kept, the run filters after the dedupe');
+  ck('andIsTokenGatedAndAggregateOnly', /digest\(coalesce\(p_token, ''\), 'sha256'\)/.test(ac) && /'bad_token'/.test(ac) &&
+    /revoke all on function public\.analytics_cards\(text, timestamptz, timestamptz, text, text, text, text, integer, integer\) from public;/.test(code) &&
+    /grant execute on function public\.analytics_cards\(text, timestamptz, timestamptz, text, text, text, text, integer, integer\)\s+to anon, authenticated;/.test(code),
+    'the summary\'s own gate and grant');
+  ck('andAnswersTheThreeQuestions', /'granted_by_tier'/.test(ac) && /'played_by_card'/.test(ac) && /'assisted'/.test(ac) && /cards_played/.test(ac),
+    'granted by tier and outcome, played by card, the card-assisted win rate');
+  ck('theDashboardCallsItAndFallsBackWithANote', /\/rest\/v1\/rpc\/analytics_cards/.test(html) && /res\.status === 404 \|\| res\.status === 300/.test(html) &&
+    /migration 0008/.test(html) && (html.match(/loadCards\(\)/g) || []).length >= 3 && /if \(filters\.minSeconds > 0\) body\.p_min_seconds/.test(html),
+    'unlock, tab-restore and Apply all draw the section; a 404 names the migration');
+  ck('andRendersTheCardsSection', /id="tCardTiers"/.test(html) && /id="tCardPlays"/.test(html) && /id="tCardAssist"/.test(html) &&
+    /c\.granted_by_tier/.test(html) && /c\.played_by_card/.test(html) && /c\.assisted/.test(html), '');
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
