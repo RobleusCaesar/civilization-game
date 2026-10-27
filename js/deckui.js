@@ -43,6 +43,7 @@ const DeckUI = {
      (Deck.wantArt), so the wait is a backstop that almost never runs. */
   ART_WAIT_MS: 600,
   TICK_MS: 320,           // a resource number counting up to its new value
+  PAY_MS: 6000,           // a held number's failsafe: the bar catches up if the goods never land
   SPRING: 'cubic-bezier(.2,1.35,.4,1)',   // springy, with overshoot
   OUT: 'cubic-bezier(.55,0,.85,.35)',     // a launch: slow, then gone
 
@@ -967,7 +968,7 @@ const DeckUI = {
       if (!fx.narrates) this._say(typeof r.msg === 'string' && r.msg ? r.msg : `${c.name}: ${this._line(c.text)}`, 'note', 4200);
       UI.cue(t.rank >= 2 ? 'bond' : 'done');
       if (dest.kind === 'point') this._impact(L, dest, t.rank, calm);
-      this._count(before, r.fly, calm, L);
+      this._count(before, r.fly, calm, L, r.pay);
       this._t = 0;   // a timed card's countdown pops in on the very next frame
     }
     const after = calm ? this.CALM.after : this.AFTER_MS;
@@ -1005,7 +1006,16 @@ const DeckUI = {
      effect SAYS it gave (FX apply's {fly}: {food: 250} or [{res, n}]) and,
      failing that, what the stockpile actually gained. UI.refresh writes the
      bar every quarter second; frame() runs after it and holds the count. */
-  _count(before, fly, calm, L) {
+  /* PAID ON IMPACT (the playtest: the wood read 447 while the logs were
+     still in the air, the caravan's numbers 2.5 s before its goods came
+     down). A card whose goods ARRIVE in the world says so (apply's
+     {pay: {ms}}): S.res is credited at the play — that is the truth, for
+     saves, the rules and the tests — and only the NUMBER on the bar is
+     held where it was, stepped by the show as each piece lands
+     (DeckUI.pay). Whatever the show has not paid by `ms` the bar simply
+     catches up, so a show culled, dropped or never drawn can never leave a
+     wrong number standing. */
+  _count(before, fly, calm, L, pay) {
     const gained = {};
     if (fly && typeof fly === 'object') {
       if (Array.isArray(fly)) { for (const f of fly) if (f && f.res) gained[f.res] = (gained[f.res] || 0) + (+f.n || +f.amount || 0); }
@@ -1016,25 +1026,62 @@ const DeckUI = {
     for (const k in gained) {
       const el = document.getElementById('r' + k[0].toUpperCase() + k.slice(1));
       if (!el || !(gained[k] > 0)) continue;
-      const to = S.res[k] || 0;
+      const to = S.res[k] || 0, from = Math.max(0, to - gained[k]);
       this._ticks = this._ticks.filter(x => x.res !== k);
-      this._ticks.push({ res: k, el, from: Math.max(0, to - gained[k]), to, t0: now, dur: this.TICK_MS });
-      el.textContent = UI.fmtRes(Math.max(0, to - gained[k]));
-      const chip = el.closest('.res');
-      if (!chip) continue;
-      if (!calm) chip.animate([{ transform: 'none' }, { transform: 'scale(1.12)', offset: 0.35 }, { transform: 'none' }],
-        { duration: 340, easing: this.SPRING });
-      // the chip lights in the card's colour: a glow laid over it, faded by
-      // opacity (an animated box-shadow would repaint the bar every frame)
-      const r = chip.getBoundingClientRect(), gl = this._bit(L, 'dkChipGlow');
-      gl.style.left = r.left + 'px'; gl.style.top = r.top + 'px';
-      gl.style.width = r.width + 'px'; gl.style.height = r.height + 'px';
-      gl.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], { duration: this.AFTER_MS, fill: 'forwards' });
+      el.textContent = UI.fmtRes(from);
+      if (pay) {
+        // held: the show steps it as the goods land (pay); the chip pulses then
+        this._ticks.push({ res: k, el, from, to, t0: now, dur: this.TICK_MS, held: true, paid: from,
+          a: from, b: from, ts: now, until: now + (+pay.ms > 0 ? +pay.ms : this.PAY_MS) });
+        continue;
+      }
+      this._ticks.push({ res: k, el, from, to, t0: now, dur: this.TICK_MS });
+      this._pulse(el, calm, L);
     }
+  },
+  // a chip answers its number: a springy pulse and the card's glow laid over it
+  // (faded by opacity — an animated box-shadow would repaint the bar every frame)
+  _pulse(el, calm, L) {
+    const chip = el && el.closest('.res');
+    if (!chip) return;
+    if (!calm) chip.animate([{ transform: 'none' }, { transform: 'scale(1.12)', offset: 0.35 }, { transform: 'none' }],
+      { duration: 340, easing: this.SPRING });
+    const r = chip.getBoundingClientRect(), host = L && L.isConnected ? L : document.body, gl = this._bit(host, 'dkChipGlow');
+    gl.style.left = r.left + 'px'; gl.style.top = r.top + 'px';
+    gl.style.width = r.width + 'px'; gl.style.height = r.height + 'px';
+    // the play's layer is gone by the time the goods land: the glow wears its own look
+    if (host === document.body) Object.assign(gl.style, { position: 'fixed', display: 'block', zIndex: 26, pointerEvents: 'none', opacity: 0,
+      borderRadius: '8px', boxShadow: '0 0 14px 3px rgba(255,212,94,.8), inset 0 0 10px rgba(255,212,94,.8)' });
+    const an = gl.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], { duration: this.AFTER_MS, fill: 'forwards' });
+    if (host === document.body) an.finished.then(() => gl.remove(), () => gl.remove());
+  },
+  /* THE SHOW PAYS (a goods card's moment, js/deckfx-town.js): `n` more of
+     `res` reaches the bar as a piece lands — the number steps up to it and
+     the chip pulses; with no `n`, the rest. True when a held number took it
+     (a play straight through Deck.play, as the contracts make, holds none). */
+  pay(res, n) {
+    const x = this._ticks.find(t => t.res === res && t.held);
+    if (!x) return false;
+    const now = performance.now(), cur = this._shown(x, now);
+    x.paid = Math.min(x.to, n > 0 ? x.paid + n : x.to);
+    x.a = cur; x.b = x.paid; x.ts = now;
+    // the last piece hands the number back to an ordinary count-up to the stockpile
+    if (x.paid >= x.to) { x.held = false; x.from = cur; x.t0 = now; }
+    this._pulse(x.el, this._calm(), this.playing && this.playing.layer);
+    return true;
+  },
+  // what a held number reads now: its last step, eased
+  _shown(x, now) {
+    const k = Math.min(1, (now - x.ts) / x.dur), e = 1 - (1 - k) * (1 - k);
+    return x.a + (x.b - x.a) * e;
   },
   _tickNumbers() {
     const now = performance.now();
     for (const x of this._ticks) {
+      if (x.held) {
+        if (now < x.until) { x.el.textContent = UI.fmtRes(this._shown(x, now)); continue; }
+        x.held = false; x.from = this._shown(x, now); x.t0 = now;   // the failsafe: the bar catches up
+      }
       const k = Math.min(1, (now - x.t0) / x.dur), e = 1 - (1 - k) * (1 - k);
       x.el.textContent = UI.fmtRes(k >= 1 ? (S.res[x.res] || 0) : x.from + (x.to - x.from) * e);
       x.done = k >= 1;

@@ -1189,6 +1189,66 @@ await p.evaluate(({ TOWN }) => {
     Object.entries(C).map(([id, c]) => `${id} clear ${c.clearOfRoof}`).join('; '));
 }
 
+// ---------------- 12. PAID ON IMPACT ----------------
+/* The playtest: the wood read 447 while the logs were still in the air, and
+   the caravan's numbers ran 2.5 s ahead of its goods. S.res is credited at
+   the play — the truth, for saves and every rule — but the NUMBER ON THE BAR
+   is held until the goods land and steps up as each piece does. Driven
+   through the real landing (DeckUI._land, the line that hands the effect's
+   {pay} to the bar), with real time let pass first so an ordinary count-up
+   would already have finished: the old bar read the full total before a
+   single log was down. Culled (the camera elsewhere) the pieces still pay;
+   and whatever happens, the bar ends on the stockpile. */
+{
+  const r = await p.evaluate(async () => {
+    const out = {}, wait = ms => new Promise(res2 => setTimeout(res2, ms));
+    const EL = { food: 'rFood', wood: 'rWood', stone: 'rStone', gold: 'rGold' };
+    for (const id of ['fallen_timber', 'loose_stone', 'gold_nugget', 'trade_caravan']) {
+      for (const away of [false, true]) {
+        __tw.fresh('town-pay-' + id);
+        Screens.show('playing'); S.paused = true;
+        const tc = __tw.flat();
+        R.cam.z = 1.7;
+        if (away) R.centerOn(CFG.W - 6, CFG.H - 6); else R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+        const before = Object.assign({}, S.res);
+        DeckUI.reset();
+        const L = document.createElement('div'); document.body.appendChild(L);
+        const P = DeckUI.playing = { id, world: S, layer: L, dest: { kind: 'bar', chips: [] }, landed: true };
+        DeckUI._land(P, null, false);
+        const gained = Object.keys(EL).filter(k => S.res[k] > before[k]);
+        const read = k => +String(document.getElementById(EL[k]).textContent).replace(/[^\d]/g, '');
+        await wait(420);                         // longer than any count-up: the old bar is done
+        DeckUI._tickNumbers();
+        const sh = R.cardShows.find(s => s.id === id);
+        const list = Deck._townTX.pays ? Deck._townTX.pays(id, sh) : [[0.3]];
+        const first = Math.min(...list.map(e => e[0]));
+        // the show, up to just before its first piece lands
+        while (sh.t + 1 / 60 < first) { R.draw(1 / 60); DeckUI._tickNumbers(); }
+        const held = gained.every(k => read(k) === before[k]);
+        // …then through to its end, every number read as it steps
+        const seen = {}; gained.forEach(k => seen[k] = new Set([read(k)]));
+        for (let i = 0; i < 600 && R.cardShows.indexOf(sh) >= 0; i++) {
+          R.draw(1 / 60); DeckUI._tickNumbers();
+          gained.forEach(k => seen[k].add(read(k)));
+        }
+        await wait(DeckUI.TICK_MS + 80); DeckUI._tickNumbers();
+        const end = gained.every(k => read(k) === S.res[k]);
+        // a step is a held number moving between two pieces: more than one value short of the total
+        const steps = gained.map(k => [...seen[k]].filter(v => v > before[k] && v < S.res[k]).length);
+        out[id + (away ? '@away' : '')] = { held, end, steps, pieces: list.length, gained, before: gained.map(k => before[k]), now: gained.map(k => S.res[k]) };
+        L.remove(); DeckUI.reset();
+      }
+    }
+    R.cardShows = [];
+    return out;
+  });
+  const E = Object.entries(r);
+  ck('theBarWaitsForTheGoodsToLand', E.every(([, x]) => x.held),
+    E.map(([id, x]) => `${id}: held ${x.held} (${x.before} → ${x.now})`).join('; '));
+  ck('andStepsUpAsEachPieceLands', E.every(([, x]) => x.pieces < 2 || x.steps.every(n => n >= 1)), E.map(([id, x]) => `${id} ${x.steps} over ${x.pieces} pieces`).join('; '));
+  ck('andAlwaysEndsOnTheStockpile', E.every(([, x]) => x.end), E.map(([id, x]) => `${id} ${x.end}`).join('; '));
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

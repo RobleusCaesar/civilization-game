@@ -377,6 +377,25 @@
       const roof = tc ? (() => { const a = this.art(tc); return { x0: a.rc.x + a.box.l * a.rc.w, x1: a.rc.x + a.box.r * a.rc.w, y0: a.rc.y + a.box.t * a.rc.h, y1: a.foot }; })() : null;
       this.label(g, s, 'count', sp.x * TL, (sp.y - 0.95) * TL, lines, q < 0.75 ? 1 : (1 - q) / 0.25, eo(Math.min(1, q * 1.6)), roof);
     },
+    /* PAID ON IMPACT: each piece of the goods steps the bar's held number as
+       it LANDS (DeckUI.pay — js/deckui.js; S.res was credited at the play,
+       the truth for every rule). `list` is [[t, res, n]] — seconds into the
+       show, the resource, how much (none: the rest) — each paid once, on the
+       frame its time comes, culled or not (the bar never waits on the
+       camera). Guarded on the method it calls: an older deckui.js beside
+       this file pays nothing, and its bar simply counts up at the play. */
+    settle(s, list) {
+      const done = s.paid || (s.paid = {});
+      for (let i = 0; i < list.length; i++) {
+        const [t, res, n] = list[i];
+        if (done[i] || s.t < t) continue;
+        done[i] = 1;
+        if (window.DeckUI && DeckUI.pay) DeckUI.pay(res, n);
+      }
+    },
+    // the goods' own pay list for a show (its pieces' landings), if it names one
+    pays(id, s) { const d = Deck.FX[id], sh = d && d.show; return sh && sh.pays ? sh.pays.call(d, s) : []; },
+    PAY_MS: 6000,   // the bar's failsafe past the play (DeckUI.pay)
     // a live show of this card that is still running fresh (its render clock), or null
     fresh(id) { return (typeof R !== 'undefined' && R.cardShows) ? R.cardShows.find(x => x.id === id && x.fresh) || null : null; },
     // is a world-px box anywhere near the camera?
@@ -665,7 +684,8 @@
       const tc = TX.tc();
       if (tc) { const side = TX.openSide(tc); TX.show(id, { tc: tc.id, side, at: TX.spot(tc, side, true) }); }
       TX.sound(show.sound);
-      return { ok: true, fly: { [res]: n } };
+      // the number on the bar is held until the goods land (TX.settle)
+      return { ok: true, fly: { [res]: n }, pay: tc ? { ms: TX.PAY_MS } : undefined };
     },
     show,
   });
@@ -676,7 +696,10 @@
     fallen_timber: goods('fallen_timber', 'wood', 200, '🪵', 'Fallen timber carried home', {
       ms: 3000, layer: 'world', sound: 'cardWood',
       LOGS: [[-16, 0], [0, 0], [16, 0], [-8, -6], [8, -6], [0, -12]],
+      // each log steps the bar as it lands (TX.settle): a sixth of the wood, the last the rest
+      pays() { return this.show.LOGS.map((_, i, a) => [0.05 + i * 0.11 + 0.34, 'wood', i < a.length - 1 ? Math.floor(200 / a.length) : 0]); },
       draw(g, s, p) {
+        TX.settle(s, TX.pays('fallen_timber', s));
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
@@ -709,7 +732,9 @@
       ms: 3000, layer: 'world', sound: 'cardStone',
       // dx, dy (world px off the pile's foot), radius, the stamp's variant
       BLOCKS: [[-12, 0, 7, 1], [2, 0, 8, 4], [14, 0, 6, 2], [-5, -7, 6, 6], [8, -8, 5, 3]],
+      pays() { return this.show.BLOCKS.map((_, i, a) => [0.05 + i * 0.16 + 0.26, 'stone', i < a.length - 1 ? Math.floor(150 / a.length) : 0]); },
       draw(g, s, p) {
+        TX.settle(s, TX.pays('loose_stone', s));
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
@@ -771,7 +796,9 @@
        gold dots running out from it. */
     gold_nugget: goods('gold_nugget', 'gold', 60, '🪙', 'A gold nugget turned up', {
       ms: 2800, layer: 'world', sound: 'cardGold',
+      pays() { return [[0.32, 'gold', 0]]; },
       draw(g, s, p) {
+        TX.settle(s, TX.pays('gold_nugget', s));
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
@@ -830,7 +857,7 @@
         const tc = TX.tc();
         if (tc) TX.show('trade_caravan', { tc: tc.id, side: TX.openSide(tc) });
         TX.sound('cardCaravan');
-        return { ok: true, fly: { food: this.FOOD, wood: this.WOOD, gold: this.GOLD } };
+        return { ok: true, fly: { food: this.FOOD, wood: this.WOOD, gold: this.GOLD }, pay: tc ? { ms: TX.PAY_MS } : undefined };
       },
       /* THE ROAD (a picture's footing, never a rule): for each way in (from
          the hall's open side first) and each of the three rows in front of the
@@ -865,10 +892,16 @@
       show: {
         ms: 3800, layer: 'world',
         IN: 0.34, UNLOAD: [0.38, 0.43, 0.48, 0.53, 0.58, 0.64], ON: 0.8,
+        // each crate pays as it is set down: three sacks of grain, two loads of logs, the strongbox
+        pays(s) {
+          const U = this.show.UNLOAD.map(u => u * s.ms / 1000 + 0.34);
+          return [[U[0], 'food', 83], [U[1], 'food', 83], [U[2], 'food', 0], [U[3], 'wood', 125], [U[4], 'wood', 0], [U[5], 'gold', 0]];
+        },
         // the pile at the door: [dx, dy, draw] — three sacks, logs, the strongbox on top
         PILE: [[-12, 0, sack], [-3, 0, sack], [-8, -7, sack],
           [10, 0, (gg, x, y) => { log(gg, x, y, 0); log(gg, x - 2, y - 6, 0); }], [8, -12, (gg, x, y) => log(gg, x, y, 0)], [-1, -12, chest]],
         draw(g, s, p) {
+          TX.settle(s, TX.pays('trade_caravan', s));
           const tc = Bld.get(s.tc); if (!tc) return;
           const TL = TLs(), K = this.show, side = s.side || 1;
           const sp = s.at || (s.at = TX.spot(tc, side));
