@@ -1812,7 +1812,7 @@ const Bld = {
            into modeMult beside the eclipse cut, so a card that only reaches
            part of the town (ground near the hall) needs no second hook.
            Exactly 1 while no timed card is running. */
-        (window.Deck ? Deck.mult('produce', owner, b) : 1);
+        (window.Deck && Deck.mult ? Deck.mult('produce', owner, b) : 1);
       for (const k in out) res[k] += out[k] * mult;
     }
     if (window.Cards) Cards.dailyExtras(owner, res);      // ORIGIN CARDS: Tradewind trickle

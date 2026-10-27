@@ -100,7 +100,12 @@ Object.assign(Deck, {
     if (!fx || !fx.impact) { S.deck.strike = null; return; }
     st.t += dt;
     if (st.phase === 'fall') {
-      if (st.t >= fx.FALL_S) { st.phase = 'down'; st.t = 0; fx.impact(st); }
+      if (st.t >= fx.FALL_S) {
+        st.phase = 'down'; st.t = 0;
+        // the blow is dealt once; a fault in its pictures or sound must not
+        // take the rest of the frame's world block down with it
+        try { fx.impact(st); } catch (e) { console.error('card strike', st.id, e); }
+      }
     } else if (st.t >= fx.DOWN_S) S.deck.strike = null;
   },
   // the ground a card's act keeps in sight while it plays (G.updateVisibility
@@ -165,9 +170,29 @@ Object.assign(Deck, {
     if (amt > 0) Bld.damage(b, amt, cause);
   },
   TRUCE: 'This ends the truce — from today the rival fights back.',
+  /* WHETHER A STRIKE REACHES THE RIVAL is asked of what the PLAYER KNOWS,
+     never of S: a rival unit on ground in sight now, or a rival building
+     the player's own memory holds (S.map.seenB — kept in step with every
+     building while it is in sight, so a building in view is in it too).
+     The warning is re-asked on every move of the mark (js/deckui.js
+     _aimSync), so a read of hidden state here would sweep the fog like a
+     lamp — and the truce's END asks the same question, so a card never
+     breaks the peace over a soldier the player never saw. A hidden rival
+     thing in the blast is spared all the same while the truce holds: the
+     blow asks Combat.hostile (foe()), and at peace the rival is no target. */
   reachesRival(tgt, ur, br) {
-    const r = this.blast(tgt.x, tgt.y, ur, br, o => o === 'A');
-    return r.units.length + r.blds.length > 0;
+    for (const u of S.units) {
+      if (u.owner !== 'A' || Math.hypot(u.x - tgt.x, u.y - tgt.y) > ur) continue;
+      if (G.visibleAt(Math.floor(u.x), Math.floor(u.y))) return true;
+    }
+    const seen = S.map && S.map.seenB, W = CFG.W;
+    if (seen) for (const k in seen) {
+      const m = seen[k];
+      if (!m || m.owner !== 'A' || m.key === 'mine') continue;
+      const s = Bld.size(m.key), bx = k % W, by = (k / W) | 0;
+      if (this.bldDist({ x: bx, y: by, sz: s, key: m.key }, tgt.x, tgt.y) <= br) return true;
+    }
+    return false;
   },
   truceWarn(tgt, ur, br) { return S.peace && tgt && this.reachesRival(tgt, ur, br) ? this.TRUCE : null; },
   truce(tgt, ur, br) { if (S.peace && this.reachesRival(tgt, ur, br)) G.breakPeace(); },
@@ -287,7 +312,8 @@ Object.assign(Deck.FX, {
 
   /* IMPERIAL — Starfall: a falling star strikes the chosen ground. 900 to
      every enemy building within 2 tiles of it, falling linearly to half at
-     the edge; 250 to every enemy unit within 3, the same way; the player's
+     the edge; 250 to every enemy unit within 3, FLAT (the approved text: 250
+     kills every unit in the game but a siege engine, edge included); the player's
      own spared; the rival's hall loses at most 40% of its strength. It comes
      down through the rolled event's own fall (R.starAct) on its OWN state
      (S.deck.strike) — S.starfall, the run's rolled star, is never touched,
@@ -295,14 +321,14 @@ Object.assign(Deck.FX, {
      SHORT: the blow lands as the play animation ends. While the run's own
      star is falling, or another strike is still landing, it waits (kept). */
   starfall: {
-    at: 'target',
+    at: 'target', radius: 3, inner: 2,   // the aim's rings: the units' reach and the buildings'
     FALL_S: 1.3,          // the meteor's streak, sky to ground (the event's takes CFG.STARFALL.fallS 3.6)
     DOWN_S: 3,            // the beat after the blow: the dark lifts, the ground stays in sight
     DIM_IN: 0.35, DIM_HOLD: 0.8,   // the night deepens with the fall and lifts after the blow (R.cardStarDim)
     SMOKE: 0.12,          // a puff off the scorch every this many seconds while it is down
     SIGHT: 4,             // the ground kept in sight round the strike while it lands
     BLD_R: 2, BLD: [900, 450],    // buildings: within 2 tiles, 900 at the heart to 450 at the edge
-    UNIT_R: 3, UNIT: [250, 125],  // units: within 3 tiles, 250 to 125
+    UNIT_R: 3, UNIT: 250,         // units: within 3 tiles, 250 flat — the card's own words, no falloff
     TC_CAP: 0.4,                  // the rival's hall loses at most 40% of its max strength
     can() {
       if (S.starfall && S.starfall.phase === 'fall') return { ok: false, why: 'A star is already falling.' };
@@ -331,8 +357,8 @@ Object.assign(Deck.FX, {
         Deck.hitBld(b, Math.round(fall(this.BLD, d, this.BLD_R)), this.TC_CAP, 'starfall');
         if (b.hp <= 0) razed++;
       }
-      for (const { u, d } of hit.units) {
-        Units.damage(u, Math.round(fall(this.UNIT, d, this.UNIT_R)), 0, 'P');
+      for (const { u } of hit.units) {
+        Units.damage(u, this.UNIT, 0, 'P');
         if (u.hp <= 0) slain++;
       }
       // the blow on the ground: the bombard's own scorch and dust, the
@@ -366,7 +392,7 @@ Object.assign(Deck.FX, {
      so a run that rolled one still has it; while either dragon is on the
      wing the card waits (kept). */
   dragonfire: {
-    at: 'target',
+    at: 'target', radius: 3, inner: 2.5,
     FLY_S: 1.2,           // the fly-in: G.dragonTick flies 9 tiles/s and breathes 2.5 short of its mark
     UNIT_R: 3, BLD_R: 2.5, BLD: 1200, TC_CAP: 0.5, SIGHT: 4,
     // the strafe lays its fire from 0.4 tiles short of its mark to ~5 past it

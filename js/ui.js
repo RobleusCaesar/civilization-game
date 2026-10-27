@@ -2419,7 +2419,10 @@ const UI = {
         // the rate shown is the rate it is REALLY producing — the homestead's
         // share included, with the gold line below saying where it came from
         const hs = Bld.homesteadMult(b);
-        sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * shown * Bld.nearBonus(b) * hs * 10) / 10} ${k}/day`).join(', ');
+        // …and a running card's richer work (the Harvest Festival), the same
+        // factor Bld.dailyProduction pays (refreshPanel re-writes this line every tick)
+        const cm = window.Deck && Deck.mult ? Deck.mult('produce', b.owner, b) : 1;
+        sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * shown * Bld.nearBonus(b) * hs * cm * 10) / 10} ${k}/day`).join(', ');
         if (Bld.maxWorkers(b) > 1) sub += crew ? '' : ' (per worker)';
       }
       if (lv.pop) sub += ` — +${lv.pop} pop`;

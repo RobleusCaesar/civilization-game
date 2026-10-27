@@ -214,7 +214,7 @@ for (const [w, h] of [[320, 568], [390, 844], [430, 880], [900, 700], [1280, 800
     btn.style.display = ''; tm.style.display = '';
     Deck.addTimed('__timed', 2); Deck.addTimed('__aim', 5);
     DeckUI._t = 0;
-    await __until(() => document.querySelectorAll('#dkTimers .dkT').length === 2);
+    await __until(() => document.querySelectorAll('#dkTimers .dkT:not(.dkMore)').length === 2);
     await wait(260);   // the chips' own pop-in settles before they are measured
     const full = bar.offsetHeight;
     const r = id => document.getElementById(id).getBoundingClientRect();
@@ -413,7 +413,7 @@ for (let i = 0; i < 3; i++) {
   if (r.total <= 1200) break;
 }
 const best = readings.reduce((a, r) => (r.total < a.total ? r : a));
-ck('theWholeSequenceIsUnder1200ms', best.total <= 1200 && design <= 1000,
+ck('theWholeSequenceIsUnder1200ms', best.total <= 1200 && design <= 900,
   readings.map(r => `${r.total}ms (started ${r.startLag}ms after the tap)`).join(', ') + `; design ${design}ms; at dpr 3: ${pl.total}ms`);
 await tctx.close();
 
@@ -541,22 +541,28 @@ ck('aPressOnTheMarkDragsIt', drag.dx === 2 && drag.dy === 1 && drag.cv === 0, `m
 // confirm plays at that tile
 const go = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
-  const A = DeckUI.aim, want = { x: A.x, y: A.y }, n0 = Deck.count('__aim');
+  const A = DeckUI.aim, want = { x: A.x + 0.5, y: A.y + 0.5 }, n0 = Deck.count('__aim');
+  // the reticle's own centre, read off the screen and taken back into the world
+  const rr = A.ret.getBoundingClientRect(), TL = CFG.TILE, z = R.cam.z;
+  const cross = { x: ((rr.left + rr.right) / 2 / z + R.cam.x) / TL, y: ((rr.top + rr.bottom) / 2 / z + R.cam.y) / TL };
   window.__got.length = 0;
   document.querySelector('#dkAimBar .dkAGo').click();
   await __idle();
-  return { want, got: window.__got[0], spent: n0 - Deck.count('__aim'), aim: !!DeckUI.aim, paused: S.paused,
+  return { want, cross, got: window.__got[0], spent: n0 - Deck.count('__aim'), aim: !!DeckUI.aim, paused: S.paused,
     label: document.getElementById('btnPause').textContent, bar: getComputedStyle(document.getElementById('bottombar')).visibility };
 });
 ck('confirmPlaysAtTheChosenTile', go.got && go.got.x === go.want.x && go.got.y === go.want.y && go.spent === 1,
-  `played at ${JSON.stringify(go.got)}, chose ${JSON.stringify(go.want)}`);
+  `played at ${JSON.stringify(go.got)}, chose the middle of ${JSON.stringify(go.want)}`);
+// the effect takes a WORLD POINT (js/deckfx.js), and it is the reticle's cross
+ck('theBlowLandsOnTheReticlesCross', go.got && Math.hypot(go.got.x - go.cross.x, go.got.y - go.cross.y) < 0.06,
+  `cross at ${go.cross.x.toFixed(2)},${go.cross.y.toFixed(2)}; played at ${go.got && go.got.x},${go.got && go.got.y}`);
 ck('andTheWorldIsGivenBack', !go.aim && go.paused === false && go.label === '⏸' && go.bar === 'visible');
 // a warning is shown before confirming, and asked twice
 const a2 = await aimOpen();
 const wr = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const A = DeckUI.aim, out = {};
-  window.__warnX = A.x; A.armed = false;
+  window.__warnX = A.x + 0.5; A.armed = false;
   DeckUI._aimSync();
   out.stat = document.querySelector('#dkAimBar .dkAStat').textContent;
   out.warnCls = document.getElementById('dkAimBar').classList.contains('warn');
@@ -603,6 +609,89 @@ const esc = await p.evaluate(() => ({ aim: !!DeckUI.aim, paused: S.paused, taps:
 ck('escapeCancelsTheAim', !esc.aim && esc.paused === false);
 ck('andNothingEverReachedTheWorld', esc.taps === 0 && esc.cv === 0, `${esc.taps} world taps, ${esc.cv} canvas presses across the whole targeting section`);
 
+/* A MOUSE CHOOSES BY CLICKING. The hover sweeps the mark as a preview, and
+   the way to ✓ crosses the ground — so a hover that counted would spend the
+   card wherever the cursor last crossed above the bar (reproduced: 10 tiles
+   off the point the player meant). Until a click, ✓ asks for one. */
+await aimOpen();
+const hv = await p.evaluate(() => {
+  R.centerOn(CFG.W / 2, CFG.H / 2);
+  const TL = CFG.TILE, z = R.cam.z;
+  const x = Math.round(R.viewW() / 2 - 3.5 * TL * z), y = Math.round(R.viewH() / 2 - 2.5 * TL * z);
+  const go = document.querySelector('#dkAimBar .dkAGo').getBoundingClientRect();
+  return { x, y, t: R.screenToTile(x, y), go: { x: go.left + go.width / 2, y: go.top + go.height / 2 } };
+});
+await p.mouse.move(hv.x - 40, hv.y - 40);
+await p.mouse.move(hv.x, hv.y, { steps: 4 });
+await p.mouse.move(hv.go.x, hv.go.y, { steps: 12 });
+const hv1 = await p.evaluate(async () => {
+  window.__got.length = 0;
+  UI._toastAt = {};
+  const n0 = Deck.count('__aim'), label = document.querySelector('#dkAimBar .dkAGo').textContent;
+  return { n0, label };
+});
+await p.mouse.click(hv.go.x, hv.go.y);
+await p.waitForTimeout(80);
+const hv2 = await p.evaluate(() => ({ played: window.__got.length, flew: !!DeckUI.playing, aim: !!DeckUI.aim,
+  n: Deck.count('__aim'), toast: [...document.querySelectorAll('#toasts .toast')].some(t => /Click the ground/.test(t.textContent)) }));
+await p.mouse.click(hv.x, hv.y);
+await p.waitForTimeout(60);
+const hv3 = await p.evaluate(() => ({ x: DeckUI.aim.x, y: DeckUI.aim.y, label: document.querySelector('#dkAimBar .dkAGo').textContent }));
+const goNow = await p.evaluate(() => { const r = document.querySelector('#dkAimBar .dkAGo').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+await p.mouse.move(goNow.x, goNow.y, { steps: 12 });
+await p.mouse.click(goNow.x, goNow.y);
+await p.evaluate(() => __idle());
+const hv4 = await p.evaluate(() => ({ got: window.__got[0] }));
+ck('aMouseHoverIsAPreviewNotAChoice', /Click the ground/.test(hv1.label) && hv2.played === 0 && !hv2.flew && hv2.aim && hv2.n === hv1.n0 && hv2.toast,
+  `✓ read "${hv1.label}"; a click on it played ${hv2.played}, toast ${hv2.toast}`);
+ck('andAClickChoosesTheGround', hv3.x === hv.t.x && hv3.y === hv.t.y && /Here/.test(hv3.label) && hv4.got &&
+  hv4.got.x === hv.t.x + 0.5 && hv4.got.y === hv.t.y + 0.5,
+  `clicked ${hv.t.x},${hv.t.y}; played at ${JSON.stringify(hv4.got)} after sweeping the cursor down to ✓`);
+// a tutorial note already on screen steps aside while the deck has the floor
+await aimOpen();
+const tut = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const mk = id => { let e = document.getElementById(id); if (!e) { e = document.createElement('div'); e.id = id; e.dataset.fake = '1'; document.body.appendChild(e); } return e; };
+  const dim = mk('tutDim'), card = mk('tutUI');
+  const during = [getComputedStyle(dim).visibility, getComputedStyle(card).visibility];
+  DeckUI.endAim();
+  await wait(30);
+  const after = [getComputedStyle(dim).visibility, getComputedStyle(card).visibility];
+  for (const e of [dim, card]) if (e.dataset.fake) e.remove();
+  return { during, after };
+});
+ck('aTutorialNoteStepsAsideForTheAim', tut.during.every(v => v === 'hidden') && tut.after.every(v => v === 'visible'),
+  `during ${tut.during.join('/')}, after ${tut.after.join('/')}`);
+/* THE PAUSE GIVEN BACK is the one the player last chose: paused before the
+   deck opened, then ▶ pressed while aiming — the landing must not pause the
+   world the player just set running */
+const hold = await p.evaluate(async () => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  if (Deck.count('__aim') < 1) { Deck.col().counts.__aim = 2; Deck.saveCol(); }
+  S.paused = true;
+  document.getElementById('deckBtn').click(); await wait(400);
+  document.querySelector('#dkSheet .dkCell[data-card="__aim"]').click(); await wait(250);
+  document.querySelector('#dkInsp .dkPlay').click(); await wait(300);
+  S.paused = false;                       // the player's ▶, while aiming
+  DeckUI.aim.set = true;
+  document.querySelector('#dkAimBar .dkAGo').click();
+  await __idle();
+  return { paused: S.paused };
+});
+ck('aPlayerUnpauseWhileAimingIsKept', hold.paused === false, `after the landing: paused ${hold.paused}`);
+/* ONE PLAY, ONE LOG LINE: the effect writes the event log, the landing only
+   says it on screen (the effects branch and the deck once both wrote it) */
+const one = await p.evaluate(async () => {
+  Deck._add('forager_cache', 1);
+  S.paused = false;
+  const n0 = S.log.length;
+  UI._toastAt = {};
+  DeckUI._run('forager_cache', null, null, false);
+  await __idle();
+  return { lines: S.log.length - n0, toast: [...document.querySelectorAll('#toasts .toast')].some(t => /Forager/.test(t.textContent)) };
+});
+ck('onePlayIsOneLogLine', one.lines === 1 && one.toast, `${one.lines} log lines, toast ${one.toast}`);
+
 /* ================= 8. TIMERS ================= */
 const tm = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -630,6 +719,43 @@ const tm = await p.evaluate(async () => {
 ck('aRunningCardWearsItsTimeLeft', tm.chip && tm.label === '2d' && tm.label2 === '5s', `${tm.label} → ${tm.label2} (2 days, then half a day)`);
 ck('andItsRingDrains', tm.lit1 < tm.lit0 && tm.lit1 > 0, `${tm.lit0} → ${tm.lit1} lit cells`);
 ck('andItVanishesAtExpiry', tm.gone && tm.empty);
+
+/* EVERY RUNNING CARD IS SEEN, OR COUNTED: four timers on the narrowest
+   phones — each chip either wholly inside its strip and the screen, or folded
+   into a "+k" that names it */
+const fit = [];
+for (const w of [320, 360, 375, 390, 430]) {
+  await p.setViewportSize({ width: w, height: 800 });
+  await p.waitForTimeout(200);
+  fit.push(await p.evaluate(async (w) => {
+    const ids = ['__timed', '__aim', '__bar', '__tc'];
+    S.deck.fx = [];
+    for (const id of ids) Deck.addTimed(id, 3);
+    DeckUI._t = 0;
+    await __until(() => document.querySelectorAll('#dkTimers .dkT:not(.dkMore)').length === 4);
+    await new Promise(r => setTimeout(r, 260));
+    const strip = document.getElementById('dkTimers').getBoundingClientRect(), vw = document.documentElement.clientWidth;
+    const inside = el => { const r = el.getBoundingClientRect(); return r.left >= strip.left - 0.5 && r.right <= strip.right + 0.5 && r.left >= 0 && r.right <= vw; };
+    const chips = [...document.querySelectorAll('#dkTimers .dkT')].filter(el => getComputedStyle(el).display !== 'none');
+    const shown = chips.filter(el => !el.classList.contains('dkMore')).length;
+    const more = document.querySelector('#dkTimers .dkMore, #dkTimers .dkMoreB');
+    const k = more ? +more.textContent.replace('+', '') : 0;
+    // the badge's own tap names what it folds
+    UI._toastAt = {};
+    const badged = document.querySelector('#dkTimers .dkMoreB');
+    if (badged) badged.parentNode.click();
+    const named = !k || [...document.querySelectorAll('#toasts .toast')].some(t => /Also running/.test(t.textContent));
+    const out = { w, shown, k, named, whole: chips.every(inside) };
+    S.deck.fx = [];
+    DeckUI._t = 0;
+    await __until(() => !document.querySelector('#dkTimers .dkT'));
+    return out;
+  }, w));
+}
+await p.setViewportSize({ width: 430, height: 880 });
+await p.waitForTimeout(200);
+ck('everyRunningCardIsSeenOrCounted', fit.every(f => f.whole && f.shown >= 1 && f.shown + f.k === 4 && f.named),
+  fit.map(f => `${f.w}: ${f.shown} shown${f.k ? ' +' + f.k : ''}${f.whole ? '' : ' CLIPPED'}${f.named ? '' : ' UNNAMED'}`).join('; '));
 
 /* ================= 9. THE WORLD CHANGES ================= */
 const wc = await p.evaluate(async ({ enter }) => {

@@ -20,7 +20,8 @@
                        flash that never touches S; refused (and kept) with no
                        hall or no ground
      STARFALL          every number of the card: 900→450 on buildings within
-                       2, 250→125 on units within 3, the rival's hall never
+                       2, 250 FLAT on units within 3 (the card's own words),
+                       the rival's hall never
                        below 60% from one card and never razed, the player's
                        own and the gold mine spared, kills and razes credited
                        under the card's own cause, never the wilds' 'fire' —
@@ -36,10 +37,12 @@
                        ends the truce BEFORE any blow lands (Bld.damage never
                        ends it by itself); aimed at barbarians alone it spares
                        a rival who walks in, or a hut laid meanwhile, and the
-                       peace holds
-     NO RNG            only the borrowed dragon act draws from S.rngState —
-                       four a fire point and one an ash pile, every one of
-                       them accounted for
+                       peace holds — and the question is asked of what the
+                       PLAYER KNOWS (a unit in sight, a building remembered):
+                       a hidden rival neither warns nor breaks the peace, so
+                       sweeping the mark is never a fog lamp
+     NO RNG            no card draws from S.rngState, the borrowed dragon act
+                       included (its flames' jitter is a picture)
      SAVES             a running festival, a star in mid-air and a dragon on
                        the wing all survive a save and finish after the load
 
@@ -393,7 +396,7 @@ await p.evaluate(() => {
     `lands ${r.landsAt}s after the play; nothing struck while it falls ${r.fallingUntouched}`);
   ck('buildings900ToHalfAtTwoTiles', JSON.stringify(r.hb) === JSON.stringify([900, 675, 450, 0]) && r.camp === 675,
     `houses at d 0/1/2/3: ${r.hb.join('/')}; barbarian camp at d 1: ${r.camp}`);
-  ck('units250ToHalfAtThreeTiles', JSON.stringify(r.ub) === JSON.stringify([250, 188, 125, 0, 167]),
+  ck('units250FlatOutToThreeTiles', JSON.stringify(r.ub) === JSON.stringify([250, 250, 250, 0, 250]),
     `rival at d 0/1.5/3/3.5: ${r.ub.slice(0, 4).join('/')}; raider at d 2: ${r.ub[4]}`);
   ck('yourOwnAndTheWildAndTheMineAreSpared', r.spared);
   ck('killsAndRazesAreCredited', r.kills === 1 && r.razed === 1 && r.doomedGone, `kills +${r.kills}, razed +${r.razed}`);
@@ -503,8 +506,8 @@ await p.evaluate(() => {
   ck('aRivalHallTakesHalfAtMost', r.hall.standing && !r.hall.over &&
     r.hall.hps[0] - r.hall.hps[1] === r.hall.maxhp * 0.5 && r.hall.hps[3] >= 1,
     `max ${r.hall.maxhp}: ${r.hall.hps.join(' → ')}`);
-  ck('onlyTheDragonsOwnActDrawsRng', r.drawsAtPlay === 0 && r.drawsFlying === 0 && r.draws === 4 * r.points + 5,
-    `${r.draws} draws = 4 x ${r.points} fire points + 5 ash piles; 0 at the play, 0 on the fly-in`);
+  ck('andTheCardsDragonDrawsNoRng', r.drawsAtPlay === 0 && r.drawsFlying === 0 && r.draws === 0 && r.points > 5,
+    `${r.draws} draws from the run's stream over ${r.points} fire points and 5 ash piles`);
   ck('notWhileTheDragonIsOnTheWing', !r.busy.ok && r.busyKept, r.busy.why);
 }
 
@@ -555,7 +558,10 @@ await p.evaluate(() => {
     // aimed at the rival: told first, and the truce ends at the play
     __fx.fresh('fx-calm', 'calm'); __fx.flat();
     out.peace0 = S.peace === true;
-    const h = __fx.bld('A', 'house', 20, 20, 5000);
+    // a strike is weighed against what the PLAYER knows: a building is known
+    // once it is in their memory (S.map.seenB — kept in step while in sight)
+    const known = b => { S.map.seenB[MapGen.idx(b.x, b.y)] = { key: b.key, level: b.level, owner: b.owner }; return b; };
+    const h = known(__fx.bld('A', 'house', 20, 20, 5000));
     const T0 = { x: 20.5, y: 20.5 };
     out.TRUCE = Deck.TRUCE;
     out.warn = Deck.FX.starfall.warn(T0);
@@ -579,13 +585,34 @@ await p.evaluate(() => {
     walker.x = 34.5;                                                  // …and off it again
     S.buildings = S.buildings.filter(z => z !== site); Bld._block = null;
     // the dragon keeps the same terms
-    const h2 = __fx.bld('A', 'house', 30, 25, 5000);
+    const h2 = known(__fx.bld('A', 'house', 30, 25, 5000));
     out.dragonQuiet = Deck.FX.dragonfire.warn({ x: 30.5, y: 20.5 });
     out.dragonWarn = Deck.FX.dragonfire.warn({ x: 30.5, y: 24.5 });
     Deck.play('dragonfire', { x: 30.5, y: 24.5 });
     out.dragonBroke = S.peace === false;
     __fx.fly();
     out.h2 = 5000 - h2.hp;
+    /* NEVER A FOG LAMP. A rival the player cannot see — a soldier on ground
+       out of sight, a house never seen — draws no warning, and a strike
+       there leaves the peace whole and the hidden things unharmed (at peace
+       the rival is no target). The same soldier in sight warns. */
+    __fx.fresh('fx-calm3', 'calm'); __fx.flat();
+    G.updateVisibility();
+    const hidU = __fx.unit('defender', 'A', 40.5, 20.5, 1000);
+    const hidB = __fx.bld('A', 'house', 41, 22, 5000);
+    const hi = MapGen.idx(40, 20);
+    S.map.explored[hi] = 1;
+    if (G.vis) G.vis[hi] = 0;
+    out.hidVisible = G.visibleAt(40, 20);
+    out.hidWarn = Deck.FX.starfall.warn({ x: 40.5, y: 20.5 });
+    out.hidWarnD = Deck.FX.dragonfire.warn({ x: 40.5, y: 20.5 });
+    Deck.play('starfall', { x: 40.5, y: 20.5 });
+    __fx.land();
+    out.hidPeace = S.peace === true;
+    out.hidHurt = (1000 - hidU.hp) + (5000 - hidB.hp);
+    G.vis[hi] = 1;
+    out.seenWarn = Deck.FX.starfall.warn({ x: 40.5, y: 20.5 });
+    G.vis[hi] = 0;
     Bld.damage = bd; Units.damage = ud;
     out.atPeace = atPeace; out.onRival = onRival;
     return out;
@@ -595,6 +622,9 @@ await p.evaluate(() => {
   ck('andEndsTheTruce', r.broken && r.struck === 900, `peace broken ${r.broken}, the house took ${r.struck}`);
   ck('aStrikeAtBarbariansKeepsThePeace', r.quiet === null && r.held && r.raider === 250 && r.walker === 0 && r.site === 0,
     `warning ${r.quiet}; raider -${r.raider}, the rival who walked in -${r.walker}, a hut laid in the blast -${r.site}, peace ${r.held}`);
+  ck('aHiddenRivalNeitherWarnsNorBreaksThePeace', r.hidVisible === false && r.hidWarn === null && r.hidWarnD === null &&
+    r.hidPeace && r.hidHurt === 0 && r.seenWarn === r.TRUCE,
+    `hidden: warn ${r.hidWarn}/${r.hidWarnD}, peace ${r.hidPeace}, hurt ${r.hidHurt}; the same soldier in sight warns ${!!r.seenWarn}`);
   ck('theDragonKeepsTheSameTerms', r.dragonQuiet === null && r.dragonWarn === r.warn && r.dragonBroke && r.h2 === 1200,
     `quiet ${r.dragonQuiet}, broke ${r.dragonBroke}, house -${r.h2}`);
 }

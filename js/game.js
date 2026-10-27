@@ -499,7 +499,7 @@ const G = {
          lands, or the player would see a star burst over empty grass with the
          enemy it struck hidden under the fog. Ground ALREADY EXPLORED only —
          a card never charts the map, so it never moves the exploration score. */
-      if (window.Deck && S.deck && (S.deck.strike || (S.dragon && S.dragon.ev && S.dragon.ev.card)))
+      if (window.Deck && Deck.sights && S.deck && (S.deck.strike || (S.dragon && S.dragon.ev && S.dragon.ev.card)))
         for (const s of Deck.sights())
           for (let dy = -s.r; dy <= s.r; dy++) for (let dx = -s.r; dx <= s.r; dx++) {
             const x = s.x + dx, y = s.y + dy;
@@ -1942,7 +1942,7 @@ const G = {
            enemy stands in the fire as the breath BEGINS, and the buildings it
            reaches catch at once — the event's victims were fixed when it was
            called. Everything after this is the event's own act. */
-        if (ev.card && window.Deck && Deck.FX.dragonfire) Deck.FX.dragonfire.breathe(ev);
+        if (ev.card && window.Deck && Deck.FX.dragonfire && Deck.FX.dragonfire.breathe) Deck.FX.dragonfire.breathe(ev);
         for (const id of ev.victims) { const u = Units.get(id); if (u) u.burnT = 1.6; }
         this.log(ev.card ? '🐉 Dragonfire! The ground you chose is a wall of flame.'
           : '🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', true, 5200);
@@ -1952,21 +1952,25 @@ const G = {
       // the breath leaves a LINE OF FIRE on the ground beneath the strafe —
       // flames that keep burning after the dragon has moved on
       ev.fireT = (ev.fireT || 0) - dt;
+      /* the flames' jitter and the ash's lifetimes are pictures. The rolled
+         dragon's act keeps drawing them from the run's RNG exactly as it
+         always has; a CARD's dragon draws nothing from it (rule 4 of
+         js/deckfx.js — a card never re-deals the rest of the run). */
+      const rnd = ev.card ? Math.random : () => this.rand();
       if (ev.fireT <= 0 && (D.fire || (D.fire = [])).length < 60) {
         ev.fireT = 0.09;
-        const fp = { x: ev.x + ev.dir * 2.1 + (G.rand() - 0.5) * 0.5,
-                     y: ev.ty + (G.rand() - 0.5) * 0.7,
-                     ttl: 4.5 + G.rand() * 2.5, seed: (G.rand() * 100) | 0 };
+        const fp = { x: ev.x + ev.dir * 2.1 + (rnd() - 0.5) * 0.5,
+                     y: ev.ty + (rnd() - 0.5) * 0.7,
+                     ttl: 4.5 + rnd() * 2.5, seed: (rnd() * 100) | 0 };
         // a CARD's line runs through ground the player chose, which may reach
-        // out over a lake: no flame stands on the water. The draws are made
-        // either way, so the act draws exactly what it always drew.
+        // out over a lake: no flame stands on the water
         if (!ev.card || !this.wetAt(fp.x, fp.y)) D.fire.push(fp);
       }
       if (ev.t > 1.7) {
         for (const id of ev.victims) {
           const u = Units.get(id);
           if (!u) continue;
-          const ash = { x: u.x, y: u.y, ttl: 3 + G.rand() * 2 };
+          const ash = { x: u.x, y: u.y, ttl: 3 + rnd() * 2 };
           if (!ev.card || !Units.isNaval(u)) D.ash.push(ash);   // a burned hull sinks; it leaves no pile on the water
           /* a CARD's fire is the player's own blow, so its dead are KILLS and
              go through the one door every death takes — the credit, the
@@ -1982,13 +1986,16 @@ const G = {
         // world's, so a card never scores "Saved by the black dragon"
         if (!ev.card) S.stats.dragonSeen = 1;
         ev.phase = 'leave'; ev.t = 0;
+        // a card's dragon WHEELS AWAY the way it came — the near side — rather
+        // than crossing the whole board; it is gone a few screens off its mark
+        if (ev.card) ev.dir = -ev.dir;
         this.log(ev.card ? '🐉 Ash where they stood. The dragon wheels away — it owes you nothing.'
           : '🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', 'note', 6400);
       }
     } else if (ev.phase === 'leave') {
       ev.x += ev.dir * 10 * dt;
       ev.y -= dt * 1.4;
-      if (ev.x < -4 || ev.x > CFG.W + 4) D.ev = null;
+      if (ev.x < -4 || ev.x > CFG.W + 4 || (ev.card && Math.abs(ev.x - ev.card.x) > 16)) D.ev = null;
     }
   },
 
@@ -2978,7 +2985,7 @@ const G = {
           // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
           if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
           // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
-          if (S.deck && S.deck.strike && window.Deck) Deck.strikeTick(sdt);
+          if (S.deck && S.deck.strike && window.Deck && Deck.strikeTick) Deck.strikeTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {
             G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
@@ -3046,7 +3053,7 @@ const G = {
       // THE CARD SYSTEM's in-game deck (js/deckui.js): with the switch off this
       // is one falsy read — no DOM, no listeners, nothing built. It runs after
       // UI.refresh on purpose: a resource number counting up holds the bar.
-      if (window.DeckUI && Deck.on()) G._safe(() => DeckUI.frame(dt), 'deck');
+      if (window.Deck && window.DeckUI) G._safe(() => { if (Deck.on()) DeckUI.frame(dt); }, 'deck');
     }
     requestAnimationFrame(G.frame);
   },

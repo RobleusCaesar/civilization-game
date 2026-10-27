@@ -29,10 +29,10 @@ const DeckUI = {
   LIFT_MS: 150,           // a card lifts out of the row for a closer look
   // the PLAY: the card flies to the centre, flares in its tier colour, then
   // bursts toward what it changes. The effect lands at FLY+FLARE+BURST, and
-  // the last of the light is gone AFTER later: 980 ms by design, which keeps
-  // a fifth of a second in hand under the 1.2 s bar (pinned, measured) for a
-  // phone that is late with its frames
-  FLY_MS: 230, FLARE_MS: 240, BURST_MS: 250, AFTER_MS: 260,
+  // the last of the light is gone AFTER later: 880 ms by design, which keeps
+  // a third of a second in hand under the 1.2 s bar (pinned, measured) — a
+  // dpr-3 page measured ~250 ms later than a dpr-1 one, its first frame dear
+  FLY_MS: 210, FLARE_MS: 220, BURST_MS: 220, AFTER_MS: 230,
   // a player who asks for less motion keeps every piece of information —
   // the card shown, its glow, the toast, the number ticking — and no travel
   CALM: { in: 140, flare: 200, out: 110, after: 220 },
@@ -91,6 +91,7 @@ const DeckUI = {
     this.reset();
     for (const id in this._chips) this._chips[id].el.remove();
     this._chips = {};
+    this._fitChips();
     this.syncBadge();
   },
 
@@ -142,6 +143,10 @@ const DeckUI = {
     this.el = { btn, badge: btn.querySelector('.dkBadge'), timers: tm };
     this._chips = {};
     Deck.onChange(() => this._changed());
+    // the row's room changes with the window (and the page-fit's own measure)
+    const refit = () => this._fitChips();
+    window.addEventListener('resize', refit);
+    window.addEventListener('cf-fit', refit);
     // installed ONCE and gated on state, like placement's own keys
     document.addEventListener('keydown', e => this._key(e));
     this.syncBadge(true);
@@ -204,7 +209,11 @@ const DeckUI = {
       else return;
       e.preventDefault();
     } else if (e.key === 'Enter' && !this.playing && (this.aim || this.lifted)) {
-      if (this.aim) this.confirmAim(); else this.play(this.lifted.id);
+      if (this.aim) {
+        // Enter commits the hovered tile, as a click on it would
+        if (this.aim.hover && !this.aim.set) { this.aim.set = true; this._aimSync(); }
+        this.confirmAim();
+      } else this.play(this.lifted.id);
       e.preventDefault();
     }
   },
@@ -216,6 +225,9 @@ const DeckUI = {
   // player's running world back
   _hold() {
     if (!this._pause) this._pause = { was: !!S.paused, world: S };
+    // the player pressed ▶ while the deck held the world (aiming): THAT is
+    // the state the landing gives back, not the pause found at the start
+    else if (S.paused === false) this._pause.was = false;
     S.paused = true;
     this._pauseBtn();
   },
@@ -525,10 +537,17 @@ const DeckUI = {
     this._run(id, null, from, from && from.classList.contains('flip'));
   },
 
+  /* a toast the PLAYER asked for (a tap on a chip, a PLAY that is refused)
+     is always answered: UI.toast drops a line it showed in the last six
+     seconds, which is right for the world's chatter and wrong for a reply */
+  _say(msg, kind, ms) {
+    if (UI._toastAt) delete UI._toastAt[String(msg).replace(/\d+/g, '#')];
+    UI.toast(msg, kind, ms);
+  },
   // a play that cannot happen says why, out loud — on the toast AND on the
   // card's own line — and the button shakes its head
   _refuse(why, shakeEl) {
-    UI.toast(why || 'Not now.', true);
+    this._say(why || 'Not now.', true);
     UI.cue('bad');
     if (this.lifted) this.lifted.why.textContent = why || '';
     if (shakeEl && !this._calm())
@@ -746,7 +765,7 @@ const DeckUI = {
       return { kind: 'bar', chips, x, y };
     }
     let w = null;
-    if (at === 'target' && tgt) w = { x: tgt.x + 0.5, y: tgt.y + 0.5 };
+    if (at === 'target' && tgt) w = { x: tgt.x, y: tgt.y };   // already a world point
     else {
       const tc = Bld.tcOf('P');
       if (tc) w = { x: Bld.cx(tc), y: Bld.cy(tc) };
@@ -778,10 +797,12 @@ const DeckUI = {
     this._release();
     const L = P.layer;
     if (!r.ok) {
-      UI.toast(r.why || 'The card could not take hold — it is still yours.', true);
+      this._say(r.why || 'The card could not take hold — it is still yours.', true);
       UI.cue('bad');
     } else {
-      G.log(typeof r.msg === 'string' && r.msg ? r.msg : `${c.name}: ${this._line(c.text)}`, 'note', 4200);
+      // the effect itself writes the event log (Deck.say); the landing only
+      // says it on screen, so one play is one log line, never two
+      this._say(typeof r.msg === 'string' && r.msg ? r.msg : `${c.name}: ${this._line(c.text)}`, 'note', 4200);
       UI.cue(t.rank >= 2 ? 'bond' : 'done');
       if (dest.kind === 'point') this._impact(L, dest, t.rank, calm);
       this._count(before, r.fly, calm, L);
@@ -879,7 +900,10 @@ const DeckUI = {
     // the ring is the card's REACH: FX.radius in tiles when the effect names
     // one, else 3 — the unit radius Starfall and Dragonfire both strike at
     const A = this.aim = { id, x: 0, y: 0, set: false, ok: false, warn: null, armed: false,
-      ptrs: new Map(), drag: false, down: null, pinchD: 0, tr: '', drawn: null, radius: +fx.radius > 0 ? +fx.radius : 3 };
+      ptrs: new Map(), drag: false, down: null, pinchD: 0, tr: '', drawn: null, radius: +fx.radius > 0 ? +fx.radius : 3,
+      // a strike that reaches buildings less far than people (Starfall 2 of
+      // 3, Dragonfire 2.5) draws that reach as a second, fainter ring
+      inner: +fx.inner > 0 && +fx.inner < (+fx.radius || 3) ? +fx.inner : 0 };
     const layer = document.createElement('div');
     layer.id = 'dkAim';
     const ret = document.createElement('canvas');
@@ -945,6 +969,7 @@ const DeckUI = {
     if (!can.ok) { this._refuse(can.why, A.go); this.endAim(); return; }
     // RE-VALIDATED FROM SCRATCH: the tint is never trusted (placement's rule)
     if (!Deck.validTarget(A.id, A.x, A.y)) { this._refuse(this._badGround(A), A.go); return; }
+    if (A.hover && !A.set) { this._refuse('Click the ground to choose where it lands.', A.go); return; }
     this._aimSync();
     // a card that would END SOMETHING says so, and asks twice (the two-tap
     // confirm the game uses for every act that cannot be undone)
@@ -954,7 +979,9 @@ const DeckUI = {
       UI.cue('bad');
       return;
     }
-    this._run(A.id, { x: A.x, y: A.y }, A.thumb, false);
+    // the effect takes a WORLD POINT (js/deckfx.js): the middle of the
+    // marked tile, exactly where the reticle's cross is drawn
+    this._run(A.id, { x: A.x + 0.5, y: A.y + 0.5 }, A.thumb, false);
   },
 
   _badGround(A) {
@@ -970,7 +997,7 @@ const DeckUI = {
     const c = Deck.card(A.id), fx = Deck.FX[A.id] || {};
     A.ok = Deck.validTarget(A.id, A.x, A.y);
     let warn = null;
-    if (A.ok && fx.warn) { try { warn = fx.warn({ x: A.x, y: A.y }) || null; } catch (e) { warn = null; } }
+    if (A.ok && fx.warn) { try { warn = fx.warn({ x: A.x + 0.5, y: A.y + 0.5 }) || null; } catch (e) { warn = null; } }
     A.warn = warn;
     if (!warn) A.armed = false;
     A.stat.textContent = !A.ok ? this._badGround(A)
@@ -979,8 +1006,9 @@ const DeckUI = {
                : 'Tap the ground, or drag the mark.');
     A.bar.classList.toggle('bad', !A.ok);
     A.bar.classList.toggle('warn', !!warn);
-    A.go.classList.toggle('off', !A.ok);
-    A.go.textContent = A.armed ? '✓ Confirm' : '✓ Here';
+    const pick = A.hover && !A.set;   // a mouse that has only hovered has chosen nothing yet
+    A.go.classList.toggle('off', !A.ok || pick);
+    A.go.textContent = pick ? 'Click the ground' : A.armed ? '✓ Confirm' : '✓ Here';
     const key = (A.ok ? (warn ? 'w' : 'v') : 'x') + A.radius;
     if (A.drawn !== key) { A.drawn = key; this._drawReticle(A, !A.ok ? '#e06550' : warn ? '#f0a040' : Deck.tier(c.tier).col); }
   },
@@ -1002,6 +1030,17 @@ const DeckUI = {
       dot(x + 1, y + 1, 2, 'rgba(0,0,0,0.55)');
       dot(x, y, 2, col);
     }
+    // the buildings' reach, when it is shorter: sparser dots, half as bright
+    if (A.inner > 0) {
+      const R1 = A.inner * TL, n1 = Math.max(16, Math.round(2 * Math.PI * R1 / 11));
+      g.globalAlpha = 0.6;
+      for (let i = 0; i < n1; i++) {
+        const a = i / n1 * Math.PI * 2, x = half + Math.cos(a) * R1 - 1, y = half + Math.sin(a) * R1 - 1;
+        dot(x + 1, y + 1, 2, 'rgba(0,0,0,0.55)');
+        dot(x, y, 2, col);
+      }
+      g.globalAlpha = 1;
+    }
     // the faint floor of the reach
     g.globalAlpha = 0.14;
     g.fillStyle = col;
@@ -1017,13 +1056,17 @@ const DeckUI = {
     // the cross at its heart
     for (let k = -4; k <= 4; k += 2) { dot(half + k, half - 1, 2, col); dot(half - 1, half + k, 2, col); }
     A.half = half;
-    A.tr = '';
+    A.tr = ''; A.placed = null;
   },
 
   // the mark rides the camera: written only when it moves (no DOM reads)
   _aimPlace() {
-    const A = this.aim, z = R.cam.z, TL = CFG.TILE;
-    const sx = ((A.x + 0.5) * TL - R.cam.x) * z, sy = ((A.y + 0.5) * TL - R.cam.y) * z;
+    const A = this.aim, z = R.cam.z, TL = CFG.TILE, cx = R.cam.x, cy = R.cam.y;
+    // asked every frame while aiming: nothing is built while nothing moved
+    const p = A.placed;
+    if (p && p[0] === cx && p[1] === cy && p[2] === z && p[3] === A.x && p[4] === A.y && p[5] === A.half) return;
+    A.placed = [cx, cy, z, A.x, A.y, A.half];
+    const sx = ((A.x + 0.5) * TL - cx) * z, sy = ((A.y + 0.5) * TL - cy) * z;
     const tr = `translate(${(sx - A.half * z).toFixed(1)}px,${(sy - A.half * z).toFixed(1)}px) scale(${z.toFixed(4)})`;
     if (tr !== A.tr) { A.tr = tr; A.ret.style.transform = tr; }
   },
@@ -1062,8 +1105,17 @@ const DeckUI = {
       const A = this.aim;
       if (!A) return;
       const p = A.ptrs.get(e.pointerId);
-      // a mouse sweeps the mark over the ground until a click parks it
-      if (!p) { if (e.pointerType === 'mouse' && !A.set && !e.buttons) this._aimTo(e.clientX, e.clientY); return; }
+      /* a mouse SWEEPS the mark over the ground as a preview — and only a
+         click (or Enter) commits it. The way to ✓ crosses the ground, so a
+         hover that counted would spend the card wherever the cursor last
+         crossed above the bar, not where the player pointed. */
+      if (!p) {
+        if (e.pointerType === 'mouse' && !A.set && !e.buttons) {
+          if (!A.hover) { A.hover = true; this._aimSync(); }
+          this._aimTo(e.clientX, e.clientY);
+        }
+        return;
+      }
       if (A.ptrs.size === 1) {
         if (A.drag) this._aimTo(e.clientX, e.clientY);
         else if (A.down) {
@@ -1119,12 +1171,14 @@ const DeckUI = {
   _timers() {
     const list = (typeof S !== 'undefined' && S && S.deck) ? Deck.timers() : [];
     const seen = {};
+    let moved = false;
     for (const tm of list) {
       if (!Deck.card(tm.id)) continue;
       seen[tm.id] = 1;
+      if (!this._chips[tm.id]) moved = true;
       const ch = this._chips[tm.id] || this._chip(tm.id);
       const label = this._left(tm.left);
-      if (ch.lab.textContent !== label) ch.lab.textContent = label;
+      if (ch.lab.textContent !== label) { ch.lab.textContent = label; moved = true; }
       ch.left = tm.left;
       this._ringDraw(ch, Math.max(0, Math.min(1, tm.frac)));
     }
@@ -1132,10 +1186,67 @@ const DeckUI = {
       if (seen[id]) continue;
       const ch = this._chips[id];
       delete this._chips[id];
-      const gone = () => ch.el.remove();
+      moved = true;
+      const gone = () => { ch.el.remove(); this._fitChips(); };
       if (this._calm() || !ch.el.animate) gone();
       else { ch.el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.6)' }], { duration: 200, fill: 'forwards' }); setTimeout(gone, 210); }
     }
+    if (moved) this._fitChips();
+  },
+  /* EVERY RUNNING CARD IS SEEN, OR COUNTED. The strip shares the bar's second
+     row with the tribe and the day, and on a narrow phone two chips are
+     already more than the row can give it — a chip cut in half by the
+     overflow is a card running that nobody can see. So the strip is FITTED:
+     every chip that fits is whole, and the rest are counted in a "+k" badge
+     on the last one shown (a badge takes no room in the row), whose tap names
+     them. Only a strip too narrow for one ring folds everything into a bare
+     "+k" chip. Measured only when something changes (a chip comes or goes, a
+     label changes width, the window resizes), never per frame. */
+  _fitChips() {
+    const tm = this.el && this.el.timers;
+    if (!tm) return;
+    const ids = Object.keys(this._chips);
+    for (const id of ids) this._chips[id].el.style.display = '';
+    if (this._badge && this._badge.parentNode) this._badge.remove();
+    if (this._more && this._more.parentNode) this._more.remove();   // out, so an empty strip is :empty
+    this._hidden = [];
+    this._badgeOn = null;
+    if (!ids.length || tm.scrollWidth <= tm.clientWidth + 1) return;
+    let i = ids.length - 1;
+    for (; i >= 0 && tm.scrollWidth > tm.clientWidth + 1; i--) {
+      this._chips[ids[i]].el.style.display = 'none';
+      this._hidden.unshift(ids[i]);
+    }
+    const k = this._hidden.length;
+    if (i >= 0) {
+      if (!this._badge) { this._badge = document.createElement('i'); this._badge.className = 'dkMoreB'; }
+      this._badge.textContent = '+' + k;
+      this._badgeOn = ids[i];
+      this._chips[ids[i]].el.appendChild(this._badge);
+      return;
+    }
+    let more = this._more;
+    if (!more) {
+      more = this._more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'dkT dkMore';
+      more.appendChild(document.createElement('b'));
+      more.addEventListener('click', () => {
+        const names = this._alsoRunning();
+        if (names) { this._say(names, 'note', 4200); UI.cue('ok'); }
+      });
+    }
+    more.firstChild.textContent = '+' + k;
+    more.setAttribute('aria-label', k + ' cards running');
+    tm.appendChild(more);
+  },
+  // the cards the strip had no room to show, named with their time left
+  _alsoRunning() {
+    const names = (this._hidden || []).map(id => {
+      const ch = this._chips[id];
+      return ch ? `${Deck.card(id).name} (${this._left(ch.left, true)} left)` : null;
+    }).filter(Boolean);
+    return names.length ? 'Also running: ' + names.join(', ') + '.' : '';
   },
   /* the time left, rounded UP — a card played for 12 days says 12d, not 11d,
      until it has really spent one. The left-over float is shaved first:
@@ -1159,10 +1270,12 @@ const DeckUI = {
     el.setAttribute('aria-label', c.name);
     el.addEventListener('click', () => {
       const ch = this._chips[id], span = this._left(ch ? ch.left : 0, true);
-      UI.toast(`${c.name} — ${span} left. ${c.text}`, 'note', 4200);
+      // the chip wearing the "+k" names the cards folded behind it too
+      const also = this._badgeOn === id ? ' ' + this._alsoRunning() : '';
+      this._say(`${c.name} — ${span} left. ${c.text}${also}`, 'note', 4200);
       UI.cue('ok');
     });
-    this.el.timers.appendChild(el);
+    this.el.timers.insertBefore(el, this._more && this._more.parentNode === this.el.timers ? this._more : null);   // "+k" stays last
     if (!this._calm()) el.animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: this.SPRING });
     const ch = { el, cv, lab, n: -1, left: 0, col: t.col, cat: c.cat };
     this._chips[id] = ch;
@@ -1206,6 +1319,10 @@ const DeckUI = {
 body:not(.ingame) #dkSheet, body:not(.ingame) #dkInsp, body:not(.ingame) #dkAim,
 body:not(.ingame) #dkAimBar, body:not(.ingame) #dkFly { display: none !important; }
 body.dk-floor #toasts { z-index: 27; }
+/* a tutorial note already on screen steps aside while the deck has the floor
+   (its dim sits over the reticle otherwise); it is back the moment the deck
+   lets go, its state untouched */
+body.dk-floor #tutDim, body.dk-floor #tutUI { visibility: hidden !important; }
 body.dk-aiming #bottombar { visibility: hidden; }
 #deckBtn { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 #deckBtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
@@ -1222,6 +1339,10 @@ body.dk-aiming #bottombar { visibility: hidden; }
   box-shadow: inset 0 1px 0 rgba(0,0,0,.4), 0 1px 0 var(--edge); font: 800 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; }
 .dkT::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
 .dkT canvas { width: 28px; height: 28px; image-rendering: pixelated; }
+.dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4; }
+.dkT .dkMoreB { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 15px; padding: 0 3px; box-sizing: border-box;
+  border-radius: 8px; background: #1c140c; border: 1.5px solid var(--tc); color: #f3e2b4; pointer-events: none; font-style: normal;
+  font: 800 9.5px/12px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,.6); }
 @media (max-width: 359px) { .dkT { padding-right: 2px; } .dkT b { display: none; } }
 
 #dkSheet { position: fixed; inset: 0; z-index: 24; display: none; }

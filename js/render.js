@@ -10427,18 +10427,22 @@ const R = {
         const mx = Math.round(u.x * TL + (k - 1.5) * 4 + Math.sin(ph * 6.28 + u.id + k * 2.1) * 3);
         const my = Math.round(u.y * TL - TL * 0.2 - ph * TL * 1.05);
         // a gold grain, its dark underside giving it an edge against the grass
-        g.fillStyle = 'rgba(122,74,10,' + (0.55 * a).toFixed(3) + ')';
+        // (constant colours, faded by globalAlpha — no strings built per mote)
+        g.globalAlpha = 0.55 * a;
+        g.fillStyle = '#7a4a0a';
         g.fillRect(mx, my + 2, 2, 1);
-        g.fillStyle = 'rgba(255,204,64,' + a.toFixed(3) + ')';
+        g.globalAlpha = a;
+        g.fillStyle = '#ffcc40';
         g.fillRect(mx, my, 2, 2);
         // …and at its brightest it glints: a pale cross, one pixel each way
         if (a > 0.75) {
-          g.fillStyle = 'rgba(255,248,214,' + a.toFixed(3) + ')';
+          g.fillStyle = '#fff8d6';
           g.fillRect(mx - 1, my, 1, 1); g.fillRect(mx + 2, my + 1, 1, 1);
           g.fillRect(mx + 1, my - 1, 1, 1); g.fillRect(mx, my + 2, 1, 1);
         }
       }
     }
+    g.globalAlpha = 1;
   },
 
   /* ================= THE COLLAPSE (tests/burn-down.mjs) =================
