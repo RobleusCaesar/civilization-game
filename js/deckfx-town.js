@@ -74,11 +74,34 @@
   const TX = {
     tc() { return Bld.tcOf('P'); },
     // open ground at the hall's door on `side` (+1 east, -1 west), in tiles —
-    // a picture's footing, never a rule; falls back to the doorstep itself
+    // a picture's footing, never a rule: ground nobody is standing on, so the
+    // pile is not laid across a villager's feet; falls back to any open ground
+    // there, then to the doorstep itself
     spot(tc, side) {
       const sz = Bld.size(tc), fx = side > 0 ? tc.x + sz : tc.x - 1, fy = tc.y + sz;
-      const s = MapGen.findNear(fx, fy, 3, (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, 'P') && !Bld.at(x, y));
+      const open = (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, 'P') && !Bld.at(x, y);
+      const clear = (x, y) => open(x, y) && !S.units.some(u => Math.abs(u.x - x - 0.5) < 0.9 && Math.abs(u.y - y - 0.6) < 0.8);
+      const s = MapGen.findNear(fx, fy, 4, clear) || MapGen.findNear(fx, fy, 3, open);
       return s ? { x: s.x + 0.5, y: s.y + 0.7 } : { x: Bld.cx(tc) + side * (sz / 2 + 0.5), y: tc.y + sz + 0.5 };
+    },
+    /* THE CARD'S OWN LIGHT where its goods come down: a shaft of the tier's
+       colour slammed onto the spot and narrowing away, and a ring of dots
+       running out over the ground — so the pile arrives as a gift, not as
+       logs falling out of an empty sky. `col` is an "r,g,b" string. */
+    arrive(g, x, y, t, col, H) {
+      if (t < 0 || t > 0.6) return;
+      g.save(); g.globalCompositeOperation = 'lighter';
+      const k = t < 0.07 ? 1 : 1 - (t - 0.07) / 0.53, h = H * Math.min(1, t / 0.07 + 0.2);
+      for (const [w, al] of [[26, 0.16], [14, 0.28], [4, 0.6]]) {
+        const ww = Math.max(PX, sn(w * k));
+        g.fillStyle = 'rgba(' + col + ',' + stp(al * k, 8) + ')';
+        g.fillRect(sn(x - ww / 2), sn(y - h), ww, sn(h));
+      }
+      const q = t / 0.6;
+      g.globalAlpha = stp(0.9 * (1 - q), 4); g.fillStyle = 'rgb(' + col + ')';
+      this.ring(g, x, y - 2, 6 + eo(q) * 34, 0.5);
+      g.restore();
+      g.globalAlpha = 1;
     },
     // the side of the hall with more open ground along its door row
     openSide(tc) {
@@ -186,6 +209,8 @@
         g.fillRect(sn(x - ww / 2), sn(y - r), ww, PX);
       }
     },
+    STONE_LIGHT: '228,222,208',    // the Stone tier's pale light (Deck.TIERS' stone, lifted)
+    BRONZE_LIGHT: '255,186,112',   // …and the Bronze tier's warm one
     sound(kind) { if (typeof Sound !== 'undefined' && Sound.play) Sound.play(kind); },
     show(id, data) { return (typeof R !== 'undefined' && R.startCardShow) ? R.startCardShow(id, data) : null; },
     float(x, y, txt) { if (typeof R !== 'undefined' && R.float) R.float(x, y, txt, '#ffd45e'); },
@@ -257,12 +282,17 @@
     g.globalAlpha = 1;
   }
   // the pile and its falling: `items` [{dx, dy, t0, fall, draw(g,x,y,f)}], foot at (px, py) world px
-  function fallPile(g, s, items, px, py, H, col) {
+  function fallPile(g, s, items, px, py, H, col, bare) {
     const t = s.t;
-    // a hard contact shadow under what has landed
-    const down = items.filter(it => t - it.t0 >= it.fall && !it.dy).length;
-    if (down) { g.fillStyle = 'rgba(20,14,8,0.32)'; g.fillRect(sn(px - 10 - down * 7), sn(py - 1), sn(20 + down * 14), PX); }
-    TX.inked(g, px - 34, py - H - 24, 68, H + 28, gg => {
+    // a hard contact shadow under what has landed — as wide as the pile and
+    // no wider, or it reads as a line ruled under the goods
+    const down = items.filter(it => t - it.t0 >= it.fall && !it.dy);
+    if (down.length) {
+      const x0 = Math.min(...down.map(it => it.dx)) - 8, x1 = Math.max(...down.map(it => it.dx)) + 8;
+      g.fillStyle = 'rgba(20,14,8,0.32)'; g.fillRect(sn(px + x0), sn(py - 1), sn(x1 - x0), PX);
+    }
+    // `bare`: art that carries its own outline (the rock stamps) is laid as it is
+    (bare ? (g0, x0, y0, w, h, fn) => fn(g0) : TX.inked.bind(TX))(g, px - 34, py - H - 24, 68, H + 28, gg => {
       for (const it of items) {
         const tl = t - it.t0;
         if (tl < 0) continue;
@@ -384,6 +414,7 @@
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
+        TX.arrive(g, px, py, s.t, TX.STONE_LIGHT, TL * 2.6);
         fade(g, p, 0.82);
         const items = this.show.LOGS.map(([dx, dy], i) => ({ dx, dy, t0: 0.05 + i * 0.11, fall: 0.34, bounce: 2, dust: 4,
           draw: (gg, x, y, f) => log(gg, x, y, f >= 1 ? 0 : [1, 2, 1, 2, 1][Math.min(4, (f * 5) | 0)]) }));
@@ -404,18 +435,27 @@
 
     /* STONE — Loose Stone: +150 stone. Five broken blocks come down hard,
        one after another, each landing in its own dust — the biggest with a
-       jolt you feel. */
+       jolt you feel. The blocks are the map's own ORE (Sprites.oreStamp —
+       the round, outlined boulder with its quarried facet that every stone
+       deposit is built of), so what lands at the door reads at a glance as
+       the stuff a quarry cuts, never as a stray crag. */
     loose_stone: goods('loose_stone', 'stone', 150, '🪨', 'Loose stone hauled in', {
       ms: 1800, layer: 'world', sound: 'cardStone',
-      BLOCKS: [[-11, 0, 10, 8], [1, 0, 12, 8], [12, 0, 8, 6], [-5, -8, 8, 6], [5, -8, 6, 6]],
+      // dx, dy (world px off the pile's foot), radius, the stamp's variant
+      BLOCKS: [[-12, 0, 7, 1], [2, 0, 8, 4], [14, 0, 6, 2], [-5, -7, 6, 6], [8, -8, 5, 3]],
       draw(g, s, p) {
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
+        TX.arrive(g, px, py, s.t, TX.STONE_LIGHT, TL * 2.8);
         fade(g, p, 0.82);
-        const items = this.show.BLOCKS.map(([dx, dy, w, h], i) => ({ dx, dy, t0: 0.05 + i * 0.16, fall: 0.26, bounce: 1, dust: 6,
-          draw: (gg, x, y) => block(gg, x, y, w, h, i) }));
-        fallPile(g, s, items, px, py, TL * 2.2, AP().stone[3]);
+        const stamps = typeof Sprites !== 'undefined' && Sprites.oreStamp;
+        const items = this.show.BLOCKS.map(([dx, dy, rr, v], i) => ({ dx, dy, t0: 0.05 + i * 0.16, fall: 0.26, bounce: 1, dust: 6,
+          draw: stamps ? (gg, x, y) => {
+            const st = Sprites.oreStamp(rr, v, false);
+            gg.drawImage(st, sn(x - st._ox), sn(y - st._oy - rr));
+          } : (gg, x, y) => block(gg, x, y, rr * 2, rr + 2, i) }));
+        fallPile(g, s, items, px, py, TL * 2.2, AP().stone[3], !!stamps);
         // the biggest block lands with a jolt
         if (!s.jolt && s.t > 0.05 + 0.16 + 0.26) { s.jolt = true; if (R.shakeAt) R.shakeAt(1.6, 0.16); }
         g.globalAlpha = 1;
@@ -432,6 +472,7 @@
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
+        TX.arrive(g, px, py, s.t, '255,232,160', TL * 2.2);
         fade(g, p, 0.84);
         const t = s.t, land = 0.32;
         // the fall and two bounces, each lower than the last
@@ -466,9 +507,14 @@
     }),
 
     /* BRONZE — Trade Caravan: +250 food, +250 wood and +100 gold. A laden ox
-       cart rolls in along the hall's door row from the open side, stops, and
-       unloads — sacks, a bundle of logs, a strongbox spilling coin — onto a
-       pile at the door; then rolls on and is gone. */
+       cart rolls in from the open country along the road in front of the
+       hall, stops with its bed beside the yard, and unloads — two sacks of
+       grain, a bundle of logs, a strongbox that bursts and spills its coin —
+       onto a pile at the door, each landing in a puff of dust; the chest
+       lands in a ring of the Bronze tier's warm light; then the cart rolls on
+       past the hall and is gone. The pile sits on open ground nobody stands
+       on and the cart's road runs a tile in front of it, so the load never
+       hides the goods (the first cut stopped the cart ON its own pile). */
     trade_caravan: {
       at: 'bar', FOOD: 250, WOOD: 250, GOLD: 100,
       can() { return { ok: true }; },
@@ -476,61 +522,78 @@
         S.res.food += this.FOOD; S.res.wood += this.WOOD; S.res.gold += this.GOLD;
         Deck.say('🐂 A trade caravan came over the pass: +' + this.FOOD + ' food, +' + this.WOOD + ' wood and +' + this.GOLD + ' gold.');
         const tc = TX.tc();
-        if (tc) TX.show('trade_caravan', { tc: tc.id, dir: TX.openSide(tc) });
+        if (tc) TX.show('trade_caravan', { tc: tc.id, side: TX.openSide(tc) });
         TX.sound('cardCaravan');
         return { ok: true, fly: { food: this.FOOD, wood: this.WOOD, gold: this.GOLD } };
       },
       show: {
         ms: 3600, layer: 'world',
-        IN: 0.36, UNLOAD: [0.42, 0.5, 0.58, 0.66], ON: 0.76,
+        IN: 0.36, UNLOAD: [0.42, 0.5, 0.58, 0.66], ON: 0.78,
         draw(g, s, p) {
           const tc = Bld.get(s.tc); if (!tc) return;
-          const TL = TLs(), sz = Bld.size(tc), dir = s.dir, K = this.show;
-          // the dir is the way it travels: in from the far side of the open flank
-          const door = { x: Bld.cx(tc) * TL, y: (tc.y + sz) * TL + 6 };
-          const stopX = door.x + dir * 0.4 * TL, rowY = (tc.y + sz + 1.05) * TL;
-          if (!TX.near(stopX - 9 * TL, rowY - 2 * TL, stopX + 9 * TL, rowY + TL)) return;
-          const from = stopX - dir * 7 * TL, onTo = stopX + dir * 4 * TL;
+          const TL = TLs(), K = this.show, side = s.side || 1, dir = -side;   // it rolls in TOWARD the hall
+          const sp = s.at || (s.at = TX.spot(tc, side));
+          const pile = { x: sp.x * TL, y: sp.y * TL };
+          const rowY = pile.y + TL * 1.25, stopX = pile.x + dir * 7;          // its bed beside the pile
+          if (!TX.near(stopX - 9 * TL, pile.y - 2 * TL, stopX + 9 * TL, rowY + TL)) return;
+          const from = stopX - dir * 7 * TL, onTo = stopX + dir * 5 * TL;
           let cx;
           if (p < K.IN) cx = from + (stopX - from) * eo(p / K.IN);
           else if (p < K.ON) cx = stopX;
           else cx = stopX + (onTo - stopX) * Math.pow((p - K.ON) / (1 - K.ON), 1.6);
           const rolled = Math.abs(cx - from);
-          // the dust it raises while it moves
+          // the dust it raises while it moves, and the card's warm motes in its wake
           const moving = p < K.IN || p > K.ON;
           if (moving) {
             g.fillStyle = AP().soil[3];
-            for (let k = 0; k < 5; k++) {
-              const ph = (rolled / 9 + k / 5) % 1;
+            for (let k = 0; k < 6; k++) {
+              const ph = (rolled / 9 + k / 6) % 1;
               g.globalAlpha = stp(0.8 * (1 - ph), 3);
-              g.fillRect(sn(cx - dir * (30 + ph * 18)), sn(rowY - 2 - ph * 8 - (k % 2) * 2), PX + (k % 2) * PX, PX);
+              g.fillRect(sn(cx - dir * (30 + ph * 20)), sn(rowY - 2 - ph * 8 - (k % 2) * 2), PX + (k % 2) * PX, PX);
             }
+            g.save(); g.globalCompositeOperation = 'lighter';
+            for (let k = 0; k < 6; k++) {
+              const ph = (rolled / 14 + k / 6) % 1;
+              g.globalAlpha = stp(0.9 * (1 - ph), 3); g.fillStyle = k % 2 ? '#ffd45e' : '#ffb870';
+              g.fillRect(sn(cx - dir * (20 + ph * 26)), sn(rowY - 22 - ph * 16 + (k % 3) * 3), PX, PX);
+            }
+            g.restore();
             g.globalAlpha = 1;
           }
-          // the goods: off the cart, through the air, onto the pile at the door
+          // the goods: off the bed, through the air, onto the pile at the door
           const t = p * s.ms / 1000, U = K.UNLOAD.map(u => u * s.ms / 1000), hop = 0.32;
-          const PILE = [[-10, 0, sack], [-1, 0, sack], [10, 0, (gg, x, y) => { log(gg, x, y, 0); log(gg, x - 2, y - 6, 0); }], [-5, -8, chest]];
+          const PILE = [[-9, 0, sack], [1, 0, sack], [11, 0, (gg, x, y) => { log(gg, x, y, 0); log(gg, x - 2, y - 6, 0); }], [-4, -8, chest]];
           const aboard = PILE.map((_, k) => t < U[k]);
+          const bedX = stopX - dir * 13, bedY = rowY - 18;
           fade(g, p, 0.9);
-          if (!aboard[0]) { g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(door.x - 16), sn(door.y - 1), 32, PX); }
-          TX.inked(g, door.x - 52, door.y - 44, 104, rowY - door.y + 48, gg => {
+          if (!aboard[0]) { g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(pile.x - 16), sn(pile.y - 1), 34, PX); }
+          TX.inked(g, Math.min(pile.x, bedX) - 40, pile.y - 50, Math.abs(pile.x - bedX) + 80, rowY - pile.y + 56, gg => {
             for (let k = 0; k < 4; k++) {
               const tl = t - U[k], [dx, dy, fn] = PILE[k];
               if (tl < 0) continue;
-              const ex = door.x + dx, ey = door.y + dy;
+              const ex = pile.x + dx, ey = pile.y + dy;
               if (tl < hop) {
-                const f = tl / hop, sx = stopX - dir * 14 + (k - 1.5) * 4, sy = rowY - 18;
-                fn(gg, sx + (ex - sx) * f, sy + (ey - sy) * f - Math.sin(f * Math.PI) * 16);
+                const f = tl / hop, sx = bedX + (k - 1.5) * 4;
+                fn(gg, sx + (ex - sx) * f, bedY + (ey - bedY) * f - Math.sin(f * Math.PI) * 22);
               } else fn(gg, ex, ey);
             }
           });
-          for (let k = 0; k < 4; k++) dust(g, door.x + PILE[k][0], door.y, t - U[k] - hop, 4, AP().soil[3], 22);
-          // the strongbox spills: coins leap and land round the pile, glinting
+          for (let k = 0; k < 4; k++) dust(g, pile.x + PILE[k][0], pile.y, t - U[k] - hop, 4, AP().soil[3], 22);
+          // the strongbox lands in the tier's light and spills: coins leap and land round the pile, glinting
           const ct = t - U[3] - hop;
           if (ct > 0) {
-            for (let k = 0; k < 7; k++) {
-              const ang = -Math.PI * (0.15 + 0.7 * hs(k, 11)), sp2 = 18 + hs(k, 13) * 14, f = Math.min(1, ct / 0.3);
-              const x = door.x - 4 + Math.cos(ang) * sp2 * f, y = door.y - 4 + (f * 6) - Math.sin(f * Math.PI) * 12;
+            if (ct < 0.6) {
+              g.save(); g.globalCompositeOperation = 'lighter';
+              const q = ct / 0.6;
+              g.globalAlpha = stp(0.9 * (1 - q), 4); g.fillStyle = 'rgb(' + TX.BRONZE_LIGHT + ')';
+              TX.ring(g, pile.x, pile.y - 2, 8 + eo(q) * 40, 0.5);
+              g.globalAlpha = stp(0.6 * (1 - q), 4); g.fillStyle = '#ffd45e';
+              TX.ring(g, pile.x, pile.y - 2, 4 + eo(q) * 24, 0.5);
+              g.restore();
+            }
+            for (let k = 0; k < 9; k++) {
+              const ang = -Math.PI * (0.1 + 0.8 * hs(k, 11)), sp2 = 16 + hs(k, 13) * 18, f = Math.min(1, ct / 0.3);
+              const x = pile.x - 4 + Math.cos(ang) * sp2 * f, y = pile.y - 4 + (f * 6) - Math.sin(f * Math.PI) * 14;
               g.fillStyle = k % 2 ? '#ffd45e' : AP().gold[1]; g.fillRect(sn(x), sn(y), PX, PX);
               if (f >= 1 && ((ct * 6 + k) % 3) < 0.5) {
                 g.save(); g.globalCompositeOperation = 'lighter'; TX.star(g, x, y, 1, '#fff2c0'); g.restore();
@@ -543,7 +606,7 @@
           g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(sn(cx - (dir > 0 ? 26 : 34)), sn(rowY - 2), 60, 4);   // one hard shadow under the lot
           TX.inked(g, cx - 40, rowY - 34, 80, 38, gg => caravan(gg, cx, rowY, dir, rolled, aboard));
           g.globalAlpha = 1;
-          if (!s.floated && p > 0.7) { s.floated = true; TX.float(door.x / TL, door.y / TL - 0.9, '+250 food  +250 wood  +100 gold'); }
+          if (!s.floated && t > U[3] + hop + 0.2) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+250 food  +250 wood  +100 gold'); }
         },
       },
     },
