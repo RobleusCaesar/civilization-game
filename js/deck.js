@@ -235,8 +235,12 @@ const Deck = {
     if (this._dev == null) {
       let q = '';
       try { q = String(location.search || ''); } catch (e) {}
-      if (/[?&]cards=1\b/.test(q)) this._set('neo-cards-dev', '1');
+      if (/[?&]cards=(1|slice)\b/.test(q)) this._set('neo-cards-dev', '1');
       if (/[?&]cards=0\b/.test(q)) this._del('neo-cards-dev');
+      // GATE REVIEW ONLY (delete at launch): ?cards=slice also tops the hand
+      // up to one of each card whose effect is built, so the slice can be
+      // played on a phone without first earning it (ensureStarter deals it)
+      this._slice = /[?&]cards=slice\b/.test(q);
       this._dev = this._get('neo-cards-dev') === '1';
     }
     return this._dev;
@@ -309,6 +313,12 @@ const Deck = {
   ensureStarter() {
     if (!this.on()) return false;
     const c = this.col();
+    if (this._slice) {
+      this._slice = false;
+      let dealt = 0;
+      for (const id of Object.keys(this.FX)) if (this.card(id) && this.count(id) < 1) { this._add(id, 1); dealt++; }
+      if (dealt) this.saveCol();
+    }
     if (c.starter) return false;
     c.starter = Date.now();
     for (const id of CFG.CARDS.STARTER) if (this.card(id)) this._add(id, 1);

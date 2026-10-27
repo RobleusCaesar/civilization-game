@@ -222,6 +222,27 @@ ck('everyFaceIsAWholeMultiple', d.faces.every(k => Number.isInteger(k) && k >= 1
   `dpr ${d.dpr}: ${d.faces.join(', ')}; drawn ${d.faceW}`);
 ck('aDuplicateWearsItsCount', d.badge === '×3', String(d.badge));
 
+/* THE REVIEW LINK (gate review only — delete with the param at launch):
+   ?cards=slice turns the deck on for the device and tops the hand up to one
+   of each card whose effect is BUILT, never a card that would only refuse */
+{
+  const ctx2 = await b.newContext({ viewport: { width: 430, height: 880 } });
+  const p2 = await ctx2.newPage();
+  p2.on('pageerror', e => errs.push(String(e)));
+  await p2.goto(url + '?cards=slice', { waitUntil: 'domcontentloaded' });
+  await p2.waitForFunction(() => window.Deck && window.Screens && Screens.current, null, { timeout: 15000 });
+  const sl = await p2.evaluate(() => {
+    Deck.ensureStarter();
+    const built = Object.keys(Deck.FX).filter(id => Deck.card(id)).sort();
+    return { on: Deck.on(), built: built.join(','), held: built.every(id => Deck.count(id) >= 1),
+      unbuilt: Deck.CATALOG.filter(c => !Deck.FX[c.id] && Deck.count(c.id) > 0 && !CFG.CARDS.STARTER.includes(c.id)).map(c => c.id) };
+  });
+  ck('theReviewLinkDealsTheBuiltCards', sl.on && sl.held && sl.unbuilt.length === 0 &&
+    sl.built === 'dragonfire,forager_cache,harvest_festival,starfall,swift_raiders',
+    `on ${sl.on}; dealt ${sl.built}; unbuilt dealt ${sl.unbuilt.join(',') || 'none'}`);
+  await ctx2.close();
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();
