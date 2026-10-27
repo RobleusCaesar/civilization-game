@@ -323,17 +323,6 @@ const Units = {
     return window.Deck && Deck.buildRate ? Deck.buildRate(b) : 1;
   },
 
-  /* THE DEEDS' GATHERING IS THE HAND'S, NOT THE CARD'S: what a load counts
-     toward a defeat's card is the take WITHOUT a running card's richer
-     harvest (the multiplier gatherMode carries) — a Harvest Festival makes
-     the larder fuller, never the deeds longer. Exactly `take` with no card
-     running. (Where a card's yield is credited apart from the take — the
-     yield ruling — `take` is already the base and this division goes.) */
-  handTake(u, take) {
-    const k = window.Deck && Deck.mult ? Deck.mult('gather', u && u.owner, u) : 1;
-    return k > 0 ? take / k : take;
-  },
-
   workReport(u) {
     if (!u) return null;
     const t = u.task, at = (x, y) => (u.x | 0) === x && (u.y | 0) === y;
@@ -1595,9 +1584,10 @@ const Units = {
           store[g.res] += take * this.gatherYield(u.owner, u);
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           // a villager's OWN hand at work — the deeds' gathering allowance
-          // (Deck.deeds), at the BASE take: no card buys a card, so a running
-          // Harvest Festival's richer load is not more of a deed (handTake)
-          if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + this.handTake(u, take);
+          // (Deck.deeds), at the BASE take: no card buys a card, and a running
+          // card's richer load is credited apart from the take (gatherYield),
+          // so a Harvest Festival makes the larder fuller, never the deeds longer
+          if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + take;
           S.map.resAmount[idx] -= take;
           /* A DEPOSIT SHOWS THE WORK. Stone cracks open in thirds as it is
              mined (R.oreWear), so the tile has to be repainted when it
@@ -1779,7 +1769,7 @@ const Units = {
           if (u.owner === 'P' && S.stats) S.stats.gathered += take;
           // a line cast by hand is the villager's own work (Deck.deeds); a
           // boat's nets are not — an origin card can put one out unasked
-          if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + this.handTake(u, take);
+          if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + take;
           S.map.resAmount[idx] -= take;
           if (u.owner === 'P' && (before | 0) !== (bag.food | 0)) R.workFloat(u, '+food');
           if (S.map.resAmount[idx] <= 0.001) {
