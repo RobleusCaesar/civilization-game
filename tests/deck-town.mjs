@@ -349,10 +349,20 @@ await p.evaluate(({ TOWN }) => {
     DeckUI._t = 0; DeckUI.frame(1);
     const ch = DeckUI._chips.master_builders;
     out.chip = !!ch && ch.lab.textContent === '×3' && /3 buildings/.test(ch.charge.words);
-    // the ghost's chip says a charge is about to be spent
-    UI.placing = 'house'; UI.placeGhost = { x: tc.x + 4, y: tc.y + 6, set: true }; UI._placeCheck();
-    out.ghostChip = (document.querySelector('#placeWhy') || {}).textContent || '';
-    UI.exitPlacement();
+    // the ghost's chip says a charge is about to be spent — and says nothing
+    // of the kind with none in hand (the control)
+    const ghost = () => {
+      UI.placing = 'house'; UI.placeGhost = { x: tc.x + 4, y: tc.y + 6, set: true };
+      UI._placeCheck(); UI._placeDomSync();
+      const el = document.querySelector('#placeWhy'), t = el && el.style.display !== 'none' ? el.textContent : '';
+      UI.exitPlacement();
+      return t;
+    };
+    out.ghostChip = ghost();
+    const keepN = S.deck.charges.master_builders;
+    delete S.deck.charges.master_builders;
+    out.ghostBare = ghost();
+    S.deck.charges.master_builders = keepN;
     // a house through the ✓: complete at full strength, paid, no builder sent
     const idle = __tw.unit('villager', 'P', tc.x + 3.5, tc.y + 5.5);
     const wood0 = S.res.wood, built0 = S.stats.built || 0;
@@ -399,7 +409,8 @@ await p.evaluate(({ TOWN }) => {
   });
   ck('masterBuildersHoldsThreeChargesAndASecondCardAddsThree', r.three && r.six && r.rng, `3 ${r.three}, then 6 ${r.six}, no RNG ${r.rng}`);
   ck('theChargesWearAChipOnTheStrip', r.chip && r.chipGone, `×3 with its words ${r.chip}; gone with the last ${r.chipGone}`);
-  ck('andTheGhostSaysAChargeIsAboutToBeSpent', /Master Builders/.test(r.ghostChip), r.ghostChip);
+  ck('andTheGhostSaysAChargeIsAboutToBeSpent', /Master Builders.*3 in hand/.test(r.ghostChip) && !/Master Builders/.test(r.ghostBare),
+    `“${r.ghostChip}”; with none in hand “${r.ghostBare}”`);
   ck('aConfirmedBuildingStandsCompleteAtFullStrengthAndPaid', r.house && r.paid && r.two && r.mbShow,
     `complete & full ${r.house}, paid ${r.paid}, one charge spent ${r.two}, its moment ${r.mbShow}`);
   ck('noBuilderWalksToASiteAlreadyStanding', r.noBuilder, 'the idle villager stays idle; no build task names the house');
@@ -745,8 +756,11 @@ await p.evaluate(({ TOWN }) => {
       out.idleCalls = calls;
       R.drawCardWorld = dcw;
       // every show, at every beat: started by its own play, then the shared
-      // registry walked to each p by hand on both layers
+      // registry walked to each p by hand on both layers — the marks counted
+      // are the show's own (inside the registry), never the frame's
       const dcs = R.drawCardShows;
+      let showOps = 0;
+      R.drawCardShows = function () { const o0 = ops; const v = dcs.apply(this, arguments); showOps += ops - o0; return v; };
       const PS = [0.02, 0.08, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
       for (const id of __tw.TOWN) {
         for (const z of hurt) z.hp = Math.round(z.maxhp * 0.4);
@@ -765,9 +779,9 @@ await p.evaluate(({ TOWN }) => {
         let peak = 0, kept = true;
         for (const pp of PS) {
           started.t = pp * started.ms / 1000;
-          ops = 0;
+          showOps = 0;
           R.draw(0);
-          peak = Math.max(peak, ops);
+          peak = Math.max(peak, showOps);
           if (R.cardShows.indexOf(started) < 0) { kept = false; break; }
         }
         // the same show, driven straight through its registry on each layer
@@ -781,10 +795,8 @@ await p.evaluate(({ TOWN }) => {
         }
         out.ops[id] = kept ? peak : 0;
       }
-      // the base frame's own count, for scale
+      R.drawCardShows = dcs;
       R.cardShows = [];
-      ops = 0; R.draw(0);
-      out.base = ops;
       // every running card's look: drawn while it runs, gone when it ends
       for (const id of ['watchfires', 'stone_skin', 'unbreakable_hall']) {
         const d = Deck.FX[id], dl = d.drawLive;
@@ -820,9 +832,9 @@ await p.evaluate(({ TOWN }) => {
   });
   const shown = Object.entries(r.ops);
   ck('everyCardHasItsOwnMomentInTheWorld', shown.length === 9 && shown.every(([, n]) => n > 0) && !r.threw.length && !r.caught.length,
-    shown.map(([id, n]) => id + ' ' + (n < 0 ? 'NOT STARTED' : n === 0 ? 'DROPPED' : '+' + (n - r.base) + ' ops over ' + r.base)).join(', ') +
+    shown.map(([id, n]) => id + ' ' + (n < 0 ? 'NOT STARTED' : n === 0 ? 'DROPPED' : n + ' marks at its height')).join(', ') +
       (r.threw.length ? ' | ' + r.threw.join('; ') : '') + (r.caught.length ? ' | ' + r.caught.join('; ') : ''));
-  ck('everyShowDrawsMoreThanTheFrameAlone', shown.every(([, n]) => n > r.base + 10), `base frame ${r.base} ops`);
+  ck('andEveryMomentIsMoreThanAGlint', shown.every(([, n]) => n >= 40), 'at least 40 hard marks at its height, every one');
   ck('everyRunningCardWearsItsLook', Object.values(r.live).every(n => n > 0) && r.struck,
     JSON.stringify(r.live) + `; a blow glances and the ward flares ${r.struck}`);
   ck('aFrameWithNoCardInPlayPaysNothing', r.idleCalls === 0, `${r.idleCalls} card-world passes over six frames (three with a charge in hand)`);
