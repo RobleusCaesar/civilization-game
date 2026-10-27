@@ -305,11 +305,32 @@ const CardIntro = {
     root.classList.toggle('ciStack', stack);
     const beastW = fit(narrow ? avail / 2.4 : 200, (heroH - (narrow ? 90 : 60)) / 1.32);
     const key = [cw, sw, trioW, beastW, narrow, stack, Math.round(avail)].join(':');
-    if (this._sizes === key) return;
-    this._sizes = key;
-    this._fan(cw, sw, avail, narrow);
-    this._trio(trioW);
-    this._legends(beastW, narrow);
+    if (this._sizes !== key) {
+      this._sizes = key;
+      this._fan(cw, sw, avail, narrow);
+      this._trio(trioW);
+      this._legends(beastW, narrow);
+    }
+    this._fitPage();
+  },
+  /* THE SCREEN FITS ITS PANEL, BY MEASUREMENT. A short window (an iPhone SE,
+     a laptop's letterbox) cannot hold every screen at full size: the screen
+     on show is measured, TIGHTENED (a smaller headline, laurels, copy and
+     road cards) if its hero would spill, and if it still would, its hero
+     SCROLLS inside the panel — never laid over its neighbours. */
+  _fitPage() {
+    const pg = this._root && this._root.querySelector('.ciPage.on');
+    if (!pg) return;
+    pg.classList.remove('tight', 'scroll');
+    const spills = () => {
+      const hero = pg.querySelector('.ciHero');
+      let need = 0;
+      for (const c of hero.children) need += Math.max(c.offsetHeight, c.scrollHeight);
+      return need > hero.clientHeight + 2;
+    };
+    if (!spills()) return;
+    pg.classList.add('tight');
+    if (spills()) pg.classList.add('scroll');
   },
   _fan(cw, sw, avail, narrow) {
     const host = this._root.querySelector('.ciFan');
@@ -458,6 +479,7 @@ const CardIntro = {
     if (opts.first || opts.focus || (document.activeElement && document.activeElement.classList.contains('gone'))) {
       try { next.focus({ preventScroll: true }); } catch (e) {}
     }
+    this._fitPage();
     this._preload(Math.min(N - 1, n + 1));
   },
   next() { if (this.page >= this.PAGES.length - 1) this.close(); else this.go(this.page + 1); },
@@ -908,6 +930,23 @@ CardIntro.CSS = `
 #cardIntro.ciNarrow .ciNav { padding: 6px 8px 0; gap: 4px; }
 #cardIntro.ciNarrow .ciSub { font-size: clamp(15px, 4.4vw, 18px); }
 #cardIntro.ciShort .ciSub { margin-top: 4px; }
+#cardIntro .ciNext .blab { white-space: nowrap; }
+@media (max-width: 359px) { #cardIntro .ciNext { font-size: 15px; letter-spacing: .1em; } }
+/* a screen measured too tall for its panel (_fitPage): tightened first… */
+#cardIntro .ciPages .ciPage.tight .ciWord { font-size: clamp(26px, min(9.4vw, 5.8vh), 56px); }
+#cardIntro .ciPages .ciPage.tight .ciLaurel { width: 24px; height: 48px; image-rendering: auto; }
+#cardIntro .ciPages .ciPage.tight .ciSub { font-size: 14px; margin-top: 4px; }
+#cardIntro .ciPages .ciPage.tight .ciRule { margin: 0; }
+#cardIntro .ciPages .ciPage.tight .ciRoads { gap: 8px; }
+#cardIntro .ciPages .ciPage.tight .ciRoad { padding: 10px 12px; gap: 10px; }
+#cardIntro .ciPages .ciPage.tight .ciRoadTx { gap: 3px; }
+#cardIntro .ciPages .ciPage.tight .ciEmb { width: 52px; height: 52px; image-rendering: auto; }
+#cardIntro .ciPages .ciPage.tight .ciRoad h3 { font-size: 15px; }
+#cardIntro .ciPages .ciPage.tight .ciRoad p { font-size: 13.5px; }
+#cardIntro .ciPages .ciPage.tight .ciFoot { font-size: 12px; }
+/* …and if it still spills, its hero scrolls inside the panel */
+#cardIntro .ciPages .ciPage.scroll .ciHero { overflow-y: auto; align-items: flex-start; overscroll-behavior: contain; padding: 4px 0;
+  scrollbar-width: thin; scrollbar-color: #8a6a2e transparent; }
 
 /* ---- less motion: the same screens, arrived at without movement ---- */
 @media (prefers-reduced-motion: reduce) {

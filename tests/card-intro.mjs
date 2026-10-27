@@ -437,7 +437,9 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
 /* ================= 8. THE FIT ================= */
 {
   const bad = [];
-  for (const [w, h, dpr] of [[390, 844, 3], [430, 932, 3], [768, 1024, 2], [1440, 900, 1], [1920, 1080, 1]]) {
+  // the five the brief names, and two short phones (an iPhone SE, and the
+  // smallest still in service — where a screen may scroll inside its panel)
+  for (const [w, h, dpr] of [[390, 844, 3], [430, 932, 3], [768, 1024, 2], [1440, 900, 1], [1920, 1080, 1], [375, 667, 2], [320, 568, 2]]) {
     const ctx = await context({ w, h, dpr, reduce: true });
     const p = await page(ctx, '?cards=all&cardsintro=1');
     await opened(p, 15000);
@@ -455,7 +457,18 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
         // everything the screen shows stands inside the panel's inner rim
         const inner = { l: panel.left + 4, t: panel.top + 4, r: panel.right - 4, b: panel.bottom - 4 };
         const parts = [...pg.querySelectorAll('.ciTitle .ciWord, .ciSub, .ciFoot, .ccard, figcaption, .ciRoad, .ciTiers li, .ciDeckBtn')];
+        // a hero measured too tall scrolls inside the panel (_fitPage): its
+        // box must stand inside the panel and really scroll; what is inside it
+        // is reached by scrolling, not laid over anything
+        const scroller = pg.classList.contains('scroll') && pg.querySelector('.ciHero');
+        if (scroller) {
+          const q = scroller.getBoundingClientRect();
+          if (q.top < inner.t - 1 || q.bottom > inner.b + 1) out.push('a scrolling hero past the panel');
+          if (!(scroller.scrollHeight > scroller.clientHeight)) out.push('a hero marked scrolling that does not scroll');
+          if (getComputedStyle(scroller).overflowY !== 'auto') out.push('a spilling hero that cannot scroll');
+        }
         for (const el of parts) {
+          if (scroller && scroller.contains(el)) continue;
           const q = el.getBoundingClientRect();
           if (!q.width) continue;
           if (q.left < inner.l - 1 || q.right > inner.r + 1 || q.bottom > inner.b + 1 || (q.top < inner.t - 1 && !el.closest('.ciHead')))
@@ -464,6 +477,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
         // and the nav is never covered by the screen above it
         const nav = root.querySelector('.ciNav').getBoundingClientRect();
         for (const el of pg.querySelectorAll('.ccard, figcaption, .ciRoad, .ciFoot')) {
+          if (scroller && scroller.contains(el)) continue;
           const q = el.getBoundingClientRect();
           if (q.width && q.bottom > nav.top + 2) out.push(`${el.className || el.tagName} runs into the nav (${q.bottom|0} > ${nav.top|0})`);
         }
@@ -497,7 +511,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     }
     await ctx.close();
   }
-  ck('itFitsEveryWindow', bad.length === 0, bad.slice(0, 8).join(' | ') || 'five windows, four screens, all inside');
+  ck('itFitsEveryWindow', bad.length === 0, bad.slice(0, 8).join(' | ') || 'seven windows, four screens, all inside');
 }
 
 /* ================= 9. THE MOTION ================= */
