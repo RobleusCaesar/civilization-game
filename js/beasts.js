@@ -30,16 +30,24 @@
    SCALE. The world's creatures are drawn at 2 art pixels a world pixel; the
    monsters are drawn at ONE — they are closer to the camera than anything
    on the ground (the dragon is in the sky, the kraken towers out of the sea)
-   and the coarser grain is the size. The dragon spans about eight tiles,
-   the kraken about five, its tentacles three. */
+   and the coarser grain is the size. That scale is FIXED AND WHOLE
+   (DRAGON.scale, KRAKEN.scale / tentScale, all 1): a nearest-neighbour
+   scale that is not a whole number drops and doubles art rows unevenly,
+   and ANIMATED it shimmers — the dragon used to breathe between 0.98x and
+   1.22x with its altitude and the kraken grew through 0.78 x (0.7..1) as it
+   rose, and every row of both crawled. So the art is never scaled to tell a
+   story: altitude and approach are told by POSITION, the shadow and the
+   pall, and the kraken surfaces through a widening hole in the sea (a clip
+   reveal), never by growing. The dragon spans eight tiles, the kraken's
+   body in its ring of foam seven, a tentacle stands about four out of the
+   water. (tests/beasts.mjs, theBeastsAreDrawnAtOneWholeScale) */
 
 const Beasts = {
   DRAGON: {
     fps: 12,              // the wing beat
     altHigh: 5.4,         // tiles above its ground point, coming in high…
     altLow: 3.3,          // …and lower over the line it burns
-    scaleHigh: 1.22,      // higher is nearer the camera, and bigger
-    scaleLow: 0.98,
+    scale: 1,             // FIXED and whole (SCALE, above): height is told by position, never by size
     mouth: [122, 58],     // the jaws in breath frames 6-8, from the frame's middle (art px, facing east)
     rearS: 0.32,          // rearing back before the first breath
     pall: 0.24,           // how dark the world goes under it
@@ -47,8 +55,8 @@ const Beasts = {
     lead: 0.9,            // …and the jaws hang this far behind that landing, so the flame slants forward
   },
   KRAKEN: {
-    scale: 0.78,          // the body (224px art) on the board
-    tentScale: 0.95,      // a tentacle (160px art)
+    scale: 1,             // the body (224px art) on the board — FIXED and whole (SCALE, above)
+    tentScale: 1,         // a tentacle (160px art), the same
     tentBase: [80, 132],  // where a tentacle leaves the water, in its frame
     frame: 224,           // the kraken-thrash frame (px), foam ring and all — the body's drawn box is frame × scale
     fps: 9,
@@ -97,6 +105,20 @@ const Beasts = {
   inView(x, y, padT) {
     const v = R.viewTiles(), p = padT || 0;
     return x >= v.x0 - p && x <= v.x1 + p && y >= v.y0 - p && y <= v.y1 + p;
+  },
+  /* the shadow a frame throws on the ground: its silhouette laid flat, EVERY
+     THIRD ROW of it — a whole-number squash, so no row is dropped or doubled
+     unevenly from one frame of the wing beat to the next (cached per frame) */
+  _shad: new WeakMap(),
+  shadowOf(fr) {
+    let c = this._shad.get(fr);
+    if (c) return c;
+    const sil = this.silhouette(fr), n = Math.ceil(fr.height / 3);
+    c = document.createElement('canvas'); c.width = fr.width; c.height = n;
+    const g = c.getContext('2d');
+    for (let y = 0; y < n; y++) g.drawImage(sil, 0, Math.min(fr.height - 1, y * 3 + 1), fr.width, 1, 0, y, fr.width, 1);
+    this._shad.set(fr, c);
+    return c;
   },
   // a black silhouette of a frame, for the shadow it throws (cached per frame)
   _sil: new WeakMap(),
@@ -151,8 +173,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
 Object.assign(R, {
   /* THE BLACK DRAGON. Where it is (ev.x, ev.y) is a point on the GROUND —
      the act flies it along the line it burns — and the beast itself is up in
-     the sky above that point, ALTITUDE tiles high: coming in high and big,
-     dropping low over the line it breathes on, climbing away. Under it, its
+     the sky above that point, ALTITUDE tiles high: coming in high, dropping
+     low over the line it breathes on, climbing away — always at the one
+     whole scale (SCALE, above), so the height is in where it is drawn and in
+     the gap to its shadow, never in its size. Under it, its
      shadow (the frame's own silhouette, flattened onto the ground) races
      across the fields, and the world darkens round it. */
   drawDragonAct(g, dt) {
@@ -160,7 +184,7 @@ Object.assign(R, {
     if (!ev) return;
     const fly = Beasts.ready('dragon');
     if (!fly) { Beasts.want('dragon'); this.drawDragonOld(g, ev); return; }
-    const C = Beasts.DRAGON, TL = CFG.TILE, st = Beasts.st(ev), dir = ev.dir < 0 ? -1 : 1;
+    const C = Beasts.DRAGON, TL = CFG.TILE, st = Beasts.st(ev), dir = ev.dir < 0 ? -1 : 1, sc = C.scale;
     const breathF = (typeof Assets !== 'undefined' && Assets.fxFrames('dragon-breath')) || null;
     // how high, how big, and how much of the act is "here"
     let alt, k;
@@ -179,11 +203,10 @@ Object.assign(R, {
       alt = C.altLow + ev.t * 2.6 + (ev.card ? ev.t * ev.t * 5 : 0);
       k = Math.max(0, 1 - ev.t / 1.6);
     }
-    const sc = C.scaleLow + (C.scaleHigh - C.scaleLow) * Math.min(1, (alt - C.altLow) / (C.altHigh - C.altLow));
     /* the act's point is where it BURNS; the beast is drawn so its jaws hang
        just behind the line of fire it lays (G.dragonTick puts that line
        `reach` tiles ahead of the point), the whole way in and out */
-    const back = (C.reach - C.lead) * TL - C.mouth[0] * C.scaleLow;
+    const back = (C.reach - C.lead) * TL - C.mouth[0] * sc;
     const gx = ev.x * TL + dir * back, gy = ev.y * TL, sx = gx, sy = gy - alt * TL;
     const fade = ev.card && ev.phase === 'leave' ? Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16) : 1;
     /* the roar — once, as it comes into the player's world. A CARD's dragon
@@ -212,9 +235,10 @@ Object.assign(R, {
       if (ev.t < C.rearS) fr = breathF[2 + Math.min(3, (ev.t / C.rearS * 4) | 0)];
       else { fr = breathF[6 + (((ev.t - C.rearS) * 10) | 0) % 3]; breathing = true; }
     } else fr = fly[((ev.t * C.fps) | 0) % fly.length];
-    // the shadow on the ground, sharper the lower it flies
+    // the shadow on the ground, darker the lower it flies — the frame's own
+    // silhouette, laid flat by a whole-number squash (Beasts.shadowOf)
     {
-      const sil = Beasts.silhouette(fr), w = fr.width * sc, h = fr.height * sc * 0.36;
+      const sh = Beasts.shadowOf(fr);
       const sa = (0.42 - 0.18 * (alt - C.altLow) / (C.altHigh - C.altLow)) * fade;
       // the shadow is ON the ground, so it stops at the board's edge (the
       // beast itself is in the sky and may come in from beyond it)
@@ -222,7 +246,7 @@ Object.assign(R, {
         g.globalAlpha = Math.max(0, sa);
         g.translate(Beasts.snap(gx), Beasts.snap(gy + TL * 0.2));
         if (dir < 0) g.scale(-1, 1);
-        g.drawImage(sil, -w / 2, -h / 2, w, h);
+        g.drawImage(sh, -sh.width / 2, -Math.round(sh.height / 2));
       });
     }
     // the breath: a torrent from the jaws to the ground ahead
@@ -245,7 +269,7 @@ Object.assign(R, {
     g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
     g.translate(Beasts.snap(sx), Beasts.snap(sy));
     if (dir < 0) g.scale(-1, 1);
-    g.drawImage(fr, -fr.width / 2 * sc, -fr.height / 2 * sc, fr.width * sc, fr.height * sc);
+    g.drawImage(fr, -fr.width * sc / 2, -fr.height * sc / 2, fr.width * sc, fr.height * sc);
     g.restore();
     // embers off its scales, trailing behind
     {
@@ -447,7 +471,7 @@ Object.assign(R, {
   drawKrakenBody(g, x, y, rise, t) {
     const C = Beasts.KRAKEN, TL = CFG.TILE, fr = Beasts.ready('kraken');
     if (!fr || rise <= 0.001) return;
-    const f = fr[((t * C.fps) | 0) % fr.length], sc = C.scale * (0.7 + 0.3 * rise);
+    const f = fr[((t * C.fps) | 0) % fr.length], sc = C.scale;   // whole and fixed: it surfaces, it never grows
     const cx = Beasts.snap(x * TL), cy = Beasts.snap(y * TL), w = f.width * sc, h = f.height * sc;
     // rings of foam rolling out from where it breaks the surface
     g.save();
@@ -470,7 +494,7 @@ Object.assign(R, {
     g.beginPath();
     g.ellipse(cx, cy, R0, R0 * 0.92, 0, 0, Math.PI * 2);
     g.clip();
-    g.drawImage(f, cx - w / 2, cy - h / 2 + (1 - rise) * h * 0.12, w, h);
+    g.drawImage(f, cx - w / 2, cy - h / 2 + Beasts.snap((1 - rise) * h * 0.12), w, h);
     g.restore();
     if (rise < 0.98) {
       g.fillStyle = 'rgba(236,246,250,0.9)';

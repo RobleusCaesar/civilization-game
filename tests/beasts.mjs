@@ -11,6 +11,9 @@
                        art and on the procedural fallback, without a throw
      A PICTURE ONLY    drawing them writes nothing into S (the act, the save)
                        and draws nothing from the run's RNG
+     ONE WHOLE SCALE   every frame of every strip lands at one fixed,
+                       whole-number scale through every beat — height and
+                       approach are told by position, never by size
      THE JAWS          the breath is drawn from the dragon's jaws to the line
                        of fire the act lays: the jaws hang just behind it,
                        facing either way
@@ -127,14 +130,62 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
   ck('aPictureDrawsNothingFromTheRunsRng', r.rng);
 }
 
+// ---------------- 2b. one whole scale, never animated ----------------
+/* A nearest-neighbour scale that is not a whole number drops and doubles art
+   rows unevenly, and animated it shimmers: the dragon breathed between 0.98x
+   and 1.22x with its altitude, the kraken grew through 0.78 x (0.7..1) as it
+   rose, a tentacle stood at 0.95x. Every beast frame drawn through every beat
+   of both acts, both facings, is measured as it lands on the canvas (the
+   destination over the source, through the context's own transform): one
+   scale per strip, a whole number, the same in every beat. */
+{
+  const r = await p.evaluate(() => {
+    const names = ['dragon-fly', 'dragon-breath', 'kraken-thrash', 'kraken-tentacle'];
+    const of = new Map();
+    for (const n of names) for (const f of Assets.fxFrames(n) || []) of.set(f, n);
+    const cv = document.createElement('canvas'); cv.width = 900; cv.height = 900;
+    const g = cv.getContext('2d');
+    const seen = {};
+    const di = g.drawImage;
+    g.drawImage = function (img, ...a) {
+      const n = of.get(img);
+      if (n) {
+        const T = this.getTransform();
+        const [sx, sy] = a.length === 2 ? [1, 1] : a.length === 4 ? [a[2] / img.width, a[3] / img.height] : [a[6] / a[2], a[7] / a[3]];
+        const k = Math.hypot(T.a, T.b) * sx, l = Math.hypot(T.c, T.d) * sy;
+        (seen[n] = seen[n] || new Set()).add(k.toFixed(3) + 'x' + l.toFixed(3));
+      }
+      return di.call(this, img, ...a);
+    };
+    const tc = Bld.tcOf('P');
+    const w = MapGen.findNear(tc.x, tc.y, 60, (x, y) => G.openWaterAt(x, y)) || { x: tc.x, y: tc.y };
+    for (const dir of [1, -1]) for (const [ph, ts] of [['fly', [0, 0.2, 0.6, 1.2]], ['burn', [0, 0.1, 0.2, 0.5, 1.0, 1.6]], ['leave', [0, 0.5, 1.4]]]) for (const t of ts) {
+      S.dragon = { avail: false, done: true, ash: [], fire: [], ev: { phase: ph, t, x: tc.x + 2 + t, y: tc.y + 2, tx: tc.x + 4, ty: tc.y + 2, dir, victims: [],
+        card: ph === 'leave' ? { x: tc.x + 2, y: tc.y + 2 } : null } };
+      g.save(); try { R.drawDragonAct(g, 1 / 60); } catch (e) {} g.restore();
+    }
+    for (const [ph, ts] of [['rise', [0.05, 0.2, 0.4, 0.7, 1.0, 1.3, 1.55]], ['thrash', [0, 0.3, 1.2, 2.1]], ['sink', [0, 0.3, 0.6, 1.0, 1.5]]]) for (const t of ts) {
+      S.kraken = { ev: { phase: ph, t, x: w.x + 0.5, y: w.y + 0.5, boatId: -1, owner: 'P' } };
+      g.save(); try { R.drawKrakenAct(g, 1 / 60); } catch (e) {} g.restore();
+    }
+    S.dragon.ev = null; S.kraken.ev = null;
+    const out = {};
+    for (const n of names) out[n] = seen[n] ? [...seen[n]] : [];
+    return out;
+  });
+  const bad = Object.entries(r).filter(([n, ks]) => ks.length !== 1 || !ks.every(k => k.split('x').every(v => Math.abs(+v - Math.round(+v)) < 1e-6 && Math.round(+v) >= 1)));
+  ck('theBeastsAreDrawnAtOneWholeScale', Object.values(r).every(ks => ks.length) && !bad.length,
+    Object.entries(r).map(([n, ks]) => n + ' ' + ks.join('/')).join('; '));
+}
+
 // ---------------- 3. the jaws hang over the line of fire ----------------
 {
   const r = await p.evaluate(() => {
     const C = Beasts.DRAGON, TL = CFG.TILE, out = [];
     for (const dir of [1, -1]) {
-      // the drawing's own arithmetic at the bottom of the dive (alt = altLow, scale = scaleLow)
-      const x = 20, back = (C.reach - C.lead) * TL - C.mouth[0] * C.scaleLow;
-      const jaws = (x * TL + dir * back + dir * C.mouth[0] * C.scaleLow) / TL;
+      // the drawing's own arithmetic over the line it burns (one fixed, whole scale)
+      const x = 20, back = (C.reach - C.lead) * TL - C.mouth[0] * C.scale;
+      const jaws = (x * TL + dir * back + dir * C.mouth[0] * C.scale) / TL;
       const land = x + dir * C.reach;               // where G.dragonTick lays its fire line
       out.push({ dir, behind: (land - jaws) * dir });
     }

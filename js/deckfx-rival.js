@@ -1635,11 +1635,12 @@
          (the host is render state, a WeakMap on the act, never in S). The
          body is the beast art's (R.drawKrakenAct, js/beasts.js) where it has
          landed, else R.drawKraken — the two swap points of the art pass.
-         The cluster is as wide as the DRAWN beast: the body is ~5.5 tiles
-         across with its ring of white water, and at 2.5 two hulls four tiles
-         apart raised two bodies stacked half over each other. And the whole
-         act is clipped to the board: nothing is drawn in the black. */
-      CLUSTER: 6,
+         The cluster is as wide as the DRAWN beast: the body is 7 tiles across
+         with its ring of white water (224px at the beasts' one whole scale,
+         Beasts.KRAKEN), and at 2.5 two hulls four tiles apart raised two
+         bodies stacked half over each other. And the whole act is clipped to
+         the board: nothing is drawn in the black. */
+      CLUSTER: 7,
       _host: new WeakMap(),
       draw(g, dt, K) {
         R.clipBoard(g, () => this.drawAct(g, dt, K));
