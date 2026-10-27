@@ -56,6 +56,12 @@ const url = 'file://' + join(root, 'index.html');
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
 const res = {}, fails = [], errs = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+const bail = async (why) => {
+  for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
+  console.log('BAILED: ' + why);
+  console.log('FAILURES:', fails.join(', ') || why);
+  process.exit(1);
+};
 
 /* a backend mock that plays 0008's rules: one record per uid (counts, the
    starter hand, grants by run, plays by play id, the run_end rows it has
@@ -64,7 +70,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
 const MOCK = `
   window.__MOCK = (() => {
     const st = { uid: 'uid-A', calls: [], rows: [], down: false, missing: {}, garbage: {}, refuse: {},
-                 pity: 0, medians: {}, onMyCards: null, telemetryFails: false };
+                 pity: 0, medians: {}, onMyCards: null, telemetryFails: false, emits: 0 };
     const db = {};
     const rec = uid => db[uid] || (db[uid] = { counts: {}, seen: {}, starter: 0, grants: {}, plays: {}, ends: {} });
     const add = (m, k, n) => { m.counts[k] = (m.counts[k] || 0) + n; if (!m.seen[k]) m.seen[k] = 1000; };
@@ -118,7 +124,12 @@ const MOCK = `
     };
     const rest = (method, path, body) => {
       st.calls.push({ method, path, uid: st.uid, body: body == null ? null : JSON.parse(JSON.stringify(body)) });
-      if (st.down) throw new TypeError('Failed to fetch');
+      // a request that dies: the REAL transport (Backend._rest's catch) says
+      // so on backend-status before it gives up — the mock path does not, so
+      // the mock does it for it, or a listener that answers every status word
+      // with another sync would look innocent here and spin on a real phone
+      // (after the throw, as the real one does after its awaited fetch)
+      if (st.down) { st.emits++; setTimeout(() => { try { Backend.emit(); } catch (e) {} }, 0); throw new TypeError('Failed to fetch'); }
       if (path === '/telemetry' && method === 'POST') {
         for (const row of body || []) {
           st.rows.push(row);
@@ -217,23 +228,56 @@ const MOCK = `
   await ctx.close();
 }
 
-/* ================= 3. A REVIEW DEAL never syncs its free cards ================= */
+/* ================= 3. A TEST DECK never syncs, and the record never takes it back ================= */
 {
+  // (a) the test link itself: ?cards=all (the device already has the deck on)
   const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await ctx.addInitScript(() => { try { localStorage.setItem('neo-cards-dev', '1'); } catch (e) {} });
   await ctx.addInitScript(MOCK);
   const p = await ctx.newPage();
-  p.on('pageerror', e => errs.push('review: ' + e));
-  await p.goto(url + '?cards=slice', { waitUntil: 'domcontentloaded' });
+  p.on('pageerror', e => errs.push('test deck: ' + e));
+  await p.goto(url + '?cards=all', { waitUntil: 'domcontentloaded' });
   await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 60000 });
   const r = await p.evaluate(async () => {
+    await new Promise(r => setTimeout(r, 400));        // the boot hook and the sign-in have both had their chance
     Deck.ensureStarter();
-    const out = await Deck.sync('review');
+    const out = await Deck.sync('test-link');
     await new Promise(r => setTimeout(r, 300));
-    return { why: out.why, rpcs: __MOCK.st.calls.filter(c => c.path.startsWith('/rpc/')).length,
-      held: Deck.count('dragonfire'), queued: Deck.col().queue.length };
+    return { why: out.why, rpcs: __MOCK.st.calls.filter(c => c.path.startsWith('/rpc/')).length };
   });
-  ck('aReviewDealStaysOnTheDevice', r.why === 'review' && r.rpcs === 0 && r.held >= 1,
-    `why ${r.why}, rpc calls ${r.rpcs}, dragonfire held ${r.held}, ops waiting ${r.queued}`);
+  ck('aTestLinkStaysOnTheDevice', r.why === 'test' && r.rpcs === 0, `why ${r.why}, rpc calls ${r.rpcs}`);
+  await ctx.close();
+}
+{
+  // (b) a mirror marked `test` (Deck.dealAll's stamp) outlives the link: an
+  // ordinary load, a sign-in, a queued op — and still nothing goes, and the
+  // record never overwrites the dealt hand
+  const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await ctx.addInitScript(() => {
+    try {
+      localStorage.setItem('neo-deck', JSON.stringify({ v: 1, uid: 'uid-A', test: 1700000000000, starter: 1, counts: { dragonfire: 1, krakens_call: 1, forager_cache: 1 },
+        seen: {}, runs: {}, medians: {}, queue: [{ op: 'consume', card: 'starfall', play: 'p-test', run: 'r', day: 3 }] }));
+    } catch (e) {}
+  });
+  await ctx.addInitScript(MOCK);
+  const p = await ctx.newPage();
+  p.on('pageerror', e => errs.push('test mark: ' + e));
+  await p.goto(url + '?cards=1', { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 60000 });
+  const r = await p.evaluate(async () => {
+    await new Promise(r => setTimeout(r, 400));
+    __MOCK.rec('uid-A').counts = { gold_nugget: 1 };   // what the record holds — it must not replace the toy
+    __MOCK.rec('uid-A').starter = 1;
+    window.dispatchEvent(new CustomEvent('backend-status', { detail: { online: true, configured: true, uid: 'uid-other' } }));
+    const out = await Deck.sync('test-mark');
+    await new Promise(r => setTimeout(r, 300));
+    const c = Deck.col();
+    return { why: out.why, rpcs: __MOCK.st.calls.filter(c => c.path.startsWith('/rpc/')).length,
+      counts: JSON.stringify(c.counts), uid: c.uid, queue: c.queue.length };
+  });
+  ck('aTestDeckIsNeverSyncedOrTakenBack', r.why === 'test' && r.rpcs === 0 && r.uid === 'uid-A' &&
+    r.counts === JSON.stringify({ dragonfire: 1, krakens_call: 1, forager_cache: 1 }),
+    `why ${r.why}, rpc calls ${r.rpcs}, mirror ${r.uid} ${r.counts}, ops left alone ${r.queue}`);
   await ctx.close();
 }
 
@@ -315,7 +359,10 @@ await p.evaluate(() => {
     __MOCK.st.down = true;
     const m0 = __t.mark();
     Deck.SYNC.WAIT_MS = [600000];
-    const out = await Deck.sync('down');
+    const e0 = __MOCK.st.emits;
+    // a drain that chased its own failures would never resolve: race it
+    const out = await Promise.race([Deck.sync('down'), new Promise(r => setTimeout(() => r({ why: 'spinning', kept: -1 }), 4000))]);
+    const emitted = __MOCK.st.emits - e0;
     const tried = __t.rpcs(m0).map(c => c.body && c.body.p_run_id);
     const q = Deck.col().queue.map(o => ({ run: o.run, n: o.n || 0 }));
     const timer = !!(Deck._sy && Deck._sy.timer);
@@ -334,13 +381,17 @@ await p.evaluate(() => {
     delete __MOCK.st.missing.grant_card;
     const m1 = __t.mark();
     const back = await Deck.sync('back');
-    return { out, tried, q, timer, spun, out404: out404.why, q404, back, sentBack: __t.rpcs(m1).map(c => c.path.slice(5)),
+    return { out, tried, q, timer, spun, emitted, out404: out404.why, q404, back, sentBack: __t.rpcs(m1).map(c => c.path.slice(5)),
       cloud: __MOCK.rec('uid-A').counts };
   });
-  ck('anOfflineDeviceDoesNotSpin', r.spun === 0, `${r.spun} more asks in the 0.9 s after a failed drain (the retry waits its turn)`);
+  ck('anOfflineDeviceDoesNotSpin', r.spun === 0 && r.out.why !== 'spinning' && r.emitted >= 1,
+    `${r.spun} more asks in the 0.9 s after a failed drain that said "offline" ${r.emitted}× on backend-status (the retry waits its turn)`);
   ck('anUnreachableOpIsKeptAndTheDrainStopsThere',
     r.out.why === 'network' && r.out.kept === 2 && r.tried.length === 1 && r.tried[0] === 'r3' && r.q[0].n === 1 && r.q[1].n === 0 && r.timer,
     `why ${r.out.why}, kept ${r.out.kept}, asked ${r.tried.join(',')}, tries ${JSON.stringify(r.q)}, retry scheduled ${r.timer}`);
+  // a drain that spins never resolves, and every later sync in this file
+  // joins it: report now rather than hang until the runner gives up
+  if (r.out.why === 'spinning') await bail('the offline drain chased its own backend-status and never settled');
   ck('aDoorThatIsNotThereYetKeepsItToo', r.out404 === '404' && r.q404 === 2, `why ${r.out404}, kept ${r.q404}`);
   ck('andTheNextSyncDeliversIt', r.back.ok && r.back.done === 2 && r.cloud.iron_legion === 1 && r.cloud.veterans === 1 &&
     JSON.stringify(r.sentBack) === JSON.stringify(['grant_card', 'grant_card', 'my_cards']), `${r.sentBack.join(' → ')}`);
@@ -468,12 +519,48 @@ await p.evaluate(() => {
     JSON.stringify(r.disk) === r.counts, `device now ${r.counts} (a retired card never reaches it)`);
   ck('andBringsWhatWasSeenThePityAndTheMedians', r.seen === 777 && r.pity === 9 && r.med[0] === 150 && r.med[1] === 101 && r.med[2] === CFG_HARD_FALLBACK(),
     `seen ${r.seen}, pity ${r.pity}, medians ${r.med.join('/')}`);
+  // the stale answer (starfall 2) is thrown away, the play is kept through
+  // the outage (asked once while down), and the healed drain delivers it
+  // before the record is read again
   ck('aLateAnswerNeverBringsAPlayedCardBack',
-    r.race.starfall === 1 && r.race.cloud === 1 && r.race.left === 0 &&
-    JSON.stringify(r.race.sent) === JSON.stringify(['my_cards', 'consume_card', 'my_cards']),
-    `starfall device ${r.race.starfall} / cloud ${r.race.cloud}; ${r.race.sent.join(' → ')}`);
+    r.race.starfall === 1 && r.race.left === 1 && r.race.healed.ok && r.race.healed.starfall === 1 && r.race.healed.cloud === 1 &&
+    r.race.sent[0] === 'my_cards' && JSON.stringify(r.race.sent.slice(-2)) === JSON.stringify(['consume_card', 'my_cards']),
+    `starfall device ${r.race.starfall} (kept ${r.race.left}) → healed ${r.race.healed.starfall} / cloud ${r.race.healed.cloud}; ${r.race.sent.join(' → ')}`);
 }
 function CFG_HARD_FALLBACK() { return 120; }
+
+/* ---- 8b. THE STARTER HAND AS THE RECORD HAS IT ---- */
+{
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const cloud = __MOCK.rec('uid-A');
+    // the device believes its hand was claimed; the record never saw the
+    // claim (its op was lost to the queue's cap) — nothing is waiting
+    Deck.col().queue.length = 0;
+    Deck.col().starter = 1234;
+    cloud.starter = 0;
+    const before = Object.assign({}, cloud.counts);
+    const s1 = await Deck.sync('starter-lost');
+    out.s1 = { ok: s1.ok, reconciled: s1.reconciled, mark: Deck.col().starter || 0 };
+    // the next door that deals the hand deals it, and its op claims it
+    out.dealt = Deck.ensureStarter();
+    const m0 = __t.mark();
+    await Deck.sync('starter-claim');
+    out.sent = __t.rpcs(m0).map(c => c.path.slice(5));
+    out.claimed = !!cloud.starter;
+    out.cloud = ['fallen_timber', 'forager_cache', 'willing_hands'].map(k => (cloud.counts[k] || 0) - (before[k] || 0));
+    out.device = ['fallen_timber', 'forager_cache', 'willing_hands'].map(k => Deck.count(k) === (cloud.counts[k] || 0));
+    // …and a record that HOLDS the claim is never un-marked
+    const s3 = await Deck.sync('starter-kept');
+    out.kept = { ok: s3.ok, mark: !!Deck.col().starter, again: Deck.ensureStarter() };
+    return out;
+  });
+  ck('aStarterTheRecordNeverClaimedIsDealtAndClaimed',
+    r.s1.ok && r.s1.reconciled && r.s1.mark === 0 && r.dealt === true && r.claimed &&
+    r.sent[0] === 'claim_starter_hand' && r.cloud.every(n => n === 1) && r.device.every(Boolean),
+    `mark after the record ${r.s1.mark}; dealt ${r.dealt}; ${r.sent.join(' → ')}; cloud +${r.cloud.join('/+')}`);
+  ck('andAClaimedHandIsNeverDealtTwice', r.kept.ok && r.kept.mark && r.kept.again === false, JSON.stringify(r.kept));
+}
 
 /* ---- 9. ONE MIRROR PER PLAYER ---- */
 {
@@ -570,6 +657,7 @@ function CFG_HARD_FALLBACK() { return 120; }
 await ctx.close();
 
 /* ================= 12. THE MIGRATION, on the source ================= */
+let deedsCheck = 0;
 {
   const sql = readFileSync(join(root, 'supabase/migrations/0008_cards.sql'), 'utf8');
   const code = sql.replace(/--[^\n]*/g, '');                        // what runs, not what is said
@@ -616,6 +704,8 @@ await ctx.close();
   ck('theLossDeedsNumberLivesInOnePlace', deedsDefs === 1 && lc.indexOf('card_loss_min_deeds()') < lc.indexOf('create or replace function public.grant_card(') &&
     /public\.card_loss_min_deeds\(\)/.test(g) && /props\s*->>?\s*'deeds'/.test(g) && !/\b5\b/.test(g.replace(/'[^']*'/g, '')),
     `defined ${deedsDefs}×, read by grant_card from props.deeds`);
+  const sqlDeeds = +((code.match(/create or replace function public\.card_loss_min_deeds\(\)[\s\S]*?as \$\$\s*select (\d+)\s*\$\$/i) || [])[1]);
+  deedsCheck = sqlDeeds;
   ck('aWinAlwaysEarnsAndABannerNever', /v_end\.outcome = 'loss' and v_deeds < public\.card_loss_min_deeds\(\)/.test(g) &&
     /coalesce\(t\.cause, ''\) <> 'closed_tab'/.test(g) && /'not_finished'/.test(g) && /'no_run'/.test(g) && /'outcome_mismatch'/.test(g),
     'the earn rule reads only the deeds of a LOSS; closed_tab is never evidence');
@@ -629,6 +719,7 @@ await ctx.close();
   // CFG is a script-level const: window.CFG is undefined (the window.G trap)
   await p2.waitForFunction(() => window.Deck && typeof CFG !== 'undefined', null, { timeout: 30000 });
   const game = await p2.evaluate(() => ({
+    lossDeeds: CFG.CARDS.LOSS_DEEDS,
     cat: Deck.CATALOG.map(c => c.id + ':' + c.tier).sort(), starter: CFG.CARDS.STARTER.slice().sort(),
     drops: Object.fromEntries(Object.entries(CFG.CARDS.DROPS).map(([k, w]) => [k, Deck.TIERS.filter((t, i) => w[i] > 0).map(t => t.k).sort()])),
   }));
@@ -644,6 +735,13 @@ await ctx.close();
   ck('theServersCatalogIsTheGames', JSON.stringify(sqlCat) === JSON.stringify(game.cat) && rows.length === 36,
     `${rows.length} in the SQL; differs: ${sqlCat.filter(x => !game.cat.includes(x)).concat(game.cat.filter(x => !sqlCat.includes(x))).join(', ') || 'none'}`);
   ck('andItsStarterHand', JSON.stringify(sqlStarter) === JSON.stringify(game.starter), sqlStarter.join(', '));
+  // THE ONE NUMBER, both halves: the deck's own rule (Deck.eligible reads
+  // CFG.CARDS.LOSS_DEEDS) and the server's (card_loss_min_deeds). A loss the
+  // game rewards and the server refuses leaves the collection at the next
+  // reconcile — the two must never drift. (Before the game's half exists
+  // there is nothing to compare, and the check says so.)
+  ck('theServersLossDeedsAreTheGames', deedsCheck > 0 && (game.lossDeeds == null || game.lossDeeds === deedsCheck),
+    game.lossDeeds == null ? `server ${deedsCheck}; the game has no LOSS_DEEDS yet` : `server ${deedsCheck}, game ${game.lossDeeds}`);
   ck('andItsDropTiers', JSON.stringify(Object.keys(sqlDrops).sort().map(k => [k, sqlDrops[k]])) === JSON.stringify(Object.keys(game.drops).sort().map(k => [k, game.drops[k]])),
     JSON.stringify(sqlDrops));
 }
