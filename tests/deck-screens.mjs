@@ -18,9 +18,11 @@
      THE GRANT         happens once, when the screen opens, however often it
                        reopens; a win earns however short (a two-minute one
                        included); a defeat short of its deeds says how far it
-                       got where the card would stand, and earns nothing; a
-                       card-assisted run wears its mark in the score's box and
-                       carries its count to the board
+                       got where the card would stand — in words and in a
+                       row of pips, the deeds done lit — and earns nothing; a
+                       card-assisted run wears its mark on the score box's
+                       day line (no extra height) and carries its count to
+                       the board
      THE CEREMONY      the card rises (a real animation), settles, turns
                        over and back on a tap; CLAIM lands it in the deck and
                        the count ticks up; a great victory's bonus card rises
@@ -307,13 +309,16 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.played = root.querySelector('.cePlayed span').textContent;
     const mk = root.querySelector('.ceAssist');
     out.assist = __shown(mk) && /card-assisted/i.test(mk.textContent) && !!mk.closest('.ceScore') && !!mk.querySelector('svg');
+    // the mark rides the day's line — a line of its own pushed the phone's reward past its fold
+    const day = root.querySelector('.ceDay');
+    out.sameLine = !!mk && !!day && Math.abs(mk.getBoundingClientRect().top - day.getBoundingClientRect().top) < 3;
     return out;
   });
   ck('aDefeatWearsTheColdBanner', l.loss && /^defeat$/i.test(l.banner) && l.laurels === 0, `"${l.banner}", laurels ${l.laurels}`);
   ck('andStillRevealsItsCard', l.card === 'harvest_festival' && l.claim && l.board, `card ${l.card}, claim ${l.claim}, board ${l.board}`);
   ck('aDefeatShowsItsScoreAndPostsNothing', l.score === l.want && l.entry === null, `${l.score} vs ${l.want}, entry ${JSON.stringify(l.entry)}`);
   ck('thePlayedLineNamesTheRunsCards', l.played === "Forager's Cache ×2, Starfall", l.played);
-  ck('aCardAssistedRunSaysSoInTheScoresBox', l.assist, `mark shown in the score box with its icon: ${l.assist}`);
+  ck('aCardAssistedRunSaysSoInTheScoresBox', l.assist && l.sameLine, `mark shown in the score box with its icon: ${l.assist}; on the day's line ${l.sameLine}`);
 
   /* THE EARN RULE on the screen: a WIN earns however short — the old gate
      told a two-minute victory "Play 10 minutes" — and a card played on the
@@ -342,6 +347,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     let root = document.getElementById('cardEnd');
     out.why = __shown(root.querySelector('.ceWhy')) ? root.querySelector('.ceWhy span').textContent : '';
     out.head = root.querySelector('.ceWhy b').textContent;
+    // …and the count as a row of pips, the deeds done lit
+    out.pips = root.querySelectorAll('.ceWhy .cePips i').length;
+    out.lit = root.querySelectorAll('.ceWhy .cePips i.on').length;
     out.card = !!root.querySelector('.ceMove .ccard');
     out.claim = __shown(root.querySelector('[data-act="claim"]'));
     out.leave = __shown(root.querySelector('[data-act="replay"]')) && __shown(root.querySelector('[data-act="menu"]'));
@@ -351,12 +359,14 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     window.__run({ seed: 'ds-struck', win: false, cause: 'struck_banner' });
     root = document.getElementById('cardEnd');
     out.struck = root.querySelector('.ceWhy span').textContent;
+    out.struckPips = root.querySelectorAll('.ceWhy .cePips i').length;
     out.struckCard = !!root.querySelector('.ceMove .ccard');
     out.gained = Deck.total() - t0;
     return out;
   });
   ck('anIneligibleRunSaysWhy', n.why === 'Build, train, upgrade or raze to earn a card from a defeat — 1 of 5 deeds.' && !n.card &&
     n.struck === 'A banner struck earns no card.' && !n.struckCard, `"${n.head}: ${n.why}" / "${n.struck}"`);
+  ck('andShowsHowFarItGot', n.pips === 5 && n.lit === 1 && n.struckPips === 0, `${n.lit} of ${n.pips} pips lit; a struck banner shows ${n.struckPips}`);
   ck('andEarnsNothingButKeepsTheRest', n.gained === 0 && !n.claim && n.leave && n.board && /defeat/i.test(n.banner) && n.score,
     `gained ${n.gained}, claim ${n.claim}, replay/menu ${n.leave}, board ${n.board}`);
 
