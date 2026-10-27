@@ -1022,7 +1022,7 @@ Deck.armyFx = {
      Iron Legion's half-bars are gone, which leaves the cut a step up the
      tiers. The fan stands its people INSIDE the cut (summonFan's
      `cinema`), so nobody lands under a bar. */
-  CINEMA: { bar: 0.12, slide: 0.18, col: '#0d0b08', gold: '#ffd45e', ink: '#0d0b08', px: 15 },
+  CINEMA: { bar: 0.12, slide: 0.18, col: '#0d0b08', gold: '#ffd45e', ink: '#0d0b08', px: 15, titlePx: 20 },
   frame() {
     const now = performance.now();
     if (this._frame && now - this._frame.at < 500) return this._frame;
@@ -1036,29 +1036,44 @@ Deck.armyFx = {
     const C = this.CINEMA, a = Math.min(1, Math.max(0, (t - from) / C.slide)), b = Math.min(1, Math.max(0, (t - out) / C.slide));
     return Math.min(a, 1 - b);
   },
-  cinema(g, k, title) {
-    if (k <= 0) return null;
+  /* THE CUT'S WORDS ARE EVERY ACT'S WORDS (R.actTitle, the rival acts' one
+     lettering): the card's name over its line, gold in two hard tones in a
+     hard ink edge, set in the lower bar and sized to it (CINEMA.titlePx at
+     most, the subtitle at 13 CSS px or more) — the cut used to letter its
+     own flat gold over a round stroke, a third face beside the kraken's and
+     the sun's. The card's line rides here because the card says it here,
+     not in a toast (the cinema cards narrate: DeckUI._land stands their
+     landing toast down).
+     AND THE TOASTS STEP BELOW THE TOP BAR while it is in (--dk-cine, read by
+     DeckUI's stylesheet on #toasts): a line said mid-act — a soldier lost, a
+     raid seen — never sits on the bar the act has drawn across the glass. */
+  cinema(g, k, title, sub) {
+    if (k <= 0) { this.cineToasts(0); return null; }
     const C = this.CINEMA, W = R.cv.width, H = R.cv.height, f = this.frame(), gr = this.grain();
     const open = Math.max(1, H - f.top - f.bot);
     const e = 1 - (1 - Math.min(1, k)) * (1 - Math.min(1, k));
     const full = Math.round(open * C.bar / gr) * gr, h = Math.round(full * e / gr) * gr;
-    if (h <= 0) return null;
+    if (h <= 0) { this.cineToasts(0); return null; }
     g.fillStyle = C.col;
     g.fillRect(0, f.top, W, h); g.fillRect(0, H - f.bot - h, W, h);
+    const dpr = R.dpr || 1;
+    this.cineToasts(h / dpr);
     // the title, once the bars are home: set in the lower bar, centred in it
     if (title && h >= full) {
-      const dpr = R.dpr || 1, px = Math.max(13, C.px) * dpr, y = Math.round(H - f.bot - full / 2);
-      g.save();
-      g.font = '700 ' + Math.round(px) + 'px ' + "Cinzel, 'Times New Roman', Georgia, serif";
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      try { g.letterSpacing = Math.round(px * 0.12) + 'px'; } catch (err) { /* older canvases: tight caps */ }
-      const s = String(title).toUpperCase();
-      g.lineJoin = 'round'; g.lineWidth = 2 * dpr; g.strokeStyle = C.ink;
-      g.strokeText(s, Math.round(W / 2), y);
-      g.fillStyle = C.gold; g.fillText(s, Math.round(W / 2), y);
-      g.restore();
+      const A = R.ACT_TITLE, tp = C.titlePx, est = (tp * 1.24 + 9 + (sub ? (A ? A.subMin : 13) * 1.25 : 0)) * dpr;
+      const y = Math.round(H - f.bot - full + Math.max(3 * dpr, (full - est) / 2));
+      if (R.actTitle) R.actTitle(g, String(title).toUpperCase(), sub || null, 1, { y, max: tp, sub: A ? A.subMin : 13 });
     }
     return { top: f.top, bot: H - f.bot, h, full };
+  },
+  _cine: 0,
+  _cineAt: 0,
+  cineToasts(cssPx) {
+    const v = Math.round(cssPx || 0);
+    this._cineAt = performance.now();
+    if (v === this._cine) return;
+    this._cine = v;
+    try { document.body.style.setProperty('--dk-cine', v + 'px'); } catch (err) { /* no document: nothing to move */ }
   },
   /* light coming down out of the sky onto a point on the screen: a cone of
      shafts from high above it, cut in scanlines the height of the world's
@@ -1884,10 +1899,12 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        together, the ground shaking under them. */
     legion_marches: {
       at: 'tc', LIST: [{ kind: 'elite', n: 5 }, { kind: 'marksman', n: 4 }, { kind: 'lancer', n: 3 }], STAGGER: 90, HOLD: 1.4,
+      // the cut says it, in its lower bar: no landing toast over the act
+      narrates: true, LINE: 'Twelve of your best march out',
       can() { return Deck.summonCan('elite'); },
       apply() {
         return summonCard('legion_marches', this.LIST, {
-          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 16, cinema: true,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 16, cinema: true, data: { line: this.LINE },
           log: () => '🦅 The Legion marches: five Bronze Champions, four Fire Archers and three Lancers leave your Town Center.',
         });
       },
@@ -1903,7 +1920,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const hold = p < 0.06 ? p / 0.06 : p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
             g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
             // last: the cut, over the light, until the legion is let go
-            A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.4), Deck.card('legion_marches').name);
+            A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.4), Deck.card('legion_marches').name, s.line);
             return;
           }
           A.arrive(g, s, layer, 'gold');
@@ -1923,10 +1940,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        come slow and heavy: a beat between each, the ground rolling. */
     trebuchet_battery: {
       at: 'tc', LIST: [{ kind: 'trebuchet', n: 2 }, { kind: 'siegetower', n: 1 }], STAGGER: 450, HOLD: 1.3,
+      narrates: true, LINE: 'Two Trebuchets and a Siege Tower roll out',
       can() { return Deck.summonCan('trebuchet'); },
       apply() {
         return summonCard('trebuchet_battery', this.LIST, {
-          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 14, cinema: true,
+          fan: true, stagger: this.STAGGER, hold: this.HOLD, voices: ['cardFanfare'], horn: true, startle: 14, cinema: true, data: { line: this.LINE },
           log: () => '🏰 Two Trebuchets and a Siege Tower roll out of your Town Center.',
         });
       },
@@ -1940,7 +1958,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (layer === 'sky') {
             const hold = p < 0.08 ? p / 0.08 : p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.2);
             g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
-            A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.3), Deck.card('trebuchet_battery').name);
+            A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.3), Deck.card('trebuchet_battery').name, s.line);
             return;
           }
           A.arrive(g, s, layer, 'gold');
@@ -1963,6 +1981,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        column of pale light under a darkened sky (drawGhost, riseOf). */
     ancestors_host: {
       at: 'tc', KIND: 'elite', N: 15, STAGGER: 200, HOLD: 1.4,
+      narrates: true,   // the cut says it, in its lower bar
       can() { return Deck.summonCan(this.KIND); },
       apply() {
         const days = Deck.card('ancestors_host').days, was = !!Deck.timed('ancestors_host');
@@ -1985,7 +2004,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         r.units.forEach((u, i) => { rise[u.id] = r.at[i]; u.den = { x: u.x | 0, y: u.y | 0 }; });
         const mx = r.units.reduce((a, u) => a + u.x, 0) / r.units.length, my = r.units.reduce((a, u) => a + u.y, 0) / r.units.length;
         show('ancestors_host', { mode: 'rise', x: r.x, y: r.y, mx, my, free: r.free,
-          units: r.units.map(u => ({ id: u.id, x: u.x, y: u.y, d: rise[u.id] })), rise });
+          units: r.units.map(u => ({ id: u.id, x: u.x, y: u.y, d: rise[u.id] })), rise,
+          line: was ? 'Fifteen more rise — the host walks ' + days + ' days longer' : 'Fifteen ancestors rise to fight for ' + days + ' days' });
         Deck.say(was ? '👻 Fifteen more of your ancestors rise at the Town Center — the host walks ' + days + ' days longer.'
           : '👻 Fifteen of your ancestors rise at the Town Center. They will fight for you for ' + days + ' days.');
         return { ok: true, x: r.x, y: r.y, units: r.units.map(u => u.id), until: e.until };
@@ -2053,7 +2073,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           A.rays(g, h.x, h.y, 5, s.t * 0.3, '170,235,255', 0.75 * dk, 0.1);
           A.spirits(g, h.x, h.y - 10 * h.z, s.t, 26, '215,240,255', dk * (p < 0.7 ? 1 : 0.5));
           g.restore();
-          A.cinema(g, A.cinemaIn(s.t, 0, s.free || 4.4), Deck.card('ancestors_host').name);
+          A.cinema(g, A.cinemaIn(s.t, 0, s.free || 4.4), Deck.card('ancestors_host').name, s.line);
         },
       },
       /* WHILE THE HOST WALKS: pale motes rising off every ghost, hard opaque

@@ -787,8 +787,21 @@ const Deck = {
      Measured in the plate's own face (Cinzel, bold, capitals, with its
      letter-spacing); before Cinzel has loaded, at a conservative 0.8em a
      capital (its widest word runs 0.78). Pure: same name, same width, same
-     answer. */
+     answer. `reserve` (CSS px) is plate height already spoken for — the
+     back's tier line (NMT) — so the name fits in what is left. */
   NM: { size: 9.5, min: 7.5, floor: 5, pad: 6, lh: 1.1, ls: 0.5 },
+  /* THE BACK PLATE NAMES THE CARD (judge g4 C: every Legendary back read
+     ENLIGHTENMENT — which is also a card's name — and every Imperial back
+     IMPERIAL): the plate carries the card's own name, and its tier rides
+     above it in small caps, in the tier's colour. NMT is that line: its
+     size per authored pixel, its floor, its line (tall enough to hold its
+     own capitals: a glyph box is taller than a tight line) and the gap
+     under it. With the tier spoken for, the name's own outer capitals stand
+     a little proud of its lines and the plate has no slack left to hide
+     them in — `ink` is that overhang, a share of the name's size. */
+  NMT: { size: 6, min: 4, lh: 1.3, gap: 0.5, ink: 0.3 },
+  nmtPx(u) { return Math.max(this.NMT.size * u, this.NMT.min); },
+  nmtReserve(u) { return this.nmtPx(u) * this.NMT.lh + this.NMT.gap * u; },
   _nmCtx: null,
   _nmWidth(text, fs) {
     try {
@@ -800,9 +813,9 @@ const Deck = {
     } catch (e) { /* a measure that cannot be taken falls to the estimate */ }
     return text.length * fs * 0.8;
   },
-  nmFit(name, u) {
+  nmFit(name, u, reserve) {
     const N = this.NM, P = this.PLATE, base = Math.max(N.size * u, N.min);
-    const W = (P.w - 2 * N.pad) * u - 1, H = P.h * u, ls = N.ls * u;
+    const W = (P.w - 2 * N.pad) * u - 1, H = P.h * u - (reserve || 0), ls = N.ls * u;
     const words = String(name).toUpperCase().split(/\s+/).filter(Boolean);
     const fits = fs => {
       const wd = w => this._nmWidth(w, fs) + ls * w.length, sp = this._nmWidth(' ', fs) + ls;
@@ -814,7 +827,7 @@ const Deck = {
         else if (cur + sp + ww <= W) cur += sp + ww;
         else { lines++; cur = ww; }
       }
-      return lines <= 2 && lines * fs * N.lh <= H;
+      return lines <= 2 && lines * fs * N.lh + (reserve ? this.NMT.ink * fs : 0) <= H;
     };
     if (fits(base)) return null;
     for (let fs = Math.floor(base * 4) / 4 - 0.25; fs > N.floor; fs -= 0.25) if (fits(fs)) return fs;
@@ -845,7 +858,7 @@ const Deck = {
     const chips = [this.TARGET_LABEL[c.target]];
     if (c.days) chips.push(c.days + (c.days === 1 ? ' day' : ' days'));
     // a name stepped down to fit its plate (nmFit) — null keeps the stylesheet's
-    const nmSt = s => { const fs = this.nmFit(s, u); return fs ? ` style="font-size:${fs}px"` : ''; };
+    const nmSt = (s, reserve) => { const fs = this.nmFit(s, u, reserve); return fs ? ` style="font-size:${fs}px"` : ''; };
     el.innerHTML =
       `<div class="cc-in">` +
         `<div class="cc-f">` +
@@ -859,7 +872,8 @@ const Deck = {
           `<div class="cc-txt"><b class="cc-tier">${esc(t.name)} · ${esc(t.rarity)}</b>` +
           `<b class="cc-bn">${esc(c.name)}</b><p class="cc-eff">${esc(c.text)}</p>` +
           `<p class="cc-fl">${esc(c.flavor)}</p><p class="cc-ch">${chips.map(esc).join(' · ')}</p></div>` +
-          `<span class="cc-nm"${nmSt(t.name)}>${esc(t.name)}</span>` +
+          `<span class="cc-nm cc-nmb"><small class="cc-nmt">${esc(t.name)}</small>` +
+            `<b class="cc-nmn"${nmSt(c.name, this.nmtReserve(u))}>${esc(c.name)}</b></span>` +
         `</div>` +
       `</div>` +
       (opts.n > 1 ? `<b class="cc-n">×${opts.n}</b>` : '') +
@@ -887,6 +901,11 @@ const Deck = {
   display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 calc(var(--u) * 6); box-sizing: border-box;
   font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 700; text-transform: uppercase; line-height: 1.1;
   font-size: max(calc(var(--u) * 9.5), 7.5px); letter-spacing: calc(var(--u) * .5); color: #f3e2b4; text-shadow: 0 calc(var(--u) * 1) 0 #000; }
+/* the back's plate: the tier in small caps over the card's own name (Deck.NMT) */
+.ccard .cc-nmb { flex-direction: column; gap: calc(var(--u) * .5); }
+.ccard .cc-nmt { display: block; font-size: max(calc(var(--u) * 6), 4px); line-height: 1.3; white-space: nowrap; color: var(--tc);
+  letter-spacing: calc(var(--u) * .6); }
+.ccard .cc-nmn { display: block; font-weight: 700; line-height: 1.1; }
 .ccard .cc-paper { left: calc(var(--u) * 12); top: calc(var(--u) * 12); width: calc(var(--u) * 152); height: calc(var(--u) * 168);
   background: radial-gradient(ellipse at 50% 30%, #2c2318, #17110b 85%); }
 .ccard .cc-txt { position: absolute; left: calc(var(--u) * 22); top: calc(var(--u) * 37); width: calc(var(--u) * 130); height: calc(var(--u) * 139);

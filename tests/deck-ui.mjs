@@ -43,6 +43,9 @@
      THE PLATES        every card's name (and tier, on the back) inside its
                        plate in at most two lines at 320 and 390 (Deck.nmFit);
                        a refusal may take a third line, never an ellipsis
+     THE LANDING       never washes the meadow: the flight's and the impact's
+                       own light, read off a frozen world at 390x844 dpr 2,
+                       shifts at most 1% of the play area toward olive/lime
 
    Run after touching: js/deckui.js, Deck.face in js/deck.js, the DeckUI
    hooks in js/game.js (frame, newGame, loadJSON), Screens.modalUp.
@@ -615,6 +618,9 @@ const rf = await p.evaluate(async () => {
   // the reason is on the line above PLAY — and NOT also laid across the art
   out.banner = !!document.querySelector('#dkInsp .cc-why');
   out.lineFirst = document.querySelector('#dkInsp .dkWhy').textContent;
+  { const pb = document.querySelector('#dkInsp .dkPlay');
+    out.cantBtn = { lab: pb.querySelector('.blab').textContent, small: pb.querySelector('small').textContent,
+      aria: pb.getAttribute('aria-disabled'), shown: getComputedStyle(pb.querySelector('small')).display !== 'none' && pb.querySelector('small').textContent !== '' }; }
   window.__anims.length = 0;
   document.querySelector('#dkInsp .dkPlay').click();
   await wait(100);
@@ -637,6 +643,12 @@ ck('aCardThatCannotBePlayedSaysWhy', rf.cantGreyed && !rf.cantFlew && rf.cantKep
    the toast is a note. */
 ck('aRefusalIsSaidOnceOnTheCard', !rf.banner && rf.lineFirst === 'Nothing needs mending' && rf.shook,
   `banner over the art: ${rf.banner}; line "${rf.lineFirst}"; shook ${rf.shook}`);
+/* …AND ITS BUTTON CONTRADICTS NOTHING (judge g3 #9): the greyed PLAY still
+   read "Plays at once" under the reason it could not. It is plainly
+   disabled, says it cannot, and makes no promise of how it would play. */
+ck('aRefusedPlayButtonPromisesNothing', !!rf.cantBtn && rf.cantBtn.aria === 'true' && !rf.cantBtn.shown && !/^play$/i.test(rf.cantBtn.lab.trim()) &&
+  !/plays at once|choose where/i.test(rf.cantBtn.lab + ' ' + rf.cantBtn.small),
+  rf.cantBtn ? `"${rf.cantBtn.lab}"${rf.cantBtn.shown ? ` over "${rf.cantBtn.small}"` : ''}, aria-disabled ${rf.cantBtn.aria}` : 'no button');
 /* …AND THE SCREEN AROUND IT AGREES. The disabled PLAY must read disabled
    (it was a lit sage slab), and the sheet under the inspector must never
    show through it ("QUICK HANDS" ran into "Nothing needs mending."). Read
@@ -835,12 +847,65 @@ const ux = await p.evaluate(async () => {
   out.toast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => /explored/.test(t.textContent)) &&
     ![...document.querySelectorAll('#toasts .toast.warn')].some(t => /explored/.test(t.textContent));
   S.map.explored[A.y * CFG.W + A.x] = 1;
+  // …and the refusal leaves the moment the mark stands on ground that takes
+  // the card (playtest g4: it stayed up through the valid aim and the play)
+  { const TL = CFG.TILE, z = R.cam.z;
+    DeckUI._aimTo(((A.x + 1.5) * TL - R.cam.x) * z, ((A.y + 0.5) * TL - R.cam.y) * z); }
+  out.validNow = DeckUI.aim && DeckUI.aim.ok;
+  out.staleLeft = [...document.querySelectorAll('#toasts .toast')].filter(t => /explored/.test(t.textContent)).length;
   // ✕ puts the card back, untouched, and gives the pause back
   document.querySelector('#dkAimBar .dkANo').click();
   out.cancel = { aim: !!DeckUI.aim, kept: Deck.count('__aim') === n0, paused: S.paused, layer: !!document.getElementById('dkAim') };
   return out;
 });
 ck('unexploredGroundIsRefused', ux.bad && /explored/.test(ux.stat) && !ux.flew && ux.kept && ux.still && ux.toast, ux.stat);
+ck('andTheRefusalLeavesWithAValidMark', ux.toast && ux.validNow && ux.staleLeft === 0,
+  `mark valid: ${ux.validNow}; "explored" toasts still up: ${ux.staleLeft}`);
+/* THE AIM NEVER LIGHTS THE GROUND, AND ITS INNER RING READS (playtest g4):
+   the reach's floor was a 14% wash of the card's colour — grass under a
+   gold aim went olive, under the truce's orange khaki — and the buildings'
+   reach (Starfall 2 of 3, Dragonfire 2.5) was sparse dots at 60%, lost on
+   grass. Read off the reticle's own canvas, laid over meadow (42,66,34):
+   no pixel of it, in the tier's gold or the warning's orange, comes out
+   lighter and olive; and the inner ring is opaque hard pixels, inked. */
+await aimOpen();
+const rt = await p.evaluate(() => {
+  const A = DeckUI.aim, out = {};
+  A.inner = 2;
+  const grass = [42, 66, 34], lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+  for (const [k, col] of [['gold', '#ffd45e'], ['warn', '#f0a040']]) {
+    DeckUI._drawReticle(A, col);
+    const cv = A.ret, d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, half = A.half, R1 = A.inner * CFG.TILE;
+    const [cr, cg, cb] = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
+    let olive = 0, innerCol = 0, innerInk = 0, innerSoft = 0;
+    for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+      const i = (y * cv.width + x) * 4, a = d[i + 3] / 255;
+      if (!a) continue;
+      const o = [0, 1, 2].map(c => d[i + c] * a + grass[c] * (1 - a));
+      const mx = Math.max(...o), mn = Math.min(...o), dd = mx - mn;
+      if (lum(...o) - lum(...grass) >= 10 && dd / mx >= 0.2) {
+        let h = mx === o[0] ? ((o[1] - o[2]) / dd) % 6 : mx === o[1] ? (o[2] - o[0]) / dd + 2 : (o[0] - o[1]) / dd + 4;
+        h *= 60; if (h < 0) h += 360;
+        if (h >= 48 && h <= 115) olive++;
+      }
+      const r = Math.hypot(x + 0.5 - half, y + 0.5 - half);
+      if (Math.abs(r - R1) <= 2.5) {
+        const isCol = Math.abs(d[i] - cr) + Math.abs(d[i + 1] - cg) + Math.abs(d[i + 2] - cb) < 12;
+        if (isCol && d[i + 3] === 255) innerCol++;
+        else if (isCol) innerSoft++;
+        if (d[i + 3] === 255 && lum(d[i], d[i + 1], d[i + 2]) < 20) innerInk++;
+      }
+    }
+    out[k] = { olive, innerCol, innerInk, innerSoft, around: Math.round(2 * Math.PI * R1) };
+  }
+  A.inner = 0; A.drawn = null; DeckUI._aimSync();
+  document.querySelector('#dkAimBar .dkANo').click();
+  return out;
+});
+ck('theAimNeverLightsTheGround', rt.gold.olive === 0 && rt.warn.olive === 0,
+  `olive pixels over meadow: ${rt.gold.olive} under a gold aim, ${rt.warn.olive} under the warning's orange`);
+ck('andItsInnerRingReads', ['gold', 'warn'].every(k => rt[k].innerCol >= rt[k].around && rt[k].innerInk >= rt[k].around && rt[k].innerSoft === 0),
+  ['gold', 'warn'].map(k => `${k}: ${rt[k].innerCol} opaque ring px, ${rt[k].innerInk} ink px, ${rt[k].innerSoft} half-lit (round ${rt[k].around})`).join('; '));
 ck('cancelKeepsTheCardAndTheWorld', !ux.cancel.aim && ux.cancel.kept && ux.cancel.paused === false && !ux.cancel.layer, JSON.stringify(ux.cancel));
 await aimOpen();
 await p.keyboard.press('Escape');
@@ -1230,14 +1295,58 @@ const strikes = await sp.evaluate(async (enter) => {
 ck('aStrikeSaysItOnceNeverAsAnAlarm', ['starfall', 'dragonfire'].every(id => strikes[id].played && strikes[id].max === 1 && strikes[id].alarms === 0) &&
   strikes.starfall.said.some(t => /star strikes/.test(t)) && strikes.dragonfire.said.some(t => /Ash where they stood/.test(t)),
   ['starfall', 'dragonfire'].map(id => `${id}: ${strikes[id].max} at once, ${strikes[id].alarms} alarm samples — ${strikes[id].said.map(t => t.slice(0, 40)).join(' | ')}`).join('; '));
+/* AN ACT THAT LETTERS ITS OWN WORDS TOASTS NO RULE (judge g3 #4: "every
+   card's toast repeats its own text and covers the top of the world mid-
+   show"): the Imperial army cut sets the card's name and line in its lower
+   bar, and the Pact and the Swallowed Sun letter theirs over the act
+   (R.actTitle) — so the landing's "Card: its rule" toast stands down for
+   them (`narrates`). Played through the real sequence, 3 s watched: no
+   toast names the card. And while the cut's top bar is across the glass,
+   the toasts step below it (--dk-cine): a toast said mid-cut — a raid seen,
+   a soldier lost — is measured standing under the bar, never on it. */
+const told = await sp.evaluate(async (enter) => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const out = {};
+  for (const id of ['legion_marches', 'barbarian_pact', 'swallowed_sun']) {
+    eval('(' + enter + ')')('dk-told-' + id);
+    Deck._col = null; Deck._del(Deck.KEY); Deck._add(id, 1);
+    G.updateVisibility();
+    UI._toastAt = {}; document.getElementById('toasts').innerHTML = '';
+    S.paused = false;
+    const name = Deck.card(id).name, said = new Set();
+    DeckUI._run(id, null, null, false);
+    const t0 = performance.now();
+    let under = null;
+    while (performance.now() - t0 < 3000) {
+      for (const t of document.querySelectorAll('#toasts .toast')) said.add(t.textContent);
+      // mid-cut, a line said by the world: where does it stand?
+      if (id === 'legion_marches' && under === null && Deck.armyFx && Deck.armyFx._cine > 20) {
+        UI.toast('A war band is on the move!', true);
+        await wait(60);
+        const tb = document.getElementById('topbar').getBoundingClientRect(), el = document.querySelector('#toasts .toast:last-child');
+        const cine = parseFloat(document.body.style.getPropertyValue('--dk-cine')) || 0;
+        under = { top: Math.round(el.getBoundingClientRect().top), bar: Math.round(tb.bottom + cine), cine };
+      }
+      await wait(50);
+    }
+    out[id] = { played: Deck.count(id) === 0, named: [...said].filter(t => t.includes(name)), under };
+  }
+  return out;
+}, enterGame.toString());
+const tl = told.legion_marches.under;
+ck('anActThatLettersItsWordsToastsNoRule', Object.values(told).every(o => o.played && !o.named.length),
+  Object.entries(told).map(([id, o]) => `${id}: ${o.named.length ? 'toasted "' + o.named[0].slice(0, 60) + '"' : 'no toast names it'}`).join('; '));
+ck('andAToastSaidMidCutStandsBelowTheBar', !!tl && tl.cine > 20 && tl.top >= tl.bar - 1,
+  tl ? `the toast's top at ${tl.top}px, the cut's top bar ends at ${tl.bar}px (${tl.cine}px of bar)` : 'no cut seen');
 await sctx.close();
 
 /* ================= 12. EVERY NAME FITS ITS PLATE, EVERY REFUSAL ITS CAPTION =================
    The sheet's smallest face is 88px wide (a 320px phone at 2x): there the
    plate's 7.5px floor broke THE SWALLOWED SUN into three lines over the
    plate's rim and ran ENLIGHTENMENT past both its ends. Every card's name —
-   and every tier's, on the back — must sit inside its plate in at most two
-   lines (Deck.nmFit steps the size down), at 320 and at 390; and a refusal
+   on the front, and on the back under its tier's small caps (Deck.NMT) —
+   must sit inside its plate in at most two lines (Deck.nmFit steps the
+   size down, the tier's line held in reserve), at 320 and at 390; and a refusal
    may take a third line, so "The Wonder rises only in Calm worlds." is read
    whole (with its period), never cut off in an ellipsis. */
 const plates = [];
@@ -1257,21 +1366,37 @@ for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3]]) {
       const tb = r.getBoundingClientRect(), padX = parseFloat(getComputedStyle(el).paddingLeft) || 0;
       return tb.top >= box.top - 0.5 && tb.bottom <= box.bottom + 0.5 && tb.left >= box.left + padX - 1 && tb.right <= box.right - padX + 1;
     };
-    const bad = [], cells = [...document.querySelectorAll('#dkSheet .dkCell')];
+    const bad = [], cells = [...document.querySelectorAll('#dkSheet .dkCell')], backs = [];
     for (const cell of cells) for (const nm of cell.querySelectorAll('.cc-nm')) {
       // (the back plate is measured where it stands, turned away: a half
       // turn about the card's axis mirrors its box, which the test is blind to)
       const back = !!nm.closest('.cc-b');
-      const n = lines(nm), ok = n <= 2 && inside(nm);
-      if (!ok) bad.push(`${cell.dataset.card}${back ? ' (back)' : ''}: ${n} lines, ${getComputedStyle(nm).fontSize}`);
+      // the back's plate is the tier in small caps over the card's name: the
+      // name takes at most two lines, the tier one, and both sit in the plate
+      const nmn = back ? nm.querySelector('.cc-nmn') : null, nmt = back ? nm.querySelector('.cc-nmt') : null;
+      const n = lines(nmn || nm), nt = nmt ? lines(nmt) : 1, ok = n <= 2 && nt === 1 && inside(nm);
+      if (!ok) bad.push(`${cell.dataset.card}${back ? ' (back)' : ''}: ${n} lines${back ? ` + ${nt} tier` : ''}, ${getComputedStyle(nmn || nm).fontSize}`);
+      if (back) {
+        const c = Deck.card(cell.dataset.card);
+        backs.push({ id: c.id, name: nmn ? nmn.textContent : nm.textContent, tier: nmt ? nmt.textContent : '',
+          wantName: c.name, wantTier: Deck.tier(c.tier).name });
+      }
     }
     const caps = cells.filter(c => c.querySelector('.dkCap.no')).map(c => {
       const cap = c.querySelector('.dkCap');
       return { id: c.dataset.card, why: cap.textContent, n: lines(cap), whole: cap.scrollHeight <= cap.clientHeight + 1 };
     });
-    return { w, cardW: Math.round(cells[0].getBoundingClientRect().width), n: cells.length, bad, caps };
+    return { w, cardW: Math.round(cells[0].getBoundingClientRect().width), n: cells.length, bad, caps, backs };
   }, { enter: enterGame.toString(), w }));
   await pctx.close();
+}
+/* THE BACK PLATE NAMES THE CARD (judge g4 C): every Legendary back read
+   ENLIGHTENMENT — also a card's own name — and every Imperial back IMPERIAL.
+   The plate on the back carries the card's name, its tier in small caps above */
+{
+  const wrong = plates.flatMap(pl => pl.backs.filter(b => b.name !== b.wantName || b.tier !== b.wantTier).map(b => `${pl.w}: ${b.id} reads "${b.tier ? b.tier + ' / ' : ''}${b.name}"`));
+  ck('theBackPlateNamesTheCard', plates.every(pl => pl.backs.length === 36) && !wrong.length,
+    wrong.length ? wrong.slice(0, 4).join('; ') : `all 36 backs at ${plates.map(pl => pl.w).join(' and ')}: the card's name, the tier in small caps above it`);
 }
 const wonderCap = plates[0].caps.find(c => c.id === 'age_of_marble');
 ck('everyNameFitsItsPlate', plates.every(pl => pl.n === 36 && !pl.bad.length) && plates[0].cardW <= 90,
@@ -1388,6 +1513,134 @@ ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 &&
   await fctx.close();
   ck('theFoilNeverCrossesTheNamePlate', box.n > 0 && plateHit === 0 && goldShone > 0,
     `${box.n} sheen held through its sweep: plate pixels changed ${plateHit}; the gold frame still shines (${goldShone} px)`);
+}
+
+/* ================= 15. THE LANDING NEVER WASHES THE MEADOW =================
+   Judges g3/g4 measured a card's landing lightening 44-48% of the play area
+   toward lime (a full-screen flash of pale cells, a halo and rays of the
+   tier's colour dithered over the grass — gold and green, mixed by the eye,
+   is olive). The flight now shades the world under the card in ink, draws
+   its light solid with an ink edge, and darkens for its flash. Measured at
+   390x844, dpr 2: a Legendary card and a Bronze one are played through the
+   real sequence with the WORLD CANVAS FROZEN (R.draw stood down), the flight
+   and its impact stepped through their own clocks, and the screen read with
+   the flight's layer shown and hidden — the pair's difference is the
+   landing's own light. Across every step, the share of the play area
+   shifted toward olive/lime must stay at or under 1%, read per device pixel
+   and in 8x8 blocks (what the eye mixes a dither into); the flying card's
+   own box is left out of the read — it is the card, not light. */
+{
+  const { ctx: lctx, p: lp } = await page({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await lp.evaluate(() => { CFG.CARDS.ON = true; Deck._col = null; Deck._del(Deck.KEY); });
+  await lp.evaluate(fixtures);
+  await lp.evaluate(enterGame, 'land-wash');
+  await lp.evaluate(() => window.__until(() => DeckUI.built));
+  await settle(lp);
+  const area = await lp.evaluate(() => {
+    for (const [id, tier] of [['__lgTc', 'enlight'], ['__brTc', 'bronze']]) {
+      if (!Deck.card(id)) Deck.CATALOG.push({ id, tier, cat: 'army', target: 'none', name: 'Test ' + id, text: 'Riders ride out.', flavor: 'f', when: 'w' });
+      Deck.FX[id] = { at: 'tc', apply: () => ({ ok: true, msg: 'landed' }) };
+    }
+    Deck._byId = null;
+    const tc = Bld.tcOf('P');
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    // the sequence's own timeouts wait while it is held (its failsafe would land it)
+    const orig = DeckUI._after;
+    window.__lq = [];
+    DeckUI._after = function (ms, fn) { if (window.__lq) { window.__lq.push([ms, fn]); return; } return orig.call(this, ms, fn); };
+    window.__lflush = () => { const q = window.__lq; window.__lq = []; for (const [, fn] of q) fn(); };
+    window.__lrestore = () => { DeckUI._after = orig; window.__lq = null; };
+    const tb = document.getElementById('topbar').getBoundingClientRect(), bb = document.getElementById('bottombar').getBoundingClientRect();
+    return { y0: Math.ceil(tb.bottom * devicePixelRatio), y1: Math.floor(bb.top * devicePixelRatio) };
+  });
+  const shot = async () => (await lp.screenshot()).toString('base64');
+  const read = (on, off, ex) => lp.evaluate(async ([on, off, area, ex]) => {
+    const dec = async s => { const im = new Image(); im.src = 'data:image/png;base64,' + s; await im.decode(); const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0); return { w: c.width, d: g.getImageData(0, 0, c.width, c.height).data }; };
+    const F = await dec(on), B = await dec(off), w = F.w, fd = F.d, bd = B.d;
+    const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+    const olive = (br, bg, bb, ar, ag, ab) => {
+      if (lum(ar, ag, ab) - lum(br, bg, bb) < 10) return false;
+      const mx = Math.max(ar, ag, ab), mn = Math.min(ar, ag, ab), d = mx - mn;
+      if (!mx || !d || d / mx < 0.2) return false;
+      let h = mx === ar ? ((ag - ab) / d) % 6 : mx === ag ? (ab - ar) / d + 2 : (ar - ag) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+      return h >= 48 && h <= 115;
+    };
+    const out = (x, y) => ex && x >= ex.x0 && x < ex.x1 && y >= ex.y0 && y < ex.y1;
+    let n = 0, px = 0, nb = 0, blk = 0;
+    for (let y = area.y0; y < area.y1; y++) for (let x = 0; x < w; x++) {
+      if (out(x, y)) continue;
+      const i = (y * w + x) * 4;
+      n++;
+      if (olive(bd[i], bd[i + 1], bd[i + 2], fd[i], fd[i + 1], fd[i + 2])) px++;
+    }
+    for (let y = area.y0; y + 8 <= area.y1; y += 8) for (let x = 0; x + 8 <= w; x += 8) {
+      if (ex && x + 8 > ex.x0 && x < ex.x1 && y + 8 > ex.y0 && y < ex.y1) continue;
+      const s = [0, 0, 0, 0, 0, 0];
+      for (let yy = 0; yy < 8; yy++) for (let xx = 0; xx < 8; xx++) {
+        const i = ((y + yy) * w + x + xx) * 4;
+        s[0] += bd[i]; s[1] += bd[i + 1]; s[2] += bd[i + 2]; s[3] += fd[i]; s[4] += fd[i + 1]; s[5] += fd[i + 2];
+      }
+      nb++;
+      if (olive(s[0] / 64, s[1] / 64, s[2] / 64, s[3] / 64, s[4] / 64, s[5] / 64)) blk++;
+    }
+    return { px: px / n, blk: blk / nb };
+  }, [on, off, area, ex]);
+  const pair = async (setT) => {
+    const ex = await lp.evaluate((t) => {
+      for (const a of window.__la) { try { a.currentTime = t; } catch (e) {} }
+      const c = document.querySelector('#dkFly .dkFCard');
+      if (!c || c.classList.contains('dz4')) return null;
+      const r = c.getBoundingClientRect(), d = devicePixelRatio;
+      return { x0: Math.floor(r.left * d) - 14, y0: Math.floor(r.top * d) - 14, x1: Math.ceil(r.right * d) + 14, y1: Math.ceil(r.bottom * d) + 14 };
+    }, setT);
+    await lp.waitForTimeout(30);
+    const on = await shot();
+    await lp.evaluate(() => { document.getElementById('dkFly').style.visibility = 'hidden'; });
+    await lp.waitForTimeout(30);
+    const off = await shot();
+    await lp.evaluate(() => { document.getElementById('dkFly').style.visibility = ''; });
+    return read(on, off, ex);
+  };
+  const worst = {};
+  for (const id of ['__lgTc', '__brTc']) {
+    let wpx = 0, wblk = 0, steps = 0;
+    const land = await lp.evaluate((id) => {
+      Deck._add(id, 1);
+      // the tap: the world canvas holds its last frame from here on
+      window.__ldraw = R.draw; R.draw = function () {};
+      document.getElementById('toasts').style.visibility = 'hidden';
+      DeckUI._run(id, null, null, false);
+      window.__la = document.getElementById('dkFly').getAnimations({ subtree: true });
+      for (const a of window.__la) a.pause();
+      return DeckUI.FLY_MS + DeckUI.FLARE_MS + DeckUI.BURST_MS;
+    }, id);
+    for (let t = 0; t <= land; t += 50) {
+      const s = await pair(t);
+      wpx = Math.max(wpx, s.px); wblk = Math.max(wblk, s.blk); steps++;
+    }
+    // the landing: Deck.play, the impact on the hall, stepped the same way
+    await lp.evaluate((land) => {
+      for (const a of window.__la) { try { a.currentTime = land; } catch (e) {} }
+      window.__lflush();
+      window.__la = document.getElementById('dkFly').getAnimations({ subtree: true }).filter(a => a.playState !== 'finished');
+      for (const a of window.__la) a.pause();
+    }, land);
+    const landed = await lp.evaluate(() => !!(DeckUI.playing && DeckUI.playing.landed) && !!document.querySelector('#dkFly .dk-hit'));
+    for (let t = 0; t <= 300; t += 60) {
+      const s = await pair(t);
+      wpx = Math.max(wpx, s.px); wblk = Math.max(wblk, s.blk); steps++;
+    }
+    await lp.evaluate(() => { window.__lflush(); R.draw = window.__ldraw; document.getElementById('toasts').style.visibility = ''; });
+    await lp.evaluate(() => window.__idle());
+    worst[id] = { px: wpx, blk: wblk, steps, landed };
+  }
+  await lp.evaluate(() => window.__lrestore());
+  await lctx.close();
+  const f = v => (v * 100).toFixed(2) + '%';
+  ck('theLandingNeverWashesTheMeadow',
+    Object.values(worst).every(w => w.landed && w.steps > 15 && w.px <= 0.01 && w.blk <= 0.01),
+    Object.entries(worst).map(([id, w]) => `${id}: ${w.steps} steps${w.landed ? '' : ' (NEVER LANDED)'}, olive ${f(w.px)} of pixels, ${f(w.blk)} of 8px blocks`).join('; ') + ' (bar 1%)');
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

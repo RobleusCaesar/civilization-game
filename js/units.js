@@ -1456,7 +1456,7 @@ const Units = {
             s.x = fx + 0.5; s.y = fy + 0.5;
             s.path = null; s.pathI = 0; s.task = null;
             s.anchor = { x: s.x, y: s.y };   // the far side is home now — no leash pullback
-            R.float(u.x, u.y - 0.8, '⬆ over the top!', '#f0d27a');
+            if (this.seenWork(u)) R.float(u.x, u.y - 0.8, '⬆ over the top!', '#f0d27a');   // fog-honest (Combat.seenHit)
             break;
           }
         }

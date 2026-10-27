@@ -1230,24 +1230,35 @@ await p.evaluate(({ ARMY }) => {
         // the bar: rows from `top` down that are the shell's black end to end
         const solid = y => { for (let x = 0; x < W; x += 3) if (!ink((y * W + x) * 4)) return false; return true; };
         let hTop = 0; while (hTop < open && solid(top + hTop)) hTop++;
-        // the lower bar: rows up from `bot` that are black but for the title
-        const black = y => { let n = 0; for (let x = 0; x < W; x += 3) if (ink((y * W + x) * 4)) n++; return n / Math.ceil(W / 3); };
+        // the lower bar: rows up from `bot` that are black but for the title —
+        // read on the row's two outer twelfths, which the words never reach
+        // (R.actTitle keeps its side margin), so a line of subtitle across
+        // the middle of the bar is not taken for the bar's end
+        const black = y => { let n = 0, m = 0; const e = Math.floor(W / 12); for (let x = 0; x < W; x += 3) { if (x >= e && x < W - e) continue; m++; if (ink((y * W + x) * 4)) n++; } return n / m; };
         let hBot = 0; while (hBot < open && black(bot - 1 - hBot) > 0.6) hBot++;
         // the row just inside each bar: a gilded rule there is the old look
         const ruleRow = y => { let n = 0; for (let x = 0; x < W; x += 3) { const i = (y * W + x) * 4; if (d[i + 3] && d[i] > 150 && d[i + 1] > 120 && d[i + 2] < 140) n++; } return n; };
-        // the title: gold pixels in the lower bar, and their height in CSS px
+        // the title: the acts' own two golds (R.ACT_TITLE) in the lower bar,
+        // and their height in CSS px
+        const AT = R.ACT_TITLE, hex = c => [1, 3, 5].map(k => parseInt(c.slice(k, k + 2), 16));
+        const [hi, lo] = [hex(AT.hi), hex(AT.lo)], is = (i, c) => d[i] === c[0] && d[i + 1] === c[1] && d[i + 2] === c[2];
         let gold = 0, y0 = 1e9, y1 = -1, shN = 0, all = 0;
         for (let y = bot - hBot; y < bot; y++) for (let x = 0; x < W; x++) {
           const i = (y * W + x) * 4;
-          if (d[i] === 255 && d[i + 1] === 212 && d[i + 2] === 94) gold++;
-          if (d[i + 3] && d[i] > 120 && d[i + 1] > 90 && d[i + 2] < 120 && d[i] > d[i + 2] + 60) { y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+          if (d[i + 3] === 255 && (is(i, hi) || is(i, lo))) { gold++; y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
         }
         for (let y = top; y < top + hTop; y++) for (let x = 0; x < W; x += 3) { all++; if (shell((y * W + x) * 4)) shN++; }
         return { top: +(hTop / open).toFixed(3), bot: +(hBot / open).toFixed(3), rule: hTop ? ruleRow(top + hTop) + ruleRow(bot - hBot - 1) : 0, gold,
           capPx: y1 >= 0 ? +((y1 - y0 + 1) / dpr).toFixed(1) : 0, shell: all ? +(shN / all).toFixed(2) : 0 };
       };
       const free = s.free || 0;
-      const res = { half: at(0.09), held: at(Math.max(0.5, free - 0.4)), gone: at(free + 0.25) };
+      // which door the words go through: the acts' one title (R.actTitle)
+      const at0 = R.actTitle, titles = [];
+      R.actTitle = function (gg, title, sub) { titles.push([title, sub]); return at0.apply(this, arguments); };
+      let res;
+      try { res = { half: at(0.09), held: at(Math.max(0.5, free - 0.4)), gone: at(free + 0.25) }; } finally { R.actTitle = at0; }
+      res.titles = titles;
+      res.name = Deck.card(id).name.toUpperCase();
       // nobody stands under a bar: every new unit's drawn box, on the screen
       // the cut frames, lies inside it
       const cut = Math.round(open * 0.12), TL = CFG.TILE, z = R.cam.z;
@@ -1274,6 +1285,11 @@ await p.evaluate(({ ARMY }) => {
     ['legion', 'battery', 'host', 'iron'].map(k => `${k}: half-way ${r[k].half.top}, held ${r[k].held.top}/${r[k].held.bot} of the frame (rule px ${r[k].held.rule}, shell black ${r[k].held.shell}), after ${r[k].gone.top}/${r[k].gone.bot}`).join('; '));
   ck('andTheCardsNameIsItsTitle', ['legion', 'battery', 'host'].every(k => r[k].held.gold >= 150 && r[k].held.capPx >= 9 && r[k].half.gold === 0),
     ['legion', 'battery', 'host'].map(k => `${k}: ${r[k].held.gold} gold px in the lower bar, capitals ${r[k].held.capPx} CSS px tall, mid-slide ${r[k].half.gold}`).join('; '));
+  /* …LETTERED AS EVERY ACT IS (R.actTitle — the kraken's, the sun's, the
+     pact's one door), the card's name over its line: the cut used to letter
+     its own flat gold, a third face beside theirs */
+  ck('andItIsLetteredAsEveryActIs', ['legion', 'battery', 'host'].every(k => r[k].titles.length > 0 && r[k].titles.every(t => t[0] === r[k].name && !!t[1])),
+    ['legion', 'battery', 'host'].map(k => `${k}: ${r[k].titles.length ? 'R.actTitle("' + r[k].titles[0][0] + '", "' + r[k].titles[0][1] + '")' : 'its own lettering'}`).join('; '));
   ck('andNobodyLandsUnderABar', r.legion.under === 0 && r.battery.under === 0 && r.host.under === 0 && r.legion.n === 12 && r.battery.n === 3 && r.host.n === 15,
     `under a bar: the legion ${r.legion.under} of ${r.legion.n}, the battery (a garrison at the door) ${r.battery.under} of ${r.battery.n}, the host ${r.host.under} of ${r.host.n}`);
 }
