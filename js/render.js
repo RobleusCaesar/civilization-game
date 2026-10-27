@@ -10522,15 +10522,17 @@ const R = {
      (a fill of gold over a frame of green is the yellow-green wash this
      replaces); the rect defaults to the whole canvas in device px */
   goldWash(g, s, x, y, w, h, tone) {
+    this.goldHue(g, s, () => g.fillRect(x || 0, y || 0, w == null ? this.cv.width : w, h == null ? this.cv.height : h), tone);
+  },
+  // the hue pass alone over a shape (fill(col) lays it), at alpha s in eighths:
+  // a warm TINT inside a ward, never a fill of colour over it
+  goldHue(g, s, fill, tone) {
     const a = Math.round(Math.max(0, Math.min(1, s || 0)) * 8) / 8;
     if (!a) return;
     const T = this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold;
     g.save();
     g.globalCompositeOperation = 'color';
-    if (g.globalCompositeOperation === 'color') {
-      g.globalAlpha = a; g.fillStyle = T.hue;
-      g.fillRect(x || 0, y || 0, w == null ? this.cv.width : w, h == null ? this.cv.height : h);
-    }
+    if (g.globalCompositeOperation === 'color') { g.globalAlpha = a; g.fillStyle = T.hue; fill(T.hue); }
     g.restore();
   },
   /* is an "r,g,b" colour a warm LIGHT (a gold, an amber, a cream — bright,

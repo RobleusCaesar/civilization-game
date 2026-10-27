@@ -386,33 +386,33 @@
           };
           fogBack(g, s.dark, '#0d0b08', front);
           fogBack(g, s.dim, 'rgba(16,16,22,0.45)', front);
-          g.save(); g.globalCompositeOperation = 'lighter';
-          // the ring of firelight riding the front
-          if (p < 0.7) {
-            g.fillStyle = 'rgba(255,170,70,' + qa(0.75 * (1 - p / 0.7)) + ')';
+          g.save();
+          // the ring of firelight riding the front, in the fire's own ink —
+          // opaque bronze dots (added over the meadow they rode in as lime)
+          if (p < 0.7 && R.inkOn(g, 0.9 * (1 - p / 0.7), 'bronze'))
             ring(g, x, s.y * TL, rf * TL, Math.max(24, Math.round(rf * 9)), 1);
-          }
+          g.restore();
           // NO LIGHT POOLED ON THE GROUND (a warm glow over the meadow reads
           // as sand): the fire lights only itself, its sparks and the ring
-          if (p < 0.1) {                                 // the catch: a flash at the foot
-            g.fillStyle = 'rgba(255,240,200,' + qa(0.8 * (1 - p / 0.1)) + ')';
-            R.pxDisc(g, x, y - TL * 0.4, TL * (0.6 + p * 8), 2);
-          }
-          g.restore();
+          if (p < 0.1)                                   // the catch: a flash at the foot, in the fire's light
+            R.glow(g, 1 - p / 0.1, () => R.pxDisc(g, x, y - TL * 0.4, TL * (0.6 + p * 8), 2), 'bronze');
           // the pillar: up in a breath, held, then settling to a watch fire
           const H = p < 0.12 ? 3.8 * ease(p / 0.12) : p < 0.5 ? 3.8 : 3.8 - 2.6 * ease((p - 0.5) / 0.5);
           const Wd = TL * (p < 0.5 ? 0.95 : 0.95 - 0.45 * ease((p - 0.5) / 0.5));
           flame(g, x, y, H * TL, Wd, t, 1.7);
-          // sparks thrown up off the pillar's head
-          g.save(); g.globalCompositeOperation = 'lighter';
+          // sparks thrown up off the pillar's head: the fire's own colours, and
+          // as each dies it goes down the bronze ink, opaque (R.inkFade) — a
+          // spark half-faded over the meadow was a lime one
+          g.save();
           const F = FIRE();
           for (let k = 0; k < 30; k++) {
             const t0 = (k / 30) * 1.5, age = t - t0;
             if (age < 0 || age > 1.1) continue;
             const vx = (rnd(k, 1) - 0.5) * 70, vy = 50 + rnd(k, 2) * 90;
             const sx = x + vx * age + Math.sin(age * 6 + k) * 4, sy = y - H * TL * 0.7 - vy * age + 30 * age * age;
-            g.fillStyle = (k % 3 ? F[3] : F[2]);
-            g.globalAlpha = qa(1 - age / 1.1);
+            const [c, ca] = R.inkFade(k % 3 ? F[3] : F[2], qa(1 - age / 1.1), 'bronze');
+            if (ca <= 0) continue;
+            g.fillStyle = c; g.globalAlpha = ca;
             g.fillRect(snap(sx), snap(sy), 2, 2);
           }
           g.restore();
@@ -449,12 +449,13 @@
           flame(g, x - 4, y - 2, TL * (0.75 + 0.12 * Math.sin(t * 6 + sd)) * k, TL * 0.3 * k, t * 1.1, sd + 2.1);
           flame(g, x + 4, y - 2, TL * (0.7 + 0.12 * Math.sin(t * 5.3 + sd)) * k, TL * 0.28 * k, t * 0.93, sd + 4.4);
           flame(g, x, y - 2, TL * (1.15 + 0.18 * Math.sin(t * 4.6 + sd)) * k, TL * 0.42 * k, t, sd);
-          // sparks going up, light ADDED
-          g.save(); g.globalCompositeOperation = 'lighter';
+          // sparks going up, dying down the bronze ink (never added over the meadow)
+          g.save();
           for (let n = 0; n < 7; n++) {
             const ph = (t * 0.7 + n / 7 + (sd % 1)) % 1;
-            g.fillStyle = n % 2 ? F[3] : F[2];
-            g.globalAlpha = qa((1 - ph) * k);
+            const [c, ca] = R.inkFade(n % 2 ? F[3] : F[2], qa((1 - ph) * k), 'bronze');
+            if (ca <= 0) continue;
+            g.fillStyle = c; g.globalAlpha = ca;
             g.fillRect(snap(x + Math.sin(ph * 7 + n * 1.7) * 6 * ph + (rnd(n, pt.x) - 0.5) * 8), snap(y - TL * 0.9 - ph * TL * 1.4), 2, 2);
           }
           g.restore();
@@ -520,10 +521,10 @@
         const v = view(2);
         if (!inView(v, r.x, r.y) && !inView(v, r.x + r.w, r.y + r.h)) return;
         const t = performance.now() / 1000, br = 0.5 + 0.5 * Math.sin(t * 2.4);
+        // the breathing ring, in the gold's ink (opaque: it lies on ground the
+        // player may know, where gold added went lime)
         g.save();
-        g.globalCompositeOperation = 'lighter';
-        g.fillStyle = 'rgba(255,212,94,' + qa(0.35 + 0.35 * br) + ')';
-        ring(g, cx, cy, TL * (0.95 + 0.12 * br) * Math.max(1, r.w / 2), 20, 1);
+        if (R.inkOn(g, 0.5 + 0.4 * br)) ring(g, cx, cy, TL * (0.95 + 0.12 * br) * Math.max(1, r.w / 2), 20, 1);
         g.restore();
         const arm = Math.max(10, TL * 0.42 * Math.max(1, r.w / 2));
         for (let k = -arm; k <= arm; k += 2) {
@@ -827,17 +828,17 @@
         x = snap(x); y = snap(y);
         const c = 4, HW = 12, look = p > 0.3 && p < 0.8 ? Math.sin((p - 0.3) / 0.5 * Math.PI * 2) : 0;
         const t = performance.now() / 1000;
-        // its halo: two rings of gold dots turning against each other, and rays
-        g.save(); g.globalCompositeOperation = 'lighter';
-        for (const [rr, n, dir, al] of [[1.32, 36, 1, 0.75], [1.62, 48, -1, 0.45]]) {
-          g.fillStyle = 'rgba(255,212,94,' + qa(al * open) + ')';
+        // its halo: two rings of gold dots turning against each other, and
+        // rays — opaque gold ink over the rival's ground (added, lime)
+        g.save();
+        for (const [rr, n, dir, al] of [[1.32, 36, 1, 0.9], [1.62, 48, -1, 0.55]]) {
+          if (!R.inkOn(g, al * open)) continue;
           for (let k = 0; k < n; k++) {
             const a = k / n * Math.PI * 2 + dir * t * 0.6;
             g.fillRect(snap(x + Math.cos(a) * c * HW * rr), snap(y + Math.sin(a) * c * HW * rr * 0.62), 4, 4);
           }
         }
-        g.fillStyle = 'rgba(255,233,160,' + qa(0.5 * open) + ')';
-        for (let k = 0; k < 12; k++) {
+        if (R.inkOn(g, 0.7 * open)) for (let k = 0; k < 12; k++) {
           const a = k / 12 * Math.PI * 2 + t * 0.2, r0 = c * HW * 1.75, r1 = r0 + c * (3 + 2 * Math.sin(t * 3 + k));
           for (let r = r0; r < r1; r += 4) g.fillRect(snap(x + Math.cos(a) * r), snap(y + Math.sin(a) * r * 0.62), 2, 2);
         }

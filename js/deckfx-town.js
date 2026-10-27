@@ -72,9 +72,12 @@
    in gold, beacons catching on every tower); Iron dramatic (a cold flash, a
    shake, a wave of runes); Enlightenment held — the sky darkens, a pillar
    of gold comes down on the hall, the ground shakes, a dome rises. House
-   style throughout: hard pixels on a 2px grid, hard alpha steps, light
-   ADDED ('lighter'), rings made of dots, no ctx.filter, no soft gradients,
-   culled to the camera, nothing drawn while nothing is in play. */
+   style throughout: hard pixels on a 2px grid, hard alpha steps, rings made
+   of dots, no ctx.filter, no soft gradients, culled to the camera, nothing
+   drawn while nothing is in play — and THE LIGHT IS GOLD, NOT LIME (R.glow,
+   render.js): a body of the tier's light turns what it falls on to the
+   light's own colour and then brightens it, a mark of it (a ring's dots, a
+   spark) is laid opaque in its ink, never gold ADDED over the meadow. */
 (() => {
   const PX = 2;
   const sn = v => Math.round(v / PX) * PX;                         // the 2px grid
@@ -101,23 +104,22 @@
       return s ? { x: s.x + 0.5, y: s.y + 0.7 } : { x: Bld.cx(tc) + side * (sz / 2 + 0.5), y: tc.y + sz + 0.5 };
     },
     /* THE CARD'S OWN LIGHT where its goods come down: a shaft of the tier's
-       colour slammed onto the spot and narrowing away, and a ring of dots
+       light slammed onto the spot and narrowing away, and a ring of dots
        running out over the ground — so the pile arrives as a gift, not as
-       logs falling out of an empty sky. `col` is an "r,g,b" string. */
-    arrive(g, x, y, t, col, H) {
+       logs falling out of an empty sky. `tone` names the tier's light
+       (R.LIGHT.TONE: the Stone tier's 'pale', the Bronze tier's 'bronze',
+       'gold'): the shaft is R.glow, the ring its ink. */
+    arrive(g, x, y, t, tone, H) {
       if (t < 0 || t > 0.6) return;
-      g.save(); g.globalCompositeOperation = 'lighter';
       const k = t < 0.07 ? 1 : 1 - (t - 0.07) / 0.53, h = H * Math.min(1, t / 0.07 + 0.2);
-      for (const [w, al] of [[26, 0.16], [14, 0.28], [4, 0.6]]) {
+      for (const [w, sv] of [[26, 0.27], [14, 0.47], [4, 1]]) {
         const ww = Math.max(PX, sn(w * k));
-        g.fillStyle = 'rgba(' + col + ',' + stp(al * k, 8) + ')';
-        g.fillRect(sn(x - ww / 2), sn(y - h), ww, sn(h));
+        R.glow(g, sv * k, () => g.fillRect(sn(x - ww / 2), sn(y - h), ww, sn(h)), tone);
       }
       const q = t / 0.6;
-      g.globalAlpha = stp(0.9 * (1 - q), 4); g.fillStyle = 'rgb(' + col + ')';
-      this.ring(g, x, y - 2, 6 + eo(q) * 34, 0.5);
+      g.save();
+      if (R.inkOn(g, 0.9 * (1 - q), tone)) this.ring(g, x, y - 2, 6 + eo(q) * 34, 0.5);
       g.restore();
-      g.globalAlpha = 1;
     },
     // the side of the hall with more open ground along its door row
     openSide(tc) {
@@ -270,8 +272,8 @@
         g.fillRect(sn(x - ww / 2), sn(y - r), ww, PX);
       }
     },
-    STONE_LIGHT: '228,222,208',    // the Stone tier's pale light (Deck.TIERS' stone, lifted)
-    BRONZE_LIGHT: '255,186,112',   // …and the Bronze tier's warm one
+    STONE_LIGHT: 'pale',      // the Stone tier's pale light (R.LIGHT.TONE — Deck.TIERS' stone, lifted)
+    BRONZE_LIGHT: 'bronze',   // …and the Bronze tier's warm one
     sound(kind) { if (typeof Sound !== 'undefined' && Sound.play) Sound.play(kind); },
     show(id, data) { return (typeof R !== 'undefined' && R.startCardShow) ? R.startCardShow(id, data) : null; },
     // the count over the goods, in gold — held a beat longer than a hit's
@@ -615,13 +617,13 @@
         g.globalAlpha = 1;
         const settled = s.t - (0.05 + 4 * 0.16 + 0.26);
         if (settled > 0) {
-          g.save(); g.globalCompositeOperation = 'lighter';
-          // the pale ring the last block lands in
+          g.save();
+          // the pale ring the last block lands in, in the Stone tier's ink
           if (settled < 0.6) {
             const q = settled / 0.6;
-            g.globalAlpha = stp(0.8 * (1 - q), 4); g.fillStyle = 'rgb(' + TX.STONE_LIGHT + ')';
-            TX.ring(g, px, py - 2, 10 + eo(q) * 34, 0.5);
+            if (R.inkOn(g, 0.8 * (1 - q), TX.STONE_LIGHT)) TX.ring(g, px, py - 2, 10 + eo(q) * 34, 0.5);
           }
+          g.globalCompositeOperation = 'lighter';
           // and the fresh faces catch the light, one after another
           this.show.BLOCKS.forEach(([dx, dy, rr], i) => {
             const ph = (settled * 1.6 + i * 0.37) % 1;
@@ -648,7 +650,7 @@
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
         if (!TX.near(px - TL, py - 3 * TL, px + TL, py + TL)) return;
-        TX.arrive(g, px, py, s.t, '255,232,160', TL * 2.2);
+        TX.arrive(g, px, py, s.t, 'gold', TL * 2.2);
         fade(g, p, 0.84);
         const t = s.t, land = 0.32;
         // the fall and two bounces, each lower than the last
@@ -666,8 +668,8 @@
           const arm = Math.max(1, Math.round(Math.sin(gt * Math.PI) * 6));
           g.globalAlpha = stp(Math.sin(gt * Math.PI) + 0.25, 4);
           TX.star(g, px - 2, py - 7, arm, '#fff2c0');
-          g.fillStyle = 'rgba(255,212,94,1)'; g.globalAlpha = stp(1 - gt, 4) * 0.85;
-          TX.ring(g, px, py - 4, 6 + gt * 26, 0.55, 14);
+          // the ring of gold dots running out from it, in the gold's ink
+          if (R.inkOn(g, (1 - gt) * 0.95)) TX.ring(g, px, py - 4, 6 + gt * 26, 0.55, 14);
           g.restore();
         }
         // a few motes rising off it as it settles
@@ -768,10 +770,10 @@
               g.globalAlpha = stp(0.8 * (1 - ph) * vis, 3);
               g.fillRect(sn(cx - dir * (CART_BACK + ph * 22)), sn(rowY - 2 - ph * 8 - (k % 2) * 2), PX + (k % 2) * PX, PX);
             }
-            g.save(); g.globalCompositeOperation = 'lighter';
+            g.save();
             for (let k = 0; k < 8; k++) {
               const ph = (rolled / 14 + k / 8) % 1;
-              g.globalAlpha = stp(0.9 * (1 - ph) * vis, 3); g.fillStyle = k % 2 ? '#ffd45e' : '#ffb870';
+              if (!R.inkOn(g, 0.9 * (1 - ph) * vis, k % 2 ? 'gold' : 'bronze')) continue;   // warm motes, in ink
               g.fillRect(sn(cx - dir * (24 + ph * 30)), sn(rowY - 30 - ph * 18 + (k % 3) * 3), PX, PX);
             }
             g.restore();
@@ -804,12 +806,10 @@
           const ct = t - U[PILE.length - 1] - hop;
           if (ct > 0) {
             if (ct < 0.7) {
-              g.save(); g.globalCompositeOperation = 'lighter';
+              g.save();
               const q = ct / 0.7;
-              g.globalAlpha = stp(0.9 * (1 - q), 4); g.fillStyle = 'rgb(' + TX.BRONZE_LIGHT + ')';
-              TX.ring(g, pile.x, pile.y - 2, 10 + eo(q) * 46, 0.5);
-              g.globalAlpha = stp(0.7 * (1 - q), 4); g.fillStyle = '#ffd45e';
-              TX.ring(g, pile.x, pile.y - 2, 6 + eo(q) * 28, 0.5);
+              if (R.inkOn(g, 0.9 * (1 - q), TX.BRONZE_LIGHT)) TX.ring(g, pile.x, pile.y - 2, 10 + eo(q) * 46, 0.5);
+              if (R.inkOn(g, 0.8 * (1 - q), 'gold')) TX.ring(g, pile.x, pile.y - 2, 6 + eo(q) * 28, 0.5);
               g.restore();
             }
             for (let k = 0; k < 14; k++) {
@@ -862,19 +862,17 @@
         ms: 1800, layer: 'world',
         draw(g, s, p) {
           const TL = TLs(), r = s.t * s.speed, far = s.hit[s.hit.length - 1].d + 1;
-          // the wave: a ring of warm dots rolling out over the town, and a fainter one behind it
-          g.save(); g.globalCompositeOperation = 'lighter';
+          // the wave: a ring of warm dots rolling out over the town, and a
+          // fainter one behind it — gold ink, laid opaque (a lime-green ring
+          // ADDED over the meadow was the colour of nothing this card does)
+          g.save();
           for (const [lag, a0] of [[0, 1], [0.7, 0.45]]) {
             const rr = r - lag;
             if (rr <= 0 || rr > far + 2) continue;
-            const k = rr / (far + 2);
-            g.globalAlpha = stp(a0 * (1 - k * k), 4);
-            g.fillStyle = '#dcf09a';
-            TX.ring(g, s.cx * TL, s.cy * TL, rr * TL, 0.62, 0, 4);
-            g.fillStyle = '#fff6c8';
-            TX.ring(g, s.cx * TL, s.cy * TL, rr * TL - 3, 0.62, 0, 8);
+            const k = rr / (far + 2), a = a0 * (1 - k * k);
+            if (R.inkOn(g, 0.75 * a)) TX.ring(g, s.cx * TL, s.cy * TL, rr * TL, 0.62, 0, 4);
+            if (R.inkOn(g, a)) TX.ring(g, s.cx * TL, s.cy * TL, rr * TL - 3, 0.62, 0, 8);
           }
-          g.globalAlpha = 1;
           g.restore();
           // each building as the light reaches it
           for (const h of s.hit) {
@@ -883,21 +881,21 @@
             const b = Bld.get(h.id);
             if (!b || !TX.bNear(b)) continue;
             const a = TX.art(b);
-            g.save(); g.globalCompositeOperation = 'lighter';
-            if (age < 0.6) { g.globalAlpha = stp(0.6 * (1 - age / 0.6), 4); TX.paint(g, a, '#fff0b0', 0, 1); }
-            g.globalAlpha = 1;
+            // the building flares GOLD as it is made whole (R.glow over its own
+            // worn shape: it turns gold in its own light and shade, then bright)
+            if (age < 0.6) R.glow(g, 1 - age / 0.6, c => TX.paint(g, a, c, 0, 1));
+            g.save();
             // the sparks of a town patched up: crosses rising off the roof, a mending + above it
             for (let k = 0; k < 6; k++) {
               const tl = age - k * 0.05;
               if (tl < 0 || tl > 0.55) continue;
               const x = a.rc.x + (a.box.l + (a.box.r - a.box.l) * hs(h.id, k)) * a.rc.w;
               const y = a.rc.y + (a.box.t + (a.box.b - a.box.t) * hs(k, h.id) * 0.8) * a.rc.h - tl * 22;
-              g.globalAlpha = stp(1 - tl / 0.55, 3);
-              TX.star(g, x, y, tl < 0.25 ? 2 : 1, '#e8f6b0', '#ffffff');
+              const ink = R.goldInk(1 - tl / 0.55);
+              if (ink) TX.star(g, x, y, tl < 0.25 ? 2 : 1, ink, '#fff8e8');
             }
             const cx = a.rc.x + (a.box.l + a.box.r) / 2 * a.rc.w, cy = a.rc.y + a.box.t * a.rc.h - 4 - age * 16;
-            g.globalAlpha = stp(1 - age / 0.9, 3);
-            g.fillStyle = '#c8f08a'; g.fillRect(sn(cx) - 1, sn(cy) - 5, 2, 6); g.fillRect(sn(cx) - 3, sn(cy) - 3, 6, 2);
+            if (R.inkOn(g, 1.2 * (1 - age / 0.9))) { g.fillRect(sn(cx) - 1, sn(cy) - 5, 2, 6); g.fillRect(sn(cx) - 3, sn(cy) - 3, 6, 2); }
             g.restore();
           }
         },
@@ -955,39 +953,37 @@
           const b = Bld.get(s.bid); if (!b || !TX.bNear(b)) return;
           const TL = TLs(), a = TX.art(b), rc = a.rc, top = rc.y + a.box.t * rc.h, foot = rc.y + a.box.b * rc.h;
           const x0 = sn(rc.x + a.box.l * rc.w), x1 = sn(rc.x + a.box.r * rc.w), w = x1 - x0;
-          g.save(); g.globalCompositeOperation = 'lighter';
           // the column of gold, slammed down, held, then narrowing to a thread
+          // (the card's light, R.glow: what stands in it turns gold, then bright)
           const up = cl(p / 0.08), down = p < 0.5 ? 1 : 1 - cl((p - 0.5) / 0.3);
           if (down > 0) {
             const colTop = top - TL * 3, h = (foot - colTop) * up;
-            for (const [wf, al] of [[1.15, 0.16], [0.6, 0.26], [0.18, 0.5]]) {
+            for (const [wf, sv] of [[1.15, 0.27], [0.6, 0.45], [0.18, 0.85]]) {
               const ww = Math.max(PX, sn(w * wf * down));
-              g.fillStyle = 'rgba(255,214,94,' + al + ')';
-              g.fillRect(sn((x0 + x1) / 2 - ww / 2), sn(colTop), ww, sn(h));
+              R.glow(g, sv, () => g.fillRect(sn((x0 + x1) / 2 - ww / 2), sn(colTop), ww, sn(h)));
             }
           }
-          // the building fills with light from its foot to its crown, then lets it go
+          // the building fills with gold light from its foot to its crown, then
+          // lets it go — in its own light and shade, over its worn shape
           if (a.spr) {
             const rise = cl((p - 0.06) / 0.42), fy = a.box.b - (a.box.b - a.box.t) * eo(rise);
-            g.globalAlpha = p < 0.55 ? 0.75 : stp(0.75 * (1 - (p - 0.55) / 0.3), 4);
-            if (g.globalAlpha > 0) TX.paint(g, a, '#ffd45e', fy, 1);
-            if (rise > 0 && rise < 1) { g.globalAlpha = 1; TX.paint(g, a, '#fff6d0', fy, fy + 2 / rc.h); }
+            const fl = p < 0.55 ? 0.75 : 0.75 * (1 - (p - 0.55) / 0.3);
+            if (fl > 0) R.glow(g, fl, c => TX.paint(g, a, c, fy, 1));
+            if (rise > 0 && rise < 1) R.glowHot(g, 1, c => TX.paint(g, a, c, fy, fy + 2 / rc.h));
           }
-          g.globalAlpha = 1;
-          // sparks off the scaffold that was never needed
+          g.save();
+          // sparks off the scaffold that was never needed, in the gold's ink
           for (let k = 0; k < 12; k++) {
             const tl = p - 0.1 - k * 0.04;
             if (tl < 0 || tl > 0.45) continue;
             const x = x0 + hs(k, s.bid) * w, y = foot - hs(s.bid, k) * (foot - top) - tl * 40;
-            g.fillStyle = k % 3 ? '#ffd45e' : '#fff2c0';
-            g.globalAlpha = stp(1 - tl / 0.45, 3);
+            if (!R.inkOn(g, (k % 3 ? 0.75 : 1) * (1 - tl / 0.45))) continue;
             g.fillRect(sn(x), sn(y), PX, PX);
           }
           // and a ring of dots runs out over the ground as the dust settles
           if (p > 0.45) {
             const q = (p - 0.45) / 0.55;
-            g.globalAlpha = stp(0.8 * (1 - q), 4); g.fillStyle = '#ffd45e';
-            TX.ring(g, (x0 + x1) / 2, foot - 2, w * 0.6 + q * TL * 1.4, 0.5);
+            if (R.inkOn(g, 0.9 * (1 - q))) TX.ring(g, (x0 + x1) / 2, foot - 2, w * 0.6 + q * TL * 1.4, 0.5);
           }
           g.restore();
           if (!s.floated && p > 0.5) {
@@ -1032,11 +1028,10 @@
         const TL = TLs(), c = TX.crown(b), s = TL * (b.key === 'warcamp' ? 0.62 : 0.5) * k;
         if (s < 2) return;
         const fx = c.x, fy = c.y + 2;
-        g.save(); g.globalCompositeOperation = 'lighter';
+        // its light round the crown: the bronze of firelight, never lime
         const fl = 0.9 + 0.1 * Math.sin(now * 9 + b.id);
-        g.fillStyle = 'rgba(255,140,50,0.10)'; R.pxDisc(g, fx, fy - s * 0.35, TL * 0.95 * k * fl, 2, 0.8);
-        g.fillStyle = 'rgba(255,190,90,0.14)'; R.pxDisc(g, fx, fy - s * 0.35, TL * 0.5 * k * fl, 2, 0.8);
-        g.restore();
+        R.glow(g, 0.12, () => R.pxDisc(g, fx, fy - s * 0.35, TL * 0.95 * k * fl, 2, 0.8), 'bronze');
+        R.glow(g, 0.3, () => R.pxDisc(g, fx, fy - s * 0.35, TL * 0.5 * k * fl, 2, 0.8), 'bronze');
         // the iron basket it burns in
         g.fillStyle = AP().ink[1]; g.fillRect(sn(fx - 5), sn(fy - 2), 10, 2); g.fillRect(sn(fx - 3), sn(fy), 6, 2);
         TX.flame(g, fx, fy - 1, s, ((now * 7.7) | 0) + b.id);
@@ -1074,27 +1069,25 @@
             if (tl < 0) continue;
             const R1 = f.r1 * TL, near = TX.near(f.ox * TL - R1, f.oy * TL - R1, f.ox * TL + R1, f.oy * TL + R1);
             if (!near) continue;
-            g.save(); g.globalCompositeOperation = 'lighter';
-            // the pitch catches: a streak of fire shooting up off the crown
+            g.save();
+            // the pitch catches: a streak of fire shooting up off the crown —
+            // the bronze of firelight (R.glow), its sparks in the fire's ink
             if (s.fresh && tl < 0.45) {
               const c = TX.crown(b), q = tl / 0.45, h = TL * 1.4 * eo(q);
-              for (const [w, al] of [[6, 0.35], [2, 0.9]]) {
-                g.fillStyle = 'rgba(255,200,110,' + stp(al * (1 - q), 4) + ')';
-                g.fillRect(sn(c.x - w / 2), sn(c.y - h), w, sn(h));
-              }
+              for (const [w, sv] of [[6, 0.58], [2, 1]]) R.glow(g, sv * (1 - q), () => g.fillRect(sn(c.x - w / 2), sn(c.y - h), w, sn(h)), 'bronze');
               for (let k = 0; k < 8; k++) {
                 const a = k / 8 * Math.PI * 2, d = 4 + q * 18;
-                g.fillStyle = k % 2 ? '#ffe9a0' : '#f2c14a'; g.globalAlpha = stp(1 - q, 3);
+                if (!R.inkOn(g, (k % 2 ? 1 : 0.7) * (1 - q), k % 2 ? 'gold' : 'bronze')) continue;
                 g.fillRect(sn(c.x + Math.cos(a) * d), sn(c.y - 6 + Math.sin(a) * d * 0.7 - q * 6), PX, PX);
               }
-              g.globalAlpha = 1;
             }
-            // the reach: the old ring faint, then a ring of fire-dots growing out to the new one
+            // the reach: the old ring faint, then a ring of fire-dots growing out
+            // to the new one — opaque fire ink (added over the meadow, lime)
             const gq = cl((tl - 0.15) / 0.7), r = f.r0 + (f.r1 - f.r0) * eo(gq);
             const a = gq < 1 ? 0.9 : stp(0.9 * (1 - (tl - 0.85) / 1.2), 4);
             if (a > 0) {
-              g.globalAlpha = stp(a * 0.35, 4); g.fillStyle = '#e88a3a'; TX.ring(g, f.ox * TL, f.oy * TL, f.r0 * TL, 1);
-              g.globalAlpha = a; g.fillStyle = '#ffb34a'; TX.ring(g, f.ox * TL, f.oy * TL, r * TL, 1);
+              if (R.inkOn(g, a * 0.35, 'bronze')) TX.ring(g, f.ox * TL, f.oy * TL, f.r0 * TL, 1);
+              if (R.inkOn(g, a, 'bronze')) TX.ring(g, f.ox * TL, f.oy * TL, r * TL, 1);
             }
             g.restore();
           }
@@ -1298,25 +1291,31 @@
       dome(g, D, rise, boost, now) {
         const { cx, gy, rx, ry } = D, hd = D.hd * rise;
         if (hd < 2) return;
-        g.save(); g.globalCompositeOperation = 'lighter';
-        // the light inside it: two hard bands, stepped, never a gradient
-        for (const [k, al] of [[1, 0.05 + boost * 0.14], [0.62, 0.05 + boost * 0.1]]) {
-          g.fillStyle = 'rgba(255,214,94,' + stp(al, 20) + ')';
-          for (let y = 0; y < hd * k; y += PX) {
-            const w = Math.sqrt(Math.max(0, 1 - (y / (hd * k)) * (y / (hd * k)))) * rx * k;
-            g.fillRect(sn(cx - w), sn(gy - y), Math.max(PX, sn(w * 2)), PX);
-          }
+        /* the light inside it: two hard bands, stepped, never a gradient — a
+           warm TINT of the hall and its ground (the hue pass alone, R.goldHue),
+           and the card's full light only while a blow is swallowed; a dome of
+           gold ADDED stood over the town for twelve days as a lime blister */
+        for (const [k, al] of [[1, 0.25], [0.62, 0.25]]) {
+          const fill = () => {
+            for (let y = 0; y < hd * k; y += PX) {
+              const w = Math.sqrt(Math.max(0, 1 - (y / (hd * k)) * (y / (hd * k)))) * rx * k;
+              g.fillRect(sn(cx - w), sn(gy - y), Math.max(PX, sn(w * 2)), PX);
+            }
+          };
+          R.goldHue(g, al, fill);
+          if (boost > 0) R.glow(g, boost * (k < 1 ? 0.7 : 0.45), fill);
         }
-        // its ribs: the outline, two meridians and a girdle, made of dots, a shimmer running round
+        g.save();
+        // its ribs: the outline, two meridians and a girdle, made of dots, a
+        // shimmer running round — opaque gold ink, faded down the ramp
         const dots = (fx, fy, n, base) => {
           for (let i = 0; i <= n; i++) {
             const th = i / n * Math.PI, x = fx(th), y = fy(th);
             const sh = Math.max(0, Math.sin(th * 3 - now * 2.2));
-            g.globalAlpha = stp(base + sh * 0.35 + boost * 0.4, 4);
+            if (!R.inkOn(g, base + sh * 0.35 + boost * 0.4)) continue;
             g.fillRect(sn(x), sn(y), PX, PX);
           }
         };
-        g.fillStyle = '#ffe9a0';
         const nO = Math.max(16, Math.round((rx + hd) / 2));
         dots(th => cx + Math.cos(th) * rx, th => gy - Math.sin(th) * hd, nO, 0.6);
         dots(th => cx + Math.cos(th) * rx * 0.55, th => gy - Math.sin(th) * hd, Math.round(nO * 0.7), 0.25);
@@ -1338,9 +1337,8 @@
         this.dome(g, D, rise, boost, now);
         // a blow swallowed: a ripple of gold runs out over the dome's skin
         if (boost > 0) {
-          g.save(); g.globalCompositeOperation = 'lighter';
-          g.globalAlpha = boost; g.fillStyle = '#fff2c0';
-          TX.ring(g, D.cx, D.gy, D.rx * (1 + (1 - boost) * 0.35), 0.42);
+          g.save();
+          if (R.inkOn(g, boost)) TX.ring(g, D.cx, D.gy, D.rx * (1 + (1 - boost) * 0.35), 0.42);
           g.restore();
         }
       },
@@ -1353,24 +1351,23 @@
             // the ground answers the blow: rings of gold rolling out from the hall
             if (p > imp) {
               const q = (p - imp) / 0.5;
-              g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = '#ffd45e';
+              g.save();
               for (const [lag, reach] of [[0, 7], [0.12, 5], [0.24, 3.5]]) {
                 const qq = (q - lag) / (1 - lag);
                 if (qq <= 0 || qq >= 1) continue;
-                g.globalAlpha = stp(0.9 * (1 - qq), 4);
-                TX.ring(g, D.cx, D.gy, D.rx + eo(qq) * reach * TL, 0.42);
+                if (R.inkOn(g, 0.95 * (1 - qq))) TX.ring(g, D.cx, D.gy, D.rx + eo(qq) * reach * TL, 0.42);
               }
               g.restore();
             }
-            // motes of gold coming down in the pillar
+            // motes of gold coming down in the pillar, in the gold's ink
             if (p > 0.04 && p < 0.7) {
-              g.fillStyle = '#fff2c0';
+              g.save();
               for (let k = 0; k < 14; k++) {
                 const ph = (s.t * 0.9 + hs(k, 21)) % 1;
-                g.globalAlpha = stp(0.9 * Math.sin(ph * Math.PI), 3);
+                if (!R.inkOn(g, Math.sin(ph * Math.PI))) continue;
                 g.fillRect(sn(D.cx + (hs(21, k) - 0.5) * D.rx * 1.3), sn(D.gy - D.hd * 2.6 * (1 - ph)), PX, PX);
               }
-              g.globalAlpha = 1;
+              g.restore();
             }
             // the dome rises brighter than it will stand
             if (p > imp && p < 0.75) U.dome(g, D, eo(cl((p - imp) / 0.3)), stp(0.6 * (1 - cl((p - imp) / 0.55)), 4), performance.now() / 1000);
@@ -1380,7 +1377,7 @@
           if (!s.boom && p >= imp) {
             s.boom = true;
             if (R.shakeAt) R.shakeAt(7, 0.8);
-            if (R.flashAt) R.flashAt(0.5, 0.8, '255,198,98');     // gold, never milk
+            if (R.flashAt) R.flashAt(0.36, 0.8, '255,198,98', true);     // gold, never milk — nor lime (the gold flash turns the frame amber first)
             if (R.startle) R.startle(Bld.cx(tc), Bld.cy(tc), 14);
             TX.sound('cardHall');
           }
@@ -1388,30 +1385,33 @@
           // the sky darkens for it, and lifts after
           const veil = p < 0.25 ? cl(p / 0.25) : p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.3);
           if (veil > 0) { g.fillStyle = 'rgba(12,8,24,' + stp(0.3 * veil, 6) + ')'; g.fillRect(0, 0, W, H); }
-          g.save(); g.globalCompositeOperation = 'lighter';
-          // the pillar: down from the top of the sky onto the hall, held, then a thread, then gone
+          g.save();
+          // the pillar: down from the top of the sky onto the hall, held, then
+          // a thread, then gone — the card's light (R.glow: what stands in it
+          // turns gold, then cream), a white-hot thread at its heart
           const down = cl((p - 0.03) / (imp - 0.03)), narrow = p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.26);
           if (down > 0 && narrow > 0) {
             const bottom = A.y * eo(down), wide = D.rx * 2 * A.z;
-            for (const [wf, al] of [[1.25, 0.14], [0.7, 0.22], [0.3, 0.38], [0.08, 0.7]]) {
+            for (const [wf, sv] of [[1.25, 0.3], [0.7, 0.5], [0.3, 0.85], [0.08, 1]]) {
               const ww = Math.max(2, Math.round(wide * wf * narrow / 2) * 2);
-              g.fillStyle = 'rgba(255,220,130,' + al + ')';
-              g.fillRect(Math.round(A.x - ww / 2), 0, ww, Math.round(bottom));
+              R.glow(g, sv, () => g.fillRect(Math.round(A.x - ww / 2), 0, ww, Math.round(bottom)));
             }
+            const hw = Math.max(2, Math.round(wide * 0.03 * narrow / 2) * 2);
+            R.glowHot(g, 0.75, () => g.fillRect(Math.round(A.x - hw / 2), 0, hw, Math.round(bottom)));
           }
           // rays from the dome's crown, turning slowly, while it rises and holds
+          // (each a faint band of the card's light — added, they were lime)
           if (p > imp && p < 0.9) {
             const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3);
-            g.fillStyle = 'rgba(255,214,94,' + stp(0.16 * k, 8) + ')';
             const rot = s.t * 0.12, px = Math.max(2, Math.round(A.z * 2));
-            for (let i = 0; i < 14; i++) U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.035 + (i % 2) * 0.02, px, W, H);
+            for (let i = 0; i < 14; i++)
+              R.glow(g, (i % 2 ? 0.1 : 0.16) * k, () => U.ray(g, apex.x, apex.y, rot + i / 14 * Math.PI * 2, 0.035 + (i % 2) * 0.02, px, W, H));
           }
           // a halo of hard dots bursting out across the whole screen at the blow
           if (p > imp && p < imp + 0.35) {
             const q = (p - imp) / 0.35, rr = q * Math.hypot(W, H) * 0.7, px = Math.max(2, Math.round(A.z * 2));
-            g.fillStyle = 'rgba(255,233,160,' + stp(0.8 * (1 - q), 4) + ')';
             const n = Math.min(220, Math.max(24, Math.round(rr / (px * 3))));
-            for (let i = 0; i < n; i++) {
+            if (R.inkOn(g, 1 - q)) for (let i = 0; i < n; i++) {
               const th = i / n * Math.PI * 2;
               g.fillRect(Math.round((A.x + Math.cos(th) * rr) / px) * px, Math.round((A.y + Math.sin(th) * rr * 0.6) / px) * px, px, px);
             }
