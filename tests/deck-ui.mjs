@@ -478,19 +478,27 @@ const rf = await p.evaluate(async () => {
   document.querySelector('#dkInsp .dkPlay').click();
   await __idle();
   out.noKept = Deck.count('__no') === 1;
-  out.noToast = [...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'No room by the fire');
+  // said in the NOTE style: the red alarm is the town under attack, never a card
+  out.noToast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => t.textContent === 'No room by the fire') &&
+    ![...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'No room by the fire');
   out.noResumed = S.paused === false;
   out.consumes = c.queue.filter(x => x.op === 'consume').length - q0;
   // at PLAY: the card cannot be played now
   document.getElementById('deckBtn').click(); await wait(400);
   document.querySelector('#dkSheet .dkCell[data-card="__cant"]').click(); await wait(250);
   out.cantGreyed = document.querySelector('#dkInsp .dkPlay').classList.contains('cant') && document.querySelector('#dkInsp .ccard').classList.contains('off');
+  // the reason is on the line above PLAY — and NOT also laid across the art
+  out.banner = !!document.querySelector('#dkInsp .cc-why');
+  out.lineFirst = document.querySelector('#dkInsp .dkWhy').textContent;
+  window.__anims.length = 0;
   document.querySelector('#dkInsp .dkPlay').click();
   await wait(100);
+  out.shook = window.__anims.some(k => /translateX/.test(k));
   out.cantFlew = !!DeckUI.playing;
   out.cantKept = Deck.count('__cant') === 1;
   out.cantWhy = document.querySelector('#dkInsp .dkWhy').textContent;
-  out.cantToast = [...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'Nothing needs mending');
+  out.cantToast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => t.textContent === 'Nothing needs mending') &&
+    ![...document.querySelectorAll('#toasts .toast.warn')].some(t => t.textContent === 'Nothing needs mending');
   document.querySelector('#dkInsp .dkIClose').click(); await wait(250);
   out.putBack = !document.getElementById('dkInsp') && DeckUI.open;
   document.querySelector('#dkSheet .dkClose').click(); await wait(350);
@@ -498,6 +506,55 @@ const rf = await p.evaluate(async () => {
 });
 ck('aRefusalAtTheLandingKeepsTheCard', rf.noKept && rf.noToast && rf.noResumed && rf.consumes === 0, JSON.stringify(rf));
 ck('aCardThatCannotBePlayedSaysWhy', rf.cantGreyed && !rf.cantFlew && rf.cantKept && rf.cantWhy === 'Nothing needs mending' && rf.cantToast && rf.putBack);
+/* SAID ONCE, ON THE CARD (playtest g1/g2/g4): a banner across the art, the
+   line above PLAY and a red toast were the same words three times on one
+   screen. The line stays (and the button shakes its head); the banner goes;
+   the toast is a note. */
+ck('aRefusalIsSaidOnceOnTheCard', !rf.banner && rf.lineFirst === 'Nothing needs mending' && rf.shook,
+  `banner over the art: ${rf.banner}; line "${rf.lineFirst}"; shook ${rf.shook}`);
+/* …AND THE SCREEN AROUND IT AGREES. The disabled PLAY must read disabled
+   (it was a lit sage slab), and the sheet under the inspector must never
+   show through it ("QUICK HANDS" ran into "Nothing needs mending."). Read
+   off the real pixels: the sheet's panel shot with the lifted card up,
+   then again with every caption, header and face in the sheet hidden —
+   nothing of the sheet may change the picture. */
+const pxOf = (pg, buf) => pg.evaluate(async (b64) => {
+  const im = new Image(); im.src = 'data:image/png;base64,' + b64; await im.decode();
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+  const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let L = 0, Sa = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { const r = d[i], gg = d[i + 1], bb = d[i + 2]; L += 0.299 * r + 0.587 * gg + 0.114 * bb; Sa += Math.max(r, gg, bb) - Math.min(r, gg, bb); n++; }
+  return { luma: L / n, sat: Sa / n, data: [...d] };
+}, buf.toString('base64'));
+const liftIt = async (id) => {
+  await p.evaluate(async (id) => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    if (Deck.count(id) < 1) { Deck.col().counts[id] = 1; Deck.saveCol(); }
+    if (!DeckUI.open) { document.getElementById('deckBtn').click(); await wait(400); }
+    document.querySelector(`#dkSheet .dkCell[data-card="${id}"]`).click(); await wait(400);
+  }, id);
+};
+await liftIt('__cant');
+const offPlay = await pxOf(p, await p.locator('#dkInsp .dkPlay').screenshot());
+const panelR = await p.evaluate(() => { const r = document.querySelector('#dkSheet .dkPanel').getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.bottom - r.top) }; });
+const withSheet = await pxOf(p, await p.screenshot({ clip: panelR }));
+await p.evaluate(() => {
+  const st = document.createElement('style'); st.id = '__noSheet';
+  st.textContent = '#dkSheet .dkCap, #dkSheet .dkGroupHd, #dkSheet .ccard, #dkSheet .dkHead, #dkSheet .dkGrip, #dkSheet .dkHint { visibility: hidden !important; }';
+  document.head.appendChild(st);
+});
+const noSheet = await pxOf(p, await p.screenshot({ clip: panelR }));
+await p.evaluate(async () => { document.getElementById('__noSheet').remove(); DeckUI.putBack(true); });
+await liftIt('__bar');
+const onPlay = await pxOf(p, await p.locator('#dkInsp .dkPlay').screenshot());
+await p.evaluate(async () => { DeckUI.closeSheet(); await new Promise(r => setTimeout(r, 350)); });
+let through = 0;
+for (let i = 0; i < withSheet.data.length; i += 4)
+  if (Math.abs(withSheet.data[i] - noSheet.data[i]) + Math.abs(withSheet.data[i + 1] - noSheet.data[i + 1]) + Math.abs(withSheet.data[i + 2] - noSheet.data[i + 2]) > 6) through++;
+ck('aDisabledPlayLooksDisabled', offPlay.luma < onPlay.luma * 0.6 && offPlay.sat < 18,
+  `disabled luma ${offPlay.luma.toFixed(0)} sat ${offPlay.sat.toFixed(0)}; playable luma ${onPlay.luma.toFixed(0)} sat ${onPlay.sat.toFixed(0)}`);
+ck('theSheetNeverShowsThroughTheLiftedCard', through === 0, `${through} px of the sheet show through the inspector`);
 
 /* ================= 7. TARGETING ================= */
 // spies: the world's own tap handlers and the canvas itself
@@ -625,7 +682,9 @@ const ux = await p.evaluate(async () => {
   document.querySelector('#dkAimBar .dkAGo').click();
   await wait(60);
   out.flew = !!DeckUI.playing; out.kept = Deck.count('__aim') === n0; out.still = !!DeckUI.aim;
-  out.toast = [...document.querySelectorAll('#toasts .toast.warn')].some(t => /explored/.test(t.textContent));
+  // a refusal is a NOTE, never the red alarm
+  out.toast = [...document.querySelectorAll('#toasts .toast:not(.warn)')].some(t => /explored/.test(t.textContent)) &&
+    ![...document.querySelectorAll('#toasts .toast.warn')].some(t => /explored/.test(t.textContent));
   S.map.explored[A.y * CFG.W + A.x] = 1;
   // ✕ puts the card back, untouched, and gives the pause back
   document.querySelector('#dkAimBar .dkANo').click();

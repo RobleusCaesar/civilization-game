@@ -578,7 +578,11 @@ const DeckUI = {
     // the room the stage leaves the card: one layout read, at a tap
     const room = slot.getBoundingClientRect();
     const w = Math.max(120, Math.min(360, room.width, room.height * Deck.W / Deck.H));
-    const big = Deck.face(id, { w: this._faceW(w, false), n: Deck.count(id), off: !can.ok, why: can.ok ? '' : can.why });
+    /* A REFUSAL IS SAID ONCE, ON THE LINE ABOVE PLAY (playtest g1/g2/g4): the
+       face is greyed, but no banner is laid across its art — the reason over
+       the picture, above PLAY and in a toast was the same words three times
+       on one screen, and the banner hid the art the player lifted it to see */
+    const big = Deck.face(id, { w: this._faceW(w, false), n: Deck.count(id), off: !can.ok });
     slot.appendChild(big);
     play.querySelector('small').textContent = c.target === 'none' ? this._kindLine(c) : 'Then choose where';
     play.classList.toggle('cant', !can.ok);
@@ -652,7 +656,7 @@ const DeckUI = {
           const lb = this.lifted.play.querySelector('.blab');
           if (lb) lb.textContent = 'Confirm';
         }
-        this._say(warn, true);
+        this._say(this._sentence(warn), 'note');
         UI.cue('bad');
         return;
       }
@@ -678,10 +682,12 @@ const DeckUI = {
     const t = String(s || '').trim().replace(/[\s—–-]+$/, '');
     return /[.!?]$/.test(t) ? t : t + '.';
   },
-  // a play that cannot happen says why, out loud — on the toast AND on the
-  // card's own line — and the button shakes its head
+  /* a play that cannot happen says why — on the card's own line above PLAY,
+     and the button shakes its head. The toast is the NOTE, never the red
+     alarm: red is the town under attack (CLAUDE.md's foe-notes rule), and a
+     card that cannot be played now is not an emergency (playtest nit 9) */
   _refuse(why, shakeEl) {
-    this._say(why || 'Not now.', true);
+    this._say(why || 'Not now.', 'note');
     UI.cue('bad');
     if (this.lifted) this.lifted.why.textContent = why || '';
     if (shakeEl && !this._calm())
@@ -965,7 +971,7 @@ const DeckUI = {
     this._release();
     const L = P.layer;
     if (!r.ok) {
-      this._say(r.why || 'The card could not take hold — it is still yours.', true);
+      this._say(r.why || 'The card could not take hold — it is still yours.', 'note');
       UI.cue('bad');
     } else {
       // the effect itself writes the event log (Deck.say); the landing only
@@ -1580,7 +1586,12 @@ body.dk-aiming #bottombar { visibility: hidden; }
 /* a refusal says WHY, and the why is longer than a kind line: it may take a
    third line before the ellipsis (a 320px phone's 88px card held two) */
 #dkSheet .dkCap.no { color: #f0c48a; -webkit-line-clamp: 3; }
-#dkSheet.dkLifted .dkHint { visibility: hidden; }
+/* A LIFTED CARD HAS THE SCREEN: the sheet under the inspector's dim stands
+   down entirely — its captions and name plates showed through the backdrop and
+   ran into the card's own line ("QUICK HANDS" into "Nothing needs mending.",
+   playtest g1/g2). Hidden, not removed: the cell keeps its box, so the card
+   still flies back into its own slot, and the row is back the moment it lands */
+#dkSheet.dkLifted .dkPanel > * { visibility: hidden; }
 #dkSheet .dkHint { text-align: center; color: var(--dim); font-size: 11px; margin: 4px 16px 0; min-height: 14px; }
 #dkSheet .dkEmpty { margin: 6px auto 10px; max-width: 360px; display: flex; flex-direction: column; align-items: center; gap: 8px;
   text-align: center; color: var(--dim); font-size: 13px; line-height: 1.45; padding: 0 8px; }
@@ -1598,6 +1609,16 @@ body.dk-aiming #bottombar { visibility: hidden; }
   background: radial-gradient(circle, var(--tg) 0%, transparent 58%); opacity: .9; }
 #dkInsp .dkIAct { flex: 0 0 auto; width: min(320px, 88vw); display: flex; flex-direction: column; align-items: center; gap: 7px; pointer-events: auto; }
 #dkInsp .dkPlay { width: 100%; }
+/* A PLAY THAT CANNOT BE PRESSED LOOKS IT: the plaques' disabled wash left the
+   green banner a lit sage slab (playtest g2). Here it is an unlit plank —
+   cold dark wood, dim rim, dim studs, grey lettering — sitting flush */
+#dkInsp .dkPlay.cant { filter: none; cursor: default; }
+#dkInsp .dkPlay.cant::before { filter: none; background: #26221c;
+  box-shadow: inset 0 0 0 2px #110d08, inset 0 0 0 4px #4b4539, inset 0 0 0 6px #332e26, inset 0 0 0 7px #110d08,
+    inset 0 9px 0 rgba(0,0,0,.32); }
+#dkInsp .dkPlay.cant::after { opacity: .3; }
+#dkInsp .dkPlay.cant .blab { color: #8a8273; text-shadow: none; }
+#dkInsp .dkPlay.cant small { color: #6e675a; }
 #dkInsp .dkWhy { min-height: 0; color: #f0c48a; font-size: 13px; line-height: 1.35; text-align: center; text-shadow: 0 1px 0 #000; }
 #dkInsp .dkWhy:empty { display: none; }
 #dkInsp .dkTip { color: var(--dim); font-size: 11px; }
