@@ -17,11 +17,15 @@
      the Houndmaster's guard-beast branch (Combat.acquire), which had no leash,
      never struck back and never went home. A war-wolf answers to the HALL:
      it goes for any enemy that comes within PACK.home of the Town Center
-     (and within its own nose, PACK.sense), lets a runner go at PACK.leash and
-     trots back to its own place by the hall (u.den) after every fight
-     (Units.resolveAfterFight). Walked out past home ground by the player it
-     obeys, and when the walk is done it goes home: the card says they stay
-     near home. It strikes back when struck. It is not population, eats
+     (and within its own nose, PACK.sense), lets a runner IT CHOSE go at
+     PACK.leash (u.packMark), and trots back to its own place by the hall
+     (u.den — one tile per wolf) after every fight (Units.resolveAfterFight).
+     Walked out past home ground by the player it obeys, and when the walk is
+     done it goes home: the card says they stay near home. Struck — anywhere,
+     on the player's errand too — it fights it out where it stands, and lets
+     go only if the fight drags it PACK.leash from where it began (u.packFrom).
+     Its march out to its den is its own walk, not an order, so a foe near
+     the hall breaks it off. It is not population, eats
      nothing, scores no "greatest tribe" (game.js counts popUsed now), is no
      game (owner 'P' is never wild: no meat, no corpse, no hunting ground),
      and its own soldiers can never mistake it for a foe (same owner). The
@@ -32,7 +36,8 @@
      a hull included); they take no sky-iron (they are a card's); a heal is
      paid in food and a ghost eats nothing, so the Heal button and its ring
      never offer it; they go back to the earth without fifteen red "was
-     killed" toasts. Their kills are kills. When the host's days are done
+     killed" toasts. Their kills are kills. A ghost still under the ground is
+     not drawn, so it cannot be tapped either (R.unitHidden). When the host's days are done
      EVERY ghost fades — the ones riding a transport too, which no S.units
      pass can see (Units.despawn returns on a unit it cannot find).
    THE VETERANS (u.vet, Veterans): a base or second-rank soldier becomes its
@@ -42,7 +47,9 @@
      Catapult becomes a veteran, u.vet = 1.25: its health and its attack, and
      an engine's stone with it (combat.js reads u.vet where it reads bldAtk).
      A veteran never stacks: a second card finds it already at the top. The
-     soldiers aboard a transport rise with the rest. A Catapult becomes a
+     soldiers aboard a transport rise with the rest. The rank is worn for
+     good: two gold chevrons for a veteran, one for a soldier the card raised
+     to champion (u.ranked). A Catapult becomes a
      Trebuchet, which had no heal price (CFG.HEAL_FOOD) — it has one now.
 
    NO CARD DRAWS THE RUN'S RNG: every roll here is Math.random or a hash of

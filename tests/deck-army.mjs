@@ -28,31 +28,46 @@
                        the hall's ceiling too, where training then waits;
                        wolves and ghosts neither count nor eat, a ghost below
                        deck included; the tribe's greatest size is its
-                       population (popUsed), never its beasts and ghosts
+                       population (popUsed), never its beasts and ghosts — so
+                       the day after the legion marches it is twelve larger;
+                       and the two switch-off changes pinned as intended: a
+                       sapper is not the tribe at its greatest, a trained
+                       trebuchet is mended at its price
      THE WAR-WOLVES    yours and nobody's game; go for a foe near the hall
-                       and not one past it; let a runner go at the edge of
-                       home (the Houndmaster's beast chases forever); strike
-                       back; come home after a fight; an order is obeyed, then
-                       home; the truce holds; the tribe's dye at their feet
+                       and not one past it; let a runner they chose go at the
+                       edge of home (the Houndmaster's beast chases forever);
+                       strike back, and struck far from home on an errand
+                       fight it out (a home-ground leash let go on the first
+                       tick) — yet no runner leads one across the map; come
+                       home after a fight, or when the mark simply vanishes;
+                       an order is obeyed, then home; three wolves on three
+                       dens (the muster deals two to a tile); the march out is
+                       the pack's own walk; the truce holds; the tribe's dye
      VETERANS          every rank of every land kind, health in proportion,
                        the origin card and the sky-iron carried over, the
                        soldiers below deck too, never stacked, a veteran
-                       engine's stone a quarter heavier, the promoted
-                       catapult healable, the panel naming the new rank, and
+                       engine's stone a quarter heavier (at a building and
+                       at a bridge), the promoted catapult healable, the
+                       panel naming the new rank, the rank worn for good, and
                        the two refusals
      THE HOST          no famine takes a ghost, no Heal offered, no alarm when
                        one falls, its kills are kills, all fade on the day —
                        the ones aboard a hull too — and a second host
                        lengthens the first; each ghost under the ground until
-                       its beat in the rising
+                       its beat in the rising — and, not drawn, not tapped
+                       (nor a muster's unit still waiting its flash); no heal
+                       ring for a ghost
      SAVES             a muster mid-beat, the pack's home, a veteran and a
                        host on the march all ride a save
      NO RNG / NO SCORE no card draws S.rngState; playing one scores nothing
+                       at the play
      THE TRUCE         a summoning never breaks the Calm peace
      THE PICTURE       every show draws at every beat of every layer, the
                        host's live look and every card unit's own look, whole
-                       frames run clean, the shows are render state only, and
-                       every voice is synthesized (no audio file)
+                       frames run clean, the shows are render state only,
+                       every voice is synthesized (no audio file), and nothing
+                       is drawn in the black (world shows clipped by the
+                       engine, the sky's light by each show)
 
    Run after touching: js/deckfx-army.js, Deck.summon / swift_raiders in
    js/deckfx.js, Units.spawn's card opt, Units.mortal (popUsed, foodUpkeep,
@@ -454,6 +469,55 @@ await p.evaluate(({ ARMY }) => {
   ck('theGreatestTribeIsItsPopulation', r.peak === r.popNow && r.allP > r.popNow,
     `peakPop ${r.peak} = popUsed ${r.popNow}; every P unit would have said ${r.allP}`);
 }
+{
+  /* TWO DELIBERATE CHANGES TO ORDINARY PLAY, pinned with the switch OFF so
+     no sweep reads them as drift: "the tribe at its greatest" is now its
+     POPULATION (Units.popUsed), so a sapper no longer counts toward it, and a
+     trained Trebuchet can be mended, at CFG.HEAL_FOOD.trebuchet (100) food
+     for its whole health — UI.healCost's own ceil(missing share × price). */
+  const r = await p.evaluate(() => {
+    const out = {};
+    CFG.CARDS.ON = false; Deck._dev = false;
+    G.newGame('army-switchoff-pop', 'moderate', 'medium'); S.paused = true;
+    __ar.flat();
+    const tc = Bld.tcOf('P');
+    for (let i = 0; i < 3; i++) __ar.unit('villager', 'P', tc.x + i + 0.5, tc.y + 3.5);
+    S.res.food = 99999;
+    S.stats.peakPop = 0; G.dayTick();
+    const base = S.stats.peakPop;
+    __ar.unit('sapper', 'P', tc.x + 0.5, tc.y + 4.5);
+    S.stats.peakPop = 0; G.dayTick();
+    out.sapper = { base, with: S.stats.peakPop, off: !Deck.on() };
+    const t = Units.spawn('trebuchet', 'P', tc.x + 3, tc.y + 5);
+    t.hp = Math.round(t.maxhp * 0.37);
+    out.treb = { cost: UI.healCost(t), want: Math.max(1, Math.ceil((1 - t.hp / t.maxhp) * 100)), price: CFG.HEAL_FOOD.trebuchet };
+    /* RULING 5 ON THE NEXT DAY: a card's soldiers ARE population, so the
+       day after the Legion marches the tribe at its greatest is twelve
+       heads larger (ruling 6's "no points for playing a card" is the PLAY:
+       the census they join is the game's own). The wolves and the host are
+       not population, so they add nothing, the next day or ever. */
+    __ar.fresh('army-nextday-pop'); __ar.flat();
+    const tc2 = Bld.tcOf('P');
+    for (let i = 0; i < 3; i++) __ar.unit('villager', 'P', tc2.x + i + 0.5, tc2.y + 6.5);
+    S.res.food = 99999;
+    S.stats.peakPop = 0; G.dayTick();
+    const p0 = S.stats.peakPop;
+    Deck.play('legion_marches');
+    const atPlay = S.stats.peakPop;
+    G.dayTick();
+    const p1 = S.stats.peakPop;
+    Deck.play('ancestors_host'); Deck.play('hunters_pack');
+    G.dayTick();
+    out.next = { p0, atPlay, legion: p1 - p0, beasts: S.stats.peakPop - p1 };
+    return out;
+  });
+  ck('aSapperIsNotTheTribeAtItsGreatest', r.sapper.off && r.sapper.with === r.sapper.base && r.sapper.base === 3,
+    `switch off: three villagers read ${r.sapper.base}; with a sapper beside them ${r.sapper.with}`);
+  ck('aTrainedTrebuchetIsMendedAtItsPrice', r.treb.price === 100 && r.treb.cost === r.treb.want,
+    `a trebuchet at 37%: ${r.treb.cost} food (ceil of the missing share × ${r.treb.price} = ${r.treb.want})`);
+  ck('theLegionIsTheTribeTheNextDay', r.next.atPlay === r.next.p0 && r.next.legion === 12 && r.next.beasts === 0,
+    `at the play +${r.next.atPlay - r.next.p0}; the next day the legion +${r.next.legion}; the host and the pack +${r.next.beasts}`);
+}
 
 // ---------------- 4. THE WAR-WOLVES ----------------
 {
@@ -476,7 +540,7 @@ await p.evaluate(({ ARMY }) => {
     const near = __ar.unit('raider', 'R', w.x + 3, w.y); near.hostileTo = 'P';
     for (const u of pack) { u.tUnit = 0; u.task = null; u.path = null; }
     Combat.acquire();
-    out.goesFor = w.tUnit === near.id;
+    out.goesFor = w.tUnit === near.id && w.packMark === true;   // a mark the PACK chose, and says so
     Units.despawn(near);
     // …but not one past home ground, however near its nose
     for (const u of pack) { u.tUnit = 0; u.task = null; u.path = null; u.x = hx + 9.5; u.y = hy; }
@@ -489,7 +553,7 @@ await p.evaluate(({ ARMY }) => {
     // beast (no war-wolf mark) chases on.
     const runner = __ar.unit('raider', 'R', hx + 15, hy); runner.hostileTo = 'P';
     const hound = __ar.unit('wolf', 'P', hx + 13.5, hy + 1);
-    w.x = hx + 13.5; w.y = hy; w.tUnit = runner.id; w.task = null;
+    w.x = hx + 13.5; w.y = hy; w.tUnit = runner.id; w.task = null; w.packMark = true;   // one it chose itself
     hound.tUnit = runner.id;
     Combat.update(0.05);
     out.leash = { let: w.tUnit === 0, home: !!(w.task && w.task.home && w.task.x === w.den.x && w.task.y === w.den.y), hound: hound.tUnit === runner.id };
@@ -556,6 +620,105 @@ await p.evaluate(({ ARMY }) => {
   });
   ck('thePackKeepsTheTruce', r.peace);
   ck('andWearsTheTribesDye', r.dye >= 12 && r.named, `${r.dye} dyed pixels in the ring; named a War-wolf with its own hint ${r.named}`);
+}
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-wolf-far'); __ar.flat();
+    const tc = Bld.tcOf('P'), hx = Bld.cx(tc), hy = Bld.cy(tc);
+    /* A WOLF STRUCK FAR FROM HOME FIGHTS IT OUT. Walked out by the player
+       and struck there, it answers and keeps its mark until the foe is down
+       — the home-ground leash belongs only to a mark the pack chose. The
+       CONTROL is that same leash applied to the struck wolf (packMark set,
+       as the first cut treated every mark): it lets go on the first tick. */
+    const trial = (naive) => {
+      const { units: pack } = __ar.play('hunters_pack');
+      const w = pack[0];
+      for (const u of pack) if (u !== w) Units.despawn(u);
+      const fx = (hx + 16) | 0, fy = hy | 0;
+      w.x = fx + 0.5; w.y = fy + 0.5;
+      Units.moveTo(w, fx + 1, fy);                                   // a plain walk the player ordered
+      const foe = __ar.unit('raider', 'R', w.x + 0.9, w.y, 40); foe.hostileTo = 'P'; foe.tUnit = w.id;
+      Units.damage(w, 3, foe.id, 'R');
+      if (naive) w.packMark = true;
+      const d0 = +Math.hypot(w.x - hx, w.y - hy).toFixed(1);
+      let held = true, ticks = 0;
+      for (; ticks < 400 && foe.hp > 0 && S.units.includes(foe); ticks++) {
+        w.hp = w.maxhp;                                              // the wolf stays up: this measures the leash, not the duel
+        if (naive) w.packMark = true;                                // the first cut leashed EVERY mark to home ground
+        Units.update(0.05); Combat.update(0.05);
+        if (w.tUnit !== foe.id && foe.hp > 0 && S.units.includes(foe)) { held = false; break; }
+      }
+      const res = { d0, held, killed: !S.units.includes(foe) || foe.hp <= 0, home: !!(w.task && w.task.home), tUnit: w.tUnit };
+      Units.despawn(w); if (S.units.includes(foe)) Units.despawn(foe);
+      return res;
+    };
+    out.fight = trial(false);
+    out.naive = trial(true);
+    /* …and A RUNNER CAN NEVER LEAD IT ACROSS THE MAP: struck, it chases at
+       most PACK.leash from where the fight began, then lets go and goes home */
+    {
+      const { units: pack } = __ar.play('hunters_pack');
+      const w = pack[0];
+      for (const u of pack) if (u !== w) Units.despawn(u);
+      w.x = hx + 0.5; w.y = hy + 3.5; w.task = null; w.path = null;
+      const foe = __ar.unit('raider', 'R', w.x + 1, w.y, 999); foe.hostileTo = 'P';
+      Units.damage(w, 1, foe.id, 'R');
+      Combat.update(0.05);
+      const from = w.packFrom && { x: w.packFrom.x, y: w.packFrom.y };
+      foe.x = w.x + Deck.PACK.leash + 2;                             // the fight has dragged it far
+      w.x = w.x + Deck.PACK.leash + 0.6;
+      Combat.update(0.05);
+      out.runner = { from: !!from, let: w.tUnit === 0, home: !!(w.task && w.task.home) };
+      Units.despawn(w); Units.despawn(foe);
+    }
+    /* THREE WOLVES, THREE DENS: the muster deals two of a kind to a tile
+       (Units.formationMove) — the CONTROL is the same muster asked without
+       the card's den rule — and the pack's three places are three tiles,
+       none of them under anyone already standing still */
+    __ar.fresh('army-wolf-dens'); __ar.flat();
+    const raw = Deck.summon([{ kind: 'wolf', n: 3 }], { stagger: 260, hold: 0.3 });
+    const slots = raw.units.map(u => u.task.x + ',' + u.task.y);
+    out.naiveSlots = new Set(slots).size;
+    for (const u of raw.units) Units.despawn(u);
+    // …and somebody already standing on the first of those slots
+    const [sx0, sy0] = slots[0].split(',').map(Number);
+    const v = __ar.unit('villager', 'P', sx0 + 0.5, sy0 + 0.5);
+    const { units: pack } = __ar.play('hunters_pack');
+    const dens = pack.map(u => u.den.x + ',' + u.den.y);
+    out.dens = dens;
+    out.distinct = new Set(dens).size === 3;
+    out.free = pack.every(u => (u.den.x !== (v.x | 0) || u.den.y !== (v.y | 0)) && Path.passable(u.den.x, u.den.y, 'P') && !Bld.at(u.den.x, u.den.y));
+    out.march = pack.every(u => u.task && u.task.type === 'muster' && u.task.x === u.den.x && u.task.y === u.den.y);
+    __ar.sim(4);
+    out.rest = new Set(pack.map(u => (u.x | 0) + ',' + (u.y | 0))).size === 3 && pack.every(u => (u.x | 0) === u.den.x && (u.y | 0) === u.den.y);
+    /* THE MARCH OUT IS THE PACK'S OWN WALK: when the muster lets a wolf go,
+       its walk carries the home flag, and a foe near the hall breaks it off
+       (a walk the PLAYER orders is obeyed to the letter — anOrderIsObeyed) */
+    __ar.fresh('army-wolf-march'); __ar.flat();
+    const { units: p2 } = __ar.play('hunters_pack');
+    for (let i = 0; i < 40 && !p2.every(u => u.task && u.task.type === 'move'); i++) Units.update(0.05);
+    out.homeFlag = p2.every(u => u.task && u.task.type === 'move' && u.task.home === true);
+    const intr = __ar.unit('raider', 'R', p2[0].x + 2, p2[0].y, 999); intr.hostileTo = 'P';
+    Combat.acquire();
+    out.breaks = p2.some(u => u.tUnit === intr.id);
+    /* AND A MARK THAT SIMPLY VANISHES (a foe that boards a hull, a despawn)
+       sends it home on the very next tick — the !tgt branch, not the death
+       cleanup the other checks reach it through */
+    const w3 = p2[0];
+    w3.tUnit = intr.id; w3.task = null; w3.path = null;
+    S.units.splice(S.units.indexOf(intr), 1);
+    Combat.update(0.05);
+    out.vanish = { tUnit: w3.tUnit, home: !!(w3.task && w3.task.home && w3.task.x === w3.den.x && w3.task.y === w3.den.y) || ((w3.x | 0) === w3.den.x && (w3.y | 0) === w3.den.y && !w3.task) };
+    return out;
+  });
+  ck('aWolfStruckFarFromHomeFightsItOut', r.fight.d0 > 10 && r.fight.held && r.fight.killed && r.fight.home && !r.naive.held,
+    `struck ${r.fight.d0} tiles from the hall on a walk: held its mark to the kill ${r.fight.held}/${r.fight.killed}, then home ${r.fight.home}; the home-ground leash on the same mark lets go: ${!r.naive.held}`);
+  ck('butARunnerCannotLeadItAcrossTheMap', r.runner.from && r.runner.let && r.runner.home, JSON.stringify(r.runner));
+  ck('threeWolvesThreeDens', r.naiveSlots < 3 && r.distinct && r.free && r.march && r.rest,
+    `the muster alone deals ${r.naiveSlots} tiles to three; the pack's dens ${r.dens.join(' / ')}, none under a standing villager ${r.free}, marched to ${r.march}, resting there apart ${r.rest}`);
+  ck('theMarchOutIsThePacksOwnWalk', r.homeFlag && r.breaks, `every march carries the home flag ${r.homeFlag}; a foe near the hall breaks it off ${r.breaks}`);
+  ck('aMarkThatVanishesSendsItHome', r.vanish.tUnit === 0 && r.vanish.home, JSON.stringify(r.vanish));
 }
 
 // ---------------- 5. VETERANS ----------------
@@ -653,6 +816,18 @@ await p.evaluate(({ ARMY }) => {
       return pj ? pj.tgt.dmg : null;
     };
     out.stone = [shot(false), shot(true)]; out.trebAtk = CFG.UNITS.trebuchet.bldAtk;
+    // …at the OTHER siege site too: a rival bridge (combat.js's tBridge)
+    (S.bridges || (S.bridges = [])).push({ x: 22, y: 12, owner: 'A', level: 1, dir: 'h', hp: 99999, maxhp: 99999 });
+    const cut = (vet) => {
+      const br = Bld.bridgeAt(22, 12), hp0 = br.hp;
+      const t = __ar.unit('trebuchet', 'P', 16.5, 12.5);
+      if (vet) Deck.veteran(t);
+      t.tBridge = { x: 22, y: 12 }; t.cd = 0;
+      Combat.update(0.01);
+      Units.despawn(t);
+      return hp0 - br.hp;
+    };
+    out.bridge = [cut(false), cut(true)];
     // THE PROMOTED CATAPULT CAN BE HEALED: the trebuchet has a price now
     const c = __ar.unit('catapult', 'P', 9.5, 11.5);
     Deck.play('veterans');
@@ -662,10 +837,36 @@ await p.evaluate(({ ARMY }) => {
   });
   ck('theOriginCardAndTheSkyIronCarryOver', JSON.stringify(r.d) === JSON.stringify(r.dWant) && JSON.stringify(r.rd) === JSON.stringify(r.rdWant),
     `defender → ${r.d.join('/')}; rider → ${r.rd.join('/')}`);
-  ck('aVeteranEngineThrowsAQuarterHarder', r.stone[0] === r.trebAtk && r.stone[1] === Math.round(r.trebAtk * 1.25),
-    `a trebuchet's stone ${r.stone[0]} → a veteran's ${r.stone[1]}`);
+  ck('aVeteranEngineThrowsAQuarterHarder', r.stone[0] === r.trebAtk && r.stone[1] === Math.round(r.trebAtk * 1.25) &&
+    r.bridge[0] === r.trebAtk && r.bridge[1] === Math.round(r.trebAtk * 1.25),
+    `a trebuchet's stone ${r.stone[0]} → a veteran's ${r.stone[1]}; on a rival bridge ${r.bridge[0]} → ${r.bridge[1]}`);
   ck('aPromotedCatapultCanBeHealed', r.heal.kind === 'trebuchet' && r.heal.price > 0 && r.heal.cost > 0,
     `${r.heal.kind}: heal price ${r.heal.price}, at half strength ${r.heal.cost} food`);
+}
+{
+  /* THE RANK THE CARD GAVE IS WORN FOR GOOD: a minute after the card, a
+     soldier it raised to champion wears one gold chevron and a veteran two
+     — measured on the pixels drawUnit lays over a plain frame, against a
+     trained champion (the CONTROL) that wears none */
+  const r = await p.evaluate(() => {
+    __ar.fresh('army-chevron'); __ar.flat();
+    const d = __ar.unit('defender', 'P', 4.5, 14.5), e = __ar.unit('elite', 'P', 6.5, 14.5), plain = __ar.unit('elite', 'P', 8.5, 14.5);
+    S.units.splice(S.units.indexOf(plain), 1);
+    Deck.play('veterans');
+    S.units.push(plain);
+    const img = document.createElement('canvas'); img.width = img.height = 32;
+    const gold = u => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 40;
+      const g = cv.getContext('2d');
+      if (u.spectral || u.warWolf || u.vet || u.ranked) Deck.drawUnit(g, u, img, 4, 4, 32);
+      const px = g.getImageData(0, 0, 40, 40).data; let n = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i + 3] && px[i] === 0xff && px[i + 1] === 0xd4 && px[i + 2] === 0x5e) n++;
+      return n;
+    };
+    return { kinds: [d.kind, e.kind, plain.kind], raised: gold(d), vet: gold(e), plain: gold(plain), flags: [!!d.ranked, !!e.vet, !!plain.ranked || !!plain.vet] };
+  });
+  ck('theRaisedWearTheirRankForGood', r.kinds.join() === 'elite,elite,elite' && r.raised > 0 && r.vet === r.raised * 2 && r.plain === 0,
+    `raised to champion: ${r.raised} gold px (one chevron); a veteran ${r.vet} (two); a trained champion ${r.plain}`);
 }
 
 // ---------------- 6. THE ANCESTORS' HOST ----------------
@@ -780,6 +981,69 @@ await p.evaluate(({ ARMY }) => {
     `climbed at the play ${r.q0.join('/')}, mid-beat ${r.qMid.join('/')}, after ${r.qEnd.join('/')}; pixels drawn ${r.drawn.join(' → ')}`);
 }
 
+{
+  /* WHAT THE PICTURE DOES NOT DRAW CANNOT BE TAPPED (the tap contract's
+     rule 1): a ghost still under the ground and a muster's unit still waiting
+     for its flash are in S.units but not on the screen. With a villager
+     selected, a dead-on tap where such a unit stands must not steal the
+     selection to it; the CONTROL is the same tap once it has risen. And a
+     hurt ghost selected never draws the heal-zone ring (Bld.healZoneFor is
+     never asked), where a hurt defender does. */
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-hidden-tap'); __ar.flat();
+    Screens.show('playing'); S.paused = true;
+    const TL = CFG.TILE, lift = CFG.SPRITE_LIFT / TL;
+    const tc = Bld.tcOf('P');
+    R.cam.z = 2; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 2);
+    const v = __ar.unit('villager', 'P', tc.x - 3.5, tc.y + 6.5);
+    G.updateVisibility();
+    const tapAt = (u) => {
+      UI.select('unit', v.id);
+      const sx = (u.x * TL - R.cam.x) * R.cam.z, sy = ((u.y - lift) * TL - R.cam.y) * R.cam.z;
+      UI.handleTap(sx, sy);
+      const sel = UI.sel && UI.sel.type === 'unit' ? UI.sel.id : null;
+      v.task = null; v.path = null;
+      return sel === u.id;
+    };
+    const { units: host } = __ar.play('ancestors_host');
+    const s = R.cardShows.find(x => x.id === 'ancestors_host' && x.mode === 'rise');
+    const g14 = host[14];
+    s.t = 0;
+    out.ghost = { rise: Deck.riseOf(g14), hit: R.unitHit(g14, g14.x, g14.y - lift), stolen: tapAt(g14) };
+    s.t = 99;
+    out.ghostRisen = { rise: Deck.riseOf(g14), hit: R.unitHit(g14, g14.x, g14.y - lift), stolen: tapAt(g14) };
+    // the muster's waiting unit
+    R.cardShows = []; R.summons = []; R._unborn = null;
+    for (const u of host) Units.despawn(u);
+    const { units: hands } = __ar.play('willing_hands');
+    const last = hands[hands.length - 1];
+    out.unborn = { waiting: !!(R._unborn && R._unborn.has(last.id)), hit: R.unitHit(last, last.x, last.y - lift), stolen: tapAt(last) };
+    R.summons = []; R._unborn = null;
+    out.unbornOut = { hit: R.unitHit(last, last.x, last.y - lift), stolen: tapAt(last) };
+    // the heal ring: a hurt ghost selected asks no heal zone; a hurt defender does
+    R.cardShows = [];
+    const gh = __ar.play('ancestors_host').units[0];
+    R.cardShows = [];
+    gh.hp = Math.round(gh.maxhp / 2);
+    const d = __ar.unit('defender', 'P', Bld.cx(tc) + 1, Bld.cy(tc) + 2); d.hp = 10;
+    G.updateVisibility();
+    const real = Bld.healZoneFor;
+    let asks = 0;
+    Bld.healZoneFor = function (u) { asks++; return real.call(this, u); };
+    try {
+      UI.select('unit', gh.id); asks = 0; R.draw(0.016); out.ringGhost = asks;
+      UI.select('unit', d.id); asks = 0; R.draw(0.016); out.ringDef = asks;
+    } finally { Bld.healZoneFor = real; UI.deselect(); }
+    return out;
+  });
+  ck('aGhostUnderTheGroundCannotBeTapped', r.ghost.rise === 0 && r.ghost.hit === Infinity && !r.ghost.stolen && r.ghostRisen.rise === 1 && r.ghostRisen.stolen,
+    `under the ground: hit ${r.ghost.hit}, the tap took it ${r.ghost.stolen}; risen: hit ${r.ghostRisen.hit}, the tap took it ${r.ghostRisen.stolen}`);
+  ck('norAMusterStillWaitingItsFlash', r.unborn.waiting && r.unborn.hit === Infinity && !r.unborn.stolen && r.unbornOut.stolen,
+    `waiting its flash ${r.unborn.waiting}: hit ${r.unborn.hit}, the tap took it ${r.unborn.stolen}; out of its light the tap takes it ${r.unbornOut.stolen}`);
+  ck('noHealRingIsDrawnForAGhost', r.ringGhost === 0 && r.ringDef > 0, `heal zones asked: a hurt ghost ${r.ringGhost}, a hurt defender ${r.ringDef}`);
+}
+
 // ---------------- 7. SAVES ----------------
 {
   const r = await p.evaluate(() => {
@@ -838,7 +1102,9 @@ await p.evaluate(({ ARMY }) => {
   }, { ARMY });
   const bad = o => Object.keys(o).filter(k => !o[k]);
   ck('noArmyCardDrawsTheRunsRng', !bad(r.rng).length, bad(r.rng).join(', ') || 'nine plays, S.rngState unmoved');
-  ck('playingACardScoresNothing', !bad(r.score).length, bad(r.score).join(', ') || 'subtotal, trained, built, upgrades and peakPop unmoved by the play');
+  // (AT THE PLAY: a card's soldiers are population — ruling 5 — so the next
+  // day's census counts them; theLegionIsTheTribeTheNextDay pins that half)
+  ck('playingACardScoresNothingAtThePlay', !bad(r.score).length, bad(r.score).join(', ') || 'subtotal, trained, built, upgrades and peakPop unmoved by the play');
   ck('aSummoningNeverBreaksTheTruce', !bad(r.peace).length, bad(r.peace).join(', ') || 'the Calm peace holds through all nine');
 }
 
@@ -933,7 +1199,7 @@ await p.evaluate(({ ARMY }) => {
     try {
       const e = Deck.timed('ancestors_host');
       for (let i = 0; i < 5; i++) { g.save(); Deck.FX.ancestors_host.drawLive(g, e, 1 / 30); g.restore(); }
-      for (const u of S.units.filter(u => u.spectral || u.warWolf || u.vet)) {
+      for (const u of S.units.filter(u => u.spectral || u.warWolf || u.vet || u.ranked)) {
         const img = R.unitSprite(u);
         g.save(); Deck.drawUnit(g, u, img, u.x * 32 - 16, u.y * 32 - 28, 32); g.restore();
       }
@@ -964,6 +1230,54 @@ await p.evaluate(({ ARMY }) => {
   ck('theHostFadesInItsOwnWisps', r.fadeShow);
   ck('theShowsAreRenderStateAndDrainAway', !r.inS && r.drained, `in the save ${r.inS}; drained ${r.drained}`);
   ck('everyVoiceIsSynthesized', r.voices && !audioFiles(root).length, `ten voices made of notes and noise; audio files in the repo: ${audioFiles(root).join(', ') || 'none'}`);
+}
+{
+  /* NOTHING IS DRAWN IN THE BLACK (CLAUDE.md): a hall stands seven to ten
+     tiles from the edge, and the Veterans' ring rolls ten tiles out from it;
+     the host's spirits, dark and light are screen-wide. World-layer shows are
+     clipped to the board by the engine (R.drawCardShows), the sky's light by
+     each show (Deck.armyFx.skyClip). Measured on the pixels: nothing lands
+     off the board — and the CONTROL widens R.boardPx (the one source both
+     clips derive from) and must see the leak, or the probe sees nothing. */
+  const r = await p.evaluate(() => {
+    __ar.fresh('army-black'); __ar.flat();
+    Screens.show('playing');
+    const TL = CFG.TILE, tc = Bld.tcOf('P');
+    const run = (wide) => {
+      const real = R.boardPx;
+      if (wide) R.boardPx = () => ({ x0: -9999, y0: -9999, x1: 99999, y1: 99999 });
+      try {
+        // the WORLD layer: the veterans' ring from a hall three tiles in
+        const cv = document.createElement('canvas'); cv.width = CFG.W * TL; cv.height = CFG.H * TL;
+        const g = cv.getContext('2d');
+        R.cardShows = [];
+        const s = R.startCardShow('veterans', { x: 3, y: 12, lit: [] });
+        s.t = 0.3 * s.ms / 1000;
+        R.drawCardShows(g, 0, 'world');
+        const d = g.getImageData(0, 0, TL, cv.height).data;
+        let world = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i]) world++;
+        // the SKY layer: the host with the camera over the board's west edge
+        R.cardShows = [];
+        R.cam.z = 2; R.cam.x = -TL * 4; R.cam.y = TL * 4;
+        const sv = document.createElement('canvas'); sv.width = R.cv.width; sv.height = R.cv.height;
+        const sg = sv.getContext('2d');
+        const hs = R.startCardShow('ancestors_host', { mode: 'rise', mx: 3.5, my: 10.5, x: 3, y: 10, units: [], rise: {} });
+        hs.t = 0.5 * hs.ms / 1000;
+        sg.save(); R.drawCardShows(sg, 0, 'sky'); sg.restore();
+        const z = R.cam.z * R.dpr, edge = Math.floor((TL - R.cam.x) * z);   // the board's first screen column
+        const f = Deck.armyFx.frame(), top = Math.ceil(f.top + sv.height * 0.12), bot = Math.floor(sv.height - f.bot - sv.height * 0.12);
+        const sd = sg.getImageData(0, top, Math.max(1, edge - 1), bot - top).data;
+        let sky = 0;
+        for (let i = 3; i < sd.length; i += 4) if (sd[i]) sky++;
+        R.cardShows = [];
+        return { world, sky };
+      } finally { R.boardPx = real; }
+    };
+    return { fixed: run(false), leak: run(true) };
+  });
+  ck('noShowIsDrawnInTheBlack', r.fixed.world === 0 && r.fixed.sky === 0 && r.leak.world > 0 && r.leak.sky > 0,
+    `off the board: the veterans' ring ${r.fixed.world} px, the host's sky ${r.fixed.sky} px; with the board widened (the control) ${r.leak.world} / ${r.leak.sky}`);
 }
 function audioFiles(dir, out = [], depth = 0) {
   if (depth > 4) return out;
