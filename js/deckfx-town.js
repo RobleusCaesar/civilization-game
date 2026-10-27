@@ -332,12 +332,15 @@
        its foot: a hard bright leading edge, then a trailing band of the gold
        ramp lit at half and then a quarter of its cells — opaque ink, the real
        sprite showing between them, never a flat colour laid over the lot */
-    scan(g, a, k) {
+    // `tone` names the light (R.LIGHT.TONE, gold unless named); `up` runs it
+    // from the foot to the crown instead (a building standing up into it)
+    scan(g, a, k, tone, up) {
       if (!a.spr || k < 0 || k > 1) return;
-      const T = R.LIGHT.TONE.gold, h = Math.max(1, a.rc.h), f = a.box.t + (a.box.b - a.box.t) * eo(k), row = PX / h;
-      this.paintDither(g, a, T.ramp[1], f - 0.34, f - 0.18, 0.25);
-      this.paintDither(g, a, T.ramp[2], f - 0.18, f - row, 0.5);
-      this.paintDither(g, a, T.ramp[3], f - row, f + row, 0.75);   // the leading edge: one cell of the hottest gold
+      const T = R.LIGHT.TONE[tone || 'gold'] || R.LIGHT.TONE.gold, h = Math.max(1, a.rc.h), row = PX / h;
+      const f = up ? a.box.b - (a.box.b - a.box.t) * eo(k) : a.box.t + (a.box.b - a.box.t) * eo(k), d = up ? -1 : 1;
+      this.paintDither(g, a, T.ramp[1], Math.min(f - d * 0.34, f - d * 0.18), Math.max(f - d * 0.34, f - d * 0.18), 0.25);
+      this.paintDither(g, a, T.ramp[2], Math.min(f - d * 0.18, f - d * row), Math.max(f - d * 0.18, f - d * row), 0.5);
+      this.paintDither(g, a, T.ramp[3], f - row, f + row, 0.75);   // the leading edge: one cell of the hottest light
     },
     /* the building's EDGE, two world pixels proud of its roof and walls and
        never along its foot (the ground line is not an edge anyone sees): the
@@ -471,6 +474,12 @@
     },
     STONE_LIGHT: 'pale',      // the Stone tier's pale light (R.LIGHT.TONE — Deck.TIERS' stone, lifted)
     BRONZE_LIGHT: 'bronze',   // …and the Bronze tier's warm one
+    // a stylesheet a card's look needs, added the first time it is wanted (cards off: never)
+    css(id, text) {
+      if (typeof document === 'undefined' || document.getElementById(id)) return;
+      const st = document.createElement('style'); st.id = id; st.textContent = text;
+      document.head.appendChild(st);
+    },
     sound(kind) { if (typeof Sound !== 'undefined' && Sound.play) Sound.play(kind); },
     show(id, data) { return (typeof R !== 'undefined' && R.startCardShow) ? R.startCardShow(id, data) : null; },
     // the count over the goods, in gold — held a beat longer than a hit's
@@ -1319,23 +1328,63 @@
     /* BRONZE — Master Builders: three charges in S.deck.charges (a second
        card adds three more). The next buildings the player places through
        the placement confirm stand complete at once, at full strength, still
-       paid for — never walls or gates, never the Wonder (Rule 4). A column
-       of gold comes down on the site and the building fills with light from
-       its foot to its crown. */
+       paid for — never walls or gates, never the Wonder (Rule 4).
+
+       THE PLAY MARKS WHERE THE REWARD IS (the playtest's critics: "playing
+       the card does nothing on the map, only a toast and the ×3 chip"): the
+       hall comes on screen (showAtHall) and the masons' hammers come down on
+       its roof one after another, a '⚒×3' over them — and the Build tab wears
+       a '⚒×3' badge for as long as charges are in hand (syncTab).
+       THE RAISING IS A BUILD, NOT A SWAP: a column of the BRONZE tier's light
+       (never the gold of a higher tier), no wider than half the footprint,
+       comes down on the site and the building's own three raising stages
+       play under it in about 600 ms (show.veil stands in for its picture —
+       R.cardVeil), then it stands, fills with the light from its foot to its
+       crown, and the count left floats over it in cream on a hard dark rim. */
     master_builders: {
-      at: 'bar', N: 3, NOT: { wonder: 1, wall: 1, gate: 1, tc: 1 },
+      at: 'bar', showAtHall: true, N: 3, NOT: { wonder: 1, wall: 1, gate: 1, tc: 1 },
+      TONE: 'bronze', STAGES: 0.36,   // the share of the raising's show the three stages take (~600 ms)
       can() { return { ok: true }; },
       apply() {
         const run = Deck.run(), n = (run.charges.master_builders | 0) + this.N;
         run.charges.master_builders = n;
         Deck.say('⚒ Master Builders: the next ' + n + ' buildings you place stand complete the moment they are placed.');
+        const tc = TX.tc();
+        if (tc) TX.show('master_builders', { play: true, hall: tc.id, n });
+        this.syncTab(true);
         TX.sound('cardBuild');
         return { ok: true, charges: n, msg: 'Master Builders: your next ' + n + ' buildings stand complete the moment they are placed.' };
       },
       // the strip's chip (js/deckui.js): the count in hand, the ring a card's worth
       chip(n) {
         n = n | 0;
+        this.syncTab();
         return n > 0 ? { label: '×' + n, frac: Math.min(1, n / this.N), words: n + (n === 1 ? ' building' : ' buildings') } : null;
+      },
+      /* THE BUILD TAB'S BADGE: '⚒×n' on #bmToggle while charges are in hand —
+         an attribute the tab's own label writes (UI.syncBottomToggle sets its
+         textContent) never touch, drawn by a rule this file adds the first
+         time a badge is wanted (cards off: no rule, no attribute, nothing).
+         Re-asked on every chip pass while charges last; one pass after the
+         last is spent, or a new world without them, takes it down. */
+      syncTab(pop) {
+        const el = typeof document !== 'undefined' && document.getElementById('bmToggle');
+        if (!el) return;
+        const n = (typeof S !== 'undefined' && S && S.deck && S.deck.charges && S.deck.charges.master_builders) | 0;
+        if (n > 0) {
+          TX.css('dkMBcss', '#bmToggle[data-mb]::after{content:attr(data-mb);position:absolute;top:-11px;right:-14px;' +
+            'padding:0 4px;font:700 10px/13px sans-serif;color:#f2e6cd;background:#6a3c1a;border:1px solid #0d0b08;' +
+            'border-radius:3px;box-shadow:0 0 0 1px #dc8a4c;pointer-events:none;white-space:nowrap;}' +
+            '#bmToggle.dkMBpop::after{animation:dkMBpop .42s steps(2,end) 1.1s 3;}' +
+            '@keyframes dkMBpop{50%{transform:scale(1.35) translateY(-2px);}}');
+          const want = '⚒×' + n;
+          if (el.getAttribute('data-mb') !== want) el.setAttribute('data-mb', want);
+          if (pop) { el.classList.remove('dkMBpop'); void el.offsetWidth; el.classList.add('dkMBpop'); }
+          if (!this._tabChk) this._tabChk = setTimeout(() => { this._tabChk = 0; this.syncTab(); }, 1000);
+        } else {
+          if (el.hasAttribute('data-mb')) el.removeAttribute('data-mb');
+          el.classList.remove('dkMBpop');
+        }
       },
       raise(b, builderId) {
         const run = Deck.run(), n = run.charges.master_builders | 0;
@@ -1357,52 +1406,107 @@
         Deck.say('⚒ Master Builders raise your ' + Bld.def(b.key).name + ' at once' +
           (left ? ' — ' + left + ' more to come.' : ' — the last of them.'));
         TX.show('master_builders', { bid: b.id, left });   // never `id`: that names the card
-        if (typeof R !== 'undefined' && R.startPlacePoof) R.startPlacePoof(b.x, b.y, Bld.size(b), { delay: 300, scale: 1.25 });
+        // the dust of each stage as it goes up, and the last of it as the building stands
+        if (typeof R !== 'undefined' && R.startPlacePoof) {
+          const ms = this.show.ms * this.STAGES, sz = Bld.size(b);
+          for (let k = 1; k < 3; k++) R.startPlacePoof(b.x, b.y, sz, { delay: ms * k / 3, scale: 0.35 });
+          R.startPlacePoof(b.x, b.y, sz, { delay: ms, scale: 1.25 });
+        }
+        this.syncTab();
         TX.sound('cardBuild');
         return true;
       },
+      /* the building as it stood at one of its three raising stages — the
+         same routing the map's work site takes (R.stageIcon, with the cleared
+         pad under a derived frame), from a copy of it put back that far */
+      stage(g, b, st, bx, by, bw) {
+        const def = Bld.def(b.key), total = (def.levels[(b.level || 1) - 1] || {}).time || 1;
+        const site = Object.assign({}, b, { construction: total * (1 - (st + 0.5) / 3), upgrading: 0 });
+        const art = R.stageIcon ? R.stageIcon(site) : null;
+        if (!art || !(art.width > 0)) return false;
+        const base = R.bldSprite(b), bs = Bld.size(b);
+        const own = R.stageArt ? R.stageArt(b.key, b.level, bs, st) : null;
+        if (own) { R.blitStage(g, own, base, bx, by, bw); return true; }
+        if (st === 0) { g.drawImage(art, bx, by, bw, bw); return true; }
+        if (R.padOf && R.padShape) g.drawImage(R.padOf(bs, R.padShape(b.key, b.level, base)), bx, by, bw, bw);
+        R.blitBld(g, art, bx, by, bw, bw);
+        return true;
+      },
+      // a mason's hammer, 9×9, in the bronze — the play's mark on the hall
+      hammerArt() {
+        if (this._ham) return this._ham;
+        const T = R.LIGHT.TONE.bronze.ramp;
+        return (this._ham = rowsArt(['.ooooooo.', 'oHHHHHHHo', 'oMMMMMMMo', 'oSSSSSSSo', '.oooHooo.', '....oMo..', '....oMo..', '....oSo..', '....ooo..'],
+          { o: '#2a1a0c', H: T[3], M: T[1], S: T[0] }));
+      },
       show: {
-        ms: 1600, layer: 'world',
+        ms: 1700, layer: 'world',
+        // the raising's three stages, in the building's own place (R.cardVeil asks)
+        veil(g, b, s, p, bx, by, bw) {
+          if (!s.bid || p >= this.STAGES) return false;
+          return this.stage(g, b, Math.min(2, Math.floor(p / (this.STAGES / 3))), bx, by, bw);
+        },
         draw(g, s, p) {
+          if (s.play) return this.show.drawPlay.call(this, g, s, p);
           const b = Bld.get(s.bid); if (!b || !TX.bNear(b)) return;
           const TL = TLs(), a = TX.art(b), rc = a.rc, top = rc.y + a.box.t * rc.h, foot = rc.y + a.box.b * rc.h;
-          const x0 = sn(rc.x + a.box.l * rc.w), x1 = sn(rc.x + a.box.r * rc.w), w = x1 - x0;
-          // the column of gold, slammed down, held, then narrowing to a thread
-          // (the card's light, R.glow: what stands in it turns gold, then bright)
-          const up = cl(p / 0.08), down = p < 0.5 ? 1 : 1 - cl((p - 0.5) / 0.3);
+          const x0 = sn(rc.x + a.box.l * rc.w), x1 = sn(rc.x + a.box.r * rc.w), w = x1 - x0, mid = (x0 + x1) / 2;
+          const half = Bld.size(b) * TL / 2, ST = this.STAGES, tone = this.TONE;
+          // the column of the bronze light, slammed down, held over the stages,
+          // then narrowing to a thread — never wider than half the footprint
+          const up = cl(p / 0.06), down = p < 0.5 ? 1 : 1 - cl((p - 0.5) / 0.3);
           if (down > 0) {
             const colTop = top - TL * 3, h = (foot - colTop) * up;
-            for (const [wf, sv] of [[1.15, 0.5], [0.6, 0.7], [0.18, 0.9]]) {
-              const ww = Math.max(PX, sn(w * wf * down));
-              R.glow(g, sv, () => g.fillRect(sn((x0 + x1) / 2 - ww / 2), sn(colTop), ww, sn(h)));
+            for (const [wf, sv] of [[1, 0.5], [0.55, 0.7], [0.18, 0.9]]) {
+              const ww = Math.max(PX, sn(Math.min(half, w) * wf * down));
+              R.glow(g, sv, () => g.fillRect(sn(mid - ww / 2), sn(colTop), ww, sn(h)), tone);
             }
           }
-          // the building fills with gold light from its foot to its crown, then
-          // lets it go — in its own light and shade, over its worn shape
-          if (a.spr) {
-            const rise = cl((p - 0.06) / 0.42), fy = a.box.b - (a.box.b - a.box.t) * eo(rise);
-            const fl = p < 0.55 ? 0.75 : 0.75 * (1 - (p - 0.55) / 0.3);
-            if (fl > 0) R.glow(g, fl, c => TX.paint(g, a, c, fy, 1));
-            if (rise > 0 && rise < 1) R.glowHot(g, 1, c => TX.paint(g, a, c, fy, fy + 2 / rc.h));
-          }
+          // once it stands, the bronze runs up it from its foot to its crown — a
+          // scan of hard pixels over its own picture, never a flat silhouette
+          if (a.spr && p >= ST && p < ST + 0.3) TX.scan(g, a, (p - ST) / 0.3, tone, true);
           g.save();
-          // sparks off the scaffold that was never needed, in the gold's ink
+          // chips of timber and stone thrown off each stage as it goes up, in the bronze's ink
           for (let k = 0; k < 12; k++) {
-            const tl = p - 0.1 - k * 0.04;
-            if (tl < 0 || tl > 0.45) continue;
-            const x = x0 + hs(k, s.bid) * w, y = foot - hs(s.bid, k) * (foot - top) - tl * 40;
-            if (!R.inkOn(g, (k % 3 ? 0.75 : 1) * (1 - tl / 0.45))) continue;
+            const tl = p - (k % 3) * (ST / 3) - 0.02;
+            if (tl < 0 || tl > 0.3) continue;
+            const x = x0 + hs(k, s.bid) * w, y = foot - hs(s.bid, k) * (foot - top) * 0.6 - tl * 50;
+            if (!R.inkOn(g, (k % 3 ? 0.75 : 1) * (1 - tl / 0.3), tone)) continue;
             g.fillRect(sn(x), sn(y), PX, PX);
           }
           // and a ring of dots runs out over the ground as the dust settles
-          if (p > 0.45) {
-            const q = (p - 0.45) / 0.55;
-            if (R.inkOn(g, 0.9 * (1 - q))) TX.ring(g, (x0 + x1) / 2, foot - 2, w * 0.6 + q * TL * 1.4, 0.5);
+          if (p > ST) {
+            const q = (p - ST) / (1 - ST);
+            if (R.inkOn(g, 0.9 * (1 - q), tone)) TX.ring(g, mid, foot - 2, w * 0.6 + q * TL * 1.4, 0.5);
           }
           g.restore();
-          if (!s.floated && p > 0.5) {
-            s.floated = true;
-            TX.float(Bld.cx(b), b.y - 0.2, s.left ? '⚒ ' + s.left + ' left' : '⚒ the last');
+          // the count left, cream on a hard dark rim, over the building it raised
+          if (p > ST + 0.04) {
+            const q = (p - ST - 0.04) / (1 - ST - 0.04), al = q < 0.75 ? 1 : 1 - (q - 0.75) / 0.25;
+            TX.label(g, s, 'left', mid, top - 6, [{ t: s.left ? '⚒ ' + s.left + ' left' : '⚒ the last', col: '#f2e6cd' }], al, q, [{ x0, x1, y0: top, y1: foot }]);
+          }
+        },
+        /* THE PLAY: three hammers come down on the hall's roof, one after
+           another, each with a dull thud and a puff — then '⚒×n' over them,
+           and they step out as the Build tab's badge pops */
+        drawPlay(g, s, p) {
+          const tc = Bld.get(s.hall); if (!tc || !TX.bNear(tc)) return;
+          const c = TX.crown(tc), ham = this.hammerArt(), TL = TLs(), K = 2;   // two world pixels a cell
+          const hw = ham.width * K, hh = ham.height * K, roof = c.y + (c.a.box.b - c.a.box.t) * c.a.rc.h * 0.3;
+          const n = Math.min(3, s.n || 3), gap = hw + 4, x0 = c.x - (n - 1) * gap / 2;
+          const out = p > 0.8 ? cl((p - 0.8) / 0.2) : 0;
+          for (let i = 0; i < n; i++) {
+            const t0 = 0.08 + i * 0.12, q = cl((p - t0) / 0.1);
+            if (q <= 0) continue;
+            // each comes down onto the roof and stands there on its handle's end
+            const x = sn(x0 + i * gap - hw / 2), land = sn(roof - hh * 0.85);
+            const y = q < 1 ? sn(land - (1 - q * q) * TL * 2.4) : land;
+            if (q >= 1 && !s['th' + i]) { s['th' + i] = 1; TX.sound('cardThud'); }
+            TX.inked(g, x, y, hw, hh, gg => gg.drawImage(ham, x, y, hw, hh), out, true);
+          }
+          if (p > 0.45) {
+            const q = (p - 0.45) / 0.55, al = q < 0.7 ? 1 : 1 - (q - 0.7) / 0.3;
+            TX.label(g, s, 'mark', c.x, sn(roof - hh * 0.85) - 4, [{ t: '⚒×' + (s.n || 3), col: '#f2e6cd' }], al, Math.min(1, q * 2), []);
           }
         },
       },

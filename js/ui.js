@@ -821,7 +821,7 @@ const UI = {
     else if (v && v.ok && this.placeWouldBond(g)) msg = '🌾 Homestead — beside the field';
     // …and a Master Builders charge about to be spent says so (js/deckfx-town.js)
     else if (v && v.ok && window.Deck && Deck.masterHand && Deck.masterHand('P', this.placing))
-      msg = '⚒ Master Builders: stands complete at once (' + Deck.masterHand('P', this.placing) + ' in hand)';
+      msg = '⚒ Stands at once · ' + Deck.masterHand('P', this.placing) + ' left';   // short: the whole line fits a 320px phone
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;

@@ -427,7 +427,7 @@ await p.evaluate(({ TOWN }) => {
   });
   ck('masterBuildersHoldsThreeChargesAndASecondCardAddsThree', r.three && r.six && r.rng, `3 ${r.three}, then 6 ${r.six}, no RNG ${r.rng}`);
   ck('theChargesWearAChipOnTheStrip', r.chip && r.chipGone, `×3 with its words ${r.chip}; gone with the last ${r.chipGone}`);
-  ck('andTheGhostSaysAChargeIsAboutToBeSpent', /Master Builders.*3 in hand/.test(r.ghostChip) && !/Master Builders/.test(r.ghostBare),
+  ck('andTheGhostSaysAChargeIsAboutToBeSpent', /^⚒ Stands at once · 3 left$/.test(r.ghostChip) && !/⚒/.test(r.ghostBare),
     `“${r.ghostChip}”; with none in hand “${r.ghostBare}”`);
   ck('aConfirmedBuildingStandsCompleteAtFullStrengthAndPaid', r.house && r.paid && r.two && r.mbShow,
     `complete & full ${r.house}, paid ${r.paid}, one charge spent ${r.two}, its moment ${r.mbShow}`);
@@ -1008,16 +1008,23 @@ await p.evaluate(({ TOWN }) => {
     R.cardShows = []; S.deck.fx = [];
     /* (c) THE GOODS BRING THE HALL ON SCREEN: their moment lands at its door,
        so a goods card played with the camera elsewhere brings it into view
-       first, as a 'tc' card does — and a card with no moment there (Master
-       Builders, also at the bar) leaves the camera alone */
+       first, as a 'tc' card does — and so does Master Builders now that its
+       play marks the hall; the CONTROL is the same card with its showAtHall
+       taken away, which must leave the camera alone */
     const door = () => R.onScreen(Bld.cx(tc), Bld.cy(tc) + Bld.size(tc) / 2);
     R.centerOn(CFG.W - 5, CFG.H - 5);
     const away = !door();
     DeckUI._dest('bar', 'fallen_timber');
     const brought = door();
     R.centerOn(CFG.W - 5, CFG.H - 5);
+    const MBh = Deck.FX.master_builders, keepH = MBh.showAtHall;
+    delete MBh.showAtHall;
     DeckUI._dest('bar', 'master_builders');
-    out.camera = away && brought && !door() &&
+    const stayed = !door();
+    MBh.showAtHall = keepH;
+    R.centerOn(CFG.W - 5, CFG.H - 5);
+    DeckUI._dest('bar', 'master_builders');
+    out.camera = away && brought && stayed && door() &&
       ['fallen_timber', 'loose_stone', 'gold_nugget', 'trade_caravan'].every(id => Deck.FX[id].showAtHall);
     R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.5);
     /* (d) THE CARAVAN'S ROAD IS ONE THE MAP CAN CARRY: every tile the cart
@@ -1102,7 +1109,7 @@ await p.evaluate(({ TOWN }) => {
   ck('aBurnedBuildingWearsItsOwnPictureUnderTheCardsLight', r.worn, 'the overlay and the crown are cut from R.wornSprite, not the intact roof');
   ck('oneWorldSizedCopyPerSpriteWhateverTheColours', r.onePer && r.sized,
     `${r.made} canvases for ${r.K} sprites under four colours (at most two each); every copy the size of its art rect ${r.sized}`);
-  ck('theGoodsBringTheHallOnScreen', r.camera, 'a goods card brings the hall into view; Master Builders leaves the camera alone');
+  ck('theGoodsBringTheHallOnScreen', r.camera, 'a goods card brings the hall into view, and Master Builders\' mark on it; without showAtHall the camera stays');
   ck('theCaravansRoadIsOneTheMapCanCarry', r.open && r.wet && r.crowd,
     `open ground: the full road ${r.open}; a channel across it cuts it short, never crossed ${r.wet} (${r.wetN}); a row of people: the next row ${r.crowd}`);
   ck('andWithNoRoadTheLoadStillComes', r.none && r.noneDraws, r.threw || `no row can carry the cart: the load comes down in the card's light, a pile of ${r.pilePx} solid px`);
@@ -1486,6 +1493,99 @@ await p.evaluate(({ TOWN }) => {
   ck('theLandingFlashIsHardRingsNotADisc', r.hitHard && r.ringSoft, r.hitCss);
   ck('aBeaconLightsNothingBelowItsBrazier', r.above > 30 && r.below === 0, `${r.above} px of flame and embers above, ${r.below} below the brazier`);
   ck('andASelectedTowerShowsItsLongerReach', r.ringOff === 0 && r.ringOn > 40, `ring dots at range × 1.5: ${r.ringOff} unselected, ${r.ringOn} selected`);
+}
+
+// ---------------- 16. MASTER BUILDERS: THE MARK, AND A BUILD RATHER THAN A SWAP ----------------
+/* The playtest's critics: playing the card "does nothing on the map, only a
+   toast and the ×3 chip"; on placement "the beam is a solid gold rectangle
+   that hides the building completely", a bronze card wearing a GOLD beam, and
+   the "2 left" float olive on grass and illegible. Now: the play marks the
+   hall (three hammers and a '⚒×3') and the Build tab ('⚒×3' while charges
+   last); a placement plays the building's own three raising stages in its
+   place (R.cardVeil) under a BRONZE column no wider than half the footprint,
+   and the count left floats cream on a hard dark rim (TX.label). */
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __tw.fresh('town-mb-look');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat(), TL = CFG.TILE, MB = Deck.FX.master_builders;
+    S.res.food = S.res.wood = S.res.stone = S.res.gold = 5000;
+    R.cam.z = 2; R.centerOn(Bld.cx(tc) + 2, Bld.cy(tc) + 2);
+    R.cardShows = [];
+    // THE PLAY: a show at the hall, and the tab's badge
+    Deck.play('master_builders');
+    const sp = R.cardShows.find(z => z.id === 'master_builders' && z.play);
+    out.playShow = !!sp && sp.hall === tc.id;
+    const tab = document.getElementById('bmToggle');
+    out.badge = tab ? tab.getAttribute('data-mb') : null;
+    out.badgeRule = !!document.getElementById('dkMBcss');
+    // the play draws its hammers ON the hall (inked, so counted as draws over the roof)
+    let hamDraws = 0;
+    const g = R.cv.getContext('2d'), inked = Deck._townTX.inked;
+    Deck._townTX.inked = function () { hamDraws++; return inked.apply(this, arguments); };
+    try { if (sp) for (const pp of [0.3, 0.5, 0.7]) { sp.t = pp * sp.ms / 1000; g.save(); MB.show.draw.call(MB, g, sp, pp); g.restore(); } }
+    finally { Deck._townTX.inked = inked; }
+    out.hamDraws = hamDraws;
+    // A PLACEMENT: the stages in its place, under a bronze column
+    R.cardShows = [];
+    const house = __tw.confirm('barracks', tc.x + 4, tc.y + 4);
+    const s = R.cardShows.find(z => z.id === 'master_builders' && z.bid === (house && house.id));
+    out.raised = !!house && house.construction === 0 && !!s;
+    if (s) {
+      const veils = [], drawn = [];
+      const di = CanvasRenderingContext2D.prototype.drawImage;
+      CanvasRenderingContext2D.prototype.drawImage = function (img) { drawn.push(img); return di.apply(this, arguments); };
+      try {
+        for (const pp of [0.05, 0.17, 0.29, 0.5]) {
+          drawn.length = 0;
+          const bx = house.x * TL, by = house.y * TL, bw = Bld.size(house) * TL;
+          s.t = pp * s.ms / 1000;
+          const v = R.cardVeil ? R.cardVeil(g, house, bx, by, bw) : false;
+          veils.push({ p: pp, v, src: drawn[drawn.length - 1] || null });
+        }
+      } finally { CanvasRenderingContext2D.prototype.drawImage = di; }
+      out.veils = veils.map(x => x.v);
+      out.stagesDiffer = new Set(veils.slice(0, 3).map(x => x.src)).size === 3 && veils.slice(0, 3).every(x => x.src && x.src !== R.bldSprite(house));
+      // …and the building loop really asks it: the finished picture stands down under the stages
+      const cv = R.cardVeil || (() => false); let asked = 0, took = 0;
+      R.cardVeil = function (gg, b) { const v = cv.apply(this, arguments); if (b === house) { asked++; if (v) took++; } return v; };
+      try { G.updateVisibility(); s.t = 0.1 * s.ms / 1000; R.draw(0); } finally { R.cardVeil = cv; }
+      out.loop = { asked, took };
+      // THE COLUMN: the bronze, and no wider than half the footprint
+      const glow = R.glow, tones = new Set(); let widest = 0;
+      const fr = CanvasRenderingContext2D.prototype.fillRect;
+      R.glow = function (gg, a, fill, tone) {
+        tones.add(tone || 'gold');
+        CanvasRenderingContext2D.prototype.fillRect = function (x, y, w) { widest = Math.max(widest, w); return fr.apply(this, arguments); };
+        try { return glow.apply(this, arguments); } finally { CanvasRenderingContext2D.prototype.fillRect = fr; }
+      };
+      try { for (const pp of [0.03, 0.15, 0.3, 0.45]) { s.t = pp * s.ms / 1000; g.save(); MB.show.draw.call(MB, g, s, pp); g.restore(); } }
+      finally { R.glow = glow; }
+      out.tones = [...tones]; out.widest = widest; out.half = Bld.size(house) * TL / 2;
+      // THE COUNT: cream on a dark rim (TX.label), never a gold R.float
+      const lab = Deck._townTX.label, fl = R.float, said = [];
+      Deck._townTX.label = function (gg, ss, key, x, y, lines) { said.push(lines.map(l => l.t + '|' + l.col).join(',')); return lab.apply(this, arguments); };
+      R.float = function (x, y, txt, col) { said.push('float:' + txt + '|' + col); return fl.apply(this, arguments); };
+      try { for (const pp of [0.55, 0.7]) { s.t = pp * s.ms / 1000; g.save(); MB.show.draw.call(MB, g, s, pp); g.restore(); } }
+      finally { Deck._townTX.label = lab; R.float = fl; }
+      out.said = said;
+    }
+    // the badge comes down with the last charge, and is never there with none
+    S.deck.charges.master_builders = 1;
+    const last = __tw.confirm('house', tc.x - 3, tc.y + 4);
+    out.badgeGone = !!last && last.construction === 0 && !tab.hasAttribute('data-mb');
+    R.cardShows = [];
+    return out;
+  });
+  ck('thePlayMarksTheHallAndTheBuildTab', r.playShow && r.badge === '⚒×3' && r.badgeRule && r.hamDraws >= 6 && r.badgeGone,
+    `a show at the hall ${r.playShow} (${r.hamDraws} hammer draws); the tab says "${r.badge}"; gone with the last charge ${r.badgeGone}`);
+  ck('aPlacementPlaysItsThreeStagesInItsPlace', r.raised && JSON.stringify(r.veils) === '[true,true,true,false]' && r.stagesDiffer && r.loop && r.loop.asked > 0 && r.loop.took > 0,
+    `stand-in at p .05/.17/.29/.5: ${JSON.stringify(r.veils)}; three different pictures ${r.stagesDiffer}; the loop asked ${r.loop && r.loop.asked}, took ${r.loop && r.loop.took}`);
+  ck('underABronzeColumnHalfTheFootprintWide', r.tones && r.tones.length === 1 && r.tones[0] === 'bronze' && r.widest > 0 && r.widest <= r.half,
+    `tones ${JSON.stringify(r.tones)}; widest ${r.widest}px against half the footprint ${r.half}px`);
+  ck('andTheCountFloatsCreamOnADarkRim', r.said && r.said.length && r.said.every(t => /\|#f2e6cd$/.test(t)) && r.said.some(t => /2 left/.test(t)),
+    JSON.stringify(r.said && r.said.slice(0, 3)));
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

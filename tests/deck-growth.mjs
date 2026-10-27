@@ -1430,6 +1430,120 @@ await p.evaluate(() => {
     `the lush ground's change under the fog is ${(r.fogRatio * 100).toFixed(1)}% of its change in sight`);
 }
 
+// ---------------- 13. THE FLAT PLAYS, LIFTED ----------------
+/* The playtest's critics: Quick Hands "bursts onto the hall, not onto the
+   work sites it speeds up", and then "lasts 6 days with nothing in the world
+   showing it"; the Harvest Festival is "a few dotted rings and grain specks"
+   and "nothing on the map says a festival is running". Now: Quick Hands
+   bursts off every works and every builder's hammer in sight (and off the
+   Build tab when nothing is rising — never the hall), each works wears a gold
+   hammer while it runs and every BLOW throws a spark, on the build strip's
+   own strike frame; the festival strings bunting in the tribe's dye from the
+   hall to its nearest houses, its hearth flares, and every hand's next float
+   carries the bonus. */
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-moments', 'calm'); const { P } = __g.flat();
+    Screens.show('playing');
+    const TL = CFG.TILE, QH = Deck.FX.quick_hands;
+    const site = __g.site('P', 'house', P.x + 5, P.y + 3, 30), v = __g.builder(site);
+    G.updateVisibility();
+    R.cam.z = 2; R.centerOn(Bld.cx(P) + 2.5, Bld.cy(P) + 2.5);
+    R.cardShows.length = 0;
+    Deck.play('quick_hands');
+    const s1 = R.cardShows.find(z => z.id === 'quick_hands');
+    const hall = (sp) => Math.abs(sp.x - Bld.cx(P)) < 0.6 && Math.abs(sp.y - (P.y + Bld.size(P))) < 0.6;
+    out.qhSite = !!s1 && s1.spots.some(sp => Math.abs(sp.x - Bld.cx(site)) < 0.01) && !s1.spots.some(hall);
+    out.qhHands = !!s1 && Array.isArray(s1.hands) && s1.hands.length === 1 && s1.hands[0].id === v.id;
+    // the live look, drawn into a clean canvas in world pixels
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+    const g = cv.getContext('2d');
+    const fr = CanvasRenderingContext2D.prototype.fillRect, marks = [];
+    const capture = (fn) => {
+      marks.length = 0;
+      CanvasRenderingContext2D.prototype.fillRect = function (x, y, w, h) { if (this === g) marks.push({ x, y, w, h, c: this.fillStyle }); return fr.apply(this, arguments); };
+      try { fn(); } finally { CanvasRenderingContext2D.prototype.fillRect = fr; }
+      return marks.slice();
+    };
+    R.cardShows.length = 0;
+    const e = Deck.timed('quick_hands'), pn = performance.now;
+    performance.now = () => 123456;
+    try {
+      // a gold hammer over the works, above its top
+      const top = QH.top ? QH.top({ x: Bld.cx(site), y: site.y + 1, sz: 1, id: site.id }) : site.y * TL;
+      const m = capture(() => QH.drawLive(g, e));
+      out.hammer = m.filter(k => k.w === 1 && k.h === 1 && /^#ffd45e$/i.test(k.c) && Math.abs(k.x - Bld.cx(site) * TL) <= 5 && k.y < top).length;
+      // a spark on the blow, and none between blows (the builder's OWN strip)
+      const key = R.unitArtKey(v), fps = (Sprites.animFps && (Sprites.animFps[key] || Sprites.animFps[v.kind])) || 9;
+      const at = ph => ph * 8 / fps;
+      const sparks = () => capture(() => QH.drawLive(g, e)).filter(k => k.w === 2 && k.h === 2).length;
+      const ST = QH.STRIKE || [0.6, 0.84], sk = u => QH.strike ? QH.strike(u) : 0;
+      v.animT = at(ST[0] + 0.05); out.onBlow = sparks(); out.onBlowK = sk(v);
+      v.animT = at(0.2); out.offBlow = sparks(); out.offBlowK = sk(v);
+    } finally { performance.now = pn; }
+    // with nothing rising anywhere, the burst is off the Build tab — never the hall
+    S.buildings = S.buildings.filter(z => z !== site); Bld._block = null;
+    for (const u of S.units) u.task = null;
+    R.cardShows.length = 0; S.deck.fx = [];
+    Deck.play('quick_hands');
+    const s2 = R.cardShows.find(z => z.id === 'quick_hands');
+    out.qhTab = !!s2 && s2.tab === true && !s2.spots.length && !s2.hands.length;
+
+    // THE FESTIVAL: bunting from the hall to its nearest houses, in the tribe's dye
+    __g.fresh('growth-festival-look', 'calm'); const F2 = __g.flat();
+    Screens.show('playing');
+    const h1 = __g.bld('P', 'house', F2.P.x + 4, F2.P.y + 1), h2 = __g.bld('P', 'house', F2.P.x - 3, F2.P.y + 2);
+    const far = __g.bld('P', 'house', F2.P.x + 15, F2.P.y + 12);
+    G.updateVisibility();
+    R.cam.z = 2; R.centerOn(Bld.cx(F2.P), Bld.cy(F2.P));
+    R.cardShows.length = 0;
+    Deck.play('harvest_festival');
+    const HF = Deck.FX.harvest_festival, ef = Deck.timed('harvest_festival');
+    const dye = Sprites.tunicCol[G.tunicOf('P')];
+    out.bunt = !!HF.buntTo && HF.buntTo().list.map(b => b.id).sort().join(',') === [h1.id, h2.id].sort().join(',') && !HF.buntTo().list.includes(far);
+    const look = HF.drawLive ? (gg, ee) => HF.drawLive(gg, ee) : () => {};
+    R.cardShows.length = 0;   // the look as it stands once the play is over
+    const mk = capture(() => look(g, ef));
+    out.dyed = mk.filter(k => k.c.toLowerCase() === dye.body.toLowerCase()).length;
+    const xs = mk.filter(k => k.c.toLowerCase() === dye.body.toLowerCase()).map(k => k.x / TL);
+    out.between = xs.length > 0 && xs.every(x => x > Math.min(Bld.cx(h2), Bld.cx(F2.P)) - 1 && x < Math.max(Bld.cx(h1), Bld.cx(F2.P)) + 1);
+    // the hearth flares on the play (TX.flame at the hall's own fire)
+    const TXo = Deck._townTX, fl = TXo.flame, flares = [];
+    TXo.flame = function (gg, x, y, sz) { flares.push({ x, y, sz }); return fl.apply(this, arguments); };
+    try {
+      Deck.play('harvest_festival');
+      const sh = R.cardShows.find(z => z.id === 'harvest_festival');
+      sh.t = 0.3 * sh.ms / 1000;
+      look(g, Deck.timed('harvest_festival'));
+    } finally { TXo.flame = fl; }
+    const hp = HF.hearth ? HF.hearth(F2.P) : { x: 0, y: 0 };
+    out.flare = flares.length > 0 && flares.every(f => Math.abs(f.x - hp.x) < 1 && Math.abs(f.y - hp.y) < 1);
+    // every hand's NEXT float carries the bonus, once; nobody's with no festival
+    const w1 = __g.unit('villager', 'P', F2.P.x + 2.5, F2.P.y + 3.5), w2 = __g.unit('villager', 'P', F2.P.x + 3.5, F2.P.y + 3.5);
+    const last = () => R.floats[R.floats.length - 1].txt;
+    R._workFloatAt = {};
+    R.workFloat(w1, '+wood'); out.first = last();
+    R._workFloatAt = {};
+    R.workFloat(w1, '+wood'); out.second = last();
+    S.deck.fx = [];
+    R._workFloatAt = {};
+    R.workFloat(w2, '+wood'); out.none = last();
+    R.cardShows.length = 0;
+    return out;
+  });
+  ck('quickHandsBurstsOffTheWorksAndTheHammersNeverTheHall', r.qhSite && r.qhHands && r.qhTab,
+    `a works in sight ${r.qhSite}, its builder's hammer ${r.qhHands}; nothing rising: off the Build tab ${r.qhTab}`);
+  ck('andEveryWorksWearsAGoldHammerWhileItRuns', r.hammer >= 8, `${r.hammer} gold cells over the works`);
+  ck('andEveryBlowThrowsASpark', r.onBlow > 0 && r.offBlow === 0 && r.onBlowK >= 0 && r.offBlowK < 0,
+    `on the strike frame ${r.onBlow} sparks, between blows ${r.offBlow}`);
+  ck('theFestivalStringsBuntingInTheTribesDye', r.bunt && r.dyed >= 6 && r.between,
+    `strung to the two nearest houses ${r.bunt}; ${r.dyed} pennant cells in the dye, all between the hall and them ${r.between}`);
+  ck('andItsHearthFlares', r.flare, 'a flame at the hall\'s own fire on the play');
+  ck('andEachHandsNextFloatCarriesTheBonus', r.first === '+wood ×1.4' && r.second === '+wood' && r.none === '+wood',
+    `"${r.first}", then "${r.second}"; with no festival "${r.none}"`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 6));
 await b.close();
