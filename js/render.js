@@ -13168,9 +13168,14 @@ const R = {
             g.fillRect(fx + ox - 2 + ((fp.seed * 7 + phMul * 13) % 5), fy - h - 3 - lick * 4, 2, 2);
           }
         };
-        tongue(0, 1, 1, 1);                    // the main tongue
-        tongue(-6, 2, 0.6, 0.7);               // side tongues knit the wall together
-        tongue(6, 3, 0.7, 0.7);
+        // the wall is made of REAL FIRE where the burning-building flames are
+        // loaded (js/beasts.js) — the same fire a town burns with; the
+        // tongues of squares are the fallback
+        if (!(this.drawFireTongue && this.drawFireTongue(g, fp, life, now))) {
+          tongue(0, 1, 1, 1);                    // the main tongue
+          tongue(-6, 2, 0.6, 0.7);               // side tongues knit the wall together
+          tongue(6, 3, 0.7, 0.7);
+        }
         // rolling smoke as the blaze gutters
         if (fp.ttl < 2.6) {
           const life2 = Math.min(1, fp.ttl / 1.4);
@@ -13414,28 +13419,8 @@ const R = {
     }
 
     // the kraken: a once-a-game terror breaking the surface
-    if (S.kraken && S.kraken.ev) {
-      const ev = S.kraken.ev;
-      if (G.visibleAt(ev.x | 0, ev.y | 0)) {
-        const k = ev.phase === 'rise' ? Math.min(1, ev.t / 1.0)
-          : ev.phase === 'sink' ? Math.max(0, 1 - ev.t / 1.2) : 1;
-        const fr = Sprites.misc.kraken[((ev.t * 5) | 0) % 4];
-        const size = TL * 3;                                   // 96px native — pixel-perfect at zoom 1
-        g.globalAlpha = k;
-        g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
-        g.globalAlpha = 1;
-        g.strokeStyle = 'rgba(235,244,248,' + (0.4 * k).toFixed(2) + ')';
-        g.lineWidth = 1.5;
-        g.beginPath();
-        g.ellipse(ev.x * TL, ev.y * TL + 12, 24 + Math.sin(ev.t * 5) * 5, 9, 0, 0, Math.PI * 2);
-        g.stroke();
-        g.beginPath();                                          // a second, wider churn ring
-        g.globalAlpha = 0.5 * k;
-        g.ellipse(ev.x * TL, ev.y * TL + 12, 34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 0, 0, Math.PI * 2);
-        g.stroke();
-        g.globalAlpha = 1;
-      }
-    }
+    // SPECIAL EVENT — the kraken, over the boats it takes (js/beasts.js)
+    if (S.kraken && S.kraken.ev) this.drawKrakenAct(g, dt);
 
     // hearth smoke drifting from settled buildings, embers over camp fires —
     // transient render-side particles, bounded, visible tiles only
@@ -14001,40 +13986,8 @@ const R = {
     }
 
     // SPECIAL EVENT — the black dragon, drawn over the fog: nothing hides it
-    if (S.dragon && S.dragon.ev) {
-      const ev = S.dragon.ev;
-      const dx2 = ev.x * TL, dy2 = ev.y * TL;
-      const spr = Sprites.misc.dragon[((ev.t * 6) | 0) % 4];   // four-beat wing cycle
-      // a CARD's dragon (js/deckfx.js) is called in close, not from the
-      // world's edge, so it comes out of the sky: faded in over its first beat
-      if (ev.card && ev.phase === 'fly' && ev.t < 0.35) g.globalAlpha = ev.t / 0.35;
-      // its shadow races along the ground below
-      g.fillStyle = 'rgba(10,8,5,0.30)';
-      g.beginPath(); g.ellipse(dx2, dy2 + 8, 32, 9, 0, 0, Math.PI * 2); g.fill();
-      // fire breath during the strafe: a roaring cone from the jaws to the ground
-      if (ev.phase === 'burn') {
-        const F = ART.PALETTE.fire;
-        const mx = dx2 + ev.dir * 72, my = dy2 - 52;           // the jaws (see sprite head position)
-        for (let i = 0; i < 18; i++) {
-          const t2 = i / 18;
-          const bx2 = mx + ev.dir * t2 * 26 + Math.sin(ev.t * 22 + i * 2.4) * (2 + t2 * 4);
-          const by2 = my + t2 * 58;
-          const sz = 2.5 + t2 * 8;
-          g.fillStyle = F[t2 < 0.3 ? 3 : t2 < 0.65 ? 2 : 1];
-          g.fillRect(bx2 - sz / 2, by2 - sz / 2, sz, sz);
-        }
-        for (let i = 0; i < 6; i++) {                     // embers skittering at the impact
-          g.fillStyle = F[i % 2 ? 0 : 1];
-          g.fillRect(dx2 + ev.dir * (60 + i * 9) + Math.sin(ev.t * 17 + i * 3) * 5, dy2 + 4 + (i % 3) * 2, 3, 3);
-        }
-      }
-      g.save();
-      g.translate(dx2, dy2 - 34);
-      if (ev.dir < 0) g.scale(-1, 1);
-      g.drawImage(spr, -96, -48);
-      g.restore();
-      g.globalAlpha = 1;
-    }
+    // (js/beasts.js — its shadow, its breath, the dark it brings)
+    if (S.dragon && S.dragon.ev) this.drawDragonAct(g, dt);
 
     this.drawWildfire(g, dt);
     this.drawSmoulder(g, dt);

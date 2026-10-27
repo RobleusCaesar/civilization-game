@@ -402,11 +402,15 @@ Object.assign(Deck.FX, {
       if (S.dragon && S.dragon.ev) return { ok: false, why: 'The dragon is already on the wing.' };
       return { ok: true };
     },
-    valid(x, y) { return Deck.ground(x, y); },
+    // the beast's own art (js/beasts.js) is fetched on demand: aiming is the
+    // moment to ask, a beat before it flies
+    prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('dragon'); },
+    valid(x, y) { this.prepare(); return Deck.ground(x, y); },
     warn(tgt) { return Deck.truceWarn(tgt, this.UNIT_R, this.BLD_R); },
     apply(tgt) {
       const ok = this.can();
       if (!ok.ok) return ok;
+      this.prepare();
       Deck.truce(tgt, this.UNIT_R, this.BLD_R);
       if (!S.dragon) S.dragon = { avail: false, done: false, ev: null, ash: [], fire: [] };
       // it comes in from the nearer side of the world, as the event's does

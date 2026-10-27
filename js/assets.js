@@ -547,6 +547,10 @@ const Assets = {
     // pair per piece of the forest catalog
     // (a name ending in a digit CASCADES: -2 is asked for only once -1 has
     // landed, and so on — none of these do, so each is one request)
+    // THE MONSTERS (js/beasts.js): the rolled event asks at newGame/loadJSON,
+    // a card the moment it is aimed or played
+    dragon: ['dragon-fly', 'dragon-breath'],
+    kraken: ['kraken-thrash', 'kraken-tentacle'],
     wildfire: ['smoke'].concat(
       ...['dome-l-a', 'dome-l-b', 'dome-l-c', 'dome-l-d', 'dome-s-a', 'dome-s-b', 'dome-s-c', 'dome-s-d']
         .map(p => ['burn-' + p, 'char-' + p])),
