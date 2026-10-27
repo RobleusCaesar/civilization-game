@@ -1646,11 +1646,11 @@ const DeckUI = {
   },
 
   /* ---------------- TIMED EFFECTS ---------------- */
-  /* Each card still running wears a chip beside the tribe: its glyph inside
-     a ring of hard pixels in the tier's colour, draining clockwise, and the
-     time left — in days while there are days, in seconds on the last one
-     (a game day is ten seconds). Tap it to hear what it is. Gone the moment
-     Deck.tick expires the effect. */
+  /* Each card still running wears a chip beside the tribe: its own glyph
+     inside a fine ring that drains clockwise (drawn at the device's own
+     resolution — _ringDraw), and the time left — in days while there are
+     days, in seconds on the last one (a game day is ten seconds). Tap it to
+     hear what it is. Gone the moment Deck.tick expires the effect. */
   _timers() {
     const live = typeof S !== 'undefined' && S && S.deck;
     const list = live ? Deck.timers() : [];
@@ -1762,12 +1762,12 @@ const DeckUI = {
      (playtest g1/g2): every chip on the strip wore its category's glyph —
      four buff cards, four identical little suns — and a tap printed the
      card's whole rules text, five or six lines over the map. A chip names
-     its card in pixels (a hammer for the builders, a sheaf for the harvest,
+     its card in a glyph (a hammer for the builders, a sheaf for the harvest,
      a flame for the watchfires, a shield, a skull, a keep, a ghost, a wolf…;
      a card with none here wears its category's, as before — the eye for the
      spy, the crescent for the swallowed sun), and a tap answers with the
-     name, the time left and this one short line. 12 x 10 cells, like
-     Deck.GLYPHS. */
+     name, the time left and this one short line. The glyphs themselves are
+     CHIP_ICONS, below. */
   CHIP: {
     quick_hands:        { g: 'hammer', line: 'Building and upgrades go twice as fast.' },
     master_builders:    { g: 'house',  line: 'Your next buildings stand complete at once.' },
@@ -1785,29 +1785,49 @@ const DeckUI = {
     barbarian_pact:     { g: 'wolf',   line: 'War bands march on the rival instead of you.' },
     wonders_foundation: {              line: 'It waits for your Wonder to be laid.' },
   },
-  CHIP_GLYPHS: {
-    hammer: ['..######....', '.#########..', '.##########.', '..######....', '....##......', '....##......', '....##......', '....##......', '....##......', '....##......'],
-    house:  ['.....##.....', '....####....', '...######...', '..########..', '.##########.', '..########..', '..###..###..', '..###..###..', '..###..###..', '..###..###..'],
-    sheaf:  ['.##..##..##.', '.##..##..##.', '.##..##..##.', '..#..##..#..', '...#.##.#...', '....####....', '...#.##.#...', '..#..##..#..', '.#...##...#.', '.#...##...#.'],
-    leaf:   ['........###.', '......#####.', '....#######.', '...########.', '..########..', '..#######...', '..#.####....', '.#..##......', '.#..........', '#...........'],
-    flame:  ['.....#......', '....##......', '....###.....', '...####.#...', '...######...', '..#######...', '..###.###...', '..##...##...', '...##.##....', '....###.....'],
-    shield: ['.##########.', '.#........#.', '.#.######.#.', '.#.######.#.', '.#.######.#.', '..#.####.#..', '..#.####.#..', '...#.##.#...', '....#..#....', '.....##.....'],
-    keep:   ['.##.##.##.##', '.##########.', '.##########.', '..########..', '..###..###..', '..###..###..', '..##....##..', '..##....##..', '.##########.', '............'],
-    ghost:  ['...######...', '..########..', '.##########.', '.##..##..##.', '.##..##..##.', '.##########.', '.##########.', '.##########.', '.##.##.##.##', '.#..#..#..#.'],
-    fire:   ['.....#......', '.....##.....', '....###.....', '....####....', '...######...', '...##.###...', '....####....', '.##......##.', '...######...', '.##......##.'],
-    skull:  ['...######...', '..########..', '.##########.', '.##..##..##.', '.##..##..##.', '.##########.', '..###..###..', '...######...', '...#.##.#...', '............'],
-    wolf:   ['.#........#.', '.##......##.', '.###....###.', '.##########.', '.##.####.##.', '.##########.', '..########..', '...######...', '....####....', '.....##.....'],
+  /* THE GLYPHS ARE DRAWN, NOT PIXELLED (operator ruling, on their phone:
+     "the special indicator in the top (says 13d), is pixelated. I think we
+     need something a little more subtle and a slightly higher pixel
+     count"). Each is a small vector silhouette in a 24-unit box — SVG path
+     data laid through Path2D at the device's own resolution — so it is
+     crisp on a 3x phone where the 12 x 10 bitmap was four-pixel blocks.
+     { d: filled path, s: stroked path (w: its width), eo: even-odd fill,
+     so a hole — an eye, a door — is cut out of its body }. A card names its
+     own (CHIP.g); a card with none wears its category's (CAT). */
+  CHIP_ICONS: {
+    hammer: { d: 'M12.6 3.6l7.6 7.6-3.1 3.1-7.6-7.6z', s: 'M5 19.6l9.4-9.4', w: 2.6 },
+    house:  { d: 'M12 3.2l8.8 7.6h-2.6v9.7h-4.6v-5.6h-3.2v5.6H5.8v-9.7H3.2z' },
+    // an ear of wheat: the stalk, and kernels paired up it to the one at its tip
+    sheaf:  { s: 'M12 21.5V7.5', w: 1.4,
+              d: 'M12 3c1.3 1.1 1.3 3.2 0 4.5-1.3-1.3-1.3-3.4 0-4.5z M12 9.4C9.7 9.3 8.2 7.9 8 5.8c2.3.1 3.8 1.4 4 3.6z M12 9.4c2.3-.1 3.8-1.5 4-3.6-2.3.1-3.8 1.4-4 3.6z M12 13.2c-2.3-.1-3.8-1.5-4-3.6 2.3.1 3.8 1.4 4 3.6z M12 13.2c2.3-.1 3.8-1.5 4-3.6-2.3.1-3.8 1.4-4 3.6z M12 17c-2.3-.1-3.8-1.5-4-3.6 2.3.1 3.8 1.4 4 3.6z M12 17c2.3-.1 3.8-1.5 4-3.6-2.3.1-3.8 1.4-4 3.6z' },
+    leaf:   { d: 'M19.5 3.5C10.6 3.8 5 8.6 5 15c0 1.5.3 2.8.9 3.9 1.3-3.8 4.1-7.4 8.6-9.6-3.6 2.9-6 6.4-7.1 10.7 1.1.5 2.3.7 3.6.7 6.4 0 9.7-6.4 8.5-17.2z' },
+    flame:  { d: 'M12.3 2.5c.9 3.7 5.7 6.1 5.7 11.2a6 6 0 0 1-12 0c0-2.8 1.4-4.6 2.8-5.9.2 1.9 1 3.2 2.2 3.8-.6-3.5.4-6.8 1.3-9.1z' },
+    shield: { d: 'M12 2.8l7.8 3.1v5.6c0 4.9-3.3 8.4-7.8 9.7-4.5-1.3-7.8-4.8-7.8-9.7V5.9z M12 5.9v12.6c2.9-1.1 5-3.7 5-7.1V7.8z', eo: 1 },
+    keep:   { d: 'M4.5 3.5h3v2.2h2V3.5h5v2.2h2V3.5h3v5.3L18 10.3v10.2H6V10.3L4.5 8.8z M10.3 20.5v-3.8a1.7 1.7 0 0 1 3.4 0v3.8z', eo: 1 },
+    ghost:  { d: 'M12 3a7.2 7.2 0 0 0-7.2 7.2V21l2.4-1.9 2.4 1.9 2.4-1.9 2.4 1.9 2.4-1.9 2.4 1.9V10.2A7.2 7.2 0 0 0 12 3z M9.4 8.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z M14.6 8.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z', eo: 1 },
+    fire:   { d: 'M12.2 2.8c.8 2.7 4.1 4.6 4.1 8.3a4.3 4.3 0 0 1-8.6 0c0-2 1-3.3 2-4.2.2 1.4.8 2.3 1.7 2.7-.4-2.6.2-5 .8-6.8z M4.6 16.4l15.2 3.7-.5 2-15.2-3.7z M19.4 16.4L4.2 20.1l.5 2 15.2-3.7z' },
+    skull:  { d: 'M12 3a7.6 7.6 0 0 0-7.6 7.6c0 2.6 1.3 4.5 3 5.6v3.3h2.2v-2.1h1.3v2.1h2.2v-2.1h1.3v2.1h2.2v-3.3c1.7-1.1 3-3 3-5.6A7.6 7.6 0 0 0 12 3z M9 8.8a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z M15 8.8a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8z M12 12.6l1.1 2.2h-2.2z', eo: 1 },
+    wolf:   { d: 'M4.6 3l4.5 4.6h5.8L19.4 3l.7 8.2-2.1 3.7L12 21.2l-6-6.3-2.1-3.7z M8.4 11.1l2.6 1.1-2.6.9z M15.6 11.1l-2.6 1.1 2.6.9z', eo: 1 },
+    // the categories' own, for a card that names none
+    sun:    { d: 'M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8z', w: 1.6,
+              s: 'M12 2.6v2.6 M12 18.8v2.6 M2.6 12h2.6 M18.8 12h2.6 M5.4 5.4l1.8 1.8 M16.8 16.8l1.8 1.8 M5.4 18.6l1.8-1.8 M16.8 7.2l1.8-1.8' },
+    eye:    { d: 'M2.5 12C5 7.6 8.4 5.6 12 5.6s7 2 9.5 6.4C19 16.4 15.6 18.4 12 18.4S5 16.4 2.5 12z M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2z M12 10.2a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6z', eo: 1 },
+    moon:   { d: 'M15.2 3.4a8.8 8.8 0 1 0 5.6 14.8A7.2 7.2 0 0 1 15.2 3.4z' },
+    temple: { d: 'M12 3l9 4.6v1.6H3V7.6z M5 10.4h2.4v7.4H5z M10.8 10.4h2.4v7.4h-2.4z M16.6 10.4H19v7.4h-2.4z M3.5 18.8h17v2.2h-17z' },
+    coin:   { d: 'M12 3.6a8.4 8.4 0 1 0 0 16.8 8.4 8.4 0 0 0 0-16.8z M12 6.4a5.6 5.6 0 1 0 0 11.2 5.6 5.6 0 0 0 0-11.2z M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z', eo: 1 },
+    swords: { s: 'M5 4.5l14 14 M19 4.5l-14 14 M4.5 16.5l3 3 M19.5 16.5l-3 3', w: 2 },
+    bolt:   { d: 'M13.8 2.5L5 13.6h6.2L9.8 21.5l9.2-11.7h-6.3z' },
   },
+  CAT_ICON: { buff: 'sun', intel: 'eye', curse: 'moon', wonder: 'temple', econ: 'coin', army: 'swords', strike: 'bolt' },
   chipGlyph(id) {
     const k = this.CHIP[id] && this.CHIP[id].g, c = Deck.card(id);
-    return (k && this.CHIP_GLYPHS[k]) || Deck.GLYPHS[c && c.cat] || Deck.GLYPHS.econ;
+    return this.CHIP_ICONS[(k && this.CHIP_ICONS[k] && k) || this.CAT_ICON[c && c.cat] || 'coin'];
   },
   // the chip's one line: its own, else the card text's first sentence
   chipLine(id) {
     const e = this.CHIP[id];
     return e && e.line ? e.line : this._line(Deck.card(id).text);
   },
-  RING_PX: 26,            // the chip's ring, in CSS px: 13 cells of 2
   _chip(id) {
     const c = Deck.card(id), t = Deck.tier(c.tier);
     const el = document.createElement('button');
@@ -1816,7 +1836,7 @@ const DeckUI = {
     el.dataset.id = id;
     el.style.setProperty('--tc', t.col);
     const cv = document.createElement('canvas');
-    cv.width = cv.height = this.RING_PX;
+    cv.width = cv.height = Math.round(this.CHIP_PX * this.chipRatio());
     const lab = document.createElement('b');
     el.append(cv, lab);
     el.setAttribute('aria-label', c.name);
@@ -1833,35 +1853,50 @@ const DeckUI = {
     this._chips[id] = ch;
     return ch;
   },
-  // the ring, redrawn only when a cell of it actually changes
-  _RING: null,
+  /* THE CHIP IS QUIET AND CRISP (the same ruling): a fine track round the
+     glyph — the time already spent in a muted tone, the time left in soft
+     gold, draining clockwise from twelve o'clock — over a faint dark seat,
+     the glyph in soft cream, and the count in the HUD's own type (the bar's
+     weight and size, its own text colour, no shadow). The canvas is sized
+     at the device's own pixel ratio (never R.dpr, which is capped for the
+     world): every line in it is antialiased at the phone's resolution,
+     and it is re-sized the moment the ratio changes (a zoom, a move to
+     another screen). Redrawn only when the drained share moves a step. */
+  CHIP_PX: 24,            // the chip's ring, in CSS px
+  CHIP_STEPS: 96,         // the ring drains in this many steps (ch.n counts the ones still lit)
+  CHIP_RING: { track: 1.25, left: 1.5, glyph: 12 },   // CSS px: the track's width, the time left's, the glyph's box
+  CHIP_TONE: { track: 'rgba(214,196,152,0.18)', left: '#c9a75a', seat: 'rgba(10,7,4,0.4)', glyph: '#e2d3ad' },
+  chipRatio() { return Math.max(1, Math.min(4, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1)); },
   _ringDraw(ch, frac) {
-    const P = this.RING_PX, C = P / 2, N = P / 2;   // N cells of 2px a side
-    if (!this._RING) {
-      const cells = [];
-      for (let gy = 0; gy < N; gy++) for (let gx = 0; gx < N; gx++) {
-        const dx = gx * 2 + 1 - C, dy = gy * 2 + 1 - C, d = Math.hypot(dx, dy);
-        if (d >= C - 3.6 && d <= C - 0.6) {
-          let a = Math.atan2(dx, -dy);
-          if (a < 0) a += Math.PI * 2;
-          cells.push({ x: gx * 2, y: gy * 2, a });
-        }
-      }
-      cells.sort((p, q) => p.a - q.a);
-      this._RING = cells;
-    }
-    const cells = this._RING, n = Math.round(frac * cells.length);
-    if (n === ch.n) return;
+    const P = this.CHIP_PX, k = this.chipRatio(), side = Math.round(P * k);
+    const n = Math.round(Math.max(0, Math.min(1, frac)) * this.CHIP_STEPS);
+    if (n === ch.n && ch.cv.width === side) return;
     ch.n = n;
-    const g = ch.cv.getContext('2d');
-    g.clearRect(0, 0, P, P);
-    g.fillStyle = 'rgba(10,7,4,0.72)';
-    R.pxDisc(g, C, C, C - 3, 2);
-    cells.forEach((p, i) => { g.fillStyle = i < n ? ch.col : '#3b2f1f'; g.fillRect(p.x, p.y, 2, 2); });
-    const gl = ch.glyph || Deck.GLYPHS[ch.cat] || Deck.GLYPHS.econ;
-    g.fillStyle = '#f3e2b4';
-    for (let y = 0; y < 10; y++) for (let x = 0; x < 12; x++) if (gl[y][x] === '#') g.fillRect(C - 6 + x, C - 5 + y, 1, 1);
+    if (ch.cv.width !== side) { ch.cv.width = ch.cv.height = side; }
+    const g = ch.cv.getContext('2d'), T = this.CHIP_TONE, s = side / P, C = P / 2, TAU = Math.PI * 2;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, side, side);
+    g.setTransform(s, 0, 0, s, 0, 0);      // CSS px from here on, laid at the device's own pixels
+    // the seat the glyph sits on
+    g.fillStyle = T.seat; g.beginPath(); g.arc(C, C, C - 2.2, 0, TAU); g.fill();
+    // the track: the whole circle in the spent tone, then what is left in soft gold
+    const W = this.CHIP_RING, r = C - 1;
+    g.lineWidth = W.track; g.strokeStyle = T.track;
+    g.beginPath(); g.arc(C, C, r, 0, TAU); g.stroke();
+    if (n > 0) {
+      g.lineWidth = W.left; g.lineCap = 'round'; g.strokeStyle = T.left;
+      g.beginPath(); g.arc(C, C, r, -Math.PI / 2, -Math.PI / 2 + TAU * n / this.CHIP_STEPS); g.stroke();
+    }
+    // the glyph, in a 24-unit box scaled to the middle of the ring
+    const ic = ch.glyph || this.CHIP_ICONS.coin, gs = W.glyph / 24, o = C - 12 * gs;
+    g.setTransform(s * gs, 0, 0, s * gs, o * s, o * s);
+    g.fillStyle = g.strokeStyle = T.glyph;
+    if (ic.d) g.fill(this._iconPath(ic.d), ic.eo ? 'evenodd' : 'nonzero');
+    if (ic.s) { g.lineWidth = ic.w || 1.6; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(this._iconPath(ic.s)); }
+    g.setTransform(1, 0, 0, 1, 0, 0);
   },
+  _iconPaths: {},
+  _iconPath(d) { return this._iconPaths[d] || (this._iconPaths[d] = new Path2D(d)); },
 
   /* ---------------- the stylesheet (injected only when the deck is built) ---------------- */
   css() {
@@ -1903,11 +1938,13 @@ body.dk-aiming #bottombar { visibility: hidden; }
    layout exactly as it was. */
 #dkTimers { display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 6px 0 0; margin: -6px -6px 0 0; }
 #dkTimers:empty { display: none; }
-.dkT { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0;
-  border: 0; border-radius: 0; background: none; color: #f3e2b4; text-shadow: 0 1px 0 #000;
-  font: 800 11.5px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; }
+/* the count in the HUD's own type (the bar's face, weight and size, its own
+   text colour, no shadow) — the chip is a quiet reminder, not a badge */
+.dkT { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; height: 32px; padding: 0;
+  border: 0; border-radius: 0; background: none; color: var(--text, #f0e6d0); text-shadow: none;
+  font: inherit; line-height: 1; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .dkT::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
-.dkT canvas { width: 26px; height: 26px; image-rendering: pixelated; }
+.dkT canvas { width: 24px; height: 24px; flex: 0 0 auto; }
 .dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4;
   border: 1px solid rgba(10,8,5,.6); border-radius: 8px; background: rgba(0,0,0,.3); }
 .dkT .dkMoreB { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 15px; padding: 0 3px; box-sizing: border-box;
