@@ -264,6 +264,66 @@ const GrowFX = {
     g.clip();
     try { return fn(); } finally { g.restore(); }
   },
+  /* THE WORKS IN THE MIDDLE OF THE VIEW (the Wonder cards' landing): a
+     point outside the middle of the open view — between the toasts under
+     the top bar and the build bar — is brought to its middle before the
+     card flies, so the act never plays at the screen's edge under a toast.
+     Asked as the play is armed (fx.dest → DeckUI._dest), never during it. */
+  frame(x, y) {
+    if (!window.R || !R.cam || !R.viewW) return;
+    const z = R.cam.z, TL = CFG.TILE, sx = (x * TL - R.cam.x) * z, sy = (y * TL - R.cam.y) * z;
+    const top = (R.topReserve || 0) + 80, bot = R.viewH() - (R.bottomReserve || 0) - 30;
+    if (sx < R.viewW() * 0.2 || sx > R.viewW() * 0.8 || sy < top + (bot - top) * 0.22 || sy > top + (bot - top) * 0.78) R.centerOn(x, y);
+  },
+  /* A CARD'S OWN CAPTION (device px, the sky layer): what the card DID,
+     said on the screen while it happens — on a dark plaque with a hard gold
+     rim, low in the open view above the build bar, its title in the menu's
+     carved face in gold over a hard dark edge, its rows at 13 css px or
+     more. `rows` is a list of rows of runs {t, col, strike}: `strike` (0..1)
+     draws a line through a run from the left, for a price struck out. It
+     comes in hard steps — the plaque, then each row in turn — never a fade. */
+  INK: '#1a0f06',
+  plaque(g, s, title, rows, p, from, to) {
+    if (p < from || p > to) return;
+    const dpr = R.dpr || 1, W = R.cv.width, u = Math.max(2, Math.round(2 * dpr));
+    if (s._botPx == null) {
+      const bb = document.getElementById('bottombar'), r = bb && bb.getBoundingClientRect();
+      s._botPx = (r && r.height > 0 && r.top > 0 ? r.top : innerHeight - 120) * dpr;
+    }
+    const shown = Math.min(rows.length, Math.floor((p - from) / Math.max(0.01, to - from) * 12));
+    const fs = Math.round(13 * dpr), ts = Math.round(16 * dpr), lh = Math.round(fs * 1.5), pad = Math.round(10 * dpr), gap = Math.round(fs * 0.45);
+    const face = n => '700 ' + n + 'px Cinzel, Georgia, serif';
+    g.save();
+    g.textBaseline = 'alphabetic';
+    g.font = face(fs);
+    const rw = rows.map(r => r.reduce((a, run) => a + g.measureText(run.t).width, 0) + (r.length - 1) * gap);
+    g.font = face(ts);
+    const w = Math.min(W - 32 * dpr, Math.max(g.measureText(title).width, ...rw) + pad * 2.4);
+    const h = pad * 2 + ts + rows.length * lh, x0 = Math.round((W - w) / 2), y0 = Math.round(s._botPx - 18 * dpr - h);
+    // the plaque: a hard gold rim with its corners notched, dark within
+    g.fillStyle = '#c9822a'; g.fillRect(x0 + u, y0, w - 2 * u, h); g.fillRect(x0, y0 + u, w, h - 2 * u);
+    g.fillStyle = '#f2b04a'; g.fillRect(x0 + u, y0, w - 2 * u, u);
+    g.fillStyle = '#17110b'; g.fillRect(x0 + u, y0 + u, w - 2 * u, h - 2 * u);
+    // the title: gold over a hard dark edge
+    const ty = y0 + pad + Math.round(ts * 0.85);
+    g.textAlign = 'center';
+    g.fillStyle = this.INK;
+    for (const [dx, dy] of [[-u, 0], [u, 0], [0, -u], [0, u]]) g.fillText(title, W / 2 + dx, ty + dy);
+    g.fillStyle = '#ffd45e'; g.fillText(title, W / 2, ty);
+    // the rows, in turn
+    g.font = face(fs); g.textAlign = 'left';
+    for (let i = 0; i < shown; i++) {
+      let x = W / 2 - rw[i] / 2;
+      const y = ty + (i + 1) * lh;
+      for (const run of rows[i]) {
+        const tw = g.measureText(run.t).width;
+        if (run.t) { g.fillStyle = run.col || '#efe4c8'; g.fillText(run.t, x, y); }
+        if (run.strike > 0) { g.fillStyle = '#d0503a'; g.fillRect(Math.round(x - u), Math.round(y - fs * 0.38), Math.round((tw + 2 * u) * Math.min(1, run.strike)), u); }
+        x += tw + gap;
+      }
+    }
+    g.restore();
+  },
 };
 
 /* ---------------- the engine pieces the growth cards add ---------------- */
@@ -1341,8 +1401,10 @@ Object.assign(Deck.FX, {
      Wonder rises only where the mode offers it (UI.wonderOffered — Calm). */
   age_of_marble: {
     at: 'tc', CUT: 0.25, RATE: 2,
-    // the card lands ON the works when they stand (DeckUI._dest), else on the hall
-    dest() { return GrowFX.wonderSite(); },
+    // the card lands ON the works when they stand (DeckUI._dest), else on the
+    // hall — and the works are brought to the middle of the view first: at
+    // the screen's edge the courses landed under the toast
+    dest() { const w = GrowFX.wonderSite(); if (w) GrowFX.frame(w.x, w.y); return w; },
     can() {
       if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds.' };
       const w = Deck.wonderOf('P');
@@ -1353,8 +1415,9 @@ Object.assign(Deck.FX, {
     apply() {
       const ok = this.can();
       if (!ok.ok) return ok;
+      const w = Deck.wonderOf('P'), back = {}, was = Bld.effCost('P', 'wonder');
       Deck.run().charges.marble = 1;
-      const w = Deck.wonderOf('P'), back = {};
+      const now = Bld.effCost('P', 'wonder');
       if (w && w.paid) for (const k in w.paid) {
         const n = Math.floor((w.paid[k] || 0) * this.CUT);
         if (n > 0) { back[k] = n; w.paid[k] -= n; S.res[k] = (S.res[k] || 0) + n; }
@@ -1363,69 +1426,130 @@ Object.assign(Deck.FX, {
       const at = w ? { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), site: 1, bx: w.x, by: w.y }
         : tc ? { x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + Bld.size(tc), sz: Bld.size(tc), site: 0 }
         : Object.assign(GrowFX.mid(), { foot: GrowFX.mid().y + 1, sz: 2, site: 0 });
-      GrowFX.show('age_of_marble', at);
-      if (window.R && R.flashAt) R.flashAt(0.32, 0.6, '245,240,228');
+      // the act says what changed: the price struck through (no works yet),
+      // or what came back (works laid) — render data, never in S
+      GrowFX.show('age_of_marble', Object.assign(at, { was, now, back }));
+      // (no whole-frame flash: the first cut washed the frame to a pale cream
+      // fog for the whole act, which read as a render failure)
       GrowFX.sfx('marble');
       const any = Object.keys(back).length;
       Deck.say('🏛 The Age of Marble: for the rest of this game your Wonder costs 25% less and rises twice as fast' +
         (w ? (any ? ' — and ' + Bld.costStr(back) + ' of what you paid for it comes back' : '') : '') + '.');
-      return { ok: true, x: at.x, y: at.y, fly: back };
+      // the landing toast says what happened, not the rule
+      const msg = w ? (any ? '🏛 Age of Marble: ' + Bld.costStr(back) + ' of what you paid comes back, and your Wonder rises twice as fast.'
+        : '🏛 Age of Marble: your Wonder rises twice as fast.')
+        : '🏛 Age of Marble: your Wonder costs a quarter less now, and will rise twice as fast.';
+      return { ok: true, x: at.x, y: at.y, fly: back, msg };
     },
-    MARBLE: ['#fbf8f0', '#ece6d8', '#c4bdae', '#6f695c'],
-    /* the marble arrives: dressed blocks drop out of the sky onto the works,
-       course on course, each landing in its own puff of pale dust, under a
-       pale column and a ring of dots while the sky flares white (Imperial) */
+    /* the marble is dressed STONE: the stone ramp (ART.PALETTE.stone) with
+       a pale cap — the first cut was white tiles in a grey frame, which read
+       as icons laid on the map. Joint, shade, flank, face, cap. */
+    MARBLE: ['#4a4a44', '#8f8f86', '#adada2', '#c9c9bf', '#e6e4da'],
+    ramp() {
+      const P = typeof ART !== 'undefined' && ART.PALETTE && ART.PALETTE.stone;
+      return P && P.length >= 5 ? [P[0], P[2], P[3], P[4], this.MARBLE[4]] : this.MARBLE;
+    },
+    // one dressed block, its foot at (x, y), world px: a dark joint all
+    // round, the lit cap, the face with its shaded foot, the flank in
+    // shadow, a vein, and now and then a chipped corner
+    block(g, x, y, k) {
+      const M = this.ramp(), F = GrowFX, x0 = F.snap(x) - 6, y0 = F.snap(y) - 10;
+      g.fillStyle = M[0]; g.fillRect(x0, y0, 12, 10);
+      g.fillStyle = M[4]; g.fillRect(x0 + 1, y0 + 1, 10, 2);
+      g.fillStyle = M[3]; g.fillRect(x0 + 1, y0 + 3, 8, 5);
+      g.fillStyle = M[2]; g.fillRect(x0 + 1, y0 + 8, 8, 1); g.fillRect(x0 + 9, y0 + 3, 2, 6);
+      g.fillStyle = M[1]; g.fillRect(x0 + 10, y0 + 4, 1, 5);
+      g.fillStyle = M[2];
+      if (k % 3 === 0) { g.fillRect(x0 + 3, y0 + 4, 1, 1); g.fillRect(x0 + 4, y0 + 5, 1, 1); g.fillRect(x0 + 5, y0 + 6, 2, 1); }
+      else if (k % 3 === 1) { g.fillRect(x0 + 6, y0 + 4, 1, 2); g.fillRect(x0 + 5, y0 + 6, 1, 1); }
+      if (k % 4 === 2) { g.fillStyle = M[0]; g.fillRect(x0 + 1, y0 + 1, 1, 1); }
+    },
+    /* the marble arrives: a pale shaft drops from the top of the sky onto
+       the works and dressed blocks fall down it, course on course in a
+       running bond, each throwing chips of stone as it lands — with no
+       works yet, a stack of them is set down at the hall's door, the
+       Wonder's stone waiting. The act says what the card did on a plaque
+       below it: the Wonder's price struck through to its new one, or the
+       quarter of it that comes back. No wash over the frame: the first cut
+       faded the whole view to a cream fog for the act. */
     show: {
-      ms: 3200, layers: ['world', 'sky'],
+      ms: 3800, layers: ['world', 'sky'],
       draw(g, s, p, dt, layer) {
         const F = GrowFX;
         if (layer === 'sky') {
-          // the marble-white flare HELD through the courses, then let go
           const e = F.env(p, 0, 0.08, 0.66, 0.96);
-          if (e <= 0) return;
-          const fl = F.step(F.env(p, 0, 0.03, 0.1, 0.22));
-          // marble light is PALE, not lime: the frame graded toward stone-white
-          // (R.goldWash in the pale tone) — a pale fill added over the meadow went green
-          if (fl > 0) R.goldWash(g, 0.3 * fl, 0, 0, null, null, 'pale');
-
-          const sc = F.toScreen(s.x, s.foot);
-          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.05, 9, 0.16, 'pale', 0.7 * e, s.t);
-          F.glitter(g, 36, 'pale', e * 0.85, s.t);
+          if (e > 0) {
+            const sc = F.toScreen(s.x, s.foot);
+            F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.05, 9, 0.16, 'pale', 0.7 * e, s.t, 0.06);
+            F.glitter(g, 36, 'pale', e * 0.85, s.t);
+          }
+          this.caption(g, s, p);
           return;
         }
-        const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL, half = s.sz * TL / 2, M = this.MARBLE;
+        const TL = CFG.TILE, cx = s.x * TL, half = s.sz * TL / 2;
+        // with no works the stack stands just before the hall's door
+        const foot = s.foot * TL + (s.site ? 0 : TL * 0.35);
         // each course lands with a thud: dust rolls out from under the works
         // (the placement dust — render one-shots, never in S) and the ground shakes
-        for (const [at, k] of [[0.24, 'd1'], [0.42, 'd2'], [0.6, 'd3']]) {
+        for (const [at, k] of [[0.2, 'd1'], [0.35, 'd2'], [0.5, 'd3']]) {
           if (p < at || s[k]) continue;
           s[k] = 1;
           if (s.site && R.startPlacePoof) R.startPlacePoof(s.bx, s.by, s.sz, { scale: 0.75 + at * 0.4 });
           if (R.shakeAt) R.shakeAt(2 + at * 4, 0.35);
           F.sfx('rise');
         }
-        F.column(g, cx, foot, foot - TL * (3 + s.sz) * F.ease(p / 0.15), TL * s.sz * 0.9 * (1 - p), F.env(p, 0, 0.08, 0.3, 0.7), 'pale');
-        F.ring(g, cx, foot - 2, TL * (0.4 + s.sz * 0.9 * F.ease(p / 0.5)), 'pale', (1 - p) * 0.9, 2, 0.5);
-        const per = Math.max(2, s.sz * 2), N = per * 3, fadeOut = p < 0.82 ? 1 : Math.max(0, (1 - p) / 0.18);
-        for (let k = 0; k < N; k++) {
-          const st = 0.05 + (k / N) * 0.55, q = (p - st) / 0.16;
+        // the shaft comes down from the top of the view, narrow, and thins away
+        const topY = R.cam.y - 60 / R.cam.z, sh = F.env(p, 0, 0.06, 0.3, 0.56);
+        if (sh > 0) F.column(g, cx, foot, foot - (foot - topY) * F.ease(p / 0.1), TL * (0.5 + s.sz * 0.3) * (1 - 0.5 * p), sh, 'pale');
+        F.ring(g, cx, foot - 2, TL * (0.4 + s.sz * 0.9 * F.ease(p / 0.45)), 'pale', (1 - p) * 0.9, 2, 0.5);
+        // the courses: a running bond across the works, or a stack (wide
+        // at the foot, narrowing up) set down before the hall
+        const rows = s.site ? [0, 1, 2].map(() => Math.max(2, s.sz * 2)) : [0, 1, 2].map(r => Math.max(1, Math.max(3, s.sz * 2) - r));
+        const N = rows.reduce((a, n) => a + n, 0), sink = p < 0.84 ? 0 : (p - 0.84) / 0.16, M = this.ramp();
+        let k = 0;
+        for (let row = 0; row < rows.length; row++) for (let i = 0; i < rows[row]; i++, k++) {
+          const st = 0.04 + (k / N) * 0.46, q = (p - st) / 0.14;
           if (q <= 0) continue;
-          const row = Math.floor(k / per), bx = cx - half * 0.8 + ((k % per) + 0.5) / per * half * 1.6 + (F.hash(k, 4) - 0.5) * 4;
-          const landY = foot - 6 - row * 6, y = q < 1 ? landY - TL * 4 * (1 - q * q) : landY;
-          const a = F.step(fadeOut);
-          if (a <= 0) continue;
-          g.globalAlpha = a;
-          g.fillStyle = M[3]; g.fillRect(F.snap(bx) - 5, F.snap(y) - 1, 10, 8);
-          g.fillStyle = M[1]; g.fillRect(F.snap(bx) - 4, F.snap(y), 8, 6);
-          g.fillStyle = M[0]; g.fillRect(F.snap(bx) - 4, F.snap(y), 8, 2);
-          g.fillStyle = M[2]; g.fillRect(F.snap(bx) - 4, F.snap(y) + 4, 8, 2);
-          g.globalAlpha = 1;
-          if (q >= 1 && q < 1.5) {
-            const d = (q - 1) / 0.5;
-            for (let m = 0; m < 4; m++)
-              F.mote(g, bx + (m < 2 ? -1 : 1) * (4 + d * 10 * (1 + m % 2)), landY + 4 - d * 3 * (m % 2), '#f4f0e6', null, (1 - d) * a);
+          const n = rows[row];
+          const bx = s.site ? cx - half * 0.85 + (i + 0.5 + (row % 2 ? 0.25 : 0)) / n * half * 1.7
+            : cx + (i - (n - 1) / 2) * 12;
+          const landY = foot - 2 - row * 10, y = q < 1 ? landY - TL * 4 * (1 - q * q) : landY;
+          // at the end the courses settle INTO the works, a row at a time, never a fade
+          if (sink > 0 && row >= Math.round((1 - sink) * rows.length)) continue;
+          this.block(g, bx, y, k);
+          // a landing throws chips of the stone: opaque, each one gone in its turn
+          if (q >= 1 && q < 1.6) {
+            const d = (q - 1) / 0.6;
+            for (let m = 0; m < 4; m++) {
+              if (d > 0.45 + m * 0.15) continue;
+              const side = m < 2 ? -1 : 1, fly = 5 + d * 9 * (1 + (m & 1));
+              g.fillStyle = M[m & 1 ? 2 : 4];
+              g.fillRect(F.snap(bx + side * fly), F.snap(landY - 3 - d * 7 * (1 - d) * (1 + (m & 1)) + d * 3), 2, 2);
+            }
           }
         }
       },
+    },
+    // the plaque: the price struck through to its new one, or what came back
+    caption(g, s, p) {
+      const F = GrowFX, gold = '#ffd45e', dim = '#9a8f7c', cream = '#efe4c8', RES = ['food', 'wood', 'stone', 'gold'];
+      const backKeys = RES.filter(k => s.back && s.back[k] > 0);
+      let title, rows;
+      if (s.site && backKeys.length) {
+        title = 'A QUARTER COMES BACK';
+        const runs = backKeys.map(k => ({ t: '+' + s.back[k] + ' ' + k.toUpperCase(), col: gold }));
+        rows = [runs.slice(0, 2), runs.slice(2)].filter(r => r.length).concat([[{ t: 'AND THE WORKS RISE TWICE AS FAST', col: cream }]]);
+      } else if (s.site || !s.was) {
+        title = 'AN AGE OF MARBLE';
+        rows = [[{ t: 'YOUR WONDER RISES TWICE AS FAST', col: cream }]];
+      } else {
+        title = 'THE WONDER’S PRICE';
+        const strike = F.step(Math.min(1, Math.max(0, (p - 0.36) / 0.12))), fresh = p > 0.5, hot = p > 0.5 && p < 0.56;
+        const run = k => s.was[k] == null ? [] : [{ t: k.toUpperCase(), col: cream }, { t: String(s.was[k]), col: dim, strike },
+          { t: String(s.now[k]), col: !fresh ? 'rgba(0,0,0,0)' : hot ? '#fff3cf' : gold }];
+        rows = [run('food').concat(run('wood')), run('stone').concat(run('gold')), [{ t: 'AND IT WILL RISE TWICE AS FAST', col: cream }]];
+      }
+      F.plaque(g, s, title, rows, p, 0.2, 0.98);
     },
   },
 

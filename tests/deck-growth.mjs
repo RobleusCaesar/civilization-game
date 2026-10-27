@@ -1523,6 +1523,90 @@ await p.evaluate(() => {
     `at home: sent ${r.awayHome}; their field in sight: sweeps over it ${r.overFields}; ${JSON.stringify(r.away)}`);
 }
 
+// ---------------- 13c. THE AGE OF MARBLE SAYS WHAT IT DID ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    const MB = Deck.FX.age_of_marble;
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, ft = P2.fillText;
+    const fa = R.flashAt, gw = R.goldWash;
+    let flashes = 0, washes = 0;
+    R.flashAt = function () { flashes++; return fa.apply(this, arguments); };
+    R.goldWash = function () { washes++; return gw.apply(this, arguments); };
+    try {
+      /* (a) NO WASH, AND THE PRICE IS SAID ON SCREEN: with no works laid the
+         play throws no whole-frame flash and the act grades nothing (the first
+         cut faded the whole view to a cream fog for the act, which read as a
+         render failure), and its own caption strikes the old price through to
+         the new one — the price the card changed was never shown anywhere */
+      __g.fresh('growth-marble-style', 'calm'); const { P } = __g.flat();
+      Screens.show('playing'); S.paused = true;
+      R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+      G.updateVisibility();
+      const was = Bld.effCost('P', 'wonder');
+      R.cardShows = [];
+      const play = Deck.play('age_of_marble');
+      const now = Bld.effCost('P', 'wonder');
+      const s = R.cardShows.find(z => z.id === 'age_of_marble');
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d'), texts = [], strikes = [], fills = new Set();
+      P2.fillText = function (t) { if (this.canvas === c) texts.push([String(t), String(this.fillStyle).toLowerCase()]); return ft.apply(this, arguments); };
+      P2.fillRect = function (x, y, w) {
+        if (this.canvas === c) { const col = String(this.fillStyle).toLowerCase(); fills.add(col); if (col === '#d0503a' && w > 0) strikes.push(w); }
+        return fr.apply(this, arguments);
+      };
+      try {
+        for (let k = 1; k < 20; k++) {
+          const pp = k / 20; s.t = pp * MB.show.ms / 1000;
+          for (const L of ['world', 'sky']) { g.save(); MB.show.draw.call(MB, g, s, pp, 1 / 30, L); g.restore(); }
+        }
+      } finally { P2.fillText = ft; P2.fillRect = fr; }
+      out.flashes = flashes; out.washes = washes;
+      const said = t => texts.some(([u]) => u === t);
+      out.oldSaid = ['food', 'wood', 'stone', 'gold'].filter(k => was[k] && said(String(was[k]))).length;
+      out.newSaid = ['food', 'wood', 'stone', 'gold'].filter(k => now[k] && texts.some(([u, col]) => u === String(now[k]) && col === '#ffd45e')).length;
+      out.struck = strikes.length;
+      /* (b) THE MARBLE IS STONE: its blocks are shaded in the stone ramp (a
+         dark joint, the face, its flank) — the first cut's were flat white
+         rectangles in a grey frame, which read as icons laid on the map */
+      const ST = ART.PALETTE.stone.map(x => x.toLowerCase());
+      out.stoneSteps = [0, 2, 3, 4].filter(i => fills.has(ST[i])).length;
+      // (c) the toast says what happened: the price fell
+      out.msgPrice = play.ok && typeof play.msg === 'string' && /quarter less/.test(play.msg) ? play.msg : null;
+      /* (d) LAID, WHAT CAME BACK IS SAID, and the works are brought to the
+         middle of the view before the card flies — at the screen's top edge
+         the courses landed under the toast */
+      __g.fresh('growth-marble-style2', 'calm'); const q = __g.flat();
+      Screens.show('playing'); S.paused = true;
+      for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 20000;
+      const w = Bld.place('P', 'wonder', q.P.x + 6, q.P.y + 6, { noAutoAssign: true }); Bld._block = null;
+      out.paid = !!(w && w.paid && w.paid.food > 0);
+      R.cam.z = 1.7;
+      const TL = CFG.TILE, z = R.cam.z;
+      R.centerOn(Bld.cx(w), Bld.cy(w));
+      R.cam.y = Bld.cy(w) * TL - ((R.topReserve || 0) + 30) / z;   // the works just under the top bar
+      const pt = DeckUI._dest('tc', 'age_of_marble');
+      const top = (R.topReserve || 0) + 80, bot = R.viewH() - (R.bottomReserve || 0) - 30;
+      out.framedY = +((pt.y - top) / (bot - top)).toFixed(3);
+      out.framedX = +(pt.x / R.viewW()).toFixed(3);
+      const r0 = Object.assign({}, S.res);
+      const lay = Deck.play('age_of_marble');
+      const back = {}; for (const k in r0) if (S.res[k] > r0[k]) back[k] = S.res[k] - r0[k];
+      out.msgBack = lay.ok && typeof lay.msg === 'string' && Object.keys(back).length && lay.msg.includes(Bld.costStr(back)) && /comes back/.test(lay.msg) ? lay.msg : (lay.msg || null);
+      out.backOk = !!(lay.ok && Object.keys(back).length && typeof lay.msg === 'string' && lay.msg.includes(Bld.costStr(back)));
+    } finally { R.flashAt = fa; R.goldWash = gw; }
+    return out;
+  });
+  ck('theAgeOfMarbleWashesNothingOverTheFrame', r.flashes === 0 && r.washes === 0,
+    `${r.flashes} whole-frame flashes, ${r.washes} grades over the act`);
+  ck('withNoWorksItsCaptionStrikesTheOldPriceToTheNew', r.oldSaid === 4 && r.newSaid === 4 && r.struck >= 4,
+    `old price said for ${r.oldSaid}/4 goods, new price in gold for ${r.newSaid}/4, ${r.struck} strike-throughs`);
+  ck('theMarbleIsShadedStone', r.stoneSteps >= 3, `${r.stoneSteps} of the stone ramp's steps in the blocks`);
+  ck('itsToastSaysWhatChanged', !!r.msgPrice && r.backOk, `none laid: "${r.msgPrice}"; laid: "${r.msgBack}"`);
+  ck('laidTheWorksAreBroughtToTheMiddleFirst', r.paid && r.framedY > 0.2 && r.framedY < 0.8 && r.framedX > 0.2 && r.framedX < 0.8,
+    `the works land at ${r.framedX} across, ${r.framedY} down the open view`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 6));
 await b.close();
