@@ -1281,6 +1281,49 @@ const strikes = await sp.evaluate(async (enter) => {
 ck('aStrikeSaysItOnceNeverAsAnAlarm', ['starfall', 'dragonfire'].every(id => strikes[id].played && strikes[id].max === 1 && strikes[id].alarms === 0) &&
   strikes.starfall.said.some(t => /star strikes/.test(t)) && strikes.dragonfire.said.some(t => /Ash where they stood/.test(t)),
   ['starfall', 'dragonfire'].map(id => `${id}: ${strikes[id].max} at once, ${strikes[id].alarms} alarm samples — ${strikes[id].said.map(t => t.slice(0, 40)).join(' | ')}`).join('; '));
+/* AN ACT THAT LETTERS ITS OWN WORDS TOASTS NO RULE (judge g3 #4: "every
+   card's toast repeats its own text and covers the top of the world mid-
+   show"): the Imperial army cut sets the card's name and line in its lower
+   bar, and the Pact and the Swallowed Sun letter theirs over the act
+   (R.actTitle) — so the landing's "Card: its rule" toast stands down for
+   them (`narrates`). Played through the real sequence, 3 s watched: no
+   toast names the card. And while the cut's top bar is across the glass,
+   the toasts step below it (--dk-cine): a toast said mid-cut — a raid seen,
+   a soldier lost — is measured standing under the bar, never on it. */
+const told = await sp.evaluate(async (enter) => {
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const out = {};
+  for (const id of ['legion_marches', 'barbarian_pact', 'swallowed_sun']) {
+    eval('(' + enter + ')')('dk-told-' + id);
+    Deck._col = null; Deck._del(Deck.KEY); Deck._add(id, 1);
+    G.updateVisibility();
+    UI._toastAt = {}; document.getElementById('toasts').innerHTML = '';
+    S.paused = false;
+    const name = Deck.card(id).name, said = new Set();
+    DeckUI._run(id, null, null, false);
+    const t0 = performance.now();
+    let under = null;
+    while (performance.now() - t0 < 3000) {
+      for (const t of document.querySelectorAll('#toasts .toast')) said.add(t.textContent);
+      // mid-cut, a line said by the world: where does it stand?
+      if (id === 'legion_marches' && under === null && Deck.armyFx && Deck.armyFx._cine > 20) {
+        UI.toast('A war band is on the move!', true);
+        await wait(60);
+        const tb = document.getElementById('topbar').getBoundingClientRect(), el = document.querySelector('#toasts .toast:last-child');
+        const cine = parseFloat(document.body.style.getPropertyValue('--dk-cine')) || 0;
+        under = { top: Math.round(el.getBoundingClientRect().top), bar: Math.round(tb.bottom + cine), cine };
+      }
+      await wait(50);
+    }
+    out[id] = { played: Deck.count(id) === 0, named: [...said].filter(t => t.includes(name)), under };
+  }
+  return out;
+}, enterGame.toString());
+const tl = told.legion_marches.under;
+ck('anActThatLettersItsWordsToastsNoRule', Object.values(told).every(o => o.played && !o.named.length),
+  Object.entries(told).map(([id, o]) => `${id}: ${o.named.length ? 'toasted "' + o.named[0].slice(0, 60) + '"' : 'no toast names it'}`).join('; '));
+ck('andAToastSaidMidCutStandsBelowTheBar', !!tl && tl.cine > 20 && tl.top >= tl.bar - 1,
+  tl ? `the toast's top at ${tl.top}px, the cut's top bar ends at ${tl.bar}px (${tl.cine}px of bar)` : 'no cut seen');
 await sctx.close();
 
 /* ================= 12. EVERY NAME FITS ITS PLATE, EVERY REFUSAL ITS CAPTION =================

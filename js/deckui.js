@@ -92,6 +92,10 @@ const DeckUI = {
 
   /* called from G.frame, only while Deck.on() */
   frame(dt) {
+    // a cinema cut that stopped being drawn (its show cut short) gives the
+    // toasts their place back (guarded on the method it calls)
+    const AF = window.Deck && Deck.armyFx;
+    if (AF && AF._cine && AF.cineToasts && performance.now() - AF._cineAt > 250) AF.cineToasts(0);
     if (!this.live()) {
       // a screen took over (the pause menu, the end): drop the deck where it
       // stands — that screen owns the pause now, and the card was never taken
@@ -1953,6 +1957,9 @@ body.dk-floor #toasts { z-index: 27; }
    (playtest g2). Under it while it is up — the refusal is said on the card's
    own line — and back over the sheet the moment it is put back */
 body.dk-floor.dk-lifted #toasts { z-index: 23; }
+/* an act's cinema cut has its top bar across the glass: the toasts step down
+   below it for as long as it is in (Deck.armyFx.cineToasts sets the depth) */
+#toasts { transform: translateY(var(--dk-cine, 0px)); }
 /* a tutorial note already on screen steps aside while the deck has the floor
    (its dim sits over the reticle otherwise); it is back the moment the deck
    lets go, its state untouched */

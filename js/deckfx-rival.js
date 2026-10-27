@@ -1266,6 +1266,7 @@
        bought it; the muster's whereabouts are never said. */
     barbarian_pact: {
       at: 'tc', N: 3,
+      narrates: true,   // its act letters its words (THE PACT IS SEALED): no landing toast over it
       /* the bands still owed are a running card: they wear a chip on the
          strip (DeckUI._timers) — the count where a timer's days would be,
          the ring a card's worth — kept under 'pact', which the strip maps
@@ -1537,6 +1538,7 @@
        still muster and the predators keep their distance from the towns. */
     swallowed_sun: {
       at: 'focus', DAYS: 4, SOFT: 0.7,
+      narrates: true,   // its act letters its words (THEIR SUN IS SWALLOWED): no landing toast over it
       mult: {
         atk(owner) { return owner === 'A' ? this.SOFT : 1; },
         bldAtk(owner) { return owner === 'A' ? this.SOFT : 1; },
@@ -1863,6 +1865,7 @@
        water"; with nothing at all to strike it comes back with a reason. */
     krakens_call: {
       at: 'focus', DMG: 600, TC_CAP: 0.4, SHIPS: 4, NEAR: 2,
+      narrates: true,   // THE DEEP ANSWERS, then the act's own lines: no landing toast over it
       RISE: 1.6, THRASH: 1.4, SINK: 1.6,     // the world's own act's beats (R.drawKraken fades on them)
       /* THE MAP'S ACTS WAIT FOR THE SKY'S MOMENT: the deep answers over the
          whole screen first (the show, ~3.6s), and the first hull is reached

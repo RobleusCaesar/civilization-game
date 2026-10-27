@@ -10935,8 +10935,10 @@ const R = {
      toasts and the minimap — below the lower of the two, measured off the
      DOM (re-read at most every 300ms, so a toast landing mid-act moves the
      title down a step rather than sliding under it); `opt.y` asks for a
-     lower line (an emblem's foot), never a higher one. `a` 0..1 fades it in
-     hard steps. Answers the box it took ({ y0, y1 }, device px). */
+     lower line (an emblem's foot), never a higher one, and `opt.max` /
+     `opt.sub` (CSS px) size it down for a box of its own — the army cut's
+     lower bar (Deck.armyFx.cinema) letters its card this way. `a` 0..1 fades
+     it in hard steps. Answers the box it took ({ y0, y1 }, device px). */
   ACT_TITLE: { hi: '#ffe39a', lo: '#efb43e', ink: '#160e08', sub: '#f3e6c4', max: 30, min: 17, subPx: 14, subMin: 13, side: 16 },
   _actTop: null,
   actTitleTop() {
@@ -10967,15 +10969,17 @@ const R = {
     g.globalAlpha = a;
     g.textAlign = 'center'; g.textBaseline = 'top';
     if ('letterSpacing' in g) g.letterSpacing = '0px';
-    // the title: as big as fits, else on two lines
-    let fs = A.max * dpr, lines = [String(title)];
+    // the title: as big as fits, else on two lines — `opt.max` (CSS px) caps
+    // it for a title set in a box of its own (the army cut's lower bar)
+    const tMax = Math.max(A.subMin, opt.max || A.max), tMin = Math.min(A.min, tMax);
+    let fs = tMax * dpr, lines = [String(title)];
     const fit = (txt, px) => { g.font = face(700).replace('%PX%', px); return g.measureText(txt).width; };
-    while (fs > A.min * dpr && fit(lines[0], fs) > maxW) fs -= dpr;
+    while (fs > tMin * dpr && fit(lines[0], fs) > maxW) fs -= dpr;
     if (fit(lines[0], fs) > maxW) {
       const wds = lines[0].split(' '), mid = Math.ceil(wds.length / 2);
       lines = [wds.slice(0, mid).join(' '), wds.slice(mid).join(' ')];
-      fs = A.max * dpr;
-      while (fs > A.min * dpr && Math.max(fit(lines[0], fs), fit(lines[1], fs)) > maxW) fs -= dpr;
+      fs = tMax * dpr;
+      while (fs > tMin * dpr && Math.max(fit(lines[0], fs), fit(lines[1], fs)) > maxW) fs -= dpr;
     }
     fs = Math.round(fs);
     const top = Math.max(this.actTitleTop(), opt.y || 0) + Math.round((1 - a) * 6 * dpr);
@@ -11009,7 +11013,8 @@ const R = {
     y += rh + 7 * o;
     // the subtitle: never under 13 CSS px, wrapped onto two lines before it is shrunk below that
     if (sub) {
-      let sp = A.subPx * dpr, sl = [String(sub)];
+      // `opt.sub` (CSS px) asks a smaller subtitle — never under A.subMin
+      let sp = Math.max(A.subMin, Math.min(A.subPx, opt.sub || A.subPx)) * dpr, sl = [String(sub)];
       const sfit = (txt, px) => { g.font = face(700).replace('%PX%', px); return g.measureText(txt).width; };
       while (sp > A.subMin * dpr && sfit(sl[0], sp) > maxW) sp -= dpr;
       if (sfit(sl[0], sp) > maxW) {
