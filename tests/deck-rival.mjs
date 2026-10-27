@@ -31,7 +31,8 @@
                        off the run's RNG (the same relic found on foot draws
                        it, the control); a second fire lights a second hill,
                        the same fire fed again burns 3 more days; never the
-                       rim
+                       rim; aimed at a building, the fire and its watch are
+                       seated on the nearest open tile, never on a roof
      PATHFINDER'S MAP  every tile but the relic's footprint; the relic marked
                        (map and minimap) and unfound; nothing standing shown;
                        its "when", in words
@@ -542,10 +543,37 @@ await p.evaluate(() => {
     Deck.play('scouts_fire', { x: 22.5, y: 21.5 });
     const e4 = Deck.timed('scouts_fire');
     out.fed = { pts: e4.pts.length, until: +(e4.pts[0].until - d0).toFixed(6), chip: +(e4.until - d0).toFixed(6) };
+    /* THE FIRE IS SEATED ON OPEN GROUND: aimed at a building — a rival hut,
+       their 2x2 hall at its heart — the fire, its pillar and its watch stand
+       on the nearest open tile beside it, never on a roof (a building ablaze
+       is the game's one unprompted alarm); the chart is still the ring round
+       the point aimed. Aimed at open ground (the fires above) it burns
+       exactly where it was aimed. */
+    __rv.fresh('rv-scout5'); const f5 = __rv.flat(false); G.updateVisibility();
+    __rv.bld('A', 'house', 20, 20);
+    R.cardShows = [];
+    Deck.play('scouts_fire', { x: 20.5, y: 20.5 });
+    const hall = { x: f5.A.x + 1, y: f5.A.y + 1 };
+    Deck.play('scouts_fire', hall);
+    const e5 = Deck.timed('scouts_fire'), shows = R.cardShows.filter(s => s.id === 'scouts_fire');
+    out.seats = e5.pts.map((pt, i) => ({ at: pt.x + ',' + pt.y, roof: !!Bld.at(pt.x, pt.y), open: Path.passable(pt.x, pt.y),
+      d: +Math.hypot(pt.x + 0.5 - (i ? hall.x : 20.5), pt.y + 0.5 - (i ? hall.y : 20.5)).toFixed(2),
+      pillar: !!shows[i] && shows[i].x === pt.x + 0.5 && shows[i].y === pt.y + 0.5 }));
+    G.updateVisibility();
+    out.seatWatched = G.visibleAt(e5.pts[0].x, e5.pts[0].y) && G.visibleAt(20, 20);
+    out.seatCharted = S.map.explored[MapGen.idx(29, 20)] === 1 && S.map.explored[MapGen.idx(11, 20)] === 1;
+    // …and on open ground it is exactly where it was aimed
+    __rv.fresh('rv-scout6'); __rv.flat(false); G.updateVisibility();
+    Deck.play('scouts_fire', { x: 20.5, y: 20.5 });
+    const p6 = Deck.timed('scouts_fire').pts[0];
+    out.openAt = p6.x === 20 && p6.y === 20;
     return out;
   });
   ck('theSameFireFedAgainBurnsThreeMoreDays', r.fed.pts === 1 && r.fed.until === 6 && r.fed.chip === 6,
     `${r.fed.pts} hill, burning ${r.fed.until} days from the first play (chip ${r.fed.chip})`);
+  ck('theFireIsSeatedOnOpenGroundNeverOnARoof', r.seats.length === 2 && r.seats.every(s => !s.roof && s.open && s.pillar && s.d <= 2) &&
+    r.seatWatched && r.seatCharted && r.openAt,
+    `aimed at a hut, then at their hall: ${JSON.stringify(r.seats)}; watched ${r.seatWatched}, the aimed ring charted ${r.seatCharted}; open ground kept as aimed ${r.openAt}`);
   ck('theFireIsAnyPoint', r.c.target === 'any' && r.at === 'target' && r.anyUnexplored && r.offBoard,
     `target '${r.c.target}', unexplored ground takes it ${r.anyUnexplored}, off the board refused ${r.offBoard}`);
   ck('nineTilesChartedForGood', r.play.ok && r.ring.explored === r.ring.n && r.ring.lit > 200 && r.pts[0] === r.pts[1],

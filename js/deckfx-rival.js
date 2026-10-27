@@ -334,9 +334,30 @@
        lengthen the first, it lights a second hill (one timer chip, running
        to the later of the two). */
     scouts_fire: {
-      at: 'target', radius: 9, R: 9, DAYS: 3,
+      at: 'target', radius: 9, R: 9, DAYS: 3, SEAT_R: 4,
       can() { return { ok: true }; },
       valid() { return true; },
+      /* THE FIRE IS SEATED ON OPEN GROUND. Aimed at a building, a fire drawn
+         where the mark fell burned on its ROOF — and a building on fire is
+         the game's one unprompted alarm. So the fire, and the watch kept
+         from it, stand on the nearest tile with no building that a foot
+         could stand on (the aimed tile itself when it is open; ties broken
+         in scan order, so a play seats the same way twice); with no such
+         ground within SEAT_R (a lake's middle), on the nearest tile with no
+         building at all. The chart is still the ring round the point aimed —
+         what the reticle promised. Fog-honest: everything within SEAT_R is
+         inside the ring the play charts and watches at once. */
+      seat(cx, cy) {
+        const pick = ok => {
+          let best = null, bd = Infinity;
+          for (let dy = -this.SEAT_R; dy <= this.SEAT_R; dy++) for (let dx = -this.SEAT_R; dx <= this.SEAT_R; dx++) {
+            const x = cx + dx, y = cy + dy, d = dx * dx + dy * dy;
+            if (d < bd && d <= this.SEAT_R * this.SEAT_R && MapGen.onBoard(x, y) && !Bld.at(x, y) && ok(x, y)) { best = { x, y }; bd = d; }
+          }
+          return best;
+        };
+        return pick((x, y) => Path.passable(x, y)) || pick(() => true) || { x: cx, y: cy };
+      },
       apply(tgt) {
         const cx = Math.floor(tgt.x), cy = Math.floor(tgt.y), ring9 = disc(cx, cy, this.R);
         // what the fog hid before the fire: never seen (black) and remembered (dim)
@@ -351,7 +372,7 @@
            G.rand and the play would re-deal the rest of the run (NO CARD
            DRAWS THE RUN'S RNG). A relic a hand walks to keeps its G.rand. */
         if (window.Relics && Relics.checkDiscovery) Relics.checkDiscovery(Math.random);
-        const now = Deck.now();
+        const now = Deck.now(), st = this.seat(cx, cy);
         let until = now + this.DAYS;
         const live = Deck.timed('scouts_fire');
         if (live) {
@@ -360,14 +381,16 @@
              still burning) burns 3 MORE days — the lead's "the same card
              played again extends its duration"; a fire on another hill is a
              watch of its own */
-          const same = live.pts.find(p => Math.hypot(p.x - cx, p.y - cy) <= this.R / 2);
+          const same = live.pts.find(p => Math.hypot(p.x - st.x, p.y - st.y) <= this.R / 2);
           if (same) { same.until += this.DAYS; until = same.until; }
-          else live.pts.push({ x: cx, y: cy, until });
+          else live.pts.push({ x: st.x, y: st.y, until });
           live.until = Math.max(live.until, until);
-        } else Deck.addTimed('scouts_fire', this.DAYS, { pts: [{ x: cx, y: cy, until }] });
+        } else Deck.addTimed('scouts_fire', this.DAYS, { pts: [{ x: st.x, y: st.y, until }] });
         if (window.R) {
-          if (R.startCardShow) R.startCardShow('scouts_fire', { x: tgt.x, y: tgt.y, dark, dim });
-          if (R.startle) R.startle(tgt.x, tgt.y, 10);
+          // the pillar stands on its seat; the fog rolls back from the point
+          // aimed, over the ring the card charted (rx, ry)
+          if (R.startCardShow) R.startCardShow('scouts_fire', { x: st.x + 0.5, y: st.y + 0.5, rx: tgt.x, ry: tgt.y, dark, dim });
+          if (R.startle) R.startle(st.x + 0.5, st.y + 0.5, 10);
         }
         sfx('cardBeacon');
         // the watch begins NOW, though the sheet holds the world still
@@ -383,10 +406,13 @@
         ms: 2600, layer: 'world',
         draw(g, s, p) {
           const TL = CFG.TILE, x = s.x * TL, y = s.y * TL + TL * 0.25, t = s.t;
-          // the fog rolling back, a ring growing from the fire to the land's edge
+          // the fog rolling back, a ring growing from the point aimed (the
+          // ring the card charted; the fire stands on its seat beside it) to
+          // the land's edge
+          const ox = s.rx != null ? s.rx : s.x, oy = s.ry != null ? s.ry : s.y;
           const rf = this.R * 1.05 * ease(p / 0.62);
           const front = (fx, fy, m) => {
-            const d = Math.hypot(fx - s.x, fy - s.y);
+            const d = Math.hypot(fx - ox, fy - oy);
             return d > rf + m ? 1 : d < rf - m ? 0 : 0.5;
           };
           fogBack(g, s.dark, '#0d0b08', front);
@@ -395,7 +421,7 @@
           // the ring of firelight riding the front, in the fire's own ink —
           // opaque bronze dots (added over the meadow they rode in as lime)
           if (p < 0.7 && R.inkOn(g, 0.9 * (1 - p / 0.7), 'bronze'))
-            ring(g, x, s.y * TL, rf * TL, Math.max(24, Math.round(rf * 9)), 1);
+            ring(g, ox * TL, oy * TL, rf * TL, Math.max(24, Math.round(rf * 9)), 1);
           g.restore();
           // NO LIGHT POOLED ON THE GROUND (a warm glow over the meadow reads
           // as sand): the fire lights only itself, its sparks and the ring
