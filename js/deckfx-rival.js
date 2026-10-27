@@ -1379,6 +1379,8 @@
         for (const c of K.coast) for (const i of disc(c.x | 0, c.y | 0, this.COAST_SIGHT)) lit.push(i);
         Deck.light(lit);
         Deck.run().kraken = K;
+        // the beast's art is fetched on demand (Assets.FX_SETS — nothing with no set)
+        if (window.Assets && Assets.wantFx) Assets.wantFx('kraken');
         if (window.R) {
           if (R.startCardShow) R.startCardShow('krakens_call', {});
           if (R.flashAt) R.flashAt(0.4, 1.4, '2,10,22');
