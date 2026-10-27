@@ -847,6 +847,103 @@ await p.evaluate(() => {
   ck('andTheDarkItDrawsIsWholeNoTileGrid', r.play && r.seams === 0, `${r.seams} pixels of seam inside a block of dark tiles at a fractional zoom`);
 }
 
+// ---------------- 10. PATHFINDER'S MAP GIVES NOTHING AWAY, AND THE FOG IS SEEN TO GO ----------------
+/* The playtest's critics (a Bronze card whose effect lives in
+   js/deckfx-rival.js): the minimap showed the whole world and the relic's X
+   on the LANDING frame while the hide was still blank; the hide left as "a
+   big translucent rectangle smeared over the town"; the land was hatched
+   and the water left blank, so it did not read as the blue-heavy minimap;
+   and the fog peeling back happened off camera. Now: the minimap holds the
+   world dark until the fog's own rings reach it, the X waits for the
+   charcoal to strike it, the hide rolls back up (no alpha), the sea is
+   washed and inked in wave dashes, and after the view goes to the X the fog
+   steps back from the hall outward — drawn as one path. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, W = CFG.W;
+    __fx.fresh('fx-pathfinder'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    Deck._add('pathfinders_map', 2);
+    const P = Bld.tcOf('P');
+    // a sea to the east, the far half of the world dark, a relic in it
+    for (let y = 0; y < CFG.H; y++) for (let x = 24; x < 34; x++) if (MapGen.inB(x, y)) { const i = MapGen.idx(x, y); S.map.terrain[i] = T.WATER; if (S.map.seenTerrain) S.map.seenTerrain[i] = T.WATER; }
+    for (let i = 0; i < W * CFG.H; i++) { const x = i % W, y = (i / W) | 0; if (Math.hypot(x - P.x, y - P.y) > 9) S.map.explored[i] = 0; }
+    S.relic = { key: 'aqueduct', x: 18, y: 18, w: 2, h: 2, found: 0, amount: 0 };
+    G.updateVisibility();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+    R.cardShows = [];
+    const PF = Deck.FX.pathfinders_map;
+    const play = Deck.play('pathfinders_map');
+    const s = R.cardShows.find(z => z.id === 'pathfinders_map');
+    out.play = play.ok && !!s;
+    if (!s) return out;
+    const B = PF.BEAT || { LIFT: 3.1, ROLL: 0.6, PAN0: 3.45, PAN: 0.7, FOG0: 4.25, FOG: 0.8 };
+    // THE MINIMAP on the landing frame: a far charted tile still dark, the relic's X not there yet
+    const far = MapGen.idx(30, 30), farTile = { x: 30, y: 30 };
+    const mini = (x, y) => { R.drawMini(); const d = R.mg.getImageData(x * 2, y * 2, 1, 1).data; return [d[0], d[1], d[2]]; };
+    s.t = 0;
+    out.miniLanding = mini(farTile.x, farTile.y).join(',');
+    out.xLanding = mini(19, 19).join(',');
+    s.t = (B.FOG0 || 4.25) + (B.FOG || 0.8) + 0.05;
+    out.miniAfter = mini(farTile.x, farTile.y).join(',');
+    out.xAfter = mini(19, 19).join(',');
+    out.far = !!s.mask && s.mask[far] === 1;
+    // THE HIDE leaves by rolling up: never drawn through an alpha, and narrower as it goes
+    const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height;
+    const g = cv.getContext('2d');
+    const di = CanvasRenderingContext2D.prototype.drawImage, art = [];
+    CanvasRenderingContext2D.prototype.drawImage = function (img, sx, sy, sw, sh, dx, dy, dw) { if (this === g && img === s.art) art.push({ a: this.globalAlpha, w: dw }); return di.apply(this, arguments); };
+    try {
+      for (const t of [B.LIFT - 0.2, B.LIFT + B.ROLL * 0.3, B.LIFT + B.ROLL * 0.7]) { s.t = t; g.save(); PF.show.draw.call(PF, g, s, t / (s.ms / 1000), 0, 'sky'); g.restore(); }
+    } finally { CanvasRenderingContext2D.prototype.drawImage = di; }
+    out.hide = art.map(a => a.a.toFixed(2) + '@' + Math.round(a.w)).join(' ');
+    out.noAlpha = art.length === 3 && art.every(a => a.a === 1);
+    out.rolls = art.length === 3 && art[0].w > art[1].w && art[1].w > art[2].w;
+    // THE SEA on the hide: washed, and inked in wave dashes
+    const ink = s.ink.getContext('2d').getImageData(0, 0, s.aw, s.ah).data, hide = s.art.getContext('2d').getImageData(0, 0, s.aw, s.ah).data;
+    let waves = 0, wash = 0;
+    for (let y = 0; y < CFG.H; y++) for (let x = 25; x < 33; x++) for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+      const i = ((s.M + y * 2 + dy) * s.aw + s.M + x * 2 + dx) * 4;
+      if (ink[i + 3] && ink[i + 2] > ink[i] && ink[i + 2] > ink[i + 1] - 4) waves++;   // a cool ink on the water
+      if (hide[i] === 168 && hide[i + 1] === 156 && hide[i + 2] === 126) wash++;
+    }
+    out.waves = waves; out.wash = wash;
+    // THE VIEW GOES TO THE X, then the fog steps back from the hall outward
+    R.centerOn(Bld.cx(P), Bld.cy(P));
+    s.pan = null; s.panDone = false;
+    for (let t = (B.PAN0 || 3.45) - 0.05; t <= (B.PAN0 || 3.45) + (B.PAN || 0.7) + 0.05; t += 0.05) { s.t = t; g.save(); PF.show.draw.call(PF, g, s, t / (s.ms / 1000), 0, 'world'); g.restore(); }
+    out.atX = R.onScreen(19, 19);
+    const near = MapGen.idx(P.x + 11, P.y + 1);
+    const held = (t, i) => { s.t = t; return PF.held ? PF.held(s, i) : true; };
+    out.steps = {
+      before: held((B.FOG0 || 4.25) - 0.01, near) && held((B.FOG0 || 4.25) - 0.01, far),
+      mid: !held((B.FOG0 || 4.25) + (B.FOG || 0.8) * 0.5, near) && held((B.FOG0 || 4.25) + (B.FOG || 0.8) * 0.5, far),
+      end: !held((B.FOG0 || 4.25) + (B.FOG || 0.8), far),
+    };
+    const radii = new Set();
+    if (PF.released) for (let t = (B.FOG0 || 4.25); t <= (B.FOG0 || 4.25) + (B.FOG || 0.8); t += 0.02) { s.t = t; radii.add(PF.released(s).toFixed(3)); }
+    out.radii = radii.size;
+    // the dark it draws over the charted ground is ONE path, never a rect per run
+    let rects = 0, fills = 0;
+    const fr = CanvasRenderingContext2D.prototype.fillRect, fl = CanvasRenderingContext2D.prototype.fill;
+    CanvasRenderingContext2D.prototype.fillRect = function () { if (this === g) rects++; return fr.apply(this, arguments); };
+    CanvasRenderingContext2D.prototype.fill = function () { if (this === g) fills++; return fl.apply(this, arguments); };
+    try { s.t = 1; g.save(); PF.show.draw.call(PF, g, s, 1 / (s.ms / 1000), 0, 'world'); g.restore(); }
+    finally { CanvasRenderingContext2D.prototype.fillRect = fr; CanvasRenderingContext2D.prototype.fill = fl; }
+    out.paths = { rects, fills };
+    R.cardShows = [];
+    return out;
+  });
+  const dark = c => c && c.split(',').every(v => +v < 16);
+  ck('theMinimapGivesNothingAwayOnTheLandingFrame', r.play && r.far && dark(r.miniLanding) && !dark(r.miniAfter) && dark(r.xLanding) && !dark(r.xAfter),
+    `a far charted tile: ${r.miniLanding} landing, ${r.miniAfter} once the fog is back; the relic's middle ${r.xLanding} → ${r.xAfter}`);
+  ck('theHideRollsBackUpNeverFades', r.noAlpha && r.rolls, r.hide);
+  ck('theSeaIsWashedAndInkedInWaves', r.waves > 40 && r.wash > 200, `${r.waves} wave pixels, ${r.wash} washed`);
+  ck('theViewGoesToTheXAndTheFogStepsBackFromTheHall', r.atX && r.steps && r.steps.before && r.steps.mid && r.steps.end && r.radii >= 5 && r.radii <= 8,
+    `the X on screen after the pan ${r.atX}; held before ${r.steps && r.steps.before}, near released / far held mid-way ${r.steps && r.steps.mid}, all released at the end ${r.steps && r.steps.end}; ${r.radii} hard rings`);
+  ck('andTheDarkOverTheChartedGroundIsOnePath', r.paths && r.paths.rects === 0 && r.paths.fills === 1, JSON.stringify(r.paths));
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

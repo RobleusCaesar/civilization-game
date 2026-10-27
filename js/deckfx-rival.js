@@ -267,8 +267,10 @@
     },
     // …and on the minimap (R.drawMini): the marked relic, the spied people
     drawMini(g) {
-      const r = S.relic;
-      if (S.deck.relicMark && r && !r.found) {
+      const r = S.relic, pf = this.FX.pathfinders_map, ps = pf && pf.live ? pf.live() : null;
+      // a Pathfinder's Map still unrolling keeps the minimap dark until its fog steps back
+      if (ps && ps.lit) pf.holdMini(g, ps);
+      if (S.deck.relicMark && r && !r.found && (!pf || !pf.markDue || pf.markDue())) {
         const x = (r.x + r.w / 2) * 2, y = (r.y + r.h / 2) * 2, on = ((performance.now() / 500) | 0) % 2 === 0;
         g.fillStyle = on ? '#ffd45e' : '#c99b32';
         for (let k = -3; k <= 3; k++) { g.fillRect((x + k) | 0, (y + k) | 0, 2, 2); g.fillRect((x + k) | 0, (y - k) | 0, 2, 2); }
@@ -571,20 +573,64 @@
         const t = this._todo(), fresh = Deck.light(t.tiles);
         if (t.mark) Deck.run().relicMark = true;
         if (window.R && R.startCardShow) {
-          const mask = new Uint8Array(CFG.W * CFG.H);
+          const W = CFG.W, mask = new Uint8Array(W * CFG.H);
           for (const i of fresh) mask[i] = 1;
-          R.startCardShow('pathfinders_map', { lit: fresh, mask, relic: t.mark || !!(S.relic && !S.relic.found && S.deck.relicMark) });
+          // where the fog steps back FROM (the hall), how far it has to go, and
+          // where the view goes to watch it (the X, or the nearest new ground)
+          const tc = Bld.tcOf('P'), mid = R.viewTiles ? R.viewTiles() : null;
+          const hx = tc ? Bld.cx(tc) : mid ? (mid.x0 + mid.x1) / 2 : W / 2, hy = tc ? Bld.cy(tc) : mid ? (mid.y0 + mid.y1) / 2 : CFG.H / 2;
+          let rmax = 0, near = null, nd = Infinity;
+          for (const i of fresh) {
+            const d = Math.hypot((i % W) + 0.5 - hx, ((i / W) | 0) + 0.5 - hy);
+            if (d > rmax) rmax = d;
+            if (d < nd) { nd = d; near = i; }
+          }
+          const relic = t.mark || !!(S.relic && !S.relic.found && S.deck.relicMark);
+          let tgt = null;
+          if (relic && S.relic) tgt = { x: S.relic.x + S.relic.w / 2, y: S.relic.y + S.relic.h / 2 };
+          else if (near != null) {
+            const nx = (near % W) + 0.5, ny = ((near / W) | 0) + 0.5, L = Math.hypot(nx - hx, ny - hy) || 1;
+            tgt = { x: hx + (nx - hx) / L * (L + 3), y: hy + (ny - hy) / L * (L + 3) };
+          }
+          R.startCardShow('pathfinders_map', { lit: fresh, mask, relic, hx, hy, rmax: rmax + 0.5, tgt });
         }
         sfx('cardUnroll');
         Deck.say('🗺 A pathfinder’s map, drawn in charcoal on a hide: ' + (fresh.length ? 'the whole world is on your map now' : 'your map was already whole') +
           (t.mark ? ', and the lost relic is marked on it — someone still has to walk there and dig.' : '.'));
         return { ok: true };
       },
+      /* THE BEATS OF THE MOMENT (seconds into the show): the hide unrolls and
+         the charcoal draws the world, the X is struck and HELD, the hide ROLLS
+         BACK UP (never an alpha fade over the town), the view goes to the X —
+         and then the fog STEPS back on the main view, from the hall outward,
+         in hard rings. The minimap keeps the world dark until the same rings
+         reach it (holdMini): the landing frame gives nothing away. */
+      BEAT: { X: 2.05, HOLD: 2.35, LIFT: 3.1, ROLL: 0.6, PAN0: 3.45, PAN: 0.7, FOG0: 4.25, FOG: 0.8, STEPS: 6 },
+      // how far from the hall the fog has stepped back (tiles): -1 before it starts
+      released(s) {
+        const B = this.BEAT, T = s.t;
+        if (T < B.FOG0) return -1;
+        const q = Math.min(1, (T - B.FOG0) / B.FOG);
+        return Math.ceil(q * B.STEPS - 1e-9) / B.STEPS * (s.rmax || 0);
+      },
+      held(s, i) {
+        const r = this.released(s), W = CFG.W;
+        return r < 0 || Math.hypot((i % W) + 0.5 - s.hx, ((i / W) | 0) + 0.5 - s.hy) > r;
+      },
+      live() { return window.R && R.cardShows ? R.cardShows.find(z => z.id === 'pathfinders_map') : null; },
+      // the minimap's share: what the map has not yet given back stays dark (R.drawMini → Deck.drawMini)
+      holdMini(g, s) {
+        const W = CFG.W;
+        g.fillStyle = '#060504';
+        for (const i of s.lit) if (this.held(s, i)) g.fillRect((i % W) * 2, ((i / W) | 0) * 2, 2, 2);
+      },
+      // the relic's X is not on any map until the charcoal strikes it
+      markDue() { const s = this.live(); return !s || !s.relic || s.t >= this.BEAT.X; },
       /* the relic's mark: a gold X over the dark where it lies, in a ring of
          dots that breathes — and the minimap carries the same X */
       drawMark(g) {
         const r = S.relic;
-        if (!r || r.found) return;
+        if (!r || r.found || !this.markDue()) return;
         const TL = CFG.TILE, cx = (r.x + r.w / 2) * TL, cy = (r.y + r.h / 2) * TL;
         const v = view(2);
         if (!inView(v, r.x, r.y) && !inView(v, r.x + r.w, r.y + r.h)) return;
@@ -601,44 +647,66 @@
         g.fillStyle = br > 0.5 ? '#ffd45e' : '#e8c15a';
         for (let k = -arm; k <= arm; k += 2) { g.fillRect(snap(cx + k), snap(cy + k), 4, 4); g.fillRect(snap(cx + k), snap(cy - k), 4, 4); }
       },
-      /* THE MOMENT: a hide unrolls across the screen, the world draws itself
-         on it in charcoal from west to east, the relic's X is struck — and
-         the hide is HELD on the X a beat, a ring of gold breathing round it,
-         before it lifts away as the fog peels back off the world beneath. */
       show: {
-        ms: 4500, layers: ['world', 'sky'],
+        ms: 5200, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
-          const T = s.t;
           if (layer === 'world') {
-            // the fog over every tile it charts, until the peel's front passes
-            const fx = (CFG.W + 2) * ease((T - 2.95) / 1.3) - 1;
-            const TL = CFG.TILE, W = CFG.W, v = view(1), m = s.mask;
-            g.fillStyle = '#0d0b08';
-            for (let ty = Math.max(0, v.y0 | 0); ty <= Math.min(CFG.H - 1, Math.ceil(v.y1)); ty++) {
-              let run0 = -1;
-              const edge = fx + Math.sin(ty * 1.7) * 0.8;   // a ragged front, never a ruler
-              for (let tx = Math.max(0, v.x0 | 0); tx <= Math.min(W, Math.ceil(v.x1) + 1); tx++) {
-                const on = tx < W && m[ty * W + tx] && tx + 1 > edge;
-                if (on && run0 < 0) run0 = tx;
-                if (!on && run0 >= 0) {
-                  const x0 = Math.max(run0 * TL, snap(edge * TL));
-                  g.fillRect(x0, ty * TL, tx * TL - x0, TL);
-                  run0 = -1;
+            this.pan(s);
+            /* the fog over every tile it charts until its ring comes — ONE
+               path, filled once (a rect per run, each edge anti-aliased on its
+               own at the play zoom, drew a faint tile grid over the dark) */
+            const TL = CFG.TILE, W = CFG.W, v = view(1), m = s.mask, r = this.released(s), FRONT = 1.6;
+            // the solid dark, and — just beyond the ring — a dithered front, so
+            // the fog is seen to STEP back rather than blocks to vanish
+            for (const front of [false, true]) {
+              if (front && r < 0) break;
+              g.beginPath();
+              let any = false;
+              for (let ty = Math.max(0, v.y0 | 0); ty <= Math.min(CFG.H - 1, Math.ceil(v.y1)); ty++) {
+                let run0 = -1;
+                for (let tx = Math.max(0, v.x0 | 0); tx <= Math.min(W, Math.ceil(v.x1) + 1); tx++) {
+                  const d = tx < W && m[ty * W + tx] ? (r < 0 ? 1e9 : Math.hypot(tx + 0.5 - s.hx, ty + 0.5 - s.hy) - r) : -1;
+                  const on = d > 0 && (front ? d <= FRONT : d > FRONT);
+                  if (on && run0 < 0) run0 = tx;
+                  if (!on && run0 >= 0) { g.rect(run0 * TL, ty * TL, (tx - run0) * TL, TL); any = true; run0 = -1; }
                 }
               }
-            }
-            // charcoal dust blowing off the front
-            if (T > 2.95 && T < 4.4) {
-              g.fillStyle = 'rgba(60,44,30,0.8)';
-              for (let k = 0; k < 40; k++) {
-                const ty = v.y0 + rnd(k, 7) * (v.y1 - v.y0), jx = (rnd(k, 8) - 0.3) * 1.6;
-                g.fillRect(snap((fx + jx) * TL), snap(ty * TL), 2, 2);
-              }
+              if (!any) continue;
+              g.fillStyle = front ? this.dither(g) : '#0d0b08';
+              g.fill();
             }
             return;
           }
           this.hide(g, s, p);
         },
+      },
+      // a hard checker of the dark, two world pixels a cell (the fog's front)
+      dither(g) {
+        if (!this._dith) {
+          const c = document.createElement('canvas'); c.width = c.height = 4;
+          const x = c.getContext('2d'); x.fillStyle = '#0d0b08'; x.fillRect(0, 0, 2, 2); x.fillRect(2, 2, 2, 2);
+          this._dith = c;
+        }
+        return g.createPattern(this._dith, 'repeat');
+      },
+      /* AFTER THE HIDE: the view goes to the X (or the nearest new ground) so
+         the fog is SEEN stepping back — eased over PAN, and given up the
+         moment anything else moves the camera (the player's own hand) */
+      pan(s) {
+        const B = this.BEAT, T = s.t;
+        if (!s.tgt || s.panDone || T < B.PAN0) return;
+        if (!s.pan) {
+          const x0 = R.cam.x, y0 = R.cam.y;
+          R.centerOn(s.tgt.x, s.tgt.y);
+          s.pan = { x0, y0, x1: R.cam.x, y1: R.cam.y };
+          R.cam.x = x0; R.cam.y = y0;
+          s.camAt = { x: x0, y: y0 };
+        }
+        if (Math.abs(R.cam.x - s.camAt.x) > 0.5 || Math.abs(R.cam.y - s.camAt.y) > 0.5) { s.panDone = true; return; }
+        const q = ease((T - B.PAN0) / B.PAN), P = s.pan;
+        R.cam.x = P.x0 + (P.x1 - P.x0) * q; R.cam.y = P.y0 + (P.y1 - P.y0) * q;
+        s.camAt = { x: R.cam.x, y: R.cam.y };
+        if (q >= 1) s.panDone = true;
       },
       // the hide's art: built once per play (render state on the show)
       _hideArt(s) {
@@ -651,7 +719,8 @@
         const ai = a.createImageData(aw, ah), ad = ai.data, ki = k.createImageData(aw, ah), kd = ki.data;
         const put = (d, x, y, c) => { if (x < 0 || y < 0 || x >= aw || y >= ah) return; const i = (y * aw + x) * 4; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; };
         const SKIN = [196, 161, 112], DARK = [168, 129, 78], PALE = [214, 183, 136], MID = [189, 152, 102], RIM = [140, 106, 62];
-        const CHAR = [42, 32, 22], HATCH = [90, 70, 48], WOOD = [78, 64, 38], ORE = [106, 86, 64], GOLD = [184, 134, 26], BORDER = [58, 44, 30];
+        const CHAR = [42, 32, 22], WOOD = [78, 64, 38], ORE = [106, 86, 64], GOLD = [184, 134, 26], BORDER = [58, 44, 30];
+        const WASH = [168, 156, 126], WAVE = [64, 80, 88];   // the sea: a cool wash, its waves inked in dashes
         // the hide: a warm skin, blotched, its edge torn
         for (let y = 0; y < ah; y++) for (let x = 0; x < aw; x++) {
           const e = Math.min(x, y, aw - 1 - x, ah - 1 - y), h = hash(x * 977 + y * 131);
@@ -661,14 +730,22 @@
         // a drawn border, with the hand's gaps
         for (let x = 4; x < aw - 4; x++) if (hash(x * 31) % 9) { put(kd, x, 4, BORDER); put(kd, x, ah - 5, BORDER); }
         for (let y = 4; y < ah - 4; y++) if (hash(y * 37) % 9) { put(kd, 4, y, BORDER); put(kd, aw - 5, y, BORDER); }
-        // the world, in charcoal: the sea hatched, the coast drawn, crags and woods marked
+        /* the world, in charcoal: the SEA washed and inked as waves (a dash
+           and its two shoulders, rows staggered — the minimap's blue shape,
+           read as water), the coast drawn, crags and woods marked */
         const terr = S.map.seenTerrain, wet = t => t === T.WATER || t === T.MOAT;
+        const wave = (px, py) => {
+          const band = Math.floor(py / 4), ry = py % 4, cx = ((px + band * 3) % 7 + 7) % 7;
+          return (ry === 0 && (cx === 1 || cx === 2)) || (ry === 1 && (cx === 0 || cx === 3));
+        };
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
           if (!MapGen.onBoard(x, y)) continue;
           const t = terr[y * W + x], ax = M + x * 2, ay = M + y * 2;
           if (wet(t)) {
-            for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++)
-              if ((ax + dx + ay + dy) % 3 === 0) put(kd, ax + dx, ay + dy, HATCH);
+            for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+              put(ad, ax + dx, ay + dy, WASH);
+              if (wave(ax + dx, ay + dy)) put(kd, ax + dx, ay + dy, WAVE);
+            }
             continue;
           }
           for (const [ox, oy, px, py, pw, ph] of [[1, 0, 1, 0, 1, 2], [-1, 0, 0, 0, 1, 2], [0, 1, 0, 1, 2, 1], [0, -1, 0, 0, 2, 1]]) {
@@ -692,69 +769,68 @@
       },
       hide(g, s, p) {
         if (!s.art) this._hideArt(s);
-        const W = R.cv.width, H = R.cv.height, T = s.t, LIFT = 3.1;
+        const B = this.BEAT, W = R.cv.width, H = R.cv.height, T = s.t, LIFT = B.LIFT;
         const k = Math.max(2, Math.floor(Math.min(W * 0.84 / s.aw, H * 0.62 / s.ah)));
-        const dw = s.aw * k, dh = s.ah * k, x0 = Math.round((W - dw) / 2), lift = T > LIFT ? ease((T - LIFT) / 0.9) * H * 0.05 : 0;
-        const y0 = Math.round(H * 0.46 - dh / 2 - lift);
-        const fade = T < LIFT ? 1 : qa(1 - ease((T - LIFT) / 0.84), 4);
-        if (fade <= 0) return;
-        // the world goes quiet behind the hide
-        g.fillStyle = 'rgba(8,6,4,' + qa(0.45 * fade * Math.min(1, T / 0.3), 6) + ')';
+        const dw = s.aw * k, dh = s.ah * k, x0 = Math.round((W - dw) / 2), y0 = Math.round(H * 0.46 - dh / 2);
+        // it unrolls from the west — and ROLLS BACK UP into its west roll when it is done
+        const roll = T < LIFT ? 0 : Math.min(1, (T - LIFT) / B.ROLL);
+        if (roll >= 1) return;
+        const un = T < LIFT ? Math.max(1, Math.round(s.aw * ease(T / 0.76))) : Math.max(0, Math.round(s.aw * (1 - roll * roll)));
+        // the world goes quiet behind the hide, and comes back in hard steps as it rolls
+        g.fillStyle = 'rgba(8,6,4,' + qa(0.45 * Math.min(1, T / 0.3) * (1 - roll), 4) + ')';
         g.fillRect(0, 0, W, H);
         const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-        g.globalAlpha = fade;
-        // it unrolls from the west
-        const un = Math.max(1, Math.round(s.aw * ease(T / 0.76)));
-        g.fillStyle = 'rgba(0,0,0,0.5)';
-        g.fillRect(x0 + k * 2, y0 + k * 3, un * k, dh);           // its hard shadow
-        g.drawImage(s.art, 0, 0, un, s.ah, x0, y0, un * k, dh);
-        // the charcoal draws itself, west to east, a nib glinting at its tip
-        const dr = Math.min(un, Math.round(s.aw * ease((T - 0.53) / 1.6)));
-        if (dr > 0) g.drawImage(s.ink, 0, 0, dr, s.ah, x0, y0, dr * k, dh);
-        if (dr > 0 && dr < s.aw - 2 && T < 2.2) {
-          g.fillStyle = '#fff2c0';
-          g.fillRect(x0 + dr * k, y0 + Math.round((0.5 + 0.4 * Math.sin(T * 10.5)) * dh), k * 2, k * 2);
+        if (un > 0) {
+          g.fillStyle = 'rgba(0,0,0,0.5)';
+          g.fillRect(x0 + k * 2, y0 + k * 3, un * k, dh);           // its hard shadow
+          g.drawImage(s.art, 0, 0, un, s.ah, x0, y0, un * k, dh);
+          g.save(); g.beginPath(); g.rect(x0, y0 - k * 4, un * k, dh + k * 8); g.clip();   // nothing drawn past the rolled edge
+          // the charcoal draws itself, west to east, a nib glinting at its tip
+          const dr = Math.min(un, Math.round(s.aw * ease((T - 0.53) / 1.6)));
+          if (dr > 0) g.drawImage(s.ink, 0, 0, dr, s.ah, x0, y0, dr * k, dh);
+          if (dr > 0 && dr < s.aw - 2 && T < 2.2) {
+            g.fillStyle = '#fff2c0';
+            g.fillRect(x0 + dr * k, y0 + Math.round((0.5 + 0.4 * Math.sin(T * 10.5)) * dh), k * 2, k * 2);
+          }
+          // a compass rose in the corner, inked as the drawing reaches it
+          if (dr > s.aw * 0.8) {
+            const qx = x0 + (s.aw - 14) * k, qy = y0 + 13 * k;
+            g.fillStyle = '#2a2016';
+            for (let d = -5; d <= 5; d++) { g.fillRect(qx + d * k, qy, k, k); g.fillRect(qx, qy + d * k, k, k); }
+            for (let d = -2; d <= 2; d++) { g.fillRect(qx + d * k, qy + d * k, k, k); g.fillRect(qx + d * k, qy - d * k, k, k); }
+            g.fillStyle = '#8e2e1e'; g.fillRect(qx - k, qy - 6 * k, k * 3, k * 2);   // north, in ochre
+          }
+          // the relic struck with an X in red ochre, and the walk to it dotted from home
+          const r = S.relic, home = Bld.tcOf('P');
+          if (s.relic && r && T > B.X) {
+            const pop = 1 + 1.4 * (1 - ease((T - B.X) / 0.3));
+            const cx = x0 + (s.M + (r.x + r.w / 2) * 2) * k, cy = y0 + (s.M + (r.y + r.h / 2) * 2) * k, arm = Math.round(4 * pop) * k;
+            if (home) {
+              const hx = x0 + (s.M + Bld.cx(home) * 2) * k, hy = y0 + (s.M + Bld.cy(home) * 2) * k;
+              const L = Math.hypot(cx - hx, cy - hy), n = Math.max(2, Math.floor(L / (k * 3))), upto = Math.round(n * Math.min(1, (T - 2.13) / 0.3));
+              g.fillStyle = '#8e2e1e';
+              for (let i = 1; i < upto; i++) {
+                const q = i / n, wob = Math.sin(q * 9) * k * 2;
+                g.fillRect(Math.round((hx + (cx - hx) * q - (cy - hy) / L * wob) / k) * k, Math.round((hy + (cy - hy) * q + (cx - hx) / L * wob) / k) * k, k, k);
+              }
+            }
+            g.fillStyle = '#8e2e1e';
+            for (let d = -arm; d <= arm; d += k) { g.fillRect(cx + d - k, cy + d - k, k * 2, k * 2); g.fillRect(cx + d - k, cy - d - k, k * 2, k * 2); }
+            // THE HELD BEAT: a ring of gold breathing round the X — opaque ink, two steps
+            if (T > B.HOLD && T < LIFT) {
+              const br = 0.5 + 0.5 * Math.sin((T - B.HOLD) * 9);
+              g.fillStyle = br > 0.5 ? '#ffd45e' : '#d8a030';
+              ring(g, cx, cy, arm * (1.9 + 0.25 * br) + k * 2, 22, 1, k);
+            }
+          }
+          g.restore();
         }
-        // the rolls: one at the west edge, one riding the unrolling front
+        // the rolls: one at the west edge, one riding the front as it opens and as it closes
         for (const rx of [x0 - k * 2, x0 + un * k - k * 2]) {
           g.fillStyle = '#6e5130'; g.fillRect(rx, y0 - k * 2, k * 4, dh + k * 4);
           g.fillStyle = '#9a7646'; g.fillRect(rx + k, y0 - k * 2, k, dh + k * 4);
           g.fillStyle = '#3a2814'; g.fillRect(rx + k * 3, y0 - k * 2, k, dh + k * 4);
         }
-        // a compass rose in the corner, inked as the drawing reaches it
-        if (dr > s.aw * 0.8) {
-          const qx = x0 + (s.aw - 14) * k, qy = y0 + 13 * k;
-          g.fillStyle = '#2a2016';
-          for (let d = -5; d <= 5; d++) { g.fillRect(qx + d * k, qy, k, k); g.fillRect(qx, qy + d * k, k, k); }
-          for (let d = -2; d <= 2; d++) { g.fillRect(qx + d * k, qy + d * k, k, k); g.fillRect(qx + d * k, qy - d * k, k, k); }
-          g.fillStyle = '#8e2e1e'; g.fillRect(qx - k, qy - 6 * k, k * 3, k * 2);   // north, in ochre
-        }
-        // the relic struck with an X in red ochre, and the walk to it dotted from home
-        const r = S.relic, home = Bld.tcOf('P');
-        if (s.relic && r && T > 2.05) {
-          const pop = 1 + 1.4 * (1 - ease((T - 2.05) / 0.3));
-          const cx = x0 + (s.M + (r.x + r.w / 2) * 2) * k, cy = y0 + (s.M + (r.y + r.h / 2) * 2) * k, arm = Math.round(4 * pop) * k;
-          if (home) {
-            const hx = x0 + (s.M + Bld.cx(home) * 2) * k, hy = y0 + (s.M + Bld.cy(home) * 2) * k;
-            const L = Math.hypot(cx - hx, cy - hy), n = Math.max(2, Math.floor(L / (k * 3))), upto = Math.round(n * Math.min(1, (T - 2.13) / 0.3));
-            g.fillStyle = '#8e2e1e';
-            for (let i = 1; i < upto; i++) {
-              const q = i / n, wob = Math.sin(q * 9) * k * 2;
-              g.fillRect(Math.round((hx + (cx - hx) * q - (cy - hy) / L * wob) / k) * k, Math.round((hy + (cy - hy) * q + (cx - hx) / L * wob) / k) * k, k, k);
-            }
-          }
-          g.fillStyle = '#8e2e1e';
-          for (let d = -arm; d <= arm; d += k) { g.fillRect(cx + d - k, cy + d - k, k * 2, k * 2); g.fillRect(cx + d - k, cy - d - k, k * 2, k * 2); }
-          // THE HELD BEAT: a ring of gold breathing round the X, light added
-          if (T > 2.35 && T < LIFT + 0.4) {
-            const br = 0.5 + 0.5 * Math.sin((T - 2.35) * 9);
-            g.save(); g.globalCompositeOperation = 'lighter';
-            g.fillStyle = 'rgba(255,212,94,' + qa(0.85 * Math.min(1, (T - 2.35) / 0.2) * (0.55 + 0.45 * br), 4) + ')';
-            ring(g, cx, cy, arm * (1.9 + 0.25 * br) + k * 2, 22, 1, k);
-            g.restore();
-          }
-        }
-        g.globalAlpha = 1;
         g.imageSmoothingEnabled = sm;
       },
     },
