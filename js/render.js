@@ -10824,7 +10824,7 @@ const R = {
      the second half of the same ruling, and the one place the house's 2px
      world grid is deliberately left: the caller's world transform is READ
      (shake and all) to place it, then dropped, and every width here is in
-     CSS px times R.dpr — the trail ~1.6 css px at the orb, the bead ~2.3 —
+     CSS px times R.dpr — the trail ~1.25 css px at the orb, the bead ~2.3 —
      antialiased arcs, never 2px squares.
      THE GOLD IS NEVER ADDED OVER THE GRASS, AND NEVER LAID THIN OVER IT
      EITHER (the lime / olive rule, R.LIGHT): the thread is the card light's
@@ -10834,8 +10834,8 @@ const R = {
      source-over at a low alpha on that gold. The trail fades by TAPERING,
      not by alpha: a hue pass thinned with alpha is half green and half
      gold, olive — narrowed to nothing it simply ends. The bead is small
-     marks in the ramp's ink, opaque; now and then it twinkles, a one-pixel
-     cross in the hot white. Source-over and 'color' only — never 'lighter'.
+     marks in the ramp's ink, opaque; now and then it twinkles, a hairline
+     cross in the hot white no wider than the halo. Source-over and 'color' only — never 'lighter'.
      Drawn wherever the caller draws (a card's drawGround, under the town
      and the fog, so the fog dims and hides it like the land it marks); it
      clips itself to the board, culls a circle that misses the canvas, and
@@ -10851,15 +10851,16 @@ const R = {
   ORBIT: {
     period: 10.5,      // seconds a lap
     sweep: 0.75,       // the share of the circle the thread can reach: gone by three quarters
-    trail: 1.4,        // CSS px — the thread's width at the orb
+    trail: 1.25,       // CSS px — the thread's width at the orb
     taper: 2.2,        // its fall-off along the trail (width ∝ (1 - s)^taper): most of it gone by half way
-    lift: 0.34,        // the cream over the thread's gold, at the orb (source-over)
+    lift: 0.3,         // the cream over the thread's gold, at the orb (source-over)
     liftW: 0.5,        // …and its share of the thread's width
-    core: 0.95,        // CSS px — the bead's cream core, radius
-    rim: 1.3,          // CSS px — its gold rim, radius
-    halo: 2.8,         // CSS px — the ground round the bead turned gold (hue only)
+    core: 0.85,        // CSS px — the bead's cream core, radius
+    rim: 1.15,         // CSS px — its gold rim, radius
+    halo: 2.2,         // CSS px — the ground round the bead turned gold (hue only)
     glint: 3.1,        // seconds between the bead's twinkles
     glintS: 0.32,      // …and how long one lasts
+    glintL: 1.5,       // CSS px — the twinkle's arm at its height (past the bead's own 0.6)
   },
   drawOrbit(g, cx, cy, rTiles, t, opts) {
     opts = opts || {};
@@ -10928,13 +10929,18 @@ const R = {
       g.globalAlpha = 1;
       g.fillStyle = T.ramp[1]; disc(hx, hy, O.rim * u * ok);
       g.fillStyle = T.ramp[3]; disc(hx, hy, O.core * u * ok);
-      // …and now and then it twinkles: a one-pixel cross in the hot white, on device pixels
-      const tw = (((t + (opts.phase || 0) * 7.3) / O.glint) % 1 + 1) % 1, gl = O.glintS / O.glint;
+      // …and now and then it twinkles: a hairline cross in the hot white, on
+      // device pixels — one canvas pixel thick, its arms never past ~2 CSS px,
+      // and each circle twinkles on its own beat (its phase is its place in
+      // the twinkle's cycle as well as on the lap). A '+' as big as the
+      // bead's halo read as the sparkles the operator asked to be rid of.
+      const tw = (((t / O.glint + (opts.phase || 0)) % 1) + 1) % 1, gl = O.glintS / O.glint;
       if (tw < gl) {
-        const q = Math.sin(tw / gl * Math.PI) * ok, L = Math.round((1 + 2.6 * q) * u), p = Math.max(1, Math.round(u));
+        const q = Math.sin(tw / gl * Math.PI) * ok, L = Math.round((0.6 + O.glintL * q) * u), p = Math.max(1, Math.round(u / 2));
         const X = Math.round(hx - p / 2), Y = Math.round(hy - p / 2);
-        g.fillStyle = T.hot;
+        g.globalAlpha = 0.5 + 0.5 * q; g.fillStyle = T.hot;
         g.fillRect(X - L, Y, 2 * L + p, p); g.fillRect(X, Y - L, p, 2 * L + p);
+        g.globalAlpha = 1;
       }
     }
     g.restore();
