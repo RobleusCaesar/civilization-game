@@ -125,7 +125,7 @@ node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
-node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye
+node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye; a work tick or a blow's number in the fog is written nowhere
 node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, the rival comes running, and the card's gold says it once
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
@@ -143,7 +143,7 @@ node tests/boot.mjs            # frame one is the logo; no chrome before a game;
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do; no mountain tile is an invisible wall
-node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal
+node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal; a card's act has the floor (no note, no dim, no slow motion), the deck's note retires with the deck
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
@@ -166,16 +166,16 @@ node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel; a siege frame redraws only the water that moved, and a fallen building's verge grows back in slices
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways; the dry summer burns each tree as itself and leaves burnt wood (snags where the trees grew, ash, grass) — never stumps, never a lumber camp
-node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables, the earn rule (a win always; a defeat on DEEDS across 6 DAYS of orders, never time — a front-loaded burst earns nothing, an ordered kill is a deed, a card hastens only the player's own work), one grant per run, the collection on the device (never in S), the one door, the lesson's floor, ?cards=all deals all 36 and ?cards=0 gives the real collection back, the kill switch
+node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables, the earn rule (a win always; a defeat on DEEDS across 6 DAYS of orders, never time — a front-loaded burst earns nothing, an ordered kill is a deed, a card hastens only the player's own work), one grant per run, the collection on the device (never in S), the one door, the lesson's floor, ?cards=all deals all 36 and ?cards=0 gives the real collection back (with anything earned on the test deck banked in it), the kill switch; the origin draft never says "deck"
 node tests/deck-fx.mjs       # the card effects: off changes nothing; every number of every card; a strike never razes a hall; a strike at the rival in the truce warns and ends it, asked of what the PLAYER knows; no card draws the run's RNG
-node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses; the blow lands on the reticle's cross; a mouse hover only previews; a play is over inside 1.2 s; every running card is seen or counted
+node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses, jumps by tier, builds each face once; the blow lands on the reticle's cross; a mouse hover only previews, a finger tap lights ✓; a refusal is said once, on the card, and a refused Play promises nothing; a play is over inside 1.2 s and leaves in hard pixels; the landing never washes the meadow; an act that letters its words toasts no rule; every running card is seen or counted, in its own glyph at the device's resolution; every name fits its plate and the back names the card
 node tests/deck-screens.mjs  # the reward screen and the collection: off is today's end scenes; the grant happens once, on open; the ceremony; an undiscovered card leaks nothing
-node tests/deck-town.mjs     # the town's cards: goods are a gift (never the harvest) and bring the hall on screen, the float says what was TAKEN in whole numbers, the hall holds at a sliver on both roads, watchfires reach only onto ground in sight and the burning arrow is the player's alone, a Master Builders charge is spent at the ✓ alone, Mending skips work sites, an overlay wears the worn picture, the caravan's road is land
-node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a tile, no sky-iron, the card's words), every number, war-wolves that answer to the hall and fight what strikes them, ghosts that are not people, veterans that never stack and wear their rank, what is not drawn is not tapped, nothing drawn in the black
-node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, painted once, from what you know; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black
-node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing
+node tests/deck-town.mjs     # the town's cards: goods are a gift (never the harvest) and bring the hall on screen, the float says what was TAKEN in whole numbers, the hall holds at a sliver on both roads, watchfires reach only onto ground in sight and the burning arrow is the player's alone, a Master Builders charge is spent at the ✓ alone, Mending skips work sites, an overlay wears the worn picture, the caravan's road is land; the goods come down in the safe view and the bar pays as each piece lands; Stone Skin is stone and the ward's end is news
+node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a tile, no sky-iron, the card's words), every number, war-wolves that answer to the hall and fight what strikes them, ghosts that are not people and keep their post, veterans that never stack, raise neither host nor pack, and wear a rank pip, what is not drawn is not tapped, nothing drawn in the black; every summon on its own place of the fan in its own beam, the cinema cut, the war-wolf's collar, a ghost an inked figure
+node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
+node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's
-node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand, every beat draws (art or fallback), a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water
+node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -443,7 +443,10 @@ effect groups `js/deckfx-town.js`, `deckfx-army.js`, `deckfx-growth.js` and
 run: the HUD button, the sheet, the aim, the play, the timer chips),
 `js/deckscreens.js` (the reward screen and the collection) and
 `js/beasts.js` (the drawn dragon and kraken, the world's events' and the
-cards' alike). Rules:
+cards' alike). A five-player playtest on the phone found most Stone and
+Bronze plays flat or broken, and three rounds of fixes reworked every card's
+play — **THE PLAY ON THE GLASS** and **AN ACT'S HOUSE STYLE** below are what
+they left. Rules:
 - **THE SWITCH SHIPS OFF** (`CFG.CARDS.ON` false; `?cards=1` turns it on for
   one device, remembered in `neo-cards-dev`, `?cards=0` forgets it — and a
   test deck with it). Off, no element, stylesheet, listener or write of the
@@ -459,13 +462,17 @@ cards' alike). Rules:
   that is applied (**THE CLOUD IS THE COLLECTION'S RECORD**) — and never in
   `S`. What a RUN remembers rides in `S.deck` (`played`, the live timers
   `fx`, `charges`, the one `strike` in the sky, the card-lit map `lit`, a
-  card's `kraken` act, the `relicMark`) in every save; `loadJSON` backfills
-  and `Deck.run()` fills the newer fields.
+  card's `kraken` act, the `relicMark`, and — made when first needed — a
+  star's `craters` and the spy's `spied` marks) in every save; `loadJSON`
+  backfills and `Deck.run()` fills the newer fields.
 - **ONE DOOR**: `Deck.play(id, tgt)` asks the effect first and takes the
   card only on `{ok: true}` — a refusal hands it back with the reason.
 - **NO CARD DRAWS THE RUN'S RNG**: drops roll `Math.random`, and a card's
   dragon draws its flames' jitter from `Math.random` too (the rolled dragon
-  keeps its `G.rand` draws). Timers run on fractional game days (`Deck.now()`).
+  keeps its `G.rand` draws), and so does a relic Scout's Fire finds
+  (`Relics.checkDiscovery(Math.random)`; its default, `G.rand`, still rolls a
+  find on foot — `andTheFindDrawsNoRng`). Timers run on fractional game days
+  (`Deck.now()`).
 - **A CARD IS THE PLAYER'S ACT**: its kills are kills and its razes are razes,
   but nothing it summons scores as the world's gift (`dragonSeen`,
   `specialFired`), the play itself scores nothing, and no card buys a card (a
@@ -490,10 +497,16 @@ cards' alike). Rules:
   `Deck.fit`); its art lands by FILENAME (`assets/cards/art/{id}.png`, the
   tier's `assets/cards/frame-{tier}.png`) over a procedural placeholder. Its
   inline styles go through `attr()` — a raw `url("…")` ended `style="…"` at
-  its first quote and no art ever drew.
+  its first quote and no art ever drew. The name is stepped down until it
+  fits its plate in two lines (`Deck.nmFit`, `everyNameFitsItsPlate`); the
+  BACK plate names the card, its tier in small caps above (it printed the
+  tier, so every Legendary back read "Enlightenment"); the foil's mask is the
+  frame minus `Deck.PLATE`; `theFramesCarryNoStrayPixels` holds the frames.
 - **EVERY RUNNING CARD IS SEEN, OR COUNTED** (`DeckUI._fitChips`): chips that
   fit are whole, the rest a `+k` badge whose tap names them, and a card held
-  as CHARGES wears a chip like a timer (**THE TOWN'S CARDS**). A play is over
+  as CHARGES wears a chip like a timer (**THE TOWN'S CARDS**). A chip is its
+  ring and its count in the card's own glyph (`DeckUI.CHIP` / `CHIP_ICONS`),
+  so two fit a phone's row, and a tap says one short line. A play is over
   inside 1.2 s (880 ms by design) — and that budget and the lift checks are
   WALL-CLOCK: under a loaded machine `deck-ui.mjs` flakes on any commit, so
   rerun it alone before believing it. The reward is GRANTED when the screen
@@ -508,15 +521,32 @@ cards' alike). Rules:
   that note is its answer, and with the cards off the note is never waited
   for. A TEST deck never waits for the lesson (the tutorial turns itself on
   for a fresh device's first two games, and a test link whose deck hid read
-  as broken).
+  as broken). The deck's note RETIRES with the deck (`retire`, §16): put
+  away with no chime when the last card goes, never shown over an empty one.
+- **A CARD HAS THE FLOOR** (`Deck.acting()`, tests/tutorial.mjs §15): the
+  tutorial is on for a fresh device's first two games, and it smothered every
+  act — dim, ring and note over the show, the world at 0.2× (the dragon's
+  act took 19.6 s). `Deck.acting()` is the ONE question "is a card being
+  played, or its act still running" (the deck's floor, a show, summons, a
+  star's settling sky, the strike, the kraken, the card's dragon and the view
+  it borrowed — never the world's own beasts); while it holds,
+  `Tutorial._cardHolds` puts the lesson away at full speed, and the booked
+  note returns after `BREATH` once the act's toast is read (`ACT_TOAST_S`, 6
+  at most), on an opaque card.
 - **THE TEST LINK** (`?cards=all`, deck-core): every load carrying it turns
   the deck on and deals a fresh TEST deck, one of every card — read before
   the switch, so it still deals once `CFG.CARDS.ON` ships true. A test deck
   is marked `test`: it queues, reports and syncs nothing. A REAL collection
   it lands on is put aside exactly as stored, unsynced queue and all
-  (`Deck.REAL_KEY`, `neo-deck-real`), and `?cards=0` gives it back byte for
-  byte. (`?cards=slice`, the gate's five, is retired; the sync still reads it
-  as a test link.)
+  (`Deck.REAL_KEY`, `neo-deck-real`), and `?cards=0` gives it back as stored —
+  plus what was earned meanwhile: **EARNED IS EARNED** (`_stashGrant`, the
+  playtest's repro): a card won while the toy deck is held is ALSO banked in
+  the put-aside collection (card, first-seen, ledger line, the pity the legend
+  guarantee counts), its grant op in the stash's OWN queue to sync on return;
+  a device with none gets one made, and a run is never banked twice.
+  (`?cards=slice`, the gate's five, is retired; the sync still reads it as a
+  test link.) "Deck" means the card collection only: the origin draft deals
+  "origin cards" (`theOriginDraftNeverCallsItsCardsTheDeck`).
 
 **A WIN ALWAYS EARNS; A DEFEAT EARNS FOR A REAL FIGHT** (`Deck.eligible` /
 `Deck.deeds` / `G.noteAct`, `CFG.CARDS.LOSS_DEEDS` 5 and `LOSS_DAYS` 6,
@@ -546,9 +576,13 @@ DEFEAT** (cause `'doomed'`), never a struck banner — accepting the truth must
 not cost the card — and the rival's Wonder ends as `'rival_wonder'` (a NULL
 cause fails every server `NOT IN`). **A card-assisted run is marked** (end
 screen, `cards_played` / `cards_test`), and since `submit_score` cannot carry
-the mark yet, `DeckScreens._armBoard` holds an assisted win OFF the world
-board until `Backend.BOARD_MARKS_CARDS` is set by whoever ships the
-parameter; a test deck's never posts.
+the mark yet, an assisted win is held OFF the world board until
+`Backend.BOARD_MARKS_CARDS` is set by whoever ships the parameter; a test
+deck's never posts. **The hold is ONE answer, `Screens.boardHold(win)`**,
+asked by the old victory scene and `DeckScreens._armBoard` alike, read off
+`S.deck.played`, NEVER the switch — a run that played cards and ended with
+`?cards=0` was still assisted (board-post
+`aCardAssistedWinIsHeldWithTheSwitchOff`).
 
 **THE CLOUD IS THE COLLECTION'S RECORD** (`Deck.sync` at the foot of
 js/deck.js, `supabase/migrations/0008_cards.sql`, tests/deck-sync.mjs): the
@@ -584,34 +618,143 @@ card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
 false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
 
+**THE PLAY ON THE GLASS** (`js/deckui.js`, tests/deck-ui.mjs). **THE CARD
+LEAVES IN HARD PIXELS**: the flying card is the TOP layer, never translucent,
+with every light UNDER it; it leaves by a two-frame rim flash in the tier's
+colour and a three-step 4×4 ordered dither, and every light is a pixel canvas
+(`DeckUI._px`) — nothing in `#dkFly` is a radial gradient or a blurred shadow
+(`theCardLeavesInHardPixels`, on a held clock). **THE LANDING NEVER WASHES
+THE MEADOW** (§15): the card casts an INK shadow, its ring, rays and impact
+are solid with a one-cell dark edge, and the Legendary flash DARKENS — the
+pale full-screen flash it replaced turned 88.6% of the play area's 8px
+blocks olive. **A REFUSAL IS SAID ONCE, ON THE CARD**: the line above PLAY (a
+third line before an ellipsis), a shake, a toast in the note style; a
+refused PLAY is a dark plank reading "Can’t play now" and promises nothing
+more (it said "Plays at once"); a lifted card hides the sheet under it and
+sits over the toasts. **THE AIM ANSWERS THE FINGER**: a touch tap lights ✓;
+the truce warning reads as sentences ("… Tap ✓ again to confirm."); an
+answered refusal leaves the moment the mark is valid; the reach's floor is a
+flat dark step and the buildings' ring opaque dashes, never a wash of the
+card's colour; and a reach wider than the screen fits its aim (`fx.aimFit` →
+`DeckUI._aimFit`) — a cancel gives the zoom back, a play hands it back after
+its moment, the player's pinch always stands. **THE LANDING TOAST IS THE
+RESULT**: every apply returns `r.msg` saying what it DID ("A signal fire
+burns — 9 tiles charted, watched for 3 days."), a second copy says it runs
+on, and falling back to the card's text is a bug
+(`everyPlayOfTheSliceSaysWhatItDid`); an act that letters its own words
+toasts nothing (`narrates`: Starfall, Dragonfire, the Pact, the Sun, Kraken's
+Call, the three cinema cuts), so a strike says it once and never as the red
+alarm (`aStrikeSaysItOnceNeverAsAnAlarm`), and while a cut's top bar is in
+the toasts step below it (`--dk-cine`). The sheet jumps by tier and builds
+each face once (`DeckUI._cells`); a collection opened from the reward lands
+on the new cards, marked NEW.
+
+**AN ACT'S HOUSE STYLE** (the `R.LIGHT` block in render.js; each group's
+contract pins its half). **LIGHT IS THE TIER'S AND LIES ON NOTHING**: a body
+of card light is `R.glow` — a HUE pass ('color') turns what it falls on gold,
+then a hard-stepped lift — because gold ADDED to a meadow is lime and a thin
+gold paint is olive; small marks are opaque ramp colours (`R.goldInk`); the
+tone is the tier's (`R.LIGHT.TONE`: pale Stone, `'bronze'` Bronze — never
+gold — gold above). No light pools on the ground, no whole-frame gold flash,
+a building catching the light is SCANNED in hard pixels (`TX.scan`), never a
+flat silhouette, and fog drawn back is one path, never a rect per tile. **AN
+ACT NEVER FADES A PICTURE**: nothing is ADDED ('lighter') over the open scene
+or cross-faded through alpha — pictures come and go in 2×2 Bayer steps; an
+act's dark is `R.stepVignette(…, R.openBand())`, stepped round the OPEN band
+(full-screen, its top and bottom sat under the HUD and read as side bars);
+and every act's words go through ONE title, `R.actTitle`
+(`everyActLettersItsWordsThroughOneTitle`). **ONE BORROWED CAMERA**
+(`Deck.view`, the kraken and the spy): ticked OUTSIDE `R.draw` by
+`dragonfire.cam` (the frame's shake puts back a camera moved inside it),
+given back on the spot by a touch, borrowing nothing under reduced motion,
+and always handing the view home (the spy's flight left it in the rival's
+town). **A SHOW MAY STAND IN FOR A BUILDING** (`show.veil`, asked by
+`R.cardVeil` only while a show runs) **OR HOLD ITS OLD LOOK**
+(`R.cardHeldLevels` → `R._cardHeld`, a show's `held(s, p)`): a card that
+changes the state at once but tells it in turn — Enlightenment's town rising
+building by building, the Foundation's site climbing its stages — answers
+id → level (or `{stage}`), re-asked once a frame in the building pass and read
+by `R.wornSprite` and the site branch; render state only, every rule sees
+the new level from the first frame. **A show's data must never carry `id`**:
+`R.startCardShow` copies it over the show's own id and the show silently
+vanishes (the Foundation passes `bid`). **A CARD'S STAR LEAVES A CRATER**
+(deck-fx): it drops steep from above the screen, its blow flashes in three
+hard steps, and the struck tile becomes `T.RUIN` on the rubble clock wearing
+the star's crater art (`S.deck.craters`, `R.cardCraterPaint` — a pure
+function of the remembered ground, inside the pit's ±2 repaint, so cache ==
+rebake and it heals with the rubble). Two traps: `'destination-in'` clears
+everything outside each shape it is given, so build a mask as ONE path and
+fill it once; and per-cell `fillRect`s at a fractional zoom part into a net
+of seams, so paint pixel art into a small canvas and scale that up.
+
+**THE ORBIT AND THE CHIP ARE DRAWN AT DEVICE RESOLUTION** (operator ruling,
+day 26, on the iPhone with Bountiful Land running: "I don't love all the
+dancing grass… the special indicator in the top (says 13d), is pixelated…
+the circle of yellow dots is also a little pixelated… let's do something
+again subtler, and higher pixel count… a small glittering gold orb that
+travels along that circle with a trail behind it… after 3/4 of the circle
+it's gone" — it overrides the critics and the house style where they
+differ). Area reminders and the HUD's timer chips are drawn FINER than the
+world's pixel art, the one deliberate exception to its grid. Every card that
+marks a RADIUS for its duration — Bountiful Land, the Watchfires' longer
+reach round a selected tower or War Camp — wears only `R.drawOrbit`: one gold
+bead on a 10.5 s lap (`R.ORBIT`), each circle at its own phase, its thread
+(1.25 CSS px × `R.dpr`) tapering to nothing by 270° — by width, never alpha,
+never 'lighter' — in the ground pass, clipped to the board, render time only.
+**Bountiful Land draws NOTHING over its zone**, at the play or for the twenty
+days: one fine gold ring sweeps out from the hall and unwinds into the orb.
+The timer chip's canvas is sized at `devicePixelRatio` (`DeckUI.chipRatio`,
+never `R.dpr`), a fine ring, a Path2D glyph (`DeckUI.CHIP_ICONS`), the HUD's
+own type. One limit, measured: the world canvas stays capped at 2×, so on a
+3× phone the orb is scaled up smoothly — a true 3× layer is another ~12MB
+canvas iOS would purge. Pinned in deck-growth §10b/10c
+(`bountifulLandDrawsNothingOverItsZone`,
+`bountifulLandWearsTheOrbitAndNothingElse`, `andTheWatchfiresReachIsTheOrbit`)
+and deck-ui `theChipIsDrawnAtTheDevicesOwnResolution`.
+
 **THE TOWN'S CARDS** (`js/deckfx-town.js`, tests/deck-town.mjs — the four
 goods, Mending, Master Builders, Watchfires, Stone Skin, the Unbreakable
 Hall). **GOODS ARE A GIFT, NOT A HARVEST**: `S.res` alone, never
 `S.stats.gathered` or a `G.rand`; their `fly` keys must equal the goods the
 card's TEXT names, the play brings the hall on screen (`showAtHall`, read by
 `DeckUI._dest('bar')`), and the pile lands on ground nobody stands on
-(`TX.spot`), the caravan's cart only on a road of land. **THE NUMBER SHOWN IS
-THE NUMBER TAKEN**: `Bld.damage` asks `Deck.bldTakes` before its one
-subtraction and RETURNS what the building lost, which `Combat.hitBuilding`
-floats, whole ("Held!" only when nothing was taken) — with no card, byte for
-byte the old float. **THE HALL HOLDS AT A SLIVER** (2% of max, never under 1)
-on BOTH roads to `tc_destroyed`, the wildfire's too; the rival's Wonder still
-ends the run. Stone Skin is a `Deck.mult('bldHurt')`: a blow is halved, then
-held. **WATCHFIRES LENGTHEN THE ARROWS, NOT THE WATCH**: ×1.5 reach and
-attack for the player's towers and War Camps in ONE expression
-(`Math.round(lv.atk * wfA)`, shared with the Swallowed Sun's softening), the
-level-1 fumble's `G.rand` draw where it was; the farther band strikes only
-ground the player SEES and the burning arrow flies only while the card runs,
-both asked of `b.owner === 'P'` alone. **A MASTER BUILDERS CHARGE IS SPENT AT
-THE ✓, NEVER IN `Bld.place`** (`Deck.masterHand` / `masterRaise` from
-`UI.confirmPlacement`): `Bld.place` is also the rival's, the start package's,
-the origins' and the wall drag's (three charges for one drag). Never walls,
-gates or the Wonder (`finish` on a Wonder IS the win); the site goes through
-`Bld.finish` (`noAutoAssign`, a station takes its hand) and scores as built —
-it was placed and PAID for. **Charges wear a chip** (`fx.chip(n)`, or
-`chargeKey` for charges kept under another key; the Barbarian Pact's
-`charges.pact` has none yet). **MENDING MENDS WHAT STANDS** — never a work
-site or a bridge. **AN OVERLAY WEARS THE PICTURE THE BUILDING PASS DREW**
+(`TX.spot`) inside the SAFE view (`TX.safeRect`: clear of the HUD, the
+minimap and the toasts), its counts cream on a dark rim (`TX.label`), the
+caravan's cart only on a road of land. **AND THE BAR PAYS ON IMPACT** (§12):
+its number is HELD and steps up as each piece lands (`r.pay` →
+`DeckUI.pay`) — the goods come down a tapered shaft piece by piece, the
+caravan is the game's own cast (a cow in the shafts, a villager at its head)
+paying crate by crate, Forager's Cache a basket set down at the hall's door.
+**THE NUMBER SHOWN IS THE NUMBER TAKEN**: `Bld.damage` asks `Deck.bldTakes`
+before its one subtraction and RETURNS what the building lost, which
+`Combat.hitBuilding` floats, whole ("Held!" only when nothing was taken) —
+with no card, byte for byte the old float. **THE HALL HOLDS AT A SLIVER** (2%
+of max, never under 1) on BOTH roads to `tc_destroyed`, the wildfire's too;
+the rival's Wonder still ends the run. Stone Skin is a
+`Deck.mult('bldHurt')`: a blow is halved, then held — and it is STONE, not
+light (the town turns granite and keeps a sleeve of it; a halved blow floats
+in the skin's blue and throws chips); the Hall's swallowed blow flashes the
+dome's outline, never a fill, and the ward's end is a note on the screen.
+**WATCHFIRES LENGTHEN THE ARROWS, NOT THE WATCH**: ×1.5 reach and attack for
+the player's towers and War Camps in ONE expression (`Math.round(lv.atk *
+wfA)`, shared with the Swallowed Sun's softening), the level-1 fumble's
+`G.rand` draw where it was; the farther band strikes only ground the player
+SEES and the burning arrow flies only while the card runs, both asked of
+`b.owner === 'P'` alone; a selected tower shows the longer reach as the
+orbit. **A MASTER BUILDERS CHARGE IS SPENT AT THE ✓, NEVER IN `Bld.place`**
+(`Deck.masterHand` / `masterRaise` from `UI.confirmPlacement`): `Bld.place`
+is also the rival's, the start package's, the origins' and the wall drag's
+(three charges for one drag). Never walls, gates or the Wonder (`finish` on a
+Wonder IS the win); the site goes through `Bld.finish` (`noAutoAssign`, a
+station takes its hand) and scores as built — it was placed and PAID for —
+and plays the building's own three raising stages in its place (`show.veil`);
+a charge in HAND draws nothing in the world, only the Build tab's badge
+(`#bmToggle[data-mb]`). **Charges wear a chip** (`fx.chip(n)`, or `chargeKey`
+for charges kept under another key: the Pact's owed bands, `'pact'`, and a
+waiting Foundation, `'foundation'` — `theBandsOwedWearAChip`; Age of
+Marble's `marble` is a rest-of-run flag and wears none). **MENDING MENDS WHAT
+STANDS** — never a work site or a bridge — and scans gold over the real
+sprite (`TX.scan`). **AN OVERLAY WEARS THE PICTURE THE BUILDING PASS DREW**
 (`R.wornSprite`: cut from the intact sprite, a burned roof came back as a
 ghost), from ONE world-pixel mask per sprite (`TX.mask`) coloured through one
 scratch — per-colour full-size copies cost 8.6MB, the canvas memory iOS
@@ -625,31 +768,54 @@ it, so the first unit takes the doorstep and each other the next free
 `Bld.spawnRoom` tile `Path.reachFrom` joins to it (or a channel puts a third
 of the legion on the far bank). **A card's soldier is not a trained one**
 (`Units.spawn(…, {card: true})`: origin stamps, no sky-iron, no
-`S.stats.trained`); they count, eat and may pass the cap. Each waits for its
-flash (`R._unborn`) on a `'muster'` task in SIM time, so it rides a save.
-**WHAT IS NOT DRAWN IS NOT THERE TO TAP** (`R.unitHidden`): an unflashed unit
-or a ghost still under the ground answers `R.unitHit` with `Infinity` (the
-tap contract's rule 1). **THE WAR-WOLVES ANSWER TO THE HALL** (`u.warWolf`,
-`Deck.packSense`): a mark the pack CHOSE is let go past its home ground, but
-a wolf struck or ordered fights to the kill, leashed only from where the
-fight began (`u.packFrom`) — the first cut turned its back on its attacker;
-then home to its OWN den (`u.den`; `formationMove` packs two to a tile).
-Owner `'P'`, never wild: no meat, no corpse. **A GHOST IS NOT A PERSON**
-(`u.spectral`): ONE predicate, `Units.mortal(u)`, keeps it out of `popUsed`,
-`foodUpkeep` and `desertHungry`, hull cargo included (a bare `cargo.length`
-would count it); no sky-iron, no Heal, no "was killed" toast, and EVERY ghost
-fades when the host ends, aboard a hull too. Its light is drawn in the SKY
-pass, or the host's own dark dims it. **VETERANS RISE ONE RANK, ONCE**
-(`Deck.promote`): base and second rank become the champion, champions and
-engines take `u.vet` 1.25 — an engine's STONE too, folded into
-`Combat.bldAtkOf` for both siege sites — and the rank is worn for good
-(`u.ranked`). Two switch-off changes, pinned: a trained Trebuchet is mendable
-(`HEAL_FOOD.trebuchet` 100), and `S.stats.peakPop` counts
-`Units.popUsed('P')` — not sappers, beasts or ghosts; soldiers below deck
-and, the next day, a card's soldiers. **NOTHING IS DRAWN IN THE BLACK, CARDS
-INCLUDED**: `R.drawCardShows` clips every world-layer show and
-`R.drawCardWorld` every live look to `R.boardPx`; only the letterbox, a frame
-on the glass, crosses it.
+`S.stats.trained`); they count, eat and may pass the cap, and the cards say
+so (`everySoldierCardSaysTheyEatAndCount`). Each waits for its flash
+(`R._unborn`) on a `'muster'` task in SIM time, so it rides a save. **THE
+FAN** (`Deck.summonFan` / `fanPlan`): every army card's people land on their
+OWN place of a fan on the hall's open side, each whole sprite on the open
+screen (`fanOnScreen` — `R.onScreen` counts a rider half off the edge as
+seen), engines a tile and a half apart, foot in two ranks facing out; they
+hold for the card's beat (`FAN.hold`), then are free where they formed. One
+beam per unit (`armyFx.arrive`), full height, opaque in the tier's light, the
+hall drawn over it. **THE CINEMA CUT** (`armyFx.cinema`) is the Imperial and
+Enlightenment acts' alone (the Legion, the Battery, the Host): shell-black
+bars, 12% of the open frame each, the name and line lettered through
+`R.actTitle` in the lower bar, the fan planned inside them
+(`andNobodyLandsUnderABar`). **WHAT IS NOT DRAWN IS NOT THERE TO TAP**
+(`R.unitHidden`): an unflashed unit or a ghost still under the ground answers
+`R.unitHit` with `Infinity` (the tap contract's rule 1). **THE WAR-WOLVES
+ANSWER TO THE HALL** (`u.warWolf`, `Deck.packSense`): a mark the pack CHOSE
+is let go past its home ground, but a wolf struck or ordered fights to the
+kill, leashed only from where the fight began (`u.packFrom`) — the first cut
+turned its back on its attacker; then home to its OWN den (`u.den`;
+`formationMove` packs two to a tile). Owner `'P'`, never wild: no meat, no
+corpse; it wears the tribe's COLLAR, painted into its own frames
+(`Deck.warWolfKey`, cached per tunic), never a dye ring on the ground. **A
+GHOST IS NOT A PERSON** (`u.spectral`): ONE predicate, `Units.mortal(u)`,
+keeps it out of `popUsed`, `foodUpkeep` and `desertHungry`, hull cargo
+included (a bare `cargo.length` would count it); no sky-iron, no Heal, no
+"was killed" toast, and EVERY ghost fades when the host ends, aboard a hull
+too. **It keeps its POST** (`Deck.hostSense`, `u.den` = where it rose): it
+takes foes onto that ground, lets a runner go at the leash and walks back
+after every fight (it used to end five tiles away); a walk the player orders
+moves the post, a stance or doctrine overrides it. It is an INKED figure — an
+opaque outline round a body in an ordered 2×2 dither, never alpha or added
+light — and its fade is a `'note'` toast (a plain `G.log` never reached the
+screen). Its light is drawn in the SKY pass, or the host's own dark dims it.
+**VETERANS RISE ONE RANK, ONCE** (`Deck.promote`): base and second rank
+become the champion, champions and engines take `u.vet` 1.25 — an engine's
+STONE too, folded into `Combat.bldAtkOf` for both siege sites — and the rank
+is worn for good (`u.ranked`) as a pip (`Deck.drawRank`: gold veteran, steel
+champion) put on as the card's wave reaches him; the card lands on the army
+in sight, not the hall. It raises SOLDIERS: `Deck.landSoldiers` skips ghosts
+and war-wolves (`theHostAndThePackAreNotRaised` — the Host alone made it
+playable and it raised all fifteen ghosts). Two switch-off changes, pinned:
+a trained Trebuchet is mendable (`HEAL_FOOD.trebuchet` 100), and
+`S.stats.peakPop` counts `Units.popUsed('P')` — not sappers, beasts or
+ghosts; soldiers below deck and, the next day, a card's soldiers. **NOTHING
+IS DRAWN IN THE BLACK, CARDS INCLUDED**: `R.drawCardShows` clips every
+world-layer show and `R.drawCardWorld` every live look to `R.boardPx`; only
+the letterbox, a frame on the glass, crosses it.
 
 **THE GROWTH CARDS** (`js/deckfx-growth.js`, tests/deck-growth.mjs — Harvest
 Festival, Bountiful Land, Golden Age, Quick Hands, Blight, Enlightenment, Age
@@ -663,11 +829,9 @@ only the tile's take scores. **QUICKER HANDS ARE FOR WHAT RISES**
 a span raised or reinforced — never repair, training, earthworks or the
 rival's, and only the builders' own work (an empty site rises no faster);
 every "days left" line divides by `Units.buildRate`. **Bountiful Land's ring
-is from the hall's MIDDLE** (≤ 8, Euclidean), asked where the work is done,
-and painted ONCE into a cached layer, repainted only when a checksum of what
-the player KNOWS moves (`bountiful_land.grows`, fogged tiles from
-`seenTerrain` / `seenB`: read from the truth, a hidden rival hut left a hole
-its shape). **BLIGHT IS THE RIVAL'S AND DENIABLE**: everything it gathers or
+is from the hall's MIDDLE** (≤ 8, Euclidean), asked where the work is done;
+it draws nothing over its zone and wears only the orbit (**THE ORBIT AND THE
+CHIP**). **BLIGHT IS THE RIVAL'S AND DENIABLE**: everything it gathers or
 produces falls 40% (never the inner market); it deals no blow, so the truce
 stands; its look lies only on rival works in sight. **ENLIGHTENMENT RAISES TO
 THE HALL'S LEVEL, NOT ONE STEP**, scores nothing (`finishUpgrade`'s
@@ -683,7 +847,17 @@ the units and over the fog, so a ground look takes `drawGround`
 (`R.drawCardGround`, under people and fog) and a building's light `drawBld`
 (`R.cardBldLooks`); only light in the air stays on top. A card whose work
 stands elsewhere lands there (`fx.dest()`). Every show is clipped to the
-board (`GrowFX.clipped`; `R.drawPlacePoofs` too).
+board (`GrowFX.clipped`; `R.drawPlacePoofs` too). **AN ACT SAYS WHAT IT DID,
+ON ITS OWN PLAQUE** (`GrowFX.plaque`: a notched gold rim, Cinzel caps, rows
+arriving in turn, a price struck through — Marble's "6000 → 4500", the
+Foundation's "+16 DAYS OF WORK"), its toast the same; the Wonder cards bring
+the works to the middle of the view first (`GrowFX.frame`), and a lay that
+fires a waiting Foundation says so in a note. Enlightenment's town rises a
+building at a time, each in its own beam (**OR HOLD ITS OLD LOOK**, above),
+and its toast says what rose; a sun leaves by shrinking, never fading; the
+Golden Age is seen for all twenty days; the Blight's pall is a near-opaque
+sick cloud with a ragged face; and the festival's next float carries its
+bonus (`Deck.floatTag`, "+wood ×1.4").
 
 **RIVAL AND SKY** (`js/deckfx-rival.js`, tests/deck-rival.mjs — Scout's Fire,
 Pathfinder's Map, Spy in the Hall, Barbarian Pact, the Swallowed Sun,
@@ -698,26 +872,37 @@ CARD-LIT (`S.deck.lit`, a base64 bitset), cleared by real sight
 aiming and `foreignHome`; `Deck.blindAt` / `blindIdx` for PLACEMENT, refused
 FIRST in `canPlace` (code `unexplored`) so the refusal never says what stands
 there; `R.rememberedAt(i)` for the live layers. Score and run report count
-explored minus card-lit; no card charts the rim or digs up the relic (finding
-one draws `G.rand` — Scout's Fire alone may); `seenTerrain` is never synced
-from the live map. **THE PACT NEVER TURNS A BAND ON THE PLAYER**: a charge is
-spent in `Combat.maybeWave` when a band musters toward the rival; while the
-wilds spare a beaten rival the band WAITS, not one draw made — but never past
-`PACT_WAIT` (10) days (`Deck.pactHold`), or the pact is unbounded immunity —
-and a band with no road to the rival scatters and spends its charge
-(`Deck.pactLost`). **THE SWALLOWED SUN DARKENS THE RIVAL ALONE**
-(`Deck.sunOver('A')`, never `G.eclipseDark()`, which would hold the
-barbarians and loose the predators): half sight, 30% softer on all three
-blows (`Units.effAtk`, `Combat.bldAtkOf`, `Deck.mult('towerAtk')`), no war
-band (`AI.sunHush` shuts every road to a fight in `AI.daily`), and the stare.
-**KRAKEN'S CALL IS ASKED OF WHAT THE PLAYER KNOWS, AT WAR AS AT PEACE**
-(`knows()`): handed back whenever the hidden sea was empty, it was a free
-probe of the fog, so it refuses in words identical whether or not something
-is hidden, and once played takes what is really there; never the world's
-`S.kraken.ev`; the hall at 40% through `Deck.hitBld`. An untargeted card
-whose `warn()` answers asks twice, afresh after a put-back. The spy's people
-are SHOWN through the fog, never tappable, but KNOWN to the truce and the
-kraken.
+explored minus card-lit; no card charts the rim or digs up the relic —
+Scout's Fire alone may find one (its watch is real sight), on `Math.random`,
+shown only once the fog has rolled off it — and Pathfinder's Map plays while
+ANY tile of the player's map is dark, so whether it plays never says a relic
+is there (`whetherItPlaysNeverSaysARelicIsThere`); `seenTerrain` is never
+synced from the live map. **THE FIRE IS SEATED** (`scouts_fire.seat`): on the
+nearest open tile with no building within 4, never on a roof, the charted
+ring still centred on the aimed point. **THE PACT NEVER TURNS A BAND ON THE
+PLAYER**: a charge is spent in `Combat.maybeWave` when a band musters toward
+the rival; while the wilds spare a beaten rival the band WAITS, not one draw
+made — but never past `PACT_WAIT` (10) days (`Deck.pactHold`), or the pact
+is unbounded immunity — and a band with no road to the rival scatters and
+spends its charge (`Deck.pactLost`). **AND IT MUSTERS ON THE RIVAL'S SIDE**
+(`Combat.pactMuster`): at the edge nearest the rival's hall and farthest from
+the player's — on two maps in three a turned band marched straight past the
+player's own hall — its draws still made, so a seed's waves are unchanged.
+**THE SWALLOWED SUN DARKENS THE RIVAL ALONE** (`Deck.sunOver('A')`, never
+`G.eclipseDark()`, which would hold the barbarians and loose the predators):
+half sight, 30% softer on all three blows (`Units.effAtk`,
+`Combat.bldAtkOf`, `Deck.mult('towerAtk')`), no war band (`AI.sunHush` shuts
+every road to a fight in `AI.daily`), and the stare. **KRAKEN'S CALL IS
+ASKED OF WHAT THE PLAYER KNOWS, AT WAR AS AT PEACE** (`knows()`): handed back
+whenever the hidden sea was empty, it was a free probe of the fog, so it
+refuses in words identical whether or not something is hidden (and is greyed
+in the sheet with them), and once played takes what is really there; never
+the world's `S.kraken.ev`; the hall at 40% through `Deck.hitBld`. An
+untargeted card whose `warn()` answers asks twice, afresh after a put-back.
+The spy's people are SHOWN through the fog, never tappable, but KNOWN to the
+truce and the kraken; the buildings it marked keep gold brackets in the fog
+for the run (`S.deck.spied`), and its act carries the view to a town the
+player already knows and home (`Deck.view`).
 
 **THE DRAGON AND THE KRAKEN ARE DRAWN BEASTS** (`js/beasts.js`,
 tests/beasts.mjs — operator: "DRASTICALLY make the Dragon and Kraken look
@@ -726,27 +911,46 @@ those cards"). The two monsters were four-frame procedural sprites; each is
 now a PixelLab creature on strips fetched ON DEMAND (`Assets.FX_SETS.dragon`
 = dragon-fly ×8 / dragon-breath ×9 at 256px, `.kraken` = kraken-thrash ×8 at
 224px / kraken-tentacle ×13 at 160px — square frames, so `setFxArt` slices
-them; the rolled event's own `wantFx(S.special)` asks for its set, Dragonfire
-asks when aimed). The masters they were animated from live in
-`assets/masters/fx/`. Five rules. **THE ACT IS THE SIM'S, THE BEAST IS A
-PICTURE**: `G.dragonTick` / `G.krakenTick` (and the cards' acts) decide
-everything; `R.drawDragonAct` / `R.drawKrakenAct` draw it, with render state
-in a WeakMap keyed by the act (`Beasts.st`) — never in S, no RNG — so a save
-mid-act loads into a monster that simply carries on. **THE DRAGON FLIES HIGH
-OVER ITS GROUND POINT**: the act's point is where it BURNS; the beast is
-drawn `alt` tiles above it (high and big coming in, `altLow` over the line it
-breathes on, climbing away), its jaws hung `lead` tiles behind the fire line
-the act lays `reach` tiles ahead (`theJawsHangJustBehindTheLineOfFire`), its
-shadow — the frame's own silhouette flattened — on the ground beneath and
-clipped to the board (the beast itself is in the sky and may come in from
-beyond it). The breath is three heats of hard pixels from the jaws to the
-line; NO light pooled on the ground (it read as sand — the dry summer's
-ruling again); the line burns with the burning-town flame sprites
-(`R.drawFireTongue`, the squares are the fallback). **THE KRAKEN SURFACES
-FROM THE MIDDLE OUT**, over the most open water within 3 tiles of its prey
-(`R.krakenBodyAt` scores wet tiles under the body's ring), a widening hole in
-the sea edged in white water — a waterline wipe read as a slab sliding out of
-the ground — and a tentacle rears and slams on the beat the boat is taken.
+them) and at HIGH priority (`Assets.wantFx(set, {prio: 'high'})`): the
+rolled event's at newGame/loadJSON (`G.warmFx`), a card's the moment the
+player HOLDS it (`Deck.wantArt`, off the card's `art`) — asked at the aim, on
+a phone's cold cache it queued behind the boot and both acts opened on the
+stand-ins (52 s to land, ~8 s now), and the landing still waits up to
+`DeckUI.ART_WAIT_MS` (600) for art merely late (§7). The masters they were
+animated from live in `assets/masters/fx/`. Six rules. **THE ACT IS THE
+SIM'S, THE BEAST IS A PICTURE**: `G.dragonTick` / `G.krakenTick` (and the
+cards' acts) decide everything; `R.drawDragonAct` / `R.drawKrakenAct` draw
+it, with render state in a WeakMap keyed by the act (`Beasts.st`) — never in
+S, no RNG — so a save mid-act loads into a monster that simply carries on.
+**ONE WHOLE SCALE** (`DRAGON.scale`, `KRAKEN.scale` / `tentScale`, all 1;
+`theBeastsAreDrawnAtOneWholeScale`): a nearest-neighbour scale that is not
+whole drops and doubles rows and, animated, shimmers — the dragon breathed
+between 0.98× and 1.22× and the kraken grew through 0.55–0.78×. Height is
+told by POSITION, the shadow and the pall, never by size; at 1× the kraken's
+body is seven tiles across, so Kraken's Call's `CLUSTER` is 7. **THE DRAGON
+FLIES HIGH OVER ITS GROUND POINT**: the act's point is where it BURNS; the
+beast is drawn `alt` tiles above it (`altHigh` coming in, `altLow` over the
+line it breathes on, climbing away), its jaws hung `lead` tiles behind the
+fire line the act lays `reach` tiles ahead
+(`theJawsHangJustBehindTheLineOfFire`), its shadow — the frame's own
+silhouette squashed — on the ground beneath and clipped to the board. The
+CARD's dragon is the moment of the game (§9): its shadow sweeps the screen
+under "THE BLACK DRAGON ANSWERS", the view goes in to 1.3 on the fire
+whatever the zoom and is handed back, the beast fills most of a phone's
+width for ~3.6 s, coming in from the board's own side, every building that
+catches is felt, and its dark is a stepped vignette, never a warm wash. The
+breath is three heats of hard pixels from the jaws to the line; NO light
+pooled on the ground (it read as sand — the dry summer's ruling again); the
+line burns with the burning-town flame sprites (`R.drawFireTongue`; the
+stand-in is stepped tongues, never a translucent box). **THE KRAKEN AND ITS
+SEA, APART** (`Beasts.split`, §10): every frame is split once, by colour,
+into the BEAST and its disc of SEA and foam; the sea is laid only on the
+traced water (`R.waterBodyPath`) and the beast comes up out of its waterline
+— laid whole the disc was a navy coin on the meadow, and the old widening
+hole cut a hard circle out of the beast. It surfaces over the most open water
+within 3 tiles of its prey, counted on the board alone (`R.krakenBodyAt` asks
+`MapGen.onBoard`, §8); a tentacle rears and slams on the beat the boat is
+taken, and every hull taken is SEEN seized and pulled under in a splash.
 **THEY ARE HEARD**: `roar`, `breath`, `kraken`, `splash` are synthesized
 voices (no audio ships). **A PAINTER STANDS DOWN**: with a strip missing,
 `drawDragonOld` / `drawKrakenOld` (the procedural creatures) draw instead.
@@ -1920,6 +2124,15 @@ a rule about what the eye can take. A MISSING entry means "due now", never
 "last ticked at time zero", or the first tick of every worker is eaten for the
 first 20 seconds of a session. The log is render-side only (`R._workFloatAt`,
 cleared in `R.onNewGame`), never on the unit and never in a save.
+**THE WORK TICK IS FOG-HONEST** (`Units.seenWork` / `Units.workFloat`,
+tests/wild-life.mjs §7 — the five-player playtest saw "+stone" written in the
+black): floats are drawn AFTER the fog, so every work tick (gathering, both
+fishings, station hands, a rival sapper's spadefuls) asks first — the
+player's own hands always tick, anyone else's only on a tile the player can
+see, asked BEFORE the throttle, with the jitter's `Math.random` drawn either
+way. **AND SO IS A BLOW'S NUMBER** (`Combat.seenHit` / `hitFloat`, §7b — 31
+written over unseen ground in 25 s): a hit or "Miss!" floats only where the
+player sees the struck thing, or where the player's own are in the fight.
 **THE WALK IS DRIVEN BY DISTANCE** (`R.walkPhase` / `walkStride` /
 `WALK_CYCLE_S`, tests/animal-art.mjs §2b — operator ruling on audit VIL-01 /
 MIL-04 / ANI-05, which RETIRES the 1.35s villager walk-tempo ruling): a
