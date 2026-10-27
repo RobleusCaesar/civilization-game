@@ -67,10 +67,17 @@
    fxDot, fxSpark, fxBeam, fxRays), smooth and antialiased, never snapped to
    the art's 2px grain — and THE LIGHT IS STILL GOLD, NOT LIME: a body of
    light turns what it falls on gold, then brightens it, its hue tied to its
-   light (R.FX_TIE), never gold added over the grass. A show not yet
-   converted (its own fillRects on the grain) is the next pass's work. */
+   light (R.FX_TIE), never gold added over the grass. Every show here is
+   drawn that way: the festival's embers, Quick Hands' hammer, sawdust and
+   '×2', the Blight's billows, spores and leaves, Enlightenment's burst,
+   runners and climbing light, the marble's chips, the Foundation's cracks
+   of light and lit carvings, and the plaques the acts say what they did on
+   (the town's helpers — TX.hammer, shard, leaf, grain, line, taper — are
+   asked through Deck._townTX, guarded on the method). The art they light
+   (the bunting, the standing stones and slabs, the marble's dressed blocks)
+   stays the world's pixel art. */
 
-/* ---------------- the pixel toolkit the growth cards draw with ---------------- */
+/* ---------------- the toolkit the growth cards draw with ---------------- */
 const GrowFX = {
   GOLD: ['#7a4a0a', '#d8902a', '#ffcc40', '#ffd45e', '#fff1b8', '#fffbe8'],
   snap(v, px) { px = px || 2; return Math.round(v / px) * px; },
@@ -133,21 +140,24 @@ const GrowFX = {
     px = px || 2;
     R.fxSpark(g, x, y, Math.max(2.5, 1.8 * px / R.fxPx(g)), Math.min(1, a), tone || col);
   },
-  /* a word in the world (a card's '×2'): cream on a hard one-pixel dark rim,
-     alpha in steps — the float's legibility over any ground */
+  /* a word in the world (a card's '×2'): cream on a dark rim stroked round
+     its own letters at the device's own resolution (eight copies a world
+     pixel apart were a three-pixel smear at a phone's zoom), fading smoothly
+     — the float's legibility over any ground */
   tag(g, x, y, txt, a, col) {
-    a = this.step(a);
-    if (a <= 0) return;
+    a = Math.max(0, Math.min(1, a));
+    if (a <= 0.01) return;
     g.save();
     g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.globalAlpha = a;
-    const tx = Math.round(x), ty = Math.round(y);
-    g.fillStyle = '#0d0b08';
-    for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) g.fillText(txt, tx + ox, ty + oy);
+    g.lineJoin = 'round'; g.miterLimit = 2; g.lineWidth = Math.max(1.4, 2.6 * R.fxPx(g)); g.strokeStyle = '#0d0b08';
+    g.strokeText(txt, x, y);
     g.fillStyle = col || '#f2e6cd';
-    g.fillText(txt, tx, ty);
+    g.fillText(txt, x, y);
     g.restore();
   },
+  // the town's drawing helpers (js/deckfx-town.js), guarded on the method asked
+  tx(m) { const T = window.Deck && Deck._townTX; return T && (!m || typeof T[m] === 'function') ? T : null; },
   /* a column of light standing on (x, foot): the card's light as a smooth
      beam at the device's own resolution (R.fxBeam — soft across its width,
      a white-hot thread up its heart, its hue tied to its light so whatever
@@ -159,10 +169,12 @@ const GrowFX = {
   },
   /* a building's own silhouette flashed in the card's light (R.glow over its
      tinted picture): the building turns gold in its own light and shade and
-     brightens toward cream as the flash strengthens — added, it went lime */
+     brightens toward cream as the flash strengthens — added, it went lime.
+     Its strength runs smoothly (R.glow reads between its rows): a flash in
+     hard fifths was a stepped fade. */
   flashBld(g, b, a, tone) {
-    a = this.step(a);
-    if (a <= 0 || !b) return;
+    a = Math.max(0, Math.min(1, a));
+    if (a <= 0.01 || !b) return;
     const spr = R.bldSprite(b);
     if (!spr || !(spr.width > 0)) return;
     const TL = CFG.TILE, sz = Bld.size(b);
@@ -259,49 +271,72 @@ const GrowFX = {
     if (sx < R.viewW() * 0.2 || sx > R.viewW() * 0.8 || sy < top + (bot - top) * 0.22 || sy > top + (bot - top) * 0.78) R.centerOn(x, y);
   },
   /* A CARD'S OWN CAPTION (device px, the sky layer): what the card DID,
-     said on the screen while it happens — on a dark plaque with a hard gold
-     rim, low in the open view above the build bar, its title in the menu's
-     carved face in gold over a hard dark edge, its rows at 13 css px or
-     more. `rows` is a list of rows of runs {t, col, strike}: `strike` (0..1)
-     draws a line through a run from the left, for a price struck out. It
-     comes in hard steps — the plaque, then each row in turn — never a fade. */
+     said on the screen while it happens — on a dark plaque in a gold rim,
+     low in the open view above the build bar, its title in the menu's carved
+     face in gold over a dark edge, its rows at 13 css px or more. `rows` is
+     a list of rows of runs {t, col, strike}: `strike` (0..1) draws a line
+     through a run from the left, for a price struck out. The plaque comes
+     in and each row arrives in turn — eased, never stepped — and all of it
+     is drawn at the DEVICE's own resolution (the operator's ruling of
+     2026-10-27 on the chrome: a rounded plaque with a smooth bevelled rim and
+     its letters stroked round, where the first cut's rim was notched in hard
+     2px cells and its title's edge four copies a cell apart). */
   INK: '#1a0f06',
   plaque(g, s, title, rows, p, from, to) {
     if (p < from || p > to) return;
-    const dpr = R.dpr || 1, W = R.cv.width, u = Math.max(2, Math.round(2 * dpr));
+    const dpr = R.dpr || 1, W = R.cv.width, css = v => v * dpr;
     if (s._botPx == null) {
       const bb = document.getElementById('bottombar'), r = bb && bb.getBoundingClientRect();
       s._botPx = (r && r.height > 0 && r.top > 0 ? r.top : innerHeight - 120) * dpr;
     }
-    const shown = Math.min(rows.length, Math.floor((p - from) / Math.max(0.01, to - from) * 12));
-    const fs = Math.round(13 * dpr), ts = Math.round(16 * dpr), lh = Math.round(fs * 1.5), pad = Math.round(10 * dpr), gap = Math.round(fs * 0.45);
-    const face = n => '700 ' + n + 'px Cinzel, Georgia, serif';
+    const span = Math.max(0.01, to - from), k = (p - from) / span;
+    const enter = this.ease(Math.min(1, k * 14)), leave = k > 0.94 ? Math.max(0, (1 - k) / 0.06) : 1;
+    const fs = css(13), ts = css(16), lh = fs * 1.5, pad = css(10), gap = fs * 0.45;
+    const face = n => '700 ' + n.toFixed(2) + 'px Cinzel, Georgia, serif';
     g.save();
     g.textBaseline = 'alphabetic';
     g.font = face(fs);
     const rw = rows.map(r => r.reduce((a, run) => a + g.measureText(run.t).width, 0) + (r.length - 1) * gap);
     g.font = face(ts);
-    const w = Math.min(W - 32 * dpr, Math.max(g.measureText(title).width, ...rw) + pad * 2.4);
-    const h = pad * 2 + ts + rows.length * lh, x0 = Math.round((W - w) / 2), y0 = Math.round(s._botPx - 18 * dpr - h);
-    // the plaque: a hard gold rim with its corners notched, dark within
-    g.fillStyle = '#c9822a'; g.fillRect(x0 + u, y0, w - 2 * u, h); g.fillRect(x0, y0 + u, w, h - 2 * u);
-    g.fillStyle = '#f2b04a'; g.fillRect(x0 + u, y0, w - 2 * u, u);
-    g.fillStyle = '#17110b'; g.fillRect(x0 + u, y0 + u, w - 2 * u, h - 2 * u);
-    // the title: gold over a hard dark edge
-    const ty = y0 + pad + Math.round(ts * 0.85);
+    const w = Math.min(W - css(32), Math.max(g.measureText(title).width, ...rw) + pad * 2.4);
+    const h = pad * 2 + ts + rows.length * lh, x0 = (W - w) / 2, y0 = s._botPx - css(18) - h + (1 - enter) * css(10);
+    g.globalAlpha = enter * leave;
+    // the plaque: a soft shadow under it, a gold rim bevelled light to dark,
+    // a fine bright line inside the rim, the dark within
+    const rr = css(6), box = (x, y, ww, hh, r) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, ww, hh, r); else g.rect(x, y, ww, hh); };
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.55)'; g.shadowBlur = css(10); g.shadowOffsetY = css(3);
+    const rim = g.createLinearGradient(0, y0, 0, y0 + h);
+    rim.addColorStop(0, '#f6c766'); rim.addColorStop(0.45, '#c9822a'); rim.addColorStop(1, '#8a5418');
+    g.fillStyle = rim; box(x0, y0, w, h, rr); g.fill();
+    g.restore();
+    const b = css(2);
+    const inner = g.createLinearGradient(0, y0, 0, y0 + h);
+    inner.addColorStop(0, '#231a10'); inner.addColorStop(1, '#130d07');
+    g.fillStyle = inner; box(x0 + b, y0 + b, w - 2 * b, h - 2 * b, rr - b * 0.6); g.fill();
+    g.strokeStyle = 'rgba(255,214,140,0.28)'; g.lineWidth = Math.max(1, css(0.8));
+    box(x0 + b * 1.9, y0 + b * 1.9, w - b * 3.8, h - b * 3.8, Math.max(1, rr - b * 1.5)); g.stroke();
+    // the title: gold, lit along its top, over a dark edge stroked round its letters
+    const ty = y0 + pad + ts * 0.85;
     g.textAlign = 'center';
-    g.fillStyle = this.INK;
-    for (const [dx, dy] of [[-u, 0], [u, 0], [0, -u], [0, u]]) g.fillText(title, W / 2 + dx, ty + dy);
-    g.fillStyle = '#ffd45e'; g.fillText(title, W / 2, ty);
-    // the rows, in turn
+    g.font = face(ts);
+    g.lineJoin = 'round'; g.miterLimit = 2; g.lineWidth = css(3); g.strokeStyle = this.INK;
+    g.strokeText(title, W / 2, ty);
+    const tg = g.createLinearGradient(0, ty - ts * 0.8, 0, ty);
+    tg.addColorStop(0, '#ffe9a8'); tg.addColorStop(0.55, '#ffd45e'); tg.addColorStop(1, '#e8a83a');
+    g.fillStyle = tg; g.fillText(title, W / 2, ty);
+    // the rows, each arriving in its turn
     g.font = face(fs); g.textAlign = 'left';
-    for (let i = 0; i < shown; i++) {
+    for (let i = 0; i < rows.length; i++) {
+      const ra = Math.max(0, Math.min(1, k * 12 - i - 0.5));
+      if (ra <= 0) continue;
       let x = W / 2 - rw[i] / 2;
-      const y = ty + (i + 1) * lh;
+      const y = ty + (i + 1) * lh + (1 - this.ease(ra)) * css(4);
+      g.globalAlpha = enter * leave * ra;
       for (const run of rows[i]) {
         const tw = g.measureText(run.t).width;
         if (run.t) { g.fillStyle = run.col || '#efe4c8'; g.fillText(run.t, x, y); }
-        if (run.strike > 0) { g.fillStyle = '#d0503a'; g.fillRect(Math.round(x - u), Math.round(y - fs * 0.38), Math.round((tw + 2 * u) * Math.min(1, run.strike)), u); }
+        if (run.strike > 0) { g.fillStyle = '#d0503a'; g.fillRect(x - css(2), y - fs * 0.38, (tw + css(4)) * Math.min(1, run.strike), Math.max(1, css(1.6))); }
         x += tw + gap;
       }
     }
@@ -465,14 +500,16 @@ Object.assign(Deck.FX, {
       const a = R.smokeAnchor(R.CAMPFIRE_AT || {}, 'tc', tc.level) || R.smokeAnchor(R.SMOKE_AT, 'tc', tc.level);
       return a ? { x: bx + a.x * bw, y: by + a.y * bw } : { x: bx + bw / 2, y: by + bw * 0.9 };
     },
+    // (the fire is the burning town's own strip; its embers rise off it as
+    // small soft beads of the fire's colour, cooling as they climb — at the
+    // device's own resolution, never 2px cells on the art's grain)
     flare(g, h, s, beat, embers, now) {
       const TX = Deck._townTX;
       if (TX && TX.flame) TX.flame(g, h.x, h.y, s, beat);
       const F = ['#a33f1c', '#e88a3a', '#f2c14a', '#ffe9a0'];
       for (let i = 0; i < embers; i++) {
         const ph = (now * 0.9 + i / embers) % 1;
-        g.fillStyle = F[ph < 0.3 ? 3 : ph < 0.6 ? 2 : 1];
-        g.fillRect(GrowFX.snap(h.x + Math.sin(ph * 7 + i * 2.3) * 4), GrowFX.snap(h.y - s * 0.8 - ph * s * 1.6), 2, 2);
+        R.fxDot(g, h.x + Math.sin(ph * 7 + i * 2.3) * 4, h.y - s * 0.8 - ph * s * 1.6, 1.1 * (1 - 0.4 * ph), (1 - ph) * Math.min(1, ph / 0.08), F[ph < 0.3 ? 3 : 2]);
       }
     },
     drawLive(g, e) {
@@ -914,15 +951,15 @@ Object.assign(Deck.FX, {
       return by;
     },
     CHIP: ['#f0dcae', '#d2a868', '#a0703a'],
-    // a small gold hammer, 8×8 cells, outlined: the works' own pip
-    HAMMER: ['.oooooo.', 'oHHHHHHo', 'oSSSSSSo', '.oooHoo.', '...oHo..', '...oHo..', '...oSo..', '...ooo..'],
+    /* a small gold hammer over the works — the works' own pip: the masons'
+       mark (TX.hammer) at the device's own resolution, a shaped head on its
+       haft in the gold over a dark rim (it was 8 × 8 cells of one world
+       pixel each, a block of a dozen device pixels on a phone) */
     hammer(g, x, y, a) {
-      a = GrowFX.step(a);
-      if (a <= 0) return;
-      const C = { o: '#3a2410', H: '#ffd45e', S: '#d8902a' }, x0 = Math.round(x) - 4, y0 = Math.round(y) - 8;
-      g.globalAlpha = a;
-      this.HAMMER.forEach((row, j) => { for (let i = 0; i < 8; i++) { const c = C[row[i]]; if (c) { g.fillStyle = c; g.fillRect(x0 + i, y0 + j, 1, 1); } } });
-      g.globalAlpha = 1;
+      a = Math.max(0, Math.min(1, a));
+      const TX = GrowFX.tx('hammer');
+      if (a <= 0.01 || !TX) return;
+      TX.hammer(g, x, y, 8.5, null, a, -0.3);
     },
     // sparks thrown off one blow: hot gold grains up and out, falling back
     sparks(g, x, y, q, seed, n, v) {
@@ -934,17 +971,15 @@ Object.assign(Deck.FX, {
         F.mote(g, px, py, k % 3 ? '#ffcc40' : '#fff6c8', '#7a4a0a', q < 0.6 ? 1 : (1 - q) / 0.4);
       }
     },
-    // the '×2': cream, a hard dark rim, popped up in steps and held, then gone
+    // the '×2': cream on a dark rim, eased up and held, then gone — the burst
+    // it pops out of a ring of light running out (R.fxRing)
     pip(g, x, y, q) {
       if (q <= 0 || q >= 1) return;
-      const rise = Math.round(Math.min(1, q / 0.18) * 3) * 3, a = q < 0.75 ? 1 : (1 - q) / 0.25;
+      const rise = GrowFX.ease(Math.min(1, q / 0.18)) * 9, a = q < 0.75 ? 1 : (1 - q) / 0.25;
       GrowFX.tag(g, x, y - rise, '×2', a, '#f2e6cd');
-      if (q < 0.3) {   // the burst it pops out of: eight hard dots running out
-        const k = q / 0.3, r = 4 + k * 10;
-        for (let i = 0; i < 8; i++) {
-          const th = i / 8 * Math.PI * 2;
-          GrowFX.mote(g, x + Math.cos(th) * r, y - rise + Math.sin(th) * r * 0.8, '#ffcc40', null, 1 - k);
-        }
+      if (q < 0.3) {
+        const k = q / 0.3;
+        R.fxRing(g, x, y - rise, 4 + GrowFX.ease(k) * 10, 0.9 * (1 - k), 'gold', { squash: 0.8, css: 1.6 * (1 - 0.5 * k) });
       }
     },
     show: {
@@ -970,18 +1005,19 @@ Object.assign(Deck.FX, {
           if (q <= 0 || q >= 1) continue;
           const cx = sp.x * TL, top = s.tops ? s.tops[i] : this.top(sp);
           if (cx < vp.x0 || cx > vp.x1 || top > vp.y1 + TL || sp.y * TL < vp.y0) continue;
-          // sawdust thrown off the works' foot
-          const foot = sp.y * TL - 2;
+          // sawdust thrown off the works' foot: curls of fresh timber tumbling
+          // out and down (TX.shard, at the device's own resolution)
+          const foot = sp.y * TL - 2, TXs = F.tx('shard');
           for (let k = 0; k < 10; k++) {
             const h1 = F.hash(i * 17 + k, 9), h2 = F.hash(k * 3, i + 21), t = Math.min(1, q * 1.3);
             const a = -Math.PI / 2 + (h1 - 0.5) * 2.4, v = TL * (1.6 + h2 * 1.4);
             const x = cx + Math.cos(a) * v * t, y = foot - TL * 0.2 + Math.sin(a) * v * t + 0.5 * TL * 7 * t * t;
-            const al = F.step(t < 0.75 ? 1 : (1 - t) / 0.25);
-            if (al <= 0) continue;
-            g.globalAlpha = al; g.fillStyle = this.CHIP[k % 3];
-            g.fillRect(F.snap(x), F.snap(y), k % 4 ? 2 : 4, 2);
+            const al = t < 0.75 ? 1 : (1 - t) / 0.25;
+            if (al <= 0.01 || !TXs) continue;
+            g.save(); g.globalAlpha = al;
+            TXs.shard(g, x, y, k % 4 ? 1.6 : 2.4, t * (7 + k) + k, this.CHIP[k % 3], this.CHIP[0], '#5a3c1c');
+            g.restore();
           }
-          g.globalAlpha = 1;
           this.sparks(g, cx, top + 4, Math.min(1, q / 0.8), i + 1, 12, 1);
           this.pip(g, cx, top - 6, q);
         }
@@ -1002,7 +1038,7 @@ Object.assign(Deck.FX, {
       for (const w of this.all()) {
         if (!F.inV(v, w.x, w.y - w.sz / 2)) continue;
         if (!w.br && !G.visibleAt(Math.floor(w.x), Math.floor(w.y - 0.5))) continue;
-        const bob = ((now * 2 + (w.id || 0) * 0.37) % 2) < 1 ? 0 : 1;   // a one-pixel bob, in steps
+        const bob = (1 - Math.cos((now * 2 + (w.id || 0) * 0.37) * Math.PI)) * 0.5;   // a gentle bob, smooth
         this.hammer(g, w.x * TL, this.top(w) - 3 - bob, k0);
       }
       for (const u of S.units) {
@@ -1129,23 +1165,26 @@ Object.assign(Deck.FX, {
            so it is seen to hang over the land and not to be painted on it.
            The bank's leading face is whatever the billows make of it — each a
            different size, boiling, swaying — so it is RAGGED by construction,
-           and it thins into rags behind. All of it in the art's own pixel (a
-           buffer a pixel a cell, blown up nearest-neighbour), near-opaque.
-           The first cut was a noise field cut against a threshold that jumped
-           where the depth crossed zero: one ruler-straight line across the
-           screen with dithered strips behind (a screen wipe), and three flat
-           half-clear green-greys by height over the grass (camouflage). */
+           and it thins into rags behind, near-opaque. DRAWN AT THE DEVICE'S OWN
+           RESOLUTION (the operator's ruling of 2026-10-27): every billow is one
+           smoothly shaded sphere of murk (murkPuff, made once and laid at its
+           own size with smoothing) with an antialiased rim — it was a buffer a
+           pixel a cell, blown up nearest-neighbour into blocks of a dozen
+           device pixels. The first cut was a noise field cut against a
+           threshold that jumped where the depth crossed zero: one ruler-
+           straight line across the screen with dithered strips behind (a
+           screen wipe), and three flat half-clear green-greys by height over
+           the grass (camouflage). */
         const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1;
-        const cell = Math.max(4, Math.round(2 * R.cam.z * dpr)), T = s.t, M = this.murkRGB();
+        // (the billows' sizes are counted in this unit, the zoom's: the bank is
+        // the same weather at every zoom — it is no longer a grid)
+        const cell = Math.max(4, 2 * R.cam.z * dpr), T = s.t;
         // an AWAY pall gathers before it rolls: its billows swell up out of nothing in turn
         const gather = s.away ? Math.min(1, p / this.GATHER) : 1;
-        const cw = Math.ceil(Wd / cell), ch = Math.ceil(Hd / cell), buf = this.murkBuf(cw, ch), u32 = buf.u32;
-        u32.fill(0);
-        // a cell's colour as one little-endian word (ABGR in memory: R, G, B, A bytes)
-        const word = (rgb, a) => ((Math.round(a * 255) << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0]) >>> 0;
-        const A = F.step(fade * 0.92), tw = M.map(rgb => word(rgb, A)), shadowW = word(M[5], F.step(fade * 0.36));
+        const A = fade * 0.92;
         // the billows, in cells: along the band, thinning and shrinking behind its face
         const band = fr.band / cell, span = fr.span / cell, front = fr.front / cell, ux = fr.ux, uy = fr.uy;
+        const cw = Wd / cell, ch = Hd / cell;
         // enough of them to overlap two and three deep: one mass with a billowed edge, never a scatter
         const avg = 9.5, N = Math.max(60, Math.min(640, Math.round(band * span * 1.4 / (Math.PI * avg * avg) * 3)));
         const puffs = [];
@@ -1157,59 +1196,55 @@ Object.assign(Deck.FX, {
           const along = front - band * u - r * 0.5, perp = (F.hash(i, 2) - 0.5) * span * 1.4 + Math.sin(T * 0.7 + i) * 1.2;
           const x = ux * along - uy * perp, y = uy * along + ux * perp;
           if (x < -r - 6 || x > cw + r + 6 || y < -r - 6 || y > ch + r + 6) continue;
-          puffs.push({ x, y, r });
+          puffs.push({ x, y, r, i });
         }
         puffs.sort((a, z) => a.y - z.y);
-        const disc = (cx, cy, r, fn) => {
-          const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(cw - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(ch - 1, Math.ceil(cy + r));
-          for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-            const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / r, r2 = dx * dx + dy * dy;
-            if (r2 <= 1) fn(y * cw + x, dx, dy, r2);
-          }
-        };
-        // the bank's shadow on the ground first, where no billow stands
+        const P = this.murkPuff(), SH = this.murkShadow();
+        g.save();
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+        // the bank's shadow on the ground first
         const so = 3 + band * 0.02;
-        for (const q of puffs) disc(q.x + so, q.y + so * 1.3, q.r, c => { if (!u32[c]) u32[c] = shadowW; });
-        // then the billows, back to front: lit rim, crown, body, shade, shadowed rim
-        // (and spores IN it: a sick fleck here and there, carried with its billow)
-        puffs.forEach((q, k) => disc(q.x, q.y, q.r, (c, dx, dy, r2) => {
-          const lit = -(dx + dy) * 0.7071;
-          u32[c] = r2 < 0.8 && F.hash(((dx * q.r) | 0) * 31 + k, ((dy * q.r) | 0) * 17 + k) < 0.035 ? tw[6]
-            : tw[r2 > 0.62 ? (lit > 0.35 ? 2 : lit < -0.3 ? 0 : 1) : lit > 0.42 ? 4 : lit < -0.45 ? 3 : 1];
-        }));
-        buf.g.putImageData(buf.img, 0, 0);
-        g.imageSmoothingEnabled = false;
-        g.drawImage(buf.cv, 0, 0, cw * cell, ch * cell);
+        g.globalAlpha = fade * 0.36;
+        for (const q of puffs) { const R0 = q.r * cell; g.drawImage(SH, (q.x + so) * cell - R0, (q.y + so * 1.3) * cell - R0, R0 * 2, R0 * 2); }
+        // then the billows, back to front, each its own lit sphere (two
+        // turnings of the sphere, so neighbours do not wear one highlight)
+        g.globalAlpha = A;
+        for (const q of puffs) {
+          const R0 = q.r * cell, img = P[q.i % P.length];
+          g.drawImage(img, q.x * cell - R0, q.y * cell - R0, R0 * 2, R0 * 2);
+        }
         g.globalAlpha = 1;
+        g.restore();
         // spores boiling up out of the murk, a dark underside to each so they
-        // read against bright grass and dark woods alike
-        const sp = Math.max(2, Math.round(2 * R.cam.z * dpr));   // the art's pixel, as the murk's
+        // read against bright grass and dark woods alike — round specks at
+        // the device's own resolution (they were squares of the art's pixel)
+        const sp = 2 * R.cam.z * dpr * 0.5;   // a spore's radius, half the art's pixel
+        const dot = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+        g.save();
         for (let k = 0; k < 200; k++) {
           const along = fr.front - fr.band * F.hash(k, 1) * 1.05, perp = (F.hash(k, 2) - 0.5) * fr.span * 1.4;
           const sw = Math.sin(s.t * (1.5 + F.hash(k, 4) * 2) + k) * 14 * dpr;
           const x = fr.ux * along - fr.uy * perp + fr.uy * sw, y = fr.uy * along + fr.ux * perp - s.t * 30 * dpr * (0.4 + F.hash(k, 3)) - fr.ux * sw;
           if (x < 0 || x > Wd || y < 0 || y > Hd) continue;
-          const a = F.step(fade * gather * (1 - F.hash(k, 1) * 0.6));
-          if (a <= 0) continue;
-          const big = k % 4 === 0 ? 2 : 1, sx = Math.round(x / sp) * sp, sy = Math.round(y / sp) * sp;
-          g.globalAlpha = a; g.fillStyle = '#2c2a1c';
-          g.fillRect(sx, sy + sp * big, sp * big, sp);
-          g.fillStyle = this.SPORE[k % 3];
-          g.fillRect(sx, sy, sp * big, sp * big);
+          const a = fade * gather * (1 - F.hash(k, 1) * 0.6);
+          if (a <= 0.01) continue;
+          const r = sp * (k % 4 === 0 ? 1.7 : 1) * (0.85 + 0.3 * F.hash(k, 6));
+          g.globalAlpha = a;
+          g.fillStyle = '#2c2a1c'; dot(x + r * 0.25, y + r * 0.7, r);
+          g.fillStyle = this.SPORE[k % 3]; dot(x, y, r);
         }
         // and the season's last leaves, dead before they fell, tumbling with it
-        for (let k = 0; k < 46; k++) {
+        const TXl = F.tx('leaf');
+        for (let k = 0; k < 46 && TXl; k++) {
           const along = fr.front - fr.band * (0.05 + F.hash(k, 31) * 0.6), perp = (F.hash(k, 32) - 0.5) * fr.span * 1.3;
           const tum = s.t * (3 + F.hash(k, 33) * 4) + k;
           const x = fr.ux * along - fr.uy * perp, y = fr.uy * along + fr.ux * perp + Math.sin(tum) * 10 * dpr;
           if (x < 0 || x > Wd || y < 0 || y > Hd) continue;
-          const a = F.step(fade * gather * 0.9);
-          if (a <= 0) continue;
-          const flat = Math.cos(tum) > 0, lx = Math.round(x / sp) * sp, ly = Math.round(y / sp) * sp;
-          g.globalAlpha = a; g.fillStyle = k % 2 ? '#7a6a48' : '#5e5238';
-          g.fillRect(lx, ly, sp * (flat ? 2 : 1), sp * (flat ? 1 : 2));
+          const a = fade * gather * 0.9;
+          if (a <= 0.01) continue;
+          TXl.leaf(g, x, y, sp * 2 * (2 + F.hash(k, 34)), tum * 0.8, k % 2 ? '#7a6a48' : '#5e5238', a);
         }
-        g.globalAlpha = 1;
+        g.restore();
       },
     },
     /* the pall's tones: the billow's shadowed rim, its body, its lit rim, the
@@ -1217,17 +1252,52 @@ Object.assign(Deck.FX, {
        bank's shadow on the ground, and the spores it carries */
     MURK: ['#3c392d', '#7f7a63', '#c4bf86', '#5d5849', '#9a9479', '#1c1a10', '#d6d070'],
     murkRGB() { return this._rgb || (this._rgb = this.MURK.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)))); },
-    // the pall's one-pixel-a-cell buffer (render state — never in S)
-    _buf: null,
-    murkBuf(w, h) {
-      let B = this._buf;
-      if (!B || B.w !== w || B.h !== h) {
-        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-        const g = cv.getContext('2d');
-        const img = g.createImageData(w, h);
-        B = this._buf = { cv, g, w, h, img, u32: new Uint32Array(img.data.buffer) };
+    /* ONE BILLOW, made once (render state — never in S): a sphere of the
+       murk 128 px across, lit up and to the left — its crown, its body, the
+       shade turned away, a dark rim on its shadowed side and a lit one toward
+       the sun — with an antialiased edge and a sick fleck or two in it; laid
+       at every billow's own size with smoothing, so it is smooth at any zoom.
+       Two turnings, so neighbours do not wear one highlight. */
+    _puff: null, _shade: null,
+    murkPuff() {
+      if (this._puff) return this._puff;
+      const M = this.murkRGB(), S2 = 128, out = [];
+      const mix = (a, b, k) => [0, 1, 2].map(i => a[i] + (b[i] - a[i]) * k);
+      const sm = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+      for (let v = 0; v < 2; v++) {
+        const c = document.createElement('canvas'); c.width = c.height = S2;
+        const x = c.getContext('2d'), im = x.createImageData(S2, S2), d = im.data;
+        const rot = v ? 0.35 : -0.2;
+        for (let py = 0; py < S2; py++) for (let px = 0; px < S2; px++) {
+          const dx = (px + 0.5) / S2 * 2 - 1, dy = (py + 0.5) / S2 * 2 - 1, r = Math.hypot(dx, dy);
+          if (r > 1) continue;
+          const ca = Math.cos(rot), sa = Math.sin(rot), ex = dx * ca - dy * sa, ey = dx * sa + dy * ca;
+          const lit = -(ex + ey) * 0.7071;
+          let col = M[1];
+          col = lit > 0 ? mix(col, M[4], sm(0.15, 0.75, lit) * sm(0.95, 0.4, r)) : mix(col, M[3], sm(0.1, 0.8, -lit));
+          // the rim: lit toward the sun, dark on the side turned away
+          const rim = sm(0.62, 0.98, r);
+          col = lit > 0.2 ? mix(col, M[2], rim * sm(0.2, 0.6, lit)) : mix(col, M[0], rim * sm(-0.1, -0.6, lit));
+          // a sick fleck or two, carried in its body
+          const fl = Math.sin(px * 0.21 + v * 3) * Math.cos(py * 0.17 + v) > 0.985 && r < 0.8 ? 1 : 0;
+          if (fl) col = M[6];
+          const i = (py * S2 + px) * 4;
+          d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = Math.round(255 * sm(1, 1 - 2 / S2, r));
+        }
+        x.putImageData(im, 0, 0);
+        out.push(c);
       }
-      return B;
+      return (this._puff = out);
+    },
+    // the bank's shadow under a billow: a dark disc, softened at its rim
+    murkShadow() {
+      if (this._shade) return this._shade;
+      const M = this.murkRGB(), c = document.createElement('canvas'); c.width = c.height = 64;
+      const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+      const k = M[5].join(',');
+      gr.addColorStop(0, 'rgba(' + k + ',1)'); gr.addColorStop(0.82, 'rgba(' + k + ',1)'); gr.addColorStop(1, 'rgba(' + k + ',0)');
+      x.fillStyle = gr; x.beginPath(); x.arc(32, 32, 32, 0, Math.PI * 2); x.fill();
+      return (this._shade = c);
     },
     // (the first is a MOTE's colour too: kept under R.warmLight's red, or a
     // faded spore would turn to the gold's ink — R.inkFade)
