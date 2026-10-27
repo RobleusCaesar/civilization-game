@@ -961,8 +961,9 @@ await p.evaluate(() => {
     S.kraken.ev = null; S.deck.kraken = K0;
     // nothing is struck at the play: the deep rises on sim time
     out.untouched = H.every(h => h.hp === 5000) && ships.every(s => s.hp > 0);
-    // a save mid-act, with the first ship rising
-    for (let i = 0; i < 16; i++) Deck.krakenTick(0.05);
+    // a save mid-act, with the first ship rising (the map's acts wait out the
+    // sky's moment: the first rises at FIRST, 2.8s — this is 3.2s in)
+    for (let i = 0; i < 64; i++) Deck.krakenTick(0.05);
     G.loadJSON(G.saveJSON());
     out.midSave = !!S.deck.kraken && S.deck.kraken.acts[0].phase === 'rise';
     // what is seen: the deep where it rises

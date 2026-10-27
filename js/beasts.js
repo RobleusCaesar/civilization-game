@@ -65,6 +65,28 @@ const Beasts = {
     const k = Assets.fxFrames('kraken-thrash'); return k && k.length >= 8 ? k : null;
   },
   want(kind) { if (typeof Assets !== 'undefined' && Assets.wantFx) Assets.wantFx(kind); },
+  /* A TENTACLE'S STRIKE, frame by frame on the kraken-tentacle strip, `t`
+     seconds from the moment it breaks the surface, the blow landing at
+     `hit`: up out of its own splash (8→12), rearing (0→6), the PLUNGE (7)
+     just before the blow, the SPLASH (8) on it, up out of that again (9→12)
+     and down the way it came (11→8). Never a pop in or out of the sea.
+     Answers -1 while it is under. */
+  strikeFrame(t, hit) {
+    if (t < 0) return -1;
+    if (t < 0.32) return 8 + Math.min(4, (t / 0.08) | 0);
+    if (t < hit - 0.12) return Math.min(6, ((t - 0.32) / Math.max(0.1, hit - 0.44) * 7) | 0);
+    if (t < hit) return 7;
+    const e = t - hit;
+    if (e < 0.26) return 8;
+    if (e < 0.58) return 9 + Math.min(3, ((e - 0.26) / 0.08) | 0);
+    if (e < 0.9) return 11 - Math.min(3, ((e - 0.58) / 0.08) | 0);
+    return -1;
+  },
+  STRIKE_AFTER: 0.9,      // how long a strike lasts past its blow (strikeFrame)
+  tentReady() {
+    const f = typeof Assets !== 'undefined' && Assets.fxFrames && Assets.fxFrames('kraken-tentacle');
+    return !!(f && f.length >= 13);
+  },
   snap(v) { return Math.round(v / 2) * 2; },
   smooth(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); },
   // the act is on the screen the player is looking at (a roar off screen is
@@ -148,7 +170,10 @@ Object.assign(R, {
       alt = C.altLow - 0.3 * Math.sin(Math.min(1, ev.t / 0.5) * Math.PI);
       k = 1;
     } else {
-      alt = C.altLow + ev.t * 2.6;
+      // climbing away — a CARD's dragon climbs hard (drawn only: the act's
+      // own clock is untouched), up and out of the view it was framed in
+      // rather than fading over the fields like a ghost
+      alt = C.altLow + ev.t * 2.6 + (ev.card ? ev.t * ev.t * 5 : 0);
       k = Math.max(0, 1 - ev.t / 1.6);
     }
     const sc = C.scaleLow + (C.scaleHigh - C.scaleLow) * Math.min(1, (alt - C.altLow) / (C.altHigh - C.altLow));
@@ -158,11 +183,19 @@ Object.assign(R, {
     const back = (C.reach - C.lead) * TL - C.mouth[0] * C.scaleLow;
     const gx = ev.x * TL + dir * back, gy = ev.y * TL, sx = gx, sy = gy - alt * TL;
     const fade = ev.card && ev.phase === 'leave' ? Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16) : 1;
-    // the roar — once, as it comes into the player's world
-    if (!st.roared && (ev.card || Beasts.inView(ev.x, ev.y - alt, 6))) {
+    /* the roar — once, as it comes into the player's world. A CARD's dragon
+       roars as it ARRIVES: the moment the beast itself is over the edge of
+       the view (the view takes it in — dragonfire.cam), and never later than
+       its last stretch of the fly-in, so the breath never comes unannounced;
+       roared at the play it was a sound from nowhere, a second before anything
+       could be seen. The world's dragon keeps its wide ear. */
+    const arrive = ev.card
+      ? Beasts.inView(sx / TL, sy / TL, 1.5) || ev.phase !== 'fly' || ev.t > 0.85
+      : Beasts.inView(ev.x, ev.y - alt, 6);
+    if (!st.roared && arrive) {
       st.roared = true;
       if (typeof Sound !== 'undefined') Sound.play('roar');
-      if (Beasts.inView(ev.x, ev.y, 4)) this.shakeAt(3, 0.9);
+      if (Beasts.inView(ev.x, ev.y, 4) || (ev.card && Beasts.inView(sx / TL, sy / TL, 0))) this.shakeAt(ev.card ? 5 : 3, 0.9);
     }
     // the pall: the light goes out of the day round it
     if (k > 0.01) {
@@ -201,9 +234,12 @@ Object.assign(R, {
         if (this.startle) this.startle(ev.x, ev.y, 18);
       }
     }
-    // the beast
+    /* the beast — whole, never a half-seen ghost over the fields: a card's
+       dragon comes and goes in HARD alpha steps, and only at the far ends of
+       its flight (in, and once it has climbed most of the way out) */
     g.save();
-    g.globalAlpha = fade * (ev.card && ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1);
+    const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
+    g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
     g.translate(Beasts.snap(sx), Beasts.snap(sy));
     if (dir < 0) g.scale(-1, 1);
     g.drawImage(fr, -fr.width / 2 * sc, -fr.height / 2 * sc, fr.width * sc, fr.height * sc);
@@ -257,8 +293,17 @@ Object.assign(R, {
         g.fillRect(snap(px - s / 2 + j), snap(py - s / 2 - j * 0.4), snap(Math.max(2, s)), snap(Math.max(2, s)));
       }
     }
-    // the blast where it lands: tongues leaping off the ground
-    for (let i = 0; i < 9; i++) {
+    /* the blast where it lands: the burning-town flames themselves (the
+       fire line's own sprites, R.drawFireTongue's set) heaped up where the
+       torrent hits — a fan of squares at this size read as orange bars */
+    if (typeof Assets !== 'undefined' && Assets.resolve && Assets.resolve('misc/flameBig/0')) {
+      const TL = CFG.TILE, beat = (t * 12) | 0;
+      g.globalAlpha = fade;
+      for (const [ox, sz, sd] of [[-0.6, 1.05, 1], [0.55, 1.15, 2], [0, 1.65, 0]]) {
+        const s = Math.round(TL * sz * (0.9 + 0.1 * Math.sin(t * 17 + sd * 2.3)));
+        Assets.drawSprite(g, 'misc/flameBig/' + ((beat + sd) % 4), Math.round(tx + ox * TL - s / 2), Math.round(ty - s * 0.9), { w: s, h: s });
+      }
+    } else for (let i = 0; i < 9; i++) {
       const ox = (i - 4) * 7 + Math.sin(t * 13 + i) * 3, lick = 0.5 + 0.5 * Math.sin(t * 19 + i * 2.1);
       const h = 14 + lick * 22 - Math.abs(i - 4) * 2.5, w = 8;
       g.fillStyle = F[1]; g.fillRect(snap(tx + ox - w / 2), snap(ty - h), w, snap(h));
@@ -335,9 +380,12 @@ Object.assign(R, {
     if (!Beasts.ready('kraken')) { Beasts.want('kraken'); this.drawKrakenOld(g, ev); return; }
     const st = Beasts.st(ev);
     if (!st.body) st.body = this.krakenBodyAt(ev.x, ev.y);
-    let rise, tent = null;
-    if (ev.phase === 'rise') { rise = Beasts.smooth((ev.t - 0.1) / 1.1); tent = Math.min(8, Math.max(0, (ev.t - 0.35) / 1.25 * 8)); }
-    else if (ev.phase === 'thrash') { rise = 1; tent = ev.t < 0.55 ? 8 + ev.t / 0.55 * 4 : null; }
+    /* the arm that takes the boat breaks the surface 0.35s into the rise and
+       its blow lands on the take — the rise's end (1.6s), when the act's
+       tick drags the boat under (Beasts.strikeFrame) */
+    let rise, arm = -1;
+    if (ev.phase === 'rise') { rise = Beasts.smooth((ev.t - 0.1) / 1.1); arm = ev.t - 0.35; }
+    else if (ev.phase === 'thrash') { rise = 1; arm = 1.25 + ev.t; }
     else rise = 1 - Beasts.smooth(ev.t / 1.3);
     if (!st.roared) {
       st.roared = true;
@@ -345,11 +393,14 @@ Object.assign(R, {
       if (Beasts.inView(ev.x, ev.y, 2)) this.shakeAt(5, 1.4);
     }
     this.drawKrakenBody(g, st.body.x, st.body.y, rise, ev.t + (ev.phase === 'thrash' ? 1.6 : ev.phase === 'sink' ? 3.8 : 0));
-    if (tent != null) {
+    const tent = arm >= 0 ? Beasts.strikeFrame(arm, 1.25) : -1;
+    if (tent >= 0) {
       this.drawTentacle(g, ev.x, ev.y, tent, st.body.x < ev.x ? 1 : -1);
-      if (tent >= 7.5 && !st.slammed.boat) {
+      // the blow — heard and felt once, and only as it lands (an act first
+      // seen half over does not slam on sight)
+      if (tent === 8 && arm >= 1.25 && !st.slammed.boat) {
         st.slammed.boat = true;
-        this.krakenSlam(ev.x, ev.y);
+        if (arm < 1.25 + 0.3) this.krakenSlam(ev.x, ev.y);
       }
     }
   },

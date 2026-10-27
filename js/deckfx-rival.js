@@ -1471,8 +1471,14 @@
     krakens_call: {
       at: 'focus', DMG: 600, TC_CAP: 0.4, SHIPS: 4, NEAR: 2,
       RISE: 1.6, THRASH: 1.4, SINK: 1.6,     // the world's own act's beats (R.drawKraken fades on them)
-      FIRST: 0.5, GAP: 0.85,                 // the first rise, then one every GAP seconds
-      COAST_S: 1.5, TAIL: 2.6,               // the shore is battered at COAST_S; its watch holds TAIL more
+      /* THE MAP'S ACTS WAIT FOR THE SKY'S MOMENT: the deep answers over the
+         whole screen first (the show, ~3.6s), and the first hull is reached
+         as the sky's beast goes down — the map's beast surfacing where the
+         sky's sank. Played under the moment, the takes and the blow on the
+         shore went on behind a colossal head and nobody saw the payoff. */
+      FIRST: 2.8, GAP: 0.85,                 // the first rise, then one every GAP seconds
+      COAST_S: 3.8, TAIL: 2.6,               // the shore is battered at COAST_S; its watch holds TAIL more
+      COAST_REAR: 1.1,                       // the arm that batters it breaks the surface this long before
       SIGHT: 3, COAST_SIGHT: 2,
       SOFT: { fireship: 0, bombard: 1, transport: 2, fishboat: 3 },
       openSea() {
@@ -1542,7 +1548,12 @@
         }
         return best ? { x: best.x, y: best.y } : null;
       },
+      // the beast's strips (js/beasts.js) are fetched on demand: the deck
+      // asking whether the card can be played is the moment to ask, well
+      // before the deep has to answer (idempotent — one request per strip)
+      prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('kraken'); },
       can() {
+        this.prepare();
         if (!this.openSea()) return { ok: false, why: 'Needs open water' };
         if (S.deck && S.deck.kraken) return { ok: false, why: 'The kraken is still risen.' };
         if (S.kraken && S.kraken.ev) return { ok: false, why: 'The deep is already stirring — wait for it to settle.' };
@@ -1622,10 +1633,17 @@
          bodies half over each other read as a glitch, never as one monster
          (the host is render state, a WeakMap on the act, never in S). The
          body is the beast art's (R.drawKrakenAct, js/beasts.js) where it has
-         landed, else R.drawKraken — the two swap points of the art pass. */
-      CLUSTER: 2.5,
+         landed, else R.drawKraken — the two swap points of the art pass.
+         The cluster is as wide as the DRAWN beast: the body is ~5.5 tiles
+         across with its ring of white water, and at 2.5 two hulls four tiles
+         apart raised two bodies stacked half over each other. And the whole
+         act is clipped to the board: nothing is drawn in the black. */
+      CLUSTER: 6,
       _host: new WeakMap(),
       draw(g, dt, K) {
+        R.clipBoard(g, () => this.drawAct(g, dt, K));
+      },
+      drawAct(g, dt, K) {
         const TL = CFG.TILE, W = CFG.W, v = view(2), tt = K.t, end = this.endT(K);
         const a = qa(0.42 * Math.min(1, tt / 0.6) * c01((end - tt) / 1.0), 8);
         if (a > 0) {
@@ -1691,6 +1709,7 @@
          out of the water on the far side from the body, up and over, DOWN on
          the hull at the take — then it drags it under and goes after it. */
       grab(g, ac, host) {
+        if (window.Beasts && Beasts.tentReady() && R.drawTentacle) return this.grabArt(g, ac, host);
         const TL = CFG.TILE, side = host && host.x > ac.x ? -1 : 1;
         const bx = ac.x * TL + side * TL * 1.05, by = ac.y * TL + TL * 0.45, hx = ac.x * TL, hy = ac.y * TL;
         let tipX, tipY, reach;
@@ -1727,6 +1746,30 @@
         g.globalAlpha = qa(0.85 * reach);
         ring(g, bx, by + 4, TL * (0.45 + 0.12 * Math.sin(ac.t * 12)), 16, 0.45);
         g.globalAlpha = 1;
+      },
+      /* …DRAWN: the kraken-tentacle strip (R.drawTentacle, js/beasts.js),
+         the world kraken's own arm. It breaks the surface half a tile out
+         from the hull on the far side from the body, rears over it, PLUNGES
+         (7) onto it and SPLASHES (8) on the take — R.krakenSlam, once, as it
+         lands — then heaves up out of its own splash where the hull was and
+         goes down after it (Beasts.strikeFrame). */
+      grabArt(g, ac, host) {
+        const side = host && host.x > ac.x ? -1 : 1;
+        const arm = ac.phase === 'rise' ? ac.t : ac.phase === 'thrash' ? this.RISE + ac.t : -1;
+        const f = arm >= 0 ? Beasts.strikeFrame(arm, this.RISE) : -1;
+        if (f < 0) return;
+        const before = arm < this.RISE, rx = ac.x + side * 0.55;
+        const x = !before ? ac.x : f === 7 ? rx + (ac.x - rx) * 0.6 : rx;
+        R.drawTentacle(g, x, ac.y, f, side);
+        if (!before && f === 8) this.slamOnce(ac, ac.x, ac.y, arm - this.RISE);
+      },
+      // the blow lands: heard and felt ONCE (render state on the act), and
+      // only as it lands — an act first seen half over does not slam on sight
+      _slam: new WeakMap(),
+      slamOnce(key, x, y, late) {
+        if (this._slam.has(key)) return;
+        this._slam.set(key, 1);
+        if (late < 0.3 && R.krakenSlam) R.krakenSlam(x, y);
       },
       /* AN ARM OF THE DEEP, drawn along a spine of points {x, y, r} from the
          water to the tip, at a `cell` pixel grid (2 in the world, ~8 device
@@ -1802,10 +1845,25 @@
       /* a tentacle: up out of the open water beside the building, over, and
          DOWN on it at the blow — then back into the sea. */
       tentacle(g, c, tt, v) {
-        const t0 = this.COAST_S - 0.7, t1 = this.COAST_S + 1.6;
-        if (tt < t0 || tt > t1) return;
         if (!inView(v, c.x, c.y) && !inView(v, c.wx, c.wy)) return;
         if (!G.visibleAt(c.x | 0, c.y | 0) && !G.visibleAt(c.wx | 0, c.wy | 0)) return;
+        /* DRAWN (the kraken-tentacle strip, R.drawTentacle): out of the open
+           water beside the building, rearing toward it, the PLUNGE (7)
+           reaching in, and the SPLASH (8) breaking over the building itself on
+           the blow — R.krakenSlam, once — then back to the sea it came from,
+           heaving up out of its own splash and going down (Beasts.strikeFrame) */
+        if (window.Beasts && Beasts.tentReady() && R.drawTentacle) {
+          const arm = tt - (this.COAST_S - this.COAST_REAR), f = Beasts.strikeFrame(arm, this.COAST_REAR);
+          if (f < 0) return;
+          const side = c.x >= c.wx ? 1 : -1, before = arm < this.COAST_REAR, on = !before && f === 8 && arm - this.COAST_REAR < 0.26;
+          const x = on ? c.x : f === 7 ? c.wx + (c.x - c.wx) * 0.55 : c.wx, y = on ? c.y : f === 7 ? c.wy + (c.y - c.wy) * 0.55 : c.wy;
+          R.drawTentacle(g, x, y, f, side);
+          if (on) this.slamOnce(c, c.x, c.y, arm - this.COAST_REAR);
+          if (!before) this.debris(g, c, tt);
+          return;
+        }
+        const t0 = this.COAST_S - 0.7, t1 = this.COAST_S + 1.6;
+        if (tt < t0 || tt > t1) return;
         const TL = CFG.TILE, ox = c.wx * TL, oy = c.wy * TL, bx = c.x * TL, by = c.y * TL;
         let tipX, tipY, reach;
         if (tt < this.COAST_S) {                          // rearing up out of the sea
@@ -1834,14 +1892,18 @@
         g.globalAlpha = qa(0.85 * reach);
         ring(g, ox, oy + 4, TL * (0.5 + 0.15 * Math.sin(tt * 12)), 16, 0.45);
         ring(g, ox, oy + 4, TL * (0.85 + 0.1 * Math.sin(tt * 9)), 22, 0.45);
-        if (tt >= this.COAST_S && tt < this.COAST_S + 0.6) {
-          const q = (tt - this.COAST_S) / 0.6;
-          g.globalAlpha = qa(1 - q);
-          g.fillStyle = '#c9b48a';
-          for (let k = 0; k < 14; k++) {                   // the shore thrown up where it lands
-            const an = k / 14 * Math.PI * 2, rr = TL * (0.3 + 1.3 * ease(q)) * (0.7 + 0.3 * rnd(c.id, k));
-            g.fillRect(snap(bx + Math.cos(an) * rr), snap(by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI)), 4, 4);
-          }
+        this.debris(g, c, tt);
+        g.globalAlpha = 1;
+      },
+      // the shore thrown up where the blow lands
+      debris(g, c, tt) {
+        if (tt < this.COAST_S || tt >= this.COAST_S + 0.6) return;
+        const TL = CFG.TILE, bx = c.x * TL, by = c.y * TL, q = (tt - this.COAST_S) / 0.6;
+        g.globalAlpha = qa(1 - q);
+        g.fillStyle = '#c9b48a';
+        for (let k = 0; k < 14; k++) {
+          const an = k / 14 * Math.PI * 2, rr = TL * (0.3 + 1.3 * ease(q)) * (0.7 + 0.3 * rnd(c.id, k));
+          g.fillRect(snap(bx + Math.cos(an) * rr), snap(by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI)), 4, 4);
         }
         g.globalAlpha = 1;
       },
@@ -1936,6 +1998,48 @@
               g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
             }
           }
+          /* THE BEAST IS THE DRAWN ONE wherever its strips have landed
+             (js/beasts.js) — decided while nothing of it shows yet, then kept
+             for the show, so a strip landing mid-moment never swaps one
+             beast for another in front of the player. The procedural kraken
+             is only the stand-in for a strip that has not arrived. */
+          if (s.art == null || (!s.art && T < 0.2)) s.art = !!this.skyFrames();
+          if (s.art) this.skyArt(g, s, T, W, H);
+          else this.skyOld(g, s, T, W, H, mn);
+          // THE WORDS
+          if (T > 1.75 && T < 3.1) {
+            const a = qa(Math.min(1, (T - 1.75) / 0.3) * Math.min(1, (3.1 - T) / 0.4), 6);
+            const fs = Math.round(Math.min(40, W / 13));
+            g.globalAlpha = a;
+            g.font = 'bold ' + fs + 'px sans-serif';
+            g.textAlign = 'center'; g.textBaseline = 'top';
+            /* under the minimap, never behind it (the map is DOM over the
+               canvas: on a phone it hid the end of the words) — measured once */
+            if (s.capY == null) {
+              const mw = document.getElementById('miniWrap'), r = mw && mw.offsetHeight ? mw.getBoundingClientRect() : null;
+              const cv = R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { top: 0 };
+              s.capY = r ? Math.round((r.bottom - cv.top) * (R.dpr || 1) + fs * 0.4) : 0;
+            }
+            const ty = Math.max(Math.round(H * 0.2), Math.min(s.capY, Math.round(H * 0.34))), sh2 = Math.max(2, Math.round(fs / 10));
+            g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE DEEP ANSWERS', W / 2 + sh2, ty + sh2);
+            g.fillStyle = '#e6bac6'; g.fillText('THE DEEP ANSWERS', W / 2, ty);
+            g.font = Math.round(fs * 0.45) + 'px sans-serif';
+            g.fillStyle = 'rgba(232,236,255,0.92)';
+            g.fillText('The kraken rises against the rival', W / 2, ty + Math.round(fs * 1.25));
+            g.globalAlpha = 1;
+          }
+        },
+      },
+      // the strips the sky's beast is drawn from, or null while they travel
+      skyFrames() {
+        const A = window.Assets;
+        if (!A || !A.fxFrames) return null;
+        const head = A.fxFrames('kraken-thrash'), arm = A.fxFrames('kraken-tentacle');
+        return head && head.length >= 8 && arm && arm.length >= 13 ? { head, arm } : null;
+      },
+      /* THE PROCEDURAL KRAKEN — the sky's stand-in while the strips travel:
+         a mantle in coarse cells, two eyes, four arms on spines. */
+      skyOld(g, s, T, W, H, mn) {
           // under the sea line nothing of the world shows — the HUD stands there
           const cell = Math.max(4, Math.round(mn / 110));
           // THE ARMS: up 0.35..1.45, held swaying, down 2.6..3.45 — the two
@@ -2029,22 +2133,283 @@
               g.fillRect(x, H - hh, cell, hh);
             }
           }
-          // THE WORDS
-          if (T > 1.75 && T < 3.1) {
-            const a = qa(Math.min(1, (T - 1.75) / 0.3) * Math.min(1, (3.1 - T) / 0.4), 6);
-            const fs = Math.round(Math.min(40, W / 13));
-            g.globalAlpha = a;
-            g.font = 'bold ' + fs + 'px sans-serif';
-            g.textAlign = 'center'; g.textBaseline = 'top';
-            const ty = Math.round(H * 0.2), sh2 = Math.max(2, Math.round(fs / 10));
-            g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE DEEP ANSWERS', W / 2 + sh2, ty + sh2);
-            g.fillStyle = '#e6bac6'; g.fillText('THE DEEP ANSWERS', W / 2, ty);
-            g.font = Math.round(fs * 0.45) + 'px sans-serif';
-            g.fillStyle = 'rgba(232,236,255,0.92)';
-            g.fillText('The kraken rises against the rival', W / 2, ty + Math.round(fs * 1.25));
-            g.globalAlpha = 1;
+      },
+      /* THE SKY'S BEAST, DRAWN — the very kraken the map's acts wear
+         (js/beasts.js): kraken-thrash for the head, writhing on its own
+         frames, kraken-tentacle for every arm, each blown up by a WHOLE
+         multiple, nearest-neighbour, so an art pixel stays a square however
+         big the beast gets. Beats, in the procedural moment's time:
+           0.0  the deep closes in from the edges; a churning sea rises along
+                the sea line (the top of the bottom bar)
+           0.3  the head SURFACES from the middle out — a widening hole in
+                the sea edged in white water, the world kraken's own rule —
+                spray thrown up and rings of white water rolling out
+           0.45 the arms come up out of the water, two behind the head, two
+                before it, each mirrored and on its own clock, rearing
+           1.05 the EYES OPEN (lids drawn over the art's own eyes, lifted in
+                hard steps): a growl, a shake, rings of light off each eye
+           1.62 the greatest arm SLAMS (its strip's plunge and splash): the
+                screen shakes, a sheet of spray, white-water rings
+           2.5  the arms go down into their own splashes, the head sinks back
+                through a closing ring of foam, and the act plays on the map
+         Every mark is a hard pixel; rings are made of dots; nothing is
+         filtered; the light the eyes throw is ADDED in hard alpha steps. */
+      SKY: {
+        // the two eyes of each kraken-thrash frame, art px [x0, y0, x1, y1]
+        // (measured off the strip: the whole iris, its dark rim included) —
+        // the stand-in for the eye's own rows (skyEyes) on a canvas that
+        // cannot be read
+        EYES: [[[88, 101, 96, 112], [127, 101, 135, 112]], [[88, 102, 96, 113], [127, 102, 135, 113]],
+               [[88, 102, 96, 113], [127, 102, 135, 114]], [[88, 101, 96, 112], [127, 101, 135, 112]],
+               [[88, 99, 96, 110], [127, 99, 135, 110]], [[88, 97, 96, 108], [127, 97, 135, 108]],
+               [[88, 97, 96, 108], [127, 97, 135, 108]], [[88, 99, 96, 109], [127, 98, 135, 110]]],
+        BASE: [80, 132],     // where a tentacle leaves the water, in its 160px frame
+        /* the arms: `off` from the middle in widths of the head's frame, but
+           never further out than `cap` of the screen (a phone is narrower than
+           the head; a wide window must not fling them off on their own),
+           `dk` the head's multiple + this, mirrored, up / slam / down times (s),
+           behind the head or before it */
+        ARMS: [{ off: -0.36, cap: 0.33, dk: -1, mir: 1, at: 0.45, slam: 0, out: 2.5, back: 1 },
+               { off: 0.36, cap: 0.33, dk: -1, mir: 0, at: 0.6, slam: 0, out: 2.58, back: 1 },
+               { off: -0.55, cap: 0.37, dk: 1, mir: 0, at: 0.72, slam: 1.62, out: 2.66, back: 0 },
+               { off: 0.6, cap: 0.44, dk: 0, mir: 1, at: 0.92, slam: 0, out: 2.76, back: 0 }],
+        // the sea and the foam, in the strip's own colours
+        SEA: ['#09041e', '#141531', '#1a203d', '#212f4c'],
+        FOAM: ['#f0fbfe', '#e3f3fd', '#b1cfe8', '#9fc1dd'],
+        LID: ['#33273e', '#20152e', '#09041e'],
+        HEAD_FPS: 9, ARM_FPS: 8,
+      },
+      /* THE EYES OF ONE FRAME, row by row: [[y, x0, x1]…] per eye, read off
+         the frame itself (the iris is the only orange on the head) once per
+         frame canvas — so a lid follows the slant of the eye it closes, and
+         nothing of the iris peeps out under it. A canvas that cannot be read
+         (a tainted file:// page) takes the measured boxes instead. Render
+         state only (a WeakMap on the frame). */
+      _eyes: new WeakMap(),
+      skyEyes(fr, fi) {
+        let m = this._eyes.get(fr);
+        if (m) return m;
+        m = null;
+        try {
+          const X = 80, Y = 88, w = 66, h = 32, d = fr.getContext('2d').getImageData(X, Y, w, h).data;
+          const sp = [{}, {}];
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            const k = (y * w + x) * 4, r = d[k], gg = d[k + 1], bb = d[k + 2];
+            if (d[k + 3] < 128 || !(r > 120 && r > gg + 30 && gg > bb)) continue;
+            const e = sp[X + x < 112 ? 0 : 1], s = e[Y + y] || (e[Y + y] = [X + x, X + x]);
+            if (X + x < s[0]) s[0] = X + x;
+            if (X + x > s[1]) s[1] = X + x;
           }
-        },
+          m = sp.map(e => Object.keys(e).map(Number).sort((a, b) => a - b).map(y => [y, e[y][0], e[y][1]]));
+          if (!m[0].length || !m[1].length) m = null;
+        } catch (e) { m = null; }
+        if (!m) m = (this.SKY.EYES[fi] || this.SKY.EYES[0]).map(([x0, y0, x1, y1]) => {
+          const rows = [];
+          for (let y = y0; y <= y1; y++) rows.push([y, x0 - 1, x1 + 1]);
+          return rows;
+        });
+        this._eyes.set(fr, m);
+        return m;
+      },
+      /* which frame of the tentacle strip an arm shows at T, or -1: it comes
+         up out of its own splash (8→12), rears and writhes (0↔6), and — the
+         greatest — PLUNGES (7) and splashes (8) on the slam before rising
+         again (9→12); then it goes down the way it came (…0, 11→8) */
+      skyArmFrame(T, a) {
+        const { at, slam, out } = a;
+        const live = t => {
+          const e = t - at;
+          if (e < 0) return -1;
+          if (e < 0.4) return 8 + Math.min(4, (e / 0.08) | 0);
+          let from = at + 0.4;
+          if (slam) {
+            if (t < slam - 0.1) return Math.min(6, ((t - from) / Math.max(0.1, slam - 0.1 - from) * 7) | 0);
+            if (t < slam) return 7;
+            if (t < slam + 0.26) return 8;
+            if (t < slam + 0.58) return 9 + Math.min(3, ((t - slam - 0.26) / 0.08) | 0);
+            from = slam + 0.58;
+          }
+          const k = ((t - from) * this.SKY.ARM_FPS | 0) % 12;
+          return k <= 6 ? k : 12 - k;
+        };
+        if (T < out) return live(T);
+        const f0 = live(out);
+        if (f0 < 0) return -1;
+        const n = ((T - out) / 0.06) | 0;
+        if (f0 >= 7) return n < 1 ? f0 : n - 1 < 4 ? 11 - (n - 1) : -1;   // mid-slam: straight down into the sea
+        if (n <= f0) return f0 - n;
+        const j = n - f0 - 1;
+        return j < 4 ? 11 - j : -1;
+      },
+      skyArt(g, s, T, W, H) {
+        const Q = this.SKY, F = this.skyFrames();
+        if (!F) return;
+        const sm = g.imageSmoothingEnabled;
+        g.imageSmoothingEnabled = false;
+        // THE SHAKE moves the world's camera; the beast in the sky jolts with it
+        const sh = R._shake ? R.shakeOffset(0) : null, zz = (R.cam && R.cam.z || 1) * (R.dpr || 1);
+        if (sh) g.translate(Math.round(sh.x * zz), Math.round(sh.y * zz));
+        /* THE SIZE, by whole multiples: about the width of a phone, and on a
+           wide window as tall as the sea line allows (it is bounded by height
+           there), the head always clear of the top bar */
+        const hk = Math.max(2, Math.min(Math.round(W / 215), Math.round(H / 300)));
+        const FW = 224 * hk, cell = hk;
+        const armX = a => snap(W / 2 + Math.sign(a.off) * Math.min(Math.abs(a.off) * FW, a.cap * W));
+        const hr = T < 0.3 ? 0 : T < 1.3 ? ease((T - 0.3) / 1.0) : T < 2.75 ? 1 : 1 - ease((T - 2.75) / 0.8);
+        const bob = Math.round(Math.sin(T * 1.6)) * hk;
+        const hx = snap(W / 2 - FW / 2), restY = H - FW + 26 * hk;
+        const hy = snap(restY + (1 - hr) * 56 * hk + bob);
+        const cx = hx + 112 * hk, cy = hy + 128 * hk;     // the middle of the whirlpool it rises in
+        // the day goes out of the world while it is up: the deep's own navy
+        // laid over everything above the sea line, in hard steps
+        const dim = T < 0.6 ? T / 0.6 : T < 2.9 ? 1 : 1 - (T - 2.9) / 0.8;
+        if (dim > 0) { g.fillStyle = 'rgba(4,8,26,' + qa(0.42 * dim, 6) + ')'; g.fillRect(-64, -64, W + 128, H + 64); }   // wider than the screen: it shakes
+        // THE SEA along the sea line: hard bands in the strip's own navy, a
+        // ragged crest of white water, streaks of foam churning across it
+        const lv = T < 0.5 ? ease(T / 0.5) : T < 3.0 ? 1 : 1 - ease((T - 3.0) / 0.7);
+        if (lv > 0) {
+          const bandH = snapTo(H * 0.17 * lv, cell), top = H - bandH, cols = Math.ceil(W / cell);
+          g.fillStyle = Q.SEA[1]; g.fillRect(0, top, W, bandH);
+          g.fillStyle = Q.SEA[2]; g.fillRect(0, top, W, Math.min(bandH, cell * 6));
+          g.fillStyle = Q.SEA[3]; g.fillRect(0, top, W, Math.min(bandH, cell * 2));
+          const beat = (T * 7) | 0;
+          for (let r = 2; r * cell * 3 < bandH; r++) {
+            const y = top + r * cell * 3, drift = ((T * (r % 2 ? 9 : -7)) | 0);
+            for (let c = 0; c < cols; c++) {
+              const h = hash((c + drift) * 131 + r * 977);
+              if (h % 11) continue;
+              g.fillStyle = h % 3 ? Q.SEA[3] : Q.FOAM[3];
+              g.fillRect((c) * cell, y, cell * (2 + h % 3), cell);
+            }
+          }
+          for (let c = 0; c < cols; c++) {
+            const h = hash(c * 37 + beat * 7919), hh = (1 + h % 3) * cell;
+            g.fillStyle = Q.FOAM[h % 4 === 0 ? 0 : 1]; g.fillRect(c * cell, top - hh + cell, cell, hh);
+            if (h % 5 === 0) { g.fillStyle = Q.FOAM[2]; g.fillRect(c * cell, top + cell, cell, cell * 2); }
+          }
+        }
+        // THE ARMS behind the head, out of the far side of its whirlpool
+        const arm = (a, front) => {
+          const f = this.skyArmFrame(T, a);
+          if (f < 0) return;
+          const ka = Math.max(2, hk + a.dk), img = F.arm[f];
+          const bx = armX(a), by = front ? H - 4 * ka : hy + 98 * hk;
+          g.save();
+          g.translate(bx, by);
+          if (a.mir) g.scale(-1, 1);
+          g.drawImage(img, -Q.BASE[0] * ka, -Q.BASE[1] * ka, img.width * ka, img.height * ka);
+          g.restore();
+        };
+        if (hr > 0) for (const a of Q.ARMS) if (a.back) arm(a, false);
+        // THE HEAD: surfacing from the middle out, its own frames writhing
+        if (hr > 0) {
+          const fi = ((T * Q.HEAD_FPS) | 0) % F.head.length, fr = F.head[fi];
+          const rr = 18 + 160 * hr;                         // the hole in the sea, art px
+          g.save();
+          if (hr < 0.999) {
+            g.beginPath();
+            for (let yy = 0; yy < 224; yy += 2) {
+              const dy = (yy + 1 - 128) / (rr * 0.9);
+              if (dy <= -1 || dy >= 1) continue;
+              const half = Math.round(rr * Math.sqrt(1 - dy * dy));
+              g.rect(hx + (112 - half) * hk, hy + yy * hk, 2 * half * hk, 2 * hk);
+            }
+            g.clip();
+          }
+          g.drawImage(fr, hx, hy, FW, FW);
+          /* THE EYES OPEN: lids over the art's own eyes — an upper lid in the
+             lit hide, a lower in the shadow, each edged in black — drawn back
+             from the middle row in hard steps until the iris burns through */
+          const eo = T < 1.05 ? 0 : T < 1.35 ? qa((T - 1.05) / 0.3, 4) : T < 2.65 ? 1 : qa(Math.max(0, 1 - (T - 2.65) / 0.2), 4);
+          const E = fr.width === 224 ? this.skyEyes(fr, fi) : [];
+          if (eo < 1) for (const rows of E) {
+            const y0 = rows[0][0], y1 = rows[rows.length - 1][0], mid = (y0 + y1 + 1) / 2, half = (y1 - y0 + 1) / 2;
+            const open = Math.round(eo * half);
+            for (const [yy, x0, x1] of rows) {
+              const up = yy + 0.5 < mid, gap = up ? mid - (yy + 1) : yy - mid;   // whole rows between this row and the middle
+              if (gap < open) continue;                                         // the open slit
+              g.fillStyle = gap < open + 1 ? Q.LID[2] : up ? Q.LID[0] : Q.LID[1];
+              g.fillRect(hx + x0 * hk, hy + yy * hk, (x1 - x0 + 1) * hk, hk);
+            }
+          }
+          g.restore();
+          // the white water at the edge of the hole as it widens
+          if (hr < 0.98) {
+            g.fillStyle = Q.FOAM[1];
+            for (let i = 0; i < 72; i++) {
+              const an = i / 72 * Math.PI * 2, j = (hash(i * 31 + ((T * 12) | 0)) % 3) * hk;
+              g.fillRect(snapTo(cx + Math.cos(an) * (rr * hk + j), hk), snapTo(cy + Math.sin(an) * (rr * 0.9 * hk + j), hk), hk * 2, hk);
+            }
+          }
+          // …and the light they throw, ADDED: a breathing ring of dots, and
+          // the flare that rolls off each eye as it opens
+          if (eo > 0) {
+            if (!s.eyes) { s.eyes = 1; if (R.shakeAt) R.shakeAt(6, 0.6); sfx('cardRoar'); }
+            g.save(); g.globalCompositeOperation = 'lighter';
+            for (const rows of E) {
+              const mr = rows[rows.length >> 1];
+              const ox = hx + ((mr[1] + mr[2] + 1) / 2) * hk, oy = hy + ((rows[0][0] + rows[rows.length - 1][0] + 1) / 2) * hk;
+              g.fillStyle = 'rgba(255,170,60,' + qa(0.5 * eo * (0.7 + 0.3 * Math.sin(T * 5)), 4) + ')';
+              ring(g, ox, oy, hk * 9, 24, 0.7, hk);
+              const fq = (T - 1.15) / 0.7;
+              if (fq > 0 && fq < 1) {
+                g.fillStyle = 'rgba(255,200,90,' + qa(0.9 * (1 - fq), 4) + ')';
+                ring(g, ox, oy, hk * (8 + 30 * ease(fq)), 40, 0.7, hk);
+              }
+            }
+            g.restore();
+          }
+        }
+        // THE ARMS before it
+        for (const a of Q.ARMS) if (!a.back) arm(a, true);
+        // THE SLAM: the camera jolts, the water answers
+        const slamA = Q.ARMS.find(a => a.slam), SL = slamA.slam;
+        if (T >= SL && !s.slam) {
+          s.slam = 1;
+          if (R.shakeAt) R.shakeAt(10, 0.7);
+          if (R.flashAt) R.flashAt(0.2, 0.3, '206,232,246');   // the wall of water, white for a blink
+          sfx('cardTake'); sfx('splash');
+        }
+        // WHITE WATER: rings of dots rolling out over the sea — off the head
+        // as it breaks the surface, off the slam — and the spray thrown up
+        const rings = (x, y, t0, n, R0, R1, life, sz) => {
+          for (let r = 0; r < n; r++) {
+            const q = (T - t0 - r * 0.14) / life;
+            if (q <= 0 || q >= 1) continue;
+            g.fillStyle = 'rgba(227,243,253,' + qa(0.9 * (1 - q), 4) + ')';
+            ring(g, x, y, R0 + (R1 - R0) * ease(q), 64, 0.3, sz);
+          }
+        };
+        rings(cx, H - 6 * hk, 0.35, 3, 70 * hk, 190 * hk, 1.3, hk);
+        const ka = Math.max(2, hk + slamA.dk), sx0 = armX(slamA), sy0 = H - 4 * ka;
+        rings(sx0, sy0, SL, 3, 20 * ka, 120 * ka, 1.0, ka);
+        const spray = (x0, y0, t0, n, spread, up, seed, sz) => {
+          for (let k = 0; k < n; k++) {
+            const st = t0 + rnd(seed + k, 1) * 0.35, tt = T - st;
+            if (tt <= 0 || tt > 1.1) continue;
+            const vx = (rnd(seed + k, 2) - 0.5) * spread, vy = up * (0.5 + rnd(seed + k, 3) * 0.6);
+            const x = x0 + (rnd(seed + k, 4) - 0.5) * spread * 0.4 + vx * tt, y = y0 - vy * tt + H * 0.9 * tt * tt;
+            if (y > y0) continue;
+            g.fillStyle = Q.FOAM[k % 3];
+            g.globalAlpha = qa(1 - tt / 1.1, 4);
+            const z = sz * (k % 3 ? 1 : 2);
+            g.fillRect(snapTo(x, sz), snapTo(y, sz), z, z);
+          }
+          g.globalAlpha = 1;
+        };
+        spray(cx, H - 10 * hk, 0.4, 56, 150 * hk, H * 0.55, 700, hk);
+        spray(sx0, sy0, SL, 70, 120 * ka, H * 0.8, 900, ka);
+        // the whirl closing over it as it goes down
+        if (T > 2.75 && hr > 0) {
+          g.fillStyle = Q.FOAM[1];
+          g.globalAlpha = qa(0.9 * hr, 4);
+          for (let i = 0; i < 40; i++) {
+            const an = i / 40 * Math.PI * 2 + T * 3, rr2 = (40 + 90 * hr) * hk * (0.7 + 0.3 * ((i % 3) / 2));
+            g.fillRect(snapTo(cx + Math.cos(an) * rr2, hk), snapTo(H - 8 * hk + Math.sin(an) * rr2 * 0.3, hk), hk * 2, hk);
+          }
+          g.globalAlpha = 1;
+        }
+        g.imageSmoothingEnabled = sm;
       },
     },
   });

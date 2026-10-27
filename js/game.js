@@ -2024,6 +2024,10 @@ const G = {
         // out over a lake: no flame stands on the water
         if (!ev.card || !this.wetAt(fp.x, fp.y)) D.fire.push(fp);
       }
+      // a CARD's breath sets each marked building alight as the line of fire
+      // reaches it, and the last of them as the breath ends (js/deckfx.js)
+      const DF = ev.card && window.Deck && Deck.FX && Deck.FX.dragonfire;
+      if (DF && DF.burnTick) DF.burnTick(ev, ev.t > 1.7);
       if (ev.t > 1.7) {
         for (const id of ev.victims) {
           const u = Units.get(id);
