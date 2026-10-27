@@ -1305,6 +1305,40 @@ await p.evaluate(({ ARMY }) => {
   ck('noShowIsDrawnInTheBlack', r.fixed.world === 0 && r.fixed.sky === 0 && r.leak.world > 0 && r.leak.sky > 0,
     `off the board: the veterans' ring ${r.fixed.world} px, the host's sky ${r.fixed.sky} px; with the board widened (the control) ${r.leak.world} / ${r.leak.sky}`);
 }
+{
+  /* THE SUMMON DUST IS PIXEL DUST (judge g3, "rendering defects" 1): a summon
+     throws R.startPlacePoof at 0.55 under an engine and 1.25 under a battery,
+     and the scaled branch drew the frame through whatever smoothing the canvas
+     held — bilinear, a soft blur, the one smoothed thing on the screen. Every
+     dust blit is measured nearest-neighbour with the flag left ON by the
+     caller, at every scale the cards use, and the flag handed back as found.
+     The CONTROL draws the same frame by hand under the flag as found and must
+     see it smoothed, or the probe sees nothing. */
+  const r = await p.evaluate(() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const g = cv.getContext('2d');
+    const seen = [], real = g.drawImage;
+    g.drawImage = function (...a) { seen.push(this.imageSmoothingEnabled); return real.apply(this, a); };
+    const out = {};
+    for (const sc of [1, 0.55, 0.8, 1.25, 0.65]) {
+      R.placePoofs = [{ x: 2, y: 2, sz: sc === 1.25 ? 2 : 1, t: R.POOF_MS * 0.4, scale: sc }];
+      g.imageSmoothingEnabled = true;
+      seen.length = 0;
+      R._drawPlacePoofs(g, 0);
+      out[sc] = { drew: seen.length, smooth: seen.filter(Boolean).length, back: g.imageSmoothingEnabled === true };
+    }
+    // the control: the same frame by hand, under the flag as the caller left it
+    seen.length = 0; g.imageSmoothingEnabled = true;
+    g.drawImage(R.poofSheet(1).frames[3], 0, 0, 40, 40);
+    out.control = seen[0] === true;
+    R.placePoofs = [];
+    return out;
+  });
+  const bad = Object.entries(r).filter(([k, v]) => k !== 'control' && (!v.drew || v.smooth || !v.back));
+  ck('theSummonDustIsPixelDust', !bad.length && r.control,
+    bad.length ? 'smoothed: ' + bad.map(([k, v]) => `scale ${k} (${v.smooth}/${v.drew} blits smoothed, flag back ${v.back})`).join(', ')
+      : `every dust blit nearest-neighbour at scales 1/0.55/0.8/1.25/0.65, the caller's flag handed back; the control blit smoothed ${r.control}`);
+}
 function audioFiles(dir, out = [], depth = 0) {
   if (depth > 4) return out;
   for (const f of readdirSync(dir)) {

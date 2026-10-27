@@ -8100,8 +8100,18 @@ const R = {
     if (!this.placePoofs.length) return;
     this.clipBoard(g, () => this._drawPlacePoofs(g, dt));
   },
+  /* PIXEL DUST IS PIXEL DUST AT EVERY SCALE: the sheet's frames are hard
+     half-resolution pixels, and a summon draws them scaled (0.55 under an
+     engine, 1.25 under a battery) — through the canvas's bilinear default the
+     cloud came out a soft blur, the one smoothed thing in the frame. Every
+     blit here is nearest-neighbour, whatever the frame left the flag at, and
+     the flag goes back as it was found (tests/deck-army.mjs). */
   _drawPlacePoofs(g, dt) {
-    const TL = CFG.TILE;
+    const TL = CFG.TILE, sm = g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled = false;
+    try { this._poofPass(g, dt, TL); } finally { g.imageSmoothingEnabled = sm; }
+  },
+  _poofPass(g, dt, TL) {
     for (let i = this.placePoofs.length - 1; i >= 0; i--) {
       const p = this.placePoofs[i];
       p.t += dt * 1000;
