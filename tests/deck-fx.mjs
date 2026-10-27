@@ -944,6 +944,72 @@ await p.evaluate(() => {
   ck('andTheDarkOverTheChartedGroundIsOnePath', r.paths && r.paths.rects === 0 && r.paths.fills === 1, JSON.stringify(r.paths));
 }
 
+// ---------------- 11. WILLING HANDS WALK UP, AS THE CARD SAYS ----------------
+/* The playtest's critics (a Stone card whose effect lives in
+   js/deckfx-army.js): "the card's flavour text says strangers walk up; the
+   play shows them materialising", out of the goods' cream bars, two of the
+   three walking off overlapped into one sprite. Now they come out of the
+   treeline (or in from the edge of the view) on ground the player knows and
+   the door can be walked to from, in single file half a tile apart, packs on
+   their backs, and each joins with a hard-pixel burst at the door. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE, W = CFG.W;
+    __fx.fresh('fx-hands'); __fx.flat();
+    Screens.show('playing'); S.paused = true;
+    Deck._add('willing_hands', 2);
+    const P = Bld.tcOf('P'); P.x = 12; P.y = 12; Bld._block = null;
+    // a wood to the north-west, a lake to the east the door cannot be walked across to
+    for (let y = 4; y <= 7; y++) for (let x = 6; x <= 10; x++) S.map.terrain[MapGen.idx(x, y)] = T.FOREST;
+    for (let y = 6; y <= 20; y++) for (let x = 18; x <= 21; x++) S.map.terrain[MapGen.idx(x, y)] = T.WATER;
+    Bld._block = null;
+    G.updateVisibility();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(P), Bld.cy(P));
+    R.cardShows = [];
+    const ids0 = new Set(S.units.map(u => u.id));
+    const play = Deck.play('willing_hands');
+    const hands = S.units.filter(u => !ids0.has(u.id));
+    out.play = play.ok && hands.length === 3;
+    const hx = Bld.cx(P), hy = Bld.cy(P);
+    const reach = Path.reachFrom([Deck.summonDoor('villager').first]);
+    out.from = hands.map(u => +Math.hypot(u.x - hx, u.y - hy).toFixed(2));
+    out.known = hands.every(u => S.map.explored[MapGen.idx(u.x | 0, u.y | 0)] && reach[MapGen.idx(u.x | 0, u.y | 0)]);
+    out.treeline = hands.some(u => { for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (S.map.terrain[MapGen.idx((u.x | 0) + dx, (u.y | 0) + dy)] === T.FOREST) return true; return false; });
+    // single file: each sets off on its own beat, never two together
+    const waits = hands.map(u => u.task && u.task.type === 'muster' ? +u.task.wait.toFixed(2) : null);
+    out.waits = waits;
+    // walked in: every few tenths of a second, the strangers never stacked, the show drawn
+    const s = R.cardShows.find(z => z.id === 'willing_hands'), WH = Deck.FX.willing_hands;
+    let minGap = 9, packs = 0, bursts = 0;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+    const g = cv.getContext('2d'), di = CanvasRenderingContext2D.prototype.drawImage, fr = CanvasRenderingContext2D.prototype.fillRect;
+    CanvasRenderingContext2D.prototype.drawImage = function (img) { if (this === g && WH._pack && img === WH._pack) packs++; return di.apply(this, arguments); };
+    CanvasRenderingContext2D.prototype.fillRect = function (x, y, w, h) { if (this === g && w === 4 && h === 4) bursts++; return fr.apply(this, arguments); };
+    try {
+      for (let t = 0; t < 7; t += 0.1) {
+        Units.update(0.1);
+        if (s) { s.t = t; WH.show.draw.call(WH, g, s, t / (s.ms / 1000), 0.1, 'world'); }
+        const moving = hands.filter(u => Units.moving(u));
+        for (let i = 0; i < hands.length; i++) for (let j = i + 1; j < hands.length; j++)
+          if (Units.moving(hands[i]) && Units.moving(hands[j])) minGap = Math.min(minGap, Math.hypot(hands[i].x - hands[j].x, hands[i].y - hands[j].y));
+        void moving;
+      }
+    } finally { CanvasRenderingContext2D.prototype.drawImage = di; CanvasRenderingContext2D.prototype.fillRect = fr; }
+    out.minGap = +minGap.toFixed(2);
+    out.packs = packs; out.bursts = bursts;
+    out.joined = s ? Object.keys(s.joined || {}).length : 0;
+    out.home = hands.map(u => +Math.hypot(u.x - hx, u.y - hy).toFixed(2));
+    R.cardShows = [];
+    return out;
+  });
+  ck('willingHandsWalkUpFromTheTreelineOnKnownGround', r.play && r.from.every(d => d >= 4.4) && r.known && r.treeline,
+    `three set out ${r.from && r.from.join('/')} tiles from the hall, on known walkable ground ${r.known}, at the wood's edge ${r.treeline}`);
+  ck('inSingleFileHalfATileApart', r.waits && new Set(r.waits).size === 3 && r.waits.every(w => w != null) && r.minGap >= 0.4,
+    `they set off at ${r.waits && r.waits.join('/')} s; never closer than ${r.minGap} tiles while walking`);
+  ck('withPacksOnTheirBacksAndABurstAtTheDoor', r.packs > 20 && r.joined === 3 && r.bursts >= 3 && r.home.every(d => d < 4),
+    `${r.packs} pack draws on the walk; ${r.joined} joined at the door with ${r.bursts} burst marks; home at ${r.home && r.home.join('/')} tiles`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();
