@@ -986,6 +986,13 @@ await ctx.close();
   const r = await A.evaluate(async () => {
     const out = {};
     await new Promise(r => setTimeout(r, 200));   // B's write reaches A as a storage event
+    // A SEES IT AT ONCE (the badge, the collection), and a card A plays now
+    // is saved beside B's grant, never over it
+    out.fresh = Deck.count('watchfires');
+    Deck._add('fallen_timber', -1);
+    Deck._queue({ op: 'consume', card: 'fallen_timber', play: 'p-tab-a', run: 'tab-a', day: 3 });
+    Deck.saveCol();
+    out.beside = JSON.parse(localStorage.getItem('neo-deck')).queue.map(o => o.op + ':' + (o.run || o.play));
     __MOCK.rec('uid-A').ends['tab-b'] = 'win';
     const m0 = __MOCK.st.calls.length;
     // THE NETWORK COMES BACK — in every tab at once: A's own copy must not be
@@ -1043,6 +1050,8 @@ await ctx.close();
     r.cloud.watchfires === 1 && r.cloud.play,
     `B queued ${bSaw.queued.join(',')} (A, told by the storage event, sent the play at once: on disk ${bSaw.queue.join(',')}; B's own sync: ${bSaw.why}); ` +
     `back online A sent ${r.sent.join(', ')}; cloud ${JSON.stringify(r.cloud)}; disk queue ${r.disk}`);
+  ck('aTabSeesAnotherTabsWriteAtOnceAndPlaysBesideIt', r.fresh === 1 && r.beside.includes('grant:tab-b') && r.beside.includes('consume:tab-a'),
+    `A counts B's card ${r.fresh}; after A's own play the disk holds ${r.beside.join(', ')}`);
   ck('aTabThatSleptThroughTheWriteReadsTheDiskFirst', JSON.stringify(r.slept) === JSON.stringify(['tab-c']) && r.sleptDisk === 0,
     `granted ${r.slept.join(',')}; disk queue ${r.sleptDisk}`);
   ck('aWriteMidDrainIsNeverSavedOver', r.mid.first === 'moved' && r.mid.granted.includes('tab-d') && r.mid.granted.includes('tab-e') &&
