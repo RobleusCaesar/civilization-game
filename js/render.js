@@ -9231,8 +9231,9 @@ const R = {
              y: Math.round((Math.cos(w * 2.3 + 0.4) + Math.sin(w * 4.1) * 0.4) * a) };
   },
   // a full-screen flash, eased out over its own life (drawn last, over the night)
-  flashAt(a, dur, col) {
-    if (!this._flash || this._flash.a * (1 - this._flash.t / this._flash.dur) < a) this._flash = { t: 0, a, dur, col: col || '255,250,236' };
+  // `gold`: a card's warm flash, turned to amber first (drawFlash)
+  flashAt(a, dur, col, gold) {
+    if (!this._flash || this._flash.a * (1 - this._flash.t / this._flash.dur) < a) this._flash = { t: 0, a, dur, col: col || '255,250,236', gold: !!gold };
   },
   drawFlash(g, dt) {
     const f = this._flash;
@@ -9241,6 +9242,9 @@ const R = {
     if (f.t >= f.dur) { this._flash = null; return; }
     const k = 1 - f.t / f.dur;
     g.setTransform(1, 0, 0, 1, 0, 0);
+    // a card's GOLD flash turns the frame toward amber first, or pale gold
+    // laid over a meadow flashes yellow-green (CARD LIGHT IS GOLD, NOT LIME)
+    if (f.gold) this.goldWash(g, Math.min(1, f.a * k * k * 1.6));
     g.fillStyle = 'rgba(' + f.col + ',' + (f.a * k * k).toFixed(3) + ')';
     g.fillRect(0, 0, this.cv.width, this.cv.height);
   },
@@ -10408,6 +10412,113 @@ const R = {
     churn(24 + Math.sin(ev.t * 5) * 5, 9, 24, 0.5 * k, ev.t * 0.9);
     churn(34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 32, 0.3 * k, -ev.t * 0.6);
   },
+  /* ================= CARD LIGHT IS GOLD, NOT LIME =================
+     Every card's light used to be gold ADDED to the scene ('lighter') — and
+     the scene is mostly grass. Gold added to green is LIME: the meadow's
+     (75,129,51) plus a sixth of (255,212,94) is (116,163,66), an acid
+     yellow-green, and every summoning shaft, pillar, sunrise and wash in the
+     deck read that way. A thin warm PAINT is no cure either: half green and
+     half gold is olive. Light only reads as gold if whatever it falls on is
+     made GOLD first and bright second, so a body of card light is laid in
+     two passes over one shape (R.glow):
+       1  THE HUE ('color'): the shape takes the gold's hue and saturation and
+          keeps the luminosity of what is under it — grass, water, a thatched
+          roof, a soldier's tunic all turn gold in their own light and shade,
+          so the light still reads as light ON things, never a sticker;
+       2  THE LIFT (source-over, at a hard alpha step): a colour of the ramp —
+          amber, gold, cream — laid over that. Source-over CONVERGES on the
+          ramp colour however many bands stack; an additive lift overshoots
+          through lemon to white.
+     Strength runs 0..1 in sixths (LIGHT.STEP): the faintest step is a half-
+     strength hue in a redder gold (half green and half red-gold lands on
+     bronze, never olive) under a thin bronze; the strongest a cream core.
+     A thin white-hot thread may still be ADDED (glowHot) — the one additive
+     light left, kept to a stroke a world pixel or two wide. Small marks — a
+     ring's dots, a glint, a mote — are not bodies of light: they are drawn
+     opaque in the ramp's own colours (goldInk), fading DOWN the ramp, never
+     through alpha (a translucent gold dot on grass is the same lime). A
+     whole-frame wash (goldWash) is a hue grade toward amber at a low step,
+     never a fill. A browser that does not know 'color' keeps the lift alone.
+     Render-only, no state, no RNG; the tones are data. */
+  LIGHT: {
+    STEPS: 6,
+    // per step 1..6: [hue pass alpha, ramp index, lift alpha]
+    STEP: [null, [0.5, 0, 0.25], [1, 1, 0.3], [1, 1, 0.5], [1, 2, 0.6], [1, 2, 0.8], [1, 3, 0.85]],
+    /* the tones — the TIER'S light escalates through them: the Stone tier's
+       pale stone-white, the Bronze tier's (and a fire's) copper, gold above.
+       `hue` is the hue pass's colour, `faint` its redder half-strength
+       twin, `ramp` the lift's colours dark to light, `hot` the thread. */
+    TONE: {
+      gold: { hue: '#e3a03c', faint: '#d4702c', ramp: ['#c9822a', '#f2b04a', '#ffd98a', '#fff3cf'], hot: '#fff8e8' },
+      bronze: { hue: '#d27a3c', faint: '#b85a2c', ramp: ['#a85a2a', '#dc8a4c', '#f4b47c', '#ffe2c2'], hot: '#fff4ea' },
+      pale: { hue: '#b4a68c', faint: '#a89478', ramp: ['#9c9180', '#c8bfae', '#e6dfd0', '#f8f5ec'], hot: '#ffffff' },
+    },
+  },
+  // is `col` the name of a light's tone (rather than an "r,g,b" or a hex)?
+  isTone(col) { return typeof col === 'string' && !!this.LIGHT.TONE[col]; },
+  lightStep(s) {
+    const k = Math.ceil(Math.max(0, Math.min(1, s || 0)) * this.LIGHT.STEPS - 1e-6);
+    return k > 0 ? k : 0;
+  },
+  /* a body of card light: fill(col) lays the shape (fillRect, pxDisc, a
+     path's fill — in g.fillStyle, or a tinted silhouette in `col`), and is
+     called once per pass; s is its strength 0..1 */
+  glow(g, s, fill, tone) {
+    const L = this.LIGHT, k = this.lightStep(s);
+    if (!k) return;
+    const T = L.TONE[tone] || L.TONE.gold, st = L.STEP[k];
+    g.save();
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') {
+      g.globalAlpha = st[0]; g.fillStyle = st[0] < 1 ? T.faint : T.hue;
+      fill(g.fillStyle);
+    }
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = st[2]; g.fillStyle = T.ramp[st[1]];
+    fill(g.fillStyle);
+    g.restore();
+  },
+  // the white-hot thread at a light's heart, ADDED — keep it a stroke wide
+  glowHot(g, s, fill, tone) {
+    const a = Math.round(Math.max(0, Math.min(1, s || 0)) * 4) / 4;
+    if (!a) return;
+    const T = this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold;
+    g.save();
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = a; g.fillStyle = T.hot;
+    fill(g.fillStyle);
+    g.restore();
+  },
+  // a small mark's colour at strength s (opaque, faded DOWN the ramp), or null
+  goldInk(s, tone) {
+    const k = this.lightStep(s);
+    if (!k) return null;
+    const r = (this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold).ramp;
+    return r[k >= 6 ? 3 : k >= 4 ? 2 : k >= 2 ? 1 : 0];
+  },
+  /* a whole-frame warm grade at strength s: the hue pass alone at a low
+     step, so the meadow warms toward amber rather than being painted over
+     (a fill of gold over a frame of green is the yellow-green wash this
+     replaces); the rect defaults to the whole canvas in device px */
+  goldWash(g, s, x, y, w, h, tone) {
+    const a = Math.round(Math.max(0, Math.min(1, s || 0)) * 8) / 8;
+    if (!a) return;
+    const T = this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold;
+    g.save();
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') {
+      g.globalAlpha = a; g.fillStyle = T.hue;
+      g.fillRect(x || 0, y || 0, w == null ? this.cv.width : w, h == null ? this.cv.height : h);
+    }
+    g.restore();
+  },
+  /* is an "r,g,b" light warm (a gold, an amber, a cream)? The shared
+     helpers of the card files take their light's colour as a string; a warm
+     one goes through glow/goldInk, a cold one (a ghost's blue, steel) keeps
+     its own additive look, which is not the lime this cures. */
+  warmLight(col) {
+    const m = /^\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(col || '');
+    return !!m && +m[1] >= +m[3] + 40 && +m[1] >= +m[2];
+  },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
   /* `delay` (ms) staggers a muster's flashes one after another, and `id`
@@ -10565,7 +10676,8 @@ const R = {
     const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
     const snap = v => Math.round(v / px) * px;
     let unborn = null;
-    g.save(); g.globalCompositeOperation = 'lighter';    // light ADDED to the scene: the riders show through it
+    // the card's GOLD light (R.glow): whatever stands in the shaft turns gold
+    // in its own light and shade, and the riders still show through it
     for (let i = this.summons.length - 1; i >= 0; i--) {
       const s = this.summons[i];
       s.t += dt;
@@ -10574,33 +10686,29 @@ const R = {
       if (p >= 1) { this.summons.splice(i, 1); continue; }
       const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
       // a pool of light on the ground, bright on the first beat
-      if (p < 0.45) {
-        g.fillStyle = 'rgba(255,214,120,' + (0.5 * (1 - p / 0.45)).toFixed(3) + ')';
-        this.pxDisc(g, cx, cy, TL * (0.45 + p), px, 0.5);
-      }
+      if (p < 0.45) this.glow(g, 0.7 * (1 - p / 0.45), () => this.pxDisc(g, cx, cy, TL * (0.45 + p), px, 0.5));
       // the shaft: up in the first beat, held full while the rider breaks out
       // of it, then narrowing to a thread and gone
       const h = TL * 2.1 * Math.min(1, p * 6), k = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6;
-      for (const [wf, al] of [[0.7, 0.28], [0.38, 0.45]]) {
+      for (const [wf, sv] of [[0.7, 0.47], [0.38, 0.75]]) {
         const w = Math.max(px, snap(TL * wf * k));
-        g.fillStyle = 'rgba(255,220,130,' + (al * a).toFixed(3) + ')';
-        g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h));
+        this.glow(g, sv * a, () => g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h)));
       }
-      g.fillStyle = 'rgba(255,252,236,' + (0.9 * a).toFixed(3) + ')';
-      g.fillRect(snap(cx - px / 2), snap(cy - h), px, snap(h));
-      // two rings of dots rolling out along the ground plane
+      this.glowHot(g, 0.9 * a, () => g.fillRect(snap(cx - px / 2), snap(cy - h), px, snap(h)));
+      // two rings of dots rolling out along the ground plane, fading down the ramp
       for (const [d0, r0] of [[0, 1.25], [0.16, 0.8]]) {
         const q = (p - d0) / (1 - d0);
         if (q <= 0) continue;
+        const ink = this.goldInk(1.4 * (1 - q));
+        if (!ink) continue;
         const rad = TL * (0.2 + r0 * Math.pow(q, 0.55));
-        g.fillStyle = 'rgba(255,214,110,' + (0.85 * (1 - q)).toFixed(3) + ')';
+        g.fillStyle = ink;
         for (let n = 0; n < cfg.dots; n++) {
           const th = n / cfg.dots * Math.PI * 2;
           g.fillRect(snap(cx + Math.cos(th) * rad), snap(cy + Math.sin(th) * rad * 0.5), px, px);
         }
       }
     }
-    g.restore();
     this._unborn = unborn;
   },
   MOTE_TASKS: { gather: 1, work: 1, fish: 1, shorefish: 1 },
