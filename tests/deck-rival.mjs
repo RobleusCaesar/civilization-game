@@ -27,7 +27,9 @@
                        3-day watch that is real sight from the play on (the
                        sheet holds the world still, so the card runs the
                        vision pass itself); a relic in the ring is found, one
-                       outside is not; a second fire lights a second hill,
+                       outside is not — and the card's find rolls its reward
+                       off the run's RNG (the same relic found on foot draws
+                       it, the control); a second fire lights a second hill,
                        the same fire fed again burns 3 more days; never the
                        rim
      PATHFINDER'S MAP  every tile but the relic's footprint; the relic marked
@@ -499,9 +501,22 @@ await p.evaluate(() => {
     // A RELIC IN THE RING IS FOUND — legitimately, its own roll and all
     __rv.fresh('rv-scout2'); __rv.flat(false); G.updateVisibility();
     S.relic = { key: 'aqueduct', x: 20, y: 20, w: 4, h: 2, found: 0, amount: 0 };
-    const s0 = S.res.stone;
+    const s0 = S.res.stone, rngR = S.rngState;
     Deck.play('scouts_fire', { x: 22.5, y: 24.5 });
     out.found = S.relic.found > 0 && S.res.stone > s0;
+    // …and its reward is the CARD's find: no draw at the play, nor through
+    // the watch's vision passes after it (a card never draws the run's RNG)
+    out.foundRng = S.rngState === rngR;
+    G.updateVisibility(); G.updateVisibility();
+    out.foundRngAfter = S.rngState === rngR;
+    // the CONTROL: the same relic found by a hand that walked there rolls
+    // its reward on the run's RNG, as it always has — the probe can see a draw
+    __rv.fresh('rv-scout2w'); __rv.flat(false); G.updateVisibility();
+    S.relic = { key: 'aqueduct', x: 20, y: 20, w: 4, h: 2, found: 0, amount: 0 };
+    __rv.unit('rider', 'P', 21.5, 21.5);
+    const rngW = S.rngState;
+    G.updateVisibility();
+    out.walkDraws = S.relic.found > 0 && S.rngState !== rngW;
     // …one outside it is not, and nothing draws
     __rv.fresh('rv-scout3'); __rv.flat(false); G.updateVisibility();
     S.relic = { key: 'aqueduct', x: 30, y: 30, w: 4, h: 2, found: 0, amount: 0 };
@@ -542,6 +557,8 @@ await p.evaluate(() => {
   ck('theWatchEndsTheChartStays', r.over && r.endLog);
   ck('theWatchesRideTheSave', r.saved);
   ck('aRelicInTheRingIsFound', r.found && r.notFound, `inside found ${r.found}; outside untouched and no draw ${r.notFound}`);
+  ck('andTheFindDrawsNoRng', r.foundRng && r.foundRngAfter && r.walkDraws,
+    `the card's find: no draw at the play ${r.foundRng}, nor after its watch ${r.foundRngAfter}; the same relic found on foot draws ${r.walkDraws}`);
   ck('theFireNeverChartsTheRim', r.rim === 0 && r.naiveRim > 0, `${r.rim} rim tiles (an inB disc would chart ${r.naiveRim})`);
   ck('andTheFireDrawsNoRng', r.rng && r.logged);
 }

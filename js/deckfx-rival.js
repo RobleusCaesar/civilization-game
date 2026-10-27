@@ -346,6 +346,11 @@
           else if (!(G.vis && G.vis[i])) dim.push(i);
         }
         Deck.light(ring9, true);   // a relic inside the ring is found, legitimately
+        /* …found HERE, by the card's light, so its reward rolls on
+           Math.random: left to the vision pass below, the find would roll
+           G.rand and the play would re-deal the rest of the run (NO CARD
+           DRAWS THE RUN'S RNG). A relic a hand walks to keeps its G.rand. */
+        if (window.Relics && Relics.checkDiscovery) Relics.checkDiscovery(Math.random);
         const now = Deck.now();
         let until = now + this.DAYS;
         const live = Deck.timed('scouts_fire');
