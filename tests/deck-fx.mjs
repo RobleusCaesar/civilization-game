@@ -1278,6 +1278,187 @@ await p.evaluate(() => {
     `found ${r.found}; ${r.atPlay} floats at the play; the find shown at p ${r.firstAt}, at the relic ${JSON.stringify(r.seenAt)}`);
 }
 
+// ---------------- 14. THE EFFECTS' LIGHT IS DRAWN AT THE DEVICE'S OWN RESOLUTION ----------------
+/* (operator ruling, 2026-10-27: "can you improve the quality of the map
+   special effects… looks pixelated… the rays are pixelated again… higher
+   pixel count" — it SUPERSEDES the hard-pixel rule for effects; the
+   world's art stays pixel art.) The shared helpers every card act draws its
+   light with (R.fxGlow / fxRays / fxBeam / fxRing / fxSpark / fxDot /
+   fxMotes / fxVignette, and the generic door fxLight) are measured drawn
+   over a canvas of the meadow's own green, through the world's transform at
+   a phone's zoom (scale 2.5: one world pixel is 2.5 device px):
+     FINER THAN THE ART'S GRAIN  a shock ring's band is thinner than one of
+                       the art's 2px cells (5 device px here) and smooth
+                       across it — many levels, never a hard step — and a
+                       ray's edge lies off the 2px grid
+     NEVER LIME, NEVER OLIVE      the three older rulings that still hold:
+                       every helper's light over the meadow turns at most 2%
+                       of what it brightens toward olive/lime (the landing's
+                       own measure: ten levels brighter AND yellow-green), and
+                       the vignette only ever darkens
+     SMOOTH WHERE IT STEPPED      the acts' vignette (R.stepVignette, the
+                       dragon's pall, the spy's night) reads dozens of levels
+                       across its band, not its old four; the summons' shaft
+                       and the work motes lay no rect on the art's grid
+     NO RNG, NO STATE             a light drawn is a picture: S.rngState and
+                       Math.random are untouched */
+{
+  const r = await p.evaluate(() => {
+    const names = ['fxPx', 'fxTone', 'fxLight', 'fxGlow', 'fxRays', 'fxBeam', 'fxRing', 'fxSpark', 'fxDot', 'fxMotes', 'fxVignette'];
+    const out = { missing: names.filter(n => typeof R[n] !== 'function') };
+    const BG = [75, 129, 51], W = 480, H = 360, Z = 2.5;
+    const lum = (r0, g0, b0) => 0.299 * r0 + 0.587 * g0 + 0.114 * b0;
+    const olive = (ar, ag, ab) => {
+      if (lum(ar, ag, ab) - lum(BG[0], BG[1], BG[2]) < 10) return false;
+      const mx = Math.max(ar, ag, ab), mn = Math.min(ar, ag, ab), d = mx - mn;
+      if (!mx || !d || d / mx < 0.2) return false;
+      let h = mx === ar ? ((ag - ab) / d) % 6 : mx === ag ? (ab - ar) / d + 2 : (ar - ag) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+      return h >= 48 && h <= 115;
+    };
+    const dpr0 = R.dpr;
+    const shot = (draw) => {
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      g.fillStyle = `rgb(${BG})`; g.fillRect(0, 0, W, H);
+      g.setTransform(Z, 0, 0, Z, 0, 0);
+      R.dpr = 2;
+      try { draw(g); } finally { R.dpr = dpr0; }
+      const d = g.getImageData(0, 0, W, H).data;
+      let lit = 0, ol = 0, brighter = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const ch = d[i] !== BG[0] || d[i + 1] !== BG[1] || d[i + 2] !== BG[2];
+        if (!ch) continue;
+        lit++;
+        if (lum(d[i], d[i + 1], d[i + 2]) > lum(BG[0], BG[1], BG[2]) + 0.5) brighter++;
+        if (olive(d[i], d[i + 1], d[i + 2])) ol++;
+      }
+      return { d, lit, ol, brighter };
+    };
+    // a working hand for the motes (set up before the dice are watched)
+    __fx.fresh('fx-hires-motes'); __fx.flat();
+    const hand = __fx.unit('villager', 'P', 8.5, 8.5);
+    hand.task = { type: 'gather', x: 9, y: 8 };
+    // the run's dice and the page's: nothing a light draws may touch either
+    const rng0 = S.rngState, mr = Math.random;
+    let drew = 0;
+    Math.random = function () { drew++; return mr.call(Math); };
+    try {
+      if (!out.missing.length) {
+      // CSS px through the transform: one CSS px is dpr / scale world units
+      const g0 = document.createElement('canvas').getContext('2d');
+      g0.setTransform(Z, 0, 0, Z, 0, 0);
+      R.dpr = 2; out.px = R.fxPx(g0); R.dpr = dpr0;
+      // every helper over the meadow, measured for olive
+      const cx = W / Z / 2, cy = H / Z / 2;
+      const each = {
+        glow: g => R.fxGlow(g, cx, cy, 50, 0.9, 'gold', { core: 0.15 }),
+        glowFlat: g => R.fxGlow(g, cx, cy, 50, 0.5, 'gold', { squash: 0.4 }),
+        rays: g => R.fxRays(g, cx, cy - 40, { n: 14, r0: 8, r1: 90, a: 0.9, tone: 'gold', spread: Math.PI * 2, w0: 1, w1: 4, t: 1.3 }),
+        beam: g => R.fxBeam(g, cx, cy + 40, cy - 70, 22, 0.9, 'gold', { core: 1.4, foot: 0.6, fade: 0.3 }),
+        beamSteel: g => R.fxBeam(g, cx, cy + 40, cy - 70, 22, 0.9, 'steel', { foot: 0.5 }),
+        ring: g => R.fxRing(g, cx, cy, 50, 0.9, 'gold', { squash: 0.45, css: 2.5 }),
+        spark: g => { for (let k = 0; k < 5; k++) R.fxSpark(g, cx - 40 + k * 20, cy, 3 + k * 1.5, 0.95, 'gold', { diag: k % 2 }); },
+        motes: g => R.fxMotes(g, cx, cy, { n: 9, t: 2, seed: 5, rise: 40, spread: 20, tone: 'gold' }),
+        fade: g => { R.fxGlow(g, cx, cy, 50, 0.25, 'gold'); R.fxRing(g, cx, cy, 30, 0.2, 'gold', { css: 3 }); },
+        door: g => R.fxLight(g, 0.8, 'gold', {
+          path: gg => { gg.beginPath(); gg.moveTo(cx, cy - 40); gg.lineTo(cx + 30, cy + 30); gg.lineTo(cx - 30, cy + 30); gg.closePath(); },
+          grad: gg => gg.createLinearGradient(cx, cy - 40, cx, cy + 30),
+          prof: u => Math.sin(u * Math.PI),
+        }),
+      };
+      out.olive = {};
+      for (const k in each) { const s = shot(each[k]); out.olive[k] = { lit: s.lit, ol: s.ol, share: s.lit ? s.ol / s.brighter : 1 }; }
+      // a ring's band: its width across (device px) and the levels it passes through
+      {
+        const s = shot(g => R.fxRing(g, cx, cy, 50, 1, 'gold', { css: 2 }));
+        const y = (H >> 1), seen = new Set();
+        let run = 0, best = 0;
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4, ch = s.d[i] !== BG[0] || s.d[i + 1] !== BG[1] || s.d[i + 2] !== BG[2];
+          if (ch) { run++; seen.add(s.d[i] + ',' + s.d[i + 1] + ',' + s.d[i + 2]); best = Math.max(best, run); } else run = 0;
+        }
+        out.band = { width: best, levels: seen.size };
+      }
+      // a ray's edge lies off the art's 2px grid: lit pixels whose run starts
+      // between the grain's lines, along a row across a slanted ray
+      {
+        const s = shot(g => R.fxRays(g, 20, 20, { n: 1, r0: 0, r1: 160, a: 1, tone: 'gold', dir: 0.5, spread: 0, w0: 2, w1: 5, vary: 0 }));
+        const grain = 2 * Z;
+        let starts = 0, off = 0;
+        for (let y = 60; y < 200; y += 3) {
+          let prev = false;
+          for (let x = 0; x < W; x++) {
+            const i = (y * W + x) * 4, ch = s.d[i] !== BG[0] || s.d[i + 1] !== BG[1] || s.d[i + 2] !== BG[2];
+            if (ch && !prev) { starts++; if (Math.abs(x / grain - Math.round(x / grain)) > 0.1) off++; }
+            prev = ch;
+          }
+        }
+        out.rayEdge = { starts, off };
+      }
+      }
+      // the vignette darkens and never lightens, and it is smooth across its band
+      {
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const g = c.getContext('2d'); g.fillStyle = `rgb(${BG})`; g.fillRect(0, 0, W, H);
+        const cv = R.cv; R.cv = c;
+        try { R.stepVignette(g, '8,6,4', 1, [0, 0.22, 0.4, 0.58], 0.07); } finally { R.cv = cv; }
+        const d = g.getImageData(0, 0, W, H).data;
+        let lighter = 0;
+        for (let i = 0; i < d.length; i += 4) if (lum(d[i], d[i + 1], d[i + 2]) > lum(BG[0], BG[1], BG[2]) + 0.5) lighter++;
+        const row = new Set();
+        for (let x = 0; x < W / 2; x++) { const i = ((H >> 1) * W + x) * 4; row.add(d[i + 1]); }
+        out.vig = { lighter, levels: row.size };
+      }
+      // the summons' shaft and the work motes: smooth paths, never rects on the grain
+      {
+        const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+        let rects = 0, smooth = 0;
+        const fi = P2.fill, di = P2.drawImage;
+        P2.fillRect = function () { rects++; return fr.apply(this, arguments); };
+        P2.fill = function () { smooth++; return fi.apply(this, arguments); };
+        P2.drawImage = function () { smooth++; return di.apply(this, arguments); };
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const g = c.getContext('2d'); g.setTransform(Z, 0, 0, Z, 0, 0);
+        const was = R.summons;
+        try {
+          R.summons = [{ x: 4, y: 4, t: 0.2, id: 0, tone: 'gold' }, { x: 6, y: 4, t: 0.35, id: 0, tone: 'steel' }];
+          R.drawSummons(g, 0);
+        } finally { R.summons = was; P2.fillRect = fr; P2.fill = fi; P2.drawImage = di; }
+        out.summon = { rects, smooth };
+      }
+      {
+        const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+        let rects = 0;
+        P2.fillRect = function () { rects++; return fr.apply(this, arguments); };
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const g = c.getContext('2d'); g.setTransform(Z, 0, 0, Z, 0, 0);
+        const vt = R.viewTiles; R.viewTiles = () => ({ x0: 0, y0: 0, x1: 30, y1: 30 });
+        const mv = Units.moving; Units.moving = () => false;
+        try { R.drawMotes(g); } finally { R.viewTiles = vt; Units.moving = mv; P2.fillRect = fr; }
+        out.motes = { rects };
+      }
+    } finally { Math.random = mr; R.dpr = dpr0; }
+    out.rng = S.rngState === rng0;
+    out.drew = drew;
+    return out;
+  });
+  const ol = r.olive || {};
+  ck('theEffectsLightHelpersExist', !r.missing.length, r.missing.length ? 'missing ' + r.missing.join(', ') : 'fxPx, fxTone, fxLight, fxGlow, fxRays, fxBeam, fxRing, fxSpark, fxDot, fxMotes, fxVignette');
+  ck('aVignetteOnlyDarkensAndRollsInSmoothly', r.vig.lighter === 0 && r.vig.levels >= 16,
+    `${r.vig.lighter} pixels lighter; ${r.vig.levels} levels across half the screen (it stepped in 4)`);
+  ck('theSummonsShaftAndTheWorkMotesLayNoRectOnTheGrain', r.summon.rects === 0 && r.summon.smooth > 4 && r.motes.rects === 0,
+    `summons: ${r.summon.rects} rects, ${r.summon.smooth} smooth fills; motes: ${r.motes.rects} rects`);
+  ck('andALightDrawsNoRng', r.rng && r.drew === 0, `S.rngState ${r.rng ? 'untouched' : 'MOVED'}, Math.random drawn ${r.drew}×`);
+  if (!r.missing.length) {
+    ck('aCssPixelIsTheDevicesOwn', Math.abs(r.px - 2 / 2.5) < 1e-9, `one CSS px = ${r.px} world units at scale 2.5, dpr 2`);
+    ck('aLightIsFinerThanTheArtsGrain', r.band.width >= 3 && r.band.width < 5 * 2 && r.band.levels >= 6 && r.rayEdge.starts > 20 && r.rayEdge.off / r.rayEdge.starts > 0.5,
+      `a 2 css px ring is ${r.band.width} device px across in ${r.band.levels} levels; a ray's edge starts off the 2px grid ${r.rayEdge.off}/${r.rayEdge.starts}`);
+    ck('andItNeverWashesTheMeadowLimeOrOlive', Object.values(ol).every(o => o.lit > 30 && o.share <= 0.02),
+      Object.entries(ol).map(([k, o]) => `${k} ${(100 * o.share).toFixed(2)}% of ${o.lit}`).join(', '));
+  }
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

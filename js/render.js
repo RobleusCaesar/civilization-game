@@ -10644,9 +10644,17 @@ const R = {
        `hue` is the hue pass's colour, `faint` its redder half-strength
        twin, `ramp` the lift's colours dark to light, `hot` the thread. */
     TONE: {
-      gold: { hue: '#e6ac44', faint: '#d8843a', ramp: ['#c9822a', '#f2b04a', '#ffd98a', '#fff3cf'], hot: '#fff8e8' },
+      // (gold's cream and white-hot lean a shade toward amber: stacked as
+      // smooth light, the old #fff3cf / #fff8e8 summed to a pale LEMON, the
+      // olive measure's yellow-green by a hair)
+      gold: { hue: '#e6ac44', faint: '#d8843a', ramp: ['#c9822a', '#f2b04a', '#ffd98a', '#ffefca'], hot: '#fff7e9' },
       bronze: { hue: '#d27a3c', faint: '#b85a2c', ramp: ['#a85a2a', '#dc8a4c', '#f4b47c', '#ffe2c2'], hot: '#fff4ea' },
       pale: { hue: '#b4a68c', faint: '#a89478', ramp: ['#9c9180', '#c8bfae', '#e6dfd0', '#f8f5ec'], hot: '#ffffff' },
+      // the Iron tier's cold light and the Enlightenment's white-gold (the
+      // army beams' own ramps, Deck.armyFx.BEAM — named here so every light
+      // helper speaks them)
+      steel: { hue: '#9fb1c8', faint: '#8ea2bc', ramp: ['#7a8ea6', '#b9c8da', '#e6eef8', '#f6f9ff'], hot: '#ffffff' },
+      white: { hue: '#e6d39c', faint: '#d8c27e', ramp: ['#e0c88a', '#f8ecc4', '#fffbf2', '#ffffff'], hot: '#ffffff' },
     },
   },
   // is `col` the name of a light's tone (rather than an "r,g,b" or a hex)?
@@ -10658,26 +10666,42 @@ const R = {
   /* a body of card light: fill(col) lays the shape (fillRect, pxDisc, a
      path's fill — in g.fillStyle, or a tinted silhouette in `col`), and is
      called once per pass; s is its strength 0..1 */
+  /* (THE STEPS ARE GONE — the operator's ruling on the effects, below: a
+     light's strength is CONTINUOUS now, read off the same table between its
+     rows, and its lift is laid 'screen' (it climbs toward white and keeps
+     what it falls on showing through), so a light that fades fades
+     smoothly. The shape is still the caller's — and a caller that wants a
+     smooth one draws it with fractional coordinates (R.fxLight and its
+     helpers).) */
   glow(g, s, fill, tone) {
-    const L = this.LIGHT, k = this.lightStep(s);
-    if (!k) return;
-    const T = L.TONE[tone] || L.TONE.gold, st = L.STEP[k];
+    const L = this.LIGHT, k = Math.max(0, Math.min(1, s || 0)) * L.STEPS;
+    if (k <= 0.02) return;
+    const T = this.fxTone(tone), i0 = Math.max(1, Math.min(L.STEPS - 1, Math.floor(k))), f = Math.max(0, Math.min(1, k - i0));
+    const lo = L.STEP[i0], hi = L.STEP[Math.min(L.STEPS, i0 + 1)];
+    const ha = k < 1 ? 0.5 * k : lo[0] + (hi[0] - lo[0]) * f, la = (k < 1 ? lo[3] * k : lo[3] + (hi[3] - lo[3]) * f);
+    const ri = k < 1 ? lo[2] : lo[2] + (hi[2] - lo[2]) * f;
     g.save();
     g.globalCompositeOperation = 'color';
     if (g.globalCompositeOperation === 'color') {
-      g.globalAlpha = st[0]; g.fillStyle = st[0] < 1 ? T.faint : T.hue;
+      g.globalAlpha = Math.min(1, ha); g.fillStyle = ha < 0.75 ? T.faint : T.hue;
       fill(g.fillStyle);
     }
-    g.globalCompositeOperation = st[1];
-    g.globalAlpha = st[3]; g.fillStyle = T.ramp[st[2]];
+    g.globalCompositeOperation = 'screen';
+    g.globalAlpha = Math.min(1, la * 1.15); g.fillStyle = this._fxMix(T.ramp[Math.floor(ri)], T.ramp[Math.min(3, Math.floor(ri) + 1)], ri - Math.floor(ri));
     fill(g.fillStyle);
     g.restore();
   },
+  // a colour a share k of the way from a to b ('#rrggbb')
+  _fxMix(a, b, k) {
+    if (!(k > 0)) return a;
+    const p = this._fxRgb(a), q = this._fxRgb(b);
+    return '#' + p.map((v, i) => Math.round(v + (q[i] - v) * Math.min(1, k)).toString(16).padStart(2, '0')).join('');
+  },
   // the white-hot thread at a light's heart, ADDED — keep it a stroke wide
   glowHot(g, s, fill, tone) {
-    const a = Math.round(Math.max(0, Math.min(1, s || 0)) * 4) / 4;
-    if (!a) return;
-    const T = this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold;
+    const a = Math.max(0, Math.min(1, s || 0));
+    if (a < 0.01) return;
+    const T = this.fxTone(tone);
     g.save();
     g.globalCompositeOperation = 'lighter'; g.globalAlpha = a; g.fillStyle = T.hot;
     fill(g.fillStyle);
@@ -10716,8 +10740,8 @@ const R = {
      tone at strength s in eighths: the hue pass alone, so what is under it
      keeps its own light and is never painted over */
   goldWash(g, s, x, y, w, h, tone) {
-    const a = Math.round(Math.max(0, Math.min(1, s || 0)) * 8) / 8;
-    if (!a) return;
+    const a = Math.max(0, Math.min(1, s || 0));
+    if (a < 0.01) return;
     const T = this.LIGHT.TONE[tone] || this.LIGHT.TONE.gold;
     g.save();
     g.globalCompositeOperation = 'color';
@@ -10733,6 +10757,421 @@ const R = {
   warmLight(col) {
     const m = /^\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(col || '');
     return !!m && +m[1] >= 200 && +m[1] >= +m[3] + 40 && +m[1] >= +m[2];
+  },
+
+  /* ============ THE EFFECTS ARE DRAWN AT THE DEVICE'S OWN RESOLUTION ============
+     (operator ruling, 2026-10-27, on the desktop with a Golden Age playing:
+     "can you improve the quality of the map special effects. This one for
+     example looks pixelated… When characters slam down, that feels cool,
+     but the rays are pixelated again, let's increase the quality of that as
+     well. higher pixel count"). It SUPERSEDES the hard-pixel rule for every
+     special effect and the card chrome: the world's ART — terrain,
+     buildings, units, the beasts' own sprites — stays pixel art, but a card
+     act's light (sun, rays, beams, glows, rings, sparkles, shock waves,
+     vignettes) is drawn as smooth, antialiased paths and gradients at
+     FRACTIONAL coordinates, never snapped to the art's 2px grain, never a
+     stepped dither, never a small pixel canvas blown up nearest-neighbour.
+     The world canvas is already R.dpr-sized and its transform is a plain
+     scale, so a path at fractional world coordinates lands on device
+     pixels: these helpers simply STOP snapping. No extra full-screen canvas
+     (one is ~12 MB, the memory iOS purges the terrain to win back).
+
+     THREE OLDER RULINGS STILL HOLD — they are about reading the map, not
+     about style: no broad warm or translucent wash that turns the meadow
+     lime or olive; no warm light pooled flat on the ground (it reads as
+     sand); nothing drawn in the off-map black. So a body of light is still
+     laid in TWO PASSES over one shape (CARD LIGHT IS GOLD, NOT LIME, above):
+       1 THE HUE  ('color'): what the light falls on takes its hue and keeps
+                  its own luminance — gold grass, never lime grass;
+       2 THE LIFT ('screen'): the light itself, in the tone's ramp up to its
+                  white-hot heart. Screen can only climb toward white and
+                  keeps the soldier's outline and the thatch showing through.
+     Both are SMOOTH now, and ONE RULE keeps a smooth light gold: THE LIFT
+     LIES INSIDE THE HUE. Every profile here reaches its full hue before its
+     lift begins to climb, and a light that fades loses its lift faster than
+     its hue (fxA: hue = min(1, 2.2a), lift = a²) — so a pixel the light
+     brightens is a pixel it has already made gold. Where it can, a light
+     that goes out also SHRINKS or thins (the orbit's rule). A small mark (a
+     spark's arms, a mote's core) is cream or white-hot over a halo of its
+     own hue: too pale and too small to read as a wash.
+
+     Sizes named in CSS px are DEVICE-INDEPENDENT: R.fxPx(g) is one CSS pixel
+     in g's current units (the world transform or the screen), so a 1.5 css
+     px thread is 1.5 device px on a desktop and 3 on a phone, at any zoom.
+     Every helper draws wherever the caller draws (world or screen layer),
+     restores what it sets, draws no RNG (a hash and the caller's clock) and
+     keeps no state but its sprite cache. The CALLER still clips: a world-
+     layer show is clipped to the board by drawCardShows, a sky layer by the
+     show (GrowFX.clipped / Deck.armyFx.skyClip). Tones are R.LIGHT.TONE's
+     names ('gold', 'bronze', 'pale', 'steel', 'white'), a {hue, ramp, hot}
+     object, or a plain colour ('#rrggbb' or 'r,g,b') turned into one. */
+  fxPx(g) {
+    const m = g && g.getTransform ? g.getTransform() : null, k = m ? Math.hypot(m.a, m.b) : 1;
+    return (this.dpr || 1) / (k || 1);
+  },
+  // …and one DEVICE pixel (the canvas's own) in g's current units
+  fxDev(g) {
+    const m = g && g.getTransform ? g.getTransform() : null, k = m ? Math.hypot(m.a, m.b) : 1;
+    return 1 / (k || 1);
+  },
+  _fxRgbC: {},
+  _fxRgb(col) {
+    const c = this._fxRgbC[col];
+    if (c) return c;
+    let v = [255, 255, 255];
+    if (typeof col === 'string') {
+      if (col[0] === '#' && col.length >= 7) v = [1, 3, 5].map(i => parseInt(col.slice(i, i + 2), 16));
+      else { const m = /(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/.exec(col); if (m) v = [+m[1], +m[2], +m[3]]; }
+    }
+    return (this._fxRgbC[col] = v);
+  },
+  // "rgba(…)" for a colour at an alpha — the one string the gradients are built of
+  _fxC(col, a) {
+    const v = this._fxRgb(col);
+    return 'rgba(' + v[0] + ',' + v[1] + ',' + v[2] + ',' + (a <= 0 ? 0 : a >= 1 ? 1 : Math.round(a * 1000) / 1000) + ')';
+  },
+  _fxTones: {},
+  fxTone(tone) {
+    if (tone && typeof tone === 'object') return tone;
+    const L = this.LIGHT.TONE;
+    if (L[tone]) return L[tone];
+    if (typeof tone === 'string' && (tone[0] === '#' || /^\s*\d/.test(tone))) {
+      const c = this._fxTones[tone];
+      if (c) return c;
+      const v = this._fxRgb(tone);
+      const mix = k => '#' + v.map(n => Math.round(n + (255 - n) * k).toString(16).padStart(2, '0')).join('');
+      return (this._fxTones[tone] = { hue: mix(0), faint: mix(0), ramp: [mix(0), mix(0.3), mix(0.6), mix(0.82)], hot: mix(0.95) });
+    }
+    return L.gold;
+  },
+  // a light's two strengths at overall strength a: the lift fades faster than the hue
+  fxA(a) {
+    a = a > 0 ? (a < 1 ? a : 1) : 0;
+    return { h: Math.min(1, a * 2.2), l: a * a };
+  },
+  /* THE HUE IS TIED TO THE LIFT: wherever a light's lift lays `l`, its hue
+     lays min(1, FX_TIE × l) — so the hue is full gold under every pixel the
+     light visibly brightens (a lift strong enough to raise the grass's
+     luminance by ten levels is ~0.07; at a gain of 10 the hue there is
+     already ~0.7 and climbing), and it fades out exactly where the light
+     does. A hue laid wider than its light is an AMBER band — the meadow
+     darkened to orange round a light that does not reach it, the first cut
+     of these helpers — and a lift laid outside its hue is the lime. */
+  FX_TIE: 10,
+  // gradient stops sampled off a profile: prof(u) → [colour, alpha], u 0..1
+  _fxStops(gr, n, prof) {
+    // never coarse: a hue that saturates between two far stops is laid at
+    // half while its light climbs past the tie (the olive at a light's edge)
+    n = Math.max(16, n | 0);
+    for (let i = 0; i <= n; i++) { const u = i / n, c = prof(u); gr.addColorStop(u, this._fxC(c[0], c[1])); }
+    return gr;
+  },
+  // the tone's ramp read continuously, u 0 (its hot heart) → 1 (its deep end)
+  _fxRamp(T, u) {
+    if (u <= 0.12) return this._fxMix(T.hot, T.ramp[3], u / 0.12);
+    if (u <= 0.4) return this._fxMix(T.ramp[3], T.ramp[2], (u - 0.12) / 0.28);
+    return this._fxMix(T.ramp[2], T.ramp[1], Math.min(1, (u - 0.4) / 0.6));
+  },
+  _fxHash(a, b) {
+    let h = Math.imul(a | 0, 374761393) ^ Math.imul(((b | 0) + 40503) | 0, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  },
+  /* THE GENERIC DOOR, for a shape of your own: o = {
+       path(g)   lays the shape's path (it is filled twice, once a pass),
+       grad(g)   makes the gradient its light runs along (createLinearGradient
+                 or createRadialGradient, in the caller's units),
+       prof(u)   the light's strength 0..1 at u (0..1) along that gradient,
+       ramp(u)   where on the tone's ramp it is there (0 its white-hot heart,
+                 1 its deep end; prof's own falloff by default),
+       n         how many stops to sample (8) }
+     — and the door lays the hue tied to that light (FX_TIE) and the lift
+     over it, so a shape of your own can never stray outside its gold. A
+     browser without 'color' gets the lift alone. */
+  fxLight(g, a, tone, o) {
+    if (!(a > 0.003) || !o || !o.path || !o.grad || !o.prof) return;
+    const T = this.fxTone(tone), A = this.fxA(a), K = this.FX_TIE, n = o.n || 8;
+    const lift = u => A.l * Math.max(0, Math.min(1, o.prof(u)));
+    const ramp = o.ramp || (u => 1 - Math.max(0, Math.min(1, o.prof(u))));
+    g.save();
+    g.globalCompositeOperation = 'color';
+    const hue = g.globalCompositeOperation === 'color';
+    if (hue) {
+      // a device pixel past the shape's own edge (the rim's coverage scales
+      // both passes, and a full hue cannot scale up to keep the tie)
+      g.fillStyle = g.strokeStyle = this._fxStops(o.grad(g), n, u => [T.hue, Math.min(1, K * lift(u))]);
+      g.lineWidth = 2.4 * this.fxDev(g); g.lineJoin = 'round';
+      o.path(g); g.fill(); g.stroke();
+    }
+    g.globalCompositeOperation = 'screen';
+    g.fillStyle = this._fxStops(o.grad(g), n, u => [this._fxRamp(T, ramp(u)), lift(u) * (hue ? 1 : 0.7)]); o.path(g); g.fill();
+    g.restore();
+  },
+  /* A GLOW: a soft disc of light at (x, y), radius r (caller units) —
+     white-hot at its heart, down the tone's ramp to nothing at r (o.soft,
+     1.8: the falloff's power; higher is a tighter heart); o.core (a share
+     of r) lays a white-hot centre over the top, source-over; o.squash (< 1)
+     lays it flat on the ground — a flare where a light STANDS, never a pool
+     across the meadow (keep a flat one small). */
+  fxGlow(g, x, y, r, a, tone, o) {
+    o = o || {};
+    if (!(a > 0.003) || !(r > 0)) return;
+    const T = this.fxTone(tone), A = this.fxA(a), sq = o.squash || 1, pw = o.soft || 1.8, K = this.FX_TIE;
+    const lift = u => A.l * Math.pow(Math.max(0, 1 - u), pw);
+    // the white-hot core is light too: the hue is tied to the two together
+    const kc = o.core || 0, ca = Math.min(1, A.l * 1.3), core = u => kc && u < kc ? ca * (1 - (u / kc) * (u / kc)) : 0;
+    g.save();
+    g.translate(x, y);
+    if (sq !== 1) g.scale(1, sq);
+    const disc = rr => { g.beginPath(); g.arc(0, 0, rr, 0, Math.PI * 2); };
+    g.globalCompositeOperation = 'color';
+    const hue = g.globalCompositeOperation === 'color';
+    if (hue) { g.fillStyle = this._fxStops(g.createRadialGradient(0, 0, 0, 0, 0, r), 24, u => [T.hue, Math.min(1, K * (lift(u) + core(u)))]); disc(r); g.fill(); }
+    g.globalCompositeOperation = 'screen';
+    g.fillStyle = this._fxStops(g.createRadialGradient(0, 0, 0, 0, 0, r), 10, u => [this._fxRamp(T, u), lift(u) * (hue ? 1 : 0.7)]);
+    disc(r); g.fill();
+    if (kc) {
+      g.globalCompositeOperation = 'source-over';
+      const cr = r * kc;
+      g.fillStyle = this._fxStops(g.createRadialGradient(0, 0, 0, 0, 0, cr), 6, u => [this._fxMix(T.hot, T.ramp[3], u), ca * (1 - u * u)]);
+      disc(cr); g.fill();
+    }
+    g.restore();
+  },
+  /* A FAN OF RAYS from (x, y): o = { n, r0, r1 (where each ray starts and how
+     far the longest reaches, caller units), a, tone, dir (the fan's middle,
+     radians — Math.PI / 2 is straight down the screen), spread (its whole
+     angle; 2π for a full sun), w0, w1 (a ray's half-width at its foot and at
+     its tip), t (render time: a slow shimmer), seed, vary (0..1: how much
+     the lengths differ ray to ray, 0.35) }. Each ray is a slender wedge,
+     smooth along its length — white-hot at the source, down the ramp to
+     nothing at its tip — a brighter inner half laid inside a fainter whole,
+     its hue tied to that light (FX_TIE). */
+  fxRays(g, x, y, o) {
+    const a = o.a == null ? 1 : o.a, n = o.n || 12;
+    if (!(a > 0.003) || !(o.r1 > 0)) return;
+    const T = this.fxTone(o.tone), A = this.fxA(a), K = this.FX_TIE;
+    const TAU = Math.PI * 2, sp = o.spread == null ? TAU : o.spread, full = sp >= TAU - 1e-6;
+    const dir = o.dir == null ? Math.PI / 2 : o.dir, t = o.t || 0, seed = o.seed || 0, r0 = o.r0 || 0;
+    const w0 = o.w0 == null ? o.r1 * 0.012 : o.w0, w1 = o.w1 == null ? o.r1 * 0.03 : o.w1, vary = o.vary == null ? 0.35 : o.vary;
+    const rays = [];
+    for (let k = 0; k < n; k++) {
+      const h1 = this._fxHash(k, seed + 7), h2 = this._fxHash(k + 31, seed + 7);
+      const step = full ? sp / n : n > 1 ? sp / (n - 1) : 0;
+      const th = dir + (full ? k * step : (k - (n - 1) / 2) * step) + (h1 - 0.5) * step * 0.3 + Math.sin(t * 0.6 + k * 1.9) * 0.012;
+      const len = r0 + (o.r1 - r0) * (1 - vary * (k % 2 ? 0.55 + 0.45 * h2 : h2 * 0.4));
+      rays.push({ th, len, sh: 0.72 + 0.28 * Math.sin(t * 1.9 + k * 2.7 + h1 * 6) });
+    }
+    const quad = (r, wf) => {
+      const cs = Math.cos(r.th), sn = Math.sin(r.th), nx = -sn, ny = cs;
+      const ax = x + cs * r0, ay = y + sn * r0, bx = x + cs * r.len, by = y + sn * r.len, p = w0 * wf, q = w1 * wf;
+      g.beginPath();
+      g.moveTo(ax + nx * p, ay + ny * p); g.lineTo(bx + nx * q, by + ny * q);
+      g.lineTo(bx - nx * q, by - ny * q); g.lineTo(ax - nx * p, ay - ny * p); g.closePath();
+      return g.createLinearGradient(ax, ay, bx, by);
+    };
+    const lift = (r, s) => A.l * r.sh * Math.pow(Math.max(0, 1 - s), 1.6);
+    g.save();
+    g.globalCompositeOperation = 'color';
+    // (the hue reaches a device pixel past the light's own edge: an
+    // antialiased rim scales both passes by its coverage, and a hue already
+    // full cannot scale up to keep the tie — the rim went olive)
+    if (g.globalCompositeOperation === 'color') for (const r of rays) {
+      g.fillStyle = g.strokeStyle = this._fxStops(quad(r, 1), 6, s => [T.hue, Math.min(1, K * 1.2 * lift(r, s))]);
+      g.lineWidth = 2.4 * this.fxDev(g); g.lineJoin = 'round';
+      g.fill(); g.stroke();
+    }
+    g.globalCompositeOperation = 'screen';
+    for (const r of rays) {
+      g.fillStyle = this._fxStops(quad(r, 1), 6, s => [this._fxRamp(T, 0.15 + s * 0.85), 0.45 * lift(r, s)]); g.fill();
+      g.fillStyle = this._fxStops(quad(r, 0.42), 6, s => [this._fxRamp(T, s * 0.8), 0.75 * lift(r, s)]); g.fill();
+    }
+    g.restore();
+  },
+  /* a soft light profile drawn ONCE into a small canvas in one colour and
+     stretched with smoothing — a 2-D falloff a single gradient cannot give
+     (soft across a column AND faded at its top). Stretched, a smooth profile
+     stays smooth: no detail, nothing to show its texels. `gain` (1) lifts
+     the profile before it is clipped at full — the HUE's sprite is the
+     light's own profile at FX_TIE's gain, so it is full gold wherever the
+     light shows and gone where it is. Cached per colour and shape. */
+  _fxSprC: {},
+  _fxSprN: 0,
+  _fxBeamSpr(col, flat, fade, gain) {
+    const q = Math.round(Math.max(0, Math.min(1, fade || 0)) * 8) / 8, gn = gain || 1, key = col + '|' + flat + '|' + q + '|' + gn;
+    let c = this._fxSprC[key];
+    if (c) return c;
+    if (++this._fxSprN > 96) { this._fxSprC = {}; this._fxSprN = 1; }
+    const W = 48, H = 160, v = this._fxRgb(col);
+    c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d'), im = x.createImageData(W, H), d = im.data;
+    for (let j = 0; j < H; j++) {
+      const s = q > 0 ? Math.min(1, (j + 0.5) / (H * q)) : 1, vv = s * s * (3 - 2 * s);
+      for (let i = 0; i < W; i++) {
+        const u = Math.abs((i + 0.5) / W * 2 - 1), e = u <= flat ? 1 : Math.max(0, 1 - (u - flat) / (1 - flat)), hh = e * e * (3 - 2 * e);
+        const k = (j * W + i) * 4;
+        d[k] = v[0]; d[k + 1] = v[1]; d[k + 2] = v[2]; d[k + 3] = Math.round(255 * Math.min(1, gn * hh * vv));
+      }
+    }
+    x.putImageData(im, 0, 0);
+    return (this._fxSprC[key] = c);
+  },
+  /* A BEAM: a column of light standing on (x, foot) up to `top`, `w` wide
+     at the caller's scale. Soft across its width (a smooth profile — never
+     stepped bands): a broad body of the tone's light, a brighter middle and
+     a white-hot thread up its heart (o.core CSS px a side; 0 for none), its
+     hue the body's own extent (FX_TIE); o.fade (0..1) fades its top share
+     (0 for a beam that runs past the view and so has no top to see); o.foot
+     (0..1) flares it where it meets the ground (a light standing ON the
+     ground, never a pool across it). */
+  fxBeam(g, x, foot, top, w, a, tone, o) {
+    o = o || {};
+    if (!(a > 0.003) || !(w > 0) || !(foot - top > 0.5)) return;
+    const T = this.fxTone(tone), A = this.fxA(a), h = foot - top, f = o.fade || 0, cp = this.fxPx(g);
+    g.save();
+    g.imageSmoothingEnabled = true;
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') {
+      g.globalAlpha = Math.min(1, this.FX_TIE * A.l * 0.8);
+      g.drawImage(this._fxBeamSpr(T.hue, 0.1, f, this.FX_TIE), x - w / 2, top, w, h);
+    }
+    g.globalCompositeOperation = 'screen';
+    g.globalAlpha = A.l * 0.8;
+    g.drawImage(this._fxBeamSpr(T.ramp[2], 0.1, f), x - w / 2, top, w, h);
+    g.globalAlpha = A.l;
+    g.drawImage(this._fxBeamSpr(T.ramp[3], 0.25, f), x - w * 0.22, top, w * 0.44, h);
+    if (o.core !== 0) {
+      const cw = Math.min(w * 0.1, (o.core || 1.4) * cp);
+      g.drawImage(this._fxBeamSpr(T.hot, 0.45, f), x - cw, top, cw * 2, h);
+    }
+    g.restore();
+    if (o.foot) this.fxGlow(g, x, foot, w * (0.55 + 0.6 * o.foot), a, T, { squash: 0.36, core: 0.22, soft: 2.2 });
+  },
+  /* A RING OF LIGHT at radius r — a shock wave, a ring rolling out — its
+     half-width o.w (caller units) or o.css (CSS px, 2.5), o.squash (< 1) to
+     lie on the ground. Smooth across its width (brightest on the ring
+     itself), its hue the ring's own extent (FX_TIE). */
+  fxRing(g, x, y, r, a, tone, o) {
+    o = o || {};
+    if (!(a > 0.003) || !(r > 0)) return;
+    const T = this.fxTone(tone), A = this.fxA(a), hw = o.w || (o.css || 2.5) * this.fxPx(g), sq = o.squash || 1, K = this.FX_TIE;
+    const r0 = Math.max(0, r - hw), r1 = r + hw, mid = (r - r0) / (r1 - r0);
+    // across the band: 0 at its inner and outer edges, 1 on the ring
+    const lift = u => A.l * Math.pow(Math.max(0, 1 - Math.abs(u - mid) / (u < mid ? mid : 1 - mid)), 1.5);
+    g.save();
+    g.translate(x, y);
+    if (sq !== 1) g.scale(1, sq);
+    const band = () => {
+      g.beginPath(); g.arc(0, 0, r1, 0, Math.PI * 2);
+      if (r0 > 0) g.arc(0, 0, r0, 0, Math.PI * 2, true);
+      g.fill();
+    };
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') { g.fillStyle = this._fxStops(g.createRadialGradient(0, 0, r0, 0, 0, r1), 8, u => [T.hue, Math.min(1, K * lift(u))]); band(); }
+    g.globalCompositeOperation = 'screen';
+    g.fillStyle = this._fxStops(g.createRadialGradient(0, 0, r0, 0, 0, r1), 8, u => [this._fxRamp(T, 0.1 + 0.6 * Math.abs(u - mid) * 2), lift(u)]);
+    band();
+    g.restore();
+  },
+  /* A GLINT: a four-point star of light — a roof catching the sun, a spark
+     off a blow, a twinkle in the sky — its arms `s` CSS px long and hair-
+     thin, tapering to points on the device's own pixels; o.diag adds short
+     diagonal arms, o.rot turns it. Over a small glow of its own. */
+  fxSpark(g, x, y, s, a, tone, o) {
+    o = o || {};
+    if (!(a > 0.01) || !(s > 0)) return;
+    const T = this.fxTone(tone), cp = this.fxPx(g), L = s * cp, w = Math.max(0.6 * cp, L * 0.1);
+    a = Math.min(1, a);
+    g.save();
+    this.fxGlow(g, x, y, L * 0.62, a, T, { soft: 2.4 });
+    g.translate(x, y);
+    if (o.rot) g.rotate(o.rot);
+    const arm = (len, wid) => {
+      g.beginPath(); g.moveTo(-len, 0); g.lineTo(0, -wid); g.lineTo(len, 0); g.lineTo(0, wid); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(0, -len); g.lineTo(wid, 0); g.lineTo(0, len); g.lineTo(-wid, 0); g.closePath(); g.fill();
+    };
+    const arms = (kl, kw) => {
+      arm(L * kl, w * kw);
+      if (o.diag) { g.rotate(Math.PI / 4); arm(L * 0.42 * kl, w * 0.85 * kw); g.rotate(-Math.PI / 4); }
+    };
+    // the arms' own hue first, a little broader and longer than they are —
+    // so the cream lands on gold, never on the bare meadow
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') { g.globalAlpha = Math.min(1, a * 2); g.fillStyle = T.hue; arms(1.12, 2.6); }
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = a;
+    g.fillStyle = T.ramp[3]; arms(1, 1);
+    g.fillStyle = T.hot; g.beginPath(); g.arc(0, 0, w * 1.25, 0, Math.PI * 2); g.fill();
+    g.restore();
+  },
+  /* A MOTE: a small soft bead of light, `rc` CSS px — a grain of gold
+     rising off a roof, a speck of dust in a beam: a glow a few pixels
+     across with a cream heart (never gold added over grass). */
+  fxDot(g, x, y, rc, a, tone) {
+    if (!(a > 0.01) || !(rc > 0)) return;
+    const r = rc * this.fxPx(g);
+    this.fxGlow(g, x, y, r * 2.2, Math.min(1, a), tone, { soft: 1.6, core: 0.42 });
+  },
+  /* MOTES RISING off a point (x, y): o = { n, t (render time), seed, rise
+     (how high one climbs, caller units), spread (how wide they start),
+     a, tone, size (CSS px, 1.2), speed (laps a second, 0.45) } — each on its
+     own loop, fading in low and out high; positions a pure function of the
+     clock and the seed (nothing kept, no RNG). */
+  fxMotes(g, x, y, o) {
+    const n = o.n || 4, t = o.t || 0, seed = o.seed || 0, a = o.a == null ? 1 : o.a;
+    if (!(a > 0.01)) return;
+    for (let k = 0; k < n; k++) {
+      const h = this._fxHash(k, seed), h2 = this._fxHash(seed, k + 17);
+      const ph = (t * (o.speed || 0.45) * (0.8 + 0.4 * h2) + h) % 1;
+      const ma = (ph < 0.18 ? ph / 0.18 : (1 - ph) / 0.82) * a;
+      const mx = x + (h2 - 0.5) * (o.spread || 0) + Math.sin(ph * 6.28 + k * 2.1 + seed) * (o.spread || 0) * 0.15;
+      this.fxDot(g, mx, y - ph * (o.rise || 0), (o.size || 1.2) * (0.75 + 0.5 * h), ma, o.tone);
+    }
+  },
+  /* A VIGNETTE: the edges of the screen (or of `o.box`, device px) closing
+     in in `rgb`, smoothly, up to `max` (0.6) at the very edge and gone `o.depth`
+     (0.22) of the short side in — a darkening, never a light (it is laid
+     source-over in a dark colour: it can only take light away). Screen
+     space; it sets its own transform. A small smooth canvas stretched with
+     smoothing — the falloff has no texels to show. */
+  _fxVig: null,
+  fxVignette(g, a, o) {
+    o = o || {};
+    a = Math.max(0, Math.min(1, a || 0));
+    if (!a || !this.cv) return;
+    const B = o.box || { x0: 0, y0: 0, x1: this.cv.width, y1: this.cv.height };
+    const W = Math.max(8, B.x1 - B.x0), H = Math.max(8, B.y1 - B.y0), Q = 6, w = Math.ceil(W / Q), h = Math.ceil(H / Q);
+    const rgb = o.rgb || '6,8,14', depth = o.depth || 0.22, prof = o.levels || null, max = o.max == null ? 0.6 : o.max;
+    const key = w + 'x' + h + ':' + rgb + ':' + depth + ':' + max + ':' + (prof ? prof.join(',') : '');
+    const cache = this._fxVig || (this._fxVig = {});
+    let c = cache[key];
+    if (!c) {
+      for (const k in cache) if (k.indexOf(w + 'x' + h + ':') !== 0) delete cache[k];
+      if (Object.keys(cache).length > 12) for (const k in cache) delete cache[k];
+      c = cache[key] = document.createElement('canvas'); c.width = w; c.height = h;
+      const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data, v = this._fxRgb(rgb), m = Math.min(w, h);
+      const top = prof ? prof.length - 1 : 1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        // how far into the band along each axis (0 inside it, `depth` at the
+        // edge), combined round the corners so they curve rather than mitre
+        const ex = Math.min(x + 0.5, w - x - 0.5) / m, ey = Math.min(y + 0.5, h - y - 0.5) / m;
+        const s = Math.min(1, Math.hypot(Math.max(0, depth - ex), Math.max(0, depth - ey)) / depth);
+        let al;
+        if (prof) { const f = s * top, i0 = Math.min(top - 1, Math.floor(f)), k = f - i0; al = prof[i0] + (prof[i0 + 1] - prof[i0]) * k; }
+        else al = max * s * s * (3 - 2 * s);
+        const i = (y * w + x) * 4;
+        d[i] = v[0]; d[i + 1] = v[1]; d[i + 2] = v[2]; d[i + 3] = Math.round(Math.max(0, Math.min(1, al)) * 255);
+      }
+      q.putImageData(im, 0, 0);
+    }
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (o.box) { g.beginPath(); g.rect(B.x0, B.y0, W, H); g.clip(); }
+    g.imageSmoothingEnabled = true;
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = a;
+    g.drawImage(c, B.x0, B.y0, W, H);
+    g.restore();
   },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
@@ -11172,62 +11611,39 @@ const R = {
     g.restore();
     return { y0: top, y1: y, fs, sub: !!sub };
   },
-  /* THE EDGES OF THE WORLD CLOSE IN, IN HARD STEPS (the acts' darkness: the
-     dragon's pall, the pact's red, the spy's night). A band at EVERY edge of
-     the screen — all four sides, square at the corners, never a radial
-     gradient — in four levels (`lv`, alphas from the middle out), each level
-     giving onto the next through a one-cell checker seam. Built once per
-     size and colour at a quarter of the screen's resolution and blown up
-     nearest-neighbour, so a cell is 4 device px; `a` scales it in quarter
-     steps. Screen space; it sets its own transform. `box` ({x0, y0, x1, y1},
-     device px) fits it to a part of the screen — the OPEN BAND between the
-     bars (openBand): drawn edge to edge, its top and bottom bands lay under
-     the HUD and only the two sides showed, as bars. */
-  _vig: null,
+  /* THE EDGES OF THE WORLD CLOSE IN (the acts' darkness: the dragon's pall,
+     the pact's red, the spy's night). A band at EVERY edge of the screen —
+     all four sides, its corners rounded — rising through the levels `lv`
+     (alphas from the middle out) over `depth` of the short side per level.
+     It used to step, four hard bands blown up nearest-neighbour from a
+     quarter-resolution canvas; under the operator's ruling on the effects it
+     is SMOOTH (R.fxVignette: read between the levels, stretched with
+     smoothing) and `a` scales it continuously. Screen space; it sets its own
+     transform. `box` ({x0, y0, x1, y1}, device px) fits it to a part of the
+     screen — the OPEN BAND between the bars (openBand): drawn edge to edge,
+     its top and bottom bands lay under the HUD and only the two sides
+     showed, as bars. */
   openBand() {
     const dpr = this.dpr || 1, W = this.cv.width, H = this.cv.height;
     const y0 = Math.round((this.topReserve || 0) * dpr), y1 = H - Math.round((this.bottomReserve || 0) * dpr);
     return { x0: 0, y0, x1: W, y1: Math.max(y0 + 8, y1) };
   },
   stepVignette(g, rgb, a, lv, depth, box) {
-    a = Math.round(Math.max(0, Math.min(1, a || 0)) * 4) / 4;
-    if (!a || !this.cv) return;
+    /* SMOOTH NOW (the operator's ruling on the effects, R.fxVignette): the
+       same levels from the middle out, the same depth, the same box — but
+       read continuously between the levels and stretched with smoothing, so
+       the dark rolls in as a falloff, never as four hard bands joined by a
+       checker seam. The name stays: every act already calls it. */
     lv = lv || [0, 0.22, 0.4, 0.58];
     depth = depth || 0.07;
-    const B = box || { x0: 0, y0: 0, x1: this.cv.width, y1: this.cv.height };
-    const Q = 4, W = Math.max(Q, B.x1 - B.x0), H = Math.max(Q, B.y1 - B.y0), w = Math.ceil(W / Q), h = Math.ceil(H / Q);
-    const key = w + 'x' + h + ':' + rgb + ':' + lv.join(',') + ':' + depth;
-    const cache = this._vig || (this._vig = {});
-    let c = cache[key];
-    if (!c) {
-      for (const k in cache) if (k.indexOf(w + 'x' + h + ':') !== 0) delete cache[k];   // a resize retires the old sizes
-      c = cache[key] = document.createElement('canvas'); c.width = w; c.height = h;
-      const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data;
-      const [r0, g0, b0] = String(rgb).split(',').map(Number), m = Math.min(w, h), top = lv.length - 1;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const e = Math.min(x, y, w - 1 - x, h - 1 - y) / m;           // 0 at the screen's edge
-        const v = Math.max(0, top - e / depth), lo = Math.floor(v);
-        const L = Math.min(top, lo + (v - lo > 0.62 && ((x + y) & 1) ? 1 : 0));
-        if (!lv[L]) continue;
-        const i = (y * w + x) * 4;
-        d[i] = r0; d[i + 1] = g0; d[i + 2] = b0; d[i + 3] = Math.round(lv[L] * 255);
-      }
-      q.putImageData(im, 0, 0);
-    }
-    g.save();
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    if (box) { g.beginPath(); g.rect(B.x0, B.y0, W, H); g.clip(); }
-    g.imageSmoothingEnabled = false;
-    g.globalAlpha = a;
-    g.drawImage(c, B.x0, B.y0, w * Q, h * Q);
-    g.restore();
+    this.fxVignette(g, a, { rgb, levels: lv, depth: depth * (lv.length - 1), box });
   },
   drawSummons(g, dt) {
-    const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
-    const snap = v => Math.round(v / px) * px;
+    const TL = CFG.TILE, cfg = this.SUMMON;
     let unborn = null;
-    // the card's GOLD light (R.glow): whatever stands in the shaft turns gold
-    // in its own light and shade, and the riders still show through it
+    // the card's light (R.fxBeam / fxRing — smooth, at the device's own
+    // resolution): whatever stands in the shaft turns gold in its own light
+    // and shade, and the riders still show through it
     for (let i = this.summons.length - 1; i >= 0; i--) {
       const s = this.summons[i];
       s.t += dt;
@@ -11239,27 +11655,17 @@ const R = {
       if (s.tone === 'none') continue;
       const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
       // (no pool of light on the ground: a warm patch on the meadow reads as
-      // sand — the light lands in the two rings of dots below)
+      // sand — the light lands in the two rings rolling out below)
       // the shaft: up in the first beat, held full while the rider breaks out
-      // of it, then narrowing to a thread and gone
+      // of it, then narrowing to a thread and gone — it fades by THINNING
       const h = TL * 2.1 * Math.min(1, p * 6), k = p < 0.4 ? 1 : 1 - (p - 0.4) / 0.6;
-      for (const [wf, sv] of [[0.7, 0.6], [0.38, 0.85]]) {
-        const w = Math.max(px, snap(TL * wf * k));
-        this.glow(g, sv * a, () => g.fillRect(snap(cx - w / 2), snap(cy - h), w, snap(h)), s.tone);
-      }
-      this.glowHot(g, 0.9 * a, () => g.fillRect(snap(cx - px / 2), snap(cy - h), px, snap(h)), s.tone);
-      // two rings of dots rolling out along the ground plane, fading down the ramp
+      this.fxBeam(g, cx, cy, cy - h, TL * 0.72 * Math.max(0.12, k), Math.min(1, a * 1.25), s.tone, { fade: 0.4, core: 1.2, foot: 0.3 * k });
+      // two rings of light rolling out along the ground plane
       for (const [d0, r0] of [[0, 1.25], [0.16, 0.8]]) {
         const q = (p - d0) / (1 - d0);
         if (q <= 0) continue;
-        const ink = this.goldInk(1.4 * (1 - q), s.tone);
-        if (!ink) continue;
         const rad = TL * (0.2 + r0 * Math.pow(q, 0.55));
-        g.fillStyle = ink;
-        for (let n = 0; n < cfg.dots; n++) {
-          const th = n / cfg.dots * Math.PI * 2;
-          g.fillRect(snap(cx + Math.cos(th) * rad), snap(cy + Math.sin(th) * rad * 0.5), px, px);
-        }
+        this.fxRing(g, cx, cy, rad, 0.95 * (1 - q), s.tone, { squash: 0.5, css: 2.2 * (1 - q * 0.5) });
       }
     }
     this._unborn = unborn;
@@ -11270,35 +11676,14 @@ const R = {
     for (const u of S.units) {
       if (u.owner !== 'P' || !u.task || !this.MOTE_TASKS[u.task.type] || Units.moving(u)) continue;
       if (u.x < v.x0 - 1 || u.x > v.x1 + 1 || u.y < v.y0 - 1 || u.y > v.y1 + 2) continue;
-      for (let k = 0; k < 4; k++) {
-        // each mote on its own slow loop, offset by the hand's id so a row of
-        // reapers never pulses in step; it fades in, rises a tile and goes
-        const ph = (now * 0.45 + k / 4 + (u.id * 0.618) % 1) % 1;
-        const a = ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8;
-        const mx = Math.round(u.x * TL + (k - 1.5) * 4 + Math.sin(ph * 6.28 + u.id + k * 2.1) * 3);
-        const my = Math.round(u.y * TL - TL * 0.2 - ph * TL * 1.05);
-        // a gold grain, its dark underside giving it an edge against the grass
-        // (constant colours — no strings built per mote). The grain itself is
-        // OPAQUE, fading DOWN the ramp as it rises (R.goldInk): a gold grain
-        // at half alpha over the meadow is a lime one (CARD LIGHT IS GOLD)
-        const ink = a >= 0.8 ? '#ffcc40' : this.goldInk(a);
-        if (!ink) continue;
-        g.globalAlpha = 0.55 * a;
-        g.fillStyle = '#7a4a0a';
-        g.fillRect(mx, my + 2, 2, 1);
-        g.globalAlpha = 1;
-        g.fillStyle = ink;
-        g.fillRect(mx, my, 2, 2);
-        // …and at its brightest it glints: a pale cross, one pixel each way
-        if (a > 0.75) {
-          g.fillStyle = '#fff8d6';
-          g.fillRect(mx - 1, my, 1, 1); g.fillRect(mx + 2, my + 1, 1, 1);
-          g.fillRect(mx + 1, my - 1, 1, 1); g.fillRect(mx, my + 2, 1, 1);
-        }
-      }
+      // each mote on its own slow loop, offset by the hand's id so a row of
+      // reapers never pulses in step; it fades in, rises a tile and goes —
+      // a soft bead of gold on the device's own pixels (R.fxMotes), its
+      // core cream over a halo of its own hue (never gold added over grass)
+      this.fxMotes(g, u.x * TL, u.y * TL - TL * 0.2, { n: 4, t: now, seed: u.id, rise: TL * 1.05, spread: 14, size: 1.15, tone: 'gold' });
     }
-    g.globalAlpha = 1;
   },
+
 
   /* ================= THE COLLAPSE (tests/burn-down.mjs) =================
      Burning is the long signal; the COLLAPSE is the payoff. When a building
