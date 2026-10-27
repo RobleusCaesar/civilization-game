@@ -9288,11 +9288,60 @@ const R = {
   },
   craterPit(x, y) {
     const F = S && S.starfall;
+    if (S && S.deck && S.deck.craters && this.cardCraterAt(x, y, true)) return true;
     if (!F || F.x < 0) return false;
     const dx = x - F.x, dy = y - F.y;
     return dx >= 0 && dy >= 0 && dx <= 1 && dy <= 1 && !!this.craterArt();
   },
+  /* A STARFALL CARD'S CRATER (js/deckfx.js, starfall.impact): the star's own
+     crater art (crater-hot while its strike is landing, crater-cold after),
+     4 tiles across at the art's own density, centred on the tile it struck —
+     that tile is its PIT (painted in drawTile under nothing, like the event's)
+     and the rest is EJECTA, painted in the last ground pass on open ground
+     only. It lives exactly as long as its pit is rubble on the player's map:
+     the blow lays T.RUIN there (Bld.removeToRuin's own scar, on its own
+     RUIN_FADE_DAYS clock), so the ground heals and the crater goes with it,
+     a building raised on it clears it, and the fog keeps the remembered one.
+     A pure function of S.deck.craters and the (remembered) terrain, so a
+     repaint is a rebake; every tile it touches is inside its pit's ±2
+     ground reset, so the pit's own repaint paints it and wipes it. */
+  cardCraterAt(x, y, pit) {
+    const L = S.deck && S.deck.craters;
+    if (!L || !L.length) return null;
+    const terr = S.map.seenTerrain || S.map.terrain;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const c = L[i];
+      if (pit ? (c.x !== x || c.y !== y) : (Math.abs(x - c.x) > 2 || Math.abs(y - c.y) > 2)) continue;
+      if (!MapGen.inB(c.x, c.y) || terr[MapGen.idx(c.x, c.y)] !== T.RUIN) continue;
+      if (!this.cardCraterArt(c)) continue;
+      return c;
+    }
+    return null;
+  },
+  cardCraterArt(c) {
+    const a = window.Assets && Assets.fxFrames && Assets.fxFrames(c.hot ? 'crater-hot' : 'crater-cold');
+    // (a save that carries one asks for the art; its landing repaints it — repaintCrater)
+    if (!a && window.Assets && Assets.wantFx) Assets.wantFx('starfall');
+    return a ? a[0] : null;
+  },
+  cardCraterPaint(g, x, y, pit) {
+    const L = S.deck && S.deck.craters;
+    if (!L || !L.length) return;
+    const TL = CFG.TILE, terr = S.map.seenTerrain || S.map.terrain;
+    if (!pit && (this.cardCraterAt(x, y, true) || !this.CRATER_OVER.has(terr[MapGen.idx(x, y)]))) return;
+    for (const c of L) {
+      if (pit ? (c.x !== x || c.y !== y) : (Math.abs(x - c.x) > 2 || Math.abs(y - c.y) > 2 || (c.x === x && c.y === y))) continue;
+      if (!MapGen.inB(c.x, c.y) || terr[MapGen.idx(c.x, c.y)] !== T.RUIN) continue;
+      const art = this.cardCraterArt(c);
+      if (!art) continue;
+      const sc = art.width / (4 * TL), ox = (c.x + 0.5) * TL - 2 * TL, oy = (c.y + 0.5) * TL - 2 * TL;
+      const x0 = Math.max(x * TL, ox), y0 = Math.max(y * TL, oy), x1 = Math.min((x + 1) * TL, ox + 4 * TL), y1 = Math.min((y + 1) * TL, oy + 4 * TL);
+      if (x1 <= x0 || y1 <= y0) continue;
+      g.drawImage(art, (x0 - ox) * sc, (y0 - oy) * sc, (x1 - x0) * sc, (y1 - y0) * sc, x0, y0, x1 - x0, y1 - y0);
+    }
+  },
   craterPaint(g, x, y, pit) {
+    if (S.deck && S.deck.craters) this.cardCraterPaint(g, x, y, pit);
     const F = S.starfall;
     if (!F || F.x < 0) return;
     const dx = x - F.x + 1, dy = y - F.y + 1;
@@ -9366,6 +9415,9 @@ const R = {
   // the crater's own tiles, repainted (impact, claim, art landing late)
   repaintCrater() {
     const F = S && S.starfall;
+    // …and a starfall card's craters (cardCraterPaint): each pit's repaint is its whole crater
+    const L = S && S.deck && S.deck.craters;
+    if (L && L.length && this.terrainCache) for (const c of L) if (MapGen.onBoard(c.x, c.y)) this.drawTileAt(c.x, c.y);
     if (!F || F.x < 0 || !this.terrainCache) return;
     const list = [];
     for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++)
@@ -9426,7 +9478,8 @@ const R = {
      can fall in water (`wet`). */
   starAct(g, dt, sky, act) {
     const C = this.STAR, TL = CFG.TILE, z = this.cam.z * this.dpr, now = act.now;
-    // THE FALL — screen space
+    // THE FALL — screen space (a card's star DROPS: cardStarFall)
+    if (act.phase === 'fall' && act.card) { this.cardStarFall(g, dt, sky, act, 0); sky.mT = 0; sky.hit = false; sky.key = act.key; return; }
     if (act.phase === 'fall') {
       const P = this.starPath(act.cx, act.cy), f = Math.min(1, act.t / act.fallS), q = Math.pow(f, 1.12);
       const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q;
@@ -9497,8 +9550,10 @@ const R = {
     if (act.phase === 'down' && !sky.hit && act.t < 0.6) {
       sky.hit = true;
       const P = this.starSiteScreen(act.cx, act.cy);
-      this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
-      this.shakeAt(P.inView ? C.shake : C.shake * 0.4, C.shakeS);
+      // a card's blow flashes in hard STEPS (cardStarFlash), never the eased wash
+      if (act.card) sky.flashT = 0;
+      else this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
+      this.shakeAt(P.inView ? (act.card ? this.CARD_STAR.shake : C.shake) : C.shake * 0.4, C.shakeS);
       sky.boomT = 0;
       const cx = act.cx * TL, cy = act.cy * TL;
       for (let n = 0; n < C.debris; n++) {
@@ -9509,12 +9564,15 @@ const R = {
     }
     // the trail left in the sky keeps drifting and fading after the blow
     if (sky.trail.length || sky.shed.length) this._drawSkyTrail(g, dt, z, true, sky);
+    // …a card's long trail burns out after it, top down, in dithered steps
+    if (act.card && sky.burnT != null && sky.burnT < this.CARD_STAR.burnS) { sky.burnT += dt; this.cardStarFall(g, dt, sky, act, Math.min(1, sky.burnT / this.CARD_STAR.burnS)); }
     if (!act.seen) return;
     g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
     const cx = act.cx * TL, cy = act.cy * TL;
     if (act.phase === 'down') {
-      // the hot pit breathes (the event's until a hand claims it; a card's cools)
-      if (act.hot > 0) {
+      // the hot pit breathes (the event's until a hand claims it; a card's
+      // glows in its own crater's art instead — no light pooled on the ground)
+      if (act.hot > 0 && !act.card) {
         const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.55 + 0.08 * br);
         g.save(); g.globalCompositeOperation = 'lighter';
         g.fillStyle = 'rgba(255,110,40,' + ((0.10 + 0.08 * br) * act.hot).toFixed(3) + ')';
@@ -9572,6 +9630,11 @@ const R = {
       if (fr && bt < C.boomS) {
         const D = TL * C.boomTiles;
         g.drawImage(fr, Math.round(cx - D / 2), Math.round(cy - D * 0.6), Math.round(D), Math.round(D));
+      } else if (!fr && bt < 0.7 && act.card) {
+        // (a card's stand-in burst: opaque fire in hard steps, cooling as it spreads)
+        const R0 = TL * (0.5 + bt * 2.4), F = ART.PALETTE.fire;
+        g.fillStyle = bt < 0.25 ? F[1] : F[0]; this.pxDisc(g, cx, cy, R0, 2, 0.7);
+        if (bt < 0.45) { g.fillStyle = bt < 0.2 ? F[3] : F[2]; this.pxDisc(g, cx, cy, R0 * 0.5, 2, 0.7); }
       } else if (!fr && bt < 0.7) {
         const k = 1 - bt / 0.7, R0 = TL * (0.5 + bt * 2.4);
         g.fillStyle = 'rgba(240,120,50,' + (0.6 * k).toFixed(3) + ')'; this.pxDisc(g, cx, cy, R0, 2, 0.7);
@@ -9582,15 +9645,116 @@ const R = {
     this._drawPuffs(g, sky.smoke, dt, TL, (p, k) => { p.y -= TL * 0.55 * dt; p.x += TL * 0.12 * dt * (0.5 + k); });
   },
   /* A STARFALL CARD (js/deckfx.js) comes down through the same act, on its
-     own state (S.deck.strike) and its own sky (R._cardSky). Three things set
-     it apart from the event: its fall is SHORT — it lands as the play
-     animation ends, not after an omen and a slow descent; its dark eases in
-     with the fall and out with the strike's last beat, never held for half a
-     minute; and it leaves NO crater in the ground — no seams, no claim race,
-     the bombard's scorch and whatever it broke are the scar. Its sky outlives
+     own state (S.deck.strike) and its own sky (R._cardSky). What sets it
+     apart from the event: its fall is SHORT — it lands as the play animation
+     ends, not after an omen and a slow descent; it DROPS, steep, from above
+     the top of the screen with a long trail of hard pixels (cardStarFall);
+     its blow flashes in hard steps (cardStarFlash), never the eased wash;
+     its dark eases in with the fall and out with the strike's last beat,
+     never held for half a minute; and its scar is a CRATER of its own
+     (craterPaint's card craters — no seams, no claim race). Its sky outlives
      the state by a few seconds, so the debris settles and the smoke thins on
      its own after the strike has ended. Render state only (the R.collapses
      rule): cleared in onNewGame, never in a save. */
+  /* THE DROP (the playtest: "about 1 tile, almost flat from the right edge —
+     a thrown fireball, not a falling star"; a soft lit disc round it; an 80%
+     beige whiteout). From above the top of the screen, steep (`slope` across
+     for every 1 down, leaning in from the side nearer the middle so the whole
+     fall is on screen), accelerating (`accel`), the meteor's own art at
+     `headK` x the world's density, dragging a LONG trail of hard pixels the
+     whole height it fell: white behind the head, then the fire ramp — pale
+     gold, gold, orange, ember — and last a smoke that DITHERS to nothing,
+     its edges crackling, sparks peeling off it. Nothing soft: no glow disc,
+     no gradient, no alpha. `burn` (0..1) is the beat after the blow: the
+     trail cools and dithers away. Screen space (device px). */
+  CARD_STAR: { slope: 0.36, accel: 1.7, headK: 1.1, burnS: 0.9, top: 0.1, shake: 13,
+               // the blow's flash: until t (s), this colour at this strength — three hard steps
+               flash: [[0.06, '255,255,255', 0.62], [0.14, '226,236,255', 0.36], [0.24, '226,236,255', 0.14]] },
+  cardStarPath(act) {
+    const P = this.starSiteScreen(act.cx, act.cy), W = this.cv.width, H = this.cv.height, C = this.CARD_STAR;
+    let ux = (P.x > W / 2 ? 1 : -1) * C.slope, uy = 1;
+    const L0 = Math.hypot(ux, uy); ux /= L0; uy /= L0;
+    const L = Math.max(H * 0.5, (P.y + H * C.top) / uy);
+    return { sx: P.x - ux * L, sy: P.y - uy * L, ex: P.x, ey: P.y, ux, uy, L };
+  },
+  cardStarFall(g, dt, sky, act, burn) {
+    const C = this.CARD_STAR, z = this.cam.z * this.dpr, F = ART.PALETTE.fire, now = act.now;
+    const P = this.cardStarPath(act);
+    const f = burn ? 1 : Math.min(1, act.t / act.fallS), q = Math.pow(f, C.accel);
+    const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q, Lt = q * P.L;
+    const st = Math.max(2, Math.round(z * 0.75)), s = Math.max(2, Math.round(z * C.headK));
+    const fr = burn ? null : this.fxFrame('meteor', now / 1000 * 1.25), D = (fr ? fr.width : 128) * s;
+    const wH = Math.max(st * 3, Math.round(D * 0.15 / st) * st), tick = (now / 70) | 0;
+    const hsh = (a, b) => { let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b | 0, 0xc2b2ae35); h ^= h >>> 13; return (Math.imul(h, 0x27d4eb2f) >>> 0) / 4294967296; };
+    const cs = v => Math.round(v / st) * st;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    // THE TRAIL, head first: a column of hard cells the whole way it fell
+    const n = Math.max(1, Math.floor(Lt / st));
+    for (let i = 0; i <= n; i++) {
+      const d = i * st, k = Math.min(1, d / Math.max(1, Lt)), kc = burn ? Math.min(1, k * (1 - burn) + burn * 0.75) : k;
+      if (burn && hsh(i, 7) < burn * (0.6 + k)) continue;          // cooling: the cells go out, top first
+      const X = hx - P.ux * d, Y = hy - P.uy * d;
+      if (Y < -st * 4) break;
+      const w = Math.max(st, cs((wH * Math.pow(1 - k, 0.55) + st)));
+      let col;
+      if (kc < 0.05) col = '#ffffff';
+      else if (kc < 0.16) col = F[3];
+      else if (kc < 0.32) col = F[2];
+      else if (kc < 0.5) col = F[1];
+      else if (kc < 0.68) col = F[0];
+      else {
+        // the smoke it leaves: dithered to nothing up the sky
+        if (hsh(i, 3) < (kc - 0.68) / 0.32 * 1.15) continue;
+        col = (i & 1) ? '#3a302d' : '#2a2320';
+      }
+      g.fillStyle = col;
+      const x0 = cs(X - w / 2), y0 = cs(Y);
+      // the ragged edge crackles: an edge cell is out now and then
+      const cut = kc < 0.68 && w > st * 2;
+      const l = cut && hsh(i * 3 + tick, 1) < 0.35 ? st : 0, r = cut && hsh(i * 3 + tick, 2) < 0.35 ? st : 0;
+      g.fillRect(x0 + l, y0, w - l - r, st);
+      // a white-hot core down the first stretch
+      if (kc < 0.36 && w >= st * 3) {
+        g.fillStyle = kc < 0.16 ? '#ffffff' : F[3];
+        const cw = Math.max(st, cs(w * 0.4));
+        g.fillRect(cs(X - cw / 2), y0, cw, st);
+      }
+      // sparks peeling off it
+      if (!burn && kc < 0.6 && hsh(i, 11) < 0.07 && (tick + i) % 3) {
+        const side = hsh(i, 13) < 0.5 ? -1 : 1, off = w / 2 + st * (1 + ((hsh(i, 17) * 5) | 0)) + k * st * 6;
+        g.fillStyle = hsh(i, 19) < 0.5 ? '#ffffff' : F[3];
+        g.fillRect(cs(X + side * off), cs(Y + k * st * 4), st, st);
+      }
+    }
+    // THE HEAD: the meteor's own art, turned to its heading (the strip falls toward the lower left)
+    if (!burn) {
+      const Cs = this.STAR;
+      if (fr) {
+        const rot = Math.atan2(P.uy, P.ux) - Math.atan2(1, -1);
+        g.translate(Math.round(hx), Math.round(hy)); g.rotate(rot);
+        g.drawImage(fr, -Cs.head[0] * D, -Cs.head[1] * D, D, D);
+        g.setTransform(1, 0, 0, 1, 0, 0);
+      } else {
+        const r = Math.max(st * 2, cs(wH * 0.8));
+        g.fillStyle = F[1]; this.pxDisc(g, hx, hy, r, st);
+        g.fillStyle = F[3]; this.pxDisc(g, hx, hy, r * 0.62, st);
+        g.fillStyle = '#ffffff'; this.pxDisc(g, hx, hy, r * 0.32, st);
+      }
+    }
+    g.imageSmoothingEnabled = sm;
+    if (!burn) sky.burnT = 0;   // the fall was seen: after the blow its trail burns out
+  },
+  // the blow's flash: full screen, in the CARD_STAR.flash steps — never eased, never beige
+  cardStarFlash(g, dt, sky) {
+    if (sky.flashT == null) return;
+    sky.flashT += dt;
+    const step = this.CARD_STAR.flash.find(s => sky.flashT < s[0]);
+    if (!step) { sky.flashT = null; return; }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = 'rgba(' + step[1] + ',' + step[2] + ')';
+    g.fillRect(0, 0, this.cv.width, this.cv.height);
+  },
   _cardSky: null,
   cardStarDim(st) {
     const C = this.STAR, D = window.Deck && Deck.FX.starfall;
@@ -9611,11 +9775,13 @@ const R = {
     this.starAct(g, dt, sky, {
       cx: sky.cx, cy: sky.cy, now: performance.now(), key: 'card:' + sky.sid,
       phase: live ? st.phase : null, t: live ? st.t : 0, fallS: D ? D.FALL_S : 1,
-      after: true, seen: true, wet: true,
+      after: true, seen: true, wet: true, card: true,
       hot: live && st.phase === 'down' ? Math.max(0, 1 - st.t / D.DOWN_S) : 0,
       smoke: D ? D.SMOKE : 1,
     });
-    if (!live && !sky.trail.length && !sky.shed.length && !sky.debris.length && !sky.smoke.length &&
+    this.cardStarFlash(g, dt, sky);
+    if (!live && !sky.trail.length && !sky.shed.length && !sky.debris.length && !sky.smoke.length && sky.flashT == null &&
+        !(sky.burnT != null && sky.burnT < this.CARD_STAR.burnS) &&
         !(sky.boomT != null && sky.boomT < C.boomS + 0.9)) this._cardSky = null;
   },
   // the sky's trail (screen space): smoke puffs, burning debris, sparks
@@ -10604,8 +10770,9 @@ const R = {
       }
     }
     // …and what a card left on the world that is no timer: a kraken mid-act,
-    // the lost relic marked on the map (js/deckfx-rival.js)
-    if (S.deck && (S.deck.kraken || S.deck.relicMark) && window.Deck && Deck.drawRivalWorld) {
+    // the lost relic marked on the map, the buildings a spy marked for good
+    // (js/deckfx-rival.js)
+    if (S.deck && (S.deck.kraken || S.deck.relicMark || (S.deck.spied && S.deck.spied.length)) && window.Deck && Deck.drawRivalWorld) {
       g.save();
       try { Deck.drawRivalWorld(g, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card world', err); } }
       g.restore();
@@ -10732,6 +10899,162 @@ const R = {
       catch (err) { console.error('card show', s.id, err); this.cardShows.splice(i, 1); }
       g.restore();
     }
+  },
+  /* ONE TITLE FOR EVERY CARD'S ACT (tests/deck-rival.mjs, actTitle). The acts
+     used to letter their own titles — a grey sans for the kraken, red for the
+     pact, gold for the sun — each with a ~7px subtitle nobody could read on a
+     phone. Every act's title card now goes through this one door: the menu's
+     own face (Cinzel, the title screen's lettering), gold in two HARD tones
+     (a lit upper half, a deeper lower — a step, never a gradient) inside a
+     hard 1px ink outline and a 1px ink drop, a short gold rule under it, and
+     the subtitle at 14 CSS px (never under 13) in cream on the same ink.
+     Screen space (device px); it sets its own transform. Placed CLEAR of the
+     toasts and the minimap — below the lower of the two, measured off the
+     DOM (re-read at most every 300ms, so a toast landing mid-act moves the
+     title down a step rather than sliding under it); `opt.y` asks for a
+     lower line (an emblem's foot), never a higher one. `a` 0..1 fades it in
+     hard steps. Answers the box it took ({ y0, y1 }, device px). */
+  ACT_TITLE: { hi: '#ffe39a', lo: '#efb43e', ink: '#160e08', sub: '#f3e6c4', max: 30, min: 17, subPx: 14, subMin: 13, side: 16 },
+  _actTop: null,
+  actTitleTop() {
+    const now = performance.now(), c = this._actTop;
+    if (c && now - c.at < 300) return c.y;
+    const dpr = this.dpr || 1, cv = this.cv && this.cv.getBoundingClientRect ? this.cv.getBoundingClientRect() : { top: 0 };
+    let y = ((this.topReserve || 56) + 8);
+    for (const id of ['miniWrap', 'miniToggle', 'toasts']) {
+      const el = document.getElementById(id);
+      if (!el || !el.offsetHeight) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.bottom > y) y = r.bottom;
+    }
+    y = Math.round((y - cv.top + 10) * dpr);
+    this._actTop = { at: now, y };
+    return y;
+  },
+  actTitle(g, title, sub, a, opt) {
+    a = Math.max(0, Math.min(1, Math.round((a || 0) * 4) / 4));
+    if (a <= 0 || !this.cv) return null;
+    opt = opt || {};
+    const A = this.ACT_TITLE, dpr = this.dpr || 1, W = this.cv.width, o = Math.max(1, Math.round(dpr));
+    if (document.fonts && !this._actFont) { this._actFont = 1; try { document.fonts.load('700 20px Cinzel'); } catch (e) {} }
+    const face = w => w + ' ' + '%PX%px Cinzel, "Times New Roman", Georgia, serif';
+    const maxW = W - 2 * A.side * dpr;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = a;
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    if ('letterSpacing' in g) g.letterSpacing = '0px';
+    // the title: as big as fits, else on two lines
+    let fs = A.max * dpr, lines = [String(title)];
+    const fit = (txt, px) => { g.font = face(700).replace('%PX%', px); return g.measureText(txt).width; };
+    while (fs > A.min * dpr && fit(lines[0], fs) > maxW) fs -= dpr;
+    if (fit(lines[0], fs) > maxW) {
+      const wds = lines[0].split(' '), mid = Math.ceil(wds.length / 2);
+      lines = [wds.slice(0, mid).join(' '), wds.slice(mid).join(' ')];
+      fs = A.max * dpr;
+      while (fs > A.min * dpr && Math.max(fit(lines[0], fs), fit(lines[1], fs)) > maxW) fs -= dpr;
+    }
+    fs = Math.round(fs);
+    const top = Math.max(this.actTitleTop(), opt.y || 0) + Math.round((1 - a) * 6 * dpr);
+    const lh = Math.round(fs * 1.12), cx = Math.round(W / 2);
+    g.font = face(700).replace('%PX%', fs);
+    let wMax = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const y = top + i * lh, t = lines[i], w = g.measureText(t).width;
+      wMax = Math.max(wMax, w);
+      g.fillStyle = A.ink;
+      g.fillText(t, cx + o, y + 2 * o);                                // the hard drop
+      for (const [dx, dy] of [[-o, -o], [0, -o], [o, -o], [-o, 0], [o, 0], [-o, o], [0, o], [o, o]]) g.fillText(t, cx + dx, y + dy);
+      g.fillStyle = A.lo; g.fillText(t, cx, y);
+      g.save();                                                        // the lit upper half: a hard step
+      g.beginPath(); g.rect(0, y, W, Math.round(fs * 0.5)); g.clip();
+      g.fillStyle = A.hi; g.fillText(t, cx, y);
+      g.restore();
+    }
+    let y = top + lines.length * lh + Math.round(fs * 0.12);
+    // the rule: a short gold bar in its own ink, a diamond at its heart
+    const rw = Math.round(Math.min(wMax * 0.55, W * 0.4) / (2 * o)) * 2 * o, rh = 2 * o;
+    g.fillStyle = A.ink; g.fillRect(cx - rw / 2 - o, y - o, rw + 2 * o, rh + 2 * o);
+    g.fillStyle = A.lo; g.fillRect(cx - rw / 2, y, rw, rh);
+    for (const [col, pad] of [[A.ink, 1], [A.hi, 0]]) {
+      g.fillStyle = col;
+      for (let r = -4 - pad; r < 4 + pad; r++) {
+        const hw = (4 + pad - Math.abs(r + 0.5) + 0.5) * o;
+        if (hw > 0) g.fillRect(Math.round(cx - hw), y + o + r * o, Math.round(hw * 2), o);
+      }
+    }
+    y += rh + 7 * o;
+    // the subtitle: never under 13 CSS px, wrapped onto two lines before it is shrunk below that
+    if (sub) {
+      let sp = A.subPx * dpr, sl = [String(sub)];
+      const sfit = (txt, px) => { g.font = face(700).replace('%PX%', px); return g.measureText(txt).width; };
+      while (sp > A.subMin * dpr && sfit(sl[0], sp) > maxW) sp -= dpr;
+      if (sfit(sl[0], sp) > maxW) {
+        const wds = sl[0].split(' '); let best = 1, bd = 1e9;
+        for (let k = 1; k < wds.length; k++) { const d = Math.abs(sfit(wds.slice(0, k).join(' '), sp) - sfit(wds.slice(k).join(' '), sp)); if (d < bd) { bd = d; best = k; } }
+        sl = [wds.slice(0, best).join(' '), wds.slice(best).join(' ')];
+      }
+      sp = Math.round(sp);
+      g.font = face(700).replace('%PX%', sp);
+      for (const t of sl) {
+        g.fillStyle = A.ink;
+        for (const [dx, dy] of [[-o, -o], [0, -o], [o, -o], [-o, 0], [o, 0], [-o, o], [0, o], [o, o], [o, 2 * o]]) g.fillText(t, cx + dx, y + dy);
+        g.fillStyle = A.sub; g.fillText(t, cx, y);
+        y += Math.round(sp * 1.25);
+      }
+    }
+    g.restore();
+    return { y0: top, y1: y, fs, sub: !!sub };
+  },
+  /* THE EDGES OF THE WORLD CLOSE IN, IN HARD STEPS (the acts' darkness: the
+     dragon's pall, the pact's red, the spy's night). A band at EVERY edge of
+     the screen — all four sides, square at the corners, never a radial
+     gradient — in four levels (`lv`, alphas from the middle out), each level
+     giving onto the next through a one-cell checker seam. Built once per
+     size and colour at a quarter of the screen's resolution and blown up
+     nearest-neighbour, so a cell is 4 device px; `a` scales it in quarter
+     steps. Screen space; it sets its own transform. `box` ({x0, y0, x1, y1},
+     device px) fits it to a part of the screen — the OPEN BAND between the
+     bars (openBand): drawn edge to edge, its top and bottom bands lay under
+     the HUD and only the two sides showed, as bars. */
+  _vig: null,
+  openBand() {
+    const dpr = this.dpr || 1, W = this.cv.width, H = this.cv.height;
+    const y0 = Math.round((this.topReserve || 0) * dpr), y1 = H - Math.round((this.bottomReserve || 0) * dpr);
+    return { x0: 0, y0, x1: W, y1: Math.max(y0 + 8, y1) };
+  },
+  stepVignette(g, rgb, a, lv, depth, box) {
+    a = Math.round(Math.max(0, Math.min(1, a || 0)) * 4) / 4;
+    if (!a || !this.cv) return;
+    lv = lv || [0, 0.22, 0.4, 0.58];
+    depth = depth || 0.07;
+    const B = box || { x0: 0, y0: 0, x1: this.cv.width, y1: this.cv.height };
+    const Q = 4, W = Math.max(Q, B.x1 - B.x0), H = Math.max(Q, B.y1 - B.y0), w = Math.ceil(W / Q), h = Math.ceil(H / Q);
+    const key = w + 'x' + h + ':' + rgb + ':' + lv.join(',') + ':' + depth;
+    const cache = this._vig || (this._vig = {});
+    let c = cache[key];
+    if (!c) {
+      for (const k in cache) if (k.indexOf(w + 'x' + h + ':') !== 0) delete cache[k];   // a resize retires the old sizes
+      c = cache[key] = document.createElement('canvas'); c.width = w; c.height = h;
+      const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data;
+      const [r0, g0, b0] = String(rgb).split(',').map(Number), m = Math.min(w, h), top = lv.length - 1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const e = Math.min(x, y, w - 1 - x, h - 1 - y) / m;           // 0 at the screen's edge
+        const v = Math.max(0, top - e / depth), lo = Math.floor(v);
+        const L = Math.min(top, lo + (v - lo > 0.62 && ((x + y) & 1) ? 1 : 0));
+        if (!lv[L]) continue;
+        const i = (y * w + x) * 4;
+        d[i] = r0; d[i + 1] = g0; d[i + 2] = b0; d[i + 3] = Math.round(lv[L] * 255);
+      }
+      q.putImageData(im, 0, 0);
+    }
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (box) { g.beginPath(); g.rect(B.x0, B.y0, W, H); g.clip(); }
+    g.imageSmoothingEnabled = false;
+    g.globalAlpha = a;
+    g.drawImage(c, B.x0, B.y0, w * Q, h * Q);
+    g.restore();
   },
   drawSummons(g, dt) {
     const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
@@ -14347,7 +14670,7 @@ const R = {
     this.drawHorns(g, dt);
     // THE CARD SYSTEM's world cues (js/deckfx.js) — nothing while no card is in play
     if (this.summons.length || this.cardShows.length ||
-        (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark))) this.drawCardWorld(g, dt);
+        (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark || (S.deck.spied && S.deck.spied.length)))) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
 

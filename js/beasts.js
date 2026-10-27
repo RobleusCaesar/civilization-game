@@ -47,10 +47,12 @@ const Beasts = {
     fps: 12,              // the wing beat
     altHigh: 5.4,         // tiles above its ground point, coming in high…
     altLow: 3.3,          // …and lower over the line it burns
+    altDive: 8.2,         // a CARD's dragon dives from higher still (Dragonfire's act)
     scale: 1,             // FIXED and whole (SCALE, above): height is told by position, never by size
     mouth: [122, 58],     // the jaws in breath frames 6-8, from the frame's middle (art px, facing east)
     rearS: 0.32,          // rearing back before the first breath
-    pall: 0.24,           // how dark the world goes under it
+    pall: 0.24,           // how dark the world goes under it (the stand-in for a page with no vignette)
+    pallLv: [0.2, 0.34, 0.48, 0.62],   // …in steps: the middle of the view, then three bands in from every edge
     reach: 2.1,           // tiles ahead of its ground point the flame lands (G.dragonTick's fire line)
     lead: 0.9,            // …and the jaws hang this far behind that landing, so the flame slants forward
   },
@@ -61,6 +63,76 @@ const Beasts = {
     frame: 224,           // the kraken-thrash frame (px), foam ring and all — the body's drawn box is frame × scale
     fps: 9,
     offset: 1.7,          // tiles from its prey to the body's middle, out toward open water
+    waterline: 6,         // the beast breaks the surface this far below its frame's middle (art px)
+    sinkPx: 96,           // …and comes up from this far under it (art px)
+    hull: [3.1, 2.6, 0.5],   // the water its body needs: an ellipse (tiles: rx, ry, down from the middle)
+  },
+  /* THE BEAST AND THE SEA, APART. Each kraken frame is the beast in its own
+     disc of dark water and foam. Laid whole on a narrow sea that disc lay on
+     the meadow beside it — a navy coin on the grass — and surfacing through a
+     widening HOLE cut a hard circle out of the beast. So every frame (and the
+     tentacle's splash frames) is split once, by colour, into the BEAST (the
+     violet hide, the mauve arms, the eyes and the ink that edges them) and the
+     SEA (navy, blue, foam: every pixel whose green is not below its red and
+     whose blue leads both, and every near-white); a crumb of beast too small
+     to read (under 8 px) goes to the sea. The sea is then laid only on the
+     water and the beast
+     comes up out of its waterline (R.drawKrakenBody). Render state (a WeakMap
+     on the frame); null where the canvas cannot be read (a tainted file://
+     page), and the caller draws the frame whole. */
+  _split: new WeakMap(),
+  split(fr) {
+    if (!fr) return null;
+    if (this._split.has(fr)) return this._split.get(fr);
+    let out = null;
+    try {
+      const w = fr.width, h = fr.height, src = fr.getContext('2d').getImageData(0, 0, w, h), px = src.data, N = w * h;
+      const kind = new Uint8Array(N);                    // 0 empty, 1 beast, 2 sea, 3 ink (decided below)
+      for (let i = 0; i < N; i++) {
+        const r = px[i * 4], gg = px[i * 4 + 1], b = px[i * 4 + 2];
+        if (px[i * 4 + 3] < 128) continue;
+        kind[i] = (gg >= r && b > r + 8 && r + gg + b > 30) || (r > 196 && gg > 196 && b > 196) ? 2 : r + gg + b < 30 ? 3 : 1;
+      }
+      // ink is the beast's only where the beast is within two pixels of it
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (kind[i] !== 3) continue;
+        let near = false;
+        for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const xx = x + dx, yy = y + dy;
+          if (xx >= 0 && yy >= 0 && xx < w && yy < h && kind[yy * w + xx] === 1) { near = true; break; }
+        }
+        kind[i] = near ? 1 : 2;
+      }
+      // a crumb of beast too small to read is spray
+      const seen = new Uint8Array(N), stack = [];
+      for (let i = 0; i < N; i++) {
+        if (kind[i] !== 1 || seen[i]) continue;
+        const comp = [];
+        stack.push(i); seen[i] = 1;
+        while (stack.length) {
+          const j = stack.pop(); comp.push(j);
+          const x = j % w, y = (j / w) | 0;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx, yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const k = yy * w + xx;
+            if (kind[k] === 1 && !seen[k]) { seen[k] = 1; stack.push(k); }
+          }
+        }
+        if (comp.length < 8) for (const j of comp) kind[j] = 2;
+      }
+      const mk = want => {
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const q = c.getContext('2d'), im = q.createImageData(w, h);
+        for (let i = 0; i < N; i++) if (kind[i] === want) for (let k = 0; k < 4; k++) im.data[i * 4 + k] = px[i * 4 + k];
+        q.putImageData(im, 0, 0);
+        return c;
+      };
+      out = { dry: mk(1), wet: mk(2) };
+    } catch (e) { out = null; }
+    this._split.set(fr, out);
+    return out;
   },
 
   _st: new WeakMap(),     // act -> render state (roared, shook, body offset…)
@@ -188,18 +260,26 @@ Object.assign(R, {
     const breathF = (typeof Assets !== 'undefined' && Assets.fxFrames('dragon-breath')) || null;
     // how high, how big, and how much of the act is "here"
     let alt, k;
+    const DF = ev.card && typeof Deck !== 'undefined' && Deck.FX && Deck.FX.dragonfire;
     if (ev.phase === 'fly') {
-      const d = Math.abs(ev.x - (ev.tx - dir * 2.5));
-      const a = Beasts.smooth(d / 10);
-      alt = C.altLow + (C.altHigh - C.altLow) * a;
-      k = 1 - Beasts.smooth((d - 6) / 10);
+      // a CARD's dragon DIVES: in from high over the board, down onto its line
+      const d = Math.abs(ev.x - (ev.tx - dir * 2.5)), hi = ev.card ? C.altDive : C.altHigh;
+      const a = Beasts.smooth(d / (ev.card ? 12 : 10));
+      alt = C.altLow + (hi - C.altLow) * a;
+      k = ev.card ? Beasts.smooth(ev.t / 0.5) : 1 - Beasts.smooth((d - 6) / 10);
     } else if (ev.phase === 'burn') {
       alt = C.altLow - 0.3 * Math.sin(Math.min(1, ev.t / 0.5) * Math.PI);
       k = 1;
+    } else if (DF && DF.WHEEL_S) {
+      /* THE WHEEL (G.dragonTick): it pulls up past the line's end, turns,
+         and comes back over the burning town CLIMBING — the same whole
+         scale, its height in where it is drawn — until it is gone out of
+         the top of the view */
+      const tq = DF.TURN_S, e = Math.max(0, ev.t - tq);
+      alt = C.altLow + 1.5 * Math.min(1, ev.t / tq) + e * 3.2 + e * e * 3.4;
+      k = Math.max(0, 1 - Math.max(0, ev.t - 0.6) / (DF.WHEEL_S - 0.6));
     } else {
-      // climbing away — a CARD's dragon climbs hard (drawn only: the act's
-      // own clock is untouched), up and out of the view it was framed in
-      // rather than fading over the fields like a ghost
+      // climbing away (the world's dragon)
       alt = C.altLow + ev.t * 2.6 + (ev.card ? ev.t * ev.t * 5 : 0);
       k = Math.max(0, 1 - ev.t / 1.6);
     }
@@ -208,7 +288,8 @@ Object.assign(R, {
        `reach` tiles ahead of the point), the whole way in and out */
     const back = (C.reach - C.lead) * TL - C.mouth[0] * sc;
     const gx = ev.x * TL + dir * back, gy = ev.y * TL, sx = gx, sy = gy - alt * TL;
-    const fade = ev.card && ev.phase === 'leave' ? Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16) : 1;
+    const fade = ev.card && ev.phase === 'leave'
+      ? (DF && DF.WHEEL_S ? Math.max(0, Math.min(1, (DF.WHEEL_S - ev.t) / 0.25)) : Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16)) : 1;
     /* the roar — once, as it comes into the player's world. A CARD's dragon
        roars as it ARRIVES: the moment the beast itself is over the edge of
        the view (the view takes it in — dragonfire.cam), and never later than
@@ -223,11 +304,18 @@ Object.assign(R, {
       if (typeof Sound !== 'undefined') Sound.play('roar');
       if (Beasts.inView(ev.x, ev.y, 4) || (ev.card && Beasts.inView(sx / TL, sy / TL, 0))) this.shakeAt(ev.card ? 5 : 3, 0.9);
     }
-    // the pall: the light goes out of the day round it
+    /* the pall: the light goes out of the day round it — in HARD DITHERED
+       STEPS (R.stepVignette): the whole view a step darker and every edge of
+       the screen closing in three more, square, never a radial gradient and
+       never a smooth fade (its strength moves in quarters) */
     if (k > 0.01) {
-      const v = this.viewTiles();
-      g.fillStyle = 'rgba(26,8,6,' + (C.pall * k * fade).toFixed(3) + ')';
-      g.fillRect(v.x0 * TL, v.y0 * TL, (v.x1 - v.x0) * TL, (v.y1 - v.y0) * TL);
+      // (over the board only: the black beyond it is left as it is)
+      if (this.stepVignette) this.clipBoard(g, () => this.stepVignette(g, '12,7,9', k * fade, C.pallLv, 0.075));
+      else {
+        const v = this.viewTiles();
+        g.fillStyle = 'rgba(12,7,9,' + (Math.round(C.pall * k * fade * 4) / 4).toFixed(3) + ')';
+        g.fillRect(v.x0 * TL, v.y0 * TL, (v.x1 - v.x0) * TL, (v.y1 - v.y0) * TL);
+      }
     }
     // which frame: the wing beat, or the breath (rear back, then the jaws open)
     let fr, breathing = false;
@@ -239,7 +327,8 @@ Object.assign(R, {
     // silhouette, laid flat by a whole-number squash (Beasts.shadowOf)
     {
       const sh = Beasts.shadowOf(fr);
-      const sa = (0.42 - 0.18 * (alt - C.altLow) / (C.altHigh - C.altLow)) * fade;
+      // (high over the town on its wheel it still throws one, faint, sweeping the fields)
+      const sa = Math.max(ev.card ? 0.14 : 0, 0.42 - 0.18 * (alt - C.altLow) / (C.altHigh - C.altLow)) * fade;
       // the shadow is ON the ground, so it stops at the board's edge (the
       // beast itself is in the sky and may come in from beyond it)
       this.clipBoard(g, () => {
@@ -249,32 +338,38 @@ Object.assign(R, {
         g.drawImage(sh, -sh.width / 2, -Math.round(sh.height / 2));
       });
     }
-    // the breath: a torrent from the jaws to the ground ahead
-    if (breathing) {
-      const mx = sx + dir * C.mouth[0] * sc, my = sy + C.mouth[1] * sc;
-      const tx = (ev.x + dir * C.reach) * TL, ty = gy;
-      this.drawDragonBreath(g, mx, my, tx, ty, ev.t, dir, fade);
-      if (!st.breathed) {
-        st.breathed = true;
-        if (typeof Sound !== 'undefined') Sound.play('breath');
-        if (Beasts.inView(ev.x, ev.y, 3)) { this.shakeAt(8, 1.7); this.flashAt(0.32, 0.45, '255,150,60'); }
-        if (this.startle) this.startle(ev.x, ev.y, 18);
+    /* EVERYTHING OF THE BEAST IS ON THE BOARD: its breath, its body and the
+       embers off its scales are clipped to the world's edge — a dragon is
+       never drawn across the off-map black (it comes in from the board's
+       side: js/deckfx.js, dragonfire.dirFor) */
+    this.clipBoard(g, () => {
+      // the breath: a torrent from the jaws to the ground ahead
+      if (breathing) {
+        const mx = sx + dir * C.mouth[0] * sc, my = sy + C.mouth[1] * sc;
+        const tx = (ev.x + dir * C.reach) * TL, ty = gy;
+        this.drawDragonBreath(g, mx, my, tx, ty, ev.t, dir, fade);
+        if (!st.breathed) {
+          st.breathed = true;
+          if (typeof Sound !== 'undefined') Sound.play('breath');
+          // felt, not lit: a shake, and never a warm wash over the ground
+          // (a card's is short, so each building that catches is felt too)
+          if (Beasts.inView(ev.x, ev.y, 3)) this.shakeAt(ev.card ? 6 : 8, ev.card ? 0.55 : 1.7);
+          if (this.startle) this.startle(ev.x, ev.y, 18);
+        }
       }
-    }
-    /* the beast — whole, never a half-seen ghost over the fields: a card's
-       dragon comes and goes in HARD alpha steps, and only at the far ends of
-       its flight (in, and once it has climbed most of the way out) */
-    g.save();
-    const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
-    g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
-    g.translate(Beasts.snap(sx), Beasts.snap(sy));
-    if (dir < 0) g.scale(-1, 1);
-    g.drawImage(fr, -fr.width * sc / 2, -fr.height * sc / 2, fr.width * sc, fr.height * sc);
-    g.restore();
-    // embers off its scales, trailing behind
-    {
+      /* the beast — whole, never a half-seen ghost over the fields: a card's
+         dragon comes and goes in HARD alpha steps, and only at the far ends of
+         its flight (in, and once it has climbed most of the way out) */
+      g.save();
+      const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
+      g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
+      g.translate(Beasts.snap(sx), Beasts.snap(sy));
+      if (dir < 0) g.scale(-1, 1);
+      g.drawImage(fr, -fr.width * sc / 2, -fr.height * sc / 2, fr.width * sc, fr.height * sc);
+      g.restore();
+      // embers off its scales, trailing behind
       const now = performance.now() / 1000, F = ART.PALETTE.fire;
-      g.globalAlpha = 0.85 * fade;
+      g.globalAlpha = 0.85 * fade >= 0.5 ? 1 : 0;
       for (let i = 0; i < 10; i++) {
         const ph = (now * 0.9 + i * 0.137) % 1;
         const ex = sx - dir * (30 + ph * 110) * sc + Math.sin(i * 7.1 + now * 3) * 14;
@@ -283,7 +378,7 @@ Object.assign(R, {
         g.fillRect(Beasts.snap(ex), Beasts.snap(ey), 2, 2);
       }
       g.globalAlpha = 1;
-    }
+    });
   },
   /* THE BREATH. A sagging column of flame from the jaws to the ground:
      squares of fire in three heats (red outer, orange-gold body, white-hot
@@ -304,6 +399,7 @@ Object.assign(R, {
     g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < N; i++) {
       const u = i / N + flow, [px, py] = at(Math.min(1, u)), s = 8 + u * 30;
+      if (u > 0.62) break;          // in the air only: none of it laid over the ground where it lands
       g.fillStyle = 'rgba(255,140,50,' + (0.07 * fade).toFixed(3) + ')';
       g.fillRect(snap(px - s / 2), snap(py - s / 2), snap(s), snap(s));
     }
@@ -400,7 +496,7 @@ Object.assign(R, {
      out. Drawn only where the player can see (the event is fog-honest).
      `ev` is any act of that shape ({phase, t, x, y} — the event's own, or one
      of Kraken's Call's risings); with none given it is the event's. */
-  drawKrakenAct(g, dt, ev) {
+  drawKrakenAct(g, dt, ev, opts) {
     ev = ev || (S.kraken && S.kraken.ev);
     if (!ev) return;
     if (!G.visibleAt(ev.x | 0, ev.y | 0)) return;
@@ -421,8 +517,11 @@ Object.assign(R, {
     }
     this.drawKrakenBody(g, st.body.x, st.body.y, rise, ev.t + (ev.phase === 'thrash' ? 1.6 : ev.phase === 'sink' ? 3.8 : 0));
     const tent = arm >= 0 ? Beasts.strikeFrame(arm, 1.25) : -1;
-    if (tent >= 0) {
-      this.drawTentacle(g, ev.x, ev.y, tent, st.body.x < ev.x ? 1 : -1);
+    // (a card's take draws its own seized hull from the blow on — `untilTake`)
+    if (opts && opts.untilTake && arm >= 1.25) {
+      if (!st.slammed.boat) { st.slammed.boat = true; if (arm < 1.25 + 0.3) this.krakenSlam(ev.x, ev.y); }
+    } else if (tent >= 0) {
+      this.drawTentacle(g, ev.x, ev.y, tent, st.body.x < ev.x ? 1 : -1, arm - 1.25);
       // the blow — heard and felt once, and only as it lands (an act first
       // seen half over does not slam on sight)
       if (tent === 8 && arm >= 1.25 && !st.slammed.boat) {
@@ -436,9 +535,11 @@ Object.assign(R, {
   // hanging off the edge of the world
   krakenBodyAt(x, y) {
     /* the most open water in reach of its prey: every candidate middle
-       within 3 tiles scored by the wet tiles under the body's ring (radius
-       2), less a little for distance — a river or a narrow bay puts it
-       square over the channel, open sea puts it a stride out.
+       within 3 tiles scored by the wet ground under the BODY'S OWN WATER —
+       the ellipse its drawn beast stands in (KRAKEN.hull: ~6 tiles by 5,
+       its middle a little below the frame's), so a narrow sea puts it
+       square over the channel rather than half up the shore, and open sea
+       puts it a stride out — less a little for distance.
        THE WHOLE DRAWN BODY STANDS ON THE BOARD: water is counted only on
        the board (MapGen.onBoard — G.wetAt asks inB, which counts the rim,
        and an island map's ocean runs right into it), and a candidate whose
@@ -446,7 +547,7 @@ Object.assign(R, {
        ranks below every one that does not. Only where no middle in reach
        keeps all of it on the board (a hull in a corner) does the least
        overhang win, and R.clipBoard keeps that overhang out of the black. */
-    const C = Beasts.KRAKEN, W = CFG.W, H = CFG.H;
+    const C = Beasts.KRAKEN, W = CFG.W, H = CFG.H, [rx, ry, dn] = C.hull;
     const half = (C.frame || 224) * C.scale / 2 / CFG.TILE;
     const wet = (wx, wy) => MapGen.onBoard(Math.floor(wx), Math.floor(wy)) && G.wetAt(wx, wy);
     let best = null;
@@ -455,9 +556,9 @@ Object.assign(R, {
       if (d > 3) continue;
       const cx = x + dx, cy = y + dy;
       let n = 0, m = 0;
-      for (let oy = -2; oy <= 2; oy++) for (let ox = -2; ox <= 2; ox++) {
-        if (ox * ox + oy * oy > 4.5) continue;
-        m++; if (wet(cx + ox, cy + oy)) n++;
+      for (let oy = -Math.ceil(ry); oy <= Math.ceil(ry); oy += 0.5) for (let ox = -Math.ceil(rx); ox <= Math.ceil(rx); ox += 0.5) {
+        if ((ox / rx) * (ox / rx) + (oy / ry) * (oy / ry) > 1) continue;
+        m++; if (wet(cx + ox, cy + dn + oy)) n++;
       }
       // the board is tiles 1..W-1 (the rim is off-map void)
       const over = Math.max(0, 1 - (cx - half)) + Math.max(0, cx + half - (W - 1)) +
@@ -467,58 +568,128 @@ Object.assign(R, {
     }
     return best ? { x: best.x, y: best.y } : { x, y };
   },
-  // the body at (x, y) in tiles, `rise` 0 (under) → 1 (up), its own clock t
+  /* THE BODY at (x, y) in tiles, `rise` 0 (under) → 1 (up), its own clock t.
+     It COMES UP OUT OF ITS WATERLINE, never through a hole: its sea (the
+     frame's own whirl of dark water and foam — Beasts.split) is laid only on
+     the water, in hard steps, and the beast rises through the surface — above
+     its waterline it stands over whatever is behind it, below it only where
+     there is water to be under. Nothing of it is ever a disc on the grass, a
+     circle cut out of the beast, or a ring of white dashes round a hole. The
+     water is the traced coast's own outline (R.waterBodyPath), so its edge
+     is the shore the player sees. On a page whose canvas cannot be read the
+     frame is laid whole, clipped the same way. */
   drawKrakenBody(g, x, y, rise, t) {
     const C = Beasts.KRAKEN, TL = CFG.TILE, fr = Beasts.ready('kraken');
     if (!fr || rise <= 0.001) return;
     const f = fr[((t * C.fps) | 0) % fr.length], sc = C.scale;   // whole and fixed: it surfaces, it never grows
     const cx = Beasts.snap(x * TL), cy = Beasts.snap(y * TL), w = f.width * sc, h = f.height * sc;
-    // rings of foam rolling out from where it breaks the surface
+    const sp = Beasts.split(f), water = this.waterBodyPath ? this.waterBodyPath() : null;
+    const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
+    const wl = cy + C.waterline * sc, sink = Beasts.snap((1 - Beasts.smooth(rise)) * C.sinkPx * sc);
+    const onWater = fn => { g.save(); if (water) g.clip(water); try { fn(); } finally { g.restore(); } };
+    // 1. its sea: the whirl it churns up, on the water only
+    onWater(() => {
+      g.globalAlpha = step(rise * 1.6);
+      g.drawImage(sp ? sp.wet : f, cx - w / 2, cy - h / 2, w, h);
+      // rings of foam rolling out from where it breaks the surface
+      g.globalAlpha = 1;
+      for (let r = 0; r < 3; r++) {
+        const q = ((t * 0.55 + r / 3) % 1), rad = w * (0.3 + q * 0.42), a = step(0.9 * (1 - q) * rise);
+        if (!a) continue;
+        g.globalAlpha = a;
+        g.fillStyle = r % 2 ? '#bfe2f2' : '#e8f6fc';
+        const n = 44;
+        for (let i = 0; i < n; i++) {
+          if ((i * 7 + r * 3) % 5 === 0) continue;
+          const an = i / n * Math.PI * 2 + r;
+          g.fillRect(Beasts.snap(cx + Math.cos(an) * rad), Beasts.snap(wl + Math.sin(an) * rad * 0.42), 2, 2);
+        }
+      }
+      g.globalAlpha = 1;
+    });
+    // 2. the beast, up out of its waterline: whole above it…
+    const body = sp ? sp.dry : f, by = cy - h / 2 + sink;
     g.save();
-    g.globalCompositeOperation = 'lighter';
-    for (let r = 0; r < 3; r++) {
-      const q = ((t * 0.55 + r / 3) % 1), rad = w * (0.36 + q * 0.5);
-      g.fillStyle = 'rgba(200,232,240,' + (0.45 * (1 - q) * rise).toFixed(3) + ')';
-      const n = 40;
-      for (let i = 0; i < n; i++) {
-        const a = i / n * Math.PI * 2 + r;
-        g.fillRect(Beasts.snap(cx + Math.cos(a) * rad), Beasts.snap(cy + 8 + Math.sin(a) * rad * 0.55), 2, 2);
+    g.beginPath(); g.rect(cx - w, by - h, w * 2, wl - (by - h)); g.clip();
+    g.drawImage(body, cx - w / 2, by, w, h);
+    g.restore();
+    // …and below it only over the water — out of the dark there in steps as
+    // it comes up, never a whole beast seen through the sea before it rises
+    const deep = step((rise - 0.5) * 2);
+    if (deep > 0) onWater(() => {
+      g.beginPath(); g.rect(cx - w, wl, w * 2, h * 2); g.clip();
+      g.globalAlpha = deep;
+      g.drawImage(body, cx - w / 2, by, w, h);
+    });
+  },
+  /* A SPLASH OF WATER — never ice: the blow's crown thrown up in arcs of
+     droplets in the water's own ramp, white at their heads, falling back
+     into the sea; a spout at the heart collapsing; a ring of foam rolling
+     out over the surface. World px on the 2px grid; `t` seconds since the
+     blow (it lasts `life`), `sz` its reach in px, `seed` its own scatter. */
+  SPLASH: { life: 0.8 },
+  drawSplash(g, x, y, t, sz, seed) {
+    const life = this.SPLASH.life;
+    if (!(t >= 0 && t < life)) return;
+    const q = t / life, snap = Beasts.snap, WR = ART.PALETTE.water, FOAM = ['#8fc6e0', '#cfe9f6', '#ffffff'];
+    const hsh = n => { let h = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b) >>> 0; h ^= h >>> 13; return (Math.imul(h, 0xc2b2ae35) >>> 0) / 4294967296; };
+    seed = seed | 0;
+    // the ring on the water, rolling out
+    const rr = sz * (0.3 + 0.8 * (1 - (1 - q) * (1 - q)));
+    if (q < 0.9) {
+      for (let k = 0; k < 40; k++) {
+        if (hsh(seed * 97 + k) < 0.22) continue;
+        const an = k / 40 * Math.PI * 2;
+        g.fillStyle = q < 0.4 ? FOAM[2] : FOAM[1];
+        g.fillRect(snap(x + Math.cos(an) * rr), snap(y + Math.sin(an) * rr * 0.36), 2, 2);
       }
     }
-    g.restore();
-    /* SURFACING: the beast is uncovered from the middle outward — a widening
-       hole in the sea, its edge a ring of white water — rather than wiped up
-       from a waterline, which read as a slab sliding out of the ground */
-    const R0 = Math.hypot(w, h) * 0.5 * rise;
-    g.save();
-    g.beginPath();
-    g.ellipse(cx, cy, R0, R0 * 0.92, 0, 0, Math.PI * 2);
-    g.clip();
-    g.drawImage(f, cx - w / 2, cy - h / 2 + Beasts.snap((1 - rise) * h * 0.12), w, h);
-    g.restore();
-    if (rise < 0.98) {
-      g.fillStyle = 'rgba(236,246,250,0.9)';
-      const n = 48;
-      for (let i = 0; i < n; i++) {
-        const a = i / n * Math.PI * 2, j = Math.sin(t * 19 + i * 1.7) * 3;
-        g.fillRect(Beasts.snap(cx + Math.cos(a) * (R0 + j)), Beasts.snap(cy + Math.sin(a) * (R0 * 0.92 + j)), 4, 2);
+    // the spout at the heart: a column of water thrown up and falling back
+    if (q < 0.5) {
+      const hh = sz * 1.3 * Math.sin(q / 0.5 * Math.PI), wd = sz * 0.34;
+      for (let yy = 0; yy < hh; yy += 2) {
+        const k = yy / Math.max(1, hh), ww = Math.max(2, snap(wd * (1 - k * 0.65)));
+        g.fillStyle = k > 0.8 ? FOAM[2] : k > 0.5 ? FOAM[1] : yy % 4 ? WR[4] : WR[3];
+        g.fillRect(snap(x - ww / 2 + Math.sin(yy * 0.4 + seed) * 2), snap(y - yy), ww, 2);
+      }
+    }
+    // the crown: drops thrown out in arcs, each a head and a short trail
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 15 - 0.5) * 2.4 + (hsh(seed + k) - 0.5) * 0.3;
+      const v = sz * (1.8 + hsh(seed * 7 + k) * 1.1);
+      const vx = Math.sin(a) * v * 0.7, vy = Math.cos(a) * v * 1.1;
+      for (let j = 0; j < 4; j++) {
+        const tt = t - j * 0.03;
+        if (tt < 0) continue;
+        const px = x + vx * tt, py = y - vy * tt + sz * 5.2 * tt * tt;
+        if (py > y + 2) continue;                       // back in the sea
+        g.fillStyle = j === 0 ? (q < 0.45 ? FOAM[2] : FOAM[1]) : j === 1 ? FOAM[0] : WR[4 - j];
+        const s = j === 0 && k % 3 === 0 ? 4 : 2;
+        g.fillRect(snap(px), snap(py), s, s);
       }
     }
   },
   /* ONE TENTACLE on its strike: frame f of the strip (0 rearing … 8 the
      slam's splash … 12 rising again), its base on the water at (x, y) in
-     tiles, side ±1 mirrors it so it reaches in from the body's side. */
-  drawTentacle(g, x, y, f, side) {
+     tiles, side ±1 mirrors it so it reaches in from the body's side. The
+     strip's own splash crowns (frames 7-10) were pale jagged shards that
+     read as ICE: on those frames only the arm is drawn (Beasts.split) and
+     the blow throws WATER (R.drawSplash), `sT` seconds since it landed. */
+  drawTentacle(g, x, y, f, side, sT) {
     const C = Beasts.KRAKEN, TL = CFG.TILE;
     const fr = typeof Assets !== 'undefined' && Assets.fxFrames('kraken-tentacle');
     if (!fr || fr.length < 13) return;
-    const i = Math.max(0, Math.min(12, f | 0)), img = fr[i], sc = C.tentScale;
+    const i = Math.max(0, Math.min(12, f | 0)), sc = C.tentScale;
+    const sp = i >= 7 && i <= 10 ? Beasts.split(fr[i]) : null;
+    const img = sp ? sp.dry : fr[i];
     const bx = Beasts.snap(x * TL), by = Beasts.snap(y * TL + TL * 0.35);
     g.save();
     g.translate(bx, by);
     if (side < 0) g.scale(-1, 1);
     g.drawImage(img, -C.tentBase[0] * sc, -C.tentBase[1] * sc, img.width * sc, img.height * sc);
     g.restore();
+    // (a blow that lands on the shore throws the shore up instead — the caller's debris)
+    if (sp && sT != null && G.wetAt(x, y + 0.35)) this.drawSplash(g, bx, by, sT, TL * 0.9, (x * 13 + y * 7) | 0);
   },
   // the blow lands: a wall of water, the camera jolts, the birds go up
   krakenSlam(x, y) {

@@ -82,6 +82,97 @@
     }
   };
 
+  /* ================= A BORROWED VIEW =================
+     Kraken's Call and Spy in the Hall take the camera for their act, frame
+     what they show, and HAND IT BACK to the zoom and the place the player
+     had (the spy's flight used to leave the view in the rival's town for
+     good; the kraken's in-world beat sat under the minimap). `aim` frames a
+     world point at a height `fy` of the OPEN band — under the minimap when
+     it is open, above the bottom bar — at zoom `z`; `home` glides back.
+     Ticked every frame OUTSIDE R.draw (by dragonfire.cam, the one call
+     DeckUI.frame makes into the acts' cameras) — a camera moved inside the
+     draw is put back off by the frame's shake. A touch or the wheel gives
+     the camera back on the spot and nothing yanks it after; reduced motion
+     borrows nothing. Render state only, never in S. */
+  Deck.view = {
+    s: null,
+    calm() { return !!(window.DeckUI && DeckUI._calm && DeckUI._calm()); },
+    /* `home` (optional): where the player HAD the view, when the play's own
+       flight already moved it (DeckUI._dest brings an off-screen focus on
+       screen before the card flies — the spy's town) */
+    take(id, home) {
+      if (this.calm() || !window.R || !R.cam || !R.viewW) return false;
+      if (this.s && this.s.map === S.map) { this.s.id = id; this.s.back = false; this.s.homeAt = 0; }
+      else this.s = { id, map: S.map, home: home ? { x: home.x, y: home.y, z: home.z } : { x: R.cam.x, y: R.cam.y, z: R.cam.z }, to: null, back: false, homeAt: 0 };
+      if (!this._armed) {
+        this._armed = true;
+        const give = () => { this.s = null; };
+        const cv = (window.R && R.cv) || document.getElementById('c');
+        if (cv) { cv.addEventListener('pointerdown', give, { passive: true }); cv.addEventListener('wheel', give, { passive: true }); }
+      }
+      return true;
+    },
+    holds(id) { return !!(this.s && this.s.id === id && this.s.map === S.map); },
+    /* `dodge` (tiles): what is framed stands this far up from the point — a
+       beast's head over its waterline. Where the world's edge pins the view
+       so that it would sit under the minimap (a sea along the board's top),
+       the view slides across to put it in the open column beside the map. */
+    aim(id, x, y, z, fy, dodge, rate) {
+      if (!this.holds(id)) return;
+      this.s.to = { x, y, z: z || R.cam.z, fy: fy == null ? 0.5 : fy, dodge: dodge || 0, rate: rate || 4.5 };
+      this.s.back = false; this.s.homeAt = 0;
+    },
+    // back where the player had it, `ms` from now
+    home(id, ms) { if (this.holds(id)) this.s.homeAt = performance.now() + (ms || 0); },
+    // the zoom an act frames a beast at: ~`art` px of it filling `fill` of the screen's width
+    zoomFor(art, fill) {
+      return Math.min(R.ZOOM_MAX || 3.5, Math.max(R.minZoom ? R.minZoom() : 0.5, 1.3, Math.min(2.4, fill * R.viewW() / art)));
+    },
+    _band: null,
+    band() {
+      const now = performance.now(), b = this._band;
+      if (b && now - b.at < 500) return b;
+      let top = R.topReserve || 0, mapL = R.viewW(), mapB = 0;
+      const mw = document.getElementById('miniWrap'), cv = R.cv && R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { top: 0, left: 0 };
+      if (mw && mw.offsetHeight) {
+        const r = mw.getBoundingClientRect();
+        if (r.height > 0) { top = Math.max(top, r.bottom - cv.top + 6); mapL = r.left - (cv.left || 0) - 6; mapB = r.bottom - cv.top + 6; }
+      }
+      const bot = R.viewH() - (R.bottomReserve || 0);
+      return (this._band = { at: now, top, bot: Math.max(top + 120, bot), mapL, mapB });
+    },
+    tick(dt) {
+      const s = this.s;
+      if (!s) return;
+      if (s.map !== S.map || !window.R || !R.cam) { this.s = null; return; }
+      if (s.homeAt && performance.now() >= s.homeAt) { s.back = true; s.homeAt = 0; }
+      let want = null;
+      if (s.back) want = s.home;
+      else if (s.to) {
+        const TL = CFG.TILE, z = s.to.z, B = this.band();
+        want = { z, x: s.to.x * TL - R.viewW() / z / 2, y: s.to.y * TL - (B.top + (B.bot - B.top) * s.to.fy) / z };
+        if (s.to.dodge && B.mapB > 0) {
+          // where the world's edge will really let the view sit
+          const keep = { x: R.cam.x, y: R.cam.y, z: R.cam.z };
+          Object.assign(R.cam, want); if (R.clampCam) R.clampCam();
+          const cy = R.cam.y;
+          Object.assign(R.cam, keep);
+          if (((s.to.y - s.to.dodge) * TL - cy) * z < B.mapB) want.x = s.to.x * TL - Math.max(60, B.mapL) / 2 / z;
+        }
+      }
+      if (!want) return;
+      const f = 1 - Math.exp(-Math.min(0.1, dt || 0) * (!s.back && s.to && s.to.rate || 4.5));
+      R.cam.z += (want.z - R.cam.z) * f;
+      R.cam.x += (want.x - R.cam.x) * f;
+      R.cam.y += (want.y - R.cam.y) * f;
+      if (R.clampCam) R.clampCam();
+      if (s.back && Math.abs(R.cam.z - want.z) < 0.002 && Math.abs(R.cam.x - want.x) < 0.6 && Math.abs(R.cam.y - want.y) < 0.6) {
+        R.cam.z = want.z; R.cam.x = want.x; R.cam.y = want.y;
+        this.s = null;
+      }
+    },
+  };
+
   /* ================= THE CARD-LIT MAP ================= */
   Object.assign(Deck, {
     EYES_WHY: 'Choose ground your own people have seen — a card’s map is not their eyes.',
@@ -218,7 +309,16 @@
       const left = c.pact;
       G.log('🥁 The pact holds: a war band of ' + G.tribeName(tribe) + ' (' + n + ') turns on the rival' +
         (left ? ' — ' + left + ' more to come.' : ' — the last the pact bought.'), 'note', 6400);
-      if (window.R && R.startCardShow && playing()) R.startCardShow('barbarian_pact', { turn: true, ms: 1700 });
+      /* the band itself — the souls just raised for it, at the end of the
+         roll (a longboat's crew rides in its hull: the hull is the band) —
+         for its banner and its ping (render state on the show) */
+      const ids = [];
+      for (let i = S.units.length - 1; i >= 0 && ids.length < Math.max(1, n | 0); i--) {
+        const u = S.units[i];
+        if (u.owner !== 'R' || u.hostileTo !== 'A') break;
+        ids.push(u.id);
+      }
+      if (window.R && R.startCardShow && playing()) R.startCardShow('barbarian_pact', { turn: true, ms: this.FX.barbarian_pact.TURN_S * 1000, ids });
       sfx('cardDrum');
     },
 
@@ -264,6 +364,7 @@
     drawRivalWorld(g, dt) {
       if (S.deck.relicMark) this.FX.pathfinders_map.drawMark(g);
       if (S.deck.kraken) this.FX.krakens_call.draw(g, dt, S.deck.kraken);
+      if (S.deck.spied && S.deck.spied.length) this.FX.spy_hall.drawMarks(g);
     },
     // …and on the minimap (R.drawMini): the marked relic, the spied people
     drawMini(g) {
@@ -282,6 +383,8 @@
           g.fillRect((u.x * 2) | 0, (u.y * 2) | 0, 2, 2);
         }
       }
+      // a war band the pact turned, pinged where it marches (barbarian_pact.ping)
+      if (window.R && R.cardShows && R.cardShows.length) for (const s of R.cardShows) if (s.id === 'barbarian_pact' && s.turn) this.FX.barbarian_pact.ping(g, s);
     },
   });
 
@@ -883,8 +986,29 @@
        nothing; its memory is never written. */
     spy_hall: {
       at: 'focus', DAYS: 10,
-      // the burst lands on the town it marks (the card is about to put it on the map)
+      /* where the burst lands: their town — but only where the player's map
+         already holds it (their remembered hall, else the middle of what is
+         remembered of theirs). A town nobody has found gets the burst in the
+         middle of the screen, and the ACT carries the view there as the spy
+         marks it (apply): the flight used to cut to the hidden town first and
+         fly the card over a black screen of fog (the playtest's "black void").
+         The deck's flight asks this before it moves anything (DeckUI._dest),
+         so the view the player HAD is noted here — the act hands it back. */
       focus() {
+        if (window.R && R.cam) this._camAt = { x: R.cam.x, y: R.cam.y, z: R.cam.z, t: performance.now() };
+        const sb = S.map.seenB, W = CFG.W, kn = [];
+        if (sb) for (const k in sb) {
+          const m = sb[k];
+          if (!m || m.owner !== 'A') continue;
+          const sz = Bld.size(m.key), p = { x: (k % W) + sz / 2, y: ((k / W) | 0) + sz / 2 };
+          if (m.key === 'tc') return p;
+          kn.push(p);
+        }
+        if (!kn.length) return null;
+        return { x: kn.reduce((a, b) => a + b.x, 0) / kn.length, y: kn.reduce((a, b) => a + b.y, 0) / kn.length };
+      },
+      // their town itself (the act's own ground — the marks are about to land on it)
+      town() {
         const tc = Bld.tcOf('A');
         if (tc) return { x: Bld.cx(tc), y: Bld.cy(tc) };
         const bs = S.buildings.filter(b => b.owner === 'A');
@@ -904,8 +1028,17 @@
           .replace(/\byou\b/g, 'they').replace(/\bYou\b/g, 'They');
         return { name: cd.name, text };
       },
+      /* …SAID AS A SENTENCE (the playtest: "…Caravan Master — a Trading Post
+         from day one + 57 gold" read as if the PLAYER got 57 gold). An
+         origin's headline is shorthand and stays the card's own words, so it
+         is QUOTED, and said to be theirs: "they drafted the Caravan Master
+         origin card — for them: “a Trading Post from day one + 54 gold”." */
+      originLine(o) {
+        if (!o) return 'they drafted no origin card: theirs is a tribe older than the draft.';
+        return 'they drafted the ' + o.name + ' origin card — for them: “' + o.text + '”.';
+      },
       apply() {
-        const foot = [], marks = [];
+        const foot = [], marks = [], keep = [];
         for (const b of S.buildings) {
           if (b.owner !== 'A') continue;
           S.map.seenB[MapGen.idx(b.x, b.y)] = { key: b.key, level: b.level, owner: b.owner, tribe: b.tribe };
@@ -913,84 +1046,120 @@
           for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
             if (MapGen.onBoard(b.x + dx, b.y + dy)) foot.push(MapGen.idx(b.x + dx, b.y + dy));
           marks.push({ x: Bld.cx(b), y: Bld.cy(b), bx: b.x, by: b.y, s, key: b.key, lv: b.level });
+          keep.push([b.x, b.y, s]);
         }
         Deck.light(foot);
+        // MARKED FOR GOOD: the footprints the spy gave the map wear gold
+        // brackets in the fog for the rest of the run (drawMarks) — as long
+        // as the map still remembers a building of theirs standing there
+        const run = Deck.run(), had = new Set((run.spied || []).map(m => m[0] + ',' + m[1]));
+        run.spied = (run.spied || []).concat(keep.filter(m => !had.has(m[0] + ',' + m[1]))).slice(-this.MARKS);
         if (window.R) R.fogDirty = true;
         const was = !!Deck.timed('spy_hall');
         const e = Deck.addTimed('spy_hall', this.DAYS);
-        const o = this.origin();
-        const at = this.focus() || { x: CFG.W / 2, y: CFG.H / 2 };
+        const said = this.originLine(this.origin());
+        // (the view the player had, noted as the flight asked for the focus — before this ask overwrites it)
+        const c = this._camAt, home = c && performance.now() - c.t < 6000 ? c : null;
+        const at = this.town() || { x: CFG.W / 2, y: CFG.H / 2 };
         marks.sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y));
-        if (window.R && R.startCardShow) R.startCardShow('spy_hall', { x: at.x, y: at.y, marks: marks.slice(0, 80) });
+        if (window.R && R.startCardShow) {
+          // the view: kept on their town through the act, then handed back
+          if (Deck.view.take('spy', home)) Deck.view.aim('spy', at.x, at.y, R.cam.z, 0.62, 0, 8);
+          // (reduced motion borrows nothing: the view CUTS to the town, as the deck's own flight would)
+          else if (R.onScreen && R.centerOn && !R.onScreen(at.x, at.y)) R.centerOn(at.x, at.y);
+          R.startCardShow('spy_hall', { x: at.x, y: at.y, marks: marks.slice(0, 80) });
+        }
         sfx('cardEye');
-        const said = o ? 'they drafted ' + o.name + ' — ' + o.text + '.' : 'they drafted no origin card: theirs is a tribe older than the draft.';
         Deck.say('🕵 A spy sits at the rival’s fire: ' + marks.length + ' building' + (marks.length === 1 ? '' : 's') +
           ' of theirs marked on your map, ' + (was ? 'their people watched ' + this.DAYS + ' days longer' : 'their people seen wherever they go for ' + this.DAYS + ' days') +
           ' — and ' + said);
         return { ok: true, until: e.until, msg: 'Spy in the Hall: their town is on your map, and ' + said };
       },
+      MARKS: 160,
       end() { G.log('🕵 The spy slips away from their fire — their people are hidden again beyond your own sight.', 'note', 5000); },
       /* THE MOMENT: an eye opens over the rival's town, looks across it, and
-         every building it marks answers with a ring and an eye of its own. */
+         every building it marks LIGHTS UP in its own colours as its gold
+         brackets snap in — the town shown for a breath, then left as the
+         map's memory, bracketed. The edges close in (a stepped vignette in
+         the open band), the words go up, and the view goes home. */
       show: {
         ms: 3400, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
-          const open = p < 0.08 ? 0 : p < 0.24 ? ease((p - 0.08) / 0.16) : p < 0.8 ? 1 : p < 0.92 ? 1 - ease((p - 0.8) / 0.12) : 0;
+          const open = p < 0.06 ? 0 : p < 0.2 ? ease((p - 0.06) / 0.14) : p < 0.8 ? 1 : p < 0.92 ? 1 - ease((p - 0.8) / 0.12) : 0;
           if (layer === 'sky') {
-            // the edges of the world close in while the eye is open (a vignette in hard steps)
-            const W = R.cv.width, H = R.cv.height, a = 0.32 * open;
-            if (a <= 0.01) return;
-            for (let b = 0; b < 4; b++) {
-              const w = Math.round(Math.min(W, H) * 0.035 * (b + 1));
-              g.fillStyle = 'rgba(6,8,18,' + qa(a * (1 - b * 0.22), 8) + ')';
-              g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
-            }
+            if (open > 0 && R.stepVignette) R.stepVignette(g, '6,8,18', open, [0.1, 0.22, 0.34, 0.46], 0.07, R.openBand ? R.openBand() : null);
+            const ta = p < 0.3 ? 0 : p < 0.36 ? (p - 0.3) / 0.06 : p < 0.86 ? 1 : 1 - (p - 0.86) / 0.08;
+            if (ta > 0 && R.actTitle) R.actTitle(g, 'A SPY AT THEIR FIRE', 'Their town is on your map — their people watched for ' + this.DAYS + ' days', ta);
+            if (p >= 0.9 && !s.home) { s.home = 1; Deck.view.home('spy', 0); }
             return;
           }
           const TL = CFG.TILE, ex = s.x * TL, ey = (s.y - 2.4) * TL;
-          // the marks: in order out from the hall, a dotted thread from the eye, a ring, a pip
+          // the marks: in order out from the hall, a dotted thread from the eye, a ring, the building lit
           const n = s.marks.length;
           for (let i = 0; i < n; i++) {
-            const m = s.marks[i], ta = 0.26 + 0.38 * (n > 1 ? i / (n - 1) : 0), q = (p - ta) / 0.12;
+            const m = s.marks[i], ta = 0.14 + 0.4 * (n > 1 ? i / (n - 1) : 0), q = (p - ta) / 0.12;
             if (q < 0) continue;
             const mx = m.x * TL, my = m.y * TL;
             if (q < 1) {
-              g.fillStyle = 'rgba(255,212,94,' + qa(0.8 * (1 - q)) + ')';
+              g.fillStyle = '#ffd45e';
               const L = Math.hypot(mx - ex, my - ey), steps = Math.max(2, Math.floor(L / 10));
-              for (let k = 1; k < steps; k++) if (k / steps < q * 1.6) g.fillRect(snap(ex + (mx - ex) * k / steps), snap(ey + (my - ey) * k / steps), 2, 2);
-              g.fillStyle = 'rgba(255,212,94,' + qa(0.9 * (1 - q)) + ')';
-              ring(g, mx, my, TL * (0.4 + 0.9 * ease(q)), 16, 1);
+              for (let k = 1; k < steps; k++) if (k / steps < q * 1.6 && (k + i) % 2 === 0) g.fillRect(snap(ex + (mx - ex) * k / steps), snap(ey + (my - ey) * k / steps), 2, 2);
             }
             const fadeM = p > 0.9 ? qa(1 - (p - 0.9) / 0.1) : 1;
-            // the ghost LIGHTS UP as its bracket lands — marked, not just
-            // framed — and keeps a glow while the eye is open
-            this.flashGhost(g, m, (q < 1 ? 1 - q * 0.7 : 0.3) * fadeM);
+            // the building LIGHTS UP in its own colours as its brackets land,
+            // and is let back down to the map's memory in hard steps
+            this.flashGhost(g, m, (q < 1 ? 1 : Math.max(0, 1 - (q - 1) * 0.35)) * fadeM);
             g.globalAlpha = fadeM;
-            // the footprint MARKED: gold corner brackets, snapping in
-            if (m.s) {
-              const pad = 4 * (1 - Math.min(1, q * 3)) * TL / 8, x0 = m.bx * TL - pad, y0 = m.by * TL - pad, x1 = (m.bx + m.s) * TL + pad, y1 = (m.by + m.s) * TL + pad, L = Math.max(6, TL * 0.3);
-              g.fillStyle = '#ffd45e';
-              for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
-                g.fillRect(snap(sx > 0 ? cx : cx - L), snap(sy > 0 ? cy : cy - 2), snap(L), 2);
-                g.fillRect(snap(sx > 0 ? cx : cx - 2), snap(sy > 0 ? cy : cy - L), 2, snap(L));
-              }
-            }
-            this.pip(g, mx, my - TL * 0.9, q < 0.3 ? 2 : 1);
+            if (m.s) this.brackets(g, m.bx, m.by, m.s, 1 - Math.min(1, q * 3));
             g.globalAlpha = 1;
           }
           if (open > 0) this.eye(g, ex, ey, open, p);
         },
       },
-      // the marked building's own picture, light ADDED over its ghost, fading
+      /* the marked building's own picture, drawn whole over its ghost (never
+         light ADDED — 'lighter' over the ground goes lime), stepped down */
       flashGhost(g, m, a) {
+        a = qa(a, 4);
+        if (a <= 0) return;
         const TL = CFG.TILE, set = m.key !== 'wall' && m.key !== 'gate' && Sprites.buildingA && Sprites.buildingA[m.key];
         const spr = set ? set[Math.max(0, (m.lv || 1) - 1)] : null;
-        g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = qa(0.7 * a, 4);
+        g.save(); g.globalAlpha = a;
         if (spr) R.blitBld(g, spr, m.bx * TL, m.by * TL, m.s * TL, m.s * TL);
-        else { g.fillStyle = '#ffd45e'; g.fillRect(m.bx * TL, m.by * TL, m.s * TL, m.s * TL); }
         g.restore();
       },
-      // a small eye: the mark over a building, and over a spied soul
+      // gold corner brackets round a footprint (tiles), snapping in from `pad` (0..1)
+      brackets(g, bx, by, s, pad) {
+        const TL = CFG.TILE, pd = 4 * Math.max(0, pad) * TL / 8, x0 = bx * TL - pd, y0 = by * TL - pd, x1 = (bx + s) * TL + pd, y1 = (by + s) * TL + pd, L = Math.max(6, TL * 0.3);
+        for (const [col, o] of [['#1b1410', 1], ['#ffd45e', 0]]) {
+          g.fillStyle = col;
+          for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
+            g.fillRect(snap(sx > 0 ? cx : cx - L) - o, snap(sy > 0 ? cy : cy - 2) - o, snap(L) + 2 * o, 2 + 2 * o);
+            g.fillRect(snap(sx > 0 ? cx : cx - 2) - o, snap(sy > 0 ? cy : cy - L) - o, 2 + 2 * o, snap(L) + 2 * o);
+          }
+        }
+      },
+      /* MARKED FOR GOOD (the playtest: after the ten days the spied town was
+         near-black ghosts, the only trace the minimap): every footprint the
+         spy gave the map wears its gold brackets in the FOG for the rest of
+         the run — while the map still remembers a building of theirs there
+         (a ghost seen razed takes its brackets with it), and never over
+         ground in sight, where the building speaks for itself. Culled to the
+         camera; nothing when none are on screen. */
+      drawMarks(g) {
+        const L = S.deck.spied, v = view(1), sb = S.map.seenB;
+        if (!L || !sb) return;
+        g.globalAlpha = 0.85;
+        for (const [x, y, s] of L) {
+          if (!inView(v, x, y)) continue;
+          const m = sb[MapGen.idx(x, y)];
+          if (!m || m.owner !== 'A') continue;
+          let lit = false;
+          for (let dy = 0; dy < s && !lit; dy++) for (let dx = 0; dx < s; dx++) if (G.visibleAt(x + dx, y + dy)) { lit = true; break; }
+          if (!lit) this.brackets(g, x, y, s, 0);
+        }
+        g.globalAlpha = 1;
+      },
+      // a small eye: the mark over a spied soul
       pip(g, x, y, sc) {
         const c = 2 * (sc || 1), x0 = snap(x - c * 3), y0 = snap(y - c);
         g.fillStyle = '#1b1410';
@@ -1000,65 +1169,65 @@
         g.fillStyle = '#d8a838'; g.fillRect(x0 + c * 2, y0, c * 2, c * 2);
         g.fillStyle = '#120c08'; g.fillRect(x0 + c * 2 + c / 2, y0 + c / 2, c, c);
       },
-      // the great eye: an almond of hard cells that opens, looks, and glows gold
+      /* the great eye: an almond of hard cells that opens, looks, and glows
+         gold. Painted one pixel a cell into its own small canvas and blown up
+         nearest-neighbour (the playtest: drawn as one fillRect a cell at a
+         fractional zoom, its white came apart into a NET of squares with dark
+         seams between them) */
+      _eyeCv: null,
       eye(g, x, y, open, p) {
         x = snap(x); y = snap(y);
         const c = 4, HW = 12, look = p > 0.3 && p < 0.8 ? Math.sin((p - 0.3) / 0.5 * Math.PI * 2) : 0;
         const t = performance.now() / 1000;
-        // its halo: two rings of gold dots turning against each other, and
-        // rays — opaque gold ink over the rival's ground (added, lime)
-        g.save();
-        for (const [rr, n, dir, al] of [[1.32, 36, 1, 0.9], [1.62, 48, -1, 0.55]]) {
-          if (!R.inkOn(g, al * open)) continue;
-          for (let k = 0; k < n; k++) {
-            const a = k / n * Math.PI * 2 + dir * t * 0.6;
-            g.fillRect(snap(x + Math.cos(a) * c * HW * rr), snap(y + Math.sin(a) * c * HW * rr * 0.62), 4, 4);
-          }
-        }
+        // its halo: rays of gold, opaque ink over the rival's ground
         if (R.inkOn(g, 0.7 * open)) for (let k = 0; k < 12; k++) {
-          const a = k / 12 * Math.PI * 2 + t * 0.2, r0 = c * HW * 1.75, r1 = r0 + c * (3 + 2 * Math.sin(t * 3 + k));
+          const a = k / 12 * Math.PI * 2 + t * 0.2, r0 = c * HW * 1.5, r1 = r0 + c * (3 + 2 * Math.sin(t * 3 + k));
           for (let r = r0; r < r1; r += 4) g.fillRect(snap(x + Math.cos(a) * r), snap(y + Math.sin(a) * r * 0.62), 2, 2);
         }
-        g.restore();
-        const ix = Math.round(look * 4), IR = 4.6, PR = 2;
+        g.globalAlpha = 1;
+        const N = HW * 2 + 1, M = 17, cv = this._eyeCv || (this._eyeCv = Object.assign(document.createElement('canvas'), { width: N, height: M }));
+        const q = cv.getContext('2d');
+        q.clearRect(0, 0, N, M);
+        const ix = Math.round(look * 4), IR = 4.6, PR = 2, mid = 8;
         for (let cx = -HW; cx <= HW; cx++) {
           const half = Math.floor(6 * Math.sqrt(Math.max(0, 1 - (cx / HW) * (cx / HW))) * open + 0.35);
           for (let cy = -half; cy <= half; cy++) {
             const edge = Math.abs(cy) === half || Math.abs(cx) === HW;
             const d = Math.hypot(cx - ix, cy);
-            g.fillStyle = edge ? '#1b1410' : d <= PR ? '#120c08' : d <= IR - 1 ? '#d8a838' : d <= IR ? '#7a5418' : '#e9e2cf';
-            g.fillRect(x + cx * c - c / 2, y + cy * c - c / 2, c, c);
+            q.fillStyle = edge ? '#1b1410' : d <= PR ? '#120c08' : d <= IR - 1 ? '#d8a838' : d <= IR ? '#7a5418' : '#e9e2cf';
+            q.fillRect(cx + HW, mid + cy, 1, 1);
           }
           // the lashes above the upper lid
-          if (open > 0.5 && cx % 3 === 0 && Math.abs(cx) < HW - 1) { g.fillStyle = '#1b1410'; g.fillRect(x + cx * c - c / 2, y + (-half - 1) * c - c / 2, c, c); }
+          if (open > 0.5 && cx % 3 === 0 && Math.abs(cx) < HW - 1) { q.fillStyle = '#1b1410'; q.fillRect(cx + HW, mid - half - 1, 1, 1); }
         }
-        if (open > 0.6) { g.fillStyle = '#fff6d8'; g.fillRect(x + (ix - 2) * c - c / 2, y - 2 * c - c / 2, c, c); }   // the glint
+        if (open > 0.6) { q.fillStyle = '#fff6d8'; q.fillRect(ix - 2 + HW, mid - 2, 1, 1); }   // the glint
+        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+        g.drawImage(cv, x - HW * c - c / 2, y - mid * c - c / 2, N * c, M * c);
+        g.imageSmoothingEnabled = sm;
       },
       /* THEIR PEOPLE, SEEN THROUGH THE FOG: every rival soul the tribe's own
-         sight does not reach is drawn over the fog as a dim silhouette with an
-         eye over it — its own sprite and box, in the spy's colour, fading in
-         and out with the card. Culled to the camera; the silhouettes are cut
-         once per frame of art (a WeakMap, render state). */
+         sight does not reach is drawn over the fog as ITSELF — its own sprite
+         and box, at 60%, inside a dark outline so it reads off any ground —
+         with a small eye over it, fading in and out with the card (the
+         playtest: flat maroon blobs read as placeholders). Culled to the
+         camera; the outlined frames are cut once per frame of art (a WeakMap,
+         render state). */
       _sil: new WeakMap(),
-      silhouette(img) {
+      outlined(img) {
         let c = this._sil.get(img);
         if (c) return c;
         const w = img.width || img.naturalWidth, h = img.height || img.naturalHeight;
         if (!w || !h) return null;
-        const tint = (col) => {
-          const t = document.createElement('canvas'); t.width = w; t.height = h;
-          const tq = t.getContext('2d');
-          tq.drawImage(img, 0, 0);
-          tq.globalCompositeOperation = 'source-in';
-          tq.fillStyle = col; tq.fillRect(0, 0, w, h);
-          return t;
-        };
-        const rim = tint('#e0a0a6'), body = tint('#7c3440');
+        const ink = document.createElement('canvas'); ink.width = w; ink.height = h;
+        const iq = ink.getContext('2d');
+        iq.drawImage(img, 0, 0);
+        iq.globalCompositeOperation = 'source-in';
+        iq.fillStyle = '#120c10'; iq.fillRect(0, 0, w, h);
         c = document.createElement('canvas'); c.width = w; c.height = h;
         const q = c.getContext('2d');
         const o = Math.max(1, Math.round(w / 48));   // about one world pixel
-        for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o]]) q.drawImage(rim, dx, dy);
-        q.drawImage(body, 0, 0);
+        for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o], [o, o], [-o, -o], [o, -o], [-o, o]]) q.drawImage(ink, dx, dy);
+        q.drawImage(img, 0, 0);
         this._sil.set(img, c);
         return c;
       },
@@ -1068,13 +1237,13 @@
         if (fade <= 0) return;
         for (const u of S.units) {
           if (u.owner !== 'A' || !inView(v, u.x, u.y) || G.visibleAt(u.x | 0, u.y | 0)) continue;
-          const B = R.unitBox(u), img = R.unitSprite(u), sil = img && this.silhouette(img);
-          if (!sil) continue;
+          const B = R.unitBox(u), img = R.unitSprite(u), sp = img && this.outlined(img);
+          if (!sp) continue;
           const D = R.frameBox(u, img, B), top = R.frameTop(u.y, B, D);
           g.globalAlpha = 0.6 * fade;
-          g.drawImage(sil, u.x * TL - D / 2, top, D, D);
-          g.globalAlpha = 0.9 * fade;
-          this.pip(g, u.x * TL, top + D * 0.18, 1);
+          g.drawImage(sp, u.x * TL - D / 2, top, D, D);
+          g.globalAlpha = fade;
+          this.pip(g, u.x * TL, top + D * 0.08, 1);
           g.globalAlpha = 1;
         }
       },
@@ -1106,7 +1275,7 @@
         n = n | 0;
         return n > 0 ? { label: '×' + n, frac: Math.min(1, n / this.N), words: n + (n === 1 ? ' war band' : ' war bands') } : null;
       },
-      can() { return { ok: true }; },
+      can() { this.sealArt(); return { ok: true }; },   // (the seal's art is fetched while the card is in the hand)
       apply() {
         const c = Deck.run().charges, again = (c.pact || 0) > 0;
         c.pact = (c.pact || 0) + this.N;
@@ -1122,76 +1291,93 @@
           : '🥁 Gold for the wolves: the next ' + this.N + ' barbarian war bands will march on the rival instead of you.');
         return { ok: true };
       },
-      /* THE MOMENT: four war-drum strokes. On every stroke the screen's edges
-         pulse red, the ground shakes and a ring of red dots rolls out across
-         the ground from the hall; a signal fire springs up beside it and
-         throws a column of RED smoke into the sky; and on the last stroke the
-         pact is STAMPED over the whole screen — a war-paint handprint in red
-         ochre, dripping, with the words under it — and fades. A band turning
-         later gets two strokes and its own pulse (no smoke and no stamp: the
-         muster is not the player's to see). */
+      /* THE MOMENT: four war-drum strokes. On every stroke the edges of the
+         open band pulse red (a stepped vignette on all four sides — drawn edge
+         to edge the top and bottom lay under the HUD and the sides read as
+         stray bars), the ground shakes and a ring of red dots rolls out from
+         the hall; a signal fire springs up beside it and throws a column of
+         RED smoke into the sky; and on the last stroke the pact is SEALED over
+         the screen — the card's own clasped forearms in a round seal (the
+         playtest: the old stamp was "a crude palm", a flat hand that read as
+         "stop") — under the words. A band turning later gets two strokes, a
+         red WAR BANNER over the band itself as it marches, and a ping on the
+         minimap where it goes (no stamp: the muster is not the player's). */
       BEATS: [0.08, 0.28, 0.48, 0.57],
-      /* A HAND STENCIL, the oldest mark there is — and a STENCIL, not a
-         print: ochre blown AROUND a splayed hand held to the rock, the hand
-         itself left as bare ground (the Cueva de las Manos way). Built once,
-         one pixel a cell, from the hand's own shape (a palm, a wrist, four
-         fingers and a thumb, splayed), the spray thickest at the hand's edge
-         and thinning out into the stone; blown up nearest-neighbour. */
-      STENCIL: { w: 76, h: 78 },
-      _stencil: null,
-      stencilArt() {
-        if (this._stencil) return this._stencil;
-        const { w, h } = this.STENCIL, OX = 12, OY = 8;
-        const cap = (px, py, ax, ay, bx, by, r) => {
-          ax += OX; bx += OX; ay += OY; by += OY;
-          const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
-          const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
-          return Math.hypot(px - ax - t * dx, py - ay - t * dy) - r;
-        };
-        const hand = (x, y) => Math.min(
-          (Math.hypot((x - 26 - OX) / 9.5, (y - 36 - OY) / 10.5) - 1) * 9.5,     // the palm
-          cap(x, y, 26, 44, 26, 80, 6.2),                                        // the wrist, off the foot of the rock
-          cap(x, y, 17, 38, 7, 26, 2.7),                                         // the thumb, thrown wide
-          cap(x, y, 20.5, 28, 16.5, 9, 2.5),                                     // the fingers, splayed
-          cap(x, y, 25.5, 26, 25, 5, 2.6),
-          cap(x, y, 30.5, 27, 33.5, 8, 2.5),
-          cap(x, y, 34, 31, 41, 16, 2.1));
-        const c = document.createElement('canvas'); c.width = w; c.height = h;
-        const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data;
-        const DEEP = [104, 26, 16], RED = [138, 42, 26], OCHRE = [170, 52, 30], PALE = [190, 92, 56];
-        const ROCK = [206, 186, 148], ROCK2 = [186, 164, 126];
-        const put = (x, y, col) => { const i = (y * w + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255; };
-        const drips = [];
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-          const dd = hand(x + 0.5, y + 0.5);
-          const hz = hash(x * 7919 + y * 104729) / 4294967296;
-          // the arm runs off the foot of the painting, raggedly
-          const foot = c01((70 - y - 3 * Math.sin(x * 0.9)) / 9);
-          if (dd <= 0) { if (hz < foot * 1.4) put(x, y, hz < 0.18 ? ROCK2 : ROCK); continue; }   // the hand: bare rock
-          // the cloud of spray: thick at the edge, thinning, ragged at its rim
-          const cloud = 12 + 2.6 * Math.sin(x * 0.45 + y * 0.21) + 1.6 * Math.sin(y * 0.7 - x * 0.33);
-          const pr = foot * (dd < 2 ? 0.98 : dd < 5 ? 0.95 : dd < cloud ? 0.95 * Math.exp(-(dd - 5) / 3.2) : 0);
-          if (hz >= pr) continue;
-          const col = dd < 1.6 ? DEEP : dd < 5 ? (hz < pr * 0.45 ? RED : OCHRE) : (hz < pr * 0.4 ? OCHRE : PALE);
-          put(x, y, col);
+      TURN_BEATS: [0.17, 0.71],   // a turning band's two strokes (seconds)
+      TURN_S: 30,                 // …and how long its banner flies (s, or until the band is gone)
+      /* THE SEAL: the card's own art (Deck.artUrl — the face's file), the
+         clasp cut out in a disc round SEAL's centre, one art pixel a cell,
+         ringed in ink, a gold band lit from the upper left and ink again;
+         blown up nearest-neighbour at a whole number. Until the art decodes
+         the seal stands down and the words carry the stroke alone. */
+      SEAL: { cx: 70, cy: 86, r: 40, band: 4 },
+      _seal: null, _sealImg: null,
+      sealArt() {
+        if (this._seal) return this._seal;
+        let im = this._sealImg;
+        if (!im) { im = this._sealImg = new Image(); im.src = Deck.artUrl ? Deck.artUrl('barbarian_pact') : 'assets/cards/art/barbarian_pact.png'; }
+        if (!im.complete || !im.naturalWidth) return null;
+        const { cx, cy, r, band } = this.SEAL, R0 = r + band, N = R0 * 2, F = FIRE();
+        const c = document.createElement('canvas'); c.width = N; c.height = N;
+        const q = c.getContext('2d');
+        q.imageSmoothingEnabled = false;
+        q.drawImage(im, R0 - cx, R0 - cy);
+        // keep the art inside the disc only (rows of whole pixels: a hard
+        // edge) — ONE fill of all the rows: destination-in clears everything
+        // outside each shape it is handed, so a fill a row would keep one row
+        q.globalCompositeOperation = 'destination-in';
+        q.fillStyle = '#000';
+        q.beginPath();
+        for (let y = 0; y < N; y++) {
+          const dy = y + 0.5 - R0;
+          if (Math.abs(dy) > r) continue;
+          const dx = Math.floor(Math.sqrt(r * r - dy * dy));
+          q.rect(R0 - dx, y, dx * 2, 1);
         }
-        // where the paint ran: the lowest spray in a few columns beside the wrist
-        for (const cx of [OX + 6, OX + 10, OX + 41, OX + 45]) {
-          for (let y = h - 1; y >= 30; y--) if (d[(y * w + cx) * 4 + 3]) { drips.push({ x: cx, y: y + 1, len: 2 + (hash(cx * 31) % 4) }); break; }
+        q.fill();
+        q.globalCompositeOperation = 'source-over';
+        // the ring: ink, gold lit toward the upper left, ink
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+          const dx = x + 0.5 - R0, dy = y + 0.5 - R0, d = Math.hypot(dx, dy);
+          if (d <= r || d > R0) continue;
+          const k = d - r, lit = (-dx - dy) / (d * Math.SQRT2);
+          q.fillStyle = k <= 1 || k > band - 1 ? '#160e08' : lit > 0.35 ? F[3] : lit > -0.35 ? F[2] : '#8a5a1c';
+          q.fillRect(x, y, 1, 1);
         }
-        q.putImageData(im, 0, 0);
-        return (this._stencil = { cv: c, drips });
+        return (this._seal = c);
+      },
+      /* …and the seal going: never a translucent seal over the world (two
+         half-there pictures read as a ghost) — it DISSOLVES, a 2x2 Bayer
+         step at a time, `lv` 1..3 of its pixels kept per four (cached) */
+      _sealD: null,
+      sealDither(lv) {
+        const base = this.sealArt();
+        if (!base || lv >= 4) return base;
+        const D = this._sealD || (this._sealD = {});
+        if (D[lv]) return D[lv];
+        const N = base.width, c = document.createElement('canvas'); c.width = N; c.height = N;
+        const q = c.getContext('2d'), BAY = [0, 2, 3, 1];
+        q.drawImage(base, 0, 0);
+        q.globalCompositeOperation = 'destination-in';
+        q.beginPath();
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (BAY[(x & 1) + (y & 1) * 2] < lv) q.rect(x, y, 1, 1);
+        q.fill();
+        return (D[lv] = c);
       },
       show: {
         ms: 3400, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
-          const beats = s.turn ? [0.1, 0.42] : this.BEATS;
+          const turn = !!s.turn;
+          // the strokes: a fraction of the act, or a turning band's seconds
+          const beatQ = (b, len) => turn ? (s.t - this.TURN_BEATS[b]) / (len * 1.7) : (p - this.BEATS[b]) / len;
+          const nb = turn ? this.TURN_BEATS.length : this.BEATS.length;
           if (layer === 'world') {
-            if (s.turn || s.x == null) return;
+            if (turn) { this.banner(g, s); return; }
+            if (s.x == null) return;
             // the drum rolling out across the ground, a ring per stroke
             const TL = CFG.TILE;
-            for (let b = 0; b < beats.length; b++) {
-              const q = (p - beats[b]) / 0.22;
+            for (let b = 0; b < nb; b++) {
+              const q = beatQ(b, 0.22);
               if (q < 0 || q > 1) continue;
               g.fillStyle = 'rgba(176,40,24,' + qa(0.9 * (1 - q), 4) + ')';
               ring(g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.8 + 5.5 * ease(q)), 44, 0.5, 4);
@@ -1201,65 +1387,106 @@
             this.smoke(g, s, p);
             return;
           }
-          const W = R.cv.width, H = R.cv.height;
           s.hit = s.hit || {};
-          for (let b = 0; b < beats.length; b++) {
-            const q = (p - beats[b]) / 0.16;
+          for (let b = 0; b < nb; b++) {
+            const q = beatQ(b, 0.16);
             if (q < 0 || q > 1) continue;
-            if (!s.hit[b]) { s.hit[b] = 1; if (R.shakeAt) R.shakeAt(b === beats.length - 1 ? 8 : 4, 0.35); }
-            const a = 0.46 * (1 - q) * (1 - q);
-            for (let k = 0; k < 4; k++) {
-              const w = Math.round(Math.min(W, H) * (0.03 + 0.03 * k) * (1 + 0.4 * (1 - q)));
-              g.fillStyle = 'rgba(120,18,12,' + qa(a * (1 - k * 0.24), 8) + ')';
-              g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
-            }
+            if (!s.hit[b]) { s.hit[b] = 1; if (R.shakeAt) R.shakeAt(b === nb - 1 ? 8 : 4, 0.35); }
+            if (R.stepVignette) R.stepVignette(g, '120,18,12', (1 - q) * (1 - q), [0.12, 0.26, 0.4, 0.54], 0.085, R.openBand ? R.openBand() : null);
           }
-          if (!s.turn) this.stamp(g, s, p, W, H);
+          if (!turn) this.stamp(g, s, p, R.cv.width, R.cv.height);
+          // a turning band's own short drum, in words for the eye that missed the toast
+          else if (s.t < 2.4 && R.actTitle) R.actTitle(g, 'THE PACT HOLDS', 'A war band turns on the rival', s.t < 0.15 ? s.t / 0.15 : s.t > 2 ? (2.4 - s.t) / 0.4 : 1);
         },
       },
-      // the pact, stamped: a war-paint handprint slammed down on the last stroke
+      // the pact, sealed: the clasp in its seal slammed down on the last stroke, and the words
       stamp(g, s, p, W, H) {
         const t0 = this.BEATS[3], q = (p - t0) / 0.05;
         if (q < 0 || p > 0.97) return;
         const fade = p < 0.84 ? 1 : 1 - (p - 0.84) / 0.13;
-        const sc = q < 1 ? 1 + 0.6 * (1 - ease(q)) : 1;
-        const art = this.stencilArt(), { w, h } = this.STENCIL;
-        const cell = Math.max(4, Math.round(Math.min(W, H) * 0.8 / w * sc / 2) * 2);
-        const hw = w * cell, hh = h * cell, x0 = Math.round(W / 2 - hw / 2), y0 = Math.round(H * 0.42 - hh / 2);
+        const dpr = R.dpr || 1, N = (this.SEAL.r + this.SEAL.band) * 2, art = this.sealDither(Math.ceil(Math.max(0, fade) * 4));
         // the world goes still under it
         g.fillStyle = 'rgba(14,6,3,' + qa(0.42 * fade * Math.min(1, q), 6) + ')';
         g.fillRect(0, 0, W, H);
-        g.globalAlpha = qa(0.95 * fade, 6);
-        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-        g.drawImage(art.cv, x0, y0, hw, hh);
-        g.imageSmoothingEnabled = sm;
-        // the paint running down from the foot of the spray, longer the longer it holds
-        const run = Math.min(1, Math.max(0, (p - t0 - 0.03) / 0.2));
-        g.fillStyle = '#8e2e1e';
-        for (const dr of art.drips) {
-          const n = Math.round(dr.len * run);
-          for (let k = 0; k < n; k++) g.fillRect(x0 + dr.x * cell + (k === n - 1 ? 0 : cell / 4), y0 + (dr.y + k) * cell, k === n - 1 ? cell : cell / 2, cell);
-        }
-        // the spray's mist blown wide on the slam
-        if (q < 3) {
-          g.fillStyle = '#b0331f';
-          for (let k = 0; k < 28; k++) {
-            const an = k / 28 * Math.PI * 2 + 0.3, rr = (hw * 0.5 + cell * 4 * Math.min(1, q)) * (0.75 + 0.45 * rnd(k, 5));
-            g.fillRect(snapTo(W / 2 + Math.cos(an) * rr, cell / 2), snapTo(y0 + hh * 0.5 + Math.sin(an) * rr * 0.9, cell / 2), cell / 2, cell / 2);
+        let foot = R.actTitleTop ? R.actTitleTop() : H * 0.2;
+        if (art) {
+          // a whole number of device px a cell (never scaled to tell the
+          // story), SLAMMED DOWN from above onto its place, the words under it
+          const B = R.openBand ? R.openBand() : { y0: 0, y1: H };
+          const cell = Math.max(2, Math.floor(Math.min(W * 0.5, (B.y1 - B.y0) * 0.34) / N)), base = cell;
+          const D = N * cell, x0 = Math.round(W / 2 - D / 2), y0 = Math.round(foot - (1 - ease(Math.min(1, q))) * D * 0.4);
+          const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+          g.drawImage(art, x0, y0, D, D);
+          g.imageSmoothingEnabled = sm;
+          // the ochre thrown wide on the slam: hard squares, out from the rim
+          if (q < 3) {
+            g.fillStyle = '#b0331f';
+            const cz = Math.max(2, base);
+            for (let k = 0; k < 28; k++) {
+              const an = k / 28 * Math.PI * 2 + 0.3, rr = (D * 0.5 + cz * 6 * Math.min(1, q)) * (0.92 + 0.3 * rnd(k, 5));
+              g.fillRect(snapTo(W / 2 + Math.cos(an) * rr, cz), snapTo(y0 + D * 0.5 + Math.sin(an) * rr, cz), cz, cz);
+            }
           }
+          foot = foot + D + 10 * dpr;
         }
         // the words
-        const fs = Math.round(Math.min(34, W / 15));
-        g.font = 'bold ' + fs + 'px sans-serif';
-        g.textAlign = 'center'; g.textBaseline = 'top';
-        const ty = Math.min(H - fs * 3, y0 + hh + cell * 2), sh2 = Math.max(2, Math.round(fs / 10));
-        g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE PACT IS SEALED', W / 2 + sh2, ty + sh2);
-        g.fillStyle = '#e8c39a'; g.fillText('THE PACT IS SEALED', W / 2, ty);
-        g.font = Math.round(fs * 0.5) + 'px sans-serif';
-        g.fillStyle = 'rgba(240,226,200,0.92)';
         const left = (S.deck && S.deck.charges && S.deck.charges.pact) || 3;
-        g.fillText('The next ' + left + ' war band' + (left === 1 ? '' : 's') + ' march on the rival', W / 2, ty + Math.round(fs * 1.3));
+        if (R.actTitle) R.actTitle(g, 'THE PACT IS SEALED', 'The next ' + left + ' war band' + (left === 1 ? '' : 's') + ' march on the rival', fade * Math.min(1, q * 2), { y: foot });
+      },
+      /* A WAR BANNER OVER THE BAND THE PACT TURNED (the playtest: "all you
+         get is a toast"): red cloth on a pole above the band's foremost soul
+         — the one nearest the band's middle — fluttering in three hard
+         frames, the pact's gold clasp sewn on it. Over ground in sight only
+         (the fog is the fog); gone with the band. */
+      bandOf(s) {
+        const out = [];
+        for (const id of s.ids || []) { const u = Units.get(id); if (u && u.hp > 0) out.push(u); }
+        return out;
+      },
+      banner(g, s) {
+        const band = this.bandOf(s);
+        if (!band.length || s.t > this.TURN_S) return;
+        const mx = band.reduce((a, u) => a + u.x, 0) / band.length, my = band.reduce((a, u) => a + u.y, 0) / band.length;
+        let lead = band[0];
+        for (const u of band) if (Math.hypot(u.x - mx, u.y - my) < Math.hypot(lead.x - mx, lead.y - my)) lead = u;
+        if (!G.visibleAt(lead.x | 0, lead.y | 0)) return;
+        const TL = CFG.TILE, img = R.unitSprite && R.unitSprite(lead), B = R.unitBox(lead), D = img ? R.frameBox(lead, img, B) : TL;
+        const top = img ? R.frameTop(lead.y, B, D) : lead.y * TL - TL;
+        const x = snap(lead.x * TL), y = snap(top + D * 0.1), fr = ((s.t * 6) | 0) % 3, F = FIRE();
+        const a = s.t < 0.3 ? s.t / 0.3 : Math.min(1, (this.TURN_S - s.t) / 1);
+        g.globalAlpha = qa(a, 4);
+        g.fillStyle = '#2a1a10'; g.fillRect(x - 1, y - 30, 2, 30);                 // the pole
+        g.fillStyle = F[2]; g.fillRect(x - 2, y - 32, 4, 2);                       // its gold cap
+        const RED = ['#5a120c', '#8e1c12', '#b8301c'];
+        for (let row = 0; row < 14; row += 2) {                                    // the cloth, in hard rows
+          const w = 16 - (row > 10 ? (row - 10) * 2 : 0), wave = [0, 2, 0][(fr + (row >> 2)) % 3];
+          g.fillStyle = '#160e08'; g.fillRect(x + 1, y - 28 + row, w + 2 + wave, 2);
+          g.fillStyle = RED[row < 4 ? 2 : row < 10 ? 1 : 0]; g.fillRect(x + 1, y - 28 + row, w + wave, 2);
+        }
+        // the clasp: two gold bars crossed over the cloth
+        g.fillStyle = F[3];
+        g.fillRect(x + 5, y - 23, 8, 2); g.fillRect(x + 7, y - 25, 2, 6); g.fillRect(x + 11, y - 25, 2, 6);
         g.globalAlpha = 1;
+      },
+      /* …AND ON THE MINIMAP (Deck.drawMini): a ping where the band marches —
+         rings of hard squares rolling out of it — and, where the player's map
+         remembers the rival's hall, a dotted trail toward it. Never toward a
+         hall the player has not seen (the fog is the fog). */
+      ping(g, s) {
+        const band = this.bandOf(s);
+        if (!band.length || s.t > this.TURN_S) return;
+        const mx = band.reduce((a, u) => a + u.x, 0) / band.length * 2, my = band.reduce((a, u) => a + u.y, 0) / band.length * 2;
+        const k = (s.t * 1.2) % 1, r = 4 + k * 9;
+        g.fillStyle = k < 0.5 ? '#ff5a3a' : '#b8301c';
+        for (let i = 0; i < 14; i++) { const an = i / 14 * Math.PI * 2; g.fillRect(Math.round(mx + Math.cos(an) * r) - 1, Math.round(my + Math.sin(an) * r) - 1, 2, 2); }
+        g.fillStyle = '#ffe9a0'; g.fillRect(Math.round(mx) - 1, Math.round(my) - 1, 3, 3);
+        const sb = S.map.seenB, W = CFG.W;
+        let hall = null;
+        if (sb) for (const key in sb) { const m = sb[key]; if (m && m.owner === 'A' && m.key === 'tc') { hall = { x: (key % W) + 1, y: ((key / W) | 0) + 1 }; break; } }
+        if (!hall) return;
+        const hx = hall.x * 2, hy = hall.y * 2, L = Math.hypot(hx - mx, hy - my), n = Math.floor(L / 4);
+        g.fillStyle = '#d8462a';
+        for (let i = 1; i < n; i++) if ((i + ((s.t * 8) | 0)) % 2 === 0) g.fillRect(Math.round(mx + (hx - mx) * i / n) - 1, Math.round(my + (hy - my) * i / n) - 1, 2, 2);
       },
       // the signal fire beside the hall, and its column of red smoke
       smoke(g, s, p) {
@@ -1395,10 +1622,15 @@
         }
         return c;
       },
-      // where the small dark sun hangs while the card runs: top centre, under the bar
-      skySpot() {
-        const dpr = R.dpr || 1, k = Math.max(2, Math.round(1.2 * dpr));
-        return { k, x: Math.round(R.cv.width / 2 - 24 * k), y: Math.round(((R.topReserve || 56) + 12) * dpr) };
+      /* where the great sun stands for the act: under the toasts and the
+         minimap (R.actTitleTop — the playtest found its corona cutting
+         through a toast and the title's own letters), at a whole number of
+         device px an art pixel, the title under it */
+      sunSpot() {
+        const W = R.cv.width, H = R.cv.height, top = R.actTitleTop ? R.actTitleTop() : H * 0.12;
+        const B = R.openBand ? R.openBand() : { y0: 0, y1: H };
+        const k = Math.max(4, Math.floor(Math.min(W * 0.46, (B.y1 - top) * 0.42) / 48));
+        return { k, x: Math.round(W / 2 - 24 * k), y: Math.round(top) };
       },
       /* THE MOMENT, in the eclipse's own drawing language (R.drawEclipse):
          the sun stands huge in the sky and the MOON'S SHADOW rolls in across
@@ -1407,13 +1639,22 @@
          resolution and blown up nearest-neighbour, so the dark comes in as a
          hard pixel curve and never as a fade — while the moon bites the sun
          from the east. The diamond ring flashes; at totality the world HOLDS
-         (a shake, the drone's floor dropping out, the birds thrown up), a
-         ring of light bursts off the black disc, the corona blazes, the
-         stars come out under the umbra (over the board only — never in the
-         off-map black, the eclipse's rule) and the words go up. Then the
-         trailing limb lets the light back and the black sun climbs to its
-         place over the bar, where it hangs for the four days. */
+         (a shake, the drone's floor dropping out, the birds thrown up), the
+         corona blazes, the stars come out under the umbra — SCATTERED, never
+         in rows or rings (the playtest read the old burst of dotted rings and
+         a lattice of stars as a dashed UI ring) — over the board only, never
+         in the off-map black (the eclipse's rule), and the words go up. Then
+         the trailing limb lets the light back and the sun goes out with it
+         in hard steps: no small black sun is left hanging over the map for
+         the four days (it read as a hole in the map; the HUD's chip carries
+         the count). Nothing is light ADDED: every dot is opaque. */
       SWEEP: { in0: 0.3, in1: 2.0, out0: 4.2, out1: 5.4, bands: [[1.16, 0.10], [1.08, 0.26], [1, 0.62]] },
+      STARS: 120,
+      // a scattered field: each star's spot from a full-avalanche hash of its own index
+      starAt(i, W, H) {
+        const a = hash(Math.imul(i + 17, 0x9e3779b1) ^ 0x5bd1e995), b = hash(Math.imul(i + 91, 0x85ebca6b) ^ a);
+        return { x: a / 4294967296 * W, y: b / 4294967296 * H, big: (b & 7) === 0, gold: (a & 3) === 0, tw: (a >>> 8) & 7 };
+      },
       _shade: null,
       shadow(g, cx, cy, Rr, W, H) {
         const sc = 4, sw = Math.ceil(W / sc), sh = Math.ceil(H / sc);
@@ -1446,16 +1687,14 @@
           const travel = 28, tot = 2.0;
           const total = T >= tot, f = ease((T - 0.4) / 1.6);
           const off = total ? 0 : travel * (1 - f);
-          // (the diamond ring is a burst of DOTS off its own bead, below —
-          // never a full-screen wash: a pale flash over the world at the very
-          // moment of totality greyed out the darkest beat of the act)
           if (total && !s.beat) {
             s.beat = 1;
             if (R.shakeAt) R.shakeAt(10, 1.2);
             if (R.startle) R.startle(R.cam.x / CFG.TILE + R.viewW() / R.cam.z / CFG.TILE / 2, R.cam.y / CFG.TILE + R.viewH() / R.cam.z / CFG.TILE / 2, 30);
           }
+          const sp = this.sunSpot(), k = sp.k, x = sp.x, y = sp.y, ccx = x + 24 * k, ccy = y + 24 * k;
           // THE SHADOW: in from the west, held (drifting, never still), out to the east
-          const cy = H * 0.45, D = W * 0.05, Rr = Math.hypot(W / 2 + D, Math.max(cy, H - cy)) * 1.02, outR = Rr * SW.bands[0][0];
+          const cy = ccy, D = W * 0.05, Rr = Math.hypot(W / 2 + D, Math.max(cy, H - cy)) * 1.02, outR = Rr * SW.bands[0][0];
           let scx = null;
           if (T >= SW.in0 && T < SW.out1) {
             // smoothstep, never an ease-out: the limb must be SEEN crossing the screen
@@ -1465,88 +1704,62 @@
             else scx = (W / 2 + D) + (W + outR - (W / 2 + D)) * sst((T - SW.out0) / (SW.out1 - SW.out0));
             this.shadow(g, scx, cy, Rr, W, H);
           }
-          // THE STARS: under the umbra, once it is deep, over the board only
+          // THE STARS: scattered under the umbra, once it is deep, over the board only
           const deep = T < tot ? 0 : T < SW.out0 ? Math.min(1, (T - tot) / 0.6) : 1 - (T - SW.out0) / 0.5;
           if (deep > 0 && scx != null) {
             const z = R.cam.z * (R.dpr || 1), sz = Math.max(2, Math.round(W / 300));
-            for (let i = 0; i < 110; i++) {
-              const h1 = Math.imul(i + 3, 0x9e3779b1) >>> 0, h2 = Math.imul(i + 9, 0x85ebca6b) >>> 0;
-              if ((h1 & 7) === 0 && ((now / 0.5 + i) | 0) % 4 === 0) continue;   // a slow twinkle
-              const sx = (h1 % 10007) / 10007 * W | 0, sy = (h2 % 9973) / 9973 * H | 0;
-              if (Math.hypot(sx - scx, sy - cy) > Rr - 24) continue;
-              if (!R.onBoardPx(sx / z + R.cam.x, sy / z + R.cam.y)) continue;
-              g.fillStyle = (h1 & 3) === 0 ? 'rgba(255,233,160,' + qa(0.9 * deep, 4) + ')' : 'rgba(232,236,255,' + qa(0.75 * deep, 4) + ')';
-              g.fillRect(snap(sx), snap(sy), (h2 & 7) === 0 ? sz * 2 : sz, (h2 & 7) === 0 ? sz * 2 : sz);
+            const shown = Math.round(this.STARS * qa(deep, 4));
+            for (let i = 0; i < shown; i++) {
+              const st = this.starAt(i, W, H);
+              if (st.tw === 0 && ((now / 0.5 + i) | 0) % 4 === 0) continue;   // a slow twinkle
+              if (Math.hypot(st.x - scx, st.y - cy) > Rr - 24) continue;
+              if (!R.onBoardPx(st.x / z + R.cam.x, st.y / z + R.cam.y)) continue;
+              g.fillStyle = st.gold ? '#ffe9a0' : '#e8ecff';
+              const d = st.big ? sz * 2 : sz;
+              g.fillRect(snap(st.x), snap(st.y), d, d);
             }
           }
           const blaze = total ? Math.max(0, 1 - Math.abs(T - 2.6) / 1.6) : 0;
           const art = this.sunArt(off, total, !total && T > 1.85, blaze, now);
-          // big, then climbing to its place
-          const sp = this.skySpot(), big = Math.max(4, Math.round(Math.min(W, H) * 0.42 / 48));
-          const m = ease((T - 4.2) / 1.2), k = Math.round(big + (sp.k - big) * m);
-          const bx = W / 2 - 24 * big, by = H * 0.18 - 24 * big;
-          const x = Math.round(bx + (sp.x - bx) * m), y = Math.round(by + (sp.y - by) * m);
-          const ccx = x + 24 * k, ccy = y + 24 * k;
-          const fin = T < 0.5 ? qa(T / 0.5, 4) : 1;
-          // THE BURST at totality: two rings of light, made of dots, thrown off the black disc
-          if (total && T < tot + 1.1) {
-            g.save(); g.globalCompositeOperation = 'lighter';
-            for (const [d0, n, col] of [[0, 56, '255,233,160'], [0.18, 40, '232,240,255']]) {
-              const q = (T - tot - d0) / 0.9;
-              if (q <= 0 || q >= 1) continue;
-              g.fillStyle = 'rgba(' + col + ',' + qa(0.95 * (1 - q), 4) + ')';
-              ring(g, ccx, ccy, 13 * k + Math.max(W, H) * 0.55 * ease(q), n, 1, Math.max(2, snap(k * 1.5)));
-            }
-            g.restore();
+          // in, held, and out with the light — in hard steps
+          const fin = T < 0.5 ? qa(T / 0.5, 4) : T > SW.out0 + 0.3 ? qa(1 - (T - SW.out0 - 0.3) / 0.9, 4) : 1;
+          if (fin <= 0) return;
+          // in and out it DISSOLVES (a 2x2 Bayer step at a time), never a translucent sun
+          if (fin < 1) {
+            const q = art.getContext('2d'), BAY = [0, 2, 3, 1], lv = Math.round(fin * 4);
+            q.globalCompositeOperation = 'destination-in';
+            q.beginPath();
+            for (let yy = 0; yy < 48; yy++) for (let xx = 0; xx < 48; xx++) if (BAY[(xx & 1) + (yy & 1) * 2] < lv) q.rect(xx, yy, 1, 1);
+            q.fill();
+            q.globalCompositeOperation = 'source-over';
           }
           const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-          g.globalAlpha = fin;
           g.drawImage(art, x, y, 48 * k, 48 * k);
-          // THE DIAMOND RING: the last bead of sun throws its light in rays of
-          // dots, light added, hard steps, gone in under half a second
+          // THE DIAMOND RING: the last bead of sun throws its light in short
+          // rays of opaque dots, hard steps, gone in under half a second
           if (T > 1.86 && T < 2.3) {
-            const q = (T - 1.86) / 0.44, bx = x + 11 * k, by = y + 24 * k, maxR = Math.max(W, H) * 0.32, dz = Math.max(2, snap(k));
-            g.save(); g.globalCompositeOperation = 'lighter';
+            const q = (T - 1.86) / 0.44, bx = x + 11 * k, by = y + 24 * k, maxR = 22 * k, dz = Math.max(2, snap(k));
+            g.fillStyle = '#fffaf0';
             for (let ray = 0; ray < 16; ray++) {
-              const an = ray / 16 * Math.PI * 2 + 0.2, len = maxR * (ray % 2 ? 0.55 : 1) * ease(Math.min(1, q * 2.2));
-              for (let r = 6 * k; r < len; r += dz * 2.5) {
-                g.fillStyle = 'rgba(255,250,236,' + qa(0.95 * (1 - q) * (1 - r / maxR), 4) + ')';
-                g.fillRect(snap(bx + Math.cos(an) * r), snap(by + Math.sin(an) * r), dz, dz);
-              }
+              const an = ray / 16 * Math.PI * 2 + 0.2, len = maxR * (ray % 2 ? 0.55 : 1) * ease(Math.min(1, q * 2.2)) * (1 - q);
+              for (let r = 6 * k; r < 6 * k + len; r += dz * 2.5) g.fillRect(snap(bx + Math.cos(an) * r), snap(by + Math.sin(an) * r), dz, dz);
             }
-            g.fillStyle = 'rgba(255,255,255,' + qa(1 - q, 4) + ')';
             R.pxDisc(g, bx, by, k * (3 + 3 * (1 - q)), dz);
-            g.restore();
-          }
-          if (total && blaze > 0) {                   // the corona BLAZES: light added over itself
-            g.globalCompositeOperation = 'lighter';
-            g.globalAlpha = qa(0.7 * blaze, 6);
-            g.drawImage(art, x, y, 48 * k, 48 * k);
-            g.globalCompositeOperation = 'source-over';
           }
           g.globalAlpha = 1;
           g.imageSmoothingEnabled = sm;
-          if (total && T < 4.4) {
-            const a = qa(Math.min(1, (T - tot) / 0.4) * Math.min(1, (4.4 - T) / 0.6), 6);
-            const fs = Math.round(Math.min(40, W / 13));
-            g.globalAlpha = a;
-            g.font = 'bold ' + fs + 'px sans-serif';
-            g.textAlign = 'center'; g.textBaseline = 'top';
-            const ty = y + 48 * k + Math.round(fs * 0.4), sh2 = Math.max(2, Math.round(fs / 10));
-            g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THEIR SUN IS SWALLOWED', W / 2 + sh2, ty + sh2);
-            g.fillStyle = '#ffd45e'; g.fillText('THEIR SUN IS SWALLOWED', W / 2, ty);
-            g.font = Math.round(fs * 0.45) + 'px sans-serif';
-            g.fillStyle = 'rgba(232,236,255,0.9)';
-            g.fillText('Four days of dark over the rival', W / 2, ty + Math.round(fs * 1.25));
-            g.globalAlpha = 1;
+          if (total && T < 4.4 && R.actTitle) {
+            const a = Math.min(1, (T - tot) / 0.4) * Math.min(1, (4.4 - T) / 0.6);
+            R.actTitle(g, 'THEIR SUN IS SWALLOWED', 'Four days of dark over the rival', a, { y: y + 48 * k + 6 * (R.dpr || 1) });
           }
         },
       },
       /* THE DUSK over the rival's known ground — every building of theirs the
          player's memory holds, lit over a disc of DUSK_R tiles in three hard
          alpha steps at a quarter-tile grid (one canvas, rebuilt only when
-         that memory changes; one blit a frame) — and the small black sun
-         over the bar. Fades in and out over a tenth of a day in steps. */
+         that memory changes; one blit a frame) — and, with their ground off
+         the screen, the dusk leaning in at the edge that faces it. Fades in
+         and out over a tenth of a day in steps. */
       DUSK_R: 5,
       _dusk: null,
       duskCv() {
@@ -1619,17 +1832,11 @@
           g.globalAlpha = 1;
           g.imageSmoothingEnabled = sm;
         });
-        // the small black sun: not while the play's own sun is still climbing
-        // to its place, and not over the world's own eclipse
+        // the dusk at the edge: not while the play's own sky is up, and not
+        // over the world's own eclipse (no sun is left hanging over the map —
+        // the HUD's chip carries the four days)
         if (R.cardShows.some(s => s.id === 'swallowed_sun') || (S.eclipse && S.eclipse.phase)) return;
         this.edgeDusk(g, fade);
-        const t = performance.now() / 1000, sp = this.skySpot(), art = this.sunArt(0, true, false, 0.25, t);
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-        g.globalAlpha = fade;
-        g.drawImage(art, sp.x, sp.y, 48 * sp.k, 48 * sp.k);
-        g.globalAlpha = 1;
-        g.imageSmoothingEnabled = sm;
       },
     },
 
@@ -1739,13 +1946,50 @@
       // whether it can be played (idempotent — one request per strip)
       art: 'kraken',
       prepare() { if (window.Assets && Assets.wantFx) Assets.wantFx('kraken', { prio: 'high' }); },
+      /* KNOWING OF NOTHING IT IS GREYED, not bounced: the question is asked
+         of what the player knows (never the hidden sea, so the grey is no
+         probe of the fog), so it is asked here, in the sheet — the card used
+         to fly, flare and land before a red toast handed it back. */
+      /* ONE SHORT LINE, at peace and at war alike: it is the card's caption in
+         the sheet (three lines of a phone's card at most — deck-ui's
+         aRefusalTakesAThirdLineNeverAnEllipsis), and the same words whatever
+         the hidden sea holds */
+      BLIND() { return 'You know of nothing of theirs at sea.'; },
       can() {
         this.prepare();
         if (!this.openSea()) return { ok: false, why: 'Needs open water' };
         if (S.deck && S.deck.kraken) return { ok: false, why: 'The kraken is still risen.' };
         if (S.kraken && S.kraken.ev) return { ok: false, why: 'The deep is already stirring — wait for it to settle.' };
+        if (!this.knows()) return { ok: false, why: this.BLIND() };
         return { ok: true };
       },
+      /* where the deep answers on the map: the water beside what the player
+         knows of theirs — never a hull the fog hides — at the body's own spot
+         ({x, y}), and the WATERLINE the sky's head comes up out of (`wl`):
+         the body's own, unless the board's top edge leaves too little water
+         above it for the head (HEAD_T tiles) — a sea along the top of the board
+         — when it moves down toward the near shore, as far as the water
+         runs, so the head stands on the sea and never on the off-map black */
+      HEAD_T: 3.7,
+      skyAt() {
+        const f = this.knownFocus();
+        if (!f) return null;
+        let w = { x: f.x, y: f.y };
+        if (!G.openWaterAt(f.x | 0, f.y | 0)) {
+          const t = MapGen.findNear(f.x | 0, f.y | 0, 4, (x, y) => MapGen.onBoard(x, y) && G.openWaterAt(x, y));
+          if (!t) return { x: f.x, y: f.y, wl: f.y };
+          w = { x: t.x + 0.5, y: t.y + 0.5 };
+        }
+        const at = R.krakenBodyAt ? R.krakenBodyAt(w.x, w.y) : w;
+        let wl = at.y + Beasts.KRAKEN.waterline / CFG.TILE;
+        if (wl - 1 < this.HEAD_T) {
+          let y = Math.floor(at.y);
+          while (y + 1 < CFG.H - 1 && G.wetAt(at.x, y + 1.5)) y++;
+          wl = Math.max(wl, Math.min(y + 0.85, 1 + this.HEAD_T));
+        }
+        return { x: at.x, y: at.y, wl };
+      },
+      KZ: { art: 224, fill: 0.75 },   // the view frames the beast's 224px body at ~75% of the screen's width
       warn() { return S.peace && this.knows() ? Deck.TRUCE : null; },
       focus() {
         if (!this.can().ok) return null;
@@ -1756,9 +2000,7 @@
         if (!ok.ok) return ok;
         const t = this.plan();
         // in words that say nothing about what the fog may hold
-        if (!t) return { ok: false, why: S.peace
-          ? 'The truce holds, and you know of nothing of theirs on the open sea or beside it — the deep would take nothing.'
-          : 'You know of nothing of theirs on the open sea or beside it — the deep would not know where to rise.' };
+        if (!t) return { ok: false, why: this.BLIND() };
         // the player knows what it reaches (plan): an attack order's terms
         if (S.peace) G.breakPeace();
         const K = {
@@ -1774,8 +2016,13 @@
         // the beast's art (Assets.FX_SETS) — long since asked, high, if it was held
         this.prepare();
         if (window.R) {
-          if (R.startCardShow) R.startCardShow('krakens_call', {});
-          if (R.flashAt) R.flashAt(0.4, 1.4, '2,10,22');
+          /* THE VIEW IS FRAMED ON THE DEEP FIRST: its spot (the water beside
+             what the player knows of theirs) low in the open band, so the head
+             of the sky's moment rises out of that sea — and after it, the
+             view follows each body that surfaces, and is handed back */
+          const at = this.skyAt();
+          if (at && Deck.view.take('kraken')) Deck.view.aim('kraken', at.x, at.wl, Deck.view.zoomFor(this.KZ.art, this.KZ.fill), 0.72, this.HEAD_T);
+          if (R.startCardShow) R.startCardShow('krakens_call', { at });
           if (R.shakeAt) R.shakeAt(4, 1.4);
         }
         sfx('cardDeep');
@@ -1809,6 +2056,7 @@
         }
       },
       over(K) {
+        if (Deck.view) Deck.view.home('kraken', 500);   // the view, back where the player had it
         if (K.took) G.log('🐙 The kraken sinks back into the deep — ' + K.took + ' of their ships dragged under.', 'note', 6000);
         else if (!K.struck) G.log('🐙 The kraken sinks back into the deep with nothing to show for it.', 'note', 5000);
       },
@@ -1833,32 +2081,101 @@
       },
       drawAct(g, dt, K) {
         const TL = CFG.TILE, W = CFG.W, v = view(2), tt = K.t, end = this.endT(K);
+        const water = R.waterBodyPath ? R.waterBodyPath() : null;
+        const onWater = fn => { g.save(); if (water) g.clip(water); try { fn(); } finally { g.restore(); } };
+        /* the open sea darkens — through the traced coast's own outline, so
+           its edge is the shore the player sees (tile runs alone drew a
+           staircase of dark squares along every diagonal coast) */
         const a = qa(0.42 * Math.min(1, tt / 0.6) * c01((end - tt) / 1.0), 8);
-        if (a > 0) {
+        if (a > 0) onWater(() => {
           g.fillStyle = 'rgba(2,10,24,' + a + ')';
+          const open = (tx, ty) => MapGen.onBoard(tx, ty) && S.map.explored[ty * W + tx] && G.openWaterAt(tx, ty);
+          const tx0 = Math.max(0, v.x0 | 0), tx1 = Math.min(W, Math.ceil(v.x1) + 1);
           for (let ty = Math.max(0, v.y0 | 0); ty <= Math.min(CFG.H - 1, Math.ceil(v.y1)); ty++) {
             let r0 = -1;
-            for (let tx = Math.max(0, v.x0 | 0); tx <= Math.min(W, Math.ceil(v.x1) + 1); tx++) {
-              const on = tx < W && MapGen.onBoard(tx, ty) && S.map.explored[ty * W + tx] && G.openWaterAt(tx, ty);
+            for (let tx = tx0; tx <= tx1; tx++) {
+              // a tile beside the open sea is taken too: the outline decides where the water ends
+              let on = false;
+              if (tx < W) for (let dy = -1; dy <= 1 && !on; dy++) for (let dx = -1; dx <= 1; dx++) if (open(tx + dx, ty + dy)) { on = true; break; }
               if (on && r0 < 0) r0 = tx;
-              if (!on && r0 >= 0) { g.fillRect(r0 * TL, ty * TL, (tx - r0) * TL, TL); r0 = -1; }
+              // (a run still open at the view's edge is laid too — a sea wider
+              // than the screen used to be left undarkened, row by row)
+              if ((!on || tx === tx1) && r0 >= 0) { g.fillRect(r0 * TL, ty * TL, (tx - r0 + (on ? 1 : 0)) * TL, TL); r0 = -1; }
             }
           }
-        }
+        });
         for (const c of K.coast) this.tentacle(g, c, tt, v);
         const live = K.acts.filter(ac => ac.phase !== 'wait' && ac.phase !== 'done');
         for (const ac of live) {
           if (this._host.has(ac)) continue;
           const h = live.find(o => o !== ac && this._host.get(o) === o && Math.hypot(o.x - ac.x, o.y - ac.y) <= this.CLUSTER);
           this._host.set(ac, h || ac);
+          /* each body that surfaces is FRAMED (Deck.view): in the middle of
+             the open band, under the minimap, above the bottom bar — its spot
+             is in sight from here on (the act lights it) */
+          if (!h && Deck.view.holds('kraken') && R.krakenBodyAt) {
+            const at = R.krakenBodyAt(ac.x, ac.y);
+            Deck.view.aim('kraken', at.x, at.y, Deck.view.zoomFor(this.KZ.art, this.KZ.fill), 0.55, 3.4);
+          }
         }
         for (const ac of live) {
           if (!G.visibleAt(ac.x | 0, ac.y | 0)) continue;
-          this.foam(g, ac);
+          // the hull it takes, as it stands, for the take (render state)
+          if (ac.phase === 'rise') this.keepHull(ac);
+          onWater(() => this.foam(g, ac));
           if (this._host.get(ac) === ac) {
-            if (R.drawKrakenAct) R.drawKrakenAct(g, dt, ac); else R.drawKraken(g, ac);
+            if (R.drawKrakenAct) R.drawKrakenAct(g, dt, ac, { untilTake: true }); else R.drawKraken(g, ac);
           } else this.grab(g, ac, this._host.get(ac));
+          this.seized(g, ac, this._host.get(ac));
         }
+      },
+      /* THE TAKE IS SEEN, HULL BY HULL ("four of their ships dragged under"
+         used to be a toast — no hull was ever seen seized). The hull as it
+         last stood is kept (its own sprite and box, render state on the act),
+         and from the blow it is drawn SEIZED: an arm of the deep comes up out
+         of the water beside it and coils over it, the hull heels over toward
+         the beast in hard steps and is dragged down through the surface — cut
+         off at its own waterline, the way a hull goes under — the blow
+         throwing up a splash of water, and a second as the last of it goes. */
+      _hullOf: new WeakMap(),
+      keepHull(ac) {
+        const u = Units.get(ac.id);
+        if (!u || u.hp <= 0 || !R.unitSprite) return;
+        try {
+          const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+          this._hullOf.set(ac, { img, D, x: u.x, y: u.y, top: R.frameTop(u.y, B, D) - u.y * CFG.TILE });
+        } catch (e) {}
+      },
+      SEIZE: { tilt: [0.12, 0.22, 0.32, 0.42], under: 0.95, drag: 0.9 },
+      seized(g, ac, host) {
+        if (ac.phase !== 'thrash') return;
+        const H = this._hullOf.get(ac);
+        if (!H) return;
+        const TL = CFG.TILE, Z = this.SEIZE, t = ac.t;
+        const bst = window.Beasts && Beasts.st(ac), bx = host && host !== ac ? host.x : bst && bst.body ? bst.body.x : ac.x + 1;
+        const side = bx > H.x ? 1 : -1;
+        const hx = snap(H.x * TL), wl = snap(H.y * TL + TL * 0.3);
+        // the blow: water thrown up where the arm came down on it
+        if (R.drawSplash) R.drawSplash(g, hx, wl, t, TL * 0.95, ac.id);
+        const q = c01((t - 0.12) / Z.under), down = snap(TL * Z.drag * q * q);
+        if (q < 1) {
+          const tilt = t < 0.12 ? 0 : side * Z.tilt[Math.min(3, (q * 4) | 0)];
+          g.save();
+          g.beginPath(); g.rect(hx - TL * 2, wl - TL * 3, TL * 4, TL * 3); g.clip();   // under its waterline it is gone
+          g.translate(hx, wl + down);
+          g.rotate(tilt);
+          g.drawImage(H.img, -H.D / 2, H.top - TL * 0.3, H.D, H.D);
+          // the coil: an arm up out of the water on the beast's side, over the hull and down round it
+          const lift = (1 - q) * TL * 0.45, pts = [];
+          for (let i = 0; i <= 16; i++) {
+            const k = i / 16, ang = Math.PI * (0.02 + 1.12 * k);
+            pts.push({ x: side * Math.cos(ang) * TL * 0.6, y: -Math.sin(ang) * (TL * 0.5 + lift) + TL * 0.04, r: Math.max(2, 6.5 - k * 3.4) });
+          }
+          this.arm(g, pts, 2);
+          g.restore();
+        }
+        // …and the sea closing over it as the last of it goes down
+        if (R.drawSplash) R.drawSplash(g, hx, wl, t - (0.12 + Z.under * 0.82), TL * 0.7, ac.id + 7);
       },
       foam(g, ac) {
         const TL = CFG.TILE, x = ac.x * TL, y = ac.y * TL + TL * 0.35;
@@ -1939,17 +2256,18 @@
          the world kraken's own arm. It breaks the surface half a tile out
          from the hull on the far side from the body, rears over it, PLUNGES
          (7) onto it and SPLASHES (8) on the take — R.krakenSlam, once, as it
-         lands — then heaves up out of its own splash where the hull was and
-         goes down after it (Beasts.strikeFrame). */
+         lands — and from the take the hull is drawn SEIZED, the arm coiled
+         over it and dragging it under (seized); the strip's own after-beat
+         (rising out of its splash where the hull was) stands down for it. */
       grabArt(g, ac, host) {
         const side = host && host.x > ac.x ? -1 : 1;
         const arm = ac.phase === 'rise' ? ac.t : ac.phase === 'thrash' ? this.RISE + ac.t : -1;
         const f = arm >= 0 ? Beasts.strikeFrame(arm, this.RISE) : -1;
         if (f < 0) return;
         const before = arm < this.RISE, rx = ac.x + side * 0.55;
-        const x = !before ? ac.x : f === 7 ? rx + (ac.x - rx) * 0.6 : rx;
+        if (!before) { this.slamOnce(ac, ac.x, ac.y, arm - this.RISE); return; }
+        const x = f === 7 ? rx + (ac.x - rx) * 0.6 : rx;
         R.drawTentacle(g, x, ac.y, f, side);
-        if (!before && f === 8) this.slamOnce(ac, ac.x, ac.y, arm - this.RISE);
       },
       // the blow lands: heard and felt ONCE (render state on the act), and
       // only as it lands — an act first seen half over does not slam on sight
@@ -2045,7 +2363,7 @@
           if (f < 0) return;
           const side = c.x >= c.wx ? 1 : -1, before = arm < this.COAST_REAR, on = !before && f === 8 && arm - this.COAST_REAR < 0.26;
           const x = on ? c.x : f === 7 ? c.wx + (c.x - c.wx) * 0.55 : c.wx, y = on ? c.y : f === 7 ? c.wy + (c.y - c.wy) * 0.55 : c.wy;
-          R.drawTentacle(g, x, y, f, side);
+          R.drawTentacle(g, x, y, f, side, arm - this.COAST_REAR);
           if (on) this.slamOnce(c, c.x, c.y, arm - this.COAST_REAR);
           if (!before) this.debris(g, c, tt);
           return;
@@ -2170,51 +2488,30 @@
         ms: 3800, layer: 'sky',
         draw(g, s, p) {
           const W = R.cv.width, T = s.t, mn = Math.min(W, R.cv.height);
-          /* the SEA LINE is the top of the bottom bar, not the canvas's foot:
-             the HUD stands over the last strip of the canvas, and a beast
-             rising behind it is a beast nobody sees (measured once a play) */
+          /* the old SEA LINE (the top of the bottom bar) — only the procedural
+             stand-in still rises from it (measured once a play) */
           if (s.bot == null) {
             const bb = document.getElementById('bottombar');
             s.bot = Math.round(((bb && bb.offsetHeight) || R.bottomReserve || 0) * (R.dpr || 1));
           }
           const H = Math.max(Math.round(R.cv.height * 0.6), R.cv.height - s.bot);
+          // the dark of the deep closing in from every edge, in hard dithered steps
           const k = T < 0.9 ? ease(T / 0.9) : T < 2.9 ? 1 : 1 - ease((T - 2.9) / 0.9);
-          if (k > 0) {
-            for (let b = 0; b < 5; b++) {
-              const w = Math.round(mn * (0.04 + 0.05 * b) * k);
-              g.fillStyle = 'rgba(2,14,30,' + qa(0.55 * k * (1 - b * 0.18), 8) + ')';
-              g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
-            }
-          }
+          if (k > 0 && R.stepVignette) R.stepVignette(g, '2,12,30', k, [0.14, 0.3, 0.44, 0.58], 0.08);
           /* THE BEAST IS THE DRAWN ONE wherever its strips have landed
              (js/beasts.js) — decided while nothing of it shows yet, then kept
              for the show, so a strip landing mid-moment never swaps one
              beast for another in front of the player. The procedural kraken
              is only the stand-in for a strip that has not arrived. */
           if (s.art == null || (!s.art && T < 0.2)) s.art = !!this.skyFrames();
-          if (s.art) this.skyArt(g, s, T, W, H);
+          if (s.art) this.skyArt(g, s, T, W, R.cv.height);
           else this.skyOld(g, s, T, W, H, mn);
-          // THE WORDS
-          if (T > 1.75 && T < 3.1) {
-            const a = qa(Math.min(1, (T - 1.75) / 0.3) * Math.min(1, (3.1 - T) / 0.4), 6);
-            const fs = Math.round(Math.min(40, W / 13));
-            g.globalAlpha = a;
-            g.font = 'bold ' + fs + 'px sans-serif';
-            g.textAlign = 'center'; g.textBaseline = 'top';
-            /* under the minimap, never behind it (the map is DOM over the
-               canvas: on a phone it hid the end of the words) — measured once */
-            if (s.capY == null) {
-              const mw = document.getElementById('miniWrap'), r = mw && mw.offsetHeight ? mw.getBoundingClientRect() : null;
-              const cv = R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { top: 0 };
-              s.capY = r ? Math.round((r.bottom - cv.top) * (R.dpr || 1) + fs * 0.4) : 0;
-            }
-            const ty = Math.max(Math.round(H * 0.2), Math.min(s.capY, Math.round(H * 0.34))), sh2 = Math.max(2, Math.round(fs / 10));
-            g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE DEEP ANSWERS', W / 2 + sh2, ty + sh2);
-            g.fillStyle = '#e6bac6'; g.fillText('THE DEEP ANSWERS', W / 2, ty);
-            g.font = Math.round(fs * 0.45) + 'px sans-serif';
-            g.fillStyle = 'rgba(232,236,255,0.92)';
-            g.fillText('The kraken rises against the rival', W / 2, ty + Math.round(fs * 1.25));
-            g.globalAlpha = 1;
+          // THE WORDS — the acts' one title (R.actTitle), clear of the toasts and the map
+          // — over the head when there is room above it, else under its waterline
+          if (T > 1.75 && T < 3.1 && R.actTitle) {
+            const dpr = R.dpr || 1, low = s.headTop != null && s.headTop < R.actTitleTop() + 120 * dpr;
+            R.actTitle(g, 'THE DEEP ANSWERS', 'The kraken rises against the rival', Math.min(1, (T - 1.75) / 0.3) * Math.min(1, (3.1 - T) / 0.4),
+              { y: low ? s.wlY + 26 * dpr : 0 });
           }
         },
       },
@@ -2429,82 +2726,78 @@
         const j = n - f0 - 1;
         return j < 4 ? 11 - j : -1;
       },
+      /* THE BEAST IN THE SKY'S MOMENT RISES OUT OF THE REAL SEA. It used to
+         come up from the bottom of the screen over whatever was there — the
+         rival's meadow and hall — on a flat navy band with a ruler-straight
+         foam line laid over the grass, while the real sea sat at the top of
+         the frame. Now the view is first framed on the deep's own spot
+         (Deck.view, at the play: `s.at`, chosen from what the player knows)
+         and the head comes up out of THAT water: its waterline is the spot's
+         own row on the screen, its sea (the frame's dark whirl — Beasts.split)
+         is laid on the water only, through the traced coast's outline
+         (R.waterBodyPath), the beast stands up out of its waterline — whole
+         above it, below it only where there is water — and every ring and
+         whirl of foam is on the water. Sized by whole multiples to the room
+         above its waterline; nothing of it on the off-map black. */
       skyArt(g, s, T, W, H) {
         const Q = this.SKY, F = this.skyFrames();
         if (!F) return;
         const sm = g.imageSmoothingEnabled;
         g.imageSmoothingEnabled = false;
-        // THE SHAKE moves the world's camera; the beast in the sky jolts with it
-        const sh = R._shake ? R.shakeOffset(0) : null, zz = (R.cam && R.cam.z || 1) * (R.dpr || 1);
-        if (sh) g.translate(Math.round(sh.x * zz), Math.round(sh.y * zz));
-        /* THE SIZE, by whole multiples: about the width of a phone, and on a
-           wide window as tall as the sea line allows (it is bounded by height
-           there), the head always clear of the top bar */
-        const hk = Math.max(2, Math.min(Math.round(W / 215), Math.round(H / 300)));
+        const TL = CFG.TILE, dpr = R.dpr || 1, zz = (R.cam && R.cam.z || 1) * dpr;
+        const scr = (wx, wy) => ({ x: (wx * TL - R.cam.x) * zz, y: (wy * TL - R.cam.y) * zz });
+        const at = s.at || { x: (R.cam.x + W / zz / 2) / TL, wl: (R.cam.y + H * 0.68 / zz) / TL };
+        const A = scr(at.x, at.wl != null ? at.wl : at.y);
+        // the world's own scale, by a whole number: the head that rises here
+        // is the beast that will surface on the map, as big as it is there
+        const top = Math.round(((R.topReserve || 56) + 8) * dpr);
+        const WLr = 112 + Beasts.KRAKEN.waterline;                        // the waterline's row in the frame
+        const hk = Math.max(2, Math.round(zz));
         const FW = 224 * hk, cell = hk;
-        const armX = a => snap(W / 2 + Math.sign(a.off) * Math.min(Math.abs(a.off) * FW, a.cap * W));
+        const wl = Math.round(A.y);                                       // THE WATERLINE, on the screen
+        const armX = a => snap(cx0 + Math.sign(a.off) * Math.min(Math.abs(a.off) * FW, a.cap * W));
         const hr = T < 0.3 ? 0 : T < 1.3 ? ease((T - 0.3) / 1.0) : T < 2.75 ? 1 : 1 - ease((T - 2.75) / 0.8);
         const bob = Math.round(Math.sin(T * 1.6)) * hk;
-        const hx = snap(W / 2 - FW / 2), restY = H - FW + 26 * hk;
-        const hy = snap(restY + (1 - hr) * 56 * hk + bob);
-        const cx = hx + 112 * hk, cy = hy + 128 * hk;     // the middle of the whirlpool it rises in
-        // the day goes out of the world while it is up: the deep's own navy
-        // laid over everything above the sea line, in hard steps
-        const dim = T < 0.6 ? T / 0.6 : T < 2.9 ? 1 : 1 - (T - 2.9) / 0.8;
-        if (dim > 0) { g.fillStyle = 'rgba(4,8,26,' + qa(0.42 * dim, 6) + ')'; g.fillRect(-64, -64, W + 128, H + 64); }   // wider than the screen: it shakes
-        // THE SEA along the sea line: hard bands in the strip's own navy, a
-        // ragged crest of white water, streaks of foam churning across it
-        const lv = T < 0.5 ? ease(T / 0.5) : T < 3.0 ? 1 : 1 - ease((T - 3.0) / 0.7);
-        if (lv > 0) {
-          const bandH = snapTo(H * 0.17 * lv, cell), top = H - bandH, cols = Math.ceil(W / cell);
-          g.fillStyle = Q.SEA[1]; g.fillRect(0, top, W, bandH);
-          g.fillStyle = Q.SEA[2]; g.fillRect(0, top, W, Math.min(bandH, cell * 6));
-          g.fillStyle = Q.SEA[3]; g.fillRect(0, top, W, Math.min(bandH, cell * 2));
-          const beat = (T * 7) | 0;
-          for (let r = 2; r * cell * 3 < bandH; r++) {
-            const y = top + r * cell * 3, drift = ((T * (r % 2 ? 9 : -7)) | 0);
-            for (let c = 0; c < cols; c++) {
-              const h = hash((c + drift) * 131 + r * 977);
-              if (h % 11) continue;
-              g.fillStyle = h % 3 ? Q.SEA[3] : Q.FOAM[3];
-              g.fillRect((c) * cell, y, cell * (2 + h % 3), cell);
-            }
-          }
-          for (let c = 0; c < cols; c++) {
-            const h = hash(c * 37 + beat * 7919), hh = (1 + h % 3) * cell;
-            g.fillStyle = Q.FOAM[h % 4 === 0 ? 0 : 1]; g.fillRect(c * cell, top - hh + cell, cell, hh);
-            if (h % 5 === 0) { g.fillStyle = Q.FOAM[2]; g.fillRect(c * cell, top + cell, cell, cell * 2); }
-          }
-        }
+        const cx0 = Math.round(Math.max(FW * 0.36, Math.min(W - FW * 0.36, A.x)));
+        const hx = snap(cx0 - FW / 2);
+        const hy = snap(wl - WLr * hk + (1 - hr) * Beasts.KRAKEN.sinkPx * hk + bob);
+        const cx = hx + 112 * hk;
+        s.wlY = wl; s.headTop = wl - (WLr - 10) * hk;   // where the words may go (show.draw)
+        // the water (the traced coast, in this screen's own transform) and the board
+        const wp = R.waterBodyPath ? R.waterBodyPath() : null;
+        const B = R.boardPx(), b0 = scr(B.x0 / TL, B.y0 / TL), b1 = scr(B.x1 / TL, B.y1 / TL);
+        const clipWater = () => { if (!wp) return; g.setTransform(zz, 0, 0, zz, -R.cam.x * zz, -R.cam.y * zz); g.clip(wp); g.setTransform(1, 0, 0, 1, 0, 0); };
+        const onWater = fn => { g.save(); clipWater(); try { fn(); } finally { g.restore(); } };
+        g.save();
+        g.beginPath(); g.rect(Math.round(b0.x), Math.round(b0.y), Math.round(b1.x - b0.x), Math.round(b1.y - b0.y)); g.clip();
         // THE ARMS behind the head, out of the far side of its whirlpool
         const arm = (a, front) => {
           const f = this.skyArmFrame(T, a);
           if (f < 0) return;
-          const ka = Math.max(2, hk + a.dk), img = F.arm[f];
-          const bx = armX(a), by = front ? H - 4 * ka : hy + 98 * hk;
-          g.save();
-          g.translate(bx, by);
-          if (a.mir) g.scale(-1, 1);
-          g.drawImage(img, -Q.BASE[0] * ka, -Q.BASE[1] * ka, img.width * ka, img.height * ka);
-          g.restore();
+          const ka = Math.max(2, hk + a.dk), fr = F.arm[f], sp = f >= 7 && f <= 10 ? Beasts.split(fr) : null, img = sp ? sp.dry : fr;
+          const bx = armX(a), by = front ? wl + 2 * ka : hy + 98 * hk;
+          const draw = () => {
+            g.save();
+            g.translate(bx, by);
+            if (a.mir) g.scale(-1, 1);
+            g.drawImage(img, -Q.BASE[0] * ka, -Q.BASE[1] * ka, img.width * ka, img.height * ka);
+            g.restore();
+          };
+          // up out of the water: whole above the waterline, under it only on the water
+          g.save(); g.beginPath(); g.rect(0, -H, W, wl + H); g.clip(); draw(); g.restore();
+          onWater(() => { g.beginPath(); g.rect(0, wl, W, H); g.clip(); draw(); });
+          // its blow throws WATER, never the strip's shards of ice
+          if (sp && a.slam && R.drawSplash) { g.save(); g.translate(bx, by); g.scale(ka / 2, ka / 2); R.drawSplash(g, 0, 0, T - a.slam, 30, 77); g.restore(); }
         };
         if (hr > 0) for (const a of Q.ARMS) if (a.back) arm(a, false);
-        // THE HEAD: surfacing from the middle out, its own frames writhing
+        // THE HEAD: up out of its waterline, its own frames writhing
         if (hr > 0) {
-          const fi = ((T * Q.HEAD_FPS) | 0) % F.head.length, fr = F.head[fi];
-          const rr = 18 + 160 * hr;                         // the hole in the sea, art px
-          g.save();
-          if (hr < 0.999) {
-            g.beginPath();
-            for (let yy = 0; yy < 224; yy += 2) {
-              const dy = (yy + 1 - 128) / (rr * 0.9);
-              if (dy <= -1 || dy >= 1) continue;
-              const half = Math.round(rr * Math.sqrt(1 - dy * dy));
-              g.rect(hx + (112 - half) * hk, hy + yy * hk, 2 * half * hk, 2 * hk);
-            }
-            g.clip();
-          }
-          g.drawImage(fr, hx, hy, FW, FW);
+          const fi = ((T * Q.HEAD_FPS) | 0) % F.head.length, fr = F.head[fi], sp = Beasts.split(fr);
+          const step = v => Math.round(Math.max(0, Math.min(1, v)) * 4) / 4;
+          // its sea — the dark whirl and the foam — on the water only
+          onWater(() => { g.globalAlpha = step(hr * 1.6); g.drawImage(sp ? sp.wet : fr, hx, snap(wl - WLr * hk + bob), FW, FW); });
+          const body = sp ? sp.dry : fr;
+          g.save(); g.beginPath(); g.rect(0, -H, W, wl + H); g.clip(); g.drawImage(body, hx, hy, FW, FW);
           /* THE EYES OPEN: lids over the art's own eyes — an upper lid in the
              lit hide, a lower in the shadow, each edged in black — drawn back
              from the middle row in hard steps until the iris burns through */
@@ -2521,14 +2814,8 @@
             }
           }
           g.restore();
-          // the white water at the edge of the hole as it widens
-          if (hr < 0.98) {
-            g.fillStyle = Q.FOAM[1];
-            for (let i = 0; i < 72; i++) {
-              const an = i / 72 * Math.PI * 2, j = (hash(i * 31 + ((T * 12) | 0)) % 3) * hk;
-              g.fillRect(snapTo(cx + Math.cos(an) * (rr * hk + j), hk), snapTo(cy + Math.sin(an) * (rr * 0.9 * hk + j), hk), hk * 2, hk);
-            }
-          }
+          const deep = step((hr - 0.5) * 2);
+          if (deep > 0) onWater(() => { g.beginPath(); g.rect(0, wl, W, H); g.clip(); g.globalAlpha = deep; g.drawImage(body, hx, hy, FW, FW); });
           // …and the light they throw, ADDED: a breathing ring of dots, and
           // the flare that rolls off each eye as it opens
           if (eo > 0) {
@@ -2555,21 +2842,21 @@
         if (T >= SL && !s.slam) {
           s.slam = 1;
           if (R.shakeAt) R.shakeAt(10, 0.7);
-          if (R.flashAt) R.flashAt(0.2, 0.3, '206,232,246');   // the wall of water, white for a blink
           sfx('cardTake'); sfx('splash');
         }
         // WHITE WATER: rings of dots rolling out over the sea — off the head
-        // as it breaks the surface, off the slam — and the spray thrown up
-        const rings = (x, y, t0, n, R0, R1, life, sz) => {
+        // as it breaks the surface, off the slam — on the water only; and the
+        // spray thrown up into the air
+        const rings = (x, y, t0, n, R0, R1, life, sz) => onWater(() => {
           for (let r = 0; r < n; r++) {
             const q = (T - t0 - r * 0.14) / life;
             if (q <= 0 || q >= 1) continue;
             g.fillStyle = 'rgba(227,243,253,' + qa(0.9 * (1 - q), 4) + ')';
             ring(g, x, y, R0 + (R1 - R0) * ease(q), 64, 0.3, sz);
           }
-        };
-        rings(cx, H - 6 * hk, 0.35, 3, 70 * hk, 190 * hk, 1.3, hk);
-        const ka = Math.max(2, hk + slamA.dk), sx0 = armX(slamA), sy0 = H - 4 * ka;
+        });
+        rings(cx, wl, 0.35, 3, 70 * hk, 190 * hk, 1.3, hk);
+        const ka = Math.max(2, hk + slamA.dk), sx0 = armX(slamA), sy0 = wl + 2 * ka;
         rings(sx0, sy0, SL, 3, 20 * ka, 120 * ka, 1.0, ka);
         const spray = (x0, y0, t0, n, spread, up, seed, sz) => {
           for (let k = 0; k < n; k++) {
@@ -2585,18 +2872,18 @@
           }
           g.globalAlpha = 1;
         };
-        spray(cx, H - 10 * hk, 0.4, 56, 150 * hk, H * 0.55, 700, hk);
-        spray(sx0, sy0, SL, 70, 120 * ka, H * 0.8, 900, ka);
-        // the whirl closing over it as it goes down
-        if (T > 2.75 && hr > 0) {
+        spray(cx, wl - 4 * hk, 0.4, 56, 150 * hk, (wl - top) * 0.7, 700, hk);
+        spray(sx0, sy0, SL, 70, 120 * ka, (wl - top) * 0.9, 900, ka);
+        // the whirl closing over it as it goes down, on the water
+        if (T > 2.75 && hr > 0) onWater(() => {
           g.fillStyle = Q.FOAM[1];
           g.globalAlpha = qa(0.9 * hr, 4);
           for (let i = 0; i < 40; i++) {
             const an = i / 40 * Math.PI * 2 + T * 3, rr2 = (40 + 90 * hr) * hk * (0.7 + 0.3 * ((i % 3) / 2));
-            g.fillRect(snapTo(cx + Math.cos(an) * rr2, hk), snapTo(H - 8 * hk + Math.sin(an) * rr2 * 0.3, hk), hk * 2, hk);
+            g.fillRect(snapTo(cx + Math.cos(an) * rr2, hk), snapTo(wl + Math.sin(an) * rr2 * 0.3, hk), hk * 2, hk);
           }
-          g.globalAlpha = 1;
-        }
+        });
+        g.restore();
         g.imageSmoothingEnabled = sm;
       },
     },

@@ -130,7 +130,10 @@ Object.assign(Deck, {
         // take the rest of the frame's world block down with it
         try { fx.impact(st); } catch (e) { console.error('card strike', st.id, e); }
       }
-    } else if (st.t >= fx.DOWN_S) S.deck.strike = null;
+    } else if (st.t >= fx.DOWN_S) {
+      S.deck.strike = null;
+      if (fx.landed) { try { fx.landed(st); } catch (e) { console.error('card strike', st.id, e); } }
+    }
   },
   // the ground a card's act keeps in sight while it plays (G.updateVisibility
   // lights only tiles already explored — a card never charts the map)
@@ -447,6 +450,7 @@ Object.assign(Deck.FX, {
         Units.damage(u, this.UNIT, 0, 'P');
         if (u.hp <= 0) slain++;
       }
+      this.scar(st);
       // the blow on the ground: the bombard's own scorch and dust, the
       // event's dust ring, the birds; the flash and the shake are the sky's
       // (R.starAct, the frame it lands)
@@ -462,6 +466,37 @@ Object.assign(Deck.FX, {
             (razed && slain ? ', ' : '') + (slain ? slain + ' slain' : '') : '') + '.'
         : '☄️ The star strikes — and finds nothing of theirs there.', 'note', 6000);   // the player's blow: never the alarm
     },
+    /* THE CRATER IT LEAVES (the playtest: "the aftermath leaves only ordinary
+       building rubble, with no crater"). The tile it struck becomes the
+       game's own scar — T.RUIN, on Bld.removeToRuin's RUIN_FADE_DAYS clock
+       (G.scheduleRevert) — and S.deck.craters remembers that a star made it,
+       so the ground there wears the star's own crater art (R.cardCraterPaint)
+       for as long as the rubble lasts: it heals with it, a building raised
+       on it clears it, and it rides the save. Only open ground takes it
+       (grass, or rubble already there): never a tile something stands on,
+       never water, a wood or worked ground. No RNG; at most CRATERS kept. */
+    CRATERS: 6,
+    scar(st) {
+      const x = Math.floor(st.x), y = Math.floor(st.y);
+      if (!MapGen.onBoard(x, y) || Bld.at(x, y)) return;
+      const i = MapGen.idx(x, y), t = S.map.terrain[i];
+      if (t !== T.GRASS && t !== T.RUIN) return;
+      S.map.terrain[i] = T.RUIN;
+      if (S.map.resAmount) S.map.resAmount[i] = 0;
+      G.scheduleRevert(i);
+      const run = Deck.run(), L = (run.craters || []).filter(c => c.x !== x || c.y !== y)
+        .filter(c => MapGen.inB(c.x, c.y) && S.map.terrain[MapGen.idx(c.x, c.y)] === T.RUIN);
+      L.push({ x, y, n: st.n, hot: true });
+      run.craters = L.slice(-this.CRATERS);
+      if (window.R && R.updateTile) R.updateTile(x, y);
+    },
+    // the strike's last beat: its crater cools (repainted — its art turns cold)
+    landed(st) {
+      const L = S.deck && S.deck.craters, c = L && L.find(k => k.n === st.n && k.hot);
+      if (!c) return;
+      c.hot = false;
+      if (window.R && R.drawTileAt && R.terrainCache) R.drawTileAt(c.x, c.y);
+    },
   },
 
   /* ENLIGHTENMENT — Dragonfire: the black dragon flies in to the chosen
@@ -476,15 +511,32 @@ Object.assign(Deck.FX, {
      — kills, with the chief's ledger — where the event's are taken off the
      board without a word. The rolled dragon's avail/done are never touched,
      so a run that rolled one still has it; while either dragon is on the
-     wing the card waits (kept). */
+     wing the card waits (kept).
+     THE ACT (the playtest's verdict was "good, not epic": 2.3s on screen, the
+     camera pulling OUT until the beast was a sprite over a small town, the
+     head and a wing drawn across the off-map black, a soft spotlight and a
+     warm wash): its SHADOW sweeps the whole screen first with a shake and
+     the title (show, below); the view goes IN on the line of fire whatever
+     zoom the player had (cam) so the beast fills most of the screen's width;
+     it comes in from the BOARD's side — never across the void, and every
+     pixel of it is clipped to the board (js/beasts.js) — DIVES, strafes the
+     line slower so the fire walks it building by building with a shake at
+     each that catches, and WHEELS once overhead, back over the burning town,
+     climbing away — about four seconds of beast on screen. Then the view is
+     handed back. */
   dragonfire: {
     at: 'target', radius: 3, inner: 2.5,
     narrates: true,       // its ash says what it did (G.dragonTick): no landing toast (Deck.say)
-    FLY_S: 1.2,           // the fly-in: G.dragonTick flies 9 tiles/s and breathes 2.5 short of its mark
+    FLY_S: 1.35,          // the dive: G.dragonTick flies 9 tiles/s and breathes 2.5 short of its mark
+    STRAFE: 2.6, BURN_S: 2.1,   // the strafe: 2.6 tiles/s for 2.1s — the breath walks the line
+    TURN_S: 0.3, WHEEL_S: 1.7,  // the wheel: on past the line's end, then back over the town, climbing out
     UNIT_R: 3, BLD_R: 2.5, BLD: 1200, TC_CAP: 0.5, SIGHT: 4,
     // the strafe lays its fire from 0.4 tiles short of its mark to ~5 past it
-    // (3.2 tiles/s for 1.7s): aimed 2.3 short, the line runs THROUGH the ground chosen
-    LEAD: 2.3,
+    // (2.6 tiles/s for 2.1s): aimed 2.33 short, the line runs THROUGH the ground chosen
+    LEAD: 2.33,
+    // the side it comes in from: the BOARD's side (the far side of the ground
+    // from the nearer edge), so its run-in is over the world, never the void
+    dirFor(x) { return x < CFG.W / 2 ? -1 : 1; },
     can() {
       if (S.dragon && S.dragon.ev) return { ok: false, why: 'The dragon is already on the wing.' };
       return { ok: true };
@@ -501,12 +553,64 @@ Object.assign(Deck.FX, {
       this.prepare();
       Deck.truce(tgt, this.UNIT_R, this.BLD_R);
       if (!S.dragon) S.dragon = { avail: false, done: false, ev: null, ash: [], fire: [] };
-      // it comes in from the nearer side of the world, as the event's does
-      const dir = tgt.x < CFG.W / 2 ? 1 : -1, tx = tgt.x - dir * this.LEAD;
+      const dir = this.dirFor(tgt.x), tx = tgt.x - dir * this.LEAD;
       S.dragon.ev = { phase: 'fly', t: 0, x: tx - dir * (2.5 + 9 * this.FLY_S), y: tgt.y - 3, tx, ty: tgt.y, dir,
         victims: [], card: { x: tgt.x, y: tgt.y } };
+      // the act's sky: the shadow's sweep and the title (render state, read off the act's own clock)
+      if (window.R && R.startCardShow) R.startCardShow('dragonfire', { ev: S.dragon.ev });
       Deck.say('🐉 You called, and the black dragon answered.');
       return { ok: true, x: tgt.x, y: tgt.y, lands: this.FLY_S };
+    },
+    /* THE SKY OF THE ACT, on the act's own clock (sim time — the beast's
+       clock — so a fast game runs it fast and a paused one holds it): the
+       dragon's SHADOW, cast from high above, sweeps the whole screen in the
+       way it flies — its own silhouette blown up by a whole number, hard
+       edged, laid on the board only — with a shake and the roar; then the
+       title goes up over the ground under the line of fire while it dives. */
+    SWEEP: { t0: 0.04, t1: 0.86, wide: 1.3, alpha: 0.55 },
+    show: {
+      ms: 12000, layer: 'sky',
+      draw(g, s, p) {
+        const ev = S.dragon && S.dragon.ev;
+        if (!ev || ev !== s.ev) { s.t = Math.max(s.t, s.ms / 1000); return; }   // the act is over: so is its sky
+        // the act's own clock through its phases
+        if (ev.phase === 'fly') s.flyT = ev.t;
+        const T = ev.phase === 'fly' ? ev.t : (s.flyT || this.FLY_S) + (ev.phase === 'burn' ? ev.t : this.BURN_S + ev.t);
+        const Rr = window.R, W = Rr.cv.width, H = Rr.cv.height, dpr = Rr.dpr || 1, z = Rr.cam.z * dpr, TL = CFG.TILE;
+        const SW = this.SWEEP, fly = window.Beasts && Beasts.ready('dragon');
+        if (fly && T >= SW.t0 && T < SW.t1) {
+          if (!s.swept) {
+            s.swept = 1;
+            const bst = Beasts.st(ev);
+            if (!bst.roared) { bst.roared = true; if (typeof Sound !== 'undefined') Sound.play('roar'); }
+            if (Rr.shakeAt) Rr.shakeAt(7, 0.9);
+            if (Rr.startle) Rr.startle(Rr.cam.x / TL + Rr.viewW() / Rr.cam.z / TL / 2, Rr.cam.y / TL + Rr.viewH() / Rr.cam.z / TL / 2, 24);
+          }
+          const fr = fly[((T * 12) | 0) % fly.length], sil = Beasts.silhouette(fr);
+          const K = Math.max(2, Math.round(SW.wide * W / 250)), sw = fr.width * K, sh = fr.height * K;
+          const q = (T - SW.t0) / (SW.t1 - SW.t0), dir = ev.dir < 0 ? -1 : 1;
+          const cx = dir > 0 ? -sw * 0.5 + (W + sw) * q : W + sw * 0.5 - (W + sw) * q, cy = H * (0.36 + 0.1 * q);
+          // only on the board: the black beyond it stays black
+          const B = Rr.boardPx();
+          const bx0 = (B.x0 - Rr.cam.x) * z, by0 = (B.y0 - Rr.cam.y) * z, bx1 = (B.x1 - Rr.cam.x) * z, by1 = (B.y1 - Rr.cam.y) * z;
+          g.save();
+          g.beginPath(); g.rect(Math.round(bx0), Math.round(by0), Math.round(bx1 - bx0), Math.round(by1 - by0)); g.clip();
+          g.imageSmoothingEnabled = false;
+          g.globalAlpha = SW.alpha;
+          g.translate(Math.round(cx), Math.round(cy));
+          if (dir < 0) g.scale(-1, 1);
+          g.drawImage(sil, -Math.round(sw / 2), -Math.round(sh / 2), sw, sh);
+          g.restore();
+        }
+        // THE TITLE: up as the shadow passes, held through the dive, down as the fire walks
+        const a = T < 0.35 ? 0 : T < 0.6 ? (T - 0.35) / 0.25 : T < 2.5 ? 1 : T < 2.85 ? 1 - (T - 2.5) / 0.35 : 0;
+        if (a > 0 && Rr.actTitle) {
+          // under the line of fire if there is room above the bottom bar, else at the top
+          const lineY = (ev.card.y * TL - Rr.cam.y) * z, bot = H - (Rr.bottomReserve || 0) * dpr;
+          const lowY = Math.round(lineY + 1.3 * TL * z);
+          Rr.actTitle(g, 'THE BLACK DRAGON ANSWERS', 'Fire on the ground you chose', a, { y: lowY + 110 * dpr < bot ? lowY : 0 });
+        }
+      },
     },
     /* the breath begins: who stands in the fire now burns, and what it
        reaches is marked to catch — each building CATCHES AS THE LINE OF FIRE
@@ -522,21 +626,36 @@ Object.assign(Deck.FX, {
       this.burnTick(ev);
       if (typeof Sound !== 'undefined') Sound.play('impact');
     },
-    /* THE VIEW TAKES THE BEAST IN (DeckUI.frame calls this every frame; all
-       of it render state, never in S). The dragon is ~8 tiles wingtip to
-       wingtip, its body hangs ~4 behind its jaws, and it comes in from 13
-       tiles off — and a phone at the play zoom shows about 8 tiles across,
-       so the whole fly-in and the first beat of the breath played OFF the
-       screen and the beast slid in already burning. While the card's dragon
-       is on the wing the view eases OUT (never in) and over just enough to
-       hold the line of fire and the beast above it; once it has gone and its
-       fire has caught, the view eases back to the zoom and the place the
-       player had. A touch or the wheel gives the camera back on the spot,
-       and it is never yanked back after (the tutorial's borrowed zoom keeps
-       the same terms). A view that already holds it all is never touched. */
-    CAM: { w: 12, up: 7.5, down: 2, lead: 2.3, glide: 0.7, hold: 0.7 },
+    /* THE VIEW GOES IN ON THE FIRE (DeckUI.frame calls this every frame; all
+       of it render state, never in S). The beast is drawn at one whole scale
+       (js/beasts.js) — ~250 world px wingtip to wingtip — so the ZOOM is what
+       makes it big: whatever zoom the player had, the view glides to `z`
+       (1.3 on a phone, where the beast spans ~83% of the screen's width;
+       on a wide window up to `zMax`, the width it should fill) and TRACKS
+       the act: it waits at the head of the line while the beast dives into
+       the frame, follows the fire along the line as it walks it, and holds
+       on the line's middle while the beast wheels overhead. Once the act has
+       gone and its fire has caught, the view glides back to the zoom and the
+       place the player had. A touch or the wheel gives the camera back on
+       the spot, and it is never yanked back after (the tutorial's borrowed
+       zoom keeps the same terms). Reduced motion borrows nothing. */
+    CAM: { z: 1.3, zMax: 2.6, fill: 0.66, art: 250, rise: 2.0, back: 0.8, glide: 0.75, follow: 4.2, hold: 0.55 },
     _cam: null, _camFor: null,
+    // where the view looks while the act runs (tiles): the head of the line,
+    // the fire walking it, the middle of it for the wheel
+    camAim(ev) {
+      const c = ev.card, d = ev.dir < 0 ? -1 : 1, back = this.CAM.back;
+      if (ev.phase === 'leave') return { x: c.x, y: c.y - this.CAM.rise };
+      // the beast's wings to the flame it lands, in the frame: the view rides
+      // `back` tiles behind its point, from the first breath to the last
+      const b0 = c.x - d * (this.LEAD + 2.5), b1 = b0 + d * this.STRAFE * this.BURN_S;
+      const lo = Math.min(b0, b1) - d * back, hi = Math.max(b0, b1) - d * back;
+      return { x: Math.max(lo, Math.min(hi, ev.x - d * back)), y: c.y - this.CAM.rise };
+    },
     cam(dt) {
+      // the other acts' borrowed views ride this one call too (Deck.view —
+      // js/deckfx-rival.js: Kraken's Call, Spy in the Hall), outside R.draw
+      if (Deck.view && Deck.view.tick) Deck.view.tick(dt);
       const ev = S.dragon && S.dragon.ev, Rr = window.R;
       if (!Rr || !Rr.cam || !Rr.viewW) return;
       let c = this._cam;
@@ -545,32 +664,39 @@ Object.assign(Deck.FX, {
         if (!ev || !ev.card || this._camFor === ev) return;
         this._camFor = ev;
         if (window.DeckUI && DeckUI._calm && DeckUI._calm()) return;
-        const C = this.CAM, TL = CFG.TILE, z = Rr.cam.z, vw = Rr.viewW(), vh = Rr.viewH();
-        const top = Rr.topReserve || 0, bot = Rr.bottomReserve || 0, band = Math.max(160, vh - top - bot);
-        // the act's box: from the beast's middle at the first breath (7 tiles
-        // back up its flight) to the far end of the line it lays (2.7 on), a
-        // tile spare each side, and from its wings in the sky to the flames
-        const cx = ev.card.x - ev.dir * C.lead, cy = ev.card.y - (C.up - C.down) / 2;
-        const bx0 = cx - C.w / 2, bx1 = cx + C.w / 2, by0 = ev.card.y - C.up, by1 = ev.card.y + C.down;
-        const vx0 = Rr.cam.x / TL, vx1 = (Rr.cam.x + vw / z) / TL, vy0 = (Rr.cam.y + top / z) / TL, vy1 = (Rr.cam.y + (vh - bot) / z) / TL;
-        if (bx0 >= vx0 && bx1 <= vx1 && by0 >= vy0 && by1 <= vy1) return;
-        const tz = Math.max(Rr.minZoom ? Rr.minZoom() : 0.5, Math.min(z, vw / (C.w * TL), band / ((C.up + C.down) * TL)));
-        const home = { x: Rr.cam.x, y: Rr.cam.y, z };
-        const at = zz => ({ x: cx * TL - vw / zz / 2, y: cy * TL - (top + band / 2) / zz, z: zz });
-        c = this._cam = { map: S.map, ev, t: 0, from: home, to: at(tz), home, back: false, gone: 0 };
+        const C = this.CAM, vw = Rr.viewW();
+        const zz = Math.min(Rr.ZOOM_MAX || 3.5, Math.max(Rr.minZoom ? Rr.minZoom() : 0.5, C.z, Math.min(C.zMax, C.fill * vw / C.art)));
+        c = this._cam = { map: S.map, ev, t: 0, home: { x: Rr.cam.x, y: Rr.cam.y, z: Rr.cam.z }, z0: Rr.cam.z, z: zz, back: false, gone: 0, at: null };
         this._camArm();
       }
+      dt = Math.min(0.1, dt || 0);
       c.t += dt;
+      const TL = CFG.TILE, vw = Rr.viewW(), vh = Rr.viewH();
+      const top = Rr.topReserve || 0, bot = Rr.bottomReserve || 0, band = Math.max(160, vh - top - bot);
       if (!c.back) {
         if (S.dragon && S.dragon.ev === c.ev) c.gone = 0;
-        else if ((c.gone += dt) > this.CAM.hold) { c.back = true; c.t = 0; c.from = { x: Rr.cam.x, y: Rr.cam.y, z: Rr.cam.z }; c.to = c.home; }
+        else if ((c.gone += dt) > this.CAM.hold) { c.back = true; c.t = 0; c.from = { x: Rr.cam.x, y: Rr.cam.y, z: Rr.cam.z }; }
       }
       const k = Math.min(1, c.t / this.CAM.glide), e = k * k * (3 - 2 * k);
-      Rr.cam.z = c.from.z + (c.to.z - c.from.z) * e;
-      Rr.cam.x = c.from.x + (c.to.x - c.from.x) * e;
-      Rr.cam.y = c.from.y + (c.to.y - c.from.y) * e;
+      if (c.back) {
+        const h = c.home;
+        Rr.cam.z = c.from.z + (h.z - c.from.z) * e;
+        Rr.cam.x = c.from.x + (h.x - c.from.x) * e;
+        Rr.cam.y = c.from.y + (h.y - c.from.y) * e;
+        if (Rr.clampCam) Rr.clampCam();
+        if (k >= 1) this._cam = null;
+        return;
+      }
+      // going in: the zoom glides, the eye eases after the act (a damped follow)
+      const z = c.z0 + (c.z - c.z0) * e;
+      const aim = c.ev && S.dragon && S.dragon.ev === c.ev ? this.camAim(c.ev) : (c.at || this.camAim(c.ev));
+      if (!c.at) c.at = { x: (Rr.cam.x + vw / Rr.cam.z / 2) / TL, y: (Rr.cam.y + (top + band / 2) / Rr.cam.z) / TL };
+      const f = 1 - Math.exp(-dt * this.CAM.follow * (k < 1 ? 1.6 : 1));
+      c.at.x += (aim.x - c.at.x) * f; c.at.y += (aim.y - c.at.y) * f;
+      Rr.cam.z = z;
+      Rr.cam.x = c.at.x * TL - vw / z / 2;
+      Rr.cam.y = c.at.y * TL - (top + band / 2) / z;
       if (Rr.clampCam) Rr.clampCam();
-      if (c.back && k >= 1) this._cam = null;
     },
     // the player's own hand on the camera ends the borrowing, then and there
     _camArm() {
@@ -582,19 +708,28 @@ Object.assign(Deck.FX, {
     },
     // the fire front (where G.dragonTick lays its flames, `reach` 2.1 ahead of
     // the strafe) reaching a marked building's footprint sets it alight; the
-    // breath's end catches whatever the line ran past to one side (`all`)
+    // breath's end catches whatever the line ran past to one side (`all`).
+    // Each one that catches in sight SHAKES the view — the fire walks the
+    // line building by building, and every one of them is felt (a picture:
+    // R.shakeAt is render state)
     REACH: 2.1,
     burnTick(ev, all) {
       if (!ev.catch || !ev.catch.length) return;
       const front = ev.x + ev.dir * this.REACH;
+      let felt = 0;
       ev.catch = ev.catch.filter(id => {
         const b = Bld.get(id);
         if (!b || b.hp <= 0 || !Deck.foe(b.owner)) return false;
         const s = Bld.size(b);
         if (!all && (ev.dir > 0 ? front < b.x - 0.5 : front > b.x + s + 0.5)) return true;
         Deck.hitBld(b, this.BLD, this.TC_CAP, 'dragonfire');
+        if (G.visibleAt(b.x, b.y)) felt++;
         return false;
       });
+      if (felt && window.R && R.shakeAt) {
+        R.shakeAt(4 + Math.min(4, felt * 2), 0.45);
+        if (typeof Sound !== 'undefined') Sound.play('impact');
+      }
     },
   },
 });
