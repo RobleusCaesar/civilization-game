@@ -902,14 +902,21 @@ await p.evaluate(({ TOWN }) => {
       }
       R.drawCardShows = dcs;
       R.cardShows = [];
-      // every running card's look: drawn while it runs, gone when it ends
+      // every running card's look: drawn while it runs, gone when it ends —
+      // in the air (drawLive) or ON a building, in the building loop (drawBld:
+      // Stone Skin's sleeve, under whoever stands in front of the wall) — the
+      // building loop draws only what is in sight, so the sight is brought up
+      // to the moved hall first, as the frame loop would
+      G.updateVisibility();
       for (const id of ['watchfires', 'stone_skin', 'unbreakable_hall']) {
-        const d = Deck.FX[id], dl = d.drawLive;
+        const d = Deck.FX[id], dl = d.drawLive, db = d.drawBld;
         let n = 0;
         d.drawLive = function () { const o0 = ops; const v = dl.apply(this, arguments); n += ops - o0; return v; };
+        if (db) d.drawBld = function () { const o0 = ops; const v = db.apply(this, arguments); n += ops - o0; return v; };
         R._liveErr = 0;
         for (let i = 0; i < 6; i++) R.draw(1 / 30);
         d.drawLive = dl;
+        if (db) d.drawBld = db;
         out.live[id] = R._liveErr ? -1 : n;
       }
       // a blow glances off the skin and the ward flares: the looks answer it
@@ -1106,6 +1113,79 @@ await p.evaluate(({ TOWN }) => {
     `open ground: the full road ${r.open}; a channel across it cuts it short, never crossed ${r.wet} (${r.wetN}); a row of people: the next row ${r.crowd}`);
   ck('andWithNoRoadTheLoadStillComes', r.none && r.noneDraws, r.threw || `no row can carry the cart: the load comes down in the card's light, a pile of ${r.pilePx} solid px`);
   ck('aChargeKeptUnderAnotherKeyIsStillSeen', r.pact && r.pactGone, `the pact's bands under 'pact' wear the card's chip ${r.pact}; gone with the charge ${r.pactGone}`);
+}
+
+// ---------------- 11. THE LOOKS SPEAK THE HOUSE STYLE (the five-player playtest's judges) ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __tw.fresh('town-style');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 0.5);
+    const town = [__tw.bld('P', 'house', 6, 8), __tw.bld('P', 'house', 11, 10), __tw.bld('P', 'barracks', 12, 6)];
+    for (const z of town) z.hp = z.maxhp = 5000;
+    // every mark a card lays ON THE FRAME (R.cv's own context — a scratch
+    // canvas may blend as it likes), with its composite, alpha and colour
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage, rc = P2.rect;
+    let depth = 0, marks = [], rects = null;
+    P2.fillRect = function () { if (depth && this.canvas === R.cv) marks.push(['f', this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return fr.apply(this, arguments); };
+    P2.drawImage = function () { if (depth && this.canvas === R.cv) marks.push(['d', this.globalCompositeOperation, this.globalAlpha]); return di.apply(this, arguments); };
+    P2.rect = function () { if (rects) rects.push(Array.from(arguments)); return rc.apply(this, arguments); };
+    const inCard = (o, k) => { const f = o && o[k]; if (!f) return () => {}; o[k] = function () { depth++; try { return f.apply(this, arguments); } finally { depth--; } }; return () => { o[k] = f; }; };
+    const SK = Deck.FX.stone_skin;
+    try {
+      /* (a) STONE SKIN IS STONE, NOT LIGHT: the play's wave and casing, the
+         eight days' sleeve and sheen, and a blow glancing off — every mark
+         laid on the frame is opaque and source-over. The first cut ADDED cold
+         white ('lighter') at fractional alpha: mint over the meadow, a
+         "selected" ring round every roof, a flat white bar of a sheen. */
+      const undo = [inCard(SK.show, 'draw'), inCard(SK.show, 'drawBld'), inCard(SK, 'drawLive'), inCard(SK, 'drawBld')];
+      try {
+        Deck.play('stone_skin');
+        const sh = R.cardShows.find(s => s.id === 'stone_skin');
+        for (let k = 0; k <= 16 && sh; k++) {
+          sh.t = k / 16 * sh.ms / 1000 * 0.98;
+          if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+          R.draw(0);
+        }
+        R.cardShows = [];
+        const pn = performance.now;
+        try {
+          for (let k = 0; k < 24; k++) { performance.now = () => 1000 + k * 150; R.draw(1 / 30); }   // the sheen's turn comes round
+          performance.now = () => 9000;
+          Combat.hitBuilding(town[0], 40);
+          R.draw(1 / 30);
+          const f = R.floats[R.floats.length - 1];
+          out.dyed = !!SK.HIT && !!f && f.txt === '-20' && f.col === SK.HIT;
+          out.floatCol = f && f.col;
+          performance.now = () => 9150;
+          const m0 = marks.length;
+          R.draw(1 / 30);
+          const ST = SK.STONE || [];
+          out.chips = marks.slice(m0).filter(m => m[0] === 'f' && ST.includes(m[3])).length;
+        } finally { performance.now = pn; }
+      } finally { undo.forEach(f => f()); }
+      out.marks = marks.length;
+      out.light = marks.filter(m => m[1] !== 'source-over' || m[2] < 1).map(m => m.join(':')).slice(0, 4);
+      /* (b) THE SHEEN IS A STEPPED DIAGONAL, one cell a row — never a bar */
+      rects = [];
+      const a = Deck._townTX.art(town[2]);
+      if (SK.sheen) SK.sheen(R.cv.getContext('2d'), town[2], a, 0.5);
+      const PX = 2, byRow = new Map();
+      for (const [x, y, w, h] of rects) if (w === PX && h === PX) byRow.set(y, (byRow.get(y) || []).concat(x));
+      const rows = [...byRow.keys()].sort((u, v) => u - v);
+      out.sheenRows = rows.length;
+      out.oneCellARow = rows.length >= 4 && rows.every(y => byRow.get(y).length === 1);
+      out.diagonal = rows.length >= 4 && rows.slice(1).every((y, i) => byRow.get(y)[0] === byRow.get(rows[i])[0] - (y - rows[i]));
+      rects = null;
+    } finally { P2.fillRect = fr; P2.drawImage = di; P2.rect = rc; }
+    return out;
+  });
+  ck('stoneSkinIsStoneNotLight', r.marks > 200 && r.light.length === 0,
+    `${r.marks} marks on the frame; added or translucent: ${r.light.length ? r.light.join(' | ') : 'none'}`);
+  ck('aHalvedBlowFloatsInTheSkinsBlueAndThrowsStone', r.dyed && r.chips >= 5, `the float ${r.floatCol}; ${r.chips} chips of stone`);
+  ck('theSkinsSheenIsASteppedDiagonalNeverABar', r.oneCellARow && r.diagonal, `${r.sheenRows} rows, one 2px cell a row ${r.oneCellARow}, each a cell along ${r.diagonal}`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
