@@ -494,6 +494,16 @@ const G = {
       // the animal strife is heard across the valley: its ground is in sight while it rages
       const sf = S.strife;
       if (sf && sf.phase === 'fight') mark(sf.x, sf.y, CFG.STRIFE.watchR);
+      /* THE CARD SYSTEM (js/deckfx.js): a strike's ground is watched while it
+         lands, or the player would see a star burst over empty grass with the
+         enemy it struck hidden under the fog. Ground ALREADY EXPLORED only —
+         a card never charts the map, so it never moves the exploration score. */
+      if (window.Deck && S.deck && (S.deck.strike || (S.dragon && S.dragon.ev && S.dragon.ev.card)))
+        for (const s of Deck.sights())
+          for (let dy = -s.r; dy <= s.r; dy++) for (let dx = -s.r; dx <= s.r; dx++) {
+            const x = s.x + dx, y = s.y + dy;
+            if (dx * dx + dy * dy <= s.r * s.r + s.r && MapGen.inB(x, y) && expl[MapGen.idx(x, y)]) vis[MapGen.idx(x, y)] = 1;
+          }
     }
     // sync last-seen memory on every visible tile
     const liveB = new Map();
@@ -1636,6 +1646,14 @@ const G = {
     const wb = this._waterBodies(), b = wb.id[sy * W + sx];
     return b >= 0 && (wb.edge[b] || wb.size[b] >= CFG.KRAKEN.bodyMin);
   },
+  // any water at all under a point (tiles, fractional) — lake, sea or a
+  // flooded moat: where a card's fire may not stand and its debris sinks
+  wetAt(x, y) {
+    const tx = Math.floor(x), ty = Math.floor(y);
+    if (!MapGen.inB(tx, ty)) return false;
+    const t = S.map.terrain[MapGen.idx(tx, ty)];
+    return t === T.WATER || t === T.MOAT;
+  },
 
   // the kraken's three acts: rise under the boat, thrash (the fleet answers,
   // or doesn't), sink back into the deep. Real-time, a few seconds in all.
@@ -1919,8 +1937,14 @@ const G = {
       ev.y += (ev.ty - ev.y) * Math.min(1, dt * 1.6);
       if ((ev.dir > 0 && ev.x >= ev.tx - 2.5) || (ev.dir < 0 && ev.x <= ev.tx + 2.5)) {
         ev.phase = 'burn'; ev.t = 0; ev.fireT = 0;
+        /* DRAGONFIRE, THE CARD (js/deckfx.js): its victims are whoever of the
+           enemy stands in the fire as the breath BEGINS, and the buildings it
+           reaches catch at once — the event's victims were fixed when it was
+           called. Everything after this is the event's own act. */
+        if (ev.card && window.Deck && Deck.FX.dragonfire) Deck.FX.dragonfire.breathe(ev);
         for (const id of ev.victims) { const u = Units.get(id); if (u) u.burnT = 1.6; }
-        this.log('🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', true, 5200);
+        this.log(ev.card ? '🐉 Dragonfire! The ground you chose is a wall of flame.'
+          : '🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', true, 5200);
       }
     } else if (ev.phase === 'burn') {
       ev.x += ev.dir * 3.2 * dt;                  // a slow strafe along the line
@@ -1929,22 +1953,36 @@ const G = {
       ev.fireT = (ev.fireT || 0) - dt;
       if (ev.fireT <= 0 && (D.fire || (D.fire = [])).length < 60) {
         ev.fireT = 0.09;
-        D.fire.push({ x: ev.x + ev.dir * 2.1 + (G.rand() - 0.5) * 0.5,
-                      y: ev.ty + (G.rand() - 0.5) * 0.7,
-                      ttl: 4.5 + G.rand() * 2.5, seed: (G.rand() * 100) | 0 });
+        const fp = { x: ev.x + ev.dir * 2.1 + (G.rand() - 0.5) * 0.5,
+                     y: ev.ty + (G.rand() - 0.5) * 0.7,
+                     ttl: 4.5 + G.rand() * 2.5, seed: (G.rand() * 100) | 0 };
+        // a CARD's line runs through ground the player chose, which may reach
+        // out over a lake: no flame stands on the water. The draws are made
+        // either way, so the act draws exactly what it always drew.
+        if (!ev.card || !this.wetAt(fp.x, fp.y)) D.fire.push(fp);
       }
       if (ev.t > 1.7) {
         for (const id of ev.victims) {
           const u = Units.get(id);
           if (!u) continue;
-          D.ash.push({ x: u.x, y: u.y, ttl: 3 + G.rand() * 2 });
+          const ash = { x: u.x, y: u.y, ttl: 3 + G.rand() * 2 };
+          if (!ev.card || !Units.isNaval(u)) D.ash.push(ash);   // a burned hull sinks; it leaves no pile on the water
+          /* a CARD's fire is the player's own blow, so its dead are KILLS and
+             go through the one door every death takes — the credit, the
+             chief's dead-ground ledger, every lock and selection on them. The
+             event's dragon owes the player nothing and takes its dead off the
+             board without a word. */
+          if (ev.card) { Units.damage(u, Math.max(1, u.hp), 0, 'P'); continue; }
           S.units.splice(S.units.indexOf(u), 1);
           for (const o of S.units) if (o.tUnit === u.id) o.tUnit = 0;
           if (UI.sel && UI.sel.type === 'unit' && UI.sel.id === u.id) UI.deselect();
         }
-        S.stats.dragonSeen = 1;                   // worth points — and a story
+        // worth points — and a story; a dragon the PLAYER sent is no gift of the
+        // world's, so a card never scores "Saved by the black dragon"
+        if (!ev.card) S.stats.dragonSeen = 1;
         ev.phase = 'leave'; ev.t = 0;
-        this.log('🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', 'note', 6400);
+        this.log(ev.card ? '🐉 Ash where they stood. The dragon wheels away — it owes you nothing.'
+          : '🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', 'note', 6400);
       }
     } else if (ev.phase === 'leave') {
       ev.x += ev.dir * 10 * dt;
@@ -2937,6 +2975,8 @@ const G = {
           G.dragonTick(sdt);
           // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
           if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
+          // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
+          if (S.deck && S.deck.strike && window.Deck) Deck.strikeTick(sdt);
           G.dragonT = (G.dragonT || 0) - sdt;
           if (G.dragonT <= 0) {
             G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state

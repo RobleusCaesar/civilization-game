@@ -1806,7 +1806,13 @@ const Bld = {
         if (!crew) continue;
       }
       const mult = crew * this.nearBonus(b) * tcBoost * modeMult * this.homesteadMult(b) *
-        (window.Cards ? Cards.prodMult(owner, b) : 1);   // ORIGIN CARDS: Harvest Lord farms
+        (window.Cards ? Cards.prodMult(owner, b) : 1) *   // ORIGIN CARDS: Harvest Lord farms
+        /* THE CARD SYSTEM (Deck.mult, js/deckfx.js): a timed card's richer
+           (or, on the rival, poorer) work — asked per BUILDING, not folded
+           into modeMult beside the eclipse cut, so a card that only reaches
+           part of the town (ground near the hall) needs no second hook.
+           Exactly 1 while no timed card is running. */
+        (window.Deck ? Deck.mult('produce', owner, b) : 1);
       for (const k in out) res[k] += out[k] * mult;
     }
     if (window.Cards) Cards.dailyExtras(owner, res);      // ORIGIN CARDS: Tradewind trickle

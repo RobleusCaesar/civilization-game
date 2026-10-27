@@ -289,7 +289,12 @@ const Units = {
      the player's. */
   gatherMode(u) {
     const m = G.modeCfg();
-    return (u && u.owner === 'P') ? m.gather : (m.aiGather == null ? 1 : m.aiGather);
+    const k = (u && u.owner === 'P') ? m.gather : (m.aiGather == null ? 1 : m.aiGather);
+    /* …and a CARD's richer harvest (Deck.mult, js/deckfx.js) rides the same
+       ONE helper for the same reason: hand gathering, both kinds of fishing
+       and the panel's work line all ask here, so a card can never pay one of
+       them and forget another. Exactly 1 while no timed card is running. */
+    return window.Deck ? k * Deck.mult('gather', u && u.owner, u) : k;
   },
 
   workReport(u) {
@@ -339,7 +344,8 @@ const Units = {
       const tcBoost = tc && tc.level >= 3 && Bld.done(tc) ? 1.1 : 1;
       const modeMult = u.owner === 'P' ? mode.output : (mode.aiOutput || 1);
       const n = out[key] * Bld.nearBonus(b) * tcBoost * modeMult *
-        (window.Cards ? Cards.prodMult(u.owner, b) : 1);
+        (window.Cards ? Cards.prodMult(u.owner, b) : 1) *
+        (window.Deck ? Deck.mult('produce', u.owner, b) : 1);   // a card's richer work (Bld.dailyProduction)
       return { icon: '🛠️', what: 'Working the ' + nm, rate: { res: key, n }, working: true };
     }
     if (t.type === 'build') {
@@ -2526,7 +2532,9 @@ const Units = {
         // the animal's size — the bear's old ×3 lives in its own entry now
         const cut = (CFG.MEAT && CFG.MEAT[u.kind] != null) ? CFG.MEAT[u.kind] : CFG.MEAT_DROP;
         const meat = Math.round(cut *
-          (window.Cards ? Cards.huntMult(owner) : 1));   // ORIGIN CARDS: Beastward hunts
+          (window.Cards ? Cards.huntMult(owner) : 1) *   // ORIGIN CARDS: Beastward hunts
+          // a card's richer harvest: the hunt is gathering too (gatherMode)
+          (window.Deck ? Deck.mult('gather', owner, { x: u.x, y: u.y, res: 'food' }) : 1));
         if (owner === 'P') {
           S.res.food += meat;
           R.float(u.x, u.y - 0.5, '+' + meat + ' food', '#d8e8b0');
