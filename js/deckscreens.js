@@ -188,7 +188,10 @@ const DeckScreens = {
        run that played cards and ended with the switch off is held there by
        the same words). Said in the score box's note line, so the missing
        name box is never a mystery. */
-    const { hold, played } = Screens.boardHold(win);
+    // (guarded on the method it calls: a cached older screens.js has none, and
+    // then an assisted win is held — the safe way round)
+    const { hold, played } = Screens.boardHold ? Screens.boardHold(win)
+      : { hold: win && this._playedN() ? 'Not posted to the world board — it cannot wear the card mark yet.' : '', played: this._playedN() };
     Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
