@@ -1060,7 +1060,20 @@ await p.evaluate(({ TOWN }) => {
       try { R.drawCardShows(g, 0, 'world'); } catch (e) { threw = String(e); }
       g.restore();
     }
-    out.noneDraws = !threw && sh.road === null;
+    // …and the pile is really there: the show drawn into a clean canvas at
+    // its end, the pile's ground read back (the first cut's drawing box ended
+    // above the pile when there was no road, and only the coins showed)
+    const cv = document.createElement('canvas'); cv.width = cv.height = 200;
+    const cg = cv.getContext('2d'), spx = (sh.at || TX.spot(tc, side)), wx = spx.x * TL, wy = spx.y * TL;
+    cg.setTransform(1, 0, 0, 1, 100 - wx, 100 - wy);
+    sh.t = 0.86 * sh.ms / 1000;
+    if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+    try { R.drawCardShows(cg, 0, 'world'); } catch (e) { threw = String(e); }
+    const px = cg.getImageData(70, 70, 60, 34).data;
+    let solid = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] > 200) solid++;
+    out.pilePx = solid;
+    out.noneDraws = !threw && sh.road === null && solid > 300;
     out.threw = threw;
     /* (e) A CHARGE KEPT UNDER ANOTHER KEY IS STILL SEEN: a card may hold its
        charges under a key of its own (the rival group's Barbarian Pact keeps
@@ -1084,7 +1097,7 @@ await p.evaluate(({ TOWN }) => {
   ck('theGoodsBringTheHallOnScreen', r.camera, 'a goods card brings the hall into view; Master Builders leaves the camera alone');
   ck('theCaravansRoadIsOneTheMapCanCarry', r.open && r.wet && r.crowd,
     `open ground: the full road ${r.open}; a channel across it cuts it short, never crossed ${r.wet} (${r.wetN}); a row of people: the next row ${r.crowd}`);
-  ck('andWithNoRoadTheLoadStillComes', r.none && r.noneDraws, r.threw || 'no row can carry the cart: the load comes down in the card\'s light');
+  ck('andWithNoRoadTheLoadStillComes', r.none && r.noneDraws, r.threw || `no row can carry the cart: the load comes down in the card's light, a pile of ${r.pilePx} solid px`);
   ck('aChargeKeptUnderAnotherKeyIsStillSeen', r.pact && r.pactGone, `the pact's bands under 'pact' wear the card's chip ${r.pact}; gone with the charge ${r.pactGone}`);
 }
 

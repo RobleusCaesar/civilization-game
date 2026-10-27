@@ -1266,7 +1266,6 @@ const DeckUI = {
     more.setAttribute('aria-label', k + ' cards running');
     tm.appendChild(more);
   },
-  // the cards the strip had no room to show, named with their time left
   // the card a key of S.deck.charges belongs to: its own id, or the card that
   // names it as its `chargeKey`; null for a key no card wears a chip for
   _chargeCard(key) {
@@ -1274,6 +1273,7 @@ const DeckUI = {
     for (const id in Deck.FX) if (Deck.FX[id] && Deck.FX[id].chargeKey === key && Deck.card(id)) return id;
     return null;
   },
+  // the cards the strip had no room to show, named with their time left
   _alsoRunning() {
     const names = (this._hidden || []).map(id => {
       const ch = this._chips[id];
