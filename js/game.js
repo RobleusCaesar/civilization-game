@@ -125,6 +125,10 @@ const G = {
   newGame(seed, modeKey, sizeKey, persona, tunic) {
     // nothing painted while the world is being assembled (R.holdTerrain)
     R.holdTerrain();
+    // a new world is never the old run: its id comes from _enterNow's
+    // run_start, or G.end names it (Backend.legacyRunId) — never a leftover
+    // from a save loaded before it (tests/telemetry.mjs §5)
+    if (window.Backend) Backend.runId = null;
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
@@ -2532,6 +2536,17 @@ const G = {
     S.over = { win, msg, cause: cause || null };
     // the title screen's demo world ends quietly — the shell rolls a new one
     if (window.Screens && Screens._demo) return;
+    /* A RUN WITH NO ID is named by its lineage before anything reads it — the
+       run_end row, the card's grant (Deck.report), the save written after
+       the end — by the same rule loadJSON stamps on a pre-0007 save
+       (Backend.legacyRunId: a pure function of seed, mode and size), so
+       every ending of one save's lineage is ONE run, never a fresh one. */
+    try {
+      if (!S.runId && window.Backend && Backend.legacyRunId) {
+        S.runId = Backend.legacyRunId(S.seed, S.mode, S.sizeKey);
+        Backend.runId = S.runId;
+      }
+    } catch (e) { /* analytics may never break a finished run */ }
     /* ANALYTICS (Backend.logRunEnd, /analytics.html): how this run ended, how
        far it got and how it was played. Wrapped because a run must end
        cleanly even if every one of these reads is somehow unavailable. */
@@ -2855,8 +2870,17 @@ const G = {
     /* analytics: a continued save ends the SAME run it started as — so a
        closed_tab row from the tab it was left in is superseded by the real
        ending that comes later (migration 0007 keeps one row per run_id). A
-       pre-stamp save has none, and its ending goes up with run_id null. */
-    if (window.Backend) Backend.runId = S.runId || null;
+       pre-stamp save has none: it is NAMED here by its lineage (seed, mode,
+       size — Backend.legacyRunId), deterministically, and the name rides
+       every later save. A fresh random name per load let one old save be
+       finished again and again for a new card each time (tests/deck-sync.mjs
+       §11b): one lineage is one run, on the device and on the server. */
+    if (window.Backend) {
+      if (!S.runId && Backend.legacyRunId) {
+        try { S.runId = Backend.legacyRunId(S.seed, S.mode, S.sizeKey); } catch (e) {}
+      }
+      Backend.runId = S.runId || null;
+    }
     // a save caught mid-draft (belt and braces): the first card is kept
     if (S.draft && !S.draft.done && S.draft.hand && S.draft.hand.length && window.Cards)
       Cards.pick(0);

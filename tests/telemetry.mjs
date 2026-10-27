@@ -378,18 +378,75 @@ const MOCK = `
     await Backend.flushEnds();
     out.landed = { raw: endsFor(id3).length, reports: reports(id3).length, kept: Backend.pendingEnds().length };
 
-    // A RUN WITH NO ID (a save from before the id rode in it) ends under a
-    // fresh one: still one row, now one the card's grant can be checked
-    // against — and the end screen's report asks for that same id
+    // A RUN WITH NO ID (a save from before the id rode in it) is NAMED BY ITS
+    // LINEAGE — seed, mode, size (Backend.legacyRunId) — never by the dice:
+    // the same old save loaded and finished again is the SAME run, so its card
+    // can be granted once and never again (a fresh random name per ending was
+    // a card farm). The name is in S from the end on, and in the row, and in
+    // the end screen's report.
     G.newGame('cards-e5', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
-    S.runId = null; Backend.runId = null;               // exactly what loadJSON hands a pre-stamp save
+    S.runId = null; Backend.runId = null;               // exactly what a pre-0007 save holds
+    const pre = G.saveJSON();
+    const want = Backend.legacyRunId(S.seed, S.mode, S.sizeKey);
     G.end(false, 'test', 'tc_destroyed');
     await tick();
+    const runEnds = id => calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end' && c.body[0].run_id === id).length;
     const idl = calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end').slice(-1)[0];
     const rowId = idl && idl.body[0].run_id;
-    out.idless = { rowId: !!rowId, unsaved: S.runId === null, last: Backend.lastRunId === rowId, cleared: Backend.runId === null,
-      report: (window.Deck && Deck.report) ? Deck.report(false, 'tc_destroyed').runId === rowId : true,
-      rows: calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end' && c.body[0].run_id === rowId).length };
+    out.idless = { want, rowId, named: S.runId === want, last: Backend.lastRunId === want, cleared: Backend.runId === null,
+      report: (window.Deck && Deck.report) ? Deck.report(false, 'tc_destroyed').runId === want : true,
+      rows: runEnds(want), deterministic: Backend.legacyRunId(S.seed, S.mode, S.sizeKey) === want,
+      apart: Backend.legacyRunId('cards-e5x', 'moderate', 'medium') !== want && Backend.legacyRunId(S.seed, 'hard', 'medium') !== want,
+      shape: /^legacy-[0-9a-f]{16}$/.test(want) };
+    // the same save loaded again — twice — and ended each time: one name
+    const named = [];
+    for (let i = 0; i < 2; i++) {
+      G.loadJSON(pre);
+      named.push(S.runId === want && Backend.runId === want);
+      Screens._demo = false;
+      G.end(true, 'test', 'razed_rival_tc');
+      await tick();
+    }
+    out.lineage = { named, rows: runEnds(want), ids: calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'run_end').slice(-2).map(c => c.body[0].run_id === want) };
+    // …and a NEW world is never the old run: founded after that load, it
+    // owes nothing to the loaded save's name, and ends under its own
+    G.loadJSON(pre);
+    G.newGame('cards-e6', 'moderate', 'medium');
+    out.lineage.fresh = Backend.runId === null;
+    Screens._demo = false; Screens.show('playing');
+    G.end(false, 'test', 'tc_destroyed');
+    await tick();
+    out.lineage.own = S.runId === Backend.legacyRunId(S.seed, S.mode, S.sizeKey) && S.runId !== want && runEnds(S.runId) === 1;
+    Screens.show('title');
+
+    // A REFUSED SEND, BY ITS STATUS (the real wire, not the mock): a 409 is
+    // the profile's foreign key (ensureProfile failed at sign-in) — kept, as
+    // report_run_end inserts the profile first and mends it; a 400 is the row
+    // itself refused by a check — no resend can mend that, so nothing is kept
+    {
+      const mk = Backend.mock, allowed = Backend.telemetryAllowed, realFetch = window.fetch;
+      const seen = [];
+      let status = 409;
+      Backend.mock = null; Backend.telemetryAllowed = () => true;
+      window.fetch = (u, o) => { seen.push(String(u)); return Promise.resolve({ ok: false, status, json: async () => ({}), text: async () => '' }); };
+      try {
+        localStorage.removeItem(Backend.END_KEY);
+        out.wire = {};
+        for (const st of [409, 400, 503]) {
+          status = st;
+          G.newGame('cards-w' + st, 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+          const id = S.runId;
+          G.end(false, 'test', 'tc_destroyed');
+          await tick(); await tick();
+          out.wire[st] = Backend.pendingEnds().some(x => x.row.run_id === id);
+        }
+        out.wire.sent = seen.filter(u => /\/rest\/v1\/telemetry/.test(u)).length;
+      } finally {
+        Backend.mock = mk; Backend.telemetryAllowed = allowed; window.fetch = realFetch;
+        localStorage.removeItem(Backend.END_KEY);
+        Screens.show('title');
+      }
+    }
 
     // OFF THE SITE nothing is kept, however it ends
     G.newGame('cards-e4', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
@@ -419,8 +476,14 @@ const MOCK = `
     JSON.stringify(r.died));
   ck('anEndingThatLandedKeepsNothing', r.landed.raw === 1 && r.landed.reports === 0 && r.landed.kept === 0, JSON.stringify(r.landed));
   ck('offTheSiteNothingIsKept', r.offSite === 0, 'kept ' + r.offSite);
-  ck('aRunWithNoIdEndsUnderAFreshOne', r.idless.rowId && r.idless.unsaved && r.idless.last && r.idless.cleared && r.idless.report && r.idless.rows === 1,
+  ck('aRunWithNoIdIsNamedByItsLineage', r.idless.rowId === r.idless.want && r.idless.named && r.idless.last && r.idless.cleared &&
+    r.idless.report && r.idless.rows === 1 && r.idless.deterministic && r.idless.apart && r.idless.shape,
     JSON.stringify(r.idless));
+  ck('andEveryEndingOfThatSaveIsTheSameRun', r.lineage.named.length === 2 && r.lineage.named.every(Boolean) && r.lineage.rows === 3 &&
+    r.lineage.ids.every(Boolean), JSON.stringify(r.lineage));
+  ck('aNewWorldIsNeverTheLoadedRun', r.lineage.fresh && r.lineage.own, `Backend.runId cleared by newGame ${r.lineage.fresh}; ends under its own name ${r.lineage.own}`);
+  ck('aRefusedSendIsKeptOnlyWhenAResendCanMendIt', r.wire && r.wire[409] === true && r.wire[400] === false && r.wire[503] === true && r.wire.sent >= 3,
+    JSON.stringify(r.wire));
   ck('theDecksRowsGoOutUnderTheirOwnKinds', r.deckRows.length === 2 && r.deckRows[0].kind === 'card_granted' && r.deckRows[1].kind === 'card_played' &&
     r.deckRows.every(x => x.run && x.user && x.modeOk && x.dayOk), JSON.stringify(r.deckRows));
   ck('theCardsPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));

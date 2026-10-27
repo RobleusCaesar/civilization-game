@@ -236,6 +236,31 @@ const Backend = {
     } catch (e) { /* fall through */ }
     return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   },
+  /* A RUN WITH NO ID IS NAMED BY ITS LINEAGE, NEVER BY THE DICE
+     (tests/deck-sync.mjs §11b, tests/telemetry.mjs §5). A save from before
+     the id rode in it (0007) used to end with run_id null — one row nobody
+     could match, and a card the server could never check against it. The
+     first cure minted a FRESH random id at the end, and that was a card
+     farm: the save never learned the id, so every load-and-finish of the
+     same save ended under a new name, past the device's one-grant-per-run
+     ledger and the server's NEVER TWICE alike (six Hard great-victory cards
+     out of one save, measured). The name is now a pure function of what
+     the save already holds — its seed, its difficulty, its size — so every
+     ending of that save's lineage shares ONE id: the device dedupes it, the
+     server answers 'already'. G.loadJSON stamps it into S (so it rides every
+     later save) and G.end names an id-less run the same way. Two id-less
+     saves of one seed, mode and size share a name and so one card: the
+     price of a rule nobody can farm, paid only by pre-0007 saves. */
+  legacyRunId(seed, mode, size) {
+    const s = String(seed == null ? '' : seed) + '|' + String(mode || '') + '|' + String(size || '');
+    let a = 0x811c9dc5, b = 0x9747b28c;
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      a = Math.imul(a ^ c, 16777619) >>> 0;
+      b = Math.imul(b ^ c, 0x5bd1e995) >>> 0; b = (b ^ (b >>> 15)) >>> 0;
+    }
+    return 'legacy-' + a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+  },
   deviceKind() {
     try {
       // the game is phone-first; "did this run happen on a phone" is the one
@@ -312,18 +337,9 @@ const Backend = {
   // finding.
   logRunEnd(info) {
     info = info || {};
-    /* A RUN WITH NO ID ends under a fresh one (tests/telemetry.mjs §5): a save
-       from before the id rode in it (0007) used to end with run_id null — one
-       row nobody could ever match, and a card the server could never check
-       against it, so the grant was given up and the card left the collection
-       at the next reconcile. The ending is still ONE row; it is simply a row
-       with a name, and lastRunId hands it to the end screen's grant (Deck.
-       report reads it when S.runId is empty). It is NOT written into S: a
-       snapshot of the finished state would carry it, and loadJSON hands a
-       save's id back to Backend.runId — so the next run that ends without
-       being entered through _enterNow (a test's scripted world) would end
-       under the old run's name and its grant would read as already paid. */
-    if (!this.runId) this.runId = this.newRunId();
+    /* the id is the run's own (S.runId, handed here by _enterNow or loadJSON);
+       a run that has none is NAMED by G.end before it gets here — by the
+       deterministic rule in legacyRunId, never a fresh random one (see it) */
     this._emitEnd({
       run_id: this.runId, kind: 'run_end',
       outcome: info.outcome || null, cause: info.cause || null,
@@ -366,7 +382,11 @@ const Backend = {
       if (this.mock) {
         let x;
         try { x = this.mock.rest('POST', '/telemetry', [body], null); } catch (e) { keep(); return; }
-        Promise.resolve(x).then(v => { if (v && v.error) keep(); }, keep);
+        Promise.resolve(x).then(v => {
+          if (!v || !v.error) return;
+          const st = +(v.error.status || v.error.code) || 0;
+          if (!st || this._endMendable(st)) keep();
+        }, keep);
         return;
       }
       fetch(SUPA_CFG.url + '/rest/v1/telemetry', {
@@ -376,11 +396,17 @@ const Backend = {
           { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
           this.session ? { Authorization: 'Bearer ' + this.session.access_token } : {}),
         body: JSON.stringify([body]),
-      }).then(res => {
-        // a 4xx other than these is the row itself refused (a check) — no resend can mend it
-        if (!res.ok && (res.status >= 500 || res.status === 401 || res.status === 408 || res.status === 429)) keep();
-      }).catch(keep);
+      }).then(res => { if (!res.ok && this._endMendable(res.status)) keep(); }).catch(keep);
     } catch (e) { keep(); }
+  },
+  /* which refused sends a later report_run_end can mend: a server fault, a
+     stale token, a timeout, the rate limit — and a 409, which on this table
+     is the profile's foreign key (ensureProfile failed at sign-in while the
+     uid stayed set): report_run_end inserts the profile first, and checks for
+     an existing ending before it inserts, so keeping it can never make two.
+     Any other 4xx is the row itself refused by a check; no resend mends it. */
+  _endMendable(status) {
+    return status >= 500 || status === 401 || status === 408 || status === 409 || status === 429;
   },
   pendingEnds() {
     try {
