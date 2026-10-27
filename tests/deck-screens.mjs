@@ -222,7 +222,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.entry = !!Screens._entry && Screens._entry.score === Score.compute(true).total;
     out.ready = DeckScreens._ready;
     out.anim = !!root.querySelector('.ceReveal, .ceIntro') || root.classList.contains('ceIntro');
-    out.unassisted = !root.querySelector('.ceAssist') && Screens._entry && Screens._entry.cards === 0;
+    out.unassisted = !root.querySelector('.ceAssist') && Screens._entry && Screens._entry.cards_played === 0;
     // THE GRANT HAPPENS ONCE: the screen reopened, and the finished save loaded again
     UI.showEnd(true, 'again');
     out.again = Deck.total();
@@ -331,7 +331,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.card = !!root.querySelector('.ceMove .ccard');
     out.why = __shown(root.querySelector('.ceWhy'));
     out.gained = Deck.total() - t0;
-    out.cards = Screens._entry && Screens._entry.cards;
+    out.cards = Screens._entry && Screens._entry.cards_played;
     out.assist = __shown(root.querySelector('.ceAssist'));
     return out;
   });

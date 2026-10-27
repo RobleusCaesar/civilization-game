@@ -468,6 +468,72 @@ ck('aVillagersOwnHandsAre', t.hand > 0, `+${t.hand} by hand`);
 ck('theGatheringAllowanceIsCapped', JSON.stringify(t.allow) === '[0,0,1,2,3,3]', JSON.stringify(t.allow));
 ck('theTalliesRideASave', t.rides && t.backfill, `rides ${t.rides}, backfill ${t.backfill}`);
 
+/* NO CARD BUYS A CARD. Every deed is something the player's own hand
+   started; a card's free building, free upgrade or summoned soldier is the
+   card's (ruling 6 — and a slip there would let one card's play buy the
+   next one from a defeat). Every card with an effect is played in a fresh
+   world — aimed cards at the first valid ground beside the hall — and the
+   world run on for three days with no input: the deeds may not move. Cards
+   whose can() refuses on a bare day-1 town are named, never failed. */
+const nc = await p.evaluate(() => {
+  const out = { moved: [], measured: [], refused: [] };
+  CFG.CARDS.ON = true;
+  /* the CONTROL: a card that raises its house the naive way, through the
+     builders' own Bld.finish — the probe must see it, or a pass means nothing */
+  Deck.FX.__builds = { apply() {
+    const tc = Bld.tcOf('P');
+    const sp = MapGen.findNear(tc.x + 1, tc.y + 1, 9, (x, y) => Bld.canPlace('P', 'house', x, y).ok);
+    const b = sp && Bld.place('P', 'house', sp.x, sp.y, { free: true, noAutoAssign: true });
+    if (!b) return { ok: false, why: 'no ground' };
+    Bld.finish(b);
+    return { ok: true };
+  } };
+  Deck.CATALOG.push({ id: '__builds', tier: 'stone', cat: 'econ', target: 'none', name: 'b', text: 't', flavor: 'f', when: 'w' });
+  Deck._byId = null;
+  const ids = Object.keys(Deck.FX).filter(k => Deck.card(k) && !k.startsWith('__')).sort();
+  for (const id of ids.concat('__builds')) {
+    Screens._demo = false;
+    G.newGame('no-card-buys-' + id, 'moderate', 'medium');
+    Screens.show('playing'); S.paused = false;
+    Combat.scanT = 0; Units.herdClock = 0;
+    for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 5000;
+    Deck._col = null; Deck._del(Deck.KEY);
+    Deck._add(id, 1);
+    const c = Deck.card(id), tc = Bld.tcOf('P');
+    let tgt = null;
+    if (c.target !== 'none') {
+      const sp = MapGen.findNear(tc.x + 1, tc.y + 1, 12, (x, y) => Deck.validTarget(id, x + 0.5, y + 0.5) &&
+        Math.hypot(x - tc.x, y - tc.y) > 4);
+      if (sp) tgt = { x: sp.x + 0.5, y: sp.y + 0.5 };
+    }
+    const d0 = Deck.deeds().n;
+    const r = Deck.play(id, tgt);
+    if (!r.ok) { out.refused.push(id + ': ' + r.why); continue; }
+    const d1 = Deck.deeds().n;
+    // G.frame's own sim step, strikes and timers included, for three days
+    const dt = 0.25;
+    for (let i = 0; i < 3 * CFG.DAY_MS / 250 && !S.over; i++) {
+      S.playtime += dt; S.dayT += dt * 1000;
+      while (S.dayT >= CFG.DAY_MS) { S.dayT -= CFG.DAY_MS; G.dayTick(); if (S.over) break; }
+      if (S.over) break;
+      Bld.update(dt * 1000 / CFG.DAY_MS); Units.update(dt); Combat.update(dt);
+      G.dyingTick(dt); G.krakenTick(dt); G.eclipseTick(dt); G.fireTick(dt); G.strifeTick(dt); G.starfallTick(dt); G.dragonTick(dt);
+      if (S.deck.fx.length) Deck.tick();
+      if (S.deck.strike && Deck.strikeTick) Deck.strikeTick(dt);
+      G.visT -= dt; if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+    }
+    const d2 = Deck.deeds().n;
+    if (id === '__builds') { out.control = d1 - d0; continue; }
+    out.measured.push(id);
+    if (d1 !== d0 || d2 !== d0) out.moved.push(`${id} ${d0}→${d1}→${d2} ${JSON.stringify(Deck.deeds().parts)}`);
+  }
+  return out;
+});
+ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.control === 1,
+  `${nc.measured.length} cards played and run three days: ${nc.moved.join('; ') || 'no deed moved'}; ` +
+  `the control (a free house raised through Bld.finish) read +${nc.control}` +
+  (nc.refused.length ? ` (refused on a bare town: ${nc.refused.join(' | ')})` : ''));
+
 /* THE TEST LINK: ?cards=all turns the deck on for the device and, on EVERY
    load carrying it, resets the collection and deals one of every card in
    the catalog — the starter hand marked as given, so it adds no three more.

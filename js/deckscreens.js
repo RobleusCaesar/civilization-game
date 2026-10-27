@@ -180,9 +180,11 @@ const DeckScreens = {
      captured NOW, because a post can outlive this screen. */
   _armBoard(win, sc, msg) {
     Screens._score = win ? sc : null;
-    // `cards`: how many this run played — a card-assisted run is marked on the
-    // board (the server's submit_score carries it once its column exists)
-    Screens._entry = win ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards: this._playedN() } : null;
+    // `cards_played`: how many this run played — a card-assisted run is marked
+    // on the board. Backend.submitScore sends named parameters only, so this
+    // rides the entry harmlessly until submit_score learns p_cards_played
+    // (sending an unknown parameter name is a PostgREST 404)
+    Screens._entry = win ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: this._playedN() } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
     if (win) Screens._winMsg = msg || '';
@@ -1009,7 +1011,7 @@ const DeckScreens = {
     } else {
       // any card of the tier makes the same silhouette (frame only, nothing named)
       face = this._silhouette(Deck.ofTier(cell.dataset.unknown)[0].id, w);
-      cap = 'Not yet discovered — finish a game to earn a card';
+      cap = 'Not yet discovered — win a game, or lose one fighting, to earn a card';
     }
     host.innerHTML = '';
     host.appendChild(face);
