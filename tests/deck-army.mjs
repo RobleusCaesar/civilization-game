@@ -1003,29 +1003,148 @@ await p.evaluate(({ ARMY }) => {
     `${r.heal.kind}: heal price ${r.heal.price}, at half strength ${r.heal.cost} food`);
 }
 {
-  /* THE RANK THE CARD GAVE IS WORN FOR GOOD: a minute after the card, a
-     soldier it raised to champion wears one gold chevron and a veteran two
-     — measured on the pixels drawUnit lays over a plain frame, against a
-     trained champion (the CONTROL) that wears none */
+  /* THE RANK THE CARD GAVE IS WORN FOR GOOD, AND CAN BE READ (judge g3:
+     "the promoted army looks identical in a crowd" — two one-pixel chevrons
+     sat inside the helmet): a minute after the card a veteran wears a GOLD
+     pip and a soldier raised to champion a STEEL one — each a solid diamond
+     with a dark rim, set clear ABOVE the frame's own head — measured on the
+     pixels drawUnit lays over a frame whose head starts a tenth of the way
+     down (a synthetic frame: its silhouette is known), against a trained
+     champion (the CONTROL) that wears none. And the rank is put on when the
+     wave reaches the man, not at the play: a soldier the wave has not
+     reached wears nothing yet. */
   const r = await p.evaluate(() => {
     __ar.fresh('army-chevron'); __ar.flat();
     const d = __ar.unit('defender', 'P', 4.5, 14.5), e = __ar.unit('elite', 'P', 6.5, 14.5), plain = __ar.unit('elite', 'P', 8.5, 14.5);
     S.units.splice(S.units.indexOf(plain), 1);
     Deck.play('veterans');
     S.units.push(plain);
-    const img = document.createElement('canvas'); img.width = img.height = 32;
-    const gold = u => {
-      const cv = document.createElement('canvas'); cv.width = cv.height = 40;
+    // a 64px frame: a body from row 6 (a tenth of the way down) to the foot
+    const img = document.createElement('canvas'); img.width = img.height = 64;
+    { const q = img.getContext('2d'); q.fillStyle = '#806040'; q.fillRect(22, 6, 20, 56); }
+    const look = (u, wait) => {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 48;
       const g = cv.getContext('2d');
-      if (u.spectral || u.warWolf || u.vet || u.ranked) Deck.drawUnit(g, u, img, 4, 4, 32);
-      const px = g.getImageData(0, 0, 40, 40).data; let n = 0;
-      for (let i = 0; i < px.length; i += 4) if (px[i + 3] && px[i] === 0xff && px[i + 1] === 0xd4 && px[i + 2] === 0x5e) n++;
-      return n;
+      if (!wait) Deck._rankAt = null;   // a minute later
+      if (u.spectral || u.warWolf || u.vet || u.ranked) Deck.drawUnit(g, u, img, 8, 12, 32);
+      const px = g.getImageData(0, 0, 48, 48).data, cols = {};
+      let above = 0, below = 0, minX = 99, maxX = -1, minY = 99, maxY = -1;
+      const headY = 12 + Math.round(6 / 64 * 32);   // the frame's first opaque row, in the canvas
+      for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
+        const i = (y * 48 + x) * 4;
+        if (!px[i + 3]) continue;
+        const inBody = x >= 8 + 11 && x < 8 + 21 && y >= headY && y < 12 + 31;
+        if (inBody) continue;
+        const h = '#' + [px[i], px[i + 1], px[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
+        cols[h] = (cols[h] || 0) + 1;
+        if (y < headY) above++; else below++;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      }
+      return { above, below, w: maxX - minX + 1, h: maxY - minY + 1, cols };
     };
-    return { kinds: [d.kind, e.kind, plain.kind], raised: gold(d), vet: gold(e), plain: gold(plain), flags: [!!d.ranked, !!e.vet, !!plain.ranked || !!plain.vet] };
+    const pending = look(e, true);
+    return { kinds: [d.kind, e.kind, plain.kind], raised: look(d), vet: look(e), plain: look(plain), pending };
   });
-  ck('theRaisedWearTheirRankForGood', r.kinds.join() === 'elite,elite,elite' && r.raised > 0 && r.vet === r.raised * 2 && r.plain === 0,
-    `raised to champion: ${r.raised} gold px (one chevron); a veteran ${r.vet} (two); a trained champion ${r.plain}`);
+  const tone = (o, c) => o.cols[c] || 0;
+  ck('theRaisedWearTheirRankForGood', r.kinds.join() === 'elite,elite,elite' &&
+    tone(r.vet, '#ffd45e') >= 9 && tone(r.raised, '#b9c8da') >= 9 && !tone(r.raised, '#ffd45e') && !tone(r.vet, '#b9c8da') &&
+    r.vet.below === 0 && r.raised.below === 0 && r.vet.w >= 5 && r.vet.h >= 5 && (tone(r.vet, '#3a2408') >= 8) && r.plain.above + r.plain.below === 0,
+    `a veteran: ${tone(r.vet, '#ffd45e')} gold px in a ${r.vet.w}x${r.vet.h} pip, ${tone(r.vet, '#3a2408')} px of rim, ${r.vet.below} px laid on the man; ` +
+    `raised to champion: ${tone(r.raised, '#b9c8da')} steel px, ${r.raised.below} on the man; a trained champion ${r.plain.above + r.plain.below}`);
+  ck('andTheRankIsPutOnWhenTheWaveReachesHim', r.pending.above + r.pending.below === 0 && r.vet.above > 0,
+    `straight after the play the veteran wears ${r.pending.above + r.pending.below} px of rank; once the wave has passed, ${r.vet.above}`);
+}
+{
+  /* THE CARD LANDS ON THE ARMY (judge g3, playtest g3 #1): with the army
+     sixteen tiles out and the camera on it, the play hauled the camera to
+     the hall and the whole promotion happened off the screen. It lands where
+     the soldiers are: with any of them in sight the camera does not move
+     (and the landing point is among them); with none in sight it is brought
+     to the biggest body of them. And THE FLASH IS THE MAN'S OWN: a soldier
+     lit by his rank is lit on his own pixels and a hard line round them —
+     not a box of light, not a pillar in the world pass (the first cut's
+     "solid gold rectangles behind the soldiers"). */
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-vet-far'); __ar.flat();
+    Screens.show('playing');
+    const tc = Bld.tcOf('P'), ax = tc.x + 16, ay = tc.y + 4;
+    const army = [0, 1, 2, 3, 4, 5].map(i => __ar.unit(['defender', 'archer', 'rider', 'defender', 'elite', 'catapult'][i], 'P', ax + (i % 3) * 1.2 + 0.5, ay + ((i / 3) | 0) * 1.2 + 0.5));
+    R.cam.z = 1.7; R.centerOn(ax + 1.5, ay + 1);
+    const cam0 = [R.cam.x, R.cam.y];
+    const fx = Deck.FX.veterans;
+    const dest = DeckUI._dest(fx.at || 'tc', 'veterans');
+    out.stayed = R.cam.x === cam0[0] && R.cam.y === cam0[1];
+    out.seen = army.filter(u => R.onScreen(u.x, u.y)).length;
+    const TL = CFG.TILE, sx = u => (u.x * TL - R.cam.x) * R.cam.z, sy = u => (u.y * TL - R.cam.y) * R.cam.z;
+    out.amongThem = Math.min(...army.map(u => Math.hypot(sx(u) - dest.x, sy(u) - dest.y))) < 3 * TL * R.cam.z;
+    // in sight but out at the left edge: the camera frames them (the climax
+    // is not cut by the edge of the screen)
+    R.centerOn(ax + 1.5 + 3, ay + 1);
+    const camE = [R.cam.x, R.cam.y], seenE = army.filter(u => R.onScreen(u.x, u.y)).length;
+    DeckUI._dest(fx.at || 'tc', 'veterans');
+    const mx = (ax + 1.5) * TL, my = (ay + 1) * TL, vw = R.viewW();
+    out.framed = { seen: seenE, moved: R.cam.x !== camE[0] || R.cam.y !== camE[1], at: +(((mx - R.cam.x) * R.cam.z) / vw).toFixed(2) };
+    // none in sight: the camera is brought to them
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    DeckUI._dest(fx.at || 'tc', 'veterans');
+    out.brought = army.filter(u => R.onScreen(u.x, u.y)).length;
+    // THE FLASH: a lone soldier far from the wave's start, his frame a known
+    // silhouette (a synthetic 64px frame stood in for his sprite)
+    __ar.fresh('army-vet-flash'); __ar.flat();
+    __ar.unit('defender', 'P', 6.5, 10.5);
+    R.cam.z = 1.7; R.centerOn(6.5, 10.5);
+    G.updateVisibility();   // the player's own: in sight
+    R.cardShows = [];
+    Deck.play('veterans');
+    const s = R.cardShows.find(x => x.id === 'veterans'), sh = fx.show;
+    s.x = s.y = -60;   // (the wave's ring rolls out elsewhere: only the man is measured)
+    const img = document.createElement('canvas'); img.width = img.height = 64;
+    { const q = img.getContext('2d'); q.fillStyle = '#806040'; q.beginPath(); q.ellipse(32, 36, 10, 24, 0, 0, Math.PI * 2); q.fill(); }
+    const fa = img.getContext('2d').getImageData(0, 0, 64, 64).data;   // his own pixels: every alpha of the frame
+    const real = R.unitSprite, realFB = R.frameBox;
+    R.unitSprite = () => img; R.frameBox = (u, i, B) => B;
+    let outside = 0, inside = 0; const where = [];
+    try {
+      const l = s.lit.slice().sort((p, q) => q.d - p.d)[0], u = Units.get(l.id);
+      const cv = document.createElement('canvas'); cv.width = CFG.W * TL; cv.height = CFG.H * TL;
+      const g = cv.getContext('2d');
+      const B = R.unitBox(u), x0 = Math.round(u.x * TL - B / 2), y0 = Math.round(R.frameTop(u.y, B, B));
+      for (const dt of [0, 0.03, 0.1, 0.25]) {
+        g.clearRect(0, 0, cv.width, cv.height);
+        s.t = l.d + dt;
+        // the ground pass first, on a canvas of its own (its beam stands
+        // UNDER him; it is also what stamps the landing frame the world
+        // pass answers), then the world pass over him, measured
+        { const gg = document.createElement('canvas'); gg.width = cv.width; gg.height = cv.height; sh.draw.call(fx, gg.getContext('2d'), s, s.t / (s.ms / 1000), 0, 'ground'); }
+        if (sh.layers || sh.layer === 'world') { g.save(); sh.draw.call(fx, g, s, s.t / (s.ms / 1000), 0, 'world'); g.restore(); }
+        for (const e of R.summons) e.t = s.t;
+        g.save(); R.drawSummons(g, 0); g.restore();
+        // the box, and the silhouette a world pixel wider (the hard line round him)
+        const d = g.getImageData(x0 - 2, y0 - 2, B + 4, B + 4).data, W2 = B + 4;
+        for (let yy = 0; yy < W2; yy++) for (let xx = 0; xx < W2; xx++) {
+          if (!d[(yy * W2 + xx) * 4 + 3]) continue;
+          // the frame's pixel under this one (64 → B), dilated by one world px
+          const fx0 = (xx - 2) / B * 64, fy0 = (yy - 2) / B * 64, k = 64 / B * 1.5;
+          // (a world pixel spans 64/B frame pixels a side: any of them his)
+          const on1 = (px, py) => px >= 0 && py >= 0 && px < 64 && py < 64 && fa[(py * 64 + px) * 4 + 3] > 0;
+          const inS = (px, py) => { const st = Math.max(1, Math.round(64 / B)); px = Math.floor(px); py = Math.floor(py);
+            for (let a = 0; a < st; a++) for (let c = 0; c < st; c++) if (on1(px + a, py + c)) return true; return false; };
+          const near = inS(fx0, fy0) || inS(fx0 - k, fy0) || inS(fx0 + k, fy0) || inS(fx0, fy0 - k) || inS(fx0, fy0 + k);
+          if (fy0 < 36 - 24 - 1) continue;   // above his head: the rank pip's place
+          if (near) inside++; else { outside++; if (where.length < 12) where.push(dt + '@' + (xx - 2) + ',' + (yy - 2) + ':' + [0, 1, 2, 3].map(c => d[(yy * W2 + xx) * 4 + c]).join('/')); }
+        }
+      }
+    } finally { R.unitSprite = real; R.frameBox = realFB; }
+    out.flash = { inside, outside, where, B: R.unitBox(Units.get(s.lit[0].id)) };
+    return out;
+  });
+  ck('theCardLandsOnTheArmyNotTheHall', r.stayed && r.seen === 6 && r.amongThem && r.brought === 6,
+    `the army 16 tiles out, the camera on it: kept still ${r.stayed}, ${r.seen} of 6 in sight, the light lands among them ${r.amongThem}; with none in sight the camera is brought to them: ${r.brought} of 6`);
+  ck('andAnArmyAtTheEdgeIsFramed', r.framed.seen > 0 && r.framed.moved && r.framed.at > 0.4 && r.framed.at < 0.6,
+    `${r.framed.seen} of 6 in sight at the left edge: the camera moved ${r.framed.moved}, their middle now ${r.framed.at} of the way across`);
+  ck('theFlashIsTheMansOwnPixels', r.flash.inside > 0 && r.flash.outside === 0,
+    `in the man's box through the flash: ${r.flash.inside} px on him and his edge, ${r.flash.outside} px of box round him` + (r.flash.outside ? ' (box ' + r.flash.B + ': ' + r.flash.where.join(' ') + ')' : ''));
 }
 
 // ---------------- 6. THE ANCESTORS' HOST ----------------

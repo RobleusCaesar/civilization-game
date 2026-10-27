@@ -485,11 +485,13 @@ Object.assign(Deck, {
   drawUnit(g, u, img, x, y, D) {
     if (this._swingUntil) img = this.swingFrame(u) || img;   // an engine set down swings its arm once
     const rank = u.vet ? 2 : u.ranked ? 1 : 0;
-    if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (rank) this.drawRank(g, x, y, D, rank); return; }
+    if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (rank) this.drawRank(g, x, y, D, rank, img); return; }
     if (u.warWolf) this.drawCollar(g, u, x, y, D);     // under the wolf, as a ring on the ground is
     g.drawImage(img, x, y, D, D);
-    if (rank) this.drawRank(g, x, y, D, rank);
+    // (a rank the Veterans wave has not reached yet is not worn yet)
+    if (rank && !(this._rankAt && this._rankAt.get(u.id) > performance.now())) this.drawRank(g, x, y, D, rank, img);
   },
+  _rankAt: null,   // render state: unit id → when its rank lands (performance.now ms)
   /* THE ARM SWINGS ONCE AS IT LANDS (Trebuchet Battery, Siege Train — judge
      g3: "there is no sense of weight"): an engine set down by a card plays
      its own loosing strip (the fight sheet: the counterweight drops, the arm
@@ -529,18 +531,78 @@ Object.assign(Deck, {
       g.fillStyle = dye.body || '#3f6d99'; g.fillRect(px, py, 2, 1);
     }
   },
-  /* THE RANK A CARD GAVE, worn for good over the head: two gold chevrons for
-     a veteran, one for a soldier the card raised to its hall's champion — a
-     minute after the card, the field still says which ones it made */
-  drawRank(g, x, y, D, n) {
-    const cx = Math.round(x + D / 2), ty = Math.round(y + D * 0.1);
-    for (let c = 0; c < (n || 2); c++) {
-      const yy = ty + c * 3;
-      for (const [dx, dy] of [[-3, 0], [-2, -1], [-1, -2], [0, -2], [1, -1], [2, 0]]) {
-        g.fillStyle = '#5a3a10'; g.fillRect(cx + dx, yy + dy + 1, 1, 1);
-        g.fillStyle = '#ffd45e'; g.fillRect(cx + dx, yy + dy, 1, 1);
+  /* THE RANK A CARD GAVE, WORN FOR GOOD (judge g3: "the promoted army
+     looks identical in a crowd" — the first cut's two one-pixel chevrons sat
+     inside the helmet and read as nothing). A PIP over the head: a hard
+     diamond with a dark rim, gold for a veteran, steel for a soldier the card
+     raised to its hall's champion — set on the frame's own head (headTop:
+     its first opaque row, measured once per frame) so it rides the walk and
+     the stride, a world pixel's gap above the hair. `bright`: the frame its
+     rank lands, the diamond white-hot with a four-point glint. */
+  PIP: { 2: ['#3a2408', '#ffd45e', '#fff3b0'], 1: ['#26303c', '#b9c8da', '#ffffff'] },
+  _headC: new WeakMap(),
+  headTop(img) {
+    let h = this._headC.get(img);
+    if (h != null) return h;
+    h = 0.12;
+    try {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const q = c.getContext('2d'); q.drawImage(img, 0, 0);
+      const d = q.getImageData(0, 0, c.width, c.height).data;
+      for (let y = 0; y < c.height; y++) {
+        let on = false;
+        for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 128) { on = true; break; }
+        if (on) { h = y / c.height; break; }
       }
-    }
+    } catch (e) { /* a tainted frame keeps the guess: the pip still shows */ }
+    this._headC.set(img, h);
+    return h;
+  },
+  drawRank(g, x, y, D, n, img, bright) {
+    const P = this.PIP[n >= 2 ? 2 : 1], cx = Math.round(x + D / 2);
+    const top = Math.round(y + (img ? this.headTop(img) : 0.12) * D) - 7;   // the diamond's top: 5 tall, a pixel's gap
+    // the dark rim: a diamond a pixel larger all round, laid first
+    g.fillStyle = P[0];
+    [1, 3, 5, 7, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top - 1 + r, w, 1));
+    // the body, and its lit corner
+    g.fillStyle = bright ? '#ffffff' : P[1];
+    [1, 3, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top + r, w, 1));
+    g.fillStyle = bright ? '#ffffff' : P[2]; g.fillRect(cx - 1, top + 1, 1, 1); g.fillRect(cx, top, 1, 1);
+    // the frame it lands: a four-point glint off it
+    if (bright) { g.fillStyle = P[2]; g.fillRect(cx, top - 5, 1, 3); g.fillRect(cx, top + 7, 1, 3); g.fillRect(cx - 7, top + 2, 3, 1); g.fillRect(cx + 5, top + 2, 3, 1); }
+  },
+  /* A SOLDIER LIT ON HIS OWN PIXELS (Veterans): the frame drawn on an
+     offscreen canvas and the light laid over it source-atop, so it covers
+     exactly what he is and nothing round him — every alpha of the frame
+     kept — at a step of strength `a` (a wash with his detail still under
+     it). Cached per frame, colour and step (the R.tintOf pattern). */
+  _flashC: new WeakMap(),
+  flashOf(img, col, a) {
+    let e = this._flashC.get(img);
+    if (!e) { e = {}; this._flashC.set(img, e); }
+    const k = col + a;
+    if (e[k]) return e[k];
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const q = c.getContext('2d');
+    q.imageSmoothingEnabled = false;
+    q.drawImage(img, 0, 0);
+    q.globalCompositeOperation = 'source-atop'; q.globalAlpha = a; q.fillStyle = col;
+    q.fillRect(0, 0, c.width, c.height);
+    return (e[k] = c);
+  },
+  // the flash on a soldier `t` seconds into his rising: one white frame, then
+  // a bright wash, then a gold one, each edged in a hard gold line
+  flashUnit(g, u, t) {
+    const TL = CFG.TILE, img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+    const x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D);
+    const [col, a] = t < 0.06 ? ['#ffffff', 1] : t < 0.18 ? ['#ffffff', 0.55] : ['#ffd45e', 0.35];
+    // hard pixels whatever the context: a smoothed downscale of the edge
+    // would feather the line round him into a soft halo
+    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+    try {
+      if (t >= 0.06) { const e = R.tintOf(img, t < 0.18 ? '#ffd45e' : '#c98a24'); for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) g.drawImage(e, x + dx, y + dy, D, D); }
+      g.drawImage(this.flashOf(img, col, a), x, y, D, D);
+    } finally { g.imageSmoothingEnabled = sm; }
   },
   /* THE HOST'S GHOST IS COLD FIRST. The first cut drew the champion's own
      frame at a low alpha with a pale tint ADDED over it, which read as a
@@ -939,14 +1001,16 @@ Deck.armyFx = {
      lands}) in `layer`: 'ground' the columns, the shock rings and the clods;
      'world' the one-frame burst at the feet. `tone` names a BEAM ramp;
      `wide` multiplies the width (an engine is a broad thing to set down). */
-  arrive(g, s, layer, tone, wide) {
+  arrive(g, s, layer, tone, wide, opts) {
     const TL = CFG.TILE, P = this.BEAM[tone] || this.BEAM.gold, T = this.BEAM_T;
     const top = R.viewTiles().y0 * TL - TL;
     s.fl = s.fl || {};
     if (layer === 'world') {
       // the frame it lands: a white burst over the feet (one frame, by the
-      // ground pass's own stamp — the same frame the column went white)
-      for (const m of s.units) {
+      // ground pass's own stamp — the same frame the column went white);
+      // a man already standing there (Veterans) is his own flash instead
+      if (opts && opts.burst === false) return;
+      for (const m of s.units || []) {
         if (s.fl[m.id] !== s.t) continue;
         const u = Units.get(m.id), x = (u ? u.x : m.x) * TL, y = (u ? u.y : m.y) * TL + TL * 0.3, k = this.engine(u) ? 1.5 : 1;
         g.fillStyle = P.hot; R.pxDisc(g, x, y - TL * 0.2, TL * 0.42 * k, 2, 0.8);
@@ -957,7 +1021,7 @@ Deck.armyFx = {
     }
     if (layer !== 'ground') return;
     R.clipBoard(g, () => {
-      for (const m of s.units) {
+      for (const m of s.units || []) {
         const t = s.t - m.d;
         if (t < -T.drop || t > T.life + 0.1) continue;
         const u = Units.get(m.id), eng = this.engine(u) || (wide && wide > 1);
@@ -988,7 +1052,7 @@ Deck.armyFx = {
         }
         // a few clods thrown off the ground, up and back down
         const q = t / T.ring;
-        if (q < 1) for (let k = 0; k < 7; k++) {
+        if (q < 1 && !(opts && opts.clods === false)) for (let k = 0; k < 7; k++) {
           const th = k * 0.897 + m.id * 1.3, dd = TL * (0.3 + q * (0.8 + (k % 3) * 0.2)) * (eng ? 1.3 : 1);
           g.fillStyle = k % 2 ? '#6b5236' : '#8a6c48';
           g.fillRect(this.snap(x + Math.cos(th) * dd), this.snap(foot + Math.sin(th) * dd * 0.42 - Math.sin(q * Math.PI) * 10), 2, 2);
@@ -1367,7 +1431,40 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        Deck above: RANK, promote, veteran). A soldier already a veteran has
        nowhere left to rise; with nobody who can, the card is kept. */
     veterans: {
-      at: 'tc',
+      /* THE CARD LANDS ON THE ARMY, NOT THE HALL (judge g3): the ring went
+         round an empty hall while the soldiers stood sixteen tiles off, and
+         the camera was hauled from the army to the hall for a promotion
+         nobody could see. It lands on `focus()` — the soldiers in sight if
+         any are (their middle is on the screen, so DeckUI._dest leaves the
+         camera where it is), else the biggest body of them, which the
+         camera is brought to. */
+      /* AND THE CLIMAX IS FRAMED (judge g3: "clipped by the left edge and
+         the build bar"): an army in sight whose middle sits out at the edge
+         of the view between the bars — outside its central half — has the
+         camera brought to that middle, so the wave, the beams and the pips
+         play in the open; one whose middle is already well in the view is
+         left exactly where the player was looking. `still` (the apply's own
+         read, after DeckUI._dest has framed it) never moves the camera. */
+      at: 'focus',
+      focus(still) {
+        const all = Deck.landSoldiers().map(({ u, hull }) => hull || u);
+        if (!all.length) return null;
+        const seen = window.R && R.onScreen ? all.filter(u => R.onScreen(u.x, u.y)) : [];
+        let set = seen;
+        if (!set.length) {
+          // the biggest body of them: the soldier with the most fellows within 6
+          let best = all[0], bn = -1;
+          for (const a of all) { const n = all.filter(b => Math.hypot(a.x - b.x, a.y - b.y) <= 6).length; if (n > bn) { bn = n; best = a; } }
+          set = all.filter(b => Math.hypot(best.x - b.x, best.y - b.y) <= 6);
+        }
+        const f = { x: set.reduce((s, u) => s + u.x, 0) / set.length, y: set.reduce((s, u) => s + u.y, 0) / set.length };
+        const V = !still && seen.length && Deck.fanView ? Deck.fanView() : null;
+        if (V) {
+          const TL = CFG.TILE, z = R.cam.z, sx = (f.x * TL - R.cam.x) * z, sy = (f.y * TL - R.cam.y) * z, h = V.bot - V.top;
+          if (sx < V.vw * 0.25 || sx > V.vw * 0.75 || sy < V.top + h * 0.25 || sy > V.bot - h * 0.25) R.centerOn(f.x, f.y);
+        }
+        return f;
+      },
       can() {
         const all = Deck.landSoldiers();
         if (!all.length) return { ok: false, why: 'You have no land soldier to raise.' };
@@ -1377,8 +1474,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const ok = this.can();
         if (!ok.ok) return ok;
-        const tc = Bld.tcOf('P'), all = Deck.landSoldiers();
-        const hx = tc ? Bld.cx(tc) : 0, hy = tc ? Bld.cy(tc) : 0;
+        // the wave goes out from the army itself (focus: the soldiers in
+        // sight, the camera already on them) — never from an empty hall
+        const all = Deck.landSoldiers(), f = this.focus(true) || { x: 0, y: 0 };
+        const hx = f.x, hy = f.y;
         let ranks = 0, vets = 0;
         const lit = [];
         for (const { u, hull } of all) {
@@ -1387,14 +1486,17 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           else if (!u.vet) { Deck.veteran(u); vets++; }
           else continue;
           const at = hull || u;
-          lit.push({ id: u.id, hull: hull ? hull.id : 0, d: tc ? Math.min(2.2, Math.hypot(at.x - hx, at.y - hy) * 0.07) : 0 });
+          lit.push({ id: u.id, hull: hull ? hull.id : 0, x: at.x, y: at.y, d: 0.12 + Math.min(1.6, Math.hypot(at.x - hx, at.y - hy) * 0.06) });
         }
         // the panel names a kind it no longer has (panelSig does not carry it)
         if (UI.sel) UI.renderPanel();
         sound('cardRanks');
         // (no whole-frame flash: gold laid over the meadow is a yellow-green
-        // frame — the pillars are the light)
-        show('veterans', { x: hx, y: hy, lit });
+        // frame — the beams are the light)
+        show('veterans', { x: hx, y: hy, lit, units: lit.map(l => ({ id: l.hull || l.id, x: l.x, y: l.y, d: l.d })) });
+        // each one wears its new rank from the moment the wave reaches it
+        const now = typeof performance !== 'undefined' ? performance.now() : 0;
+        Deck._rankAt = new Map(lit.map(l => [l.id, now + (l.d + 0.1) * 1000]));
         const n = ranks + vets;
         Deck.say('🎖️ ' + n + ' soldier' + (n > 1 ? 's' : '') + ' rise a rank' +
           (ranks ? ' — ' + ranks + ' made champion' + (ranks > 1 ? 's' : '') : '') +
@@ -1402,47 +1504,38 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         return { ok: true, x: hx, y: hy, units: lit.map(l => l.id),
           msg: 'Veterans: ' + n + ' soldier' + (n > 1 ? 's' : '') + ' rise a rank.' };
       },
-      // a wave of gold going out from the hall: each soldier lit in a pillar
-      // of gold as its rank comes, its own silhouette blazing, and its new
-      // rank's chevrons rising off it
+      /* THE RANKS RISE (Iron tier): a ring of hard steel pixels rolls out
+         from the army's middle; as it reaches each soldier a steel beam comes
+         down on him (Deck.armyFx.arrive, the summons' own light, in the
+         ground pass under him), and HE FLASHES — his own pixels and no
+         others (Deck.flashOf: the sprite drawn, the light laid source-atop
+         on an offscreen canvas, every alpha of the frame kept): one white
+         frame, then a bright wash with his detail showing through, then a
+         gold one, each opaque and edged in a hard gold line — then his new
+         rank pip rises off his head and settles where he will wear it for
+         good (Deck.drawRank). The first cut laid a translucent tan
+         silhouette over a gold glow rectangle: a cut-out pasted on a box. */
       show: {
-        ms: 3600, layer: 'world',
-        draw(g, s, p) {
+        ms: 2800, layers: ['ground', 'world'],
+        draw(g, s, p, dt, layer) {
           const TL = CFG.TILE, v = R.viewTiles();
-          g.save();
-          const q0 = p / 0.7;
-          if (q0 < 1) A.ring(g, s.x * TL, s.y * TL, TL * (1 + q0 * 9), 48, 'gold', 0.85 * (1 - q0));
-          // pass 1, the light: each soldier's pillar as the wave reaches it,
-          // and its new rank rising off it
-          const lit = [];
-          for (const l of s.lit) {
-            const q = (s.t - l.d) / 1.1;
-            if (q <= 0 || q >= 1) continue;
+          A.arrive(g, s, layer, 'steel', 1, { clods: false, burst: false });
+          if (layer !== 'world') return;
+          const q0 = s.t / 0.9;
+          if (q0 < 1) { g.fillStyle = q0 < 0.5 ? A.BEAM.steel.ring[1] : A.BEAM.steel.ring[0]; const r = TL * (0.6 + q0 * 7); A.ellipseDots(g, s.x * TL, s.y * TL + TL * 0.3, r, r * 0.5); }
+          for (const l of s.lit || []) {
+            const t = s.t - l.d;
+            if (t < 0 || t > 1.2) continue;
             const u = live(l.hull || l.id);
             if (!u || !A.near(v, u.x, u.y, 2) || !G.visibleAt(u.x | 0, u.y | 0)) continue;
-            const cx = u.x * TL, foot = u.y * TL + TL * 0.3, a = q < 0.2 ? 1 : 1 - (q - 0.2) / 0.8;
-            A.ring(g, cx, foot, TL * (0.4 + q * 0.5), 14, 'gold', 0.9 * a, 0.45);   // the light lands in a ring, never a pool
-            A.shaft(g, cx, foot, TL * 2.6 * Math.min(1, q * 6), TL * 0.8 * (1 - q * 0.6), 'gold', a);
-            const ry = u.y * TL - TL * (0.8 + q * 0.7), n = u.vet ? 2 : 1;   // the rank it now wears
-            if (A.mark(g, 'gold', a)) for (let c = 0; c < n; c++) for (const [dx, dy] of [[-4, 0], [-2, -2], [0, -4], [2, -2], [4, 0]])
-              g.fillRect(A.snap(cx + dx), A.snap(ry + c * 4 + dy), 2, 2);
-            if (!l.hull && q < 0.45) lit.push([u, q]);
+            if (!l.hull && t < 0.34) Deck.flashUnit(g, u, t);
+            // the rank it will wear for good lands on its head white-hot
+            // (the unit pass draws it from then on, in its own colour)
+            if (!l.hull && t > 0.1 && t < 0.55) {
+              const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+              Deck.drawRank(g, u.x * TL - D / 2, R.frameTop(u.y, B, D), D, u.vet ? 2 : 1, img, true);
+            }
           }
-          g.restore();
-          /* pass 2, the soldier: its own silhouette blazing, laid OVER every
-             pillar and opaque — added like the light, it washed out into the
-             pillar's white and the soldier the card was raising disappeared.
-             A dark-gold edge round a pale-gold figure: the man in the light. */
-          g.save();
-          for (const [u, q] of lit) {
-            const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-            const x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D);
-            g.globalAlpha = q < 0.25 ? 5 / 6 : q < 0.35 ? 2 / 3 : 1 / 2;
-            const edge = R.tintOf(img, '#7a4c0e');
-            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) g.drawImage(edge, x + dx, y + dy, D, D);
-            g.drawImage(R.tintOf(img, '#ffeaa8'), x, y, D, D);
-          }
-          g.restore();
         },
       },
     },
