@@ -93,6 +93,9 @@ await p.evaluate(() => {
   const IDS = ['scouts_fire', 'pathfinders_map', 'spy_hall', 'barbarian_pact', 'swallowed_sun', 'krakens_call'];
   window.__rv = {
     IDS,
+    // the log lines written since `top` was the newest (the log is capped, so
+    // never measured by its length)
+    since(top) { const out = []; for (const l of S.log) { if (l === top) break; out.push(l); } return out; },
     // a fresh run with the switch ON and a hand of every card of the group
     fresh(seed, mode, size) {
       CFG.CARDS.ON = true;
@@ -328,6 +331,106 @@ await p.evaluate(() => {
   ck('andWhatTheEyesSawIsTheirs', r.fh2 && r.v2 && r.v3, `foreignHome ${r.fh2}, aimable in sight ${r.v2} and after ${r.v3}`);
 }
 
+// …A CARD'S MAP SHOWS THE LAND, NEVER WHAT STANDS ON IT: placement, the
+// placement grid, the wall ghost and every live layer ask for eyes. Each
+// check runs the NAIVE explored-only gate beside it (Deck.blindIdx stubbed
+// to "never blind") and must see the leak.
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __rv.fresh('rv-eyes'); const { P, A } = __rv.flat(false);
+    for (let y = 0; y < 14; y++) for (let x = 0; x < 14; x++) S.map.explored[MapGen.idx(x, y)] = 1;
+    // the rival felled a stand beside its hall, in the fog: live STUMPS, memory grass
+    const sx = A.x - 3, sy = A.y - 2, si = MapGen.idx(sx, sy);
+    S.map.terrain[si] = T.STUMPS; S.map.seenTerrain[si] = T.GRASS;
+    S.map.workedBy = S.map.workedBy || {}; S.map.workedBy[si] = 'A';
+    const hut = __rv.bld('A', 'house', A.x - 4, A.y + 1);
+    const free = { x: A.x - 6, y: A.y - 4 };
+    G.updateVisibility();
+    out.before = Bld.canPlace('P', 'lumber', sx, sy).code;
+    Deck.play('pathfinders_map'); G.updateVisibility();
+    const probe = () => {
+      const o = {};
+      o.stump = Bld.canPlace('P', 'lumber', sx, sy);
+      o.hut = Bld.canPlace('P', 'house', hut.x, hut.y);
+      UI.placing = 'lumber'; UI.buildPlaceMap(); o.cell = UI.placeMap ? UI.placeMap[si] : 'none';
+      UI.placing = null; UI.placeMap = null;
+      UI.wallDrag = [{ x: hut.x, y: hut.y }, { x: free.x, y: free.y }]; UI.updateWallGhost();
+      o.wall = UI.wallGhost.map(t => t.ok); UI.wallDrag = null; UI.wallGhost = null;
+      return o;
+    };
+    out.eyes = probe();
+    const bi = Deck.blindIdx;
+    Deck.blindIdx = () => false;
+    out.naive = probe();
+    Deck.blindIdx = bi;
+    // …and the world's own reveal hands charted ground back (a starfall, a
+    // finished building's view): it scores and builds as it always did
+    const pts0 = __rv.mapPts();
+    G.reveal(free.x, free.y, 2);
+    out.given = !Deck.litAt(free.x, free.y) && !Deck.blindAt(free.x, free.y) && __rv.mapPts() >= pts0;
+    out.EYES = Deck.EYES_BUILD;
+    return out;
+  });
+  ck('aChartIsNoGroundToBuildOn', r.before === 'unexplored' && !r.eyes.stump.ok && r.eyes.stump.code === 'unexplored' && r.eyes.stump.why === r.EYES &&
+    !r.eyes.hut.ok && r.eyes.hut.code === 'unexplored' && r.naive.stump.ok && r.naive.hut.code === 'blocked',
+    `the rival's fogged stump: ${r.eyes.stump.code} (naive: ok ${r.naive.stump.ok}); their hidden hut: ${r.eyes.hut.code} (naive: ${r.naive.hut.code})`);
+  ck('andTheGridDrawsNoCellOverIt', r.eyes.cell === 255 && r.naive.cell === 0, `lumber camp grid at the stump: ${r.eyes.cell} (naive ${r.naive.cell})`);
+  ck('andTheWallGhostSaysNothing', r.eyes.wall[0] === false && r.eyes.wall[1] === false && r.naive.wall[0] === false && r.naive.wall[1] === true,
+    `ghost over the hidden hut / open charted ground: ${r.eyes.wall.join('/')} (naive ${r.naive.wall.join('/')} — the difference IS the hut)`);
+  ck('theWorldsRevealIsTheTribesOwn', r.given);
+}
+{
+  const r = await p.evaluate(() => {
+    __rv.fresh('rv-eyes2'); const { A } = __rv.flat(false);
+    for (let y = 0; y < 14; y++) for (let x = 0; x < 14; x++) S.map.explored[MapGen.idx(x, y)] = 1;
+    // a channel by their town, a RIVAL bridge over it, an ash heap: all in the fog
+    const bx = A.x - 4, by = A.y - 4;
+    __rv.paint(bx - 3, by, bx + 3, by, T.WATER);
+    S.bridges = S.bridges || [];
+    S.bridges.push({ x: bx, y: by, owner: 'A', level: 1, dir: 'v', hp: 100, maxhp: 100 });
+    S.ashes = S.ashes || [];
+    S.ashes.push({ x: A.x - 6, y: A.y + 1, sz: 1, key: 'house', lv: 1, day: S.day });
+    S.corpses = S.corpses || [];
+    S.corpses.push({ x: A.x - 7.5, y: A.y - 2.5, kind: 'deer', day: S.day });
+    Bld._block = null; G._wb = null;
+    Screens.show('playing'); S.paused = true;
+    if (R.rebuildTerrain) R.rebuildTerrain();
+    Deck.play('pathfinders_map'); G.updateVisibility();
+    const TL = CFG.TILE;
+    // the card's own moment is not what is measured (it unrolls over the
+    // screen): drop it, and draw at a frozen clock so nothing animates
+    R.cardShows.length = 0;
+    const pn = performance.now, t0 = pn.call(performance);
+    const lum = (tx, ty) => {
+      performance.now = () => t0;
+      try { R.centerOn(tx + 0.5, ty + 0.5); R.fogDirty = true; R.draw(0); R.fogDirty = true; R.draw(0); }
+      finally { performance.now = pn; }
+      const z = R.cam.z * (R.dpr || 1), g = R.cv.getContext('2d');
+      // the whole tile, in device pixels (an ash heap lies low in its tile)
+      const px = Math.round((tx * TL - R.cam.x) * z), py = Math.round((ty * TL - R.cam.y) * z), sz = Math.max(4, Math.round(TL * z));
+      const d = g.getImageData(px, py, sz, sz).data;
+      let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2];
+      return Math.round(s / (d.length / 4));
+    };
+    const with3 = () => ({ bridge: lum(bx, by), ash: lum(A.x - 6, A.y + 1), corpse: lum(A.x - 8, A.y - 3) });
+    const hold = { b: S.bridges.slice(), a: S.ashes.slice(), c: S.corpses.slice() };
+    const without = () => { S.bridges = []; S.ashes = []; S.corpses = []; const o = with3(); S.bridges = hold.b; S.ashes = hold.a; S.corpses = hold.c; return o; };
+    const out = { lit: Deck.litAt(bx, by) && !G.visibleAt(bx, by) };
+    out.eyes = { on: with3(), off: without() };
+    const bi = Deck.blindIdx; Deck.blindIdx = () => false;
+    out.naive = { on: with3(), off: without() };
+    Deck.blindIdx = bi;
+    out.remembered = R.rememberedAt(MapGen.idx(bx, by));
+    S.paused = true;
+    return out;
+  });
+  const same = k => r.eyes.on[k] === r.eyes.off[k], seen = k => r.naive.on[k] !== r.naive.off[k];
+  ck('aChartShowsTheLandNotWhatStandsOnIt', r.lit && !r.remembered && same('bridge') && same('ash') && same('corpse') && seen('bridge') && seen('ash') && seen('corpse'),
+    `luminance with/without — bridge ${r.eyes.on.bridge}/${r.eyes.off.bridge}, ash ${r.eyes.on.ash}/${r.eyes.off.ash}, corpse ${r.eyes.on.corpse}/${r.eyes.off.corpse}; ` +
+    `the naive gate draws them: ${r.naive.on.bridge}/${r.naive.off.bridge}, ${r.naive.on.ash}/${r.naive.off.ash}, ${r.naive.on.corpse}/${r.naive.off.corpse}`);
+}
+
 // ---------------- 2. SCOUT'S FIRE ----------------
 {
   const r = await p.evaluate(() => {
@@ -399,8 +502,20 @@ await p.evaluate(() => {
     for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++)
       if (dx * dx + dy * dy <= 90 && MapGen.inB(1 + dx, cy + dy) && !MapGen.onBoard(1 + dx, cy + dy)) naive++;
     out.naiveRim = naive;
+    // THE SAME FIRE FED AGAIN burns 3 MORE days (a play within half its ring
+    // of a hill still burning) — the old code lit a second fire there that
+    // outlasted the first by one day
+    __rv.fresh('rv-scout4'); __rv.flat(false); G.updateVisibility();
+    const d0 = Deck.now();
+    Deck.play('scouts_fire', { x: 20.5, y: 20.5 });
+    S.day += 1;
+    Deck.play('scouts_fire', { x: 22.5, y: 21.5 });
+    const e4 = Deck.timed('scouts_fire');
+    out.fed = { pts: e4.pts.length, until: +(e4.pts[0].until - d0).toFixed(6), chip: +(e4.until - d0).toFixed(6) };
     return out;
   });
+  ck('theSameFireFedAgainBurnsThreeMoreDays', r.fed.pts === 1 && r.fed.until === 6 && r.fed.chip === 6,
+    `${r.fed.pts} hill, burning ${r.fed.until} days from the first play (chip ${r.fed.chip})`);
   ck('theFireIsAnyPoint', r.c.target === 'any' && r.at === 'target' && r.anyUnexplored && r.offBoard,
     `target '${r.c.target}', unexplored ground takes it ${r.anyUnexplored}, off the board refused ${r.offBoard}`);
   ck('nineTilesChartedForGood', r.play.ok && r.ring.explored === r.ring.n && r.ring.lit > 200 && r.pts[0] === r.pts[1],
@@ -524,6 +639,13 @@ await p.evaluate(() => {
     out.after = !Deck.timed('spy_hall') && !Deck.spySees(S.units.find(u => u.owner === 'A')) &&
       S.buildings.filter(z => z.owner === 'A').every(z => S.map.seenB[MapGen.idx(z.x, z.y)]);
     out.endLog = /spy slips away/.test(S.log[0].msg);
+    // THEIR card in THEIR voice: the Forager's headline is written to the
+    // player who drafts it ("your folk walk 12% faster")
+    S.draft = S.draft || {}; S.draft.rival = S.draft.rival || {};
+    S.draft.rival.pick = { key: 'forager', roll: { food: 20, wood: 20, stone: 15, kick: 30, pm: 1.12 } };
+    const fm = Deck.play('spy_hall').msg;
+    out.forager = { msg: fm, theirs: /Forager — mixed stores; their folk walk 12% faster/.test(fm) && !/\byour\b/.test(fm.split('drafted')[1] || 'your'),
+      naive: /\byour\b/.test(Cards.DEFS.forager.text(S.draft.rival.pick.roll)) };
     // a save from before the draft: something true about the origin card
     S.draft.rival.pick = null;
     out.noPick = Deck.play('spy_hall');
@@ -531,7 +653,8 @@ await p.evaluate(() => {
   });
   ck('everyRivalBuildingIsMarkedForGood', r.play.ok && r.c.target === 'none' && r.ghosts === r.rivals && r.rivals === 4 && r.footLit && r.kept === r.rivals && r.after,
     `${r.ghosts}/${r.rivals} ghosted (a work site among them), 2x2 footprint card-lit ${r.footLit}, kept through two passes ${r.kept}, after the ten days ${r.after}`);
-  ck('youLearnTheirOriginCard', r.origin === true || r.origin === 'no pick', String(r.origin));
+  ck('youLearnTheirOriginCard', (r.origin === true || r.origin === 'no pick') && r.forager.theirs && r.forager.naive,
+    String(r.origin) + ' — ' + r.forager.msg);
   ck('aSaveWithNoDraftIsToldTheTruth', r.noPick.ok && /drafted no origin card/.test(r.noPick.msg), r.noPick.msg);
   ck('forTenDaysTheirPeopleAreSeen', r.until === 10 && r.hidden0 && r.sees && r.knows && r.saved && r.endLog,
     `${r.until} days; a soul in the fog seen ${r.sees}, counted by the truce's question ${r.knows}; rides the save ${r.saved}`);
@@ -583,9 +706,29 @@ await p.evaluate(() => {
     Combat.maybeWave();
     out.naive = [...new Set(S.units.filter(u => !ids1.has(u.id)).map(u => u.hostileTo))].join(',');
     S.units = S.units.filter(u => ids1.has(u.id));
+    /* …BUT NEVER FOR LONG: a wave PACT_WAIT days past its day runs its
+       ordinary course with the charge kept, and the log says why — the
+       uncapped wait (pactHold stubbed to "always") is the control, and it
+       holds every band off the map for as long as the rival stays down */
+    S.deck.charges.pact = 2;
+    const waitOne = (hold) => {
+      const ph = Deck.pactHold; if (hold) Deck.pactHold = () => true;
+      S.wave.next = S.day - Deck.PACT_WAIT;
+      const ids = new Set(S.units.map(u => u.id)), c = S.wave.count, top = S.log[0];
+      Combat.maybeWave();
+      const nu = S.units.filter(u => !ids.has(u.id));
+      const o = { count: S.wave.count - c, n: nu.length, aim: [...new Set(nu.map(u => u.hostileTo))].join(','), kept: S.deck.charges.pact,
+        said: __rv.since(top).some(l => /pact.s bands wait/.test(l.msg)) };
+      S.units = S.units.filter(u => ids.has(u.id));
+      Deck.pactHold = ph;
+      return o;
+    };
+    out.capped = waitOne(false);
+    out.uncapped = waitOne(true);
+    out.day9 = (() => { S.wave.next = S.day - (Deck.PACT_WAIT - 1); const c = S.wave.count; Combat.maybeWave(); return S.wave.count - c; })();
     G.barbEase = ease;
-    // A BAND WITH NO ROAD TO THE RIVAL DISPERSES, the charge kept: their town
-    // walled in by crags, no sea anywhere for a longboat
+    // A BAND WITH NO ROAD TO THE RIVAL SCATTERS — one of the pact's three,
+    // spent and said: their town walled in by crags, no sea for a longboat
     S.deck.charges.pact = 2;
     for (let y = A.y - 3; y <= A.y + 4; y++) for (let x = A.x - 3; x <= A.x + 4; x++)
       if (Math.max(Math.abs(x - A.x - 0.5), Math.abs(y - A.y - 0.5)) >= 3 && MapGen.inB(x, y)) {
@@ -594,11 +737,20 @@ await p.evaluate(() => {
     Bld._block = null; G._wb = null;
     S.wave.next = S.day;
     const ids2 = new Set(S.units.map(u => u.id)), c2 = S.wave.count;
+    const top2 = S.log[0];
     Combat.maybeWave();
-    out.walled = { spawned: S.units.filter(u => !ids2.has(u.id) && u.owner === 'R').length, kept: S.deck.charges.pact, waved: S.wave.count - c2 };
+    out.walled = { spawned: S.units.filter(u => !ids2.has(u.id) && u.owner === 'R').length, kept: S.deck.charges.pact, waved: S.wave.count - c2,
+      said: __rv.since(top2).some(l => /found no road to the rival/.test(l.msg)) };
     // a save keeps the charges
     G.loadJSON(G.saveJSON());
-    out.saved = S.deck.charges.pact === 2;
+    out.saved = S.deck.charges.pact === 1;
+    // …and the next no-road band spends the last: the pact is a count, never a
+    // shield — the wave after it musters its ordinary band
+    S.wave.next = S.day; Combat.maybeWave();
+    out.lastSpent = S.deck.charges.pact === 0 && !Deck.pactPending();
+    const ids4 = new Set(S.units.map(u => u.id));
+    S.wave.next = S.day; Combat.maybeWave();
+    out.after = S.units.filter(u => !ids4.has(u.id) && u.owner === 'R').length;
     // DENIABLE AT PEACE, and the band goes for the rival's town
     __rv.fresh('rv-pact2', 'calm'); const f2 = __rv.flat(false);
     // a town to sack: barbarians never burn a hall (they cannot win anyone's war)
@@ -629,8 +781,11 @@ await p.evaluate(() => {
   ck('andIsToldAtEveryDifficulty', r.noteChance === 0 && r.bands.every(bd => bd.told), `on Hard (foe notes ${r.noteChance}) every band logged`);
   ck('aSparedRivalMeansTheBandWaits', r.waits.count === 0 && r.waits.rng && r.waits.units === 0 && r.waits.kept === 2 && /P/.test(r.naive),
     `muster ${r.waits.count}, draws none ${r.waits.rng}, spawned ${r.waits.units}, charges kept ${r.waits.kept}; the naive flip aims at '${r.naive}'`);
-  ck('noRoadToTheRivalKeepsTheCharge', r.walled.spawned === 0 && r.walled.kept === 2 && r.walled.waved === 1,
-    `spawned ${r.walled.spawned}, charges ${r.walled.kept}, the wave spent ${r.walled.waved}`);
+  ck('butTheWaitIsNeverAShield', r.capped.count === 1 && r.capped.n > 0 && /P/.test(r.capped.aim) && r.capped.kept === 2 && r.capped.said &&
+    r.uncapped.count === 0 && r.uncapped.n === 0 && r.day9 === 0,
+    `${r.capped.n} raised at ${r.capped.aim}, charges kept ${r.capped.kept}, said ${r.capped.said}; a day short of the cap still waits (${r.day9}); the uncapped wait raises ${r.uncapped.n}`);
+  ck('noRoadToTheRivalSpendsTheCharge', r.walled.spawned === 0 && r.walled.kept === 1 && r.walled.waved === 1 && r.walled.said && r.lastSpent && r.after > 0,
+    `spawned ${r.walled.spawned}, charges ${r.walled.kept}, the wave spent ${r.walled.waved}, said ${r.walled.said}; the last spent ${r.lastSpent}, the next wave raises ${r.after}`);
   ck('theChargesRideTheSave', r.saved);
   ck('thePactIsDeniable', r.peace && r.peaceBand > 0, `peace holds while the band marches: ${r.peace}`);
   ck('andTheBandGoesForTheirTown', r.hunt.length > 0 && r.hunt.every(h => h.toA < h.toP && h.at !== 'P') && r.playerSafe,
@@ -819,11 +974,38 @@ await p.evaluate(() => {
     out.causes = [...causes].join(',');
     out.used = n0 - Deck.count('krakens_call');
     out.cleared = S.deck.kraken === null;
-    // NOTHING TO STRIKE: the card comes back with a reason
-    __rv.fresh('rv-kr2'); const e2 = __rv.flat(true); e2.A.x = 30; e2.A.y = 4; Bld._block = null; __rv.sea(27); G.updateVisibility();
-    const n2 = Deck.count('krakens_call');
-    out.empty = Deck.play('krakens_call');
-    out.emptyKept = Deck.count('krakens_call') === n2 && !S.deck.kraken;
+    /* AT WAR, ASKED OF WHAT YOU KNOW: knowing of nothing the card comes back
+       — and in the SAME words whether the hidden sea is empty or holds a
+       hull, or the refusal is a free probe of the fog (the naive plan, which
+       asked the live sea, would have played on the hidden hull) */
+    const war = (hull) => {
+      __rv.fresh('rv-kr2'); const e2 = __rv.flat(false); e2.A.x = 30; e2.A.y = 4; Bld._block = null; __rv.sea(27);
+      const h = hull ? __rv.unit('fishboat', 'A', 28.5, 31.5) : null;
+      G.updateVisibility();
+      const n2 = Deck.count('krakens_call');
+      const fx = Deck.FX.krakens_call;
+      const o = { hidden: h ? !G.visibleAt(28, 31) : null, focus: fx.focus(), naive: fx.targets().ships.length };
+      o.res = Deck.play('krakens_call');
+      o.kept = Deck.count('krakens_call') === n2 && !S.deck.kraken && (!h || h.hp === h.maxhp);
+      return o;
+    };
+    out.empty = war(false);
+    out.hiddenHull = war(true);
+    // …knowing of something that is GONE, it is played and comes up empty —
+    // spent, as a strike aimed at a ghost is
+    __rv.fresh('rv-kr3'); const e3 = __rv.flat(false); e3.A.x = 30; e3.A.y = 4; Bld._block = null; __rv.sea(27);
+    S.map.seenB[MapGen.idx(12, 25)] = { key: 'house', level: 1, owner: 'A' };   // remembered by the water; razed since
+    const hid = __rv.unit('fishboat', 'A', 28.5, 31.5);                          // a hull the fog hides
+    G.updateVisibility();
+    const n3 = Deck.count('krakens_call'), fx3 = Deck.FX.krakens_call;
+    out.ghost = { focus: fx3.focus(), naiveFocus: (() => { const t = fx3.targets(); return t.ships[0] ? { x: t.ships[0].x, y: t.ships[0].y } : null; })() };
+    out.ghost.res = Deck.play('krakens_call');
+    out.ghost.spent = Deck.count('krakens_call') === n3 - 1;
+    // the hidden hull is gone too (the war is on: the deep takes what is really there)
+    S.units = S.units.filter(u => u.id !== hid.id);
+    const top = S.log[0];
+    __rv.sea_done();
+    out.ghost.over = __rv.since(top).some(l => /nothing to show for it/.test(l.msg));
     return out;
   });
   ck('itNeedsOpenWater', !r.dry.ok && r.dry.why === 'Needs open water' && !r.pond.ok && r.pond.why === 'Needs open water' && r.open.ok,
@@ -843,7 +1025,14 @@ await p.evaluate(() => {
     `nothing at the play ${r.untouched}; mid-act save ${r.midSave}; in sight ${r.seen}`);
   ck('oneKrakenAtATime', !r.risen.ok && /still risen/.test(r.risen.why) && !r.stirring.ok && /already stirring/.test(r.stirring.why),
     `"${r.risen.why}" / "${r.stirring.why}"`);
-  ck('nothingToStrikeHandsItBack', !r.empty.ok && /come up empty/.test(r.empty.why) && r.emptyKept, `${r.empty.ok} "${r.empty.why}"`);
+  ck('atWarItIsAskedOfWhatYouKnow', !r.empty.res.ok && /know of nothing/.test(r.empty.res.why) && r.empty.kept &&
+    r.hiddenHull.hidden && !r.hiddenHull.res.ok && r.hiddenHull.res.why === r.empty.res.why && r.hiddenHull.kept && r.hiddenHull.naive === 1,
+    `"${r.empty.res.why}" — the same with a hidden hull ${r.hiddenHull.res.why === r.empty.res.why} (the naive plan would have played on it: ${r.hiddenHull.naive})`);
+  ck('aKnownGhostPlaysAndComesUpEmpty', r.ghost.res.ok && r.ghost.spent && r.ghost.over,
+    `played ${r.ghost.res.ok}, spent ${r.ghost.spent}, said empty ${r.ghost.over}`);
+  ck('theBurstLandsOnlyOnWhatYouKnow', r.hiddenHull.focus === null && r.empty.focus === null && r.ghost.focus && Math.abs(r.ghost.focus.x - 12.5) < 1e-9 && Math.abs(r.ghost.focus.y - 25.5) < 1e-9 &&
+    r.ghost.naiveFocus && r.ghost.naiveFocus.x === 28.5,
+    `hidden hull only → ${JSON.stringify(r.hiddenHull.focus)}; a known ghost → ${JSON.stringify(r.ghost.focus)} (the naive pick: the hidden hull at ${JSON.stringify(r.ghost.naiveFocus)})`);
   ck('andTheKrakenDrawsNoRng', r.rng && r.rngAct, `at the play ${r.rng}, through the whole act ${r.rngAct}`);
 }
 
@@ -918,6 +1107,38 @@ await p.evaluate(() => {
   const r2 = await p.evaluate(() => { const o = { n: Deck.count('krakens_call'), peace: S.peace }; S.paused = true; return o; });
   ck('theDeckAsksTwiceBeforeTheTruceEnds', r1.first.armed && r1.first.kept && r1.first.peace && !r1.first.running && r1.running && landed && r2.n === r1.n - 1 && r2.peace === false,
     `first tap: armed ${r1.first.armed}, card kept ${r1.first.kept}, peace ${r1.first.peace}; second tap plays ${r1.running}; landed ${landed}, ${r1.n} → ${r2.n} cards`);
+}
+
+// …and a confirm the player walked away from is no confirm: arm it, put the
+// card back, lift it again — ONE tap must warn again, never play
+{
+  const r = await p.evaluate(async () => {
+    const wait = ms => new Promise(f => setTimeout(f, ms));
+    __rv.fresh('rv-ui2', 'calm'); const { A } = __rv.flat(false);
+    __rv.sea(27); A.x = 30; A.y = 4; Bld._block = null;
+    __rv.unit('fireship', 'A', 20.5, 28.5);
+    __rv.unit('rider', 'P', 20.5, 26.5);
+    G.updateVisibility();
+    Screens.show('playing'); S.paused = false;
+    const n = Deck.count('krakens_call');
+    const cell = () => document.querySelector('#dkSheet .dkCell[data-card="krakens_call"]');
+    if (!DeckUI.open) DeckUI.openSheet();
+    await wait(60);
+    cell().click(); await wait(60);
+    document.querySelector('#dkInsp .dkPlay').click();          // armed: "Confirm"
+    const armed = !!DeckUI._armed && /Confirm/.test(document.querySelector('#dkInsp .dkPlay').textContent);
+    DeckUI.putBack(true);                                          // …put back
+    cell().click(); await wait(60);                                // …lifted again
+    const label = document.querySelector('#dkInsp .dkPlay').textContent;
+    document.querySelector('#dkInsp .dkPlay').click();            // one tap
+    await wait(120);
+    const o = { armed, label, playing: !!DeckUI.playing, kept: Deck.count('krakens_call') === n, peace: S.peace === true, rearmed: !!DeckUI._armed };
+    DeckUI.putBack(true); if (DeckUI.open) DeckUI.closeSheet();
+    S.paused = true;
+    return o;
+  });
+  ck('aConfirmPutBackIsNoConfirm', r.armed && !/Confirm/.test(r.label) && !r.playing && r.kept && r.peace && r.rearmed,
+    `armed ${r.armed}; lifted again it reads "${r.label}"; one tap: playing ${r.playing}, kept ${r.kept}, peace ${r.peace}, warned again ${r.rearmed}`);
 }
 
 // ---------------- 8. THE PICTURE ----------------
