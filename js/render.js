@@ -7157,7 +7157,7 @@ const R = {
      building pass and the fort occlusion both ask here, so they agree. */
   wornSprite(b) {
     const held = this._cardHeld && this._cardHeld.get(b.id);
-    if (held) return this.bldSprite(b, held);
+    if (typeof held === 'number' && held > 0) return this.bldSprite(b, held);
     const bph = Bld.burnPhase(b), base = this.bldSprite(b);
     if (bph >= 1) { const d = this.dmgArt(b, bph); if (d) return d; }
     if (bph === 1) return this.darkOf(base);
@@ -10650,14 +10650,15 @@ const R = {
     }
     for (const s of this.cardShows) {
       const d = Deck.FX[s.id], sh = d && d.show;
-      if (!sh || !sh.drawBld) continue;
+      if (!sh || !(sh.drawBld || sh.held)) continue;
       const p = s.t / (s.ms / 1000);
       if (p < 1) (out || (out = [])).push({ s, p });
     }
     return out;
   },
-  /* the buildings a running card act holds at an earlier level (id → level):
-     a show's `held(s, p)` answers a Map, or nothing. Null when none hold. */
+  /* the buildings a running card act holds at an earlier look (id → level,
+     or id → {stage} for a work site, read by the site branch): a show's
+     `held(s, p)` answers a Map, or nothing. Null when none hold. */
   cardHeldLevels(list) {
     let out = null;
     for (const it of list) {
@@ -10674,7 +10675,7 @@ const R = {
     for (const it of list) {
       const id = it.e ? it.e.id : it.s.id, d = Deck.FX[id];
       g.save();
-      try { if (it.e) d.drawBld(g, b, it.e); else d.show.drawBld.call(d, g, b, it.s, it.p); }
+      try { if (it.e) d.drawBld(g, b, it.e); else if (d.show.drawBld) d.show.drawBld.call(d, g, b, it.s, it.p); }
       catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', id, err); } }
       g.restore();
     }
@@ -13325,7 +13326,10 @@ const R = {
              stone keep (→L3). Upgrades wear their own sprite labels (the
              same art for now) so their looks can diverge later. */
           const tgt = up ? b.level + 1 : b.level;
-          const stage = Bld.stageOf(b);
+          // a card's act may hold a site at the stage it showed (`{stage}` in
+          // R._cardHeld — Wonder's Foundation rises through what it gained)
+          const hs = this._cardHeld && this._cardHeld.get(b.id);
+          const stage = hs && typeof hs === 'object' && hs.stage != null ? hs.stage : Bld.stageOf(b);
           if (b.key === 'wonder') {
             /* THE GREAT WORKS (tests/wonder.mjs). Two shared raising stages —
                every wonder is raised by the same masons, off the same

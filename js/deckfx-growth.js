@@ -1610,23 +1610,29 @@ Object.assign(Deck.FX, {
       n = n | 0;
       return n > 0 ? { label: '×' + n, frac: 1, words: n + (n === 1 ? ' foundation' : ' foundations') } : null;
     },
-    // the card lands ON the works when they stand (DeckUI._dest), else on the hall
-    dest() { return GrowFX.wonderSite(); },
+    // the card lands ON the works when they stand (DeckUI._dest), brought to
+    // the middle of the view first (GrowFX.frame); else on the hall
+    dest() { const w = GrowFX.wonderSite(); if (w) GrowFX.frame(w.x, w.y); return w; },
     work() { return CFG.BUILDINGS.wonder.levels[0].time; },
     floor() { return (1 - this.CAP) * this.work(); },
     // `look`: laid by the ground breaking (Bld.place), not by a card the play
-    // sequence already carried to the works — bring them on screen
+    // sequence already carried to the works — bring them to the middle of the
+    // view, and since no card is landing to say what happened, say it in a note
     lay(w, look) {
-      const before = w.construction;
+      const before = w.construction, from = Bld.stageOf(w);
       w.construction = Math.max(Math.min(before, this.floor()), before - this.GAIN * this.work());
-      const at = { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), bx: w.x, by: w.y };
-      if (look) GrowFX.look(at.x, at.y);
+      const days = Math.round(before - w.construction), pct = Math.round((1 - w.construction / this.work()) * 100);
+      // the site holds the stage it showed until the pillar lands, then rises
+      // through each stage it gained (show.held — render data, never in S)
+      const at = { x: Bld.cx(w), y: Bld.cy(w), foot: w.y + Bld.size(w), sz: Bld.size(w), bx: w.x, by: w.y,
+        bid: w.id, from, to: Bld.stageOf(w), days, pct };
+      if (look) GrowFX.frame(at.x, at.y);
       GrowFX.show('wonders_foundation', at);
       if (window.R && R.shakeAt) R.shakeAt(6, 1.6);
       GrowFX.sfx('foundation');
-      Deck.say('🗿 The first stones were already here: your Wonder gains ' + Math.round(before - w.construction) +
-        ' days of work and stands ' + Math.round((1 - w.construction / this.work()) * 100) + '% raised.');
-      return before - w.construction;
+      const line = '🗿 The first stones were already here: your Wonder gains ' + days + ' days of work — ' + pct + '% raised.';
+      if (look) G.log(line, 'note', 4600); else Deck.say(line);
+      return line;
     },
     can() {
       if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds.' };
@@ -1640,145 +1646,199 @@ Object.assign(Deck.FX, {
       const ok = this.can();
       if (!ok.ok) return ok;
       const w = Deck.wonderOf('P');
-      if (w) { this.lay(w); return { ok: true, x: Bld.cx(w), y: Bld.cy(w) }; }
+      if (w) { const msg = this.lay(w); return { ok: true, x: Bld.cx(w), y: Bld.cy(w), msg }; }
       Deck.run().charges.foundation = 1;
       const tc = Bld.tcOf('P'), c = tc ? { x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + Bld.size(tc) } : Object.assign(GrowFX.mid(), { foot: GrowFX.mid().y + 1 });
-      GrowFX.show('wonders_foundation', { x: c.x, y: c.y, foot: c.foot, sz: 2, pending: 1, ms: 2200 });
+      GrowFX.show('wonders_foundation', { x: c.x, y: c.y, foot: c.foot, sz: 3, pending: 1, ms: 3200 });
       GrowFX.sfx('rise');
       Deck.say('🗿 The first stones wait under the grass: the moment you lay your Wonder, its first 35% stands.');
-      return { ok: true, x: c.x, y: c.y };
+      return { ok: true, x: c.x, y: c.y, msg: '🗿 The first stones wait for your Wonder: lay it, and its first 35% stands.' };
+    },
+    // weathered stone, lit from the upper left: outline, shade, face, lit, crest
+    STONE: ['#2e2a22', '#5f574a', '#7d7363', '#9a8f7a', '#b3a78f', '#ddd2b8'],
+    /* a cup-and-ring carved in a face — the old people's sign, cut dark with
+       a lit lower lip — and, `glow` > 0, gold light welling up out of the
+       carving in the ramp's ink, laid opaque (an added gold over the stone
+       went lime). `big` cuts a second ring. */
+    carving(g, mx, my, big, glow) {
+      const F = GrowFX, cut = [[mx, my]];
+      for (const rr of big ? [4, 8] : [4]) {
+        const nd = rr > 4 ? 14 : 8;
+        for (let k = 0; k < nd; k++) {
+          const th = k / nd * Math.PI * 2;
+          cut.push([F.snap(mx + Math.cos(th) * rr), F.snap(my + Math.sin(th) * rr * 0.9)]);
+        }
+      }
+      g.fillStyle = '#3a3429';
+      for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
+      g.fillStyle = '#a99d85';
+      for (const [x, y] of cut) g.fillRect(x, y + 2, 2, 1);
+      const ink = glow > 0 && R.goldInk(glow);
+      if (ink) {
+        g.fillStyle = ink;
+        for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
+        const hot = R.goldInk(Math.min(1, glow + 0.4));
+        if (hot) { g.fillStyle = hot; g.fillRect(mx, my, 2, 2); }
+      }
+    },
+    /* one standing stone, its foot at (gx, gy), risen `q` of its height `bh`:
+       its own lean, mossed and chipped, a crack down the face and, on a face
+       big enough, the carving */
+    standing(g, gx, gy, bw, bh, q, seed, glow) {
+      const F = GrowFX, S2 = this.STONE;
+      const hh = F.hash(seed, 3), top = F.snap(gy - bh * q), lean = F.snap((hh - 0.5) * 6 * q), L = gx - bw / 2;
+      if (gy - top < 4) return;
+      g.fillStyle = S2[0];
+      g.fillRect(L - 2, top + 4, bw + 4, gy - top - 2);
+      g.fillRect(L + lean, top - 2, bw - 4, 8);
+      g.fillStyle = S2[2]; g.fillRect(L, top + 4, bw, gy - top - 4);
+      g.fillStyle = S2[3]; g.fillRect(L, top + 4, F.snap(bw * 0.45), gy - top - 4);
+      g.fillStyle = S2[1]; g.fillRect(L + bw - 4, top + 6, 4, gy - top - 6);
+      g.fillStyle = S2[4]; g.fillRect(L + lean + 2, top, bw - 8, 4);
+      g.fillStyle = '#c9bea6'; g.fillRect(L + lean + 2, top, F.snap((bw - 8) * 0.5), 2);
+      g.fillStyle = '#4a4336';
+      for (let c = 0, cy0 = top + 8; c < 3 && cy0 < gy - 6; c++, cy0 += 6) g.fillRect(L + F.snap(bw * (0.35 + F.hash(seed + c, 7) * 0.3)), cy0, 2, 4);
+      g.fillStyle = '#5f7a3a';
+      for (let m = 0; m < 4; m++) g.fillRect(F.snap(L + F.hash(seed * 3 + m, 11) * (bw - 2)), F.snap(gy - 4 - F.hash(seed, m + 13) * (gy - top) * 0.45), 2, 2);
+      g.fillStyle = '#b8ad95'; g.fillRect(L, top + 6, 2, F.snap((gy - top - 6) * 0.7));
+      g.fillStyle = S2[5]; g.fillRect(L + lean + 2, top, 2, 2);
+      const fh = gy - top - 6;
+      if (fh >= 14 && bw >= 12) this.carving(g, F.snap(L + bw * 0.46), F.snap(top + 6 + fh * 0.4), bw >= 18 && fh >= 24, glow);
+    },
+    /* one foundation slab, its tile at (x, y) world px, `w` wide, lifted
+       `lift` px out of the grass: a weathered top with its joints, the cut
+       front edge showing as it rises, moss in the cracks */
+    slab(g, x, y, w, lift, seed, glow, carved) {
+      const F = GrowFX, S2 = this.STONE, L = F.snap(x), T = F.snap(y - lift), W = F.snap(w), H = F.snap(w * 0.86);
+      g.fillStyle = S2[0]; g.fillRect(L - 2, T - 2, W + 4, H + 4 + lift);
+      g.fillStyle = S2[3]; g.fillRect(L, T, W, H);
+      g.fillStyle = S2[4]; g.fillRect(L, T, W, 2); g.fillRect(L, T, 2, H);
+      g.fillStyle = S2[2]; g.fillRect(L + W - 2, T + 2, 2, H - 2); g.fillRect(L + 2, T + H - 2, W - 2, 2);
+      if (lift > 1) { g.fillStyle = S2[1]; g.fillRect(L, T + H, W, F.snap(lift)); }
+      g.fillStyle = S2[1];
+      for (let k = 0; k < 3; k++) g.fillRect(F.snap(L + 4 + F.hash(seed, k) * (W - 10)), F.snap(T + 4 + F.hash(k, seed) * (H - 10)), 2 + 2 * (k % 2), 2);
+      g.fillStyle = '#5f7a3a';
+      for (let m = 0; m < 3; m++) g.fillRect(F.snap(L + F.hash(seed + m, 21) * (W - 2)), F.snap(T + H - 4 - F.hash(m, seed + 21) * 6), 2, 2);
+      if (carved) this.carving(g, F.snap(L + W / 2 - 1), F.snap(T + H / 2 - 1), W >= 26, glow);
+    },
+    // where the ring of old stones stands round the works: a circle clear of
+    // the footprint's corners, the first stone due north, clockwise
+    RING: 12,
+    ringAt(s, i) {
+      const TL = CFG.TILE, th = -Math.PI / 2 + i / this.RING * Math.PI * 2, rr = TL * (s.sz * 0.5 * 1.42 + 0.35);
+      return { x: s.x * TL + Math.cos(th) * rr, y: (s.foot - s.sz / 2) * TL + Math.sin(th) * rr * 0.92 };
     },
     /* the ground gives up its old stones: gold light breaks along the works'
-       outline and cracks run in across it, the earth shakes, nine weathered
-       blocks rise out of it, a pillar of light stands up out of the middle
-       and the sky brightens — then the old stones settle into the works.
-       Waiting for a Wonder not yet laid, it is a smaller thing: a seal of
-       gold sinking into the ground at the hall. */
+       outline and runs in from the ring, the earth shakes, a ring of
+       weathered standing stones rises out of it AROUND the works — in the
+       ground pass, so the works stand over the ones behind them — a pillar
+       of light stands up out of the middle, the site rises through the
+       stages it gained under it (show.held), the old signs on the stones
+       light gold, and the stones settle back into the earth. The act says
+       what it did on its own plaque. Waiting for a Wonder not yet laid, the
+       3×3 of its foundation surfaces briefly before the hall, its carving
+       lit, and goes back under the grass: the first stones wait. */
     show: {
-      ms: 5200, layers: ['world', 'sky'],
+      ms: 5200, layers: ['ground', 'world', 'sky'],
+      RISE: 0.38, STEP: 0.07,
+      held(s, p) {
+        if (s.pending || s.bid == null || s.from == null || s.to == null || s.to <= s.from) return null;
+        const shown = p < this.show.RISE ? s.from : Math.min(s.to, s.from + 1 + Math.floor((p - this.show.RISE) / this.show.STEP));
+        return shown < s.to ? new Map([[s.bid, { stage: shown }]]) : null;
+      },
       draw(g, s, p, dt, layer) {
-        const F = GrowFX;
+        const F = GrowFX, D = Deck.FX.wonders_foundation, TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL;
         if (layer === 'sky') {
-          if (s.pending) return;
+          const cream = '#efe4c8', gold = '#ffd45e';
+          if (s.pending) {
+            F.plaque(g, s, 'THE FIRST STONES WAIT', [[{ t: 'FOR YOUR WONDER', col: cream }], [{ t: 'LAY IT, AND ITS FIRST 35% STANDS', col: gold }]], p, 0.12, 0.98);
+            return;
+          }
           const e = F.env(p, 0.2, 0.32, 0.62, 0.95);
-          if (e <= 0) return;
-          const sc = F.toScreen(s.x, s.foot);
-          F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.04, 13, 0.18, 'gold', 0.75 * e, s.t);
-          F.glitter(g, 40, 'gold', e, s.t);
+          if (e > 0) {
+            const sc = F.toScreen(s.x, s.foot);
+            F.rays(g, Math.max(0, Math.min(R.cv.width, sc.x)), -R.cv.height * 0.04, 13, 0.18, 'gold', 0.75 * e, s.t);
+            F.glitter(g, 40, 'gold', e, s.t);
+          }
+          if (s.days != null) F.plaque(g, s, 'THE FIRST STONES WERE HERE',
+            [[{ t: '+' + s.days + ' DAYS OF WORK', col: gold }], [{ t: 'YOUR WONDER STANDS ' + s.pct + '% RAISED', col: cream }]], p, 0.36, 0.98);
           return;
         }
-        const TL = CFG.TILE, cx = s.x * TL, foot = s.foot * TL;
         if (s.pending) {
-          const q = F.ease(p / 0.8);
-          F.ring(g, cx, foot, TL * (2.6 - q * 2.2), 'gold', 1 - p, 2, 0.5, null, p * 12);
-          F.ring(g, cx, foot, TL * (1.8 - q * 1.6), 'gold', (1 - p) * 0.8, 2, 0.5, null, -p * 9);
-          for (let m = 0; m < 12; m++) {
-            const th = m / 12 * Math.PI * 2 + p * 3, rr = TL * (2.2 - q * 2);
-            F.mote(g, cx + Math.cos(th) * rr, foot + Math.sin(th) * rr * 0.5 + q * 6, '#ffd45e', '#7a4a0a', 1 - p);
+          if (layer !== 'ground') return;
+          /* the Wonder's 3×3 foundation surfaces before the hall — the slabs
+             lift out of the grass in turn, the carving on the middle one
+             lights, and they go back under it: a rise and a fall in hard
+             steps, never a fade */
+          const n = 3, x0 = cx - n * TL / 2, y0 = foot + TL * 0.25;
+          for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) {
+            const k = tx + ty * n, up = F.ease((p - 0.05 - k * 0.025) / 0.2), down = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78 - (8 - k) * 0.012) / 0.12);
+            const q = Math.min(up, down);
+            if (q <= 0.05) continue;
+            const glow = k === 4 ? F.step(F.env(p, 0.3, 0.38, 0.7, 0.82)) : 0;
+            D.slab(g, x0 + tx * TL + TL * 0.04, y0 + ty * TL * 0.86 + TL * 0.04, TL * 0.92, F.snap(6 * q), k * 7 + 3, glow, k === 4);
+          }
+          if (p < 0.3) for (let m = 0; m < 10; m++) {
+            const h = F.hash(m, 41), kk = F.ease(p / 0.3);
+            F.mote(g, x0 + h * n * TL, y0 + F.hash(41, m) * n * TL * 0.86 - kk * 10, m % 2 ? '#6e5638' : '#8a6e46', null, 1 - kk);
           }
           return;
         }
-        const n = s.sz, x0 = cx - n * TL / 2, y0 = foot - n * TL;
-        // 1. the outline and the cracks, gold light coming up through them
-        const cr = F.env(p, 0, 0.1, 0.55, 0.8);
-        if (cr > 0) {
-          // in the ramp's ink, laid opaque: gold added over the earth went lime
-          g.save();
-          R.inkOn(g, 0.8 * cr);
-          for (let d = 0; d < n * TL; d += 4) {
-            g.fillRect(F.snap(x0 + d), F.snap(y0), 2, 2); g.fillRect(F.snap(x0 + d), F.snap(foot) - 2, 2, 2);
-            g.fillRect(F.snap(x0), F.snap(y0 + d), 2, 2); g.fillRect(F.snap(x0 + n * TL) - 2, F.snap(y0 + d), 2, 2);
-          }
-          for (let c = 0; c < 12; c++) {
-            const side = c % 4, u = F.hash(c, 3);
-            let x = side === 0 ? x0 + u * n * TL : side === 1 ? x0 + n * TL : side === 2 ? x0 + u * n * TL : x0;
-            let y = side === 0 ? y0 : side === 1 ? y0 + u * n * TL : side === 2 ? foot : y0 + u * n * TL;
-            const len = Math.min(1, cr * 1.4) * 9;
-            for (let st = 0; st < len; st++) {
-              x += (cx - x) * 0.12 + (F.hash(c, st) - 0.5) * 8;
-              y += (foot - n * TL / 2 - y) * 0.12 + (F.hash(st, c) - 0.5) * 8;
-              g.fillStyle = R.goldInk(st % 3 ? 0.7 * cr : cr) || g.fillStyle;
-              g.fillRect(F.snap(x), F.snap(y), 2, 2);
-            }
-          }
-          g.restore();
-        }
-        // 2. the old stones rise out of the earth — weathered standing stones,
-        // each its own height and lean, lit from the upper left, mossed and
-        // chipped, shedding the earth they slept under as they come up
-        const fadeOut = p < 0.78 ? 1 : Math.max(0, (1 - p) / 0.22);
-        if (p >= 0.16 && !s.dust) {
-          s.dust = 1;
-          if (R.startPlacePoof) { R.startPlacePoof(s.bx, s.by, n); R.startPlacePoof(s.bx, s.by, n, { delay: 420, scale: 0.8 }); }
-        }
-        const order = [];
-        for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) order.push([tx, ty]);
-        for (const [tx, ty] of order) {
-          const q = F.ease((p - 0.16 - (tx + ty) * 0.035) / 0.3);
-          if (q <= 0) continue;
-          const a = F.step(fadeOut);
-          if (a <= 0) continue;
-          const hh = F.hash(tx * 5 + 1, ty * 7 + 3), hw = F.hash(ty * 3 + 2, tx * 11 + 5);
-          const bw = F.snap(TL * (0.42 + hw * 0.28)), bh = TL * (0.62 + hh * 0.5);
-          const gx = F.snap(x0 + (tx + 0.5) * TL + (hw - 0.5) * 6), gy = F.snap(y0 + (ty + 0.94) * TL);
-          const top = F.snap(gy - bh * q), lean = F.snap((hh - 0.5) * 6 * q), L = gx - bw / 2;
-          g.globalAlpha = a;
-          // the body: an outline, a lit face, the shadowed side, a ragged crown
-          g.fillStyle = '#2e2a22';
-          g.fillRect(L - 2, top + 4, bw + 4, gy - top - 2);
-          g.fillRect(L + lean, top - 2, bw - 4, 8);
-          g.fillStyle = '#7d7363'; g.fillRect(L, top + 4, bw, gy - top - 4);
-          g.fillStyle = '#9a8f7a'; g.fillRect(L, top + 4, F.snap(bw * 0.45), gy - top - 4);
-          g.fillStyle = '#5f574a'; g.fillRect(L + bw - 4, top + 6, 4, gy - top - 6);
-          g.fillStyle = '#b3a78f'; g.fillRect(L + lean + 2, top, bw - 8, 4);
-          g.fillStyle = '#c9bea6'; g.fillRect(L + lean + 2, top, F.snap((bw - 8) * 0.5), 2);
-          // weathering: a crack down the face, lichen and moss low on the stone
-          g.fillStyle = '#4a4336';
-          for (let c = 0, cy0 = top + 8; c < 3 && cy0 < gy - 6; c++, cy0 += 6) g.fillRect(L + F.snap(bw * (0.35 + F.hash(tx + c, ty) * 0.3)), cy0, 2, 4);
-          g.fillStyle = '#5f7a3a';
-          for (let m = 0; m < 4; m++) g.fillRect(F.snap(L + F.hash(tx * 3 + m, ty) * (bw - 2)), F.snap(gy - 4 - F.hash(ty, m + tx) * (gy - top) * 0.45), 2, 2);
-          g.fillStyle = '#9fb06a'; g.fillRect(F.snap(L + 2 + hw * (bw - 6)), F.snap(top + (gy - top) * 0.3), 2, 2);
-          // the lit edge where the face turns to the light, and the crown's lip
-          g.fillStyle = '#b8ad95'; g.fillRect(L, top + 6, 2, F.snap((gy - top - 6) * 0.7));
-          g.fillStyle = '#ddd2b8'; g.fillRect(L + lean + 2, top, 2, 2);
-          /* A CUP-AND-RING carved in the face — the old people's sign, cut
-             dark with a lit lower lip: a cup and a ring of dots round it (two
-             rings on the biggest stones). While the pillar stands, gold light
-             wells up out of the carving: these were waiting for this. */
-          const fh = gy - top - 6;
-          if (fh >= 14 && bw >= 12) {
-            const mx = F.snap(L + bw * 0.46), my = F.snap(top + 6 + fh * 0.4);
-            const rings = bw >= 18 && fh >= 24 ? [4, 8] : [4];
-            const cut = [[mx, my]];
-            for (const rr of rings) {
-              const nd = rr > 4 ? 14 : 8;
-              for (let k = 0; k < nd; k++) {
-                const th = k / nd * Math.PI * 2;
-                cut.push([F.snap(mx + Math.cos(th) * rr), F.snap(my + Math.sin(th) * rr * 0.9)]);
+        const n = s.sz, x0 = cx - n * TL / 2, y0 = foot - n * TL, mid = foot - n * TL / 2;
+        if (layer === 'ground') {
+          // 1. light breaking along the works' outline, just outside it, and
+          // running in from the ring along the cracks — in the ramp's ink,
+          // laid opaque (gold added over the earth went lime)
+          const cr = F.env(p, 0, 0.1, 0.55, 0.8);
+          if (cr > 0) {
+            g.save();
+            if (R.inkOn(g, 0.8 * cr)) {
+              for (let d = -4; d < n * TL + 4; d += 4) {
+                g.fillRect(F.snap(x0 + d), F.snap(y0) - 4, 2, 2); g.fillRect(F.snap(x0 + d), F.snap(foot) + 2, 2, 2);
+                g.fillRect(F.snap(x0) - 4, F.snap(y0 + d), 2, 2); g.fillRect(F.snap(x0 + n * TL) + 2, F.snap(y0 + d), 2, 2);
               }
             }
-            g.fillStyle = '#3a3429';
-            for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
-            g.fillStyle = '#a99d85';
-            for (const [x, y] of cut) g.fillRect(x, y + 2, 2, 1);
-            const glow = F.step(F.env(p, 0.3, 0.38, 0.74, 0.92) * q * a);
-            if (glow > 0) {
-              g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = glow;
-              g.fillStyle = '#ffb030';
-              for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
-              g.fillStyle = '#fff1b8'; g.fillRect(mx, my, 2, 2);
-              g.restore();
-              g.globalAlpha = a;
+            for (let c = 0; c < D.RING; c++) {
+              const r0 = D.ringAt(s, c), len = Math.min(1, cr * 1.4);
+              let x = r0.x, y = r0.y;
+              for (let st = 0; st < 10 * len; st++) {
+                x += (cx - x) * 0.09 + (F.hash(c, st) - 0.5) * 6;
+                y += (mid - y) * 0.09 + (F.hash(st, c) - 0.5) * 6;
+                const ink = R.goldInk(st % 3 ? 0.7 * cr : cr);
+                if (ink) { g.fillStyle = ink; g.fillRect(F.snap(x), F.snap(y), 2, 2); }
+              }
             }
+            g.restore();
           }
-          g.globalAlpha = 1;
-          if (q < 1) for (let m = 0; m < 4; m++)   // earth falling off the rising stone
-            F.mote(g, gx + (F.hash(m, tx + ty * 5) - 0.5) * bw, top + q * 10 * (m + 1), m % 2 ? '#6e5638' : '#8a6e46', null, (1 - q) * a);
+          // 2. the ring of old stones rises AROUND the works, in turn from the
+          // north, clockwise — each its own height and lean — sheds the earth
+          // it slept under, lights its old sign while the pillar stands, and
+          // settles back into the earth at the end (a sink, never a fade)
+          if (p >= 0.16 && !s.dust) {
+            s.dust = 1;
+            if (R.startPlacePoof) { R.startPlacePoof(s.bx, s.by, n); R.startPlacePoof(s.bx, s.by, n, { delay: 420, scale: 0.8 }); }
+          }
+          const sink = p < 0.8 ? 1 : Math.max(0, 1 - (p - 0.8) / 0.16);
+          const order = [];
+          for (let i = 0; i < D.RING; i++) order.push(i);
+          // the ones further back first, so a nearer stone overlaps a farther one
+          order.sort((a, z) => D.ringAt(s, a).y - D.ringAt(s, z).y);
+          for (const i of order) {
+            const at = D.ringAt(s, i), q = F.ease((p - 0.16 - i * 0.022) / 0.26) * sink;
+            if (q <= 0.04) continue;
+            const hw = F.hash(i * 11 + 5, 2), hh = F.hash(i * 7 + 3, 9);
+            const bw = F.snap(TL * (0.38 + hw * 0.18)), bh = TL * (0.6 + hh * 0.45);
+            const glow = F.step(F.env(p, 0.3, 0.38, 0.74, 0.86));
+            D.standing(g, F.snap(at.x), F.snap(at.y), bw, bh, q, i * 13 + 1, glow);
+            if (q < 1 && p < 0.8) for (let m = 0; m < 4; m++)   // earth falling off the rising stone
+              F.mote(g, at.x + (F.hash(m, i * 5) - 0.5) * bw, at.y - bh * q + q * 10 * (m + 1), m % 2 ? '#6e5638' : '#8a6e46', null, 1 - q);
+          }
+          return;
         }
         // 3. the pillar out of the middle, and rings of dots across the ground
         const pl = F.env(p, 0.28, 0.36, 0.7, 0.9);
         if (pl > 0) {
-          const topY = R.cam.y - 60 / R.cam.z, mid = foot - n * TL / 2;
+          const topY = R.cam.y - 60 / R.cam.z;
           F.column(g, cx, mid, mid - (mid - topY) * F.ease((p - 0.28) / 0.1), TL * 1.8 * pl, pl);
           for (let k = 0; k < 3; k++) {
             const q = (p * 2 + k / 3) % 1;
@@ -1787,10 +1847,10 @@ Object.assign(Deck.FX, {
         }
         // (the pillar's landing is the blow: no whole-frame flash, which over
         // the meadow is a sepia frame)
-        // 4. gold rising off the settled stones
-        if (p > 0.55) for (let m = 0; m < 14; m++) {
-          const h = F.hash(m, 77), k = ((p - 0.55) / 0.45 + h) % 1;
-          F.mote(g, x0 + (0.1 + h * 0.8) * n * TL, foot - TL * 0.4 - k * TL * 2.2, m % 2 ? '#ffd45e' : '#fff1b8', '#7a4a0a', (1 - k) * (1 - p) * 2.2);
+        // 4. gold rising off the works as they rise
+        if (p > 0.4) for (let m = 0; m < 14; m++) {
+          const h = F.hash(m, 77), k = ((p - 0.4) / 0.6 + h) % 1;
+          F.mote(g, x0 + (0.1 + h * 0.8) * n * TL, foot - TL * 0.4 - k * TL * 2.2, m % 2 ? '#ffd45e' : '#fff1b8', '#7a4a0a', (1 - k) * Math.min(1, (1 - p) * 2.2));
         }
       },
     },

@@ -88,8 +88,11 @@
    the meat in Units.damage, Units.workReport), Bld.dailyProduction,
    Bld.effCost / place / finishUpgrade / finishWallUpgrade / update (the wall
    works), AI.daily's hall trickle, UI.panelSub / wonderSavedLine,
-   R.drawCardGround / cardBldLooks / drawCardBld (the ground pass and the
-   building loop's card hooks) and DeckUI._dest (an effect's own dest).
+   R.drawCardGround / cardBldLooks / drawCardBld / cardHeldLevels (the ground
+   pass and the building loop's card hooks — R.wornSprite's held level and
+   the work-site branch's held stage), GrowFX.plaque / frame (the acts'
+   captions and the works brought into view) and DeckUI._dest (an effect's
+   own dest).
 
      node tests/deck-growth.mjs      # exits non-zero on any regression */
 
@@ -1671,6 +1674,80 @@ await p.evaluate(() => {
   ck('itsToastSaysWhatRose', /^✨ Town Center Lv 2 — 6 buildings rose with it/.test(r.msg || ''), `"${r.msg}"`);
   ck('itsSunLeavesBySizeNotByFading', r['sun0.4'].a >= 0.6 && r['sun0.95'].a >= 0.6 && r['sun0.95'].r > 0 && r['sun0.95'].r < r['sun0.4'].r,
     `the sun at 0.4: ${JSON.stringify(r['sun0.4'])}; leaving at 0.95: ${JSON.stringify(r['sun0.95'])}`);
+}
+
+// ---------------- 13e. WONDER'S FOUNDATION: THE OLD STONES, UNDER THE WORKS, AND WHAT THEY GAVE ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    const FD = Deck.FX.wonders_foundation, STONE = ['#2e2a22', '#5f574a', '#7d7363', '#9a8f7a', '#b3a78f'];
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, ft = P2.fillText;
+    // one layer of a show drawn on a clean canvas: how many of its marks are
+    // the old stones' own colours, and what it wrote
+    const layerOf = (s, pp, layer) => {
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d'), o = { stone: 0, texts: [] };
+      P2.fillRect = function () { if (this.canvas === c && STONE.includes(String(this.fillStyle).toLowerCase())) o.stone++; return fr.apply(this, arguments); };
+      P2.fillText = function (t) { if (this.canvas === c) o.texts.push(String(t)); return ft.apply(this, arguments); };
+      try { s.t = pp * s.ms / 1000; g.save(); FD.show.draw.call(FD, g, s, pp, 1 / 30, layer); g.restore(); }
+      finally { P2.fillRect = fr; P2.fillText = ft; }
+      return o;
+    };
+    /* (a) NOT LAID YET, THE FIRST STONES SURFACE AND SAY SO: the Wonder's 3×3
+       foundation lifts out of the grass before the hall and the act's plaque
+       says the first stones wait — the first cut drew a ring of gold dots
+       sinking into the hall and said nothing on the screen */
+    __g.fresh('growth-found-style', 'calm'); const { P: tc } = __g.flat();
+    Screens.show('playing'); S.paused = true;
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    G.updateVisibility();
+    R.cardShows = [];
+    const wait = Deck.play('wonders_foundation');
+    out.waitMsg = wait.ok ? wait.msg || null : 'refused';
+    const sw = R.cardShows.find(z => z.id === 'wonders_foundation');
+    const wl = (FD.show.layers || []).map(L => layerOf(Object.assign({}, sw), 0.5, L));
+    out.waitStone = wl.reduce((n, o) => n + o.stone, 0);
+    out.waitSaid = wl.some(o => o.texts.some(t => /FIRST STONES WAIT/.test(t))) && wl.some(o => o.texts.some(t => /FOR YOUR WONDER/.test(t)));
+    /* (b) LAID BY THE GROUND BREAKING: the site holds the stage it showed and
+       rises through what it gained under the pillar, through the real
+       building pass (the first cut's stage jumped the instant the ground
+       broke, under nothing); the old stones stand in the GROUND pass, under
+       the works, never drawn over them; and since no card is landing then,
+       a note says what was gained */
+    for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = 20000;
+    const logs = [], gl = G.log;
+    G.log = function (msg, kind) { logs.push([String(msg), kind]); return gl.apply(this, arguments); };
+    let w;
+    try { w = Bld.place('P', 'wonder', tc.x + 3, tc.y + 3, { noAutoAssign: true }); Bld._block = null; }
+    finally { G.log = gl; }
+    out.laidStage = w ? Bld.stageOf(w) : null;
+    out.note = logs.filter(([m, k]) => k === 'note' && /days of work/.test(m) && /% raised/.test(m)).map(([m]) => m)[0] || null;
+    const sl = R.cardShows.find(z => z.id === 'wonders_foundation' && !z.pending);
+    R.cardShows = sl ? [sl] : [];
+    R.centerOn(Bld.cx(w), Bld.cy(w));
+    G.updateVisibility();
+    const ds = Assets.drawSprite, seen = {};
+    let rec = null;
+    Assets.drawSprite = function (g, key) { if (rec && /^misc\/wonderBuild/.test(key)) rec.push(key); return ds.apply(this, arguments); };
+    try {
+      for (const pp of [0.2, 0.7]) { rec = []; sl.t = pp * sl.ms / 1000; R.draw(0); seen[pp] = rec.join(','); }
+    } finally { Assets.drawSprite = ds; rec = null; }
+    out.stages = seen;
+    const world = layerOf(Object.assign({}, sl, { dust: 1 }), 0.5, 'world'), ground = (FD.show.layers || []).includes('ground') ? layerOf(Object.assign({}, sl, { dust: 1 }), 0.5, 'ground') : { stone: 0 };
+    out.stonesWorld = world.stone; out.stonesGround = ground.stone;
+    // (c) PLAYED ON A STANDING SITE, its toast says what the works gained
+    const play = Deck.play('wonders_foundation');
+    out.playMsg = play.ok ? play.msg || null : 'refused: ' + play.why;
+    return out;
+  });
+  ck('notLaidYetTheFirstStonesSurfaceAndSaySo', r.waitStone > 30 && r.waitSaid && /first stones wait for your Wonder/.test(r.waitMsg || ''),
+    `${r.waitStone} marks of old stone, said on screen ${r.waitSaid}; "${r.waitMsg}"`);
+  ck('laidTheSiteRisesThroughItsStagesUnderTheBeam', r.laidStage === 1 && r.stages[0.2] === 'misc/wonderBuild1' && r.stages[0.7] === 'misc/wonderBuild2',
+    `stage ${r.laidStage} at once; drawn ${JSON.stringify(r.stages)}`);
+  ck('theOldStonesStandUnderTheWorks', r.stonesGround > 30 && r.stonesWorld === 0,
+    `${r.stonesGround} marks of stone in the ground pass, ${r.stonesWorld} drawn over the works`);
+  ck('itSaysWhatTheWorksGained', !!r.note && /gains \d+ days of work — \d+% raised/.test(r.playMsg || ''),
+    `ground broken: "${r.note}"; played on the works: "${r.playMsg}"`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
