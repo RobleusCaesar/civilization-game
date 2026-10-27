@@ -1166,6 +1166,38 @@ supplied picture replaces it outright; an empty bucket leaves it standing.
 the `{id}-l{level}.png` / `camp-{tribe}.png` building slots. Preview an
 endgame picture by dropping the file into `assets/endgame/…/` and reloading.
 
+## The card announcement (assets/cards/intro/)
+
+The four screens `js/cardintro.js` shows the first time a device opens the
+game with the deck on (tests/card-intro.mjs). Six PixelLab pieces, ~70KB in
+all, fetched only when the announcement opens:
+
+| File          | Native  | What                                                    |
+| ------------- | ------- | ------------------------------------------------------- |
+| `corner.png`  | 64×64   | the gold corner bracket — ONE drawing, mirrored by CSS for the other three corners |
+| `ribbon.png`  | 160×40  | the navy heading ribbon; the lettering is CSS on its band (the top 57%), never baked |
+| `laurel.png`  | 64×128  | one laurel branch, convex to the right — the RIGHT laurel; the left is its mirror |
+| `win.png`     | 64×64   | the victory emblem (crown in a gold wreath)              |
+| `fight.png`   | 64×64   | the hard-fought defeat emblem (gashed shield, spear, embers) |
+| `dusk.webp`   | 688×384 | the valley at dusk with its campfire, behind the panel's own dark (master: `assets/masters/cards/intro-dusk.png`) |
+
+**One style master for the gold**: every gold piece (corner, ribbon,
+emblems) was made with `assets/cards/frame-enlight.png` — the Legendary
+frame — as its labelled style reference, so the announcement's gold IS the
+cards' gold; the dusk valley took the title glen (`assets/ui/title-bg-wide`)
+as its style reference, never its daylight. Reference by public URL
+(`https://clanfire.online/…`): the sandbox cannot upload to PixelLab.
+
+**Drawn at whole device pixels**: each piece is sized in `_layout` to a
+whole multiple of its native pixels for the device's ratio, and drawn
+`image-rendering: pixelated`; the dusk is the one exception — scaled to
+cover the panel and darkened by a gradient laid over it, drawn smooth, since
+a soft backdrop reads as depth behind sharp cards. The lettering (CARDS, the
+headings, the copy) is the menu face, Cinzel, in CSS — crisp at any size,
+and never a picture of words. The card faces are `Deck.face` (the real
+catalog art and frames) and the beasts the shipped `assets/fx/dragon-fly`
+and `kraken-thrash` strips, stepped.
+
 ## Formation art: multi-tile pieces over terrain REGIONS
 
 ```
