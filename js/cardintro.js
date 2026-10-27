@@ -102,7 +102,7 @@ const CardIntro = {
     const gen = ++this._gen, t0 = Date.now();
     const go = () => {
       if (gen !== this._gen || this.open) return;
-      if (this._canAuto()) this.show('title');
+      if (this._canAuto()) this.show('title', { auto: true });
       else this._armed = false;   // not now: the next title visit tries again
     };
     const wait = () => {
@@ -124,8 +124,9 @@ const CardIntro = {
   },
 
   /* ---------------- opening and closing ---------------- */
-  show(from) {
+  show(from, opts) {
     if (!window.Deck || !Deck.on() || this.open) return false;
+    opts = opts || {};
     this.from = from === 'cards' ? 'cards' : 'title';
     Deck._set(this.KEY, '1');   // stamped when SHOWN
     this._css();
@@ -140,7 +141,10 @@ const CardIntro = {
     // the first screen's art, then the rest in idle time
     this._preload(0).then(() => { if (gen === this._gen && this.open) this._root.classList.add('ciReady'); });
     setTimeout(() => { if (gen === this._gen && this.open) for (let i = 1; i < this.PAGES.length; i++) this._preload(i); }, 900);
-    this._cue('bond');
+    /* a chime when a tap opened it; arriving by itself it says nothing — no
+       sound or buzz may come before the player has touched the page (the
+       browser refuses both, and says so in the console) */
+    if (!opts.auto) this._cue('bond');
     return true;
   },
   close(silent) {
@@ -245,7 +249,7 @@ const CardIntro = {
           page(2, 'play', play) +
           page(3, 'legends', legends) +
         `</div>` +
-        `<div class="ciNav">` +
+        `<div class="ciNav"><i class="ciCta" aria-hidden="true"></i>` +
           `<button type="button" class="ciBack" data-act="back" aria-label="Back">${this.ARROW_L}<span>Back</span></button>` +
           `<button type="button" class="abtn big ciNext" data-act="next"><span class="blab">Next ${this.ARROW_R}</span></button>` +
           `<span class="ciNavPad"></span>` +
@@ -293,23 +297,34 @@ const CardIntro = {
     const cw = fit(narrow ? avail * 0.54 : 230, heroH / 1.1);
     // the cards behind the middle one: a step smaller where the steps allow
     const sw = narrow ? fit(cw * 0.72, heroH) : cw;
-    const trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40)) / 1.02);
+    let trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40)) / 1.02);
+    // the deck button beside three cards needs the room for both; a panel
+    // without it (a tablet upright) stacks them as a phone does
+    const stack = narrow || 3 * trioW + 40 + 230 > avail;
+    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40) / 3), (heroH - 110) / 1.02);
+    root.classList.toggle('ciStack', stack);
     const beastW = fit(narrow ? avail / 2.4 : 200, (heroH - (narrow ? 90 : 60)) / 1.32);
-    const key = [cw, sw, trioW, beastW, narrow, Math.round(avail)].join(':');
+    const key = [cw, sw, trioW, beastW, narrow, stack, Math.round(avail)].join(':');
     if (this._sizes === key) return;
     this._sizes = key;
-    this._fan(cw, sw, avail);
+    this._fan(cw, sw, avail, narrow);
     this._trio(trioW);
     this._legends(beastW, narrow);
   },
-  _fan(cw, sw, avail) {
+  _fan(cw, sw, avail, narrow) {
     const host = this._root.querySelector('.ciFan');
     host.innerHTML = '';
-    // the spread: the outermost card stands just inside the panel, never
-    // further out than a card and a fifth on a wide one
-    const outer = Math.min(cw * 1.2, avail / 2 - sw * 0.46 - 2);
+    /* the spread: the outermost card stands just inside the panel, never
+       further out than a card and a fifth on a wide one. It turns about a
+       point 85% down its height (the slot's transform-origin), so its outer
+       top corner swings out by the card's height as well as its width —
+       measured here, scaled as the slot scales it */
+    const rot = narrow ? 6 : 8, th = 2 * rot * Math.PI / 180, sc = 1 - 2 * 0.07, sh = sw * Deck.H / Deck.W;
+    const reach = sc * (sw / 2 * Math.cos(th) + 0.85 * sh * Math.sin(th));
+    const outer = Math.max(cw * 0.3, Math.min(cw * 1.2, avail / 2 - reach - 3));
     host.style.setProperty('--cw', cw + 'px');
     host.style.setProperty('--ch', cw * Deck.H / Deck.W + 'px');
+    host.style.setProperty('--rot', rot + 'deg');
     const slots = [-2, -1, 0, 1, 2];
     this.FAN.forEach((id, n) => {
       const i = slots[n], a = Math.abs(i);
@@ -320,7 +335,7 @@ const CardIntro = {
       slot.style.setProperty('--a', a);
       slot.style.setProperty('--sw', w + 'px');
       slot.style.setProperty('--sh', w * Deck.H / Deck.W + 'px');
-      slot.style.setProperty('--x', (i < 0 ? -1 : 1) * (a === 2 ? outer : a === 1 ? outer * 0.56 : 0) + 'px');
+      slot.style.setProperty('--x', (i < 0 ? -1 : 1) * (a === 2 ? outer : a === 1 ? outer * (narrow ? 0.66 : 0.56) : 0) + 'px');
       slot.style.setProperty('--z', 10 - a);
       slot.style.setProperty('--d', (a === 0 ? 0 : a === 1 ? 90 : 170) + 'ms');
       slot.appendChild(Deck.face(id, { w }));
@@ -482,7 +497,7 @@ const CardIntro = {
         this._sw = null;
         if (!s || s.id !== e.pointerId) return;
         const dx = e.clientX - s.x, dy = e.clientY - s.y;
-        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.4 || Date.now() - s.t > 900) return;
+        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
         this._swiped = Date.now();
         if (dx < 0) { if (this.page < this.PAGES.length - 1) this.go(this.page + 1); }
         else this.prev();
@@ -597,7 +612,7 @@ CardIntro.CSS = `
 
 /* ---- the panel ---- */
 #cardIntro .ciPanel { position: relative; width: min(100%, 880px); height: min(100%, 770px);
-  display: flex; flex-direction: column; isolation: isolate;
+  display: flex; flex-direction: column; isolation: isolate; container-type: inline-size;
   background: linear-gradient(180deg, #1b1510 0%, #120d09 55%, #0d0906 100%);
   border-radius: 3px;
   box-shadow: 0 0 0 1px #0a0704, 0 0 0 3px #b98a36, 0 0 0 4px #5e4116, 0 0 0 6px #120c06,
@@ -609,17 +624,20 @@ CardIntro.CSS = `
 /* an inner gold hairline, a step in from the rim */
 #cardIntro .ciPanel::before { content: ''; position: absolute; inset: 9px; border: 1px solid rgba(214,170,84,.42); pointer-events: none; z-index: 3;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+/* the dusk valley under the panel's own dark: one gradient laid over the
+   picture (no filter, no mask — a static layer the compositor never redraws),
+   and drawn smooth, since it is scaled up behind everything and a soft
+   picture reads as depth */
 #cardIntro .ciDusk { position: absolute; inset: 0; z-index: -2; overflow: hidden; border-radius: 3px; pointer-events: none;
-  background: var(--dusk) center bottom / cover no-repeat; image-rendering: pixelated; filter: blur(1.2px) brightness(.6) saturate(1.05);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.16) 30%, rgba(0,0,0,.72) 68%, #000 100%);
-  mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,.16) 30%, rgba(0,0,0,.72) 68%, #000 100%); }
+  background: linear-gradient(180deg, #1b1510 0%, rgba(22,17,12,.93) 26%, rgba(16,12,8,.68) 58%, rgba(12,9,6,.44) 82%, rgba(10,7,5,.36) 100%),
+    var(--dusk) center bottom / cover no-repeat; }
 /* the light the cards stand in: soft rays (smooth, never stepped) and a glow */
-#cardIntro .ciRays { position: absolute; left: 50%; top: var(--ry, 56%); width: 150%; aspect-ratio: 1; z-index: -1; pointer-events: none;
+#cardIntro .ciRays { position: absolute; left: 50%; top: var(--ry, 56%); width: min(120%, 1000px); aspect-ratio: 1; z-index: -1; pointer-events: none;
   transform: translate(-50%, -50%);
   background: repeating-conic-gradient(from 0deg, rgba(255,214,120,.17) 0deg 5deg, rgba(255,214,120,0) 5deg 15deg);
-  -webkit-mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,.6) 20%, transparent 46%);
-  mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,.6) 20%, transparent 46%);
-  animation: ciSpin 90s linear infinite; transition: opacity .5s; }
+  -webkit-mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,.6) 24%, transparent 50%);
+  mask-image: radial-gradient(circle, #000 0%, rgba(0,0,0,.6) 24%, transparent 50%);
+  animation: ciSpin 120s linear infinite; transition: opacity .5s; will-change: transform; }
 @keyframes ciSpin { to { transform: translate(-50%, -50%) rotate(360deg) } }
 #cardIntro .ciGlow { position: absolute; left: 50%; top: var(--ry, 56%); width: min(90%, 620px); aspect-ratio: 1.3; z-index: -1; pointer-events: none;
   transform: translate(-50%, -50%);
@@ -668,7 +686,12 @@ CardIntro.CSS = `
     drop-shadow(0 4px 0 #1c0f03) drop-shadow(0 0 16px rgba(255,190,70,.45)); }
 #cardIntro .ciP-earn .ciWord, #cardIntro .ciP-play .ciWord { font-size: clamp(34px, min(10.5vw, 8.4vh), 84px); }
 #cardIntro .ciP-legends .ciWord { font-size: clamp(30px, min(9vw, 7.4vh), 70px); }
-#cardIntro:not(.ciNarrow) .ciWord { white-space: nowrap; }
+/* a wide panel sizes its headline to the PANEL (container units), so the
+   laurels never crowd the corners or the X; a browser without them keeps
+   the window-sized rule above */
+#cardIntro:not(.ciNarrow) .ciWord { white-space: nowrap; font-size: clamp(38px, min(12cqw, 10vh), 100px); }
+#cardIntro:not(.ciNarrow) .ciP-earn .ciWord, #cardIntro:not(.ciNarrow) .ciP-play .ciWord { font-size: clamp(34px, min(8.6cqw, 8.4vh), 84px); }
+#cardIntro:not(.ciNarrow) .ciP-legends .ciWord { font-size: clamp(30px, min(7.4cqw, 7.4vh), 70px); }
 #cardIntro .ciLaurel { flex: 0 0 auto; width: calc(var(--laurelH, 112px) / 2); height: var(--laurelH, 112px);
   background: var(--laurel) 0 0 / 100% 100% no-repeat; image-rendering: pixelated; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
 #cardIntro .ciLaurel.l { transform: scaleX(-1); }
@@ -686,14 +709,19 @@ CardIntro.CSS = `
 #cardIntro .ciFan { position: relative; width: 100%; height: calc(var(--ch) * 1.14); }
 #cardIntro .ciSlot { position: absolute; left: 50%; top: calc(2% + (var(--ch) - var(--sh)) * .55); width: var(--sw); height: var(--sh); z-index: var(--z);
   transform: translateX(-50%) translateX(var(--x)) translateY(calc(var(--a) * var(--a) * var(--sw) * .045 + var(--a) * var(--sw) * .03))
-    rotate(calc(var(--i) * 8deg)) scale(calc(1 - var(--a) * .07));
+    rotate(calc(var(--i) * var(--rot, 8deg))) scale(calc(1 - var(--a) * .07));
   transform-origin: 50% 85%; }
-#cardIntro .ciSlot .ccard { filter: drop-shadow(0 8px 10px rgba(0,0,0,.65)) brightness(calc(1 - var(--a) * .1)); }
-#cardIntro .ciSlot.mid .ccard { filter: drop-shadow(0 0 18px rgba(255,214,94,.75)) drop-shadow(0 0 4px rgba(255,236,170,.9)) drop-shadow(0 10px 12px rgba(0,0,0,.6)); }
+/* shadows and glows are box-shadows (a card is a rectangle): a filter over a
+   face whose foil moves is a filter redrawn every frame */
+#cardIntro .ccard { box-shadow: 0 8px 14px rgba(0,0,0,.6); }
+#cardIntro .ciSlot::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: rgba(8,5,2,calc(var(--a) * .1)); }
+#cardIntro .ciSlot.mid .ccard { box-shadow: 0 0 0 1px rgba(255,236,170,.55), 0 0 22px 4px rgba(255,214,94,.62), 0 12px 16px rgba(0,0,0,.6); }
 #cardIntro .ciSlot.mid::before { content: ''; position: absolute; inset: -16%; z-index: -1; border-radius: 16%;
   background: radial-gradient(ellipse at center, rgba(255,222,120,.55), rgba(255,190,70,.18) 45%, transparent 70%);
   animation: ciPulse 2.6s ease-in-out infinite; }
 @keyframes ciPulse { 50% { opacity: .55; transform: scale(.96) } }
+#cardIntro .ciSlot.mid .ccard { animation: ciFloat 3.6s ease-in-out .9s infinite; }
+@keyframes ciFloat { 50% { transform: translateY(-5px) } }
 #cardIntro .ciPage.enter .ciSlot { animation: ciDeal .62s cubic-bezier(.2,1.25,.45,1) var(--d) both; }
 @keyframes ciDeal { from { opacity: 0; transform: translateX(-50%) translateY(26%) rotate(0deg) scale(.7) } }
 
@@ -765,9 +793,9 @@ CardIntro.CSS = `
 #cardIntro .ciTrio { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: clamp(10px, 2vw, 22px); }
 #cardIntro .ciCard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; width: var(--cw); }
 #cardIntro .ciTilt { transform: rotate(calc(var(--n) * 4deg)) translateY(calc(var(--n) * var(--n) * 10px)); transform-origin: 50% 100%; }
-#cardIntro .ciCard .ccard { filter: drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
+
 #cardIntro .ciCard:nth-child(2) { z-index: 2; }
-#cardIntro .ciCard:nth-child(2) .ccard { filter: drop-shadow(0 0 14px var(--tg, rgba(255,200,80,.5))) drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
+#cardIntro .ciCard:nth-child(2) .ccard { box-shadow: 0 0 18px 2px rgba(255,200,80,.45), 0 8px 14px rgba(0,0,0,.6); }
 #cardIntro .ciCard figcaption { width: 100%; margin-top: calc(var(--n) * var(--n) * 10px); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; line-height: 1.2;
   font-size: clamp(10.5px, 2.9vw, 14px); color: #ffe39a; text-shadow: 0 2px 0 #000; }
 #cardIntro .ciPage.enter .ciCard { animation: ciLift .55s cubic-bezier(.2,1.2,.4,1) both; animation-delay: calc(.12s + (var(--n) + 1) * .1s); }
@@ -787,8 +815,8 @@ CardIntro.CSS = `
 #cardIntro .ciBeast { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #cardIntro .ciStage { position: relative; padding-top: calc(var(--cw) * .42); }
 #cardIntro .ciStage .ccard { position: relative; z-index: 2; }
-#cardIntro .ciBeast.kraken .ccard { filter: drop-shadow(0 0 18px rgba(170,150,255,.55)) drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
-#cardIntro .ciBeast.dragon .ccard { filter: drop-shadow(0 0 22px rgba(255,150,60,.8)) drop-shadow(0 8px 10px rgba(0,0,0,.6)); }
+#cardIntro .ciBeast.kraken .ccard { box-shadow: 0 0 22px 3px rgba(170,150,255,.5), 0 8px 14px rgba(0,0,0,.6); }
+#cardIntro .ciBeast.dragon .ccard { box-shadow: 0 0 26px 4px rgba(255,150,60,.65), 0 8px 14px rgba(0,0,0,.6); }
 #cardIntro .ciMonster { position: absolute; left: 50%; pointer-events: none; transform: translateX(-50%);
   background-repeat: no-repeat; background-position: 0 0; animation: ciStrip .9s steps(8) infinite, ciHover 3.4s ease-in-out infinite;
   filter: drop-shadow(0 6px 6px rgba(0,0,0,.55)); }
@@ -831,8 +859,14 @@ CardIntro.CSS = `
     linear-gradient(#7d8f3c 0%, #687a2e 45%, #586a22 58%, #48591a 100%);
   box-shadow: inset 0 0 0 2px #14200a, inset 0 0 0 4px #f0c860, inset 0 0 0 6px #a8853a, inset 0 0 0 7px #14200a,
     inset 0 11px 0 rgba(240,230,170,0.17), inset 0 -8px 0 rgba(0,0,0,0.26); }
-#cardIntro .ciNext.ciGo { animation: ciCall 2.2s ease-in-out .8s infinite; }
-@keyframes ciCall { 50% { filter: brightness(1.12) drop-shadow(0 0 12px rgba(255,214,110,.55)) } }
+/* the call to action breathes: a soft light BEHIND the plaque (its own
+   element in the nav — a glow inside the plaque's isolated group drew a dark
+   box round it) pulses by opacity alone */
+#cardIntro .ciCta { position: absolute; left: 50%; top: calc(50% + 5px); width: min(76%, 420px); height: 110px; transform: translate(-50%, -50%);
+  pointer-events: none; display: none; background: radial-gradient(ellipse closest-side, rgba(255,214,110,.42), rgba(255,190,80,.16) 55%, transparent);
+  animation: ciCall 2.2s ease-in-out .6s infinite both; }
+#cardIntro[data-page="legends"] .ciCta { display: block; }
+@keyframes ciCall { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
 #cardIntro .ciArr { width: 9px; height: 12px; flex: 0 0 auto; filter: drop-shadow(0 2px 0 rgba(20,12,4,.85)); }
 #cardIntro .ciBack, #cardIntro .ciNavPad { flex: 0 0 auto; width: 84px; min-height: 44px; }
 #cardIntro .ciBack { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0; border: 0; background: none; cursor: pointer;
@@ -858,12 +892,14 @@ CardIntro.CSS = `
 #cardIntro.ciNarrow .ciPips, #cardIntro.ciNarrow .ciDays { gap: 4px; }
 #cardIntro.ciNarrow .ciPips i { width: 10px; height: 10px; }
 #cardIntro.ciNarrow .ciDays i { width: 9px; height: 9px; }
-#cardIntro.ciNarrow .ciPlay { flex-direction: column; gap: 16px; }
-#cardIntro.ciNarrow .ciDeck { flex-direction: row; gap: 16px; }
-#cardIntro.ciNarrow .ciArrow { display: none; }
+#cardIntro.ciStack .ciPlay { flex-direction: column; gap: 16px; }
+#cardIntro.ciStack .ciDeck { flex-direction: row; gap: 16px; }
+#cardIntro.ciStack .ciArrow { display: none; }
+#cardIntro.ciStack .ciDeck figcaption { align-items: flex-start; }
 #cardIntro.ciNarrow .ciTrio { gap: 0; }
-#cardIntro.ciNarrow .ciCard { margin: 0 calc(var(--cw) * -0.07); }
-#cardIntro.ciNarrow .ciDeck figcaption { align-items: flex-start; }
+#cardIntro.ciNarrow .ciCard { margin: 0 calc(var(--cw) * -0.035); }
+#cardIntro.ciNarrow .ciCard figcaption { width: calc(100% - 14px); margin-top: calc(6px + var(--n) * var(--n) * 10px); }
+
 #cardIntro.ciNarrow .ciTiers { flex-direction: row; gap: 6px; }
 #cardIntro.ciNarrow .ciTiers li { flex-direction: column; text-align: center; gap: 2px; }
 #cardIntro.ciNarrow .ciTiers li span { align-items: center; }

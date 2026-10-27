@@ -1427,7 +1427,7 @@ DeckScreens.CSS = `
   border: 1px solid rgba(214,170,74,0.45); border-radius: 999px; background: #1c140c; color: #f2cd62; cursor: pointer;
   font: 700 11px/1 var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; }
 #scrCards .clHow::before { content: ''; width: 7px; height: 7px; transform: rotate(45deg); background: #f2cd62; box-shadow: 0 0 6px rgba(255,210,100,.6); }
-#scrCards .clHow::after { content: ''; position: absolute; left: 0; right: 0; top: -9px; bottom: -9px; }
+#scrCards .clHow::after { content: ''; position: absolute; left: -1px; right: -1px; top: -10px; bottom: -10px; }
 #scrCards .clTabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 820px; margin: 0 auto; padding: 0 10px; flex: 0 0 auto; }
 #scrCards .clTab { min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
   display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; font-family: var(--menufont); }
