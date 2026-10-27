@@ -131,6 +131,8 @@ const Tutorial = {
   // one predicate; guarded on the method it calls, so a cached older deck.js
   // beside this file stands down rather than throwing)
   _cardActing() { return !!(window.Deck && Deck.acting && Deck.acting()); },
+  // nothing left in the deck to play (guarded on the method it calls)
+  _deckEmpty() { return this._cardsOn() && !!Deck.total && Deck.total() === 0; },
   _stationKeys: { farm: 1, lumber: 1, quarry: 1, lodge: 1, mine: 1 },
   _gatherOn(terr) {
     return S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'gather' &&
@@ -325,9 +327,14 @@ const Tutorial = {
        this note rings it: what a card is, that it is kept until played and
        gone once it is. Only where the cards are on: with the switch off it
        never fires and is never waited for (`off`), so the tutorial is
-       exactly what it was. */
+       exactly what it was. And it is RETIRED when the deck holds nothing
+       to play (`retire`, the playtest's emptied deck): "tap it and play a
+       card" over an empty deck is a note telling the player to do the
+       impossible — up when the last card goes, it is put away quietly;
+       due over an empty deck, it is booked and never shown. */
     { id: 'deck',
       off: () => !Tutorial._cardsOn(),
+      retire: () => Tutorial._deckEmpty(),
       when() {
         if (!Tutorial._cardsOn() || S.tut.phase !== 2) return false;
         const b = document.getElementById('deckBtn');
@@ -565,6 +572,7 @@ const Tutorial = {
     this._updateDisplay();
     this._evT -= dt;
     if (this._evT <= 0) { this._evT = 0.5; this._checkEvents(); }
+    this._retireShown();
     this._syncOverlay(dt);
     // SLOW, never stopped: ×0.2 while a note is up, full speed once it is
     // answered or the player touches the world 800ms+ after it appeared
@@ -670,6 +678,8 @@ const Tutorial = {
       let ok = false;
       try { ok = !!ev.when(); } catch (e) {}
       if (!ok) continue;
+      // due, but its subject is gone: booked as told, never shown
+      if (this._retired(ev)) { t.fired[ev.id] = 1; this._maybeCold(); return; }
       this._present('event', ev.id);
       return;
     }
@@ -751,8 +761,21 @@ const Tutorial = {
       : this.EVENTS.find(e => e.id === this._show.id);
   },
 
-  // Got-it / a satisfied action: book it, chime, move on
-  _completeShow() {
+  // an event whose subject is gone (`retire` — the deck emptied)
+  _retired(ev) {
+    if (!ev || !ev.retire) return false;
+    try { return !!ev.retire(); } catch (e) { return false; }
+  },
+  // a note ON SHOW whose subject went while it was up is put away quietly —
+  // checked every frame, so it never lingers a beat over what it named
+  _retireShown() {
+    if (!this._show || this._show.kind !== 'event') return;
+    if (this._retired(this.EVENTS.find(e => e.id === this._show.id))) this._completeShow(true);
+  },
+
+  // Got-it / a satisfied action: book it, chime, move on (`quiet`: a note
+  // retired by the world, not answered by the player — no chime)
+  _completeShow(quiet) {
     const sh = this._show; if (!sh) return;
     const t = S.tut;
     if (sh.kind === 'event') t.fired[sh.id] = 1;
@@ -770,7 +793,7 @@ const Tutorial = {
       }
       while (t.step < this.STEPS.length && t.done[this.STEPS[t.step].id]) t.step++;
     }
-    UI.cue('ok');
+    if (!quiet) UI.cue('ok');
     this._show = null;
     this._gapT = this.BREATH;   // a beat before the next note appears
     // a note that borrowed the zoom hands it back on its way out
@@ -780,11 +803,15 @@ const Tutorial = {
       this._zRestore = 0;
     }
     this._hideAll();
-    // guidance has run its course → go fully cold (zero further cost). A
-    // note that does not apply to this game (`off` — the deck, with the
-    // cards switched off) is never waited for; one still OWED (the deck,
-    // with them on) holds the cold even past day 150, or a slow lesson's
-    // capstone would put the teacher away before it named the deck
+    this._maybeCold();
+  },
+  // guidance has run its course → go fully cold (zero further cost). A
+  // note that does not apply to this game (`off` — the deck, with the
+  // cards switched off) is never waited for; one still OWED (the deck,
+  // with them on) holds the cold even past day 150, or a slow lesson's
+  // capstone would put the teacher away before it named the deck
+  _maybeCold() {
+    const t = S.tut;
     if (t.phase === 2 && ((S.day > 150 && !this._deckOwed()) ||
         this.EVENTS.every(e => t.fired[e.id] || (e.off && e.off())))) {
       t.on = false; t.completed = true;

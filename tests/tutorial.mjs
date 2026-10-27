@@ -59,6 +59,9 @@
       comes back after a breath, once the act's own toast is read (bounded),
       slowing the world again. The note's card is opaque: a toast under it
       never reads through.
+  16. THE DECK'S NOTE RETIRES WITH THE DECK: up when the last card is
+      played, "tap it and play a card" is put away; due over a deck that is
+      already empty, it is booked and never shown.
 
    Run this after touching any of:
      tutorial.js — everything
@@ -1155,6 +1158,55 @@ const out = await p.evaluate(async () => {
       ck('theOnePredicateIsTheDecks', typeof Deck.acting === 'function' && !!Tutorial._cardActing && /Deck\.acting/.test(Tutorial._cardActing.toString()), '');
     } finally {
       S.paused = true;
+      CFG.CARDS.ON = was;
+      if (DeckUI.built) DeckUI._stand(false);
+      Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); Deck._col = null;
+    }
+  }
+
+  // ---- 16. the deck's note retires with the deck (the playtest's emptied deck) ----
+  // "tap it and play a card" over a deck with nothing in it is a note telling
+  // the player to do the impossible: up when the last card is played, it is
+  // put away; due over an empty deck, it is booked and never shown.
+  {
+    const was = CFG.CARDS.ON;
+    CFG.CARDS.ON = true;
+    const btnUp = () => { const el = document.getElementById('deckBtn'); return !!el && el.offsetParent !== null; };
+    const toPhase2 = () => {
+      for (const st of Tutorial.STEPS) if (!st.end) S.tut.done[st.id] = 1;
+      S.buildings.find(o => o.owner === 'P' && o.key === 'tc').level = 2;
+      Tutorial._show = null; tick(3, 0.3);
+      for (const e of Tutorial.EVENTS) if (e.id !== 'deck') S.tut.fired[e.id] = 1;
+      clickNext();                                       // the capstone answered: the deck walks in
+      DeckUI.frame(0.1);
+    };
+    try {
+      // the note up, then the last card played
+      Deck._col = null; Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY);
+      fresh('160', 'calm', true);
+      DeckUI.frame(0.1);
+      toPhase2();
+      const c = Deck.col(); c.counts = { forager_cache: 1 }; Deck.saveCol();
+      Tutorial._lastEvAt = -1e9; tick(6, 0.3);
+      const up = !!(Tutorial._show && Tutorial._show.id === 'deck') && btnUp();
+      S.paused = true;
+      const r = Deck.play('forager_cache');
+      tick(1, 0.05);
+      ck('theDeckNoteRetiresWhenTheDeckIsEmptied', up && r.ok && Deck.total() === 0 && !(Tutorial._show && Tutorial._show.id === 'deck') &&
+        S.tut.fired.deck === 1 && S.tut.on === false && !document.getElementById('tutUI'),
+        JSON.stringify({ up, played: r.ok, total: Deck.total(), show: Tutorial._show, fired: S.tut.fired.deck, on: S.tut.on }));
+      // due over a deck that is already empty: never shown
+      Deck._col = null; Deck._del(Deck.KEY);
+      fresh('161', 'calm', true);
+      DeckUI.frame(0.1);
+      Deck.col().counts = {}; Deck.saveCol();
+      toPhase2();
+      let shown = false;
+      Tutorial._lastEvAt = -1e9;
+      for (let i = 0; i < 8; i++) { tick(1, 0.3); if (Tutorial._show && Tutorial._show.id === 'deck') shown = true; }
+      ck('andIsNeverShownOverAnEmptyDeck', btnUp() && Deck.total() === 0 && !shown && S.tut.fired.deck === 1 && S.tut.on === false,
+        JSON.stringify({ btn: btnUp(), total: Deck.total(), shown, fired: S.tut.fired.deck, on: S.tut.on }));
+    } finally {
       CFG.CARDS.ON = was;
       if (DeckUI.built) DeckUI._stand(false);
       Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); Deck._col = null;
