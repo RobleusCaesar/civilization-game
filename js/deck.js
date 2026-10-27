@@ -681,6 +681,51 @@ const Deck = {
     return (this._glyphCache[key] = 'url("data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '")');
   },
   TARGET_LABEL: { none: 'Plays at once', any: 'Aim anywhere', explored: 'Aim at explored ground' },
+  /* THE NAME FITS ITS PLATE. The plate (PLATE: 144 x 42 authored, 6 a side
+     of padding) sets the name at 9.5 per authored pixel, never under 7.5px —
+     and on the sheet's smallest face (a 320px phone, 88px wide) that floor
+     is half the plate: THE SWALLOWED SUN broke into three lines and spilled
+     over the plate's rim, ENLIGHTENMENT (one word) ran past both its ends.
+     So a name is FITTED: the largest size, in quarter-pixel steps from the
+     plate's own, at which every word fits the plate's width and the name
+     takes at most two lines that fit its height (an inline font-size only
+     when it has to step down — everything else keeps the stylesheet's).
+     Measured in the plate's own face (Cinzel, bold, capitals, with its
+     letter-spacing); before Cinzel has loaded, at a conservative 0.8em a
+     capital (its widest word runs 0.78). Pure: same name, same width, same
+     answer. */
+  NM: { size: 9.5, min: 7.5, floor: 5, pad: 6, lh: 1.1, ls: 0.5 },
+  _nmCtx: null,
+  _nmWidth(text, fs) {
+    try {
+      if (!document.fonts || document.fonts.check('700 ' + fs + 'px Cinzel')) {
+        const q = this._nmCtx || (this._nmCtx = document.createElement('canvas').getContext('2d'));
+        q.font = '700 ' + fs + 'px Cinzel, "Times New Roman", Georgia, serif';
+        return q.measureText(text).width;
+      }
+    } catch (e) { /* a measure that cannot be taken falls to the estimate */ }
+    return text.length * fs * 0.8;
+  },
+  nmFit(name, u) {
+    const N = this.NM, P = this.PLATE, base = Math.max(N.size * u, N.min);
+    const W = (P.w - 2 * N.pad) * u - 1, H = P.h * u, ls = N.ls * u;
+    const words = String(name).toUpperCase().split(/\s+/).filter(Boolean);
+    const fits = fs => {
+      const wd = w => this._nmWidth(w, fs) + ls * w.length, sp = this._nmWidth(' ', fs) + ls;
+      let lines = 1, cur = 0;
+      for (const w of words) {
+        const ww = wd(w);
+        if (ww > W) return false;
+        if (!cur) cur = ww;
+        else if (cur + sp + ww <= W) cur += sp + ww;
+        else { lines++; cur = ww; }
+      }
+      return lines <= 2 && lines * fs * N.lh <= H;
+    };
+    if (fits(base)) return null;
+    for (let fs = Math.floor(base * 4) / 4 - 0.25; fs > N.floor; fs -= 0.25) if (fits(fs)) return fs;
+    return N.floor;
+  },
   /* face(id, opts): opts.w (CSS width wanted), opts.n (×N badge), opts.unknown
      (an undiscovered silhouette), opts.off (greyed + reason), opts.back
      (start flipped). Returns the element; .ccard.flip shows the back. */
@@ -705,12 +750,14 @@ const Deck = {
     const attr = s => esc(s).replace(/"/g, '&quot;');
     const chips = [this.TARGET_LABEL[c.target]];
     if (c.days) chips.push(c.days + (c.days === 1 ? ' day' : ' days'));
+    // a name stepped down to fit its plate (nmFit) — null keeps the stylesheet's
+    const nmSt = s => { const fs = this.nmFit(s, u); return fs ? ` style="font-size:${fs}px"` : ''; };
     el.innerHTML =
       `<div class="cc-in">` +
         `<div class="cc-f">` +
           `<i class="cc-art" style="${attr(art)}"></i><i class="cc-fr"></i>` +
           `<i class="cc-ico" style="${attr('background-image:' + this.glyphUrl(c.cat, '#f3e2b4'))}"></i>` +
-          `<span class="cc-nm">${opts.unknown ? '?' : esc(c.name)}</span>` +
+          `<span class="cc-nm"${opts.unknown ? '' : nmSt(c.name)}>${opts.unknown ? '?' : esc(c.name)}</span>` +
           (c.tier === 'enlight' && !opts.unknown ? '<i class="cc-foil"></i>' : '') +
         `</div>` +
         `<div class="cc-b">` +
@@ -718,7 +765,7 @@ const Deck = {
           `<div class="cc-txt"><b class="cc-tier">${esc(t.name)} · ${esc(t.rarity)}</b>` +
           `<b class="cc-bn">${esc(c.name)}</b><p class="cc-eff">${esc(c.text)}</p>` +
           `<p class="cc-fl">${esc(c.flavor)}</p><p class="cc-ch">${chips.map(esc).join(' · ')}</p></div>` +
-          `<span class="cc-nm">${esc(t.name)}</span>` +
+          `<span class="cc-nm"${nmSt(t.name)}>${esc(t.name)}</span>` +
         `</div>` +
       `</div>` +
       (opts.n > 1 ? `<b class="cc-n">×${opts.n}</b>` : '') +

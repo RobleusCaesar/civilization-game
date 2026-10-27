@@ -1542,7 +1542,9 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkSheet .dkCell.dkOut .ccard { opacity: 0; }
 #dkSheet .dkCap { max-width: 100%; min-height: 2.6em; font-size: 11px; line-height: 1.3; color: var(--dim); text-align: center;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-#dkSheet .dkCap.no { color: #f0c48a; }
+/* a refusal says WHY, and the why is longer than a kind line: it may take a
+   third line before the ellipsis (a 320px phone's 88px card held two) */
+#dkSheet .dkCap.no { color: #f0c48a; -webkit-line-clamp: 3; }
 #dkSheet.dkLifted .dkHint { visibility: hidden; }
 #dkSheet .dkHint { text-align: center; color: var(--dim); font-size: 11px; margin: 4px 16px 0; min-height: 14px; }
 #dkSheet .dkEmpty { margin: 6px auto 10px; max-width: 360px; display: flex; flex-direction: column; align-items: center; gap: 8px;

@@ -929,7 +929,7 @@ await p.evaluate(() => {
     void w3;
     return out;
   });
-  const CALM = 'The Wonder rises only in Calm worlds';
+  const CALM = 'The Wonder rises only in Calm worlds.';
   ck('outsideCalmTheWonderCardsStayInTheHand', !r.mod.ok && r.mod.why === CALM && !r.modFound.ok && r.modFound.why === CALM && !r.modPlay.ok && r.modKept,
     `${r.mod.why} / ${r.modFound.why}`);
   ck('theWonderIsAQuarterCheaperAtTheOneCostPoint', r.play.ok && r.listBefore && JSON.stringify(r.cost) === JSON.stringify(r.want) &&

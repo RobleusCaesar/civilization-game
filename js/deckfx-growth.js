@@ -1299,7 +1299,7 @@ Object.assign(Deck.FX, {
     // the card lands ON the works when they stand (DeckUI._dest), else on the hall
     dest() { return GrowFX.wonderSite(); },
     can() {
-      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds' };
+      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds.' };
       const w = Deck.wonderOf('P');
       if (w && !(w.construction > 0)) return { ok: false, why: 'Your Wonder already stands.' };
       if (S.deck && S.deck.charges && S.deck.charges.marble) return { ok: false, why: 'The Age of Marble has already come.' };
@@ -1423,7 +1423,7 @@ Object.assign(Deck.FX, {
       return before - w.construction;
     },
     can() {
-      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds' };
+      if (!UI.wonderOffered()) return { ok: false, why: 'The Wonder rises only in Calm worlds.' };
       const w = Deck.wonderOf('P'), ch = S.deck && S.deck.charges;
       if (w && !(w.construction > 0)) return { ok: false, why: 'Your Wonder already stands.' };
       if (w && w.construction <= this.floor() + 1e-9) return { ok: false, why: 'The works already stand at 95% — the last stones are yours to lay.' };
