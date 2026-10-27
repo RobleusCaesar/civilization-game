@@ -32,6 +32,7 @@
 (function () {
   /* ---------------- the house's small tools ---------------- */
   const snap = v => Math.round(v / 2) * 2;                      // the 2px grid
+  const snapTo = (v, c) => Math.round(v / c) * c;              // a coarser grid (the sky's big pixels)
   const hash = n => {
     let h = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b) >>> 0;
     h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35) >>> 0;
@@ -1322,59 +1323,144 @@
         }
         g.globalAlpha = 1;
       },
+      /* AN ARM OF THE DEEP, drawn along a spine of points {x, y, r} from the
+         water to the tip, at a `cell` pixel grid (2 in the world, ~6 device
+         px in the sky): an ink outline, the body, a wet teal sheen down the
+         outer edge, pale suckers down the inner one, a teal tip. ONE drawing
+         for the world's slam and the sky's rising arms — the kraken's arms,
+         like R.drawKraken its body, are redrawn in one place. */
+      arm(g, pts, cell) {
+        const AP = ART.PALETTE, n = pts.length;
+        if (n < 2) return;
+        const nrm = i => {
+          const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+          const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
+          return { x: -dy / L, y: dx / L };
+        };
+        g.fillStyle = AP.ink[0];
+        for (const q of pts) R.pxDisc(g, q.x, q.y, q.r + cell, cell);
+        for (let i = 0; i < n; i++) {
+          const q = pts[i], t = i / (n - 1);
+          g.fillStyle = t > 0.88 ? AP.teal[1] : AP.ink[1];
+          R.pxDisc(g, q.x, q.y, q.r, cell);
+        }
+        for (let i = 1; i < n - 1; i++) {
+          const q = pts[i], m = nrm(i), t = i / (n - 1);
+          if (q.r < cell * 1.5) continue;
+          const big = q.r > cell * 4 ? 2 : 1, c2 = cell * big;
+          // the wet sheen along the outer edge: a dark-teal rim, lit every few steps
+          g.fillStyle = AP.teal[0];
+          g.fillRect(snapTo(q.x + m.x * q.r * 0.62, cell), snapTo(q.y + m.y * q.r * 0.62, cell), c2, c2);
+          if (i % 3 === 1 && t < 0.85) { g.fillStyle = AP.teal[1]; g.fillRect(snapTo(q.x + m.x * q.r * 0.5, cell), snapTo(q.y + m.y * q.r * 0.5, cell), cell, cell); }
+          // suckers down the inner face: a pale ring with a dark mouth
+          if (i % 2 === 0 && t < 0.92) {
+            const sx = snapTo(q.x - m.x * q.r * 0.55, cell), sy = snapTo(q.y - m.y * q.r * 0.55, cell);
+            g.fillStyle = AP.bone ? AP.bone[2] : AP.teal[2];
+            g.fillRect(sx, sy, c2, c2);
+            if (big > 1) { g.fillStyle = AP.ink[0]; g.fillRect(sx + cell / 2, sy + cell / 2, cell, cell); }
+          }
+        }
+      },
+      // a spine for an arm: from a base, `len` long, curling hard at the tip
+      spine(bx, by, a0, len, curl, r0, sway, N) {
+        const pts = [];
+        let x = bx, y = by, a = a0;
+        const st = len / N;
+        for (let i = 0; i <= N; i++) {
+          const t = i / N;
+          pts.push({ x, y, r: Math.max(1, r0 * (1 - t * 0.82)) });
+          a += curl * (0.012 + 0.34 * t * t * t) + sway * Math.sin(t * 3.1) * 0.02;
+          x += Math.cos(a) * st; y += Math.sin(a) * st;
+        }
+        return pts;
+      },
       /* a tentacle: up out of the open water beside the building, over, and
-         DOWN on it at the blow — then back into the sea. Hard discs of ink
-         along a curve, thick at the water and tapering to the tip, suckers
-         in teal on the inner face. */
+         DOWN on it at the blow — then back into the sea. */
       tentacle(g, c, tt, v) {
         const t0 = this.COAST_S - 0.7, t1 = this.COAST_S + 1.6;
         if (tt < t0 || tt > t1) return;
         if (!inView(v, c.x, c.y) && !inView(v, c.wx, c.wy)) return;
         if (!G.visibleAt(c.x | 0, c.y | 0) && !G.visibleAt(c.wx | 0, c.wy | 0)) return;
-        const TL = CFG.TILE, AP = ART.PALETTE, ox = c.wx * TL, oy = c.wy * TL, bx = c.x * TL, by = c.y * TL;
+        const TL = CFG.TILE, ox = c.wx * TL, oy = c.wy * TL, bx = c.x * TL, by = c.y * TL;
         let tipX, tipY, reach;
         if (tt < this.COAST_S) {                          // rearing up out of the sea
           const u = ease((tt - t0) / 0.7);
-          tipX = ox + (bx - ox) * 0.25; tipY = oy - TL * 2.6 * u; reach = u;
+          tipX = ox + (bx - ox) * 0.25; tipY = oy - TL * 2.8 * u; reach = u;
         } else if (tt < this.COAST_S + 0.12) {            // the slam
           const u = (tt - this.COAST_S) / 0.12;
-          tipX = ox + (bx - ox) * (0.25 + 0.75 * u); tipY = oy - TL * 2.6 * (1 - u) + (by - oy) * u; reach = 1;
+          tipX = ox + (bx - ox) * (0.25 + 0.75 * u); tipY = oy - TL * 2.8 * (1 - u) + (by - oy) * u; reach = 1;
         } else if (tt < this.COAST_S + 0.8) { tipX = bx; tipY = by; reach = 1; }
         else {                                            // drawn back under
           const u = ease((tt - this.COAST_S - 0.8) / 0.8);
           tipX = bx + (ox - bx) * u; tipY = by + (oy - by) * u; reach = 1 - u;
         }
         if (reach <= 0.02) return;
-        const cx = (ox + tipX) / 2 + (tipY - oy) * 0.15, cy = Math.min(oy, tipY) - TL * 1.2 * reach;
-        const N = 18;
-        for (const pass of [0, 1]) {
-          for (let i = 0; i <= N; i++) {
-            const q = i / N, a = (1 - q) * (1 - q), b2 = 2 * (1 - q) * q, d = q * q;
-            const px = a * ox + b2 * cx + d * tipX, py = a * oy + b2 * cy + d * tipY;
-            const r = Math.max(2, (8 - 6 * q) * (0.5 + 0.5 * reach));
-            g.fillStyle = pass ? (q > 0.85 ? AP.teal[1] : AP.ink[1]) : AP.ink[0];
-            R.pxDisc(g, px, py, pass ? r : r + 2, 2);
-            if (pass && i % 3 === 1 && r > 3) { g.fillStyle = AP.teal[2]; g.fillRect(snap(px - r * 0.5), snap(py + r * 0.3), 2, 2); }
+        const cx = (ox + tipX) / 2 + (tipY - oy) * 0.15, cy = Math.min(oy, tipY) - TL * 1.3 * reach;
+        const N = 22, pts = [];
+        const writhe = Math.sin(tt * 11) * 2;
+        for (let i = 0; i <= N; i++) {
+          const q = i / N, a = (1 - q) * (1 - q), b2 = 2 * (1 - q) * q, d = q * q;
+          pts.push({ x: a * ox + b2 * cx + d * tipX + Math.sin(q * 6 + tt * 9) * writhe * q,
+                     y: a * oy + b2 * cy + d * tipY, r: Math.max(2, (9 - 7 * q) * (0.5 + 0.5 * reach)) });
+        }
+        this.arm(g, pts, 2);
+        // foam where it leaves the water, and spray off the slam
+        g.fillStyle = '#dceef4';
+        g.globalAlpha = qa(0.85 * reach);
+        ring(g, ox, oy + 4, TL * (0.5 + 0.15 * Math.sin(tt * 12)), 16, 0.45);
+        ring(g, ox, oy + 4, TL * (0.85 + 0.1 * Math.sin(tt * 9)), 22, 0.45);
+        if (tt >= this.COAST_S && tt < this.COAST_S + 0.6) {
+          const q = (tt - this.COAST_S) / 0.6;
+          g.globalAlpha = qa(1 - q);
+          g.fillStyle = '#c9b48a';
+          for (let k = 0; k < 14; k++) {                   // the shore thrown up where it lands
+            const an = k / 14 * Math.PI * 2, rr = TL * (0.3 + 1.3 * ease(q)) * (0.7 + 0.3 * rnd(c.id, k));
+            g.fillRect(snap(bx + Math.cos(an) * rr), snap(by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI)), 4, 4);
           }
         }
-        // foam where it leaves the water
-        g.fillStyle = '#dceef4';
-        g.globalAlpha = qa(0.8 * reach);
-        ring(g, ox, oy + 4, TL * (0.45 + 0.15 * Math.sin(tt * 12)), 14, 0.45);
         g.globalAlpha = 1;
       },
-      /* the play's moment in the sky: the deep's dark closes in from the edges
-         of the screen, in hard bands, and lifts */
+      /* THE MOMENT the deep answers, over the whole screen: the dark of the
+         sea closes in from the edges in hard bands while three vast arms come
+         up out of the bottom of the screen — swaying, curling at the tip —
+         with the spray thrown off them, and sink back as the act begins on
+         the map. Coarse pixel cells, never a smooth vector arm. */
+      ARMS: [[0.14, 0.66, 1, 0.0, 1.0], [0.86, 0.58, -1, 1.7, 0.92], [0.52, 0.42, 1, 3.1, 0.66]],
       show: {
-        ms: 2400, layer: 'sky',
+        ms: 3000, layer: 'sky',
         draw(g, s, p) {
-          const W = R.cv.width, H = R.cv.height, k = p < 0.3 ? ease(p / 0.3) : 1 - ease((p - 0.3) / 0.7);
-          if (k <= 0) return;
-          for (let b = 0; b < 5; b++) {
-            const w = Math.round(Math.min(W, H) * (0.04 + 0.05 * b) * k);
-            g.fillStyle = 'rgba(2,14,30,' + qa(0.5 * k * (1 - b * 0.18), 8) + ')';
-            g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
+          const W = R.cv.width, H = R.cv.height, T = s.t, k = p < 0.25 ? ease(p / 0.25) : 1 - ease((p - 0.4) / 0.6);
+          if (k > 0) {
+            for (let b = 0; b < 5; b++) {
+              const w = Math.round(Math.min(W, H) * (0.04 + 0.05 * b) * k);
+              g.fillStyle = 'rgba(2,14,30,' + qa(0.55 * k * (1 - b * 0.18), 8) + ')';
+              g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
+            }
           }
+          // the arms: up over 0.05..0.4, held swaying, down over 0.62..0.95
+          const up = p < 0.05 ? 0 : p < 0.4 ? ease((p - 0.05) / 0.35) : p < 0.62 ? 1 : 1 - ease((p - 0.62) / 0.33);
+          if (up <= 0) return;
+          const cell = Math.max(4, Math.round(Math.min(W, H) / 110));
+          for (let i = this.ARMS.length - 1; i >= 0; i--) {
+            const [fx, fh, curl, ph, sc] = this.ARMS[i];
+            const len = H * fh * up, r0 = Math.min(W, H) * 0.11 * sc;
+            if (len < r0) continue;
+            const sway = Math.sin(T * 2.3 + ph);
+            const pts = this.spine(W * fx + sway * W * 0.02, H + r0 * 0.6, -Math.PI / 2 + curl * 0.18 + sway * 0.06, len, curl * (0.55 + 0.25 * Math.sin(T * 1.7 + ph)), r0, sway, 34);
+            this.arm(g, pts, cell);
+          }
+          // spray off the water at their feet, light added
+          g.save(); g.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < this.ARMS.length; i++) {
+            const bx = W * this.ARMS[i][0];
+            for (let n = 0; n < 18; n++) {
+              const ph2 = (T * 1.4 + n / 18 + i * 0.37) % 1;
+              const sx = bx + (rnd(i * 31 + n, 3) - 0.5) * W * 0.16, sy = H - ph2 * H * 0.12 * (0.5 + rnd(n, i));
+              g.fillStyle = 'rgba(220,238,244,' + qa(0.8 * (1 - ph2) * up, 4) + ')';
+              g.fillRect(snapTo(sx, cell), snapTo(sy, cell), cell, cell);
+            }
+          }
+          g.restore();
         },
       },
     },
