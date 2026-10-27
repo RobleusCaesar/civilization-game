@@ -145,6 +145,7 @@ Object.assign(Deck, {
     const probe = { kind: to, owner: u.owner, hp: base.hp, maxhp: base.hp, atk: base.atk, def: base.def, speed: base.speed };
     if (window.Cards && Cards.onSpawn) Cards.onSpawn(probe);
     u.kind = to;
+    u.ranked = 1;   // raised by the card: one chevron, for good (drawRank)
     u.maxhp = probe.maxhp; u.hp = Math.max(1, Math.round(frac * u.maxhp));
     u.atk = probe.atk + (u.skyIron ? 1 : 0);
     u.def = probe.def; u.speed = probe.speed;
@@ -175,10 +176,11 @@ Object.assign(Deck, {
      sprite (render.js). Cheap by construction: one or two drawImage calls
      and a handful of 2px squares; the tinted frame is R.tintOf's cache. */
   drawUnit(g, u, img, x, y, D) {
-    if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (u.vet) this.drawRank(g, x, y, D); return; }
+    const rank = u.vet ? 2 : u.ranked ? 1 : 0;
+    if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (rank) this.drawRank(g, x, y, D, rank); return; }
     if (u.warWolf) this.drawCollar(g, u, x, y, D);     // under the wolf, as a ring on the ground is
     g.drawImage(img, x, y, D, D);
-    if (u.vet) this.drawRank(g, x, y, D);
+    if (rank) this.drawRank(g, x, y, D, rank);
   },
   // the tribe's dye: a ring of it on the ground at a war-wolf's feet, never
   // on a wild one — the wild sheet is undyed, and this is what says "yours"
@@ -191,10 +193,12 @@ Object.assign(Deck, {
       g.fillStyle = dye.body || '#3f6d99'; g.fillRect(px, py, 2, 1);
     }
   },
-  // a veteran's rank: two gold chevrons over the head
-  drawRank(g, x, y, D) {
+  /* THE RANK A CARD GAVE, worn for good over the head: two gold chevrons for
+     a veteran, one for a soldier the card raised to its hall's champion — a
+     minute after the card, the field still says which ones it made */
+  drawRank(g, x, y, D, n) {
     const cx = Math.round(x + D / 2), ty = Math.round(y + D * 0.1);
-    for (let c = 0; c < 2; c++) {
+    for (let c = 0; c < (n || 2); c++) {
       const yy = ty + c * 3;
       for (const [dx, dy] of [[-3, 0], [-2, -1], [-1, -2], [0, -2], [1, -1], [2, 0]]) {
         g.fillStyle = '#5a3a10'; g.fillRect(cx + dx, yy + dy + 1, 1, 1);
@@ -413,13 +417,14 @@ Deck.armyFx = {
     const vis = el => el && el.offsetParent !== null ? el.offsetHeight : 0;
     return (this._frame = { at: now, top: (vis(tb) * dpr) || (R.topReserve || 0) * dpr, bot: (vis(bb) * dpr) || (R.bottomReserve || 0) * dpr });
   },
-  edges(g, a, col, rule) {
+  edges(g, a, col, rule, size) {
     if (a <= 0.01) return;
     const W = R.cv.width, H = R.cv.height, f = this.frame(), gr = this.grain();
     const open = Math.max(1, H - f.top - f.bot);
     // the bars come in by whole grains, eased: a hard edge on every frame
+    // (`size`: the bar's share of the open frame — the Iron tier's is half)
     const e = 1 - (1 - Math.min(1, a)) * (1 - Math.min(1, a));
-    const h = Math.round(open * 0.085 * e / gr) * gr;
+    const h = Math.round(open * (size || 0.085) * e / gr) * gr;
     if (h <= 0) return;
     g.fillStyle = 'rgb(' + (col || '10,8,6') + ')';
     g.fillRect(0, f.top, W, h); g.fillRect(0, H - f.bot - h, W, h);
@@ -750,24 +755,61 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           else if (t && t.type === 'move' && (t.x !== d.x || t.y !== d.y)) { Units.moveTo(u, d.x, d.y); if (u.task) u.task.home = true; }
         }
       },
-      // the wind brings them: pale-gold motes spiralling in to where each
-      // wolf will stand, a ring of the tribe's dye going out under it
+      /* THE WIND BRINGS THEM: pale-gold motes spiral in to where each wolf
+         will step out of the light; then each one DASHES out to its place —
+         a streak of hard dots flung out behind it — and as it pulls up at
+         its den it howls: two rings of dots going out from it, the tribe's
+         dye and a pale one, and a few notes of breath rising off its muzzle.
+         No boots, no dust (Deck.summon's `dust: false`): the first cut's
+         grey doorstep clouds were the loudest thing in the still. */
       show: {
-        ms: 2600, layer: 'world',
-        draw(g, s, p) {
+        ms: 3200, layer: 'world',
+        draw(g, s, p, dt) {
           const TL = CFG.TILE;
           muster(g, s, p, '226,214,170', 1, false);
+          const dye = (Sprites.tunicCol || {})[G.tunicOf('P')] || { body: '#3f6d99' };
+          const hx = dye.body || '#3f6d99', dyeRgb = [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16)).join(',');
+          s.prev = s.prev || {}; s.howl = s.howl || {};
           g.save(); g.globalCompositeOperation = 'lighter';
           for (const m of s.units) {
+            const u = live(m.id);
+            // the spiral in, to the spot it steps out of
             const q = (s.t - m.d + 0.35) / 0.7;
-            if (q <= 0 || q >= 1.6) continue;
-            const cx = m.x * TL, cy = m.y * TL;
-            if (q < 1) for (let k = 0; k < 10; k++) {
+            if (q > 0 && q < 1) for (let k = 0; k < 10; k++) {
               const th = k / 10 * 6.283 + q * 4, rr = TL * 1.4 * (1 - q);
               g.fillStyle = A.rgba('255,236,180', 0.85 * q);
-              g.fillRect(A.snap(cx + Math.cos(th) * rr), A.snap(cy + Math.sin(th) * rr * 0.55 - TL * 0.3), 2, 2);
+              g.fillRect(A.snap(m.x * TL + Math.cos(th) * rr), A.snap(m.y * TL + Math.sin(th) * rr * 0.55 - TL * 0.3), 2, 2);
             }
-            else A.ring(g, cx, cy + 6, TL * (0.3 + (q - 1) * 1.4), 14, '255,236,180', 0.8 * (1.6 - q) / 0.6);
+            if (!u) continue;
+            // the dash: a streak flung out behind it while it runs
+            const pv = s.prev[m.id];
+            s.prev[m.id] = { x: u.x, y: u.y };
+            if (pv && dt > 0 && Units.moving(u)) {
+              const vx = (u.x - pv.x) / dt, vy = (u.y - pv.y) / dt, sp = Math.hypot(vx, vy);
+              if (sp > 0.8) {
+                const ux = vx / sp, uy = vy / sp;
+                for (let j = 1; j <= 5; j++) {
+                  g.fillStyle = A.rgba(j < 3 ? '255,240,200' : '226,214,170', 0.9 * (1 - j / 6));
+                  const bx = (u.x - ux * j * 0.2) * TL, by = (u.y - uy * j * 0.2) * TL + 4;
+                  g.fillRect(A.snap(bx - uy * 4), A.snap(by + ux * 2), 2, 2);
+                  g.fillRect(A.snap(bx + uy * 4), A.snap(by - ux * 2), 2, 2);
+                }
+              }
+            }
+            // the howl, the moment it pulls up at its own place
+            const home = u.den && (u.x | 0) === u.den.x && (u.y | 0) === u.den.y && !Units.moving(u);
+            if (home && s.howl[m.id] == null) s.howl[m.id] = s.t;
+            const h0 = s.howl[m.id];
+            if (h0 == null) continue;
+            const hq = (s.t - h0) / 0.9;
+            if (hq >= 1) continue;
+            A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.35 + hq * 1.5), 16, dyeRgb, 0.9 * (1 - hq));
+            if (hq > 0.15) A.ring(g, u.x * TL, u.y * TL + 6, TL * (0.3 + (hq - 0.15) * 1.1), 12, '255,240,200', 0.75 * (1 - hq));
+            for (let k = 0; k < 4; k++) {
+              const lift = (hq * 1.4 + k * 0.18) % 1;
+              g.fillStyle = A.rgba('240,236,220', 0.8 * (1 - lift));
+              g.fillRect(A.snap(u.x * TL + (k - 1.5) * 3 + lift * 4), A.snap(u.y * TL - TL * 0.55 - lift * TL * 0.6), 2, 2);
+            }
           }
           g.restore();
         },
@@ -785,18 +827,29 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           log: () => '🛡️ Six Bronze Champions march out of your Town Center.',
         });
       },
-      // bronze shields catching the light: each champion flashes in its own
-      // silhouette as it steps out; two rings, steel and bronze; the drums
-      // shake the ground on their beats
+      /* THE IRON TIER'S STEP UP from the War Band below it: a SHORT HELD
+         BEAT — the day dims a step and a half-letterbox closes in while the
+         six come out — and each champion's shield catching the sun IN TURN,
+         a big four-point flare and a ring of light round the boss, one after
+         another down the line; the steel ring and the drums under it. (The
+         first cut was the War Band's muster with a second ring, and read as
+         the same card.) */
       show: {
-        ms: 3000, layer: 'world',
-        draw(g, s, p) {
+        ms: 3000, layers: ['world', 'sky'],
+        draw(g, s, p, dt, layer) {
           const TL = CFG.TILE;
+          if (layer === 'sky') {
+            const hold = p < 0.06 ? p / 0.06 : p < 0.45 ? 1 : Math.max(0, 1 - (p - 0.45) / 0.2);
+            g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '12,10,8'); g.restore();
+            A.edges(g, hold, '10,8,6', '200,214,236', 0.045);   // half the Imperial bars, a steel rule
+            return;
+          }
           A.beats(s, p, [0.02, 0.16, 0.30, 0.39], 3, 0.22, 'cardDrum');
           muster(g, s, p, '232,150,80', 1, true);
           const q2 = (p - 0.1) / 0.6;
           if (q2 > 0 && q2 < 1) A.ring(g, s.mx * TL, s.my * TL, TL * (1 + q2 * 3.4), 32, '170,200,240', 0.7 * (1 - q2));
-          flashUnits(g, s, '255,236,190', 0.35, 0.3);
+          flashUnits(g, s, '255,236,190', 0.45, 0.32);
+          shields(g, s, 0.4);
         },
       },
     },
@@ -820,15 +873,24 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           const TL = CFG.TILE;
           A.beats(s, p, [0.03, 0.18, 0.33, 0.48], 4, 0.4);
           muster(g, s, p, '210,170,120', 2, false);
-          if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 120, scale: 1.1 }); }
+          // dust at half the first cut's (it swallowed the two engines it was
+          // there to announce); the sparks are what says iron
+          if (!s.dust) { s.dust = 1; for (const m of s.units) if (R.startPlacePoof) R.startPlacePoof(m.x - 1, m.y - 1, 2, { delay: m.d * 1000 + 120, scale: 0.55 }); }
           g.save(); g.globalCompositeOperation = 'lighter';
           for (const m of s.units) {
-            const q = (s.t - m.d) / 0.5;
+            const q = (s.t - m.d) / 0.6;
             if (q <= 0 || q >= 1) continue;
-            for (let k = 0; k < 8; k++) {
-              const th = k * 0.785 + m.id, rr = TL * (0.3 + q * 0.9);
-              g.fillStyle = A.rgba(k % 2 ? '255,200,110' : '255,244,200', 1 - q);
-              g.fillRect(A.snap(m.x * TL + Math.cos(th) * rr), A.snap(m.y * TL + Math.sin(th) * rr * 0.5 - q * 8), 2, 2);
+            const cx = m.x * TL, cy = m.y * TL;
+            if (q < 0.22) A.glint(g, cx, cy - 4, 4, '255,252,230', 1);   // the axle strikes
+            for (let k = 0; k < 14; k++) {
+              const th = k * 0.4488 + m.id, sp = 0.8 + ((k * 7) % 5) * 0.12, rr = TL * (0.25 + q * 1.15 * sp);
+              const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr * 0.5 - q * 10 + q * q * 14;   // flung up, falling back
+              const a = q < 0.5 ? 1 : 1 - (q - 0.5) / 0.5;
+              g.fillStyle = A.rgba(k % 3 === 0 ? '255,255,240' : k % 3 === 1 ? '255,214,110' : '255,160,60', a);
+              const z = q < 0.45 && k % 2 === 0 ? 4 : 2;
+              g.fillRect(A.snap(x), A.snap(y), z, z);
+              g.fillStyle = A.rgba('255,190,90', a * 0.5);   // its trail
+              g.fillRect(A.snap(cx + Math.cos(th) * rr * 0.78), A.snap(cy + Math.sin(th) * rr * 0.39 - q * 8), 2, 2);
             }
           }
           g.restore();
@@ -884,6 +946,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           g.save(); g.globalCompositeOperation = 'lighter';
           const q0 = p / 0.7;
           if (q0 < 1) A.ring(g, s.x * TL, s.y * TL, TL * (1 + q0 * 9), 48, '255,214,110', 0.7 * (1 - q0));
+          // pass 1, the light: each soldier's pillar as the wave reaches it,
+          // and its new rank rising off it
+          const lit = [];
           for (const l of s.lit) {
             const q = (s.t - l.d) / 1.1;
             if (q <= 0 || q >= 1) continue;
@@ -892,17 +957,25 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             const cx = u.x * TL, foot = u.y * TL + TL * 0.3, a = q < 0.2 ? 1 : 1 - (q - 0.2) / 0.8;
             A.shaft(g, cx, foot, TL * 2.6 * Math.min(1, q * 6), TL * 0.8 * (1 - q * 0.6), '255,214,120', a);
             A.pool(g, cx, foot, TL * 0.5, '255,206,110', 0.4 * a);
-            if (!l.hull && q < 0.45) {
-              const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-              g.globalAlpha = (0.45 - q) / 0.45 * 0.8;
-              g.drawImage(R.tintOf(img, '#ffe6a0'), u.x * TL - D / 2, R.frameTop(u.y, B, D), D, D);
-              g.globalAlpha = 1;
-            }
-            // the new rank, rising
-            const ry = u.y * TL - TL * (0.8 + q * 0.7);
+            const ry = u.y * TL - TL * (0.8 + q * 0.7), n = u.vet ? 2 : 1;   // the rank it now wears
             g.fillStyle = A.rgba('255,226,140', a);
-            for (let c = 0; c < 2; c++) for (const [dx, dy] of [[-4, 0], [-2, -2], [0, -4], [2, -2], [4, 0]])
+            for (let c = 0; c < n; c++) for (const [dx, dy] of [[-4, 0], [-2, -2], [0, -4], [2, -2], [4, 0]])
               g.fillRect(A.snap(cx + dx), A.snap(ry + c * 4 + dy), 2, 2);
+            if (!l.hull && q < 0.45) lit.push([u, q]);
+          }
+          g.restore();
+          /* pass 2, the soldier: its own silhouette blazing, laid OVER every
+             pillar and opaque — added like the light, it washed out into the
+             pillar's white and the soldier the card was raising disappeared.
+             A dark-gold edge round a pale-gold figure: the man in the light. */
+          g.save();
+          for (const [u, q] of lit) {
+            const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+            const x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D);
+            g.globalAlpha = q < 0.25 ? 5 / 6 : q < 0.35 ? 2 / 3 : 1 / 2;
+            const edge = R.tintOf(img, '#7a4c0e');
+            for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) g.drawImage(edge, x + dx, y + dy, D, D);
+            g.drawImage(R.tintOf(img, '#ffeaa8'), x, y, D, D);
           }
           g.restore();
         },
@@ -1158,6 +1231,28 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         if (q < 0.1) burst(g, x, y);
         A.beam(g, x, y, TL * 1.7 * Math.min(1, q * 3 + 0.25), TL * 0.34, '200,238,255', 0.9 * (1 - q * 0.5));
       } else A.ring(g, x, y, TL * (0.3 + (q - 1) * 1.2), 14, '200,236,255', 0.85 * (1.8 - q) / 0.8);
+    }
+    g.restore();
+  }
+
+  /* EACH SHIELD CATCHES THE SUN IN TURN (Iron Legion): as each champion
+     steps out of its light, a big four-point flare on its shield-arm and a
+     ring of light round the boss — one after another down the line, on the
+     muster's own stagger. Light, added. */
+  function shields(g, s, life) {
+    const TL = CFG.TILE;
+    g.save(); g.globalCompositeOperation = 'lighter';
+    for (const m of s.units) {
+      const q = (s.t - m.d - 0.15) / life;
+      if (q <= 0 || q >= 1) continue;
+      const u = live(m.id);
+      if (!u) continue;
+      const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
+      const x = u.x * TL + D * 0.16, y = R.frameTop(u.y, B, D) + D * 0.56;
+      const a = q < 0.3 ? 1 : 1 - (q - 0.3) / 0.7;
+      A.glint(g, x, y, q < 0.3 ? 5 : 3, '255,250,225', a);
+      A.ring(g, x, y, 4 + q * TL * 0.5, 12, '255,226,150', a * 0.85, 0.8);
+      if (q < 0.15) { g.fillStyle = 'rgb(255,255,240)'; R.pxDisc(g, x, y, 4, 2, 1); }
     }
     g.restore();
   }

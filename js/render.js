@@ -13358,7 +13358,7 @@ const R = {
            tribe's dye, a veteran's rank. Draw time only — the frame tapped
            (R.unitHit) is the same frame, untouched — and a look that throws
            falls back to the plain sprite, never takes the frame down. */
-        if ((u.spectral || u.warWolf || u.vet) && window.Deck && Deck.drawUnit) {
+        if ((u.spectral || u.warWolf || u.vet || u.ranked) && window.Deck && Deck.drawUnit) {
           try { Deck.drawUnit(g, u, img, dx0, dy0, D); }
           catch (err) { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(img, dx0, dy0, D, D); }
         } else g.drawImage(img, dx0, dy0, D, D);
