@@ -921,10 +921,11 @@ Object.assign(Deck, {
     st.moves = 0;
     out.kept = c.queue.length;
     this._syncSave(c);
+    // the retry first: a reconcile that finds the disk moved schedules its own
+    this._syncLater(c.queue.length > 0);
     if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
     out.ok = !stop && !c.queue.length;
     out.why = stop || (c.queue.length ? 'held' : '');
-    this._syncLater(c.queue.length > 0);
     // an op queued while this drain was in flight goes out right behind it
     if (mine() && c.queue.some(op => !op.q)) st.again = true;
     return out;
