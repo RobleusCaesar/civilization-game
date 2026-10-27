@@ -1345,6 +1345,65 @@ await p.evaluate(({ TOWN }) => {
   ck('thePileGoesInHardStepsNeverAnAlpha', E.every(([, x]) => x.soft === 0), E.map(([id, x]) => `${id} ${x.soft} translucent px`).join('; '));
 }
 
+// ---------------- 14. THE CARAVAN IS THE GAME'S OWN CAST ----------------
+/* The critics: the ox, drover and cart were drawn in 2px blocks four times
+   coarser than the units, oversized (an ox ~1.5 tiles long), and read as
+   placeholder art. The ox is the map's own cattle and the drover a villager
+   of the tribe — both drawn through R.unitSprite, the renderer's own unit
+   art — and the cart and its load at one world pixel a cell. Measured on the
+   caravan alone, stopped at the door before a crate is set down: the cast
+   was asked for (a cow and a villager), the picture is NOT confined to the
+   2px grid (a share of its edges fall on odd world pixels, where a 2px
+   drawing has none), and the whole of it is under 2.75 tiles long. */
+{
+  const r = await p.evaluate(() => {
+    const out = {}, TL = CFG.TILE;
+    __tw.fresh('town-cast');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1.5);
+    const asked = {}, us = R.unitSprite;
+    R.unitSprite = function (u) { if (u && !S.units.includes(u)) asked[u.kind] = (asked[u.kind] || 0) + 1; return us.apply(this, arguments); };
+    try {
+      Deck.play('trade_caravan');
+      const sh = R.cardShows.find(s => s.id === 'trade_caravan');
+      const K = Deck.FX.trade_caravan.show;
+      const g0 = R.cv.getContext('2d');
+      for (const q of [0.05, 0.15, 0.25, K.IN + 0.02]) { sh.t = q * sh.ms / 1000; g0.save(); R.drawCardShows(g0, 0, 'world'); g0.restore(); }
+      const rd = sh.road;
+      out.road = !!rd;
+      if (rd) {
+        const rowY = (rd.ty + 0.8) * TL, X0 = Math.round((rd.stop - 200) / 2) * 2, Y0 = Math.round((rowY - 100) / 2) * 2;
+        const cv = document.createElement('canvas'); cv.width = 400; cv.height = 160;
+        const cg = cv.getContext('2d');
+        cg.setTransform(1, 0, 0, 1, -X0, -Y0);
+        sh.t = (K.IN + 0.02) * sh.ms / 1000;
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        R.drawCardShows(cg, 0, 'world');
+        const d = cg.getImageData(0, 0, 400, 160).data;
+        let minX = 1e9, maxX = -1, odd = 0, all = 0;
+        for (let y = 0; y < 160; y++) {
+          let prev = null;
+          for (let x = 0; x < 400; x++) {
+            const i = (y * 400 + x) * 4, on = d[i + 3] === 255;
+            if (on) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+            const key = on ? d[i] + ',' + d[i + 1] + ',' + d[i + 2] : '';
+            if (prev !== null && key !== prev) { all++; if (x % 2) odd++; }
+            prev = key;
+          }
+        }
+        out.len = maxX - minX + 1; out.oddShare = all ? odd / all : 0;
+      }
+    } finally { R.unitSprite = us; }
+    out.asked = asked; out.TL = TL;
+    R.cardShows = [];
+    return out;
+  });
+  ck('theOxIsTheMapsCattleAndTheDroverAVillager', (r.asked.cow || 0) > 0 && (r.asked.villager || 0) > 0, JSON.stringify(r.asked));
+  ck('andTheCaravanIsDrawnAtTheCastsDensity', r.road && r.oddShare > 0.3, `${(100 * r.oddShare).toFixed(0)}% of its edges on odd world pixels (the 2px drawing: 15%, its wheel's off-grid rim alone)`);
+  ck('andItIsNoLongerOversized', r.road && r.len > 0 && r.len <= r.TL * 2.75, `${r.len} world px end to end (${(r.len / r.TL).toFixed(2)} tiles)`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();

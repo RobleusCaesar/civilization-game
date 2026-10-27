@@ -350,17 +350,26 @@
        in world coordinates), outlined in the ink ramp, then blitted: the
        world's transform scales it up nearest-neighbour like everything else. */
     _ink: null,
-    inked(g, x, y, w, h, fn, dis) {
+    /* (`bare`: drawn and dissolved with no outline of its own — the cast's
+       sprites carry theirs. A picture inside a picture — the caravan's cart
+       inside the caravan — takes the next scratch down, never the one its
+       maker is drawing into.) */
+    _inkD: 0,
+    inked(g, x, y, w, h, fn, dis, bare) {
       x = sn(x); y = sn(y); w = sn(w) + PX; h = sn(h) + PX;
-      let K = this._ink;
-      if (!K) K = this._ink = { a: document.createElement('canvas'), b: document.createElement('canvas') };
+      const stack = this._ink || (this._ink = []);
+      let K = stack[this._inkD];
+      if (!K) K = stack[this._inkD] = { a: document.createElement('canvas'), b: document.createElement('canvas') };
       if (K.a.width < w || K.a.height < h) {
         K.a.width = K.b.width = Math.max(K.a.width, w); K.a.height = K.b.height = Math.max(K.a.height, h);
       }
       const ga = K.a.getContext('2d'), gb = K.b.getContext('2d');
       ga.setTransform(1, 0, 0, 1, 0, 0); ga.clearRect(0, 0, w, h);
       ga.imageSmoothingEnabled = false;
-      ga.translate(-x, -y); fn(ga); ga.setTransform(1, 0, 0, 1, 0, 0);
+      ga.translate(-x, -y);
+      this._inkD++;
+      try { fn(ga); } finally { this._inkD--; }
+      ga.setTransform(1, 0, 0, 1, 0, 0);
       gb.globalCompositeOperation = 'copy'; gb.drawImage(K.a, 0, 0, w, h, 0, 0, w, h);
       gb.globalCompositeOperation = 'source-in'; gb.fillStyle = AP().ink[0]; gb.fillRect(0, 0, w, h);
       gb.globalCompositeOperation = 'source-over';
@@ -373,7 +382,7 @@
         c.fillStyle = c.createPattern(hole, 'repeat'); c.fillRect(0, 0, w + 8 * PX, h + 8 * PX);
         c.restore();
       }
-      for (const [dx, dy] of [[-PX, 0], [PX, 0], [0, -PX], [0, PX]]) g.drawImage(K.b, 0, 0, w, h, x + dx, y + dy, w, h);
+      if (!bare) for (const [dx, dy] of [[-PX, 0], [PX, 0], [0, -PX], [0, PX]]) g.drawImage(K.b, 0, 0, w, h, x + dx, y + dy, w, h);
       g.drawImage(K.a, 0, 0, w, h, x, y, w, h);
     },
     /* the count over a pile: `lines` from `t0` seconds into the show for
@@ -704,106 +713,99 @@
   };
 
   /* ---------------- the caravan ---------------- */
-  /* A picture drawn from rows of letters, one letter a 2px cell ('.' is
-     bare): how the ox and its drover are built, so their silhouettes are
-     drawn rather than assembled from boxes — a brown box with a stub of a
-     head was what the first cut's ox read as at play zoom. Facing +x;
-     (x, y) is the top-left; `pal` maps a letter to its colour. */
-  function cells(g, rows, pal, x, y) {
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r];
-      for (let k = 0; k < row.length; k++) {
-        const ch = row[k];
-        if (ch === '.') continue;
-        g.fillStyle = pal[ch]; g.fillRect(x + k * PX, y + r * PX, PX, PX);
-      }
-    }
+  /* THE CARAVAN IS THE GAME'S OWN CAST (the critics: the first cut's ox,
+     drover and cart were drawn in 2px blocks, four times coarser than the
+     units beside them, oversized, and read as placeholder art). The ox IS
+     the map's cattle — the cow's own walk strip, facing the way it walks —
+     and the drover a VILLAGER of the tribe in their walk, both drawn through
+     the renderer exactly as it draws its own units (R.unitSprite: the facing
+     from how the stand-in moved, the stride driven by the ground it
+     covered, the contact shadow its sheet is owed); a stand-in is render
+     state on the show, never in S, never a unit. The cart and its load are
+     drawn at ONE WORLD PIXEL A CELL — the villagers' own density in the
+     world — and outlined in the ink like everything that stands off the
+     grass. With no strip loaded the cast's procedural self stands in, as it
+     does for every unit. */
+  function castFig(s, key, kind, owner, female) {
+    // (a positive id far past any unit's: the walk's phase is seeded from it, and a negative one indexes no frame)
+    return s[key] || (s[key] = { id: 9e8 + key.length, kind, owner, female: !!female, x: 0, y: 0, hp: 1, maxhp: 1, animT: 0, path: null, pathI: 0 });
   }
-  /* THE OX: a draft ox under the yoke — the hump high at the withers, the
-     back falling to the rump, the head carried LOW and forward with a pale
-     crescent of horn above it, the far legs a shade darker than the near.
-     Two strides; 22 × 13 cells. */
-  const OX_BODY = [
-    '......................',
-    '...........LLL........',
-    '..LLLLLLLLLBBBL.......',
-    '.tMBBBBBBBBBBBBBL.h...',
-    '.tMBBBBBBBBBBBBBBMhh.h',
-    '.tMMBBBBBBBBBBBBBMLBhH',
-    '.t.MMBBBBBBBBBBBBMBBeB',
-    '.t.DMMMMMMMMMMMMMMBBBB',
-    'tt..DDDMMMMMDDDDMDBBnn',
-  ];
-  const OX_LEGS = [
-    ['....DM.MM....DM.MM.Mnn', '....DM.MM....DM.MM....', '....DM.MM....DM.MM....', '....oo.oo....oo.oo....'],
-    ['...DM..MM...DM...MMMnn', '..DM....MM.DM.....MM..', '..DM....MM.DM.....MM..', '..oo....oo.oo.....oo..'],
-  ];
-  /* THE DROVER leading it by a rope, a goad over his shoulder: a pale wool
-     tunic against the grass and the brown beast, so the eye finds a PERSON
-     at the head of the cart — the one cue that says "a caravan came" rather
-     than "an animal wandered by". 8 × 14 cells, two strides. */
-  const DROVER = [
-    '..aaa...',
-    '.aasS..g',
-    '..ssS.g.',
-    '..WWW.g.',
-    '.WwwwWg.',
-    '.SwwwW..',
-    '..www...',
-    '..kkk...',
-    '..wwW...',
-    '..wWW...',
-  ];
-  const DROVER_LEGS = [
-    ['..l.l...', '..l.l...', '..l.l...', '.ff.ff..'],
-    ['.l...l..', '.l...l..', 'l.....l.', 'ff....ff'],
-  ];
-  // an ox and its laden cart and its drover, the cart's bed front on the ground at (x, y), heading dir (±1);
-  // roll is ground covered in px (it turns the wheel and walks the legs); `aboard` the load still on it
-  function caravan(g, x, y, dir, roll, aboard) {
-    const P = AP(), W = P.wood, HI = P.hide, B = P.bone, INK = P.ink, SK = P.skin, HR = P.hair;
-    g.save();
-    g.translate(sn(x), sn(y));
-    if (dir < 0) g.scale(-1, 1);
-    const step = (Math.floor(roll / 6) % 2);
-    // the shafts, behind the beast: bed front to the yoke at its withers
-    g.fillStyle = W[0]; g.fillRect(0, -14, 40, PX);
-    // the ox (feet on the ground line)
-    const oxPal = { L: HI[3], B: HI[2], M: HI[1], D: HI[0], h: B[2], H: B[1], e: INK[0], n: INK[2], o: INK[0], t: INK[1] };
-    cells(g, OX_BODY, oxPal, 6, -26);
-    cells(g, OX_LEGS[step], oxPal, 6, -8);
-    // the yoke across its withers
-    g.fillStyle = W[1]; g.fillRect(36, -28, 4, 10); g.fillStyle = W[3]; g.fillRect(36, -28, 4, 2);
-    // the rope from the drover's fist to the ox's nose
-    g.fillStyle = W[3];
-    for (let k = 0; k < 4; k++) g.fillRect(50 + k * 2, -10 - k * 2, PX, PX);
-    // the drover, walking ahead
-    const dPal = { a: HR[1], s: SK[2], S: SK[1], W: B[1], w: B[2], k: INK[1], g: W[3], l: SK[1], f: INK[0] };
-    cells(g, DROVER, dPal, 56, -28);
-    cells(g, DROVER_LEGS[step], dPal, 56, -8);
-    // the bed: a plank box on its axle, rails, a darker floor line
-    g.fillStyle = W[2]; g.fillRect(-34, -22, 34, 10);
-    g.fillStyle = W[3]; g.fillRect(-34, -22, 34, 2);
-    g.fillStyle = W[1]; for (let k = -30; k < 0; k += 8) g.fillRect(k, -20, 2, 8);
-    g.fillStyle = W[0]; g.fillRect(-34, -14, 34, 2); g.fillRect(-36, -24, 2, 12); g.fillRect(-2, -24, 2, 12);
-    // the load piled high: three sacks of grain, two bundles of logs, the strongbox on top
-    if (aboard[0]) sack(g, -28, -22);
-    if (aboard[1]) sack(g, -20, -22);
-    if (aboard[2]) sack(g, -24, -30);
-    if (aboard[3]) { log(g, -8, -22, 0); log(g, -10, -28, 0); }
-    if (aboard[4]) log(g, -14, -30, 0);
-    if (aboard[5]) chest(g, -28, -30);
-    // the wheel: a rim of hard cells, four spokes turning, the hub
-    const wx = -18, wy = -8, a = roll / 8;
-    g.fillStyle = W[0];
-    for (let k = 0; k < 20; k++) { const th = k / 20 * Math.PI * 2; g.fillRect(sn(wx + Math.cos(th) * 8) - 1, sn(wy + Math.sin(th) * 8) - 1, PX, PX); }
-    g.fillStyle = W[2];
-    for (let q = 0; q < 4; q++) { const th = a + q * Math.PI / 2; for (const r of [3, 5]) g.fillRect(sn(wx + Math.cos(th) * r) - 1, sn(wy + Math.sin(th) * r) - 1, PX, PX); }
-    g.fillStyle = W[3]; g.fillRect(wx - 1, wy - 1, PX, PX);
-    g.restore();
+  // a stand-in drawn standing on (wx, gy) — gy the ground line in world px
+  function drawFig(g, u, wx, gy, moving, dt) {
+    const TL = TLs();
+    u.x = wx / TL; u.y = (gy + CFG.SPRITE_LIFT - TL / 2 - 2) / TL; u.animT += dt || 0;
+    u.path = moving ? [0] : null; u.pathI = 0;
+    let img = null;
+    try { img = R.unitSprite(u); } catch (e) { img = null; }
+    if (!img || !img.width) return;
+    const B = R.unitBox(u), D = R.frameBox(u, img, B);
+    if (R.sheetUnit(u) && R.drawUnitShadow) R.drawUnitShadow(g, u, u.x, u.y);
+    g.drawImage(img, Math.round(u.x * TL - D / 2), Math.round(R.frameTop(u.y, B, D)), D, D);
+  }
+  // THE LOAD, one world pixel a cell: a sack of grain, a bundle of logs, the strongbox
+  GA.sack = () => rowsArt(['..aa..', '.abba.', 'abccba', 'bcddcb', 'bcdccb', 'bccccb', 'bccccb', '.bbbb.'],
+    { a: '#5e4a2a', b: '#8a6e44', c: '#b89a68', d: '#d4bb8a' });
+  GA.bundle = () => art(12, 10, f => {
+    const ring = (x, y) => { f(x + 1, y, 3, 1, '#7a5a30'); f(x, y + 1, 5, 3, '#7a5a30'); f(x + 1, y + 4, 3, 1, '#7a5a30');
+      f(x + 1, y + 1, 3, 3, '#c8a978'); f(x + 2, y + 2, 1, 1, '#6e4a26'); f(x + 1, y + 1, 1, 1, '#e2c898'); };
+    ring(0, 5); ring(6, 5); ring(3, 1);
+    f(0, 7, 11, 1, '#4a3a24');                                   // the rope round it
+  });
+  GA.chest = () => rowsArt(['.aaaaaaaa.', 'abbbbbbbba', 'acccccccca', 'ainnnninna', 'abbbgybbba', 'abbbggbbba', 'acccccccca', '.aaaaaaaa.'],
+    { a: '#3a2814', b: '#6e4a26', c: '#8a6038', n: '#3a3324', g: '#c99b32', y: '#fff2c0', i: '#3a3324' });
+  /* THE CART: a two-wheeled ox cart seen side-on, its bed of planks, a rail,
+     the shafts forward to the yoke, and the near wheel — rim, four spokes
+     turning with the ground it covers (`roll`, world px), the hub. Its bed
+     front at (0, gy) world px, facing +x (the caller mirrors it). */
+  function cart(g, gy, roll) {
+    const W = AP().wood, I = AP().ink;
+    const f = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w || 1, h || 1); };
+    // the shafts: two poles up to the yoke at the ox's withers
+    for (let k = 0; k < 16; k++) { f(k, gy - 11 - (k >> 3), 1, 2, W[0]); }
+    // the bed: planks, a lit top rail, the floor's dark line, the stakes
+    f(-26, gy - 15, 26, 7, W[2]); f(-26, gy - 15, 26, 1, W[4]); f(-26, gy - 14, 26, 1, W[3]);
+    for (let x = -24; x < 0; x += 6) f(x, gy - 13, 1, 5, W[1]);
+    f(-26, gy - 9, 26, 1, W[0]); f(-27, gy - 18, 2, 10, W[1]); f(-2, gy - 18, 2, 10, W[1]); f(-27, gy - 18, 2, 1, W[3]);
+    f(-26, gy - 8, 26, 1, I[1]);                                  // the axle-tree under it
+    // the near wheel: a rim of cells, four spokes, the hub
+    const wx = -13, wy = gy - 6, rr = 6, a = roll / rr;
+    for (let k = 0; k < 28; k++) { const th = k / 28 * Math.PI * 2; f(Math.round(wx + Math.cos(th) * rr), Math.round(wy + Math.sin(th) * rr), 1, 1, W[0]); }
+    for (let k = 0; k < 24; k++) { const th = k / 24 * Math.PI * 2; f(Math.round(wx + Math.cos(th) * (rr - 1)), Math.round(wy + Math.sin(th) * (rr - 1)), 1, 1, W[2]); }
+    for (let q = 0; q < 4; q++) { const th = a + q * Math.PI / 2; for (let r2 = 1; r2 < rr - 1; r2++) f(Math.round(wx + Math.cos(th) * r2), Math.round(wy + Math.sin(th) * r2), 1, 1, W[1]); }
+    f(wx - 1, wy - 1, 2, 2, W[3]); f(wx, wy, 1, 1, I[0]);
+  }
+  /* the whole caravan along its road: the cart (bed front at cx), the ox in
+     the shafts, the drover at its head with the rope — `dir` ±1 the way it
+     faces, `rolled` the ground covered (the wheel), `moving` whether its
+     legs walk, `aboard` the load still on the bed (by PILE index) */
+  function caravan(g, s, cx, gy, dir, rolled, moving, aboard, dt) {
+    const TL = TLs();
+    // the beasts and the hand first: the cart is drawn over the ox's hindquarters, as the shafts run
+    drawFig(g, castFig(s, '_ox', 'cow', 'W'), cx + dir * 15, gy, moving, dt);
+    const dv = castFig(s, '_drover', 'villager', 'P');
+    drawFig(g, dv, cx + dir * 34, gy + 1, moving, dt);
+    // the lead rope, drover's fist to the ox's nose (a dark thread of cells)
+    g.fillStyle = AP().ink[2];
+    for (let k = 0; k < 6; k++) g.fillRect(Math.round(cx + dir * (25 + k)), Math.round(gy - 10 + (k < 3 ? k : 5 - k) * 0.5), 1, 1);
+    TX.inked(g, cx - 34, gy - 32, 68, 34, gg => {
+      gg.save();
+      gg.translate(Math.round(cx), 0);
+      if (dir < 0) gg.scale(-1, 1);
+      cart(gg, gy, rolled);
+      // the load on the bed: three sacks, the log bundle, the strongbox on top
+      const S2 = GA.get('sack'), Bn = GA.get('bundle'), Ch = GA.get('chest');
+      if (aboard[0]) gg.drawImage(S2, -25, gy - 23);
+      if (aboard[1]) gg.drawImage(S2, -19, gy - 23);
+      if (aboard[2]) gg.drawImage(S2, -22, gy - 29);
+      if (aboard[3]) gg.drawImage(Bn, -12, gy - 25);
+      if (aboard[4]) gg.drawImage(Bn, -10, gy - 31);
+      if (aboard[5]) gg.drawImage(Ch, -16, gy - 33);
+      gg.restore();
+    });
   }
   // the caravan's reach from its bed front, in px: what the ROAD must carry
-  const CART_BACK = 38, CART_FRONT = 74;
+  // (the bed back to its tailboard; ahead, the ox and the drover at its head)
+  const CART_BACK = 30, CART_FRONT = 44;
 
   /* ---------------- the hooks' engine (asked from Bld.damage and the placement confirm) ---------------- */
   // the shared pictures, reachable by the contract (tests/deck-town.mjs) and by nothing else
@@ -1100,10 +1102,10 @@
           const U = this.show.UNLOAD.map(u => u * s.ms / 1000 + 0.34);
           return [[U[0], 'food', 83], [U[1], 'food', 83], [U[2], 'food', 0], [U[3], 'wood', 125], [U[4], 'wood', 0], [U[5], 'gold', 0]];
         },
-        // the pile at the door: [dx, dy, draw] — three sacks, logs, the strongbox on top
-        PILE: [[-12, 0, sack], [-3, 0, sack], [-8, -7, sack],
-          [10, 0, (gg, x, y) => { log(gg, x, y, 0); log(gg, x - 2, y - 6, 0); }], [8, -12, (gg, x, y) => log(gg, x, y, 0)], [-1, -12, chest]],
-        draw(g, s, p) {
+        // the pile at the door: [dx, dy, the piece] — three sacks, two bundles of logs, the strongbox on top
+        PILE: [[-9, 0, 'sack'], [-2, 0, 'sack'], [-6, -7, 'sack'], [8, 0, 'bundle'], [7, -8, 'bundle'], [-1, -13, 'chest']],
+        HOP: 0.34,
+        draw(g, s, p, dt) {
           TX.settle(s, TX.pays('trade_caravan', s));
           const tc = Bld.get(s.tc); if (!tc) return;
           const TL = TLs(), K = this.show, side = s.side || 1;
@@ -1112,6 +1114,12 @@
           const rd = s.road, pile = { x: sp.x * TL, y: sp.y * TL };
           const dir = rd ? rd.dir : -side, rowY = rd ? (rd.ty + 0.8) * TL : pile.y;
           const stopX = rd ? rd.stop : pile.x;
+          const t = p * s.ms / 1000, U = K.UNLOAD.map(u => u * s.ms / 1000), hop = K.HOP, PILE = K.PILE;
+          // every crate SET DOWN thuds and throws its dust on its beat, culled or not
+          for (let k = 0; k < PILE.length; k++) if (t >= U[k] + hop && !(s.landed || (s.landed = {}))[k]) {
+            s.landed[k] = 1;
+            TX.thud(pile.x + PILE[k][0], pile.y + PILE[k][1], 0.3, k === PILE.length - 1 ? 'cardCoin' : 'cardThud');
+          }
           if (!TX.near(Math.min(pile.x, stopX) - 9 * TL, pile.y - 3 * TL, Math.max(pile.x, stopX) + 9 * TL, rowY + TL)) return;
           const from = stopX - dir * (rd ? rd.inN : 0) * TL, onTo = stopX + dir * (rd ? rd.outN : 0) * TL;
           let cx;
@@ -1119,77 +1127,74 @@
           else if (p < K.ON) cx = stopX;
           else cx = stopX + (onTo - stopX) * Math.pow((p - K.ON) / (1 - K.ON), 1.6);
           const rolled = Math.abs(cx - from);
-          // no road at all: the load comes down in the card's own light
-          if (!rd) TX.arrive(g, pile.x, pile.y, s.t - K.UNLOAD[0] * s.ms / 1000 + 0.1, TX.BRONZE_LIGHT, TL * 2.8);
+          // no road at all: the load comes down the card's own light (the goods' shaft, bronze)
+          if (!rd) TX.shaft(g, pile.x, pile.y, t - U[0] + 0.15, TX.BRONZE_LIGHT, TL * 1.4, U[PILE.length - 1] - U[0] + hop + 0.3);
           // the dust it raises while it moves, and the card's warm motes in its wake
-          const moving = rd && (p < K.IN || p > K.ON);
-          const vis = rd ? Math.min(stp(p / 0.08, 4), p > 0.9 ? stp(1 - (p - 0.9) / 0.1, 3) : 1) : 0;
-          if (moving && vis > 0) {
+          const moving = !!rd && (p < K.IN || p > K.ON);
+          // the caravan comes out of and goes back into the world in hard dither steps, never an alpha
+          const gone = rd ? Math.max(1 - cl(p / 0.08), cl((p - 0.9) / 0.1)) : 1;
+          if (moving && gone < 1) {
             g.fillStyle = AP().soil[3];
             for (let k = 0; k < 8; k++) {
               const ph = (rolled / 9 + k / 8) % 1;
-              g.globalAlpha = stp(0.8 * (1 - ph) * vis, 3);
+              g.globalAlpha = stp(0.8 * (1 - ph) * (1 - gone), 3);
               g.fillRect(sn(cx - dir * (CART_BACK + ph * 22)), sn(rowY - 2 - ph * 8 - (k % 2) * 2), PX + (k % 2) * PX, PX);
             }
+            g.globalAlpha = 1;
             g.save();
             for (let k = 0; k < 8; k++) {
               const ph = (rolled / 14 + k / 8) % 1;
-              if (!R.inkOn(g, 0.9 * (1 - ph) * vis, k % 2 ? 'gold' : 'bronze')) continue;   // warm motes, in ink
-              g.fillRect(sn(cx - dir * (24 + ph * 30)), sn(rowY - 30 - ph * 18 + (k % 3) * 3), PX, PX);
+              if (!R.inkOn(g, 0.9 * (1 - ph) * (1 - gone), k % 2 ? 'gold' : 'bronze')) continue;   // warm motes, in ink
+              g.fillRect(sn(cx - dir * (20 + ph * 26)), sn(rowY - 30 - ph * 18 + (k % 3) * 3), PX, PX);
             }
             g.restore();
-            g.globalAlpha = 1;
           }
           // the goods: off the bed, through the air, onto the pile at the door
-          const t = p * s.ms / 1000, U = K.UNLOAD.map(u => u * s.ms / 1000), hop = 0.34, PILE = K.PILE;
           const aboard = PILE.map((_, k) => t < U[k]);
-          const bedX = stopX - dir * 18, bedY = rd ? rowY - 26 : pile.y - TL * 2.6;
-          fade(g, p, 0.92);
+          const bedX = stopX - dir * 13, bedY = rd ? rowY - 22 : pile.y - TL * 3;
+          const dis = cl((p - 0.9) / 0.1);
           const down = PILE.filter((it, k) => t - U[k] >= hop && !it[1]);
-          if (down.length) {
-            const x0 = Math.min(...down.map(it => it[0])) - 8, x1 = Math.max(...down.map(it => it[0])) + 10;
+          if (down.length && dis < 0.5) {
+            const x0 = Math.min(...down.map(it => it[0])) - 5, x1 = Math.max(...down.map(it => it[0])) + 8;
             g.fillStyle = 'rgba(20,14,8,0.3)'; g.fillRect(sn(pile.x + x0), sn(pile.y - 1), sn(x1 - x0), PX);
           }
-          const iy0 = Math.min(pile.y, bedY) - 60, iy1 = Math.max(pile.y, bedY) + 20;   // the arcs' peaks to the pile's foot
-          TX.inked(g, Math.min(pile.x, bedX) - 40, iy0, Math.abs(pile.x - bedX) + 80, iy1 - iy0, gg => {
+          const iy0 = Math.min(pile.y, bedY) - 50, iy1 = Math.max(pile.y, bedY) + 12;   // the arcs' peaks to the pile's foot
+          TX.inked(g, Math.min(pile.x, bedX) - 30, iy0, Math.abs(pile.x - bedX) + 60, iy1 - iy0, gg => {
             for (let k = 0; k < PILE.length; k++) {
-              const tl = t - U[k], [dx, dy, fn] = PILE[k];
+              const tl = t - U[k], [dx, dy, key] = PILE[k];
               if (tl < 0) continue;
-              const ex = pile.x + dx, ey = pile.y + dy;
+              const pic = GA.get(key), ex = pile.x + dx, ey = pile.y + dy;
+              let x = ex, y = ey;
               if (tl < hop) {
-                const f = tl / hop, sx = bedX + (k - 2.5) * 3;
-                fn(gg, sx + (ex - sx) * f, bedY + (ey - bedY) * f - (rd ? Math.sin(f * Math.PI) * 26 : 0));
-              } else fn(gg, ex, ey);
+                const f = tl / hop, sx = bedX + (k - 2.5) * 2;
+                x = sx + (ex - sx) * f; y = bedY + (ey - bedY) * f - (rd ? Math.sin(f * Math.PI) * 22 : 0);
+              }
+              gg.drawImage(pic, Math.round(x - pic.width / 2), Math.round(y - pic.height));
             }
-          });
-          for (let k = 0; k < PILE.length; k++) dust(g, pile.x + PILE[k][0], pile.y, t - U[k] - hop, 4, AP().soil[3], 22);
-          // the strongbox lands in the tier's light and spills: coins leap and land round the pile, glinting
+          }, dis);
+          // the strongbox lands in the tier's light and spills: coins leap out and land round the pile, winking
           const ct = t - U[PILE.length - 1] - hop;
-          if (ct > 0) {
+          if (ct > 0 && dis < 0.5) {
             if (ct < 0.7) {
               g.save();
               const q = ct / 0.7;
-              if (R.inkOn(g, 0.9 * (1 - q), TX.BRONZE_LIGHT)) TX.ring(g, pile.x, pile.y - 2, 10 + eo(q) * 46, 0.5);
-              if (R.inkOn(g, 0.8 * (1 - q), 'gold')) TX.ring(g, pile.x, pile.y - 2, 6 + eo(q) * 28, 0.5);
+              if (R.inkOn(g, 0.9 * (1 - q), TX.BRONZE_LIGHT)) TX.ring(g, pile.x, pile.y - 2, 10 + eo(q) * 40, 0.5);
+              if (R.inkOn(g, 0.8 * (1 - q), 'gold')) TX.ring(g, pile.x, pile.y - 2, 6 + eo(q) * 24, 0.5);
               g.restore();
             }
-            for (let k = 0; k < 14; k++) {
-              const ang = -Math.PI * (0.06 + 0.88 * hs(k, 11)), sp2 = 14 + hs(k, 13) * 22, f = Math.min(1, ct / 0.32);
-              const x = pile.x - 1 + Math.cos(ang) * sp2 * f, y = pile.y - 14 + (f * 14) - Math.sin(f * Math.PI) * 16;
-              g.fillStyle = k % 2 ? '#ffd45e' : AP().gold[1]; g.fillRect(sn(x), sn(y), PX, PX);
-              if (f >= 1 && ((ct * 6 + k) % 3) < 0.5) {
-                g.save(); g.globalCompositeOperation = 'lighter'; TX.star(g, x, y, 1, '#fff2c0'); g.restore();
-              }
+            const coins = GA.get('coins');
+            for (let k = 0; k < 10; k++) {
+              const ang = -Math.PI * (0.06 + 0.88 * hs(k, 11)), sp2 = 12 + hs(k, 13) * 18, f = Math.min(1, ct / 0.32);
+              const x = pile.x - 1 + Math.cos(ang) * sp2 * f, y = pile.y - 14 + (f * 14) - Math.sin(f * Math.PI) * 14;
+              g.drawImage(coins[f < 1 ? ((ct * 30 + k) | 0) % 3 : 0], Math.round(x - 2), Math.round(y - 4));
+              if (f >= 1 && ((ct * 6 + k) % 3) < 0.4) TX.star(g, x, y - 3, 1, '#fff2c0');
             }
           }
-          g.globalAlpha = 1;
-          // the cart itself, fading in at the end of its road and out as it leaves
-          if (rd && vis > 0) {
-            g.globalAlpha = vis;
+          // the caravan itself: the cast's ox and drover and the cart, on its road
+          if (rd && gone < 1) {
             const x0 = dir > 0 ? cx - CART_BACK : cx - CART_FRONT;
-            g.fillStyle = 'rgba(20,14,8,0.35)'; g.fillRect(sn(x0 + 4), sn(rowY - 2), sn(CART_BACK + CART_FRONT - 8), 4);   // one hard shadow under the lot
-            TX.inked(g, x0 - 4, rowY - 46, CART_BACK + CART_FRONT + 8, 50, gg => caravan(gg, cx, rowY, dir, rolled, aboard));
-            g.globalAlpha = 1;
+            if (gone < 0.5) { g.fillStyle = 'rgba(20,14,8,0.32)'; g.fillRect(sn(x0 + 2), sn(rowY - 1), sn(CART_BACK - 4), PX); }   // the cart's shadow
+            TX.inked(g, x0 - 20, rowY - 50, CART_BACK + CART_FRONT + 40, 56, gg => caravan(gg, s, cx, rowY, dir, rolled, moving, aboard, dt), gone, true);
           }
           // the three counts STACK, each in as its goods come down, fitted
           // to the safe view and never over the hall's straw roof
