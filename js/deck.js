@@ -182,7 +182,7 @@ const Deck = {
       when: "Any explored point." },
     { id: "krakens_call", tier: "imperial", cat: "strike", target: "none",
       name: "Kraken's Call",
-      text: "The kraken rises against the rival: it drags down up to 4 of their ships and batters every building of theirs within 2 tiles of open water for 600 damage.",
+      text: "The kraken rises against the rival: it drags down up to 4 of their ships and batters every building of theirs within 2 tiles of open water for 600 damage. A rival Town Center loses at most 40% of its strength.",
       flavor: "Something answers from the deep, and it is hungry for their boats.",
       when: "The world has open sea (otherwise greyed: “Needs open water”)." },
     { id: "barbarian_pact", tier: "imperial", cat: "curse", target: "none",
@@ -420,6 +420,8 @@ const Deck = {
     if (typeof S.deck.lit !== 'string') S.deck.lit = '';
     // …a kraken risen against the rival, mid-act (null for none)
     if (S.deck.kraken === undefined) S.deck.kraken = null;
+    // …and the lost relic marked on the map by a pathfinder (false for none)
+    if (typeof S.deck.relicMark !== 'boolean') S.deck.relicMark = false;
     return S.deck;
   },
   playedCount() { return (S && S.deck && S.deck.played) ? S.deck.played.length : 0; },

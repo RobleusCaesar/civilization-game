@@ -112,12 +112,20 @@
     litAt(x, y) { const m = this.litMask(); return !!(m && MapGen.inB(x, y) && m[MapGen.idx(x, y)]); },
     litCount() { const m = this.litMask(); return m ? this._litC.n : 0; },
     /* A CARD CHARTS these tiles: each one not yet explored is explored AND
-       card-lit. Returns the tiles it charted (the fog that rolls back). */
-    light(idxs) {
-      const ex = S.map.explored, N = CFG.W * CFG.H;
+       card-lit. Returns the tiles it charted (the fog that rolls back).
+       An unfound RELIC's footprint is never charted unless the card says
+       so (`relic`: Scout's Fire, whose ring finds a relic legitimately):
+       charting it would FIND it (Relics.checkDiscovery reads explored), and
+       finding one draws the run's RNG — the kraken's watch or a spy's mark
+       must never dig up treasure as a side effect. */
+    light(idxs, relic) {
+      const ex = S.map.explored, N = CFG.W * CFG.H, r = S.relic, W = CFG.W;
+      const keep = r && !r.found && !relic
+        ? i => { const x = i % W, y = (i / W) | 0; return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
+        : null;
       const arr = this.litMask() || new Uint8Array(N);
       const fresh = [];
-      for (const i of idxs) { if (ex[i]) continue; ex[i] = 1; arr[i] = 1; fresh.push(i); }
+      for (const i of idxs) { if (ex[i] || (keep && keep(i))) continue; ex[i] = 1; arr[i] = 1; fresh.push(i); }
       if (fresh.length) { this._litPut(arr); if (window.R) R.fogDirty = true; }
       return fresh;
     },
@@ -170,7 +178,7 @@
       G.log('🥁 The pact holds: a war band of ' + G.tribeName(tribe) + ' (' + n + ') turns on the rival' +
         (left ? ' — ' + left + ' more to come.' : ' — the last the pact bought.'), 'note', 6400);
       if (window.R && R.startCardShow && playing()) R.startCardShow('barbarian_pact', { turn: true, ms: 1700 });
-      sfx('drum');
+      sfx('cardDrum');
     },
 
     /* ---------------- THE KRAKEN'S ACT (sim time, G.frame) ---------------- */
@@ -200,7 +208,7 @@
               Units.damage(boat, 99999, 0, 'P');   // a KILL — the player's own act
               K.took++;
               if (window.R && G.visibleAt(a.x | 0, a.y | 0)) { if (R.shakeAt) R.shakeAt(7, 0.6); if (R.impact) R.impact(a.x, a.y, 'stone', 'blast'); }
-              sfx('splash');
+              sfx('cardTake');
             }
             a.phase = 'thrash'; a.t = 0;
           }
@@ -296,7 +304,7 @@
           if (!S.map.explored[i]) dark.push(i);
           else if (!(G.vis && G.vis[i])) dim.push(i);
         }
-        Deck.light(ring9);
+        Deck.light(ring9, true);   // a relic inside the ring is found, legitimately
         const now = Deck.now(), until = now + this.DAYS, pt = { x: cx, y: cy, until };
         const live = Deck.timed('scouts_fire');
         if (live) { live.pts = (live.pts || []).filter(p => p.until > now); live.pts.push(pt); live.until = Math.max(live.until, until); }
@@ -305,7 +313,7 @@
           if (R.startCardShow) R.startCardShow('scouts_fire', { x: tgt.x, y: tgt.y, dark, dim });
           if (R.startle) R.startle(tgt.x, tgt.y, 10);
         }
-        sfx('beacon');
+        sfx('cardBeacon');
         // the watch begins NOW, though the sheet holds the world still
         G.updateVisibility();
         Deck.say('🔥 A signal fire burns on the far hill: the land within ' + this.R + ' tiles of it is on your map for good, and your scouts keep watch there for ' + this.DAYS + ' days.');
@@ -426,7 +434,7 @@
           for (const i of fresh) mask[i] = 1;
           R.startCardShow('pathfinders_map', { lit: fresh, mask, relic: t.mark || !!(S.relic && !S.relic.found && S.deck.relicMark) });
         }
-        sfx('unroll');
+        sfx('cardUnroll');
         Deck.say('🗺 A pathfinder’s map, drawn in charcoal on a hide: ' + (fresh.length ? 'the whole world is on your map now' : 'your map was already whole') +
           (t.mark ? ', and the lost relic is marked on it — someone still has to walk there and dig.' : '.'));
         return { ok: true };
@@ -630,7 +638,7 @@
         const at = this.focus() || { x: CFG.W / 2, y: CFG.H / 2 };
         marks.sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y));
         if (window.R && R.startCardShow) R.startCardShow('spy_hall', { x: at.x, y: at.y, marks: marks.slice(0, 80) });
-        sfx('eye');
+        sfx('cardEye');
         const said = o ? 'they drafted ' + o.name + ' — ' + o.text + '.' : 'they drafted no origin card: theirs is a tribe older than the draft.';
         Deck.say('🕵 A spy sits at the rival’s fire: ' + marks.length + ' building' + (marks.length === 1 ? '' : 's') +
           ' of theirs marked on your map, ' + (was ? 'their people watched ' + this.DAYS + ' days longer' : 'their people seen wherever they go for ' + this.DAYS + ' days') +
@@ -767,7 +775,7 @@
         c.pact = (c.pact || 0) + this.N;
         const tc = Bld.tcOf('P');
         if (window.R && R.startCardShow) R.startCardShow('barbarian_pact', tc ? { x: Bld.cx(tc), y: Bld.cy(tc) } : {});
-        sfx('drums');
+        sfx('cardDrums');
         Deck.say(again ? '🥁 The pact is sealed again: the next ' + c.pact + ' barbarian war bands will march on the rival instead of you.'
           : '🥁 Gold for the wolves: the next ' + this.N + ' barbarian war bands will march on the rival instead of you.');
         return { ok: true };
@@ -861,7 +869,7 @@
         const was = !!Deck.timed('swallowed_sun');
         const e = Deck.addTimed('swallowed_sun', this.DAYS);
         if (window.R && R.startCardShow) R.startCardShow('swallowed_sun', {});
-        sfx('drone');
+        sfx('cardDrone');
         Deck.say(was ? '🌑 Their dark deepens: ' + this.DAYS + ' more days without a sun.'
           : '🌑 The sun goes dark over the rival for ' + this.DAYS + ' days: they see half as far, strike 30% softer, muster no war band, and every one of their people not already fighting stops to stare at the sky. Your people, forewarned, work on.');
         return { ok: true, until: e.until };
@@ -1149,7 +1157,7 @@
           if (R.flashAt) R.flashAt(0.4, 1.4, '2,10,22');
           if (R.shakeAt) R.shakeAt(4, 1.4);
         }
-        sfx('deep');
+        sfx('cardDeep');
         Deck.say('🐙 You called on the deep, and the kraken rose against the rival' +
           (t.ships.length ? ' — ' + t.ships.length + ' of their ships in its reach' : '') +
           (t.coast.length ? (t.ships.length ? ' and ' : ' — ') + t.coast.length + ' building' + (t.coast.length === 1 ? '' : 's') + ' on their shore' : '') + '.');
@@ -1306,56 +1314,56 @@
   if (typeof Sound !== 'undefined' && Sound._VOICES && Sound.GAP) {
     Object.assign(Sound._VOICES, {
       // the fire catches: a whoosh climbing the band, a crackle, a low warmth
-      beacon(t, v) {
+      cardBeacon(t, v) {
         this._noise({ at: t, hz: 300, to: 2400, dur: 0.6, q: 0.7, gain: 0.18 * v, atk: 0.12 });
         this._noise({ at: t, delay: 0.35, hz: 3000, to: 1800, dur: 0.5, q: 2.5, gain: 0.07 * v, rate: 1.8 });
         this._note({ at: t, hz: 110, to: 70, dur: 0.6, type: 'triangle', gain: 0.10 * v, lp: 500 });
       },
       // a hide unrolled on a table, a soft thump, and the find rising
-      unroll(t, v) {
+      cardUnroll(t, v) {
         this._noise({ at: t, hz: 3800, to: 2200, dur: 0.7, q: 0.6, gain: 0.08 * v, atk: 0.1 });
         this._noise({ at: t, delay: 0.75, hz: 400, to: 160, dur: 0.18, q: 0.9, gain: 0.14 * v });
         this._note({ at: t, delay: 2.05, hz: 392, to: 587, dur: 0.5, type: 'sine', gain: 0.07 * v });
       },
       // an eye opening: a low shimmer rising under a glassy ring
-      eye(t, v) {
+      cardEye(t, v) {
         this._note({ at: t, hz: 146, to: 220, dur: 1.2, type: 'sine', gain: 0.12 * v, atk: 0.4 });
         this._note({ at: t, delay: 0.5, hz: 880, to: 1320, dur: 0.9, type: 'sine', gain: 0.05 * v, atk: 0.2 });
         this._noise({ at: t, hz: 5200, to: 3000, dur: 1.0, q: 3, gain: 0.03 * v, atk: 0.3 });
       },
       // four war-drum strokes, the last two close (on the show's own beats)
-      drums(t, v) {
+      cardDrums(t, v) {
         for (const [d, k] of [[0.27, 1], [0.95, 1], [1.63, 0.9], [1.94, 1.15]]) {
           this._note({ at: t, delay: d, hz: 82, to: 46, dur: 0.42, type: 'sine', gain: 0.32 * v * k });
           this._noise({ at: t, delay: d, hz: 260, to: 90, dur: 0.22, q: 0.9, gain: 0.22 * v * k, filter: 'lowpass' });
         }
       },
       // a band turns: two strokes
-      drum(t, v) {
+      cardDrum(t, v) {
         for (const d of [0.17, 0.71]) {
           this._note({ at: t, delay: d, hz: 82, to: 46, dur: 0.4, type: 'sine', gain: 0.28 * v });
           this._noise({ at: t, delay: d, hz: 260, to: 90, dur: 0.2, q: 0.9, gain: 0.18 * v, filter: 'lowpass' });
         }
       },
       // the sun goes out: a deep drone swelling, and at totality the floor drops away
-      drone(t, v) {
+      cardDrone(t, v) {
         this._note({ at: t, hz: 55, dur: 4.6, type: 'sawtooth', gain: 0.10 * v, lp: 240, atk: 1.2 });
         this._note({ at: t, hz: 82.4, dur: 4.2, type: 'sine', gain: 0.09 * v, atk: 1.4 });
         this._note({ at: t, delay: 2.0, hz: 41, to: 33, dur: 3.2, type: 'sine', gain: 0.24 * v, atk: 0.12 });
         this._noise({ at: t, delay: 2.0, hz: 220, to: 60, dur: 2.4, q: 0.8, gain: 0.16 * v, filter: 'lowpass', rate: 0.5 });
       },
       // the deep answers: a sub swell under the sea rushing in
-      deep(t, v) {
+      cardDeep(t, v) {
         this._note({ at: t, hz: 49, to: 33, dur: 2.6, type: 'sine', gain: 0.30 * v, atk: 0.6 });
         this._noise({ at: t, hz: 600, to: 120, dur: 2.2, q: 0.6, gain: 0.18 * v, filter: 'lowpass', atk: 0.5, rate: 0.6 });
       },
       // a hull dragged under: a crash and the water closing over it
-      splash(t, v) {
+      cardTake(t, v) {
         this._noise({ at: t, hz: 1600, to: 300, dur: 0.6, q: 0.5, gain: 0.24 * v });
         this._note({ at: t, hz: 70, to: 40, dur: 0.6, type: 'sine', gain: 0.22 * v });
         this._noise({ at: t, delay: 0.3, hz: 2400, to: 900, dur: 0.8, q: 0.7, gain: 0.08 * v, rate: 1.4 });
       },
     });
-    Object.assign(Sound.GAP, { beacon: 1.0, unroll: 2.0, eye: 2.0, drums: 3.0, drum: 1.0, drone: 4.0, deep: 3.0, splash: 0.35 });
+    Object.assign(Sound.GAP, { cardBeacon: 1.0, cardUnroll: 2.0, cardEye: 2.0, cardDrums: 3.0, cardDrum: 1.0, cardDrone: 4.0, cardDeep: 3.0, cardTake: 0.35 });
   }
 })();
