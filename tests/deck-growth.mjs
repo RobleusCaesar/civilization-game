@@ -1443,6 +1443,86 @@ await p.evaluate(() => {
     `${r.inView} buildings in view: ${r.glintHearts} glints, ${r.liveMarks} marks over three seconds`);
 }
 
+// ---------------- 13b. THE BLIGHT'S PALL IS WEATHER, NOT A WIPE ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-blight-style'); const { P, A } = __g.flat();
+    Screens.show('playing'); S.paused = true;
+    R.cam.z = 1.7;
+    const BL = Deck.FX.blight;
+    // the pall's sky drawn alone on a clean canvas (no art has touched it, so
+    // it can be read even from file://), rolling straight up the screen
+    const sky = (s, pp) => {
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d');
+      s.t = pp * BL.show.ms / 1000;
+      BL.show.draw.call(BL, g, s, pp, 1 / 30, 'sky');
+      return { c, d: g.getImageData(0, 0, c.width, c.height).data };
+    };
+    /* (a) ITS FACE IS RAGGED AND IT IS NEAR-OPAQUE: down each column, the
+       first cell of the pall from the side it rolls toward — a ruled line
+       puts most columns' first cell on one row (the first cut's threshold
+       jumped where the depth crossed zero: one straight line across the
+       screen, a screen wipe); and the pall's cells are laid near-opaque
+       (half-clear green-greys over the meadow read as camouflage) */
+    {
+      R.centerOn(CFG.W / 2, CFG.H / 2);
+      const { c, d } = sky({ id: 'blight', dx: 0, dy: -1, ms: BL.show.ms }, 0.4);
+      const cell = Math.max(4, Math.round(2 * R.cam.z * (R.dpr || 1))), rows = new Map(), alphas = [];
+      let cols = 0;
+      for (let x = Math.floor(cell / 2); x < c.width; x += cell) {
+        for (let y = 0; y < c.height; y += cell) {
+          const a = d[(y * c.width + x) * 4 + 3];
+          if (a > 0) { const k = Math.floor(y / cell); rows.set(k, (rows.get(k) || 0) + 1); cols++; break; }
+        }
+      }
+      for (let i = 3; i < d.length; i += 4 * 97) if (d[i] > 0) alphas.push(d[i]);
+      alphas.sort((u, v) => u - v);
+      out.cols = cols;
+      out.modal = cols ? Math.max(...rows.values()) / cols : 1;
+      out.alphaMedian = alphas.length ? alphas[alphas.length >> 1] : 0;
+    }
+    /* (b) WITH NO FIELD OF THEIRS IN VIEW THE PALL IS SENT, and seen to go:
+       it gathers over the view and rolls off the screen toward the rival,
+       leaving the view clear — the first cut swept the player's own town and
+       showed nothing of where it went */
+    {
+      R.centerOn(Bld.cx(P), Bld.cy(P));
+      G.updateVisibility();
+      R.cardShows = []; S.deck.fx = [];
+      Deck.play('blight');
+      const s0 = R.cardShows.find(s => s.id === 'blight');
+      out.awayHome = !!s0 && s0.away === 1;
+      // their farm in sight and on the screen: the pall sweeps over it instead
+      const farm = __g.bld('A', 'farm', A.x - 3, A.y + 1);
+      R.centerOn(farm.x + 0.5, farm.y + 0.5);
+      G.vis[MapGen.idx(farm.x, farm.y)] = 1;
+      R.cardShows = []; S.deck.fx = [];
+      Deck.play('blight');
+      const s1 = R.cardShows.find(s => s.id === 'blight');
+      out.overFields = !!s1 && !s1.away;
+      R.cardShows = [];
+      R.centerOn(CFG.W / 2, CFG.H / 2);
+      // sent up the screen: its covered mass climbs, and at the end the screen is clear
+      const mass = pp => {
+        const { c, d } = sky({ id: 'blight', dx: 0, dy: -1, away: 1, ms: BL.show.ms }, pp);
+        let n = 0, sy = 0;
+        for (let y = 0; y < c.height; y += 8) for (let x = 0; x < c.width; x += 8) if (d[(y * c.width + x) * 4 + 3] > 150) { n++; sy += y; }
+        return { cover: n / ((c.height / 8) * (c.width / 8)), y: n ? sy / n / c.height : 1 };
+      };
+      const m1 = mass(0.3), m2 = mass(0.6), m3 = mass(0.95);
+      out.away = { early: +m1.cover.toFixed(3), mid: +m2.cover.toFixed(3), end: +m3.cover.toFixed(3), y1: +m1.y.toFixed(3), y2: +m2.y.toFixed(3) };
+      out.rollsOff = m1.cover > 0.2 && m2.y < m1.y - 0.05 && m3.cover < 0.02;
+    }
+    return out;
+  });
+  ck('theBlightsFaceIsRaggedAndItsPallNearOpaque', r.cols > 40 && r.modal < 0.4 && r.alphaMedian >= 200,
+    `${r.cols} columns, ${(r.modal * 100).toFixed(1)}% of them on the commonest row; the pall's median alpha ${r.alphaMedian}/255`);
+  ck('withNoFieldInViewThePallIsSentAndSeenToGo', r.awayHome && r.overFields && r.rollsOff,
+    `at home: sent ${r.awayHome}; their field in sight: sweeps over it ${r.overFields}; ${JSON.stringify(r.away)}`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 6));
 await b.close();

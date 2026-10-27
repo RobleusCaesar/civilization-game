@@ -895,9 +895,13 @@ Object.assign(Deck.FX, {
       Deck.say(was ? '🍂 The blight lingers on the rival’s fields — ' + days + ' more days.'
         : '🍂 A blight falls on the rival: their gathering and production fall by 40% for ' + days + ' days.');
       const d = this.towardRival();
-      GrowFX.show('blight', { dx: d.x, dy: d.y });
-      // the light goes sour for a breath as the murk gathers
-      if (window.R && R.flashAt) R.flashAt(0.3, 1.4, '44,52,30');
+      // with a field of theirs in sight the pall sweeps over it and it withers;
+      // with none, the pall gathers where the player is looking and rolls OFF
+      // toward the rival — sent, as a curse is (fog-honest: inSight asks the
+      // player's own sight)
+      GrowFX.show('blight', { dx: d.x, dy: d.y, away: this.fieldsInView() ? 0 : 1 });
+      // the light goes sour for a breath as the murk gathers (darker, never lighter)
+      if (window.R && R.flashAt) R.flashAt(0.32, 1.4, '40,36,20');
       GrowFX.sfx('blight');
       return { ok: true, until: e.until };
     },
@@ -926,19 +930,35 @@ Object.assign(Deck.FX, {
       for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) if (G.visibleAt(b.x + dx, b.y + dy)) return true;
       return false;
     },
-    // where the pall's leading edge stands at p, along the way it rolls (device px)
+    // is a field (any worked station) of theirs in sight and on the screen?
+    fieldsInView() {
+      const v = GrowFX.view(0);
+      return S.buildings.some(b => b.owner === 'A' && Bld.done(b) && Bld.def(b.key).needsWorker &&
+        GrowFX.inV(v, Bld.cx(b), Bld.cy(b)) && this.inSight(b));
+    },
+    /* where the pall's leading edge stands at p, along the way it rolls
+       (device px). Over their fields it comes in from the player's side and
+       crosses the whole screen; sent AWAY it gathers over the middle of the
+       view and rolls off the far edge toward them, leaving the view clear. */
     frontAt(s, p) {
       const Wd = R.cv.width, Hd = R.cv.height, ux = s.dx, uy = s.dy;
       const pr = [0, ux * Wd, uy * Hd, ux * Wd + uy * Hd];
-      // the murk is a FRONT about half a screen deep — weather passing over, with
-      // a thin haze where it has been — never a sheet over the whole frame
+      // the pall is a BANK about half a screen deep — weather passing over,
+      // never a sheet over the whole frame
       const lo = Math.min.apply(null, pr), hi = Math.max.apply(null, pr), span = hi - lo, band = span * 0.5;
+      if (s.away) {
+        const mid = (lo + hi) / 2, f0 = mid + band * 0.55, f1 = hi + band * 1.2;
+        const q = p < this.GATHER ? 0 : Math.min(1, (p - this.GATHER) / (0.86 - this.GATHER));
+        return { front: f0 + (f1 - f0) * q * q, band, span, ux, uy };
+      }
       return { front: lo - band * 0.05 + (span + band * 1.1) * Math.min(1, p / 0.86), band, span, ux, uy };
     },
-    /* the pall: a sickly green-grey murk rolling across the screen toward
-       the rival's side — thick at its leading edge, thinning to dithered
-       wisps behind (hard cells, never a gradient), spores riding it — and
-       every rival field the player can see withers as the edge passes */
+    // the part of the act an AWAY pall spends gathering before it rolls
+    GATHER: 0.22,
+    /* the pall: a bank of sick grey-yellow billows rolling across the screen
+       toward the rival's side — thick at its leading face, thinning into rags
+       behind (hard cells, never a gradient), spores boiling out of it — and every
+       rival field the player can see withers as the edge passes */
     show: {
       ms: 3400, layers: ['world', 'sky'],
       draw(g, s, p, dt, layer) {
@@ -955,90 +975,84 @@ Object.assign(Deck.FX, {
             for (let m = 0; m < 10; m++) {
               const h = F.hash(b.id + m, 21), a = -Math.PI / 2 + (h - 0.5) * 2;
               F.mote(g, (b.x + sz * (0.2 + F.hash(m, b.id) * 0.6)) * TL + Math.cos(a) * k * TL,
-                (b.y + sz * 0.7) * TL + Math.sin(a) * k * TL * 1.4, m % 2 ? '#b6bba2' : '#8b9070', '#3d4232', 1 - k);
+                (b.y + sz * 0.7) * TL + Math.sin(a) * k * TL * 1.4, m % 2 ? this.SPORE[0] : this.SPORE[1], '#2c2a1c', 1 - k);
             }
           }
           return;
         }
-        /* THE MURK, cell by cell (hard cells, alpha in hard steps — never a
-           gradient). Not a dither: a checker of independent cells reads as
-           noise, and a green-grey murk over green grass is camouflage. The
-           cloud is a churning field (GrowFX.blob, two octaves, drifting with
-           the clock) cut against a threshold that rises with depth behind the
-           edge, so it comes as LUMPS — thick and close-packed at its leading
-           face, tearing into rags behind — each lump in three sour, ashen
-           tones (a dark underside, the body, a pale crown) that read on grass,
-           woods and water alike. Ahead of the edge only the highest of the
-           field shows, as wisps; and where it has passed a grey haze hangs
-           over the land until the end. */
-        /* THE CELL IS THE ART'S OWN PIXEL — 2 world px at the camera's zoom,
-           in device px. A fixed 10 css px made cells five or six times the
-           art's pixel on a phone, and laid over the whole screen the pall read
-           as a censor's mosaic over the town, not as weather. The lumps keep
-           their size on screen (`sc` maps a cell back to the old lattice). */
+        /* THE PALL IS A CLOUD BANK, built of PUFFS: round billows of a sick
+           grey-yellow, each lit on its rim toward the sun (up and to the left),
+           in shadow on the rim turned away, crowned where it rises — and
+           under the bank its own SHADOW on the ground, offset down and right,
+           so it is seen to hang over the land and not to be painted on it.
+           The bank's leading face is whatever the billows make of it — each a
+           different size, boiling, swaying — so it is RAGGED by construction,
+           and it thins into rags behind. All of it in the art's own pixel (a
+           buffer a pixel a cell, blown up nearest-neighbour), near-opaque.
+           The first cut was a noise field cut against a threshold that jumped
+           where the depth crossed zero: one ruler-straight line across the
+           screen with dithered strips behind (a screen wipe), and three flat
+           half-clear green-greys by height over the grass (camouflage). */
         const Wd = R.cv.width, Hd = R.cv.height, dpr = R.dpr || 1;
-        const cell = Math.max(4, Math.round(2 * R.cam.z * dpr)), sc = cell / (10 * dpr);
-        const haze = F.step(0.2 * fade), T = s.t, M = this.murkRGB();
-        /* ONE PIXEL A CELL: the murk is written into a small buffer, a pixel
-           per cell, and laid over the frame in one blit scaled up with
-           smoothing off — the same hard cells, without tens of thousands of
-           fills (measured ~15ms a frame drawn cell by cell on a software
-           canvas) */
+        const cell = Math.max(4, Math.round(2 * R.cam.z * dpr)), T = s.t, M = this.murkRGB();
+        // an AWAY pall gathers before it rolls: its billows swell up out of nothing in turn
+        const gather = s.away ? Math.min(1, p / this.GATHER) : 1;
         const cw = Math.ceil(Wd / cell), ch = Math.ceil(Hd / cell), buf = this.murkBuf(cw, ch), u32 = buf.u32;
         u32.fill(0);
         // a cell's colour as one little-endian word (ABGR in memory: R, G, B, A bytes)
         const word = (rgb, a) => ((Math.round(a * 255) << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0]) >>> 0;
-        // depth behind the edge is LINEAR across the grid: one add a cell, never a recompute
-        const dx = -cell * fr.ux / fr.band, dy = -cell * fr.uy / fr.band, d00 = (fr.front - 0.5 * cell * (fr.ux + fr.uy)) / fr.band;
-        /* the churning field on every second cell (every third where the
-           cells are small — a big screen at a far zoom), eased between: it
-           is smooth value noise, its lumps a dozen cells across, so thinning
-           its samples moves nothing the eye can see, and the cells stay hard
-           where the threshold cuts them. Sampled only near the front (past
-           it there is haze or nothing). */
-        const st = cell < 8 ? 3 : 2, qw = Math.ceil(cw / st) + 2, qh = Math.ceil(ch / st) + 2, fld = this.murkField(qw * qh);
-        const marg = st * (Math.abs(dx) + Math.abs(dy));
-        for (let qy = 0; qy < qh; qy++) for (let qx = 0; qx < qw; qx++) {
-          const gx = qx * st, gy = qy * st, d = d00 + gx * dx + gy * dy;
-          fld[qy * qw + qx] = d < -0.14 - marg || d > 1.04 + marg ? 0
-            : F.blob(gx * sc, gy * sc, 6, T * 0.5) * 0.65 + F.blob(gx * sc + 57, gy * sc + 31, 2.5, T * 0.9) * 0.35;
+        const A = F.step(fade * 0.92), tw = M.map(rgb => word(rgb, A)), shadowW = word(M[5], F.step(fade * 0.36));
+        // the billows, in cells: along the band, thinning and shrinking behind its face
+        const band = fr.band / cell, span = fr.span / cell, front = fr.front / cell, ux = fr.ux, uy = fr.uy;
+        // enough of them to overlap two and three deep: one mass with a billowed edge, never a scatter
+        const avg = 9.5, N = Math.max(60, Math.min(640, Math.round(band * span * 1.4 / (Math.PI * avg * avg) * 3)));
+        const puffs = [];
+        for (let i = 0; i < N; i++) {
+          const u = Math.pow(F.hash(i, 1), 1.25);
+          let r = (6 + 9 * F.hash(i, 3)) * (1 - 0.5 * u) * (1 + 0.07 * Math.sin(T * 2.1 + i * 1.7));
+          if (s.away) r *= F.ease(Math.max(0, Math.min(1, gather * 1.6 - F.hash(i, 4) * 0.6)));
+          if (r < 1.5) continue;
+          const along = front - band * u - r * 0.5, perp = (F.hash(i, 2) - 0.5) * span * 1.4 + Math.sin(T * 0.7 + i) * 1.2;
+          const x = ux * along - uy * perp, y = uy * along + ux * perp;
+          if (x < -r - 6 || x > cw + r + 6 || y < -r - 6 || y > ch + r + 6) continue;
+          puffs.push({ x, y, r });
         }
-        const hazeW = haze > 0 ? word(M[3], haze) : 0;
-        const tones = [0, 1, 2].map(k => [word(M[k], F.step(fade * [0.66, 0.56, 0.6][k])), word(M[k], F.step(fade * 0.7 * [0.66, 0.56, 0.6][k]))]);
-        for (let gy = 0; gy < ch; gy++) {
-          const qy = (gy / st) | 0, row = gy * cw, qrow = qy * qw, ey = (gy - qy * st) / st;
-          let depth = d00 + gy * dy;
-          for (let gx = 0; gx < cw; gx++, depth += dx) {
-            if (depth < -0.14) continue;
-            if (depth > 1.04) {
-              if (hazeW && (depth >= 1.16 || F.hash(gx * 7 + 3, gy * 11 + 1) <= 0.5)) u32[row + gx] = hazeW;
-              continue;
-            }
-            const qx = (gx / st) | 0, q = qrow + qx, ex = (gx - qx * st) / st;
-            const top = fld[q] + (fld[q + 1] - fld[q]) * ex, bot = fld[q + qw] + (fld[q + qw + 1] - fld[q + qw]) * ex;
-            const e = top + (bot - top) * ey - (depth < 0 ? 0.6 - depth * 2.4 : 0.26 + depth * 0.42);
-            if (e <= 0) continue;
-            u32[row + gx] = tones[e > 0.2 ? 2 : e > 0.07 ? 1 : 0][depth > 0.7 ? 1 : 0];
+        puffs.sort((a, z) => a.y - z.y);
+        const disc = (cx, cy, r, fn) => {
+          const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(cw - 1, Math.ceil(cx + r)), y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(ch - 1, Math.ceil(cy + r));
+          for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+            const dx = (x + 0.5 - cx) / r, dy = (y + 0.5 - cy) / r, r2 = dx * dx + dy * dy;
+            if (r2 <= 1) fn(y * cw + x, dx, dy, r2);
           }
-        }
+        };
+        // the bank's shadow on the ground first, where no billow stands
+        const so = 3 + band * 0.02;
+        for (const q of puffs) disc(q.x + so, q.y + so * 1.3, q.r, c => { if (!u32[c]) u32[c] = shadowW; });
+        // then the billows, back to front: lit rim, crown, body, shade, shadowed rim
+        // (and spores IN it: a sick fleck here and there, carried with its billow)
+        puffs.forEach((q, k) => disc(q.x, q.y, q.r, (c, dx, dy, r2) => {
+          const lit = -(dx + dy) * 0.7071;
+          u32[c] = r2 < 0.8 && F.hash(((dx * q.r) | 0) * 31 + k, ((dy * q.r) | 0) * 17 + k) < 0.035 ? tw[6]
+            : tw[r2 > 0.62 ? (lit > 0.35 ? 2 : lit < -0.3 ? 0 : 1) : lit > 0.42 ? 4 : lit < -0.45 ? 3 : 1];
+        }));
         buf.g.putImageData(buf.img, 0, 0);
         g.imageSmoothingEnabled = false;
         g.drawImage(buf.cv, 0, 0, cw * cell, ch * cell);
         g.globalAlpha = 1;
-        // spores riding the murk, swirling up as it rolls, a dark underside
-        // to each so they read against bright grass and dark woods alike
+        // spores boiling up out of the murk, a dark underside to each so they
+        // read against bright grass and dark woods alike
         const sp = Math.max(2, Math.round(2 * R.cam.z * dpr));   // the art's pixel, as the murk's
-        for (let k = 0; k < 170; k++) {
+        for (let k = 0; k < 200; k++) {
           const along = fr.front - fr.band * F.hash(k, 1) * 1.05, perp = (F.hash(k, 2) - 0.5) * fr.span * 1.4;
           const sw = Math.sin(s.t * (1.5 + F.hash(k, 4) * 2) + k) * 14 * dpr;
           const x = fr.ux * along - fr.uy * perp + fr.uy * sw, y = fr.uy * along + fr.ux * perp - s.t * 30 * dpr * (0.4 + F.hash(k, 3)) - fr.ux * sw;
           if (x < 0 || x > Wd || y < 0 || y > Hd) continue;
-          const a = F.step(fade * (1 - F.hash(k, 1) * 0.7));
+          const a = F.step(fade * gather * (1 - F.hash(k, 1) * 0.6));
           if (a <= 0) continue;
-          const big = k % 5 === 0 ? 2 : 1, sx = Math.round(x / sp) * sp, sy = Math.round(y / sp) * sp;
-          g.globalAlpha = a * 0.7; g.fillStyle = '#2c3022';
+          const big = k % 4 === 0 ? 2 : 1, sx = Math.round(x / sp) * sp, sy = Math.round(y / sp) * sp;
+          g.globalAlpha = a; g.fillStyle = '#2c2a1c';
           g.fillRect(sx, sy + sp * big, sp * big, sp);
-          g.globalAlpha = a; g.fillStyle = this.SPORE[k % 3];
+          g.fillStyle = this.SPORE[k % 3];
           g.fillRect(sx, sy, sp * big, sp * big);
         }
         // and the season's last leaves, dead before they fell, tumbling with it
@@ -1047,7 +1061,7 @@ Object.assign(Deck.FX, {
           const tum = s.t * (3 + F.hash(k, 33) * 4) + k;
           const x = fr.ux * along - fr.uy * perp, y = fr.uy * along + fr.ux * perp + Math.sin(tum) * 10 * dpr;
           if (x < 0 || x > Wd || y < 0 || y > Hd) continue;
-          const a = F.step(fade * 0.9);
+          const a = F.step(fade * gather * 0.9);
           if (a <= 0) continue;
           const flat = Math.cos(tum) > 0, lx = Math.round(x / sp) * sp, ly = Math.round(y / sp) * sp;
           g.globalAlpha = a; g.fillStyle = k % 2 ? '#7a6a48' : '#5e5238';
@@ -1056,13 +1070,12 @@ Object.assign(Deck.FX, {
         g.globalAlpha = 1;
       },
     },
-    // the murk's bands by depth behind its edge: [up to, density, alpha, colour]
-    // the murk's tones: underside, body, crown — and the haze it leaves
-    MURK: ['#3c4430', '#77805f', '#aab28a', '#6f7658'],
+    /* the pall's tones: the billow's shadowed rim, its body, its lit rim, the
+       shade in it, its crown — a sick grey with a jaundiced cast — the
+       bank's shadow on the ground, and the spores it carries */
+    MURK: ['#3c392d', '#7f7a63', '#c4bf86', '#5d5849', '#9a9479', '#1c1a10', '#d6d070'],
     murkRGB() { return this._rgb || (this._rgb = this.MURK.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)))); },
-    // the murk's one-pixel-a-cell buffer and its half-resolution field (render state — never in S)
-    _fld: null,
-    murkField(n) { if (!this._fld || this._fld.length < n) this._fld = new Float32Array(n); return this._fld; },
+    // the pall's one-pixel-a-cell buffer (render state — never in S)
     _buf: null,
     murkBuf(w, h) {
       let B = this._buf;
@@ -1074,10 +1087,12 @@ Object.assign(Deck.FX, {
       }
       return B;
     },
-    SPORE: ['#b6bba2', '#9aa27a', '#d4d8bf'],
-    /* while it lasts, every rival field and station IN SIGHT stands greyed
-       and withered — its own silhouette washed a dead grey-green, dull specks
-       over the plot, grey spores drifting off it. Drawn ON THE BUILDING
+    // (the first is a MOTE's colour too: kept under R.warmLight's red, or a
+    // faded spore would turn to the gold's ink — R.inkFade)
+    SPORE: ['#c4bb86', '#b3a86c', '#efe7b4'],
+    /* while it lasts, every rival field and station IN SIGHT stands withered
+       — its own silhouette washed a dead yellow-brown, dull specks over the
+       plot, sick spores drifting off it. Drawn ON THE BUILDING
        (R.drawCardBld, right after its own art in the building loop), so the
        rival's hands standing on their own field are drawn over it, never
        washed with it — and only for what the frame draws at all, which is
@@ -1096,18 +1111,18 @@ Object.assign(Deck.FX, {
       if (k <= 0.05) return;
       const spr = R.wornSprite ? R.wornSprite(b) : R.bldSprite(b);
       if (spr && spr.width > 0) {
-        g.globalAlpha = F.step(0.55 * k);
-        R.blitBld(g, R.tintOf(spr, '#575e45'), b.x * TL, b.y * TL, sz * TL, sz * TL);
+        g.globalAlpha = F.step(0.6 * k);
+        R.blitBld(g, R.tintOf(spr, '#6b6140'), b.x * TL, b.y * TL, sz * TL, sz * TL);
       }
       g.globalAlpha = F.step(0.75 * k);
       for (let m = 0; m < 8 * sz * sz; m++) {
-        g.fillStyle = m % 3 ? '#6e6248' : '#8d8f7c';
+        g.fillStyle = m % 3 ? '#6e6248' : '#9a8f62';
         g.fillRect(F.snap((b.x + F.hash(m, b.id) * sz) * TL), F.snap((b.y + 0.2 + F.hash(b.id, m * 3) * (sz - 0.2)) * TL), 2, 2);
       }
       for (let m = 0; m < 4; m++) {
         const ph = (t * 0.22 + F.hash(b.id, m + 9)) % 1;
         F.mote(g, (b.x + 0.15 + F.hash(m, b.id + 4) * (sz - 0.3)) * TL + Math.sin(t * 1.3 + m * 2) * 3,
-          (b.y + sz * 0.6) * TL - ph * TL * 1.4, '#b6bba2', '#3d4232', k * (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8));
+          (b.y + sz * 0.6) * TL - ph * TL * 1.4, this.SPORE[0], '#2c2a1c', k * (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8));
       }
       g.globalAlpha = 1;
     },
