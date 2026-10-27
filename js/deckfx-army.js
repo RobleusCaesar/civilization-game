@@ -68,7 +68,7 @@ Object.assign(Deck, {
   // back to its own place by the hall — after a fight, or a walk out past home
   packHome(u) {
     const d = u.den || { x: u.x | 0, y: u.y | 0 };
-    u.tUnit = 0; u.tBld = 0;
+    u.tUnit = 0; u.tBld = 0; u.packMark = false; u.packFrom = null;
     if ((u.x | 0) === d.x && (u.y | 0) === d.y) { u.task = null; u.path = null; return; }
     u.task = { type: 'move', x: d.x, y: d.y, home: true };
     if (!Units.setPath(u, d.x, d.y)) { u.task = null; u.path = null; }
@@ -84,7 +84,9 @@ Object.assign(Deck, {
     const e = Combat.nearestUnit(u.x, u.y, P.sense,
       o => Combat.hostileUnits(u, o) && !Units.isPassive(o) && Combat.canEngage(u, o) &&
         Math.hypot(o.x - h.x, o.y - h.y) <= P.home);
-    if (e) { u.tUnit = e.id; u.task = null; u.path = null; return; }
+    // a mark the PACK chose (packMark) is leashed to home ground; a mark it
+    // was handed — struck, or set on a foe by the player — is not (packLeash)
+    if (e) { u.tUnit = e.id; u.task = null; u.path = null; u.packMark = true; u.packFrom = null; return; }
     if (t || Units.moving(u)) return;
     if (Math.hypot(u.x - h.x, u.y - h.y) > P.home) { this.packHome(u); return; }
     // at home, a guard-pack is never quite still: now and then a wolf shifts
@@ -97,13 +99,25 @@ Object.assign(Deck, {
     const tx = back ? d.x : d.x + dx, ty = back ? d.y : d.y + dy;
     if (Path.passable(tx, ty, 'P') && !Bld.at(tx, ty)) { u.task = { type: 'move', x: tx, y: ty, home: true }; if (!Units.setPath(u, tx, ty)) u.task = null; }
   },
-  /* asked by Combat.update while a war-wolf holds a mark: a chase it began
-     itself (or answered, struck) is let go at the edge of home ground; an
-     attack the player ORDERED runs to the kill, and then the wolf comes home */
+  /* asked by Combat.update while a war-wolf holds a mark. Only a chase the
+     PACK began itself (u.packMark, stamped in packSense) answers to home
+     ground: it is let go at PACK.leash from the hall. A wolf STRUCK fights it
+     out wherever it was struck — out on the player's errand too, where a
+     home-ground leash dropped the fight on the first tick and turned the
+     wolf's back to its attacker (the card says "they fight beside you") — and
+     is let go only if the fight drags it PACK.leash from where it began
+     (u.packFrom, so a runner can never lead it across the map). An attack the
+     player ORDERED runs to the kill. Every way it ends, the wolf comes home. */
   packLeash(u, tgt) {
     if (u.task && u.task.type === 'attack') return false;
-    const P = this.PACK, h = this.packCentre(u);
-    if (Math.hypot(u.x - h.x, u.y - h.y) <= P.leash && Math.hypot(tgt.x - h.x, tgt.y - h.y) <= P.leash + 1) return false;
+    const P = this.PACK;
+    if (!u.packMark) {
+      if (!u.packFrom) u.packFrom = { x: u.x, y: u.y };
+      if (Math.hypot(u.x - u.packFrom.x, u.y - u.packFrom.y) <= P.leash) return false;
+    } else {
+      const h = this.packCentre(u);
+      if (Math.hypot(u.x - h.x, u.y - h.y) <= P.leash && Math.hypot(tgt.x - h.x, tgt.y - h.y) <= P.leash + 1) return false;
+    }
     this.packHome(u);
     return true;
   },
@@ -528,7 +542,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   /* the army cards share ONE apply: summon the list, stamp what the card
      stamps, start the show, sound the voice, say it plainly in the log */
   const summonCard = (id, list, o) => {
-    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, stamp: o.stamp });
+    const r = Deck.summon(list, { stagger: o.stagger, hold: o.hold, together: o.together, flash: o.flash, dust: o.dust, stamp: o.stamp });
     if (!r.ok) return r;
     if (o.after) o.after(r);
     for (const k of o.voices || []) sound(k);
@@ -620,12 +634,36 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       apply() {
         const P = Deck.PACK;
         return summonCard('hunters_pack', [{ kind: this.KIND, n: this.N }], {
-          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12,
+          stagger: this.STAGGER, hold: this.HOLD, voices: ['cardHowl'], startle: 12, dust: false,
           stamp(u) { u.warWolf = true; u.hp = u.maxhp = P.hp; u.atk = P.atk; u.speed = P.speed; },
-          // its place by the hall: the slot its march out ends on
-          after(r) { for (const u of r.units) { const t = u.task; u.den = t && t.x != null ? { x: t.x, y: t.y } : { x: u.x | 0, y: u.y | 0 }; } },
+          after: r => Deck.FX.hunters_pack.dens(r),
           log: () => '🐺 Three war-wolves join you at your Town Center. They keep the ground round the hall.',
         });
+      },
+      /* EACH WOLF ITS OWN PLACE (u.den): the slot its march out ends on —
+         but Units.formationMove packs TWO of a kind to a tile, so the slots
+         dealt to three wolves are two tiles, and a pack that rests on its
+         dens the whole run read as two wolves. A slot already taken (by a
+         packmate, or by someone standing still on it) gives way to the
+         nearest open tile the doorstep can walk to, and the wolf's march
+         is re-aimed at it. */
+      dens(r) {
+        const W = CFG.W, taken = new Set(), reach = Path.reachFrom([r.first]);
+        const still = new Set();
+        for (const o of S.units) if (r.units.indexOf(o) < 0 && !Units.moving(o)) still.add((o.y | 0) * W + (o.x | 0));
+        const open = (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && (!reach || !!reach[y * W + x]) && !taken.has(y * W + x);
+        for (const u of r.units) {
+          const t = u.task;
+          let d = t && t.x != null ? { x: t.x, y: t.y } : { x: u.x | 0, y: u.y | 0 };
+          if (!open(d.x, d.y) || still.has(d.y * W + d.x)) {
+            const f = MapGen.findNear(d.x, d.y, 4, (x, y) => open(x, y) && !still.has(y * W + x)) || MapGen.findNear(d.x, d.y, 4, open);
+            if (f) d = f;
+          }
+          taken.add(d.y * W + d.x);
+          u.den = { x: d.x, y: d.y };
+          if (t && t.type === 'muster') { t.x = d.x; t.y = d.y; }
+          else if (t && t.type === 'move' && (t.x !== d.x || t.y !== d.y)) { Units.moveTo(u, d.x, d.y); if (u.task) u.task.home = true; }
+        }
       },
       // the wind brings them: pale-gold motes spiralling in to where each
       // wolf will stand, a ring of the tribe's dye going out under it

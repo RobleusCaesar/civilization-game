@@ -214,6 +214,7 @@ Object.assign(Deck, {
                      as one (the held beat of the Imperial and Enlightenment
                      cards); otherwise each goes on its own beat
        flash         false: the card draws its own arrival (the ghosts rise)
+       dust          false: no boots, no doorstep dust (the war-wolves)
        march         false: they stay where they arrived
      Four promises, each one a fault the obvious version had:
      1. REALLY OPEN GROUND (Bld.spawnRoom, tests/train-spawn.mjs), the first
@@ -269,7 +270,7 @@ Object.assign(Deck, {
       // (render one-shots — never in S)
       if (window.R && opts.flash !== false) {
         if (R.startSummon) R.startSummon(u.x, u.y, i * stag, stag ? u.id : 0);
-        if (R.startPlacePoof && i < 8) R.startPlacePoof(s.x, s.y, 1, { delay: i * Math.max(60, stag), scale: 0.8 });
+        if (R.startPlacePoof && i < 8 && opts.dust !== false) R.startPlacePoof(s.x, s.y, 1, { delay: i * Math.max(60, stag), scale: 0.8 });
       }
     }
     if (opts.march !== false) {

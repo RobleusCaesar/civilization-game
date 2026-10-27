@@ -1504,7 +1504,12 @@ const Units = {
            staggered, one after another — and then takes the formation slot it
            was dealt. Sim time, in the unit's task, so a save mid-beat marches
            on after the load. */
-        if ((t.wait -= dt) <= 0) this.moveTo(u, t.x, t.y);
+        if ((t.wait -= dt) <= 0) {
+          this.moveTo(u, t.x, t.y);
+          // a war-wolf's march to its place is the PACK's own walk, not an
+          // order: a foe near the hall breaks it off (js/deckfx-army.js packSense)
+          if (u.warWolf && u.task && u.task.type === 'move') u.task.home = true;
+        }
       } else if (t.type === 'banish') {
         /* BANISHED (tests/banish.mjs): they down tools and walk off the map for
            good. The pop cap is the only thing this gives back — nothing is
@@ -2621,6 +2626,9 @@ const Units = {
       // never retaliates — it hits what it was ordered to hit, or waits
       if (u.strat === 'strike') return;
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
+      // a card's war-wolf struck fights it out where it stands — never on the
+      // home-ground leash of a mark it chose itself (js/deckfx-army.js packLeash)
+      if (u.warWolf) { u.packMark = false; u.packFrom = null; }
     }
   },
 

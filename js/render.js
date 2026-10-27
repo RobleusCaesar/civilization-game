@@ -10379,6 +10379,17 @@ const R = {
     if (delay > 0 && id) (this._unborn || (this._unborn = new Set())).add(id);
   },
   _unborn: null,
+  /* A UNIT THE PICTURE DOES NOT DRAW IS NOT THERE TO TAP (the tap contract's
+     rule 1: hit-tests aim at the drawn sprite). Two kinds of card unit are in
+     S.units before they are on the screen: one of a staggered muster still
+     waiting for its flash (_unborn), and a ghost of the Ancestors' Host still
+     under the ground (Deck.riseOf — js/deckfx-army.js). Asked by unitHit and
+     by both unit passes, so what cannot be seen cannot be selected, and a
+     selected one wears no ring over empty ground. */
+  unitHidden(u) {
+    if (this.summons.length && this._unborn && this._unborn.has(u.id)) return true;
+    return !!(u.spectral && window.Deck && Deck.riseOf && Deck.riseOf(u) <= 0);
+  },
   drawCardWorld(g, dt) {
     if (this.summons.length) this.drawSummons(g, dt);
     if (window.Deck && Deck.cue && Deck.cue('motes')) this.drawMotes(g);
@@ -10391,6 +10402,7 @@ const R = {
         const d = Deck.FX[e.id];
         if (!(e.until > now) || !d || !d.drawLive) continue;
         g.save();
+        { const b = this.boardPx(); g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip(); }   // never in the black
         try { d.drawLive(g, e, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', e.id, err); } }
         g.restore();
       }
@@ -10430,6 +10442,10 @@ const R = {
       if (p >= 1) { if (layer === layers[layers.length - 1]) this.cardShows.splice(i, 1); continue; }
       if (layers.indexOf(layer) < 0) continue;
       g.save();
+      // NOTHING IS DRAWN IN THE BLACK: a world-layer show is geometry (a ring
+      // rolling ten tiles out from a hall that stands seven from the edge), so
+      // it is clipped to the board like every other such pass (R.clipBoard)
+      if (layer === 'world') { const b = this.boardPx(); g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip(); }
       try { sh.draw.call(d, g, s, p, dt, layer); }
       catch (err) { console.error('card show', s.id, err); this.cardShows.splice(i, 1); }
       g.restore();
@@ -11975,6 +11991,7 @@ const R = {
      canvas; a frame whose pixels cannot be read (a tainted canvas) falls back
      to the scaled circle. */
   unitHit(u, wx, wy) {
+    if ((u.spectral || this.summons.length) && this.unitHidden(u)) return Infinity;   // not drawn: not there to tap
     const TL = CFG.TILE, lift = CFG.SPRITE_LIFT / TL;
     const B = this.unitBox(u);
     if (B === TL) return Math.hypot(u.x - wx, u.y - lift - wy);
@@ -13263,6 +13280,7 @@ const R = {
       msFlush(u.y);
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       if (unborn && unborn.has(u.id)) continue;
+      if (u.spectral && this.unitHidden(u)) continue;      // a ghost still under the ground: no ring, no bar
       // B: the kind's draw box (unitBox). Bottom edges align across sizes —
       // for B === TILE these are exactly the coordinates they always were.
       const B = this.unitBox(u);
@@ -13365,6 +13383,7 @@ const R = {
     if (this._mtnOcc && this._mtnOcc.size) for (const u of units) {
       if (!this._mtnOcc.has(((u.y | 0) * CFG.W) + (u.x | 0))) continue;
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      if ((u.spectral || this.summons.length) && this.unitHidden(u)) continue;   // not out of its light / the ground yet
       const B = this.unitBox(u);
       const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
       if (selIds && selIds.has(u.id)) {
@@ -13373,7 +13392,8 @@ const R = {
       }
       g.globalAlpha = 0.32;
       const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-      g.drawImage(img, u.x * TL - D / 2, this.frameTop(u.y, B, D), D, D);
+      // a ghost's silhouette is its cold light, never a colour soldier's
+      g.drawImage(u.spectral && window.Deck && Deck.GHOST ? this.tintOf(img, Deck.GHOST) : img, u.x * TL - D / 2, this.frameTop(u.y, B, D), D, D);
       g.globalAlpha = 1;
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
