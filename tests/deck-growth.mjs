@@ -1385,6 +1385,64 @@ await p.evaluate(() => {
     `the lush ground's change under the fog is ${(r.fogRatio * 100).toFixed(1)}% of its change in sight`);
 }
 
+// ---------------- 13. THE LOOKS SPEAK THE HOUSE STYLE (the five-player playtest's judges) ----------------
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    __g.fresh('growth-style');
+    Screens.show('playing'); S.paused = true;
+    const { P: tc } = __g.flat();
+    const town = [__g.bld('P', 'house', 8, 4), __g.bld('P', 'house', 4, 8), __g.bld('P', 'barracks', 9, 8)];
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc) + 1.5, Bld.cy(tc) + 1.5);
+    G.updateVisibility();
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+    let rec = null;
+    P2.fillRect = function (x, y, w, h) { if (rec && (!rec.cv || this.canvas === rec.cv)) rec.push([x, y, w, h, this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return fr.apply(this, arguments); };
+    try {
+      /* (a) THE DAWN'S RAYS ARE SHORT DASHES OF INK NEAR THE SUN: every mark
+         opaque and source-over (a wedge of the card's light run down the
+         whole screen read as an orange road line, and its faint edge over
+         the grass sampled olive-mustard), every mark one cell, and none
+         farther from the sun than its halo and a sixth of the screen */
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d'), ox = c.width / 2, oy = 300, H = c.height;
+      rec = []; rec.cv = c;
+      GrowFX.rays(g, ox, oy, 15, 0.17, 'gold', 0.9, 1.0, 0.215);
+      const gr = Math.max(2, Math.round(2 * R.cam.z * (R.dpr || 1)));
+      out.rayMarks = rec.length;
+      out.rayLight = rec.filter(m => m[4] !== 'source-over' || m[5] < 1).length;
+      out.rayBig = rec.filter(m => m[2] > gr || m[3] > gr).length;
+      out.rayReach = +(rec.reduce((mx, m) => Math.max(mx, Math.hypot(m[0] + m[2] / 2 - ox, m[1] + m[3] / 2 - oy)), 0) / H).toFixed(3);
+      /* (b) THE GOLDEN AGE IS SEEN FOR ALL TWENTY DAYS: with the age running
+         (its play long over), every roof in view glints in its turn — a gold
+         star with a white-hot heart — and sheds gold, over three seconds;
+         the first cut left two faint specks a roof and nothing else */
+      __g.live('golden_age', 20);
+      R.cardShows = [];
+      const GA = Deck.FX.golden_age, hot = R.LIGHT.TONE.gold.hot.toLowerCase();
+      const dl = GA.drawLive;
+      let depth = 0;
+      GA.drawLive = function () { depth++; try { return dl.apply(this, arguments); } finally { depth--; } };
+      const pn = performance.now;
+      rec = []; rec.cv = R.cv;
+      const live = [];
+      P2.fillRect = function (x, y, w, h) { if (depth && this.canvas === R.cv) live.push(String(this.fillStyle).toLowerCase()); return fr.apply(this, arguments); };
+      try { for (let k = 0; k < 30; k++) { performance.now = () => 5000 + k * 100; R.draw(0.1); } }
+      finally { performance.now = pn; GA.drawLive = dl; }
+      const inView = S.buildings.filter(z => z.owner === 'P' && R.onScreen(Bld.cx(z), Bld.cy(z))).length;
+      out.inView = inView;
+      out.liveMarks = live.length;
+      out.glintHearts = live.filter(c0 => c0 === hot).length;
+      rec = null;
+    } finally { P2.fillRect = fr; }
+    return out;
+  });
+  ck('theDawnsRaysAreShortDashesOfInk', r.rayMarks > 30 && r.rayLight === 0 && r.rayBig === 0 && r.rayReach <= 0.215 + 0.17 + 0.02,
+    `${r.rayMarks} marks, ${r.rayLight} added or translucent, ${r.rayBig} bigger than a cell, the farthest ${r.rayReach} of the screen from the sun`);
+  ck('theGoldenAgeIsSeenForAllTwentyDays', r.inView >= 3 && r.glintHearts >= r.inView && r.liveMarks >= 12 * r.inView,
+    `${r.inView} buildings in view: ${r.glintHearts} glints, ${r.liveMarks} marks over three seconds`);
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 6));
 await b.close();

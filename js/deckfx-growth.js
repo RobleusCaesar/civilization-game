@@ -183,40 +183,34 @@ const GrowFX = {
      which a warm grade reads olive and a warm paint sand. The sun or the
      burst at the top of the world, its rays of dots and its glitter carry
      the light there now.) */
-  /* rays of light fanning down from (ox, oy), device px: each a NARROW
-     wedge of the card's light (R.glow — the meadow under it turned gold,
-     then brightened), cut in rows of the world's grain so its edges are hard
-     pixel steps, in four bands that step down as it reaches out — and a
-     bead of the tone's ink every few rows along its spine. Laid wide it
-     was a slab, added it was lime. */
-  rays(g, ox, oy, n, spread, tone, a, t) {
-    const W = R.cv.width, H = R.cv.height, px = Math.max(2, Math.round(2 * (R.dpr || 1)));
-    const gr = Math.max(px, Math.round(2 * R.cam.z * (R.dpr || 1))), top = Math.max(0, Math.ceil(oy / gr) * gr);
-    const L = H - top, BANDS = 4;
-    if (L <= 0) return;
+  /* rays of light fanning down from (ox, oy), device px: SHORT STEPPED
+     DASHES of the tone's ink close round the source — never wedges run down
+     the whole screen. Laid as wedges of the card's light (R.glow) they read
+     as orange road lines painted on the meadow, and where a wedge's faint
+     edge crossed the grass it sampled olive-mustard; laid wide they were a
+     slab, added they were lime. Each ray is a run of dashes two cells long,
+     the gaps opening as it reaches, stepping DOWN the ramp outward (cream,
+     gold, amber, gone) with a shimmer marching out along it — opaque ink, so
+     the grass beside a dash is never tinted at all — and it reaches about a
+     sixth of the screen from `from` (a fraction of the screen's height: the
+     edge of the sun or the burst it breaks from), so the light belongs to
+     what shines it. */
+  rays(g, ox, oy, n, spread, tone, a, t, from) {
+    const H = R.cv.height, gr = Math.max(2, Math.round(2 * R.cam.z * (R.dpr || 1)));
+    const r0 = H * (from == null ? 0.05 : from), reach = H * 0.17;
     g.save();
     for (let r = 0; r < n; r++) {
       const th = (r - (n - 1) / 2) * spread + Math.sin(t * 0.8 + r * 1.7) * 0.012;   // from the vertical
-      if (Math.abs(th) > 1.3) continue;                    // too flat to cut in rows
-      const ar = a * (r % 2 ? 0.55 : 1), w = r % 2 ? 0.006 : 0.01;
-      const t1 = Math.tan(th - w), t2 = Math.tan(th + w), tc = Math.tan(th);
-      for (let b = 0; b < BANDS; b++) {
-        const y0 = top + Math.round(L * b / BANDS / gr) * gr, y1 = top + Math.round(L * (b + 1) / BANDS / gr) * gr;
-        R.glow(g, ar * 0.75 * (1 - b / BANDS), () => {
-          for (let y = y0; y < y1; y += gr) {
-            const dy = y + gr / 2 - oy;
-            let X1 = Math.round((ox + t1 * dy) / gr) * gr, X2 = Math.round((ox + t2 * dy) / gr) * gr;
-            if (X2 <= X1) X2 = X1 + gr;
-            if (X2 < 0 || X1 > W) continue;
-            g.fillRect(X1, y, X2 - X1, gr);
-          }
-        }, tone);
-      }
-      // the beads along its spine
-      for (let y = top + gr * 3; y < H; y += gr * 6) {
-        const d = (y - top) / L;
-        if (!R.inkOn(g, ar * (1 - d), tone)) break;
-        g.fillRect(Math.round((ox + tc * (y - oy)) / px) * px, y, px, px);
+      const sx = Math.sin(th), cy = Math.cos(th), ar = a * (r % 2 ? 0.6 : 1), len = reach * (r % 2 ? 0.6 : 1);
+      const run = (t * 0.9 + this.hash(r, 9)) % 1;
+      // the dashes SHORTEN as the ray reaches (four cells at the source, then
+      // three, two, one) and the gaps open: a burst, not a scatter of specks
+      for (let d = r0, k = 0; d < r0 + len; k++) {
+        const q = (d - r0) / len, cells = Math.max(1, 4 - k);
+        if (R.inkOn(g, ar * (1 - q * 0.8) * (0.75 + 0.25 * Math.cos((q - run) * Math.PI * 2)), tone))
+          for (let u = 0; u < cells; u++)
+            g.fillRect(Math.round((ox + sx * (d + u * gr)) / gr) * gr, Math.round((oy + cy * (d + u * gr)) / gr) * gr, gr, gr);
+        d += gr * (cells + 2 + k * 0.5);
       }
     }
     g.restore();
@@ -680,10 +674,16 @@ Object.assign(Deck.FX, {
           // solid over the meadow read as a pumpkin, added as lime)
           F.ring(g, ox, oy, H * 0.2, 'gold', 0.8 * e, px, 1);
           F.ring(g, ox, oy, H * 0.17, 'gold', 0.45 * e, px, 1, null, 0.5);
-          for (const [r, a] of [[0.13, 0.62], [0.065, 1]])
-            R.glow(g, a * e, () => R.pxDisc(g, ox, oy, H * r, px, 1));
-          R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, oy, H * 0.03, px, 1));
-          F.rays(g, ox, oy, 15, 0.17, 'gold', 0.9 * e, s.t);
+          // the discs keep their strength and SHRINK as the sun goes: faded
+          // through the light's faint steps, a disc of it over the meadow and
+          // the water passed through olive and mud brown
+          const se = F.step(e);
+          if (se > 0) {
+            for (const [r, a] of [[0.13, 0.62], [0.065, 1]])
+              R.glow(g, a, () => R.pxDisc(g, ox, oy, H * r * se, px, 1));
+            R.glowHot(g, 0.75, () => R.pxDisc(g, ox, oy, H * 0.03 * se, px, 1));
+          }
+          F.rays(g, ox, oy, 15, 0.17, 'gold', 0.9 * e, s.t, 0.215);
           F.glitter(g, 48, 'gold', e, s.t);
           return;
         }
@@ -726,8 +726,10 @@ Object.assign(Deck.FX, {
         if (b.owner !== 'P' || !Bld.done(b)) return;
         const k = this.lightOn(s, p, b);
         if (k <= 0) return;
+        // (held under the strongest steps, which lay the ramp's colour source-over
+        // and turned a lit building into a flat translucent ghost of itself)
         const held = GrowFX.env(p, 0.1, 0.2, 0.78, 1);
-        GrowFX.flashBld(g, b, k < 1 ? 0.85 * (1 - k * 0.45) : Math.max(0.3 * held, k < 1.6 ? 0.45 * (1.6 - k) / 0.6 : 0));
+        GrowFX.flashBld(g, b, k < 1 ? 0.66 * (1 - k * 0.4) : Math.max(0.3 * held, k < 1.6 ? 0.4 * (1.6 - k) / 0.6 : 0));
       },
     },
     // the light keeps its pace across the town
@@ -737,22 +739,50 @@ Object.assign(Deck.FX, {
       const front = (s.reach || this.REACH) * this.run((p - 0.08) / 0.7);
       return (front - Math.hypot(Bld.cx(b) - s.x, Bld.cy(b) - s.y)) / 1.8;
     },
-    // while the age lasts, the town's roofs shed a slow gold (and every hand
-    // at work wears the motes — cue 'motes', the festival's look)
+    /* WHILE THE AGE LASTS — all twenty days — the town is seen to stand in
+       it: every roof catches the sun in turn, a hard four-point glint
+       twinkling up off its crown and going out in steps, and gold motes lift
+       off it, each a lit grain over a dark one, laid opaque in the gold's
+       ink (never gold added over the grass). The first cut's two faint
+       specks a roof left the aftermath with nothing but the 20d chip to say
+       a Golden Age was on. (Every hand at work wears the motes too — cue
+       'motes', the festival's look.) */
+    GLINT_S: 2.2,
     drawLive(g, e) {
       const TL = CFG.TILE, F = GrowFX, v = F.view(1), fade = F.tail(e), t = performance.now() / 1000;
+      g.save();
       for (const b of S.buildings) {
         if (b.owner !== 'P' || !Bld.done(b) || b.key === 'wall' || b.key === 'gate') continue;
         if (!F.inV(v, Bld.cx(b), Bld.cy(b))) continue;
-        let box = null;
-        for (let m = 0; m < 2; m++) {
-          const ph = (t * 0.3 + F.hash(b.id, m)) % 1;
-          if (ph > 0.6) continue;
-          box = box || F.artBox(b);
-          const k = ph / 0.6, a = (k < 0.25 ? k / 0.25 : (1 - k) / 0.75) * fade;
-          F.mote(g, box.x + box.w * (0.25 + F.hash(m, b.id) * 0.5), box.y + box.h * 0.3 - k * TL * 0.9, '#ffd45e', '#7a4a0a', a);
+        const box = F.artBox(b), spr = R.bldSprite(b), ob = spr && R._artBox ? R._artBox(spr) : { l: 0.1, r: 0.9, t: 0.1, b: 0.94 };
+        const top = box.y + ob.t * box.h, L = box.x + ob.l * box.w, Wd = (ob.r - ob.l) * box.w;
+        // the motes: three grains a roof, lifting off it in turn
+        for (let m = 0; m < 3; m++) {
+          const ph = (t * 0.32 + F.hash(b.id, m)) % 1;
+          if (ph > 0.7) continue;
+          const k = ph / 0.7, a = (k < 0.2 ? 0.7 + k * 1.5 : 1 - (k - 0.2) / 0.8) * fade;
+          F.mote(g, L + Wd * (0.2 + F.hash(m, b.id) * 0.6), top + box.h * 0.12 - k * TL * 1.1 + Math.sin(t * 2 + m * 2.1) * 2,
+            m % 2 ? '#fff1b8' : '#ffd45e', '#7a4a0a', a);
+        }
+        // the glint off its crown: once a turn, a few beats long — a gold
+        // four-point star opening out (the long arms gold, their inner cells
+        // pale gold, a white-hot heart, the short diagonals at its height)
+        // and closing again, in hard beats
+        const q = ((t / this.GLINT_S + F.hash(b.id, 17)) % 1) / 0.22;
+        if (q < 1 && fade > 0.3) {
+          const x = F.snap(L + Wd * (0.3 + F.hash(b.id, 5) * 0.4)), y = F.snap(top + box.h * (0.04 + F.hash(5, b.id) * 0.12));
+          const arm = q < 0.15 ? 1 : q < 0.35 ? 2 : q < 0.65 ? 3 : q < 0.85 ? 2 : 1, T = R.LIGHT.TONE.gold;
+          g.globalAlpha = 1;
+          for (let s = 1; s <= arm; s++) {
+            g.fillStyle = s === 1 ? T.ramp[2] : T.ramp[1];
+            g.fillRect(x + s * 2, y, 2, 2); g.fillRect(x - s * 2, y, 2, 2);
+            g.fillRect(x, y + s * 2, 2, 2); g.fillRect(x, y - s * 2, 2, 2);
+          }
+          if (arm === 3) { g.fillStyle = T.ramp[1]; for (const [dx, dy] of [[2, 2], [-2, 2], [2, -2], [-2, -2]]) g.fillRect(x + dx, y + dy, 2, 2); }
+          g.fillStyle = T.hot; g.fillRect(x, y, 2, 2);
         }
       }
+      g.restore();
     },
   },
 
@@ -1204,7 +1234,7 @@ Object.assign(Deck.FX, {
           for (const [r, a] of [[0.15, 0.62], [0.075, 1]])
             R.glow(g, a * e, () => R.pxDisc(g, ox, 0, H * r, px, 1));
           R.glowHot(g, 0.75 * e, () => R.pxDisc(g, ox, 0, H * 0.035, px, 1));
-          F.rays(g, ox, -H * 0.04, 15, 0.2, 'gold', 0.9 * e, s.t);
+          F.rays(g, ox, -H * 0.04, 15, 0.2, 'gold', 0.9 * e, s.t, 0.29);
           F.glitter(g, 56, 'gold', e, s.t);
           return;
         }
