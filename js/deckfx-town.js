@@ -335,11 +335,15 @@
       if (!fx || !fx.length || b.owner !== 'P' || !(amt > 0)) return amt;
       let took = amt * this.mult('bldHurt', 'P', b);
       const U = this.FX.unbreakable_hall;
+      // the pictures answer a BLOW, never the summer's slow burn: the wildfire
+      // reaches here every frame it touches a roof, and a spark or a flare on
+      // every one of them would read as the ward strobing (render state only)
+      const blow = cause !== 'fire';
       if (b.key === 'tc' && U && this.timed('unbreakable_hall')) {
         took = Math.min(took, Math.max(0, b.hp - U.sliver(b)));
-        U.struck(b, took);
+        if (blow) U.struck(b, took);
       }
-      if (took < amt && this.FX.stone_skin && this.timed('stone_skin')) this.FX.stone_skin.glance(b);
+      if (blow && took < amt && this.FX.stone_skin && this.timed('stone_skin')) this.FX.stone_skin.glance(b);
       return took;
     },
     /* MASTER BUILDERS' HAND: the charges a placement of `key` would spend
