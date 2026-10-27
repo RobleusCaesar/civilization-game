@@ -52,7 +52,10 @@ const Units = {
       u.female = Math.random() < 0.5;
     }
     if (window.Cards) Cards.onSpawn(u);   // ORIGIN CARDS: Ironhand toughness
-    if (S.starfall) G.skyIron(u);         // STARFALL: the crater's iron goes to the next soldiers raised
+    // STARFALL: the crater's iron goes to the next soldiers RAISED — a unit a
+    // card brings (opts.card, js/deckfx.js Deck.summon) keeps the origin
+    // card's stamps above but never takes a blade the player's yards earned
+    if (S.starfall && !opts.card) G.skyIron(u);
     S.units.push(u);
     return u;
   },
@@ -80,13 +83,18 @@ const Units = {
   isPassive(u) { return u.kind === 'deer' || u.kind === 'cow'; },
   isRaider(u) { return u.owner === 'R'; },
 
+  /* THE ANCESTORS' HOST (js/deckfx-army.js): a spectral champion (u.spectral)
+     takes no place in the population, eats nothing and never deserts — the
+     card's own words, "they eat nothing and need no roof". One predicate, so
+     the census, the larder and the famine can never disagree about a ghost. */
+  mortal(u) { return !u.spectral; },
   popUsed(owner) {
     let n = owner === 'P' && S.garrison ? S.garrison.length : 0;
     for (const u of S.units)
-      if (u.owner === owner && (this.isVillager(u) || this.isMilitary(u) ||
+      if (u.owner === owner && this.mortal(u) && (this.isVillager(u) || this.isMilitary(u) ||
           u.kind === 'fishboat' || this.isTransport(u))) {
         n++;
-        if (this.isTransport(u) && u.cargo) n += u.cargo.length;   // soldiers below deck still eat
+        if (this.isTransport(u) && u.cargo) for (const c of u.cargo) if (this.mortal(c)) n++;   // soldiers below deck still eat
       }
     return n;
   },
@@ -104,7 +112,7 @@ const Units = {
     // garrisoned player defenders still eat
     if (owner === 'P' && S.garrison) f += S.garrison.length * U.military;
     for (const u of S.units) {
-      if (u.owner !== owner) continue;
+      if (u.owner !== owner || !this.mortal(u)) continue;
       if (this.isVillager(u) || this.isSapper(u))
         // a levied hand eats at the military rate — the mode's whole price,
         // and why the levy is a stance you hold, not a free upgrade
@@ -113,7 +121,7 @@ const Units = {
       else if (this.isSiege(u) || u.kind === 'ballista') f += U.siege;
       else if (u.kind === 'fishboat' || this.isTransport(u)) {
         f += U.boat;
-        if (u.cargo) f += u.cargo.length * U.cargo;   // soldiers below deck still eat
+        if (u.cargo) for (const c of u.cargo) if (this.mortal(c)) f += U.cargo;   // soldiers below deck still eat
       }
       else if (u.kind === 'fireship' || u.kind === 'bombard') f += U.warship;
       else if (this.isMilitary(u)) f += U.military;
@@ -129,7 +137,7 @@ const Units = {
                     : this.isMilitary(u) ? 1 : 0;
     let victim = null, best = 0;
     for (const u of S.units) {
-      if (u.owner !== owner) continue;
+      if (u.owner !== owner || !this.mortal(u)) continue;   // a ghost is never hungry
       const r = rank(u);
       if (r > best) { best = r; victim = u; }
     }
@@ -549,6 +557,8 @@ const Units = {
       o.task = { type: 'move', x: o.siegePost.x, y: o.siegePost.y, guard: true };
       this.setPath(o, o.siegePost.x, o.siegePost.y);
     }
+    // a card's war-wolf trots home to the hall after every fight (js/deckfx-army.js)
+    else if (o.warWolf && window.Deck && Deck.packHome) Deck.packHome(o);
   },
   // toggle the stance; turning it on pulls a strayed unit back to its perimeter
   setDefend(u, on) {
@@ -1487,6 +1497,18 @@ const Units = {
         if (this.followPath(u, dt)) {
           u.task = null; u.anchor = { x: u.x, y: u.y };
           if (t.guard) u.guardPost = null;   // back at the post — forget it (a fresh fight stamps a new one)
+        }
+      } else if (t.type === 'muster') {
+        /* A CARD'S MUSTER (js/deckfx.js Deck.summon): a unit a card brings out
+           of the Town Center stands in its own light for a beat — the flash is
+           staggered, one after another — and then takes the formation slot it
+           was dealt. Sim time, in the unit's task, so a save mid-beat marches
+           on after the load. */
+        if ((t.wait -= dt) <= 0) {
+          this.moveTo(u, t.x, t.y);
+          // a war-wolf's march to its place is the PACK's own walk, not an
+          // order: a foe near the hall breaks it off (js/deckfx-army.js packSense)
+          if (u.warWolf && u.task && u.task.type === 'move') u.task.home = true;
         }
       } else if (t.type === 'banish') {
         /* BANISHED (tests/banish.mjs): they down tools and walk off the map for
@@ -2503,7 +2525,11 @@ const Units = {
          chief's could know was a kill zone. */
       if (u.owner === 'A' && !this.isNaval(u)) AI.noteDeath(u.x, u.y);
       // a hull the kraken took has already been announced by the deep itself
-      if (u.owner === 'P' && !u.krakenTaken) G.log(`${CFG.UNITS[u.kind].name} was killed`, true);
+      // …and a spectral champion (js/deckfx-army.js) goes back to the earth
+      // without an alarm: fifteen red "was killed" toasts for a host that was
+      // always going to fade would bury every line that matters
+      if (u.owner === 'P' && !u.krakenTaken && !u.spectral)
+        G.log(`${(window.Deck && Deck.unitName && Deck.unitName(u)) || CFG.UNITS[u.kind].name} was killed`, true);
       if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)
         G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
       // any wild animal killed by a tribe yields meat
@@ -2595,11 +2621,14 @@ const Units = {
         const spot = this.fleeSpot(u, attacker.x, attacker.y);
         if (spot) { this.rememberPost(u); u.task = { type: 'flee' }; this.setPath(u, spot.x, spot.y); }
       }
-    } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u)) {
+    } else if (this.isMilitary(u) || this.isWild(u) || this.isVillager(u) || this.isRaider(u) || u.warWolf) {
       // ABSOLUTE FOCUS (tests/army-strategies.mjs): a strike-stance soldier
       // never retaliates — it hits what it was ordered to hit, or waits
       if (u.strat === 'strike') return;
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
+      // a card's war-wolf struck fights it out where it stands — never on the
+      // home-ground leash of a mark it chose itself (js/deckfx-army.js packLeash)
+      if (u.warWolf) { u.packMark = false; u.packFrom = null; }
     }
   },
 

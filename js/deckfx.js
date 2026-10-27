@@ -14,6 +14,8 @@
      forager_cache     fly: {food: 250}     the goods, to fly into the bar
      harvest_festival  until                the game day it runs out
      swift_raiders     x, y, units          the hall's middle, the riders' ids
+                                          (and every card in js/deckfx-army.js
+                                          that summons: Deck.summon)
      starfall          x, y, lands          where it strikes, seconds to the blow
      dragonfire        x, y, lands          where it burns, seconds to the breath
    A refusal is {ok: false, why} and the card stays in the hand (Deck.play).
@@ -201,6 +203,104 @@ Object.assign(Deck, {
     const tx = Math.floor(x), ty = Math.floor(y);
     return MapGen.onBoard(tx, ty) && !!S.map.explored[MapGen.idx(tx, ty)];
   },
+  /* THE MUSTER: every card that brings people out of the Town Center comes
+     through here (Swift Raiders, js/deckfx-army.js's eight). `list` is
+     [{kind, n}] in marching order; `opts`:
+       stamp(u, i)   marks a unit as the card's own (a war-wolf, a ghost)
+       stagger (ms)  the flashes come one after another, this far apart, and
+                     each unit is not drawn until its own (R.startSummon)
+       hold (s)      the first stands in its light this long before the march
+       together      the whole muster waits for its last flash and marches
+                     as one (the held beat of the Imperial and Enlightenment
+                     cards); otherwise each goes on its own beat
+       flash         false: the card draws its own arrival (the ghosts rise)
+       dust          false: no boots, no doorstep dust (the war-wolves)
+       march         false: they stay where they arrived
+     Four promises, each one a fault the obvious version had:
+     1. REALLY OPEN GROUND (Bld.spawnRoom, tests/train-spawn.mjs), the first
+        on the very doorstep a trained unit takes (Bld.spawnSpotAt), the rest
+        on the next open tiles round it — and only tiles the first can WALK
+        to (Path.reachFrom), so nobody is put down across a stream.
+     2. NEVER ONE STACK. Bld.spawnSpotAt asks only the ground, never who is
+        standing on it, so asked fifteen times it answers one tile fifteen
+        times. One unit per tile; on a doorstep too cramped for all of them
+        the tiles found are shared round in turn, never piled on the first.
+     3. A CARD'S SOLDIER IS NOT A TRAINED ONE. Units.spawn(…, {card: true})
+        keeps the origin card's stamps (Ironhand, Horselord) and never takes
+        a blade of Starfall's sky-iron, which belongs to soldiers the yards
+        raise; nothing here counts as training (S.stats.trained).
+     4. THE CARD'S OWN WORDS ON REFUSAL: no hall, or no open ground in reach,
+        and the card is kept (Deck.play) with the reason in as many words.
+     They count as population and eat like any of their kind, and may take
+     the town over its cap — training simply waits (Units.spawn never checks
+     the cap); a card that says otherwise stamps them so (the war-wolves,
+     the host). Then they MARCH OUT in formation, a few tiles beyond the
+     doorstep, as the Returning Sons march in. */
+  summonDoor(kind) {
+    const tc = Bld.tcOf('P');
+    if (!tc) return { why: 'Your Town Center must stand.' };
+    const first = Bld.spawnSpotAt('P', kind || 'defender', tc.x, tc.y + Bld.size(tc));
+    if (!first) return { why: 'There is no open ground beside your Town Center.' };
+    return { tc, first };
+  },
+  summonCan(kind) {
+    const d = this.summonDoor(kind);
+    return d.why ? { ok: false, why: d.why } : { ok: true };
+  },
+  SUMMON_MUSTER: 3,
+  summon(list, opts) {
+    opts = opts || {};
+    const kinds = [];
+    for (const g of list) for (let k = 0; k < g.n; k++) kinds.push(g.kind);
+    const d = this.summonDoor(kinds[0]);
+    if (d.why) return { ok: false, why: d.why };
+    const { tc, first } = d, W = CFG.W;
+    const sx = tc.x, sy = tc.y + Bld.size(tc);
+    const reach = Path.reachFrom([first]);
+    const used = new Set(), spots = [], units = [];
+    const stag = opts.stagger || 0;
+    for (let i = 0; i < kinds.length; i++) {
+      const s = i === 0 ? first : (MapGen.findNear(sx, sy, Bld.SPAWN_R,
+        (x, y) => !used.has(y * W + x) && (!reach || !!reach[y * W + x]) && Bld.spawnRoom('P', 'land', x, y)) || spots[i % spots.length]);
+      if (!used.has(s.y * W + s.x)) { used.add(s.y * W + s.x); spots.push(s); }
+      const u = Units.spawn(kinds[i], 'P', s.x, s.y, { card: true });
+      if (opts.stamp) opts.stamp(u, i);
+      units.push(u);
+      // each arrives in a shaft of light and kicks up the doorstep's dust
+      // (render one-shots — never in S)
+      if (window.R && opts.flash !== false) {
+        if (R.startSummon) R.startSummon(u.x, u.y, i * stag, stag ? u.id : 0);
+        if (R.startPlacePoof && i < 8 && opts.dust !== false) R.startPlacePoof(s.x, s.y, 1, { delay: i * Math.max(60, stag), scale: 0.8 });
+      }
+    }
+    if (opts.march !== false) {
+      const m = this.summonMuster(tc, first, opts.muster || this.SUMMON_MUSTER);
+      if (m) {
+        Units.formationMove(units, m.x, m.y, 'land');
+        // a STAGGERED muster stands each unit in its own light until its beat
+        // has come and gone, then marches it to the slot it was dealt
+        if (stag || opts.hold)
+          for (let i = 0; i < units.length; i++) {
+            const u = units[i], t = u.task;
+            if (!t || t.type !== 'move') continue;
+            u.task = { type: 'muster', x: t.x, y: t.y, wait: (opts.hold || 0) + (opts.together ? units.length - 1 : i) * stag / 1000 };
+            u.path = null; u.pathI = 0;
+          }
+      }
+    }
+    return { ok: true, units, tc, first, x: Bld.cx(tc), y: Bld.cy(tc) };
+  },
+  // a few tiles straight out from the hall through the doorstep, on ground
+  // the muster can actually walk to; null leaves them where they arrived
+  summonMuster(tc, from, dist) {
+    let dx = from.x + 0.5 - Bld.cx(tc), dy = from.y + 0.5 - Bld.cy(tc);
+    const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+    const reach = Path.reachFrom([from]);
+    return MapGen.findNear(Math.round(from.x + dx * dist), Math.round(from.y + dy * dist), dist,
+      (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && !!reach && !!reach[y * CFG.W + x] &&
+        Math.hypot(x - from.x, y - from.y) >= 2);
+  },
+
   /* What a card did goes in the event log, never in a toast: the play
      animation IS the announcement (js/deckui.js), and a toast over it would
      say it twice. The narration of an act still unfolding — the star
@@ -245,68 +345,23 @@ Object.assign(Deck.FX, {
     end() { G.log('🌾 The Harvest Festival is over — the work comes in at its ordinary yield again.'); },
   },
 
-  /* IRON — Swift Raiders: five Horse Archers ride out of the Town Center.
-     Each stands on REALLY open ground (Bld.spawnRoom — the training yards'
-     one rule, tests/train-spawn.mjs), the first on the very spot a trained
-     unit would take (Bld.spawnSpotAt at the hall's doorstep), the rest on the
-     next open tiles round it; never the unchecked fallback the origin cards
-     still carry. They count as population and eat like any rider, and they
-     may take the town over its cap — training simply waits for houses (the
-     approved rule; Units.spawn never checked the cap). Then they MARCH IN, as
-     the Returning Sons do: out to a muster a few tiles beyond the doorstep,
-     in formation. With no hall, or no open ground anywhere in reach, the card
-     is refused and kept. Kills they make are ordinary kills; raising them is
-     not training, so no "units trained" point is earned by the card. */
+  /* IRON — Swift Raiders: five Horse Archers ride out of the Town Center,
+     through the muster every summoning card shares (Deck.summon: really open
+     ground, one rider per tile, no sky-iron, the card's own refusals). They
+     come out together — riders do not wait in line — and ride straight out
+     to the muster under the drum of their own hooves. Kills they make are
+     ordinary kills; raising them is not training, so no "units trained"
+     point is earned by the card. */
   swift_raiders: {
-    at: 'tc', KIND: 'horsearcher', N: 5, MUSTER: 3,
-    // the doorstep the training yards use (Bld.spawnSpot): below the footprint
-    door(tc) { return Bld.spawnSpotAt('P', this.KIND, tc.x, tc.y + Bld.size(tc)); },
-    can() {
-      const tc = Bld.tcOf('P');
-      if (!tc) return { ok: false, why: 'Your Town Center must stand.' };
-      if (!this.door(tc)) return { ok: false, why: 'There is no open ground beside your Town Center.' };
-      return { ok: true };
-    },
+    at: 'tc', KIND: 'horsearcher', N: 5,
+    can() { return Deck.summonCan(this.KIND); },
     apply() {
-      const ok = this.can();
-      if (!ok.ok) return ok;
-      const tc = Bld.tcOf('P'), first = this.door(tc), W = CFG.W;
-      const sx = tc.x, sy = tc.y + Bld.size(tc), used = new Set(), spots = [], riders = [];
-      for (let i = 0; i < this.N; i++) {
-        /* NEVER ONE STACK. Bld.spawnSpotAt asks only the ground, never who is
-           already standing on it, so asked five times it answers the same
-           tile five times. The first rider takes the doorstep's own spot and
-           every other the next open tile round it that no rider has taken —
-           the same room check, one rider per tile; on a doorstep too cramped
-           for five, the tiles they did find are shared round in turn rather
-           than piled on the first, and the march out spreads them from there. */
-        const s = i === 0 ? first : (MapGen.findNear(sx, sy, Bld.SPAWN_R,
-          (x, y) => !used.has(y * W + x) && Bld.spawnRoom('P', 'land', x, y)) || spots[i % spots.length]);
-        if (!used.has(s.y * W + s.x)) { used.add(s.y * W + s.x); spots.push(s); }
-        const u = Units.spawn(this.KIND, 'P', s.x, s.y);
-        riders.push(u);
-        // each arrives in a shaft of light and kicks up the doorstep's dust
-        // (render one-shots — never in S)
-        if (window.R) {
-          if (R.startSummon) R.startSummon(u.x, u.y);
-          if (R.startPlacePoof) R.startPlacePoof(s.x, s.y, 1, { delay: i * 60, scale: 0.8 });
-        }
-      }
-      const m = this.muster(tc, first);
-      if (m) Units.formationMove(riders, m.x, m.y, 'land');
-      if (typeof Sound !== 'undefined') Sound.play('train');
+      const r = Deck.summon([{ kind: this.KIND, n: this.N }]);
+      if (!r.ok) return r;
+      if (typeof Sound !== 'undefined') Sound.play('train');   // the hooves are struck on the show's beats
+      if (window.R && R.startCardShow) R.startCardShow('swift_raiders', { x: r.x, y: r.y, ids: r.units.map(u => u.id), mx: r.first.x + 0.5, my: r.first.y + 0.5 });
       Deck.say('🏹 Five Horse Archers ride out of your Town Center.');
-      return { ok: true, x: Bld.cx(tc), y: Bld.cy(tc), units: riders.map(u => u.id) };
-    },
-    // a few tiles straight out from the hall through the doorstep, on ground
-    // the riders can actually ride to; null leaves them where they arrived
-    muster(tc, from) {
-      let dx = from.x + 0.5 - Bld.cx(tc), dy = from.y + 0.5 - Bld.cy(tc);
-      const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
-      const reach = Path.reachFrom([from]);
-      return MapGen.findNear(Math.round(from.x + dx * this.MUSTER), Math.round(from.y + dy * this.MUSTER), this.MUSTER,
-        (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y) && !!reach && !!reach[y * CFG.W + x] &&
-          Math.hypot(x - from.x, y - from.y) >= 2);
+      return { ok: true, x: r.x, y: r.y, units: r.units.map(u => u.id) };
     },
   },
 

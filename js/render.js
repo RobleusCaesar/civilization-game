@@ -6501,6 +6501,7 @@ const R = {
     this._tameKey = ''; this._tameMask = null;   // the kept-ground mask is the old run's
     this.horns = [];           // …and the horn's rings…
     this.summons = [];         // …and a card's riders arriving in their flash…
+    this._unborn = null;       // …(and the units still waiting for theirs)…
     this.cardShows = [];       // …and every card's own moment in the world…
     this._cardSky = null;      // …and a card's star still settling
     this.deaths = [];          // …so are villagers going over…
@@ -10367,9 +10368,27 @@ const R = {
                       costs hundreds of ms and iOS ignores it). */
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
-  startSummon(x, y) {
-    if (this.summons.length > 12) this.summons.shift();
-    this.summons.push({ x, y, t: 0 });
+  /* `delay` (ms) staggers a muster's flashes one after another, and `id`
+     names the unit the flash brings: until its beat comes that unit is not
+     drawn at all (_unborn), so it steps out of its own light rather than
+     standing beside it waiting (js/deckfx.js Deck.summon) */
+  startSummon(x, y, delay, id) {
+    if (this.summons.length > 32) this.summons.shift();
+    this.summons.push({ x, y, t: -(delay || 0) / 1000, id: id || 0 });
+    // hidden from the very next frame (drawSummons rebuilds the set after the unit pass)
+    if (delay > 0 && id) (this._unborn || (this._unborn = new Set())).add(id);
+  },
+  _unborn: null,
+  /* A UNIT THE PICTURE DOES NOT DRAW IS NOT THERE TO TAP (the tap contract's
+     rule 1: hit-tests aim at the drawn sprite). Two kinds of card unit are in
+     S.units before they are on the screen: one of a staggered muster still
+     waiting for its flash (_unborn), and a ghost of the Ancestors' Host still
+     under the ground (Deck.riseOf — js/deckfx-army.js). Asked by unitHit and
+     by both unit passes, so what cannot be seen cannot be selected, and a
+     selected one wears no ring over empty ground. */
+  unitHidden(u) {
+    if (this.summons.length && this._unborn && this._unborn.has(u.id)) return true;
+    return !!(u.spectral && window.Deck && Deck.riseOf && Deck.riseOf(u) <= 0);
   },
   drawCardWorld(g, dt) {
     if (this.summons.length) this.drawSummons(g, dt);
@@ -10383,6 +10402,7 @@ const R = {
         const d = Deck.FX[e.id];
         if (!(e.until > now) || !d || !d.drawLive) continue;
         g.save();
+        { const b = this.boardPx(); g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip(); }   // never in the black
         try { d.drawLive(g, e, dt); } catch (err) { if (!this._liveErr) { this._liveErr = 1; console.error('card look', e.id, err); } }
         g.restore();
       }
@@ -10422,6 +10442,10 @@ const R = {
       if (p >= 1) { if (layer === layers[layers.length - 1]) this.cardShows.splice(i, 1); continue; }
       if (layers.indexOf(layer) < 0) continue;
       g.save();
+      // NOTHING IS DRAWN IN THE BLACK: a world-layer show is geometry (a ring
+      // rolling ten tiles out from a hall that stands seven from the edge), so
+      // it is clipped to the board like every other such pass (R.clipBoard)
+      if (layer === 'world') { const b = this.boardPx(); g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip(); }
       try { sh.draw.call(d, g, s, p, dt, layer); }
       catch (err) { console.error('card show', s.id, err); this.cardShows.splice(i, 1); }
       g.restore();
@@ -10430,10 +10454,12 @@ const R = {
   drawSummons(g, dt) {
     const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
     const snap = v => Math.round(v / px) * px;
+    let unborn = null;
     g.save(); g.globalCompositeOperation = 'lighter';    // light ADDED to the scene: the riders show through it
     for (let i = this.summons.length - 1; i >= 0; i--) {
       const s = this.summons[i];
       s.t += dt;
+      if (s.t < 0) { if (s.id) (unborn || (unborn = new Set())).add(s.id); continue; }   // still waiting its beat
       const p = s.t / (cfg.ms / 1000);
       if (p >= 1) { this.summons.splice(i, 1); continue; }
       const cx = s.x * TL, cy = s.y * TL + TL * 0.3, a = 1 - p;   // cy: the feet
@@ -10465,6 +10491,7 @@ const R = {
       }
     }
     g.restore();
+    this._unborn = unborn;
   },
   MOTE_TASKS: { gather: 1, work: 1, fish: 1, shorefish: 1 },
   drawMotes(g) {
@@ -11964,6 +11991,7 @@ const R = {
      canvas; a frame whose pixels cannot be read (a tainted canvas) falls back
      to the scaled circle. */
   unitHit(u, wx, wy) {
+    if ((u.spectral || this.summons.length) && this.unitHidden(u)) return Infinity;   // not drawn: not there to tap
     const TL = CFG.TILE, lift = CFG.SPRITE_LIFT / TL;
     const B = this.unitBox(u);
     if (B === TL) return Math.hypot(u.x - wx, u.y - lift - wy);
@@ -13208,13 +13236,13 @@ const R = {
       : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
     // heal-zone ring: when a hurt, healable friendly unit is selected, show where
     // it can be healed — the town-center grounds for land units, a dock for ships
-    if (selIds && [...selIds].some(id => { const u = Units.get(id); return u && u.owner === 'P' && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind]; })) {
+    if (selIds && [...selIds].some(id => { const u = Units.get(id); return u && u.owner === 'P' && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind] && !u.spectral; })) {
       const seen = new Set();
       g.save();
       g.strokeStyle = 'rgba(138,224,138,0.45)'; g.lineWidth = 1.5; g.setLineDash([6, 5]);
       for (const id of selIds) {
         const u = Units.get(id);
-        if (!u || u.owner !== 'P' || u.hp >= u.maxhp || !CFG.HEAL_FOOD[u.kind]) continue;
+        if (!u || u.owner !== 'P' || u.hp >= u.maxhp || !CFG.HEAL_FOOD[u.kind] || u.spectral) continue;
         const z = Bld.healZoneFor(u);
         if (!z) continue;
         const k = z.x + ',' + z.y + ',' + z.r;
@@ -13252,9 +13280,12 @@ const R = {
       }
     };
     const units = S.units.slice().sort((a, b) => a.y - b.y);
+    const unborn = this.summons.length && this._unborn;   // a card's muster: not out of its light yet
     for (const u of units) {
       msFlush(u.y);
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      if (unborn && unborn.has(u.id)) continue;
+      if (u.spectral && this.unitHidden(u)) continue;      // a ghost still under the ground: no ring, no bar
       // B: the kind's draw box (unitBox). Bottom edges align across sizes —
       // for B === TILE these are exactly the coordinates they always were.
       const B = this.unitBox(u);
@@ -13324,9 +13355,18 @@ const R = {
         // its own baked in and must never receive a second (sheetUnit).
         // Naval sheets bake their own WATER shadow — a ground ellipse
         // under a hull reads as a sandbar, so boats are skipped too.
-        if (this.sheetUnit(u) && !Units.isNaval(u)) this.drawUnitShadow(g, u, wx, wy);
+        if (this.sheetUnit(u) && !Units.isNaval(u) && !u.spectral) this.drawUnitShadow(g, u, wx, wy);
         const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-        g.drawImage(img, wx * TL - D / 2, this.frameTop(wy, B, D), D, D);
+        const dx0 = wx * TL - D / 2, dy0 = this.frameTop(wy, B, D);
+        /* A CARD'S OWN PEOPLE wear their own look (js/deckfx-army.js): the
+           spectral host translucent and shimmering, a war-wolf's collar in the
+           tribe's dye, a veteran's rank. Draw time only — the frame tapped
+           (R.unitHit) is the same frame, untouched — and a look that throws
+           falls back to the plain sprite, never takes the frame down. */
+        if ((u.spectral || u.warWolf || u.vet || u.ranked) && window.Deck && Deck.drawUnit) {
+          try { Deck.drawUnit(g, u, img, dx0, dy0, D); }
+          catch (err) { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(img, dx0, dy0, D, D); }
+        } else g.drawImage(img, dx0, dy0, D, D);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
@@ -13348,6 +13388,7 @@ const R = {
     if (this._mtnOcc && this._mtnOcc.size) for (const u of units) {
       if (!this._mtnOcc.has(((u.y | 0) * CFG.W) + (u.x | 0))) continue;
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      if ((u.spectral || this.summons.length) && this.unitHidden(u)) continue;   // not out of its light / the ground yet
       const B = this.unitBox(u);
       const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
       if (selIds && selIds.has(u.id)) {
@@ -13356,7 +13397,8 @@ const R = {
       }
       g.globalAlpha = 0.32;
       const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-      g.drawImage(img, u.x * TL - D / 2, this.frameTop(u.y, B, D), D, D);
+      // a ghost's silhouette is its cold light, never a colour soldier's
+      g.drawImage(u.spectral && window.Deck && Deck.GHOST ? this.tintOf(img, Deck.GHOST) : img, u.x * TL - D / 2, this.frameTop(u.y, B, D), D, D);
       g.globalAlpha = 1;
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');

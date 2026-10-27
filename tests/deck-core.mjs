@@ -238,9 +238,8 @@ ck('aDuplicateWearsItsCount', d.badge === '×3', String(d.badge));
       unbuilt: Deck.CATALOG.filter(c => !Deck.FX[c.id] && Deck.count(c.id) > 0 && !CFG.CARDS.STARTER.includes(c.id)).map(c => c.id) };
   });
   ck('theReviewLinkDealsTheBuiltCards', sl.on && sl.held && sl.unbuilt.length === 0 &&
-    // the gate-2 five, and the town group's nine (js/deckfx-town.js)
-    sl.built === 'dragonfire,fallen_timber,forager_cache,gold_nugget,harvest_festival,loose_stone,master_builders,mending,' +
-      'starfall,stone_skin,swift_raiders,trade_caravan,unbreakable_hall,watchfires',
+    // the gate-2 five, the town group's nine and the army group's nine
+    sl.built === 'ancestors_host,dragonfire,fallen_timber,forager_cache,gold_nugget,harvest_festival,hunters_pack,iron_legion,legion_marches,loose_stone,master_builders,mending,siege_train,starfall,stone_skin,swift_raiders,trade_caravan,trebuchet_battery,unbreakable_hall,veterans,war_band,watchfires,willing_hands',
     `on ${sl.on}; dealt ${sl.built}; unbuilt dealt ${sl.unbuilt.join(',') || 'none'}`);
   await ctx2.close();
 }

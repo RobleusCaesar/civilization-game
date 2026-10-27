@@ -390,6 +390,9 @@ const Combat = {
         }
       } else if ((u.kind === 'bear' || u.kind === 'wolf' || u.kind === 'boar') &&
                  (u.owner === 'P' || u.owner === 'A')) {
+        // THE HUNTER'S PACK (js/deckfx-army.js): a card's war-wolves keep the
+        // ground round the HALL, not round wherever they last stopped
+        if (u.warWolf && window.Deck && Deck.packSense) { Deck.packSense(u); continue; }
         // ORIGIN CARDS (Houndmaster): a kept guard-beast patrols its home
         // ground — wild predators and enemy soldiers alike answer to it
         const e = this.nearestUnit(u.x, u.y, base.aggro + 1,
@@ -1274,6 +1277,7 @@ const Combat = {
           // a defender falls back to its perimeter the moment its target drops;
           // an ordered attack ends where the fight ended — hold this ground
           if (u.defend) Units.returnToGuard(u);
+          else if (u.warWolf) { if (u.task && u.task.type === 'attack') u.task = null; Units.resolveAfterFight(u); }   // home after the fight
           else if (u.task && u.task.type === 'attack') { u.task = null; u.anchor = { x: u.x, y: u.y }; }
           continue;
         }
@@ -1325,6 +1329,8 @@ const Combat = {
           }
         } else if (u.campId && this.campLeash(u, tgt)) {
           continue;   // a tender let its quarry go and is walking back to its fire
+        } else if (u.warWolf && window.Deck && Deck.packLeash && Deck.packLeash(u, tgt)) {
+          continue;   // a war-wolf lets a runner go at the edge of home and trots back
         } else {
           // A BOMBARD ENGINE MINDS ITS GROUND: unordered (no raid/attack task),
           // it fires on what's in range and lets what walks away go — pursuit
@@ -1490,7 +1496,9 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           // catapults/trebuchets break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch
-          const dmg = CFG.UNITS[u.kind].bldAtk ||
+          // (a VETERAN engine — js/deckfx-army.js, u.vet — throws its stone a
+          // quarter harder; everything else rides its stamped atk)
+          const dmg = (CFG.UNITS[u.kind].bldAtk ? Math.round(CFG.UNITS[u.kind].bldAtk * (u.vet || 1)) : 0) ||
             Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           if (CFG.UNITS[u.kind].proj) {
             // siege engine: the boulder/bolt/flaming ball flies and lands the
@@ -1527,7 +1535,8 @@ const Combat = {
           Units.followPath(u, dt);
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
-          const dmg = CFG.UNITS[u.kind].bldAtk || Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
+          const dmg = (CFG.UNITS[u.kind].bldAtk ? Math.round(CFG.UNITS[u.kind].bldAtk * (u.vet || 1)) : 0) ||
+            Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
           R.float(bx, by - 0.3, '-' + dmg, '#e8d2a0');
           Bld.damageBridge(br, dmg);   // removes the span (and re-severs the crossing) at 0 hp

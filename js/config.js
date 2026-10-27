@@ -957,7 +957,13 @@ const CFG = {
                transport: 70,
                catapult: 90, siegetower: 80,
                axeman: 45, longbow: 45, horsearcher: 65, ballista: 85,
-               sapper: 30 },
+               sapper: 30,
+               // the trebuchet had no price, so it could never be mended — and
+               // a Veterans card turns every Catapult into one (js/deckfx-army.js).
+               // No engine's price is its training food (they cost none); they
+               // sit at 80-90, and the workshop's top tier takes a round 100, as
+               // the champions of the other halls sit at the top of theirs
+               trebuchet: 100 },
 
   // units may only be healed on home ground — no patching up in an enemy camp.
   // Land units heal in the town-center grounds; ships heal by a dock. The
