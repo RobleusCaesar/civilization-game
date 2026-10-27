@@ -856,10 +856,15 @@ const DeckScreens = {
     if (tier && Deck.TIERS.some(t => t.k === tier)) this._colTier = tier;
     else if (!this._colTier) this._colTier = this._latestTier();
     this._zoomClose(true);
+    // a card the cloud's record took back is SAID here, once, if no game
+    // heard it first (Deck.tellLost, js/deck.js) — never a silent vanishing
+    this._lostLines = (Deck.tellLost ? Deck.tellLost() : []);
     Screens.show('cards');
     this._renderCollection();
   },
+  _lostLines: [],
   closeCollection() {
+    this._lostLines = [];
     this._zoomClose(true);
     if (this._colFrom === 'endgame' && typeof S !== 'undefined' && S && S.over)
       Screens.show('endgame', { win: S.over.win, msg: S.over.msg, back: true });
@@ -924,7 +929,15 @@ const DeckScreens = {
     const sel = Deck.TIERS.some(t => t.k === this._colTier) ? this._colTier : 'stone';
     const total = Deck.total(), found = Deck.CATALOG.filter(c => Deck.seen(c.id)).length;
     scr.querySelector('.clHeld').textContent = total + (total === 1 ? ' card' : ' cards');
-    scr.querySelector('.clSum').textContent = `${found} of ${Deck.CATALOG.length} discovered`;
+    const sum = scr.querySelector('.clSum');
+    sum.textContent = `${found} of ${Deck.CATALOG.length} discovered`;
+    for (const line of (this._lostLines || [])) {
+      const n = document.createElement('span');
+      n.className = 'clLost';
+      n.style.cssText = 'display:block;margin-top:4px;color:var(--gold, #ffd45e)';
+      n.textContent = line;
+      sum.appendChild(n);
+    }
     scr.querySelector('.clTabs').innerHTML = Deck.TIERS.map(t => {
       const all = Deck.ofTier(t.k), held = all.reduce((n, c) => n + Deck.count(c.id), 0), seen = all.filter(c => Deck.seen(c.id)).length;
       return `<button class="clTab${t.k === sel ? ' sel' : ''}" type="button" role="tab" data-tier="${t.k}" aria-selected="${t.k === sel}" ` +

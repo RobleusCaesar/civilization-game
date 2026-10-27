@@ -446,8 +446,14 @@ const Backend = {
       if (Date.now() - (+p.at || 0) > this.END_DAYS * 864e5) { this._dropEnd(p.row.run_id); continue; }
       const row = Object.assign({ game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, p.row);
       const r = await this.rpc('report_run_end', { p_row: row });
-      // not reached, or 0008 not applied yet (a 404): keep it, try again later
-      if (!r.ok || !r.data || typeof r.data.ok !== 'boolean') break;
+      if (!r.ok) {
+        const code = r.error && r.error.code;
+        // THAT ROW refused by its shape (a 4xx that is not "not yet"): step
+        // past it — it ages out at END_DAYS — never a wall for the rows behind
+        if (typeof code === 'number' && code >= 400 && code < 500 && [401, 404, 408, 429].indexOf(code) < 0) continue;
+        break;   // not reached, or 0008 not applied yet (a 404): keep it, try again later
+      }
+      if (!r.data || typeof r.data.ok !== 'boolean') break;
       if (!r.data.ok && r.data.reason === 'not_authenticated') break;
       this._dropEnd(p.row.run_id);       // landed, was already there, or refused for good
       if (r.data.ok && !r.data.already) sent++;

@@ -12,7 +12,8 @@
 -- never reads an answer.
 --
 -- WHAT.
---   0. THE ONE NUMBER: card_loss_min_deeds(), how many deeds a LOSS needs
+--   0. THE NUMBERS: card_loss_min_deeds(), how many deeds a LOSS needs, and
+--      card_pity_wins(), the wins before an Enlightenment card is due
 --   1. telemetry.kind admits card_granted and card_played
 --   2. the server's copy of the catalog and the drop tables, re-seeded to
 --      exactly what this file says every time it runs
@@ -43,7 +44,10 @@
 -- already:true — a duplicate), keeps one answered 'no_run' (the run_end row
 -- is still in flight) or 'not_authenticated' / 'slow_down', and drops any
 -- other refusal for good: the next reconcile against my_cards() then shows
--- the player what the server actually holds.
+-- the player what the server actually holds (and the game SAYS so, once, for
+-- a card the ceremony granted). An HTTP 4xx that is not "not yet" (a type
+-- error, a unique violation) is that op's own fault: it is stepped past and
+-- given up after a day of tries — never while the server refuses everything.
 --
 -- SEALED BY DEFAULT. Every table here has RLS on, NO policy, and every
 -- direct privilege revoked from anon and authenticated (Supabase's default
@@ -83,6 +87,20 @@ set search_path = ''
 as $$ select 5 $$;
 revoke all on function public.card_loss_min_deeds() from public;
 revoke all on function public.card_loss_min_deeds() from anon, authenticated;
+
+-- …and THE PITY NUMBER: wins without an Enlightenment card before one is
+-- guaranteed (CFG.CARDS.PITY — tests/deck-sync.mjs holds the two equal).
+-- grant_card reads it to allow the pity card on a win whose own table can
+-- never roll the tier (a Calm win) — and only when the ledger's own pity
+-- count says it is due.
+create or replace function public.card_pity_wins()
+returns integer
+language sql
+immutable
+set search_path = ''
+as $$ select 15 $$;
+revoke all on function public.card_pity_wins() from public;
+revoke all on function public.card_pity_wins() from anon, authenticated;
 
 -- ===========================================================================
 -- 1. TELEMETRY — the deck's two rows are admitted
@@ -152,8 +170,9 @@ update public.card_catalog c set active = false, starter_qty = 0
 -- which tiers each ending can roll: a 0% tier in CFG.CARDS.DROPS can never
 -- come out of the table ([stone, bronze, iron, imperial, enlight]):
 --   loss [85,15,0,0,0] · calm [40,40,17,3,0] · moderate [0,35,40,20,5] ·
---   hard [0,0,30,45,25]. The pity card (15 wins without a legend) is an
--- Enlightenment card on ANY win, which grant_card allows on its own.
+--   hard [0,0,30,45,25]. The pity card (card_pity_wins() wins without a
+-- legend) is an Enlightenment card on any win, which grant_card allows on a
+-- table that cannot roll it only when the ledger's pity count says it is due.
 create table if not exists public.card_drop_tiers (
   tbl  text not null check (tbl in ('loss', 'calm', 'moderate', 'hard')),
   tier text not null check (tier in ('stone', 'bronze', 'iron', 'imperial', 'enlight')),
@@ -289,16 +308,41 @@ $$;
 revoke all on function public.card_refuse(uuid, text, text, text, jsonb) from public;
 revoke all on function public.card_refuse(uuid, text, text, text, jsonb) from anon, authenticated;
 
+-- the PITY COUNT, in one place (grant_card and my_cards both ask it): the
+-- winning runs on this player's ledger since the last run that granted a
+-- legend — the client's own rule, re-derived. In ledger ORDER (the
+-- identity), never by timestamp: two grants in one transaction share now(),
+-- and a tie would hide a win from the count. Internal: only the definer
+-- functions call it.
+create or replace function public.card_pity_of(p_uid uuid)
+returns integer
+language sql
+stable
+set search_path = ''
+as $$
+  with runs as (
+    select g.run_id, max(g.id) as at, bool_or(g.tier = 'enlight') as legend,
+           bool_and(g.outcome = 'win') as win
+      from public.card_grants g where g.user_id = p_uid group by g.run_id
+  )
+  select count(*)::integer from runs r
+   where r.win and r.at > coalesce((select max(l.at) from runs l where l.legend), 0)
+$$;
+revoke all on function public.card_pity_of(uuid) from public;
+revoke all on function public.card_pity_of(uuid) from anon, authenticated;
+
 -- ===========================================================================
 -- 4. grant_card — the queue's { op:'grant', run, cards, outcome }
 -- ===========================================================================
 -- In order: who (auth.uid()), what (shape), NEVER TWICE (a grant already on
 -- the ledger answers ok + already with the cards it paid — a lost answer is
 -- safe to retry), THE EVIDENCE (the run's real run_end row, this player's,
--- never the provisional closed_tab — missing is 'no_run', "ask again
--- later"), THE EARN RULE, THE CARDS (each a live card of a tier that ending
--- can roll, a second card only on a win), the hourly cap, and only then the
--- ledger rows and the collection.
+-- never the provisional closed_tab, an ending with the grant's own outcome
+-- first — missing is 'no_run', "ask again later"), THE EARN RULE, THE CARDS
+-- (each a live card of a tier that ending can roll — the pity card when the
+-- ledger says it is due — a second card only on a win), the hourly cap, and
+-- only then the ledger rows and the collection. It never writes telemetry:
+-- the evidence is what the game sent, never what the grant says.
 create or replace function public.grant_card(p_run_id text, p_cards text[], p_outcome text)
 returns jsonb
 language plpgsql
@@ -315,6 +359,7 @@ declare
   v_n     integer;
   v_i     integer;
   v_tier  text;
+  v_pity  integer;
 begin
   if v_uid is null then
     return jsonb_build_object('ok', false, 'reason', 'not_authenticated');
@@ -335,15 +380,19 @@ begin
     return jsonb_build_object('ok', true, 'already', true, 'cards', v_prev);
   end if;
 
-  -- THE EVIDENCE: the latest REAL ending this player sent for this run (a
-  -- continued save that ends again ends the same run — the last word wins)
+  -- THE EVIDENCE: a REAL ending this player sent for this run, the one
+  -- whose outcome is the grant's first, then the latest. A continued save
+  -- that ends again ends the same run, and the Load screen is the player's
+  -- right: a win earned offline whose grant is delivered after an earlier
+  -- save of the same run was lost online is still a win on the record — a
+  -- matching ending must still exist, for this player and this run.
   select t.outcome, t.cause, t.mode, t.landform, t.device, t.game_version,
          t.day, t.seconds, t.score, t.props
     into v_end
     from public.telemetry t
    where t.user_id = v_uid and t.run_id = p_run_id and t.kind = 'run_end'
      and coalesce(t.cause, '') <> 'closed_tab'
-   order by t.id desc
+   order by (coalesce(t.outcome, '') = p_outcome) desc, t.id desc
    limit 1;
   if not found then
     return jsonb_build_object('ok', false, 'reason', 'no_run');
@@ -377,12 +426,17 @@ begin
   v_tbl := case when v_end.outcome = 'win'
                 then (case when v_end.mode in ('calm', 'moderate', 'hard') then v_end.mode else 'moderate' end)
                 else 'loss' end;
+  -- THE PITY CARD: an Enlightenment card on a win whose own table cannot
+  -- roll the tier, only when the ledger says it is due — one win of slack,
+  -- for a grant whose evidence never landed and so never reached the count
+  v_pity := public.card_pity_of(v_uid);
   select string_agg(k.card_key, ',') into v_bad
     from unnest(p_cards) as k(card_key)
     left join public.card_catalog c on c.card_key = k.card_key and c.active
    where c.card_key is null
       or not (exists (select 1 from public.card_drop_tiers d where d.tbl = v_tbl and d.tier = c.tier)
-              or (v_end.outcome = 'win' and c.tier = 'enlight'));   -- the pity card
+              or (v_end.outcome = 'win' and c.tier = 'enlight'
+                  and v_pity >= public.card_pity_wins() - 1));
   if v_bad is not null then
     return public.card_refuse(v_uid, 'grant', 'bad_cards', p_run_id,
       jsonb_build_object('cards', to_jsonb(p_cards), 'table', v_tbl, 'bad', v_bad));
@@ -526,15 +580,7 @@ begin
   if v_uid is null then
     return jsonb_build_object('ok', false, 'reason', 'not_authenticated');
   end if;
-  -- in ledger ORDER (the identity), never by timestamp: two grants in one
-  -- transaction share now(), and a tie would hide a win from the count
-  with runs as (
-    select g.run_id, max(g.id) as at, bool_or(g.tier = 'enlight') as legend,
-           bool_and(g.outcome = 'win') as win
-      from public.card_grants g where g.user_id = v_uid group by g.run_id
-  )
-  select count(*) into v_pity from runs r
-   where r.win and r.at > coalesce((select max(l.at) from runs l where l.legend), 0);
+  v_pity := public.card_pity_of(v_uid);
   return jsonb_build_object(
     'ok', true,
     'uid', v_uid,
@@ -574,10 +620,13 @@ grant execute on function public.my_cards() to authenticated;
 -- to send it under), or the request died (a dead network at the moment of
 -- victory). Its card then answered 'no_run' forever. The game now keeps that
 -- one row on the device and sends it here when it can (Backend.flushEnds).
--- It is inserted ONLY if no real ending for (this player, this run) is
--- already on the table — a retry can never make a second ending for 0007's
--- dashboard to count twice — and props.late marks it. A closed_tab row is
--- provisional by definition and is never accepted here.
+-- It is inserted ONLY if no real ending for (this player, this run) WITH
+-- THIS OUTCOME is already on the table — a retry can never make a second
+-- ending for 0007's dashboard to count twice — and props.late marks it. An
+-- ending with another outcome is a different ending (a save of the run
+-- loaded and finished another way), which online would have landed by
+-- itself. A closed_tab row is provisional by definition and is never
+-- accepted here.
 create or replace function public.report_run_end(p_row jsonb)
 returns jsonb
 language plpgsql
@@ -597,9 +646,15 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'bad_input');
   end if;
   perform pg_advisory_xact_lock(hashtext('clanfire-deck:' || v_uid::text));
+  -- a RETRY never makes a second ending (0007's real_ends is not deduped by
+  -- run_id — the dashboard would count it twice): an ending of this run
+  -- with THIS outcome already on the table is this row, landed. An ending
+  -- with another outcome is another ending — a save of the same run loaded
+  -- and finished differently, which online would have landed on its own.
   if exists (select 1 from public.telemetry t
               where t.user_id = v_uid and t.run_id = v_run and t.kind = 'run_end'
-                and coalesce(t.cause, '') <> 'closed_tab') then
+                and coalesce(t.cause, '') <> 'closed_tab'
+                and coalesce(t.outcome, '') = coalesce(p_row ->> 'outcome', '')) then
     return jsonb_build_object('ok', true, 'already', true);
   end if;
   -- telemetry.user_id references profiles: a player who never got as far as
