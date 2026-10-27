@@ -913,11 +913,18 @@ await p.evaluate(({ TOWN }) => {
         out.live[id] = R._liveErr ? -1 : n;
       }
       // a blow glances off the skin and the ward flares: the looks answer it
-      Combat.hitBuilding(hurt[0], 30);
-      Combat.hitBuilding(tc, 30);
-      R._liveErr = 0;
-      for (let i = 0; i < 4; i++) R.draw(1 / 30);
-      out.struck = !R._liveErr && Deck.FX.stone_skin._glints.length > 0 && performance.now() - Deck.FX.unbreakable_hall._hit < 1000;
+      // on a FROZEN clock: a glint lives 0.4s of real time, and four frames
+      // of a big map on a loaded machine (a sweep beside it) outlast that —
+      // the check is whether the looks answer the blow, not how fast we draw
+      const pnow = performance.now, tHit = pnow.call(performance);
+      performance.now = () => tHit;
+      try {
+        Combat.hitBuilding(hurt[0], 30);
+        Combat.hitBuilding(tc, 30);
+        R._liveErr = 0;
+        for (let i = 0; i < 4; i++) R.draw(1 / 30);
+        out.struck = !R._liveErr && Deck.FX.stone_skin._glints.length > 0 && performance.now() - Deck.FX.unbreakable_hall._hit < 1000;
+      } finally { performance.now = pnow; }
       // the shows drain away on their own clock
       for (const id of ['fallen_timber', 'trade_caravan', 'unbreakable_hall']) R.startCardShow(id, { tc: tc.id, side: 1, dir: 1, fresh: true });
       for (let i = 0; i < 200 && R.cardShows.length; i++) R.draw(1 / 30);
