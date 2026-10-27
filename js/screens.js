@@ -63,7 +63,11 @@ const Screens = {
     // …and entering a game always retires the boot splash, whatever the timer
     if (name === 'playing' && window.Boot) Boot.force();
     for (const s of document.querySelectorAll('.screen')) s.classList.remove('show');
-    const scr = this.el('scr' + name[0].toUpperCase() + name.slice(1));
+    let scr = this.el('scr' + name[0].toUpperCase() + name.slice(1));
+    /* THE NEW SETTINGS PAGE IS STAGED (js/settings.js): on a device the card
+       test link turned on it stands in for #scrSettings; everywhere else the
+       old screen shows exactly as it did. One predicate, SettingsPage.live(). */
+    if (name === 'settings' && window.SettingsPage && SettingsPage.live()) scr = SettingsPage.mount();
     if (scr) scr.classList.add('show');
     this._confirmQuit = false;
     if (name === 'title') this.onTitle();
@@ -734,6 +738,15 @@ const Screens = {
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
     this.syncTutToggle();
+    /* SETTINGS CAN TICK THE LESSON ON TOO (js/settings.js). A pending draft on
+       a world the lesson cannot teach is founded again here — the draft
+       toggle's own rule (audit MAP-V01) — so the lesson is never armed on an
+       archipelago. The flag is set by that one toggle alone, so no other road
+       into the draft changes. */
+    if (this._lessonRefound) {
+      this._lessonRefound = false;
+      if (this.tutorialWanted() && !this.teachableWorld()) this.refoundForLesson();
+    }
   },
 
   // the Tutorial choice remembers itself across runs. The button carries its
@@ -1004,6 +1017,7 @@ const Screens = {
 
   /* ---------------- settings ---------------- */
   onSettings() {
+    if (window.SettingsPage && SettingsPage.live()) { SettingsPage.onShow(); return; }
     this.renderLog();          // the event log lives on this page now
     const days = String(window.Backend ? Backend.autosaveDays : 2);
     for (const b of this.el('setCadence').querySelectorAll('.abtn'))
