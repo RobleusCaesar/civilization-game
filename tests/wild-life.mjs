@@ -43,11 +43,15 @@
       only where the player can see the unit's tile; the player's own hands
       always tick. A rival hand in the fog floats nothing (its work goes on),
       ticks at once when brought into sight, and the fog moves no roll.
+      (7b) A BLOW'S NUMBER TOO: a damage number or a "Miss!" is written only
+      where the player sees the struck thing (Combat.seenHit) — a rival
+      fighting a war band in the fog writes nothing; in sight it does.
 
    Run this after touching any of:
      units.js — wildIdle / grazeIdle / spook / workReport / seenWork /
                 workFloat (the gather, fish, station and terraform ticks)
-     combat.js — hostileUnits, acquire's wild branches, the noteFights hook
+     combat.js — hostileUnits, acquire's wild branches, the noteFights hook,
+                 seenHit / hitFloat (every number a blow writes)
      render.js — startle / noteFights / BANNER_AT / SMOKE_AT / drawBanners
      sprites.js — the banner() helper and the inline banner poles
 
@@ -745,6 +749,39 @@ const out = await p.evaluate(() => {
     ck('aRivalSappersSpadefulsStayInTheDark', !dk.seen && dk.dust === 0 && lt.seen && lt.dust > 0 && dk.draws === lt.draws,
       `in the dark ${dk.dust}, in sight ${lt.dust}; Math.random drawn ${dk.draws} / ${lt.draws} times (the fog moves no roll)`);
     R.floats = []; R._workFloatAt = {};
+
+    /* ---- 7b. …and so is a blow's NUMBER (the five-player playtest: 31
+       damage numbers written in the fog in 25 seconds — a rival trading
+       blows with barbarians out in the black wrote every one of them over
+       the map). The same fight twice — a rival spear and a war band, one of
+       its raiders at a rival hut — once in the dark and once with its
+       ground in the player's sight: the blows land either way, and their
+       numbers (and any "Miss!") are written only where they are seen.
+       Combat.seenHit, every float of combat.js ---- */
+    const fight = (seen) => {
+      dark('wl7d');
+      const a = Units.spawn('defender', 'A', fx, fy); a.x = fx + 0.5; a.y = fy + 0.5;
+      const r1 = Units.spawn('raider', 'R', fx + 1, fy); r1.x = fx + 1.5; r1.y = fy + 0.5;
+      const h = Bld.place('A', 'house', fx, fy + 3, { free: true, instant: true });
+      const r2 = Units.spawn('raider', 'R', fx + 1, fy + 3); r2.x = fx + 1.5; r2.y = fy + 3.5;
+      a.tUnit = r1.id; r1.tUnit = a.id; if (h) r2.tBld = h.id;
+      G.updateVisibility();
+      // the stand-in for an eye: the fight's ground lit in the player's own
+      // sight array (a soldier walked up would join the fight)
+      if (seen) for (let y = fy - 3; y <= fy + 6; y++) for (let x = fx - 3; x <= fx + 4; x++) G.vis[MapGen.idx(x, y)] = 1;
+      R.floats = []; Combat.scanT = 0;
+      const hp0 = a.hp + r1.hp + (h ? h.hp : 0);
+      for (let t = 0; t < 6; t += 0.1) { Units.update(0.1); Combat.update(0.1); }
+      const left = Math.max(0, a.hp) + Math.max(0, r1.hp) + (h ? Math.max(0, h.hp) : 0);
+      return { nums: R.floats.filter(f => /^-\d|^Miss!$|^Held!$/.test(f.txt)).length, struck: Math.round(hp0 - left),
+        seen: G.visibleAt(fx, fy) && G.visibleAt(fx, fy + 3), house: !!h };
+    };
+    const fd = fight(false), fl = fight(true);
+    ck('aFightInTheFogWritesNoNumbers', fd.house && !fd.seen && fd.struck > 0 && fd.nums === 0,
+      `in the dark: ${fd.struck} hp struck off, ${fd.nums} numbers written over it`);
+    ck('inSightItsBlowsAreWritten', fl.seen && fl.struck > 0 && fl.nums > 0,
+      `in sight: ${fl.struck} hp struck off, ${fl.nums} numbers written`);
+    R.floats = [];
   }
 
   return { res, fails };

@@ -23,6 +23,25 @@ const Combat = {
       arc: kind === 'bolt' ? 0.4 : kind === 'flame' ? 3.0 : 1.6,      // peak height (tiles)
     });
   },
+  /* A BLOW'S NUMBER IS SEEN ONLY WHERE THE BLOW IS (tests/wild-life.mjs §7b
+     — the five-player playtest counted 31 damage numbers written in the fog
+     in 25 seconds). The floats are drawn AFTER the fog, so a rival trading
+     blows with a war band out in the black wrote every blow on the map:
+     exactly what the fog exists to hide. A hit's number — and a "Miss!" —
+     is floated only where the PLAYER can see the struck thing's own tile
+     (the work tick's rule, Units.seenWork) — or where the player's own are
+     in the fight: a blow on their people and works, and a blow their own
+     soldiers, towers and engines strike (what they hit is the player's own
+     news; a tower's reach sits inside its sight anyway). Nothing about the
+     blow itself changes: only whether it is written on the screen. `by` is
+     the striker's owner. */
+  seenHit(who, x, y, by) {
+    if (by === 'P' || (who && who.owner === 'P')) return true;
+    return typeof G !== 'undefined' && !!G.visibleAt && !!G.visibleAt(x | 0, y | 0);
+  },
+  hitFloat(who, x, y, fx, fy, txt, col, by) {
+    if (this.seenHit(who, x, y, by) && window.R && R.float) R.float(fx, fy, txt, col);
+  },
   // a projectile reaches its mark: land the damage and throw a burst
   impact(p) {
     const t = p.tgt, flame = p.kind === 'flame';
@@ -31,7 +50,7 @@ const Combat = {
       if (b) this.hitBuilding(b, t.dmg, flame, p.owner);
     } else {
       const tu = Units.get(t.id);
-      if (tu) { R.float(tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a'); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
+      if (tu) { this.hitFloat(tu, tu.x, tu.y, tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a', p.owner); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
     }
     R.impact(p.x2, p.y2, p.kind, p.fx);
   },
@@ -67,8 +86,8 @@ const Combat = {
     const took = Bld.damage(b, dmg);
     if (by === 'P' && b.owner !== 'P' && was > 0 && b.hp <= 0 && S.stats)
       S.stats.handRazed = (S.stats.handRazed || 0) + 1;
-    R.float(Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
-      flame ? '#f2963a' : '#e8d2a0');
+    this.hitFloat(b, Bld.cx(b), Bld.cy(b), Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
+      flame ? '#f2963a' : '#e8d2a0', by);
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
     /* THE HORN. This is the only unprompted defensive alarm the game has —
@@ -1264,7 +1283,7 @@ const Combat = {
       const nx = tgt.x + dx * knock, ny = tgt.y + dy * knock;
       if (Path.canStep(tgt.x, tgt.y, nx, ny, 'W')) { tgt.x = nx; tgt.y = ny; tgt.path = null; }
     }
-    if (window.R && R.float) R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
+    this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
     Units.damage(tgt, dmg, u.id);
   },
 
@@ -1428,9 +1447,9 @@ const Combat = {
             // miss retro-fits the already-pushed shot with the overshoot)
             if (u.kind === 'archer' && G.rand() < 1 / 4) {
               if (sh) this.overshoot(sh);
-              R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
+              this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf', u.owner);
             } else {
-              R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a');
+              this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a', u.owner);
               // A LANDED SWORD DRAWS BLOOD (operator: small, never grotesque):
               // sword-armed kinds only — the Bronze Champion today — nick a
               // short crimson slash at the blade's reach. Render-side only,
@@ -1532,7 +1551,7 @@ const Combat = {
             // there too, not just when trading blows with soldiers.
             if (u.kind === 'archer' && G.rand() < 1 / 4) {
               if (sh) this.overshoot(sh);
-              R.float(Bld.cx(b), b.y - 0.15, 'Miss!', '#cfcfcf');
+              this.hitFloat(b, Bld.cx(b), Bld.cy(b), Bld.cx(b), b.y - 0.15, 'Miss!', '#cfcfcf', u.owner);
             } else {
               this.hitBuilding(b, dmg, !!CFG.UNITS[u.kind].fire, u.owner);
             }
@@ -1556,7 +1575,7 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const dmg = this.bldAtkOf(u) || Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
-          R.float(bx, by - 0.3, '-' + dmg, '#e8d2a0');
+          this.hitFloat(br, bx, by, bx, by - 0.3, '-' + dmg, '#e8d2a0', u.owner);
           Bld.damageBridge(br, dmg);   // removes the span (and re-severs the crossing) at 0 hp
         }
       }
@@ -1599,10 +1618,10 @@ const Combat = {
         const l1tower = (b.key === 'tower' && b.level === 1) || b.key === 'warcamp';
         if (l1tower && G.rand() < 1 / 3) {
           this.overshoot(sh);
-          R.float(tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf');
+          this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf', b.owner);
         } else {
           const dmg = Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt));
-          R.float(tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a');
+          this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a', b.owner);
           Units.damage(tgt, dmg, 0, b.owner);
         }
       } else b.cd = 0.3;
