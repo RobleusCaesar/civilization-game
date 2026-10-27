@@ -533,14 +533,16 @@
         for (let k = -arm; k <= arm; k += 2) { g.fillRect(snap(cx + k), snap(cy + k), 4, 4); g.fillRect(snap(cx + k), snap(cy - k), 4, 4); }
       },
       /* THE MOMENT: a hide unrolls across the screen, the world draws itself
-         on it in charcoal from west to east, the relic's X is struck, and the
-         hide lifts away as the fog peels back off the world beneath it. */
+         on it in charcoal from west to east, the relic's X is struck — and
+         the hide is HELD on the X a beat, a ring of gold breathing round it,
+         before it lifts away as the fog peels back off the world beneath. */
       show: {
-        ms: 3800, layers: ['world', 'sky'],
+        ms: 4500, layers: ['world', 'sky'],
         draw(g, s, p, dt, layer) {
+          const T = s.t;
           if (layer === 'world') {
             // the fog over every tile it charts, until the peel's front passes
-            const fx = (CFG.W + 2) * ease((p - 0.62) / 0.34) - 1;
+            const fx = (CFG.W + 2) * ease((T - 2.95) / 1.3) - 1;
             const TL = CFG.TILE, W = CFG.W, v = view(1), m = s.mask;
             g.fillStyle = '#0d0b08';
             for (let ty = Math.max(0, v.y0 | 0); ty <= Math.min(CFG.H - 1, Math.ceil(v.y1)); ty++) {
@@ -557,7 +559,7 @@
               }
             }
             // charcoal dust blowing off the front
-            if (p > 0.62 && p < 0.98) {
+            if (T > 2.95 && T < 4.4) {
               g.fillStyle = 'rgba(60,44,30,0.8)';
               for (let k = 0; k < 40; k++) {
                 const ty = v.y0 + rnd(k, 7) * (v.y1 - v.y0), jx = (rnd(k, 8) - 0.3) * 1.6;
@@ -621,28 +623,28 @@
       },
       hide(g, s, p) {
         if (!s.art) this._hideArt(s);
-        const W = R.cv.width, H = R.cv.height;
+        const W = R.cv.width, H = R.cv.height, T = s.t, LIFT = 3.1;
         const k = Math.max(2, Math.floor(Math.min(W * 0.84 / s.aw, H * 0.62 / s.ah)));
-        const dw = s.aw * k, dh = s.ah * k, x0 = Math.round((W - dw) / 2), lift = p > 0.66 ? ease((p - 0.66) / 0.24) * H * 0.05 : 0;
+        const dw = s.aw * k, dh = s.ah * k, x0 = Math.round((W - dw) / 2), lift = T > LIFT ? ease((T - LIFT) / 0.9) * H * 0.05 : 0;
         const y0 = Math.round(H * 0.46 - dh / 2 - lift);
-        const fade = p < 0.66 ? 1 : qa(1 - ease((p - 0.66) / 0.22), 4);
+        const fade = T < LIFT ? 1 : qa(1 - ease((T - LIFT) / 0.84), 4);
         if (fade <= 0) return;
         // the world goes quiet behind the hide
-        g.fillStyle = 'rgba(8,6,4,' + qa(0.45 * fade * Math.min(1, p / 0.08), 6) + ')';
+        g.fillStyle = 'rgba(8,6,4,' + qa(0.45 * fade * Math.min(1, T / 0.3), 6) + ')';
         g.fillRect(0, 0, W, H);
         const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
         g.globalAlpha = fade;
         // it unrolls from the west
-        const un = Math.max(1, Math.round(s.aw * ease(p / 0.2)));
+        const un = Math.max(1, Math.round(s.aw * ease(T / 0.76)));
         g.fillStyle = 'rgba(0,0,0,0.5)';
         g.fillRect(x0 + k * 2, y0 + k * 3, un * k, dh);           // its hard shadow
         g.drawImage(s.art, 0, 0, un, s.ah, x0, y0, un * k, dh);
         // the charcoal draws itself, west to east, a nib glinting at its tip
-        const dr = Math.min(un, Math.round(s.aw * ease((p - 0.14) / 0.42)));
+        const dr = Math.min(un, Math.round(s.aw * ease((T - 0.53) / 1.6)));
         if (dr > 0) g.drawImage(s.ink, 0, 0, dr, s.ah, x0, y0, dr * k, dh);
-        if (dr > 0 && dr < s.aw - 2 && p < 0.58) {
+        if (dr > 0 && dr < s.aw - 2 && T < 2.2) {
           g.fillStyle = '#fff2c0';
-          g.fillRect(x0 + dr * k, y0 + Math.round((0.5 + 0.4 * Math.sin(p * 40)) * dh), k * 2, k * 2);
+          g.fillRect(x0 + dr * k, y0 + Math.round((0.5 + 0.4 * Math.sin(T * 10.5)) * dh), k * 2, k * 2);
         }
         // the rolls: one at the west edge, one riding the unrolling front
         for (const rx of [x0 - k * 2, x0 + un * k - k * 2]) {
@@ -660,12 +662,12 @@
         }
         // the relic struck with an X in red ochre, and the walk to it dotted from home
         const r = S.relic, home = Bld.tcOf('P');
-        if (s.relic && r && p > 0.54) {
-          const pop = 1 + 1.4 * (1 - ease((p - 0.54) / 0.08));
+        if (s.relic && r && T > 2.05) {
+          const pop = 1 + 1.4 * (1 - ease((T - 2.05) / 0.3));
           const cx = x0 + (s.M + (r.x + r.w / 2) * 2) * k, cy = y0 + (s.M + (r.y + r.h / 2) * 2) * k, arm = Math.round(4 * pop) * k;
           if (home) {
             const hx = x0 + (s.M + Bld.cx(home) * 2) * k, hy = y0 + (s.M + Bld.cy(home) * 2) * k;
-            const L = Math.hypot(cx - hx, cy - hy), n = Math.max(2, Math.floor(L / (k * 3))), upto = Math.round(n * Math.min(1, (p - 0.56) / 0.08));
+            const L = Math.hypot(cx - hx, cy - hy), n = Math.max(2, Math.floor(L / (k * 3))), upto = Math.round(n * Math.min(1, (T - 2.13) / 0.3));
             g.fillStyle = '#8e2e1e';
             for (let i = 1; i < upto; i++) {
               const q = i / n, wob = Math.sin(q * 9) * k * 2;
@@ -674,6 +676,14 @@
           }
           g.fillStyle = '#8e2e1e';
           for (let d = -arm; d <= arm; d += k) { g.fillRect(cx + d - k, cy + d - k, k * 2, k * 2); g.fillRect(cx + d - k, cy - d - k, k * 2, k * 2); }
+          // THE HELD BEAT: a ring of gold breathing round the X, light added
+          if (T > 2.35 && T < LIFT + 0.4) {
+            const br = 0.5 + 0.5 * Math.sin((T - 2.35) * 9);
+            g.save(); g.globalCompositeOperation = 'lighter';
+            g.fillStyle = 'rgba(255,212,94,' + qa(0.85 * Math.min(1, (T - 2.35) / 0.2) * (0.55 + 0.45 * br), 4) + ')';
+            ring(g, cx, cy, arm * (1.9 + 0.25 * br) + k * 2, 22, 1, k);
+            g.restore();
+          }
         }
         g.globalAlpha = 1;
         g.imageSmoothingEnabled = sm;
@@ -724,7 +734,7 @@
           const s = Bld.size(b);
           for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++)
             if (MapGen.onBoard(b.x + dx, b.y + dy)) foot.push(MapGen.idx(b.x + dx, b.y + dy));
-          marks.push({ x: Bld.cx(b), y: Bld.cy(b), bx: b.x, by: b.y, s });
+          marks.push({ x: Bld.cx(b), y: Bld.cy(b), bx: b.x, by: b.y, s, key: b.key, lv: b.level });
         }
         Deck.light(foot);
         if (window.R) R.fogDirty = true;
@@ -774,6 +784,9 @@
               ring(g, mx, my, TL * (0.4 + 0.9 * ease(q)), 16, 1);
             }
             const fadeM = p > 0.9 ? qa(1 - (p - 0.9) / 0.1) : 1;
+            // the ghost LIGHTS UP as its bracket lands — marked, not just
+            // framed — and keeps a glow while the eye is open
+            this.flashGhost(g, m, (q < 1 ? 1 - q * 0.7 : 0.3) * fadeM);
             g.globalAlpha = fadeM;
             // the footprint MARKED: gold corner brackets, snapping in
             if (m.s) {
@@ -789,6 +802,15 @@
           }
           if (open > 0) this.eye(g, ex, ey, open, p);
         },
+      },
+      // the marked building's own picture, light ADDED over its ghost, fading
+      flashGhost(g, m, a) {
+        const TL = CFG.TILE, set = m.key !== 'wall' && m.key !== 'gate' && Sprites.buildingA && Sprites.buildingA[m.key];
+        const spr = set ? set[Math.max(0, (m.lv || 1) - 1)] : null;
+        g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = qa(0.7 * a, 4);
+        if (spr) R.blitBld(g, spr, m.bx * TL, m.by * TL, m.s * TL, m.s * TL);
+        else { g.fillStyle = '#ffd45e'; g.fillRect(m.bx * TL, m.by * TL, m.s * TL, m.s * TL); }
+        g.restore();
       },
       // a small eye: the mark over a building, and over a spied soul
       pip(g, x, y, sc) {
