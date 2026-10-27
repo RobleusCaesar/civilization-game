@@ -158,10 +158,12 @@ const DeckUI = {
     }
     UI.cue('ok');
   },
-  /* …AND IT IS EARNED, NOT JUST THERE: as the button lands, a ring of hard
-     gold pixels bursts off it — the play sequence's own flare, in the deck's
-     gold, for one beat — and its icon flashes white-gold. Squares, never a
-     soft glow; motion and opacity in hard steps (steps()), never a fade.
+  /* …AND IT IS EARNED, NOT JUST THERE: as the button lands, a ring of gold
+     sparks bursts off it — the play sequence's own flare, in the deck's
+     gold, for one beat — and its icon flashes white-gold. Round sparks with
+     a fine ink edge, thrown out on an easing curve at the screen's own
+     resolution (the operator's ruling, 2026-10-27, above _px); each shrinks
+     away solid rather than fading (a fading gold over the meadow is olive).
      Lives on the body for a second, then is gone: nothing outlasts the beat. */
   _arriveFlare() {
     const r = this.el.btn.getBoundingClientRect();
@@ -179,17 +181,17 @@ const DeckUI = {
       sq.style.background = PAL[i % PAL.length];
       sq.style.margin = (-sz / 2) + 'px 0 0 ' + (-sz / 2) + 'px';
       host.appendChild(sq);
-      // every position on the 2px grid; the ring is born OUTSIDE the button
-      // (a spark over the gold icon is gold on gold) and thrown clear of it
-      const at = (r) => `translate(${Math.round(Math.cos(a) * r / 2) * 2}px,${Math.round(Math.sin(a) * r / 2) * 2}px)`;
-      sq.animate([{ transform: at(16), opacity: 1 }, { transform: at(d), opacity: 1, offset: 0.6 },
-        { transform: at(d * 1.3), opacity: 0 }],
-        { duration: 640, delay: 200, easing: 'steps(8, end)', fill: 'both' });
+      // the ring is born OUTSIDE the button (a spark over the gold icon is
+      // gold on gold) and thrown clear of it
+      const at = (r, k) => `translate(${(Math.cos(a) * r).toFixed(1)}px,${(Math.sin(a) * r).toFixed(1)}px) scale(${k})`;
+      sq.animate([{ transform: at(16, 1), opacity: 1 }, { transform: at(d, 1), opacity: 1, offset: 0.6 },
+        { transform: at(d * 1.3, 0), opacity: 1 }],
+        { duration: 640, delay: 200, easing: 'cubic-bezier(.2,.6,.35,1)', fill: 'both' });
     }
     document.body.appendChild(host);
     const ico = this.el.btn.querySelector('.dkIco');
     if (ico && ico.animate) ico.animate([{ filter: 'none' }, { filter: 'brightness(1.9) sepia(.6)', offset: 0.3 }, { filter: 'none' }],
-      { duration: 520, delay: 160, easing: 'steps(4, end)' });
+      { duration: 520, delay: 160, easing: 'ease-out' });
     setTimeout(() => host.remove(), 1100);
   },
 
@@ -682,8 +684,9 @@ const DeckUI = {
       '<button type="button" class="iconbtn dkIClose" aria-label="Put it back">✕</button>';
     document.body.appendChild(L);
     const slot = L.querySelector('.dkISlot'), play = L.querySelector('.dkPlay'), why = L.querySelector('.dkWhy');
-    /* the light behind the lifted card: the tier's pixels, sparse and
-       dithered (a quieter halo than the play's), never a radial glow */
+    /* the light behind the lifted card: a soft glow of the tier's colour,
+       quieter than the play's, on the inspector's own dark backdrop (never
+       over the meadow) — smooth at the screen's resolution (above _px) */
     { const m = Math.min(document.documentElement.clientWidth, document.documentElement.clientHeight);
       this._px(slot, 'halo', t.col, Math.round(Math.min(m * 1.2, 640)), 4, 0.45).classList.add('dkHalo'); }
     // the room the stage leaves the card: one layout read, at a tap
@@ -726,7 +729,7 @@ const DeckUI = {
       big.animate([{ transform: `translate(${from.left - to.left}px,${from.top - to.top}px) scale(${s})` }, { transform: 'none' }],
         { duration: this.LIFT_MS, easing: this.SPRING });
       L.querySelector('.dkHalo').animate([{ transform: 'scale(.6)' }, { transform: 'none' }],
-        { duration: 240, easing: 'steps(3, end)' });
+        { duration: 240, easing: this.EASE_OUT });
     }
     L.querySelector('.dkIBack').animate([{ opacity: 0 }, { opacity: 1 }], { duration: this.LIFT_MS });
     UI.cue('ok');
@@ -840,21 +843,22 @@ const DeckUI = {
      the effect begins. The layer eats taps for its second, so nothing can be
      ordered from under it.
 
-     IN THE HOUSE'S PIXELS, NOT IN SOFT LIGHT (playtest judges g1/g2): the old
-     exit faded the card out as a ghost with the world showing through it,
-     over a radial halo, and the comet's tail drew a "+" across its name
-     plate mid-flight. Now:
+     THE CARD STAYS WHOLE AND ON TOP (playtest judges g1/g2): the old exit
+     faded the card out as a ghost with the world showing through it, and the
+     comet's tail drew a "+" across its name plate mid-flight. Now:
        · THE CARD IS THE TOP LAYER and stays OPAQUE — every scrap of light
-         (halo, ring, rays, flash, sparks, tail, goods) is laid BEHIND it, so
-         nothing is ever drawn over the card
-       · it LEAVES in hard pixels: a two-frame rim flash in the tier's colour,
-         then a three-step ordered dither dissolve (25/50/75% of its cells
-         gone, then nothing) across the burst — stepped by the flight's own
-         clock, never an alpha fade
-       · every light is drawn in solid pixels on canvases (an ordered dither
-         is the falloff), shown and hidden by hard switches (an animation's
-         active interval with fill 'none') and moved in steps() — no radial
-         gradient, no glow, no crossfade */
+         (shade, ring, rays, flash, sparks, tail, goods) is laid BEHIND it,
+         so nothing of the world's light is ever drawn over the card
+       · it LEAVES IN LIGHT: a two-frame rim flash in the tier's colour, then
+         its own face burns into the tier's light (a glaze screened over the
+         card inside its holder, never an alpha fade of the card) and it is
+         gone as it lands
+       · AT THE SCREEN'S OWN RESOLUTION (operator ruling, 2026-10-27: the
+         effects and the card's chrome are smooth and antialiased, crisp at a
+         devicePixelRatio of 1, 2 or 3, where they were solid 2-4px cells and
+         a stepped dither): every light is SVG or a smooth canvas (_px), moved
+         on easing curves — and still nothing translucent and warm lies over
+         the meadow, which a page light cannot hue first (see _px) */
   _run(id, tgt, fromEl, showingBack) {
     const c = Deck.card(id), t = Deck.tier(c.tier), fx = Deck.FX[id] || {};
     const world = S, calm = this._calm(), rank = t.rank;
@@ -888,11 +892,9 @@ const DeckUI = {
     const fwPx = parseFloat(card.style.getPropertyValue('--w')), fhPx = parseFloat(card.style.getPropertyValue('--h'));
     hold.style.left = (cx - fwPx / 2) + 'px';
     hold.style.top = (cy - fhPx / 2) + 'px';
-    // the dissolve's cells are two of the card's own art pixels a side
-    this._dzMasks(L, 2 * fwPx / Deck.W);
     L.appendChild(hold);   // THE TOP LAYER: every light below goes in under it (_bit)
-    // the shadow the card casts as it comes: the world under it darkened a
-    // step in an ordered dither of ink — never lit (the light is its own)
+    // the shadow the card casts as it comes: the world under it darkened by
+    // a soft disc of ink — never lit (the light is its own)
     const glow = this._px(L, 'shade', t.col, Math.round(Math.min(vw, vh, 520) * 0.92), 2);
     // a card shown by its back turns face-up as it flies
     if (showingBack) requestAnimationFrame(() => card.classList.remove('flip'));
@@ -906,7 +908,7 @@ const DeckUI = {
       const K = this.CALM;
       land = K.in + K.flare + K.out;
       exitAt = K.in + K.flare; exitDur = K.out;
-      // no travel: the card is simply there, then leaves by the same dither
+      // no travel: the card is simply there, then burns away the same way
       flight = hold.animate([{ opacity: 1 }, { opacity: 1 }], { duration: land, fill: 'forwards' });
       show(glow, K.in * 0.5, exitAt - K.in * 0.5);
     } else {
@@ -926,10 +928,10 @@ const DeckUI = {
              { transform: `translate(${ddx}px,${ddy}px) scale(.12) rotate(14deg)` }]
           : [{ transform: 'scale(1.1)' }]),
       ], { duration: land, fill: 'forwards' });
-      // the shade comes with the card and swells in hard steps with it
+      // the shade comes with the card and swells with it
       const flareAt = F + X * 0.45;
       show(glow, F * 0.5, exitAt + B * 0.5 - F * 0.5, [{ opacity: 1, transform: 'scale(.72)' }, { opacity: 1, transform: 'scale(1.18)' }],
-        { easing: 'steps(4, end)' });
+        { easing: 'ease-out' });
       this._spectacle(L, rank, cx, cy, flareAt, land);
       if (toD) this._trail(L, rank, cx, cy, dest, F + X, B);
       else this._spray(L, dest, cx, cy, F + X, B, rank);
@@ -938,18 +940,25 @@ const DeckUI = {
     const rimA = this._bit(hold, 'dkRim'), rimB = this._bit(hold, 'dkRim b');
     show(rimA, exitAt - 84, 42);
     show(rimB, exitAt - 42, 42);
-    // the dissolve, stepped by the flight's own clock (a phone late with its
-    // frames is late with its dissolve, never out of step with its card):
-    // whole for the burst's first quarter, then 25/50/75% of its cells gone,
-    // then nothing as it lands
-    const dz = (k) => { if (hold._dz === k) return; hold._dz = k; hold.className = 'dkFCard' + (k ? ' dz' + k : ''); };
+    /* THE CARD BURNS INTO LIGHT (operator ruling, 2026-10-27, above _px: it
+       left by a 4x4 dither of two-art-pixel cells, the one stepped thing
+       left on the glass). It stays OPAQUE to the end — never a ghost with the
+       world showing through it — while its own face takes the tier's light:
+       a cream-and-tier glaze SCREENED over the card inside its own holder,
+       so the picture brightens into light rather than thinning, rising
+       smoothly from the rim flash through the burst's first three quarters.
+       It is gone (dz4) the moment the flight ends — the flight's own clock,
+       so a phone late with its frames is late with the card, never out of
+       step with it. */
+    const burn = document.createElement('i');
+    burn.className = 'dkBurn';
+    hold.appendChild(burn);
+    show(burn, exitAt - 42, exitDur * 0.75 + 42, [{ opacity: 0 }, { opacity: 1 }], { easing: 'ease-in', fill: 'forwards' });
+    const dz = () => hold.classList.add('dz4');
     const step = () => {
       if (this.playing !== P) return;
       const ct = flight.currentTime;
-      // one step a frame at most: a phone slow with its frames still draws
-      // every one of the three before the card is gone
-      if (ct != null) dz(Math.min((hold._dz | 0) + 1, ct < exitAt + exitDur / 4 ? 0 : Math.min(4, Math.floor((ct - exitAt) / (exitDur / 4)))));
-      if (P.landed || (ct != null && ct >= land)) { dz(4); return; }
+      if (P.landed || (ct != null && ct >= land)) { dz(); return; }
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -958,7 +967,7 @@ const DeckUI = {
        with its frames a clock started now would land the effect while the
        goods are still in the air. The timeout is only the failsafe for a
        flight that never finishes (a hidden tab draws no frames). */
-    const land2 = () => { if (this.playing === P && !P.landed) { P.landed = true; dz(4); this._land(P, tgt, calm); } };
+    const land2 = () => { if (this.playing === P && !P.landed) { P.landed = true; dz(); this._land(P, tgt, calm); } };
     const go = () => {
       if (this.playing !== P || P.landed || P.waiting) return;
       const A = window.Assets, set = fx.art;
@@ -989,136 +998,162 @@ const DeckUI = {
     return i;
   },
 
-  /* THE DISSOLVE'S THREE MASKS: a 4x4 ordered (Bayer) dither, each step
-     taking a further quarter of the cells — set on the layer as custom
-     properties, the cell `cell` CSS px (two of the card's art pixels) */
-  _BAYER: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
-  _dzMasks(L, cell) {
-    for (let s = 1; s <= 3; s++) {
-      let r = '';
-      for (let i = 0; i < 16; i++) if (this._BAYER[i] >= s * 4) r += `<rect x='${i % 4}' y='${i >> 2}' width='1' height='1'/>`;
-      L.style.setProperty('--dz' + s, `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4' shape-rendering='crispEdges'>${r}</svg>`)}")`);
-    }
-    L.style.setProperty('--dzs', (cell * 4).toFixed(3) + 'px');
-  },
+  /* THE LIGHT, AT THE SCREEN'S OWN RESOLUTION (operator ruling, 2026-10-27:
+     the card's light and chrome are drawn at a high pixel count — smooth,
+     antialiased, crisp at a devicePixelRatio of 1, 2 or 3 — where they were
+     solid cells `cell` CSS px a side, blown up pixelated). Centred on the
+     flight's middle, or wherever it is put, `sizeCss` across:
+       shade  the card's SHADOW on the world: a smooth disc of ink, darkest
+              at its heart — it darkens, never lights
+       halo   a soft glow of the tier's colour — the inspector's alone, on
+              its own dark backdrop, never over the meadow
+       ring   a ring of the tier's colour, a fine cream line along it
+       rays   twelve spikes of light, long and short in turn: widest a
+              third of the way out and drawn to a point, cream at the root
+              running out to the tier's colour, a cream thread up each
+       hit    the landing: a ring, eight pale spokes and a pale core
+     `thin` scales the halo's strength and the rays' width; `cell`, the old
+     grain, is ignored. The two soft lights are a small canvas the browser
+     stretches smoothly (a soft disc has no edge to lose); the three with
+     edges are SVG, which the browser draws at whatever resolution the
+     screen has — and every one of them is DRAWN AT THE SIZE IT REACHES and
+     thrown out from a fraction of it, so nothing is ever blown up.
 
-  /* THE LIGHT, IN PIXELS: a canvas of solid cells (`cell` CSS px each, drawn
-     pixelated) centred on the flight's middle, or wherever it is put.
-       shade  the card's SHADOW on the world: a disc of ink cells in an
-              ordered dither, thick at its heart, thinning in three bands
-       halo   a disc of the tier's cells, thinning the same way — the
-              inspector's alone, laid on its own dark backdrop
-       ring   a band of solid cells
-       rays   twelve solid wedges, long and short in turn
-       hit    the landing: a ring and eight spokes, a pale core
-     `thin` scales the density (the inspector's halo is a quieter one) and,
-     for rays, the wedges' width.
-
-     LIGHT OVER THE WORLD NEVER WASHES IT (judges g3/g4, house style: a
-     landing burst lightened 44-48% of the play area toward lime). A dither
-     of gold cells over grass is gold and green mixed by the eye — olive —
-     and so is the soft rim of any shape whose cells thin into the meadow.
-     So the light that falls on the world (ring, rays, hit) is drawn SOLID,
-     and every shape wears a one-cell INK EDGE: what meets the grass is
-     dark, never a half-lit cell; the only dither left on the world is the
-     shade, which darkens it. */
+     LIGHT OVER THE WORLD NEVER WASHES IT (judges g3/g4: a landing burst once
+     lightened 44-48% of the play area toward lime). These lights stand over
+     the world in the PAGE, where no hue pass can turn the grass under them
+     gold first, and a translucent gold over green is olive — so the ones
+     that fall on the world (ring, rays, hit) are SOLID colour, never faded,
+     each with a fine dark INK EDGE feathered out into a soft dark margin:
+     their antialiased rim mixes ink and grass, darker, never a half-lit
+     gold — and seen from arm's length (the landing's 8px blocks), a thin
+     gold line over green averages to olive unless the dark round it comes
+     with it. Only the shade is soft, and it darkens. */
   INK: '#0d0b08',
+  PALE: '#fff6d8',
   _px(parent, kind, col, sizeCss, cell, thin) {
-    const n = Math.max(8, Math.round(sizeCss / cell)), cv = document.createElement('canvas');
-    cv.width = cv.height = n;
-    cv.className = 'dkPx dk-' + kind;
-    const css = n * cell;
-    cv.style.width = cv.style.height = css + 'px';
-    cv.style.margin = (-css / 2) + 'px 0 0 ' + (-css / 2) + 'px';
-    const g = cv.getContext('2d'), R = n / 2, B = this._BAYER, k = thin || 1;
-    // drawn once per look and copied after: a play or a lift pays a blit,
-    // never the cell loop (a lifted card's halo is ~17,000 cells)
-    const ck = kind + '|' + col + '|' + n + '|' + k, hit = this._pxCache[ck];
-    if (hit) {
-      g.drawImage(hit, 0, 0);
-      parent.insertBefore(cv, parent.querySelector(':scope > .dkFCard'));
-      return cv;
-    }
-    const on = (x, y, dens) => B[(y & 3) * 4 + (x & 3)] < dens * k * 16;
-    const PALE = '#fff6d8', INK = this.INK;
-    const cells = new Array(n * n).fill(null);
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-      const dx = x + 0.5 - R, dy = y + 0.5 - R, d = Math.hypot(dx, dy) / R;
-      let fill = null;
-      if (kind === 'halo' || kind === 'shade') {
-        const dens = kind === 'shade' ? (d < 0.4 ? 0.5 : d < 0.68 ? 0.25 : d < 0.92 ? 0.125 : 0)
-          : (d < 0.3 ? 0.75 : d < 0.55 ? 0.5 : d < 0.8 ? 0.25 : 0);
-        if (dens && on(x, y, dens)) fill = kind === 'shade' ? INK : col;
-      } else if (kind === 'rays') {
-        const sec = Math.PI / 6, at = Math.atan2(dy, dx) + Math.PI * 2, i = Math.floor(at / sec + 0.5) % 12;
-        const off = Math.abs(at - Math.round(at / sec) * sec), len = i & 1 ? 0.72 : 0.94;
-        // a wedge narrowing to its tip, never thinning into the grass
-        if (d >= 0.14 && d <= len && off <= sec * 0.17 * k * (1 - 0.55 * d / len)) fill = col;
-      } else if (kind === 'ring') {
-        if (Math.abs(d - 0.82) * R < 0.75) fill = col;
-      } else if (kind === 'hit') {
-        const a = Math.atan2(dy, dx), spoke = Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.42;
-        if (Math.abs(d - 0.78) * R < 0.75) fill = col;
-        else if (spoke && d > 0.22 && d < 0.55) fill = PALE;
-        else if (d < 0.14) fill = PALE;
+    const S = Math.max(8, Math.round(sizeCss)), k = thin || 1;
+    let el;
+    if (kind === 'shade' || kind === 'halo') {
+      const n = Math.max(32, Math.min(256, Math.round(S / 2)));
+      el = document.createElement('canvas');
+      el.width = el.height = n;
+      el.className = 'dkPx dk-' + kind;
+      const g = el.getContext('2d'), R = n / 2, gr = g.createRadialGradient(R, R, 0, R, R, R);
+      const rgb = kind === 'shade' ? '13,11,8' : this._rgb(col);
+      const st = kind === 'shade' ? [[0, 0.5], [0.4, 0.4], [0.68, 0.2], [0.9, 0.05], [1, 0]]
+        : [[0, 0.62 * k], [0.3, 0.42 * k], [0.62, 0.15 * k], [1, 0]];
+      // twenty stops eased between those: a gradient laid in a few straight
+      // runs bands into rings across a disc this big
+      for (let i = 0; i <= 20; i++) {
+        const u = i / 20;
+        let j = 0;
+        while (j < st.length - 2 && u > st[j + 1][0]) j++;
+        const [u0, a0] = st[j], [u1, a1] = st[j + 1], q = Math.max(0, Math.min(1, (u - u0) / (u1 - u0)));
+        gr.addColorStop(u, `rgba(${rgb},${(a0 + (a1 - a0) * q * q * (3 - 2 * q)).toFixed(4)})`);
       }
-      cells[y * n + x] = fill;
-    }
-    // the ink edge: every empty cell touching a lit one (the shade and the
-    // inspector's halo are not light on the world, and wear none)
-    if (kind !== 'shade' && kind !== 'halo') {
-      const lit = c => c && c !== INK;
-      const near = (x, y) => {
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-          const X = x + dx, Y = y + dy;
-          if (X >= 0 && Y >= 0 && X < n && Y < n && lit(cells[Y * n + X])) return true;
-        }
-        return false;
-      };
-      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++)
-        if (!lit(cells[y * n + x]) && near(x, y)) cells[y * n + x] = INK;
-    }
-    for (let i = 0; i < n * n; i++) if (cells[i]) { g.fillStyle = cells[i]; g.fillRect(i % n, (i / n) | 0, 1, 1); }
-    const keep = document.createElement('canvas');
-    keep.width = keep.height = n;
-    keep.getContext('2d').drawImage(cv, 0, 0);
-    this._pxCache[ck] = keep;
-    parent.insertBefore(cv, parent.querySelector(':scope > .dkFCard'));
-    return cv;
+      g.fillStyle = gr;
+      g.fillRect(0, 0, n, n);
+    } else el = this._svgLight(kind, col, S, k);
+    el.style.width = el.style.height = S + 'px';
+    el.style.margin = (-S / 2) + 'px 0 0 ' + (-S / 2) + 'px';
+    parent.insertBefore(el, parent.querySelector(':scope > .dkFCard'));
+    return el;
   },
-  _pxCache: {},
+  _rgb(c) { const h = String(c).replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) || 0).join(','); },
+  _svgN: 0,
+  // the three lights with edges, in the SVG's own units (CSS px): every
+  // stroke and fill solid, over a wider stroke of ink
+  _svgLight(kind, col, S, k) {
+    const NS = 'http://www.w3.org/2000/svg', C = S / 2, R = S / 2, INK = this.INK, PALE = this.PALE, E = 2.4;
+    const f = v => +v.toFixed(2), P = (r, a) => f(C + Math.cos(a) * r) + ' ' + f(C + Math.sin(a) * r);
+    // the soft dark margin under a shape of stroke width w (fill too, for a
+    // filled one): two wider strokes of ink, fainter as they spread
+    const FE = [[0.26, 8], [0.46, 4]];
+    const under = (shape, w) => FE.map(([o, x]) => shape(`fill="none" stroke="${INK}" stroke-opacity="${o}" stroke-width="${f(w + x)}" stroke-linejoin="round" stroke-linecap="round"`)).join('');
+    const ring = (r, w) => under(a => `<circle cx="${C}" cy="${C}" r="${f(r)}" ${a}/>`, w + E) +
+      [[INK, w + E], [col, w], [PALE, Math.max(0.8, w * 0.3)]]
+      .map(([c, sw]) => `<circle cx="${C}" cy="${C}" r="${f(r)}" fill="none" stroke="${c}" stroke-width="${f(sw)}"/>`).join('');
+    let h = '';
+    if (kind === 'ring') {
+      const w = Math.max(2.4, S * 0.018);
+      h = ring(R * 0.82 - w, w);
+    } else if (kind === 'rays') {
+      const sec = Math.PI / 6, r0 = R * 0.14, W = R * 0.042 * k;
+      for (let i = 0; i < 12; i++) {
+        const a0 = i * sec, len = (i & 1 ? 0.72 : 0.94) * R - E, id = 'dkRg' + (++this._svgN);
+        const ux = Math.cos(a0), uy = Math.sin(a0), nx = -uy, ny = ux;
+        // a spike: half its root's width at the root, widest a third of the
+        // way out, then drawn smoothly to a point at its tip
+        const hw = t => W * (t < 0.32 ? 0.55 + 0.45 * Math.sin(t / 0.32 * Math.PI / 2) : Math.pow((1 - t) / 0.68, 0.85));
+        const A = [], B = [];
+        for (let j = 0; j <= 14; j++) {
+          const t = j / 14, d = r0 + (len - r0) * t, w = hw(t), x = C + ux * d, y = C + uy * d;
+          A.push(f(x + nx * w) + ' ' + f(y + ny * w)); B.push(f(x - nx * w) + ' ' + f(y - ny * w));
+        }
+        const d = 'M' + A.join('L') + 'L' + B.reverse().join('L') + 'Z';
+        h += `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f(C + ux * r0)}" y1="${f(C + uy * r0)}" ` +
+          `x2="${f(C + ux * len)}" y2="${f(C + uy * len)}"><stop offset="0" stop-color="${PALE}"/>` +
+          `<stop offset=".38" stop-color="${col}"/><stop offset="1" stop-color="${col}"/></linearGradient>` +
+          under(a => `<path d="${d}" ${a}/>`, E) +
+          `<path d="${d}" fill="url(#${id})" stroke="${INK}" stroke-width="${E}" stroke-linejoin="round" paint-order="stroke"/>` +
+          `<path d="M${P(r0 + 2, a0)}L${P(r0 + (len - r0) * 0.72, a0)}" stroke="${PALE}" stroke-width="${f(Math.max(1, W * 0.34))}" stroke-linecap="round"/>`;
+      }
+    } else if (kind === 'hit') {
+      const w = Math.max(3, S * 0.016), sw = Math.max(2.2, S * 0.012);
+      h = ring(R * 0.78 - w, w);
+      let d = '';
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; d += `M${P(R * 0.24, a)}L${P(R * 0.54, a)}`; }
+      h += under(a => `<path d="${d}" ${a}/>`, sw + E);
+      for (const [c, lw] of [[INK, sw + E], [PALE, sw]]) h += `<path d="${d}" fill="none" stroke="${c}" stroke-width="${f(lw)}" stroke-linecap="round"/>`;
+      h += under(a => `<circle cx="${C}" cy="${C}" r="${f(R * 0.13)}" ${a}/>`, R * 0.26 + E) +
+        `<circle cx="${C}" cy="${C}" r="${f(R * 0.13)}" fill="${PALE}" stroke="${INK}" stroke-width="${E}" paint-order="stroke"/>`;
+    }
+    const s = document.createElementNS(NS, 'svg');
+    s.setAttribute('class', 'dkPx dk-' + kind);
+    s.setAttribute('viewBox', `0 0 ${S} ${S}`);
+    s.setAttribute('width', S); s.setAttribute('height', S);
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = h;
+    return s;
+  },
+
 
   /* THE SPECTACLE SCALES WITH THE TIER: Stone gets its shade and its rim and
      nothing else; every tier above adds something — sparks, a ring, rays,
-     and for Enlightenment a second fan of rays, a two-frame flash and embers
-     rising off the card. All of it hard pixels, all of it under the card.
-     The rays reach just past the card's own corners (a fan across the whole
-     meadow was a carpet of light over the grass), and the flash is the
-     WORLD dropping a step dark for two frames while the card blazes — the
-     old one lit a quarter of the screen's cells pale, which read as the
-     whole map going lime. */
+     and for Enlightenment a second fan of rays, a flash and embers rising
+     off the card. All of it under the card, and all of it smooth light at
+     the screen's own resolution, eased rather than stepped (the operator's
+     ruling, 2026-10-27, above _px). The rays reach just past the card's own
+     corners (a fan across the whole meadow was a carpet of light over the
+     grass), and the flash is the WORLD dropping dark for a beat while the
+     card blazes — the old one lit a quarter of the screen's cells pale,
+     which read as the whole map going lime. A spark never fades over the
+     meadow (a fading gold is olive): it shrinks away, solid to the last. */
+  EASE_OUT: 'cubic-bezier(.16,.7,.3,1)',
   _spectacle(L, rank, cx, cy, flareAt, land) {
     const show = (el, from, dur, kf, timing) => el.animate(kf || [{ opacity: 1 }, { opacity: 1 }],
       Object.assign({ delay: Math.max(0, from), duration: Math.max(1, dur), fill: 'none' }, timing || {}));
     const col = L.style.getPropertyValue('--tc') || '#e8c15a';
     const m = Math.min(document.documentElement.clientWidth, document.documentElement.clientHeight);
     if (rank >= 2) {
-      const ring = this._px(L, 'ring', col, 160, 2);
-      show(ring, flareAt, 420, [{ opacity: 1, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(2.1)' }], { easing: 'steps(6, end)' });
+      const ring = this._px(L, 'ring', col, 336, 2);
+      show(ring, flareAt, 420, [{ opacity: 1, transform: 'scale(.143)' }, { opacity: 1, transform: 'scale(1)' }], { easing: this.EASE_OUT });
     }
     if (rank >= 3) {
-      const rays = this._px(L, 'rays', col, Math.round(Math.min(m * 0.96, 500)), 4);
-      show(rays, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(0deg) scale(.7)' }, { opacity: 1, transform: 'rotate(30deg) scale(1.1)' }],
-        { easing: 'steps(5, end)' });
+      const ray = 'cubic-bezier(.3,.55,.4,1)';
+      const rays = this._px(L, 'rays', col, Math.round(Math.min(m * 0.96, 500) * 1.1), 4);
+      show(rays, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(0deg) scale(.636)' }, { opacity: 1, transform: 'rotate(30deg) scale(1)' }],
+        { easing: ray });
       if (rank >= 4) {
-        const rays2 = this._px(L, 'rays', '#fff6d8', Math.round(Math.min(m * 0.84, 440)), 4, 0.6);
-        show(rays2, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(15deg) scale(.8)' }, { opacity: 1, transform: 'rotate(-12deg) scale(1.15)' }],
-          { easing: 'steps(5, end)' });
-        // the flash: the world drops one hard step dark for two frames —
-        // laid at the very bottom of the layer, so the light blazes over it
+        const rays2 = this._px(L, 'rays', this.PALE, Math.round(Math.min(m * 0.84, 440) * 1.15), 4, 0.6);
+        show(rays2, this.FLY_MS * 0.6, land - this.FLY_MS * 0.6, [{ opacity: 1, transform: 'rotate(15deg) scale(.696)' }, { opacity: 1, transform: 'rotate(-12deg) scale(1)' }],
+          { easing: ray });
+        // the flash: the world drops dark for a beat — laid at the very
+        // bottom of the layer, so the light blazes over it
         const flash = this._bit(L, 'dkFlash');
         L.insertBefore(flash, L.firstChild);
-        show(flash, flareAt - 20, 36);
+        show(flash, flareAt - 40, 170, [{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], { easing: 'ease-out' });
       }
     }
     const n = [0, 8, 12, 16, 26][rank] || 0;
@@ -1127,26 +1162,26 @@ const DeckUI = {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
       const ember = rank >= 4 && i % 2;
       const d = 70 + Math.random() * (60 + rank * 22);
-      const ex = Math.round(Math.cos(a) * d / 2) * 2, ey = Math.round((Math.sin(a) * d - (ember ? 80 + Math.random() * 90 : 0)) / 2) * 2;
+      const ex = (Math.cos(a) * d).toFixed(1), ey = (Math.sin(a) * d - (ember ? 80 + Math.random() * 90 : 0)).toFixed(1);
       p.style.left = cx + 'px'; p.style.top = cy + 'px';
       if (ember) p.classList.add('ember');
       show(p, flareAt - 30 + Math.random() * 60, 420 + Math.random() * 220,
-        [{ transform: 'translate(0,0)', opacity: 1 }, { transform: `translate(${ex}px,${ey}px)`, opacity: 1 }],
-        { easing: 'steps(7, end)' });
+        [{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: `translate(${ex}px,${ey}px) scale(.25)`, opacity: 1 }],
+        { easing: 'cubic-bezier(.12,.62,.32,1)' });
     }
   },
 
-  // the burst toward a point: a tail of the tier's pixels behind the card —
+  // the burst toward a point: a tail of the tier's sparks behind the card —
   // UNDER it, so it can never cross its name plate
   _trail(L, rank, cx, cy, dest, start, dur) {
     const n = 5 + rank * 2;
     for (let i = 0; i < n; i++) {
       const p = this._bit(L, 'dkSpark trail');
       p.style.left = cx + 'px'; p.style.top = cy + 'px';
-      const lag = 18 + i * 12, jx = Math.round((Math.random() - 0.5) * 9) * 2, jy = Math.round((Math.random() - 0.5) * 9) * 2;
+      const lag = 18 + i * 12, jx = ((Math.random() - 0.5) * 18).toFixed(1), jy = ((Math.random() - 0.5) * 18).toFixed(1);
       p.animate([{ transform: `translate(${jx}px,${jy}px)`, opacity: 1 },
-        { transform: `translate(${(dest.x - cx) * 0.5 + jx}px,${(dest.y - cy) * 0.5 - 60 + jy}px)`, opacity: 1, offset: 0.55 },
-        { transform: `translate(${dest.x - cx}px,${dest.y - cy}px)`, opacity: 1 }],
+        { transform: `translate(${(dest.x - cx) * 0.5 + +jx}px,${(dest.y - cy) * 0.5 - 60 + +jy}px)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${dest.x - cx}px,${dest.y - cy}px) scale(.4)`, opacity: 1 }],
         { duration: Math.max(80, dur - lag + 40), delay: start + lag, easing: 'ease-in', fill: 'none' });
     }
   },
@@ -1292,17 +1327,17 @@ const DeckUI = {
     return m ? m[0].replace(/:$/, '.') : text;
   },
 
-  // the light hits the ground: a ring of the tier's pixels and eight pale
-  // spokes, thrown out in hard steps and gone at once (never a fading disc)
-  // (drawn at its full size and thrown out FROM a fraction of it: blown up
-  // two-fold, its cells were 8px slabs laid over the hall it lands on)
+  // the light hits the ground: a ring of the tier's colour and eight pale
+  // spokes, thrown out on an easing curve and gone at once (never a fading
+  // disc — a fading gold over the meadow is olive), drawn at its full size
+  // and thrown out FROM a fraction of it, so it is never blown up
   _impact(L, dest, rank, calm) {
     const full = 1.15 + rank * 0.2;
     const hit = this._px(L, 'hit', L.style.getPropertyValue('--tc') || '#e8c15a', Math.round((112 + rank * 16) * full), 4);
     hit.style.left = dest.x + 'px'; hit.style.top = dest.y + 'px';
     if (calm) { hit.animate([{ opacity: 1, transform: `scale(${(1 / full).toFixed(3)})` }, { opacity: 1, transform: `scale(${(1 / full).toFixed(3)})` }], { duration: 240, fill: 'none' }); return; }
     hit.animate([{ opacity: 1, transform: `scale(${(0.4 / full).toFixed(3)})` }, { opacity: 1, transform: 'none' }],
-      { duration: 300, easing: 'steps(4, end)', fill: 'none' });
+      { duration: 300, easing: 'cubic-bezier(.18,.75,.3,1)', fill: 'none' });
   },
 
   /* THE BAR NUMBER TICKS: every resource the card filled counts up from what
@@ -1727,8 +1762,8 @@ const DeckUI = {
 
   /* ---------------- TIMED EFFECTS ---------------- */
   /* Each card still running wears a chip beside the tribe: its own glyph
-     inside a fine ring that drains clockwise (drawn at the device's own
-     resolution — _ringDraw), and the time left — in days while there are
+     inside a fine ring that drains clockwise (a vector the browser draws at
+     the screen's own resolution — _chipSvg), and the time left — in days while there are
      days, in seconds on the last one (a game day is ten seconds). Tap it to
      hear what it is. Gone the moment Deck.tick expires the effect. */
   _timers() {
@@ -1915,10 +1950,9 @@ const DeckUI = {
     el.className = 'dkT';
     el.dataset.id = id;
     el.style.setProperty('--tc', t.col);
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = Math.round(this.CHIP_PX * this.chipRatio());
+    const glyph = this.chipGlyph(id), svg = this._chipSvg(glyph);
     const lab = document.createElement('b');
-    el.append(cv, lab);
+    el.append(svg, lab);
     el.setAttribute('aria-label', c.name);
     el.addEventListener('click', () => {
       const ch = this._chips[id], span = ch && ch.charge ? ch.charge.words : this._left(ch ? ch.left : 0, true);
@@ -1929,54 +1963,59 @@ const DeckUI = {
     });
     this.el.timers.insertBefore(el, this._more && this._more.parentNode === this.el.timers ? this._more : null);   // "+k" stays last
     if (!this._calm()) el.animate([{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: this.SPRING });
-    const ch = { el, cv, lab, n: -1, left: 0, col: t.col, cat: c.cat, glyph: this.chipGlyph(id) };
+    const ch = { el, svg, arc: svg.querySelector('.dkL'), lab, n: -1, left: 0, col: t.col, cat: c.cat, glyph };
     this._chips[id] = ch;
     return ch;
   },
-  /* THE CHIP IS QUIET AND CRISP (the same ruling): a fine track round the
-     glyph — the time already spent in a muted tone, the time left in soft
-     gold, draining clockwise from twelve o'clock — over a faint dark seat,
-     the glyph in soft cream, and the count in the HUD's own type (the bar's
-     weight and size, its own text colour, no shadow). The canvas is sized
-     at the device's own pixel ratio (never R.dpr, which is capped for the
-     world): every line in it is antialiased at the phone's resolution,
-     and it is re-sized the moment the ratio changes (a zoom, a move to
-     another screen). Redrawn only when the drained share moves a step. */
+  /* THE CHIP IS A VECTOR, DRAWN BY THE BROWSER AT THE SCREEN'S OWN
+     RESOLUTION (operator ruling, 2026-10-27, on a desktop: "the counters in
+     the header are pixelated too… higher pixel count"). It was a canvas
+     sized at the device's pixel ratio at the moment it was made — 24 px on a
+     desktop, and at a browser zoom or a scaled display (devicePixelRatio
+     1.1, 1.25, 1.5…) a bitmap the browser then RESAMPLED to fit, which is
+     exactly the soft, chunky ring the operator saw. Now it is an inline SVG:
+     the seat, the track and the time left are three circles (the time left a
+     dash along a 96-step path, draining clockwise from twelve o'clock), the
+     glyph its own path data (CHIP_ICONS) — so it is laid out and
+     antialiased by the browser at whatever resolution the screen has, 1x,
+     2x, 3x or anything between, and never resampled. Quiet as before: a
+     fine track round the glyph — the time already spent in a muted tone,
+     the time left in soft gold — over a faint dark seat, the glyph in soft
+     cream, and the count beside it in the HUD's own type (the bar's weight
+     and size, its own text colour, no shadow). Nothing is redrawn but one
+     attribute, and only when the drained share moves a step. */
   CHIP_PX: 24,            // the chip's ring, in CSS px
   CHIP_STEPS: 96,         // the ring drains in this many steps (ch.n counts the ones still lit)
-  CHIP_RING: { track: 1.25, left: 1.5, glyph: 12 },   // CSS px: the track's width, the time left's, the glyph's box
-  CHIP_TONE: { track: 'rgba(214,196,152,0.18)', left: '#c9a75a', seat: 'rgba(10,7,4,0.4)', glyph: '#e2d3ad' },
-  chipRatio() { return Math.max(1, Math.min(4, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1)); },
-  _ringDraw(ch, frac) {
-    const P = this.CHIP_PX, k = this.chipRatio(), side = Math.round(P * k);
-    const n = Math.round(Math.max(0, Math.min(1, frac)) * this.CHIP_STEPS);
-    if (n === ch.n && ch.cv.width === side) return;
-    ch.n = n;
-    if (ch.cv.width !== side) { ch.cv.width = ch.cv.height = side; }
-    const g = ch.cv.getContext('2d'), T = this.CHIP_TONE, s = side / P, C = P / 2, TAU = Math.PI * 2;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, side, side);
-    g.setTransform(s, 0, 0, s, 0, 0);      // CSS px from here on, laid at the device's own pixels
-    // the seat the glyph sits on
-    g.fillStyle = T.seat; g.beginPath(); g.arc(C, C, C - 2.2, 0, TAU); g.fill();
-    // the track: the whole circle in the spent tone, then what is left in soft gold
-    const W = this.CHIP_RING, r = C - 1;
-    g.lineWidth = W.track; g.strokeStyle = T.track;
-    g.beginPath(); g.arc(C, C, r, 0, TAU); g.stroke();
-    if (n > 0) {
-      g.lineWidth = W.left; g.lineCap = 'round'; g.strokeStyle = T.left;
-      g.beginPath(); g.arc(C, C, r, -Math.PI / 2, -Math.PI / 2 + TAU * n / this.CHIP_STEPS); g.stroke();
-    }
-    // the glyph, in a 24-unit box scaled to the middle of the ring
-    const ic = ch.glyph || this.CHIP_ICONS.coin, gs = W.glyph / 24, o = C - 12 * gs;
-    g.setTransform(s * gs, 0, 0, s * gs, o * s, o * s);
-    g.fillStyle = g.strokeStyle = T.glyph;
-    if (ic.d) g.fill(this._iconPath(ic.d), ic.eo ? 'evenodd' : 'nonzero');
-    if (ic.s) { g.lineWidth = ic.w || 1.6; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke(this._iconPath(ic.s)); }
-    g.setTransform(1, 0, 0, 1, 0, 0);
+  CHIP_RING: { track: 1.25, left: 1.6, glyph: 13 },   // CSS px: the track's width, the time left's, the glyph's box
+  CHIP_TONE: { track: 'rgba(214,196,152,0.2)', left: '#d2ae5e', seat: 'rgba(10,7,4,0.42)', glyph: '#e8dab6' },
+  _chipSvg(ic) {
+    const NS = 'http://www.w3.org/2000/svg', T = this.CHIP_TONE, W = this.CHIP_RING, P = this.CHIP_PX, C = P / 2, r = C - 1;
+    const s = document.createElementNS(NS, 'svg');
+    s.setAttribute('class', 'dkRing');
+    s.setAttribute('viewBox', `0 0 ${P} ${P}`);
+    s.setAttribute('width', P); s.setAttribute('height', P);
+    s.setAttribute('aria-hidden', 'true');
+    ic = ic || this.CHIP_ICONS.coin;
+    const gs = W.glyph / 24, o = C - 12 * gs;
+    s.innerHTML =
+      `<circle cx="${C}" cy="${C}" r="${C - 2.2}" fill="${T.seat}"/>` +
+      `<circle cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${T.track}" stroke-width="${W.track}"/>` +
+      `<circle class="dkL" cx="${C}" cy="${C}" r="${r}" fill="none" stroke="${T.left}" stroke-width="${W.left}" stroke-linecap="round" ` +
+        `pathLength="${this.CHIP_STEPS}" stroke-dasharray="0 ${this.CHIP_STEPS}" transform="rotate(-90 ${C} ${C})"/>` +
+      `<g class="dkG" transform="translate(${o} ${o}) scale(${gs})" fill="${T.glyph}" stroke="${T.glyph}">` +
+        (ic.d ? `<path d="${ic.d}" stroke="none" fill-rule="${ic.eo ? 'evenodd' : 'nonzero'}"/>` : '') +
+        (ic.s ? `<path d="${ic.s}" fill="none" stroke-width="${ic.w || 1.6}" stroke-linecap="round" stroke-linejoin="round"/>` : '') +
+      `</g>`;
+    return s;
   },
-  _iconPaths: {},
-  _iconPath(d) { return this._iconPaths[d] || (this._iconPaths[d] = new Path2D(d)); },
+  _ringDraw(ch, frac) {
+    const n = Math.round(Math.max(0, Math.min(1, frac)) * this.CHIP_STEPS);
+    if (n === ch.n) return;
+    ch.n = n;
+    // (a round cap on a zero-length dash still paints a dot: none left is none drawn)
+    ch.arc.setAttribute('stroke-dasharray', n + ' ' + this.CHIP_STEPS);
+    ch.arc.style.display = n > 0 ? '' : 'none';
+  },
 
   /* ---------------- the stylesheet (injected only when the deck is built) ---------------- */
   css() {
@@ -2008,7 +2047,7 @@ body.dk-aiming #bottombar { visibility: hidden; }
   font: 800 11px/15px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.6); }
 #deckBtn.empty .dkBadge { display: none; }
 .dkArrive { position: fixed; width: 0; height: 0; z-index: 12; pointer-events: none; }
-.dkArrive i { position: absolute; left: 0; top: 0; box-shadow: 0 2px 0 #5c3a1c; image-rendering: pixelated; }
+.dkArrive i { position: absolute; left: 0; top: 0; border-radius: 50%; box-shadow: 0 0 0 1px rgba(13,11,8,.85), 0 1.5px 0 #5c3a1c; }
 #deckBtn.empty .dkIco { opacity: .55; }
 /* THE STRIP IS FITTED, AND ITS "+k" IS WHOLE (playtest g1/g2). Two running
    cards with two-digit days needed 124px where a 390px phone's row leaves
@@ -2027,7 +2066,7 @@ body.dk-aiming #bottombar { visibility: hidden; }
   border: 0; border-radius: 0; background: none; color: var(--text, #f0e6d0); text-shadow: none;
   font: inherit; line-height: 1; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .dkT::after { content: ''; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
-.dkT canvas { width: 24px; height: 24px; flex: 0 0 auto; }
+.dkT svg.dkRing { width: 24px; height: 24px; flex: 0 0 auto; display: block; overflow: visible; }
 .dkT.dkMore { padding: 0 7px; min-width: 30px; justify-content: center; color: #f3e2b4;
   border: 1px solid rgba(10,8,5,.6); border-radius: 8px; background: rgba(0,0,0,.3); }
 .dkT .dkMoreB { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 15px; padding: 0 3px; box-sizing: border-box;
@@ -2099,9 +2138,9 @@ body.dk-aiming #bottombar { visibility: hidden; }
   padding: calc(var(--safe-top) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px); }
 #dkInsp .dkISlot { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
 #dkInsp .dkISlot .ccard { pointer-events: auto; cursor: pointer; filter: drop-shadow(0 10px 18px rgba(0,0,0,.6)); }
-/* the halo behind a lifted card: a canvas of the tier's pixels (DeckUI._px),
-   sized and centred by its own inline style — never a radial glow */
-#dkInsp .dkHalo { position: absolute; left: 50%; top: 50%; pointer-events: none; image-rendering: pixelated; }
+/* the halo behind a lifted card: a soft glow of the tier's colour (DeckUI._px),
+   sized and centred by its own inline style, on the inspector's dark backdrop */
+#dkInsp .dkHalo { position: absolute; left: 50%; top: 50%; pointer-events: none; }
 #dkInsp .dkIAct { flex: 0 0 auto; width: min(320px, 88vw); display: flex; flex-direction: column; align-items: center; gap: 7px; pointer-events: auto; }
 #dkInsp .dkPlay { width: 100%; }
 /* A PLAY THAT CANNOT BE PRESSED LOOKS IT: the plaques' disabled wash left the
@@ -2146,23 +2185,24 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkAimBar.warn .dkAStat { color: #f4c470; font-weight: 700; }
 
 #dkFly { position: fixed; inset: 0; z-index: 26; overflow: hidden; }
-#dkFly i, #dkFly canvas { position: absolute; display: block; pointer-events: none; }
-/* the card: the top layer, opaque, leaving by the dither (DeckUI._run) */
-#dkFly .dkFCard { position: absolute; transform-origin: 50% 50%; will-change: transform; }
-#dkFly .dkFCard.dz1, #dkFly .dkFCard.dz2, #dkFly .dkFCard.dz3 { -webkit-mask-repeat: repeat; mask-repeat: repeat;
-  -webkit-mask-size: var(--dzs) var(--dzs); mask-size: var(--dzs) var(--dzs); -webkit-mask-position: 0 0; mask-position: 0 0; }
-#dkFly .dkFCard.dz1 { -webkit-mask-image: var(--dz1); mask-image: var(--dz1); }
-#dkFly .dkFCard.dz2 { -webkit-mask-image: var(--dz2); mask-image: var(--dz2); }
-#dkFly .dkFCard.dz3 { -webkit-mask-image: var(--dz3); mask-image: var(--dz3); }
+#dkFly i, #dkFly canvas, #dkFly svg { position: absolute; display: block; pointer-events: none; }
+/* the card: the top layer, opaque, burning into light as it leaves (DeckUI._run);
+   the holder is its own group, so the glaze screens over the card's face alone */
+#dkFly .dkFCard { position: absolute; transform-origin: 50% 50%; will-change: transform; isolation: isolate; }
+#dkFly .dkFCard .dkBurn { inset: 0; border-radius: calc(var(--w, 176px) * .02); opacity: 0; mix-blend-mode: screen;
+  background: linear-gradient(160deg, #fff6d8 0%, var(--tc) 46%, #fff3cf 72%, #fff6d8 100%); }
 #dkFly .dkFCard.dz4 { visibility: hidden; }
 /* the two-frame rim flash: hard borders, switched on and off */
 #dkFly .dkRim { left: -4px; top: -4px; right: -4px; bottom: -4px; border: 4px solid var(--tc); opacity: 0; }
 #dkFly .dkRim.b { left: -6px; top: -6px; right: -6px; bottom: -6px; border: 3px solid #fff6d8; box-shadow: 0 0 0 3px var(--tc); }
-/* every light below the card is solid pixels, hidden but for its moment */
-#dkFly .dkPx { left: var(--cx); top: var(--cy); image-rendering: pixelated; opacity: 0; }
-/* the flash darkens the world a flat step (a lit dither here was lime over the meadow) */
+/* every light below the card is smooth at the screen's own resolution, hidden
+   but for its moment (the operator's ruling, 2026-10-27 — DeckUI._px) */
+#dkFly .dkPx { left: var(--cx); top: var(--cy); opacity: 0; }
+/* the flash darkens the world for a beat (a lit dither here was lime over the meadow) */
 #dkFly .dkFlash { inset: 0; opacity: 0; background: rgba(13,11,8,.42); }
-#dkFly .dkSpark { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--tc); opacity: 0; }
+/* a spark: a round solid bead with a fine ink edge — never a fading gold */
+#dkFly .dkSpark { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: var(--tc);
+  box-shadow: 0 0 0 1px rgba(13,11,8,.85); opacity: 0; }
 #dkFly .dkSpark.ember { background: #ffe7a0; }
 #dkFly .dkSpark.trail { width: 6px; height: 6px; margin: -3px 0 0 -3px; }
 #dkFly .dkChipGlow { border-radius: 8px; opacity: 0; box-shadow: 0 0 0 2px var(--tc), 0 0 0 4px rgba(10,7,3,.85); }

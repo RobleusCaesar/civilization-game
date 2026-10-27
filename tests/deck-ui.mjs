@@ -519,16 +519,23 @@ ck('aTcCardBurstsOnTheTownCenter', tc.spent && tc.dest && Math.hypot(tc.dest.x -
 ck('theSpectacleScalesWithTheTier', tc.spectacle.legend > tc.spectacle.iron && tc.spectacle.legend > tc.spectacle.stone,
   JSON.stringify(tc.spectacle));
 
-/* THE CARD LEAVES IN HARD PIXELS (playtest judges g1/g2): the old exit faded
-   the card out as a ghost with the world showing through it, over a soft
-   radial halo, and the comet's tail drew a "+" across its name plate mid-
-   flight. A whole play of the highest tier (its every light) to a point on
-   the ground, its clock HELD at chosen moments (so a starved machine reads
-   the same as a phone): the card is never translucent; it is the TOP layer
-   (nothing of the light is ever laid over it); its rim flashes in two short
-   frames; it leaves by the dither — 25/50/75% of its cells, in that order,
-   then gone; and nothing in the layer is a radial gradient or a blurred glow.
-   The lifted card's own halo likewise. */
+/* THE CARD LEAVES IN LIGHT, AT THE SCREEN'S OWN RESOLUTION (operator ruling,
+   2026-10-27: the effects and the card's chrome are smooth and antialiased,
+   crisp at a devicePixelRatio of 1, 2 or 3 — it replaced "THE CARD LEAVES IN
+   HARD PIXELS", which pinned solid 2-4px cells, steps() motion and a 4x4
+   dither dissolve). What the playtest judges g1/g2 asked for still holds:
+   the old exit faded the card out as a ghost with the world showing through
+   it, and the comet's tail drew a "+" across its name plate mid-flight. A
+   whole play of the highest tier (its every light) to a point on the
+   ground, its clock HELD at chosen moments (so a starved machine reads the
+   same as a phone): the card is never translucent; it is the TOP layer
+   (nothing of the world's light is ever laid over it); its rim flashes in two
+   short frames; it then BURNS INTO LIGHT — its own glaze rising smoothly
+   from nothing to whole through the burst — and is gone as it lands. And
+   the light is drawn at the screen's resolution: nothing in the layer (the
+   card's own pixel art and the goods' icons aside) is drawn pixelated,
+   every lit shape is a vector (SVG with a viewBox) or a smooth canvas, no
+   animation in it moves in steps(), and the lifted card's halo likewise. */
 const hp5 = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const raf2 = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -540,19 +547,19 @@ const hp5 = await p.evaluate(async () => {
   document.getElementById('deckBtn').click(); await wait(400);
   document.querySelector(`#dkSheet .dkCell[data-card="${id}"]`).click(); await wait(300);
   const halo = document.querySelector('#dkInsp .dkHalo');
-  const out = { haloSoft: !halo || /radial-gradient/.test(getComputedStyle(halo).backgroundImage) || halo.tagName !== 'CANVAS',
-    looks: [], translucent: 0, notTop: 0, soft: new Set() };
-  // the LIGHT is what is judged — the face itself (its art's placeholder
-  // ground, its paper) is the card's own and pinned elsewhere
-  const soft = el => {
-    if (el.closest('.ccard')) return null;
-    const cs = getComputedStyle(el);
-    if (/radial-gradient/.test(cs.backgroundImage) || /radial-gradient/.test(cs.webkitMaskImage || cs.maskImage || '')) return 'radial ' + el.className;
-    // a box-shadow is "color x y blur spread": any blur at all is a soft glow
-    for (const sh of (cs.boxShadow === 'none' ? [] : cs.boxShadow.replace(/rgba?\([^)]*\)/g, '').split(','))) {
-      const n = (sh.match(/-?[\d.]+px/g) || []).map(parseFloat);
-      if (n[2] > 0) return 'blur ' + el.className;
-    }
+  const stepped = el => el.getAnimations().some(a => /steps/.test(a.effect.getTiming().easing) ||
+    a.effect.getKeyframes().some(k => /steps/.test(k.easing || '')));
+  const out = { haloBlocky: !halo || /pixelated|crisp-edges/.test(getComputedStyle(halo).imageRendering) || stepped(halo),
+    looks: [], translucent: 0, notTop: 0, blocky: new Set(), burn: [] };
+  // the LIGHT is what is judged — the face itself (its art, its frame) is the
+  // card's own pixel art, pinned elsewhere, and so are the goods' icons
+  const blocky = el => {
+    if (el.closest('.ccard') || el.classList.contains('dkGood')) return null;
+    const cs = getComputedStyle(el), name = (el.getAttribute('class') || el.tagName).trim();
+    if (/pixelated|crisp-edges/.test(cs.imageRendering)) return 'pixelated ' + name;
+    if (el.tagName === 'svg' && !el.getAttribute('viewBox')) return 'unscalable ' + name;
+    if (el.tagName === 'svg' && /crispedges|optimizespeed/i.test(cs.shapeRendering)) return 'crisp-edged ' + name;
+    if (stepped(el)) return 'stepped ' + name;
     return null;
   };
   // the play's landing failsafe (a timer of real time) is held off while its
@@ -578,19 +585,24 @@ const hp5 = await p.evaluate(async () => {
     out.looks.push(`${name}:${k ? k[1] : 0}${rims.map(o => o === '1' ? '+' : '.').join('')}`);
     if (getComputedStyle(card).visibility !== 'hidden' && +getComputedStyle(card).opacity < 1) out.translucent++;
     if (L.lastElementChild !== card) out.notTop++;
-    for (const el of L.querySelectorAll('*')) { const s = soft(el); if (s) out.soft.add(s); }
+    const burn = card.querySelector('.dkBurn');
+    out.burn.push(burn ? +(+getComputedStyle(burn).opacity).toFixed(2) : -1);
+    for (const el of L.querySelectorAll('*')) { const s = blocky(el); if (s) out.blocky.add(s); }
   }
-  // the dissolve's three masks: a quarter, a half, three quarters of the cells gone
-  out.masks = [1, 2, 3].map(s => (decodeURIComponent(L.style.getPropertyValue('--dz' + s)).match(/<rect/g) || []).length);
+  // …and a light with edges is a vector: every SVG light in the layer
+  out.vectors = L.querySelectorAll('svg.dkPx[viewBox]').length;
   for (const a of anims) a.play();
   await __idle();
-  out.soft = [...out.soft];
+  out.gone = !document.getElementById('dkFly') || !!document.querySelector('#dkFly .dkFCard.dz4');
+  out.blocky = [...out.blocky];
   return out;
 });
-ck('theCardLeavesInHardPixels', hp5.translucent === 0 && hp5.notTop === 0 && !hp5.soft.length && !hp5.haloSoft &&
-  hp5.looks.join(' ') === 'fly:0.. rim1:0+. rim2:0.+ q1:1.. q2:2.. q3:3.. end:3..' && String(hp5.masks) === '12,8,4',
-  `${hp5.looks.join(' ')} (dither step, rim frames); cells kept ${hp5.masks}/16; translucent ${hp5.translucent}, light over the card ${hp5.notTop}, ` +
-  `soft ${hp5.soft.join('|') || 'none'}, inspector halo ${hp5.haloSoft ? 'SOFT' : 'pixels'}`);
+// the glaze: nothing before the rim, then rising smoothly to whole through the burst
+const bn = hp5.burn, rose = bn.every((v, i) => v >= 0 && (!i || v >= bn[i - 1] - 0.001)) && bn[0] === 0 && bn[1] === 0 && bn[3] > 0 && bn[3] < bn[5] && bn[5] >= 0.95;
+ck('theCardLeavesInLightAtTheScreensResolution', hp5.translucent === 0 && hp5.notTop === 0 && !hp5.blocky.length && !hp5.haloBlocky &&
+  hp5.looks.map(l => l.replace(/:\d/, ':')).join(' ') === 'fly:.. rim1:+. rim2:.+ q1:.. q2:.. q3:.. end:..' && rose && hp5.vectors >= 3 && hp5.gone,
+  `${hp5.looks.join(' ')} (rim frames); glaze ${bn.join(' → ')}; ${hp5.vectors} vector lights; translucent ${hp5.translucent}, light over the card ${hp5.notTop}, ` +
+  `blocky ${hp5.blocky.join('|') || 'none'}, inspector halo ${hp5.haloBlocky ? 'BLOCKY' : 'smooth'}, gone at the end ${hp5.gone}`);
 
 /* ================= 6. A REFUSAL KEEPS THE CARD ================= */
 const rf = await p.evaluate(async () => {
@@ -1143,18 +1155,43 @@ const strip = await p.evaluate(async () => {
     // a new chip pops in (scale .5 → 1): measured once it has landed, or the
     // shrunken badge reads as inside the strip whatever the clip does
     await new Promise(r => setTimeout(r, 320));
-    const pics = ids.map(id => DeckUI._chips[id].cv.toDataURL());
+    const pics = ids.map(id => { const ch = DeckUI._chips[id]; return ch.svg ? ch.svg.outerHTML : ch.cv ? ch.cv.toDataURL() : ''; });
     out.distinct = new Set(pics).size;
-    // THE GLYPH IS CRISP (operator ruling): each chip's canvas is laid at the
-    // device's own pixel ratio, never upscaled in blocks, and its edges are
-    // antialiased lines (some pixels part-covered), not hard pixel cells
-    out.crisp = ids.map(id => {
-      const cv = DeckUI._chips[id].cv, css = cv.getBoundingClientRect().width || parseFloat(getComputedStyle(cv).width) || 0;
-      const a = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
-      let part = 0, on = 0;
-      for (let i = 3; i < a.length; i += 4) if (a[i]) { on++; if (a[i] < 250) part++; }
-      return { id, w: cv.width, css: +css.toFixed(2), dpr: devicePixelRatio, ir: getComputedStyle(cv).imageRendering, soft: on ? part / on : 0 };
+    /* THE CHIP IS A VECTOR (operator ruling, 2026-10-27: "the counters in
+       the header are pixelated too… higher pixel count" — it replaced "THE
+       GLYPH IS CRISP", which pinned a canvas sized at the device's pixel
+       ratio when the chip was made, and so resampled at any other ratio: a
+       browser zoom, a scaled display). Each chip is an inline SVG — a
+       viewBox, no bitmap anywhere in it (no canvas, no <image>), no
+       pixelated or crisp-edges rendering — and it holds up at any scale:
+       rasterized at 1x and at 3x it covers nine times the pixels (it is
+       drawn again at the new size, never blown up) with antialiased edges
+       at both. */
+    const raster = (svg, k) => new Promise(res => {
+      const src = svg.cloneNode(true), P = DeckUI.CHIP_PX;
+      src.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      src.setAttribute('width', P * k); src.setAttribute('height', P * k);
+      const im = new Image();
+      im.onload = () => {
+        const c = document.createElement('canvas'); c.width = c.height = P * k;
+        const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+        const a = g.getImageData(0, 0, c.width, c.height).data;
+        let part = 0, on = 0;
+        for (let i = 3; i < a.length; i += 4) if (a[i]) { on++; if (a[i] < 250) part++; }
+        res({ on, soft: on ? part / on : 0 });
+      };
+      im.onerror = () => res({ on: 0, soft: 0 });
+      im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(src));
     });
+    out.crisp = [];
+    for (const id of ids) {
+      const ch = DeckUI._chips[id], el = ch.el, svg = el.querySelector('svg');
+      if (!svg) { out.crisp.push({ id, svg: false, bitmap: !!el.querySelector('canvas, img') }); continue; }
+      const cs = getComputedStyle(svg), css = svg.getBoundingClientRect().width || parseFloat(cs.width) || 0;
+      const r1 = await raster(svg, 1), r3 = await raster(svg, 3);
+      out.crisp.push({ id, svg: true, vb: !!svg.getAttribute('viewBox'), bitmap: !!el.querySelector('canvas, img, image'),
+        css: +css.toFixed(2), sr: cs.shapeRendering, ir: cs.imageRendering, scale: r1.on ? r3.on / r1.on : 0, soft1: r1.soft, soft3: r3.soft });
+    }
     out.lum = lum(DeckUI._chips.quick_hands.lab);
     DeckUI._fitChips();
     const badge = document.querySelector('#dkTimers .dkMoreB');
@@ -1174,8 +1211,10 @@ ck('twoRunningCardsFitAPhonesRow', strip.two.length === 2 && !strip.twoK && stri
   `390px, "6/13", "Day 12": ${strip.two.join(' + ') || 'none'} shown${strip.twoK ? ' and a +k' : ''}`);
 ck('andTheBadgeIsWhole', strip.badge && strip.badgeWhole, `badge ${strip.badge ? (strip.badgeWhole ? 'whole' : 'CLIPPED') : 'missing'}`);
 ck('eachRunningCardWearsItsOwnGlyph', strip.distinct === 4, `${strip.distinct} different chips for 4 cards (3 bronze buffs, 1 stone)`);
-ck('theChipIsDrawnAtTheDevicesOwnResolution', strip.crisp.length === 4 && strip.crisp.every(c => c.css >= 16 && c.w >= Math.floor(c.css * c.dpr) && !/pixelated|crisp-edges/.test(c.ir) && c.soft > 0.05),
-  strip.crisp.map(c => `${c.id} ${c.w}px for ${c.css} css at dpr ${c.dpr} (${c.ir}, ${(100 * c.soft).toFixed(0)}% soft edge)`).join('; '));
+ck('theChipIsAVectorDrawnAtTheScreensOwnResolution', strip.crisp.length === 4 && strip.crisp.every(c => c.svg && c.vb && !c.bitmap && c.css >= 16 &&
+    !/pixelated|crisp-edges/.test(c.ir) && !/crispedges|optimizespeed/i.test(c.sr) && c.scale > 7 && c.scale < 11 && c.soft1 > 0.05 && c.soft3 > 0.05),
+  strip.crisp.map(c => c.svg ? `${c.id}: svg ${c.css} css${c.bitmap ? ' WITH A BITMAP' : ''} (${c.sr}, ${c.ir}), 3x covers ${c.scale.toFixed(1)}x the pixels of 1x, ${(100 * c.soft1).toFixed(0)}% / ${(100 * c.soft3).toFixed(0)}% soft edge`
+    : `${c.id}: no svg${c.bitmap ? ' (a bitmap)' : ''}`).join('; '));
 ck('theTimeReadsAsBrightAsTheHud', strip.lum >= 0.5, `label luminance ${strip.lum.toFixed(2)} on a stone card`);
 ck('aChipTapIsOneShortLine', /^Harvest Festival — \d+ days? left\. [^.]+\.$/.test(strip.tap) && strip.tap.length <= 100 && !strip.fullText,
   `"${strip.tap}"`);
