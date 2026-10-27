@@ -92,16 +92,131 @@
   /* ---------------- the shared pictures ---------------- */
   const TX = {
     tc() { return Bld.tcOf('P'); },
-    // open ground at the hall's door on `side` (+1 east, -1 west), in tiles —
-    // a picture's footing, never a rule: ground nobody is standing on, so the
-    // pile is not laid across a villager's feet; falls back to any open ground
-    // there, then to the doorstep itself
-    spot(tc, side) {
-      const sz = Bld.size(tc), fx = side > 0 ? tc.x + sz : tc.x - 1, fy = tc.y + sz;
+    /* THE SAFE VIEW (the playtest, on a 390 px phone: the pile was pushed
+       east off villagers' feet and landed at the screen's right edge, its
+       "+200 wood" cut to "+200 woo"): the part of the screen nothing of the
+       HUD lies over, in WORLD px — below the top bar, the minimap and the
+       toast column (two toasts' room under where it starts), above the
+       bottom bar, `pad` tiles (1) in from either side. A moment a card plays
+       for the player lands INSIDE it, and every number it raises is fitted
+       to it (label). Read off the live DOM, so a folded minimap or an open
+       panel is measured as it stands; a bar that is not shown measures
+       nothing, and with no DOM at all it is the bare view. */
+    TOAST_ROOM: 64,
+    safeRect(pad) {
+      const TL = TLs(), z = R.cam.z || 1;
+      pad = pad == null ? 1 : pad;
+      const de = document.documentElement;
+      const vw = (de && de.clientWidth) || R.viewW(), vh = (de && de.clientHeight) || R.viewH();
+      const box = id => {
+        const el = document.getElementById(id);
+        if (!el || getComputedStyle(el).display === 'none') return null;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 ? r : null;
+      };
+      let top = R.topReserve || 0, bot = vh - (R.bottomReserve || 0);
+      const tb = box('topbar'), mm = box('miniWrap'), bb = box('bottombar'), ts = box('toasts');
+      if (tb && tb.height > 0) top = Math.max(top, tb.bottom);
+      if (mm && mm.height > 0) top = Math.max(top, mm.bottom);
+      if (ts) top = Math.max(top, ts.top + this.TOAST_ROOM);
+      if (bb && bb.height > 0) bot = Math.min(bot, bb.top);
+      const r = { x0: R.cam.x + TL * pad, x1: R.cam.x + vw / z - TL * pad,
+        y0: R.cam.y + top / z + TL * 0.25, y1: R.cam.y + bot / z - TL * 0.25, top, bot, vw, vh };
+      if (r.x1 - r.x0 < TL || r.y1 - r.y0 < TL) {   // a degenerate band: the bare view
+        r.x0 = R.cam.x; r.x1 = R.cam.x + vw / z; r.y0 = R.cam.y; r.y1 = R.cam.y + vh / z;
+      }
+      return r;
+    },
+    // is a world-px box wholly inside the safe view?
+    inSafe(x0, y0, x1, y1, sr) {
+      sr = sr || this.safeRect();
+      return x0 >= sr.x0 && x1 <= sr.x1 && y0 >= sr.y0 && y1 <= sr.y1;
+    },
+    // bring a world point (tiles) to the middle of the safe view
+    bring(tx, ty) {
+      const sr = this.safeRect(0), z = R.cam.z || 1, TL = TLs();
+      R.cam.x = tx * TL - sr.vw / z / 2;
+      R.cam.y = ty * TL - (sr.top + (sr.bot - sr.top) / 2) / z;
+      if (R.clampCam) R.clampCam();
+    },
+    /* WHERE THE GOODS COME DOWN: open ground at the hall's door, a picture's
+       footing and never a rule — ground nobody is standing on (the pile is
+       not laid across a villager's feet), at or below the door's row (a pile
+       behind the hall would be drawn over its roof), whose pile, the count
+       over it and the light's foot all lie INSIDE the safe view — nearest
+       the door on the hall's open `side` (+1 east, -1 west). Relaxed a step
+       at a time: anyone's feet, then any row beside the hall, then any open
+       ground in view; and when nothing near the hall is in view, `look`
+       brings the door to the middle of the safe view first (the play's own
+       landing: the world is still) and asks again. Ties fall in scan order,
+       so a play seats the same way twice. */
+    spot(tc, side, look) {
+      const sz = Bld.size(tc), fx = side > 0 ? tc.x + sz : tc.x - 1, fy = tc.y + sz, TL = TLs();
       const open = (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, 'P') && !Bld.at(x, y);
       const clear = (x, y) => open(x, y) && !S.units.some(u => Math.abs(u.x - x - 0.5) < 0.9 && Math.abs(u.y - y - 0.6) < 0.8);
-      const s = MapGen.findNear(fx, fy, 4, clear) || MapGen.findNear(fx, fy, 3, open);
+      const find = () => {
+        const sr = this.safeRect();
+        // the pile spans a tile either side, its count rises ~2 tiles over it
+        const seen = (x, y) => this.inSafe((x - 0.5) * TL, (y + 0.7 - 2.1) * TL, (x + 1.5) * TL, (y + 1.1) * TL, sr);
+        const pick = (r, ok) => {
+          let best = null, bd = Infinity;
+          for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+            const x = fx + dx, y = fy + dy, d = Math.hypot(dx, dy);
+            if (d < bd && ok(x, y)) { best = { x, y }; bd = d; }
+          }
+          return best;
+        };
+        return pick(5, (x, y) => y >= fy && clear(x, y) && seen(x, y)) ||
+          pick(5, (x, y) => y >= fy && open(x, y) && seen(x, y)) ||
+          pick(8, (x, y) => y >= tc.y && clear(x, y) && seen(x, y)) ||
+          pick(10, (x, y) => open(x, y) && seen(x, y));
+      };
+      let s = find();
+      if (!s && look && typeof R !== 'undefined' && R.cam) { this.bring(fx + 0.5, fy); s = find(); }
+      if (!s) s = MapGen.findNear(fx, fy, 4, clear) || MapGen.findNear(fx, fy, 3, open);
       return s ? { x: s.x + 0.5, y: s.y + 0.7 } : { x: Bld.cx(tc) + side * (sz / 2 + 0.5), y: tc.y + sz + 0.5 };
+    },
+    /* A NUMBER OVER THE GOODS, in the world's own float type (bold 9 px)
+       with a one-pixel dark outline round every letter — legible on the
+       meadow and on a straw roof alike (gold on thatch read as nothing) —
+       laid in hard alpha steps. `lines` stack downward from (x, y), the
+       block's middle at x; the block is FITTED to the safe view once
+       (s.lab, so it never creeps) and rises `rise` world px as it goes.
+       `avoid` (a world-px rect: the hall's roof) pushes the block sideways
+       clear of it, toward the side with room. `k` 0..1 is how far it has
+       risen (RISE world px at the most — the fit allows for all of it). */
+    RISE: 14,
+    label(g, s, key, x, y, lines, a, k, avoid) {
+      if (!(a > 0)) return;
+      const LH = 11, F = 'bold 9px sans-serif';
+      g.save();
+      g.font = F;
+      const w = Math.max(...lines.map(l => g.measureText(l.t).width)) + 4, h = lines.length * LH + 2;
+      const L = s.lab || (s.lab = {});
+      let b = L[key];
+      if (!b) {
+        const sr = this.safeRect(0.25), R0 = this.RISE;
+        // fitted to the safe view; the block's whole climb is what must clear the roof
+        const fit = (cx, ty) => ({ x: Math.max(sr.x0 + w / 2, Math.min(sr.x1 - w / 2, cx)), y: Math.max(sr.y0 + R0, Math.min(sr.y1 - h, ty)) });
+        const hits = q => avoid && q.x + w / 2 > avoid.x0 && q.x - w / 2 < avoid.x1 && q.y + h > avoid.y0 && q.y - R0 < avoid.y1;
+        const near = x >= (avoid ? (avoid.x0 + avoid.x1) / 2 : x);
+        const tries = [fit(x, y - h)];
+        if (avoid) tries.push(fit(near ? avoid.x1 + w / 2 + 2 : avoid.x0 - w / 2 - 2, y - h),
+          fit(near ? avoid.x0 - w / 2 - 2 : avoid.x1 + w / 2 + 2, y - h), fit(x, avoid.y1 + R0 + 2));
+        b = L[key] = tries.find(q => !hits(q)) || tries[0];
+      }
+      g.textAlign = 'center'; g.textBaseline = 'top';
+      g.globalAlpha = stp(a, 3);
+      const INK = '#0d0b08';
+      lines.forEach((l, i) => {
+        if (l.at != null && s.t < l.at) return;    // a line not yet due holds its place in the block
+        const tx = Math.round(b.x), ty = Math.round(b.y - this.RISE * cl(k || 0) + i * LH);
+        g.fillStyle = INK;
+        for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) g.fillText(l.t, tx + ox, ty + oy);
+        g.fillStyle = l.col || '#ffd45e';
+        g.fillText(l.t, tx, ty);
+      });
+      g.restore();
     },
     /* THE CARD'S OWN LIGHT where its goods come down: a shaft of the tier's
        light slammed onto the spot and narrowing away, and a ring of dots
@@ -251,6 +366,16 @@
       gb.globalCompositeOperation = 'source-over';
       for (const [dx, dy] of [[-PX, 0], [PX, 0], [0, -PX], [0, PX]]) g.drawImage(K.b, 0, 0, w, h, x + dx, y + dy, w, h);
       g.drawImage(K.a, 0, 0, w, h, x, y, w, h);
+    },
+    /* the count over a pile: `lines` from `t0` seconds into the show for
+       `dur`, rising as it goes, out in hard steps over its last quarter —
+       fitted to the safe view and clear of the hall's roof */
+    count(g, s, sp, lines, t0, dur) {
+      const tl = s.t - t0;
+      if (tl < 0 || tl > dur) return;
+      const q = tl / dur, TL = TLs(), tc = Bld.get(s.tc);
+      const roof = tc ? (() => { const a = this.art(tc); return { x0: a.rc.x + a.box.l * a.rc.w, x1: a.rc.x + a.box.r * a.rc.w, y0: a.rc.y + a.box.t * a.rc.h, y1: a.foot }; })() : null;
+      this.label(g, s, 'count', sp.x * TL, (sp.y - 0.95) * TL, lines, q < 0.75 ? 1 : (1 - q) / 0.25, eo(Math.min(1, q * 1.6)), roof);
     },
     // a live show of this card that is still running fresh (its render clock), or null
     fresh(id) { return (typeof R !== 'undefined' && R.cardShows) ? R.cardShows.find(x => x.id === id && x.fresh) || null : null; },
@@ -538,7 +663,7 @@
       S.res[res] += n;
       Deck.say(icon + ' ' + line + ': +' + n + ' ' + res + '.');
       const tc = TX.tc();
-      if (tc) TX.show(id, { tc: tc.id, side: TX.openSide(tc), floated: false });
+      if (tc) { const side = TX.openSide(tc); TX.show(id, { tc: tc.id, side, at: TX.spot(tc, side, true) }); }
       TX.sound(show.sound);
       return { ok: true, fly: { [res]: n } };
     },
@@ -549,7 +674,7 @@
     /* STONE — Fallen Timber: +200 wood. Six logs tumble down end over end
        onto a pile at the hall's door, leaves drifting after them. */
     fallen_timber: goods('fallen_timber', 'wood', 200, '🪵', 'Fallen timber carried home', {
-      ms: 1800, layer: 'world', sound: 'cardWood',
+      ms: 3000, layer: 'world', sound: 'cardWood',
       LOGS: [[-16, 0], [0, 0], [16, 0], [-8, -6], [8, -6], [0, -12]],
       draw(g, s, p) {
         const tc = Bld.get(s.tc); if (!tc) return;
@@ -570,7 +695,7 @@
           g.fillRect(sn(x), sn(y), PX, PX);
         }
         g.globalAlpha = 1;
-        if (!s.floated && s.t > 0.05 + 5 * 0.11 + 0.4) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+200 wood', 1.9); }
+        TX.count(g, s, sp, [{ t: '+200 wood' }], 0.05 + 5 * 0.11 + 0.4, 1.9);
       },
     }),
 
@@ -581,7 +706,7 @@
        deposit is built of), so what lands at the door reads at a glance as
        the stuff a quarry cuts, never as a stray crag. */
     loose_stone: goods('loose_stone', 'stone', 150, '🪨', 'Loose stone hauled in', {
-      ms: 1800, layer: 'world', sound: 'cardStone',
+      ms: 3000, layer: 'world', sound: 'cardStone',
       // dx, dy (world px off the pile's foot), radius, the stamp's variant
       BLOCKS: [[-12, 0, 7, 1], [2, 0, 8, 4], [14, 0, 6, 2], [-5, -7, 6, 6], [8, -8, 5, 3]],
       draw(g, s, p) {
@@ -637,7 +762,7 @@
         // the biggest block lands with a jolt
         if (!s.jolt && s.t > 0.05 + 0.16 + 0.26) { s.jolt = true; if (R.shakeAt) R.shakeAt(1.6, 0.16); }
         g.globalAlpha = 1;
-        if (!s.floated && s.t > 0.05 + 4 * 0.16 + 0.36) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+150 stone', 1.9); }
+        TX.count(g, s, sp, [{ t: '+150 stone' }], 0.05 + 4 * 0.16 + 0.36, 1.9);
       },
     }),
 
@@ -645,7 +770,7 @@
        to rest — and catches the light: a hard four-point glint and a ring of
        gold dots running out from it. */
     gold_nugget: goods('gold_nugget', 'gold', 60, '🪙', 'A gold nugget turned up', {
-      ms: 1700, layer: 'world', sound: 'cardGold',
+      ms: 2800, layer: 'world', sound: 'cardGold',
       draw(g, s, p) {
         const tc = Bld.get(s.tc); if (!tc) return;
         const TL = TLs(), sp = s.at || (s.at = TX.spot(tc, s.side)), px = sp.x * TL, py = sp.y * TL;
@@ -680,7 +805,7 @@
           g.fillRect(sn(px + (hs(k, 9) - 0.5) * 16), sn(py - 6 - tl * 30), PX, PX);
         }
         g.globalAlpha = 1;
-        if (!s.floated && t > land + 0.5) { s.floated = true; TX.float(sp.x, sp.y - 0.9, '+60 gold', 1.9); }
+        TX.count(g, s, sp, [{ t: '+60 gold' }], land + 0.5, 1.9);
       },
     }),
 
@@ -830,7 +955,10 @@
             TX.inked(g, x0 - 4, rowY - 46, CART_BACK + CART_FRONT + 8, 50, gg => caravan(gg, cx, rowY, dir, rolled, aboard));
             g.globalAlpha = 1;
           }
-          if (!s.floated && t > U[PILE.length - 1] + hop + 0.2) { s.floated = true; TX.float(sp.x, sp.y - 1.1, '+250 food  +250 wood  +100 gold', 2.2); }
+          // the three counts STACK, each in as its goods come down, fitted
+          // to the safe view and never over the hall's straw roof
+          TX.count(g, s, sp, [{ t: '+250 food', at: U[2] + hop }, { t: '+250 wood', at: U[4] + hop }, { t: '+100 gold', at: U[5] + hop }],
+            U[0] + hop, s.ms / 1000 - U[0] - hop);
         },
       },
     },

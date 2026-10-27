@@ -1108,6 +1108,87 @@ await p.evaluate(({ TOWN }) => {
   ck('aChargeKeptUnderAnotherKeyIsStillSeen', r.pact && r.pactGone, `the pact's bands under 'pact' wear the card's chip ${r.pact}; gone with the charge ${r.pactGone}`);
 }
 
+// ---------------- 11. THE GOODS COME DOWN WHERE THEY CAN BE SEEN ----------------
+/* The playtest's phone (390×844, the operator's own path): the pile spot
+   was pushed EAST off the villagers' feet and the camera only re-centred
+   when the hall itself was off screen, so with the hall on the right of the
+   view the logs, the stone and the nugget landed at the screen's edge and
+   their counts were cut ("+200 woo", "+100 gol"); the caravan's one-line
+   count lay across the hall's straw roof. The rule: the pile, the count
+   over it and every number the goods raise lie INSIDE THE SAFE VIEW — below
+   the top bar, the minimap and the toast column, above the bottom bar, a
+   tile in from either side, measured here off the DOM on our own — and the
+   caravan's three counts stack, none of them over the hall's roof. */
+{
+  const r = await p.evaluate(() => {
+    const out = { cards: {} }, TL = CFG.TILE, TX = Deck._townTX;
+    const vw0 = innerWidth;
+    for (const id of ['fallen_timber', 'loose_stone', 'gold_nugget', 'trade_caravan']) {
+      __tw.fresh('town-safe-' + id);
+      Screens.show('playing'); S.paused = true;
+      const tc = __tw.flat();
+      R.cam.z = 1.7;
+      // the hall on the RIGHT of the view, wholly on screen: the old spot
+      // pushed east of the door ran off the edge
+      const z = R.cam.z, de = document.documentElement;
+      R.cam.x = (tc.x + 3.4) * TL - de.clientWidth / z;
+      R.cam.y = Bld.cy(tc) * TL - de.clientHeight / z / 2;
+      // villagers on the doorstep, as at a run's start
+      for (let k = 0; k < 4; k++) __tw.unit('villager', 'P', tc.x + 0.5 + k, tc.y + 2.6);
+      for (let i = 0; i < 3; i++) R.draw(0);
+      // the safe view, read off the page by the test itself
+      const rect = id => { const el = document.getElementById(id); if (!el || getComputedStyle(el).display === 'none') return null; const q = el.getBoundingClientRect(); return q.width > 0 ? q : null; };
+      let top = 0, bot = de.clientHeight;
+      const tb = rect('topbar'), mm = rect('miniWrap'), bb = rect('bottombar'), ts = rect('toasts');
+      if (tb && tb.height) top = Math.max(top, tb.bottom);
+      if (mm && mm.height) top = Math.max(top, mm.bottom);
+      if (ts) top = Math.max(top, ts.top + 60);
+      if (bb && bb.height) bot = Math.min(bot, bb.top);
+      const toScr = (wx, wy) => ({ x: (wx - R.cam.x) * R.cam.z, y: (wy - R.cam.y) * R.cam.z });
+      const inside = (wx0, wy0, wx1, wy1) => {
+        const a = toScr(wx0, wy0), b2 = toScr(wx1, wy1);
+        return a.x >= TL * z - 1 && b2.x <= de.clientWidth - TL * z + 1 && a.y >= top - 1 && b2.y <= bot + 1;
+      };
+      const before = R.floats.length;
+      const rr = Deck.play(id);
+      const sh = R.cardShows.find(s => s.id === id);
+      // run the show to its end, keeping every number it raised
+      const nums = [];
+      for (let k = 0; k <= 60 && sh && R.cardShows.indexOf(sh) >= 0; k++) {
+        R.draw(sh.ms / 1000 / 60);
+        if (sh.lab) for (const key in sh.lab) nums.push(Object.assign({ key }, sh.lab[key]));
+      }
+      const fl = R.floats.slice(before).filter(f => /^\+\d/.test(f.txt));
+      const sp = sh && sh.at;
+      const g = R.cv.getContext('2d'); g.font = 'bold 9px sans-serif';
+      const W = t => g.measureText(t).width + 4;
+      const want = { fallen_timber: ['+200 wood'], loose_stone: ['+150 stone'], gold_nugget: ['+60 gold'], trade_caravan: ['+250 food', '+250 wood', '+100 gold'] }[id];
+      const wmax = Math.max(...want.map(W)), lines = want.length;
+      const a = TX.art(tc), roof = { x0: a.rc.x + a.box.l * a.rc.w, x1: a.rc.x + a.box.r * a.rc.w, y0: a.rc.y + a.box.t * a.rc.h, y1: a.foot };
+      const last = nums[nums.length - 1];
+      out.cards[id] = {
+        ok: rr.ok,
+        pile: !!sp && inside((sp.x - 1) * TL, (sp.y - 1.6) * TL, (sp.x + 1) * TL, (sp.y + 0.3) * TL),
+        nearHall: !!sp && Math.hypot(sp.x - Bld.cx(tc), sp.y - Bld.cy(tc)) <= 5,
+        oldFloats: fl.map(f => f.txt),
+        counted: !!last && fl.length === 0,
+        countIn: !!last && inside(last.x - wmax / 2, last.y - TX.RISE, last.x + wmax / 2, last.y + lines * 11),
+        clearOfRoof: !!last && (last.x + wmax / 2 <= roof.x0 || last.x - wmax / 2 >= roof.x1 || last.y + lines * 11 <= roof.y0 || last.y - TX.RISE >= roof.y1),
+        at: sp && [+sp.x.toFixed(2), +sp.y.toFixed(2)], tc: [tc.x, tc.y],
+      };
+    }
+    S.units = []; R.cardShows = [];
+    return out;
+  });
+  const C = r.cards;
+  ck('theGoodsComeDownInsideTheSafeView', Object.values(C).every(c => c.ok && c.pile && c.nearHall),
+    Object.entries(C).map(([id, c]) => `${id} at ${JSON.stringify(c.at)} (hall ${c.tc}) inside ${c.pile}`).join('; '));
+  ck('andEveryCountIsFittedToIt', Object.values(C).every(c => c.counted && c.countIn),
+    Object.entries(C).map(([id, c]) => `${id} ${c.countIn}${c.oldFloats.length ? ' (a bare float: ' + c.oldFloats.join('|') + ')' : ''}`).join('; '));
+  ck('theCaravansCountsStackClearOfTheRoof', C.trade_caravan.counted && C.trade_caravan.clearOfRoof && Object.values(C).every(c => c.clearOfRoof),
+    Object.entries(C).map(([id, c]) => `${id} clear ${c.clearOfRoof}`).join('; '));
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 if (errs.length) console.log('PAGE ERRORS:', errs.slice(0, 4));
 await b.close();
