@@ -559,13 +559,17 @@ const Deck = {
     el.style.setProperty('--tg', t.glow);
     const art = opts.unknown ? '' : `background-image:url("${this.artUrl(id)}"), ${this.glyphUrl(c.cat, 'rgba(255,255,255,0.18)')}, radial-gradient(ellipse at 50% 38%, ${t.col}66, #120d08 78%);`;
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // an ATTRIBUTE needs its quotes escaped too: every url("…") here carries
+    // double quotes, and one left bare ends style="…" at the url's first quote —
+    // the art, its placeholder and the pennant's glyph all silently dropped
+    const attr = s => esc(s).replace(/"/g, '&quot;');
     const chips = [this.TARGET_LABEL[c.target]];
     if (c.days) chips.push(c.days + (c.days === 1 ? ' day' : ' days'));
     el.innerHTML =
       `<div class="cc-in">` +
         `<div class="cc-f">` +
-          `<i class="cc-art" style="${art}"></i><i class="cc-fr"></i>` +
-          `<i class="cc-ico" style="background-image:${this.glyphUrl(c.cat, '#f3e2b4')}"></i>` +
+          `<i class="cc-art" style="${attr(art)}"></i><i class="cc-fr"></i>` +
+          `<i class="cc-ico" style="${attr('background-image:' + this.glyphUrl(c.cat, '#f3e2b4'))}"></i>` +
           `<span class="cc-nm">${opts.unknown ? '?' : esc(c.name)}</span>` +
           (c.tier === 'enlight' && !opts.unknown ? '<i class="cc-foil"></i>' : '') +
         `</div>` +
