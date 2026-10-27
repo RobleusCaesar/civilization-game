@@ -40,6 +40,14 @@
                        that carry neither art, name nor text anywhere in the
                        page, completion per tier, tap to enlarge, tap to flip
                        both ways, 44px targets, a grid that fits the phone
+     THE PAINTED VALLEY the backdrop (dawn for a win, dusk for a loss; wide
+                       on a landscape window, tall on a phone) and the carved
+                       pedestal land by filename from assets/endgame/reward/,
+                       drawn at a whole scale; a 404 leaves the procedural
+                       land and drum, the card still on its slit
+     THE GAP           the card's frame stands clear of the banner at
+                       390x844, 430x932, 768x1024, 1440x900 and 1920x1080,
+                       and nothing overlaps either
      THE FIT           the reward screen fits a 390x844 phone and a
                        1280x800 window without scrolling
 
@@ -706,6 +714,102 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     a.marked === 'barbarian_pact' && a.fresh === 'imperial' && a.titleNew === 0,
     `tab ${a.tab}; tag "${a.tag}"; in view ${a.inView} (scrolled ${a.scrolled}px); NEW on ${a.marked || 'nothing'}; tab marked ${a.fresh || 'none'}; from the title ${a.titleNew} new`);
   await p.close();
+}
+
+/* ================= 5c. THE PAINTED VALLEY =================
+   The backdrop and the plinth are supplied art that lands by FILENAME
+   (assets/endgame/reward/{win|loss}-{wide|tall}.webp, a .jpg behind each,
+   pedestal.png) — a landscape window takes the wide valley and a phone the
+   tall one — and a picture that is not there leaves the procedural painting
+   standing, the card still on its slit and nothing thrown. */
+{
+  const want = { 'win-wide': 0, 'loss-wide': 0, 'win-tall': 0, 'loss-tall': 0 };
+  const landed = [], wrong = [];
+  for (const [w, h, dpr, orient] of [[1440, 900, 1, 'wide'], [390, 844, 3, 'tall']]) {
+    const p = await page({ w, h, dpr, reduce: true });
+    await p.evaluate(SETUP);
+    // a page this young is still probing the late art tier; a real run's end never meets that queue
+    await p.waitForFunction(() => Assets.allArtReady && Assets.allArtReady(), null, { timeout: 60000 }).catch(() => {});
+    for (const win of [true, false]) {
+      const r = await p.evaluate(async (win) => {
+        CFG.CARDS.ON = true;
+        __fresh();
+        window.__run({ seed: 'ds-art-' + win, win, cards: [['iron', 'swift_raiders']] });
+        const root = document.getElementById('cardEnd');
+        for (let i = 0; i < 300 && !(root.classList.contains('ceArtBg') && root.querySelector('.cePlinth.ceArt')); i++) await new Promise(r => setTimeout(r, 50));
+        const name = root.dataset.bg, art = DeckScreens._art[name] || {}, ped = DeckScreens._art.pedestal || {};
+        const cv = root.querySelector('.ceBgArt'), img = art.img;
+        const k = img ? cv.width / img.naturalWidth : 0;
+        const u = parseFloat(root.style.getPropertyValue('--u'));
+        const face = root.querySelector('.ceMove .ccard'), plinth = root.querySelector('.cePlinth');
+        return { name, url: art.url || '', ped: ped.url || '', shown: getComputedStyle(cv).display !== 'none' && root.classList.contains('ceArtBg'),
+          k, whole: k === Math.round(k) && cv.height === img.naturalHeight * k,
+          pedArt: plinth.classList.contains('ceArt') && plinth.width === DeckScreens.PLINTH.w && plinth.height === DeckScreens.PLINTH.h,
+          foot: +(face.getBoundingClientRect().bottom - (plinth.getBoundingClientRect().top + DeckScreens.PLINTH.ty * u)).toFixed(2) };
+      }, win);
+      const exp = (win ? 'win' : 'loss') + '-' + orient;
+      if (r.name === exp && r.shown && /assets\/endgame\/reward\/(win|loss)-(wide|tall)\.webp\?v=\d+$/.test(r.url) && r.url.includes(exp + '.webp') &&
+          /assets\/endgame\/reward\/pedestal\.png\?v=\d+$/.test(r.ped) && r.pedArt && r.whole && Math.abs(r.foot) <= 1) { want[exp]++; landed.push(`${exp}@${w} k${r.k}`); }
+      else wrong.push(`${w}x${h} ${win ? 'win' : 'loss'}: ${JSON.stringify(r)}`);
+    }
+    await p.close();
+  }
+  ck('theRewardArtLandsByFilename', wrong.length === 0 && Object.values(want).every(n => n === 1),
+    wrong.join(' | ') || landed.join(', ') + '; the pedestal on its slit');
+
+  // a 404: the picture never lands, the procedural land and drum stay, and the card still stands on the slit
+  const p = await page({ w: 1440, h: 900, dpr: 1, reduce: true });
+  await p.evaluate(SETUP);
+  const f = await p.evaluate(async () => {
+    CFG.CARDS.ON = true;
+    __fresh();
+    DeckScreens.ART_DIR = 'assets/endgame/no-such-folder/';
+    DeckScreens._art = {};
+    window.__run({ seed: 'ds-art-404', win: true, cards: [['iron', 'swift_raiders']] });
+    // a 404 is asked twice, 1.5s apart, before the painting is kept for the session
+    for (let i = 0; i < 200 && Object.values(DeckScreens._art).some(e => e.ok === null); i++) await new Promise(r => setTimeout(r, 50));
+    const root = document.getElementById('cardEnd'), cv = root.querySelector('.ceBgArt'), bg = root.querySelector('.ceBg');
+    const plinth = root.querySelector('.cePlinth'), face = root.querySelector('.ceMove .ccard');
+    const u = parseFloat(root.style.getPropertyValue('--u'));
+    return { settled: Object.values(DeckScreens._art).map(e => e.ok), art: root.classList.contains('ceArtBg'), shown: getComputedStyle(cv).display,
+      bg: [bg.width, bg.height], pedArt: plinth.classList.contains('ceArt'), plinth: [plinth.width, plinth.height],
+      foot: +(face.getBoundingClientRect().bottom - (plinth.getBoundingClientRect().top + DeckScreens.PLINTH.ty * u)).toFixed(2),
+      claim: !!root.querySelector('[data-act="claim"]') };
+  });
+  await p.close();
+  ck('andAMissingPictureLeavesThePaintedLand', f.settled.length === 2 && f.settled.every(x => x === false) && !f.art && f.shown === 'none' &&
+    f.bg[0] >= 60 && f.bg[0] !== 300 && !f.pedArt && f.plinth[0] === 240 && Math.abs(f.foot) <= 1 && f.claim,
+    `asked ${f.settled.length} pictures (${f.settled}), art shown ${f.art}/${f.shown}, procedural land ${f.bg.join('x')}, drum ${f.plinth.join('x')} (art ${f.pedArt}), foot ${f.foot}px off the slit`);
+}
+
+/* ================= 5d. THE TITLE NEVER CROWDS THE CARD =================
+   The card's frame stands clear of the banner — a real gap, not a touch —
+   at every size the game is played at, and nothing on the screen overlaps
+   the banner or the card. */
+{
+  const bad = [], seen = [];
+  for (const [w, h, dpr, min] of [[390, 844, 3, 14], [430, 932, 3, 14], [768, 1024, 2, 14], [1440, 900, 1, 28], [1920, 1080, 1, 28]]) {
+    const p = await page({ w, h, dpr, reduce: true });
+    await p.evaluate(SETUP);
+    for (const win of [true, false]) {
+      const r = await p.evaluate((win) => {
+        CFG.CARDS.ON = true;
+        __fresh();
+        window.__run({ seed: 'ds-gap-' + win, win, cards: [['imperial', 'golden_age']] });
+        const root = document.getElementById('cardEnd'), sc = root.querySelector('.ceScroll');
+        const R = el => el.getBoundingClientRect();
+        const rib = R(root.querySelector('.ceRib')), card = R(root.querySelector('.ceMove .ccard')), eye = R(root.querySelector('.ceEye'));
+        const hit = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        const others = [...root.querySelectorAll('.cePlate, .ceScore, .cePlayed, .ceTile, .ceBtns, .ceDeck')].filter(el => el.getClientRects().length);
+        const over = others.filter(el => hit(R(el), rib) || hit(R(el), card)).map(el => el.className);
+        return { gap: Math.round(card.top - rib.bottom), eyeGap: Math.round(rib.top - eye.bottom), over, scroll: sc.scrollHeight - sc.clientHeight };
+      }, win);
+      seen.push(`${w}x${h} ${r.gap}px`);
+      if (r.gap < min || r.eyeGap < -1 || r.over.length || r.scroll > 1) bad.push(`${w}x${h} ${win ? 'win' : 'loss'}: ${JSON.stringify(r)}`);
+    }
+    await p.close();
+  }
+  ck('theTitleNeverCrowdsTheCard', bad.length === 0, bad.join(' | ') || [...new Set(seen)].join(', ') + ' between banner and card; nothing overlaps either, nothing scrolls');
 }
 
 /* ================= 6. THE FIT ================= */
