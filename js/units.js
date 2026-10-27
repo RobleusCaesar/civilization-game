@@ -577,8 +577,9 @@ const Units = {
       o.task = { type: 'move', x: o.siegePost.x, y: o.siegePost.y, guard: true };
       this.setPath(o, o.siegePost.x, o.siegePost.y);
     }
-    // a card's war-wolf trots home to the hall after every fight (js/deckfx-army.js)
-    else if (o.warWolf && window.Deck && Deck.packHome) Deck.packHome(o);
+    // a card's war-wolf trots home to the hall after every fight, and a
+    // ghost of the Ancestors' Host back to its post (js/deckfx-army.js)
+    else if ((o.warWolf || (o.spectral && o.den && !o.strat)) && window.Deck && Deck.packHome) Deck.packHome(o);
   },
   // toggle the stance; turning it on pulls a strayed unit back to its perimeter
   setDefend(u, on) {
@@ -1520,6 +1521,9 @@ const Units = {
         if (this.followPath(u, dt)) {
           u.task = null; u.anchor = { x: u.x, y: u.y };
           if (t.guard) u.guardPost = null;   // back at the post — forget it (a fresh fight stamps a new one)
+          // a ghost the player walked somewhere keeps THAT ground now (its post,
+          // js/deckfx-army.js hostSense) — a walk home is the post already
+          if (u.spectral && u.den && !t.home && !t.guard) u.den = { x: u.x | 0, y: u.y | 0 };
         }
       } else if (t.type === 'muster') {
         /* A CARD'S MUSTER (js/deckfx.js Deck.summon): a unit a card brings out
@@ -2689,7 +2693,7 @@ const Units = {
       u.tUnit = attacker.id;   // barbarians hit back no matter whom they came for
       // a card's war-wolf struck fights it out where it stands — never on the
       // home-ground leash of a mark it chose itself (js/deckfx-army.js packLeash)
-      if (u.warWolf) { u.packMark = false; u.packFrom = null; }
+      if (u.warWolf || u.spectral) { u.packMark = false; u.packFrom = null; }
     }
   },
 

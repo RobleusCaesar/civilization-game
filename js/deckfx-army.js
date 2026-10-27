@@ -66,8 +66,10 @@ Object.assign(Deck, {
      one; leash: where a chase is let go; pace: how often an idle wolf shifts
      about its place, so a guard-pack looks like one. */
   PACK: { hp: 70, atk: 10, speed: 3.4, home: 10, sense: 7, leash: 13, pace: [4, 9] },
-  // the middle of home ground: the hall, or (with no hall) the wolf's own place
+  // the middle of home ground: the hall, or (with no hall) the wolf's own
+  // place — and for a ghost of the host, ALWAYS its own post (hostSense)
   packCentre(u) {
+    if (u.spectral && u.den) return { x: u.den.x + 0.5, y: u.den.y + 0.5 };
     const tc = Bld.tcOf(u.owner);
     if (tc) return { x: Bld.cx(tc), y: Bld.cy(tc) };
     const d = u.den || { x: u.x | 0, y: u.y | 0 };
@@ -106,6 +108,37 @@ Object.assign(Deck, {
     const back = (u.x | 0) !== d.x || (u.y | 0) !== d.y;
     const tx = back ? d.x : d.x + dx, ty = back ? d.y : d.y + dy;
     if (Path.passable(tx, ty, 'P') && !Bld.at(tx, ty)) { u.task = { type: 'move', x: tx, y: ty, home: true }; if (!Units.setPath(u, tx, ty)) u.task = null; }
+  },
+  /* THE HOST KEEPS ITS GROUND (playtest g3: "it drifted south-west and let
+     the raiders live"). A ghost of the Ancestors' Host was an ordinary
+     soldier the moment its rising was done: it chased whatever came near,
+     re-anchored wherever each chase ended, and a minute later the host
+     stood in a field four screens off while a band burned the farms. Now
+     each ghost has a POST (u.den — the place on the fan it rose on) and
+     keeps the ground round it the way the war-wolves keep the hall's: any
+     foe within PACK.home of the post and its own PACK.sense it goes for, a
+     runner it chose is let go at PACK.leash from the post (packLeash, the
+     pack's own rule through packCentre), and every fight ends with the
+     ghost walking back to its post (Units.resolveAfterFight → packHome).
+     The PLAYER moves the post: a ghost walked somewhere keeps THAT ground
+     from then on (units.js, a walk's arrival), an ordered attack runs to the
+     kill and then goes back to the post, and a stance or doctrine the player
+     sets (Defend, Strike, Chaos, Siege) is the player's and takes over
+     (false: the ordinary soldier's rules). Asked by Combat.acquire. */
+  hostSense(u) {
+    if (u.defend || u.strat) return false;
+    const P = this.PACK, t = u.task;
+    if (t && t.type === 'muster') return true;   // still holding its rank in the rising
+    if (t && t.type === 'move' && !t.home) return true;   // a walk the player ordered, carried out
+    if (t && t.type !== 'move') return false;
+    const h = this.packCentre(u);
+    const e = Combat.nearestUnit(u.x, u.y, P.sense,
+      o => Combat.hostileUnits(u, o) && !Units.isPassive(o) && Combat.canEngage(u, o) &&
+        Math.hypot(o.x - h.x, o.y - h.y) <= P.home);
+    if (e) { u.tUnit = e.id; u.task = null; u.path = null; u.packMark = true; u.packFrom = null; return true; }
+    if (t || Units.moving(u)) return true;
+    if (Math.hypot(u.x - h.x, u.y - h.y) > 1.2) this.packHome(u);
+    return true;
   },
   /* asked by Combat.update while a war-wolf holds a mark. Only a chase the
      PACK began itself (u.packMark, stamped in packSense) answers to home
@@ -733,61 +766,82 @@ Object.assign(Deck, {
       g.drawImage(this.flashOf(img, col, a), x, y, D, D);
     } finally { g.imageSmoothingEnabled = sm; }
   },
-  /* THE HOST'S GHOST IS COLD FIRST. The first cut drew the champion's own
-     frame at a low alpha with a pale tint ADDED over it, which read as a
-     faded colour soldier — a red tunic under a blue wash — and put the
-     Enlightenment card's people below the Imperial ones in the eye. A ghost
-     is now its OWN picture, composed once per frame (cached, like R.tintOf):
-     a one-world-pixel rim of pale cyan round the outline, the body in the
-     cold of the dead with the frame's own light and shade carried into it
-     (the 'luminosity' blend: the sprite's values, the ghost's hue — so the
-     helm, the shield and the stride all still read), lifted toward the pale.
-     Drawn at a hard-stepped alpha that shimmers slowly, with its light
-     ADDED; while its beat in the rising has not come it is still under the
-     ground, and as it comes it climbs up out of it, the feet line cutting it
-     off below. A frame whose blend the browser does not know keeps a faint
-     trace of the sprite's detail instead — never its colours. */
-  GHOST: '#bfe2ff', GHOST_RIM: '#7fe8ff', GHOST_BODY: '#7fa8d8',
+  /* THE HOST'S GHOST: AN INKED OUTLINE ROUND A DITHERED BODY (judge g3:
+     "ghost soup" — fifteen translucent figures drawn with their light ADDED
+     ran together into one pale blob, and the ranks could not be counted).
+     A ghost is its OWN picture, composed once per frame and dither step
+     (cached, like R.tintOf; no pixel is read, so a tainted file:// strip
+     composes the same): an OPAQUE line of the night's ink one world pixel
+     round the outline — what keeps every ghost a figure of its own in a
+     crowd — and inside it the body in the cold of the dead, the frame's own
+     light and shade carried into it (the 'luminosity' blend: the helm, the
+     shield and the stride all still read), lifted toward the pale, and
+     DITHERED: one world pixel in four knocked out in an ordered pattern, so
+     the ground shows through a spirit in hard pixels, never through an
+     alpha. The knocked-out cell walks round its 2x2 every half second —
+     the ghost's shimmer, a step at a time. Fading, it comes apart a step at
+     a time too (`lv`: 1 half the body and half the line, 2 a quarter), never
+     a crossfade. Drawn source-over, nothing added: light added over the
+     meadow is the lime this file never draws. A frame whose blend the
+     browser does not know keeps a faint trace of the sprite's detail
+     instead — never its colours. */
+  GHOST: '#bfe2ff', GHOST_INK: '#141e36', GHOST_BODY: '#7fa8d8',
   _ghostC: new WeakMap(),
-  ghostOf(img, D) {
+  // which world-pixel cells of a ghost stand (i, j: the cell; ph 0..3)
+  ghostKeep(lv, ph, i, j, ink) {
+    const b = (i & 1) + 2 * (j & 1);
+    if (ink) return lv === 0 ? true : lv === 1 ? ((i + j) & 1) === 0 : b === (ph & 3);
+    return lv === 0 ? b !== (ph & 3) : lv === 1 ? ((i + j + ph) & 1) === 0 : b === (ph & 3);
+  },
+  ghostOf(img, D, lv, ph) {
+    lv = lv || 0; ph = ph || 0;
     const r = Math.max(1, Math.round(img.width / Math.max(1, D)));   // one world pixel, in the frame's own pixels
     let e = this._ghostC.get(img);
     if (!e) { e = {}; this._ghostC.set(img, e); }
-    if (e[r]) return e[r];
-    const c = document.createElement('canvas'); c.width = img.width + 2 * r; c.height = img.height + 2 * r;
-    const q = c.getContext('2d');
-    q.imageSmoothingEnabled = false;
-    const rim = R.tintOf(img, this.GHOST_RIM);
-    for (const [dx, dy] of [[-r, 0], [r, 0], [0, -r], [0, r]]) q.drawImage(rim, r + dx, r + dy);
-    q.drawImage(R.tintOf(img, this.GHOST_BODY), r, r);
-    q.globalCompositeOperation = 'luminosity';
-    if (q.globalCompositeOperation === 'luminosity') q.drawImage(img, r, r);
-    else { q.globalCompositeOperation = 'source-atop'; q.globalAlpha = 0.2; q.drawImage(img, r, r); q.globalAlpha = 1; }
-    q.globalCompositeOperation = 'screen'; q.globalAlpha = 0.5;
-    q.drawImage(R.tintOf(img, this.GHOST), r, r);
-    q.globalAlpha = 1; q.globalCompositeOperation = 'source-over';
+    const key = r + ':' + lv + ':' + (ph & 3);
+    if (e[key]) return e[key];
+    const W = img.width + 2 * r, H = img.height + 2 * r;
+    const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; const q = c.getContext('2d'); q.imageSmoothingEnabled = false; return [c, q]; };
+    const cut = (q, ink) => {
+      q.globalCompositeOperation = 'destination-out'; q.globalAlpha = 1; q.fillStyle = '#000';
+      for (let j = 0; j * r < H; j++) for (let i = 0; i * r < W; i++) if (!this.ghostKeep(lv, ph, i, j, ink)) q.fillRect(i * r, j * r, r, r);
+      q.globalCompositeOperation = 'source-over';
+    };
+    // the body, cold, its own shading kept, dithered
+    const [b, bq] = mk();
+    bq.drawImage(R.tintOf(img, this.GHOST_BODY), r, r);
+    bq.globalCompositeOperation = 'luminosity';
+    if (bq.globalCompositeOperation === 'luminosity') bq.drawImage(img, r, r);
+    else { bq.globalCompositeOperation = 'source-atop'; bq.globalAlpha = 0.2; bq.drawImage(img, r, r); bq.globalAlpha = 1; }
+    bq.globalCompositeOperation = 'screen'; bq.globalAlpha = 0.5;
+    bq.drawImage(R.tintOf(img, this.GHOST), r, r);
+    bq.globalAlpha = 1;
+    cut(bq, false);
+    // the ink: the silhouette grown a world pixel, its own inside taken out
+    const [c, q] = mk();
+    const ink = R.tintOf(img, this.GHOST_INK);
+    for (const [dx, dy] of [[-r, 0], [r, 0], [0, -r], [0, r]]) q.drawImage(ink, r + dx, r + dy);
+    q.globalCompositeOperation = 'destination-out'; q.drawImage(img, r, r); q.globalCompositeOperation = 'source-over';
+    if (lv) cut(q, true);
+    q.drawImage(b, 0, 0);
     c._r = r;
-    return (e[r] = c);
+    return (e[key] = c);
   },
+  // the shimmer's step for a ghost now (0..3), its own phase by its id
+  ghostPhase(u) { return ((performance.now() / 500 + u.id * 0.37) | 0) & 3; },
   drawGhost(g, u, img, x, y, D) {
     const q = this.riseOf(u);
     if (q <= 0) return;
-    const now = performance.now() / 1000, ph = now * 1.6 + u.id * 0.77;
+    const now = performance.now() / 1000;
     const left = this.hostLeft();
     const flick = left < 0.6 && ((now * 7 + u.id) % 1) < 0.18;   // the last of its days: it gutters
-    const step = flick ? 0 : 1 + Math.min(2, (((Math.sin(ph) + 1) / 2) * 3) | 0);
-    const a = [1 / 3, 2 / 3, 3 / 4, 5 / 6][step];
-    const lift = this.ghostLift(u, D, q, ph);
-    const comp = this.ghostOf(img, D), rw = comp._r * D / img.width;
+    const lift = this.ghostLift(u, D, q);
+    const comp = this.ghostOf(img, D, flick ? 1 : 0, this.ghostPhase(u)), rw = comp._r * D / img.width;
     g.save();
     try {
       if (q < 1) { g.beginPath(); g.rect(x - D, y - D, D * 3, D * 2); g.clip(); }
-      g.globalAlpha = a;
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
       g.drawImage(comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw);
-      // its own light: a spirit glows a little, more as the shimmer swells
-      g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = flick ? 1 / 6 : step / 12;
-      g.drawImage(R.tintOf(img, this.GHOST), x, y + lift, D, D);
     } finally { g.restore(); }
   },
   // how far below its standing place a ghost is drawn: still climbing out
@@ -796,23 +850,18 @@ Object.assign(Deck, {
     if (q < 1) return Math.round((1 - q) * D * 0.85 / 2) * 2;
     return Math.round(Math.sin((ph != null ? ph : performance.now() / 1000 * 1.6 + u.id * 0.77) * 0.5));
   },
-  /* THE GHOST'S OWN LIGHT, laid over the host's darkened sky: the sky layer
-     is drawn after the world, so its dark would dim the very ghosts it is
-     there to set off — the show adds their cold picture back over it, light
-     added, on exactly the frame the unit pass drew (the climb cut at the
-     feet line included). */
+  /* THE GHOST STANDS OUT OF THE DARK, laid over the host's darkened sky:
+     the sky layer is drawn after the world, so its dark would dim the very
+     ghosts it is there to set off — the show lays their picture back over
+     it, on exactly the frame the unit pass drew (the climb cut at the feet
+     line included). */
   ghostGlow(g, u, a) {
     const q = this.riseOf(u);
     if (q <= 0 || a <= 0.02) return;
     const TL = CFG.TILE, img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-    const x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D), lift = this.ghostLift(u, D, q);
-    const comp = this.ghostOf(img, D), rw = comp._r * D / img.width;
-    g.save();
-    try {
-      if (q < 1) { g.beginPath(); g.rect(x - D, y - D, D * 3, D * 2); g.clip(); }
-      g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.round(a * 6) / 6;   // in hard steps, as every light here
-      g.drawImage(comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw);
-    } finally { g.restore(); }
+    // the very picture the unit pass drew, laid again over the dark —
+    // opaque, never added (drawGhost)
+    this.drawGhost(g, u, img, u.x * TL - D / 2, R.frameTop(u.y, B, D), D);
   },
   // how far a ghost has climbed out of the ground (1: risen, or never rising)
   RISE_S: 0.9,
@@ -1803,7 +1852,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (R.startle) R.startle(r.x, r.y, 18);
         }
         const rise = {};
-        r.units.forEach((u, i) => { rise[u.id] = r.at[i]; });
+        // each ghost's POST is the place it rose on (hostSense)
+        r.units.forEach((u, i) => { rise[u.id] = r.at[i]; u.den = { x: u.x | 0, y: u.y | 0 }; });
         const mx = r.units.reduce((a, u) => a + u.x, 0) / r.units.length, my = r.units.reduce((a, u) => a + u.y, 0) / r.units.length;
         show('ancestors_host', { mode: 'rise', x: r.x, y: r.y, mx, my, free: r.free,
           units: r.units.map(u => ({ id: u.id, x: u.x, y: u.y, d: rise[u.id] })), rise });
@@ -1832,8 +1882,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           below += n0 - tr.cargo.length;
         }
         if (gone.length) { show('ancestors_host', { mode: 'fade', ms: 2800, ghosts: gone }); sound('cardFade'); }
-        // a plain note, never the red alarm: nothing went wrong, the days are done
-        G.log('👻 The Ancestors’ Host fades — your ancestors go back to the earth.', false, 6000);
+        // a NOTE, never the red alarm: nothing went wrong, the days are done —
+        // but it is said on the screen (a plain G.log only reaches the event
+        // log, and the host used to go without a word: judge g3)
+        G.log('👻 The Ancestors’ Host fades — your ancestors go back to the earth.', 'note', 6000);
         return below;
       },
       /* THE HOST RISES. The sky goes dark and cold and the northern light
@@ -1875,21 +1927,20 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           A.cinema(g, A.cinemaIn(s.t, 0, s.free || 4.4), Deck.card('ancestors_host').name);
         },
       },
-      /* WHILE THE HOST WALKS: pale motes rising off every ghost and a ring of
-         cold light at its feet — culled to the camera and to what is in
-         sight, since this layer is drawn over the fog */
+      /* WHILE THE HOST WALKS: pale motes rising off every ghost, hard opaque
+         squares — culled to the camera and to what is in sight, since this
+         layer is drawn over the fog. (The ring of cold light that pulsed at
+         every ghost's feet is gone: fifteen of them ADDED over the meadow
+         were a field of mint rings, and half the "ghost soup".) */
       drawLive(g, e) {
         const TL = CFG.TILE, v = R.viewTiles(), t = performance.now() / 1000;
-        g.globalCompositeOperation = 'lighter';
+        g.globalCompositeOperation = 'source-over';
         let n = 0;
         for (const u of S.units) {
           if (!u.spectral || u.owner !== 'P' || n > 40) continue;
           if (!A.near(v, u.x, u.y, 1) || !G.visibleAt(u.x | 0, u.y | 0) || Deck.riseOf(u) < 1) continue;
           n++;
-          const cx = u.x * TL, cy = u.y * TL;
-          A.motes(g, cx, cy - 4, 3, t * 0.7, u.id, '210,232,255', 0.85, 5, TL * 0.9);
-          const pulse = ((t * 0.5 + u.id * 0.13) % 1);
-          A.ring(g, cx, cy + TL * 0.3, TL * (0.28 + pulse * 0.12), 10, '190,220,255', 0.45 * (1 - pulse));
+          A.motes(g, u.x * TL, u.y * TL - 4, 3, t * 0.7, u.id, '210,232,255', 0.85, 5, TL * 0.9);
         }
       },
     },
@@ -1950,7 +2001,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       const u = live(m.id), x = (u ? u.x : m.x) * TL, y = (u ? u.y : m.y) * TL + TL * 0.3;
       if (q < 0) groundCrack(g, x, y, (q + 0.75) / 0.75, m.id);
       else if (q < 1) {
-        if (q < 0.1) burst(g, x, y);
+        if (q < 0.16) burst(g, x, y, q / 0.16);
         A.beam(g, x, y, TL * 1.7 * Math.min(1, q * 3 + 0.25), TL * 0.34, '200,238,255', 0.9 * (1 - q * 0.5));
       } else A.ring(g, x, y, TL * (0.3 + (q - 1) * 1.2), 14, '200,236,255', 0.85 * (1.8 - q) / 0.8);
     }
@@ -2040,19 +2091,32 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     }
     A.ring(g, x, y, TL * (0.75 - 0.5 * c), 10, '200,238,255', 0.67 * c, 0.45);
   }
-  /* …and BREAKS OPEN: one hard white burst as the ghost comes up through
-     its ground — a solid white disc, a four-point star and a spray of
-     sparks flung clear — over a frame or two; nothing soft about it */
-  function burst(g, x, y) {
-    const TL = CFG.TILE;
-    g.fillStyle = 'rgb(255,255,255)';
-    R.pxDisc(g, x, y - TL * 0.25, TL * 0.42, 2, 0.75);
-    A.glint(g, x, y - TL * 0.4, 5, '255,255,255', 1);
-    g.fillStyle = A.rgba('200,240,255', 1);
-    for (let k = 0; k < 10; k++) {
-      const th = k / 10 * 6.283;
-      g.fillRect(A.snap(x + Math.cos(th) * TL * 0.75), A.snap(y - TL * 0.25 + Math.sin(th) * TL * 0.45), 2, 2);
+  /* …and BREAKS OPEN: a small stepped burst as the ghost comes up through
+     its ground (judge g3: "white blobs" — the first cut's solid white disc
+     was a tile wide, fifteen of them in a row) — a white core two world
+     pixels square, a four-point star stepping white → ice → cold blue, and
+     a ring of sparks flung clear, each a hard opaque square; q (0..1 over
+     the burst's few frames) carries the sparks out and the star in */
+  function burst(g, x, y, q) {
+    const TL = CFG.TILE, cy = y - TL * 0.3, op = g.globalCompositeOperation;
+    q = q || 0;
+    g.globalCompositeOperation = 'source-over';
+    const X = A.snap(x), Y = A.snap(cy), arm = q < 0.5 ? 3 : 2;
+    const step = ['#ffffff', '#cdeeff', '#7fb4e8'];
+    for (let k = 0; k < arm; k++) {
+      g.fillStyle = step[k];
+      const o = 4 + k * 2;
+      g.fillRect(X - 1, Y - o, 2, 2); g.fillRect(X - 1, Y + o - 2, 2, 2);
+      g.fillRect(X - o, Y - 1, 2, 2); g.fillRect(X + o - 2, Y - 1, 2, 2);
     }
+    g.fillStyle = '#ffffff'; g.fillRect(X - 2, Y - 2, 4, 4);
+    g.fillStyle = q < 0.5 ? '#cdeeff' : '#7fb4e8';
+    const rr = TL * (0.3 + q * 0.3);
+    for (let k = 0; k < 8; k++) {
+      const th = k / 8 * 6.283 + 0.39;
+      g.fillRect(A.snap(x + Math.cos(th) * rr), A.snap(cy + Math.sin(th) * rr * 0.6), 2, 2);
+    }
+    g.globalCompositeOperation = op;
   }
 
   /* THE RANKS STAMP IN STEP: on each drum of the held beat every man's feet
@@ -2075,28 +2139,28 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   }
 
   /* the host fading: each ghost goes up out of where it stood in its own
-     wisp — its frame drawn taller and thinner as it climbs, in hard alpha
-     steps, shedding motes — under a brief cold light */
+     wisp — its frame drawn taller and thinner as it climbs, coming apart in
+     dither steps, shedding motes — under a brief cold light */
   function drawFade(g, s, p, layer) {
     if (layer === 'sky') { g.save(); A.skyClip(g); A.dim(g, p < 0.15 ? 0.12 : p < 0.7 ? 0.18 : 0.18 * (1 - (p - 0.7) / 0.3), '10,16,34'); g.restore(); return; }
     const TL = CFG.TILE;
     g.save();
     for (const w of s.ghosts) {
-      const q = (s.t - w.d) / 1.8;
-      if (q <= 0 || q >= 1) continue;
-      const a = [0.5, 0.36, 0.22, 0.1][Math.min(3, (q * 4) | 0)];
+      // (one still waiting its turn stands where it stood, whole — the
+      // ghosts left S.units all at once, and a gap here was a blink)
+      const q = Math.max(0, (s.t - w.d) / 1.8);
+      if (q >= 1) continue;
+      // it comes apart in DITHER steps, never an alpha: whole, half, a
+      // quarter, and gone (Deck.ghostOf's levels), the pattern still walking
+      const lv = q < 0.3 ? 0 : q < 0.6 ? 1 : 2;
       const stretch = 1 + q * 0.9, squeeze = 1 - q * 0.55, lift = q * TL * 1.8;
       const cx = w.x * TL, foot = w.top + w.D;
       const dw = w.D * squeeze, dh = w.D * stretch;
       g.globalCompositeOperation = 'source-over';
-      g.globalAlpha = a;
-      // the ghost's own cold picture (Deck.ghostOf), its rim scaled with it
-      const comp = Deck.ghostOf(w.img, w.D), rx = comp._r * dw / w.img.width, ry = comp._r * dh / w.img.height;
-      g.drawImage(comp, cx - dw / 2 - rx, foot - dh - lift - ry, dw + 2 * rx, dh + 2 * ry);
-      g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = a * 1.2;
-      g.drawImage(R.tintOf(w.img, Deck.GHOST), cx - dw / 2, foot - dh - lift, dw, dh);
       g.globalAlpha = 1;
+      // the ghost's own picture (Deck.ghostOf), its ink scaled with it
+      const comp = Deck.ghostOf(w.img, w.D, lv, ((s.t * 2 + w.d * 7) | 0) & 3), rx = comp._r * dw / w.img.width, ry = comp._r * dh / w.img.height;
+      g.drawImage(comp, cx - dw / 2 - rx, foot - dh - lift - ry, dw + 2 * rx, dh + 2 * ry);
       A.motes(g, cx, foot - lift, 4, s.t, w.x * 7 + w.y, '220,238,255', 1 - q, 6, TL * 1.4);
     }
     g.restore();

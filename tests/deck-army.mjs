@@ -1265,16 +1265,17 @@ await p.evaluate(({ ARMY }) => {
     // its people inside the cut (and the camera frames them)
     out.battery = scene('trebuchet_battery', P => { for (let i = 0; i < 6; i++) __ar.unit('defender', 'P', P.x - 1 + i + 0.5, P.y + 3.5); });
     out.iron = scene('iron_legion');
+    out.host = scene('ancestors_host');
     return out;
   });
   const bars = (x, lo, hi) => x.top >= lo && x.top <= hi && x.bot >= lo && x.bot <= hi + 0.06;
-  ck('theHeldBeatIsACinemaCut', ['legion', 'battery'].every(k => bars(r[k].held, 0.1, 0.14) && r[k].held.rule === 0 && r[k].held.shell === 1 && r[k].gone.top === 0 && r[k].gone.bot === 0 &&
+  ck('theHeldBeatIsACinemaCut', ['legion', 'battery', 'host'].every(k => bars(r[k].held, 0.1, 0.14) && r[k].held.rule === 0 && r[k].held.shell === 1 && r[k].gone.top === 0 && r[k].gone.bot === 0 &&
       r[k].half.top > 0 && r[k].half.top < r[k].held.top) && r.iron.held.top === 0 && r.iron.half.top === 0,
-    ['legion', 'battery', 'iron'].map(k => `${k}: half-way ${r[k].half.top}, held ${r[k].held.top}/${r[k].held.bot} of the frame (rule px ${r[k].held.rule}, shell black ${r[k].held.shell}), after ${r[k].gone.top}/${r[k].gone.bot}`).join('; '));
-  ck('andTheCardsNameIsItsTitle', ['legion', 'battery'].every(k => r[k].held.gold >= 150 && r[k].held.capPx >= 9 && r[k].half.gold === 0),
-    ['legion', 'battery'].map(k => `${k}: ${r[k].held.gold} gold px in the lower bar, capitals ${r[k].held.capPx} CSS px tall, mid-slide ${r[k].half.gold}`).join('; '));
-  ck('andNobodyLandsUnderABar', r.legion.under === 0 && r.battery.under === 0 && r.legion.n === 12 && r.battery.n === 3,
-    `under a bar: the legion ${r.legion.under} of ${r.legion.n}, the battery (a garrison at the door) ${r.battery.under} of ${r.battery.n}`);
+    ['legion', 'battery', 'host', 'iron'].map(k => `${k}: half-way ${r[k].half.top}, held ${r[k].held.top}/${r[k].held.bot} of the frame (rule px ${r[k].held.rule}, shell black ${r[k].held.shell}), after ${r[k].gone.top}/${r[k].gone.bot}`).join('; '));
+  ck('andTheCardsNameIsItsTitle', ['legion', 'battery', 'host'].every(k => r[k].held.gold >= 150 && r[k].held.capPx >= 9 && r[k].half.gold === 0),
+    ['legion', 'battery', 'host'].map(k => `${k}: ${r[k].held.gold} gold px in the lower bar, capitals ${r[k].held.capPx} CSS px tall, mid-slide ${r[k].half.gold}`).join('; '));
+  ck('andNobodyLandsUnderABar', r.legion.under === 0 && r.battery.under === 0 && r.host.under === 0 && r.legion.n === 12 && r.battery.n === 3 && r.host.n === 15,
+    `under a bar: the legion ${r.legion.under} of ${r.legion.n}, the battery (a garrison at the door) ${r.battery.under} of ${r.battery.n}, the host ${r.host.under} of ${r.host.n}`);
 }
 
 // ---------------- 6. THE ANCESTORS' HOST ----------------
@@ -1387,6 +1388,104 @@ await p.evaluate(({ ARMY }) => {
   ck('eachGhostIsUnderTheGroundUntilItsBeat', r.show && r.q0[0] === 0 && r.q0[1] === 0 && r.qMid[0] === 0.5 && r.qMid[1] === 0 && r.qEnd[0] === 1 && r.qEnd[1] === 1 &&
     r.drawn[0] === 0 && r.drawn[1] > 300,
     `climbed at the play ${r.q0.join('/')}, mid-beat ${r.qMid.join('/')}, after ${r.qEnd.join('/')}; pixels drawn ${r.drawn.join(' → ')}`);
+}
+{
+  /* THE HOST KEEPS ITS GROUND (playtest g3: "it drifted south-west and let
+     the raiders live"): every ghost has a POST — the place it rose on — and
+     a band that comes into the host's ground is met and killed, after which
+     every ghost is back on its post (the first cut's ghosts stood wherever
+     each fight had ended); the PLAYER moves a post by walking a ghost, and a
+     stance the player sets is the player's. And the ghost is a FIGURE, not
+     a wash: an opaque ink line round a dithered body, every pixel either
+     there or not (judge g3: "ghost soup"); its ground breaks open in a small
+     stepped burst (the first cut's white disc was a tile wide); and when the
+     days are done it is SAID on the screen (the fade used to go without a
+     word — a plain log line never reaches the toasts). */
+  const r = await p.evaluate(() => {
+    const out = {};
+    __ar.fresh('army-host-post'); __ar.flat(); __ar.seed(11);
+    const tc = Bld.tcOf('P'); tc.x = (CFG.W / 2) | 0; tc.y = (CFG.H / 2) | 0; Bld._block = null;
+    const hx = Bld.cx(tc), hy = Bld.cy(tc);
+    const { units: host } = __ar.play('ancestors_host');
+    // THE BURST, on the frame a ghost's ground breaks open: white pixels by
+    // its feet, in world pixels (the sky layer draws through the camera)
+    {
+      const s = R.cardShows.find(x => x.id === 'ancestors_host' && x.mode === 'rise'), m = s.units[0], u = Units.get(m.id);
+      Screens.show('playing'); R.cam.z = 1.7; R.centerOn(u.x, u.y); G.updateVisibility();
+      s.t = m.d + Deck.RISE_S * 0.05;
+      const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height;
+      const g = cv.getContext('2d');
+      Deck.FX.ancestors_host.show.draw.call(Deck.FX.ancestors_host, g, s, s.t / (s.ms / 1000), 0, 'sky');
+      // (the burst's middle is the ghost's own feet line, u.y in world px)
+      const k = R.cam.z * (R.dpr || 1), TL = CFG.TILE, sx = (u.x * TL - R.cam.x) * k, sy = (u.y * TL - R.cam.y) * k, half = TL * 0.45 * k;
+      const d = g.getImageData(Math.round(sx - half), Math.round(sy - half), Math.round(half * 2), Math.round(half * 2)).data;
+      let white = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] === 255 && d[i] >= 245 && d[i + 1] >= 245 && d[i + 2] >= 245) white++;
+      out.burstWhite = Math.round(white / (k * k));
+      R.cardShows = [];
+    }
+    for (const u of host) if (u.task && u.task.type === 'muster') u.task.wait = 0;
+    __ar.sim(0.3);
+    const post = u => ({ x: u.den ? u.den.x + 0.5 : NaN, y: u.den ? u.den.y + 0.5 : NaN });
+    out.posts = host.every(u => u.den && Math.hypot(u.x - post(u).x, u.y - post(u).y) < 1);
+    // where each one stood when the rising was done
+    const was = host.map(u => ({ x: u.x, y: u.y }));
+    // A BAND COMES into the host's ground, seven tiles out past its middle
+    const mx = host.reduce((a, u) => a + u.x, 0) / host.length, my = host.reduce((a, u) => a + u.y, 0) / host.length;
+    let dx = mx - hx, dy = my - hy; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
+    const band = [0, 1, 2, 3].map(k => { const b = __ar.unit('raider', 'R', mx + dx * 7 + (k % 2) * 0.7, my + dy * 7 + (k >> 1) * 0.7, 30); b.hostileTo = 'P'; return b; });
+    __ar.sim(30);
+    out.bandLeft = band.filter(b => Units.get(b.id)).length;
+    __ar.sim(12);
+    const alive = host.filter(u => Units.get(u.id));
+    out.off = alive.map(u => Math.hypot(u.x - (was[host.indexOf(u)].x), u.y - (was[host.indexOf(u)].y)));
+    out.worst = +Math.max(...out.off).toFixed(2);
+    out.fought = host.some(u => u.kills || 0) || out.bandLeft === 0;
+    // THE PLAYER MOVES THE POST: a ghost walked eight tiles off keeps THAT ground
+    const g0 = alive[0], to = { x: (g0.x + dx * 8) | 0, y: (g0.y + dy * 8) | 0 };
+    out.toOk = Path.passable(to.x, to.y, 'P');
+    Units.moveTo(g0, to.x, to.y);
+    __ar.sim(10);
+    out.moved = !!(g0.den && g0.den.x === to.x && g0.den.y === to.y);
+    __ar.sim(6);
+    out.stays = +Math.hypot(g0.x - (to.x + 0.5), g0.y - (to.y + 0.5)).toFixed(2);
+    // …and a stance the player sets is the player's
+    const g1 = alive[1]; Units.setDefend(g1, true);
+    out.stance = !Deck.hostSense || Deck.hostSense(g1) === false;
+    Units.setDefend(g1, false);
+    // THE FIGURE: drawn on a frame whose silhouette is known
+    const img = document.createElement('canvas'); img.width = img.height = 32;
+    img.getContext('2d').fillStyle = '#806040'; img.getContext('2d').fillRect(8, 4, 16, 26);
+    const cv = document.createElement('canvas'); cv.width = cv.height = 48;
+    const g = cv.getContext('2d');
+    Deck.drawGhost(g, g0, img, 8, 8, 32);
+    const d = g.getImageData(0, 0, 48, 48).data, ink = Deck.GHOST_INK;
+    const want = ink ? [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)) : [-1, -1, -1];
+    let soft = 0, inkN = 0, body = 0, lime = 0;
+    for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
+      const i = (y * 48 + x) * 4;
+      if (d[i + 3] > 0 && d[i + 3] < 255) soft++;
+      if (!d[i + 3]) continue;
+      if (d[i] === want[0] && d[i + 1] === want[1] && d[i + 2] === want[2]) inkN++;
+      else if (x >= 16 && x < 32 && y >= 12 && y < 38) body++;
+    }
+    out.figure = { soft, ink: inkN, body: +(body / (16 * 26)).toFixed(2) };
+    // THE FADE IS SAID: the days run out
+    const n0 = document.querySelectorAll('#toasts .toast').length;
+    UI._toastAt = {};
+    Deck.FX.ancestors_host.end();
+    out.toast = [...document.querySelectorAll('#toasts .toast')].slice(n0).some(t => /fades/.test(t.textContent) && !t.classList.contains('warn'));
+    return out;
+  });
+  ck('theHostKeepsItsGround', r.posts && r.bandLeft === 0 && r.worst <= 1.5,
+    `every ghost on its post after the rising ${r.posts}; the band in its ground: ${4 - r.bandLeft} of 4 killed; after the fight the farthest ghost stands ${r.worst} tiles from where it rose`);
+  ck('andThePlayerMovesItsPost', r.toOk && r.moved && r.stays <= 1 && r.stance,
+    `walked eight tiles off: the post went with it ${r.moved}, and it stays there (${r.stays} tiles off the new post); a ghost on Defend is the player's ${r.stance}`);
+  ck('aGhostIsAnInkedFigure', r.figure.soft === 0 && r.figure.ink >= 60 && r.figure.body >= 0.55 && r.figure.body <= 0.9,
+    `${r.figure.soft} half-there pixels; ${r.figure.ink} px of ink round it; its body ${r.figure.body} of the silhouette (dithered, not a wash and not a slab)`);
+  ck('itsGroundBreaksInASmallBurst', r.burstWhite > 0 && r.burstWhite <= 120,
+    `${r.burstWhite} world px of white by its feet on the frame it breaks open`);
+  ck('andTheFadeIsSaid', r.toast, `a note on the screen as the host goes ${r.toast}`);
 }
 
 {
