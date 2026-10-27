@@ -13457,17 +13457,27 @@ const R = {
           g.fillRect(-TL / 2 + 4, -TL / 2 - 2, TL - 8, TL - 4);
         }
         g.restore();
-        // the half-transparent fire wash over the body, and licking tongues
-        const lk = Math.sin(u.animT * 13 + u.id) * 0.5 + 0.5, ph = ((u.animT * 9) | 0) % 2;
-        g.globalAlpha = fade * 0.5;
-        g.fillStyle = F[1]; g.fillRect(cx2 - 8, cy2 - 12 + p * 6, 16, 14);
-        g.globalAlpha = fade * 0.9;
-        const hh = 8 + lk * 5;
-        g.fillStyle = F[1]; g.fillRect(cx2 - 5, cy2 - 4 - hh + p * 5, 4, hh);
-        g.fillStyle = F[2]; g.fillRect(cx2 + 1 - ph, cy2 - 2 - hh * 0.8 + p * 5, 3, hh * 0.8);
-        g.fillStyle = F[3] || '#ffd28a'; g.fillRect(cx2 - 1, cy2 - hh * 0.5 + p * 5, 2, hh * 0.5);
-        if (lk > 0.65) { g.fillStyle = F[2]; g.fillRect(cx2 - 3 + ph * 5, cy2 - hh - 7, 2, 2); }   // sparks
-        g.globalAlpha = 1;
+        // the body ablaze in the burning-town flames themselves (a dragon's
+        // fire line wears them) — the half-transparent wash and tongues of
+        // squares below are only the stand-in while the sprites are missing
+        if (window.Assets && Assets.resolve && Assets.resolve('misc/flameSmall/0')) {
+          const beat = ((u.animT * 10) | 0) + u.id, s1 = Math.round(TL * 0.95), s2 = Math.round(TL * 0.62);
+          g.globalAlpha = fade;
+          Assets.drawSprite(g, 'misc/flameSmall/' + ((beat + 2) % 4), Math.round(cx2 - 7 - s2 / 2), Math.round(cy2 + 5 + p * 5 - s2), { w: s2, h: s2 });
+          Assets.drawSprite(g, 'misc/flameSmall/' + (beat % 4), Math.round(cx2 + 2 - s1 / 2), Math.round(cy2 + 3 + p * 5 - s1), { w: s1, h: s1 });
+          g.globalAlpha = 1;
+        } else {
+          const lk = Math.sin(u.animT * 13 + u.id) * 0.5 + 0.5, ph = ((u.animT * 9) | 0) % 2;
+          g.globalAlpha = fade * 0.5;
+          g.fillStyle = F[1]; g.fillRect(cx2 - 8, cy2 - 12 + p * 6, 16, 14);
+          g.globalAlpha = fade * 0.9;
+          const hh = 8 + lk * 5;
+          g.fillStyle = F[1]; g.fillRect(cx2 - 5, cy2 - 4 - hh + p * 5, 4, hh);
+          g.fillStyle = F[2]; g.fillRect(cx2 + 1 - ph, cy2 - 2 - hh * 0.8 + p * 5, 3, hh * 0.8);
+          g.fillStyle = F[3] || '#ffd28a'; g.fillRect(cx2 - 1, cy2 - hh * 0.5 + p * 5, 2, hh * 0.5);
+          if (lk > 0.65) { g.fillStyle = F[2]; g.fillRect(cx2 - 3 + ph * 5, cy2 - hh - 7, 2, 2); }   // sparks
+          g.globalAlpha = 1;
+        }
       } else {
         // sheet units get the renderer's shadow; the procedural cast has
         // its own baked in and must never receive a second (sheetUnit).

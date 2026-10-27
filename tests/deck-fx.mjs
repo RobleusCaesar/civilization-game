@@ -480,6 +480,8 @@ await p.evaluate(() => {
     const ashAt = [];
     out.t = __fx.fly(t => {
       if (breath == null && D.ev && D.ev.phase === 'burn') { breath = t; out.drawsFlying = draws; out.nearAtBreath = 5000 - near.hp; }
+      // the moment the house catches, and where the fire front stood then
+      if (out.nearCaught == null && near.hp < 5000 && D.ev) out.nearCaught = { front: D.ev.x + D.ev.dir * 2.1, dir: D.ev.dir, phase: D.ev.phase };
       if (!line && D.ev && D.ev.phase === 'leave') line = D.fire.map(f => f.x);
     });
     G.rand = rand; D.fire.push = push;
@@ -511,8 +513,14 @@ await p.evaluate(() => {
   ck('everyEnemyWithinThreeBurnsToAsh', r.victimsGone && r.ash >= 5, `5 of 5 burned (a defender, a villager, a raider, an archer, a catapult), ${r.ash} ash piles`);
   ck('andTheyAreKills', r.kills === 5, `kills +${r.kills}`);
   ck('yourOwnAndTheWildAndTheFarAreSpared', r.spared);
-  ck('buildingsTake1200WithinTwoAndAHalf', JSON.stringify(r.blds) === '[1200,0]' && r.nearAtBreath === 1200,
-    `house at d 2.5: ${r.blds[0]} (as the breath began: ${r.nearAtBreath}); at d 3.5: ${r.blds[1]}`);
+  /* …and a building CATCHES AS THE LINE OF FIRE REACHES IT, never before:
+     the house at the far edge (x 15..16, the line running east) is untouched
+     as the breath begins and takes its 1200 the frame the front reaches its
+     footprint (half a tile of reach) — struck at the first breath, it fell
+     in its own dust while the flame still landed tiles away */
+  ck('buildingsTake1200WithinTwoAndAHalf', JSON.stringify(r.blds) === '[1200,0]' && r.nearAtBreath === 0 &&
+      !!r.nearCaught && r.nearCaught.phase === 'burn' && r.nearCaught.dir > 0 && r.nearCaught.front >= 14.5 && r.nearCaught.front < 14.5 + 0.35,
+    `house at d 2.5: ${r.blds[0]} (as the breath began: ${r.nearAtBreath}; caught with the fire front at x ${r.nearCaught && r.nearCaught.front.toFixed(2)}); at d 3.5: ${r.blds[1]}`);
   ck('theLineOfFireRunsThroughTheGroundChosen', r.lineN > 5 && Math.abs(r.lineMid - 12.5) < 1.2,
     `${r.lineN} fire points centred at x ${r.lineMid && r.lineMid.toFixed(2)} (aimed 12.5)`);
   ck('aCardsDragonIsNeverTheWorldsEvent', r.event, 'dragonSeen, specialDay, avail and done all unmoved');

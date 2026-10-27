@@ -101,6 +101,10 @@ const DeckUI = {
     if (this._shy) this._stand(true);
     if (this._waited) { this._waited = false; this._arrive(); }
     if (this.aim) this._aimPlace();
+    // a card's dragon on the wing borrows the view to take the beast in
+    // (js/deckfx.js, dragonfire.cam — guarded on the method it calls)
+    const DF = Deck.FX && Deck.FX.dragonfire;
+    if (DF && DF.cam) DF.cam(dt);
     if (this._ticks.length) this._tickNumbers();
     if ((this._t -= dt) > 0) return;
     this._t = 0.25;

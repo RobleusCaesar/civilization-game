@@ -466,12 +466,93 @@ Object.assign(Deck.FX, {
       Deck.say('🐉 You called, and the black dragon answered.');
       return { ok: true, x: tgt.x, y: tgt.y, lands: this.FLY_S };
     },
-    // the breath begins: who stands in the fire now burns, what it reaches catches
+    /* the breath begins: who stands in the fire now burns, and what it
+       reaches is marked to catch — each building CATCHES AS THE LINE OF FIRE
+       REACHES IT (burnTick, from G.dragonTick through the strafe), never
+       before: struck at the first breath, a hut two tiles down the line fell
+       in its own dust while the flame was still landing on the far side of
+       the ground chosen, the dragon not yet over it. Who catches is still
+       decided here; only WHEN moves (`ev.catch`, ids, in the save). */
     breathe(ev) {
       const c = ev.card, hit = Deck.blast(c.x, c.y, this.UNIT_R, this.BLD_R);
       ev.victims = hit.units.map(e => e.u.id);
-      for (const { b } of hit.blds) Deck.hitBld(b, this.BLD, this.TC_CAP, 'dragonfire');
+      ev.catch = hit.blds.map(e => e.b.id);
+      this.burnTick(ev);
       if (typeof Sound !== 'undefined') Sound.play('impact');
+    },
+    /* THE VIEW TAKES THE BEAST IN (DeckUI.frame calls this every frame; all
+       of it render state, never in S). The dragon is ~8 tiles wingtip to
+       wingtip, its body hangs ~4 behind its jaws, and it comes in from 13
+       tiles off — and a phone at the play zoom shows about 8 tiles across,
+       so the whole fly-in and the first beat of the breath played OFF the
+       screen and the beast slid in already burning. While the card's dragon
+       is on the wing the view eases OUT (never in) and over just enough to
+       hold the line of fire and the beast above it; once it has gone and its
+       fire has caught, the view eases back to the zoom and the place the
+       player had. A touch or the wheel gives the camera back on the spot,
+       and it is never yanked back after (the tutorial's borrowed zoom keeps
+       the same terms). A view that already holds it all is never touched. */
+    CAM: { w: 12, up: 7.5, down: 2, lead: 2.3, glide: 0.7, hold: 0.7 },
+    _cam: null, _camFor: null,
+    cam(dt) {
+      const ev = S.dragon && S.dragon.ev, Rr = window.R;
+      if (!Rr || !Rr.cam || !Rr.viewW) return;
+      let c = this._cam;
+      if (c && c.map !== S.map) c = this._cam = null;          // a new world: the old framing is nobody's
+      if (!c) {
+        if (!ev || !ev.card || this._camFor === ev) return;
+        this._camFor = ev;
+        if (window.DeckUI && DeckUI._calm && DeckUI._calm()) return;
+        const C = this.CAM, TL = CFG.TILE, z = Rr.cam.z, vw = Rr.viewW(), vh = Rr.viewH();
+        const top = Rr.topReserve || 0, bot = Rr.bottomReserve || 0, band = Math.max(160, vh - top - bot);
+        // the act's box: from the beast's middle at the first breath (7 tiles
+        // back up its flight) to the far end of the line it lays (2.7 on), a
+        // tile spare each side, and from its wings in the sky to the flames
+        const cx = ev.card.x - ev.dir * C.lead, cy = ev.card.y - (C.up - C.down) / 2;
+        const bx0 = cx - C.w / 2, bx1 = cx + C.w / 2, by0 = ev.card.y - C.up, by1 = ev.card.y + C.down;
+        const vx0 = Rr.cam.x / TL, vx1 = (Rr.cam.x + vw / z) / TL, vy0 = (Rr.cam.y + top / z) / TL, vy1 = (Rr.cam.y + (vh - bot) / z) / TL;
+        if (bx0 >= vx0 && bx1 <= vx1 && by0 >= vy0 && by1 <= vy1) return;
+        const tz = Math.max(Rr.minZoom ? Rr.minZoom() : 0.5, Math.min(z, vw / (C.w * TL), band / ((C.up + C.down) * TL)));
+        const home = { x: Rr.cam.x, y: Rr.cam.y, z };
+        const at = zz => ({ x: cx * TL - vw / zz / 2, y: cy * TL - (top + band / 2) / zz, z: zz });
+        c = this._cam = { map: S.map, ev, t: 0, from: home, to: at(tz), home, back: false, gone: 0 };
+        this._camArm();
+      }
+      c.t += dt;
+      if (!c.back) {
+        if (S.dragon && S.dragon.ev === c.ev) c.gone = 0;
+        else if ((c.gone += dt) > this.CAM.hold) { c.back = true; c.t = 0; c.from = { x: Rr.cam.x, y: Rr.cam.y, z: Rr.cam.z }; c.to = c.home; }
+      }
+      const k = Math.min(1, c.t / this.CAM.glide), e = k * k * (3 - 2 * k);
+      Rr.cam.z = c.from.z + (c.to.z - c.from.z) * e;
+      Rr.cam.x = c.from.x + (c.to.x - c.from.x) * e;
+      Rr.cam.y = c.from.y + (c.to.y - c.from.y) * e;
+      if (Rr.clampCam) Rr.clampCam();
+      if (c.back && k >= 1) this._cam = null;
+    },
+    // the player's own hand on the camera ends the borrowing, then and there
+    _camArm() {
+      if (this._camOn) return;
+      this._camOn = true;
+      const give = () => { this._cam = null; };
+      const cv = (window.R && R.cv) || document.getElementById('c');
+      if (cv) { cv.addEventListener('pointerdown', give, { passive: true }); cv.addEventListener('wheel', give, { passive: true }); }
+    },
+    // the fire front (where G.dragonTick lays its flames, `reach` 2.1 ahead of
+    // the strafe) reaching a marked building's footprint sets it alight; the
+    // breath's end catches whatever the line ran past to one side (`all`)
+    REACH: 2.1,
+    burnTick(ev, all) {
+      if (!ev.catch || !ev.catch.length) return;
+      const front = ev.x + ev.dir * this.REACH;
+      ev.catch = ev.catch.filter(id => {
+        const b = Bld.get(id);
+        if (!b || b.hp <= 0 || !Deck.foe(b.owner)) return false;
+        const s = Bld.size(b);
+        if (!all && (ev.dir > 0 ? front < b.x - 0.5 : front > b.x + s + 0.5)) return true;
+        Deck.hitBld(b, this.BLD, this.TC_CAP, 'dragonfire');
+        return false;
+      });
     },
   },
 });

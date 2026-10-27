@@ -170,7 +170,10 @@ Object.assign(R, {
       alt = C.altLow - 0.3 * Math.sin(Math.min(1, ev.t / 0.5) * Math.PI);
       k = 1;
     } else {
-      alt = C.altLow + ev.t * 2.6;
+      // climbing away — a CARD's dragon climbs hard (drawn only: the act's
+      // own clock is untouched), up and out of the view it was framed in
+      // rather than fading over the fields like a ghost
+      alt = C.altLow + ev.t * 2.6 + (ev.card ? ev.t * ev.t * 5 : 0);
       k = Math.max(0, 1 - ev.t / 1.6);
     }
     const sc = C.scaleLow + (C.scaleHigh - C.scaleLow) * Math.min(1, (alt - C.altLow) / (C.altHigh - C.altLow));
@@ -180,11 +183,19 @@ Object.assign(R, {
     const back = (C.reach - C.lead) * TL - C.mouth[0] * C.scaleLow;
     const gx = ev.x * TL + dir * back, gy = ev.y * TL, sx = gx, sy = gy - alt * TL;
     const fade = ev.card && ev.phase === 'leave' ? Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16) : 1;
-    // the roar — once, as it comes into the player's world
-    if (!st.roared && (ev.card || Beasts.inView(ev.x, ev.y - alt, 6))) {
+    /* the roar — once, as it comes into the player's world. A CARD's dragon
+       roars as it ARRIVES: the moment the beast itself is over the edge of
+       the view (the view takes it in — dragonfire.cam), and never later than
+       its last stretch of the fly-in, so the breath never comes unannounced;
+       roared at the play it was a sound from nowhere, a second before anything
+       could be seen. The world's dragon keeps its wide ear. */
+    const arrive = ev.card
+      ? Beasts.inView(sx / TL, sy / TL, 1.5) || ev.phase !== 'fly' || ev.t > 0.85
+      : Beasts.inView(ev.x, ev.y - alt, 6);
+    if (!st.roared && arrive) {
       st.roared = true;
       if (typeof Sound !== 'undefined') Sound.play('roar');
-      if (Beasts.inView(ev.x, ev.y, 4)) this.shakeAt(3, 0.9);
+      if (Beasts.inView(ev.x, ev.y, 4) || (ev.card && Beasts.inView(sx / TL, sy / TL, 0))) this.shakeAt(ev.card ? 5 : 3, 0.9);
     }
     // the pall: the light goes out of the day round it
     if (k > 0.01) {
@@ -223,9 +234,12 @@ Object.assign(R, {
         if (this.startle) this.startle(ev.x, ev.y, 18);
       }
     }
-    // the beast
+    /* the beast — whole, never a half-seen ghost over the fields: a card's
+       dragon comes and goes in HARD alpha steps, and only at the far ends of
+       its flight (in, and once it has climbed most of the way out) */
     g.save();
-    g.globalAlpha = fade * (ev.card && ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1);
+    const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
+    g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
     g.translate(Beasts.snap(sx), Beasts.snap(sy));
     if (dir < 0) g.scale(-1, 1);
     g.drawImage(fr, -fr.width / 2 * sc, -fr.height / 2 * sc, fr.width * sc, fr.height * sc);
@@ -279,8 +293,17 @@ Object.assign(R, {
         g.fillRect(snap(px - s / 2 + j), snap(py - s / 2 - j * 0.4), snap(Math.max(2, s)), snap(Math.max(2, s)));
       }
     }
-    // the blast where it lands: tongues leaping off the ground
-    for (let i = 0; i < 9; i++) {
+    /* the blast where it lands: the burning-town flames themselves (the
+       fire line's own sprites, R.drawFireTongue's set) heaped up where the
+       torrent hits — a fan of squares at this size read as orange bars */
+    if (typeof Assets !== 'undefined' && Assets.resolve && Assets.resolve('misc/flameBig/0')) {
+      const TL = CFG.TILE, beat = (t * 12) | 0;
+      g.globalAlpha = fade;
+      for (const [ox, sz, sd] of [[-0.6, 1.05, 1], [0.55, 1.15, 2], [0, 1.65, 0]]) {
+        const s = Math.round(TL * sz * (0.9 + 0.1 * Math.sin(t * 17 + sd * 2.3)));
+        Assets.drawSprite(g, 'misc/flameBig/' + ((beat + sd) % 4), Math.round(tx + ox * TL - s / 2), Math.round(ty - s * 0.9), { w: s, h: s });
+      }
+    } else for (let i = 0; i < 9; i++) {
       const ox = (i - 4) * 7 + Math.sin(t * 13 + i) * 3, lick = 0.5 + 0.5 * Math.sin(t * 19 + i * 2.1);
       const h = 14 + lick * 22 - Math.abs(i - 4) * 2.5, w = 8;
       g.fillStyle = F[1]; g.fillRect(snap(tx + ox - w / 2), snap(ty - h), w, snap(h));
