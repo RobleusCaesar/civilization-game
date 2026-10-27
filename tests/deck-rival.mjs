@@ -948,7 +948,13 @@ await p.evaluate(() => {
     Deck.play('scouts_fire', { x: 20.5, y: 12.5 }); shows.scouts_fire = tryDraw('scouts_fire');
     Deck.play('pathfinders_map'); shows.pathfinders_map = tryDraw('pathfinders_map');
     Deck.play('spy_hall'); shows.spy_hall = tryDraw('spy_hall');
-    Deck.play('barbarian_pact'); shows.barbarian_pact = tryDraw('barbarian_pact');
+    Deck.play('barbarian_pact');
+    { // the signal fire burns BESIDE the hall, never on its roof (a burning building is the one unprompted alarm)
+      const ps = R.cardShows.find(z => z.id === 'barbarian_pact'), tcP = Bld.tcOf('P');
+      out.fireBeside = !!ps && ps.fx != null && !Bld.covers(tcP, Math.floor(ps.fx), Math.floor(ps.fy)) &&
+        Math.hypot(ps.fx - Bld.cx(tcP), ps.fy - Bld.cy(tcP)) < 2.5;
+    }
+    shows.barbarian_pact = tryDraw('barbarian_pact');
     Deck.pactTurned('wolf', 3); shows.pact_turn = tryDraw('barbarian_pact');
     Deck.play('swallowed_sun'); shows.swallowed_sun = tryDraw('swallowed_sun');
     Deck.play('krakens_call'); shows.krakens_call = tryDraw('krakens_call');
@@ -985,6 +991,7 @@ await p.evaluate(() => {
   ck('nothingIsDrawnWithNoCardInPlay', r.idle === 0, `the card world pass entered ${r.idle} times`);
   ck('everyShowDrawsAtEveryBeat', Object.values(r.shows).every(v => v === 'ok'), JSON.stringify(r.shows));
   ck('everyRunningLookDraws', !r.live && Object.values(r.lives).every(v => v === 'ok'), r.live || JSON.stringify(r.lives));
+  ck('thePactsSignalFireBurnsBesideTheHall', r.fireBeside);
   ck('theKrakenIsDrawnInOnePlace', r.drawKraken.card > 0 && r.drawKraken.world > 0, JSON.stringify(r.drawKraken));
   ck('theShowsAreRenderStateOnly', !r.inS);
 }

@@ -5579,7 +5579,7 @@ const AI = {
     // found its enemy must go and look precisely BECAUSE someone is hitting it
     // — but never at PEACE (tests/calm-peace.mjs): a column with no war to
     // hunt for walked into the player's fields on Calm and started one
-    if (!hushed && !S.peace && !read.anchor && ai.raidCd <= 0 && !raiders.length &&
+    if (!S.peace && !read.anchor && ai.raidCd <= 0 && !hushed && !raiders.length &&
         S.day >= Math.max(20, (m.aiRaidDay || 40) - 8)) {
       const host = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) &&
         !Units.isNaval(u) && u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
