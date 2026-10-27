@@ -52,6 +52,75 @@ const SettingsPage = {
     const v = (typeof CFG !== 'undefined' && CFG.ART_V) ? '?v=' + CFG.ART_V : '';
     return 'assets/ui/settings/' + name + '.png' + v;
   },
+  /* THE CORNER ORNAMENT IS DRAWN, NOT PASTED (the chrome ruling: a frame's
+     ornament is UI chrome, so it is as sharp on a 3x phone as the type beside
+     it — the 128px PixelLab corner it replaces was shown at 58 CSS px on a
+     wide window, 1.36x its pixels at 3x). A gold L over the frame's rim with
+     a pearled groove, a cut gem in a lozenge at the corner, a leaf in the
+     crook and on each arm a LYRE — two scrolls springing from one root and
+     curling away from each other — built as vector paths once, at mount.
+     The light always falls from the top: a corner flipped upside down turns
+     its own gradients over. */
+  _spiral(lead, cx, cy, r0, r1, a0, turns, n) {
+    const pts = lead.slice();
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, a = a0 + turns * 2 * Math.PI * t, r = r0 * Math.pow(r1 / r0, t);
+      pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+    const f = v => +v.toFixed(2);
+    let d = 'M' + f(pts[0][0]) + ',' + f(pts[0][1]);
+    for (let i = 0; i < pts.length - 1; i++) {   // Catmull-Rom, as cubic Béziers
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      d += 'C' + f(p1[0] + (p2[0] - p0[0]) / 6) + ',' + f(p1[1] + (p2[1] - p0[1]) / 6) + ' ' +
+        f(p2[0] - (p3[0] - p1[0]) / 6) + ',' + f(p2[1] - (p3[1] - p1[1]) / 6) + ' ' + f(p2[0]) + ',' + f(p2[1]);
+    }
+    return { d, end: pts[pts.length - 1] };
+  },
+  cornerSvg(id, flipX, flipY) {
+    const gx = flipX ? [64, 0] : [0, 64], gy = flipY ? [64, 0] : [0, 64];
+    const g = id + 'g', gm = id + 'm', gj = id + 'j', ink = '#1d1206';
+    // the top arm's three scrolls; the left arm is the same drawing, transposed
+    const S = [
+      [this._spiral([[39.5, 18.2], [38.6, 20.6]], 33.2, 24.6, 5.2, 1.25, 0.05, 1.62, 30), 2.5],
+      [this._spiral([[40.2, 18.2], [41.4, 20.4]], 45.6, 23.4, 4.0, 1.0, Math.PI - 0.1, -1.55, 24), 2.1],
+      [this._spiral([[52.5, 18.2], [52.9, 19.6]], 51.2, 21.1, 1.9, 0.6, 0, 1.2, 12), 1.4],
+    ];
+    const sx = flipX ? 1 : -1, sy = flipY ? 1 : -1;   // the highlight's nudge, toward the light
+    const wire = ([s, w], grad, tx, ty) =>
+      `<path d="${s.d}" fill="none" stroke="${ink}" stroke-width="${(w + 1.9).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="${s.d}" fill="none" stroke="url(#${grad})" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<path d="${s.d}" fill="none" stroke="#fff5cf" stroke-opacity=".5" stroke-width="${(w * 0.28).toFixed(2)}" stroke-linecap="round" transform="translate(${tx * 0.35} ${ty * 0.35})"/>` +
+      `<circle cx="${s.end[0].toFixed(2)}" cy="${s.end[1].toFixed(2)}" r="${(w * 0.62).toFixed(2)}" fill="url(#${grad})" stroke="${ink}" stroke-width=".8"/>`;
+    // the left arm is drawn in transposed space, so its gradient and nudge are written transposed too
+    const armTop = S.map(x => wire(x, gm, sx, sy)).join(''), armLeft = S.map(x => wire(x, gm + 't', sy, sx)).join('');
+    const mEnd = [flipX ? 24 : 40, flipY ? 24 : 40];
+    const pearls = [29.5, 34.5, 39.5, 44.5, 49].map(v => `<circle cx="${v}" cy="13.75" r="1.05"/><circle cx="13.75" cy="${v}" r="1.05"/>`).join('');
+    return `<svg class="sxCsvg" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs>` +
+      `<linearGradient id="${g}" gradientUnits="userSpaceOnUse" x1="${gx[0]}" y1="${gy[0]}" x2="${gx[1]}" y2="${gy[1]}">` +
+        '<stop offset="0" stop-color="#fff3c2"/><stop offset=".22" stop-color="#f4d175"/><stop offset=".5" stop-color="#d9a744"/><stop offset=".78" stop-color="#a87526"/><stop offset="1" stop-color="#6f4914"/></linearGradient>' +
+      [[gm, gx[0], gy[0], mEnd[0], mEnd[1]], [gm + 't', gy[0], gx[0], mEnd[1], mEnd[0]]].map(([i, a, b, c, d]) =>
+        `<linearGradient id="${i}" gradientUnits="userSpaceOnUse" x1="${a}" y1="${b}" x2="${c}" y2="${d}">` +
+        '<stop offset="0" stop-color="#ffeeb0"/><stop offset=".45" stop-color="#e2b453"/><stop offset="1" stop-color="#9a6a20"/></linearGradient>').join('') +
+      `<linearGradient id="${gj}" x1="0" y1="${flipY ? 1 : 0}" x2="1" y2="${flipY ? 0 : 1}">` +
+        '<stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="#d9ecf7"/><stop offset=".7" stop-color="#8fb3d1"/><stop offset="1" stop-color="#40607f"/></linearGradient>' +
+      '</defs>' +
+      armTop + `<g transform="matrix(0 1 1 0 0 0)">${armLeft}</g>` +
+      `<path d="M17,17C25.5,17.6 30.6,22.4 30.2,30.2C22.4,30.6 17.6,25.5 17,17Z" fill="url(#${g})" stroke="${ink}" stroke-width="1.15" stroke-linejoin="round"/>` +
+      '<path d="M19.2,19.2L28.2,28.2" stroke="#7a5216" stroke-width=".8" stroke-linecap="round"/>' +
+      '<path d="M20.2,18.6C24.6,19.4 27.8,21.8 28.6,25.6" fill="none" stroke="#fff3c6" stroke-opacity=".55" stroke-width=".6" stroke-linecap="round"/>' +
+      `<path d="M9.5,9.5H51L56.5,13.75L51,18H18V51L13.75,56.5L9.5,51Z" fill="url(#${g})" stroke="${ink}" stroke-width="1.2" stroke-linejoin="round"/>` +
+      '<path d="M27,13.75H50.5M13.75,27V50.5" stroke="#6f4914" stroke-width="2.6" stroke-linecap="round"/>' +
+      `<g fill="#ffe9a6">${pearls}</g>` +
+      `<path d="M${flipX ? 16.9 : 10.6},${flipY ? 16.9 : 10.6}H50.6M${flipX ? 16.9 : 10.6},${flipY ? 16.9 : 10.6}V50.6" stroke="#fff6d6" stroke-opacity=".7" stroke-width=".7" stroke-linecap="round"/>` +
+      `<path d="M14,2.8L25.2,14L14,25.2L2.8,14Z" fill="url(#${g})" stroke="${ink}" stroke-width="1.2" stroke-linejoin="round"/>` +
+      '<path d="M14,4.9L23.1,14L14,23.1L4.9,14Z" fill="none" stroke="#fff3c6" stroke-opacity=".5" stroke-width=".7"/>' +
+      `<path d="M14,7.6L20.4,14L14,20.4L7.6,14Z" fill="url(#${gj})" stroke="#24180a" stroke-width=".9" stroke-linejoin="round"/>` +
+      '<path d="M14,7.6V20.4M7.6,14H20.4" stroke="#2f4a66" stroke-opacity=".45" stroke-width=".5"/>' +
+      `<path d="${flipY ? 'M14,19.3L17.1,16.2L14,14L10.9,16.2Z' : 'M14,8.7L17.1,11.8L14,14L10.9,11.8Z'}" fill="#fff" fill-opacity=".75"/>` +
+      `<circle cx="56.5" cy="13.75" r="1.6" fill="url(#${g})" stroke="${ink}" stroke-width=".9"/>` +
+      `<circle cx="13.75" cy="56.5" r="1.6" fill="url(#${g})" stroke="${ink}" stroke-width=".9"/>` +
+      '</svg>';
+  },
   esc(s) { const d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; },
   attr(s) { return this.esc(s).replace(/"/g, '&quot;'); },
 
@@ -107,7 +176,7 @@ const SettingsPage = {
         '<h2>Settings</h2>' +
       '</header>' +
       '<div class="sxFrame">' +
-        ['tl', 'tr', 'bl', 'br'].map(c => `<img class="sxC ${c}" alt="" src="${this.art('corner')}" onerror="this.remove()">`).join('') +
+        [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="sxC ${c}">${this.cornerSvg('sxc' + c, fx, fy)}</i>`).join('') +
         '<nav class="sxNav" role="tablist" aria-label="Settings sections">' +
           this.TABS.map(t =>
             `<button class="sxTab" type="button" role="tab" data-tab="${t.k}" aria-selected="false">` +
@@ -531,7 +600,8 @@ SettingsPage.CSS = `
     linear-gradient(#2a1d11, #1c140b 60%, #160f08);
   box-shadow: inset 0 0 0 2px #0b0704, inset 0 0 0 4px #b98a32, inset 0 0 0 5px #f3d27a, inset 0 0 0 6px #6b4a16, inset 0 0 0 8px #0b0704,
     inset 0 0 26px rgba(0,0,0,0.65), 0 12px 34px rgba(0,0,0,0.65); }
-#scrSetx .sxC { position: absolute; z-index: 3; width: 42px; height: 42px; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.6)); }
+#scrSetx .sxC { position: absolute; z-index: 3; display: block; width: 42px; height: 42px; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.6)); }
+#scrSetx .sxC svg { display: block; width: 100%; height: 100%; overflow: visible; }
 #scrSetx .sxC.tl { left: -6px; top: -6px; }
 #scrSetx .sxC.tr { right: -6px; top: -6px; transform: scaleX(-1); }
 #scrSetx .sxC.bl { left: -6px; bottom: -6px; transform: scaleY(-1); }
@@ -748,6 +818,19 @@ SettingsPage.CSS = `
   #scrSetx .sxNotes { padding: 12px 12px 16px; }
   #scrSetx .sxHero { aspect-ratio: 5 / 2; }
   #scrSetx .sxHeroT b { font-size: 30px; }
+}
+/* a SHORT wide window — a phone on its side (844x390) takes the rail, and the
+   rail's five 56px plaques used to run out through the frame's foot: the
+   header tightens, the plaques shorten, and the rail scrolls before it spills */
+@media (min-width: 720px) and (max-height: 560px) {
+  #scrSetx .sxHead { padding: calc(var(--safe-top) + 8px) 18px 8px; }
+  #scrSetx .sxHead h2 { font-size: 26px; }
+  #scrSetx .sxGear { width: 36px; height: 36px; }
+  #scrSetx .sxFrame { margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+  #scrSetx .sxNav { gap: 6px; padding: 12px 12px; overflow-y: auto; overscroll-behavior: contain; }
+  #scrSetx .sxTab { height: 42px; }
+  #scrSetx .sxTab img { width: 28px; height: 28px; }
+  #scrSetx .sxRailFoot { display: none; }
 }
 /* a tall wide window: the rail never looks cramped beside a short tab */
 @media (min-width: 720px) and (min-height: 620px) { #scrSetx .sxFrame { min-height: 460px; } }
