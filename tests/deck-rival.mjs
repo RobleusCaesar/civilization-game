@@ -368,6 +368,10 @@ await p.evaluate(() => {
     out.two = { pts: e.pts.length, live: S.deck.fx.filter(z => z.id === 'scouts_fire').length, untilGap: +(e.until - Deck.now()).toFixed(6) };
     G.updateVisibility();
     out.bothWatched = G.visibleAt(19, 12) && G.visibleAt(30, 6);
+    // the two watches ride a save, hill by hill
+    const hills0 = JSON.stringify(Deck.timed('scouts_fire').pts);
+    G.loadJSON(G.saveJSON()); G.updateVisibility();
+    out.saved = JSON.stringify(Deck.timed('scouts_fire').pts) === hills0 && G.visibleAt(19, 12) && G.visibleAt(30, 6);
     // the first burns out on its third day, the second watches on
     S.day += 2; S.dayT = 1; Deck.tick(); G.updateVisibility();
     out.firstOut = !G.visibleAt(19, 12) && G.visibleAt(30, 6) && !!Deck.timed('scouts_fire');
@@ -406,6 +410,7 @@ await p.evaluate(() => {
   ck('aSecondFireLightsASecondHill', r.two.pts === 2 && r.two.live === 1 && r.two.untilGap === 3 && r.bothWatched && r.firstOut,
     `${r.two.pts} hills on ${r.two.live} timer, chip ${r.two.untilGap}d; both watched ${r.bothWatched}; the first burns out alone ${r.firstOut}`);
   ck('theWatchEndsTheChartStays', r.over && r.endLog);
+  ck('theWatchesRideTheSave', r.saved);
   ck('aRelicInTheRingIsFound', r.found && r.notFound, `inside found ${r.found}; outside untouched and no draw ${r.notFound}`);
   ck('theFireNeverChartsTheRim', r.rim === 0 && r.naiveRim > 0, `${r.rim} rim tiles (an inB disc would chart ${r.naiveRim})`);
   ck('andTheFireDrawsNoRng', r.rng && r.logged);
@@ -780,6 +785,11 @@ await p.evaluate(() => {
     const rngPlay = S.rngState;
     out.acts = S.deck.kraken.acts.map(a => Units.get(a.id).kind);
     out.risen = Deck.canPlay('krakens_call');
+    // …nor while the world's own kraken is up out of the deep
+    const K0 = S.deck.kraken; S.deck.kraken = null;
+    S.kraken.ev = { phase: 'rise', t: 0.2, x: 20.5, y: 31.5, owner: 'P', boatId: -1 };
+    out.stirring = Deck.canPlay('krakens_call');
+    S.kraken.ev = null; S.deck.kraken = K0;
     // nothing is struck at the play: the deep rises on sim time
     out.untouched = H.every(h => h.hp === 5000) && ships.every(s => s.hp > 0);
     // a save mid-act, with the first ship rising
@@ -831,7 +841,8 @@ await p.evaluate(() => {
     `kills +${r.kills}, razed +${r.razed}; krakenSlain untouched ${r.slain}; the world's kraken and specialDay untouched ${r.world}`);
   ck('theActIsSeenAndRidesTheSave', r.untouched && r.midSave && r.seen && r.cleared && r.used === 1,
     `nothing at the play ${r.untouched}; mid-act save ${r.midSave}; in sight ${r.seen}`);
-  ck('oneKrakenAtATime', !r.risen.ok && /still risen/.test(r.risen.why), r.risen.why);
+  ck('oneKrakenAtATime', !r.risen.ok && /still risen/.test(r.risen.why) && !r.stirring.ok && /already stirring/.test(r.stirring.why),
+    `"${r.risen.why}" / "${r.stirring.why}"`);
   ck('nothingToStrikeHandsItBack', !r.empty.ok && /come up empty/.test(r.empty.why) && r.emptyKept, `${r.empty.ok} "${r.empty.why}"`);
   ck('andTheKrakenDrawsNoRng', r.rng && r.rngAct, `at the play ${r.rng}, through the whole act ${r.rngAct}`);
 }
