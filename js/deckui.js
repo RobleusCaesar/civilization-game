@@ -648,7 +648,7 @@ const DeckUI = {
       if (!A || A.id !== id || performance.now() - A.at > 8000) {
         this._armed = { id, at: performance.now() };
         if (this.lifted) {
-          this.lifted.why.textContent = warn + ' Tap Play again to confirm.';
+          this.lifted.why.textContent = this._sentence(warn) + ' Tap Play again to confirm.';
           const lb = this.lifted.play.querySelector('.blab');
           if (lb) lb.textContent = 'Confirm';
         }
@@ -668,6 +668,15 @@ const DeckUI = {
   _say(msg, kind, ms) {
     if (UI._toastAt) delete UI._toastAt[String(msg).replace(/\d+/g, '#')];
     UI.toast(msg, kind, ms);
+  },
+  /* A WARNING IS A SENTENCE, and the ask comes after it as another one: the
+     truce's own words end in a full stop ("…from today the rival fights
+     back."), and the old join hung " — tap ✓ again to confirm." off it —
+     "fights back. — tap ✓". One full stop, whatever the effect's text ends
+     with, then the ask (playtest g4, nit 8). */
+  _sentence(s) {
+    const t = String(s || '').trim().replace(/[\s—–-]+$/, '');
+    return /[.!?]$/.test(t) ? t : t + '.';
   },
   // a play that cannot happen says why, out loud — on the toast AND on the
   // card's own line — and the button shakes its head
@@ -1168,7 +1177,7 @@ const DeckUI = {
     A.warn = warn;
     if (!warn) A.armed = false;
     A.stat.textContent = !A.ok ? this._badGround(A)
-      : warn ? (A.armed ? warn + ' — tap ✓ again to confirm.' : warn + '.').replace(/\.\./g, '.')
+      : warn ? this._sentence(warn) + (A.armed ? ' Tap ✓ again to confirm.' : '')
       : (A.set ? (c.target === 'explored' ? 'Strike here? Or pick other ground.' : 'Here? Or pick another point.')
                : 'Tap the ground, or drag the mark.');
     A.bar.classList.toggle('bad', !A.ok);

@@ -120,7 +120,7 @@ const fixtures = () => {
   add('__tc', 'iron', 'none', 'Riders ride out of your Town Center.', { at: 'tc', apply: () => { window.__tcDest = Object.assign({}, DeckUI.playing.dest); return { ok: true }; } });
   add('__aim', 'imperial', 'explored', 'A star falls on the chosen ground.', {
     at: 'target', valid: () => true,
-    warn: (t) => (t && window.__warnX === t.x) ? 'This ends the truce' : null,
+    warn: (t) => (t && window.__warnX === t.x) ? (window.__warnTxt || 'This ends the truce') : null,
     apply: (t) => { window.__got.push(t); return { ok: true }; } });
   add('__no', 'bronze', 'none', 'Strangers at the fire.', { at: 'tc', apply: () => ({ ok: false, why: 'No room by the fire' }) });
   add('__cant', 'bronze', 'none', 'Mend everything.', { can: () => ({ ok: false, why: 'Nothing needs mending' }), apply: () => ({ ok: true }) });
@@ -593,6 +593,24 @@ const wr = await p.evaluate(async () => {
 ck('aWarningIsShownBeforeConfirming', a2.aim && /This ends the truce/.test(wr.stat) && wr.warnCls, wr.stat);
 ck('andItAsksTwice', !wr.first.flew && wr.first.kept && /Confirm/.test(wr.first.label) && /again/.test(wr.first.stat) && wr.second && wr.spent === 1,
   JSON.stringify(wr.first));
+/* THE WARNING READS AS SENTENCES (playtest g4, nit 8): the real truce
+   warning ends in a full stop, and the ask used to hang off it as
+   "…fights back. — tap ✓ again to confirm." One stop, then the ask. */
+await aimOpen();
+const wp = await p.evaluate(() => {
+  const A = DeckUI.aim, out = {};
+  window.__warnX = A.x + 0.5; window.__warnTxt = Deck.TRUCE; A.armed = false;
+  DeckUI._aimSync();
+  out.first = document.querySelector('#dkAimBar .dkAStat').textContent;
+  document.querySelector('#dkAimBar .dkAGo').click();
+  out.armed = document.querySelector('#dkAimBar .dkAStat').textContent;
+  out.truce = Deck.TRUCE;
+  window.__warnX = null; window.__warnTxt = null;
+  document.querySelector('#dkAimBar .dkANo').click();
+  return out;
+});
+ck('theWarningReadsAsSentences', wp.first === wp.truce && wp.armed === wp.truce + ' Tap ✓ again to confirm.' &&
+  !/[.!?]\s*[—–]/.test(wp.armed) && !/\.\./.test(wp.armed), `"${wp.armed}"`);
 // unexplored ground is refused, and the aim waits
 await aimOpen();
 const ux = await p.evaluate(async () => {
