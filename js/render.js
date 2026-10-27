@@ -10702,6 +10702,152 @@ const R = {
       g.restore();
     }
   },
+  /* ONE TITLE FOR EVERY CARD'S ACT (tests/deck-rival.mjs, actTitle). The acts
+     used to letter their own titles — a grey sans for the kraken, red for the
+     pact, gold for the sun — each with a ~7px subtitle nobody could read on a
+     phone. Every act's title card now goes through this one door: the menu's
+     own face (Cinzel, the title screen's lettering), gold in two HARD tones
+     (a lit upper half, a deeper lower — a step, never a gradient) inside a
+     hard 1px ink outline and a 1px ink drop, a short gold rule under it, and
+     the subtitle at 14 CSS px (never under 13) in cream on the same ink.
+     Screen space (device px); it sets its own transform. Placed CLEAR of the
+     toasts and the minimap — below the lower of the two, measured off the
+     DOM (re-read at most every 300ms, so a toast landing mid-act moves the
+     title down a step rather than sliding under it); `opt.y` asks for a
+     lower line (an emblem's foot), never a higher one. `a` 0..1 fades it in
+     hard steps. Answers the box it took ({ y0, y1 }, device px). */
+  ACT_TITLE: { hi: '#ffe39a', lo: '#efb43e', ink: '#160e08', sub: '#f3e6c4', max: 30, min: 17, subPx: 14, subMin: 13, side: 16 },
+  _actTop: null,
+  actTitleTop() {
+    const now = performance.now(), c = this._actTop;
+    if (c && now - c.at < 300) return c.y;
+    const dpr = this.dpr || 1, cv = this.cv && this.cv.getBoundingClientRect ? this.cv.getBoundingClientRect() : { top: 0 };
+    let y = ((this.topReserve || 56) + 8);
+    for (const id of ['miniWrap', 'miniToggle', 'toasts']) {
+      const el = document.getElementById(id);
+      if (!el || !el.offsetHeight) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.bottom > y) y = r.bottom;
+    }
+    y = Math.round((y - cv.top + 10) * dpr);
+    this._actTop = { at: now, y };
+    return y;
+  },
+  actTitle(g, title, sub, a, opt) {
+    a = Math.max(0, Math.min(1, Math.round((a || 0) * 4) / 4));
+    if (a <= 0 || !this.cv) return null;
+    opt = opt || {};
+    const A = this.ACT_TITLE, dpr = this.dpr || 1, W = this.cv.width, o = Math.max(1, Math.round(dpr));
+    if (document.fonts && !this._actFont) { this._actFont = 1; try { document.fonts.load('700 20px Cinzel'); } catch (e) {} }
+    const face = w => w + ' ' + '%PX%px Cinzel, "Times New Roman", Georgia, serif';
+    const maxW = W - 2 * A.side * dpr;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalAlpha = a;
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    if ('letterSpacing' in g) g.letterSpacing = '0px';
+    // the title: as big as fits, else on two lines
+    let fs = A.max * dpr, lines = [String(title)];
+    const fit = (txt, px) => { g.font = face(700).replace('%PX%', px); return g.measureText(txt).width; };
+    while (fs > A.min * dpr && fit(lines[0], fs) > maxW) fs -= dpr;
+    if (fit(lines[0], fs) > maxW) {
+      const wds = lines[0].split(' '), mid = Math.ceil(wds.length / 2);
+      lines = [wds.slice(0, mid).join(' '), wds.slice(mid).join(' ')];
+      fs = A.max * dpr;
+      while (fs > A.min * dpr && Math.max(fit(lines[0], fs), fit(lines[1], fs)) > maxW) fs -= dpr;
+    }
+    fs = Math.round(fs);
+    const top = Math.max(this.actTitleTop(), opt.y || 0) + Math.round((1 - a) * 6 * dpr);
+    const lh = Math.round(fs * 1.12), cx = Math.round(W / 2);
+    g.font = face(700).replace('%PX%', fs);
+    let wMax = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const y = top + i * lh, t = lines[i], w = g.measureText(t).width;
+      wMax = Math.max(wMax, w);
+      g.fillStyle = A.ink;
+      g.fillText(t, cx + o, y + 2 * o);                                // the hard drop
+      for (const [dx, dy] of [[-o, -o], [0, -o], [o, -o], [-o, 0], [o, 0], [-o, o], [0, o], [o, o]]) g.fillText(t, cx + dx, y + dy);
+      g.fillStyle = A.lo; g.fillText(t, cx, y);
+      g.save();                                                        // the lit upper half: a hard step
+      g.beginPath(); g.rect(0, y, W, Math.round(fs * 0.5)); g.clip();
+      g.fillStyle = A.hi; g.fillText(t, cx, y);
+      g.restore();
+    }
+    let y = top + lines.length * lh + Math.round(fs * 0.12);
+    // the rule: a short gold bar in its own ink, a diamond at its heart
+    const rw = Math.round(Math.min(wMax * 0.55, W * 0.4) / (2 * o)) * 2 * o, rh = 2 * o;
+    g.fillStyle = A.ink; g.fillRect(cx - rw / 2 - o, y - o, rw + 2 * o, rh + 2 * o);
+    g.fillStyle = A.lo; g.fillRect(cx - rw / 2, y, rw, rh);
+    for (const [col, pad] of [[A.ink, 1], [A.hi, 0]]) {
+      g.fillStyle = col;
+      for (let r = -4 - pad; r < 4 + pad; r++) {
+        const hw = (4 + pad - Math.abs(r + 0.5) + 0.5) * o;
+        if (hw > 0) g.fillRect(Math.round(cx - hw), y + o + r * o, Math.round(hw * 2), o);
+      }
+    }
+    y += rh + 7 * o;
+    // the subtitle: never under 13 CSS px, wrapped onto two lines before it is shrunk below that
+    if (sub) {
+      let sp = A.subPx * dpr, sl = [String(sub)];
+      const sfit = (txt, px) => { g.font = face(700).replace('%PX%', px); return g.measureText(txt).width; };
+      while (sp > A.subMin * dpr && sfit(sl[0], sp) > maxW) sp -= dpr;
+      if (sfit(sl[0], sp) > maxW) {
+        const wds = sl[0].split(' '); let best = 1, bd = 1e9;
+        for (let k = 1; k < wds.length; k++) { const d = Math.abs(sfit(wds.slice(0, k).join(' '), sp) - sfit(wds.slice(k).join(' '), sp)); if (d < bd) { bd = d; best = k; } }
+        sl = [wds.slice(0, best).join(' '), wds.slice(best).join(' ')];
+      }
+      sp = Math.round(sp);
+      g.font = face(700).replace('%PX%', sp);
+      for (const t of sl) {
+        g.fillStyle = A.ink;
+        for (const [dx, dy] of [[-o, -o], [0, -o], [o, -o], [-o, 0], [o, 0], [-o, o], [0, o], [o, o], [o, 2 * o]]) g.fillText(t, cx + dx, y + dy);
+        g.fillStyle = A.sub; g.fillText(t, cx, y);
+        y += Math.round(sp * 1.25);
+      }
+    }
+    g.restore();
+    return { y0: top, y1: y, fs, sub: !!sub };
+  },
+  /* THE EDGES OF THE WORLD CLOSE IN, IN HARD STEPS (the acts' darkness: the
+     dragon's pall, the pact's red, the spy's night). A band at EVERY edge of
+     the screen — all four sides, square at the corners, never a radial
+     gradient — in four levels (`lv`, alphas from the middle out), each level
+     giving onto the next through a one-cell checker seam. Built once per
+     size and colour at a quarter of the screen's resolution and blown up
+     nearest-neighbour, so a cell is 4 device px; `a` scales it in quarter
+     steps. Screen space; it sets its own transform. */
+  _vig: null,
+  stepVignette(g, rgb, a, lv, depth) {
+    a = Math.round(Math.max(0, Math.min(1, a || 0)) * 4) / 4;
+    if (!a || !this.cv) return;
+    lv = lv || [0, 0.22, 0.4, 0.58];
+    depth = depth || 0.07;
+    const Q = 4, W = this.cv.width, H = this.cv.height, w = Math.ceil(W / Q), h = Math.ceil(H / Q);
+    const key = w + 'x' + h + ':' + rgb + ':' + lv.join(',') + ':' + depth;
+    const cache = this._vig || (this._vig = {});
+    let c = cache[key];
+    if (!c) {
+      for (const k in cache) if (k.indexOf(w + 'x' + h + ':') !== 0) delete cache[k];   // a resize retires the old sizes
+      c = cache[key] = document.createElement('canvas'); c.width = w; c.height = h;
+      const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data;
+      const [r0, g0, b0] = String(rgb).split(',').map(Number), m = Math.min(w, h), top = lv.length - 1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const e = Math.min(x, y, w - 1 - x, h - 1 - y) / m;           // 0 at the screen's edge
+        const v = Math.max(0, top - e / depth), lo = Math.floor(v);
+        const L = Math.min(top, lo + (v - lo > 0.62 && ((x + y) & 1) ? 1 : 0));
+        if (!lv[L]) continue;
+        const i = (y * w + x) * 4;
+        d[i] = r0; d[i + 1] = g0; d[i + 2] = b0; d[i + 3] = Math.round(lv[L] * 255);
+      }
+      q.putImageData(im, 0, 0);
+    }
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.imageSmoothingEnabled = false;
+    g.globalAlpha = a;
+    g.drawImage(c, 0, 0, w * Q, h * Q);
+    g.restore();
+  },
   drawSummons(g, dt) {
     const TL = CFG.TILE, cfg = this.SUMMON, px = 2;
     const snap = v => Math.round(v / px) * px;

@@ -35,9 +35,18 @@
                        neither the world's act nor the card's writes a pixel
                        off it (a control that widens R.boardPx must see some)
 
+     DRAGONFIRE'S ACT  the card's dragon comes in from the board's side and
+                       writes no pixel off the board; the view goes IN on
+                       the fire whatever the player's zoom (the beast 60%+
+                       of the screen's width) and is handed back after; its
+                       shadow sweeps the screen first under the title; the
+                       beast is on screen 3.5s+; each building the fire
+                       reaches catches on its own beat with a shake; no warm
+                       light on the ground, no radial gradient
+
    Run after touching: js/beasts.js, the dragon/kraken blocks of R.draw,
    Assets.FX_SETS / wantFx / whenFx, Deck.wantArt, DeckUI._run's landing,
-   G.warmFx, G.dragonTick / G.krakenTick's phases.
+   G.warmFx, G.dragonTick / G.krakenTick's phases, dragonfire in js/deckfx.js.
 
      node tests/beasts.mjs      # exits non-zero on any regression */
 
@@ -509,6 +518,187 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
         JSON.stringify(v.clipped));
       ck('andTheVoidProbeCanSeeTheKraken', v.control && v.control.world.off > 0 && v.control.card.off > 0,
         'with the board widened: ' + JSON.stringify(v.control));
+    }
+
+    /* ---------------- 9. DRAGONFIRE: THE ULTIMATE PRIZE'S ACT ----------------
+       (the playtest: on screen ~2.3s, the view pulling OUT until the beast was
+       a mid-size sprite over a small town, the head and a wing drawn across
+       the off-map black, a warm wash over the ground, no title.) Played with
+       the real Deck.play on this served phone page, the act's own sim and
+       camera ticked frame by frame and drawn through the real R.draw:
+         IN FROM THE BOARD   aimed by either edge, it starts its run over the
+                             board, on the far side from the near edge
+         NOT IN THE BLACK    by the west edge every pixel the act writes —
+                             beast, breath, pall, the shadow's sweep — lies
+                             on the board (a control widens R.boardPx)
+         IN ON THE FIRE      from a player's zoom of 0.8 or 1.7 the view is
+                             at the act's zoom through the breath, the beast
+                             spans 60%+ of the screen's width, and after it
+                             the view is handed back where it was
+         EPIC AND EARNED     the shadow sweeps the full width of the screen
+                             first, the title goes up, the beast is on screen
+                             3.5s+ (whole, half its box or more in frame),
+                             every building the fire reaches catches on its
+                             own beat and shakes the view, and no warm light
+                             is ever laid over the ground */
+    const d9 = await q.evaluate(() => {
+      const out = {};
+      G.newGame('beasts-dragon', 'moderate', 'medium');
+      Screens.show('playing'); S.paused = true;
+      const W = CFG.W, H = CFG.H, TL = CFG.TILE, DF = Deck.FX.dragonfire;
+      // open ground across the middle of the board, seen
+      const row = Math.floor(H / 2);
+      S.units = S.units.filter(u => Math.abs(u.y - row) > 6);
+      S.buildings = S.buildings.filter(b => b.key === 'tc' && Math.abs(b.y - row) > 6);
+      for (let y = row - 6; y <= row + 6; y++) for (let x = 0; x < W; x++) { const i = y * W + x; S.map.terrain[i] = T.GRASS; S.map.resAmount[i] = 0; }
+      Bld._block = null; G._wb = null; R.rebuildTerrain();
+      G.freeVis = true;
+      for (let i = 0; i < W * H; i++) S.map.explored[i] = 1;
+      G.updateVisibility();
+      const vw = R.viewW(), z0 = R.cam.z;
+      // the act, run on its own clocks (the sim's and the camera's), drawn whole
+      const run = (T, zoom, each) => {
+        Deck._add('dragonfire', 1);
+        R.cam.z = zoom; R.centerOn(T.x, T.y); R.clampCam();
+        const home = { x: R.cam.x, y: R.cam.y, z: R.cam.z };
+        const play = Deck.play('dragonfire', T);
+        const ev = S.dragon.ev, start = ev ? { x: ev.x, dir: ev.dir } : null;
+        let t = 0;
+        for (let i = 0; i < 400 && (S.dragon.ev || DF._cam); i++) {
+          const dt = 1 / 30;
+          if (S.dragon.ev) G.dragonTick(dt);
+          DF.cam(dt);
+          t += dt;
+          if (each) each(t, i);
+        }
+        return { ok: !!(play && play.ok), start, home, end: { x: R.cam.x, y: R.cam.y, z: R.cam.z } };
+      };
+      // IN FROM THE BOARD — by either edge
+      out.entry = [3.5, W - 3.5].map(x => {
+        const r = run({ x, y: row + 0.5 }, z0);
+        const inward = x < W / 2 ? 1 : -1;
+        return { x, start: r.start && +r.start.x.toFixed(2), onBoard: !!r.start && r.start.x >= 1 && r.start.x <= W - 1,
+          fromInside: !!r.start && (r.start.x - x) * inward > 0 };
+      });
+      // IN ON THE FIRE — and every picture of it, frame by frame
+      const flyF = new Set([...(Assets.fxFrames('dragon-fly') || []), ...(Assets.fxFrames('dragon-breath') || [])]);
+      const silF = new Set([...flyF].map(f => Beasts.silhouette(f)));
+      const g = R.cv.getContext('2d'), di = g.drawImage, CW = R.cv.width, CH = R.cv.height;
+      let rec = null;
+      g.drawImage = function (img, ...a) {
+        if (rec && (flyF.has(img) || silF.has(img)) && a.length >= 4) {
+          const Tm = this.getTransform(), dx = a.length === 4 ? a[0] : a[4], dy = a.length === 4 ? a[1] : a[5], dw = a.length === 4 ? a[2] : a[6], dh = a.length === 4 ? a[3] : a[7];
+          const xs = [Tm.a * dx + Tm.c * dy + Tm.e, Tm.a * (dx + dw) + Tm.c * dy + Tm.e], ys = [Tm.b * dx + Tm.d * dy + Tm.f, Tm.b * dx + Tm.d * (dy + dh) + Tm.f];
+          const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+          (silF.has(img) ? rec.sil : rec.beast).push({ x0, x1, y0, y1, a: this.globalAlpha });
+        }
+        return di.call(this, img, ...a);
+      };
+      const shakes = [], flashes = [], titles = new Set(), sa = R.shakeAt, fa = R.flashAt, at = R.actTitle, crg = g.createRadialGradient;
+      let radial = 0, tNow = 0;
+      R.shakeAt = function (amp, dur) { shakes.push({ t: tNow, amp }); return sa.apply(this, arguments); };
+      R.flashAt = function (a, d, col) { flashes.push(col || 'white'); return fa.apply(this, arguments); };
+      R.actTitle = function (gg, title) { titles.add(title); return at.apply(this, arguments); };
+      g.createRadialGradient = function () { radial++; return crg.apply(this, arguments); };
+      out.cams = {};
+      try {
+        for (const zoom of [0.8, 1.7]) {
+          // a rival hamlet along the line, house by house
+          const T = { x: Math.round(W / 2) + 6.5, y: row + 0.5 };
+          S.buildings = S.buildings.filter(b => b.owner !== 'A' || b.key === 'tc');
+          const houses = [-2, 0, 2].map(dx => { const b = Bld.place('A', 'house', T.x - 0.5 + dx, row, { free: true, instant: true }); b.hp = b.maxhp = 900; return b; });
+          Bld._block = null; G.updateVisibility();
+          const caught = {}, beastT = [], zs = [], spans = [];
+          shakes.length = 0; flashes.length = 0; titles.clear(); radial = 0;
+          let sweptWide = false, sweepMin = 1e9, sweepMax = -1e9;
+          const r = run(T, zoom, (t) => {
+            tNow = t;
+            rec = { beast: [], sil: [] };
+            R.draw(1 / 30);
+            const ev = S.dragon.ev;
+            if (ev && ev.phase === 'burn') { zs.push(R.cam.z); for (const b of rec.beast) spans.push((b.x1 - b.x0) * (250 / 256) / CW); }
+            // on screen: drawn WHOLE (full alpha, never a fading ghost) with half its box or more in the frame
+            const inside = b => Math.max(0, Math.min(CW, b.x1) - Math.max(0, b.x0)) * Math.max(0, Math.min(CH, b.y1) - Math.max(0, b.y0)) / ((b.x1 - b.x0) * (b.y1 - b.y0));
+            if (rec.beast.some(b => b.a >= 0.99 && inside(b) >= 0.5)) beastT.push(t);
+            for (const s of rec.sil) { if (s.x1 - s.x0 >= CW) sweptWide = true; sweepMin = Math.min(sweepMin, (s.x0 + s.x1) / 2); sweepMax = Math.max(sweepMax, (s.x0 + s.x1) / 2); }
+            for (const b of houses) if (caught[b.id] == null && b.hp < 900) caught[b.id] = t;
+            rec = null;
+          });
+          const times = Object.values(caught).sort((a, b) => a - b);
+          out.cams[zoom] = {
+            ok: r.ok, zMin: zs.length ? +Math.min(...zs).toFixed(3) : null, zMax: zs.length ? +Math.max(...zs).toFixed(3) : null,
+            span: spans.length ? +Math.min(...spans).toFixed(2) : null,
+            back: Math.abs(r.end.z - r.home.z) < 0.01 && Math.abs(r.end.x - r.home.x) < 2 && Math.abs(r.end.y - r.home.y) < 2,
+            onScreen: +(beastT.length / 30).toFixed(2),
+            sweep: { wide: sweptWide, across: sweepMax - sweepMin >= CW },
+            title: [...titles].join('|'),
+            caught: times.map(t => +t.toFixed(2)),
+            shook: times.filter(tc => shakes.some(s => Math.abs(s.t - tc) < 0.05)).length,
+            warm: flashes.filter(c => { const m = /(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(c); return m && +m[1] > +m[3] + 40; }).length,
+            radial,
+          };
+        }
+      } finally { g.drawImage = di; R.shakeAt = sa; R.flashAt = fa; R.actTitle = at; g.createRadialGradient = crg; }
+      // NOT IN THE BLACK: by the west edge, every pixel the act writes, through its own transform
+      const real = R.boardPx(), cx = R.cv.getContext('2d');
+      const probe = (owner, key, sky) => {
+        const f = owner[key]; let off = 0, on = 0;
+        owner[key] = function (gg) {
+          const T0 = gg.getTransform(), a = cx.getImageData(0, 0, CW, CH).data;
+          const ret = f.apply(this, arguments);
+          const zz = cx.getImageData(0, 0, CW, CH).data, z = R.cam.z * R.dpr;
+          const det = T0.a * T0.d - T0.b * T0.c, m = sky ? 1 / z : 1 / Math.abs(T0.a);
+          for (let i = 0; i < zz.length; i += 4) {
+            if (zz[i] === a[i] && zz[i + 1] === a[i + 1] && zz[i + 2] === a[i + 2] && zz[i + 3] === a[i + 3]) continue;
+            const px = (i >> 2) % CW + 0.5, py = ((i >> 2) / CW | 0) + 0.5;
+            let wx, wy;
+            if (sky) { wx = px / z + R.cam.x; wy = py / z + R.cam.y; }
+            else { const qx = px - T0.e, qy = py - T0.f; wx = (T0.d * qx - T0.c * qy) / det; wy = (-T0.b * qx + T0.a * qy) / det; }
+            if (wx < real.x0 - m || wx >= real.x1 + m || wy < real.y0 - m || wy >= real.y1 + m) off++; else on++;
+          }
+          return ret;
+        };
+        return () => { owner[key] = f; return { off, on }; };
+      };
+      out.void = {};
+      for (const wide of [false, true]) {
+        const bp = R.boardPx;
+        if (wide) R.boardPx = function () { const b = bp.call(this), p = 6 * TL; return { x0: b.x0 - p, y0: b.y0 - p, x1: b.x1 + p, y1: b.y1 + p }; };
+        const keepT = R.actTitle; R.actTitle = () => null;      // the title is lettering over the HUD's band, not the world
+        let world = { off: 0, on: 0 }, sky = { off: 0, on: 0 };
+        try {
+          const T = { x: 3.5, y: row + 0.5 };
+          run(T, 1.7, (t, i) => {
+            if (i % 4) { R.draw(1 / 30); return; }
+            const pw = probe(R, 'drawDragonAct', false), ps = DF.show ? probe(DF.show, 'draw', true) : () => ({ off: 0, on: 0 });
+            R.draw(1 / 30);
+            const a = pw(), b = ps();
+            world.off += a.off; world.on += a.on; sky.off += b.off; sky.on += b.on;
+          });
+        } finally { R.boardPx = bp; R.actTitle = keepT; }
+        out.void[wide ? 'control' : 'clipped'] = { world, sky };
+      }
+      G.freeVis = false;
+      return out;
+    });
+    {
+      ck('theCardsDragonComesInFromTheBoardsSide', d9.entry.every(e => e.onBoard && e.fromInside), JSON.stringify(d9.entry));
+      const v = d9.void;
+      ck('andNoPixelOfItsActIsDrawnInTheBlack', v.clipped.world.on > 0 && v.clipped.world.off === 0 && v.clipped.sky.on > 0 && v.clipped.sky.off === 0,
+        JSON.stringify(v.clipped));
+      ck('andTheVoidProbeCanSeeTheDragon', v.control.world.off > 0, 'with the board widened: ' + JSON.stringify(v.control));
+      const C = d9.cams;
+      ck('theViewGoesInOnTheFireWhateverTheZoom', [0.8, 1.7].every(z => C[z].ok && C[z].zMin >= 1.25 && C[z].zMax <= 1.35 && C[z].back),
+        Object.entries(C).map(([z, c]) => `from ${z}: ${c.zMin}..${c.zMax} through the breath, handed back ${c.back}`).join('; '));
+      ck('andTheBeastFillsMostOfTheScreensWidth', [0.8, 1.7].every(z => C[z].span >= 0.6), Object.entries(C).map(([z, c]) => `from ${z}: ${c.span}`).join('; '));
+      ck('itsShadowSweepsTheScreenFirstAndTheTitleGoesUp', [0.8, 1.7].every(z => C[z].sweep.wide && C[z].sweep.across && C[z].title === 'THE BLACK DRAGON ANSWERS'),
+        Object.entries(C).map(([z, c]) => `${z}: ${JSON.stringify(c.sweep)} '${c.title}'`).join('; '));
+      ck('theBeastIsOnScreenAboutFourSeconds', [0.8, 1.7].every(z => C[z].onScreen >= 3.5 && C[z].onScreen <= 6), Object.entries(C).map(([z, c]) => `${z}: ${c.onScreen}s`).join('; '));
+      ck('theFireWalksTheLineBuildingByBuildingAndEachIsFelt', [0.8, 1.7].every(z => C[z].caught.length === 3 && new Set(C[z].caught).size === 3 &&
+        C[z].caught[2] - C[z].caught[0] >= 1 && C[z].shook === 3),
+        Object.entries(C).map(([z, c]) => `${z}: caught at ${c.caught.join('/')}s, ${c.shook} shaken`).join('; '));
+      ck('andNoWarmLightIsLaidOverTheGround', [0.8, 1.7].every(z => C[z].warm === 0 && C[z].radial === 0),
+        Object.entries(C).map(([z, c]) => `${z}: ${c.warm} warm flashes, ${c.radial} radial gradients`).join('; '));
     }
   } finally {
     await cx2.close();

@@ -462,8 +462,12 @@ await p.evaluate(() => {
     const far = __fx.unit('defender', 'A', 16, 20.5);           // d 3.5
     const mine = __fx.unit('defender', 'P', 13, 20.5);          // the player's own, in the fire
     const wolf = __fx.unit('wolf', 'W', 11.5, 20.5);
-    const near = __fx.bld('A', 'house', 15, 20, 5000);           // d 2.5 — the edge
-    const out3 = __fx.bld('A', 'house', 16, 20, 5000);           // d 3.5
+    // the line runs the way the dragon flies — in from the BOARD's side
+    // (dragonfire.dirFor) — so the house at its far edge is on that side
+    const dd = Deck.FX.dragonfire.dirFor ? Deck.FX.dragonfire.dirFor(T0.x) : 1;
+    out.dd = dd;
+    const near = __fx.bld('A', 'house', dd > 0 ? 15 : 9, 20, 5000);   // d 2.5 — the edge
+    const out3 = __fx.bld('A', 'house', dd > 0 ? 16 : 8, 20, 5000);   // d 3.5
     const D = S.dragon, d0 = JSON.stringify({ avail: D.avail, done: D.done }), seen0 = S.stats.dragonSeen;
     const causes = new Set(), bd = Bld.damage;
     Bld.damage = function (bb, amt, cause) { causes.add(String(cause)); return bd.apply(this, arguments); };
@@ -514,12 +518,14 @@ await p.evaluate(() => {
   ck('andTheyAreKills', r.kills === 5, `kills +${r.kills}`);
   ck('yourOwnAndTheWildAndTheFarAreSpared', r.spared);
   /* …and a building CATCHES AS THE LINE OF FIRE REACHES IT, never before:
-     the house at the far edge (x 15..16, the line running east) is untouched
+     the house at the far edge (x 15..16 with the line running east, 9..10
+     running west — the way the dragon flies in from the board's side) is untouched
      as the breath begins and takes its 1200 the frame the front reaches its
      footprint (half a tile of reach) — struck at the first breath, it fell
      in its own dust while the flame still landed tiles away */
   ck('buildingsTake1200WithinTwoAndAHalf', JSON.stringify(r.blds) === '[1200,0]' && r.nearAtBreath === 0 &&
-      !!r.nearCaught && r.nearCaught.phase === 'burn' && r.nearCaught.dir > 0 && r.nearCaught.front >= 14.5 && r.nearCaught.front < 14.5 + 0.35,
+      !!r.nearCaught && r.nearCaught.phase === 'burn' && r.nearCaught.dir === r.dd &&
+      (r.nearCaught.front - (r.dd > 0 ? 14.5 : 10.5)) * r.dd >= 0 && (r.nearCaught.front - (r.dd > 0 ? 14.5 : 10.5)) * r.dd < 0.35,
     `house at d 2.5: ${r.blds[0]} (as the breath began: ${r.nearAtBreath}; caught with the fire front at x ${r.nearCaught && r.nearCaught.front.toFixed(2)}); at d 3.5: ${r.blds[1]}`);
   ck('theLineOfFireRunsThroughTheGroundChosen', r.lineN > 5 && Math.abs(r.lineMid - 12.5) < 1.2,
     `${r.lineN} fire points centred at x ${r.lineMid && r.lineMid.toFixed(2)} (aimed 12.5)`);

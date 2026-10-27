@@ -47,10 +47,12 @@ const Beasts = {
     fps: 12,              // the wing beat
     altHigh: 5.4,         // tiles above its ground point, coming in high…
     altLow: 3.3,          // …and lower over the line it burns
+    altDive: 8.2,         // a CARD's dragon dives from higher still (Dragonfire's act)
     scale: 1,             // FIXED and whole (SCALE, above): height is told by position, never by size
     mouth: [122, 58],     // the jaws in breath frames 6-8, from the frame's middle (art px, facing east)
     rearS: 0.32,          // rearing back before the first breath
-    pall: 0.24,           // how dark the world goes under it
+    pall: 0.24,           // how dark the world goes under it (the stand-in for a page with no vignette)
+    pallLv: [0.2, 0.34, 0.48, 0.62],   // …in steps: the middle of the view, then three bands in from every edge
     reach: 2.1,           // tiles ahead of its ground point the flame lands (G.dragonTick's fire line)
     lead: 0.9,            // …and the jaws hang this far behind that landing, so the flame slants forward
   },
@@ -188,18 +190,26 @@ Object.assign(R, {
     const breathF = (typeof Assets !== 'undefined' && Assets.fxFrames('dragon-breath')) || null;
     // how high, how big, and how much of the act is "here"
     let alt, k;
+    const DF = ev.card && typeof Deck !== 'undefined' && Deck.FX && Deck.FX.dragonfire;
     if (ev.phase === 'fly') {
-      const d = Math.abs(ev.x - (ev.tx - dir * 2.5));
-      const a = Beasts.smooth(d / 10);
-      alt = C.altLow + (C.altHigh - C.altLow) * a;
-      k = 1 - Beasts.smooth((d - 6) / 10);
+      // a CARD's dragon DIVES: in from high over the board, down onto its line
+      const d = Math.abs(ev.x - (ev.tx - dir * 2.5)), hi = ev.card ? C.altDive : C.altHigh;
+      const a = Beasts.smooth(d / (ev.card ? 12 : 10));
+      alt = C.altLow + (hi - C.altLow) * a;
+      k = ev.card ? Beasts.smooth(ev.t / 0.5) : 1 - Beasts.smooth((d - 6) / 10);
     } else if (ev.phase === 'burn') {
       alt = C.altLow - 0.3 * Math.sin(Math.min(1, ev.t / 0.5) * Math.PI);
       k = 1;
+    } else if (DF && DF.WHEEL_S) {
+      /* THE WHEEL (G.dragonTick): it pulls up past the line's end, turns,
+         and comes back over the burning town CLIMBING — the same whole
+         scale, its height in where it is drawn — until it is gone out of
+         the top of the view */
+      const tq = DF.TURN_S, e = Math.max(0, ev.t - tq);
+      alt = C.altLow + 1.5 * Math.min(1, ev.t / tq) + e * 3.2 + e * e * 3.4;
+      k = Math.max(0, 1 - Math.max(0, ev.t - 0.6) / (DF.WHEEL_S - 0.6));
     } else {
-      // climbing away — a CARD's dragon climbs hard (drawn only: the act's
-      // own clock is untouched), up and out of the view it was framed in
-      // rather than fading over the fields like a ghost
+      // climbing away (the world's dragon)
       alt = C.altLow + ev.t * 2.6 + (ev.card ? ev.t * ev.t * 5 : 0);
       k = Math.max(0, 1 - ev.t / 1.6);
     }
@@ -208,7 +218,8 @@ Object.assign(R, {
        `reach` tiles ahead of the point), the whole way in and out */
     const back = (C.reach - C.lead) * TL - C.mouth[0] * sc;
     const gx = ev.x * TL + dir * back, gy = ev.y * TL, sx = gx, sy = gy - alt * TL;
-    const fade = ev.card && ev.phase === 'leave' ? Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16) : 1;
+    const fade = ev.card && ev.phase === 'leave'
+      ? (DF && DF.WHEEL_S ? Math.max(0, Math.min(1, (DF.WHEEL_S - ev.t) / 0.25)) : Math.max(0, 1 - Math.abs(ev.x - ev.card.x) / 16)) : 1;
     /* the roar — once, as it comes into the player's world. A CARD's dragon
        roars as it ARRIVES: the moment the beast itself is over the edge of
        the view (the view takes it in — dragonfire.cam), and never later than
@@ -223,11 +234,18 @@ Object.assign(R, {
       if (typeof Sound !== 'undefined') Sound.play('roar');
       if (Beasts.inView(ev.x, ev.y, 4) || (ev.card && Beasts.inView(sx / TL, sy / TL, 0))) this.shakeAt(ev.card ? 5 : 3, 0.9);
     }
-    // the pall: the light goes out of the day round it
+    /* the pall: the light goes out of the day round it — in HARD DITHERED
+       STEPS (R.stepVignette): the whole view a step darker and every edge of
+       the screen closing in three more, square, never a radial gradient and
+       never a smooth fade (its strength moves in quarters) */
     if (k > 0.01) {
-      const v = this.viewTiles();
-      g.fillStyle = 'rgba(26,8,6,' + (C.pall * k * fade).toFixed(3) + ')';
-      g.fillRect(v.x0 * TL, v.y0 * TL, (v.x1 - v.x0) * TL, (v.y1 - v.y0) * TL);
+      // (over the board only: the black beyond it is left as it is)
+      if (this.stepVignette) this.clipBoard(g, () => this.stepVignette(g, '12,7,9', k * fade, C.pallLv, 0.075));
+      else {
+        const v = this.viewTiles();
+        g.fillStyle = 'rgba(12,7,9,' + (Math.round(C.pall * k * fade * 4) / 4).toFixed(3) + ')';
+        g.fillRect(v.x0 * TL, v.y0 * TL, (v.x1 - v.x0) * TL, (v.y1 - v.y0) * TL);
+      }
     }
     // which frame: the wing beat, or the breath (rear back, then the jaws open)
     let fr, breathing = false;
@@ -239,7 +257,8 @@ Object.assign(R, {
     // silhouette, laid flat by a whole-number squash (Beasts.shadowOf)
     {
       const sh = Beasts.shadowOf(fr);
-      const sa = (0.42 - 0.18 * (alt - C.altLow) / (C.altHigh - C.altLow)) * fade;
+      // (high over the town on its wheel it still throws one, faint, sweeping the fields)
+      const sa = Math.max(ev.card ? 0.14 : 0, 0.42 - 0.18 * (alt - C.altLow) / (C.altHigh - C.altLow)) * fade;
       // the shadow is ON the ground, so it stops at the board's edge (the
       // beast itself is in the sky and may come in from beyond it)
       this.clipBoard(g, () => {
@@ -249,32 +268,38 @@ Object.assign(R, {
         g.drawImage(sh, -sh.width / 2, -Math.round(sh.height / 2));
       });
     }
-    // the breath: a torrent from the jaws to the ground ahead
-    if (breathing) {
-      const mx = sx + dir * C.mouth[0] * sc, my = sy + C.mouth[1] * sc;
-      const tx = (ev.x + dir * C.reach) * TL, ty = gy;
-      this.drawDragonBreath(g, mx, my, tx, ty, ev.t, dir, fade);
-      if (!st.breathed) {
-        st.breathed = true;
-        if (typeof Sound !== 'undefined') Sound.play('breath');
-        if (Beasts.inView(ev.x, ev.y, 3)) { this.shakeAt(8, 1.7); this.flashAt(0.32, 0.45, '255,150,60'); }
-        if (this.startle) this.startle(ev.x, ev.y, 18);
+    /* EVERYTHING OF THE BEAST IS ON THE BOARD: its breath, its body and the
+       embers off its scales are clipped to the world's edge — a dragon is
+       never drawn across the off-map black (it comes in from the board's
+       side: js/deckfx.js, dragonfire.dirFor) */
+    this.clipBoard(g, () => {
+      // the breath: a torrent from the jaws to the ground ahead
+      if (breathing) {
+        const mx = sx + dir * C.mouth[0] * sc, my = sy + C.mouth[1] * sc;
+        const tx = (ev.x + dir * C.reach) * TL, ty = gy;
+        this.drawDragonBreath(g, mx, my, tx, ty, ev.t, dir, fade);
+        if (!st.breathed) {
+          st.breathed = true;
+          if (typeof Sound !== 'undefined') Sound.play('breath');
+          // felt, not lit: a shake, and never a warm wash over the ground
+          // (a card's is short, so each building that catches is felt too)
+          if (Beasts.inView(ev.x, ev.y, 3)) this.shakeAt(ev.card ? 6 : 8, ev.card ? 0.55 : 1.7);
+          if (this.startle) this.startle(ev.x, ev.y, 18);
+        }
       }
-    }
-    /* the beast — whole, never a half-seen ghost over the fields: a card's
-       dragon comes and goes in HARD alpha steps, and only at the far ends of
-       its flight (in, and once it has climbed most of the way out) */
-    g.save();
-    const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
-    g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
-    g.translate(Beasts.snap(sx), Beasts.snap(sy));
-    if (dir < 0) g.scale(-1, 1);
-    g.drawImage(fr, -fr.width * sc / 2, -fr.height * sc / 2, fr.width * sc, fr.height * sc);
-    g.restore();
-    // embers off its scales, trailing behind
-    {
+      /* the beast — whole, never a half-seen ghost over the fields: a card's
+         dragon comes and goes in HARD alpha steps, and only at the far ends of
+         its flight (in, and once it has climbed most of the way out) */
+      g.save();
+      const step = a => Math.round(Math.max(0, Math.min(1, a)) * 4) / 4;
+      g.globalAlpha = ev.card ? step(fade * 2.5) * step(ev.phase === 'fly' && ev.t < 0.3 ? ev.t / 0.3 : 1) : fade;
+      g.translate(Beasts.snap(sx), Beasts.snap(sy));
+      if (dir < 0) g.scale(-1, 1);
+      g.drawImage(fr, -fr.width * sc / 2, -fr.height * sc / 2, fr.width * sc, fr.height * sc);
+      g.restore();
+      // embers off its scales, trailing behind
       const now = performance.now() / 1000, F = ART.PALETTE.fire;
-      g.globalAlpha = 0.85 * fade;
+      g.globalAlpha = 0.85 * fade >= 0.5 ? 1 : 0;
       for (let i = 0; i < 10; i++) {
         const ph = (now * 0.9 + i * 0.137) % 1;
         const ex = sx - dir * (30 + ph * 110) * sc + Math.sin(i * 7.1 + now * 3) * 14;
@@ -283,7 +308,7 @@ Object.assign(R, {
         g.fillRect(Beasts.snap(ex), Beasts.snap(ey), 2, 2);
       }
       g.globalAlpha = 1;
-    }
+    });
   },
   /* THE BREATH. A sagging column of flame from the jaws to the ground:
      squares of fire in three heats (red outer, orange-gold body, white-hot
@@ -304,6 +329,7 @@ Object.assign(R, {
     g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < N; i++) {
       const u = i / N + flow, [px, py] = at(Math.min(1, u)), s = 8 + u * 30;
+      if (u > 0.62) break;          // in the air only: none of it laid over the ground where it lands
       g.fillStyle = 'rgba(255,140,50,' + (0.07 * fade).toFixed(3) + ')';
       g.fillRect(snap(px - s / 2), snap(py - s / 2), snap(s), snap(s));
     }

@@ -2015,7 +2015,11 @@ const G = {
           : '🐉 The dragon banks and BREATHES — the enemy line is a wall of fire!', ev.card ? false : true, 5200);
       }
     } else if (ev.phase === 'burn') {
-      ev.x += ev.dir * 3.2 * dt;                  // a slow strafe along the line
+      // a CARD's dragon strafes its line slower and longer, so the fire walks
+      // it building by building (js/deckfx.js, dragonfire.STRAFE / BURN_S)
+      const DFc = ev.card && window.Deck && Deck.FX && Deck.FX.dragonfire;
+      const burnS = DFc && DFc.BURN_S ? DFc.BURN_S : 1.7;
+      ev.x += ev.dir * (DFc && DFc.STRAFE ? DFc.STRAFE : 3.2) * dt;   // a slow strafe along the line
       // the breath leaves a LINE OF FIRE on the ground beneath the strafe —
       // flames that keep burning after the dragon has moved on
       ev.fireT = (ev.fireT || 0) - dt;
@@ -2035,9 +2039,9 @@ const G = {
       }
       // a CARD's breath sets each marked building alight as the line of fire
       // reaches it, and the last of them as the breath ends (js/deckfx.js)
-      const DF = ev.card && window.Deck && Deck.FX && Deck.FX.dragonfire;
-      if (DF && DF.burnTick) DF.burnTick(ev, ev.t > 1.7);
-      if (ev.t > 1.7) {
+      const DF = DFc;
+      if (DF && DF.burnTick) DF.burnTick(ev, ev.t > burnS);
+      if (ev.t > burnS) {
         for (const id of ev.victims) {
           const u = Units.get(id);
           if (!u) continue;
@@ -2057,13 +2061,21 @@ const G = {
         // world's, so a card never scores "Saved by the black dragon"
         if (!ev.card) S.stats.dragonSeen = 1;
         ev.phase = 'leave'; ev.t = 0;
-        // a card's dragon WHEELS AWAY the way it came — the near side — rather
-        // than crossing the whole board; it is gone a few screens off its mark
-        if (ev.card) ev.dir = -ev.dir;
         this.log(ev.card ? '🐉 Ash where they stood. The dragon wheels away — it owes you nothing.'
           : '🐉 Where an army stood: piles of ash. It owes you nothing — it just likes fire.', 'note', 6400);
       }
     } else if (ev.phase === 'leave') {
+      const DFc = ev.card && window.Deck && Deck.FX && Deck.FX.dragonfire;
+      if (DFc && DFc.WHEEL_S) {
+        /* a CARD's dragon WHEELS once overhead: on past the line's end as it
+           pulls up, then round and back over the burning town the way it
+           came — the board's side, never the void — climbing out of the
+           view (js/beasts.js draws the climb); gone in WHEEL_S */
+        if (!ev.turned && ev.t >= DFc.TURN_S) { ev.turned = true; ev.dir = -ev.dir; }
+        ev.x += ev.dir * (ev.turned ? 8 : 5) * dt;
+        if (ev.t > DFc.WHEEL_S) D.ev = null;
+        return;
+      }
       ev.x += ev.dir * 10 * dt;
       ev.y -= dt * 1.4;
       if (ev.x < -4 || ev.x > CFG.W + 4 || (ev.card && Math.abs(ev.x - ev.card.x) > 16)) D.ev = null;
