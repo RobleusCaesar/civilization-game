@@ -10390,16 +10390,17 @@ const R = {
     g.globalAlpha = k;
     g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
     g.globalAlpha = 1;
-    g.strokeStyle = 'rgba(235,244,248,' + (0.4 * k).toFixed(2) + ')';
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.ellipse(ev.x * TL, ev.y * TL + 12, 24 + Math.sin(ev.t * 5) * 5, 9, 0, 0, Math.PI * 2);
-    g.stroke();
-    g.beginPath();                                          // a second, wider churn ring
-    g.globalAlpha = 0.5 * k;
-    g.ellipse(ev.x * TL, ev.y * TL + 12, 34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 0, 0, Math.PI * 2);
-    g.stroke();
-    g.globalAlpha = 1;
+    // the churn round it: two rings MADE OF DOTS on the 2px grid, in hard
+    // alpha steps — never a stroked soft arc (the house's rule)
+    const churn = (rx, ry, n, a, spin) => {
+      g.fillStyle = 'rgba(235,244,248,' + (Math.round(a * 4) / 4).toFixed(2) + ')';
+      for (let i = 0; i < n; i++) {
+        const an = i / n * Math.PI * 2 + spin;
+        g.fillRect(Math.round((ev.x * TL + Math.cos(an) * rx) / 2) * 2, Math.round((ev.y * TL + 12 + Math.sin(an) * ry) / 2) * 2, 2, 2);
+      }
+    };
+    churn(24 + Math.sin(ev.t * 5) * 5, 9, 24, 0.5 * k, ev.t * 0.9);
+    churn(34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 32, 0.3 * k, -ev.t * 0.6);
   },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],

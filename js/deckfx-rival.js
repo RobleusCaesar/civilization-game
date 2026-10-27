@@ -1504,8 +1504,14 @@
       /* THE ACT, drawn from its state (so a save mid-act reloads into the same
          sea): the open water darkens, every rise churns foam rings and the
          take throws a splash, tentacles come up out of the sea and slam down
-         on the shore. The beast itself is R.drawKraken — ONE function, the
-         world event's own, so the kraken's look can be redrawn in one place. */
+         on the shore. ONE BEAST TO A CLUSTER: acts rising within CLUSTER
+         tiles of a beast already up are its ARMS, not more beasts — two
+         bodies half over each other read as a glitch, never as one monster
+         (the host is render state, a WeakMap on the act, never in S). The
+         body is the beast art's (R.drawKrakenAct, js/beasts.js) where it has
+         landed, else R.drawKraken — the two swap points of the art pass. */
+      CLUSTER: 2.5,
+      _host: new WeakMap(),
       draw(g, dt, K) {
         const TL = CFG.TILE, W = CFG.W, v = view(2), tt = K.t, end = this.endT(K);
         const a = qa(0.42 * Math.min(1, tt / 0.6) * c01((end - tt) / 1.0), 8);
@@ -1521,10 +1527,18 @@
           }
         }
         for (const c of K.coast) this.tentacle(g, c, tt, v);
-        for (const ac of K.acts) {
-          if (ac.phase === 'wait' || ac.phase === 'done' || !G.visibleAt(ac.x | 0, ac.y | 0)) continue;
+        const live = K.acts.filter(ac => ac.phase !== 'wait' && ac.phase !== 'done');
+        for (const ac of live) {
+          if (this._host.has(ac)) continue;
+          const h = live.find(o => o !== ac && this._host.get(o) === o && Math.hypot(o.x - ac.x, o.y - ac.y) <= this.CLUSTER);
+          this._host.set(ac, h || ac);
+        }
+        for (const ac of live) {
+          if (!G.visibleAt(ac.x | 0, ac.y | 0)) continue;
           this.foam(g, ac);
-          R.drawKraken(g, ac);
+          if (this._host.get(ac) === ac) {
+            if (R.drawKrakenAct) R.drawKrakenAct(g, dt, ac); else R.drawKraken(g, ac);
+          } else this.grab(g, ac, this._host.get(ac));
         }
       },
       foam(g, ac) {
@@ -1560,42 +1574,103 @@
         }
         g.globalAlpha = 1;
       },
+      /* AN ARM OF THE BEAST THAT IS ALREADY UP, for a hull taken beside it:
+         out of the water on the far side from the body, up and over, DOWN on
+         the hull at the take — then it drags it under and goes after it. */
+      grab(g, ac, host) {
+        const TL = CFG.TILE, side = host && host.x > ac.x ? -1 : 1;
+        const bx = ac.x * TL + side * TL * 1.05, by = ac.y * TL + TL * 0.45, hx = ac.x * TL, hy = ac.y * TL;
+        let tipX, tipY, reach;
+        if (ac.phase === 'rise' && ac.t < this.RISE - 0.14) {
+          // rearing up out of the water, curling over toward the hull
+          const u = ease(ac.t / (this.RISE - 0.14)), sway = Math.sin(ac.t * 3.3 + ac.id);
+          const pts = this.spine(bx, by, -Math.PI / 2 + side * 0.32, TL * 2.7 * u, -side * (0.7 + 0.25 * sway), 7.5, sway, 18);
+          this.arm(g, pts, 2);
+          g.fillStyle = '#dceef4'; g.globalAlpha = qa(0.85 * u);
+          ring(g, bx, by + 4, TL * (0.45 + 0.12 * Math.sin(ac.t * 12)), 16, 0.45);
+          g.globalAlpha = 1;
+          return;
+        }
+        if (ac.phase === 'rise') {            // …and DOWN on the hull at the take
+          const q = (ac.t - (this.RISE - 0.14)) / 0.14;
+          tipX = bx + (hx - bx) * q; tipY = by - TL * 2.6 * (1 - q) + (hy - by) * q; reach = 1;
+        } else if (ac.phase === 'thrash') {
+          const q = c01(ac.t / this.THRASH);
+          tipX = hx + Math.sin(ac.t * 14) * 3; tipY = hy + TL * 0.6 * q; reach = 1 - 0.45 * q;
+        } else {
+          const q = ease(c01(ac.t / 0.7));
+          tipX = hx + (bx - hx) * q; tipY = hy + TL * 0.6 + TL * 0.3 * q; reach = 0.55 * (1 - q);
+        }
+        if (reach <= 0.03) return;
+        const cx = (bx + tipX) / 2 - side * TL * 0.25, cy = Math.min(by, tipY) - TL * 1.2 * reach;
+        const N = 20, pts = [], wr = Math.sin(ac.t * 10) * 2;
+        for (let i = 0; i <= N; i++) {
+          const q = i / N, a = (1 - q) * (1 - q), b2 = 2 * (1 - q) * q, d = q * q;
+          pts.push({ x: a * bx + b2 * cx + d * tipX + Math.sin(q * 6 + ac.t * 9) * wr * q,
+                     y: a * by + b2 * cy + d * tipY, r: Math.max(2, (8 - 6 * q) * (0.55 + 0.45 * reach)) });
+        }
+        this.arm(g, pts, 2);
+        g.fillStyle = '#dceef4';
+        g.globalAlpha = qa(0.85 * reach);
+        ring(g, bx, by + 4, TL * (0.45 + 0.12 * Math.sin(ac.t * 12)), 16, 0.45);
+        g.globalAlpha = 1;
+      },
       /* AN ARM OF THE DEEP, drawn along a spine of points {x, y, r} from the
-         water to the tip, at a `cell` pixel grid (2 in the world, ~6 device
-         px in the sky): an ink outline, the body, a wet teal sheen down the
-         outer edge, pale suckers down the inner one, a teal tip. ONE drawing
-         for the world's slam and the sky's rising arms — the kraken's arms,
-         like R.drawKraken its body, are redrawn in one place. */
+         water to the tip, at a `cell` pixel grid (2 in the world, ~8 device
+         px in the sky), in the beast's own colours (the kraken art: a dark
+         violet hide, a mauve underside): an ink outline, the hide, a lit
+         ridge and a wet glint along the top, the underside down the inner
+         face carrying its SUCKERS — pale rings round a dark mouth, smaller
+         toward the tip, never a square pip. ONE drawing for the world's slam
+         and the sky's rising arms. */
+      KR: { ink: '#120a16', hide: '#2a1e34', ridge: '#3e2e4e', lit: '#5c4870', glint: '#8f78a8',
+            under: '#71405c', underLit: '#8c5470', sucker: '#dcaab8', mouth: '#3e1a2c' },
       arm(g, pts, cell) {
-        const AP = ART.PALETTE, n = pts.length;
+        const K = this.KR, n = pts.length;
         if (n < 2) return;
         const nrm = i => {
           const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
           const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
           return { x: -dy / L, y: dx / L };
         };
-        g.fillStyle = AP.ink[0];
+        g.fillStyle = K.ink;
         for (const q of pts) R.pxDisc(g, q.x, q.y, q.r + cell, cell);
+        g.fillStyle = K.hide;
+        for (const q of pts) R.pxDisc(g, q.x, q.y, q.r, cell);
+        // the underside, down the inner face (the curl's inside)
         for (let i = 0; i < n; i++) {
-          const q = pts[i], t = i / (n - 1);
-          g.fillStyle = t > 0.88 ? AP.teal[1] : AP.ink[1];
-          R.pxDisc(g, q.x, q.y, q.r, cell);
-        }
-        for (let i = 1; i < n - 1; i++) {
           const q = pts[i], m = nrm(i), t = i / (n - 1);
-          if (q.r < cell * 1.5) continue;
-          const big = q.r > cell * 4 ? 2 : 1, c2 = cell * big;
-          // the wet sheen along the outer edge: a dark-teal rim, lit every few steps
-          g.fillStyle = AP.teal[0];
-          g.fillRect(snapTo(q.x + m.x * q.r * 0.62, cell), snapTo(q.y + m.y * q.r * 0.62, cell), c2, c2);
-          if (i % 3 === 1 && t < 0.85) { g.fillStyle = AP.teal[1]; g.fillRect(snapTo(q.x + m.x * q.r * 0.5, cell), snapTo(q.y + m.y * q.r * 0.5, cell), cell, cell); }
-          // suckers down the inner face: a pale ring with a dark mouth
-          if (i % 2 === 0 && t < 0.92) {
-            const sx = snapTo(q.x - m.x * q.r * 0.55, cell), sy = snapTo(q.y - m.y * q.r * 0.55, cell);
-            g.fillStyle = AP.bone ? AP.bone[2] : AP.teal[2];
-            g.fillRect(sx, sy, c2, c2);
-            if (big > 1) { g.fillStyle = AP.ink[0]; g.fillRect(sx + cell / 2, sy + cell / 2, cell, cell); }
-          }
+          if (q.r < cell * 1.5 || t > 0.93) continue;
+          g.fillStyle = i % 4 === 1 ? K.underLit : K.under;
+          R.pxDisc(g, q.x - m.x * q.r * 0.5, q.y - m.y * q.r * 0.5, q.r * 0.38, cell);
+        }
+        // the ridge along the top, lit from the upper left
+        for (let i = 0; i < n; i++) {
+          const q = pts[i], m = nrm(i), t = i / (n - 1);
+          if (q.r < cell * 2 || t > 0.95) continue;
+          g.fillStyle = K.ridge;
+          R.pxDisc(g, q.x + m.x * q.r * 0.5, q.y + m.y * q.r * 0.5, q.r * 0.3, cell);
+          if (i % 3 === 0) { g.fillStyle = K.lit; g.fillRect(snapTo(q.x + m.x * q.r * 0.62, cell), snapTo(q.y + m.y * q.r * 0.62, cell), cell, cell); }
+          if (i % 7 === 2 && q.r > cell * 4) { g.fillStyle = K.glint; g.fillRect(snapTo(q.x + m.x * q.r * 0.7, cell), snapTo(q.y + m.y * q.r * 0.7, cell), cell, cell); }
+        }
+        // the suckers, a ring round a dark mouth, shrinking toward the tip
+        const gap = Math.max(2, Math.round(n / 14));
+        for (let i = 1; i < n - 1; i += gap) {
+          const q = pts[i], m = nrm(i), t = i / (n - 1);
+          if (t > 0.9 || q.r < cell * 1.2) continue;
+          const sx = snapTo(q.x - m.x * q.r * 0.55, cell), sy = snapTo(q.y - m.y * q.r * 0.55, cell);
+          if (q.r > cell * 7) {                          // a big cup: a round rim of 12 cells about a 2x2 mouth
+            g.fillStyle = K.sucker;
+            g.fillRect(sx - cell, sy - 2 * cell, cell * 2, cell); g.fillRect(sx - cell, sy + cell, cell * 2, cell);
+            g.fillRect(sx - 2 * cell, sy - cell, cell, cell * 2); g.fillRect(sx + cell, sy - cell, cell, cell * 2);
+            g.fillStyle = K.underLit; g.fillRect(sx - 2 * cell, sy - 2 * cell, cell, cell);
+            g.fillStyle = K.mouth; g.fillRect(sx - cell, sy - cell, cell * 2, cell * 2);
+          } else if (q.r > cell * 3) {                   // a cup: a diamond of four about its mouth
+            g.fillStyle = K.sucker;
+            g.fillRect(sx - cell, sy, cell, cell); g.fillRect(sx + cell, sy, cell, cell);
+            g.fillRect(sx, sy - cell, cell, cell); g.fillRect(sx, sy + cell, cell, cell);
+            g.fillStyle = K.mouth; g.fillRect(sx, sy, cell, cell);
+          } else { g.fillStyle = K.sucker; g.fillRect(sx, sy, cell, cell); }
         }
       },
       // a spine for an arm: from a base, `len` long, curling hard at the tip
@@ -1657,47 +1732,205 @@
         }
         g.globalAlpha = 1;
       },
-      /* THE MOMENT the deep answers, over the whole screen: the dark of the
-         sea closes in from the edges in hard bands while three vast arms come
-         up out of the bottom of the screen — swaying, curling at the tip —
-         with the spray thrown off them, and sink back as the act begins on
-         the map. Coarse pixel cells, never a smooth vector arm. */
-      ARMS: [[0.14, 0.66, 1, 0.0, 1.0], [0.86, 0.58, -1, 1.7, 0.92], [0.52, 0.42, 1, 3.1, 0.66]],
+      /* THE HEAD that rises in the sky moment: a colossal mantle in coarse
+         cells, lit from the upper left, mottled, its brow heavy over two
+         sockets — built ONCE per play (render state on the show) as a small
+         canvas, one pixel a cell, and blown up nearest-neighbour. The eyes
+         are drawn live over it (they open). */
+      HEAD: { w: 66, h: 44 },
+      _headArt(s) {
+        const { w, h } = this.HEAD, K = this.KR;
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const q = c.getContext('2d'), im = q.createImageData(w, h), d = im.data;
+        const rgb = hx => [parseInt(hx.slice(1, 3), 16), parseInt(hx.slice(3, 5), 16), parseInt(hx.slice(5, 7), 16)];
+        const P = { ink: rgb(K.ink), deep: rgb('#1c1426'), hide: rgb(K.hide), ridge: rgb(K.ridge), lit: rgb(K.lit), glint: rgb(K.glint) };
+        const cx = w / 2, cy = h + 2, rx = w / 2 - 1, ry = h + 1;
+        const inside = (x, y) => { const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry; return nx * nx + ny * ny <= 1; };
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          if (!inside(x, y)) continue;
+          const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1);
+          const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry;
+          const light = -nx * 0.55 - ny * 0.9 + (hash(x * 131 + y * 977) % 100) / 900;
+          let col = edge ? P.ink : light > 0.86 ? P.lit : light > 0.62 ? P.ridge : light > 0.3 ? P.hide : P.deep;
+          // mottling: dark blotches in clusters, a few pale scars on the lit crown
+          const m = hash(((x >> 1) * 53) ^ ((y >> 1) * 197));
+          if (!edge && m % 11 === 0) col = P.deep;
+          if (!edge && light > 0.7 && hash(x * 7 + y * 31) % 37 === 0) col = P.glint;
+          const i = (y * w + x) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+        }
+        // the brow ridges over the two sockets, and the sockets themselves
+        for (const ex of [-1, 1]) {
+          const ox = Math.round(cx + ex * 12), oy = 22;
+          for (let k = -6; k <= 6; k++) {
+            const bx = ox + k, by = oy - 5 - Math.round(2.2 * Math.cos(k / 6 * Math.PI / 2)) + (ex * k > 0 ? 1 : 0);
+            for (const [yy, col] of [[by, P.lit], [by + 1, P.ink]]) {
+              if (bx < 0 || bx >= w || yy < 0 || yy >= h) continue;
+              const i = (yy * w + bx) * 4; d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+            }
+          }
+          for (let yy = oy - 3; yy <= oy + 3; yy++) for (let xx = ox - 5; xx <= ox + 5; xx++) {
+            if (((xx - ox) / 5.5) ** 2 + ((yy - oy) / 3.4) ** 2 > 1) continue;
+            const i = (yy * w + xx) * 4; d[i] = P.ink[0]; d[i + 1] = P.ink[1]; d[i + 2] = P.ink[2]; d[i + 3] = 255;
+          }
+        }
+        q.putImageData(im, 0, 0);
+        s.head = c;
+      },
+      // an eye in its socket, `open` 0..1, at cell px; the slit pupil watches
+      eye(g, x, y, cell, open, look, T) {
+        if (open <= 0) return;
+        const hw = 4, hh = Math.max(1, Math.round(2.6 * open));
+        for (let yy = -hh; yy <= hh; yy++) for (let xx = -hw; xx <= hw; xx++) {
+          if ((xx / (hw + 0.5)) ** 2 + (yy / (hh + 0.5)) ** 2 > 1) continue;
+          const d = Math.abs(xx - look);
+          g.fillStyle = d < 0.6 && Math.abs(yy) <= hh ? '#120a08' : d < 1.6 ? '#ffd86a' : Math.abs(yy) === hh ? '#a8561a' : '#f2a32a';
+          g.fillRect(x + xx * cell, y + yy * cell, cell, cell);
+        }
+        // the glow, light ADDED: a ring of dots breathing round the socket
+        g.save(); g.globalCompositeOperation = 'lighter';
+        g.fillStyle = 'rgba(255,170,60,' + qa(0.55 * open * (0.7 + 0.3 * Math.sin(T * 5)), 4) + ')';
+        ring(g, x + cell / 2, y + cell / 2, cell * 7.5, 26, 0.62, cell);
+        g.restore();
+      },
+      /* THE MOMENT the deep answers, over the whole screen. The dark of the
+         sea closes in from the edges in hard bands; the HEAD comes up out of
+         the bottom of the screen, colossal, and its eyes OPEN — a growl, a
+         shake, rings of light off each eye; four vast arms rise round it,
+         swaying, curling at the tip, and the greatest SLAMS down across the
+         water (the screen shakes, spray thrown up along the bottom); the
+         words go up, and the beast sinks back as its act begins on the map.
+         Coarse pixel cells, never a smooth vector arm. */
+      // [x, height, curl, phase, girth, behind the head]
+      ARMS: [[0.08, 0.66, 1, 0.0, 1.0, 0], [0.92, 0.6, -1, 1.7, 0.95, 0], [0.27, 0.62, -1, 3.1, 0.72, 1], [0.73, 0.58, 1, 4.4, 0.68, 1]],
+      SLAM: 1.62,
       show: {
-        ms: 3000, layer: 'sky',
+        ms: 3800, layer: 'sky',
         draw(g, s, p) {
-          const W = R.cv.width, H = R.cv.height, T = s.t, k = p < 0.25 ? ease(p / 0.25) : 1 - ease((p - 0.4) / 0.6);
+          const W = R.cv.width, T = s.t, mn = Math.min(W, R.cv.height);
+          /* the SEA LINE is the top of the bottom bar, not the canvas's foot:
+             the HUD stands over the last strip of the canvas, and a beast
+             rising behind it is a beast nobody sees (measured once a play) */
+          if (s.bot == null) {
+            const bb = document.getElementById('bottombar');
+            s.bot = Math.round(((bb && bb.offsetHeight) || R.bottomReserve || 0) * (R.dpr || 1));
+          }
+          const H = Math.max(Math.round(R.cv.height * 0.6), R.cv.height - s.bot);
+          const k = T < 0.9 ? ease(T / 0.9) : T < 2.9 ? 1 : 1 - ease((T - 2.9) / 0.9);
           if (k > 0) {
             for (let b = 0; b < 5; b++) {
-              const w = Math.round(Math.min(W, H) * (0.04 + 0.05 * b) * k);
+              const w = Math.round(mn * (0.04 + 0.05 * b) * k);
               g.fillStyle = 'rgba(2,14,30,' + qa(0.55 * k * (1 - b * 0.18), 8) + ')';
               g.fillRect(0, 0, W, w); g.fillRect(0, H - w, W, w); g.fillRect(0, w, w, H - 2 * w); g.fillRect(W - w, w, w, H - 2 * w);
             }
           }
-          // the arms: up over 0.05..0.4, held swaying, down over 0.62..0.95
-          const up = p < 0.05 ? 0 : p < 0.4 ? ease((p - 0.05) / 0.35) : p < 0.62 ? 1 : 1 - ease((p - 0.62) / 0.33);
-          if (up <= 0) return;
-          const cell = Math.max(4, Math.round(Math.min(W, H) / 110));
-          for (let i = this.ARMS.length - 1; i >= 0; i--) {
-            const [fx, fh, curl, ph, sc] = this.ARMS[i];
-            const len = H * fh * up, r0 = Math.min(W, H) * 0.11 * sc;
-            if (len < r0) continue;
-            const sway = Math.sin(T * 2.3 + ph);
-            const pts = this.spine(W * fx + sway * W * 0.02, H + r0 * 0.6, -Math.PI / 2 + curl * 0.18 + sway * 0.06, len, curl * (0.55 + 0.25 * Math.sin(T * 1.7 + ph)), r0, sway, 34);
-            this.arm(g, pts, cell);
+          // under the sea line nothing of the world shows — the HUD stands there
+          const cell = Math.max(4, Math.round(mn / 110));
+          // THE ARMS: up 0.35..1.45, held swaying, down 2.6..3.45 — the two
+          // behind the head first, the two before it after
+          const up = T < 0.35 ? 0 : T < 1.45 ? ease((T - 0.35) / 1.1) : T < 2.6 ? 1 : 1 - ease((T - 2.6) / 0.85);
+          const arms = (behind) => {
+            if (up <= 0) return;
+            for (let i = this.ARMS.length - 1; i >= 0; i--) {
+              const [fx, fh, curl, ph, sc, bh] = this.ARMS[i];
+              if (!!bh !== behind) continue;
+              const len = H * fh * up, r0 = mn * 0.1 * sc;
+              if (len < r0) continue;
+              const sway = Math.sin(T * 2.3 + ph);
+              let a0 = -Math.PI / 2 + curl * 0.18 + sway * 0.06, cu = curl * (0.55 + 0.25 * Math.sin(T * 1.7 + ph));
+              if (i === 0) {                      // the greatest arm rears back… and SLAMS across the water
+                const SL = this.SLAM;
+                const sw = T < SL - 0.3 ? 0 : T < SL - 0.08 ? -0.35 * ease((T - (SL - 0.3)) / 0.22)
+                  : T < SL ? -0.35 + 1.3 * ((T - (SL - 0.08)) / 0.08) : T < SL + 0.3 ? 0.95 : 0.95 - 0.8 * ease((T - SL - 0.3) / 0.45);
+                a0 += sw; cu *= 1 - 0.5 * c01(sw);
+              }
+              const pts = this.spine(W * fx + sway * W * 0.02, H + r0 * 0.6, a0, len, cu, r0, sway, 34);
+              this.arm(g, pts, cell);
+            }
+          };
+          arms(true);
+          // THE HEAD: up 0.25..1.35, held (breathing), down 2.75..3.55
+          const hr = T < 0.25 ? 0 : T < 1.35 ? ease((T - 0.25) / 1.1) : T < 2.75 ? 1 : 1 - ease((T - 2.75) / 0.8);
+          const hc = Math.max(cell, Math.round(mn * 0.72 / this.HEAD.w / 2) * 2);
+          const hx = Math.round(W / 2 - this.HEAD.w * hc / 2);
+          const hy = Math.round(H - hr * this.HEAD.h * hc * 0.94 + Math.sin(T * 1.6) * hc);
+          if (hr > 0) {
+            if (!s.head) this._headArt(s);
+            const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+            g.drawImage(s.head, hx, hy, this.HEAD.w * hc, this.HEAD.h * hc);
+            g.imageSmoothingEnabled = sm;
+            // THE EYES OPEN: a beat after the head clears the water
+            const eo = T < 1.05 ? 0 : T < 1.3 ? (T - 1.05) / 0.25 : T < 2.65 ? 1 : Math.max(0, 1 - (T - 2.65) / 0.2);
+            if (eo > 0 && !s.eyes) {
+              s.eyes = 1;
+              if (R.shakeAt) R.shakeAt(6, 0.6);
+              sfx('cardRoar');
+            }
+            const look = Math.round(Math.sin(T * 1.9) * 2);
+            for (const ex of [-1, 1]) {
+              const ox = hx + Math.round(this.HEAD.w / 2 + ex * 12) * hc, oy = hy + 22 * hc;
+              this.eye(g, ox, oy, hc, eo, look, T);
+              // the flare as they open: rings of light thrown off each eye
+              const fq = (T - 1.2) / 0.7;
+              if (fq > 0 && fq < 1) {
+                g.save(); g.globalCompositeOperation = 'lighter';
+                g.fillStyle = 'rgba(255,200,90,' + qa(0.9 * (1 - fq), 4) + ')';
+                ring(g, ox, oy, hc * (6 + 26 * ease(fq)), 36, 0.7, Math.max(2, hc));
+                g.restore();
+              }
+            }
           }
-          // spray off the water at their feet, light added
+          arms(false);
+          if (T >= this.SLAM && !s.slam) {
+            s.slam = 1;
+            if (R.shakeAt) R.shakeAt(10, 0.7);
+            sfx('cardTake');
+          }
+          // spray off the water at their feet, light added — and the slam's sheet of it
           g.save(); g.globalCompositeOperation = 'lighter';
-          for (let i = 0; i < this.ARMS.length; i++) {
+          if (up > 0) for (let i = 0; i < this.ARMS.length; i++) {
             const bx = W * this.ARMS[i][0];
-            for (let n = 0; n < 18; n++) {
-              const ph2 = (T * 1.4 + n / 18 + i * 0.37) % 1;
+            for (let n = 0; n < 16; n++) {
+              const ph2 = (T * 1.4 + n / 16 + i * 0.37) % 1;
               const sx = bx + (rnd(i * 31 + n, 3) - 0.5) * W * 0.16, sy = H - ph2 * H * 0.12 * (0.5 + rnd(n, i));
               g.fillStyle = 'rgba(220,238,244,' + qa(0.8 * (1 - ph2) * up, 4) + ')';
               g.fillRect(snapTo(sx, cell), snapTo(sy, cell), cell, cell);
             }
           }
+          const sq = (T - this.SLAM) / 0.9;
+          if (sq > 0 && sq < 1) {
+            for (let n = 0; n < 70; n++) {
+              const x0 = W * (0.15 + 0.85 * rnd(n, 91)), vy = H * (0.18 + 0.3 * rnd(n, 92)), vx = (rnd(n, 93) - 0.5) * W * 0.2;
+              const yy = H - vy * sq * 2.2 + H * 0.9 * sq * sq * 2.2, xx = x0 + vx * sq;
+              if (yy > H) continue;
+              g.fillStyle = 'rgba(220,238,244,' + qa(0.95 * (1 - sq), 4) + ')';
+              g.fillRect(snapTo(xx, cell), snapTo(yy, cell), cell * (n % 3 ? 1 : 2), cell * (n % 3 ? 1 : 2));
+            }
+          }
           g.restore();
+          // the white water where it all comes up: a ragged foam line along the bottom
+          if (hr > 0 || up > 0) {
+            const lvl = Math.max(hr, up);
+            g.fillStyle = 'rgba(220,238,244,' + qa(0.85 * lvl, 4) + ')';
+            for (let x = 0; x < W; x += cell) {
+              const hh = (1 + ((hash((x / cell | 0) * 37 + ((T * 6) | 0)) % 3))) * cell;
+              g.fillRect(x, H - hh, cell, hh);
+            }
+          }
+          // THE WORDS
+          if (T > 1.75 && T < 3.1) {
+            const a = qa(Math.min(1, (T - 1.75) / 0.3) * Math.min(1, (3.1 - T) / 0.4), 6);
+            const fs = Math.round(Math.min(40, W / 13));
+            g.globalAlpha = a;
+            g.font = 'bold ' + fs + 'px sans-serif';
+            g.textAlign = 'center'; g.textBaseline = 'top';
+            const ty = Math.round(H * 0.2), sh2 = Math.max(2, Math.round(fs / 10));
+            g.fillStyle = 'rgba(0,0,0,0.75)'; g.fillText('THE DEEP ANSWERS', W / 2 + sh2, ty + sh2);
+            g.fillStyle = '#e6bac6'; g.fillText('THE DEEP ANSWERS', W / 2, ty);
+            g.font = Math.round(fs * 0.45) + 'px sans-serif';
+            g.fillStyle = 'rgba(232,236,255,0.92)';
+            g.fillText('The kraken rises against the rival', W / 2, ty + Math.round(fs * 1.25));
+            g.globalAlpha = 1;
+          }
         },
       },
     },
@@ -1752,6 +1985,12 @@
         this._note({ at: t, hz: 49, to: 33, dur: 2.6, type: 'sine', gain: 0.30 * v, atk: 0.6 });
         this._noise({ at: t, hz: 600, to: 120, dur: 2.2, q: 0.6, gain: 0.18 * v, filter: 'lowpass', atk: 0.5, rate: 0.6 });
       },
+      // the beast's eyes open: a growl from under the sea, rough and falling
+      cardRoar(t, v) {
+        this._note({ at: t, hz: 92, to: 52, dur: 1.4, type: 'sawtooth', gain: 0.16 * v, lp: 380, atk: 0.08 });
+        this._note({ at: t, hz: 61, to: 38, dur: 1.6, type: 'sine', gain: 0.26 * v, atk: 0.06 });
+        this._noise({ at: t, hz: 340, to: 110, dur: 1.2, q: 1.2, gain: 0.14 * v, filter: 'lowpass', rate: 0.7 });
+      },
       // a hull dragged under: a crash and the water closing over it
       cardTake(t, v) {
         this._noise({ at: t, hz: 1600, to: 300, dur: 0.6, q: 0.5, gain: 0.24 * v });
@@ -1759,6 +1998,6 @@
         this._noise({ at: t, delay: 0.3, hz: 2400, to: 900, dur: 0.8, q: 0.7, gain: 0.08 * v, rate: 1.4 });
       },
     });
-    Object.assign(Sound.GAP, { cardBeacon: 1.0, cardUnroll: 2.0, cardEye: 2.0, cardDrums: 3.0, cardDrum: 1.0, cardDrone: 4.0, cardDeep: 3.0, cardTake: 0.35 });
+    Object.assign(Sound.GAP, { cardBeacon: 1.0, cardUnroll: 2.0, cardEye: 2.0, cardDrums: 3.0, cardDrum: 1.0, cardDrone: 4.0, cardDeep: 3.0, cardRoar: 3.0, cardTake: 0.35 });
   }
 })();
