@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 108, date: '2026-10-28', title: 'Gold mines change hands',
+    items: [
+      'Drive the rival\'s miners off a gold mine and it is yours to take: send a villager and they start work, with no building to tear down first.',
+    ],
+  },
+  {
     build: 107, date: '2026-10-28', title: 'A fairer endgame',
     items: [
       'Wonders now rise only in Calm worlds. The rival can no longer win by raising one on Moderate or Hard, and one already rising in a saved game is called off when you load it.',

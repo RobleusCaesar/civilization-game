@@ -227,26 +227,19 @@ const Bld = {
     return S.units.filter(u => u.task && u.task.type === 'work' && u.task.id === b.id &&
       (owner === undefined || u.owner === owner)).length;
   },
-  /* IS ANYBODY ACTUALLY WORKING THIS PLOT — asked of whichever tribe owns it,
-     in that tribe's own terms. The player's crews are real units standing on
-     the tile and holding a `work` task. The RIVAL'S ARE NOT, and never have
-     been: its stations are manned by the demand-driven deal in
-     dailyProduction, one living villager to one crew slot, and cards.js only
-     ever stamps a work task `if (side === 'P')`. So counting work tasks
-     answered ZERO for every rival station, always — which quietly made the
-     gold mine's whole ownership rule one-way. A player could walk onto a
-     manned rival Lv3 shaft and take it, miners and all, while the rival had
-     to clear the player's hands off first. That is the exact thing the
-     contract says cannot happen ("you cannot walk up and take a manned
-     mine… The rival plays by every one of these rules").
-     Before the first deal of a run there is no answer yet, so we fall back
-     to the pool: hidden state may REFUSE more, never PERMIT more. */
+  /* IS ANYBODY ACTUALLY ON THIS PLOT — asked of whichever tribe owns it.
+     The player's crews are real units holding a `work` task. The RIVAL'S
+     stations are manned by the abstract deal in dailyProduction, which says
+     nothing about where anyone STANDS — reading it kept a rival mine "held"
+     long after its miners were chased off. So the rival holds a mine only
+     while one of its villagers is standing at it: drive them off and the
+     seam is anyone's, the way the player's own mine is. */
   crewOn(b) {
     if (!b) return 0;
     if (b.owner !== 'A') return this.workersActive(b);
-    const dealt = this._aiCrew;
-    if (dealt) return dealt[b.id] || 0;
-    return S.units.some(u => u.owner === 'A' && Units.isVillager(u)) ? 1 : 0;
+    const cx = b.x + 0.5, cy = b.y + 0.5;
+    return S.units.filter(u => u.owner === 'A' && Units.isVillager(u) &&
+      Math.hypot(u.x - cx, u.y - cy) <= 1.5).length;
   },
   // can `owner` put a hand on the works standing here? (null = nothing to take)
   canClaimSeam(owner, x, y) {

@@ -6632,8 +6632,9 @@ holds none BY DESIGN — its stations are manned by the demand-driven deal in
 so the count answered ZERO for every rival station, always. A player could
 take a manned rival Lv3 shaft at its full level while the rival had to clear
 the player's hands off first. `Bld.crewOn` asks each tribe in its own terms
-(real stationed crew for the player, the day's dealt crew for the rival,
-stamped on `Bld._aiCrew` — module state, re-dealt daily, never in a save),
+(real stationed crew for the player, and for the rival a VILLAGER STANDING
+AT THE WORKS (within 1.5 tiles) — never the abstract daily deal on
+`Bld._aiCrew`, which kept a mine locked after its miners were chased off),
 and both `canClaimSeam` and `claimSeam` ask it. The contract had only ever
 tested the direction that worked, which is why this survived so long.
 

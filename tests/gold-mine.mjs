@@ -405,21 +405,29 @@ const out = await p.evaluate(() => {
        work tasks answered zero for every rival station, always, and a
        player could walk onto a manned rival shaft and take it at whatever
        level it stood — while the rival had to clear the player's hands off
-       first. Bld.crewOn asks each tribe in its own terms. */
+       first. Bld.crewOn asks each tribe in its own terms — and for the
+       rival that is who STANDS at the works, never the abstract deal. */
     {
       const own = Bld.at(s.x, s.y);
       const wasOwner = own.owner;
       own.owner = 'A';                                  // the rival's shaft, crewed its own way
-      Bld._aiCrew = { [own.id]: 1 };
+      const fx = foe.x, fy = foe.y;
+      foe.x = s.x + 0.5; foe.y = s.y + 0.5;             // a rival miner standing at the works
       ck('andARivalMannedSeamCannotBeTakenEither',
         Bld.canClaimSeam('P', s.x, s.y).ok === false &&
         /clear them off/i.test(Bld.canClaimSeam('P', s.x, s.y).why),
         Bld.canClaimSeam('P', s.x, s.y).why || 'the player walked onto a manned rival mine');
       ck('norQuietlyThroughTheClaimItself', Bld.claimSeam('P', s.x, s.y) === null,
         'the question and the deed must agree');
-      Bld._aiCrew = { [own.id]: 0 };                    // the chief pulled its hand off
-      ck('butAnEmptyRivalShaftIsFairGame', Bld.canClaimSeam('P', s.x, s.y).ok === true, '');
-      Bld._aiCrew = null; own.owner = wasOwner;
+      /* CHASED OFF IS OFF: the chief's abstract crew deal still counts the
+         hand as "dealt" to the mine, but nobody stands there — so it is
+         anyone's (a reported game: a rival mine stayed locked after its
+         miners were driven away). */
+      Bld._aiCrew = { [own.id]: 2 };
+      foe.x = s.x + 8.5; foe.y = s.y + 0.5;
+      ck('butAnEmptyRivalShaftIsFairGame', Bld.canClaimSeam('P', s.x, s.y).ok === true,
+        Bld.canClaimSeam('P', s.x, s.y).why);
+      Bld._aiCrew = null; own.owner = wasOwner; foe.x = fx; foe.y = fy;
     }
     Units.despawn(mine);
     ck('killTheMinerAndItIsFree', Bld.canClaimSeam('A', s.x, s.y).ok === true, '');
