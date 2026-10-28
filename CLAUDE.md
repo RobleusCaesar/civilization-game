@@ -733,7 +733,9 @@ Deck.devOn()`, and **going public is one line, `TITLE_PUBLIC: true` in
 index.html's inline boot block** — it lives there, not in the JS file,
 because the splash must decide before any script file parses. Everyone else
 keeps today's title byte for byte (the splash, the `#scrTitle` markup and its
-two stylesheet blocks are hashed as at f2a1c59) and fetches nothing of the
+two stylesheet blocks are hashed as at f2a1c59, read with their `?v=`
+cache-busters blanked — an art bump must restamp the glen's URLs, and a new
+stamp on the same picture is no new title) and fetches nothing of the
 night. **THE SPLASH READS DECK'S ANSWER**: `Boot.title2` is the same reading
 of the link (`?cards=1|all` on, `?cards=0` off) and of `neo-cards-dev` that
 `Deck.devOn` makes, never a write; the contract holds `Boot.title2 ===

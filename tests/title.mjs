@@ -10,7 +10,8 @@
       never a write — and the two agree in every case (?cards=1 / all / 0,
       a remembered flag, a storage that throws). A device the card test link
       never touched keeps today's title: its markup and its stylesheet byte
-      for byte (hashes of the blocks as they stood at f2a1c59), no class, no
+      for byte (hashes of the blocks as they stood at f2a1c59, their ?v=
+      cache-busters aside), no class, no
       element, no stylesheet, and not one request for the night's art.
       Flipping TITLE_PUBLIC alone gives every device the night.
    2. THE ART LANDS BY FILENAME, AND STANDS DOWN QUIETLY. assets/ui/title/
@@ -74,16 +75,22 @@ const cut = (a, b) => { const i = html.indexOf(a), j = html.indexOf(b, i + 1); r
 /* ---- 1a. the old title, byte for byte (the source) ---- */
 {
   // each block as it stood at f2a1c59, the build the night title was staged on;
-  // a change here is a change for every player, not just the staged ones
+  // a change here is a change for every player, not just the staged ones.
+  // Read with every ?v= cache-buster blanked: the glen's URLs carry CFG.ART_V
+  // by hand (tests/boot.mjs theGlenCarriesTheArtVersion), so an art bump
+  // restamps them, and a new stamp on the same picture is no new title —
+  // the first art bump after the staging (ART_V 61) proved the two rules
+  // could not otherwise both hold
+  const N = s => s.replace(/\?v=\d+/g, '?v=');
   const OLD = {
-    splash: ['<div id="splash"', '<script>', '214f1fc380b4e5884fcabdbdb2891dccb324cc0c0e4c8a385d0ff9e6c8139963'],
-    title: ['  <div class="screen" id="scrTitle">', '  <div class="screen" id="scrNewgame">', '5efc0376de6094616fb265e108c21d192f057d5c00edb61fc5e6bf6438d7ce22'],
+    splash: ['<div id="splash"', '<script>', 'db66ae2983eea34e90d8dc3e19c9b8117a02c404a47e6a67d98cef67fb16444c'],
+    title: ['  <div class="screen" id="scrTitle">', '  <div class="screen" id="scrNewgame">', 'eb8e5ea91accb6e5b9664a5091094e1904378a85679149786279e89127168872'],
     css: ['  /* ---- title: the painted glen ----', '  /* desktop: the wordmark scales with the viewport', '802eb11d67543888ab1598d0d25f65310bc22cc891148c7e1cc0ba234547a8be'],
     short: ['  /* short viewports (landscape phones): compact so nothing clips */', '  /* AUDIO ROWS', '4e2ff9ada9ad8237e96f36e8f37751667ca8b3e4c1aa6e90ae0ec7641df0406d'],
   };
-  const moved = Object.entries(OLD).filter(([, [a, b, h]]) => sha(cut(a, b)) !== h).map(([k]) => k);
+  const moved = Object.entries(OLD).filter(([, [a, b, h]]) => sha(N(cut(a, b))) !== h).map(([k]) => k);
   ck('theOldTitleIsByteForByte', moved.length === 0,
-    moved.length ? 'changed: ' + moved.join(', ') : 'the splash, the title markup and its two stylesheet blocks, as at f2a1c59');
+    moved.length ? 'changed: ' + moved.join(', ') : 'the splash, the title markup and its two stylesheet blocks, as at f2a1c59 (cache-busters aside)');
   const read = f => { try { return readFileSync(join(root, f), 'utf8'); } catch (e) { return ''; } };
   const src = read('js/titlescreen.js');
   const scr = readFileSync(join(root, 'js/screens.js'), 'utf8');
