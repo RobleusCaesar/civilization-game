@@ -93,6 +93,8 @@ function affected(base) {
   const [A, B] = base.includes('..') ? base.split('..') : [base, null];
   const range = B ? [A, B] : [A];
   const names = sh(['diff', '--name-only', ...range]).split('\n').filter(Boolean);
+  // a new file nobody has added yet is a change too (the working tree only)
+  if (!B) for (const n of sh(['ls-files', '--others', '--exclude-standard']).split('\n')) if (n && !names.includes(n)) names.push(n);
   const read = (n) => B ? sh(['show', B + ':' + n]) : readFileSync(join(root, n), 'utf8');
   const exists = (n) => B ? sh(['cat-file', '-e', B + ':' + n]) !== '' || sh(['ls-tree', B, '--', n]) !== '' : existsSync(join(root, n));
   const picked = new Set(), why = {};
