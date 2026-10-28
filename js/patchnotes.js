@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 107, date: '2026-10-28', title: 'Every report tracked',
+    items: [
+      'Bugs, crash reports and ideas you send from the Feedback tab now land in a proper inbox, where each one is tracked until it is fixed.',
+      'When something goes wrong during a game, the game quietly notes it, so crashes nobody reported can be found and fixed too. Nothing personal is sent.',
+    ],
+  },
+  {
     build: 106, date: '2026-10-28', title: 'Cards for everyone',
     items: [
       'Cards are here for every player: win a game to earn a card, and play it in a later game for a one-time boost.',

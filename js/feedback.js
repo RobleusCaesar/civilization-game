@@ -75,8 +75,11 @@ const Feedback = {
   // count, so a fault thrown every frame is one line, not twenty.
   noteError(msg, stack, where) {
     try {
-      const list = this.errors();
       const m = String(msg || 'Error').slice(0, 300);
+      // the run's own tally first, so a full ring never loses the count
+      this.runErrs = (this.runErrs || 0) + 1;
+      if (!this.runErr) this.runErr = m.slice(0, 120) + (where ? ' @ ' + String(where).replace(/:\d+$/, '') : '');
+      const list = this.errors();
       const last = list[list.length - 1];
       if (last && last.msg === m) { last.n = (last.n || 1) + 1; last.t = new Date().toISOString(); }
       else {
@@ -87,6 +90,15 @@ const Feedback = {
       this._saveErrsSoon();
     } catch (e) { /* the recorder must never become the fault */ }
   },
+  /* THE RUN'S OWN TALLY (the dashboard's "games that hit an error", from
+     build 107): how many faults this sitting of the run has caught, and the
+     first of them as "message @ file:line" (the column cut off, so one fault
+     reads the same on every throw). Module state, never in a save: G.newGame
+     and G.loadJSON reset it, G.runReport sends it on the ending. Like the
+     ring, it records — it never sends anything by itself. */
+  runErrs: 0,
+  runErr: null,
+  resetRunErrors() { this.runErrs = 0; this.runErr = null; },
   _errT: 0,
   _saveErrsSoon() {
     if (this._errT) return;

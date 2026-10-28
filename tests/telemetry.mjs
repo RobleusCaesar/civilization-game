@@ -23,25 +23,26 @@
                               IS a played world). G.end logs nothing for a
                               world that was never entered: a hand backed out
                               of at the draft, a scripted test world.
-     THE DASHBOARD LOOKS PAST what already landed — migration 0006's run
-                              filters (p_min_seconds drives the "Runs" picker;
-                              p_min_day is declared for the next question),
-                              sent only when the picker is set (PostgREST
-                              resolves an RPC by parameter NAMES; an unknown
-                              one is a 404, never a default), on the FIRST
-                              render too, and the cause-by-day table that
-                              settles "avg day 19.9 but the middle bucket is
-                              empty" from the page itself.
+     THE DASHBOARD LOOKS PAST what already landed — migrations 0006-0008
+                              are pinned here on their source (the run
+                              filters, one ending per run, the card rows).
+                              The dashboard itself is migration 0010's and is
+                              pinned by tests/analytics.mjs, against a real
+                              database: one result per GAME, never per row.
+     AND SAYS WHAT IT CARRIES (build 107): every row its props.build, every
+                              ending its props.errors — 0 for a clean game,
+                              never left blank — and props.err, the first
+                              fault as "message @ file:line".
 
-   Run after touching: Backend._emit / telemetryAllowed / logRunEnd, G.end,
-   Screens.show, the S.played backfill in loadJSON, analytics.html's
-   callRpc/filters, or any analytics migration.
+   Run after touching: Backend._emit / build / telemetryAllowed / logRunEnd,
+   G.end / runReport, Feedback.noteError / resetRunErrors, Screens.show, the
+   S.played backfill in loadJSON, or any analytics migration.
 
      node tests/telemetry.mjs      # exits non-zero on any regression */
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
@@ -281,6 +282,10 @@ const MOCK = `
 {
   const mig = readFileSync(join(root, 'supabase/migrations/0006_analytics_run_filters.sql'), 'utf8');
   const html = readFileSync(join(root, 'analytics.html'), 'utf8');
+  /* the page that drew 0006/0007/0008's tables is retired: the dashboard is
+     0010's now, and its contract runs it against a real database */
+  ck('theDashboardAsksTheNewDoorAndHasItsOwnContract', /rpc\('analytics_dashboard'/.test(html) && !/rpc\('analytics_cards'/.test(html) &&
+    existsSync(join(root, 'tests/analytics.mjs')) && existsSync(join(root, 'supabase/migrations/0010_dashboard.sql')), 'tests/analytics.mjs');
   ck('theMigrationDropsTheOldSignatureFirst',
     /drop function if exists public\.analytics_summary\(text, timestamptz, timestamptz, text, text, text, text\);/.test(mig) &&
     mig.indexOf('drop function') < mig.indexOf('create or replace function'), 'an overload would 300 every dashboard call');
@@ -300,17 +305,11 @@ const MOCK = `
   const labelsHonest = pairs.length === 7 && Object.keys(hi).length === 6 &&
     pairs.every(([lo, a, bnd]) => a === lo && (bnd == null ? (lo === 400 && hi[lo] === undefined) : bnd === hi[lo] - 1));
   ck('theBucketLabelsSayWhatTheirEdgesDo', labelsHonest, JSON.stringify({ pairs, hi }));
-  ck('theDashboardSendsTheFilterOnlyWhenSet', /if\s*\(filters\.minSeconds\s*>\s*0\)/.test(html) && /p_min_seconds:\s*filters\.minSeconds/.test(html), '');
-  ck('andTheFirstRenderHonoursThePicker', !/callRpc\(TOKEN,\s*\{\s*\}\)/.test(html) && (html.match(/callRpc\(TOKEN,\s*filters\(\)\)/g) || []).length >= 3,
-    'unlock, tab-restore and Apply must all send the picker');
-  ck('andFallsBackWhenTheFunctionPredatesIt', /res\.status === 404 \|\| res\.status === 300/.test(html) && /migration 0006/.test(html), '');
-  ck('andRendersTheCauseByDayTable', /endings_by_bucket/.test(html) && /id="tEndDays"/.test(html) && /id="fMin"/.test(html) && /r\.d200_399, r\.d400p/.test(html), '');
 }
 
 // ---- 4. migration 0007 + the dashboard's leaving tables, pinned on the source ----
 {
   const mig = readFileSync(join(root, 'supabase/migrations/0007_where_they_leave.sql'), 'utf8');
-  const html = readFileSync(join(root, 'analytics.html'), 'utf8');
   const bk = readFileSync(join(root, 'js/backend.js'), 'utf8');
   ck('0007RevokesFromPublicBeforeGranting', mig.indexOf('revoke all on function public.analytics_summary(text, timestamptz, timestamptz, text, text, text, text, integer, integer) from public') > 0 &&
     mig.indexOf('revoke all on function') < mig.indexOf('grant execute on function'), '');
@@ -319,7 +318,6 @@ const MOCK = `
   ck('andTheRunFiltersApplyAfterTheDedupe', /union all select \* from last_left\) u\s+where coalesce\(u\.seconds, 0\) >= coalesce\(p_min_seconds, 0\)/.test(mig), '');
   ck('andItBucketsTheLeavingByDayAndMinutes', /'where_they_leave'/.test(mig) && /'by_day'/.test(mig) && /'by_minutes'/.test(mig) &&
     /grouping sets \(\(e\.cause, e\.mode, e\.device\), \(e\.cause\)\)/.test(mig) && /where e\.outcome = 'abandoned'/.test(mig), 'closed_tab and struck_banner, split by difficulty and device');
-  ck('theDashboardRendersWhereTheyLeave', /where_they_leave/.test(html) && /id="tLeaveDays"/.test(html) && /id="tLeaveMins"/.test(html) && /runs_closed_tab/.test(html), '');
   ck('theLeavingRowGoesKeepaliveWithItsToken', /logLeaving\(info\)/.test(bk) && /keepalive: true/.test(bk) && !/sendBeacon\(/.test(bk),
     'a beacon cannot carry the Bearer token the insert policy needs');
 }
@@ -494,7 +492,6 @@ const MOCK = `
 
   // …and on the source: 0008 admits them, and the dashboard reads the cards
   const mig = readFileSync(join(root, 'supabase/migrations/0008_cards.sql'), 'utf8');
-  const html = readFileSync(join(root, 'analytics.html'), 'utf8');
   const code = mig.replace(/--[^\n]*/g, '');
   ck('0008AdmitsTheDecksKinds', /add constraint telemetry_kind_check\s+check \(kind in \('run_start', 'run_end', 'session', 'card_granted', 'card_played'\)\)/.test(code),
     'Deck.track\'s rows were refused by the 0003 check, silently');
@@ -509,11 +506,48 @@ const MOCK = `
     'the summary\'s own gate and grant');
   ck('andAnswersTheThreeQuestions', /'granted_by_tier'/.test(ac) && /'played_by_card'/.test(ac) && /'assisted'/.test(ac) && /cards_played/.test(ac),
     'granted by tier and outcome, played by card, the card-assisted win rate');
-  ck('theDashboardCallsItAndFallsBackWithANote', /\/rest\/v1\/rpc\/analytics_cards/.test(html) && /res\.status === 404 \|\| res\.status === 300/.test(html) &&
-    /migration 0008/.test(html) && (html.match(/loadCards\(\)/g) || []).length >= 3 && /if \(filters\.minSeconds > 0\) body\.p_min_seconds/.test(html),
-    'unlock, tab-restore and Apply all draw the section; a 404 names the migration');
-  ck('andRendersTheCardsSection', /id="tCardTiers"/.test(html) && /id="tCardPlays"/.test(html) && /id="tCardAssist"/.test(html) &&
-    /c\.granted_by_tier/.test(html) && /c\.played_by_card/.test(html) && /c\.assisted/.test(html), '');
+}
+
+// ---- 6. WHAT A GAME CARRIES (build 107): its build on every row, and on its ending the errors it caught ----
+{
+  const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+  const r = await p.evaluate(async () => {
+    const rows = () => __MOCK.st.calls.filter(c => c.path === '/telemetry' && c.body && c.body[0]).map(c => c.body[0]);
+    const lastEnd = () => rows().filter(x => x.kind === 'run_end').pop();
+    const pick = (x) => x && x.props && { build: x.props.build, errors: x.props.errors, err: x.props.err, hasErr: 'err' in x.props };
+    const m = (document.querySelector('script[src*="js/backend.js"]').getAttribute('src') || '').match(/[?&]v=(\d+)/);
+    const out = { tag: m ? +m[1] : null };
+    // a clean game says 0 — never blank, which the dashboard reads as "not counted"
+    G.newGame('err0', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing');
+    G.end(false, 'test'); await new Promise(r => setTimeout(r, 50));
+    out.clean = pick(lastEnd());
+    // a game that caught faults counts every one and names the first, the column cut off
+    G.newGame('err1', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing');
+    Feedback.noteError('TypeError: boom', 'at x', 'js/units.js:120:7');
+    Feedback.noteError('TypeError: boom', 'at x', 'js/units.js:120:7');
+    Feedback.noteError('RangeError: later', '', 'frame');
+    G.end(false, 'test'); await new Promise(r => setTimeout(r, 50));
+    out.hit = pick(lastEnd());
+    // the next game starts its own count, and so does a loaded one
+    G.newGame('err2', 'moderate', 'medium'); out.afterNew = Feedback.runErrs;
+    Feedback.noteError('Error: before the load', '', 'frame');
+    G.loadJSON(G.saveJSON()); out.afterLoad = Feedback.runErrs;
+    // every kind of row carries the build
+    Backend._emit({ kind: 'session', seconds: 5 });
+    out.kinds = [...new Set(rows().map(x => x.kind + ':' + (x.props ? x.props.build : 'none')))];
+    return out;
+  });
+  ck('everyRowSaysWhichBuildItWasPlayedOn', r.tag > 100 && r.kinds.length >= 2 && r.kinds.every(k => k.endsWith(':' + r.tag)), JSON.stringify(r.kinds) + ' (the tag reads ' + r.tag + ')');
+  ck('aCleanGameSaysZeroErrors', r.clean && r.clean.errors === 0 && !r.clean.hasErr && r.clean.build === r.tag, JSON.stringify(r.clean));
+  ck('aGameThatCaughtFaultsCountsThemAndNamesTheFirst', r.hit && r.hit.errors === 3 && r.hit.err === 'TypeError: boom @ js/units.js:120',
+    JSON.stringify(r.hit));
+  ck('andEveryGameStartsItsOwnCount', r.afterNew === 0 && r.afterLoad === 0, JSON.stringify([r.afterNew, r.afterLoad]));
+  ck('theBuildPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

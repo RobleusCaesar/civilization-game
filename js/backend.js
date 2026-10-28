@@ -290,13 +290,36 @@ const Backend = {
     return true;
   },
 
+  /* every row says which BUILD it was played on (the dashboard's release
+     comparison; game_version is the SAVE format, which never moves). A row
+     that already says so keeps its own: an ending kept for a resend is
+     resent by a later page, and it was played on the build it names. */
+  _stamp(row) {
+    const build = this.build();
+    if (!build || !row) return row;
+    return Object.assign({}, row, { props: Object.assign({ build }, row.props || {}) });
+  },
+  /* the code version this page runs: the shared ?v= on its own script tags
+     (every js/ tag carries the same one — CLAUDE.md), read once */
+  build() {
+    if (this._build !== undefined) return this._build;
+    let v = null;
+    try {
+      const s = document.querySelector('script[src*="js/backend.js"]');
+      const m = s && /[?&]v=(\d+)/.exec(s.getAttribute('src') || '');
+      if (m) v = +m[1];
+    } catch (e) {}
+    this._build = v;
+    return v;
+  },
+
   /* the one write path. Never awaited by game code, never retried (a lost
      analytics row is worth nothing and a retry storm costs the player), and
      keepalive so a row sent as the tab closes still lands. */
   _emit(row) {
     if (!this.telemetryOn || !this.isReady() || !this.uid) return;
     if (!this.mock && !this.telemetryAllowed()) return;
-    const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, row);
+    const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, this._stamp(row));
     try {
       if (this.mock) { this.mock.rest('POST', '/telemetry', [body], null); return; }
       fetch(SUPA_CFG.url + '/rest/v1/telemetry', {
@@ -424,6 +447,7 @@ const Backend = {
   _emitEnd(row) {
     if (!this.telemetryOn || !this.configured) return;
     if (!this.mock && !this.telemetryAllowed()) return;
+    row = this._stamp(row);   // before it can be kept: a resend names the build it was played on
     if (!row.run_id) { this._emit(row); return; }   // nothing to key a resend on: one try, as ever
     if (!this.isReady() || !this.uid) { this._keepEnd(row, null); return; }
     const keep = () => this._keepEnd(row, this.uid);

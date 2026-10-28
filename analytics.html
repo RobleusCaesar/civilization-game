@@ -4,66 +4,94 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<title>Clanfire — Analytics</title>
+<title>Clanfire Analytics</title>
 <!--
-  THE PRIVATE DASHBOARD. This page is served publicly (GitHub Pages has no
-  server to check a login), so the lock is not on the page — it is on the
-  DATA. Three things make that hold:
-
-    1. The telemetry table has RLS on and NO select policy, so the key this
-       page ships cannot read a single row of it. Ever.
-    2. The only read path is analytics_summary(), a security-definer function
-       that returns AGGREGATES ONLY — counts and averages, never a row. Even
-       a stolen passphrase cannot expose one player's history.
-    3. The passphrase is never in this file and never crosses the wire. The
-       browser hashes it (SHA-256, salted with a fixed label) and sends the
-       hash; the database compares a hash OF THAT against what it stores. A
-       leaked request log yields a token, not the passphrase.
-
-  What that is NOT: it is not a login, there is no rate limiting beyond
-  Supabase's own, and anyone with the passphrase can read the aggregates.
-  Use a long passphrase. Set it once, in the SQL editor:
+  THE PRIVATE DASHBOARD (tests/analytics.mjs; the numbers come from
+  supabase/migrations/0010_dashboard.sql). Served publicly — GitHub Pages has
+  no server to check a login — so the lock is on the DATA, not the page:
+    1. the telemetry and feedback tables have RLS on and NO select policy, so
+       the key this page ships cannot read a single row of either;
+    2. every read goes through a SECURITY DEFINER door that checks the
+       passphrase hash first;
+    3. the passphrase never crosses the wire: the browser hashes it (SHA-256,
+       salted with a fixed label) and sends the hash; the database compares a
+       hash OF THAT against what it stores.
+  Set the passphrase once, in the Supabase SQL editor:
       select public.set_analytics_token('your long passphrase');
+
+  WHAT IT ANSWERS, in order, and nothing more (operator, 2026-10-28: "Whatever
+  helps us to see if the game is going well and we're making a difference and
+  something that people enjoy playing"):
+    How it's going          eight numbers, each saying what it counts
+    Every day               games and players per day
+    Did the update help?    the same numbers either side of a release
+    Where players stop      the funnel from a start to a win
+    Balance                 by difficulty, and with and without cards
+    Inbox                   every bug, crash, idea and note players send
+    Errors                  what the game caught going wrong, commonest first
+    Your devices            your own play, left out of all of it
+  THE MODEL under every number: a GAME is a run_start, and it has ONE result —
+  won, lost, quit (struck the banner), left (closed mid-run) or no signal. Win
+  rate is won / (won + lost); finished is (won + lost) / games. Every rate is
+  shown beside its own counts, and a rate on fewer than 30 is greyed: it is a
+  hint, not a result.
 -->
 <style>
   :root{
     --ink:#e8dcc0; --dim:#a2957a; --faint:#6f6650;
     --bg:#141109; --panel:#1e1a11; --panel2:#262114; --line:#3a3125;
-    --gold:#e8c15a; --green:#7fa84a; --red:#c2603f; --blue:#5b8fa8;
+    --gold:#e8c15a; --green:#7fa84a; --red:#c2603f; --blue:#5b8fa8; --grey:#7d7462;
   }
   *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
   body{margin:0;background:var(--bg);color:var(--ink);
     font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    padding:16px;max-width:1200px;margin:0 auto}
+    padding:16px;max-width:1120px;margin:0 auto}
   h1{font-size:20px;margin:0 0 2px;letter-spacing:.5px}
-  h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);
-    margin:26px 0 10px;font-weight:600}
-  .sub{color:var(--faint);font-size:12px;margin-bottom:18px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--gold);
+    margin:30px 0 4px;font-weight:700}
+  .why{color:var(--faint);font-size:12px;margin:0 0 10px}
+  .sub{color:var(--faint);font-size:12px;margin-bottom:14px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  a{color:var(--gold)}
   /* ---- the gate ---- */
   #gate{max-width:380px;margin:14vh auto}
   #gate p{color:var(--dim);font-size:13px}
-  input,select,button{font:inherit;color:var(--ink);background:var(--panel2);
-    border:1px solid var(--line);border-radius:7px;padding:8px 10px}
-  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:-1px}
+  input,select,button,textarea{font:inherit;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;padding:7px 10px;max-width:100%}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--gold);outline-offset:-1px}
   button{background:var(--gold);color:#241d10;border:0;font-weight:700;cursor:pointer}
   button:hover{filter:brightness(1.08)}
   button.ghost{background:var(--panel2);color:var(--ink);border:1px solid var(--line);font-weight:500}
+  button:disabled{opacity:.5;cursor:default}
   #gate input{width:100%;margin:10px 0}
   #gate button{width:100%}
   .err{color:var(--red);font-size:13px;min-height:18px;margin-top:8px}
+  .note{color:var(--dim);font-size:12px}
   /* ---- filters ---- */
-  #filters{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-bottom:6px}
+  #filters{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
   #filters label{display:flex;flex-direction:column;gap:4px;font-size:11px;
-    text-transform:uppercase;letter-spacing:.8px;color:var(--faint)}
+    text-transform:uppercase;letter-spacing:.8px;color:var(--faint);min-width:0}
+  #filters label.chk{flex-direction:row;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--dim);padding-bottom:8px}
+  #custom{display:none;gap:8px} #custom.on{display:flex}
+  /* ---- setup ---- */
+  #setup{border-color:var(--gold);margin-top:10px} #setup ol{margin:8px 0 0 18px;padding:0} #setup li{margin:4px 0}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px;overflow-wrap:anywhere}
   /* ---- tiles ---- */
-  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
-  .tile .v{font-size:24px;font-weight:700;letter-spacing:-.5px;
-    font-variant-numeric:tabular-nums;line-height:1.1}
+  .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  @media (max-width:820px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+  .tile .v{font-size:26px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.1}
   .tile .k{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-top:4px}
-  .tile .n{font-size:11px;color:var(--faint);margin-top:2px}
+  .tile .n{font-size:12px;color:var(--faint);margin-top:3px}
   .g{color:var(--green)} .r{color:var(--red)} .y{color:var(--gold)} .b{color:var(--blue)}
+  /* a rate on too few games is shown, but greyed: a hint, not a result */
+  .tile .v.thin,.thin{color:var(--faint)!important}
+  /* ---- how games ended: one bar that adds up ---- */
+  .split{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--panel2);margin:12px 0 6px}
+  .split i{display:block;height:100%}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--dim)}
+  .legend span::before{content:'';display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:var(--c)}
   /* ---- tables ---- */
   table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
   th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line);font-size:13px}
@@ -71,12 +99,43 @@
   th{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);font-weight:600}
   tr:last-child td{border-bottom:0}
   .wrap{overflow-x:auto}
-  /* ---- bars ---- */
-  .bar{position:relative;background:var(--panel2);border-radius:4px;height:22px;min-width:60px}
-  .bar>i{position:absolute;inset:0 auto 0 0;background:var(--gold);opacity:.55;border-radius:4px}
-  .bar>span{position:relative;padding:0 7px;line-height:22px;font-size:12px}
-  td.barcell{width:45%}
   .muted{color:var(--faint)}
+  .better{color:var(--green);font-weight:700} .worse{color:var(--red);font-weight:700} .unclear{color:var(--dim)}
+  td.err-msg{text-align:left;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;overflow-wrap:anywhere;min-width:220px}
+  /* ---- the funnel ---- */
+  .fun{display:grid;grid-template-columns:150px 1fr 96px;gap:6px 10px;align-items:center;font-size:13px}
+  .fun .bar{background:var(--panel2);border-radius:4px;height:18px;overflow:hidden}
+  .fun .bar i{display:block;height:100%;background:var(--gold);opacity:.6}
+  .fun .c{text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+  @media (max-width:600px){.fun{grid-template-columns:104px 1fr 78px}}
+  /* ---- the daily chart ---- */
+  #chart{width:100%;height:150px;display:block}
+  /* ---- compare ---- */
+  #cmpPick{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-bottom:10px}
+  #cmpPick label{display:flex;flex-direction:column;gap:4px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);min-width:0}
+  #cRel{max-width:min(420px,calc(100vw - 64px))}
+  /* ---- the inbox ---- */
+  #inboxBar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .chip{background:var(--panel2);color:var(--dim);border:1px solid var(--line);border-radius:14px;padding:4px 11px;font-weight:500;font-size:12px}
+  .chip.on{background:var(--gold);color:#241d10;border-color:var(--gold);font-weight:700}
+  .rep{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .rep .hd{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12px;color:var(--faint)}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;border-radius:4px;padding:1px 7px;color:#1a140a}
+  .badge.bug{background:#d07a4e} .badge.crash{background:#c2453f;color:#fff} .badge.idea{background:var(--gold)} .badge.other{background:var(--grey)}
+  .st{border:1px solid var(--line);border-radius:4px;padding:0 6px;font-size:11px;color:var(--dim)}
+  .rep .msg{white-space:pre-wrap;margin:8px 0;font-size:14px;overflow-wrap:anywhere}
+  .rep details{font-size:12px;color:var(--dim);margin:6px 0}
+  .rep pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel2);border-radius:6px;padding:8px;margin:6px 0;font-size:11px;max-height:240px;overflow:auto}
+  .rep .act{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+  .rep .act input{flex:1 1 200px;min-width:0}
+  .mine{color:var(--blue);font-weight:600}
+  /* ---- devices ---- */
+  .dev{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}
+  .dev:last-child{border-bottom:0}
+  .dev>div{min-width:0;flex:1 1 240px}
+  .ok{color:var(--green);font-weight:600} .no{color:var(--dim)}
+  details.devs>summary{cursor:pointer;color:var(--gold)}
+  details.more>summary{cursor:pointer;color:var(--gold);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1.2px;margin:30px 0 10px}
   .foot{margin:30px 0 10px;color:var(--faint);font-size:11px;line-height:1.7}
 </style>
 </head>
@@ -95,468 +154,618 @@
   <div class="sub" id="stamp">—</div>
 
   <div id="filters" class="card">
-    <label>From<input type="date" id="fFrom"></label>
-    <label>To<input type="date" id="fTo"></label>
-    <label>Difficulty<select id="fMode"><option value="">All</option></select></label>
-    <label>Landform<select id="fLand"><option value="">All</option></select></label>
-    <label>Device<select id="fDev"><option value="">All</option></select></label>
-    <label>Version<select id="fVer"><option value="">All</option></select></label>
-    <label>Runs<select id="fMin">
-      <option value="1" selected>Real (drop 0-length)</option>
-      <option value="0">All (incl. 0-length)</option>
-      <option value="60">≥ 1 minute</option>
-      <option value="300">≥ 5 minutes</option>
+    <label>Period<select id="fPeriod">
+      <option value="7">Last 7 days</option>
+      <option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option>
+      <option value="all">All time</option>
+      <option value="custom">Custom…</option>
     </select></label>
-    <button id="apply">Apply</button>
-    <button id="reset" class="ghost">Reset</button>
+    <span id="custom"><label>From<input type="date" id="fFrom"></label><label>To<input type="date" id="fTo"></label></span>
+    <label>Difficulty<select id="fMode"><option value="">All</option></select></label>
+    <label>Device<select id="fDev"><option value="">All</option></select></label>
+    <label>Games<select id="fMin">
+      <option value="60" selected>Played at least a minute</option>
+      <option value="0">Every start</option>
+    </select></label>
+    <label class="chk"><input type="checkbox" id="fAll"> Include my devices and testers</label>
+    <button id="apply">Refresh</button>
     <button id="out" class="ghost">Lock</button>
   </div>
   <div class="err" id="appErr"></div>
 
-  <h2>The run in numbers</h2>
-  <div class="tiles" id="kpis"></div>
+  <div id="setup" class="card" hidden></div>
 
-  <h2>Engagement</h2>
-  <div class="tiles" id="engage"></div>
+  <div id="main">
+    <h2>How it's going</h2>
+    <p class="why">Every game started in the period, counted once, with one result. Each rate sits beside its own counts; a grey rate rests on fewer than 30, so read it as a hint.</p>
+    <div class="tiles" id="kpis"></div>
+    <div class="card" style="margin-top:10px">
+      <div class="note">How the period's games ended, every game in exactly one colour:</div>
+      <div class="split" id="split"></div>
+      <div class="legend" id="splitKey"></div>
+    </div>
 
-  <h2>By difficulty</h2>
-  <div class="card wrap"><table id="tMode"></table></div>
+    <h2>Every day</h2>
+    <p class="why">Games started each day (won in green, lost in red, the rest in grey), and how many people played.</p>
+    <div class="card"><svg id="chart" role="img" aria-label="Games per day"></svg><div class="legend" id="chartKey"></div></div>
 
-  <h2>How runs end</h2>
-  <div class="card wrap"><table id="tEnd"></table></div>
+    <h2>Did the update help?</h2>
+    <p class="why">The same numbers over two windows of equal length either side of a release. "Better" or "Worse" means the change is bigger than chance would make it (95%); "Can't tell yet" means it isn't, so far.</p>
+    <div class="card">
+      <div id="cmpPick">
+        <label>Release<select id="cRel"></select></label>
+        <label>Window<select id="cDays">
+          <option value="7">7 days each side</option>
+          <option value="14" selected>14 days each side</option>
+          <option value="28">28 days each side</option>
+        </select></label>
+      </div>
+      <div class="note" id="cmpNote"></div>
+      <div class="wrap"><table id="tCmp"></table></div>
+    </div>
 
-  <h2>How far they get</h2>
-  <div class="card wrap"><table id="tDays"></table></div>
+    <h2>Where players stop</h2>
+    <p class="why">Of every game started, how far it got. The steepest drop is the place to look.</p>
+    <div class="card"><div class="fun" id="funnel"></div></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tLeft"></table></div>
 
-  <h2>How runs end — by the day they reached</h2>
-  <div class="sub">One row per ending, spread over the same day buckets as above: an average that sits in an empty bucket is two populations, not one.</div>
-  <div class="card wrap"><table id="tEndDays"></table></div>
+    <h2>Balance</h2>
+    <p class="why">Win rate by difficulty, and with or without cards. Small numbers swing, so the counts sit beside every rate.</p>
+    <div class="card wrap"><table id="tMode"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tCards"></table><div class="note" id="cardsNote" style="margin-top:8px"></div></div>
 
-  <h2>Where they leave</h2>
-  <div class="sub">Every run that walked away: <b>closed_tab</b> (the tab went away on a live run) beside <b>struck_banner</b> (quit from the pause menu). One row per run — a player who came back and finished counts as their real ending, and one who left twice counts where they left last. The <i>all</i> rows are each cause's total.</div>
-  <div class="card wrap"><table id="tLeaveDays"></table></div>
-  <div class="card wrap" style="margin-top:10px"><table id="tLeaveMins"></table></div>
+    <h2>Inbox <span class="note" id="inboxCount"></span></h2>
+    <p class="why">Every bug, crash report, idea and note sent from the game's Feedback tab (each is emailed to you as well). "Send to Claude" files the report as a GitHub issue written for Claude to research, fix and ship; "Copy for Claude" copies the same text for any Claude session.</p>
+    <div id="inboxBar"></div>
+    <div id="inbox"></div>
 
-  <h2>The opening — does it land?</h2>
-  <div class="tiles" id="funnel"></div>
+    <h2>Errors</h2>
+    <p class="why">What the game caught going wrong, commonest first: the first error of each game, counted from build 107 on, short games included.</p>
+    <div class="card wrap"><table id="tErr"></table></div>
 
-  <h2>Origin cards</h2>
-  <div class="card wrap"><table id="tCards"></table></div>
+    <h2>Your devices</h2>
+    <p class="why">Your own play is left out of every number above. A device that ever held the card test deck is left out on its own. On a phone, the home-screen app keeps its own storage and counts as a separate device: marking your home network catches it the next time it plays there.</p>
+    <div class="card" id="mine"></div>
+    <details class="card devs" style="margin-top:10px">
+      <summary class="note">The most active devices: mark the ones that are yours</summary>
+      <div class="note" style="margin:8px 0 6px">Marking a network leaves out every device seen on it, with all of its past games, so mark your home network once and every device that plays there drops out.</div>
+      <div class="wrap"><table id="tDevices"></table></div>
+    </details>
 
-  <h2>How they play</h2>
-  <div class="tiles" id="style"></div>
-
-  <!-- ============ CARDS (migration 0008) ============
-       The collectible deck, read from the server's own ledgers (what was
-       really granted and really spent), through analytics_cards() — its own
-       function, so 0007's analytics_summary is untouched. Until 0008 is
-       applied the call is a 404 and this block says so instead. -->
-  <h2>Cards</h2>
-  <div class="sub" id="cardsNote">Granted and played are the server's ledgers; "the game reported" is what the deck sent as telemetry — a gap between the two is cards the server has not been handed yet, or turned away.</div>
-  <div class="tiles" id="kCards"></div>
-  <h2>Cards granted — by tier and ending</h2>
-  <div class="card wrap"><table id="tCardTiers"></table></div>
-  <h2>Cards played — by card</h2>
-  <div class="sub">Win rate is how the runs it was played in ended (one ending per run, the same rules as above).</div>
-  <div class="card wrap"><table id="tCardPlays"></table></div>
-  <h2>Card-assisted win rate</h2>
-  <div class="sub">Every ending, split by whether a card was played in it — and, for the rest, whether that player held a deck at all.</div>
-  <div class="card wrap"><table id="tCardAssist"></table></div>
-  <h2>Cards — what the server turned away</h2>
-  <div class="card wrap"><table id="tCardRefused"></table></div>
-  <!-- ============ END CARDS ============ -->
-
-  <!-- ============ COMPETITION PANEL ============
-       The prize draw's read-only view. Removing the competition is three
-       steps in the game (js/competition.js, its script tag, its call line)
-       plus THIS block as the fourth: delete from this comment through the
-       matching END COMPETITION PANEL comment, and the render() lines marked
-       "competition" in the script below. Feedback only — the entry table
-       and its emails are unreadable from any client, this page included. -->
-  <div id="compSection" hidden>
-    <h2>Prize draw — entries</h2>
-    <div class="tiles" id="cKpis"></div>
-
-    <h2>Prize draw — what they told us</h2>
-    <div class="tiles" id="cRatings"></div>
-    <div class="card wrap" style="margin-top:10px"><table id="cChoices"></table></div>
-
-    <h2>Prize draw — segments</h2>
-    <div class="card wrap"><table id="cSegments"></table></div>
-
-    <h2>Prize draw — entries by day</h2>
-    <div class="card wrap"><table id="cDaily"></table></div>
-
-    <h2>Prize draw — in their words</h2>
-    <div class="card wrap"><table id="cTexts"></table></div>
+    <details class="more"><summary>More detail</summary>
+      <div class="card wrap"><table id="tDevice"></table></div>
+      <div class="card wrap" style="margin-top:10px"><table id="tLand"></table></div>
+      <div class="card wrap" style="margin-top:10px"><table id="tOrigin"></table></div>
+      <div class="card wrap" style="margin-top:10px"><table id="tTiers"></table></div>
+      <div class="card wrap" style="margin-top:10px"><table id="tPlays"></table></div>
+      <div class="card wrap" style="margin-top:10px"><table id="tTut"></table></div>
+    </details>
   </div>
-  <!-- ============ END COMPETITION PANEL ============ -->
-
-  <h2>Landform</h2>
-  <div class="card wrap"><table id="tLand"></table></div>
-
-  <h2>Device</h2>
-  <div class="card wrap"><table id="tDev"></table></div>
-
-  <h2>Last 30 days</h2>
-  <div class="card wrap"><table id="tDaily"></table></div>
-
-  <h2>Build version</h2>
-  <div class="card wrap"><table id="tVer"></table></div>
 
   <div class="foot">
-    Anonymous play data only: the same anonymous id the cloud saves use, plus
-    numbers about the run. No names, no messages, no location, no third party.
-    Aggregates are computed in the database and this page never receives a
-    single row.
+    Anonymous play data only: the game's anonymous id per device, numbers about each game, and a salted, shortened
+    hash of the network a row came from (never the address itself; stamped once migration 0010 is applied), so your
+    own network can be left out. Reports from the Feedback tab carry what the player chose to send. Numbers are computed in the database;
+    the inbox and the device list are the only rows this page receives, and only behind the passphrase.
   </div>
 </div>
 
 <script src="js/config.supabase.js"></script>
+<script src="js/patchnotes.js"></script>
 <script>
 "use strict";
-/* ------------------------------------------------------------------ gate */
 const $ = id => document.getElementById(id);
 const KEY = 'clanfire-analytics-token';
-let TOKEN = null;
+const REPO = 'robleuscaesar/civilization-game';
+const FEW = 30;          // a rate on fewer than this is greyed: a hint, not a result
+let TOKEN = null, DATA = null, INBOX = [], INBOX_FILTER = 'open', INBOX_KIND = '';
 
+/* THE RELEASES the comparison offers: every patch note's build, at the
+   moment it went live. From build 107 every row names its build, and the
+   database answers when each was first seen (`builds`); a build before that
+   is known by hand here, and any other falls back to its patch note's day
+   (a day boundary can put the release day's morning on the wrong side, so
+   the list says so). The comparison opens on the newest KNOWN moment. */
+const RELEASE_AT = {
+  106: '2026-10-28T17:53:24Z',   // cards, the night title and the settings page for everyone
+};
+
+/* ------------------------------------------------------------- transport */
 async function hashToken(passphrase) {
-  // the passphrase never leaves this function; what travels is its digest
   const data = new TextEncoder().encode('clanfire-analytics-v1:' + passphrase);
   const buf = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
-
-async function callRpc(token, filters) {
-  const body = {
-    p_token: token,
-    p_from: filters.from || null, p_to: filters.to || null,
-    p_mode: filters.mode || null, p_landform: filters.landform || null,
-    p_device: filters.device || null, p_version: filters.version || null,
-  };
-  /* THE RUN FILTER (migration 0006): PostgREST picks an RPC by the NAMES it is
-     sent, so a parameter the deployed function does not have is a 404, not a
-     default. It is sent only when set, and a failure with it is retried
-     without — the page then says the migration is still to be applied. */
-  const post = async (b) => fetch(SUPA_CFG.url + '/rest/v1/rpc/analytics_summary', {
+// one door for every call: {status, data}. A 404 or 300 means "that migration is not applied yet"
+async function rpc(name, body) {
+  const res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/' + name, {
     method: 'POST',
     headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(b),
+    body: JSON.stringify(body || {}),
   });
-  let res, note = '';
-  if (filters.minSeconds > 0) {
-    res = await post(Object.assign({ p_min_seconds: filters.minSeconds }, body));
-    if (!res.ok && (res.status === 404 || res.status === 300)) {
-      note = 'The "Runs" filter needs migration 0006 (supabase/migrations/0006_analytics_run_filters.sql) applied in the SQL editor — showing ALL runs until then.';
-      res = null;
-    }
-  }
-  if (!res) res = await post(body);
-  if (!res.ok) throw new Error('Request failed (' + res.status + ')');
-  const d = await res.json();
-  if (d && typeof d === 'object' && note) d.note = note;
-  return d;
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  return { status: res.status, data };
+}
+const missing = r => r.status === 404 || r.status === 300;
+
+/* THIS DEVICE: the dashboard lives on the game's own site, so it can read the
+   game's anonymous session, the id every telemetry row of this browser
+   carries. (A phone's home-screen app keeps its own storage: mark it from the
+   device list, or by your home network.) */
+function deviceId() {
+  try {
+    const ref = new URL(SUPA_CFG.url).hostname.split('.')[0];
+    const raw = localStorage.getItem('sb-' + ref + '-auth-token');
+    const s = raw ? JSON.parse(raw) : null;
+    return (s && (s.user && s.user.id || s.currentSession && s.currentSession.user && s.currentSession.user.id)) || null;
+  } catch (e) { return null; }
 }
 
-/* THE CARDS SECTION (migration 0008): its own function, analytics_cards, with
-   analytics_summary's filters. The function is new in 0008, so until that
-   file is applied the call is a 404 (300 if a stray overload ever existed) —
-   the section then says what to apply instead of breaking the page. The run
-   filter is sent only when set, the convention the summary call keeps. */
-async function callCards(token, filters) {
-  const body = {
-    p_token: token,
-    p_from: filters.from || null, p_to: filters.to || null,
-    p_mode: filters.mode || null, p_landform: filters.landform || null,
-    p_device: filters.device || null, p_version: filters.version || null,
-  };
-  if (filters.minSeconds > 0) body.p_min_seconds = filters.minSeconds;
-  const res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/analytics_cards', {
-    method: 'POST',
-    headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 404 || res.status === 300)
-    return { missing: true, note: 'The Cards section needs migration 0008 (supabase/migrations/0008_cards.sql) applied in the SQL editor.' };
-  if (!res.ok) throw new Error('Cards request failed (' + res.status + ')');
-  return res.json();
-}
-async function loadCards() {
-  let c;
-  try { c = await callCards(TOKEN, filters()); }
-  catch (e) { c = { missing: true, note: (e && e.message) || 'Could not reach the database for the cards.' }; }
-  renderCards(c);
-}
-
-/* ----------------------------------------------------------- rendering */
+/* ------------------------------------------------------------- formatting */
 const num = v => (v == null ? '—' : (+v).toLocaleString());
 const pct = v => (v == null ? '—' : (+v).toFixed(1) + '%');
 const mins = v => (v == null ? '—' : (+v).toFixed(1) + 'm');
-const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+const esc = s => String(s == null ? '' : s).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+const short = id => String(id || '').slice(0, 8);
+const dayOf = s => String(s || '').slice(0, 10);
+const when = s => { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+const ratio = (k, n) => (n ? 100 * k / n : null);
+// a card's id as words: forager_cache → Forager cache
+const cardName = id => { const s = String(id || '').replace(/_/g, ' ').trim(); return s ? s[0].toUpperCase() + s.slice(1) : '—'; };
+const plural = (n, one, many) => num(n) + ' ' + (n === 1 ? one : (many || one + 's'));
 
+/* ------------------------------------------------------------- the statistics */
+/* Wilson's 95% interval for k of n: where the true rate most likely lies */
+function wilson(k, n) {
+  if (!n) return null;
+  const z = 1.96, p = k / n, d = 1 + z * z / n;
+  const c = (p + z * z / (2 * n)) / d, h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+  return [Math.max(0, c - h) * 100, Math.min(1, c + h) * 100];
+}
+/* did a RATE move? two proportions, pooled z-test at 95%. good: +1 when up is
+   better, -1 when down is. 'few' when either side has fewer than 10 */
+function moveP(k1, n1, k2, n2, good) {
+  if (!n1 || !n2 || n1 < 10 || n2 < 10) return 'few';
+  const p = (k1 + k2) / (n1 + n2), se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
+  if (!se) return 'unclear';
+  const z = (k2 / n2 - k1 / n1) / se;
+  if (Math.abs(z) < 1.96) return 'unclear';
+  return (z > 0) === (good > 0) ? 'better' : 'worse';
+}
+/* did a COUNT move? c1 over t1 against c2 over t2 (the comparison's windows
+   are equal, t1 = t2): if nothing changed, the share that fell after is
+   binomial in t2 / (t1 + t2) */
+function moveC(c1, t1, c2, t2, good) {
+  const n = (c1 || 0) + (c2 || 0);
+  if (n < 10 || !t1 || !t2) return 'few';
+  const q = t2 / (t1 + t2), z = ((c2 || 0) - n * q) / Math.sqrt(n * q * (1 - q));
+  if (Math.abs(z) < 1.96) return 'unclear';
+  return (z > 0) === (good > 0) ? 'better' : 'worse';
+}
+const VERDICT = { better: 'Better', worse: 'Worse', unclear: "Can't tell yet", few: 'Too few to tell' };
+
+/* ------------------------------------------------------------- filters */
+function range() {
+  const p = $('fPeriod').value;
+  if (p === 'custom') {
+    return { from: $('fFrom').value ? new Date($('fFrom').value + 'T00:00:00').toISOString() : null,
+      to: $('fTo').value ? new Date($('fTo').value + 'T23:59:59.999').toISOString() : null };
+  }
+  if (p === 'all') return { from: null, to: null };
+  return { from: new Date(Date.now() - (+p) * 86400000).toISOString(), to: null };
+}
+function filters() {
+  const r = range();
+  return { p_from: r.from, p_to: r.to, p_mode: $('fMode').value || null, p_device: $('fDev').value || null,
+    p_min_seconds: +($('fMin').value || 0), p_everyone: $('fAll').checked };
+}
+
+/* ------------------------------------------------------------- rendering */
 function tiles(el, items) {
   el.innerHTML = items.map(t =>
-    `<div class="tile"><div class="v ${t.cls || ''}">${esc(t.v)}</div>` +
-    `<div class="k">${esc(t.k)}</div>` +
-    (t.n ? `<div class="n">${esc(t.n)}</div>` : '') + '</div>').join('');
+    `<div class="tile"${t.title ? ` title="${esc(t.title)}"` : ''}><div class="v ${t.cls || ''}">${esc(t.v)}</div>` +
+    `<div class="k">${esc(t.k)}</div>` + (t.n ? `<div class="n">${esc(t.n)}</div>` : '') + '</div>').join('');
+}
+function table(el, cols, rows, empty) {
+  if (!rows || !rows.length) { el.innerHTML = `<tr><td class="muted">${esc(empty || 'No games in this period.')}</td></tr>`; return; }
+  el.innerHTML = '<tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>' +
+    rows.map(r => '<tr>' + r.map(c => (c && c.td) ? c.td : `<td>${c && c.html != null ? c.html : esc(c == null ? '—' : c)}</td>`).join('') + '</tr>').join('');
+}
+/* a rate beside its own counts, "75.0% · 3 of 4", greyed on too few */
+function rate(k, n) {
+  const p = ratio(k || 0, n || 0);
+  if (p == null) return { html: '<span class="muted">—</span>' };
+  const w = wilson(k || 0, n), tip = w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` : '';
+  return { html: `<span class="${n < FEW ? 'thin' : ''}" title="${esc(tip)}">${esc(pct(p))}</span> <span class="muted">· ${num(k)} of ${num(n)}</span>` };
+}
+/* a tile for a rate: the value, the counts, the interval, and grey on few */
+function rateTile(label, cls, kk, nn, line, emptyLine) {
+  if (!nn) return { k: label, v: '—', n: emptyLine };
+  const w = wilson(kk, nn);
+  return { k: label, v: pct(ratio(kk, nn)), cls: nn < FEW ? 'thin' : cls, n: line + (nn < FEW ? ' (too few to trust yet)' : ''),
+    title: w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` : '' };
 }
 
-// a table whose first numeric column doubles as a bar, so shape reads at a glance
-function table(el, cols, rows, barCol) {
-  if (!rows || !rows.length) { el.innerHTML = '<tr><td class="muted">No data yet.</td></tr>'; return; }
-  const max = barCol != null ? Math.max(...rows.map(r => +r[barCol] || 0), 1) : 0;
-  el.innerHTML =
-    '<tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>' +
-    rows.map(r => '<tr>' + r.map((cell, i) => {
-      if (i === barCol) {
-        const w = Math.round(100 * (+cell || 0) / max);
-        return `<td class="barcell"><div class="bar"><i style="width:${w}%"></i>` +
-               `<span>${esc(num(cell))}</span></div></td>`;
-      }
-      return `<td>${esc(cell == null ? '—' : cell)}</td>`;
-    }).join('') + '</tr>').join('');
-}
+const RESULT = [
+  ['won', 'Won', 'var(--green)'], ['lost', 'Lost', 'var(--red)'], ['quit', 'Quit from the menu', '#b08a3e'],
+  ['left', 'Closed the game mid-run', 'var(--grey)'], ['open', 'No signal yet', '#3f382b'],
+];
 
 function render(d) {
-  const T = d.totals || {}, R = d.rates || {}, A = d.averages || {}, S = d.time_on_site || {};
-  $('stamp').textContent =
-    (T.first_event ? 'Data from ' + String(T.first_event).slice(0, 10) : 'No data yet') +
-    ' to ' + (T.last_event ? String(T.last_event).slice(0, 10) : '—') +
-    ' · ' + num(T.events) + ' events · generated ' + String(d.generated_at || '').slice(0, 19).replace('T', ' ');
-
+  DATA = d;
+  const H = d.headline || {}, X = d.hidden || {};
+  $('stamp').textContent = 'Generated ' + when(d.generated_at) +
+    (!X.everyone ? ' · left out: ' + plural(X.devices || 0, 'device') +
+      ' (' + num(X.yours) + ' yours, ' + num(X.testers) + ' test deck, ' + num(X.network) + ' on your network), ' + plural(X.games || 0, 'game') + ' of theirs in this period'
+      : ' · everyone included');
+  const decided = (H.won || 0) + (H.lost || 0);
   tiles($('kpis'), [
-    { k: 'Games played', v: num(T.runs_started), n: num(T.runs_finished) + ' reached an ending' },
-    { k: 'Win rate', v: pct(R.win_pct), cls: 'g', n: num(T.wins) + ' wins' },
-    { k: 'Loss rate', v: pct(R.loss_pct), cls: 'r', n: num(T.losses) + ' losses' },
-    { k: 'Abandoned', v: pct(R.abandon_pct), n: T.runs_closed_tab == null
-        ? num(T.runs_abandoned) + ' never ended'
-        : num(T.runs_closed_tab) + ' closed the tab · ' + num(T.runs_struck_banner) + ' struck the banner · ' + num(T.runs_silent) + ' no signal' },
-    { k: 'Avg run length', v: mins(A.run_minutes), n: 'median ' + mins(A.run_minutes_median) },
-    { k: 'Avg day reached', v: num(A.day_reached), n: 'median ' + num(A.day_median) },
-    { k: 'Avg town level', v: num(A.tc_level), n: 'town centre' },
-    { k: 'Avg peak tribe', v: num(A.peak_pop), n: 'people at the height' },
-    { k: 'Avg winning score', v: num(A.win_score), n: 'wins only' },
+    { k: 'Players', v: num(H.players), n: num(H.new_players) + ' new · ' + num((H.players || 0) - (H.new_players || 0)) + ' returning' },
+    { k: 'Games', v: num(H.games), n: (H.games_per_player == null ? '—' : (+H.games_per_player).toFixed(1)) + ' per player' },
+    rateTile('Finished', 'b', decided, H.games || 0, num(decided) + ' of ' + num(H.games) + ' reached a win or a loss', 'no games yet'),
+    rateTile('Win rate', 'g', H.won || 0, decided, num(H.won) + ' won of ' + num(decided) + ' finished', 'no game finished yet'),
+    rateTile('Played again', 'y', H.back || 0, H.back_ripe || 0,
+      num(H.back) + ' of ' + num(H.back_ripe) + ' new players started a second game within a week', 'no new player is a week old yet'),
+    rateTile('First-game hook', 'y', H.hook || 0, H.hook_n || 0,
+      num(H.hook) + ' of ' + num(H.hook_n) + ' first games lasted 10 minutes', 'no first game yet'),
+    { k: 'Time per player', v: mins(H.player_minutes), n: 'median over the period · ' + mins(H.median_minutes) + ' per game' },
+    rateTile('Hit an error', 'r', H.err_games || 0, H.err_n || 0,
+      num(H.err_games) + ' of ' + num(H.err_n) + ' games caught an error', 'counted from build 107 on'),
   ]);
+  const total = H.games || 0;
+  $('split').innerHTML = total ? RESULT.map(([k, , c]) => H[k] ? `<i title="${esc(k)}: ${H[k]}" style="width:${100 * H[k] / total}%;background:${c}"></i>` : '').join('') : '';
+  $('splitKey').innerHTML = RESULT.map(([k, label, c]) => `<span style="--c:${c}">${esc(label)} ${num(H[k] || 0)}</span>`).join('');
 
-  tiles($('engage'), [
-    { k: 'Players', v: num(T.players), n: 'distinct devices' },
-    { k: 'Repeat players', v: pct(R.repeat_pct), cls: 'y', n: 'played more than once' },
-    { k: 'Runs per player', v: num(A.runs_per_player) },
-    { k: 'Sessions', v: num(T.sessions), n: num(A.sessions_per_player) + ' per player' },
-    { k: 'Avg time on site', v: mins(A.session_minutes), n: 'median ' + mins(S.median_minutes) },
-    { k: 'Top 10% sessions', v: mins(S.p90_minutes), n: 'the engaged tail' },
-    { k: 'Total time played', v: (S.total_hours == null ? '—' : (+S.total_hours).toFixed(1) + 'h') },
-  ]);
-
-  table($('tMode'), ['Difficulty', 'Games', 'Share', 'Win rate', 'Avg length', 'Avg day'],
-    (d.by_mode || []).map(r => [r.mode, r.starts, pct(r.share_pct), pct(r.win_pct), mins(r.avg_minutes), num(r.avg_day)]), 1);
-
-  table($('tEnd'), ['Outcome', 'Cause', 'Games', 'Avg day', 'Avg length'],
-    (d.endings || []).map(r => [r.outcome, r.cause, r.n, num(r.avg_day), mins(r.avg_minutes)]), 2);
-
-  table($('tDays'), ['Reached', 'Games', 'Win rate'],
-    (d.day_buckets || []).map(r => [r.label, r.n, pct(r.win_pct)]), 1);
-
-  table($('tEndDays'), ['Outcome', 'Cause', 'Games', 'day 0-9', 'day 10-24', 'day 25-49', 'day 50-99', 'day 100-199', 'day 200-399', 'day 400+', 'Min', 'Median', 'Max'],
-    (d.endings_by_bucket || []).map(r => [r.outcome, r.cause, r.n, r.d0_9, r.d10_24, r.d25_49, r.d50_99, r.d100_199, r.d200_399, r.d400p, num(r.min_day), num(r.median_day), num(r.max_day)]), 2);
-  $('appErr').textContent = d.note || '';
-
-  // WHERE THEY LEAVE (migration 0007): absent on an older function, which
-  // table() reads as "No data yet" rather than a broken page
-  const WL = d.where_they_leave || {};
-  table($('tLeaveDays'), ['Cause', 'Difficulty', 'Device', 'Runs', 'day 0-4', 'day 5-9', 'day 10-24', 'day 25-49', 'day 50-99', 'day 100+', 'Median day'],
-    (WL.by_day || []).map(r => [r.cause, r.mode, r.device, r.n, r.d0_4, r.d5_9, r.d10_24, r.d25_49, r.d50_99, r.d100p, num(r.median_day)]), 3);
-  table($('tLeaveMins'), ['Cause', 'Difficulty', 'Device', 'Runs', '<2 min', '2-5 min', '5-10 min', '10-20 min', '20-45 min', '45+ min', 'Median'],
-    (WL.by_minutes || []).map(r => [r.cause, r.mode, r.device, r.n, r.m0_2, r.m2_5, r.m5_10, r.m10_20, r.m20_45, r.m45p, mins(r.median_minutes)]), 3);
-
-  const F = d.early_funnel || {};
-  tiles($('funnel'), [
-    { k: 'Quit before day 5', v: num(F.quit_before_day_5), cls: 'r' },
-    { k: 'Quit before day 10', v: num(F.quit_before_day_10) },
-    { k: 'Under 2 minutes', v: num(F.under_2_minutes), cls: 'r', n: 'bounced out of a run' },
-    { k: 'Reached day 50', v: num(F.reached_day_50), cls: 'g' },
-    { k: 'Tutorial on', v: num(F.tutorial_on), n: num(F.tutorial_off) + ' played without it' },
-    { k: 'Tutorial win rate', v: pct(F.tutorial_win_pct), cls: 'y' },
-  ]);
-
-  table($('tCards'), ['Origin card', 'Times picked', 'Win rate'],
-    (d.origin_cards || []).map(r => [r.card, r.picked, pct(r.win_pct)]), 1);
-
-  const P = d.play_style || {};
-  tiles($('style'), [
-    { k: 'Buildings raised', v: num(P.avg_buildings), n: 'per run' },
-    { k: 'Units trained', v: num(P.avg_units), n: 'per run' },
-    { k: 'Foes slain', v: num(P.avg_kills), n: 'per run' },
-    { k: 'Walls & gates', v: num(P.avg_walls), n: 'per run' },
-    { k: 'Upgrades', v: num(P.avg_upgrades), n: 'per run' },
-    { k: 'Map explored', v: (P.avg_explored_pct == null ? '—' : P.avg_explored_pct + '%') },
-    { k: 'Won by wonder', v: pct(P.wonder_win_pct), cls: 'b' },
-    { k: 'Found the relic', v: pct(P.relic_found_pct) },
-  ]);
-
-  table($('tLand'), ['Landform', 'Games', 'Win rate'],
-    (d.by_landform || []).map(r => [r.landform, r.starts, pct(r.win_pct)]), 1);
-
-  table($('tDev'), ['Device', 'Games', 'Players', 'Win rate', 'Avg length'],
-    (d.by_device || []).map(r => [r.device, r.starts, r.players, pct(r.win_pct), mins(r.avg_minutes)]), 1);
-
-  table($('tDaily'), ['Day', 'Runs started', 'Runs finished', 'Players'],
-    (d.daily || []).map(r => [r.day, r.starts, r.finishes, r.players]), 1);
-
-  table($('tVer'), ['Version', 'Events'],
-    (d.by_version || []).map(r => [r.version, r.events]), 1);
-
-  // competition (the prize draw) — the whole panel hides until 0004 is
-  // applied and the function starts returning the section
-  renderCompetition(d.competition);
-
-  // the filter dropdowns describe the data that actually exists
-  const F2 = d.facets || {};
-  fillSelect($('fMode'), F2.modes); fillSelect($('fLand'), F2.landforms);
-  fillSelect($('fDev'), F2.devices); fillSelect($('fVer'), F2.versions);
+  drawChart(d.daily || []);
+  renderFunnel(d.funnel || {});
+  const L = d.left_at || {}, LD = L.day || {};
+  table($('tLeft'), ['Games stopped without a result', 'Before day 5', 'Days 5–9', 'Days 10–24', 'Days 25–49', 'Days 50–99', 'Day 100+'],
+    (L.left || L.quit) ? [['Closed or quit: ' + num((L.left || 0) + (L.quit || 0)), LD.d0_4, LD.d5_9, LD.d10_24, LD.d25_49, LD.d50_99, LD.d100].map(v => v == null ? 0 : v)] : [],
+    'No game stopped without a result in this period.');
+  table($('tMode'), ['Difficulty', 'Games', 'Finished', 'Win rate', 'Median day'],
+    (d.by_mode || []).map(r => [r.mode, num(r.games), rate((r.won || 0) + (r.lost || 0), r.games || 0), rate(r.won || 0, (r.won || 0) + (r.lost || 0)), num(r.median_day)]));
+  const C = d.cards || {};
+  table($('tCards'), ['Cards', 'Games', 'Win rate'], (C.with_games || C.without_games) ? [
+    ['Played a card', num(C.with_games || 0), rate(C.with_won || 0, (C.with_won || 0) + (C.with_lost || 0))],
+    ['Played no card', num(C.without_games || 0), rate(C.without_won || 0, (C.without_won || 0) + (C.without_lost || 0))],
+  ] : []);
+  $('cardsNote').textContent = (C.earned != null)
+    ? plural(C.earned || 0, 'card') + ' earned by ' + plural(C.earners || 0, 'player') + ' · ' + plural(C.plays || 0, 'card') + ' played by ' + plural(C.players_played || 0, 'player') + ' in this period.'
+    : '';
+  table($('tDevice'), ['Device', 'Players', 'Games', 'Finished', 'Win rate'],
+    (d.by_device || []).map(r => [r.device, num(r.players), num(r.games), pct(r.finished_pct), pct(r.win_pct)]));
+  table($('tLand'), ['Landform', 'Games', 'Finished', 'Win rate'],
+    (d.by_landform || []).map(r => [r.landform, num(r.games), pct(r.finished_pct), pct(r.win_pct)]));
+  table($('tOrigin'), ['Origin card', 'Games', 'Win rate'],
+    (d.by_origin || []).map(r => [r.origin, num(r.games), rate(r.won || 0, (r.won || 0) + (r.lost || 0))]), 'No origin cards recorded in this period.');
+  // the deck's five tiers, in order (js/deck.js Deck.TIERS)
+  const TIER = [['stone', 'Stone'], ['bronze', 'Bronze'], ['iron', 'Iron'], ['imperial', 'Imperial'], ['enlight', 'Enlightenment']];
+  const T = C.earned_by_tier || {}, rank = t => { const i = TIER.findIndex(x => x[0] === t); return i < 0 ? 99 : i; };
+  table($('tTiers'), ['Cards earned, by tier', 'Earned'],
+    Object.keys(T).sort((a, b) => rank(a) - rank(b)).map(t => [(TIER.find(x => x[0] === t) || [, t])[1], num(T[t])]), 'No cards earned in this period.');
+  table($('tPlays'), ['Most played cards', 'Plays'], (C.top_played || []).map(r => [cardName(r.card), num(r.plays)]), 'No cards played in this period.');
+  const TU = d.tutorial || {};
+  table($('tTut'), ['With the tutorial', 'Games', 'Finished', 'Won'], TU.games ? [['Tutorial on', num(TU.games), num(TU.finished), num(TU.won)]] : [], 'No tutorial games in this period.');
+  table($('tErr'), ['First error of the game', 'Games', 'Players', 'Newest build', 'Last seen'],
+    (d.errors_top || []).map(r => [{ td: `<td class="err-msg">${esc(r.err)}</td>` }, num(r.games), num(r.players), r.build == null ? '—' : r.build, when(r.last)]),
+    'No errors caught in this period (counted from build 107 on).');
+  const F = d.filters || {};
+  fill($('fMode'), F.modes); fill($('fDev'), F.devices);
+  const I = d.inbox || {};
+  $('inboxCount').textContent = I.total ? '· ' + num(I.open) + ' open, ' + num(I.new) + ' new' : '';
 }
 
-function renderCompetition(c) {
-  const box = $('compSection');
-  if (!c) { box.hidden = true; return; }
-  box.hidden = false;
-  tiles($('cKpis'), [
-    { k: 'Entries', v: num(c.entries_total), n: num(c.emails) + ' unique emails' },
-    { k: 'From wins', v: num(c.entry_wins), cls: 'g' },
-    { k: 'From losses', v: num(c.entry_losses), cls: 'r' },
-    { k: 'Feedback cards', v: num(c.feedback_total), n: num(c.repeat_feedback) + ' repeat / over-cap' },
-    { k: 'Avg rating', v: (c.avg_rating == null ? '—' : (+c.avg_rating).toFixed(2) + ' / 5'), cls: 'y' },
-  ]);
-  const ro = c.rating_by_outcome || {};
-  tiles($('cRatings'),
-    (c.rating_hist || []).map(r => ({ k: r.rating + ' star' + (r.rating > 1 ? 's' : ''), v: num(r.n) }))
-    .concat([
-      { k: 'Rating after a win', v: (ro.win_avg == null ? '—' : ro.win_avg + ' / 5'), n: num(ro.win_n) + ' cards', cls: 'g' },
-      { k: 'Rating after a loss', v: (ro.loss_avg == null ? '—' : ro.loss_avg + ' / 5'), n: num(ro.loss_n) + ' cards', cls: 'r' },
-    ]));
-  table($('cChoices'), ['What would most improve it?', 'Picked', 'From wins', 'From losses', 'Avg rating'],
-    (c.choices || []).map(r => [r.choice, r.n, r.wins, r.losses, (r.avg_rating == null ? '—' : r.avg_rating + ' / 5')]), 1);
-  table($('cSegments'), ['Score band', 'Feedback cards', 'Avg rating'],
-    (c.rating_by_band || []).map(r => [r.label, r.n, (r.avg_rating == null ? '—' : r.avg_rating + ' / 5')]), 1);
-  table($('cDaily'), ['Day', 'Entries'],
-    (c.entries_by_day || []).map(r => [r.day, r.entries]), 1);
-  const tx = $('cTexts');
-  if (!(c.free_texts || []).length) { tx.innerHTML = '<tr><td class="muted">No written feedback yet.</td></tr>'; }
-  else {
-    tx.innerHTML = '<tr><th>When</th><th>Rating</th><th>Pick</th><th>Win</th><th>Score</th><th>They wrote</th></tr>' +
-      c.free_texts.map(r => '<tr><td>' + esc(r.when) + '</td><td>' + esc(r.rating) + '</td><td>' + esc(r.choice) + '</td>' +
-        '<td>' + (r.win ? 'win' : 'loss') + '</td><td>' + esc(num(r.score)) + '</td>' +
-        '<td style="text-align:left;white-space:pre-wrap;max-width:420px">' + esc(r.text) + (r.counted ? '' : ' <span class="muted">(over cap)</span>') + '</td></tr>').join('');
-  }
-}
-
-// CARDS (0008): absent or refused, every table reads "No data yet" and the
-// note says why — the rest of the page never depends on this section
-function renderCards(c) {
-  c = c || {};
-  const note = $('cardsNote');
-  if (!note.dataset.base) note.dataset.base = note.textContent;
-  note.textContent = c.missing ? c.note : (c.error ? 'Cards: ' + c.error : note.dataset.base);
-  const T = c.totals || {};
-  tiles($('kCards'), c.missing || c.error ? [] : [
-    { k: 'Cards granted', v: num(T.cards_granted), cls: 'y', n: num(T.runs_granted) + ' runs · ' + num(T.great_victories) + ' second cards' },
-    { k: 'Cards played', v: num(T.cards_played), n: num(T.players_played) + ' players' },
-    { k: 'Players granted', v: num(T.players_granted) },
-    { k: 'Starter hands', v: num(T.starters_claimed), n: 'claimed' },
-    { k: 'Held right now', v: num(T.cards_held_now), n: 'every player, unfiltered' },
-    { k: 'Turned away', v: num(T.refusals), cls: T.refusals > 0 ? 'r' : '', n: 'by the server' },
-    { k: 'The game reported', v: num(T.client_granted), n: num(T.client_played) + ' plays · telemetry' },
-  ]);
-  table($('tCardTiers'), ['Tier', 'From wins', 'From losses', 'Granted', 'Players'],
-    (c.granted_by_tier || []).map(r => [r.tier, r.wins, r.losses, r.n, r.players]), 3);
-  table($('tCardPlays'), ['Card', 'Tier', 'Plays', 'Players', 'Runs', 'Win rate'],
-    (c.played_by_card || []).map(r => [r.card, r.tier, r.plays, r.players, r.runs, pct(r.win_pct)]), 2);
-  table($('tCardAssist'), ['Endings', 'Runs', 'Wins', 'Losses', 'Win rate'],
-    (c.assisted || []).map(r => [r.group, r.runs, r.wins, r.losses, pct(r.win_pct)]), 1);
-  table($('tCardRefused'), ['Door', 'Reason', 'Times', 'Players'],
-    (c.refused || []).map(r => [r.op, r.reason, r.n, r.players]), 2);
-}
-
-function fillSelect(sel, values) {
+function fill(sel, values) {
   const keep = sel.value;
-  const list = (values || []).filter(v => v != null).map(String).sort();
-  sel.innerHTML = '<option value="">All</option>' +
-    list.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+  sel.innerHTML = '<option value="">All</option>' + (values || []).filter(Boolean).map(String).sort()
+    .map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   sel.value = keep;
 }
 
-/* ------------------------------------------------------------- plumbing */
-function filters() {
-  return {
-    from: $('fFrom').value || null,
-    to: $('fTo').value ? $('fTo').value + 'T23:59:59Z' : null,
-    mode: $('fMode').value || null, landform: $('fLand').value || null,
-    device: $('fDev').value || null, version: $('fVer').value || null,
-    minSeconds: +($('fMin').value || 0),
-  };
+function drawChart(days) {
+  const svg = $('chart'), W = Math.max(120, svg.clientWidth || 800), H = 150, pad = 18;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  if (!days.length) { svg.innerHTML = ''; $('chartKey').innerHTML = '<span class="muted">No days in this period.</span>'; return; }
+  const max = Math.max(1, ...days.map(x => x.games || 0), ...days.map(x => x.players || 0));
+  const bw = (W - 2) / days.length, h = v => (H - pad) * v / max;
+  let out = '';
+  days.forEach((x, i) => {
+    const xx = 1 + i * bw, w = Math.max(1, bw - 2), g = x.games || 0, won = x.won || 0, lost = x.lost || 0;
+    const tip = `${x.day}: ${plural(g, 'game')} (${won} won, ${lost} lost) · ${plural(x.players || 0, 'player')}`;
+    out += `<g><title>${esc(tip)}</title>` +
+      `<rect x="${xx}" y="${H - pad - h(g)}" width="${w}" height="${h(g)}" fill="#7d7462" opacity=".55"/>` +
+      `<rect x="${xx}" y="${H - pad - h(won + lost)}" width="${w}" height="${h(lost)}" fill="#c2603f"/>` +
+      `<rect x="${xx}" y="${H - pad - h(won)}" width="${w}" height="${h(won)}" fill="#7fa84a"/></g>`;
+  });
+  const pts = days.map((x, i) => `${1 + i * bw + bw / 2},${H - pad - h(x.players || 0)}`).join(' ');
+  out += `<polyline points="${pts}" fill="none" stroke="#e8c15a" stroke-width="2"/>`;
+  const lab = (i) => `<text x="${Math.min(W - 40, 1 + i * bw)}" y="${H - 3}" fill="#6f6650" font-size="10">${esc(dayOf(days[i].day).slice(5))}</text>`;
+  out += lab(0) + (days.length > 1 ? lab(days.length - 1) : '');
+  svg.innerHTML = out;
+  $('chartKey').innerHTML = '<span style="--c:#7fa84a">won</span><span style="--c:#c2603f">lost</span><span style="--c:#7d7462">other games</span><span style="--c:#e8c15a">players</span>';
 }
 
-async function load() {
-  $('appErr').textContent = '';
-  try {
-    const d = await callRpc(TOKEN, filters());
-    if (d && d.error) {
-      if (d.error === 'bad_token') { lock('That passphrase was not accepted.'); return; }
-      if (d.error === 'no_token_set') {
-        $('appErr').textContent = 'No passphrase is set yet. In the Supabase SQL editor run: ' +
-          "select public.set_analytics_token('your passphrase');";
-        return;
-      }
-      $('appErr').textContent = 'Error: ' + d.error; return;
-    }
-    render(d); loadCards();
-  } catch (e) {
-    $('appErr').textContent = (e && e.message) || 'Could not reach the database.';
+function renderFunnel(F) {
+  const s = F.started || 0;
+  const steps = [['Started a game', F.started], ['Played a minute', F.minute], ['Reached day 10', F.day10], ['Reached day 50', F.day50],
+    ['Reached day 100', F.day100], ['Finished (won or lost)', F.finished], ['Won', F.won]];
+  $('funnel').innerHTML = steps.map(([k, v]) => {
+    const w = s ? Math.round(100 * (v || 0) / s) : 0;
+    return `<div>${esc(k)}</div><div class="bar"><i style="width:${w}%"></i></div><div class="c">${num(v || 0)} · ${s ? w + '%' : '—'}</div>`;
+  }).join('');
+}
+
+/* ------------------------------------------------------------- did the update help? */
+function releases() {
+  const seen = (DATA && DATA.builds) || {};
+  const notes = (window.PATCH_NOTES || []).slice().sort((a, b) => b.build - a.build);
+  return notes.map(n => {
+    const at = seen[n.build] || RELEASE_AT[n.build];
+    return { build: n.build, title: n.title, known: !!at, at: at ? new Date(at).toISOString() : new Date(n.date + 'T00:00:00Z').toISOString() };
+  });
+}
+function fillReleases() {
+  const sel = $('cRel'), keep = sel.value, list = releases();
+  sel.innerHTML = list.map(r => `<option value="${esc(r.at)}">${esc('Build ' + r.build + ' · ' + r.title + ' · ' + (r.known ? when(r.at) : dayOf(r.at) + ' (the day only)'))}</option>`).join('');
+  const first = list.find(r => r.known) || list[0];
+  sel.value = keep && list.some(r => r.at === keep) ? keep : (first ? first.at : '');
+}
+async function loadCompare() {
+  const f = filters();
+  const r = await rpc('analytics_compare', { p_token: TOKEN, p_split: $('cRel').value || null, p_days: +$('cDays').value,
+    p_mode: f.p_mode, p_device: f.p_device, p_min_seconds: f.p_min_seconds, p_everyone: f.p_everyone }).catch(() => null);
+  if (!r || missing(r) || !r.data || !r.data.ok) { table($('tCmp'), [], [], 'The comparison needs migration 0010.'); $('cmpNote').textContent = ''; return; }
+  renderCompare(r.data);
+}
+function renderCompare(c) {
+  const B = c.before || {}, A = c.after || {}, days = c.days, ad = +c.after_days || 0;
+  const partial = ad < days - 0.05;
+  const decB = (B.won || 0) + (B.lost || 0), decA = (A.won || 0) + (A.lost || 0);
+  const pctOf = (k, n) => (n ? pct(ratio(k, n)) + ' <span class="muted">· ' + num(k) + ' of ' + num(n) + '</span>' : '—');
+  /* the two windows are always the same length (analytics_compare), so a
+     count compares as it stands: [label, before html, after html, verdict] */
+  const cnt = (label, b, a, good) => [label, num(b), num(a), moveC(b, 1, a, 1, good)];
+  const prop = (label, kb, nb, ka, na, good, tooEarly) => [label, { html: pctOf(kb, nb) },
+    { html: na ? pctOf(ka, na) : (tooEarly ? '<span class="muted">too early</span>' : '—') }, moveP(kb, nb, ka, na, good)];
+  const rows = [
+    cnt('Players', B.players, A.players, 1),
+    cnt('New players', B.new_players, A.new_players, 1),
+    cnt('Games', B.games, A.games, 1),
+    prop('Finished', decB, B.games || 0, decA, A.games || 0, 1),
+    prop('Win rate', B.won || 0, decB, A.won || 0, decA, 1),
+    prop('Played again within a week', B.back || 0, B.back_ripe || 0, A.back || 0, A.back_ripe || 0, 1, true),
+    prop('First-game hook (10 minutes)', B.hook || 0, B.hook_n || 0, A.hook || 0, A.hook_n || 0, 1),
+    ['Time per player (median)', mins(B.player_minutes), mins(A.player_minutes), null],
+    prop('Games that hit an error', B.err_games || 0, B.err_n || 0, A.err_games || 0, A.err_n || 0, -1, true),
+  ];
+  table($('tCmp'), ['', 'Before', 'After', 'Verdict'], rows.map(([label, b, a, v]) =>
+    [label, b, a, v ? { html: `<span class="${v === 'few' ? 'unclear' : v}">${esc(VERDICT[v])}</span>` } : { html: '<span class="muted">—</span>' }]));
+  const span = d => (d >= 1.95 ? Math.round(d) + ' days' : d >= 0.95 ? '1 day' : Math.max(1, Math.round(d * 24)) + ' hours');
+  $('cmpNote').textContent = (ad <= 0.001 ? 'This release has no "after" yet. '
+    : partial ? `The release is ${span(ad)} old, so its ${span(ad)} are compared with the same ${span(ad)} ${Math.round((Date.parse(c.split) - Date.parse(c.before_from)) / 864e5 / 7) === 1 ? 'one week' : Math.round((Date.parse(c.split) - Date.parse(c.before_from)) / 864e5 / 7) + ' weeks'} earlier, weekdays and hours alike. `
+    : `The ${days} days after the release against the ${days} days before it. `) +
+    `Before: ${plural(B.games || 0, 'game')}, ${num(decB)} finished · After: ${plural(A.games || 0, 'game')}, ${num(decA)} finished.`;
+}
+
+/* ------------------------------------------------------------- the inbox */
+const STATUS = [['new', 'New'], ['triaged', 'Looked at'], ['sent', 'Sent to Claude'], ['fixed', 'Fixed'], ['wontfix', "Won't fix"]];
+async function loadInbox() {
+  const r = await rpc('analytics_feedback', { p_token: TOKEN, p_status: null, p_kind: null, p_limit: 300 }).catch(() => null);
+  if (!r || missing(r) || !r.data || !r.data.ok) {
+    INBOX = []; $('inboxBar').innerHTML = '';
+    $('inbox').innerHTML = '<div class="card note">The inbox needs migrations 0009 and 0010 applied (see the setup note above).</div>';
+    return;
   }
+  INBOX = r.data.reports || [];
+  renderInbox();
+}
+function renderInbox() {
+  const isOpen = x => x.status === 'new' || x.status === 'triaged' || x.status === 'sent';
+  const counts = { open: INBOX.filter(isOpen).length, new: INBOX.filter(x => x.status === 'new').length,
+    fixed: INBOX.filter(x => x.status === 'fixed').length, wontfix: INBOX.filter(x => x.status === 'wontfix').length, all: INBOX.length };
+  const tabs = [['open', 'Open'], ['new', 'New'], ['fixed', 'Fixed'], ['wontfix', "Won't fix"], ['all', 'All']];
+  const kinds = [['', 'Every kind'], ['bug', 'Bugs'], ['crash', 'Crashes'], ['idea', 'Ideas'], ['other', 'Other']];
+  $('inboxBar').innerHTML = tabs.map(([k, l]) => `<button class="chip${INBOX_FILTER === k ? ' on' : ''}" data-f="${k}">${esc(l)} ${counts[k]}</button>`).join('') +
+    '<span style="width:12px"></span>' +
+    kinds.map(([k, l]) => `<button class="chip${INBOX_KIND === k ? ' on' : ''}" data-k="${k}">${esc(l)}</button>`).join('');
+  const list = INBOX.filter(x => (INBOX_FILTER === 'all' || (INBOX_FILTER === 'open' ? isOpen(x) : x.status === INBOX_FILTER)) && (!INBOX_KIND || x.kind === INBOX_KIND));
+  $('inbox').innerHTML = list.length ? list.map(repHtml).join('') : '<div class="card note">Nothing here.</div>';
+}
+function deviceOf(ua) {
+  ua = String(ua || '');
+  if (/iPhone|iPad/.test(ua)) return /iPad/.test(ua) ? 'iPad' : 'iPhone';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows';
+  return ua ? 'Other' : '';
+}
+function repHtml(x) {
+  const run = x.run || null, errs = x.errors || [];
+  const meta = [when(x.at), x.build ? 'build ' + x.build : '', deviceOf(x.browser), x.installed ? 'home-screen app' : '', x.screen || ''].filter(Boolean).join(' · ');
+  const runLine = run ? [run.mode, run.day != null ? 'day ' + run.day : '', run.size, run.landform, run.variant, run.seed ? 'seed ' + run.seed : '', run.over ? 'finished' : ''].filter(Boolean).join(' · ') : '';
+  const canSend = x.kind === 'bug' || x.kind === 'crash';
+  return `<div class="rep" data-id="${esc(x.id)}">
+    <div class="hd"><span class="badge ${esc(x.kind)}">${esc(x.kind)}</span><span class="st">${esc((STATUS.find(s => s[0] === x.status) || [, x.status])[1])}</span>
+      <span>${esc(meta)}</span>${x.mine ? '<span class="mine">your device</span>' : ''}</div>
+    <div class="msg">${esc(x.message)}</div>
+    <div class="note">From ${x.name ? esc(x.name) + ' · ' : ''}<a href="mailto:${esc(x.email)}?subject=${encodeURIComponent('Your Clanfire report')}">${esc(x.email)}</a></div>
+    ${(runLine || errs.length || x.frame_error || x.browser) ? `<details><summary>Details${errs.length ? ' · ' + plural(errs.length, 'error') : ''}</summary>
+      ${runLine ? '<div>Game: ' + esc(runLine) + '</div>' : ''}
+      ${x.browser ? '<div>Browser: ' + esc(x.browser) + '</div>' : ''}
+      ${x.frame_error ? '<pre>' + esc(x.frame_error) + '</pre>' : ''}
+      ${errs.length ? '<pre>' + esc(errs.map(fmtErr).join('\n\n')) + '</pre>' : ''}
+    </details>` : ''}
+    <div class="act">
+      <select data-act="status" aria-label="Status">${STATUS.map(([k, l]) => `<option value="${k}"${x.status === k ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <input data-act="note" placeholder="A note for yourself" aria-label="Note" value="${esc(x.note || '')}">
+      <button class="ghost" data-act="save">Save</button>
+      ${canSend ? '<button data-act="claude">Send to Claude</button>' : ''}<button class="ghost" data-act="copy">Copy for Claude</button>
+    </div>
+  </div>`;
+}
+function fmtErr(e) {
+  if (!e || typeof e !== 'object') return String(e);
+  return [e.t ? '[' + String(e.t).slice(0, 19).replace('T', ' ') + ']' : '', e.msg || e.message || '', e.at ? '@ ' + e.at : '',
+    e.n > 1 ? '(x' + e.n + ')' : '', e.stack ? '\n' + e.stack : ''].filter(Boolean).join(' ');
+}
+/* THE TICKET: what Claude needs to research, reproduce, fix and ship it —
+   the player's words, the build, the device, the game they were in and the
+   errors the game caught. NEVER the player's email or name. And never a bare
+   "@claude": on GitHub that pings whoever owns that handle. The issue is
+   labelled player-report and carries a hidden marker with the report's id,
+   which is what an automation keys on. */
+function ticket(x, errBudget, msgBudget) {
+  const run = x.run || null, errs = (x.errors || []).slice(-8), budget = errBudget == null ? 3000 : errBudget;
+  const said = String(x.message || ''), msg = msgBudget != null && said.length > msgBudget
+    ? said.slice(0, msgBudget) + ' … (cut here; "Copy for Claude" in the inbox has the whole report)' : said;
+  const kind = { bug: 'Bug', crash: 'Crash', idea: 'Idea', other: 'Report' }[x.kind] || 'Report';
+  const title = '[' + kind + '] ' + String(x.message || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const body = [
+    'Player report #' + x.id + ' from the Clanfire analytics inbox (' + String(x.at || '').slice(0, 16).replace('T', ' ') + ' UTC).',
+    '', '> ' + msg.split('\n').join('\n> '), '',
+    '**Build:** ' + (x.build || '?') + ' · **Device:** ' + (deviceOf(x.browser) || '?') + (x.installed ? ' (home-screen app)' : '') + (x.screen ? ' · ' + x.screen : ''),
+    run ? '**Game:** ' + [run.mode, run.day != null ? 'day ' + run.day : '', run.size, run.landform, run.variant, run.seed ? 'seed ' + run.seed : ''].filter(Boolean).join(' · ') : '',
+    x.browser ? '**Browser:** `' + x.browser + '`' : '',
+    x.frame_error ? '\n**Frame error:**\n```\n' + String(x.frame_error).slice(0, 600) + '\n```' : '',
+    errs.length && budget > 0 ? '\n**Last errors the game caught:**\n```\n' + errs.map(fmtErr).join('\n').slice(0, budget) + '\n```' : '',
+    '', '---',
+    '**For Claude:** reproduce this on the build named above (the seed, if given, rebuilds the same world), find the cause, ' +
+      'fix it with a contract test, run the sweep and ship it to main with a patch note, following CLAUDE.md. ' +
+      'Then comment here with what was wrong and what changed.',
+    '', '<!-- clanfire-report:' + x.id + ' -->',
+  ].filter(s => s !== '').join('\n');
+  return { title, body };
+}
+async function setStatus(id, status, note) {
+  const r = await rpc('analytics_feedback_set', { p_token: TOKEN, p_id: id, p_status: status, p_note: note }).catch(() => null);
+  if (!r || !r.data || !r.data.ok) { $('appErr').textContent = 'Could not save the report\'s status' + (r && r.data && r.data.reason ? ' (' + r.data.reason + ')' : '') + '.'; return false; }
+  const x = INBOX.find(o => o.id === id); if (x) { x.status = status; if (note != null) x.note = note; }
+  return true;
+}
+document.addEventListener('click', async (e) => {
+  const chip = e.target.closest('#inboxBar .chip');
+  if (chip) { if (chip.dataset.f) INBOX_FILTER = chip.dataset.f; if (chip.dataset.k != null) INBOX_KIND = chip.dataset.k; renderInbox(); return; }
+  const btn = e.target.closest('.rep button'); if (!btn) return;
+  const card = btn.closest('.rep'), id = +card.dataset.id, x = INBOX.find(o => o.id === id); if (!x) return;
+  const note = card.querySelector('[data-act="note"]').value;
+  if (btn.dataset.act === 'save') { if (await setStatus(id, card.querySelector('[data-act="status"]').value, note)) renderInbox(); }
+  if (btn.dataset.act === 'claude') {
+    /* GitHub refuses a prefilled issue whose address runs past ~8k
+       characters, so the errors give way until it fits ("Copy for Claude"
+       still carries them all) */
+    const url = (budget, said) => { const t = ticket(x, budget, said);
+      return 'https://github.com/' + REPO + '/issues/new?title=' + encodeURIComponent(t.title) + '&body=' + encodeURIComponent(t.body) + '&labels=player-report'; };
+    let u = url(3000);
+    for (const [b, m] of [[1500], [600], [0], [0, 1500], [0, 600]]) { if (u.length <= 7000) break; u = url(b, m); }
+    window.open(u, '_blank', 'noopener');
+    if (await setStatus(id, 'sent', note)) renderInbox();
+  }
+  if (btn.dataset.act === 'copy') {
+    const t = ticket(x);
+    try { await navigator.clipboard.writeText('# ' + t.title + '\n\n' + t.body); btn.textContent = 'Copied'; } catch (err) { btn.textContent = 'Copy failed'; }
+  }
+});
+
+/* ------------------------------------------------------------- your devices */
+async function loadMine() {
+  const id = deviceId();
+  const [who, list] = await Promise.all([
+    rpc('analytics_whoami', { p_token: TOKEN, p_user_id: id }).catch(() => null),
+    rpc('analytics_devices', { p_token: TOKEN, p_limit: 25 }).catch(() => null),
+  ]);
+  if (!who || missing(who) || !who.data || !who.data.ok) { $('mine').innerHTML = '<div class="note">Leaving your own play out needs migration 0010.</div>'; table($('tDevices'), [], [], 'Needs migration 0010.'); return; }
+  const D = who.data.device, N = who.data.network;
+  const why = w => ({ yours: 'marked yours', tester: 'held the test deck', network: 'seen on your network' }[w] || w);
+  $('mine').innerHTML =
+    `<div class="dev"><div><b>This device</b> <span class="muted">${D ? esc(short(D.id)) : ''}</span><br><span class="note">${!D ? 'This browser has never played the game on this site. Mark your other devices below, or your network.'
+      : (D.why && D.why.length ? '<span class="ok">Left out</span> · ' + esc(D.why.map(why).join(', ')) : '<span class="no">Counted</span> · ' + plural(D.games || 0, 'game') + ' on record')}</span></div>
+      ${D ? `<button class="${D.excluded ? 'ghost' : ''}" data-mine-dev="${esc(D.id)}" data-on="${D.excluded ? '0' : '1'}">${D.excluded ? 'Count it again' : 'This device is mine'}</button>` : ''}</div>` +
+    `<div class="dev"><div><b>This network</b> <span class="muted">${N ? esc(String(N.id).slice(0, 8)) : ''}</span><br><span class="note">${!N ? 'The network could not be read.'
+      : (N.excluded ? '<span class="ok">Left out</span>' : '<span class="no">Counted</span>') + ' · ' + plural(N.devices || 0, 'device') + ' seen on it so far. Mark only a home or office network (a phone network is shared by strangers), and mark it again if your home address changes.'}</span></div>
+      ${N ? `<button class="${N.excluded ? 'ghost' : ''}" data-mine-net="1" data-on="${N.excluded ? '0' : '1'}">${N.excluded ? 'Count it again' : 'This network is mine'}</button>` : ''}</div>`;
+  const devs = (list && list.data && list.data.ok && list.data.devices) || [];
+  table($('tDevices'), ['Device', 'Kind', 'Games', 'Wins', 'First seen', 'Last seen', 'Notes', ''], devs.map(v => [
+    short(v.id) + (v.id === (D && D.id) ? ' (this one)' : ''), v.device || '—', num(v.games), num(v.wins), dayOf(v.first), dayOf(v.last),
+    [v.tester ? 'test deck' : '', v.here ? 'on this network' : '', v.on_marked_net ? 'your network' : '', v.label || ''].filter(Boolean).join(' · ') || '—',
+    { html: `<button class="chip${v.mine ? ' on' : ''}" data-mine-dev="${esc(v.id)}" data-on="${v.mine ? '0' : '1'}">${v.mine ? 'Mine ✓' : 'Mine?'}</button>` },
+  ]), 'No devices yet.');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-mine-dev],[data-mine-net]'); if (!b) return;
+  const on = b.dataset.on === '1';
+  b.disabled = true;
+  const r = b.dataset.mineDev
+    ? await rpc('analytics_mark_device', { p_token: TOKEN, p_user_id: b.dataset.mineDev, p_mine: on, p_label: null }).catch(() => null)
+    : await rpc('analytics_mark_network', { p_token: TOKEN, p_mine: on, p_label: null }).catch(() => null);
+  if (!r || !r.data || !r.data.ok) { $('appErr').textContent = 'Could not save that' + (r && r.data && r.data.reason ? ' (' + r.data.reason + ')' : '') + '.'; b.disabled = false; return; }
+  await loadAll();
+});
+
+/* ------------------------------------------------------------- setup */
+function setup(msgs) {
+  const el = $('setup');
+  if (!msgs.length) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  el.innerHTML = '<b>One step left in Supabase.</b> Open the project\'s SQL editor and paste each file, in order, skipping any already applied:<ol>' +
+    msgs.map(m => '<li>' + m + '</li>').join('') + '</ol><div class="note" style="margin-top:8px">Each file is safe to run twice. Reload this page afterwards.</div>';
 }
 
-function show(which) {
-  $('gate').hidden = which !== 'gate';
-  $('app').hidden = which !== 'app';
+/* ------------------------------------------------------------- plumbing */
+async function loadAll() {
+  $('appErr').textContent = '';
+  const r = await rpc('analytics_dashboard', Object.assign({ p_token: TOKEN }, filters())).catch(e => ({ status: 0, data: { reason: (e && e.message) || 'network' } }));
+  if (missing(r)) {
+    // the passphrase is still checked, through the older door 0003 left
+    const old = await rpc('analytics_summary', { p_token: TOKEN }).catch(() => null);
+    if (old && old.data && old.data.error === 'bad_token') { lock('That passphrase was not accepted.'); return false; }
+    setup(['<code>supabase/migrations/0008_cards.sql</code>: the cards\' cloud record, and the card rows this page counts',
+      '<code>supabase/migrations/0009_feedback.sql</code>: keeps every report sent from the game',
+      '<code>supabase/migrations/0010_dashboard.sql</code>: this dashboard (one result per game, your own play left out, the release comparison and the inbox)']);
+    $('main').hidden = true;
+    return true;
+  }
+  if (!r.data || r.data.ok === false) {
+    if (r.data && r.data.reason === 'bad_token') { lock('That passphrase was not accepted.'); return false; }
+    $('appErr').textContent = 'Could not load: ' + ((r.data && (r.data.reason || r.data.message)) || ('HTTP ' + r.status));
+    return true;
+  }
+  setup([]); $('main').hidden = false;
+  render(r.data);
+  fillReleases();
+  await Promise.all([loadCompare(), loadInbox(), loadMine()]);
+  return true;
 }
+function show(which) { $('gate').hidden = which !== 'gate'; $('app').hidden = which !== 'app'; }
 function lock(msg) {
   TOKEN = null;
   try { sessionStorage.removeItem(KEY); } catch (e) {}
   show('gate'); $('gateErr').textContent = msg || ''; $('pass').value = ''; $('pass').focus();
 }
-
 $('go').onclick = async () => {
   const p = $('pass').value.trim();
   if (!p) { $('gateErr').textContent = 'Enter the passphrase.'; return; }
   $('gateErr').textContent = 'Checking…';
   TOKEN = await hashToken(p);
-  // the picker's default is part of the first render too — an unlock that
-  // ignored it showed the junk rows under a label saying they were dropped
-  const d = await callRpc(TOKEN, filters()).catch(e => ({ error: (e && e.message) || 'network' }));
-  if (d && d.error) { lock(d.error === 'bad_token' ? 'That passphrase was not accepted.' : ('Error: ' + d.error)); return; }
-  // the tab remembers, the browser does not: sessionStorage dies with the tab
-  try { sessionStorage.setItem(KEY, TOKEN); } catch (e) {}
-  show('app'); render(d); loadCards();
+  show('app');
+  if (await loadAll()) { try { sessionStorage.setItem(KEY, TOKEN); } catch (e) {} }
 };
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
-$('apply').onclick = load;
-$('reset').onclick = () => {
-  for (const id of ['fFrom', 'fTo']) $(id).value = '';
-  for (const id of ['fMode', 'fLand', 'fDev', 'fVer']) $(id).value = '';
-  $('fMin').value = '1';   // the honest default: real runs
-  load();
-};
+$('apply').onclick = () => loadAll();
+$('fPeriod').onchange = () => { $('custom').classList.toggle('on', $('fPeriod').value === 'custom'); if ($('fPeriod').value !== 'custom') loadAll(); };
+for (const id of ['fMode', 'fDev', 'fMin', 'fAll']) $(id).onchange = () => loadAll();
+$('cRel').onchange = loadCompare; $('cDays').onchange = loadCompare;
 $('out').onclick = () => lock('');
+window.addEventListener('resize', () => { if (DATA) drawChart(DATA.daily || []); });
 
 // a tab reopened mid-session walks straight back in; a new tab does not
 (async () => {
   let saved = null;
   try { saved = sessionStorage.getItem(KEY); } catch (e) {}
   if (!saved) { show('gate'); return; }
-  TOKEN = saved;
-  const d = await callRpc(TOKEN, filters()).catch(() => ({ error: 'network' }));
-  if (d && d.error) { lock(''); return; }
-  show('app'); render(d); loadCards();
+  TOKEN = saved; show('app');
+  await loadAll();
 })();
 </script>
 </body>

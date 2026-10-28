@@ -129,6 +129,9 @@ const G = {
     // run_start, or G.end names it (Backend.legacyRunId) — never a leftover
     // from a save loaded before it (tests/telemetry.mjs §5)
     if (window.Backend) Backend.runId = null;
+    // …and its errors are its own: the recorder's tally starts again
+    // (Feedback.runErrs, read by runReport — the dashboard's error count)
+    if (window.Feedback && Feedback.resetRunErrors) Feedback.resetRunErrors();
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
@@ -2698,6 +2701,12 @@ const G = {
         special: S.special || null,
         special_fired: !!S.specialDay,
         special_day: S.specialDay || null,
+        // THE GAME'S OWN ERRORS (build 107; the dashboard's "hit an error"
+        // and its list of the commonest): how many faults the recorder caught
+        // in this sitting, and the first of them, cut short. Guarded on the
+        // method it reads, like every hook: no recorder, no claim either way
+        ...((window.Feedback && Feedback.resetRunErrors)
+          ? { errors: Feedback.runErrs || 0, ...(Feedback.runErr ? { err: String(Feedback.runErr).slice(0, 160) } : {}) } : {}),
       },
     };
   },
@@ -2734,6 +2743,8 @@ const G = {
     // is being assembled (R.holdTerrain). A refused load leaves the running
     // game's cache exactly as it was.
     R.holdTerrain();
+    // a loaded run counts the errors of THIS sitting (Feedback.runErrs)
+    if (window.Feedback && Feedback.resetRunErrors) Feedback.resetRunErrors();
     const w = data.map.W || 40, h = data.map.H || 40;
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Clanfire save file');

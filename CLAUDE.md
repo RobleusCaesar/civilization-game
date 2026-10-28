@@ -163,7 +163,8 @@ node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner m
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
-node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins
+node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins; every row names its build, every ending its errors (0 for a clean game)
+node tests/analytics.mjs     # the dashboard on a REAL PostgreSQL (all migrations in order, 0010 twice): one game one result, rates of what they say, your own play left out retroactively, the doors locked, the release comparison, the inbox; the page against the real functions, and Send to Claude never writes a bare @claude
 node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width, the top bar is ONE row and a panel puts four actions on a row; the phone untouched
 node tests/moderate-dials.mjs # the retention pass's balance: Moderate's raid cadence / early army / harassment / first wave, a starving chief spends its gold, spare hands scale with the town, the Wonder's price, no massif at a seat's door
 node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachability, dock-capable coasts on a shared ocean, the island viability floor, per-seat resources+gold
@@ -3287,6 +3288,75 @@ RECORD). Every existing gate still holds (site-only `_emit`, `S.played`,
 `Screens._demo`, `S.over`). The dashboard's "Where they leave" tables bucket
 every walk-away by day and by minutes, split by difficulty and device,
 closed_tab beside struck_banner.
+
+**THE DASHBOARD COUNTS GAMES, NOT ROWS** (`analytics.html`, migration
+`0010_dashboard.sql`, `tests/analytics.mjs` — operator, 2026-10-28, on the
+past month: "171 games were played, but 434 reached an ending. That doesn't
+make any sense. Also, win rate and loss rate was only 28"). It did not: the
+live summary was 0006's, which counted EVERY run_end row as an ending, and
+a closed tab sends one provisional row per day reached — so one phone
+player who switched apps five times was five "endings", and the win rate was
+divided by all of them (15 of 434). 0007 deduped the rows but was never
+applied, and even it measured rates against endings. **ONE MODEL, ONE
+RESULT PER GAME** (`analytics__games`): a GAME is a run_start, and it has
+exactly one result — won, lost, quit (a real 'abandoned' ending), left (only
+closed_tab rows) or open (nothing came back); a real ending beats closed_tab
+across the whole table, the latest row wins, and a game belongs to the
+window it STARTED in. Finished is (won + lost) / games, win rate is won /
+(won + lost), and the page shows every rate BESIDE ITS COUNTS, greyed under
+30 ("a hint, not a result") with its Wilson 95% range on hover. **THE EIGHT
+NUMBERS** (the research: what small games actually steer by — retention and
+a first session that hooks, never DAU/MAU or averages): players, games,
+finished, win rate, PLAYED AGAIN (a new player's second game within 7 days,
+counted only once that week has happened), FIRST-GAME HOOK (first games that
+lasted 10 minutes; a first game with no ending row says nothing and is left
+out), time per player (median), and HIT AN ERROR. **YOUR OWN PLAY IS LEFT
+OUT, RETROACTIVELY** (`analytics__hidden`): a device on the operator's list
+(the page's "This device is mine" reads the game's own anonymous id from
+this origin's `sb-…-auth-token`, or "Mine?" in the device list), a device
+that ever held the card TEST deck (`props.cards_test`), and every device ever
+SEEN on a network marked the operator's — all of its rows, history included.
+The network is stamped by a BEFORE INSERT trigger from PostgREST's
+`request.headers` (cf-connecting-ip, x-real-ip, the first x-forwarded-for
+hop), cut to the IPv4 /32 or IPv6 /64 (a phone's address rotates, its prefix
+does not), salted with a database-only secret and cut to 16 hex: the address
+is never stored, a client cannot write its own, and rows before 0010 carry
+none (that history is the device list's job). "Include everyone" shows the
+numbers with nothing hidden. **DID THE UPDATE HELP** (`analytics_compare`):
+two windows of EQUAL LENGTH — the 7/14/28 days either side of a release once
+that many have passed, and while the after window is still running, what has
+happened so far against the same span a whole number of weeks earlier, so
+weekdays and hours line up and a count of distinct players means the same on
+both sides (per-day rates of unequal windows read a short window as growth:
+a day's window counts every regular afresh, a fortnight's once). A build's
+moment is the first row seen on it (every row names its build from 107),
+`RELEASE_AT` by hand before that, the patch note's day otherwise, and the
+comparison opens on the newest known moment. Each row gets a verdict:
+Better / Worse at 95% (a pooled two-proportion test for rates, the binomial
+split of two Poisson counts for counts), "Can't tell yet" below it, "Too few
+to tell" under 10.
+**THE INBOX**: 0009 keeps every report, 0010 gives each a status (new →
+triaged → sent → fixed / wontfix) and a note behind the passphrase; the email
+still goes out from the game. **Send to Claude** opens a prefilled GitHub
+issue — the player's words, build, device, the game (seed included) and the
+errors the game caught, never the player's email or name, labelled
+`player-report` and marked `<!-- clanfire-report:ID -->` — and NEVER a bare
+"@claude", which on GitHub pings whoever owns that handle; the contract
+refuses one. **ERRORS, FROM BUILD 107**: every telemetry row carries
+`props.build` (`Backend._stamp`, read off the script tags' shared ?v=; an
+ending kept for a resend keeps the build it was played on) and every ending
+`props.errors` — 0 for a clean game, never blank, since NULL reads "not
+counted" — plus `props.err`, the first fault as "message @ file:line"
+(`Feedback.runErrs` / `runErr`, reset by newGame/loadJSON, never in a save).
+The error numbers ignore the run filter: a crash in the first minute is the
+one most worth seeing. **THE DOORS ARE LOCKED**: every new table is sealed
+(RLS on, no policy, every privilege revoked from anon and authenticated by
+name), the helpers are granted to nobody, and each door checks the 0003
+passphrase hash before anything else — the contract runs as the publishable
+role and finds the doors and nothing more. The inbox and the device list are
+the only ROWS the page receives. 0010 is one idempotent paste after 0009; it
+never touches `analytics_summary` (the passphrase fallback that tells a
+wrong passphrase from a missing migration) or `analytics_cards`.
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it
