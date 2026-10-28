@@ -120,11 +120,24 @@ const GrowFX = {
   ring(g, cx, cy, rad, col, a, px, squash, vp, spin) {
     if (!(a > 0.01) || rad < 1) return;
     px = px || 2; squash = squash || 1;
-    if (R.isTone(col)) { R.fxRing(g, cx, cy, rad, Math.min(1, a), col, { squash, w: px * 0.7 }); return; }
+    if (R.isTone(col)) { R.fxRing(g, cx, cy, rad, Math.min(1, a), col, { squash, w: px * 0.7, tie: this.tie(col) }); return; }
     g.save();
     g.globalAlpha = Math.min(1, a); g.strokeStyle = col; g.lineWidth = px * 0.55;
     g.beginPath(); g.ellipse(cx, cy, rad, rad * squash, 0, 0, Math.PI * 2); g.stroke();
     g.restore();
+  },
+  // how hard a light's hue is tied to it (R.fxTie: twice for a pale tone)
+  tie(tone) { return R.fxTie ? R.fxTie(tone) : 1; },
+  /* THE TONE A MOTE'S OLD INK COLOUR NAMES: the motes and glints were named
+     by the cells' colours — a gold and a cream — and laid as a light in that
+     colour its hue was the colour's own: a cream like '#fff1b8' sits at 48°,
+     on the olive band's edge, and the festival's and the quick hands' bursts
+     read 5-12% olive. A cream is now the 'white' light (cream round a white
+     heart), every other warm colour the 'gold', a tone name itself. */
+  toneOf(col) {
+    if (R.isTone(col)) return col;
+    const v = R._fxRgb ? R._fxRgb(col) : [255, 204, 64];
+    return Math.min(v[0], v[1]) > 225 ? 'white' : 'gold';
   },
   /* a grain of light rising (the motes' language): a soft bead at the
      device's own resolution, its cream heart over a halo of its own hue
@@ -133,13 +146,26 @@ const GrowFX = {
      needed: a bead of light reads on grass by its own glow. */
   mote(g, x, y, col, dark, a) {
     if (!(a > 0.01)) return;
-    R.fxDot(g, x, y, 1.25, Math.min(1, a), col);
+    const t = this.toneOf(col);
+    R.fxDot(g, x, y, 1.25, Math.min(1, a), t, this.tie(t));
   },
   // a four-point glint — something catching the light: hair-thin tapering arms at the device's own resolution (R.fxSpark)
   glint(g, x, y, col, a, px, tone) {
     if (!(a > 0.01)) return;
     px = px || 2;
-    R.fxSpark(g, x, y, Math.max(2.5, 1.8 * px / R.fxPx(g)), Math.min(1, a), tone || col);
+    const t = this.toneOf(tone || col);
+    R.fxSpark(g, x, y, Math.max(2.5, 1.8 * px / R.fxPx(g)), Math.min(1, a), t, { tie: this.tie(t) });
+  },
+  /* A SPORE: a grain of the rot, not a light — a round speck in its own
+     sick colour over a dark underside a little below it, so it reads on
+     bright grass and dark woods alike (the sky's spores' own rule) */
+  spore(g, x, y, r, col, a) {
+    if (!(a > 0.01)) return;
+    g.save();
+    g.globalAlpha = Math.min(1, a);
+    g.fillStyle = '#2c2a1c'; g.beginPath(); g.arc(x + r * 0.25, y + r * 0.7, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = col; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.restore();
   },
   /* a word in the world (a card's '×2'): cream on a dark rim stroked round
      its own letters at the device's own resolution (eight copies a world
@@ -245,7 +271,7 @@ const GrowFX = {
     for (let i = 0; i < n; i++) {
       const tw = (Math.sin(t * (2 + this.hash(i, 5) * 3) + i * 2.3) + 1) / 2;
       if (tw < 0.55) continue;
-      R.fxSpark(g, this.hash(i, 1) * W, this.hash(i, 2) * H * 0.62, 3 + 4 * this.hash(i, 3), Math.min(1, a * (tw - 0.45) * 1.8), tone, { diag: i % 3 === 0 });
+      R.fxSpark(g, this.hash(i, 1) * W, this.hash(i, 2) * H * 0.62, 3 + 4 * this.hash(i, 3), Math.min(1, a * (tw - 0.45) * 1.8), tone, { diag: i % 3 === 0, tie: this.tie(tone) });
     }
   },
   sfx(kind) { if (typeof Sound !== 'undefined' && Sound.play) Sound.play(kind); },
@@ -559,10 +585,10 @@ Object.assign(Deck.FX, {
     flare(g, h, s, beat, embers, now) {
       const TX = Deck._townTX;
       if (TX && TX.flame) TX.flame(g, h.x, h.y, s, beat);
-      const F = ['#a33f1c', '#e88a3a', '#f2c14a', '#ffe9a0'];
       for (let i = 0; i < embers; i++) {
         const ph = (now * 0.9 + i / embers) % 1;
-        R.fxDot(g, h.x + Math.sin(ph * 7 + i * 2.3) * 4, h.y - s * 0.8 - ph * s * 1.6, 1.1 * (1 - 0.4 * ph), (1 - ph) * Math.min(1, ph / 0.08), F[ph < 0.3 ? 3 : 2]);
+        // white-hot as it leaves the fire, the fire's gold as it cools
+        GrowFX.mote(g, h.x + Math.sin(ph * 7 + i * 2.3) * 4, h.y - s * 0.8 - ph * s * 1.6, ph < 0.3 ? 'white' : 'gold', null, (1 - ph) * Math.min(1, ph / 0.08));
       }
     },
     drawLive(g, e) {
@@ -1193,7 +1219,7 @@ Object.assign(Deck.FX, {
     GATHER: 0.22,
     /* the pall: a bank of sick grey-yellow billows rolling across the screen
        toward the rival's side — thick at its leading face, thinning into rags
-       behind (hard cells, never a gradient), spores boiling out of it — and every
+       behind, spores boiling out of it — and every
        rival field the player can see withers as the edge passes */
     show: {
       ms: 3400, layers: ['world', 'sky'],
@@ -1210,8 +1236,8 @@ Object.assign(Deck.FX, {
             const sz = Bld.size(b);
             for (let m = 0; m < 10; m++) {
               const h = F.hash(b.id + m, 21), a = -Math.PI / 2 + (h - 0.5) * 2;
-              F.mote(g, (b.x + sz * (0.2 + F.hash(m, b.id) * 0.6)) * TL + Math.cos(a) * k * TL,
-                (b.y + sz * 0.7) * TL + Math.sin(a) * k * TL * 1.4, m % 2 ? this.SPORE[0] : this.SPORE[1], '#2c2a1c', 1 - k);
+              F.spore(g, (b.x + sz * (0.2 + F.hash(m, b.id) * 0.6)) * TL + Math.cos(a) * k * TL,
+                (b.y + sz * 0.7) * TL + Math.sin(a) * k * TL * 1.4, 0.95, m % 2 ? this.SPORE[0] : this.SPORE[1], 1 - k);
             }
           }
           return;
@@ -1336,10 +1362,11 @@ Object.assign(Deck.FX, {
           // the rim: lit toward the sun, dark on the side turned away
           const rim = sm(0.62, 0.98, r);
           col = lit > 0.2 ? mix(col, M[2], rim * sm(0.2, 0.6, lit)) : mix(col, M[0], rim * sm(-0.1, -0.6, lit));
-          // the murk boils: lumps of it lighter and darker across the face (a
-          // smooth sphere alone read as a ball, not as weather)
-          const lump = 0.5 + 0.25 * Math.sin(ex * 7.1 + v) * Math.cos(ey * 6.3 - v * 2) + 0.25 * Math.sin((ex + ey) * 11.7 + v * 3);
-          col = col.map(c => Math.max(0, Math.min(255, c * (0.9 + 0.2 * lump))));
+          // the murk boils: broad soft lumps of it lighter and darker across
+          // the face (a smooth sphere alone read as a ball, not as weather —
+          // and finer, stronger waves ribbed every billow like a gourd)
+          const lump = 0.5 + 0.3 * Math.sin(ex * 3.4 + v * 1.7) * Math.cos(ey * 2.9 - v) + 0.2 * Math.sin((ex - ey) * 4.6 + v * 3);
+          col = col.map(c => Math.max(0, Math.min(255, c * (0.93 + 0.14 * lump))));
           // a sick fleck or two, carried in its body
           const fl = Math.sin(px * 0.21 + v * 3) * Math.cos(py * 0.17 + v) > 0.985 && r < 0.8 ? 1 : 0;
           if (fl) col = M[6];
@@ -1362,8 +1389,8 @@ Object.assign(Deck.FX, {
       x.fillStyle = gr; x.beginPath(); x.arc(32, 32, 32, 0, Math.PI * 2); x.fill();
       return (this._shade = c);
     },
-    // (the first is a MOTE's colour too: kept under R.warmLight's red, or a
-    // faded spore would turn to the gold's ink — R.inkFade)
+    // (a spore is MATTER, never a light — GrowFX.spore: laid as a light in
+    // this sick yellow-grey its hue would wash the meadow olive round it)
     SPORE: ['#c4bb86', '#b3a86c', '#efe7b4'],
     /* while it lasts, every rival field and station IN SIGHT stands withered
        — its own silhouette washed a dead yellow-brown, dull specks over the
@@ -1407,8 +1434,8 @@ Object.assign(Deck.FX, {
       g.restore();
       for (let m = 0; m < 4; m++) {
         const ph = (t * 0.22 + F.hash(b.id, m + 9)) % 1;
-        F.mote(g, (b.x + 0.15 + F.hash(m, b.id + 4) * (sz - 0.3)) * TL + Math.sin(t * 1.3 + m * 2) * 3,
-          (b.y + sz * 0.6) * TL - ph * TL * 1.4, this.SPORE[0], '#2c2a1c', k * (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8));
+        F.spore(g, (b.x + 0.15 + F.hash(m, b.id + 4) * (sz - 0.3)) * TL + Math.sin(t * 1.3 + m * 2) * 3,
+          (b.y + sz * 0.6) * TL - ph * TL * 1.4, 0.95, this.SPORE[0], k * (ph < 0.2 ? ph / 0.2 : (1 - ph) / 0.8));
       }
       g.globalAlpha = 1;
     },
@@ -1594,7 +1621,7 @@ Object.assign(Deck.FX, {
           // were hard bars on the 2px grain, added white)
           for (let k = 0; k < 16 && h > 24; k++) {
             const yy = base - ((s.t * 240 + k * 64) % h);
-            R.fxGlow(g, cx, yy, w * 0.2, 0.75 * thin, 'white', { squash: 2.6, soft: 1.5, core: 0.3 });
+            R.fxGlow(g, cx, yy, w * 0.2, 0.75 * thin, 'white', { squash: 2.6, soft: 1.5, core: 0.3, tie: F.tie('white') });
           }
           for (let k = 0; k < 3; k++) {
             const q = (p * 2.2 + k / 3) % 1;

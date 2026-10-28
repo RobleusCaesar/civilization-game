@@ -87,6 +87,12 @@
                        byte-identical), the twenty days change nothing over
                        the zone but the orbit's circle, and the fog dims the
                        ring on remembered ground like the land under it
+     THE DEVICE'S OWN  (the operator's ruling of 2026-10-27, "higher pixel
+     RESOLUTION        count") every act's light and what it throws off the
+                       art — the festival's pennants, the masons' hammer, the
+                       sun at the top of the world — is smooth at the
+                       device's own resolution: not one rect outside the
+                       world's own art, and never olive
 
    Run after touching: js/deckfx-growth.js, Units.gatherYield / buildRate and
    their call sites (the gather, fish and shorefish tasks, the build task,
@@ -1614,10 +1620,34 @@ await p.evaluate(() => {
     const e = Deck.timed('quick_hands'), pn = performance.now;
     performance.now = () => 123456;
     try {
-      // a gold hammer over the works, above its top
+      /* a gold hammer over the works, above its top — the masons' mark drawn
+         at the DEVICE'S OWN RESOLUTION (the operator's ruling of 2026-10-27
+         on the map's effects, "higher pixel count", where this counted the
+         8 × 8 one-world-pixel cells it was laid in, a block of a dozen device
+         pixels on a phone): asked of TX.hammer over the works, not one rect
+         laid, and read off the pixels through the world's transform at a
+         phone's density — a shaped head and haft in many smooth levels of
+         the gold, never a few flat cells */
       const top = QH.top ? QH.top({ x: Bld.cx(site), y: site.y + 1, sz: 1, id: site.id }) : site.y * TL;
-      const m = capture(() => QH.drawLive(g, e));
-      out.hammer = m.filter(k => k.w === 1 && k.h === 1 && /^#ffd45e$/i.test(k.c) && Math.abs(k.x - Bld.cx(site) * TL) <= 5 && k.y < top).length;
+      const TXh = Deck._townTX, hm = TXh && TXh.hammer, calls = [];
+      if (hm) TXh.hammer = function (gg, x, y) { calls.push([x, y]); return hm.apply(this, arguments); };
+      let m;
+      try { m = capture(() => QH.drawLive(g, e)); } finally { if (hm) TXh.hammer = hm; }
+      out.hammerAt = calls.filter(([x, y]) => Math.abs(x - Bld.cx(site) * TL) <= 5 && y < top).length;
+      out.hammerRects = m.length;
+      const K4 = 4, hx = Bld.cx(site) * TL, hc = document.createElement('canvas'); hc.width = hc.height = 48 * K4;
+      const hg = hc.getContext('2d');
+      hg.setTransform(K4, 0, 0, K4, -(hx - 24) * K4, -(top - 40) * K4);
+      QH.drawLive(hg, e);
+      const hd = hg.getImageData(0, 0, hc.width, hc.height).data, lv = new Set();
+      let gold = 0;
+      for (let i = 0; i < hd.length; i += 4) {
+        if (!hd[i + 3]) continue;
+        lv.add(hd[i] + ',' + hd[i + 1] + ',' + hd[i + 2] + ',' + hd[i + 3]);
+        const r0 = hd[i], g0 = hd[i + 1], b0 = hd[i + 2], mx = Math.max(r0, g0, b0), q = mx - Math.min(r0, g0, b0);
+        if (hd[i + 3] > 200 && mx > 120 && q / mx > 0.4 && r0 >= g0 && g0 > b0) gold++;
+      }
+      out.hammer = { at: out.hammerAt, rects: out.hammerRects, levels: lv.size, gold };
       // a spark on the blow, and none between blows (the builder's OWN strip)
       const key = R.unitArtKey(v), fps = (Sprites.animFps && (Sprites.animFps[key] || Sprites.animFps[v.kind])) || 9;
       const at = ph => ph * 8 / fps;
@@ -1651,9 +1681,22 @@ await p.evaluate(() => {
     out.bunt = !!HF.buntTo && HF.buntTo().list.map(b => b.id).sort().join(',') === [h1.id, h2.id].sort().join(',') && !HF.buntTo().list.includes(far);
     const look = HF.drawLive ? (gg, ee) => HF.drawLive(gg, ee) : () => {};
     R.cardShows.length = 0;   // the look as it stands once the play is over
-    const mk = capture(() => look(g, ef));
-    out.dyed = mk.filter(k => k.c.toLowerCase() === dye.body.toLowerCase()).length;
-    const xs = mk.filter(k => k.c.toLowerCase() === dye.body.toLowerCase()).map(k => k.x / TL);
+    /* the pennants are CLOTH AT THE DEVICE'S OWN RESOLUTION (the operator's
+       ruling of 2026-10-27 on the map's effects, where this counted the rects
+       of one world pixel each they were cut in, a stair at a phone's zoom):
+       every pennant in the dye is a filled path — read where it hangs off the
+       transform it is drawn under — and not one is a rect */
+    const pFill = CanvasRenderingContext2D.prototype.fill, cloth = [];
+    CanvasRenderingContext2D.prototype.fill = function () {
+      if (this === g) { const tm = this.getTransform(); cloth.push({ x: tm.e, y: tm.f, c: String(this.fillStyle) }); }
+      return pFill.apply(this, arguments);
+    };
+    let mk;
+    try { mk = capture(() => look(g, ef)); } finally { CanvasRenderingContext2D.prototype.fill = pFill; }
+    const inDye = cloth.filter(k => k.c.toLowerCase() === dye.body.toLowerCase());
+    out.dyed = inDye.length;
+    out.dyeRects = mk.filter(k => String(k.c).toLowerCase() === dye.body.toLowerCase()).length;
+    const xs = inDye.map(k => k.x / TL);
     out.between = xs.length > 0 && xs.every(x => x > Math.min(Bld.cx(h2), Bld.cx(F2.P)) - 1 && x < Math.max(Bld.cx(h1), Bld.cx(F2.P)) + 1);
     // the hearth flares on the play (TX.flame at the hall's own fire)
     const TXo = Deck._townTX, fl = TXo.flame, flares = [];
@@ -1681,11 +1724,12 @@ await p.evaluate(() => {
   });
   ck('quickHandsBurstsOffTheWorksAndTheHammersNeverTheHall', r.qhSite && r.qhHands && r.qhTab,
     `a works in sight ${r.qhSite}, its builder's hammer ${r.qhHands}; nothing rising: off the Build tab ${r.qhTab}`);
-  ck('andEveryWorksWearsAGoldHammerWhileItRuns', r.hammer >= 8, `${r.hammer} gold cells over the works`);
+  ck('andEveryWorksWearsAGoldHammerAtTheDevicesResolution', r.hammer.at >= 1 && r.hammer.rects === 0 && r.hammer.levels >= 24 && r.hammer.gold >= 60,
+    `the masons' mark asked over the works ${r.hammer.at}×, ${r.hammer.rects} rects laid; at a phone's density ${r.hammer.levels} levels, ${r.hammer.gold} px of solid gold`);
   ck('andEveryBlowThrowsASpark', r.onBlow > 0 && r.offBlow === 0 && r.onBlowK >= 0 && r.offBlowK < 0,
     `on the strike frame ${r.onBlow} sparks, between blows ${r.offBlow}`);
-  ck('theFestivalStringsBuntingInTheTribesDye', r.bunt && r.dyed >= 6 && r.between,
-    `strung to the two nearest houses ${r.bunt}; ${r.dyed} pennant cells in the dye, all between the hall and them ${r.between}`);
+  ck('theFestivalStringsBuntingInTheTribesDye', r.bunt && r.dyed >= 2 && r.dyeRects === 0 && r.between,
+    `strung to the two nearest houses ${r.bunt}; ${r.dyed} pennants of cloth in the dye (${r.dyeRects} rects), all between the hall and them ${r.between}`);
   ck('andItsHearthFlares', r.flare, 'a flame at the hall\'s own fire on the play');
   ck('andEachHandsNextFloatCarriesTheBonus', r.first === '+wood ×1.4' && r.second === '+wood' && r.none === '+wood',
     `"${r.first}", then "${r.second}"; with no festival "${r.none}"`);
@@ -2027,29 +2071,36 @@ await p.evaluate(() => {
     out.worstDrop = worst; out.rises = up;
     out.counts = counts.filter((c, k) => k % 10 === 0).join(',');
     /* (b) THE SUN AT THE TOP OF THE WORLD COMES AND GOES BY SIZE: its gold
-       discs keep their strength as it leaves (faded through the faint steps
-       the gold went olive) and grow smaller instead */
-    const ED = Deck.FX.enlightenment, gl = R.glow, pd = R.pxDisc, discs = [];
-    let a = null;
-    R.glow = function (g, s0) { const was0 = a; a = s0; try { return gl.apply(this, arguments); } finally { a = was0; } };
-    R.pxDisc = function (g, x, y, rr) { if (a != null) discs.push([rr, a]); return pd.apply(this, arguments); };
+       keeps its strength as it leaves (faded through its faint end the gold
+       went olive) and grows smaller instead — and it is SMOOTH LIGHT AT THE
+       DEVICE'S OWN RESOLUTION (the operator's ruling of 2026-10-27, "higher
+       pixel count", where this read the 2px-stepped discs it was cut in): a
+       soft glow round a white-hot heart (R.fxGlow), not one rect laid */
+    const ED = Deck.FX.enlightenment, fg = R.fxGlow, fsk = R.fxSpark, discs = [];
+    const fr2 = CanvasRenderingContext2D.prototype.fillRect;
+    let rects = 0, inSpark = 0;
+    // (the sun's own discs — a glint of the glitter round it wears a small glow of its own)
+    R.fxSpark = function () { inSpark++; try { return fsk.apply(this, arguments); } finally { inSpark--; } };
+    R.fxGlow = function (g, x, y, rr, a0) { if (!inSpark) discs.push([rr, a0]); return fg.apply(this, arguments); };
     try {
       const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
       const g = c.getContext('2d');
+      CanvasRenderingContext2D.prototype.fillRect = function () { if (this === g) rects++; return fr2.apply(this, arguments); };
       for (const pp of [0.4, 0.95]) {
         discs.length = 0;
         const s2 = { id: 'enlightenment', x: Bld.cx(tc), y: Bld.cy(tc), foot: tc.y + 2, tc: tc.id, items: [], maxD: 1, ms: ED.show.ms, t: pp * ED.show.ms / 1000 };
         ED.show.draw.call(ED, g, s2, pp, 1 / 30, 'sky');
-        out['sun' + pp] = { r: discs.length ? Math.max(...discs.map(d => d[0])) : 0, a: discs.length ? Math.min(...discs.map(d => d[1])) : 0 };
+        out['sun' + pp] = { r: discs.length ? Math.round(Math.max(...discs.map(d => d[0]))) : 0, a: discs.length ? Math.min(...discs.map(d => d[1])) : 0 };
       }
-    } finally { R.glow = gl; R.pxDisc = pd; }
+    } finally { R.fxGlow = fg; R.fxSpark = fsk; CanvasRenderingContext2D.prototype.fillRect = fr2; }
+    out.sunRects = rects;
     return out;
   });
   ck('eachBuildingRisesInItsOwnBeamOneAtATime', r.levels === '2222222' && r.first === 7 && r.last === 0 && r.worstDrop === 1 && r.rises === 0,
     `levels ${r.levels} at once; drawn in their old art (every tenth of the act): ${r.counts}; most to rise in one step ${r.worstDrop}`);
   ck('itsToastSaysWhatRose', /^✨ Town Center Lv 2 — 6 buildings rose with it/.test(r.msg || ''), `"${r.msg}"`);
-  ck('itsSunLeavesBySizeNotByFading', r['sun0.4'].a >= 0.6 && r['sun0.95'].a >= 0.6 && r['sun0.95'].r > 0 && r['sun0.95'].r < r['sun0.4'].r,
-    `the sun at 0.4: ${JSON.stringify(r['sun0.4'])}; leaving at 0.95: ${JSON.stringify(r['sun0.95'])}`);
+  ck('itsSunLeavesBySizeNotByFading', r['sun0.4'].a >= 0.6 && r['sun0.95'].a >= 0.6 && r['sun0.95'].r > 0 && r['sun0.95'].r < r['sun0.4'].r && r.sunRects === 0,
+    `the sun's glow at 0.4: ${JSON.stringify(r['sun0.4'])}; leaving at 0.95: ${JSON.stringify(r['sun0.95'])}; ${r.sunRects} rects laid`);
 }
 
 // ---------------- 13e. WONDER'S FOUNDATION: THE OLD STONES, UNDER THE WORKS, AND WHAT THEY GAVE ----------------
@@ -2124,6 +2175,137 @@ await p.evaluate(() => {
     `${r.stonesGround} marks of stone in the ground pass, ${r.stonesWorld} drawn over the works`);
   ck('itSaysWhatTheWorksGained', !!r.note && /gains \d+ days of work — \d+% raised/.test(r.playMsg || ''),
     `ground broken: "${r.note}"; played on the works: "${r.playMsg}"`);
+}
+
+// ---------------- 13f. EVERY GROWTH ACT IS DRAWN AT THE DEVICE'S OWN RESOLUTION ----------------
+/* The operator's ruling of 2026-10-27, on the map's special effects: "This
+   one for example looks pixelated… higher pixel count." The world's ART
+   stays pixel art — the marble's dressed blocks, the old standing stones and
+   slabs, the hearth's own fire strip — but every act's LIGHT, and what is
+   thrown off the art (sawdust, spores, earth), is drawn smooth at the
+   device's own resolution. Every growth act (the Golden Age is pinned in
+   §13 and keeps its own checks), played on a meadow with works, a field, a
+   builder and a rival field in sight, walked through its beats on every
+   layer it draws and on the buildings it lights — and every running card's
+   look — through the world's transform at a phone's density: NOT ONE RECT
+   is laid outside that art (the hard pixel's tool: 2px cells, a pennant cut
+   in squares, a hammer of eight-by-eight cells, a sun of stepped discs) —
+   and of what the light alone brightens at most 2% turns yellow-green (the
+   landing's own olive measure: the motes once named by a cream ink colour
+   sat on the olive band's edge, and the festival's and Quick Hands' bursts
+   read 5-12% olive). The orbit is its own (§10b) and the plaque's struck
+   price is chrome. */
+{
+  const r = await p.evaluate(() => {
+    const out = { acts: {}, live: {} };
+    __g.fresh('growth-device', 'calm');
+    Screens.show('playing'); S.paused = true;
+    const { P: tc } = __g.flat();
+    tc.x = 10; tc.y = 10; Bld._block = null;
+    [[4, 1], [-3, 2], [3, -3], [-3, -2]].forEach(([dx, dy]) => __g.bld('P', 'house', tc.x + dx, tc.y + dy));
+    __g.station('farm', tc.x + 1, tc.y + 4, T.BARREN);
+    const site = __g.site('P', 'house', tc.x - 2, tc.y + 4, 6);
+    __g.builder(site);
+    __g.terr(tc.x + 7, tc.y + 2, T.BARREN);
+    const rf = __g.bld('A', 'farm', tc.x + 7, tc.y + 2);
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc) + 1, Bld.cy(tc) + 1);
+    G.updateVisibility();
+    G.vis[MapGen.idx(rf.x, rf.y)] = 1;
+    S.res.food = S.res.wood = S.res.stone = S.res.gold = 50000;
+    const BG = [75, 129, 51], z = R.cam.z * (R.dpr || 1);
+    const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+    const g = c.getContext('2d');
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+    let rects = 0, on = false, art = 0, lightOnly = false, inLight = 0;
+    P2.fillRect = function () { if (on && this === g && !art) rects++; if (lightOnly && !inLight && this === g) return; return fr.apply(this, arguments); };
+    const wrapK = (o, k, fn) => { const f = o && o[k]; if (typeof f !== 'function') return () => {}; o[k] = function () { fn(1); try { return f.apply(this, arguments); } finally { fn(-1); } }; return () => { o[k] = f; }; };
+    const TXh = Deck._townTX || {};
+    /* THE LIGHT ALONE, for the olive read: a second pass in which only what
+       the light helpers lay reaches the probe (the art's antialiased edge
+       over the meadow is not light and is not what the rule is about) */
+    const undo = ['fxGlow', 'fxRays', 'fxBeam', 'fxRing', 'fxSpark', 'fxDot', 'fxLight', 'fxMotes', 'glow', 'glowHot'].map(k => wrapK(R, k, d => { inLight += d; }))
+      .concat(['taper', 'line', 'lit'].map(k => wrapK(TXh, k, d => { inLight += d; })))
+      .concat([[Deck.FX.age_of_marble, 'block'], [Deck.FX.wonders_foundation, 'standing'], [Deck.FX.wonders_foundation, 'slab'], [GrowFX, 'plaque'], [TXh, 'flame'], [R, 'drawOrbit']]
+        .map(([o, k]) => wrapK(o, k, d => { art += d; })));
+    const gate = {};
+    for (const k of ['fill', 'stroke', 'drawImage', 'fillText', 'strokeText']) {
+      const f = P2[k]; gate[k] = f;
+      P2[k] = function () { if (lightOnly && !inLight && this === g) return; return f.apply(this, arguments); };
+    }
+    const lum = (a, b2, e) => 0.299 * a + 0.587 * b2 + 0.114 * e, L0 = lum(...BG);
+    const read = (o) => {
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 0; i < d.length; i += 16) {
+        if (d[i] === BG[0] && d[i + 1] === BG[1] && d[i + 2] === BG[2]) continue;
+        const L = lum(d[i], d[i + 1], d[i + 2]);
+        if (!(L > L0 + 0.5)) continue;
+        o.bright++;
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]), q = mx - mn;
+        if (L - L0 >= 10 && mx && q && q / mx >= 0.2) {
+          let h = mx === d[i] ? ((d[i + 1] - d[i + 2]) / q) % 6 : mx === d[i + 1] ? (d[i + 2] - d[i]) / q + 2 : (d[i] - d[i + 1]) / q + 4;
+          h *= 60; if (h < 0) h += 360;
+          if (h >= 48 && h <= 115) o.olive++;
+        }
+      }
+    };
+    const meadow = () => { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgb(${BG})`; fr.call(g, 0, 0, c.width, c.height); };
+    const world = () => g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+    const PS = [0.04, 0.12, 0.22, 0.34, 0.46, 0.58, 0.7, 0.82, 0.94];
+    const ACTS = ['harvest_festival', 'bountiful_land', 'quick_hands', 'blight', 'enlightenment', 'age_of_marble', 'wonders_foundation'];
+    try {
+      for (const id of ACTS) {
+        R.cardShows = [];
+        const rr = Deck.play(id), sh = rr.ok && R.cardShows.find(s => s.id === id);
+        const o = out.acts[id] = { rects: 0, bright: 0, olive: 0, drawn: !!sh };
+        if (!sh) continue;
+        const D = Deck.FX[id], layers = D.show.layers || [D.show.layer || 'world'];
+        for (const pp of PS) for (const pass of ['all', 'light']) {
+          sh.t = pp * sh.ms / 1000;
+          if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+          meadow();
+          rects = 0; on = pass === 'all'; lightOnly = pass === 'light';
+          for (const L of layers) {
+            g.save();
+            if (L === 'sky') g.setTransform(1, 0, 0, 1, 0, 0); else world();
+            try { R.drawCardShows(g, 0, L); } catch (e) { o.threw = String(e); }
+            g.restore();
+          }
+          // …and its share of the building pass (a building rising in its own light)
+          if (D.show.drawBld) { world(); for (const b0 of S.buildings) { try { D.show.drawBld.call(D, g, b0, sh, pp); } catch (e) { o.threw = String(e); } } }
+          on = false; lightOnly = false;
+          if (pass === 'all') o.rects += rects; else read(o);
+        }
+      }
+      // every running card's look, on the frame's own beats
+      R.cardShows = [];
+      const pn = performance.now;
+      for (const id of ['harvest_festival', 'bountiful_land', 'quick_hands', 'blight']) {
+        const d = Deck.FX[id], e = Deck.timed(id), o = out.live[id] = { rects: 0, bright: 0, olive: 0 };
+        if (!e) { o.missing = true; continue; }
+        for (let k = 0; k < 6; k++) for (const pass of ['all', 'light']) {
+          const t0 = pn.call(performance);
+          performance.now = () => t0 + k * 730;
+          meadow(); world();
+          rects = 0; on = pass === 'all'; lightOnly = pass === 'light';
+          try {
+            if (d.drawGround) d.drawGround(g, e);
+            if (d.drawBld) for (const b0 of S.buildings) d.drawBld(g, b0, e);
+            if (d.drawLive) d.drawLive(g, e);
+          } catch (er) { o.threw = String(er); } finally { on = false; lightOnly = false; performance.now = pn; }
+          if (pass === 'all') o.rects += rects; else read(o);
+        }
+      }
+    } finally { P2.fillRect = fr; Object.assign(P2, gate); undo.forEach(f => f()); }
+    R.cardShows = []; S.deck.fx = [];
+    return out;
+  });
+  const all = Object.entries(r.acts).concat(Object.entries(r.live).map(([id, o]) => [id + ' (running)', o]));
+  const pct = o => o.bright ? 100 * o.olive / o.bright : 0;
+  ck('everyGrowthActIsDrawnAtTheDevicesOwnResolution', Object.values(r.acts).every(o => o.drawn && !o.threw) && Object.values(r.live).every(o => !o.missing && !o.threw) &&
+    all.every(([, o]) => o.rects === 0),
+    all.map(([id, o]) => `${id} ${o.drawn === false ? 'NOT DRAWN' : o.missing ? 'NOT RUNNING' : o.threw ? 'THREW ' + o.threw : o.rects + ' rects'}`).join(', '));
+  ck('andItsLightIsNeverOlive', all.every(([, o]) => pct(o) <= 2),
+    all.map(([id, o]) => `${id} ${o.bright ? pct(o).toFixed(2) + '%' : '-'}`).join(', '));
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
