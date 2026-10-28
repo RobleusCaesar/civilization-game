@@ -448,8 +448,14 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   const bx = await p.evaluate(() => { const q = document.getElementById('btnTitleBoard').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
   await p.mouse.move(bx[0], bx[1]);
   await p.mouse.down();
-  // the plate eases down over 70ms: wait for it to settle rather than for a fixed beat
-  await p.waitForFunction((t0) => document.getElementById('btnTitleBoard').getBoundingClientRect().top - t0 > 1.9, top0, { timeout: 3000 }).catch(() => {});
+  // the plate eases down over 70ms: wait for it to SETTLE — the same reading the
+  // check makes (translate exactly 2px, the bevel fully turned) — never for a
+  // fixed beat or a nearly-there position (under a loaded sweep it was read at
+  // 1.99px, mid-ease)
+  await p.waitForFunction(() => {
+    const el = document.getElementById('btnTitleBoard'), lo = el.querySelector('.t2f .lo');
+    return /(^|\s)2px$/.test(getComputedStyle(el).translate) && (!lo || getComputedStyle(lo).opacity === '1');
+  }, null, { timeout: 3000 }).catch(() => {});
   const pressed = await p.evaluate(() => { const el = document.getElementById('btnTitleBoard'), lo = el.querySelector('.t2f .lo'); return { tr: getComputedStyle(el).translate, lo: lo ? getComputedStyle(lo).opacity : 'none', top: el.getBoundingClientRect().top }; });
   await p.mouse.move(2, 2);   // let go off the plaque: a press, not a click (the click would open the board)
   await p.mouse.up();
