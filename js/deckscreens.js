@@ -1200,7 +1200,8 @@ const DeckScreens = {
   _zoom(cell) {
     const scr = document.getElementById('scrCards'), zoom = scr.querySelector('.clZoom'), host = zoom.querySelector('.clZCard');
     const vp = this._vp();
-    const w = Deck.fit(Math.min(vp.w - 48, 352, (vp.h - 190) * Deck.W / Deck.H)).w;
+    // six tenths of the face the room used to give it, its back's words kept (Deck.liftFit)
+    const lf = Deck.liftFit(Math.min(vp.w - 48, 352, (vp.h - 190) * Deck.W / Deck.H)), w = lf.w;
     const id = cell.dataset.card;
     let face, cap;
     if (id) {
@@ -1216,6 +1217,7 @@ const DeckScreens = {
     host.appendChild(face);
     zoom.querySelector('.clZCap').textContent = cap;
     zoom.hidden = false;
+    if (id) Deck.backText(face, lf.tu);
     this._zoomed = true;
     this.cue('ok');
     if (this.reduced()) return;

@@ -642,6 +642,12 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     const zoom = scr.querySelector('.clZoom'), zc = () => zoom.querySelector('.ccard');
     // layout widths: the enlarged card is mid-flight out of the cell, scaled by its transform
     out.zoomed = !zoom.hidden && !!zc() && zc().offsetWidth > cell.offsetWidth * 1.5;
+    // the same closer look as the deck's lift (Deck.liftFit): six tenths of the
+    // face the room used to give it, a whole multiple, its back's words kept
+    { const vp = DeckScreens._vp(), room = Math.min(vp.w - 48, 352, (vp.h - 190) * Deck.W / Deck.H);
+      const was = Deck.fit(room), lf = Deck.liftFit(room), fw = parseFloat(zc().style.getPropertyValue('--w'));
+      out.zoomW = { was: +was.w.toFixed(2), want: +(lf.w - 0.01).toFixed(2), got: +fw.toFixed(2),
+        tu: parseFloat(zc().querySelector('.cc-txt').style.getPropertyValue('--tu')) || null, u: parseFloat(zc().style.getPropertyValue('--u')) }; }
     zoom.querySelector('.clZCard').click(); out.f1 = zc().classList.contains('flip');
     zoom.querySelector('.clZCard').click(); out.f2 = zc().classList.contains('flip');
     zoom.querySelector('[data-act="unzoom"]').click();
@@ -662,6 +668,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     return out;
   });
   ck('theCollectionOpens', a.current === 'cards', a.current);
+  ck('andItsCloserLookIsTheDecksOwn', !!a.zoomW && Math.abs(a.zoomW.got - a.zoomW.want) < 0.05 && a.zoomW.got < a.zoomW.was &&
+    (a.zoomW.tu == null || (a.zoomW.tu > a.zoomW.u && a.zoomW.tu <= a.zoomW.was / 176 + 1e-6)),
+    JSON.stringify(a.zoomW));
   ck('itsTabsCountWhatIsHeld', a.tabs === a.want, a.tabs);
   ck('eachTierShowsItsCompletion', a.pct === a.wantPct, `${a.pct} vs ${a.wantPct}`);
   ck('undiscoveredCardsAreSilhouettes', a.unknown === a.wantUnknown && a.q, `${a.unknown} silhouettes, "?" and no art ${a.q}`);

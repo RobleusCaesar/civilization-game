@@ -451,7 +451,8 @@ const playBar = (pg) => pg.evaluate(async () => {
   return out;
 });
 const pl = await playBar(p);
-ck('aTapLiftsTheCardIntoABiggerFace', pl.lifted && pl.bigger >= 2, `×${pl.bigger.toFixed(2)}`);
+// bigger than its row face by a clear margin; how much bigger is §12b's (the operator's six tenths)
+ck('aTapLiftsTheCardIntoABiggerFace', pl.lifted && pl.bigger >= 1.5, `×${pl.bigger.toFixed(2)}`);
 ck('aTapOnItTurnsItOver', pl.flip1 && !pl.flip2);
 ck('playSpendsTheCardAsTheBurstLands', pl.spent === 1 && pl.food === 250 && pl.land > 300 && pl.land < pl.total,
   `spent ${pl.spent}, +${pl.food} food, landed at ${pl.land}ms`);
@@ -1467,6 +1468,66 @@ ck('everyNameFitsItsPlate', plates.every(pl => pl.n === 36 && !pl.bad.length) &&
 ck('aRefusalTakesAThirdLineNeverAnEllipsis', !!wonderCap && wonderCap.n === 3 && wonderCap.whole && wonderCap.why === 'The Wonder rises only in Calm worlds.' &&
   plates.every(pl => pl.caps.every(c => c.whole)),
   plates.map(pl => `${pl.w}: ` + pl.caps.map(c => `${c.id} ${c.n}${c.whole ? '' : ' CLIPPED'}`).join(', ')).join(' / '));
+
+/* ================= 12b. THE CLOSER LOOK IS SMALLER, ITS BACK IS NOT =================
+   Operator, 2026-10-28, on the phone: "the cards when clicked are too large
+   and pixelated. Let's shrink them down by 40%… Keep the text about the same
+   size on the backside; most cards have extra space on the back". The lifted
+   face is the first whole multiple at or above six tenths of the one the room
+   used to give it (Deck.liftFit — whole, so every art pixel stays square), never
+   under the art's own size unless it already was; and its back's words are set
+   at the size the old face gave them, stepped down only as far as each card
+   needs to fit its paper (Deck.backText). Measured on all 36 cards at the
+   operator's phone, a 2x screen, and a phone on its side. */
+const looks = [];
+for (const [w, h, dpr, wasW, wantW] of [[390, 844, 3, 352, 234.67], [390, 844, 2, 352, 264], [844, 390, 3, 176, 176]]) {
+  const { ctx: lctx2, p: lp2 } = await page({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
+  looks.push(await lp2.evaluate(async ({ enter, w, h, dpr, wasW, wantW }) => {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    CFG.CARDS.ON = true;
+    eval('(' + enter + ')')('dk-looks');
+    Deck._col = null; Deck._del(Deck.KEY);
+    for (const c of Deck.CATALOG) Deck._add(c.id, 1);
+    if (document.fonts) { await document.fonts.load('700 10px Cinzel'); await document.fonts.ready; }
+    DeckUI.openSheet(); await wait(500);
+    const out = { at: `${w}x${h}@${dpr}`, wasW, wantW, widths: new Set(), ks: new Set(), bad: [], full: 0, eff: [], n: 0 };
+    const oldTu = wasW / Deck.W;
+    for (const c of Deck.CATALOG) {
+      const cell = document.querySelector(`#dkSheet .dkCell[data-card="${c.id}"]`);
+      if (!cell) { out.bad.push(c.id + ': no cell'); continue; }
+      cell.click();
+      await __until(() => { const b = document.querySelector('#dkInsp .ccard'); return b && !b.getAnimations().length; }, 2000);
+      const big = document.querySelector('#dkInsp .ccard'), t = big.querySelector('.cc-txt');
+      const fw = parseFloat(big.style.getPropertyValue('--w')), u = parseFloat(big.style.getPropertyValue('--u'));
+      out.widths.add(fw.toFixed(2)); out.ks.add(+(fw * dpr / Deck.W).toFixed(3));
+      const tu = parseFloat(t.style.getPropertyValue('--tu')) || u;
+      const nat = () => { const kids = [...t.children], g = parseFloat(getComputedStyle(t).rowGap) || 0; let s = g * (kids.length - 1); for (const k of kids) s += k.getBoundingClientRect().height; return s; };
+      const box = t.getBoundingClientRect().height;
+      const fits = nat() <= box - 0.9 && t.scrollWidth <= t.clientWidth + 1;
+      if (!fits) out.bad.push(`${c.id}: overflows its paper (${nat().toFixed(1)} of ${box.toFixed(1)})`);
+      if (tu > oldTu + 1e-6 || tu < u - 1e-6) out.bad.push(`${c.id}: words at ${tu.toFixed(3)}, outside ${u.toFixed(3)}..${oldTu.toFixed(3)}`);
+      // the LARGEST that fits: a card stepped down could not have kept 3% more
+      if (tu < oldTu - 1e-6) {
+        t.style.setProperty('--tu', (tu * 1.03) + 'px');
+        if (nat() <= t.getBoundingClientRect().height - 0.9) out.bad.push(`${c.id}: stepped down further than it needed (${tu.toFixed(3)})`);
+        t.style.setProperty('--tu', tu + 'px');
+      } else out.full++;
+      out.eff.push(parseFloat(getComputedStyle(t.querySelector('.cc-eff')).fontSize));
+      out.n++;
+      DeckUI.putBack(true); await wait(30);
+    }
+    out.widths = [...out.widths]; out.ks = [...out.ks];
+    out.eff.sort((a, b) => a - b);
+    out.old = +(7.2 * oldTu).toFixed(2);
+    return out;
+  }, { enter: enterGame.toString(), w, h, dpr, wasW, wantW }));
+  await lctx2.close();
+}
+ck('theCloserLookIsSixTenthsOfWhatItWas', looks.every(l => l.n === 36 && l.widths.length === 1 && Math.abs(+l.widths[0] - l.wantW) < 0.05 && l.ks.every(k => Math.abs(k - Math.round(k)) < 0.01)),
+  looks.map(l => `${l.at}: ${l.wasW}px → ${l.widths.join('/')}px (×${l.ks.join('/')})`).join('; '));
+ck('andItsBackKeepsItsWordsAsNearTheirSizeAsTheyFit', looks.every(l => !l.bad.length && l.full >= 5),
+  looks.map(l => l.bad.length ? `${l.at}: ${l.bad.slice(0, 3).join('; ')}` :
+    `${l.at}: words ${l.eff[0]}–${l.eff[l.eff.length - 1]}px (median ${l.eff[l.eff.length >> 1]}, was ${l.old}), ${l.full}/36 at full size, all on the paper`).join(' / '));
 
 /* ================= 13. THE FRAMES CARRY NO STRAY PIXELS =================
    assets/cards/frame-*.png are drawn over every face at whole multiples, so

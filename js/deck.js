@@ -752,6 +752,47 @@ const Deck = {
     const k = Math.max(1, Math.floor(cssW * dpr / this.W));
     return { w: this.W * k / dpr, h: this.H * k / dpr, k };
   },
+  /* THE CARD HELD UP FOR A CLOSER LOOK (operator, 2026-10-28, on the phone:
+     "the cards when clicked are too large and pixelated. Let's shrink them
+     down by 40%… Keep the text about the same size on the backside; most
+     cards have extra space on the back"). The in-game lift and the
+     collection's zoom both ask here: the face is the first whole multiple AT
+     OR ABOVE six tenths of the one the room used to give it — a whole
+     multiple keeps every art pixel square, so on a 3x phone 352px becomes
+     235px. Never the step below: on a 2x or 1x screen that is HALF the card,
+     and its back could not hold its words anywhere near the size they were
+     read at. And never under the art's own size (one art pixel to a CSS
+     pixel, 176px) unless it already was: a phone on its side, cramped by its
+     height, lifted 176px and would drop to 117. tu is the size the old face
+     gave the words, for backText. */
+  LIFT_SCALE: 0.6,
+  liftFit(cssW) {
+    const dpr = Math.max(1, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+    const was = this.fit(cssW);
+    const k = Math.max(1, Math.ceil(was.k * this.LIFT_SCALE - 1e-9), Math.min(was.k, Math.ceil(dpr - 1e-9)));
+    return { w: this.W * k / dpr + 0.01, tu: was.w / this.W };
+  },
+  /* …and its back keeps the words it was read at: set in --tu at the old
+     size, stepped down only as far as THIS card's text needs to fit its
+     paper, never below the face's own size. Asked once the face is laid out
+     (a layout read per step, at a tap). Returns the size it settled on. */
+  backText(face, tu) {
+    const t = face && face.querySelector('.cc-txt'), u = face ? parseFloat(face.style.getPropertyValue('--u')) : 0;
+    if (!t || !(tu > u)) return u;
+    const fits = v => {
+      t.style.setProperty('--tu', v + 'px');
+      const kids = [...t.children], gap = parseFloat(getComputedStyle(t).rowGap) || 0;
+      let h = gap * (kids.length - 1);
+      for (const k of kids) h += k.getBoundingClientRect().height;
+      // against the box's true height (clientHeight rounds) and a pixel clear of its foot
+      return h <= t.getBoundingClientRect().height - 1 && t.scrollWidth <= t.clientWidth + 1;
+    };
+    if (fits(tu)) return tu;
+    let lo = u, hi = tu;
+    for (let i = 0; i < 8; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; }
+    t.style.setProperty('--tu', lo + 'px');
+    return lo;
+  },
   artUrl(id) { return 'assets/cards/art/' + id + '.png?v=' + CFG.ART_V; },
   frameUrl(tier) { return 'assets/cards/frame-' + tier + '.png?v=' + CFG.ART_V; },
   // one pixel glyph per kind of card, worn in the pennant (12 x 12 cells)
@@ -908,15 +949,17 @@ const Deck = {
 .ccard .cc-nmn { display: block; font-weight: 700; line-height: 1.1; }
 .ccard .cc-paper { left: calc(var(--u) * 12); top: calc(var(--u) * 12); width: calc(var(--u) * 152); height: calc(var(--u) * 168);
   background: radial-gradient(ellipse at 50% 30%, #2c2318, #17110b 85%); }
+/* the back's words are sized in --tu, the face's own --u unless a screen asks
+   for more (DeckUI.backText: a lifted card keeps the words it was read at) */
 .ccard .cc-txt { position: absolute; left: calc(var(--u) * 22); top: calc(var(--u) * 37); width: calc(var(--u) * 130); height: calc(var(--u) * 139);
-  display: flex; flex-direction: column; gap: calc(var(--u) * 3.5); overflow: hidden; color: #efe4cd; text-align: center;
-  font-size: calc(var(--u) * 7.2); line-height: 1.28; }
+  display: flex; flex-direction: column; gap: calc(var(--tu, var(--u)) * 3.5); overflow: hidden; color: #efe4cd; text-align: center;
+  font-size: calc(var(--tu, var(--u)) * 7.2); line-height: 1.28; }
 .ccard .cc-txt p { margin: 0; }
-.ccard .cc-tier { color: var(--tc); font-size: calc(var(--u) * 6); letter-spacing: calc(var(--u) * .6); text-transform: uppercase; }
-.ccard .cc-bn { font-family: var(--menufont, 'Cinzel', Georgia, serif); color: #f3e2b4; font-size: calc(var(--u) * 9); text-transform: uppercase; letter-spacing: calc(var(--u) * .4); }
+.ccard .cc-tier { color: var(--tc); font-size: calc(var(--tu, var(--u)) * 6); letter-spacing: calc(var(--tu, var(--u)) * .6); text-transform: uppercase; }
+.ccard .cc-bn { font-family: var(--menufont, 'Cinzel', Georgia, serif); color: #f3e2b4; font-size: calc(var(--tu, var(--u)) * 9); text-transform: uppercase; letter-spacing: calc(var(--tu, var(--u)) * .4); }
 .ccard .cc-eff { font-weight: 700; }
 .ccard .cc-fl { color: #b8a888; font-style: italic; margin-top: auto !important; }
-.ccard .cc-ch { color: var(--tc); font-size: calc(var(--u) * 6.2); letter-spacing: calc(var(--u) * .3); }
+.ccard .cc-ch { color: var(--tc); font-size: calc(var(--tu, var(--u)) * 6.2); letter-spacing: calc(var(--tu, var(--u)) * .3); }
 .ccard .cc-n { position: absolute; right: calc(var(--u) * -4); top: calc(var(--u) * -6); min-width: calc(var(--u) * 26); padding: calc(var(--u) * 2) calc(var(--u) * 5);
   border-radius: 999px; background: #1c140c; border: 2px solid var(--tc); color: #f3e2b4; text-align: center; box-sizing: border-box;
   font: 800 calc(var(--u) * 10) / 1 var(--menufont, 'Cinzel', Georgia, serif); box-shadow: 0 2px 6px rgba(0,0,0,.6); }

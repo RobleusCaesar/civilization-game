@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 102, date: '2026-10-28', title: 'Cards up close, in testing',
+    items: [
+      'A card you tap for a closer look is smaller now, so its painting stays crisp instead of blocky.',
+      'Turn it over and the words on the back stay about the size they were, only a little smaller on the wordiest cards.',
+      'For now the cards show on the card test link only.',
+    ],
+  },
+  {
     build: 101, date: '2026-10-28', title: 'A new title screen, in testing',
     items: [
       'The title screen has a new painting: the valley at night, the village lit, a campfire, and a falling star over the hall.',

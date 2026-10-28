@@ -180,7 +180,7 @@ node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways; the dry summer burns each tree as itself and leaves burnt wood (snags where the trees grew, ash, grass) — never stumps, never a lumber camp
 node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables, the earn rule (a win always; a defeat on DEEDS across 6 DAYS of orders, never time — a front-loaded burst earns nothing, an ordered kill is a deed, a card hastens only the player's own work), one grant per run, the collection on the device (never in S), the one door, the lesson's floor, ?cards=all deals all 36 and ?cards=0 gives the real collection back (with anything earned on the test deck banked in it), the kill switch; the origin draft never says "deck"
 node tests/deck-fx.mjs       # the card effects: off changes nothing; every number of every card; a strike never razes a hall; a strike at the rival in the truce warns and ends it, asked of what the PLAYER knows; no card draws the run's RNG
-node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses, jumps by tier, builds each face once; the blow lands on the reticle's cross; a mouse hover only previews, a finger tap lights ✓; a refusal is said once, on the card, and a refused Play promises nothing; a play is over inside 1.2 s and leaves in hard pixels; the landing never washes the meadow; an act that letters its words toasts no rule; every running card is seen or counted, in its own glyph at the device's resolution; every name fits its plate and the back names the card
+node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses, jumps by tier, builds each face once; a closer look is six tenths of its old size with its back's words kept; the blow lands on the reticle's cross; a mouse hover only previews, a finger tap lights ✓; a refusal is said once, on the card, and a refused Play promises nothing; a play is over inside 1.2 s and leaves in hard pixels; the landing never washes the meadow; an act that letters its words toasts no rule; every running card is seen or counted, in its own glyph at the device's resolution; every name fits its plate and the back names the card
 node tests/deck-screens.mjs  # the reward screen and the collection: off is today's end scenes; the grant happens once, on open; the ceremony; an undiscovered card leaks nothing
 node tests/deck-town.mjs     # the town's cards: goods are a gift (never the harvest) and bring the hall on screen, the float says what was TAKEN in whole numbers, the hall holds at a sliver on both roads, watchfires reach only onto ground in sight and the burning arrow is the player's alone, a Master Builders charge is spent at the ✓ alone, Mending skips work sites, an overlay wears the worn picture, the caravan's road is land; the goods come down in the safe view and the bar pays as each piece lands; Stone Skin is stone and the ward's end is news
 node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a tile, no sky-iron, the card's words), every number, war-wolves that answer to the hall and fight what strikes them, ghosts that are not people and keep their post, veterans that never stack, raise neither host nor pack, and wear a rank pip, what is not drawn is not tapped, nothing drawn in the black; every summon on its own place of the fan in its own beam, the cinema cut, the war-wolf's collar, a ghost an inked figure
@@ -519,6 +519,21 @@ they left. Rules:
   BACK plate names the card, its tier in small caps above (it printed the
   tier, so every Legendary back read "Enlightenment"); the foil's mask is the
   frame minus `Deck.PLATE`; `theFramesCarryNoStrayPixels` holds the frames.
+- **THE CLOSER LOOK IS SMALLER, ITS BACK IS NOT** (`Deck.liftFit` /
+  `Deck.backText`, deck-ui §12b, deck-screens `andItsCloserLookIsTheDecksOwn`
+  — operator, 2026-10-28: "the cards when clicked are too large and
+  pixelated. Let's shrink them down by 40%… Keep the text about the same size
+  on the backside"). The in-game lift and the collection's zoom both take the
+  first whole multiple AT OR ABOVE six tenths (`LIFT_SCALE`) of the face the
+  room used to give them — on a 3x phone 352px → 235px, on a 2x screen
+  352 → 264 — never the step below (half the card on a 2x/1x screen, whose
+  back could not hold its words) and never under the art's own size unless it
+  already was (a phone on its side keeps its 176px). The back's words are in
+  `--tu`, not `--u`: set at the size the old face gave them and stepped down
+  only as far as THAT card's text needs to fit its paper, never below the
+  face's own. On the 3x phone 5 of 36 keep 14.4px, the median reads 12.2, the
+  wordiest 10. The paper's box is already the frame's whole clear window
+  below the pennant — there is no more room to give the words.
 - **EVERY RUNNING CARD IS SEEN, OR COUNTED** (`DeckUI._fitChips`): chips that
   fit are whole, the rest a `+k` badge whose tap names them, and a card held
   as CHARGES wears a chip like a timer (**THE TOWN'S CARDS**). A chip is its

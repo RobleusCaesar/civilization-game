@@ -703,20 +703,25 @@ const DeckUI = {
       '<button type="button" class="iconbtn dkIClose" aria-label="Put it back">✕</button>';
     document.body.appendChild(L);
     const slot = L.querySelector('.dkISlot'), play = L.querySelector('.dkPlay'), why = L.querySelector('.dkWhy');
-    /* the light behind the lifted card: a soft glow of the tier's colour,
-       quieter than the play's, on the inspector's own dark backdrop (never
-       over the meadow) — smooth at the screen's resolution (above _px) */
-    { const m = Math.min(document.documentElement.clientWidth, document.documentElement.clientHeight);
-      this._px(slot, 'halo', t.col, Math.round(Math.min(m * 1.2, 640)), 4, 0.45).classList.add('dkHalo'); }
     // the room the stage leaves the card: one layout read, at a tap
     const room = slot.getBoundingClientRect();
     const w = Math.max(120, Math.min(360, room.width, room.height * Deck.W / Deck.H));
+    // six tenths of the face the room used to give it, its back's words kept (Deck.liftFit)
+    const lf = Deck.liftFit(w);
+    /* the light behind the lifted card: a soft glow of the tier's colour,
+       quieter than the play's, on the inspector's own dark backdrop (never
+       over the meadow) — smooth at the screen's resolution (above _px), and
+       as wide against the card as it always was */
+    { const m = Math.min(document.documentElement.clientWidth, document.documentElement.clientHeight);
+      const glow = Math.min(m * 1.2, 640) * (lf.w / (lf.tu * Deck.W));
+      this._px(slot, 'halo', t.col, Math.round(glow), 4, 0.45).classList.add('dkHalo'); }
     /* A REFUSAL IS SAID ONCE, ON THE LINE ABOVE PLAY (playtest g1/g2/g4): the
        face is greyed, but no banner is laid across its art — the reason over
        the picture, above PLAY and in a toast was the same words three times
        on one screen, and the banner hid the art the player lifted it to see */
-    const big = Deck.face(id, { w: this._faceW(w, false), n: Deck.count(id), off: !can.ok });
+    const big = Deck.face(id, { w: lf.w, n: Deck.count(id), off: !can.ok });
     slot.appendChild(big);
+    Deck.backText(big, lf.tu);
     /* A REFUSED CARD'S BUTTON CONTRADICTS NOTHING (judge g3 #9): it used to
        read PLAY — "Plays at once" under the reason it could not. It is the
        unlit plank, says plainly that it cannot, and carries no promise; the
