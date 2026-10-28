@@ -3060,6 +3060,9 @@ const G = {
       if (G._lastErrKey !== key) {
         G._lastErrKey = key;
         try { console.error('[Clanfire] recovered from a ' + tag + ' error (loop continues):', e); } catch (_) {}
+        // …and the crash-report ring keeps it (js/feedback.js): a recovered
+        // fault never reaches window.onerror, which is exactly why it is lost
+        try { if (window.Feedback && Feedback.noteError) Feedback.noteError(tag + ': ' + ((e && e.message) || String(e)), e && e.stack, 'frame'); } catch (_) {}
         if (window.UI && UI.toast) { try { UI.toast('⚠️ Hit a ' + tag + ' glitch but recovered — game continues', true); } catch (_) {} }
       }
     }

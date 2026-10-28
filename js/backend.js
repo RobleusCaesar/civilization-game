@@ -332,6 +332,56 @@ const Backend = {
     return this._rest('POST', '/rpc/' + name, args || {});
   },
 
+  /* FEEDBACK (js/feedback.js, tests/settings.mjs). The player's report goes
+     out two ways and both doors live here, so the site-only rule and the test
+     seam are the ones every other write already obeys: from disk, a local
+     server or ?dev= NOTHING leaves (telemetryAllowed), and with the test mock
+     installed the mock answers instead of the network.
+
+     mailFeedback: FormSubmit's AJAX endpoint, plain JSON, no credentials of
+     ours. Delivered means FormSubmit SAID so ({ success: true } — it answers
+     the string "true"); "This form needs Activation" (before the operator
+     clicks the one-time link) is not delivered, and neither is a silent mock
+     — an answer that is not FormSubmit's is no answer. */
+  async mailFeedback(url, payload) {
+    if (!this.mock && !this.telemetryAllowed()) return this._err('not_site', 'Reports are sent from the live game only');
+    const read = (j) => {
+      if (j && (j.success === true || j.success === 'true')) return { ok: true, data: j };
+      const msg = String((j && j.message) || 'Not delivered');
+      return this._err(/activat/i.test(msg) ? 'activation' : 'refused', msg);
+    };
+    if (this.mock) {
+      const r = await this._guard(() => this.mock.rest('POST', url, payload));
+      if (!r.ok) return r;
+      if (r.data && r.data.error) return this._err(r.data.error.status || 'refused', r.data.error.message || 'refused');
+      return read(r.data);
+    }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.TIMEOUT_MS * 2);
+    try {
+      const res = await fetch(url, {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      clearTimeout(timer);
+      let j = null;
+      try { j = await res.json(); } catch (e) { j = null; }
+      if (!res.ok && !j) return this._err(res.status, 'Mail relay answered ' + res.status);
+      return read(j);
+    } catch (e) {
+      clearTimeout(timer);
+      return this._err('network', e && e.name === 'AbortError' ? 'Request timed out' : 'Network failure');
+    }
+  },
+  // the Supabase copy, through 0009's one door (a 404 until it is applied)
+  async storeFeedback(args) {
+    if (!this.mock && !this.telemetryAllowed()) return this._err('not_site', 'Reports are sent from the live game only');
+    if (!this.configured) return this._err('not_configured', 'Cloud is not configured');
+    if (!this.isReady()) return this._err('not_ready', 'Not signed in yet');
+    return this.rpc('submit_feedback', args);
+  },
+
   // …and how it ended. Called from G.end, for wins, losses and a struck banner
   // alike — a run with no end row at all is an abandoned one, which is its own
   // finding.
