@@ -2,7 +2,43 @@
 
 Vanilla JS + Canvas 2D, classic scripts sharing globals (`CFG`/`T`, `S`/`G`, `UI`,
 `Bld`, `Units`, `R`, …). No build step. Deploy = commit on the working branch,
-fast-forward merge to `main`, push both; GitHub Pages serves `main`.
+push it, and once its **Contracts** run is green fast-forward `main` and push
+both; GitHub Pages serves `main`.
+
+## Testing and releasing — the full sweep runs in CI, not here
+
+Operator, 2026-10-28: "Every time you push a new feature, are you or do you
+have to retest the entire game? … Three hours of work for seemingly simple
+fixes isn't scalable." The full sweep is 92 browser-driven suites, about an
+hour on this 4-core sandbox and slower beside agents. So:
+
+- **While building, run what the change can break**: `node tools/contracts.mjs
+  affected` (against `origin/main`, working tree included; `A..B` for a
+  range; `--list` to only print). It takes a SMOKE set (boot, tap-audit,
+  placement, patch-notes) plus every suite that NAMES a member the diff
+  touches — the method or config key each changed line sits in (`AI.maybeWonder`,
+  `CFG.CARDS`, `Bld.canPlace`). The scripts share globals and every suite
+  boots the whole game, so there is no import graph to read; a change to a
+  core member (`G.newGame`, `G.loadJSON`) honestly selects nearly everything,
+  and a fix in one system selects its own handful (the big-defeat card rule:
+  20 of 92). It is the fast first answer, never the last one.
+- **The full sweep is GitHub Actions'** (`.github/workflows/contracts.yml`):
+  every push to any branch runs all of `tests/*.mjs`, eight shards in
+  parallel balanced on `tools/contract-times.json`, each suite judged by its
+  exit code and a failure rerun ONCE, alone, before it counts (CLAUDE.md's
+  rerun-alone rule for wall-clock checks, made mechanical — and a suite that
+  passes only alone is printed FLAKY, never silently green). Docs-only pushes
+  skip it. Locally, `node tools/contracts.mjs all --lanes 2` is the same sweep.
+- **Main moves only when that run is green on the branch.** The rule below
+  still binds: a red check blocks the merge.
+- **A small fix branches from what is live**, never on top of unreleased
+  work — the three-hour wait above was three five-line fixes queued behind an
+  unfinished analytics update.
+- **Multi-agent reviews are for risky work** — migrations, the card economy,
+  saves, the rival's brain — not a five-line gate.
+- New suite? Add its measured seconds to `tools/contract-times.json` (or the
+  shards will guess 30), and map any new non-script path in `PATHS` in
+  `tools/contracts.mjs`.
 
 ## Tap & selection contract — DO NOT re-break
 

@@ -1,0 +1,56 @@
+name: Contracts
+
+# THE FULL SWEEP, OFF THE DEVELOPER'S MACHINE (CLAUDE.md, "TESTING AND
+# RELEASING"). Every push runs all of tests/*.mjs, split across parallel
+# runners by tools/contracts.mjs (balanced on tools/contract-times.json),
+# each judged by its exit code, a failure rerun once alone before it counts.
+# Main is fast-forwarded only once this run is green on the branch. Docs-only
+# pushes skip it.
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contracts ${{ matrix.shard }}/8
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # the same Playwright the sandbox ships, and its Chromium
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-${{ runner.os }}
+      - name: Playwright and Chromium
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      # tests/analytics.mjs starts its own PostgreSQL (initdb / pg_ctl)
+      - name: PostgreSQL binaries
+        run: ls /usr/lib/postgresql/*/bin/initdb || (sudo apt-get update -qq && sudo apt-get install -y -qq postgresql)
+      - name: Shard ${{ matrix.shard }} of 8
+        run: node tools/contracts.mjs shard ${{ matrix.shard }} 8 --lanes 2 --logs contract-logs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-logs-${{ matrix.shard }}
+          path: contract-logs
+          retention-days: 7
