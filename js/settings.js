@@ -799,10 +799,14 @@ SettingsPage.CSS = `
 
 /* ---- a wide window: the rail on the left, the pane on the right ---- */
 @media (min-width: 720px) {
+  /* the frame is the PAGE here: it keeps ONE height whichever tab is open
+     (sized to its content, the rail's foot jumped 300px between Audio and
+     the notes) and the header and frame stand in the middle of the window */
+  #scrSetx { justify-content: center; }
   #scrSetx .sxHead { padding: calc(var(--safe-top) + 18px) 18px 14px; }
   #scrSetx .sxHead h2 { font-size: 34px; }
   #scrSetx .sxGear { width: 42px; height: 42px; }   /* its 128px file at 3x — no bigger */
-  #scrSetx .sxFrame { flex-direction: row; width: calc(100% - 48px); margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); max-height: 760px; }
+  #scrSetx .sxFrame { flex: 1 1 auto; flex-direction: row; width: calc(100% - 48px); margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); max-height: 760px; }
   #scrSetx .sxC { width: 58px; height: 58px; left: auto; top: auto; }
   #scrSetx .sxC.tl { left: -8px; top: -8px; } #scrSetx .sxC.tr { right: -8px; top: -8px; }
   #scrSetx .sxC.bl { left: -8px; bottom: -8px; } #scrSetx .sxC.br { right: -8px; bottom: -8px; }
@@ -837,8 +841,6 @@ SettingsPage.CSS = `
   #scrSetx .sxTab img { width: 28px; height: 28px; }
   #scrSetx .sxRailFoot { display: none; }
 }
-/* a tall wide window: the rail never looks cramped beside a short tab */
-@media (min-width: 720px) and (min-height: 620px) { #scrSetx .sxFrame { min-height: 460px; } }
 /* the narrowest phones: the strip keeps its five */
 @media (max-width: 359px) {
   #scrSetx .sxTab { font-size: 8.5px; letter-spacing: 0.2px; }

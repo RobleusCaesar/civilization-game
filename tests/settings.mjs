@@ -30,7 +30,9 @@
       an Idea carries no technical details unless asked.
    6. IT FITS at 390x844, 430x932, 768x1024, 1440x900, 1920x1080 and a
       phone on its side (844x390): no sideways scroll, no clipped tab label,
-      the frame inside the window and every rail plaque inside the frame.
+      the frame inside the window and every rail plaque inside the frame —
+      and on a wide window the frame keeps one height on every tab and
+      stands in the middle of the window, never in its top half.
    7. CHROME IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the operator's ruling
       on UI chrome): measured in the live page at eight sizes, every raster
       the page draws is shown at or below its own pixels on a 3x screen
@@ -579,11 +581,20 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1
   const { ctx, p } = await open({ q: '?cards=1', vp: { width: w, height: h }, tag: 'fit' + w });
   const r = await p.evaluate(async () => {
     Screens.backTo = 'title'; Screens.show('settings');
-    const bad = [];
+    const bad = [], hts = [];
     for (const t of SettingsPage.TABS) {
       SettingsPage.open(t.k);
       await new Promise(r => setTimeout(r, 40));
       const el = document.getElementById('scrSetx'), pane = el.querySelector('.sxPane'), fr = el.querySelector('.sxFrame').getBoundingClientRect();
+      /* on a wide window the frame is the PAGE: it keeps one height whichever
+         tab is open (the rail's foot used to jump 300px between Audio and the
+         notes) and the header and frame stand in the middle of the window —
+         at 1920x1080 a short tab sat in the top half over 540px of nothing */
+      if (innerWidth >= 720) {
+        hts.push(fr.height);
+        const above = el.querySelector('.sxHead').getBoundingClientRect().top, below = innerHeight - fr.bottom;
+        if (below > above + 40) bad.push(t.k + ': top-heavy — ' + above.toFixed(0) + 'px above the header, ' + below.toFixed(0) + 'px under the frame');
+      }
       if (document.scrollingElement.scrollWidth > innerWidth) bad.push(t.k + ': page scrolls sideways');
       if (pane.scrollWidth > pane.clientWidth + 1) bad.push(t.k + ': pane scrolls sideways ' + pane.scrollWidth + '>' + pane.clientWidth);
       if (fr.left < 0 || fr.right > innerWidth + 0.5 || fr.bottom > innerHeight + 0.5 || fr.top < 0) bad.push(t.k + ': frame outside ' + JSON.stringify([fr.left, fr.top, fr.right, fr.bottom]));
@@ -599,6 +610,7 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1
         if (xr.right > pr.right + 0.5 || xr.left < pr.left - 0.5) bad.push(t.k + ': ' + x.className + ' wider than the pane');
       }
     }
+    if (hts.length && Math.max(...hts) - Math.min(...hts) > 0.5) bad.push('the frame changes height between tabs: ' + hts.map(v => v.toFixed(0)).join('/'));
     return { bad, rail: getComputedStyle(document.querySelector('#scrSetx .sxNav')).flexDirection };
   });
   ck('itFitsAt' + w + 'x' + h, r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || 'every tab, nav ' + r.rail);
