@@ -424,9 +424,10 @@ the rival sends its nearest villager after `aiDelayS`. The first VILLAGER at
 the crater brings home `gold` (60) and arms the next `iron` (6) soldiers its
 tribe raises with sky-iron (+1 atk, stamped once in `Units.spawn` via
 `G.skyIron` — never naval); the seams stay for anyone to claim as mines.
-Drawn by `R.drawStarfall` over the night tint (hard pixel squares: the
-comet, a tapering trail into a white-hot head, the impact ring, embers);
-scores `starfallClaimed` (300).
+Drawn by `R.drawStarfall` over the night tint (the comet and the card's
+star share ONE smooth tapered trail, `R._starTrail`, into a white-hot head;
+the impact ring and embers are smooth light — **EFFECTS ARE DRAWN AT THE
+DEVICE'S OWN RESOLUTION** below); scores `starfallClaimed` (300).
 
 **THE CARD SYSTEM** (`tests/deck-core.mjs`, `deck-fx.mjs`, `deck-ui.mjs`,
 `deck-screens.mjs`, a contract per effect group — `deck-town`, `deck-army`,
@@ -619,13 +620,17 @@ false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
 
 **THE PLAY ON THE GLASS** (`js/deckui.js`, tests/deck-ui.mjs). **THE CARD
-LEAVES IN HARD PIXELS**: the flying card is the TOP layer, never translucent,
-with every light UNDER it; it leaves by a two-frame rim flash in the tier's
-colour and a three-step 4×4 ordered dither, and every light is a pixel canvas
-(`DeckUI._px`) — nothing in `#dkFly` is a radial gradient or a blurred shadow
-(`theCardLeavesInHardPixels`, on a held clock). **THE LANDING NEVER WASHES
-THE MEADOW** (§15): the card casts an INK shadow, its ring, rays and impact
-are solid with a one-cell dark edge, and the Legendary flash DARKENS — the
+LEAVES IN LIGHT AT THE SCREEN'S RESOLUTION** (it left in hard pixels until
+the operator's 2026-10-27 ruling, below): the flying card is the TOP layer,
+never translucent, with every light UNDER it; it burns into light under a
+glaze confined to the card (`.dkBurn` inside the isolated `.dkFCard`, where
+`dz4` still means gone); its shade and halo are smooth canvases and its ring,
+rays and landing hit are SVG, drawn at full size and only ever scaled down
+(`theCardLeavesInLightAtTheScreensResolution`, on a held clock). **THE
+LANDING NEVER WASHES THE MEADOW** (§15): the card casts an INK shadow, its
+ring, rays and impact stay SOLID with a feathered ink edge (thin gold over
+green averages to olive in 8px blocks — that edge is what keeps it gold),
+and the Legendary flash DARKENS — the
 pale full-screen flash it replaced turned 88.6% of the play area's 8px
 blocks olive. **A REFUSAL IS SAID ONCE, ON THE CARD**: the line above PLAY (a
 third line before an ellipsis), a shake, a toast in the note style; a
@@ -633,9 +638,10 @@ refused PLAY is a dark plank reading "Can’t play now" and promises nothing
 more (it said "Plays at once"); a lifted card hides the sheet under it and
 sits over the toasts. **THE AIM ANSWERS THE FINGER**: a touch tap lights ✓;
 the truce warning reads as sentences ("… Tap ✓ again to confirm."); an
-answered refusal leaves the moment the mark is valid; the reach's floor is a
-flat dark step and the buildings' ring opaque dashes, never a wash of the
-card's colour; and a reach wider than the screen fits its aim (`fx.aimFit` →
+answered refusal leaves the moment the mark is valid; the reticle is an SVG
+scaled as a vector (`theAimIsDrawnAtTheScreensResolution`); the reach's
+floor is a flat dark step and the buildings' ring opaque dashes, never a wash
+of the card's colour; and a reach wider than the screen fits its aim (`fx.aimFit` →
 `DeckUI._aimFit`) — a cancel gives the zoom back, a play hands it back after
 its moment, the player's pinch always stands. **THE LANDING TOAST IS THE
 RESULT**: every apply returns `r.msg` saying what it DID ("A signal fire
@@ -649,18 +655,73 @@ the toasts step below it (`--dk-cine`). The sheet jumps by tier and builds
 each face once (`DeckUI._cells`); a collection opened from the reward lands
 on the new cards, marked NEW.
 
+**THE REWARD SCREEN WEARS SUPPLIED ART** (`DeckScreens._want` / `_artBg` /
+`_plinth`, tests/deck-screens.mjs §5c–5d, §7 — operator: "drastically
+increase the quality of the background images… Have Pixellab create it…
+appropriate space between the title and the card… the pedestal… high
+quality"; then "Victory and Loss screens look much, much better"): the
+backdrop and the plinth land by FILENAME from `assets/endgame/reward/` —
+`win|loss` × `wide|tall` as lossless native-size WebP (688×384 / 384×688,
+the dawn valley and the burning dusk) with a 2× JPEG behind each,
+`pedestal.png` (a carved granite altar with gold knotwork, cooled for a
+defeat by compositing alone) — and a 404 (asked twice, 1.5s apart) leaves the
+procedural land and the DRUM, drawn into the same `PLINTH` box so the card's
+foot never moves. A desktop draws the backdrop at a WHOLE upscale and lets the
+browser smooth the last step down (`_blitBg`); a phone draws it
+nearest-neighbour; nothing reads a pixel. The pictures preload from the title
+when the deck is on. `PLINTH {w, h, ty, foot}` is the one geometry the
+stage's CSS, the card size (`_cardW`) and the plate's overlap on a phone all
+read — change the pedestal art and change it with it. The card stands `--gap`
+clear of the banner (16 / 24 tall / 30 wide; `theTitleNeverCrowdsTheCard` at
+five sizes). **AND ITS CHROME IS NEVER CHUNKY** (§7, the same ruling as the
+effects): the ribbon (navy and gold for a win, slate and silver for a loss),
+the laurels, the deck icon, the close, the sparks, the corner brackets, the
+heading's knot, the collection's tier tabs and the deck sheet's gems are
+vectors; every other image on those screens, at 390×844@3 through
+1920×1080, is shown at or below its own pixel size on a 3× screen, nothing
+requests pixelated drawing, and the pedestal — scene art — is held to 2×.
+
+**EFFECTS ARE DRAWN AT THE DEVICE'S OWN RESOLUTION** (operator ruling
+2026-10-27, on a desktop with Golden Age playing: "can you improve the
+quality of the map special effects… looks pixelated… When characters slam
+down… the rays are pixelated again… higher pixel count"; `R.fx*` in
+render.js, deck-fx §14, and every effect group's contract). The world's ART
+stays pixel art — terrain, buildings, units, the beasts' own sprites, the
+card paintings, the painted scene backdrops. Every special EFFECT — a card
+act's light, sun, rays, beams, glows, rings, sparks, shock waves, flashes,
+vignettes and titles; the dragon's breath and shadow, the kraken's foam and
+spray, a star's trail — and the card's own chrome (the flight, the aim, the
+HUD chips) is drawn smooth and antialiased, crisp at dpr 1/2/3: no 2px
+cells, no `R.pxDisc` light, no snapping to the art's grain, no stepped
+dither, no `steps()`, no canvas blown up nearest-neighbour. Soft glows and
+gradients are allowed. Still held, because they are about READING the map
+rather than style: no lime/olive wash over the meadow, no warm light pooled
+flat on the ground, nothing drawn in the black (a sky-layer act clips itself
+to the board — `TX.skyBoard`, `GrowFX.clipped` — since `drawCardShows` clips
+only the world layer), and no added full-screen canvas (the world canvas at
+`R.dpr` already lands smooth paths at the device's resolution). The shared
+helpers: `R.fxPx`, `fxDev`, `fxTone`, `fxA`, `fxLight`, `fxGlow`, `fxRays`,
+`fxBeam`, `fxRing`, `fxSpark`, `fxDot`, `fxMotes`, `fxVignette`, and for the
+beasts `R.fxFlame` / `fxFoam` / `fxDrop` / `fxPuff` / `fxChunk` with
+`Beasts.softShadow`. **The hue is tied to the lift** (`R.FX_TIE`), and **a
+pale light is tied twice as hard** (`R.fxTie(tone)` — pale, white and steel
+light read khaki over the meadow at the plain tie; a line, all edge, 1.5×);
+a stack of screens lays its hue LAST (`R.fxBeam`), or the gold drifts to
+lemon. The world's own eclipse limb keeps ITS ruling (a hard pixel curve,
+specials §3b); the minimap's marks stay on its 2px grid.
+
 **AN ACT'S HOUSE STYLE** (the `R.LIGHT` block in render.js; each group's
 contract pins its half). **LIGHT IS THE TIER'S AND LIES ON NOTHING**: a body
 of card light is `R.glow` — a HUE pass ('color') turns what it falls on gold,
-then a hard-stepped lift — because gold ADDED to a meadow is lime and a thin
-gold paint is olive; small marks are opaque ramp colours (`R.goldInk`); the
+then a continuous lift tied to it — because gold ADDED to a meadow is lime
+and a thin gold paint is olive; small marks are opaque ramp colours (`R.goldInk`); the
 tone is the tier's (`R.LIGHT.TONE`: pale Stone, `'bronze'` Bronze — never
 gold — gold above). No light pools on the ground, no whole-frame gold flash,
 a building catching the light is SCANNED in hard pixels (`TX.scan`), never a
 flat silhouette, and fog drawn back is one path, never a rect per tile. **AN
-ACT NEVER FADES A PICTURE**: nothing is ADDED ('lighter') over the open scene
-or cross-faded through alpha — pictures come and go in 2×2 Bayer steps; an
-act's dark is `R.stepVignette(…, R.openBand())`, stepped round the OPEN band
+ACT NEVER FADES A PICTURE**: nothing is ADDED ('lighter') over the open scene,
+and a piece of ART is never cross-faded through alpha; an act's dark is
+`R.stepVignette(…, R.openBand())` — smooth now — round the OPEN band
 (full-screen, its top and bottom sat under the HUD and read as side bars);
 and every act's words go through ONE title, `R.actTitle`
 (`everyActLettersItsWordsThroughOneTitle`). **ONE BORROWED CAMERA**
@@ -678,8 +739,8 @@ by `R.wornSprite` and the site branch; render state only, every rule sees
 the new level from the first frame. **A show's data must never carry `id`**:
 `R.startCardShow` copies it over the show's own id and the show silently
 vanishes (the Foundation passes `bid`). **A CARD'S STAR LEAVES A CRATER**
-(deck-fx): it drops steep from above the screen, its blow flashes in three
-hard steps, and the struck tile becomes `T.RUIN` on the rubble clock wearing
+(deck-fx): it drops steep from above the screen on one smooth tapered trail,
+its blow flashes cool and brief and lies on the board only, and the struck tile becomes `T.RUIN` on the rubble clock wearing
 the star's crater art (`S.deck.craters`, `R.cardCraterPaint` — a pure
 function of the remembered ground, inside the pit's ±2 repaint, so cache ==
 rebake and it heals with the rubble). Two traps: `'destination-in'` clears
@@ -694,23 +755,26 @@ the circle of yellow dots is also a little pixelated… let's do something
 again subtler, and higher pixel count… a small glittering gold orb that
 travels along that circle with a trail behind it… after 3/4 of the circle
 it's gone" — it overrides the critics and the house style where they
-differ). Area reminders and the HUD's timer chips are drawn FINER than the
-world's pixel art, the one deliberate exception to its grid. Every card that
-marks a RADIUS for its duration — Bountiful Land, the Watchfires' longer
-reach round a selected tower or War Camp — wears only `R.drawOrbit`: one gold
+differ — and the 2026-10-27 ruling, **EFFECTS ARE DRAWN AT THE DEVICE'S OWN
+RESOLUTION** above, widened it to every effect). Every RADIUS the game marks
+wears only `R.drawOrbit` — a card's (Bountiful Land, the Watchfires' longer
+reach round a selected tower or War Camp) and the game's own: the placement
+ghost's effect radii, the heal zone round a hurt unit, the rally reach (the
+operator: "swap out the same boring circle for the gold circle"; each ring at
+its own phase, `R.RING_PHASE`; tests/placement.mjs §15): one gold
 bead on a 10.5 s lap (`R.ORBIT`), each circle at its own phase, its thread
 (1.25 CSS px × `R.dpr`) tapering to nothing by 270° — by width, never alpha,
 never 'lighter' — in the ground pass, clipped to the board, render time only.
 **Bountiful Land draws NOTHING over its zone**, at the play or for the twenty
 days: one fine gold ring sweeps out from the hall and unwinds into the orb.
-The timer chip's canvas is sized at `devicePixelRatio` (`DeckUI.chipRatio`,
-never `R.dpr`), a fine ring, a Path2D glyph (`DeckUI.CHIP_ICONS`), the HUD's
-own type. One limit, measured: the world canvas stays capped at 2×, so on a
+The timer chip is an inline SVG (`DeckUI._chipSvg` — a fine ring, the
+card's glyph from `DeckUI.CHIP_ICONS`, the HUD's own type), crisp at any
+resolution or zoom; `DeckUI.chipRatio` is gone. One limit, measured: the world canvas stays capped at 2×, so on a
 3× phone the orb is scaled up smoothly — a true 3× layer is another ~12MB
 canvas iOS would purge. Pinned in deck-growth §10b/10c
 (`bountifulLandDrawsNothingOverItsZone`,
 `bountifulLandWearsTheOrbitAndNothingElse`, `andTheWatchfiresReachIsTheOrbit`)
-and deck-ui `theChipIsDrawnAtTheDevicesOwnResolution`.
+and deck-ui `theChipIsAVectorDrawnAtTheScreensOwnResolution`.
 
 **THE TOWN'S CARDS** (`js/deckfx-town.js`, tests/deck-town.mjs — the four
 goods, Mending, Master Builders, Watchfires, Stone Skin, the Unbreakable
@@ -776,8 +840,14 @@ OWN place of a fan on the hall's open side, each whole sprite on the open
 screen (`fanOnScreen` — `R.onScreen` counts a rider half off the edge as
 seen), engines a tile and a half apart, foot in two ranks facing out; they
 hold for the card's beat (`FAN.hold`), then are free where they formed. One
-beam per unit (`armyFx.arrive`), full height, opaque in the tier's light, the
-hall drawn over it. **THE CINEMA CUT** (`armyFx.cinema`) is the Imperial and
+beam per unit (`armyFx.arrive`), full height, smooth light in the tier's own
+hue — the drop a streak with a white head, a white first frame, the column
+narrowing, a smooth shock ring with a trailing twin — the hall drawn over it
+(`theBeamsAreSmoothLightInTheTiersOwnHue`). Nothing an army act lays is a
+rectangle on the art's grid (`everyActsLightLaysNoRectOnTheGrain`); dust is
+screened, then hued, and shrinks as it thins, never a brown blot, and the
+Legion's stamp kicks its dust out sideways, never a ring
+(`theLegionsStampKicksDustSidewaysNeverARing`). **THE CINEMA CUT** (`armyFx.cinema`) is the Imperial and
 Enlightenment acts' alone (the Legion, the Battery, the Host): shell-black
 bars, 12% of the open frame each, the name and line lettered through
 `R.actTitle` in the lower bar, the fan planned inside them
@@ -938,9 +1008,10 @@ CARD's dragon is the moment of the game (§9): its shadow sweeps the screen
 under "THE BLACK DRAGON ANSWERS", the view goes in to 1.3 on the fire
 whatever the zoom and is handed back, the beast fills most of a phone's
 width for ~3.6 s, coming in from the board's own side, every building that
-catches is felt, and its dark is a stepped vignette, never a warm wash. The
-breath is three heats of hard pixels from the jaws to the line; NO light
-pooled on the ground (it read as sand — the dry summer's ruling again); the
+catches is felt, and its dark is a smooth vignette, never a warm wash. The
+breath is smooth tapered paths in three heats from the jaws to the line, its
+shadow a blurred silhouette (`Beasts.softShadow`); NO light pooled on the
+ground (it read as sand — the dry summer's ruling again); the
 line burns with the burning-town flame sprites (`R.drawFireTongue`; the
 stand-in is stepped tongues, never a translucent box). **THE KRAKEN AND ITS
 SEA, APART** (`Beasts.split`, §10): every frame is split once, by colour,
@@ -3069,9 +3140,10 @@ the render and the in-place refresh, and `hornPending` rides in `panelSig` so
 the button appears and vanishes without a reselect). VILLAGERS ONLY, the line
 `Units.canBanish` already draws — an army has its own stances.
 **The horn is heard, not just obeyed** (`R.startHorn` / `drawHorns`): three
-widening rings of hard gold pixel dots over the village (never a smooth
-stroked circle — the ground under them is drawn in hard steps and a soft ring
-reads as UI laid over the scene), plus `R.startle`, so sounding it throws
+widening smooth gold rings over the village, clipped to the board (they were
+hard pixel dots, and drew in the off-map black, until the 2026-10-27 effects
+ruling — `theHornsRingsAreSmoothLightNeverInTheBlack`), plus `R.startle`, so
+sounding it throws
 every bird in the valley up. Render state only, cleared in `R.onNewGame` — the
 `R.collapses` rule.
 
