@@ -999,6 +999,12 @@ const DeckScreens = {
      picture (DeckUI.deckIcon), a smooth vector at every size it is shown */
   get DECK_SVG() { return (window.DeckUI && DeckUI.deckIcon) ? DeckUI.deckIcon() : ''; },
   get CLOSE_SVG() { return DeckScreens.SVG.CLOSE; },
+  /* a tier tab's gem: the deck sheet's own faceted gem (DeckUI.gemIcon),
+     smooth at every size; dark while nothing of the tier has been found */
+  _gem(seen) {
+    const cls = 'clGem' + (seen ? '' : ' dim');
+    return (window.DeckUI && DeckUI.gemIcon) ? DeckUI.gemIcon(cls) : `<i class="${cls}"></i>`;
+  },
 
   /* ================= THE COLLECTION =================
      Every card the game holds, by tier: what you own (×N), what you have
@@ -1116,7 +1122,7 @@ const DeckScreens = {
       const fresh = this._new && all.some(c => this._new.has(c.id));
       return `<button class="clTab${t.k === sel ? ' sel' : ''}${fresh ? ' clFresh' : ''}" type="button" role="tab" data-tier="${t.k}" aria-selected="${t.k === sel}" ` +
         `aria-label="${this.esc(t.name)}: ${held} held, ${seen} of ${all.length} discovered${fresh ? ', new cards' : ''}" style="--tc:${t.col};--tg:${t.glow}">` +
-        `<i class="clGem${seen ? '' : ' dim'}"></i><span class="clTabNm">${this.esc(t.name)}</span><span class="clTabAb" aria-hidden="true">${['I', 'II', 'III', 'IV', 'V'][t.rank]}</span><b class="clTabN">${held}</b></button>`;
+        `${this._gem(seen)}<span class="clTabNm">${this.esc(t.name)}</span><span class="clTabAb" aria-hidden="true">${['I', 'II', 'III', 'IV', 'V'][t.rank]}</span><b class="clTabN">${held}</b></button>`;
     }).join('');
     const t = Deck.tier(sel), cards = Deck.ofTier(sel);
     const seenN = cards.filter(c => Deck.seen(c.id)).length, pct = Math.round(100 * seenN / cards.length);
@@ -1735,15 +1741,30 @@ DeckScreens.CSS = `
   color: var(--text); font: 700 12px/1.2 var(--menufont); letter-spacing: 1px; background: #1c140c; }
 #scrCards .clSum { width: 100%; max-width: 820px; margin: -4px auto 8px; padding: 0 16px; color: var(--dim); font-size: 12px; text-align: center; }
 #scrCards .clTabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 820px; margin: 0 auto; padding: 0 10px; flex: 0 0 auto; }
-#scrCards .clTab { min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
+#scrCards .clTab { min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
   display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; font-family: var(--menufont); }
 #scrCards .clTab.sel { border-color: var(--tc); background: #2a2114; box-shadow: inset 0 -3px 0 var(--tc), 0 0 12px var(--tg); }
-#scrCards .clGem { width: 11px; height: 11px; flex: 0 0 auto; transform: rotate(45deg); background: var(--tc);
-  box-shadow: 0 0 0 1px #0d0905, 0 0 7px var(--tg); }
-#scrCards .clGem.dim { background: #3b342a; box-shadow: 0 0 0 1px #0d0905; }
+/* the gem is the deck sheet's own (DeckUI.gemIcon): faceted, in the tier's
+   colour, drawn smooth; the CSS diamond is only its fallback */
+#scrCards .clGem { width: 15px; height: 15px; flex: 0 0 auto; display: block; color: var(--tc); filter: drop-shadow(0 0 4px var(--tg)); }
+#scrCards i.clGem { width: 11px; height: 11px; transform: rotate(45deg); background: var(--tc); box-shadow: 0 0 0 1px #0d0905; filter: none; }
+#scrCards .clGem.dim { color: #3b342a; filter: none; }
+#scrCards i.clGem.dim { background: #3b342a; }
 #scrCards .clTabNm { display: none; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
 #scrCards .clTabN { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
-@media (min-width: 600px) { #scrCards .clTabNm { display: inline; } #scrCards .clTabAb { display: none; } }
+/* THE NAMES TAKE THE ROOM THEY NEED: five equal columns gave "Iron" the
+   width "Enlightenment" needed, and squeezed Enlightenment's gem and count
+   onto its tab's border. Once the names are shown each tab is as wide as
+   its own name plus the same margin, the spare shared out evenly — and
+   the names wait for a window wide enough for all five */
+@media (min-width: 700px) {
+  #scrCards .clTabs { display: flex; }
+  #scrCards .clTab { flex: 1 1 auto; padding: 4px 12px; }
+  #scrCards .clTabNm { display: inline; } #scrCards .clTabAb { display: none; }
+}
+/* the narrowest phones close the gaps inside a tab: "III 7" beside its gem
+   stood on the tab's own border at 320px */
+@media (max-width: 359px) { #scrCards .clTab { gap: 4px; } }
 /* a phone's tabs drop the tier names: the tier's ORDER (I-V) stands in, so
    the pale Stone and Imperial gems are never told apart by colour alone */
 #scrCards .clTabAb { font: 700 10px/1 var(--menufont); letter-spacing: .5px; opacity: .8; }

@@ -39,7 +39,9 @@
                        cards greyed, undiscovered ones as "?" silhouettes
                        that carry neither art, name nor text anywhere in the
                        page, completion per tier, tap to enlarge, tap to flip
-                       both ways, 44px targets, a grid that fits the phone
+                       both ways, 44px targets, a grid that fits the phone,
+                       and tier tabs whose gem, name and count sit inside
+                       their own padding, centred and level, 320-1440px
      THE PAINTED VALLEY the backdrop (dawn for a win, dusk for a loss; wide
                        on a landscape window, tall on a phone) and the carved
                        pedestal land by filename from assets/endgame/reward/,
@@ -680,6 +682,39 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     if (r.over > 0 || !r.whole || r.cols < 2 || r.w < 110) over.push(`${w}px: overflow ${r.over}, ${r.cols} cols of ${r.w}px, whole ${r.whole}`);
   }
   ck('theGridFitsEveryPhone', over.length === 0, over.join(' | ') || 'no overflow, 2+ readable whole-pixel columns, 320-430px');
+
+  /* the tier tabs hold what they say: gem, name (or I-V on a phone) and
+     count inside each tab's own padding, centred, on one line, and the row
+     inside the screen — five equal columns used to squeeze "Enlightenment 6"
+     onto its tab's border on a desktop. The gem is the deck sheet's faceted
+     one, a vector (DeckUI.gemIcon). */
+  const tabBad = [];
+  let gems = 0;
+  for (const w of [320, 360, 390, 430, 600, 700, 768, 1024, 1440]) {
+    await p.setViewportSize({ width: w, height: 900 });
+    const r = await p.evaluate(() => {
+      DeckScreens.openCollection('title', 'enlight');
+      const row = document.querySelector('#scrCards .clTabs'), rr = row.getBoundingClientRect(), bad = [];
+      let svg = 0;
+      for (const t of row.querySelectorAll('.clTab')) {
+        const b = t.getBoundingClientRect(), cs = getComputedStyle(t);
+        const inL = b.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft), inR = b.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+        const kids = [...t.children].filter(k => k.getClientRects().length).map(k => k.getBoundingClientRect());
+        const l = Math.min(...kids.map(k => k.left)), rt = Math.max(...kids.map(k => k.right)), mid = b.top + b.height / 2;
+        const off = Math.max(...kids.map(k => Math.abs(k.top + k.height / 2 - mid)));
+        if (l < inL - 0.5 || rt > inR + 0.5) bad.push(`${t.dataset.tier} runs ${Math.max(inL - l, rt - inR).toFixed(1)}px off its padding`);
+        if (Math.abs((l - b.left) - (b.right - rt)) > 1.5) bad.push(`${t.dataset.tier} off-centre by ${Math.abs((l - b.left) - (b.right - rt)).toFixed(1)}px`);
+        if (off > 2) bad.push(`${t.dataset.tier} not on one line (${off.toFixed(1)}px)`);
+        if (b.left < rr.left - 0.5 || b.right > rr.right + 0.5 || b.right > innerWidth) bad.push(`${t.dataset.tier} outside the row`);
+        if (t.querySelector('svg.clGem')) svg++;
+      }
+      return { bad, svg };
+    });
+    r.bad.forEach(x => tabBad.push(`${w}px ${x}`));
+    gems += r.svg;
+  }
+  ck('theTierTabsHoldTheirLabels', tabBad.length === 0 && gems === 45, tabBad.slice(0, 5).join(' | ') ||
+    `gem, name and count inside every tab, centred, level, 320-1440px; faceted vector gems ${gems}/45`);
   await p.close();
 }
 
