@@ -94,6 +94,8 @@ async function page(o) {
   const ctx = await b.newContext({ viewport: { width: o.w || 390, height: o.h || 844 }, deviceScaleFactor: o.dpr || 3,
     reducedMotion: o.reduce ? 'reduce' : 'no-preference' });
   const p = await ctx.newPage();
+  // a home-screen phone: the page below the clock, the home bar's inset at its foot
+  if (o.bottom) await (await ctx.newCDPSession(p)).send('Emulation.setSafeAreaInsetsOverride', { insets: { bottom: o.bottom, bottomMax: o.bottom } });
   p.on('pageerror', e => errs.push(String(e)));
   p.on('console', m => { if (m.type() === 'error' && !/ERR_FILE_NOT_FOUND|net::/.test(m.text())) errs.push('console: ' + m.text()); });
   await p.goto(url + (o.q || ''), { waitUntil: 'domcontentloaded' });
@@ -240,7 +242,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.plateName = root.querySelector('.cePlate b').textContent;
     out.score = root.querySelector('.ceScoreN').textContent;
     out.want = Score.compute(true).total.toLocaleString();
-    out.played = root.querySelector('.cePlayed span').textContent;
+    out.played = !root.querySelector('.cePlayed') && !/played this run/i.test(root.textContent);
     out.total = Deck.total();
     out.tile = root.querySelector('.ceTileN').textContent;
     out.deckN = root.querySelector('.ceDeckN').textContent;
@@ -282,7 +284,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   ck('theCardStandsOnThePlinth', a.card === 'swift_raiders' && a.foot != null && Math.abs(a.foot) <= 1, `card ${a.card}, foot ${a.foot}px off the slit`);
   ck('itsPlateNamesTierAndCard', /reward card/i.test(a.plateKick) && /iron/i.test(a.plateKick) && a.plateName === 'Swift Raiders', `"${a.plateKick}" / "${a.plateName}"`);
   ck('theFinalScoreIsTheRuns', a.score === a.want, `${a.score} vs ${a.want}`);
-  ck('thePlayedLineSaysNone', a.played === 'None', a.played);
+  // the list of cards played is gone (operator, 2026-10-28: "very crowded… remove the text about cards played")
+  ck('theScreenListsNoCardsPlayed', a.played, `no played list: ${a.played}`);
   ck('theDeckTileCountsTheDeckLessThePlinth', a.total === 4 && a.tile === '3' && a.deckN === '3', `collection ${a.total}, tile ${a.tile}, corner ${a.deckN}`);
   ck('claimAndLeaderboardAreOffered', a.claim && a.board && !a.leave, `claim ${a.claim}, board ${a.board}, replay/menu before claim ${a.leave}`);
   ck('theBoardIsLentToTheScreen', a.nameLent && a.entry, `nodes lent ${a.nameLent}, entry armed ${a.entry}`);
@@ -335,7 +338,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.claim = __shown(root.querySelector('[data-act="claim"]'));
     out.board = __shown(root.querySelector('[data-act="board"]'));
     out.entry = Screens._entry;
-    out.played = root.querySelector('.cePlayed span').textContent;
+    out.played = !root.querySelector('.cePlayed') && !/played this run/i.test(root.textContent) && !/Forager's Cache/.test(root.textContent);
     const mk = root.querySelector('.ceAssist');
     out.assist = __shown(mk) && /card-assisted/i.test(mk.textContent) && !!mk.closest('.ceScore') && !!mk.querySelector('svg');
     // the mark rides the day's line — a line of its own pushed the phone's reward past its fold
@@ -346,7 +349,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   ck('aDefeatWearsTheColdBanner', l.loss && /^defeat$/i.test(l.banner) && l.laurels === 0, `"${l.banner}", laurels ${l.laurels}`);
   ck('andStillRevealsItsCard', l.card === 'harvest_festival' && l.claim && l.board, `card ${l.card}, claim ${l.claim}, board ${l.board}`);
   ck('aDefeatShowsItsScoreAndPostsNothing', l.score === l.want && l.entry === null, `${l.score} vs ${l.want}, entry ${JSON.stringify(l.entry)}`);
-  ck('thePlayedLineNamesTheRunsCards', l.played === "Forager's Cache ×2, Starfall", l.played);
+  // the run that played cards still says so — on the score's own line — but names none of them
+  ck('aCardAssistedRunNamesNoCards', l.played, `no played list: ${l.played}`);
   ck('aCardAssistedRunSaysSoInTheScoresBox', l.assist && l.sameLine, `mark shown in the score box with its icon: ${l.assist}; on the day's line ${l.sameLine}`);
 
   /* THE EARN RULE on the screen: a WIN earns however short — the old gate
@@ -862,7 +866,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
         const R = el => el.getBoundingClientRect();
         const rib = R(root.querySelector('.ceRib')), card = R(root.querySelector('.ceMove .ccard')), eye = R(root.querySelector('.ceEye'));
         const hit = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-        const others = [...root.querySelectorAll('.cePlate, .ceScore, .cePlayed, .ceTile, .ceBtns, .ceDeck')].filter(el => el.getClientRects().length);
+        const others = [...root.querySelectorAll('.cePlate, .ceScore, .ceTile, .ceBtns, .ceDeck')].filter(el => el.getClientRects().length);
         const over = others.filter(el => hit(R(el), rib) || hit(R(el), card)).map(el => el.className);
         return { gap: Math.round(card.top - rib.bottom), eyeGap: Math.round(rib.top - eye.bottom), over, scroll: sc.scrollHeight - sc.clientHeight };
       }, win);
@@ -872,6 +876,64 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     await p.close();
   }
   ck('theTitleNeverCrowdsTheCard', bad.length === 0, bad.join(' | ') || [...new Set(seen)].join(', ') + ' between banner and card; nothing overlaps either, nothing scrolls');
+}
+
+/* ================= 5e. ONE SPACE BETWEEN EVERY PART =================
+   Operator, 2026-10-28, on a home-screen iPhone: "The victory and I assume
+   loss screens are very crowded… remove the text about cards played. Keep
+   the borders… shift the card and title down, and the claim button up so
+   they're centered and equally spaced out." On a phone the six spaces —
+   above the title, under it, between the plate, the score, the deck and
+   the buttons, and under them — are ONE size (the one under the banner
+   never less than --gap), the whole column inside the frame's lines with
+   nothing scrolling, and the Leaderboard rides the buttons' row as a
+   square plaque (it used to sit under Claim, below the fold). A wide
+   window keeps the run beside the card and the Leaderboard in its words.
+   Measured on the operator's own geometry (390x785 under the clock, a
+   34px home bar), a 390x844 page and a 430x932 one, on a test-deck win
+   (the longest score box) and a defeat. A 2x 375x667 phone (an SE) carries
+   the full 176px card and cannot hold it all: it SCROLLS, as it always
+   did, with every space at its floor — the old tight gaps, never wider. */
+{
+  const bad = [], seen = [];
+  for (const [w, h, dpr, bot, scrolls] of [[390, 785, 3, 34], [390, 844, 3, 0], [430, 932, 3, 34], [375, 667, 2, 0, true], [1440, 900, 1, 0]]) {
+    const p = await page({ w, h, dpr, reduce: true, bottom: bot, q: '?cards=all' });
+    await p.evaluate(SETUP);
+    for (const win of [true, false]) {
+      const r = await p.evaluate((win) => {
+        const played = [{ id: 'harvest_festival', day: 9 }, { id: 'starfall', day: 30 }];
+        window.__run({ seed: 'ds-even-' + win, win, cards: [['imperial', 'golden_age']], played });
+        const root = document.getElementById('cardEnd'), sc = root.querySelector('.ceScroll');
+        const R = el => el.getBoundingClientRect();
+        const sp = [...root.querySelectorAll('.ceSp')].filter(e => e.getClientRects().length).map(e => +R(e).height.toFixed(1));
+        const gap = parseFloat(getComputedStyle(root).getPropertyValue('--gap'));
+        const lines = R(root.querySelector('.ceLines')), rib = R(root.querySelector('.ceRib')), eye = R(root.querySelector('.ceEye'));
+        const btns = R(root.querySelector('.ceBtns')), claim = R(root.querySelector('.ceClaim')), lb = root.querySelector('[data-act="board"]'), lr = R(lb);
+        const wide = getComputedStyle(root.querySelector('.ceMain')).flexDirection === 'row';
+        return { wide, sp, gap, scroll: sc.scrollHeight - sc.clientHeight, inFrame: eye.top >= lines.top - 0.5 && btns.bottom <= lines.bottom + 0.5,
+          played: !/played this run/i.test(root.textContent),
+          lbRow: Math.abs(lr.top - claim.top) < 1 && lr.left > claim.right, lbSquare: Math.abs(lr.width - lr.height) <= 6,
+          lbIcon: !!lb.querySelector('svg') && getComputedStyle(lb.querySelector('svg')).display !== 'none',
+          lbWords: getComputedStyle(lb.querySelector('.ceLbW')).display !== 'none', lbName: lb.getAttribute('aria-label'),
+          claimBottom: Math.round(lines.bottom - btns.bottom), titleTop: Math.round(eye.top - lines.top) };
+      }, win);
+      const tag = `${w}x${h}${bot ? ' b' + bot : ''} ${win ? 'win' : 'loss'}`;
+      if (r.wide) {
+        if (r.sp.length || !r.lbWords || r.lbIcon || r.scroll > 1 || !r.played) bad.push(`${tag}: ${JSON.stringify(r)}`);
+        else seen.push(`${tag}: beside the card, Leaderboard in its words`);
+        continue;
+      }
+      const even = r.sp.filter((v, i) => i !== 1), lo = Math.min(...even), hi = Math.max(...even);
+      const fits = scrolls ? (r.scroll > 1 && hi <= 6.5 && r.sp[1] <= r.gap + 0.5) : (r.scroll <= 1 && r.inFrame);
+      const ok = r.sp.length === 6 && hi - lo <= 1 && r.sp[1] >= r.gap - 0.5 && (r.sp[1] <= hi + 1 || r.sp[1] <= r.gap + 0.5) &&
+        fits && r.played && r.lbRow && r.lbSquare && r.lbIcon && !r.lbWords && r.lbName === 'Leaderboard';
+      if (!ok) bad.push(`${tag}: ${JSON.stringify(r)}`);
+      else seen.push(scrolls ? `${tag}: scrolls ${r.scroll}px, spaces at their floor ${lo}px` :
+        `${tag}: spaces ${lo === hi ? lo : lo + '–' + hi}px (under the banner ${r.sp[1]}), title ${r.titleTop}px and buttons ${r.claimBottom}px inside the frame`);
+    }
+    await p.close();
+  }
+  ck('everyPartStandsOneSpaceApart', bad.length === 0, bad.join(' | ') || seen.join('; '));
 }
 
 /* ================= 6. THE FIT ================= */

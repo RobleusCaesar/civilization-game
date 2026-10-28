@@ -181,7 +181,7 @@ node tests/specials.mjs       # the special-event roll: three draws whatever it 
 node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables, the earn rule (a win always; a defeat on DEEDS across 6 DAYS of orders, never time — a front-loaded burst earns nothing, an ordered kill is a deed, a card hastens only the player's own work), one grant per run, the collection on the device (never in S), the one door, the lesson's floor, ?cards=all deals all 36 and ?cards=0 gives the real collection back (with anything earned on the test deck banked in it), the kill switch; the origin draft never says "deck"
 node tests/deck-fx.mjs       # the card effects: off changes nothing; every number of every card; a strike never razes a hall; a strike at the rival in the truce warns and ends it, asked of what the PLAYER knows; no card draws the run's RNG
 node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses, jumps by tier, builds each face once; a closer look is six tenths of its old size with its back's words kept; the blow lands on the reticle's cross; a mouse hover only previews, a finger tap lights ✓; a refusal is said once, on the card, and a refused Play promises nothing; a play is over inside 1.2 s and leaves in hard pixels; the landing never washes the meadow; an act that letters its words toasts no rule; every running card is seen or counted, in its own glyph at the device's resolution; every name fits its plate and the back names the card
-node tests/deck-screens.mjs  # the reward screen and the collection: off is today's end scenes; the grant happens once, on open; the ceremony; an undiscovered card leaks nothing
+node tests/deck-screens.mjs  # the reward screen and the collection: off is today's end scenes; the grant happens once, on open; the ceremony; one space between every part, no played list; an undiscovered card leaks nothing
 node tests/deck-town.mjs     # the town's cards: goods are a gift (never the harvest) and bring the hall on screen, the float says what was TAKEN in whole numbers, the hall holds at a sliver on both roads, watchfires reach only onto ground in sight and the burning arrow is the player's alone, a Master Builders charge is spent at the ✓ alone, Mending skips work sites, an overlay wears the worn picture, the caravan's road is land; the goods come down in the safe view and the bar pays as each piece lands; Stone Skin is stone and the ward's end is news
 node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a tile, no sky-iron, the card's words), every number, war-wolves that answer to the hall and fight what strikes them, ghosts that are not people and keep their post, veterans that never stack, raise neither host nor pack, and wear a rank pip, what is not drawn is not tapped, nothing drawn in the black; every summon on its own place of the fan in its own beam, the cinema cut, the war-wolf's collar, a ghost an inked figure
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
@@ -823,7 +823,24 @@ when the deck is on. `PLINTH {w, h, ty, foot}` is the one geometry the
 stage's CSS, the card size (`_cardW`) and the plate's overlap on a phone all
 read — change the pedestal art and change it with it. The card stands `--gap`
 clear of the banner (16 / 24 tall / 30 wide; `theTitleNeverCrowdsTheCard` at
-five sizes). **AND ITS CHROME IS NEVER CHUNKY** (§7, the same ruling as the
+five sizes). **ONE SPACE BETWEEN EVERY PART** (§5e
+`everyPartStandsOneSpaceApart` — operator, 2026-10-28, on a home-screen
+iPhone: "very crowded. Let's remove the text about cards played. Keep the
+borders… shift the card and title down, and the claim button up so they're
+centered and equally spaced out"): the cards-played list is GONE (the
+score's line still says Card-assisted), and on a phone the column fills the
+screen and six `.ceSp` spacers share its spare height EQUALLY — above the
+title, under it (never under `--gap`), between plate, score, deck and
+buttons (inside `.ceMain`, which takes three shares, two while the board's
+name box hides the tile), and under the buttons — each starting at the old
+6px, so a screen that cannot hold it all (a 2x 375x667 SE carries the full
+176px card) simply scrolls from its head at the old tight gaps. Measured:
+7.5px apart at the operator's 390x785 under the clock with the test-deck
+note, 24-28px at 390x844, 33-37px at 430x932, all inside the frame's
+lines. On a phone the Leaderboard rides the buttons' row as a square navy
+plaque with a podium (`PODIUM_SVG`, aria-label "Leaderboard") — under Claim
+it sat below the fold; a wide window keeps the run beside the card, its
+own gaps and the Leaderboard in its words. **AND ITS CHROME IS NEVER CHUNKY** (§7, the same ruling as the
 effects): the ribbon (navy and gold for a win, slate and silver for a loss),
 the laurels, the deck icon, the close, the sparks, the corner brackets, the
 heading's knot, the collection's tier tabs and the deck sheet's gems are

@@ -288,9 +288,17 @@ const DeckScreens = {
       '<i class="ceVig"></i><i class="ceLines"></i>' +
       `<button class="ceDeck" type="button" data-act="deck" aria-label="Your cards">${this.DECK_SVG}<b class="ceDeckN"></b></button>` +
       '<div class="ceFly"></div>' +
+      /* ONE SPACE BETWEEN EVERY PART (operator, 2026-10-28: "very crowded…
+         shift the card and title down, and the claim button up so they're
+         centered and equally spaced out"): a .ceSp before the title, between
+         it and the card, between the plate, the score, the deck and the
+         buttons, and after them — on a phone they share the screen's spare
+         height equally (the CSS below), on a wide window they stand down */
       '<div class="ceScroll"><div class="ceCol"><div class="ceIn">' +
+        '<i class="ceSp" aria-hidden="true"></i>' +
         `<p class="ceEye"><i></i><span>${this.esc(this._eyebrow(v))}</span><i></i></p>` +
         `<div class="ceBan"><i class="ceRibArt" aria-hidden="true"></i><div class="ceRib">${lau('l')}<b>${v.win ? 'Victory' : 'Defeat'}</b>${lau('r')}</div></div>` +
+        '<i class="ceSp ceSpBan" aria-hidden="true"></i>' +
         '<div class="ceMain">' +
           '<div class="ceStage">' +
             '<i class="ceGlow"></i><i class="ceRays"><i></i></i><i class="ceRays b"><i></i></i>' +
@@ -303,6 +311,7 @@ const DeckScreens = {
           '</div>' +
           '<div class="ceInfo">' +
             '<div class="cePlate" style="--i:0"><small></small><b></b></div>' +
+            '<i class="ceSp" aria-hidden="true"></i>' +
             '<div class="ceScore" style="--i:1"><small>Final score</small><b class="ceScoreN">0</b>' +
               /* A CARD-ASSISTED RUN SAYS SO (approved at Gate 1: marked on the
                  end screen, in telemetry and on the board), in the score's own
@@ -312,16 +321,23 @@ const DeckScreens = {
               `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
               (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
               '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
-            `<p class="cePlayed" style="--i:2"><small>Cards played this run</small><span>${this.esc(this._playedLine())}</span></p>` +
-            `<div class="ceTile" style="--i:3">${this.DECK_SVG}<b class="ceTileN"></b><small>Cards in<br>your deck</small></div>` +
-            '<div class="ceBtns" style="--i:4">' +
+            /* the list of cards played this run is GONE (the same operator
+               ruling): the score's own line still says Card-assisted */
+            '<i class="ceSp ceSpTile" aria-hidden="true"></i>' +
+            `<div class="ceTile" style="--i:2">${this.DECK_SVG}<b class="ceTileN"></b><small>Cards in<br>your deck</small></div>` +
+            '<i class="ceSp ceSpBtns" aria-hidden="true"></i>' +
+            /* on a phone the Leaderboard rides the buttons' own row as a
+               square plaque with the podium (it fell below the fold under
+               Claim); a wide window has the room for its words */
+            '<div class="ceBtns" style="--i:3">' +
               '<button class="ceBtn gold ceClaim" type="button" data-act="claim"><i class="ceDia"></i>Claim reward<i class="ceDia"></i></button>' +
               '<div class="ceRow"><button class="ceBtn" type="button" data-act="replay">Replay</button>' +
                 '<button class="ceBtn" type="button" data-act="menu">Menu</button></div>' +
-              '<button class="ceBtn navy" type="button" data-act="board">Leaderboard</button>' +
+              `<button class="ceBtn navy ceLb" type="button" data-act="board" aria-label="Leaderboard" title="Leaderboard">${this.PODIUM_SVG}<span class="ceLbW">Leaderboard</span></button>` +
             '</div>' +
           '</div>' +
         '</div>' +
+        '<i class="ceSp" aria-hidden="true"></i>' +
       '</div></div></div>';
     const u = v.cw / Deck.W;
     root.style.setProperty('--cw', v.cw + 'px');
@@ -495,13 +511,6 @@ const DeckScreens = {
   },
 
   _playedN() { return (S.deck && Array.isArray(S.deck.played)) ? S.deck.played.filter(x => x && Deck.card(x.id)).length : 0; },
-  _playedLine() {
-    const p = (S.deck && Array.isArray(S.deck.played)) ? S.deck.played : [];
-    if (!p.length) return 'None';
-    const n = {}, order = [];
-    for (const x of p) { if (!Deck.card(x.id)) continue; if (!n[x.id]) order.push(x.id); n[x.id] = (n[x.id] || 0) + 1; }
-    return order.map(id => Deck.card(id).name + (n[id] > 1 ? ' ×' + n[id] : '')).join(', ') || 'None';
-  },
 
   _setButtons(state) {
     const root = this._rootEl(), b = root.querySelector('.ceBtns');
@@ -1006,6 +1015,11 @@ const DeckScreens = {
   /* the deck: a bronze card behind a gold one — the HUD button's own
      picture (DeckUI.deckIcon), a smooth vector at every size it is shown */
   get DECK_SVG() { return (window.DeckUI && DeckUI.deckIcon) ? DeckUI.deckIcon() : ''; },
+  // the Leaderboard's plaque on a phone: a podium under a gold star, a vector at any pixels
+  PODIUM_SVG: '<svg class="ceLbI" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M12 1.6l1.35 2.75 3.03.44-2.19 2.13.52 3.02L12 8.52 9.29 9.94l.52-3.02L7.62 4.79l3.03-.44z" fill="#e8c15a" stroke="#2a1906" stroke-width=".6" stroke-linejoin="round"/>' +
+    '<path d="M9 11.5h6V21H9z" fill="currentColor"/><path d="M2.5 14.5H9V21H2.5z" fill="currentColor" opacity=".72"/>' +
+    '<path d="M15 16.5h6.5V21H15z" fill="currentColor" opacity=".55"/><path d="M1.5 21.6h21" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
   get CLOSE_SVG() { return DeckScreens.SVG.CLOSE; },
   /* a tier tab's gem: the deck sheet's own faceted gem (DeckUI.gemIcon),
      smooth at every size; dark while nothing of the tier has been found */
@@ -1506,9 +1520,6 @@ DeckScreens.CSS = `
   linear-gradient(rgba(14,8,4,0.26), rgba(14,8,4,0.26)); }
 /* over a painted valley the run's numbers stand on dark, not on the hills */
 #cardEnd.ceArtBg .ceScore, #cardEnd.ceArtBg .ceTile { background-color: rgba(12,9,6,0.84); }
-#cardEnd.ceArtBg .cePlayed { padding: 5px 10px 6px; box-sizing: border-box;
-  background: radial-gradient(closest-side, rgba(10,7,4,0.78), rgba(10,7,4,0.62) 70%, rgba(10,7,4,0) 100%); }
-#cardEnd.ceArtBg .cePlayed small { color: #a9a08c; }
 #cardEnd.ceArtBg .ceEye span { text-shadow: 0 2px 0 rgba(0,0,0,0.85), 0 0 10px rgba(8,6,4,0.9); }
 #cardEnd .ceLines { position: absolute; pointer-events: none;
   inset: calc(var(--safe-top) + 6px) 6px calc(env(safe-area-inset-bottom, 0px) + 6px) 6px;
@@ -1532,10 +1543,23 @@ DeckScreens.CSS = `
    the whole screen, so the clip only ever falls at its edges. */
 #cardEnd .ceCol { min-height: 100%; display: flex; flex-direction: column; overflow: hidden; overflow: clip;
   padding: calc(var(--safe-top) + 8px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px); }
-/* vertical AUTO margins centre the column when it fits and start it at the
-   top when it does not: justify-content: center would push an overflowing
-   column's head above the scroll origin, where nobody can reach it */
-#cardEnd .ceIn { margin: auto 0; width: 100%; display: flex; flex-direction: column; align-items: center; }
+/* ONE SPACE BETWEEN EVERY PART (operator, 2026-10-28: "very crowded…
+   shift the card and title down, and the claim button up so they're
+   centered and equally spaced out"): on a phone the column fills the screen
+   and the .ceSp spacers share what the parts leave of it EQUALLY — one above
+   the title, one under it (never under --gap: the card stands clear of the
+   banner), three between the plate, the score, the deck and the buttons
+   (inside .ceMain, which therefore takes three shares), one under the
+   buttons. Each starts at 6px, so a short screen keeps the old tight
+   gaps; a column taller than the screen simply scrolls from its head (no
+   justify-content: center, which would push the head above the scroll
+   origin). A wide window lays the run beside the card and stands them down. */
+#cardEnd .ceIn { margin: 0; flex: 1 0 auto; width: 100%; display: flex; flex-direction: column; align-items: center; }
+#cardEnd .ceSp { display: block; flex: 1 1 6px; min-height: 6px; width: 100%; pointer-events: none; }
+#cardEnd .ceSpBan { min-height: var(--gap); }
+/* the board's name box takes the deck tile's place, and its space with it */
+#cardEnd:has(.ceBoard #nameRow[style*="flex"]) .ceSpTile { display: none; }
+#cardEnd:has(.ceBoard #nameRow[style*="flex"]) .ceMain { flex-grow: 2; }
 
 /* the eyebrow shares its row with the deck in the corner — a row as tall as
    the deck — so the banner below always starts clear of it */
@@ -1566,12 +1590,12 @@ DeckScreens.CSS = `
 #cardEnd .ceBL.r { background-image: var(--sprigR); }
 #cardEnd.ceLoss .ceRib b { background: linear-gradient(#f1f4f8 0%, #c3ccd7 46%, #8e98a6 100%); -webkit-background-clip: text; background-clip: text; }
 
-#cardEnd .ceMain { width: 100%; display: flex; flex-direction: column; align-items: center; }
+#cardEnd .ceMain { width: 100%; display: flex; flex-direction: column; align-items: center; flex: 3 1 auto; }
 /* the stage: the card stands on the plinth's slit, which is --pty art
    pixels below the plinth's top (DeckScreens.PLINTH) — so the card's foot is
    the stage's height less the --phang that hang below it. It stands --gap
    clear of the banner: the card's frame must never crowd the title */
-#cardEnd .ceStage { position: relative; width: calc(var(--u) * var(--pw)); height: calc(var(--ch) + var(--u) * var(--phang)); margin-top: var(--gap); flex: 0 0 auto; }
+#cardEnd .ceStage { position: relative; width: calc(var(--u) * var(--pw)); height: calc(var(--ch) + var(--u) * var(--phang)); margin-top: 0; flex: 0 0 auto; }
 #cardEnd .ceStage > i, #cardEnd .ceStage > canvas, #cardEnd .ceSparks { position: absolute; pointer-events: none; }
 #cardEnd .ceGlow { left: 50%; top: calc(var(--ch) * 0.5); width: calc(var(--cw) * 2.3); height: calc(var(--ch) * 1.6);
   margin: calc(var(--ch) * -0.8) 0 0 calc(var(--cw) * -1.15); opacity: var(--glow-o);
@@ -1615,9 +1639,9 @@ DeckScreens.CSS = `
 #cardEnd .ceSparks { left: 50%; top: 0; width: calc(var(--cw) * 2); height: var(--ch); margin-left: calc(var(--cw) * -1); }
 /* every card claimed: the light holds still — no endless masked spin on a phone parked here */
 #cardEnd.ceDone .ceRays > i, #cardEnd.ceDone .ceSparks > i { animation-play-state: paused; }
-/* the board's name box (lent in on a first win) needs the room: the played
-   line and the deck tile step aside, the corner deck still carries the count */
-#cardEnd:has(.ceBoard #nameRow[style*="flex"]) .cePlayed, #cardEnd:has(.ceBoard #nameRow[style*="flex"]) .ceTile { display: none; }
+/* the board's name box (lent in on a first win) needs the room: the deck
+   tile steps aside, the corner deck still carries the count */
+#cardEnd:has(.ceBoard #nameRow[style*="flex"]) .ceTile { display: none; }
 /* a mote of light: a white-hot core in the tier's colour, soft to its edge;
    a glint (.gl) is a four-point star of light (DeckScreens.SVG.glint) */
 #cardEnd .ceSparks > i { position: absolute; width: calc(var(--s) * 2.6); height: calc(var(--s) * 2.6); border-radius: 50%;
@@ -1642,8 +1666,8 @@ DeckScreens.CSS = `
 #cardEnd .cePips i.on { background: linear-gradient(135deg, #fff4c9 0%, #f6d074 30%, #d9a03a 62%, #87500f 100%);
   box-shadow: 0 0 0 1px #2a1906, 0 0 6px rgba(255,210,110,0.45); }
 
-#cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  position: relative; z-index: 1; }
+#cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 0;
+  flex: 1 1 auto; position: relative; z-index: 1; }
 #cardEnd .cePlate { position: relative; margin-top: calc(-4px - var(--u) * var(--pfoot)); min-width: min(300px, 94%); padding: 8px 22px 9px; text-align: center;
   border-radius: 5px; background: linear-gradient(#2e2216, #1c140b);
   box-shadow: inset 0 0 0 1px #0d0905, inset 0 0 0 2px rgba(214,170,74,0.55), inset 0 0 0 3px #0d0905, inset 0 0 0 4px rgba(214,170,74,0.16); }
@@ -1665,7 +1689,7 @@ DeckScreens.CSS = `
   background-repeat: no-repeat; background-image: var(--cnTL), var(--cnTR), var(--cnBR), var(--cnBL); background-size: 19px 19px;
   background-position: 2px 2px, calc(100% - 2px) 2px, calc(100% - 2px) calc(100% - 2px), 2px calc(100% - 2px); }
 #cardEnd .ceScore { padding: 8px 14px 9px; text-align: center; }
-#cardEnd .ceScore small, #cardEnd .cePlayed small, #cardEnd .ceTile small { font-size: 10px; font-weight: 700; letter-spacing: 3px;
+#cardEnd .ceScore small, #cardEnd .ceTile small { font-size: 10px; font-weight: 700; letter-spacing: 3px;
   text-transform: uppercase; color: #8f98aa; }
 #cardEnd .ceScoreN { display: block; font-size: 36px; font-weight: 900; line-height: 1.1; letter-spacing: 1px; font-variant-numeric: tabular-nums;
   background: linear-gradient(#fff3c8, #f2cd6a 48%, #c08a2c); -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -1682,15 +1706,16 @@ DeckScreens.CSS = `
 #cardEnd .ceBoard { width: 100%; display: flex; flex-direction: column; align-items: center; }
 #cardEnd #nameRow { margin: 8px auto 0; }
 #cardEnd #savedNote { margin: 6px auto 0; }
-#cardEnd .cePlayed { width: 100%; margin: 0; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 8px;
-  font: 600 12.5px/1.35 -apple-system, "Segoe UI", Roboto, sans-serif; color: #d6c8a6; text-align: center; }
-#cardEnd .cePlayed small { font-family: var(--menufont); }
 #cardEnd .ceTile { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 7px 14px; }
 #cardEnd .ceTile svg { width: 32px; height: 32px; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.6)); }
 #cardEnd .ceTileN { font-size: 28px; font-weight: 900; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 0 rgba(0,0,0,0.8); }
 #cardEnd .ceTile small { text-align: left; line-height: 1.3; }
-#cardEnd .ceBtns { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-top: 3px; }
+#cardEnd .ceBtns { width: 100%; display: flex; flex-direction: row; align-items: stretch; gap: 10px; }
+#cardEnd .ceBtns .ceClaim, #cardEnd .ceBtns .ceRow { flex: 1 1 auto; width: auto; }
+#cardEnd .ceLb { flex: 0 0 56px; width: 56px; padding: 0; }
+#cardEnd .ceLbI { width: 30px; height: 30px; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.6)); }
+#cardEnd .ceLbW { display: none; }
 #cardEnd .ceRow { display: flex; gap: 10px; }
 #cardEnd .ceRow .ceBtn { flex: 1 1 0; }
 #cardEnd .ceBtns[data-s="claim"] .ceRow, #cardEnd .ceBtns[data-s="done"] .ceClaim { display: none; }
@@ -1721,8 +1746,17 @@ DeckScreens.CSS = `
 /* a wide window: banner across the top, the card on the left, the run on the right */
 @media (min-width: 900px) and (min-aspect-ratio: 5/4) {
   #cardEnd { --gap: 30px; }
-  #cardEnd .ceMain { flex-direction: row; justify-content: center; align-items: center; gap: 64px; }
-  #cardEnd .ceInfo { width: 360px; flex: 0 0 auto; }
+  #cardEnd .ceMain { flex-direction: row; justify-content: center; align-items: center; gap: 64px; flex: 0 0 auto; }
+  #cardEnd .ceInfo { width: 360px; flex: 0 0 auto; gap: 6px; }
+  /* beside the card the run is centred on its own: no shared spaces, the
+     column centred by auto margins, the Leaderboard in its words */
+  #cardEnd .ceSp { display: none; }
+  #cardEnd .ceIn { margin: auto 0; flex: 0 0 auto; }
+  #cardEnd .ceStage { margin-top: var(--gap); }
+  #cardEnd .ceBtns { flex-direction: column; margin-top: 3px; }
+  #cardEnd .ceLb { flex: 0 0 auto; width: 100%; padding: 0 12px; }
+  #cardEnd .ceLbI { display: none; }
+  #cardEnd .ceLbW { display: inline; }
   #cardEnd .cePlate { margin-top: 0; }
   #cardEnd .ceEye { font-size: 15px; width: min(420px, calc(100% - 120px)); height: 30px; }
   #cardEnd .ceRib { height: 64px; min-width: 330px; }
@@ -1742,7 +1776,7 @@ DeckScreens.CSS = `
 #cardEnd.ceIntro .ceBg, #cardEnd.ceIntro .ceVig { animation: ceFade 450ms ease-out both; }
 #cardEnd.ceIntro .ceEye { animation: ceFade 360ms ease-out 80ms both; }
 #cardEnd.ceIntro .ceBan { animation: ceDrop 540ms linear 120ms both; }
-#cardEnd.ceIntro .ceInfo > *, #cardEnd.ceIntro .ceDeck { animation: ceUp 380ms cubic-bezier(.2,.8,.3,1) both;
+#cardEnd.ceIntro .ceInfo > :not(.ceSp), #cardEnd.ceIntro .ceDeck { animation: ceUp 380ms cubic-bezier(.2,.8,.3,1) both;
   animation-delay: calc((var(--t-info) + var(--i, 0) * 70) * 1ms); }
 #cardEnd .ceReveal .ceMove { animation: ceRise calc(var(--t-rise) * 1ms) cubic-bezier(.22,.8,.3,1) calc(var(--t-at) * 1ms) both; }
 #cardEnd .ceReveal .ceGlow, #cardEnd .ceReveal .ceTopGlow {

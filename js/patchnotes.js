@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 103, date: '2026-10-28', title: 'A calmer victory screen, in testing',
+    items: [
+      'The victory and defeat screens no longer list every card you played, so they breathe.',
+      'The title, the card, your score and the Claim button now sit evenly spaced inside the frame, with Claim no longer pushed to the bottom edge.',
+      'On a phone the Leaderboard is the small podium button beside Claim, so it is always on screen.',
+    ],
+  },
+  {
     build: 102, date: '2026-10-28', title: 'Cards up close, in testing',
     items: [
       'A card you tap for a closer look is smaller now, so its painting stays crisp instead of blocky.',
