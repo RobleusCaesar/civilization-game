@@ -341,6 +341,8 @@ const DeckScreens = {
     root.style.setProperty('--sprigL', V.laurel(true, true));
     root.style.setProperty('--sprigR', V.laurel(false, true));
     root.style.setProperty('--glint', V.glint());
+    ['TL', 'TR', 'BR', 'BL'].forEach((k, i) => root.style.setProperty('--cn' + k, V.corner(i, v.win)));
+    root.style.setProperty('--loz', V.lozenge(v.win));
     this._ribbon(root, v.win);
     this._lend();
     this._setButtons(v.claimed >= v.cards.length ? 'done' : 'claim');
@@ -1402,6 +1404,41 @@ DeckScreens.SVG = {
   /* THE CLOSE: an X drawn smooth in the button's own colour */
   CLOSE: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.6 3.6 L12.4 12.4 M12.4 3.6 L3.6 12.4"/></svg>',
 
+  /* A CORNER BRACKET for the run's panels and the screen's frame: two arms
+     of burnished metal meeting over a small diamond knot, a finer bracket
+     inside them, the whole fading toward its tips. ONE path per arm pair,
+     so the corner is never painted twice — the flat CSS bars it replaces
+     were two translucent rects overlapping, and the overlap lit a brighter
+     square in every corner. `pos` 0..3 turns it to the top-left, top-right,
+     bottom-right and bottom-left; gold for a victory, silver for a defeat. */
+  corner(pos, win) {
+    return this.memo('cn' + pos + (win ? 'g' : 's'), () => {
+      const c = win ? ['#fff3cc', '#ecc265', '#b98426', '#6f4710'] : ['#e6ebf2', '#b4bdca', '#7c8796', '#434b58'];
+      const body =
+        `<defs><linearGradient id='m' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='24' y2='24'>` +
+          `<stop offset='0' stop-color='${c[0]}'/><stop offset='.18' stop-color='${c[1]}'/><stop offset='.5' stop-color='${c[2]}' stop-opacity='.85'/>` +
+          `<stop offset='1' stop-color='${c[3]}' stop-opacity='.25'/></linearGradient></defs>` +
+        `<g transform='rotate(${pos * 90} 12 12)'>` +
+          `<path d='M3 23 V3 H23' fill='none' stroke='#0d0905' stroke-opacity='.5' stroke-width='3.6'/>` +
+          `<path d='M3 23 V3 H23' fill='none' stroke='url(#m)' stroke-width='1.8'/>` +
+          `<path d='M6.6 14 V6.6 H14' fill='none' stroke='url(#m)' stroke-width='.8' stroke-opacity='.7'/>` +
+          `<path d='M3 .4 L5.6 3 L3 5.6 L.4 3 Z' fill='${c[1]}' stroke='#0d0905' stroke-width='.7' stroke-opacity='.8'/>` +
+          `<path d='M3 .4 L5.6 3 L3 3 Z' fill='${c[0]}'/></g>`;
+      return this.uri(this.doc(24, 24, body));
+    });
+  },
+  /* THE EYEBROW'S KNOT: a small faceted lozenge where each rule ends,
+     opaque, so the rule never shows through it */
+  lozenge(win) {
+    return this.memo('lz' + (win ? 'g' : 's'), () => {
+      const c = win ? ['#fff3cc', '#e2b452', '#8d5c18'] : ['#ffffff', '#b9c3d0', '#5d6777'];
+      return this.uri(this.doc(12, 12,
+        `<path d='M6 .7 L11.3 6 L6 11.3 L.7 6 Z' fill='${c[1]}' stroke='#0d0905' stroke-width='.9' stroke-opacity='.75' stroke-linejoin='round'/>` +
+        `<path d='M6 1.6 L10.4 6 L6 6 Z' fill='${c[0]}' fill-opacity='.8'/><path d='M6 1.6 L1.6 6 L6 6 Z' fill='${c[0]}'/>` +
+        `<path d='M1.6 6 L6 10.4 L6 6 Z' fill='${c[2]}' fill-opacity='.55'/><path d='M10.4 6 L6 10.4 L6 6 Z' fill='${c[2]}'/>`));
+    });
+  },
+
   /* A GLINT for the ceremony's sparks: a four-point star of light */
   glint() {
     return this.memo('glint', () => this.uri(this.doc(20, 20,
@@ -1464,12 +1501,10 @@ DeckScreens.CSS = `
 #cardEnd.ceArtBg .ceEye span { text-shadow: 0 2px 0 rgba(0,0,0,0.85), 0 0 10px rgba(8,6,4,0.9); }
 #cardEnd .ceLines { position: absolute; pointer-events: none;
   inset: calc(var(--safe-top) + 6px) 6px calc(env(safe-area-inset-bottom, 0px) + 6px) 6px;
-  border: 1px solid var(--fc2); background:
-  linear-gradient(var(--fc), var(--fc)) 3px 3px / 22px 2px no-repeat, linear-gradient(var(--fc), var(--fc)) 3px 3px / 2px 22px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) 3px / 22px 2px no-repeat, linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) 3px / 2px 22px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) 3px calc(100% - 3px) / 22px 2px no-repeat, linear-gradient(var(--fc), var(--fc)) 3px calc(100% - 3px) / 2px 22px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) calc(100% - 3px) / 22px 2px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) calc(100% - 3px) / 2px 22px no-repeat; }
+  border: 1px solid var(--fc2); opacity: 0.8;
+  /* the frame's corners are the panels' brackets, larger (DeckScreens.SVG.corner) */
+  background: var(--cnTL) 1px 1px / 28px 28px no-repeat, var(--cnTR) calc(100% - 1px) 1px / 28px 28px no-repeat,
+    var(--cnBR) calc(100% - 1px) calc(100% - 1px) / 28px 28px no-repeat, var(--cnBL) 1px calc(100% - 1px) / 28px 28px no-repeat; }
 #cardEnd .ceDeck { position: absolute; z-index: 3; top: calc(var(--safe-top) + 8px); right: 12px; width: 44px; height: 44px;
   padding: 0; border: 0; cursor: pointer; display: flex; align-items: center; justify-content: center;
   background: radial-gradient(circle, rgba(20,14,8,0.75) 40%, rgba(20,14,8,0) 72%); }
@@ -1499,9 +1534,10 @@ DeckScreens.CSS = `
 #cardEnd.ceLoss .ceEye { color: #aeb8c8; }
 #cardEnd .ceEye i { position: relative; flex: 1 1 0; min-width: 12px; height: 1px; background: linear-gradient(90deg, transparent, var(--fc)); }
 #cardEnd .ceEye i:last-child { background: linear-gradient(90deg, var(--fc), transparent); }
-#cardEnd .ceEye i::after { content: ''; position: absolute; top: -2px; width: 5px; height: 5px; background: var(--fc); transform: rotate(45deg); }
-#cardEnd .ceEye i:first-child::after { right: -1px; }
-#cardEnd .ceEye i:last-child::after { left: -1px; }
+/* each rule ends in a small faceted knot, opaque (DeckScreens.SVG.lozenge) */
+#cardEnd .ceEye i::after { content: ''; position: absolute; top: -3.5px; width: 8px; height: 8px; background: var(--loz) no-repeat 0 0 / 100% 100%; }
+#cardEnd .ceEye i:first-child::after { right: -4px; }
+#cardEnd .ceEye i:last-child::after { left: -4px; }
 
 #cardEnd .ceBan { position: relative; z-index: 2; padding: 0 30px; margin: 0 auto;
   filter: drop-shadow(0 6px 10px rgba(0,0,0,0.65)); }
@@ -1612,13 +1648,11 @@ DeckScreens.CSS = `
 #cardEnd .cePlate small em::before { content: ''; display: inline-block; width: 4px; height: 4px; margin: 0 8px 2px 0; background: currentColor; transform: rotate(45deg); }
 #cardEnd .cePlate b { display: block; margin-top: 3px; font-size: clamp(16px, 5.4vw, 21px); font-weight: 700; letter-spacing: 2px; line-height: 1.15;
   text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 0 rgba(0,0,0,0.85); }
+/* the run's panels: a dark field in a faint rule, a burnished bracket in
+   each corner (DeckScreens.SVG.corner), drawn at the device's pixels */
 #cardEnd .ceScore, #cardEnd .ceTile { position: relative; width: 100%; background-color: rgba(12,9,6,0.76); border: 1px solid var(--fc2);
-  background-repeat: no-repeat; background-image:
-  linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)),
-  linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc));
-  background-size: 14px 2px, 2px 14px, 14px 2px, 2px 14px, 14px 2px, 2px 14px, 14px 2px, 2px 14px;
-  background-position: 4px 4px, 4px 4px, calc(100% - 4px) 4px, calc(100% - 4px) 4px, 4px calc(100% - 4px), 4px calc(100% - 4px),
-    calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) calc(100% - 4px); }
+  background-repeat: no-repeat; background-image: var(--cnTL), var(--cnTR), var(--cnBR), var(--cnBL); background-size: 19px 19px;
+  background-position: 2px 2px, calc(100% - 2px) 2px, calc(100% - 2px) calc(100% - 2px), 2px calc(100% - 2px); }
 #cardEnd .ceScore { padding: 8px 14px 9px; text-align: center; }
 #cardEnd .ceScore small, #cardEnd .cePlayed small, #cardEnd .ceTile small { font-size: 10px; font-weight: 700; letter-spacing: 3px;
   text-transform: uppercase; color: #8f98aa; }

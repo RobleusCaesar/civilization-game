@@ -61,7 +61,8 @@
                        painted valley or the pedestal is shown at or below
                        its own pixels on a 3x screen (CSS size × 3 ≤ natural
                        size); nothing asks for nearest-neighbour or stepped
-                       edges; the banner, its sprigs and the laurels are
+                       edges; the banner, its sprigs, the laurels, the
+                       corner brackets and the eyebrow's knots are
                        vectors; the pedestal, world art standing in the
                        scene, is never past twice its pixels
 
@@ -997,10 +998,22 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
         else if (!x.exempt && (x.w * 3 > x.nw + 0.5 || (x.h && x.h * 3 > x.nh + 0.5))) bad.push(`${tag} ${x.name} ${Math.round(x.w)}px wide from ${x.nw}px (${(x.w * 3 / x.nw).toFixed(2)}x at 3x)`);
       }
       if (sc === 'won') {
-        vec.push(await p.evaluate(() => ['.ceRibArt', '.ceBL.l', '.ceBL.r', '.ceLaurel.l', '.ceLaurel.r'].map(s => {
-          const e = document.querySelector('#cardEnd ' + s);
-          return e && /^url\("data:image\/svg\+xml/.test(getComputedStyle(e).backgroundImage) && e.getBoundingClientRect().width > 0;
-        }).every(Boolean)));
+        vec.push(await p.evaluate(() => {
+          const svg = s => /^url\("data:image\/svg\+xml/.test(s);
+          const one = ['.ceRibArt', '.ceBL.l', '.ceBL.r', '.ceLaurel.l', '.ceLaurel.r'].every(s => {
+            const e = document.querySelector('#cardEnd ' + s);
+            return e && svg(getComputedStyle(e).backgroundImage) && e.getBoundingClientRect().width > 0;
+          });
+          // the brackets: four SVG corners on each panel and on the screen's
+          // frame — never bars of colour, whose overlap lit every corner
+          const four = ['.ceScore', '.ceTile', '.ceLines'].every(s => {
+            const imgs = getComputedStyle(document.querySelector('#cardEnd ' + s)).backgroundImage.split(/,\s*(?=url|linear|radial|none)/);
+            return imgs.length === 4 && imgs.every(svg);
+          });
+          // and each rule of the eyebrow ends in an SVG knot
+          const knots = [...document.querySelectorAll('#cardEnd .ceEye i')].every(i => svg(getComputedStyle(i, '::after').backgroundImage));
+          return one && four && knots;
+        }));
         if (!control) {
           // the control: the old pixel sprig and a crisp-edged icon, put back — the probe must name both
           control = await p.evaluate(async (probe) => {
@@ -1024,7 +1037,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     (bad.length ? 'per screen ' + JSON.stringify(bad.reduce((o, b) => { const k = b.split('@')[0]; o[k] = (o[k] || 0) + 1; return o; }, {})) + ': ' + [...new Set(bad.map(b => b.replace(/^\S+ /, '')))].slice(0, 6).join(' | ') : '') || (!all ? 'a screen went unmeasured: ' + JSON.stringify(looked) :
       `no raster chrome past its pixels at 3x on the reward (won, lost, empty), the collection or the deck sheet, 390-1920px and a phone on its side; ` +
       `${seen.size} vector pieces; the control's old sprig and crisp icon named: ${control && control.sprig}/${control && control.crisp}`));
-  ck('andTheBannerAndLaurelsAreVectors', vec.length === 6 && vec.every(Boolean), `the ribbon, two sprigs and two laurels are SVG at ${vec.filter(Boolean).length} of 6 sizes`);
+  ck('andTheBannerLaurelsAndBracketsAreVectors', vec.length === 6 && vec.every(Boolean),
+    `the ribbon, two sprigs, two laurels, the panels' and the frame's corner brackets and the eyebrow's knots are SVG at ${vec.filter(Boolean).length} of 6 sizes`);
   ck('andThePedestalIsNeverPastTwiceItsPixels', ped.length > 0 && !bad.some(b => /pedestal/.test(b)), `shown at ${[...new Set(ped)].join('x, ')}x its pixels`);
 }
 
