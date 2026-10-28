@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 101, date: '2026-10-28', title: 'A new title screen, in testing',
+    items: [
+      'The title screen has a new painting: the valley at night, the village lit, a campfire, and a falling star over the hall.',
+      'The menu buttons are carved wood with gold trim, sharp on every screen, with New Game in gold.',
+      'Phones get a tall painting and wide screens a wide one.',
+      'Feedback you send now simply says Sent. It only says it will wait if you are offline.',
+      'For now the new title shows on the card test link only.',
+    ],
+  },
+  {
     build: 100, date: '2026-10-28', title: 'A new settings page, in testing',
     items: [
       'Settings has been rebuilt as one carved page with tabs for General, Audio, Saves, Feedback and Patch Notes.',

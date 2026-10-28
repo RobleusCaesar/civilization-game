@@ -189,6 +189,7 @@ node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's 
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's
 node tests/settings.mjs      # the settings page, staged behind the card test link (SettingsPage.PUBLIC is the one-line flip): the old screen byte for byte elsewhere, only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
+node tests/title.mjs         # the night title, staged: one predicate both ways (the old title byte for byte, nothing fetched), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; four screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; every number the rule's own; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tier ladder level; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; reopened from the collection
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
@@ -706,6 +707,55 @@ the sender's email required "so we can reply"; 20 seconds apart, five an hour;
 live site only (the telemetry rule — a test installs the mock). The error
 recorder (the last 20 JS errors, attached to a Bug or Crash report by
 default) runs for everyone but sends NOTHING unless the player submits.
+
+**THE NIGHT TITLE** (`js/titlescreen.js`, `tests/title.mjs`, art in
+`assets/ui/title/`, masters in `assets/masters/title/` — operator: "the
+buttons are kind of bland, pixelated… the background also feels a bit
+bland… something closer to the quality of the Victory and Loss pages…
+versions for phone and desktop… push to the cards test page"). STAGED like
+the settings page: `TitleScreen.live()` is `Boot.TITLE_PUBLIC ||
+Deck.devOn()`, and **going public is one line, `TITLE_PUBLIC: true` in
+index.html's inline boot block** — it lives there, not in the JS file,
+because the splash must decide before any script file parses. Everyone else
+keeps today's title byte for byte (the splash, the `#scrTitle` markup and its
+two stylesheet blocks are hashed as at f2a1c59) and fetches nothing of the
+night. **THE SPLASH READS DECK'S ANSWER**: `Boot.title2` is the same reading
+of the link (`?cards=1|all` on, `?cards=0` off) and of `neo-cards-dev` that
+`Deck.devOn` makes, never a write; the contract holds `Boot.title2 ===
+TitleScreen.live() === Deck.devOn()` in eight cases, a throwing storage
+included. **THE NIGHT IS LAID OVER THE GLEN** (`Boot.t2wear`, one helper for
+the splash and the title): the glen's markup never changes; the night picture
+and its shade (`T2_SHADE`, part of the SCENE) go on top and the glen is
+hidden, so the browser picks the same file for both and the title with its
+chrome hidden is the splash pixel for pixel. A 404 gives the glen back
+(`.t2lost`); the plaques stay. The lift waits for the night
+(`G.titleGlenUp` asks `TitleScreen.glenImg()`), never for the glen under it.
+A staged device still fetches the glen (its markup is untouched) — **when the
+night goes public for good, repoint the two `<picture>` blocks at the night
+and retire the glen in the same commit**, or every boot fetches both. **THE
+ART**: the reward valley the night before the dawn — roundhouses, palisade,
+the hall on its rise, pines, mountains, the clan at its fire, and a comet
+over the hall (Starfall, the deck's one hint). Wide for ANY landscape window
+(`(min-aspect-ratio: 4/3)`, so a phone on its side gets the valley, not a
+strip of the tall), tall for portrait. Each file is a whole-factor
+nearest-neighbour enlargement of its master (3x wide, 2x tall), lossless
+webp with a jpg behind it; `Boot.t2fit` draws nearest-neighbour only on a
+2x/3x screen that shows it at or above its pixels, and smooths the last step
+down on 1x. Its URLs (`T2_SRC`/`T2_IMG`) are markup in all but name: the
+`?v=` is hand-kept and must equal `CFG.ART_V`. **THE PLAQUES ARE VECTORS
+BUILT TO THEIR BOX** (`TitleScreen.plaque`, one inline SVG per plaque in CSS
+pixels, rebuilt by a ResizeObserver): walnut with grain, a gold-leaf rim, a
+carved groove, a gold strap and garnet boss on every corner. New Game is the
+gold plate, the Leaderboard navy (the reward screen's pair), Continue and the
+minor row walnut, with vector icons throughout — the secondary row included,
+since two by two leaves every label room at 320px. No stepped or pixel icon;
+every raster but the backdrop is within its pixels at 3x. A press moves the
+plate with `translate`, never `transform`: the pop-in's held frame swallows a
+pressed transform (it always did on the old title). Everything is scoped to
+`#scrTitle.t2`, so the pause menu's `.plaques` are untouched. The fire's
+breath, its embers and the comet's glint sit at `TitleScreen.ANCHOR` (read
+off the masters; the contract reads them back off the shipped files, so a new
+night must bring new anchors), compositor-only and still for reduced motion.
 
 **THE CARD ANNOUNCEMENT** (`js/cardintro.js`, tests/card-intro.mjs; art in
 `assets/cards/intro/`, ART_PLAN "The card announcement" — operator: "an
