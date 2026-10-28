@@ -339,21 +339,24 @@ const CardIntro = {
     // what the hero may use: the panel less its head and its nav
     const heroH = Math.max(160 * k, ph - (narrow ? 380 : 300));
     /* a face is whole device pixels, and on a wide panel never smaller than
-       the art's own size (one art pixel to a CSS pixel) unless the room it
-       had before already was — most desktops showed every face at that
-       size, and below it the painting's pixels go */
+       the face the OLD panel (880 by 770, or the window) gave it, up to the
+       art's own size (one art pixel to a CSS pixel) — most desktops showed
+       every face at that size, and below it the painting's pixels go. The
+       old room is the old panel's, never this one's: measured against the
+       shorter panel a 2x screen's faces fell to half (88px) */
+    const heroOld = Math.max(160, Math.min(770, vp.h - 40) - 400);
     const step = (w, h) => Deck.fit(Math.max(10, Math.min(w, h * Deck.W / Deck.H))).w;
-    const fit = (w, h) => narrow ? step(w, h) : Math.max(step(w * k, h), Math.min(step(w, h / k), Deck.W));
-    const cw = fit(narrow ? avail * 0.54 : 230, heroH / 1.1);
+    const fit = (w, h, hOld) => narrow ? step(w, h) : Math.max(step(w * k, h), Math.min(step(w, hOld), Deck.W));
+    const cw = fit(narrow ? avail * 0.54 : 230, heroH / 1.1, heroOld / 1.1);
     // the cards behind the middle one: a step smaller where the steps allow
     const sw = narrow ? fit(cw * 0.72, heroH) : cw;
-    let trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40 * k)) / 1.02);
+    let trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40 * k)) / 1.02, (heroOld - 40) / 1.02);
     // the deck button beside three cards needs the room for both; a panel
     // without it (a tablet upright) stacks them as a phone does
     const stack = narrow || 3 * trioW + (40 + 120) * k > avail;
-    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40 * k) / 3 / k), (heroH - 110 * k) / 1.02);
+    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40 * k) / 3 / k), (heroH - 110 * k) / 1.02, (heroOld - 40) / 1.02);
     root.classList.toggle('ciStack', stack);
-    const beastW = fit(narrow ? avail / 2.2 : 200, (heroH - (narrow ? 60 : 50 * k)) / 1.06);
+    const beastW = fit(narrow ? avail / 2.2 : 200, (heroH - (narrow ? 60 : 50 * k)) / 1.06, (heroOld - 70) / 1.06);
     const key = [cw, sw, trioW, beastW, narrow, stack, Math.round(avail)].join(':');
     if (this._sizes !== key) {
       this._sizes = key;
