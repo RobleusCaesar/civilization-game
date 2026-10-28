@@ -1294,8 +1294,9 @@ await p.evaluate(() => {
      NEVER LIME, NEVER OLIVE      the three older rulings that still hold:
                        every helper's light over the meadow turns at most 2%
                        of what it brightens toward olive/lime (the landing's
-                       own measure: ten levels brighter AND yellow-green), and
-                       the vignette only ever darkens
+                       own measure: ten levels brighter AND yellow-green) —
+                       a pale tone's light tied twice as hard (R.fxTie) —
+                       and the vignette only ever darkens
      SMOOTH WHERE IT STEPPED      the acts' vignette (R.stepVignette, the
                        dragon's pall, the spy's night) reads dozens of levels
                        across its band, not its old four; the summons' shaft
@@ -1369,6 +1370,27 @@ await p.evaluate(() => {
       };
       out.olive = {};
       for (const k in each) { const s = shot(each[k]); out.olive[k] = { lit: s.lit, ol: s.ol, share: s.lit ? s.ol / s.brighter : 1 }; }
+      /* A PALE LIGHT IS TIED TWICE AS HARD (R.fxTie, o.tie): the Stone tier's
+         pale and the 'white' tone's cream are near-white ramps over weakly
+         saturated hues, and at the plain tie the middle of every pale glow,
+         ring, spark and mote read khaki (3-7%, a faint spark's arms half
+         their pixels) — the goods' pale shafts measured 3% of what they lit.
+         Each drawn tied as R.fxTie asks, and the CONTROL untied: the probe
+         must see the khaki it guards against. */
+      out.pale = null;
+      if (typeof R.fxTie === 'function') {
+        out.pale = { gold: R.fxTie('gold'), pale: R.fxTie('pale'), white: R.fxTie('white'), tied: {}, plain: {} };
+        for (const tone of ['pale', 'white']) for (const how of ['tied', 'plain']) {
+          const tie = how === 'tied' ? R.fxTie(tone) : 1;
+          const s = shot(g => {
+            R.fxGlow(g, cx - 60, cy, 40, 0.7, tone, { squash: 0.4, core: 0.25, tie });
+            R.fxRing(g, cx + 40, cy - 30, 34, 0.8, tone, { squash: 0.5, css: 2.2, tie });
+            for (let k = 0; k < 6; k++) R.fxSpark(g, cx - 50 + k * 20, cy + 50, 5, [0.9, 0.5, 0.25][k % 3], tone, { diag: true, tie });
+            for (let k = 0; k < 10; k++) R.fxDot(g, cx - 50 + k * 10, cy + 25, 1.3, 0.9, tone, tie);
+          });
+          out.pale[how][tone] = s.brighter ? s.ol / s.brighter : 1;
+        }
+      }
       // a ring's band: its width across (device px) and the levels it passes through
       {
         const s = shot(g => R.fxRing(g, cx, cy, 50, 1, 'gold', { css: 2 }));
@@ -1456,6 +1478,12 @@ await p.evaluate(() => {
       `a 2 css px ring is ${r.band.width} device px across in ${r.band.levels} levels; a ray's edge starts off the 2px grid ${r.rayEdge.off}/${r.rayEdge.starts}`);
     ck('andItNeverWashesTheMeadowLimeOrOlive', Object.values(ol).every(o => o.lit > 30 && o.share <= 0.02),
       Object.entries(ol).map(([k, o]) => `${k} ${(100 * o.share).toFixed(2)}% of ${o.lit}`).join(', '));
+    const pl = r.pale;
+    ck('aPaleLightIsTiedTwiceAsHardAndNeverKhaki', !!pl && pl.gold === 1 && pl.pale === 2 && pl.white === 2 &&
+      Object.values(pl.tied).every(v => v <= 0.02) && Object.values(pl.plain).some(v => v > 0.02),
+      pl ? `R.fxTie: gold ${pl.gold}, pale ${pl.pale}, white ${pl.white}; olive tied ` +
+        Object.entries(pl.tied).map(([k, v]) => `${k} ${(100 * v).toFixed(2)}%`).join(', ') + '; the control untied ' +
+        Object.entries(pl.plain).map(([k, v]) => `${k} ${(100 * v).toFixed(2)}%`).join(', ') : 'no R.fxTie');
   }
 }
 

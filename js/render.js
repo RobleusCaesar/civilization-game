@@ -10855,6 +10855,19 @@ const R = {
      darkened to orange round a light that does not reach it, the first cut
      of these helpers — and a lift laid outside its hue is the lime. */
   FX_TIE: 10,
+  /* …AND A PALE LIGHT WANTS IT TIED TWICE AS HARD (o.tie, opt-in on fxGlow,
+     fxRing, fxSpark, fxDot): a hue as weakly saturated as the Stone tier's
+     pale or the 'white' tone's cream, laid at 0.8 over the meadow, is still
+     a fifth green — and the near-white ramp lifts that pixel ten levels by a
+     lift of ~0.08, so the middle of every pale light read khaki: measured
+     3-7% olive at FX_TIE (a pale ring 7.3%, a pale glow 4.6%, a pale spark's
+     faint arms half their pixels), 0-0.1% tied twice as hard, and with no
+     pixel darkened round it. A saturated tone (gold, bronze) is gold at 0.8
+     already and keeps the plain tie. The factor a tone wants: */
+  fxTie(tone) {
+    const T = this.fxTone(tone), v = this._fxRgb(T.hue), mx = Math.max(v[0], v[1], v[2]);
+    return mx && (mx - Math.min(v[0], v[1], v[2])) / mx < 0.4 ? 2 : 1;
+  },
   // gradient stops sampled off a profile: prof(u) → [colour, alpha], u 0..1
   _fxStops(gr, n, prof) {
     // never coarse: a hue that saturates between two far stops is laid at
@@ -10909,11 +10922,12 @@ const R = {
      1.8: the falloff's power; higher is a tighter heart); o.core (a share
      of r) lays a white-hot centre over the top, source-over; o.squash (< 1)
      lays it flat on the ground — a flare where a light STANDS, never a pool
-     across the meadow (keep a flat one small). */
+     across the meadow (keep a flat one small). o.tie (1) multiplies FX_TIE
+     for this light (R.fxTie: a pale tone wants 2). */
   fxGlow(g, x, y, r, a, tone, o) {
     o = o || {};
     if (!(a > 0.003) || !(r > 0)) return;
-    const T = this.fxTone(tone), A = this.fxA(a), sq = o.squash || 1, pw = o.soft || 1.8, K = this.FX_TIE;
+    const T = this.fxTone(tone), A = this.fxA(a), sq = o.squash || 1, pw = o.soft || 1.8, K = this.FX_TIE * (o.tie || 1);
     const lift = u => A.l * Math.pow(Math.max(0, 1 - u), pw);
     // the white-hot core is light too: the hue is tied to the two together
     const kc = o.core || 0, ca = Math.min(1, A.l * 1.3), core = u => kc && u < kc ? ca * (1 - (u / kc) * (u / kc)) : 0;
@@ -11054,11 +11068,11 @@ const R = {
   /* A RING OF LIGHT at radius r — a shock wave, a ring rolling out — its
      half-width o.w (caller units) or o.css (CSS px, 2.5), o.squash (< 1) to
      lie on the ground. Smooth across its width (brightest on the ring
-     itself), its hue the ring's own extent (FX_TIE). */
+     itself), its hue the ring's own extent (FX_TIE × o.tie). */
   fxRing(g, x, y, r, a, tone, o) {
     o = o || {};
     if (!(a > 0.003) || !(r > 0)) return;
-    const T = this.fxTone(tone), A = this.fxA(a), hw = o.w || (o.css || 2.5) * this.fxPx(g), sq = o.squash || 1, K = this.FX_TIE;
+    const T = this.fxTone(tone), A = this.fxA(a), hw = o.w || (o.css || 2.5) * this.fxPx(g), sq = o.squash || 1, K = this.FX_TIE * (o.tie || 1);
     const r0 = Math.max(0, r - hw), r1 = r + hw, mid = (r - r0) / (r1 - r0);
     // across the band: 0 at its inner and outer edges, 1 on the ring
     const lift = u => A.l * Math.pow(Math.max(0, 1 - Math.abs(u - mid) / (u < mid ? mid : 1 - mid)), 1.5);
@@ -11080,14 +11094,17 @@ const R = {
   /* A GLINT: a four-point star of light — a roof catching the sun, a spark
      off a blow, a twinkle in the sky — its arms `s` CSS px long and hair-
      thin, tapering to points on the device's own pixels; o.diag adds short
-     diagonal arms, o.rot turns it. Over a small glow of its own. */
+     diagonal arms, o.rot turns it. Over a small glow of its own. o.tie (as
+     R.fxGlow's): a tied spark's arms also take their hue WHOLE from a
+     fourteenth of its strength — its cream arms lift the grass ten levels by
+     then, and over a pale hue laid at half they read khaki. */
   fxSpark(g, x, y, s, a, tone, o) {
     o = o || {};
     if (!(a > 0.01) || !(s > 0)) return;
-    const T = this.fxTone(tone), cp = this.fxPx(g), L = s * cp, w = Math.max(0.6 * cp, L * 0.1);
+    const T = this.fxTone(tone), cp = this.fxPx(g), L = s * cp, w = Math.max(0.6 * cp, L * 0.1), tie = o.tie || 1;
     a = Math.min(1, a);
     g.save();
-    this.fxGlow(g, x, y, L * 0.62, a, T, { soft: 2.4 });
+    this.fxGlow(g, x, y, L * 0.62, a, T, { soft: 2.4, tie });
     g.translate(x, y);
     if (o.rot) g.rotate(o.rot);
     const arm = (len, wid) => {
@@ -11101,7 +11118,7 @@ const R = {
     // the arms' own hue first, a little broader and longer than they are —
     // so the cream lands on gold, never on the bare meadow
     g.globalCompositeOperation = 'color';
-    if (g.globalCompositeOperation === 'color') { g.globalAlpha = Math.min(1, a * 2); g.fillStyle = T.hue; arms(1.12, 2.6); }
+    if (g.globalCompositeOperation === 'color') { g.globalAlpha = Math.min(1, a * (tie > 1 ? 14 : 2)); g.fillStyle = T.hue; arms(1.12, 2.6); }
     g.globalCompositeOperation = 'source-over';
     g.globalAlpha = a;
     g.fillStyle = T.ramp[3]; arms(1, 1);
@@ -11110,11 +11127,12 @@ const R = {
   },
   /* A MOTE: a small soft bead of light, `rc` CSS px — a grain of gold
      rising off a roof, a speck of dust in a beam: a glow a few pixels
-     across with a cream heart (never gold added over grass). */
-  fxDot(g, x, y, rc, a, tone) {
+     across with a cream heart (never gold added over grass). `tie` as
+     R.fxGlow's o.tie. */
+  fxDot(g, x, y, rc, a, tone, tie) {
     if (!(a > 0.01) || !(rc > 0)) return;
     const r = rc * this.fxPx(g);
-    this.fxGlow(g, x, y, r * 2.2, Math.min(1, a), tone, { soft: 1.6, core: 0.42 });
+    this.fxGlow(g, x, y, r * 2.2, Math.min(1, a), tone, { soft: 1.6, core: 0.42, tie: tie || 1 });
   },
   /* MOTES RISING off a point (x, y): o = { n, t (render time), seed, rise
      (how high one climbs, caller units), spread (how wide they start),
