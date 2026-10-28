@@ -55,6 +55,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
 
 /* ---- 1a. the old screen, byte for byte (the source) ---- */
 const html = readFileSync(join(root, 'index.html'), 'utf8');
+// the build the page reports is the shared code ?v= — read it, never a literal (a
+// literal went red on the first deploy after the one it was written on)
+const CODE_V = +html.match(/js\/config\.js\?v=(\d+)/)[1];
 {
   const a = html.indexOf('  <!-- SETTINGS is three quiet rows'), b = html.indexOf('  <div class="screen" id="scrPaused">');
   const h = a >= 0 && b > a ? createHash('sha256').update(html.slice(a, b)).digest('hex') : '';
@@ -449,11 +452,11 @@ const open = async (opts) => {
     m.name === 'Ashka' && m._subject === 'Clanfire — Bug' && m._template === 'table' && m._captcha === 'false' &&
     m.message === 'The tower fell through the map on day 40.' && m.kind === 'Bug',
     m ? JSON.stringify({ path: r.mail.path, subject: m._subject, name: m.name, tpl: m._template, cap: m._captcha }) : 'no mail');
-  ck('andItsDetailsCarryTheBuildAndTheRing', !!m && /Build: 97/.test(m.details) && /tower fell through the map/.test(m.details) && /Recent errors \(\d+\)/.test(m.details),
+  ck('andItsDetailsCarryTheBuildAndTheRing', !!m && new RegExp('Build: ' + CODE_V + '\\b').test(m.details) && /tower fell through the map/.test(m.details) && /Recent errors \(\d+\)/.test(m.details),
     m ? m.details.split('\n').slice(0, 3).join(' / ') : '');
   const rp = r.rpc;
   ck('aCopyGoesToSubmitFeedback', !!rp && rp.p_kind === 'bug' && rp.p_email === 'player@example.com' && rp.p_message === 'The tower fell through the map on day 40.' &&
-    rp.p_details && /^fb-/.test(rp.p_details.ref) && rp.p_details.report && rp.p_details.report.build === 97 && Array.isArray(rp.p_details.report.errors),
+    rp.p_details && /^fb-/.test(rp.p_details.ref) && rp.p_details.report && rp.p_details.report.build === CODE_V && Array.isArray(rp.p_details.report.errors),
     rp ? JSON.stringify({ kind: rp.p_kind, ref: rp.p_details && rp.p_details.ref, errs: rp.p_details && rp.p_details.report && rp.p_details.report.errors.length }) : 'no rpc');
   ck('andThePlayerIsToldItWasSent', /^Sent — thank you/.test(r.sent) && r.outboxAfterSend === 0 && r.msgCleared, r.sent);
   ck('theClientRateLimits', /wait a few seconds/i.test(r.rate) && r.rateQueued === 0 && r.rateMails === 1, r.rate);
@@ -620,10 +623,10 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1
 // THE ADDRESS IS NEVER IN THE PAGE: the form posts to the operator's FormSubmit
 // alias, so no shipped file carries the inbox it lands in
 {
-  const fs = await import('fs');
-  const shipped = ['index.html', ...fs.readdirSync('js').filter(f => f.endsWith('.js')).map(f => 'js/' + f)];
-  const leaks = shipped.filter(f => /@frostrivercapital\./i.test(fs.readFileSync(f, 'utf8')));
-  ck('theInboxIsNeverInThePageSource', leaks.length === 0 && /^[0-9a-f]{32}$/.test(fs.readFileSync('js/feedback.js', 'utf8').match(/TO: '([^']+)'/)[1]), leaks.join(', ') || 'alias only');
+  const fs = await import('node:fs');
+  const shipped = ['index.html', ...fs.readdirSync(join(root, 'js')).filter(f => f.endsWith('.js')).map(f => 'js/' + f)];
+  const leaks = shipped.filter(f => /@frostrivercapital\./i.test(readFileSync(join(root, f), 'utf8')));
+  ck('theInboxIsNeverInThePageSource', leaks.length === 0 && /^[0-9a-f]{32}$/.test(readFileSync(join(root, 'js/feedback.js'), 'utf8').match(/TO: '([^']+)'/)[1]), leaks.join(', ') || 'alias only');
 }
 ck('noPageThrew', allErrs.length === 0, allErrs.slice(0, 3).join(' | '));
 await b.close();
