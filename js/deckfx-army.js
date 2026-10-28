@@ -1003,51 +1003,45 @@ Deck.armyFx = {
      DUST, not a light: a tone of the earth with no white-hot heart, laid the
      light's way (its hue on what it covers, then its paler body screened
      over), so a puff over the meadow is a dusty tan, never olive. */
-  // (its hue a dusty, half-grey tan: a saturated brown laid on the
-  // meadow's own luminance read as mud round the rim of every puff — and
-  // tied harder to its body than a light's, DUST_TIE: where a little of the
-  // grass's green shows through a warm hue that is only partly laid, the
-  // mix is the olive the meadow must never wear)
-  DUST: { hue: '#a98d70', faint: '#a98d70', ramp: ['#8f7a5c', '#b39c78', '#cdb894', '#ddcdaf'], hot: '#e4d6bb' },
+  // (its hue a dusty grey-tan: a saturated brown laid on the meadow's own
+  // luminance read as MUD wherever the puff thinned — every fading puff a
+  // brown blot — and tied harder to its body than a light's, DUST_TIE:
+  // where a little of the grass's green shows through a warm hue that is
+  // only partly laid, the mix is the olive the meadow must never wear)
+  DUST: { hue: '#a39885', faint: '#a39885', ramp: ['#8f7a5c', '#b39c78', '#cdb894', '#ddcdaf'], hot: '#e4d6bb' },
   DUST_TIE: 18,
   // the war-wolves' howl and breath: a cold moon-white (its hue a pale grey,
   // so the meadow under it goes silver, never lime)
   HOWL: { hue: '#c2cad3', faint: '#c2cad3', ramp: ['#98a2ad', '#ccd3db', '#e7ebf0', '#f6f8fa'], hot: '#ffffff' },
   // the ancestors' cold light (the crack, the burst, the fade)
   COLD: { hue: '#9cc4e6', faint: '#8db6da', ramp: ['#6f9cc8', '#a9d2f0', '#d6ecfb', '#eef8ff'], hot: '#ffffff' },
-  puff(g, x, y, r, a, sq) { this.dustLay(g, [{ x, y, r, a, sq }]); },
-  /* A CLOUD OF DUST, laid all at once: every puff `{x, y, r, a, sq}` (a
-     broad body thinning out at its rim — a low falloff power) and every
-     ring `{x, y, r, w, a, sq, ring: true}` (a band of it running out along
-     the ground, soft across its width) has its paler body SCREENED first and
+  /* A CLOUD OF DUST, laid all at once: every puff `{x, y, r, a, sq}` — a
+     broad body thinning out at its rim (a low falloff power), squashed by
+     `sq` to lie along the ground — has its paler body SCREENED first and
      then the dust's HUE laid over the lot, tied to each body (DUST_TIE) —
      the order a stack of screens needs (R.fxBeam's rule). Laid hue-first,
      puff by puff, one puff's faint rim lifted again by its neighbours'
-     bodies read lime where six men stamped together. In the caller's units;
+     bodies read lime where six men stamped together. A puff that THINS
+     also SHRINKS (to half its size as `a` goes to nothing): dust thinned by
+     its alpha alone is a disc of the hue on the meadow's own luminance, a
+     dark blot, where a settling puff draws in. In the caller's units;
      smooth, at the device's own resolution; no RNG. */
   dustLay(g, list) {
     list = (list || []).filter(d => d.a > 0.01 && d.r > 0);
     if (!list.length) return;
-    const T = this.DUST, K = this.DUST_TIE;
+    const T = this.DUST, K = this.DUST_TIE, prof = u => Math.pow(Math.max(0, 1 - u), 0.95);
     g.save();
     for (const pass of ['screen', 'color']) {
       g.globalCompositeOperation = pass;
       if (g.globalCompositeOperation !== pass) continue;   // (no 'color': the body alone)
       for (const d of list) {
-        const L = R.fxA(Math.min(1, d.a)).l;
-        let r0 = 0, r1 = d.r, prof;
-        if (d.ring) {
-          const w = Math.max(0.3, d.w || 1); r0 = Math.max(0, d.r - w); r1 = d.r + w;
-          const mid = (d.r - r0) / (r1 - r0);
-          prof = u => Math.pow(Math.max(0, 1 - Math.abs(u - mid) / (u < mid ? mid || 1 : 1 - mid)), 1.4);
-        } else prof = u => Math.pow(Math.max(0, 1 - u), 0.95);
+        const a = Math.min(1, d.a), L = R.fxA(a).l, r = d.r * (0.5 + 0.5 * a);
         g.save();
         g.translate(d.x, d.y); g.scale(1, d.sq || 0.7);
-        g.fillStyle = R._fxStops(g.createRadialGradient(0, 0, r0, 0, 0, r1), 16, pass === 'screen'
+        g.fillStyle = R._fxStops(g.createRadialGradient(0, 0, 0, 0, 0, r), 16, pass === 'screen'
           ? u => [R._fxRamp(T, 0.2 + 0.8 * u), L * prof(u)]
           : u => [T.hue, Math.min(1, K * L * prof(u))]);
-        g.beginPath(); g.arc(0, 0, r1, 0, Math.PI * 2);
-        if (r0 > 0) g.arc(0, 0, r0, 0, Math.PI * 2, true);
+        g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2);
         g.fill();
         g.restore();
       }
@@ -2414,24 +2408,34 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   }
 
   /* THE RANKS STAMP IN STEP: on each drum of the held beat every man's feet
-     throw a small ring of dust along the ground and a puff off either heel —
-     in the earth's own browns, soft-edged at the device's own resolution
-     (A.DUST, laid the light's way so it reads as tan dust over the meadow,
-     never olive; it was a ring of touching 2px cells, then a flat brown line
-     that read as a selection ring), gone before the next drum */
+     kick the dust out SIDEWAYS along the ground — three small puffs off
+     either heel, the nearest first and biggest, each running out, swelling
+     and thinning as it goes, a little forward or back of the line by the
+     man's own hash — in the earth's own browns, soft-edged at the device's
+     own resolution (A.DUST, laid the light's way so it reads as tan dust
+     over the meadow, never olive), gone before the next drum. Never a
+     closed ring round him: a ring of touching 2px cells, then a flat brown
+     line, then a soft brown band all read as a SELECTION RING (or a ring of
+     mud) under every man of the legion. */
   function stamp(g, s, at) {
     const TL = CFG.TILE;
     for (const b0 of at) {
-      const q = (s.t - b0) / 0.22;
+      const q = (s.t - b0) / 0.26;
       if (q <= 0 || q >= 1) continue;
       const e = 1 - (1 - q) * (1 - q), k = 1 - q, cloud = [];
       for (const m of s.units) {
         const u = live(m.id);
         if (!u) continue;
-        const x = u.x * TL, y = u.y * TL + TL * 0.32, r = TL * (0.26 + e * 0.34);
-        // (a broad, soft band — a crisp one read as a selection ring)
-        cloud.push({ x, y, r, w: 1.8 + 3 * k, a: 0.6 * k, sq: 0.4, ring: true });
-        for (const sd of [-1, 1]) cloud.push({ x: x + sd * r * 0.85, y: y - e * 2.5, r: 2.6 + e * 3.6, a: 0.85 * k, sq: 0.75 });
+        const x = u.x * TL, y = u.y * TL + TL * 0.34, h = Math.imul(m.id + 7, 0x9e3779b1) >>> 0;
+        for (const sd of [-1, 1]) for (let j = 0; j < 3; j++) {
+          // (each puff starts a beat after the one nearer the heel)
+          const qj = Math.max(0, q * 1.25 - j * 0.12);
+          if (qj <= 0) continue;
+          const ej = 1 - (1 - Math.min(1, qj)) * (1 - Math.min(1, qj));
+          const off = (((h >>> (j * 4 + (sd > 0 ? 2 : 0))) & 7) - 3.5) * 0.45;
+          cloud.push({ x: x + sd * TL * (0.14 + ej * (0.18 + 0.13 * j)), y: y + off - ej * (1.5 + j * 0.6),
+            r: 2 + ej * (3.4 - 0.5 * j), a: Math.sqrt(k) * (0.9 - 0.18 * j), sq: 0.62 });
+        }
       }
       // the whole rank's dust laid as one cloud (A.dustLay)
       A.dustLay(g, cloud);
@@ -2497,7 +2501,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   };
   /* THE DUST OFF EVERY HORSE: a few positions behind each galloping rider
      (sampled on the show, render state), each a soft billow of the earth's
-     dust (A.puff — swelling and thinning as it ages, its hue laid under it,
+     dust (A.dustLay — swelling and thinning as it ages, its hue laid under it,
      so a dusty tan over the meadow and never olive) with a few clods thrown
      up off the hooves and settling (A.crumb, round, at their true places) —
      at the device's own resolution. It was clumps of hard 2px squares,

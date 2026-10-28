@@ -2196,6 +2196,66 @@ await p.evaluate(({ ARMY }) => {
     `the bars' height over their slide: steps of ${r.finest}..${r.coarsest} device px through ${r.n} heights, whole pixels ${r.whole}, home at ${r.full} (CINEMA.bar of the open frame: ${r.want})`);
 }
 {
+  /* …AND THE LEGION'S STAMP KICKS ITS DUST OUT SIDEWAYS, NEVER A RING (the
+     same pass: the stamp's dust was a ring of touching 2px cells round
+     every man, and converted to smooth light it became a soft brown band —
+     both read as a SELECTION RING, or a ring of mud, under all twelve of
+     the legion). Each man drawn ALONE (a neighbour's dust is not his) at
+     five moments of his third drum, through the world's transform at 3, the
+     beams and the drums stood down: of the dust lying more than 6 world px
+     from his heels (the ground's squash taken out), none may lie in the
+     cones 30° either side of straight in front of him and straight behind
+     him — a ring lays a third of itself there (cards/fx-core: 30%; the
+     soft band: 18%) — and it must go out to BOTH sides of him, about
+     evenly. */
+  const r = await p.evaluate(() => {
+    __ar.fresh('army-stamp'); __ar.flat();
+    Screens.show('playing');
+    const tc = Bld.tcOf('P');
+    R.cam.z = 1.25; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1); G.updateVisibility();
+    R.cardShows = []; R.summons = [];
+    Deck.play('legion_marches');
+    const s = R.cardShows.filter(x => x.id === 'legion_marches').pop();
+    if (!s) return { missing: true };
+    const A = Deck.armyFx, keep = { arrive: A.arrive, beats: A.beats };
+    A.arrive = () => {}; A.beats = () => {};
+    const fx = Deck.FX.legion_marches, TL = CFG.TILE, K = 3, SZ = 200, men = [];
+    try {
+      for (const m of s.units) {
+        const u = Units.get(m.id);
+        if (!u) continue;
+        const one = Object.assign({}, s, { units: [m], beat: 99 });
+        const fx0 = u.x * TL, fy0 = u.y * TL + TL * 0.34;
+        const cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+        const g = cv.getContext('2d');
+        let n = 0, cone = 0, left = 0, right = 0;
+        for (const dt of [0.03, 0.07, 0.12, 0.17, 0.22]) {
+          // his third drum (his spear's glint long gone by then)
+          one.t = m.d + 0.18 + 0.42 * 2 + dt;
+          g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SZ, SZ);
+          g.setTransform(K, 0, 0, K, SZ / 2 - fx0 * K, SZ / 2 - fy0 * K);
+          fx.show.draw.call(fx, g, one, one.t / (s.ms / 1000), 0, 'world');
+          const d = g.getImageData(0, 0, SZ, SZ).data;
+          for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+            if (d[(y * SZ + x) * 4 + 3] < 24) continue;
+            const dx = (x + 0.5 - SZ / 2) / K, dy = (y + 0.5 - SZ / 2) / K / 0.62;
+            if (Math.hypot(dx, dy) < 6) continue;
+            n++;
+            if (Math.abs(dx) < Math.abs(dy) * Math.tan(Math.PI / 6)) cone++;
+            if (dx < 0) left++; else right++;
+          }
+        }
+        men.push({ n, front: n ? cone / n : 1, bal: n ? Math.min(left, right) / Math.max(left, right) : 0 });
+      }
+    } finally { A.arrive = keep.arrive; A.beats = keep.beats; }
+    R.cardShows = [];
+    return { men };
+  });
+  const M = r.men || [], worst = M.length ? M.reduce((a, m) => m.front > a.front ? m : a, M[0]) : null;
+  ck('theLegionsStampKicksDustSidewaysNeverARing', !r.missing && M.length === 12 && M.every(m => m.n > 500 && m.front <= 0.03 && m.bal >= 0.6),
+    r.missing ? 'no show' : `${M.length} men; the most dust in front of or behind a man: ${worst ? (100 * worst.front).toFixed(1) : '?'}% of his ${worst ? worst.n : 0} px; the leanest to one side ${Math.min(...M.map(m => m.bal)).toFixed(2)} of the other; the least dust ${Math.min(...M.map(m => m.n))} px`);
+}
+{
   /* THE WEIGHT OF AN ENGINE (judge g3: the Trebuchet Battery "has no sense
      of weight"): as each engine is set down the ground jolts (a hard shake
      struck on its own landing), the dust skids out from under it (three
