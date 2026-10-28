@@ -1469,23 +1469,67 @@ await p.evaluate(({ ARMY }) => {
     const g1 = alive[1]; Units.setDefend(g1, true);
     out.stance = !Deck.hostSense || Deck.hostSense(g1) === false;
     Units.setDefend(g1, false);
-    // THE FIGURE: drawn on a frame whose silhouette is known
+    /* THE FIGURE, on a frame whose silhouette is known (a 16x26 world-px
+       body), drawn the way the world pass draws it: through the camera's
+       transform (K device px a world px — 3.4 is a phone's play zoom on the
+       2x world canvas, 1.25 a desktop's) at a FRACTIONAL place, smoothing
+       off. Read on the canvas's own pixels: every pixel there or not; the ink
+       a world pixel thick round the outline; the body thinned, not a slab
+       and not a wash; and THE HOLES IN IT SINGLE DEVICE PIXELS — of the
+       knocked-out pixels inside the body, the share with a knocked-out
+       neighbour beside or below it (an art-grid dither knocks out K x K
+       blocks, so nearly every hole has one). */
     const img = document.createElement('canvas'); img.width = img.height = 32;
     img.getContext('2d').fillStyle = '#806040'; img.getContext('2d').fillRect(8, 4, 16, 26);
-    const cv = document.createElement('canvas'); cv.width = cv.height = 48;
-    const g = cv.getContext('2d');
-    Deck.drawGhost(g, g0, img, 8, 8, 32);
-    const d = g.getImageData(0, 0, 48, 48).data, ink = Deck.GHOST_INK;
-    const want = ink ? [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)) : [-1, -1, -1];
-    let soft = 0, inkN = 0, body = 0, lime = 0;
-    for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
-      const i = (y * 48 + x) * 4;
-      if (d[i + 3] > 0 && d[i + 3] < 255) soft++;
-      if (!d[i + 3]) continue;
-      if (d[i] === want[0] && d[i + 1] === want[1] && d[i + 2] === want[2]) inkN++;
-      else if (x >= 16 && x < 32 && y >= 12 && y < 38) body++;
-    }
-    out.figure = { soft, ink: inkN, body: +(body / (16 * 26)).toFixed(2) };
+    const ink = Deck.GHOST_INK, want = ink ? [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)) : [-1, -1, -1];
+    const figure = (K, wx, wy, k) => {
+      if (k != null && !Deck.ghostBlit) return { K, soft: -1, ink: 0, body: 0, holes: 0, paired: 1 };
+      const SZ = Math.ceil(48 * K) + 8, cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+      const g = cv.getContext('2d');
+      g.setTransform(K, 0, 0, K, 2.3, 1.7); g.imageSmoothingEnabled = false;
+      if (k == null) Deck.drawGhost(g, g0, img, wx, wy, 32);
+      else Deck.ghostBlit(g, Deck.ghostOf(img, 32), wx - 1, wy - 1, 34, 34, k, 0);
+      const d = g.getImageData(0, 0, SZ, SZ).data;
+      // the body's own box on the canvas (its sprite rows 4..30, cols 8..24),
+      // kept a device pixel clear of its edges
+      const bx0 = Math.ceil(2.3 + (wx + 8) * K) + 1, bx1 = Math.floor(2.3 + (wx + 24) * K) - 1;
+      const by0 = Math.ceil(1.7 + (wy + 4) * K) + 1, by1 = Math.floor(1.7 + (wy + 30) * K) - 1;
+      let soft = 0, inkN = 0, body = 0, cells = 0, holes = 0, paired = 0, blocks = 0;
+      const A = (x, y) => d[(y * SZ + x) * 4 + 3];
+      for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+        const i = (y * SZ + x) * 4;
+        if (d[i + 3] > 0 && d[i + 3] < 255) soft++;
+        if (d[i + 3] && d[i] === want[0] && d[i + 1] === want[1] && d[i + 2] === want[2]) inkN++;
+        if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+        cells++;
+        if (d[i + 3]) { body++; continue; }
+        holes++;
+        if ((x < bx1 && !A(x + 1, y)) || (y < by1 && !A(x, y + 1))) paired++;
+        // a whole 2x2 of device pixels knocked out: a hole the size of a block
+        if (x < bx1 && y < by1 && !A(x + 1, y) && !A(x, y + 1) && !A(x + 1, y + 1)) blocks++;
+      }
+      return { K, soft, ink: +(inkN / (K * K)).toFixed(1), body: +(body / Math.max(1, cells)).toFixed(2),
+        holes, paired: +(holes ? paired / holes : 1).toFixed(3), blocks: +(holes ? blocks / holes : 1).toFixed(3) };
+    };
+    out.figure = [figure(3.4, 8.37, 8.61), figure(1.25, 8.37, 8.61)];
+    // …and as it COMES APART (the fade, the gutter): the same fine pattern,
+    // the ink too — about half of it standing at k = 0.5. More is knocked
+    // out than kept there, so holes touch; what they never make is a BLOCK
+    // (a whole 2x2 of device pixels gone — every hole an art-grid dither
+    // knocks out at this zoom is one)
+    out.going = figure(3.4, 8.37, 8.61, 0.5);
+    // the fade's own draw lays its picture through the same door
+    if (Deck.ghostBlit) {
+      const real = Deck.ghostBlit; let n = 0;
+      Deck.ghostBlit = function () { n++; return real.apply(this, arguments); };
+      try {
+        const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+        const g = cv.getContext('2d'); g.setTransform(3.4, 0, 0, 3.4, 0, 0);
+        const fs = { mode: 'fade', t: 0.9, ms: 2800, ghosts: [{ x: 1.5, y: 1.5, img, D: 32, top: 4, d: 0 }] };
+        Deck.FX.ancestors_host.show.draw.call(Deck.FX.ancestors_host, g, fs, 0.9 / 2.8, 0, 'world');
+      } finally { Deck.ghostBlit = real; }
+      out.fadeBlits = n;
+    } else out.fadeBlits = 0;
     // THE FADE IS SAID: the days run out
     document.getElementById('toasts').innerHTML = '';
     UI._toastAt = {};
@@ -1497,8 +1541,18 @@ await p.evaluate(({ ARMY }) => {
     `every ghost on its post after the rising ${r.posts}; the band in its ground: ${4 - r.bandLeft} of 4 killed; after the fight the farthest ghost stands ${r.worst} tiles from where it rose`);
   ck('andThePlayerMovesItsPost', r.toOk && r.moved && r.stays <= 1 && r.stance,
     `walked eight tiles off: the post went with it ${r.moved}, and it stays there (${r.stays} tiles off the new post); a ghost on Defend is the player's ${r.stance}`);
-  ck('aGhostIsAnInkedFigure', r.figure.soft === 0 && r.figure.ink >= 60 && r.figure.body >= 0.55 && r.figure.body <= 0.9,
-    `${r.figure.soft} half-there pixels; ${r.figure.ink} px of ink round it; its body ${r.figure.body} of the silhouette (dithered, not a wash and not a slab)`);
+  /* (the operator's ruling changed this check, 2026-10-28: "the rays are
+     pixelated again… higher pixel count" — the ghost's dither moved off the
+     art's grid, where a knocked-out world pixel was a 5-6px block on a 3x
+     phone and the host in its beams read as checkered white tiles, onto
+     the canvas's own pixels; an inked figure still, every pixel there or
+     not, nothing added) */
+  const F = r.figure || [], G0 = r.going || {};
+  ck('aGhostIsAnInkedFigure', F.length === 2 && F.every(f => f.soft === 0 && f.ink >= 60 && f.body >= 0.5 && f.body <= 0.88 && f.holes > 20 && f.paired <= 0.05) &&
+      G0.soft === 0 && G0.blocks <= 0.02 && G0.ink >= 20 && G0.ink <= 75 && r.fadeBlits >= 1,
+    F.map(f => `at ${f.K} device px a world px: ${f.soft} half-there pixels, ${f.ink} world px of ink round it, its body ${f.body} of the silhouette, ` +
+      `${f.holes} holes — ${(100 * f.paired).toFixed(1)}% of them touching another (single device pixels, not the art's blocks)`).join('; ') +
+    `; coming apart at a half: ${G0.ink} world px of ink, ${(100 * (G0.blocks || 0)).toFixed(1)}% of holes a whole 2x2 block, ${G0.soft} half-there; the fade lays it through the same door ${r.fadeBlits}x`);
   ck('itsGroundBreaksInASmallBurst', r.burstWhite > 0 && r.burstWhite <= 120,
     `${r.burstWhite} world px of white by its feet on the frame it breaks open`);
   ck('andTheFadeIsSaid', r.toast, `a note on the screen as the host goes ${r.toast}`);
@@ -2259,7 +2313,8 @@ await p.evaluate(({ ARMY }) => {
   /* THE WEIGHT OF AN ENGINE (judge g3: the Trebuchet Battery "has no sense
      of weight"): as each engine is set down the ground jolts (a hard shake
      struck on its own landing), the dust skids out from under it (three
-     puffs of the place-dust thrown out behind it, on its landing beat), and
+     clouds of the card's own dust thrown out behind it, on its landing beat
+     — R.cardDust, smooth since the operator's ruling of 2026-10-28), and
      a throwing engine swings its arm once through its own loosing strip,
      from the first frame — the Battery's two trebuchets and the Siege Train's
      catapult; the tower and the ballista have no arm to swing. */
@@ -2267,7 +2322,7 @@ await p.evaluate(({ ARMY }) => {
     const out = {};
     for (const id of ['trebuchet_battery', 'siege_train']) {
       __ar.fresh('army-weight-' + id); __ar.flat();
-      R.cardShows = []; R.summons = []; R.placePoofs = []; R._shake = null;
+      R.cardShows = []; R.summons = []; R.placePoofs = []; R.cardDust = []; R._shake = null;
       const { units } = __ar.play(id);
       const s = R.cardShows.find(x => x.id === id), fx = Deck.FX[id], g = R.g;
       const shakes = [], swung = {};
@@ -2285,8 +2340,11 @@ await p.evaluate(({ ARMY }) => {
         kinds: units.map(u => u.kind),
         // a hard jolt within a beat of every landing
         jolts: landed.every(d => shakes.some(([t, a]) => a >= 5 && t >= d - 0.03 && t <= d + 0.1)),
-        // three skid puffs per engine, thrown on its landing beat
-        skids: units.map((u, i) => R.placePoofs.filter(q => Math.hypot(q.x + 0.5 - u.x, q.y + 0.5 - u.y) < 1.2 && Math.abs(-q.t / 1000 - landed[i]) < 0.3).length),
+        // three skid clouds per engine, thrown on its landing beat (the
+        // card's own smooth dust, R.cardDust — the operator's ruling moved
+        // it off the place-poof's pixels; its clock in seconds, its point the
+        // ground under the engine)
+        skids: units.map((u, i) => (R.cardDust || []).filter(q => Math.hypot(q.x - u.x, q.y - u.y) < 1.2 && Math.abs(-q.t - landed[i]) < 0.3).length),
         swung: units.map((u, i) => swung[u.id] == null ? null : +(swung[u.id] - landed[i]).toFixed(2)),
       };
     }
@@ -2299,14 +2357,171 @@ await p.evaluate(({ ARMY }) => {
     `the Siege Train (${ST.kinds.join(', ')}): jolts ${ST.jolts}, skids ${ST.skids.join('/')}, arm ${ST.swung.map(v => v == null ? '—' : v + 's').join('/')}`);
 }
 {
-  /* THE SUMMON DUST IS PIXEL DUST (judge g3, "rendering defects" 1): a summon
-     throws R.startPlacePoof at 0.55 under an engine and 1.25 under a battery,
-     and the scaled branch drew the frame through whatever smoothing the canvas
-     held — bilinear, a soft blur, the one smoothed thing on the screen. Every
-     dust blit is measured nearest-neighbour with the flag left ON by the
-     caller, at every scale the cards use, and the flag handed back as found.
-     The CONTROL draws the same frame by hand under the flag as found and must
-     see it smoothed, or the probe sees nothing. */
+  /* THE CARD'S PEOPLE LAND IN SMOOTH DUST (the operator's ruling, 2026-10-28,
+     changed this check — it was theSummonDustIsPixelDust, judge g3's
+     "rendering defects" 1, which held a summon's R.poofSheet dust to
+     nearest-neighbour blits: "When characters slam down, that feels cool,
+     but the rays are pixelated again, let's increase the quality of that as
+     well. higher pixel count." — and on a 3x phone the sheet's
+     half-resolution puffs were 6px blocks round every soldier set down).
+     Every card that sets people down — the army's fan, the doorstep muster
+     (Deck.summon), an engine's skid — throws the CARD's dust (R.cardDust)
+     and not one pixel puff (R.placePoofs); and that dust, drawn through the
+     camera at a phone's play zoom (3.4 device px a world px on the 2x world
+     canvas) and a desktop's (1.25), over its whole life:
+       SMOOTH        no rect and no blit — paths and gradients — dozens of
+                     alpha levels on a clear canvas (the sheet has three
+                     steps), and of every change of colour between
+                     neighbouring pixels no more on the art's 2px grain than
+                     a smooth shape puts there (a sheet blown up puts every
+                     one there);
+       EARTH, NEVER A BLOT, NEVER OLIVE  over the meadow it never darkens
+                     it (a thinning puff that did was the brown blot) and at
+                     most 2% of what it lightens reads olive or lime;
+       NEVER A RING  of the dust out past the feet, little lies straight in
+                     front of them or behind (it rolls out SIDEWAYS) — the
+                     CONTROL, the world's own place poof, a ring by design,
+                     read by the same probe, must read as one;
+       IT SETTLES    nothing left of it by the end of its life, and the list
+                     empties itself.
+     The world's own dust (a site laid, a building falling, the goods a card
+     sets down) keeps R.poofSheet — the next check. */
+  const r = await p.evaluate(({ SUMMONERS }) => {
+    const out = { cards: {}, look: [] };
+    // 1. who throws what (the skid is thrown by the show's own draw, on the
+    // engines' landing beat)
+    for (const id of SUMMONERS) {
+      __ar.fresh('army-dust-' + id); __ar.flat();
+      R.placePoofs = []; R.cardDust = []; R.cardShows = []; R.summons = [];
+      const { r: res, units } = __ar.play(id);
+      const s = R.cardShows.find(x => x.id === id), fx = Deck.FX[id], g = R.g;
+      if (s && fx && fx.show) for (let t = 0; t < s.ms / 1000; t += 0.05) {
+        s.t = t;
+        for (const L of fx.show.layers || [fx.show.layer || 'world']) { g.save(); try { fx.show.draw.call(fx, g, s, t / (s.ms / 1000), 0, L); } catch (e) { /* the pictures are the next checks' */ } g.restore(); }
+      }
+      out.cards[id] = { ok: !!(res && res.ok), units: units.length, pix: R.placePoofs.length, card: (R.cardDust || []).length };
+    }
+    __ar.fresh('army-dust-door'); __ar.flat(); R.placePoofs = []; R.cardDust = [];
+    const m = Deck.summon([{ kind: 'villager', n: 3 }], { stagger: 120 });
+    out.door = { ok: !!m.ok, pix: R.placePoofs.length, card: (R.cardDust || []).length };
+    R.placePoofs = []; R.cardShows = []; R.summons = [];
+    if (!R.drawCardDust) { R.cardDust = []; return out; }
+    // 2. the look: one landing, frame by frame through its life
+    const TL = CFG.TILE, life = R.CARD_DUST.ms / 1000;
+    const BG = [75, 129, 51], lum = (a, b2, c) => 0.299 * a + 0.587 * b2 + 0.114 * c, L0 = lum(...BG);
+    const P2 = CanvasRenderingContext2D.prototype, fr0 = P2.fillRect, di0 = P2.drawImage;
+    const T30 = Math.tan(Math.PI / 6);
+    // read one picture over the meadow and alone; (fx, fy) the feet, world px;
+    // (nx, ny) the half-axes of the ground under the feet, left out of the ring read
+    const read = (draw, K, fx, fy, nx, ny, frames) => {
+      const SZ = Math.ceil(TL * 4 * K), ox = fx - 2 * TL, oy = fy - 2 * TL;
+      const cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+      const g = cv.getContext('2d');
+      let rects = 0, blits = 0, changes = 0, onGrid = 0, br = 0, ol = 0, dark = 0, far = 0, cone = 0, left = 0;
+      const alphas = new Set(), G2 = Math.round(2 * K);
+      P2.fillRect = function () { if (this === g) rects++; return fr0.apply(this, arguments); };
+      P2.drawImage = function () { if (this === g) blits++; return di0.apply(this, arguments); };
+      try {
+        for (const f of frames) {
+          // alone, on a clear canvas
+          g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SZ, SZ);
+          g.setTransform(K, 0, 0, K, -ox * K, -oy * K); g.imageSmoothingEnabled = true;
+          draw(g, f);
+          let d = g.getImageData(0, 0, SZ, SZ).data;
+          const differ = (i2, j2) => (d[i2 + 3] || d[j2 + 3]) && (d[i2] !== d[j2] || d[i2 + 1] !== d[j2 + 1] || d[i2 + 2] !== d[j2 + 2] || d[i2 + 3] !== d[j2 + 3]);
+          for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+            const i2 = (y * SZ + x) * 4, al = d[i2 + 3];
+            if (al) alphas.add(al);
+            if (x + 1 < SZ && differ(i2, i2 + 4)) { changes++; if ((x + 1) % G2 === 0) onGrid++; }
+            if (y + 1 < SZ && differ(i2, i2 + SZ * 4)) { changes++; if ((y + 1) % G2 === 0) onGrid++; }
+            if (al < 24) continue;
+            const dx = (x + 0.5) / K + ox - fx, dy = (y + 0.5) / K + oy - fy;
+            if (Math.hypot(dx / nx, dy / ny) < 1) continue;
+            far++;
+            if (Math.abs(dx) < Math.abs(dy) * T30) cone++;
+          }
+          if (f === frames[frames.length - 1]) for (let i2 = 3; i2 < d.length; i2 += 4) if (d[i2] >= 8) left++;
+          // …and over the meadow
+          g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = `rgb(${BG})`; fr0.call(g, 0, 0, SZ, SZ);
+          g.setTransform(K, 0, 0, K, -ox * K, -oy * K);
+          const r0 = rects, b0 = blits;
+          draw(g, f);
+          rects = r0; blits = b0;
+          d = g.getImageData(0, 0, SZ, SZ).data;
+          for (let i2 = 0; i2 < d.length; i2 += 4) {
+            const L = lum(d[i2], d[i2 + 1], d[i2 + 2]);
+            if (L < L0 - 3) dark++;
+            if (L <= L0 + 0.5) continue;
+            br++;
+            const mx = Math.max(d[i2], d[i2 + 1], d[i2 + 2]), mn = Math.min(d[i2], d[i2 + 1], d[i2 + 2]), q = mx - mn;
+            if (L - L0 >= 10 && mx && q && q / mx >= 0.2) {
+              let h = mx === d[i2] ? ((d[i2 + 1] - d[i2 + 2]) / q) % 6 : mx === d[i2 + 1] ? (d[i2 + 2] - d[i2]) / q + 2 : (d[i2] - d[i2 + 1]) / q + 4;
+              h *= 60; if (h < 0) h += 360;
+              if (h >= 48 && h <= 115) ol++;
+            }
+          }
+        }
+      } finally { P2.fillRect = fr0; P2.drawImage = di0; }
+      return { K, rects, blits, levels: alphas.size, grid: +(changes ? onGrid / changes : 1).toFixed(3), chance: +(1 / G2).toFixed(3), cone: +(far ? cone / far : 1).toFixed(3), far,
+        dark, br, olive: +(br ? ol / br : 1).toFixed(4), left };
+    };
+    const frames = [];
+    for (let f = 1; f <= 24; f++) frames.push(f / 24 * life * 0.999);
+    const X = 9, Y = 9;   // the feet, well inside the board
+    for (const [K, sc] of [[3.4, 0.7], [1.25, 0.7], [3.4, 1]]) {
+      const fx = X * TL + 0.37, fy = Y * TL + 0.61, nx = 0.6 * TL * sc, ny = 0.3 * TL * sc;
+      const o = read((g, t) => {
+        R.cardDust = [{ x: fx / TL, y: fy / TL - 0.32, t: 0, s: sc, a: 1, seed: 987654 }];
+        R.drawCardDust(g, t);
+      }, K, fx, fy + 0.32 * TL - 0.32 * TL, nx, ny, frames);
+      o.scale = sc;
+      out.look.push(o);
+    }
+    // the list empties itself once the dust has settled
+    R.cardDust = [{ x: 9, y: 9, t: 0, s: 1, a: 1, seed: 1 }];
+    R.drawCardDust(document.createElement('canvas').getContext('2d'), life + 0.01);
+    out.emptied = R.cardDust.length === 0;
+    // THE CONTROL: the world's place poof, a ring by design, through the same probe
+    {
+      const fx = X * TL + TL / 2, fy = Y * TL + TL / 2;
+      const o = read((g, t) => {
+        R.placePoofs = [{ x: X, y: Y, sz: 1, t: t * 1000 * (R.POOF_MS / 1000) / life, scale: 1 }];
+        R._drawPlacePoofs(g, 0);
+      }, 3.4, fx, fy, 0.6 * TL * 0.7, 0.3 * TL * 0.7, frames.slice(0, 18));
+      R.placePoofs = [];
+      out.control = o;
+    }
+    R.cardDust = [];
+    return out;
+  }, { SUMMONERS });
+  const C = r.cards, dusty = ['war_band', 'iron_legion', 'legion_marches', 'trebuchet_battery', 'siege_train', 'swift_raiders'];
+  const thrown = Object.keys(C).every(k => C[k].ok && C[k].pix === 0) && dusty.every(k => C[k] && C[k].card >= 1) &&
+    r.door.ok && r.door.pix === 0 && r.door.card === 3;
+  const L = r.look || [], ctl = r.control || {};
+  // (a smooth shape's edges land on a grain's edge by chance alone — one in
+  // G2 — so the bar is chance and a little, at each zoom)
+  const smooth = L.length === 3 && L.every(o => o.rects === 0 && o.blits === 0 && o.levels >= 40 && o.grid <= o.chance + 0.1);
+  const earth = L.length === 3 && L.every(o => o.dark === 0 && o.olive <= 0.02 && o.br > 500);
+  const sideways = L.length === 3 && L.every(o => o.cone <= 0.1 && o.far > 500) && ctl.cone >= 0.2;
+  const settles = L.length === 3 && L.every(o => o.left === 0) && r.emptied;
+  ck('theSummonDustIsSmoothDustAtTheDevicesResolution', thrown && smooth && earth && sideways && settles,
+    `pixel puffs / card clouds: ${Object.keys(C).map(k => `${k} ${C[k].pix}/${C[k].card}`).join(', ')}, the doorstep muster ${r.door.pix}/${r.door.card}; ` +
+    L.map(o => `at ${o.K} device px a world px (×${o.scale}): ${o.rects} rects, ${o.blits} blits, ${o.levels} alpha levels, ${(100 * o.grid).toFixed(0)}% of its edges on the 2px grain (chance ${(100 * o.chance).toFixed(0)}%), ` +
+      `${o.dark} px darker than the meadow, ${(100 * o.olive).toFixed(2)}% olive of ${o.br} lightened, ${(100 * o.cone).toFixed(1)}% of ${o.far} px straight in front or behind, ${o.left} px left at the end`).join('; ') +
+    `; the CONTROL (the world's place poof) ${(100 * (ctl.cone || 0)).toFixed(1)}% in front or behind, ${ctl.blits} blits; the list empties itself ${r.emptied}`);
+}
+{
+  /* …AND THE WORLD'S OWN DUST STAYS PIXEL DUST (judge g3, "rendering
+     defects" 1 — the rule the check above used to hold for the cards' summons
+     too): R.poofSheet is the world's art, for a site laid, a building falling
+     and the goods a card sets down, and its frames are hard half-resolution
+     pixels; drawn scaled (the destruction's 0.65 echo, a card's goods at
+     0.45..1.25) through the canvas's bilinear default the cloud came out a
+     soft blur, the one smoothed thing in the frame. Every dust blit is
+     measured nearest-neighbour with the flag left ON by the caller, at every
+     scale, and the flag handed back as found. The CONTROL draws the same
+     frame by hand under the flag as found and must see it smoothed, or the
+     probe sees nothing. */
   const r = await p.evaluate(() => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 256;
     const g = cv.getContext('2d');
@@ -2328,7 +2543,7 @@ await p.evaluate(({ ARMY }) => {
     return out;
   });
   const bad = Object.entries(r).filter(([k, v]) => k !== 'control' && (!v.drew || v.smooth || !v.back));
-  ck('theSummonDustIsPixelDust', !bad.length && r.control,
+  ck('andTheWorldsOwnDustStaysPixelDust', !bad.length && r.control,
     bad.length ? 'smoothed: ' + bad.map(([k, v]) => `scale ${k} (${v.smooth}/${v.drew} blits smoothed, flag back ${v.back})`).join(', ')
       : `every dust blit nearest-neighbour at scales 1/0.55/0.8/1.25/0.65, the caller's flag handed back; the control blit smoothed ${r.control}`);
 }

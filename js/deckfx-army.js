@@ -413,8 +413,11 @@ Object.assign(Deck, {
       u.path = null; u.pathI = 0;
       // unseen until its beam lands (the card's show draws the beam itself)
       if (window.R && opts.beam !== false && R.startSummon) R.startSummon(u.x, u.y, at[i] * 1000, u.id, 'none');
-      if (window.R && R.startPlacePoof && opts.dust !== false && i < 12)
-        R.startPlacePoof(u.x - 0.5, u.y - 0.5, 1, { delay: at[i] * 1000, scale: this.fanClass(u.kind) === 'engine' ? 1 : 0.7 });
+      // …and lands in its own dust: soft billows of the earth rolling out from
+      // under its feet at the device's own resolution (R.startCardDust —
+      // never the place-poof's pixel dust, the operator's ruling)
+      if (window.R && R.startCardDust && opts.dust !== false && i < 12)
+        R.startCardDust(u.x, u.y, { delay: at[i] * 1000, scale: ({ engine: 1, horse: 0.9 })[this.fanClass(u.kind)] || 0.7 });
     });
     return { ok: true, units, at, free, wheel: !!wheel, go: wheel ? wheel.go : null, tc, first, side: plan.side, x: hx, y: hy };
   },
@@ -772,45 +775,55 @@ Object.assign(Deck, {
   /* THE HOST'S GHOST: AN INKED OUTLINE ROUND A DITHERED BODY (judge g3:
      "ghost soup" — fifteen translucent figures drawn with their light ADDED
      ran together into one pale blob, and the ranks could not be counted).
-     A ghost is its OWN picture, composed once per frame and dither step
-     (cached, like R.tintOf; no pixel is read, so a tainted file:// strip
-     composes the same): an OPAQUE line of the night's ink one world pixel
-     round the outline — what keeps every ghost a figure of its own in a
-     crowd — and inside it the body in the cold of the dead, the frame's own
-     light and shade carried into it (the 'luminosity' blend: the helm, the
-     shield and the stride all still read), lifted toward the pale, and
-     DITHERED: one world pixel in four knocked out in an ordered pattern, so
-     the ground shows through a spirit in hard pixels, never through an
-     alpha. The knocked-out cell walks round its 2x2 every half second —
-     the ghost's shimmer, a step at a time. Fading, it comes apart a step at
-     a time too (`lv`: 1 half the body and half the line, 2 a quarter), never
-     a crossfade. Drawn source-over, nothing added: light added over the
-     meadow is the lime this file never draws. A frame whose blend the
-     browser does not know keeps a faint trace of the sprite's detail
-     instead — never its colours. */
+     A ghost is its OWN picture, composed once per frame (cached, like
+     R.tintOf; no pixel is read, so a tainted file:// strip composes the
+     same): an OPAQUE line of the night's ink one world pixel round the
+     outline — the frame's own line, what keeps every ghost a figure of its
+     own in a crowd — and inside it the body in the cold of the dead, the
+     frame's own light and shade carried into it (the 'luminosity' blend: the
+     helm, the shield and the stride all still read), lifted toward the pale.
+     Drawn source-over, nothing added: light added over the meadow is the
+     lime this file never draws; and never through an alpha — every pixel of
+     a ghost is either there or not. A frame whose blend the browser does
+     not know keeps a faint trace of the sprite's detail instead — never its
+     colours.
+     THE DITHER IS THE DEVICE'S (operator ruling, 2026-10-28: "When
+     characters slam down, that feels cool, but the rays are pixelated
+     again, let's increase the quality of that as well. higher pixel
+     count."): the body used to lose one WORLD pixel in four in an ordered
+     2x2, on the art's grid — a 5-6px block on a 3x phone — and fifteen
+     ghosts in their beams read as checkered white tiles. The knock-out now
+     falls on the canvas's OWN pixels (ghostBlit): a 4x4 ordered (Bayer)
+     pattern, one device pixel at a time, laid on the canvas's grid whatever
+     the zoom or the ghost's fractional place, so the ground shows through a
+     spirit as a fine even screen — translucent to the eye, still no alpha
+     and nothing added. The body thins toward its feet (GHOST_KEEP: most of
+     it kept at the head, three pixels in five at the feet), a spirit
+     trailing into the ground it rose from; the pattern's phase walks every
+     half second (the
+     shimmer). The INK stays whole — opaque, one world pixel, art like the
+     line of the sprite it outlines — and only comes apart, in the same fine
+     pattern, while the host gutters or fades (`k`, how much of the ghost
+     still stands: a half as it gutters, all of it down to nothing as it
+     goes), never a crossfade. */
   GHOST: '#bfe2ff', GHOST_INK: '#141e36', GHOST_BODY: '#7fa8d8',
+  // the share of the body kept at the head … at the feet (the ink is whole)
+  GHOST_KEEP: [0.86, 0.6],
+  // the 4x4 ordered pattern: a cell is knocked out while its rank is under the count
+  BAYER4: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5],
   _ghostC: new WeakMap(),
-  // which world-pixel cells of a ghost stand (i, j: the cell; ph 0..3)
-  ghostKeep(lv, ph, i, j, ink) {
-    const b = (i & 1) + 2 * (j & 1);
-    if (ink) return lv === 0 ? true : lv === 1 ? ((i + j) & 1) === 0 : b === (ph & 3);
-    return lv === 0 ? b !== (ph & 3) : lv === 1 ? ((i + j + ph) & 1) === 0 : b === (ph & 3);
-  },
-  ghostOf(img, D, lv, ph) {
-    lv = lv || 0; ph = ph || 0;
+  /* the ghost's own picture, at the frame's own resolution and one world
+     pixel of margin round it: the BODY (whole — the dither is laid at the
+     draw, on the device's pixels), its ink ring beside it on `_ink`
+     (the silhouette grown a world pixel, its own inside taken out) */
+  ghostOf(img, D) {
     const r = Math.max(1, Math.round(img.width / Math.max(1, D)));   // one world pixel, in the frame's own pixels
     let e = this._ghostC.get(img);
     if (!e) { e = {}; this._ghostC.set(img, e); }
-    const key = r + ':' + lv + ':' + (ph & 3);
-    if (e[key]) return e[key];
+    if (e[r]) return e[r];
     const W = img.width + 2 * r, H = img.height + 2 * r;
     const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; const q = c.getContext('2d'); q.imageSmoothingEnabled = false; return [c, q]; };
-    const cut = (q, ink) => {
-      q.globalCompositeOperation = 'destination-out'; q.globalAlpha = 1; q.fillStyle = '#000';
-      for (let j = 0; j * r < H; j++) for (let i = 0; i * r < W; i++) if (!this.ghostKeep(lv, ph, i, j, ink)) q.fillRect(i * r, j * r, r, r);
-      q.globalCompositeOperation = 'source-over';
-    };
-    // the body, cold, its own shading kept, dithered
+    // the body, cold, its own shading kept
     const [b, bq] = mk();
     bq.drawImage(R.tintOf(img, this.GHOST_BODY), r, r);
     bq.globalCompositeOperation = 'luminosity';
@@ -818,20 +831,100 @@ Object.assign(Deck, {
     else { bq.globalCompositeOperation = 'source-atop'; bq.globalAlpha = 0.2; bq.drawImage(img, r, r); bq.globalAlpha = 1; }
     bq.globalCompositeOperation = 'screen'; bq.globalAlpha = 0.5;
     bq.drawImage(R.tintOf(img, this.GHOST), r, r);
-    bq.globalAlpha = 1;
-    cut(bq, false);
+    bq.globalAlpha = 1; bq.globalCompositeOperation = 'source-over';
     // the ink: the silhouette grown a world pixel, its own inside taken out
     const [c, q] = mk();
     const ink = R.tintOf(img, this.GHOST_INK);
     for (const [dx, dy] of [[-r, 0], [r, 0], [0, -r], [0, r]]) q.drawImage(ink, r + dx, r + dy);
     q.globalCompositeOperation = 'destination-out'; q.drawImage(img, r, r); q.globalCompositeOperation = 'source-over';
-    if (lv) cut(q, true);
-    q.drawImage(b, 0, 0);
-    c._r = r;
-    return (e[key] = c);
+    b._ink = c; b._r = r;
+    return (e[r] = b);
   },
   // the shimmer's step for a ghost now (0..3), its own phase by its id
   ghostPhase(u) { return ((performance.now() / 500 + u.id * 0.37) | 0) & 3; },
+  // two scratch canvases the dither is laid in, reused frame to frame and
+  // grown as needed (one ghost's box: never a screen-sized canvas)
+  _gScr: null,
+  _gScratch(i, w, h) {
+    const L = this._gScr || (this._gScr = []);
+    let c = L[i];
+    if (!c) { c = L[i] = document.createElement('canvas'); c.width = c.height = 128; }
+    if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); c._pat = null; }
+    const q = c.getContext('2d');
+    q.setTransform(1, 0, 0, 1, 0, 0); q.globalCompositeOperation = 'source-over'; q.globalAlpha = 1;
+    q.clearRect(0, 0, w, h);
+    return q;
+  },
+  // a pattern knocking `out` of every 16 pixels out (BAYER4), its phase walked by ph
+  _ghostPat(q, out, ph) {
+    const P = q.canvas._pat || (q.canvas._pat = {}), key = out + ':' + (ph & 3);
+    if (P[key]) return P[key];
+    const c = document.createElement('canvas'); c.width = c.height = 4;
+    const cq = c.getContext('2d'); cq.fillStyle = '#000';
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++)
+      if (this.BAYER4[((j + (ph >> 1)) & 3) * 4 + ((i + ph) & 3)] < out) cq.fillRect(i, j, 1, 1);
+    return (P[key] = q.createPattern(c, 'repeat'));
+  },
+  /* knock pixels out of a scratch on the CANVAS's own grid: the scratch's
+     (0, 0) is the canvas's (bx, by), so the pattern is shifted by their
+     place in the 4x4 — every ghost on the screen shares one grid, wherever
+     it stands. `outAt(v)` is how many of 16 go at a share v down the box,
+     asked once a band of four rows. */
+  _ghostCut(q, bx, by, bw, bh, ph, outAt) {
+    const ox = ((bx % 4) + 4) % 4, oy = ((by % 4) + 4) % 4;
+    q.globalCompositeOperation = 'destination-out';
+    q.setTransform(1, 0, 0, 1, -ox, -oy);
+    for (let yy = 0; yy < bh + oy; yy += 4) {
+      const out = Math.max(0, Math.min(16, outAt(Math.max(0, Math.min(1, (yy + 2 - oy) / bh)))));
+      if (!out) continue;
+      q.fillStyle = out >= 16 ? '#000' : this._ghostPat(q, out, ph);
+      q.fillRect(0, yy, bw + ox + 4, 4);
+    }
+    q.setTransform(1, 0, 0, 1, 0, 0);
+    q.globalCompositeOperation = 'source-over';
+  },
+  /* LAY A GHOST'S PICTURE (ghostOf) over the world rect (x, y, w, h) — in
+     g's current units — with its dither on the canvas's own pixels: the
+     body knocked through in the fine 4x4 (thinning toward its feet), the
+     ink whole unless the ghost is going (`k` < 1: how much of it still
+     stands, the whole ghost coming apart in the same pattern), `ph` the
+     shimmer's step. Composed in a scratch the size of the ghost's box on
+     the canvas and laid back 1:1, so every pixel is either there or not.
+     A picture with no ink (a stand-in) is laid the same way. */
+  ghostBlit(g, comp, x, y, w, h, k, ph) {
+    k = k == null ? 1 : Math.max(0, Math.min(1, k));
+    if (!comp || !comp.width || k <= 0 || !(w > 0) || !(h > 0)) return;
+    const m = g.getTransform ? g.getTransform() : null;
+    g.save();
+    try {
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      const X0 = m ? m.a * x + m.e : 0, Y0 = m ? m.d * y + m.f : 0, X1 = m ? X0 + m.a * w : 0, Y1 = m ? Y0 + m.d * h : 0;
+      const bx = Math.floor(X0), by = Math.floor(Y0), bw = Math.ceil(X1) - bx, bh = Math.ceil(Y1) - by;
+      // a transform that turns, or a box past any screen: no grid to lay a
+      // pattern on — the picture laid as it is (never seen in the game)
+      if (!m || m.b || m.c || !(m.a > 0) || !(m.d > 0) || bw > 2048 || bh > 2048) {
+        g.drawImage(comp, x, y, w, h);
+        if (comp._ink) g.drawImage(comp._ink, x, y, w, h);
+        return;
+      }
+      const cv = g.canvas, cw = cv ? cv.width : Infinity, ch = cv ? cv.height : Infinity;
+      if (bw <= 0 || bh <= 0 || bx >= cw || by >= ch || bx + bw <= 0 || by + bh <= 0) return;
+      const sm = g.imageSmoothingEnabled, h0 = this.GHOST_KEEP[0], h1 = this.GHOST_KEEP[1];
+      const a = this._gScratch(0, bw, bh);
+      a.imageSmoothingEnabled = sm;
+      a.drawImage(comp, X0 - bx, Y0 - by, X1 - X0, Y1 - Y0);
+      this._ghostCut(a, bx, by, bw, bh, ph | 0, v => Math.round(16 * (1 - k * (h0 + (h1 - h0) * v))));
+      if (comp._ink) {
+        const b = this._gScratch(1, bw, bh);
+        b.imageSmoothingEnabled = sm;
+        b.drawImage(comp._ink, X0 - bx, Y0 - by, X1 - X0, Y1 - Y0);
+        if (k < 1) this._ghostCut(b, bx, by, bw, bh, ph | 0, () => Math.round(16 * (1 - k)));
+        a.drawImage(b.canvas, 0, 0, bw, bh, 0, 0, bw, bh);
+      }
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(a.canvas, 0, 0, bw, bh, bx, by, bw, bh);
+    } finally { g.restore(); }
+  },
   drawGhost(g, u, img, x, y, D) {
     const q = this.riseOf(u);
     if (q <= 0) return;
@@ -839,12 +932,11 @@ Object.assign(Deck, {
     const left = this.hostLeft();
     const flick = left < 0.6 && ((now * 7 + u.id) % 1) < 0.18;   // the last of its days: it gutters
     const lift = this.ghostLift(u, D, q);
-    const comp = this.ghostOf(img, D, flick ? 1 : 0, this.ghostPhase(u)), rw = comp._r * D / img.width;
+    const comp = this.ghostOf(img, D), rw = (comp._r || 0) * D / img.width;
     g.save();
     try {
       if (q < 1) { g.beginPath(); g.rect(x - D, y - D, D * 3, D * 2); g.clip(); }
-      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
-      g.drawImage(comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw);
+      this.ghostBlit(g, comp, x - rw, y + lift - rw, D + 2 * rw, D + 2 * rw, flick ? 0.5 : 1, this.ghostPhase(u));
     } finally { g.restore(); }
   },
   // how far below its standing place a ghost is drawn: still climbing out
@@ -1016,37 +1108,14 @@ Deck.armyFx = {
   // the ancestors' cold light (the crack, the burst, the fade)
   COLD: { hue: '#9cc4e6', faint: '#8db6da', ramp: ['#6f9cc8', '#a9d2f0', '#d6ecfb', '#eef8ff'], hot: '#ffffff' },
   /* A CLOUD OF DUST, laid all at once: every puff `{x, y, r, a, sq}` — a
-     broad body thinning out at its rim (a low falloff power), squashed by
-     `sq` to lie along the ground — has its paler body SCREENED first and
-     then the dust's HUE laid over the lot, tied to each body (DUST_TIE) —
-     the order a stack of screens needs (R.fxBeam's rule). Laid hue-first,
-     puff by puff, one puff's faint rim lifted again by its neighbours'
-     bodies read lime where six men stamped together. A puff that THINS
-     also SHRINKS (to half its size as `a` goes to nothing): dust thinned by
-     its alpha alone is a disc of the hue on the meadow's own luminance, a
-     dark blot, where a settling puff draws in. In the caller's units;
-     smooth, at the device's own resolution; no RNG. */
+     broad body thinning out at its rim, squashed by `sq` to lie along the
+     ground — screened as one cloud and its hue laid over the lot, a puff
+     shrinking as it thins (never a brown blot). The painter is R.fxDust
+     (js/render.js), shared with the dust every card's people land in
+     (R.startCardDust); the tone and its tie are this toolkit's DUST. A
+     cached older render.js without it stands the dust down, never throws. */
   dustLay(g, list) {
-    list = (list || []).filter(d => d.a > 0.01 && d.r > 0);
-    if (!list.length) return;
-    const T = this.DUST, K = this.DUST_TIE, prof = u => Math.pow(Math.max(0, 1 - u), 0.95);
-    g.save();
-    for (const pass of ['screen', 'color']) {
-      g.globalCompositeOperation = pass;
-      if (g.globalCompositeOperation !== pass) continue;   // (no 'color': the body alone)
-      for (const d of list) {
-        const a = Math.min(1, d.a), L = R.fxA(a).l, r = d.r * (0.5 + 0.5 * a);
-        g.save();
-        g.translate(d.x, d.y); g.scale(1, d.sq || 0.7);
-        g.fillStyle = R._fxStops(g.createRadialGradient(0, 0, 0, 0, 0, r), 16, pass === 'screen'
-          ? u => [R._fxRamp(T, 0.2 + 0.8 * u), L * prof(u)]
-          : u => [T.hue, Math.min(1, K * L * prof(u))]);
-        g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2);
-        g.fill();
-        g.restore();
-      }
-    }
-    g.restore();
+    if (window.R && R.fxDust) R.fxDust(g, list, this.DUST, this.DUST_TIE);
   },
   // a crumb of earth thrown off the ground: a small round clod at its true
   // position, in the earth's own browns (it is earth, not light)
@@ -2328,10 +2397,11 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     }
   }
   /* THE DUST SKIDS OUT from under an engine as it is set down: a short
-     streak of the place-dust thrown out behind it along the ground (away
-     from the hall — the way it faces), one puff after another, once a show */
+     streak of dust thrown out behind it along the ground (away from the hall
+     — the way it faces), one cloud after another, once a show — the card's
+     own smooth dust (R.startCardDust), never the place-poof's pixels */
   function skid(s) {
-    if (s.skid || !window.R || !R.startPlacePoof) return;
+    if (s.skid || !window.R || !R.startCardDust) return;
     s.skid = 1;
     for (const m of s.units) {
       const u = live(m.id);
@@ -2339,8 +2409,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       let dx = m.x - s.x, dy = m.y - s.y;
       const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
       for (let k = 0; k < 3; k++)
-        R.startPlacePoof(m.x - 0.5 - dy * (k - 1) * 0.55 + dx * 0.15 * k, m.y - 0.5 + dx * (k - 1) * 0.55 * 0.5 + dy * 0.15 * k, 1,
-          { delay: m.d * 1000 + 30 + k * 70, scale: k === 1 ? 1 : 0.7 });
+        R.startCardDust(m.x - dy * (k - 1) * 0.55 + dx * 0.15 * k, m.y + dx * (k - 1) * 0.55 * 0.5 + dy * 0.15 * k,
+          { delay: m.d * 1000 + 30 + k * 70, scale: k === 1 ? 1 : 0.7, a: 0.6 });
     }
   }
   /* …and AN ARM SWINGS ONCE as each throwing engine settles (Deck.swingAt:
@@ -2460,9 +2530,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       // ghosts left S.units all at once, and a gap here was a blink)
       const q = Math.max(0, (s.t - w.d) / 1.8);
       if (q >= 1) continue;
-      // it comes apart in DITHER steps, never an alpha: whole, half, a
-      // quarter, and gone (Deck.ghostOf's levels), the pattern still walking
-      const lv = q < 0.3 ? 0 : q < 0.6 ? 1 : 2;
+      // it comes apart in its DITHER, never an alpha: whole, then fewer and
+      // fewer of its pixels standing — on the canvas's own grid, sixteen
+      // steps of the 4x4 (Deck.ghostBlit) — the pattern still walking
+      const keep = Math.min(1, (1 - q) / 0.72);
       const stretch = 1 + q * 0.9, squeeze = 1 - q * 0.55, lift = q * TL * 1.8;
       const cx = w.x * TL, foot = w.top + w.D;
       const dw = w.D * squeeze, dh = w.D * stretch;
@@ -2472,8 +2543,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       g.globalCompositeOperation = 'source-over';
       g.globalAlpha = 1;
       // the ghost's own picture (Deck.ghostOf), its ink scaled with it
-      const comp = Deck.ghostOf(w.img, w.D, lv, ((s.t * 2 + w.d * 7) | 0) & 3), rx = comp._r * dw / w.img.width, ry = comp._r * dh / w.img.height;
-      g.drawImage(comp, cx - dw / 2 - rx, foot - dh - lift - ry, dw + 2 * rx, dh + 2 * ry);
+      const comp = Deck.ghostOf(w.img, w.D), rx = (comp._r || 0) * dw / w.img.width, ry = (comp._r || 0) * dh / w.img.height;
+      Deck.ghostBlit(g, comp, cx - dw / 2 - rx, foot - dh - lift - ry, dw + 2 * rx, dh + 2 * ry, keep, ((s.t * 2 + w.d * 7) | 0) & 3);
       A.motes(g, cx, foot - lift, 4, s.t, w.x * 7 + w.y, '220,238,255', 1 - q, 6, TL * 1.4);
     }
     g.restore();
