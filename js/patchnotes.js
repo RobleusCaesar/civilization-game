@@ -19,6 +19,34 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 100, date: '2026-10-28', title: 'A new settings page, in testing',
+    items: [
+      'Settings has been rebuilt as one carved page with tabs for General, Audio, Saves, Feedback and Patch Notes.',
+      'The autosave choice is now one small bar instead of four big buttons.',
+      'You can send a bug, an idea or a crash report straight to the developer from the Feedback tab, with your email so we can write back.',
+      'These notes now live in Settings, and every update adds one. A red dot tells you when there is something new to read.',
+      'For now the new page shows on the card test link only.',
+    ],
+  },
+  {
+    build: 99, date: '2026-10-28', title: 'Cards, announced',
+    items: [
+      'The first time you open the game with cards on, a short four-page introduction shows how to earn them, how to play them and the legends worth chasing.',
+      'You can open it again any time from your collection with How cards work.',
+      'Soldiers summoned by a card now land in soft rolling dust.',
+      'The ancestors called by a card look like spirits on a phone screen instead of checkered blocks.',
+    ],
+  },
+  {
+    build: 98, date: '2026-10-28', title: 'Sharper card effects and a grander victory',
+    items: [
+      'Every card effect is now drawn at your screen\'s full sharpness: the Golden Age sun, the beams as soldiers arrive, the dragon\'s fire, the kraken\'s splashes and the rest.',
+      'The healing ring around a hurt unit and the range rings shown while you place a tower or war camp are now a slow gold orbit.',
+      'The timers for running cards in the top bar are crisp on every screen.',
+      'The victory and defeat screens have new painted valleys, a carved stone pedestal for your card and more room under the title.',
+    ],
+  },
+  {
     build: 97, date: '2026-10-27', title: 'Cards: the playtest build',
     items: [
       'All 36 cards can be tried on the card test link, no earning needed.',

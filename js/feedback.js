@@ -9,9 +9,10 @@
      activation email to that inbox, which must be clicked once; until then
      FormSubmit answers "needs activation" and delivers nothing, so the
      report stays in the outbox and goes again on the next load. After
-     activation FormSubmit offers a random alias for the address: paste it
-     into TO below — one line, and the real address stops appearing in the
-     page source.
+     activation FormSubmit offers a random alias for the address, and TO
+     below IS that alias (the operator's, activated for the github.io site;
+     FormSubmit activates per SITE, so clanfire.online's first report asks
+     once more) — the real address never appears in the page source.
    - A COPY goes to Supabase through migration 0009's one door,
      submit_feedback, so nothing depends on one mail relay. Before 0009 is
      applied that door is a 404, which is fine and silent.
@@ -36,7 +37,7 @@
 const Feedback = {
   // ← THE ONE ADDRESS. After FormSubmit's activation, replace it with the
   //   random alias FormSubmit offers (e.g. 'a1b2c3d4e5…'), and nothing else.
-  TO: 'rob@frostrivercapital.com',
+  TO: 'efa96b8d4bc3a39bd17e1d6cfdd24e5a',
   mailUrl() { return 'https://formsubmit.co/ajax/' + this.TO; },
 
   KINDS: [

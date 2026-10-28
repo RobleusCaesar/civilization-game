@@ -89,6 +89,18 @@ change and `… art` when a PNG moves — and note an ART bump bumps BOTH, becau
 tag. `tests/art-pipeline.mjs` keeps the invariant
 (`theScriptTagsShareOneVersionNoOlderThanTheArt`).
 
+## Every push to main adds a patch note
+
+Standing rule (operator, 2026-10-27: "Whenever we push things to Main moving
+forward, add user friendly notes to this section"). Every push to main puts a
+new entry at the TOP of `js/patchnotes.js` whose `build` equals the shared
+code `?v=` on the script tags — `tests/patch-notes.mjs` goes red the moment
+they disagree, so a deploy without its note cannot pass the sweep. Lines are
+what a PLAYER would notice, in plain sentences: no camelCase, dotted names,
+brackets or file names (the contract refuses them). A day's work is one
+entry; a fix nobody can see needs no line. Bump the code version FIRST, then
+write the note for that number.
+
 ## Other checked-in contracts
 
 Same deal — run the one that covers what you touched, and update it in the same
@@ -175,6 +187,8 @@ node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's
+node tests/settings.mjs      # the settings page, staged behind the card test link (SettingsPage.PUBLIC is the one-line flip): the old screen byte for byte elsewhere, only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
+node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/card-intro.mjs    # the card announcement: off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; four screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; every number the rule's own; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tier ladder level; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; reopened from the collection
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
@@ -655,6 +669,36 @@ alarm (`aStrikeSaysItOnceNeverAsAnAlarm`), and while a cut's top bar is in
 the toasts step below it (`--dk-cine`). The sheet jumps by tier and builds
 each face once (`DeckUI._cells`); a collection opened from the reward lands
 on the new cards, marked NEW.
+
+**THE SETTINGS PAGE** (`js/settings.js`, tests/settings.mjs — operator: "the
+save rate options buttons are too large… let's add the ability to send in
+crash reports, bugs, and new product ideas… include under settings Patch /
+Update notes… overhaul the whole settings section"). A carved, tabbed page —
+General, Audio, Saves, Feedback, Patch Notes — STAGED: `SettingsPage.live()`
+is `PUBLIC || Deck.devOn()`, so only a device that opened the card test link
+sees it, and everyone else keeps the old screen byte for byte (pinned by a
+hash). Going public is flipping `PUBLIC`. **ONLY REAL SETTINGS**: every
+control changes something the game reads, and a section with nothing real in
+it is not drawn (no Controls or Graphics tab, no language picker — the game
+has none). The autosave cadence is one small segmented bar. The unread dot on
+the title and pause plaques is a CHILD element, never `::before`/`::after`,
+because the plaque draws itself with both. **ITS CHROME IS NEVER CHUNKY**:
+every raster on every tab, at 320×568 through 1920×1080 (a phone on its side
+included — it is 3× and takes the wide rail), is CSS size × 3 ≤ its natural
+size; the frame's corners are SVG (`cornerSvg`); the patch-notes painting is
+a SCENE, held to 2× on a 2× desktop. On a wide window the frame IS the page:
+one height on every tab, header and frame centred together. **FEEDBACK GOES
+OUT TWO WAYS AND IS NEVER LOST** (`js/feedback.js`): FormSubmit's AJAX
+endpoint to `Feedback.TO` — the operator's ALIAS, never the address (the real
+inbox appears in no shipped file, `theInboxIsNeverInThePageSource`;
+FormSubmit activates per SITE, so a new host's first report sends one
+"Activate Form" email) — and a copy through migration 0009's
+`submit_feedback`; written to an on-device outbox FIRST and retried on load
+and on reconnect until both are answered ("needs activation" is not sent);
+the sender's email required "so we can reply"; 20 seconds apart, five an hour;
+live site only (the telemetry rule — a test installs the mock). The error
+recorder (the last 20 JS errors, attached to a Bug or Crash report by
+default) runs for everyone but sends NOTHING unless the player submits.
 
 **THE CARD ANNOUNCEMENT** (`js/cardintro.js`, tests/card-intro.mjs; art in
 `assets/cards/intro/`, ART_PLAN "The card announcement" — operator: "an

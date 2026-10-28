@@ -435,7 +435,7 @@ const open = async (opts) => {
     o.refs = st.rpcs.map(x => x.p_details && x.p_details.ref);
     return o;
   });
-  const to = 'https://formsubmit.co/ajax/rob@frostrivercapital.com';
+  const to = 'https://formsubmit.co/ajax/efa96b8d4bc3a39bd17e1d6cfdd24e5a';
   ck('theRingKeepsErrorsRejectionsAndFrameFaults',
     r.ring.some(m => /tower fell through the map/.test(m)) && r.ring.some(m => /promise nobody caught/.test(m)) && r.ring.some(m => /combat: ring test: a recovered frame fault/.test(m)),
     r.ring.slice(-3).join(' | '));
@@ -617,6 +617,14 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1
   await ctx.close();
 }
 
+// THE ADDRESS IS NEVER IN THE PAGE: the form posts to the operator's FormSubmit
+// alias, so no shipped file carries the inbox it lands in
+{
+  const fs = await import('fs');
+  const shipped = ['index.html', ...fs.readdirSync('js').filter(f => f.endsWith('.js')).map(f => 'js/' + f)];
+  const leaks = shipped.filter(f => /@frostrivercapital\./i.test(fs.readFileSync(f, 'utf8')));
+  ck('theInboxIsNeverInThePageSource', leaks.length === 0 && /^[0-9a-f]{32}$/.test(fs.readFileSync('js/feedback.js', 'utf8').match(/TO: '([^']+)'/)[1]), leaks.join(', ') || 'alias only');
+}
 ck('noPageThrew', allErrs.length === 0, allErrs.slice(0, 3).join(' | '));
 await b.close();
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? '  ' : '✗ ') + k + ': ' + v);
