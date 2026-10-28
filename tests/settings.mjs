@@ -418,6 +418,8 @@ const open = async (opts) => {
     fill('player@example.com', 'It froze when the dragon came.');
     o.offline = await send();
     o.offlineOutbox = Feedback.outbox().map(x => ({ mailed: x.mailed, stored: x.stored }));
+    SettingsPage.open('feedback'); await settle(30);
+    o.offlineNag = !!q('.sxPending');
     st.mail = 'ok';
     const mailsBefore = st.mails.length;
     window.dispatchEvent(new Event('online'));
@@ -431,6 +433,9 @@ const open = async (opts) => {
     fill('player@example.com', 'Just saying hello.');
     o.activate = await send();
     o.activateOutbox = Feedback.outbox().map(x => ({ mailed: x.mailed, stored: x.stored }));
+    // and the tab nags about nothing the player could act on
+    SettingsPage.open('feedback'); await settle(30);
+    o.activateNag = !!q('.sxPending');
     st.mail = 'ok';
     await Feedback.flush();
     o.afterActivation = Feedback.outbox().length;
@@ -465,8 +470,12 @@ const open = async (opts) => {
   ck('aFailedEmailIsKeptAndSaidPlainly', /back online/i.test(r.offline) && r.offlineOutbox.length === 1 && r.offlineOutbox[0].mailed === false,
     r.offline + ' ' + JSON.stringify(r.offlineOutbox));
   ck('andGoesWhenTheLineComesBack', r.online.outbox === 0 && r.online.mailed === 1 && r.online.subject === 'Clanfire — Crash report', JSON.stringify(r.online));
-  ck('needsActivationIsNotDelivery', /next time you open the game/i.test(r.activate) && r.activateOutbox.length === 1 && !r.activateOutbox[0].mailed && r.activateOutbox[0].stored,
+  // the operator, on the first live report: "Saved on this device… This doesn't
+  // make sense; shouldn't it just say sent?" — a relay that has not taken it yet
+  // is not the player's problem: they are told Sent, the outbox keeps retrying
+  ck('needsActivationIsNotDelivery', /^Sent — thank you/.test(r.activate) && r.activateOutbox.length === 1 && !r.activateOutbox[0].mailed && r.activateOutbox[0].stored,
     r.activate + ' ' + JSON.stringify(r.activateOutbox));
+  ck('andOnlyAMissingConnectionIsThePlayersNews', !r.activateNag && r.offlineNag, 'held nag ' + r.activateNag + ', offline nag ' + r.offlineNag);
   ck('aMissingDoorIsSilentAndTheRetryDelivers', r.afterActivation === 0, 'outbox ' + r.afterActivation);
   ck('aRetriedCopyKeepsItsReference', r.refs.length >= 4 && r.refs.every(x => /^fb-/.test(x)), r.refs.join(','));
   const live = reqs.filter(u => /formsubmit|supabase\.co/.test(u));

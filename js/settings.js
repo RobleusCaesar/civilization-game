@@ -378,7 +378,9 @@ const SettingsPage = {
     const kinds = (window.Feedback ? Feedback.KINDS : []).map(k =>
       `<button type="button" class="sxKind${k.k === f.kind ? ' on' : ''}" role="radio" aria-checked="${k.k === f.kind ? 'true' : 'false'}" data-kind="${k.k}">` +
       `<img alt="" src="${this.art(this.ICONS[k.k])}" onerror="this.remove()"><span>${this.esc(k.name)}</span></button>`).join('');
-    const pending = window.Feedback ? Feedback.outbox().length : 0;
+    // only a report held for want of a connection is the player's news; one
+    // the relay has not taken yet was already told "Sent" and retries quietly
+    const pending = window.Feedback ? Feedback.waitingOffline() : 0;
     return this.card('Feedback & Support',
       '<p class="sxLead">Found a bug? Have an idea? It goes straight to the developer, who reads every one — and replies.</p>' +
       '<form class="sxForm" novalidate autocomplete="on">' +
@@ -436,7 +438,7 @@ const SettingsPage = {
     const btn = form.querySelector('.sxSend'); btn.classList.add('busy'); btn.disabled = true;
     this.status('Sending…');
     let r;
-    try { r = await Feedback.submit(f); } catch (e) { r = { state: 'saved', why: 'Saved on this device — it will be sent automatically.' }; }
+    try { r = await Feedback.submit(f); } catch (e) { r = { state: 'sent', held: 'error' }; }
     this._sending = false;
     btn.classList.remove('busy'); btn.disabled = false;
     if (r.state === 'refused') { this.status(r.why, 'bad'); return; }
@@ -499,7 +501,7 @@ const SettingsPage = {
     else if (a === 'flush' && window.Feedback) {
       this.status('Sending…');
       Feedback.flush().then(() => {
-        const left = Feedback.outbox().length;
+        const left = Feedback.waitingOffline();
         if (this.tab === 'feedback') { this.open('feedback'); this.status(left ? 'Still waiting — we’ll keep trying.' : 'Sent — thank you!', left ? 'warn' : 'good'); }
       });
     }

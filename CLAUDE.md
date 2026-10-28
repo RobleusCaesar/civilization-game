@@ -694,7 +694,14 @@ inbox appears in no shipped file, `theInboxIsNeverInThePageSource`;
 FormSubmit activates per SITE, so a new host's first report sends one
 "Activate Form" email) — and a copy through migration 0009's
 `submit_feedback`; written to an on-device outbox FIRST and retried on load
-and on reconnect until both are answered ("needs activation" is not sent);
+and on reconnect until both are answered ("needs activation" is not sent).
+**THE PLAYER IS TOLD "SENT" UNLESS THE WAIT IS THEIRS** (operator, on the
+first live report: "Saved on this device… This doesn't make sense; shouldn't
+it just say sent?"): a relay that has not taken a report YET (activation, a
+refusal, a 5xx) retries quietly and the player reads "Sent — thank you";
+only a report held for want of a CONNECTION (`Feedback.offlineHeld`) says
+"Saved — we'll send it when you're back online" and wears the tab's
+waiting line, because coming back online is the one wait they can end;
 the sender's email required "so we can reply"; 20 seconds apart, five an hour;
 live site only (the telemetry rule — a test installs the mock). The error
 recorder (the last 20 JS errors, attached to a Bug or Crash report by
