@@ -417,7 +417,7 @@
     scan(g, a, k, tone, up) {
       if (!a.spr || k < 0 || k > 1) return;
       const t = a.box.t, b = a.box.b, e = eo(k), f0 = up ? b - (b - t) * e : t + (b - t) * e;
-      const tail = (b - t) * 0.42, d = up ? -1 : 1, fade = k < 0.85 ? 1 : (1 - k) / 0.15;
+      const tail = (b - t) * 0.34, d = up ? -1 : 1, fade = k < 0.85 ? 1 : (1 - k) / 0.15;
       this.lit(g, a, f => {
         const behind = (f0 - f) * d;                // how far back from the leading edge, in the art's height
         if (behind < -0.02) return 0;
@@ -535,8 +535,10 @@
       g.beginPath(); g.moveTo(-0.4 * u, -6 * u); g.lineTo(-0.3 * u, -0.8 * u); g.stroke();
       // the head: a gradient down its face, lit along its top
       head();
+      // (the metal in the tone's own body colours — topped in its cream it
+      // read pale, a cream hammer rather than a gold one)
       const gr = g.createLinearGradient(0, -9 * u, 0, -6 * u);
-      gr.addColorStop(0, r[3]); gr.addColorStop(0.35, r[2]); gr.addColorStop(1, r[0]);
+      gr.addColorStop(0, r[2]); gr.addColorStop(0.4, r[1]); gr.addColorStop(1, r[0]);
       g.fillStyle = gr; g.fill();
       g.strokeStyle = r[3]; g.lineWidth = Math.max(dv, u * 0.32);
       g.beginPath(); g.moveTo(-3.5 * u, -8.6 * u); g.lineTo(3.7 * u, -8.6 * u); g.stroke();
@@ -1472,7 +1474,8 @@
           TX.css('dkMBcss', '#bmToggle[data-mb]::after{content:attr(data-mb);position:absolute;top:-11px;right:-14px;' +
             'padding:0 4px;font:700 10px/13px sans-serif;color:#f2e6cd;background:#6a3c1a;border:1px solid #0d0b08;' +
             'border-radius:3px;box-shadow:0 0 0 1px #dc8a4c;pointer-events:none;white-space:nowrap;}' +
-            '#bmToggle.dkMBpop::after{animation:dkMBpop .42s steps(2,end) 1.1s 3;}' +
+            // (eased, never stepped: the operator's ruling of 2026-10-27 on the chrome)
+            '#bmToggle.dkMBpop::after{animation:dkMBpop .42s cubic-bezier(.3,0,.3,1) 1.1s 3;}' +
             '@keyframes dkMBpop{50%{transform:scale(1.35) translateY(-2px);}}');
           const want = '⚒×' + n;
           if (el.getAttribute('data-mb') !== want) el.setAttribute('data-mb', want);
@@ -2237,9 +2240,12 @@
           }
           const W = R.cv.width, H = R.cv.height, A = TX.scr(D.cx, D.gy), roof = TX.scr(D.cx, D.roof), apex = TX.scr(D.cx, D.gy - D.hd);
           const dpr = R.dpr || 1;
-          // the sky darkens for it, and lifts after — smoothly (a darkening, never a light)
+          // the sky darkens for it, and lifts after — smoothly, a darkening and
+          // never a light: an act's dark closing in round the OPEN band, deepest
+          // at its edges (R.stepVignette — smooth under the operator's ruling of
+          // 2026-10-27; a flat fill of the whole frame lay under the HUD too)
           const veil = p < 0.25 ? cl(p / 0.25) : p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.3);
-          if (veil > 0) { g.fillStyle = 'rgba(12,8,24,' + (0.3 * veil * veil * (3 - 2 * veil)).toFixed(4) + ')'; g.fillRect(0, 0, W, H); }
+          if (veil > 0 && R.stepVignette) R.stepVignette(g, '12,8,24', veil * veil * (3 - 2 * veil), [0.2, 0.3, 0.42, 0.54], 0.11, R.openBand ? R.openBand() : null);
           // THE LANCE: down out of the sky onto the roof, held, drawn in to a
           // thread, gone — a tapered body of the card's light, wide where it
           // leaves the sky and drawn to its POINT on the roof, a white-hot

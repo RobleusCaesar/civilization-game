@@ -80,6 +80,7 @@
 /* ---------------- the toolkit the growth cards draw with ---------------- */
 const GrowFX = {
   GOLD: ['#7a4a0a', '#d8902a', '#ffcc40', '#ffd45e', '#fff1b8', '#fffbe8'],
+  // the art's own grid (the old stones' and slabs' cells) — never a light's
   snap(v, px) { px = px || 2; return Math.round(v / px) * px; },
   // a stable 0..1 for (a, b): the same mote lands the same way every frame
   hash(a, b) {
@@ -97,8 +98,8 @@ const GrowFX = {
     const a = this.hash(x0, y0 + 911), b = this.hash(x0 + 1, y0 + 911), c = this.hash(x0, y0 + 912), d = this.hash(x0 + 1, y0 + 912);
     return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
   },
-  // alpha in hard fifths: a fade that STEPS, never glides
-  step(a) { return Math.max(0, Math.min(1, Math.round(a * 5) / 5)); },
+  // (GrowFX.step — alpha in hard fifths, a fade that stepped — is gone with
+  // the operator's ruling of 2026-10-27: every fade here glides)
   // rises over [a, b], holds, falls over [c, d]
   env(p, a, b, c, d) {
     if (p <= a || p >= d) return 0;
@@ -166,6 +167,32 @@ const GrowFX = {
   column(g, x, foot, top, w, a, tone) {
     if (!(a > 0.01) || foot - top < 2 || w < 1) return;
     R.fxBeam(g, x, foot, top, w, Math.min(1, a), tone || 'gold', { core: 1.3, fade: 0.18 });
+  },
+  /* a streak of light running from a tail (x0, y0) to its head (x1, y1): a
+     slender taper, nothing at the tail and `w` wide at the head, its light
+     climbing along it to a white-hot head (R.fxLight — the hue tied to the
+     light, at the device's own resolution) — a runner along the ground, a
+     comet; never a chain of squares on the art's grain */
+  streak(g, x0, y0, x1, y1, w, a, tone) {
+    const L = Math.hypot(x1 - x0, y1 - y0);
+    if (!(a > 0.01) || L < 0.5) return;
+    const nx = -(y1 - y0) / L * w / 2, ny = (x1 - x0) / L * w / 2;
+    R.fxLight(g, Math.min(1, a), tone || 'gold', {
+      // tail → one side of the head → round over its front → the other side
+      path: gg => { const a0 = Math.atan2(ny, nx); gg.beginPath(); gg.moveTo(x0, y0); gg.lineTo(x1 + nx, y1 + ny); gg.arc(x1, y1, w / 2, a0, a0 - Math.PI, true); gg.closePath(); },
+      grad: gg => gg.createLinearGradient(x0, y0, x1 + (x1 - x0) / L * w / 2, y1 + (y1 - y0) / L * w / 2),
+      prof: u => Math.pow(u, 1.6), ramp: u => 1 - u, n: 16,
+    });
+  },
+  /* a grain of the world thrown off something (earth off a rising stone):
+     a small round speck, `r` world px, opaque in its own colour — matter,
+     not light, so no glow and no hue pass */
+  speck(g, x, y, r, col, a) {
+    if (!(a > 0.01)) return;
+    g.save();
+    g.globalAlpha = Math.min(1, a); g.fillStyle = col;
+    g.beginPath(); g.arc(x, y, Math.max(0.3, r), 0, Math.PI * 2); g.fill();
+    g.restore();
   },
   /* a building's own silhouette flashed in the card's light (R.glow over its
      tinted picture): the building turns gold in its own light and shade and
@@ -477,24 +504,50 @@ Object.assign(Deck.FX, {
       const cx = (x0 + x1) / 2, sx = Math.sign(toward - cx) || 1;
       return { x: Math.round(cx + sx * (x1 - x0) * 0.3), y: Math.round(top + (bot - top) * 0.3) };
     },
-    // one string: a sagging cord, its pennants hung every 7 px in the dye, cream and the dye's shade
+    /* one string: a sagging cord, its pennants hung every 9 px in the dye,
+       cream and the dye's shade — drawn at the DEVICE'S own resolution (the
+       operator's ruling of 2026-10-27 on the map's effects: "higher pixel
+       count"): the cord one smooth curve, each pennant a little swallowtail
+       of cloth at fractional coordinates, fluttering smoothly on the breeze
+       (it was a cord of one-world-pixel squares, a stair at a phone's zoom,
+       and pennants that flicked a whole pixel at a time) */
     string(g, a, b, k, seed, now, dye) {
       const L = Math.hypot(b.x - a.x, b.y - a.y);
       if (L < 6 || k <= 0) return;
-      const sag = Math.min(14, 4 + L * 0.12), n = Math.ceil(L), upto = Math.floor(n * Math.min(1, k));
+      const sag = Math.min(14, 4 + L * 0.12), n = Math.ceil(L), kk = Math.min(1, k), upto = n * kk;
       const at = t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t + sag * 4 * t * (1 - t) });
-      g.fillStyle = '#4a3420';
-      for (let i = 0; i <= upto; i++) { const q = at(i / n); g.fillRect(Math.round(q.x), Math.round(q.y), 1, 1); }
+      const dv = R.fxDev(g);
+      g.save();
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      // the cord, strung out as far as it has got
+      g.strokeStyle = '#4a3420'; g.lineWidth = Math.max(dv * 1.1, 0.7);
+      g.beginPath();
+      const segs = Math.max(4, Math.ceil(24 * kk));
+      for (let i = 0; i <= segs; i++) { const q = at(kk * i / segs); if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); }
+      g.stroke();
       const COL = [dye.body, '#f2e6cd', dye.accent];
       for (let j = 1, i = 5; i < upto - 3; i += 9, j++) {
-        const q = at(i / n), fl = Math.sin(now * 5 + j * 1.3 + seed) > 0.35 ? 1 : 0;   // a flutter of one pixel, in steps
-        const x = Math.round(q.x), y = Math.round(q.y) + 1;
-        g.fillStyle = COL[j % 3];
-        g.fillRect(x - 3, y, 7, 2); g.fillRect(x - 2 + fl, y + 2, 5, 1); g.fillRect(x - 1 + fl, y + 3, 3, 1); g.fillRect(x + fl, y + 4, 1, 1);
-        g.fillStyle = '#2a1e12'; g.fillRect(x - 3, y, 1, 2);   // the fold where it hangs on the cord
+        // where it hangs, and the cord's own slope there (the pennant hangs square to it)
+        const t = i / n, q = at(t), q2 = at(Math.min(1, t + 1 / n));
+        const ang = Math.atan2(q2.y - q.y, q2.x - q.x), fl = Math.sin(now * 5 + j * 1.3 + seed) * 0.9;
+        g.save();
+        g.translate(q.x, q.y + 0.4); g.rotate(ang * 0.8);
+        g.beginPath();
+        g.moveTo(-3.3, 0); g.lineTo(3.3, 0);
+        g.quadraticCurveTo(2.2 + fl * 0.4, 2.2, 0.9 + fl, 4.9);
+        g.lineTo(fl * 0.7, 3.7); g.lineTo(-0.9 + fl, 4.9);
+        g.quadraticCurveTo(-2.2 + fl * 0.4, 2.2, -3.3, 0);
+        g.closePath();
+        g.fillStyle = COL[j % 3]; g.fill();
+        g.lineWidth = Math.max(dv * 0.8, 0.35); g.strokeStyle = 'rgba(42,30,18,0.55)'; g.stroke();
+        // the fold where it hangs on the cord
+        g.strokeStyle = '#2a1e12'; g.lineWidth = Math.max(dv, 0.6);
+        g.beginPath(); g.moveTo(-3.1, 0.5); g.lineTo(3.1, 0.5); g.stroke();
+        g.restore();
       }
+      g.restore();
     },
-    // the hall's hearth (the dooryard fire at L1, the roof's hearth above it): a flare of hard-pixel fire
+    // the hall's hearth (the dooryard fire at L1, the roof's hearth above it): where its fire flares
     hearth(tc) {
       const TL = CFG.TILE, sz = Bld.size(tc), bx = tc.x * TL, by = tc.y * TL, bw = sz * TL;
       const a = R.smokeAnchor(R.CAMPFIRE_AT || {}, 'tc', tc.level) || R.smokeAnchor(R.SMOKE_AT, 'tc', tc.level);
@@ -522,10 +575,13 @@ Object.assign(Deck.FX, {
       list.forEach((b, j) => {
         const a = this.eave(tc, Bld.cx(b) * TL), c = this.eave(b, hx);
         if (Math.max(a.x, c.x) < v.x0 || Math.min(a.x, c.x) > v.x1 || Math.max(a.y, c.y) + 20 < v.y0 || Math.min(a.y, c.y) > v.y1) return;
-        // strung out from the hall on a fresh play, one string after another
+        // strung out from the hall on a fresh play, one string after another;
+        // taken down smoothly over the card's last half day
         const k = p >= 0 ? Math.max(0, Math.min(1, (p - 0.12 - j * 0.1) / 0.3)) : 1;
-        if (fade < 1 && GrowFX.step(fade) <= 0) return;
+        if (fade <= 0.01) return;
+        g.save(); g.globalAlpha = fade;
         this.string(g, a, c, k, b.id, now, dye);
+        g.restore();
       });
       // the hearth flares on the play, and now and then for the twelve days
       const h = this.hearth(tc);
@@ -533,7 +589,7 @@ Object.assign(Deck.FX, {
       const beat = (now * 7.7) | 0;
       if (p >= 0 && p < 1) {
         const k = p < 0.12 ? p / 0.12 : p < 0.6 ? 1 : (1 - p) / 0.4;
-        if (k > 0.05) this.flare(g, h, TL * (0.25 + 0.3 * GrowFX.step(k)), beat, 5, now);
+        if (k > 0.05) this.flare(g, h, TL * (0.25 + 0.3 * k), beat, 5, now);
       } else {
         const ph = (now / 4.5 + tc.id * 0.31) % 1;
         if (ph < 0.16) this.flare(g, h, TL * (ph < 0.04 || ph > 0.12 ? 0.22 : 0.32), beat, 2, now);
@@ -541,7 +597,7 @@ Object.assign(Deck.FX, {
     },
     /* the harvest bursts: from every hand at work and every working field in
        view, a fountain of golden grain thrown up and falling back, inside a
-       warm ring of dots on the ground (Bronze: warm, a moment, not a storm) */
+       warm ring of light on the ground (Bronze: warm, a moment, not a storm) */
     show: {
       ms: 2000, layer: 'world',
       draw(g, s, p) {
@@ -734,7 +790,7 @@ Object.assign(Deck.FX, {
         if (pl > 0) {
           const topY = R.cam.y - 60 / R.cam.z, h = (cy - topY) * F.ease(p / 0.08);
           F.column(g, cx, cy, cy - h, TL * (1.5 + Math.sin(s.t * 8) * 0.1) * pl, pl);
-          // it lands in a ring of dots, never a pool (a warm patch reads as sand)
+          // it lands in a ring of light, never a pool (a warm patch reads as sand)
           F.ring(g, cx, cy + TL * 0.4, TL * 1.1, 'gold', 0.9 * pl, 2, 0.5);
         }
         for (let k = 0; k < 3; k++) {
@@ -827,7 +883,7 @@ Object.assign(Deck.FX, {
      "two dotted white ellipses and a few specks" on the hall, then six days
      with nothing in the world showing it). The card lands on the works
      nearest the view (dest), and every works and every builder's hammer in
-     sight throws hard-pixel gold sparks and a '×2'; with nothing being built
+     sight throws sparks of gold light and a '×2'; with nothing being built
      anywhere, the '×2' bursts off the Build tab — the next works laid are the
      ones it quickens. While it runs, each works wears a small gold hammer and
      its builders throw a spark on every swing — on the strike frame of their
@@ -992,8 +1048,10 @@ Object.assign(Deck.FX, {
           // tab), where the next works are laid — at the world's own scale
           const t = s.at || (s.at = this.tabPt());
           if (!t) return;
-          const d = R.dpr || 1, sc = Math.max(2, Math.round(R.cam.z * d * 1.25));
-          g.save(); g.translate(Math.round(t.x * d), Math.round(t.y * d)); g.scale(sc, sc);
+          // (a smooth scale: the light is drawn at the device's own resolution,
+          // so nothing here needs the art's whole-pixel steps)
+          const d = R.dpr || 1, sc = Math.max(1.5, R.cam.z * d * 1.25);
+          g.save(); g.translate(t.x * d, t.y * d); g.scale(sc, sc);
           this.sparks(g, 0, -4, Math.min(1, p / 0.7), 7, 16, 0.8);
           this.pip(g, 0, -12, p);
           g.restore();
@@ -1278,11 +1336,16 @@ Object.assign(Deck.FX, {
           // the rim: lit toward the sun, dark on the side turned away
           const rim = sm(0.62, 0.98, r);
           col = lit > 0.2 ? mix(col, M[2], rim * sm(0.2, 0.6, lit)) : mix(col, M[0], rim * sm(-0.1, -0.6, lit));
+          // the murk boils: lumps of it lighter and darker across the face (a
+          // smooth sphere alone read as a ball, not as weather)
+          const lump = 0.5 + 0.25 * Math.sin(ex * 7.1 + v) * Math.cos(ey * 6.3 - v * 2) + 0.25 * Math.sin((ex + ey) * 11.7 + v * 3);
+          col = col.map(c => Math.max(0, Math.min(255, c * (0.9 + 0.2 * lump))));
           // a sick fleck or two, carried in its body
           const fl = Math.sin(px * 0.21 + v * 3) * Math.cos(py * 0.17 + v) > 0.985 && r < 0.8 ? 1 : 0;
           if (fl) col = M[6];
           const i = (py * S2 + px) * 4;
-          d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = Math.round(255 * sm(1, 1 - 2 / S2, r));
+          // its rim feathered into the air (a hard disc edge read as a ball)
+          d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = Math.round(255 * sm(1, 0.86, r));
         }
         x.putImageData(im, 0, 0);
         out.push(c);
@@ -1322,15 +1385,26 @@ Object.assign(Deck.FX, {
       }
       if (k <= 0.05) return;
       const spr = R.wornSprite ? R.wornSprite(b) : R.bldSprite(b);
+      g.save();
       if (spr && spr.width > 0) {
-        g.globalAlpha = F.step(0.6 * k);
+        // (its strength runs smoothly as the pall's edge passes — the operator's
+        // ruling on the effects: it withered in hard fifths)
+        g.globalAlpha = 0.6 * k;
         R.blitBld(g, R.tintOf(spr, '#6b6140'), b.x * TL, b.y * TL, sz * TL, sz * TL);
       }
-      g.globalAlpha = F.step(0.75 * k);
-      for (let m = 0; m < 8 * sz * sz; m++) {
-        g.fillStyle = m % 3 ? '#6e6248' : '#9a8f62';
-        g.fillRect(F.snap((b.x + F.hash(m, b.id) * sz) * TL), F.snap((b.y + 0.2 + F.hash(b.id, m * 3) * (sz - 0.2)) * TL), 2, 2);
+      // dull specks of the rot over the plot: round, at the device's own
+      // resolution (they were 2px squares on the art's grain)
+      g.globalAlpha = 0.75 * k;
+      for (let pass = 0; pass < 2; pass++) {
+        g.fillStyle = pass ? '#9a8f62' : '#6e6248';
+        g.beginPath();
+        for (let m = pass; m < 8 * sz * sz; m += 2) {
+          const x = (b.x + F.hash(m, b.id) * sz) * TL, y = (b.y + 0.2 + F.hash(b.id, m * 3) * (sz - 0.2)) * TL, r = 0.75 + 0.35 * F.hash(m, b.id + 9);
+          g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2);
+        }
+        g.fill();
       }
+      g.restore();
       for (let m = 0; m < 4; m++) {
         const ph = (t * 0.22 + F.hash(b.id, m + 9)) % 1;
         F.mote(g, (b.x + 0.15 + F.hash(m, b.id + 4) * (sz - 0.3)) * TL + Math.sin(t * 1.3 + m * 2) * 3,
@@ -1457,12 +1531,12 @@ Object.assign(Deck.FX, {
        DROP to come down on it (the moment it rises), and FLASH after */
     BEAT0: 0.18, BEATS: 0.48, RUN: 0.05, DROP: 0.03, FLASH: 0.2,
     /* THE TOWN WAKES KNOWING HOW. A pillar of golden light stands up out of
-       the hall into a sky with a sun burst at the top of the world, rays of
-       short dashes fanning from it; the ground shakes as it lands and the
+       the hall into a sky with a sun burst at the top of the world, slender
+       rays fanning from it; the ground shakes as it lands and the
        hall rises in it; then the light runs out along the ground to every
        building — nearest first, ONE AT A TIME — and on each a small beam
        comes down out of the sky, and the building rises in it: its own new
-       art, flashed gold, a ring of dots, sparks, its own small bell. Until
+       art, flashed gold, a ring of light, sparks, its own small bell. Until
        its beam lands each wears the look it had before (show.held). */
     show: {
       ms: 5800, layers: ['world', 'sky'],
@@ -1478,18 +1552,20 @@ Object.assign(Deck.FX, {
         if (layer === 'sky') {
           const e = F.env(p, 0.02, 0.14, 0.7, 0.98);
           if (e <= 0) return;
-          const sc = F.toScreen(s.x, s.foot), W = R.cv.width, H = R.cv.height, dpr = R.dpr || 1;
-          const ox = Math.max(0, Math.min(W, sc.x)), px = Math.max(2, Math.round(4 * dpr));
+          const sc = F.toScreen(s.x, s.foot), W = R.cv.width, H = R.cv.height;
+          const ox = Math.max(0, Math.min(W, sc.x));
           // where the pillar meets the top of the world: a burst of the card's
-          // light in three stepped discs — a halo of gold dots round a gold
-          // disc round a cream heart. It comes and goes by SIZE at full
-          // strength: faded through its faint steps the gold went olive
-          const k = F.step(e);
-          F.ring(g, ox, 0, H * 0.24 * k, 'gold', 0.8, px, 1);
-          F.ring(g, ox, 0, H * 0.2 * k, 'gold', 0.45, px, 1, null, 0.5);
-          for (const [r, a] of [[0.15, 0.62], [0.075, 1]])
-            R.glow(g, a, () => R.pxDisc(g, ox, 0, H * r * k, px, 1));
-          R.glowHot(g, 0.75, () => R.pxDisc(g, ox, 0, H * 0.035 * k, px, 1));
+          // light — a great soft halo round a gold disc round a white-hot
+          // heart, a fine corona ring and a fainter one past it, all smooth at
+          // the device's own resolution (the operator's ruling of 2026-10-27:
+          // it was three stepped discs and two rings of dots on a 2px grid).
+          // It comes and goes by SIZE at full strength: faded through its
+          // faint end the gold went olive
+          const k = F.ease(e);
+          R.fxGlow(g, ox, 0, H * 0.26 * k, 0.62, 'gold', { soft: 1.35 });
+          R.fxRing(g, ox, 0, H * 0.2 * k, 0.75, 'gold', { css: 1.6 });
+          R.fxRing(g, ox, 0, H * 0.245 * k, 0.45, 'gold', { css: 1 });
+          R.fxGlow(g, ox, 0, H * 0.12 * k, 1, 'gold', { soft: 1.25, core: 0.4 });
           F.rays(g, ox, -H * 0.04, 15, 0.2, 'gold', 0.9 * e, s.t, 0.29);
           F.glitter(g, 56, 'gold', e, s.t);
           return;
@@ -1508,18 +1584,18 @@ Object.assign(Deck.FX, {
           // it stands up out of the hall's middle, so the hall's own face shows lit beneath it
           const base = s.y * TL, topY = R.cam.y - 60 / R.cam.z, h = (base - topY) * F.ease(up), w = TL * (1.7 + Math.sin(s.t * 9) * 0.12) * thin;
           // NO POOL at its foot (a warm patch on the meadow reads as sand, a
-          // pale one added over it as lime): it lands in two rings of dots and
+          // pale one added over it as lime): it lands in two rings of light and
           // the three that keep rolling out below
           F.ring(g, cx, foot, TL * (0.85 + up * 0.45), 'gold', 0.95 * thin, 2, 0.5);
           F.ring(g, cx, foot, TL * (0.5 + up * 0.3), 'gold', thin, 2, 0.5, null, 0.5);
           F.column(g, cx, base, base - h, w, 1);
-          // the light climbing it: hot bars running up the cream heart
-          R.glowHot(g, 0.5 * thin, () => {
-            for (let k = 0; k < 16 && h > 4; k++) {
-              const yy = base - ((s.t * 240 + k * 64) % h);
-              g.fillRect(F.snap(cx - w * 0.28), F.snap(yy), Math.max(2, F.snap(w * 0.56)), 2);
-            }
-          });
+          // the light climbing it: hot pulses running up its heart, each a
+          // soft drawn-out bead of white-gold light, soft at both ends (they
+          // were hard bars on the 2px grain, added white)
+          for (let k = 0; k < 16 && h > 24; k++) {
+            const yy = base - ((s.t * 240 + k * 64) % h);
+            R.fxGlow(g, cx, yy, w * 0.2, 0.75 * thin, 'white', { squash: 2.6, soft: 1.5, core: 0.3 });
+          }
           for (let k = 0; k < 3; k++) {
             const q = (p * 2.2 + k / 3) % 1;
             F.ring(g, cx, foot, TL * (0.8 + q * 4.6), 'gold', (1 - q) * 0.95 * thin, 2, 0.5, vp);
@@ -1534,22 +1610,20 @@ Object.assign(Deck.FX, {
           const bx = it.x * TL, by = it.y * TL;
           if (p < land) {
             const k = (p - a0) / E.RUN;
-            // the runner: a cream head and a gold trail fading down the ramp
-            g.save();
-            for (let m = 5; m >= 0; m--) {
-              const km = Math.max(0, k - m * 0.05), x = cx + (bx - cx) * km, y = foot + (by - foot) * km;
-              if (x < vp.x0 || x > vp.x1 || y < vp.y0 || y > vp.y1) continue;
-              if (!R.inkOn(g, 1 - m * 0.15)) continue;
-              const sz = m ? 2 : 4;
-              g.fillRect(F.snap(x) - sz / 2, F.snap(y) - sz / 2, sz, sz);
-            }
-            g.restore();
+            // the runner: a streak of the gold along the ground, white-hot at
+            // its head and gone at its tail (it was a cream square and a chain
+            // of gold cells on the 2px grain)
+            const kt = Math.max(0, k - 0.3), hx = cx + (bx - cx) * k, hy = foot + (by - foot) * k;
+            const tx = cx + (bx - cx) * kt, ty = foot + (by - foot) * kt;
+            if (Math.max(hx, tx) < vp.x0 || Math.min(hx, tx) > vp.x1 || Math.max(hy, ty) < vp.y0 || Math.min(hy, ty) > vp.y1) continue;
+            F.streak(g, tx, ty, hx, hy, 4.2, 0.95, 'gold');
+            R.fxDot(g, hx, hy, 1.8, 1, 'gold');
             continue;
           }
           const k = (p - land) / E.FLASH, kd = E.DROP / E.FLASH;
           if (k >= 1 || bx < vp.x0 || bx > vp.x1 || by < vp.y0 - TL * 3 || by > vp.y1 + TL) continue;
           // its own beam: it comes DOWN out of the sky onto the roof, holds,
-          // and thins away — narrow, tapering in three stepped widths
+          // and thins away — narrow and soft across its width
           const bf = by + it.sz * TL * 0.5, top = Math.min(bf - TL * 2, R.cam.y - 60 / R.cam.z);
           const drop = F.ease(Math.min(1, k / kd)), fade = k < 0.45 ? 1 : 1 - (k - 0.45) / 0.55;
           F.column(g, bx, top + (bf - top) * drop, top, TL * (0.3 + it.sz * 0.22) * fade, fade);
@@ -1640,9 +1714,11 @@ Object.assign(Deck.FX, {
     },
     // one dressed block, its foot at (x, y), world px: a dark joint all
     // round, the lit cap, the face with its shaded foot, the flank in
-    // shadow, a vein, and now and then a chipped corner
+    // shadow, a vein, and now and then a chipped corner — ART, one world
+    // pixel a cell, laid on whole world pixels (the 2px grid made its fall
+    // jump in steps of two)
     block(g, x, y, k) {
-      const M = this.ramp(), F = GrowFX, x0 = F.snap(x) - 6, y0 = F.snap(y) - 10;
+      const M = this.ramp(), x0 = Math.round(x) - 6, y0 = Math.round(y) - 10;
       g.fillStyle = M[0]; g.fillRect(x0, y0, 12, 10);
       g.fillStyle = M[4]; g.fillRect(x0 + 1, y0 + 1, 10, 2);
       g.fillStyle = M[3]; g.fillRect(x0 + 1, y0 + 3, 8, 5);
@@ -1706,14 +1782,15 @@ Object.assign(Deck.FX, {
           // at the end the courses settle INTO the works, a row at a time, never a fade
           if (sink > 0 && row >= Math.round((1 - sink) * rows.length)) continue;
           this.block(g, bx, y, k);
-          // a landing throws chips of the stone: opaque, each one gone in its turn
+          // a landing throws chips of the stone: small faceted shards of the
+          // marble tumbling out either side, each one gone in its turn — at
+          // the device's own resolution (they were 2px squares on the grain)
           if (q >= 1 && q < 1.6) {
-            const d = (q - 1) / 0.6;
-            for (let m = 0; m < 4; m++) {
+            const d = (q - 1) / 0.6, TXs = F.tx('shard');
+            for (let m = 0; m < 4 && TXs; m++) {
               if (d > 0.45 + m * 0.15) continue;
               const side = m < 2 ? -1 : 1, fly = 5 + d * 9 * (1 + (m & 1));
-              g.fillStyle = M[m & 1 ? 2 : 4];
-              g.fillRect(F.snap(bx + side * fly), F.snap(landY - 3 - d * 7 * (1 - d) * (1 + (m & 1)) + d * 3), 2, 2);
+              TXs.shard(g, bx + side * fly, landY - 3 - d * 7 * (1 - d) * (1 + (m & 1)) + d * 3, 1.7 + (m & 1) * 0.6, d * 7 * side + m, M[m & 1 ? 2 : 4], M[4], M[0]);
             }
           }
         }
@@ -1733,7 +1810,8 @@ Object.assign(Deck.FX, {
         rows = [[{ t: 'YOUR WONDER RISES TWICE AS FAST', col: cream }]];
       } else {
         title = 'THE WONDER’S PRICE';
-        const strike = F.step(Math.min(1, Math.max(0, (p - 0.36) / 0.12))), fresh = p > 0.5, hot = p > 0.5 && p < 0.56;
+        // the old price is struck through from the left, smoothly
+        const strike = F.ease(Math.min(1, Math.max(0, (p - 0.36) / 0.12))), fresh = p > 0.5, hot = p > 0.5 && p < 0.56;
         const run = k => s.was[k] == null ? [] : [{ t: k.toUpperCase(), col: cream }, { t: String(s.was[k]), col: dim, strike },
           { t: String(s.now[k]), col: !fresh ? 'rgba(0,0,0,0)' : hot ? '#fff3cf' : gold }];
         rows = [run('food').concat(run('wood')), run('stone').concat(run('gold')), [{ t: 'AND IT WILL RISE TWICE AS FAST', col: cream }]];
@@ -1809,12 +1887,15 @@ Object.assign(Deck.FX, {
     // weathered stone, lit from the upper left: outline, shade, face, lit, crest
     STONE: ['#2e2a22', '#5f574a', '#7d7363', '#9a8f7a', '#b3a78f', '#ddd2b8'],
     /* a cup-and-ring carved in a face — the old people's sign, cut dark with
-       a lit lower lip — and, `glow` > 0, gold light welling up out of the
-       carving in the ramp's ink, laid opaque (an added gold over the stone
-       went lime). `big` cuts a second ring. */
+       a lit lower lip (the stone's ART, its cells on the stone's own grain)
+       — and, `glow` > 0, gold light welling up out of the carving: lines of
+       the gold's light along its rings and a soft bead in its cup, at the
+       device's own resolution, its hue tied to its light (it was the ramp's
+       ink laid over the cut cells, a ring of 2px squares). `big` cuts a
+       second ring. */
     carving(g, mx, my, big, glow) {
-      const F = GrowFX, cut = [[mx, my]];
-      for (const rr of big ? [4, 8] : [4]) {
+      const F = GrowFX, cut = [[mx, my]], rings = big ? [4, 8] : [4];
+      for (const rr of rings) {
         const nd = rr > 4 ? 14 : 8;
         for (let k = 0; k < nd; k++) {
           const th = k / nd * Math.PI * 2;
@@ -1825,12 +1906,11 @@ Object.assign(Deck.FX, {
       for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
       g.fillStyle = '#a99d85';
       for (const [x, y] of cut) g.fillRect(x, y + 2, 2, 1);
-      const ink = glow > 0 && R.goldInk(glow);
-      if (ink) {
-        g.fillStyle = ink;
-        for (const [x, y] of cut) g.fillRect(x, y, 2, 2);
-        const hot = R.goldInk(Math.min(1, glow + 0.4));
-        if (hot) { g.fillStyle = hot; g.fillRect(mx, my, 2, 2); }
+      const TXl = glow > 0.01 && F.tx('line');
+      if (TXl) {
+        const cx = mx + 1, cy = my + 1;
+        for (const rr of rings) TXl.line(g, gg => { gg.beginPath(); gg.ellipse(cx, cy, rr, rr * 0.9, 0, 0, Math.PI * 2); }, Math.min(1, glow), 'gold', { css: 1.1 });
+        R.fxGlow(g, cx, cy, 3.4, Math.min(1, glow + 0.2), 'gold', { soft: 1.6, core: 0.45 });
       }
     },
     /* one standing stone, its foot at (gx, gy), risen `q` of its height `bh`:
@@ -1920,47 +2000,58 @@ Object.assign(Deck.FX, {
           if (layer !== 'ground') return;
           /* the Wonder's 3×3 foundation surfaces before the hall — the slabs
              lift out of the grass in turn, the carving on the middle one
-             lights, and they go back under it: a rise and a fall in hard
-             steps, never a fade */
+             lights, and they go back under it: a rise and a fall (the stone's
+             art on its own whole cells, its light gliding), never a fade */
           const n = 3, x0 = cx - n * TL / 2, y0 = foot + TL * 0.25;
           for (let ty = 0; ty < n; ty++) for (let tx = 0; tx < n; tx++) {
             const k = tx + ty * n, up = F.ease((p - 0.05 - k * 0.025) / 0.2), down = p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78 - (8 - k) * 0.012) / 0.12);
             const q = Math.min(up, down);
             if (q <= 0.05) continue;
-            const glow = k === 4 ? F.step(F.env(p, 0.3, 0.38, 0.7, 0.82)) : 0;
+            const glow = k === 4 ? F.env(p, 0.3, 0.38, 0.7, 0.82) : 0;
             D.slab(g, x0 + tx * TL + TL * 0.04, y0 + ty * TL * 0.86 + TL * 0.04, TL * 0.92, F.snap(6 * q), k * 7 + 3, glow, k === 4);
           }
+          // the earth the slabs shrug off: round grains of it, falling away
           if (p < 0.3) for (let m = 0; m < 10; m++) {
             const h = F.hash(m, 41), kk = F.ease(p / 0.3);
-            F.mote(g, x0 + h * n * TL, y0 + F.hash(41, m) * n * TL * 0.86 - kk * 10, m % 2 ? '#6e5638' : '#8a6e46', null, 1 - kk);
+            F.speck(g, x0 + h * n * TL, y0 + F.hash(41, m) * n * TL * 0.86 - kk * 10, 0.9 + 0.4 * F.hash(m, 43), m % 2 ? '#6e5638' : '#8a6e46', 1 - kk);
           }
           return;
         }
         const n = s.sz, x0 = cx - n * TL / 2, y0 = foot - n * TL, mid = foot - n * TL / 2;
         if (layer === 'ground') {
           // 1. light breaking along the works' outline, just outside it, and
-          // running in from the ring along the cracks — in the ramp's ink,
-          // laid opaque (gold added over the earth went lime)
-          const cr = F.env(p, 0, 0.1, 0.55, 0.8);
-          if (cr > 0) {
-            g.save();
-            if (R.inkOn(g, 0.8 * cr)) {
-              for (let d = -4; d < n * TL + 4; d += 4) {
-                g.fillRect(F.snap(x0 + d), F.snap(y0) - 4, 2, 2); g.fillRect(F.snap(x0 + d), F.snap(foot) + 2, 2, 2);
-                g.fillRect(F.snap(x0) - 4, F.snap(y0 + d), 2, 2); g.fillRect(F.snap(x0 + n * TL) + 2, F.snap(y0 + d), 2, 2);
+          // running in from the ring along the cracks — lines of the gold's
+          // light at the device's own resolution, the hue tied to the light
+          // (gold added over the earth went lime; and it was dotted lines of
+          // 2px cells on the art's grain)
+          const cr = F.env(p, 0, 0.1, 0.55, 0.8), TXl = F.tx('line');
+          if (cr > 0 && TXl) {
+            // the outline: drawn round from its north-west corner as the light finds it
+            const len = Math.min(1, cr * 1.6), P0 = [[x0 - 3, y0 - 3], [x0 + n * TL + 3, y0 - 3], [x0 + n * TL + 3, foot + 3], [x0 - 3, foot + 3]];
+            TXl.line(g, gg => {
+              gg.beginPath(); gg.moveTo(P0[0][0], P0[0][1]);
+              let left = len * 4;
+              for (let i = 1; i <= 4 && left > 0; i++, left--) {
+                const a = P0[i - 1], b = P0[i % 4], f = Math.min(1, left);
+                gg.lineTo(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f);
               }
-            }
-            for (let c = 0; c < D.RING; c++) {
-              const r0 = D.ringAt(s, c), len = Math.min(1, cr * 1.4);
-              let x = r0.x, y = r0.y;
-              for (let st = 0; st < 10 * len; st++) {
-                x += (cx - x) * 0.09 + (F.hash(c, st) - 0.5) * 6;
-                y += (mid - y) * 0.09 + (F.hash(st, c) - 0.5) * 6;
-                const ink = R.goldInk(st % 3 ? 0.7 * cr : cr);
-                if (ink) { g.fillStyle = ink; g.fillRect(F.snap(x), F.snap(y), 2, 2); }
+            }, 0.85 * cr, 'gold', { css: 1.3 });
+            // the cracks running in from every old stone toward the middle
+            const lc = Math.min(1, cr * 1.4);
+            TXl.line(g, gg => {
+              gg.beginPath();
+              for (let c = 0; c < D.RING; c++) {
+                const r0 = D.ringAt(s, c);
+                let x = r0.x, y = r0.y;
+                gg.moveTo(x, y);
+                const steps = 10 * lc;
+                for (let st = 0; st < steps; st++) {
+                  const f = Math.min(1, steps - st);
+                  const nx = x + ((cx - x) * 0.09 + (F.hash(c, st) - 0.5) * 6) * f, ny = y + ((mid - y) * 0.09 + (F.hash(st, c) - 0.5) * 6) * f;
+                  gg.lineTo(nx, ny); x = nx; y = ny;
+                }
               }
-            }
-            g.restore();
+            }, 0.8 * cr, 'gold', { css: 1.1 });
           }
           // 2. the ring of old stones rises AROUND the works, in turn from the
           // north, clockwise — each its own height and lean — sheds the earth
@@ -1980,14 +2071,14 @@ Object.assign(Deck.FX, {
             if (q <= 0.04) continue;
             const hw = F.hash(i * 11 + 5, 2), hh = F.hash(i * 7 + 3, 9);
             const bw = F.snap(TL * (0.38 + hw * 0.18)), bh = TL * (0.6 + hh * 0.45);
-            const glow = F.step(F.env(p, 0.3, 0.38, 0.74, 0.86));
+            const glow = F.env(p, 0.3, 0.38, 0.74, 0.86);
             D.standing(g, F.snap(at.x), F.snap(at.y), bw, bh, q, i * 13 + 1, glow);
-            if (q < 1 && p < 0.8) for (let m = 0; m < 4; m++)   // earth falling off the rising stone
-              F.mote(g, at.x + (F.hash(m, i * 5) - 0.5) * bw, at.y - bh * q + q * 10 * (m + 1), m % 2 ? '#6e5638' : '#8a6e46', null, 1 - q);
+            if (q < 1 && p < 0.8) for (let m = 0; m < 4; m++)   // earth falling off the rising stone: round grains of it
+              F.speck(g, at.x + (F.hash(m, i * 5) - 0.5) * bw, at.y - bh * q + q * 10 * (m + 1), 0.9 + 0.3 * (m & 1), m % 2 ? '#6e5638' : '#8a6e46', 1 - q);
           }
           return;
         }
-        // 3. the pillar out of the middle, and rings of dots across the ground
+        // 3. the pillar out of the middle, and rings of light across the ground
         const pl = F.env(p, 0.28, 0.36, 0.7, 0.9);
         if (pl > 0) {
           const topY = R.cam.y - 60 / R.cam.z;

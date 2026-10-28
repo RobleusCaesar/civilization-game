@@ -60,8 +60,9 @@
                        (another card's factor on the rival's arrows never
                        dresses them as the watchfires) and so is the fog gate
      WHAT IT STANDS ON a burned building wears its own picture under a
-                       card's light; one world-sized copy per sprite whatever
-                       the colours; the goods bring the hall on screen; the
+                       card's light, laid at the device's size in a few shared
+                       scratches (never a copy per sprite or colour); the
+                       goods bring the hall on screen; the
                        caravan's road is land the cart can carry, shortened
                        before water, off the row people stand on, and with
                        no road the load still comes; a charge kept under
@@ -834,14 +835,22 @@ await p.evaluate(({ TOWN }) => {
 // ---------------- 9. THE PICTURE ----------------
 {
   const r = await p.evaluate(() => {
-    const out = { ops: {}, live: {}, threw: [] };
+    const out = { ops: {}, cover: {}, live: {}, threw: [] };
     const ce = console.error, caught = [];
     console.error = function () { caught.push(Array.from(arguments).map(String).join(' ')); return ce.apply(this, arguments); };
-    // count what a show actually lays down: hard rects and blits
+    // count what a show actually lays down: rects, blits, filled and stroked
+    // paths and words (the operator's ruling of 2026-10-27 draws a card's
+    // light as smooth paths at the device's own resolution, where this
+    // counted hard rects and blits alone)
     const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage;
+    const fi = P2.fill, st = P2.stroke, ftx = P2.fillText, stx = P2.strokeText;
     let ops = 0;
     P2.fillRect = function () { ops++; return fr.apply(this, arguments); };
     P2.drawImage = function () { ops++; return di.apply(this, arguments); };
+    P2.fill = function () { ops++; return fi.apply(this, arguments); };
+    P2.stroke = function () { ops++; return st.apply(this, arguments); };
+    P2.fillText = function () { ops++; return ftx.apply(this, arguments); };
+    P2.strokeText = function () { ops++; return stx.apply(this, arguments); };
     try {
       __tw.fresh('town-draw');
       Screens.show('playing'); S.paused = true;
@@ -901,6 +910,28 @@ await p.evaluate(({ TOWN }) => {
           try { dcs.call(R, g, 0, layer); } catch (e) { out.threw.push(id + '@' + layer + ': ' + e); }
           g.restore();
         }
+        // …and the frame it covers at its height: every layer drawn alone on
+        // a clean canvas through the world's own transform, the pixels it laid
+        const cc = document.createElement('canvas');
+        cc.width = R.cv.width; cc.height = R.cv.height;
+        const gc = cc.getContext('2d'), zz = R.cam.z * (R.dpr || 1);
+        let cover = 0;
+        for (const pp of PS) {
+          started.t = pp * started.ms / 1000;
+          if (R.cardShows.indexOf(started) < 0) R.cardShows.push(started);
+          gc.setTransform(1, 0, 0, 1, 0, 0); gc.clearRect(0, 0, cc.width, cc.height);
+          for (const layer of layers) {
+            gc.save();
+            if (layer === 'sky') gc.setTransform(1, 0, 0, 1, 0, 0); else gc.setTransform(zz, 0, 0, zz, -R.cam.x * zz, -R.cam.y * zz);
+            try { dcs.call(R, gc, 0, layer); } catch (e) { out.threw.push(id + '@' + layer + ': ' + e); }
+            gc.restore();
+          }
+          const dd = gc.getImageData(0, 0, cc.width, cc.height).data;
+          let n = 0;
+          for (let i = 3; i < dd.length; i += 4) if (dd[i] > 0) n++;
+          cover = Math.max(cover, n);
+        }
+        out.cover[id] = kept ? cover : 0;
         out.ops[id] = kept ? peak : 0;
       }
       R.drawCardShows = dcs;
@@ -941,7 +972,7 @@ await p.evaluate(({ TOWN }) => {
       out.drained = R.cardShows.length === 0;
       out.inS = /cardShows|_glints/.test(JSON.stringify(S));
     } finally {
-      P2.fillRect = fr; P2.drawImage = di; console.error = ce;
+      P2.fillRect = fr; P2.drawImage = di; P2.fill = fi; P2.stroke = st; P2.fillText = ftx; P2.strokeText = stx; console.error = ce;
     }
     out.caught = caught.filter(m => /card show|card look/.test(m));
     // every voice is synthesized, gapped, and plays without a fault
@@ -957,7 +988,14 @@ await p.evaluate(({ TOWN }) => {
   ck('everyCardHasItsOwnMomentInTheWorld', shown.length === 9 && shown.every(([, n]) => n > 0) && !r.threw.length && !r.caught.length,
     shown.map(([id, n]) => id + ' ' + (n < 0 ? 'NOT STARTED' : n === 0 ? 'DROPPED' : n + ' marks at its height')).join(', ') +
       (r.threw.length ? ' | ' + r.threw.join('; ') : '') + (r.caught.length ? ' | ' + r.caught.join('; ') : ''));
-  ck('andEveryMomentIsMoreThanAGlint', shown.every(([, n]) => n >= 40), 'at least 40 hard marks at its height, every one');
+  /* (measured as the frame it COVERS at its height — device pixels the show
+     alone lays down, drawn on a clean canvas through the world's transform —
+     where it counted 40 hard rects: under the operator's ruling of 2026-10-27
+     a band of light is one smooth path where the hard look cut it into a
+     dozen cells, so a count of marks no longer says how much is seen. A
+     single glint covers a few hundred device px; a moment, thousands) */
+  ck('andEveryMomentIsMoreThanAGlint', Object.keys(r.cover).length === 9 && Object.values(r.cover).every(n => n >= 3000),
+    'device px covered at its height: ' + Object.entries(r.cover).map(([id, n]) => id + ' ' + n).join(', '));
   ck('everyRunningCardWearsItsLook', Object.values(r.live).every(n => n > 0) && r.struck,
     JSON.stringify(r.live) + `; a blow glances and the ward flares ${r.struck}`);
   ck('aFrameWithNoCardInPlayPaysNothing', r.idleCalls === 0, `${r.idleCalls} card-world passes over six frames (three with a charge in hand)`);
@@ -982,15 +1020,22 @@ await p.evaluate(({ TOWN }) => {
     const worn = R.wornSprite(burnt);
     out.worn = Bld.burnPhase(burnt) === 2 && worn !== R.bldSprite(burnt) && TX.art(burnt).spr === worn &&
       TX.crown(burnt).a.spr === worn;
-    /* (b) ONE WORLD-SIZED COPY PER SPRITE, whatever the colours: a town of
-       many kinds under Mending's flare, Stone Skin's casing and its look
-       (four colours between them) — the canvases the card draws make are
-       counted, and every copy is the size of its art rect, not the PNG's */
+    /* (b) THE LIGHT ON A BUILDING IS LAID AT THE DEVICE'S SIZE, IN A FEW
+       SHARED SCRATCHES (the operator's ruling of 2026-10-27, "higher pixel
+       count": the scan of light down a mended building and the stone a
+       building turns to are laid through its own picture at the size its
+       rect takes on the DEVICE — where this pinned one world-pixel-sized
+       copy per sprite, a quarter of the art's own detail on a phone). The
+       memory rule it stood for still holds, harder: a town of many kinds
+       under Mending's scan, Stone Skin's casing and its look makes a fixed
+       few canvases for the whole session — never one per sprite or per
+       colour — each the device size of the art it serves, and bounded */
     const town = [burnt];
     const KEYS = ['house', 'barracks', 'range', 'stable', 'siege', 'sapper', 'trade', 'warcamp', 'tower', 'wall', 'gate'];
     KEYS.forEach((k, i) => { const z = __tw.bld('P', k, 3 + (i % 4) * 3, 14 + Math.floor(i / 4) * 3); if (z) town.push(z); });
     for (const z of town) z.hp = Math.max(1, Math.round(z.maxhp * 0.5));
     R.draw(0);                       // the building pass's own variants, made before anything is counted
+    for (const z of town) if (Bld.get(z.id)) R.wornSprite(z);   // …off the screen too: they are the renderer's, not the card's
     const ce = Document.prototype.createElement;
     let inCard = 0, made = 0;
     Document.prototype.createElement = function (tag) { if (inCard && String(tag).toLowerCase() === 'canvas') made++; return ce.apply(this, arguments); };
@@ -1010,11 +1055,19 @@ await p.evaluate(({ TOWN }) => {
     } finally { Document.prototype.createElement = ce; undo.forEach(f => f()); }
     const sprites = new Set(town.filter(z => Bld.get(z.id)).map(z => TX.art(z).spr));
     out.made = made; out.K = sprites.size;
-    out.onePer = made > 0 && made <= 2 * sprites.size + 2;
-    out.sized = town.filter(z => Bld.get(z.id)).every(z => {
-      const a = TX.art(z), m = TX._mask.get(a.spr);
-      return !m || (m.c.width === Math.max(1, Math.round(a.rc.w)) && m.c.height === Math.max(1, Math.round(a.rc.h)));
-    });
+    // (a scratch made by an earlier section's play is the same one: a few for
+    // the session, whatever was drawn before)
+    const devs = TX._dev ? Object.values(TX._dev) : [];
+    out.devs = devs.length;
+    out.onePer = devs.length >= 1 && devs.length <= 4 && made <= devs.length;
+    // the widest art rect served, in the DEVICE px it takes on the frame (the
+    // world's transform: the zoom times the canvas's own ratio, 3.4 here) —
+    // a scratch holds it whole; the world-sized copy held a third of that
+    const kk = R.cam.z * (R.dpr || 1), live = town.filter(z => Bld.get(z.id));
+    const need = Math.max(...live.map(z => Math.ceil(TX.art(z).rc.w * kk)));
+    out.need = need; out.devW = devs.map(c => c.width + 'x' + c.height).join(' ');
+    out.sized = devs.length > 0 && kk > 2 && devs.every(c => c.width <= TX.DEV_MAX && c.height <= TX.DEV_MAX) &&
+      devs.some(c => c.width >= Math.min(TX.DEV_MAX, need));
     R.cardShows = []; S.deck.fx = [];
     /* (c) THE GOODS BRING THE HALL ON SCREEN: their moment lands at its door,
        so a goods card played with the camera elsewhere brings it into view
@@ -1117,8 +1170,9 @@ await p.evaluate(({ TOWN }) => {
     return out;
   });
   ck('aBurnedBuildingWearsItsOwnPictureUnderTheCardsLight', r.worn, 'the overlay and the crown are cut from R.wornSprite, not the intact roof');
-  ck('oneWorldSizedCopyPerSpriteWhateverTheColours', r.onePer && r.sized,
-    `${r.made} canvases for ${r.K} sprites under four colours (at most two each); every copy the size of its art rect ${r.sized}`);
+  ck('theLightOnABuildingIsLaidAtTheDevicesSizeInAFewScratches', r.onePer && r.sized,
+    `${r.devs} shared scratches (${r.devW}) and ${r.made} canvases made for ${r.K} sprites under four looks; ` +
+    `the widest art rect takes ${r.need} device px and a scratch holds it whole ${r.sized}`);
   ck('theGoodsBringTheHallOnScreen', r.camera, 'a goods card brings the hall into view, and Master Builders\' mark on it; without showAtHall the camera stays');
   ck('theCaravansRoadIsOneTheMapCanCarry', r.open && r.wet && r.crowd,
     `open ground: the full road ${r.open}; a channel across it cuts it short, never crossed ${r.wet} (${r.wetN}); a row of people: the next row ${r.crowd}`);
@@ -1279,11 +1333,17 @@ await p.evaluate(({ TOWN }) => {
    over grass it reads olive"; the pieces landed with no weight. Measured on
    the show itself, drawn over flat meadow at the moment every piece is
    down and the light still held: the shaft runs to the TOP of the view, it
-   TAPERS (narrower up there than at the ground), and every pixel it changes
-   is one of the tier's own ink colours laid opaque — not one blend of light
-   over grass. Each piece lands with its own dust (a place-poof), Loose
-   Stone's biggest with a jolt, the nugget's coins fly to the gold chip; and
-   the pile goes in hard steps, never at an alpha. */
+   TAPERS (narrower up there than at the ground), and — the operator's
+   ruling of 2026-10-27 on the map's effects, "higher pixel count", where
+   this pinned every pixel as one of the tier's ink colours laid opaque in
+   2px cells — it is SMOOTH LIGHT that is never olive: dozens of levels
+   across it, a fair share of it part-lit, and of what it brightens at most
+   2% yellow-green (the landing's own measure). Each piece lands with its
+   own dust (a place-poof), Loose Stone's biggest with a jolt, the nugget's
+   coins fly to the gold chip; and the pile LEAVES AS ONE PICTURE, taken
+   down smoothly (one composite at a falling alpha — never two
+   half-transparent layers, a ghost, and no longer a dither of holes on the
+   2px grain). */
 {
   const r = await p.evaluate(() => {
     const out = {}, TL = CFG.TILE, TX = Deck._townTX;
@@ -1315,11 +1375,16 @@ await p.evaluate(({ TOWN }) => {
         R.drawCardShows(cg, 0, 'world');
         const sp = sh.at, px = Math.round(sp.x * TL - R.cam.x), py = Math.round(sp.y * TL - R.cam.y);
         const d = cg.getImageData(0, 0, vw, vh).data;
-        const tone = R.LIGHT.TONE[id === 'gold_nugget' ? 'gold' : TX.STONE_LIGHT];
-        // the light's own ink; the timber's leaves drift down it in their own colours
-        const ok = new Set([tone.hot, ...tone.ramp, ...(id === 'fallen_timber' ? [...ART.PALETTE.leaf, ...ART.PALETTE.thatch] : [])].map(h => h.toLowerCase()));
-        const hex = i => '#' + [d[i], d[i + 1], d[i + 2]].map(v => v.toString(16).padStart(2, '0')).join('');
-        let blend = 0, lit = 0, topLit = 0;
+        const lum = (a, b2, e) => 0.299 * a + 0.587 * b2 + 0.114 * e, L0 = lum(...GRASS);
+        const olive = i => {
+          const L = lum(d[i], d[i + 1], d[i + 2]), mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]), q = mx - mn;
+          if (!(L - L0 >= 10 && mx && q && q / mx >= 0.2)) return false;
+          let h = mx === d[i] ? ((d[i + 1] - d[i + 2]) / q) % 6 : mx === d[i + 1] ? (d[i + 2] - d[i]) / q + 2 : (d[i] - d[i + 1]) / q + 4;
+          h *= 60; if (h < 0) h += 360;
+          return h >= 48 && h <= 115;
+        };
+        let lit = 0, topLit = 0, bright = 0, ol = 0, part = 0;
+        const levels = new Set();
         const rowW = y => { let n = 0; for (let x = px - 30; x <= px + 30; x++) { const i = (y * vw + x) * 4; if (d[i] !== GRASS[0] || d[i + 1] !== GRASS[1] || d[i + 2] !== GRASS[2]) n++; } return n; };
         const yTop = 0, yBot = Math.max(1, py - Math.round(TL * 2.4));
         for (let y = yTop; y < yBot; y++) for (let x = px - 30; x <= px + 30; x++) {
@@ -1328,23 +1393,40 @@ await p.evaluate(({ TOWN }) => {
           if (d[i] === GRASS[0] && d[i + 1] === GRASS[1] && d[i + 2] === GRASS[2]) continue;
           lit++;
           if (y < 24) topLit++;
-          if (!ok.has(hex(i))) blend++;
+          const L = lum(d[i], d[i + 1], d[i + 2]);
+          levels.add(Math.round(L));
+          if (L > L0 + 0.5) { bright++; if (olive(i)) ol++; }
+          if (L < L0 + 25) part++;
         }
         let wTop = 0, wBot = 0;
         for (let y = 0; y < 24; y++) wTop = Math.max(wTop, rowW(y));
         for (let y = yBot - 24; y < yBot; y++) wBot = Math.max(wBot, rowW(y));
-        // the pile goes in hard steps: drawn late in its dissolve, nothing translucent above its shadow line
-        sh.t = 0.93 * sh.ms / 1000;
+        // the pile leaves as one picture: through its going, the composite the
+        // pieces are laid in (TX.inked) is blitted ONCE a frame, at an alpha
+        // that falls smoothly — never two half-clear layers, never in steps
         const cv2 = document.createElement('canvas'); cv2.width = vw; cv2.height = vh;
         const c2 = cv2.getContext('2d');
-        c2.setTransform(1, 0, 0, 1, -Math.round(R.cam.x), -Math.round(R.cam.y));
-        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
-        const lab = TX.label; TX.label = () => {};   // the count is type, anti-aliased by the browser: not the pile
-        try { R.drawCardShows(c2, 0, 'world'); } finally { TX.label = lab; }
-        const d2 = c2.getImageData(px - 34, py - 40, 68, 37).data;
-        let soft = 0;
-        for (let i = 3; i < d2.length; i += 4) if (d2[i] > 0 && d2[i] < 250) soft++;
-        out[id] = { lit, topLit, blend, wTop, wBot, poofs, shakes, flown, soft };
+        const inks = () => (TX._ink || []).map(K => K && K.c).filter(Boolean);
+        const P2 = CanvasRenderingContext2D.prototype, di = P2.drawImage, leave = [];
+        let blits = null;
+        P2.drawImage = function (img) { if (blits && this === c2 && inks().includes(img)) blits.push(this.globalAlpha); return di.apply(this, arguments); };
+        const lab = TX.label; TX.label = () => {};   // the count is type: not the pile
+        try {
+          for (const q of [0.84, 0.87, 0.9, 0.93, 0.96, 0.99]) {
+            sh.t = q * sh.ms / 1000;
+            if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+            blits = [];
+            c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, vw, vh);
+            c2.setTransform(1, 0, 0, 1, -Math.round(R.cam.x), -Math.round(R.cam.y));
+            R.drawCardShows(c2, 0, 'world');
+            leave.push(blits.slice());
+          }
+        } finally { TX.label = lab; P2.drawImage = di; blits = null; }
+        const al = leave.map(b => b.length ? b[0] : null);
+        const once = leave.slice(1, -1).every(b => b.length === 1);
+        const falls = al.slice(1).every((a, i) => a == null || al[i] == null || a < al[i]) && al.filter(a => a != null && a > 0.02 && a < 0.98).length >= 3;
+        out[id] = { lit, topLit, wTop, wBot, poofs, shakes, flown, olive: bright ? ol / bright : 1, levels: levels.size, part: lit ? part / lit : 0,
+          once, falls, alphas: al.map(a => a == null ? '-' : +a.toFixed(2)).join(' ') };
       } finally { R.shakeAt = sk; if (fl) TX.flyToBar = fl; }
     }
     R.cardShows = []; R.placePoofs = [];
@@ -1354,12 +1436,14 @@ await p.evaluate(({ TOWN }) => {
   ck('theLightRunsDownFromTheTopOfTheView', E.every(([, x]) => x.topLit > 0 && x.lit > 200),
     E.map(([id, x]) => `${id}: ${x.lit} lit px above the pile, ${x.topLit} in the view's top rows`).join('; '));
   ck('andTapersToTheSky', E.every(([, x]) => x.wTop > 0 && x.wTop < x.wBot), E.map(([id, x]) => `${id} ${x.wTop} px wide up top, ${x.wBot} at the ground`).join('; '));
-  ck('everyCellOfItIsInkNeverABlend', E.every(([, x]) => x.lit > 0 && x.blend === 0), E.map(([id, x]) => `${id} ${x.blend} blended of ${x.lit}`).join('; '));
+  ck('theShaftIsSmoothLightNeverOlive', E.every(([, x]) => x.lit > 0 && x.levels >= 24 && x.part > 0.15 && x.olive <= 0.02),
+    E.map(([id, x]) => `${id}: ${x.levels} levels, ${(100 * x.part).toFixed(0)}% part-lit, ${(100 * x.olive).toFixed(2)}% of what it brightens olive`).join('; '));
   ck('eachPieceLandsInItsOwnDust', r.fallen_timber.poofs >= 4 && r.loose_stone.poofs >= 4 && r.gold_nugget.poofs >= 1,
     E.map(([id, x]) => `${id} ${x.poofs} poofs`).join('; '));
   ck('theStoneJoltsAndTheNuggetsCoinsFly', r.loose_stone.shakes >= 1 && r.gold_nugget.flown >= 3 && r.gold_nugget.flown <= 5,
     `stone shakes ${r.loose_stone.shakes}, coins flown ${r.gold_nugget.flown}`);
-  ck('thePileGoesInHardStepsNeverAnAlpha', E.every(([, x]) => x.soft === 0), E.map(([id, x]) => `${id} ${x.soft} translucent px`).join('; '));
+  ck('thePileLeavesAsOnePictureSmoothly', E.every(([, x]) => x.once && x.falls),
+    E.map(([id, x]) => `${id}: one composite a frame ${x.once}, its alpha falling ${x.alphas}`).join('; '));
 }
 
 // ---------------- 14. THE CARAVAN IS THE GAME'S OWN CAST ----------------
@@ -1428,8 +1512,9 @@ await p.evaluate(({ TOWN }) => {
    large flat translucent orange disc round every tower top for six days,
    its lower half over the meadow, and the longer reach was never seen
    again after the play. Now a building being mended is SCANNED by a band
-   of gold pixels running down it — at no beat does the light cover more
-   than a band of its silhouette; the landing's flash is hard rings with
+   of gold light running down it (smooth, laid through its own picture at
+   the device's size — the operator's ruling of 2026-10-27) — at no beat
+   does the light cover more than a band of its silhouette; the landing's flash is hard rings with
    nothing over the middle; a beacon lights nothing below its brazier; and a
    tower the player selects while the fires burn shows its longer reach —
    as the ORBIT (R.drawOrbit, pinned in tests/deck-growth.mjs §10b), the
@@ -1449,24 +1534,33 @@ await p.evaluate(({ TOWN }) => {
     const a = TX.art(house), X0 = Math.floor(a.rc.x) - 4, Y0 = Math.floor(a.rc.y) - 4, Wd = Math.ceil(a.rc.w) + 8, Ht = Math.ceil(a.rc.h) + 8;
     // the silhouette, in its own canvas: what the light may at most cover
     const sil = document.createElement('canvas'); sil.width = Wd; sil.height = Ht;
-    const sg = sil.getContext('2d'); sg.translate(-X0, -Y0); TX.paint(sg, a, '#ff00ff', 0, 1);
+    // (the building's own picture where it is drawn — the shape any overlay of it may cover)
+    const sg = sil.getContext('2d'); sg.translate(-X0, -Y0); sg.drawImage(a.spr, a.rc.x, a.rc.y, a.rc.w, a.rc.h);
     const sd = sg.getImageData(0, 0, Wd, Ht).data;
     let silN = 0; for (let i = 3; i < sd.length; i += 4) if (sd[i] > 128) silN++;
-    // the mending's light over the house at every beat it plays there
+    // the mending's light over the house at every beat it plays there — the
+    // light laid ON it (the scan); the wave's ring passing over it, the glints
+    // and the '+' over its roof are stood down for the read. Light is smooth
+    // now (the operator's ruling of 2026-10-27), so a pixel counts as lit at
+    // a quarter of its strength, not at its faintest edge
     const h = sh.hit.find(e => e.id === house.id);
     let worst = 0;
-    for (let k = 0; k <= 10; k++) {
-      const age = k / 10 * 0.6;
-      sh.t = (h.d + age * sh.speed) / sh.speed;
-      const cv = document.createElement('canvas'); cv.width = Wd; cv.height = Ht;
-      const cg = cv.getContext('2d'); cg.translate(-X0, -Y0);
-      if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
-      R.drawCardShows(cg, 0, 'world');
-      const d = cg.getImageData(0, 0, Wd, Ht).data;
-      let on = 0;
-      for (let i = 3; i < d.length; i += 4) if (d[i] > 0 && sd[i] > 128) on++;
-      worst = Math.max(worst, on / Math.max(1, silN));
-    }
+    const keep = { halo: TX.halo, spark: TX.spark, plus: TX.plus };
+    TX.halo = TX.spark = TX.plus = () => {};
+    try {
+      for (let k = 0; k <= 10; k++) {
+        const age = k / 10 * 0.6;
+        sh.t = (h.d + age * sh.speed) / sh.speed;
+        const cv = document.createElement('canvas'); cv.width = Wd; cv.height = Ht;
+        const cg = cv.getContext('2d'); cg.translate(-X0, -Y0);
+        if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+        R.drawCardShows(cg, 0, 'world');
+        const d = cg.getImageData(0, 0, Wd, Ht).data;
+        let on = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] >= 64 && sd[i] > 128) on++;
+        worst = Math.max(worst, on / Math.max(1, silN));
+      }
+    } finally { Object.assign(TX, keep); }
     out.worst = worst; out.silN = silN;
     // the landing's flash: hard rings, nothing laid over its middle
     const rules = [...document.styleSheets].flatMap(ss => { try { return [...ss.cssRules]; } catch (e) { return []; } });
@@ -1545,12 +1639,13 @@ await p.evaluate(({ TOWN }) => {
     const tab = document.getElementById('bmToggle');
     out.badge = tab ? tab.getAttribute('data-mb') : null;
     out.badgeRule = !!document.getElementById('dkMBcss');
-    // the play draws its hammers ON the hall (inked, so counted as draws over the roof)
+    // the play draws its hammers ON the hall (the masons' mark, TX.hammer —
+    // drawn at the device's own resolution; it was inked cells, counted so)
     let hamDraws = 0;
-    const g = R.cv.getContext('2d'), inked = Deck._townTX.inked;
-    Deck._townTX.inked = function () { hamDraws++; return inked.apply(this, arguments); };
+    const g = R.cv.getContext('2d'), hammer = Deck._townTX.hammer;
+    Deck._townTX.hammer = function () { hamDraws++; return hammer.apply(this, arguments); };
     try { if (sp) for (const pp of [0.3, 0.5, 0.7]) { sp.t = pp * sp.ms / 1000; g.save(); MB.show.draw.call(MB, g, sp, pp); g.restore(); } }
-    finally { Deck._townTX.inked = inked; }
+    finally { Deck._townTX.hammer = hammer; }
     out.hamDraws = hamDraws;
     // A PLACEMENT: the stages in its place, under a bronze column
     R.cardShows = [];
@@ -1577,16 +1672,18 @@ await p.evaluate(({ TOWN }) => {
       R.cardVeil = function (gg, b) { const v = cv.apply(this, arguments); if (b === house) { asked++; if (v) took++; } return v; };
       try { G.updateVisibility(); s.t = 0.1 * s.ms / 1000; R.draw(0); } finally { R.cardVeil = cv; }
       out.loop = { asked, took };
-      // THE COLUMN: the bronze, and no wider than half the footprint
-      const glow = R.glow, tones = new Set(); let widest = 0;
-      const fr = CanvasRenderingContext2D.prototype.fillRect;
-      R.glow = function (gg, a, fill, tone) {
-        tones.add(tone || 'gold');
-        CanvasRenderingContext2D.prototype.fillRect = function (x, y, w) { widest = Math.max(widest, w); return fr.apply(this, arguments); };
-        try { return glow.apply(this, arguments); } finally { CanvasRenderingContext2D.prototype.fillRect = fr; }
+      // THE COLUMN: the bronze, and no wider than half the footprint — a
+      // smooth beam of the tier's light at the device's own resolution now
+      // (R.fxBeam: the operator's ruling of 2026-10-27, where this read the
+      // widths of the 2px rects a stepped column was cut in)
+      const beam = R.fxBeam, tones = new Set(); let widest = 0;
+      R.fxBeam = function (gg, x, foot, top, w, a, tone) {
+        tones.add(typeof tone === 'string' ? tone : 'object');
+        widest = Math.max(widest, w);
+        return beam.apply(this, arguments);
       };
       try { for (const pp of [0.03, 0.15, 0.3, 0.45]) { s.t = pp * s.ms / 1000; g.save(); MB.show.draw.call(MB, g, s, pp); g.restore(); } }
-      finally { R.glow = glow; }
+      finally { R.fxBeam = beam; }
       out.tones = [...tones]; out.widest = widest; out.half = Bld.size(house) * TL / 2;
       // THE COUNT: cream on a dark rim (TX.label), never a gold R.float
       const lab = Deck._townTX.label, fl = R.float, said = [];
@@ -1625,10 +1722,15 @@ await p.evaluate(({ TOWN }) => {
     for (const z of town) z.hp = z.maxhp = 5000;
     // every mark a card lays ON THE FRAME (R.cv's own context — a scratch
     // canvas may blend as it likes), with its composite, alpha and colour
-    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage, rc = P2.rect;
+    // (and every filled or stroked path: the skin's runes, rings and chips are
+    // smooth paths at the device's own resolution now — the operator's ruling
+    // of 2026-10-27 — where they were 2px rects)
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage, rc = P2.rect, pf = P2.fill, ps = P2.stroke;
     let depth = 0, marks = [], rects = null;
     P2.fillRect = function () { if (depth && this.canvas === R.cv) marks.push(['f', this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return fr.apply(this, arguments); };
     P2.drawImage = function () { if (depth && this.canvas === R.cv) marks.push(['d', this.globalCompositeOperation, this.globalAlpha]); return di.apply(this, arguments); };
+    P2.fill = function () { if (depth && this.canvas === R.cv) marks.push(['p', this.globalCompositeOperation, this.globalAlpha, String(this.fillStyle)]); return pf.apply(this, arguments); };
+    P2.stroke = function () { if (depth && this.canvas === R.cv) marks.push(['s', this.globalCompositeOperation, this.globalAlpha, String(this.strokeStyle)]); return ps.apply(this, arguments); };
     P2.rect = function () { if (rects) rects.push(Array.from(arguments)); return rc.apply(this, arguments); };
     const inCard = (o, k) => { const f = o && o[k]; if (!f) return () => {}; o[k] = function () { depth++; try { return f.apply(this, arguments); } finally { depth--; } }; return () => { o[k] = f; }; };
     const SK = Deck.FX.stone_skin;
@@ -1661,22 +1763,49 @@ await p.evaluate(({ TOWN }) => {
           const m0 = marks.length;
           R.draw(1 / 30);
           const ST = SK.STONE || [];
-          out.chips = marks.slice(m0).filter(m => m[0] === 'f' && ST.includes(m[3])).length;
+          out.chips = marks.slice(m0).filter(m => (m[0] === 'f' || m[0] === 'p') && ST.includes(m[3])).length;
         } finally { performance.now = pn; }
       } finally { undo.forEach(f => f()); }
       out.marks = marks.length;
       out.light = marks.filter(m => m[1] !== 'source-over' || m[2] < 1).map(m => m.join(':')).slice(0, 4);
-      /* (b) THE SHEEN IS A STEPPED DIAGONAL, one cell a row — never a bar */
-      rects = [];
-      const a = Deck._townTX.art(town[2]);
-      if (SK.sheen) SK.sheen(R.cv.getContext('2d'), town[2], a, 0.5);
-      const PX = 2, byRow = new Map();
-      for (const [x, y, w, h] of rects) if (w === PX && h === PX) byRow.set(y, (byRow.get(y) || []).concat(x));
-      const rows = [...byRow.keys()].sort((u, v) => u - v);
-      out.sheenRows = rows.length;
-      out.oneCellARow = rows.length >= 4 && rows.every(y => byRow.get(y).length === 1);
-      out.diagonal = rows.length >= 4 && rows.slice(1).every((y, i) => byRow.get(y)[0] === byRow.get(rows[i])[0] - (y - rows[i]));
-      rects = null;
+      /* (b) THE SHEEN IS A SMOOTH DIAGONAL, NEVER A BAR (the operator's ruling
+         of 2026-10-27, where this pinned a staircase of 2px cells, one a row):
+         the barracks' sleeve of stone drawn at the device's size twice, with
+         the sheen and without, and the difference read — the band runs on the
+         diagonal (its middle moves across as it goes down), it is never as
+         wide as the stone (a bar), and it is soft (many levels of light, where
+         the cells were one colour) */
+      {
+        const a = Deck._townTX.art(town[2]), K3 = 3;
+        const shot = (sheen) => {
+          const c = document.createElement('canvas'); c.width = Math.ceil(a.rc.w * K3); c.height = Math.ceil(a.rc.h * K3);
+          const g3 = c.getContext('2d'); g3.setTransform(K3, 0, 0, K3, -a.rc.x * K3, -a.rc.y * K3);
+          SK.stone(g3, town[2], a, SK._sleeve(a), 1, null, null);
+          if (sheen != null) SK.sheen(g3, town[2], a, sheen);
+          return { c, d: g3.getImageData(0, 0, c.width, c.height).data };
+        };
+        const A0 = shot(null), A1 = shot(0.5), Wc = A0.c.width, Hc = A0.c.height, levels = new Set();
+        const rowsX = [];
+        let widest = 0;
+        for (let y = 0; y < Hc; y++) {
+          let n = 0, sx = 0, x0 = Infinity, x1 = -1;
+          for (let x = 0; x < Wc; x++) {
+            const i = (y * Wc + x) * 4, dl = (A1.d[i] + A1.d[i + 1] + A1.d[i + 2]) - (A0.d[i] + A0.d[i + 1] + A0.d[i + 2]);
+            if (dl > 9) { n++; sx += x; x0 = Math.min(x0, x); x1 = Math.max(x1, x); levels.add(Math.round(dl / 3)); }
+          }
+          if (n) { rowsX.push([y, sx / n]); widest = Math.max(widest, x1 - x0 + 1); }
+        }
+        // the band's middle against its row: a straight run across (correlation)
+        const nR = rowsX.length, my = rowsX.reduce((s, r) => s + r[0], 0) / Math.max(1, nR), mx = rowsX.reduce((s, r) => s + r[1], 0) / Math.max(1, nR);
+        let sxy = 0, sxx = 0, syy = 0;
+        for (const [y, x] of rowsX) { sxy += (y - my) * (x - mx); syy += (y - my) * (y - my); sxx += (x - mx) * (x - mx); }
+        const corr = sxx && syy ? sxy / Math.sqrt(sxx * syy) : 0;
+        const artW = (a.box.r - a.box.l) * a.rc.w * K3;
+        out.sheen = { rows: nR, corr: +corr.toFixed(2), widest, artW: Math.round(artW), levels: levels.size };
+        out.diagonal = nR >= 6 && Math.abs(corr) >= 0.8;
+        out.notABar = widest > 0 && widest < artW * 0.6;
+        out.smoothSheen = levels.size >= 12;
+      }
 
       /* (c) THE UNBREAKABLE HALL'S LANCE TAPERS ONTO THE ROOF: at the blow,
          the light's rows narrow toward their foot, and the foot is the hall's
@@ -1688,42 +1817,86 @@ await p.evaluate(({ TOWN }) => {
       Deck.play('unbreakable_hall');
       const sh = R.cardShows.find(s => s.id === 'unbreakable_hall');
       const D = U.geom(tc), TX = Deck._townTX, W = R.cv.width, ground = TX.scr(D.cx, D.gy), roof = TX.scr(D.cx, D.roof != null ? D.roof : D.gy);
-      const lanceRows = [];
       sh.t = U.IMPACT * sh.ms / 1000;
-      P2.fillRect = function (x, y, w, h) { if (this.canvas === R.cv && w < W && Math.abs(x + w / 2 - ground.x) < 4 * CFG.TILE * ground.z) lanceRows.push([x, y, w, h]); return fr.apply(this, arguments); };
-      const g2 = R.cv.getContext('2d');
-      g2.save(); g2.setTransform(1, 0, 0, 1, 0, 0);
-      try { U.show.draw.call(U, g2, sh, U.IMPACT, 0, 'sky'); } finally { g2.restore(); P2.fillRect = fr; }
-      const foot = lanceRows.reduce((m, q) => Math.max(m, q[1] + q[3]), 0);
-      const widest = lanceRows.reduce((m, q) => Math.max(m, q[2]), 0);
-      const topW = lanceRows.filter(q => q[1] < foot * 0.15).reduce((m, q) => Math.max(m, q[2]), 0);
-      const lowW = lanceRows.filter(q => q[1] > foot * 0.8 && q[1] + q[3] <= foot).reduce((m, q) => Math.max(m, q[2]), 0);
+      /* read off the PIXELS of the sky drawn alone on a clean canvas (the
+         lance is a smooth taper at the device's own resolution now — the
+         operator's ruling of 2026-10-27 — where this read the widths of the
+         2px rows it was cut in): the glow its point burns in is stood down
+         for the read, so the lance's own foot is what is measured */
+      const lc = document.createElement('canvas'); lc.width = W; lc.height = R.cv.height;
+      const g2 = lc.getContext('2d'), fg = R.fxGlow;
+      R.fxGlow = function () {};
+      try { U.show.draw.call(U, g2, sh, U.IMPACT, 0, 'sky'); } finally { R.fxGlow = fg; }
+      const ld = g2.getImageData(0, 0, W, lc.height).data, half = 4 * CFG.TILE * ground.z, rowW = [];
+      for (let y = 0; y < lc.height; y++) {
+        let n = 0;
+        for (let x = Math.max(0, Math.floor(ground.x - half)); x < Math.min(W, ground.x + half); x++) {
+          const i = (y * W + x) * 4;
+          if ((ld[i] + ld[i + 1] + ld[i + 2]) * ld[i + 3] / 255 > 240) n++;   // lit: a light, not the dark the sky darkens to
+        }
+        rowW.push(n);
+      }
+      let foot = 0;
+      rowW.forEach((n, y) => { if (n > 0) foot = y; });
+      const widest = Math.max(...rowW);
+      const topW = Math.max(0, ...rowW.filter((n, y) => y < foot * 0.15));
+      const lowW = Math.max(0, ...rowW.filter((n, y) => y > foot * 0.8 && y <= foot));
       out.lance = { foot: Math.round(foot), roof: Math.round(roof.y), ground: Math.round(ground.y), widest: Math.round(widest), tile: Math.round(CFG.TILE * ground.z), topW, lowW };
       out.onTheRoof = D.roof != null && foot > 0 && Math.abs(foot - roof.y) <= 8 * ground.z * 2 && foot < ground.y - CFG.TILE * ground.z * 0.5;
       out.tapers = topW > 0 && lowW > 0 && lowW < topW * 0.7 && widest <= 1.6 * CFG.TILE * ground.z;
 
-      /* (d) A SWALLOWED BLOW FLASHES THE DOME'S OUTLINE, NEVER A FILL: every
-         mark the ward lays in the flash is a hard cell — the first cut filled
-         an amber half-dome cut flat along the ground */
+      /* (d) A SWALLOWED BLOW FLASHES THE DOME'S OUTLINE, NEVER A FILL — read
+         off the pixels of the ward at its flash, drawn alone on a clean
+         canvas through the world's transform (its ribs are fine lines of
+         light at the device's own resolution now, the operator's ruling of
+         2026-10-27, where this counted 2px cells): the band along its outline
+         is lit, and the dome's middle stays clear of light (the first cut
+         filled an amber half-dome cut flat along the ground) */
       R.cardShows = [];
       const pn = performance.now;
-      const flash = [];
       try {
         performance.now = () => 50000;
         tc.hp = U.sliver(tc);
         R.floats = [];
         Combat.hitBuilding(tc, 400);                       // swallowed whole: "Held!"
-        P2.fillRect = function (x, y, w, h) { if (depth && this.canvas === R.cv) flash.push([w, h]); return fr.apply(this, arguments); };
-        const texts = [], ft = P2.fillText;
-        P2.fillText = function (t) { if (depth && this.canvas === R.cv) texts.push([t, String(this.fillStyle)]); return ft.apply(this, arguments); };
+        const z = R.cam.z * (R.dpr || 1), fc = document.createElement('canvas');
+        fc.width = R.cv.width; fc.height = R.cv.height;
+        const fg = fc.getContext('2d');
+        fg.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+        U.dome(fg, D, 1, 1, 50);
+        const fd = fg.getImageData(0, 0, fc.width, fc.height).data;
+        const lit = (wx, wy) => {
+          const sx = Math.round((wx - R.cam.x) * z), sy = Math.round((wy - R.cam.y) * z);
+          if (sx < 0 || sy < 0 || sx >= fc.width || sy >= fc.height) return null;
+          return fd[(sy * fc.width + sx) * 4 + 3] > 40;
+        };
+        let rim = 0, rimLit = 0, mid = 0, midLit = 0;
+        // points on the dome's own outline (its upper half)
+        for (let k = 0; k <= 400; k++) {
+          const th = Math.PI + k / 400 * Math.PI, v = lit(D.cx + Math.cos(th) * D.rx, D.gy + Math.sin(th) * D.hd);
+          if (v != null) { rim++; if (v) rimLit++; }
+        }
+        // …and the whole of its body inside it, on a grid: a fill lights all of
+        // it, an outline and its few fine ribs a small share
+        for (let gy0 = 0; gy0 < 60; gy0++) for (let gx0 = 0; gx0 < 60; gx0++) {
+          const u = gx0 / 59 * 2 - 1, w = gy0 / 59, wx = D.cx + u * D.rx * 0.85, wy = D.gy - 4 - w * (D.hd * 0.85 - 4);
+          if (u * u + Math.pow((D.gy - wy) / D.hd, 2) > 0.85 * 0.85) continue;
+          const v = lit(wx, wy);
+          if (v != null) { mid++; if (v) midLit++; }
+        }
+        out.flashRim = rim ? rimLit / rim : 0;
+        out.flashMid = mid ? midLit / mid : 1;
+        /* (e) …and it is HELD! in gold over a dark edge — the letters stroked
+           round in ink at the device's own resolution (eight copies a cell
+           apart, the hard rim this pinned, were a smear on a phone) — taking
+           over the pale float the blow wrote ("Held!" stays the contract's word) */
+        const texts = [], ft = P2.fillText, stt = P2.strokeText;
+        P2.fillText = function (t) { if (depth && this.canvas === R.cv) texts.push([t, String(this.fillStyle), 'fill']); return ft.apply(this, arguments); };
+        P2.strokeText = function (t) { if (depth && this.canvas === R.cv) texts.push([t, String(this.strokeStyle), 'stroke']); return stt.apply(this, arguments); };
         const undoU = inCard(U, 'drawLive');
-        try { R.draw(1 / 30); } finally { undoU(); P2.fillText = ft; P2.fillRect = fr; }
-        out.flashMarks = flash.length;
-        out.flashBig = flash.filter(([w, h]) => w > 2 || h > 2).length;
-        /* (e) …and it is HELD! in gold with a hard dark edge, taking over the
-           pale float the blow wrote ("Held!" stays the contract's word) */
+        try { R.draw(1 / 30); } finally { undoU(); P2.fillText = ft; P2.strokeText = stt; }
         const held = texts.filter(t => t[0] === 'HELD!');
-        out.heldGold = held.some(t => t[1] === U.HELD.col || t[1] === U.HELD.hot) && held.filter(t => t[1] === U.HELD.ink).length >= 4;
+        out.heldGold = held.some(t => t[2] === 'fill' && (t[1] === U.HELD.col || t[1] === U.HELD.hot)) && held.some(t => t[2] === 'stroke' && t[1] === U.HELD.ink);
         out.paleGone = !R.floats.some(f => f.txt === 'Held!');
         out.heldTexts = held.length;
       } finally { performance.now = pn; P2.fillRect = fr; }
@@ -1739,17 +1912,140 @@ await p.evaluate(({ TOWN }) => {
       out.endToast = box.children.length > n0 && /ward on your Town Center fades/.test(last.textContent) && !last.classList.contains('warn');
       out.endFall = R.cardShows.some(s => s.id === 'unbreakable_hall' && s.fall);
       R.cardShows = [];
-    } finally { P2.fillRect = fr; P2.drawImage = di; P2.rect = rc; }
+    } finally { P2.fillRect = fr; P2.drawImage = di; P2.rect = rc; P2.fill = pf; P2.stroke = ps; }
     return out;
   });
   ck('stoneSkinIsStoneNotLight', r.marks > 200 && r.light.length === 0,
     `${r.marks} marks on the frame; added or translucent: ${r.light.length ? r.light.join(' | ') : 'none'}`);
   ck('aHalvedBlowFloatsInTheSkinsBlueAndThrowsStone', r.dyed && r.chips >= 5, `the float ${r.floatCol}; ${r.chips} chips of stone`);
-  ck('theSkinsSheenIsASteppedDiagonalNeverABar', r.oneCellARow && r.diagonal, `${r.sheenRows} rows, one 2px cell a row ${r.oneCellARow}, each a cell along ${r.diagonal}`);
+  ck('theSkinsSheenIsASmoothDiagonalNeverABar', r.diagonal && r.notABar && r.smoothSheen,
+    `${JSON.stringify(r.sheen)}: on the diagonal ${r.diagonal}, never as wide as the stone ${r.notABar}, soft ${r.smoothSheen}`);
   ck('theHallsLanceTapersOntoTheRoof', r.onTheRoof && r.tapers, JSON.stringify(r.lance));
-  ck('aSwallowedBlowFlashesTheDomesOutlineNeverAFill', r.flashMarks > 60 && r.flashBig === 0, `${r.flashMarks} marks, ${r.flashBig} bigger than a cell`);
-  ck('heldIsGoldWithADarkEdge', r.heldGold && r.paleGone, `HELD! drawn ${r.heldTexts}× (gold over a dark edge ${r.heldGold}); the pale float taken over ${r.paleGone}`);
+  ck('aSwallowedBlowFlashesTheDomesOutlineNeverAFill', r.flashRim >= 0.6 && r.flashMid <= 0.35,
+    `${(100 * r.flashRim).toFixed(0)}% of its outline lit, ${(100 * r.flashMid).toFixed(0)}% of the body inside it (a fill: all of it)`);
+  ck('heldIsGoldWithADarkEdge', r.heldGold && r.paleGone, `HELD! drawn ${r.heldTexts}× (gold over a dark edge stroked round it ${r.heldGold}); the pale float taken over ${r.paleGone}`);
   ck('theWardsEndIsNewsOnTheScreen', r.endToast && r.endFall, `a note toast ${r.endToast}; the dome breaks ${r.endFall}`);
+}
+
+// ---------------- 17. EVERY ACT IS DRAWN AT THE DEVICE'S OWN RESOLUTION ----------------
+/* The operator's ruling of 2026-10-27, on the map's special effects: "This
+   one for example looks pixelated… higher pixel count." The world's ART
+   stays pixel art — the logs, the stones, the cart, the cast, the buildings
+   turned to stone — but every act's LIGHT, and everything thrown off the art
+   (dust, chips, leaves, embers), is drawn smooth at the device's own
+   resolution. Every town act (and Forager's Cache, whose moment lives here),
+   played over the meadow and walked through its beats on every layer it
+   draws — and every running card's look — through the world's transform at
+   a phone's density: NOT ONE RECT is laid on the frame (the hard pixel's
+   tool: 2px cells, ink squares, dithered bands — the pieces are blitted from
+   their own pictures, the light is paths and gradients), and of what the
+   light alone brightens at most 2% turns yellow-green (the landing's own
+   olive measure — the light is still gold, never lime). */
+{
+  const r = await p.evaluate(() => {
+    const out = { acts: {}, live: {} };
+    __tw.fresh('town-device');
+    Screens.show('playing'); S.paused = true;
+    Deck._add('forager_cache', 3);
+    const tc = __tw.flat();
+    R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+    S.res.food = S.res.wood = S.res.stone = S.res.gold = 5000;
+    __tw.bld('P', 'tower', tc.x + 5, tc.y - 1); __tw.bld('P', 'warcamp', tc.x - 5, tc.y + 3);
+    const hurt = [__tw.bld('P', 'house', tc.x + 3, tc.y + 3), __tw.bld('P', 'house', tc.x - 3, tc.y + 1), __tw.bld('P', 'wall', tc.x + 1, tc.y + 5)];
+    G.updateVisibility();
+    const BG = [75, 129, 51], z = R.cam.z * (R.dpr || 1);
+    const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+    const g = c.getContext('2d');
+    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect;
+    let rects = 0, on = false;
+    P2.fillRect = function () { if (on && this === g) rects++; if (lightOnly && !inLight && this === g) return; return fr.apply(this, arguments); };
+    /* THE LIGHT ALONE, for the olive read: a second pass in which only what
+       the light helpers lay reaches the probe — the art (leaves, coins, the
+       runes' pale stone) is stood down, since an object's antialiased edge
+       over the meadow is not light and is not what the rule is about */
+    let lightOnly = false, inLight = 0;
+    const TXh = Deck._townTX, wrapL = (o, k) => { const f = o[k]; if (typeof f !== 'function') return () => {}; o[k] = function () { inLight++; try { return f.apply(this, arguments); } finally { inLight--; } }; return () => { o[k] = f; }; };
+    const undoL = ['fxGlow', 'fxRays', 'fxBeam', 'fxRing', 'fxSpark', 'fxDot', 'fxLight', 'fxMotes', 'glow', 'glowHot', 'drawOrbit'].map(k => wrapL(R, k))
+      .concat(['taper', 'line', 'lit'].map(k => wrapL(TXh, k)));
+    const gate = {};
+    for (const k of ['fill', 'stroke', 'drawImage', 'fillText', 'strokeText']) {
+      const f = P2[k]; gate[k] = f;
+      P2[k] = function () { if (lightOnly && !inLight && this === g) return; return f.apply(this, arguments); };
+    }
+    const lum = (a, b2, e) => 0.299 * a + 0.587 * b2 + 0.114 * e, L0 = lum(...BG);
+    const read = (o) => {
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 0; i < d.length; i += 16) {
+        if (d[i] === BG[0] && d[i + 1] === BG[1] && d[i + 2] === BG[2]) continue;
+        const L = lum(d[i], d[i + 1], d[i + 2]);
+        if (!(L > L0 + 0.5)) continue;
+        o.bright++;
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]), q = mx - mn;
+        if (L - L0 >= 10 && mx && q && q / mx >= 0.2) {
+          let h = mx === d[i] ? ((d[i + 1] - d[i + 2]) / q) % 6 : mx === d[i + 1] ? (d[i + 2] - d[i]) / q + 2 : (d[i] - d[i + 1]) / q + 4;
+          h *= 60; if (h < 0) h += 360;
+          if (h >= 48 && h <= 115) o.olive++;
+        }
+      }
+    };
+    const meadow = () => { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgb(${BG})`; fr.call(g, 0, 0, c.width, c.height); };
+    const world = () => g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
+    const PS = [0.04, 0.12, 0.22, 0.34, 0.46, 0.58, 0.7, 0.82, 0.94];
+    try {
+      for (const id of __tw.TOWN.concat(['forager_cache'])) {
+        for (const h of hurt) h.hp = Math.round(h.maxhp * 0.4);
+        R.cardShows = [];
+        let sh;
+        if (id === 'master_builders') { Deck.play(id); const nb = __tw.confirm('house', tc.x - 4, tc.y - 3); sh = R.cardShows.find(s => s.id === id && s.bid === (nb && nb.id)); }
+        else { const rr = Deck.play(id); sh = rr.ok && R.cardShows.find(s => s.id === id); }
+        const o = out.acts[id] = { rects: 0, bright: 0, olive: 0, drawn: !!sh };
+        if (!sh) continue;
+        const layers = Deck.FX[id].show.layers || [Deck.FX[id].show.layer || 'world'];
+        for (const pp of PS) for (const pass of ['all', 'light']) {
+          sh.t = pp * sh.ms / 1000;
+          if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
+          meadow();
+          rects = 0; on = pass === 'all'; lightOnly = pass === 'light';
+          for (const L of layers) {
+            g.save();
+            if (L === 'sky') g.setTransform(1, 0, 0, 1, 0, 0); else world();
+            try { R.drawCardShows(g, 0, L); } catch (e) { o.threw = String(e); }
+            g.restore();
+          }
+          on = false; lightOnly = false;
+          if (pass === 'all') o.rects += rects; else read(o);
+        }
+      }
+      // every running card's look, on the frame's own beats
+      R.cardShows = [];
+      const pn = performance.now;
+      for (const id of ['watchfires', 'stone_skin', 'unbreakable_hall']) {
+        const d = Deck.FX[id], e = Deck.timed(id), o = out.live[id] = { rects: 0, bright: 0, olive: 0 };
+        if (!e) { o.missing = true; continue; }
+        if (id === 'stone_skin') { Combat.hitBuilding(hurt[0], 30); }
+        if (id === 'unbreakable_hall') { tc.hp = d.sliver(tc); Combat.hitBuilding(tc, 400); }
+        for (let k = 0; k < 6; k++) for (const pass of ['all', 'light']) {
+          const t0 = pn.call(performance);
+          performance.now = () => t0 + k * 230;
+          meadow(); world();
+          rects = 0; on = pass === 'all'; lightOnly = pass === 'light';
+          try {
+            if (d.drawLive) d.drawLive(g, e);
+            if (d.drawBld) for (const b of S.buildings) if (b.owner === 'P') d.drawBld(g, b, e);
+            if (d.drawGround) d.drawGround(g, e);
+          } finally { on = false; lightOnly = false; performance.now = pn; }
+          if (pass === 'all') o.rects += rects; else read(o);
+        }
+      }
+    } finally { P2.fillRect = fr; Object.assign(P2, gate); undoL.forEach(f => f()); }
+    R.cardShows = [];
+    return out;
+  });
+  const A = Object.entries(r.acts), Lv = Object.entries(r.live);
+  ck('everyTownActIsDrawnAtTheDevicesOwnResolution', A.length === 10 && A.every(([, o]) => o.drawn && !o.threw && o.rects === 0) && Lv.every(([, o]) => !o.missing && o.rects === 0),
+    A.map(([id, o]) => `${id} ${o.drawn ? o.rects + ' rects' : 'NOT DRAWN'}${o.threw ? ' THREW ' + o.threw : ''}`).join(', ') + ' | looks: ' + Lv.map(([id, o]) => `${id} ${o.missing ? 'NOT RUNNING' : o.rects + ' rects'}`).join(', '));
+  ck('andItsLightIsNeverOlive', A.concat(Lv).every(([, o]) => !o.bright || o.olive / o.bright <= 0.02),
+    A.concat(Lv).map(([id, o]) => `${id} ${o.bright ? (100 * o.olive / o.bright).toFixed(2) + '%' : '-'}`).join(', '));
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
