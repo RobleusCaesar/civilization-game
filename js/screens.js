@@ -204,6 +204,9 @@ const Screens = {
     else finish(window.Backend && Backend.configured ? 'no saves yet' : 'cloud saves off', false);
     // THE CARD SYSTEM's plaque and starter hand (js/deckscreens.js) — an early return with the switch off
     if (window.DeckScreens) { try { DeckScreens.onTitle(); } catch (e) { console.error('card title plaque', e); } }
+    // THE NIGHT TITLE (js/titlescreen.js) — staged; an early return everywhere else.
+    // After the deck's plaque, so the Cards plaque is dressed with the rest.
+    if (window.TitleScreen) { try { TitleScreen.onTitle(); } catch (e) { console.error('night title', e); } }
   },
 
   async continueGame() {

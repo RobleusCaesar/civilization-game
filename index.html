@@ -1364,7 +1364,100 @@
       if (t) t.classList.add('popIn');
       setTimeout(drop, this.FADE_MS + 60);
     },
+
+    /* THE NIGHT TITLE IS STAGED (js/titlescreen.js, tests/title.mjs): the
+       valley by night with its carved plaques, on a device the card test
+       link turned on (?cards=1 / ?cards=all once — Deck.devOn), and on no
+       other. Everyone else keeps the glen above and today's title, byte for
+       byte, and fetches nothing new. TitleScreen.live() is THE predicate
+       (TITLE_PUBLIC || Deck.devOn()); `title2` is the same answer read
+       here, BEFORE the first paint, so the splash and the title it lifts
+       onto wear the same picture — the same reading of the address and the
+       storage Deck.devOn makes, and never a write (tests/title.mjs holds
+       the two together in every case).
+       GOING PUBLIC IS ONE LINE: TITLE_PUBLIC true. */
+    TITLE_PUBLIC: false,    // ← THE ONE-LINE FLIP: true gives every player the night title
+    title2: false,
+    /* the art lands by FILENAME (assets/ui/title/) — wide for any landscape
+       window, tall for a portrait one — each a whole-factor nearest-neighbour
+       enlargement of its PixelLab master (3x wide, 2x tall: T2_K), lossless
+       webp with a jpg behind it. These URLs are markup in all but name, so
+       their ?v= is hand-kept like the glen's and must equal CFG.ART_V. */
+    T2_SRC: [
+      ['assets/ui/title/night-wide.webp?v=60', 'image/webp', '(min-aspect-ratio: 4/3)'],
+      ['assets/ui/title/night-wide.jpg?v=60', 'image/jpeg', '(min-aspect-ratio: 4/3)'],
+      ['assets/ui/title/night-tall.webp?v=60', 'image/webp', ''],
+    ],
+    T2_IMG: 'assets/ui/title/night-tall.jpg?v=60',
+    T2_BG: '#0a0d18',       // the night's own dark: no frame is ever green, black or white
+    /* the picture, built the same way for the splash and the title, so the
+       browser picks the same file for both and the lift has no seam */
+    t2pic: function () {
+      var pic = document.createElement('picture'), h = '';
+      pic.className = 't2bg';
+      pic.style.cssText = 'position:absolute;inset:0;display:block;pointer-events:none';
+      for (var i = 0; i < this.T2_SRC.length; i++) {
+        var s = this.T2_SRC[i];
+        h += '<source srcset="' + s[0] + '" type="' + s[1] + '"' + (s[2] ? ' media="' + s[2] + '"' : '') + '>';
+      }
+      pic.innerHTML = h + '<img class="t2img" src="' + this.T2_IMG + '" alt="" decoding="sync" fetchpriority="high" ' +
+        'style="display:block;width:100%;height:100%;object-fit:cover;-webkit-user-select:none;user-select:none">';
+      return pic;
+    },
+    /* CRISP AT ANY SIZE, LIKE THE REWARD'S VALLEY: the file is already a
+       whole-factor enlargement, so a screen that shows it at or above its
+       own pixels on a 2x/3x display draws it nearest-neighbour (every art
+       pixel a block), and anything that takes it DOWN — a desktop at 1x —
+       lets the browser smooth that last step, so no art pixel is a column
+       wider than its neighbour. */
+    t2fit: function (img) {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) return;
+      var box = img.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      var s = Math.max(box.width / w, box.height / h) * dpr;
+      img.style.imageRendering = dpr >= 2 && s >= 1 ? 'pixelated' : 'auto';
+    },
+    /* the night is laid OVER the glen (whose markup never changes); the glen
+       is hidden under it and comes straight back if the night 404s — A
+       PAINTER STANDS DOWN FOR ART THAT ISN'T THERE */
+    t2wear: function (box, old) {
+      if (!box) return null;
+      var have = box.querySelector('img.t2img');
+      if (have) return have;
+      var pic = this.t2pic(), img = pic.querySelector('img'), self = this, prev = box.style.background;
+      box.style.background = this.T2_BG;
+      if (old) old.style.visibility = 'hidden';
+      img.addEventListener('load', function () { self.t2fit(img); });
+      img.addEventListener('error', function () {
+        if (pic.parentNode) pic.parentNode.removeChild(pic);
+        if (old) old.style.visibility = '';
+        box.style.background = prev;
+        box.classList.add('t2lost');
+      });
+      box.appendChild(pic);
+      if (!this._t2rs) {
+        this._t2rs = true;
+        window.addEventListener('resize', function () {
+          var all = document.querySelectorAll('img.t2img');
+          for (var i = 0; i < all.length; i++) self.t2fit(all[i]);
+        });
+      }
+      return img;
+    },
   };
+  /* the same reading Deck.devOn makes — the link first (?cards=1|all on,
+     ?cards=0 off), then the device's flag — without writing it */
+  try {
+    var q = String(location.search || ''), dev = null;
+    try { dev = localStorage.getItem('neo-cards-dev'); } catch (e) {}
+    if (/[?&]cards=(1|all)\b/.test(q)) dev = '1';
+    if (/[?&]cards=0\b/.test(q)) dev = null;
+    Boot.title2 = !!Boot.TITLE_PUBLIC || dev === '1';
+  } catch (e) { Boot.title2 = !!Boot.TITLE_PUBLIC; }
+  if (Boot.title2) {
+    var sp = document.getElementById('splash');
+    if (sp) Boot.t2wear(sp, sp.querySelector('img'));
+  }
   setTimeout(function () { Boot.held = true; Boot._try(); }, Boot.HOLD_MS);
   setTimeout(function () { Boot.markReady(); }, Boot.FAILSAFE_MS);
   var skip = function () { Boot.skip(); };
@@ -1868,6 +1961,7 @@
 <script src="js/screens.js?v=100"></script>
 <script src="js/patchnotes.js?v=100"></script>
 <script src="js/settings.js?v=100"></script>
+<script src="js/titlescreen.js?v=100"></script>
 <script src="js/tutorial.js?v=100"></script>
 <script src="js/deckfx.js?v=100"></script>
 <script src="js/deckfx-town.js?v=100"></script>
