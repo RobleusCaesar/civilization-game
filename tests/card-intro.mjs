@@ -16,18 +16,21 @@
                        away
      THE CLOSE         X (44px), Escape and the backdrop each close it; a tap
                        inside the panel does not; the focus comes home
-     THE SCREENS       four; NEXT walks them and the last one's call to action
-                       closes; BACK, the dots, a swipe and the arrow keys move;
-                       Tab never leaves the dialog
+     THE SCREENS       five (cards, earn, play, the tiers, the prizes); NEXT
+                       walks them and the last one's call to action closes;
+                       BACK, the dots, a swipe and the arrow keys move; Tab
+                       never leaves the dialog
      THE FACES         every face is a real catalog card drawn by Deck.face,
                        with its own art and its tier's frame, at whole device
                        pixels; the fan is one of each tier, Legendary centred;
                        the prizes are the Dragon and the Kraken
-     THE WORDS         every number in the copy is the rule's own
-                       (CFG.CARDS.LOSS_DEEDS / LOSS_DAYS / DROPS.hard / PITY,
-                       Deck.TIERS), and every claim is checked against the code
-                       that keeps it (Deck.eligible, Deck.great, Deck.settle,
-                       Deck.play)
+     THE WORDS         the operator's lines word for word (2026-10-28), every
+                       number in the copy the rule's own (the +1 and +2 a win
+                       pays, CFG.CARDS.DROPS.hard / PITY, Deck.TIERS), every
+                       claim checked against the code that keeps it
+                       (Deck.eligible, Deck.great, Deck.settle, Deck.play), and
+                       every tier's line backed by cards of that tier; the
+                       defeat road carries no meter of deeds or days
      THE FIT           at 390x844, 430x932, 768x1024, 1440x900 and 1920x1080,
                        on every screen: the panel inside the window, nothing of
                        a screen outside its panel, no label running off its
@@ -36,10 +39,11 @@
                        shows the same screens with nothing animated
      THE COLLECTION    "How cards work" reopens it there, and closing it (or
                        Escape) leaves the collection standing
-     THE LADDER        five identical tier gems on one shared line (a row on a
-                       phone, an evenly spaced column on a wide panel), each
-                       name on one line and its rarity beneath, nothing
-                       colliding, 'Enlightenment' fitted at 320 to 1920px
+     THE TIERS         a screen of their own: five rows, Stone first, five
+                       identical gems in one column, every name in one column
+                       and its rarity on its line, one short line each, nothing
+                       colliding, nothing past the panel and no scroll, from
+                       320 to 1920px
      THE CHROME        every ornament that is not a card face or the painted
                        backdrop is a vector, or a raster holding 3 image
                        pixels per CSS pixel; nothing is drawn pixelated
@@ -52,9 +56,15 @@
                        every screen (drawn smaller from their feet, or not at
                        all on the narrowest phone's tightened screens)
      NOTHING STRAY     the sparks rise in the hero's band, never behind the
-                       headline, its line or the foot; the ladder's words
+                       headline, its line or the foot; the tiers' words
                        stand on a dark plate; the motes stay beside their
                        card; a scrolling hero never runs off its sides
+     SEVEN TENTHS      a wide window's panel is seven tenths of its old width,
+                       its headline seven tenths of its old size, and no
+                       taller than seven tenths of its old height unless a
+                       card face at the art's own size needs the room (never
+                       its old height); a phone's panel is still its screen;
+                       and the broken shield is broken, with blood behind it
 
    Run after touching: js/cardintro.js, the CardIntro hooks in js/screens.js
    (show) and js/deckscreens.js (onTitle, the collection's "How cards work"),
@@ -285,18 +295,18 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   const x = await p.evaluate(() => { const e = document.querySelector('#cardIntro .ciX'); return [e.offsetWidth, e.offsetHeight]; });
   ck('theXIs44px', x[0] >= 44 && x[1] >= 44, x.join('x'));
 
-  // four screens, walked by NEXT; the last one's call to action closes
+  // five screens, walked by NEXT; the last one's call to action closes
   const walk = await p.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const out = { pages: document.querySelectorAll('#cardIntro .ciPage').length, seen: [], labels: [] };
-    for (let i = 0; i < 4; i++) {
+    const out = { pages: document.querySelectorAll('#cardIntro .ciPage').length, seen: [], labels: [], keys: CardIntro.PAGES.slice() };
+    for (let i = 0; i < 5; i++) {
       const on = document.querySelector('#cardIntro .ciPage.on');
       out.seen.push(on && on.dataset.page);
       out.labels.push(document.querySelector('#cardIntro .ciNext').textContent.trim());
       out['dots' + i] = [...document.querySelectorAll('#cardIntro .ciDot')].findIndex(d => d.classList.contains('on'));
       // nothing of a hidden screen is reachable
       out['hidden' + i] = [...document.querySelectorAll('#cardIntro .ciPage:not(.on)')].every(s => s.hasAttribute('inert') && s.getAttribute('aria-hidden') === 'true');
-      if (i < 3) { document.querySelector('#cardIntro .ciNext').click(); await wait(120); }
+      if (i < 4) { document.querySelector('#cardIntro .ciNext').click(); await wait(120); }
     }
     out.backHiddenFirst = null;
     document.querySelector('#cardIntro .ciNext').click();
@@ -304,10 +314,11 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     out.closedByCta = !CardIntro.open;
     return out;
   });
-  ck('thereAreFourScreens', walk.pages === 4 && walk.seen.join() === '0,1,2,3', `${walk.pages} pages, walked ${walk.seen.join()}`);
-  ck('theDotsFollow', [0, 1, 2, 3].every(i => walk['dots' + i] === i));
-  ck('aHiddenScreenIsInert', [0, 1, 2, 3].every(i => walk['hidden' + i]));
-  ck('theLastScreenCallsToAction', /^Next/.test(walk.labels[0]) && /Let.s go/i.test(walk.labels[3]) && walk.closedByCta,
+  ck('thereAreFiveScreens', walk.pages === 5 && walk.seen.join() === '0,1,2,3,4' && walk.keys.join() === 'hello,earn,play,tiers,legends',
+    `${walk.pages} pages (${walk.keys.join()}), walked ${walk.seen.join()}`);
+  ck('theDotsFollow', [0, 1, 2, 3, 4].every(i => walk['dots' + i] === i));
+  ck('aHiddenScreenIsInert', [0, 1, 2, 3, 4].every(i => walk['hidden' + i]));
+  ck('theLastScreenCallsToAction', /^Next/.test(walk.labels[0]) && /^Next/.test(walk.labels[3]) && /Let.s go/i.test(walk.labels[4]) && walk.closedByCta,
     `${walk.labels.join(' | ')}; closed by it ${walk.closedByCta}`);
 
   // BACK, the dots, the arrow keys and Tab
@@ -396,13 +407,27 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     const txt = sel => [...root.querySelectorAll(sel)].map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ');
     out.sub1 = txt('.ciP-hello .ciSub');
     out.earn = txt('.ciP-earn');
-    out.legends = txt('.ciP-legends');
-    out.pips = root.querySelectorAll('.ciP-earn .ciPips i').length;
-    out.days = root.querySelectorAll('.ciP-earn .ciDays i').length;
+    out.earnSub = txt('.ciP-earn .ciSub');
+    out.winLine = txt('.ciP-earn .ciRoad.win .ciRoadTx > p:not(.ciGain)');
+    out.gain = txt('.ciP-earn .ciGain b');
+    out.lossLines = [...root.querySelectorAll('.ciP-earn .ciRoad.loss .ciRoadTx > *')].map(e => e.tagName + ':' + e.textContent.trim());
+    out.meters = root.querySelectorAll('.ciP-earn .ciMeter, .ciP-earn .ciPips, .ciP-earn .ciDays, .ciP-earn .ciNote').length;
+    out.legendsSub = txt('.ciP-legends .ciSub');
+    out.legendsFoot = txt('.ciP-legends .ciFoot');
+    out.tiersTxt = txt('.ciP-tiers');
     out.ladder = [...root.querySelectorAll('.ciTiers li')].map(li => li.querySelector('b').textContent + '/' + li.querySelector('small').textContent);
+    out.lines = [...root.querySelectorAll('.ciTiers li .ciTd')].map(e => e.textContent);
     const C = CFG.CARDS;
     out.C = { deeds: C.LOSS_DEEDS, days: C.LOSS_DAYS, leg: C.DROPS.hard[4], pity: C.PITY };
     out.tiers = Deck.TIERS.map(t => t.name + '/' + t.rarity);
+    // every tier's line is backed by cards of that tier, and says no more than a sentence
+    out.backs = Deck.TIERS.map(t => { const L = CardIntro.TIER_LINES[t.k];
+      return !L ? t.k + ': no line' : L.backs.filter(id => !Deck.card(id) || Deck.card(id).tier !== t.k).map(id => t.k + ' ' + id).join(',') ||
+        (L.line.split(/[.!?](\s|$)/).filter(x => x && x.trim()).length > 1 || L.line.length > 48 ? t.k + ': more than a short sentence' : ''); }).filter(Boolean);
+    // the earn counts, through the real grant: an ordinary win pays one card, a hard-fought one two
+    const fresh0 = () => { Deck._col = null; Deck._del(Deck.KEY); Deck.col(); };
+    fresh0();
+    out.one = Deck.settle({ win: true, mode: 'moderate', day: 9999, cause: 'razed_rival_tc', deeds: 0, actDays: 0, key: 'ci-one', runId: null }, () => 0).cards.length;
     // …and every claim against the code that keeps it
     const E = r => Deck.eligible(Object.assign({ win: false, cause: 'tc_destroyed', deeds: 0, actDays: 0 }, r)).ok;
     out.anyWin = E({ win: true, cause: 'razed_rival_tc' });                          // "however fast you win"
@@ -437,15 +462,23 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     `${a.fanTiers.join(',')}, middle ${a.mid}`);
   ck('thePrizesAreTheDragonAndTheKraken', a.beasts.length === 2 && a.beasts.includes('dragonfire') && a.beasts.includes('krakens_call'), a.beasts.join(','));
   ck('theFirstScreenSaysWhatTheOperatorSaid', a.sub1 === 'Win or lose, you’ll earn cards to use in future games.', a.sub1);
-  ck('theEarnNumbersAreTheRulesOwn', a.earn.includes(a.C.deeds + ' deeds') && a.earn.includes(a.C.days + ' days') && a.pips === a.C.deeds && a.days === a.C.days,
-    `"${a.C.deeds} deeds" ${a.earn.includes(a.C.deeds + ' deeds')}, "${a.C.days} days" ${a.earn.includes(a.C.days + ' days')}, pips ${a.pips}, day marks ${a.days}`);
-  ck('theOddsAreTheRulesOwn', a.legends.includes('1 card in ' + Math.round(100 / a.C.leg)) && a.legends.includes(a.C.pity + ' wins'),
-    a.legends.slice(0, 400));
-  ck('theLadderIsTheTiers', a.ladder.length === 5 && a.tiers.every(t => a.ladder.map(x => x.toLowerCase()).includes(t.toLowerCase())), a.ladder.join(', '));
+  /* the operator's lines (2026-10-28), word for word — "hard-fought" wears
+     its hyphen, as the defeat road's own heading always has */
+  ck('theEarnScreenSaysWhatTheOperatorSaid', a.earnSub === 'Every victory earns a card, and so do hard-fought losses.' &&
+    a.winLine === 'A good win +1 card, a hard-fought win +2 cards.', `${a.earnSub} | ${a.winLine}`);
+  ck('theDefeatRoadIsItsHeadingAndOneLine', a.meters === 0 && a.lossLines.join(' | ') === 'H3:A hard-fought defeat | P:Still a card, if you did the work.',
+    `${a.meters} meters/notes; ${a.lossLines.join(' | ')}`);
+  ck('thePrizesSayWhatTheOperatorSaid', a.legendsSub === 'The harder the fight, the rarer the card.' && !a.legendsFoot, `${a.legendsSub} | foot: ${a.legendsFoot || 'none'}`);
+  ck('theEarnCountsAreTheRulesOwn', a.gain === '+1 card | +2 cards' && a.one === 1 && a.two === 2, `${a.gain}; an ordinary win pays ${a.one}, a hard-fought one ${a.two}`);
+  ck('theOddsAreTheRulesOwn', a.tiersTxt.includes('1 card in ' + Math.round(100 / a.C.leg)) && a.tiersTxt.includes(a.C.pity + ' wins'),
+    a.tiersTxt.slice(0, 400));
+  ck('theTiersScreenIsTheTiers', a.ladder.length === 5 && a.ladder.join() === a.tiers.join() && a.lines.length === 5 && a.lines.every(Boolean),
+    a.ladder.join(', ') + ' | ' + a.lines.join(' / '));
+  ck('everyTiersLineIsItsTiersOwn', a.backs.length === 0, a.backs.join('; ') || 'each line names only cards of its tier, a short sentence each');
   ck('aWinAlwaysEarns', a.anyWin);
   ck('aFoughtDefeatEarnsAndOnlyAFoughtOne', a.fought && !a.tooFewDeeds && !a.tooFewDays, `fought ${a.fought}, a deed short ${a.tooFewDeeds}, a day short ${a.tooFewDays}`);
   ck('aStruckBannerEarnsNothing', a.struck === false);
-  ck('aGreatVictoryIsWhatTheCopySays', a.greatHard && a.greatWonder && a.greatFast && !a.notGreat && a.two === 2,
+  ck('aGreatVictoryEarnsTwo', a.greatHard && a.greatWonder && a.greatFast && !a.notGreat && a.two === 2,
     `Hard ${a.greatHard}, Wonder ${a.greatWonder}, fast ${a.greatFast}, ordinary ${a.notGreat}, cards ${a.two}`);
   ck('thePityIsWhatTheCopySays', a.pityTier === 'enlight' && a.notYet !== 'enlight', `${a.C.pity} wins without: ${a.pityTier}; one fewer: ${a.notYet}`);
   ck('aPlayedCardIsGone', a.played.ok && a.played.after === a.played.before - 1, JSON.stringify(a.played));
@@ -462,7 +495,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     const p = await page(ctx, '?cards=all&cardsintro=1');
     await opened(p, 15000);
     await p.waitForFunction(() => window.Assets && Assets.artReady && Assets.artReady(), null, { timeout: 30000 }).catch(() => {});
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const r = await p.evaluate(i => {
         CardIntro.go(i);
         const root = document.getElementById('cardIntro'), vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
@@ -474,7 +507,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
         if (rib.top < 0) out.push('ribbon cut by the top ' + rib.top.toFixed(1));
         // everything the screen shows stands inside the panel's inner rim
         const inner = { l: panel.left + 4, t: panel.top + 4, r: panel.right - 4, b: panel.bottom - 4 };
-        const parts = [...pg.querySelectorAll('.ciTitle .ciWord, .ciSub, .ciFoot, .ccard, figcaption, .ciRoad, .ciTiers li, .ciDeckBtn')];
+        const parts = [...pg.querySelectorAll('.ciTitle .ciWord, .ciSub, .ciFoot, .ccard, figcaption, .ciRoad, .ciTiers li, .ciTiers .ciTd, .ciDeckBtn')];
         // a hero measured too tall scrolls inside the panel (_fitPage): its
         // box must stand inside the panel and really scroll; what is inside it
         // is reached by scrolling, not laid over anything
@@ -500,7 +533,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
         }
         // and the nav is never covered by the screen above it
         const nav = root.querySelector('.ciNav').getBoundingClientRect();
-        for (const el of pg.querySelectorAll('.ccard, figcaption, .ciRoad, .ciFoot')) {
+        for (const el of pg.querySelectorAll('.ccard, figcaption, .ciRoad, .ciTiers, .ciFoot')) {
           if (scroller && scroller.contains(el)) continue;
           const q = el.getBoundingClientRect();
           if (q.width && q.bottom > nav.top + 2) out.push(`${el.className || el.tagName} runs into the nav (${q.bottom|0} > ${nav.top|0})`);
@@ -535,7 +568,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     }
     await ctx.close();
   }
-  ck('itFitsEveryWindow', bad.length === 0, bad.slice(0, 8).join(' | ') || 'seven windows, four screens, all inside');
+  ck('itFitsEveryWindow', bad.length === 0, bad.slice(0, 8).join(' | ') || 'seven windows, five screens, all inside');
 }
 
 /* ================= 9. THE MOTION ================= */
@@ -557,7 +590,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     const root = document.getElementById('cardIntro');
     const live = () => document.getAnimations().filter(a => a.effect && a.effect.target && root.contains(a.effect.target) && a.playState === 'running').length;
     const out = { a: live() };
-    CardIntro.go(3);
+    CardIntro.go(CardIntro.PAGES.indexOf('legends'));
     out.b = live();
     const head = root.querySelector('.ciPage.on .ciHead'), card = root.querySelector('.ciPage.on .ccard');
     out.seen = getComputedStyle(head).opacity === '1' && !!card && card.getBoundingClientRect().width > 0;
@@ -603,85 +636,86 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   await ctx.close();
 }
 
-/* ================= 11. THE LADDER (operator: "the diamonds for the
-   different rarity of card are not level and some of the text is jumbled
-   and not on the same line") =================
-   Five IDENTICAL gems on one shared line: one y for every gem in a phone's
-   row, one x for every gem in a wide panel's column with its rows evenly
-   spaced. Every tier's name on one line, its rarity on one line beneath,
-   nothing running into anything, and the whole ladder inside the panel —
-   'Enlightenment' included, at 320px. */
+/* ================= 11. THE TIERS, A SCREEN OF THEIR OWN (operator,
+   2026-10-28: "turn the whole tier structure in the middle into it's own
+   tutorial screen. Make it clean, well laid out, and easy to read… no more
+   than a sentence on what improves at each level") — and before that: "the
+   diamonds for the different rarity of card are not level and some of the
+   text is jumbled and not on the same line" =================
+   Five rows, Stone first: five IDENTICAL gems in one column, every name in
+   one column on one line with its rarity on that line or under it, every
+   line of what the tier brings in one column (a phone puts it under its
+   name), nothing running into anything, the whole list inside the panel,
+   and the screen standing still — no scroll — at every size. */
 {
   const bad = [], fonts = [];
-  for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3], [430, 932, 3], [768, 1024, 2], [1440, 900, 1], [1920, 1080, 1]]) {
+  for (const [w, h, dpr] of [[320, 568, 2], [375, 667, 2], [390, 844, 3], [430, 932, 3], [768, 1024, 2], [1100, 728, 1.25], [1440, 900, 1], [1920, 1080, 1]]) {
     const ctx = await context({ w, h, dpr, reduce: true });
     const p = await page(ctx, '?cards=all&cardsintro=1');
     await opened(p, 15000);
     const r = await p.evaluate(() => {
-      CardIntro.go(3);
+      CardIntro.go(CardIntro.PAGES.indexOf('tiers'));
       const root = document.getElementById('cardIntro'), out = { bad: [] };
       const narrow = out.narrow = root.classList.contains('ciNarrow');
       const ol = root.querySelector('.ciPage.on .ciTiers');
       const lis = ol ? [...ol.querySelectorAll('li')] : [];
-      if (lis.length !== 5) { out.bad.push(`${lis.length} rungs`); return out; }
+      if (lis.length !== 5) { out.bad.push(`${lis.length} rows`); return out; }
       const R = e => e.getBoundingClientRect();
-      const gems = lis.map(li => R(li.querySelector('.ciGem'))), names = lis.map(li => li.querySelector('b')), rars = lis.map(li => li.querySelector('small'));
-      const cx = q => q.left + q.width / 2, cy = q => q.top + q.height / 2, spread = a => Math.max(...a) - Math.min(...a), fx = a => a.map(v => v.toFixed(1)).join('/');
-      if (spread(gems.map(q => q.width)) > 0.5 || spread(gems.map(q => q.height)) > 0.5)
-        out.bad.push('gems differ in size ' + fx(gems.map(q => q.width)));
-      if (narrow) {
-        if (spread(gems.map(cy)) > 0.5) out.bad.push('gem centres off one line ' + fx(gems.map(cy)));
-        if (spread(names.map(e => R(e).bottom)) > 0.5) out.bad.push('names off one line ' + fx(names.map(e => R(e).bottom)));
-        if (spread(rars.map(e => R(e).bottom)) > 0.5) out.bad.push('rarities off one line ' + fx(rars.map(e => R(e).bottom)));
-        // each name centred over its own gem: a column, not a staircase
-        lis.forEach((li, i) => { if (Math.abs(cx(R(names[i])) - cx(gems[i])) > 0.75) out.bad.push(`${names[i].textContent} off its gem`); });
-      } else {
-        if (spread(gems.map(cx)) > 0.5) out.bad.push('gem centres off one column ' + fx(gems.map(cx)));
-        const ys = gems.map(cy), steps = ys.slice(1).map((y, i) => y - ys[i]);
-        if (spread(steps) > 0.5) out.bad.push('rows unevenly spaced ' + fx(steps));
-        if (spread(names.map(e => R(e).left)) > 0.5) out.bad.push('names not in one column ' + fx(names.map(e => R(e).left)));
-        lis.forEach((li, i) => { if (Math.abs(cy(R(names[i])) / 2 + cy(R(rars[i])) / 2 - cy(gems[i])) > 3) out.bad.push(`${names[i].textContent} off its gem`); });
-      }
-      // one line each, the rarity beneath its name, nothing on anything else
+      const gems = lis.map(li => R(li.querySelector('.ciGem'))), names = lis.map(li => li.querySelector('b')),
+        rars = lis.map(li => li.querySelector('small')), lines = lis.map(li => li.querySelector('.ciTd'));
+      const cx = q => q.left + q.width / 2, spread = a => Math.max(...a) - Math.min(...a), fx = a => a.map(v => v.toFixed(1)).join('/');
+      if (names[0].textContent !== 'Stone' || names[4].textContent !== 'Enlightenment') out.bad.push(`the rows run ${names.map(n => n.textContent).join(',')}`);
+      if (spread(gems.map(q => q.width)) > 0.5 || spread(gems.map(q => q.height)) > 0.5) out.bad.push('gems differ in size ' + fx(gems.map(q => q.width)));
+      if (spread(gems.map(cx)) > 0.5) out.bad.push('gems off one column ' + fx(gems.map(cx)));
+      if (spread(names.map(e => R(e).left)) > 0.5) out.bad.push('names not in one column ' + fx(names.map(e => R(e).left)));
+      if (spread(lines.map(e => R(e).left)) > 0.5) out.bad.push('the lines not in one column ' + fx(lines.map(e => R(e).left)));
+      // rows evenly spaced, top to bottom, one after another
+      const tops = lis.map(li => R(li).top);
+      for (let i = 1; i < 5; i++) if (!(tops[i] > tops[i - 1])) out.bad.push('the rows out of order');
+      lis.forEach((li, i) => {
+        // each row's gem sits beside its own name, and its line belongs to it
+        const L = R(li);
+        for (const [e, what] of [[names[i], 'name'], [rars[i], 'rarity'], [lines[i], 'line']]) {
+          const q = R(e);
+          if (q.top < L.top - 0.5 || q.bottom > L.bottom + 0.5) out.bad.push(`${names[i].textContent}'s ${what} outside its row`);
+        }
+        if (gems[i].top < L.top - 0.5 || gems[i].bottom > L.bottom + 0.5) out.bad.push(`${names[i].textContent}'s gem outside its row`);
+        if (narrow ? R(lines[i]).top < R(names[i]).bottom - 1 : R(lines[i]).left < R(rars[i]).right) out.bad.push(`${names[i].textContent}'s line not ${narrow ? 'under' : 'beside'} its name`);
+      });
+      // names and rarities on one line each; nothing on anything else
       const boxes = [];
       lis.forEach((li, i) => {
         for (const e of [names[i], rars[i]]) {
           const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3;
           if (e.getClientRects().length !== 1 || R(e).height > lh * 1.5) out.bad.push(`"${e.textContent}" wraps`);
-          boxes.push({ t: e.textContent, q: R(e) });
+        }
+        for (const e of [names[i], rars[i], lines[i]]) {
+          const rg = document.createRange(); rg.selectNodeContents(e);
+          boxes.push({ t: e.textContent, q: rg.getBoundingClientRect() });
         }
         boxes.push({ t: names[i].textContent + "'s gem", q: gems[i] });
-        if (R(rars[i]).top < R(names[i]).bottom - 1) out.bad.push(`"${rars[i].textContent}" not beneath "${names[i].textContent}"`);
       });
       for (let a = 0; a < boxes.length; a++) for (let c = a + 1; c < boxes.length; c++) {
         const A = boxes[a].q, B = boxes[c].q;
         const ix = Math.min(A.right, B.right) - Math.max(A.left, B.left), iy = Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top);
         if (ix > 0.5 && iy > 0.5) out.bad.push(`"${boxes[a].t}" runs into "${boxes[c].t}"`);
       }
-      // inside the panel, and the row itself never overflows its room
+      // inside the panel, the list never overflowing its room, and the screen standing still
       const panel = R(root.querySelector('.ciPanel'));
       for (const x of boxes) if (x.q.left < panel.left + 4 || x.q.right > panel.right - 4) out.bad.push(`"${x.t}" past the panel`);
-      if (ol.scrollWidth > ol.clientWidth + 0.5) out.bad.push(`the ladder overflows (${ol.scrollWidth} > ${ol.clientWidth})`);
-      // and the two prizes' captions stand whole beside each other (at 320 they used to be cut by the panel)
-      const caps = [...root.querySelectorAll('.ciPage.on .ciPrize figcaption b')].map(e => ({ t: e.textContent, q: R(e) }));
-      for (const c of caps) if (c.q.left < panel.left + 4 || c.q.right > panel.right - 4) out.bad.push(`"${c.t}" past the panel`);
-      if (caps.length === 2 && Math.min(caps[0].q.right, caps[1].q.right) - Math.max(caps[0].q.left, caps[1].q.left) > 0.5 &&
-        Math.min(caps[0].q.bottom, caps[1].q.bottom) - Math.max(caps[0].q.top, caps[1].q.top) > 0.5) out.bad.push('the prizes\' captions run into each other');
-      // the whole screen stands still on the panel: never a scroll that cuts a
-      // caption through the middle of its line (at 320 it used to, under the foot)
-      if (root.querySelector('.ciPage.on').classList.contains('scroll')) out.bad.push('the prizes screen has to scroll');
-      const hero = R(root.querySelector('.ciPage.on .ciHero'));
-      for (const e of root.querySelectorAll('.ciPage.on .ciPrize figcaption b, .ciPage.on .ciPrize figcaption small'))
-        if (R(e).bottom > hero.bottom + 1) out.bad.push(`"${e.textContent}" cut by the hero's foot`);
-      out.font = parseFloat(getComputedStyle(names[names.length - 1]).fontSize);
+      if (ol.scrollWidth > ol.clientWidth + 0.5) out.bad.push(`the list overflows (${ol.scrollWidth} > ${ol.clientWidth})`);
+      if (root.querySelector('.ciPage.on').classList.contains('scroll')) out.bad.push('the tiers screen has to scroll');
+      const foot = R(root.querySelector('.ciPage.on .ciFoot'));
+      if (R(ol).bottom > foot.top + 0.5) out.bad.push('the list runs into the odds under it');
+      out.font = parseFloat(getComputedStyle(lines[4]).fontSize);
       return out;
     });
     for (const x of r.bad) bad.push(`${w}x${h}: ${x}`);
-    if (!(r.font >= 8)) bad.push(`${w}x${h}: the names set at ${r.font}px`);
+    if (!(r.font >= 12.5)) bad.push(`${w}x${h}: the lines set at ${r.font}px`);
     fonts.push(`${w}:${r.font}px`);
     await ctx.close();
   }
-  ck('theTierGemsAreLevelAndTheWordsInLine', bad.length === 0, bad.slice(0, 6).join(' | ') || 'six windows, one line each; names ' + fonts.join(' '));
+  ck('theTiersAreLevelAndEasyToRead', bad.length === 0, bad.slice(0, 6).join(' | ') || 'eight windows, five rows in line; lines set at ' + fonts.join(' '));
 }
 
 /* ================= 12. THE CHROME IS DRAWN AT THE DEVICE'S RESOLUTION
@@ -710,7 +744,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
         im.src = u;
       })).get(u);
       const vector = u => /^data:image\/svg\+xml/i.test(u) || /\.svg(\?|#|$)/i.test(u);
-      for (let pg = 0; pg < 4; pg++) {
+      for (let pg = 0; pg < CardIntro.PAGES.length; pg++) {
         CardIntro.go(pg);
         for (const el of [root, ...root.querySelectorAll('*')]) {
           if (el.closest('.ccard') || el.closest('.ciDusk') || !el.getClientRects().length) continue;
@@ -761,7 +795,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   const p = await page(ctx, '?cards=all&cardsintro=1');
   await opened(p, 15000);
   const a = await p.evaluate(() => {
-    CardIntro.go(3);
+    CardIntro.go(CardIntro.PAGES.indexOf('legends'));
     const URL_RE = /url\(\s*"((?:[^"\\]|\\.)*)"\s*\)|url\(\s*([^"\s)][^)]*)\)/g;
     const pg = document.querySelector('#cardIntro .ciPage.on .ciHero'), out = { pics: [], faces: [] };
     for (const el of [pg, ...pg.querySelectorAll('*')]) {
@@ -801,7 +835,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     await opened(p, 15000);
     const r = await p.evaluate(() => {
       const out = [], root = document.getElementById('cardIntro');
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < CardIntro.PAGES.length; i++) {
         CardIntro.go(i);
         const X = root.querySelector('.ciX').getBoundingClientRect(), cx = X.left + X.width / 2, cy = X.top + X.height / 2;
         const els = [...root.querySelectorAll('.ciPage.on .ciLaurel')], qs = els.map(e => e.getBoundingClientRect());
@@ -820,7 +854,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     for (const x of r) bad.push(`${w}x${h} ${x}`);
     await ctx.close();
   }
-  ck('theXStandsClearOfTheLaurels', bad.length === 0, bad.slice(0, 6).join(' | ') || 'six windows, four screens: every laurel clear of the close disc');
+  ck('theXStandsClearOfTheLaurels', bad.length === 0, bad.slice(0, 6).join(' | ') || 'six windows, five screens: every laurel clear of the close disc');
 }
 
 /* ================= 15. NOTHING STRAY IN THE WORDS =================
@@ -841,7 +875,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     const r = await p.evaluate(async () => {
       const out = [], root = document.getElementById('cardIntro'), R = e => e.getBoundingClientRect();
       const meet = (a, c) => Math.min(a.right, c.right) - Math.max(a.left, c.left) > 0.5 && Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top) > 0.5;
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < CardIntro.PAGES.length; i++) {
         CardIntro.go(i);
         await new Promise(res => setTimeout(res, 80));
         const field = R(root.querySelector('.ciSparks'));
@@ -857,7 +891,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
           .slice(1).map(m => ({ l: F.left + +m[1], t: F.top + +m[2], r: F.left + +m[3], b: F.top + +m[4] }));
         // the words themselves (a range over the text, not the box round it):
         // every caption, and every name and rarity on the ladder
-        for (const e of root.querySelectorAll('.ciPage.on .ciHero figcaption, .ciPage.on .ciHero .ciTiers b, .ciPage.on .ciHero .ciTiers small')) {
+        for (const e of root.querySelectorAll('.ciPage.on .ciHero figcaption, .ciPage.on .ciHero .ciTiers b, .ciPage.on .ciHero .ciTiers small, .ciPage.on .ciHero .ciTiers .ciTd')) {
           const rg = document.createRange();
           rg.selectNodeContents(e);
           const w = rg.getBoundingClientRect();
@@ -868,25 +902,26 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
             out.push(`screen ${i + 1}: the sparks rise behind "${e.textContent.trim().slice(0, 24)}"`);
         }
       }
-      // the ladder's plate: dark enough, and its solid core under every word
-      // (read where the rungs come to rest: their entrance is run to its end)
-      CardIntro.go(3);
+      // the tiers' plate: dark enough, and its solid core under every word
+      // (read where the rows come to rest: their entrance is run to its end)
+      CardIntro.go(CardIntro.PAGES.indexOf('tiers'));
       for (const a of root.querySelector('.ciPage.on').getAnimations({ subtree: true }))
         if (isFinite(a.effect.getComputedTiming().endTime)) a.finish();
       const ol = root.querySelector('.ciPage.on .ciTiers'), cs = getComputedStyle(ol, '::before');
       const m = (cs.backgroundColor || '').match(/rgba?\(([^)]+)\)/), parts = m ? m[1].split(',').map(parseFloat) : [];
       const alpha = parts.length === 4 ? parts[3] : parts.length === 3 ? 1 : 0;
-      if (cs.content === 'none' || cs.display === 'none' || alpha < 0.8) out.push(`the ladder stands on no plate (alpha ${alpha})`);
+      if (cs.content === 'none' || cs.display === 'none' || alpha < 0.8) out.push(`the tiers stand on no plate (alpha ${alpha})`);
       else {
         // the solid core is the plate's own box (its soft edge lies outside it)
         const o = R(ol), core = { left: o.left + parseFloat(cs.left), right: o.right - parseFloat(cs.right), top: o.top + parseFloat(cs.top), bottom: o.bottom - parseFloat(cs.bottom) };
-        for (const e of ol.querySelectorAll('b, small')) {
+        for (const e of ol.querySelectorAll('b, small, .ciTd')) {
           const q = R(e);
           if (q.left < core.left - 1 || q.right > core.right + 1 || q.top < core.top - 1 || q.bottom > core.bottom + 1)
             out.push(`"${e.textContent}" past the plate's solid core`);
         }
       }
       // the motes, sampled through their whole cycle, never above their card
+      CardIntro.go(CardIntro.PAGES.indexOf('legends'));
       const anims = document.getAnimations().filter(a => a.animationName === 'ciRiseMote');
       if (!anims.length) out.push('no motes round the prizes');
       for (let k = 0; k < 30; k++) {
@@ -902,7 +937,78 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     for (const x of r) bad.push(`${w}x${h} ${x}`);
     await ctx.close();
   }
-  ck('nothingStrayInTheWords', bad.length === 0, bad.slice(0, 6).join(' | ') || 'the sparks in the hero alone, the ladder on its plate, the motes beside their cards');
+  ck('nothingStrayInTheWords', bad.length === 0, bad.slice(0, 6).join(' | ') || 'the sparks in the hero alone, the tiers on their plate, the motes beside their cards');
+}
+
+/* ================= 16. SEVEN TENTHS (operator, 2026-10-28, on a laptop at
+   125%: "Shrink all tutorial screens by 30%. They are too large right now")
+   =================
+   A wide window's panel is seven tenths of the 880px it was, its headline
+   seven tenths of what it was set at, and it is no taller than seven tenths
+   of its old 770px — unless a card face drawn at the art's own size (never
+   smaller: below it the painting's pixels go) needs the room, and never its
+   old height. No screen scrolls. A card face is whole device pixels and not
+   under the art's size on a wide panel. A phone's panel is still its
+   screen. And the defeat road's shield is broken, with blood behind it. */
+{
+  const bad = [], seen = [];
+  for (const [w, h, dpr] of [[1100, 728, 1.25], [1366, 768, 1], [1440, 900, 1], [1920, 1080, 1], [1440, 900, 2], [768, 1024, 2], [390, 844, 3]]) {
+    const ctx = await context({ w, h, dpr, reduce: true });
+    const p = await page(ctx, '?cards=all&cardsintro=1');
+    await opened(p, 15000);
+    const r = await p.evaluate(() => {
+      const root = document.getElementById('cardIntro'), out = { bad: [] };
+      const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+      const panel = root.querySelector('.ciPanel').getBoundingClientRect();
+      out.panel = [Math.round(panel.width), Math.round(panel.height)];
+      out.narrow = root.classList.contains('ciNarrow');
+      if (out.narrow) {
+        if (panel.width < vw - 24) out.bad.push(`a phone's panel ${panel.width | 0}px in a ${vw}px window`);
+        return out;
+      }
+      if (panel.width > 880 * 0.7 + 0.5) out.bad.push(`the panel ${panel.width.toFixed(1)}px wide (seven tenths is ${880 * 0.7})`);
+      if (panel.height > 770 * 0.85) out.bad.push(`the panel ${panel.height.toFixed(1)}px tall`);
+      let under = false;
+      for (let i = 0; i < CardIntro.PAGES.length; i++) {
+        CardIntro.go(i);
+        const pg = root.querySelector('.ciPage.on');
+        if (pg.classList.contains('scroll')) out.bad.push(`${CardIntro.PAGES[i]} has to scroll`);
+        // the headline at seven tenths of the old rule's size (or less, where its screen is tightened)
+        const word = pg.querySelector('.ciWord'), fz = parseFloat(getComputedStyle(word).fontSize);
+        const old = { hello: [38, 12, 10, 100], earn: [34, 8.6, 8.4, 84], play: [34, 8.6, 8.4, 84], tiers: [34, 8.6, 8.4, 84], legends: [30, 7.4, 7.4, 70] }[CardIntro.PAGES[i]];
+        const was = Math.max(old[0], Math.min(old[1] * 8.8, old[2] * vh / 100, old[3]));
+        if (fz > was * 0.7 + 0.5) out.bad.push(`${CardIntro.PAGES[i]}'s headline ${fz}px (seven tenths of ${was.toFixed(1)} is ${(was * 0.7).toFixed(1)})`);
+        // a face's own width (the fan scales and tilts its slots by transform, by design)
+        for (const f of pg.querySelectorAll('.ccard')) {
+          const w = parseFloat(f.style.getPropertyValue('--w')), k = w * devicePixelRatio / Deck.W;
+          if (Math.abs(k - Math.round(k)) > 0.01) out.bad.push(`${f.dataset.card} at ${k.toFixed(2)} device pixels to an art pixel`);
+          if (w * devicePixelRatio < Deck.W - 0.5) out.bad.push(`${f.dataset.card} under the art's own size`);
+          if (w < Deck.W - 0.5) under = true;
+        }
+      }
+      // with every face under the art's size in CSS pixels (a 125% laptop), the panel keeps to about seven tenths of its old height
+      // (a few pixels more where the fan's tilted outer cards hang below its box)
+      if (under && panel.height > 770 * 0.73) out.bad.push(`the panel ${panel.height | 0}px tall with the faces at their smallest`);
+      return out;
+    });
+    for (const x of r.bad) bad.push(`${w}x${h}@${dpr}: ${x}`);
+    seen.push(`${w}x${h}@${dpr} ${r.panel.join('x')}`);
+    await ctx.close();
+  }
+  // the broken shield, with blood splattered behind it
+  const ctx = await context({ reduce: true });
+  const p = await page(ctx, '?cards=1');
+  const sh = await p.evaluate(() => {
+    const svg = CardIntro.SVG.fight();
+    const halves = [...svg.matchAll(/<g transform='translate\([^)]*\) rotate\((-?[\d.]+) [^)]*\)'><g clip-path='url\(#h([lr])\)'>/g)].map(m => [m[2], +m[1]]);
+    const splash = /<path d='M[^']+Z' fill='url\(#bp\)'/.test(svg) && /id='bp'[^>]*>(<stop[^>]*stop-color='#[5-c][0-9a-f][01][0-9a-f]{3}'\/>){3}/.test(svg);
+    return { halves, splash, drops: (svg.match(/<ellipse [^>]*fill='url\(#bl\)'/g) || []).length };
+  });
+  await ctx.close();
+  const broken = sh.halves.length === 2 && sh.halves.some(([s, r]) => s === 'l' && r < 0) && sh.halves.some(([s, r]) => s === 'r' && r > 0);
+  ck('aWidePanelIsSevenTenths', bad.length === 0, bad.slice(0, 6).join(' | ') || seen.join(', '));
+  ck('theDefeatShieldIsBrokenWithBloodBehindIt', broken && sh.splash && sh.drops >= 20,
+    `halves ${JSON.stringify(sh.halves)}, a crimson splash ${sh.splash}, ${sh.drops} drops`);
 }
 
 /* ================= THE ERRORS ================= */

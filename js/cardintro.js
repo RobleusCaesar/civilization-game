@@ -1,8 +1,17 @@
 "use strict";
-/* THE CARD ANNOUNCEMENT (tests/card-intro.mjs) — four screens that tell a
-   player the cards exist, how they are earned, how they are played and what
-   the rarest of them can do, over the title the first time a device opens
-   the game with the deck on.
+/* THE CARD ANNOUNCEMENT (tests/card-intro.mjs) — five screens that tell a
+   player the cards exist, how they are earned, how they are played, what
+   each of the five tiers brings and what the rarest of them can do, over
+   the title the first time a device opens the game with the deck on.
+
+   SEVEN TENTHS ON A WIDE WINDOW (operator, 2026-10-28, on a laptop:
+   "Shrink all tutorial screens by 30%. They are too large right now"): a
+   panel that is not a phone's is drawn at SHRINK of its old size — the
+   panel, the type, the ornaments, the gaps. Two things keep their own
+   size: a 44px touch target (the X, the dots, the NEXT plaque), and a card
+   face, which is whole device pixels and never under the art's own size
+   (one art pixel to a CSS pixel; on most desktops that is already the face
+   it was). A phone's panel already is its screen and keeps it.
 
    WITH THE SWITCH OFF NOTHING HERE EXISTS. This file defines CardIntro and
    nothing else: no element, no stylesheet, no listener, no storage write.
@@ -20,10 +29,11 @@
    reload half way through never deals it again, and the collection's
    "How cards work" (and ?cardsintro=1) bring it back on purpose.
 
-   EVERY CLAIM IS THE CODE'S. The earn numbers are read from CFG.CARDS
-   (LOSS_DEEDS, LOSS_DAYS, the Hard win table, PITY) and the tier names from
-   Deck.TIERS, so a rule retuned there retunes the copy; the contract checks
-   the words against the same constants. The faces are Deck.face — the real
+   EVERY CLAIM IS THE CODE'S. The odds are read from CFG.CARDS (the Hard
+   win table, PITY) and the tier names from Deck.TIERS, so a rule retuned
+   there retunes the copy; the contract checks the words against the same
+   constants, the +1 and +2 a win pays against Deck.settle, and each tier's
+   line against the cards of that tier. The faces are Deck.face — the real
    catalog cards, at whole device pixels.
 
    THE PICTURES are the card faces (Deck.face, the real catalog paintings
@@ -47,6 +57,19 @@ const CardIntro = {
     { id: 'harvest_festival', cap: 'Harvests' },
     { id: 'starfall', cap: 'Fire from the sky' },
   ],
+  /* THE TIERS (operator: "turn the whole tier structure… into its own
+     tutorial screen… no more than a sentence on what improves at each
+     level"): one short line a tier, and the cards that line names — the
+     contract checks each of them is of that tier, so a line can never
+     promise what its tier does not hold */
+  TIER_LINES: {
+    stone:    { line: 'Goods and quick help.', backs: ['forager_cache', 'willing_hands', 'quick_hands'] },
+    bronze:   { line: 'Days of richer work, or a war band.', backs: ['harvest_festival', 'bountiful_land', 'war_band'] },
+    iron:     { line: 'Elite troops, siege engines, sabotage.', backs: ['iron_legion', 'siege_train', 'blight'] },
+    imperial: { line: 'Legions, a golden age, fire from the sky.', backs: ['legion_marches', 'golden_age', 'starfall'] },
+    enlight:  { line: 'Game changers: a dragon, a darkened sun.', backs: ['dragonfire', 'swallowed_sun'] },
+  },
+  SHRINK: 0.7,             // a wide panel's size against the one it was
   /* the two prizes. Their paintings already show the beast, so nothing is
      drawn over or behind a card: the glory is the tier's own light (a slow
      burst and an aura behind the card), a glint running round its rim and
@@ -73,7 +96,7 @@ const CardIntro = {
     // "1 in 4" when the share is a whole fraction, else the percentage
     const oneIn = leg > 0 && Math.abs(100 / leg - Math.round(100 / leg)) < 1e-9 ? Math.round(100 / leg) : 0;
     return {
-      deeds: C.LOSS_DEEDS | 0, days: C.LOSS_DAYS | 0, pity: C.PITY | 0,
+      pity: C.PITY | 0,
       hardLegend: leg, hardOneIn: oneIn,
       tiers: (window.Deck ? Deck.TIERS : []).map(t => ({ k: t.k, name: t.name, rarity: t.rarity, col: t.col, glow: t.glow })),
       held: window.Deck ? Deck.total() : 0,
@@ -174,7 +197,7 @@ const CardIntro = {
 
 
   /* ---------------- the pages ---------------- */
-  PAGES: ['hello', 'earn', 'play', 'legends'],
+  PAGES: ['hello', 'earn', 'play', 'tiers', 'legends'],
   copy() {
     const f = this.facts();
     const t = f.tiers, legend = t[4] || { name: 'Enlightenment', rarity: 'Legendary' };
@@ -183,12 +206,15 @@ const CardIntro = {
         kick: 'New feature', title: 'Cards',
         sub: 'Win or lose, you’ll earn cards to use in future games.',
       },
+      /* the operator's words (2026-10-28): the victory road says what a win
+         pays and the defeat road only that one fought hard still pays — the
+         deeds and the days are the rule's business, not this screen's */
       earn: {
         kick: 'How to earn', title: 'Earn them',
-        sub: 'Every victory earns a card — and so does a defeat you fought hard.',
-        win: { h: 'Victory', p: 'A card every time, however fast you win.', note: 'A great victory earns two: on Hard, by the Wonder, or faster than most.' },
-        loss: { h: 'A hard-fought defeat', p: 'Still a card, if you did the work.', note: 'Build · train · gather · upgrade · raze' },
-        deeds: `${f.deeds} deeds`, days: `${f.days} days of orders`,
+        sub: 'Every victory earns a card, and so do hard-fought losses.',
+        win: { h: 'Victory', p: 'A good win +1 card, a hard-fought win +2 cards.' },
+        loss: { h: 'A hard-fought defeat', p: 'Still a card, if you did the work.' },
+        one: '+1 card', two: '+2 cards',
         foot: 'Strike your banner and you leave with nothing.',
       },
       play: {
@@ -197,18 +223,24 @@ const CardIntro = {
         deck: 'Your deck', held: f.held > 0 ? `${f.held} ${f.held === 1 ? 'card' : 'cards'} waiting` : '',
         foot: 'Each card plays once — then it’s gone. Choose your moment.',
       },
-      legends: {
-        kick: 'The prizes', title: 'Chase legends',
-        sub: `From ${t[0] ? t[0].name : 'Stone'} to ${legend.rarity} — the harder the fight, the rarer the card.`,
+      tiers: {
+        kick: 'Card rarity', title: 'Five tiers',
+        sub: 'The higher the tier, the stronger the card.',
         foot: (f.hardOneIn ? `Win on Hard: 1 card in ${f.hardOneIn} is ${legend.rarity}.` : `Win on Hard for ${legend.rarity} cards.`) +
           (f.pity ? ` ${f.pity} wins without one, and the next is guaranteed.` : ''),
+      },
+      legends: {
+        kick: 'The prizes', title: 'Chase legends',
+        sub: 'The harder the fight, the rarer the card.',
         cta: 'Let’s go',
       },
     };
   },
 
   _build() {
-    const c = this.copy(), esc = s => this.esc(s), f = this.facts();
+    const c = this.copy(), esc = s => this.esc(s);
+    // a compound word never breaks at its own hyphen ("a hard-" / "fought win")
+    const nb = s => esc(s).replace(/(\w+-\w+)/g, '<span class="ciNb">$1</span>');
     const root = document.createElement('div');
     root.id = 'cardIntro';
     root.className = 'plaques' + (this.reduced() ? ' ciStill' : '');
@@ -222,7 +254,7 @@ const CardIntro = {
       return `<section class="ciPage ciP-${key}" data-page="${i}" aria-hidden="true">` +
         `<div class="ciHead"><div class="ciRibbon"><i class="ciRib"></i><span>${esc(P.kick)}</span></div>` +
         `<h2 class="ciTitle" id="ciTitle${i}"><i class="ciLaurel l"></i><span class="ciWord">${esc(P.title)}</span><i class="ciLaurel r"></i></h2>` +
-        `<i class="ciRule"></i><p class="ciSub">${esc(P.sub)}</p></div>` +
+        `<i class="ciRule"></i><p class="ciSub">${nb(P.sub)}</p></div>` +
         `<div class="ciHero">${inner}</div>` +
         (P.foot ? `<p class="ciFoot">${esc(P.foot)}</p>` : '') +
         `</section>`;
@@ -230,20 +262,18 @@ const CardIntro = {
     const E = c.earn;
     const earn =
       `<div class="ciRoads">` +
-        `<div class="ciRoad win"><i class="ciEmb" data-svg="win"></i><div class="ciRoadTx"><h3>${esc(E.win.h)}</h3><p>${esc(E.win.p)}</p>` +
-          `<p class="ciGain"><span class="ciCardPip"></span><b>+1 card</b><span class="ciOr">or</span><span class="ciCardPip"></span><span class="ciCardPip two"></span><b>+2</b></p>` +
-          `<p class="ciNote">${esc(E.win.note)}</p></div></div>` +
-        `<div class="ciRoad loss"><i class="ciEmb" data-svg="fight"></i><div class="ciRoadTx"><h3>${esc(E.loss.h)}</h3><p>${esc(E.loss.p)}</p>` +
-          `<p class="ciMeter"><span class="ciPips">${'<i></i>'.repeat(f.deeds)}</span><b>${esc(E.deeds)}</b></p>` +
-          `<p class="ciMeter"><span class="ciDays">${'<i></i>'.repeat(f.days)}</span><b>${esc(E.days)}</b></p>` +
-          // a list that breaks keeps each dot at the end of its line, never orphaned at the start of the next
-          `<p class="ciNote">${esc(E.loss.note).replace(/ · /g, '\u00a0· ')}</p></div></div>` +
+        `<div class="ciRoad win"><i class="ciEmb" data-svg="win"></i><div class="ciRoadTx"><h3>${esc(E.win.h)}</h3><p>${nb(E.win.p)}</p>` +
+          // each count keeps its cards: a row too wide for its road breaks between the two, never inside one
+          `<p class="ciGain"><span class="ciG"><span class="ciCardPip"></span><b>${esc(E.one)}</b></span><span class="ciOr">or</span>` +
+            `<span class="ciG"><span class="ciCardPip"></span><span class="ciCardPip two"></span><b>${esc(E.two)}</b></span></p></div></div>` +
+        `<div class="ciRoad loss"><i class="ciEmb" data-svg="fight"></i><div class="ciRoadTx"><h3>${esc(E.loss.h)}</h3><p>${esc(E.loss.p)}</p></div></div>` +
       `</div>`;
     const play =
       `<div class="ciPlay"><figure class="ciDeck"><div class="ciDeckBtn" aria-hidden="true"><i class="ciDeckIco" data-svg="deck"></i><i class="ciTap"></i></div>` +
         `<figcaption><b>${esc(c.play.deck)}</b>${c.play.held ? `<small>${esc(c.play.held)}</small>` : ''}</figcaption></figure>` +
       `<i class="ciArrow" aria-hidden="true"></i><div class="ciTrio"></div></div>`;
-    const legends = `<div class="ciLegends"><ol class="ciTiers"></ol><div class="ciBeasts"></div></div>`;
+    const tiers = `<ol class="ciTiers"></ol>`;
+    const legends = `<div class="ciLegends"><div class="ciBeasts"></div></div>`;
     root.innerHTML =
       `<div class="ciVeil" data-act="veil"></div>` +
       `<div class="ciPanel">` +
@@ -254,7 +284,8 @@ const CardIntro = {
           page(0, 'hello', '<div class="ciFan"></div>') +
           page(1, 'earn', earn) +
           page(2, 'play', play) +
-          page(3, 'legends', legends) +
+          page(3, 'tiers', tiers) +
+          page(4, 'legends', legends) +
         `</div>` +
         `<div class="ciNav"><i class="ciCta" aria-hidden="true"></i>` +
           `<button type="button" class="ciBack" data-act="back" aria-label="Back">${this.ARROW_L}<span>Back</span></button>` +
@@ -290,39 +321,94 @@ const CardIntro = {
     const vp = this._vp(), dpr = this._dpr();
     const narrow = vp.w < 600;
     root.classList.toggle('ciNarrow', narrow);
+    // a wide panel at seven tenths of its old self; a phone's is its screen
+    const k = narrow ? 1 : this.SHRINK;
+    root.style.setProperty('--k', k);
     /* the chrome is vector, so it takes any size: the ribbon first (the
        panel's top gives way to its overhang), then the ornaments */
-    root.style.setProperty('--ribW', Math.round(narrow ? Math.min(268, vp.w * 0.69) : 330) + 'px');
-    root.style.setProperty('--cornerW', (narrow ? 50 : 72) + 'px');
-    root.style.setProperty('--laurelH', (narrow ? 84 : 124) + 'px');
-    root.style.setProperty('--embW', (narrow ? 70 : 124) + 'px');
+    root.style.setProperty('--ribW', Math.round(narrow ? Math.min(268, vp.w * 0.69) : 330 * k) + 'px');
+    root.style.setProperty('--cornerW', Math.round(narrow ? 50 : 72 * k) + 'px');
+    root.style.setProperty('--laurelH', Math.round(narrow ? 84 : 124 * k) + 'px');
+    root.style.setProperty('--embW', Math.round(narrow ? 70 : 124 * k) + 'px');
     void dpr;
     const panel = root.querySelector('.ciPanel');
-    const pw = panel.clientWidth || Math.min(vp.w - 24, 880);
+    const pw = panel.clientWidth || Math.min(vp.w - 24, 880 * k);
     const ph = panel.clientHeight || vp.h - 60;
-    root.classList.toggle('ciShort', ph < 700);
-    const avail = pw - (narrow ? 24 : 72);
+    root.classList.toggle('ciShort', ph < 700 * k);
+    const avail = pw - (narrow ? 24 : 72 * k);
     // what the hero may use: the panel less its head and its nav
-    const heroH = Math.max(160, ph - (narrow ? 380 : 400));
-    const fit = (w, h) => Deck.fit(Math.max(10, Math.min(w, h * Deck.W / Deck.H))).w;
+    const heroH = Math.max(160 * k, ph - (narrow ? 380 : 300));
+    /* a face is whole device pixels, and on a wide panel never smaller than
+       the art's own size (one art pixel to a CSS pixel) unless the room it
+       had before already was — most desktops showed every face at that
+       size, and below it the painting's pixels go */
+    const step = (w, h) => Deck.fit(Math.max(10, Math.min(w, h * Deck.W / Deck.H))).w;
+    const fit = (w, h) => narrow ? step(w, h) : Math.max(step(w * k, h), Math.min(step(w, h / k), Deck.W));
     const cw = fit(narrow ? avail * 0.54 : 230, heroH / 1.1);
     // the cards behind the middle one: a step smaller where the steps allow
     const sw = narrow ? fit(cw * 0.72, heroH) : cw;
-    let trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40)) / 1.02);
+    let trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40 * k)) / 1.02);
     // the deck button beside three cards needs the room for both; a panel
     // without it (a tablet upright) stacks them as a phone does
-    const stack = narrow || 3 * trioW + 40 + 230 > avail;
-    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40) / 3), (heroH - 110) / 1.02);
+    const stack = narrow || 3 * trioW + (40 + 120) * k > avail;
+    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40 * k) / 3 / k), (heroH - 110 * k) / 1.02);
     root.classList.toggle('ciStack', stack);
-    const beastW = fit(narrow ? avail / 2.4 : 200, (heroH - (narrow ? 150 : 70)) / 1.06);
+    const beastW = fit(narrow ? avail / 2.2 : 200, (heroH - (narrow ? 60 : 50 * k)) / 1.06);
     const key = [cw, sw, trioW, beastW, narrow, stack, Math.round(avail)].join(':');
     if (this._sizes !== key) {
       this._sizes = key;
       this._fan(cw, sw, avail, narrow);
       this._trio(trioW);
-      this._legends(beastW, narrow);
+      this._tiers();
+      this._legends(beastW);
     }
+    this._sizePanel(narrow);
     this._fitPage();
+  },
+  /* A WIDE PANEL IS AS TALL AS ITS TALLEST SCREEN NEEDS: seven tenths of
+     its old height, and more only where a screen cannot stand in that — a
+     card face never shrinks below the art's own size, so a desktop that
+     shows its faces at 176px (a 1x or a 2x screen) needs a taller panel
+     than one that shows them at 141 (a laptop at 125%). Every screen is
+     measured at rest and the tallest decides, so the panel is one height on
+     all five and the nav never moves between them; never taller than it
+     used to be, or than the window. A phone's panel is its screen. */
+  _sizePanel(narrow) {
+    const root = this._root;
+    root.style.removeProperty('--panelH');
+    if (narrow) return;
+    const chrome = root.querySelector('.ciNav').offsetHeight + root.querySelector('.ciDots').offsetHeight;
+    let need = 0;
+    root.classList.add('ciMeasure');
+    for (const pg of root.querySelectorAll('.ciPage')) {
+      const was = pg.classList.contains('on'), cls = pg.className;
+      pg.classList.add('on');
+      pg.classList.remove('tight', 'scroll');
+      const back = this._settle(pg);
+      const foot = pg.querySelector('.ciFoot'), hero = pg.querySelector('.ciHero');
+      let L = 0, top = Infinity, bot = -Infinity;
+      for (const c of hero.children) {
+        L += Math.max(c.offsetHeight, c.scrollHeight);
+        const q = c.getBoundingClientRect();
+        top = Math.min(top, q.top); bot = Math.max(bot, q.bottom);
+      }
+      /* what is drawn past the hero's own boxes counts too: the fan's outer
+         cards drop and tilt by transform, which no box records. The hero
+         centres its boxes, so a card hanging O below them needs 2·O more */
+      let over = 0;
+      for (const e of hero.querySelectorAll('.ccard, figcaption')) {
+        const q = e.getBoundingClientRect();
+        over = Math.max(over, top - q.top, q.bottom - bot);
+      }
+      const h = pg.querySelector('.ciHead').offsetHeight + (foot ? foot.offsetHeight + 4 : 0) + L + 2 * Math.max(0, over);
+      back();
+      pg.className = cls;
+      if (!was) pg.classList.remove('on');
+      need = Math.max(need, h);
+    }
+    root.classList.remove('ciMeasure');
+    const H = Math.min(770, Math.max(Math.round(770 * this.SHRINK), Math.ceil(need + chrome + 10)));
+    root.style.setProperty('--panelH', H + 'px');
   },
   /* THE SCREEN FITS ITS PANEL, BY MEASUREMENT. A short window (an iPhone SE,
      a laptop's letterbox) cannot hold every screen at full size: the screen
@@ -333,7 +419,6 @@ const CardIntro = {
     const pg = this._root && this._root.querySelector('.ciPage.on');
     if (!pg) return;
     pg.classList.remove('tight', 'scroll');
-    this._fitLadder();
     /* what is measured is where the screen comes to REST: the light round
        the prizes (a burst wider than the card, an aura, the rim, the motes)
        is decoration that may spill past anything, so it is set aside; and a
@@ -353,7 +438,6 @@ const CardIntro = {
     };
     if (spills()) {
       pg.classList.add('tight');
-      this._fitLadder();
       if (spills()) pg.classList.add('scroll');
     }
     this._clearX(pg);
@@ -376,7 +460,7 @@ const CardIntro = {
      the gaps between its letters and read as a stray mark ("Ha•rd",
      "ARMİES"). Their field is the hero's own band — the words above it and
      below it are left clear — and the words INSIDE the hero are cut out of
-     it: a hole round the ladder and round the words of every caption (an
+     it: a hole round the tiers' list and round the words of every caption (an
      even-odd clip path; holes that would touch are made one, or their
      overlap would be cut back in). A screen that has to scroll moves its
      words under a still field, so it shows none. The roads need no hole:
@@ -524,30 +608,37 @@ const CardIntro = {
       host.appendChild(fig);
     });
   },
-  _legends(cw, narrow) {
+  /* THE TIERS, a screen of their own (operator: "clean, well laid out, and
+     easy to read"): five rows on a dark plate, Stone at the top to
+     Enlightenment at the foot, each a gem in the tier's own cut, its name in
+     the tier's colour with its rarity beside it, and one short line on what
+     the tier brings. Built through the DOM: a gem is a data URI, and a
+     url("…") inside a quoted style attribute ends the attribute. */
+  _tiers() {
     const f = this.facts(), V = this.SVG;
     const ol = this._root.querySelector('.ciTiers');
-    /* THE LADDER: five identical gems on one line (a row on a phone, a
-       column on a wide panel), each tier's name on one line and its rarity
-       on the line beneath. Built through the DOM: a gem is a data URI, and
-       a url("…") inside a quoted style attribute ends the attribute. The
-       type is fitted to the room by measurement (_fitLadder) */
-    const tiers = narrow ? f.tiers : f.tiers.slice().reverse();   // Legendary at the top of a column
     ol.innerHTML = '';
-    tiers.forEach(t => {
+    f.tiers.forEach((t, n) => {
       const li = document.createElement('li');
       li.style.setProperty('--tc', t.col);
       li.style.setProperty('--tg', t.glow);
-      li.style.setProperty('--n', f.tiers.indexOf(t));
+      li.style.setProperty('--n', n);
       const gem = document.createElement('i');
       gem.className = 'ciGem';
       gem.style.backgroundImage = V.uri(V.gem(t.col));
+      const nm = document.createElement('span');
+      nm.className = 'ciTn';
+      nm.innerHTML = `<b>${this.esc(t.name)}</b><small>${this.esc(t.rarity)}</small>`;
       const tx = document.createElement('span');
-      tx.innerHTML = `<b>${this.esc(t.name)}</b><small>${this.esc(t.rarity)}</small>`;
+      tx.className = 'ciTd';
+      tx.textContent = (this.TIER_LINES[t.k] || {}).line || '';
       li.appendChild(gem);
+      li.appendChild(nm);
       li.appendChild(tx);
       ol.appendChild(li);
     });
+  },
+  _legends(cw) {
     const host = this._root.querySelector('.ciBeasts');
     host.innerHTML = '';
     host.style.setProperty('--cw', cw + 'px');
@@ -577,42 +668,6 @@ const CardIntro = {
       fig.appendChild(cap);
       host.appendChild(fig);
     });
-    // the ladder stands between the two prizes on a wide panel, above them on a phone
-    if (!narrow) host.insertBefore(ol, host.children[1]);
-    else host.parentNode.insertBefore(ol, host);
-  },
-  /* THE LADDER'S TYPE FITS ITS ROOM, BY MEASUREMENT: 'Enlightenment' is the
-     longest word on the screen, and on a 320px phone five tiers share one
-     row. Set at the largest size, measured, and stepped down until no name
-     overflows its row — never wrapped, never run into its neighbour. Only a
-     ladder on show can be measured, so go() asks again each time the
-     screen comes round. */
-  _fitLadder() {
-    const ol = this._root && this._root.querySelector('.ciTiers');
-    if (!ol || !ol.getClientRects().length) return;
-    const narrow = this._root.classList.contains('ciNarrow');
-    const max = narrow ? 14 : 16, min = 7;
-    const room = () => {
-      if (narrow) return ol.parentNode.clientWidth - 6;
-      // between the prizes: the hero less the two cards and the gaps round them
-      const host = ol.parentNode, cs = getComputedStyle(host), gap = parseFloat(cs.columnGap) || 0;
-      let used = 0;
-      for (const c of host.children) if (c !== ol) used += c.getBoundingClientRect().width;
-      return host.parentNode.clientWidth - used - gap * (host.children.length - 1) - 6;
-    };
-    const need = () => narrow ? ol.scrollWidth : Math.max(...[...ol.children].map(li => li.scrollWidth));
-    let fz = max;
-    ol.style.setProperty('--tierF', fz + 'px');
-    for (let i = 0; i < 3; i++) {
-      const r = room(), n = need();
-      if (n <= r) break;
-      fz = Math.max(min, Math.floor(fz * r / n * 4) / 4);
-      ol.style.setProperty('--tierF', fz + 'px');
-    }
-    for (let i = 0; i < 24 && fz > min && need() > room(); i++) {
-      fz -= 0.25;
-      ol.style.setProperty('--tierF', fz + 'px');
-    }
   },
   _sparks() {
     const host = this._root.querySelector('.ciSparks');
@@ -753,11 +808,12 @@ const CardIntro = {
   _preload(n) {
     const urls = [];
     const add = u => { if (u && !this._pre[u]) urls.push(u); };
-    if (n === 0) {
+    const key = this.PAGES[n];
+    if (key === 'hello') {
       add(this.art('dusk'));
       for (const id of this.FAN) { add(Deck.artUrl(id)); add(Deck.frameUrl(Deck.card(id).tier)); }
-    } else if (n === 2) for (const p of this.PLAY) { add(Deck.artUrl(p.id)); add(Deck.frameUrl(Deck.card(p.id).tier)); }
-    else if (n === 3) for (const b of this.PRIZES) { add(Deck.artUrl(b.id)); add(Deck.frameUrl(Deck.card(b.id).tier)); }
+    } else if (key === 'play') for (const p of this.PLAY) { add(Deck.artUrl(p.id)); add(Deck.frameUrl(Deck.card(p.id).tier)); }
+    else if (key === 'legends') for (const b of this.PRIZES) { add(Deck.artUrl(b.id)); add(Deck.frameUrl(Deck.card(b.id).tier)); }
     const all = urls.map(u => (this._pre[u] = new Promise(res => {
       const img = new Image();
       img.onload = img.onerror = () => res();
@@ -980,46 +1036,84 @@ CardIntro.SVG = {
     return this.doc(120, 120, body, '7 13 106 106');
   },
 
-  /* A HARD-FOUGHT DEFEAT: a gashed round shield, a spear behind it, embers */
+  /* A HARD-FOUGHT DEFEAT (operator: "Switch the graphic of the shield to be
+     broken, and with blood splattered behind it"): a round shield split in
+     two down a jagged break, the halves thrown apart from their feet with
+     splinters hanging off the torn wood, and a splash of blood behind it —
+     a body with ragged arms thrown outward and drops beyond. The splash is
+     a seeded scatter: the same splash every time, nothing drawn at random. */
   fight() {
-    const ang = Math.atan2(22 - 104, 100 - 24) * 180 / Math.PI;
+    const f = n => this.f(n), TAU = Math.PI * 2;
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const C = [60, 60], N = 96;
+    // the arms: narrow spikes at chosen angles, a drop at each tip and more beyond
+    const arms = [[-2.55, 55], [-1.8, 52], [-1.05, 57], [-0.3, 50], [0.5, 54], [1.3, 49], [2.1, 56], [2.8, 51], [-3.05, 48]];
+    const at = (a, r) => [C[0] + Math.cos(a) * r, C[1] + Math.sin(a) * r * 0.9];
+    const rim = [];
+    for (let i = 0; i < N; i++) {
+      const a = i / N * TAU;
+      let r = 36 + rnd() * 3 + 3 * Math.sin(a * 5 + 1) + 2 * Math.sin(a * 9);
+      for (const [aa, L] of arms) {
+        let d = (((a - aa) % TAU) + TAU) % TAU;
+        d = Math.min(d, TAU - d);
+        if (d < 0.13) r = Math.max(r, L - Math.pow(d / 0.13, 0.7) * (L - 38));
+      }
+      rim.push(at(a, r));
+    }
+    // one smooth closed curve through the midpoints
+    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], m0 = mid(rim[N - 1], rim[0]);
+    let splash = `M${f(m0[0])},${f(m0[1])}`;
+    for (let i = 0; i < N; i++) { const p = rim[i], m = mid(p, rim[(i + 1) % N]); splash += ` Q${f(p[0])},${f(p[1])} ${f(m[0])},${f(m[1])}`; }
+    const drop = (a, r, size, stretch) => {
+      const [x, y] = at(a, r);
+      return `<ellipse cx='${f(x)}' cy='${f(y)}' rx='${f(size * stretch)}' ry='${f(size)}' transform='rotate(${f(a * 180 / Math.PI)} ${f(x)} ${f(y)})' fill='url(#bl)'/>`;
+    };
+    let drops = '';
+    for (const [aa, L] of arms)
+      drops += drop(aa, L - 1.5, 2.6 + rnd() * .8, 1.05) + drop(aa + 0.05, L + 4 + rnd() * 3, 1.7 + rnd() * 1.2, 1.5) + drop(aa - 0.04, L + 10 + rnd() * 5, 0.9 + rnd() * 0.8, 1.3);
+    for (let i = 0; i < 12; i++) drops += drop(rnd() * TAU, 47 + rnd() * 9, 0.8 + rnd() * 1.1, 1.15);
+    // the shield, whole — drawn twice, once into each half of the break
+    const S = [60, 62], R = 30;
+    const crack = [[58, 26], [62, 37], [55, 47], [63, 58], [56, 68], [62, 79], [55, 90], [59, 100]].map(p => p.join(',')).join(' L');
+    const planks = [-18, -9, 0, 9, 18].map((dx, i) =>
+      `<rect x='${S[0] + dx - 4.5}' y='${S[1] - R}' width='9' height='${2 * R}' fill='#000' fill-opacity='${[.14, 0, .09, .03, .16][i]}'/>` +
+      `<path d='M${S[0] + dx + 4.5},${S[1] - R} L${S[0] + dx + 4.5},${S[1] + R}' stroke='#2a1608' stroke-width='1.1'/>`).join('');
+    const rivets = [0, 45, 90, 135, 180, 225, 270, 315].map(d => { const r = d * Math.PI / 180;
+      return `<circle cx='${f(S[0] + Math.cos(r) * (R - 2.6))}' cy='${f(S[1] + Math.sin(r) * (R - 2.6))}' r='1.6' fill='url(#bs)' stroke='#14181d' stroke-width='.6'/>`; }).join('');
+    const shield =
+      `<circle cx='${S[0]}' cy='${S[1]}' r='${R + 1.5}' fill='#120c07'/><circle cx='${S[0]}' cy='${S[1]}' r='${R}' fill='url(#rim)'/>` +
+      `<circle cx='${S[0]}' cy='${S[1]}' r='${R - 5.2}' fill='#1a0f06'/>` +
+      `<g clip-path='url(#face)'><rect x='${S[0] - R}' y='${S[1] - R}' width='${2 * R}' height='${2 * R}' fill='url(#wd)'/>${planks}` +
+        `<path d='M36,50 Q41,48 45,52 M66,78 Q71,76 74,80 M46,82 Q51,80 53,84 M70,44 Q74,42 77,46' fill='none' stroke='#3a2210' stroke-opacity='.55' stroke-width='.6'/>` +
+        `<rect x='${S[0] - R}' y='${S[1] - R}' width='${2 * R}' height='${2 * R}' fill='url(#lt)'/></g>` +
+      rivets +
+      `<circle cx='${S[0]}' cy='${S[1]}' r='8.4' fill='#14181d'/><circle cx='${S[0]}' cy='${S[1]}' r='7.4' fill='url(#bs)'/>` +
+      `<path d='M55.4,57.8 A6,6 0 0 1 62.2,56.2' fill='none' stroke='#fff' stroke-opacity='.7' stroke-width='1' stroke-linecap='round'/>` +
+      // the break's raw edge: torn pale wood, a dark line in the grain
+      `<g clip-path='url(#disc)'><path d='M${crack}' fill='none' stroke='#e2b07a' stroke-width='2.4' stroke-linejoin='bevel'/>` +
+        `<path d='M${crack}' fill='none' stroke='#5a3417' stroke-width='.7' stroke-linejoin='bevel'/></g>`;
+    const splinter = d => `<path d='${d}' fill='#d9a46c' stroke='#3a2210' stroke-width='.5' stroke-linejoin='round'/>`;
     const body =
       `<defs>` +
-      `<linearGradient id='st' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f1f4f7'/><stop offset='.45' stop-color='#9aa6b3'/><stop offset='1' stop-color='#3c4652'/></linearGradient>` +
+      `<radialGradient id='bl' cx='.42' cy='.38' r='.7'><stop offset='0' stop-color='#c21a26'/><stop offset='.55' stop-color='#8e0d17'/><stop offset='1' stop-color='#5c060d'/></radialGradient>` +
+      `<radialGradient id='bp' cx='.45' cy='.42' r='.62'><stop offset='0' stop-color='#b3141f'/><stop offset='.6' stop-color='#860b14'/><stop offset='1' stop-color='#56050b'/></radialGradient>` +
       `<linearGradient id='rim' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#dfe5ea'/><stop offset='.35' stop-color='#8d98a5'/><stop offset='.7' stop-color='#4a5461'/><stop offset='1' stop-color='#262c35'/></linearGradient>` +
       `<linearGradient id='wd' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#9a6a3c'/><stop offset='.5' stop-color='#7a4c27'/><stop offset='1' stop-color='#4e2c13'/></linearGradient>` +
-      `<linearGradient id='sh' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#5a3418'/><stop offset='.45' stop-color='#a0703f'/><stop offset='1' stop-color='#4a2a12'/></linearGradient>` +
       `<radialGradient id='bs' cx='.38' cy='.32' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='.4' stop-color='#aab4bf'/><stop offset='1' stop-color='#323a44'/></radialGradient>` +
       `<radialGradient id='lt' cx='.32' cy='.25' r='.8'><stop offset='0' stop-color='#fff' stop-opacity='.22'/><stop offset='.6' stop-color='#fff' stop-opacity='0'/><stop offset='1' stop-color='#000' stop-opacity='.35'/></radialGradient>` +
-      `<radialGradient id='em' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='#fff6c0'/><stop offset='.35' stop-color='#ffb24a'/><stop offset='.7' stop-color='#ff6a1a' stop-opacity='.55'/><stop offset='1' stop-color='#ff4a00' stop-opacity='0'/></radialGradient>` +
-      `<clipPath id='face'><circle cx='56' cy='66' r='27.5'/></clipPath></defs>` +
-      // the spear, behind
-      `<path d='M24,104 L94,29' stroke='#1a0e05' stroke-width='6' stroke-linecap='round'/>` +
-      `<path d='M24,104 L94,29' stroke='url(#sh)' stroke-width='3.6' stroke-linecap='round'/>` +
-      `<path d='M25,102.4 L93,29.6' stroke='#d4a06a' stroke-opacity='.55' stroke-width='.8' stroke-linecap='round'/>` +
-      `<g transform='translate(92 31) rotate(${this.f(ang)})'>` +
-        `<path d='M-2,-2.6 L4,-2.6 L4,2.6 L-2,2.6 Z' fill='#2a2f36' stroke='#0d0f12' stroke-width='.8'/>` +
-        `<path d='M3,0 C8,-6.5 17,-6 28,0 C17,6 8,6.5 3,0 Z' fill='url(#st)' stroke='#14181d' stroke-width='1.2' stroke-linejoin='round'/>` +
-        `<path d='M5,0 L26,0' stroke='#ffffff' stroke-opacity='.55' stroke-width='.7'/></g>` +
-      // the shield: iron rim, planks, a gash, the boss
-      `<circle cx='56' cy='66' r='35.5' fill='#120c07'/>` +
-      `<circle cx='56' cy='66' r='34' fill='url(#rim)'/>` +
-      `<circle cx='56' cy='66' r='28.6' fill='#1a0f06'/>` +
-      `<g clip-path='url(#face)'><rect x='26' y='36' width='60' height='60' fill='url(#wd)'/>` +
-        [38, 47, 56, 65, 74].map((x, i) => `<rect x='${x - 9}' y='36' width='9' height='60' fill='#000' fill-opacity='${[.12, 0, .08, 0, .14][i]}'/>` +
-          `<path d='M${x},36 L${x},96' stroke='#2a1608' stroke-width='1.1'/>`).join('') +
-        `<path d='M30,52 Q36,50 40,54 M60,80 Q66,78 70,82 M44,86 Q50,84 52,88 M66,44 Q71,42 74,46' fill='none' stroke='#3a2210' stroke-opacity='.55' stroke-width='.6'/>` +
-        `<rect x='26' y='36' width='60' height='60' fill='url(#lt)'/></g>` +
-      `<path d='M40.5,41 L46.5,51 L41.5,58.5 L48,66.5 L43,75.5 L49,90 L45.2,76 L50.6,66.4 L44.6,58.4 L49.8,50.6 Z' fill='#140a03' stroke='#c58a52' stroke-opacity='.65' stroke-width='.7' stroke-linejoin='round'/>` +
-      [0, 45, 90, 135, 180, 225, 270, 315].map(a => { const r = a * Math.PI / 180, x = this.f(56 + Math.cos(r) * 31.3), y = this.f(66 + Math.sin(r) * 31.3);
-        return `<circle cx='${x}' cy='${y}' r='1.7' fill='url(#bs)' stroke='#14181d' stroke-width='.6'/>`; }).join('') +
-      `<circle cx='56' cy='66' r='9' fill='#14181d'/><circle cx='56' cy='66' r='8' fill='url(#bs)'/>` +
-      `<path d='M51,61.6 A6.4,6.4 0 0 1 58.2,59.8' fill='none' stroke='#fff' stroke-opacity='.75' stroke-width='1.1' stroke-linecap='round'/>` +
-      // embers, rising
-      [[87, 42, 2.8], [97, 54, 2.1], [103, 36, 1.6], [22, 79, 2.4], [16, 66, 1.8]].map(([x, y, r]) =>
-        `<circle cx='${x}' cy='${y}' r='${r * 1.7}' fill='url(#em)'/><circle cx='${x}' cy='${y}' r='${r * .42}' fill='#fff2b0'/>`).join('');
-    // framed on the shield and the spear, not the empty corners of the grid
-    return this.doc(120, 120, body, '10 14 100 100');
+      `<clipPath id='face'><circle cx='${S[0]}' cy='${S[1]}' r='${R - 5.6}'/></clipPath>` +
+      `<clipPath id='disc'><circle cx='${S[0]}' cy='${S[1]}' r='${R + 1.5}'/></clipPath>` +
+      `<clipPath id='hl'><path d='M0,0 L58,0 L${crack} L59,120 L0,120 Z'/></clipPath>` +
+      `<clipPath id='hr'><path d='M120,0 L58,0 L${crack} L59,120 L120,120 Z'/></clipPath></defs>` +
+      // the blood, behind everything
+      `<path d='${splash} Z' fill='url(#bp)' stroke='#3a0207' stroke-width='.8'/>` + drops +
+      // the two halves, thrown apart from their feet
+      `<g transform='translate(-5 2) rotate(-13 52 96)'><g clip-path='url(#hl)'>${shield}</g>` +
+        splinter('M55,47 L50.5,44.5 L54.6,49.2 Z M56,68 L51,70.5 L56.6,70 Z M55,90 L51.8,93.5 L56,92 Z') + `</g>` +
+      `<g transform='translate(5 1) rotate(11 66 96)'><g clip-path='url(#hr)'>${shield}</g>` +
+        splinter('M62,37 L66.8,34 L62.8,39.6 Z M63,58 L68,56.2 L63.4,60.6 Z M62,79 L67,80.6 L61.8,81.6 Z') + `</g>`;
+    return this.doc(120, 120, body);
   },
 
   /* YOUR DECK: the HUD button's own picture (a bronze card behind a gold
@@ -1090,7 +1184,10 @@ CardIntro.CSS = `
 #cardIntro figure { margin: 0; }
 
 /* ---- the panel ---- */
-#cardIntro .ciPanel { position: relative; width: min(100%, 880px); height: min(100%, 770px);
+/* --k is the panel's scale: SHRINK (seven tenths) on a wide window, 1 on a
+   phone, whose panel is its screen — every size below that is not a touch
+   target or a card face is multiplied by it */
+#cardIntro .ciPanel { position: relative; width: min(100%, calc(880px * var(--k, 1))); height: min(100%, var(--panelH, calc(770px * var(--k, 1))));
   display: flex; flex-direction: column; isolation: isolate; container-type: inline-size;
   background: linear-gradient(180deg, #1b1510 0%, #120d09 55%, #0d0906 100%);
   border-radius: 3px;
@@ -1146,7 +1243,7 @@ CardIntro.CSS = `
 /* ---- the pages ---- */
 #cardIntro .ciPages { position: relative; flex: 1 1 auto; min-height: 0; }
 #cardIntro .ciPage { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center;
-  padding: 0 34px; text-align: center; }
+  padding: 0 calc(34px * var(--k, 1)); text-align: center; }
 #cardIntro .ciPage.on { display: flex; }
 #cardIntro .ciHead { position: relative; flex: 0 0 auto; width: 100%; display: flex; flex-direction: column; align-items: center; }
 #cardIntro .ciRibbon { position: relative; margin-top: calc(var(--ribW, 300px) * -.13); width: var(--ribW, 300px); aspect-ratio: 4 / 1; z-index: 5; }
@@ -1165,28 +1262,30 @@ CardIntro.CSS = `
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 2px 0 #3a1f05) drop-shadow(0 -1px 0 #3a1f05) drop-shadow(2px 0 0 #3a1f05) drop-shadow(-2px 0 0 #3a1f05)
     drop-shadow(0 4px 0 #1c0f03) drop-shadow(0 0 16px rgba(255,190,70,.45)); }
-#cardIntro .ciP-earn .ciWord, #cardIntro .ciP-play .ciWord { font-size: clamp(34px, min(10.5vw, 8.4vh), 84px); }
+#cardIntro .ciP-earn .ciWord, #cardIntro .ciP-play .ciWord, #cardIntro .ciP-tiers .ciWord { font-size: clamp(34px, min(10.5vw, 8.4vh), 84px); }
 #cardIntro .ciP-legends .ciWord { font-size: clamp(30px, min(9vw, 7.4vh), 70px); }
 /* a wide panel sizes its headline to the PANEL (container units), so the
    laurels never crowd the corners or the X; a browser without them keeps
    the window-sized rule above */
-#cardIntro:not(.ciNarrow) .ciWord { white-space: nowrap; font-size: clamp(38px, min(12cqw, 10vh), 100px); }
-#cardIntro:not(.ciNarrow) .ciP-earn .ciWord, #cardIntro:not(.ciNarrow) .ciP-play .ciWord { font-size: clamp(34px, min(8.6cqw, 8.4vh), 84px); }
-#cardIntro:not(.ciNarrow) .ciP-legends .ciWord { font-size: clamp(30px, min(7.4cqw, 7.4vh), 70px); }
+#cardIntro:not(.ciNarrow) .ciWord { white-space: nowrap;
+  font-size: clamp(calc(38px * var(--k, 1)), min(12cqw, calc(10vh * var(--k, 1))), calc(100px * var(--k, 1))); }
+#cardIntro:not(.ciNarrow) .ciP-earn .ciWord, #cardIntro:not(.ciNarrow) .ciP-play .ciWord, #cardIntro:not(.ciNarrow) .ciP-tiers .ciWord {
+  font-size: clamp(calc(34px * var(--k, 1)), min(8.6cqw, calc(8.4vh * var(--k, 1))), calc(84px * var(--k, 1))); }
+#cardIntro:not(.ciNarrow) .ciP-legends .ciWord { font-size: clamp(calc(30px * var(--k, 1)), min(7.4cqw, calc(7.4vh * var(--k, 1))), calc(70px * var(--k, 1))); }
 #cardIntro .ciLaurel { flex: 0 0 auto; width: calc(var(--laurelH, 112px) / 2); height: var(--laurelH, 112px);
   background: var(--laurel) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,190,70,.25)); }
 #cardIntro .ciLaurel.l { transform: scaleX(-1); }
 /* drawn smaller from their feet, both together, when the right one would rise under the X (_clearX) */
 #cardIntro .ciLaurel { scale: var(--lauS, 1); transform-origin: 50% 100%; }
-#cardIntro .ciRule { width: min(70%, 420px); height: 9px; margin: 2px 0 2px; flex: 0 0 auto;
+#cardIntro .ciRule { width: min(70%, calc(420px * var(--k, 1))); height: 9px; margin: 2px 0 2px; flex: 0 0 auto;
   background: linear-gradient(90deg, transparent, #c99a40 25%, #f6d27a 50%, #c99a40 75%, transparent) center / 100% 1px no-repeat; position: relative; }
 #cardIntro .ciRule::after { content: ''; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; transform: translate(-50%, -50%) rotate(45deg);
   background: #f6d27a; box-shadow: 0 0 0 1px #3a2208, 0 0 8px rgba(255,210,100,.7); }
-#cardIntro .ciSub { max-width: 31em; margin: 8px auto 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 600;
-  font-size: clamp(15px, min(4.2vw, 2.7vh), 22px); line-height: 1.32; color: #f3e8d0; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
+#cardIntro .ciSub { max-width: 31em; margin: calc(8px * var(--k, 1)) auto 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 600;
+  font-size: max(14px, calc(var(--k, 1) * clamp(15px, min(4.2vw, 2.7vh), 22px))); line-height: 1.32; color: #f3e8d0; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
 #cardIntro .ciHero { position: relative; flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
 #cardIntro .ciFoot { flex: 0 0 auto; margin: 0 auto 4px; max-width: 40em; font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(12.5px, 3.4vw, 16px); line-height: 1.35; color: #d8c49a; text-shadow: 0 1px 0 #000; }
+  font-size: max(12px, calc(var(--k, 1) * clamp(12.5px, 3.4vw, 16px))); line-height: 1.35; color: #d8c49a; text-shadow: 0 1px 0 #000; }
 
 /* ---- page 1: the fan ---- */
 #cardIntro .ciFan { position: relative; width: 100%; height: calc(var(--ch) * 1.14); }
@@ -1209,118 +1308,111 @@ CardIntro.CSS = `
 @keyframes ciDeal { from { opacity: 0; transform: translateX(-50%) translateY(26%) rotate(0deg) scale(.7) } }
 
 /* ---- page 2: the two roads ---- */
-#cardIntro .ciRoads { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: min(100%, 780px); }
-#cardIntro .ciRoad { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 18px 18px;
+#cardIntro .ciRoads { display: grid; grid-template-columns: 1fr 1fr; gap: calc(20px * var(--k, 1)); width: min(100%, calc(780px * var(--k, 1))); }
+/* each road's few lines stand evenly in its box: the two boxes are one
+   height, and neither crowds its words to the top */
+#cardIntro .ciRoad { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(12px * var(--k, 1)); padding: calc(22px * var(--k, 1)) calc(18px * var(--k, 1));
   text-align: center; border-radius: 4px;
   background: linear-gradient(180deg, rgba(42,31,18,.86), rgba(18,13,8,.9));
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 2px rgba(201,151,62,.6), inset 0 0 30px rgba(255,190,80,.06), 0 10px 24px rgba(0,0,0,.45); }
 #cardIntro .ciRoad.loss { background: linear-gradient(180deg, rgba(30,30,32,.86), rgba(13,12,12,.9));
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 2px rgba(140,152,170,.55), 0 10px 24px rgba(0,0,0,.45); }
-#cardIntro .ciRoadTx { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#cardIntro .ciRoadTx { display: flex; flex-direction: column; align-items: center; gap: calc(10px * var(--k, 1)); }
+#cardIntro .ciRoadTx p { text-wrap: balance; }
+#cardIntro .ciNb { white-space: nowrap; }
 #cardIntro .ciEmb { flex: 0 0 auto; width: var(--embW, 120px); height: var(--embW, 120px); background: 0 0 / 100% 100% no-repeat;
   filter: drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
 #cardIntro .ciRoad.win .ciEmb { filter: drop-shadow(0 0 16px rgba(255,200,80,.6)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
-#cardIntro .ciRoad.loss .ciEmb { filter: drop-shadow(0 0 14px rgba(255,120,40,.3)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
-#cardIntro .ciRoad h3 { margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: clamp(16px, 4.4vw, 23px); line-height: 1.15;
+#cardIntro .ciRoad.loss .ciEmb { filter: drop-shadow(0 0 12px rgba(190,24,34,.28)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
+#cardIntro .ciRoad h3 { margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: max(15px, calc(var(--k, 1) * clamp(16px, 4.4vw, 23px))); line-height: 1.15;
   color: #ffd45e; text-shadow: 0 2px 0 #2a1704, 0 0 12px rgba(255,200,80,.3); }
 #cardIntro .ciRoad.loss h3 { color: #dde4ee; text-shadow: 0 2px 0 #10151c; }
-#cardIntro .ciRoad p { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(14px, 3.8vw, 17px); line-height: 1.35; color: #efe4cd; }
-#cardIntro .ciRoad .ciNote { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: clamp(12px, 3.2vw, 14px); color: #c9b48a; }
-#cardIntro .ciRoad.loss .ciNote { font-style: normal; font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 700;
-  font-size: clamp(10px, 2.7vw, 12px); letter-spacing: .12em; text-transform: uppercase; color: #aeb6c2; }
-#cardIntro .ciGain, #cardIntro .ciMeter { display: flex !important; align-items: center; justify-content: center; gap: 8px; }
-/* a meter too wide for its road puts its words under its marks, never past the road's edge */
-#cardIntro .ciMeter { flex-wrap: wrap; row-gap: 3px; }
-#cardIntro .ciGain b, #cardIntro .ciMeter b { font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 800; letter-spacing: .06em;
-  text-transform: uppercase; font-size: clamp(12px, 3.3vw, 15px); color: #ffe39a; text-shadow: 0 1px 0 #000; }
-#cardIntro .ciRoad.loss .ciMeter b { color: #e6ecf3; }
-#cardIntro .ciOr { font-family: Georgia, serif; font-style: italic; font-size: 13px; color: #b8a888; }
+#cardIntro .ciRoad p { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: max(13.5px, calc(var(--k, 1) * clamp(14px, 3.8vw, 17px))); line-height: 1.35; color: #efe4cd; }
+/* the reward, counted in cards: +1 and +2, room between them */
+#cardIntro .ciGain { display: flex !important; align-items: center; justify-content: center; gap: calc(8px * var(--k, 1)); flex-wrap: wrap; row-gap: 6px; margin-top: calc(4px * var(--k, 1)); }
+#cardIntro .ciGain b { font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 800; letter-spacing: .06em; white-space: nowrap;
+  text-transform: uppercase; font-size: max(12px, calc(var(--k, 1) * clamp(12px, 3.3vw, 15px))); color: #ffe39a; text-shadow: 0 1px 0 #000; }
+#cardIntro .ciG { display: inline-flex; align-items: center; gap: calc(8px * var(--k, 1)); white-space: nowrap; }
+#cardIntro .ciOr { font-family: Georgia, serif; font-style: italic; font-size: 13px; color: #b8a888; margin: 0 calc(8px * var(--k, 1)); }
 /* a card, as a small gold slab with a dark window — the reward, counted */
 #cardIntro .ciCardPip { width: 15px; height: 21px; border-radius: 2px; background: linear-gradient(160deg, #fff0b8, #f0c050 40%, #a8701c);
   box-shadow: 0 0 0 1px #2a1704, inset 0 0 0 3px rgba(0,0,0,0) , 0 0 8px rgba(255,200,80,.55); position: relative; }
 #cardIntro .ciCardPip::after { content: ''; position: absolute; left: 3px; right: 3px; top: 3px; height: 9px; background: #4a3320; border-radius: 1px; }
 #cardIntro .ciCardPip.two { margin-left: -9px; transform: rotate(10deg) translateY(-2px); }
-#cardIntro .ciPips, #cardIntro .ciDays { display: inline-flex; gap: 6px; align-items: center; }
-#cardIntro .ciPips i { width: 12px; height: 12px; transform: rotate(45deg); background: linear-gradient(135deg, #fff2c0, #e8b84a 55%, #9a6418);
-  box-shadow: 0 0 0 1px #2a1704, 0 0 8px rgba(255,200,90,.6); }
-#cardIntro .ciDays i { width: 11px; height: 11px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #fff, #cfd8e4 50%, #6d7b8c);
-  box-shadow: 0 0 0 1px #121820, 0 0 6px rgba(200,220,255,.45); }
 #cardIntro .ciPage.enter .ciRoad { animation: ciRise .5s cubic-bezier(.2,1.1,.4,1) both; }
 #cardIntro .ciPage.enter .ciRoad.loss { animation-delay: .12s; }
-#cardIntro .ciPage.enter .ciPips i, #cardIntro .ciPage.enter .ciDays i { animation: ciPop .36s cubic-bezier(.3,1.6,.5,1) both; }
-#cardIntro .ciPips i:nth-child(1), #cardIntro .ciDays i:nth-child(1) { animation-delay: .35s !important }
-#cardIntro .ciPips i:nth-child(2), #cardIntro .ciDays i:nth-child(2) { animation-delay: .43s !important }
-#cardIntro .ciPips i:nth-child(3), #cardIntro .ciDays i:nth-child(3) { animation-delay: .51s !important }
-#cardIntro .ciPips i:nth-child(4), #cardIntro .ciDays i:nth-child(4) { animation-delay: .59s !important }
-#cardIntro .ciPips i:nth-child(5), #cardIntro .ciDays i:nth-child(5) { animation-delay: .67s !important }
-#cardIntro .ciPips i:nth-child(n+6), #cardIntro .ciDays i:nth-child(n+6) { animation-delay: .75s !important }
-@keyframes ciPop { from { opacity: 0; scale: .2 } }
 @keyframes ciRise { from { opacity: 0; transform: translateY(22px) } }
 
 /* ---- page 3: the deck button and three cards ---- */
-#cardIntro .ciPlay { display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3vw, 30px); width: 100%; }
-#cardIntro .ciDeck { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#cardIntro .ciPlay { display: flex; align-items: center; justify-content: center; gap: calc(var(--k, 1) * clamp(12px, 3vw, 30px)); width: 100%; }
+#cardIntro .ciDeck { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: calc(12px * var(--k, 1)); }
 #cardIntro .ciDeck figcaption { display: flex; flex-direction: column; align-items: center; gap: 3px; white-space: nowrap; }
-#cardIntro .ciDeck figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: clamp(12px, 3.2vw, 14px); color: #ffe39a; text-shadow: 0 1px 0 #000; }
-#cardIntro .ciDeck figcaption small { font-family: Georgia, serif; font-style: italic; font-size: clamp(12px, 3.2vw, 14px); color: #e8d6ae; text-shadow: 0 1px 0 #000; }
-#cardIntro .ciDeckBtn { position: relative; width: 84px; height: 70px; display: flex; align-items: center; justify-content: center;
+#cardIntro .ciDeck figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: max(11.5px, calc(var(--k, 1) * clamp(12px, 3.2vw, 14px))); color: #ffe39a; text-shadow: 0 1px 0 #000; }
+#cardIntro .ciDeck figcaption small { font-family: Georgia, serif; font-style: italic; font-size: max(11.5px, calc(var(--k, 1) * clamp(12px, 3.2vw, 14px))); color: #e8d6ae; text-shadow: 0 1px 0 #000; }
+#cardIntro .ciDeckBtn { position: relative; width: calc(84px * var(--k, 1)); height: calc(70px * var(--k, 1)); display: flex; align-items: center; justify-content: center;
   border-radius: 6px; background: linear-gradient(180deg, #4a3520, #2b1d10);
   box-shadow: inset 0 0 0 1px #0d0804, inset 0 0 0 2px #a8782f, inset 0 3px 0 2px rgba(255,220,150,.08), 0 6px 16px rgba(0,0,0,.6); }
-#cardIntro .ciDeckIco { width: 50px; height: 50px; background: 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 1px rgba(0,0,0,.6)); }
+#cardIntro .ciDeckIco { width: calc(50px * var(--k, 1)); height: calc(50px * var(--k, 1)); background: 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 1px rgba(0,0,0,.6)); }
 #cardIntro .ciTap { position: absolute; inset: -6px; border-radius: 10px; border: 2px solid rgba(255,214,110,.85); pointer-events: none;
   animation: ciTap 1.6s ease-out infinite; }
 @keyframes ciTap { 0% { opacity: .9; transform: scale(.94) } 80%, 100% { opacity: 0; transform: scale(1.16) } }
 /* the way from the button to the hand: three gold chevrons (vector) */
-#cardIntro .ciArrow { flex: 0 0 auto; width: 42px; height: 16px; background: var(--trail) 0 0 / 100% 100% no-repeat;
+#cardIntro .ciArrow { flex: 0 0 auto; width: calc(42px * var(--k, 1)); height: calc(16px * var(--k, 1)); background: var(--trail) 0 0 / 100% 100% no-repeat;
   filter: drop-shadow(0 0 6px rgba(255,200,80,.5)); }
-#cardIntro .ciTrio { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: clamp(10px, 2vw, 22px); }
-#cardIntro .ciCard { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; width: var(--cw); }
-#cardIntro .ciTilt { transform: rotate(calc(var(--n) * 4deg)) translateY(calc(var(--n) * var(--n) * 10px)); transform-origin: 50% 100%; }
+#cardIntro .ciTrio { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: calc(var(--k, 1) * clamp(10px, 2vw, 22px)); }
+#cardIntro .ciCard { position: relative; display: flex; flex-direction: column; align-items: center; gap: calc(10px * var(--k, 1)); width: var(--cw); }
+#cardIntro .ciTilt { transform: rotate(calc(var(--n) * 4deg)) translateY(calc(var(--n) * var(--n) * 10px * var(--k, 1))); transform-origin: 50% 100%; }
 
 #cardIntro .ciCard:nth-child(2) { z-index: 2; }
 #cardIntro .ciCard:nth-child(2) .ccard { box-shadow: 0 0 18px 2px rgba(255,200,80,.45), 0 8px 14px rgba(0,0,0,.6); }
-#cardIntro .ciCard figcaption { width: 100%; margin-top: calc(var(--n) * var(--n) * 10px); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; line-height: 1.2;
-  font-size: clamp(10.5px, 2.9vw, 14px); color: #ffe39a; text-shadow: 0 2px 0 #000, 0 0 7px rgba(10,7,4,.95); }
+#cardIntro .ciCard figcaption { width: 100%; margin-top: calc(var(--n) * var(--n) * 10px * var(--k, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; line-height: 1.2;
+  font-size: max(11px, calc(var(--k, 1) * clamp(10.5px, 2.9vw, 14px))); color: #ffe39a; text-shadow: 0 2px 0 #000, 0 0 7px rgba(10,7,4,.95); }
 #cardIntro .ciPage.enter .ciCard { animation: ciLift .55s cubic-bezier(.2,1.2,.4,1) both; animation-delay: calc(.12s + (var(--n) + 1) * .1s); }
 #cardIntro .ciPage.enter .ciDeck { animation: ciRise .5s cubic-bezier(.2,1.1,.4,1) both; }
 @keyframes ciLift { from { opacity: 0; transform: translateY(40px) scale(.88) } }
 
-/* ---- page 4: the ladder and the two prizes ---- */
-#cardIntro .ciLegends { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; width: 100%; height: 100%; }
-/* THE LADDER: five identical gems on one shared line, each name on one line,
-   its rarity beneath. A column on a wide panel (one x for every gem, rows
-   evenly spaced), a row on a phone (one line for every gem); the type is
-   fitted by measurement (_fitLadder sets --tierF) */
-#cardIntro .ciTiers { --gemS: 22px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center;
-  gap: 16px; align-self: center; flex: 0 0 auto; position: relative; z-index: 0; }
-#cardIntro:not(.ciNarrow) .ciTiers { padding: 18px 26px; }
-/* the ladder stands on a dark plate, soft at every edge: the light and the
-   rising sparks pass BEHIND the screens, and a spark caught in the gap of a
-   small word read as a stray letter ("Uncommo•"). The plate is the ladder's
-   own box, solid, and its soft edge a spread shadow round it — ink that
-   reaches past the box without widening it (a wider box would read as a
-   ladder too wide for its row, and _fitLadder would shrink the words) */
-#cardIntro .ciTiers::before { content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: 22px;
-  background: rgba(13,9,6,.88); box-shadow: 0 0 26px 10px rgba(13,9,6,.88); }
-/* a phone's row reaches the panel's edges: a tighter edge */
-#cardIntro.ciNarrow .ciTiers::before { border-radius: 10px; box-shadow: 0 0 10px 6px rgba(13,9,6,.88); }
-#cardIntro .ciTiers li { display: grid; grid-template-columns: var(--gemS) max-content; column-gap: 12px; align-items: center; text-align: left; }
-#cardIntro .ciTiers li span { display: flex; flex-direction: column; gap: 2px; }
+/* ---- page 4: the five tiers ---- */
+/* THE TIERS: five rows on a dark plate, Stone at the top. A row is a gem in
+   the tier's own cut, its name in the tier's colour with its rarity beside
+   it, and one short line on what the tier brings: three columns on a wide
+   panel (one x for every gem, every name, every line — a subgrid), and on a
+   phone the line under the name. The plate is the list's own box, solid,
+   its soft edge a spread shadow round it: the light and the rising sparks
+   pass BEHIND the screens, and a spark caught in the gap of a small word
+   read as a stray letter. */
+#cardIntro .ciTiers { --gemS: max(18px, calc(24px * var(--k, 1))); list-style: none; margin: 12px 0; padding: calc(10px * var(--k, 1)) calc(22px * var(--k, 1));
+  display: grid; grid-template-columns: var(--gemS) max-content minmax(0, 1fr); column-gap: calc(18px * var(--k, 1));
+  width: min(100%, calc(640px * var(--k, 1))); text-align: left; position: relative; z-index: 0; }
+#cardIntro .ciTiers::before { content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: 14px;
+  background: rgba(13,9,6,.88); box-shadow: 0 0 14px 4px rgba(13,9,6,.88), inset 0 0 0 1px rgba(214,170,84,.22); }
+#cardIntro .ciTiers li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center;
+  padding: calc(13px * var(--k, 1)) 0; border-top: 1px solid rgba(214,170,84,.16); }
+#cardIntro .ciTiers li:first-child { border-top: 0; }
 #cardIntro .ciGem { width: var(--gemS); height: var(--gemS); background: 0 0 / 100% 100% no-repeat;
   filter: drop-shadow(0 0 5px var(--tg)) drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
+#cardIntro .ciTn { display: flex; flex-direction: column; gap: 2px; }
 #cardIntro .ciTiers b { display: block; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; line-height: 1.15;
-  font-size: var(--tierF, 15px); color: var(--tc); text-shadow: 0 1px 0 #000, 0 0 8px rgba(0,0,0,.6); white-space: nowrap; }
-#cardIntro .ciTiers small { display: block; font-family: Georgia, serif; line-height: 1.15; font-size: max(9px, calc(var(--tierF, 15px) * .8));
+  font-size: max(13px, calc(18px * var(--k, 1))); color: var(--tc); text-shadow: 0 1px 0 #000, 0 0 8px rgba(0,0,0,.6); white-space: nowrap; }
+#cardIntro .ciTiers small { display: block; font-family: Georgia, serif; font-style: italic; line-height: 1.15; font-size: max(11.5px, calc(15px * var(--k, 1)));
   color: #c7b692; white-space: nowrap; text-shadow: 0 1px 0 #000; }
-#cardIntro.ciNarrow .ciTiers { --gemS: 18px; flex-direction: row; align-items: flex-start; justify-content: center; gap: 0 clamp(6px, 2.6vw, 14px); }
-#cardIntro.ciNarrow .ciTiers li { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
-#cardIntro.ciNarrow .ciTiers li span { align-items: center; }
-#cardIntro.ciNarrow .ciTiers b { letter-spacing: .03em; }
+#cardIntro .ciTd { font-family: Georgia, 'Times New Roman', serif; font-size: max(13.5px, calc(19px * var(--k, 1))); line-height: 1.3; color: #efe4cd;
+  text-shadow: 0 1px 0 #000; }
+#cardIntro.ciNarrow .ciTiers { --gemS: 18px; grid-template-columns: var(--gemS) minmax(0, 1fr); column-gap: 12px; padding: 4px 14px; }
+#cardIntro.ciNarrow .ciTiers li { grid-template-columns: subgrid; grid-template-rows: auto auto; row-gap: 3px; padding: 9px 0; }
+#cardIntro.ciNarrow .ciGem { grid-row: 1 / span 2; }
+#cardIntro.ciNarrow .ciTn { flex-direction: row; align-items: baseline; gap: 8px; }
+#cardIntro.ciNarrow .ciTiers b { font-size: 14px; letter-spacing: .04em; }
+#cardIntro.ciNarrow .ciTiers small { font-size: 12px; }
+#cardIntro.ciNarrow .ciTd { grid-column: 2; font-size: 14px; }
+#cardIntro .ciPage.enter .ciTiers li { animation: ciRise .4s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(var(--n) * 70ms); }
 
+/* ---- page 5: the two prizes ---- */
+#cardIntro .ciLegends { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
 /* THE PRIZES: the card's painting already shows its beast, so nothing is
    drawn over it or behind it but the tier's own light */
-#cardIntro .ciBeasts { position: relative; display: flex; justify-content: center; align-items: center; gap: clamp(18px, 4.4vw, 48px); }
-#cardIntro .ciPrize { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#cardIntro .ciBeasts { position: relative; display: flex; justify-content: center; align-items: center; gap: calc(var(--k, 1) * clamp(28px, 7vw, 76px)); }
+#cardIntro .ciPrize { position: relative; display: flex; flex-direction: column; align-items: center; gap: calc(12px * var(--k, 1)); }
 #cardIntro .ciStage { position: relative; width: var(--cw); height: var(--ch); }
 #cardIntro .ciStage .ccard { position: relative; z-index: 2;
   box-shadow: 0 0 0 1px rgba(255,244,214,.4), 0 0 calc(var(--cw) * .1) calc(var(--cw) * .015) var(--tg), 0 10px 18px rgba(0,0,0,.6); }
@@ -1345,7 +1437,7 @@ CardIntro.CSS = `
   animation: ciRimRun 5.2s linear infinite; }
 #cardIntro .ciPrize.dragon .ciRim { animation-duration: 4.2s; animation-delay: -2s; }
 @keyframes ciRimRun { to { --ciAng: 360deg } }
-/* motes of the tier's light rising beside the card — never above its top, where the ladder's words stand on a phone */
+/* motes of the tier's light rising beside the card — never above its top, into the line of copy over it */
 #cardIntro .ciMotes { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
 #cardIntro.ciMeasure .ciBurst, #cardIntro.ciMeasure .ciAura, #cardIntro.ciMeasure .ciRim, #cardIntro.ciMeasure .ciMotes { display: none !important; }
 #cardIntro .ciMotes i { position: absolute; left: var(--x); top: var(--y); width: 3px; height: 3px; border-radius: 50%;
@@ -1356,14 +1448,13 @@ CardIntro.CSS = `
 #cardIntro .ciPrize figcaption { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 /* a phone's two prizes share the row: a caption takes at most its half of
    the panel (container units) and only then breaks, balanced, onto a second line */
-#cardIntro.ciNarrow .ciPrize figcaption { max-width: calc((100cqw - 24px - clamp(18px, 4.4vw, 48px)) / 2); }
+#cardIntro.ciNarrow .ciPrize figcaption { max-width: calc((100cqw - 24px - clamp(28px, 7vw, 76px)) / 2); }
 #cardIntro.ciNarrow .ciPrize figcaption b { white-space: normal; text-wrap: balance; line-height: 1.2; text-align: center; }
-#cardIntro .ciPrize figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: clamp(11px, 3vw, 15px); color: #ffe39a;
+#cardIntro .ciPrize figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: max(11.5px, calc(var(--k, 1) * clamp(11px, 3vw, 15px))); color: #ffe39a;
   text-shadow: 0 2px 0 #000, 0 0 7px rgba(10,7,4,.95); white-space: nowrap; }
-#cardIntro .ciPrize figcaption small { font-weight: 700; font-size: clamp(9px, 2.4vw, 11.5px); color: var(--tc);
+#cardIntro .ciPrize figcaption small { font-weight: 700; font-size: max(9.5px, calc(var(--k, 1) * clamp(9px, 2.4vw, 11.5px))); color: var(--tc);
   letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 0 #000, 0 0 6px rgba(10,7,4,.95); white-space: nowrap; }
-#cardIntro .ciPage.enter .ciTiers li { animation: ciRise .4s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(var(--n) * 70ms); }
-#cardIntro .ciPage.enter .ciPrize { animation: ciRise .6s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(.3s + var(--n) * .15s); }
+#cardIntro .ciPage.enter .ciPrize { animation: ciRise .6s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(.15s + var(--n) * .15s); }
 
 /* ---- the screen's entrance (the head, then the hero) ---- */
 #cardIntro .ciPage.enter .ciHead { animation: ciSlide .42s cubic-bezier(.2,1,.4,1) both; }
@@ -1387,8 +1478,10 @@ CardIntro.CSS = `
 #cardIntro[data-page="earn"] .ciSparks { opacity: .45; }
 
 /* ---- the nav: BACK, the NEXT plaque, the dots ---- */
-#cardIntro .ciNav { position: relative; z-index: 5; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 18px 0; }
-#cardIntro .ciNext { width: min(66%, 340px); min-height: 58px; font-size: 19px; letter-spacing: .14em; }
+#cardIntro .ciNav { position: relative; z-index: 5; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: calc(10px * var(--k, 1));
+  padding: calc(10px * var(--k, 1)) calc(18px * var(--k, 1)) 0; }
+/* the plaque keeps a finger's height (44px) whatever the panel's scale */
+#cardIntro .ciNext { width: min(66%, calc(340px * var(--k, 1))); min-height: max(44px, calc(58px * var(--k, 1))); font-size: max(14px, calc(19px * var(--k, 1))); letter-spacing: .14em; }
 #cardIntro .ciNext .blab { gap: 12px; }
 #cardIntro .ciNext.ciGo::before { background:
     repeating-linear-gradient(90deg, rgba(16,26,8,0.05) 0 2px, rgba(16,26,8,0) 2px 13px),
@@ -1398,20 +1491,20 @@ CardIntro.CSS = `
 /* the call to action breathes: a soft light BEHIND the plaque (its own
    element in the nav — a glow inside the plaque's isolated group drew a dark
    box round it) pulses by opacity alone */
-#cardIntro .ciCta { position: absolute; left: 50%; top: calc(50% + 5px); width: min(76%, 420px); height: 110px; transform: translate(-50%, -50%);
+#cardIntro .ciCta { position: absolute; left: 50%; top: calc(50% + 5px); width: min(76%, calc(420px * var(--k, 1))); height: calc(110px * var(--k, 1)); transform: translate(-50%, -50%);
   pointer-events: none; display: none; background: radial-gradient(ellipse closest-side, rgba(255,214,110,.42), rgba(255,190,80,.16) 55%, transparent);
   animation: ciCall 2.2s ease-in-out .6s infinite both; }
 #cardIntro[data-page="legends"] .ciCta { display: block; }
 @keyframes ciCall { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
 #cardIntro .ciArr { width: 9px; height: 12px; flex: 0 0 auto; filter: drop-shadow(0 2px 0 rgba(20,12,4,.85)); }
-#cardIntro .ciBack, #cardIntro .ciNavPad { flex: 0 0 auto; width: 84px; min-height: 44px; }
+#cardIntro .ciBack, #cardIntro .ciNavPad { flex: 0 0 auto; width: calc(84px * var(--k, 1)); min-height: 44px; }
 #cardIntro .ciBack { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0; border: 0; background: none; cursor: pointer;
-  color: #d8c49a; font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 700; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 0 #000; }
+  color: #d8c49a; font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 700; font-size: max(11.5px, calc(13px * var(--k, 1))); letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 0 #000; }
 #cardIntro .ciBack:hover { color: #ffe39a; }
 #cardIntro .ciBack.gone { visibility: hidden; }
-#cardIntro .ciDots { position: relative; z-index: 5; flex: 0 0 auto; display: flex; justify-content: center; gap: 2px; padding: 2px 0 12px; }
-#cardIntro .ciDot { width: 40px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-#cardIntro .ciDot i { width: 12px; height: 12px; border-radius: 50%; background: #2a2118; box-shadow: inset 0 0 0 2px #6f5a3a, 0 1px 0 rgba(0,0,0,.6); transition: transform .2s; }
+#cardIntro .ciDots { position: relative; z-index: 5; flex: 0 0 auto; display: flex; justify-content: center; gap: 2px; padding: calc(2px * var(--k, 1)) 0 calc(12px * var(--k, 1)); }
+#cardIntro .ciDot { width: calc(40px * var(--k, 1)); min-width: 30px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+#cardIntro .ciDot i { width: calc(12px * var(--k, 1)); height: calc(12px * var(--k, 1)); border-radius: 50%; background: #2a2118; box-shadow: inset 0 0 0 2px #6f5a3a, 0 1px 0 rgba(0,0,0,.6); transition: transform .2s; }
 #cardIntro .ciDot.on i { background: radial-gradient(circle at 40% 35%, #fff3c0, #f2c040 55%, #b57d18); box-shadow: 0 0 0 1px #3a2208, 0 0 10px rgba(255,205,90,.8); transform: scale(1.15); }
 
 /* ---- narrow (a phone upright) ---- */
@@ -1423,16 +1516,17 @@ CardIntro.CSS = `
 #cardIntro.ciNarrow .ciRoads { grid-template-columns: 1fr; gap: 12px; }
 #cardIntro.ciNarrow .ciRoad { flex-direction: row; align-items: center; text-align: left; padding: 14px 14px; gap: 12px; }
 #cardIntro.ciNarrow .ciRoadTx { align-items: flex-start; }
-#cardIntro.ciNarrow .ciGain, #cardIntro.ciNarrow .ciMeter { justify-content: flex-start; }
-#cardIntro.ciNarrow .ciMeter b { font-size: 11.5px; white-space: nowrap; }
-#cardIntro.ciNarrow .ciPips, #cardIntro.ciNarrow .ciDays { gap: 4px; }
-#cardIntro.ciNarrow .ciPips i { width: 10px; height: 10px; }
-#cardIntro.ciNarrow .ciDays i { width: 9px; height: 9px; }
+#cardIntro.ciNarrow .ciGain { justify-content: flex-start; }
+#cardIntro.ciNarrow .ciOr { margin: 0 4px; }
 #cardIntro.ciStack .ciPlay { flex-direction: column; gap: 16px; }
 #cardIntro.ciStack .ciDeck { flex-direction: row; gap: 16px; }
 #cardIntro.ciStack .ciArrow { display: none; }
 #cardIntro.ciStack .ciDeck figcaption { align-items: flex-start; }
-#cardIntro.ciNarrow .ciTrio { gap: 0; }
+#cardIntro.ciNarrow .ciTrio, #cardIntro.ciStack .ciTrio { gap: 0; }
+#cardIntro.ciStack:not(.ciNarrow) .ciCard { margin: 0 calc(var(--cw) * -0.02); }
+/* a caption a little narrower than its card, and a step below it: the tilted
+   cards either side never reach under the middle one's words */
+#cardIntro.ciStack:not(.ciNarrow) .ciCard figcaption { width: calc(100% - 14px); margin-top: calc(6px + var(--n) * var(--n) * 10px * var(--k, 1)); }
 #cardIntro.ciNarrow .ciCard { margin: 0 calc(var(--cw) * -0.035); }
 #cardIntro.ciNarrow .ciCard figcaption { width: calc(100% - 14px); margin-top: calc(6px + var(--n) * var(--n) * 10px); }
 
@@ -1444,33 +1538,29 @@ CardIntro.CSS = `
 #cardIntro .ciNext .blab { white-space: nowrap; }
 @media (max-width: 359px) { #cardIntro .ciNext { font-size: 15px; letter-spacing: .1em; } }
 /* a screen measured too tall for its panel (_fitPage): tightened first… */
-#cardIntro .ciPages .ciPage.tight .ciWord { font-size: clamp(26px, min(9.4vw, 5.8vh), 56px); }
-#cardIntro .ciPages .ciPage.tight .ciLaurel { width: 26px; height: 52px; }
+#cardIntro .ciPages .ciPage.tight .ciWord { font-size: calc(var(--k, 1) * clamp(26px, min(9.4vw, 5.8vh), 56px)); }
+#cardIntro .ciPages .ciPage.tight .ciLaurel { width: calc(26px * var(--k, 1)); height: calc(52px * var(--k, 1)); }
 #cardIntro .ciPages .ciPage.tight .ciSub { font-size: 14px; margin-top: 4px; }
 #cardIntro .ciPages .ciPage.tight .ciRule { margin: 0; }
 #cardIntro .ciPages .ciPage.tight .ciRoads { gap: 8px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad { padding: 10px 12px; gap: 10px; }
-#cardIntro .ciPages .ciPage.tight .ciRoadTx { gap: 3px; }
+#cardIntro .ciPages .ciPage.tight .ciRoadTx { gap: 5px; }
 #cardIntro .ciPages .ciPage.tight .ciEmb { width: 56px; height: 56px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad h3 { font-size: 15px; }
-#cardIntro .ciPages .ciPage.tight .ciRoad p:not(.ciNote) { font-size: 13.5px; }
-#cardIntro .ciPages .ciPage.tight .ciRoad .ciNote { font-size: 11px; }
+#cardIntro .ciPages .ciPage.tight .ciRoad p { font-size: 13.5px; }
 #cardIntro .ciPages .ciPage.tight .ciFoot { font-size: 12px; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciMeter { gap: 6px; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciMeter b { font-size: 10.5px; letter-spacing: .04em; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciPips, #cardIntro.ciNarrow .ciPages .ciPage.tight .ciDays { gap: 3px; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciPips i { width: 9px; height: 9px; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciDays i { width: 8px; height: 8px; }
 /* the deck and its three cards, closer together */
 #cardIntro .ciPages .ciPage.tight .ciPlay { gap: 8px; }
-#cardIntro .ciPages .ciPage.tight .ciDeckBtn { width: 70px; height: 56px; }
-#cardIntro .ciPages .ciPage.tight .ciDeckIco { width: 40px; height: 40px; }
+#cardIntro .ciPages .ciPage.tight .ciDeckBtn { width: calc(70px * var(--k, 1)); height: calc(56px * var(--k, 1)); }
+#cardIntro .ciPages .ciPage.tight .ciDeckIco { width: calc(40px * var(--k, 1)); height: calc(40px * var(--k, 1)); }
 #cardIntro .ciPages .ciPage.tight .ciCard { gap: 5px; }
-/* the ladder and the prizes, closer together; a phone's prize caption on one line */
-#cardIntro .ciPages .ciPage.tight .ciLegends { gap: 8px; }
+/* the tiers' rows, closer together */
+#cardIntro .ciPages .ciPage.tight .ciTiers { margin: 4px 0; padding-top: 2px; padding-bottom: 2px; }
+#cardIntro .ciPages .ciPage.tight .ciTiers li { padding: calc(7px * var(--k, 1)) 0; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciTiers li { padding: 5px 0; row-gap: 1px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciTd { font-size: 13px; line-height: 1.25; }
+/* the prizes, closer together; a phone's prize caption on one line */
 #cardIntro .ciPages .ciPage.tight .ciPrize { gap: 6px; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciTiers { --gemS: 15px; }
-#cardIntro.ciNarrow .ciPages .ciPage.tight .ciTiers li { gap: 4px; }
 #cardIntro.ciNarrow .ciPages .ciPage.tight .ciPrize figcaption b { white-space: nowrap; font-size: 10px; letter-spacing: .03em; }
 /* …and if it still spills, its hero scrolls inside the panel */
 /* (a column centred in a box it overflows spills UPWARD, where no scroll

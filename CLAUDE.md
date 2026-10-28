@@ -190,7 +190,7 @@ node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an 
 node tests/settings.mjs      # the settings page, staged behind the card test link (SettingsPage.PUBLIC is the one-line flip): the old screen byte for byte elsewhere, only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, staged: one predicate both ways (the old title byte for byte, nothing fetched), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
-node tests/card-intro.mjs    # the card announcement: off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; four screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; every number the rule's own; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tier ladder level; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; reopened from the collection
+node tests/card-intro.mjs    # the card announcement: off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
 
@@ -776,30 +776,55 @@ night must bring new anchors), compositor-only and still for reduced motion.
 `assets/cards/intro/`, ART_PLAN "The card announcement" — operator: "an
 epic card tutorial screen… make sure there is an x to close it out. Try to
 get people excited"): the first title a device opens with the deck on wears
-four screens once the splash has lifted (`AFTER_LIFT_MS` past `Boot.done`) —
+five screens once the splash has lifted (`AFTER_LIFT_MS` past `Boot.done`) —
 CARDS (the operator's own line, five real faces fanned one per tier, the
-Legendary centred), EARN THEM, PLAY THEM, CHASE LEGENDS. It is stamped seen
+Legendary centred), EARN THEM, PLAY THEM, FIVE TIERS, CHASE LEGENDS. It is stamped seen
 WHEN SHOWN (`neo-cards-intro`, through `Deck._get/_set`, so a storage that
 throws still shows it once a session and never twice) and comes back on
 purpose from the collection's "How cards work" and `?cardsintro=1` (deck on
 only). **Only over the title's demo world** (`_canAuto`: never a run, a
 pending draft, the reward screen or a lesson), and `Screens.show` takes it
-away the moment its screen is left (`CardIntro.onScreen`). **Every number is
-the rule's own**: the copy reads `CFG.CARDS` (LOSS_DEEDS, LOSS_DAYS,
-DROPS.hard, PITY) and `Deck.TIERS`, and the contract checks each claim
-against `Deck.eligible` / `great` / `settle` / `play` — retune a rule and the
-words follow. **Its chrome is never chunky** (operator: "some things are
+away the moment its screen is left (`CardIntro.onScreen`). **SEVEN TENTHS ON
+A WIDE WINDOW** (operator, 2026-10-28, on a laptop at 125%: "Shrink all
+tutorial screens by 30%. They are too large right now"): a panel that is
+not a phone's is drawn at `CardIntro.SHRINK` (0.7) — width, type, ornaments
+and gaps all ride one CSS variable, `--k` (1 on a phone, whose panel is its
+screen). A 44px touch target keeps its 44px, and a card face keeps whole
+device pixels and never drops under the art's own size (176 CSS px, where
+most desktops already showed it), so the panel's HEIGHT is measured
+(`_sizePanel`): seven tenths of 770 on a 125% laptop, taller only as far as
+its tallest screen needs on a 1x or 2x screen (~626), one height for all five
+screens, never its old 770. **The operator's words, word for word**: EARN
+THEM reads "Every victory earns a card, and so do hard-fought losses.", the
+victory road "A good win +1 card, a hard-fought win +2 cards." over its +1 /
++2 card pips (each count kept with its pips, `.ciG`), and the defeat road is
+its heading and one line — the deeds and days meters and the verb list are
+gone. Its emblem is a BROKEN shield (two halves thrown apart from their
+feet, splinters on the torn wood) over a seeded splash of blood
+(`CardIntro.SVG.fight`). A compound word never breaks at its own hyphen
+(`.ciNb`). **The tiers have a screen of their own** (operator: "clean, well
+laid out, and easy to read… no more than a sentence on what improves at each
+level"): five rows on a dark plate, Stone first, a gem, the name in the
+tier's colour with its rarity, and one line from `CardIntro.TIER_LINES` —
+whose `backs` names the cards behind the line, and the contract checks each
+is of that tier. The Hard odds and the pity moved there as its foot; CHASE
+LEGENDS is the two prizes under "The harder the fight, the rarer the card."
+**Every number is the rule's own**: the copy reads `CFG.CARDS` (DROPS.hard,
+PITY) and `Deck.TIERS`, the +1 / +2 are checked against `Deck.settle`, and
+every claim against `Deck.eligible` / `great` / `settle` / `play` — retune a
+rule and the words follow. **Its chrome is never chunky** (operator: "some things are
 pixelated, like the ribbons"): every ornament is an SVG from
 `CardIntro.SVG` or a raster holding at least 3 image pixels per CSS pixel;
 only the card faces and the dusk backdrop are art. **The prizes wear no
 beast** (operator: "the kraken behind the card and a second dragon on top")
-— the Kraken's Call and Dragonfire paintings already show theirs. **The tier
-ladder is level** (operator: "the diamonds… are not level and some of the
-text is jumbled"): five identical gems on one shared line, every name on one
-line with its rarity beneath, the type sized by measurement (`_fitLadder`).
+— the Kraken's Call and Dragonfire paintings already show theirs. **The
+tiers are level** (operator: "the diamonds… are not level and some of the
+text is jumbled"): five identical gems in one column, every name in one
+column on one line with its rarity, every line in one column (a phone puts
+it under its name), and no scroll from 320 to 1920px.
 The laurels shrink from their feet to clear the X (`_clearX`); the sparks
 rise only in the card area, with holes cut round every caption and the
-ladder (`_sparkRoom`); a screen's fit is measured at rest (`_settle`,
+tiers' list (`_sparkRoom`); a screen's fit is measured at rest (`_settle`,
 `.ciMeasure`), so a screen that fits never scrolls and one that must fades
 at its edges. **It arrives in silence** (a cue before the player's first
 touch is refused by the browser). Off, the file defines `CardIntro` and

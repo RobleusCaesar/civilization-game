@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 104, date: '2026-10-28', title: 'A tidier card guide, in testing',
+    items: [
+      'The guide that introduces cards is smaller on a computer screen, so it no longer fills the window.',
+      'How to Earn is simpler: a good win earns one card, a hard-fought win two, and a hard-fought defeat still earns one.',
+      'The defeat box shows a broken shield now, with blood splattered behind it.',
+      'The five card tiers have a page of their own, with one short line on what each tier brings.',
+      'The Prizes page is just the two legendary cards and one line: the harder the fight, the rarer the card.',
+    ],
+  },
+  {
     build: 103, date: '2026-10-28', title: 'A calmer victory screen, in testing',
     items: [
       'On a phone the victory and defeat screens are calmer: the list of cards you played and the cards in your deck box are gone, and the deck count stays in the corner.',
