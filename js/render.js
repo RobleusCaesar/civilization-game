@@ -9450,16 +9450,14 @@ const R = {
     this.starDark(g, this.starDim());
     const omen = !F.phase && F.warned && !F.claimed || F.phase === 'night';
     if (omen) {
+      // the comet the night before: a fine tail streaming up and back off a
+      // bright head — smooth, at the device's own resolution (the operator's
+      // ruling on the effects), never a row of cells
       const k = Math.max(0.35, this._dusk ? this._dusk.k : 0);
       g.setTransform(1, 0, 0, 1, 0, 0);
-      const hx = Wc * 0.78, hy = Hc * 0.12;
-      for (let s = 0; s < 22; s++) {           // the tail streams up and back
-        const a = (1 - s / 22) * 0.75 * k;
-        g.fillStyle = s < 3 ? 'rgba(255,248,220,' + a.toFixed(3) + ')' : 'rgba(170,200,255,' + (a * 0.7).toFixed(3) + ')';
-        g.fillRect((hx + s * px * 1.6) | 0, (hy - s * px * 0.7) | 0, px * (s < 4 ? 2 : 1), px);
-      }
-      g.fillStyle = 'rgba(255,252,236,' + (0.9 * k).toFixed(3) + ')';
-      g.fillRect((hx - px) | 0, (hy - px) | 0, px * 3, px * 3);
+      const hx = Wc * 0.78, hy = Hc * 0.12, L = px * 22 * 1.75, ux = -0.916, uy = 0.401;
+      this._starTrail(g, hx, hy, ux, uy, L, px * 1.1, 0.8 * k, { tone: 'comet' });
+      if (this.fxSpark) this.fxSpark(g, hx, hy, 4, 0.9 * k, 'white');
       return;
     }
     if (F.x < 0) return;
@@ -9516,36 +9514,21 @@ const R = {
       g.setTransform(1, 0, 0, 1, 0, 0);
       const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
       // THE STREAK: the path it flew, burning down from white to ember — the
-      // part of the fall the eye catches from anywhere on the screen
-      const st = Math.max(2, Math.round(z * 0.9)), path = sky.path;
-      for (let i = 1; i < path.length; i++) {
-        const k = i / path.length, [x1, y1] = path[i - 1], [x2, y2] = path[i];
-        const w = Math.max(st, Math.round(sz * 0.11 * k / st) * st);
-        g.fillStyle = k > 0.85 ? 'rgba(255,248,214,0.95)' : k > 0.6 ? 'rgba(255,196,96,0.85)' : k > 0.3 ? 'rgba(232,108,44,0.7)' : 'rgba(150,60,40,' + (0.55 * k / 0.3).toFixed(3) + ')';
-        const n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / st));
-        for (let j = 0; j < n; j++) {
-          const X = x1 + (x2 - x1) * j / n, Y = y1 + (y2 - y1) * j / n;
-          g.fillRect(Math.round((X - w / 2) / st) * st, Math.round((Y - w / 2) / st) * st, w, w);
-        }
-      }
-      // a glow the night can see from anywhere, round and hard-edged
-      g.save(); g.globalCompositeOperation = 'lighter';
-      g.fillStyle = 'rgba(255,170,80,0.10)'; this.pxDisc(g, hx, hy, sz * 0.62, st);
-      g.fillStyle = 'rgba(255,210,140,0.14)'; this.pxDisc(g, hx, hy, sz * 0.36, st);
-      g.restore();
+      // part of the fall the eye catches from anywhere on the screen. Smooth,
+      // at the device's own resolution (the operator's ruling on the
+      // effects): one tapered trail along the way it came (R._starTrail)
+      const path = sky.path, p0 = path[0], Lp = p0 ? Math.hypot(hx - p0[0], hy - p0[1]) : 0;
+      if (Lp > 2) this._starTrail(g, hx, hy, P.ux, P.uy, Lp, sz * 0.055, 1, { t: now / 1000 });
+      // a glow the night can see from anywhere — soft, its hue tied to its light
+      if (this.fxGlow) this.fxGlow(g, hx, hy, sz * 0.62, 0.55, 'bronze', { soft: 2.2, core: 0.18 });
       if (fr) {
         const rot = Math.atan2(P.uy, P.ux) - Math.atan2(1, -1);
         g.translate(Math.round(hx), Math.round(hy)); g.rotate(rot);
         g.drawImage(fr, -C.head[0] * sz, -C.head[1] * sz, sz, sz);
         g.setTransform(1, 0, 0, 1, 0, 0);
-      } else {
-        // the procedural head: a hard-stepped taper into a white-hot core
-        for (let s = 26; s >= 1; s--) {
-          const k = s / 26, d = s * sz * 0.03, w = Math.max(2, Math.round(sz * 0.16 * (1 - k)));
-          g.fillStyle = k > 0.6 ? 'rgba(232,112,48,0.85)' : k > 0.25 ? '#ffc060' : '#fff0c0';
-          g.fillRect(Math.round(hx - P.ux * d - w / 2), Math.round(hy - P.uy * d - w / 2), w, w);
-        }
-        g.fillStyle = '#ffffff'; g.fillRect(Math.round(hx - sz * 0.07), Math.round(hy - sz * 0.07), Math.round(sz * 0.14), Math.round(sz * 0.14));
+      } else if (this.fxGlow) {
+        // the procedural head: a white-hot core in its own fire
+        this.fxGlow(g, hx, hy, sz * 0.2, 1, 'bronze', { soft: 1.4, core: 0.5 });
       }
       g.imageSmoothingEnabled = sm;
       sky.mT = 0; sky.hit = false; sky.key = act.key;
@@ -9556,7 +9539,7 @@ const R = {
     if (act.phase === 'down' && !sky.hit && act.t < 0.6) {
       sky.hit = true;
       const P = this.starSiteScreen(act.cx, act.cy);
-      // a card's blow flashes in hard STEPS (cardStarFlash), never the eased wash
+      // a card's blow flashes cool and short (cardStarFlash), never the eased wash
       if (act.card) sky.flashT = 0;
       else this.flashAt(P.inView ? C.flash : C.flashFar, P.inView ? 0.55 : 0.4);
       this.shakeAt(P.inView ? (act.card ? this.CARD_STAR.shake : C.shake) : C.shake * 0.4, C.shakeS);
@@ -9570,7 +9553,7 @@ const R = {
     }
     // the trail left in the sky keeps drifting and fading after the blow
     if (sky.trail.length || sky.shed.length) this._drawSkyTrail(g, dt, z, true, sky);
-    // …a card's long trail burns out after it, top down, in dithered steps
+    // …a card's long trail burns out after it, its far end first
     if (act.card && sky.burnT != null && sky.burnT < this.CARD_STAR.burnS) { sky.burnT += dt; this.cardStarFall(g, dt, sky, act, Math.min(1, sky.burnT / this.CARD_STAR.burnS)); }
     if (!act.seen) return;
     g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z);
@@ -9578,12 +9561,10 @@ const R = {
     if (act.phase === 'down') {
       // the hot pit breathes (the event's until a hand claims it; a card's
       // glows in its own crater's art instead — no light pooled on the ground)
-      if (act.hot > 0 && !act.card) {
-        const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.55 + 0.08 * br);
-        g.save(); g.globalCompositeOperation = 'lighter';
-        g.fillStyle = 'rgba(255,110,40,' + ((0.10 + 0.08 * br) * act.hot).toFixed(3) + ')';
-        for (let k = 0; k < 3; k++) this.pxDisc(g, cx, cy, r * (1 - k * 0.3), 1, 0.8);
-        g.restore();
+      if (act.hot > 0 && !act.card && this.fxGlow) {
+        // a small flare where the light stands, its hue tied to its light (never a pool)
+        const br = 0.5 + 0.5 * Math.sin(now / 520), r = TL * (0.5 + 0.06 * br);
+        this.fxGlow(g, cx, cy, r, (0.32 + 0.16 * br) * act.hot, 'bronze', { squash: 0.8, soft: 2 });
       }
       // the column of smoke off the crater (the event's thins over smokeS)
       sky.mT += dt;
@@ -9610,41 +9591,40 @@ const R = {
       }
       const age = d.landed != null ? d.t - d.landed : 0;
       if (age > 6) { sky.debris.splice(i, 1); continue; }
-      const s = Math.max(1, Math.round(d.s));
-      if (d.h > 0) { g.fillStyle = 'rgba(20,14,10,0.35)'; g.fillRect(Math.round(d.x - s / 2), Math.round(d.y), s, Math.max(1, s >> 1)); }
-      g.fillStyle = '#2a211c'; g.fillRect(Math.round(d.x - s / 2), Math.round(d.y - d.h - s), s, s);
-      if (d.glow && age < 4.5 && ((now / 180 + i) | 0) % 3) {
-        g.fillStyle = age < 1.5 ? '#ffb347' : '#d9612a';
-        g.fillRect(Math.round(d.x - s / 2 + (s > 2 ? 1 : 0)), Math.round(d.y - d.h - s + (s > 2 ? 1 : 0)), Math.max(1, s - 2), Math.max(1, s - 2));
+      // a stone thrown off the blow: a small rough shape at fractional
+      // coordinates, its shadow a soft oval under it while it flies, an
+      // ember's light on the hot ones (the operator's ruling on the effects)
+      const s = Math.max(1, d.s);
+      if (d.h > 0) { g.save(); g.fillStyle = 'rgba(20,14,10,0.35)'; g.beginPath(); g.ellipse(d.x, d.y, s * 0.55, s * 0.24, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
+      if (this.fxChunk) this.fxChunk(g, d.x, d.y - d.h - s / 2, s / 2, d.t * 3 + i, '#2a211c', 1, i);
+      if (d.glow && age < 4.5 && this.fxDot) {
+        const fl = 0.65 + 0.35 * Math.sin(now / 90 + i * 1.7);
+        this.fxDot(g, d.x, d.y - d.h - s / 2, Math.max(0.8, s * 0.3 * this.cam.z), fl * (age < 1.5 ? 1 : Math.max(0, 1 - (age - 1.5) / 3)), age < 1.5 ? 'gold' : 'bronze');
       }
     }
     // the impact itself and two shock rings rolling out over the land
     if (sky.boomT != null && sky.boomT < C.boomS + 0.9) {
       sky.boomT += dt;
       const bt = sky.boomT;
+      // the shock rings: a light that LANDS AS A RING (R.fxRing — smooth, at
+      // the device's own resolution, thinning as it rolls out), never a ring
+      // of 2px dots
       for (const [d0, a0] of [[0, 1], [0.18, 0.6]]) {
         const t2 = bt - d0; if (t2 <= 0 || t2 > 0.95) continue;
         const r = TL * (0.6 + t2 * 4.4), a = (1 - t2 / 0.95) * a0;
-        g.fillStyle = 'rgba(255,236,200,' + a.toFixed(3) + ')';
-        const n = 56;
-        for (let k = 0; k < n; k++) {
-          const ang = k / n * Math.PI * 2;
-          g.fillRect(Math.round(cx + Math.cos(ang) * r - 1), Math.round(cy + Math.sin(ang) * r * 0.7 - 1), 2, 2);
-        }
+        if (this.fxRing) this.fxRing(g, cx, cy, r, a, '255,236,200', { squash: 0.7, css: 1 + 2.2 * (1 - t2 / 0.95) });
       }
       const fr = this.fxFrame('boom', bt / C.boomS, true);
       if (fr && bt < C.boomS) {
         const D = TL * C.boomTiles;
         g.drawImage(fr, Math.round(cx - D / 2), Math.round(cy - D * 0.6), Math.round(D), Math.round(D));
-      } else if (!fr && bt < 0.7 && act.card) {
-        // (a card's stand-in burst: opaque fire in hard steps, cooling as it spreads)
-        const R0 = TL * (0.5 + bt * 2.4), F = ART.PALETTE.fire;
-        g.fillStyle = bt < 0.25 ? F[1] : F[0]; this.pxDisc(g, cx, cy, R0, 2, 0.7);
-        if (bt < 0.45) { g.fillStyle = bt < 0.2 ? F[3] : F[2]; this.pxDisc(g, cx, cy, R0 * 0.5, 2, 0.7); }
-      } else if (!fr && bt < 0.7) {
+      } else if (!fr && bt < 0.7 && this.fxRing) {
+        // (the stand-in burst, with no strip: a ring of fire rolling out and
+        // a white-hot flare where it struck, small, cooling as it spreads —
+        // never a disc of light laid across the ground)
         const k = 1 - bt / 0.7, R0 = TL * (0.5 + bt * 2.4);
-        g.fillStyle = 'rgba(240,120,50,' + (0.6 * k).toFixed(3) + ')'; this.pxDisc(g, cx, cy, R0, 2, 0.7);
-        g.fillStyle = 'rgba(255,240,200,' + (0.85 * k).toFixed(3) + ')'; this.pxDisc(g, cx, cy, R0 * 0.5, 2, 0.7);
+        this.fxRing(g, cx, cy, R0, k, 'bronze', { squash: 0.7, w: TL * (0.12 + 0.18 * k) });
+        this.fxGlow(g, cx, cy - TL * 0.2, TL * 0.55 * (0.6 + 0.4 * k), k, 'bronze', { core: 0.4, soft: 1.8 });
       }
     }
     // the smoke column
@@ -9654,8 +9634,8 @@ const R = {
      own state (S.deck.strike) and its own sky (R._cardSky). What sets it
      apart from the event: its fall is SHORT — it lands as the play animation
      ends, not after an omen and a slow descent; it DROPS, steep, from above
-     the top of the screen with a long trail of hard pixels (cardStarFall);
-     its blow flashes in hard steps (cardStarFlash), never the eased wash;
+     the top of the screen with a long trail (cardStarFall, smooth);
+     its blow flashes cool and short (cardStarFlash), never the eased wash;
      its dark eases in with the fall and out with the strike's last beat,
      never held for half a minute; and its scar is a CRATER of its own
      (craterPaint's card craters — no seams, no claim race). Its sky outlives
@@ -9667,15 +9647,96 @@ const R = {
      beige whiteout). From above the top of the screen, steep (`slope` across
      for every 1 down, leaning in from the side nearer the middle so the whole
      fall is on screen), accelerating (`accel`), the meteor's own art at
-     `headK` x the world's density, dragging a LONG trail of hard pixels the
-     whole height it fell: white behind the head, then the fire ramp — pale
-     gold, gold, orange, ember — and last a smoke that DITHERS to nothing,
-     its edges crackling, sparks peeling off it. Nothing soft: no glow disc,
-     no gradient, no alpha. `burn` (0..1) is the beat after the blow: the
-     trail cools and dithers away. Screen space (device px). */
+     `headK` x the world's density (a WHOLE number: it is pixel art),
+     dragging a LONG trail the whole height it fell: white behind the head,
+     then the fire ramp — pale gold, gold, orange, ember — and last a smoke
+     thinning to nothing, sparks peeling off it. The trail is drawn at the
+     device's own resolution (the operator's ruling on the effects, 2026-10-27
+     — "higher pixel count"): smooth tapered bands, its light's hue tied to
+     its light (R._starTrail), never a column of cells; and still no lit disc
+     round the head, no beige wash. `burn` (0..1) is the beat after the blow:
+     the trail cools, the far end going out first. Screen space (device px). */
   CARD_STAR: { slope: 0.36, accel: 1.7, headK: 1.1, burnS: 0.9, top: 0.1, shake: 13,
-               // the blow's flash: until t (s), this colour at this strength — three hard steps
-               flash: [[0.06, '255,255,255', 0.62], [0.14, '226,236,255', 0.36], [0.24, '226,236,255', 0.14]] },
+               // the blow's flash: cool white, `flashPeak` at the blow and gone in `flashS`
+               // seconds — a fast smooth fall-off, never a warm or eased wash
+               flashPeak: 0.62, flashS: 0.26 },
+  /* A STAR'S TRAIL, at the device's own resolution: from the head (hx, hy)
+     back up the way it came (the unit heading ux, uy points DOWN it), `L`
+     long, `hw` its half-width at the head (device px; the caller sets the
+     identity transform). Tapered bands, each a smooth path filled once:
+     its own light round it (R.fxLight — the hue tied to the light, so a
+     trail over the meadow lights it gold, never lime), the fire's body down
+     the ramp from white-hot to ember, a white-hot core down its first
+     stretch, and (o.smoke) the smoke it leaves thinning up the sky. o.burn
+     (0..1) cools it, the far end going out first; o.sparks peels sparks off
+     it (R.fxDot), on o.t's clock; o.tone 'comet' is the omen's cold tail. */
+  _starTrail(g, hx, hy, ux, uy, L, hw, a, o) {
+    o = o || {};
+    if (!(L > 1) || !(hw > 0) || !(a > 0.01)) return;
+    const F = ART.PALETTE.fire, nx = -uy, ny = ux, t = o.t || 0, burn = Math.max(0, Math.min(1, o.burn || 0)), comet = o.tone === 'comet';
+    const keep = 1 - burn * 0.85, al = a * (1 - burn * burn * 0.9);
+    const at = k => [hx - ux * k * L, hy - uy * k * L];
+    // a tapered band from the head to `k1` of the trail, `w(k)` its half-width
+    const band = (k0, k1, w) => {
+      const N = 24, A = [], B = [];
+      for (let i = 0; i <= N; i++) {
+        const k = k0 + (k1 - k0) * i / N, [x, y] = at(k), ww = Math.max(0, w(k));
+        A.push([x + nx * ww, y + ny * ww]); B.push([x - nx * ww, y - ny * ww]);
+      }
+      g.beginPath();
+      g.moveTo(A[0][0], A[0][1]);
+      for (let i = 1; i <= N; i++) g.lineTo(A[i][0], A[i][1]);
+      for (let i = N; i >= 0; i--) g.lineTo(B[i][0], B[i][1]);
+      g.closePath();
+    };
+    const along = (k1, stops) => {
+      const [x0, y0] = at(0), [x1, y1] = at(k1), gr = g.createLinearGradient(x0, y0, x1, y1);
+      for (const [u, c, ca] of stops) gr.addColorStop(u, this._fxC(c, ca));
+      return gr;
+    };
+    g.save();
+    g.globalCompositeOperation = 'source-over';
+    // the smoke it leaves, thinning up the sky (a card's long fall)
+    if (o.smoke) {
+      const k0 = 0.42 * keep, k1 = keep;
+      band(k0, k1, k => hw * (0.5 + 1.1 * (k - k0)));
+      const [x0, y0] = at(k0), [x1, y1] = at(k1), gr = g.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, this._fxC('#3a302d', 0)); gr.addColorStop(0.12, this._fxC('#3a302d', 0.55 * al));
+      gr.addColorStop(0.55, this._fxC('#2a2320', 0.3 * al)); gr.addColorStop(1, this._fxC('#2a2320', 0));
+      g.fillStyle = gr; g.fill();
+    }
+    g.restore();
+    // its own light round it, the hue tied to the light (R.fxLight): a
+    // teardrop hugging the hot end — run the trail's whole length at its
+    // width it read as a stiff tan beam standing on the sky
+    const kg = 0.42 * keep;
+    if (this.fxLight) this.fxLight(g, 0.8 * al, comet ? 'steel' : 'bronze', {
+      path: gg => band(0, kg, k => hw * 2.4 * Math.pow(Math.max(0, 1 - k / kg), 1.3)),
+      grad: gg => { const [x0, y0] = at(0), [x1, y1] = at(kg); return gg.createLinearGradient(x0, y0, x1, y1); },
+      prof: u => Math.pow(Math.max(0, 1 - u), 1.25), n: 16,
+    });
+    g.save();
+    g.globalCompositeOperation = 'source-over';
+    // the body, white-hot behind the head down the fire's ramp to ember (or the comet's cold)
+    const kb = 0.7 * keep, fl = k => 1 + 0.07 * Math.sin(t * 41 + k * 37) + 0.04 * Math.sin(t * 67 + k * 91);
+    band(0, kb, k => hw * Math.pow(Math.max(0, 1 - k / kb), 0.55) * fl(k));
+    g.fillStyle = comet
+      ? along(kb, [[0, '#ffffff', al], [0.15, '#eef4ff', al], [0.5, '#aac4ff', 0.55 * al], [1, '#8aa8e8', 0]])
+      : along(kb, [[0, '#ffffff', al], [0.07, F[3], al], [0.23, F[2], al], [0.46, F[1], al * 0.95], [0.74, F[0], al * 0.85], [1, F[0], 0]]);
+    g.fill();
+    // a white-hot core down the first stretch
+    const kc = 0.36 * keep;
+    band(0, kc, k => hw * 0.4 * Math.pow(Math.max(0, 1 - k / kc), 0.6));
+    g.fillStyle = along(kc, [[0, '#ffffff', al], [0.5, comet ? '#ffffff' : F[3], al], [1, comet ? '#eef4ff' : F[3], 0]]);
+    g.fill();
+    g.restore();
+    // sparks peeling off it, each on its own short life
+    if (o.sparks && this.fxDot) for (let j = 0; j < 12; j++) {
+      const h1 = this._fxHash(j, 71), h2 = this._fxHash(j, 73), ph = (t * 1.6 + h2) % 1, side = h1 < 0.5 ? -1 : 1;
+      const k = 0.05 + 0.5 * h1, [x, y] = at(k), off = hw * (0.8 + 2.4 * ph) + hw * 1.5 * k;
+      this.fxDot(g, x + nx * side * off - ux * ph * hw * 1.5, y + ny * side * off - uy * ph * hw * 1.5, 0.9 + 0.8 * h2, al * (1 - ph) * (1 - k), h2 < 0.5 ? 'white' : 'gold');
+    }
+  },
   cardStarPath(act) {
     const P = this.starSiteScreen(act.cx, act.cy), W = this.cv.width, H = this.cv.height, C = this.CARD_STAR;
     let ux = (P.x > W / 2 ? 1 : -1) * C.slope, uy = 1;
@@ -9688,78 +9749,46 @@ const R = {
     const P = this.cardStarPath(act);
     const f = burn ? 1 : Math.min(1, act.t / act.fallS), q = Math.pow(f, C.accel);
     const hx = P.sx + (P.ex - P.sx) * q, hy = P.sy + (P.ey - P.sy) * q, Lt = q * P.L;
-    const st = Math.max(2, Math.round(z * 0.75)), s = Math.max(2, Math.round(z * C.headK));
+    // the meteor's ART keeps a whole number of device px an art pixel (it is pixel art)
+    const s = Math.max(2, Math.round(z * C.headK));
     const fr = burn ? null : this.fxFrame('meteor', now / 1000 * 1.25), D = (fr ? fr.width : 128) * s;
-    const wH = Math.max(st * 3, Math.round(D * 0.15 / st) * st), tick = (now / 70) | 0;
-    const hsh = (a, b) => { let h = Math.imul((a | 0) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b | 0, 0xc2b2ae35); h ^= h >>> 13; return (Math.imul(h, 0x27d4eb2f) >>> 0) / 4294967296; };
-    const cs = v => Math.round(v / st) * st;
+    const hw = Math.max(3 * (this.dpr || 1), D * 0.075);
     g.setTransform(1, 0, 0, 1, 0, 0);
-    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-    // THE TRAIL, head first: a column of hard cells the whole way it fell
-    const n = Math.max(1, Math.floor(Lt / st));
-    for (let i = 0; i <= n; i++) {
-      const d = i * st, k = Math.min(1, d / Math.max(1, Lt)), kc = burn ? Math.min(1, k * (1 - burn) + burn * 0.75) : k;
-      if (burn && hsh(i, 7) < burn * (0.6 + k)) continue;          // cooling: the cells go out, top first
-      const X = hx - P.ux * d, Y = hy - P.uy * d;
-      if (Y < -st * 4) break;
-      const w = Math.max(st, cs((wH * Math.pow(1 - k, 0.55) + st)));
-      let col;
-      if (kc < 0.05) col = '#ffffff';
-      else if (kc < 0.16) col = F[3];
-      else if (kc < 0.32) col = F[2];
-      else if (kc < 0.5) col = F[1];
-      else if (kc < 0.68) col = F[0];
-      else {
-        // the smoke it leaves: dithered to nothing up the sky
-        if (hsh(i, 3) < (kc - 0.68) / 0.32 * 1.15) continue;
-        col = (i & 1) ? '#3a302d' : '#2a2320';
-      }
-      g.fillStyle = col;
-      const x0 = cs(X - w / 2), y0 = cs(Y);
-      // the ragged edge crackles: an edge cell is out now and then
-      const cut = kc < 0.68 && w > st * 2;
-      const l = cut && hsh(i * 3 + tick, 1) < 0.35 ? st : 0, r = cut && hsh(i * 3 + tick, 2) < 0.35 ? st : 0;
-      g.fillRect(x0 + l, y0, w - l - r, st);
-      // a white-hot core down the first stretch
-      if (kc < 0.36 && w >= st * 3) {
-        g.fillStyle = kc < 0.16 ? '#ffffff' : F[3];
-        const cw = Math.max(st, cs(w * 0.4));
-        g.fillRect(cs(X - cw / 2), y0, cw, st);
-      }
-      // sparks peeling off it
-      if (!burn && kc < 0.6 && hsh(i, 11) < 0.07 && (tick + i) % 3) {
-        const side = hsh(i, 13) < 0.5 ? -1 : 1, off = w / 2 + st * (1 + ((hsh(i, 17) * 5) | 0)) + k * st * 6;
-        g.fillStyle = hsh(i, 19) < 0.5 ? '#ffffff' : F[3];
-        g.fillRect(cs(X + side * off), cs(Y + k * st * 4), st, st);
-      }
-    }
+    // THE TRAIL, head first, the whole way it fell — at the device's own resolution
+    this._starTrail(g, hx, hy, P.ux, P.uy, Lt + hw * 3, hw, 1, { t: now / 1000, burn, smoke: true, sparks: !burn });
     // THE HEAD: the meteor's own art, turned to its heading (the strip falls toward the lower left)
     if (!burn) {
       const Cs = this.STAR;
       if (fr) {
+        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
         const rot = Math.atan2(P.uy, P.ux) - Math.atan2(1, -1);
         g.translate(Math.round(hx), Math.round(hy)); g.rotate(rot);
         g.drawImage(fr, -Cs.head[0] * D, -Cs.head[1] * D, D, D);
         g.setTransform(1, 0, 0, 1, 0, 0);
-      } else {
-        const r = Math.max(st * 2, cs(wH * 0.8));
-        g.fillStyle = F[1]; this.pxDisc(g, hx, hy, r, st);
-        g.fillStyle = F[3]; this.pxDisc(g, hx, hy, r * 0.62, st);
-        g.fillStyle = '#ffffff'; this.pxDisc(g, hx, hy, r * 0.32, st);
+        g.imageSmoothingEnabled = sm;
+      } else if (this.fxGlow) {
+        // (no strip: a white-hot head in its own fire, smooth)
+        this.fxGlow(g, hx, hy, hw * 2.2, 1, 'bronze', { soft: 1.4, core: 0.55 });
       }
     }
-    g.imageSmoothingEnabled = sm;
     if (!burn) sky.burnT = 0;   // the fall was seen: after the blow its trail burns out
   },
-  // the blow's flash: full screen, in the CARD_STAR.flash steps — never eased, never beige
+  /* the blow's flash: cool white over the board, `flashPeak` at the blow and
+     falling off smoothly to nothing in `flashS` — never warm, never the
+     eased beige wash (flashAt), never over the off-map black */
   cardStarFlash(g, dt, sky) {
     if (sky.flashT == null) return;
     sky.flashT += dt;
-    const step = this.CARD_STAR.flash.find(s => sky.flashT < s[0]);
-    if (!step) { sky.flashT = null; return; }
+    const C = this.CARD_STAR, t = sky.flashT;
+    if (t >= C.flashS) { sky.flashT = null; return; }
+    const k = 1 - t / C.flashS, a = C.flashPeak * k * k;
+    g.save();
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.fillStyle = 'rgba(' + step[1] + ',' + step[2] + ')';
+    const B = this.boardPx(), z = this.cam.z * this.dpr;
+    g.beginPath(); g.rect((B.x0 - this.cam.x) * z, (B.y0 - this.cam.y) * z, (B.x1 - B.x0) * z, (B.y1 - B.y0) * z); g.clip();
+    g.fillStyle = 'rgba(' + (t < 0.05 ? '255,255,255' : '226,236,255') + ',' + a.toFixed(3) + ')';
     g.fillRect(0, 0, this.cv.width, this.cv.height);
+    g.restore();
   },
   _cardSky: null,
   cardStarDim(st) {
@@ -9802,28 +9831,28 @@ const R = {
       const k = p.t / p.life;
       p.x += p.vx * dt; p.y += p.vy * dt;
       const D = P * p.s * (0.7 + k * 1.6), fr = this.fxFrame('smoke', Math.min(0.99, k * 0.9 + p.f0 * 0.1), true);
-      // smoke still lit by the fire it came off: a young puff glows from inside
-      if (k < 0.4) {
-        g.save(); g.globalCompositeOperation = 'lighter';
-        g.fillStyle = 'rgba(255,140,60,' + (0.42 * (1 - k / 0.4)).toFixed(3) + ')';
-        this.pxDisc(g, p.x, p.y, D * 0.42, Math.max(2, Math.round(z * 0.9)));
-        g.restore();
-      }
+      // smoke still lit by the fire it came off: a young puff glows from
+      // inside — a soft light, its hue tied to it (the operator's ruling on
+      // the effects: never a disc of 2px cells added over the scene)
+      if (k < 0.4 && this.fxGlow) this.fxGlow(g, p.x, p.y, D * 0.42, 0.62 * (1 - k / 0.4), 'bronze', { soft: 1.6 });
       g.globalAlpha = (after ? 0.7 : 0.85) * (1 - k * k);
       if (fr) g.drawImage(fr, Math.round(p.x - D / 2), Math.round(p.y - D / 2), Math.round(D), Math.round(D));
-      else { g.fillStyle = k < 0.15 ? '#c0572e' : '#4a4340'; g.fillRect(Math.round(p.x - D * 0.3), Math.round(p.y - D * 0.3), Math.round(D * 0.6), Math.round(D * 0.6)); }
+      else if (this.fxPuff) { g.globalAlpha = 1; this.fxPuff(g, p.x, p.y, D * 0.36, k < 0.15 ? '192,87,46' : '74,67,64', (after ? 0.7 : 0.85) * (1 - k * k)); }
     }
     g.globalAlpha = 1;
+    g.imageSmoothingEnabled = sm;
+    // the burning debris it sheds: embers as soft beads, stones as rough
+    // shapes with a coal at their heart — at fractional coordinates
     for (let i = sky.shed.length - 1; i >= 0; i--) {
       const d = sky.shed[i];
       d.t += dt; if (d.t >= d.life) { sky.shed.splice(i, 1); continue; }
       d.vy += 220 * dt; d.x += d.vx * dt; d.y += d.vy * dt;
-      const k = d.t / d.life, s = Math.max(1, Math.round(d.s * (1 - k * 0.5)));
-      g.fillStyle = d.rock ? (k < 0.5 ? '#3a2a22' : '#2a201b') : (k < 0.3 ? '#fff0b0' : k < 0.65 ? '#ffb347' : '#d9612a');
-      g.fillRect(Math.round(d.x), Math.round(d.y), s, s);
-      if (d.rock && k < 0.6) { g.fillStyle = '#ff9a3c'; g.fillRect(Math.round(d.x), Math.round(d.y), Math.max(1, s >> 1), Math.max(1, s >> 1)); }
+      const k = d.t / d.life, s = Math.max(1, d.s * (1 - k * 0.5));
+      if (d.rock) {
+        if (this.fxChunk) this.fxChunk(g, d.x, d.y, s * 0.6, d.t * 4 + i, k < 0.5 ? '#3a2a22' : '#2a201b', 1, i);
+        if (k < 0.6 && this.fxDot) this.fxDot(g, d.x, d.y, Math.max(0.7, s * 0.25 / (this.dpr || 1)), 1 - k / 0.6, 'bronze');
+      } else if (this.fxDot) this.fxDot(g, d.x, d.y, Math.max(0.8, s * 0.45 / (this.dpr || 1)), 1 - k, k < 0.3 ? 'white' : k < 0.65 ? 'gold' : 'bronze');
     }
-    g.imageSmoothingEnabled = sm;
   },
   // world-space puffs (the crater's column, the fire's smoke): age, move, draw
   _drawPuffs(g, list, dt, TL, move, aMax) {
@@ -9835,7 +9864,7 @@ const R = {
       const D = TL * 0.5 * p.s * (0.8 + k * 1.4), fr = this.fxFrame('smoke', Math.min(0.99, 0.15 + k * 0.84), true);
       g.globalAlpha = (aMax || 0.78) * (1 - k) * Math.min(1, p.t / 0.4);
       if (fr) g.drawImage(fr, Math.round(p.x - D / 2), Math.round(p.y - D / 2), Math.round(D), Math.round(D));
-      else { g.fillStyle = '#4a4340'; this.pxDisc(g, p.x, p.y, D * 0.32, 1, 0.8); }   // never a square
+      else if (this.fxPuff) { const al = g.globalAlpha; g.globalAlpha = 1; this.fxPuff(g, p.x, p.y, D * 0.36, '74,67,64', al); }   // never a square: a soft puff
     }
     g.globalAlpha = 1;
   },
