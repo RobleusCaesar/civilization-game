@@ -444,17 +444,19 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   });
   ck('newGameIsTheGoldPlate', r.gold === 'gold' && r.navy === 'navy' && r.cont === 'wood', `New Game ${r.gold}, Leaderboard ${r.navy}, Continue ${r.cont}`);
   ck('andANoSavesContinueSitsFlat', r.cant && r.contF === 'none' && r.contOp === '1' && r.small.length > 0, `cant=${r.cant}, its frame's drop: ${r.contF}, "${r.small}"`);
+  const top0 = await p.evaluate(() => document.getElementById('btnTitleBoard').getBoundingClientRect().top);
   const bx = await p.evaluate(() => { const q = document.getElementById('btnTitleBoard').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
   await p.mouse.move(bx[0], bx[1]);
   await p.mouse.down();
-  await p.waitForTimeout(160);
+  // the plate eases down over 70ms: wait for it to settle rather than for a fixed beat
+  await p.waitForFunction((t0) => document.getElementById('btnTitleBoard').getBoundingClientRect().top - t0 > 1.9, top0, { timeout: 3000 }).catch(() => {});
   const pressed = await p.evaluate(() => { const el = document.getElementById('btnTitleBoard'), lo = el.querySelector('.t2f .lo'); return { tr: getComputedStyle(el).translate, lo: lo ? getComputedStyle(lo).opacity : 'none', top: el.getBoundingClientRect().top }; });
-  await p.mouse.move(2, 2);
+  await p.mouse.move(2, 2);   // let go off the plaque: a press, not a click (the click would open the board)
   await p.mouse.up();
-  await p.waitForTimeout(160);
-  const rest = await p.evaluate(() => document.getElementById('btnTitleBoard').getBoundingClientRect().top);
-  ck('aPressSendsThePlaqueIntoItsFrame', /2px/.test(pressed.tr) && pressed.lo === '1' && Math.abs(pressed.top - rest - 2) < 0.6,
-    `pressed translate ${pressed.tr}, bevel turned (${pressed.lo}), ${(pressed.top - rest).toFixed(1)}px down`);
+  await p.waitForFunction((t0) => Math.abs(document.getElementById('btnTitleBoard').getBoundingClientRect().top - t0) < 0.1, top0, { timeout: 3000 }).catch(() => {});
+  const back = await p.evaluate(() => document.getElementById('btnTitleBoard').getBoundingClientRect().top);
+  ck('aPressSendsThePlaqueIntoItsFrame', /2px/.test(pressed.tr) && pressed.lo === '1' && Math.abs(pressed.top - top0 - 2) < 0.6 && Math.abs(back - top0) < 0.1,
+    `pressed translate ${pressed.tr}, bevel turned (${pressed.lo}), ${(pressed.top - top0).toFixed(1)}px down, ${(back - top0).toFixed(1)}px off once let go`);
   // the pause menu wears the same .plaques and must not wear the night's
   const pause = await p.evaluate(() => {
     const b2 = document.querySelector('#scrPaused .pauseMenu .abtn');
@@ -471,6 +473,34 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   ck('lessMotionMeansNoEmbers', emb > 0 && still.em === 0 && still.glow === 'none' && still.glint === 'none',
     `${emb} embers with motion; with less: ${still.em} embers, glow ${still.glow}, glint ${still.glint}`);
   await q.ctx.close();
+}
+
+/* ---- 7b. THE LIGHT SITS ON THE PAINTING'S OWN FIRE AND COMET: each ambient
+   anchor, read off the shipped file itself, lands within an art pixel or two
+   of something burning — repaint the night and the anchors must follow ---- */
+{
+  const o = await open({ q: '?cards=1', tag: 'anchors' });
+  const r = await o.p.evaluate(async () => {
+    const out = [];
+    for (const [v, k] of [['wide', 3], ['tall', 2]]) {
+      const im = new Image(); im.src = 'assets/ui/title/night-' + v + '.webp?v=' + CFG.ART_V; await im.decode();
+      const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+      const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      for (const at of ['fire', 'comet']) {
+        const [fx, fy] = TitleScreen.ANCHOR[at][v];
+        const x = Math.round(fx * im.width), y = Math.round(fy * im.height), R = 3 * k;
+        const d = g.getImageData(x - R, y - R, 2 * R + 1, 2 * R + 1).data;
+        let best = 0, warm = 0;   // the brightest pixel near it, and the warmest (a white-hot core has no hue of its own)
+        for (let i = 0; i < d.length; i += 4) { best = Math.max(best, d[i] + d[i + 1] + d[i + 2]); warm = Math.max(warm, d[i] - d[i + 2]); }
+        out.push({ v, at, best, warm });
+      }
+    }
+    return out;
+  });
+  const off = r.filter(x => x.best < 560 || x.warm < 90);
+  ck('theLightSitsOnThePaintingsFireAndComet', r.length === 4 && off.length === 0,
+    r.map(x => `${x.v} ${x.at}: brightest ${x.best}, warmth ${x.warm}`).join('; '));
+  await o.ctx.close();
 }
 
 ck('theTitleRunsClean', errs.length === 0, errs[0] || 'no page errors');

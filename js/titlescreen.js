@@ -4,9 +4,10 @@
 
    THE GATE IS ONE PREDICATE: TitleScreen.live() — Boot.TITLE_PUBLIC (the
    inline boot block in index.html, because the splash has to know before any
-   script file has parsed) or the deck staging flag (Deck.devOn: ?cards=1 / ?cards=all once). On
-   every other device this file does nothing at all: no element, no
-   stylesheet, no listener, no picture — the title is today's, byte for byte.
+   script file has parsed) or the deck staging flag (Deck.devOn: ?cards=1 /
+   ?cards=all once). On every other device this file does nothing at all: no
+   element, no stylesheet, no listener, no picture — the title is today's,
+   byte for byte.
    GOING PUBLIC IS ONE LINE: TITLE_PUBLIC true in index.html's boot block.
 
    THE VALLEY BY NIGHT. The backdrop is the reward screen's valley (the
@@ -292,8 +293,8 @@ const TitleScreen = {
      the picture whatever the crop (ANCHOR, as fractions of the master), and
      still for a player who asks for less motion. */
   ANCHOR: {
-    fire: { wide: [0.2325, 0.84], tall: [0.456, 0.9] },
-    comet: { wide: [0.6614, 0.134], tall: [0.293, 0.1657] },
+    fire: { wide: [0.2311, 0.83], tall: [0.4531, 0.9] },
+    comet: { wide: [0.702, 0.138], tall: [0.2917, 0.1642] },
   },
   NATIVE: { wide: 688, tall: 384 },   // the masters' widths: one art pixel is --u CSS pixels
   reduced() {
@@ -381,6 +382,9 @@ TitleScreen.CSS = `
   #scrTitle.t2 .trow3 .blab { gap: 5px; }
   #scrTitle.t2 .trow3 .t2i { width: 16px; height: 16px; }
 }
+/* the patch notes' unread dot (js/settings.js) rides the top rim, clear of
+   the corner caps and of the word */
+#scrTitle.t2 .sxDoorDot { top: -4px; right: 24px; }
 /* the deck's count: a gold-ringed coin beside the word */
 #scrTitle.t2 #btnTitleCards .clN { height: 19px; min-width: 19px; line-height: 17px; margin-left: 7px; padding: 0 5px;
   background: radial-gradient(circle at 50% 35%, #3a2410, #170c03); border: 1px solid #e0b252;
