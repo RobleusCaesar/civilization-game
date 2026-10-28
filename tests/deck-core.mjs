@@ -6,8 +6,11 @@
      THE CATALOG     36 cards, 8/8/7/7/6 by tier, every one with a name, an
                      exact effect, a flavor line, a play condition, a kind
                      and a targeting rule — exactly the Gate 1 catalog
-     THE SWITCH      CFG.CARDS.ON ships false: off, nothing is granted, no
-                     starter hand is dealt and nothing can be played
+     THE SWITCH      CFG.CARDS.ON ships TRUE (public since build 106; it
+                     shipped false while the deck was staged behind the
+                     test link) and is still the kill switch: thrown off,
+                     nothing is granted, no starter hand is dealt and
+                     nothing can be played
      THE DROPS       the approved tables, each summing to 100; a great
                      victory earns a second card; 15 wins without a legend
                      guarantee one; a measured roll lands on the table it
@@ -81,6 +84,25 @@ await p.waitForFunction(() => window.Deck && window.Screens && Screens.current, 
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
+/* A NEW PLAYER STARTS WITH THE THREE STARTER CARDS — never the catalog. The
+   switch ships on (build 106), so a fresh device on the plain link is dealt
+   CFG.CARDS.STARTER and nothing else: the whole set of 36 comes only with the
+   ?cards=all test link (a test deck, which reports, syncs and posts nothing).
+   The cloud's catalog (migration 0008, starter_qty) names the same three. */
+{
+  await p.waitForFunction(() => { try { return !!Deck.col().starter; } catch (e) { return false; } }, null, { timeout: 15000 }).catch(() => {});
+  const r = await p.evaluate(() => {
+    const c = Deck.col(), ids = Object.keys(c.counts || {}).filter(k => c.counts[k] > 0).sort();
+    return { on: Deck.on(), dev: Deck.devOn(), test: Deck.isTest(), total: ids.reduce((n, k) => n + c.counts[k], 0), ids: ids.join(','),
+      want: CFG.CARDS.STARTER.slice().sort().join(',') };
+  });
+  const sql = (await import('node:fs')).readFileSync(join(root, 'supabase/migrations/0008_cards.sql'), 'utf8');
+  const cloud = [...sql.matchAll(/\('([a-z_]+)', '[a-z]+', (\d)\)/g)].filter(m => +m[2] > 0).map(m => m[1]).sort().join(',');
+  ck('aNewPlayerStartsWithTheThreeStarterCards',
+    r.on && !r.dev && !r.test && r.total === 3 && r.ids === r.want && cloud === r.want,
+    `${r.total} cards on a fresh device (${r.ids}); the cloud's starter hand: ${cloud}`);
+}
+
 const a = await p.evaluate(() => {
   const out = {};
   const C = Deck.CATALOG;
@@ -90,8 +112,10 @@ const a = await p.evaluate(() => {
   out.uniq = new Set(C.map(c => c.id)).size;
   out.missing = C.filter(c => !c.name || !c.text || !c.flavor || !c.when || !c.cat || !['none', 'any', 'explored'].includes(c.target) || !Deck.GLYPHS[c.cat]).map(c => c.id);
   out.targeted = C.filter(c => c.target !== 'none').map(c => c.id).sort().join(',');
-  // THE SWITCH ships off
-  out.shipsOff = CFG.CARDS.ON === false;
+  // THE SWITCH ships on — and thrown off, it is the kill switch
+  out.shipsOn = CFG.CARDS.ON === true;
+  out.onOn = Deck.on();
+  CFG.CARDS.ON = false;
   Deck._dev = null; Deck._del('neo-cards-dev');
   out.offOn = Deck.on();
   Deck._col = null; Deck._del(Deck.KEY);
@@ -110,7 +134,7 @@ const a = await p.evaluate(() => {
 ck('theCatalogIs36CardsInFiveTiers', a.total === 36 && a.uniq === 36 && a.counts === '8/8/7/7/6', `${a.total} cards, ${a.uniq} ids, ${a.counts}`);
 ck('everyCardIsFullyDescribed', a.missing.length === 0, a.missing.join(',') || 'name, text, flavor, when, kind, target');
 ck('fourCardsAreAimed', a.targeted === 'dragonfire,scouts_fire,starfall', a.targeted);
-ck('theSwitchShipsOff', a.shipsOff && !a.offOn, a.shipsOff ? 'CFG.CARDS.ON is false' : 'CFG.CARDS.ON is TRUE');
+ck('theSwitchShipsOn', a.shipsOn && a.onOn && !a.offOn, a.shipsOn ? 'CFG.CARDS.ON is true, and thrown off the deck is off' : 'CFG.CARDS.ON is FALSE');
 ck('offMeansNothingHappens', !a.offStarter && !a.offStored && !a.offSettle && !a.offPlay,
   `starter ${a.offStarter}, stored ${a.offStored}, settle ${a.offSettle}, play ${a.offPlay}`);
 ck('theDropTablesAreTheApprovedOnes',
@@ -185,6 +209,9 @@ const c = await p.evaluate(() => {
   // the grant op carries what the server needs to re-run the earn rule
   const lossOp = Deck.col().queue.find(q => q.op === 'grant' && q.key === 'g6');
   out.opRule = !!lossOp && lossOp.cause === 'tc_destroyed' && lossOp.deeds === CFG.CARDS.LOSS_DEEDS && lossOp.act_days === 30 && lossOp.outcome === 'loss';
+  // the starter hand marked as given: the switch ships on, so the reload's
+  // title would otherwise deal it on top of what is measured surviving
+  if (!Deck.col().starter) { Deck.col().starter = 1; Deck.saveCol(); }
   out.counts = JSON.stringify(Deck.col().counts);
   return out;
 });
@@ -897,23 +924,28 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   /* ?cards=0 forgets the device switch AND the toy deck (a test deck never
      syncs, so a device left holding one would never sync again) — and hands
      back the REAL collection the link put aside, exactly as it was stored:
-     its cards, its pity, its run ledger and the cloud op still waiting */
+     its cards, its pity, its run ledger and the cloud op still waiting. The
+     deck itself stays on: the switch ships on (build 106) */
   await load('?cards=0');
-  const a4 = await p2.evaluate(() => ({ on: Deck.on(), stored: Deck._get(Deck.KEY), stash: Deck._get(Deck.REAL_KEY) }));
+  const a4 = await p2.evaluate(() => ({ on: Deck.on(), dev: Deck.devOn(), stored: Deck._get(Deck.KEY), stash: Deck._get(Deck.REAL_KEY) }));
   // …exactly as it was set aside — with the card earned on the toy deck in it
-  ck('andCardsZeroGivesTheRealCollectionBack', !a4.on && a4.stored === a1.stashRaw && a4.stash === null,
-    `off ${!a4.on}; the real collection back exactly, earnings and all: ${a4.stored === a1.stashRaw}${a4.stored === a1.stashRaw ? '' : ' (' + String(a4.stored).slice(0, 90) + ')'}; stash cleared ${a4.stash === null}`);
+  ck('andCardsZeroGivesTheRealCollectionBack', a4.on && !a4.dev && a4.stored === a1.stashRaw && a4.stash === null,
+    `device flag forgotten ${!a4.dev}, the deck still on ${a4.on}; the real collection back exactly, earnings and all: ${a4.stored === a1.stashRaw}${a4.stored === a1.stashRaw ? '' : ' (' + String(a4.stored).slice(0, 90) + ')'}; stash cleared ${a4.stash === null}`);
   // …and a device that had NO collection before the link starts afresh: the
-  // toy deck gone, and ?cards=1 deals the starter hand to a real collection
+  // toy deck gone and — the switch shipping on — a real starter hand dealt
+  // in its place by the title, which ?cards=1 then keeps
   await p2.evaluate(() => { Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); });
   await load('?cards=all');
   await p2.evaluate(() => Deck.ensureStarter());
   await load('?cards=0');
-  const a5a = await p2.evaluate(() => ({ stored: Deck._get(Deck.KEY), stash: Deck._get(Deck.REAL_KEY) }));
+  const a5a = await p2.evaluate(() => {
+    const c = JSON.parse(Deck._get(Deck.KEY) || 'null');
+    return { real: !!c && !c.test && Object.values(c.counts || {}).reduce((n, k) => n + k, 0) === 3 && !!c.starter, stash: Deck._get(Deck.REAL_KEY) };
+  });
   await load('?cards=1');
   const a5 = await p2.evaluate(() => { Deck.ensureStarter(); return { on: Deck.on(), total: Deck.total(), test: Deck.isTest(), queue: Deck.col().queue.length }; });
-  ck('andCardsZeroForgetsTheToyDeck', a5a.stored === null && a5a.stash === null && a5.on && a5.total === 3 && !a5.test && a5.queue === 1,
-    `stored ${a5a.stored === null ? 'gone' : 'kept'}; then ?cards=1: ${a5.total} cards, test ${a5.test}, queued ${a5.queue}`);
+  ck('andCardsZeroForgetsTheToyDeck', a5a.real && a5a.stash === null && a5.on && a5.total === 3 && !a5.test && a5.queue === 1,
+    `the toy ${a5a.real ? 'gone, a real starter hand in its place' : 'kept'}; then ?cards=1: ${a5.total} cards, test ${a5.test}, queued ${a5.queue}`);
   // …while a REAL collection survives ?cards=0 untouched
   await p2.evaluate(() => { Deck._add('swift_raiders', 2); Deck.saveCol(); });
   await load('?cards=0');

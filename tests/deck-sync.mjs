@@ -178,9 +178,20 @@ const MOCK = `
   window.__NEO_BACKEND_MOCK = { auth: window.__MOCK.auth, rest: window.__MOCK.rest };
 `;
 
+/* THE KILL SWITCH THROWN AT BOOT: CFG.CARDS.ON ships true (build 106), so the
+   switch-off sections turn it off the moment js/config.js has run and before
+   any card file parses (the parser's microtask checkpoint before the next
+   <script> runs this observer) — exactly a build that shipped it off */
+const SWITCH_OFF = () => {
+  new MutationObserver((recs, ob) => {
+    try { if (typeof CFG !== 'undefined' && CFG.CARDS) { CFG.CARDS.ON = false; ob.disconnect(); } } catch (e) {}
+  }).observe(document, { childList: true, subtree: true });
+};
+
 /* ================= 1. THE SWITCH: off, nothing at all ================= */
 {
   const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await ctx.addInitScript(SWITCH_OFF);
   // a device that once had the deck on: a collection on disk with ops waiting
   await ctx.addInitScript(() => {
     try {
@@ -1062,6 +1073,7 @@ await ctx.close();
 /* ================= 14. THE SWITCH OFF: not even the boot's inert listener ================= */
 {
   const ctx = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await ctx.addInitScript(SWITCH_OFF);
   await ctx.addInitScript(() => {
     try { localStorage.removeItem('neo-cards-dev'); } catch (e) {}
     window.__loads = 0;

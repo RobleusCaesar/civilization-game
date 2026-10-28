@@ -3071,8 +3071,8 @@ const G = {
   // the title's painted backdrop, decoded and on the page (same file the
   // splash shows, so the cross-fade has no scene change in it)
   titleGlenUp() {
-    // the night title (js/titlescreen.js, staged) lifts on ITS picture — the
-    // one the splash is wearing — or on the glen it fell back to
+    // the night title (js/titlescreen.js) lifts on ITS picture — the one the
+    // splash is wearing — or on the markup's own copy beneath it
     const img = (window.TitleScreen && TitleScreen.live() && TitleScreen.glenImg()) ||
       document.querySelector('#scrTitle .tbg img');
     return !!(img && img.complete && img.naturalWidth > 0);

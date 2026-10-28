@@ -459,9 +459,12 @@ const MOCK = `
 
     // THE DECK'S OWN ROWS: card_granted / card_played, through the same door,
     // carrying only what the 0003 checks (and 0008's widened kind) admit
+    // (only the two sent here: with the switch shipping on, the wins this page
+    // ended above were each granted a real card, and sent their own rows)
+    const before = calls().length;
     Deck.track('card_granted', { card: 'starfall', tier: 'imperial', outcome: 'win', difficulty: 'hard', bonus: false, run: id3 });
     Deck.track('card_played', { card: 'forager_cache', tier: 'stone', run: id3, day: 12 });
-    const rows = calls().filter(c => c.path === '/telemetry' && c.body && c.body[0] && /^card_/.test(c.body[0].kind)).map(c => c.body[0]);
+    const rows = calls().slice(before).filter(c => c.path === '/telemetry' && c.body && c.body[0] && /^card_/.test(c.body[0].kind)).map(c => c.body[0]);
     out.deckRows = rows.map(x => ({ kind: x.kind, run: x.run_id === id3, user: x.user_id === __MOCK.st.uid,
       modeOk: x.mode == null || ['calm', 'moderate', 'hard'].includes(x.mode), dayOk: x.day >= 0 && x.day <= 100000, card: x.props && x.props.card }));
     localStorage.removeItem(Backend.END_KEY);

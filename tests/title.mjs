@@ -4,16 +4,16 @@
    closer to the quality of the Victory and Loss pages… versions for phone
    and desktop… push to the cards test page").
 
-   1. STAGED, BOTH WAYS. One predicate, TitleScreen.live() = TITLE_PUBLIC ||
-      Deck.devOn(). The boot block reads the same answer before the first
-      paint (Boot.title2) — the same reading of the link and the storage,
-      never a write — and the two agree in every case (?cards=1 / all / 0,
-      a remembered flag, a storage that throws). A device the card test link
-      never touched keeps today's title: its markup and its stylesheet byte
-      for byte (hashes of the blocks as they stood at f2a1c59, their ?v=
-      cache-busters aside), no class, no
-      element, no stylesheet, and not one request for the night's art.
-      Flipping TITLE_PUBLIC alone gives every device the night.
+   1. PUBLIC, FOR EVERY DEVICE (build 106 — it was staged behind the card
+      test link from build 101). One predicate, TitleScreen.live() =
+      TITLE_PUBLIC || Deck.devOn(), and TITLE_PUBLIC is true. The boot block
+      reads the same answer before the first paint (Boot.title2), and the
+      two agree in every case the link and the storage can make (?cards=1 /
+      all / 0, a remembered flag, a storage that throws): the night, every
+      time. THE GLEN IS RETIRED: the splash's and the title's own <picture>
+      markup carry the night's sources, exactly as the boot block builds
+      them, so the browser fetches ONE file for both and nothing of the
+      glen at all.
    2. THE ART LANDS BY FILENAME, AND STANDS DOWN QUIETLY. assets/ui/title/
       night-{wide,tall}.{webp,jpg}: each PixelLab master at TWICE its pixel
       count — Scale2x, so its stair-steps halve and round, nothing new is
@@ -22,11 +22,11 @@
       then doubled again nearest-neighbour (4x the master's size, 2x its
       pixel grid; the tall ships at the Scale2x size itself), lossless webp
       under 100 KB with a jpg behind it; every URL carries the hand-kept
-      ?v= that must equal CFG.ART_V (the glen's rule). A landscape window
-      takes the wide valley, a portrait one the tall. With the art missing
-      the glen comes back under the new plaques, the splash still lifts, and
-      nothing throws.
-   3. THE SPLASH IS THE TITLE'S OWN SCENE. On a staged device the splash
+      ?v= that must equal CFG.ART_V. A landscape window takes the wide
+      valley, a portrait one the tall. With the art missing the plaques
+      stand on the night's own dark, the splash still lifts, and nothing
+      throws.
+   3. THE SPLASH IS THE TITLE'S OWN SCENE. On every device the splash
       wears the night (the same file, box, fit and shade), the lift waits
       for it, and the title with its chrome hidden is the splash, pixel for
       pixel — the lift adds the logo and the plaques and nothing else.
@@ -72,35 +72,42 @@ const ART_V = +readFileSync(join(root, 'js/config.js'), 'utf8').match(/ART_V:\s*
 const sha = s => createHash('sha256').update(s).digest('hex');
 const cut = (a, b) => { const i = html.indexOf(a), j = html.indexOf(b, i + 1); return i >= 0 && j > i ? html.slice(i, j) : ''; };
 
-/* ---- 1a. the old title, byte for byte (the source) ---- */
+/* ---- 1a. THE GLEN IS RETIRED (the source) ---- */
 {
-  // each block as it stood at f2a1c59, the build the night title was staged on;
-  // a change here is a change for every player, not just the staged ones.
-  // Read with every ?v= cache-buster blanked: the glen's URLs carry CFG.ART_V
-  // by hand (tests/boot.mjs theGlenCarriesTheArtVersion), so an art bump
-  // restamps them, and a new stamp on the same picture is no new title —
-  // the first art bump after the staging (ART_V 61) proved the two rules
-  // could not otherwise both hold
-  const N = s => s.replace(/\?v=\d+/g, '?v=');
-  const OLD = {
-    splash: ['<div id="splash"', '<script>', 'db66ae2983eea34e90d8dc3e19c9b8117a02c404a47e6a67d98cef67fb16444c'],
-    title: ['  <div class="screen" id="scrTitle">', '  <div class="screen" id="scrNewgame">', 'eb8e5ea91accb6e5b9664a5091094e1904378a85679149786279e89127168872'],
-    css: ['  /* ---- title: the painted glen ----', '  /* desktop: the wordmark scales with the viewport', '802eb11d67543888ab1598d0d25f65310bc22cc891148c7e1cc0ba234547a8be'],
-    short: ['  /* short viewports (landscape phones): compact so nothing clips */', '  /* AUDIO ROWS', '4e2ff9ada9ad8237e96f36e8f37751667ca8b3e4c1aa6e90ae0ec7641df0406d'],
+  /* the night went public in build 106, and the glen it was laid over went
+     with it: the splash's and the title's <picture> markup carry the
+     night's sources EXACTLY as the boot block builds them (Boot.T2_SRC /
+     T2_IMG — the same srcset, type and media, in order), so the browser
+     picks the same file for the markup and for Boot.t2wear's copy and
+     fetches it once; nothing anywhere asks for the glen */
+  const t2src = [...cut('T2_SRC', 'T2_IMG').matchAll(/\['([^']+)', '([^']+)', '([^']*)'\]/g)].map(m => [m[1], m[2], m[3]]);
+  const t2img = (cut('T2_IMG:', 'T2_BG').match(/'([^']+)'/) || [])[1];
+  const pic = (a, b) => {
+    const blk = cut(a, b), m = blk.match(/<picture[^>]*>([\s\S]*?)<\/picture>/);
+    if (!m) return null;
+    const srcs = [...m[1].matchAll(/<source srcset="([^"]+)" type="([^"]+)"(?: media="([^"]+)")?>/g)].map(x => [x[1], x[2], x[3] || '']);
+    const img = (m[1].match(/<img[^>]+src="([^"]+)"/) || [])[1];
+    return { srcs, img };
   };
-  const moved = Object.entries(OLD).filter(([, [a, b, h]]) => sha(N(cut(a, b))) !== h).map(([k]) => k);
-  ck('theOldTitleIsByteForByte', moved.length === 0,
-    moved.length ? 'changed: ' + moved.join(', ') : 'the splash, the title markup and its two stylesheet blocks, as at f2a1c59 (cache-busters aside)');
+  const sp = pic('<div id="splash"', '<script>'), tt = pic('<div class="screen" id="scrTitle">', '<div class="tcol">');
+  const same = q => !!q && JSON.stringify(q.srcs) === JSON.stringify(t2src) && q.img === t2img;
+  const glen = /assets\/ui\/title-bg/.test(html);
+  ck('theGlenIsRetired', t2src.length === 3 && !!t2img && same(sp) && same(tt) && !glen,
+    (glen ? 'index.html still asks for the glen; ' : '') + 'the splash and the title markup carry Boot.T2_SRC / T2_IMG: ' +
+    JSON.stringify({ splash: same(sp), title: same(tt), sources: t2src.length }));
+  ck('andTheGroundBehindItIsTheNights',
+    /<div id="splash" style="[^"]*background:#0a0d18;/.test(html) && /#scrTitle \.tbg \{[^}]*background: #0a0d18;/.test(html) && /T2_BG: '#0a0d18'/.test(html),
+    'the splash, the .tbg box and Boot.T2_BG are the night\'s own #0a0d18');
   const read = f => { try { return readFileSync(join(root, f), 'utf8'); } catch (e) { return ''; } };
   const src = read('js/titlescreen.js');
   const scr = readFileSync(join(root, 'js/screens.js'), 'utf8');
   const tag = html.match(/<script src="js\/titlescreen\.js\?v=(\d+)"><\/script>/);
   const codeV = +html.match(/js\/config\.js\?v=(\d+)/)[1];
   ck('theGateIsOnePredicate',
-    (html.match(/TITLE_PUBLIC:\s*false,/g) || []).length === 1 &&
+    (html.match(/TITLE_PUBLIC:\s*true,/g) || []).length === 1 && !/TITLE_PUBLIC:\s*false/.test(html) &&
     (src.match(/Deck\.devOn\(\)/g) || []).length === 1 && /Boot\.TITLE_PUBLIC/.test(src) &&
     /TitleScreen\.onTitle\(\)/.test(scr) && !!tag && +tag[1] === codeV,
-    'TitleScreen.live(): Boot.TITLE_PUBLIC || Deck.devOn() — flip TITLE_PUBLIC in index.html to go public');
+    'TitleScreen.live(): Boot.TITLE_PUBLIC || Deck.devOn(), and TITLE_PUBLIC is true');
   /* THE NIGHT'S URLS ARE MARKUP IN ALL BUT NAME: built by the boot block
      before any script file has parsed, so nothing stamps them — the ?v= is
      hand-kept, exactly like the glen's, and must equal CFG.ART_V */
@@ -203,30 +210,26 @@ const state = p => p.evaluate(() => ({
 }));
 const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u => u.replace(/^.*assets\//, '').replace(/\?.*$/, ''));
 
-/* ---- 1b. STAGED BOTH WAYS, in the live page ---- */
+/* ---- 1b. PUBLIC, in the live page ---- */
 {
-  // a device the card test link never touched: today's title, and not one byte of the night
+  // a device the card test link never touched: the night, its plaques, its art
   const u = await open({ tag: 'plain' });
   const s = await state(u.p);
-  const nr = nightReqs(u.reqs);
-  ck('anUnstagedDeviceKeepsTodaysTitle',
-    !s.title2 && !s.live && !s.t2 && !s.css && s.frames === 0 && s.icons === 0 && !s.night && s.tbgStyle === null && s.oldVis === 'visible',
+  ck('everyDeviceWearsTheNight',
+    s.title2 && s.live && !s.dev && s.t2 && s.css && s.night && s.frames >= 7 && s.icons >= 7 && s.oldVis === 'hidden',
     JSON.stringify(s));
-  ck('andFetchesNothingOfTheNight', nr.length === 0, nr.length ? 'fetched ' + nr.join(' ') : 'no request under assets/ui/title/');
+  /* the markup's picture and Boot.t2wear's copy (on the splash and on the
+     title alike) are the same sources, so ONE request carries all four —
+     and not one asks for the glen */
+  const nr = nightReqs(u.reqs), glen = u.reqs.filter(x => /assets\/ui\/title-bg/.test(x));
+  ck('andFetchesOnlyThePictureItWearsOnce', nr.join() === 'ui/title/night-tall.webp' && glen.length === 0,
+    (nr.join(' ') || 'nothing') + (glen.length ? '; and the glen: ' + glen.join(' ') : ''));
   await u.ctx.close();
-  // the card test link: the night, its plaques, its art
-  const st = await open({ q: '?cards=1', tag: 'staged' });
-  const s2 = await state(st.p);
-  ck('theCardTestLinkWearsTheNight',
-    s2.title2 && s2.live && s2.dev && s2.t2 && s2.css && s2.night && s2.frames >= 7 && s2.icons >= 7 && s2.oldVis === 'hidden',
-    JSON.stringify(s2));
-  ck('andFetchesOnlyThePictureItWears', nightReqs(st.reqs).join() === 'ui/title/night-tall.webp',
-    nightReqs(st.reqs).join(' ') || 'nothing');
-  await st.ctx.close();
 }
 {
-  /* THE SPLASH'S ANSWER IS DECK'S ANSWER, in every case the link and the
-     storage can make — read before the first paint, without a write */
+  /* THE SPLASH AND THE TITLE AGREE, in every case the link and the storage
+     can make — read before the first paint, without a write — and the
+     answer is the night every time */
   const CASES = [
     ['', {}, false, 'nothing'],
     ['?cards=1', {}, true, '?cards=1'],
@@ -236,55 +239,43 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     ['?cards=1&cards=0', {}, false, '?cards=1&cards=0'],
   ];
   const bad = [];
-  for (const [q, store, want, name] of CASES) {
+  for (const [q, store, dev, name] of CASES) {
     const o = await open({ q, store, tag: 'case ' + name });
     const s = await state(o.p);
-    if (s.title2 !== want || s.live !== want || s.dev !== want || s.t2 !== want) bad.push(name + ': ' + JSON.stringify({ title2: s.title2, live: s.live, dev: s.dev, t2: s.t2 }));
+    if (!s.title2 || !s.live || !s.t2 || !s.night || s.dev !== dev) bad.push(name + ': ' + JSON.stringify({ title2: s.title2, live: s.live, dev: s.dev, t2: s.t2, night: s.night }));
     await o.ctx.close();
   }
-  // a storage that throws (iOS Block All Cookies): the link still stages, nothing else does
+  // a storage that throws (iOS Block All Cookies): the night all the same
   const throwing = () => { Storage.prototype.getItem = function () { throw new Error('blocked'); }; Storage.prototype.setItem = function () { throw new Error('blocked'); }; };
-  for (const [q, want] of [['?cards=1', true], ['', false]]) {
+  for (const q of ['?cards=1', '']) {
     const o = await open({ q, init: throwing, tag: 'throwing' + q });
     const s = await state(o.p);
-    if (s.title2 !== want || s.live !== want || s.t2 !== want) bad.push('throwing storage ' + (q || '(none)') + ': ' + JSON.stringify(s));
+    if (!s.title2 || !s.live || !s.t2 || !s.night) bad.push('throwing storage ' + (q || '(none)') + ': ' + JSON.stringify(s));
     await o.ctx.close();
   }
-  ck('theSplashReadsDecksAnswerInEveryCase', bad.length === 0, bad.join(' | ') || CASES.length + 2 + ' cases, Boot.title2 === TitleScreen.live() === Deck.devOn()');
-}
-{
-  /* GOING PUBLIC IS ONE LINE: the page served with TITLE_PUBLIC flipped,
-     and nothing else, gives a device with no flag the night */
-  const o = await open({ tag: 'public', route: ctx => ctx.route('**/index.html*', async r => {
-    const body = html.replace('TITLE_PUBLIC: false,', 'TITLE_PUBLIC: true,');
-    await r.fulfill({ status: 200, contentType: 'text/html', body });
-  }) });
-  const s = await state(o.p);
-  ck('flippingTitlePublicIsTheWholeChange', s.title2 && s.live && !s.dev && s.t2 && s.night && s.frames >= 6,
-    JSON.stringify({ title2: s.title2, live: s.live, dev: s.dev, t2: s.t2, frames: s.frames }));
-  await o.ctx.close();
+  ck('theSplashAndTheTitleAgreeInEveryCase', bad.length === 0, bad.join(' | ') || CASES.length + 2 + ' cases: Boot.title2 === TitleScreen.live() === true, whatever Deck.devOn() says');
 }
 
-/* ---- 2. A PAINTER STANDS DOWN: the night missing, the glen comes back ---- */
+/* ---- 2. A PAINTER STANDS DOWN: the night missing, the plaques on its dark ---- */
 {
-  const o = await open({ q: '?cards=1', tag: 'lost', route: ctx => ctx.route('**/assets/ui/title/**', r => r.fulfill({ status: 404, body: '' })) });
+  const o = await open({ tag: 'lost', route: ctx => ctx.route('**/assets/ui/title/**', r => r.fulfill({ status: 404, body: '' })) });
   const r = await o.p.evaluate(() => ({
     lifted: Boot.done && !document.getElementById('splash'),
     night: !!document.querySelector('#scrTitle img.t2img'),
     lost: document.querySelector('#scrTitle .tbg').classList.contains('t2lost'),
-    glen: (() => { const i = window.TitleScreen ? TitleScreen.glenImg() : null; return !!i && !i.classList.contains('t2img') && getComputedStyle(i).visibility === 'visible' && i.naturalWidth > 0; })(),
+    ground: getComputedStyle(document.querySelector('#scrTitle .tbg')).backgroundColor,
     shade: !!document.querySelector('#scrTitle .t2shade'),
     frames: document.querySelectorAll('#scrTitle .t2f').length,
     amb: [...document.querySelectorAll('#scrTitle .t2amb')].filter(a => a.style.display !== 'none').length,
   }));
-  ck('aMissingNightLeavesTheGlen', r.lifted && !r.night && r.lost && r.glen && !r.shade && r.frames >= 7 && r.amb === 0,
+  ck('aMissingNightStandsDownQuietly', r.lifted && !r.night && r.lost && r.ground === 'rgb(10, 13, 24)' && !r.shade && r.frames >= 7 && r.amb === 0,
     JSON.stringify(r));
   await o.ctx.close();
 }
 
-/* ---- 3. THE SPLASH IS THE TITLE'S OWN SCENE (a staged phone, the lift held) ---- */
+/* ---- 3. THE SPLASH IS THE TITLE'S OWN SCENE (a phone, the lift held) ---- */
 {
-  const o = await open({ q: '?cards=1', vp: [390, 844], dpr: 3, hold: true, tag: 'splash' });
+  const o = await open({ vp: [390, 844], dpr: 3, hold: true, tag: 'splash' });
   const p = o.p;
   await p.waitForFunction(() => window.Boot && document.querySelector('#splash img.t2img'), null, { timeout: 10000 }).catch(() => {});
   await p.waitForFunction(() => { const i = document.querySelector('#splash img.t2img'); return i && i.complete && i.naturalWidth > 0; }, null, { timeout: 15000 }).catch(() => {});
@@ -299,7 +290,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       bg: getComputedStyle(document.getElementById('splash')).backgroundColor,
       ready: G.titleGlenUp() };
   });
-  ck('aStagedSplashWearsTheNight', !!before.splash && before.up && before.oldHidden && /night-tall\.webp/.test(before.splash.src) && before.bg === 'rgb(10, 13, 24)',
+  ck('theSplashWearsTheNight', !!before.splash && before.up && before.oldHidden && /night-tall\.webp/.test(before.splash.src) && before.bg === 'rgb(10, 13, 24)',
     JSON.stringify({ splash: before.splash, up: before.up, oldHidden: before.oldHidden, bg: before.bg }));
   ck('andTheTitleWearsTheSameFileTheSameWay', !!before.splash && !!before.title && JSON.stringify(before.splash) === JSON.stringify(before.title),
     JSON.stringify(before.title));
@@ -322,11 +313,12 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   ck('theLiftAddsOnlyTheChrome', diff.n === 0, diff.n + ' of ' + diff.of + ' device pixels differ between the splash and the title without its chrome');
   await o.ctx.close();
   /* THE LIFT WAITS FOR THE NIGHT: titleGlenUp answers from the night's own
-     picture, never from the glen hidden (and long since loaded) under it.
+     picture (Boot.t2wear's, with its shade and its fit), never from the
+     markup's copy hidden (and long since loaded) under it.
      The page's load event already waits for the splash's copy, so the
      title's own picture is pointed at a slow copy of the file to stand for
      a night still on its way. */
-  const o2 = await open({ q: '?cards=1', tag: 'glenup', route: ctx => ctx.route(u => /slow=1/.test(String(u)), async r => { await new Promise(z => setTimeout(z, 2000)); await r.continue(); }) });
+  const o2 = await open({ tag: 'glenup', route: ctx => ctx.route(u => /slow=1/.test(String(u)), async r => { await new Promise(z => setTimeout(z, 2000)); await r.continue(); }) });
   const early = await o2.p.evaluate(() => {
     const i = document.querySelector('#scrTitle img.t2img'), pic = i && i.closest('picture');
     if (!i) return { up: G.titleGlenUp(), night: null, glen: true };
@@ -338,7 +330,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   await o2.p.waitForFunction(() => { const i = document.querySelector('#scrTitle img.t2img'); return i && i.complete && i.naturalWidth > 0; }, null, { timeout: 15000 }).catch(() => {});
   const late = await o2.p.evaluate(() => G.titleGlenUp());
   ck('theLiftWaitsForTheNight', !early.up && !early.night && early.glen && late,
-    `the glen loaded and the night still coming: titleGlenUp ${early.up}; once it lands: ${late}`);
+    `the markup's copy loaded and the night still coming: titleGlenUp ${early.up}; once it lands: ${late}`);
   await o2.ctx.close();
 }
 
@@ -373,7 +365,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   const SIZES = [[375, 667, 2], [390, 844, 3], [430, 932, 3], [844, 390, 3], [768, 1024, 2], [1440, 900, 1], [1920, 1080, 1]];
   const over = [], frames = [], blocky = [], art = [], fit = [];
   for (const [w, h, dpr] of SIZES) {
-    const o = await open({ q: '?cards=1', vp: [w, h], dpr, tag: 'fit' + w });
+    const o = await open({ vp: [w, h], dpr, tag: 'fit' + w });
     const r = await probe(o.p);
     for (const x of r.out) {
       const k = Math.max(x.w * 3 / x.nw, x.h * 3 / x.nh);
@@ -428,7 +420,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
 {
   const tight = [];
   for (const w of [320, 359, 360, 375, 390, 430]) {
-    const o = await open({ q: '?cards=1', vp: [w, 780], tag: 'labels' + w });
+    const o = await open({ vp: [w, 780], tag: 'labels' + w });
     const rows = await o.p.evaluate(() => [...document.querySelectorAll('#scrTitle .tmenu .abtn')].map(el => {
       const lab = el.querySelector('.blab'), cs = getComputedStyle(el);
       const inner = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
@@ -444,7 +436,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
 
 /* ---- 7. THE PLAQUES BEHAVE ---- */
 {
-  const o = await open({ q: '?cards=1', vp: [390, 844], dpr: 2, tag: 'behave' });
+  const o = await open({ vp: [390, 844], dpr: 2, tag: 'behave' });
   const p = o.p;
   const r = await p.evaluate(() => {
     const kind = id => document.getElementById(id).dataset.t2;
@@ -482,7 +474,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   ck('thePauseMenuIsUntouched', !!pause && pause.before !== 'none' && pause.after !== 'none' && !pause.frame, JSON.stringify(pause));
   const emb = await p.evaluate(() => document.querySelectorAll('#scrTitle .t2em').length);
   await o.ctx.close();
-  const q = await open({ q: '?cards=1', reduced: true, tag: 'reduced' });
+  const q = await open({ reduced: true, tag: 'reduced' });
   const still = await q.p.evaluate(() => {
     const an = sel => { const e = document.querySelector(sel); return e ? getComputedStyle(e).animationName : 'absent'; };
     return { em: document.querySelectorAll('#scrTitle .t2em').length, glow: an('#scrTitle .t2glow'), glint: an('#scrTitle .t2glint') };
@@ -496,7 +488,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
    anchor, read off the shipped file itself, lands within an art pixel or two
    of something burning — repaint the night and the anchors must follow ---- */
 {
-  const o = await open({ q: '?cards=1', tag: 'anchors' });
+  const o = await open({ tag: 'anchors' });
   const r = await o.p.evaluate(async () => {
     const out = [];
     for (const [v, k] of [['wide', 4], ['tall', 2]]) {

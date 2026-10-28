@@ -1,13 +1,14 @@
 /* THE SETTINGS PAGE, OVERHAULED — the contract for js/settings.js and
    js/feedback.js (and migration 0009's door, through the test mock).
 
-   1. STAGED BEHIND THE CARD TEST LINK. One predicate, SettingsPage.live():
-      on a device the card staging flag never touched, Settings is the OLD
-      screen — its markup byte for byte (a hash of the block), no new element,
-      no stylesheet, no picture fetched. With ?cards=1 the new page stands in
-      for it, under the same screen name, from the title and from the pause
-      menu, and its back button returns to whichever it came from. Flipping
-      SettingsPage.PUBLIC is the whole go-public change.
+   1. PUBLIC, FOR EVERY DEVICE (build 106 — staged behind the card test link
+      from build 100). One predicate, SettingsPage.live() = PUBLIC ||
+      Deck.devOn(), and PUBLIC is true: on a device the card test link never
+      touched the new page stands in for the old screen, under the same
+      screen name, from the title and from the pause menu, and its back
+      button returns to whichever it came from. The OLD screen's markup stays
+      as the page's stand-down — with the page switched off it still paints
+      itself.
    2. ONLY REAL SETTINGS. The page's controls are exactly the known set —
       nothing unrecognised — and each one changes what it says it changes:
       the two audio switches and their dials (Sound), the autosave cadence
@@ -53,21 +54,22 @@ const url = 'file://' + join(root, 'index.html');
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
-/* ---- 1a. the old screen, byte for byte (the source) ---- */
+/* ---- 1a. the gate and the stand-down (the source) ---- */
 const html = readFileSync(join(root, 'index.html'), 'utf8');
 // the build the page reports is the shared code ?v= — read it, never a literal (a
 // literal went red on the first deploy after the one it was written on)
 const CODE_V = +html.match(/js\/config\.js\?v=(\d+)/)[1];
 {
+  // the old screen stays in the markup as the page's stand-down (a cached
+  // older script, or the switch turned back off) — as it stood when the new
+  // page was staged (ffbeaea)
   const a = html.indexOf('  <!-- SETTINGS is three quiet rows'), b = html.indexOf('  <div class="screen" id="scrPaused">');
   const h = a >= 0 && b > a ? createHash('sha256').update(html.slice(a, b)).digest('hex') : '';
-  // the block as it stood when the new page was staged (ffbeaea); a change
-  // here is a change for every player, not just the staged ones
-  ck('theOldScreenIsByteForByte', h === '73de79abfb979a32c4832f99e73c834dd403108575f0bafb1b8f96e3a4f07660', h.slice(0, 16));
+  ck('theOldScreenStandsByAsTheFallback', h === '73de79abfb979a32c4832f99e73c834dd403108575f0bafb1b8f96e3a4f07660', h.slice(0, 16));
   const src = readFileSync(join(root, 'js/settings.js'), 'utf8');
-  ck('theGateIsOnePredicate', /PUBLIC:\s*false/.test(src) && (src.match(/Deck\.devOn\(\)/g) || []).length === 1 &&
+  ck('theGateIsOnePredicate', /PUBLIC:\s*true/.test(src) && !/PUBLIC:\s*false/.test(src) && (src.match(/Deck\.devOn\(\)/g) || []).length === 1 &&
     /SettingsPage\.live\(\)\) scr = SettingsPage\.mount\(\)/.test(readFileSync(join(root, 'js/screens.js'), 'utf8')),
-    'SettingsPage.live(): PUBLIC || Deck.devOn() — flip PUBLIC to go public');
+    'SettingsPage.live(): PUBLIC || Deck.devOn(), and PUBLIC is true');
 }
 
 /* ---- 0. the art (PixelLab, assets/ui/settings/) — square, true alpha (the
@@ -144,33 +146,28 @@ const open = async (opts) => {
   return { ctx, p, reqs };
 };
 
-/* ---- 1b. a device the staging flag never touched: the old screen, and nothing new ---- */
+/* ---- 1b. a device the card test link never touched: the new page; and
+   switched off, the old screen still paints itself ---- */
 {
-  const { ctx, p, reqs } = await open({ tag: 'plain' });
+  const { ctx, p } = await open({ tag: 'plain' });
   await p.waitForFunction(() => document.readyState === 'complete', null, { timeout: 30000 });
   const r = await p.evaluate(() => {
     Screens.backTo = 'title'; Screens.show('settings');
-    const old = document.getElementById('scrSettings');
-    return { live: SettingsPage.live(), cur: Screens.current, oldShown: old.classList.contains('show'),
-      newEl: !!document.getElementById('scrSetx'), css: !!document.getElementById('setxCss'),
-      dot: document.getElementById('btnTitleSettings').classList.contains('sxNew'),
-      // the old page still paints its rows (Screens.onSettings ran)
-      cadSel: (old.querySelector('#setCadence .abtn.sel') || {}).dataset ? old.querySelector('#setCadence .abtn.sel').dataset.v : null };
+    const nu = document.getElementById('scrSetx');
+    return { live: SettingsPage.live(), dev: Deck.devOn(), cur: Screens.current, newShown: !!nu && nu.classList.contains('show'),
+      oldShown: document.getElementById('scrSettings').classList.contains('show'), css: !!document.getElementById('setxCss') };
   });
-  await p.waitForTimeout(300);
-  const art = reqs.filter(u => /assets\/ui\/settings\//.test(u));
-  ck('offTheStagingFlagItIsTheOldScreen', !r.live && r.cur === 'settings' && r.oldShown && !r.newEl, JSON.stringify(r));
-  ck('andNothingOfTheNewPageExists', !r.css && !r.dot && art.length === 0, 'css ' + r.css + ', dot ' + r.dot + ', art requests ' + art.length);
-  ck('andTheOldScreenStillPaintsItself', r.cadSel === '2', 'cadence sel ' + r.cadSel);
-  // the flip is one line: PUBLIC on, and the same device gets the new page
+  ck('everyDeviceGetsTheNewPage', r.live && !r.dev && r.cur === 'settings' && r.newShown && !r.oldShown && r.css, JSON.stringify(r));
+  // the stand-down: PUBLIC off on a device with no flag, and the old screen is back, painting its rows
   const f = await p.evaluate(() => {
-    SettingsPage.PUBLIC = true; Screens.show('title'); Screens.show('settings');
-    const o = { cur: Screens.current, newShown: !!(document.getElementById('scrSetx') || {}).classList && document.getElementById('scrSetx').classList.contains('show'),
-      oldShown: document.getElementById('scrSettings').classList.contains('show') };
-    SettingsPage.PUBLIC = false;
+    SettingsPage.PUBLIC = false; Screens.show('title'); Screens.show('settings');
+    const old = document.getElementById('scrSettings'), nu = document.getElementById('scrSetx');
+    const o = { cur: Screens.current, oldShown: old.classList.contains('show'), newShown: !!nu && nu.classList.contains('show'),
+      cadSel: old.querySelector('#setCadence .abtn.sel') ? old.querySelector('#setCadence .abtn.sel').dataset.v : null };
+    SettingsPage.PUBLIC = true;
     return o;
   });
-  ck('flippingPublicIsTheWholeGoLive', f.cur === 'settings' && f.newShown && !f.oldShown, JSON.stringify(f));
+  ck('andSwitchedOffTheOldScreenStillPaintsItself', f.cur === 'settings' && f.oldShown && !f.newShown && f.cadSel === '2', JSON.stringify(f));
   await ctx.close();
 }
 
@@ -187,13 +184,13 @@ const open = async (opts) => {
     keys: ['neo-feedback-outbox', 'neo-errlog', 'neo-feedback-sent'].filter(k => localStorage.getItem(k) != null),
     ring: Feedback.errors().length,
   }));
-  ck('forEveryoneTheRingAndTheRetrySendNothing', !r.live && r.mails === 0 && r.rpcs === 0 && r.keys.length === 0 && r.ring === 0, JSON.stringify(r));
+  ck('forEveryoneTheRingAndTheRetrySendNothing', r.mails === 0 && r.rpcs === 0 && r.keys.length === 0 && r.ring === 0, JSON.stringify(r));
   await ctx.close();
 }
 
-/* ---- 1c, 2, 3. staged: the new page, its doors, and only real settings ---- */
+/* ---- 1c, 2, 3. the new page, its doors, and only real settings ---- */
 {
-  const { ctx, p } = await open({ q: '?cards=1', mock: true, tag: 'staged' });
+  const { ctx, p } = await open({ mock: true, tag: 'staged' });
   const r = await p.evaluate(async () => {
     const o = {};
     const shown = id => { const e = document.getElementById(id); return !!(e && e.classList.contains('show')); };
@@ -290,7 +287,7 @@ const open = async (opts) => {
     o.chronicle = !!document.querySelector('#scrSetx .sxLog');
     return o;
   });
-  ck('stagedItIsTheNewPage', r.live && r.title.cur === 'settings' && r.title.nu && !r.title.old, JSON.stringify(r.title));
+  ck('itIsTheNewPage', r.live && r.title.cur === 'settings' && r.title.nu && !r.title.old, JSON.stringify(r.title));
   ck('reachableFromTheTitleAndThePause', r.backToTitle === 'title' && r.pause.cur === 'settings' && r.pause.nu && r.backToPause === 'paused',
     JSON.stringify({ t: r.backToTitle, p: r.pause, back: r.backToPause }));
   ck('fiveTabsNoControlsNoGraphics', r.tabs === 'general,audio,saves,feedback,notes', r.tabs);
@@ -315,7 +312,7 @@ const open = async (opts) => {
 }
 /* …and with no cloud and no game, those cards are simply not drawn */
 {
-  const { ctx, p } = await open({ q: '?cards=1', tag: 'bare' });
+  const { ctx, p } = await open({ tag: 'bare' });
   const r = await p.evaluate(() => {
     Screens.backTo = 'title'; Screens.show('settings');
     SettingsPage.open('general');
@@ -332,7 +329,7 @@ const open = async (opts) => {
    a pending draft on an archipelago is founded again when it shows (the
    draft toggle's own MAP-V01 rule, reached from Settings) */
 {
-  const { ctx, p } = await open({ q: '?cards=1', tag: 'lesson' });
+  const { ctx, p } = await open({ tag: 'lesson' });
   const r = await p.evaluate(async () => {
     const frames = (n) => new Promise(res => { const f = () => (n-- <= 0 ? res() : requestAnimationFrame(f)); f(); });
     Screens.lsSet('neo-tutorial-ask', '0');
@@ -356,7 +353,7 @@ const open = async (opts) => {
 
 /* ---- 4, 5. the form, the outbox, the ring ---- */
 {
-  const { ctx, p, reqs } = await open({ q: '?cards=1', mock: true, tag: 'form', expectErrors: true });
+  const { ctx, p, reqs } = await open({ mock: true, tag: 'form', expectErrors: true });
   const r = await p.evaluate(async () => {
     const o = {};
     const st = __MOCK.st;
@@ -492,7 +489,7 @@ const open = async (opts) => {
         name: '', message: 'Saved while offline yesterday.', details: null, mailed: false, stored: false, tries: 1 }]));
     } catch (e) {}
   };
-  const { ctx, p } = await open({ q: '?cards=1', mock: true, init: seed, clear: false, tag: 'reload' });
+  const { ctx, p } = await open({ mock: true, init: seed, clear: false, tag: 'reload' });
   await p.waitForFunction(() => __MOCK.st.mails.length > 0 || (Date.now() - performance.timeOrigin) > 15000, null, { timeout: 30000, polling: 200 });
   await p.waitForTimeout(500);
   const r = await p.evaluate(() => ({ mails: __MOCK.st.mails.map(m => m.body.message), outbox: Feedback.outbox().length, rpcs: __MOCK.st.rpcs.length }));
@@ -501,7 +498,7 @@ const open = async (opts) => {
 }
 /* a page that is not the site sends nothing, mock or no mock — and says so */
 {
-  const { ctx, p, reqs } = await open({ q: '?cards=1', tag: 'offsite' });
+  const { ctx, p, reqs } = await open({ tag: 'offsite' });
   const r = await p.evaluate(async () => {
     let fetched = 0; const real = window.fetch; window.fetch = (...a) => { fetched++; return real(...a); };
     Screens.backTo = 'title'; Screens.show('settings'); SettingsPage.open('feedback');
@@ -558,7 +555,7 @@ const open = async (opts) => {
   const over = [], seen = new Set(), scenes = [];
   let vectors = 0;
   for (const [w, h] of [[320, 568], [390, 844], [430, 932], [844, 390], [768, 1024], [1024, 768], [1440, 900], [1920, 1080]]) {
-    const { ctx, p } = await open({ q: '?cards=1', vp: { width: w, height: h }, tag: 'chrome' + w });
+    const { ctx, p } = await open({ vp: { width: w, height: h }, tag: 'chrome' + w });
     await p.evaluate(() => { Screens.backTo = 'title'; Screens.show('settings'); });
     const r = await probe(p);
     vectors = Math.max(vectors, r.vectors);
@@ -590,7 +587,7 @@ const open = async (opts) => {
 
 /* ---- 6. it fits, every tab, at six sizes — a phone on its side among them ---- */
 for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1080], [844, 390]]) {
-  const { ctx, p } = await open({ q: '?cards=1', vp: { width: w, height: h }, tag: 'fit' + w });
+  const { ctx, p } = await open({ vp: { width: w, height: h }, tag: 'fit' + w });
   const r = await p.evaluate(async () => {
     Screens.backTo = 'title'; Screens.show('settings');
     const bad = [], hts = [];

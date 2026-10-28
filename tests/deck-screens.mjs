@@ -89,10 +89,20 @@ const url = 'file://' + join(root, 'index.html');
 const res = {}, fails = [], errs = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
+/* THE KILL SWITCH THROWN AT BOOT: CFG.CARDS.ON ships true (build 106), so the
+   switch-off section turns it off the moment js/config.js has run and before
+   any card file parses (the parser's microtask checkpoint before the next
+   <script> runs this observer) — exactly a build that shipped it off */
+const SWITCH_OFF = () => {
+  new MutationObserver((recs, ob) => {
+    try { if (typeof CFG !== 'undefined' && CFG.CARDS) { CFG.CARDS.ON = false; ob.disconnect(); } } catch (e) {}
+  }).observe(document, { childList: true, subtree: true });
+};
 async function page(o) {
   o = o || {};
   const ctx = await b.newContext({ viewport: { width: o.w || 390, height: o.h || 844 }, deviceScaleFactor: o.dpr || 3,
     reducedMotion: o.reduce ? 'reduce' : 'no-preference' });
+  if (o.off) await ctx.addInitScript(SWITCH_OFF);
   const p = await ctx.newPage();
   // a home-screen phone: the page below the clock, the home bar's inset at its foot
   if (o.bottom) await (await ctx.newCDPSession(p)).send('Emulation.setSafeAreaInsetsOverride', { insets: { bottom: o.bottom, bottomMax: o.bottom } });
@@ -131,7 +141,10 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
 
 /* ================= 1. THE SWITCH, OFF ================= */
 {
-  const p = await page();
+  // it ships ON (public since build 106) — and thrown off, the end of a run is today's scenes
+  const shipsOn = await (async () => { const p0 = await page(); const on = await p0.evaluate(() => CFG.CARDS.ON === true && Deck.on()); await p0.close(); return on; })();
+  ck('theSwitchShipsOn', shipsOn);
+  const p = await page({ off: true });
   await p.evaluate(SETUP);
   const a = await p.evaluate(async () => {
     const out = {};
@@ -157,7 +170,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.stored = Deck._get(Deck.KEY);
     return out;
   });
-  ck('theSwitchShipsOff', a.shipsOff);
+  ck('theSwitchThrownOffIsOff', a.shipsOff);
   ck('offTheTitleIsTodaysTitle', !a.plaque && a.row === 3 && !a.four, `plaque ${a.plaque}, ${a.row} secondary plaques, folded ${a.four}`);
   ck('offAVictoryIsTodaysScene', a.endWin === 'endgame' && a.winScene && a.pane === 'none' && a.nameHome && /victoryMode/.test(a.winMode) && !/ceMode/.test(a.winMode),
     `scene ${a.winScene}, tally ${a.pane}, name box home ${a.nameHome}, ${a.winMode}`);

@@ -1,14 +1,14 @@
 "use strict";
-/* THE NIGHT TITLE (tests/title.mjs) — staged behind the card test link until
-   it goes public.
+/* THE NIGHT TITLE (tests/title.mjs) — PUBLIC since build 106 (it was staged
+   behind the card test link from build 101).
 
    THE GATE IS ONE PREDICATE: TitleScreen.live() — Boot.TITLE_PUBLIC (the
    inline boot block in index.html, because the splash has to know before any
-   script file has parsed) or the deck staging flag (Deck.devOn: ?cards=1 /
-   ?cards=all once). On every other device this file does nothing at all: no
-   element, no stylesheet, no listener, no picture — the title is today's,
-   byte for byte.
-   GOING PUBLIC IS ONE LINE: TITLE_PUBLIC true in index.html's boot block.
+   script file has parsed) or the deck staging flag (Deck.devOn). TITLE_PUBLIC
+   is true, so every device wears the night; turned back off, this file would
+   do nothing at all — no element, no stylesheet, no listener — and the
+   plaques would stand bare on the night the markup now carries (the glen
+   it replaced is retired).
 
    THE VALLEY BY NIGHT. The backdrop is the reward screen's valley (the
    roundhouses in their palisade, the hall on its rise, the pines, the

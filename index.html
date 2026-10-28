@@ -553,14 +553,13 @@
   .setfold summary::before { content: '▸ '; }
   .setfold[open] summary::before { content: '▾ '; }
 
-  /* ---- title: the painted glen ----
-     The backdrop is supplied art (assets/ui/title-bg, webp served / jpg
-     fallback) with the hut+campfire baked in at ~56-77% of its height — so
-     the MENU SITS OVER THE EMPTY MEADOW ABOVE IT and the scene stays visible
-     below the buttons. The old .screen gradient stays on the element itself
-     as the no-image fallback (the live demo world still runs behind it). */
+  /* ---- title: the valley by night ----
+     The backdrop is PixelLab art (assets/ui/title/night-{wide,tall}, webp
+     served / jpg fallback; js/titlescreen.js dresses the rest). The old
+     .screen gradient stays on the element itself as the no-image fallback
+     (the live demo world still runs behind it). */
   #scrTitle { padding: 0; }
-  #scrTitle .tbg { position: absolute; inset: 0; z-index: 0; background: #505c1e; }   /* the glen's own tone, so no frame is ever black */
+  #scrTitle .tbg { position: absolute; inset: 0; z-index: 0; background: #0a0d18; }   /* the night's own dark, so no frame is ever green, black or white */
   #scrTitle .tbg img { width: 100%; height: 100%; object-fit: cover; display: block; }
   /* the logo + menu ride as ONE centred block: the art frames an open
      corridor down the middle, which is the ground the menu is meant to
@@ -1274,30 +1273,33 @@
      retracted strip and the boot showed a black band at the foot of the
      screen. Inline like the rest, so it holds before any stylesheet parses;
      browsers without dvh simply drop the declaration. -->
-<div id="splash" style="position:fixed;inset:0;min-height:100dvh;z-index:200;background:#505c1e;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
-  <!-- THE LOADING SCREEN IS THE TITLE'S OWN GLEN. Same file, same
-       `object-fit: cover`, same full-bleed box as #scrTitle's .tbg — so when
-       the splash fades there is NO transition of the background at all: the
-       two images are pixel-identical and the scene simply stands still while
-       the logo and menu pop in on top of it. It also means the boot now
-       fetches ONE image instead of two (the poster and then the glen), so
-       the whole path got lighter.
+<div id="splash" style="position:fixed;inset:0;min-height:100dvh;z-index:200;background:#0a0d18;display:flex;align-items:center;justify-content:center;opacity:1;transition:opacity .45s ease">
+  <!-- THE LOADING SCREEN IS THE TITLE'S OWN NIGHT. The same file, the same
+       `object-fit: cover`, the same full-bleed box as #scrTitle's .tbg — so
+       when the splash fades there is NO transition of the background at
+       all: the scene simply stands still while the logo and menu pop in on
+       top of it.
+       THE NIGHT IS THE MARKUP NOW (the glen it replaced is retired): the
+       boot block's Boot.t2wear lays the very same sources over this picture
+       for its shade and its fit, and the browser fetches each file ONCE for
+       both (tests/title.mjs counts the requests).
        WEBP FIRST, JPG BEHIND IT: this image gates the first paint, so its
        weight is the boot's weight. The <img> keeps the jpg so a browser
-       without WebP still gets the glen rather than a bare dark screen — the
+       without WebP still gets the night rather than a bare dark screen — the
        exact failure the splash exists to prevent. `display:contents` on the
        <picture> lets the <img> stay the flex item. -->
-  <!-- TWO GLENS, PICKED BY THE BROWSER before any script (tests/boot.mjs):
-       <source media> gives a wide window the desktop painting, a phone the
-       close crop, and only the match is fetched; the green behind is the
-       art's own tone, so no frame is black; the title's .tbg carries the
-       same sources, so the lift has no scene change in it. -->
+  <!-- TWO NIGHTS, PICKED BY THE BROWSER before any script (tests/boot.mjs):
+       <source media> gives any landscape window the wide valley and a
+       portrait one the tall, and only the match is fetched; the dark behind
+       is the night's own, so no frame is green, black or white; the title's
+       .tbg carries the same sources, so the lift has no scene change in it.
+       Their ?v= is hand-kept and must equal CFG.ART_V. -->
   <picture style="display:contents">
-    <source srcset="assets/ui/title-bg-wide.webp?v=61" type="image/webp" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
-    <source srcset="assets/ui/title-bg-wide.jpg?v=61" type="image/jpeg" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
-    <source srcset="assets/ui/title-bg.webp?v=61" type="image/webp">
-    <img src="assets/ui/title-bg.jpg?v=61" alt="" decoding="sync" fetchpriority="high"
-         style="width:100%;height:100%;object-fit:cover;image-rendering:pixelated;pointer-events:none;-webkit-user-select:none;user-select:none">
+    <source srcset="assets/ui/title/night-wide.webp?v=61" type="image/webp" media="(min-aspect-ratio: 4/3)">
+    <source srcset="assets/ui/title/night-wide.jpg?v=61" type="image/jpeg" media="(min-aspect-ratio: 4/3)">
+    <source srcset="assets/ui/title/night-tall.webp?v=61" type="image/webp">
+    <img src="assets/ui/title/night-tall.jpg?v=61" alt="" decoding="sync" fetchpriority="high"
+         style="width:100%;height:100%;object-fit:cover;pointer-events:none;-webkit-user-select:none;user-select:none">
   </picture>
 </div>
 <script>
@@ -1365,18 +1367,17 @@
       setTimeout(drop, this.FADE_MS + 60);
     },
 
-    /* THE NIGHT TITLE IS STAGED (js/titlescreen.js, tests/title.mjs): the
-       valley by night with its carved plaques, on a device the card test
-       link turned on (?cards=1 / ?cards=all once — Deck.devOn), and on no
-       other. Everyone else keeps the glen above and today's title, byte for
-       byte, and fetches nothing new. TitleScreen.live() is THE predicate
-       (TITLE_PUBLIC || Deck.devOn()); `title2` is the same answer read
-       here, BEFORE the first paint, so the splash and the title it lifts
-       onto wear the same picture — the same reading of the address and the
-       storage Deck.devOn makes, and never a write (tests/title.mjs holds
-       the two together in every case).
-       GOING PUBLIC IS ONE LINE: TITLE_PUBLIC true. */
-    TITLE_PUBLIC: false,    // ← THE ONE-LINE FLIP: true gives every player the night title
+    /* THE NIGHT TITLE IS PUBLIC (js/titlescreen.js, tests/title.mjs; build
+       106 — it was staged behind the card test link from build 101): the
+       valley by night with its carved plaques, on every device.
+       TitleScreen.live() is THE predicate (TITLE_PUBLIC || Deck.devOn());
+       `title2` is the same answer read here, BEFORE the first paint, so the
+       splash and the title it lifts onto wear the same picture — the same
+       reading of the address and the storage Deck.devOn makes, and never a
+       write (tests/title.mjs holds the two together in every case). The
+       markup's own pictures above are the night too (the glen is retired):
+       t2wear's copy is the same URL, so it is fetched once. */
+    TITLE_PUBLIC: true,     // PUBLIC since build 106: every player gets the night title
     title2: false,
     /* the art lands by FILENAME (assets/ui/title/) — wide for any landscape
        window, tall for a portrait one — each a whole-factor nearest-neighbour
@@ -1422,9 +1423,10 @@
       var s = Math.max(box.width / w, box.height / h) * dpr;
       img.style.imageRendering = dpr >= 2 && s >= 1 ? 'pixelated' : 'auto';
     },
-    /* the night is laid OVER the glen (whose markup never changes); the glen
-       is hidden under it and comes straight back if the night 404s — A
-       PAINTER STANDS DOWN FOR ART THAT ISN'T THERE */
+    /* the night is laid OVER the markup's own picture (the same sources, so
+       one fetch) with its shade and its fit; the markup's copy is hidden under
+       it and comes back if this one 404s — A PAINTER STANDS DOWN FOR ART THAT
+       ISN'T THERE */
     t2wear: function (box, old) {
       if (!box) return null;
       var have = box.querySelector('img.t2img');
@@ -1564,13 +1566,14 @@
 <div id="shell">
 
   <div class="screen" id="scrTitle">
-    <!-- painted backdrop: webp served, jpg fallback; the .screen gradient
-         over the live demo world remains behind it as the no-image fallback -->
+    <!-- the valley by night: webp served, jpg fallback — the splash's own
+         sources, so the lift has no seam; the .screen gradient over the live
+         demo world remains behind it as the no-image fallback -->
     <picture class="tbg">
-      <source srcset="assets/ui/title-bg-wide.webp?v=61" type="image/webp" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
-      <source srcset="assets/ui/title-bg-wide.jpg?v=61" type="image/jpeg" media="(min-width: 900px) and (min-aspect-ratio: 4/3)">
-      <source srcset="assets/ui/title-bg.webp?v=61" type="image/webp">
-      <img src="assets/ui/title-bg.jpg?v=61" alt="" decoding="async">
+      <source srcset="assets/ui/title/night-wide.webp?v=61" type="image/webp" media="(min-aspect-ratio: 4/3)">
+      <source srcset="assets/ui/title/night-wide.jpg?v=61" type="image/jpeg" media="(min-aspect-ratio: 4/3)">
+      <source srcset="assets/ui/title/night-tall.webp?v=61" type="image/webp">
+      <img src="assets/ui/title/night-tall.jpg?v=61" alt="" decoding="async">
     </picture>
     <div class="tcol">
       <div class="thead">
@@ -1943,45 +1946,45 @@
 
 </div>
 
-<script src="js/feedback.js?v=105"></script>
-<script src="js/config.js?v=105"></script>
-<script src="js/audio.js?v=105"></script>
-<script src="js/config.supabase.js?v=105"></script>
-<script src="js/vendor/supabase.js?v=105"></script>
-<script src="js/backend.js?v=105"></script>
-<script src="js/competition.js?v=105"></script>
-<script src="js/score.js?v=105"></script>
-<script src="js/cards.js?v=105"></script>
-<script src="js/deck.js?v=105"></script>
-<script src="js/artstyle.js?v=105"></script>
-<script src="js/sprites.js?v=105"></script>
-<script src="js/formations.js?v=105"></script>
-<script src="js/relics.js?v=105"></script>
-<script src="js/assets.js?v=105"></script>
-<script src="js/dev.js?v=105"></script>
-<script src="js/map.js?v=105"></script>
-<script src="js/buildings.js?v=105"></script>
-<script src="js/units.js?v=105"></script>
-<script src="js/combat.js?v=105"></script>
-<script src="js/ai.js?v=105"></script>
-<script src="js/render.js?v=105"></script>
-<script src="js/beasts.js?v=105"></script>
-<script src="js/defeatart.js?v=105"></script>
-<script src="js/victoryart.js?v=105"></script>
-<script src="js/ui.js?v=105"></script>
-<script src="js/screens.js?v=105"></script>
-<script src="js/patchnotes.js?v=105"></script>
-<script src="js/settings.js?v=105"></script>
-<script src="js/titlescreen.js?v=105"></script>
-<script src="js/tutorial.js?v=105"></script>
-<script src="js/deckfx.js?v=105"></script>
-<script src="js/deckfx-town.js?v=105"></script>
-<script src="js/deckfx-army.js?v=105"></script>
-<script src="js/deckfx-growth.js?v=105"></script>
-<script src="js/deckfx-rival.js?v=105"></script>
-<script src="js/deckui.js?v=105"></script>
-<script src="js/deckscreens.js?v=105"></script>
-<script src="js/cardintro.js?v=105"></script>
-<script src="js/game.js?v=105"></script>
+<script src="js/feedback.js?v=106"></script>
+<script src="js/config.js?v=106"></script>
+<script src="js/audio.js?v=106"></script>
+<script src="js/config.supabase.js?v=106"></script>
+<script src="js/vendor/supabase.js?v=106"></script>
+<script src="js/backend.js?v=106"></script>
+<script src="js/competition.js?v=106"></script>
+<script src="js/score.js?v=106"></script>
+<script src="js/cards.js?v=106"></script>
+<script src="js/deck.js?v=106"></script>
+<script src="js/artstyle.js?v=106"></script>
+<script src="js/sprites.js?v=106"></script>
+<script src="js/formations.js?v=106"></script>
+<script src="js/relics.js?v=106"></script>
+<script src="js/assets.js?v=106"></script>
+<script src="js/dev.js?v=106"></script>
+<script src="js/map.js?v=106"></script>
+<script src="js/buildings.js?v=106"></script>
+<script src="js/units.js?v=106"></script>
+<script src="js/combat.js?v=106"></script>
+<script src="js/ai.js?v=106"></script>
+<script src="js/render.js?v=106"></script>
+<script src="js/beasts.js?v=106"></script>
+<script src="js/defeatart.js?v=106"></script>
+<script src="js/victoryart.js?v=106"></script>
+<script src="js/ui.js?v=106"></script>
+<script src="js/screens.js?v=106"></script>
+<script src="js/patchnotes.js?v=106"></script>
+<script src="js/settings.js?v=106"></script>
+<script src="js/titlescreen.js?v=106"></script>
+<script src="js/tutorial.js?v=106"></script>
+<script src="js/deckfx.js?v=106"></script>
+<script src="js/deckfx-town.js?v=106"></script>
+<script src="js/deckfx-army.js?v=106"></script>
+<script src="js/deckfx-growth.js?v=106"></script>
+<script src="js/deckfx-rival.js?v=106"></script>
+<script src="js/deckui.js?v=106"></script>
+<script src="js/deckscreens.js?v=106"></script>
+<script src="js/cardintro.js?v=106"></script>
+<script src="js/game.js?v=106"></script>
 </body>
 </html>

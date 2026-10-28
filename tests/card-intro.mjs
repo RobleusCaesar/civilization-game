@@ -2,10 +2,11 @@
 
    This file pins:
 
-     THE SWITCH        off (the shipped default), nothing of the announcement
-                       exists: no element, no stylesheet, no listener bound
-                       from js/cardintro.js, no storage write, no request for
-                       its art — even with ?cardsintro=1 on the address
+     THE SWITCH        it ships ON (public since build 106); thrown off, nothing
+                       of the announcement exists: no element, no stylesheet,
+                       no listener bound from js/cardintro.js, no storage
+                       write, no request for its art — even with ?cardsintro=1
+                       on the address
      ONCE PER DEVICE   on, the first title after the splash lifts wears it
                        (never before the lift), it is stamped seen when shown
                        and a reload never shows it again; ?cardsintro=1 brings
@@ -79,6 +80,7 @@
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
@@ -105,6 +107,15 @@ const SPY = () => {
     if (mine()) window.__ciMade.push('element:' + t);
     return ce.call(this, t, o);
   };
+};
+/* THE KILL SWITCH THROWN AT BOOT: CFG.CARDS.ON ships true (build 106), so the
+   switch-off section turns it off the moment js/config.js has run and before
+   any card file parses (the parser's microtask checkpoint before the next
+   <script> runs this observer), which is exactly a build that shipped it off */
+const SWITCH_OFF = () => {
+  new MutationObserver((recs, ob) => {
+    try { if (typeof CFG !== 'undefined' && CFG.CARDS) { CFG.CARDS.ON = false; ob.disconnect(); } } catch (e) {}
+  }).observe(document, { childList: true, subtree: true });
 };
 // a phone that blocks storage (iOS "Block All Cookies"): every access throws
 const NO_STORAGE = () => {
@@ -143,7 +154,9 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
 
 /* ================= 1. THE SWITCH, OFF ================= */
 {
-  const ctx = await context({ init: [SPY] });
+  // it ships ON (public since build 106) — and thrown off it is still the kill switch
+  ck('theSwitchShipsOn', /CARDS:\s*\{\s*ON:\s*true,/.test(readFileSync(join(root, 'js/config.js'), 'utf8')));
+  const ctx = await context({ init: [SWITCH_OFF, SPY] });
   const p = await page(ctx, '?cardsintro=1');
   await sleep(2600);   // past the lift and the announcement's own beat
   const a = await p.evaluate(() => {
@@ -164,7 +177,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     return out;
   });
   const art = p.__reqs.filter(u => /assets\/cards\/intro\//.test(u));
-  ck('theSwitchShipsOff', a.off);
+  ck('theSwitchThrownOffIsOff', a.off);
   ck('offNothingOfItExists', !a.el && !a.css && !a.open && a.made.length === 0 && a.stored == null,
     `element ${a.el}, stylesheet ${a.css}, open ${a.open}, made by cardintro.js: ${a.made.join(',') || 'nothing'}, stored ${a.stored}`);
   ck('offEveryWayInAnswersNothing', a.maybe === false && a.show === false && !a.el2 && a.made2.length === 0 && a.stored2 == null,

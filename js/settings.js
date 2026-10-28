@@ -1,13 +1,11 @@
 "use strict";
-/* THE SETTINGS PAGE, OVERHAULED (tests/settings.mjs) — staged behind the card
-   test link until it goes public.
+/* THE SETTINGS PAGE, OVERHAULED (tests/settings.mjs) — PUBLIC since build 106
+   (it was staged behind the card test link from build 100).
 
-   THE GATE IS ONE PREDICATE: SettingsPage.live(). Today it answers yes only on
-   a device where the card staging flag is on (Deck.devOn: ?cards=1 or
-   ?cards=all once) — the operator tests it there first. Everyone else keeps
-   the old #scrSettings screen byte for byte: nothing here builds an element,
-   injects a stylesheet or fetches a picture unless live() says so.
-   GOING PUBLIC IS ONE LINE: set PUBLIC to true.
+   THE GATE IS ONE PREDICATE: SettingsPage.live() = PUBLIC || the deck's staging flag,
+   and PUBLIC is true. The old #scrSettings screen stays in the markup as the
+   page's stand-down: turned back off, nothing here builds an element,
+   injects a stylesheet or fetches a picture, and the old screen paints itself.
 
    ONLY REAL SETTINGS. Every control on this page changes something the game
    actually reads — the autosave cadence (Backend.autosaveDays), the two audio
@@ -32,7 +30,7 @@
    it). The painting is a scene and keeps its pixel art. A missing picture
    falls back to the plain CSS frame. */
 const SettingsPage = {
-  PUBLIC: false,          // ← THE ONE-LINE FLIP: true shows this page to every player
+  PUBLIC: true,           // PUBLIC since build 106: every player gets this page
   live() {
     if (this.PUBLIC) return true;
     try { return !!(window.Deck && Deck.devOn && Deck.devOn()); } catch (e) { return false; }
@@ -141,7 +139,7 @@ const SettingsPage = {
   },
   versionLine(n) { return n ? 'Build ' + n.build + ' · ' + this.fmtDate(n.date) : ''; },
 
-  /* ---------------- boot: the dots on the doors, for a staged device ---------------- */
+  /* ---------------- boot: the dots on the doors ---------------- */
   boot() {
     if (!this.live()) return;
     this._css();
@@ -572,7 +570,7 @@ const SettingsPage = {
 };
 
 SettingsPage.CSS = `
-/* the doors wear a red dot while a patch note is unread (staged devices only) */
+/* the doors wear a red dot while a patch note is unread */
 .sxDoorDot { position: absolute; z-index: 2; top: 7px; right: 8px; width: 10px; height: 10px; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle at 35% 30%, #ff8a6e, #e2412b 60%, #a8220f); box-shadow: 0 0 0 2px #1d1007, 0 0 8px rgba(255,90,60,0.75); }
 

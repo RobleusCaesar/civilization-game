@@ -1313,11 +1313,14 @@ const CFG = {
      then it is gone. The catalog itself lives in js/deck.js; the numbers that
      decide who earns what live here.
      ON is THE KILL SWITCH: false means no button, no screen and no write
-     anywhere — the end screens stay exactly as they were. `?cards=1` on the
-     URL (remembered on the device; `?cards=0` forgets it) turns it on for one
-     tester without turning it on for everyone. */
+     anywhere — the end screens stay exactly as they were. It ships TRUE
+     (public since build 106; while it shipped false, `?cards=1` on the URL —
+     remembered on the device, `?cards=0` forgets it — turned it on for one
+     tester). A new player is dealt STARTER (three cards) and nothing else;
+     all 36 come only with the `?cards=all` test link, a test deck that
+     syncs, reports and posts nothing. */
   CARDS: {
-    ON: false,
+    ON: true,
     /* THE EARN RULE (operator; Deck.eligible / Deck.deeds): a WIN always
        earns — no minutes, no score. A DEFEAT earns when the player PLAYED,
        counted in DEEDS, the things only their own hand starts: buildings

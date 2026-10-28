@@ -187,10 +187,10 @@ node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's
-node tests/settings.mjs      # the settings page, staged behind the card test link (SettingsPage.PUBLIC is the one-line flip): the old screen byte for byte elsewhere, only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
+node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
-node tests/title.mjs         # the night title, staged: one predicate both ways (the old title byte for byte, nothing fetched), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
-node tests/card-intro.mjs    # the card announcement: off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
+node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
+node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
 
@@ -464,13 +464,25 @@ cards' alike). A five-player playtest on the phone found most Stone and
 Bronze plays flat or broken, and three rounds of fixes reworked every card's
 play — **THE PLAY ON THE GLASS** and **AN ACT'S HOUSE STYLE** below are what
 they left. Rules:
-- **THE SWITCH SHIPS OFF** (`CFG.CARDS.ON` false; `?cards=1` turns it on for
-  one device, remembered in `neo-cards-dev`, `?cards=0` forgets it — and a
-  test deck with it). Off, no element, stylesheet, listener or write of the
+- **THE SWITCH SHIPS ON — PUBLIC SINCE BUILD 106** (operator, 2026-10-28:
+  "push everything to main. Don't hold any updates back"). `CFG.CARDS.ON` is
+  true; it shipped false while the deck was staged behind the test link
+  (`?cards=1` turned it on for one device, remembered in `neo-cards-dev`;
+  `?cards=0` forgets that flag — and a test deck with it — but no longer
+  turns the deck off). **A NEW PLAYER STARTS WITH THREE CARDS**
+  (`CFG.CARDS.STARTER`: Forager's Cache, Fallen Timber, Willing Hands — and
+  0008's `starter_qty` names the same three; deck-core
+  `aNewPlayerStartsWithTheThreeStarterCards`); all 36 come only with the
+  `?cards=all` test link, a test deck that syncs, reports and posts nothing.
+  It is still THE KILL SWITCH. Off, no element, stylesheet, listener or write of the
   DECK exists (`Deck.sync`'s boot `load` listener is registered only when the
   deck is on as the script parses), the end of a run is today's victory and
   defeat scenes, and every game hook answers exactly what the game answered
-  before cards existed — every contract pins its half. Two things run
+  before cards existed — every contract pins its half, booting with the
+  switch THROWN OFF where the claim is about the boot (`SWITCH_OFF`: a
+  MutationObserver set before the page parses turns `CFG.CARDS.ON` false
+  the moment js/config.js has run, before any card file parses — the
+  parser's microtask checkpoint before the next `<script>`). Two things run
   whatever the switch says, because they are TELEMETRY, not cards: the
   run_end resend (`neo-pending-ends`, `report_run_end`) and the lineage run
   id (`Backend.legacyRunId`).
@@ -690,10 +702,12 @@ on the new cards, marked NEW.
 save rate options buttons are too large… let's add the ability to send in
 crash reports, bugs, and new product ideas… include under settings Patch /
 Update notes… overhaul the whole settings section"). A carved, tabbed page —
-General, Audio, Saves, Feedback, Patch Notes — STAGED: `SettingsPage.live()`
-is `PUBLIC || Deck.devOn()`, so only a device that opened the card test link
-sees it, and everyone else keeps the old screen byte for byte (pinned by a
-hash). Going public is flipping `PUBLIC`. **ONLY REAL SETTINGS**: every
+General, Audio, Saves, Feedback, Patch Notes — PUBLIC since build 106 (it
+was staged behind the card test link from build 100): `SettingsPage.live()`
+is `PUBLIC || Deck.devOn()` and `PUBLIC` is true. The old screen stays in
+the markup byte for byte (pinned by a hash) as the page's STAND-DOWN — a
+cached older script, or `PUBLIC` turned back off — and still paints itself
+there. **ONLY REAL SETTINGS**: every
 control changes something the game reads, and a section with nothing real in
 it is not drawn (no Controls or Graphics tab, no language picker — the game
 has none). The autosave cadence is one small segmented bar. The unread dot on
@@ -727,29 +741,28 @@ default) runs for everyone but sends NOTHING unless the player submits.
 `assets/ui/title/`, masters in `assets/masters/title/` — operator: "the
 buttons are kind of bland, pixelated… the background also feels a bit
 bland… something closer to the quality of the Victory and Loss pages…
-versions for phone and desktop… push to the cards test page"). STAGED like
-the settings page: `TitleScreen.live()` is `Boot.TITLE_PUBLIC ||
-Deck.devOn()`, and **going public is one line, `TITLE_PUBLIC: true` in
-index.html's inline boot block** — it lives there, not in the JS file,
-because the splash must decide before any script file parses. Everyone else
-keeps today's title byte for byte (the splash, the `#scrTitle` markup and its
-two stylesheet blocks are hashed as at f2a1c59, read with their `?v=`
-cache-busters blanked — an art bump must restamp the glen's URLs, and a new
-stamp on the same picture is no new title) and fetches nothing of the
-night. **THE SPLASH READS DECK'S ANSWER**: `Boot.title2` is the same reading
-of the link (`?cards=1|all` on, `?cards=0` off) and of `neo-cards-dev` that
-`Deck.devOn` makes, never a write; the contract holds `Boot.title2 ===
-TitleScreen.live() === Deck.devOn()` in eight cases, a throwing storage
-included. **THE NIGHT IS LAID OVER THE GLEN** (`Boot.t2wear`, one helper for
-the splash and the title): the glen's markup never changes; the night picture
-and its shade (`T2_SHADE`, part of the SCENE) go on top and the glen is
-hidden, so the browser picks the same file for both and the title with its
-chrome hidden is the splash pixel for pixel. A 404 gives the glen back
-(`.t2lost`); the plaques stay. The lift waits for the night
-(`G.titleGlenUp` asks `TitleScreen.glenImg()`), never for the glen under it.
-A staged device still fetches the glen (its markup is untouched) — **when the
-night goes public for good, repoint the two `<picture>` blocks at the night
-and retire the glen in the same commit**, or every boot fetches both. **THE
+versions for phone and desktop… push to the cards test page"). PUBLIC since
+build 106 (staged behind the card test link from build 101):
+`TitleScreen.live()` is `Boot.TITLE_PUBLIC || Deck.devOn()` and
+`TITLE_PUBLIC: true` sits in index.html's inline boot block — there, not in
+the JS file, because the splash must decide before any script file parses.
+`Boot.title2` reads the same answer before the first paint, and the contract
+holds `Boot.title2 === TitleScreen.live() === true` in eight cases of the
+link and the storage, a throwing storage included. **THE GLEN IS RETIRED**
+(`theGlenIsRetired`): the splash's and `#scrTitle`'s own `<picture>` markup
+carry the night's sources EXACTLY as `Boot.T2_SRC` / `T2_IMG` build them,
+on the night's own dark (`#0a0d18`, `Boot.T2_BG`), so nothing asks for
+`assets/ui/title-bg*` any more (the files stay in the repo, on no path).
+`Boot.t2wear` still lays its copy (the picture and its shade, `T2_SHADE`,
+part of the SCENE) over the markup's and hides it — the same URL, so the
+browser fetches each file ONCE for all four pictures
+(`andFetchesOnlyThePictureItWearsOnce`), and the title with its chrome hidden
+is the splash pixel for pixel. A 404 stands the painter down: `.t2lost`, the
+plaques on the night's dark, the splash still lifts. The lift waits for
+t2wear's picture (`G.titleGlenUp` asks `TitleScreen.glenImg()`), never for
+the markup's copy under it. The night's URLs carry `?v=` by hand in the
+markup AND the boot block, and must equal `CFG.ART_V` — `bump.cjs art`
+restamps them both. **THE
 ART**: the reward valley the night before the dawn — roundhouses, palisade,
 the hall on its rise, pines, mountains, the clan at its fire, and a comet
 over the hall (Starfall, the deck's one hint). Wide for ANY landscape window
@@ -3301,7 +3314,11 @@ is the JavaScript itself**: 900KB gzipped over 25 classic scripts
 changes that — `defer` neither shrinks bytes nor parallelises execution,
 and the tags already download in parallel. Only splitting the code (a
 build step, or dynamic loading after the title) would, and that is not a
-cheap win. **Two glens** (`<source media>` on both the splash's and the
+cheap win. **Two glens** — RETIRED in build 106, when the night title went
+public and its two pictures took the glen's place in the same markup (see
+**THE NIGHT TITLE**); the rule carried over unchanged, two nights by
+`<source media>`, the same sources on both layers, the night's own dark
+behind them. As it stood (`<source media>` on both the splash's and the
 title's `<picture>`): a wide window (≥900px, ≥4:3) gets
 `assets/ui/title-bg-wide` — the desktop painting, encoded through
 Chromium's canvas since the sandbox has no image tools — and a phone the
@@ -3315,16 +3332,17 @@ and 369KB, both under what they replaced). It is full-bleed with no baked
 frame, so it takes no 20px crop, and its open meadow runs straight down the
 middle, which is the corridor `.tcol` centres the logo and menu in. The
 phone crop is untouched by any of this.
-**AND THE GLEN'S CACHE-BUSTER IS WRITTEN BY HAND** (`theGlenCarriesTheArtVersion`,
-tests/boot.mjs): every other picture in the game is fetched through
+**AND THE TITLE'S CACHE-BUSTER IS WRITTEN BY HAND** (`theNightCarriesTheArtVersion`,
+tests/boot.mjs and tests/title.mjs — it was the glen's): every other picture in the game is fetched through
 `Assets`, which stamps `CFG.ART_V` on the URL for it — but these two
 `<picture>` blocks are MARKUP, which is the whole point of them (the fetch
 starts with the HTML parse, behind the splash), so nothing stamps them at
 runtime. Re-encoding art under an unchanged filename therefore reaches
-NOBODY who has visited the site before. The eight glen URLs in index.html
-carry `?v=N` written out in full, the contract measures that every one of
-them equals `CFG.ART_V`, and new glen art means bumping the constant and
-restamping the markup in the same commit.
+NOBODY who has visited the site before. The eight night URLs in the
+markup (and the four in the boot block) carry `?v=N` written out in full,
+the contract measures that every one of them equals `CFG.ART_V`, and new
+title art means bumping the constant and restamping them in the same commit
+(`bump.cjs art` restamps both).
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a
@@ -4355,7 +4373,8 @@ other sound system yet). All placement state is UI-local, never saved;
 screen wearing a live HUD — a resource bar, an empty minimap, "Day 1", a
 pause button and the collapse arrows, all over nothing, for as long as the
 scripts took to parse. Three rules fix it.
-**THE LOADING SCREEN IS THE TITLE'S OWN GLEN** — `#splash` shows
+**THE LOADING SCREEN IS THE TITLE'S OWN GLEN** (the NIGHT since build 106 —
+`assets/ui/title/night-{wide,tall}`; everything below holds for it) — `#splash` shows
 `assets/ui/title-bg` (webp served, jpg fallback) at `object-fit: cover`:
 the SAME file, drawn the SAME way, in the same full-bleed box as
 `#scrTitle`'s `.tbg`. So the lift has no scene change in it at all — the
@@ -4505,7 +4524,8 @@ on any wallpaper.
 **And nothing on the critical path is heavy** (same test): the splash is the
 FIRST paint of the session, so its image is what the player waits on — and
 since the loading screen became the title's own glen there is only ONE such
-image for the whole boot. `assets/ui/title-bg.webp` (~264KB) is served inside
+image for the whole boot (the night's now: night-tall.webp ~55KB, night-wide.webp
+~87KB, a jpg behind each — the glen's numbers below are history). `assets/ui/title-bg.webp` (~264KB) is served inside
 a `<picture>` whose `<img>` still points at `assets/ui/title-bg.jpg`
 (~385KB), the fallback, never removed; the `<picture>` carries
 `display:contents` so the `<img>` stays the flex item. Before this the boot
@@ -4524,7 +4544,9 @@ accepts 3 alongside 0 and 2) of a few hundred bytes. None of it is on the boot
 path. There is no `icon-512.png`: no web manifest reads one, and it was the
 heaviest file in the set.
 
-**The title is the painted glen** (`tests/boot.mjs`, the title block): the
+**The title is the painted glen** (`tests/boot.mjs`, the title block — the
+night since build 106, see **THE NIGHT TITLE**; the glen files stay in the
+repo on no path): the
 menu no longer sits over the drifting demo world — it sits over SUPPLIED ART
 (`assets/ui/title-bg.webp` served, `.jpg` fallback, declared in `#scrTitle`'s
 own markup so the fetch starts with the HTML parse, behind the splash). The

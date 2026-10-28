@@ -671,11 +671,16 @@ const out = await p.evaluate(async () => {
   }
 
   // ---- 8. skip is clean, both phases ----
+  // (with the cards switched off: on, a skip mid-spine keeps the teacher for
+  // the deck's one note — section 14 pins that half)
   {
+    const cardsWere = CFG.CARDS.ON;
+    CFG.CARDS.ON = false;
     fresh('113', 'calm', true);
     S.day = S.tut.scoutDay; tick(1, 0.1);           // a live scout to clean up
     tick(2, 0.3);                                    // a note on show
     Tutorial.skip();
+    CFG.CARDS.ON = cardsWere;
     ck('skipTurnsOff', S.tut.on === false && S.tut.skipped === true, JSON.stringify(S.tut));
     ck('skipRemovesDom', !document.getElementById('tutUI') && !document.getElementById('tutDim'), '');
     ck('skipKillsScout', !S.units.some(u => u.tutScout), '');
@@ -947,6 +952,9 @@ const out = await p.evaluate(async () => {
       Tutorial._show = null; tick(3, 0.3);
     };
     // OFF: the lesson goes cold exactly as before — it waits for no deck
+    // (the switch ships on since build 106: thrown off here)
+    const cardsWere = CFG.CARDS.ON;
+    CFG.CARDS.ON = false;
     {
       fresh('140', 'calm', true);
       toCapstone();
@@ -962,10 +970,13 @@ const out = await p.evaluate(async () => {
       ck('andNeverShown', !(Tutorial._show && Tutorial._show.id === 'deck'), JSON.stringify(Tutorial._show));
     }
     // ON: hidden for the spine, the starter hand landed all the same
-    const was = CFG.CARDS.ON;
+    const was = cardsWere;
     CFG.CARDS.ON = true;
     try {
-      Deck._col = null; Deck._del(Deck.KEY);
+      // a fresh device: no collection, and the deck's once-a-page starter
+      // deal not yet spent (with the switch shipping on, an earlier section
+      // of this page already spent it on the collection wiped here)
+      Deck._col = null; Deck._del(Deck.KEY); DeckUI._starter = false;
       fresh('141', 'calm', true);
       DeckUI.frame(0.1); tick(2, 0.3); DeckUI.frame(0.1);
       ck('theDeckIsHiddenWhileTheSpineRuns', !btnUp() && DeckUI.tutHides(),

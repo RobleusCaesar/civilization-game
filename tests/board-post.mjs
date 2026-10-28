@@ -8,7 +8,10 @@
 
      THE BOX IS ON THE SCENE   A first-time winner sees the name box and the
                        "name your chief" line on the celebration screen
-                       itself, without tapping anything.
+                       itself, without tapping anything — the card reward
+                       screen with the cards on (it borrows the box, the
+                       shipping path since build 106), and the old victory
+                       scene with the kill switch off.
 
      A KNOWN CHIEF POSTS ALONE   A name on the profile posts the run the
                        moment the scene lands — no box, no tap, one post,
@@ -44,7 +47,8 @@
      backend.js — _init's file: guard, _signIn, reconnect, submitScore's
                   remember/keepalive options, _emit
      score.js — fallbackName
-     index.html — #nameRow / #savedNote (they live in #victoryScene now)
+     index.html — #nameRow / #savedNote (they live in #victoryScene, lent to
+                  #cardEnd's .ceBoard while the reward screen is up)
 
      node tests/board-post.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -122,16 +126,21 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
 }
 
 // ---- 1. the first-time winner: the box is on the scene, Save posts ----
-{
+/* run twice: as shipped (the cards on — the reward screen draws the end and
+   borrows the box) and with the kill switch off (the old victory scene) */
+for (const cards of [true, false]) {
+  const tag = cards ? '' : 'WithTheCardsOff';
   const p = await boot(MOCK);
   await p.waitForFunction(() => Backend.isReady(), null, { timeout: 5000 });
-  const r = await p.evaluate(async () => {
+  const r = await p.evaluate(async (cards) => {
+    CFG.CARDS.ON = cards;
     G.newGame('first', 'moderate', 'large'); Screens._demo = false; Screens.show('playing');
     G.end(true, 'test');
     await new Promise(r => setTimeout(r, 250));
     const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
-    const inScene = !!document.querySelector('#victoryScene #nameRow');
-    const before = { scene: vis('victoryScene'), pane: vis('victoryPane'), row: vis('nameRow'), note: document.getElementById('savedNote').textContent, inScene,
+    const sceneId = cards ? 'cardEnd' : 'victoryScene';
+    const inScene = !!document.querySelector('#' + sceneId + ' #nameRow');
+    const before = { cards, scene: vis(sceneId), pane: vis('victoryPane'), row: vis('nameRow'), note: document.getElementById('savedNote').textContent, inScene,
       posts: __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score')).length };
     document.getElementById('arcadeName').value = 'probe';
     document.getElementById('btnSubmitScore').click();
@@ -139,16 +148,16 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const posts = __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score'));
     return { before, posts, note: document.getElementById('savedNote').textContent, row: vis('nameRow'),
       profile: __MOCK.profile.arcade_name, submitted: Screens._submitted, entry: Screens._entry, rank: document.getElementById('vicRank').textContent, rankShown: vis('vicRank') };
-  });
-  ck('theBoxIsOnTheSceneBeforeAnyTap', r.before.scene && !r.before.pane && r.before.row && r.before.inScene, JSON.stringify(r.before));
-  ck('theSceneSaysANameIsWanted', /name your chief/i.test(r.before.note), r.before.note);
-  ck('nothingPostsUntilTheChiefIsNamed', r.before.posts === 0, `${r.before.posts} posts`);
-  ck('savePostsOnce', r.posts.length === 1, `${r.posts.length} posts`);
+  }, cards);
+  ck('theBoxIsOnTheSceneBeforeAnyTap' + tag, r.before.scene && !r.before.pane && r.before.row && r.before.inScene, JSON.stringify(r.before));
+  ck('theSceneSaysANameIsWanted' + tag, /name your chief/i.test(r.before.note), r.before.note);
+  ck('nothingPostsUntilTheChiefIsNamed' + tag, r.before.posts === 0, `${r.before.posts} posts`);
+  ck('savePostsOnce' + tag, r.posts.length === 1, `${r.posts.length} posts`);
   const pb = r.posts[0] && r.posts[0].body;
-  ck('thePostCarriesTheRun', pb && pb.p_name === 'probe' && pb.p_score === r.entry.score && pb.p_mode === 'moderate' && pb.p_day === r.entry.day && pb.p_map_seed === 'first', JSON.stringify(pb));
-  ck('theChosenNameIsRemembered', r.profile === 'probe', String(r.profile));
-  ck('theSceneConfirmsIt', r.submitted && !r.row && /on the board as PROBE/i.test(r.note), r.note);
-  ck('theRankLandsOnTheScene', r.rankShown && /RANK|HIGH SCORE/.test(r.rank), r.rank);
+  ck('thePostCarriesTheRun' + tag, pb && pb.p_name === 'probe' && pb.p_score === r.entry.score && pb.p_mode === 'moderate' && pb.p_day === r.entry.day && pb.p_map_seed === 'first', JSON.stringify(pb));
+  ck('theChosenNameIsRemembered' + tag, r.profile === 'probe', String(r.profile));
+  ck('theSceneConfirmsIt' + tag, r.submitted && !r.row && /on the board as PROBE/i.test(r.note), r.note);
+  ck('theRankLandsOnTheScene' + tag, r.rankShown && /RANK|HIGH SCORE/.test(r.rank), r.rank);
   await p.close();
 }
 
@@ -328,8 +337,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
     const posts = () => __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score'));
     const run = async (seed, marks, mode) => {
-      const was = Backend.BOARD_MARKS_CARDS;
+      const was = Backend.BOARD_MARKS_CARDS, on = CFG.CARDS.ON;
       Backend.BOARD_MARKS_CARDS = marks;
+      CFG.CARDS.ON = false;   // the kill switch thrown at the end of a run that played cards
       G.newGame(seed, mode, 'large'); Screens._demo = false; Screens.show('playing');
       S.deck = S.deck || {};
       S.deck.played = [{ id: 'forager_cache', day: 1 }, { id: 'master_builders', day: 3 }];
@@ -344,6 +354,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       await new Promise(r => setTimeout(r, 300));
       o.leftPosts = posts().length - n0;
       Backend.BOARD_MARKS_CARDS = was;
+      CFG.CARDS.ON = on;
       return o;
     };
     // (the control on another difficulty: the board's own duplicate check

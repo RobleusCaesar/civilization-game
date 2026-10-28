@@ -83,14 +83,17 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theSplashIsInTheDocument', iSplash > 0, iSplash > 0 ? '' : 'not declared in index.html');
   ck('andItIsTheFirstThingInTheBody', iSplash > 0 && iSplash < iCanvas,
     'ahead of the canvas and all chrome');
-  const tag = body.slice(iSplash - 60, iSplash + 2600);   // wide enough for the <picture> block and its two-glen sources
+  const tag = body.slice(iSplash - 60, iSplash + 3400);   // wide enough for the <picture> block and its two-night sources
   ck('itCarriesItsOwnInlineStyles',
     /style="[^"]*position:fixed/.test(tag) && /style="[^"]*z-index:\s*\d/.test(tag),
     'it needs no stylesheet to cover the screen');
-  /* THE LOADING SCREEN IS THE TITLE'S OWN GLEN — the same file, drawn the
+  /* THE LOADING SCREEN IS THE TITLE'S OWN NIGHT — the same file, drawn the
      same way, so the fade has no scene change in it and the boot fetches
-     ONE image rather than a poster and then a backdrop. */
-  ck('theLoadingScreenIsTheGlen', /assets\/ui\/title-bg\.jpg/.test(tag), '');
+     ONE image rather than a poster and then a backdrop. (It was the glen
+     until build 106, when the night title went public and the glen was
+     retired — tests/title.mjs holds the markup to the boot block's own
+     sources.) */
+  ck('theLoadingScreenIsTheNight', /assets\/ui\/title\/night-tall\.jpg/.test(tag), '');
   ck('andItIsDrawnLikeTheTitleIs', /object-fit:\s*cover/.test(tag),
     'contain would letterbox it and the fade would jump');
   /* THE SHELL TRACKS THE DYNAMIC VIEWPORT. iOS Safari resolves height:100%
@@ -115,11 +118,12 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     /documentElement\.style\.height = h \+ 'px'/.test(html) &&
     /cf-fit/.test(html),
     'a fixed probe pins html/body to the real viewport box');
-  /* 2026-09-20: the ground behind the picture is the GLEN'S OWN GREEN
-     (#505c1e, the art's dominant tone) — the operator's direction, so the
-     frame before the image decodes is the meadow, never black or white */
-  ck('itPaintsOnTheGamesOwnGround', /background:\s*#505c1e/.test(tag),
-    'the glen\'s own green — never a white, black or transparent flash');
+  /* the ground behind the picture is the NIGHT'S OWN DARK (#0a0d18, the
+     art's sky — Boot.T2_BG), so the frame before the image decodes is the
+     night, never a green, white or transparent flash (it was the glen's
+     green #505c1e until the glen was retired) */
+  ck('itPaintsOnTheGamesOwnGround', /background:\s*#0a0d18/.test(tag),
+    'the night\'s own dark — never a green, white or transparent flash');
   // …and the viewport opts into the notch
   ck('theViewportCoversTheNotch', /viewport-fit=cover/.test(html), '');
 
@@ -157,20 +161,20 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     'the tab must not just be the detailed icon shrunk');
   /* THE SPLASH IMAGE GATES FIRST PAINT, so it is served as WebP with a
      baseline format still behind it — a browser without WebP must get the
-     glen, not the bare dark screen the splash exists to prevent. */
+     night, not the bare dark screen the splash exists to prevent. */
   {
-    const tag = body.slice(iSplash, iSplash + 2600);
+    const tag = body.slice(iSplash, iSplash + 3400);
     const hasWebp = /srcset="[^"]*\.webp(\?v=\d+)?"/.test(tag);
     ck('theSplashIsServedLight', hasWebp, hasWebp ? 'webp source declared' : 'no webp');
     const webpM = tag.match(/srcset="([^"]+\.webp)(?:\?v=\d+)?"/);
     if (webpM) {
       const wb = readFileSync(join(root, webpM[1].split('?')[0])).length;
-      const fb = readFileSync(join(root, 'assets/ui/title-bg.jpg')).length;
+      const fb = readFileSync(join(root, webpM[1].split('?')[0].replace(/\.webp$/, '.jpg'))).length;
       ck('andItIsGenuinelySmaller', wb < fb,
         Math.round(wb/1024) + 'KB webp vs ' + Math.round(fb/1024) + 'KB fallback');
     }
     ck('butTheBaselineStaysAsTheFallback',
-      /<img[^>]+src="assets\/ui\/title-bg\.jpg(\?v=\d+)?"/.test(tag), '');
+      /<img[^>]+src="assets\/ui\/title\/night-tall\.jpg(\?v=\d+)?"/.test(tag), '');
   }
   ck('theTopInsetHasADefaultAndAFloor',
     /--safe-top:\s*calc\(max\(env\(safe-area-inset-top,\s*0px\),\s*var\(--safe-min\)\)\s*\+\s*var\(--edge-clear\)\)/.test(html) &&
@@ -188,18 +192,18 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('andTheTopBarWearsIt',
     /#topbar\s*\{[^}]*padding:\s*calc\(var\(--safe-top\)/.test(html), '');
 
-  /* THE TITLE WEARS THE PAINTED GLEN. The menu backdrop is supplied art —
-     webp served, jpg fallback — declared in the title screen's own markup so
-     it starts loading with the HTML parse, behind the splash. */
+  /* THE TITLE WEARS THE NIGHT. The menu backdrop is PixelLab art — webp
+     served, jpg fallback — declared in the title screen's own markup so it
+     starts loading with the HTML parse, behind the splash. */
   {
     const iTitle = body.indexOf('id="scrTitle"');
     const title = body.slice(iTitle, body.indexOf('id="scrNewgame"'));
     ck('theTitleWearsThePaintedBackdrop',
-      /srcset="assets\/ui\/title-bg\.webp(\?v=\d+)?"/.test(title) &&
-      /<img[^>]+src="assets\/ui\/title-bg\.jpg(\?v=\d+)?"/.test(title),
+      /srcset="assets\/ui\/title\/night-tall\.webp(\?v=\d+)?"/.test(title) &&
+      /<img[^>]+src="assets\/ui\/title\/night-tall\.jpg(\?v=\d+)?"/.test(title),
       'webp source + jpg fallback in #scrTitle');
-    const wb = readFileSync(join(root, 'assets/ui/title-bg.webp')).length;
-    const jb = readFileSync(join(root, 'assets/ui/title-bg.jpg')).length;
+    const wb = readFileSync(join(root, 'assets/ui/title/night-tall.webp')).length;
+    const jb = readFileSync(join(root, 'assets/ui/title/night-tall.jpg')).length;
     ck('andTheBackdropIsServedLight', wb < jb && wb < 300 * 1024,
       Math.round(wb / 1024) + 'KB webp vs ' + Math.round(jb / 1024) + 'KB jpg');
     /* THE MENU IS DRAWN, NOT TYPED: every title button carries a pixel-SVG
@@ -238,8 +242,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
        still and only the chrome arrives. If these ever diverge the boot
        gains a visible jump-cut back. */
     ck('theLoadingScreenAndTheTitleShareTheirGround',
-      /srcset="assets\/ui\/title-bg\.webp(\?v=\d+)?"/.test(tag) &&
-      /srcset="assets\/ui\/title-bg\.webp(\?v=\d+)?"/.test(title),
+      /srcset="assets\/ui\/title\/night-tall\.webp(\?v=\d+)?"/.test(tag) &&
+      /srcset="assets\/ui\/title\/night-tall\.webp(\?v=\d+)?"/.test(title),
       'same art on both layers');
     /* THE POP-IN CAN NEVER STRAND AN INVISIBLE MENU. The hidden state lives
        ONLY in the keyframe's `from`, held through the delay by `both` — a
@@ -385,6 +389,18 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     };
     const at = performance.now() - Boot.t0;
     const up = { at, done: Boot.done, ready: Boot.ready };
+    /* the splash's own picture, read NOW: with no hold the lift starts the
+       instant the title is ready and the element is gone ~0.5s later, so a
+       read after the readiness wait raced the fade (red whenever the title
+       came up quickly) */
+    const spPic = document.querySelector('#splash picture'), spEl = document.getElementById('splash');
+    const splash = {
+      srcs: spPic ? [...spPic.querySelectorAll(':scope > source')].map(s => (s.getAttribute('media') || '') + '|' + s.getAttribute('srcset')).join(' ; ') : null,
+      wide: !!spPic && [...spPic.querySelectorAll(':scope > source')].some(s => /min-aspect-ratio: 4\/3/.test(s.getAttribute('media') || '') && /night-wide/.test(s.getAttribute('srcset'))),
+      bg: spEl ? getComputedStyle(spEl).backgroundColor : '',
+      // …and the copy Boot.t2wear laid over it (the same t2pic builds the title's)
+      t2: (() => { const c = document.querySelector('#splash picture.t2bg'); return c ? [...c.querySelectorAll(':scope > source')].map(s => (s.getAttribute('media') || '') + '|' + s.getAttribute('srcset')).join(' ; ') : null; })(),
+    };
     /* the READINESS budget is the whole hold, not a fraction of it: the
        promise is that the world is built and drawn BEHIND the logo, so the
        lift is the timer's call and the player never waits past the beat.
@@ -396,7 +412,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const readyAt = await till(4000);
     return {
       hold: Boot.HOLD_MS, fade: Boot.FADE_MS, fail: Boot.FAILSAFE_MS,
-      up, readyAt, ready: Boot.ready, doneLate: Boot.done,
+      up, readyAt, ready: Boot.ready, doneLate: Boot.done, splash,
     };
   });
   /* Long enough to take in the glen, short enough that it never feels like a
@@ -413,20 +429,27 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      own, not a same-frame flash, but no longer the dominant cost in the
      total boot-to-menu time the operator is holding to a 3s budget. */
   ck('theHoldIsGone', mid.hold === 0, mid.hold + 'ms — the art is the only wait now');
-  /* 2026-09-20: TWO GLENS. A wide window gets the desktop painting, a phone
-     the close crop — chosen by <source media> at parse time, before any
-     script, and only the match is fetched; the splash and the title carry
-     the SAME sources, so the lift still has no scene change; and the box
-     behind the picture is the art's own green, never black. */
-  const glen = await p.evaluate(() => {
-    const srcs = el => [...el.querySelectorAll('source')].map(s => (s.getAttribute('media') || '') + '|' + s.getAttribute('srcset')).join(' ; ');
-    const sp = document.querySelector('#splash picture'), tb = document.querySelector('#scrTitle picture.tbg');
-    return { same: !!sp && !!tb && srcs(sp) === srcs(tb), wide: !!sp && [...sp.querySelectorAll('source')].some(s => /min-width/.test(s.getAttribute('media') || '') && /title-bg-wide/.test(s.getAttribute('srcset'))),
-      splashBg: getComputedStyle(document.getElementById('splash') || document.body).backgroundColor,
-      tbgBg: tb ? getComputedStyle(tb).backgroundColor : '' };
-  });
-  ck('aWideWindowGetsItsOwnGlen', glen.wide, '');
-  /* AND THE GLEN'S OWN CACHE-BUSTER IS HAND-KEPT, SO IT IS MEASURED. Every
+  /* TWO NIGHTS (the glen's rule, carried over when the night replaced it in
+     build 106). Any landscape window gets the wide valley, a portrait one
+     the tall — chosen by <source media> at parse time, before any script,
+     and only the match is fetched; the splash and the title carry the SAME
+     sources, so the lift still has no scene change; and the box behind the
+     picture is the night's own dark. */
+  /* the MARKUP's own sources — `:scope > source`, never every descendant:
+     Boot.t2wear lays its copy of the night INSIDE #scrTitle's picture (and
+     inside #splash), so a descendant query reads both lists, six sources
+     against three, and the claim here is about the markup the browser
+     parses before any script runs */
+  const glen = await p.evaluate((splash) => {
+    const srcs = el => [...el.querySelectorAll(':scope > source')].map(s => (s.getAttribute('media') || '') + '|' + s.getAttribute('srcset')).join(' ; ');
+    const tb = document.querySelector('#scrTitle picture.tbg');
+    const t2 = document.querySelector('#scrTitle picture.t2bg');
+    return { same: !!splash.srcs && !!tb && splash.srcs === srcs(tb) && !!splash.t2 && !!t2 && splash.t2 === srcs(t2) && splash.t2 === splash.srcs, wide: splash.wide,
+      lists: [splash.srcs, tb && srcs(tb), splash.t2, t2 && srcs(t2)],
+      splashBg: splash.bg, tbgBg: tb ? getComputedStyle(tb).backgroundColor : '' };
+  }, mid.splash);
+  ck('aWideWindowGetsItsOwnNight', glen.wide, '');
+  /* AND THE NIGHT'S OWN CACHE-BUSTER IS HAND-KEPT, SO IT IS MEASURED. Every
      other picture in the game is fetched through Assets, which stamps
      CFG.ART_V on the URL for it. These two <picture> blocks are MARKUP —
      that is the whole point of them, the fetch has to start with the HTML
@@ -434,20 +457,21 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      re-encoding the art under an unchanged filename reaches nobody who has
      visited the site before. The query is therefore written by hand in
      index.html, and this check is what keeps the two numbers from drifting
-     apart: bump CFG.ART_V for new glen art and restamp the markup with it. */
+     apart: bump CFG.ART_V for new title art and restamp the markup with it
+     (an ART bump does not restamp it for you). */
   {
     const want = await p.evaluate(() => (typeof CFG === 'undefined' ? null : CFG.ART_V));
     const markup = readFileSync(join(root, 'index.html'), 'utf8');
-    const urls = (markup.match(/assets\/ui\/title-bg(?:-wide)?\.(?:webp|jpg)(\?v=\d+)?/g) || []);
+    const urls = (markup.match(/assets\/ui\/title\/night-(?:wide|tall)\.(?:webp|jpg)(\?v=\d+)?/g) || []);
     const stamped = urls.filter(u => u.includes('?v='));
     const agree = stamped.length === urls.length && urls.length >= 8 &&
       stamped.every(u => +u.split('?v=')[1] === want);
-    ck('theGlenCarriesTheArtVersion', agree,
-      urls.length + ' glen urls, ' + stamped.length + ' stamped, CFG.ART_V=' + want +
+    ck('theNightCarriesTheArtVersion', agree,
+      urls.length + ' night urls, ' + stamped.length + ' stamped, CFG.ART_V=' + want +
       (agree ? '' : ' — ' + [...new Set(urls)].join(' ')));
   }
-  ck('andTheSplashAndTitleStillShareTheirSources', glen.same, '');
-  ck('andTheGroundBehindThePictureIsGreen', /rgb\(80, 92, 30\)/.test(glen.splashBg) && /rgb\(80, 92, 30\)/.test(glen.tbgBg), glen.splashBg + ' / ' + glen.tbgBg);
+  ck('andTheSplashAndTitleStillShareTheirSources', glen.same, glen.same ? 'markup and worn copy alike' : JSON.stringify(glen.lists));
+  ck('andTheGroundBehindThePictureIsTheNights', /rgb\(10, 13, 24\)/.test(glen.splashBg) && /rgb\(10, 13, 24\)/.test(glen.tbgBg), glen.splashBg + ' / ' + glen.tbgBg);
   ck('andTheFadeIsACrossFadeNotACut', mid.fade >= 200 && mid.fade <= 900, mid.fade + 'ms');
   ck('andAFailsafeAlwaysStartsTheGame', mid.fail > mid.hold, mid.fail + 'ms');
   /* 2026-09-05, the 500ms cut: measured directly (scratchpad/parsetime2.mjs,
@@ -468,7 +492,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('itNeverLiftsUnready', !mid.up.done || mid.up.ready,
     mid.up.done && !mid.up.ready ? 'gone at ' + Math.round(mid.up.at) + 'ms before the title was ready' : 'sampled at ' + Math.round(mid.up.at) + 'ms');
   ck('theTitleIsReadyBehindIt', mid.ready,
-    'the glen on screen (by ' + Math.round(mid.readyAt) + 'ms of a 4000ms budget)');
+    'the night on screen (by ' + Math.round(mid.readyAt) + 'ms of a 4000ms budget)');
   // …and it is gone once the beat has passed
   await p.waitForFunction(() => Boot.done, null, { timeout: 8000 });
   await p.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 4000 });
@@ -519,26 +543,42 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
      parsed), and an inline property outranks every rule — a class-driven
      `.lift { opacity: 0 }` silently never runs and the splash just vanishes
      when it is removed. The lift must write the inline property. */
+  /* the lift is GATED until the sample is armed: with no hold, an
+     ungated splash starts fading the instant the title is ready, and a
+     busy main thread then sampled a splash already gone (NaN) */
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await holdReady(p);
   await p.goto(url, { waitUntil: 'commit' });
-  await p.waitForFunction(() => window.Boot && Boot.ready, null, { timeout: 8000 });
+  await p.waitForFunction(() => window.Boot && window.Screens && Screens.current === 'title' && document.getElementById('splash'), null, { timeout: 15000 });
   const fade = await p.evaluate(async () => {
     const el = document.getElementById('splash');
     const hasTransition = /opacity/.test(getComputedStyle(el).transitionProperty) &&
       parseFloat(getComputedStyle(el).transitionDuration) > 0.1;
+    window.__bootGate = false;
+    Boot.markReady();
     Boot.skip();
-    /* sampled on a real clock, not on rAFs: a transition's first tick lands
-       on the style recalc AFTER the change, so two frames in it can still
-       read exactly 1 and say nothing either way */
-    await new Promise(r => setTimeout(r, Math.round(Boot.FADE_MS * 0.35)));
-    const mid = parseFloat(getComputedStyle(el).opacity);
-    return { hasTransition, mid, target: el.style.opacity,
-      still: !!document.getElementById('splash') };
+    /* the change is FLUSHED at once, so the transition starts now and not at
+       whatever style recalc a busy page reaches next (a long task in between
+       started it on the very read that sampled it, and that read said 1).
+       Then it is sampled on a real clock through the fade: a cross-fade is
+       caught between its ends at least once, a cut never is — one sample at
+       a fixed moment measured the machine as often as the fade */
+    getComputedStyle(el).opacity;
+    const t0 = performance.now(), seen = [];
+    let mid = NaN, still = false;
+    while (performance.now() - t0 < Boot.FADE_MS + 40 && document.getElementById('splash')) {
+      await new Promise(r => setTimeout(r, 12));
+      if (!document.getElementById('splash')) break;
+      const o = parseFloat(getComputedStyle(el).opacity);
+      seen.push(+o.toFixed(2));
+      if (o > 0 && o < 0.98) { mid = o; still = true; break; }
+    }
+    return { hasTransition, mid, target: el.style.opacity, still, seen: seen.slice(0, 12) };
   });
   ck('theSplashCarriesAnOpacityTransition', fade.hasTransition, '');
   ck('andTheLiftActuallyDrivesIt',
     fade.target === '0' && fade.still && fade.mid > 0 && fade.mid < 0.98,
-    'caught mid-fade at ' + fade.mid.toFixed(2) + ' — a cut would read 1 or gone');
+    'caught mid-fade at ' + (isNaN(fade.mid) ? 'nothing' : fade.mid.toFixed(2)) + ' — a cut reads only 1 or gone (samples ' + fade.seen.join(' ') + ')');
   await p.close();
 }
 {

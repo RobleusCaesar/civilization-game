@@ -161,6 +161,7 @@ await p.evaluate(({ ARMY }) => {
 {
   const r = await p.evaluate(({ ARMY }) => {
     const out = {};
+    CFG.CARDS.ON = false; Deck._dev = false;   // the kill switch (it ships on since build 106)
     out.off = CFG.CARDS.ON === false && !Deck.on();
     G.newGame('army-off', 'moderate', 'medium'); S.paused = true;
     out.refused = ARMY.every(id => !Deck.play(id).ok);
@@ -205,7 +206,7 @@ await p.evaluate(({ ARMY }) => {
     out.diff = hooks === bare ? (idle === bare ? '' : 'idle') : 'hooks';
     return out;
   }, { ARMY });
-  ck('offTheSwitchShipsOffAndNoArmyCardPlays', r.off && r.refused, `off ${r.off}, all nine refused ${r.refused}`);
+  ck('offTheKillSwitchPlaysNoArmyCard', r.off && r.refused, `off ${r.off}, all nine refused ${r.refused}`);
   ck('noHookMovesANumberWithNoCardInPlay', r.same && r.seen,
     r.same ? `a fight, a bombardment, a famine and the casualty log byte-identical off / without Deck / on-but-idle; a card's people move them: ${r.seen}` : `differs (${r.diff}): ${r.sample}`);
 }

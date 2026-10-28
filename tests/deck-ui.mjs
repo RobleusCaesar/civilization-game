@@ -100,8 +100,18 @@ const probe = () => {
    task — frame gaps of half a second that belong to the boot, not the deck */
 const settle = (pg) => pg.waitForFunction(() => window.Assets && Assets.allArtReady && Assets.allArtReady(), null, { timeout: 60000 }).catch(() => {});
 
-async function page(opts) {
+/* THE KILL SWITCH THROWN AT BOOT: CFG.CARDS.ON ships true (build 106), so the
+   OFF section boots with it turned off the moment js/config.js has run and
+   before any card file parses (the parser's microtask checkpoint before the
+   next <script> runs this observer) — exactly a build that shipped it off */
+const SWITCH_OFF = () => {
+  new MutationObserver((recs, ob) => {
+    try { if (typeof CFG !== 'undefined' && CFG.CARDS) { CFG.CARDS.ON = false; ob.disconnect(); } } catch (e) {}
+  }).observe(document, { childList: true, subtree: true });
+};
+async function page(opts, boot) {
   const ctx = await b.newContext(Object.assign({ viewport: { width: 430, height: 880 }, deviceScaleFactor: 3 }, opts || {}));
+  if (boot && boot.off) await ctx.addInitScript(SWITCH_OFF);
   await ctx.addInitScript(probe);
   const p = await ctx.newPage();
   p.on('pageerror', e => errs.push(String(e)));
@@ -141,7 +151,7 @@ const enterGame = (seed, mode) => {
 };
 
 /* ================= 1. OFF IS NOTHING ================= */
-const { p } = await page();
+const { p } = await page(null, { off: true });
 const off = await p.evaluate(async (enter) => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const out = {};

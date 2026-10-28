@@ -71,6 +71,16 @@ catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
 const ctx = await b.newContext({ viewport: { width: 430, height: 880 }, deviceScaleFactor: 3 });
+/* THE KILL SWITCH THROWN AT BOOT: CFG.CARDS.ON ships true (build 106); this
+   page boots with it thrown off — set the moment js/config.js has run and
+   before any card file parses (the parser's microtask checkpoint before the
+   next <script> runs the observer), which is exactly a build that shipped
+   it off — and each section turns it on where it plays cards */
+await ctx.addInitScript(() => {
+  new MutationObserver((recs, ob) => {
+    try { if (typeof CFG !== 'undefined' && CFG.CARDS) { CFG.CARDS.ON = false; ob.disconnect(); } } catch (e) {}
+  }).observe(document, { childList: true, subtree: true });
+});
 const p = await ctx.newPage();
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
@@ -166,7 +176,7 @@ await p.evaluate(() => {
     out.refused = ['forager_cache', 'harvest_festival', 'swift_raiders', 'starfall', 'dragonfire'].every(id => !Deck.play(id, { x: 10.5, y: 10.5 }).ok);
     return out;
   });
-  ck('theSwitchShipsOff', r.off && r.noCss, `off ${r.off}, deck css on the page ${!r.noCss}`);
+  ck('theSwitchThrownOffBuildsNothing', r.off && r.noCss, `off ${r.off}, deck css on the page ${!r.noCss}`);
   ck('offTheHooksChangeNothing', r.same && r.seen && r.gathering && r.gathered > 10,
     r.same ? `gather (${r.gathered.toFixed(2)} by hand), production and meat byte-identical; a live festival moves them: ${r.seen}` : r.sample);
   ck('offNothingCanBePlayed', r.refused);

@@ -19,6 +19,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 106, date: '2026-10-28', title: 'Cards for everyone',
+    items: [
+      'Cards are here for every player: win a game to earn a card, and play it in a later game for a one-time boost.',
+      'A hard-fought defeat can earn a card too, and every new player starts with three cards to try.',
+      'A short guide on the title shows how to earn cards, how to play them and the legends worth chasing. You can open it again from your collection.',
+      'The title screen is now the valley at night, with a burning campfire and a falling star over the hall.',
+      'Settings is a new carved page with tabs, and these patch notes live there. A red dot tells you when there is something new to read.',
+      'You can send a bug, an idea or a crash report straight to the developer from the Feedback tab in Settings.',
+    ],
+  },
+  {
     build: 105, date: '2026-10-28', title: 'A livelier night, in testing',
     items: [
       'How to Play in the card guide shows two cards now, so nothing runs over the frame on a computer or a phone.',
