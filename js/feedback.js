@@ -91,14 +91,21 @@ const Feedback = {
     } catch (e) { /* the recorder must never become the fault */ }
   },
   /* THE RUN'S OWN TALLY (the dashboard's "games that hit an error", from
-     build 107): how many faults this sitting of the run has caught, and the
-     first of them as "message @ file:line" (the column cut off, so one fault
-     reads the same on every throw). Module state, never in a save: G.newGame
-     and G.loadJSON reset it, G.runReport sends it on the ending. Like the
-     ring, it records — it never sends anything by itself. */
+     build 107): how many faults the RUN has caught, and the first of them as
+     "message @ file:line" (the column cut off, so one fault reads the same on
+     every throw). Module state, never in a save, and it belongs to ONE run
+     (runKey — the run's id, stamped by Screens._enterNow and G.loadJSON). A
+     new game starts it again, and so does a load of ANOTHER run; the title's
+     demo world never does (it is nobody's run, and a game left for the menu
+     and Continued keeps its count), nor does a load of the same run, nor a
+     load refused before it lands (G.resetErrs, tests/telemetry.mjs §6).
+     G.runReport sends it on every ending row, and the dashboard keeps the
+     largest a run ever sent. Like the ring, it records — it never sends
+     anything by itself. */
   runErrs: 0,
   runErr: null,
-  resetRunErrors() { this.runErrs = 0; this.runErr = null; },
+  runKey: null,
+  resetRunErrors(key) { this.runErrs = 0; this.runErr = null; this.runKey = key == null ? null : key; },
   _errT: 0,
   _saveErrsSoon() {
     if (this._errT) return;

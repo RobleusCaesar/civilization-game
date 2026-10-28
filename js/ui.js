@@ -236,11 +236,6 @@ const UI = {
     return fam[Math.min(fam.length, b.level) - 1];
   },
 
-  /* Is the ANCIENT WONDER offered in the build menu right now? The wonder
-     RULES work on every difficulty — nothing in Bld/AI/G asks what mode you
-     are in — but for now only Calm SHOWS the button, because Calm is the mode
-     that needed a way to win without a war. Flip `wonderMenu` on a mode in
-     config.js and it appears there too, no other change. */
   /* THE GOLD SAYS IT ONCE (tests/wonder.mjs). The rim, the glow and the
      "★ Victory" ribbon exist to answer one question — what IS this card —
      and they answered it on every frame of a three-hour game, which is how
@@ -253,10 +248,13 @@ const UI = {
   wonderShouting() {
     return !!(S && (S.playtime || 0) < this.WONDER_SHOUT_S);
   },
+  /* Is the ANCIENT WONDER offered in the build menu right now? Exactly when
+     it exists in this world at all — G.wonderInPlay, the one predicate the
+     placement truth and the rival's race ask too (Calm alone; flip
+     `wonderMenu` on a mode in config.js and the menu, the rules and the
+     rival all follow). `G` is a script-level const — never window.G here. */
   wonderOffered() {
-    // `G` is a script-level const, not a window property — never window.G here
-    const m = G && G.modeCfg ? G.modeCfg() : null;
-    return !!(m && m.wonderMenu);
+    return !!(G && G.wonderInPlay && G.wonderInPlay());
   },
   /* the Wonder card's second line: the fraction saved is the SCARCEST
      resource's share of its price (you can only raise it when every pile is
@@ -2140,17 +2138,25 @@ const UI = {
      half of that warning: a pinned banner with the days of work left on the
      works, held until the monument finishes (the run ends) or its site is
      destroyed. Reads S.buildings fresh each beat, so it survives save/load
-     with no bookkeeping of its own. */
+     with no bookkeeping of its own.
+     FEW WORDS, AND IT FITS (operator: "the wonder banner is cut off… Less
+     words, make sure it fits in screen"): it was a sentence set centred and
+     unwrapped, wider than a phone, so both ends ran off the glass and it sat
+     on the toasts. It is the HEAD of the toast column now — under the top
+     bar, clear of the minimap, wrapping rather than running off — and the
+     toasts step down below it (--ww-h, read by index.html's #toasts). */
   tickWonderWarn() {
     const el = document.getElementById('wonderWarn');
     if (!el || !window.S || !S.buildings) return;
     const w = S.buildings.find(b => b.owner === 'A' && b.key === 'wonder' && b.construction > 0);
-    if (!w) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
-    const days = Math.max(1, Math.ceil(w.construction));
-    const txt = '🏛️ The rival\'s Wonder rises — ' + days + ' day' + (days === 1 ? '' : 's') +
-      ' of work left. Finish yours, or stop theirs.';
-    if (el.textContent !== txt) el.textContent = txt;
-    if (el.style.display !== 'block') el.style.display = 'block';
+    if (w) {
+      const days = Math.max(1, Math.ceil(w.construction));
+      const txt = '🏛️ Rival\'s Wonder: ' + days + ' day' + (days === 1 ? '' : 's') + ' left';
+      if (el.textContent !== txt) el.textContent = txt;
+      if (el.style.display !== 'block') el.style.display = 'block';
+    } else if (el.style.display !== 'none') el.style.display = 'none';
+    const h = w && el.offsetHeight ? el.offsetHeight + 4 : 0;   // 4: the toasts' own gap
+    if (h !== this._wwH) { this._wwH = h; document.body.style.setProperty('--ww-h', h + 'px'); }
   },
 
   // ~1s heartbeat from init(): fallen soldiers leave their banner, an army

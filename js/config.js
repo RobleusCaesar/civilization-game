@@ -1186,10 +1186,11 @@ const CFG = {
          110. Every mode declares it now; no mode inherits another's. */
       aiVulnDay: 70,
       foeNoteChance: 1,   // enemy/raider intel toasts (see G.foeNote) — Calm always warns you
-      // THE WONDER (tests/wonder.mjs) works on EVERY difficulty — the rules
-      // never ask what mode you are in. This flag only decides whether the
-      // build menu SHOWS the button, and for now that is Calm alone: the
-      // peaceful mode is the one that needed a way to win without a war.
+      // THE WONDER (tests/wonder.mjs) is Calm's alone, for BOTH tribes: the
+      // peaceful mode is the one that needed a way to win without a war, and
+      // on the others a monument is a way to lose a war you were winning
+      // (the operator's day-484 Hard game). G.wonderInPlay() reads this flag
+      // and nothing else — the menu, the placement truth, the rival's race.
       wonderMenu: true,
     },
     moderate: {

@@ -770,6 +770,12 @@ const Bld = {
     opts = opts || {};
     const d = this.def(key);
     if (!d) return { ok: false, code: 'key', why: '?' };
+    /* THE WONDER IS CALM'S ALONE (G.wonderInPlay, tests/wonder.mjs) — for
+       EVERY owner, so no path to a monument (the build menu, a card, the
+       rival's race, a test that places by hand) can raise one where the
+       mode offers none. Asked before the ground: it is not about the tile. */
+    if (key === 'wonder' && !G.wonderInPlay())
+      return { ok: false, code: 'mode', why: 'The Wonder rises only in Calm worlds.' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
     /* A CARD'S MAP IS NOT THE TRIBE'S EYES (tests/deck-rival.mjs): ground a
        card charted that nobody of the player's has seen is refused like the

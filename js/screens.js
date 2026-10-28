@@ -275,6 +275,7 @@ const Screens = {
           tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null, seed: String(S.seed || ''),
         });
         S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
+        if (window.Feedback) Feedback.runKey = S.runId;   // the error tally is this run's
       }
     } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
@@ -1151,6 +1152,11 @@ const Screens = {
       return;
     }
     if (window.Backend && Backend.activeSlot) Backend.autosaveNow('quit');
+    /* the run is LEFT here as surely as by a closed tab: say so, the same
+       provisional ending (G.noteLeaving), superseded if it is ever Continued
+       — or a game quit to the menu stays "no signal yet" on the dashboard for
+       good, since the demo world that replaces it sends nothing */
+    G.noteLeaving();
     this._demo = false;   // force a fresh demo world
     this.show('title');
   },

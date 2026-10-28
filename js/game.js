@@ -130,8 +130,10 @@ const G = {
     // from a save loaded before it (tests/telemetry.mjs §5)
     if (window.Backend) Backend.runId = null;
     // …and its errors are its own: the recorder's tally starts again
-    // (Feedback.runErrs, read by runReport — the dashboard's error count)
-    if (window.Feedback && Feedback.resetRunErrors) Feedback.resetRunErrors();
+    // (Feedback.runErrs, read by runReport — the dashboard's error count) —
+    // but never for the title's demo world, which is nobody's run: a game
+    // left for the menu and Continued keeps its count (tests/telemetry.mjs §6)
+    if (!(window.Screens && Screens._demo)) this.resetErrs(null);
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
@@ -2567,6 +2569,14 @@ const G = {
     return list[h % list.length];
   },
   wonderDef() { return CFG.WONDERS.find(z => z.key === (S && S.wonder)) || CFG.WONDERS[0]; },
+  /* THE WONDER IS CALM'S ALONE (tests/wonder.mjs — operator, on a Hard save
+     the rival won by monument on day 484: "Should only be possible on
+     Calm"). One predicate, for both tribes: the build menu
+     (UI.wonderOffered), the placement truth (Bld.canPlace, code 'mode'),
+     the rival's own race (AI.maybeWonder, asked before it draws a roll),
+     its savings jar, and the load that calls off a site a save carries
+     from before. The flag is the mode's wonderMenu, which only Calm sets. */
+  wonderInPlay() { const m = this.modeCfg(); return !!(m && m.wonderMenu); },
   // point the single `wonder` building key at this run's monument: its name,
   // its blurb and its artwork. Everything downstream — the build menu, the
   // panel, R.bldSprite, the burn variants — then finds it exactly where it
@@ -2719,6 +2729,16 @@ const G = {
      Backend.logLeaving keeps it to one row per run per day reached, and the
      dashboard (migration 0007) keeps ONE row per run: a real ending always
      beats a closed_tab row, and of several closed_tab rows the latest wins. */
+  /* THE ERROR TALLY STARTS AGAIN (Feedback.runErrs, for the run `key`) — and
+     so does the frame loop's repeat filter (G._lastErrKey, in G._safe): left
+     standing, a fault already seen in an earlier game, or on the title, was
+     never counted in this one, so a fault that fires every frame read as a
+     clean game forever (tests/telemetry.mjs §6). */
+  resetErrs(key) {
+    this._lastErrKey = null;
+    if (window.Feedback && Feedback.resetRunErrors) Feedback.resetRunErrors(key);
+  },
+
   noteLeaving() {
     try {
       if (typeof S === 'undefined' || !S || !S.map || S.over || !S.played) return;
@@ -2743,8 +2763,6 @@ const G = {
     // is being assembled (R.holdTerrain). A refused load leaves the running
     // game's cache exactly as it was.
     R.holdTerrain();
-    // a loaded run counts the errors of THIS sitting (Feedback.runErrs)
-    if (window.Feedback && Feedback.resetRunErrors) Feedback.resetRunErrors();
     const w = data.map.W || 40, h = data.map.H || 40;
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Clanfire save file');
@@ -2995,6 +3013,17 @@ const G = {
       }
       Backend.runId = S.runId || null;
     }
+    /* …and the error tally is the RUN's (Feedback.runKey): a load of the same
+       run — a Continue, an earlier save of it — keeps counting, any other run
+       starts again. Here, never earlier: a load refused above never touched
+       the live game's count. */
+    if (window.Feedback && Feedback.resetRunErrors && Feedback.runKey !== (S.runId || null)) this.resetErrs(S.runId || null);
+    /* A LOADED WORLD WAS NOT FOUNDED: the title's demo world left _freshRun
+       true behind it, and Screens._enterNow read that as a new run — so every
+       Continue from the title logged a fresh run_start under a new id, the
+       game was counted twice on the dashboard and its earlier sitting read as
+       walked away (tests/telemetry.mjs §6). A continued run is the run it was. */
+    this._freshRun = false;
     // a save caught mid-draft (belt and braces): the first card is kept
     if (S.draft && !S.draft.done && S.draft.hand && S.draft.hand.length && window.Cards)
       Cards.pick(0);
@@ -3041,6 +3070,27 @@ const G = {
     Units.clampToBoard();   // pull any unit off the (now impassable) map rim — e.g. a pre-border save
     this.countWearRoads();  // the roads a save carries call its walkers from the first step
     this._eclFree = null;   // a loaded act starts with everyone staring again
+    /* A RIVAL WONDER WHERE THE MODE OFFERS NONE IS CALLED OFF (the operator's
+       day-484 Hard save: the chief laid one on a build that let it, and the
+       run was lost two days later). The works go; what the chief PAID goes
+       back to its own stores (never the list price, never the player's);
+       its builders are freed; the ground is left as it was found, with no
+       ghost of the monument on the player's map. Before R.onNewGame, so the
+       ground is painted once, clean. A finished run is a told story and is
+       left alone. Draws nothing from G.rand. */
+    if (!S.over && !this.wonderInPlay()) {
+      for (const b of S.buildings.filter(o => o.owner === 'A' && o.key === 'wonder' && o.construction > 0)) {
+        // what the site was PAID (Bld.cancelRefund's rule: `{}` for a free
+        // one; the chief's own scaled bill only for a save from before `paid`)
+        const paid = b.paid || (!('paid' in b) && Bld.effCost('A', 'wonder')) || {};
+        if (S.ai && S.ai.res) for (const k in paid) S.ai.res[k] = (S.ai.res[k] || 0) + (paid[k] || 0);
+        Bld.releaseBuilders(b);
+        if (S.map.seenB) delete S.map.seenB[MapGen.idx(b.x, b.y)];
+        Bld.removeToRuin(b, true);
+        this.log('The rival abandoned its Wonder: Wonders rise only in Calm worlds.', 'note');
+      }
+      if (S.ai && S.ai.goal && S.ai.goal.wonder) S.ai.goal = null;   // and stops saving for one
+    }
     R.onNewGame();
     this.updateVisibility();
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting

@@ -1880,12 +1880,16 @@ const AI = {
     }
     return n;
   },
-  /* The rival may raise one TOO — but not before CFG.WONDER.aiDay (350). The
-     late gate is the point: the peaceful victory should be a race the player
-     can plausibly win, not one the chief has been quietly running since day
-     one. In practice it needs 70,000 resources banked, which almost never
-     happens; the path exists so the door is not one-way. */
+  /* The rival may raise one TOO — on CALM, and only on Calm (G.wonderInPlay,
+     tests/wonder.mjs: the operator's day-484 Hard game was lost to a rival
+     monument the mode never offered). Asked FIRST, before a single roll or
+     scan, so off Calm the race costs nothing and draws nothing. On Calm, not
+     before the mode's aiWonderDay (330, else CFG.WONDER.aiDay 350): the late
+     gate is the point — the peaceful victory should be a race the player can
+     plausibly win, not one the chief has been quietly running since day
+     one. */
   maybeWonder() {
+    if (!G.wonderInPlay()) return false;
     const ai = S.ai; if (!ai) return false;
     // a mode may pull the rival's wonder EARLIER than the global gate — Calm
     // does (aiWonderDay 330), so the peace run's race fits inside a sitting
@@ -5076,7 +5080,7 @@ const AI = {
        needs no hall, and a peace run's endgame IS the monument). */
     {
       const wGate = G.modeCfg().aiWonderDay != null ? G.modeCfg().aiWonderDay : (CFG.WONDER.aiDay || 350);
-      if (S.peace && S.day >= wGate - 60 && !Bld.list('A').some(b => b.key === 'wonder')) {
+      if (S.peace && G.wonderInPlay() && S.day >= wGate - 60 && !Bld.list('A').some(b => b.key === 'wonder')) {
         if (!ai.goal || !ai.goal.wonder)
           ai.goal = { cost: Bld.effCost('A', 'wonder'), until: wGate + 150, wonder: true };
       }

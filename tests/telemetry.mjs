@@ -532,10 +532,60 @@ const MOCK = `
     Feedback.noteError('RangeError: later', '', 'frame');
     G.end(false, 'test'); await new Promise(r => setTimeout(r, 50));
     out.hit = pick(lastEnd());
-    // the next game starts its own count, and so does a loaded one
-    G.newGame('err2', 'moderate', 'medium'); out.afterNew = Feedback.runErrs;
-    Feedback.noteError('Error: before the load', '', 'frame');
-    G.loadJSON(G.saveJSON()); out.afterLoad = Feedback.runErrs;
+    const tick = () => new Promise(r => setTimeout(r, 50));
+    // THE TALLY IS THE RUN'S (G.resetErrs, Feedback.runKey): the next game
+    // starts its own count…
+    G.newGame('err2', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing');
+    out.afterNew = Feedback.runErrs;
+    Screens._enterNow();
+    Feedback.noteError('Error: in the run', '', 'frame');
+    const json2 = G.saveJSON();
+    // …a load of the SAME run keeps counting (an earlier save of it)…
+    G.loadJSON(json2); out.afterSameLoad = Feedback.runErrs;
+    // …a load refused before it lands never touches the live game's count…
+    try { G.loadJSON(JSON.stringify({ map: { W: 40, H: 40, terrain: [1, 2, 3] } })); } catch (e) { out.refused = String(e && e.message || e); }
+    out.afterRefused = Feedback.runErrs;
+    // …the title's demo world is nobody's run and never resets it, so the
+    // run Continued from behind it still has its count…
+    Screens._demo = true; G.newGame('err-demo', 'moderate', 'medium');
+    out.afterDemo = Feedback.runErrs;
+    Screens._demo = false; G.loadJSON(json2); out.afterContinue = Feedback.runErrs;
+    // …and a load of ANOTHER run starts again
+    const other = JSON.parse(json2); other.runId = 'another-run';
+    G.loadJSON(JSON.stringify(other)); out.afterOtherLoad = Feedback.runErrs;
+
+    // A FAULT THAT FIRES EVERY FRAME counts in every game it fires in: the
+    // frame loop's repeat filter (G._lastErrKey) starts over with the tally
+    const boom = () => { throw new Error('boom every frame'); };
+    G.newGame('err3', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); Screens._enterNow();
+    G._safe(boom, 'ui'); G._safe(boom, 'ui');
+    out.frameFirst = Feedback.runErrs;
+    G.end(false, 'test'); await tick();
+    out.frameEnd1 = pick(lastEnd());
+    G.newGame('err4', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); Screens._enterNow();
+    G._safe(boom, 'ui');
+    G.end(false, 'test'); await tick();
+    out.frameEnd2 = pick(lastEnd());
+
+    // A GAME QUIT TO THE MENU IS LEFT (one provisional ending), and CONTINUED
+    // from the title it is the SAME run: no second run_start, the same id,
+    // its count, its ending under that id
+    G.newGame('err5', 'calm', 'medium'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); Screens._enterNow();
+    const id5 = S.runId; S.day = 9; S.playtime = 400;
+    Feedback.noteError('Error: before the menu', '', 'frame');
+    const json5 = G.saveJSON();
+    const starts = () => rows().filter(x => x.kind === 'run_start').length;
+    const startsBefore = starts();
+    Screens.lastSavedDay = S.day;            // saved: one tap leaves
+    Screens.quitToTitle(); await tick();
+    out.quitRows = rows().filter(x => x.kind === 'run_end' && x.run_id === id5 && x.cause === 'closed_tab').map(x => x.props && x.props.errors);
+    out.demoAfterQuit = Screens._demo === true && !!window.S && S.runId !== id5;
+    G.loadJSON(json5); Screens._demo = false; Screens._enterNow();   // Continue
+    out.continueId = S.runId === id5 && Backend.runId === id5;
+    out.noNewStart = starts() === startsBefore;
+    out.continueCount = Feedback.runErrs;
+    S.day = 20; G.end(true, 'test victory', 'wonder'); await tick();
+    out.continueEnd = rows().filter(x => x.kind === 'run_end' && x.run_id === id5 && x.cause === 'wonder').map(x => x.props && x.props.errors);
     // every kind of row carries the build
     Backend._emit({ kind: 'session', seconds: 5 });
     out.kinds = [...new Set(rows().map(x => x.kind + ':' + (x.props ? x.props.build : 'none')))];
@@ -545,7 +595,15 @@ const MOCK = `
   ck('aCleanGameSaysZeroErrors', r.clean && r.clean.errors === 0 && !r.clean.hasErr && r.clean.build === r.tag, JSON.stringify(r.clean));
   ck('aGameThatCaughtFaultsCountsThemAndNamesTheFirst', r.hit && r.hit.errors === 3 && r.hit.err === 'TypeError: boom @ js/units.js:120',
     JSON.stringify(r.hit));
-  ck('andEveryGameStartsItsOwnCount', r.afterNew === 0 && r.afterLoad === 0, JSON.stringify([r.afterNew, r.afterLoad]));
+  ck('andEveryGameStartsItsOwnCount', r.afterNew === 0 && r.afterOtherLoad === 0, JSON.stringify([r.afterNew, r.afterOtherLoad]));
+  ck('aLoadOfTheSameRunKeepsItsCount', r.afterSameLoad === 1 && r.afterContinue === 1, JSON.stringify([r.afterSameLoad, r.afterContinue]));
+  ck('aRefusedLoadTouchesNothing', /not a Clanfire save/.test(r.refused || '') && r.afterRefused === 1, JSON.stringify([r.refused, r.afterRefused]));
+  ck('theTitlesDemoWorldIsNobodysRun', r.afterDemo === 1, 'the count behind the title: ' + r.afterDemo);
+  ck('aFaultEveryFrameCountsInEveryGame', r.frameFirst === 1 && r.frameEnd1 && r.frameEnd1.errors === 1 && r.frameEnd2 && r.frameEnd2.errors === 1,
+    JSON.stringify([r.frameFirst, r.frameEnd1, r.frameEnd2]));
+  ck('aGameQuitToTheMenuIsLeft', JSON.stringify(r.quitRows) === '[1]' && r.demoAfterQuit, JSON.stringify([r.quitRows, r.demoAfterQuit]));
+  ck('andContinuedItIsTheSameRun', r.continueId && r.noNewStart && r.continueCount === 1 && JSON.stringify(r.continueEnd) === '[1]',
+    JSON.stringify({ id: r.continueId, noNewStart: r.noNewStart, count: r.continueCount, end: r.continueEnd }));
   ck('theBuildPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await p.close();
 }

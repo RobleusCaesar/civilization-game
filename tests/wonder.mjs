@@ -24,10 +24,17 @@
                     number that moves is the whole reason the card reads as a
                     goal, and the gold was only ever there to get it looked at.
 
-     WHO SEES IT    Calm alone SHOWS the button (CFG.MODES[m].wonderMenu). The
-                    RULES work on every difficulty — nothing in Bld/AI/G asks
-                    what mode you are in — so a save made in Calm keeps
-                    working, and turning the flag on elsewhere is the whole
+     CALM'S ALONE   The Wonder exists only where the mode offers it
+                    (CFG.MODES[m].wonderMenu — Calm), for BOTH tribes, and one
+                    predicate says so: G.wonderInPlay. The build menu shows
+                    the button by it, Bld.canPlace refuses a monument by it
+                    (code 'mode', for every owner and every path), and the
+                    rival asks it before it rolls anything. A save that
+                    carries a rival site from the build that let it (the
+                    operator's day-484 Hard game) has it CALLED OFF at load:
+                    what the chief paid goes back to its stores, its builders
+                    are freed, no ghost of it is left on the map, no roll is
+                    drawn. Turning the flag on elsewhere is still the whole
                     change needed.
 
      NO SECRETS     Laying one reveals it to the rival the same day and rings
@@ -36,9 +43,10 @@
                     the top-priority branch in Combat.aiRaidSeek). Holding the
                     site is the price of the peaceful victory.
 
-     THE RIVAL'S    The chief may raise one too, but never before
-                    CFG.WONDER.aiDay (350) — the race has to be one the player
-                    can plausibly win.
+     THE RIVAL'S    The chief may raise one too — on Calm, and never before
+                    the mode's aiWonderDay (330; CFG.WONDER.aiDay 350 if a
+                    mode names none) — the race has to be one the player can
+                    plausibly win.
 
      THE MARVEL     Finishing it does NOT snap to a score screen: the world
                     holds still with the camera on the monument for
@@ -154,27 +162,35 @@ await p.evaluate(() => {
         .every(k => CFG.BUILDINGS[k].levels.every(l => l.hp < lv.hp)), lv.hp + ' hp');
   }
 
-  // ---- 3. Calm SHOWS it; every mode PLAYS it ----
+  // ---- 3. the Wonder is CALM'S ALONE: the menu, the rules and the rival ----
   {
-    const shown = {}, placeable = {};
+    const shown = {}, placed = {}, rival = {}, one = {};
     for (const m of ['calm', 'moderate', 'hard']) {
       G.newGame('mode-' + m, m, 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
       UI.refreshMenu();
       const btn = document.querySelector('.bbtn[data-key=wonder]');
       shown[m] = UI.wonderOffered() && btn && btn.style.display !== 'none';
-      // …and the RULES never ask what mode this is
+      one[m] = UI.wonderOffered() === G.wonderInPlay();
+      // …and the RULES ask the same question, for the player and the rival
       S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
       const tc = Bld.tcOf('P');
       window.clearFor(tc.x + 4, tc.y, 2);
-      placeable[m] = Bld.canPlace('P', 'wonder', tc.x + 4, tc.y).ok === true;
+      placed[m] = Bld.canPlace('P', 'wonder', tc.x + 4, tc.y);
+      const atc = Bld.tcOf('A');
+      window.clearFor(atc.x + 4, atc.y, 2);
+      rival[m] = Bld.canPlace('A', 'wonder', atc.x + 4, atc.y, { noCost: true });
     }
     ck('calmShowsTheButton', shown.calm === true, '');
-    ck('otherModesHideItForNow', shown.moderate === false && shown.hard === false, '');
-    ck('butEveryModeCanRaiseOne',
-      placeable.calm && placeable.moderate && placeable.hard,
-      'the rules never ask the difficulty — only the menu does');
+    ck('otherModesHideIt', shown.moderate === false && shown.hard === false, '');
+    ck('onlyCalmCanRaiseOne',
+      placed.calm.ok === true && placed.moderate.code === 'mode' && placed.hard.code === 'mode',
+      'calm ' + JSON.stringify(placed.calm) + ', moderate ' + JSON.stringify(placed.moderate) + ', hard ' + JSON.stringify(placed.hard));
+    ck('andNeitherCanTheRival', rival.moderate.code === 'mode' && rival.hard.code === 'mode',
+      'moderate ' + JSON.stringify(rival.moderate) + ', hard ' + JSON.stringify(rival.hard));
+    ck('theRefusalSaysWhy', /Calm/.test(placed.hard.why || ''), placed.hard.why);
     ck('theFlagIsTheWholeSwitch',
-      CFG.MODES.calm.wonderMenu === true && !CFG.MODES.moderate.wonderMenu && !CFG.MODES.hard.wonderMenu, '');
+      CFG.MODES.calm.wonderMenu === true && !CFG.MODES.moderate.wonderMenu && !CFG.MODES.hard.wonderMenu &&
+      one.calm && one.moderate && one.hard, 'the menu and the rules read one predicate');
   }
 
   // ---- 3b. …and the gold introduces the card, then gets out of the way ----
@@ -319,25 +335,104 @@ await p.evaluate(() => {
     ck('theAlarmRetires', S.ai.wonderAlarm === null && !Bld.get(w.id), 'the works were at ' + hp0 + ' hp');
   }
 
-  // ---- 7. the rival's own monument, and its day-350 gate ----
+  // ---- 7. the rival's own monument: on Calm, and on its day ----
   {
-    G.newGame('rivalw', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
-    S.ai.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
-    S.day = CFG.WONDER.aiDay - 1;
+    const RICH = () => ({ food: 99999, wood: 99999, stone: 99999, gold: 99999 });
+    // ground round the rival hall, so plotWonder has a 3×3 to take
+    const clearRival = () => {
+      const atc = Bld.tcOf('A');
+      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+        const x = atc.x + dx, y = atc.y + dy;
+        if (MapGen.inB(x, y) && !Bld.at(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
+      }
+      Bld._block = null;
+    };
+    G.newGame('rivalw', 'calm', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.ai.res = RICH(); S.ai.acts = 99; clearRival();
+    const gate = G.modeCfg().aiWonderDay != null ? G.modeCfg().aiWonderDay : CFG.WONDER.aiDay;
+    S.day = gate - 1;
     const early = AI.maybeWonder();
-    S.day = CFG.WONDER.aiDay;
+    S.day = gate;
     const onTime = AI.maybeWonder();
     const aw = Bld.list('A').find(z => z.key === 'wonder');
-    ck('notBeforeItsDay', early === false, 'rich on day ' + (CFG.WONDER.aiDay - 1) + ' and still nothing');
-    ck('andThenItMay', onTime === true && !!aw, '');
+    ck('notBeforeItsDay', early === false, 'rich on day ' + (gate - 1) + ' and still nothing');
+    ck('andThenItMay', onTime === true && !!aw, 'day ' + gate);
     ck('theRivalsWorksAreVisibleToo',
       !!(aw && S.map.seenB && S.map.seenB[MapGen.idx(aw.x, aw.y)]), '');
     ck('itSitsOnClearGround',
       !!aw && [0, 1, 2].every(dy => [0, 1, 2].every(dx =>
         MapGen.inB(aw.x + dx, aw.y + dy))), '');
-    G.newGame('poorw', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    G.newGame('poorw', 'calm', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     S.day = 400;
     ck('andOnlyIfItCanPayForIt', AI.maybeWonder() === false, 'a poor chief raises nothing');
+
+    // NEVER OFF CALM (the operator's day-484 Hard game): the richest chief, far
+    // past every gate, asks first and raises nothing — and draws no roll asking
+    const off = {};
+    for (const m of ['moderate', 'hard']) {
+      G.newGame('rivalw-' + m, m, 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      S.ai.res = RICH(); S.ai.acts = 99; clearRival(); S.day = 999;
+      const rng0 = S.rngState;
+      const laid = AI.maybeWonder();
+      const quiet = S.rngState === rng0;
+      try { AI.daily(); } catch (e) { /* a whole chief's day: what it lays is what we measure */ }
+      off[m] = { laid, quiet, any: Bld.list('A').some(z => z.key === 'wonder'), jar: !!(S.ai.goal && S.ai.goal.wonder) };
+    }
+    ck('theRivalNeverRaisesOneOffCalm',
+      ['moderate', 'hard'].every(m => off[m].laid === false && !off[m].any && !off[m].jar),
+      JSON.stringify(off));
+    ck('andAskingDrawsNoRoll', off.moderate.quiet && off.hard.quiet, '');
+
+    // A SAVE FROM THE BUILD THAT LET IT: the site is called off at load
+    const plant = (mode, seed) => {
+      G.newGame(seed, mode, 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      clearRival();
+      const atc = Bld.tcOf('A');
+      const w = Bld.place('A', 'wonder', atc.x + 3, atc.y - 1, { free: true, noAutoAssign: true });
+      Bld._block = null;
+      w.paid = { wood: 1800, stone: 420, gold: 450 };
+      const u = Units.spawn('villager', 'A', atc.x + 2, atc.y + 3);
+      u.task = { type: 'build', id: w.id };
+      S.ai.res = { food: 100, wood: 100, stone: 100, gold: 100 };
+      return { w, u, i: MapGen.idx(w.x, w.y) };
+    };
+    {
+      const { w, u, i } = plant('hard', 'calloff-hard');
+      const seen = !!(S.map.seenB && S.map.seenB[i]);
+      const json = G.saveJSON();
+      G.loadJSON(json);
+      const uu = S.units.find(z => z.id === u.id);
+      ck('aRivalSiteOffCalmIsCalledOffAtLoad',
+        seen && !S.buildings.some(z => z.owner === 'A' && z.key === 'wonder'),
+        'seen before the save ' + seen);
+      ck('andWhatItPaidGoesBackToTheChief',
+        S.ai.res.wood === 1900 && S.ai.res.stone === 520 && S.ai.res.gold === 550 && S.ai.res.food === 100,
+        JSON.stringify(S.ai.res));
+      ck('itsBuildersAreFreed', !!uu && !uu.task, uu ? JSON.stringify(uu.task) : 'the hand is gone');
+      ck('andNoGhostOfItIsLeft', !(S.map.seenB && S.map.seenB[i]), '');
+      ck('theGroundIsLeftClean', [0, 1, 2].every(dy => [0, 1, 2].every(dx =>
+        S.map.terrain[MapGen.idx(w.x + dx, w.y + dy)] !== T.RUIN)), 'called off, never knocked down');
+      ck('theCallOffDrawsNoRoll', S.rngState === JSON.parse(json).rngState, '');
+      ck('itIsTold', S.log.some(l => /abandoned its Wonder/.test(l.msg)), S.log[0] && S.log[0].msg);
+      document.body.classList.add('ingame');
+      UI.tickWonderWarn();
+      ck('andTheBannerNeverShows', document.getElementById('wonderWarn').style.display === 'none', '');
+    }
+    {
+      // a save from before `paid` existed refunds the chief's own scaled bill
+      const { w } = plant('moderate', 'calloff-legacy');
+      delete w.paid;
+      G.loadJSON(G.saveJSON());
+      const eff = Bld.effCost('A', 'wonder');
+      ck('aLegacySiteRefundsTheChiefsOwnBill',
+        S.ai.res.wood === 100 + (eff.wood || 0) && S.ai.res.gold === 100 + (eff.gold || 0),
+        JSON.stringify(S.ai.res) + ' against ' + JSON.stringify(eff));
+    }
+    {
+      const { w } = plant('calm', 'calloff-calm');
+      G.loadJSON(G.saveJSON());
+      ck('aCalmSaveKeepsItsRace', S.buildings.some(z => z.id === w.id && z.key === 'wonder'), '');
+    }
   }
 
   // ---- 8. save/load: the roll rides along, the marvel never does ----

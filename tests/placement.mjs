@@ -37,8 +37,10 @@ await p.waitForTimeout(1000);
 const out = await p.evaluate(() => {
   const res = {}, fails = [];
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
-  const arena = (seed) => {
-    G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+  // the Wonder rises only in Calm worlds (G.wonderInPlay, tests/wonder.mjs),
+  // so an arena that measures the 3×3 is a Calm one
+  const arena = (seed, mode) => {
+    G.newGame(seed, mode || 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     const tc = Bld.tcOf('P');
     for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
       const x = tc.x + dx, y = tc.y + dy;
@@ -100,7 +102,7 @@ const out = await p.evaluate(() => {
 
   // ---- 3. footprints: 2×2 and 3×3 straddling valid and invalid ground ----
   {
-    const tc = arena('pl3');
+    const tc = arena('pl3', 'calm');
     S.map.terrain[MapGen.idx(tc.x + 5, tc.y + 4)] = T.WATER;   // one wet tile
     const r = Bld.canPlace('P', 'barracks', tc.x + 4, tc.y + 3);   // 2×2 catches it at (5,4)
     ck('oneBadTileRefusesA2x2', !r.ok && r.code === 'blocked', JSON.stringify(r));
@@ -114,7 +116,7 @@ const out = await p.evaluate(() => {
 
   // ---- 4. map edges and corners: no out-of-bounds reads, edge code fires ----
   {
-    arena('pl4');
+    arena('pl4', 'calm');
     let threw = null;
     try {
       for (const [x, y] of [[0, 0], [CFG.W - 1, CFG.H - 1], [0, CFG.H - 1], [CFG.W - 1, 0],

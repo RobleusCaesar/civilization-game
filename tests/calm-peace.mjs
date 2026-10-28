@@ -22,6 +22,10 @@
       pulls its gate earlier (MODES.calm.aiWonderDay), the site is revealed
       to the player the day ground is broken, and the #wonderWarn countdown
       banner holds the screen while the works rise.
+   7. THE BANNER FITS (operator: "the wonder banner is cut off… Less words,
+      make sure it fits in screen"): a few words, wholly on the glass from
+      320px to 1280px, clear of the minimap and of every toast — it heads the
+      toast column, and the toasts step down below it.
 
    Run after touching: Combat.hostile/hostileUnits, G.breakPeace, the attack
    order sites in ui.js/units.js, AI.choosePosture/maybeWonder/wonderWatch,
@@ -243,7 +247,7 @@ const out = await p.evaluate(() => {
     document.body.classList.add('ingame');
     UI.tickWonderWarn();
     const el = document.getElementById('wonderWarn');
-    const shown = el && el.style.display !== 'none' && /\d+ days? of work/.test(el.textContent);
+    const shown = el && el.style.display !== 'none' && /\d+ days? left/.test(el.textContent);
     ck('theCountdownHoldsTheScreen', !!shown, el ? el.textContent : 'no #wonderWarn element');
     Bld.removeToRuin(w);
     UI.tickWonderWarn();
@@ -289,6 +293,50 @@ const out = await p.evaluate(() => {
   }
   return { res, fails };
 });
+
+// ---- 7. THE BANNER FITS, at every width a player brings ----
+const ck = (n, ok, i) => { out.res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) out.fails.push(n); };
+for (const [w, h] of [[320, 640], [390, 844], [430, 932], [844, 390], [1280, 800]]) {
+  await p.setViewportSize({ width: w, height: h });
+  const r = await p.evaluate(async () => {
+    G.newGame('cp-banner', 'calm', 'large');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const atc = Bld.tcOf('A');
+    const wk = Bld.place('A', 'wonder', atc.x + 3, atc.y - 1, { free: true, noAutoAssign: true });
+    wk.construction = 37;
+    document.body.classList.add('ingame');
+    UI._toastAt = {};
+    for (const m of ['A war band gathers to the north', 'Your scouts sighted a rival camp', 'The rival hall rises a storey'])
+      UI.toast(m, 'note');
+    UI.tickWonderWarn();
+    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+    UI.tickWonderWarn();
+    await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+    const el = document.getElementById('wonderWarn');
+    const box = (e) => { const q = e.getBoundingClientRect(); return { l: q.left, t: q.top, r: q.right, b: q.bottom, w: q.width, h: q.height }; };
+    const mini = document.getElementById('miniWrap');
+    const toasts = [...document.querySelectorAll('#toasts .toast')].map(box).filter(q => q.w > 0 && q.h > 0);
+    const out = {
+      text: el.textContent, shown: getComputedStyle(el).display !== 'none', b: box(el),
+      vw: innerWidth, vh: innerHeight,
+      mini: mini && getComputedStyle(mini).display !== 'none' ? box(mini) : null,
+      toasts, lh: parseFloat(getComputedStyle(el).lineHeight) || 16,
+    };
+    Bld.removeToRuin(wk, true); UI.tickWonderWarn();
+    out.after = getComputedStyle(document.body).getPropertyValue('--ww-h').trim();
+    return out;
+  });
+  const hit = (a, c) => a.l < c.r - 0.5 && c.l < a.r - 0.5 && a.t < c.b - 0.5 && c.t < a.b - 0.5;
+  const tag = w + 'x' + h;
+  ck('theBannerSaysItInAFewWords@' + tag, r.shown && /^🏛️ Rival's Wonder: \d+ days? left$/.test(r.text) && r.text.split(/\s+/).length <= 6, JSON.stringify(r.text));
+  ck('theBannerIsWhollyOnTheGlass@' + tag, r.b.l >= 0 && r.b.r <= r.vw && r.b.t >= 0 && r.b.b <= r.vh,
+    `left ${r.b.l.toFixed(1)}, right ${r.b.r.toFixed(1)} of ${r.vw}`);
+  ck('theBannerNeverWrapsPastTwoLines@' + tag, r.b.h <= 2 * r.lh + 16, r.b.h.toFixed(1) + 'px tall');
+  ck('theBannerClearsTheMinimap@' + tag, !r.mini || !hit(r.b, r.mini), JSON.stringify(r.mini));
+  ck('andEveryToastStepsBelowIt@' + tag, r.toasts.length >= 3 && r.toasts.every(t => !hit(r.b, t) && t.t >= r.b.b - 0.5),
+    r.toasts.length + ' toasts; first at ' + (r.toasts[0] && r.toasts[0].t.toFixed(1)) + ' under a banner ending ' + r.b.b.toFixed(1));
+  ck('andTheyComeBackUpWhenItGoes@' + tag, r.after === '0px', r.after);
+}
 
 console.log(JSON.stringify(out.res, null, 1));
 console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL CALM-PEACE CHECKS PASS');
