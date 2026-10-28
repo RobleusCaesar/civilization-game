@@ -651,9 +651,13 @@ const DeckScreens = {
     let html = '';
     for (let i = 0; i < n; i++) {
       const sz = ember ? 2 + (Math.random() * 3 | 0) : 2 + (Math.random() * 2 | 0);
-      const x = 8 + Math.random() * 84, y = ember ? 55 + Math.random() * 45 : 20 + Math.random() * 70;
-      const d = (ember ? 1.6 : 2.6) + Math.random() * 2.2;
       const gl = i % 3 === 2 && (tier === 'iron' || tier === 'imperial' || tier === 'enlight');
+      // a glint is a star the size of a letter: it twinkles BESIDE the card
+      // (the box is two cards wide, the card its middle half), never over
+      // the name on its plate, where a still frame read it as a flaw
+      const x = gl ? (Math.random() < 0.5 ? 6 + Math.random() * 16 : 78 + Math.random() * 16) : 8 + Math.random() * 84;
+      const y = ember ? 55 + Math.random() * 45 : 20 + Math.random() * 70;
+      const d = (ember ? 1.6 : 2.6) + Math.random() * 2.2;
       html += `<i${gl ? ' class="gl"' : ''} style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--s:${sz}px;--sc:${cols[i % cols.length]};` +
         `--dx:${((Math.random() - 0.5) * 40).toFixed(0)}px;--dy:${-(ember ? 120 + Math.random() * 120 : 50 + Math.random() * 70).toFixed(0)}px;` +
         `animation-duration:${d.toFixed(2)}s;animation-delay:${(-Math.random() * d).toFixed(2)}s"></i>`;
