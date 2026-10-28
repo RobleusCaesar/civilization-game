@@ -21,9 +21,10 @@ const PATCH_NOTES = [
   {
     build: 103, date: '2026-10-28', title: 'A calmer victory screen, in testing',
     items: [
-      'The victory and defeat screens no longer list every card you played, so they breathe.',
+      'On a phone the victory and defeat screens are calmer: the list of cards you played and the cards in your deck box are gone, and the deck count stays in the corner.',
       'The title, the card, your score and the Claim button now sit evenly spaced inside the frame, with Claim no longer pushed to the bottom edge.',
       'On a phone the Leaderboard is the small podium button beside Claim, so it is always on screen.',
+      'A wide screen keeps the cards you played and your deck count beside the card.',
     ],
   },
   {
