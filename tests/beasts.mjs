@@ -778,6 +778,11 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
          HULL BY HULL         every hull the deep takes is drawn after the
                               take — its own sprite, heeling over — with a
                               splash where it goes down
+         SMOOTH WATER         the foam, spray, rings and whirl the deep
+                              throws are drawn at the device's own resolution
+                              (the operator's ruling on the effects): no
+                              light cell filled in its acts; the beast's own
+                              cells (its arm, the eye in its socket) are art
          FRAMED, HANDED BACK  from a player's zoom of 0.8 the view goes in on
                               the deep (1.3+); the sky's head comes up out of
                               real water, its waterline in the open band; and
@@ -845,6 +850,40 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
         return di.call(this, img, ...rest);
       };
       if (ds) R.drawSplash = function (gg, x, y, t) { const h = nearHull(x); if (h && t >= 0 && t < 0.8) (splashes[h.id] = splashes[h.id] || []).push(tNow); return ds.apply(this, arguments); };
+      /* THE WATER IT THROWS IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the
+         operator's ruling, 2026-10-27): inside the deep's acts — the world's
+         (R.drawKrakenAct, R.drawSplash) and the card's (its sky and its
+         world draw) — no LIGHT is filled as a square cell: the foam, the
+         spray, the rings rolling out and the whirl are smooth (R.fxFoam /
+         R.fxDrop), never 2px dots. What is drawn in cells is the BEAST — its
+         arm, the eye in its socket, the lids over the art's own eyes — and
+         stays pixel art. */
+      const lightC = c => {
+        c = String(c); let m = /^#([0-9a-f]{6})$/i.exec(c), r, gg, bb;
+        if (m) { const n = parseInt(m[1], 16); r = n >> 16; gg = (n >> 8) & 255; bb = n & 255; }
+        else if ((m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c))) { r = +m[1]; gg = +m[2]; bb = +m[3]; }
+        else return false;
+        return 0.299 * r + 0.587 * gg + 0.114 * bb >= 150;
+      };
+      const water = { cells: 0, smooth: 0 }, wraps = [];
+      let inAct = 0, inArt = 0;
+      const wrapOn = (o, k, art) => {
+        const f = o && o[k]; if (typeof f !== 'function') return;
+        o[k] = function () { if (art) inArt++; else inAct++; try { return f.apply(this, arguments); } finally { if (art) inArt--; else inAct--; } };
+        wraps.push(() => { o[k] = f; });
+      };
+      wrapOn(R, 'drawKrakenAct'); wrapOn(R, 'drawSplash'); wrapOn(KC.show || {}, 'draw'); wrapOn(KC, 'draw');
+      wrapOn(KC, 'arm', true); wrapOn(KC, 'eye', true);
+      for (const k of ['fxFoam', 'fxDrop']) { const f = R[k]; if (typeof f !== 'function') continue; R[k] = function () { if (inAct) water.smooth++; return f.apply(this, arguments); }; wraps.push(() => { R[k] = f; }); }
+      const gfr = g.fillRect;
+      g.fillRect = function (x, y, w, h) {
+        if (inAct && !inArt) {
+          const Tm = this.getTransform(), dw = Math.abs(w * Tm.a), dh = Math.abs(h * Tm.d);
+          if (dw > 0 && Math.abs(dw - dh) < 0.01 && lightC(this.fillStyle)) water.cells++;
+        }
+        return gfr.apply(this, arguments);
+      };
+      wraps.push(() => { g.fillRect = gfr; });
       const zs = [], sky = [];
       try {
         Deck._add('krakens_call', 1);
@@ -883,7 +922,8 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
         }
         S.kraken.ev = null;
         out.worldBody = { ...body };
-      } finally { R.drawKrakenBody = dkb; R.unitSprite = us; g.drawImage = di; if (ds) R.drawSplash = ds; probeOn = false; if (S.kraken) S.kraken.ev = null; }
+      } finally { for (const un of wraps.reverse()) un(); R.drawKrakenBody = dkb; R.unitSprite = us; g.drawImage = di; if (ds) R.drawSplash = ds; probeOn = false; if (S.kraken) S.kraken.ev = null; }
+      out.water = water;
       // WATER, NOT ICE: the arm's blow frames, laid on the board one by one
       const world = () => g.setTransform(R.cam.z * dpr, 0, 0, R.cam.z * dpr, -R.cam.x * R.cam.z * dpr, -R.cam.y * R.cam.z * dpr);
       const pale = [];
@@ -928,6 +968,8 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
         `pale shard px on frames 7-10: ${k.pale.join('/')}; a blow on the sea: ${k.seaBlow.calls} splash, ${k.seaBlow.ramp} px in the water's ramp`);
       ck('everyHullTakenIsSeenSeizedAndGoesDownInASplash', k.taken.length === 3 && k.seized.every(n => n >= 3) && k.splashed.every(n => n >= 3),
         `taken ${k.taken.length}; heeling-over draws after the take ${k.seized.join('/')}; splash frames ${k.splashed.join('/')}`);
+      ck('theWaterItThrowsIsDrawnAtTheDevicesOwnResolution', k.water.smooth > 0 && k.water.cells === 0,
+        `${k.water.smooth} smooth foam and spray draws; ${k.water.cells} light cells filled in the deep's acts`);
       ck('theViewGoesInOnTheDeepAndIsHandedBack', k.knows && k.zMin != null && k.zMin >= 1.25 && k.back,
         `knows ${k.knows}; zoom through the sky's moment from 0.8: ${k.zMin}; handed back ${k.back}`);
       ck('theHeadComesUpOutOfRealWaterInTheOpenBand', k.headOnWater && k.sky && k.band && k.sky.lo >= k.band.top && k.sky.hi <= k.band.bot,

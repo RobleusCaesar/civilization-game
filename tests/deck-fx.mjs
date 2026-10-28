@@ -1082,9 +1082,12 @@ await p.evaluate(() => {
       mid: !held((B.FOG0 || 4.25) + (B.FOG || 0.8) * 0.5, near) && held((B.FOG0 || 4.25) + (B.FOG || 0.8) * 0.5, far),
       end: !held((B.FOG0 || 4.25) + (B.FOG || 0.8), far),
     };
-    const radii = new Set();
-    if (PF.released) for (let t = (B.FOG0 || 4.25); t <= (B.FOG0 || 4.25) + (B.FOG || 0.8); t += 0.02) { s.t = t; radii.add(PF.released(s).toFixed(3)); }
+    // (the operator's ruling on the effects, 2026-10-27: the fog ROLLS back
+    // behind a soft front — it stepped back in five to eight hard rings)
+    const radii = new Set(), seq = [];
+    if (PF.released) for (let t = (B.FOG0 || 4.25); t <= (B.FOG0 || 4.25) + (B.FOG || 0.8); t += 0.02) { s.t = t; const rr = PF.released(s); radii.add(rr.toFixed(3)); seq.push(rr); }
     out.radii = radii.size;
+    out.rolls = seq.length > 1 && seq.every((v, i) => i === 0 || v >= seq[i - 1]);
     // the dark it draws over the charted ground is ONE path, never a rect per run
     let rects = 0, fills = 0;
     const fr = CanvasRenderingContext2D.prototype.fillRect, fl = CanvasRenderingContext2D.prototype.fill;
@@ -1101,8 +1104,8 @@ await p.evaluate(() => {
     `a far charted tile: ${r.miniLanding} landing, ${r.miniAfter} once the fog is back; the relic's middle ${r.xLanding} → ${r.xAfter}`);
   ck('theHideRollsBackUpNeverFades', r.noAlpha && r.rolls, r.hide);
   ck('theSeaIsWashedAndInkedInWaves', r.waves > 40 && r.wash > 200, `${r.waves} wave pixels, ${r.wash} washed`);
-  ck('theViewGoesToTheXAndTheFogStepsBackFromTheHall', r.atX && r.steps && r.steps.before && r.steps.mid && r.steps.end && r.radii >= 5 && r.radii <= 8,
-    `the X on screen after the pan ${r.atX}; held before ${r.steps && r.steps.before}, near released / far held mid-way ${r.steps && r.steps.mid}, all released at the end ${r.steps && r.steps.end}; ${r.radii} hard rings`);
+  ck('theViewGoesToTheXAndTheFogRollsBackFromTheHall', r.atX && r.steps && r.steps.before && r.steps.mid && r.steps.end && r.radii >= 20 && r.rolls,
+    `the X on screen after the pan ${r.atX}; held before ${r.steps && r.steps.before}, near released / far held mid-way ${r.steps && r.steps.mid}, all released at the end ${r.steps && r.steps.end}; the front at ${r.radii} distinct radii, never back ${r.rolls}`);
   ck('andTheDarkOverTheChartedGroundIsOnePath', r.paths && r.paths.rects === 0 && r.paths.fills === 1, JSON.stringify(r.paths));
 }
 

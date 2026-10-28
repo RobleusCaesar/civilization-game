@@ -66,20 +66,35 @@
   };
   const FIRE = () => ART.PALETTE.fire;   // ['#a33f1c', '#e88a3a', '#f2c14a', '#ffe9a0']
 
-  /* A column of flame in hard pixels: slices every 2px from the foot up,
-     an outer orange, an inner gold and a white-hot heart, each slice swaying
-     on its own phase. `h` and `w` in world px. */
-  const flame = (g, x, y, h, w, t, seed) => {
-    if (h < 2) return;
-    const F = FIRE();
-    for (let yy = 0; yy < h; yy += 2) {
-      const k = yy / h, sway = Math.sin(t * 9 + k * 7 + seed) * (1.5 + k * 4) + Math.sin(t * 13 + seed * 2.1 + k * 3) * k * 2;
-      const wd = w * Math.pow(1 - k, 0.85);
-      const cx = x + sway, py = snap(y - yy - 2);
-      if (wd >= 2) { g.fillStyle = k > 0.78 ? F[0] : F[1]; g.fillRect(snap(cx - wd / 2), py, Math.max(2, snap(wd)), 2); }
-      if (k < 0.75 && wd * 0.62 >= 2) { g.fillStyle = F[2]; g.fillRect(snap(cx - wd * 0.31), py, Math.max(2, snap(wd * 0.62)), 2); }
-      if (k < 0.45 && wd * 0.3 >= 2) { g.fillStyle = F[3]; g.fillRect(snap(cx - wd * 0.15), py, Math.max(2, snap(wd * 0.3)), 2); }
-    }
+  /* THE ACTS' EFFECTS ARE DRAWN AT THE DEVICE'S OWN RESOLUTION (operator
+     ruling, 2026-10-27: "can you improve the quality of the map special
+     effects… the rays are pixelated again… higher pixel count"). The world's
+     ART stays pixel art — a building, a soldier, the hide's charcoal map, the
+     seal cut from the card's own painting, the war banner, a hearth's stones
+     — but every LIGHT these acts throw (fire, sparks, rings, rays, the sun,
+     the moon's shadow, a vignette), every mark (an X, a bracket, an eye, a
+     thread), and the water they churn (foam, spray) is a smooth antialiased
+     path at FRACTIONAL coordinates — through the shared helpers (R.fxGlow /
+     fxRing / fxRays / fxSpark / fxDot / fxLight, js/render.js; R.fxFlame /
+     fxFoam / fxDrop / fxPuff / fxChunk, js/beasts.js), whose hue pass keeps
+     a warm light gold and never the meadow's lime — never a 2px cell, a
+     stepped dither or a small canvas blown up nearest-neighbour. Every one
+     is GUARDED ON THE METHOD IT CALLS (a cached older render.js / beasts.js
+     beside a fresh copy of this file stands the effect down, never throws). */
+  const fxCall = (name, ...a) => { if (window.R && typeof R[name] === 'function') R[name](...a); };
+  // a tongue of flame (R.fxFlame): `h` and `w` in world px, `a` its strength
+  const flame = (g, x, y, h, w, t, seed, a) => { if (h >= 1) fxCall('fxFlame', g, x, y, h, w, t, seed, a == null ? 1 : a); };
+  // a war red, the pact's drum's own light
+  const WAR_RED = { hue: '#c0301c', faint: '#a02816', ramp: ['#8e1c12', '#c8402a', '#f07a4a', '#ffc49a'], hot: '#ffe6d6' };
+  // a rgba() string for a colour at an alpha
+  const rgba = (rgb, a) => 'rgba(' + rgb + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')';
+  // a mark's stroke: an ink edge under a coloured line, both in world px at the device's own resolution
+  const inked = (g, path, col, w, ink, iw) => {
+    g.save();
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    path(); g.strokeStyle = ink || '#1b1410'; g.lineWidth = w + (iw == null ? 2 : iw); g.stroke();
+    path(); g.strokeStyle = col; g.lineWidth = w; g.stroke();
+    g.restore();
   };
 
   /* ================= A BORROWED VIEW =================
@@ -406,31 +421,35 @@
   };
 
   /* the fog as it stood before a card lifted it, drawn back over the tiles
-     it hid until a FRONT has passed them — the fog rolling back. `cover(tx,
-     ty)` is the front's verdict for an 8px block's centre (in tiles). Rows of
-     whole tiles are merged into one rect; only tiles the front is crossing
-     are cut into 8px blocks. */
-  /* ONE PATH, ONE FILL (the playtest: a faint tile grid showed over the
+     it hid until a FRONT has passed them — the fog rolling back, a circle
+     growing from (ox, oy) to radius `rf` (tiles). THE FRONT IS SOFT (the
+     operator's ruling on the effects): one radial falloff `soft` tiles deep,
+     clear inside it and the fog's whole `col` ("r,g,b" at `al`) beyond — at
+     the device's own resolution, never a front cut into 8px blocks.
+     ONE PATH, ONE FILL (the playtest: a faint tile grid showed over the
      unexplored black while the fog rolled back). Filled rect by rect, every
      tile's edge falls on a fractional device pixel at the play zoom and is
      anti-aliased on its own — and two half-covered edges side by side let
      the ground through as a hairline seam round every tile. Gathered into
      one path and filled once, the shared edges are one coverage and the
-     black is whole. */
-  const fogBack = (g, tiles, col, front) => {
+     black is whole. A tile wholly inside the cleared disc is left out. */
+  const fogBack = (g, tiles, rgb, al, ox, oy, rf, soft) => {
     if (!tiles || !tiles.length) return;
-    const TL = CFG.TILE, W = CFG.W, v = view(1), B = 8, nb = TL / B;
-    g.fillStyle = col;
+    const TL = CFG.TILE, W = CFG.W, v = view(1), r0 = Math.max(0, rf - soft / 2);
     g.beginPath();
+    let any = false;
     for (const i of tiles) {
       const tx = i % W, ty = (i / W) | 0;
       if (!inView(v, tx, ty)) continue;
-      const f = front(tx + 0.5, ty + 0.5, 0.75);
-      if (f === 1) { g.rect(tx * TL, ty * TL, TL, TL); continue; }
-      if (f === 0) continue;
-      for (let by = 0; by < nb; by++) for (let bx = 0; bx < nb; bx++)
-        if (front(tx + (bx + 0.5) / nb, ty + (by + 0.5) / nb, 0) === 1) g.rect(tx * TL + bx * B, ty * TL + by * B, B, B);
+      // its farthest corner from the middle: inside the clear disc, the tile is clear
+      const fx0 = Math.max(Math.abs(tx - ox), Math.abs(tx + 1 - ox)), fy0 = Math.max(Math.abs(ty - oy), Math.abs(ty + 1 - oy));
+      if (Math.hypot(fx0, fy0) < r0) continue;
+      g.rect(tx * TL, ty * TL, TL, TL); any = true;
     }
+    if (!any) return;
+    const gr = g.createRadialGradient(ox * TL, oy * TL, r0 * TL, ox * TL, oy * TL, (r0 + soft) * TL);
+    for (let k = 0; k <= 8; k++) { const u = k / 8; gr.addColorStop(u, rgba(rgb, al * u * u * (3 - 2 * u))); }
+    g.fillStyle = gr;
     g.fill();
   };
 
@@ -540,17 +559,13 @@
           // ring the card charted; the fire stands on its seat beside it) to
           // the land's edge
           const ox = s.rx != null ? s.rx : s.x, oy = s.ry != null ? s.ry : s.y;
-          const rf = this.R * 1.05 * ease(p / 0.62);
-          const front = (fx, fy, m) => {
-            const d = Math.hypot(fx - ox, fy - oy);
-            return d > rf + m ? 1 : d < rf - m ? 0 : 0.5;
-          };
-          fogBack(g, s.dark, '#0d0b08', front);
-          fogBack(g, s.dim, 'rgba(16,16,22,0.45)', front);
+          const rf = this.R * 1.05 * ease(p / 0.62), SOFT = 1.4;
+          fogBack(g, s.dark, '13,11,8', 1, ox, oy, rf, SOFT);
+          fogBack(g, s.dim, '16,16,22', 0.45, ox, oy, rf, SOFT);
           // a relic the fire found is shown once the fog has rolled back off it
           if (s.found && s.found.length && S.relic) {
             const r = S.relic;
-            if (front(r.x + r.w / 2, r.y + r.h / 2, 0.5) === 0 || p > 0.7) { for (const q of s.found) if (R[q.f]) R[q.f].apply(R, q.a); s.found = null; }
+            if (Math.hypot(r.x + r.w / 2 - ox, r.y + r.h / 2 - oy) < rf - SOFT / 2 || p > 0.7) { for (const q of s.found) if (R[q.f]) R[q.f].apply(R, q.a); s.found = null; }
           }
           // a view stepped back to fit the ring while aiming is handed back as the moment ends
           if (s.zoom && !s.zoomDone && p >= 0.78) {
@@ -563,48 +578,37 @@
               if (q >= 1) s.zoomDone = true;
             }
           }
-          g.save();
-          // the ring of firelight riding the front, in the fire's own ink —
-          // opaque bronze dots (added over the meadow they rode in as lime)
-          if (p < 0.7 && R.inkOn(g, 0.9 * (1 - p / 0.7), 'bronze'))
-            ring(g, ox * TL, oy * TL, rf * TL, Math.max(24, Math.round(rf * 9)), 1);
-          g.restore();
+          // the ring of firelight riding the front: a smooth ring of the
+          // fire's light (R.fxRing — its hue tied to it, so it lies gold on
+          // the meadow, never lime), thinning as it rolls out. It is born OUT
+          // of the fire's reach (past ~1.3 tiles): a ring of light sweeping
+          // the ground at its foot would read as a pool laid round it
+          const ringA = 0.9 * (1 - p / 0.7) * c01((rf - 1.3) / 0.8);
+          if (p < 0.7 && ringA > 0) fxCall('fxRing', g, ox * TL, oy * TL, rf * TL, ringA, 'bronze', { css: 1.2 + 2.2 * (1 - p / 0.7) });
           // NO LIGHT POOLED ON THE GROUND (a warm glow over the meadow reads
           // as sand; the first cut's catch was a flat orange disc two and a
           // half tiles across with a soft white glow at its base — the
           // playtest's critics): the fire lights only itself and its embers.
-          // The catch is a burst of embers thrown out of the kindling, hard
-          // pixels of the fire's own colours, dying down its ramp
-          if (t < 0.45) {
-            const F0 = FIRE();
-            for (let k = 0; k < 18; k++) {
-              const a = -Math.PI * (0.05 + 0.9 * rnd(k, 31)), v = 40 + rnd(k, 37) * 70, age = t - rnd(k, 41) * 0.08;
-              if (age < 0) continue;
-              const ex = x + Math.cos(a) * v * age, ey = y - 4 - Math.sin(a) * v * age + 120 * age * age;
-              g.fillStyle = F0[age < 0.12 ? 3 : age < 0.25 ? 2 : age < 0.36 ? 1 : 0];
-              g.fillRect(snap(ex), snap(Math.min(y + 2, ey)), 2, 2);
-            }
+          // The catch is a burst of embers thrown out of the kindling — soft
+          // beads of the fire's light (R.fxDot), each dying as it flies
+          if (t < 0.45) for (let k = 0; k < 18; k++) {
+            const a = -Math.PI * (0.05 + 0.9 * rnd(k, 31)), v = 40 + rnd(k, 37) * 70, age = t - rnd(k, 41) * 0.08;
+            if (age < 0) continue;
+            const ex = x + Math.cos(a) * v * age, ey = y - 4 - Math.sin(a) * v * age + 120 * age * age;
+            fxCall('fxDot', g, ex, Math.min(y + 2, ey), k % 3 ? 1 : 1.4, 1 - age / 0.45, age < 0.18 ? 'gold' : 'bronze');
           }
           // the pillar: up in a breath, held, then settling to a watch fire
           const H = p < 0.12 ? 3.8 * ease(p / 0.12) : p < 0.5 ? 3.8 : 3.8 - 2.6 * ease((p - 0.5) / 0.5);
           const Wd = TL * (p < 0.5 ? 0.95 : 0.95 - 0.45 * ease((p - 0.5) / 0.5));
           flame(g, x, y, H * TL, Wd, t, 1.7);
-          // sparks thrown up off the pillar's head: the fire's own colours, and
-          // as each dies it goes down the bronze ink, opaque (R.inkFade) — a
-          // spark half-faded over the meadow was a lime one
-          g.save();
-          const F = FIRE();
+          // sparks thrown up off the pillar's head, each dying as it rises
           for (let k = 0; k < 30; k++) {
             const t0 = (k / 30) * 1.5, age = t - t0;
             if (age < 0 || age > 1.1) continue;
             const vx = (rnd(k, 1) - 0.5) * 70, vy = 50 + rnd(k, 2) * 90;
             const sx = x + vx * age + Math.sin(age * 6 + k) * 4, sy = y - H * TL * 0.7 - vy * age + 30 * age * age;
-            const [c, ca] = R.inkFade(k % 3 ? F[3] : F[2], qa(1 - age / 1.1), 'bronze');
-            if (ca <= 0) continue;
-            g.fillStyle = c; g.globalAlpha = ca;
-            g.fillRect(snap(sx), snap(sy), 2, 2);
+            fxCall('fxDot', g, sx, sy, k % 3 ? 1 : 1.3, 1 - age / 1.1, k % 3 ? 'gold' : 'bronze');
           }
-          g.restore();
         },
       },
       /* the watch fire, burning on for the 3 days at every hill lit: a ring
@@ -627,33 +631,22 @@
           g.fillStyle = '#3a2614';
           for (let d = -6; d <= 6; d += 2) { g.fillRect(snap(x + d), snap(y - 2 + d * 0.3), 2, 4); g.fillRect(snap(x + d), snap(y - 2 - d * 0.3), 2, 4); }
           g.fillStyle = '#6e4a26'; g.fillRect(snap(x - 6), snap(y - 4), 4, 2); g.fillRect(snap(x + 4), snap(y - 4), 4, 2);
-          // embers in the bed, light ADDED — the bed only, never the ground
-          g.save(); g.globalCompositeOperation = 'lighter';
-          for (let n = 0; n < 5; n++) {
-            g.fillStyle = 'rgba(255,' + (120 + n * 20) + ',40,' + qa((0.5 + 0.5 * Math.sin(t * 7 + n * 2.1 + sd)) * k) + ')';
-            g.fillRect(snap(x - 6 + n * 3), snap(y - 2), 2, 2);
-          }
-          g.restore();
+          // embers in the bed, glowing on their own beats — soft beads of the
+          // fire's light in the bed only, never laid over the ground
+          for (let n = 0; n < 5; n++) fxCall('fxDot', g, x - 5 + n * 2.6, y - 1, 0.8, (0.5 + 0.5 * Math.sin(t * 7 + n * 2.1 + sd)) * k, n % 2 ? 'gold' : 'bronze');
           // three tongues
           flame(g, x - 4, y - 2, TL * (0.75 + 0.12 * Math.sin(t * 6 + sd)) * k, TL * 0.3 * k, t * 1.1, sd + 2.1);
           flame(g, x + 4, y - 2, TL * (0.7 + 0.12 * Math.sin(t * 5.3 + sd)) * k, TL * 0.28 * k, t * 0.93, sd + 4.4);
           flame(g, x, y - 2, TL * (1.15 + 0.18 * Math.sin(t * 4.6 + sd)) * k, TL * 0.42 * k, t, sd);
-          // sparks going up, dying down the bronze ink (never added over the meadow)
-          g.save();
+          // sparks going up, each dying as it rises
           for (let n = 0; n < 7; n++) {
             const ph = (t * 0.7 + n / 7 + (sd % 1)) % 1;
-            const [c, ca] = R.inkFade(n % 2 ? F[3] : F[2], qa((1 - ph) * k), 'bronze');
-            if (ca <= 0) continue;
-            g.fillStyle = c; g.globalAlpha = ca;
-            g.fillRect(snap(x + Math.sin(ph * 7 + n * 1.7) * 6 * ph + (rnd(n, pt.x) - 0.5) * 8), snap(y - TL * 0.9 - ph * TL * 1.4), 2, 2);
+            fxCall('fxDot', g, x + Math.sin(ph * 7 + n * 1.7) * 6 * ph + (rnd(n, pt.x) - 0.5) * 8, y - TL * 0.9 - ph * TL * 1.4, 0.9, (1 - ph) * k, n % 2 ? 'gold' : 'bronze');
           }
-          g.restore();
-          // a thread of smoke above
+          // a thread of smoke above, soft puffs thinning as they climb
           for (let n = 0; n < 7; n++) {
             const ph = (t * 0.3 + n / 7) % 1;
-            g.fillStyle = 'rgba(96,92,86,' + qa(0.55 * (1 - ph) * k) + ')';
-            const w = 2 + (ph > 0.45 ? 2 : 0);
-            g.fillRect(snap(x + Math.sin(ph * 5 + n) * 4 * ph + ph * 8), snap(y - TL * 1.5 - ph * TL * 1.8), w, w);
+            fxCall('fxPuff', g, x + Math.sin(ph * 5 + n) * 4 * ph + ph * 8, y - TL * 1.5 - ph * TL * 1.8, 1.6 + ph * 3.2, '96,92,86', 0.5 * (1 - ph) * k);
           }
         }
       },
@@ -738,20 +731,24 @@
       /* THE BEATS OF THE MOMENT (seconds into the show): the hide unrolls and
          the charcoal draws the world, the X is struck and HELD, the hide ROLLS
          BACK UP (never an alpha fade over the town), the view goes to the X —
-         and then the fog STEPS back on the main view, from the hall outward,
-         in hard rings. The minimap keeps the world dark until the same rings
-         reach it (holdMini): the landing frame gives nothing away. */
-      BEAT: { X: 2.05, HOLD: 2.35, LIFT: 3.1, ROLL: 0.6, PAN0: 3.45, PAN: 0.7, FOG0: 4.25, FOG: 0.8, STEPS: 6 },
-      // how far from the hall the fog has stepped back (tiles): -1 before it starts
+         and then the fog ROLLS back on the main view, from the hall outward,
+         behind a soft front (the operator's ruling on the effects: no hard
+         rings, no dithered checker). The minimap keeps the world dark until
+         the same front reaches it (holdMini): the landing frame gives nothing
+         away. */
+      BEAT: { X: 2.05, HOLD: 2.35, LIFT: 3.1, ROLL: 0.6, PAN0: 3.45, PAN: 0.7, FOG0: 4.25, FOG: 0.8 },
+      FRONT: 1.6,   // how deep the fog's soft front is (tiles)
+      // how far from the hall the fog has rolled back (tiles): -1 before it starts
       released(s) {
         const B = this.BEAT, T = s.t;
         if (T < B.FOG0) return -1;
         const q = Math.min(1, (T - B.FOG0) / B.FOG);
-        return Math.ceil(q * B.STEPS - 1e-9) / B.STEPS * (s.rmax || 0);
+        return (q * q * (3 - 2 * q)) * ((s.rmax || 0) + this.FRONT);
       },
+      // a tile still dark: its middle beyond the middle of the soft front
       held(s, i) {
         const r = this.released(s), W = CFG.W;
-        return r < 0 || Math.hypot((i % W) + 0.5 - s.hx, ((i / W) | 0) + 0.5 - s.hy) > r;
+        return r < 0 || Math.hypot((i % W) + 0.5 - s.hx, ((i / W) | 0) + 0.5 - s.hy) > r - this.FRONT / 2;
       },
       live() { return window.R && R.cardShows ? R.cardShows.find(z => z.id === 'pathfinders_map') : null; },
       // the minimap's share: what the map has not yet given back stays dark (R.drawMini → Deck.drawMini)
@@ -771,17 +768,17 @@
         const v = view(2);
         if (!inView(v, r.x, r.y) && !inView(v, r.x + r.w, r.y + r.h)) return;
         const t = performance.now() / 1000, br = 0.5 + 0.5 * Math.sin(t * 2.4);
-        // the breathing ring, in the gold's ink (opaque: it lies on ground the
-        // player may know, where gold added went lime)
+        // the breathing ring: a smooth ring of gold light (R.fxRing — its hue
+        // tied to its light, so it is gold over the meadow, never lime)
+        fxCall('fxRing', g, cx, cy, TL * (0.95 + 0.12 * br) * Math.max(1, r.w / 2), 0.55 + 0.35 * br, 'gold', { css: 2 + 0.6 * br });
+        // the X: two strokes of gold in a dark edge, with a drop shadow — a
+        // mark at the device's own resolution, never a stair of 4px cells
+        const arm = Math.max(10, TL * 0.42 * Math.max(1, r.w / 2)), w = 3.6;
+        const X = (ox, oy) => () => { g.beginPath(); g.moveTo(cx - arm + ox, cy - arm + oy); g.lineTo(cx + arm + ox, cy + arm + oy); g.moveTo(cx - arm + ox, cy + arm + oy); g.lineTo(cx + arm + ox, cy - arm + oy); };
         g.save();
-        if (R.inkOn(g, 0.5 + 0.4 * br)) ring(g, cx, cy, TL * (0.95 + 0.12 * br) * Math.max(1, r.w / 2), 20, 1);
+        X(2, 2)(); g.lineCap = 'round'; g.strokeStyle = 'rgba(58,36,16,0.85)'; g.lineWidth = w + 1.5; g.stroke();
         g.restore();
-        const arm = Math.max(10, TL * 0.42 * Math.max(1, r.w / 2));
-        for (let k = -arm; k <= arm; k += 2) {
-          g.fillStyle = '#3a2410'; g.fillRect(snap(cx + k) + 2, snap(cy + k) + 2, 4, 4); g.fillRect(snap(cx + k) + 2, snap(cy - k) + 2, 4, 4);
-        }
-        g.fillStyle = br > 0.5 ? '#ffd45e' : '#e8c15a';
-        for (let k = -arm; k <= arm; k += 2) { g.fillRect(snap(cx + k), snap(cy + k), 4, 4); g.fillRect(snap(cx + k), snap(cy - k), 4, 4); }
+        inked(g, X(0, 0), br > 0.5 ? '#ffd45e' : '#ecc45a', w, '#3a2410', 1.6);
       },
       show: {
         ms: 5200, layers: ['world', 'sky'],
@@ -791,39 +788,34 @@
             /* the fog over every tile it charts until its ring comes — ONE
                path, filled once (a rect per run, each edge anti-aliased on its
                own at the play zoom, drew a faint tile grid over the dark) */
-            const TL = CFG.TILE, W = CFG.W, v = view(1), m = s.mask, r = this.released(s), FRONT = 1.6;
-            // the solid dark, and — just beyond the ring — a dithered front, so
-            // the fog is seen to STEP back rather than blocks to vanish
-            for (const front of [false, true]) {
-              if (front && r < 0) break;
-              g.beginPath();
-              let any = false;
-              for (let ty = Math.max(0, v.y0 | 0); ty <= Math.min(CFG.H - 1, Math.ceil(v.y1)); ty++) {
-                let run0 = -1;
-                for (let tx = Math.max(0, v.x0 | 0); tx <= Math.min(W, Math.ceil(v.x1) + 1); tx++) {
-                  const d = tx < W && m[ty * W + tx] ? (r < 0 ? 1e9 : Math.hypot(tx + 0.5 - s.hx, ty + 0.5 - s.hy) - r) : -1;
-                  const on = d > 0 && (front ? d <= FRONT : d > FRONT);
-                  if (on && run0 < 0) run0 = tx;
-                  if (!on && run0 >= 0) { g.rect(run0 * TL, ty * TL, (tx - run0) * TL, TL); any = true; run0 = -1; }
-                }
+            const TL = CFG.TILE, W = CFG.W, v = view(1), m = s.mask, F = this.FRONT, r = this.released(s), r0 = r - F;
+            /* the dark, ONE path filled once — and once it starts rolling back,
+               filled through ONE radial falloff from the hall: clear inside
+               the front, the fog's whole black `F` tiles beyond it — a smooth
+               edge at the device's own resolution, never a dithered checker */
+            g.beginPath();
+            let any = false;
+            const far = (tx, ty) => Math.hypot(Math.max(Math.abs(tx - s.hx), Math.abs(tx + 1 - s.hx)), Math.max(Math.abs(ty - s.hy), Math.abs(ty + 1 - s.hy)));
+            for (let ty = Math.max(0, v.y0 | 0); ty <= Math.min(CFG.H - 1, Math.ceil(v.y1)); ty++) {
+              let run0 = -1;
+              for (let tx = Math.max(0, v.x0 | 0); tx <= Math.min(W, Math.ceil(v.x1) + 1); tx++) {
+                const on = tx < W && !!m[ty * W + tx] && (r < 0 || far(tx, ty) > r0);
+                if (on && run0 < 0) run0 = tx;
+                if (!on && run0 >= 0) { g.rect(run0 * TL, ty * TL, (tx - run0) * TL, TL); any = true; run0 = -1; }
               }
-              if (!any) continue;
-              g.fillStyle = front ? this.dither(g) : '#0d0b08';
-              g.fill();
             }
+            if (!any) return;
+            if (r < 0) g.fillStyle = '#0d0b08';
+            else {
+              const gr = g.createRadialGradient(s.hx * TL, s.hy * TL, Math.max(0, r0) * TL, s.hx * TL, s.hy * TL, Math.max(0.01, r) * TL);
+              for (let k = 0; k <= 8; k++) { const u = k / 8; gr.addColorStop(u, rgba('13,11,8', u * u * (3 - 2 * u))); }
+              g.fillStyle = gr;
+            }
+            g.fill();
             return;
           }
           this.hide(g, s, p);
         },
-      },
-      // a hard checker of the dark, two world pixels a cell (the fog's front)
-      dither(g) {
-        if (!this._dith) {
-          const c = document.createElement('canvas'); c.width = c.height = 4;
-          const x = c.getContext('2d'); x.fillStyle = '#0d0b08'; x.fillRect(0, 0, 2, 2); x.fillRect(2, 2, 2, 2);
-          this._dith = c;
-        }
-        return g.createPattern(this._dith, 'repeat');
       },
       /* AFTER THE HIDE: the view goes to the X (or the nearest new ground) so
          the fog is SEEN stepping back — eased over PAN, and given up the
@@ -912,8 +904,9 @@
         const roll = T < LIFT ? 0 : Math.min(1, (T - LIFT) / B.ROLL);
         if (roll >= 1) return;
         const un = T < LIFT ? Math.max(1, Math.round(s.aw * ease(T / 0.76))) : Math.max(0, Math.round(s.aw * (1 - roll * roll)));
-        // the world goes quiet behind the hide, and comes back in hard steps as it rolls
-        g.fillStyle = 'rgba(8,6,4,' + qa(0.45 * Math.min(1, T / 0.3) * (1 - roll), 4) + ')';
+        // the world goes quiet behind the hide, and comes back smoothly as it
+        // rolls (no strength stepped in quarters: the operator's ruling on the effects)
+        g.fillStyle = rgba('8,6,4', 0.45 * Math.min(1, T / 0.3) * (1 - roll));
         g.fillRect(0, 0, W, H);
         const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
         if (un > 0) {
@@ -924,10 +917,9 @@
           // the charcoal draws itself, west to east, a nib glinting at its tip
           const dr = Math.min(un, Math.round(s.aw * ease((T - 0.53) / 1.6)));
           if (dr > 0) g.drawImage(s.ink, 0, 0, dr, s.ah, x0, y0, dr * k, dh);
-          if (dr > 0 && dr < s.aw - 2 && T < 2.2) {
-            g.fillStyle = '#fff2c0';
-            g.fillRect(x0 + dr * k, y0 + Math.round((0.5 + 0.4 * Math.sin(T * 10.5)) * dh), k * 2, k * 2);
-          }
+          // (the nib's glint is light — a smooth four-point spark at the
+          // device's own resolution; the hide and its charcoal stay pixel art)
+          if (dr > 0 && dr < s.aw - 2 && T < 2.2) fxCall('fxSpark', g, x0 + dr * k + k, y0 + (0.5 + 0.4 * Math.sin(T * 10.5)) * dh + k, 5.5, 1, 'white', { diag: true });
           // a compass rose in the corner, inked as the drawing reaches it
           if (dr > s.aw * 0.8) {
             const qx = x0 + (s.aw - 14) * k, qy = y0 + 13 * k;
@@ -952,11 +944,11 @@
             }
             g.fillStyle = '#8e2e1e';
             for (let d = -arm; d <= arm; d += k) { g.fillRect(cx + d - k, cy + d - k, k * 2, k * 2); g.fillRect(cx + d - k, cy - d - k, k * 2, k * 2); }
-            // THE HELD BEAT: a ring of gold breathing round the X — opaque ink, two steps
+            // THE HELD BEAT: a ring of gold light breathing round the X —
+            // smooth, at the device's own resolution (R.fxRing)
             if (T > B.HOLD && T < LIFT) {
               const br = 0.5 + 0.5 * Math.sin((T - B.HOLD) * 9);
-              g.fillStyle = br > 0.5 ? '#ffd45e' : '#d8a030';
-              ring(g, cx, cy, arm * (1.9 + 0.25 * br) + k * 2, 22, 1, k);
+              fxCall('fxRing', g, cx, cy, arm * (1.9 + 0.25 * br) + k * 2, 0.7 + 0.3 * br, 'gold', { css: 2.2 + 0.8 * br });
             }
           }
           g.restore();
@@ -1100,12 +1092,13 @@
             const m = s.marks[i], ta = 0.14 + 0.4 * (n > 1 ? i / (n - 1) : 0), q = (p - ta) / 0.12;
             if (q < 0) continue;
             const mx = m.x * TL, my = m.y * TL;
+            // the thread from the eye: a string of soft gold beads (R.fxDot),
+            // reaching out as the mark is made — never 2px cells
             if (q < 1) {
-              g.fillStyle = '#ffd45e';
               const L = Math.hypot(mx - ex, my - ey), steps = Math.max(2, Math.floor(L / 10));
-              for (let k = 1; k < steps; k++) if (k / steps < q * 1.6 && (k + i) % 2 === 0) g.fillRect(snap(ex + (mx - ex) * k / steps), snap(ey + (my - ey) * k / steps), 2, 2);
+              for (let k = 1; k < steps; k++) if (k / steps < q * 1.6 && (k + i) % 2 === 0) fxCall('fxDot', g, ex + (mx - ex) * k / steps, ey + (my - ey) * k / steps, 0.9, 0.9 * (1 - q * 0.5), 'gold');
             }
-            const fadeM = p > 0.9 ? qa(1 - (p - 0.9) / 0.1) : 1;
+            const fadeM = p > 0.9 ? c01(1 - (p - 0.9) / 0.1) : 1;
             // the building LIGHTS UP in its own colours as its brackets land,
             // and is let back down to the map's memory in hard steps
             this.flashGhost(g, m, (q < 1 ? 1 : Math.max(0, 1 - (q - 1) * 0.35)) * fadeM);
@@ -1127,16 +1120,17 @@
         if (spr) R.blitBld(g, spr, m.bx * TL, m.by * TL, m.s * TL, m.s * TL);
         g.restore();
       },
-      // gold corner brackets round a footprint (tiles), snapping in from `pad` (0..1)
+      /* gold corner brackets round a footprint (tiles), snapping in from `pad`
+         (0..1): each an L of gold in a fine ink edge — a mark at the device's
+         own resolution (the operator's ruling on the effects), never cells */
       brackets(g, bx, by, s, pad) {
-        const TL = CFG.TILE, pd = 4 * Math.max(0, pad) * TL / 8, x0 = bx * TL - pd, y0 = by * TL - pd, x1 = (bx + s) * TL + pd, y1 = (by + s) * TL + pd, L = Math.max(6, TL * 0.3);
-        for (const [col, o] of [['#1b1410', 1], ['#ffd45e', 0]]) {
-          g.fillStyle = col;
+        const TL = CFG.TILE, pd = 4 * Math.max(0, pad) * TL / 8, x0 = bx * TL - pd + 1, y0 = by * TL - pd + 1, x1 = (bx + s) * TL + pd - 1, y1 = (by + s) * TL + pd - 1, L = Math.max(6, TL * 0.3);
+        inked(g, () => {
+          g.beginPath();
           for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
-            g.fillRect(snap(sx > 0 ? cx : cx - L) - o, snap(sy > 0 ? cy : cy - 2) - o, snap(L) + 2 * o, 2 + 2 * o);
-            g.fillRect(snap(sx > 0 ? cx : cx - 2) - o, snap(sy > 0 ? cy : cy - L) - o, 2 + 2 * o, snap(L) + 2 * o);
+            g.moveTo(cx + sx * L, cy); g.lineTo(cx, cy); g.lineTo(cx, cy + sy * L);
           }
-        }
+        }, '#ffd45e', 2, '#1b1410', 2);
       },
       /* MARKED FOR GOOD (the playtest: after the ten days the spied town was
          near-black ghosts, the only trace the minimap): every footprint the
@@ -1159,51 +1153,67 @@
         }
         g.globalAlpha = 1;
       },
+      /* an almond eye at (x, y): `hw` its half-width, `hh` its half-height
+         open (world px), its iris `ir` across looking `look` (-1..1) — drawn
+         as smooth paths at the device's own resolution: the white whole, the
+         iris clipped by the lids, an ink rim round it all. ONE drawing for
+         the great eye and the small mark over a spied soul. */
+      almond(g, x, y, hw, hh, ir, look, ink) {
+        const lid = () => {
+          g.beginPath();
+          g.moveTo(x - hw, y);
+          g.bezierCurveTo(x - hw * 0.55, y - hh * 1.3, x + hw * 0.55, y - hh * 1.3, x + hw, y);
+          g.bezierCurveTo(x + hw * 0.55, y + hh * 1.3, x - hw * 0.55, y + hh * 1.3, x - hw, y);
+          g.closePath();
+        };
+        g.save();
+        lid(); g.fillStyle = '#e9e2cf'; g.fill();
+        if (hh > 0.3) {
+          g.save(); lid(); g.clip();
+          const ix = x + look * hw * 0.33;
+          g.fillStyle = '#7a5418'; g.beginPath(); g.arc(ix, y, ir, 0, Math.PI * 2); g.fill();
+          const gr = g.createRadialGradient(ix - ir * 0.2, y - ir * 0.25, 0, ix, y, ir * 0.8);
+          gr.addColorStop(0, '#f4cc66'); gr.addColorStop(1, '#d8a838');
+          g.fillStyle = gr; g.beginPath(); g.arc(ix, y, ir * 0.79, 0, Math.PI * 2); g.fill();
+          g.fillStyle = '#120c08'; g.beginPath(); g.arc(ix, y, ir * 0.44, 0, Math.PI * 2); g.fill();
+          if (hh > hw * 0.3) { g.fillStyle = '#fff6d8'; g.beginPath(); g.arc(ix - ir * 0.42, y - ir * 0.42, ir * 0.13, 0, Math.PI * 2); g.fill(); }
+          g.restore();
+        }
+        lid(); g.lineJoin = 'round'; g.strokeStyle = '#1b1410'; g.lineWidth = ink; g.stroke();
+        g.restore();
+      },
       // a small eye: the mark over a spied soul
       pip(g, x, y, sc) {
-        const c = 2 * (sc || 1), x0 = snap(x - c * 3), y0 = snap(y - c);
-        g.fillStyle = '#1b1410';
-        g.fillRect(x0 + c, y0 - c, c * 4, c); g.fillRect(x0 + c, y0 + c * 2, c * 4, c);
-        g.fillRect(x0, y0, c, c * 2); g.fillRect(x0 + c * 5, y0, c, c * 2);
-        g.fillStyle = '#e9e2cf'; g.fillRect(x0 + c, y0, c * 4, c * 2);
-        g.fillStyle = '#d8a838'; g.fillRect(x0 + c * 2, y0, c * 2, c * 2);
-        g.fillStyle = '#120c08'; g.fillRect(x0 + c * 2 + c / 2, y0 + c / 2, c, c);
+        const c = 2 * (sc || 1);
+        this.almond(g, x, y, c * 2.9, c * 0.95, c * 1.05, 0, c * 0.6);
       },
-      /* the great eye: an almond of hard cells that opens, looks, and glows
-         gold. Painted one pixel a cell into its own small canvas and blown up
-         nearest-neighbour (the playtest: drawn as one fillRect a cell at a
-         fractional zoom, its white came apart into a NET of squares with dark
-         seams between them) */
-      _eyeCv: null,
+      /* the great eye: an almond that opens, looks, and glows gold — smooth
+         paths at the device's own resolution (the operator's ruling on the
+         effects; it used to be a small canvas of cells blown up
+         nearest-neighbour), its white one piece at any zoom (the playtest
+         found an earlier cut coming apart into a NET of squares), a halo of
+         gold rays (R.fxRays) round it */
       eye(g, x, y, open, p) {
-        x = snap(x); y = snap(y);
         const c = 4, HW = 12, look = p > 0.3 && p < 0.8 ? Math.sin((p - 0.3) / 0.5 * Math.PI * 2) : 0;
-        const t = performance.now() / 1000;
-        // its halo: rays of gold, opaque ink over the rival's ground
-        if (R.inkOn(g, 0.7 * open)) for (let k = 0; k < 12; k++) {
-          const a = k / 12 * Math.PI * 2 + t * 0.2, r0 = c * HW * 1.5, r1 = r0 + c * (3 + 2 * Math.sin(t * 3 + k));
-          for (let r = r0; r < r1; r += 4) g.fillRect(snap(x + Math.cos(a) * r), snap(y + Math.sin(a) * r * 0.62), 2, 2);
+        const t = performance.now() / 1000, hw = c * HW, hh = c * 6 * open;
+        // its halo: slender rays of gold light round it, laid flat to its own shape
+        if (open > 0.02 && R.fxRays) {
+          g.save();
+          g.translate(x, y); g.scale(1, 0.62);
+          R.fxRays(g, 0, 0, { n: 12, r0: hw * 1.5, r1: hw * 1.5 + c * 5.5, a: 0.75 * open, tone: 'gold', dir: t * 0.2, w0: 1.2, w1: 2.4, t, seed: 3, vary: 0.4, fall: 1.2 });
+          g.restore();
         }
-        g.globalAlpha = 1;
-        const N = HW * 2 + 1, M = 17, cv = this._eyeCv || (this._eyeCv = Object.assign(document.createElement('canvas'), { width: N, height: M }));
-        const q = cv.getContext('2d');
-        q.clearRect(0, 0, N, M);
-        const ix = Math.round(look * 4), IR = 4.6, PR = 2, mid = 8;
-        for (let cx = -HW; cx <= HW; cx++) {
-          const half = Math.floor(6 * Math.sqrt(Math.max(0, 1 - (cx / HW) * (cx / HW))) * open + 0.35);
-          for (let cy = -half; cy <= half; cy++) {
-            const edge = Math.abs(cy) === half || Math.abs(cx) === HW;
-            const d = Math.hypot(cx - ix, cy);
-            q.fillStyle = edge ? '#1b1410' : d <= PR ? '#120c08' : d <= IR - 1 ? '#d8a838' : d <= IR ? '#7a5418' : '#e9e2cf';
-            q.fillRect(cx + HW, mid + cy, 1, 1);
+        this.almond(g, x, y, hw, hh, c * 4.6, look, 3.2);
+        // the lashes over the upper lid, curving out
+        if (open > 0.5) {
+          g.save();
+          g.strokeStyle = '#1b1410'; g.lineWidth = 2.2; g.lineCap = 'round';
+          for (let k = -3; k <= 3; k++) {
+            const u = k / 4.2, lx = x + u * hw, ly = y - hh * (1 - u * u) * 0.98;
+            g.beginPath(); g.moveTo(lx, ly - 1); g.lineTo(lx + u * c * 1.2, ly - c * 1.3 * (open - 0.4)); g.stroke();
           }
-          // the lashes above the upper lid
-          if (open > 0.5 && cx % 3 === 0 && Math.abs(cx) < HW - 1) { q.fillStyle = '#1b1410'; q.fillRect(cx + HW, mid - half - 1, 1, 1); }
+          g.restore();
         }
-        if (open > 0.6) { q.fillStyle = '#fff6d8'; q.fillRect(ix - 2 + HW, mid - 2, 1, 1); }   // the glint
-        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-        g.drawImage(cv, x - HW * c - c / 2, y - mid * c - c / 2, N * c, M * c);
-        g.imageSmoothingEnabled = sm;
       },
       /* THEIR PEOPLE, SEEN THROUGH THE FOG: every rival soul the tribe's own
          sight does not reach is drawn over the fog as ITSELF — its own sprite
@@ -1233,7 +1243,7 @@
       },
       drawLive(g, e) {
         const now = Deck.now(), TL = CFG.TILE, v = view(1.5);
-        const fade = qa(Math.min(1, (now - e.from) / 0.08, (e.until - now) / 0.08), 4);
+        const fade = c01(Math.min(1, (now - e.from) / 0.08, (e.until - now) / 0.08));
         if (fade <= 0) return;
         for (const u of S.units) {
           if (u.owner !== 'A' || !inView(v, u.x, u.y) || G.visibleAt(u.x | 0, u.y | 0)) continue;
@@ -1380,10 +1390,11 @@
             for (let b = 0; b < nb; b++) {
               const q = beatQ(b, 0.22);
               if (q < 0 || q > 1) continue;
-              g.fillStyle = 'rgba(176,40,24,' + qa(0.9 * (1 - q), 4) + ')';
-              ring(g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.8 + 5.5 * ease(q)), 44, 0.5, 4);
-              g.fillStyle = 'rgba(255,190,90,' + qa(0.6 * (1 - q), 4) + ')';
-              ring(g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.6 + 4.2 * ease(q)), 30, 0.5, 2);
+              // a ring of the drum's red light rolling out over the ground, a
+              // fainter ring of firelight inside it — smooth, thinning as they
+              // go (R.fxRing), never rings of cells
+              fxCall('fxRing', g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.8 + 5.5 * ease(q)), 0.9 * (1 - q), WAR_RED, { squash: 0.5, css: 1.2 + 3 * (1 - q) });
+              fxCall('fxRing', g, s.x * TL, s.y * TL + TL * 0.4, TL * (0.6 + 4.2 * ease(q)), 0.6 * (1 - q), 'bronze', { squash: 0.5, css: 0.9 + 1.6 * (1 - q) });
             }
             this.smoke(g, s, p);
             return;
@@ -1406,8 +1417,8 @@
         if (q < 0 || p > 0.97) return;
         const fade = p < 0.84 ? 1 : 1 - (p - 0.84) / 0.13;
         const dpr = R.dpr || 1, N = (this.SEAL.r + this.SEAL.band) * 2, art = this.sealDither(Math.ceil(Math.max(0, fade) * 4));
-        // the world goes still under it
-        g.fillStyle = 'rgba(14,6,3,' + qa(0.42 * fade * Math.min(1, q), 6) + ')';
+        // the world goes still under it (smoothly — no strength stepped in sixths)
+        g.fillStyle = rgba('14,6,3', 0.42 * fade * Math.min(1, q));
         g.fillRect(0, 0, W, H);
         let foot = R.actTitleTop ? R.actTitleTop() : H * 0.2;
         if (art) {
@@ -1419,13 +1430,15 @@
           const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
           g.drawImage(art, x0, y0, D, D);
           g.imageSmoothingEnabled = sm;
-          // the ochre thrown wide on the slam: hard squares, out from the rim
+          // the ochre thrown wide on the slam: flecks flying out from the rim,
+          // each a round drop with its streak (R.fxDrop) — the seal is the
+          // card's own art, the splash of paint off it is not cells
           if (q < 3) {
-            g.fillStyle = '#b0331f';
-            const cz = Math.max(2, base);
+            const cz = Math.max(2, base), fq = Math.min(1, q);
             for (let k = 0; k < 28; k++) {
-              const an = k / 28 * Math.PI * 2 + 0.3, rr = (D * 0.5 + cz * 6 * Math.min(1, q)) * (0.92 + 0.3 * rnd(k, 5));
-              g.fillRect(snapTo(W / 2 + Math.cos(an) * rr, cz), snapTo(y0 + D * 0.5 + Math.sin(an) * rr, cz), cz, cz);
+              const an = k / 28 * Math.PI * 2 + 0.3, rr = (D * 0.5 + cz * 6 * fq) * (0.92 + 0.3 * rnd(k, 5));
+              fxCall('fxDrop', g, W / 2 + Math.cos(an) * rr, y0 + D * 0.5 + Math.sin(an) * rr, Math.cos(an) * cz * 60 * (1 - fq * 0.6), Math.sin(an) * cz * 60 * (1 - fq * 0.6),
+                cz * (0.45 + 0.25 * rnd(k, 9)), '#b0331f', fade * (q < 2 ? 1 : 3 - q));
             }
           }
           foot = foot + D + 10 * dpr;
@@ -1506,18 +1519,19 @@
           flame(g, x0 + 5, y0, TL * 0.8 * life, TL * 0.32, T0 * 1.13, 5.9);
           flame(g, x0, y0, TL * 1.3 * life, TL * 0.42, T0 * 0.91, 1.1);
         }
-        // the column of red smoke: puffs in hard steps, rising and spreading, drifting east
+        // the column of red smoke: soft puffs (R.fxPuff) rising and spreading,
+        // drifting east, cooling from the fire's red to a dull brown as they
+        // climb — smooth, at the device's own resolution, never discs of cells
+        const mix = (a, b, k) => a.map((v, j) => Math.round(v + (b[j] - v) * k)).join(',');
         for (let i = 0; i < 30; i++) {
           const t0 = (i / 30) * 2.6, age = T0 - t0;
           if (age < 0 || age > 2.4) continue;
           const q = age / 2.4, sway = Math.sin(age * 1.6 + i * 1.3) * (3 + q * 14) + q * q * TL * 1.2;
           const px = x0 + sway, py = y0 - TL * 0.9 - q * TL * 6, r = 4 + q * 16;
-          g.fillStyle = q < 0.25 ? '#c0301c' : q < 0.55 ? '#962a1c' : '#6e3630';
-          g.globalAlpha = qa((q < 0.12 ? q / 0.12 : 1) * (1 - q) * 0.95);
-          R.pxDisc(g, px, py, r, 2);
-          if (i % 4 === 0 && q < 0.5) { g.fillStyle = F[2]; g.fillRect(snap(px + r * 0.3), snap(py - r * 0.2), 2, 2); }
+          const col = q < 0.4 ? mix([192, 48, 28], [150, 42, 28], q / 0.4) : mix([150, 42, 28], [110, 54, 48], Math.min(1, (q - 0.4) / 0.4));
+          fxCall('fxPuff', g, px, py, r * 1.35, col, (q < 0.12 ? q / 0.12 : 1) * (1 - q) * 0.9);
+          if (i % 4 === 0 && q < 0.5) fxCall('fxDot', g, px + r * 0.3, py - r * 0.2, 0.9, 1 - q * 2, 'gold');
         }
-        g.globalAlpha = 1;
       },
     },
 
@@ -1572,115 +1586,118 @@
       },
       end() { G.log('☀️ The sun comes back to the rival, a sliver at a time — their people take up their tools again.', 'note', 5000); },
 
-      /* the sun in the sky, at 48 art px, blown up nearest-neighbour: the
-         eclipse's own drawing language (R.drawEclipseSky), its moon sliding in
-         from the east; `blaze` 0..1 lights the corona up for the card's held
-         beat */
-      _sky: null,
-      sunArt(off, total, ring1, blaze, now) {
-        const N = 48, c0 = N / 2;
-        const c = this._sky || (this._sky = Object.assign(document.createElement('canvas'), { width: N, height: N }));
-        const cg = c.getContext('2d');
-        cg.clearRect(0, 0, N, N);
-        const RS = 12;
-        const dsc = (cx, r, col) => {
-          cg.fillStyle = col;
-          for (let y = -r; y <= r; y++) { const dx = Math.floor(Math.sqrt(r * r - y * y) + 0.35); cg.fillRect(Math.round(cx - dx), c0 + y, dx * 2 + 1, 1); }
-        };
+      /* THE SUN IN THE SKY, at the device's own resolution (the operator's
+         ruling on the effects, 2026-10-27: "higher pixel count" — it used to
+         be 48 art px blown up nearest-neighbour). Drawn straight onto the
+         sky at (cx, cy), `k` device px to each of its old art px (the disc is
+         12 of them across its radius): a day sun's glow, short turning rays
+         and a smooth disc from a cream heart to its gold limb; at totality
+         the corona — silver streamers round the black disc, gold ones in the
+         held `blaze`, a pearly inner ring — all through the shared light
+         helpers (R.fxGlow / fxRays / fxRing, their hue tied to their light,
+         so it is gold over the meadow, never lime); and the MOON, a dark disc
+         sliding in from the east `off` art px, seen on a day sky only where it
+         covers the sun. `a` 0..1 its strength. Guarded on every method it
+         calls. Render only; no state, no RNG. (The world's own eclipse —
+         R.drawEclipseSky, its hard pixel limb a ruling of its own — is a
+         different drawing and is not touched.) */
+      RS: 12,
+      CORONA: { hue: '#c8d2ea', faint: '#b4bfda', ramp: ['#8f9cc4', '#c4cfee', '#e8eeff', '#ffffff'], hot: '#ffffff' },
+      sunDraw(g, cx, cy, k, off, total, blaze, now, a) {
+        if (!(a > 0.01) || !R.fxGlow || !R.fxRays || !R.fxRing) return;
+        const RS = this.RS * k, TAU = Math.PI * 2;
         if (!total) {
-          cg.fillStyle = '#ffd35a';
-          for (let k = 0; k < 8; k++) {
-            const a = k * Math.PI / 4 + now * 0.2, r0 = RS + 2, r1 = RS + 4 + (k % 2) * 2;
-            for (let r = r0; r <= r1; r++) cg.fillRect(Math.round(c0 + Math.cos(a) * r), Math.round(c0 + Math.sin(a) * r), 1, 1);
-          }
-          dsc(c0, RS + 1, '#f0a030'); dsc(c0, RS, '#ffd35a'); dsc(c0, RS - 3, '#fff1b8');
+          // a day sun: its light, eight short rays turning, the disc
+          R.fxGlow(g, cx, cy, RS * 2, 0.7 * a, 'gold', { soft: 2.4 });
+          R.fxRays(g, cx, cy, { n: 8, r0: RS * 1.12, r1: RS * 1.66, a: 0.95 * a, tone: 'gold', dir: now * 0.2, w0: k * 0.9, w1: k * 0.35, t: now, seed: 5, vary: 0.35, fall: 1.1 });
+          const gr = g.createRadialGradient(cx - RS * 0.22, cy - RS * 0.22, 0, cx, cy, RS * 1.08);
+          for (const [u, c] of [[0, '#fff7da'], [0.42, '#ffe590'], [0.78, '#ffd35a'], [0.92, '#f7b43e'], [1, '#e8942a']]) gr.addColorStop(u, R._fxC(c, a));
+          g.save(); g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, RS * 1.08, 0, TAU); g.fill(); g.restore();
         } else {
-          const br = 0.75 + 0.25 * Math.sin(now * 1.7);
-          for (let k = 0; k < 64; k++) {
-            const a = k / 64 * Math.PI * 2 + now * 0.05, h = Math.imul(k + 11, 0x9e3779b1) >>> 0;
-            const len = 2 + (h % 7) + ((k % 8) === 0 ? 5 : 0) + Math.round(blaze * ((h >> 5) % 6));
-            cg.fillStyle = (k % 3 === 0 && blaze > 0.2) ? 'rgba(255,214,94,' + (0.9 * br).toFixed(3) + ')' : 'rgba(232,240,255,' + (0.85 * br).toFixed(3) + ')';
-            for (let r = RS + 1; r <= Math.min(c0 - 1, RS + len); r++) {
-              if (r > RS + 2 && ((h >> (r & 15)) & 1)) continue;
-              cg.fillRect(Math.round(c0 + Math.cos(a) * r), Math.round(c0 + Math.sin(a) * r), 1, 1);
-            }
-          }
-          dsc(c0, RS + 1, 'rgba(255,250,236,0.95)');
+          // the corona round the black disc: streamers, a gold blaze, a pearly ring, a breath of light
+          const br = 0.78 + 0.22 * Math.sin(now * 1.7);
+          R.fxGlow(g, cx, cy, RS * 2, 0.5 * a * br, this.CORONA, { soft: 2.6 });
+          R.fxRays(g, cx, cy, { n: 44, r0: RS * 0.98, r1: RS * (1.62 + 0.28 * blaze), a: 0.9 * a * br, tone: this.CORONA, dir: now * 0.05, w0: k * 0.6, w1: k * 0.22, t: now, seed: 11, vary: 0.8, fall: 1.25 });
+          if (blaze > 0.05) R.fxRays(g, cx, cy, { n: 14, r0: RS * 1.0, r1: RS * (1.3 + 0.55 * blaze), a: 0.85 * a * blaze, tone: 'gold', dir: now * 0.05 + 0.11, w0: k * 0.7, w1: k * 0.25, t: now, seed: 17, vary: 0.6, fall: 1.3 });
+          R.fxRing(g, cx, cy, RS * 1.03, 0.95 * a, this.CORONA, { w: k * 1.05 });
         }
-        const lim = total ? 99 : RS + 1;
-        for (let y = -RS; y <= RS; y++) {
-          const dx = Math.floor(Math.sqrt(RS * RS - y * y) + 0.35);
-          for (let x = Math.round(c0 + off - dx); x <= Math.round(c0 + off + dx); x++) {
-            if (Math.hypot(x - c0, y) > lim) continue;
-            cg.fillStyle = Math.hypot(x - (c0 + off), y) > RS - 1.2 ? '#15121f' : '#1d1a2b';
-            cg.fillRect(x, c0 + y, 1, 1);
-          }
-        }
-        if (ring1) {
-          const bx = Math.round(c0 - (RS + 1)), by = c0;
-          cg.fillStyle = '#ffffff';
-          for (let r = 0; r <= 5; r++) { cg.fillRect(bx - r, by, 1, 1); cg.fillRect(bx + r, by, 1, 1); cg.fillRect(bx, by - r, 1, 1); cg.fillRect(bx, by + r, 1, 1); }
-          cg.fillRect(bx - 1, by - 1, 3, 3);
-        }
-        return c;
+        // the moon: on a day sky it is seen only where it covers the sun
+        const mx = cx + off * k;
+        g.save();
+        if (!total) { g.beginPath(); g.arc(cx, cy, RS * 1.085, 0, TAU); g.clip(); }
+        const mg = g.createRadialGradient(mx - RS * 0.35, cy - RS * 0.35, RS * 0.1, mx, cy, RS);
+        for (const [u, c] of [[0, '#2a2640'], [0.75, '#1d1a2b'], [1, '#141120']]) mg.addColorStop(u, R._fxC(c, a));
+        g.fillStyle = mg; g.beginPath(); g.arc(mx, cy, RS, 0, TAU); g.fill();
+        g.restore();
       },
       /* where the great sun stands for the act: under the toasts and the
          minimap (R.actTitleTop — the playtest found its corona cutting
-         through a toast and the title's own letters), at a whole number of
-         device px an art pixel, the title under it */
+         through a toast and the title's own letters), `k` device px to each
+         of its old art px (no longer a whole number: it is no longer cells),
+         the title under it. Everything it throws stays inside its 48k box. */
       sunSpot() {
         const W = R.cv.width, H = R.cv.height, top = R.actTitleTop ? R.actTitleTop() : H * 0.12;
         const B = R.openBand ? R.openBand() : { y0: 0, y1: H };
-        const k = Math.max(4, Math.floor(Math.min(W * 0.46, (B.y1 - top) * 0.42) / 48));
-        return { k, x: Math.round(W / 2 - 24 * k), y: Math.round(top) };
+        const k = Math.max(4, Math.min(W * 0.46, (B.y1 - top) * 0.42) / 48);
+        return { k, x: W / 2 - 24 * k, y: Math.round(top) };
       },
-      /* THE MOMENT, in the eclipse's own drawing language (R.drawEclipse):
-         the sun stands huge in the sky and the MOON'S SHADOW rolls in across
-         the screen from the west — its curved leading limb, two penumbra
-         steps ahead of the umbra, cut at a quarter of the screen's
-         resolution and blown up nearest-neighbour, so the dark comes in as a
-         hard pixel curve and never as a fade — while the moon bites the sun
-         from the east. The diamond ring flashes; at totality the world HOLDS
-         (a shake, the drone's floor dropping out, the birds thrown up), the
-         corona blazes, the stars come out under the umbra — SCATTERED, never
-         in rows or rings (the playtest read the old burst of dotted rings and
-         a lattice of stars as a dashed UI ring) — over the board only, never
-         in the off-map black (the eclipse's rule), and the words go up. Then
-         the trailing limb lets the light back and the sun goes out with it
-         in hard steps: no small black sun is left hanging over the map for
-         the four days (it read as a hole in the map; the HUD's chip carries
-         the count). Nothing is light ADDED: every dot is opaque. */
-      SWEEP: { in0: 0.3, in1: 2.0, out0: 4.2, out1: 5.4, bands: [[1.16, 0.10], [1.08, 0.26], [1, 0.62]] },
+      /* THE MOMENT: the sun stands huge in the sky and the MOON'S SHADOW rolls
+         in across the screen from the west — its curved leading limb, a soft
+         penumbra ahead of the umbra — while the moon bites the sun from the
+         east. The diamond ring flashes; at totality the world HOLDS (a shake,
+         the drone's floor dropping out, the birds thrown up), the corona
+         blazes, the stars come out under the umbra — SCATTERED, never in rows
+         or rings (the playtest read the old burst of dotted rings and a
+         lattice of stars as a dashed UI ring) — over the board only, never in
+         the off-map black (the eclipse's rule), and the words go up. Then the
+         trailing limb lets the light back and the sun shrinks away with it:
+         no small black sun is left hanging over the map for the four days (it
+         read as a hole in the map; the HUD's chip carries the count).
+         THE CARD'S SKY IS SMOOTH (the operator's ruling on the effects): the
+         limb is a soft radial falloff, the sun and its corona are drawn at
+         the device's own resolution, a star is a soft point of light, and
+         nothing is laid in the off-map black — the shadow is clipped to the
+         board too. (The WORLD's eclipse keeps its own ruling — "a hard pixel
+         curve" — R.drawEclipse; it is a different drawing, untouched.)
+         Nothing is light ADDED ('lighter'). */
+      SWEEP: { in0: 0.3, in1: 2.0, out0: 4.2, out1: 5.4,
+               // the shadow's falloff out from its middle: [share of its radius, darkness]
+               prof: [[0, 0.62], [0.96, 0.62], [1, 0.52], [1.05, 0.3], [1.1, 0.16], [1.16, 0.06], [1.2, 0]] },
       STARS: 120,
       // a scattered field: each star's spot from a full-avalanche hash of its own index
       starAt(i, W, H) {
         const a = hash(Math.imul(i + 17, 0x9e3779b1) ^ 0x5bd1e995), b = hash(Math.imul(i + 91, 0x85ebca6b) ^ a);
         return { x: a / 4294967296 * W, y: b / 4294967296 * H, big: (b & 7) === 0, gold: (a & 3) === 0, tw: (a >>> 8) & 7 };
       },
-      _shade: null,
+      // the board on the screen (device px): the dark and the stars are laid there only
+      boardBox() {
+        const B = R.boardPx(), z = R.cam.z * (R.dpr || 1);
+        return { x0: (B.x0 - R.cam.x) * z, y0: (B.y0 - R.cam.y) * z, x1: (B.x1 - R.cam.x) * z, y1: (B.y1 - R.cam.y) * z };
+      },
+      // the moon's shadow: one smooth radial falloff from its middle, laid on the board only
       shadow(g, cx, cy, Rr, W, H) {
-        const sc = 4, sw = Math.ceil(W / sc), sh = Math.ceil(H / sc);
-        let c = this._shade;
-        if (!c || c.width !== sw || c.height !== sh) c = this._shade = Object.assign(document.createElement('canvas'), { width: sw, height: sh });
-        const cg = c.getContext('2d');
-        cg.clearRect(0, 0, sw, sh);
-        let prev = 0;
-        const ccx = cx / sc, ccy = cy / sc;
-        for (const [rf, tgt] of this.SWEEP.bands) {
-          const a = 1 - (1 - tgt) / (1 - prev); prev = tgt;
-          const r = Rr * rf / sc;
-          cg.fillStyle = 'rgba(8,10,32,' + a.toFixed(3) + ')';
-          const y0 = Math.max(0, Math.floor(ccy - r)), y1 = Math.min(sh - 1, Math.ceil(ccy + r));
-          for (let y = y0; y <= y1; y++) {
-            const dy = y + 0.5 - ccy; if (Math.abs(dy) > r) continue;
-            const dx = Math.sqrt(r * r - dy * dy);
-            const xa = Math.max(0, Math.round(ccx - dx)), xb = Math.min(sw, Math.round(ccx + dx));
-            if (xb > xa) cg.fillRect(xa, y, xb - xa, 1);
-          }
-        }
-        const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-        g.drawImage(c, 0, 0, sw * sc, sh * sc);
-        g.imageSmoothingEnabled = sm;
+        const P = this.SWEEP.prof, Rm = Rr * P[P.length - 1][0], bb = this.boardBox();
+        const gr = g.createRadialGradient(cx, cy, 0, cx, cy, Rm);
+        for (const [u, al] of P) gr.addColorStop(Math.min(1, u * Rr / Rm), 'rgba(8,10,32,' + al.toFixed(3) + ')');
+        g.save();
+        g.beginPath(); g.rect(Math.max(0, bb.x0), Math.max(0, bb.y0), Math.min(W, bb.x1) - Math.max(0, bb.x0), Math.min(H, bb.y1) - Math.max(0, bb.y0)); g.clip();
+        g.fillStyle = gr;
+        g.fillRect(Math.max(0, cx - Rm), Math.max(0, cy - Rm), Math.min(W, cx + Rm) - Math.max(0, cx - Rm), Math.min(H, cy + Rm) - Math.max(0, cy - Rm));
+        g.restore();
+      },
+      /* a star: a soft point of light with a white-hot heart, drawn once
+         into a small canvas per colour and laid DOWN to its few device px
+         with smoothing (never blown up) — cached, render state only */
+      _star: {},
+      starSprite(col) {
+        let c = this._star[col];
+        if (c) return c;
+        const N = 32, h = N / 2;
+        c = this._star[col] = Object.assign(document.createElement('canvas'), { width: N, height: N });
+        const q = c.getContext('2d'), gr = q.createRadialGradient(h, h, 0, h, h, h);
+        gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.18, col); gr.addColorStop(0.45, R._fxC(col, 0.35)); gr.addColorStop(1, R._fxC(col, 0));
+        q.fillStyle = gr; q.fillRect(0, 0, N, N);
+        return c;
       },
       show: {
         ms: 5600, layer: 'sky',
@@ -1694,9 +1711,9 @@
             if (R.shakeAt) R.shakeAt(10, 1.2);
             if (R.startle) R.startle(R.cam.x / CFG.TILE + R.viewW() / R.cam.z / CFG.TILE / 2, R.cam.y / CFG.TILE + R.viewH() / R.cam.z / CFG.TILE / 2, 30);
           }
-          const sp = this.sunSpot(), k = sp.k, x = sp.x, y = sp.y, ccx = x + 24 * k, ccy = y + 24 * k;
+          const sp = this.sunSpot(), k0 = sp.k, x = sp.x, y = sp.y, ccx = x + 24 * k0, ccy = y + 24 * k0;
           // THE SHADOW: in from the west, held (drifting, never still), out to the east
-          const cy = ccy, D = W * 0.05, Rr = Math.hypot(W / 2 + D, Math.max(cy, H - cy)) * 1.02, outR = Rr * SW.bands[0][0];
+          const cy = ccy, D = W * 0.05, Rr = Math.hypot(W / 2 + D, Math.max(cy, H - cy)) * 1.02, outR = Rr * SW.prof[SW.prof.length - 1][0];
           let scx = null;
           if (T >= SW.in0 && T < SW.out1) {
             // smoothstep, never an ease-out: the limb must be SEEN crossing the screen
@@ -1709,59 +1726,47 @@
           // THE STARS: scattered under the umbra, once it is deep, over the board only
           const deep = T < tot ? 0 : T < SW.out0 ? Math.min(1, (T - tot) / 0.6) : 1 - (T - SW.out0) / 0.5;
           if (deep > 0 && scx != null) {
-            const z = R.cam.z * (R.dpr || 1), sz = Math.max(2, Math.round(W / 300));
-            const shown = Math.round(this.STARS * qa(deep, 4));
+            const z = R.cam.z * (R.dpr || 1), sz = Math.max(3, W / 220), shown = Math.ceil(this.STARS * deep);
+            const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true;
             for (let i = 0; i < shown; i++) {
               const st = this.starAt(i, W, H);
-              if (st.tw === 0 && ((now / 0.5 + i) | 0) % 4 === 0) continue;   // a slow twinkle
               if (Math.hypot(st.x - scx, st.y - cy) > Rr - 24) continue;
               if (!R.onBoardPx(st.x / z + R.cam.x, st.y / z + R.cam.y)) continue;
-              g.fillStyle = st.gold ? '#ffe9a0' : '#e8ecff';
-              const d = st.big ? sz * 2 : sz;
-              g.fillRect(snap(st.x), snap(st.y), d, d);
+              // a slow twinkle, and the last of them coming in as the dark deepens
+              const tw = st.tw === 0 ? 0.55 + 0.45 * Math.sin(now * 2.2 + i) : 1, fin = Math.min(1, this.STARS * deep - i);
+              const d = (st.big ? sz * 2.2 : sz * 1.3) * (0.9 + 0.1 * tw);
+              g.globalAlpha = Math.max(0, Math.min(1, tw * fin * Math.min(1, deep * 1.5)));
+              g.drawImage(this.starSprite(st.gold ? '#ffe9a0' : '#e8ecff'), st.x - d / 2, st.y - d / 2, d, d);
             }
+            g.globalAlpha = 1; g.imageSmoothingEnabled = sm;
           }
           const blaze = total ? Math.max(0, 1 - Math.abs(T - 2.6) / 1.6) : 0;
-          const art = this.sunArt(off, total, !total && T > 1.85, blaze, now);
-          // in, held, and out with the light — in hard steps
-          const fin = T < 0.5 ? qa(T / 0.5, 4) : T > SW.out0 + 0.3 ? qa(1 - (T - SW.out0 - 0.3) / 0.9, 4) : 1;
-          if (fin <= 0) return;
-          // in and out it DISSOLVES (a 2x2 Bayer step at a time), never a translucent sun
-          if (fin < 1) {
-            const q = art.getContext('2d'), BAY = [0, 2, 3, 1], lv = Math.round(fin * 4);
-            q.globalCompositeOperation = 'destination-in';
-            q.beginPath();
-            for (let yy = 0; yy < 48; yy++) for (let xx = 0; xx < 48; xx++) if (BAY[(xx & 1) + (yy & 1) * 2] < lv) q.rect(xx, yy, 1, 1);
-            q.fill();
-            q.globalCompositeOperation = 'source-over';
+          // in, held, and out with the light — growing in and shrinking away, smoothly
+          const fin = T < 0.5 ? ease(T / 0.5) : T > SW.out0 + 0.3 ? c01(1 - (T - SW.out0 - 0.3) / 0.9) : 1;
+          if (fin <= 0.01) return;
+          const k = k0 * (0.8 + 0.2 * fin);
+          this.sunDraw(g, ccx, ccy, k, off, total, blaze, now, fin);
+          // THE DIAMOND RING: the last bead of sun throws its light — a white-hot
+          // point in short slender rays (R.fxRays / fxSpark), gone in under half a second
+          if (T > 1.86 && T < 2.3 && R.fxRays) {
+            const q = (T - 1.86) / 0.44, bx = ccx - 13 * k, by = ccy, maxR = 22 * k, grow = ease(Math.min(1, q * 2.2)) * (1 - q);
+            R.fxGlow(g, bx, by, k * (6 + 7 * (1 - q)), 1 - q * 0.6, 'white', { soft: 1.6, core: 0.35 });
+            R.fxRays(g, bx, by, { n: 16, r0: k * 2.5, r1: k * 2.5 + maxR * grow, a: 1 - q * 0.5, tone: 'white', dir: 0.2, w0: k * 0.75, w1: k * 0.2, t: now, seed: 23, vary: 0.45, fall: 1.1 });
+            R.fxSpark(g, bx, by, (8 + 10 * (1 - q)) * k / (R.dpr || 1), 1 - q * 0.5, 'white', { diag: true });
           }
-          const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
-          g.drawImage(art, x, y, 48 * k, 48 * k);
-          // THE DIAMOND RING: the last bead of sun throws its light in short
-          // rays of opaque dots, hard steps, gone in under half a second
-          if (T > 1.86 && T < 2.3) {
-            const q = (T - 1.86) / 0.44, bx = x + 11 * k, by = y + 24 * k, maxR = 22 * k, dz = Math.max(2, snap(k));
-            g.fillStyle = '#fffaf0';
-            for (let ray = 0; ray < 16; ray++) {
-              const an = ray / 16 * Math.PI * 2 + 0.2, len = maxR * (ray % 2 ? 0.55 : 1) * ease(Math.min(1, q * 2.2)) * (1 - q);
-              for (let r = 6 * k; r < 6 * k + len; r += dz * 2.5) g.fillRect(snap(bx + Math.cos(an) * r), snap(by + Math.sin(an) * r), dz, dz);
-            }
-            R.pxDisc(g, bx, by, k * (3 + 3 * (1 - q)), dz);
-          }
-          g.globalAlpha = 1;
-          g.imageSmoothingEnabled = sm;
           if (total && T < 4.4 && R.actTitle) {
             const a = Math.min(1, (T - tot) / 0.4) * Math.min(1, (4.4 - T) / 0.6);
-            R.actTitle(g, 'THEIR SUN IS SWALLOWED', 'Four days of dark over the rival', a, { y: y + 48 * k + 6 * (R.dpr || 1) });
+            R.actTitle(g, 'THEIR SUN IS SWALLOWED', 'Four days of dark over the rival', a, { y: Math.round(y + 48 * k0 + 6 * (R.dpr || 1)) });
           }
         },
       },
       /* THE DUSK over the rival's known ground — every building of theirs the
-         player's memory holds, lit over a disc of DUSK_R tiles in three hard
-         alpha steps at a quarter-tile grid (one canvas, rebuilt only when
-         that memory changes; one blit a frame) — and, with their ground off
-         the screen, the dusk leaning in at the edge that faces it. Fades in
-         and out over a tenth of a day in steps. */
+         player's memory holds, darkened over a disc of DUSK_R tiles, falling
+         off smoothly at its edge (one small canvas at a quarter-tile grid,
+         rebuilt only when that memory changes, laid on the board with
+         smoothing — a smooth falloff stretched stays smooth; one blit a
+         frame) — and, with their ground off the screen, the dusk leaning in
+         at the edge that faces it. Fades in and out over a tenth of a day. */
       DUSK_R: 5,
       _dusk: null,
       duskCv() {
@@ -1772,32 +1777,32 @@
         const kn = this.known();
         for (const b of kn) key += b.x + ',' + b.y + ';';
         if (c && c.key === key && c.map === S.map) { c.at = now; return c.cv; }
-        const Q = 4, W = CFG.W, H = CFG.H, cw = W * Q, ch = H * Q, D = this.DUSK_R;
-        const lvl = new Uint8Array(cw * ch);
+        const Q = 4, W = CFG.W, H = CFG.H, cw = W * Q, ch = H * Q, D = this.DUSK_R, MAX = 128;
+        const lvl = new Float32Array(cw * ch);
         for (const b of kn) {
           const x0 = Math.max(0, Math.floor((b.x - D) * Q)), x1 = Math.min(cw - 1, Math.ceil((b.x + D) * Q));
           const y0 = Math.max(0, Math.floor((b.y - D) * Q)), y1 = Math.min(ch - 1, Math.ceil((b.y + D) * Q));
           for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-            const d = Math.hypot((x + 0.5) / Q - b.x, (y + 0.5) / Q - b.y);
-            const l = d <= D - 1.6 ? 3 : d <= D - 0.8 ? 2 : d <= D ? 1 : 0;
+            const d = Math.hypot((x + 0.5) / Q - b.x, (y + 0.5) / Q - b.y), u = c01((D - d) / 2);
+            const l = u * u * (3 - 2 * u);
             if (l > lvl[y * cw + x]) lvl[y * cw + x] = l;
           }
         }
         const cv = (c && c.cv && c.cv.width === cw) ? c.cv : Object.assign(document.createElement('canvas'), { width: cw, height: ch });
-        const q = cv.getContext('2d'), im = q.createImageData(cw, ch), d = im.data, A = [0, 52, 92, 128];
+        const q = cv.getContext('2d'), im = q.createImageData(cw, ch), d = im.data;
         for (let i = 0; i < lvl.length; i++) {
           if (!lvl[i]) continue;
-          d[i * 4] = 8; d[i * 4 + 1] = 10; d[i * 4 + 2] = 30; d[i * 4 + 3] = A[lvl[i]];
+          d[i * 4] = 8; d[i * 4 + 1] = 10; d[i * 4 + 2] = 30; d[i * 4 + 3] = Math.round(MAX * lvl[i]);
         }
         q.putImageData(im, 0, 0);
         this._dusk = { W: CFG.W, map: S.map, at: now, key, cv };
         return cv;
       },
       /* …AND WHEN THEIR GROUND IS OFF THE SCREEN, the dusk still leans in
-         at the edge that faces it: three hard steps of the same dark, so the
-         curse is felt wherever the player is looking. Asked of the KNOWN
-         ground alone (the dusk's own centre) — a player who knows nothing of
-         them gets no direction, only the small black sun. */
+         at the edge that faces it: a smooth band of the same dark, deepest at
+         the edge, so the curse is felt wherever the player is looking. Asked
+         of the KNOWN ground alone (the dusk's own centre) — a player who knows
+         nothing of them gets no direction. */
       edgeDusk(g, fade) {
         const f = this.focus();
         if (!f) return;
@@ -1809,26 +1814,28 @@
         const sides = [];
         if (ax >= ay * 0.6) sides.push(dx < 0 ? 'l' : 'r');
         if (ay >= ax * 0.6) sides.push(dy < 0 ? 't' : 'b');
+        g.save();
         g.setTransform(1, 0, 0, 1, 0, 0);
         // inside the bars the HUD leaves open, so the band is never under them
         const dpr = R.dpr || 1, y0 = Math.round((R.topReserve || 0) * dpr), y1 = H - Math.round((R.bottomReserve || 0) * dpr);
-        const u = Math.max(4, snap(Math.min(W, H) * 0.018));
-        for (let b = 0; b < 3; b++) {
-          const w = u * (3 - b);
-          g.fillStyle = 'rgba(8,10,30,' + qa([0.14, 0.2, 0.28][b] * fade, 8) + ')';
-          for (const sd of sides) {
-            if (sd === 'l') g.fillRect(0, y0, w, y1 - y0); else if (sd === 'r') g.fillRect(W - w, y0, w, y1 - y0);
-            else if (sd === 't') g.fillRect(0, y0, W, w); else g.fillRect(0, y1 - w, W, w);
-          }
+        const w = Math.max(12, Math.min(W, H) * 0.054);
+        for (const sd of sides) {
+          const gr = sd === 'l' ? g.createLinearGradient(0, 0, w, 0) : sd === 'r' ? g.createLinearGradient(W, 0, W - w, 0)
+            : sd === 't' ? g.createLinearGradient(0, y0, 0, y0 + w) : g.createLinearGradient(0, y1, 0, y1 - w);
+          for (let kk = 0; kk <= 6; kk++) { const u = kk / 6; gr.addColorStop(u, rgba('8,10,30', 0.42 * fade * (1 - u) * (1 - u))); }
+          g.fillStyle = gr;
+          if (sd === 'l') g.fillRect(0, y0, w, y1 - y0); else if (sd === 'r') g.fillRect(W - w, y0, w, y1 - y0);
+          else if (sd === 't') g.fillRect(0, y0, W, w); else g.fillRect(0, y1 - w, W, w);
         }
+        g.restore();
       },
       drawLive(g, e) {
         const now = Deck.now(), TL = CFG.TILE;
-        const fade = qa(Math.min(1, (now - e.from) / 0.12, (e.until - now) / 0.12), 4);
+        const fade = c01(Math.min(1, (now - e.from) / 0.12, (e.until - now) / 0.12));
         if (fade <= 0) return;
         const cv = this.duskCv();
         R.clipBoard(g, () => {
-          const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
+          const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true;
           g.globalAlpha = fade;
           g.drawImage(cv, 0, 0, cv.width, cv.height, 0, 0, CFG.W * TL, CFG.H * TL);
           g.globalAlpha = 1;
@@ -2089,8 +2096,9 @@
         /* the open sea darkens — through the traced coast's own outline, so
            its edge is the shore the player sees (tile runs alone drew a
            staircase of dark squares along every diagonal coast) */
-        const a = qa(0.42 * Math.min(1, tt / 0.6) * c01((end - tt) / 1.0), 8);
-        if (a > 0) onWater(() => {
+        // (its strength smooth, never stepped in eighths: the operator's ruling on the effects)
+        const a = Math.round(0.42 * Math.min(1, tt / 0.6) * c01((end - tt) / 1.0) * 1000) / 1000;
+        if (a > 0.004) onWater(() => {
           g.fillStyle = 'rgba(2,10,24,' + a + ')';
           const open = (tx, ty) => MapGen.onBoard(tx, ty) && S.map.explored[ty * W + tx] && G.openWaterAt(tx, ty);
           const tx0 = Math.max(0, v.x0 | 0), tx1 = Math.min(W, Math.ceil(v.x1) + 1);
@@ -2180,38 +2188,42 @@
         // …and the sea closing over it as the last of it goes down
         if (R.drawSplash) R.drawSplash(g, hx, wl, t - (0.12 + Z.under * 0.82), TL * 0.7, ac.id + 7);
       },
+      /* the water it churns, at the device's own resolution (the operator's
+         ruling on the effects): rings of broken foam rolling out (R.fxFoam),
+         the spray thrown up by the take as round drops with their streaks
+         (R.fxDrop), and the whirl closing over the hull as arcs of foam
+         turning in — never rings of 2px dots. The caller clips it to the water. */
       foam(g, ac) {
         const TL = CFG.TILE, x = ac.x * TL, y = ac.y * TL + TL * 0.35;
-        g.fillStyle = '#dceef4';
         if (ac.phase === 'rise') {
           for (let j = 0; j < 3; j++) {
-            const q = (ac.t / this.RISE * 1.6 + j / 3) % 1;
-            g.globalAlpha = qa(0.85 * (1 - q));
-            ring(g, x, y, TL * (0.5 + 1.8 * q), 28, 0.45);
+            const q = (ac.t / this.RISE * 1.6 + j / 3) % 1, r = TL * (0.5 + 1.8 * q);
+            fxCall('fxFoam', g, x, y, r, r * 0.45, 0.85 * (1 - q), { css: 1.6 - q * 0.7, seed: ac.id + j, spin: ac.t * 0.3 });
           }
         } else if (ac.phase === 'thrash') {
-          const q = c01(ac.t / 1.0);
-          g.globalAlpha = qa(1 - q);
-          ring(g, x, y, TL * (0.8 + 2.6 * ease(q)), 40, 0.5);
-          ring(g, x, y, TL * (0.5 + 1.5 * ease(q)), 28, 0.5);
+          const q = c01(ac.t / 1.0), r1 = TL * (0.8 + 2.6 * ease(q)), r2 = TL * (0.5 + 1.5 * ease(q)), r3 = TL * (1.2 + 0.2 * Math.sin(ac.t * 9));
+          fxCall('fxFoam', g, x, y, r1, r1 * 0.5, 1 - q, { css: 1.8 - q, seed: ac.id + 5, spin: ac.t * 0.2 });
+          fxCall('fxFoam', g, x, y, r2, r2 * 0.5, 1 - q, { css: 1.5, seed: ac.id + 6, spin: -ac.t * 0.3 });
           for (let k = 0; k < 16; k++) {               // the spray thrown up by the take
             const vx = (rnd(ac.id, k) - 0.5) * 120, vy = 60 + rnd(ac.id, k + 40) * 110, tt = ac.t;
             const sy = y - vy * tt + 160 * tt * tt;
             if (sy > y) continue;
-            g.globalAlpha = qa(1 - q);
-            g.fillRect(snap(x + vx * tt), snap(sy), 2 + (k % 2) * 2, 2 + (k % 2) * 2);
+            fxCall('fxDrop', g, x + vx * tt, sy, vx, -vy + 320 * tt, k % 2 ? 1.6 : 1, k % 3 ? '#dceef4' : '#ffffff', 1 - q);
           }
-          g.globalAlpha = qa(0.6 * (1 - q * 0.5));
-          ring(g, x, y, TL * (1.2 + 0.2 * Math.sin(ac.t * 9)), 22, 0.45);
+          fxCall('fxFoam', g, x, y, r3, r3 * 0.45, 0.6 * (1 - q * 0.5), { css: 1.3, seed: ac.id + 7, spin: ac.t * 0.5 });
         } else {
-          const q = c01(ac.t / this.SINK);
-          g.globalAlpha = qa(0.7 * (1 - q));
-          for (let k = 0; k < 18; k++) {                // the whirl closing over it
-            const an = k / 18 * Math.PI * 2 + ac.t * 4, rr = TL * (1.6 - 1.2 * q) * (0.6 + 0.4 * ((k % 3) / 2));
-            g.fillRect(snap(x + Math.cos(an) * rr), snap(y + Math.sin(an) * rr * 0.45), 2, 2);
+          // the whirl closing over it: short arcs of foam turning in toward the middle
+          const q = c01(ac.t / this.SINK), a = 0.75 * (1 - q);
+          if (a > 0.01) {
+            g.save();
+            g.lineCap = 'round'; g.strokeStyle = '#e6f4fa'; g.globalAlpha = a; g.lineWidth = 1.6 * (R.fxPx ? R.fxPx(g) : 1);
+            for (let k = 0; k < 9; k++) {
+              const an = k / 9 * Math.PI * 2 + ac.t * 4, rr = TL * (1.6 - 1.2 * q) * (0.6 + 0.4 * ((k % 3) / 2));
+              g.beginPath(); g.ellipse(x, y, rr, rr * 0.45, 0, an, an + 0.55); g.stroke();
+            }
+            g.restore();
           }
         }
-        g.globalAlpha = 1;
       },
       /* AN ARM OF THE BEAST THAT IS ALREADY UP, for a hull taken beside it:
          out of the water on the far side from the body, up and over, DOWN on
@@ -2226,9 +2238,8 @@
           const u = ease(ac.t / (this.RISE - 0.14)), sway = Math.sin(ac.t * 3.3 + ac.id);
           const pts = this.spine(bx, by, -Math.PI / 2 + side * 0.32, TL * 2.7 * u, -side * (0.7 + 0.25 * sway), 7.5, sway, 18);
           this.arm(g, pts, 2);
-          g.fillStyle = '#dceef4'; g.globalAlpha = qa(0.85 * u);
-          ring(g, bx, by + 4, TL * (0.45 + 0.12 * Math.sin(ac.t * 12)), 16, 0.45);
-          g.globalAlpha = 1;
+          const fr = TL * (0.45 + 0.12 * Math.sin(ac.t * 12));
+          fxCall('fxFoam', g, bx, by + 4, fr, fr * 0.45, 0.85 * u, { css: 1.4, seed: ac.id + 9, spin: ac.t });
           return;
         }
         if (ac.phase === 'rise') {            // …and DOWN on the hull at the take
@@ -2250,10 +2261,8 @@
                      y: a * by + b2 * cy + d * tipY, r: Math.max(2, (8 - 6 * q) * (0.55 + 0.45 * reach)) });
         }
         this.arm(g, pts, 2);
-        g.fillStyle = '#dceef4';
-        g.globalAlpha = qa(0.85 * reach);
-        ring(g, bx, by + 4, TL * (0.45 + 0.12 * Math.sin(ac.t * 12)), 16, 0.45);
-        g.globalAlpha = 1;
+        const fr = TL * (0.45 + 0.12 * Math.sin(ac.t * 12));
+        fxCall('fxFoam', g, bx, by + 4, fr, fr * 0.45, 0.85 * reach, { css: 1.4, seed: ac.id + 9, spin: ac.t });
       },
       /* …DRAWN: the kraken-tentacle strip (R.drawTentacle, js/beasts.js),
          the world kraken's own arm. It breaks the surface half a tile out
@@ -2396,25 +2405,21 @@
                      y: a * oy + b2 * cy + d * tipY, r: Math.max(2, (9 - 7 * q) * (0.5 + 0.5 * reach)) });
         }
         this.arm(g, pts, 2);
-        // foam where it leaves the water, and spray off the slam
-        g.fillStyle = '#dceef4';
-        g.globalAlpha = qa(0.85 * reach);
-        ring(g, ox, oy + 4, TL * (0.5 + 0.15 * Math.sin(tt * 12)), 16, 0.45);
-        ring(g, ox, oy + 4, TL * (0.85 + 0.1 * Math.sin(tt * 9)), 22, 0.45);
+        // foam where it leaves the water (R.fxFoam), and the shore thrown up off the slam
+        const f1 = TL * (0.5 + 0.15 * Math.sin(tt * 12)), f2 = TL * (0.85 + 0.1 * Math.sin(tt * 9));
+        fxCall('fxFoam', g, ox, oy + 4, f1, f1 * 0.45, 0.85 * reach, { css: 1.5, seed: c.id + 3, spin: tt });
+        fxCall('fxFoam', g, ox, oy + 4, f2, f2 * 0.45, 0.85 * reach, { css: 1.2, seed: c.id + 4, spin: -tt * 0.7 });
         this.debris(g, c, tt);
-        g.globalAlpha = 1;
       },
-      // the shore thrown up where the blow lands
+      // the shore thrown up where the blow lands: clods flying out and
+      // falling, rough shapes at the device's own resolution (R.fxChunk)
       debris(g, c, tt) {
         if (tt < this.COAST_S || tt >= this.COAST_S + 0.6) return;
         const TL = CFG.TILE, bx = c.x * TL, by = c.y * TL, q = (tt - this.COAST_S) / 0.6;
-        g.globalAlpha = qa(1 - q);
-        g.fillStyle = '#c9b48a';
         for (let k = 0; k < 14; k++) {
           const an = k / 14 * Math.PI * 2, rr = TL * (0.3 + 1.3 * ease(q)) * (0.7 + 0.3 * rnd(c.id, k));
-          g.fillRect(snap(bx + Math.cos(an) * rr), snap(by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI)), 4, 4);
+          fxCall('fxChunk', g, bx + Math.cos(an) * rr, by + Math.sin(an) * rr * 0.5 - TL * 0.5 * Math.sin(q * Math.PI), 1.8 + rnd(c.id, k + 20) * 1.4, q * 9 + k, k % 3 ? '#c9b48a' : '#8e7a58', 1 - q, c.id + k);
         }
-        g.globalAlpha = 1;
       },
       /* THE HEAD that rises in the sky moment: a colossal mantle in coarse
          cells, lit from the upper left, mottled, its brow heavy over two
@@ -2470,10 +2475,16 @@
           g.fillStyle = d < 0.6 && Math.abs(yy) <= hh ? '#120a08' : d < 1.6 ? '#ffd86a' : Math.abs(yy) === hh ? '#a8561a' : '#f2a32a';
           g.fillRect(x + xx * cell, y + yy * cell, cell, cell);
         }
-        // the glow, light ADDED: a ring of dots breathing round the socket
-        g.save(); g.globalCompositeOperation = 'lighter';
-        g.fillStyle = 'rgba(255,170,60,' + qa(0.55 * open * (0.7 + 0.3 * Math.sin(T * 5)), 4) + ')';
-        ring(g, x + cell / 2, y + cell / 2, cell * 7.5, 26, 0.62, cell);
+        // the glow breathing round the socket — the eye's own light, smooth
+        // (R.fxGlow / fxRing, its hue tied to it), never a ring of added dots
+        this.eyeLight(g, x + cell / 2, y + cell / 2, cell * 7.5, open * (0.7 + 0.3 * Math.sin(T * 5)));
+      },
+      // the light an open eye throws: a soft amber glow and a ring round it, laid flat to the socket
+      eyeLight(g, x, y, r, a) {
+        if (!(a > 0.01) || !R.fxGlow) return;
+        g.save(); g.translate(x, y); g.scale(1, 0.62);
+        R.fxGlow(g, 0, 0, r * 1.1, 0.55 * a, 'bronze', { soft: 2.2 });
+        R.fxRing(g, 0, 0, r, 0.65 * a, 'bronze', { css: 2 });
         g.restore();
       },
       /* THE MOMENT the deep answers, over the whole screen. The dark of the
@@ -2574,12 +2585,11 @@
             for (const ex of [-1, 1]) {
               const ox = hx + Math.round(this.HEAD.w / 2 + ex * 12) * hc, oy = hy + 22 * hc;
               this.eye(g, ox, oy, hc, eo, look, T);
-              // the flare as they open: rings of light thrown off each eye
+              // the flare as they open: a ring of light thrown off each eye (smooth, R.fxRing)
               const fq = (T - 1.2) / 0.7;
-              if (fq > 0 && fq < 1) {
-                g.save(); g.globalCompositeOperation = 'lighter';
-                g.fillStyle = 'rgba(255,200,90,' + qa(0.9 * (1 - fq), 4) + ')';
-                ring(g, ox, oy, hc * (6 + 26 * ease(fq)), 36, 0.7, Math.max(2, hc));
+              if (fq > 0 && fq < 1 && R.fxRing) {
+                g.save(); g.translate(ox, oy); g.scale(1, 0.7);
+                R.fxRing(g, 0, 0, hc * (6 + 26 * ease(fq)), 0.9 * (1 - fq), 'gold', { css: 1.5 + 3 * (1 - fq) });
                 g.restore();
               }
             }
@@ -2590,15 +2600,15 @@
             if (R.shakeAt) R.shakeAt(10, 0.7);
             sfx('cardTake');
           }
-          // spray off the water at their feet, light added — and the slam's sheet of it
-          g.save(); g.globalCompositeOperation = 'lighter';
+          // spray off the water at their feet — and the slam's sheet of it:
+          // round drops with their streaks (R.fxDrop), never cells
+          const ds = cell * 0.55;
           if (up > 0) for (let i = 0; i < this.ARMS.length; i++) {
             const bx = W * this.ARMS[i][0];
             for (let n = 0; n < 16; n++) {
               const ph2 = (T * 1.4 + n / 16 + i * 0.37) % 1;
               const sx = bx + (rnd(i * 31 + n, 3) - 0.5) * W * 0.16, sy = H - ph2 * H * 0.12 * (0.5 + rnd(n, i));
-              g.fillStyle = 'rgba(220,238,244,' + qa(0.8 * (1 - ph2) * up, 4) + ')';
-              g.fillRect(snapTo(sx, cell), snapTo(sy, cell), cell, cell);
+              fxCall('fxDrop', g, sx, sy, 0, -H * 0.17, ds, '#e6f4fa', 0.8 * (1 - ph2) * up);
             }
           }
           const sq = (T - this.SLAM) / 0.9;
@@ -2607,19 +2617,22 @@
               const x0 = W * (0.15 + 0.85 * rnd(n, 91)), vy = H * (0.18 + 0.3 * rnd(n, 92)), vx = (rnd(n, 93) - 0.5) * W * 0.2;
               const yy = H - vy * sq * 2.2 + H * 0.9 * sq * sq * 2.2, xx = x0 + vx * sq;
               if (yy > H) continue;
-              g.fillStyle = 'rgba(220,238,244,' + qa(0.95 * (1 - sq), 4) + ')';
-              g.fillRect(snapTo(xx, cell), snapTo(yy, cell), cell * (n % 3 ? 1 : 2), cell * (n % 3 ? 1 : 2));
+              fxCall('fxDrop', g, xx, yy, vx, -vy * 2.2 + H * 3.96 * sq, ds * (n % 3 ? 1 : 1.6), n % 4 ? '#e6f4fa' : '#ffffff', 0.95 * (1 - sq));
             }
           }
-          g.restore();
-          // the white water where it all comes up: a ragged foam line along the bottom
+          // the white water where it all comes up: a ragged foam band along the
+          // bottom, its top edge a smooth churning curve
           if (hr > 0 || up > 0) {
-            const lvl = Math.max(hr, up);
-            g.fillStyle = 'rgba(220,238,244,' + qa(0.85 * lvl, 4) + ')';
-            for (let x = 0; x < W; x += cell) {
-              const hh = (1 + ((hash((x / cell | 0) * 37 + ((T * 6) | 0)) % 3))) * cell;
-              g.fillRect(x, H - hh, cell, hh);
+            const lvl = Math.max(hr, up), n = Math.max(12, Math.ceil(W / (cell * 3)));
+            g.save();
+            g.fillStyle = 'rgba(230,243,250,' + (0.85 * lvl).toFixed(3) + ')';
+            g.beginPath(); g.moveTo(0, H);
+            for (let i = 0; i <= n; i++) {
+              const x = i / n * W, hh = cell * (1.6 + 0.7 * Math.sin(i * 1.7 + T * 6) + 0.5 * Math.sin(i * 0.63 - T * 3.1));
+              g.lineTo(x, H - hh);
             }
+            g.lineTo(W, H); g.closePath(); g.fill();
+            g.restore();
           }
       },
       /* THE SKY'S BEAST, DRAWN — the very kraken the map's acts wear
@@ -2792,19 +2805,39 @@
           // its blow throws WATER, never the strip's shards of ice
           if (sp && a.slam && R.drawSplash) { g.save(); g.translate(bx, by); g.scale(ka / 2, ka / 2); R.drawSplash(g, 0, 0, T - a.slam, 30, 77); g.restore(); }
         };
+        /* WHITE WATER: rings of broken foam rolling out over the sea — off the
+           head as it breaks the surface, off the slam — on the water only, laid
+           on the sea UNDER the beast (a ring drawn over its arms read as a
+           dashed ring on the screen, not water round a body); and, below, the
+           spray thrown up into the air. At the device's own resolution
+           (R.fxFoam, R.fxDrop — the operator's ruling on the effects): the
+           beast is pixel art, the water it throws is not cells. */
+        const slamA = Q.ARMS.find(a => a.slam), SL = slamA.slam;
+        const rings = (x, y, t0, n, R0, R1, life) => onWater(() => {
+          for (let r = 0; r < n; r++) {
+            const q = (T - t0 - r * 0.14) / life;
+            if (q <= 0 || q >= 1) continue;
+            const rr = R0 + (R1 - R0) * ease(q);
+            fxCall('fxFoam', g, x, y, rr, rr * 0.3, 0.9 * (1 - q), { css: 2.4 - q * 1.2, seed: r * 13 + (t0 * 10 | 0), spin: T * 0.15, col: '#e3f3fd', deep: '#b1cfe8' });
+          }
+        });
+        rings(cx, wl, 0.35, 3, 70 * hk, 190 * hk, 1.3);
+        const ka = Math.max(2, hk + slamA.dk), sx0 = armX(slamA), sy0 = wl + 2 * ka;
+        rings(sx0, sy0, SL, 3, 20 * ka, 120 * ka, 1.0);
         if (hr > 0) for (const a of Q.ARMS) if (a.back) arm(a, false);
         // THE HEAD: up out of its waterline, its own frames writhing
         if (hr > 0) {
           const fi = ((T * Q.HEAD_FPS) | 0) % F.head.length, fr = F.head[fi], sp = Beasts.split(fr);
-          const step = v => Math.round(Math.max(0, Math.min(1, v)) * 4) / 4;
           // its sea — the dark whirl and the foam — on the water only
-          onWater(() => { g.globalAlpha = step(hr * 1.6); g.drawImage(sp ? sp.wet : fr, hx, snap(wl - WLr * hk + bob), FW, FW); });
+          onWater(() => { g.globalAlpha = Math.min(1, hr * 1.6); g.drawImage(sp ? sp.wet : fr, hx, snap(wl - WLr * hk + bob), FW, FW); });
           const body = sp ? sp.dry : fr;
           g.save(); g.beginPath(); g.rect(0, -H, W, wl + H); g.clip(); g.drawImage(body, hx, hy, FW, FW);
           /* THE EYES OPEN: lids over the art's own eyes — an upper lid in the
              lit hide, a lower in the shadow, each edged in black — drawn back
              from the middle row in hard steps until the iris burns through */
           const eo = T < 1.05 ? 0 : T < 1.35 ? qa((T - 1.05) / 0.3, 4) : T < 2.65 ? 1 : qa(Math.max(0, 1 - (T - 2.65) / 0.2), 4);
+          // the lids open in whole rows of the art; the LIGHT they let out is not stepped
+          const eoL = T < 1.05 ? 0 : T < 1.35 ? (T - 1.05) / 0.3 : T < 2.65 ? 1 : Math.max(0, 1 - (T - 2.65) / 0.2);
           const E = fr.width === 224 ? this.skyEyes(fr, fi) : [];
           if (eo < 1) for (const rows of E) {
             const y0 = rows[0][0], y1 = rows[rows.length - 1][0], mid = (y0 + y1 + 1) / 2, half = (y1 - y0 + 1) / 2;
@@ -2817,50 +2850,35 @@
             }
           }
           g.restore();
-          const deep = step((hr - 0.5) * 2);
+          const deep = c01((hr - 0.5) * 2);
           if (deep > 0) onWater(() => { g.beginPath(); g.rect(0, wl, W, H); g.clip(); g.globalAlpha = deep; g.drawImage(body, hx, hy, FW, FW); });
-          // …and the light they throw, ADDED: a breathing ring of dots, and
-          // the flare that rolls off each eye as it opens
+          // …and the light they throw: a breathing glow round each eye, and the
+          // flare that rolls off it as it opens — smooth light at the device's
+          // own resolution (R.fxGlow / fxRing), never rings of added dots
           if (eo > 0) {
             if (!s.eyes) { s.eyes = 1; if (R.shakeAt) R.shakeAt(6, 0.6); sfx('cardRoar'); }
-            g.save(); g.globalCompositeOperation = 'lighter';
             for (const rows of E) {
               const mr = rows[rows.length >> 1];
               const ox = hx + ((mr[1] + mr[2] + 1) / 2) * hk, oy = hy + ((rows[0][0] + rows[rows.length - 1][0] + 1) / 2) * hk;
-              g.fillStyle = 'rgba(255,170,60,' + qa(0.5 * eo * (0.7 + 0.3 * Math.sin(T * 5)), 4) + ')';
-              ring(g, ox, oy, hk * 9, 24, 0.7, hk);
+              this.eyeLight(g, ox, oy, hk * 9, eoL * (0.7 + 0.3 * Math.sin(T * 5)));
               const fq = (T - 1.15) / 0.7;
-              if (fq > 0 && fq < 1) {
-                g.fillStyle = 'rgba(255,200,90,' + qa(0.9 * (1 - fq), 4) + ')';
-                ring(g, ox, oy, hk * (8 + 30 * ease(fq)), 40, 0.7, hk);
+              if (fq > 0 && fq < 1 && R.fxRing) {
+                g.save(); g.translate(ox, oy); g.scale(1, 0.7);
+                R.fxRing(g, 0, 0, hk * (8 + 30 * ease(fq)), 0.9 * (1 - fq), 'gold', { css: 1.4 + 3.2 * (1 - fq) });
+                g.restore();
               }
             }
-            g.restore();
           }
         }
         // THE ARMS before it
         for (const a of Q.ARMS) if (!a.back) arm(a, true);
         // THE SLAM: the camera jolts, the water answers
-        const slamA = Q.ARMS.find(a => a.slam), SL = slamA.slam;
         if (T >= SL && !s.slam) {
           s.slam = 1;
           if (R.shakeAt) R.shakeAt(10, 0.7);
           sfx('cardTake'); sfx('splash');
         }
-        // WHITE WATER: rings of dots rolling out over the sea — off the head
-        // as it breaks the surface, off the slam — on the water only; and the
-        // spray thrown up into the air
-        const rings = (x, y, t0, n, R0, R1, life, sz) => onWater(() => {
-          for (let r = 0; r < n; r++) {
-            const q = (T - t0 - r * 0.14) / life;
-            if (q <= 0 || q >= 1) continue;
-            g.fillStyle = 'rgba(227,243,253,' + qa(0.9 * (1 - q), 4) + ')';
-            ring(g, x, y, R0 + (R1 - R0) * ease(q), 64, 0.3, sz);
-          }
-        });
-        rings(cx, wl, 0.35, 3, 70 * hk, 190 * hk, 1.3, hk);
-        const ka = Math.max(2, hk + slamA.dk), sx0 = armX(slamA), sy0 = wl + 2 * ka;
-        rings(sx0, sy0, SL, 3, 20 * ka, 120 * ka, 1.0, ka);
+        // (the white water's rings rolled out under the beast, above)
         const spray = (x0, y0, t0, n, spread, up, seed, sz) => {
           for (let k = 0; k < n; k++) {
             const st = t0 + rnd(seed + k, 1) * 0.35, tt = T - st;
@@ -2868,22 +2886,17 @@
             const vx = (rnd(seed + k, 2) - 0.5) * spread, vy = up * (0.5 + rnd(seed + k, 3) * 0.6);
             const x = x0 + (rnd(seed + k, 4) - 0.5) * spread * 0.4 + vx * tt, y = y0 - vy * tt + H * 0.9 * tt * tt;
             if (y > y0) continue;
-            g.fillStyle = Q.FOAM[k % 3];
-            g.globalAlpha = qa(1 - tt / 1.1, 4);
-            const z = sz * (k % 3 ? 1 : 2);
-            g.fillRect(snapTo(x, sz), snapTo(y, sz), z, z);
+            fxCall('fxDrop', g, x, y, vx, -vy + H * 1.8 * tt, sz * (k % 3 ? 0.55 : 0.95), Q.FOAM[k % 3], 1 - tt / 1.1);
           }
-          g.globalAlpha = 1;
         };
         spray(cx, wl - 4 * hk, 0.4, 56, 150 * hk, (wl - top) * 0.7, 700, hk);
         spray(sx0, sy0, SL, 70, 120 * ka, (wl - top) * 0.9, 900, ka);
-        // the whirl closing over it as it goes down, on the water
+        // the whirl closing over it as it goes down, on the water: arcs of foam turning in
         if (T > 2.75 && hr > 0) onWater(() => {
-          g.fillStyle = Q.FOAM[1];
-          g.globalAlpha = qa(0.9 * hr, 4);
-          for (let i = 0; i < 40; i++) {
-            const an = i / 40 * Math.PI * 2 + T * 3, rr2 = (40 + 90 * hr) * hk * (0.7 + 0.3 * ((i % 3) / 2));
-            g.fillRect(snapTo(cx + Math.cos(an) * rr2, hk), snapTo(wl + Math.sin(an) * rr2 * 0.3, hk), hk * 2, hk);
+          g.lineCap = 'round'; g.strokeStyle = Q.FOAM[1]; g.globalAlpha = Math.min(1, 0.9 * hr); g.lineWidth = hk * 0.9;
+          for (let i = 0; i < 14; i++) {
+            const an = i / 14 * Math.PI * 2 + T * 3, rr2 = (40 + 90 * hr) * hk * (0.7 + 0.3 * ((i % 3) / 2));
+            g.beginPath(); g.ellipse(cx, wl, rr2, rr2 * 0.3, 0, an, an + 0.32); g.stroke();
           }
         });
         g.restore();
