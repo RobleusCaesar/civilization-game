@@ -700,7 +700,8 @@ Object.assign(Deck, {
      raised to its hall's champion — set on the frame's own head (headTop:
      its first opaque row, measured once per frame) so it rides the walk and
      the stride, a world pixel's gap above the hair. `bright`: the frame its
-     rank lands, the diamond white-hot with a four-point glint. */
+     rank lands, the diamond white-hot (the Veterans show lays its glint of
+     light over the middle this answers). */
   PIP: { 2: ['#3a2408', '#ffd45e', '#fff3b0'], 1: ['#26303c', '#b9c8da', '#ffffff'] },
   _headC: new WeakMap(),
   headTop(img) {
@@ -730,8 +731,10 @@ Object.assign(Deck, {
     g.fillStyle = bright ? '#ffffff' : P[1];
     [1, 3, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top + r, w, 1));
     g.fillStyle = bright ? '#ffffff' : P[2]; g.fillRect(cx - 1, top + 1, 1, 1); g.fillRect(cx, top, 1, 1);
-    // the frame it lands: a four-point glint off it
-    if (bright) { g.fillStyle = P[2]; g.fillRect(cx, top - 5, 1, 3); g.fillRect(cx, top + 7, 1, 3); g.fillRect(cx - 7, top + 2, 3, 1); g.fillRect(cx + 5, top + 2, 3, 1); }
+    // (the frame it lands, the badge is white-hot; its catch of LIGHT is the
+    // show's, a smooth star at the device's own resolution — R.fxSpark over
+    // the point answered here. It was four one-pixel bars, a pixel crosshair)
+    return { x: cx + 0.5, y: top + 2.5 };
   },
   /* A SOLDIER LIT ON HIS OWN PIXELS (Veterans): the frame drawn on an
      offscreen canvas and the light laid over it source-atop, so it covers
@@ -883,21 +886,28 @@ Object.assign(Deck, {
   },
 });
 
-/* ---------------- THE LOOK: shared house-style strokes for the shows ----------------
-   Hard pixels snapped to a 2px grid in the world, hard alpha steps, rings
-   made OF dots, never a stroked arc, never a soft radial gradient, never
-   ctx.filter. World-space helpers take tiles × CFG.TILE; the sky helpers
-   take device pixels. Every helper bounds its own count, so a show's cost is
-   fixed whatever the town looks like.
+/* ---------------- THE LOOK: shared strokes for the shows ----------------
+   (THE LIGHT IS DRAWN AT THE DEVICE'S OWN RESOLUTION — the operator's ruling,
+   2026-10-27, which retired this toolkit's "hard pixels snapped to a 2px
+   grid, hard alpha steps, rings made OF dots, never a stroked arc, never a
+   soft radial gradient": "When characters slam down, that feels cool, but
+   the rays are pixelated again… higher pixel count… make the other parts of
+   the games that I've touched on just as good".) Every light an army act
+   lays — beams, rings, glints, sparks, the howl, the crack, the dust — is a
+   smooth antialiased path or gradient at FRACTIONAL coordinates (the shared
+   R.fx* helpers in js/render.js, and the few strokes below built the same
+   way), never a fillRect on the art's grain. What stays pixel art is the
+   world's art: the units (a ghost's inked dither, a man's own silhouette lit
+   in the Veterans' flash, the rank pip he wears for good), the strangers'
+   packs and the place-dust (R.poofSheet).
    THE LIGHT IS GOLD, NOT LIME: a helper handed a TONE ('gold', 'bronze',
-   'pale' — R.LIGHT.TONE) in place of an "r,g,b" draws the card's own light
-   (render.js): a body (shaft, pool, the sky's rays) is an R.glow — what it
-   falls on turns gold, then bright — and a mark (a ring's dots, a glint, a
-   mote) opaque ink faded down the tone's ramp, whatever composite the
-   caller holds. Any other colour (a ghost's cold blue, steel, white) keeps
-   its own additive look, in the caller's composite, as before. */
+   'pale', 'steel', 'white' — R.LIGHT.TONE) or a colour ("r,g,b") draws it as
+   light — its hue laid on what it falls on (tied to its light, R.FX_TIE),
+   then the light itself screened over — so the meadow under it takes the
+   tone's colour and never turns lime or olive. World-space helpers take
+   tiles × CFG.TILE; the sky helpers take device pixels. Every helper bounds
+   its own count, so a show's cost is fixed whatever the town looks like. */
 Deck.armyFx = {
-  snap(v) { return Math.round(v / 2) * 2; },
   /* (THE PIXEL STEPS ARE GONE — the operator's ruling, 2026-10-27: "When
      characters slam down, that feels cool, but the rays are pixelated
      again, let's increase the quality of that as well. higher pixel
@@ -909,13 +919,9 @@ Deck.armyFx = {
      light so the meadow under it turns gold or steel and never lime; any
      other colour ("r,g,b") is that colour's own light the same way.) */
   rgba(col, a) { return 'rgba(' + col + ',' + Math.max(0, Math.min(1, a)).toFixed(3) + ')'; },
-  // set g for small marks in `col` at `a` (a tone's ink or the colour itself);
-  // false when there is nothing to draw. The caller restores what it held
-  mark(g, col, a) {
-    if (R.isTone(col)) return R.inkOn(g, a, col);
-    g.fillStyle = this.rgba(col, a);
-    return true;
-  },
+  // (snap() and mark() — the 2px grain and the opaque ink cells — are gone
+  // with the last act that asked for them; nothing in an act's light is
+  // snapped to the art's grain)
   // a ring of light at radius `rad`, squashed by `sy` (0.5) to lie on the ground
   ring(g, cx, cy, rad, n, col, a, sy) {
     if (a <= 0.02 || rad < 1) return;
@@ -951,6 +957,109 @@ Deck.armyFx = {
     if (a <= 0.02) return;
     R.fxMotes(g, cx, cy, { n, t, seed, rise, spread: spread * 2, a: Math.min(1, a), tone: col, speed: 0.6, size: 1.15 });
   },
+  /* A STREAK OF LIGHT from (x0, y0) to (x1, y1): a tapered sliver, `w0`
+     half-wide at its tail and `w1` at its round head (caller units), faint
+     at the tail and white-hot at the head — a spark's flight. Through
+     R.fxLight, so its hue is tied to its light. */
+  streak(g, x0, y0, x1, y1, w0, w1, col, a) {
+    if (!(a > 0.01)) return;
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy);
+    if (L < 1e-3) { R.fxDot(g, x1, y1, w1 / R.fxPx(g), a, col); return; }
+    const h = Math.atan2(dy, dx), nx = -dy / L, ny = dx / L;
+    R.fxLight(g, Math.min(1, a), col, {
+      path: q => {
+        q.beginPath();
+        q.moveTo(x0 + nx * w0, y0 + ny * w0); q.lineTo(x1 + nx * w1, y1 + ny * w1);
+        q.arc(x1, y1, w1, h + Math.PI / 2, h - Math.PI / 2, true);
+        q.lineTo(x0 - nx * w0, y0 - ny * w0); q.closePath();
+      },
+      grad: q => q.createLinearGradient(x0, y0, x1 + dx / L * w1, y1 + dy / L * w1),
+      prof: u => u * u, ramp: u => 0.9 * (1 - u), n: 16,
+    });
+  },
+  /* A LINE OF LIGHT along a path (`path(g)` lays it — an arc, a jagged
+     seam): `w` wide (caller units), round-capped, inside a soft halo of its
+     own, a white-hot thread down its middle; its hue laid first, tied to its
+     light and a device pixel past it. Strokes, never cells: the browser
+     draws the curve at the screen's own resolution. */
+  lineLight(g, path, w, col, a) {
+    if (!(a > 0.01) || !(w > 0)) return;
+    const T = R.fxTone(col), A = R.fxA(Math.min(1, a)), dv = R.fxDev(g);
+    g.save();
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    g.globalCompositeOperation = 'color';
+    if (g.globalCompositeOperation === 'color') {
+      g.globalAlpha = Math.min(1, R.FX_TIE * A.l); g.strokeStyle = T.hue;
+      g.lineWidth = w * 2.6 + 2.4 * dv; path(g); g.stroke();
+    }
+    g.globalCompositeOperation = 'screen';
+    for (const [k, c, al] of [[2.6, T.ramp[1], 0.22], [1.8, T.ramp[2], 0.4], [1.15, T.ramp[3], 0.7], [0.5, T.hot, 1]]) {
+      g.globalAlpha = Math.min(1, A.l * al); g.strokeStyle = c; g.lineWidth = Math.max(0.7 * dv, w * k); path(g); g.stroke();
+    }
+    g.restore();
+  },
+  /* DUST kicked up off the ground — a stamp, a gallop — in the earth's own
+     browns, soft-edged, at the device's own resolution. It is a puff of
+     DUST, not a light: a tone of the earth with no white-hot heart, laid the
+     light's way (its hue on what it covers, then its paler body screened
+     over), so a puff over the meadow is a dusty tan, never olive. */
+  // (its hue a dusty, half-grey tan: a saturated brown laid on the
+  // meadow's own luminance read as mud round the rim of every puff — and
+  // tied harder to its body than a light's, DUST_TIE: where a little of the
+  // grass's green shows through a warm hue that is only partly laid, the
+  // mix is the olive the meadow must never wear)
+  DUST: { hue: '#a98d70', faint: '#a98d70', ramp: ['#8f7a5c', '#b39c78', '#cdb894', '#ddcdaf'], hot: '#e4d6bb' },
+  DUST_TIE: 18,
+  // the war-wolves' howl and breath: a cold moon-white (its hue a pale grey,
+  // so the meadow under it goes silver, never lime)
+  HOWL: { hue: '#c2cad3', faint: '#c2cad3', ramp: ['#98a2ad', '#ccd3db', '#e7ebf0', '#f6f8fa'], hot: '#ffffff' },
+  // the ancestors' cold light (the crack, the burst, the fade)
+  COLD: { hue: '#9cc4e6', faint: '#8db6da', ramp: ['#6f9cc8', '#a9d2f0', '#d6ecfb', '#eef8ff'], hot: '#ffffff' },
+  puff(g, x, y, r, a, sq) { this.dustLay(g, [{ x, y, r, a, sq }]); },
+  /* A CLOUD OF DUST, laid all at once: every puff `{x, y, r, a, sq}` (a
+     broad body thinning out at its rim — a low falloff power) and every
+     ring `{x, y, r, w, a, sq, ring: true}` (a band of it running out along
+     the ground, soft across its width) has its paler body SCREENED first and
+     then the dust's HUE laid over the lot, tied to each body (DUST_TIE) —
+     the order a stack of screens needs (R.fxBeam's rule). Laid hue-first,
+     puff by puff, one puff's faint rim lifted again by its neighbours'
+     bodies read lime where six men stamped together. In the caller's units;
+     smooth, at the device's own resolution; no RNG. */
+  dustLay(g, list) {
+    list = (list || []).filter(d => d.a > 0.01 && d.r > 0);
+    if (!list.length) return;
+    const T = this.DUST, K = this.DUST_TIE;
+    g.save();
+    for (const pass of ['screen', 'color']) {
+      g.globalCompositeOperation = pass;
+      if (g.globalCompositeOperation !== pass) continue;   // (no 'color': the body alone)
+      for (const d of list) {
+        const L = R.fxA(Math.min(1, d.a)).l;
+        let r0 = 0, r1 = d.r, prof;
+        if (d.ring) {
+          const w = Math.max(0.3, d.w || 1); r0 = Math.max(0, d.r - w); r1 = d.r + w;
+          const mid = (d.r - r0) / (r1 - r0);
+          prof = u => Math.pow(Math.max(0, 1 - Math.abs(u - mid) / (u < mid ? mid || 1 : 1 - mid)), 1.4);
+        } else prof = u => Math.pow(Math.max(0, 1 - u), 0.95);
+        g.save();
+        g.translate(d.x, d.y); g.scale(1, d.sq || 0.7);
+        g.fillStyle = R._fxStops(g.createRadialGradient(0, 0, r0, 0, 0, r1), 16, pass === 'screen'
+          ? u => [R._fxRamp(T, 0.2 + 0.8 * u), L * prof(u)]
+          : u => [T.hue, Math.min(1, K * L * prof(u))]);
+        g.beginPath(); g.arc(0, 0, r1, 0, Math.PI * 2);
+        if (r0 > 0) g.arc(0, 0, r0, 0, Math.PI * 2, true);
+        g.fill();
+        g.restore();
+      }
+    }
+    g.restore();
+  },
+  // a crumb of earth thrown off the ground: a small round clod at its true
+  // position, in the earth's own browns (it is earth, not light)
+  crumb(g, x, y, r, col) {
+    g.fillStyle = col;
+    g.beginPath(); g.arc(x, y, Math.max(0.4, r), 0, Math.PI * 2); g.fill();
+  },
   // the world point (tiles) on the screen (device px), for the sky layer
   scr(wx, wy) {
     const z = R.cam.z * R.dpr, TL = CFG.TILE;
@@ -966,12 +1075,26 @@ Deck.armyFx = {
     const x0 = (b.x0 - R.cam.x) * z, y0 = (b.y0 - R.cam.y) * z;
     g.beginPath(); g.rect(x0, y0, (b.x1 - R.cam.x) * z - x0, (b.y1 - R.cam.y) * z - y0); g.clip();
   },
-  // the screen's grain in the sky layer: one world pixel pair at this zoom
-  grain() { return Math.max(2, Math.round(2 * R.cam.z * R.dpr)); },
+  // (grain() — the art's 2px grain measured on the screen, which the bars
+  // slid by and the motes swayed by — is gone with the last light that
+  // asked for it)
+  // a flat dark (or a cold flash) over the whole sky layer: the caller clips it
   dim(g, a, col) {
     if (a <= 0.01) return;
     g.fillStyle = this.rgba(col || '6,8,18', a);
     g.fillRect(0, 0, R.cv.width, R.cv.height);
+  },
+  /* A HELD BEAT'S DARK, eased in and out — never in steps (it stepped a
+     sixth, then a twelfth, before the operator's ruling on the effects): the
+     day dimmed by `flat` at full and, with `vig`, the edges of the open frame
+     closing in smoothly (R.fxVignette, a darkening only). `k` 0..1. Sky
+     layer, device px; the caller clips it to the board. */
+  shade(g, k, col, flat, vig) {
+    k = Math.max(0, Math.min(1, k || 0));
+    if (k <= 0.004) return;
+    const e = k * k * (3 - 2 * k);
+    this.dim(g, (flat || 0) * e, col);
+    if (vig && R.fxVignette) R.fxVignette(g, e, { rgb: col, box: R.openBand ? R.openBand() : null, depth: 0.3, max: vig });
   },
   /* THE HELD BEAT is a CINEMA LETTERBOX (judge g3: the first bars were
      thin dark strips with a gilded line along them, and read as a stripe of
@@ -979,7 +1102,9 @@ Deck.armyFx = {
      over the open frame — below the status bar, above the build menu, whose
      heights are measured off the DOM (R.topReserve/bottomReserve are learned
      lazily and can still read 0) — CINEMA.bar of it each, in CINEMA.slide
-     seconds, by whole grains (a hard edge on every frame); nothing drawn
+     seconds, on the device's own pixels (a crisp edge on every frame and
+     no step coarser than a pixel — it slid in by whole 2px grains, a judder
+     at dpr 3, before the operator's ruling on the effects); nothing drawn
      along them, no light rule; and the card's own name stands in the lower
      bar in the menu's lettering — Cinzel caps, gold with an ink edge — as
      the title of the scene, until the bars slide back out and the world is
@@ -1015,10 +1140,10 @@ Deck.armyFx = {
      raid seen — never sits on the bar the act has drawn across the glass. */
   cinema(g, k, title, sub) {
     if (k <= 0) { this.cineToasts(0); return null; }
-    const C = this.CINEMA, W = R.cv.width, H = R.cv.height, f = this.frame(), gr = this.grain();
+    const C = this.CINEMA, W = R.cv.width, H = R.cv.height, f = this.frame();
     const open = Math.max(1, H - f.top - f.bot);
     const e = 1 - (1 - Math.min(1, k)) * (1 - Math.min(1, k));
-    const full = Math.round(open * C.bar / gr) * gr, h = Math.round(full * e / gr) * gr;
+    const full = Math.round(open * C.bar), h = Math.round(full * e);
     if (h <= 0) { this.cineToasts(0); return null; }
     g.fillStyle = C.col;
     g.fillRect(0, f.top, W, h); g.fillRect(0, H - f.bot - h, W, h);
@@ -1062,12 +1187,14 @@ Deck.armyFx = {
      what makes a shaft of light read as air rather than as paint */
   dust(g, sx, sy, t, n, col, a, spread) {
     if (a <= 0.02 || sy < 0) return;
-    const H = R.cv.height, oy = -H * 0.3, sp = spread || 0.21, gr = this.grain();
+    // (a mote's sway is a few CSS px, at its true place — it was a whole
+    // grain of the art, two world px rounded to the device's)
+    const H = R.cv.height, oy = -H * 0.3, sp = spread || 0.21, sw = 3 * (R.dpr || 1);
     for (let k = 0; k < n; k++) {
       const h = (k * 0.618034) % 1, h2 = (k * 0.381966 + 0.5) % 1;
       const ph = (t * (0.05 + h2 * 0.06) + h) % 1;
       const y = ph * sy, th = (h2 * 2 - 1) * sp * 0.9 + Math.sin(t * 0.7 + k) * 0.01;
-      const x = sx + Math.tan(th) * (y - oy) + Math.sin(t * 1.3 + k * 2.3) * gr;
+      const x = sx + Math.tan(th) * (y - oy) + Math.sin(t * 1.3 + k * 2.3) * sw;
       const tw = 0.6 + 0.4 * Math.sin(t * 5.2 + k * 2.37);
       R.fxDot(g, x, y, 1.1 + (k % 3) * 0.35, a * tw * (ph < 0.1 ? ph / 0.1 : ph > 0.9 ? (1 - ph) / 0.1 : 1), col);
     }
@@ -1243,15 +1370,9 @@ Deck.armyFx = {
     });
   },
   engine(u) { return !!u && Deck.fanClass(u.kind) === 'engine'; },
-  /* an ellipse's outline as a fine antialiased line in the caller's
-     g.fillStyle (the name is the old one: it was a ring of touching 2px
-     squares) */
-  ellipseDots(g, cx, cy, rx, ry) {
-    const st = g.strokeStyle, lw = g.lineWidth;
-    g.strokeStyle = g.fillStyle; g.lineWidth = 1.6 * R.fxPx(g);
-    g.beginPath(); g.ellipse(cx, cy, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2); g.stroke();
-    g.strokeStyle = st; g.lineWidth = lw;
-  },
+  // (ellipseDots — a ring of touching 2px squares, then a flat line in the
+  // caller's colour that read as a selection ring — is gone: every ring an
+  // act lays is light, R.fxRing)
 };
 
 /* ---------------- THE SOUND: synthesized voices for the cards' moments ----------------
@@ -1402,8 +1523,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
        treeline (or in from the edge of the view) on ground the player knows
        and can walk from (arrival — never across water from the door), in
        single file half a tile apart, packs on their backs, along a short
-       dotted path; and each joins with a small hard-pixel burst of gold at
-       the door. With nowhere for them to come from (a hall boxed in), they
+       dotted path of soft pale beads; and each joins with a small burst of
+       gold light at the door (a ring, a spark, motes — smooth, at the
+       device's own resolution). With nowhere for them to come from (a hall boxed in), they
        step out of the doorstep as before (summonCard). */
     willing_hands: {
       at: 'tc', KIND: 'villager', N: 3, STAGGER: 170, HOLD: 0.4,
@@ -1487,40 +1609,67 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         });
         return (this._pack = c);
       },
+      /* (the path and the welcome's ring lie ON THE GROUND — the ground pass,
+         under the strangers' feet and the hall; the packs, the welcome's
+         spark and its motes are in the air over them — the world pass) */
       show: {
-        ms: 6500, layer: 'world',
-        draw(g, s, p) {
-          const TL = CFG.TILE, snapPx = v => Math.round(v / 2) * 2;
+        ms: 6500, layers: ['ground', 'world'],
+        draw(g, s, p, dt, layer) {
+          const TL = CFG.TILE;
           if (!s.walk) {
             // (no way in: they step out of the doorstep's light, as before)
-            muster(g, s, p, 'pale', 1, true);
+            if (layer !== 'world') return;
+            muster(g, s, p, 'steel', 1, true);   // (the 'pale' tone rims olive this small)
             A.motes(g, s.mx * TL, s.my * TL, 6, s.t, 3, 'bronze', 1 - p, 10, TL * 1.2);
             return;
           }
-          // the short dotted path they take, from the trees to the door, there while they are on it
           const lead = s.units.length ? live(s.units[0].id) : null;
-          if (s.t < 3.2) {
-            const fade = s.t < 2.4 ? 1 : 1 - (s.t - 2.4) / 0.8;
-            const pts = (lead && lead.path && lead.path.length) ? [{ x: s.fx, y: s.fy }].concat(lead.path.map(q => ({ x: (q.x != null ? q.x : q[0]) + 0.5, y: (q.y != null ? q.y : q[1]) + 0.5 }))) : [{ x: s.fx, y: s.fy }, { x: s.mx, y: s.my }];
-            if (R.inkOn(g, 0.8 * Math.max(0, fade), 'pale')) {
-              let acc = 0;
-              for (let k = 1; k < pts.length; k++) {
-                const a = pts[k - 1], b = pts[k], seg = Math.hypot(b.x - a.x, b.y - a.y) * TL;
-                for (let u = 0; u < seg; u += 2) {
-                  if ((acc + u) % 7 < 2) g.fillRect(snapPx(a.x * TL + (b.x - a.x) * TL * u / seg), snapPx(a.y * TL + (b.y - a.y) * TL * u / seg + TL * 0.25), 2, 2);
+          const stand = u => { const lean = R.workLean ? R.workLean(u) : null; return { wx: (lean ? lean.x : u.x) * TL, foot: (lean ? lean.y : u.y) * TL + TL / 2 - CFG.SPRITE_LIFT }; };
+          if (layer === 'ground') {
+            R.clipBoard(g, () => {
+              // the short dotted path they take, from the trees to the door,
+              // there while they are on it: a soft bead of silver-pale light
+              // every seven world px, each at its true place (it was a 2px
+              // cell on the art's grain, which read as a pebble in the grass;
+              // and the stone-white 'pale' tone, this small, rims olive on
+              // the meadow — the steel one never does)
+              if (s.t < 3.2) {
+                const fade = s.t < 2.4 ? 1 : 1 - (s.t - 2.4) / 0.8;
+                const pts = (lead && lead.path && lead.path.length) ? [{ x: s.fx, y: s.fy }].concat(lead.path.map(q => ({ x: (q.x != null ? q.x : q[0]) + 0.5, y: (q.y != null ? q.y : q[1]) + 0.5 }))) : [{ x: s.fx, y: s.fy }, { x: s.mx, y: s.my }];
+                const fa = 0.95 * Math.max(0, fade);
+                if (fa > 0.01) {
+                  let acc = 0, next = 3.5;
+                  for (let k = 1; k < pts.length && acc < 40 * TL; k++) {
+                    const a = pts[k - 1], b = pts[k], seg = Math.hypot(b.x - a.x, b.y - a.y) * TL;
+                    while (next <= acc + seg) {
+                      const u = (next - acc) / seg;
+                      R.fxDot(g, a.x * TL + (b.x - a.x) * TL * u, a.y * TL + (b.y - a.y) * TL * u + TL * 0.25, 1.4, fa, 'steel');
+                      next += 7;
+                    }
+                    acc += seg;
+                  }
                 }
-                acc += seg;
               }
-            }
+              // the welcome's ring of gold light, running out round their feet
+              for (const m of s.units) {
+                const u = live(m.id), j = s.joined[m.id];
+                if (!u || j == null) continue;
+                const q = (s.t - j) / 0.45;
+                if (q < 0 || q >= 1) continue;
+                const { wx, foot } = stand(u), e = 1 - (1 - q) * (1 - q), k = 1 - q;
+                R.fxRing(g, wx, foot - 1, 5 + e * 13, k, 'gold', { squash: 0.5, css: 2.2 * (0.5 + 0.5 * k) });
+              }
+            });
+            return;
           }
           const pack = this.packArt();
           for (const m of s.units) {
             const u = live(m.id);
             if (!u) continue;
             const joined = s.joined[m.id];
-            // at the door they join: the pack is set down, a small hard burst of gold
+            // at the door they join: the pack is set down, a small burst of gold light
             if (joined == null && Math.hypot(u.x - s.mx, u.y - s.my) < 1.4 && !Units.moving(u)) s.joined[m.id] = s.t;
-            const lean = R.workLean ? R.workLean(u) : null, wx = (lean ? lean.x : u.x) * TL, foot = (lean ? lean.y : u.y) * TL + TL / 2 - CFG.SPRITE_LIFT;
+            const { wx, foot } = stand(u);
             if (s.joined[m.id] == null) {
               // the pack rides on the back — behind the way they walk, at the shoulder
               const prev = s['p' + m.id] || { x: u.x, y: u.y }, mx2 = u.x - prev.x, my2 = u.y - prev.y;
@@ -1532,13 +1681,18 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
                 g.drawImage(pack, 0, 0, 7, 3, Math.round(wx + sx * 4 - 3.5), Math.round(foot - 27), 7, 3);
               } else g.drawImage(pack, Math.round(wx + side * 5 - 3.5), Math.round(foot - 19));
             } else {
-              const q = (s.t - s.joined[m.id]) / 0.4;
-              if (q >= 0 && q < 1 && R.inkOn(g, 1 - q, 'gold')) {
-                for (let k = 0; k < 8; k++) {
-                  const th = k / 8 * Math.PI * 2, r1 = 4 + q * 12;
-                  g.fillRect(snapPx(wx + Math.cos(th) * r1), snapPx(foot - 6 + Math.sin(th) * r1 * 0.7), 2, 2);
+              // the welcome (its ring is on the ground, above): a spark at
+              // its heart that shrinks as it goes, and four motes flung clear
+              // — smooth, at the device's own resolution (it was a ring of
+              // hard 2px squares over a 4px block)
+              const q = (s.t - s.joined[m.id]) / 0.45;
+              if (q >= 0 && q < 1) {
+                const e = 1 - (1 - q) * (1 - q), k = 1 - q;
+                if (q < 0.6) R.fxSpark(g, wx, foot - 9, 9 * (1 - q / 0.6) + 2, 1 - q / 0.6, 'gold', { diag: true });
+                for (let j = 0; j < 4; j++) {
+                  const th = j * 1.571 + 0.785 + m.id * 0.6, rr = 4 + e * 11;
+                  R.fxDot(g, wx + Math.cos(th) * rr, foot - 6 + Math.sin(th) * rr * 0.6 - e * 6, 1.3, k, 'gold');
                 }
-                g.fillRect(snapPx(wx) - 2, snapPx(foot - 6) - 2, 4, 4);
               }
             }
           }
@@ -1623,8 +1777,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       /* AT HEEL: three bronze beams come down at the hall's side, one after
          another, and each wolf lands on its own place IN the beam — at heel,
          facing out, held there for its beat (FAN: hold) — and as it lands it
-         HOWLS: two arcs of hard pale pixels going up off its head, the second
-         a beat behind the first, and its breath rising off the muzzle. The
+         HOWLS: two arcs of cold pale light going up off its head, the second
+         a beat behind the first, and its breath rising off the muzzle in soft
+         puffs — smooth strokes at the device's own resolution (they were
+         rows of hard 2px cells, which read as confetti). The
          tribe's dye is worn on the wolf (its collar, Deck.warWolfKey) and
          nowhere on the ground: the first cut's dotted dye rings at its feet
          read as "cyan dots" pointing at nothing. No boots, no dust
@@ -1640,20 +1796,22 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           for (const m of s.units) {
             const u = live(m.id), hq = (s.t - m.d - 0.15) / 0.6;
             if (!u || hq <= 0 || hq >= 1) continue;
-            // the howl: arcs over the head, widening and climbing as they go
+            // the howl: arcs of pale light over the head, widening, climbing
+            // and thinning as they go — smooth strokes at the device's own
+            // resolution (A.lineLight), never a row of cells
             const B = R.unitBox(u), hx = u.x * TL, hy = R.frameTop(u.y, B, B) + B * 0.3;
             for (let w = 0; w < 2; w++) {
               const q = hq * 1.25 - w * 0.3;
               if (q <= 0 || q >= 1) continue;
-              const rr = 4 + q * 12, cy = hy - q * 6;
-              g.fillStyle = q < 0.55 ? '#f4efe2' : '#c9c4b8';
-              for (let a = -2.5; a <= -0.64; a += 0.31) g.fillRect(A.snap(hx + Math.cos(a) * rr), A.snap(cy + Math.sin(a) * rr * 0.8), 2, 2);
+              const rr = 4 + q * 12, cy = hy - q * 6, k = 1 - q;
+              A.lineLight(g, q2 => { q2.beginPath(); q2.ellipse(hx, cy, rr, rr * 0.8, 0, -2.45, -0.69); },
+                (1.5 * k + 0.35) * R.fxPx(g), A.HOWL, Math.min(1, k * 1.4));
             }
-            // its breath, rising off the muzzle in hard pale steps
+            // its breath, rising off the muzzle: three soft pale puffs,
+            // growing and thinning out as they climb
             for (let k = 0; k < 3; k++) {
-              const lift = (hq * 1.3 + k * 0.22) % 1;
-              g.fillStyle = lift < 0.5 ? '#eeeae0' : '#c9c4b8';
-              g.fillRect(A.snap(u.x * TL + (k - 1) * 3 + lift * 4), A.snap(u.y * TL - TL * 0.5 - lift * TL * 0.5), 2, 2);
+              const lift = (hq * 1.3 + k * 0.22) % 1, a = lift < 0.15 ? lift / 0.15 : 1 - (lift - 0.15) / 0.85;
+              R.fxGlow(g, u.x * TL + (k - 1) * 3 + lift * 4, u.y * TL - TL * 0.5 - lift * TL * 0.5, 2.2 + lift * 4, 0.7 * a, A.HOWL, { soft: 1.4 });
             }
           }
         },
@@ -1684,7 +1842,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (layer === 'sky') {
             // (no bars: the cinema cut is the Imperial tier's — CINEMA)
             const hold = p < 0.06 ? p / 0.06 : p < 0.5 ? 1 : Math.max(0, 1 - (p - 0.5) / 0.2);
-            g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '12,10,8'); g.restore();
+            g.save(); A.skyClip(g); A.shade(g, hold, '12,10,8', 1 / 6, 0.3); g.restore();
             return;
           }
           // a drum on every other landing, the ground answering each
@@ -1718,28 +1876,28 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           if (layer !== 'world') return;
           A.beats(s, s.t, landings(s, 1), 5, 0.4);
           skid(s); swing(s);
-          g.save(); g.globalCompositeOperation = 'lighter';
           for (const m of s.units) {
             const q = (s.t - m.d) / 0.45;
             if (q <= 0 || q >= 1) continue;
             const cx = m.x * TL, cy = m.y * TL;
-            if (q < 0.22) A.glint(g, cx, cy - 4, 4, '255,252,230', 1);   // the axle strikes
-            // the sparks: white-hot added, the rest opaque in the gold and the
-            // bronze inks, fading down their ramps (added, they went lime)
+            if (q < 0.22) A.glint(g, cx, cy - 4, 4, 'white', 1 - q / 0.22 * 0.5);   // the axle strikes
+            // the sparks off the axles: each a hot head on a short tapering
+            // streak (A.streak — where it was a moment ago to where it is),
+            // flung up and falling back, white-hot, gold and bronze in turn,
+            // thinning and fading as they cool. Light at the device's own
+            // resolution, its hue under it (cells added over grass went lime)
+            const a = q < 0.5 ? 1 : 1 - (q - 0.5) / 0.5, cp = R.fxPx(g);
+            const at = (th, sp, qq) => {
+              const rr = TL * (0.25 + qq * 1.15 * sp);
+              return [cx + Math.cos(th) * rr, cy + Math.sin(th) * rr * 0.5 - qq * 10 + qq * qq * 14];   // flung up, falling back
+            };
             for (let k = 0; k < 14; k++) {
-              const th = k * 0.4488 + m.id, sp = 0.8 + ((k * 7) % 5) * 0.12, rr = TL * (0.25 + q * 1.15 * sp);
-              const x = cx + Math.cos(th) * rr, y = cy + Math.sin(th) * rr * 0.5 - q * 10 + q * q * 14;   // flung up, falling back
-              const a = q < 0.5 ? 1 : 1 - (q - 0.5) / 0.5;
-              g.globalCompositeOperation = 'lighter';
-              if (A.mark(g, k % 3 === 0 ? '255,255,240' : k % 3 === 1 ? 'gold' : 'bronze', k % 3 === 0 ? a : 0.85 * a)) {
-                const z = q < 0.45 && k % 2 === 0 ? 4 : 2;
-                g.fillRect(A.snap(x), A.snap(y), z, z);
-              }
-              if (A.mark(g, 'bronze', a * 0.5))   // its trail
-                g.fillRect(A.snap(cx + Math.cos(th) * rr * 0.78), A.snap(cy + Math.sin(th) * rr * 0.39 - q * 8), 2, 2);
+              const th = k * 0.4488 + m.id, sp = 0.8 + ((k * 7) % 5) * 0.12;
+              const [x, y] = at(th, sp, q), [x0, y0] = at(th, sp, Math.max(0, q - 0.2));
+              const tone = k % 3 === 0 ? 'white' : k % 3 === 1 ? 'gold' : 'bronze', w = (k % 2 ? 1.2 : 1.7) * (1 - q * 0.5) * cp;
+              A.streak(g, x0, y0, x, y, w * 0.2, w, tone, k % 3 === 0 ? a : 0.85 * a);
             }
           }
-          g.restore();
         },
       },
     },
@@ -1821,8 +1979,8 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         return { ok: true, x: hx, y: hy, units: lit.map(l => l.id),
           msg: 'Veterans: ' + n + ' soldier' + (n > 1 ? 's' : '') + ' rise a rank.' };
       },
-      /* THE RANKS RISE (Iron tier): a ring of hard steel pixels rolls out
-         from the army's middle; as it reaches each soldier a steel beam comes
+      /* THE RANKS RISE (Iron tier): a shock ring of steel light rolls out
+         from the army's middle (smooth, at the device's own resolution); as it reaches each soldier a steel beam comes
          down on him (Deck.armyFx.arrive, the summons' own light, in the
          ground pass under him), and HE FLASHES — his own pixels and no
          others (Deck.flashOf: the sprite drawn, the light laid source-atop
@@ -1830,7 +1988,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
          frame, then a bright wash with his detail showing through, then a
          gold one, each opaque and edged in a hard gold line — then his new
          rank pip rises off his head and settles where he will wear it for
-         good (Deck.drawRank). The first cut laid a translucent tan
+         good (Deck.drawRank), a smooth star of its light flaring over it.
+         The flash and the pip are HIS — his art, kept in hard pixels; the
+         wave and the star are light. The first cut laid a translucent tan
          silhouette over a gold glow rectangle: a cut-out pasted on a box. */
       show: {
         ms: 2800, layers: ['ground', 'world'],
@@ -1838,8 +1998,15 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           const TL = CFG.TILE, v = R.viewTiles();
           A.arrive(g, s, layer, 'steel', 1, { clods: false, burst: false });
           if (layer !== 'world') return;
-          const q0 = s.t / 0.9;
-          if (q0 < 1) { g.fillStyle = q0 < 0.5 ? A.BEAM.steel.ring[1] : A.BEAM.steel.ring[0]; const r = TL * (0.6 + q0 * 7); A.ellipseDots(g, s.x * TL, s.y * TL + TL * 0.3, r, r * 0.5); }
+          // the wave rolling out from the army's middle: a shock ring of
+          // steel light with a fainter twin behind it, thinning as it runs
+          // (R.fxRing — smooth, at the device's own resolution)
+          for (const [lag, aa] of [[0, 1], [0.1, 0.55]]) {
+            const q0 = (s.t - lag) / 0.9;
+            if (q0 <= 0 || q0 >= 1) continue;
+            const r = TL * (0.6 + q0 * 7);
+            R.fxRing(g, s.x * TL, s.y * TL + TL * 0.3, r, aa * (1 - q0 * q0), 'steel', { squash: 0.5, css: 3.2 * (1 - q0 * 0.6) });
+          }
           for (const l of s.lit || []) {
             const t = s.t - l.d;
             if (t < 0 || t > 1.2) continue;
@@ -1849,8 +2016,17 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
             // the rank it will wear for good lands on its head white-hot
             // (the unit pass draws it from then on, in its own colour)
             if (!l.hull && t > 0.1 && t < 0.55) {
-              const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-              Deck.drawRank(g, u.x * TL - D / 2, R.frameTop(u.y, B, D), D, u.vet ? 2 : 1, img, true);
+              const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B), x = u.x * TL - D / 2, y = R.frameTop(u.y, B, D);
+              const pip = Deck.drawRank(g, x, y, D, u.vet ? 2 : 1, img, true);
+              // its catch of light: a four-point star of the rank's own
+              // light over the pip, flaring and gone (R.fxSpark, smooth —
+              // the pip itself is the pixel badge he will wear). Sized to
+              // the BADGE, in world px: its lower arm reaches down onto the
+              // crown of his head and no further, so the light is on him and
+              // over his head, never a box of light round him (the man's
+              // own pixels are the flash: theFlashIsTheMansOwnPixels)
+              const k = (t - 0.1) / 0.45, f = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8;
+              if (pip) R.fxSpark(g, pip.x, pip.y, (3 + 2.5 * f) / R.fxPx(g), Math.min(1, 0.3 + f), u.vet ? 'gold' : 'steel');
             }
           }
         },
@@ -1883,7 +2059,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         draw(g, s, p, dt, layer) {
           if (layer === 'sky') {
             const hold = p < 0.06 ? p / 0.06 : p < 0.72 ? 1 : Math.max(0, 1 - (p - 0.72) / 0.2);
-            g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
+            g.save(); A.skyClip(g); A.shade(g, hold, '10,8,6', 1 / 6, 0.42); g.restore();
             // last: the cut, over the light, until the legion is let go
             A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.4), Deck.card('legion_marches').name, s.line);
             return;
@@ -1922,7 +2098,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         draw(g, s, p, dt, layer) {
           if (layer === 'sky') {
             const hold = p < 0.08 ? p / 0.08 : p < 0.7 ? 1 : Math.max(0, 1 - (p - 0.7) / 0.2);
-            g.save(); A.skyClip(g); A.dim(g, hold > 0.5 ? 1 / 6 : hold > 0.01 ? 1 / 12 : 0, '10,8,6'); g.restore();
+            g.save(); A.skyClip(g); A.shade(g, hold, '10,8,6', 1 / 6, 0.42); g.restore();
             A.cinema(g, A.cinemaIn(s.t, 0, s.free || 2.3), Deck.card('trebuchet_battery').name, s.line);
             return;
           }
@@ -1960,8 +2136,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
         if (window.R) {
           // the first beat is the hardest blow any army card strikes: the
           // ground itself giving the host up
+          // (its cold flash is the show's own, on the board alone: R.flashAt
+          // fills the whole glass, the off-map black included)
           if (R.shakeAt) R.shakeAt(10, 1.2);
-          if (R.flashAt) R.flashAt(0.32, 0.7, '210,232,255');
           if (R.startle) R.startle(r.x, r.y, 18);
         }
         const rise = {};
@@ -2007,8 +2184,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
          fall out of the dark and spiral in to the doorstep, where a narrow
          beam stands up out of the ground. Then, one after another, each
          ghost's own ground CRACKS — a jagged seam of light with the glow
-         leaking up through it, a ring of motes drawn in to it — and breaks
-         open in a hard white burst as the ghost comes up through it, a thin
+         leaking up through it, a ring of cold light drawn in to it — and
+         breaks open in a small white-hot burst as the ghost comes up through
+         it (all of it smooth light at the device's own resolution), a thin
          thread of light climbing with it and a ring going out when it
          stands. The first cut's column was a flat pale slab 2.2 tiles wide
          over the hall, and its rising ghost a white rectangle. */
@@ -2025,7 +2203,12 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           const dk = p < 0.06 ? p / 0.06 : p < 0.78 ? 1 : Math.max(0, 1 - (p - 0.78) / 0.22);
           const h = A.scr(s.mx, s.my);
           g.save(); A.skyClip(g);
-          A.dim(g, [0, 0.25, 0.42, 0.58][Math.min(3, Math.ceil(dk * 3))], '6,10,28');   // the day goes out
+          // the day goes out: a cold dark eased in and out (it fell in three
+          // hard steps before the operator's ruling), the open frame's edges
+          // closing in deepest
+          A.shade(g, dk, '6,10,28', 0.55, 0.42);
+          // the ground's blow: a cold flash over the board, gone in 0.7 s
+          if (s.t < 0.7) { const fk = 1 - s.t / 0.7; A.dim(g, 0.32 * fk * fk, '210,232,255'); }
           /* THE LIGHT IS LAID OVER THE DARK: the sky layer comes after the
              world, so the beam, the cracks, the bursts and the ghosts' own
              glow are drawn here, in the world's own coordinates (the camera,
@@ -2041,8 +2224,10 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
           A.cinema(g, A.cinemaIn(s.t, 0, s.free || 4.4), Deck.card('ancestors_host').name, s.line);
         },
       },
-      /* WHILE THE HOST WALKS: pale motes rising off every ghost, hard opaque
-         squares — culled to the camera and to what is in sight, since this
+      /* WHILE THE HOST WALKS: pale motes rising off every ghost, soft beads
+         of cold light at the device's own resolution (A.motes → R.fxMotes;
+         they were hard opaque squares) — culled to the camera and to what is
+         in sight, since this
          layer is drawn over the fog. (The ring of cold light that pulsed at
          every ghost's feet is gone: fifteen of them ADDED over the meadow
          were a field of mint rings, and half the "ghost soup".) */
@@ -2070,20 +2255,22 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     const last = s.units.length ? s.units[s.units.length - 1].d : 0;
     return Array.from({ length: n }, (x, k) => last + 0.18 + k * gap);
   }
-  /* A SPEAR'S GLINT as each one lands — over its head, a hard four-point
-     star in the tier's own hottest step, gone in `life` (opaque: a glint
-     added over grass is a lime one) */
+  /* A SPEAR'S GLINT as each one lands — over its head, a four-point star of
+     the tier's own light (R.fxSpark: hair-thin arms tapering to points at
+     the device's own resolution, its hue laid under it so it never reads
+     lime), flaring in and shrinking away over `life` */
   function spears(g, s, life, tone) {
-    const TL = CFG.TILE, P = A.BEAM[tone] || A.BEAM.bronze;
+    const TL = CFG.TILE;
+    tone = tone || 'bronze';
     for (const m of s.units) {
       const q = (s.t - m.d - 0.1) / life;
       if (q <= 0 || q >= 1) continue;
       const u = live(m.id);
       if (!u) continue;
       const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-      const x = A.snap(u.x * TL + D * 0.22), y = A.snap(R.frameTop(u.y, B, D) + D * 0.12), s2 = q < 0.4 ? 2 : 1;
-      g.fillStyle = q < 0.5 ? P.hot : P.ramp[2];
-      g.fillRect(x, y - s2 * 2, 2, s2 * 4 + 2); g.fillRect(x - s2 * 2, y, s2 * 4 + 2, 2);
+      const x = u.x * TL + D * 0.22, y = R.frameTop(u.y, B, D) + D * 0.12;
+      const k = q < 0.18 ? q / 0.18 : 1 - (q - 0.18) / 0.82;
+      R.fxSpark(g, x, y, 3 + 7 * k, Math.min(1, 0.35 + k), tone, { diag: true, rot: q * 0.6 });
     }
   }
 
@@ -2099,7 +2286,7 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       n++;
       Deck.ghostGlow(g, u, (1 / 3) * dk);
     }
-    g.save(); g.globalCompositeOperation = 'lighter';
+    g.save();
     // the beam the host comes up through: under a tile wide, rising out of
     // the ground and thinning as it climbs, so the hall still reads behind it
     A.beam(g, fx, fy, TL * 4.2 * Math.min(1, p * 10), TL * 0.9, '170,225,255', 0.85 * k);
@@ -2123,24 +2310,27 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   }
 
   /* EACH SHIELD CATCHES THE SUN IN TURN (Iron Legion): as each champion
-     lands, a big four-point flare on its shield-arm and a ring of hard
-     pixels round the boss — one after another down the ranks, on the
-     muster's own stagger. Opaque, in the tier's steel (cold light ADDED over
-     the meadow went mint). */
+     lands, a big four-point flare on its shield-arm and a ring of light
+     round the boss — one after another down the ranks, on the muster's own
+     stagger. In the tier's steel light (R.fxSpark / fxRing / fxGlow: smooth,
+     its hue laid under it — cold light merely ADDED over the meadow went
+     mint), drawn at the device's own resolution: the flare's arms taper to
+     points, the ring runs out and thins, the boss's white-hot catch shrinks
+     away in its first beat. */
   function shields(g, s, life, tone) {
-    const TL = CFG.TILE, P = A.BEAM[tone] || A.BEAM.steel;
+    const TL = CFG.TILE;
+    tone = tone || 'steel';
     for (const m of s.units) {
       const q = (s.t - m.d - 0.12) / life;
       if (q <= 0 || q >= 1) continue;
       const u = live(m.id);
       if (!u) continue;
       const img = R.unitSprite(u), B = R.unitBox(u), D = R.frameBox(u, img, B);
-      const x = u.x * TL + D * 0.16, y = R.frameTop(u.y, B, D) + D * 0.56, k = q < 0.3 ? 5 : 3;
-      g.fillStyle = q < 0.3 ? '#ffffff' : P.ramp[2];
-      g.fillRect(A.snap(x), A.snap(y) - k * 2, 2, k * 4 + 2); g.fillRect(A.snap(x) - k * 2, A.snap(y), k * 4 + 2, 2);
-      g.fillStyle = q < 0.5 ? P.ramp[2] : P.ramp[1];
-      A.ellipseDots(g, x, y, 4 + q * TL * 0.45, (4 + q * TL * 0.45) * 0.8);
-      if (q < 0.15) { g.fillStyle = '#ffffff'; R.pxDisc(g, x, y, 4, 2, 1); }
+      const x = u.x * TL + D * 0.16, y = R.frameTop(u.y, B, D) + D * 0.56;
+      const k = q < 0.12 ? q / 0.12 : 1 - (q - 0.12) / 0.88, e = 1 - (1 - q) * (1 - q);
+      if (q < 0.3) R.fxGlow(g, x, y, 7 * (1 - q / 0.3) + 2, 1 - q / 0.3, 'white', { core: 0.5, soft: 1.6 });
+      R.fxRing(g, x, y, 4 + e * TL * 0.45, 1 - q, tone, { squash: 0.8, css: 2 * (1 - q * 0.5) });
+      R.fxSpark(g, x, y, 4 + 10 * k, Math.min(1, 0.3 + k), q < 0.3 ? 'white' : tone, { diag: true });
     }
   }
   /* THE DUST SKIDS OUT from under an engine as it is set down: a short
@@ -2174,89 +2364,91 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
 
   /* A GHOST'S GROUND CRACKS before it rises (c: 0 → 1 as its beat comes):
      a jagged seam of light across its tile, hashed off its id so every
-     crack is its own, the glow leaking up through it in short hard bars,
-     and a ring of motes drawing IN to it — the eye is called to the spot a
-     moment before the ghost comes up there. Light, added. */
+     crack is its own, the glow welling up out of it in a few short tongues,
+     and a ring of cold light drawing IN to it — the eye is called to the
+     spot a moment before the ghost comes up there. Smooth light at the
+     device's own resolution, its hue laid under it. */
   function groundCrack(g, x, y, c, id) {
-    const TL = CFG.TILE, n = 7, len = TL * (0.25 + c * 0.6);
+    const TL = CFG.TILE, n = 7, len = TL * (0.25 + c * 0.6), cp = R.fxPx(g);
     let h = (Math.imul(id + 13, 0x9e3779b1) >>> 0);
     const pts = [];
     for (let i = 0; i < n; i++) {
       const jy = ((h >>> (i * 3)) & 3) - 1.5;
       pts.push([x + (i / (n - 1) - 0.5) * len, y + jy * 1.4]);
     }
-    const a = c < 0.34 ? 0.5 : c < 0.67 ? 0.67 : 1;
-    g.fillStyle = A.rgba('235,250,255', a);
-    for (let i = 0; i < n - 1; i++) {
-      // the seam is CONTINUOUS: a 2px step every 2px between two points
-      const [x1, y1] = pts[i], [x2, y2] = pts[i + 1], st = Math.max(1, Math.ceil(Math.abs(x2 - x1) / 2));
-      for (let j = 0; j <= st; j++) g.fillRect(A.snap(x1 + (x2 - x1) * j / st), A.snap(y1 + (y2 - y1) * j / st), 2, 2);
-    }
-    // the glow spilling up out of it: a low band over the seam, and a few
-    // short sparks of it standing proud — never tall, or the crack reads as
-    // a fence
-    g.fillStyle = A.rgba('170,230,255', a * 0.34);
-    g.fillRect(A.snap(pts[0][0]), A.snap(y - 4), A.snap(len), 4);
-    g.fillStyle = A.rgba('200,240,255', a * 0.67);
+    // the light grows as the beat comes (continuously — it stepped in thirds)
+    const a = 0.45 + 0.55 * c * c * (3 - 2 * c);
+    // the glow welling up out of it: a low soft light over the seam, never
+    // a band, never tall, or the crack reads as a fence
+    R.fxGlow(g, x, y - 1, len * 0.62, 0.55 * a, A.COLD, { squash: 0.32, soft: 1.5 });
+    // the seam itself: one jagged stroke of cold light, round-jointed, at
+    // the device's own resolution (A.lineLight — it was 2px cells, step by step)
+    A.lineLight(g, q => { q.beginPath(); q.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < n; i++) q.lineTo(pts[i][0], pts[i][1]); },
+      Math.max(0.9 * cp, 0.55 + 0.6 * c), A.COLD, a);
+    // a few short tongues of it standing proud, rising off the seam
     for (let i = 1; i < n - 1; i++) {
       if (((h >>> (i * 2 + 1)) & 3) === 0) continue;
-      const bh = A.snap(2 + c * 2 + ((h >>> (i * 2)) & 1) * 2);
-      g.fillRect(A.snap(pts[i][0]), A.snap(pts[i][1] - bh), 2, bh);
+      const bh = 2 + c * 2.5 + ((h >>> (i * 2)) & 1) * 1.8;
+      A.streak(g, pts[i][0], pts[i][1], pts[i][0], pts[i][1] - bh, 0.5 * cp, 0.9 * cp, A.COLD, 0.85 * a);
     }
     A.ring(g, x, y, TL * (0.75 - 0.5 * c), 10, '200,238,255', 0.67 * c, 0.45);
   }
-  /* …and BREAKS OPEN: a small stepped burst as the ghost comes up through
-     its ground (judge g3: "white blobs" — the first cut's solid white disc
-     was a tile wide, fifteen of them in a row) — a white core two world
-     pixels square, a four-point star stepping white → ice → cold blue, and
-     a ring of sparks flung clear, each a hard opaque square; q (0..1 over
+  /* …and BREAKS OPEN: a small burst as the ghost comes up through its
+     ground (judge g3: "white blobs" — the first cut's solid white disc was a
+     tile wide, fifteen of them in a row; the second a stepped star of 2px
+     cells) — a small white-hot heart that shrinks as it goes, a four-point
+     star of cold light tapering to points, and eight sparks flung clear on
+     short trails, all smooth at the device's own resolution; q (0..1 over
      the burst's few frames) carries the sparks out and the star in */
   function burst(g, x, y, q) {
-    const TL = CFG.TILE, cy = y - TL * 0.3, op = g.globalCompositeOperation;
+    const TL = CFG.TILE, cy = y - TL * 0.3, cp = R.fxPx(g);
     q = q || 0;
-    g.globalCompositeOperation = 'source-over';
-    const X = A.snap(x), Y = A.snap(cy), arm = q < 0.5 ? 3 : 2;
-    const step = ['#ffffff', '#cdeeff', '#7fb4e8'];
-    for (let k = 0; k < arm; k++) {
-      g.fillStyle = step[k];
-      const o = 4 + k * 2;
-      g.fillRect(X - 1, Y - o, 2, 2); g.fillRect(X - 1, Y + o - 2, 2, 2);
-      g.fillRect(X - o, Y - 1, 2, 2); g.fillRect(X + o - 2, Y - 1, 2, 2);
-    }
-    g.fillStyle = '#ffffff'; g.fillRect(X - 2, Y - 2, 4, 4);
-    g.fillStyle = q < 0.5 ? '#cdeeff' : '#7fb4e8';
+    const k = 1 - q;
+    R.fxGlow(g, x, cy, TL * (0.26 + 0.1 * q), 0.95 * k + 0.05, A.COLD, { core: 0.42 * k + 0.08, soft: 1.7 });
+    R.fxSpark(g, x, cy, 5 + 7 * k, Math.min(1, 0.4 + k), A.COLD, { diag: true });
     const rr = TL * (0.3 + q * 0.3);
-    for (let k = 0; k < 8; k++) {
-      const th = k / 8 * 6.283 + 0.39;
-      g.fillRect(A.snap(x + Math.cos(th) * rr), A.snap(cy + Math.sin(th) * rr * 0.6), 2, 2);
+    for (let j = 0; j < 8; j++) {
+      const th = j / 8 * 6.283 + 0.39, c = Math.cos(th), sn = Math.sin(th) * 0.6;
+      A.streak(g, x + c * rr * 0.62, cy + sn * rr * 0.62, x + c * rr, cy + sn * rr, 0.25 * cp, 1.05 * cp, A.COLD, 0.95 * k + 0.05);
     }
-    g.globalCompositeOperation = op;
   }
 
   /* THE RANKS STAMP IN STEP: on each drum of the held beat every man's feet
-     throw a small ring of dust along the ground — touching hard pixels in
-     the earth's own browns, opaque (a translucent dust ring over the meadow
-     is an olive one), gone before the next drum */
+     throw a small ring of dust along the ground and a puff off either heel —
+     in the earth's own browns, soft-edged at the device's own resolution
+     (A.DUST, laid the light's way so it reads as tan dust over the meadow,
+     never olive; it was a ring of touching 2px cells, then a flat brown line
+     that read as a selection ring), gone before the next drum */
   function stamp(g, s, at) {
     const TL = CFG.TILE;
     for (const b0 of at) {
-      const q = (s.t - b0) / 0.2;
+      const q = (s.t - b0) / 0.22;
       if (q <= 0 || q >= 1) continue;
-      g.fillStyle = q < 0.5 ? '#9a7a52' : '#7a5e3e';
+      const e = 1 - (1 - q) * (1 - q), k = 1 - q, cloud = [];
       for (const m of s.units) {
         const u = live(m.id);
         if (!u) continue;
-        const r = TL * (0.28 + q * 0.32);
-        A.ellipseDots(g, u.x * TL, u.y * TL + TL * 0.32, r, r * 0.4);
+        const x = u.x * TL, y = u.y * TL + TL * 0.32, r = TL * (0.26 + e * 0.34);
+        // (a broad, soft band — a crisp one read as a selection ring)
+        cloud.push({ x, y, r, w: 1.8 + 3 * k, a: 0.6 * k, sq: 0.4, ring: true });
+        for (const sd of [-1, 1]) cloud.push({ x: x + sd * r * 0.85, y: y - e * 2.5, r: 2.6 + e * 3.6, a: 0.85 * k, sq: 0.75 });
       }
+      // the whole rank's dust laid as one cloud (A.dustLay)
+      A.dustLay(g, cloud);
     }
   }
 
   /* the host fading: each ghost goes up out of where it stood in its own
      wisp — its frame drawn taller and thinner as it climbs, coming apart in
-     dither steps, shedding motes — under a brief cold light */
+     its own dither (the ghost's look, a unit's art), shedding motes, inside
+     a soft cold glow of its own that thins as it goes — under a brief cold
+     dark, eased in and out (it stepped) */
   function drawFade(g, s, p, layer) {
-    if (layer === 'sky') { g.save(); A.skyClip(g); A.dim(g, p < 0.15 ? 0.12 : p < 0.7 ? 0.18 : 0.18 * (1 - (p - 0.7) / 0.3), '10,16,34'); g.restore(); return; }
+    if (layer === 'sky') {
+      g.save(); A.skyClip(g);
+      A.shade(g, p < 0.15 ? p / 0.15 : p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3, '10,16,34', 0.18, 0);
+      g.restore(); return;
+    }
     const TL = CFG.TILE;
     g.save();
     for (const w of s.ghosts) {
@@ -2270,6 +2462,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       const stretch = 1 + q * 0.9, squeeze = 1 - q * 0.55, lift = q * TL * 1.8;
       const cx = w.x * TL, foot = w.top + w.D;
       const dw = w.D * squeeze, dh = w.D * stretch;
+      // its cold aura, a soft light in the air round the climbing figure,
+      // thinning and fading as it goes (light, never the picture's alpha)
+      if (s.t >= w.d) R.fxGlow(g, cx, foot - lift - dh * 0.5, dw * 0.75, 0.5 * (1 - q), A.COLD, { squash: 1.5, soft: 1.6 });
       g.globalCompositeOperation = 'source-over';
       g.globalAlpha = 1;
       // the ghost's own picture (Deck.ghostOf), its ink scaled with it
@@ -2286,9 +2481,9 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
   /* …now: five steel beams, a rider landing in each on its place by the hall;
      the moment the last is down they BURST OUT and wheel once round the hall
      together at a gallop (Deck.fanWheel), the drum of hooves in the ground
-     and a trail of kicked-up dust behind every horse — hard clods of earth
-     in three browns, thrown up and settling, laid in the ground pass under
-     the horses — and pull up on their places. */
+     and a trail of kicked-up dust behind every horse — soft billows of the
+     earth's dust with clods thrown up and settling, laid in the ground pass
+     under the horses — and pull up on their places. */
   if (Deck.FX.swift_raiders) Deck.FX.swift_raiders.show = {
     ms: 3600, layers: ['ground', 'world'],
     draw(g, s, p, dt, layer) {
@@ -2301,9 +2496,12 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
     },
   };
   /* THE DUST OFF EVERY HORSE: a few positions behind each galloping rider
-     (sampled on the show, render state), each a clump of hard 2px squares
-     thrown up behind the hooves and settling as it ages — opaque, in the
-     earth's own browns (a translucent dust over the meadow is olive) */
+     (sampled on the show, render state), each a soft billow of the earth's
+     dust (A.puff — swelling and thinning as it ages, its hue laid under it,
+     so a dusty tan over the meadow and never olive) with a few clods thrown
+     up off the hooves and settling (A.crumb, round, at their true places) —
+     at the device's own resolution. It was clumps of hard 2px squares,
+     which read as pebbles lying in the grass. */
   function hoofDust(g, s) {
     const TL = CFG.TILE, T = s.trail || (s.trail = {});
     for (const id of s.ids || []) {
@@ -2311,13 +2509,21 @@ if (typeof Sound !== 'undefined' && Sound._VOICES) {
       if (u && u.task && u.task.gallop && Units.moving(u) && (!tr.length || s.t - tr[tr.length - 1].t >= 0.05)) tr.push({ x: u.x, y: u.y, t: s.t });
       while (tr.length && s.t - tr[0].t > 0.6) tr.shift();
       R.clipBoard(g, () => {
+        // a billow off every hoof-fall that swells, rises and rounds out as
+        // it thins — the rider's whole trail laid as one cloud (A.dustLay)
+        A.dustLay(g, tr.map(q => {
+          const a = s.t - q.t, f = a / 0.6, h = (Math.imul(id * 31 + ((q.t * 100) | 0), 0x9e3779b1) >>> 0);
+          return { x: q.x * TL + ((h & 15) - 7.5) * 0.4, y: q.y * TL + TL * 0.3 - a * 9, r: 4 + f * 9,
+            a: Math.pow(Math.max(0, 1 - f), 0.8) * (a < 0.06 ? a / 0.06 : 1), sq: 0.6 + 0.3 * f };
+        }));
         for (const q of tr) {
-          const a = s.t - q.t, h = (Math.imul(id * 31 + ((q.t * 100) | 0), 0x9e3779b1) >>> 0);
-          const n = a < 0.15 ? 4 : a < 0.35 ? 3 : 2;
-          g.fillStyle = a < 0.15 ? '#c9ad80' : a < 0.35 ? '#a6885e' : '#7f6646';
+          const a = s.t - q.t, f = a / 0.6, h = (Math.imul(id * 31 + ((q.t * 100) | 0), 0x9e3779b1) >>> 0);
+          const bx = q.x * TL, by = q.y * TL + TL * 0.3;
+          const n = a < 0.15 ? 3 : 2;
           for (let k = 0; k < n; k++) {
             const ox = (((h >>> (k * 4)) & 15) - 7.5) * 0.9, oy = (((h >>> (k * 4 + 2)) & 7) - 3.5) * 0.6;
-            g.fillRect(A.snap(q.x * TL + ox), A.snap(q.y * TL + TL * 0.3 + oy - a * 10), a < 0.2 ? 4 : 2, a < 0.2 ? 4 : 2);
+            const hop = Math.sin(Math.min(1, a / 0.4) * Math.PI) * (4 + (k % 2) * 3);
+            A.crumb(g, bx + ox, by + oy - hop, (a < 0.2 ? 1.3 : 0.95) * (1 - f * 0.4), k % 2 ? '#7f6646' : '#a6885e');
           }
         }
       });

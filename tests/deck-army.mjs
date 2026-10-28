@@ -1950,6 +1950,252 @@ await p.evaluate(({ ARMY }) => {
   ck('andNoConfettiOutlivesHalfASecond', ids.every(k => T[k].left === 0), ids.map(k => `${k}: ${T[k].left} px left 0.55s after the last landing`).join('; '));
 }
 {
+  /* EVERY ACT'S LIGHT IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the
+     operator's ruling, 2026-10-27: "When characters slam down, that feels
+     cool, but the rays are pixelated again, let's increase the quality of
+     that as well. higher pixel count." — it retired the army acts' house
+     style of hard pixels snapped to the art's 2px grain, stepped alphas and
+     rings of touching squares). The world's ART stays pixel art — a man's
+     own flash, his rank pip, the ghosts' inked dither, the strangers' packs,
+     the place-dust — and is stood down here (each has its own check above);
+     so are the summons' beams (theBeamsAreSmoothLightInTheTiersOwnHue) and
+     each act's dark and frame (the next two checks). What is left is every
+     act's OWN light: the strangers' path and welcome, the spears' and the
+     shields' glints, the howl and the breath, the axle sparks, the wave and
+     the pip's star, the stamp's dust, the host's crack, burst, rings and
+     beam, its fade's aura, the riders' dust. Drawn through the world's own
+     transform at 2.5 (a phone's dpr 2 at a zoom of 1.25), the camera on the
+     art's grid, so one 2px grain of the art is a 5x5 block of device pixels:
+       NO RECT ON THE GRAIN — the light lays no fillRect at all;
+       FINER THAN THE GRAIN — of every change of colour between neighbouring
+         pixels the light makes, the share that falls on a grain's edge is
+         what a smooth light gives (about one in five), never what cells
+         snapped to the grain give (every one): at most 40% for every act;
+       NEVER LIME OR OLIVE — drawn over the meadow's own green, at most 2% of
+         the pixels it brightens turn olive or lime (the landing's measure).
+     On the old look (cards/fx-core) the strangers, the spears, the howl, the
+     shields, the sparks, the crack and the dust all fail the first two. */
+  const r = await p.evaluate(() => {
+    const out = { acts: {}, K: 0 };
+    const TL = CFG.TILE, A = Deck.armyFx;
+    // ART and the other checks' business, stood down while the light is read
+    const blank = document.createElement('canvas'); blank.width = blank.height = 1; blank._r = 0;
+    const scratch = document.createElement('canvas').getContext('2d');
+    const keep = {
+      arrive: A.arrive, dim: A.dim, shade: A.shade, cinema: A.cinema,
+      flashUnit: Deck.flashUnit, drawRank: Deck.drawRank, ghostGlow: Deck.ghostGlow, ghostOf: Deck.ghostOf,
+    };
+    const stand = () => {
+      A.arrive = () => {}; A.dim = () => {}; A.shade = () => {}; A.cinema = () => null;
+      Deck.flashUnit = () => {}; Deck.ghostGlow = () => {}; Deck.ghostOf = () => blank;
+      Deck.drawRank = function (g, ...a) { return keep.drawRank.call(Deck, scratch, ...a); };
+      Deck.FX.willing_hands._pack = blank;
+    };
+    const restore = () => {
+      for (const k of ['arrive', 'dim', 'shade', 'cinema']) { if (keep[k]) A[k] = keep[k]; else delete A[k]; }
+      for (const k of ['flashUnit', 'drawRank', 'ghostGlow', 'ghostOf']) Deck[k] = keep[k];
+      Deck.FX.willing_hands._pack = null;
+    };
+    const SZ = 720, BG = [75, 129, 51];
+    const lum = (r2, g2, b2) => 0.299 * r2 + 0.587 * g2 + 0.114 * b2, L0 = lum(...BG);
+    // one act, at its beats: the light alone (on nothing) and over the meadow
+    const measure = (id, s, beats, prep) => {
+      const fx = Deck.FX[id], sh = fx.show, layers = sh.layers || [sh.layer || 'world'];
+      const z = 1.25; R.cam.z = z;
+      const K = z * (R.dpr || 1), G = Math.round(2 * K);
+      out.K = K;
+      const cx = (s.mx != null ? s.mx : s.x) * TL, cy = (s.my != null ? s.my : s.y) * TL;
+      const span = SZ / K, ox = 2 * Math.round((cx - span / 2) / 2), oy = 2 * Math.round((cy - span * 0.6) / 2);
+      R.cam.x = ox; R.cam.y = oy;
+      const cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+      const g = cv.getContext('2d');
+      const P2 = CanvasRenderingContext2D.prototype, fr0 = P2.fillRect;
+      let rects = 0, lit = 0, changes = 0, onGrid = 0, br = 0, ol = 0;
+      const draw = (t) => {
+        s.t = t; if (prep) prep(s, t);
+        for (const L of layers) {
+          g.save();
+          if (L === 'sky') g.setTransform(1, 0, 0, 1, 0, 0);
+          else g.setTransform(K, 0, 0, K, -ox * K, -oy * K);
+          try { sh.draw.call(fx, g, s, t / (s.ms / 1000), 0, L); } finally { g.restore(); }
+        }
+      };
+      P2.fillRect = function () { if (this === g && !(arguments[2] >= SZ && arguments[3] >= SZ)) rects++; return fr0.apply(this, arguments); };
+      try {
+        for (const t of beats) {
+          // the light alone
+          g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SZ, SZ);
+          draw(t);
+          const d = g.getImageData(0, 0, SZ, SZ).data;
+          // every change of colour between two neighbours, and whether it
+          // falls on the edge of one of the art's grains
+          const differ = (i, j) => (d[i + 3] || d[j + 3]) && (d[i] !== d[j] || d[i + 1] !== d[j + 1] || d[i + 2] !== d[j + 2] || d[i + 3] !== d[j + 3]);
+          for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+            const i = (y * SZ + x) * 4;
+            if (d[i + 3]) lit++;
+            if (x + 1 < SZ && differ(i, i + 4)) { changes++; if ((x + 1) % G === 0) onGrid++; }
+            if (y + 1 < SZ && differ(i, i + SZ * 4)) { changes++; if ((y + 1) % G === 0) onGrid++; }
+          }
+          // …and over the meadow
+          g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SZ, SZ);
+          g.fillStyle = `rgb(${BG})`; fr0.call(g, 0, 0, SZ, SZ);
+          draw(t);
+          const m = g.getImageData(0, 0, SZ, SZ).data;
+          for (let i = 0; i < m.length; i += 4) {
+            const L = lum(m[i], m[i + 1], m[i + 2]);
+            if (L <= L0 + 0.5) continue;
+            br++;
+            const mx = Math.max(m[i], m[i + 1], m[i + 2]), mn = Math.min(m[i], m[i + 1], m[i + 2]), q = mx - mn;
+            if (L - L0 >= 10 && mx && q && q / mx >= 0.2) {
+              let h = mx === m[i] ? ((m[i + 1] - m[i + 2]) / q) % 6 : mx === m[i + 1] ? (m[i + 2] - m[i]) / q + 2 : (m[i] - m[i + 1]) / q + 4;
+              h *= 60; if (h < 0) h += 360;
+              if (h >= 48 && h <= 115) ol++;
+            }
+          }
+        }
+      } finally { P2.fillRect = fr0; }
+      out.acts[id + (s.mode === 'fade' ? ':fade' : '')] = { rects, lit, changes, grid: changes ? onGrid / changes : 0, olive: br ? ol / br : 0, br };
+    };
+    // seconds after the k-th unit's own landing (the last one, past the end)
+    const after = (s, k, dts) => dts.map(dt => s.units[Math.min(k, s.units.length - 1)].d + dt);
+    stand();
+    try {
+      for (const id of ['willing_hands', 'war_band', 'hunters_pack', 'iron_legion', 'siege_train', 'veterans', 'legion_marches', 'ancestors_host', 'swift_raiders']) {
+        __ar.fresh('army-light-' + id); __ar.flat();
+        Screens.show('playing');
+        const tc = Bld.tcOf('P');
+        R.cam.z = 1.25; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+        if (id === 'veterans') for (let i = 0; i < 6; i++) __ar.unit(['defender', 'archer', 'rider', 'defender', 'axeman', 'archer'][i], 'P', tc.x + 0.5 + (i % 3) * 1.3, tc.y + 4.5 + ((i / 3) | 0) * 1.3);
+        G.updateVisibility();
+        R.cardShows = []; R.summons = [];
+        Deck.play(id);
+        const s = R.cardShows.filter(x => x.id === id).pop();
+        if (!s) { out.acts[id] = { missing: true }; continue; }
+        let beats, prep = null;
+        if (id === 'willing_hands') {
+          // the path while they walk in, and each one's welcome at the door
+          beats = [0.6, 1.4, 2.2, 3.0, 3.3, 3.5];
+          prep = (sh, t) => {
+            if (t < 3 || !sh.joined) return;
+            // (they have walked up to the door: the test drives no sim)
+            sh.units.forEach((m, i) => { const u = Units.get(m.id); if (u) { u.x = sh.mx + (i - 1) * 0.7; u.y = sh.my; u.path = null; u.task = null; } sh.joined[m.id] = 3 + i * 0.12; });
+          };
+        }
+        else if (id === 'war_band') beats = after(s, 99, [0.12, 0.2, 0.3, 0.4]);
+        else if (id === 'legion_marches') beats = after(s, 99, [0.12, 0.25, 0.32, 0.7, 1.1, 1.5]);   // the spears, then the stamps
+        else if (id === 'hunters_pack') beats = after(s, 99, [0.22, 0.4, 0.55, 0.7]).concat(after(s, 0, [0.3, 0.5]));
+        else if (id === 'iron_legion') beats = after(s, 99, [0.14, 0.2, 0.3, 0.45]).concat(after(s, 2, [0.2, 0.35]));
+        else if (id === 'siege_train') beats = after(s, 0, [0.03, 0.1, 0.2, 0.3]).concat(after(s, 1, [0.05, 0.25]));
+        else if (id === 'veterans') beats = [0.15, 0.3, 0.5, 0.7, 0.9, 1.2];
+        else if (id === 'ancestors_host') beats = [0.4, 0.9].concat(after(s, 3, [-0.5, -0.2, 0.02, 0.08, 0.6, 1.3]));   // its cracks, bursts, beams and rings
+        else if (id === 'swift_raiders') {
+          // the riders' dust: a trail of hoof-falls behind every one at the gallop
+          beats = [1.0, 1.3, 1.6];
+          prep = (sh, t) => { sh.trail = {}; for (const m of sh.units) sh.trail[m.id] = [0.55, 0.45, 0.35, 0.25, 0.15, 0.08, 0.02].map((a, k) => ({ x: m.x + 0.4 * k, y: m.y + 0.1 * k, t: t - a })); };
+        }
+        measure(id, s, beats, prep);
+        if (id === 'ancestors_host') {
+          // …and the host fading, every ghost in its own wisp
+          const e = Deck.timed('ancestors_host'); e.until = Deck.now() - 1e-6;
+          R.cardShows = [];
+          R.cam.z = 1.25; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1); G.updateVisibility();
+          Deck.tick();
+          const f = R.cardShows.find(x => x.id === 'ancestors_host' && x.mode === 'fade');
+          if (f) { f.mx = Bld.cx(tc); f.my = Bld.cy(tc) + 1; measure(id, f, [0.3, 0.8, 1.4, 2.0]); }
+          else out.acts['ancestors_host:fade'] = { missing: true };
+        }
+      }
+    } finally { restore(); }
+    R.cardShows = []; R.summons = [];
+    return out;
+  });
+  const AC = r.acts, ids = Object.keys(AC), drew = ids.filter(k => !AC[k].missing && AC[k].lit > 0);
+  const row = k => AC[k].missing ? `${k}: no show` : `${k}: ${AC[k].rects} rects, ${AC[k].lit} px lit, ${(100 * AC[k].grid).toFixed(0)}% of its edges on the grain, ${(100 * AC[k].olive).toFixed(2)}% olive`;
+  ck('everyActsLightLaysNoRectOnTheGrain', drew.length === ids.length && ids.length === 10 && drew.every(k => AC[k].rects === 0),
+    ids.map(row).join('; '));
+  ck('andItIsFinerThanTheArtsGrain', drew.length === ids.length && drew.every(k => AC[k].grid <= 0.4 && AC[k].changes > 200),
+    `one grain = ${(2 * r.K).toFixed(1)} device px; ` + ids.map(k => AC[k].missing ? k + ': no show' : `${k} ${(100 * AC[k].grid).toFixed(0)}% (${AC[k].changes} edges)`).join(', '));
+  ck('andItNeverTurnsTheMeadowLimeOrOlive', drew.every(k => AC[k].olive <= 0.02 && AC[k].br > 50),
+    drew.map(k => `${k} ${(100 * AC[k].olive).toFixed(2)}% of ${AC[k].br}`).join(', '));
+}
+{
+  /* …AND EACH ACT'S DARK ROLLS IN SMOOTHLY (the same ruling: the held beat's
+     dark fell in hard steps — a sixth, then a twelfth; the host's day went
+     out in three — and the act's dark is now eased in and out, the open
+     frame's edges closing in deepest). Measured on the sky layer over the
+     meadow, as the median of a grid of points across the open frame (the
+     act's own lights and the cut's bars stood down): at 160 moments of each
+     act no single moment moves the dark by more than a quarter of its whole
+     travel, and it passes through many levels on the way. */
+  const r = await p.evaluate(() => {
+    const out = {}, A = Deck.armyFx;
+    const keep = { cinema: A.cinema, rays: A.rays, spirits: A.spirits };
+    A.cinema = () => null; A.rays = () => {}; A.spirits = () => {};
+    try {
+      for (const [id, mode] of [['iron_legion'], ['legion_marches'], ['trebuchet_battery'], ['ancestors_host'], ['ancestors_host', 'fade']]) {
+        __ar.fresh('army-dark-' + id); __ar.flat();
+        Screens.show('playing');
+        const tc = Bld.tcOf('P');
+        R.cam.z = 1.25; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
+        R.cardShows = [];
+        let s;
+        if (mode === 'fade') s = R.startCardShow('ancestors_host', { mode: 'fade', ms: 2800, ghosts: [] });
+        else { Deck.play(id); s = R.cardShows.filter(x => x.id === id).pop(); }
+        if (!s) { out[id + (mode ? ':' + mode : '')] = { missing: true }; continue; }
+        const fx = Deck.FX[id], sh = fx.show;
+        const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height;
+        const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+        const meds = [];
+        for (let k = 0; k <= 160; k++) {
+          const pp = k / 160;
+          s.t = pp * s.ms / 1000;
+          g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = 'rgb(75,129,51)'; g.fillRect(0, 0, W, H);
+          g.save(); try { sh.draw.call(fx, g, s, pp, 0, 'sky'); } finally { g.restore(); }
+          const d = g.getImageData(0, 0, W, H).data, L = [];
+          for (let j = 0; j < 9; j++) for (let i = 0; i < 9; i++) {
+            const x = Math.floor(W * (0.1 + 0.8 * i / 8)), y = Math.floor(H * (0.25 + 0.5 * j / 8)), q = (y * W + x) * 4;
+            L.push(0.299 * d[q] + 0.587 * d[q + 1] + 0.114 * d[q + 2]);
+          }
+          L.sort((a, b) => a - b);
+          meds.push(L[40]);
+        }
+        const lo = Math.min(...meds), hi = Math.max(...meds), span = hi - lo;
+        let jump = 0;
+        for (let k = 1; k < meds.length; k++) jump = Math.max(jump, Math.abs(meds[k] - meds[k - 1]));
+        out[id + (mode ? ':' + mode : '')] = { span: +span.toFixed(1), jump: span ? +(jump / span).toFixed(2) : 1, levels: new Set(meds.map(v => Math.round(v * 2))).size };
+      }
+    } finally { A.cinema = keep.cinema; A.rays = keep.rays; A.spirits = keep.spirits; }
+    R.cardShows = [];
+    return out;
+  });
+  const ids = Object.keys(r);
+  ck('andEachActsDarkRollsInSmoothly', ids.length === 5 && ids.every(k => !r[k].missing && r[k].span >= 8 && r[k].jump <= 0.25 && r[k].levels >= 10),
+    ids.map(k => r[k].missing ? k + ': no show' : `${k}: travels ${r[k].span} levels, its biggest single step ${(100 * r[k].jump).toFixed(0)}% of that, through ${r[k].levels} levels`).join('; '));
+}
+{
+  /* …AND THE CUT'S BARS SLIDE ON THE DEVICE'S OWN PIXELS (the same ruling:
+     they slid in by whole grains of the art — 2 world px measured on the
+     screen, a judder of five to seven device px a frame on a phone): drawn
+     at 400 points of their slide, the bars' height moves a device pixel at
+     a time and ends where it always did, CINEMA.bar of the open frame. */
+  const r = await p.evaluate(() => {
+    const A = Deck.armyFx, at = R.actTitle;
+    R.cam.z = 1.25;
+    const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height;
+    const g = cv.getContext('2d'), hs = [];
+    R.actTitle = () => null;
+    try {
+      for (let k = 1; k <= 400; k++) { const q = A.cinema(g, k / 400, 'X', 'y'); hs.push(q ? q.h : 0); }
+    } finally { R.actTitle = at; A.cineToasts(0); }
+    const steps = [];
+    for (let k = 1; k < hs.length; k++) if (hs[k] !== hs[k - 1]) steps.push(Math.abs(hs[k] - hs[k - 1]));
+    const f = A.frame(), open = R.cv.height - f.top - f.bot;
+    return { finest: steps.length ? Math.min(...steps) : 0, coarsest: steps.length ? Math.max(...steps) : 0, n: new Set(hs).size, full: hs[hs.length - 1], want: Math.round(open * A.CINEMA.bar), whole: hs.every(h => h === Math.round(h)) };
+  });
+  ck('andTheCutsBarsSlideOnTheDevicesOwnPixels', r.finest === 1 && r.coarsest <= 3 && r.whole && Math.abs(r.full - r.want) <= 1,
+    `the bars' height over their slide: steps of ${r.finest}..${r.coarsest} device px through ${r.n} heights, whole pixels ${r.whole}, home at ${r.full} (CINEMA.bar of the open frame: ${r.want})`);
+}
+{
   /* THE WEIGHT OF AN ENGINE (judge g3: the Trebuchet Battery "has no sense
      of weight"): as each engine is set down the ground jolts (a hard shake
      struck on its own landing), the dust skids out from under it (three
