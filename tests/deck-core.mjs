@@ -15,6 +15,13 @@
                      victory earns a second card; 15 wins without a legend
                      guarantee one; a measured roll lands on the table it
                      was asked for
+     A BIG DEFEAT    a defeat that earns a card and whose FINAL score (the
+                     run_end row's, the multiplier in, fixed by G.end on
+                     S.over) reaches CFG.CARDS.BIG_LOSS_SCORE (20,000) rolls
+                     DROPS.bigloss — Bronze at the least, Iron at the most
+                     (the operator's ruling); under the line, or with no
+                     score, the loss table; a win never asks; the earn rule,
+                     the one card and the pity are untouched
      THE EARN RULE   a WIN always earns — a day-31 win at five minutes
                      included; a DEFEAT earns for a real fight, counted in
                      DEEDS (CFG.CARDS.LOSS_DEEDS): a passive Hard run, end to
@@ -138,7 +145,7 @@ ck('theSwitchShipsOn', a.shipsOn && a.onOn && !a.offOn, a.shipsOn ? 'CFG.CARDS.O
 ck('offMeansNothingHappens', !a.offStarter && !a.offStored && !a.offSettle && !a.offPlay,
   `starter ${a.offStarter}, stored ${a.offStored}, settle ${a.offSettle}, play ${a.offPlay}`);
 ck('theDropTablesAreTheApprovedOnes',
-  a.tables === JSON.stringify({ loss: [85, 15, 0, 0, 0], calm: [40, 40, 17, 3, 0], moderate: [0, 35, 40, 20, 5], hard: [0, 0, 30, 45, 25] }) && a.sums === '100,100,100,100',
+  a.tables === JSON.stringify({ loss: [85, 15, 0, 0, 0], bigloss: [0, 60, 40, 0, 0], calm: [40, 40, 17, 3, 0], moderate: [0, 35, 40, 20, 5], hard: [0, 0, 30, 45, 25] }) && a.sums === '100,100,100,100,100',
   a.sums);
 
 const c = await p.evaluate(() => {
@@ -983,6 +990,72 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
     `won on the toy deck: ${a7.cards.join('+')} (toy queue ${a7.toyQueue}); after ?cards=0 and ?cards=1: ${a8.total} cards ${JSON.stringify(a8.counts)}, ` +
     `test ${a8.test}, starter marked ${a8.starter} (dealt again ${a8.dealt}), queued ${JSON.stringify(a8.queue)}`);
   await ctx2.close();
+}
+
+/* A BIG DEFEAT PAYS BETTER (operator, 2026-10-28: a 33,000-point Hard defeat
+   paid a Gold Nugget — "anything over 20,000 points and bronze is the floor
+   and iron is the ceiling"). The table is chosen on the FINAL score, the
+   number the end screen and the run_end row carry — never the subtotal, which
+   would have left that very run on the plain table (33,000 on Hard is a
+   subtotal near 18,900). */
+{
+  const r = await p.evaluate(() => {
+    const out = {};
+    CFG.CARDS.ON = true;
+    out.line = CFG.CARDS.BIG_LOSS_SCORE;
+    out.table = JSON.stringify(CFG.CARDS.DROPS.bigloss);
+    const rng = mulberry32(2026);
+    const rep = (o) => Object.assign({ win: false, cause: 'tc_destroyed', mode: 'hard', day: 300, seconds: 5000,
+      subtotal: 15000, score: 26250, deeds: 40, actDays: 60, runId: null }, o);
+    const T = (o) => JSON.stringify(Deck.table(rep(o)));
+    out.tAt = T({ score: 20000 }); out.tUnder = T({ score: 19999 }); out.tNone = T({ score: undefined });
+    out.tWin = T({ win: true, cause: 'razed_rival_tc', score: 90000 });
+    const tally = (n, o, pre) => {
+      const t = {}, per = new Set();
+      for (let i = 0; i < n; i++) {
+        const g = Deck.settle(rep(Object.assign({ key: pre + i }, o)), rng);
+        per.add(g.cards ? g.cards.length : -1);
+        for (const c of (g.cards || [])) t[c.tier] = (t[c.tier] || 0) + 1;
+      }
+      return { t, per: [...per] };
+    };
+    out.big = tally(400, {}, 'bl');
+    out.under = tally(200, { score: 19999 }, 'bu');
+    out.banner = Deck.settle(rep({ cause: 'struck_banner', score: 50000, key: 'bb' }), rng).ok;
+    out.short = Deck.settle(rep({ deeds: 1, key: 'bs' }), rng).ok;
+    Deck.col().pity = 4; Deck.settle(rep({ key: 'bp' }), rng); out.pity = Deck.col().pity;
+    // THE SAME NUMBER IN THE REAL GAME: a Hard defeat whose subtotal is under
+    // the line but whose final score is over it — the row, the stamp and the
+    // report agree, and the report rolls the big table
+    Screens._demo = false;
+    G.newGame('bigloss-real', 'hard', 'medium'); Cards.pick(0); Screens.show('playing'); S.paused = true;
+    S.stats.kills = 1300; S.stats.built = 20;
+    const sc = Score.compute(false);
+    out.sub = sc.subtotal; out.total = sc.total;
+    const realEnd = UI.showEnd; UI.showEnd = () => {};   // the reward screen would settle it: measured here instead
+    try { G.end(false, 'test defeat', 'tc_destroyed'); } finally { UI.showEnd = realEnd; }
+    S.stats.kills += 3;                                   // a kill tallied after the end (Combat.update runs on)
+    out.stamped = S.over && S.over.score;
+    out.row = G.runReport('loss', 'tc_destroyed', false).score;
+    const rp = Deck.report(false, 'tc_destroyed');
+    out.rep = rp.score; out.repTable = JSON.stringify(Deck.table(rp));
+    return out;
+  });
+  ck('theBigLossLineIsTheOperators', r.line === 20000 && r.table === '[0,60,40,0,0]', `${r.line}, ${r.table}`);
+  ck('aDefeatAtTheLineRollsTheBigTable', r.tAt === '[0,60,40,0,0]' && r.tUnder === '[85,15,0,0,0]' && r.tNone === '[85,15,0,0,0]' &&
+    r.tWin === JSON.stringify([0, 0, 30, 45, 25]),
+    `20,000 ${r.tAt}; 19,999 ${r.tUnder}; no score ${r.tNone}; a win at 90,000 ${r.tWin}`);
+  ck('aBigDefeatPaysBronzeOrIronNeverStone', r.big.per.length === 1 && r.big.per[0] === 1 && !r.big.t.stone &&
+    r.big.t.bronze > 0 && r.big.t.iron > 0 && !r.big.t.imperial && !r.big.t.enlight &&
+    Math.abs(r.big.t.iron / 400 - 0.4) < 0.08,
+    `400 big defeats, one card each: ${JSON.stringify(r.big.t)}`);
+  ck('andUnderTheLineTheLossTableStands', !r.under.t.iron && !r.under.t.imperial && r.under.t.stone > 0,
+    `200 defeats at 19,999: ${JSON.stringify(r.under.t)}`);
+  ck('theEarnRuleIsUntouched', r.banner === false && r.short === false && r.pity === 4,
+    `a struck banner at 50,000 ${r.banner}; one deed at 26,250 ${r.short}; pity ${r.pity}`);
+  ck('theTableIsChosenOnTheRowsOwnScore', r.sub < 20000 && r.total >= 20000 && r.stamped === r.total &&
+    r.row === r.stamped && r.rep === r.stamped && r.repTable === '[0,60,40,0,0]',
+    `subtotal ${r.sub}, final ${r.total}; stamped ${r.stamped}, row ${r.row}, report ${r.rep} (after a late kill); table ${r.repTable}`);
 }
 
 /* ONE WORD, ONE THING (the playtest): "the deck" is the card collection

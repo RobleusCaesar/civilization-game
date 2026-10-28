@@ -2640,6 +2640,13 @@ const G = {
         Backend.runId = S.runId;
       }
     } catch (e) { /* analytics may never break a finished run */ }
+    /* THE FINAL SCORE IS FIXED HERE (S.over.score, tests/deck-core.mjs): the
+       run_end row carries it and the card's table is chosen on it
+       (Deck.report → CFG.CARDS.BIG_LOSS_SCORE), so the two can never be two
+       numbers — G.end can run from inside Combat.update, which goes on
+       tallying a kill after the row is sent, and an ended save loaded later
+       scores afresh. */
+    try { if (window.Score && Score.compute) S.over.score = Score.compute(!!win).total || 0; } catch (e) {}
     /* ANALYTICS (Backend.logRunEnd, /analytics.html): how this run ended, how
        far it got and how it was played. Wrapped because a run must end
        cleanly even if every one of these reads is somehow unavailable. */
@@ -2679,7 +2686,9 @@ const G = {
       mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
       day: S.day, seconds: Math.round(S.playtime || 0),
       tcLevel: (tc && tc.level) || 0, peakPop: st.peakPop || 0,
-      score: (window.Score && Score.compute) ? (Score.compute(!!win).total || 0) : 0,
+      // the ending's own fixed score (G.end) — a live run's, provisional, scored now
+      score: (S.over && S.over.score != null) ? S.over.score
+        : ((window.Score && Score.compute) ? (Score.compute(!!win).total || 0) : 0),
       props: {
         built: st.built || 0, trained: st.trained || 0, kills: st.kills || 0,
         walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,

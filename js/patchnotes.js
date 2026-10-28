@@ -19,8 +19,11 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 107, date: '2026-10-28', title: 'Every report tracked',
+    build: 107, date: '2026-10-28', title: 'A fairer endgame',
     items: [
+      'Wonders now rise only in Calm worlds. The rival can no longer win by raising one on Moderate or Hard, and one already rising in a saved game is called off when you load it.',
+      'The countdown for a rival Wonder is shorter and fits on every screen, above your messages instead of on top of them.',
+      'A defeat that scores 20,000 points or more now earns a Bronze or Iron card, never a Stone one.',
       'Bugs, crash reports and ideas you send from the Feedback tab now land in a proper inbox, where each one is tracked until it is fixed.',
       'When something goes wrong during a game, the game quietly notes it, so crashes nobody reported can be found and fixed too. Nothing personal is sent.',
     ],

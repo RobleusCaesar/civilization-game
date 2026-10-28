@@ -1357,9 +1357,22 @@ const CFG = {
        minutes. 6 is six times the burst and at or under the shortest real
        fight measured. */
     LOSS_DAYS: 6,
+    /* A BIG DEFEAT PAYS BETTER (operator, 2026-10-28, after a 33,000-point
+       Hard defeat paid a Gold Nugget: "anything over 20,000 points and bronze
+       is the floor and iron is the ceiling"). A defeat that EARNS a card
+       (the deeds and days above, unchanged) and whose final score — the
+       number on the end screen and on the run_end row, the difficulty
+       multiplier IN — reaches this rolls DROPS.bigloss instead of DROPS.loss.
+       Migration 0011's card_big_loss_min_score() is the server's twin of this
+       number (tests/deck-sync.mjs holds them equal). Out of reach of a short
+       game: on Hard it takes a subtotal of ~11,400, on Moderate 20,000, on
+       Calm 40,000 — a defeat that outscores an average Hard win. */
+    BIG_LOSS_SCORE: 20000,
     // [stone, bronze, iron, imperial, enlight] percentages, approved at Gate 1
+    // (bigloss: the operator's ruling above)
     DROPS: {
       loss:     [85, 15, 0, 0, 0],
+      bigloss:  [0, 60, 40, 0, 0],
       calm:     [40, 40, 17, 3, 0],
       moderate: [0, 35, 40, 20, 5],
       hard:     [0, 0, 30, 45, 25],

@@ -39,15 +39,23 @@
                        table, the telemetry kinds widened, idempotent in form,
                        the one loss-deeds number in one place — and its catalog,
                        starter hand and drop tiers equal to the game's own
+     THE BIG LOSS      0011_card_big_loss.sql, on the source: guarded on 0008,
+                       idempotent in form, grant_card 0008's but for the ONE
+                       line that reads the ending's score, the big-loss number
+                       the game's, and the drop tiers as the database holds
+                       them after every file (0011's big loss the CEILING of
+                       the game's two loss tables). Its behaviour, on a real
+                       PostgreSQL, is tests/analytics.mjs §1b
 
    Run after touching: Deck.sync / the queue ops in js/deck.js,
-   Backend.rpc / flushEnds / _emitEnd, or supabase/migrations/0008_cards.sql.
+   Backend.rpc / flushEnds / _emitEnd, supabase/migrations/0008_cards.sql or
+   0011_card_big_loss.sql.
 
      node tests/deck-sync.mjs      # exits non-zero on any regression */
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
@@ -1183,7 +1191,7 @@ let deedsCheck = 0;
   // CFG is a script-level const: window.CFG is undefined (the window.G trap)
   await p2.waitForFunction(() => window.Deck && typeof CFG !== 'undefined', null, { timeout: 30000 });
   const game = await p2.evaluate(() => ({
-    lossDeeds: CFG.CARDS.LOSS_DEEDS, pity: CFG.CARDS.PITY,
+    lossDeeds: CFG.CARDS.LOSS_DEEDS, pity: CFG.CARDS.PITY, bigLoss: CFG.CARDS.BIG_LOSS_SCORE,
     cat: Deck.CATALOG.map(c => c.id + ':' + c.tier).sort(), starter: CFG.CARDS.STARTER.slice().sort(),
     drops: Object.fromEntries(Object.entries(CFG.CARDS.DROPS).map(([k, w]) => [k, Deck.TIERS.filter((t, i) => w[i] > 0).map(t => t.k).sort()])),
   }));
@@ -1192,10 +1200,17 @@ let deedsCheck = 0;
   const rows = [...seed.matchAll(/\('([a-z0-9_]+)', '([a-z]+)', (\d)\)/g)].map(m => ({ id: m[1], tier: m[2], st: +m[3] }));
   const sqlCat = rows.map(x => x.id + ':' + x.tier).sort();
   const sqlStarter = rows.filter(x => x.st > 0).map(x => x.id).sort();
-  const dt = (code.match(/insert into public\.card_drop_tiers \(tbl, tier\) values([\s\S]*?);/) || [])[1] || '';
+  // THE TABLES AS THE DATABASE HOLDS THEM: every file that seeds
+  // card_drop_tiers, replayed in the order they are applied — 0008 deletes
+  // all and seeds four, 0011 deletes and re-seeds the big loss alone
+  const MIGS = readdirSync(join(root, 'supabase/migrations')).filter(f => /^\d{4}_.*\.sql$/.test(f)).sort();
+  const migCode = f => readFileSync(join(root, 'supabase/migrations', f), 'utf8').replace(/--[^\n]*/g, '');
   const sqlDrops = {};
-  for (const m of dt.matchAll(/\('([a-z]+)', '([a-z]+)'\)/g)) (sqlDrops[m[1]] = sqlDrops[m[1]] || []).push(m[2]);
-  for (const k in sqlDrops) sqlDrops[k].sort();
+  for (const f of MIGS) for (const m of migCode(f).matchAll(/delete from public\.card_drop_tiers(?:\s+where tbl = '([a-z_]+)')?\s*;|insert into public\.card_drop_tiers \(tbl, tier\) values([\s\S]*?);/g)) {
+    if (m[2] == null) { for (const k of Object.keys(sqlDrops)) if (!m[1] || k === m[1]) delete sqlDrops[k]; continue; }
+    for (const r of m[2].matchAll(/\('([a-z_]+)', '([a-z]+)'\)/g)) (sqlDrops[r[1]] = sqlDrops[r[1]] || []).push(r[2]);
+  }
+  for (const k in sqlDrops) sqlDrops[k] = [...new Set(sqlDrops[k])].sort();
   ck('theServersCatalogIsTheGames', JSON.stringify(sqlCat) === JSON.stringify(game.cat) && rows.length === 36,
     `${rows.length} in the SQL; differs: ${sqlCat.filter(x => !game.cat.includes(x)).concat(game.cat.filter(x => !sqlCat.includes(x))).join(', ') || 'none'}`);
   ck('andItsStarterHand', JSON.stringify(sqlStarter) === JSON.stringify(game.starter), sqlStarter.join(', '));
@@ -1207,8 +1222,72 @@ let deedsCheck = 0;
   ck('theServersLossDeedsAreTheGames', deedsCheck > 0 && (game.lossDeeds == null || game.lossDeeds === deedsCheck),
     game.lossDeeds == null ? `server ${deedsCheck}; the game has no LOSS_DEEDS yet` : `server ${deedsCheck}, game ${game.lossDeeds}`);
   ck('theServersPityIsTheGames', sqlPity > 0 && sqlPity === game.pity, `server ${sqlPity}, game ${game.pity}`);
-  ck('andItsDropTiers', JSON.stringify(Object.keys(sqlDrops).sort().map(k => [k, sqlDrops[k]])) === JSON.stringify(Object.keys(game.drops).sort().map(k => [k, game.drops[k]])),
+  // …every table the game rolls, its tiers exactly — but for the BIG LOSS,
+  // which the server pays in anything EITHER loss table rolls (0011's
+  // header: a phone still on an older game rolls the plain table on a big
+  // defeat, and a Stone card is never worth forging)
+  const want = {};
+  for (const k in game.drops) want[k] = game.drops[k].slice();
+  if (want.bigloss) want.bigloss = [...new Set(want.bigloss.concat(game.drops.loss || []))].sort();
+  ck('andItsDropTiers', JSON.stringify(Object.keys(sqlDrops).sort().map(k => [k, sqlDrops[k]])) === JSON.stringify(Object.keys(want).sort().map(k => [k, want[k]])),
     JSON.stringify(sqlDrops));
+
+  /* ---- 12b. 0011 — THE BIG LOSS, on the source ---- */
+  const F11 = '0011_card_big_loss.sql';
+  const sql11 = MIGS.includes(F11) ? readFileSync(join(root, 'supabase/migrations', F11), 'utf8') : '';
+  const code11 = sql11.replace(/--[^\n]*/g, ''), lc11 = code11.toLowerCase();
+  const raw = (txt, name) => {      // a function as WRITTEN, comments and all
+    const i = txt.indexOf('create or replace function public.' + name + '(');
+    if (i < 0) return '';
+    const j = txt.indexOf('\n$$;', i);
+    return txt.slice(i, j < 0 ? undefined : j);
+  };
+  // ONE LINE AND NOTHING ELSE: 0011's door is 0008's but for the else of
+  // v_tbl, so every pin above on 0008's grant_card holds for the door that
+  // RUNS — and 0011 is the last file to make it
+  const g8 = raw(sql, 'grant_card').split('\n'), g11 = raw(sql11, 'grant_card').split('\n');
+  const moved = g8.length === g11.length ? g8.map((l, i) => [l, g11[i]]).filter(([a, b]) => a !== b) : null;
+  const makers = MIGS.filter(f => /create or replace function public\.grant_card\(/.test(migCode(f).toLowerCase()));
+  ck('0011ChangesOneLineOfTheDoor', g8.length > 50 && !!moved && moved.length === 1 &&
+    moved[0][0].trim() === "else 'loss' end;" &&
+    moved[0][1].trim() === "else (case when v_end.score >= public.card_big_loss_min_score() then 'bigloss' else 'loss' end) end;" &&
+    makers[makers.length - 1] === F11,
+    moved ? moved.map(([a, b]) => `${a.trim()} → ${b.trim()}`).join(' | ') + `; made last by ${makers[makers.length - 1]}` : `0008's door ${g8.length} lines, 0011's ${g11.length}`);
+  ck('andItStaysASignedInPlayersDoor', /revoke all on function public\.grant_card\(text, text\[\], text\) from public;/.test(lc11) &&
+    /revoke all on function public\.grant_card\(text, text\[\], text\) from anon, authenticated;/.test(lc11) &&
+    /grant execute on function public\.grant_card\(text, text\[\], text\) to authenticated;/.test(lc11) &&
+    (lc11.match(/create or replace function/g) || []).length === (lc11.match(/set search_path = ''/g) || []).length,
+    "0008's revokes and grant, made again; every function on an empty search_path");
+  // THE NUMBER: in one place, internal, read (never written) by the door — and the game's
+  const bigDefs = MIGS.reduce((n, f) => n + (migCode(f).toLowerCase().match(/create or replace function public\.card_big_loss_min_score\(\)/g) || []).length, 0);
+  const big = +((code11.match(/create or replace function public\.card_big_loss_min_score\(\)[\s\S]*?as \$\$\s*select (\d+)\s*\$\$/i) || [])[1]);
+  const g11run = raw(lc11, 'grant_card');
+  ck('theBigLossNumberLivesInOnePlace', bigDefs === 1 && big > 0 && /public\.card_big_loss_min_score\(\)/.test(g11run) &&
+    !new RegExp('\\b' + big + '\\b').test(g11run.replace(/'[^']*'/g, '')) &&
+    /revoke all on function public\.card_big_loss_min_score\(\) from public;/.test(lc11) &&
+    /revoke all on function public\.card_big_loss_min_score\(\) from anon, authenticated;/.test(lc11) &&
+    !/grant execute on function public\.card_big_loss_min_score/.test(lc11),
+    `defined ${bigDefs}×, select ${big}, internal, read by grant_card`);
+  ck('theServersBigLossIsTheGames', big > 0 && big === game.bigLoss, `server ${big}, game ${game.bigLoss}`);
+  // GUARDED AND IDEMPOTENT IN FORM: it refuses without 0008 before it makes
+  // anything; the inline tbl check is dropped by catalogue lookup and made
+  // again BEFORE the big loss's rows go in; those rows are deleted first;
+  // and the check admits exactly the tables the game rolls
+  const guardAt = lc11.indexOf("raise exception '0011 needs 0008_cards.sql applied first'");
+  const firstMake = lc11.search(/\b(create|alter|insert|delete|revoke|grant) /);
+  const bare11 = [
+    ...[...lc11.matchAll(/create table (?!if not exists)/g)].map(() => 'create table'),
+    ...[...lc11.matchAll(/create (unique )?index (?!if not exists)/g)].map(() => 'create index'),
+    ...[...lc11.matchAll(/create function/g)].map(() => 'create function'),
+    ...[...lc11.matchAll(/drop (function|table|policy|index|constraint) (?!if exists|%i)/g)].map(m => 'drop ' + m[1]),
+  ];
+  const lookAt = lc11.search(/a\.attname = 'tbl'[\s\S]*?drop constraint %i/), addAt = lc11.indexOf('add constraint card_drop_tiers_tbl_check');
+  const delAt = lc11.indexOf("delete from public.card_drop_tiers where tbl = 'bigloss';"), insAt11 = lc11.indexOf('insert into public.card_drop_tiers');
+  const tbls = [...((lc11.match(/add constraint card_drop_tiers_tbl_check\s+check \(tbl in \(([^)]*)\)\)/) || [])[1] || '').matchAll(/'([a-z_]+)'/g)].map(m => m[1]).sort();
+  ck('0011IsGuardedAndIdempotentInForm', !!sql11 && guardAt > 0 && guardAt < firstMake && !bare11.length &&
+    lookAt > 0 && lookAt < addAt && addAt < insAt11 && delAt > 0 && delAt < insAt11 &&
+    JSON.stringify(tbls) === JSON.stringify(Object.keys(game.drops).sort()),
+    !sql11 ? F11 + ' is missing' : bare11.length ? 'would fail a second run: ' + bare11.join(', ') : `the guard first; the tbl check by lookup, then made again for ${tbls.join(', ')}; the big loss re-seeded`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

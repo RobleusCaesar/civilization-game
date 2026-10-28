@@ -425,16 +425,19 @@ const Deck = {
     return { n, parts };
   },
   /* The finished run, read off S at the end screen. `subtotal` is the score
-     BEFORE the difficulty multiplier; `deeds` what a defeat is judged on. */
+     BEFORE the difficulty multiplier; `score` the FINAL score — the run_end
+     row's own number (G.end stamps it on S.over), which a defeat's table is
+     chosen on (CFG.CARDS.BIG_LOSS_SCORE); `deeds` what a defeat is judged on. */
   report(win, cause) {
-    let sub = 0;
-    try { sub = Score.compute(!!win).subtotal || 0; } catch (e) {}
+    let sub = 0, score = 0;
+    try { const sc = Score.compute(!!win); sub = sc.subtotal || 0; score = sc.total || 0; } catch (e) {}
+    if (S.over && S.over.score != null) score = S.over.score;
     // the run's OWN id first: it rides the save and outlives the end, while
     // Backend.lastRunId can be stale (a pre-stamp save, a logRunEnd that threw)
     const runId = S.runId || (window.Backend && (Backend.lastRunId || Backend.runId)) || null;
     return {
       win: !!win, cause: cause || (win ? 'win' : 'unknown'),
-      mode: S.mode, day: S.day, seconds: Math.round(S.playtime || 0), subtotal: sub,
+      mode: S.mode, day: S.day, seconds: Math.round(S.playtime || 0), subtotal: sub, score,
       deeds: this.deeds().n, actDays: Math.max(0, (S.stats && S.stats.actDays) | 0),
       runId, key: runId || ('seed:' + S.seed + ':' + S.day + ':' + (win ? 'w' : 'l')),
     };
@@ -464,7 +467,17 @@ const Deck = {
       : `Keep up the fight across the days to earn a card from a defeat — orders given on ${days} of ${needD} days.`;
     return out;
   },
-  table(rep) { return CFG.CARDS.DROPS[rep.win ? rep.mode : 'loss'] || CFG.CARDS.DROPS.loss; },
+  /* WHICH TABLE: a win rolls its mode's; a defeat the loss table — or, when
+     its final score reached CFG.CARDS.BIG_LOSS_SCORE, the BIG LOSS table
+     (Bronze at the least, Iron at the most). A report without a score reads
+     0, and a config without the table stands down to the loss table. */
+  table(rep) {
+    const D = CFG.CARDS.DROPS;
+    if (rep.win) return D[rep.mode] || D.loss;
+    const line = CFG.CARDS.BIG_LOSS_SCORE;
+    if (D.bigloss && line > 0 && (+rep.score || 0) >= line) return D.bigloss;
+    return D.loss;
+  },
   medianDay(mode) {
     const m = this.col().medians;
     return (m && m[mode] > 0) ? m[mode] : CFG.CARDS.MEDIAN_DAY[mode] || 9999;
