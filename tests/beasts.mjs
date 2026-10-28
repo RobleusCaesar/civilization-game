@@ -42,7 +42,12 @@
                        shadow sweeps the screen first under the title; the
                        beast is on screen 3.5s+; each building the fire
                        reaches catches on its own beat with a shake; no warm
-                       light on the ground, no radial gradient
+                       light pooled on the ground (a soft light wider than
+                       0.6 tile on the fire line); its breath and its shadow
+                       drawn at the device's own resolution (the operator's
+                       ruling, 2026-10-27: "higher pixel count") — the breath
+                       fills not one cell, the shadow is the silhouette
+                       blurred soft
      KRAKEN'S CALL     over a narrow sea, nothing of the frame's own sea and
                        nothing of the beast below its waterline lands on the
                        land (the card's act and the world's); its blows throw
@@ -600,7 +605,9 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
       });
       // IN ON THE FIRE — and every picture of it, frame by frame
       const flyF = new Set([...(Assets.fxFrames('dragon-fly') || []), ...(Assets.fxFrames('dragon-breath') || [])]);
-      const silF = new Set([...flyF].map(f => Beasts.silhouette(f)));
+      // (the shadow's sweep is the frame's silhouette — blurred soft since the
+      // operator's ruling on the effects, Beasts.softShadow — either counts)
+      const silF = new Set([...flyF].flatMap(f => [Beasts.silhouette(f), ...(Beasts.softShadow ? [Beasts.softShadow(f)] : [])]));
       const g = R.cv.getContext('2d'), di = g.drawImage, CW = R.cv.width, CH = R.cv.height;
       let rec = null;
       g.drawImage = function (img, ...a) {
@@ -613,21 +620,46 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
         return di.call(this, img, ...a);
       };
       const shakes = [], flashes = [], titles = new Set(), sa = R.shakeAt, fa = R.flashAt, at = R.actTitle, crg = g.createRadialGradient;
-      let radial = 0, tNow = 0;
+      let radial = 0, pools = 0, tNow = 0, fireRow = 0;
       R.shakeAt = function (amp, dur) { shakes.push({ t: tNow, amp }); return sa.apply(this, arguments); };
       R.flashAt = function (a, d, col) { flashes.push(col || 'white'); return fa.apply(this, arguments); };
       R.actTitle = function (gg, title) { titles.add(title); return at.apply(this, arguments); };
-      g.createRadialGradient = function () { radial++; return crg.apply(this, arguments); };
+      /* NO LIGHT POOLED ON THE GROUND (the dry summer's ruling, the breath's
+         too): a light may be soft now (the operator's ruling on the effects —
+         the breath's glow in the air, a spark, an ember), but none wider
+         than a little over half a tile may stand on the ground along the
+         fire line — that is the warm pool that read as sand. Every radial
+         gradient's middle and reach, taken back to the world */
+      g.createRadialGradient = function (x0, y0, r0, x1, y1, r1) {
+        radial++;
+        const Tm = this.getTransform(), z = R.cam.z * R.dpr, sc = Math.max(Math.hypot(Tm.a, Tm.b), Math.hypot(Tm.c, Tm.d));
+        const dy = Tm.b * x1 + Tm.d * y1 + Tm.f, wy = dy / z + R.cam.y, wr = r1 * sc / z;
+        if (wr >= TL * 0.6 && Math.abs(wy - fireRow * TL) <= TL * 1.2) pools++;
+        return crg.apply(this, arguments);
+      };
+      /* THE BREATH IS DRAWN AT THE DEVICE'S OWN RESOLUTION (the operator's
+         ruling, 2026-10-27: "the rays are pixelated again… higher pixel
+         count"): inside R.drawDragonBreath not one cell is filled — no
+         fillRect, no R.pxDisc — only smooth paths (the beast and the
+         burning-town flames are pictures, drawn by drawImage) */
+      const breath = { calls: 0, cells: 0, disc: 0, fills: 0 };
+      const ddb = R.drawDragonBreath, pxd = R.pxDisc, gfr = g.fillRect, gfl = g.fill;
+      let inBreath = 0;
+      R.drawDragonBreath = function () { breath.calls++; inBreath++; try { return ddb.apply(this, arguments); } finally { inBreath--; } };
+      R.pxDisc = function () { if (inBreath) breath.disc++; return pxd.apply(this, arguments); };
+      g.fillRect = function () { if (inBreath) breath.cells++; return gfr.apply(this, arguments); };
+      g.fill = function () { if (inBreath) breath.fills++; return gfl.apply(this, arguments); };
       out.cams = {};
       try {
         for (const zoom of [0.8, 1.7]) {
           // a rival hamlet along the line, house by house
           const T = { x: Math.round(W / 2) + 6.5, y: row + 0.5 };
           S.buildings = S.buildings.filter(b => b.owner !== 'A' || b.key === 'tc');
+          fireRow = row + 0.5;
           const houses = [-2, 0, 2].map(dx => { const b = Bld.place('A', 'house', T.x - 0.5 + dx, row, { free: true, instant: true }); b.hp = b.maxhp = 900; return b; });
           Bld._block = null; G.updateVisibility();
           const caught = {}, beastT = [], zs = [], spans = [];
-          shakes.length = 0; flashes.length = 0; titles.clear(); radial = 0;
+          shakes.length = 0; flashes.length = 0; titles.clear(); radial = 0; pools = 0;
           let sweptWide = false, sweepMin = 1e9, sweepMax = -1e9;
           const r = run(T, zoom, (t) => {
             tNow = t;
@@ -653,10 +685,14 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
             caught: times.map(t => +t.toFixed(2)),
             shook: times.filter(tc => shakes.some(s => Math.abs(s.t - tc) < 0.05)).length,
             warm: flashes.filter(c => { const m = /(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(c); return m && +m[1] > +m[3] + 40; }).length,
-            radial,
+            radial, pools,
           };
         }
-      } finally { g.drawImage = di; R.shakeAt = sa; R.flashAt = fa; R.actTitle = at; g.createRadialGradient = crg; }
+      } finally {
+        g.drawImage = di; R.shakeAt = sa; R.flashAt = fa; R.actTitle = at; g.createRadialGradient = crg;
+        R.drawDragonBreath = ddb; R.pxDisc = pxd; g.fillRect = gfr; g.fill = gfl;
+      }
+      out.breath = breath;
       // NOT IN THE BLACK: by the west edge, every pixel the act writes, through its own transform
       const real = R.boardPx(), cx = R.cv.getContext('2d');
       const probe = (owner, key, sky) => {
@@ -715,8 +751,11 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
       ck('theFireWalksTheLineBuildingByBuildingAndEachIsFelt', [0.8, 1.7].every(z => C[z].caught.length === 3 && new Set(C[z].caught).size === 3 &&
         C[z].caught[2] - C[z].caught[0] >= 1 && C[z].shook === 3),
         Object.entries(C).map(([z, c]) => `${z}: caught at ${c.caught.join('/')}s, ${c.shook} shaken`).join('; '));
-      ck('andNoWarmLightIsLaidOverTheGround', [0.8, 1.7].every(z => C[z].warm === 0 && C[z].radial === 0),
-        Object.entries(C).map(([z, c]) => `${z}: ${c.warm} warm flashes, ${c.radial} radial gradients`).join('; '));
+      ck('andNoWarmLightIsLaidOverTheGround', [0.8, 1.7].every(z => C[z].warm === 0 && C[z].pools === 0),
+        Object.entries(C).map(([z, c]) => `${z}: ${c.warm} warm flashes, ${c.pools} lights wider than 0.6 tile on the fire line (of ${c.radial} soft lights)`).join('; '));
+      const bz = d9.breath;
+      ck('andItsBreathIsDrawnAtTheDevicesOwnResolution', bz.calls > 0 && bz.fills > 0 && bz.cells === 0 && bz.disc === 0,
+        `${bz.calls} breaths: ${bz.fills} smooth fills, ${bz.cells} cells filled, ${bz.disc} pixel discs`);
     }
 
     /* ---------------- 10. KRAKEN'S CALL: OUT OF THE REAL SEA ----------------

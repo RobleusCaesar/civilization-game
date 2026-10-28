@@ -10581,17 +10581,13 @@ const R = {
     g.globalAlpha = k;
     g.drawImage(fr, ev.x * TL - size / 2, ev.y * TL - size / 2 - k * 6, size, size);
     g.globalAlpha = 1;
-    // the churn round it: two rings MADE OF DOTS on the 2px grid, in hard
-    // alpha steps — never a stroked soft arc (the house's rule)
-    const churn = (rx, ry, n, a, spin) => {
-      g.fillStyle = 'rgba(235,244,248,' + (Math.round(a * 4) / 4).toFixed(2) + ')';
-      for (let i = 0; i < n; i++) {
-        const an = i / n * Math.PI * 2 + spin;
-        g.fillRect(Math.round((ev.x * TL + Math.cos(an) * rx) / 2) * 2, Math.round((ev.y * TL + 12 + Math.sin(an) * ry) / 2) * 2, 2, 2);
-      }
-    };
-    churn(24 + Math.sin(ev.t * 5) * 5, 9, 24, 0.5 * k, ev.t * 0.9);
-    churn(34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 32, 0.3 * k, -ev.t * 0.6);
+    // the churn round it: two rings of broken white water turning on the
+    // sea, at the device's own resolution (R.fxFoam, js/beasts.js — the
+    // operator's ruling on the effects: foam is never a ring of 2px dots)
+    if (this.fxFoam) {
+      this.fxFoam(g, ev.x * TL, ev.y * TL + 12, 24 + Math.sin(ev.t * 5) * 5, 9, 0.6 * k, { css: 1.4, seed: 5, spin: ev.t * 0.9 });
+      this.fxFoam(g, ev.x * TL, ev.y * TL + 12, 34 + Math.sin(ev.t * 4 + 1.5) * 6, 12, 0.38 * k, { css: 1.2, seed: 9, spin: -ev.t * 0.6 });
+    }
   },
   /* ================= CARD LIGHT IS GOLD, NOT LIME =================
      Every card's light used to be gold ADDED to the scene ('lighter') — and
@@ -14388,13 +14384,23 @@ const R = {
           tongue(-6, 2, 0.6, 0.7);               // side tongues knit the wall together
           tongue(6, 3, 0.7, 0.7);
         }
-        // rolling smoke as the blaze gutters
+        // rolling smoke as the blaze gutters — soft puffs at the device's own
+        // resolution (R.fxPuff, the operator's ruling on the effects); the
+        // two grey squares stand in only for a cached older beasts.js
         if (fp.ttl < 2.6) {
           const life2 = Math.min(1, fp.ttl / 1.4);
-          g.globalAlpha = 0.24 * life2;
-          g.fillStyle = '#4a4a52';
-          g.fillRect(fp.x * TL - 2 + Math.sin(now * 2 + fp.seed) * 4, fp.y * TL - 24 - ((now * 6 + fp.seed) % 8), 4, 4);
-          g.fillRect(fp.x * TL + 2 + Math.sin(now * 1.6 + fp.seed * 2) * 5, fp.y * TL - 30 - ((now * 5 + fp.seed) % 6), 3, 3);
+          const p1x = fp.x * TL + Math.sin(now * 2 + fp.seed) * 4, p1y = fp.y * TL - 22 - ((now * 6 + fp.seed) % 8);
+          const p2x = fp.x * TL + 3.5 + Math.sin(now * 1.6 + fp.seed * 2) * 5, p2y = fp.y * TL - 28.5 - ((now * 5 + fp.seed) % 6);
+          if (this.fxPuff) {
+            g.globalAlpha = 1;
+            this.fxPuff(g, p1x, p1y, 3.2, '74,74,82', 0.3 * life2);
+            this.fxPuff(g, p2x, p2y, 2.6, '74,74,82', 0.26 * life2);
+          } else {
+            g.globalAlpha = 0.24 * life2;
+            g.fillStyle = '#4a4a52';
+            g.fillRect(p1x - 2, p1y - 2, 4, 4);
+            g.fillRect(p2x - 1.5, p2y - 1.5, 3, 3);
+          }
         }
       }
       g.globalAlpha = 1;

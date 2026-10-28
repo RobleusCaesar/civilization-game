@@ -205,8 +205,205 @@ const Beasts = {
     this._sil.set(fr, c);
     return c;
   },
+  /* THE SHADOW IS SOFT (the operator's ruling on the effects: the beasts'
+     own sprites stay pixel art, but what they throw — fire, foam, a splash,
+     the dark of their shadow — is drawn at the device's own resolution). A
+     shadow cast from high above has no hard edge, and its silhouette blown up
+     seven times nearest-neighbour drew every art pixel of the wing as a
+     block. So the silhouette is BLURRED once per frame — laid down at
+     `SOFT_TAPS` offsets on a disc of `SOFT_R` art px, each a share of the
+     whole (drawImage only: no pixel is read, so a file:// page that cannot
+     read its canvases blurs it the same) — padded by SOFT_R on every side,
+     and drawn stretched WITH smoothing: a smooth falloff stretched stays
+     smooth. Cached per frame (a WeakMap), render state only. */
+  SOFT_R: 3, SOFT_TAPS: 18,
+  _soft: new WeakMap(),
+  softShadow(fr) {
+    let c = this._soft.get(fr);
+    if (c) return c;
+    const sil = this.silhouette(fr), P = this.SOFT_R + 1;
+    c = document.createElement('canvas'); c.width = fr.width + P * 2; c.height = fr.height + P * 2;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    const n = this.SOFT_TAPS;
+    g.globalAlpha = 0.2;
+    for (let i = 0; i < n; i++) {
+      // two rings of taps and the middle: a disc, not a cross
+      const ring = i < 6 ? 0.45 : 1, a = i * 2.39996, r = this.SOFT_R * ring;
+      g.drawImage(sil, P + Math.cos(a) * r, P + Math.sin(a) * r);
+    }
+    g.globalAlpha = 0.5; g.drawImage(sil, P, P);
+    c.pad = P;
+    this._soft.set(fr, c);
+    return c;
+  },
 };
 window.Beasts = Beasts;
+
+/* ============ WHAT THE BEASTS AND THE SKY CARDS THROW, AT THE DEVICE'S OWN RESOLUTION ============
+   (operator ruling, 2026-10-27: "can you improve the quality of the map
+   special effects… the rays are pixelated again… higher pixel count"). The
+   world's ART stays pixel art — the dragon's and the kraken's own strips at
+   one whole scale, a building, a soldier, the card's own painting — but
+   every EFFECT the beasts and the rival-and-sky cards throw (the breath and
+   every tongue of fire, foam and spray, a splash, embers, smoke, a shadow's
+   soft edge) is drawn here as smooth antialiased paths and gradients at
+   FRACTIONAL coordinates, never snapped to the art's 2px grain, never a
+   stepped dither, never a small canvas blown up nearest-neighbour. The
+   light of it goes through the shared helpers (R.fxGlow / fxRing / fxDot /
+   fxSpark / fxRays, js/render.js), whose hue pass keeps a warm light off the
+   meadow's lime. Draws wherever the caller draws (the world layer in world
+   px, the sky in device px), restores what it sets, keeps no state and draws
+   no RNG (a hash and the caller's clock). */
+Object.assign(R, {
+  /* A TONGUE OF FLAME standing on (x, y) — `h` tall, `w` wide at its foot
+     (the caller's units), swaying on its own phases (`t` its clock, `seed`
+     its own): an outer tongue in the fire's orange going red and thin at its
+     tip, a gold tongue inside it, a white-hot heart at its foot — each a
+     smooth tapered path, curved through the midpoints of its edge, never a
+     stack of slices — over a soft light of its own hugging the column (an
+     ellipse the shape of the flame, never a pool across the ground). `a`
+     0..1 its strength. */
+  fxFlame(g, x, y, h, w, t, seed, a) {
+    a = a == null ? 1 : Math.max(0, Math.min(1, a));
+    if (!(h > 0.5) || !(w > 0.3) || a < 0.01) return;
+    const F = ART.PALETTE.fire, N = 16, sk = Math.min(1.6, Math.max(0.35, w / 13));
+    const at = k => {
+      const sway = Math.sin(t * 9 + k * 7 + seed) * (1.5 + k * 4) + Math.sin(t * 13 + seed * 2.1 + k * 3) * k * 2;
+      return x + sway * sk;
+    };
+    // its own light, the shape of the column — an aura hugging the flame,
+    // no wider than it is and lifted off its foot: a fire lights ITSELF, and
+    // a glow spread round its foot is the warm pool on the meadow that reads
+    // as sand (tests/deck-fx.mjs §9 measures the ground round a fire's foot)
+    if (this.fxGlow) {
+      g.save();
+      g.translate(x, y - h * 0.55);
+      g.scale(Math.max(0.15, Math.min(1, w * 0.62 / (h * 0.52))), 1);
+      this.fxGlow(g, 0, 0, h * 0.52, 0.42 * a, 'bronze', { soft: 2.1 });
+      g.restore();
+    }
+    // one tongue: `wk` of the width, closing to its tip at `hk` of the height
+    const tongue = (wk, hk) => {
+      const L = [], Rr = [];
+      for (let i = 0; i <= N; i++) {
+        const k = i / N * hk, q = k / hk, cx = at(k), hw = w * wk * Math.pow(1 - q, 0.85) / 2, yy = y - k * h;
+        L.push([cx - hw, yy]); Rr.push([cx + hw, yy]);
+      }
+      g.beginPath();
+      g.moveTo(Rr[0][0], Rr[0][1]);
+      // the foot, rounded under
+      g.quadraticCurveTo(x, y + w * wk * 0.22, L[0][0], L[0][1]);
+      for (let i = 1; i < N; i++) g.quadraticCurveTo(L[i][0], L[i][1], (L[i][0] + L[i + 1][0]) / 2, (L[i][1] + L[i + 1][1]) / 2);
+      g.lineTo(L[N][0], L[N][1]);
+      for (let i = N - 1; i > 0; i--) g.quadraticCurveTo(Rr[i][0], Rr[i][1], (Rr[i][0] + Rr[i - 1][0]) / 2, (Rr[i][1] + Rr[i - 1][1]) / 2);
+      g.closePath();
+    };
+    const grad = (hk, stops) => {
+      const gr = g.createLinearGradient(x, y, x, y - h * hk);
+      for (const [u, c, al] of stops) gr.addColorStop(u, this._fxC ? this._fxC(c, al * a) : c);
+      return gr;
+    };
+    g.save();
+    g.globalCompositeOperation = 'source-over';
+    tongue(1, 1);
+    g.fillStyle = grad(1, [[0, F[1], 1], [0.62, F[1], 1], [0.84, F[0], 0.92], [1, F[0], 0]]); g.fill();
+    tongue(0.62, 0.76);
+    g.fillStyle = grad(0.76, [[0, F[2], 1], [0.7, F[2], 0.95], [1, F[1], 0]]); g.fill();
+    tongue(0.3, 0.46);
+    g.fillStyle = grad(0.46, [[0, '#fff7e0', 1], [0.55, F[3], 1], [1, F[2], 0]]); g.fill();
+    g.restore();
+  },
+  /* A RING OF FOAM on the water at (x, y), radii rx / ry (the caller's
+     units): BROKEN, the way white water is — crests of foam along the ring,
+     each its own length and thickness, swelling in the middle and tapering
+     to nothing at both ends, a little in or out of the true ellipse, with
+     gaps of open water between (seeded, so a ring keeps its own pattern as
+     it rolls out, turning with `o.spin`) — never an even dash, which read
+     as a dashed ring drawn on the screen. A soft wide body (`o.deep`) under
+     a fine bright crest (`o.col`), its width in CSS px (`o.css`, 1.4), so it
+     reads the same on a desk and a phone. `a` 0..1. The caller clips it to
+     the water. */
+  fxFoam(g, x, y, rx, ry, a, o) {
+    o = o || {};
+    if (!(a > 0.01) || !(rx > 0.5) || !(ry > 0.2)) return;
+    const cp = this.fxPx(g), w = (o.css || 1.4) * cp, seed = o.seed | 0, gap = o.gaps == null ? 0.28 : o.gaps;
+    const TAU = Math.PI * 2, spin = (o.spin || 0) * 0.6;
+    const C = Math.PI * (3 * (rx + ry) - Math.sqrt((3 * rx + ry) * (rx + 3 * ry)));
+    const n = Math.max(6, Math.min(40, Math.round(C / (w * 11))));
+    const H = (i, k) => this._fxHash(i, seed * 31 + k);
+    // one crest: from angle a0 to a1, `ww` thick at its middle, `jr` off the ellipse
+    const crest = (a0, a1, ww, jr) => {
+      const N = 10, P = [], Q = [];
+      for (let i = 0; i <= N; i++) {
+        const u = i / N, th = a0 + (a1 - a0) * u, ex = Math.cos(th), ey = Math.sin(th);
+        const r = 1 + jr * (0.6 + 0.4 * Math.sin(u * Math.PI * 1.7));
+        const nx = ex * ry, ny = ey * rx, nl = Math.hypot(nx, ny) || 1;
+        const hw = ww * Math.pow(Math.sin(Math.PI * u), 0.75) / 2;
+        const px = x + ex * rx * r, py = y + ey * ry * r;
+        P.push([px + nx / nl * hw, py + ny / nl * hw]); Q.push([px - nx / nl * hw, py - ny / nl * hw]);
+      }
+      g.beginPath(); g.moveTo(P[0][0], P[0][1]);
+      for (let i = 1; i <= N; i++) g.lineTo(P[i][0], P[i][1]);
+      for (let i = N; i >= 0; i--) g.lineTo(Q[i][0], Q[i][1]);
+      g.closePath(); g.fill();
+    };
+    const pieces = [];
+    for (let i = 0; i < n; i++) {
+      if (H(i, 3) < gap * 0.85) continue;                      // open water here
+      const a0 = (i + 0.12 * H(i, 5)) / n * TAU + spin, len = (0.45 + 0.5 * H(i, 7)) / n * TAU;
+      pieces.push([a0, a0 + len, w * (0.65 + 0.85 * H(i, 9)), (H(i, 11) - 0.5) * Math.min(0.09, 6 * w / Math.max(rx, 1))]);
+    }
+    g.save();
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = Math.min(1, a) * 0.34; g.fillStyle = o.deep || '#a9d4ea';
+    for (const [a0, a1, ww, jr] of pieces) crest(a0 - 0.04, a1 + 0.04, ww * 2.6, jr);
+    g.globalAlpha = Math.min(1, a); g.fillStyle = o.col || '#f2fbff';
+    for (const [a0, a1, ww, jr] of pieces) crest(a0, a1, ww, jr);
+    g.restore();
+  },
+  /* A DROP of water (or a fleck of anything thrown): a round head of radius
+     `r` with a short streak behind it along its velocity (vx, vy, units a
+     second), in `col` at `a` — smooth, never a square cell. */
+  fxDrop(g, x, y, vx, vy, r, col, a) {
+    if (!(a > 0.01) || !(r > 0)) return;
+    const L = Math.hypot(vx, vy), k = L > 0 ? Math.min(r * 4, L * 0.03) / L : 0;
+    g.save();
+    g.globalAlpha = Math.min(1, a);
+    g.fillStyle = g.strokeStyle = col;
+    if (k > 0) { g.lineCap = 'round'; g.lineWidth = r * 1.3; g.beginPath(); g.moveTo(x - vx * k, y - vy * k); g.lineTo(x, y); g.stroke(); }
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.restore();
+  },
+  /* A PUFF of smoke: a soft disc in `rgb` ("r,g,b") at `a`, thickest at its
+     heart — smoke is not light, so it is laid plain source-over. */
+  fxPuff(g, x, y, r, rgb, a) {
+    if (!(a > 0.01) || !(r > 0.3)) return;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r), al = Math.min(1, a);
+    gr.addColorStop(0, 'rgba(' + rgb + ',' + al.toFixed(3) + ')');
+    gr.addColorStop(0.5, 'rgba(' + rgb + ',' + (al * 0.78).toFixed(3) + ')');
+    gr.addColorStop(0.8, 'rgba(' + rgb + ',' + (al * 0.3).toFixed(3) + ')');
+    gr.addColorStop(1, 'rgba(' + rgb + ',0)');
+    g.save(); g.globalCompositeOperation = 'source-over';
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    g.restore();
+  },
+  /* A CHUNK thrown off a blow (a clod of the shore, a stone off a crater):
+     a small irregular polygon, `r` across, turned `rot`, in `col` — an
+     antialiased shape at fractional coordinates, never a square cell. */
+  fxChunk(g, x, y, r, rot, col, a, seed) {
+    if (!(a > 0.01) || !(r > 0.2)) return;
+    g.save();
+    g.globalAlpha = Math.min(1, a); g.fillStyle = col;
+    g.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const an = rot + i / 5 * Math.PI * 2, rr = r * (0.7 + 0.45 * this._fxHash(i, (seed | 0) + 3));
+      if (i) g.lineTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr); else g.moveTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr);
+    }
+    g.closePath(); g.fill();
+    g.restore();
+  },
+});
 
 /* ---------------- the sounds (synthesized — no audio ships) ---------------- */
 if (typeof Sound !== 'undefined' && Sound._VOICES) {
@@ -304,10 +501,11 @@ Object.assign(R, {
       if (typeof Sound !== 'undefined') Sound.play('roar');
       if (Beasts.inView(ev.x, ev.y, 4) || (ev.card && Beasts.inView(sx / TL, sy / TL, 0))) this.shakeAt(ev.card ? 5 : 3, 0.9);
     }
-    /* the pall: the light goes out of the day round it — in HARD DITHERED
-       STEPS (R.stepVignette): the whole view a step darker and every edge of
-       the screen closing in three more, square, never a radial gradient and
-       never a smooth fade (its strength moves in quarters) */
+    /* the pall: the light goes out of the day round it (R.stepVignette —
+       smooth now, the operator's ruling on the effects): the whole view a
+       little darker and every edge of the screen closing in, a falloff at
+       the device's own resolution, never a radial gradient and never a warm
+       wash */
     if (k > 0.01) {
       // (over the board only: the black beyond it is left as it is)
       if (this.stepVignette) this.clipBoard(g, () => this.stepVignette(g, '12,7,9', k * fade, C.pallLv, 0.075));
@@ -324,18 +522,21 @@ Object.assign(R, {
       else { fr = breathF[6 + (((ev.t - C.rearS) * 10) | 0) % 3]; breathing = true; }
     } else fr = fly[((ev.t * C.fps) | 0) % fly.length];
     // the shadow on the ground, darker the lower it flies — the frame's own
-    // silhouette, laid flat by a whole-number squash (Beasts.shadowOf)
+    // silhouette, BLURRED (Beasts.softShadow: a shadow cast from high above
+    // has no hard edge) and laid flat to a third of its height, stretched
+    // with smoothing, at fractional coordinates
     {
-      const sh = Beasts.shadowOf(fr);
+      const sh = Beasts.softShadow(fr);
       // (high over the town on its wheel it still throws one, faint, sweeping the fields)
       const sa = Math.max(ev.card ? 0.14 : 0, 0.42 - 0.18 * (alt - C.altLow) / (C.altHigh - C.altLow)) * fade;
       // the shadow is ON the ground, so it stops at the board's edge (the
       // beast itself is in the sky and may come in from beyond it)
       this.clipBoard(g, () => {
-        g.globalAlpha = Math.max(0, sa);
-        g.translate(Beasts.snap(gx), Beasts.snap(gy + TL * 0.2));
+        g.globalAlpha = Math.max(0, Math.min(1, sa));
+        g.imageSmoothingEnabled = true;
+        g.translate(gx, gy + TL * 0.2);
         if (dir < 0) g.scale(-1, 1);
-        g.drawImage(sh, -sh.width / 2, -Math.round(sh.height / 2));
+        g.drawImage(sh, -sh.width / 2, -sh.height / 6, sh.width, sh.height / 3);
       });
     }
     /* EVERYTHING OF THE BEAST IS ON THE BOARD: its breath, its body and the
@@ -367,55 +568,88 @@ Object.assign(R, {
       if (dir < 0) g.scale(-1, 1);
       g.drawImage(fr, -fr.width * sc / 2, -fr.height * sc / 2, fr.width * sc, fr.height * sc);
       g.restore();
-      // embers off its scales, trailing behind
-      const now = performance.now() / 1000, F = ART.PALETTE.fire;
-      g.globalAlpha = 0.85 * fade >= 0.5 ? 1 : 0;
-      for (let i = 0; i < 10; i++) {
+      // embers off its scales, trailing behind — soft beads of the fire's
+      // light, each dying as it drifts (R.fxDot: a mote at the device's own
+      // resolution, never a 2px cell)
+      const now = performance.now() / 1000;
+      if (this.fxDot) for (let i = 0; i < 10; i++) {
         const ph = (now * 0.9 + i * 0.137) % 1;
         const ex = sx - dir * (30 + ph * 110) * sc + Math.sin(i * 7.1 + now * 3) * 14;
         const ey = sy + (Math.sin(i * 3.3) * 40 + ph * 30) * sc;
-        g.fillStyle = F[i % 2 ? 2 : 1];
-        g.fillRect(Beasts.snap(ex), Beasts.snap(ey), 2, 2);
+        this.fxDot(g, ex, ey, i % 3 ? 1.1 : 1.6, 0.95 * fade * (1 - ph * 0.7), i % 2 ? 'gold' : 'bronze');
       }
-      g.globalAlpha = 1;
     });
   },
-  /* THE BREATH. A sagging column of flame from the jaws to the ground:
-     squares of fire in three heats (red outer, orange-gold body, white-hot
-     core), streaming along the curve and widening as it falls, the column's
-     own glow ADDED in hard steps — and nothing laid on the ground round it —
-     and where it lands a heap of the burning-town flames. All hard pixels on
-     the 2px grid. */
+  /* THE BREATH. A sagging torrent of flame from the jaws to the ground, in
+     three heats — the red outer, the orange-gold body, the white-hot core —
+     each a smooth tube along the curve, swelling as it falls and writhing
+     on the clock, with gouts of fire pouring down it so it RUNS rather than
+     stands; its own light (R.fxGlow, its hue tied to its light) in the AIR
+     round the upper stream only — nothing laid on the ground where it lands
+     (a warm glow over the meadow reads as sand: the dry summer's ruling) —
+     and where it lands a heap of the burning-town flames. Drawn at the
+     device's own resolution (the operator's ruling on the effects): no 2px
+     square anywhere in it. */
+  BREATH: { N: 26, glowTo: 0.45 },
   drawDragonBreath(g, mx, my, tx, ty, t, dir, fade) {
-    const F = ART.PALETTE.fire, N = 30, snap = Beasts.snap;
+    const F = ART.PALETTE.fire, B = this.BREATH, N = B.N;
     const cx = (mx + tx) / 2 + dir * 24, cy = Math.max(my, ty) - 6;      // the sag
     const at = u => [ (1 - u) * (1 - u) * mx + 2 * (1 - u) * u * cx + u * u * tx,
                       (1 - u) * (1 - u) * my + 2 * (1 - u) * u * cy + u * u * ty ];
-    const flow = (t * 2.4) % (1 / N);
-    // the light: the COLUMN's own glow, added in hard steps — and only the
-    // column. No pool of light on the ground where it lands: a warm glow
-    // laid over the meadow reads as sand (the dry summer's ruling)
+    const nrm = u => {
+      const dx = 2 * (1 - u) * (cx - mx) + 2 * u * (tx - cx), dy = 2 * (1 - u) * (cy - my) + 2 * u * (ty - cy), L = Math.hypot(dx, dy) || 1;
+      return [-dy / L, dx / L];
+    };
+    const TL = CFG.TILE;
+    // the light: the column's own, in the air only — small glows down its
+    // upper reach, each under ~half a tile, never one on the ground it hits
+    if (this.fxGlow) for (let i = 0; i < 5; i++) {
+      const u = 0.04 + i * (B.glowTo - 0.04) / 4, [px, py] = at(u);
+      this.fxGlow(g, px, py, Math.min(TL * 0.55, 8 + u * 22), 0.55 * fade, 'bronze', { soft: 2 });
+    }
+    // the torrent: a tube along the curve, `wk` of its width, to `lim` of the way down
+    const tube = (wk, lim, ph) => {
+      const L = [], Rr = [];
+      for (let i = 0; i <= N; i++) {
+        const u = i / N * lim, [px, py] = at(u), [nx, ny] = nrm(u);
+        const j = Math.sin(t * 31 + u * 70 + ph) * (1 + u * 3.5);
+        const hw = (5 + u * 20) * wk / 2 * (i === N ? 0.35 : 1) * (0.88 + 0.12 * Math.sin(t * 23 + u * 40 + ph));
+        L.push([px + nx * (hw + j), py + ny * (hw + j)]); Rr.push([px - nx * (hw - j), py - ny * (hw - j)]);
+      }
+      g.beginPath();
+      g.moveTo(L[0][0], L[0][1]);
+      for (let i = 1; i < N; i++) g.quadraticCurveTo(L[i][0], L[i][1], (L[i][0] + L[i + 1][0]) / 2, (L[i][1] + L[i + 1][1]) / 2);
+      g.lineTo(L[N][0], L[N][1]);
+      g.quadraticCurveTo(...at(lim), Rr[N][0], Rr[N][1]);
+      for (let i = N - 1; i > 0; i--) g.quadraticCurveTo(Rr[i][0], Rr[i][1], (Rr[i][0] + Rr[i - 1][0]) / 2, (Rr[i][1] + Rr[i - 1][1]) / 2);
+      g.lineTo(Rr[0][0], Rr[0][1]);
+      g.closePath();
+    };
+    const along = (stops, lim) => {
+      const [x1, y1] = at(lim), gr = g.createLinearGradient(mx, my, x1, y1);
+      for (const [u, c, al] of stops) gr.addColorStop(u, this._fxC(c, al * fade));
+      return gr;
+    };
     g.save();
-    g.globalCompositeOperation = 'lighter';
-    for (let i = 0; i < N; i++) {
-      const u = i / N + flow, [px, py] = at(Math.min(1, u)), s = 8 + u * 30;
-      if (u > 0.62) break;          // in the air only: none of it laid over the ground where it lands
-      g.fillStyle = 'rgba(255,140,50,' + (0.07 * fade).toFixed(3) + ')';
-      g.fillRect(snap(px - s / 2), snap(py - s / 2), snap(s), snap(s));
+    g.globalCompositeOperation = 'source-over';
+    tube(1, 1, 0);
+    g.fillStyle = along([[0, F[1], 0.95], [0.5, F[0], 0.95], [0.9, F[0], 0.9], [1, F[0], 0.55]], 1); g.fill();
+    tube(0.72, 1, 1.7);
+    g.fillStyle = along([[0, F[2], 1], [0.45, F[1], 1], [1, F[1], 0.75]], 1); g.fill();
+    tube(0.46, 0.92, 3.1);
+    g.fillStyle = along([[0, F[3], 1], [0.5, F[2], 1], [1, F[2], 0.55]], 0.92); g.fill();
+    tube(0.22, 0.7, 4.6);
+    g.fillStyle = along([[0, '#fff8e6', 1], [0.6, F[3], 1], [1, F[3], 0]], 0.7); g.fill();
+    // gouts of fire pouring down it: round, on the curve, at fractional positions
+    const flow = t * 2.4;
+    for (let i = 0; i < 14; i++) {
+      const u = ((i / 14 + flow) % 1) * 0.94, [px, py] = at(u), [nx, ny] = nrm(u);
+      const j = Math.sin(t * 27 + i * 2.7) * (1.5 + u * 5), r = (2.2 + u * 6.5) * (0.7 + 0.3 * Math.sin(i * 1.9));
+      g.globalAlpha = fade * (u < 0.85 ? 0.9 : (0.94 - u) / 0.09 * 0.9);
+      g.fillStyle = i % 3 ? F[2] : F[3];
+      g.beginPath(); g.arc(px + nx * j, py + ny * j, r, 0, Math.PI * 2); g.fill();
     }
     g.restore();
-    // the flame itself, outer to core
-    g.globalAlpha = fade;
-    for (const [col, wk, lim] of [[F[0], 1, 1], [F[1], 0.72, 1], [F[2], 0.46, 0.92], [F[3] || '#ffe7a0', 0.22, 0.7]]) {
-      g.fillStyle = col;
-      for (let i = 0; i < N; i++) {
-        const u = i / N + flow;
-        if (u > lim) continue;
-        const [px, py] = at(Math.min(1, u));
-        const j = Math.sin(t * 31 + i * 2.7) * (2 + u * 7), s = (5 + u * 20) * wk;
-        g.fillRect(snap(px - s / 2 + j), snap(py - s / 2 - j * 0.4), snap(Math.max(2, s)), snap(Math.max(2, s)));
-      }
-    }
     /* the blast where it lands: the burning-town flames themselves (the
        fire line's own sprites, R.drawFireTongue's set) heaped up where the
        torrent hits — a fan of squares at this size read as orange bars */
@@ -426,20 +660,17 @@ Object.assign(R, {
         const s = Math.round(TL * sz * (0.9 + 0.1 * Math.sin(t * 17 + sd * 2.3)));
         Assets.drawSprite(g, 'misc/flameBig/' + ((beat + sd) % 4), Math.round(tx + ox * TL - s / 2), Math.round(ty - s * 0.9), { w: s, h: s });
       }
-    } else for (let i = 0; i < 9; i++) {
-      const ox = (i - 4) * 7 + Math.sin(t * 13 + i) * 3, lick = 0.5 + 0.5 * Math.sin(t * 19 + i * 2.1);
-      const h = 14 + lick * 22 - Math.abs(i - 4) * 2.5, w = 8;
-      g.fillStyle = F[1]; g.fillRect(snap(tx + ox - w / 2), snap(ty - h), w, snap(h));
-      g.fillStyle = F[2]; g.fillRect(snap(tx + ox - w / 4), snap(ty - h * 0.7), Math.max(2, w / 2), snap(h * 0.7));
-      if (lick > 0.6) { g.fillStyle = F[3] || '#ffe7a0'; g.fillRect(snap(tx + ox - 1), snap(ty - h * 0.4), 2, snap(h * 0.4)); }
-    }
-    // sparks thrown up and out of the blast
-    for (let i = 0; i < 14; i++) {
-      const ph = (t * 1.7 + i * 0.071) % 1, a = i * 2.39;
-      g.fillStyle = F[i % 3 === 0 ? 3 : 2] || F[2];
-      g.fillRect(snap(tx + Math.cos(a) * ph * 46), snap(ty - ph * 52 + ph * ph * 30), 2, 2);
+    } else for (let i = 0; i < 7; i++) {
+      // (no flame sprites: smooth tongues of the same fire, R.fxFlame)
+      const ox = (i - 3) * 8 + Math.sin(t * 13 + i) * 3, lick = 0.5 + 0.5 * Math.sin(t * 19 + i * 2.1);
+      this.fxFlame(g, tx + ox, ty, 14 + lick * 22 - Math.abs(i - 3) * 3, 10, t, i * 1.7, fade);
     }
     g.globalAlpha = 1;
+    // sparks thrown up and out of the blast: soft beads, dying as they fly
+    if (this.fxDot) for (let i = 0; i < 14; i++) {
+      const ph = (t * 1.7 + i * 0.071) % 1, a = i * 2.39;
+      this.fxDot(g, tx + Math.cos(a) * ph * 46, ty - ph * 52 + ph * ph * 30, i % 3 ? 1 : 1.4, fade * (1 - ph), i % 3 === 0 ? 'gold' : 'bronze');
+    }
   },
   /* ONE POINT OF THE FIRE LINE (S.dragon.fire, drawn under the units by
      R.draw): a big flame and two smaller ones knitting it to its neighbours,
@@ -471,12 +702,13 @@ Object.assign(R, {
     if (ev.phase === 'burn') {
       const F = ART.PALETTE.fire;
       const mx = dx2 + ev.dir * 72, my = dy2 - 52;
+      // (smooth gouts of fire, never squares — the operator's ruling on the effects)
       for (let i = 0; i < 18; i++) {
         const t2 = i / 18;
         const bx2 = mx + ev.dir * t2 * 26 + Math.sin(ev.t * 22 + i * 2.4) * (2 + t2 * 4);
         const by2 = my + t2 * 58, sz = 2.5 + t2 * 8;
         g.fillStyle = F[t2 < 0.3 ? 3 : t2 < 0.65 ? 2 : 1];
-        g.fillRect(bx2 - sz / 2, by2 - sz / 2, sz, sz);
+        g.beginPath(); g.arc(bx2, by2, sz * 0.6, 0, Math.PI * 2); g.fill();
       }
     }
     g.save();
@@ -591,21 +823,15 @@ Object.assign(R, {
     onWater(() => {
       g.globalAlpha = step(rise * 1.6);
       g.drawImage(sp ? sp.wet : f, cx - w / 2, cy - h / 2, w, h);
-      // rings of foam rolling out from where it breaks the surface
+      // rings of foam rolling out from where it breaks the surface — broken
+      // white water at the device's own resolution (R.fxFoam), thinning as
+      // each rolls out, never a ring of 2px dots
       g.globalAlpha = 1;
       for (let r = 0; r < 3; r++) {
-        const q = ((t * 0.55 + r / 3) % 1), rad = w * (0.3 + q * 0.42), a = step(0.9 * (1 - q) * rise);
-        if (!a) continue;
-        g.globalAlpha = a;
-        g.fillStyle = r % 2 ? '#bfe2f2' : '#e8f6fc';
-        const n = 44;
-        for (let i = 0; i < n; i++) {
-          if ((i * 7 + r * 3) % 5 === 0) continue;
-          const an = i / n * Math.PI * 2 + r;
-          g.fillRect(Beasts.snap(cx + Math.cos(an) * rad), Beasts.snap(wl + Math.sin(an) * rad * 0.42), 2, 2);
-        }
+        const q = ((t * 0.55 + r / 3) % 1), rad = w * (0.3 + q * 0.42), a = 0.9 * (1 - q) * Math.min(1, rise * 1.4);
+        if (a < 0.02) continue;
+        this.fxFoam(g, cx, wl, rad, rad * 0.42, a, { css: 1.7 - q * 0.8, seed: r * 7 + 3, spin: t * 0.06 * (r % 2 ? -1 : 1), deep: r % 2 ? '#9fcbe2' : '#b9def0' });
       }
-      g.globalAlpha = 1;
     });
     // 2. the beast, up out of its waterline: whole above it…
     const body = sp ? sp.dry : f, by = cy - h / 2 + sink;
@@ -623,50 +849,60 @@ Object.assign(R, {
     });
   },
   /* A SPLASH OF WATER — never ice: the blow's crown thrown up in arcs of
-     droplets in the water's own ramp, white at their heads, falling back
-     into the sea; a spout at the heart collapsing; a ring of foam rolling
-     out over the surface. World px on the 2px grid; `t` seconds since the
-     blow (it lasts `life`), `sz` its reach in px, `seed` its own scatter. */
+     drops in the water's own ramp, white at their heads, falling back into
+     the sea; a spout at the heart collapsing; a ring of broken foam rolling
+     out over the surface. Drawn at the device's own resolution (the
+     operator's ruling on the effects): the spout a smooth tapered body in
+     the water's ramp, every drop a round head with its streak (R.fxDrop),
+     the ring R.fxFoam — never a 2px cell. `t` seconds since the blow (it
+     lasts `life`), `sz` its reach in the caller's units, `seed` its own
+     scatter. */
   SPLASH: { life: 0.8 },
   drawSplash(g, x, y, t, sz, seed) {
     const life = this.SPLASH.life;
     if (!(t >= 0 && t < life)) return;
-    const q = t / life, snap = Beasts.snap, WR = ART.PALETTE.water, FOAM = ['#8fc6e0', '#cfe9f6', '#ffffff'];
+    const q = t / life, WR = ART.PALETTE.water, FOAM = ['#8fc6e0', '#cfe9f6', '#ffffff'];
     const hsh = n => { let h = Math.imul((n | 0) ^ 0x9e3779b9, 0x85ebca6b) >>> 0; h ^= h >>> 13; return (Math.imul(h, 0xc2b2ae35) >>> 0) / 4294967296; };
     seed = seed | 0;
     // the ring on the water, rolling out
     const rr = sz * (0.3 + 0.8 * (1 - (1 - q) * (1 - q)));
-    if (q < 0.9) {
-      for (let k = 0; k < 40; k++) {
-        if (hsh(seed * 97 + k) < 0.22) continue;
-        const an = k / 40 * Math.PI * 2;
-        g.fillStyle = q < 0.4 ? FOAM[2] : FOAM[1];
-        g.fillRect(snap(x + Math.cos(an) * rr), snap(y + Math.sin(an) * rr * 0.36), 2, 2);
-      }
-    }
-    // the spout at the heart: a column of water thrown up and falling back
+    if (q < 0.9) this.fxFoam(g, x, y, rr, rr * 0.36, q < 0.4 ? 1 : 1 - (q - 0.4) / 0.5, { css: 1.8 - q, seed: seed * 3 + 1, spin: q * 0.4, col: q < 0.4 ? FOAM[2] : FOAM[1] });
+    // the spout at the heart: a column of water thrown up and falling back —
+    // a smooth tapered body, its own ramp from the sea's blue to the foam at its head
     if (q < 0.5) {
       const hh = sz * 1.3 * Math.sin(q / 0.5 * Math.PI), wd = sz * 0.34;
-      for (let yy = 0; yy < hh; yy += 2) {
-        const k = yy / Math.max(1, hh), ww = Math.max(2, snap(wd * (1 - k * 0.65)));
-        g.fillStyle = k > 0.8 ? FOAM[2] : k > 0.5 ? FOAM[1] : yy % 4 ? WR[4] : WR[3];
-        g.fillRect(snap(x - ww / 2 + Math.sin(yy * 0.4 + seed) * 2), snap(y - yy), ww, 2);
+      if (hh > 1) {
+        const body = (wk, hk) => {
+          const n = 10, L = [], Rr = [];
+          for (let i = 0; i <= n; i++) {
+            const k = i / n, yy = k * hh * hk, ww = wd * wk * (1 - k * 0.65) / 2, sw = Math.sin(yy * 0.4 + seed) * Math.min(2, wd * 0.12);
+            L.push([x - ww + sw, y - yy]); Rr.push([x + ww + sw, y - yy]);
+          }
+          g.beginPath(); g.moveTo(L[0][0], L[0][1]);
+          for (let i = 1; i <= n; i++) g.lineTo(L[i][0], L[i][1]);
+          const [hx, hy] = [(L[n][0] + Rr[n][0]) / 2, L[n][1]];
+          g.quadraticCurveTo(hx, hy - wd * wk * 0.3, Rr[n][0], Rr[n][1]);
+          for (let i = n - 1; i >= 0; i--) g.lineTo(Rr[i][0], Rr[i][1]);
+          g.closePath();
+        };
+        g.save();
+        g.globalCompositeOperation = 'source-over';
+        g.fillStyle = WR[3]; body(1, 1); g.fill();
+        g.fillStyle = WR[4]; body(0.55, 0.86); g.fill();
+        g.fillStyle = FOAM[1]; g.beginPath(); g.arc(x + Math.sin(hh * 0.4 + seed) * Math.min(2, wd * 0.12), y - hh, wd * 0.36, 0, Math.PI * 2); g.fill();
+        g.fillStyle = FOAM[2]; g.beginPath(); g.arc(x, y - hh - wd * 0.08, wd * 0.2, 0, Math.PI * 2); g.fill();
+        g.restore();
       }
     }
-    // the crown: drops thrown out in arcs, each a head and a short trail
+    // the crown: drops thrown out in arcs, each a round head and a short streak
     for (let k = 0; k < 16; k++) {
       const a = (k / 15 - 0.5) * 2.4 + (hsh(seed + k) - 0.5) * 0.3;
       const v = sz * (1.8 + hsh(seed * 7 + k) * 1.1);
       const vx = Math.sin(a) * v * 0.7, vy = Math.cos(a) * v * 1.1;
-      for (let j = 0; j < 4; j++) {
-        const tt = t - j * 0.03;
-        if (tt < 0) continue;
-        const px = x + vx * tt, py = y - vy * tt + sz * 5.2 * tt * tt;
-        if (py > y + 2) continue;                       // back in the sea
-        g.fillStyle = j === 0 ? (q < 0.45 ? FOAM[2] : FOAM[1]) : j === 1 ? FOAM[0] : WR[4 - j];
-        const s = j === 0 && k % 3 === 0 ? 4 : 2;
-        g.fillRect(snap(px), snap(py), s, s);
-      }
+      const px = x + vx * t, py = y - vy * t + sz * 5.2 * t * t;
+      if (py > y + 2) continue;                       // back in the sea
+      const r = (k % 3 === 0 ? 1.7 : 1.15) * Math.max(0.6, Math.min(1.6, sz / 30));
+      this.fxDrop(g, px, py, vx, -vy + sz * 10.4 * t, r, q < 0.45 ? FOAM[2] : FOAM[1], q < 0.7 ? 1 : 1 - (q - 0.7) / 0.3);
     }
   },
   /* ONE TENTACLE on its strike: frame f of the strip (0 rearing … 8 the
