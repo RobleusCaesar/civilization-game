@@ -128,6 +128,10 @@
   .rep pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel2);border-radius:6px;padding:8px;margin:6px 0;font-size:11px;max-height:240px;overflow:auto}
   .rep .act{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
   .rep .act input{flex:1 1 200px;min-width:0}
+  /* a player's address has no break opportunity: it wraps anywhere rather than widening a phone's page */
+  .rep .note,.rep .hd span,.rep .addr{overflow-wrap:anywhere;word-break:break-word}
+  .rep .tkErr{font-size:12px;color:var(--red);flex-basis:100%}
+  .rep .tkErr:empty{display:none}
   .mine{color:var(--blue);font-weight:600}
   /* ---- devices ---- */
   .dev{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -187,11 +191,11 @@
     </div>
 
     <h2>Every day</h2>
-    <p class="why">Games started each day (won in green, lost in red, the rest in grey), and how many people played.</p>
+    <p class="why">Games started each day of the period, in your own time zone (won in green, lost in red, the rest in grey), and how many people played. A day only partly in the period is drawn faint.</p>
     <div class="card"><svg id="chart" role="img" aria-label="Games per day"></svg><div class="legend" id="chartKey"></div></div>
 
     <h2>Did the update help?</h2>
-    <p class="why">The same numbers over two windows of equal length either side of a release. "Better" or "Worse" means the change is bigger than chance would make it (95%); "Can't tell yet" means it isn't, so far.</p>
+    <p class="why">The same numbers over two windows of equal length either side of a release, each read as it stood the same time after it began. "Better" or "Worse" means the change is bigger than chance would make it (95%); "Can't tell yet" means it isn't, so far. A rate over games is tested player by player, so each player counts once however many games they played.</p>
     <div class="card">
       <div id="cmpPick">
         <label>Release<select id="cRel"></select></label>
@@ -206,8 +210,11 @@
     </div>
 
     <h2>Where players stop</h2>
-    <p class="why">Of every game started, how far it got. The steepest drop is the place to look.</p>
-    <div class="card"><div class="fun" id="funnel"></div></div>
+    <p class="why">Of every game started, how far into the run it got. Every step is a share of the starts and sits inside the one before, so the steepest drop is the place to look. How the games ended sits apart, underneath: a game can be won or lost on any day, so finishing is an outcome, not a step.</p>
+    <div class="card"><div class="fun" id="funnel"></div>
+      <div class="note" style="margin:14px 0 6px">How they ended, of the same starts:</div>
+      <div class="fun" id="outcomes"></div>
+      <div class="note" id="funnelNote" style="margin-top:8px"></div></div>
     <div class="card wrap" style="margin-top:10px"><table id="tLeft"></table></div>
 
     <h2>Balance</h2>
@@ -259,14 +266,30 @@ const $ = id => document.getElementById(id);
 const KEY = 'clanfire-analytics-token';
 const REPO = 'robleuscaesar/civilization-game';
 const FEW = 30;          // a rate on fewer than this is greyed: a hint, not a result
-let TOKEN = null, DATA = null, INBOX = [], INBOX_FILTER = 'open', INBOX_KIND = '';
+let TOKEN = null, DATA = null, INBOX = [], INBOX_LOADED = false, INBOX_FILTER = 'open', INBOX_KIND = '';
+/* what the operator typed into a report's note or chose for its status and
+   has not saved yet, by report id: a re-render (another card saved, a chip,
+   Refresh) puts it back instead of throwing it away */
+let DRAFTS = {};
+/* EVERY SECTION ANSWERS FOR ITSELF. Each loads on its own and drops an
+   answer that is no longer the newest it asked for (a slower earlier answer
+   must never paint over a newer filter); a Lock moves the epoch, so nothing
+   still in flight can paint the last session back. */
+let EPOCH = 0;
+const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0 };
+const live = (sec, my, ep) => my === SEQ[sec] && ep === EPOCH;
+// the operator's own days: the daily chart is bucketed in this time zone
+const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } })();
 
 /* THE RELEASES the comparison offers: every patch note's build, at the
    moment it went live. From build 107 every row names its build, and the
-   database answers when each was first seen (`builds`); a build before that
-   is known by hand here, and any other falls back to its patch note's day
-   (a day boundary can put the release day's morning on the wrong side, so
-   the list says so). The comparison opens on the newest KNOWN moment. */
+   database answers when each was first seen (`builds`) — used only when it
+   parses and is not earlier than the day of the build's own patch note (a
+   row from before the server stamped every row's time could carry any
+   date). A build before that is known by hand here, and any other falls
+   back to its patch note's day (a day boundary can put the release day's
+   morning on the wrong side, so the list says so). The comparison opens on
+   the newest KNOWN moment, and remembers its choice by BUILD. */
 const RELEASE_AT = {
   106: '2026-10-28T17:53:24Z',   // cards, the night title and the settings page for everyone
 };
@@ -277,18 +300,34 @@ async function hashToken(passphrase) {
   const buf = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
-// one door for every call: {status, data}. A 404 or 300 means "that migration is not applied yet"
+/* one door for every call: {status, data}, never a throw. ANSWERED means
+   `ok: true` and nothing else does: a PostgREST error body (a 400 on a bad
+   cast, a 401 on a rotated key, a 500, a timeout) has no `ok` at all, and
+   reading it as a dashboard drew a page of dashes with no word of why. */
 async function rpc(name, body) {
-  const res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/' + name, {
-    method: 'POST',
-    headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
+  let res;
+  try {
+    res = await fetch(SUPA_CFG.url + '/rest/v1/rpc/' + name, {
+      method: 'POST',
+      headers: { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (e) { return { status: 0, data: null, net: (e && e.message) || 'the network did not answer' }; }
   let data = null;
   try { data = await res.json(); } catch (e) {}
   return { status: res.status, data };
 }
-const missing = r => r.status === 404 || r.status === 300;
+const answered = r => !!(r && r.data && typeof r.data === 'object' && r.data.ok === true);
+const badToken = r => !!(r && r.data && typeof r.data === 'object' && r.data.reason === 'bad_token');
+// the door genuinely is not there: a migration not applied yet (an overload, a 300, is a different fault)
+const missing = r => !!r && (r.status === 404 || !!(r.data && typeof r.data === 'object' && r.data.code === 'PGRST202'));
+function failWhy(r) {
+  if (!r) return 'no answer';
+  const d = r.data && typeof r.data === 'object' ? r.data : null;
+  const m = d && (d.reason || d.message || d.error);
+  return m ? String(m) : r.net ? String(r.net) : r.status ? 'HTTP ' + r.status : 'no answer';
+}
+const couldNot = r => 'Could not load: ' + failWhy(r);
 
 /* THIS DEVICE: the dashboard lives on the game's own site, so it can read the
    game's anonymous session, the id every telemetry row of this browser
@@ -310,7 +349,8 @@ const mins = v => (v == null ? '—' : (+v).toFixed(1) + 'm');
 const esc = s => String(s == null ? '' : s).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
 const short = id => String(id || '').slice(0, 8);
 const dayOf = s => String(s || '').slice(0, 10);
-const when = s => { if (!s) return '—'; const d = new Date(s); return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+const when = s => { if (!s) return '—'; const d = new Date(s); if (!Number.isFinite(d.getTime())) return '—'; return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+const hm = d => d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 const ratio = (k, n) => (n ? 100 * k / n : null);
 // a card's id as words: forager_cache → Forager cache
 const cardName = id => { const s = String(id || '').replace(/_/g, ' ').trim(); return s ? s[0].toUpperCase() + s.slice(1) : '—'; };
@@ -324,8 +364,10 @@ function wilson(k, n) {
   const c = (p + z * z / (2 * n)) / d, h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
   return [Math.max(0, c - h) * 100, Math.min(1, c + h) * 100];
 }
-/* did a RATE move? two proportions, pooled z-test at 95%. good: +1 when up is
-   better, -1 when down is. 'few' when either side has fewer than 10 */
+/* did a PER-PLAYER rate move (played again, the first-game hook — one
+   trial per player, and players are independent)? Two proportions, pooled
+   z-test at 95%. good: +1 when up is better, -1 when down is. 'few' when
+   either side has fewer than 10 */
 function moveP(k1, n1, k2, n2, good) {
   if (!n1 || !n2 || n1 < 10 || n2 < 10) return 'few';
   const p = (k1 + k2) / (n1 + n2), se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
@@ -334,15 +376,57 @@ function moveP(k1, n1, k2, n2, good) {
   if (Math.abs(z) < 1.96) return 'unclear';
   return (z > 0) === (good > 0) ? 'better' : 'worse';
 }
-/* did a COUNT move? c1 over t1 against c2 over t2 (the comparison's windows
-   are equal, t1 = t2): if nothing changed, the share that fell after is
-   binomial in t2 / (t1 + t2) */
+/* did a count of PLAYERS move? c1 over t1 against c2 over t2 (the
+   comparison's windows are equal, t1 = t2): if nothing changed, the share
+   that fell after is binomial in t2 / (t1 + t2) */
 function moveC(c1, t1, c2, t2, good) {
   const n = (c1 || 0) + (c2 || 0);
   if (n < 10 || !t1 || !t2) return 'few';
   const q = t2 / (t1 + t2), z = ((c2 || 0) - n * q) / Math.sqrt(n * q * (1 - q));
   if (Math.abs(z) < 1.96) return 'unclear';
   return (z > 0) === (good > 0) ? 'better' : 'worse';
+}
+/* GAMES COME IN BUNCHES PER PLAYER. A player who finishes plays several games
+   that all finish, so a per-game rate is not one coin flipped n times, and a
+   test that pretends it is says "Better" or "Worse" several times as often as
+   its 95% promises. The rates over GAMES (finished, win rate, hit an error)
+   are tested player by player instead: R = {k, n, kk = Σk², kn = Σk·n,
+   nn = Σn², m = players} per window (analytics__window's `robust`), and the
+   cluster-robust variance of k/n is Σ(k_i − p·n_i)² / n² · m/(m − 1). Each
+   player counts once, however many games they played. */
+function robustVar(R) {
+  if (!R) return null;
+  const n = +R.n, m = +R.m;
+  if (!(n > 0) || !(m > 1)) return null;
+  const p = R.k / n;
+  return Math.max(0, (R.kk - 2 * p * R.kn + p * p * R.nn) / (n * n) * m / (m - 1));
+}
+function moveR(A, B, good) {
+  if (!A || !B || !(A.n >= 10) || !(B.n >= 10) || !(A.m >= 5) || !(B.m >= 5)) return 'few';
+  const v = robustVar(A) + robustVar(B);
+  if (!(v > 0)) return 'unclear';
+  const z = (B.k / B.n - A.k / A.n) / Math.sqrt(v);
+  if (Math.abs(z) < 1.96) return 'unclear';
+  return (z > 0) === (good > 0) ? 'better' : 'worse';
+}
+/* did the count of GAMES move? A player's games arrive together, so the
+   count's variance is Σg² over players, not the count itself */
+function moveG(A, B, good) {
+  if (!A || !B || ((+A.g || 0) + (+B.g || 0)) < 10 || !(A.m >= 5) || !(B.m >= 5)) return 'few';
+  const v = (+A.gg || 0) + (+B.gg || 0);
+  if (!(v > 0)) return 'unclear';
+  const z = (B.g - A.g) / Math.sqrt(v);
+  if (Math.abs(z) < 1.96) return 'unclear';
+  return (z > 0) === (good > 0) ? 'better' : 'worse';
+}
+/* the 95% range of a per-game rate, on the same robust variance (Wilson's
+   when fewer than two players stand behind it) */
+function robustRange(R) {
+  if (!R || !(+R.n > 0)) return null;
+  const v = robustVar(R);
+  if (v == null) return wilson(+R.k || 0, +R.n);
+  const p = R.k / R.n, h = 1.96 * Math.sqrt(v);
+  return [Math.max(0, p - h) * 100, Math.min(1, p + h) * 100];
 }
 const VERDICT = { better: 'Better', worse: 'Worse', unclear: "Can't tell yet", few: 'Too few to tell' };
 
@@ -373,98 +457,143 @@ function table(el, cols, rows, empty) {
   el.innerHTML = '<tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr>' +
     rows.map(r => '<tr>' + r.map(c => (c && c.td) ? c.td : `<td>${c && c.html != null ? c.html : esc(c == null ? '—' : c)}</td>`).join('') + '</tr>').join('');
 }
+/* a message where a section's content would be, in the element's own terms */
+function sayIn(el, msg) {
+  if (!el) return;
+  if (el.tagName === 'TABLE') el.innerHTML = `<tr><td class="err">${esc(msg)}</td></tr>`;
+  else if (el.tagName && el.tagName.toLowerCase() === 'svg') el.innerHTML = '';
+  else el.innerHTML = `<div class="err">${esc(msg)}</div>`;
+}
+/* one part of the page: if it throws, it says so in its own place and the
+   rest of the page goes on */
+function part(el, fn) {
+  try { fn(); } catch (e) { sayIn(el, 'Could not show this: ' + ((e && e.message) || e)); }
+}
 /* a rate beside its own counts, "75.0% · 3 of 4", greyed on too few */
-function rate(k, n) {
+function rate(k, n, rng) {
   const p = ratio(k || 0, n || 0);
   if (p == null) return { html: '<span class="muted">—</span>' };
-  const w = wilson(k || 0, n), tip = w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` : '';
+  const w = rng || wilson(k || 0, n), tip = w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` : '';
   return { html: `<span class="${n < FEW ? 'thin' : ''}" title="${esc(tip)}">${esc(pct(p))}</span> <span class="muted">· ${num(k)} of ${num(n)}</span>` };
 }
-/* a tile for a rate: the value, the counts, the interval, and grey on few */
-function rateTile(label, cls, kk, nn, line, emptyLine) {
+/* a tile for a rate: the value, the counts, the interval, and grey on few.
+   R: the per-player sums of a rate over GAMES (its range is the robust one) */
+function rateTile(label, cls, kk, nn, line, emptyLine, R) {
   if (!nn) return { k: label, v: '—', n: emptyLine };
-  const w = wilson(kk, nn);
+  const w = (R && robustRange(R)) || wilson(kk, nn);
   return { k: label, v: pct(ratio(kk, nn)), cls: nn < FEW ? 'thin' : cls, n: line + (nn < FEW ? ' (too few to trust yet)' : ''),
-    title: w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` : '' };
+    title: w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` + (R ? ', each player counted once' : '') : '' };
 }
 
 const RESULT = [
   ['won', 'Won', 'var(--green)'], ['lost', 'Lost', 'var(--red)'], ['quit', 'Quit from the menu', '#b08a3e'],
   ['left', 'Closed the game mid-run', 'var(--grey)'], ['open', 'No signal yet', '#3f382b'],
 ];
+// every element the dashboard door fills
+const DASH_PARTS = ['stamp', 'kpis', 'split', 'splitKey', 'chart', 'chartKey', 'funnel', 'outcomes', 'funnelNote', 'tLeft', 'tMode', 'tCards', 'cardsNote',
+  'tErr', 'tDevice', 'tLand', 'tOrigin', 'tTiers', 'tPlays', 'tTut'];
 
 function render(d) {
   DATA = d;
-  const H = d.headline || {}, X = d.hidden || {};
-  $('stamp').textContent = 'Generated ' + when(d.generated_at) +
-    (!X.everyone ? ' · left out: ' + plural(X.devices || 0, 'device') +
-      ' (' + num(X.yours) + ' yours, ' + num(X.testers) + ' test deck, ' + num(X.network) + ' on your network), ' + plural(X.games || 0, 'game') + ' of theirs in this period'
-      : ' · everyone included');
-  const decided = (H.won || 0) + (H.lost || 0);
-  tiles($('kpis'), [
-    { k: 'Players', v: num(H.players), n: num(H.new_players) + ' new · ' + num((H.players || 0) - (H.new_players || 0)) + ' returning' },
-    { k: 'Games', v: num(H.games), n: (H.games_per_player == null ? '—' : (+H.games_per_player).toFixed(1)) + ' per player' },
-    rateTile('Finished', 'b', decided, H.games || 0, num(decided) + ' of ' + num(H.games) + ' reached a win or a loss', 'no games yet'),
-    rateTile('Win rate', 'g', H.won || 0, decided, num(H.won) + ' won of ' + num(decided) + ' finished', 'no game finished yet'),
-    rateTile('Played again', 'y', H.back || 0, H.back_ripe || 0,
-      num(H.back) + ' of ' + num(H.back_ripe) + ' new players started a second game within a week', 'no new player is a week old yet'),
-    rateTile('First-game hook', 'y', H.hook || 0, H.hook_n || 0,
-      num(H.hook) + ' of ' + num(H.hook_n) + ' first games lasted 10 minutes', 'no first game yet'),
-    { k: 'Time per player', v: mins(H.player_minutes), n: 'median over the period · ' + mins(H.median_minutes) + ' per game' },
-    rateTile('Hit an error', 'r', H.err_games || 0, H.err_n || 0,
-      num(H.err_games) + ' of ' + num(H.err_n) + ' games caught an error', 'counted from build 107 on'),
-  ]);
-  const total = H.games || 0;
-  $('split').innerHTML = total ? RESULT.map(([k, , c]) => H[k] ? `<i title="${esc(k)}: ${H[k]}" style="width:${100 * H[k] / total}%;background:${c}"></i>` : '').join('') : '';
-  $('splitKey').innerHTML = RESULT.map(([k, label, c]) => `<span style="--c:${c}">${esc(label)} ${num(H[k] || 0)}</span>`).join('');
-
-  drawChart(d.daily || []);
-  renderFunnel(d.funnel || {});
-  const L = d.left_at || {}, LD = L.day || {};
-  table($('tLeft'), ['Games stopped without a result', 'Before day 5', 'Days 5–9', 'Days 10–24', 'Days 25–49', 'Days 50–99', 'Day 100+'],
-    (L.left || L.quit) ? [['Closed or quit: ' + num((L.left || 0) + (L.quit || 0)), LD.d0_4, LD.d5_9, LD.d10_24, LD.d25_49, LD.d50_99, LD.d100].map(v => v == null ? 0 : v)] : [],
-    'No game stopped without a result in this period.');
-  table($('tMode'), ['Difficulty', 'Games', 'Finished', 'Win rate', 'Median day'],
-    (d.by_mode || []).map(r => [r.mode, num(r.games), rate((r.won || 0) + (r.lost || 0), r.games || 0), rate(r.won || 0, (r.won || 0) + (r.lost || 0)), num(r.median_day)]));
+  const H = d.headline || {}, X = d.hidden || {}, RB = H.robust || {};
+  part($('kpis'), () => {
+    $('stamp').textContent = 'Generated ' + when(d.generated_at) +
+      (!X.everyone ? ' · left out: ' + plural(X.devices || 0, 'device') +
+        ' (' + num(X.yours) + ' yours, ' + num(X.testers) + ' test deck, ' + num(X.network) + ' on your network), ' + plural(X.games || 0, 'game') + ' of theirs in this period'
+        : ' · everyone included');
+    const decided = (H.won || 0) + (H.lost || 0);
+    const back = H.returning != null ? H.returning : (H.players || 0) - (H.new_players || 0);
+    tiles($('kpis'), [
+      { k: 'Players', v: num(H.players), n: num(H.new_players) + ' new to the game · ' + num(back) + ' returning',
+        title: 'New: everyone whose first game ever started in the period, those who left in the first minute included.' },
+      { k: 'Games', v: num(H.games), n: (H.games_per_player == null ? '—' : (+H.games_per_player).toFixed(1)) + ' per player' },
+      rateTile('Finished', 'b', decided, H.games || 0, num(decided) + ' of ' + num(H.games) + ' reached a win or a loss', 'no games yet', RB.finished),
+      rateTile('Win rate', 'g', H.won || 0, decided, num(H.won) + ' won of ' + num(decided) + ' finished', 'no game finished yet', RB.win),
+      rateTile('Played again', 'y', H.back || 0, H.back_ripe || 0,
+        num(H.back) + ' of ' + num(H.back_ripe) + ' new players started a second game within a week', 'no new player is a week old yet'),
+      rateTile('First-game hook', 'y', H.hook || 0, H.hook_n || 0,
+        num(H.hook) + ' of ' + num(H.hook_n) + ' first games lasted 10 minutes', 'no first game yet'),
+      { k: 'Time per player', v: mins(H.player_minutes), n: 'median over the period · ' + mins(H.median_minutes) + ' per game' },
+      rateTile('Hit an error', 'r', H.err_games || 0, H.err_n || 0,
+        num(H.err_games) + ' of ' + num(H.err_n) + ' games caught an error', 'counted from build 107 on', RB.err),
+    ]);
+    const total = H.games || 0;
+    $('split').innerHTML = total ? RESULT.map(([k, , c]) => H[k] ? `<i title="${esc(k)}: ${esc(H[k])}" style="width:${100 * H[k] / total}%;background:${c}"></i>` : '').join('') : '';
+    $('splitKey').innerHTML = RESULT.map(([k, label, c]) => `<span style="--c:${c}">${esc(label)} ${num(H[k] || 0)}</span>`).join('');
+  });
+  part($('chartKey'), () => drawChart(d.daily || [], d.daily_info || {}));
+  part($('funnel'), () => renderFunnel(d.funnel || {}));
+  part($('tLeft'), () => {
+    const L = d.left_at || {}, LD = L.day || {};
+    table($('tLeft'), ['Games stopped without a result', 'Before day 5', 'Days 5–9', 'Days 10–24', 'Days 25–49', 'Days 50–99', 'Day 100+'],
+      (L.left || L.quit) ? [['Closed or quit: ' + num((L.left || 0) + (L.quit || 0)), LD.d0_4, LD.d5_9, LD.d10_24, LD.d25_49, LD.d50_99, LD.d100].map(v => v == null ? 0 : v)] : [],
+      'No game stopped without a result in this period.');
+  });
+  part($('tMode'), () => table($('tMode'), ['Difficulty', 'Games', 'Finished', 'Win rate', 'Median day'],
+    (d.by_mode || []).map(r => [r.mode, num(r.games), rate((r.won || 0) + (r.lost || 0), r.games || 0), rate(r.won || 0, (r.won || 0) + (r.lost || 0)), num(r.median_day)])));
   const C = d.cards || {};
-  table($('tCards'), ['Cards', 'Games', 'Win rate'], (C.with_games || C.without_games) ? [
-    ['Played a card', num(C.with_games || 0), rate(C.with_won || 0, (C.with_won || 0) + (C.with_lost || 0))],
-    ['Played no card', num(C.without_games || 0), rate(C.without_won || 0, (C.without_won || 0) + (C.without_lost || 0))],
-  ] : []);
-  $('cardsNote').textContent = (C.earned != null)
-    ? plural(C.earned || 0, 'card') + ' earned by ' + plural(C.earners || 0, 'player') + ' · ' + plural(C.plays || 0, 'card') + ' played by ' + plural(C.players_played || 0, 'player') + ' in this period.'
-    : '';
-  table($('tDevice'), ['Device', 'Players', 'Games', 'Finished', 'Win rate'],
-    (d.by_device || []).map(r => [r.device, num(r.players), num(r.games), pct(r.finished_pct), pct(r.win_pct)]));
-  table($('tLand'), ['Landform', 'Games', 'Finished', 'Win rate'],
-    (d.by_landform || []).map(r => [r.landform, num(r.games), pct(r.finished_pct), pct(r.win_pct)]));
-  table($('tOrigin'), ['Origin card', 'Games', 'Win rate'],
-    (d.by_origin || []).map(r => [r.origin, num(r.games), rate(r.won || 0, (r.won || 0) + (r.lost || 0))]), 'No origin cards recorded in this period.');
-  // the deck's five tiers, in order (js/deck.js Deck.TIERS)
-  const TIER = [['stone', 'Stone'], ['bronze', 'Bronze'], ['iron', 'Iron'], ['imperial', 'Imperial'], ['enlight', 'Enlightenment']];
-  const T = C.earned_by_tier || {}, rank = t => { const i = TIER.findIndex(x => x[0] === t); return i < 0 ? 99 : i; };
-  table($('tTiers'), ['Cards earned, by tier', 'Earned'],
-    Object.keys(T).sort((a, b) => rank(a) - rank(b)).map(t => [(TIER.find(x => x[0] === t) || [, t])[1], num(T[t])]), 'No cards earned in this period.');
-  table($('tPlays'), ['Most played cards', 'Plays'], (C.top_played || []).map(r => [cardName(r.card), num(r.plays)]), 'No cards played in this period.');
-  const TU = d.tutorial || {};
-  table($('tTut'), ['With the tutorial', 'Games', 'Finished', 'Won'], TU.games ? [['Tutorial on', num(TU.games), num(TU.finished), num(TU.won)]] : [], 'No tutorial games in this period.');
-  table($('tErr'), ['First error of the game', 'Games', 'Players', 'Newest build', 'Last seen'],
+  part($('tCards'), () => {
+    table($('tCards'), ['Cards', 'Games', 'Win rate'], (C.with_games || C.without_games) ? [
+      ['Played a card', num(C.with_games || 0), rate(C.with_won || 0, (C.with_won || 0) + (C.with_lost || 0))],
+      ['Played no card', num(C.without_games || 0), rate(C.without_won || 0, (C.without_won || 0) + (C.without_lost || 0))],
+    ] : []);
+    $('cardsNote').textContent = (C.earned != null)
+      ? plural(C.earned || 0, 'card') + ' earned by ' + plural(C.earners || 0, 'player') + ' · ' + plural(C.plays || 0, 'card') + ' played by ' + plural(C.players_played || 0, 'player') + ' in this period.'
+      : '';
+  });
+  part($('tDevice'), () => {
+    table($('tDevice'), ['Device', 'Players', 'Games', 'Finished', 'Win rate'],
+      (d.by_device || []).map(r => [r.device, num(r.players), num(r.games), pct(r.finished_pct), pct(r.win_pct)]));
+    table($('tLand'), ['Landform', 'Games', 'Finished', 'Win rate'],
+      (d.by_landform || []).map(r => [r.landform, num(r.games), pct(r.finished_pct), pct(r.win_pct)]));
+    table($('tOrigin'), ['Origin card', 'Games', 'Win rate'],
+      (d.by_origin || []).map(r => [r.origin, num(r.games), rate(r.won || 0, (r.won || 0) + (r.lost || 0))]), 'No origin cards recorded in this period.');
+    // the deck's five tiers, in order (js/deck.js Deck.TIERS)
+    const TIER = [['stone', 'Stone'], ['bronze', 'Bronze'], ['iron', 'Iron'], ['imperial', 'Imperial'], ['enlight', 'Enlightenment']];
+    const T = C.earned_by_tier || {}, rank = t => { const i = TIER.findIndex(x => x[0] === t); return i < 0 ? 99 : i; };
+    table($('tTiers'), ['Cards earned, by tier', 'Earned'],
+      Object.keys(T).sort((a, b) => rank(a) - rank(b)).map(t => [(TIER.find(x => x[0] === t) || [, t])[1], num(T[t])]), 'No cards earned in this period.');
+    table($('tPlays'), ['Most played cards', 'Plays'], (C.top_played || []).map(r => [cardName(r.card), num(r.plays)]), 'No cards played in this period.');
+    const TU = d.tutorial || {};
+    table($('tTut'), ['With the tutorial', 'Games', 'Finished', 'Won'], TU.games ? [['Tutorial on', num(TU.games), num(TU.finished), num(TU.won)]] : [], 'No tutorial games in this period.');
+  });
+  part($('tErr'), () => table($('tErr'), ['First error of the game', 'Games', 'Players', 'Newest build', 'Last seen'],
     (d.errors_top || []).map(r => [{ td: `<td class="err-msg">${esc(r.err)}</td>` }, num(r.games), num(r.players), r.build == null ? '—' : r.build, when(r.last)]),
-    'No errors caught in this period (counted from build 107 on).');
-  const F = d.filters || {};
-  fill($('fMode'), F.modes); fill($('fDev'), F.devices);
-  const I = d.inbox || {};
-  $('inboxCount').textContent = I.total ? '· ' + num(I.open) + ' open, ' + num(I.new) + ' new' : '';
+    'No errors caught in this period (counted from build 107 on).'));
+  part(null, () => { const F = d.filters || {}; fill($('fMode'), F.modes); fill($('fDev'), F.devices); });
+  // the inbox's own count wins once the inbox is in (renderInbox keeps it current)
+  if (!INBOX_LOADED) part(null, () => { const I = d.inbox || {}; $('inboxCount').textContent = I.total ? '· ' + num(I.open) + ' open, ' + num(I.new) + ' new' : ''; });
+}
+/* the dashboard door failed: say so where its numbers were, never leave the
+   last filter's numbers (or a page of dashes) standing as if they answered */
+function dashFail(msg) {
+  DATA = null;
+  for (const id of DASH_PARTS) { const el = $(id); if (el) el.innerHTML = ''; }
+  $('stamp').textContent = '—';
+  $('kpis').innerHTML = `<div class="card err" style="grid-column:1/-1">${esc(msg)}</div>`;
+  $('appErr').textContent = msg;
 }
 
 function fill(sel, values) {
   const keep = sel.value;
-  sel.innerHTML = '<option value="">All</option>' + (values || []).filter(Boolean).map(String).sort()
+  sel.innerHTML = '<option value="">All</option>' + (Array.isArray(values) ? values : []).filter(Boolean).map(String).sort()
     .map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   sel.value = keep;
 }
 
-function drawChart(days) {
+/* EVERY DAY: exactly the days the tiles count, in your own time zone. A day
+   only partly in the period (the first day of "Last 30 days" starts at this
+   hour thirty days ago, and today is not over) is drawn faint, and says
+   which hours it holds — never passed off as a whole day. */
+function partHours(x) {
+  const f = new Date(x.from), t = new Date(x.to);
+  if (!Number.isFinite(f.getTime()) || !Number.isFinite(t.getTime())) return 'part of this day';
+  const midnight = d => d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+  if (midnight(f)) return 'until ' + hm(t);
+  if (midnight(t) && t > f) return 'from ' + hm(f);
+  return hm(f) + '–' + hm(t);
+}
+function drawChart(days, info) {
   const svg = $('chart'), W = Math.max(120, svg.clientWidth || 800), H = 150, pad = 18;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   if (!days.length) { svg.innerHTML = ''; $('chartKey').innerHTML = '<span class="muted">No days in this period.</span>'; return; }
@@ -472,9 +601,10 @@ function drawChart(days) {
   const bw = (W - 2) / days.length, h = v => (H - pad) * v / max;
   let out = '';
   days.forEach((x, i) => {
-    const xx = 1 + i * bw, w = Math.max(1, bw - 2), g = x.games || 0, won = x.won || 0, lost = x.lost || 0;
-    const tip = `${x.day}: ${plural(g, 'game')} (${won} won, ${lost} lost) · ${plural(x.players || 0, 'player')}`;
-    out += `<g><title>${esc(tip)}</title>` +
+    const xx = 1 + i * bw, w = Math.max(1, bw - 2), g = x.games || 0, won = x.won || 0, lost = x.lost || 0, part = !!x.partial;
+    const tip = `${dayOf(x.day)}${part ? ' (partial: ' + partHours(x) + ' is in the period)' : ''}: ${plural(g, 'game')} (${won} won, ${lost} lost) · ${plural(x.players || 0, 'player')}`;
+    out += `<g class="${part ? 'partial' : 'whole'}"${part ? ' opacity=".38"' : ''}><title>${esc(tip)}</title>` +
+      (part ? `<rect x="${xx}" y="1" width="${w}" height="${H - pad - 1}" fill="none" stroke="#7d7462" stroke-dasharray="2 3"/>` : '') +
       `<rect x="${xx}" y="${H - pad - h(g)}" width="${w}" height="${h(g)}" fill="#7d7462" opacity=".55"/>` +
       `<rect x="${xx}" y="${H - pad - h(won + lost)}" width="${w}" height="${h(lost)}" fill="#c2603f"/>` +
       `<rect x="${xx}" y="${H - pad - h(won)}" width="${w}" height="${h(won)}" fill="#7fa84a"/></g>`;
@@ -484,94 +614,144 @@ function drawChart(days) {
   const lab = (i) => `<text x="${Math.min(W - 40, 1 + i * bw)}" y="${H - 3}" fill="#6f6650" font-size="10">${esc(dayOf(days[i].day).slice(5))}</text>`;
   out += lab(0) + (days.length > 1 ? lab(days.length - 1) : '');
   svg.innerHTML = out;
-  $('chartKey').innerHTML = '<span style="--c:#7fa84a">won</span><span style="--c:#c2603f">lost</span><span style="--c:#7d7462">other games</span><span style="--c:#e8c15a">players</span>';
+  const anyPart = days.some(x => x.partial);
+  $('chartKey').innerHTML = '<span style="--c:#7fa84a">won</span><span style="--c:#c2603f">lost</span><span style="--c:#7d7462">other games</span><span style="--c:#e8c15a">players</span>' +
+    `<span class="muted" style="flex-basis:100%">Days in ${esc(info.tz || 'UTC')}.` +
+    (anyPart ? ' A faint, dashed bar is a day only partly in the period; hover it for the hours.' : '') +
+    (info.capped ? ' The chart shows the last ' + num(info.max_days || 180) + ' days; the numbers above count the whole period.' : '') + '</span>';
 }
 
+/* WHERE PLAYERS STOP: a true funnel — every rung inside the one before — and
+   the outcomes apart, since a game can be won or lost on any day */
 function renderFunnel(F) {
   const s = F.started || 0;
-  const steps = [['Started a game', F.started], ['Played a minute', F.minute], ['Reached day 10', F.day10], ['Reached day 50', F.day50],
-    ['Reached day 100', F.day100], ['Finished (won or lost)', F.finished], ['Won', F.won]];
-  $('funnel').innerHTML = steps.map(([k, v]) => {
+  const row = ([k, v]) => {
     const w = s ? Math.round(100 * (v || 0) / s) : 0;
     return `<div>${esc(k)}</div><div class="bar"><i style="width:${w}%"></i></div><div class="c">${num(v || 0)} · ${s ? w + '%' : '—'}</div>`;
-  }).join('');
+  };
+  $('funnel').innerHTML = [['Started a game', F.started], ['Reached day 10', F.day10], ['Reached day 25', F.day25],
+    ['Reached day 50', F.day50], ['Reached day 100', F.day100]].map(row).join('');
+  $('outcomes').innerHTML = [['Finished (won or lost)', F.finished], ['Won', F.won]].map(row).join('');
+  $('funnelNote').textContent = s ? num(F.minute) + ' of the ' + plural(s, 'game') + ' lasted at least a minute of play.' : '';
 }
 
 /* ------------------------------------------------------------- did the update help? */
 function releases() {
-  const seen = (DATA && DATA.builds) || {};
-  const notes = (window.PATCH_NOTES || []).slice().sort((a, b) => b.build - a.build);
+  const seen = (DATA && DATA.builds && typeof DATA.builds === 'object') ? DATA.builds : {};
+  const notes = (Array.isArray(window.PATCH_NOTES) ? window.PATCH_NOTES : []).filter(n => n && Number.isFinite(+n.build))
+    .slice().sort((a, b) => b.build - a.build);
   return notes.map(n => {
-    const at = seen[n.build] || RELEASE_AT[n.build];
-    return { build: n.build, title: n.title, known: !!at, at: at ? new Date(at).toISOString() : new Date(n.date + 'T00:00:00Z').toISOString() };
-  });
+    const noteDay = Date.parse(String(n.date) + 'T00:00:00Z');
+    const raw = seen[n.build], db = raw == null ? NaN : Date.parse(String(raw));
+    // the database's moment, only when it parses, is not before the build's own patch note, and is not from the future
+    const dbOk = Number.isFinite(db) && (!Number.isFinite(noteDay) || db >= noteDay) && db <= Date.now() + 864e5;
+    const hand = RELEASE_AT[n.build] != null ? Date.parse(RELEASE_AT[n.build]) : NaN;
+    const ms = dbOk ? db : Number.isFinite(hand) ? hand : noteDay;
+    if (!Number.isFinite(ms)) return null;
+    return { build: +n.build, title: String(n.title || ''), known: dbOk || Number.isFinite(hand), at: new Date(ms).toISOString() };
+  }).filter(Boolean);
 }
+const releaseOf = b => releases().find(r => String(r.build) === String(b)) || null;
 function fillReleases() {
   const sel = $('cRel'), keep = sel.value, list = releases();
-  sel.innerHTML = list.map(r => `<option value="${esc(r.at)}">${esc('Build ' + r.build + ' · ' + r.title + ' · ' + (r.known ? when(r.at) : dayOf(r.at) + ' (the day only)'))}</option>`).join('');
+  sel.innerHTML = list.map(r => `<option value="${r.build}">${esc('Build ' + r.build + ' · ' + r.title + ' · ' + (r.known ? when(r.at) : dayOf(r.at) + ' (the day only)'))}</option>`).join('');
   const first = list.find(r => r.known) || list[0];
-  sel.value = keep && list.some(r => r.at === keep) ? keep : (first ? first.at : '');
+  sel.value = keep && list.some(r => String(r.build) === keep) ? keep : (first ? String(first.build) : '');
 }
 async function loadCompare() {
+  const my = ++SEQ.cmp, ep = EPOCH, tok = TOKEN;
+  const rel = releaseOf($('cRel').value);
+  if (!rel) { $('cmpNote').textContent = ''; table($('tCmp'), [], [], 'No release to compare.'); return; }
   const f = filters();
-  const r = await rpc('analytics_compare', { p_token: TOKEN, p_split: $('cRel').value || null, p_days: +$('cDays').value,
-    p_mode: f.p_mode, p_device: f.p_device, p_min_seconds: f.p_min_seconds, p_everyone: f.p_everyone }).catch(() => null);
-  if (!r || missing(r) || !r.data || !r.data.ok) { table($('tCmp'), [], [], 'The comparison needs migration 0010.'); $('cmpNote').textContent = ''; return; }
-  renderCompare(r.data);
+  const r = await rpc('analytics_compare', { p_token: tok, p_split: rel.at, p_days: +$('cDays').value,
+    p_mode: f.p_mode, p_device: f.p_device, p_min_seconds: f.p_min_seconds, p_everyone: f.p_everyone });
+  if (!live('cmp', my, ep)) return;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
+  if (!answered(r)) { $('cmpNote').textContent = ''; table($('tCmp'), [], [], missing(r) ? 'The comparison needs migration 0010.' : couldNot(r)); return; }
+  part($('tCmp'), () => renderCompare(r.data));
+}
+/* how long a stretch is, in words, from its exact length in seconds */
+function span(s) {
+  const d = s / 86400;
+  if (d >= 1.95) return Math.round(d) + ' days';
+  if (d >= 0.95) return '1 day';
+  if (s >= 3600 * 0.95) return plural(Math.round(s / 3600), 'hour');
+  return plural(Math.max(1, Math.round(s / 60)), 'minute');
 }
 function renderCompare(c) {
-  const B = c.before || {}, A = c.after || {}, days = c.days, ad = +c.after_days || 0;
-  const partial = ad < days - 0.05;
+  const B = c.before || {}, A = c.after || {}, days = +c.days || 0;
+  const RB = B.robust || {}, RA = A.robust || {};
+  const as = Number.isFinite(+c.after_s) && c.after_s != null ? +c.after_s : (+c.after_days || 0) * 86400;
+  const partial = as < days * 86400 - 30;
   const decB = (B.won || 0) + (B.lost || 0), decA = (A.won || 0) + (A.lost || 0);
-  const pctOf = (k, n) => (n ? pct(ratio(k, n)) + ' <span class="muted">· ' + num(k) + ' of ' + num(n) + '</span>' : '—');
+  const pctOf = (k, n, R) => {
+    if (!n) return '—';
+    const w = (R && robustRange(R)) || wilson(k, n);
+    return `<span title="${esc(w ? `95% range ${w[0].toFixed(0)}–${w[1].toFixed(0)}%` : '')}">${esc(pct(ratio(k, n)))}</span> <span class="muted">· ${num(k)} of ${num(n)}</span>`;
+  };
   /* the two windows are always the same length (analytics_compare), so a
      count compares as it stands: [label, before html, after html, verdict] */
-  const cnt = (label, b, a, good) => [label, num(b), num(a), moveC(b, 1, a, 1, good)];
+  const players = (label, b, a) => [label, num(b), num(a), moveC(b, 1, a, 1, 1)];
+  // a rate per PLAYER: one trial each, the pooled test
   const prop = (label, kb, nb, ka, na, good, tooEarly) => [label, { html: pctOf(kb, nb) },
     { html: na ? pctOf(ka, na) : (tooEarly ? '<span class="muted">too early</span>' : '—') }, moveP(kb, nb, ka, na, good)];
+  // a rate over GAMES: tested player by player, each player once
+  const games = (label, Rb, Ra, kb, nb, ka, na, good, tooEarly) => [label, { html: pctOf(kb, nb, Rb) },
+    { html: na ? pctOf(ka, na, Ra) : (tooEarly ? '<span class="muted">too early</span>' : '—') },
+    (Rb && Ra) ? moveR(Rb, Ra, good) : 'few'];
   const rows = [
-    cnt('Players', B.players, A.players, 1),
-    cnt('New players', B.new_players, A.new_players, 1),
-    cnt('Games', B.games, A.games, 1),
-    prop('Finished', decB, B.games || 0, decA, A.games || 0, 1),
-    prop('Win rate', B.won || 0, decB, A.won || 0, decA, 1),
+    players('Players', B.players, A.players),
+    players('New players', B.new_players, A.new_players),
+    ['Games', num(B.games), num(A.games), moveG(RB.games, RA.games, 1)],
+    games('Finished', RB.finished, RA.finished, decB, B.games || 0, decA, A.games || 0, 1),
+    games('Win rate', RB.win, RA.win, B.won || 0, decB, A.won || 0, decA, 1),
     prop('Played again within a week', B.back || 0, B.back_ripe || 0, A.back || 0, A.back_ripe || 0, 1, true),
     prop('First-game hook (10 minutes)', B.hook || 0, B.hook_n || 0, A.hook || 0, A.hook_n || 0, 1),
     ['Time per player (median)', mins(B.player_minutes), mins(A.player_minutes), null],
-    prop('Games that hit an error', B.err_games || 0, B.err_n || 0, A.err_games || 0, A.err_n || 0, -1, true),
+    games('Games that hit an error', RB.err, RA.err, B.err_games || 0, B.err_n || 0, A.err_games || 0, A.err_n || 0, -1, true),
   ];
   table($('tCmp'), ['', 'Before', 'After', 'Verdict'], rows.map(([label, b, a, v]) =>
     [label, b, a, v ? { html: `<span class="${v === 'few' ? 'unclear' : v}">${esc(VERDICT[v])}</span>` } : { html: '<span class="muted">—</span>' }]));
-  const span = d => (d >= 1.95 ? Math.round(d) + ' days' : d >= 0.95 ? '1 day' : Math.max(1, Math.round(d * 24)) + ' hours');
-  $('cmpNote').textContent = (ad <= 0.001 ? 'This release has no "after" yet. '
-    : partial ? `The release is ${span(ad)} old, so its ${span(ad)} are compared with the same ${span(ad)} ${Math.round((Date.parse(c.split) - Date.parse(c.before_from)) / 864e5 / 7) === 1 ? 'one week' : Math.round((Date.parse(c.split) - Date.parse(c.before_from)) / 864e5 / 7) + ' weeks'} earlier, weekdays and hours alike. `
+  const wk = Math.round((Date.parse(c.split) - Date.parse(c.before_from)) / 864e5 / 7);
+  const weeks = !Number.isFinite(wk) ? 'some weeks' : wk === 1 ? 'one week' : wk + ' weeks';
+  $('cmpNote').textContent = (as <= 0 ? 'This release has no "after" yet. '
+    : partial ? `The release is ${span(as)} old, so its first ${span(as)} are compared with the same ${span(as)} ${weeks} earlier, weekdays and hours alike. `
     : `The ${days} days after the release against the ${days} days before it. `) +
-    `Before: ${plural(B.games || 0, 'game')}, ${num(decB)} finished · After: ${plural(A.games || 0, 'game')}, ${num(decA)} finished.`;
+    'Each side is read as it stood the same time after it began, so neither has had longer to report how its games ended. ' +
+    `Before: ${plural(B.games || 0, 'game')}, ${num(decB)} finished · After: ${plural(A.games || 0, 'game')}, ${num(decA)} finished. ` +
+    'A rate over games is tested player by player: each player counts once, however many games they played.';
 }
 
 /* ------------------------------------------------------------- the inbox */
 const STATUS = [['new', 'New'], ['triaged', 'Looked at'], ['sent', 'Sent to Claude'], ['fixed', 'Fixed'], ['wontfix', "Won't fix"]];
 async function loadInbox() {
-  const r = await rpc('analytics_feedback', { p_token: TOKEN, p_status: null, p_kind: null, p_limit: 300 }).catch(() => null);
-  if (!r || missing(r) || !r.data || !r.data.ok) {
-    INBOX = []; $('inboxBar').innerHTML = '';
-    $('inbox').innerHTML = '<div class="card note">The inbox needs migrations 0009 and 0010 applied (see the setup note above).</div>';
+  const my = ++SEQ.inbox, ep = EPOCH, tok = TOKEN;
+  const r = await rpc('analytics_feedback', { p_token: tok, p_status: null, p_kind: null, p_limit: 300 });
+  if (!live('inbox', my, ep)) return;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
+  if (!answered(r)) {
+    INBOX = []; INBOX_LOADED = false; $('inboxBar').innerHTML = '';
+    $('inbox').innerHTML = `<div class="card note">${esc(missing(r) ? 'The inbox needs migrations 0009 and 0010 applied (see the setup note above).' : couldNot(r))}</div>`;
     return;
   }
-  INBOX = r.data.reports || [];
+  INBOX = Array.isArray(r.data.reports) ? r.data.reports.filter(x => x && typeof x === 'object') : [];
+  INBOX_LOADED = true;
   renderInbox();
 }
+const isOpen = x => x.status === 'new' || x.status === 'triaged' || x.status === 'sent';
 function renderInbox() {
-  const isOpen = x => x.status === 'new' || x.status === 'triaged' || x.status === 'sent';
   const counts = { open: INBOX.filter(isOpen).length, new: INBOX.filter(x => x.status === 'new').length,
     fixed: INBOX.filter(x => x.status === 'fixed').length, wontfix: INBOX.filter(x => x.status === 'wontfix').length, all: INBOX.length };
+  // the header says what the chips below it say, after every change
+  $('inboxCount').textContent = counts.all ? '· ' + num(counts.open) + ' open, ' + num(counts.new) + ' new' : '';
   const tabs = [['open', 'Open'], ['new', 'New'], ['fixed', 'Fixed'], ['wontfix', "Won't fix"], ['all', 'All']];
   const kinds = [['', 'Every kind'], ['bug', 'Bugs'], ['crash', 'Crashes'], ['idea', 'Ideas'], ['other', 'Other']];
   $('inboxBar').innerHTML = tabs.map(([k, l]) => `<button class="chip${INBOX_FILTER === k ? ' on' : ''}" data-f="${k}">${esc(l)} ${counts[k]}</button>`).join('') +
     '<span style="width:12px"></span>' +
     kinds.map(([k, l]) => `<button class="chip${INBOX_KIND === k ? ' on' : ''}" data-k="${k}">${esc(l)}</button>`).join('');
   const list = INBOX.filter(x => (INBOX_FILTER === 'all' || (INBOX_FILTER === 'open' ? isOpen(x) : x.status === INBOX_FILTER)) && (!INBOX_KIND || x.kind === INBOX_KIND));
-  $('inbox').innerHTML = list.length ? list.map(repHtml).join('') : '<div class="card note">Nothing here.</div>';
+  // one report that cannot render is one small card, never a blank inbox
+  $('inbox').innerHTML = list.length ? list.map(x => { try { return repHtml(x); } catch (e) { return brokenRep(x, e); } }).join('') : '<div class="card note">Nothing here.</div>';
 }
 function deviceOf(ua) {
   ua = String(ua || '');
@@ -581,16 +761,35 @@ function deviceOf(ua) {
   if (/Windows/.test(ua)) return 'Windows';
   return ua ? 'Other' : '';
 }
+const errsOf = x => (x && Array.isArray(x.errors) ? x.errors : []);
+const draftOf = x => DRAFTS[String(x && x.id)] || {};
+/* the status and note controls: the draft if there is one, else what is saved */
+function controls(x) {
+  const dr = draftOf(x), st = dr.status || (typeof x.status === 'string' ? x.status : 'new');
+  const note = dr.note != null ? dr.note : (typeof x.note === 'string' ? x.note : '');
+  return `<select data-act="status" aria-label="Status">${STATUS.map(([k, l]) => `<option value="${k}"${st === k ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
+      <input data-act="note" placeholder="A note for yourself" aria-label="Note" value="${esc(note)}">
+      <button class="ghost" data-act="save">Save</button>`;
+}
+/* THE REPLY: a mailto link only for an address that is plainly an address
+   (and encoded even then); anything else is shown as text, never as a link
+   whose ? and & a player wrote */
+const EMAIL_OK = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+function replyTo(email) {
+  const e = typeof email === 'string' ? email : '';
+  if (!EMAIL_OK.test(e)) return `<span class="addr">${esc(e)}</span>`;
+  return `<a class="addr" href="mailto:${esc(encodeURIComponent(e).replace(/%40/g, '@'))}?subject=${encodeURIComponent('Your Clanfire report')}">${esc(e)}</a>`;
+}
 function repHtml(x) {
-  const run = x.run || null, errs = x.errors || [];
-  const meta = [when(x.at), x.build ? 'build ' + x.build : '', deviceOf(x.browser), x.installed ? 'home-screen app' : '', x.screen || ''].filter(Boolean).join(' · ');
-  const runLine = run ? [run.mode, run.day != null ? 'day ' + run.day : '', run.size, run.landform, run.variant, run.seed ? 'seed ' + run.seed : '', run.over ? 'finished' : ''].filter(Boolean).join(' · ') : '';
+  const run = x.run && typeof x.run === 'object' ? x.run : null, errs = errsOf(x);
+  const meta = [when(x.at), x.build ? 'build ' + x.build : '', deviceOf(x.browser), x.installed === true ? 'home-screen app' : '', x.screen || ''].filter(Boolean).join(' · ');
+  const runLine = run ? [run.mode, run.day != null ? 'day ' + run.day : '', run.size, run.landform, run.variant, run.seed ? 'seed ' + run.seed : '', run.over === true ? 'finished' : ''].filter(Boolean).join(' · ') : '';
   const canSend = x.kind === 'bug' || x.kind === 'crash';
   return `<div class="rep" data-id="${esc(x.id)}">
     <div class="hd"><span class="badge ${esc(x.kind)}">${esc(x.kind)}</span><span class="st">${esc((STATUS.find(s => s[0] === x.status) || [, x.status])[1])}</span>
       <span>${esc(meta)}</span>${x.mine ? '<span class="mine">your device</span>' : ''}</div>
     <div class="msg">${esc(x.message)}</div>
-    <div class="note">From ${x.name ? esc(x.name) + ' · ' : ''}<a href="mailto:${esc(x.email)}?subject=${encodeURIComponent('Your Clanfire report')}">${esc(x.email)}</a></div>
+    <div class="note">From ${x.name ? esc(x.name) + ' · ' : ''}${replyTo(x.email)}</div>
     ${(runLine || errs.length || x.frame_error || x.browser) ? `<details><summary>Details${errs.length ? ' · ' + plural(errs.length, 'error') : ''}</summary>
       ${runLine ? '<div>Game: ' + esc(runLine) + '</div>' : ''}
       ${x.browser ? '<div>Browser: ' + esc(x.browser) + '</div>' : ''}
@@ -598,11 +797,21 @@ function repHtml(x) {
       ${errs.length ? '<pre>' + esc(errs.map(fmtErr).join('\n\n')) + '</pre>' : ''}
     </details>` : ''}
     <div class="act">
-      <select data-act="status" aria-label="Status">${STATUS.map(([k, l]) => `<option value="${k}"${x.status === k ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
-      <input data-act="note" placeholder="A note for yourself" aria-label="Note" value="${esc(x.note || '')}">
-      <button class="ghost" data-act="save">Save</button>
+      ${controls(x)}
       ${canSend ? '<button data-act="claude">Send to Claude</button>' : ''}<button class="ghost" data-act="copy">Copy for Claude</button>
+      <span class="tkErr err"></span>
     </div>
+  </div>`;
+}
+function brokenRep(x, e) {
+  let id = '?';
+  try { id = String(x && x.id); } catch (er) {}
+  let ctl = '';
+  try { ctl = controls(x || {}); } catch (er) {}
+  return `<div class="rep" data-id="${esc(id)}">
+    <div class="hd"><span class="st">Report #${esc(id)}</span></div>
+    <div class="note">Could not show this report${e && e.message ? ' (' + esc(e.message) + ')' : ''}. Its status can still be set.</div>
+    <div class="act">${ctl}</div>
   </div>`;
 }
 function fmtErr(e) {
@@ -615,92 +824,145 @@ function fmtErr(e) {
    errors the game caught. NEVER the player's email or name. And never a bare
    "@claude": on GitHub that pings whoever owns that handle. The issue is
    labelled player-report and carries a hidden marker with the report's id,
-   which is what an automation keys on. */
+   which is what an automation keys on.
+
+   EVERY FIELD IN IT IS A PLAYER'S, AND MADE INERT FIRST: no HTML comment
+   (one could hide text, or swallow the marker), no mention (an @ before a
+   word gets a zero-width space after it, so GitHub pings nobody), and no way
+   out of the place it was put — a code span or a fence is always longer than
+   any backtick run inside it, a plain field is one line with its backticks,
+   backslashes and tags escaped, and the quoted message keeps every one of its
+   lines inside the quote (a bare carriage return is a line break to
+   Markdown). Cuts count code points, never splitting an emoji into a lone
+   surrogate that would make the link throw. */
+const cut = (s, n) => Array.from(String(s == null ? '' : s)).slice(0, n).join('');
+const toLines = s => String(s == null ? '' : s).replace(/\r\n?|[\u2028\u2029\u0085\v\f]/g, '\n');
+function quiet(s) {
+  s = String(s == null ? '' : s);
+  s = typeof s.toWellFormed === 'function' ? s.toWellFormed() : s.replace(/[\ud800-\udbff](?![\udc00-\udfff])|(^|[^\ud800-\udbff])[\udc00-\udfff]/g, '$1\ufffd');
+  let prev;
+  do { prev = s; s = s.replace(/<!--|-->/g, ''); } while (s !== prev);
+  return s.replace(/@(?=[\p{L}\p{N}_])/gu, '@\u200b');
+}
+const oneLine = s => toLines(s).replace(/\s+/g, ' ').trim();
+const longestTicks = s => (String(s).match(/`+/g) || []).reduce((m, r) => Math.max(m, r.length), 0);
+const mdText = s => s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/</g, '&lt;');
+const plainField = s => mdText(quiet(oneLine(s)));
+function codeSpan(s) { s = quiet(oneLine(s)); const d = '`'.repeat(longestTicks(s) + 1); return d + ' ' + s + ' ' + d; }
+function codeBlock(s) { s = quiet(toLines(s)); const d = '`'.repeat(Math.max(3, longestTicks(s) + 1)); return d + '\n' + s + '\n' + d; }
+const quoteBlock = s => quiet(toLines(s)).split('\n').map(l => '> ' + mdText(l)).join('\n');
 function ticket(x, errBudget, msgBudget) {
-  const run = x.run || null, errs = (x.errors || []).slice(-8), budget = errBudget == null ? 3000 : errBudget;
-  const said = String(x.message || ''), msg = msgBudget != null && said.length > msgBudget
-    ? said.slice(0, msgBudget) + ' … (cut here; "Copy for Claude" in the inbox has the whole report)' : said;
+  const run = x.run && typeof x.run === 'object' ? x.run : null, errs = errsOf(x).slice(-8), budget = errBudget == null ? 3000 : errBudget;
+  const said = String(x.message == null ? '' : x.message), long = msgBudget != null && Array.from(said).length > msgBudget;
   const kind = { bug: 'Bug', crash: 'Crash', idea: 'Idea', other: 'Report' }[x.kind] || 'Report';
-  const title = '[' + kind + '] ' + String(x.message || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const rid = /^[A-Za-z0-9_-]+$/.test(String(x.id)) ? String(x.id) : null;
+  const title = '[' + kind + '] ' + cut(quiet(oneLine(said)), 80);
+  const errText = errs.length && budget > 0 ? cut(errs.map(fmtErr).join('\n'), budget) : '';
   const body = [
-    'Player report #' + x.id + ' from the Clanfire analytics inbox (' + String(x.at || '').slice(0, 16).replace('T', ' ') + ' UTC).',
-    '', '> ' + msg.split('\n').join('\n> '), '',
-    '**Build:** ' + (x.build || '?') + ' · **Device:** ' + (deviceOf(x.browser) || '?') + (x.installed ? ' (home-screen app)' : '') + (x.screen ? ' · ' + x.screen : ''),
-    run ? '**Game:** ' + [run.mode, run.day != null ? 'day ' + run.day : '', run.size, run.landform, run.variant, run.seed ? 'seed ' + run.seed : ''].filter(Boolean).join(' · ') : '',
-    x.browser ? '**Browser:** `' + x.browser + '`' : '',
-    x.frame_error ? '\n**Frame error:**\n```\n' + String(x.frame_error).slice(0, 600) + '\n```' : '',
-    errs.length && budget > 0 ? '\n**Last errors the game caught:**\n```\n' + errs.map(fmtErr).join('\n').slice(0, budget) + '\n```' : '',
+    'Player report' + (rid ? ' #' + rid : '') + ' from the Clanfire analytics inbox (' + plainField(cut(x.at, 16).replace('T', ' ')) + ' UTC).',
+    '', quoteBlock(long ? cut(said, msgBudget) : said) + (long ? '\n> … (cut here; "Copy for Claude" in the inbox has the whole report)' : ''), '',
+    '**Build:** ' + plainField(x.build || '?') + ' · **Device:** ' + (deviceOf(x.browser) || '?') + (x.installed === true ? ' (home-screen app)' : '') + (x.screen ? ' · ' + plainField(x.screen) : ''),
+    run ? '**Game:** ' + [run.mode, run.day != null ? 'day ' + run.day : '', run.size, run.landform, run.variant, run.seed ? 'seed ' + run.seed : ''].filter(Boolean).map(plainField).join(' · ') : '',
+    x.browser ? '**Browser:** ' + codeSpan(x.browser) : '',
+    x.frame_error ? '\n**Frame error:**\n' + codeBlock(cut(x.frame_error, 600)) : '',
+    errText ? '\n**Last errors the game caught:**\n' + codeBlock(errText) : '',
     '', '---',
     '**For Claude:** reproduce this on the build named above (the seed, if given, rebuilds the same world), find the cause, ' +
       'fix it with a contract test, run the sweep and ship it to main with a patch note, following CLAUDE.md. ' +
       'Then comment here with what was wrong and what changed.',
-    '', '<!-- clanfire-report:' + x.id + ' -->',
+    '', rid ? '<!-- clanfire-report:' + rid + ' -->' : '',
   ].filter(s => s !== '').join('\n');
   return { title, body };
 }
 async function setStatus(id, status, note) {
-  const r = await rpc('analytics_feedback_set', { p_token: TOKEN, p_id: id, p_status: status, p_note: note }).catch(() => null);
-  if (!r || !r.data || !r.data.ok) { $('appErr').textContent = 'Could not save the report\'s status' + (r && r.data && r.data.reason ? ' (' + r.data.reason + ')' : '') + '.'; return false; }
+  const ep = EPOCH;
+  const r = await rpc('analytics_feedback_set', { p_token: TOKEN, p_id: id, p_status: status, p_note: note });
+  if (ep !== EPOCH) return false;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return false; }
+  if (!answered(r)) { $('appErr').textContent = 'Could not save the report\'s status (' + failWhy(r) + ').'; return false; }
   const x = INBOX.find(o => o.id === id); if (x) { x.status = status; if (note != null) x.note = note; }
+  delete DRAFTS[String(id)];
   return true;
 }
+function noteDraft(el) {
+  const act = el && el.dataset && el.dataset.act, card = el && el.closest && el.closest('.rep');
+  if (!card || (act !== 'note' && act !== 'status')) return;
+  (DRAFTS[card.dataset.id] = DRAFTS[card.dataset.id] || {})[act] = el.value;
+}
+document.addEventListener('input', e => noteDraft(e.target));
+document.addEventListener('change', e => noteDraft(e.target));
 document.addEventListener('click', async (e) => {
   const chip = e.target.closest('#inboxBar .chip');
   if (chip) { if (chip.dataset.f) INBOX_FILTER = chip.dataset.f; if (chip.dataset.k != null) INBOX_KIND = chip.dataset.k; renderInbox(); return; }
   const btn = e.target.closest('.rep button'); if (!btn) return;
   const card = btn.closest('.rep'), id = +card.dataset.id, x = INBOX.find(o => o.id === id); if (!x) return;
-  const note = card.querySelector('[data-act="note"]').value;
-  if (btn.dataset.act === 'save') { if (await setStatus(id, card.querySelector('[data-act="status"]').value, note)) renderInbox(); }
+  const noteEl = card.querySelector('[data-act="note"]'), statusEl = card.querySelector('[data-act="status"]');
+  const note = noteEl ? noteEl.value : null, say = msg => { const t = card.querySelector('.tkErr'); if (t) t.textContent = msg; };
+  if (btn.dataset.act === 'save') { if (statusEl && await setStatus(id, statusEl.value, note)) renderInbox(); }
   if (btn.dataset.act === 'claude') {
     /* GitHub refuses a prefilled issue whose address runs past ~8k
        characters, so the errors give way until it fits ("Copy for Claude"
        still carries them all) */
-    const url = (budget, said) => { const t = ticket(x, budget, said);
-      return 'https://github.com/' + REPO + '/issues/new?title=' + encodeURIComponent(t.title) + '&body=' + encodeURIComponent(t.body) + '&labels=player-report'; };
-    let u = url(3000);
-    for (const [b, m] of [[1500], [600], [0], [0, 1500], [0, 600]]) { if (u.length <= 7000) break; u = url(b, m); }
+    let u;
+    try {
+      const url = (budget, said) => { const t = ticket(x, budget, said);
+        return 'https://github.com/' + REPO + '/issues/new?title=' + encodeURIComponent(t.title) + '&body=' + encodeURIComponent(t.body) + '&labels=player-report'; };
+      u = url(3000);
+      for (const [b, m] of [[1500], [600], [0], [0, 1500], [0, 600]]) { if (u.length <= 7000) break; u = url(b, m); }
+    } catch (err) { say('Could not build the GitHub link: ' + ((err && err.message) || err) + '. "Copy for Claude" still works.'); return; }
     window.open(u, '_blank', 'noopener');
     if (await setStatus(id, 'sent', note)) renderInbox();
   }
   if (btn.dataset.act === 'copy') {
-    const t = ticket(x);
-    try { await navigator.clipboard.writeText('# ' + t.title + '\n\n' + t.body); btn.textContent = 'Copied'; } catch (err) { btn.textContent = 'Copy failed'; }
+    try { const t = ticket(x); await navigator.clipboard.writeText('# ' + t.title + '\n\n' + t.body); btn.textContent = 'Copied'; }
+    catch (err) { btn.textContent = 'Copy failed'; }
   }
 });
 
 /* ------------------------------------------------------------- your devices */
 async function loadMine() {
+  const my = ++SEQ.mine, ep = EPOCH, tok = TOKEN;
   const id = deviceId();
   const [who, list] = await Promise.all([
-    rpc('analytics_whoami', { p_token: TOKEN, p_user_id: id }).catch(() => null),
-    rpc('analytics_devices', { p_token: TOKEN, p_limit: 25 }).catch(() => null),
+    rpc('analytics_whoami', { p_token: tok, p_user_id: id }),
+    rpc('analytics_devices', { p_token: tok, p_limit: 25 }),
   ]);
-  if (!who || missing(who) || !who.data || !who.data.ok) { $('mine').innerHTML = '<div class="note">Leaving your own play out needs migration 0010.</div>'; table($('tDevices'), [], [], 'Needs migration 0010.'); return; }
-  const D = who.data.device, N = who.data.network;
-  const why = w => ({ yours: 'marked yours', tester: 'held the test deck', network: 'seen on your network' }[w] || w);
-  $('mine').innerHTML =
-    `<div class="dev"><div><b>This device</b> <span class="muted">${D ? esc(short(D.id)) : ''}</span><br><span class="note">${!D ? 'This browser has never played the game on this site. Mark your other devices below, or your network.'
-      : (D.why && D.why.length ? '<span class="ok">Left out</span> · ' + esc(D.why.map(why).join(', ')) : '<span class="no">Counted</span> · ' + plural(D.games || 0, 'game') + ' on record')}</span></div>
-      ${D ? `<button class="${D.excluded ? 'ghost' : ''}" data-mine-dev="${esc(D.id)}" data-on="${D.excluded ? '0' : '1'}">${D.excluded ? 'Count it again' : 'This device is mine'}</button>` : ''}</div>` +
-    `<div class="dev"><div><b>This network</b> <span class="muted">${N ? esc(String(N.id).slice(0, 8)) : ''}</span><br><span class="note">${!N ? 'The network could not be read.'
-      : (N.excluded ? '<span class="ok">Left out</span>' : '<span class="no">Counted</span>') + ' · ' + plural(N.devices || 0, 'device') + ' seen on it so far. Mark only a home or office network (a phone network is shared by strangers), and mark it again if your home address changes.'}</span></div>
-      ${N ? `<button class="${N.excluded ? 'ghost' : ''}" data-mine-net="1" data-on="${N.excluded ? '0' : '1'}">${N.excluded ? 'Count it again' : 'This network is mine'}</button>` : ''}</div>`;
-  const devs = (list && list.data && list.data.ok && list.data.devices) || [];
-  table($('tDevices'), ['Device', 'Kind', 'Games', 'Wins', 'First seen', 'Last seen', 'Notes', ''], devs.map(v => [
-    short(v.id) + (v.id === (D && D.id) ? ' (this one)' : ''), v.device || '—', num(v.games), num(v.wins), dayOf(v.first), dayOf(v.last),
-    [v.tester ? 'test deck' : '', v.here ? 'on this network' : '', v.on_marked_net ? 'your network' : '', v.label || ''].filter(Boolean).join(' · ') || '—',
-    { html: `<button class="chip${v.mine ? ' on' : ''}" data-mine-dev="${esc(v.id)}" data-on="${v.mine ? '0' : '1'}">${v.mine ? 'Mine ✓' : 'Mine?'}</button>` },
-  ]), 'No devices yet.');
+  if (!live('mine', my, ep)) return;
+  if (badToken(who) || badToken(list)) { lock('That passphrase was not accepted.'); return; }
+  part($('mine'), () => {
+    if (!answered(who)) { $('mine').innerHTML = `<div class="note">${esc(missing(who) ? 'Leaving your own play out needs migration 0010.' : couldNot(who))}</div>`; return; }
+    const D = who.data.device, N = who.data.network;
+    const why = w => ({ yours: 'marked yours', tester: 'held the test deck', network: 'seen on your network' }[w] || w);
+    $('mine').innerHTML =
+      `<div class="dev"><div><b>This device</b> <span class="muted">${D ? esc(short(D.id)) : ''}</span><br><span class="note">${!D ? 'This browser has never played the game on this site. Mark your other devices below, or your network.'
+        : (Array.isArray(D.why) && D.why.length ? '<span class="ok">Left out</span> · ' + esc(D.why.map(why).join(', ')) : '<span class="no">Counted</span> · ' + plural(D.games || 0, 'game') + ' on record')}</span></div>
+        ${D ? `<button class="${D.excluded ? 'ghost' : ''}" data-mine-dev="${esc(D.id)}" data-on="${D.excluded ? '0' : '1'}">${D.excluded ? 'Count it again' : 'This device is mine'}</button>` : ''}</div>` +
+      `<div class="dev"><div><b>This network</b> <span class="muted">${N ? esc(String(N.id).slice(0, 8)) : ''}</span><br><span class="note">${!N ? 'The network could not be read.'
+        : (N.excluded ? '<span class="ok">Left out</span>' : '<span class="no">Counted</span>') + ' · ' + plural(N.devices || 0, 'device') + ' seen on it so far. Mark only a home or office network (a phone network is shared by strangers), and mark it again if your home address changes.'}</span></div>
+        ${N ? `<button class="${N.excluded ? 'ghost' : ''}" data-mine-net="1" data-on="${N.excluded ? '0' : '1'}">${N.excluded ? 'Count it again' : 'This network is mine'}</button>` : ''}</div>`;
+  });
+  part($('tDevices'), () => {
+    if (!answered(list)) { table($('tDevices'), [], [], missing(list) ? 'Needs migration 0010.' : couldNot(list)); return; }
+    const D = answered(who) ? who.data.device : null;
+    const devs = Array.isArray(list.data.devices) ? list.data.devices : [];
+    table($('tDevices'), ['Device', 'Kind', 'Games', 'Wins', 'First seen', 'Last seen', 'Notes', ''], devs.map(v => [
+      short(v.id) + (v.id === (D && D.id) ? ' (this one)' : ''), v.device || '—', num(v.games), num(v.wins), dayOf(v.first), dayOf(v.last),
+      [v.tester ? 'test deck' : '', v.here ? 'on this network' : '', v.on_marked_net ? 'your network' : '', v.label || ''].filter(Boolean).join(' · ') || '—',
+      { html: `<button class="chip${v.mine ? ' on' : ''}" data-mine-dev="${esc(v.id)}" data-on="${v.mine ? '0' : '1'}">${v.mine ? 'Mine ✓' : 'Mine?'}</button>` },
+    ]), 'No devices yet.');
+  });
 }
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-mine-dev],[data-mine-net]'); if (!b) return;
-  const on = b.dataset.on === '1';
+  const on = b.dataset.on === '1', ep = EPOCH;
   b.disabled = true;
   const r = b.dataset.mineDev
-    ? await rpc('analytics_mark_device', { p_token: TOKEN, p_user_id: b.dataset.mineDev, p_mine: on, p_label: null }).catch(() => null)
-    : await rpc('analytics_mark_network', { p_token: TOKEN, p_mine: on, p_label: null }).catch(() => null);
-  if (!r || !r.data || !r.data.ok) { $('appErr').textContent = 'Could not save that' + (r && r.data && r.data.reason ? ' (' + r.data.reason + ')' : '') + '.'; b.disabled = false; return; }
-  await loadAll();
+    ? await rpc('analytics_mark_device', { p_token: TOKEN, p_user_id: b.dataset.mineDev, p_mine: on, p_label: null })
+    : await rpc('analytics_mark_network', { p_token: TOKEN, p_mine: on, p_label: null });
+  if (ep !== EPOCH) return;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
+  if (!answered(r)) { $('appErr').textContent = 'Could not save that (' + failWhy(r) + ').'; b.disabled = false; return; }
+  await loadAll(false);
 });
 
 /* ------------------------------------------------------------- setup */
@@ -713,59 +975,94 @@ function setup(msgs) {
 }
 
 /* ------------------------------------------------------------- plumbing */
-async function loadAll() {
-  $('appErr').textContent = '';
-  const r = await rpc('analytics_dashboard', Object.assign({ p_token: TOKEN }, filters())).catch(e => ({ status: 0, data: { reason: (e && e.message) || 'network' } }));
+/* VERIFY, THEN SHOW: on Unlock (verify = true) the app appears only once the
+   dashboard door has answered ok — the passphrase is the database's to judge
+   — and only then is the passphrase remembered for this tab. Every other
+   section then loads on its own: one failing never blanks another. */
+async function loadAll(verify) {
+  const my = ++SEQ.dash, ep = EPOCH, tok = TOKEN;
+  if (!verify) $('appErr').textContent = '';
+  const r = await rpc('analytics_dashboard', Object.assign({ p_token: tok }, filters(), { p_tz: TZ }));
+  if (!live('dash', my, ep)) return 'stale';
   if (missing(r)) {
     // the passphrase is still checked, through the older door 0003 left
-    const old = await rpc('analytics_summary', { p_token: TOKEN }).catch(() => null);
-    if (old && old.data && old.data.error === 'bad_token') { lock('That passphrase was not accepted.'); return false; }
+    const old = await rpc('analytics_summary', { p_token: tok });
+    if (!live('dash', my, ep)) return 'stale';
+    if (old && old.data && (old.data.error === 'bad_token' || old.data.reason === 'bad_token')) { lock('That passphrase was not accepted.'); return 'bad'; }
+    if (verify) enter(tok);
     setup(['<code>supabase/migrations/0008_cards.sql</code>: the cards\' cloud record, and the card rows this page counts',
       '<code>supabase/migrations/0009_feedback.sql</code>: keeps every report sent from the game',
       '<code>supabase/migrations/0010_dashboard.sql</code>: this dashboard (one result per game, your own play left out, the release comparison and the inbox)']);
     $('main').hidden = true;
-    return true;
+    return 'setup';
   }
-  if (!r.data || r.data.ok === false) {
-    if (r.data && r.data.reason === 'bad_token') { lock('That passphrase was not accepted.'); return false; }
-    $('appErr').textContent = 'Could not load: ' + ((r.data && (r.data.reason || r.data.message)) || ('HTTP ' + r.status));
-    return true;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return 'bad'; }
+  if (!answered(r)) {
+    if (verify) { TOKEN = null; $('gateErr').textContent = couldNot(r); return 'fail'; }
+    dashFail(couldNot(r));
+    await others();
+    return 'fail';
   }
+  if (verify) enter(tok);
   setup([]); $('main').hidden = false;
   render(r.data);
-  fillReleases();
-  await Promise.all([loadCompare(), loadInbox(), loadMine()]);
-  return true;
+  await others();
+  return 'ok';
+}
+function others() {
+  part(null, fillReleases);
+  return Promise.allSettled([loadCompare(), loadInbox(), loadMine()]);
+}
+function enter(tok) {
+  try { sessionStorage.setItem(KEY, tok); } catch (e) {}
+  $('gateErr').textContent = '';
+  show('app');
 }
 function show(which) { $('gate').hidden = which !== 'gate'; $('app').hidden = which !== 'app'; }
+/* LOCK: nothing of this session stays behind — not a number, not a report,
+   not a draft, not the remembered passphrase — and nothing still in flight
+   can paint it back (the epoch moves). A wrong passphrase typed afterwards
+   shows the gate and nothing else. */
+function clearApp() {
+  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
+    const el = $(id); if (el) el.innerHTML = '';
+  }
+  $('stamp').textContent = '—';
+  setup([]);
+}
 function lock(msg) {
-  TOKEN = null;
+  TOKEN = null; EPOCH++;
+  for (const k of Object.keys(SEQ)) SEQ[k]++;
+  DATA = null; INBOX = []; INBOX_LOADED = false; DRAFTS = {};
+  clearApp();
   try { sessionStorage.removeItem(KEY); } catch (e) {}
   show('gate'); $('gateErr').textContent = msg || ''; $('pass').value = ''; $('pass').focus();
 }
 $('go').onclick = async () => {
   const p = $('pass').value.trim();
   if (!p) { $('gateErr').textContent = 'Enter the passphrase.'; return; }
+  $('go').disabled = true;
   $('gateErr').textContent = 'Checking…';
-  TOKEN = await hashToken(p);
-  show('app');
-  if (await loadAll()) { try { sessionStorage.setItem(KEY, TOKEN); } catch (e) {} }
+  try { TOKEN = await hashToken(p); await loadAll(true); }
+  finally { $('go').disabled = false; }
 };
 $('pass').addEventListener('keydown', e => { if (e.key === 'Enter') $('go').click(); });
-$('apply').onclick = () => loadAll();
-$('fPeriod').onchange = () => { $('custom').classList.toggle('on', $('fPeriod').value === 'custom'); if ($('fPeriod').value !== 'custom') loadAll(); };
-for (const id of ['fMode', 'fDev', 'fMin', 'fAll']) $(id).onchange = () => loadAll();
+$('apply').onclick = () => loadAll(false);
+$('fPeriod').onchange = () => { $('custom').classList.toggle('on', $('fPeriod').value === 'custom'); if ($('fPeriod').value !== 'custom') loadAll(false); };
+for (const id of ['fMode', 'fDev', 'fMin', 'fAll']) $(id).onchange = () => loadAll(false);
 $('cRel').onchange = loadCompare; $('cDays').onchange = loadCompare;
 $('out').onclick = () => lock('');
-window.addEventListener('resize', () => { if (DATA) drawChart(DATA.daily || []); });
+window.addEventListener('resize', () => { if (DATA) part($('chartKey'), () => drawChart(DATA.daily || [], DATA.daily_info || {})); });
 
-// a tab reopened mid-session walks straight back in; a new tab does not
+// a tab reopened mid-session walks straight back in — once the door says the
+// remembered passphrase still opens it; a new tab does not
 (async () => {
   let saved = null;
   try { saved = sessionStorage.getItem(KEY); } catch (e) {}
-  if (!saved) { show('gate'); return; }
-  TOKEN = saved; show('app');
-  await loadAll();
+  show('gate');
+  if (!saved) return;
+  TOKEN = saved; $('gateErr').textContent = 'Checking…';
+  await loadAll(true);
 })();
 </script>
 </body>

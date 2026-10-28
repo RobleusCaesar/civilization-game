@@ -66,6 +66,13 @@
 -- the publishable key and no session). The helpers are granted to nobody.
 -- The feedback doors return report ROWS — that is the operator's inbox — and
 -- only behind the passphrase.
+--
+-- EVERY ROW IS A CLIENT'S. Telemetry and feedback are written by anonymous
+-- players, so nothing read out of them is trusted: every cast of a client's
+-- JSON is guarded (one row carrying "tutorial": "yes" used to raise inside
+-- every number and blank the whole dashboard), a row's time is the server's
+-- (the stamp trigger), and the inbox hands the page every field in a type it
+-- can trust.
 
 do $guard$
 begin
@@ -135,7 +142,15 @@ $$;
 revoke all on function public.analytics__net() from public;
 revoke all on function public.analytics__net() from anon, authenticated;
 
--- every telemetry row is stamped by the server: a client cannot write its own
+-- every telemetry row is stamped by the SERVER, and a client can write
+-- neither stamp: its network (any value a client sends is overwritten), and,
+-- for a row a client sends (the anon and authenticated roles), its TIME. The
+-- game never sends created_at, but the API roles hold INSERT on every column
+-- and nothing else checked it: one back-dated row could move a build's
+-- release moment (the "Did the update help?" split) and a row dated '44 BC'
+-- or 'infinity' could break whatever reads the date. A row written by the
+-- operator (the SQL editor, a migration, the contract's own fixture) keeps
+-- the time it was given.
 create or replace function public.analytics__stamp_net()
 returns trigger
 language plpgsql
@@ -148,6 +163,11 @@ begin
   exception when others then
     new.net := null;
   end;
+  -- the role the REQUEST runs as: PostgREST sets it per request; a session
+  -- that logged in as an API role directly has no role set and is its own
+  if coalesce(nullif(current_setting('role', true), 'none'), session_user::text) in ('anon', 'authenticated') then
+    new.created_at := now();
+  end if;
   return new;
 end;
 $$;
@@ -218,11 +238,33 @@ revoke all on function public.analytics__hidden() from anon, authenticated;
 -- keeps the hidden devices in. `build` is the code version the game was
 -- played on and `errors` / `err` what its own error recorder caught — both
 -- sent from build 107 on, so a game before that reads NULL (not counted),
--- never 0 (counted clean). Dropped first, so a later edit may change the
--- columns: the functions that call it are created after it, below.
+-- never 0 (counted clean).
+--
+-- EVERY ROW HERE WAS WRITTEN BY A CLIENT, so nothing read out of props is
+-- trusted: every cast is guarded (a comparison, or a pattern checked first
+-- inside a CASE), and one hostile row can never raise an error and take
+-- every number down with it.
+--
+-- p_seen_by: what had come back BY THAT MOMENT. The release comparison asks
+-- each window with the same follow-up — a "before" game a week older than
+-- its "after" twin must not have had a week longer to report how it ended,
+-- or a left game that later won counts as finished on one side only and
+-- every rate leans toward "Worse". NULL reads everything there is.
+--
+-- A GAME'S ERRORS are read off EVERY ending row it sent, closed tabs
+-- included: the error count is per sitting (a reload starts it again), so a
+-- game that threw, was reloaded and then ended cleanly still caught an error.
+-- Its count is the most any sitting reported and its error the first one any
+-- sitting named.
+--
+-- Dropped first, so a change of columns or arguments never leaves an
+-- overload behind (PostgREST answers 300 to an overload): the functions
+-- that call it are created after it, below.
 drop function if exists public.analytics__games(timestamptz, timestamptz, text, text, boolean);
-create or replace function public.analytics__games(
-  p_from timestamptz, p_to timestamptz, p_mode text, p_device text, p_everyone boolean)
+drop function if exists public.analytics__games(timestamptz, timestamptz, text, text, boolean, timestamptz);
+create function public.analytics__games(
+  p_from timestamptz, p_to timestamptz, p_mode text, p_device text, p_everyone boolean,
+  p_seen_by timestamptz default null)
 returns table (
   run_id text, user_id uuid, started_at timestamptz, mode text, landform text, device text,
   tutorial boolean, origin text, build integer, result text, cause text, day integer, seconds integer,
@@ -238,6 +280,7 @@ as $$
     select distinct on (s.run_id) s.*
     from public.telemetry s
     where s.kind = 'run_start' and s.run_id is not null
+      and s.created_at <= now()
       and (p_from is null or s.created_at >= p_from)
       and (p_to   is null or s.created_at <  p_to)
       and (p_mode   is null or s.mode   = p_mode)
@@ -245,18 +288,32 @@ as $$
       and not exists (select 1 from hid where hid.user_id = s.user_id)
     order by s.run_id, s.created_at, s.id
   ),
-  ending as (
-    -- a real ending beats a closed_tab row; of several, the latest counts
-    select distinct on (e.run_id) e.*
+  -- every ending row of those runs that had come back by p_seen_by
+  endrows as (
+    select e.*
     from public.telemetry e
     where e.kind = 'run_end' and e.run_id in (select st.run_id from starts st)
-    order by e.run_id, (coalesce(e.cause, '') = 'closed_tab'), e.created_at desc, e.id desc
+      and (p_seen_by is null or e.created_at < p_seen_by)
+  ),
+  ending as (
+    -- a real ending beats a closed_tab row; of several, the latest counts
+    select distinct on (r.run_id) r.*
+    from endrows r
+    order by r.run_id, (coalesce(r.cause, '') = 'closed_tab'), r.created_at desc, r.id desc
+  ),
+  errs as (
+    select r.run_id,
+           max(case when coalesce(r.props->>'errors', '') ~ '^[0-9]{1,9}$' then (r.props->>'errors')::integer end) as errors,
+           (array_agg(left(r.props->>'err', 160) order by r.created_at, r.id)
+              filter (where coalesce(r.props->>'err', '') <> ''))[1] as err
+    from endrows r
+    group by r.run_id
   )
   select s.run_id, s.user_id, s.created_at, s.mode, s.landform, s.device,
-         coalesce((s.props->>'tutorial')::boolean, false),
+         coalesce(s.props->>'tutorial' = 'true', false),
          nullif(coalesce(e.props->>'card', s.props->>'card'), ''),
-         case when coalesce(e.props->>'build', s.props->>'build') ~ '^[0-9]{1,6}$'
-              then coalesce(e.props->>'build', s.props->>'build')::integer end,
+         case when coalesce(e.props->>'build', '') ~ '^[0-9]{1,6}$' then (e.props->>'build')::integer
+              when coalesce(s.props->>'build', '') ~ '^[0-9]{1,6}$' then (s.props->>'build')::integer end,
          case
            when e.run_id is null then 'open'
            when e.outcome = 'win'  then 'won'
@@ -266,73 +323,108 @@ as $$
          end,
          e.cause, e.day, e.seconds, e.score, e.tc_level, e.peak_pop,
          case when coalesce(e.props->>'cards_played', '') ~ '^[0-9]{1,4}$' then (e.props->>'cards_played')::integer else 0 end,
-         case when coalesce(e.props->>'errors', '') ~ '^[0-9]{1,9}$' then (e.props->>'errors')::integer end,
-         nullif(left(e.props->>'err', 160), ''),
+         x.errors,
+         x.err,
          e.created_at
-  from starts s left join ending e on e.run_id = s.run_id;
+  from starts s
+  left join ending e on e.run_id = s.run_id
+  left join errs x on x.run_id = s.run_id;
 $$;
-revoke all on function public.analytics__games(timestamptz, timestamptz, text, text, boolean) from public;
-revoke all on function public.analytics__games(timestamptz, timestamptz, text, text, boolean) from anon, authenticated;
+revoke all on function public.analytics__games(timestamptz, timestamptz, text, text, boolean, timestamptz) from public;
+revoke all on function public.analytics__games(timestamptz, timestamptz, text, text, boolean, timestamptz) from anon, authenticated;
 
--- the headline numbers of one window. p_min_seconds drops games that never
--- reached that much play (a bounce is not a game); 'open' games have no
--- length and drop with it whenever it is set. The ERRORS are counted over
--- every game, the filter aside: a game that crashed in its first minute is
--- the one most worth seeing, and the filter would have dropped it.
-create or replace function public.analytics__window(
+-- the headline numbers of one window.
+--
+-- THE LENGTH FILTER (p_min_seconds) drops only a game whose KNOWN length is
+-- short: a bounce is not a game. A game with no ending row at all ('open'
+-- — still running, or its rows were blocked, or it was left from the menu)
+-- has no known length and stays in: dropping it made "finished" a share of
+-- the games that happened to report, and "No signal yet" could never show.
+-- The ERRORS are counted over every game, the filter aside: a game that
+-- crashed in its first minute is the one most worth seeing.
+--
+-- NEW PLAYERS are everyone whose first game ever started in the window, among
+-- the games in the window's scope (difficulty, device) BEFORE the length
+-- filter: a new player who bounced in the first minute and never came back is
+-- exactly who "played again" and the first-game hook exist to count, so the
+-- filter must not quietly remove them from both.
+--
+-- THE CLUSTER SUMS ('robust'): games come in bunches per player, so a test
+-- that treats every game as an independent trial cries "Better" or "Worse"
+-- far more often than 5% of the time. For each per-game rate the page gets,
+-- per window, k and n and the per-player sums Σk², Σk·n, Σn² and the number
+-- of players m with any games in it, and tests the change player by player
+-- (the cluster-robust variance); for the count of games, Σg² per player.
+drop function if exists public.analytics__window(timestamptz, timestamptz, text, text, integer, boolean);
+drop function if exists public.analytics__window(timestamptz, timestamptz, text, text, integer, boolean, timestamptz);
+create function public.analytics__window(
   p_from timestamptz, p_to timestamptz, p_mode text, p_device text,
-  p_min_seconds integer, p_everyone boolean)
+  p_min_seconds integer, p_everyone boolean, p_seen_by timestamptz default null)
 returns jsonb
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  with a as (select * from public.analytics__games(p_from, p_to, p_mode, p_device, p_everyone)),
+  with a as (select * from public.analytics__games(p_from, p_to, p_mode, p_device, p_everyone, p_seen_by)),
   g as (
     select * from a
-    where coalesce(p_min_seconds, 0) <= 0 or coalesce(a.seconds, 0) >= p_min_seconds
+    where coalesce(p_min_seconds, 0) <= 0 or a.seconds is null or a.seconds >= p_min_seconds
   ),
   hid as (select distinct h.user_id from public.analytics__hidden() h where not coalesce(p_everyone, false)),
-  -- a player's FIRST game ever (the same devices left out), for "new"
+  -- a player's FIRST game ever (any difficulty, any device; the same devices
+  -- left out), for "new"
   firsts as (
     select t.user_id, min(t.created_at) as first_at
     from public.telemetry t
-    where t.kind = 'run_start' and not exists (select 1 from hid where hid.user_id = t.user_id)
+    where t.kind = 'run_start' and t.run_id is not null and t.created_at <= now()
+      and not exists (select 1 from hid where hid.user_id = t.user_id)
     group by t.user_id
   ),
   players as (select distinct g.user_id from g),
   newbies as (
     select f.user_id, f.first_at from firsts f
-    where f.user_id in (select p.user_id from players p)
+    where f.user_id in (select x.user_id from a x)
       and (p_from is null or f.first_at >= p_from)
       and (p_to   is null or f.first_at <  p_to)
   ),
   -- PLAYED AGAIN: a new player who started a SECOND game within 7 days of
   -- their first (the same sitting counts — a second game is the hook).
-  -- Counted only for players first seen at least 7 days ago: a week that has
-  -- not happened yet is not a "no".
-  ripe as (select n.* from newbies n where n.first_at <= now() - interval '7 days'),
+  -- Counted only for players whose week had passed by the time the window is
+  -- read (p_seen_by, else now): a week that has not happened yet is not a "no".
+  ripe as (select n.* from newbies n where n.first_at <= coalesce(p_seen_by, now()) - interval '7 days'),
   back as (
     select r.user_id from ripe r
     where (select count(distinct t.run_id) from public.telemetry t
            where t.user_id = r.user_id and t.kind = 'run_start' and t.run_id is not null
              and t.created_at >= r.first_at and t.created_at < r.first_at + interval '7 days') >= 2
   ),
-  -- THE FIRST-GAME HOOK: each new player's FIRST game, and whether it held
-  -- them for ten minutes of play. A first game with no ending row at all
-  -- ('open': still running, or its rows were blocked) says nothing either
-  -- way and is left out of both sides.
+  -- THE FIRST-GAME HOOK: each new player's TRUE first game (whatever its
+  -- difficulty or device), counted only when that game is in the filter —
+  -- under "Hard", a player who started on Calm is scored on nothing rather
+  -- than on a later game wearing the name "first". Whether it held them for
+  -- ten minutes of play; a first game with no ending row at all ('open') says
+  -- nothing either way and is left out of both sides.
   first_games as (
     select f.* from (
       select distinct on (x.user_id) x.*
-      from a x
-      where x.user_id in (select n.user_id from newbies n)
-      order by x.user_id, x.started_at
+      from a x join newbies n on n.user_id = x.user_id and x.started_at = n.first_at
+      order by x.user_id, x.run_id
     ) f
     where f.result <> 'open'
   ),
-  per_player as (select g.user_id, sum(coalesce(g.seconds, 0)) as secs from g group by g.user_id),
+  per_player as (select g.user_id, sum(g.seconds) as secs from g where g.seconds is not null group by g.user_id),
+  pp as (
+    select g.user_id, count(*)::bigint as n,
+           count(*) filter (where g.result in ('won', 'lost'))::bigint as d,
+           count(*) filter (where g.result = 'won')::bigint as w
+    from g group by g.user_id
+  ),
+  pe as (
+    select a.user_id, count(*) filter (where a.errors is not null)::bigint as n,
+           count(*) filter (where coalesce(a.errors, 0) > 0)::bigint as k
+    from a group by a.user_id
+  ),
   fb as (
     select f.kind from public.feedback f
     where (p_from is null or f.created_at >= p_from)
@@ -343,6 +435,7 @@ as $$
     'from', p_from, 'to', p_to,
     'players',     (select count(*) from players),
     'new_players', (select count(*) from newbies),
+    'returning',   (select count(*) from players p where p.user_id not in (select n.user_id from newbies n)),
     'games',       (select count(*) from g),
     'won',   (select count(*) from g where result = 'won'),
     'lost',  (select count(*) from g where result = 'lost'),
@@ -368,6 +461,14 @@ as $$
     'player_minutes', (select round((percentile_cont(0.5) within group (order by secs) / 60.0)::numeric, 1) from per_player),
     'err_n',      (select count(*) from a where errors is not null),
     'err_games',  (select count(*) from a where coalesce(errors, 0) > 0),
+    'robust', jsonb_build_object(
+      'games',    (select jsonb_build_object('g', coalesce(sum(n), 0), 'gg', coalesce(sum(n * n), 0), 'm', count(*)) from pp),
+      'finished', (select jsonb_build_object('k', coalesce(sum(d), 0), 'n', coalesce(sum(n), 0), 'kk', coalesce(sum(d * d), 0),
+                     'kn', coalesce(sum(d * n), 0), 'nn', coalesce(sum(n * n), 0), 'm', count(*) filter (where n > 0)) from pp),
+      'win',      (select jsonb_build_object('k', coalesce(sum(w), 0), 'n', coalesce(sum(d), 0), 'kk', coalesce(sum(w * w), 0),
+                     'kn', coalesce(sum(w * d), 0), 'nn', coalesce(sum(d * d), 0), 'm', count(*) filter (where d > 0)) from pp),
+      'err',      (select jsonb_build_object('k', coalesce(sum(k), 0), 'n', coalesce(sum(n), 0), 'kk', coalesce(sum(k * k), 0),
+                     'kn', coalesce(sum(k * n), 0), 'nn', coalesce(sum(n * n), 0), 'm', count(*) filter (where n > 0)) from pe)),
     'reports', jsonb_build_object(
       'bug',   (select count(*) from fb where kind = 'bug'),
       'crash', (select count(*) from fb where kind = 'crash'),
@@ -375,17 +476,29 @@ as $$
       'other', (select count(*) from fb where kind = 'other'))
   );
 $$;
-revoke all on function public.analytics__window(timestamptz, timestamptz, text, text, integer, boolean) from public;
-revoke all on function public.analytics__window(timestamptz, timestamptz, text, text, integer, boolean) from anon, authenticated;
+revoke all on function public.analytics__window(timestamptz, timestamptz, text, text, integer, boolean, timestamptz) from public;
+revoke all on function public.analytics__window(timestamptz, timestamptz, text, text, integer, boolean, timestamptz) from anon, authenticated;
 
 -- ===========================================================================
 -- 4. THE DASHBOARD'S DOORS
 -- ===========================================================================
--- the whole page in one call
-create or replace function public.analytics_dashboard(
+-- the whole page in one call.
+--
+-- EVERY DAY covers exactly the period the tiles count, in the OPERATOR'S days
+-- (p_tz, the page's own time zone; a name PostgreSQL does not know falls back
+-- to UTC and never raises): from p_from — or, with no start, the day of the
+-- first game the tiles count — to p_to or now, at most the last 180 days
+-- (`daily_info.capped` says when the chart shows less than the tiles count).
+-- A day only partly inside the period carries `partial` and the stretch of it
+-- that is in (`from`, `to`): the first day of "Last 30 days" starts at this
+-- hour thirty days ago, and today is not over.
+drop function if exists public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean);
+drop function if exists public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean, text);
+create function public.analytics_dashboard(
   p_token text, p_from timestamptz default null, p_to timestamptz default null,
   p_mode text default null, p_device text default null,
-  p_min_seconds integer default 60, p_everyone boolean default false)
+  p_min_seconds integer default 60, p_everyone boolean default false,
+  p_tz text default 'UTC')
 returns jsonb
 language plpgsql
 stable
@@ -394,20 +507,48 @@ set search_path = ''
 as $$
 declare
   v_out jsonb;
+  v_tz  text := 'UTC';
+  v_end timestamptz := least(coalesce(p_to, now()), now());   -- the period ends here: nothing has started after now
+  v_d0  date;
+  v_d1  date;
+  v_cap boolean := false;
 begin
   if not public.analytics__ok(p_token) then
     return jsonb_build_object('ok', false, 'reason', 'bad_token');
   end if;
+  if p_tz is not null and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_tz) then
+    v_tz := p_tz;
+  end if;
+  -- the days the chart draws: the period's own, in v_tz
+  v_d1 := ((v_end - interval '1 microsecond') at time zone v_tz)::date;
+  if p_from is not null then
+    v_d0 := (p_from at time zone v_tz)::date;
+  else
+    select (min(x.started_at) at time zone v_tz)::date into v_d0
+    from public.analytics__games(null, p_to, p_mode, p_device, p_everyone) x
+    where coalesce(p_min_seconds, 0) <= 0 or x.seconds is null or x.seconds >= p_min_seconds;
+  end if;
+  if v_d0 is not null and v_d0 < v_d1 - 179 then
+    v_d0 := v_d1 - 179;
+    v_cap := true;
+  end if;
   with g as (
     select * from public.analytics__games(p_from, p_to, p_mode, p_device, p_everyone) x
-    where coalesce(p_min_seconds, 0) <= 0 or coalesce(x.seconds, 0) >= p_min_seconds
+    where coalesce(p_min_seconds, 0) <= 0 or x.seconds is null or x.seconds >= p_min_seconds
   ),
   -- the funnel, the bounce and the errors read EVERY game, the run filter aside
   allg as (select * from public.analytics__games(p_from, p_to, p_mode, p_device, p_everyone)),
   days as (
-    select d::date as day from generate_series(
-      coalesce(p_from, now() - interval '30 days')::date,
-      (coalesce(p_to, now()) - interval '1 second')::date, interval '1 day') d
+    select d::date as day,
+           (d::date::timestamp at time zone v_tz) as ds,
+           ((d::date + 1)::timestamp at time zone v_tz) as de
+    from generate_series(v_d0::timestamp, v_d1::timestamp, interval '1 day') d
+    where v_d0 is not null and v_d0 <= v_d1
+  ),
+  gd as (
+    select (g.started_at at time zone v_tz)::date as day, count(*) as games, count(distinct g.user_id) as players,
+           count(*) filter (where g.result = 'won') as won, count(*) filter (where g.result = 'lost') as lost
+    from g group by 1
   ),
   hid as (select h.user_id, h.why from public.analytics__hidden() h),
   -- the deck's own rows (0008's kinds), on the same terms as the games: the
@@ -429,15 +570,26 @@ begin
     'headline', public.analytics__window(p_from, p_to, p_mode, p_device, p_min_seconds, p_everyone),
     'daily', (select coalesce(jsonb_agg(jsonb_build_object(
                  'day', d.day,
-                 'players', (select count(distinct g.user_id) from g where g.started_at::date = d.day),
-                 'games',   (select count(*) from g where g.started_at::date = d.day),
-                 'won',     (select count(*) from g where g.started_at::date = d.day and g.result = 'won'),
-                 'lost',    (select count(*) from g where g.started_at::date = d.day and g.result = 'lost'))
-               order by d.day), '[]'::jsonb) from days d),
+                 'players', coalesce(x.players, 0),
+                 'games',   coalesce(x.games, 0),
+                 'won',     coalesce(x.won, 0),
+                 'lost',    coalesce(x.lost, 0),
+                 'partial', (p_from is not null and p_from > d.ds) or v_end < d.de,
+                 'from',    case when (p_from is not null and p_from > d.ds) or v_end < d.de
+                                 then greatest(d.ds, coalesce(p_from, d.ds)) end,
+                 'to',      case when (p_from is not null and p_from > d.ds) or v_end < d.de
+                                 then least(d.de, v_end) end)
+               order by d.day), '[]'::jsonb)
+              from days d left join gd x on x.day = d.day),
+    'daily_info', jsonb_build_object('tz', v_tz, 'from', v_d0, 'to', v_d1, 'capped', v_cap, 'max_days', 180),
+    -- WHERE PLAYERS STOP: a true funnel — every rung is inside the one before
+    -- (a game that reached day 50 reached day 25) — and the outcomes apart:
+    -- a game can be won or lost on any day, so "finished" is not a rung.
     'funnel', (select jsonb_build_object(
                  'started',  count(*),
                  'minute',   count(*) filter (where coalesce(seconds, 0) >= 60),
                  'day10',    count(*) filter (where coalesce(day, 0) >= 10),
+                 'day25',    count(*) filter (where coalesce(day, 0) >= 25),
                  'day50',    count(*) filter (where coalesce(day, 0) >= 50),
                  'day100',   count(*) filter (where coalesce(day, 0) >= 100),
                  'finished', count(*) filter (where result in ('won', 'lost')),
@@ -522,16 +674,23 @@ begin
                  'network', (select count(distinct user_id) from hid where why = 'network'),
                  'devices', (select count(distinct user_id) from hid),
                  'nets',    (select count(*) from public.analytics_excluded_nets),
+                 -- their games on the tiles' own terms: the run filter too
                  'games',   (select count(*) from public.analytics__games(p_from, p_to, p_mode, p_device, true) a
-                             where a.user_id in (select user_id from hid))),
+                             where a.user_id in (select user_id from hid)
+                               and (coalesce(p_min_seconds, 0) <= 0 or a.seconds is null or a.seconds >= p_min_seconds))),
     -- WHEN EACH BUILD WENT LIVE (every row names its build from 107 on): the
     -- first row seen on it, everyone's included — the operator's own device
     -- is usually first to load a deploy, and that IS the moment. Builds
-    -- before 107 carry no stamp; the page knows their moments by hand.
+    -- before 107 carry no stamp; the page knows their moments by hand. A
+    -- client cannot choose a row's time any more (the stamp trigger above),
+    -- but a row from before this file could have: nothing from the future is
+    -- read, and the page refuses a moment it cannot parse or that falls
+    -- before the build's own patch note.
     'builds', (select coalesce(jsonb_object_agg(b::text, first_at), '{}'::jsonb) from (
-                 select (t.props->>'build')::integer as b, min(t.created_at) as first_at
+                 select case when coalesce(t.props->>'build', '') ~ '^[0-9]{1,6}$' then (t.props->>'build')::integer end as b,
+                        min(t.created_at) as first_at
                  from public.telemetry t
-                 where coalesce(t.props->>'build', '') ~ '^[0-9]{1,6}$'
+                 where coalesce(t.props->>'build', '') ~ '^[0-9]{1,6}$' and t.created_at <= now()
                  group by 1) x),
     'filters', jsonb_build_object(
                  'modes',   (select coalesce(jsonb_agg(distinct t.mode) filter (where t.mode is not null), '[]'::jsonb) from public.telemetry t),
@@ -544,8 +703,9 @@ begin
   return v_out;
 end;
 $$;
-revoke all on function public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean) from public;
-grant execute on function public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean) to anon, authenticated;
+revoke all on function public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean, text) from public;
+revoke all on function public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean, text) from anon, authenticated;
+grant execute on function public.analytics_dashboard(text, timestamptz, timestamptz, text, text, integer, boolean, text) to anon, authenticated;
 
 -- DID THE UPDATE HELP? Two windows of EQUAL LENGTH either side of a moment
 -- (a release): the same headline numbers for each. While the "after"
@@ -556,6 +716,15 @@ grant execute on function public.analytics_dashboard(text, timestamptz, timestam
 -- regular afresh, a fortnight's counts them once: per-day rates of unequal
 -- windows would read a short window as growth). Once the window is
 -- complete it is simply the p_days before against the p_days after.
+--
+-- EQUAL FOLLOW-UP: each window is read as it stood the same time after its
+-- own start — the "before" window as of now() minus the shift, the "after"
+-- window as of now() — so the before game at split - shift + x and its after
+-- twin at split + x have both had exactly now - split - x to report how they
+-- ended. Read with everything there is, a before game had the shift (7 to 28
+-- days) longer to come back and win, and the release would read "Worse" on
+-- identical play. `after_s` is the after window to the second (the page says
+-- "no after yet" and "N hours" from it).
 create or replace function public.analytics_compare(
   p_token text, p_split timestamptz, p_days integer default 14,
   p_mode text default null, p_device text default null,
@@ -578,16 +747,21 @@ begin
   if p_split is null then
     return jsonb_build_object('ok', false, 'reason', 'no_split');
   end if;
+  if not isfinite(p_split) then
+    return jsonb_build_object('ok', false, 'reason', 'bad_split');
+  end if;
   v_e := least(v_days::numeric, greatest(0, extract(epoch from (now() - p_split)) / 86400.0));
   v_len := make_interval(secs => (v_e * 86400)::double precision);
   v_back := make_interval(days => 7 * greatest(1, ceil(v_e / 7.0))::integer);
   return jsonb_build_object(
     'ok', true,
     'split', p_split, 'days', v_days,
-    'after_days', round(v_e, 1),
+    'after_days', round(v_e, 4),
+    'after_s', round(v_e * 86400),
     'before_from', p_split - v_back, 'before_to', p_split - v_back + v_len, 'after_to', p_split + v_len,
-    'before', public.analytics__window(p_split - v_back, p_split - v_back + v_len, p_mode, p_device, p_min_seconds, p_everyone),
-    'after',  public.analytics__window(p_split, p_split + v_len, p_mode, p_device, p_min_seconds, p_everyone)
+    'seen_before', now() - v_back, 'seen_after', now(),
+    'before', public.analytics__window(p_split - v_back, p_split - v_back + v_len, p_mode, p_device, p_min_seconds, p_everyone, now() - v_back),
+    'after',  public.analytics__window(p_split, p_split + v_len, p_mode, p_device, p_min_seconds, p_everyone, now())
   );
 end;
 $$;
@@ -687,7 +861,9 @@ grant execute on function public.analytics_mark_network(text, boolean, text) to 
 -- the most active devices, so the operator can recognise their own (the
 -- history before the network stamp lives only here). An id is shown cut to
 -- 8 characters — enough to tell devices apart, and the page sends back the
--- whole id it was given for a mark.
+-- whole id it was given for a mark. A device's GAMES and WINS come from the
+-- same one-result-per-game model as every other number (everyone included):
+-- a save loaded and won twice is one game and one win, never two rows.
 create or replace function public.analytics_devices(p_token text, p_limit integer default 25)
 returns jsonb
 language plpgsql
@@ -702,21 +878,34 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'bad_token');
   end if;
   return jsonb_build_object('ok', true, 'devices', (
-    select coalesce(jsonb_agg(x order by (x->>'games')::int desc, x->>'last' desc), '[]'::jsonb) from (
-      select jsonb_build_object(
-        'id', t.user_id,
-        'games', count(*) filter (where t.kind = 'run_start'),
-        'wins',  count(*) filter (where t.kind = 'run_end' and t.outcome = 'win'),
-        'first', min(t.created_at), 'last', max(t.created_at),
-        'device', (array_agg(t.device order by t.created_at desc) filter (where t.device is not null))[1],
-        'here', v_net is not null and coalesce(bool_or(t.net = v_net), false),
-        'tester', coalesce(bool_or(t.props->>'cards_test' = 'true'), false),
-        'mine', exists (select 1 from public.analytics_excluded e where e.user_id = t.user_id),
-        'label', (select e.label from public.analytics_excluded e where e.user_id = t.user_id),
-        'on_marked_net', coalesce(bool_or(t.net in (select n.net from public.analytics_excluded_nets n)), false)) as x
+    with gm as (
+      select x.user_id, count(*) as games, count(*) filter (where x.result = 'won') as wins
+      from public.analytics__games(null, null, null, null, true) x
+      group by x.user_id
+    ),
+    rows_by as (
+      select t.user_id, min(t.created_at) as first_at, max(t.created_at) as last_at,
+             (array_agg(t.device order by t.created_at desc) filter (where t.device is not null))[1] as device,
+             v_net is not null and coalesce(bool_or(t.net = v_net), false) as here,
+             coalesce(bool_or(t.props->>'cards_test' = 'true'), false) as tester,
+             coalesce(bool_or(t.net in (select n.net from public.analytics_excluded_nets n)), false) as on_marked_net
       from public.telemetry t
       group by t.user_id
-      order by count(*) filter (where t.kind = 'run_start') desc, max(t.created_at) desc
+    )
+    select coalesce(jsonb_agg(x order by (x->>'games')::int desc, x->>'last' desc), '[]'::jsonb) from (
+      select jsonb_build_object(
+        'id', r.user_id,
+        'games', coalesce(gm.games, 0),
+        'wins',  coalesce(gm.wins, 0),
+        'first', r.first_at, 'last', r.last_at,
+        'device', r.device,
+        'here', r.here,
+        'tester', r.tester,
+        'mine', exists (select 1 from public.analytics_excluded e where e.user_id = r.user_id),
+        'label', (select e.label from public.analytics_excluded e where e.user_id = r.user_id),
+        'on_marked_net', r.on_marked_net) as x
+      from rows_by r left join gm on gm.user_id = r.user_id
+      order by coalesce(gm.games, 0) desc, r.last_at desc
       limit greatest(1, least(coalesce(p_limit, 25), 200))
     ) s));
 end;
@@ -746,6 +935,11 @@ $c$;
 update public.feedback set status = 'fixed' where handled and status = 'new';
 create index if not exists feedback_status_time on public.feedback (status, created_at desc);
 
+-- the inbox: report ROWS, behind the passphrase. Every field comes back in a
+-- type the page can trust whatever a client sent (0009 only checks that
+-- `details` is an object): errors an ARRAY or [], run an object of plain
+-- fields or null, installed a boolean. One crafted report used to throw in
+-- the page and blank every other report with it.
 create or replace function public.analytics_feedback(
   p_token text, p_status text default null, p_kind text default null, p_limit integer default 100)
 returns jsonb
@@ -768,10 +962,19 @@ begin
         'build', f.details->'report'->>'build',
         'browser', f.details->'report'->>'browser',
         'screen', f.details->'report'->>'screen',
-        'installed', f.details->'report'->'installed',
-        'run', f.details->'report'->'run',
+        'installed', coalesce(jsonb_typeof(f.details->'report'->'installed') = 'boolean' and f.details->'report'->>'installed' = 'true', false),
+        'run', case when jsonb_typeof(f.details->'report'->'run') = 'object' then jsonb_build_object(
+                 'mode', f.details->'report'->'run'->>'mode',
+                 'day', case when coalesce(f.details->'report'->'run'->>'day', '') ~ '^[0-9]{1,9}$'
+                             then (f.details->'report'->'run'->>'day')::integer end,
+                 'size', f.details->'report'->'run'->>'size',
+                 'landform', f.details->'report'->'run'->>'landform',
+                 'variant', f.details->'report'->'run'->>'variant',
+                 'seed', f.details->'report'->'run'->>'seed',
+                 'over', coalesce(f.details->'report'->'run'->>'over' = 'true', false)) end,
         'frame_error', f.details->'report'->>'frameError',
-        'errors', coalesce(f.details->'report'->'errors', '[]'::jsonb),
+        'errors', case when jsonb_typeof(f.details->'report'->'errors') = 'array'
+                       then f.details->'report'->'errors' else '[]'::jsonb end,
         'updated_at', f.updated_at) as x
       from public.feedback f
       where (p_status is null or (p_status = 'open' and f.status in ('new', 'triaged', 'sent')) or f.status = p_status)
