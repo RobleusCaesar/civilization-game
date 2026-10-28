@@ -38,3 +38,35 @@ outright, full stop.
 Bump `CFG.ART_V` in js/config.js when you re-upload a file under a name it
 already had, or the Pages CDN keeps serving the old one. New filenames
 (including adding `2.png` to a bucket that only had `1.png`) don't need it.
+
+## The card reward screen (`reward/`)
+
+With the card system on, a run's end is the REWARD screen (js/deckscreens.js),
+and it draws its own pictures from `reward/`, by filename alone:
+
+    reward/win-wide.webp    the valley at dawn, for a victory on a landscape window
+    reward/win-tall.webp    the same, composed for a phone held upright
+    reward/loss-wide.webp   the valley at dusk, the hall fallen, for a defeat
+    reward/loss-tall.webp   the same, upright
+    reward/pedestal.png     the carved altar the card stands on (transparent)
+
+Each backdrop has a `.jpg` beside it (the same picture at 2x, nearest-
+neighbour) for a browser without WebP. They are pixel art at native size —
+688x384 and 384x688 — and the screen scales them itself, by a whole factor,
+so do not upscale them here. The pedestal is drawn at the card's own pixel
+density, 240 x 102, the card standing 26 pixels down its top
+(`DeckScreens.PLINTH` holds those numbers: change the picture's size or where
+the card stands and change them with it). A missing file leaves the screen's
+own painted landscape and stone drum — nothing breaks.
+
+Those five are the screen's only pictures, because they are WORLD art — the
+valley and the altar standing in it. Everything drawn over them is CHROME
+(the banner and its sprigs, the laurels beside the card, the deck's little
+card stack, the brackets, gems and sparks) and is drawn as vectors in code
+(`DeckScreens.SVG`, `DeckUI.deckIcon`, `DeckUI.GEM_SVG`), at the device's own
+resolution: do not add a PNG for any of it. `tests/deck-screens.mjs` §7
+measures the rule — no raster on the reward screen, the collection or the
+deck sheet but these and the card faces may be shown past its own pixels on
+a 3x phone, and the pedestal never past twice its pixels (it is 2x on a
+desktop today; a larger window would want a larger altar, not a stretched
+one).

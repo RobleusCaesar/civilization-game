@@ -103,6 +103,22 @@ const DeckScreens = {
       row.classList.add('clFour');
     }
     this._paintCounts();
+    this._preload();
+  },
+  /* the reward screen's pictures are fetched while the player is still on
+     the title, in idle time — a few hundred KB — so a run's end never waits
+     on the network for its valley (a late one still fades in over the
+     painting; this only makes that rare) */
+  _preload() {
+    if (this._preloaded) return;
+    this._preloaded = true;
+    const go = () => {
+      const vp = this._vp(), o = vp.w / vp.h < 0.9 ? '-tall' : '-wide', none = () => {};
+      this._want('win' + o, this.ART_EXT.bg, none);
+      this._want('loss' + o, this.ART_EXT.bg, none);
+      this._want('pedestal', this.ART_EXT.pedestal, none);
+    };
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 8000 }); else setTimeout(go, 3000);
   },
 
   /* ================= THE END SCREEN ================= */
@@ -213,7 +229,10 @@ const DeckScreens = {
      window has room for beside the score. */
   _cardW() {
     const { w, h } = this._vp();
-    if (w >= 900 && w / h >= 1.25) return Deck.fit(Math.min(352, (h - 170) / 296 * 176)).w;
+    // the column's fixed rows (eyebrow, banner, the gap under it, the edges)
+    // take 146px; the rest is the card and the altar below its foot
+    const P = this.PLINTH, per = Deck.H + P.h - P.ty;
+    if (w >= 900 && w / h >= 1.25) return Deck.fit(Math.min(352, (h - 146) / per * Deck.W)).w;
     const f = Deck.fit(h >= 720 ? 176 : 132);
     return f.w >= 110 ? f.w : Deck.fit(176).w;
   },
@@ -261,18 +280,19 @@ const DeckScreens = {
     }
     root.className = v.win ? 'ceWin' : 'ceLoss';
     const mode = (typeof G !== 'undefined' && G.modeCfg) ? G.modeCfg().name : '';
-    const lau = v.win ? '<canvas class="ceBL" aria-hidden="true"></canvas>' : '';
+    const lau = side => v.win ? `<i class="ceBL ${side}" aria-hidden="true"></i>` : '';
     root.innerHTML =
-      '<canvas class="ceBg" aria-hidden="true"></canvas><i class="ceVig"></i><i class="ceLines"></i>' +
+      '<canvas class="ceBg" aria-hidden="true"></canvas><canvas class="ceBgArt" aria-hidden="true"></canvas>' +
+      '<i class="ceVig"></i><i class="ceLines"></i>' +
       `<button class="ceDeck" type="button" data-act="deck" aria-label="Your cards">${this.DECK_SVG}<b class="ceDeckN"></b></button>` +
       '<div class="ceFly"></div>' +
       '<div class="ceScroll"><div class="ceCol"><div class="ceIn">' +
         `<p class="ceEye"><i></i><span>${this.esc(this._eyebrow(v))}</span><i></i></p>` +
-        `<div class="ceBan"><i class="ceTail l"></i><i class="ceTail r"></i><div class="ceRib">${lau}<b>${v.win ? 'Victory' : 'Defeat'}</b>${lau}</div></div>` +
+        `<div class="ceBan"><i class="ceRibArt" aria-hidden="true"></i><div class="ceRib">${lau('l')}<b>${v.win ? 'Victory' : 'Defeat'}</b>${lau('r')}</div></div>` +
         '<div class="ceMain">' +
           '<div class="ceStage">' +
             '<i class="ceGlow"></i><i class="ceRays"><i></i></i><i class="ceRays b"><i></i></i>' +
-            '<canvas class="ceLaurel l" aria-hidden="true"></canvas><canvas class="ceLaurel r" aria-hidden="true"></canvas>' +
+            '<i class="ceLaurel l" aria-hidden="true"></i><i class="ceLaurel r" aria-hidden="true"></i>' +
             '<i class="ceShaft"></i><i class="ceFlash"></i>' +
             '<canvas class="cePlinth" aria-hidden="true"></canvas><i class="ceTopGlow"></i><i class="ceSlit"></i>' +
             '<div class="ceClip"><div class="ceMove" data-act="card"></div></div>' +
@@ -305,10 +325,25 @@ const DeckScreens = {
     root.style.setProperty('--cw', v.cw + 'px');
     root.style.setProperty('--ch', (v.cw * Deck.H / Deck.W) + 'px');
     root.style.setProperty('--u', u + 'px');
-    this._paintBg(root.querySelector('.ceBg'), v.win);
-    this._paintPlinth(root.querySelector('.cePlinth'), v.win);
-    if (v.win) root.querySelectorAll('.ceBL').forEach((c, i) => this._paintLaurel(c, 44, i === 1));
-    root.querySelectorAll('.ceLaurel').forEach((c, i) => this._paintLaurel(c, 150, i === 1));
+    const P = this.PLINTH;
+    root.style.setProperty('--pw', P.w);
+    root.style.setProperty('--ph', P.h);
+    root.style.setProperty('--pty', P.ty);
+    root.style.setProperty('--phang', P.h - P.ty);
+    root.style.setProperty('--pfoot', P.foot);
+    // the painted valley when it has landed; the procedural one until then, and for good on a 404
+    if (!this._artBg(root, v.win)) this._paintBg(root.querySelector('.ceBg'), v.win);
+    this._plinth(root.querySelector('.cePlinth'), v.win);
+    // the chrome: the laurels and the banner, drawn as vectors (DeckScreens.SVG)
+    const V = this.SVG;
+    root.style.setProperty('--laurelL', V.laurel(true));
+    root.style.setProperty('--laurelR', V.laurel(false));
+    root.style.setProperty('--sprigL', V.laurel(true, true));
+    root.style.setProperty('--sprigR', V.laurel(false, true));
+    root.style.setProperty('--glint', V.glint());
+    ['TL', 'TR', 'BR', 'BL'].forEach((k, i) => root.style.setProperty('--cn' + k, V.corner(i, v.win)));
+    root.style.setProperty('--loz', V.lozenge(v.win));
+    this._ribbon(root, v.win);
     this._lend();
     this._setButtons(v.claimed >= v.cards.length ? 'done' : 'claim');
     this._paintCounts();
@@ -602,7 +637,10 @@ const DeckScreens = {
     setTimeout(land, this.FLY_MS + 500);
   },
 
-  /* ---------------- sparks: pixel motes that drift up through the light ---------------- */
+  /* ---------------- sparks: motes of light that drift up through it ----------------
+     soft round motes with a white-hot core, and — from Iron up — every
+     third one a four-point glint; drawn by the browser at the device's own
+     resolution, never squares of pixels (the chrome ruling) */
   _sparks(box, n, tier) {
     box.innerHTML = '';
     const ember = tier === 'enlight';
@@ -613,20 +651,169 @@ const DeckScreens = {
     let html = '';
     for (let i = 0; i < n; i++) {
       const sz = ember ? 2 + (Math.random() * 3 | 0) : 2 + (Math.random() * 2 | 0);
-      const x = 8 + Math.random() * 84, y = ember ? 55 + Math.random() * 45 : 20 + Math.random() * 70;
+      const gl = i % 3 === 2 && (tier === 'iron' || tier === 'imperial' || tier === 'enlight');
+      // a glint is a star the size of a letter: it twinkles BESIDE the card
+      // (the box is two cards wide, the card its middle half), never over
+      // the name on its plate, where a still frame read it as a flaw
+      const x = gl ? (Math.random() < 0.5 ? 6 + Math.random() * 16 : 78 + Math.random() * 16) : 8 + Math.random() * 84;
+      const y = ember ? 55 + Math.random() * 45 : 20 + Math.random() * 70;
       const d = (ember ? 1.6 : 2.6) + Math.random() * 2.2;
-      html += `<i style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--s:${sz}px;--sc:${cols[i % cols.length]};` +
+      html += `<i${gl ? ' class="gl"' : ''} style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--s:${sz}px;--sc:${cols[i % cols.length]};` +
         `--dx:${((Math.random() - 0.5) * 40).toFixed(0)}px;--dy:${-(ember ? 120 + Math.random() * 120 : 50 + Math.random() * 70).toFixed(0)}px;` +
         `animation-duration:${d.toFixed(2)}s;animation-delay:${(-Math.random() * d).toFixed(2)}s"></i>`;
     }
     box.innerHTML = html;
   },
 
+  /* ================= THE PAINTED VALLEY =================
+     The backdrop and the plinth are SUPPLIED ART, landing by FILENAME alone
+     (the ART_PLAN rule — no manifest): in ART_DIR,
+
+       win-wide / win-tall     the valley at dawn, for a victory
+       loss-wide / loss-tall   the same valley at dusk, the hall fallen
+       pedestal                the carved altar the card stands on
+
+     the backdrops as .webp with a .jpg behind each, the pedestal a .png.
+     `wide` is drawn on a landscape window and `tall` on a portrait one.
+     Each name is asked for once a session; a picture that has landed is
+     drawn the moment the screen opens, and one still on its way fades in
+     over the procedural painting below when it lands. A 404 keeps that
+     painting for good — A PAINTER STANDS DOWN FOR ART THAT ISN'T THERE,
+     the screen never does — and nothing here reads a pixel (a file://
+     picture taints its canvas). */
+  ART_DIR: 'assets/endgame/reward/',
+  ART_EXT: { bg: ['.webp', '.jpg'], pedestal: ['.png'] },
+  _art: {},            // name -> { ok: true | false | null (still loading), img, cbs }
+  _want(name, exts, cb) {
+    let e = this._art[name];
+    if (!e) {
+      e = this._art[name] = { ok: null, img: null, cbs: [], url: '' };
+      const v = (typeof CFG !== 'undefined' && CFG.ART_V) ? '?v=' + CFG.ART_V : '';
+      let tries = 0;
+      const next = i => {
+        if (i >= exts.length) {
+          /* a failure can be the network's, not the file's (a boot still
+             probing a thousand pictures can refuse a request outright): the
+             names are asked once more a moment later before the painting is
+             kept for the session */
+          if (++tries < 2) { setTimeout(() => next(0), 1500); return; }
+          e.ok = false; e.cbs = []; return;
+        }
+        const im = new Image();
+        im.decoding = 'async';
+        im.onload = () => {
+          e.ok = true; e.img = im; e.url = im.src;
+          const cbs = e.cbs; e.cbs = [];
+          for (const f of cbs) f(im);
+        };
+        im.onerror = () => next(i + 1);
+        im.src = this.ART_DIR + name + exts[i] + v;
+      };
+      next(0);
+    }
+    if (e.ok) { cb(e.img); return true; }
+    if (e.ok === null) e.cbs.push(cb);
+    return false;
+  },
+  /* the backdrop: true when the picture was drawn at once (the procedural
+     one need not be painted at all) */
+  _artBg(root, win) {
+    const vp = this._vp(), name = (win ? 'win' : 'loss') + (vp.w / vp.h < 0.9 ? '-tall' : '-wide');
+    const cv = root.querySelector('.ceBgArt'), gen = this._gen;
+    let now = true;
+    const got = this._want(name, this.ART_EXT.bg, img => {
+      if (gen !== this._gen || !cv.isConnected) return;
+      this._blitBg(cv, img);
+      root.classList.add('ceArtBg');
+      root.dataset.bg = name;
+      if (!now) cv.classList.add('ceArtIn');   // late: it fades in over the painting
+    });
+    now = false;
+    return got;
+  },
+  /* A PIXEL PICTURE ON ANY SCREEN, CRISP: a phone's three device pixels a
+     CSS pixel already make every art pixel a block of 3-4 squares, so it is
+     drawn as it is, nearest-neighbour. A desktop shows the 688-wide valley
+     at 2.1-2.8 screen pixels a pixel, where plain nearest-neighbour makes
+     columns of two and three side by side; there the picture is blown up
+     by a WHOLE factor first and the browser takes it down the last part of
+     the way smoothly — every art pixel the same size, edges a hair soft. */
+  _blitBg(cv, img) {
+    const vp = this._vp(), dpr = Math.max(1, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const s = Math.max(vp.w / iw, vp.h / ih) * dpr;
+    const k = s >= 3 ? 1 : Math.max(1, Math.min(3, Math.ceil(s)));
+    cv.width = iw * k; cv.height = ih * k;
+    const g = cv.getContext('2d');
+    if (!g) return;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0, cv.width, cv.height);
+    cv.classList.toggle('ceSoft', k > 1);
+  },
+  /* THE BANNER IS DRAWN TO ITS OWN SIZE: the band is as wide as its word
+     makes it (VICTORY with its sprigs, DEFEAT without) and as tall as the
+     window's layout says, so the picture is built for the box it is laid
+     out in — every rim line its true width, every corner true, at any size
+     — and built again whenever that box changes (a font landing, a window
+     turned). Layout sizes (offsetWidth), never the box on screen: the drop
+     plays a scale over it. */
+  _ribRO: null,
+  _ribbon(root, win) {
+    if (this._ribRO) { this._ribRO.disconnect(); this._ribRO = null; }
+    const ban = root.querySelector('.ceBan'), rib = root.querySelector('.ceRib'), art = root.querySelector('.ceRibArt');
+    if (!ban || !rib || !art) return;
+    const paint = () => {
+      if (!art.isConnected) return;
+      const bw = rib.offsetWidth, bh = rib.offsetHeight, pad = rib.offsetLeft;
+      if (!bw || !bh) return;
+      const r = this.SVG.ribbon(bw, bh, pad, win);
+      art.style.width = r.w + 'px';
+      art.style.height = r.h + 'px';
+      art.style.backgroundImage = r.uri;
+    };
+    paint();
+    if (typeof ResizeObserver === 'function') {
+      this._ribRO = new ResizeObserver(paint);
+      this._ribRO.observe(rib);
+    }
+  },
+  /* THE PLINTH, in one box whatever is drawn in it (PLINTH): the carved
+     altar when it has landed, the procedural drum until then (or for good),
+     each placed so its slit — the line the card stands on — falls on
+     PLINTH.ty. A defeat's altar is the same stone under a cold sky: drained
+     of colour and cooled by compositing alone, so the picture keeps its
+     own few colours. */
+  _plinth(cv, win) {
+    const P = this.PLINTH, gen = this._gen;
+    cv.width = P.w; cv.height = P.h;
+    const g = cv.getContext('2d');
+    if (!g) return;
+    cv.classList.remove('ceArt');
+    const drawn = this._want('pedestal', this.ART_EXT.pedestal, img => {
+      if (gen !== this._gen || !cv.isConnected) return;
+      g.clearRect(0, 0, P.w, P.h);
+      g.drawImage(img, Math.round((P.w - img.width) / 2), 0);
+      if (!win) {
+        g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,0.72)'; g.fillRect(0, 0, P.w, P.h);
+        g.globalCompositeOperation = 'multiply'; g.fillStyle = '#a3b0c6'; g.fillRect(0, 0, P.w, P.h);
+        g.globalCompositeOperation = 'destination-in'; g.drawImage(img, Math.round((P.w - img.width) / 2), 0);
+        g.globalCompositeOperation = 'source-over';
+      }
+      cv.classList.add('ceArt');
+    });
+    if (drawn) return;
+    const old = document.createElement('canvas');
+    this._paintPlinth(old, win);
+    g.drawImage(old, Math.round((P.w - old.width) / 2), P.ty - this.DRUM.ty);
+  },
+
   /* ================= THE PICTURES =================
-     All three are pixel art painted once into small canvases and blown up
+     The two fallbacks for the painted world — the land and the drum — are
+     pixel art painted once into small canvases and blown up
      nearest-neighbour: the backdrop at about four screen pixels a pixel,
-     the plinth and the laurels at the card's own density, so they read as
-     part of the same picture as the card standing on them. */
+     the drum at the card's own density, so it reads as part of the same
+     picture as the card standing on it. They are SCENE, not chrome: the
+     laurels and the banner are drawn as vectors (DeckScreens.SVG). */
 
   /* the land at dusk (a win) or under a cold night (a loss): a sky in hard
      bands, two ranges, a hall on the far ridge — whole, or broken and
@@ -731,13 +918,20 @@ const DeckScreens = {
     g.putImageData(img, 0, 0);
   },
 
-  /* THE PLINTH: a round drum of dressed stone, mossy on a win and cold on
-     a loss, with a slit across its top the card rises out of. 232 x 70 art
-     pixels, its top surface centred 18 pixels down — the card stands on
-     that line (the stage's CSS reads the same two numbers). */
-  PLINTH: { w: 232, h: 70, ty: 18 },
+  /* THE PLINTH'S BOX, in art pixels at the card's own density: the carved
+     altar's canvas (assets/endgame/reward/pedestal.png), the line the card
+     stands on PLINTH.ty pixels down. The stage's CSS reads these numbers
+     (--pw, --ph, --pty); whatever stands in the box is placed to them. On a
+     phone the card's plate stands in front of the altar's lowest `foot`
+     rows, the way a name plaque is set against a plinth's base — the height
+     a taller altar would otherwise cost the screen. */
+  PLINTH: { w: 240, h: 102, ty: 26, foot: 22 },
+  /* THE DRUM, the procedural fallback: a round drum of dressed stone, mossy
+     on a win and cold on a loss, with a slit across its top the card rises
+     out of. 232 x 70 art pixels, its top surface centred 18 pixels down. */
+  DRUM: { w: 232, h: 70, ty: 18 },
   _paintPlinth(cv, win) {
-    const PW = this.PLINTH.w, PH = this.PLINTH.h, cx = PW / 2, ty = this.PLINTH.ty, rx = 112, ry = 15, FH = 30;
+    const PW = this.DRUM.w, PH = this.DRUM.h, cx = PW / 2, ty = this.DRUM.ty, rx = 112, ry = 15, FH = 30;
     cv.width = PW; cv.height = PH;
     const g = cv.getContext('2d');
     if (!g) return;
@@ -807,72 +1001,16 @@ const DeckScreens = {
     g.putImageData(img, 0, 0);
   },
 
-  /* A LAUREL BRANCH, painted from a curve: a stem bowing outward, paired
-     leaves along it shrinking toward the tip, each shaded light on its upper
-     side, the whole thing outlined in ink. One painter makes the small sprigs
-     on the banner and the tall branches beside the card; `mirror` turns the
-     left one into the right. Gold from ART.PALETTE.gold. */
-  _paintLaurel(cv, h, mirror) {
-    const w = Math.max(6, Math.round(h * 0.5));
-    cv.width = w; cv.height = h;
-    const g = cv.getContext('2d');
-    if (!g) return;
-    const GOLD = ['#3a2508', '#8a6a1e', '#c99b32', '#e8c15a', '#fff2c0'];   // ink, then the palette's gold ramp
-    const m = new Uint8Array(w * h);
-    const x0 = w * 0.8, y0 = h - 1, x1 = -w * 0.15, y1 = h * 0.55, x2 = w * 0.58, y2 = 1;
-    const P = t => ({ x: (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * x1 + t * t * x2, y: (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * y1 + t * t * y2 });
-    const leaf = (cxL, cyL, dx, dy, L, Wd) => {
-      const px = -dy, py = dx;
-      for (let y = Math.floor(cyL - L); y <= cyL + L; y++) for (let x = Math.floor(cxL - L); x <= cxL + L; x++) {
-        if (x < 0 || y < 0 || x >= w || y >= h) continue;
-        const qx = x + 0.5 - cxL, qy = y + 0.5 - cyL, lx = qx * dx + qy * dy, ly = qx * px + qy * py;
-        const e = (lx / (L / 2)) ** 2 + (ly / (Wd / 2)) ** 2;
-        if (e > 1) continue;
-        // the side of the leaf facing up the branch takes the light
-        m[y * w + x] = e < 0.25 && lx > 0 ? 4 : (ly * (dx >= 0 ? 1 : -1) < 0 ? 3 : 2);
-      }
-    };
-    const n = Math.max(3, Math.round(h / 14));
-    for (let i = 0; i < n; i++) {
-      const t = 0.05 + i * (0.86 / (n - 1)), p = P(t), q = P(t + 0.01);
-      let tx = q.x - p.x, ty = q.y - p.y; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
-      const L = h * 0.13 * (1 - 0.45 * t) + 2, Wd = Math.max(1.6, L * 0.44);
-      for (const s of [-1, 1]) {
-        let dx = tx + (-ty) * s * 0.95, dy = ty + tx * s * 0.95;
-        const dl = Math.hypot(dx, dy); dx /= dl; dy /= dl;
-        leaf(p.x + dx * L * 0.5, p.y + dy * L * 0.5, dx, dy, s < 0 ? L * 1.1 : L * 0.9, Wd);
-      }
-    }
-    { const p = P(1), q = P(0.97); let dx = p.x - q.x, dy = p.y - q.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-      leaf(p.x + dx * h * 0.04, p.y + dy * h * 0.04, dx, dy, h * 0.09 + 2, Math.max(1.6, h * 0.035)); }
-    for (let t = 0; t <= 1; t += 0.5 / h) {
-      const p = P(t), x = Math.round(p.x), y = Math.round(p.y);
-      if (x >= 0 && y >= 0 && x < w && y < h) m[y * w + x] = 1;
-      if (t < 0.5 && x + 1 < w) m[y * w + x + 1] = 1;
-    }
-    const img = g.createImageData(w, h), d = img.data;
-    const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const v = m[y * w + x];
-      // an empty pixel is drawn only as the ink edge of a leaf or the stem beside it
-      if (!v && !((x > 0 && m[y * w + x - 1]) || (x < w - 1 && m[y * w + x + 1]) ||
-                  (y > 0 && m[(y - 1) * w + x]) || (y < h - 1 && m[(y + 1) * w + x]))) continue;
-      const rgb = hex(GOLD[v]), o = (y * w + (mirror ? w - 1 - x : x)) * 4;
-      d[o] = rgb[0]; d[o + 1] = rgb[1]; d[o + 2] = rgb[2]; d[o + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
+  /* the deck: a bronze card behind a gold one — the HUD button's own
+     picture (DeckUI.deckIcon), a smooth vector at every size it is shown */
+  get DECK_SVG() { return (window.DeckUI && DeckUI.deckIcon) ? DeckUI.deckIcon() : ''; },
+  get CLOSE_SVG() { return DeckScreens.SVG.CLOSE; },
+  /* a tier tab's gem: the deck sheet's own faceted gem (DeckUI.gemIcon),
+     smooth at every size; dark while nothing of the tier has been found */
+  _gem(seen) {
+    const cls = 'clGem' + (seen ? '' : ' dim');
+    return (window.DeckUI && DeckUI.gemIcon) ? DeckUI.gemIcon(cls) : `<i class="${cls}"></i>`;
   },
-
-  // the deck: two cards, the front one gold-framed (16-cell pixel art)
-  DECK_SVG: '<svg viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true">' +
-    '<rect x="6" y="0" width="9" height="12" fill="#1a1006"/><rect x="7" y="1" width="7" height="10" fill="#8a5f23"/>' +
-    '<rect x="8" y="2" width="5" height="8" fill="#5a3c16"/>' +
-    '<rect x="1" y="3" width="10" height="13" fill="#1a1006"/><rect x="2" y="4" width="8" height="11" fill="#e8c15a"/>' +
-    '<rect x="3" y="5" width="6" height="9" fill="#3a2410"/><rect x="5" y="7" width="2" height="5" fill="#f2cd62"/>' +
-    '<rect x="4" y="8" width="4" height="3" fill="#f2cd62"/><rect x="5" y="8" width="2" height="2" fill="#fff6d0"/></svg>',
-  CLOSE_SVG: '<svg viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true" fill="currentColor">' +
-    '<rect x="1" y="1" width="2" height="2"/><rect x="3" y="3" width="2" height="2"/><rect x="5" y="5" width="2" height="2"/><rect x="7" y="7" width="2" height="2"/>' +
-    '<rect x="7" y="1" width="2" height="2"/><rect x="5" y="3" width="2" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="1" y="7" width="2" height="2"/></svg>',
 
   /* ================= THE COLLECTION =================
      Every card the game holds, by tier: what you own (×N), what you have
@@ -990,7 +1128,7 @@ const DeckScreens = {
       const fresh = this._new && all.some(c => this._new.has(c.id));
       return `<button class="clTab${t.k === sel ? ' sel' : ''}${fresh ? ' clFresh' : ''}" type="button" role="tab" data-tier="${t.k}" aria-selected="${t.k === sel}" ` +
         `aria-label="${this.esc(t.name)}: ${held} held, ${seen} of ${all.length} discovered${fresh ? ', new cards' : ''}" style="--tc:${t.col};--tg:${t.glow}">` +
-        `<i class="clGem${seen ? '' : ' dim'}"></i><span class="clTabNm">${this.esc(t.name)}</span><span class="clTabAb" aria-hidden="true">${['I', 'II', 'III', 'IV', 'V'][t.rank]}</span><b class="clTabN">${held}</b></button>`;
+        `${this._gem(seen)}<span class="clTabNm">${this.esc(t.name)}</span><span class="clTabAb" aria-hidden="true">${['I', 'II', 'III', 'IV', 'V'][t.rank]}</span><b class="clTabN">${held}</b></button>`;
     }).join('');
     const t = Deck.tier(sel), cards = Deck.ofTier(sel);
     const seenN = cards.filter(c => Deck.seen(c.id)).length, pct = Math.round(100 * seenN / cards.length);
@@ -1121,6 +1259,199 @@ const DeckScreens = {
   },
 };
 
+/* THE CHROME IS DRAWN, NOT BLOWN UP (the operator's standing ruling: the
+   world's art — the painted valley, the pedestal standing in it, the card
+   paintings — stays pixel art; the screen's CHROME — the banner, its
+   sprigs, the laurels round the card, the corner brackets, the deck's
+   picture, the ceremony's sparks — is drawn at the device's own
+   resolution, never a small picture blown up). Each ornament is an SVG
+   built here and handed to CSS as a data URI (its own little document, so
+   its gradient ids can never collide with anything else on the page), and
+   the browser draws it at whatever size the layout asks, on any screen.
+   One burnished gold and one cold silver — the faces' own frames — and the
+   navy and slate of the banner. Pure functions; the strings are cached;
+   nothing is fetched. tests/deck-screens.mjs §7 measures the result: no
+   raster on these screens but the exempt pictures is shown past its own
+   pixels on a 3x screen. */
+DeckScreens.SVG = {
+  _c: {},
+  memo(k, fn) { return this._c[k] || (this._c[k] = fn()); },
+  uri(s) { return 'url("data:image/svg+xml;utf8,' + encodeURIComponent(s) + '")'; },
+  doc(w, h, body) { return `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${w} ${h}' width='${w}' height='${h}'>${body}</svg>`; },
+  f(n) { return Math.round(n * 100) / 100; },
+  /* the metal, banded like struck gold (or silver), lit from the top */
+  METAL: {
+    gold: ['#fff4c9', '#f6d074', '#d9a03a', '#a8691a', '#e7b955', '#87500f'],
+    silver: ['#ffffff', '#dde3ea', '#a9b3c0', '#6c7684', '#c8d0da', '#4a5361'],
+  },
+  metal(id, kind, x1, y1, x2, y2) {
+    const c = this.METAL[kind] || this.METAL.gold, at = [0, 0.22, 0.44, 0.6, 0.78, 1];
+    return `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${x1}' y1='${y1}' x2='${x2}' y2='${y2}'>` +
+      c.map((s, i) => `<stop offset='${at[i]}' stop-color='${s}'/>`).join('') + '</linearGradient>';
+  },
+  leafGrad(id) {
+    return `<linearGradient id='${id}' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#fff6cf'/><stop offset='.3' stop-color='#f5cf6a'/>` +
+      `<stop offset='.5' stop-color='#d89c34'/><stop offset='.52' stop-color='#a86a1c'/><stop offset='1' stop-color='#6f400c'/></linearGradient>`;
+  },
+  /* a leaf of beaten gold: lit along one half, shaded along the other, a
+     cut midrib between */
+  leaf(x, y, deg, L, gid, ink) {
+    const w = L * 0.25, f = n => this.f(n);
+    return `<g transform='translate(${f(x)} ${f(y)}) rotate(${f(deg)})'>` +
+      `<path d='M0,0 C${f(L * .28)},${f(-w)} ${f(L * .7)},${f(-w * .95)} ${f(L)},0 C${f(L * .7)},${f(w * .95)} ${f(L * .28)},${f(w)} 0,0 Z' fill='url(#${gid})' stroke='#2e1803' stroke-width='${ink}' stroke-linejoin='round'/>` +
+      `<path d='M${f(L * .1)},0 Q${f(L * .5)},${f(-w * .12)} ${f(L * .86)},0' fill='none' stroke='#6e3f0c' stroke-width='${f(ink * .7)}' stroke-linecap='round'/></g>`;
+  },
+
+  /* A LAUREL BRANCH of beaten gold along a curve that bows OUT from the
+     card and leans back in at its tip — the RIGHT branch; `mirror` makes
+     the left. Leaves go out in pairs, shortening toward the tip, berries in
+     the crook. 60 x 120 units: the tall branches beside the card (u x 75 by
+     u x 150) and, with fewer leaves and a heavier ink line so it still
+     reads at 44px, the sprigs on the banner. */
+  laurel(mirror, sprig) {
+    return this.memo('laurel' + (mirror ? 'L' : 'R') + (sprig ? 's' : ''), () => {
+      const P = [[13, 117], [46, 99], [51, 38], [25, 5]];
+      const pt = t => { const u = 1 - t; return [0, 1].map(k => u * u * u * P[0][k] + 3 * u * u * t * P[1][k] + 3 * u * t * t * P[2][k] + t * t * t * P[3][k]); };
+      const tan = t => { const u = 1 - t; return [0, 1].map(k => 3 * u * u * (P[1][k] - P[0][k]) + 6 * u * t * (P[2][k] - P[1][k]) + 3 * t * t * (P[3][k] - P[2][k])); };
+      const o = sprig ? { n: 5, spread: .62, L0: 24, L1: 15, ink: 1.5, stem: 3.2 } : { n: 11, spread: .6, L0: 23, L1: 12.5, ink: .8, stem: 2.1 };
+      const deg = r => r * 180 / Math.PI;
+      let leaves = '';
+      for (let i = 0; i < o.n; i++) {
+        const t = .05 + (.93 - .05) * i / (o.n - 1);
+        for (const side of [1, -1]) {
+          const tt = Math.min(.93, t + (side < 0 ? .04 : 0));
+          const p = pt(tt), d = tan(tt), len = Math.hypot(d[0], d[1]) || 1, T = [d[0] / len, d[1] / len], N = [-T[1], T[0]];
+          const a = Math.atan2(T[1], T[0]) + side * o.spread;
+          leaves += this.leaf(p[0] + N[0] * side * .9, p[1] + N[1] * side * .9, deg(a), o.L0 + (o.L1 - o.L0) * tt, 'lf', o.ink);
+        }
+      }
+      { const e = pt(.945), d = tan(.93); leaves += this.leaf(e[0], e[1], deg(Math.atan2(d[1], d[0])), o.L1 * 1.05, 'lf', o.ink); }
+      let berries = '';
+      if (!sprig) for (const t of [.3, .55, .78]) {
+        const p = pt(t), d = tan(t), l = Math.hypot(d[0], d[1]), N = [-d[1] / l, d[0] / l];
+        berries += `<circle cx='${this.f(p[0] - N[0] * 5.4)}' cy='${this.f(p[1] - N[1] * 5.4)}' r='2.1' fill='url(#bb)' stroke='#2e1803' stroke-width='.6'/>`;
+      }
+      const stem = `M${P[0]} C${P[1]} ${P[2]} ${P[3]}`;
+      const body =
+        `<defs>${this.metal('g', 'gold', 0, 0, 60, 120)}${this.leafGrad('lf')}` +
+        `<radialGradient id='bb' cx='.35' cy='.3' r='.75'><stop offset='0' stop-color='#fffbe6'/><stop offset='.45' stop-color='#f0c457'/><stop offset='1' stop-color='#8a5414'/></radialGradient></defs>` +
+        `<g${mirror ? " transform='translate(60 0) scale(-1 1)'" : ''}>` +
+        `<path d='${stem}' fill='none' stroke='#1c0f03' stroke-width='${o.stem + 2}' stroke-linecap='round'/>` +
+        `<path d='${stem}' fill='none' stroke='url(#g)' stroke-width='${o.stem}' stroke-linecap='round'/>` +
+        berries + leaves + '</g>';
+      return this.uri(this.doc(60, 120, body));
+    });
+  },
+
+  /* THE BANNER, drawn to the size it is laid out at (DeckScreens._ribbon
+     measures it): a cloth band with a burnished rim, stitched inside it,
+     its folds catching the light, and a swallow-tailed end folded behind
+     each side. `bw` x `bh` is the band, `pad` the room each side for a
+     tail; a victory's is navy and gold, a defeat's slate and silver. The
+     word is CSS on the band, never baked into the picture. */
+  ribbon(bw, bh, pad, win) {
+    const k = [bw, bh, pad, win ? 1 : 0].join(':');
+    return this.memo('rib' + k, () => {
+      const f = n => this.f(n);
+      const W = bw + pad * 2, tt = Math.round(bh * 0.33), th = Math.round(bh * 0.78), H = Math.max(bh, tt + th) + 2;
+      const C = win
+        ? { band: ['#33497a', '#26385f', '#1b2a4a', '#14203a', '#0e172c'], tail: ['#22365f', '#17253f', '#0c1527'], fold: '#05080f', ink: '#070b16',
+            sheen: '#aac2ff', stitch: '#e2b85a', trim: '#d4a540', metal: 'gold' }
+        : { band: ['#4c5562', '#3a424e', '#2b313a', '#20262e', '#161a20'], tail: ['#353c46', '#252b33', '#14171c'], fold: '#07080b', ink: '#0a0c10',
+            sheen: '#dfe6ef', stitch: '#aab4c2', trim: '#8a96a6', metal: 'silver' };
+      const x0 = pad, x1 = pad + bw, c = Math.max(3, bh * 0.07);
+      const rect = (i) => { const a = x0 + i, b = x1 - i, t = i, u = bh - i, cc = Math.max(0.5, c - i * 0.42);
+        return `M${f(a + cc)},${f(t)} H${f(b - cc)} L${f(b)},${f(t + cc)} V${f(u - cc)} L${f(b - cc)},${f(u)} H${f(a + cc)} L${f(a)},${f(u - cc)} V${f(t + cc)} Z`; };
+      const nd = bh * 0.27, ti = 1.5;
+      const tail = (dir) => {
+        // the tail runs out from under the band, a swallow notch in its free end
+        const xo = dir < 0 ? ti : W - ti, xn = xo - dir * nd, xIn = dir < 0 ? x0 + bh * 0.36 : x1 - bh * 0.36, xB = dir < 0 ? x0 + bh * 0.25 : x1 - bh * 0.25;
+        const y0 = tt, y1 = tt + th, ym = (y0 + y1) / 2;
+        const t = `M${f(xIn)},${f(y0)} L${f(xo)},${f(y0)} L${f(xn)},${f(ym)} L${f(xo)},${f(y1)} L${f(xB)},${f(y1)} Z`;
+        const fold = `M${f(dir < 0 ? x0 : x1)},${f(bh - 0.5)} L${f(xB)},${f(bh - 0.5)} L${f(xB)},${f(y1)} Z`;
+        const sh = dir < 0 ? 'sl' : 'sr';
+        const rims = `M${f(xo)},${f(y0 + 1.6)} L${f(xIn)},${f(y0 + 1.6)} M${f(xo)},${f(y1 - 1.6)} L${f(xB)},${f(y1 - 1.6)}`;
+        return `<path d='${t}' fill='none' stroke='${C.ink}' stroke-width='3' stroke-linejoin='round'/>` +
+          `<path d='${t}' fill='url(#tl)'/><path d='${t}' fill='url(#${sh})'/>` +
+          `<path d='${rims}' fill='none' stroke='${C.trim}' stroke-width='1.6' stroke-opacity='.8'/>` +
+          `<path d='${fold}' fill='${C.fold}' stroke='${C.ink}' stroke-width='1' stroke-linejoin='round'/>`;
+      };
+      const shade = (id, dir) => `<linearGradient id='${id}' gradientUnits='userSpaceOnUse' x1='${dir < 0 ? 0 : W}' y1='0' x2='${dir < 0 ? x0 + bh * .36 : x1 - bh * .36}' y2='0'>` +
+        `<stop offset='0' stop-color='#000' stop-opacity='0'/><stop offset='.6' stop-color='#000' stop-opacity='.08'/><stop offset='1' stop-color='#000' stop-opacity='.55'/></linearGradient>`;
+      // the cloth: soft folds across the band, lit and shadowed in turn
+      const folds = [[0, .34], [.06, 0], [.17, -.1], [.3, .1], [.45, -.12], [.6, .1], [.74, -.1], [.88, .06], [.95, 0], [1, .34]]
+        .map(([o, a]) => `<stop offset='${o}' stop-color='${a > 0 ? '#000' : C.sheen}' stop-opacity='${Math.abs(a)}'/>`).join('');
+      const bandG = C.band.map((s, i) => `<stop offset='${[0, .2, .52, .82, 1][i]}' stop-color='${s}'/>`).join('');
+      const tailG = C.tail.map((s, i) => `<stop offset='${[0, .5, 1][i]}' stop-color='${s}'/>`).join('');
+      const body =
+        `<defs>${this.metal('gr', C.metal, 0, 0, 0, bh)}` +
+        `<linearGradient id='bd' x1='0' y1='0' x2='0' y2='1'>${bandG}</linearGradient>` +
+        `<linearGradient id='tl' x1='0' y1='0' x2='0' y2='1'>${tailG}</linearGradient>` +
+        `<linearGradient id='cl' x1='0' y1='0' x2='1' y2='0'>${folds}</linearGradient>` +
+        `<linearGradient id='sn' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#fff' stop-opacity='.16'/><stop offset='.42' stop-color='#fff' stop-opacity='.04'/>` +
+          `<stop offset='.5' stop-color='#fff' stop-opacity='0'/><stop offset='1' stop-color='#000' stop-opacity='.28'/></linearGradient>` +
+        shade('sl', -1) + shade('sr', 1) + '</defs>' +
+        tail(-1) + tail(1) +
+        `<path d='${rect(0)}' fill='${C.ink}'/>` +
+        `<path d='${rect(1)}' fill='url(#bd)'/><path d='${rect(1)}' fill='url(#cl)'/><path d='${rect(1)}' fill='url(#sn)'/>` +
+        // the rim: burnished metal in a dark bed, a hairline of light along its top
+        `<path d='${rect(3)}' fill='none' stroke='${C.ink}' stroke-width='4.4'/>` +
+        `<path d='${rect(3)}' fill='none' stroke='url(#gr)' stroke-width='2.4'/>` +
+        `<path d='M${f(x0 + 2.6 + c)},${f(2.4)} H${f(x1 - 2.6 - c)}' stroke='#fff8e0' stroke-opacity='.7' stroke-width='.7'/>` +
+        `<path d='${rect(6.1)}' fill='none' stroke='url(#gr)' stroke-width='.8' stroke-opacity='.55'/>` +
+        // the stitching inside the rim
+        `<path d='${rect(8.6)}' fill='none' stroke='${C.stitch}' stroke-opacity='.42' stroke-width='.8' stroke-dasharray='3 2.4'/>`;
+      return { uri: this.uri(this.doc(f(W), f(H), body)), w: W, h: H };
+    });
+  },
+
+  /* THE CLOSE: an X drawn smooth in the button's own colour */
+  CLOSE: '<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.6 3.6 L12.4 12.4 M12.4 3.6 L3.6 12.4"/></svg>',
+
+  /* A CORNER BRACKET for the run's panels and the screen's frame: two arms
+     of burnished metal meeting over a small diamond knot, a finer bracket
+     inside them, the whole fading toward its tips. ONE path per arm pair,
+     so the corner is never painted twice — the flat CSS bars it replaces
+     were two translucent rects overlapping, and the overlap lit a brighter
+     square in every corner. `pos` 0..3 turns it to the top-left, top-right,
+     bottom-right and bottom-left; gold for a victory, silver for a defeat. */
+  corner(pos, win) {
+    return this.memo('cn' + pos + (win ? 'g' : 's'), () => {
+      const c = win ? ['#fff3cc', '#ecc265', '#b98426', '#6f4710'] : ['#e6ebf2', '#b4bdca', '#7c8796', '#434b58'];
+      const body =
+        `<defs><linearGradient id='m' gradientUnits='userSpaceOnUse' x1='0' y1='0' x2='24' y2='24'>` +
+          `<stop offset='0' stop-color='${c[0]}'/><stop offset='.18' stop-color='${c[1]}'/><stop offset='.5' stop-color='${c[2]}' stop-opacity='.85'/>` +
+          `<stop offset='1' stop-color='${c[3]}' stop-opacity='.25'/></linearGradient></defs>` +
+        `<g transform='rotate(${pos * 90} 12 12)'>` +
+          `<path d='M3 23 V3 H23' fill='none' stroke='#0d0905' stroke-opacity='.5' stroke-width='3.6'/>` +
+          `<path d='M3 23 V3 H23' fill='none' stroke='url(#m)' stroke-width='1.8'/>` +
+          `<path d='M6.6 14 V6.6 H14' fill='none' stroke='url(#m)' stroke-width='.8' stroke-opacity='.7'/>` +
+          `<path d='M3 .4 L5.6 3 L3 5.6 L.4 3 Z' fill='${c[1]}' stroke='#0d0905' stroke-width='.7' stroke-opacity='.8'/>` +
+          `<path d='M3 .4 L5.6 3 L3 3 Z' fill='${c[0]}'/></g>`;
+      return this.uri(this.doc(24, 24, body));
+    });
+  },
+  /* THE EYEBROW'S KNOT: a small faceted lozenge where each rule ends,
+     opaque, so the rule never shows through it */
+  lozenge(win) {
+    return this.memo('lz' + (win ? 'g' : 's'), () => {
+      const c = win ? ['#fff3cc', '#e2b452', '#8d5c18'] : ['#ffffff', '#b9c3d0', '#5d6777'];
+      return this.uri(this.doc(12, 12,
+        `<path d='M6 .7 L11.3 6 L6 11.3 L.7 6 Z' fill='${c[1]}' stroke='#0d0905' stroke-width='.9' stroke-opacity='.75' stroke-linejoin='round'/>` +
+        `<path d='M6 1.6 L10.4 6 L6 6 Z' fill='${c[0]}' fill-opacity='.8'/><path d='M6 1.6 L1.6 6 L6 6 Z' fill='${c[0]}'/>` +
+        `<path d='M1.6 6 L6 10.4 L6 6 Z' fill='${c[2]}' fill-opacity='.55'/><path d='M10.4 6 L6 10.4 L6 6 Z' fill='${c[2]}'/>`));
+    });
+  },
+
+  /* A GLINT for the ceremony's sparks: a four-point star of light */
+  glint() {
+    return this.memo('glint', () => this.uri(this.doc(20, 20,
+      `<defs><radialGradient id='h' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='#fff' stop-opacity='.9'/><stop offset='.3' stop-color='#fff4c8' stop-opacity='.35'/><stop offset='1' stop-color='#fff4c8' stop-opacity='0'/></radialGradient></defs>` +
+      `<circle cx='10' cy='10' r='10' fill='url(#h)'/>` +
+      `<path d='M10,0.6 Q11,9 19.4,10 Q11,11 10,19.4 Q9,11 0.6,10 Q9,9 10,0.6 Z' fill='#fffbea'/>`)));
+  },
+};
+
 /* The stylesheet, injected on first use with the switch on (never before).
    Two rules hold throughout: the HIDDEN state of anything the player must
    see lives only in a keyframe's `from` (held through the delay by `both`),
@@ -1138,25 +1469,47 @@ DeckScreens.CSS = `
 #scrEndgame.ceMode { background: #0b0806; }
 #scrEndgame.ceMode > .sbody { display: none; }
 #cardEnd { display: none; position: absolute; inset: 0; overflow: hidden; color: #efe4cd;
-  font-family: var(--menufont); --fc: rgba(214,170,74,0.55); --fc2: rgba(214,170,74,0.16); --ink: #f3e2b4;
-  --chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
-    calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
-    calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px)); }
+  font-family: var(--menufont); --fc: rgba(214,170,74,0.55); --fc2: rgba(214,170,74,0.16); --ink: #f3e2b4; --gap: 16px; }
 #scrEndgame.ceMode #cardEnd { display: block; }
 #cardEnd.ceLoss { --fc: rgba(140,156,178,0.5); --fc2: rgba(140,156,178,0.14); }
 #cardEnd .ceBg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+/* THE PAINTED VALLEY (DeckScreens._artBg) lies over the procedural land once
+   it has landed — faded in when it lands late — and settles a breath closer
+   over its first half minute: a one-off drift, never an endless loop */
+#cardEnd .ceBgArt { display: none; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  object-position: 50% 42%; image-rendering: pixelated; transform-origin: 40% 45%; }
+#cardEnd .ceBgArt.ceSoft { image-rendering: auto; }
+#cardEnd.ceArtBg .ceBgArt { display: block; animation: ceDrift 32s cubic-bezier(.25,.6,.35,1) both; }
+#cardEnd.ceArtBg .ceBgArt.ceArtIn { animation: ceFade 700ms ease-out both, ceDrift 32s cubic-bezier(.25,.6,.35,1) both; }
+#cardEnd.ceIntro.ceArtBg .ceBgArt { animation: ceFade 450ms ease-out both, ceDrift 32s cubic-bezier(.25,.6,.35,1) both; }
 #cardEnd .ceVig { position: absolute; inset: 0; pointer-events: none; background:
   radial-gradient(ellipse 78% 56% at 50% 36%, rgba(8,6,4,0) 28%, rgba(8,6,4,0.55) 72%, rgba(8,6,4,0.9) 100%),
   linear-gradient(rgba(8,6,4,0.5), rgba(8,6,4,0) 16%, rgba(8,6,4,0) 46%, rgba(8,6,4,0.82) 72%, rgba(8,6,4,0.94)); }
+/* a painted valley is worth seeing: the edges darken only enough to hold
+   the frame, the top only enough to keep the eyebrow readable on a bright
+   sky, and the foot only where the run's numbers stand on a phone */
+#cardEnd.ceArtBg .ceVig { background:
+  radial-gradient(ellipse 92% 80% at 50% 44%, rgba(8,6,4,0) 52%, rgba(8,6,4,0.42) 86%, rgba(8,6,4,0.72) 100%),
+  linear-gradient(rgba(8,6,4,0.62), rgba(8,6,4,0.18) 13%, rgba(8,6,4,0) 24%, rgba(8,6,4,0) 52%, rgba(8,6,4,0.62) 78%, rgba(8,6,4,0.84)); }
+/* the dawn is bright: a breath of dusk over all of it, so the card's own
+   light is still the brightest thing on the screen */
+#cardEnd.ceWin.ceArtBg .ceVig { background:
+  radial-gradient(ellipse 92% 80% at 50% 44%, rgba(8,6,4,0) 52%, rgba(8,6,4,0.42) 86%, rgba(8,6,4,0.72) 100%),
+  linear-gradient(rgba(8,6,4,0.62), rgba(8,6,4,0.18) 13%, rgba(8,6,4,0) 24%, rgba(8,6,4,0) 52%, rgba(8,6,4,0.62) 78%, rgba(8,6,4,0.84)),
+  linear-gradient(rgba(14,8,4,0.26), rgba(14,8,4,0.26)); }
+/* over a painted valley the run's numbers stand on dark, not on the hills */
+#cardEnd.ceArtBg .ceScore, #cardEnd.ceArtBg .ceTile { background-color: rgba(12,9,6,0.84); }
+#cardEnd.ceArtBg .cePlayed { padding: 5px 10px 6px; box-sizing: border-box;
+  background: radial-gradient(closest-side, rgba(10,7,4,0.78), rgba(10,7,4,0.62) 70%, rgba(10,7,4,0) 100%); }
+#cardEnd.ceArtBg .cePlayed small { color: #a9a08c; }
+#cardEnd.ceArtBg .ceEye span { text-shadow: 0 2px 0 rgba(0,0,0,0.85), 0 0 10px rgba(8,6,4,0.9); }
 #cardEnd .ceLines { position: absolute; pointer-events: none;
   inset: calc(var(--safe-top) + 6px) 6px calc(env(safe-area-inset-bottom, 0px) + 6px) 6px;
-  border: 1px solid var(--fc2); background:
-  linear-gradient(var(--fc), var(--fc)) 3px 3px / 22px 2px no-repeat, linear-gradient(var(--fc), var(--fc)) 3px 3px / 2px 22px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) 3px / 22px 2px no-repeat, linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) 3px / 2px 22px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) 3px calc(100% - 3px) / 22px 2px no-repeat, linear-gradient(var(--fc), var(--fc)) 3px calc(100% - 3px) / 2px 22px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) calc(100% - 3px) / 22px 2px no-repeat,
-  linear-gradient(var(--fc), var(--fc)) calc(100% - 3px) calc(100% - 3px) / 2px 22px no-repeat; }
-#cardEnd .ceDeck { position: absolute; z-index: 3; top: calc(var(--safe-top) + 8px); right: 12px; width: 48px; height: 48px;
+  border: 1px solid var(--fc2); opacity: 0.8;
+  /* the frame's corners are the panels' brackets, larger (DeckScreens.SVG.corner) */
+  background: var(--cnTL) 1px 1px / 28px 28px no-repeat, var(--cnTR) calc(100% - 1px) 1px / 28px 28px no-repeat,
+    var(--cnBR) calc(100% - 1px) calc(100% - 1px) / 28px 28px no-repeat, var(--cnBL) 1px calc(100% - 1px) / 28px 28px no-repeat; }
+#cardEnd .ceDeck { position: absolute; z-index: 3; top: calc(var(--safe-top) + 8px); right: 12px; width: 44px; height: 44px;
   padding: 0; border: 0; cursor: pointer; display: flex; align-items: center; justify-content: center;
   background: radial-gradient(circle, rgba(20,14,8,0.75) 40%, rgba(20,14,8,0) 72%); }
 #cardEnd .ceDeck svg { width: 32px; height: 32px; filter: drop-shadow(0 2px 0 rgba(0,0,0,0.6)); }
@@ -1171,7 +1524,7 @@ DeckScreens.CSS = `
    wide window the rays alone made the screen scroll. The column is at least
    the whole screen, so the clip only ever falls at its edges. */
 #cardEnd .ceCol { min-height: 100%; display: flex; flex-direction: column; overflow: hidden; overflow: clip;
-  padding: calc(var(--safe-top) + 8px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px); }
+  padding: calc(var(--safe-top) + 8px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px); }
 /* vertical AUTO margins centre the column when it fits and start it at the
    top when it does not: justify-content: center would push an overflowing
    column's head above the scroll origin, where nobody can reach it */
@@ -1179,45 +1532,39 @@ DeckScreens.CSS = `
 
 /* the eyebrow shares its row with the deck in the corner — a row as tall as
    the deck — so the banner below always starts clear of it */
-#cardEnd .ceEye { display: flex; align-items: center; gap: 10px; width: min(360px, calc(100% - 96px)); height: 48px; margin: 0 auto 2px;
+#cardEnd .ceEye { display: flex; align-items: center; gap: 10px; width: min(360px, calc(100% - 96px)); height: 44px; margin: 0 auto 2px;
   color: #ead39b; font-size: 12px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; white-space: nowrap;
   text-shadow: 0 2px 0 rgba(0,0,0,0.85); position: relative; z-index: 2; }
 #cardEnd.ceLoss .ceEye { color: #aeb8c8; }
 #cardEnd .ceEye i { position: relative; flex: 1 1 0; min-width: 12px; height: 1px; background: linear-gradient(90deg, transparent, var(--fc)); }
 #cardEnd .ceEye i:last-child { background: linear-gradient(90deg, var(--fc), transparent); }
-#cardEnd .ceEye i::after { content: ''; position: absolute; top: -2px; width: 5px; height: 5px; background: var(--fc); transform: rotate(45deg); }
-#cardEnd .ceEye i:first-child::after { right: -1px; }
-#cardEnd .ceEye i:last-child::after { left: -1px; }
+/* each rule ends in a small faceted knot, opaque (DeckScreens.SVG.lozenge) */
+#cardEnd .ceEye i::after { content: ''; position: absolute; top: -3.5px; width: 8px; height: 8px; background: var(--loz) no-repeat 0 0 / 100% 100%; }
+#cardEnd .ceEye i:first-child::after { right: -4px; }
+#cardEnd .ceEye i:last-child::after { left: -4px; }
 
 #cardEnd .ceBan { position: relative; z-index: 2; padding: 0 30px; margin: 0 auto;
   filter: drop-shadow(0 6px 10px rgba(0,0,0,0.65)); }
+/* the banner is a picture drawn to the band's own size (DeckScreens._ribbon):
+   the band and its two tails, under the word */
+#cardEnd .ceRibArt { position: absolute; left: 0; top: 0; pointer-events: none; background: no-repeat 0 0 / 100% 100%; }
 #cardEnd .ceRib { position: relative; display: flex; align-items: center; justify-content: center; gap: 14px;
-  min-width: 248px; height: 56px; padding: 0 16px; clip-path: var(--chamfer);
-  background: linear-gradient(#2c3e62 0%, #1c2b4a 46%, #15213b 54%, #0f1830 100%);
-  box-shadow: inset 0 0 0 2px #090e1b, inset 0 0 0 4px #d4a540, inset 0 0 0 5px #6b4e16, inset 0 0 0 6px #090e1b,
-    inset 0 13px 0 rgba(170,200,255,0.07), inset 0 -10px 0 rgba(0,0,0,0.26); }
+  min-width: 248px; height: 56px; padding: 0 16px; }
 #cardEnd .ceRib b { font-size: 32px; font-weight: 900; letter-spacing: 5px; line-height: 1; text-transform: uppercase; padding-left: 5px;
   background: linear-gradient(#fff6cf 0%, #f6d77c 38%, #d9a640 64%, #a8741e 100%); -webkit-background-clip: text; background-clip: text;
   color: transparent; filter: drop-shadow(0 2px 0 #070b16); }
-#cardEnd .ceBL { width: 22px; height: 44px; image-rendering: pixelated; flex: 0 0 auto; }
-#cardEnd .ceTail { position: absolute; z-index: -1; top: 18px; width: 56px; height: 44px;
-  background: linear-gradient(#1b2846, #0e162a); box-shadow: inset 0 2px 0 rgba(212,165,64,0.55), inset 0 -2px 0 rgba(212,165,64,0.4); }
-#cardEnd .ceTail.l { left: 0; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 15px 50%); }
-#cardEnd .ceTail.r { right: 0; clip-path: polygon(0 0, 100% 0, calc(100% - 15px) 50%, 100% 100%, 0 100%); }
-#cardEnd .ceTail::after { content: ''; position: absolute; bottom: 0; width: 12px; height: 8px; background: #05080f; }
-#cardEnd .ceTail.l::after { right: 0; clip-path: polygon(100% 0, 100% 100%, 0 0); }
-#cardEnd .ceTail.r::after { left: 0; clip-path: polygon(0 0, 100% 0, 0 100%); }
-#cardEnd.ceLoss .ceRib { background: linear-gradient(#3a424e 0%, #29303a 46%, #20262e 54%, #171b22 100%);
-  box-shadow: inset 0 0 0 2px #0a0c10, inset 0 0 0 4px #7f8a9a, inset 0 0 0 5px #3a414c, inset 0 0 0 6px #0a0c10,
-    inset 0 13px 0 rgba(200,215,235,0.05), inset 0 -10px 0 rgba(0,0,0,0.3); }
+/* the banner's sprigs and the branches beside the card: vector laurels */
+#cardEnd .ceBL { width: 22px; height: 44px; flex: 0 0 auto; background: var(--sprigL) no-repeat 0 0 / 100% 100%;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.55)); }
+#cardEnd .ceBL.r { background-image: var(--sprigR); }
 #cardEnd.ceLoss .ceRib b { background: linear-gradient(#f1f4f8 0%, #c3ccd7 46%, #8e98a6 100%); -webkit-background-clip: text; background-clip: text; }
-#cardEnd.ceLoss .ceTail { background: linear-gradient(#262c35, #161a20); box-shadow: inset 0 2px 0 rgba(127,138,154,0.5), inset 0 -2px 0 rgba(127,138,154,0.35); }
 
 #cardEnd .ceMain { width: 100%; display: flex; flex-direction: column; align-items: center; }
-/* the stage: the card stands on the plinth's slit, which is 18 art pixels
-   below the plinth's top (DeckScreens.PLINTH) — so the card's foot is the
-   stage's height less the 52 that hang below it */
-#cardEnd .ceStage { position: relative; width: calc(var(--u) * 232); height: calc(var(--ch) + var(--u) * 52); margin-top: 6px; flex: 0 0 auto; }
+/* the stage: the card stands on the plinth's slit, which is --pty art
+   pixels below the plinth's top (DeckScreens.PLINTH) — so the card's foot is
+   the stage's height less the --phang that hang below it. It stands --gap
+   clear of the banner: the card's frame must never crowd the title */
+#cardEnd .ceStage { position: relative; width: calc(var(--u) * var(--pw)); height: calc(var(--ch) + var(--u) * var(--phang)); margin-top: var(--gap); flex: 0 0 auto; }
 #cardEnd .ceStage > i, #cardEnd .ceStage > canvas, #cardEnd .ceSparks { position: absolute; pointer-events: none; }
 #cardEnd .ceGlow { left: 50%; top: calc(var(--ch) * 0.5); width: calc(var(--cw) * 2.3); height: calc(var(--ch) * 1.6);
   margin: calc(var(--ch) * -0.8) 0 0 calc(var(--cw) * -1.15); opacity: var(--glow-o);
@@ -1228,17 +1575,18 @@ DeckScreens.CSS = `
   mask-image: radial-gradient(circle, #000 14%, rgba(0,0,0,0.5) 34%, rgba(0,0,0,0) 66%); }
 #cardEnd .ceRays.b { opacity: var(--ray2-o); }
 #cardEnd .ceRays > i { position: absolute; inset: 0; border-radius: 50%;
-  background: repeating-conic-gradient(from 0deg, var(--glow) 0deg 6deg, rgba(0,0,0,0) 6deg 17deg);
+  background: repeating-conic-gradient(from 0deg, var(--glow) 0deg 5.4deg, rgba(0,0,0,0) 6.6deg 17deg);
   animation: ceSpin 52s linear infinite; }
-#cardEnd .ceRays.b > i { background: repeating-conic-gradient(from 7deg, var(--glow) 0deg 2.5deg, rgba(0,0,0,0) 2.5deg 23deg);
+#cardEnd .ceRays.b > i { background: repeating-conic-gradient(from 7deg, var(--glow) 0deg 2deg, rgba(0,0,0,0) 3deg 23deg);
   animation-duration: 76s; animation-direction: reverse; }
-#cardEnd .ceLaurel { display: none; bottom: calc(var(--u) * 52); width: calc(var(--u) * 75); height: calc(var(--u) * 150);
-  image-rendering: pixelated; transform-origin: 50% 100%; filter: drop-shadow(0 0 calc(var(--u) * 6) rgba(255,214,110,0.35)); }
+#cardEnd .ceLaurel { display: none; bottom: calc(var(--u) * var(--phang)); width: calc(var(--u) * 75); height: calc(var(--u) * 150);
+  transform-origin: 50% 100%; background: no-repeat 0 0 / 100% 100%;
+  filter: drop-shadow(0 calc(var(--u) * 1.5) calc(var(--u) * 1.5) rgba(0,0,0,0.55)) drop-shadow(0 0 calc(var(--u) * 6) rgba(255,214,110,0.35)); }
 #cardEnd .ceLaurels .ceLaurel { display: block; }
-#cardEnd .ceLaurel.l { right: calc(50% + var(--cw) * 0.5 - var(--u) * 16); }
-#cardEnd .ceLaurel.r { left: calc(50% + var(--cw) * 0.5 - var(--u) * 16); }
-#cardEnd .cePlinth { left: 50%; top: calc(var(--ch) - var(--u) * 18); width: calc(var(--u) * 232); height: calc(var(--u) * 70);
-  margin-left: calc(var(--u) * -116); image-rendering: pixelated; }
+#cardEnd .ceLaurel.l { right: calc(50% + var(--cw) * 0.5 - var(--u) * 16); background-image: var(--laurelL); }
+#cardEnd .ceLaurel.r { left: calc(50% + var(--cw) * 0.5 - var(--u) * 16); background-image: var(--laurelR); }
+#cardEnd .cePlinth { left: 50%; top: calc(var(--ch) - var(--u) * var(--pty)); width: calc(var(--u) * var(--pw)); height: calc(var(--u) * var(--ph));
+  margin-left: calc(var(--u) * var(--pw) * -0.5); image-rendering: pixelated; }
 #cardEnd .ceTopGlow { left: 50%; top: calc(var(--ch) - var(--u) * 16); width: calc(var(--u) * 220); height: calc(var(--u) * 30);
   margin-left: calc(var(--u) * -110); opacity: calc(var(--glow-o) * 0.75); mix-blend-mode: screen;
   background: radial-gradient(closest-side, var(--glow), rgba(0,0,0,0)); }
@@ -1252,7 +1600,7 @@ DeckScreens.CSS = `
 #cardEnd .ceFlash { left: 50%; top: calc(var(--ch) * 0.5); width: calc(var(--ch) * 1.2); height: calc(var(--ch) * 1.2);
   margin: calc(var(--ch) * -0.6) 0 0 calc(var(--ch) * -0.6); opacity: 0; border-radius: 50%;
   background: radial-gradient(closest-side, rgba(255,250,230,0.95), var(--glow) 45%, rgba(0,0,0,0)); }
-#cardEnd .ceClip { position: absolute; left: 50%; bottom: calc(var(--u) * 52); width: calc(var(--cw) + 80px); height: calc(var(--ch) + 60px);
+#cardEnd .ceClip { position: absolute; left: 50%; bottom: calc(var(--u) * var(--phang)); width: calc(var(--cw) + 80px); height: calc(var(--ch) + 60px);
   margin-left: calc(var(--cw) * -0.5 - 40px); pointer-events: none; }
 #cardEnd .ceRising .ceClip { overflow: hidden; }
 #cardEnd .ceMove { position: absolute; left: 40px; bottom: 0; width: var(--cw); height: var(--ch); pointer-events: auto; cursor: pointer; }
@@ -1263,25 +1611,34 @@ DeckScreens.CSS = `
 /* the board's name box (lent in on a first win) needs the room: the played
    line and the deck tile step aside, the corner deck still carries the count */
 #cardEnd:has(.ceBoard #nameRow[style*="flex"]) .cePlayed, #cardEnd:has(.ceBoard #nameRow[style*="flex"]) .ceTile { display: none; }
-#cardEnd .ceSparks > i { position: absolute; width: var(--s); height: var(--s); background: var(--sc);
-  box-shadow: 0 0 6px var(--sc); animation: ceFloat 3s linear infinite; }
+/* a mote of light: a white-hot core in the tier's colour, soft to its edge;
+   a glint (.gl) is a four-point star of light (DeckScreens.SVG.glint) */
+#cardEnd .ceSparks > i { position: absolute; width: calc(var(--s) * 2.6); height: calc(var(--s) * 2.6); border-radius: 50%;
+  margin: calc(var(--s) * -1.3) 0 0 calc(var(--s) * -1.3);
+  background: radial-gradient(circle closest-side, #fffbea 0, #fffbea 22%, var(--sc) 46%, rgba(0,0,0,0) 100%);
+  animation: ceFloat 3s linear infinite; }
+#cardEnd .ceSparks > i.gl { width: calc(var(--s) * 4.4); height: calc(var(--s) * 4.4); margin: calc(var(--s) * -2.2) 0 0 calc(var(--s) * -2.2);
+  border-radius: 0; background: var(--glint) no-repeat 0 0 / 100% 100%; }
 #cardEnd .ceIdle .ceGlow, #cardEnd .ceIdle .ceRays, #cardEnd .ceIdle .ceTopGlow { opacity: 0.3; transition: opacity .5s ease-out; }
-#cardEnd .ceWhy { position: absolute; left: 50%; bottom: calc(var(--u) * 52 + 4px); width: var(--cw); height: calc(var(--ch) - 4px);
+#cardEnd .ceWhy { position: absolute; left: 50%; bottom: calc(var(--u) * var(--phang) + 4px); width: var(--cw); height: calc(var(--ch) - 4px);
   margin-left: calc(var(--cw) * -0.5); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
   padding: 14px; box-sizing: border-box; text-align: center; background: rgba(12,9,6,0.58);
   border: 2px dashed rgba(214,170,74,0.32); border-radius: 6px; }
 #cardEnd.ceLoss .ceWhy { border-color: rgba(140,156,178,0.32); }
 #cardEnd .ceWhy b { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink); }
 #cardEnd .ceWhy span { font: 600 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; color: #d8c8a4; }
-#cardEnd .cePips { display: flex; gap: 5px; }
+/* the deeds as gems: an empty setting, or one lit in gold */
+#cardEnd .cePips { display: flex; gap: 9px; padding: 2px 0; }
 #cardEnd .cePips:empty { display: none; }
-#cardEnd .cePips i { width: 10px; height: 10px; background: rgba(140,156,178,0.16); box-shadow: inset 0 0 0 2px rgba(140,156,178,0.45); }
-#cardEnd .cePips i.on { background: #e8c15a; box-shadow: inset 0 -2px 0 #9a6e1c, inset 0 2px 0 #fff0b0; }
+#cardEnd .cePips i { width: 9px; height: 9px; transform: rotate(45deg); border-radius: 1.5px;
+  background: rgba(140,156,178,0.14); box-shadow: inset 0 0 0 1.5px rgba(160,174,194,0.55); }
+#cardEnd .cePips i.on { background: linear-gradient(135deg, #fff4c9 0%, #f6d074 30%, #d9a03a 62%, #87500f 100%);
+  box-shadow: 0 0 0 1px #2a1906, 0 0 6px rgba(255,210,110,0.45); }
 
-#cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+#cardEnd .ceInfo { width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; gap: 6px;
   position: relative; z-index: 1; }
-#cardEnd .cePlate { position: relative; margin-top: -4px; min-width: min(300px, 94%); padding: 8px 22px 9px; text-align: center;
-  clip-path: var(--chamfer); background: linear-gradient(#2e2216, #1c140b);
+#cardEnd .cePlate { position: relative; margin-top: calc(-4px - var(--u) * var(--pfoot)); min-width: min(300px, 94%); padding: 8px 22px 9px; text-align: center;
+  border-radius: 5px; background: linear-gradient(#2e2216, #1c140b);
   box-shadow: inset 0 0 0 1px #0d0905, inset 0 0 0 2px rgba(214,170,74,0.55), inset 0 0 0 3px #0d0905, inset 0 0 0 4px rgba(214,170,74,0.16); }
 #cardEnd.ceLoss .cePlate { background: linear-gradient(#22262d, #15181d);
   box-shadow: inset 0 0 0 1px #08090b, inset 0 0 0 2px rgba(140,156,178,0.5), inset 0 0 0 3px #08090b, inset 0 0 0 4px rgba(140,156,178,0.14); }
@@ -1295,13 +1652,11 @@ DeckScreens.CSS = `
 #cardEnd .cePlate small em::before { content: ''; display: inline-block; width: 4px; height: 4px; margin: 0 8px 2px 0; background: currentColor; transform: rotate(45deg); }
 #cardEnd .cePlate b { display: block; margin-top: 3px; font-size: clamp(16px, 5.4vw, 21px); font-weight: 700; letter-spacing: 2px; line-height: 1.15;
   text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 0 rgba(0,0,0,0.85); }
+/* the run's panels: a dark field in a faint rule, a burnished bracket in
+   each corner (DeckScreens.SVG.corner), drawn at the device's pixels */
 #cardEnd .ceScore, #cardEnd .ceTile { position: relative; width: 100%; background-color: rgba(12,9,6,0.76); border: 1px solid var(--fc2);
-  background-repeat: no-repeat; background-image:
-  linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)),
-  linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc)), linear-gradient(var(--fc), var(--fc));
-  background-size: 14px 2px, 2px 14px, 14px 2px, 2px 14px, 14px 2px, 2px 14px, 14px 2px, 2px 14px;
-  background-position: 4px 4px, 4px 4px, calc(100% - 4px) 4px, calc(100% - 4px) 4px, 4px calc(100% - 4px), 4px calc(100% - 4px),
-    calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) calc(100% - 4px); }
+  background-repeat: no-repeat; background-image: var(--cnTL), var(--cnTR), var(--cnBR), var(--cnBL); background-size: 19px 19px;
+  background-position: 2px 2px, calc(100% - 2px) 2px, calc(100% - 2px) calc(100% - 2px), 2px calc(100% - 2px); }
 #cardEnd .ceScore { padding: 8px 14px 9px; text-align: center; }
 #cardEnd .ceScore small, #cardEnd .cePlayed small, #cardEnd .ceTile small { font-size: 10px; font-weight: 700; letter-spacing: 3px;
   text-transform: uppercase; color: #8f98aa; }
@@ -1314,7 +1669,7 @@ DeckScreens.CSS = `
 #cardEnd .ceDay, #cardEnd .ceAssist { white-space: nowrap; }
 #cardEnd .ceAssist { display: inline-flex; align-items: center; gap: 4px; color: #e8c15a; }
 #cardEnd .ceAssist::before { content: '·'; color: #b5a888; margin-right: 5px; }
-#cardEnd .ceAssist svg { width: 13px; height: 13px; flex: 0 0 auto; image-rendering: pixelated; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
+#cardEnd .ceAssist svg { width: 16px; height: 16px; margin: -2px 0; flex: 0 0 auto; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
 #cardEnd .ceRank:empty { display: none; }
 #cardEnd #vicRank { margin: 5px auto 0; font-size: 12px; }
 #cardEnd .ceBoard { width: 100%; display: flex; flex-direction: column; align-items: center; }
@@ -1336,29 +1691,35 @@ DeckScreens.CSS = `
   display: flex; align-items: center; justify-content: center; gap: 16px; cursor: pointer;
   color: #f4e8cc; font: 700 15px/1 var(--menufont); letter-spacing: 2.4px; text-transform: uppercase;
   text-shadow: 0 2px 0 rgba(20,12,4,0.85); -webkit-appearance: none; appearance: none; }
-#cardEnd .ceBtn::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
-  box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.42), inset 0 10px 0 rgba(255,240,200,0.06), inset 0 -8px 0 rgba(0,0,0,0.28);
+/* the plaques: a rounded rim that runs unbroken round every corner, the
+   light falling soft across the face — drawn by the browser, never stepped */
+#cardEnd .ceBtn::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 6px;
+  background: linear-gradient(rgba(255,240,200,0.08), rgba(255,240,200,0) 42%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.28)),
+    linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
+  box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.42);
   filter: drop-shadow(0 3px 0 rgba(0,0,0,0.5)); }
 #cardEnd .ceBtn.gold { min-height: 56px; color: #2b1906; font-size: 16px; text-shadow: 0 1px 0 rgba(255,240,190,0.55); }
-#cardEnd .ceBtn.gold::before { background: linear-gradient(#f0cd6e 0%, #d7a542 46%, #b8862c 54%, #93661c 100%);
-  box-shadow: inset 0 0 0 2px #2a1906, inset 0 0 0 3px #fff0b8, inset 0 0 0 5px #b8862a, inset 0 0 0 6px #4a3008,
-    inset 0 12px 0 rgba(255,250,220,0.22), inset 0 -10px 0 rgba(60,30,0,0.22); }
+#cardEnd .ceBtn.gold::before { background: linear-gradient(rgba(255,250,220,0.26), rgba(255,250,220,0) 44%, rgba(60,30,0,0) 58%, rgba(60,30,0,0.24)),
+    linear-gradient(#f0cd6e 0%, #d7a542 46%, #b8862c 54%, #93661c 100%);
+  box-shadow: inset 0 0 0 2px #2a1906, inset 0 0 0 3px #fff0b8, inset 0 0 0 5px #b8862a, inset 0 0 0 6px #4a3008; }
 #cardEnd .ceBtn.navy { color: #d6deec; }
-#cardEnd .ceBtn.navy::before { background: linear-gradient(#25314a 0%, #1a2338 50%, #141b2c 100%);
-  box-shadow: inset 0 0 0 2px #080b14, inset 0 0 0 3px rgba(150,170,210,0.38), inset 0 10px 0 rgba(200,215,255,0.05), inset 0 -8px 0 rgba(0,0,0,0.3); }
+#cardEnd .ceBtn.navy::before { background: linear-gradient(rgba(200,215,255,0.07), rgba(200,215,255,0) 42%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.3)),
+    linear-gradient(#25314a 0%, #1a2338 50%, #141b2c 100%);
+  box-shadow: inset 0 0 0 2px #080b14, inset 0 0 0 3px rgba(150,170,210,0.38); }
 #cardEnd .ceBtn:active { transform: translateY(2px); filter: brightness(0.88); }
 #cardEnd .ceDia { width: 7px; height: 7px; background: currentColor; opacity: 0.75; transform: rotate(45deg); }
 
+/* a tall phone or a tablet has height to spare: the card stands further off the banner */
+@media (min-height: 900px) { #cardEnd { --gap: 24px; } }
 /* a wide window: banner across the top, the card on the left, the run on the right */
 @media (min-width: 900px) and (min-aspect-ratio: 5/4) {
+  #cardEnd { --gap: 30px; }
   #cardEnd .ceMain { flex-direction: row; justify-content: center; align-items: center; gap: 64px; }
   #cardEnd .ceInfo { width: 360px; flex: 0 0 auto; }
   #cardEnd .cePlate { margin-top: 0; }
-  #cardEnd .ceEye { font-size: 15px; width: min(420px, calc(100% - 120px)); }
+  #cardEnd .ceEye { font-size: 15px; width: min(420px, calc(100% - 120px)); height: 30px; }
   #cardEnd .ceRib { height: 64px; min-width: 330px; }
   #cardEnd .ceRib b { font-size: 40px; }
-  #cardEnd .ceTail { top: 22px; height: 48px; }
 }
 /* the narrowest phones: the banner gives the deck in the corner its room */
 @media (max-width: 359px) {
@@ -1366,7 +1727,7 @@ DeckScreens.CSS = `
   #cardEnd .ceEye i { min-width: 0; }
   #cardEnd .ceRib { min-width: 206px; }
   #cardEnd .ceRib b { font-size: 28px; letter-spacing: 4px; }
-  #cardEnd .ceDeck { top: calc(var(--safe-top) + 10px); right: 6px; width: 44px; height: 44px; }
+  #cardEnd .ceDeck { right: 6px; }
   #cardEnd .cePlate small { font-size: 9.5px; letter-spacing: 2px; }
 }
 
@@ -1391,6 +1752,7 @@ DeckScreens.CSS = `
 #cardEnd .ceStage.ceReveal.ceHolds { animation: ceShake 380ms linear calc(var(--t-at) * 1ms) both; }
 
 @keyframes ceFade { from { opacity: 0; } }
+@keyframes ceDrift { from { transform: scale(1.06); } }
 @keyframes ceUp { 0% { opacity: 0; transform: translateY(12px); } 70% { opacity: 1; transform: translateY(-2px); } 100% { opacity: 1; transform: none; } }
 @keyframes ceDrop { 0% { opacity: 0; transform: translateY(-18px) scale(0.86); } 55% { opacity: 1; transform: translateY(3px) scale(1.04); }
   80% { transform: translateY(-1px) scale(0.99); } 100% { opacity: 1; transform: none; } }
@@ -1417,15 +1779,30 @@ DeckScreens.CSS = `
   color: var(--text); font: 700 12px/1.2 var(--menufont); letter-spacing: 1px; background: #1c140c; }
 #scrCards .clSum { width: 100%; max-width: 820px; margin: -4px auto 8px; padding: 0 16px; color: var(--dim); font-size: 12px; text-align: center; }
 #scrCards .clTabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 820px; margin: 0 auto; padding: 0 10px; flex: 0 0 auto; }
-#scrCards .clTab { min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
+#scrCards .clTab { min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
   display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; font-family: var(--menufont); }
 #scrCards .clTab.sel { border-color: var(--tc); background: #2a2114; box-shadow: inset 0 -3px 0 var(--tc), 0 0 12px var(--tg); }
-#scrCards .clGem { width: 11px; height: 11px; flex: 0 0 auto; transform: rotate(45deg); background: var(--tc);
-  box-shadow: 0 0 0 1px #0d0905, 0 0 7px var(--tg); }
-#scrCards .clGem.dim { background: #3b342a; box-shadow: 0 0 0 1px #0d0905; }
+/* the gem is the deck sheet's own (DeckUI.gemIcon): faceted, in the tier's
+   colour, drawn smooth; the CSS diamond is only its fallback */
+#scrCards .clGem { width: 15px; height: 15px; flex: 0 0 auto; display: block; color: var(--tc); filter: drop-shadow(0 0 4px var(--tg)); }
+#scrCards i.clGem { width: 11px; height: 11px; transform: rotate(45deg); background: var(--tc); box-shadow: 0 0 0 1px #0d0905; filter: none; }
+#scrCards .clGem.dim { color: #3b342a; filter: none; }
+#scrCards i.clGem.dim { background: #3b342a; }
 #scrCards .clTabNm { display: none; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
 #scrCards .clTabN { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
-@media (min-width: 600px) { #scrCards .clTabNm { display: inline; } #scrCards .clTabAb { display: none; } }
+/* THE NAMES TAKE THE ROOM THEY NEED: five equal columns gave "Iron" the
+   width "Enlightenment" needed, and squeezed Enlightenment's gem and count
+   onto its tab's border. Once the names are shown each tab is as wide as
+   its own name plus the same margin, the spare shared out evenly — and
+   the names wait for a window wide enough for all five */
+@media (min-width: 700px) {
+  #scrCards .clTabs { display: flex; }
+  #scrCards .clTab { flex: 1 1 auto; padding: 4px 12px; }
+  #scrCards .clTabNm { display: inline; } #scrCards .clTabAb { display: none; }
+}
+/* the narrowest phones close the gaps inside a tab: "III 7" beside its gem
+   stood on the tab's own border at 320px */
+@media (max-width: 359px) { #scrCards .clTab { gap: 4px; } }
 /* a phone's tabs drop the tier names: the tier's ORDER (I-V) stands in, so
    the pale Stone and Imperial gems are never told apart by colour alone */
 #scrCards .clTabAb { font: 700 10px/1 var(--menufont); letter-spacing: .5px; opacity: .8; }
@@ -1464,6 +1841,7 @@ DeckScreens.CSS = `
    would have risen is simply there */
 @media (prefers-reduced-motion: reduce) {
   #cardEnd .ceRays > i, #cardEnd .ceSparks > i { animation: none; }
+  #cardEnd.ceArtBg .ceBgArt, #cardEnd.ceArtBg .ceBgArt.ceArtIn, #cardEnd.ceIntro.ceArtBg .ceBgArt { animation: none; }
   #cardEnd .ceSparks > i { opacity: 0.55; }
   #cardEnd .ceBtn:active { transform: none; }
   #cardEnd.ceCalm .ceIn { animation: ceFade 240ms ease-out both; }

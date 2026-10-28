@@ -39,9 +39,32 @@
                        cards greyed, undiscovered ones as "?" silhouettes
                        that carry neither art, name nor text anywhere in the
                        page, completion per tier, tap to enlarge, tap to flip
-                       both ways, 44px targets, a grid that fits the phone
+                       both ways, 44px targets, a grid that fits the phone,
+                       and tier tabs whose gem, name and count sit inside
+                       their own padding, centred and level, 320-1440px
+     THE PAINTED VALLEY the backdrop (dawn for a win, dusk for a loss; wide
+                       on a landscape window, tall on a phone) and the carved
+                       pedestal land by filename from assets/endgame/reward/,
+                       drawn at a whole scale; a 404 leaves the procedural
+                       land and drum, the card still on its slit
+     THE GAP           the card's frame stands clear of the banner at
+                       390x844, 430x932, 768x1024, 1440x900 and 1920x1080,
+                       and nothing overlaps either
      THE FIT           the reward screen fits a 390x844 phone and a
                        1280x800 window without scrolling
+     THE CHROME        is drawn at the device's own resolution (the
+                       operator's ruling on UI chrome): measured in the live
+                       page — the reward screen won, lost and empty, the
+                       collection with a card held up, the deck sheet and its
+                       HUD button — at six sizes, a phone on its side
+                       included, every raster that is not a card face, the
+                       painted valley or the pedestal is shown at or below
+                       its own pixels on a 3x screen (CSS size × 3 ≤ natural
+                       size); nothing asks for nearest-neighbour or stepped
+                       edges; the banner, its sprigs, the laurels, the
+                       corner brackets and the eyebrow's knots are
+                       vectors; the pedestal, world art standing in the
+                       scene, is never past twice its pixels
 
    Run after touching: js/deckscreens.js, the DeckScreens hooks in
    js/screens.js (onTitle, onEndgame, leaveEnd/endReplay/endMenu, atEnd,
@@ -660,6 +683,39 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     if (r.over > 0 || !r.whole || r.cols < 2 || r.w < 110) over.push(`${w}px: overflow ${r.over}, ${r.cols} cols of ${r.w}px, whole ${r.whole}`);
   }
   ck('theGridFitsEveryPhone', over.length === 0, over.join(' | ') || 'no overflow, 2+ readable whole-pixel columns, 320-430px');
+
+  /* the tier tabs hold what they say: gem, name (or I-V on a phone) and
+     count inside each tab's own padding, centred, on one line, and the row
+     inside the screen — five equal columns used to squeeze "Enlightenment 6"
+     onto its tab's border on a desktop. The gem is the deck sheet's faceted
+     one, a vector (DeckUI.gemIcon). */
+  const tabBad = [];
+  let gems = 0;
+  for (const w of [320, 360, 390, 430, 600, 700, 768, 1024, 1440]) {
+    await p.setViewportSize({ width: w, height: 900 });
+    const r = await p.evaluate(() => {
+      DeckScreens.openCollection('title', 'enlight');
+      const row = document.querySelector('#scrCards .clTabs'), rr = row.getBoundingClientRect(), bad = [];
+      let svg = 0;
+      for (const t of row.querySelectorAll('.clTab')) {
+        const b = t.getBoundingClientRect(), cs = getComputedStyle(t);
+        const inL = b.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft), inR = b.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight);
+        const kids = [...t.children].filter(k => k.getClientRects().length).map(k => k.getBoundingClientRect());
+        const l = Math.min(...kids.map(k => k.left)), rt = Math.max(...kids.map(k => k.right)), mid = b.top + b.height / 2;
+        const off = Math.max(...kids.map(k => Math.abs(k.top + k.height / 2 - mid)));
+        if (l < inL - 0.5 || rt > inR + 0.5) bad.push(`${t.dataset.tier} runs ${Math.max(inL - l, rt - inR).toFixed(1)}px off its padding`);
+        if (Math.abs((l - b.left) - (b.right - rt)) > 1.5) bad.push(`${t.dataset.tier} off-centre by ${Math.abs((l - b.left) - (b.right - rt)).toFixed(1)}px`);
+        if (off > 2) bad.push(`${t.dataset.tier} not on one line (${off.toFixed(1)}px)`);
+        if (b.left < rr.left - 0.5 || b.right > rr.right + 0.5 || b.right > innerWidth) bad.push(`${t.dataset.tier} outside the row`);
+        if (t.querySelector('svg.clGem')) svg++;
+      }
+      return { bad, svg };
+    });
+    r.bad.forEach(x => tabBad.push(`${w}px ${x}`));
+    gems += r.svg;
+  }
+  ck('theTierTabsHoldTheirLabels', tabBad.length === 0 && gems === 45, tabBad.slice(0, 5).join(' | ') ||
+    `gem, name and count inside every tab, centred, level, 320-1440px; faceted vector gems ${gems}/45`);
   await p.close();
 }
 
@@ -708,6 +764,102 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   await p.close();
 }
 
+/* ================= 5c. THE PAINTED VALLEY =================
+   The backdrop and the plinth are supplied art that lands by FILENAME
+   (assets/endgame/reward/{win|loss}-{wide|tall}.webp, a .jpg behind each,
+   pedestal.png) — a landscape window takes the wide valley and a phone the
+   tall one — and a picture that is not there leaves the procedural painting
+   standing, the card still on its slit and nothing thrown. */
+{
+  const want = { 'win-wide': 0, 'loss-wide': 0, 'win-tall': 0, 'loss-tall': 0 };
+  const landed = [], wrong = [];
+  for (const [w, h, dpr, orient] of [[1440, 900, 1, 'wide'], [390, 844, 3, 'tall']]) {
+    const p = await page({ w, h, dpr, reduce: true });
+    await p.evaluate(SETUP);
+    // a page this young is still probing the late art tier; a real run's end never meets that queue
+    await p.waitForFunction(() => Assets.allArtReady && Assets.allArtReady(), null, { timeout: 60000 }).catch(() => {});
+    for (const win of [true, false]) {
+      const r = await p.evaluate(async (win) => {
+        CFG.CARDS.ON = true;
+        __fresh();
+        window.__run({ seed: 'ds-art-' + win, win, cards: [['iron', 'swift_raiders']] });
+        const root = document.getElementById('cardEnd');
+        for (let i = 0; i < 300 && !(root.classList.contains('ceArtBg') && root.querySelector('.cePlinth.ceArt')); i++) await new Promise(r => setTimeout(r, 50));
+        const name = root.dataset.bg, art = DeckScreens._art[name] || {}, ped = DeckScreens._art.pedestal || {};
+        const cv = root.querySelector('.ceBgArt'), img = art.img;
+        const k = img ? cv.width / img.naturalWidth : 0;
+        const u = parseFloat(root.style.getPropertyValue('--u'));
+        const face = root.querySelector('.ceMove .ccard'), plinth = root.querySelector('.cePlinth');
+        return { name, url: art.url || '', ped: ped.url || '', shown: getComputedStyle(cv).display !== 'none' && root.classList.contains('ceArtBg'),
+          k, whole: k === Math.round(k) && cv.height === img.naturalHeight * k,
+          pedArt: plinth.classList.contains('ceArt') && plinth.width === DeckScreens.PLINTH.w && plinth.height === DeckScreens.PLINTH.h,
+          foot: +(face.getBoundingClientRect().bottom - (plinth.getBoundingClientRect().top + DeckScreens.PLINTH.ty * u)).toFixed(2) };
+      }, win);
+      const exp = (win ? 'win' : 'loss') + '-' + orient;
+      if (r.name === exp && r.shown && /assets\/endgame\/reward\/(win|loss)-(wide|tall)\.webp\?v=\d+$/.test(r.url) && r.url.includes(exp + '.webp') &&
+          /assets\/endgame\/reward\/pedestal\.png\?v=\d+$/.test(r.ped) && r.pedArt && r.whole && Math.abs(r.foot) <= 1) { want[exp]++; landed.push(`${exp}@${w} k${r.k}`); }
+      else wrong.push(`${w}x${h} ${win ? 'win' : 'loss'}: ${JSON.stringify(r)}`);
+    }
+    await p.close();
+  }
+  ck('theRewardArtLandsByFilename', wrong.length === 0 && Object.values(want).every(n => n === 1),
+    wrong.join(' | ') || landed.join(', ') + '; the pedestal on its slit');
+
+  // a 404: the picture never lands, the procedural land and drum stay, and the card still stands on the slit
+  const p = await page({ w: 1440, h: 900, dpr: 1, reduce: true });
+  await p.evaluate(SETUP);
+  const f = await p.evaluate(async () => {
+    CFG.CARDS.ON = true;
+    __fresh();
+    DeckScreens.ART_DIR = 'assets/endgame/no-such-folder/';
+    DeckScreens._art = {};
+    window.__run({ seed: 'ds-art-404', win: true, cards: [['iron', 'swift_raiders']] });
+    // a 404 is asked twice, 1.5s apart, before the painting is kept for the session
+    for (let i = 0; i < 200 && Object.values(DeckScreens._art).some(e => e.ok === null); i++) await new Promise(r => setTimeout(r, 50));
+    const root = document.getElementById('cardEnd'), cv = root.querySelector('.ceBgArt'), bg = root.querySelector('.ceBg');
+    const plinth = root.querySelector('.cePlinth'), face = root.querySelector('.ceMove .ccard');
+    const u = parseFloat(root.style.getPropertyValue('--u'));
+    return { settled: Object.values(DeckScreens._art).map(e => e.ok), art: root.classList.contains('ceArtBg'), shown: getComputedStyle(cv).display,
+      bg: [bg.width, bg.height], pedArt: plinth.classList.contains('ceArt'), plinth: [plinth.width, plinth.height],
+      foot: +(face.getBoundingClientRect().bottom - (plinth.getBoundingClientRect().top + DeckScreens.PLINTH.ty * u)).toFixed(2),
+      claim: !!root.querySelector('[data-act="claim"]') };
+  });
+  await p.close();
+  ck('andAMissingPictureLeavesThePaintedLand', f.settled.length === 2 && f.settled.every(x => x === false) && !f.art && f.shown === 'none' &&
+    f.bg[0] >= 60 && f.bg[0] !== 300 && !f.pedArt && f.plinth[0] === 240 && Math.abs(f.foot) <= 1 && f.claim,
+    `asked ${f.settled.length} pictures (${f.settled}), art shown ${f.art}/${f.shown}, procedural land ${f.bg.join('x')}, drum ${f.plinth.join('x')} (art ${f.pedArt}), foot ${f.foot}px off the slit`);
+}
+
+/* ================= 5d. THE TITLE NEVER CROWDS THE CARD =================
+   The card's frame stands clear of the banner — a real gap, not a touch —
+   at every size the game is played at, and nothing on the screen overlaps
+   the banner or the card. */
+{
+  const bad = [], seen = [];
+  for (const [w, h, dpr, min] of [[390, 844, 3, 14], [430, 932, 3, 14], [768, 1024, 2, 14], [1440, 900, 1, 28], [1920, 1080, 1, 28]]) {
+    const p = await page({ w, h, dpr, reduce: true });
+    await p.evaluate(SETUP);
+    for (const win of [true, false]) {
+      const r = await p.evaluate((win) => {
+        CFG.CARDS.ON = true;
+        __fresh();
+        window.__run({ seed: 'ds-gap-' + win, win, cards: [['imperial', 'golden_age']] });
+        const root = document.getElementById('cardEnd'), sc = root.querySelector('.ceScroll');
+        const R = el => el.getBoundingClientRect();
+        const rib = R(root.querySelector('.ceRib')), card = R(root.querySelector('.ceMove .ccard')), eye = R(root.querySelector('.ceEye'));
+        const hit = (a, b) => !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        const others = [...root.querySelectorAll('.cePlate, .ceScore, .cePlayed, .ceTile, .ceBtns, .ceDeck')].filter(el => el.getClientRects().length);
+        const over = others.filter(el => hit(R(el), rib) || hit(R(el), card)).map(el => el.className);
+        return { gap: Math.round(card.top - rib.bottom), eyeGap: Math.round(rib.top - eye.bottom), over, scroll: sc.scrollHeight - sc.clientHeight };
+      }, win);
+      seen.push(`${w}x${h} ${r.gap}px`);
+      if (r.gap < min || r.eyeGap < -1 || r.over.length || r.scroll > 1) bad.push(`${w}x${h} ${win ? 'win' : 'loss'}: ${JSON.stringify(r)}`);
+    }
+    await p.close();
+  }
+  ck('theTitleNeverCrowdsTheCard', bad.length === 0, bad.join(' | ') || [...new Set(seen)].join(', ') + ' between banner and card; nothing overlaps either, nothing scrolls');
+}
+
 /* ================= 6. THE FIT ================= */
 {
   const fit = [], tight = [];
@@ -746,6 +898,148 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   }
   ck('theRewardFitsAPhoneAndAWideWindow', fit.length === 0, fit.join(' | ') || '390x844 and 1280x800 without scrolling; 44px buttons and the deck clear of the banner at 320-1280px');
   ck('noRewardLineRunsOffItsBox', tight.length === 0, tight.join(' | ') || 'every eyebrow, the kicker and the longest names, 320-1280px');
+}
+
+/* ================= 7. THE CHROME IS DRAWN AT THE DEVICE'S OWN RESOLUTION =================
+   The operator's standing ruling: the world's art — the painted valley, the
+   pedestal standing in it, the card paintings — stays pixel art, but the
+   CHROME (the banner and its sprigs, the laurels, brackets, icons, buttons,
+   gems, the close, the sparks) is high quality at the device's own pixels,
+   never a small pixel-art picture blown up. Measured in the live page, on
+   every screen this file owns, at every size the screens lay out for — a
+   phone ON ITS SIDE included (3x, and the wide window's layout): every
+   raster drawn (a canvas, an <img>, a CSS background url() on any element
+   or pseudo-element) is shown at or below its own pixel count on a 3x
+   screen — CSS size × 3 ≤ natural size. A vector passes by being one. The
+   exempt pictures are named, never guessed: a card face (Deck.face), the
+   painted valley (and its procedural stand-in), the pedestal — world art,
+   held instead to never more than twice its pixels — and the HUD's shared
+   plank texture (ui.js, the whole HUD's material, not this screen's). No
+   inline SVG asks for crisp edges and no chrome for nearest-neighbour. The
+   probe is shown it can see a blow-up: the old 22x44 sprig canvas put back
+   on the banner, and a crisp-edged icon, must both be named. */
+{
+  const PROBE = async (scopes) => {
+    const out = [], nat = {};
+    const natOf = u => nat[u] || (nat[u] = new Promise(res => { const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.onerror = () => res(null); i.src = u; }));
+    const wood = getComputedStyle(document.documentElement).getPropertyValue('--wood-tex').trim();
+    // how wide one copy of a background picture is drawn, in CSS px
+    const tileW = (cs, rc, n) => {
+      const bs = cs.backgroundSize.split(',')[0].trim();
+      if (bs === 'cover') return n[0] * Math.max(rc.width / n[0], rc.height / n[1]);
+      if (bs === 'contain') return n[0] * Math.min(rc.width / n[0], rc.height / n[1]);
+      const [a, b] = bs.split(/\s+/), v = (s, box) => /%$/.test(s) ? box * parseFloat(s) / 100 : /px$/.test(s) ? parseFloat(s) : null;
+      const w = a && a !== 'auto' ? v(a, rc.width) : null, h = b && b !== 'auto' ? v(b, rc.height) : null;
+      if (w != null) return w;
+      if (h != null) return h * n[0] / n[1];
+      return n[0];
+    };
+    for (const sel of scopes) {
+      const root = document.querySelector(sel);
+      if (!root) continue;
+      for (const el of [root, ...root.querySelectorAll('*')]) {
+        if (!el.getClientRects().length) continue;
+        const cs = getComputedStyle(el);
+        if (cs.visibility === 'hidden') continue;
+        const rc = el.getBoundingClientRect(), name = el.tagName.toLowerCase() + (el.className && el.className.baseVal == null ? '.' + String(el.className).trim().split(/\s+/).join('.') : '');
+        const exempt = el.closest('.ccard') ? 'card' : el.matches('.ceBg, .ceBgArt') ? 'scene' : el.matches('.cePlinth') ? 'pedestal' : null;
+        if (/pixelated|crisp-edges/.test(cs.imageRendering) && !exempt) out.push({ name, nn: true });
+        if (el.tagName.toLowerCase() === 'svg' && /crisp/i.test(el.getAttribute('shape-rendering') || '') && !exempt) out.push({ name, crisp: true });
+        if (el.tagName === 'CANVAS' && rc.width) out.push({ name, exempt, w: rc.width, nw: el.width, h: rc.height, nh: el.height });
+        if (el.tagName === 'IMG' && el.naturalWidth && rc.width) out.push({ name, exempt, w: rc.width, nw: el.naturalWidth, h: rc.height, nh: el.naturalHeight });
+        for (const pse of [null, '::before', '::after']) {
+          const ps = getComputedStyle(el, pse);
+          if (pse && ps.content === 'none') continue;
+          for (const m of ps.backgroundImage.matchAll(/url\("?([^")]+)"?\)/g)) {
+            if (/^data:image\/svg|\.svg(\?|$)/.test(m[1])) { out.push({ name: name + (pse || ''), svg: true }); continue; }
+            const n = await natOf(m[1]);
+            if (!n) continue;
+            const isWood = wood && wood.includes(m[1].slice(0, 80));
+            out.push({ name: name + (pse || '') + ' bg', exempt: exempt || (isWood ? 'hud-wood' : null), w: tileW(ps, rc, n), nw: n[0] });
+          }
+        }
+      }
+    }
+    return out;
+  };
+  // the test link's deck (every card, every face found) for the collection
+  // and the sheet; then fresh collections for the three endings
+  const SCENES = {
+    collection: async () => { DeckScreens.openCollection('title', 'imperial'); DeckScreens._zoom(document.querySelector('#scrCards .clCell')); },
+    sheet: async () => {
+      Screens._demo = false; G.newGame('ds-chrome-s', 'moderate', 'medium'); Screens.show('playing');
+      for (let i = 0; i < 200 && !DeckUI.built; i++) await new Promise(r => setTimeout(r, 30));
+      DeckUI.openSheet();
+    },
+    won: async () => { DeckUI.closeSheet && DeckUI.closeSheet(); CFG.CARDS.ON = true; __fresh(); window.__run({ seed: 'ds-chrome-w', win: true, played: [{ id: 'golden_age', day: 5 }], cards: [['imperial', 'golden_age']] }); },
+    lost: async () => { CFG.CARDS.ON = true; __fresh(); window.__run({ seed: 'ds-chrome-l', win: false, cards: [['bronze', 'war_band']] }); },
+    empty: async () => { CFG.CARDS.ON = true; __fresh(); window.__run({ seed: 'ds-chrome-e', win: false, built: 0, days: 1 }); },
+  };
+  const SCOPE = { won: ['#cardEnd'], lost: ['#cardEnd'], empty: ['#cardEnd'], collection: ['#scrCards'], sheet: ['#dkSheet', '#deckBtn'] };
+  const bad = [], seen = new Set(), vec = [], ped = [], looked = {};
+  let control = null;
+  for (const [w, h, dpr] of [[390, 844, 3], [430, 932, 3], [844, 390, 3], [768, 1024, 2], [1440, 900, 1], [1920, 1080, 1]]) {
+    const p = await page({ w, h, dpr, reduce: true, q: '?cards=all' });
+    await p.evaluate(SETUP);
+    await p.waitForFunction(() => Assets.allArtReady && Assets.allArtReady(), null, { timeout: 60000 }).catch(() => {});
+    for (const sc of Object.keys(SCENES)) {
+      await p.evaluate(`(${SCENES[sc].toString()})()`);
+      if (sc === 'won') await p.waitForFunction(() => document.querySelector('#cardEnd .cePlinth.ceArt'), null, { timeout: 15000 }).catch(() => {});
+      await p.waitForTimeout(250);
+      const r = await p.evaluate(PROBE, SCOPE[sc]);
+      // every screen must actually have been looked at: its chrome measured, not skipped
+      if (r.length) looked[sc] = (looked[sc] || 0) + 1;
+      for (const x of r) {
+        const tag = `${sc}@${w}x${h}`;
+        if (x.nn) bad.push(`${tag} ${x.name} asks for nearest-neighbour`);
+        else if (x.crisp) bad.push(`${tag} ${x.name} is a crisp-edged SVG`);
+        else if (x.svg) seen.add(x.name.replace(/\s.*$/, ''));
+        else if (x.exempt === 'pedestal') { if (x.w > x.nw * 2 + 0.5) bad.push(`${tag} the pedestal at ${(x.w / x.nw).toFixed(2)}x its pixels`); else ped.push((x.w / x.nw).toFixed(2)); }
+        else if (!x.exempt && (x.w * 3 > x.nw + 0.5 || (x.h && x.h * 3 > x.nh + 0.5))) bad.push(`${tag} ${x.name} ${Math.round(x.w)}px wide from ${x.nw}px (${(x.w * 3 / x.nw).toFixed(2)}x at 3x)`);
+      }
+      if (sc === 'won') {
+        vec.push(await p.evaluate(() => {
+          const svg = s => /^url\("data:image\/svg\+xml/.test(s);
+          const one = ['.ceRibArt', '.ceBL.l', '.ceBL.r', '.ceLaurel.l', '.ceLaurel.r'].every(s => {
+            const e = document.querySelector('#cardEnd ' + s);
+            return e && svg(getComputedStyle(e).backgroundImage) && e.getBoundingClientRect().width > 0;
+          });
+          // the brackets: four SVG corners on each panel and on the screen's
+          // frame — never bars of colour, whose overlap lit every corner
+          const four = ['.ceScore', '.ceTile', '.ceLines'].every(s => {
+            const imgs = getComputedStyle(document.querySelector('#cardEnd ' + s)).backgroundImage.split(/,\s*(?=url|linear|radial|none)/);
+            return imgs.length === 4 && imgs.every(svg);
+          });
+          // and each rule of the eyebrow ends in an SVG knot
+          const knots = [...document.querySelectorAll('#cardEnd .ceEye i')].every(i => svg(getComputedStyle(i, '::after').backgroundImage));
+          return one && four && knots;
+        }));
+        if (!control) {
+          // the control: the old pixel sprig and a crisp-edged icon, put back — the probe must name both
+          control = await p.evaluate(async (probe) => {
+            const rib = document.querySelector('#cardEnd .ceRib'), c = document.createElement('canvas');
+            c.width = 22; c.height = 44; c.className = 'oldSprig'; c.style.cssText = 'width:22px;height:44px';
+            rib.appendChild(c);
+            const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            s.setAttribute('shape-rendering', 'crispEdges'); s.setAttribute('viewBox', '0 0 4 4'); s.style.cssText = 'width:12px;height:12px';
+            rib.appendChild(s);
+            const r = await (eval('(' + probe + ')'))(['#cardEnd']);
+            c.remove(); s.remove();
+            return { sprig: r.some(x => /oldSprig/.test(x.name) && x.w * 3 > x.nw), crisp: r.some(x => x.crisp) };
+          }, PROBE.toString());
+        }
+      }
+    }
+    await p.close();
+  }
+  const all = Object.keys(SCENES).every(k => looked[k] === 6);
+  ck('theChromeIsDrawnAtTheDevicesResolution', bad.length === 0 && all && control && control.sprig && control.crisp,
+    (bad.length ? 'per screen ' + JSON.stringify(bad.reduce((o, b) => { const k = b.split('@')[0]; o[k] = (o[k] || 0) + 1; return o; }, {})) + ': ' + [...new Set(bad.map(b => b.replace(/^\S+ /, '')))].slice(0, 6).join(' | ') : '') || (!all ? 'a screen went unmeasured: ' + JSON.stringify(looked) :
+      `no raster chrome past its pixels at 3x on the reward (won, lost, empty), the collection or the deck sheet, 390-1920px and a phone on its side; ` +
+      `${seen.size} vector pieces; the control's old sprig and crisp icon named: ${control && control.sprig}/${control && control.crisp}`));
+  ck('andTheBannerLaurelsAndBracketsAreVectors', vec.length === 6 && vec.every(Boolean),
+    `the ribbon, two sprigs, two laurels, the panels' and the frame's corner brackets and the eyebrow's knots are SVG at ${vec.filter(Boolean).length} of 6 sizes`);
+  ck('andThePedestalIsNeverPastTwiceItsPixels', ped.length > 0 && !bad.some(b => /pedestal/.test(b)), `shown at ${[...new Set(ped)].join('x, ')}x its pixels`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
