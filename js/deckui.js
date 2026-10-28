@@ -254,32 +254,38 @@ const DeckUI = {
     this._warm();   // the faces, built ahead in idle time
   },
 
-  /* A PIXEL CARD STACK, not an emoji (the title menu's rule, boot.mjs
+  /* THE DECK'S PICTURE, not an emoji (the title menu's rule, boot.mjs
      theMenuIsDrawnNotTyped): a bronze card behind a gold one, and the gold
      one is drawn AS A CARD — a little sky with a sun over a hill in its art
      window and a dark name plate under it (a gem in the middle read as a
-     "+" at this size). 12 cells drawn at 2 CSS px each, square at every dpr. */
-  STACK_SVG: (() => {
-    const g = [
-      'kkkkkkkk....',
-      'kbbbbbbk....',
-      'kbBkkkkkkkkk',
-      'kbBkhggggggk',
-      'kbBkgsssssgk',
-      'kbBkgsssusgk',
-      'kbBkglllllgk',
-      'kbBkgggggggk',
-      'kbbkgpppppgk',
-      'kkkkgpppppgk',
-      '...kgggggggk',
-      '...kkkkkkkkk',
-    ];
-    const C = { k: '#140d06', b: '#c98446', B: '#5c3a1c', g: '#e8c15a', h: '#fff2c0',
-      s: '#7fa8d0', u: '#ffd45e', l: '#5c7a3a', p: '#2c2318' };
-    let r = '';
-    g.forEach((row, y) => [...row].forEach((ch, x) => { if (C[ch]) r += `<rect x="${x}" y="${y}" width="1" height="1" fill="${C[ch]}"/>`; }));
-    return `<svg class="dkIco" viewBox="0 0 12 12" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
-  })(),
+     "+" at this size). It is CHROME, so it is DRAWN, never blown-up pixel
+     art (the operator's ruling: UI chrome at the device's own resolution) —
+     a smooth vector, the same picture wherever the deck is shown: the HUD
+     button, the empty sheet, and the reward screen's corner, score line and
+     deck tile (DeckScreens.DECK_SVG). It carries NO ids: an inline SVG's
+     gradient is looked up document-wide, and the first copy may sit inside
+     a hidden bar — so the light and shade are flat fills at an opacity. */
+  deckIcon(cls) {
+    return `<svg${cls ? ` class="${cls}"` : ''} viewBox="0 0 48 48" aria-hidden="true">` +
+      // the bronze card behind, turned a little
+      '<g transform="rotate(-11 20 24)"><rect x="6" y="6" width="25" height="34" rx="2.8" fill="#c98446" stroke="#140d06" stroke-width="1.6"/>' +
+        '<rect x="9.2" y="9.2" width="18.6" height="27.6" rx="1.4" fill="#5c3a1c" stroke="#2a1a0a" stroke-width=".7"/>' +
+        '<path d="M7.6 8.6 Q7.6 7.4 8.8 7.4 L28.6 7.4" fill="none" stroke="#ffd9b0" stroke-opacity=".55" stroke-width="1" stroke-linecap="round"/></g>' +
+      // the gold card in front: its frame, lit from the top left
+      '<rect x="15" y="10.5" width="26" height="35" rx="2.8" fill="#e8c15a" stroke="#140d06" stroke-width="1.6"/>' +
+      '<path d="M16.6 43.6 L39.4 12.2 L39.4 44.6 Q39.4 45.2 38.6 45.2 L17.2 45.2 Z" fill="#7a4e12" fill-opacity=".28"/>' +
+      '<path d="M16.8 13 Q16.8 12.2 17.8 12.2 L38.4 12.2" fill="none" stroke="#fff6d6" stroke-opacity=".8" stroke-width="1" stroke-linecap="round"/>' +
+      // the art window: sky, sun, hill
+      '<rect x="18" y="13.8" width="20" height="17.8" rx="1" fill="#6f9fd6" stroke="#5a3a10" stroke-width=".8"/>' +
+      '<rect x="18.4" y="22" width="19.2" height="9.2" fill="#b5d6f2" fill-opacity=".55"/>' +
+      '<circle cx="32" cy="19.4" r="5.4" fill="#ffd45e" fill-opacity=".35"/><circle cx="32" cy="19.4" r="2.8" fill="#ffe58a"/>' +
+      '<path d="M18.4 31.2 L18.4 26.2 Q24 21.6 29.5 25.4 Q33.5 23 37.6 26.6 L37.6 31.2 Z" fill="#5c7a3a"/>' +
+      '<path d="M18.4 26.2 Q24 21.6 29.5 25.4 Q33.5 23 37.6 26.6" fill="none" stroke="#a6c872" stroke-width=".9"/>' +
+      // the name plate
+      '<rect x="18" y="34" width="20" height="8.6" rx="1.2" fill="#2c2318" stroke="#120a04" stroke-width=".6"/>' +
+      '<path d="M21.4 38.3 L34.6 38.3" stroke="#e8c15a" stroke-opacity=".8" stroke-width="1.2" stroke-linecap="round"/></svg>';
+  },
+  get STACK_SVG() { return this.deckIcon('dkIco'); },
 
   syncBadge(quiet) {
     if (!this.el) return;
@@ -578,9 +584,22 @@ const DeckUI = {
     // read on the next frame: a layout forced here would be paid in the tap
     requestAnimationFrame(() => this._litTier());
   },
-  // a tier's gem: a hard-pixel diamond in the tier's colour (currentColor)
-  GEM_SVG: '<svg class="dkGem" viewBox="0 0 7 7" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v1h1v1h1v1h1v1h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1v-1h1v-1h1v-1h1z" fill="currentColor"/>' +
-    '<path d="M3 1h1v1h-1zM2 2h1v1h-1z" fill="#fff6d8" opacity=".85"/></svg>',
+  /* a tier's gem: a faceted diamond cut in the tier's colour (currentColor),
+     drawn smooth — chrome, never stepped pixels — its facets lit and shaded
+     by white and black at an opacity, so one drawing serves every tier and
+     carries no ids; gemIcon(cls) hands the same gem to any screen that
+     names a tier */
+  gemIcon(cls) { return `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">` + this._GEM; },
+  get GEM_SVG() { return this.gemIcon('dkGem'); },
+  _GEM:
+    '<path d="M12 1.4 L22.6 12 L12 22.6 L1.4 12 Z" fill="currentColor"/>' +
+    '<path d="M1.4 12 L12 1.4 L12 7 L7 12 Z" fill="#fff" fill-opacity=".55"/>' +
+    '<path d="M12 1.4 L22.6 12 L17 12 L12 7 Z" fill="#fff" fill-opacity=".18"/>' +
+    '<path d="M22.6 12 L12 22.6 L12 17 L17 12 Z" fill="#000" fill-opacity=".45"/>' +
+    '<path d="M12 22.6 L1.4 12 L7 12 L12 17 Z" fill="#000" fill-opacity=".22"/>' +
+    '<path d="M12 7 L17 12 L12 17 L7 12 Z" fill="#fff" fill-opacity=".22"/>' +
+    '<path d="M12 1.4 L22.6 12 L12 22.6 L1.4 12 Z" fill="none" stroke="#0d0804" stroke-width="1.5" stroke-linejoin="round"/>' +
+    '<path d="M8.2 4.6 L8.8 6.4 L10.6 7 L8.8 7.6 L8.2 9.4 L7.6 7.6 L5.8 7 L7.6 6.4 Z" fill="#fff"/></svg>',
   // the row brought round to a tier: its name at the row's left edge
   jumpTier(k) {
     const s = this.sheet, g = s && s.row.querySelector(`.dkGroup[data-tier="${k}"]`);
