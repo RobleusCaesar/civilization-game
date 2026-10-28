@@ -1469,23 +1469,67 @@ await p.evaluate(({ ARMY }) => {
     const g1 = alive[1]; Units.setDefend(g1, true);
     out.stance = !Deck.hostSense || Deck.hostSense(g1) === false;
     Units.setDefend(g1, false);
-    // THE FIGURE: drawn on a frame whose silhouette is known
+    /* THE FIGURE, on a frame whose silhouette is known (a 16x26 world-px
+       body), drawn the way the world pass draws it: through the camera's
+       transform (K device px a world px — 3.4 is a phone's play zoom on the
+       2x world canvas, 1.25 a desktop's) at a FRACTIONAL place, smoothing
+       off. Read on the canvas's own pixels: every pixel there or not; the ink
+       a world pixel thick round the outline; the body thinned, not a slab
+       and not a wash; and THE HOLES IN IT SINGLE DEVICE PIXELS — of the
+       knocked-out pixels inside the body, the share with a knocked-out
+       neighbour beside or below it (an art-grid dither knocks out K x K
+       blocks, so nearly every hole has one). */
     const img = document.createElement('canvas'); img.width = img.height = 32;
     img.getContext('2d').fillStyle = '#806040'; img.getContext('2d').fillRect(8, 4, 16, 26);
-    const cv = document.createElement('canvas'); cv.width = cv.height = 48;
-    const g = cv.getContext('2d');
-    Deck.drawGhost(g, g0, img, 8, 8, 32);
-    const d = g.getImageData(0, 0, 48, 48).data, ink = Deck.GHOST_INK;
-    const want = ink ? [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)) : [-1, -1, -1];
-    let soft = 0, inkN = 0, body = 0, lime = 0;
-    for (let y = 0; y < 48; y++) for (let x = 0; x < 48; x++) {
-      const i = (y * 48 + x) * 4;
-      if (d[i + 3] > 0 && d[i + 3] < 255) soft++;
-      if (!d[i + 3]) continue;
-      if (d[i] === want[0] && d[i + 1] === want[1] && d[i + 2] === want[2]) inkN++;
-      else if (x >= 16 && x < 32 && y >= 12 && y < 38) body++;
-    }
-    out.figure = { soft, ink: inkN, body: +(body / (16 * 26)).toFixed(2) };
+    const ink = Deck.GHOST_INK, want = ink ? [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)) : [-1, -1, -1];
+    const figure = (K, wx, wy, k) => {
+      if (k != null && !Deck.ghostBlit) return { K, soft: -1, ink: 0, body: 0, holes: 0, paired: 1 };
+      const SZ = Math.ceil(48 * K) + 8, cv = document.createElement('canvas'); cv.width = cv.height = SZ;
+      const g = cv.getContext('2d');
+      g.setTransform(K, 0, 0, K, 2.3, 1.7); g.imageSmoothingEnabled = false;
+      if (k == null) Deck.drawGhost(g, g0, img, wx, wy, 32);
+      else Deck.ghostBlit(g, Deck.ghostOf(img, 32), wx - 1, wy - 1, 34, 34, k, 0);
+      const d = g.getImageData(0, 0, SZ, SZ).data;
+      // the body's own box on the canvas (its sprite rows 4..30, cols 8..24),
+      // kept a device pixel clear of its edges
+      const bx0 = Math.ceil(2.3 + (wx + 8) * K) + 1, bx1 = Math.floor(2.3 + (wx + 24) * K) - 1;
+      const by0 = Math.ceil(1.7 + (wy + 4) * K) + 1, by1 = Math.floor(1.7 + (wy + 30) * K) - 1;
+      let soft = 0, inkN = 0, body = 0, cells = 0, holes = 0, paired = 0, blocks = 0;
+      const A = (x, y) => d[(y * SZ + x) * 4 + 3];
+      for (let y = 0; y < SZ; y++) for (let x = 0; x < SZ; x++) {
+        const i = (y * SZ + x) * 4;
+        if (d[i + 3] > 0 && d[i + 3] < 255) soft++;
+        if (d[i + 3] && d[i] === want[0] && d[i + 1] === want[1] && d[i + 2] === want[2]) inkN++;
+        if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+        cells++;
+        if (d[i + 3]) { body++; continue; }
+        holes++;
+        if ((x < bx1 && !A(x + 1, y)) || (y < by1 && !A(x, y + 1))) paired++;
+        // a whole 2x2 of device pixels knocked out: a hole the size of a block
+        if (x < bx1 && y < by1 && !A(x + 1, y) && !A(x, y + 1) && !A(x + 1, y + 1)) blocks++;
+      }
+      return { K, soft, ink: +(inkN / (K * K)).toFixed(1), body: +(body / Math.max(1, cells)).toFixed(2),
+        holes, paired: +(holes ? paired / holes : 1).toFixed(3), blocks: +(holes ? blocks / holes : 1).toFixed(3) };
+    };
+    out.figure = [figure(3.4, 8.37, 8.61), figure(1.25, 8.37, 8.61)];
+    // …and as it COMES APART (the fade, the gutter): the same fine pattern,
+    // the ink too — about half of it standing at k = 0.5. More is knocked
+    // out than kept there, so holes touch; what they never make is a BLOCK
+    // (a whole 2x2 of device pixels gone — every hole an art-grid dither
+    // knocks out at this zoom is one)
+    out.going = figure(3.4, 8.37, 8.61, 0.5);
+    // the fade's own draw lays its picture through the same door
+    if (Deck.ghostBlit) {
+      const real = Deck.ghostBlit; let n = 0;
+      Deck.ghostBlit = function () { n++; return real.apply(this, arguments); };
+      try {
+        const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+        const g = cv.getContext('2d'); g.setTransform(3.4, 0, 0, 3.4, 0, 0);
+        const fs = { mode: 'fade', t: 0.9, ms: 2800, ghosts: [{ x: 1.5, y: 1.5, img, D: 32, top: 4, d: 0 }] };
+        Deck.FX.ancestors_host.show.draw.call(Deck.FX.ancestors_host, g, fs, 0.9 / 2.8, 0, 'world');
+      } finally { Deck.ghostBlit = real; }
+      out.fadeBlits = n;
+    } else out.fadeBlits = 0;
     // THE FADE IS SAID: the days run out
     document.getElementById('toasts').innerHTML = '';
     UI._toastAt = {};
@@ -1497,8 +1541,18 @@ await p.evaluate(({ ARMY }) => {
     `every ghost on its post after the rising ${r.posts}; the band in its ground: ${4 - r.bandLeft} of 4 killed; after the fight the farthest ghost stands ${r.worst} tiles from where it rose`);
   ck('andThePlayerMovesItsPost', r.toOk && r.moved && r.stays <= 1 && r.stance,
     `walked eight tiles off: the post went with it ${r.moved}, and it stays there (${r.stays} tiles off the new post); a ghost on Defend is the player's ${r.stance}`);
-  ck('aGhostIsAnInkedFigure', r.figure.soft === 0 && r.figure.ink >= 60 && r.figure.body >= 0.55 && r.figure.body <= 0.9,
-    `${r.figure.soft} half-there pixels; ${r.figure.ink} px of ink round it; its body ${r.figure.body} of the silhouette (dithered, not a wash and not a slab)`);
+  /* (the operator's ruling changed this check, 2026-10-28: "the rays are
+     pixelated again… higher pixel count" — the ghost's dither moved off the
+     art's grid, where a knocked-out world pixel was a 5-6px block on a 3x
+     phone and the host in its beams read as checkered white tiles, onto
+     the canvas's own pixels; an inked figure still, every pixel there or
+     not, nothing added) */
+  const F = r.figure || [], G0 = r.going || {};
+  ck('aGhostIsAnInkedFigure', F.length === 2 && F.every(f => f.soft === 0 && f.ink >= 60 && f.body >= 0.5 && f.body <= 0.88 && f.holes > 20 && f.paired <= 0.05) &&
+      G0.soft === 0 && G0.blocks <= 0.02 && G0.ink >= 20 && G0.ink <= 75 && r.fadeBlits >= 1,
+    F.map(f => `at ${f.K} device px a world px: ${f.soft} half-there pixels, ${f.ink} world px of ink round it, its body ${f.body} of the silhouette, ` +
+      `${f.holes} holes — ${(100 * f.paired).toFixed(1)}% of them touching another (single device pixels, not the art's blocks)`).join('; ') +
+    `; coming apart at a half: ${G0.ink} world px of ink, ${(100 * (G0.blocks || 0)).toFixed(1)}% of holes a whole 2x2 block, ${G0.soft} half-there; the fade lays it through the same door ${r.fadeBlits}x`);
   ck('itsGroundBreaksInASmallBurst', r.burstWhite > 0 && r.burstWhite <= 120,
     `${r.burstWhite} world px of white by its feet on the frame it breaks open`);
   ck('andTheFadeIsSaid', r.toast, `a note on the screen as the host goes ${r.toast}`);
