@@ -242,8 +242,18 @@ const Feedback = {
      answer is one of
        { state: 'refused', field, why }   nothing queued — fix the form
        { state: 'offsite', why }          this page can never send (not queued)
-       { state: 'sent' }                  the email went through
-       { state: 'saved', offline, why }   kept on the device, sent later */
+       { state: 'sent', held }            the player's part is done: the email
+                                          went through, or (held) the relay has
+                                          not taken it YET — a FormSubmit that
+                                          still wants activating, a refusal, a
+                                          5xx — and the outbox retries it on every
+                                          load. The player is told "Sent": there is
+                                          nothing they could do about it, and a
+                                          "saved on this device" read as broken
+                                          (operator, on the first live report)
+       { state: 'saved', offline, why }   no connection: kept on the device, and
+                                          the player is told so, because coming
+                                          back online IS theirs to do */
   async submit(f) {
     const c = this.check(f);
     if (!c.ok) return { state: 'refused', field: c.field, why: c.why };
@@ -268,11 +278,13 @@ const Feedback = {
     // this report was in it — walk it once more so this one is tried now
     if (left && !left.tries) { await this.flush(); left = this.outbox().find(x => x.id === it.id); }
     if (!left || left.mailed) return { state: 'sent', id: it.id };
-    const offline = navigator.onLine === false || left.lastWhy === 'network';
-    return { state: 'saved', id: it.id, offline,
-      why: offline ? 'Saved — we’ll send it when you’re back online.'
-        : 'Saved on this device — it will be sent automatically the next time you open the game.' };
+    if (!this.offlineHeld(left)) return { state: 'sent', id: it.id, held: left.lastWhy || 'pending' };
+    return { state: 'saved', id: it.id, offline: true, why: 'Saved — we’ll send it when you’re back online.' };
   },
+
+  // held for want of a connection — the one wait the player can end
+  offlineHeld(it) { return !!it && !it.mailed && (navigator.onLine === false || it.lastWhy === 'network'); },
+  waitingOffline() { return this.outbox().filter(x => this.offlineHeld(x)).length; },
 
   canSend() { return !!(window.Backend && (Backend.mock || (Backend.telemetryAllowed && Backend.telemetryAllowed()))); },
 
