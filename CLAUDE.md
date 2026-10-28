@@ -3392,6 +3392,33 @@ role and finds the doors and nothing more. The inbox and the device list are
 the only ROWS the page receives. 0010 is one idempotent paste after 0009; it
 never touches `analytics_summary` (the passphrase fallback that tells a
 wrong passphrase from a missing migration) or `analytics_cards`.
+**AND IT WAS REVIEWED BEFORE IT SHIPPED** (32 confirmed findings, every one
+pinned in tests/analytics.mjs; 0010 was edited in place because it had never
+been pasted). The rules that came out of it: **ONE ROW MAY NOT BLANK THE
+DASHBOARD** — every cast of client-written JSON is guarded (a `{"tutorial":
+2}` row raised inside `analytics__games` and took every door with it), and
+the page treats only `ok: true` as an answer, saying "Could not load: …" in
+the section that failed and never drawing a dash for a number. **THE ROW'S
+TIME IS THE SERVER'S**: the BEFORE INSERT trigger sets `created_at := now()`
+for anon/authenticated, so no client can back-date a row or name a release's
+moment, and the page uses a build's first-seen moment only if it parses and
+is not earlier than its patch note's own day. **EQUAL FOLLOW-UP**: both
+comparison windows only count ending rows sent before their own horizon
+(`p_seen_by`), or the earlier window's games had weeks more to finish and
+every release read Worse. **EACH PLAYER COUNTS ONCE IN A VERDICT**: games
+cluster by player, so the per-game rates (finished, win rate, errors) are
+tested with the cluster-robust variance from per-player sums, and Games with
+Σg²; a seeded no-change simulation of the page's own function holds the
+false-alarm rate near 5%. **A GAME'S ERRORS ARE EVERY SITTING'S** (the max
+over all its ending rows). **AN OPEN GAME IS KEPT** under the minute filter
+(unknown length is not short); **A BOUNCED NEWCOMER IS STILL NEW** (the
+cohort is taken before the length filter) and the hook scores each newcomer's
+TRUE first game; the daily chart covers exactly the tiles' period in the
+operator's own days (`p_tz`, validated), a partial day drawn as one. The
+page: verify, then show (and Lock forgets everything); every section loads
+and fails on its own and drops a stale answer; a report that cannot render
+is one small card; and a ticket makes every player field inert (no fence
+broken, no @mention, no forged marker).
 
 **The boot, measured** (`tests/boot.mjs`, the retention pass): time-to-menu
 was 3.4s on a desktop and 10s on a throttled phone, and nearly none of it
