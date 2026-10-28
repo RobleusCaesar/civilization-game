@@ -4,7 +4,7 @@
 
    THE GATE IS ONE PREDICATE: TitleScreen.live() — Boot.TITLE_PUBLIC (the
    inline boot block in index.html, because the splash has to know before any
-   script file has parsed) or Deck.devOn() (?cards=1 / ?cards=all once). On
+   script file has parsed) or the deck staging flag (Deck.devOn: ?cards=1 / ?cards=all once). On
    every other device this file does nothing at all: no element, no
    stylesheet, no listener, no picture — the title is today's, byte for byte.
    GOING PUBLIC IS ONE LINE: TITLE_PUBLIC true in index.html's boot block.
@@ -41,6 +41,7 @@ const TitleScreen = {
     if (!this.live()) return;
     this.mount();
     this.dress();
+    this.place();     // the title may have been laid out afresh (it was hidden behind another screen)
   },
 
   mount() {
@@ -49,6 +50,7 @@ const TitleScreen = {
     if (!t) return null;
     this._css();
     t.classList.add('t2');
+    this.el = t;     // before the picture: a cached night fires its load at once
     const tbg = t.querySelector('.tbg');
     if (tbg && window.Boot && Boot.t2wear) {
       const img = Boot.t2wear(tbg, tbg.querySelector('img:not(.t2img)'));
@@ -57,12 +59,6 @@ const TitleScreen = {
         if (img.complete && img.naturalWidth) go(); else img.addEventListener('load', go, { once: true });
       }
     }
-    // a soft dark under the column, so the plaques stand on calm ground
-    const shade = document.createElement('div');
-    shade.className = 't2shade';
-    shade.setAttribute('aria-hidden', 'true');
-    if (tbg) tbg.after(shade); else t.prepend(shade);
-    this.el = t;
     if (typeof ResizeObserver === 'function') {
       this._ro = new ResizeObserver(es => { for (const e of es) this.paint(e.target); });
     }
@@ -289,38 +285,52 @@ const TitleScreen = {
     return `<svg class="t2i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><defs>${G}${H}</defs>${body}</svg>`;
   },
 
-  /* ---------------- the fire's own life ----------------
-     A warm breath over the campfire in the painting and a few embers going
-     up from it — smooth, drawn by the compositor (transform and opacity
-     only), placed on the picture's fire whatever the crop, and absent for a
-     player who asks for less motion. */
-  FIRE: { wide: [0.2325, 0.84], tall: [0.456, 0.9] },
+  /* ---------------- the night's own life ----------------
+     A warm breath over the campfire in the painting with a few embers going
+     up from it, and a slow glint on the comet's head — smooth, drawn by the
+     compositor (transform and opacity only), each set on its own place in
+     the picture whatever the crop (ANCHOR, as fractions of the master), and
+     still for a player who asks for less motion. */
+  ANCHOR: {
+    fire: { wide: [0.2325, 0.84], tall: [0.456, 0.9] },
+    comet: { wide: [0.6614, 0.134], tall: [0.293, 0.1657] },
+  },
+  NATIVE: { wide: 688, tall: 384 },   // the masters' widths: one art pixel is --u CSS pixels
   reduced() {
     try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   },
   ambient() {
-    if (!this.el || this.el.querySelector('.t2amb')) { this.place(); return; }
-    const a = document.createElement('div');
-    a.className = 't2amb';
-    a.setAttribute('aria-hidden', 'true');
-    let h = '<i class="t2glow"></i>';
-    if (!this.reduced()) for (let i = 0; i < 7; i++) h += `<i class="t2em" style="--d:${(2.8 + (i * 0.71) % 1.9).toFixed(2)}s;--t:${(-i * 0.83).toFixed(2)}s;--x:${((i * 37) % 23 - 11)}px;--k:${(0.7 + (i % 3) * 0.2).toFixed(2)}"></i>`;
-    a.innerHTML = h;
-    const shade = this.el.querySelector('.t2shade');
-    if (shade) shade.before(a); else this.el.prepend(a);
+    if (!this.el) return;
+    if (!this.el.querySelector('.t2amb')) {
+      const still = this.reduced();
+      let fire = '<i class="t2glow"></i>';
+      if (!still) for (let i = 0; i < 7; i++) fire += `<i class="t2em" style="--d:${(2.8 + (i * 0.71) % 1.9).toFixed(2)}s;--t:${(-i * 0.83).toFixed(2)}s;--x:${((i * 37) % 23 - 11)}px;--k:${(0.7 + (i % 3) * 0.2).toFixed(2)}"></i>`;
+      const tbg = this.el.querySelector('.tbg');
+      for (const [k, h] of [['fire', fire], ['comet', '<i class="t2glint"></i>']]) {
+        const a = document.createElement('div');
+        a.className = 't2amb';
+        a.dataset.at = k;
+        a.setAttribute('aria-hidden', 'true');
+        a.innerHTML = h;
+        if (tbg) tbg.after(a); else this.el.prepend(a);
+      }
+    }
     this.place();
   },
-  /* the painting's fire on the screen, through object-fit: cover */
+  /* each anchor of the painting on the screen, through object-fit: cover */
   place() {
-    const a = this.el && this.el.querySelector('.t2amb'), img = this.glenImg();
-    if (!a || !img || !img.classList.contains('t2img') || !img.naturalWidth) { if (a) a.style.display = 'none'; return; }
-    const v = /wide/.test(img.currentSrc || img.src) ? 'wide' : 'tall', p = this.FIRE[v];
-    const r = img.getBoundingClientRect(), iw = img.naturalWidth, ih = img.naturalHeight;
-    const s = Math.max(r.width / iw, r.height / ih), ox = (r.width - iw * s) / 2, oy = (r.height - ih * s) / 2;
-    a.style.display = '';
-    a.style.left = (ox + p[0] * iw * s) + 'px';
-    a.style.top = (oy + p[1] * ih * s) + 'px';
-    a.style.setProperty('--u', (s * iw / (v === 'wide' ? 688 : 384)).toFixed(3));
+    const all = this.el ? this.el.querySelectorAll('.t2amb') : [], img = this.glenImg();
+    const ok = img && img.classList.contains('t2img') && img.naturalWidth;
+    for (const a of all) {
+      if (!ok) { a.style.display = 'none'; continue; }
+      const v = /wide/.test(img.currentSrc || img.src) ? 'wide' : 'tall', p = this.ANCHOR[a.dataset.at][v];
+      const r = img.getBoundingClientRect(), iw = img.naturalWidth, ih = img.naturalHeight;
+      const s = Math.max(r.width / iw, r.height / ih), ox = (r.width - iw * s) / 2, oy = (r.height - ih * s) / 2;
+      a.style.display = '';
+      a.style.left = (ox + p[0] * iw * s) + 'px';
+      a.style.top = (oy + p[1] * ih * s) + 'px';
+      a.style.setProperty('--u', (s * iw / this.NATIVE[v]).toFixed(3));
+    }
   },
 
   _css() {
@@ -336,10 +346,6 @@ TitleScreen.CSS = `
 /* ---- the night title (js/titlescreen.js): scoped to #scrTitle.t2, so the
    pause menu's plaques and every unstaged device are untouched ---- */
 #scrTitle.t2 .tbg { background: #0a0d18; }
-#scrTitle.t2 .t2shade { position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  background:
-    radial-gradient(ellipse 44% 46% at 50% 56%, rgba(4,6,14,0.5), rgba(4,6,14,0.22) 62%, rgba(4,6,14,0) 100%),
-    linear-gradient(rgba(4,6,14,0.18), rgba(4,6,14,0) 26%, rgba(4,6,14,0) 70%, rgba(4,6,14,0.32)); }
 #scrTitle.t2 .thead { background: radial-gradient(60% 80% at 50% 50%, rgba(4,6,14,0.42), rgba(4,6,14,0) 72%); }
 #scrTitle.t2 .tmenu { width: min(352px, 90vw); gap: 12px; margin-top: 24px; }
 #scrTitle.t2 .plaques .abtn { color: #f4e7c8; min-height: 54px; font-size: 16.5px; letter-spacing: 2.2px;
@@ -431,7 +437,15 @@ TitleScreen.CSS = `
   60% { opacity: 0.75; transform: translate(calc(var(--x) * 0.6), calc(var(--u) * -24px)) scale(var(--k)); }
   100% { opacity: 0; transform: translate(var(--x), calc(var(--u) * -42px)) scale(calc(var(--k) * 0.5)); }
 }
-@media (prefers-reduced-motion: reduce) { #scrTitle.t2 .t2glow { animation: none; } #scrTitle.t2 .t2em { display: none; } }
+#scrTitle.t2 .t2glint { position: absolute; left: calc(var(--u) * -9px); top: calc(var(--u) * -9px);
+  width: calc(var(--u) * 18px); height: calc(var(--u) * 18px); border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255,236,170,0.5), rgba(255,200,110,0.16) 50%, rgba(255,190,90,0) 100%);
+  animation: t2glint 4.2s ease-in-out infinite; }
+@keyframes t2glint { 0%, 100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 0.85; transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) {
+  #scrTitle.t2 .t2glow, #scrTitle.t2 .t2glint { animation: none; }
+  #scrTitle.t2 .t2em { display: none; }
+}
 `;
 
 window.TitleScreen = TitleScreen;

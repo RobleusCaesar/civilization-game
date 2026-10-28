@@ -1390,6 +1390,11 @@
     ],
     T2_IMG: 'assets/ui/title/night-tall.jpg?v=60',
     T2_BG: '#0a0d18',       // the night's own dark: no frame is ever green, black or white
+    /* a soft dark under the column, so the plaques stand on calm ground —
+       part of the SCENE, worn by the splash too, so the lift adds only the
+       chrome */
+    T2_SHADE: 'radial-gradient(ellipse 44% 46% at 50% 56%, rgba(4,6,14,0.5), rgba(4,6,14,0.22) 62%, rgba(4,6,14,0) 100%),' +
+      'linear-gradient(rgba(4,6,14,0.18), rgba(4,6,14,0) 26%, rgba(4,6,14,0) 70%, rgba(4,6,14,0.32))',
     /* the picture, built the same way for the splash and the title, so the
        browser picks the same file for both and the lift has no seam */
     t2pic: function () {
@@ -1425,16 +1430,22 @@
       var have = box.querySelector('img.t2img');
       if (have) return have;
       var pic = this.t2pic(), img = pic.querySelector('img'), self = this, prev = box.style.background;
+      var shade = document.createElement('div');
+      shade.className = 't2shade';
+      shade.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+      shade.style.background = this.T2_SHADE;
       box.style.background = this.T2_BG;
       if (old) old.style.visibility = 'hidden';
       img.addEventListener('load', function () { self.t2fit(img); });
       img.addEventListener('error', function () {
         if (pic.parentNode) pic.parentNode.removeChild(pic);
+        if (shade.parentNode) shade.parentNode.removeChild(shade);
         if (old) old.style.visibility = '';
         box.style.background = prev;
         box.classList.add('t2lost');
       });
       box.appendChild(pic);
+      box.appendChild(shade);
       if (!this._t2rs) {
         this._t2rs = true;
         window.addEventListener('resize', function () {
