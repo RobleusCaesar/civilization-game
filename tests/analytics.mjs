@@ -162,6 +162,48 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   ck('itRefusesWithoutTheFeedbackTable', !!bare.error && /0009/.test(bare.error), bare.error ? bare.error.split('\n').find(l => /0009/.test(l)) || bare.error.split('\n')[0] : 'it applied');
 }
 
+/* ============ 1b. THE BIG LOSS (0011), on the real door ============
+   tests/deck-sync.mjs pins 0011's words against the game's numbers; this
+   asks the door itself, as a signed-in player, because a plpgsql body is
+   only checked when it RUNS — a file that applies cleanly can still hold a
+   door that throws. Its own database, so the evidence rows never reach the
+   dashboard's fixture. */
+{
+  const F11 = '0011_card_big_loss.sql';
+  const twice = files.includes(F11) ? sql(readFileSync(join(MIG, F11), 'utf8')) : { error: F11 + ' is missing' };
+  ck('andTheBigLossTwiceChangesNothing', !twice.error, twice.error ? twice.error.split('\n')[0] : 'applied a second time cleanly');
+  make('cf_cards');
+  for (const f of files) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_cards' });
+  const N = +(sql('select public.card_big_loss_min_score();', { db: 'cf_cards' }).out || NaN);
+  const P = n => '00000000-0000-0000-0000-0000000001' + String(n).padStart(2, '0');
+  // run_end rows as the game sends them: score is Score.compute(win).total
+  const ends = [[1, 'at', 'loss', 'moderate', N], [2, 'under', 'loss', 'moderate', N - 1], [3, 'win', 'win', 'moderate', 100],
+    [4, 'stone', 'loss', 'hard', N + 13000], [5, 'imperial', 'loss', 'hard', N + 13000], [6, 'unscored', 'loss', 'moderate', null]];
+  const load = !(N > 0) ? { error: 'card_big_loss_min_score() is missing: ' + F11 + ' was never applied' } : sql(`insert into auth.users (id) values ${ends.map(e => `('${P(e[0])}')`).join(', ')};
+    insert into public.profiles (id) select id from auth.users on conflict do nothing;
+    insert into public.telemetry (user_id, run_id, kind, outcome, cause, mode, day, seconds, score, props) values
+    ${ends.map(([n, run, o, m, s]) => `('${P(n)}', ${lit(run)}, 'run_end', ${lit(o)}, ${lit(o === 'win' ? 'razed_rival_tc' : 'tc_destroyed')}, ${lit(m)}, 90, 2000, ${lit(s)}, '{"deeds": 9}')`).join(',\n    ')};`,
+    { db: 'cf_cards' });
+  const grant = (n, run, cards, outcome) => json(`set role authenticated; set request.jwt.claim.sub = '${P(n)}';
+    select public.grant_card(${lit(run)}, array[${cards.map(lit).join(', ')}], ${lit(outcome)});`, { db: 'cf_cards' });
+  const r = {
+    at: grant(1, 'at', ['siege_train'], 'loss'),
+    underIron: grant(2, 'under', ['siege_train'], 'loss'), underBronze: grant(2, 'under', ['war_band'], 'loss'),
+    win: grant(3, 'win', ['siege_train', 'golden_age'], 'win'),
+    stone: grant(4, 'stone', ['gold_nugget'], 'loss'), imperial: grant(5, 'imperial', ['golden_age'], 'loss'),
+    unscored: grant(6, 'unscored', ['siege_train'], 'loss'),
+  };
+  const say = o => o && (o.ok ? 'ok' : o.reason || o.error);
+  ck('aDefeatScoringTheNumberTakesAnIronCard', !load.error && N > 0 && r.at.ok === true,
+    load.error ? load.error.split('\n')[0] : `a loss scoring ${N}: Iron ${say(r.at)}`);
+  ck('oneUnderItIronIsRefusedAndBronzeLands', r.underIron.ok === false && r.underIron.reason === 'bad_cards' && r.underBronze.ok === true &&
+    r.unscored.ok === false && r.unscored.reason === 'bad_cards',
+    `${N - 1}: Iron ${say(r.underIron)}, then Bronze ${say(r.underBronze)}; no score at all: Iron ${say(r.unscored)}`);
+  ck('aBigDefeatIsPaidUpToIronNeverPast', r.stone.ok === true && r.imperial.ok === false && r.imperial.reason === 'bad_cards',
+    `Stone ${say(r.stone)} (the ceiling takes an older game's roll), Imperial ${say(r.imperial)}`);
+  ck('aWinIsJudgedOnItsModeAsEver', r.win.ok === true, `a Moderate win scoring 100: Iron + Imperial ${say(r.win)}`);
+}
+
 /* ================= the fixture ================= */
 const PASS = 'a long test passphrase';
 const TOKEN = createHash('sha256').update('clanfire-analytics-v1:' + PASS).digest('hex');
