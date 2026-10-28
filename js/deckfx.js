@@ -298,7 +298,9 @@ Object.assign(Deck, {
       // (render one-shots — never in S)
       if (window.R && opts.flash !== false) {
         if (R.startSummon) R.startSummon(u.x, u.y, i * stag, stag ? u.id : 0, opts.tone);   // the tier's light (R.LIGHT.TONE; gold unless named)
-        if (R.startPlacePoof && i < 8 && opts.dust !== false) R.startPlacePoof(s.x, s.y, 1, { delay: i * Math.max(60, stag), scale: 0.8 });
+        // (the card's own smooth dust at the device's resolution, never the
+        // place-poof's pixel dust — R.startCardDust, the operator's ruling)
+        if (R.startCardDust && i < 8 && opts.dust !== false) R.startCardDust(u.x, u.y, { delay: i * Math.max(60, stag), scale: 0.8 });
       }
     }
     if (opts.march !== false) {

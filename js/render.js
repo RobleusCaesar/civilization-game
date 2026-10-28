@@ -6501,6 +6501,7 @@ const R = {
     this._tameKey = ''; this._tameMask = null;   // the kept-ground mask is the old run's
     this.horns = [];           // …and the horn's rings…
     this.summons = [];         // …and a card's riders arriving in their flash…
+    this.cardDust = [];        // …and the dust they land in…
     this._unborn = null;       // …(and the units still waiting for theirs)…
     this.cardShows = [];       // …and every card's own moment in the world…
     this._cardSky = null;      // …and a card's star still settling
@@ -11177,6 +11178,141 @@ const R = {
     g.drawImage(c, B.x0, B.y0, W, H);
     g.restore();
   },
+  /* DUST kicked up off the ground by a card's people — a soldier set down,
+     a legion's stamp, a gallop — in the earth's own grey-tan, soft-edged, at
+     the device's own resolution. It is a puff of DUST, not a light: a tone
+     of the earth with no white-hot heart, laid the light's way (its paler
+     body screened first, then its HUE over the lot, tied to each body), so a
+     cloud over the meadow is a dusty tan, never olive. Its hue is a dusty
+     grey-tan: a saturated brown laid on the meadow's own luminance read as
+     MUD wherever a puff thinned, and it is tied harder to its body than a
+     light's (DUST_TIE) — where a little of the grass's green shows through a
+     warm hue only partly laid, the mix is the olive the meadow must never
+     wear. Every puff `{x, y, r, a, sq}` (caller units) is a broad body
+     thinning out at its rim, squashed by `sq` to lie along the ground; the
+     cloud's bodies are SCREENED first and its hue laid over the lot (the
+     order a stack of screens needs — fxBeam's rule: laid hue-first, puff by
+     puff, one puff's faint rim lifted again by its neighbours' bodies read
+     lime where six men stamped together). A puff that THINS also SHRINKS
+     (to half its size as `a` goes to nothing): dust thinned by its alpha
+     alone is a disc of the hue on the meadow's own luminance — a dark blot —
+     where a settling puff draws in. Smooth, no RNG, nothing kept.
+     (Deck.armyFx.dustLay is this painter; it lived there first.) */
+  DUST: { hue: '#a39885', faint: '#a39885', ramp: ['#8f7a5c', '#b39c78', '#cdb894', '#ddcdaf'], hot: '#e4d6bb' },
+  DUST_TIE: 18,
+  fxDust(g, list, tone, tie) {
+    list = (list || []).filter(d => d.a > 0.01 && d.r > 0);
+    if (!list.length) return;
+    // (a puff may carry `soft`, its falloff's power — 0.95 a puff with a
+    // body, higher a softer one; `edge`, in its place, a BILLOW: a full body
+    // whose last `edge` of its radius eases out, so the band where its hue
+    // is laid and its body is thin — a drab grey rim on the meadow — stays
+    // a hair; `lit`, the billow's heart drawn up toward the light (top-left)
+    // by that share of its radius, so it has a lit side and a shaded one;
+    // `pale`, where its heart starts down the earth's ramp (0.2; higher a
+    // duller heart), `lift`, how strongly its body is screened (1), and
+    // `thin`: where its body lifts the ground less than this, its hue goes
+    // with it — a body that faint brightens the meadow by a few levels at
+    // most, too little to read as olive, and its hue laid there full was a
+    // drab grey ring round every billow and a grey smudge where it settled)
+    const T = this.fxTone(tone || this.DUST), K = tie || this.DUST_TIE;
+    g.save();
+    for (const pass of ['screen', 'color']) {
+      g.globalCompositeOperation = pass;
+      if (g.globalCompositeOperation !== pass) continue;   // (no 'color': the body alone)
+      for (const d of list) {
+        const a = Math.min(1, d.a), L = this.fxA(a).l * (d.lift || 1), r = d.r * (0.5 + 0.5 * a), pw = d.soft || 0.95, pl = d.pale || 0.2;
+        const ed = d.edge || 0, lit = d.lit || 0;
+        const prof = ed ? u => { const v = Math.max(0, (u - (1 - ed)) / ed); return v >= 1 ? 0 : 1 - v * v * (3 - 2 * v); }
+          : u => Math.pow(Math.max(0, 1 - u), pw);
+        g.save();
+        g.translate(d.x, d.y); g.scale(1, d.sq || 0.7);
+        g.fillStyle = this._fxStops(g.createRadialGradient(-lit * r, -lit * r, 0, 0, 0, r), 16, pass === 'screen'
+          ? u => [this._fxRamp(T, pl + (1 - pl) * u), L * prof(u)]
+          : u => { const l = L * prof(u), v = d.thin ? Math.min(1, l / d.thin) : 1; return [T.hue, Math.min(1, K * l) * v * v * (3 - 2 * v)]; });
+        g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+      }
+    }
+    g.restore();
+  },
+  /* THE CARD'S PEOPLE LAND IN SMOOTH DUST (operator ruling, 2026-10-28, on
+     the army cards: "When characters slam down, that feels cool, but the
+     rays are pixelated again, let's increase the quality of that as well.
+     higher pixel count." — and the doorstep's dust was the last chunky thing
+     left in the landing: R.poofSheet's half-resolution, three-step pixel
+     puffs, a 6px block at dpr 3). A card's summons (Deck.summon, the army's
+     fan, an engine's skid) kick up THIS dust instead: soft billows of the
+     earth's grey-tan rolling out from under the feet and settling — thrown
+     mostly SIDEWAYS along the ground, each its own distance and size by a
+     hash of where it lands, a low impact puff under the feet first — never
+     a closed ring round a man (a ring reads as a SELECTION RING, or a ring
+     of mud), never a brown blot (fxDust: a puff shrinks as it thins). The
+     WORLD's own dust is untouched: a site laid, a building falling, the
+     goods a card sets down still throw R.poofSheet's pixel dust (the art's
+     own, tests/placement.mjs, tests/burn-down.mjs). Render one-shots on R —
+     never in S, cleared in onNewGame (the R.collapses rule); drawn in the
+     card GROUND pass (drawCardGround — under the people, the buildings and
+     the beams: over a man, the screened body greyed his legs out as if he
+     were made of dust) and clipped to the board.
+     (x, y) is the point the feet land on, in TILES; `delay` (ms) holds it
+     for its beat; `scale` its size (an engine 1, a man 0.7); `a` its
+     strength (1 — less for a cloud thrown over another, which would stack
+     to a pale slab). */
+  CARD_DUST: { ms: 1100, cap: 40, n: 8, edge: 0.5, lit: 0.3, pale: 0.4, lift: 0.62, thin: 0.05 },
+  cardDust: [],
+  startCardDust(x, y, opts) {
+    opts = opts || {};
+    if (this.cardDust.length >= this.CARD_DUST.cap) this.cardDust.shift();
+    const seed = (Math.imul(Math.round(x * 64) | 0, 73856093) ^ Math.imul(Math.round(y * 64) | 0, 19349663)) >>> 0;
+    this.cardDust.push({ x, y, t: -(opts.delay || 0) / 1000, s: opts.scale || 1, a: opts.a || 1, seed });
+  },
+  /* the cloud of one landing at q (0..1 through its life), in world px: an
+     impact puff under the feet, then billows rolling out to either side
+     along the ground — a few a little forward or back of the line, none
+     straight in front or behind — swelling, rising a hair and thinning as
+     they settle. A pure function of the landing and q (no RNG, nothing kept). */
+  cardDustCloud(p, q) {
+    const TL = CFG.TILE, s = p.s || 1, fx = p.x * TL, fy = p.y * TL + TL * 0.32, out = [], k = p.a || 1;
+    if (!(q > 0) || q >= 1) return out;
+    const H = j => this._fxHash(p.seed | 0, j), D = this.CARD_DUST;
+    // the impact: a low broad puff under the feet, up at once and gone by halfway
+    const qi = q / 0.55;
+    if (qi < 1) out.push({ x: fx, y: fy + 1, r: TL * s * (0.62 + 0.42 * (1 - (1 - qi) * (1 - qi))),
+      a: (qi < 0.05 ? qi / 0.05 : Math.pow(1 - qi, 1.4)) * 0.75 * k, sq: 0.4, edge: 0.75, lit: 0.15, pale: D.pale, lift: D.lift, thin: D.thin });
+    // the billows, D.n of them, half a side, thrown out along the ground
+    for (let j = 0; j < D.n; j++) {
+      const side = j & 1 ? 1 : -1, h = H(j), h2 = H(j + 11), h3 = H(j + 23), rank = j >> 1;
+      const lag = rank * 0.02 + h3 * 0.02, qj = (q - lag) / (1 - lag);
+      if (qj <= 0) continue;
+      // out fast, then settling slowly
+      const e = 1 - Math.pow(1 - Math.min(1, qj), 3);
+      // off the horizontal by up to ~30°, forward or back by the hash
+      const th = (h - 0.5) * 1.05, reach = TL * s * (0.5 + 0.75 * h2) * (1 - 0.08 * rank);
+      out.push({
+        x: fx + side * Math.cos(th) * reach * e,
+        y: fy + Math.sin(th) * reach * e * 0.5 - TL * 0.2 * e * (0.4 + h3),
+        r: TL * s * (0.26 + 0.08 * h3 + (0.3 + 0.12 * h) * e),
+        a: (qj < 0.14 ? qj / 0.14 : Math.pow((1 - qj) / 0.86, 1.7)) * (0.92 - 0.07 * rank) * k,
+        sq: 0.62, edge: D.edge, lit: D.lit, pale: D.pale, lift: D.lift, thin: D.thin,
+      });
+    }
+    return out;
+  },
+  drawCardDust(g, dt) {
+    if (!this.cardDust.length) return;
+    const life = this.CARD_DUST.ms / 1000, cloud = [];
+    for (let i = this.cardDust.length - 1; i >= 0; i--) {
+      const p = this.cardDust[i];
+      p.t += dt;
+      if (p.t < 0) continue;                                    // still waiting its beat
+      if (p.t >= life) { this.cardDust.splice(i, 1); continue; }
+      for (const d of this.cardDustCloud(p, p.t / life)) cloud.push(d);
+    }
+    // the whole muster's dust laid as one cloud (fxDust), never in the black
+    if (cloud.length) this.clipBoard(g, () => this.fxDust(g, cloud));
+  },
   SUMMON: { ms: 640, dots: 18 },
   summons: [],
   /* `delay` (ms) staggers a muster's flashes one after another, and `id`
@@ -11247,6 +11383,9 @@ const R = {
                                (a building catching the card's light).
      Both cost nothing with no card in play (R.draw's length checks). */
   drawCardGround(g, dt) {
+    // the dust a card's people land in rolls out along the GROUND, under
+    // them: drawn over a man it greyed his legs out as if he were made of it
+    if (this.cardDust.length) this.drawCardDust(g, dt);
     if (this.cardShows.length) this.drawCardShows(g, dt, 'ground');
     const fx = S.deck && S.deck.fx;
     if (!fx || !fx.length || !window.Deck) return;
@@ -13934,7 +14073,7 @@ const R = {
     // a played card that changes the GROUND (Bountiful Land's lush meadow) is
     // ground: drawn here, under every bridge, building and unit — and so under
     // the fog's dimming like the rest of the land (drawCardGround)
-    if (this.cardShows.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardGround(g, dt);
+    if (this.cardShows.length || this.cardDust.length || (S.deck && S.deck.fx && S.deck.fx.length)) this.drawCardGround(g, dt);
 
     // sapper bridges: faction-trimmed plank decks over water/moat (above terrain,
     // below units). Dynamic structures, so drawn per-frame, not baked into the cache.
