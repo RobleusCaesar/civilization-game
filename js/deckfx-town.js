@@ -190,9 +190,9 @@
       return s ? { x: s.x + 0.5, y: s.y + 0.7 } : { x: Bld.cx(tc) + side * (sz / 2 + 0.5), y: tc.y + sz + 0.5 };
     },
     /* A NUMBER OVER THE GOODS, in the world's own float type (bold 9 px)
-       with a one-pixel dark outline round every letter — legible on the
-       meadow and on a straw roof alike (gold on thatch read as nothing) —
-       laid in hard alpha steps. `lines` stack downward from (x, y), the
+       with a dark rim stroked round every letter (TX.inkText) — legible on
+       the meadow and on a straw roof alike (gold on thatch read as nothing) —
+       fading smoothly, at the device's own resolution. `lines` stack downward from (x, y), the
        block's middle at x; the block is FITTED to the safe view once
        (s.lab, so it never creeps) and rises `rise` world px as it goes.
        `avoid` (a world-px rect or a list: the hall's roof, the pile) moves
@@ -276,28 +276,41 @@
        as smooth antialiased paths and gradients at FRACTIONAL coordinates,
        through the shared light helpers (R.fx*, js/render.js), never snapped
        to the art's 2px grain. Sizes for the thin things are in CSS px
-       (R.fxPx), so a thread is as fine on a desktop as on a phone. */
+       (R.fxPx), so a thread is as fine on a desktop as on a phone.
+       EVERY LIGHT HERE IS TIED AS ITS TONE WANTS (R.fxTie — twice as hard
+       for a pale tone): the Stone tier's pale light is a near-white ramp
+       over a weakly saturated hue, and at the plain tie the middle of every
+       shaft, ring and flare read khaki — 3% of what a goods' moment
+       brightens was olive, a pale ring alone 7%. */
+    tie(tone) { return R.fxTie ? R.fxTie(tone || 'gold') : 1; },
 
     // a glint off something (a stone's fresh face, a coin, a struck wall):
     // R.fxSpark, its arms `len` WORLD px long (the old star's reach)
     spark(g, x, y, len, a, tone, o) {
       if (!(a > 0.01)) return;
-      R.fxSpark(g, x, y, Math.max(2, len / R.fxPx(g)), Math.min(1, a), tone || 'gold', o);
+      R.fxSpark(g, x, y, Math.max(2, len / R.fxPx(g)), Math.min(1, a), tone || 'gold', Object.assign({ tie: this.tie(tone) }, o));
     },
     // a ring of light rolling out on the ground (sy squashes it into perspective)
     halo(g, cx, cy, r, sy, a, tone, css) {
       if (!(a > 0.01) || !(r > 0.5)) return;
-      R.fxRing(g, cx, cy, r, Math.min(1, a), tone || 'gold', { squash: sy || 1, css: css || 2 });
+      R.fxRing(g, cx, cy, r, Math.min(1, a), tone || 'gold', { squash: sy || 1, css: css || 2, tie: this.tie(tone) });
+    },
+    // a soft disc of the tone's light (R.fxGlow), tied as its tone wants
+    glow(g, x, y, r, a, tone, o) {
+      R.fxGlow(g, x, y, r, a, tone || 'gold', Object.assign({ tie: this.tie(tone) }, o));
     },
     /* A LINE OF LIGHT along any path (a dome's rib, a crack, a rune's
        glow): three strokes, a soft broad one, the tone's bright one and a
        white-hot thread, `o.css` (1.6) CSS px wide — and THE HUE LAST over
        all three (a stack of screens drifts toward lemon: R.fxBeam's rule),
-       a device pixel past the broad stroke and tied to the light under it. */
+       a device pixel past the broad stroke and tied to the light under it —
+       half as hard again as a body of light is: a line is ALL EDGE, its
+       broad stroke faint everywhere, and at the plain tie the standing
+       dome's gold ribs read olive (2.5% of what they brighten; 0 at 1.5). */
     line(g, path, a, tone, o) {
       o = o || {};
       if (!(a > 0.003)) return;
-      const T = R.fxTone(tone || 'gold'), A = R.fxA(a), dv = R.fxDev(g), w = (o.css || 1.6) * R.fxPx(g), K = R.FX_TIE;
+      const T = R.fxTone(tone || 'gold'), A = R.fxA(a), dv = R.fxDev(g), w = (o.css || 1.6) * R.fxPx(g), K = R.FX_TIE * Math.max(1.5, this.tie(tone));
       g.save();
       g.lineCap = 'round'; g.lineJoin = 'round';
       g.globalCompositeOperation = 'screen';
@@ -324,7 +337,7 @@
       if (y1 < y0) { const t = y0; y0 = y1; y1 = t; const u = w0; w0 = w1; w1 = u; }
       const h = y1 - y0;
       if (h < 0.5 || Math.max(w0, w1) <= 0) return;
-      const T = R.fxTone(tone || 'gold'), A = R.fxA(a), K = R.FX_TIE;
+      const T = R.fxTone(tone || 'gold'), A = R.fxA(a), K = R.FX_TIE * this.tie(tone);
       const narrowTop = w0 <= w1, wn = Math.min(w0, w1), ww = Math.max(w0, w1);
       if (!g.createConicGradient || ww - wn < ww * 0.04) {
         R.fxBeam(g, x, y1, y0, (w0 + w1) / 2, a, T, { core: o.core == null ? 1.2 : o.core });
@@ -396,7 +409,7 @@
        own, never a flat silhouette and never a stepped dither. */
     lit(g, a, prof, s, tone) {
       if (!(s > 0.003)) return;
-      const T = R.fxTone(tone || 'gold'), A = R.fxA(s), K = R.FX_TIE;
+      const T = R.fxTone(tone || 'gold'), A = R.fxA(s), K = R.FX_TIE * this.tie(tone);
       const pass = (op, fn) => {
         const d = this.dev(g, a, 'lit');
         if (!d) return;
@@ -460,7 +473,7 @@
         if (g.roundRect) { g.roundRect(x - s, y - w, 2 * s, 2 * w, rr); g.roundRect(x - w, y - s, 2 * w, 2 * s, rr); }
         else { g.rect(x - s, y - w, 2 * s, 2 * w); g.rect(x - w, y - s, 2 * w, 2 * s); }
       };
-      R.fxGlow(g, x, y, s * 2.2, 0.55 * a, 'gold', { soft: 2.2 });
+      this.glow(g, x, y, s * 2.2, 0.55 * a, 'gold', { soft: 2.2 });
       g.save();
       g.globalAlpha = Math.min(1, a);
       g.lineJoin = 'round'; g.strokeStyle = this.INK; g.lineWidth = Math.max(R.fxDev(g) * 1.5, s * 0.3);
@@ -473,7 +486,7 @@
     // a mote of the tone's light, `rc` CSS px (R.fxDot: a soft bead with a cream heart)
     mote(g, x, y, rc, a, tone) {
       if (!(a > 0.01)) return;
-      R.fxDot(g, x, y, rc, Math.min(1, a), tone || 'gold');
+      R.fxDot(g, x, y, rc, Math.min(1, a), tone || 'gold', this.tie(tone));
     },
     /* A CHIP of stone or timber flying: a small faceted shard `s` world px
        across, turned `rot`, its face in `col` with a lit edge and a dark one
@@ -597,7 +610,7 @@
       g.restore();
     },
     /* the count over a pile: `lines` from `t0` seconds into the show for
-       `dur`, rising as it goes, out in hard steps over its last quarter —
+       `dur`, rising as it goes, fading out over its last quarter —
        fitted to the safe view and clear of the hall's roof */
     count(g, s, sp, lines, t0, dur) {
       const tl = s.t - t0;
@@ -639,6 +652,19 @@
     bNear(b) { const TL = TLs(), s = Bld.size(b); return this.near(b.x * TL - TL, b.y * TL - 2 * TL, (b.x + s) * TL + TL, (b.y + s) * TL + TL); },
     // world px → the device pixels the sky layer draws in
     scr(wx, wy) { const z = R.cam.z * R.dpr; return { x: (wx - R.cam.x) * z, y: (wy - R.cam.y) * z, z }; },
+    /* NOTHING IS DRAWN IN THE BLACK, IN THE SKY EITHER (R.boardPx): a world-
+       layer show is clipped to the board by R.drawCardShows, a sky layer is
+       not — so a light the sky lays over the world (the hall's lance, its
+       rays, the halo bursting across the screen) is drawn inside the board's
+       own rect on the screen, through the camera */
+    skyBoard(g, fn) {
+      const b = R.boardPx ? R.boardPx() : null;
+      if (!b) return fn();
+      const z = R.cam.z * (R.dpr || 1);
+      g.save();
+      g.beginPath(); g.rect((b.x0 - R.cam.x) * z, (b.y0 - R.cam.y) * z, (b.x1 - b.x0) * z, (b.y1 - b.y0) * z); g.clip();
+      try { return fn(); } finally { g.restore(); }
+    },
     // a flame: the burning houses' own strip, or a stack of hard fire pixels
     flame(g, x, y, s, beat) {
       if (window.Assets && Assets.drawSprite && Assets.drawSprite(g, 'misc/flameBig/' + (beat % 4), x - s / 2, y - s * 0.95, { w: s, h: s })) return;
@@ -726,7 +752,7 @@
     // its width where its foot has got to (the taper is the whole shaft's)
     const wTop = this.SHAFT.TOP * (0.4 + 0.6 * k), wFoot = wTop + (w - wTop) * down;
     this.taper(g, x, top, y1, wTop, wFoot, 0.92 * (0.35 + 0.65 * k), tone, { core: 0.45 });
-    if (down >= 1) R.fxGlow(g, x, foot - 1, wFoot * 0.8, 0.7 * k, tone, { squash: 0.32, core: 0.25, soft: 2.2 });
+    if (down >= 1) this.glow(g, x, foot - 1, wFoot * 0.8, 0.7 * k, tone, { squash: 0.32, core: 0.25, soft: 2.2 });
     return true;
   };
 
@@ -1439,7 +1465,7 @@
        comes down on the site and the building's own three raising stages
        play under it in about 600 ms (show.veil stands in for its picture —
        R.cardVeil), then it stands, fills with the light from its foot to its
-       crown, and the count left floats over it in cream on a hard dark rim. */
+       crown, and the count left floats over it in cream on a dark rim. */
     master_builders: {
       at: 'bar', showAtHall: true, N: 3, NOT: { wonder: 1, wall: 1, gate: 1, tc: 1 },
       TONE: 'bronze', STAGES: 0.36,   // the share of the raising's show the three stages take (~600 ms)
@@ -1572,7 +1598,7 @@
             const q = (p - ST) / (1 - ST);
             TX.halo(g, mid, foot - 2, w * 0.6 + q * TL * 1.4, 0.5, 0.9 * (1 - q), tone, 2);
           }
-          // the count left, cream on a hard dark rim, over the building it raised
+          // the count left, cream on a dark rim, over the building it raised
           if (p > ST + 0.04) {
             const q = (p - ST - 0.04) / (1 - ST - 0.04), al = q < 0.75 ? 1 : 1 - (q - 0.75) / 0.25;
             TX.label(g, s, 'left', mid, top - 6, [{ t: s.left ? '⚒ ' + s.left + ' left' : '⚒ the last', col: '#f2e6cd' }], al, q, [{ x0, x1, y0: top, y1: foot }]);
@@ -1597,7 +1623,7 @@
             const y = q < 1 ? land - (1 - q * q) * TL * 2.4 : land;
             if (q >= 1 && !s['th' + i]) { s['th' + i] = 1; TX.sound('cardThud'); }
             // a little glow of the bronze where it strikes
-            if (q >= 1) { const st = cl((p - t0 - 0.1) / 0.12); if (st < 1) R.fxGlow(g, x, land - hh * 0.75, hh * 0.9 * (0.5 + st), 0.7 * (1 - st), 'bronze', { soft: 2 }); }
+            if (q >= 1) { const st = cl((p - t0 - 0.1) / 0.12); if (st < 1) TX.glow(g, x, land - hh * 0.75, hh * 0.9 * (0.5 + st), 0.7 * (1 - st), 'bronze', { soft: 2 }); }
             TX.hammer(g, x, y, hh, ramp, 1 - out * out * (3 - 2 * out), (i - (n - 1) / 2) * 0.16);
           }
           if (p > 0.45) {
@@ -2251,27 +2277,30 @@
           // leaves the sky and drawn to its POINT on the roof, a white-hot
           // thread up its heart (TX.taper, at the device's own resolution:
           // it was rows of the art's pixel stepping in)
-          const down = cl((p - 0.03) / (imp - 0.03)), narrow = p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.26);
-          if (down > 0 && narrow > 0) {
-            const tip = roof.y * eo(down), w0 = TL * 1.7 * A.z * narrow;
-            TX.taper(g, A.x, 0, tip, w0, 0, 0.95 * (0.5 + 0.5 * narrow), 'gold', { core: 0.55 });
-            TX.taper(g, A.x, 0, tip, w0 * 0.4, 0, 0.9 * narrow, 'white', { core: 0.85 });
-            // the point burns where it strikes
-            if (down >= 1) R.fxGlow(g, A.x, roof.y, TL * 0.55 * A.z * (0.6 + 0.4 * narrow), 0.85 * narrow, 'gold', { core: 0.35, soft: 2.1 });
-          }
-          // rays break from the crown, turning slowly — short, slender and
-          // smooth (R.fxRays), near the crown: run across the whole screen as
-          // wedges of light they read as orange road lines
-          if (p > imp && p < 0.9) {
-            const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3), r0 = D.rx * 0.45 * A.z;
-            R.fxRays(g, apex.x, apex.y, { n: 16, r0, r1: r0 + TL * 1.7 * A.z, a: 0.9 * k, tone: 'gold', spread: Math.PI * 2, dir: s.t * 0.12,
-              w0: 0.9 * dpr, w1: Math.max(2 * dpr, TL * 0.07 * A.z), t: s.t, seed: 17, vary: 0.45, fall: 1.3 });
-          }
-          // a halo of light bursting out across the whole screen at the blow
-          if (p > imp && p < imp + 0.35) {
-            const q = (p - imp) / 0.35, rr = eo(q) * Math.hypot(W, H) * 0.7;
-            if (rr > 2) R.fxRing(g, roof.x, roof.y, rr, 0.95 * (1 - q), 'gold', { squash: 0.6, css: 2.6 * (1 - 0.5 * q) });
-          }
+          // (all of the light inside the board's own rect: TX.skyBoard)
+          TX.skyBoard(g, () => {
+            const down = cl((p - 0.03) / (imp - 0.03)), narrow = p < 0.62 ? 1 : 1 - cl((p - 0.62) / 0.26);
+            if (down > 0 && narrow > 0) {
+              const tip = roof.y * eo(down), w0 = TL * 1.7 * A.z * narrow;
+              TX.taper(g, A.x, 0, tip, w0, 0, 0.95 * (0.5 + 0.5 * narrow), 'gold', { core: 0.55 });
+              TX.taper(g, A.x, 0, tip, w0 * 0.4, 0, 0.9 * narrow, 'white', { core: 0.85 });
+              // the point burns where it strikes
+              if (down >= 1) TX.glow(g, A.x, roof.y, TL * 0.55 * A.z * (0.6 + 0.4 * narrow), 0.85 * narrow, 'gold', { core: 0.35, soft: 2.1 });
+            }
+            // rays break from the crown, turning slowly — short, slender and
+            // smooth (R.fxRays), near the crown: run across the whole screen as
+            // wedges of light they read as orange road lines
+            if (p > imp && p < 0.9) {
+              const k = p < 0.35 ? cl((p - imp) / 0.15) : 1 - cl((p - 0.6) / 0.3), r0 = D.rx * 0.45 * A.z;
+              R.fxRays(g, apex.x, apex.y, { n: 16, r0, r1: r0 + TL * 1.7 * A.z, a: 0.9 * k, tone: 'gold', spread: Math.PI * 2, dir: s.t * 0.12,
+                w0: 0.9 * dpr, w1: Math.max(2 * dpr, TL * 0.07 * A.z), t: s.t, seed: 17, vary: 0.45, fall: 1.3 });
+            }
+            // a halo of light bursting out across the whole screen at the blow
+            if (p > imp && p < imp + 0.35) {
+              const q = (p - imp) / 0.35, rr = eo(q) * Math.hypot(W, H) * 0.7;
+              if (rr > 2) R.fxRing(g, roof.x, roof.y, rr, 0.95 * (1 - q), 'gold', { squash: 0.6, css: 2.6 * (1 - 0.5 * q) });
+            }
+          });
         },
       },
     },

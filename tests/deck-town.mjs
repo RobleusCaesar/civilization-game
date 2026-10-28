@@ -1035,7 +1035,11 @@ await p.evaluate(({ TOWN }) => {
     KEYS.forEach((k, i) => { const z = __tw.bld('P', k, 3 + (i % 4) * 3, 14 + Math.floor(i / 4) * 3); if (z) town.push(z); });
     for (const z of town) z.hp = Math.max(1, Math.round(z.maxhp * 0.5));
     R.draw(0);                       // the building pass's own variants, made before anything is counted
-    for (const z of town) if (Bld.get(z.id)) R.wornSprite(z);   // …off the screen too: they are the renderer's, not the card's
+    // …off the screen too, and the box each picture's art stands in, worn and
+    // whole (R._artBox measures a PNG through a canvas, once a sprite — and
+    // Mending turns a worn building back to its whole self): they are the
+    // renderer's, not the card's
+    for (const z of S.buildings) for (const sp of [R.wornSprite(z), R.bldSprite(z)]) if (sp && R._artBox) R._artBox(sp);
     const ce = Document.prototype.createElement;
     let inCard = 0, made = 0;
     Document.prototype.createElement = function (tag) { if (inCard && String(tag).toLowerCase() === 'canvas') made++; return ce.apply(this, arguments); };
@@ -1774,7 +1778,12 @@ await p.evaluate(({ TOWN }) => {
          the sheen and without, and the difference read — the band runs on the
          diagonal (its middle moves across as it goes down), it is never as
          wide as the stone (a bar), and it is soft (many levels of light, where
-         the cells were one colour) */
+         the cells were one colour) — and it is NOT A STAIRCASE: its weighted
+         middle walks across a device row at a time, where the 2px cells (even
+         blurred by the upscale) held still for a whole cell's rows and jumped.
+         Read early in its crossing (k 0.2-0.4, the band wholly over the
+         stone; later it runs off the art's side and the edge holds it): on
+         fx-core's base 41-59% of the rows hold their place, here 2-9% */
       {
         const a = Deck._townTX.art(town[2]), K3 = 3;
         const shot = (sheen) => {
@@ -1784,7 +1793,26 @@ await p.evaluate(({ TOWN }) => {
           if (sheen != null) SK.sheen(g3, town[2], a, sheen);
           return { c, d: g3.getImageData(0, 0, c.width, c.height).data };
         };
+        // the share of consecutive rows whose light-weighted middle holds still
+        const plateau = (B0, B1) => {
+          const Wd = B0.c.width, Hd = B0.c.height, mids = [];
+          for (let y = 0; y < Hd; y++) {
+            let sx = 0, sw = 0;
+            for (let x = 0; x < Wd; x++) {
+              const i = (y * Wd + x) * 4, dl = (B1.d[i] + B1.d[i + 1] + B1.d[i + 2]) - (B0.d[i] + B0.d[i + 1] + B0.d[i + 2]);
+              if (dl > 9) { sx += x * dl; sw += dl; }
+            }
+            if (sw) mids.push([y, sx / sw]);
+          }
+          let n = 0, still = 0;
+          for (let i = 1; i < mids.length; i++) {
+            if (mids[i][0] !== mids[i - 1][0] + 1) continue;
+            n++; if (Math.abs(mids[i][1] - mids[i - 1][1]) < 0.15) still++;
+          }
+          return n >= 10 ? still / n : 1;
+        };
         const A0 = shot(null), A1 = shot(0.5), Wc = A0.c.width, Hc = A0.c.height, levels = new Set();
+        const stairs = [0.2, 0.3, 0.4].map(k => plateau(A0, shot(k)));
         const rowsX = [];
         let widest = 0;
         for (let y = 0; y < Hc; y++) {
@@ -1801,10 +1829,10 @@ await p.evaluate(({ TOWN }) => {
         for (const [y, x] of rowsX) { sxy += (y - my) * (x - mx); syy += (y - my) * (y - my); sxx += (x - mx) * (x - mx); }
         const corr = sxx && syy ? sxy / Math.sqrt(sxx * syy) : 0;
         const artW = (a.box.r - a.box.l) * a.rc.w * K3;
-        out.sheen = { rows: nR, corr: +corr.toFixed(2), widest, artW: Math.round(artW), levels: levels.size };
+        out.sheen = { rows: nR, corr: +corr.toFixed(2), widest, artW: Math.round(artW), levels: levels.size, still: stairs.map(v => +v.toFixed(2)) };
         out.diagonal = nR >= 6 && Math.abs(corr) >= 0.8;
         out.notABar = widest > 0 && widest < artW * 0.6;
-        out.smoothSheen = levels.size >= 12;
+        out.smoothSheen = levels.size >= 12 && stairs.every(v => v <= 0.2);
       }
 
       /* (c) THE UNBREAKABLE HALL'S LANCE TAPERS ONTO THE ROOF: at the blow,
@@ -2024,8 +2052,11 @@ await p.evaluate(({ TOWN }) => {
         if (!e) { o.missing = true; continue; }
         if (id === 'stone_skin') { Combat.hitBuilding(hurt[0], 30); }
         if (id === 'unbreakable_hall') { tc.hp = d.sliver(tc); Combat.hitBuilding(tc, 400); }
+        // the beats on ONE clock from the blow, so both passes of a beat see
+        // the same moment whatever the machine's speed (a beat read off the
+        // wall clock each pass drifted with the load)
+        const t0 = pn.call(performance);
         for (let k = 0; k < 6; k++) for (const pass of ['all', 'light']) {
-          const t0 = pn.call(performance);
           performance.now = () => t0 + k * 230;
           meadow(); world();
           rects = 0; on = pass === 'all'; lightOnly = pass === 'light';
@@ -2046,6 +2077,52 @@ await p.evaluate(({ TOWN }) => {
     A.map(([id, o]) => `${id} ${o.drawn ? o.rects + ' rects' : 'NOT DRAWN'}${o.threw ? ' THREW ' + o.threw : ''}`).join(', ') + ' | looks: ' + Lv.map(([id, o]) => `${id} ${o.missing ? 'NOT RUNNING' : o.rects + ' rects'}`).join(', '));
   ck('andItsLightIsNeverOlive', A.concat(Lv).every(([, o]) => !o.bright || o.olive / o.bright <= 0.02),
     A.concat(Lv).map(([id, o]) => `${id} ${o.bright ? (100 * o.olive / o.bright).toFixed(2) + '%' : '-'}`).join(', '));
+}
+
+// ---------------- 18. NOTHING IS DRAWN IN THE BLACK, IN THE SKY EITHER ----------------
+/* A world-layer show is clipped to the board by R.drawCardShows; a SKY layer
+   is not, and the Unbreakable Hall's lance, its rays and the halo bursting
+   across the whole screen are light laid over the world from the sky. With
+   the camera at the world's corner — the off-map rim in view — every beat
+   of every town act's sky, drawn on a black canvas, lights not one pixel of
+   the rim (TX.skyBoard: the light inside the board's own rect on the
+   screen); the CONTROL widens the board and the same draws must light it. */
+{
+  const r = await p.evaluate(() => {
+    __tw.fresh('town-rim');
+    Screens.show('playing'); S.paused = true;
+    const tc = __tw.flat();
+    R.cam.z = 1.5; R.cam.x = 0; R.cam.y = 0;
+    const z = R.cam.z * (R.dpr || 1), TL = CFG.TILE, rim = Math.floor(TL * z) - 2;
+    const probe = () => {
+      let lit = 0;
+      for (const id of __tw.TOWN) {
+        const d = Deck.FX[id], sh = d.show;
+        if (!sh || !(sh.layers || []).includes('sky')) continue;
+        for (const pp of [0.1, 0.22, 0.3, 0.4, 0.55, 0.7]) {
+          const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+          const g = c.getContext('2d');
+          g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height);
+          const s = { id, tc: tc.id, t: pp * sh.ms / 1000, ms: sh.ms, boom: 1, cx: Bld.cx(tc), cy: Bld.cy(tc), hit: [], speed: 9 };
+          try { sh.draw.call(d, g, s, pp, 1 / 30, 'sky'); } catch (e) { lit += 1e6; }
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          const top = g.getImageData(0, 0, c.width, rim).data, left = g.getImageData(0, 0, rim, c.height).data;
+          // (a light, not the dark an act closes in round the open band: a
+          // vignette over black is at most a few levels of its own deep blue)
+          for (const data of [top, left]) for (let i = 0; i < data.length; i += 4) if (data[i] + data[i + 1] + data[i + 2] > 48) lit++;
+        }
+      }
+      return lit;
+    };
+    const inBlack = probe();
+    const bp = R.boardPx;
+    R.boardPx = () => ({ x0: -1e5, y0: -1e5, x1: 1e5, y1: 1e5 });
+    let control;
+    try { control = probe(); } finally { R.boardPx = bp; }
+    R.cardShows = [];
+    return { inBlack, control };
+  });
+  ck('noActsSkyLightIsDrawnInTheBlack', r.inBlack === 0 && r.control > 1000, `${r.inBlack} lit pixels on the off-map rim; with the board widened ${r.control}`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
