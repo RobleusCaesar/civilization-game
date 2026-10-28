@@ -11547,7 +11547,7 @@ const R = {
      lower line (an emblem's foot), never a higher one, and `opt.max` /
      `opt.sub` (CSS px) size it down for a box of its own — the army cut's
      lower bar (Deck.armyFx.cinema) letters its card this way. `a` 0..1 fades
-     it in hard steps. Answers the box it took ({ y0, y1 }, device px). */
+     it, smoothly. Answers the box it took ({ y0, y1 }, device px). */
   ACT_TITLE: { hi: '#ffe39a', lo: '#efb43e', ink: '#160e08', sub: '#f3e6c4', max: 30, min: 17, subPx: 14, subMin: 13, side: 16 },
   _actTop: null,
   actTitleTop() {
@@ -11566,8 +11566,10 @@ const R = {
     return y;
   },
   actTitle(g, title, sub, a, opt) {
-    a = Math.max(0, Math.min(1, Math.round((a || 0) * 4) / 4));
-    if (a <= 0 || !this.cv) return null;
+    // (it comes and goes smoothly now — the operator's ruling on the effects:
+    // no strength stepped in quarters)
+    a = Math.max(0, Math.min(1, a || 0));
+    if (a <= 0.01 || !this.cv) return null;
     opt = opt || {};
     const A = this.ACT_TITLE, dpr = this.dpr || 1, W = this.cv.width, o = Math.max(1, Math.round(dpr));
     if (document.fonts && !this._actFont) { this._actFont = 1; try { document.fonts.load('700 20px Cinzel'); } catch (e) {} }
@@ -11612,12 +11614,12 @@ const R = {
     const rw = Math.round(Math.min(wMax * 0.55, W * 0.4) / (2 * o)) * 2 * o, rh = 2 * o;
     g.fillStyle = A.ink; g.fillRect(cx - rw / 2 - o, y - o, rw + 2 * o, rh + 2 * o);
     g.fillStyle = A.lo; g.fillRect(cx - rw / 2, y, rw, rh);
-    for (const [col, pad] of [[A.ink, 1], [A.hi, 0]]) {
+    // (the diamond a vector — a path at the device's own resolution, never a
+    // stair of device-pixel rows: the operator's ruling on the effects)
+    const dpx = dpr, dcy = y + rh / 2;
+    for (const [col, half] of [[A.ink, 5.6 * dpx], [A.hi, 4.2 * dpx]]) {
       g.fillStyle = col;
-      for (let r = -4 - pad; r < 4 + pad; r++) {
-        const hw = (4 + pad - Math.abs(r + 0.5) + 0.5) * o;
-        if (hw > 0) g.fillRect(Math.round(cx - hw), y + o + r * o, Math.round(hw * 2), o);
-      }
+      g.beginPath(); g.moveTo(cx, dcy - half); g.lineTo(cx + half, dcy); g.lineTo(cx, dcy + half); g.lineTo(cx - half, dcy); g.closePath(); g.fill();
     }
     y += rh + 7 * o;
     // the subtitle: never under 13 CSS px, wrapped onto two lines before it is shrunk below that
