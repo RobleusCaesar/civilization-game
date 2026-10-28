@@ -175,6 +175,7 @@ node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's
+node tests/card-intro.mjs    # the card announcement: off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; four screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; every number the rule's own; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tier ladder level; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; reopened from the collection
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
 
@@ -655,6 +656,39 @@ the toasts step below it (`--dk-cine`). The sheet jumps by tier and builds
 each face once (`DeckUI._cells`); a collection opened from the reward lands
 on the new cards, marked NEW.
 
+**THE CARD ANNOUNCEMENT** (`js/cardintro.js`, tests/card-intro.mjs; art in
+`assets/cards/intro/`, ART_PLAN "The card announcement" — operator: "an
+epic card tutorial screen… make sure there is an x to close it out. Try to
+get people excited"): the first title a device opens with the deck on wears
+four screens once the splash has lifted (`AFTER_LIFT_MS` past `Boot.done`) —
+CARDS (the operator's own line, five real faces fanned one per tier, the
+Legendary centred), EARN THEM, PLAY THEM, CHASE LEGENDS. It is stamped seen
+WHEN SHOWN (`neo-cards-intro`, through `Deck._get/_set`, so a storage that
+throws still shows it once a session and never twice) and comes back on
+purpose from the collection's "How cards work" and `?cardsintro=1` (deck on
+only). **Only over the title's demo world** (`_canAuto`: never a run, a
+pending draft, the reward screen or a lesson), and `Screens.show` takes it
+away the moment its screen is left (`CardIntro.onScreen`). **Every number is
+the rule's own**: the copy reads `CFG.CARDS` (LOSS_DEEDS, LOSS_DAYS,
+DROPS.hard, PITY) and `Deck.TIERS`, and the contract checks each claim
+against `Deck.eligible` / `great` / `settle` / `play` — retune a rule and the
+words follow. **Its chrome is never chunky** (operator: "some things are
+pixelated, like the ribbons"): every ornament is an SVG from
+`CardIntro.SVG` or a raster holding at least 3 image pixels per CSS pixel;
+only the card faces and the dusk backdrop are art. **The prizes wear no
+beast** (operator: "the kraken behind the card and a second dragon on top")
+— the Kraken's Call and Dragonfire paintings already show theirs. **The tier
+ladder is level** (operator: "the diamonds… are not level and some of the
+text is jumbled"): five identical gems on one shared line, every name on one
+line with its rarity beneath, the type sized by measurement (`_fitLadder`).
+The laurels shrink from their feet to clear the X (`_clearX`); the sparks
+rise only in the card area, with holes cut round every caption and the
+ladder (`_sparkRoom`); a screen's fit is measured at rest (`_settle`,
+`.ciMeasure`), so a screen that fits never scrolls and one that must fades
+at its edges. **It arrives in silence** (a cue before the player's first
+touch is refused by the browser). Off, the file defines `CardIntro` and
+nothing else.
+
 **THE REWARD SCREEN WEARS SUPPLIED ART** (`DeckScreens._want` / `_artBg` /
 `_plinth`, tests/deck-screens.mjs §5c–5d, §7 — operator: "drastically
 increase the quality of the background images… Have Pixellab create it…
@@ -869,8 +903,12 @@ too. **It keeps its POST** (`Deck.hostSense`, `u.den` = where it rose): it
 takes foes onto that ground, lets a runner go at the leash and walks back
 after every fight (it used to end five tiles away); a walk the player orders
 moves the post, a stance or doctrine overrides it. It is an INKED figure — an
-opaque outline round a body in an ordered 2×2 dither, never alpha or added
-light — and its fade is a `'note'` toast (a plain `G.log` never reached the
+opaque outline one world pixel round a body dithered on the CANVAS's own
+pixels (`Deck.ghostBlit`: a 4×4 ordered pattern laid on the device grid,
+thinning toward the feet, coming apart in the same fine pattern as it
+gutters and fades), never alpha or added light; on the art's grid a
+knocked-out pixel was a 5–6px block at dpr 3 and the host read as checkered
+tiles (operator ruling 2026-10-28, `aGhostIsAnInkedFigure`) — and its fade is a `'note'` toast (a plain `G.log` never reached the
 screen). Its light is drawn in the SKY pass, or the host's own dark dims it.
 **VETERANS RISE ONE RANK, ONCE** (`Deck.promote`): base and second rank
 become the champion, champions and engines take `u.vet` 1.25 — an engine's
@@ -879,7 +917,15 @@ is worn for good (`u.ranked`) as a pip (`Deck.drawRank`: gold veteran, steel
 champion) put on as the card's wave reaches him; the card lands on the army
 in sight, not the hall. It raises SOLDIERS: `Deck.landSoldiers` skips ghosts
 and war-wolves (`theHostAndThePackAreNotRaised` — the Host alone made it
-playable and it raised all fifteen ghosts). Two switch-off changes, pinned:
+playable and it raised all fifteen ghosts). **A CARD'S PEOPLE LAND IN SMOOTH DUST**
+(`R.startCardDust` / `drawCardDust` / `R.fxDust`,
+`theSummonDustIsSmoothDustAtTheDevicesResolution`): every summon
+(`Deck.summon`, the fan, an engine's skid) throws device-resolution
+grey-tan billows rolling out SIDEWAYS from under the feet, drawn in the card
+ground pass under the people and clipped to the board — never
+`R.poofSheet`, never a ring, never darker than the meadow; the WORLD's dust
+(a site laid, a fall, a card's goods) stays pixel dust
+(`andTheWorldsOwnDustStaysPixelDust`). Two switch-off changes, pinned:
 a trained Trebuchet is mendable (`HEAL_FOOD.trebuchet` 100), and
 `S.stats.peakPop` counts `Units.popUsed('P')` — not sappers, beasts or
 ghosts; soldiers below deck and, the next day, a card's soldiers. **NOTHING
