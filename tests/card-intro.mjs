@@ -45,7 +45,16 @@
                        pixels per CSS pixel; nothing is drawn pixelated
      THE PRIZES        the prizes screen draws no beast of its own — no
                        picture over or behind the Kraken's Call and
-                       Dragonfire cards but light
+                       Dragonfire cards but light, no beast strip fetched —
+                       and stands still on the panel at every size (no
+                       scroll cutting a caption in half)
+     THE X             the laurels' leaves stand clear of the close disc on
+                       every screen (drawn smaller from their feet, or not at
+                       all on the narrowest phone's tightened screens)
+     NOTHING STRAY     the sparks rise in the hero's band, never behind the
+                       headline, its line or the foot; the ladder's words
+                       stand on a dark plate; the motes stay beside their
+                       card; a scrolling hero never runs off its sides
 
    Run after touching: js/cardintro.js, the CardIntro hooks in js/screens.js
    (show) and js/deckscreens.js (onTitle, the collection's "How cards work"),
@@ -475,6 +484,12 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
           if (q.top < inner.t - 1 || q.bottom > inner.b + 1) out.push('a scrolling hero past the panel');
           if (!(scroller.scrollHeight > scroller.clientHeight)) out.push('a hero marked scrolling that does not scroll');
           if (getComputedStyle(scroller).overflowY !== 'auto') out.push('a spilling hero that cannot scroll');
+          // it scrolls DOWN only: nothing inside runs off its sides, where the
+          // clip cuts words in half ("6 DAYS OF ORDE" at 320) and no scroll reaches
+          for (const e of scroller.querySelectorAll('h3, p, b, small, figcaption')) {
+            const r = e.getBoundingClientRect();
+            if (r.width && (r.left < q.left - 1 || r.right > q.right + 1)) out.push(`"${e.textContent.trim().slice(0, 24)}" runs off the side of a scrolling hero`);
+          }
         }
         for (const el of parts) {
           if (scroller && scroller.contains(el)) continue;
@@ -652,6 +667,12 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
       for (const c of caps) if (c.q.left < panel.left + 4 || c.q.right > panel.right - 4) out.bad.push(`"${c.t}" past the panel`);
       if (caps.length === 2 && Math.min(caps[0].q.right, caps[1].q.right) - Math.max(caps[0].q.left, caps[1].q.left) > 0.5 &&
         Math.min(caps[0].q.bottom, caps[1].q.bottom) - Math.max(caps[0].q.top, caps[1].q.top) > 0.5) out.bad.push('the prizes\' captions run into each other');
+      // the whole screen stands still on the panel: never a scroll that cuts a
+      // caption through the middle of its line (at 320 it used to, under the foot)
+      if (root.querySelector('.ciPage.on').classList.contains('scroll')) out.bad.push('the prizes screen has to scroll');
+      const hero = R(root.querySelector('.ciPage.on .ciHero'));
+      for (const e of root.querySelectorAll('.ciPage.on .ciPrize figcaption b, .ciPage.on .ciPrize figcaption small'))
+        if (R(e).bottom > hero.bottom + 1) out.bad.push(`"${e.textContent}" cut by the hero's foot`);
       out.font = parseFloat(getComputedStyle(names[names.length - 1]).fontSize);
       return out;
     });
@@ -731,8 +752,10 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
    the kraken and dragon cards but also the kraken behind the card and a
    second dragon on top of the card") =================
    The Kraken's Call and Dragonfire paintings already show the beast. The
-   prizes screen draws no picture of its own — no strip, no image, nothing
-   behind or over a card but light — and the two cards stand whole. */
+   prizes screen's hero (the cards and all round them — the head's chrome
+   is section 12's) draws no picture of its own — no strip, no image,
+   nothing behind or over a card but light — no beast's strip is ever
+   fetched, and the two cards stand whole. */
 {
   const ctx = await context({ w: 1440, h: 900, dpr: 1, reduce: true });
   const p = await page(ctx, '?cards=all&cardsintro=1');
@@ -740,7 +763,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   const a = await p.evaluate(() => {
     CardIntro.go(3);
     const URL_RE = /url\(\s*"((?:[^"\\]|\\.)*)"\s*\)|url\(\s*([^"\s)][^)]*)\)/g;
-    const pg = document.querySelector('#cardIntro .ciPage.on'), out = { pics: [], faces: [] };
+    const pg = document.querySelector('#cardIntro .ciPage.on .ciHero'), out = { pics: [], faces: [] };
     for (const el of [pg, ...pg.querySelectorAll('*')]) {
       if (el.closest('.ccard')) continue;
       if (/^(IMG|CANVAS|VIDEO)$/.test(el.tagName)) out.pics.push(el.tagName);
@@ -756,9 +779,130 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     out.strips = typeof CardIntro.BEASTS !== 'undefined';
     return out;
   });
-  ck('thePrizesWearNoBeast', a.pics.length === 0 && !a.strips && a.faces.sort().join() === 'dragonfire,krakens_call',
-    a.pics.slice(0, 4).join(', ') || `only the two faces (${a.faces.join(',')})`);
+  await sleep(600);   // the next screen's art is fetched behind the one on show: give it the time
+  const strips = p.__reqs.filter(u => /assets\/fx\/(kraken|dragon)-/.test(u)).map(u => u.split('/').pop().split('?')[0]);
+  ck('thePrizesWearNoBeast', a.pics.length === 0 && !a.strips && !strips.length && a.faces.sort().join() === 'dragonfire,krakens_call',
+    [...a.pics, ...strips.map(x => 'fetched ' + x)].slice(0, 4).join(', ') || `only the two faces (${a.faces.join(',')}), no strip fetched`);
   await ctx.close();
+}
+
+/* ================= 14. THE X STANDS CLEAR OF THE LAURELS =================
+   On a phone a two-line headline pushes its laurels out to the panel's
+   edges, and the right one's leaves rose into the close disc. On every
+   screen, at every size, the laurels' leaves (the drawn box less 15% each
+   side: the drawing's own reach) stand clear of the disc's gold ring (17px
+   and its 2px rim); the two laurels are one size; and a laurel is drawn at
+   60% or more, or not at all. */
+{
+  const bad = [];
+  for (const [w, h, dpr] of [[320, 568, 2], [375, 667, 2], [390, 844, 3], [430, 932, 3], [768, 1024, 2], [1440, 900, 1]]) {
+    const ctx = await context({ w, h, dpr, reduce: true });
+    const p = await page(ctx, '?cards=all&cardsintro=1');
+    await opened(p, 15000);
+    const r = await p.evaluate(() => {
+      const out = [], root = document.getElementById('cardIntro');
+      for (let i = 0; i < 4; i++) {
+        CardIntro.go(i);
+        const X = root.querySelector('.ciX').getBoundingClientRect(), cx = X.left + X.width / 2, cy = X.top + X.height / 2;
+        const els = [...root.querySelectorAll('.ciPage.on .ciLaurel')], qs = els.map(e => e.getBoundingClientRect());
+        qs.forEach((q, j) => {
+          if (q.width < 0.5) return;   // not drawn
+          const full = els[j].offsetHeight;
+          if (q.height < full * 0.6 - 0.5) out.push(`screen ${i + 1}: a laurel drawn at ${Math.round(q.height / full * 100)}%`);
+          const ix = q.width * 0.15, nx = Math.max(q.left + ix, Math.min(cx, q.right - ix)), ny = Math.max(q.top, Math.min(cy, q.bottom));
+          const d = Math.hypot(cx - nx, cy - ny);
+          if (d < 19 + 1) out.push(`screen ${i + 1}: a laurel's leaves ${d.toFixed(1)}px from the X's centre (its ring reaches 19)`);
+        });
+        if (qs.length === 2 && Math.abs(qs[0].height - qs[1].height) > 0.5) out.push(`screen ${i + 1}: the laurels differ (${qs[0].height.toFixed(1)} / ${qs[1].height.toFixed(1)})`);
+      }
+      return out;
+    });
+    for (const x of r) bad.push(`${w}x${h} ${x}`);
+    await ctx.close();
+  }
+  ck('theXStandsClearOfTheLaurels', bad.length === 0, bad.slice(0, 6).join(' | ') || 'six windows, four screens: every laurel clear of the close disc');
+}
+
+/* ================= 15. NOTHING STRAY IN THE WORDS =================
+   The sparks rise BEHIND the screens, so one passing behind a line of
+   small type showed in the gaps between its letters and read as a stray
+   mark ("Uncommo•", "Ha•rd", "ARMİES"). Their field is the hero's own band
+   — never the headline, the line under it or the foot — with a hole cut
+   round every caption and the ladder inside it; the ladder's words stand on
+   a dark plate (alpha .8 or more, its solid core under every word); and a
+   prize's motes never rise above its card, where a phone's ladder stands.
+   With motion on: the sparks must exist to be measured. */
+{
+  const bad = [];
+  for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3], [768, 1024, 2], [1440, 900, 1]]) {
+    const ctx = await context({ w, h, dpr });
+    const p = await page(ctx, '?cards=all&cardsintro=1');
+    await opened(p, 15000);
+    const r = await p.evaluate(async () => {
+      const out = [], root = document.getElementById('cardIntro'), R = e => e.getBoundingClientRect();
+      const meet = (a, c) => Math.min(a.right, c.right) - Math.max(a.left, c.left) > 0.5 && Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top) > 0.5;
+      for (let i = 0; i < 4; i++) {
+        CardIntro.go(i);
+        await new Promise(res => setTimeout(res, 80));
+        const field = R(root.querySelector('.ciSparks'));
+        if (!(field.height > 20)) out.push(`screen ${i + 1}: no room for the sparks`);
+        for (const e of root.querySelectorAll('.ciPage.on .ciWord, .ciPage.on .ciSub, .ciPage.on .ciFoot'))
+          for (const q of e.getClientRects()) if (meet(field, q)) { out.push(`screen ${i + 1}: the sparks rise behind "${e.textContent.trim().slice(0, 24)}"`); break; }
+        // inside the hero, every word the field reaches stands in a hole cut out of it
+        // (read at rest: every entrance run to its end, the panel's own included)
+        for (const a of root.getAnimations({ subtree: true })) if (isFinite(a.effect.getComputedTiming().endTime)) a.finish();
+        const sp = root.querySelector('.ciSparks'), F = R(sp);
+        if (getComputedStyle(sp).visibility === 'hidden') continue;   // a scrolling screen shows no sparks
+        const holes = [...String(getComputedStyle(sp).clipPath).matchAll(/M\s*([\d.]+)[\s,]+([\d.]+)\s*H\s*([\d.]+)\s*V\s*([\d.]+)\s*H\s*[\d.]+\s*Z/gi)]
+          .slice(1).map(m => ({ l: F.left + +m[1], t: F.top + +m[2], r: F.left + +m[3], b: F.top + +m[4] }));
+        // the words themselves (a range over the text, not the box round it):
+        // every caption, and every name and rarity on the ladder
+        for (const e of root.querySelectorAll('.ciPage.on .ciHero figcaption, .ciPage.on .ciHero .ciTiers b, .ciPage.on .ciHero .ciTiers small')) {
+          const rg = document.createRange();
+          rg.selectNodeContents(e);
+          const w = rg.getBoundingClientRect();
+          if (!w.width || !meet(F, w)) continue;
+          // only the part of the word the field reaches can have a spark behind it
+          const q = { left: Math.max(w.left, F.left), right: Math.min(w.right, F.right), top: Math.max(w.top, F.top), bottom: Math.min(w.bottom, F.bottom) };
+          if (!holes.some(h => q.left >= h.l - 1 && q.right <= h.r + 1 && q.top >= h.t - 1 && q.bottom <= h.b + 1))
+            out.push(`screen ${i + 1}: the sparks rise behind "${e.textContent.trim().slice(0, 24)}"`);
+        }
+      }
+      // the ladder's plate: dark enough, and its solid core under every word
+      // (read where the rungs come to rest: their entrance is run to its end)
+      CardIntro.go(3);
+      for (const a of root.querySelector('.ciPage.on').getAnimations({ subtree: true }))
+        if (isFinite(a.effect.getComputedTiming().endTime)) a.finish();
+      const ol = root.querySelector('.ciPage.on .ciTiers'), cs = getComputedStyle(ol, '::before');
+      const m = (cs.backgroundColor || '').match(/rgba?\(([^)]+)\)/), parts = m ? m[1].split(',').map(parseFloat) : [];
+      const alpha = parts.length === 4 ? parts[3] : parts.length === 3 ? 1 : 0;
+      if (cs.content === 'none' || cs.display === 'none' || alpha < 0.8) out.push(`the ladder stands on no plate (alpha ${alpha})`);
+      else {
+        // the solid core is the plate's own box (its soft edge lies outside it)
+        const o = R(ol), core = { left: o.left + parseFloat(cs.left), right: o.right - parseFloat(cs.right), top: o.top + parseFloat(cs.top), bottom: o.bottom - parseFloat(cs.bottom) };
+        for (const e of ol.querySelectorAll('b, small')) {
+          const q = R(e);
+          if (q.left < core.left - 1 || q.right > core.right + 1 || q.top < core.top - 1 || q.bottom > core.bottom + 1)
+            out.push(`"${e.textContent}" past the plate's solid core`);
+        }
+      }
+      // the motes, sampled through their whole cycle, never above their card
+      const anims = document.getAnimations().filter(a => a.animationName === 'ciRiseMote');
+      if (!anims.length) out.push('no motes round the prizes');
+      for (let k = 0; k < 30; k++) {
+        for (const a of anims) { a.pause(); a.currentTime = k * 173; }
+        for (const st of root.querySelectorAll('.ciPage.on .ciStage')) {
+          const top = R(st).top;
+          for (const mo of st.querySelectorAll('.ciMotes i'))
+            if (parseFloat(getComputedStyle(mo).opacity) > 0.05 && R(mo).top < top - 1) { out.push(`a mote above its card (${(top - R(mo).top).toFixed(1)}px)`); k = 99; break; }
+        }
+      }
+      return [...new Set(out)];
+    });
+    for (const x of r) bad.push(`${w}x${h} ${x}`);
+    await ctx.close();
+  }
+  ck('nothingStrayInTheWords', bad.length === 0, bad.slice(0, 6).join(' | ') || 'the sparks in the hero alone, the ladder on its plate, the motes beside their cards');
 }
 
 /* ================= THE ERRORS ================= */

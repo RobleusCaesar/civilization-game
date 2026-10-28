@@ -236,7 +236,8 @@ const CardIntro = {
         `<div class="ciRoad loss"><i class="ciEmb" data-svg="fight"></i><div class="ciRoadTx"><h3>${esc(E.loss.h)}</h3><p>${esc(E.loss.p)}</p>` +
           `<p class="ciMeter"><span class="ciPips">${'<i></i>'.repeat(f.deeds)}</span><b>${esc(E.deeds)}</b></p>` +
           `<p class="ciMeter"><span class="ciDays">${'<i></i>'.repeat(f.days)}</span><b>${esc(E.days)}</b></p>` +
-          `<p class="ciNote">${esc(E.loss.note)}</p></div></div>` +
+          // a list that breaks keeps each dot at the end of its line, never orphaned at the start of the next
+          `<p class="ciNote">${esc(E.loss.note).replace(/ · /g, '\u00a0· ')}</p></div></div>` +
       `</div>`;
     const play =
       `<div class="ciPlay"><figure class="ciDeck"><div class="ciDeckBtn" aria-hidden="true"><i class="ciDeckIco" data-svg="deck"></i><i class="ciTap"></i></div>` +
@@ -333,15 +334,146 @@ const CardIntro = {
     if (!pg) return;
     pg.classList.remove('tight', 'scroll');
     this._fitLadder();
+    /* what is measured is where the screen comes to REST: the light round
+       the prizes (a burst wider than the card, an aura, the rim, the motes)
+       is decoration that may spill past anything, so it is set aside; and a
+       screen just turned to is still rising into place (its entrance starts
+       22-40px low), so every entrance is run to its end for the reading and
+       handed back where it was. Measured mid-flight, a screen that fits was
+       made to scroll. */
     const spills = () => {
       const hero = pg.querySelector('.ciHero');
+      this._root.classList.add('ciMeasure');
+      const back = this._settle(pg);
       let need = 0;
       for (const c of hero.children) need += Math.max(c.offsetHeight, c.scrollHeight);
+      back();
+      this._root.classList.remove('ciMeasure');
       return need > hero.clientHeight + 2;
     };
-    if (!spills()) return;
-    pg.classList.add('tight');
-    if (spills()) pg.classList.add('scroll');
+    if (spills()) {
+      pg.classList.add('tight');
+      this._fitLadder();
+      if (spills()) pg.classList.add('scroll');
+    }
+    this._clearX(pg);
+    this._fade(pg.querySelector('.ciHero'));
+    this._sparkRoom(pg);
+  },
+  /* a screen just turned to is still rising into place: every entrance on
+     it is run to its end for a reading, and the returned function hands
+     each back to the moment it was at (the screen plays on, unmoved) */
+  _settle(pg) {
+    const back = [];
+    for (const a of (pg.getAnimations ? pg.getAnimations({ subtree: true }) : [])) {
+      const end = a.effect && a.effect.getComputedTiming().endTime;
+      if (isFinite(end) && a.playState !== 'finished') { back.push([a, a.currentTime]); a.currentTime = end; }
+    }
+    return () => { for (const [a, t] of back) a.currentTime = t; };
+  },
+  /* THE SPARKS RISE WHERE THE CARDS ARE, NEVER THROUGH THE COPY: they pass
+     behind the screens, so a spark crossing a line of small type showed in
+     the gaps between its letters and read as a stray mark ("Ha•rd",
+     "ARMİES"). Their field is the hero's own band — the words above it and
+     below it are left clear — and the words INSIDE the hero are cut out of
+     it: a hole round the ladder and round the words of every caption (an
+     even-odd clip path; holes that would touch are made one, or their
+     overlap would be cut back in). A screen that has to scroll moves its
+     words under a still field, so it shows none. The roads need no hole:
+     they stand on their own dark panels. */
+  _sparkRoom(pg) {
+    const sp = this._root.querySelector('.ciSparks'), hero = pg.querySelector('.ciHero'), panel = this._root.querySelector('.ciPanel');
+    if (!sp || !hero) return;
+    let top = 0;
+    for (let e = hero; e && e !== panel; e = e.offsetParent) top += e.offsetTop;
+    // a pixel inside the band each way: offsets are whole pixels, the copy beside it is not
+    const height = Math.max(0, hero.offsetHeight - 2);
+    sp.style.top = (top + 1) + 'px';
+    sp.style.height = height + 'px';
+    sp.style.visibility = pg.classList.contains('scroll') ? 'hidden' : '';
+    const width = sp.offsetWidth, PAD = 6;
+    // the words where they come to rest, in the field's own pixels (the panel may still be scaling in)
+    const back = this._settle(pg);
+    const F = sp.getBoundingClientRect(), k = F.width / (width || 1) || 1;
+    const holes = [];
+    const add = q => {
+      if (!q || !q.width) return;
+      holes.push({ l: Math.max(0, (q.left - F.left) / k - PAD), t: Math.max(0, (q.top - F.top) / k - PAD),
+        r: Math.min(width, (q.right - F.left) / k + PAD), b: Math.min(height, (q.bottom - F.top) / k + PAD) });
+    };
+    const ol = hero.querySelector('.ciTiers');
+    if (ol && ol.offsetWidth) add(ol.getBoundingClientRect());
+    for (const fc of hero.querySelectorAll('figcaption')) {
+      const rg = document.createRange();
+      rg.selectNodeContents(fc);
+      add(rg.getBoundingClientRect());
+    }
+    back();
+    for (let merged = true; merged;) {
+      merged = false;
+      for (let i = 0; i < holes.length && !merged; i++) for (let j = i + 1; j < holes.length; j++) {
+        const A = holes[i], B = holes[j];
+        if (A.l <= B.r && B.l <= A.r && A.t <= B.b && B.t <= A.b) {
+          holes[i] = { l: Math.min(A.l, B.l), t: Math.min(A.t, B.t), r: Math.max(A.r, B.r), b: Math.max(A.b, B.b) };
+          holes.splice(j, 1);
+          merged = true;
+          break;
+        }
+      }
+    }
+    const f = n => Math.round(n * 10) / 10;
+    let d = `M0 0H${f(width)}V${f(height)}H0Z`;
+    for (const h of holes) if (h.r > h.l && h.b > h.t) d += `M${f(h.l)} ${f(h.t)}H${f(h.r)}V${f(h.b)}H${f(h.l)}Z`;
+    sp.style.clipPath = `path(evenodd, "${d}")`;
+  },
+  /* THE X KEEPS ITS CORNER: on a phone a two-line headline pushes its
+     laurels out to the panel's edges (and on a narrow phone even a one-line
+     one stands close), and the right laurel's tip rose into the close disc.
+     Both laurels are drawn a little smaller, from their feet, until the
+     right one's leaves clear the disc's gold ring — never moved down, where
+     they would meet the line of copy below (and where that would take them
+     under 60%, not drawn at all: a twig is no ornament). The leaves are the
+     box less 15% each side (the drawing's own reach, CardIntro.SVG.laurel),
+     the ring the disc's 17px plus its 2px rim. Measured on the LAYOUT
+     (offsets up to the panel), never the drawn boxes: the head slides in by
+     a transform, and a laurel caught mid-slide must not decide where it
+     rests. tests/card-intro.mjs (theXStandsClearOfTheLaurels) asks the same
+     question of the drawn page. */
+  CLEAR: { inkX: 0.15, ring: 19, gap: 2 },
+  _clearX(pg) {
+    const title = pg.querySelector('.ciTitle'), x = this._root.querySelector('.ciX'), panel = this._root.querySelector('.ciPanel');
+    if (!title || !x) return;
+    title.style.removeProperty('--lauS');
+    const box = el => {
+      let l = 0, t = 0;
+      for (let e = el; e && e !== panel; e = e.offsetParent) { l += e.offsetLeft; t += e.offsetTop; }
+      return { l, t, w: el.offsetWidth, h: el.offsetHeight };
+    };
+    const X = box(x), cx = X.l + X.w / 2, cy = X.t + X.h / 2, need = this.CLEAR.ring + this.CLEAR.gap;
+    // how far the leaves of a laurel drawn at scale k (from its feet) stand from the disc's centre
+    const reach = (q, k) => {
+      const mid = q.l + q.w / 2, half = q.w * k * (0.5 - this.CLEAR.inkX), top = q.t + q.h * (1 - k), bot = q.t + q.h;
+      const nx = Math.max(mid - half, Math.min(cx, mid + half)), ny = Math.max(top, Math.min(cy, bot));
+      return Math.hypot(cx - nx, cy - ny);
+    };
+    let s = 1;
+    for (const lau of title.querySelectorAll('.ciLaurel')) {
+      const q = box(lau);
+      if (!q.w) continue;
+      let k = 1;
+      while (k >= 0.6 && reach(q, k) < need) k -= 0.02;
+      s = Math.min(s, k);
+    }
+    if (s < 1) title.style.setProperty('--lauS', s < 0.6 ? 0 : s.toFixed(2));
+  },
+  /* a screen that scrolls says so at its edges: what runs past the hero fades
+     out there, rather than being cut through the middle of a line */
+  _fade(hero) {
+    if (!hero) return;
+    const on = hero.closest('.ciPage.scroll');
+    const up = on && hero.scrollTop > 1, down = on && hero.scrollTop + hero.clientHeight < hero.scrollHeight - 1;
+    hero.style.setProperty('--fadeT', up ? '18px' : '0px');
+    hero.style.setProperty('--fadeB', down ? '26px' : '0px');
   },
   _fan(cw, sw, avail, narrow) {
     const host = this._root.querySelector('.ciFan');
@@ -586,6 +718,8 @@ const CardIntro = {
     };
     root.addEventListener('click', this._h.guard, true);
     root.addEventListener('click', this._h.click);
+    // a scrolling hero's edge fades follow its scroll (scroll does not bubble: caught on the way down)
+    root.addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('ciHero')) this._fade(e.target); }, true);
     const panel = root.querySelector('.ciPanel');
     panel.addEventListener('pointerdown', this._h.down);
     panel.addEventListener('pointerup', this._h.up);
@@ -1042,6 +1176,8 @@ CardIntro.CSS = `
 #cardIntro .ciLaurel { flex: 0 0 auto; width: calc(var(--laurelH, 112px) / 2); height: var(--laurelH, 112px);
   background: var(--laurel) 0 0 / 100% 100% no-repeat; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,190,70,.25)); }
 #cardIntro .ciLaurel.l { transform: scaleX(-1); }
+/* drawn smaller from their feet, both together, when the right one would rise under the X (_clearX) */
+#cardIntro .ciLaurel { scale: var(--lauS, 1); transform-origin: 50% 100%; }
 #cardIntro .ciRule { width: min(70%, 420px); height: 9px; margin: 2px 0 2px; flex: 0 0 auto;
   background: linear-gradient(90deg, transparent, #c99a40 25%, #f6d27a 50%, #c99a40 75%, transparent) center / 100% 1px no-repeat; position: relative; }
 #cardIntro .ciRule::after { content: ''; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; transform: translate(-50%, -50%) rotate(45deg);
@@ -1093,6 +1229,8 @@ CardIntro.CSS = `
 #cardIntro .ciRoad.loss .ciNote { font-style: normal; font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 700;
   font-size: clamp(10px, 2.7vw, 12px); letter-spacing: .12em; text-transform: uppercase; color: #aeb6c2; }
 #cardIntro .ciGain, #cardIntro .ciMeter { display: flex !important; align-items: center; justify-content: center; gap: 8px; }
+/* a meter too wide for its road puts its words under its marks, never past the road's edge */
+#cardIntro .ciMeter { flex-wrap: wrap; row-gap: 3px; }
 #cardIntro .ciGain b, #cardIntro .ciMeter b { font-family: var(--menufont, 'Cinzel', Georgia, serif); font-weight: 800; letter-spacing: .06em;
   text-transform: uppercase; font-size: clamp(12px, 3.3vw, 15px); color: #ffe39a; text-shadow: 0 1px 0 #000; }
 #cardIntro .ciRoad.loss .ciMeter b { color: #e6ecf3; }
@@ -1142,7 +1280,7 @@ CardIntro.CSS = `
 #cardIntro .ciCard:nth-child(2) { z-index: 2; }
 #cardIntro .ciCard:nth-child(2) .ccard { box-shadow: 0 0 18px 2px rgba(255,200,80,.45), 0 8px 14px rgba(0,0,0,.6); }
 #cardIntro .ciCard figcaption { width: 100%; margin-top: calc(var(--n) * var(--n) * 10px); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; line-height: 1.2;
-  font-size: clamp(10.5px, 2.9vw, 14px); color: #ffe39a; text-shadow: 0 2px 0 #000; }
+  font-size: clamp(10.5px, 2.9vw, 14px); color: #ffe39a; text-shadow: 0 2px 0 #000, 0 0 7px rgba(10,7,4,.95); }
 #cardIntro .ciPage.enter .ciCard { animation: ciLift .55s cubic-bezier(.2,1.2,.4,1) both; animation-delay: calc(.12s + (var(--n) + 1) * .1s); }
 #cardIntro .ciPage.enter .ciDeck { animation: ciRise .5s cubic-bezier(.2,1.1,.4,1) both; }
 @keyframes ciLift { from { opacity: 0; transform: translateY(40px) scale(.88) } }
@@ -1154,9 +1292,18 @@ CardIntro.CSS = `
    evenly spaced), a row on a phone (one line for every gem); the type is
    fitted by measurement (_fitLadder sets --tierF) */
 #cardIntro .ciTiers { --gemS: 22px; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; justify-content: center;
-  gap: 16px; align-self: center; flex: 0 0 auto; }
-#cardIntro:not(.ciNarrow) .ciTiers { padding: 18px 26px; border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(14,10,6,.78), rgba(14,10,6,.5) 62%, rgba(14,10,6,0)); }
+  gap: 16px; align-self: center; flex: 0 0 auto; position: relative; z-index: 0; }
+#cardIntro:not(.ciNarrow) .ciTiers { padding: 18px 26px; }
+/* the ladder stands on a dark plate, soft at every edge: the light and the
+   rising sparks pass BEHIND the screens, and a spark caught in the gap of a
+   small word read as a stray letter ("Uncommo•"). The plate is the ladder's
+   own box, solid, and its soft edge a spread shadow round it — ink that
+   reaches past the box without widening it (a wider box would read as a
+   ladder too wide for its row, and _fitLadder would shrink the words) */
+#cardIntro .ciTiers::before { content: ''; position: absolute; z-index: -1; inset: 0; pointer-events: none; border-radius: 22px;
+  background: rgba(13,9,6,.88); box-shadow: 0 0 26px 10px rgba(13,9,6,.88); }
+/* a phone's row reaches the panel's edges: a tighter edge */
+#cardIntro.ciNarrow .ciTiers::before { border-radius: 10px; box-shadow: 0 0 10px 6px rgba(13,9,6,.88); }
 #cardIntro .ciTiers li { display: grid; grid-template-columns: var(--gemS) max-content; column-gap: 12px; align-items: center; text-align: left; }
 #cardIntro .ciTiers li span { display: flex; flex-direction: column; gap: 2px; }
 #cardIntro .ciGem { width: var(--gemS); height: var(--gemS); background: 0 0 / 100% 100% no-repeat;
@@ -1198,21 +1345,23 @@ CardIntro.CSS = `
   animation: ciRimRun 5.2s linear infinite; }
 #cardIntro .ciPrize.dragon .ciRim { animation-duration: 4.2s; animation-delay: -2s; }
 @keyframes ciRimRun { to { --ciAng: 360deg } }
-/* motes of the tier's light rising beside the card */
+/* motes of the tier's light rising beside the card — never above its top, where the ladder's words stand on a phone */
 #cardIntro .ciMotes { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+#cardIntro.ciMeasure .ciBurst, #cardIntro.ciMeasure .ciAura, #cardIntro.ciMeasure .ciRim, #cardIntro.ciMeasure .ciMotes { display: none !important; }
 #cardIntro .ciMotes i { position: absolute; left: var(--x); top: var(--y); width: 3px; height: 3px; border-radius: 50%;
   background: #fffbe8; box-shadow: 0 0 5px 1px var(--tg), 0 0 12px 3px var(--tg);
   animation: ciRiseMote var(--du) linear var(--dl) infinite both; }
 @keyframes ciRiseMote { 0% { opacity: 0; transform: translate(0, 0) } 18% { opacity: 1 } 75% { opacity: .8 }
-  100% { opacity: 0; transform: translate(var(--dx), calc(var(--ch) * -.5)) } }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--ch) * -.38)) } }
 #cardIntro .ciPrize figcaption { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 /* a phone's two prizes share the row: a caption takes at most its half of
    the panel (container units) and only then breaks, balanced, onto a second line */
 #cardIntro.ciNarrow .ciPrize figcaption { max-width: calc((100cqw - 24px - clamp(18px, 4.4vw, 48px)) / 2); }
 #cardIntro.ciNarrow .ciPrize figcaption b { white-space: normal; text-wrap: balance; line-height: 1.2; text-align: center; }
-#cardIntro .ciPrize figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: clamp(11px, 3vw, 15px); color: #ffe39a; text-shadow: 0 2px 0 #000; white-space: nowrap; }
+#cardIntro .ciPrize figcaption b { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: clamp(11px, 3vw, 15px); color: #ffe39a;
+  text-shadow: 0 2px 0 #000, 0 0 7px rgba(10,7,4,.95); white-space: nowrap; }
 #cardIntro .ciPrize figcaption small { font-weight: 700; font-size: clamp(9px, 2.4vw, 11.5px); color: var(--tc);
-  letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 0 #000; white-space: nowrap; }
+  letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 1px 0 #000, 0 0 6px rgba(10,7,4,.95); white-space: nowrap; }
 #cardIntro .ciPage.enter .ciTiers li { animation: ciRise .4s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(var(--n) * 70ms); }
 #cardIntro .ciPage.enter .ciPrize { animation: ciRise .6s cubic-bezier(.2,1.1,.4,1) both; animation-delay: calc(.3s + var(--n) * .15s); }
 
@@ -1225,8 +1374,11 @@ CardIntro.CSS = `
 @keyframes ciFade { from { opacity: 0 } }
 
 /* ---- the sparks: small gold motes rising through the light ---- */
-/* behind the screens (z -1, over the dusk and the light): a mote never crosses a card's painting */
-#cardIntro .ciSparks { position: absolute; left: 10%; right: 10%; top: 24%; bottom: 20%; z-index: -1; pointer-events: none; overflow: hidden; }
+/* behind the screens (z -1, over the dusk and the light): a mote never crosses a card's painting,
+   and never the copy above or below the hero */
+/* in the hero's band alone (_sparkRoom sets top and height), fading in at its top edge */
+#cardIntro .ciSparks { position: absolute; left: 10%; right: 10%; top: 24%; height: 56%; z-index: -1; pointer-events: none; overflow: hidden;
+  -webkit-mask-image: linear-gradient(transparent, #000 36px); mask-image: linear-gradient(transparent, #000 36px); }
 #cardIntro .ciSparks i { position: absolute; left: var(--x); top: calc(40% + var(--y)); width: var(--s); height: var(--s); border-radius: 1px;
   background: #fff1b8; box-shadow: 0 0 6px 1px rgba(255,200,80,.9), 0 0 14px 3px rgba(255,170,50,.35);
   animation: ciMote var(--du) linear var(--dl) infinite both; }
@@ -1304,12 +1456,31 @@ CardIntro.CSS = `
 #cardIntro .ciPages .ciPage.tight .ciRoad p:not(.ciNote) { font-size: 13.5px; }
 #cardIntro .ciPages .ciPage.tight .ciRoad .ciNote { font-size: 11px; }
 #cardIntro .ciPages .ciPage.tight .ciFoot { font-size: 12px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciMeter { gap: 6px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciMeter b { font-size: 10.5px; letter-spacing: .04em; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciPips, #cardIntro.ciNarrow .ciPages .ciPage.tight .ciDays { gap: 3px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciPips i { width: 9px; height: 9px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciDays i { width: 8px; height: 8px; }
+/* the deck and its three cards, closer together */
+#cardIntro .ciPages .ciPage.tight .ciPlay { gap: 8px; }
+#cardIntro .ciPages .ciPage.tight .ciDeckBtn { width: 70px; height: 56px; }
+#cardIntro .ciPages .ciPage.tight .ciDeckIco { width: 40px; height: 40px; }
+#cardIntro .ciPages .ciPage.tight .ciCard { gap: 5px; }
+/* the ladder and the prizes, closer together; a phone's prize caption on one line */
+#cardIntro .ciPages .ciPage.tight .ciLegends { gap: 8px; }
+#cardIntro .ciPages .ciPage.tight .ciPrize { gap: 6px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciTiers { --gemS: 15px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciTiers li { gap: 4px; }
+#cardIntro.ciNarrow .ciPages .ciPage.tight .ciPrize figcaption b { white-space: nowrap; font-size: 10px; letter-spacing: .03em; }
 /* …and if it still spills, its hero scrolls inside the panel */
 /* (a column centred in a box it overflows spills UPWARD, where no scroll
    can reach: a scrolling screen's column starts at the top instead) */
 #cardIntro .ciPages .ciPage.scroll .ciLegends { height: auto; min-height: 100%; justify-content: flex-start; padding: 6px 0 4px; }
 #cardIntro .ciPages .ciPage.scroll .ciHero { overflow-y: auto; overflow-x: hidden; align-items: flex-start; overscroll-behavior: contain; padding: 4px 0;
-  scrollbar-width: thin; scrollbar-color: #8a6a2e transparent; }
+  scrollbar-width: thin; scrollbar-color: #8a6a2e transparent;
+  /* what runs past an edge fades out there (_fade), never cut through a line */
+  -webkit-mask-image: linear-gradient(transparent, #000 var(--fadeT, 0px), #000 calc(100% - var(--fadeB, 26px)), transparent);
+  mask-image: linear-gradient(transparent, #000 var(--fadeT, 0px), #000 calc(100% - var(--fadeB, 26px)), transparent); }
 
 /* ---- less motion: the same screens, arrived at without movement ---- */
 @media (prefers-reduced-motion: reduce) {
