@@ -564,8 +564,9 @@ Object.assign(Deck.FX, {
     /* THE SKY OF THE ACT, on the act's own clock (sim time — the beast's
        clock — so a fast game runs it fast and a paused one holds it): the
        dragon's SHADOW, cast from high above, sweeps the whole screen in the
-       way it flies — its own silhouette blown up by a whole number, hard
-       edged, laid on the board only — with a shake and the roar; then the
+       way it flies — its own silhouette, blurred and stretched smooth (a
+       shadow from high above has no hard edge: the operator's ruling on the
+       effects), laid on the board only — with a shake and the roar; then the
        title goes up over the ground under the line of fire while it dives. */
     SWEEP: { t0: 0.04, t1: 0.86, wide: 1.3, alpha: 0.55 },
     show: {
@@ -586,20 +587,24 @@ Object.assign(Deck.FX, {
             if (Rr.shakeAt) Rr.shakeAt(7, 0.9);
             if (Rr.startle) Rr.startle(Rr.cam.x / TL + Rr.viewW() / Rr.cam.z / TL / 2, Rr.cam.y / TL + Rr.viewH() / Rr.cam.z / TL / 2, 24);
           }
-          const fr = fly[((T * 12) | 0) % fly.length], sil = Beasts.silhouette(fr);
-          const K = Math.max(2, Math.round(SW.wide * W / 250)), sw = fr.width * K, sh = fr.height * K;
+          // the shadow is SOFT (Beasts.softShadow — a blurred silhouette
+          // stretched with smoothing, at fractional coordinates): the
+          // operator's ruling on the effects — the beast's own sprite stays
+          // pixel art, the dark it throws is drawn at the screen's resolution
+          const fr = fly[((T * 12) | 0) % fly.length], sil = Beasts.softShadow ? Beasts.softShadow(fr) : Beasts.silhouette(fr);
+          const K = Math.max(2, SW.wide * W / 250), sw = sil.width * K, sh = sil.height * K;
           const q = (T - SW.t0) / (SW.t1 - SW.t0), dir = ev.dir < 0 ? -1 : 1;
           const cx = dir > 0 ? -sw * 0.5 + (W + sw) * q : W + sw * 0.5 - (W + sw) * q, cy = H * (0.36 + 0.1 * q);
           // only on the board: the black beyond it stays black
           const B = Rr.boardPx();
           const bx0 = (B.x0 - Rr.cam.x) * z, by0 = (B.y0 - Rr.cam.y) * z, bx1 = (B.x1 - Rr.cam.x) * z, by1 = (B.y1 - Rr.cam.y) * z;
           g.save();
-          g.beginPath(); g.rect(Math.round(bx0), Math.round(by0), Math.round(bx1 - bx0), Math.round(by1 - by0)); g.clip();
-          g.imageSmoothingEnabled = false;
+          g.beginPath(); g.rect(bx0, by0, bx1 - bx0, by1 - by0); g.clip();
+          g.imageSmoothingEnabled = true;
           g.globalAlpha = SW.alpha;
-          g.translate(Math.round(cx), Math.round(cy));
+          g.translate(cx, cy);
           if (dir < 0) g.scale(-1, 1);
-          g.drawImage(sil, -Math.round(sw / 2), -Math.round(sh / 2), sw, sh);
+          g.drawImage(sil, -sw / 2, -sh / 2, sw, sh);
           g.restore();
         }
         // THE TITLE: up as the shadow passes, held through the dive, down as the fire walks

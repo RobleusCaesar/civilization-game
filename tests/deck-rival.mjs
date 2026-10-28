@@ -78,6 +78,18 @@
                        one kraken drawing for the world's act and the card's
                        (R.drawKrakenAct asked first where the beast art has
                        landed); one beast to a cluster
+     AT THE DEVICE'S   (the operator's ruling, 2026-10-27: "can you improve
+     OWN RESOLUTION    the quality of the map special effects… higher pixel
+                       count" — it supersedes the hard-pixel rule for every
+                       EFFECT; the world's art stays pixel art) across the
+                       whole run, every act of the six — its show, its live
+                       look, the kraken's world draw, the spy's marks, the
+                       relic's X — throws its light (fire, sparks, rings,
+                       foam, spray, the sun, the eye's glow) as smooth
+                       paths: not one light cell filled, no R.pxDisc. The
+                       art they lay is exempt by name: the kraken's arm and
+                       the eye in its socket, the hide's charcoal map, the
+                       pact's seal. The spy's brackets are inked strokes.
      NO RNG            no card draws from S.rngState at the play
 
    Run after touching: js/deckfx-rival.js, Deck.light / eyesAt / eyesKnow /
@@ -210,6 +222,51 @@ await p.evaluate(() => {
       S.wave.next = S.day + 50;
     },
   };
+  /* AT THE DEVICE'S OWN RESOLUTION, counted across the WHOLE run: while any
+     of the six acts draws (its show, its live look, the kraken's world draw,
+     the spy's marks, the relic's X), a LIGHT-coloured square cell filled —
+     the old house style's 2px spark, ring dot, ember, foam bead — or an
+     R.pxDisc is counted. The ART an act lays is exempt by name (the
+     kraken's arm and the eye in its socket, the hide's charcoal map and the
+     pact's seal are pixel art, drawn in cells on purpose). */
+  const M = window.__rv.res = { cells: 0, disc: 0, drawn: {}, where: {} };
+  const light = c => {
+    let m = /^#([0-9a-f]{6})$/i.exec(c), r, g, b;
+    if (m) { const n = parseInt(m[1], 16); r = n >> 16; g = (n >> 8) & 255; b = n & 255; }
+    else if ((m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c))) { r = +m[1]; g = +m[2]; b = +m[3]; }
+    else return false;
+    return 0.299 * r + 0.587 * g + 0.114 * b >= 150;
+  };
+  let act = null, art = 0;
+  const wrap = (o, k, id, isArt) => {
+    const f = o && o[k];
+    if (typeof f !== 'function') return;
+    o[k] = function () {
+      const pa = act;
+      if (isArt) art++; else { act = id; M.drawn[id] = (M.drawn[id] || 0) + 1; }
+      try { return f.apply(this, arguments); } finally { if (isArt) art--; else act = pa; }
+    };
+  };
+  for (const id of IDS) {
+    const F = Deck.FX[id];
+    if (!F) continue;
+    if (F.show) wrap(F.show, 'draw', id);
+    for (const k of ['drawLive', 'draw', 'drawMarks', 'drawMark']) wrap(F, k, id);
+  }
+  const KC = Deck.FX.krakens_call, PF = Deck.FX.pathfinders_map, BP = Deck.FX.barbarian_pact;
+  wrap(KC, 'arm', null, true); wrap(KC, 'eye', null, true);
+  wrap(PF, '_hideArt', null, true); wrap(BP, 'sealArt', null, true); wrap(BP, 'sealDither', null, true);
+  const note = () => { M.where[act] = (M.where[act] || 0) + 1; };
+  const fr = CanvasRenderingContext2D.prototype.fillRect;
+  CanvasRenderingContext2D.prototype.fillRect = function (x, y, w, h) {
+    if (act && !art) {
+      const T = this.getTransform(), dw = Math.abs(w * T.a), dh = Math.abs(h * T.d);
+      if (dw > 0 && Math.abs(dw - dh) < 0.01 && light(String(this.fillStyle))) { M.cells++; note(); }
+    }
+    return fr.apply(this, arguments);
+  };
+  const pd = R.pxDisc;
+  if (pd) R.pxDisc = function () { if (act && !art) { M.disc++; note(); } return pd.apply(this, arguments); };
 });
 
 // ---------------- 0. THE SWITCH: off, or on and idle, nothing moves ----------------
@@ -1624,7 +1681,15 @@ await p.evaluate(() => {
       S.day += 11; Deck.tick(); G.updateVisibility();
       R.cardShows.length = 0;
       R.centerOn(24.5, 20.5);
-      const gold = () => fillsOf(() => R.draw(1 / 30)).filter(f => /#ffd45e/i.test(f.col)).length;
+      // (gold cells filled, or gold strokes: the brackets are inked strokes
+      // since the operator's ruling on the effects — either one is a mark)
+      const gold = () => {
+        const st = g.stroke; let strokes = 0;
+        g.stroke = function () { if (/#ffd45e/i.test(String(this.strokeStyle))) strokes++; return st.apply(this, arguments); };
+        let cells = 0;
+        try { cells = fillsOf(() => R.draw(1 / 30)).filter(f => /#ffd45e/i.test(f.col)).length; } finally { g.stroke = st; }
+        return { cells, strokes, n: cells + strokes };
+      };
       out.marks = { fog: gold() };
       G.vis[MapGen.idx(24, 20)] = 1; G.freeVis = true; G.updateVisibility();
       out.marks.sight = gold();
@@ -1677,10 +1742,20 @@ await p.evaluate(() => {
   ck('theSpysBurstLandsOnlyOnATownYouKnow', r.focusBlind === null && !!r.focusKnown,
     `before the spy ${JSON.stringify(r.focusBlind)}; once the town is on the map ${JSON.stringify(r.focusKnown)}`);
   ck('theSpyCarriesTheViewToTheirTownAndHome', r.view.went > 200 && r.view.back, `went ${r.view.went}px out, handed back ${r.view.back}`);
-  ck('whatTheSpyMarkedKeepsItsBracketsInTheFog', r.marks.fog > 0 && r.marks.sight === 0,
-    `after the ten days: gold bracket cells in the fog ${r.marks.fog}, in sight ${r.marks.sight}`);
+  ck('whatTheSpyMarkedKeepsItsBracketsInTheFog', r.marks.fog.n > 0 && r.marks.sight.n === 0,
+    `after the ten days: gold bracket marks in the fog ${r.marks.fog.n}, in sight ${r.marks.sight.n}`);
+  ck('andTheyAreInkedStrokesNeverCells', r.marks.fog.strokes > 0 && r.marks.fog.cells === 0,
+    `in the fog: ${r.marks.fog.strokes} gold strokes, ${r.marks.fog.cells} gold cells`);
   ck('everyActLettersItsWordsThroughOneTitle', ti.n > 0 && ti.titles >= 5 && !ti.outside.length && ti.cinzel && ti.minPx >= 13 && ti.topMin >= r.chrome,
     `${ti.n} words drawn, outside the one title: ${JSON.stringify(ti.outside)}; Cinzel ${ti.cinzel}; smallest ${ti.minPx} CSS px; highest title top ${ti.topMin}px under the chrome's ${r.chrome}px`);
+}
+
+// ---------------- AT THE DEVICE'S OWN RESOLUTION: what the whole run drew ----------------
+{
+  const m = await p.evaluate(() => window.__rv.res);
+  const ids = ['scouts_fire', 'pathfinders_map', 'spy_hall', 'barbarian_pact', 'swallowed_sun', 'krakens_call'];
+  ck('everyRivalAndSkyActThrowsItsLightSmoothNeverInCells', ids.every(id => m.drawn[id] > 0) && m.cells === 0 && m.disc === 0,
+    `acts drawn ${ids.map(id => id + ' ' + (m.drawn[id] || 0)).join(', ')}; ${m.cells} light cells and ${m.disc} pixel discs (${JSON.stringify(m.where)})`);
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
