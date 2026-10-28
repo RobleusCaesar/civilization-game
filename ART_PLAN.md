@@ -1174,7 +1174,7 @@ fetched only when the announcement opens:
 
 | File          | Native  | What                                                    |
 | ------------- | ------- | ------------------------------------------------------- |
-| `dusk.webp`   | 688×384 | the valley at dusk with its campfire, behind the panel's own dark (master: `assets/masters/cards/intro-dusk.png`) |
+| `dusk.webp`   | 1376×768 | the valley at dusk with its campfire, behind the panel's own dark — the 688×384 master (`assets/masters/cards/intro-dusk.png`) through Scale2x, twice its pixels |
 
 The dusk valley took the title glen (`assets/ui/title-bg-wide`) as its
 style reference, never its daylight; it is scaled to cover the panel and
@@ -1216,8 +1216,8 @@ cards). Two files, laid by the boot block on the splash and the title alike:
 
 | File               | Native  | Shipped                              | What |
 | ------------------ | ------- | ------------------------------------ | ---- |
-| `night-wide.webp`  | 688×384 | 3× nearest, lossless, 2064×1152      | any landscape window (a phone on its side too) |
-| `night-tall.webp`  | 384×688 | 2× nearest, lossless, 768×1376       | any portrait window |
+| `night-wide.webp`  | 688×384 | Scale2x, then 2× nearest, lossless, 2752×1536 | any landscape window (a phone on its side too) |
+| `night-tall.webp`  | 384×688 | Scale2x, lossless, 768×1376          | any portrait window |
 
 each with a `.jpg` at the same size behind it; the native masters live in
 `assets/masters/title/`. Made with PixelLab `create_image_pro` at the
@@ -1228,8 +1228,13 @@ dark, the life at the edges, the fire below the menu on a phone. The
 model's skies come back blotched with ghost shapes; the tall's was
 repainted as clean bands of its own three sky colours (stars and the comet
 kept pixel for pixel), the wide's dark ink blots filled from the sky
-around them. Shipped as a whole-factor enlargement so the browser only
-ever takes the last step: nearest-neighbour where a 2×/3× screen shows it
+around them. Shipped at TWICE the master's pixels (operator, 2026-10-28: "a
+slightly higher pixel count backdrop… we don't want to lie about the game
+quality"): ImageMagick's Scale2x (`convert night-wide.png -define
+magnify:method=scale2x -magnify`) halves and rounds every stair-step from
+the master's own 50 colours and paints nothing new — PixelLab's scenes stop
+at 688×384, which is why the upscale is ours. The wide is then doubled
+nearest-neighbour, so the browser only ever takes the last step: nearest-neighbour where a 2×/3× screen shows it
 at or above its pixels, smoothed on the way down on a 1× desktop
 (`Boot.t2fit`). The fire's light and the comet's glint are placed by
 `TitleScreen.ANCHOR` — fractions of the master, read off its brightest

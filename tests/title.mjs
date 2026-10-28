@@ -14,8 +14,12 @@
       element, no stylesheet, and not one request for the night's art.
       Flipping TITLE_PUBLIC alone gives every device the night.
    2. THE ART LANDS BY FILENAME, AND STANDS DOWN QUIETLY. assets/ui/title/
-      night-{wide,tall}.{webp,jpg}: a whole-factor nearest-neighbour
-      enlargement of each PixelLab master (3x wide, 2x tall), lossless webp
+      night-{wide,tall}.{webp,jpg}: each PixelLab master at TWICE its pixel
+      count — Scale2x, so its stair-steps halve and round, nothing new is
+      painted (operator, 2026-10-28: "a slightly higher pixel count
+      backdrop… we don't want to lie about the game quality") — the wide
+      then doubled again nearest-neighbour (4x the master's size, 2x its
+      pixel grid; the tall ships at the Scale2x size itself), lossless webp
       under 100 KB with a jpg behind it; every URL carries the hand-kept
       ?v= that must equal CFG.ART_V (the glen's rule). A landscape window
       takes the wide valley, a portrait one the tall. With the art missing
@@ -115,9 +119,9 @@ const cut = (a, b) => { const i = html.indexOf(a), j = html.indexOf(b, i + 1); r
   };
   const W = meta('night-wide.webp'), T = meta('night-tall.webp'), WJ = meta('night-wide.jpg'), TJ = meta('night-tall.jpg');
   ck('theArtShipsAtItsSizes',
-    W.lossless && T.lossless && W.w === 688 * 3 && W.h === 384 * 3 && T.w === 384 * 2 && T.h === 688 * 2 &&
+    W.lossless && T.lossless && W.w === 688 * 4 && W.h === 384 * 4 && T.w === 384 * 2 && T.h === 688 * 2 &&
     WJ.w === W.w && WJ.h === W.h && TJ.w === T.w && TJ.h === T.h,
-    `wide ${W.w}x${W.h} (3x 688x384), tall ${T.w}x${T.h} (2x 384x688), lossless webp, jpgs the same size`);
+    `wide ${W.w}x${W.h} (4x 688x384), tall ${T.w}x${T.h} (2x 384x688), lossless webp, jpgs the same size`);
   ck('andItIsServedLight', W.bytes < 100 * 1024 && T.bytes < 100 * 1024 && WJ.bytes < 320 * 1024 && TJ.bytes < 320 * 1024,
     `webp ${Math.round(W.bytes / 1024)} / ${Math.round(T.bytes / 1024)} KB, jpg ${Math.round(WJ.bytes / 1024)} / ${Math.round(TJ.bytes / 1024)} KB`);
 }
@@ -488,10 +492,27 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   const o = await open({ q: '?cards=1', tag: 'anchors' });
   const r = await o.p.evaluate(async () => {
     const out = [];
-    for (const [v, k] of [['wide', 3], ['tall', 2]]) {
+    for (const [v, k] of [['wide', 4], ['tall', 2]]) {
       const im = new Image(); im.src = 'assets/ui/title/night-' + v + '.webp?v=' + CFG.ART_V; await im.decode();
       const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
       const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      /* twice the painting's pixel count, honestly: a cell of k x k shipped
+         pixels is one pixel of the PixelLab master, and Scale2x splits a real
+         share of them into quarters (a plain enlargement splits none) — while
+         every quarter is one colour (nothing is blurred or painted in) */
+      {
+        const D = g.getImageData(0, 0, im.width, im.height).data, W = im.width, q = k / 2;
+        let cells = 0, split = 0, smear = 0;
+        for (let y = 0; y + k <= im.height; y += k * 3) for (let x = 0; x + k <= im.width; x += k * 3) {
+          cells++;
+          const at = (xx, yy) => { const i = (yy * W + xx) * 4; return D[i] << 16 | D[i + 1] << 8 | D[i + 2]; };
+          const quads = [[0, 0], [q, 0], [0, q], [q, q]].map(([dx, dy]) => at(x + dx, y + dy));
+          if (new Set(quads).size > 1) split++;
+          for (const [dx, dy] of [[0, 0], [q, 0], [0, q], [q, q]]) for (let j = 0; j < q; j++) for (let i2 = 0; i2 < q; i2++)
+            if (at(x + dx + i2, y + dy + j) !== at(x + dx, y + dy)) { smear++; j = q; break; }
+        }
+        out.push({ v, at: 'grain', split: split / cells, smear });
+      }
       for (const at of ['fire', 'comet']) {
         const [fx, fy] = TitleScreen.ANCHOR[at][v];
         const x = Math.round(fx * im.width), y = Math.round(fy * im.height), R = 3 * k;
@@ -503,9 +524,12 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     }
     return out;
   });
-  const off = r.filter(x => x.best < 560 || x.warm < 90);
-  ck('theLightSitsOnThePaintingsFireAndComet', r.length === 4 && off.length === 0,
-    r.map(x => `${x.v} ${x.at}: brightest ${x.best}, warmth ${x.warm}`).join('; '));
+  const grain = r.filter(x => x.at === 'grain'), lit = r.filter(x => x.at !== 'grain');
+  const off = lit.filter(x => x.best < 560 || x.warm < 90);
+  ck('theLightSitsOnThePaintingsFireAndComet', lit.length === 4 && off.length === 0,
+    lit.map(x => `${x.v} ${x.at}: brightest ${x.best}, warmth ${x.warm}`).join('; '));
+  ck('theNightCarriesTwiceThePaintingsPixels', grain.length === 2 && grain.every(x => x.split > 0.04 && x.smear === 0),
+    grain.map(x => `${x.v}: ${(x.split * 100).toFixed(1)}% of the master's pixels split by Scale2x, ${x.smear} blurred`).join('; '));
   await o.ctx.close();
 }
 

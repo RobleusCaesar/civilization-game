@@ -64,7 +64,9 @@
                        taller than seven tenths of its old height unless a
                        card face at the art's own size needs the room (never
                        its old height); a phone's panel is still its screen;
-                       and the broken shield is broken, with blood behind it
+                       screen 3 shows two cards (the deck button and every
+                       card inside the rim); and the hard-fought defeat
+                       wears a torn war banner, holed and full of arrows
 
    Run after touching: js/cardintro.js, the CardIntro hooks in js/screens.js
    (show) and js/deckscreens.js (onTitle, the collection's "How cards work"),
@@ -456,7 +458,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     out.played = { ok: r.ok, before, after: Deck.count('fallen_timber') };
     return out;
   });
-  ck('everyFaceIsARealCatalogCard', a.n >= 10 && a.bad.length === 0, `${a.n} faces; wrong art or frame: ${a.bad.join(',') || 'none'}`);
+  ck('everyFaceIsARealCatalogCard', a.n >= 9 && a.bad.length === 0, `${a.n} faces; wrong art or frame: ${a.bad.join(',') || 'none'}`);
   ck('atWholeDevicePixels', a.blurry.length === 0, a.blurry.join(',') || 'every face a whole multiple');
   ck('theFanIsOneOfEachTierLegendaryCentred', a.fanTiers.slice().sort().join() === ['bronze', 'enlight', 'imperial', 'iron', 'stone'].sort().join() && a.mid === 'enlight',
     `${a.fanTiers.join(',')}, middle ${a.mid}`);
@@ -949,7 +951,11 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
    smaller: below it the painting's pixels go) needs the room, and never its
    old height. No screen scrolls. A card face is whole device pixels and not
    under the art's size on a wide panel. A phone's panel is still its
-   screen. And the defeat road's shield is broken, with blood behind it. */
+   screen. Screen 3 shows two cards (operator: "the final card goes over the
+   banner, and the 'your deck' icon does too… maybe reduce by one card"),
+   the deck button and both cards inside the panel's rim. And the defeat
+   road's emblem is a torn war banner (operator: the split shield "looks
+   like a cracked egg… we could also do a war tattered flag"). */
 {
   const bad = [], seen = [];
   for (const [w, h, dpr] of [[1100, 728, 1.25], [1366, 768, 1], [1440, 900, 1], [1920, 1080, 1], [1440, 900, 2], [768, 1024, 2], [390, 844, 3]]) {
@@ -964,10 +970,26 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
       out.narrow = root.classList.contains('ciNarrow');
       if (out.narrow) {
         if (panel.width < vw - 24) out.bad.push(`a phone's panel ${panel.width | 0}px in a ${vw}px window`);
+        CardIntro.go(CardIntro.PAGES.indexOf('play'));
+        const play = root.querySelector('.ciPage.on'), rim = { l: panel.left + 7, r: panel.right - 7 };
+        if (play.querySelectorAll('.ciTrio .ccard').length !== 2) out.bad.push('screen 3 on a phone shows ' + play.querySelectorAll('.ciTrio .ccard').length + ' cards');
+        for (const e of play.querySelectorAll('.ciDeckBtn, .ciTrio .ccard, .ciTrio figcaption')) {
+          const q = e.getBoundingClientRect();
+          if (q.left < rim.l || q.right > rim.r) out.bad.push(`screen 3 on a phone: ${e.className || e.tagName} past the rim`);
+        }
         return out;
       }
       if (panel.width > 880 * 0.7 + 0.5) out.bad.push(`the panel ${panel.width.toFixed(1)}px wide (seven tenths is ${880 * 0.7})`);
       if (panel.height > 770 * 0.85) out.bad.push(`the panel ${panel.height.toFixed(1)}px tall`);
+      // screen 3: two cards, and nothing of it past the rim (the gold line 9px in)
+      CardIntro.go(CardIntro.PAGES.indexOf('play'));
+      const rim = { l: panel.left + 9, r: panel.right - 9 }, play = root.querySelector('.ciPage.on');
+      const nPlay = play.querySelectorAll('.ciTrio .ccard').length;
+      if (nPlay !== 2) out.bad.push(`screen 3 shows ${nPlay} cards`);
+      for (const e of play.querySelectorAll('.ciDeckBtn, .ciDeck figcaption, .ciTrio .ccard, .ciTrio figcaption')) {
+        const q = e.getBoundingClientRect();
+        if (q.left < rim.l || q.right > rim.r) out.bad.push(`screen 3: ${e.className || e.tagName} ${q.left | 0}-${q.right | 0} past the rim ${rim.l | 0}-${rim.r | 0}`);
+      }
       let under = false;
       for (let i = 0; i < CardIntro.PAGES.length; i++) {
         CardIntro.go(i);
@@ -995,20 +1017,26 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     seen.push(`${w}x${h}@${dpr} ${r.panel.join('x')}`);
     await ctx.close();
   }
-  // the broken shield, with blood splattered behind it
+  // the hard-fought defeat: a torn war banner — crimson cloth with a torn fly
+  // end, holes burnt through it, arrows in it, on a leaning snapped spear
   const ctx = await context({ reduce: true });
   const p = await page(ctx, '?cards=1');
-  const sh = await p.evaluate(() => {
+  const fl = await p.evaluate(() => {
     const svg = CardIntro.SVG.fight();
-    const halves = [...svg.matchAll(/<g transform='translate\([^)]*\) rotate\((-?[\d.]+) [^)]*\)'><g clip-path='url\(#h([lr])\)'>/g)].map(m => [m[2], +m[1]]);
-    const splash = /<path d='M[^']+Z' fill='url\(#bp\)'/.test(svg) && /id='bp'[^>]*>(<stop[^>]*stop-color='#[5-c][0-9a-f][01][0-9a-f]{3}'\/>){3}/.test(svg);
-    return { halves, splash, drops: (svg.match(/<ellipse [^>]*fill='url\(#bl\)'/g) || []).length };
+    const cloth = (svg.match(/<clipPath id='cc'><path d='([^']+)'/) || [])[1] || '';
+    return {
+      torn: (cloth.match(/L/g) || []).length,                                   // the fly end in ragged strips
+      crimson: /id='cl'[^]*?stop-color='#(9c1c26|b02632)'/.test(svg),
+      holes: (svg.match(/fill='#14100c'/g) || []).length,
+      arrows: (svg.match(/fill='#d8cdb6'/g) || []).length,
+      leans: /<g transform='rotate\(([1-9]\d?)(\.\d+)? /.test(svg),
+      shield: /url\(#rim\)|clip-path='url\(#h[lr]\)'/.test(svg),
+    };
   });
   await ctx.close();
-  const broken = sh.halves.length === 2 && sh.halves.some(([s, r]) => s === 'l' && r < 0) && sh.halves.some(([s, r]) => s === 'r' && r > 0);
   ck('aWidePanelIsSevenTenths', bad.length === 0, bad.slice(0, 6).join(' | ') || seen.join(', '));
-  ck('theDefeatShieldIsBrokenWithBloodBehindIt', broken && sh.splash && sh.drops >= 20,
-    `halves ${JSON.stringify(sh.halves)}, a crimson splash ${sh.splash}, ${sh.drops} drops`);
+  ck('theHardFoughtDefeatIsATornWarBanner', fl.torn >= 12 && fl.crimson && fl.holes >= 3 && fl.arrows >= 3 && fl.leans && !fl.shield,
+    JSON.stringify(fl));
 }
 
 /* ================= THE ERRORS ================= */

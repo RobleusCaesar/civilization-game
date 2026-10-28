@@ -287,15 +287,23 @@ const TitleScreen = {
   },
 
   /* ---------------- the night's own life ----------------
-     A warm breath over the campfire in the painting with a few embers going
-     up from it, and a slow glint on the comet's head — smooth, drawn by the
-     compositor (transform and opacity only), each set on its own place in
-     the picture whatever the crop (ANCHOR, as fractions of the master), and
+     The campfire in the painting BURNS (operator, 2026-10-28: "the fire just
+     has a few sparks, same with the comet. Let's actually make those a
+     little more animated"): a warm breath over it, a hot core flickering at
+     its own pace, flame-licks rising and leaning, a run of embers and a few
+     darting sparks, and smoke drifting off. The comet BLAZES: its head
+     pulses, light runs down its tail, sparks shed off it and drift back
+     along the tail, and now and then its head flares into a four-pointed
+     star. Smooth, drawn by the compositor (transform and opacity only),
+     each set on its own place in the picture whatever the crop (ANCHOR, as
+     fractions of the master; TAIL, the comet's tail as an angle and a
+     length in the master's pixels), fixed scatters with no Math.random, and
      still for a player who asks for less motion. */
   ANCHOR: {
     fire: { wide: [0.2311, 0.83], tall: [0.4531, 0.9] },
     comet: { wide: [0.702, 0.138], tall: [0.2917, 0.1642] },
   },
+  TAIL: { wide: [-26, 74], tall: [-36, 124] },
   NATIVE: { wide: 688, tall: 384 },   // the masters' widths: one art pixel is --u CSS pixels
   reduced() {
     try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
@@ -303,11 +311,23 @@ const TitleScreen = {
   ambient() {
     if (!this.el) return;
     if (!this.el.querySelector('.t2amb')) {
-      const still = this.reduced();
-      let fire = '<i class="t2glow"></i>';
-      if (!still) for (let i = 0; i < 7; i++) fire += `<i class="t2em" style="--d:${(2.8 + (i * 0.71) % 1.9).toFixed(2)}s;--t:${(-i * 0.83).toFixed(2)}s;--x:${((i * 37) % 23 - 11)}px;--k:${(0.7 + (i % 3) * 0.2).toFixed(2)}"></i>`;
+      const still = this.reduced(), f2 = n => n.toFixed(2);
+      let fire = '<i class="t2glow"></i><i class="t2core"></i>', comet = '<i class="t2glint"></i>';
+      if (!still) {
+        // three flame-licks over the bed of the fire, each at its own pace
+        for (let i = 0; i < 3; i++) fire += `<i class="t2lick" style="--x:${(i - 1) * 4.5};--d:${f2(0.9 + i * 0.27)}s;--t:${f2(-i * 0.41)}s"></i>`;
+        // a run of embers, and a few sparks that dart as they climb
+        for (let i = 0; i < 16; i++) fire += `<i class="t2em" style="--d:${f2(2.2 + (i * 0.71) % 2.1)}s;--t:${f2(-i * 0.53)}s;--x:${((i * 37) % 31) - 15};--k:${f2(0.6 + (i % 4) * 0.22)}"></i>`;
+        for (let i = 0; i < 5; i++) fire += `<i class="t2em t2spark" style="--d:${f2(1.3 + (i * 0.37) % 0.8)}s;--t:${f2(-i * 0.61)}s;--x:${((i * 53) % 25) - 12};--k:${f2(0.7 + (i % 2) * 0.3)}"></i>`;
+        // smoke drifting off it
+        for (let i = 0; i < 3; i++) fire += `<i class="t2smoke" style="--d:${f2(6.5 + i * 1.3)}s;--t:${f2(-i * 2.4)}s;--x:${(i - 1) * 9}"></i>`;
+        // the comet: light running down the tail, sparks shed along it, a flare at the head
+        comet = '<i class="t2tail"><i class="t2sheen"></i></i><i class="t2trail">';
+        for (let i = 0; i < 9; i++) comet += `<i class="t2bit" style="--d:${f2(1.6 + (i * 0.43) % 1.2)}s;--t:${f2(-i * 0.37)}s;--y:${((i * 29) % 9) - 4};--k:${f2(0.6 + (i % 3) * 0.25)}"></i>`;
+        comet += '</i><i class="t2glint"></i><i class="t2flare"></i>';
+      }
       const tbg = this.el.querySelector('.tbg');
-      for (const [k, h] of [['fire', fire], ['comet', '<i class="t2glint"></i>']]) {
+      for (const [k, h] of [['fire', fire], ['comet', comet]]) {
         const a = document.createElement('div');
         a.className = 't2amb';
         a.dataset.at = k;
@@ -331,6 +351,7 @@ const TitleScreen = {
       a.style.left = (ox + p[0] * iw * s) + 'px';
       a.style.top = (oy + p[1] * ih * s) + 'px';
       a.style.setProperty('--u', (s * iw / this.NATIVE[v]).toFixed(3));
+      if (a.dataset.at === 'comet') { a.style.setProperty('--ang', this.TAIL[v][0] + 'deg'); a.style.setProperty('--len', this.TAIL[v][1]); }
     }
   },
 
@@ -427,28 +448,81 @@ TitleScreen.CSS = `
 }
 /* ---- the fire's own life ---- */
 #scrTitle.t2 .t2amb { position: absolute; z-index: 0; left: 0; top: 0; width: 0; height: 0; pointer-events: none; --u: 2; }
-#scrTitle.t2 .t2glow { position: absolute; left: calc(var(--u) * -34px); top: calc(var(--u) * -26px);
+#scrTitle.t2 .t2amb i { position: absolute; display: block; }
+#scrTitle.t2 .t2glow { left: calc(var(--u) * -34px); top: calc(var(--u) * -26px);
   width: calc(var(--u) * 68px); height: calc(var(--u) * 46px); border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255,170,80,0.26), rgba(255,140,60,0.1) 55%, rgba(255,120,40,0) 100%);
+  background: radial-gradient(closest-side, rgba(255,170,80,0.3), rgba(255,140,60,0.12) 55%, rgba(255,120,40,0) 100%);
   animation: t2flick 2.6s ease-in-out infinite; }
-#scrTitle.t2 .t2em { position: absolute; left: -1.5px; top: calc(var(--u) * -6px); width: 3px; height: 3px; border-radius: 50%;
+/* the hot core, flickering at its own pace over the flames in the painting */
+#scrTitle.t2 .t2core { left: calc(var(--u) * -12px); top: calc(var(--u) * -15px); width: calc(var(--u) * 24px); height: calc(var(--u) * 20px);
+  border-radius: 50%; background: radial-gradient(closest-side, rgba(255,236,170,0.55), rgba(255,176,80,0.22) 55%, rgba(255,140,50,0) 100%);
+  transform-origin: 50% 80%; animation: t2core 1.15s ease-in-out infinite; }
+#scrTitle.t2 .t2lick { left: calc(var(--u) * (var(--x) - 3.5) * 1px); top: calc(var(--u) * -19px); width: calc(var(--u) * 7px); height: calc(var(--u) * 15px);
+  border-radius: 50% 50% 45% 45% / 70% 70% 30% 30%; transform-origin: 50% 100%;
+  background: radial-gradient(ellipse 50% 60% at 50% 78%, rgba(255,244,190,0.75), rgba(255,170,70,0.5) 45%, rgba(255,110,30,0) 100%);
+  animation: t2lick var(--d) ease-in-out var(--t) infinite; }
+#scrTitle.t2 .t2em { left: -1.5px; top: calc(var(--u) * -8px); width: 3px; height: 3px; border-radius: 50%;
   background: radial-gradient(circle, #fff1c2 0%, #ffb24a 45%, rgba(255,120,30,0) 100%);
   opacity: 0; animation: t2rise var(--d) linear var(--t) infinite; }
-@keyframes t2flick { 0%, 100% { opacity: 0.8; } 18% { opacity: 1; } 34% { opacity: 0.72; } 52% { opacity: 0.95; } 71% { opacity: 0.78; } 86% { opacity: 1; } }
+#scrTitle.t2 .t2spark { width: 2px; height: 2px; left: -1px; background: #fff3c8; box-shadow: 0 0 4px 1px rgba(255,170,60,0.85);
+  animation-name: t2dart; animation-timing-function: ease-out; }
+#scrTitle.t2 .t2smoke { left: calc(var(--u) * (var(--x) - 8) * 1px); top: calc(var(--u) * -30px); width: calc(var(--u) * 16px); height: calc(var(--u) * 16px);
+  border-radius: 50%; background: radial-gradient(closest-side, rgba(170,160,150,0.2), rgba(150,140,130,0.08) 60%, rgba(140,130,120,0) 100%);
+  opacity: 0; animation: t2smoke var(--d) linear var(--t) infinite; }
+@keyframes t2flick { 0%, 100% { opacity: 0.8; } 18% { opacity: 1; } 34% { opacity: 0.68; } 52% { opacity: 0.95; } 71% { opacity: 0.75; } 86% { opacity: 1; } }
+@keyframes t2core { 0%, 100% { opacity: 0.7; transform: scale(1, 1); } 23% { opacity: 1; transform: scale(1.06, 1.14); }
+  47% { opacity: 0.55; transform: scale(0.95, 0.92); } 71% { opacity: 0.9; transform: scale(1.03, 1.08); } }
+@keyframes t2lick { 0%, 100% { opacity: 0.45; transform: scale(0.8, 0.7) skewX(0deg); } 30% { opacity: 0.95; transform: scale(1, 1.2) skewX(-7deg); }
+  62% { opacity: 0.6; transform: scale(0.9, 0.9) skewX(6deg); } }
 @keyframes t2rise {
   0% { opacity: 0; transform: translate(0, 0) scale(var(--k)); }
   12% { opacity: 1; }
-  60% { opacity: 0.75; transform: translate(calc(var(--x) * 0.6), calc(var(--u) * -24px)) scale(var(--k)); }
-  100% { opacity: 0; transform: translate(var(--x), calc(var(--u) * -42px)) scale(calc(var(--k) * 0.5)); }
+  60% { opacity: 0.8; transform: translate(calc(var(--x) * 0.6px * var(--u)), calc(var(--u) * -30px)) scale(var(--k)); }
+  100% { opacity: 0; transform: translate(calc(var(--x) * 1px * var(--u)), calc(var(--u) * -54px)) scale(calc(var(--k) * 0.5)); }
 }
-#scrTitle.t2 .t2glint { position: absolute; left: calc(var(--u) * -9px); top: calc(var(--u) * -9px);
-  width: calc(var(--u) * 18px); height: calc(var(--u) * 18px); border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(255,236,170,0.5), rgba(255,200,110,0.16) 50%, rgba(255,190,90,0) 100%);
-  animation: t2glint 4.2s ease-in-out infinite; }
-@keyframes t2glint { 0%, 100% { opacity: 0.35; transform: scale(0.9); } 50% { opacity: 0.85; transform: scale(1.12); } }
+@keyframes t2dart {
+  0% { opacity: 0; transform: translate(0, 0) scale(var(--k)); }
+  10% { opacity: 1; }
+  30% { transform: translate(calc(var(--x) * 0.5px * var(--u)), calc(var(--u) * -16px)) scale(var(--k)); }
+  55% { opacity: 0.9; transform: translate(calc(var(--x) * -0.3px * var(--u)), calc(var(--u) * -30px)) scale(var(--k)); }
+  80% { transform: translate(calc(var(--x) * 0.8px * var(--u)), calc(var(--u) * -44px)) scale(var(--k)); }
+  100% { opacity: 0; transform: translate(calc(var(--x) * 0.4px * var(--u)), calc(var(--u) * -56px)) scale(calc(var(--k) * 0.4)); }
+}
+@keyframes t2smoke {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.7); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(var(--u) * 10px), calc(var(--u) * -60px)) scale(2.4); }
+}
+/* ---- the comet's own life: the head pulses, light runs down the tail, sparks shed along it, a flare now and then ---- */
+#scrTitle.t2 .t2glint { left: calc(var(--u) * -10px); top: calc(var(--u) * -10px);
+  width: calc(var(--u) * 20px); height: calc(var(--u) * 20px); border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255,240,180,0.7), rgba(255,200,110,0.22) 50%, rgba(255,190,90,0) 100%);
+  animation: t2glint 2.4s ease-in-out infinite; }
+#scrTitle.t2 .t2tail { left: 0; top: calc(var(--u) * -3px); width: calc(var(--u) * var(--len) * 1px); height: calc(var(--u) * 6px);
+  transform-origin: 0 50%; transform: rotate(var(--ang)); overflow: hidden; border-radius: 3px;
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, rgba(0,0,0,0.85) 35%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, rgba(0,0,0,0.85) 35%, transparent 100%); }
+#scrTitle.t2 .t2sheen { left: 0; top: 0; bottom: 0; width: 45%;
+  background: linear-gradient(90deg, rgba(255,226,160,0), rgba(255,236,190,0.6) 50%, rgba(255,226,160,0));
+  animation: t2sheen 2.2s cubic-bezier(.4,0,.6,1) infinite; }
+#scrTitle.t2 .t2trail { left: 0; top: 0; width: 0; height: 0; transform: rotate(var(--ang)); }
+#scrTitle.t2 .t2bit { left: -1px; top: -1px; width: 2px; height: 2px; border-radius: 50%; background: #fff6d8;
+  box-shadow: 0 0 3px 1px rgba(255,200,120,0.75); opacity: 0; animation: t2shed var(--d) linear var(--t) infinite; }
+#scrTitle.t2 .t2flare { left: calc(var(--u) * -9px); top: calc(var(--u) * -9px); width: calc(var(--u) * 18px); height: calc(var(--u) * 18px);
+  background: linear-gradient(90deg, rgba(255,250,230,0), rgba(255,250,230,0.95) 50%, rgba(255,250,230,0)) center / 100% 1.5px no-repeat,
+    linear-gradient(0deg, rgba(255,250,230,0), rgba(255,250,230,0.95) 50%, rgba(255,250,230,0)) center / 1.5px 100% no-repeat;
+  opacity: 0; animation: t2flare 5.6s ease-in-out 1.2s infinite; }
+@keyframes t2glint { 0%, 100% { opacity: 0.45; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.22); } }
+@keyframes t2sheen { 0% { transform: translateX(-100%); } 100% { transform: translateX(230%); } }
+@keyframes t2shed {
+  0% { opacity: 0; transform: translate(0, 0) scale(var(--k)); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(var(--u) * var(--len) * 0.75px), calc(var(--y) * 1px * var(--u))) scale(calc(var(--k) * 0.3)); }
+}
+@keyframes t2flare { 0%, 82%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); } 88% { opacity: 1; transform: scale(1.5) rotate(20deg); } 94% { opacity: 0.4; transform: scale(0.9) rotate(35deg); } }
 @media (prefers-reduced-motion: reduce) {
-  #scrTitle.t2 .t2glow, #scrTitle.t2 .t2glint { animation: none; }
-  #scrTitle.t2 .t2em { display: none; }
+  #scrTitle.t2 .t2glow, #scrTitle.t2 .t2glint, #scrTitle.t2 .t2core { animation: none; }
+  #scrTitle.t2 .t2em, #scrTitle.t2 .t2lick, #scrTitle.t2 .t2smoke, #scrTitle.t2 .t2tail, #scrTitle.t2 .t2trail, #scrTitle.t2 .t2flare { display: none; }
 }
 `;
 

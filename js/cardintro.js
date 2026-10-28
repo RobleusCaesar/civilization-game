@@ -52,9 +52,11 @@ const CardIntro = {
   /* what each screen shows. The fan reads up the tiers toward the middle:
      Stone and Bronze outside, Iron and Imperial in, the Legendary centred. */
   FAN: ['forager_cache', 'swift_raiders', 'enlightenment', 'legion_marches', 'hunters_pack'],
+  /* two cards, not three (operator, 2026-10-28: the last card and the deck
+     button ran over the panel's rim — "maybe reduce by one card to free up
+     room"): an army and a strike from the sky, the range of what a card does */
   PLAY: [
     { id: 'war_band', cap: 'Armies' },
-    { id: 'harvest_festival', cap: 'Harvests' },
     { id: 'starfall', cap: 'Fire from the sky' },
   ],
   /* THE TIERS (operator: "turn the whole tier structure… into its own
@@ -350,11 +352,12 @@ const CardIntro = {
     const cw = fit(narrow ? avail * 0.54 : 230, heroH / 1.1, heroOld / 1.1);
     // the cards behind the middle one: a step smaller where the steps allow
     const sw = narrow ? fit(cw * 0.72, heroH) : cw;
-    let trioW = fit(narrow ? (avail + 16) / 3 : 200, (heroH - (narrow ? 120 : 40 * k)) / 1.02, (heroOld - 40) / 1.02);
-    // the deck button beside three cards needs the room for both; a panel
-    // without it (a tablet upright) stacks them as a phone does
-    const stack = narrow || 3 * trioW + (40 + 120) * k > avail;
-    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40 * k) / 3 / k), (heroH - 110 * k) / 1.02, (heroOld - 40) / 1.02);
+    const nPlay = this.PLAY.length;
+    let trioW = fit(narrow ? (avail - 24) / nPlay : 200, (heroH - (narrow ? 120 : 40 * k)) / 1.02, (heroOld - 40) / 1.02);
+    // the deck button beside the cards needs the room for both, a gap kept
+    // clear of the rim; a panel without it stacks them as a phone does
+    const stack = narrow || nPlay * trioW + (nPlay - 1) * 22 * k + (40 + 150) * k > avail;
+    if (stack && !narrow) trioW = fit(Math.min(200, (avail - 40 * k) / nPlay / k), (heroH - 110 * k) / 1.02, (heroOld - 40) / 1.02);
     root.classList.toggle('ciStack', stack);
     const beastW = fit(narrow ? avail / 2.2 : 200, (heroH - (narrow ? 60 : 50 * k)) / 1.06, (heroOld - 70) / 1.06);
     const key = [cw, sw, trioW, beastW, narrow, stack, Math.round(avail)].join(':');
@@ -600,7 +603,8 @@ const CardIntro = {
     this.PLAY.forEach((p, n) => {
       const fig = document.createElement('figure');
       fig.className = 'ciCard';
-      fig.style.setProperty('--n', n - 1);
+      // a fan about the middle: -1, 0, 1 for three cards, -1/2 and 1/2 for two
+      fig.style.setProperty('--n', n - (this.PLAY.length - 1) / 2);
       const tilt = document.createElement('div');
       tilt.className = 'ciTilt';
       tilt.appendChild(Deck.face(p.id, { w: cw }));
@@ -1039,84 +1043,72 @@ CardIntro.SVG = {
     return this.doc(120, 120, body, '7 13 106 106');
   },
 
-  /* A HARD-FOUGHT DEFEAT (operator: "Switch the graphic of the shield to be
-     broken, and with blood splattered behind it"): a round shield split in
-     two down a jagged break, the halves thrown apart from their feet with
-     splinters hanging off the torn wood, and a splash of blood behind it —
-     a body with ragged arms thrown outward and drops beyond. The splash is
-     a seeded scatter: the same splash every time, nothing drawn at random. */
+  /* A HARD-FOUGHT DEFEAT: a war banner that held to the end — torn, burnt
+     through, an arrow in its cloth and one in its pole, the spear it flies
+     from snapped above it, leaning in the trampled ground, embers drifting
+     up. (Operator, 2026-10-28: the split shield before it "looks like a
+     cracked egg… we could also do a war tattered flag… make it indicative of
+     a hard loss.") Fixed geometry, nothing drawn at random. */
   fight() {
-    const f = n => this.f(n), TAU = Math.PI * 2;
-    let seed = 7;
-    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
-    const C = [60, 60], N = 96;
-    // the arms: narrow spikes at chosen angles, a drop at each tip and more beyond
-    const arms = [[-2.55, 55], [-1.8, 52], [-1.05, 57], [-0.3, 50], [0.5, 54], [1.3, 49], [2.1, 56], [2.8, 51], [-3.05, 48]];
-    const at = (a, r) => [C[0] + Math.cos(a) * r, C[1] + Math.sin(a) * r * 0.9];
-    const rim = [];
-    for (let i = 0; i < N; i++) {
-      const a = i / N * TAU;
-      let r = 36 + rnd() * 3 + 3 * Math.sin(a * 5 + 1) + 2 * Math.sin(a * 9);
-      for (const [aa, L] of arms) {
-        let d = (((a - aa) % TAU) + TAU) % TAU;
-        d = Math.min(d, TAU - d);
-        if (d < 0.13) r = Math.max(r, L - Math.pow(d / 0.13, 0.7) * (L - 38));
-      }
-      rim.push(at(a, r));
-    }
-    // one smooth closed curve through the midpoints
-    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], m0 = mid(rim[N - 1], rim[0]);
-    let splash = `M${f(m0[0])},${f(m0[1])}`;
-    for (let i = 0; i < N; i++) { const p = rim[i], m = mid(p, rim[(i + 1) % N]); splash += ` Q${f(p[0])},${f(p[1])} ${f(m[0])},${f(m[1])}`; }
-    const drop = (a, r, size, stretch) => {
-      const [x, y] = at(a, r);
-      return `<ellipse cx='${f(x)}' cy='${f(y)}' rx='${f(size * stretch)}' ry='${f(size)}' transform='rotate(${f(a * 180 / Math.PI)} ${f(x)} ${f(y)})' fill='url(#bl)'/>`;
+    const f = n => this.f(n);
+    // the cloth: hung from the pole at x 52, drooping to the right, its fly end torn into strips
+    const cloth = 'M52,20 C68,17 86,21 104,27 L98,34 L105,39 L95,45 L101,53 L90,56 L94,65 L82,62 L80,72 L72,65 L68,75 L62,67 L57,73 L52,66 Z';
+    // holes burnt through it: a charred rim, the dark beyond, an ember's edge
+    const hole = ([x, y, rx, ry, r]) => { const t = `transform='rotate(${r} ${x} ${y})'`;
+      return `<ellipse cx='${x}' cy='${y}' rx='${f(rx + 1.3)}' ry='${f(ry + 1.1)}' ${t} fill='#2a0508' opacity='.85'/>` +
+        `<ellipse cx='${x}' cy='${y}' rx='${rx}' ry='${ry}' ${t} fill='#14100c'/>` +
+        `<ellipse cx='${f(x - .6)}' cy='${f(y - .5)}' rx='${f(rx + .6)}' ry='${f(ry + .5)}' ${t} fill='none' stroke='#e0782a' stroke-opacity='.55' stroke-width='.6'/>`; };
+    // an arrow, its head buried at (x0, y0), fletched at the nock (x1, y1)
+    const arrow = (x0, y0, x1, y1) => {
+      const L = Math.hypot(x1 - x0, y1 - y0), a = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
+      return `<g transform='translate(${x0} ${y0}) rotate(${f(a)})'>` +
+        `<path d='M0,0 L${f(L)},0' stroke='#1a0e05' stroke-width='2.4' stroke-linecap='round'/>` +
+        `<path d='M0,0 L${f(L)},0' stroke='url(#sh)' stroke-width='1.3' stroke-linecap='round'/>` +
+        `<path d='M${f(L - 7)},0 L${f(L - 1)},-3.6 L${f(L + .6)},-3.4 L${f(L - 4)},0 L${f(L + .6)},3.4 L${f(L - 1)},3.6 Z' fill='#d8cdb6' stroke='#2a2016' stroke-width='.6' stroke-linejoin='round'/>` +
+        `<path d='M${f(L - 6)},0 L${f(L)},0' stroke='#7a2a1a' stroke-width='.6'/></g>`;
     };
-    let drops = '';
-    for (const [aa, L] of arms)
-      drops += drop(aa, L - 1.5, 2.6 + rnd() * .8, 1.05) + drop(aa + 0.05, L + 4 + rnd() * 3, 1.7 + rnd() * 1.2, 1.5) + drop(aa - 0.04, L + 10 + rnd() * 5, 0.9 + rnd() * 0.8, 1.3);
-    for (let i = 0; i < 12; i++) drops += drop(rnd() * TAU, 47 + rnd() * 9, 0.8 + rnd() * 1.1, 1.15);
-    // the shield, whole — drawn twice, once into each half of the break
-    const S = [60, 62], R = 30;
-    const crack = [[58, 26], [62, 37], [55, 47], [63, 58], [56, 68], [62, 79], [55, 90], [59, 100]].map(p => p.join(',')).join(' L');
-    const planks = [-18, -9, 0, 9, 18].map((dx, i) =>
-      `<rect x='${S[0] + dx - 4.5}' y='${S[1] - R}' width='9' height='${2 * R}' fill='#000' fill-opacity='${[.14, 0, .09, .03, .16][i]}'/>` +
-      `<path d='M${S[0] + dx + 4.5},${S[1] - R} L${S[0] + dx + 4.5},${S[1] + R}' stroke='#2a1608' stroke-width='1.1'/>`).join('');
-    const rivets = [0, 45, 90, 135, 180, 225, 270, 315].map(d => { const r = d * Math.PI / 180;
-      return `<circle cx='${f(S[0] + Math.cos(r) * (R - 2.6))}' cy='${f(S[1] + Math.sin(r) * (R - 2.6))}' r='1.6' fill='url(#bs)' stroke='#14181d' stroke-width='.6'/>`; }).join('');
-    const shield =
-      `<circle cx='${S[0]}' cy='${S[1]}' r='${R + 1.5}' fill='#120c07'/><circle cx='${S[0]}' cy='${S[1]}' r='${R}' fill='url(#rim)'/>` +
-      `<circle cx='${S[0]}' cy='${S[1]}' r='${R - 5.2}' fill='#1a0f06'/>` +
-      `<g clip-path='url(#face)'><rect x='${S[0] - R}' y='${S[1] - R}' width='${2 * R}' height='${2 * R}' fill='url(#wd)'/>${planks}` +
-        `<path d='M36,50 Q41,48 45,52 M66,78 Q71,76 74,80 M46,82 Q51,80 53,84 M70,44 Q74,42 77,46' fill='none' stroke='#3a2210' stroke-opacity='.55' stroke-width='.6'/>` +
-        `<rect x='${S[0] - R}' y='${S[1] - R}' width='${2 * R}' height='${2 * R}' fill='url(#lt)'/></g>` +
-      rivets +
-      `<circle cx='${S[0]}' cy='${S[1]}' r='8.4' fill='#14181d'/><circle cx='${S[0]}' cy='${S[1]}' r='7.4' fill='url(#bs)'/>` +
-      `<path d='M55.4,57.8 A6,6 0 0 1 62.2,56.2' fill='none' stroke='#fff' stroke-opacity='.7' stroke-width='1' stroke-linecap='round'/>` +
-      // the break's raw edge: torn pale wood, a dark line in the grain
-      `<g clip-path='url(#disc)'><path d='M${crack}' fill='none' stroke='#e2b07a' stroke-width='2.4' stroke-linejoin='bevel'/>` +
-        `<path d='M${crack}' fill='none' stroke='#5a3417' stroke-width='.7' stroke-linejoin='bevel'/></g>`;
-    const splinter = d => `<path d='${d}' fill='#d9a46c' stroke='#3a2210' stroke-width='.5' stroke-linejoin='round'/>`;
     const body =
       `<defs>` +
-      `<radialGradient id='bl' cx='.42' cy='.38' r='.7'><stop offset='0' stop-color='#c21a26'/><stop offset='.55' stop-color='#8e0d17'/><stop offset='1' stop-color='#5c060d'/></radialGradient>` +
-      `<radialGradient id='bp' cx='.45' cy='.42' r='.62'><stop offset='0' stop-color='#b3141f'/><stop offset='.6' stop-color='#860b14'/><stop offset='1' stop-color='#56050b'/></radialGradient>` +
-      `<linearGradient id='rim' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#dfe5ea'/><stop offset='.35' stop-color='#8d98a5'/><stop offset='.7' stop-color='#4a5461'/><stop offset='1' stop-color='#262c35'/></linearGradient>` +
-      `<linearGradient id='wd' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#9a6a3c'/><stop offset='.5' stop-color='#7a4c27'/><stop offset='1' stop-color='#4e2c13'/></linearGradient>` +
-      `<radialGradient id='bs' cx='.38' cy='.32' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='.4' stop-color='#aab4bf'/><stop offset='1' stop-color='#323a44'/></radialGradient>` +
-      `<radialGradient id='lt' cx='.32' cy='.25' r='.8'><stop offset='0' stop-color='#fff' stop-opacity='.22'/><stop offset='.6' stop-color='#fff' stop-opacity='0'/><stop offset='1' stop-color='#000' stop-opacity='.35'/></radialGradient>` +
-      `<clipPath id='face'><circle cx='${S[0]}' cy='${S[1]}' r='${R - 5.6}'/></clipPath>` +
-      `<clipPath id='disc'><circle cx='${S[0]}' cy='${S[1]}' r='${R + 1.5}'/></clipPath>` +
-      `<clipPath id='hl'><path d='M0,0 L58,0 L${crack} L59,120 L0,120 Z'/></clipPath>` +
-      `<clipPath id='hr'><path d='M120,0 L58,0 L${crack} L59,120 L120,120 Z'/></clipPath></defs>` +
-      // the blood, behind everything
-      `<path d='${splash} Z' fill='url(#bp)' stroke='#3a0207' stroke-width='.8'/>` + drops +
-      // the two halves, thrown apart from their feet
-      `<g transform='translate(-5 2) rotate(-13 52 96)'><g clip-path='url(#hl)'>${shield}</g>` +
-        splinter('M55,47 L50.5,44.5 L54.6,49.2 Z M56,68 L51,70.5 L56.6,70 Z M55,90 L51.8,93.5 L56,92 Z') + `</g>` +
-      `<g transform='translate(5 1) rotate(11 66 96)'><g clip-path='url(#hr)'>${shield}</g>` +
-        splinter('M62,37 L66.8,34 L62.8,39.6 Z M63,58 L68,56.2 L63.4,60.6 Z M62,79 L67,80.6 L61.8,81.6 Z') + `</g>`;
-    return this.doc(120, 120, body);
+      `<linearGradient id='cl' x1='0' y1='0' x2='1' y2='0'>` +
+        `<stop offset='0' stop-color='#5a0b13'/><stop offset='.14' stop-color='#9c1c26'/><stop offset='.3' stop-color='#6c1019'/><stop offset='.48' stop-color='#b02632'/>` +
+        `<stop offset='.66' stop-color='#74121b'/><stop offset='.82' stop-color='#a01f2a'/><stop offset='1' stop-color='#5e0c14'/></linearGradient>` +
+      `<linearGradient id='ch' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#000' stop-opacity='0'/><stop offset='.62' stop-color='#000' stop-opacity='.08'/><stop offset='1' stop-color='#1a0603' stop-opacity='.75'/></linearGradient>` +
+      `<linearGradient id='pl' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#3e2410'/><stop offset='.45' stop-color='#8a5a2c'/><stop offset='1' stop-color='#3a210d'/></linearGradient>` +
+      `<linearGradient id='sh' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#6a4422'/><stop offset='1' stop-color='#a87a48'/></linearGradient>` +
+      `<linearGradient id='gd' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#f6d27a'/><stop offset='1' stop-color='#9c6418'/></linearGradient>` +
+      `<radialGradient id='gr' cx='.5' cy='.3' r='.7'><stop offset='0' stop-color='#3a2a1c'/><stop offset='1' stop-color='#120c08'/></radialGradient>` +
+      `<radialGradient id='em' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='#fff2b0'/><stop offset='.4' stop-color='#ff9a3a'/><stop offset='1' stop-color='#ff5a10' stop-opacity='0'/></radialGradient>` +
+      `<clipPath id='cc'><path d='${cloth}'/></clipPath></defs>` +
+      // the trampled ground, an arrow in it
+      `<path d='M18,114 Q60,96 104,114 Z' fill='url(#gr)'/>` +
+      `<path d='M24,112 Q60,100 98,112' fill='none' stroke='#5a4026' stroke-opacity='.5' stroke-width='.8'/>` +
+      arrow(80, 106, 94, 86) +
+      // the standard, leaning
+      `<g transform='rotate(7 50 110)'>` +
+        // the pole: a spear shaft, snapped above the cloth
+        `<path d='M48.5,112 L51,22 L50.2,16 L52,18.4 L53.2,13.5 L54.1,18 L55.4,15.6 L55,22 L52.6,112 Z' fill='url(#pl)' stroke='#1c1006' stroke-width='1' stroke-linejoin='round'/>` +
+        `<path d='M51.6,108 L53.3,24' stroke='#c99a62' stroke-opacity='.45' stroke-width='.6'/>` +
+        // the cloth: gold along the top, the folds it hangs in, a charred foot, the holes
+        `<path d='${cloth}' fill='url(#cl)' stroke='#2a0508' stroke-width='1.1' stroke-linejoin='round'/>` +
+        `<g clip-path='url(#cc)'><rect x='50' y='18' width='56' height='58' fill='url(#ch)'/>` +
+          `<path d='M52,21 C66,19 82,22 99,27' fill='none' stroke='url(#gd)' stroke-width='2.4'/>` +
+          `<path d='M52,24.3 C66,22.4 82,25.3 98.4,30.2' fill='none' stroke='#2a0508' stroke-opacity='.5' stroke-width='.6'/>` +
+          [[60, .14], [76, .12], [91, .1]].map(([x, o]) =>
+            `<path d='M${x},20 C${x + 3},34 ${x - 2},50 ${x + 2},76' fill='none' stroke='#ff8a8a' stroke-opacity='${o}' stroke-width='3'/>` +
+            `<path d='M${x + 6},21 C${x + 9},36 ${x + 4},52 ${x + 8},76' fill='none' stroke='#1a0206' stroke-opacity='.22' stroke-width='4'/>`).join('') +
+          // a second band of gold low on the cloth, broken where it tore
+          `<path d='M52,58 C62,56 70,57 78,59' fill='none' stroke='url(#gd)' stroke-opacity='.8' stroke-width='1.4' stroke-dasharray='9 2 14 3 6'/>` +
+          [[80, 38, 3.4, 2.4, -14], [90, 50, 2.2, 1.6, 20], [64, 56, 2.4, 1.7, 8]].map(hole).join('') +
+        `</g>` +
+        // where the cloth is lashed to the pole
+        `<path d='M50.6,22 L54.4,23.6 M50.6,34 L54.4,35.6 M50.6,48 L54.4,49.6 M50.6,60 L54.4,61.6' stroke='#c8b48a' stroke-width='1.3' stroke-linecap='round'/>` +
+        // an arrow in the pole, one through the cloth
+        arrow(54, 84, 78, 73) + arrow(93, 55, 108, 46) +
+      `</g>` +
+      // embers drifting up
+      [[38, 40, 1.6], [34, 60, 1.2], [98, 82, 1.4], [42, 24, 1], [106, 70, 1]].map(([x, y, r]) =>
+        `<circle cx='${x}' cy='${y}' r='${f(r * 2.2)}' fill='url(#em)'/><circle cx='${x}' cy='${y}' r='${f(r * .5)}' fill='#fff2b0'/>`).join('');
+    return this.doc(120, 120, body, '30 10 88 100');
   },
 
   /* YOUR DECK: the HUD button's own picture (a bronze card behind a gold
@@ -1327,7 +1319,7 @@ CardIntro.CSS = `
 #cardIntro .ciEmb { flex: 0 0 auto; width: var(--embW, 120px); height: var(--embW, 120px); background: 0 0 / 100% 100% no-repeat;
   filter: drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
 #cardIntro .ciRoad.win .ciEmb { filter: drop-shadow(0 0 16px rgba(255,200,80,.6)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
-#cardIntro .ciRoad.loss .ciEmb { filter: drop-shadow(0 0 12px rgba(190,24,34,.28)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
+#cardIntro .ciRoad.loss .ciEmb { filter: drop-shadow(0 0 12px rgba(255,110,40,.22)) drop-shadow(0 4px 4px rgba(0,0,0,.6)); }
 #cardIntro .ciRoad h3 { margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: max(15px, calc(var(--k, 1) * clamp(16px, 4.4vw, 23px))); line-height: 1.15;
   color: #ffd45e; text-shadow: 0 2px 0 #2a1704, 0 0 12px rgba(255,200,80,.3); }
 #cardIntro .ciRoad.loss h3 { color: #dde4ee; text-shadow: 0 2px 0 #10151c; }
@@ -1367,8 +1359,7 @@ CardIntro.CSS = `
 #cardIntro .ciCard { position: relative; display: flex; flex-direction: column; align-items: center; gap: calc(10px * var(--k, 1)); width: var(--cw); }
 #cardIntro .ciTilt { transform: rotate(calc(var(--n) * 4deg)) translateY(calc(var(--n) * var(--n) * 10px * var(--k, 1))); transform-origin: 50% 100%; }
 
-#cardIntro .ciCard:nth-child(2) { z-index: 2; }
-#cardIntro .ciCard:nth-child(2) .ccard { box-shadow: 0 0 18px 2px rgba(255,200,80,.45), 0 8px 14px rgba(0,0,0,.6); }
+#cardIntro .ciCard .ccard { box-shadow: 0 0 16px 2px rgba(255,200,80,.38), 0 8px 14px rgba(0,0,0,.6); }
 #cardIntro .ciCard figcaption { width: 100%; margin-top: calc(var(--n) * var(--n) * 10px * var(--k, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; line-height: 1.2;
   font-size: max(11px, calc(var(--k, 1) * clamp(10.5px, 2.9vw, 14px))); color: #ffe39a; text-shadow: 0 2px 0 #000, 0 0 7px rgba(10,7,4,.95); }
 #cardIntro .ciPage.enter .ciCard { animation: ciLift .55s cubic-bezier(.2,1.2,.4,1) both; animation-delay: calc(.12s + (var(--n) + 1) * .1s); }
@@ -1525,13 +1516,11 @@ CardIntro.CSS = `
 #cardIntro.ciStack .ciDeck { flex-direction: row; gap: 16px; }
 #cardIntro.ciStack .ciArrow { display: none; }
 #cardIntro.ciStack .ciDeck figcaption { align-items: flex-start; }
-#cardIntro.ciNarrow .ciTrio, #cardIntro.ciStack .ciTrio { gap: 0; }
-#cardIntro.ciStack:not(.ciNarrow) .ciCard { margin: 0 calc(var(--cw) * -0.02); }
-/* a caption a little narrower than its card, and a step below it: the tilted
-   cards either side never reach under the middle one's words */
-#cardIntro.ciStack:not(.ciNarrow) .ciCard figcaption { width: calc(100% - 14px); margin-top: calc(6px + var(--n) * var(--n) * 10px * var(--k, 1)); }
-#cardIntro.ciNarrow .ciCard { margin: 0 calc(var(--cw) * -0.035); }
-#cardIntro.ciNarrow .ciCard figcaption { width: calc(100% - 14px); margin-top: calc(6px + var(--n) * var(--n) * 10px); }
+/* two cards side by side with room between them, each caption under its
+   own card and never wider than it (a long one breaks into two even lines) */
+#cardIntro.ciStack .ciTrio { gap: clamp(16px, 6vw, 28px); }
+#cardIntro .ciCard figcaption { text-wrap: balance; }
+#cardIntro.ciNarrow .ciCard figcaption { margin-top: calc(4px + var(--n) * var(--n) * 10px); }
 
 #cardIntro.ciNarrow .ciNext { width: min(60%, 250px); font-size: 17px; }
 #cardIntro.ciNarrow .ciBack, #cardIntro.ciNarrow .ciNavPad { width: 66px; font-size: 12px; }

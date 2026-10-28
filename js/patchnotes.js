@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 105, date: '2026-10-28', title: 'A livelier night, in testing',
+    items: [
+      'How to Play in the card guide shows two cards now, so nothing runs over the frame on a computer or a phone.',
+      'A hard-fought defeat is shown as a torn war banner, burnt through and full of arrows.',
+      'The night painting behind the title and the card guide has finer pixels, so it sits better beside the cards.',
+      'The campfire on the title really burns now, with flickering flames, sparks and smoke, and the comet streaks with light down its tail.',
+    ],
+  },
+  {
     build: 104, date: '2026-10-28', title: 'A tidier card guide, in testing',
     items: [
       'The guide that introduces cards is smaller on a computer screen, so it no longer fills the window.',

@@ -752,9 +752,17 @@ ART**: the reward valley the night before the dawn — roundhouses, palisade,
 the hall on its rise, pines, mountains, the clan at its fire, and a comet
 over the hall (Starfall, the deck's one hint). Wide for ANY landscape window
 (`(min-aspect-ratio: 4/3)`, so a phone on its side gets the valley, not a
-strip of the tall), tall for portrait. Each file is a whole-factor
-nearest-neighbour enlargement of its master (3x wide, 2x tall), lossless
-webp with a jpg behind it; `Boot.t2fit` draws nearest-neighbour only on a
+strip of the tall), tall for portrait. **TWICE THE PAINTING'S PIXELS**
+(operator, 2026-10-28: "a slightly higher pixel count backdrop. It clashes
+with the high quality cards… We don't want to lie about the game quality"):
+each file is its PixelLab master through ImageMagick's Scale2x (`-define
+magnify:method=scale2x -magnify` — the stair-steps halve and round, every
+colour is the master's, nothing is painted in; PixelLab paints no scene above
+688x384 and running a downloaded upscaler was refused), the wide then doubled
+nearest-neighbour (2752x1536, 87KB) and the tall shipped as it comes
+(768x1376 — the size it always was, so a phone's memory is unchanged);
+lossless webp with a jpg behind it, and the contract checks a real share of
+the master's pixels split and none blurred; `Boot.t2fit` draws nearest-neighbour only on a
 2x/3x screen that shows it at or above its pixels, and smooths the last step
 down on 1x. Its URLs (`T2_SRC`/`T2_IMG`) are markup in all but name: the
 `?v=` is hand-kept and must equal `CFG.ART_V`. **THE PLAQUES ARE VECTORS
@@ -767,10 +775,17 @@ since two by two leaves every label room at 320px. No stepped or pixel icon;
 every raster but the backdrop is within its pixels at 3x. A press moves the
 plate with `translate`, never `transform`: the pop-in's held frame swallows a
 pressed transform (it always did on the old title). Everything is scoped to
-`#scrTitle.t2`, so the pause menu's `.plaques` are untouched. The fire's
-breath, its embers and the comet's glint sit at `TitleScreen.ANCHOR` (read
-off the masters; the contract reads them back off the shipped files, so a new
-night must bring new anchors), compositor-only and still for reduced motion.
+`#scrTitle.t2`, so the pause menu's `.plaques` are untouched. **THE FIRE
+BURNS AND THE COMET BLAZES** (operator: "the fire just has a few sparks, same
+with the comet… make those a little more animated"): a breath of light, a
+hot core flickering at its own pace, three flame-licks, sixteen embers and
+five darting sparks, smoke drifting off; the comet's head pulses, light runs
+down its tail (`TitleScreen.TAIL`: its angle and length in master pixels per
+crop), sparks shed back along it, and now and then the head flares into a
+four-pointed star. All of it sits at `TitleScreen.ANCHOR` (read off the
+masters; the contract reads them back off the shipped files, so a new night
+must bring new anchors), compositor-only, a fixed scatter, and still for
+reduced motion.
 
 **THE CARD ANNOUNCEMENT** (`js/cardintro.js`, tests/card-intro.mjs; art in
 `assets/cards/intro/`, ART_PLAN "The card announcement" — operator: "an
@@ -799,9 +814,15 @@ THEM reads "Every victory earns a card, and so do hard-fought losses.", the
 victory road "A good win +1 card, a hard-fought win +2 cards." over its +1 /
 +2 card pips (each count kept with its pips, `.ciG`), and the defeat road is
 its heading and one line — the deeds and days meters and the verb list are
-gone. Its emblem is a BROKEN shield (two halves thrown apart from their
-feet, splinters on the torn wood) over a seeded splash of blood
-(`CardIntro.SVG.fight`). A compound word never breaks at its own hyphen
+gone. Its emblem is a TORN WAR BANNER (`CardIntro.SVG.fight`): crimson
+cloth torn into strips at the fly, holes burnt through it, an arrow in the
+cloth and one in the pole, the spear it flies from snapped and leaning —
+the split shield before it "looks like a cracked egg" (operator), and the
+contract refuses a shield coming back. PLAY THEM shows TWO cards, War Band
+and Starfall (the third ran the last card and the deck button over the
+panel's rim on a 125% laptop, and cramped a phone's captions); the stack
+rule counts `PLAY.length`, the fan's `--n` centres on the middle, and the
+contract holds the deck button and both cards inside the rim. A compound word never breaks at its own hyphen
 (`.ciNb`). **The tiers have a screen of their own** (operator: "clean, well
 laid out, and easy to read… no more than a sentence on what improves at each
 level"): five rows on a dark plate, Stone first, a gem, the name in the
@@ -826,7 +847,8 @@ The laurels shrink from their feet to clear the X (`_clearX`); the sparks
 rise only in the card area, with holes cut round every caption and the
 tiers' list (`_sparkRoom`); a screen's fit is measured at rest (`_settle`,
 `.ciMeasure`), so a screen that fits never scrolls and one that must fades
-at its edges. **It arrives in silence** (a cue before the player's first
+at its edges. The dusk behind the panel ships at twice its master's pixels
+(Scale2x, 1376x768), like the night. **It arrives in silence** (a cue before the player's first
 touch is refused by the browser). Off, the file defines `CardIntro` and
 nothing else.
 
