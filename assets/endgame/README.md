@@ -58,3 +58,15 @@ density, 240 x 102, the card standing 26 pixels down its top
 (`DeckScreens.PLINTH` holds those numbers: change the picture's size or where
 the card stands and change them with it). A missing file leaves the screen's
 own painted landscape and stone drum — nothing breaks.
+
+Those five are the screen's only pictures, because they are WORLD art — the
+valley and the altar standing in it. Everything drawn over them is CHROME
+(the banner and its sprigs, the laurels beside the card, the deck's little
+card stack, the brackets, gems and sparks) and is drawn as vectors in code
+(`DeckScreens.SVG`, `DeckUI.deckIcon`, `DeckUI.GEM_SVG`), at the device's own
+resolution: do not add a PNG for any of it. `tests/deck-screens.mjs` §7
+measures the rule — no raster on the reward screen, the collection or the
+deck sheet but these and the card faces may be shown past its own pixels on
+a 3x phone, and the pedestal never past twice its pixels (it is 2x on a
+desktop today; a larger window would want a larger altar, not a stretched
+one).
