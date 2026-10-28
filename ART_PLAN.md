@@ -1206,6 +1206,37 @@ passes, and nothing is drawn `pixelated` or crisp-edged — so new chrome
 art for this screen is either a vector or a PixelLab image at 3× its CSS
 size, looked at full size before it lands.
 
+## The night title (assets/ui/title/)
+
+The staged title's backdrop (js/titlescreen.js, tests/title.mjs): the reward
+screen's valley — the roundhouses in their palisade, the hall on its rise,
+the pines, the mountains — on the night before the dawn, the clan at its
+fire and a comet over the hall (the deck's Starfall, the one hint of the
+cards). Two files, laid by the boot block on the splash and the title alike:
+
+| File               | Native  | Shipped                              | What |
+| ------------------ | ------- | ------------------------------------ | ---- |
+| `night-wide.webp`  | 688×384 | 3× nearest, lossless, 2064×1152      | any landscape window (a phone on its side too) |
+| `night-tall.webp`  | 384×688 | 2× nearest, lossless, 768×1376       | any portrait window |
+
+each with a `.jpg` at the same size behind it; the native masters live in
+`assets/masters/title/`. Made with PixelLab `create_image_pro` at the
+native sizes, the reward backdrops as STYLE masters (`win-wide` /
+`win-tall`, `style_copy` outline/detail/shading — never their palette:
+this is night), and the layout asked for in words: the middle calm and
+dark, the life at the edges, the fire below the menu on a phone. The
+model's skies come back blotched with ghost shapes; the tall's was
+repainted as clean bands of its own three sky colours (stars and the comet
+kept pixel for pixel), the wide's dark ink blots filled from the sky
+around them. Shipped as a whole-factor enlargement so the browser only
+ever takes the last step: nearest-neighbour where a 2×/3× screen shows it
+at or above its pixels, smoothed on the way down on a 1× desktop
+(`Boot.t2fit`). The fire's light and the comet's glint are placed by
+`TitleScreen.ANCHOR` — fractions of the master, read off its brightest
+pixels — and the contract reads them back off the shipped files, so a new
+night must bring new anchors. URLs carry a hand-kept `?v=` equal to
+`CFG.ART_V` (they are built before any script file parses).
+
 ## Formation art: multi-tile pieces over terrain REGIONS
 
 ```

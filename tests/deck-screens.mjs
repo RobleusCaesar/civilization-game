@@ -6,10 +6,12 @@
                        today's victory and defeat scenes and the title is
                        exactly today's title: no plaque, no element, no
                        stylesheet, no listener, no write
-     THE TITLE         on, a "Cards" plaque joins the secondary row as plain
-                       text, the row folds two by two so no label runs off
-                       its plaque at any phone width, the hero plaques stay
-                       three, and the starter hand is dealt once
+     THE TITLE         on, a "Cards" plaque joins the secondary row (on the
+                       night title the deck switch stages, a vector icon
+                       beside the word, like its neighbours; never a pixel
+                       icon or an emoji), the row folds two by two so no
+                       label runs off its plaque at any phone width, the hero
+                       plaques stay three, and the starter hand is dealt once
      THE REWARD        on, a win shows the gold banner with laurels, a loss
                        the cold one without; the card stands on the plinth's
                        slit with its tier and name on the plate below, the
@@ -172,9 +174,12 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     const btn = document.getElementById('btnTitleCards');
     out.inRow = !!document.querySelector('#scrTitle .trow3 #btnTitleCards');
     out.four = document.querySelector('#scrTitle .trow3').classList.contains('clFour');
-    out.label = btn ? btn.querySelector('.blab').childNodes[0].textContent : '';
+    // the word itself — the night title (js/titlescreen.js, staged with the
+    // deck) sets a vector icon before it, as it does on every plaque
+    out.label = btn ? [...btn.querySelector('.blab').childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim() : '';
     out.n = btn ? btn.querySelector('.clN').textContent : '';
-    out.svg = btn ? !!btn.querySelector('svg') : true;
+    // no PIXEL icon: the only picture a minor plaque may carry is the night's vector (.t2i, smooth)
+    out.svg = btn ? [...btn.querySelectorAll('.blab svg')].some(g => !g.classList.contains('t2i') || g.getAttribute('shape-rendering') === 'crispEdges') : true;
     out.big = btn ? btn.classList.contains('big') : true;
     out.emoji = btn ? /[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u.test(btn.textContent) : true;
     out.heroes = document.querySelectorAll('#scrTitle .tmenu .abtn.big').length;
