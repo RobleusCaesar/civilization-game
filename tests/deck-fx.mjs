@@ -187,7 +187,12 @@ await p.evaluate(() => {
    Stone siblings each drop goods at the door). A woven basket comes down,
    lands in its dust and spills its food — each piece a step of the food
    count (its pays) adding to the 250 — in the card's own voice; and every
-   beat of it draws, laying a picture worth the name. */
+   beat of it draws, laying a picture worth the name. (Measured in the
+   device pixels each beat covers over a meadow, in TILES' worth: this
+   counted fillRect/drawImage calls, the hard pixel's tool, and since the
+   operator's ruling of 2026-10-27 put the light on smooth paths and
+   gradients the count read only the first beat's cache-building — 114 on a
+   cold page, 16 once the art had landed — for a moment covering 6.5 tiles.) */
 {
   const r = await p.evaluate(() => {
     __fx.fresh('fx-cache-moment');
@@ -197,34 +202,40 @@ await p.evaluate(() => {
     R.cam.z = 1.7; R.centerOn(Bld.cx(tc), Bld.cy(tc) + 1);
     const heard = [], sp0 = Sound.play;
     Sound.play = function (k) { heard.push(k); return sp0.apply(this, arguments); };
-    const P2 = CanvasRenderingContext2D.prototype, fr = P2.fillRect, di = P2.drawImage;
-    let marks = 0, peak = 0, threw = null;
+    let peak = 0, least = Infinity, threw = null;
     try {
       const out = Deck.play('forager_cache');
       const sh = R.cardShows.find(s => s.id === 'forager_cache');
       const d = Deck.FX.forager_cache;
       const pays = sh && d.show && d.show.pays ? d.show.pays.call(d, sh) : [];
       const sum = pays.reduce((a, e) => a + (e[2] || 0), 0);
-      P2.fillRect = function () { marks++; return fr.apply(this, arguments); };
-      P2.drawImage = function () { marks++; return di.apply(this, arguments); };
-      const g = R.cv.getContext('2d');
+      // every beat over a plain meadow, through the world's transform
+      const BG = [75, 129, 51], z = R.cam.z * (R.dpr || 1), tile = Math.pow(CFG.TILE * z, 2);
+      const c = document.createElement('canvas'); c.width = R.cv.width; c.height = R.cv.height;
+      const g = c.getContext('2d');
       if (sh) for (let k = 1; k <= 30; k++) {
-        sh.t = k / 30 * sh.ms / 1000 * 0.97; marks = 0;
+        sh.t = k / 30 * sh.ms / 1000 * 0.97;
         if (R.cardShows.indexOf(sh) < 0) R.cardShows.push(sh);
-        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+        g.fillStyle = `rgb(${BG})`; g.fillRect(0, 0, c.width, c.height);
+        g.save(); g.setTransform(z, 0, 0, z, -R.cam.x * z, -R.cam.y * z);
         try { R.drawCardShows(g, 0, 'world'); } catch (e) { threw = String(e); }
         g.restore();
-        peak = Math.max(peak, marks);
+        const px = g.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 0; i < px.length; i += 4) if (Math.abs(px[i] - BG[0]) + Math.abs(px[i + 1] - BG[1]) + Math.abs(px[i + 2] - BG[2]) > 12) n++;
+        peak = Math.max(peak, n / tile); least = Math.min(least, n / tile);
       }
       return { show: !!sh && sh.tc === tc.id && !!sh.at, pay: !!(out.pay && out.pay.ms > 0), pieces: pays.length,
         rest: pays.length > 0 && !pays[pays.length - 1][2] && sum < 250, voice: heard.includes('cardBasket') && typeof Sound._VOICES.cardBasket === 'function',
-        poofs: R.placePoofs.length, peak, threw };
-    } finally { P2.fillRect = fr; P2.drawImage = di; Sound.play = sp0; R.cardShows = []; }
+        poofs: R.placePoofs.length, peak, least, threw };
+    } finally { Sound.play = sp0; R.cardShows = []; }
   });
   ck('aForagersCacheIsSetDownAtTheHallsDoor', r.show && r.pay && r.pieces >= 4 && r.rest,
     `a show at the door ${r.show}, the bar held for its pieces ${r.pay}, ${r.pieces} pieces (the last the rest ${r.rest})`);
   ck('inItsOwnVoiceAndItsOwnDust', r.voice && r.poofs >= 1, `the basket's voice ${r.voice}, ${r.poofs} puffs of dust`);
-  ck('andEveryBeatOfItDraws', !r.threw && r.peak >= 40, r.threw || `${r.peak} marks at its height`);
+  ck('andEveryBeatOfItDraws', !r.threw && r.peak >= 2 && r.least >= 0.1,
+    r.threw || `${r.peak.toFixed(2)} tiles' worth of device px at its height, ${r.least.toFixed(2)} at its least`);
 }
 
 // ---------------- 2. HARVEST FESTIVAL ----------------
