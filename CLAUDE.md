@@ -138,7 +138,7 @@ node tests/buildings-block.mjs # every building is solid ground except the worke
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
 node tests/wild-life.mjs       # wolves stalk deer, herds bolt as one, birds scatter; banners fly in the tribe's dye; a work tick or a blow's number in the fog is written nowhere
-node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, the rival comes running, and the card's gold says it once
+node tests/wonder.mjs          # the second way to win: one of ten 3×3 monuments, the rival comes running, and the card's gold says it once; Calm's ALONE, for both tribes (a site off Calm is called off at load, its price refunded)
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
@@ -153,7 +153,7 @@ node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring 
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
-node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder
+node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder, and its countdown banner fits every screen
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do; no mountain tile is an invisible wall
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal; a card's act has the floor (no note, no dim, no slow motion), the deck's note retires with the deck
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
@@ -163,7 +163,7 @@ node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner m
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
-node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins; every row names its build, every ending its errors (0 for a clean game)
+node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins; every row names its build, every ending its errors (0 for a clean game) — the RUN's tally, never reset by the title's demo world or a refused load; a Continue is the same run (no second run_start), and quitting to the title is a walk-away
 node tests/analytics.mjs     # the dashboard on a REAL PostgreSQL (all migrations in order, 0010 twice): one game one result, rates of what they say, your own play left out retroactively, the doors locked, the release comparison, the inbox; the page against the real functions, and Send to Claude never writes a bare @claude
 node tests/desktop-layout.mjs # the world fills the window at every zoom (R.minZoom), a run opens at its own zoom, the desktop bars fill the width, the top bar is ONE row and a panel puts four actions on a row; the phone untouched
 node tests/moderate-dials.mjs # the retention pass's balance: Moderate's raid cadence / early army / harassment / first wave, a starving chief spends its gold, spare hands scale with the town, the Wonder's price, no massif at a seat's door
@@ -179,7 +179,7 @@ node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel; a siege frame redraws only the water that moved, and a fallen building's verge grows back in slices
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
 node tests/specials.mjs       # the special-event roll: three draws whatever it rolls, weighted, no dead rolls; the kraken is the player's; sons/cache land where a hand can walk; every event scores and reports; the eclipse's moon-shadow, its stare, no stars in the black; the animal strife is fought, wound up, balanced both ways; the dry summer burns each tree as itself and leaves burnt wood (snags where the trees grew, ash, grass) — never stumps, never a lumber camp
-node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables, the earn rule (a win always; a defeat on DEEDS across 6 DAYS of orders, never time — a front-loaded burst earns nothing, an ordered kill is a deed, a card hastens only the player's own work), one grant per run, the collection on the device (never in S), the one door, the lesson's floor, ?cards=all deals all 36 and ?cards=0 gives the real collection back (with anything earned on the test deck banked in it), the kill switch; the origin draft never says "deck"
+node tests/deck-core.mjs     # the card system's core: the 36 cards as approved, the drop tables, the earn rule (a win always; a defeat on DEEDS across 6 DAYS of orders, never time — a front-loaded burst earns nothing, an ordered kill is a deed, a card hastens only the player's own work), one grant per run, a BIG DEFEAT (final score 20,000+) rolling Bronze or Iron, the collection on the device (never in S), the one door, the lesson's floor, ?cards=all deals all 36 and ?cards=0 gives the real collection back (with anything earned on the test deck banked in it), the kill switch; the origin draft never says "deck"
 node tests/deck-fx.mjs       # the card effects: off changes nothing; every number of every card; a strike never razes a hall; a strike at the rival in the truce warns and ends it, asked of what the PLAYER knows; no card draws the run's RNG
 node tests/deck-ui.mjs       # the in-game deck: off builds nothing; the sheet pauses, jumps by tier, builds each face once; a closer look is six tenths of its old size with its back's words kept; the blow lands on the reticle's cross; a mouse hover only previews, a finger tap lights ✓; a refusal is said once, on the card, and a refused Play promises nothing; a play is over inside 1.2 s and leaves in hard pixels; the landing never washes the meadow; an act that letters its words toasts no rule; every running card is seen or counted, in its own glyph at the device's resolution; every name fits its plate and the back names the card
 node tests/deck-screens.mjs  # the reward screen and the collection: off is today's end scenes; the grant happens once, on open; the ceremony; one space between every part, a phone without the played list or deck tile; an undiscovered card leaks nothing
@@ -187,7 +187,7 @@ node tests/deck-town.mjs     # the town's cards: goods are a gift (never the har
 node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a tile, no sky-iron, the card's words), every number, war-wolves that answer to the hall and fight what strikes them, ghosts that are not people and keep their post, veterans that never stack, raise neither host nor pack, and wear a rank pip, what is not drawn is not tapped, nothing drawn in the black; every summon on its own place of the fan in its own beam, the cinema cut, the war-wolf's collar, a ghost an inked figure
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
-node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's
+node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
@@ -628,6 +628,26 @@ asked by the old victory scene and `DeckScreens._armBoard` alike, read off
 `S.deck.played`, NEVER the switch — a run that played cards and ended with
 `?cards=0` was still assisted (board-post
 `aCardAssistedWinIsHeldWithTheSwitchOff`).
+**A BIG DEFEAT PAYS BETTER** (`CFG.CARDS.BIG_LOSS_SCORE` 20,000,
+`DROPS.bigloss` [0, 60, 40, 0, 0], `Deck.table`, migration
+`0011_card_big_loss.sql`, deck-core / deck-sync — operator, 2026-10-28,
+after a 33,000-point Hard defeat paid a Gold Nugget: "anything over 20,000
+points and bronze is the floor and iron is the ceiling"). A defeat that
+EARNS a card (the deeds and days above, untouched; still one card, still no
+pity) and whose FINAL score reaches the line rolls Bronze 60 / Iron 40. The
+final score is the end screen's and the run_end row's — the difficulty
+multiplier IN, never the subtotal, which would have left that very run on
+the plain table (33,000 on Hard is a subtotal near 18,900). **One number**:
+`G.end` fixes it on `S.over.score`, and `G.runReport` and `Deck.report` both
+read it, so a kill tallied after the row is sent (G.end runs inside
+Combat.update) or an ended save loaded later can never split the server's
+verdict from the game's. The server's twin is `card_big_loss_min_score()`
+and the 'bigloss' tiers, seeded as a CEILING (Stone, Bronze, Iron — an older
+game's Stone is never refused), and grant_card judges the run's LATEST loss
+ending, as it judges its deeds. **0011 MUST BE PASTED BEFORE THE GAME THAT
+ROLLS THE BIG TABLE SHIPS**, or 0008 refuses a big defeat's Iron card
+('bad_cards') and the next reconcile takes it back with a line; re-pasting
+0008 undoes 0011 (paste 0011 again after).
 
 **THE CLOUD IS THE COLLECTION'S RECORD** (`Deck.sync` at the foot of
 js/deck.js, `supabase/migrations/0008_cards.sql`, tests/deck-sync.mjs): the
@@ -3281,7 +3301,14 @@ after the date window still supersedes it), and of several closed_tab rows
 the latest wins; the run filters apply AFTER that dedupe. **`S.runId` rides in
 the save** (stamped in `_enterNow`, handed back to `Backend.runId` by
 `loadJSON`) so a CONTINUED run ends under the id it started with and its
-earlier closed_tab row is superseded; a pre-stamp save is NAMED by its
+earlier closed_tab row is superseded. **A loaded world was not founded**:
+`loadJSON` clears `G._freshRun`, which the title's demo world left true —
+until build 107 every Continue from the title logged a fresh run_start under
+a new id, so a continued game was a second game on the dashboard, its first
+sitting read as walked away, and one save's lineage was several runs to the
+card grant. **Quitting to the title is a walk-away too**
+(`Screens.quitToTitle` → `G.noteLeaving`, the same provisional row a closed
+tab sends — the demo world that replaces the run sends nothing); a pre-stamp save is NAMED by its
 lineage at load (`Backend.legacyRunId`: seed, mode and size — deterministic,
 so every ending of that save is one run; see THE CLOUD IS THE COLLECTION'S
 RECORD). Every existing gate still holds (site-only `_emit`, `S.played`,
@@ -3347,7 +3374,15 @@ refuses one. **ERRORS, FROM BUILD 107**: every telemetry row carries
 ending kept for a resend keeps the build it was played on) and every ending
 `props.errors` — 0 for a clean game, never blank, since NULL reads "not
 counted" — plus `props.err`, the first fault as "message @ file:line"
-(`Feedback.runErrs` / `runErr`, reset by newGame/loadJSON, never in a save).
+(`Feedback.runErrs` / `runErr`, never in a save). **The tally is the RUN's**
+(`Feedback.runKey`, the run's id — stamped by `_enterNow` and `loadJSON`):
+a new game starts it again (`G.resetErrs`), and so does a load of ANOTHER
+run; the title's demo world never does (it is nobody's run, and a game left
+for the menu and Continued keeps its count), nor a load of the same run, nor
+a load refused before it lands. `G.resetErrs` clears the frame loop's repeat
+filter (`G._lastErrKey`) with it — left standing, a fault seen once in a
+session was never counted in any later game, so one that fires every frame
+read as a clean game forever.
 The error numbers ignore the run filter: a crash in the first minute is the
 one most worth seeing. **THE DOORS ARE LOCKED**: every new table is sealed
 (RLS on, no policy, every privilege revoked from anon and authenticated by
@@ -3478,10 +3513,24 @@ find it exactly where they find every other building's art, with no special
 case. **3×3 — the only one in the game** (the hall is 2×2, everything else
 1×1); 15,000 each of food/wood/stone plus 4,000 gold, and 45 days to raise,
 over four times the level-3 hall. **Last in `UI.MENU_KEYS`**, because it is the
-end of the game. **Calm alone SHOWS the button** (`CFG.MODES[m].wonderMenu`,
-read by `UI.wonderOffered`) — the RULES work on every difficulty, nothing in
-Bld/AI/G asks what mode you are in, so flipping the flag is the whole change
-needed to offer it elsewhere. Its art is authored at **192px on a 96-cell
+end of the game. **THE WONDER IS CALM'S ALONE, FOR BOTH TRIBES**
+(`G.wonderInPlay()`, which reads `CFG.MODES[m].wonderMenu` — operator, on a
+day-484 Hard save the rival won by monument: "Should only be possible on
+Calm"). It used to be the menu alone that asked the mode, so once the rival's
+race was made real (the fresh-budget fix and the inner market, below) a rich
+chief on Moderate or Hard laid one from day 350. Now ONE predicate answers
+for everyone: `UI.wonderOffered` shows the button by it, `Bld.canPlace`
+refuses a monument by it for EVERY owner (code `'mode'`, "The Wonder rises
+only in Calm worlds." — so no path, a card's included, can raise one), and
+`AI.maybeWonder` asks it FIRST, before a roll is drawn; the Calm savings jar
+asks it too. **A save carrying a rival site off Calm has it CALLED OFF at
+load** (`G.loadJSON`, before the first paint): what the chief PAID goes back
+to its stores (`b.paid`, `Bld.cancelRefund`'s rule — the chief's own scaled
+bill for a pre-`paid` save, never the list price), its builders are freed,
+its ghost leaves `S.map.seenB`, the ground is left clean
+(`removeToRuin(b, true)`), the jar is dropped, no roll is drawn, and a note
+says so. A finished run is a told story and is left alone. Flipping the flag
+on another mode is still the whole change needed to offer it there. Its art is authored at **192px on a 96-cell
 grid** (`tileW`), which is the same one-cell-per-screen-pixel density every
 other building has, over nine times the area; megaliths wear the warm
 weathered `rock` ramp and dressed masonry the cool `stone` ramp, and every
@@ -3499,8 +3548,9 @@ carries a top-priority branch that puts a raider on the works over any other
 target once it is within reach (placed AFTER "engage what's in our face", so
 the column still defends itself). A site starts at `Bld.siteStartHp` like any
 other, so it CAN be broken: holding the ground is the price of the peaceful
-victory. The rival may raise one too — never before `CFG.WONDER.aiDay` (350),
-via `AI.maybeWonder`/`plotWonder`, which takes `AI.plot`'s reachability and
+victory. The rival may raise one too — on Calm, never before its
+`aiWonderDay` (330; `CFG.WONDER.aiDay` 350 for a mode that names none), via
+`AI.maybeWonder`/`plotWonder`, which takes `AI.plot`'s reachability and
 wall-line clamps across the whole 3×3 footprint.
 **The marvel** (same test): finishing it does NOT snap to a score screen.
 `G.wonderRaised` pauses the world, settles the camera on the monument and
@@ -3577,7 +3627,15 @@ the day-350 gate was a door that never opened in a live game on ANY mode.
 **The countdown is the warning**: the site is revealed to the player the day
 ground is broken (`Bld.place` → `_revealCampToFoe` + the standing log line),
 and `UI.tickWonderWarn` pins a `#wonderWarn` banner with the days of work
-left until the works finish or fall. Verified: a 400-day passive calm sim
+left until the works finish or fall. **FEW WORDS, AND IT FITS** (operator:
+"the wonder banner is cut off… Less words, make sure it fits in screen"): it
+was a sentence set centred and unwrapped — 511px on a 390px phone, both ends
+off the glass, over the minimap and the toasts. It reads "Rival's Wonder: N
+days left", HEADS the toast column (left, under the top bar, the cinema
+bar's step included), never wider than `min(66%, 100% − 130px)` so it clears
+the minimap, wraps rather than runs off, and the toasts step down below it
+(`--ww-h`, measured by the tick, read by `#toasts`); calm-peace §7 measures
+all of it at five sizes. Verified: a 400-day passive calm sim
 holds peace with ZERO cross-tribe engagements, EXPAND throughout, ground
 broken ~day 361 and the countdown live — the finish lands "around day 400".
 **THE INNER MARKET MOVED THAT CLOCK, DELIBERATELY** (see **Rival strength**):
