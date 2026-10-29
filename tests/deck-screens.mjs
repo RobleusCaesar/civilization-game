@@ -22,9 +22,9 @@
                        included); a defeat short of its deeds says how far it
                        got where the card would stand — in words and in a
                        row of pips, the deeds done lit — and earns nothing; a
-                       card-assisted run wears its mark on the score box's
-                       day line (no extra height) and carries its count to
-                       the board
+                       card-assisted run wears its mark in the score box
+                       and carries its count to the board; on a phone the
+                       score is ONE row ("Final score: N") with no day line
      THE CEREMONY      the card rises (a real animation), settles, turns
                        over and back on a tap; CLAIM lands it in the deck and
                        the count ticks up; a great victory's bonus card rises
@@ -354,9 +354,15 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.played = !__shown(root.querySelector('.cePlayed'));
     const mk = root.querySelector('.ceAssist');
     out.assist = __shown(mk) && /card-assisted/i.test(mk.textContent) && !!mk.closest('.ceScore') && !!mk.querySelector('svg');
-    // the mark rides the day's line — a line of its own pushed the phone's reward past its fold
-    const day = root.querySelector('.ceDay');
-    out.sameLine = !!mk && !!day && Math.abs(mk.getBoundingClientRect().top - day.getBoundingClientRect().top) < 3;
+    /* ON A PHONE THE SCORE IS ONE ROW (operator, 2026-10-29: "cut the one
+       sentence about the day and difficulty… 'Final Score: [number]' so it
+       all fits on one row"): the label beside the number, no day line, and
+       the mark the only thing under it */
+    const day = root.querySelector('.ceDay'), lab = root.querySelector('.ceScore > small'), num = root.querySelector('.ceScoreN');
+    const lr = lab.getBoundingClientRect(), nr = num.getBoundingClientRect();
+    out.oneRow = lr.right <= nr.left && lr.bottom > nr.top && lr.top < nr.bottom && /:$/.test(getComputedStyle(lab, '::after').content.replace(/"/g, '') || '');
+    out.noDay = !__shown(day);
+    out.sameLine = !!mk && mk.getBoundingClientRect().top >= nr.bottom - 3;
     return out;
   });
   ck('aDefeatWearsTheColdBanner', l.loss && /^defeat$/i.test(l.banner) && l.laurels === 0, `"${l.banner}", laurels ${l.laurels}`);
@@ -364,7 +370,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   ck('aDefeatShowsItsScoreAndPostsNothing', l.score === l.want && l.entry === null, `${l.score} vs ${l.want}, entry ${JSON.stringify(l.entry)}`);
   // the run that played cards still says so on a phone — on the score's own line — but lists none of them there
   ck('aCardAssistedRunListsNoCardsOnAPhone', l.played, `played list hidden: ${l.played}`);
-  ck('aCardAssistedRunSaysSoInTheScoresBox', l.assist && l.sameLine, `mark shown in the score box with its icon: ${l.assist}; on the day's line ${l.sameLine}`);
+  ck('aCardAssistedRunSaysSoInTheScoresBox', l.assist && l.sameLine, `mark shown in the score box with its icon: ${l.assist}; under the score ${l.sameLine}`);
+  ck('onAPhoneTheScoreIsOneRowWithNoDayLine', l.oneRow && l.noDay, `label beside the number: ${l.oneRow}; day line gone: ${l.noDay}`);
 
   /* THE EARN RULE on the screen: a WIN earns however short — the old gate
      told a two-minute victory "Play 10 minutes" — and A CARD-ASSISTED WIN

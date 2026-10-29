@@ -315,9 +315,9 @@ const DeckScreens = {
             '<div class="ceScore" style="--i:1"><small>Final score</small><b class="ceScoreN">0</b>' +
               /* A CARD-ASSISTED RUN SAYS SO (approved at Gate 1: marked on the
                  end screen, in telemetry and on the board), in the score's own
-                 box — the one block the board's name box never hides — and ON
-                 the day's line, so the mark costs the screen no height (a line
-                 of its own pushed the phone's reward past its fold) */
+                 box — the one block the board's name box never hides — on the
+                 day's line beside the card; a phone shows no day line (the
+                 score is one row there), so the mark is the only line under it */
               `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
               (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
               '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
@@ -1710,6 +1710,20 @@ DeckScreens.CSS = `
 #cardEnd .ceAssist { display: inline-flex; align-items: center; gap: 4px; color: #e8c15a; }
 #cardEnd .ceAssist::before { content: '·'; color: #b5a888; margin-right: 5px; }
 #cardEnd .ceAssist svg { width: 16px; height: 16px; margin: -2px 0; flex: 0 0 auto; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
+/* ON A PHONE THE SCORE IS ONE ROW (operator, 2026-10-29, on a home-screen
+   iPhone: "still too cramped with the bottom buttons cut off. Let's cut the
+   one sentence about the day and difficulty… use some of that excess space
+   to the left and right… 'Final Score: [number]' so it all fits on one
+   row"): the label sits beside the number, the day and difficulty are gone,
+   and the line under it stands only for a card-assisted run's mark. A wide
+   window keeps all three lines (the media query below). */
+#cardEnd .ceScore { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; column-gap: 10px; }
+#cardEnd .ceScore > small { font-size: 11px; letter-spacing: 2.5px; }
+#cardEnd .ceScore > small::after { content: ':'; }
+#cardEnd .ceScoreN { display: inline-block; }
+#cardEnd .ceScore > .ceMeta, #cardEnd .ceScore > .ceRank, #cardEnd .ceScore > .ceBoard { flex: 0 0 100%; }
+#cardEnd .ceDay, #cardEnd .ceAssist::before { display: none; }
+#cardEnd .ceMeta:not(:has(.ceAssist)) { display: none; }
 #cardEnd .ceRank:empty { display: none; }
 #cardEnd #vicRank { margin: 5px auto 0; font-size: 12px; }
 #cardEnd .ceBoard { width: 100%; display: flex; flex-direction: column; align-items: center; }
@@ -1763,6 +1777,14 @@ DeckScreens.CSS = `
   #cardEnd { --gap: 30px; }
   #cardEnd .ceMain { flex-direction: row; justify-content: center; align-items: center; gap: 64px; flex: 0 0 auto; }
   #cardEnd .ceInfo { width: 360px; flex: 0 0 auto; gap: 6px; }
+  /* the score keeps its three lines beside the card: label, number, day */
+  #cardEnd .ceScore { display: block; }
+  #cardEnd .ceScore > small { font-size: 10px; letter-spacing: 3px; }
+  #cardEnd .ceScore > small::after { content: none; }
+  #cardEnd .ceScoreN { display: block; }
+  #cardEnd .ceDay { display: inline; }
+  #cardEnd .ceAssist::before { display: inline; }
+  #cardEnd .ceMeta:not(:has(.ceAssist)) { display: flex; }
   /* beside the card the run is centred on its own: no shared spaces, the
      column centred by auto margins, the Leaderboard in its words */
   #cardEnd .ceSp { display: none; }

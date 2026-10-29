@@ -958,7 +958,11 @@ which takes two shares) and under the buttons — each starting at the old
 176px card) scrolls from its head at the old tight gaps. Measured: 20-25px
 apart at the operator's 390x785 under the clock (7.5 with the deck tile
 still in), 39-43px at 390x844, 50-54px at 430x932, all inside the frame's
-lines. On a phone the Leaderboard rides the buttons' row as a square navy
+lines. **On a phone the score is ONE row** ("Final score: N", the day and
+difficulty gone, the card-assisted mark the only line under it — operator,
+2026-10-29: "the bottom buttons cut off… cut the one sentence about the day
+and difficulty"; deck-screens `onAPhoneTheScoreIsOneRowWithNoDayLine`); a wide
+window keeps all three lines. On a phone the Leaderboard rides the buttons' row as a square navy
 plaque with a podium (`PODIUM_SVG`, aria-label "Leaderboard") — under Claim
 it sat below the fold. A WIDE window keeps the run beside the card with
 the played list, the deck tile, its own gaps and the Leaderboard in its

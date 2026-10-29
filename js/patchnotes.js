@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 110, date: '2026-10-29', title: 'Roomier end screens',
+    items: [
+      'On a phone, the victory and defeat screens show your final score on one line and drop the day and difficulty, so the buttons fit on the screen.',
+    ],
+  },
+  {
     build: 109, date: '2026-10-29', title: 'Clearer prices',
     items: [
       'When you are short of something you want to build, the note now shows a whole number and the right resource. Gold no longer looks like stone.',
