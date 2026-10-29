@@ -3240,6 +3240,9 @@ const G = {
         // all: there is nothing worth showing through the gradient but a
         // half-painted map, and the frames are wanted for the baking
         if (R._bake || R._bakeDue) skip = true;
+        // …and a world the night painting stands in front of (the new-game
+        // screen, the draft — Screens.nightUp) is not drawn at all
+        else if (window.Screens && Screens.nightUp && Screens.nightUp()) skip = true;
         /* …and a world that is STANDING STILL — a founded run held behind the
            draft, the new-game screen or the pause menu (Screens.show pauses
            it) — has nothing new to show at all, so it is drawn once a second:

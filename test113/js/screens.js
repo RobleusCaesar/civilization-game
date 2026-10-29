@@ -18,8 +18,13 @@ const Screens = {
 
   el(id) { return document.getElementById(id); },
 
+  /* which window the trial cards were built for: a count of resizes, so the
+     tap never reads the window's size (reading innerWidth after the screen
+     has changed forces a whole layout inside the handler) */
+  _vpGen: 0,
   init() {
     this.bind();
+    window.addEventListener('resize', () => { this._vpGen++; });
     // the test slot says so on every menu screen (Backend.testSlot); in play
     // it would sit on the build menu, so a game hides it
     if (window.Backend && Backend.testSlot && Backend.testSlot()) {
@@ -65,6 +70,8 @@ const Screens = {
     opts = opts || {};
     this.current = name;
     this.el('shell').classList.toggle('show', name !== 'playing');
+    const night = this.nightBehind(name) && !!this.wearNight();
+    this.el('shell').classList.toggle('night', night);
     document.body.classList.toggle('shell', name !== 'playing');
     /* IN-GAME CHROME IS GATED ON A GAME EXISTING (index.html, tests/boot.mjs).
        The HUD is hidden by default and this class is the only thing that
@@ -159,8 +166,93 @@ const Screens = {
     if (tc) R.centerOn(tc.x, tc.y); else { R.cam.x = 0; R.cam.y = CFG.W * CFG.TILE * 0.3; }
   },
 
+  /* THE NIGHT STANDS BEHIND THE CARD SCREENS (operator, on the test build:
+     "the game map in the background in general is slow to load, it's black
+     for the first few seconds"). The world behind the new-game screen and
+     the draft is not drawn until its art has landed and its bake is done
+     (R.holdBake) — on a phone that is seconds of a black canvas under the
+     cards. Those two screens stand on the title's own painting instead: the
+     same picture by the same URL (Boot.t2wear), already decoded, so it costs
+     nothing, and the world under it is not drawn at all (G.frame asks
+     nightUp), which leaves the thread to the cards. A painting that 404s
+     stands down: the world shows through as it always did. */
+  nightBehind(name) { return name === 'newgame' || name === 'draft'; },
+  wearNight() {
+    if (this._night !== undefined) return this._night;
+    this._night = null;
+    const sh = this.el('shell');
+    if (!sh || !(window.Boot && Boot.t2wear)) return null;
+    const box = document.createElement('div');
+    box.id = 'shellNight'; box.setAttribute('aria-hidden', 'true');
+    sh.insertBefore(box, sh.firstChild);
+    const img = Boot.t2wear(box);
+    if (img) img.addEventListener('error', () => { this._night = null; sh.classList.remove('night'); });
+    return (this._night = img ? box : null);
+  },
+  nightUp() {
+    if (!this._night || !this.nightBehind(this.current)) return false;
+    const img = this._night.querySelector('img.t2img');
+    return !!(img && img.complete && img.naturalWidth);
+  },
+
+  /* THE CARDS ARE READY BEFORE THE TAP (operator: "the current build, when
+     you click New Game, loads the difficulty select instantly. We've
+     reintroduced delays"). Building the framed trial cards inside the tap —
+     a forced layout, three frames, the pictures asked for then — cost a slow
+     phone ~120ms before the screen moved and ~1s before the pictures were
+     in. So once the splash has lifted and the title is quiet, the trial
+     screen is laid out unseen and dressed (`.screen.prep`), its pictures
+     asked for at high priority, the origin cards' frames built, their
+     pictures fetched and the burn's fire made — a few small steps, one per
+     task. The boot itself still fetches no card art (tests/draft-cards.mjs);
+     a tap that beats all this simply builds what it needs, as before. */
+  CARD_PREP_MS: 400,
+  armCardPrep() {
+    if (this._cardPrep || !window.CardFace) return;
+    const go = () => {
+      if (this._cardPrep) return;
+      if (window.Boot && !Boot.done) { setTimeout(go, 200); return; }
+      this._cardPrep = true;
+      setTimeout(() => this.prepCards(), this.CARD_PREP_MS);
+    };
+    go();
+  },
+  prepCards() {
+    this._cardPrepAt = performance.now();
+    const steps = [
+      () => { for (const m of ['calm', 'moderate', 'hard']) CardFace.trialImg(m, () => {}); },
+      () => this.wearNight(),
+      () => this.prepTrial(),
+      () => { if (this._ngSize) CardFace.prewarm(this._ngSize); },
+      () => { if (window.Assets && Assets.wantOrigins && Assets.originMotifs) Assets.wantOrigins(Assets.originMotifs()); },
+      () => { if (!this._fireTex) this.fireTex(); },
+    ];
+    const run = () => {
+      const s = steps.shift();
+      if (!s) return;
+      try { s(); } catch (e) {}
+      setTimeout(run, 30);
+    };
+    run();
+  },
+  prepTrial() {
+    if (this.current === 'newgame' || !window.CardFace) return;
+    const scr = this.el('scrNewgame'), box = this.el('ngMode');
+    if (!scr || !box) return;
+    scr.classList.add('prep');
+    const c0 = box.querySelector('.dcard');
+    this._ngSize = c0 && c0.offsetWidth ? { w: c0.offsetWidth, h: c0.offsetHeight } : null;
+    this._ngVP = this._vpGen;
+    if (this._ngSize) box.querySelectorAll('.dcard').forEach(b => CardFace.dressTrial(b, this._ngSize));
+    CardFace.refitWhenFontsLand();
+    // the words are fitted in the next frame (fitLater); the screen goes back
+    // out of the layout right after them
+    requestAnimationFrame(() => scr.classList.remove('prep'));
+  },
+
   onTitle() {
     this.ensureDemo();
+    this.armCardPrep();
     this.backTo = 'title';
     // Continue = newest cloud slot (or the crash-net snapshot if it's all we have)
     const btn = this.el('btnContinue');
@@ -331,9 +423,14 @@ const Screens = {
     hard: 'An aggressive rival, frequent raids, and no warnings at all. The land rolls small — contact comes early.',
   },
   onNewgame() {
-    // the three trial cards share one size: read it once
-    const c0 = this.el('ngMode').querySelector('.dcard');
-    this._ngSize = c0 && c0.offsetWidth ? { w: c0.offsetWidth, h: c0.offsetHeight } : null;
+    // the three trial cards share one size: read it once — or not at all,
+    // when the title's quiet moments already built them (prepTrial) for
+    // this very window
+    if (!this._ngSize || this._ngVP !== this._vpGen) {
+      const c0 = this.el('ngMode').querySelector('.dcard');
+      this._ngSize = c0 && c0.offsetWidth ? { w: c0.offsetWidth, h: c0.offsetHeight } : null;
+      this._ngVP = this._vpGen;
+    }
     this.el('ngMode').querySelectorAll('.dcard').forEach(b => {
       b.classList.toggle('sel', b.dataset.v === this.newPrefs.mode);
       // the framed face, built to its box (and its picture asked for) the
@@ -2076,6 +2173,7 @@ const CardFace = {
     if (!e) {
       e = this._trial[mode] = { img: new Image(), ok: false, wait: [] };
       e.img.decoding = 'async';
+      try { e.img.fetchPriority = 'high'; } catch (er) {}   // ahead of the world's art still landing
       e.img.onload = () => { e.ok = true; for (const fn of e.wait.splice(0)) fn(e.img); };
       e.img.onerror = () => { e.wait.length = 0; };
       e.img.src = this.TRIAL_URL(mode);
