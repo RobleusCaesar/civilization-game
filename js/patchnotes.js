@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 116, date: '2026-10-29', title: 'A calmer Town Center',
+    items: [
+      'The Town Center keeps only what you need. Raise the levy and Sound the horn now appear when your town is in danger: something of yours is under attack, or an enemy you can see comes close to the hall.',
+      'Set rally and Call idle are small buttons on one line beside the training queue, so the panel is shorter, especially on a phone.',
+    ],
+  },
+  {
     build: 115, date: '2026-10-29', title: 'A finer frame',
     items: [
       'The top and bottom bars are now dark walnut with a fine gold inlay, sharp on every screen, in place of the old blocky planks.',

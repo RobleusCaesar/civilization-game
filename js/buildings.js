@@ -469,6 +469,10 @@ const Bld = {
   // owned Dock — but they must be RIGHT ON it: touching the dock or at most a tile
   // off its edge, not merely somewhere inside a wide radius. More places to mend,
   // but the ship has to come in close. Null if there's no home building to heal at.
+  // the hall's own ground: the healing ring drawn round it, which grows with
+  // each storey — and the ring the Town Center's emergency calls measure a
+  // threat against (UI.townThreat)
+  tcRadius(tc) { return CFG.HEAL_RADIUS * Math.pow(1 + CFG.HEAL_RADIUS_STEP, ((tc && tc.level) || 1) - 1); },
   healZoneFor(u) {
     if (Units.isNaval(u)) {
       let best = null, bd = Infinity;                          // nearest owned, finished dock
@@ -486,7 +490,7 @@ const Bld = {
     // up at the front instead of marching all the way home.
     const cands = [];
     const tc = this.tcOf(u.owner);
-    if (tc) cands.push({ x: this.cx(tc), y: this.cy(tc), r: CFG.HEAL_RADIUS * Math.pow(1 + CFG.HEAL_RADIUS_STEP, (tc.level || 1) - 1) });
+    if (tc) cands.push({ x: this.cx(tc), y: this.cy(tc), r: this.tcRadius(tc) });
     for (const b of S.buildings)
       if (b.owner === u.owner && b.key === 'warcamp' && this.done(b))
         cands.push({ x: this.cx(b), y: this.cy(b), r: this.reach(b) + CFG.WARCAMP_HEAL });

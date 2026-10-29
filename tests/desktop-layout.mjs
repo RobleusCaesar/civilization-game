@@ -99,6 +99,9 @@ async function boot(vp) {
        the one worth measuring: how many distinct tops do its buttons have? */
     G.newGame('layout-panel', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     G.freeVis = true; G.updateVisibility();
+    // the hall at its FULLEST: under threat its emergency calls are out
+    // (UI.townThreat — in peace it is two actions and the tools row)
+    UI.noteStruck();
     UI.select('bld', Bld.tcOf('P').id);
     await new Promise(r => setTimeout(r, 150));
     const acts = [...document.querySelectorAll('#panel .pactions .abtn')].map(e => e.getBoundingClientRect());
@@ -148,7 +151,7 @@ async function boot(vp) {
     `widest chip ${r.chipMax}px, spread ${r.chipSpread}px of ${r.barW}px; the two groups span the bar: ${r.rowsSpanTheBar}`);
   ck('theTopBarIsOneRow', r.rowsShareALine && r.barH <= 56,
     `the two groups share a line: ${r.rowsShareALine}, bar ${r.barH}px tall (stacked it is ~75)`);
-  ck('thePanelPutsFourOnARow', r.actN >= 5 && r.actPerRow >= 4 && r.actRows <= 2,
+  ck('thePanelPutsFourOnARow', r.actN >= 4 && r.actPerRow >= 4 && r.actRows <= 2,
     `${r.actN} actions in ${r.actRows} row(s), ${r.actPerRow} on the fullest — two rows of wood, not four`);
   ck('andNoPanelRunsPastTwoRows', r.bkRows <= 2 && r.bkAlone === 0,
     'the barracks: ' + r.bkN + ' actions in ' + r.bkRows + ' row(s), ' + r.bkAlone + ' of them alone on a full-width row');

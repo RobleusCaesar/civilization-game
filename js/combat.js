@@ -88,6 +88,7 @@ const Combat = {
       S.stats.handRazed = (S.stats.handRazed || 0) + 1;
     this.hitFloat(b, Bld.cx(b), Bld.cy(b), Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
       flame ? '#f2963a' : '#e8d2a0', by);
+    if (b.owner === 'P' && by !== 'P' && UI.noteStruck) UI.noteStruck();   // the hall's emergency calls come out
     if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
       G.log(`${Bld.def(b.key).name} under attack!`, true);
     /* THE HORN. This is the only unprompted defensive alarm the game has —

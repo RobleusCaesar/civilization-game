@@ -3107,6 +3107,24 @@ Siege, which the existing `siegeArtillery` gate refuses for a band with no
 battery. `panelSig` carries `S.levy` on the TC/unit/group signatures, so the
 lever's label, the Build button and the tactics all flip without a reselect.
 
+**THE HALL'S EMERGENCY CALLS COME OUT FOR AN EMERGENCY** (`UI.townThreat` /
+`UI.noteStruck`, `Bld.tcRadius`, tests/levy.mjs §8 — operator, 2026-10-29:
+"the Town Center has so many buttons that it can be confusing"). Raise the
+levy and Sound the horn render only while the town is threatened: a foe the
+player can SEE (`G.visibleAt` — never one in the fog) within 1.5× the hall's
+own ring (`Bld.tcRadius`, the healing ground, which grows with each storey),
+asked through the hostility funnel (a truce's rival is no enemy, grazers
+never are), OR a blow on anything of the player's (`noteStruck`, from
+`Units.damage` and `Combat.hitBuilding`). It HOLDS for `THREAT_HOLD_MS`
+(12s, real time) so a wolf pacing the ring's edge cannot blink the buttons
+under a thumb; UI-local, never in a save, cleared on a new world. A raised
+levy's Stand down and the horn's Back to work never hide. Upgrade stays
+whatever its state — its refusal TEACHES. The yard's housekeeping is ONE
+SLIM ROW (`.ptools`, every trainer): the queue, then `.pchip` buttons — the
+rally, and at the hall the call to the idle — which are NOT `.abtn`, so the
+actions grid stays the actions; on a wide window the row rides the actions'
+own line when it has room.
+
 **The homestead** (`tests/homestead.mjs`): a house raised BROADSIDE-ON to a
 farm bonds the two — the field is worked by the folk who sleep beside it. The
 farm gives `CFG.HOMESTEAD.food` (+10%) and the house holds `pop` (+1) more.

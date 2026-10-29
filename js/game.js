@@ -329,6 +329,7 @@ const G = {
     UI.settingRally = null;
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one
+    UI._threatAt = -1e9; UI._threatC = null;   // the hall's emergency calls start a world hidden
     if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // the deck's sheet, aim and flight (nothing, with cards off)
@@ -3070,6 +3071,7 @@ const G = {
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
+    UI._threatAt = -1e9; UI._threatC = null;
     if (window.Tutorial) Tutorial.onWorldChange();
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // a load mid-aim puts the card back, untouched

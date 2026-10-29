@@ -383,6 +383,20 @@
      all: the old pass could only ever count to two. */
   #panel .pactions { display: flex; flex-wrap: wrap; gap: 6px; }
   #panel .pactions .psub { flex: 0 0 100%; padding: 0 2px; }
+  /* THE YARD'S TOOLS, ONE ROW (UI.renderPanel): the queue, then small chips
+     — the rally and the hall's call to the idle. Housekeeping, so it is
+     quieter than the actions: a slim plate, one line, no caption. */
+  #panel .ptools { flex: 0 0 100%; display: flex; align-items: center; gap: 6px; min-height: 40px; }
+  #panel .ptools .psub { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pchip {
+    position: relative; flex: 0 0 auto; height: 34px; padding: 0 12px; border-radius: 17px;
+    border: 1px solid #0d0905; color: var(--text); font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: linear-gradient(180deg, #33281a, #251c12);
+    box-shadow: inset 0 1px 0 rgba(255,226,170,.10), 0 1px 2px rgba(0,0,0,.45);
+  }
+  .pchip::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }   /* a 44px touch target */
+  .pchip:active { background: var(--btn-hi); }
+  .pchip.on { border-color: rgba(232,193,90,.6); }
   #panel .pactions .abtn { flex: 1 1 calc(50% - 3px); min-height: 50px; padding: 5px 8px; }
   #panel .pactions .abtn.wide { flex-basis: 100%; }
   .abtn {
@@ -880,6 +894,9 @@
        stranded a lone Train Bronze Champion on a row of its own and cost the
        barracks a third row. flex-grow still fills any short last row. */
     #panel .pactions .abtn.wide { flex-basis: calc(25% - 4.5px); }
+    /* the yard's tools ride the actions' own row when it has room — a quiet
+       hall on a wide window is ONE row: Upgrade, Train, the queue, the chips */
+    #panel .ptools { flex: 1 1 320px; justify-content: flex-end; }
   }
   /* short viewports (landscape phones): compact so nothing clips */
   @media (max-height: 600px) {
@@ -2043,45 +2060,45 @@
 
 </div>
 
-<script src="js/feedback.js?v=115"></script>
-<script src="js/config.js?v=115"></script>
-<script src="js/audio.js?v=115"></script>
-<script src="js/config.supabase.js?v=115"></script>
-<script src="js/vendor/supabase.js?v=115"></script>
-<script src="js/backend.js?v=115"></script>
-<script src="js/competition.js?v=115"></script>
-<script src="js/score.js?v=115"></script>
-<script src="js/cards.js?v=115"></script>
-<script src="js/deck.js?v=115"></script>
-<script src="js/artstyle.js?v=115"></script>
-<script src="js/sprites.js?v=115"></script>
-<script src="js/formations.js?v=115"></script>
-<script src="js/relics.js?v=115"></script>
-<script src="js/assets.js?v=115"></script>
-<script src="js/dev.js?v=115"></script>
-<script src="js/map.js?v=115"></script>
-<script src="js/buildings.js?v=115"></script>
-<script src="js/units.js?v=115"></script>
-<script src="js/combat.js?v=115"></script>
-<script src="js/ai.js?v=115"></script>
-<script src="js/render.js?v=115"></script>
-<script src="js/beasts.js?v=115"></script>
-<script src="js/defeatart.js?v=115"></script>
-<script src="js/victoryart.js?v=115"></script>
-<script src="js/ui.js?v=115"></script>
-<script src="js/screens.js?v=115"></script>
-<script src="js/patchnotes.js?v=115"></script>
-<script src="js/settings.js?v=115"></script>
-<script src="js/titlescreen.js?v=115"></script>
-<script src="js/tutorial.js?v=115"></script>
-<script src="js/deckfx.js?v=115"></script>
-<script src="js/deckfx-town.js?v=115"></script>
-<script src="js/deckfx-army.js?v=115"></script>
-<script src="js/deckfx-growth.js?v=115"></script>
-<script src="js/deckfx-rival.js?v=115"></script>
-<script src="js/deckui.js?v=115"></script>
-<script src="js/deckscreens.js?v=115"></script>
-<script src="js/cardintro.js?v=115"></script>
-<script src="js/game.js?v=115"></script>
+<script src="js/feedback.js?v=116"></script>
+<script src="js/config.js?v=116"></script>
+<script src="js/audio.js?v=116"></script>
+<script src="js/config.supabase.js?v=116"></script>
+<script src="js/vendor/supabase.js?v=116"></script>
+<script src="js/backend.js?v=116"></script>
+<script src="js/competition.js?v=116"></script>
+<script src="js/score.js?v=116"></script>
+<script src="js/cards.js?v=116"></script>
+<script src="js/deck.js?v=116"></script>
+<script src="js/artstyle.js?v=116"></script>
+<script src="js/sprites.js?v=116"></script>
+<script src="js/formations.js?v=116"></script>
+<script src="js/relics.js?v=116"></script>
+<script src="js/assets.js?v=116"></script>
+<script src="js/dev.js?v=116"></script>
+<script src="js/map.js?v=116"></script>
+<script src="js/buildings.js?v=116"></script>
+<script src="js/units.js?v=116"></script>
+<script src="js/combat.js?v=116"></script>
+<script src="js/ai.js?v=116"></script>
+<script src="js/render.js?v=116"></script>
+<script src="js/beasts.js?v=116"></script>
+<script src="js/defeatart.js?v=116"></script>
+<script src="js/victoryart.js?v=116"></script>
+<script src="js/ui.js?v=116"></script>
+<script src="js/screens.js?v=116"></script>
+<script src="js/patchnotes.js?v=116"></script>
+<script src="js/settings.js?v=116"></script>
+<script src="js/titlescreen.js?v=116"></script>
+<script src="js/tutorial.js?v=116"></script>
+<script src="js/deckfx.js?v=116"></script>
+<script src="js/deckfx-town.js?v=116"></script>
+<script src="js/deckfx-army.js?v=116"></script>
+<script src="js/deckfx-growth.js?v=116"></script>
+<script src="js/deckfx-rival.js?v=116"></script>
+<script src="js/deckui.js?v=116"></script>
+<script src="js/deckscreens.js?v=116"></script>
+<script src="js/cardintro.js?v=116"></script>
+<script src="js/game.js?v=116"></script>
 </body>
 </html>

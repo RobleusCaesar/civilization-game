@@ -255,8 +255,39 @@ const out = await p.evaluate(() => {
     const tc = stage('levy2');
     Units.spawn('villager', 'P', tc.x - 2, tc.y + 3);
     Units.spawn('villager', 'P', tc.x + 3, tc.y + 3);
+    // nothing hostile anywhere near: the hall's emergency calls stay put away
+    S.units = S.units.filter(u => u.owner === 'P' || Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) > 24);
+    UI._threatAt = -1e9; UI._threatC = null;
     UI.select('bld', tc.id);
     const q = sel2 => document.querySelector('#panel ' + sel2);
+    /* THE EMERGENCY CALLS COME OUT FOR AN EMERGENCY (UI.townThreat, operator
+       2026-10-29). In peace the hall offers neither the levy nor the horn; a
+       foe the player can SEE inside one and a half of the hall's ring
+       (Bld.tcRadius, the healing ground) brings both out, a blow on anything
+       of ours does too, and they hold a beat (THREAT_HOLD_MS) then go. A
+       hidden foe lights nothing, and a raised levy's Stand down never hides. */
+    const fresh = () => { UI._threatC = null; UI.refreshPanel(); };
+    ck('inPeaceTheHallOffersNeitherCall', !q('[data-act="levy"]') && !q('[data-act="shelter"]'),
+      [...document.querySelectorAll('#panel [data-act]')].map(e => e.dataset.act).join(','));
+    const r1 = Bld.tcRadius(tc), cx = Bld.cx(tc), cy = Bld.cy(tc);
+    const foe = Units.spawn('raider', 'R', cx + r1 * 1.6, cy);
+    G.updateVisibility(); fresh();
+    ck('aFoeBeyondOneAndAHalfRingsIsNoAlarm', !q('[data-act="levy"]'), 'at ' + (1.6 * r1).toFixed(1) + ' tiles');
+    foe.x = cx + r1 * 1.4; G.updateVisibility();
+    const hidden = (() => { const i = MapGen.idx(Math.floor(foe.x), Math.floor(foe.y)), was = G.vis[i];
+      G.vis[i] = 0; UI._threatAt = -1e9; UI._threatC = null; const v = UI.townThreat(tc); G.vis[i] = was; return v; })();
+    ck('aFoeInTheFogLightsNothing', !hidden, 'the panel must not tell what the fog hides');
+    UI._threatC = null; UI.refreshPanel();
+    ck('aSeenFoeInsideItBringsBothOut', !!q('[data-act="levy"]') && !!q('[data-act="shelter"]'), 'at ' + (1.4 * r1).toFixed(1) + ' tiles');
+    S.units.splice(S.units.indexOf(foe), 1);
+    UI._threatAt = performance.now() - UI.THREAT_HOLD_MS - 1; fresh();
+    ck('andTheyGoOnceTheThreatHasPassed', !q('[data-act="levy"]') && !q('[data-act="shelter"]'), '');
+    const wolf = Units.spawn('wolf', 'W', cx + 30, cy);
+    Units.damage(vills()[0], 1, wolf.id, 'W'); fresh();
+    ck('aBlowOnOneOfOursBringsThemOut', !!q('[data-act="levy"]') && !!q('[data-act="shelter"]'), '');
+    S.units.splice(S.units.indexOf(wolf), 1);
+    ck('theRallyIsOneSlimRowNotAnAction', !!q('.ptools [data-act="rally"]') && !q('.abtn[data-act="rally"]') &&
+      q('[data-act="rally"]').getBoundingClientRect().height <= 40, '');
     ck('theHallOffersTheLevy', !!q('[data-act="levy"]'), '');
     ck('andTheLabelSaysRaise', q('[data-act="levy"]').textContent.includes('Raise the levy'), '');
     const sig0 = UI.panelSig();
@@ -272,7 +303,9 @@ const out = await p.evaluate(() => {
     ck('aLeviedHandOffersNoBuild', !q('[data-act="gobuild"]'), '');
     const wr = Units.workReport(v);
     ck('theHintSaysUnderArms', wr && /arms|levy/i.test(wr.what), wr && wr.what);
+    UI._threatAt = -1e9; UI._threatC = null;   // the danger has passed — and the way out still shows
     UI.select('bld', tc.id);
+    ck('aRaisedLevyKeepsItsStandDownInPeace', !!q('[data-act="levy"]') && q('[data-act="levy"]').textContent.includes('Stand down'), '');
     q('[data-act="levy"]').click();
     ck('andOneTapStandsItDown', !S.levy, '');
   }

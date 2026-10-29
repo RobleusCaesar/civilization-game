@@ -2566,6 +2566,8 @@ const Units = {
     } catch (e) {}
     { // the truce's safety net: any P<->A blood ends it, whatever path landed it
       const ao = attackerOwner || (attacker && attacker.owner);
+      // one of ours struck by a foe: the hall's emergency calls come out
+      if (u.owner === 'P' && ao && ao !== 'P' && UI.noteStruck) UI.noteStruck();
       if (S.peace && ((ao === 'P' && u.owner === 'A') || (ao === 'A' && u.owner === 'P')))
         G.breakPeace();
     }

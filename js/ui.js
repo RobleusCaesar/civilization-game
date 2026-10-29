@@ -2212,6 +2212,7 @@ const UI = {
                '|' + vills + '|' + (S.garrison.length > 0) +
                '|' + (Units.hornPending('P') > 0) + '|' + idle +
                '|' + (S.levy ? 'L' : '-') +   // the levy lever flips label + villager panels
+               '|' + (this.townThreat(b) ? 'T' : '-') +   // the horn and the levy come and go with a threat
                '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget : '-');
       }
       // Trading Post: caravan out/in flips the whole panel; per-good affordability
@@ -2308,6 +2309,42 @@ const UI = {
      load would be meaningless — real time from a past browser session).
      Cleared on every new game / load (G.newGame, G.loadJSON) so a fresh
      game's low unit ids can never inherit a stale cooldown from the last one. */
+  /* THE HALL'S EMERGENCY CALLS COME OUT WHEN THERE IS AN EMERGENCY
+     (tests/levy.mjs §8, operator 2026-10-29: "the Town Center has so many
+     buttons that it can be confusing… 'Sound the Horn' and 'Raise the levy'
+     [should] disappear unless either a player unit or building is being
+     attacked, OR an enemy is within 150% of the town center circle"). The
+     circle is the hall's own ground, the healing ring (Bld.tcRadius); the
+     enemy is one the PLAYER CAN SEE (a hidden band must not light the panel —
+     that would be the fog telling tales), asked through the hostility funnel
+     (so a truce's rival is no enemy, and grazing deer never are). A blow on
+     anything of ours stamps it too (noteStruck, from Units.damage and
+     Combat.hitBuilding). Either way it HOLDS for THREAT_HOLD_MS of real time:
+     a wolf pacing the edge of the ring must not make the buttons blink in and
+     out under the player's thumb. Real time and UI-local, like the heal log —
+     never on S, never in a save, cleared on a new world. */
+  THREAT_HOLD_MS: 12000,
+  _threatAt: -1e9,
+  _threatC: null,
+  noteStruck() { this._threatAt = performance.now(); this._threatC = null; },
+  townThreat(tc) {
+    const now = performance.now();
+    const c = this._threatC;
+    if (c && c.tc === tc && now - c.at < 400) return c.v;
+    if (tc) {
+      const r = 1.5 * Bld.tcRadius(tc), cx = Bld.cx(tc), cy = Bld.cy(tc), me = { owner: tc.owner };
+      for (const o of S.units) {
+        if (o.owner === tc.owner || Units.isPassive(o) || !Combat.hostileUnits(me, o)) continue;
+        if (Math.hypot(o.x - cx, o.y - cy) > r) continue;
+        if (!G.visibleAt(Math.floor(o.x), Math.floor(o.y))) continue;
+        this._threatAt = now;
+        break;
+      }
+    }
+    const v = now - this._threatAt < this.THREAT_HOLD_MS;
+    this._threatC = { tc, at: now, v };
+    return v;
+  },
   _healLog: {},
   healLog(u) {
     const log = (this._healLog[u.id] || []).filter(t => performance.now() - t < CFG.HEAL_LIMIT_MS);
@@ -2425,7 +2462,7 @@ const UI = {
       if (rlN) rlN.textContent = this.hornBackLine();
       const idN = document.getElementById('idleN');
       if (idN) idN.textContent =
-        S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length + ' idle — muster here';
+        S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length;
       const lvN = document.getElementById('levyN');
       if (lvN) {
         const lv = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
@@ -2599,20 +2636,30 @@ const UI = {
           if (b.key === 'tc') {
             const vills = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
             /* THE LEVY (tests/levy.mjs): the village called to arms — the
-               last-ditch lever for a town whose army is gone. It rides where
-               Train Villager used to sit (Train moved up beside Upgrade), so
-               the TC's two emergency calls — the levy and the horn — share a
-               row. The lit stand-down is the mode's standing visibility. */
+               last-ditch lever for a town whose army is gone — and THE HORN
+               beside it: the TC's two emergency calls share a row, and both
+               are offered only while there IS an emergency (townThreat). A
+               raised levy keeps its lit Stand down whatever the threat says:
+               the way out of a mode is never hidden. */
+            const threat = this.townThreat(b);
             if (S.levy)
               html += `<button class="abtn sel" data-act="levy">⚔ Stand down<small>tools come out — Back to work returns them</small></button>`;
-            else if (vills)
+            else if (vills && threat)
               html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? '' : 's'} take up arms — they eat like soldiers</small></button>`;
-            if (vills) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
+            if (vills && threat) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
-          html += `<span class="psub" id="qLine">${this.queueLine(b)}</span>`;
-          html += b.rally
-            ? `<button class="abtn" data-act="rally">🚩 Move rally<small>tap a new spot, or the building to clear</small></button>`
-            : `<button class="abtn" data-act="rally">🚩 Set rally<small>tap ground within ${CFG.RALLY_RANGE} tiles</small></button>`;
+          /* THE YARD'S TOOLS ARE ONE ROW (operator: "shrink the Set Rally
+             button and move it to one row"): the queue on the left, small
+             chips on the right — the rally (its reach is said by the toast
+             and the ring once it is armed) and, at the hall, the call to the
+             idle hands. They are housekeeping, not the building's actions,
+             so they are not .abtn: the actions grid stays the actions. */
+          html += `<div class="ptools"><span class="psub" id="qLine">${this.queueLine(b)}</span>`;
+          if (b.key === 'tc') {
+            const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length;
+            if (idle) html += `<button class="pchip" data-act="callidle">📣 Call <span id="idleN">${idle}</span> idle</button>`;
+          }
+          html += `<button class="pchip${b.rally ? ' on' : ''}" data-act="rally">🚩 ${b.rally ? 'Move rally' : 'Set rally'}</button></div>`;
         }
         if (b.key === 'tc' && !b.construction) {
           /* THE HORN'S SECOND CALL (tests/muster-horn.mjs). Sounding it was
@@ -2624,10 +2671,6 @@ const UI = {
           const back = Units.hornPending('P');
           if (S.garrison.length || back)
             html += `<button class="abtn" data-act="release">🔨 Back to work<small id="releaseN">${this.hornBackLine()}</small></button>`;
-          // a levied hand is under arms, not idle labor — it neither counts nor musters
-          const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length;
-          if (idle)
-            html += `<button class="abtn" data-act="callidle">📣 Call idle<small id="idleN">${idle} idle — muster here</small></button>`;
           if (b.wallUp > 0) {
             const frac = Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1)));
             html += `<div class="abtn cant wide" style="pointer-events:none">🧱 Reinforcing walls → Lv ${b.wallUpTarget}` +
