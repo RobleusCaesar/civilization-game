@@ -1808,7 +1808,10 @@ await p.evaluate(({ ARMY }) => {
     r.threw.length ? r.threw.slice(0, 3).join(' | ') : ids.map(k => k + ' ' + r.drawn[k]).join(', '));
   ck('theHostFadesInItsOwnWisps', r.fadeShow);
   ck('theShowsAreRenderStateAndDrainAway', !r.inS && r.drained, `in the save ${r.inS}; drained ${r.drained}`);
-  ck('everyVoiceIsSynthesized', r.voices && !audioFiles(root).length, `ten voices made of notes and noise; audio files in the repo: ${audioFiles(root).join(', ') || 'none'}`);
+  // the cards' voices are notes and noise; the game's only recordings are the
+  // theme, the battle and the effects (tests/audio.mjs names them), never a card's
+  const stray = audioFiles(root).filter(f => !/[\\/]assets[\\/](music|sfx)[\\/]/.test(f));
+  ck('everyVoiceIsSynthesized', r.voices && !stray.length, `ten voices made of notes and noise; recordings outside music/sfx: ${stray.join(', ') || 'none'}`);
 }
 {
   /* NOTHING IS DRAWN IN THE BLACK (CLAUDE.md): a hall stands seven to ten

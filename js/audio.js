@@ -610,6 +610,9 @@ const Sound = {
      a byte of audio), every file that fails stands down to the synthesised
      voice it replaced, and none of it rides in a save. */
   _url(p) { return p + '?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 1); },
+  // a page opened from disk cannot fetch (the browser refuses the file:
+  // scheme, loudly): it keeps the synthesised voices
+  _fetchable() { return typeof fetch !== 'undefined' && !(typeof location !== 'undefined' && location.protocol === 'file:'); },
   // ramp an AudioParam to a level over about `sec` seconds, from wherever it
   // is now — a jump on a sustained sound is a click
   _ramp(param, to, sec) {
@@ -702,7 +705,8 @@ const Sound = {
   _battle: { mode: 'off' },   // 'off' | 'on' — and its sources while on
   _battleLoad() {
     if (this._bat || this._batLoading || this._batFailed) return;
-    const ctx = this.ac(); if (!ctx || typeof fetch === 'undefined') return;
+    if (!this._fetchable()) { this._batFailed = true; return; }
+    const ctx = this.ac(); if (!ctx) return;
     this._batLoading = true;
     fetch(this._url(this.BATTLE_SRC))
       .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
@@ -890,7 +894,7 @@ const Sound = {
   CENTRE: 0.35, EDGE: 0.12, ZOOM: 0.45,
   _buf: {}, _sfxLoading: false,
   _sfxLoad() {
-    if (this._sfxLoading || typeof fetch === 'undefined') return;
+    if (this._sfxLoading || !this._fetchable()) return;
     const ctx = this.ac(); if (!ctx) return;
     this._sfxLoading = true;
     for (const name of Object.keys(this.SFX)) {
