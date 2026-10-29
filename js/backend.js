@@ -301,7 +301,7 @@ const Backend = {
   testSlot(loc) {
     loc = loc || (typeof location !== 'undefined' ? location : null);
     if (!loc) return false;
-    if (/(^|\/)test(\/|$)/.test(String(loc.pathname || ''))) return true;
+    if (/(^|\/)test\d*(\/|$)/.test(String(loc.pathname || ''))) return true;
     return loc.protocol === 'https:' && !this.PROD_HOSTS.includes(String(loc.hostname || '').toLowerCase());
   },
 
