@@ -1858,9 +1858,11 @@ const UI = {
   setMiniCollapsed(v) {
     this.miniCollapsed = v;
     document.getElementById('miniWrap').style.display = v ? 'none' : '';
-    const t = document.getElementById('miniToggle');
-    t.textContent = v ? '🗺' : '▴';
-    t.classList.toggle('collapsed', v);
+    // the ▴ under the open map folds it; folded, the top bar's map button is
+    // the way back, and nothing floats over the world
+    document.getElementById('miniToggle').style.display = v ? 'none' : '';
+    const mb = document.getElementById('mapBtn');
+    if (mb) mb.setAttribute('aria-pressed', v ? 'false' : 'true');
   },
 
   /* ---------------- selection panel ---------------- */
@@ -3407,8 +3409,9 @@ const UI = {
       if (this.panelMinMode()) this.togglePanelMin();
       else this.setMenuCollapsed(!this.menuCollapsed);
     });
-    document.getElementById('miniToggle').addEventListener('click', () =>
-      this.setMiniCollapsed(!this.miniCollapsed));
+    for (const id of ['miniToggle', 'mapBtn'])
+      document.getElementById(id).addEventListener('click', () =>
+        this.setMiniCollapsed(!this.miniCollapsed));
     document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
     document.getElementById('btnPause').addEventListener('click', e => {
       S.paused = !S.paused;

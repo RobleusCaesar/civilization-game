@@ -6488,7 +6488,7 @@ TOWN comes before the hall — a playtest found the upgrade being talked
 about twice and offered unaffordably). **The lesson opens with the minimap
 FOLDED** (`UI.setMiniCollapsed(true)` in maybeStart — bare `UI`, never
 `window.UI`, the window.G trap) and the `minimap` step after the fog
-lesson rings the 🗺 toggle until the player unfolds it. **Build steps use
+lesson rings the top bar's map button (`#mapBtn`, beside the cards — the ▴ under an open map folds it; folded, nothing floats over the world) until the player unfolds it. **Build steps use
 the GUIDED CHAIN anchor** (`Tutorial._buildAnchor`): the menu CARD when
 the build menu is open, the villager panel's `[data-act="gobuild"]` Build
 button when a villager is selected, and the nearest villager in the world

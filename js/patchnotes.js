@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 114, date: '2026-10-29', title: 'A tidier top bar',
+    items: [
+      'The map button now sits in the top bar beside your cards. Tap it to open or fold the minimap, which still opens in its corner with the arrow beneath it.',
+    ],
+  },
+  {
     build: 113, date: '2026-10-29', title: 'Cards worth keeping',
     items: [
       'The difficulty and origin cards are redrawn with carved gold frames, glowing pictures and sharper art on every screen.',

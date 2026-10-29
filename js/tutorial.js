@@ -225,7 +225,7 @@ const Tutorial = {
     // starts with the minimap FOLDED (maybeStart) to cut the day-one clutter;
     // this step rings the toggle and completes when the player unfolds it
     { id: 'minimap',
-      anchor: () => ({ sel: '#miniToggle' }),
+      anchor: () => ({ sel: '#mapBtn' }),
       adv: () => !UI.miniCollapsed },
     // THE TOWN BEFORE THE HALL (playtest): barracks, tower and wall are each
     // taught as a step of their own, and only then is the upgrade mentioned —

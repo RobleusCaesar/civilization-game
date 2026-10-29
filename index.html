@@ -182,9 +182,24 @@
     min-width: 30px; min-height: 30px; border: 1px solid #4a4232; border-radius: 8px;
     background: var(--bar-bg); color: var(--dim); font-size: 12px; font-weight: 700;
   }
-  #miniToggle.collapsed {
-    top: calc(var(--safe-top) + var(--hud-top));
-    min-width: 38px; min-height: 36px; font-size: 15px;
+  /* THE MAP LIVES IN THE TOP BAR, beside the cards (operator, 2026-10-29:
+     "move the map icon up into the header… to keep the game UI clean"). It
+     opens and folds the minimap, which still unfolds in its own corner with
+     the ▴ under it; folded, nothing floats over the world at all. A drawn
+     icon, like the deck's (UI chrome is never an emoji), lit while open. */
+  #mapBtn { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  #mapBtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
+  #mapBtn svg { width: 24px; height: 24px; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
+  #mapBtn[aria-pressed="true"] { background: var(--btn-hi); box-shadow: inset 0 -2px 0 rgba(232,193,90,.55); }
+  /* …and on a phone the second row makes room for it: four 34px buttons sit
+     where three 44px ones did, so two running cards' timers still fit beside
+     the tribe and the day (tests/deck-ui.mjs twoRunningCardsFitAPhonesRow).
+     The touch target keeps its height (::after on the drawn ones). */
+  @media (max-width: 899px) {
+    #topbar .trow + .trow { gap: 3px; }
+    #topbar .trow + .trow .iconbtn { min-width: 34px; }
+    #rPopChip { padding: 4px 6px; }
+    #rDay { padding-right: 0; }
   }
 
   /* ---- saved armies: helmet banners down the right rail, under the map.
@@ -1608,6 +1623,7 @@
   <div class="trow">
     <span class="res" id="rPopChip"><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
     <span id="rDay">Day 1</span>
+    <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M5 12 L17 8 L31 12 L43 8 L43 40 L31 44 L17 40 L5 44 Z" fill="#e6cf95" stroke="#140d06" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 8 L31 12 L31 44 L17 40 Z" fill="#7a5a2a" fill-opacity=".22"/><path d="M6.4 11.6 L17 8.2" stroke="#fff6d6" stroke-opacity=".75" stroke-width="1" stroke-linecap="round"/><path d="M5.9 22 Q11 18.4 15 21.6 Q12.6 26.4 5.9 26.6 Z" fill="#6f9fd6" stroke="#3d5f86" stroke-width=".8"/><path d="M20 15.6 Q27 13.4 33.6 17.4 Q38.6 15.6 41.6 19 L41.6 31 Q35 34.6 28.4 31.4 Q22.6 33.6 19.2 29 Q16.6 22.4 20 15.6 Z" fill="#7d9a4c" stroke="#3e5222" stroke-width=".9"/><path d="M24 23.6 L26.6 21.4 L29.4 24 Z" fill="#a8977a" stroke="#4a3f2c" stroke-width=".6"/><path d="M9 35.4 Q14 31.6 19.6 33.6 T30 30.4 T36.4 24.6" fill="none" stroke="#8a2a1c" stroke-width="1.5" stroke-dasharray="2.2 2" stroke-linecap="round"/><path d="M34.2 22.2 L38.6 26.6 M38.6 22.2 L34.2 26.6" stroke="#b3241a" stroke-width="2" stroke-linecap="round"/></svg></button>
     <button class="iconbtn" id="btnPause">⏸</button>
     <button class="iconbtn" id="btnMenu">☰</button>
   </div>
@@ -2009,45 +2025,45 @@
 
 </div>
 
-<script src="js/feedback.js?v=113"></script>
-<script src="js/config.js?v=113"></script>
-<script src="js/audio.js?v=113"></script>
-<script src="js/config.supabase.js?v=113"></script>
-<script src="js/vendor/supabase.js?v=113"></script>
-<script src="js/backend.js?v=113"></script>
-<script src="js/competition.js?v=113"></script>
-<script src="js/score.js?v=113"></script>
-<script src="js/cards.js?v=113"></script>
-<script src="js/deck.js?v=113"></script>
-<script src="js/artstyle.js?v=113"></script>
-<script src="js/sprites.js?v=113"></script>
-<script src="js/formations.js?v=113"></script>
-<script src="js/relics.js?v=113"></script>
-<script src="js/assets.js?v=113"></script>
-<script src="js/dev.js?v=113"></script>
-<script src="js/map.js?v=113"></script>
-<script src="js/buildings.js?v=113"></script>
-<script src="js/units.js?v=113"></script>
-<script src="js/combat.js?v=113"></script>
-<script src="js/ai.js?v=113"></script>
-<script src="js/render.js?v=113"></script>
-<script src="js/beasts.js?v=113"></script>
-<script src="js/defeatart.js?v=113"></script>
-<script src="js/victoryart.js?v=113"></script>
-<script src="js/ui.js?v=113"></script>
-<script src="js/screens.js?v=113"></script>
-<script src="js/patchnotes.js?v=113"></script>
-<script src="js/settings.js?v=113"></script>
-<script src="js/titlescreen.js?v=113"></script>
-<script src="js/tutorial.js?v=113"></script>
-<script src="js/deckfx.js?v=113"></script>
-<script src="js/deckfx-town.js?v=113"></script>
-<script src="js/deckfx-army.js?v=113"></script>
-<script src="js/deckfx-growth.js?v=113"></script>
-<script src="js/deckfx-rival.js?v=113"></script>
-<script src="js/deckui.js?v=113"></script>
-<script src="js/deckscreens.js?v=113"></script>
-<script src="js/cardintro.js?v=113"></script>
-<script src="js/game.js?v=113"></script>
+<script src="js/feedback.js?v=114"></script>
+<script src="js/config.js?v=114"></script>
+<script src="js/audio.js?v=114"></script>
+<script src="js/config.supabase.js?v=114"></script>
+<script src="js/vendor/supabase.js?v=114"></script>
+<script src="js/backend.js?v=114"></script>
+<script src="js/competition.js?v=114"></script>
+<script src="js/score.js?v=114"></script>
+<script src="js/cards.js?v=114"></script>
+<script src="js/deck.js?v=114"></script>
+<script src="js/artstyle.js?v=114"></script>
+<script src="js/sprites.js?v=114"></script>
+<script src="js/formations.js?v=114"></script>
+<script src="js/relics.js?v=114"></script>
+<script src="js/assets.js?v=114"></script>
+<script src="js/dev.js?v=114"></script>
+<script src="js/map.js?v=114"></script>
+<script src="js/buildings.js?v=114"></script>
+<script src="js/units.js?v=114"></script>
+<script src="js/combat.js?v=114"></script>
+<script src="js/ai.js?v=114"></script>
+<script src="js/render.js?v=114"></script>
+<script src="js/beasts.js?v=114"></script>
+<script src="js/defeatart.js?v=114"></script>
+<script src="js/victoryart.js?v=114"></script>
+<script src="js/ui.js?v=114"></script>
+<script src="js/screens.js?v=114"></script>
+<script src="js/patchnotes.js?v=114"></script>
+<script src="js/settings.js?v=114"></script>
+<script src="js/titlescreen.js?v=114"></script>
+<script src="js/tutorial.js?v=114"></script>
+<script src="js/deckfx.js?v=114"></script>
+<script src="js/deckfx-town.js?v=114"></script>
+<script src="js/deckfx-army.js?v=114"></script>
+<script src="js/deckfx-growth.js?v=114"></script>
+<script src="js/deckfx-rival.js?v=114"></script>
+<script src="js/deckui.js?v=114"></script>
+<script src="js/deckscreens.js?v=114"></script>
+<script src="js/cardintro.js?v=114"></script>
+<script src="js/game.js?v=114"></script>
 </body>
 </html>

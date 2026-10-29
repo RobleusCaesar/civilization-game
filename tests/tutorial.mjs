@@ -402,12 +402,12 @@ const out = await p.evaluate(async () => {
     ck('minimapStepAfterFog', Tutorial._show && Tutorial._show.id === 'minimap',
       JSON.stringify(Tutorial._show));
     {
-      const tog = document.getElementById('miniToggle').getBoundingClientRect();
+      const tog = document.getElementById('mapBtn').getBoundingClientRect();
       const ring = document.getElementById('tutRing').getBoundingClientRect();
       ck('mapToggleIsRinged', Math.abs(ring.left - (Math.max(10, tog.left) - 5)) < 3,
         'ring.left=' + ring.left + ' tog.left=' + tog.left);
     }
-    document.getElementById('miniToggle').click();     // the REAL unfold
+    document.getElementById('mapBtn').click();     // the REAL unfold, from the top bar
     tick(3, 0.3);
     ck('unfoldingAnswersIt', S.tut.done.minimap === 1 && !UI.miniCollapsed,
       JSON.stringify(S.tut.done) + ' collapsed=' + UI.miniCollapsed);
