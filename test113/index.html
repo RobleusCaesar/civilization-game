@@ -485,6 +485,14 @@
     background: linear-gradient(rgba(13,11,8,0.66), rgba(13,11,8,0.9));
   }
   .screen.show { display: flex; }
+  /* a screen laid out unseen, so its cards can be built before it is asked
+     for (Screens.prepCards) — never painted, never tapped */
+  .screen.prep:not(.show) { display: flex; visibility: hidden; pointer-events: none; }
+  /* THE NIGHT STANDS BEHIND THE CARD SCREENS (Screens.nightBehind): the new
+     game and the draft show the title's own painting, never a black canvas
+     waiting for a map to bake */
+  #shellNight { position: absolute; inset: 0; display: none; pointer-events: none; }
+  #shell.night #shellNight { display: block; }
   .shead {
     display: flex; align-items: center; gap: 10px; width: 100%;
     max-width: 560px; margin: 0 auto; flex: 0 0 auto;
@@ -2003,45 +2011,45 @@
 
 </div>
 
-<script src="test112/js/feedback.js?v=112"></script>
-<script src="test112/js/config.js?v=112"></script>
-<script src="test112/js/audio.js?v=112"></script>
-<script src="test112/js/config.supabase.js?v=112"></script>
-<script src="test112/js/vendor/supabase.js?v=112"></script>
-<script src="test112/js/backend.js?v=112"></script>
-<script src="test112/js/competition.js?v=112"></script>
-<script src="test112/js/score.js?v=112"></script>
-<script src="test112/js/cards.js?v=112"></script>
-<script src="test112/js/deck.js?v=112"></script>
-<script src="test112/js/artstyle.js?v=112"></script>
-<script src="test112/js/sprites.js?v=112"></script>
-<script src="test112/js/formations.js?v=112"></script>
-<script src="test112/js/relics.js?v=112"></script>
-<script src="test112/js/assets.js?v=112"></script>
-<script src="test112/js/dev.js?v=112"></script>
-<script src="test112/js/map.js?v=112"></script>
-<script src="test112/js/buildings.js?v=112"></script>
-<script src="test112/js/units.js?v=112"></script>
-<script src="test112/js/combat.js?v=112"></script>
-<script src="test112/js/ai.js?v=112"></script>
-<script src="test112/js/render.js?v=112"></script>
-<script src="test112/js/beasts.js?v=112"></script>
-<script src="test112/js/defeatart.js?v=112"></script>
-<script src="test112/js/victoryart.js?v=112"></script>
-<script src="test112/js/ui.js?v=112"></script>
-<script src="test112/js/screens.js?v=112"></script>
-<script src="test112/js/patchnotes.js?v=112"></script>
-<script src="test112/js/settings.js?v=112"></script>
-<script src="test112/js/titlescreen.js?v=112"></script>
-<script src="test112/js/tutorial.js?v=112"></script>
-<script src="test112/js/deckfx.js?v=112"></script>
-<script src="test112/js/deckfx-town.js?v=112"></script>
-<script src="test112/js/deckfx-army.js?v=112"></script>
-<script src="test112/js/deckfx-growth.js?v=112"></script>
-<script src="test112/js/deckfx-rival.js?v=112"></script>
-<script src="test112/js/deckui.js?v=112"></script>
-<script src="test112/js/deckscreens.js?v=112"></script>
-<script src="test112/js/cardintro.js?v=112"></script>
-<script src="test112/js/game.js?v=112"></script>
+<script src="test113/js/feedback.js?v=113"></script>
+<script src="test113/js/config.js?v=113"></script>
+<script src="test113/js/audio.js?v=113"></script>
+<script src="test113/js/config.supabase.js?v=113"></script>
+<script src="test113/js/vendor/supabase.js?v=113"></script>
+<script src="test113/js/backend.js?v=113"></script>
+<script src="test113/js/competition.js?v=113"></script>
+<script src="test113/js/score.js?v=113"></script>
+<script src="test113/js/cards.js?v=113"></script>
+<script src="test113/js/deck.js?v=113"></script>
+<script src="test113/js/artstyle.js?v=113"></script>
+<script src="test113/js/sprites.js?v=113"></script>
+<script src="test113/js/formations.js?v=113"></script>
+<script src="test113/js/relics.js?v=113"></script>
+<script src="test113/js/assets.js?v=113"></script>
+<script src="test113/js/dev.js?v=113"></script>
+<script src="test113/js/map.js?v=113"></script>
+<script src="test113/js/buildings.js?v=113"></script>
+<script src="test113/js/units.js?v=113"></script>
+<script src="test113/js/combat.js?v=113"></script>
+<script src="test113/js/ai.js?v=113"></script>
+<script src="test113/js/render.js?v=113"></script>
+<script src="test113/js/beasts.js?v=113"></script>
+<script src="test113/js/defeatart.js?v=113"></script>
+<script src="test113/js/victoryart.js?v=113"></script>
+<script src="test113/js/ui.js?v=113"></script>
+<script src="test113/js/screens.js?v=113"></script>
+<script src="test113/js/patchnotes.js?v=113"></script>
+<script src="test113/js/settings.js?v=113"></script>
+<script src="test113/js/titlescreen.js?v=113"></script>
+<script src="test113/js/tutorial.js?v=113"></script>
+<script src="test113/js/deckfx.js?v=113"></script>
+<script src="test113/js/deckfx-town.js?v=113"></script>
+<script src="test113/js/deckfx-army.js?v=113"></script>
+<script src="test113/js/deckfx-growth.js?v=113"></script>
+<script src="test113/js/deckfx-rival.js?v=113"></script>
+<script src="test113/js/deckui.js?v=113"></script>
+<script src="test113/js/deckscreens.js?v=113"></script>
+<script src="test113/js/cardintro.js?v=113"></script>
+<script src="test113/js/game.js?v=113"></script>
 </body>
 </html>
