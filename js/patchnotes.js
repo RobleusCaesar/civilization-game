@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 115, date: '2026-10-29', title: 'A finer frame',
+    items: [
+      'The top and bottom bars are now dark walnut with a fine gold inlay, sharp on every screen, in place of the old blocky planks.',
+      'The building cards along the bottom are smooth raised plates, so the row reads clean.',
+    ],
+  },
+  {
     build: 114, date: '2026-10-29', title: 'A tidier top bar',
     items: [
       'The map button now sits in the top bar beside your cards. Tap it to open or fold the minimap, which still opens in its corner with the arrow beneath it.',

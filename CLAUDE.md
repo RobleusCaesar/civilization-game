@@ -3660,6 +3660,19 @@ must not open a release on the dashboard before the release is real) — and
 wears a TEST BUILD badge on the menus (`Screens.init`; a game hides it, it
 sat on the build menu). A page from disk or a local server wears nothing.
 
+**THE HUD'S MATERIAL IS A VECTOR** (index.html `:root`, operator 2026-10-29:
+the plank tile "really basic… something that silently sits in the
+background… clean, quality, higher pixel count"): `--wood-tex` is an SVG
+data URL in the stylesheet — dark walnut with a long, faint grain from two
+stitched `feTurbulence` layers — so the browser draws it at the screen's own
+pixels from the first paint (it was a 64px canvas tile made by ui.js and
+blown up 3x on a phone). The bars are OPAQUE `--hud-wood` lit from their
+outer edge, with a dark rule and a gold hairline (`--inlay`, faded at both
+ends) along the edge that meets the map, and they carry NO backdrop blur — it
+re-blurred the moving map under a 94%-opaque bar every frame. The build cards
+are smooth raised plates (the grain is the bar's, not every card's). The deck
+sheet and the aim bar read the same variable and wear the same walnut.
+
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a

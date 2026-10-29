@@ -44,7 +44,14 @@
     --btn-hi: #4d3d24;
     --edge: rgba(232, 200, 140, 0.14);   /* 1px light-edge highlight */
     --edge-dark: rgba(10, 8, 5, 0.85);
-    --wood-tex: none;                    /* set procedurally at boot */
+    /* THE HUD'S MATERIAL (operator, 2026-10-29: the plank tile "really basic… something that
+       silently sits in the background… clean, quality, higher pixel count"). Dark walnut with
+       a long, faint grain — a vector, so the browser draws it at the screen's own pixels and it
+       is never a small tile blown up; it is markup, so it is there from the first paint. */
+    --wood-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='256'%3E%3Cfilter id='a' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0024 0.085' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.40 0 0 0 0.5 -0.22'/%3E%3C/filter%3E%3Cfilter id='b' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0032 0.15' numOctaves='2' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.03 0 0 0 0 0.02 0 0 0 0 0.01 0 0 0 0.7 -0.30'/%3E%3C/filter%3E%3Crect width='512' height='256' fill='%231b140d'/%3E%3Crect width='512' height='256' filter='url(%23a)'/%3E%3Crect width='512' height='256' filter='url(%23b)'/%3E%3C/svg%3E");
+    --hud-wood: #1b140d;
+    /* the gold inlay along a bar's inner edge: one hairline, faded at both ends */
+    --inlay: linear-gradient(90deg, transparent, rgba(232,193,90,.5) 12%, rgba(247,217,122,.66) 50%, rgba(232,193,90,.5) 88%, transparent);
     /* THE SAFE AREA IS ONE VARIABLE. Every top-anchored piece of chrome reads
        it, so the notch is handled in exactly one place — and it means where
        READABLE chrome may start: below the status bar AND below anything the
@@ -124,19 +131,26 @@
   #topbar {
     position: absolute; top: 0; left: 0; right: 0; z-index: 10;
     padding: calc(var(--safe-top) + 5px) 6px 5px 6px;
-    background: var(--bar-bg); background-image: var(--wood-tex);
-    border-bottom: 1px solid var(--edge-dark);
-    box-shadow: inset 0 -1px 0 var(--edge);
-    backdrop-filter: blur(4px);
+    /* opaque walnut, lit from above, a dark rule and the gold inlay at its
+       foot (::after) — and no backdrop blur: it was re-blurring the moving
+       map under a bar that was 94% opaque, every frame, for nothing */
+    background-color: var(--hud-wood);
+    background-image: linear-gradient(180deg, rgba(255,222,160,.06), rgba(0,0,0,.22)), var(--wood-tex);
+    box-shadow: 0 1px 0 #0a0704, 0 4px 10px rgba(0,0,0,.35);
     font-size: 12.5px; font-weight: 700; white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
+  #topbar::after, #bottombar::before {
+    content: ''; position: absolute; left: 0; right: 0; height: 1px; pointer-events: none; background: var(--inlay);
+  }
+  #topbar::after { bottom: 1px; }
+  #bottombar::before { top: 1px; }
   .trow { display: flex; align-items: center; gap: 5px; }
   .trow + .trow { margin-top: 4px; }
   .res {
     display: flex; align-items: center; justify-content: center; gap: 5px;
-    padding: 4px 6px; background: rgba(0,0,0,0.30); border-radius: 8px;
-    border: 1px solid rgba(10,8,5,0.6); box-shadow: inset 0 1px 0 rgba(0,0,0,0.4), 0 1px 0 var(--edge);
+    padding: 4px 6px; background: rgba(6,4,2,.42); border-radius: 8px;
+    border: 1px solid rgba(0,0,0,.55); box-shadow: inset 0 1px 2px rgba(0,0,0,.55), 0 1px 0 rgba(232,200,140,.10);
     flex: 1 1 0; min-width: 0;
   }
   .res canvas { width: 15px; height: 15px; image-rendering: pixelated; flex: 0 0 auto; }
@@ -224,18 +238,20 @@
   /* ---- bottom bar ---- */
   #bottombar {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
-    background: var(--panel-bg); background-image: var(--wood-tex);
-    border-top: 1px solid var(--edge-dark);
-    box-shadow: inset 0 1px 0 var(--edge);
-    backdrop-filter: blur(4px);
+    background-color: var(--hud-wood);
+    background-image: linear-gradient(0deg, rgba(0,0,0,.24), rgba(255,222,160,.05) 60%, rgba(255,222,160,.07)), var(--wood-tex);
+    box-shadow: 0 -1px 0 #0a0704, 0 -4px 10px rgba(0,0,0,.35);
     /* hug the buttons: keep just enough home-indicator clearance, not a full
        safe-area gap of blank wood below the build menu */
     padding: 6px 6px calc(env(safe-area-inset-bottom) / 2 + 4px) 6px;
   }
   #bmToggle {
     position: absolute; top: -22px; left: 8px;
-    min-width: 44px; height: 22px; border: 1px solid #4a4232; border-bottom: none;
-    border-radius: 8px 8px 0 0; background: var(--panel-bg); color: var(--dim);
+    min-width: 44px; height: 22px; border: 1px solid #0a0704; border-bottom: none;
+    border-radius: 8px 8px 0 0; color: var(--dim);
+    background-color: var(--hud-wood);
+    background-image: linear-gradient(180deg, rgba(255,222,160,.09), rgba(255,222,160,.04)), var(--wood-tex);
+    box-shadow: inset 0 1px 0 rgba(232,193,90,.28);
     font-size: 11px; font-weight: 700; padding: 0 10px;
   }
   #buildmenu {
@@ -243,15 +259,17 @@
     touch-action: pan-x; padding-bottom: 2px;
   }
   .bbtn {
-    flex: 0 0 auto; width: 66px; min-height: 72px; border: 1px solid #241d15; border-radius: 10px;
-    background: var(--btn); background-image: var(--wood-tex);
-    box-shadow: inset 0 1px 0 var(--edge);
+    flex: 0 0 auto; width: 66px; min-height: 72px; border: 1px solid #0d0905; border-radius: 10px;
+    /* a smooth raised plate on the grained bar: the grain is the bar's, not
+       every card's, or the row reads as busy */
+    background: linear-gradient(180deg, #33281a, #251c12);
+    box-shadow: inset 0 1px 0 rgba(255,226,170,.10), 0 1px 2px rgba(0,0,0,.45);
     color: var(--text); display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 2px; padding: 4px 2px;
   }
-  .bbtn:active { background-color: var(--btn-hi); }
+  .bbtn:active { background: var(--btn-hi); }
   .bbtn.sel {
-    border-color: var(--gold); background-color: #514627;
+    border-color: var(--gold); background: linear-gradient(180deg, #5a4a2b, #463820);
     box-shadow: 0 0 10px rgba(232, 193, 90, 0.45), inset 0 1px 0 var(--edge);
   }
   .bbtn.cant { opacity: 0.45; }
@@ -2025,45 +2043,45 @@
 
 </div>
 
-<script src="js/feedback.js?v=114"></script>
-<script src="js/config.js?v=114"></script>
-<script src="js/audio.js?v=114"></script>
-<script src="js/config.supabase.js?v=114"></script>
-<script src="js/vendor/supabase.js?v=114"></script>
-<script src="js/backend.js?v=114"></script>
-<script src="js/competition.js?v=114"></script>
-<script src="js/score.js?v=114"></script>
-<script src="js/cards.js?v=114"></script>
-<script src="js/deck.js?v=114"></script>
-<script src="js/artstyle.js?v=114"></script>
-<script src="js/sprites.js?v=114"></script>
-<script src="js/formations.js?v=114"></script>
-<script src="js/relics.js?v=114"></script>
-<script src="js/assets.js?v=114"></script>
-<script src="js/dev.js?v=114"></script>
-<script src="js/map.js?v=114"></script>
-<script src="js/buildings.js?v=114"></script>
-<script src="js/units.js?v=114"></script>
-<script src="js/combat.js?v=114"></script>
-<script src="js/ai.js?v=114"></script>
-<script src="js/render.js?v=114"></script>
-<script src="js/beasts.js?v=114"></script>
-<script src="js/defeatart.js?v=114"></script>
-<script src="js/victoryart.js?v=114"></script>
-<script src="js/ui.js?v=114"></script>
-<script src="js/screens.js?v=114"></script>
-<script src="js/patchnotes.js?v=114"></script>
-<script src="js/settings.js?v=114"></script>
-<script src="js/titlescreen.js?v=114"></script>
-<script src="js/tutorial.js?v=114"></script>
-<script src="js/deckfx.js?v=114"></script>
-<script src="js/deckfx-town.js?v=114"></script>
-<script src="js/deckfx-army.js?v=114"></script>
-<script src="js/deckfx-growth.js?v=114"></script>
-<script src="js/deckfx-rival.js?v=114"></script>
-<script src="js/deckui.js?v=114"></script>
-<script src="js/deckscreens.js?v=114"></script>
-<script src="js/cardintro.js?v=114"></script>
-<script src="js/game.js?v=114"></script>
+<script src="js/feedback.js?v=115"></script>
+<script src="js/config.js?v=115"></script>
+<script src="js/audio.js?v=115"></script>
+<script src="js/config.supabase.js?v=115"></script>
+<script src="js/vendor/supabase.js?v=115"></script>
+<script src="js/backend.js?v=115"></script>
+<script src="js/competition.js?v=115"></script>
+<script src="js/score.js?v=115"></script>
+<script src="js/cards.js?v=115"></script>
+<script src="js/deck.js?v=115"></script>
+<script src="js/artstyle.js?v=115"></script>
+<script src="js/sprites.js?v=115"></script>
+<script src="js/formations.js?v=115"></script>
+<script src="js/relics.js?v=115"></script>
+<script src="js/assets.js?v=115"></script>
+<script src="js/dev.js?v=115"></script>
+<script src="js/map.js?v=115"></script>
+<script src="js/buildings.js?v=115"></script>
+<script src="js/units.js?v=115"></script>
+<script src="js/combat.js?v=115"></script>
+<script src="js/ai.js?v=115"></script>
+<script src="js/render.js?v=115"></script>
+<script src="js/beasts.js?v=115"></script>
+<script src="js/defeatart.js?v=115"></script>
+<script src="js/victoryart.js?v=115"></script>
+<script src="js/ui.js?v=115"></script>
+<script src="js/screens.js?v=115"></script>
+<script src="js/patchnotes.js?v=115"></script>
+<script src="js/settings.js?v=115"></script>
+<script src="js/titlescreen.js?v=115"></script>
+<script src="js/tutorial.js?v=115"></script>
+<script src="js/deckfx.js?v=115"></script>
+<script src="js/deckfx-town.js?v=115"></script>
+<script src="js/deckfx-army.js?v=115"></script>
+<script src="js/deckfx-growth.js?v=115"></script>
+<script src="js/deckfx-rival.js?v=115"></script>
+<script src="js/deckui.js?v=115"></script>
+<script src="js/deckscreens.js?v=115"></script>
+<script src="js/cardintro.js?v=115"></script>
+<script src="js/game.js?v=115"></script>
 </body>
 </html>
