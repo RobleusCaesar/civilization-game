@@ -6780,18 +6780,8 @@ const R = {
     // (js/deckfx-growth.js — the festival's '×1.4'; guarded on the method)
     const tag = window.Deck && Deck.floatTag ? Deck.floatTag(u) : '';
     this.float(u.x, u.y - 0.5, tag ? txt + tag : txt, '#d8e8b0');
-    /* AND THE WORK IS HEARD WHERE IT IS SEEN. The village's working sounds
-       ride this tick rather than the gather step, which is the whole reason
-       they are bearable: the step fires several times a second per worker
-       and would be a machine gun (the lesson this throttle already exists
-       for), while the tick is one glance every ~20s per hand — ten workers
-       make a sound every couple of seconds somewhere, and no single villager
-       chatters. PLAYER ONLY: the rival's woodcutters are not ours to hear,
-       and a chop from across the fog would be telling the player something
-       the fog exists to hide. */
-    if (u.owner === 'P' && typeof Sound !== 'undefined')
-      Sound.play(txt === '+wood' ? 'chop' : txt === '+stone' ? 'mine'
-               : txt === '+gold' ? 'mine' : 'farm');
+    // (the work's SOUND is not this tick's: Sound's din samples the work in
+    // view, by how central it stands — js/audio.js)
     return true;
   },
 

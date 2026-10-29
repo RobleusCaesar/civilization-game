@@ -6831,13 +6831,15 @@ at ten times the rate and a chief cannot be told to — the same reasoning that
 makes `Combat.bestFoe` the rival's scorer alone.
 
 **THE GAME'S VOICE** (`tests/audio.mjs`, all of `js/audio.js`): sound
-effects and a background bed, and **not one byte of audio ships**. Every
-sound is SYNTHESISED at runtime through Web Audio, which is the same bargain
-the rest of the game makes with its art — the procedural version IS the
-shipping version, it costs nothing on the wire, and a 2MB music file on the
-boot path would have undone the whole load-speed pass for a thing the player
-can switch off. The contract checks the REPO for audio files, because a
-dropped-in `.mp3` would pass every other check here.
+effects and music. It began as **not one byte of audio** — every sound
+synthesised — and that rule is RETIRED by the operator's ruling of
+2026-10-29 (a recorded theme, battle music and fourteen effects, see **THE
+RECORDINGS** below). What survives of it: **nothing on the boot path** —
+not a byte of audio is fetched before a gesture unlocks the speaker, the
+battle not until a real game is under way — and **a recording that will not
+play stands down to the synthesised voice it replaced** (the generated bed
+for the theme, the old synth kinds for the work and the blows). The contract
+checks the REPO for exactly the named files and their budgets.
 **TWO SWITCHES, ALL THE WAY DOWN**: separate gain buses, separate keys
 (`neo-sfx`, `neo-music`; absent means ON), separate rows in Settings. Plenty
 of people play with effects on and music off, and nobody should have to lose
@@ -6884,6 +6886,56 @@ clocks are all module state (the `R.collapses` rule), and
 `Sound.onWorldChange()` clears the clocks from `newGame`/`loadJSON`.
 `UI.cue` keeps the HAPTIC half (a different sense, a different switch on a
 phone) and hands the sound to this module.
+
+**THE RECORDINGS** (`assets/music`, `assets/sfx`, `js/audio.js` from
+`_url` down, tests/audio.mjs §12-13 — operator, 2026-10-29). Three parts.
+**THE THEME** is a media element (`Sound._theme`) routed through the music
+bus — 160s decoded would be ~60MB, an element streams, and iOS ignores an
+element's own volume so the dial must be Web Audio's. It is STARTED INSIDE
+THE GESTURE (`unlock`, before `resume()` answers — iOS plays an element only
+from a tap's own handler; once played from a tap it may be paused and played
+from a timer), loops as the file does, pauses while the battle has the floor
+and resumes where it left off. **THE BATTLE** is a decoded buffer, fetched
+once a real game is live: the operator's brief is that it answers the
+PLAYER's attack, never a defence — `Sound.warRead()` reads the player's own
+army (soldiers and a raised levy): a FIGHT is an engagement with anything
+hostile but the wilds away from home (beyond max(10, 2× the player's ring))
+or at the rival's door; the rival's hall counts only once explored (the
+music must not find it for the player). **THE MARCH IS TIMED, NOT RINGED**:
+an army walks ~2.2 tiles a second, so the operator's 1.5-2× band is one
+second of marching — the intro begins once the leading marcher is within
+`introEta` (10s) of the beat ring (never past `introR`, 4 rings) and STARTS
+PARTWAY IN so its first big hit lands on arrival; inside `beatR` (1.5 rings)
+or in a fight the beat comes now (a crossfade from a running intro). Only
+the beat loops: `_bakeLoop` cuts three phrases from the first hit and blends
+the loop's last 0.25s into the bars just before that hit (the file's tempo
+drifts — a grid cut would stutter). `hold` (8s) of quiet ends it, the beat
+fades and the theme comes back; a game that ENDS mid-battle ends it and
+holds the theme until the next world (`_themeHeld`, cleared by
+`onWorldChange`). **THE EFFECTS ARE HEARD BY WHAT THE CAMERA SEES**
+(`Sound.place` / `at` / `ui`, the din and the hooves in `_worldTick`, 4×/s):
+nothing off camera; full level in the centre third falling to `EDGE` (0.12)
+at the rim, panned a little; zoomed out, quieter. The WORK is a sampled
+DIN, never a voice per hand: each trade (`DIN`: chop, chip, gold, rake,
+hammer, read off `R.unitPose` — what is heard is what is drawn) strokes once
+per DIN seconds for one hand, quicker only as the square root of the hands,
+from a hand picked by how central it stands; never more than `WORK_MAX` (2)
+at once, never two within `WORK_GAP` (0.7s); the player's hands only. A
+BLOW, SHOT, LAUNCH or IMPACT (`Sound.at`, called by Combat at the swing,
+the launch, the tower's volley and a stone into the works) has a cooldown
+and a cap per kind and `WAR_MAX` (4) in all, a little muted; the weapon our
+army mostly uses leads and the others step back (`OFF_MODE`); the ENEMY's
+are heard at `FOE_UNDER` (0.3) while ours sound, at `FOE_ALONE` when theirs
+are the only fight on screen (an undefended town); anything not ours must
+stand on ground the player sees. Riders moving in view are ONE gallop loop.
+The selection, a finished work and the horn are `Sound.ui` (the player's own
+news; a work finished off camera is said softly; the alarm horn every 30s at
+most). Levels are tuned in dB in `SFX` (`lufs` measured, `to` where it sits).
+**Two traps**: `_live` was already the voice COUNT — a method of the same
+name was overwritten by `onWorldChange` and the director never ran
+(`_inGame` now); and the effects NEVER make a context or draw `Math.random`
+(their own `_rnd`) — a blow before any gesture is silent and seeded tests
+stay seeded.
 
 **Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
 covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock

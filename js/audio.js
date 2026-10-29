@@ -194,7 +194,18 @@ const Sound = {
     try {
       const ctx = this.ac();
       if (!ctx) return;
-      const go = () => { try { if (this.musicOn()) this.startMusic(); } catch (e) {} };
+      const go = () => { try { if (this.musicOn()) this.startMusic(); if (this.sfxOn()) this._sfxLoad(); } catch (e) {} };
+      /* THE THEME IS STARTED INSIDE THE GESTURE: iOS lets a media element
+         play only from a tap's own handler, and resume() below answers
+         later. Started here at a whisper; startMusic brings it up. Once
+         played from a tap the element may be paused and played again from
+         a timer (the battle hands it back that way). */
+      if (this.musicOn() && !this._music) {
+        const th = this._themeEnsure();
+        if (th && th.el.paused && this._battle.mode === 'off' && !this._themeHeld) {
+          try { const p = th.el.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+        }
+      }
       /* resume() IS ASYNCHRONOUS, and that is not a detail. Calling it and
          then asking `ctx.state` in the next statement reads 'suspended'
          still, so startMusic bailed and the music did not begin — on the
@@ -224,7 +235,7 @@ const Sound = {
      are the ones that repeat forever. */
   GAP: {
     chop: 0.40, mine: 0.45, farm: 0.55, build: 0.50,
-    hit: 0.11, arrow: 0.16, miss: 0.30, die: 0.35,
+    hit: 0.11, arrow: 0.16, miss: 0.30, die: 0.80,
     raid: 6.0,          // the alarm is a warning, not a siege soundtrack
     thunder: 1.2, impact: 2.0,   // the sky's two voices: one strike, one fall
     done: 0.30, train: 0.30, place: 0.20,
@@ -246,7 +257,15 @@ const Sound = {
     return true;
   },
 
-  onWorldChange() { this._last = {}; this._live = 0; },
+  onWorldChange() {
+    this._last = {}; this._live = 0;
+    this._sfxLast = {}; this._dinDue = {}; this._heat = {}; this._ownAt = -1e9;
+    try {
+      if (this._gallop) { this._gallop.s.stop(); this._gallop = null; }
+      if (this._battle.mode !== 'off') this._battleStop(1.5, false);
+      if (this._themeHeld) { this._themeHeld = false; if (this._music && this._music.rec) this._themeIn(3); }
+    } catch (e) {}
+  },
 
   /* ---------------- the voice ---------------- */
 
@@ -492,7 +511,19 @@ const Sound = {
       g.cancelScheduledValues(ctx.currentTime);
       g.setValueAtTime(Math.max(0.0001, g.value), ctx.currentTime);
       g.exponentialRampToValueAtTime(Math.max(0.0001, this.gainOf('music')), ctx.currentTime + 4);
-
+      // THE RECORDED THEME when it can play; the generated bed below is its
+      // stand-in (no Web Audio media path, or the file would not load)
+      if (this._themeEnsure()) {
+        this._music = { rec: true, timer: 0, drone: [] };
+        this._themeIn(3);
+        return true;
+      }
+      return this._startBed();
+    } catch (e) { return false; }
+  },
+  _startBed() {
+    try {
+      const ctx = this.ctx;
       // THE DRONE: two detuned saws through a slow lowpass, an octave apart.
       // Detuning is what stops two oscillators sounding like one thin one —
       // the beating between them is the whole warmth of the pad.
@@ -529,6 +560,7 @@ const Sound = {
       g.setValueAtTime(Math.max(0.0001, g.value), ctx.currentTime);
       g.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2);
       for (const d of m.drone) { try { d.o.stop(ctx.currentTime + 1.4); } catch (e) {} }
+      if (m.rec) { this._themeOut(1.2); this._battleStop(1.2); }
     } catch (e) {}
   },
 
@@ -570,6 +602,491 @@ const Sound = {
     } catch (e) {}
   },
 
+  /* ================= THE RECORDINGS (operator, 2026-10-29) =================
+     The game's own theme and its battle music are RECORDED now, and so are
+     the effects of its work and its wars (assets/music, assets/sfx). The
+     bargain the rest of this file keeps still holds where it can: nothing is
+     fetched until a gesture has unlocked the speaker (the boot never waits on
+     a byte of audio), every file that fails stands down to the synthesised
+     voice it replaced, and none of it rides in a save. */
+  _url(p) { return p + '?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 1); },
+  // ramp an AudioParam to a level over about `sec` seconds, from wherever it
+  // is now — a jump on a sustained sound is a click
+  _ramp(param, to, sec) {
+    const t = this.ctx.currentTime;
+    param.cancelScheduledValues(t);
+    param.setValueAtTime(Math.max(0.0001, param.value), t);
+    param.setTargetAtTime(Math.max(0.0001, to), t, Math.max(0.02, sec / 3));
+  },
+  // a real game is on the glass (never the title's demo world, never a shell screen)
+  _inGame() {
+    return typeof Screens !== 'undefined' && Screens.current === 'playing' && !Screens._demo &&
+      typeof S !== 'undefined' && S && S.units && !S.over;
+  },
+
+  /* ---- THE THEME: the title's tune, and the town's ----
+     A MEDIA ELEMENT routed through the music bus, not a decoded buffer: 160
+     seconds of stereo decoded is ~60MB of memory a phone does not have, and
+     an element streams. Routed through Web Audio because iOS ignores an
+     element's own volume, and the dial must work there too. It LOOPS as the
+     file does, PAUSES while the battle has the floor (and picks up where it
+     left off), and a file that will not load hands over to the generated bed. */
+  THEME_SRC: 'assets/music/theme.mp3',
+  THEME_GAIN: 1.0,            // loudness-matched to the battle's beat (both near -14 LUFS)
+  _theme: null,               // { el, src, g } — module state, never in a save
+  _themeFailed: false,
+  _themeHeld: false,          // the run ended mid-battle: quiet until the world changes
+  _themeEnsure() {
+    if (this._theme) return this._theme;
+    if (this._themeFailed) return null;
+    try {
+      const ctx = this.ac();
+      if (!ctx || !ctx.createMediaElementSource || typeof Audio === 'undefined') { this._themeFailed = true; return null; }
+      const el = new Audio();
+      el.loop = true; el.preload = 'auto';
+      el.addEventListener('error', () => {
+        this._themeFailed = true;
+        // the recording will not play: the generated bed takes its place
+        if (this._music && this._music.rec) { this._music = null; this._startBed(); }
+      });
+      el.src = this._url(this.THEME_SRC);
+      const src = ctx.createMediaElementSource(el);
+      const g = ctx.createGain(); g.gain.value = 0.0001;
+      src.connect(g).connect(this.musicBus);
+      this._theme = { el, src, g };
+      return this._theme;
+    } catch (e) { this._themeFailed = true; return null; }
+  },
+  _themeIn(sec) {
+    const th = this._theme;
+    if (!th || this._themeHeld || (this._battle && this._battle.mode !== 'off')) return;
+    try { clearTimeout(th.pauseT); const p = th.el.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+    this._ramp(th.g.gain, this.THEME_GAIN, sec);
+  },
+  _themeOut(sec) {
+    const th = this._theme; if (!th || !this.ctx) return;
+    this._ramp(th.g.gain, 0, sec);
+    clearTimeout(th.pauseT);
+    th.pauseT = setTimeout(() => { try { if (th.g.gain.value < 0.01) th.el.pause(); } catch (e) {} }, sec * 1000 + 300);
+  },
+
+  /* ---- THE BATTLE: it builds on the march and beats in the fight ----
+     The operator's brief: it comes in when the PLAYER attacks (never when
+     the player is attacked); its quiet intro builds while the army marches
+     on the rival's town — within twice the hall's own ring — and its beat
+     plays through the fight; when the fight is over, won or lost, it fades
+     back to the theme, or ends outright when the game does.
+     The file is 30s: a quiet build to the first big hit (introEnd), three
+     ~3.5s phrases of the beat (loopLen), then a fade. Only the beat loops.
+     Its tempo drifts a hair, so a loop cut on the grid would stutter: the
+     loop's last `xfade` seconds are blended (equal power) into the bars
+     just BEFORE its first hit, so its end runs straight into its beginning
+     — baked once into its own buffer (_bakeLoop). 30s decoded is ~11MB, so
+     the battle is a buffer, fetched once a real game is under way. */
+  BATTLE_SRC: 'assets/music/battle.mp3',
+  BATTLE: {
+    introEnd: 13.80,      // the first big hit — where the beat begins
+    loopLen: 10.47,       // three phrases of the beat
+    xfade: 0.25,          // the baked seam
+    gain: 1.0,
+    beatR: 1.5,           // the beat: an army within 1.5x the rival hall's ring, or a fight
+    introR: 4.0,          // the intro may begin this far out (it is timed, below)…
+    introEta: 10,         // …once the army is within this many seconds of the beat ring
+    jump: 0.5,            // a fight that starts mid-intro crossfades into the beat this fast
+    fadeIn: 1.2,          // a fight that starts cold: the beat comes in quickly
+    hold: 8,              // seconds of quiet before the battle is over
+    fadeOut: 3.5,
+  },
+  _bat: null,                 // { buf, loop } once decoded
+  _batLoading: false, _batFailed: false,
+  _battle: { mode: 'off' },   // 'off' | 'on' — and its sources while on
+  _battleLoad() {
+    if (this._bat || this._batLoading || this._batFailed) return;
+    const ctx = this.ac(); if (!ctx || typeof fetch === 'undefined') return;
+    this._batLoading = true;
+    fetch(this._url(this.BATTLE_SRC))
+      .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+      .then(ab => new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); }))
+      .then(buf => { this._bat = { buf, loop: this._bakeLoop(buf) }; })
+      .catch(() => { this._batFailed = true; })
+      .then(() => { this._batLoading = false; });
+  },
+  _bakeLoop(buf) {
+    const B = this.BATTLE, sr = buf.sampleRate;
+    const a = Math.round(B.introEnd * sr), L = Math.round(B.loopLen * sr), X = Math.round(B.xfade * sr);
+    const out = this.ctx.createBuffer(buf.numberOfChannels, L, sr);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const src = buf.getChannelData(c), dst = out.getChannelData(c);
+      dst.set(src.subarray(a, a + L));
+      for (let i = 0; i < X; i++) {
+        const k = (i / X) * Math.PI / 2, j = L - X + i;
+        dst[j] = src[a + j] * Math.cos(k) + src[a - X + i] * Math.sin(k);
+      }
+    }
+    return out;
+  },
+  _battleSrc(buf, loop) {
+    const s = this.ctx.createBufferSource();
+    s.buffer = buf; s.loop = !!loop;
+    s.connect(this._battle.g);
+    return s;
+  },
+  // begin: from the quiet intro (marching), or straight into the beat (a fight)
+  _battleStart(beat, eta) {
+    const ctx = this.ctx, B = this.BATTLE, bt = this._battle;
+    const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(this.musicBus);
+    bt.mode = 'on'; bt.g = g; bt.t0 = ctx.currentTime;
+    if (beat) {
+      bt.loopSrc = this._battleSrc(this._bat.loop, true);
+      bt.loopSrc.start(ctx.currentTime);
+      bt.beatAt = ctx.currentTime;
+      this._ramp(g.gain, B.gain, B.fadeIn);
+    } else {
+      // the intro is quiet by its own nature: it comes in at full gain and builds
+      const from = Math.max(0, Math.min(B.introEnd - 2, B.introEnd - (isFinite(eta) ? eta : B.introEnd)));
+      bt.intro = this._battleSrc(this._bat.buf, false);
+      bt.intro.start(ctx.currentTime, from, B.introEnd - from + 0.05);
+      bt.loopSrc = this._battleSrc(this._bat.loop, true);
+      bt.loopSrc.start(ctx.currentTime + B.introEnd - from);
+      bt.beatAt = ctx.currentTime + B.introEnd - from;
+      this._ramp(g.gain, B.gain, 0.6);
+    }
+    this._themeOut(beat ? 1.5 : 2.5);
+  },
+  // the fight began while the intro was still building: into the beat now
+  _battleJump() {
+    const ctx = this.ctx, B = this.BATTLE, bt = this._battle, now = ctx.currentTime;
+    if (!bt.intro || now >= bt.beatAt - B.jump) return;
+    const old = bt.g, oldSrcs = [bt.intro, bt.loopSrc];
+    this._ramp(old.gain, 0, B.jump);
+    for (const s of oldSrcs) { try { s.stop(now + B.jump + 0.1); } catch (e) {} }
+    const g = ctx.createGain(); g.gain.value = 0.0001; g.connect(this.musicBus);
+    bt.g = g; bt.intro = null;
+    bt.loopSrc = this._battleSrc(this._bat.loop, true);
+    bt.loopSrc.start(now);
+    bt.beatAt = now;
+    this._ramp(g.gain, B.gain, B.jump);
+  },
+  // over: fade the battle away, and the theme back — unless the game is over
+  _battleStop(sec, gameOver) {
+    const bt = this._battle;
+    if (bt.mode === 'off' || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    this._ramp(bt.g.gain, 0, sec);
+    for (const s of [bt.intro, bt.loopSrc]) if (s) { try { s.stop(now + sec + 0.3); } catch (e) {} }
+    this._battle = { mode: 'off' };
+    if (gameOver) this._themeHeld = true;
+    else if (this._music && this._music.rec) setTimeout(() => this._themeIn(4), 1000);
+  },
+  /* THE READ: is the player on the march, and is the player FIGHTING. Asked
+     of the player's own army (soldiers and a raised levy) and fog-honest —
+     the rival's hall counts only once the player has found it, or the music
+     would find it for them. A fight is an engagement with anything hostile
+     but the wilds, AWAY from home (beyond twice the player's own ring, at
+     least ten tiles) or at the rival's door: a fight in your own town is
+     being attacked, which is not this music's to answer. */
+  /* THE MARCH IS TIMED, NOT RINGED. An army walks ~2.2 tiles a second, so
+     the operator's 1.5-2x band is about one second of marching — the intro
+     would never be heard. So the build is laid against the march itself:
+     the intro begins once the leading marcher is within introEta seconds
+     of the beat ring (never past introR), and STARTS PARTWAY IN — at the
+     point that puts its first big hit on the moment the army arrives. A
+     fight that comes sooner jumps to the beat, as it should. */
+  warRead() {
+    const out = { approach: 0, fight: false, eta: Infinity };
+    try {
+      const B = this.BATTLE, myTc = Bld.tcOf('P'), foeTc = Bld.tcOf('A');
+      const home = myTc ? { x: Bld.cx(myTc), y: Bld.cy(myTc), r: Math.max(10, 2 * Bld.tcRadius(myTc)) } : null;
+      const foe = foeTc && S.map.explored[MapGen.idx(foeTc.x, foeTc.y)]
+        ? { x: Bld.cx(foeTc), y: Bld.cy(foeTc), r: Bld.tcRadius(foeTc) } : null;
+      for (const u of S.units) {
+        if (u.owner !== 'P' || !(Units.isMilitary(u) || Units.isLevied(u))) continue;
+        const tu = u.tUnit ? Units.get(u.tUnit) : null;
+        const tb = !tu && u.tBld ? Bld.get(u.tBld) : null;
+        const engaged = (tu && tu.owner !== 'W' && tu.owner !== 'P') || (tb && tb.owner !== 'P');
+        const df = foe ? Math.hypot(u.x - foe.x, u.y - foe.y) / foe.r : Infinity;
+        if (engaged && (!home || Math.hypot(u.x - home.x, u.y - home.y) > home.r || df <= 2 * B.beatR)) out.fight = true;
+        if (df > B.introR || !(engaged || Units.moving(u) || (u.task && /^attack/.test(u.task.type)))) continue;
+        if (df <= B.beatR) { out.approach = 2; continue; }
+        // heading IN, not walking past: the path's end is nearer the hall than the marcher
+        const end = u.path && u.path.length ? u.path[u.path.length - 1] : null;
+        if (end && Math.hypot(end.x + 0.5 - foe.x, end.y + 0.5 - foe.y) >= Math.hypot(u.x - foe.x, u.y - foe.y)) continue;
+        const eta = (df - B.beatR) * foe.r / Math.max(0.5, (CFG.UNITS[u.kind] && CFG.UNITS[u.kind].speed) || 2);
+        if (eta <= B.introEta) { out.approach = Math.max(out.approach, 1); out.eta = Math.min(out.eta, eta); }
+      }
+    } catch (e) {}
+    return out;
+  },
+  _battleTick() {
+    if (!this.ctx || !this._music || !this._music.rec) return;
+    const bt = this._battle;
+    if (!this._inGame()) {
+      // the run is over: the battle ENDS, and the theme waits for the next world
+      if (bt.mode !== 'off') this._battleStop(typeof S !== 'undefined' && S && S.over ? 2 : 1.5, !!(typeof S !== 'undefined' && S && S.over));
+      return;
+    }
+    if (!this._bat) { this._battleLoad(); return; }      // fetched once a game is under way
+    const r = this.warRead(), now = this.ctx.currentTime;
+    if (r.fight || r.approach) bt.hot = now;
+    if (bt.mode === 'off') {
+      if (r.fight || r.approach === 2) this._battleStart(true);
+      else if (r.approach === 1) this._battleStart(false, r.eta);
+    } else {
+      if (r.fight || r.approach === 2) this._battleJump();
+      if (now - (bt.hot || now) > this.BATTLE.hold) this._battleStop(this.BATTLE.fadeOut, false);
+    }
+  },
+
+  /* ================= THE EFFECTS, BY WHAT THE CAMERA SEES =================
+     A dozen farms, camps and quarries are in view at once, and every one of
+     them would be a voice. What the big RTS games do (Supreme Commander
+     played a fraction of its cues and tied their level to the zoom;
+     PlatinumGames gate events in game code before the mixer caps the
+     voices), and what this does:
+       1. NOTHING OFF CAMERA IS HEARD. An emitter outside the view is culled
+          before it sounds (and anything not the player's must stand on
+          ground the player can see — a sound is not a scout).
+       2. THE MIDDLE OF THE VIEW IS LOUD, THE EDGES ARE QUIET. Full level in
+          the centre third, falling to EDGE at the screen's edge; panned a
+          little toward its side. Zoomed out, the work drops further (ZOOM).
+       3. THE WORK IS A DIN, NOT A VOICE PER HAND. Each trade (chop, chip,
+          gold, rake, hammer) is SAMPLED: one stroke every DIN seconds for one
+          hand, quicker with more hands but only as their square root, from
+          a hand chosen by how central it stands — never more than WORK_MAX
+          strokes at once, never two within WORK_GAP.
+       4. BATTLE MAY LAYER, A LITTLE MUTED, AND OUR WEAPONS LEAD. Every blow
+          has a per-kind cooldown and cap; the weapon our army is mostly
+          using is the one at full level (the others step back), and the
+          ENEMY's weapons are heard only faintly while ours are — at their own
+          level when they are the only fight on screen (an undefended town).
+       5. EVERY STROKE IS A LITTLE DIFFERENT: pitch and level are jittered so
+          a repeated file never reads as a loop.
+     The levels are decibels, by ear, in SFX: `lufs` is the file's measured
+     loudness (ffmpeg ebur128), `to` where it should sit; the gain is the
+     difference. */
+  SFX_DIR: 'assets/sfx/',
+  SFX: {
+    chop:      { lufs: -23.6, to: -35.5, synth: 'chop' },
+    chip:      { lufs: -26.4, to: -35.5, synth: 'mine' },
+    gold:      { lufs: -24.8, to: -35.5, synth: 'mine' },
+    rake:      { lufs: -26.8, to: -36.5, synth: 'farm' },
+    hammer:    { lufs: -29.2, to: -35.0, synth: 'build' },
+    sword:     { lufs: -21.1, to: -29.5, cd: 0.30, max: 2, synth: 'hit' },
+    arrows:    { lufs: -21.0, to: -30.5, cd: 0.70, max: 2, synth: 'arrow' },
+    trebuchet: { lufs: -17.6, to: -28.5, cd: 1.20, max: 1 },
+    boulder:   { lufs: -23.6, to: -28.5, cd: 0.90, max: 2 },
+    ship:      { lufs: -22.1, to: -29.5, cd: 1.10, max: 1 },
+    gallop:    { lufs: -28.8, to: -34.0 },
+    complete:  { lufs: -19.4, to: -29.0, synth: 'done' },
+    select:    { lufs: -28.3, to: -32.0, cd: 0.12 },
+    horn:      { lufs: -12.3, to: -22.0, cd: 30, synth: 'raid' },
+  },
+  // seconds between strokes for ONE hand at the centre of the view
+  DIN: { chop: 4.0, chip: 4.5, gold: 5.0, rake: 6.0, hammer: 3.5 },
+  WORK_MAX: 2, WORK_GAP: 0.7,
+  WAR_MAX: 4, WAR_MUTE: 0.8,  // battle layers, a little muted
+  FOE_UNDER: 0.3, FOE_ALONE: 0.85, OWN_HOLD: 2.5,
+  OFF_MODE: 0.55,             // a weapon that is not the army's main one steps back
+  CENTRE: 0.35, EDGE: 0.12, ZOOM: 0.45,
+  _buf: {}, _sfxLoading: false,
+  _sfxLoad() {
+    if (this._sfxLoading || typeof fetch === 'undefined') return;
+    const ctx = this.ac(); if (!ctx) return;
+    this._sfxLoading = true;
+    for (const name of Object.keys(this.SFX)) {
+      fetch(this._url(this.SFX_DIR + name + '.mp3'))
+        .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+        .then(ab => new Promise((res, rej) => { const p = ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); }))
+        .then(buf => { this._buf[name] = buf; })
+        .catch(() => {});   // a missing file keeps its synthesised voice (or silence)
+    }
+  },
+  _sfxGain(name) { const s = this.SFX[name]; return Math.pow(10, (s.to - s.lufs) / 20); },
+  /* Where an emitter sits in the view: null when it is off camera, else its
+     level (1 in the middle, EDGE at the rim) and its pan. The visible band
+     is the screen less the bars, the same band R.onScreen measures. */
+  place(x, y) {
+    if (typeof R === 'undefined' || !R.cam || !R.cv) return null;
+    const TL = CFG.TILE, z = R.cam.z;
+    const sx = (x * TL - R.cam.x) * z, sy = (y * TL - R.cam.y) * z;
+    const top = R.topReserve || 0, W = R.viewW(), H = R.viewH() - (R.bottomReserve || 0);
+    const hw = W / 2, hh = Math.max(1, (H - top) / 2);
+    const nx = (sx - hw) / hw, ny = (sy - top - hh) / hh;
+    if (Math.abs(nx) > 1.04 || Math.abs(ny) > 1.04) return null;
+    const r = Math.min(1, Math.max(Math.abs(nx), Math.abs(ny)));
+    const k = r <= this.CENTRE ? 0 : (r - this.CENTRE) / (1 - this.CENTRE);
+    const g = this.EDGE + (1 - this.EDGE) * Math.pow(1 - k, 2);
+    const dz = R.defaultZoom ? R.defaultZoom() : 1.5;
+    return { g, pan: Math.max(-0.5, Math.min(0.5, nx * 0.5)), zoom: Math.max(this.ZOOM, Math.min(1, z / dz)) };
+  },
+  _sample(name, o) {
+    const buf = this._buf[name], ctx = this.ctx;
+    if (!buf || !ctx) return null;
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    if (o.loop) { s.loop = true; s.loopStart = 0.03; s.loopEnd = Math.max(0.1, buf.duration - 0.03); }
+    s.playbackRate.value = o.rate || 1;
+    const g = ctx.createGain(); g.gain.value = Math.max(0.0001, o.gain);
+    s.connect(g);
+    let out = g;
+    if (o.pan && ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; g.connect(p); out = p; }
+    out.connect(this.sfxBus);
+    s.start(ctx.currentTime);
+    return { s, g };
+  },
+  // the mixer's own dice: never Math.random, so a seeded test's stream is
+  // never moved by a sound (and never G.rand, which is the run's)
+  _seed: 0x2545f491,
+  _rnd() { this._seed = (Math.imul(this._seed, 1664525) + 1013904223) | 0; return (this._seed >>> 0) / 4294967296; },
+  _jit() { return { rate: 0.95 + this._rnd() * 0.1, lvl: 0.86 + this._rnd() * 0.14 }; },
+  _sfxLast: {}, _sfxLive: {}, _workLive: 0, _workLast: -1e9, _warLive: 0,
+  _track(name, v, bucket) {
+    this._sfxLive[name] = (this._sfxLive[name] || 0) + 1;
+    if (bucket) this[bucket]++;
+    v.s.onended = () => {
+      this._sfxLive[name] = Math.max(0, (this._sfxLive[name] || 1) - 1);
+      if (bucket) this[bucket] = Math.max(0, this[bucket] - 1);
+    };
+  },
+
+  /* A BLOW, A SHOT, A LAUNCH, AN IMPACT. `owner` is whose weapon it is.
+     Answers whether it sounded (the contract asks). */
+  _heat: {}, _heatT: 0, _ownAt: -1e9,
+  at(kind, x, y, owner) {
+    try {
+      if (!this.sfxOn() || !this._inGame() || S.paused) return false;
+      const spec = this.SFX[kind]; if (!spec) return false;
+      // never MAKE a context here: a blow before any gesture is silent, and
+      // touches nothing (no context, no dice — seeded tests stay seeded)
+      const ctx = this.ctx; if (!ctx || ctx.state !== 'running') return false;
+      const p = this.place(x, y); if (!p) return false;                   // off camera: not heard
+      if (owner !== 'P' && !(typeof G !== 'undefined' && G.visibleAt && G.visibleAt(Math.floor(x), Math.floor(y)))) return false;
+      const now = ctx.currentTime, own = owner === 'P';
+      // the army's main weapon: a heat per kind, decaying over ~3s
+      const dt = now - this._heatT; this._heatT = now;
+      for (const k in this._heat) this._heat[k] *= Math.exp(-dt / 3);
+      let lvl = this.WAR_MUTE, cd = spec.cd || 0.3;
+      if (own) {
+        this._ownAt = now;
+        this._heat[kind] = (this._heat[kind] || 0) + 1;
+        let top = null; for (const k in this._heat) if (!top || this._heat[k] > this._heat[top]) top = k;
+        if (top && top !== kind && this._heat[top] > 2 * this._heat[kind]) { lvl *= this.OFF_MODE; cd *= 1.6; }
+      } else if (now - this._ownAt < this.OWN_HOLD) { lvl *= this.FOE_UNDER; cd *= 2; }   // ours are fighting: theirs faintly
+      else lvl *= this.FOE_ALONE;                                                        // theirs alone: an undefended town
+      const last = this._sfxLast[kind];
+      if (last != null && now - last < cd) return false;
+      if ((this._sfxLive[kind] || 0) >= (spec.max || 1) || this._warLive >= this.WAR_MAX) return false;
+      this._sfxLast[kind] = now;
+      const j = this._jit(), gain = this._sfxGain(kind) * lvl * p.g * Math.max(0.7, p.zoom) * j.lvl;
+      const v = this._sample(kind, { gain, pan: p.pan, rate: j.rate });
+      if (v) { this._track(kind, v, '_warLive'); return true; }
+      return spec.synth ? this.play(spec.synth, { gain: lvl * p.g }) : false;
+    } catch (e) { return false; }
+  },
+  /* THE PLAYER'S OWN NEWS: a selection, a building finished, the horn. Not
+     culled by the camera (it is the player's own act), but a finished
+     building off camera is said softly. */
+  ui(kind, x, y) {
+    try {
+      if (!this.sfxOn()) return false;
+      const spec = this.SFX[kind]; if (!spec) return false;
+      const ctx = this.ctx; if (!ctx || ctx.state !== 'running') return false;
+      const now = ctx.currentTime, last = this._sfxLast[kind];
+      if (spec.cd && last != null && now - last < spec.cd) return false;
+      let lvl = 1;
+      if (x != null) { const p = this.place(x, y); lvl = p ? Math.max(0.6, p.g) : 0.35; }
+      this._sfxLast[kind] = now;
+      const v = this._sample(kind, { gain: this._sfxGain(kind) * lvl, rate: 0.98 + this._rnd() * 0.04 });
+      if (v) { this._track(kind, v); return true; }
+      if (spec.synth) { delete this._last[spec.synth]; return this.play(spec.synth, { gain: lvl }); }
+      return false;
+    } catch (e) { return false; }
+  },
+  // which trade a working villager is plying, read off the pose the renderer
+  // draws — what is heard is what is drawn
+  workKind(u) {
+    if (u.owner !== 'P' || !Units.isVillager(u) || Units.isLevied(u)) return null;
+    const pose = R.unitPose(u), t = u.task;
+    if (!t) return null;
+    if (pose === 'build') return 'hammer';
+    if (pose === 'farm') return 'rake';
+    if (pose === 'mine') {
+      if (t.type === 'work') { const b = Bld.get(t.id); return b && b.key === 'mine' ? 'gold' : 'chip'; }
+      return 'chip';
+    }
+    if (pose === 'gather') {
+      if (t.type === 'gather' && t.res === 'wood') return 'chop';
+      if (t.type === 'work') { const b = Bld.get(t.id); return b && b.key === 'lumber' ? 'chop' : null; }
+    }
+    return null;
+  },
+  _dinDue: {},
+  _dinTick() {
+    const ctx = this.ctx, now = ctx.currentTime, by = {};
+    for (const u of S.units) {
+      const k = this.workKind(u); if (!k) continue;
+      const p = this.place(u.x, u.y); if (!p) continue;
+      (by[k] || (by[k] = [])).push(p);
+    }
+    for (const k of Object.keys(this.DIN)) {
+      const list = by[k];
+      if (!list) { delete this._dinDue[k]; continue; }
+      const due = this._dinDue[k];
+      if (due == null) { this._dinDue[k] = now + this._rnd() * this.DIN[k]; continue; }   // a fresh trade starts at a random beat
+      if (now < due) continue;
+      this._dinDue[k] = now + (this.DIN[k] / Math.sqrt(list.length)) * (0.75 + this._rnd() * 0.5);
+      if (this._workLive >= this.WORK_MAX || now - this._workLast < this.WORK_GAP) continue;
+      // the hand nearest the middle is the likeliest heard
+      let sum = 0; for (const p of list) sum += p.g * p.g;
+      let pick = this._rnd() * sum, p = list[0];
+      for (const q of list) { pick -= q.g * q.g; if (pick <= 0) { p = q; break; } }
+      const j = this._jit(), gain = this._sfxGain(k) * p.g * p.zoom * j.lvl;
+      const v = this._sample(k, { gain, pan: p.pan, rate: j.rate });
+      if (v) { this._track(k, v, '_workLive'); this._workLast = now; }
+      else if (this.SFX[k].synth) { this.play(this.SFX[k].synth, { gain: p.g * p.zoom }); this._workLast = now; }
+    }
+  },
+  /* THE HOOVES: one loop for the riders in view, ours first — level by the
+     most central rider and how many there are, faded in and out. */
+  _gallop: null,
+  _gallopTick() {
+    let best = null, n = 0;
+    const foeOk = this.ctx.currentTime - this._ownAt >= this.OWN_HOLD;
+    for (const pass of ['P', 'foe']) {
+      for (const u of S.units) {
+        if (u.kind !== 'rider' && u.kind !== 'horsearcher' && u.kind !== 'lancer') continue;
+        if (pass === 'P' ? u.owner !== 'P' : (u.owner === 'P' || !foeOk)) continue;
+        if (!Units.moving(u)) continue;
+        if (u.owner !== 'P' && !G.visibleAt(Math.floor(u.x), Math.floor(u.y))) continue;
+        const p = this.place(u.x, u.y); if (!p) continue;
+        n++; if (!best || p.g > best.g) best = p;
+      }
+      if (n) break;
+    }
+    const want = best ? this._sfxGain('gallop') * best.g * Math.max(0.6, best.zoom) * Math.min(1, 0.6 + 0.2 * Math.log2(n)) : 0;
+    const gl = this._gallop;
+    if (want > 0.0005) {
+      if (!gl) { const v = this._sample('gallop', { gain: 0.0001, loop: true }); if (v) { this._gallop = v; this._ramp(v.g.gain, want, 0.4); } }
+      else { this._ramp(gl.g.gain, want, 0.4); gl.quiet = 0; }
+    } else if (gl) {
+      this._ramp(gl.g.gain, 0, 0.5);
+      if ((gl.quiet = (gl.quiet || 0) + 1) > 6) { try { gl.s.stop(this.ctx.currentTime + 0.6); } catch (e) {} this._gallop = null; }
+    }
+  },
+  // the world's ear: four times a second while a real game is on the glass
+  _worldTick() {
+    try {
+      if (!this.ctx || this.ctx.state !== 'running') return;
+      this._battleTick();
+      if (!this.sfxOn() || !this._inGame() || S.paused) {
+        if (this._gallop) { this._ramp(this._gallop.g.gain, 0, 0.3); try { this._gallop.s.stop(this.ctx.currentTime + 0.4); } catch (e) {} this._gallop = null; }
+        return;
+      }
+      this._dinTick();
+      this._gallopTick();
+    } catch (e) {}
+  },
+
   /* ---------------- wiring ---------------- */
 
   /* Armed once from the page. The gesture listeners are what actually make
@@ -581,9 +1098,15 @@ const Sound = {
       for (const ev of ['pointerdown', 'touchstart', 'mousedown', 'keydown'])
         window.addEventListener(ev, wake, { passive: true });
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') this.unlock();
-        else if (this._music && this.ctx) { try { this.ctx.suspend(); } catch (e) {} }
+        if (document.visibilityState === 'visible') {
+          this.unlock();
+          if (this._music && this._music.rec && this._theme && this._battle.mode === 'off') this._themeIn(1);
+        } else if (this._music && this.ctx) {
+          try { this.ctx.suspend(); } catch (e) {}
+          try { if (this._theme) this._theme.el.pause(); } catch (e) {}   // a hidden tab does not run the tune on
+        }
       });
+      setInterval(() => this._worldTick(), 250);
     } catch (e) {}
   },
 };

@@ -2,10 +2,12 @@
 
    What this pins, and why each one is worth a check:
 
-   1. NOT ONE BYTE OF AUDIO SHIPS. Every sound is synthesised at runtime, so
-      the boot path is untouched by a feature the player can switch off. A
-      dropped-in .mp3 would pass every other check here and quietly undo the
-      load-speed pass, so the check is on the REPO: no audio file, anywhere.
+   1. ONLY THE GAME'S OWN RECORDINGS SHIP, AND NONE ON THE BOOT PATH (the
+      operator's ruling, 2026-10-29: a recorded theme, battle music and a
+      dozen effects). The repo holds exactly the named files under
+      assets/music and assets/sfx, each inside its budget, and nothing is
+      fetched until a gesture has unlocked the speaker — the battle not
+      until a real game is under way.
    2. TWO SWITCHES, INDEPENDENTLY. Effects and music are separate decisions
       with separate keys and separate buses. The cross-checks matter: music
       off must not silence the axe, and effects off must not stop the music.
@@ -22,9 +24,15 @@
    7. IT NEVER THROWS AT A CALLER. A missing speaker must not cost a frame,
       so every door is wrapped — measured by deleting AudioContext outright
       and calling everything.
-   8. THE MUSIC IS GENERATED, NOT LOOPED. It schedules ahead of the audio
-      clock and keeps producing new material, which is what "loopable" means
-      when there is no recording to loop.
+   8. THE THEME IS THE RECORDING, AND THE GENERATED BED STANDS IN for it
+      when the recording cannot play: it schedules ahead of the audio clock
+      and keeps producing new material.
+  12. THE EFFECTS ARE HEARD BY WHAT THE CAMERA SEES: nothing off camera, the
+      middle loud and the edges quiet, the work a sampled din, our weapons
+      leading and the enemy's faint unless they are the only fight.
+  13. THE BATTLE BUILDS ON THE MARCH AND BEATS IN THE FIGHT — the player's
+      attack, never a defence at home — and fades back to the theme, or ends
+      with the game. Its loop's seam runs straight into its start.
    9. THE WIRING IS REAL: the settings rows paint from the live state, and
       the game's own events reach the one door.
   10. THERE IS A DIAL, AND IT SHIPS DOWN. On/Off alone shipped a game the
@@ -62,11 +70,19 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     }
   };
   walk(root);
-  ck('notOneByteOfAudioShips', found.length === 0,
-    found.length ? found.join(', ') : 'every sound is synthesised at runtime');
+  const SFX = ['chop', 'chip', 'gold', 'rake', 'hammer', 'sword', 'arrows', 'trebuchet', 'boulder', 'ship', 'gallop', 'complete', 'select', 'horn'];
+  const want = ['assets/music/theme.mp3', 'assets/music/battle.mp3', ...SFX.map(n => 'assets/sfx/' + n + '.mp3')];
+  const extra = found.filter(f => !want.includes(f)), missing = want.filter(f => !found.includes(f));
+  ck('theOnlyAudioIsTheGamesOwnRecordings', !extra.length && !missing.length,
+    (extra.length ? 'unexpected: ' + extra.join(', ') : '') + (missing.length ? ' missing: ' + missing.join(', ') : '') || want.length + ' files, all named');
+  const size = f => { try { return statSync(join(root, f)).size; } catch (e) { return Infinity; } };
+  const sfxTotal = SFX.reduce((t, n) => t + size('assets/sfx/' + n + '.mp3'), 0);
+  ck('andEachIsInsideItsBudget', size('assets/music/theme.mp3') <= 4.2e6 && size('assets/music/battle.mp3') <= 0.6e6 &&
+    SFX.every(n => size('assets/sfx/' + n + '.mp3') <= 80e3) && sfxTotal <= 600e3,
+    `theme ${(size('assets/music/theme.mp3') / 1e6).toFixed(2)}MB, battle ${(size('assets/music/battle.mp3') / 1e3).toFixed(0)}KB, effects ${(sfxTotal / 1e3).toFixed(0)}KB`);
+  // the module's own source names the same effects it ships
   const src = readFileSync(join(root, 'js/audio.js'), 'utf8');
-  ck('andTheModuleFetchesNothing', !/new Audio\(|\.src\s*=|fetch\(|XMLHttpRequest/.test(src),
-    'no loader, no decode, nothing on the wire');
+  ck('andTheModuleNamesTheSameEffects', SFX.every(n => new RegExp('\\n    ' + n + ':\\s+\\{ lufs:').test(src)), '');
 }
 
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files', '--autoplay-policy=no-user-gesture-required'] });
@@ -128,16 +144,25 @@ const out = await p.evaluate(async () => {
     !/"ctx"|"_live"|"_music"/.test(str);
   r.worldChangeClears = (Sound.onWorldChange(), Object.keys(Sound._last).length === 0);
 
-  /* ---- 8. the music is GENERATED: it schedules ahead and keeps going ---- */
+  /* ---- 8. the theme is the RECORDING; the generated bed stands in ---- */
   Sound.setSfx(true); Sound.setMusic(true);
+  await wait(150);
+  r.theme = { rec: !!(Sound._music && Sound._music.rec), src: Sound._theme ? Sound._theme.el.src : '', loops: !!(Sound._theme && Sound._theme.el.loop) };
+  Sound.setMusic(false);
+  await wait(60);
+  // the recording cannot play (no media path, a 404): the generated bed takes its place
+  const keepTh = Sound._theme, keepF = Sound._themeFailed;
+  Sound._theme = null; Sound._themeFailed = true;
+  Sound.setMusic(true);
   await wait(150);
   const m1 = Sound._music && Sound._music.i;
   const n1 = Sound._music && Sound._music.next;
   await wait(1400);
   const m2 = Sound._music && Sound._music.i;
   r.music = { started: !!Sound._music, i1: m1, i2: m2, aheadOfClock: n1 > Sound.ctx.currentTime,
-    drone: Sound._music ? Sound._music.drone.length : 0 };
+    drone: Sound._music && Sound._music.drone ? Sound._music.drone.length : 0 };
   Sound.setMusic(false);
+  Sound._theme = keepTh; Sound._themeFailed = keepF;
 
   /* ---- 9. the settings rows paint from the live state ---- */
   // a row reads as {speaker glyph, dial value, the label beside it}
@@ -219,7 +244,9 @@ ck('andUnMutingItLiftsTheDial', out.zero.lifted === out.dial.defaults.sfx && out
   'un-muting must produce sound, not silence — lifted to ' + out.zero.lifted);
 ck('andLiftingTheDialUnMutes', out.zero.dialUnmutes === true,
   'the speaker and the dial can never disagree');
-ck('theMusicIsGeneratedNotLooped',
+ck('theThemeIsTheRecording', out.theme.rec && /assets\/music\/theme\.mp3\?v=\d+$/.test(out.theme.src) && out.theme.loops,
+  JSON.stringify(out.theme));
+ck('andTheGeneratedBedStandsInForIt',
   out.music.started && out.music.i2 > out.music.i1 && out.music.aheadOfClock && out.music.drone >= 2,
   'slots ' + out.music.i1 + ' → ' + out.music.i2 + ', scheduled ahead: ' + out.music.aheadOfClock +
   ', drone voices ' + out.music.drone);
@@ -311,12 +338,16 @@ ck('theMusicIsGeneratedNotLooped',
 {
   const S_ = f => readFileSync(join(root, f), 'utf8');
   const hooks = {
-    'work is heard where it is seen (render.workFloat)': /Sound\.play\(txt === '\+wood'/.test(S_('js/render.js')),
-    'a work finished (Bld.finish)': /Sound\.play\('done'\)/.test(S_('js/buildings.js')),
+    'a work finished (Bld.finish)': /Sound\.ui\('complete'/.test(S_('js/buildings.js')),
     'a unit trained (Bld)': /Sound\.play\('train'\)/.test(S_('js/buildings.js')),
-    'blows and deaths (Units.damage)': /Sound\.play\(rng >= 4 \? 'arrow' : 'hit'\)/.test(S_('js/units.js')) &&
-                                       /Sound\.play\('die'\)/.test(S_('js/units.js')),
-    'the alarm (Combat.hitBuilding)': /Sound\.play\('raid'\)/.test(S_('js/combat.js')),
+    'a death, on camera (Units.damage)': /Sound\.place\(u\.x, u\.y\)/.test(S_('js/units.js')) && /Sound\.play\('die'\)/.test(S_('js/units.js')),
+    'blows at the swing (Combat)': /Sound\.at\(CFG\.UNITS\[u\.kind\]\.rng \? 'arrows' : 'sword'/.test(S_('js/combat.js')),
+    'engines and hulls at the launch (Combat.launch)': /Sound\.at\(Units\.isNaval\(u\) \? 'ship' : 'trebuchet'/.test(S_('js/combat.js')),
+    'stone into the works (Combat.impact)': /Sound\.at\('boulder'/.test(S_('js/combat.js')),
+    'the towers loose (Combat)': /Sound\.at\('arrows', cx, cy, b\.owner\)/.test(S_('js/combat.js')),
+    'the alarm (Combat.hitBuilding)': /Sound\.ui\('horn'\)/.test(S_('js/combat.js')),
+    'the muster horn (UI)': /Sound\.ui\('horn'\)/.test(S_('js/ui.js')),
+    'a selection (UI.select)': /Sound\.ui\('select'\)/.test(S_('js/ui.js')),
     'UI.cue goes through it': /Sound\.play\(kind === 'ok'/.test(S_('js/ui.js')),
   };
   const missing = Object.entries(hooks).filter(([, ok]) => !ok).map(([k]) => k);
@@ -324,9 +355,172 @@ ck('theMusicIsGeneratedNotLooped',
   /* THE RIVAL'S WORK IS NOT OURS TO HEAR — a chop from across the fog would
      tell the player something the fog exists to hide. */
   ck('andOnlyTheOwnTribeIsAudible',
-    /u\.owner === 'P' && typeof Sound !== 'undefined'/.test(S_('js/render.js')) &&
-    /b\.owner === 'P' && typeof Sound !== 'undefined'/.test(S_('js/buildings.js')),
-    'work and works alike are gated on the owner');
+    /if \(u\.owner !== 'P' \|\| !Units\.isVillager\(u\)/.test(S_('js/audio.js')) &&
+    /b\.owner === 'P' && typeof Sound !== 'undefined'/.test(S_('js/buildings.js')) &&
+    !/Sound\.play\(txt === '\+wood'/.test(S_('js/render.js')),
+    'the din hears only our hands; the works finished are ours; the old per-hand tick is gone');
+}
+
+/* ---- 12/13. THE CAMERA'S EAR AND THE BATTLE (served over HTTP: fetch and
+   decodeAudioData need a real origin — a file:// page plays the synthesised
+   stand-ins, which is its own proof that a missing file costs nothing) ---- */
+{
+  const { createServer } = await import('node:http');
+  const { readFile } = await import('node:fs/promises');
+  const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.json': 'application/json', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.css': 'text/css', '.svg': 'image/svg+xml' };
+  const reqs = [];
+  const srv = createServer(async (rq, rs) => {
+    try {
+      let q = decodeURIComponent(new URL(rq.url, 'http://x').pathname); if (q.endsWith('/')) q += 'index.html';
+      if (/\.mp3$/.test(q)) reqs.push(q);
+      const buf = await readFile(join(root, q));
+      rs.writeHead(200, { 'content-type': MIME[q.slice(q.lastIndexOf('.'))] || 'application/octet-stream' }); rs.end(buf);
+    } catch (e) { rs.writeHead(404); rs.end(); }
+  });
+  await new Promise(z => srv.listen(0, '127.0.0.1', z));
+  const p5 = await b.newPage({ viewport: { width: 1280, height: 800 } });
+  p5.on('pageerror', e => errors.push(String(e)));
+  await p5.goto(`http://127.0.0.1:${srv.address().port}/index.html`);
+  await p5.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 30000 });
+  await p5.waitForTimeout(1200);
+  const beforeTap = reqs.slice();
+  await p5.mouse.click(640, 760);
+  await p5.waitForFunction(() => Object.keys(Sound._buf).length >= 14, null, { timeout: 30000 }).catch(() => {});
+  const afterTap = reqs.slice();
+  ck('nothingIsFetchedBeforeAGesture', beforeTap.length === 0, beforeTap.join(', ') || 'the boot fetched no audio');
+  ck('andTheTapBringsTheThemeAndTheEffectsButNotTheBattle',
+    afterTap.some(q => /music\/theme\.mp3/.test(q)) && afterTap.filter(q => /\/sfx\//.test(q)).length === 14 && !afterTap.some(q => /battle/.test(q)),
+    afterTap.length + ' requests: ' + afterTap.map(q => q.split('/').pop()).join(' '));
+
+  const v = await p5.evaluate(async () => {
+    const r = {}, wait = ms => new Promise(z => setTimeout(z, ms));
+    Sound.lsSet('neo-music', '1'); Sound.lsSet('neo-sfx', '1');
+    G.newGame('aud-cam', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); S.paused = false;
+    G.freeVis = false; G.updateVisibility();
+    const plays = [];
+    const orig = Sound._sample.bind(Sound);
+    Sound._sample = (n, o) => { const x = orig(n, o); if (x) plays.push({ n, g: o.gain, t: Sound.ctx.currentTime, d: Sound._buf[n].duration / (o.rate || 1) }); return x; };
+    // ---- the camera: the middle loud, the edge quiet, off camera nothing
+    const TL = CFG.TILE, z = R.cam.z;
+    const top = R.topReserve || 0, H = R.viewH() - (R.bottomReserve || 0);
+    const at = (fx, fy) => ({ x: (R.cam.x + fx * R.viewW() / z) / TL, y: (R.cam.y + (top + fy * (H - top)) / z) / TL });
+    const c = at(0.5, 0.5), e = at(0.98, 0.5), off = at(1.6, 0.5);
+    r.place = { centre: Sound.place(c.x, c.y), edge: Sound.place(e.x, e.y), off: Sound.place(off.x, off.y) };
+    // ---- a blow: off camera is not heard; ours lead, theirs faint, theirs alone heard
+    Sound.onWorldChange();
+    r.offHeard = Sound.at('sword', off.x, off.y, 'P');
+    Sound.onWorldChange(); plays.length = 0;
+    const ownSword = Sound.at('sword', c.x, c.y, 'P');
+    const foeLvlUnder = (Sound._sfxLast.boulder = -1e9, Sound.at('boulder', c.x, c.y, 'A'), plays.find(q => q.n === 'boulder'));
+    Sound.onWorldChange(); plays.length = 0;
+    Sound.at('boulder', c.x, c.y, 'P'); const ownB = plays.find(q => q.n === 'boulder');
+    Sound.onWorldChange(); plays.length = 0; Sound._sfxLive = {};   // (the last two boulders are still falling: the cap is per sound)
+    Sound.at('boulder', c.x, c.y, 'A'); const foeAlone = plays.find(q => q.n === 'boulder');
+    r.blows = { ownSword, under: foeLvlUnder && ownB ? foeLvlUnder.g / (ownB.g || 1) : null, alone: foeAlone && ownB ? foeAlone.g / ownB.g : null };
+    // a foe's blow on ground the player cannot see is not heard
+    let fogTile = null;
+    for (let y = 1; y < CFG.H - 1 && !fogTile; y++) for (let x = 1; x < CFG.W - 1; x++) if (!G.visibleAt(x, y)) { fogTile = { x, y }; break; }
+    if (fogTile) { R.cam.x = (fogTile.x + 0.5) * TL - R.viewW() / z / 2; R.cam.y = (fogTile.y + 0.5) * TL - (top + (H - top) / 2) / z; }
+    Sound.onWorldChange();
+    r.fogHeard = fogTile ? Sound.at('sword', fogTile.x + 0.5, fogTile.y + 0.5, 'A') : 'no fog';
+    // ---- the din: a busy town in view, never more than WORK_MAX at once, never closer than WORK_GAP
+    const tc = Bld.tcOf('P');
+    R.cam.x = Bld.cx(tc) * TL - R.viewW() / z / 2; R.cam.y = Bld.cy(tc) * TL - (top + (H - top) / 2) / z;
+    G.freeVis = true; G.updateVisibility();
+    const tiles = t => { const o = []; for (let dy = -8; dy <= 8; dy++) for (let dx = -10; dx <= 10; dx++) { const x = tc.x + dx, y = tc.y + dy; if (MapGen.inB(x, y) && S.map.terrain[MapGen.idx(x, y)] === t) o.push({ x, y }); } return o; };
+    const forest = tiles(T.FOREST), hills = tiles(T.HILLS);
+    for (let i = 0; i < 8; i++) Units.spawn('villager', 'P', tc.x + (i % 3), tc.y + 2 + (i / 3 | 0));
+    const vs = S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
+    vs.forEach((u, i) => { const f = i % 2 ? hills[i] : forest[i]; if (f) Units.assignGather(u, f.x, f.y); });
+    // a rival woodcutter in plain view is not ours to hear
+    const ra = Units.spawn('villager', 'A', tc.x + 1, tc.y + 3); ra.task = { type: 'gather', res: 'wood', x: tc.x, y: tc.y };
+    r.rivalWork = Sound.workKind(ra);
+    Sound.onWorldChange(); plays.length = 0;
+    await wait(9000);
+    const work = plays.filter(q => ['chop', 'chip', 'gold', 'rake', 'hammer'].includes(q.n));
+    let maxC = 0, minGap = Infinity;
+    for (let i = 0; i < work.length; i++) {
+      maxC = Math.max(maxC, work.filter(f => f.t <= work[i].t && f.t + f.d > work[i].t).length);
+      if (i) minGap = Math.min(minGap, work[i].t - work[i - 1].t);
+    }
+    r.din = { n: work.length, maxC, minGap, kinds: [...new Set(work.map(q => q.n))], working: vs.map(u => Sound.workKind(u)).filter(Boolean).length };
+    // ---- the battle
+    S.units = S.units.filter(u => u.owner === 'P' || u.owner === 'W');
+    S.buildings = S.buildings.filter(b => !(b.owner === 'A' && (b.key === 'tower' || b.key === 'warcamp'))); Bld._block = null;
+    S.peace = false;
+    const ftc = Bld.tcOf('A'), fx = Bld.cx(ftc), fy = Bld.cy(ftc), FR = Bld.tcRadius(ftc);
+    const spot = d => { for (let a = 0; a < 96; a++) { const th = a / 96 * Math.PI * 2, x = Math.floor(fx + Math.cos(th) * d), y = Math.floor(fy + Math.sin(th) * d); if (MapGen.onBoard(x, y) && Path.passable(x, y, 'P') && !Bld.at(x, y)) return { x, y }; } return null; };
+    const far = spot(FR * 3.2), near = spot(FR * 1.1);
+    const sol = [0, 1, 2].map(() => Units.spawn('defender', 'P', far.x + 0.5, far.y + 0.5));
+    for (const s of sol) { s.defend = false; Units.moveTo(s, near.x, near.y); }   // the player's march order
+    // the rival's hall unfound: the march says nothing
+    for (let dy = -2; dy < 4; dy++) for (let dx = -2; dx < 4; dx++) S.map.explored[MapGen.idx(ftc.x + dx, ftc.y + dy)] = 0;
+    r.blind = Sound.warRead();
+    for (let dy = -12; dy < 13; dy++) for (let dx = -12; dx < 13; dx++) if (MapGen.inB(ftc.x + dx, ftc.y + dy)) S.map.explored[MapGen.idx(ftc.x + dx, ftc.y + dy)] = 1;
+    r.march = Sound.warRead();
+    await wait(800);
+    r.intro = { mode: Sound._battle.mode, beatIn: Sound._battle.beatAt - Sound.ctx.currentTime, eta: r.march.eta, theme: Sound._theme.g.gain.value };
+    // a fight: the beat now
+    const foe = Units.spawn('defender', 'A', near.x + 0.5, near.y + 0.5);
+    for (const s of sol) s.tUnit = foe.id;
+    await wait(700);
+    r.fight = { read: Sound.warRead().fight, beatIn: Sound._battle.beatAt - Sound.ctx.currentTime };
+    // over: fades back to the theme
+    S.units = S.units.filter(u => !sol.includes(u) && u !== foe);
+    const hold = Sound.BATTLE.hold; Sound.BATTLE.hold = 1;
+    await wait(2200);
+    r.after = { mode: Sound._battle.mode };
+    await wait(3500);
+    r.after.theme = Sound._theme.g.gain.value;
+    Sound.BATTLE.hold = hold;
+    // a fight in your own town is being attacked — not this music's
+    const d1 = Units.spawn('defender', 'P', Bld.cx(tc) + 2, Bld.cy(tc)), rd = Units.spawn('raider', 'R', Bld.cx(tc) + 3, Bld.cy(tc));
+    d1.tUnit = rd.id;
+    r.home = Sound.warRead();
+    await wait(800);
+    r.homeMode = Sound._battle.mode;
+    // the game ends mid-battle: it ENDS, and the theme waits for the next world
+    S.units = S.units.filter(u => u !== d1 && u !== rd);
+    const s2 = Units.spawn('defender', 'P', near.x + 0.5, near.y + 0.5), f2 = Units.spawn('defender', 'A', near.x + 0.5, near.y + 1.5);
+    s2.tUnit = f2.id;
+    await wait(800);
+    r.overStart = Sound._battle.mode;
+    S.over = { win: true };
+    await wait(800);
+    r.over = { mode: Sound._battle.mode, held: Sound._themeHeld };
+    Sound.onWorldChange();
+    r.over.heldAfter = Sound._themeHeld;
+    // the loop's seam: its last sample runs into the bars before its first
+    const bat = Sound._bat, B = Sound.BATTLE;
+    if (bat) {
+      const sr = bat.buf.sampleRate, a = Math.round(B.introEnd * sr), L = bat.loop.length;
+      const src = bat.buf.getChannelData(0), lp = bat.loop.getChannelData(0);
+      r.seam = { startIsTheHit: lp[0] === src[a], endIsTheLeadIn: Math.abs(lp[L - 1] - src[a - 1]) < 0.02, len: +(L / sr).toFixed(2) };
+    }
+    return r;
+  });
+  ck('theMiddleIsLoudTheEdgeQuietOffCameraNothing',
+    v.place.centre && v.place.centre.g === 1 && v.place.edge && v.place.edge.g < 0.25 && v.place.off === null && v.offHeard === false,
+    JSON.stringify(v.place) + ' off-camera blow heard: ' + v.offHeard);
+  ck('ourWeaponsLeadAndTheirsAreFaint', v.blows.ownSword === true && v.blows.under != null && v.blows.under < 0.5,
+    'enemy under ours at ' + (v.blows.under == null ? 'silence' : v.blows.under.toFixed(2)) + ' of our level');
+  ck('butTheirsAloneAreHeard', v.blows.alone != null && v.blows.alone > 0.7,
+    'an undefended town hears the enemy at ' + (v.blows.alone == null ? 'nothing' : v.blows.alone.toFixed(2)) + ' of our level');
+  ck('aBlowInTheFogIsNotASound', v.fogHeard === false || v.fogHeard === 'no fog', String(v.fogHeard));
+  ck('theWorkIsADinNotAVoicePerHand', v.din.working >= 4 && v.din.n >= 2 && v.din.maxC <= 2 && v.din.minGap >= 0.69 && v.din.n <= 9 / 0.7,
+    JSON.stringify(v.din));
+  ck('andTheRivalsWorkIsNotOurs', v.rivalWork === null, String(v.rivalWork));
+  ck('theMarchIsSilentUntilTheRivalHallIsFound', v.blind.approach === 0, JSON.stringify(v.blind));
+  ck('theIntroBuildsOnTheMarchTimedToArrive', v.march.approach === 1 && v.intro.mode === 'on' && v.intro.beatIn > 0 && v.intro.beatIn <= v.intro.eta + 1,
+    JSON.stringify(v.intro));
+  ck('theFightBringsTheBeatNow', v.fight.read && v.fight.beatIn <= 0.05, JSON.stringify(v.fight));
+  ck('andItFadesBackToTheTheme', v.after.mode === 'off' && v.after.theme > 0.5, JSON.stringify(v.after));
+  ck('aDefenceAtHomeIsNotTheBattle', !v.home.fight && v.homeMode === 'off', JSON.stringify(v.home) + ' mode ' + v.homeMode);
+  ck('theGameOverEndsItAndTheThemeWaits', v.overStart === 'on' && v.over.mode === 'off' && v.over.held === true && v.over.heldAfter === false,
+    JSON.stringify(v.over) + ' started ' + v.overStart);
+  ck('theLoopsSeamRunsIntoItsStart', !!v.seam && v.seam.startIsTheHit && v.seam.endIsTheLeadIn, JSON.stringify(v.seam));
+  await p5.close();
+  srv.close();
 }
 
 const real = errors.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e));

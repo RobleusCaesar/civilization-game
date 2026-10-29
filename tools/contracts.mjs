@@ -58,6 +58,7 @@ const PATHS = [
   [/^assets\/cards\//, ['deck-ui.mjs', 'deck-screens.mjs', 'card-intro.mjs', 'art-pipeline.mjs']],
   [/^assets\/endgame\//, ['deck-screens.mjs', 'art-pipeline.mjs']],
   [/^assets\/icons\/cards\//, ['draft-cards.mjs', 'origin-cards.mjs', 'art-pipeline.mjs']],
+  [/^assets\/(music|sfx)\//, ['audio.mjs']],
   [/^assets\//, ['art-pipeline.mjs', 'animal-art.mjs', 'build-stages.mjs', 'fort-states.mjs', 'land.mjs', 'mountain.mjs']],
   [/^tools\//, ['patch-notes.mjs']],
   [/^\.github\//, []],

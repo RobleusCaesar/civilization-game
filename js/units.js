@@ -2557,13 +2557,7 @@ const Units = {
        second and the cap is what keeps it a battle rather than a wall of
        noise. A bow sounds different from a blade — that is most of what tells
        you, without looking, what is happening to you. */
-    try {
-      if (typeof Sound !== 'undefined' &&
-          (u.owner === 'P' || (attacker && attacker.owner === 'P') || attackerOwner === 'P')) {
-        const rng = attacker && CFG.UNITS[attacker.kind] && CFG.UNITS[attacker.kind].rng;
-        Sound.play(rng >= 4 ? 'arrow' : 'hit');
-      }
-    } catch (e) {}
+    // (the blow's own sound is the SWING's — Combat calls Sound.at as it strikes)
     { // the truce's safety net: any P<->A blood ends it, whatever path landed it
       const ao = attackerOwner || (attacker && attacker.owner);
       // one of ours struck by a foe: the hall's emergency calls come out
@@ -2573,7 +2567,7 @@ const Units = {
     }
     if (u.hp <= 0) {
       try {
-        if (typeof Sound !== 'undefined' &&
+        if (typeof Sound !== 'undefined' && Sound.place && Sound.place(u.x, u.y) &&
             (u.owner === 'P' || (attacker && attacker.owner === 'P') || attackerOwner === 'P'))
           Sound.play('die');
       } catch (e) {}

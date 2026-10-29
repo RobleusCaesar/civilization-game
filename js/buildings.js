@@ -1161,7 +1161,7 @@ const Bld = {
     b.hp = b.maxhp;
     // the good news, and one of the few sounds that is NOT throttled: a work
     // finishing is a one-off the player has waited days for
-    if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('done');
+    if (b.owner === 'P' && typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
     /* A PLAYER GATE IS BORN CLOSED (tests/drawbridge.mjs) — every tier, the
        drawbridge rule generalized: a door nobody chose to open must never be
        a road into the castle, and the first opening runs the ordinary toggle

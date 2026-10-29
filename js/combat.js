@@ -12,6 +12,8 @@ const Combat = {
   // spawning a dust/fire burst there. tgt = { kind:'bld'|'unit', id, dmg, srcId }.
   launch(u, tx, ty, tgt) {
     const kind = CFG.UNITS[u.kind].proj;
+    // the engine's own voice: a ship's broadside, or the throwing arm on land
+    if (typeof Sound !== 'undefined' && Sound.at) Sound.at(Units.isNaval(u) ? 'ship' : 'trebuchet', u.x, u.y, u.owner);
     this.projectiles.push({
       kind, tgt, owner: u.owner,
       // fx: an optional per-kind IMPACT dressing (the Bombard Ship's 'blast')
@@ -48,6 +50,8 @@ const Combat = {
     if (t.kind === 'bld') {
       const b = Bld.get(t.id);
       if (b) this.hitBuilding(b, t.dmg, flame, p.owner);
+      // a stone (or a burning ball) into the works — never a ballista's bolt
+      if (b && p.kind !== 'bolt' && typeof Sound !== 'undefined' && Sound.at) Sound.at('boulder', p.x2, p.y2, p.owner);
     } else {
       const tu = Units.get(t.id);
       if (tu) { this.hitFloat(tu, tu.x, tu.y, tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a', p.owner); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
@@ -97,7 +101,7 @@ const Combat = {
        SAME roll rather than firing on every blow: an alarm on each swing is
        not an alarm, it is the sound of a building being hit. Its own gap in
        Sound keeps a long siege from becoming a horn section. */
-    if (b.hp > 0 && b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('raid');
+    if (b.hp > 0 && b.owner === 'P' && by !== 'P' && typeof Sound !== 'undefined' && Sound.ui) Sound.ui('horn');
   },
 
   /* an engine's OWN anti-building blow (catapult, trebuchet, bombard), or 0.
@@ -1435,6 +1439,9 @@ const Combat = {
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const dmg = Math.max(1, Math.round(Units.effAtk(u) - Units.effDef(tgt)));
+          // the blow is heard where it is struck: a bow's volley or a blade (the wilds' jaws are not weapons)
+          if (u.owner !== 'W' && !CFG.UNITS[u.kind].proj && typeof Sound !== 'undefined' && Sound.at)
+            Sound.at(CFG.UNITS[u.kind].rng ? 'arrows' : 'sword', u.x, u.y, u.owner);
           if (CFG.UNITS[u.kind].proj) {
             this.launch(u, tgt.x, tgt.y, { kind: 'unit', id: tgt.id, dmg, srcId: u.id });
           } else {
@@ -1539,6 +1546,8 @@ const Combat = {
           // axeman's heavy blade also bites deeper into timber and thatch
           const dmg = this.bldAtkOf(u) ||
             Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
+          if (u.owner !== 'W' && !CFG.UNITS[u.kind].proj && typeof Sound !== 'undefined' && Sound.at)
+            Sound.at(CFG.UNITS[u.kind].rng ? 'arrows' : 'sword', u.x, u.y, u.owner);
           if (CFG.UNITS[u.kind].proj) {
             // siege engine: the boulder/bolt/flaming ball flies and lands the
             // damage on impact (with a dust or fire burst — see R.impact)
@@ -1609,6 +1618,7 @@ const Combat = {
         b.cd = 1.4;
         const wfA = window.Deck && Deck.mult ? Deck.mult('towerAtk', b.owner, b) : 1;
         const sh = { x1: cx, y1: cy - 0.6, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24 };
+        if (typeof Sound !== 'undefined' && Sound.at) Sound.at('arrows', cx, cy, b.owner);
         // pitch on every arrow: it lands burning (R.arrowStrike)
         if (b.owner === 'P' && wfA > 1 && window.Deck && Deck.timed && Deck.timed('watchfires')) sh.fire = true;
         this.shots.push(sh);

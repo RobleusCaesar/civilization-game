@@ -1714,6 +1714,7 @@ const UI = {
       .map(o => o.id);
     if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
     this.sel = { type: 'group', ids };
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
     this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
     const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
@@ -1721,6 +1722,10 @@ const UI = {
   },
 
   select(type, id) {
+    // a soft acknowledgement when one of the player's own is taken in hand
+    if (type === 'unit' && typeof Sound !== 'undefined' && Sound.ui) {
+      const su = Units.get(id); if (su && su.owner === 'P') Sound.ui('select');
+    }
     this.sel = { type, id };
     this.builderFor = null;
     this.confirmDemolish = 0; this.confirmCancel = 0;
@@ -1983,6 +1988,7 @@ const UI = {
     }
     if (!seen) R.centerOn(cx / alive.length, cy / alive.length);
     this.sel = { type: 'group', ids: alive.slice() };
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
     this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
@@ -2808,7 +2814,7 @@ const UI = {
         }
         else if (btn.dataset.act === 'shelter') {
           const n = Units.soundHorn('P');
-          if (n) R.startHorn(Bld.cx(b2), Bld.cy(b2));
+          if (n) { R.startHorn(Bld.cx(b2), Bld.cy(b2)); if (typeof Sound !== 'undefined' && Sound.ui) { delete Sound._sfxLast.horn; Sound.ui('horn'); } }
           this.toast(n ? `🔔 ${n} villager${n > 1 ? 's' : ''} down tools and run for the hall` : 'No villagers on the map', !n);
           this.renderPanel();
         }
@@ -3349,6 +3355,7 @@ const UI = {
           .map(o => o.id);
         if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }
         this.sel = { type: 'group', ids };
+        if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
         this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;   // a fresh group starts clean
         this.renderPanel();
         this.toast(`${naval ? 'Fleet' : 'War party'} formed: ${this.groupComposition(ids)}`);
