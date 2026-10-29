@@ -255,20 +255,42 @@ const ART = (function () {
     width = width || 1;                                  // 2 for high-res (64px) building canvases
     const g = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
-    const img = g.getImageData(0, 0, w, h), d = img.data;
-    const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 96;
-    const edges = [];
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (solid(x, y)) continue;
-      let near = false;
-      for (let dy = -width; dy <= width && !near; dy++) for (let dx = -width; dx <= width; dx++) {
-        if ((!dx && !dy) || Math.abs(dx) + Math.abs(dy) > width) continue;
-        if (solid(x + dx, y + dy)) { near = true; break; }
+    const d = g.getImageData(0, 0, w, h).data;
+    /* the opaque mask read ONCE into a flat array and grown by `width`
+       four-neighbour steps (two such steps reach exactly the |dx|+|dy| <= 2
+       diamond), then every row's edge pixels filled as RUNS — one fillRect per
+       run, never per pixel. This pass runs over every procedural sprite as
+       sprites.js parses; the old closure-per-neighbour scan and a fillRect per
+       pixel were most of the boot's sprite build on a phone. The same pixels
+       are inked the same way: the runs never overlap, so each pixel takes one
+       blend of the one ink, exactly as before. */
+    const n = w * h;
+    const A = new Uint8Array(n);
+    for (let i = 0, j = 3; i < n; i++, j += 4) A[i] = d[j] > 96 ? 1 : 0;
+    let D = A;
+    for (let k = 0; k < width; k++) {
+      const E = new Uint8Array(n);
+      for (let y = 0; y < h; y++) {
+        const row = y * w;
+        for (let x = 0; x < w; x++) {
+          const i = row + x;
+          E[i] = D[i] || (x > 0 && D[i - 1]) || (x < w - 1 && D[i + 1]) ||
+                 (y > 0 && D[i - w]) || (y < h - 1 && D[i + w]) ? 1 : 0;
+        }
       }
-      if (near) edges.push([x, y]);
+      D = E;
     }
     g.fillStyle = 'rgba(20,16,10,' + STYLE.OUTLINE_ALPHA + ')';
-    for (const [x, y] of edges) g.fillRect(x, y, 1, 1);
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        if (!D[row + x] || A[row + x]) continue;
+        let e = x + 1;
+        while (e < w && D[row + e] && !A[row + e]) e++;
+        g.fillRect(x, y, e - x, 1);
+        x = e;
+      }
+    }
     return canvas;
   }
 

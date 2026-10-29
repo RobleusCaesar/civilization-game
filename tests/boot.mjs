@@ -41,8 +41,11 @@
                   --safe-top / --safe-min / --edge-clear, html.ios-app /
                   .under-bar, the page-fit script, the status-bar and
                   viewport metas
-     screens.js — show() (the ingame class, the Boot.force call)
-     game.js — the load handler's first-frame markReady
+     screens.js — show() (the ingame class, the Boot.force call), foundRun
+     game.js — the load handler's first-frame markReady, the shell draw rate
+     assets.js — the strip pump (_stripLoad / _pumpStrips / _queueInstall /
+                 _drainInstalls / _hold), _dyeStrip, setUnitFrames
+     map.js — generate's peek;  artstyle.js — outline
 
      node tests/boot.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -777,6 +780,162 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('andTheHudHangsBelowTheBarInEveryMode',
     all.every(m => m.mini !== null && m.mini >= m.barBottom - 1),
     all.map(m => `${Math.round(m.mini)}≥${Math.round(m.barBottom)}`).join(' '));
+}
+
+/* ---- 6. THE FOUNDING NEVER HOLDS THE CARDS (a playtest: "super laggy…
+   the first card pops quickly, the other two are slow to load"). Founding a
+   run asks for ~900 people strips; on a throttled phone every response and
+   every install landed on the main thread at once, and the origin cards'
+   deal and flips waited seconds behind it. Measured on a 4×-throttled phone
+   profile: the three flips at 3.3 / 4.2 / 6.4 s after the trial tap, now on
+   their own schedule (~1.5-2.3 s), the frames behind the draft 2-3× more
+   often, the art ready no later. The rules, each pinned here:
+     - the strips are fetched a few at a time (Assets.STRIP_FLIGHT), the
+       people ahead of the wild beasts, and installed in slices between
+       frames — and a strip is COUNTED until it is INSTALLED, so artReady()
+       still means the people are drawn;
+     - a strip is dyed ONCE, on one scratch, never once per frame canvas;
+     - a fresh run fetches the rival's army and sappers in the background
+       tier: they stand under the fog for the opening days;
+     - the wished landform is PEEKED, never painted, once per rolled seed;
+     - a paused world behind a shell screen is drawn once a second;
+     - the outline pass inks exactly the pixels it always did. ---- */
+{
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.goto(url, { waitUntil: 'commit' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 15000 });
+  const r = await p.evaluate(async () => {
+    const out = {};
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+    // a founded run — what Screens.foundRun does, minus the draft
+    Screens._demo = false;
+    G.newGame('boot-found', 'moderate', 'medium', undefined, 'green');
+    out.queued = Assets._stripQ.length;
+    out.flightCap = Assets.STRIP_FLIGHT;
+    out.peopleArcher = Assets._stripQ.filter(([, u]) => /unit-archer-/.test(u)).length;
+    out.rivalArcherLate = Assets._stripQLate.filter(([, u]) => /unit-archer-/.test(u)).length;
+    out.rivalSapperLate = Assets._stripQLate.filter(([, u]) => /unit-sapper-/.test(u)).length;
+    // watch the wire and the count until the people are drawn
+    let maxFly = 0;
+    const t0 = performance.now();
+    while (!Assets.artReady() && performance.now() - t0 < 60000) {
+      maxFly = Math.max(maxFly, Assets._stripFlying);
+      await sleep(20);
+    }
+    out.maxFly = maxFly;
+    out.readyIn = Math.round(performance.now() - t0);
+    out.peopleLeftAtReady = Assets._stripQ.length + Assets._installQ.filter(([, d]) => d && !d.late).length;
+    const tun = G.tunicOf('P'), key = 'villager-p-' + tun + '-l1-m';
+    out.villagerDrawn = !!(Assets.unitArt[key] && Assets.unitArt[key].dirs.s && Assets.unitArt[key].dirs.s.walk);
+    // ONE read per dyed strip, never one per frame
+    const strip = document.createElement('canvas'); strip.width = 64 * 9; strip.height = 64;
+    const sg = strip.getContext('2d'); sg.fillStyle = Assets.TUNIC_KEY.body; sg.fillRect(0, 0, strip.width, 64);
+    const gid = CanvasRenderingContext2D.prototype.getImageData;
+    let reads = 0;
+    CanvasRenderingContext2D.prototype.getImageData = function () { reads++; return gid.apply(this, arguments); };
+    try { Assets.setUnitFrames('boot-dye', 's', 'walk', strip, 'green'); }
+    finally { CanvasRenderingContext2D.prototype.getImageData = gid; }
+    out.reads = reads;
+    const f = Assets.unitArt['boot-dye'].dirs.s.walk;
+    const px = f[8].getContext('2d').getImageData(10, 10, 1, 1).data;
+    const want = Sprites.tunicCol.green.body;
+    out.dyed = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('') === want.toLowerCase();
+    out.frames = f.length;
+    delete Assets.unitArt['boot-dye'];
+    // the landform is PEEKED: the same name a full generate lays, no tiles
+    let agree = 0, n = 0, tiles = 0;
+    for (const size of ['medium', 'large', 'xlarge']) {
+      CFG.W = CFG.H = CFG.SIZES[size];
+      for (let i = 0; i < 12; i++) {
+        const sd = 'peek-' + size + '-' + i, a = MapGen.generate(sd, undefined, true), g = MapGen.generate(sd, 'moderate');
+        n++; if (a.landform === g.landform && a.variant === g.variant) agree++;
+        if (a.terrain) tiles++;
+      }
+    }
+    CFG.W = CFG.H = CFG.SIZES[S.sizeKey];
+    out.peek = { n, agree, tiles };
+    // a STILL world behind a shell screen is drawn once a second
+    R.ensureTerrain();
+    Screens.show('newgame');
+    const draw = R.draw; let still = 0, moving = 0, which = 'still';
+    R.draw = function () { if (which === 'still') still++; else moving++; return draw.apply(this, arguments); };
+    try {
+      out.paused = S.paused;
+      G._shellDrawT = 0;
+      await sleep(2300);
+      which = 'moving'; S.paused = false; G._shellDrawT = 0;
+      await sleep(2300);
+    } finally { R.draw = draw; }
+    out.still = still; out.moving = moving;
+    return out;
+  });
+  ck('theStripsWaitTheirTurn', r.queued > 0 && r.maxFly <= r.flightCap,
+    `${r.queued} queued at the founding, never more than ${r.maxFly} of ${r.flightCap} on the wire`);
+  ck('andTheyAreCountedUntilInstalled', r.peopleLeftAtReady === 0 && r.villagerDrawn,
+    `ready after ${r.readyIn}ms with ${r.peopleLeftAtReady} people strips still to install; the player's villagers drawn: ${r.villagerDrawn}`);
+  ck('theRivalsArmyWaitsBehindThePeople', r.peopleArcher > 0 && r.rivalArcherLate === r.peopleArcher && r.rivalSapperLate > 0,
+    `archer strips: ${r.peopleArcher} counted (the player's), ${r.rivalArcherLate} in the background (the rival's); rival sappers ${r.rivalSapperLate}`);
+  ck('aStripIsDyedOnceNotPerFrame', r.reads === 1 && r.dyed && r.frames === 9,
+    `${r.reads} pixel read(s) for a ${r.frames}-frame strip, its last frame dyed: ${r.dyed}`);
+  ck('theLandformIsPeekedNotPainted', r.peek.agree === r.peek.n && r.peek.tiles === 0,
+    `${r.peek.agree}/${r.peek.n} seeds name the world a full generate lays, ${r.peek.tiles} painted a tile`);
+  ck('aStillWorldIsDrawnOnceASecond', r.paused && r.still >= 1 && r.still <= 3 && r.moving > r.still,
+    `paused behind the new-game screen: ${r.still} draws in 2.3s; the same world moving: ${r.moving}`);
+  ck('theFoundingRunsClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0,
+    errs[0] || 'no page errors');
+  await p.close();
+}
+
+/* ---- 7. THE OUTLINE INKS WHAT IT ALWAYS DID. The pass runs over every
+   procedural sprite as sprites.js parses, and was rewritten for speed (a
+   flat mask, four-neighbour growth, runs of fill); this is the old per-pixel
+   rule transcribed, against the live pass, on random sprites with soft
+   edges, at both widths the game uses. ---- */
+{
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await p.goto(url, { waitUntil: 'commit' });
+  await p.waitForFunction(() => typeof ART !== 'undefined' && ART.outline, null, { timeout: 15000 });
+  const r = await p.evaluate(() => {
+    const ref = (canvas, width) => {                  // the pass as it was written first
+      const g = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+      const d = g.getImageData(0, 0, w, h).data;
+      const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 96;
+      const edges = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (solid(x, y)) continue;
+        let near = false;
+        for (let dy = -width; dy <= width && !near; dy++) for (let dx = -width; dx <= width; dx++) {
+          if ((!dx && !dy) || Math.abs(dx) + Math.abs(dy) > width) continue;
+          if (solid(x + dx, y + dy)) { near = true; break; }
+        }
+        if (near) edges.push([x, y]);
+      }
+      g.fillStyle = 'rgba(20,16,10,' + ART.STYLE.OUTLINE_ALPHA + ')';
+      for (const [x, y] of edges) g.fillRect(x, y, 1, 1);
+    };
+    let seed = 99;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; };
+    let cases = 0, same = 0;
+    for (let k = 0; k < 160; k++) {
+      const w = 6 + (rnd() * 90 | 0), h = 6 + (rnd() * 90 | 0), width = k % 3 === 0 ? 2 : 1;
+      const a = document.createElement('canvas'); a.width = w; a.height = h;
+      const g = a.getContext('2d');
+      for (let j = 0; j < 24; j++) {
+        g.fillStyle = `rgba(${rnd() * 255 | 0},${rnd() * 255 | 0},${rnd() * 255 | 0},${[1, 0.2, 0.37, 0.38, 0.6][rnd() * 5 | 0]})`;
+        g.fillRect(rnd() * w | 0, rnd() * h | 0, 1 + rnd() * w / 3 | 0, 1 + rnd() * h / 3 | 0);
+      }
+      const c2 = document.createElement('canvas'); c2.width = w; c2.height = h; c2.getContext('2d').drawImage(a, 0, 0);
+      ref(a, width); ART.outline(c2, width);
+      const da = a.getContext('2d').getImageData(0, 0, w, h).data, db = c2.getContext('2d').getImageData(0, 0, w, h).data;
+      cases++;
+      let eq = true; for (let i = 0; i < da.length; i++) if (da[i] !== db[i]) { eq = false; break; }
+      if (eq) same++;
+    }
+    return { cases, same };
+  });
+  ck('theOutlineInksTheSamePixels', r.same === r.cases, `${r.same}/${r.cases} random sprites identical to the per-pixel rule`);
+  await p.close();
 }
 
 console.log(JSON.stringify(res, null, 1));

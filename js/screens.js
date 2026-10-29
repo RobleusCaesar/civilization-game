@@ -433,7 +433,7 @@ const Screens = {
         : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
       for (let i = 0; i < 160; i++) {
         const s = String((Math.random() * 1e9) | 0);
-        const g = MapGen.generate(s);
+        const g = MapGen.generate(s, undefined, true);   // the name alone (MapGen.generate's peek)
         if (g.landform === wantLf && (!tut || g.variant === 'classic')) { seed = s; break; }
       }
       if (!seed) seed = String((Math.random() * 1e9) | 0);   // the roll stands anyway

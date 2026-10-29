@@ -56,7 +56,13 @@ const MapGen = {
     return false;
   },
 
-  generate(seedStr, mode) {
+  /* `peek`: answer only the world's NAME — its landform and variant — and
+     stop before a single tile is painted. They are rolled first, off the
+     seed alone, by the very code below, so the answer is always the world
+     a full generate would lay; founding a run rolls seeds until the wished
+     landform comes up, and painting a whole map per roll was most of the
+     freeze between the trial tap and the origin cards. */
+  generate(seedStr, mode, peek) {
     const LEGACY = typeof window !== 'undefined' && !!window.__CLASSIC_WORLDS;   // tests only — see the variant roll
     const rnd = mulberry32(hashSeed(String(seedStr)));
     const W = CFG.W, H = CFG.H;
@@ -181,6 +187,7 @@ const MapGen = {
     const variant = MapGen.FORCE_VARIANT ||
       (typeof window !== 'undefined' && window.__CLASSIC_WORLDS ? 'classic' : null) ||
       MapGen.VARIANTS[landform][(vrnd() * 4) | 0];
+    if (peek) return { landform, variant };
     const V = {
       // waters: lakeland lakes / the other inland landforms' lakes
       lakeN: [7, 3], lakeNIn: [3, 2], lakeSize: 18, lakeSizeIn: 14, lakeGrow: 14,

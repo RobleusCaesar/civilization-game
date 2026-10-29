@@ -1463,25 +1463,53 @@ const Assets = {
      ramp in every master, or the recolor reads differently per tier. */
   TUNIC_KEY: { body: '#3f6d99', accent: '#2c4e70' },
   recolorTunic(canvas, tunic) {
-    // typeof, never window.: Sprites is a script-level const (the trap
-    // setUnitFrames below already documents — window.Sprites is undefined)
-    const t = typeof Sprites !== 'undefined' && Sprites.tunicCol && Sprites.tunicCol[tunic];
-    if (!t || tunic === 'blue') return canvas;         // blue IS the key — nothing to swap
-    const hx = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
-    const kb = hx(this.TUNIC_KEY.body), ka = hx(this.TUNIC_KEY.accent);
-    const nb = hx(t.body), na = hx(t.accent);
+    if (!this._dyes(tunic)) return canvas;             // blue IS the key — nothing to swap
     const g = canvas.getContext('2d');
     let d;
     try { d = g.getImageData(0, 0, canvas.width, canvas.height); }
     catch (e) { return canvas; }                       // tainted (file://) — recolor is a no-op there
-    const p = d.data;
+    if (!this._swapTunic(d.data, tunic)) return canvas;
+    g.putImageData(d, 0, 0);
+    return canvas;
+  },
+  // is there anything to dye? typeof, never window.: Sprites is a
+  // script-level const (the trap setUnitFrames below already documents)
+  _dyes(tunic) {
+    return tunic !== 'blue' && typeof Sprites !== 'undefined' && !!Sprites.tunicCol && !!Sprites.tunicCol[tunic];
+  },
+  /* the swap itself, on raw RGBA — shared by recolorTunic and the strip
+     install below, so the two can never dye a pixel differently. False
+     when there is nothing to swap (blue IS the key; an unknown tunic). */
+  _swapTunic(p, tunic) {
+    if (!this._dyes(tunic)) return false;
+    const t = Sprites.tunicCol[tunic];
+    const hx = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const kb = hx(this.TUNIC_KEY.body), ka = hx(this.TUNIC_KEY.accent);
+    const nb = hx(t.body), na = hx(t.accent);
     for (let i = 0; i < p.length; i += 4) {
       if (!p[i + 3]) continue;
       if (p[i] === kb[0] && p[i + 1] === kb[1] && p[i + 2] === kb[2]) { p[i] = nb[0]; p[i + 1] = nb[1]; p[i + 2] = nb[2]; }
       else if (p[i] === ka[0] && p[i + 1] === ka[1] && p[i + 2] === ka[2]) { p[i] = na[0]; p[i + 1] = na[1]; p[i + 2] = na[2]; }
     }
+    return true;
+  },
+  /* the whole STRIP dyed once, on a CPU-backed scratch canvas: one pixel
+     read per strip instead of one GPU readback per frame (a founded run
+     installs ~900 strips — the per-frame read was most of the main thread
+     while the origin cards were dealing). Null when nothing is swapped or
+     the pixels cannot be read; the frames then copy the strip as it is. */
+  _dyeStrip(img, tunic) {
+    if (!this._dyes(tunic)) return null;
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    let d;
+    try { d = g.getImageData(0, 0, c.width, c.height); }
+    catch (e) { return null; }                         // tainted (file://) — the frames keep the key colours
+    this._swapTunic(d.data, tunic);
     g.putImageData(d, 0, 0);
-    return canvas;
+    return c;
   },
   /* fetch one faction's tier art: NEUTRAL files on disk
      (unit-villager-l{tier}-{m|f}-{dir}-{pose}.png), installed under the
@@ -1502,11 +1530,8 @@ const Assets = {
       const key = 'villager-' + fac + '-' + tunic + '-l' + tier + '-' + sex;
       if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
       const img = new Image();
-      img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
-      img.onerror = () => {};
-      this._track(this._prio(img, this.stripPrio()));
-      img.src = this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
-        '.png?v=' + (CFG.ART_V || 1);
+      this._stripLoad(img, this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
+        '.png?v=' + (CFG.ART_V || 1), () => this.setUnitFrames(key, dir, pose, img, tunic));
     }
   },
   /* ---- MILITARY SHEET ART (the archer line ships first) ----
@@ -1543,7 +1568,13 @@ const Assets = {
                   rider:       ['idle', 'walk', 'fight'],
                   horsearcher: ['idle', 'walk', 'fight'],
                   lancer:      ['idle', 'walk', 'fight'] },
-  loadMilitaryArt(owner) {
+  /* `later`: the strips go in the background tier — fetched behind the
+     counted ones and never waited for by artReady(). A FRESH run asks it for
+     the rival's soldiers and sappers (G.newGame): they stand in their own
+     town under the fog for the opening days, and a third of the strips a
+     founding asks for is the rival's army — the plaque after the draft
+     waits only for the people the player can see or field. */
+  loadMilitaryArt(owner, later) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;
     const fac = owner === 'A' ? 'a' : 'p';
@@ -1555,10 +1586,8 @@ const Assets = {
       const key = kind + '-' + fac + '-' + tunic;
       if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
       const img = new Image();
-      img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
-      img.onerror = () => {};                  // absent art is the default state
-      this._track(this._prio(img, this.stripPrio()));
-      img.src = this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
+      this._stripLoad(img, this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+        () => this.setUnitFrames(key, dir, pose, img, tunic), later);
     }
   },
   /* ---- SAPPER TIER ART: villager doctrine, camp-leveled, no sex axis ----
@@ -1572,7 +1601,7 @@ const Assets = {
                       walk: ['s','se','e','ne','n','nw','w','sw'],
                       dig: ['s','e','n','w'], bridge: ['s','e','n','w'],
                       clear: ['s','e','n','w'], mound: ['s','e','n','w'] },
-  loadSapperArt(owner) {
+  loadSapperArt(owner, later) {          // `later`: see loadMilitaryArt
     if (!window.R || typeof G === 'undefined') return;
     const tier = R.sapperTier(owner);
     const fac = owner === 'A' ? 'a' : 'p';
@@ -1581,11 +1610,71 @@ const Assets = {
     for (const pose in this.SAPPER_POSE_DIRS) for (const dir of this.SAPPER_POSE_DIRS[pose]) {
       if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
       const img = new Image();
-      img.onload = () => { this.setUnitFrames(key, dir, pose, img, tunic); };
-      img.onerror = () => {};                  // absent art is the default state
-      this._track(this._prio(img, this.stripPrio()));
-      img.src = this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1);
+      this._stripLoad(img, this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+        () => this.setUnitFrames(key, dir, pose, img, tunic), later);
     }
+  },
+  /* A STRIP IS FETCHED A FEW AT A TIME, INSTALLED IN SLICES, AND COUNTED
+     UNTIL IT IS. Founding a run asks for ~900 people strips at once, and on
+     a phone that was a wall of main-thread work just as the origin cards
+     dealt: every response is processed on the main thread as it lands, and
+     each strip was cut into frame canvases (and dyed) inside its own onload
+     — the deal and the flips were held for seconds (the playtest: "the
+     first card pops quickly, the other two are slow to load"). Now at most
+     STRIP_FLIGHT strips are on the wire (the people ahead of the wild
+     beasts), each landed strip waits in a queue drained a few milliseconds
+     at a time between frames (more behind the splash, where nothing else is
+     drawn), and the request stays counted (pending / pendingLate) until its
+     strip is INSTALLED, never merely downloaded — artReady() still means
+     "the people are drawn". */
+  STRIP_FLIGHT: 8,
+  INSTALL_MS: 10,
+  _stripQ: [], _stripQLate: [], _stripFlying: 0,
+  _installQ: [], _installOn: false,
+  _stripLoad(img, url, install, late) {
+    const done = late ? this._holdLate() : this._hold(false);
+    const landed = () => { this._stripFlying--; this._pumpStrips(); };
+    img.onload = () => { landed(); this._queueInstall(install, done); };
+    img.onerror = () => { landed(); done(); };   // absent art is the default state
+    this._prio(img, late ? 'low' : this.stripPrio());
+    (late ? this._stripQLate : this._stripQ).push([img, url]);
+    this._pumpStrips();
+  },
+  _pumpStrips() {
+    while (this._stripFlying < this.STRIP_FLIGHT) {
+      const next = this._stripQ.shift() || this._stripQLate.shift();
+      if (!next) return;
+      this._stripFlying++;
+      next[0].src = next[1];
+    }
+  },
+  _queueInstall(fn, done) {
+    this._installQ.push([fn, done]);
+    if (this._installOn) return;
+    this._installOn = true;
+    this._nextSlice();
+  },
+  /* the next slice as its own task, after whatever is waiting — a message
+     rather than a timer, whose 4ms clamp on a chain left the thread idle */
+  _nextSlice() {
+    if (typeof MessageChannel === 'undefined') { setTimeout(() => this._drainInstalls(), 0); return; }
+    if (!this._sliceCh) {
+      this._sliceCh = new MessageChannel();
+      this._sliceCh.port1.onmessage = () => this._drainInstalls();
+    }
+    this._sliceCh.port2.postMessage(0);
+  },
+  _drainInstalls() {
+    const budget = (typeof document !== 'undefined' && document.getElementById('splash')) ? 40 : this.INSTALL_MS;
+    const t0 = performance.now();
+    while (this._installQ.length) {
+      const [fn, done] = this._installQ.shift();
+      try { fn(); } catch (e) { /* a bad strip keeps the procedural cast */ }
+      if (done) done();
+      if (performance.now() - t0 >= budget) break;
+    }
+    if (this._installQ.length) this._nextSlice();
+    else this._installOn = false;
   },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
@@ -1629,10 +1718,7 @@ const Assets = {
   },
   _tryLoadUnit(kind, dir, pose) {
     const img = new Image();
-    img.onload = () => { this.setUnitFrames(kind, dir, pose, img); };
-    img.onerror = () => {};                    // absent art is the default state
-    this._track(this._prio(img, 'low'), false, true);   // the LATE tier — see _track
-    img.src = this.unitUrl(kind, dir, pose);
+    this._stripLoad(img, this.unitUrl(kind, dir, pose), () => this.setUnitFrames(kind, dir, pose, img), true);   // the LATE tier — see _track
   },
   setUnitFrames(kind, dir, pose, img, tunic) {
     if (!img || !img.height) return false;
@@ -1647,14 +1733,16 @@ const Assets = {
       }
       return false;
     }
+    // villager variants bake their faction's tunic at install — once,
+    // here, and never again (the recolor-exactly-once rule) — on the whole
+    // strip before it is cut, so the dye costs one read, not one per frame
+    const src = (tunic && this._dyeStrip(img, tunic)) || img;
     const frames = [];
     for (let i = 0; i < n; i++) {
       const c = document.createElement('canvas');
       c.width = fh; c.height = fh;
-      c.getContext('2d').drawImage(img, i * fh, 0, fh, fh, 0, 0, fh, fh);
-      // villager variants bake their faction's tunic at install — once,
-      // here, and never again (the recolor-exactly-once rule)
-      frames.push(tunic ? this.recolorTunic(c, tunic) : c);
+      c.getContext('2d').drawImage(src, i * fh, 0, fh, fh, 0, 0, fh, fh);
+      frames.push(c);
     }
     const ua = this.unitArt[kind] || (this.unitArt[kind] = { dirs: {} });
     const d = ua.dirs[dir] || (ua.dirs[dir] = {});
@@ -2078,20 +2166,34 @@ const Assets = {
   pendingLate: 0,
   allArtReady() { return this.ready && this.pending <= 0 && this.pendingLate <= 0; },
   _track(img, world, late) {
-    if (late) {
-      this.pendingLate++;
-      const doneLate = () => { this.pendingLate--; if (this.pendingLate < 0) this.pendingLate = 0; };
-      img.addEventListener('load', doneLate); img.addEventListener('error', doneLate);
-      return img;
-    }
+    const done = late ? this._holdLate() : this._hold(world);
+    img.addEventListener('load', done); img.addEventListener('error', done);
+    return img;
+  },
+  /* one request counted, and the call that lets it go — what _track hangs
+     on load/error, and what a strip spends only once it is INSTALLED
+     (_stripLoad). Spent once, however often it is called. */
+  _hold(world) {
     this.pending++; if (world) this.pendingWorld++;
-    const done = () => {
+    let spent = false;
+    return () => {
+      if (spent) return;
+      spent = true;
       this.pending--;
       if (world) { this.pendingWorld--; if (this.pendingWorld <= 0) { this.pendingWorld = 0; this._onIdle(); const w = this._idleWorld; this._idleWorld = []; for (const r of w) r(); } }
       if (this.pending <= 0) { this.pending = 0; this._everIdle = true; this._onIdle(); const w = this._idle; this._idle = []; for (const r of w) r(); }
     };
-    img.addEventListener('load', done); img.addEventListener('error', done);
-    return img;
+  },
+  _holdLate() {
+    this.pendingLate++;
+    let spent = false;
+    const done = () => {
+      if (spent) return;
+      spent = true;
+      this.pendingLate--; if (this.pendingLate < 0) this.pendingLate = 0;
+    };
+    done.late = true;                          // what the boot contract tells apart in the install queue
+    return done;
   },
   whenIdle() { return this.pending > 0 || !this.ready ? new Promise(r => this._idle.push(r)) : Promise.resolve(); },
   /* ONE REBUILD PER BURST, WHATEVER THE NETWORK'S PACE. Every world-art

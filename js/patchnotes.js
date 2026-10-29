@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 111, date: '2026-10-29', title: 'A quicker start',
+    items: [
+      'Starting a new game is much smoother: the origin cards deal and turn over straight away instead of stalling while the game loads its people.',
+      'The game opens a little faster, especially on older phones.',
+    ],
+  },
+  {
     build: 110, date: '2026-10-29', title: 'Roomier end screens',
     items: [
       'On a phone, the victory and defeat screens show your final score on one line and drop the day and difficulty, so the buttons fit on the screen.',

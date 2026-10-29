@@ -3515,6 +3515,38 @@ markup (and the four in the boot block) carry `?v=N` written out in full,
 the contract measures that every one of them equals `CFG.ART_V`, and new
 title art means bumping the constant and restamping them in the same commit
 (`bump.cjs art` restamps both).
+**THE FOUNDING NEVER HOLDS THE CARDS** (`tests/boot.mjs` §6–7, build 111 — a
+playtest: "super laggy… the first card pops quickly, the other two are slow
+to load"). Founding a run asks for ~900 people strips, and on a 4×-throttled
+phone profile every response and every install landed on the main thread at
+once: the three origin flips came at 3.3 / 4.2 / 6.4 s after the trial tap.
+Now ~1.5–2.3 s (their own schedule), with the frames behind the draft 2–3×
+more frequent and the art ready no later. Six rules. **A strip waits its
+turn** (`Assets._stripLoad` / `_pumpStrips`): at most `STRIP_FLIGHT` (8) on
+the wire, the people ahead of the wild beasts. **It installs in slices**
+(`_queueInstall` / `_drainInstalls`, `INSTALL_MS` 10, 40 behind the splash,
+a MessageChannel per slice — a timer chain's 4ms clamp idled the thread) and
+**is counted until INSTALLED** (`_hold` / `_holdLate` are spent by the
+install, never by `load`), so `artReady()` still means the people are drawn.
+**A strip is dyed ONCE** (`_dyeStrip`, on a CPU scratch, before it is cut —
+one pixel read per strip where every frame canvas used to be read back;
+`_swapTunic` is the one pixel rule `recolorTunic` shares). **A fresh run
+fetches the rival's army and sappers in the background tier**
+(`loadMilitaryArt` / `loadSapperArt`'s `later`, from `G.newGame` only — a
+load keeps them counted): they stand under the fog for the opening days.
+**The wished landform is PEEKED** (`MapGen.generate(seed, mode, true)` returns
+`{landform, variant}` before a tile is painted — the same code, so the same
+answer), where `foundRun` used to paint a whole map per rolled seed. **A
+STILL world is drawn once a second** behind a shell screen
+(`G.SHELL_STILL_MS`): `Screens.show` pauses a real world off the playing
+screen, so the draft's backdrop does not move, and redrawing it every 130ms
+was the biggest cost behind the cards once the bake was done; the title's
+demo keeps the glance rate. And **the outline pass is a flat mask** (four-
+neighbour growth, runs of fill — §7 holds it pixel-identical to the
+per-pixel rule), about half the parse-time sprite build before. One caution
+from measuring it: headless Chromium rasterises "GPU" canvases in software,
+so a commit-time cost there is not a phone's — compare old and new on the
+SAME harness, and read `(program)` in a profile through a trace.
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a

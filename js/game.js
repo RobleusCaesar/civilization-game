@@ -353,8 +353,10 @@ const G = {
        where the procedural cast is the documented fallback. */
     if (!(window.Screens && Screens._demo)) {
       Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
-      Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
-      Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
+      Assets.loadMilitaryArt('P'); Assets.loadSapperArt('P');
+      // the rival's army and sappers stand under the fog for the opening
+      // days: fetched behind the people, never held for (Assets.loadMilitaryArt)
+      Assets.loadMilitaryArt('A', true); Assets.loadSapperArt('A', true);
     }
     // seed the homestead memory QUIETLY: a town that starts or loads already
     // bonded keeps its bonus without celebrating bonds it has had for days
@@ -3138,6 +3140,7 @@ const G = {
     }
   },
   SHELL_DRAW_MS: 130,     // how often the world is repainted behind a shell screen
+  SHELL_STILL_MS: 1000,   // …and a paused world (the draft, the pause menu), which does not move
   // the title's painted backdrop, decoded and on the page (same file the
   // splash shows, so the cross-fade has no scene change in it)
   titleGlenUp() {
@@ -3237,7 +3240,13 @@ const G = {
         // all: there is nothing worth showing through the gradient but a
         // half-painted map, and the frames are wanted for the baking
         if (R._bake || R._bakeDue) skip = true;
-        else if (t - (G._shellDrawT || 0) < G.SHELL_DRAW_MS) skip = true;
+        /* …and a world that is STANDING STILL — a founded run held behind the
+           draft, the new-game screen or the pause menu (Screens.show pauses
+           it) — has nothing new to show at all, so it is drawn once a second:
+           enough to pick up art landing or the bake finishing, and the thread
+           goes to the cards and the people's strips (the playtest's laggy
+           draft). The title's demo world moves, and keeps the glance rate. */
+        else if (t - (G._shellDrawT || 0) < (S.paused && !(window.Screens && Screens._demo) ? G.SHELL_STILL_MS : G.SHELL_DRAW_MS)) skip = true;
         else G._shellDrawT = t;
       }
       if (!skip) G._safe(() => R.draw(dt), 'render');
