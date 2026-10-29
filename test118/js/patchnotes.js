@@ -19,12 +19,19 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 117, date: '2026-10-29', title: 'The sound of the valley',
+    build: 118, date: '2026-10-29', title: 'The sound of the valley',
     items: [
       'A new theme plays over the title and your town.',
       'Battle music builds as your army marches on the rival town and beats through the fight, then fades back to the theme when it is over.',
       'New sounds for the work and the wars of your people: axes, picks, rakes and hammers, blades, bows, siege engines and hooves.',
       'You hear what you are looking at. Sounds off screen are silent, those at the edges are soft, and your own soldiers lead the battle sound.',
+    ],
+  },
+  {
+    build: 117, date: '2026-10-29', title: 'A higher top bar',
+    items: [
+      'On an iPhone home-screen app, the top bar sits higher, so your food, wood, stone and gold are closer to the clock and the map has a little more room.',
+      'The thin gold line where the top and bottom bars meet the map now runs straight across, a shade quieter.',
     ],
   },
   {
