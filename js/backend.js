@@ -290,15 +290,19 @@ const Backend = {
     if (this.testSlot(loc)) return false;                          // …and so is the test slot
     return true;
   },
-  /* THE TEST SLOT (.github/workflows/pages.yml): the `staging` branch is
-     served at /test/ on the live host, for the operator to play a build
-     before it goes to main. Nothing leaves it — its games are not the
-     players', and its build number must not open a release on the
-     dashboard before the release is real. It wears a TEST badge
-     (Screens.init) so it is never mistaken for the live game. */
+  /* A TEST BUILD (CLAUDE.md, "THE TEST BUILD"): the `staging` branch is
+     played before it goes to main — served straight off GitHub by
+     raw.githack.com, or from any /test/ path. Nothing leaves it: its games
+     are not the players', and its build number must not open a release on
+     the dashboard before the release is real. Any https page that is not
+     the live site is one, and wears a TEST BUILD badge (Screens.init) so it
+     is never mistaken for the live game; a page from disk or a local server
+     is a developer's, and wears nothing. */
   testSlot(loc) {
     loc = loc || (typeof location !== 'undefined' ? location : null);
-    return !!loc && /(^|\/)test(\/|$)/.test(String(loc.pathname || ''));
+    if (!loc) return false;
+    if (/(^|\/)test(\/|$)/.test(String(loc.pathname || ''))) return true;
+    return loc.protocol === 'https:' && !this.PROD_HOSTS.includes(String(loc.hostname || '').toLowerCase());
   },
 
   /* every row says which BUILD it was played on (the dashboard's release

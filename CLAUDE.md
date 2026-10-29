@@ -3612,18 +3612,23 @@ card instead; the real-time failsafe still collapses a card whatever the
 fire does. **A PAINTER STANDS DOWN**: without the title's helpers (a cached
 older titlescreen.js) the frames are not built and the old wood face shows.
 
-**THE TEST SLOT** (`.github/workflows/pages.yml`, `Backend.testSlot`): the
-`staging` branch is served at `/test/` on the live host (clanfire.online/test/)
-beside the live game, for the operator to play a build before it goes to
-main. The Pages workflow checks main out at the root and staging into
-`test/` (game files only; a missing branch just leaves the slot out), and is
-run by hand (workflow_dispatch) after a push to staging — a push to staging
-never deploys anything by itself, and nothing on main changes. NOTHING
-LEAVES THE SLOT: `Backend.telemetryAllowed` answers no on a `/test/` path, so
-no telemetry, no feedback relay and no deck sync (its games are not the
-players', and its build number must not open a release on the dashboard
-before the release is real). It wears a TEST BUILD badge (`Screens.init`).
-It shares the live game's ORIGIN, so it shares this device's saves and deck.
+**THE TEST BUILD** (`Backend.testSlot`, tests/telemetry.mjs): a build the
+operator plays before it goes to main lives on the `staging` branch and is
+served straight off GitHub by raw.githack.com —
+`https://raw.githack.com/RobleusCaesar/civilization-game/staging/index.html`
+(the repository is public; every path in the game is relative, so it runs
+as it does on Pages). No deploy and no change to main: a push to `staging`
+is live there within minutes, and a code `?v=` bump keeps a phone from
+holding older scripts. It is its OWN ORIGIN, so its saves, deck and tutorial
+memory are its own and never touch the live game's. NOTHING LEAVES IT:
+it is not one of `PROD_HOSTS`, so `telemetryAllowed` answers no — no
+telemetry, no feedback relay, no deck sync, no board post (its games are
+not the players', and its build number must not open a release on the
+dashboard before the release is real). Any https page that is not the live
+site (and any `/test/` path) is a test build and wears a TEST BUILD badge
+(`Screens.init`); a page from disk or a local server wears nothing. A
+`/test/` slot on the live host was considered and set aside: it needs a
+change to main's deploy, and it would share the live game's saves.
 
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the

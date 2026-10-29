@@ -124,11 +124,18 @@ const MOCK = `
       slotRepo: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'robleuscaesar.github.io', search: '', pathname: '/civilization-game/test/' }),
       livePage: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/index.html' }),
       testsLike: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/tests/x.html' }),
+      // the staging branch served straight off GitHub: a test build, badged, silent
+      hack: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'raw.githack.com', search: '', pathname: '/RobleusCaesar/civilization-game/staging/index.html' }),
+      hackBadge: Backend.testSlot({ protocol: 'https:', hostname: 'raw.githack.com', search: '', pathname: '/RobleusCaesar/civilization-game/staging/index.html' }),
+      liveBadge: Backend.testSlot({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/' }),
+      diskBadge: Backend.testSlot({ protocol: 'file:', hostname: '', search: '', pathname: '/home/x/index.html' }),
+      localBadge: Backend.testSlot({ protocol: 'http:', hostname: 'localhost', search: '', pathname: '/index.html' }),
     };
   });
   ck('theShippedHostsAnswerYes', t.site && t.www && t.pages && t.caps, JSON.stringify(t));
   ck('andEveryOtherOriginAnswersNo', !t.http && !t.dev && !t.devAmp && !t.local && !t.loop && !t.lookalike && !t.none, JSON.stringify(t));
-  ck('theTestSlotSendsNothing', !t.slot && !t.slotPage && !t.slotRepo && t.livePage && t.testsLike, JSON.stringify(t));
+  ck('theTestSlotSendsNothing', !t.slot && !t.slotPage && !t.slotRepo && !t.hack && t.livePage && t.testsLike, JSON.stringify(t));
+  ck('andATestBuildIsBadgedTheLiveGameNever', t.hackBadge && !t.liveBadge && !t.diskBadge && !t.localBadge, JSON.stringify(t));
   ck('theDiskPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await p.close();
 }
