@@ -210,7 +210,7 @@ node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/
 node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
 node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast; each animal strip holds ITS OWN view (front/rear narrow, profiles wide)
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
-node tests/audio.mjs         # the game's voice: nothing on the wire, two switches and two dials (mute and zero are one state), throttled per kind, and the music is generated rather than looped
+node tests/audio.mjs         # the game's voice: nothing fetched before a gesture, two switches and two dials (mute and zero are one state); the recorded theme, the battle that answers the player's attack (timed on the march, back to the theme when it ends), and the effects heard by what the camera sees (a quiet din of work, blows capped and muted, the foe faint unless alone); a recording that will not play stands down to the synthesised voice
 node tests/wild-grass.mjs    # the meadow + taming on build: cover writes no map arrays, kept ground DERIVED from standing buildings (grows back on raze, byte-identical), the flatten fires from Bld.finish alone, the 32px cover-art door snaps alpha binary
 node tests/frame-hotpath.mjs  # the late-game town costs no more per tile: Bld.at is an index (= the linear definition on every tile), the building loop culls to the camera, the cull changes no pixel; a siege frame redraws only the water that moved, and a fallen building's verge grows back in slices
 node tests/worn-paths.mjs     # the ground wears where WORK walks: distinct days, never a march, never in the fog; a band not a square; repaint == rebake; few roads, worth walking (+10%), the road calls the walker
@@ -1329,7 +1329,7 @@ within 3 tiles of its prey, counted on the board alone (`R.krakenBodyAt` asks
 `MapGen.onBoard`, §8); a tentacle rears and slams on the beat the boat is
 taken, and every hull taken is SEEN seized and pulled under in a splash.
 **THEY ARE HEARD**: `roar`, `breath`, `kraken`, `splash` are synthesized
-voices (no audio ships). **A PAINTER STANDS DOWN**: with a strip missing,
+voices (the beasts carry no recording). **A PAINTER STANDS DOWN**: with a strip missing,
 `drawDragonOld` / `drawKrakenOld` (the procedural creatures) draw instead.
 
 **Wall line** (`tests/wall-line.mjs`, details in `RIVAL_AI.md`): the rival's
@@ -4738,8 +4738,8 @@ state never rides on color alone (slash/check/hourglass shapes); effect
 radii (tower range, farm orchard reach, war-camp range + build reach) as
 dashed rings. Measured on the dense day-320 save: frame p50/p95 UNCHANGED
 with the overlay on, map build ~1–11ms on entry only. `UI.cue` is the
-subtle audio/haptic tick (localStorage `neo-sfx`='0' silences; there is no
-other sound system yet). All placement state is UI-local, never saved;
+subtle haptic tick and hands its sound to `Sound` (localStorage `neo-sfx`='0'
+silences it; **THE GAME'S VOICE** below). All placement state is UI-local, never saved;
 `exitPlacement` is the only exit and newGame/loadJSON both call it.
 
 **The boot sequence** (`tests/boot.mjs`): the game used to open on a BLACK
