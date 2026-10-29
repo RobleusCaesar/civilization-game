@@ -1,0 +1,2479 @@
+"use strict";
+/* Assets — the hand-authored art pipeline (full rules + workflow: ART_PLAN.md).
+
+   The game is fully playable with zero image files: every sprite is drawn
+   procedurally by sprites.js/artstyle.js at boot. Real PNG art replaces a
+   building's procedural sprite BY FILENAME ALONE — no manifest, no code:
+
+       assets/buildings/{id}-l{level}.png        (all lowercase — GitHub
+                                                  Pages is case-sensitive)
+
+   At startup every valid id/level slot's URL is tried. A load success swaps
+   the image into BOTH tribes' sprite tables (the architecture is shared;
+   banners and owner pips carry the faction — the same deal the old manifest
+   made for the hall); a miss keeps the procedural drawable. There is no
+   loading gate and no blank frame: procedural art renders from the first
+   frame and each PNG swaps in whenever it decodes.
+
+   Optional per-asset sidecar, read only AFTER its PNG loads (a missing file
+   is the default, never an error):
+
+       assets/buildings/{id}-l{level}.json
+       { "offsetX": 0, "offsetY": 0, "scale": 1 }
+
+   offsets are fractions of the footprint, scale is a multiplier — they feed
+   the ONE shared anchoring rule in R.blitBld (bottom-center on the
+   footprint, scaled to footprint width, aspect preserved, tall art
+   overhangs upward). Per-building tuning lives in the sidecar, never in code.
+
+   ?dev=1 (js/dev.js) drops PNGs into these same slots live, through
+   setBuildingArt below, so the preview is byte-for-byte what ships.
+
+   A raider camp is the one exception to "one id, one PNG": its look belongs
+   to its PEOPLE (wolf/flint/broken/woad/sea — CFG.TRIBES, not to be confused
+   with the two player factions above), so it gets its own parallel
+   convention, assets/buildings/camp-{tribe}.png, just below.
+
+   The legacy `_slot` key grammar and drawSprite() survive for the
+   procedural tables they address (misc/ work-site art, ui/card motifs) —
+   only the atlas manifest is gone. */
+
+const Assets = {
+  ready: false,      // init has kicked off (loads resolve in the background)
+  loaded: {},        // slot key -> true where an image replaced procedural art
+  failed: [],        // kept for diagnostics symmetry (a missing PNG is EXPECTED, never recorded)
+  art: {},           // 'id-lN' -> HTMLImageElement, or null once its URL 404'd
+  ui: { card: {} },  // ui/card/<key> drawables (Origin Cards art)
+
+  ART_DIR: 'assets/buildings/',
+  /* what the {id}-l{level}.png convention does NOT cover, and why
+     (ART_PLAN.md): walls and gates tile from 16-mask atlases (one rectangle
+     cannot be a curtain); the wonder's art is per-monument, rolled per run
+     (one PNG would stamp all ten); a raider camp's look belongs to its
+     PEOPLE, not its building id — it has its OWN convention just below
+     (camp-{tribe}.png), because one id would otherwise need five looks. */
+  EXCLUDE: ['wall', 'gate', 'wonder', 'raidercamp'],
+
+  /* ---- CAMP ART: one PNG per PEOPLE, not per building id ----
+
+       assets/buildings/camp-{tribe}.png
+
+     {tribe} is a CFG.TRIBES key (wolf, flint, broken, woad, sea today) —
+     derived, never hand-kept, so a new tribe added to CFG.TRIBES gets a slot
+     for free. A hit replaces Sprites.camp[tribe] (the drawable R.bldSprite
+     and the panel icon already read by tribe — see render.js/ui.js); a miss
+     leaves the procedural TRIBE_CAMP look. Same _cfArt marker, same sidecar,
+     same cache-buster, same ?dev=1 injection path as building art — just a
+     different filename shape and a different install point. */
+  campTribes() { return CFG.TRIBES.map(t => t.key); },
+  campSlotKey(tribe) { return 'camp-' + tribe; },
+  campName(tribe) { return this.campSlotKey(tribe).toLowerCase() + '.png'; },
+  campUrl(tribe) { return this.ART_DIR + this.campName(tribe) + '?v=' + (CFG.ART_V || 1); },
+
+  _tryLoadCamp(tribe) {
+    const img = new Image();
+    const k = this.campSlotKey(tribe);
+    img.onload = async () => {
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.ART_DIR + k + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setCampArt(tribe, img, meta);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
+    img.src = this.campUrl(tribe);
+  },
+
+  /* install a PNG as one people's camp look — startup and ?dev=1 both land
+     HERE. Sprites.camp[tribe] is what R.bldSprite (render.js) and the panel
+     icon (ui.js) already read by tribe; no other code needed to change for
+     the swap to take. */
+  setCampArt(tribe, img, meta) {
+    if (this.campTribes().indexOf(tribe) < 0 || !Sprites.camp) return false;
+    img._cfArt = {
+      ox: (meta && isFinite(+meta.offsetX)) ? +meta.offsetX : 0,
+      oy: (meta && isFinite(+meta.offsetY)) ? +meta.offsetY : 0,
+      scale: (meta && isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+    };
+    Sprites.camp[tribe] = img;
+    const k = this.campSlotKey(tribe);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+  /* ---- CAMP PROP ART: override ONE prop of one people's dressing ----
+
+       assets/buildings/camp-{tribe}-prop{1..4}.png
+
+     The index is the prop's position in that people's set — the order
+     CLAUDE.md lists them in (e.g. wolf: 1 skull pike, 2 pelt frame, 3 bone
+     heap, 4 strung game). A hit replaces exactly that prop; the other three
+     keep their procedural look, so a set can be upgraded one file at a
+     time. Drawn by R.drawCampDress into a ONE-TILE box — author at 64 or
+     128px square on a transparent ground, feet at the bottom. Same
+     cache-buster and the same ?dev=1 injection path as every other PNG. */
+  CAMP_PROP_N: 4,
+  campPropSlotKey(tribe, i) { return 'camp-' + tribe + '-prop' + i; },
+  campPropName(tribe, i) { return this.campPropSlotKey(tribe, i).toLowerCase() + '.png'; },
+  campPropUrl(tribe, i) { return this.ART_DIR + this.campPropName(tribe, i) + '?v=' + (CFG.ART_V || 1); },
+  campProps: {},               // tribe -> { [1..4]: img }
+  _tryLoadCampProp(tribe, i) {
+    const img = new Image();
+    const k = this.campPropSlotKey(tribe, i);
+    img.onload = () => {
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setCampPropArt(tribe, i, img);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
+    img.src = this.campPropUrl(tribe, i);
+  },
+  setCampPropArt(tribe, i, img) {
+    if (this.campTribes().indexOf(tribe) < 0) return false;
+    i = +i;
+    if (!(i >= 1 && i <= this.CAMP_PROP_N)) return false;
+    (this.campProps[tribe] = this.campProps[tribe] || {})[i] = img;
+    const k = this.campPropSlotKey(tribe, i);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+  /* ---- WONDER ART: one PNG per MONUMENT, not per building id ----
+
+       assets/buildings/wonder-{key}.png
+
+     {key} is a CFG.WONDERS key (henge, colossus, moai, …) — DERIVED, never
+     hand-kept, so an eleventh monument gets a slot for free. The single
+     `wonder` building id serves all ten (rolled per run), which is exactly
+     why it was left out of the {id}-l{level}.png convention — one PNG would
+     stamp every monument. This shape keys the art the way the game keys the
+     roll. A hit lands in Sprites.wonders[key] — the dictionary
+     Sprites.useWonder copies the run's monument out of — so the menu icon,
+     panel, R.bldSprite, burn variants, fog ghost and the scaffold's
+     stage-three reveal all take it with no call-site changes; a 404 keeps
+     the procedural drawing. The _cfArt marker rides along so a TALL
+     monument (the obelisk) keeps its aspect and overhangs upward through
+     artRect instead of being squashed into the 3x3 square. */
+  wonderKeys() { return (CFG.WONDERS || []).map(w => w.key); },
+  wonderSlotKey(key) { return 'wonder-' + key; },
+  wonderArtName(key) { return this.wonderSlotKey(key).toLowerCase() + '.png'; },
+  wonderArtUrl(key) { return this.ART_DIR + this.wonderArtName(key) + '?v=' + (CFG.ART_V || 1); },
+  _tryLoadWonder(key) {
+    const img = new Image();
+    const k = this.wonderSlotKey(key);
+    img.onload = async () => {
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.ART_DIR + k + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setWonderArt(key, img, meta);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
+    img.src = this.wonderArtUrl(key);
+  },
+  setWonderArt(key, img, meta) {
+    // bare `Sprites`, never window.Sprites — it is a script-level const (the
+    // same trap G.setWonder's comment records)
+    if (this.wonderKeys().indexOf(key) < 0 || typeof Sprites === 'undefined' || !Sprites.wonders) return false;
+    img._cfArt = {
+      ox: (meta && isFinite(+meta.offsetX)) ? +meta.offsetX : 0,
+      oy: (meta && isFinite(+meta.offsetY)) ? +meta.offsetY : 0,
+      scale: (meta && isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+    };
+    Sprites.wonders[key] = img;
+    // the run's monument may already be standing — re-point the live slot
+    if (window.S && S.wonder === key && Sprites.useWonder) Sprites.useWonder(key);
+    const k = this.wonderSlotKey(key);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+
+  /* standalone PROPS — composited sprites that are not a building's own
+     rectangle. One fixed URL per prop key; same swap-in rules as buildings.
+
+     THE WORK-SITE SET is here too, and it is shared ON PURPOSE: a raising is
+     drawn per SHAPE and FOOTPRINT, never per building key, because that is
+     how sites actually differ (R.stageShape — round kinds raise a HUT,
+     roofed kinds a HALL, worker plots and ground-level yards a YARD). Eight
+     pieces cover all 46 key/level slots the derived route serves; barracks
+     L1 and range L1 share one, which is the pair the operator named. Each
+     is optional: a 404 leaves the derived look standing, and a building
+     with its OWN bespoke set (the tower) never reaches these at all. */
+  PROPS: {
+    'misc/campfireTc': 'assets/misc/campfire-tc.png',
+    'misc/buildSite1': 'assets/misc/build-site-1.png',
+    'misc/buildSite2': 'assets/misc/build-site-2.png',
+    'misc/buildFrameHut1': 'assets/misc/build-frame-hut-1.png',
+    'misc/buildFrameHut2': 'assets/misc/build-frame-hut-2.png',
+    'misc/buildFrameHall1': 'assets/misc/build-frame-hall-1.png',
+    'misc/buildFrameHall2': 'assets/misc/build-frame-hall-2.png',
+    'misc/buildFrameYard1': 'assets/misc/build-frame-yard-1.png',
+    'misc/buildFrameYard2': 'assets/misc/build-frame-yard-2.png',
+  },
+  // which PROPS are work-site art: off the demo world's critical path
+  WORK_SITE_RE: /^misc\/build(Site|Frame)/,
+
+  /* ---- ORIGIN CARD ICONS: one PNG per MOTIF, not per card ----
+
+       assets/icons/cards/origin-{motif}.png        256x256, true alpha
+
+     {motif} is a Cards.DEFS motif key (hearth, spears, rider, …) — DERIVED
+     from the card table, never hand-kept, so a new card gets a slot for
+     free. A hit installs into the ui/card/<cardKey> slot of EVERY card
+     wearing that motif (1:1 today, but shared motifs stay correct), which
+     is exactly what Cards.drawMotif already prefers over the procedural
+     64-grid drawing — so every render site takes the image with zero code
+     at the call sites. A 404 keeps the procedural motif, the same deal
+     every other convention makes. Same lowercase rule, same ?v= buster.
+
+     ASKED FOR, NEVER PROBED (tests/draft-cards.mjs): the boot used to fetch
+     all 26 to show three of them a whole menu later. A run asks for the
+     three it dealt (Screens.onDraft → wantOrigins) the moment the draft
+     opens; the cards deal face-down for half a second first, and a picture
+     still on its way leaves its window empty rather than flash the drawn
+     stand-in (originState 'loading'). Untracked: no draft waits on them,
+     and artReady() never counts them. */
+  ORIGIN_DIR: 'assets/icons/cards/',
+  originMotifs() {
+    if (!window.Cards || !Cards.DEFS) return [];
+    const seen = {}, out = [];
+    for (const k of Object.keys(Cards.DEFS)) {
+      const m = Cards.DEFS[k].motif;
+      if (m && !seen[m]) { seen[m] = true; out.push(m); }
+    }
+    return out;
+  },
+  // the canonical filename — ALWAYS lowercase; Pages serves case-sensitively
+  originName(motif) { return 'origin-' + String(motif).toLowerCase() + '.png'; },
+  originUrl(motif) { return this.ORIGIN_DIR + this.originName(motif) + '?v=' + (CFG.ART_V || 1); },
+  _origin: {},          // motif -> 'loading' | 'ok' | 'fail' (asked-for icons only)
+  originState(motif) { return this._origin[motif]; },
+  wantOrigins(motifs) {
+    for (const m of motifs || []) if (m && !this._origin[m]) this._tryLoadOrigin(m);
+  },
+  _tryLoadOrigin(motif) {
+    this._origin[motif] = 'loading';
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => { this._origin[motif] = 'ok'; this.setOriginArt(motif, img); };
+    // no icon — the procedural motif stands, painted into every card waiting on it
+    img.onerror = () => { this._origin[motif] = 'fail'; this._repaintOrigin(motif); };
+    img.src = this.originUrl(motif);
+  },
+  _repaintOrigin(motif) {
+    if (typeof document === 'undefined' || !window.Cards) return;
+    for (const c of document.querySelectorAll('canvas')) {
+      const ck = c._cfCardKey;
+      if (ck && Cards.DEFS[ck] && Cards.DEFS[ck].motif === motif) Cards.drawMotif(c, ck);
+    }
+  },
+  /* install a PNG as a motif's card icon. Cards draw ONCE into DOM
+     canvases (not per frame), so an image that decodes after a card was
+     dealt must repaint it — drawMotif stamps `_cfCardKey` on every canvas
+     it paints, and this walks them. */
+  setOriginArt(motif, img) {
+    if (!window.Cards || !Cards.DEFS) return false;
+    let hit = false;
+    for (const k of Object.keys(Cards.DEFS)) {
+      if (Cards.DEFS[k].motif !== motif) continue;
+      if (this._place('ui/card/' + k, img)) { this.loaded['ui/card/' + k] = true; hit = true; }
+    }
+    if (hit) this._repaintOrigin(motif);
+    return hit;
+  },
+
+  /* ---- ENDGAME ART: one folder per (outcome, difficulty), any number of
+     pictures (assets/endgame/README.md) ----
+
+       assets/endgame/win/{calm|moderate|hard}/1.png, 2.png, 3.png, …
+       assets/endgame/loss/{calm|moderate|hard}/1.png, 2.png, 3.png, …
+
+     Drop as many numbered PNGs as you like into a bucket; js/defeatart.js
+     and js/victoryart.js each pick one at random when that screen opens. An
+     empty/missing bucket leaves the procedural scene exactly as it always
+     drew — real art SITS ON TOP of (replaces) the procedural fallback, never
+     a hard requirement. Difficulty is derived from CFG.MODES, never a
+     hand-kept list, so a new mode gets a bucket for free.
+
+     Probing CASCADES like ground art: only 1.png is tried for every bucket
+     at startup, 2.png only once 1.png hit, and so on — a bare repo pays one
+     404 per bucket (6 requests total), not ENDGAME_MAX of them. */
+  ENDGAME_DIR: 'assets/endgame/',
+  ENDGAME_MAX: 12,                 // most pictures probed per bucket
+  ENDGAME_OUTCOMES: ['win', 'loss'],
+  endgameModes() { return Object.keys(CFG.MODES); },
+  endgame: {},                     // 'win/calm' -> [img, …] in the order they were found
+  endgameKey(outcome, mode) { return outcome + '/' + mode; },
+  endgameUrl(outcome, mode, n) {
+    return this.ENDGAME_DIR + outcome + '/' + mode + '/' + n + '.png?v=' + (CFG.ART_V || 1);
+  },
+  _tryEndgame(outcome, mode, n, onEnd) {
+    if (n > this.ENDGAME_MAX) { if (onEnd) onEnd(); return; }
+    const img = new Image();
+    img.onload = () => { this.setEndgameArt(outcome, mode, img); this._tryEndgame(outcome, mode, n + 1, onEnd); };
+    img.onerror = () => { if (onEnd) onEnd(); /* no more pictures in this bucket — the ones already found still stand */ };
+    try { img.fetchPriority = 'low'; } catch (e) {}
+    img.src = this.endgameUrl(outcome, mode, n);
+  },
+  setEndgameArt(outcome, mode, img) {
+    const k = this.endgameKey(outcome, mode);
+    const a = this.endgame[k] || (this.endgame[k] = []);
+    if (a.indexOf(img) < 0) a.push(img);
+    this.loaded['endgame/' + k] = true;
+    return true;
+  },
+  // every picture loaded for this bucket, or an empty array — Defeat/
+  // VictoryArt pick one of these themselves (their own seeded `pick()`)
+  endgameImgs(outcome, mode) { return this.endgame[this.endgameKey(outcome, mode)] || []; },
+
+  /* ---- GROUND ART: the same deal as buildings, for the map itself ----
+
+       assets/terrain/{name}.png        the whole terrain
+       assets/terrain/{name}-2.png      a second variant, -3, -4 … as many
+                                        as you like
+
+     {name} is the terrain's own name in lowercase: grass, forest, water,
+     hills, fertile, stumps, pebbles, barren, ruin, mountain, trench, moat,
+     mound, goldore, camp. Drop a file in and it is used; drop nothing and
+     the procedural tile stands, exactly as with a building.
+
+     ONE FILE IS ENOUGH. Supply `forest.png` alone and every forest tile
+     wears it; add `-2`/`-3` and the map picks between them by the same tile
+     hash the procedural variants use, so a supplied set breaks up its own
+     tiling for free.
+
+     Probing CASCADES: only `{name}.png` is tried for every terrain at
+     startup (15 requests), and `-2` is only tried once the blanket loaded,
+     `-3` once `-2` did. A repo with no ground art pays 15 404s; an artist
+     working on one terrain pays a handful more.
+
+     The overrides live HERE and never touch Sprites.terrain — the
+     procedural tables stay whole, so the variant-picking maths in
+     R.drawTile is unchanged and removing a file restores the old look with
+     no other moving part. */
+  TERRAIN_DIR: 'assets/terrain/',
+  TERRAIN_MAX: 8,          // most variants probed for one terrain
+  terrain: {},             // T value -> [img, …] in the order they were found
+  terrainName(t) {
+    for (const k of Object.keys(T)) if (T[k] === t) return k.toLowerCase();
+    return null;
+  },
+  terrainUrl(name, n) {
+    return this.TERRAIN_DIR + (n > 1 ? name + '-' + n : name) + '.png?v=' + (CFG.ART_V || 1);
+  },
+  /* the drawable for terrain t at variant index i, or null to draw
+     procedurally. Wraps, so one supplied file answers for every index. */
+  terrainImg(t, i) {
+    const a = this.terrain[t];
+    if (!a || !a.length) return null;
+    return a[((i | 0) % a.length + a.length) % a.length];
+  },
+  hasTerrainArt(t) { const a = this.terrain[t]; return !!(a && a.length); },
+
+  /* ---- TERRAIN COVER ART: the wild grass and its tended cut ----
+
+       assets/terrain/cover/{terrain}/{slot}.png       (all lowercase)
+       e.g.  assets/terrain/cover/grass/wild.png
+
+     The per-tile terrain override above replaces the FLOOR; cover art
+     replaces what GROWS on it (R.grassCover — the wild sward layer and the
+     kept verge a standing building keeps). Terrain-generic by construction —
+     the convention takes any terrain name — but only the terrains in
+     COVER_CATALOG are probed, and today that is grass alone.
+
+     THREE SLOTS, three separate files: `wild` (the open meadow's sward),
+     `kept` (the cropped tended cut inside a building's verge), `accent`
+     (the rare seed-head/bloom overlay, wild ground only). A partial set is
+     fine — supply `wild` alone and the kept/accent looks stay procedural;
+     a 404 is the default state, never an error.
+
+     A file is a horizontal STRIP of 32×32 frames, ONE CLUMP PER FRAME:
+     width a multiple of 32, height exactly 32, the clump's ink wider than
+     it is tall (a taller-than-wide frame is dropped at install — the
+     sapling trap), authored at native density, 32 art px per tile. The
+     frame's opaque box is measured at install and R.grassCover draws it
+     bottom-anchored on the foot of the procedural sward it replaces — at
+     the same jittered anchor, in the same count, under the same gates —
+     so art changes what a sward looks like and never where it grows. Add
+     more frames to one file, or more files via the `-2`/`-3` cascade, and
+     the picker hashes between all of them. Alpha is snapped HARD BINARY at
+     install (A<128 → 0, else 255) — the cover bakes into the terrain
+     cache, whose repaint discipline is built on opaque idempotent
+     restamps. Same ?v= cache-buster as everything. */
+  COVER_DIR: 'assets/terrain/cover/',
+  COVER_SLOTS: ['wild', 'kept', 'accent'],
+  COVER_CATALOG: ['grass'],       // terrains probed at startup (grass only today)
+  COVER_MAX: 6,                   // most variant files probed per slot
+  COVER_PX: 32,
+  cover: {},                      // tName -> slot -> [32×32 frames…]
+  coverUrl(tName, slot, n) {
+    return this.COVER_DIR + tName + '/' + (n > 1 ? slot + '-' + n : slot) + '.png?v=' + (CFG.ART_V || 1);
+  },
+  coverSlotKey(tName, slot) { return 'cv|' + tName + '|' + slot; },
+  _tryCover(tName, slot, n) {
+    if (n > this.COVER_MAX) return;
+    const img = new Image();
+    img.onload = () => { if (this.setCoverArt(tName, slot, img, true)) this._tryCover(tName, slot, n + 1); };
+    img.onerror = () => { /* no art at this slot — the procedural sward stands */ };
+    this._track(this._prio(img, 'high'), true);
+    img.src = this.coverUrl(tName, slot, n);
+  },
+  setCoverArt(tName, slot, img, fromCascade) {
+    tName = String(tName).toLowerCase(); slot = String(slot).toLowerCase();
+    if (this.COVER_SLOTS.indexOf(slot) < 0) return false;
+    const PX = this.COVER_PX;
+    if (!img || !img.width || img.height !== PX || img.width % PX) return false;
+    const frames = [];
+    for (let i = 0; i < img.width / PX; i++) {
+      const c = document.createElement('canvas'); c.width = PX; c.height = PX;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+      // the frame's opaque box: a clump is drawn bottom-anchored on the sward
+      // it replaces, so R.grassCover needs to know where the ink actually is
+      let bx = 0, by = 0, bw = PX, bh = PX;
+      try {
+        // hard binary alpha — the bake's restamp discipline needs opaque pixels
+        const d = g.getImageData(0, 0, PX, PX);
+        let x0 = PX, y0 = PX, x1 = -1, y1 = -1;
+        for (let p = 3; p < d.data.length; p += 4) {
+          d.data[p] = d.data[p] < 128 ? 0 : 255;
+          if (d.data[p]) {
+            const k = (p - 3) >> 2, px = k % PX, py = (k / PX) | 0;
+            if (px < x0) x0 = px; if (px > x1) x1 = px;
+            if (py < y0) y0 = py; if (py > y1) y1 = py;
+          }
+        }
+        g.putImageData(d, 0, 0);
+        if (x1 < 0) continue;                             // an empty frame is not a clump
+        bx = x0; by = y0; bw = x1 - x0 + 1; bh = y1 - y0 + 1;
+        if (bh > bw) continue;                            // the sapling trap: wider than tall, or not at all
+      } catch (e) { /* tainted (file://) — ship as decoded; the QC gate is authoring-time */ }
+      c._bx = bx; c._by = by; c._bw = bw; c._bh = bh;
+      frames.push(c);
+    }
+    if (!frames.length) return false;
+    const t = this.cover[tName] || (this.cover[tName] = {});
+    (t[slot] || (t[slot] = [])).push(...frames);
+    this.loaded[this.coverSlotKey(tName, slot)] = true;
+    // the cover bakes into the terrain cache — a PNG landing after the world
+    // was built asks for the repaint the same way terrain art does: once,
+    // when the burst is over (_onIdle)
+    this.artRev++; this._worldDirty = true;
+    if (fromCascade) this._settleIfQuiet(); else this._onIdle();   // a direct install is asked for its picture now
+    return true;
+  },
+  /* the frame for (terrain, slot) at hash i, or null to draw procedurally.
+     Wraps over every frame from every cascade file. */
+  coverImg(tName, slot, i) {
+    const t = this.cover[tName], a = t && t[slot];
+    if (!a || !a.length) return null;
+    return a[(i >>> 0) % a.length];
+  },
+
+  /* ---- THE JUMPING FISH: one animation strip per variant --------------
+
+       assets/fx/fish-1.png, fish-2.png …
+
+     A horizontal strip of FISH_PX square frames, one per beat of the leap
+     — out of the water, over the arc, back down. R.drawFishJump walks the
+     strip along the arc it already drew, so the sprite replaces the FISH
+     and never the path, the splash ring, the droplets or the frequency
+     gating (shoal-often, open-water-rare). A missing file leaves the
+     procedural fish jumping, and a variant is picked per tile so a lake is
+     never one cloned fish.
+
+     Authored at 64px and shipped at 16 — a 4:1 box downscale, done
+     downscale, done offline where a box filter and a palette snap can be
+     applied. Binary alpha is enforced here too: a soft edge over water is
+     exactly the halo the doctrine forbids. */
+  FISH_DIR: 'assets/fx/',
+  FISH_PX: 16,
+  FISH_MAX: 4,                    // most variant strips probed
+  fishArt: [],                    // [variant] -> [frame canvases…]
+  fishUrl(n) { return this.FISH_DIR + 'fish-' + n + '.png?v=' + (CFG.ART_V || 1); },
+  _tryFish(n) {
+    if (n > this.FISH_MAX) return;
+    const img = new Image();
+    img.onload = () => { if (this.setFishArt(n, img)) this._tryFish(n + 1); };
+    img.onerror = () => { /* no strip at this slot — the procedural fish jumps */ };
+    this._track(this._prio(img, 'high'), true);
+    img.src = this.fishUrl(n);
+  },
+  setFishArt(n, img) {
+    const PX = this.FISH_PX;
+    if (!img || !img.width || img.height !== PX || img.width % PX) return false;
+    const frames = [];
+    for (let i = 0; i < img.width / PX; i++) {
+      const c = document.createElement('canvas'); c.width = PX; c.height = PX;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * PX, 0, PX, PX, 0, 0, PX, PX);
+      try {
+        const d = g.getImageData(0, 0, PX, PX);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — the strip still draws, unsnapped */ }
+      frames.push(c);
+    }
+    if (!frames.length) return false;
+    this.fishArt[n - 1] = frames;
+    return true;
+  },
+  // the frames of one fish variant, or null while the procedural fish stands
+  fishFrames(i) {
+    const a = this.fishArt.filter(Boolean);
+    return a.length ? a[(i >>> 0) % a.length] : null;
+  },
+
+  /* ---- THE SPECIAL EVENTS' OWN ART (assets/fx/) ----------------------
+
+       starfall  meteor.png        the burning head and its near tail,
+                                   falling toward the LOWER LEFT
+                 boom.png          the impact
+                 smoke.png         one puff, billow to nothing
+                 crater-hot.png    one 4x4-tile ground decal at 1:1
+                 crater-cold.png   (128x128), the site's 2x2 its centre
+       wildfire  burn-{piece}.png  THAT tree piece ablaze, by the piece's
+                                   own name (dome-l-a … dome-s-d): a loop of
+                                   64px frames at 2:1, foot on the bottom row
+                 char-{piece}.png  the snag it leaves standing: two 32px
+                                   frames at 1:1, [cold, hot]
+                 smoke.png         (shared)
+
+     Every file is a horizontal strip of SQUARE frames (a single image is a
+     strip of one), installed with binary alpha like every sprite. Loaded
+     ON DEMAND — wantFx(special), from newGame/loadJSON — never at boot:
+     most runs never see a fire or a falling star and pay nothing for them,
+     and the requests ride the LATE tier so nobody waits on a plaque for
+     an event weeks away. Every file is optional: a 404 leaves that layer
+     to the procedural drawing (R.drawStarfall / R.drawWildfire). */
+  FX_DIR: 'assets/fx/',
+  FX_SETS: {
+    starfall: ['meteor', 'boom', 'smoke', 'crater-hot', 'crater-cold'],
+    // every tree piece burns as ITSELF: burn-{piece} (that tree, ablaze — a
+    // loop) and char-{piece} (the snag it leaves standing, [cold, hot]), one
+    // pair per piece of the forest catalog
+    // (a name ending in a digit CASCADES: -2 is asked for only once -1 has
+    // landed, and so on — none of these do, so each is one request)
+    // THE MONSTERS (js/beasts.js): asked at HIGH priority — the rolled event
+    // at newGame/loadJSON, a card the moment the player HOLDS it (Deck.wantArt)
+    dragon: ['dragon-fly', 'dragon-breath'],
+    kraken: ['kraken-thrash', 'kraken-tentacle'],
+    wildfire: ['smoke'].concat(
+      ...['dome-l-a', 'dome-l-b', 'dome-l-c', 'dome-l-d', 'dome-s-a', 'dome-s-b', 'dome-s-c', 'dome-s-d']
+        .map(p => ['burn-' + p, 'char-' + p])),
+  },
+  fx: {},                         // name -> [frame canvases…]
+  _fxAsked: {},                   // name -> the priority it was asked at (truthy once asked)
+  _fxDone: {},                    // name -> true once it has landed OR failed (fxSetDone)
+  _fxWait: [],                    // [{special, fn}] — whenFx's waiters
+  fxUrl(name) { return this.FX_DIR + name + '.png?v=' + (CFG.ART_V || 1); },
+  /* `opts.prio` 'high' puts the request at the FRONT of the wire. The late
+     tier's 'low' is right for an event weeks away and wrong for art the
+     player is about to SEE: on a phone's cold cache a low request queues
+     behind the whole boot (~1,200 images) and the monsters' act opened on
+     the old procedural creatures for most of a minute (the review measured
+     51.7s at the phone wire). A HELD beast card and the rolled beast event
+     ask high (Deck.wantArt, G.warmFx); everything else keeps the late tier.
+     Asking high for a name already waiting at low sends it again at high —
+     the same URL, so the browser serves whichever lands first and the
+     second is a cache hit; the install is once. */
+  wantFx(special, opts) {
+    const names = this.FX_SETS[special];
+    const prio = opts && opts.prio === 'high' ? 'high' : 'low';
+    if (names) for (const name of names) this._fxOne(name, prio);
+  },
+  _fxOne(name, prio) {
+    const was = this._fxAsked[name];
+    if (was && (prio !== 'high' || was === 'high' || this._fxDone[name])) return;
+    this._fxAsked[name] = prio === 'high' ? 'high' : 'low';
+    const first = !was;
+    const img = new Image();
+    img.onload = () => {
+      if (!this.fx[name]) this.setFxArt(name, img);
+      this._fxLanded(name);
+      const m = /^(.*-)(\d)$/.exec(name);             // the cascade: -1 landed, try -2 …
+      if (first && m && +m[2] < 6) this._fxOne(m[1] + (+m[2] + 1), prio);
+    };
+    img.onerror = () => { this._fxLanded(name); /* that layer stays procedural */ };
+    this._track(this._prio(img, prio === 'high' ? 'high' : 'low'), false, true);
+    img.src = this.fxUrl(name);
+  },
+  _fxLanded(name) {
+    this._fxDone[name] = true;
+    if (!this._fxWait.length) return;
+    const left = [];
+    for (const w of this._fxWait) { if (this.fxSetDone(w.special)) w.fn(true); else left.push(w); }
+    this._fxWait = left;
+  },
+  // every strip of a set has landed or failed — nothing more is coming, so
+  // whatever is drawn now (the art, or the procedural stand-in) is final
+  fxSetDone(special) {
+    const names = this.FX_SETS[special];
+    return !names || names.every(n => this._fxDone[n] || this.fx[n]);
+  },
+  /* a promise that resolves true when the set is in (fxSetDone), or false
+     after `ms` — the play's landing waits on this so an act never OPENS on
+     the stand-in when the art is merely late (DeckUI._run) */
+  whenFx(special, ms) {
+    if (this.fxSetDone(special)) return Promise.resolve(true);
+    return new Promise(res => {
+      let done = false;
+      const fin = v => { if (!done) { done = true; res(v); } };
+      this._fxWait.push({ special, fn: fin });
+      setTimeout(() => { this._fxWait = this._fxWait.filter(w => w.fn !== fin); fin(this.fxSetDone(special)); }, Math.max(0, ms || 0));
+    });
+  },
+  setFxArt(name, img) {
+    const F = img && img.height;
+    if (!F || !img.width || img.width % F) return false;
+    const frames = [];
+    for (let i = 0; i < img.width / F; i++) {
+      const c = document.createElement('canvas'); c.width = F; c.height = F;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * F, 0, F, F, 0, 0, F, F);
+      try {
+        const d = g.getImageData(0, 0, F, F);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — the strip still draws, unsnapped */ }
+      frames.push(c);
+    }
+    this.fx[name] = frames;
+    // the crater is part of the GROUND: art that lands after the bake asks
+    // for the crater's own tiles to be repainted, never the whole map
+    if (name.startsWith('crater') && typeof R !== 'undefined' && R.repaintCrater) R.repaintCrater();
+    // …and so is the burnt wood: the snags standing on it
+    if (name.startsWith('char-') && typeof R !== 'undefined' && R.repaintBurnt) R.repaintBurnt();
+    return true;
+  },
+  fxFrames(name) { const a = this.fx[name]; return a && a.length ? a : null; },
+
+  /* ---- THE WATER'S MOTION PASS: three authored files -----------------
+
+       assets/terrain/water/surface.png   a seamless grayscale texture the
+                                          frame scrolls over the body at
+                                          MULTIPLY — near-white ground so
+                                          it modulates without recolouring
+       assets/terrain/water/shimmer.png   a seamless glint layer on PURE
+                                          black, scrolled under 'lighter'
+       assets/terrain/water/wave-{a,b,c}.png
+                                          the wave-roll crests: a horizontal
+                                          strip of frames, each frame FOUR
+                                          TIMES as wide as the strip is tall
+                                          (64x16 shipped), a = long crest,
+                                          b = medium, c = short — c is the
+                                          one a curved shore doubles up
+
+     Each loads independently; a 404 leaves that one layer to the
+     procedural water, never an error. R.drawLivingWater builds ONE
+     CanvasPattern per installed texture and only moves the offset. Wave
+     frames get binary alpha enforced here, like every sprite. */
+  WATERFX_DIR: 'assets/terrain/water/',
+  waterFx: { surface: null, shimmer: null, waves: [] },
+  waterFxUrl(name) { return this.WATERFX_DIR + name + '.png?v=' + (CFG.ART_V || 1); },
+  _tryWaterFx() {
+    for (const name of ['surface', 'shimmer', 'wave-a', 'wave-b', 'wave-c']) {
+      const img = new Image();
+      img.onload = () => this.setWaterFx(name, img);
+      img.onerror = () => { /* that layer stays procedural */ };
+      this._track(this._prio(img, 'high'), true);
+      img.src = this.waterFxUrl(name);
+    }
+  },
+  setWaterFx(name, img) {
+    if (!img || !img.width || !img.height) return false;
+    if (name.startsWith('wave-')) {
+      const FW = img.height * 4;                   // the strip convention
+      if (img.width % FW) return false;
+      const frames = [];
+      for (let i = 0; i < img.width / FW; i++) {
+        const c = document.createElement('canvas'); c.width = FW; c.height = img.height;
+        const g = c.getContext('2d');
+        g.imageSmoothingEnabled = false;
+        g.drawImage(img, i * FW, 0, FW, img.height, 0, 0, FW, img.height);
+        try {
+          const d = g.getImageData(0, 0, FW, img.height);
+          for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+          g.putImageData(d, 0, 0);
+        } catch (e) { /* tainted on file:// — the frames still draw */ }
+        frames.push(c);
+      }
+      if (!frames.length) return false;
+      // a=0 b=1 c=2; a sparse catalog packs down so waves[] is dense
+      this.waterFx['_' + name] = frames;
+      this.waterFx.waves = ['wave-a', 'wave-b', 'wave-c']
+        .map(n => this.waterFx['_' + n]).filter(Boolean);
+      return true;
+    }
+    if (name !== 'surface' && name !== 'shimmer') return false;
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    this.waterFx[name] = c;
+    return true;
+  },
+
+  /* ---- THE TREE DOOR: single-tree pieces composed into the forest tiles ----
+
+       assets/terrain/trees/{style}-{size}-{letter}.png
+       style ∈ dome|oak|conifer|birch|stump|snag|log, size ∈ s|l, letters
+       from 'a', all lowercase. Pieces ship at WORLD scale (an l tree is a
+       ~24px canvas, an s tree ~12px) with the trunk base on the bottom
+       edge, hard binary alpha; every installed piece also bakes its
+       MIRROR, so a catalog letter is two stamps. Sprites.rebuildForest
+       recomposes the 28 forest tile canvases through the same lattice,
+       jitter and density gradient the procedural wood uses — a partial
+       catalog composes with procedural trees filling the gaps, and no
+       catalog at all leaves the wood byte-identical. 404 is a look,
+       never an error. hueTint coats these pixels at runtime like every
+       tree pixel, so pieces are authored NEUTRAL green — no pre-baked
+       warm or cool casts (ART_PLAN: the tint rule). */
+  TREES_DIR: 'assets/terrain/trees/',
+  // …the catalog outgrew its name: orchard and berry are the fertile
+  // ground's plants, stone and gold the ore deposits — all probed, muted
+  // and mirrored through the same machinery as the wood
+  TREE_STYLES: ['dome', 'oak', 'conifer', 'birch', 'stump', 'snag', 'log',
+    'orchard', 'berry', 'stone', 'gold'],
+  trees: {}, treesRev: 0,
+  treeUrl(style, size, letter) { return this.TREES_DIR + style + '-' + size + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
+  _tryTrees() {
+    for (const style of this.TREE_STYLES) for (const size of ['s', 'l', 'xl'])
+      this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
+  },
+  /* ---- THE MOUNTAIN KIT: drawn massifs, CHAINED into ranges ----
+
+       assets/terrain/mountain/{kind}-{letter}.png     kinds: peak | saddle | end
+
+     The third mountain attempt, and the one the operator chose: the rock is
+     DRAWN, never painted by a procedure. A region is dressed by chaining
+     pieces west to east along its own southern edge — each overlapping its
+     neighbour by MTN.KIT_OVERLAP, so the flanks (which the art deliberately
+     ends part-way up the slope) merge into one continuous crest with a
+     saddle at every join. Peaks carry the summits, saddles are the low links
+     between them.
+
+     ONE ART-PIXEL PER WORLD-PIXEL. These are placed, never scaled: the
+     density canon forbids resampling shipped pixels, so a piece is drawn at
+     1:1 or at an integer box ÷2 and at no other size.
+
+     NEVER MIRRORED. The light is locked to the upper left; a mirrored piece
+     lights from the upper right, and a range built of alternating mirrors
+     shows a butterfly seam at every join. Variety comes from having several
+     pieces, not from flipping one.
+
+     Absent files are the default state — with no kit the procedural
+     extrusion stands exactly as it always has. */
+  MTN_KIT_DIR: 'assets/terrain/mountain/',
+  MTN_KIT_KINDS: ['peak', 'saddle', 'hill', 'roll', 'foot'],   // hill/roll = the low front bands
+  mtnKit: {}, mtnKitRev: 0,
+  mtnKitUrl(kind, letter) { return this.MTN_KIT_DIR + kind + '-' + letter + '.png?v=' + (CFG.ART_V || 1); },
+  _tryMtnKit() { for (const kind of this.MTN_KIT_KINDS) this._tryMtnPiece(kind, 0); },
+  _tryMtnPiece(kind, li) {
+    if (li >= 16) return;                         // letters a..p; the cascade stops at the first 404
+    const img = new Image();
+    const stem = kind + '-' + String.fromCharCode(97 + li);
+    img.onload = () => { this.setMtnPiece(kind, img, stem); this._tryMtnPiece(kind, li + 1); };
+    img.onerror = () => { /* the kit ends here */ };
+    this._track(this._prio(img, 'high'), true);
+    img.src = this.mtnKitUrl(kind, String.fromCharCode(97 + li));
+  },
+  /* the low bands are drawn at half size — small rolling ground should
+     READ small beside a peak, and halving is the only resize the density
+     canon allows (an integer box downscale, never a resample) */
+  /* Halving is for pieces authored at double density. The foothills are
+     drawn at world scale and are MEANT to stand tall enough to cover the
+     bottom of the mountains behind them — halving them turned a 136px hill
+     into a 68px smudge at the foot of a 168px peak. */
+  MTN_KIT_DIV: { roll: 2 },
+  MTN_FLAT_TOP: 0.30,    // a peak wider than this a few rows below its top is a plateau
+  /* PER-PIECE RULES, from the operator's own picks. RARE is how often a
+     piece may be chosen at all — one of the craggy peaks was asked for
+     'sparingly', and a piece that reads strongly should not carry a whole
+     range. ONLY_ONE names a group from which at most ONE member may appear
+     in any single region: the two small crags are the same rock at the same
+     size and standing them side by side reads as a copy-paste. */
+  MTN_KIT_RARE: { 'peak-h': 0.45 },
+  MTN_KIT_ONLY_ONE: { 'peak-i': 'smallcrag', 'peak-j': 'smallcrag' },
+  setMtnPiece(kind, img, stem) {
+    if (!img || !img.width || !img.height) return false;
+    const div = this.MTN_KIT_DIV[kind] || 1;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, (img.width / div) | 0); c.height = Math.max(1, (img.height / div) | 0);
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    if (div === 1) g.drawImage(img, 0, 0);
+    else {
+      const s2 = document.createElement('canvas');
+      s2.width = img.width; s2.height = img.height;
+      const sg = s2.getContext('2d');
+      sg.imageSmoothingEnabled = false;
+      sg.drawImage(img, 0, 0);
+      try {
+        const sd = sg.getImageData(0, 0, img.width, img.height).data;
+        const od = g.createImageData(c.width, c.height);
+        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+          let r2 = 0, g2 = 0, b2 = 0, n = 0;
+          for (let oy = 0; oy < div; oy++) for (let ox = 0; ox < div; ox++) {
+            const o = ((y * div + oy) * img.width + (x * div + ox)) * 4;
+            if (sd[o + 3] < 128) continue;
+            r2 += sd[o]; g2 += sd[o + 1]; b2 += sd[o + 2]; n++;
+          }
+          const oo = (y * c.width + x) * 4;
+          if (n * 2 >= div * div) { od.data[oo] = r2 / n; od.data[oo + 1] = g2 / n; od.data[oo + 2] = b2 / n; od.data[oo + 3] = 255; }
+        }
+        g.putImageData(od, 0, 0);
+      } catch (e) { g.drawImage(img, 0, 0, c.width, c.height); }
+    }
+    /* the FOOT PROFILE — the lowest opaque row in each column. It is what
+       the ground shadow is cast from and what decides which tile row owns
+       each column of the piece, so the occlusion strips stay honest. */
+    let foot = null;
+    try {
+      const d = g.getImageData(0, 0, c.width, c.height);
+      for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+      g.putImageData(d, 0, 0);
+      foot = new Int32Array(c.width).fill(-1);
+      for (let x = 0; x < c.width; x++) for (let y = c.height - 1; y >= 0; y--)
+        if (d.data[(y * c.width + x) * 4 + 3] > 0) { foot[x] = y; break; }
+    } catch (e) { /* tainted on file:// — the piece still draws, shadowless */ }
+    /* the pixels are kept alongside the canvas: the chain composites by
+       hand so it can TEAR each piece's exposed edges, and reading them back
+       once here beats reading them per placement */
+    let px = null;
+    try { px = g.getImageData(0, 0, c.width, c.height).data; } catch (e) { px = null; }
+    /* A MOUNTAIN MUST HAVE A SUMMIT. Two ways generated rock fails that, and
+       both are refused here rather than debugged in the world later:
+
+         CLIPPED — the highest pixels run off the top of the piece's own
+                   canvas, so the peak has been sliced flat by the frame.
+         FLAT    — the piece is already wide a few rows below its top, so
+                   it is a plateau or a dome rather than a peak.
+
+       Either reads as a mesa in the back of every range it lands in, and
+       no amount of placing will put the summit back. The low bands are
+       exempt by nature: a foothill, a rolling rise and the ground line all
+       have flat tops on purpose, and the bands in front of them hide the
+       join. Judged on the SHIPPED pixels, so a piece is measured exactly as
+       it will be drawn. */
+    if (px && (kind === 'peak' || kind === 'saddle')) {
+      let topRow = -1;
+      const rowW = (y) => {
+        let n = 0;
+        for (let x = 0; x < c.width; x++) if (px[(y * c.width + x) * 4 + 3] > 128) n++;
+        return n;
+      };
+      for (let y = 0; y < c.height && topRow < 0; y++) if (rowW(y) > 0) topRow = y;
+      const near = rowW(Math.min(c.height - 1, topRow + 4)) / c.width;
+      /* AND IT MUST BE A FREE-STANDING OBJECT. A mountain whose rock runs
+         to the left, right or bottom edge of its own canvas has been
+         CROPPED to the frame, not drawn on transparency, and it composites
+         as a rectangle of rock with hard straight sides — which is exactly
+         what every remaining straight edge in the world turned out to be.
+         Pieces have to be stickers: empty margin on every side, so they can
+         be laid over one another. */
+      const edge = (fn) => { let n = 0; for (let i = 0; i < (fn.n | 0); i++) if (fn.f(i)) n++; return n; };
+      const leftN = edge({ n: c.height, f: y => px[(y * c.width) * 4 + 3] > 128 });
+      const rightN = edge({ n: c.height, f: y => px[(y * c.width + c.width - 1) * 4 + 3] > 128 });
+      const botN = edge({ n: c.width, f: x => px[((c.height - 1) * c.width + x) * 4 + 3] > 128 });
+      /* THE BOTTOM MAY TOUCH. The operator's rule: a flat bottom can be
+         hidden behind a foothill or a wood, so it is not a deal breaker —
+         a flat TOP cannot be hidden by anything. Sides still may not touch:
+         an uncovered flank is a ruled vertical cut with nothing to hide it. */
+      const cropped = leftN > 4 || rightN > 4;
+      const bad = topRow <= 0 ? 'summit runs off the top of the art'
+        : near > this.MTN_FLAT_TOP ? 'flat top (' + near.toFixed(2) + ' of the width four rows down)'
+        : cropped ? 'cropped to its frame (rock on the L/R/bottom edge: ' + leftN + '/' + rightN + '/' + botN + ') — not a free-standing object' : null;
+      if (bad) {
+        if (!this._mtnWarned) this._mtnWarned = {};
+        const wk = kind + ':' + ((this.mtnKit[kind] || []).length);
+        if (!this._mtnWarned[wk]) { this._mtnWarned[wk] = 1; console.warn('[mountain kit] ' + wk + ': ' + bad + ' — refused'); }
+        return false;
+      }
+    }
+    /* the opaque bounding box, measured once: the placer needs to know
+       exactly where this piece's rock lives so it can refuse a spot where
+       the art would be clipped by water */
+    let bx0 = c.width, by0 = c.height, bx1 = -1, by1 = -1;
+    if (px) for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++)
+      if (px[(y * c.width + x) * 4 + 3] > 128) {
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+        if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+    const bb = (bx1 < 0) ? { x0: 0, y0: 0, x1: c.width - 1, y1: c.height - 1 }
+      : { x0: bx0, y0: by0, x1: bx1, y1: by1 };
+    const a = this.mtnKit[kind] || (this.mtnKit[kind] = []);
+    a.push({ c, w: c.width, h: c.height, foot, bb, stem,
+      rare: (stem && this.MTN_KIT_RARE[stem]) || 1,
+      only: (stem && this.MTN_KIT_ONLY_ONE[stem]) || null });
+    /* TALLEST FIRST, then BY NAME. The placer tries big rock before small and
+       only drops to a knoll where a mountain will not fit — but pieces of
+       EQUAL height need a stable order too, or the pool ends up in whatever
+       sequence the images happened to decode in, and the same map draws
+       different mountains after a reload. The stem is the tiebreak. */
+    a.sort((p, q) => (q.h - p.h) || String(p.stem || '').localeCompare(String(q.stem || '')));
+    this.mtnKitRev++;
+    /* ONE LAYER REBUILD PER BURST. Every piece used to mark the layer dirty
+       as it decoded, and with the pieces arriving one behind the other the
+       frame rebuilt the whole layer — every region re-planned and
+       re-composited, ~180ms a time on a desktop — up to twenty-five times
+       while a world was on screen. The mark now lands when the burst is
+       over (_onIdle). A ?dev=1 drop marks the layer itself. */
+    this.artRev++; this._mtnKitDirty = true;
+    this._settleIfQuiet();
+    return true;
+  },
+  /* THE PIXELS ARE LENT, NOT KEPT. The chain composites by hand so it can
+     tear each piece's exposed edges, which needs the raw pixels — but with
+     twenty-six pieces in the kit, holding an ImageData for every one of them
+     for the life of the run cost enough memory to show up in the frame
+     budget (tests/land.mjs caught it on the water pass, of all things). They
+     are read on demand now and released once the layer is built; a bake
+     happens about once a map, so the re-read is free. */
+  mtnPx(p) {
+    if (p.px) return p.px;
+    try { p.px = p.c.getContext('2d').getImageData(0, 0, p.w, p.h).data; }
+    catch (e) { p.px = null; }
+    return p.px;
+  },
+  releaseMtnPx() {
+    for (const k in this.mtnKit) for (const p of this.mtnKit[k]) p.px = null;
+  },
+  mtnKitReady() { return !!(this.mtnKit.peak && this.mtnKit.peak.length); },
+
+  _tryTreePiece(style, size, li) {
+    if (li >= 18) return;                         // letters a..r, the cascade stops at the first 404
+    const img = new Image();
+    img.onload = () => { this.setTreePiece(style + '-' + size, img, String.fromCharCode(97 + li)); this._tryTreePiece(style, size, li + 1); };
+    img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
+    this._track(this._prio(img, 'high'), true);
+    img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
+  },
+  /* THE DEPOSIT SWAP (?dev=1 only, DevArt.injectStone). One dropped PNG
+     REPLACES the whole stone catalog, so every deposit on the map shows
+     that one rock and a candidate can be judged in play in a few seconds
+     rather than after a build. All three wear stages fall back to it too:
+     slabStage keeps only the letters the catalog actually carries, and with
+     one letter in it every stage resolves to the same piece.
+     In memory only — nothing is written, and a refresh restores the ship. */
+  setStoneArt(img) {
+    if (!img || !img.width || !img.height) return false;
+    const prior = this.trees['stone-l'];
+    this.trees['stone-l'] = [];
+    if (!this.setTreePiece('stone-l', img)) { this.trees['stone-l'] = prior; return false; }
+    this._slabCache = null;
+    return true;
+  },
+  /* …and back to the shipped catalog. */
+  restoreStoneArt(prior) {
+    this.trees['stone-l'] = prior || [];
+    this.treesRev++; this._muteK = -1; this._slabCache = null;
+  },
+  setTreePiece(key, img, letter) {
+    if (!img || !img.width || !img.height) return false;
+    const cut = (flip) => {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      // WHICH PIECE this is and whether it is the mirror: the dry summer burns
+      // every tree as ITSELF (R.drawBurningWood reads 'burn-' + _cfName)
+      if (letter) { c._cfName = key + '-' + letter; c._cfFlip = flip; }
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      if (flip) { g.translate(img.width, 0); g.scale(-1, 1); }
+      g.drawImage(img, 0, 0);
+      try {
+        const d = g.getImageData(0, 0, c.width, c.height);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — the piece still draws */ }
+      return c;
+    };
+    const a = this.trees[key] || (this.trees[key] = []);
+    a.push(cut(false), cut(true));                // the piece and its pre-baked mirror
+    this.treesRev++;
+    this._muteK = -1;                             // raw changed: the muted cache is stale
+    /* ONE recompose per burst, not one per piece — and the burst is over
+       when no request is in flight (_onIdle), not after a timer: on a slow
+       link the pieces land one behind the other and a timer fired for
+       every one. A synchronous caller (the door pin, a ?dev=1 drop that
+       wants the result NOW) calls Sprites.rebuildForest itself. */
+    this.artRev++; this._treesDirty = true; this._worldDirty = true;   // settled once the burst is over (_onIdle)
+    this._settleIfQuiet();
+    return true;
+  },
+  /* the old per-burst timer is gone: the wood is recomposed and the world
+     rebaked (only if baked with an older catalog) in _onIdle, once the
+     burst is over — the same rule every world-art family follows */
+
+  /* ---- THE MUTE (Gate B stand-down, part 2). The generated set is too
+     bright for the world, so every piece the composer serves is passed
+     through a uniform OKLab transform — lightness down, chroma down, hue
+     nudged toward the muted world greens — and RE-QUANTIZED to the
+     documented ramps (leaf for foliage, wood/soil/bone for the rest), so
+     an authored tree ends strictly on the world's own colours. Strength
+     is LAND.TREE_MUTE (0 raw … 1 strong), on the bench; the transform
+     lives HERE, in the installer — the frozen master files are never
+     touched. `trees` holds the raw decoded pieces; the composer reads
+     the muted cache, rebuilt whenever the dial moves. ---- */
+  _muteK: -1, _treesMuted: {},
+  _muteRamps() {
+    const AP = ART.PALETTE;
+    return { leaf: AP.leaf.slice(),
+      warm: [AP.wood[1], AP.wood[2], AP.wood[3], AP.soil[1], AP.soil[2], AP.soil[3], AP.bone[1], AP.bone[2]],
+      // the deposit and fruit targets: ore grey for slab rock, the gold
+      // ramp for veins and nuggets, the berry reds for fruit — so every
+      // piece family ends on its own documented world ramp
+      grey: AP.ore.slice(), gold: AP.gold.slice(),
+      red: [AP.berry[0], AP.berry[1], AP.berry[2], AP.red[3]] };
+  },
+  _muteCanvas(src, k, ramps) {
+    const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(src, 0, 0);
+    if (k <= 0) return c;
+    const s2l = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+    const l2s = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055);
+    const lab = (r, g2, b2) => {
+      r = s2l(r / 255); g2 = s2l(g2 / 255); b2 = s2l(b2 / 255);
+      const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g2 + 0.0514459929 * b2);
+      const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g2 + 0.1073969566 * b2);
+      const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g2 + 0.6299787005 * b2);
+      return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+              1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+              0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+    };
+    const hex2lab = h => lab(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16));
+    const hex2rgb = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const mk = key => ({ L: ramps[key].map(hex2lab), C: ramps[key].map(hex2rgb) });
+    const sets = { leaf: mk('leaf'), warm: mk('warm'), grey: mk('grey'), gold: mk('gold'), red: mk('red') };
+    // the world's green: the middle of the leaf ramp, where hue is nudged toward
+    const mid = sets.leaf.L[2] || sets.leaf.L[0];
+    const hTarget = Math.atan2(mid[2], mid[1]);
+    try {
+      const d = g.getImageData(0, 0, c.width, c.height);
+      for (let o = 0; o < d.data.length; o += 4) {
+        if (!d.data[o + 3]) continue;
+        let [L, A, B] = lab(d.data[o], d.data[o + 1], d.data[o + 2]);
+        const C = Math.hypot(A, B);
+        let h = Math.atan2(B, A);
+        L *= 1 - 0.16 * k;                       // lightness down
+        const C2 = C * (1 - 0.35 * k);           // chroma down
+        /* WHICH WORLD RAMP a pixel belongs to, by where it lives in OKLab:
+           near-neutral is slab rock (the ore greys); bright saturated
+           yellow is gold before green can claim it; magenta-to-red is
+           fruit; the green range is foliage (hue-nudged toward the world's
+           leaf); everything warm left over is trunk, soil and cut face. */
+        const fam = (C < 0.032 && L > 0.42) ? 'grey'
+          : (h > 1.05 && h < 1.85 && C > 0.11 && L > 0.5) ? 'gold'
+          : (h > -0.6 && h < 0.75 && C > 0.10) ? 'red'
+          : (h > 1.5 && h < 3.1) ? 'leaf' : 'warm';
+        if (fam === 'leaf') { let dh = hTarget - h; if (dh > Math.PI) dh -= 2 * Math.PI; if (dh < -Math.PI) dh += 2 * Math.PI; h += dh * 0.5 * k; }
+        A = C2 * Math.cos(h); B = C2 * Math.sin(h);
+        const set = sets[fam].L, cols = sets[fam].C;
+        let bi = 0, bd = 1e9;
+        for (let i = 0; i < set.length; i++) {
+          const dd = (L - set[i][0]) ** 2 + (A - set[i][1]) ** 2 * 0.6 + (B - set[i][2]) ** 2 * 0.6;
+          if (dd < bd) { bd = dd; bi = i; }
+        }
+        d.data[o] = cols[bi][0]; d.data[o + 1] = cols[bi][1]; d.data[o + 2] = cols[bi][2];
+      }
+      g.putImageData(d, 0, 0);
+    } catch (e) { /* tainted on file:// — the raw piece stands */ }
+    return c;
+  },
+  _remute() {
+    const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
+    const ramps = this._muteRamps();
+    this._treesMuted = {};
+    for (const key of Object.keys(this.trees)) {
+      /* STONE IS NOT MUTED. The mute exists to drag GENERATED FOLIAGE onto
+         the world ramps, and its family test calls a pixel grey only when it
+         is near-neutral AND light (C < 0.032, L > 0.42). A slab’s dark
+         outline is near-neutral but nowhere near light, so it fell through
+         to the warm ramp and came back BROWN — which is the raised-lip the
+         referee kept seeing under the deposits. The slabs are drawn against
+         the mountain master and are already on the world’s rock, so they
+         ship exactly as authored. */
+      if (key.startsWith('stone-')) { this._treesMuted[key] = this.trees[key].slice(); continue; }
+      this._treesMuted[key] = this.trees[key].map((c, i) => {
+        const m = this._muteCanvas(c, k, ramps);
+        m._cfName = c._cfName; m._cfFlip = c._cfFlip;     // the piece's name survives the mute
+        // FRUIT IS FAT AND BRIGHT (the referee's live report, and the same
+        // lesson the procedural orchard learned once already): the 2:1
+        // downscale left one-pixel fruit and the mute sank it to the ramp's
+        // darkest crimson — invisible at play zoom, so the fertile ground
+        // read as plain trees. Repaint the fruit after the mute.
+        if (key.startsWith('orchard-') || key.startsWith('berry-'))
+          this._fruitPass(m, key, i);
+        return m;
+      });
+    }
+    this._muteK = k; this._muteRev = this.treesRev;
+  },
+  /* find what fruit survived, fatten every cluster to a 2x2 with a lit
+     corner, and guarantee a minimum count by planting more on the crown —
+     deterministic per piece, so recomposes and repaints always agree. */
+  _fruitPass(c, key, idx) {
+    const AP = ART.PALETTE;
+    const body = AP.berry[1], lit = AP.berry[2];
+    const g = c.getContext('2d');
+    let d;
+    try { d = g.getImageData(0, 0, c.width, c.height); } catch (e) { return; }
+    const W = c.width, H = c.height, px = d.data;
+    /* TRUE CRIMSON ONLY (the referee's red-trunk report): warm trunk bark
+       also keeps red above green, but never this far — without the green
+       cap the old rule matched brown bark and studded orchard trunks with
+       fat fruit. Real fruit reds hold green under 60% of red. */
+    const reddish = o => px[o + 3] > 0 && px[o] > px[o + 1] + 20 && px[o] > px[o + 2] + 10 &&
+      px[o + 1] < px[o] * 0.6;
+    const greenish = o => px[o + 3] > 0 && px[o + 1] > px[o] + 10 && px[o + 1] > px[o + 2] + 10;
+    const hex = s => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+    /* TRUNK SCRUB (orchard pieces): red below the crown line is not fruit —
+       it is generator noise on the trunk, and the mute keeps it red. Repaint
+       each such pixel with its commonest clean neighbour so the trunk reads
+       bark again; the crown-line rule matches the top-up planter's own. */
+    if (key.startsWith('orchard-')) {
+      const line = (H * 0.72) | 0;
+      const marked = [], mark = new Uint8Array(W * H);
+      for (let y = line; y < H; y++) for (let x = 0; x < W; x++) {
+        const o = (y * W + x) * 4;
+        if (reddish(o)) { marked.push([x, y]); mark[y * W + x] = 1; }
+      }
+      const woodC = hex(AP.wood[2]);
+      for (const [x, y] of marked) {
+        const tally = {};
+        for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const nx = x + ox, ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H || mark[ny * W + nx]) continue;
+          const o = (ny * W + nx) * 4;
+          if (!px[o + 3] || reddish(o)) continue;
+          const k2 = px[o] + ',' + px[o + 1] + ',' + px[o + 2];
+          tally[k2] = (tally[k2] || 0) + 1;
+        }
+        const top = Object.entries(tally).sort((a, b2) => b2[1] - a[1])[0];
+        const col = top ? top[0].split(',').map(Number) : woodC;
+        const o = (y * W + x) * 4;
+        px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2];
+      }
+    }
+    // clusters of surviving fruit (any reddish pixel not adjacent to an
+    // already-claimed one), plus the crown pixels fruit could sit on
+    const spots = [], crown = [];
+    const claimed = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4;
+      if (greenish(o)) crown.push(y * W + x);
+      if (!reddish(o) || claimed[y * W + x]) continue;
+      spots.push([x, y]);
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const nx = x + ox, ny = y + oy;
+        if (nx >= 0 && ny >= 0 && nx < W && ny < H) claimed[ny * W + nx] = 1;
+      }
+    }
+    // …topped up from the crown to the piece's minimum, spaced apart
+    const want = key.startsWith('orchard-l') ? 5 : 3;
+    let h = (Math.imul(idx + 3, 0x9E3779B1) ^ key.length * 2654435761) >>> 0;
+    const rnd = () => { h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); return (h >>> 0) / 4294967296; };
+    let guard = 0;
+    while (spots.length < want && crown.length && guard++ < 60) {
+      const k2 = crown[(rnd() * crown.length) | 0];
+      const x = k2 % W, y = (k2 / W) | 0;
+      if (y > H * 0.68) continue;                        // fruit hangs in the crown, not the trunk
+                                                         // (under the scrub line even after the 2x2 fatten)
+      if (spots.some(s => Math.abs(s[0] - x) + Math.abs(s[1] - y) < 4)) continue;
+      spots.push([x, y]);
+    }
+    const put = (x, y, w2, col) => { for (let oy = 0; oy < w2; oy++) for (let ox = 0; ox < w2; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const o = (ny * W + nx) * 4;
+      if (!px[o + 3]) continue;                          // fruit never floats off the silhouette
+      px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2];
+    } };
+    const bodyC = hex(body), litC = hex(lit);
+    for (const [x, y] of spots) {
+      put(x - 1, y - 1, 2, bodyC);
+      put(x - 1, y - 1, 1, litC);                        // the lit corner sells the sphere
+    }
+    g.putImageData(d, 0, 0);
+  },
+  /* THE THREE STAGES OF A WORKED DEPOSIT. The catalog ships six rocks at
+     three degrees of breakage — whole, cracked, smashed apart by the pick —
+     laid out so that letter n, n+6 and n+12 are THE SAME ROCK. That is what
+     makes the wear read: a tile keeps its own stone and watches it come
+     apart, instead of swapping to a different one each third.
+     Letters map to the cascade’s own load order, and each letter contributes
+     a piece AND its mirror, so letter n owns entries 2n and 2n+1. Anything
+     the catalog does not carry drops out, and a stage left with nothing
+     falls back to the whole set, so a shorter catalog degrades instead of
+     blanking. */
+  /* HOW LONG A VILLAGER’S CYCLE TAKES, in seconds, whatever the frame count
+     — more frames buy smoothness, never slow motion. Two rates: the
+     foraging poses (pick at a bush, reach into an orchard) run at
+     FORAGE_CYCLE, everything else at VILLAGER_CYCLE. */
+  VILLAGER_CYCLE: 1.35,
+  FORAGE_CYCLE: 1.8,
+  SLAB_STAGES: ['abcd', 'efgh', 'ijkl'],
+  slabStage(wear) {
+    const all = this._muted('stone-l');
+    if (!all || !all.length) return null;
+    /* RESOLVED FRESH, NEVER CACHED. The catalog decodes one letter at a
+       time and the terrain bakes before the cascade finishes, so a set
+       frozen on the first call is a set built out of the three or four
+       slabs that happened to have arrived — which is exactly what shipped
+       every stage the wrong art until the re-bake. Four letters of
+       arithmetic per deposit tile is cheaper than being wrong. */
+    const ls = this.SLAB_STAGES[wear < 1 / 3 ? 0 : wear < 2 / 3 ? 1 : 2];
+    const out = [];
+    for (let k = 0; k < ls.length; k++) {
+      const li = ls.charCodeAt(k) - 97;
+      if (2 * li + 1 < all.length) out.push(all[2 * li], all[2 * li + 1]);
+    }
+    return out.length ? out : all;
+  },
+
+  _muted(key) {
+    const k = (typeof LAND !== 'undefined' && typeof LAND.TREE_MUTE === 'number') ? LAND.TREE_MUTE : 0;
+    // stale on a dial move OR any catalog change — a cleared catalog must
+    // never keep serving its old muted pieces from this cache
+    if (k !== this._muteK || this._muteRev !== this.treesRev) this._remute();
+    return this._treesMuted[key];
+  },
+  /* the composer's pick: a piece for this kind at this radius, or null.
+     rr under 7 reaches for the small tier, either tier stands in for a
+     missing other, and h picks the letter and mirror deterministically.
+     THE SPECIES COLLAPSE (Gate B rule): a TREE kind the catalog lacks is
+     served from the dome set instead — a stand never mixes art trees
+     with procedural trees of another species; the species mix becomes a
+     variant and size mix. Ground accents (stump, snag, log) never
+     collapse: a missing stump must not sprout a whole tree. */
+  treePiece(kind, rr, h) {
+    let style = kind === 'round' ? 'dome' : kind;
+    if ((style === 'conifer' || style === 'oak' || style === 'birch')
+      && !this.trees[style + '-l'] && !this.trees[style + '-s']) style = 'dome';
+    // rr >= 8, not 7: the l stamp sits at the very top of the procedural
+    // 9-22px distribution, so it stays the OCCASIONAL big tree (the Gate B
+    // stand-down's scale audit — most slots take the small)
+    const a = this._muted(style + '-' + (rr >= 8 ? 'l' : 's'))
+      || this._muted(style + '-' + (rr >= 8 ? 's' : 'l'));
+    if (!a || !a.length) return null;
+    return a[(h >>> 0) % a.length];
+  },
+  /* the ELDER: the xl dome, reserved for the rare character tiles — the
+     only slot that may draw it, and never served by treePiece above. */
+  treeXl(h) {
+    const a = this._muted('dome-xl');
+    return a && a.length ? a[(h >>> 0) % a.length] : null;
+  },
+
+  /* ---- FORMATION ART: multi-tile drawn pieces over terrain REGIONS ----
+
+       assets/terrain/formations/{terrain}/{terrain}-{W}x{H}-{shape}-{letter}.png
+       e.g.  assets/terrain/formations/mountain/mountain-4x3-ridge-a.png
+
+     The per-tile override above scales ONE texture to ONE tile; a landform
+     spanning 6x5 tiles needs the opposite primitive — hand-drawn PIECES
+     packed over whole regions (js/formations.js owns regions, the solver
+     and drawing; ART_PLAN.md has the authoring rules). All lowercase.
+     {W}x{H} is the ground footprint in tiles; image width MUST equal
+     W * FORMATION_PX, image height MAY exceed H * FORMATION_PX — the
+     excess is upward overhang (peaks rising north of the footprint), and
+     the bottom edge is the baseline. Optional sidecar {same-name}.json
+     with offsetX/offsetY (footprint fractions) and scale — the building
+     sidecar's exact shape.
+
+     DISCOVERY is a known stem list per terrain (FORMATION_CATALOG below —
+     a list of filenames in code, not a manifest of metadata: everything
+     else is derived from the name and the pixels). A 404 = piece absent,
+     never an error; a partial catalog covers what it can and procedural
+     art fills the rest. Same ?v= cache-buster as everything.
+
+     THE COVERAGE MASK IS DERIVED FROM THE ALPHA CHANNEL, never
+     hand-authored: on decode the bottom H*FORMATION_PX band is downsampled
+     to a WxH grid and a cell counts as covered when its mean alpha
+     coverage exceeds FORMATION_MASK_MIN — so an L-shaped or tapered massif
+     packs as its real shape, not its bounding rectangle. On file:// the
+     pixels are unreadable (canvas taint); the mask degrades to the full
+     rectangle there, which only ever OVER-claims ground — dev drops use
+     object URLs and keep real masks. */
+  FORMATION_DIR: 'assets/terrain/formations/',
+  FORMATION_PX: 128,
+  FORMATION_MASK_MIN: 0.35,
+  // the known stem list per terrain directory. Empty until the hand-authored
+  // catalog lands — preview unlisted pieces live via the ?dev=1 workbench.
+  FORMATION_CATALOG: {
+    mountain: [],
+  },
+  formationStemRe: /^([a-z]+)-(\d+)x(\d+)-([a-z0-9]+)-([a-z])$/,
+  formationTerrains() { return Object.keys(this.FORMATION_CATALOG); },
+  formationName(stem) { return String(stem).toLowerCase() + '.png'; },
+  formationUrl(tName, stem) {
+    return this.FORMATION_DIR + tName + '/' + this.formationName(stem) + '?v=' + (CFG.ART_V || 1);
+  },
+  formationSlotKey(tName, stem) { return 'fm|' + tName + '|' + stem; },
+  // parse a stem into {tName, tId, w, h, shape, letter} — null if malformed,
+  // if the terrain is not a real T member, or if the stem's terrain does not
+  // match the directory it claims to live in
+  parseFormationStem(stem, tName) {
+    const m = this.formationStemRe.exec(String(stem).toLowerCase());
+    if (!m) return null;
+    if (tName && m[1] !== tName) return null;
+    const tId = T[m[1].toUpperCase()];
+    if (tId === undefined) return null;
+    const w = +m[2], h = +m[3];
+    // 24 tiles is the ceiling — room for a range that spans half an xlarge
+    // map; anything past it is a typo, not a mountain
+    if (!(w >= 1 && h >= 1 && w <= 24 && h <= 24)) return null;
+    return { tName: m[1], tId, w, h, shape: m[4], letter: m[5] };
+  },
+  _tryLoadFormation(tName, stem) {
+    const img = new Image();
+    img.onload = async () => {
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.FORMATION_DIR + tName + '/' + stem + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[this.formationSlotKey(tName, stem)]) return;
+      this.setFormationArt(tName, stem, img, meta);
+    };
+    img.onerror = () => { this.art[this.formationSlotKey(tName, stem)] = null; };
+    this._track(img, true);
+    img.src = this.formationUrl(tName, stem);
+  },
+  /* ---- WILDERNESS RELIC ART (js/relics.js): the formation conventions
+     pointed at a DECOR directory ----
+
+       assets/features/relic/relic-{W}x{H}-{key}-{letter}.png
+
+     The stem carries the footprint exactly as a formation's does, the same
+     128 art-px-per-tile rule applies, and the same ?v= cache-buster rides
+     the URL. The footprint in the name must MATCH the relic def's own
+     (placement used the def; art that disagrees is refused with one plain
+     warning and the procedural placeholder keeps standing). A relic is
+     decor by definition: its alpha is a silhouette, never a passability —
+     the blocked set is EMPTY and nothing here can touch a map array. */
+  RELIC_DIR: 'assets/features/relic/',
+  relicArt: {},
+  relicKeys() { return window.Relics ? Object.keys(Relics.DEFS) : []; },
+  relicStem(key) {
+    const d = window.Relics && Relics.DEFS[key];
+    return d ? ('relic-' + d.w + 'x' + d.h + '-' + key + '-a') : null;
+  },
+  relicSlotKey(key) { return 'rl|' + key; },
+  relicUrl(key) { return this.RELIC_DIR + this.relicStem(key) + '.png?v=' + (CFG.ART_V || 1); },
+  _tryLoadRelic(key) {
+    const img = new Image();
+    const k = this.relicSlotKey(key);
+    img.onload = () => {
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[k]) return;
+      this.setRelicArt(key, img);
+    };
+    img.onerror = () => { this.art[k] = null; };
+    this._track(img, true);
+    img.src = this.relicUrl(key);
+  },
+  setRelicArt(key, img) {
+    const d = window.Relics && Relics.DEFS[key];
+    if (!d || !img) return false;
+    if (img.width !== d.w * this.FORMATION_PX) {
+      if (!this._relicWarned) this._relicWarned = {};
+      if (!this._relicWarned[key]) {
+        this._relicWarned[key] = 1;
+        console.warn('[relic art] ' + key + ': width ' + img.width + ' ≠ footprint ' +
+          d.w + '×128 = ' + (d.w * this.FORMATION_PX) + ' — refused, placeholder stands');
+      }
+      return false;
+    }
+    this.relicArt[key] = img;
+    const k = this.relicSlotKey(key);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+  removeRelicArt(key) {
+    delete this.relicArt[key];
+    const k = this.relicSlotKey(key);
+    delete this.art[k]; delete this.loaded[k];
+  },
+
+  /* ================= UNIT SHEETS: the CHARACTER-CLASS art path =================
+     (tests/animal-art.mjs.) The first PNG pipeline for things that MOVE.
+     Animals are the test case before villagers get the same treatment
+     (ART_PLAN's reference doctrine): 8 directions, real frame counts, and
+     a fidelity bar ABOVE the procedural cast — that mismatch is intentional.
+
+     One file per (kind, direction, pose), a HORIZONTAL STRIP of square
+     frames — frame size = strip height, frame count = width/height:
+
+       assets/units/unit-{kind}-{dir}-{pose}.png     dir ∈ s,se,e,ne,n,nw,w,sw
+
+     Frames install into Assets.unitArt[kind].dirs[dir][pose] as sliced
+     canvases; R.unitSprite prefers them (facing from R.unitFacing) and
+     falls back per-LOOKUP to the procedural sheet, so a kind with only a
+     south walk shipped still animates every other way it always did.
+     Character sprites carry NO ground stain, plate or baked shadow — the
+     renderer's own contact pass draws that. A non-integer strip width is
+     refused with one plain warning and the procedural look stands. */
+  UNIT_DIR: 'assets/units/',
+  UNIT_DIRS8: ['s', 'se', 'e', 'ne', 'n', 'nw', 'w', 'sw'],
+  // kinds and the poses each may ship — probed at boot, 404s are the norm.
+  // 'idle' is each species' standing life: the deer and cow graze, the boar
+  // roots, the wolf scents the air (a kind with no strike sheet borrows its
+  // walk via R.sheetFrames)
+  UNIT_ART: { deer: ['walk', 'idle'], cow: ['walk', 'idle'],
+              wolf: ['walk', 'idle', 'fight', 'eat'],     // the lunging bite (ANIMAL STRIFE), 96px frames at 2:1
+              boar: ['walk', 'idle', 'charge'],    // head down, tusks first; a close blow borrows it too
+              bear: ['walk', 'idle', 'fight'],     // the bear carries the roster's first real fight sheet
+              /* the UNDYED hulls. Deliberately here and not MILITARY_ART:
+                 no plank of these boats wears a village colour, so one
+                 neutral sheet serves every owner — including the Sea
+                 Folk, whose 'R'-owned longboats ARE this transport (an
+                 accepted, flagged consequence: their hull matches yours;
+                 their plumed crew pips and red bar still read apart).
+                 'idle' is a derived at-anchor bob composed from the walk,
+                 not a generated sheet; 'gather' is the fishing haul. */
+              fishboat: ['walk', 'idle', 'gather'],
+              transport: ['walk', 'idle'],
+              fireship: ['walk', 'idle', 'fight'] },
+  /* the DRAW BOX per kind, in world px — default CFG.TILE (32). A bigger
+     animal is a draw-box question, not a canvas question (ART_PLAN): the
+     bear ships 96px frames into a 48px box, the same exact 2:1 native
+     density as the rest of the cast, just a genuinely bigger animal on
+     the map. Operator-approved before the bear was built. */
+  /* the working hulls draw at 48 like the bear — a cog or a bombard ship
+     alongside a 32px fishing boat is a genuinely bigger vessel, same 2:1
+     density (96px frames). The fishboat STAYS 32: players raise dozens,
+     and a fleet of fat hulls would swallow every harbor. The WHOLE siege
+     train and the cavalry ride the big box too — the operator's ruling,
+     twice: an engine should stand ship-sized, and a horse and rider
+     must never read as a midget on a pony beside their own footmen. */
+  UNIT_BOX: { bear: 48, transport: 48, fireship: 48, bombard: 48,
+              trebuchet: 48, siegetower: 48, catapult: 48, ballista: 48,
+              rider: 48, horsearcher: 48, lancer: 48 },
+  /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
+     Appearance tier by Town Center level — a TABLE, deliberately, so tiers
+     can lag or lead the TC later without touching the resolver. */
+  VILLAGER_TIER_BY_TC: { 1: 1, 2: 2, 3: 3 },
+  VILLAGER_POSES: ['idle', 'walk', 'gather', 'mine', 'farm', 'build', 'guard', 'pick', 'reach'],
+  /* THE RECOLOR KEY RAMP. Hand-authored villager sheets are authored
+     NEUTRAL, wearing the blue tunic's exact two-color ramp — and at load
+     time those two colors (and only those) are swapped to the faction's
+     rolled tunic ramp. Designated palette indices, not a mask layer and
+     not per-color pre-bakes: zero extra files, one lossless pass per
+     canvas, memoized per faction exactly like Sprites.militaryFor.
+     HARD AUTHORING CONSTRAINT (ART_PLAN): these two hex values may
+     appear NOWHERE in a villager frame except the tunic itself — never
+     on skin, hair, tools or shadow — and the tunic must wear this same
+     ramp in every master, or the recolor reads differently per tier. */
+  TUNIC_KEY: { body: '#3f6d99', accent: '#2c4e70' },
+  recolorTunic(canvas, tunic) {
+    if (!this._dyes(tunic)) return canvas;             // blue IS the key — nothing to swap
+    const g = canvas.getContext('2d');
+    let d;
+    try { d = g.getImageData(0, 0, canvas.width, canvas.height); }
+    catch (e) { return canvas; }                       // tainted (file://) — recolor is a no-op there
+    if (!this._swapTunic(d.data, tunic)) return canvas;
+    g.putImageData(d, 0, 0);
+    return canvas;
+  },
+  // is there anything to dye? typeof, never window.: Sprites is a
+  // script-level const (the trap setUnitFrames below already documents)
+  _dyes(tunic) {
+    return tunic !== 'blue' && typeof Sprites !== 'undefined' && !!Sprites.tunicCol && !!Sprites.tunicCol[tunic];
+  },
+  /* the swap itself, on raw RGBA — shared by recolorTunic and the strip
+     install below, so the two can never dye a pixel differently. False
+     when there is nothing to swap (blue IS the key; an unknown tunic). */
+  _swapTunic(p, tunic) {
+    if (!this._dyes(tunic)) return false;
+    const t = Sprites.tunicCol[tunic];
+    const hx = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const kb = hx(this.TUNIC_KEY.body), ka = hx(this.TUNIC_KEY.accent);
+    const nb = hx(t.body), na = hx(t.accent);
+    for (let i = 0; i < p.length; i += 4) {
+      if (!p[i + 3]) continue;
+      if (p[i] === kb[0] && p[i + 1] === kb[1] && p[i + 2] === kb[2]) { p[i] = nb[0]; p[i + 1] = nb[1]; p[i + 2] = nb[2]; }
+      else if (p[i] === ka[0] && p[i + 1] === ka[1] && p[i + 2] === ka[2]) { p[i] = na[0]; p[i + 1] = na[1]; p[i + 2] = na[2]; }
+    }
+    return true;
+  },
+  /* the whole STRIP dyed once, on a CPU-backed scratch canvas: one pixel
+     read per strip instead of one GPU readback per frame (a founded run
+     installs ~900 strips — the per-frame read was most of the main thread
+     while the origin cards were dealing). Null when nothing is swapped or
+     the pixels cannot be read; the frames then copy the strip as it is. */
+  _dyeStrip(img, tunic) {
+    if (!this._dyes(tunic)) return null;
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    let d;
+    try { d = g.getImageData(0, 0, c.width, c.height); }
+    catch (e) { return null; }                         // tainted (file://) — the frames keep the key colours
+    this._swapTunic(d.data, tunic);
+    g.putImageData(d, 0, 0);
+    return c;
+  },
+  /* fetch one faction's tier art: NEUTRAL files on disk
+     (unit-villager-l{tier}-{m|f}-{dir}-{pose}.png), installed under the
+     faction's own key (villager-{p|a}-l{tier}-{m|f}) with the tunic ramp
+     swapped to the faction's rolled color. Called when the tunics are
+     known (new game / load) and again when a Town Center levels up. A
+     missing file is the default state — the procedural villager stands. */
+  loadVillagerArt(owner) {
+    // typeof guards — G is a script-level const (window.G is undefined)
+    if (!window.R || typeof G === 'undefined') return;
+    const tier = R.villagerTier(owner);
+    const fac = owner === 'A' ? 'a' : 'p';
+    const tunic = G.tunicOf(owner);
+    for (const sex of ['m', 'f']) for (const dir of this.UNIT_DIRS8) for (const pose of this.VILLAGER_POSES) {
+      // the tunic rides IN the key (matching R.unitArtKey): a new run's
+      // fresh tunic can never be served last run's baked colors, and an
+      // install still in flight from the old run lands under the old key
+      const key = 'villager-' + fac + '-' + tunic + '-l' + tier + '-' + sex;
+      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
+      const img = new Image();
+      this._stripLoad(img, this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
+        '.png?v=' + (CFG.ART_V || 1), () => this.setUnitFrames(key, dir, pose, img, tunic));
+    }
+  },
+  /* ---- MILITARY SHEET ART (the archer line ships first) ----
+     Same recolor law as the villagers: files on disk are NEUTRAL
+     (unit-{kind}-{dir}-{pose}.png wearing the blue key ramp), installed
+     under a faction key ({kind}-{p|a}-{tunic}) with the tunic swapped
+     exactly once at install. Kinds listed here must NEVER also appear in
+     UNIT_ART: the boot probe would install un-recolored frames under the
+     plain kind slot, and sheetFrames' kind-level fallback would then
+     serve blue-keyed art to BOTH factions whenever a faction install was
+     still in flight — friend and foe would stop reading apart. */
+  MILITARY_ART: { archer:   ['idle', 'walk', 'fight'],
+                  longbow:  ['idle', 'walk', 'fight'],
+                  marksman: ['idle', 'walk', 'fight'],
+                  defender: ['idle', 'walk', 'fight'],
+                  axeman:   ['idle', 'walk', 'fight'],
+                  elite:    ['idle', 'walk', 'fight'],
+                  // the one dyed hull: the bombard ship flies its village's
+                  // colours on the stern banner (the ONLY keyed region)
+                  bombard:  ['idle', 'walk', 'fight'],
+                  /* the siege train: wooden machines with a keyed pennant
+                     (the only dyed region — a captured-looking engine is a
+                     friend/foe bug). No idle sheets on purpose: a machine
+                     that stops simply HOLDS its walk frame 0 (the
+                     stationary-borrow rule in R.sheetFrames); only water
+                     needed a bob. The siege tower never attacks, so it
+                     ships no fight sheet either. */
+                  catapult:   ['walk', 'fight'],
+                  ballista:   ['walk', 'fight'],
+                  trebuchet:  ['walk', 'fight'],
+                  siegetower: ['walk'],
+                  // the stable: horse and rider dye through the saddle
+                  // cloth and tunic, same key ramp as the foot soldiers
+                  rider:       ['idle', 'walk', 'fight'],
+                  horsearcher: ['idle', 'walk', 'fight'],
+                  lancer:      ['idle', 'walk', 'fight'] },
+  /* `later`: the strips go in the background tier — fetched behind the
+     counted ones and never waited for by artReady(). A FRESH run asks it for
+     the rival's soldiers and sappers (G.newGame): they stand in their own
+     town under the fog for the opening days, and a third of the strips a
+     founding asks for is the rival's army — the plaque after the draft
+     waits only for the people the player can see or field. */
+  loadMilitaryArt(owner, later) {
+    // typeof guards — G is a script-level const (window.G is undefined)
+    if (!window.R || typeof G === 'undefined') return;
+    const fac = owner === 'A' ? 'a' : 'p';
+    const tunic = G.tunicOf(owner);
+    for (const kind in this.MILITARY_ART) for (const dir of this.UNIT_DIRS8) for (const pose of this.MILITARY_ART[kind]) {
+      // the tunic rides IN the key, same anti-staleness armor as the
+      // villager loader above: a new run's rolled color can never be
+      // served frames baked for last run's
+      const key = kind + '-' + fac + '-' + tunic;
+      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
+      const img = new Image();
+      this._stripLoad(img, this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+        () => this.setUnitFrames(key, dir, pose, img, tunic), later);
+    }
+  },
+  /* ---- SAPPER TIER ART: villager doctrine, camp-leveled, no sex axis ----
+     Neutral files unit-sapper-l{tier}-{dir}-{pose}.png install under
+     sapper-{p|a}-{tunic}-l{tier}. The four terraform crafts ship the four
+     CARDINAL directions only — the sim always stands a working sapper on
+     a 4-edge neighbor facing straight at its tile — while walk/idle ship
+     all eight. Called beside the other loaders and again when a Sappers'
+     Camp finishes an upgrade. */
+  SAPPER_POSE_DIRS: { idle: ['s','se','e','ne','n','nw','w','sw'],
+                      walk: ['s','se','e','ne','n','nw','w','sw'],
+                      dig: ['s','e','n','w'], bridge: ['s','e','n','w'],
+                      clear: ['s','e','n','w'], mound: ['s','e','n','w'] },
+  loadSapperArt(owner, later) {          // `later`: see loadMilitaryArt
+    if (!window.R || typeof G === 'undefined') return;
+    const tier = R.sapperTier(owner);
+    const fac = owner === 'A' ? 'a' : 'p';
+    const tunic = G.tunicOf(owner);
+    const key = 'sapper-' + fac + '-' + tunic + '-l' + tier;
+    for (const pose in this.SAPPER_POSE_DIRS) for (const dir of this.SAPPER_POSE_DIRS[pose]) {
+      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
+      const img = new Image();
+      this._stripLoad(img, this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+        () => this.setUnitFrames(key, dir, pose, img, tunic), later);
+    }
+  },
+  /* A STRIP IS FETCHED A FEW AT A TIME, INSTALLED IN SLICES, AND COUNTED
+     UNTIL IT IS. Founding a run asks for ~900 people strips at once, and on
+     a phone that was a wall of main-thread work just as the origin cards
+     dealt: every response is processed on the main thread as it lands, and
+     each strip was cut into frame canvases (and dyed) inside its own onload
+     — the deal and the flips were held for seconds (the playtest: "the
+     first card pops quickly, the other two are slow to load"). Now at most
+     STRIP_FLIGHT strips are on the wire (the people ahead of the wild
+     beasts), each landed strip waits in a queue drained a few milliseconds
+     at a time between frames (more behind the splash, where nothing else is
+     drawn), and the request stays counted (pending / pendingLate) until its
+     strip is INSTALLED, never merely downloaded — artReady() still means
+     "the people are drawn". */
+  STRIP_FLIGHT: 8,
+  INSTALL_MS: 10,
+  _stripQ: [], _stripQLate: [], _stripFlying: 0,
+  _installQ: [], _installOn: false,
+  _stripLoad(img, url, install, late) {
+    const done = late ? this._holdLate() : this._hold(false);
+    const landed = () => { this._stripFlying--; this._pumpStrips(); };
+    img.onload = () => { landed(); this._queueInstall(install, done); };
+    img.onerror = () => { landed(); done(); };   // absent art is the default state
+    this._prio(img, late ? 'low' : this.stripPrio());
+    (late ? this._stripQLate : this._stripQ).push([img, url]);
+    this._pumpStrips();
+  },
+  _pumpStrips() {
+    while (this._stripFlying < this.STRIP_FLIGHT) {
+      const next = this._stripQ.shift() || this._stripQLate.shift();
+      if (!next) return;
+      this._stripFlying++;
+      next[0].src = next[1];
+    }
+  },
+  _queueInstall(fn, done) {
+    this._installQ.push([fn, done]);
+    if (this._installOn) return;
+    this._installOn = true;
+    this._nextSlice();
+  },
+  /* the next slice as its own task, after whatever is waiting — a message
+     rather than a timer, whose 4ms clamp on a chain left the thread idle */
+  _nextSlice() {
+    if (typeof MessageChannel === 'undefined') { setTimeout(() => this._drainInstalls(), 0); return; }
+    if (!this._sliceCh) {
+      this._sliceCh = new MessageChannel();
+      this._sliceCh.port1.onmessage = () => this._drainInstalls();
+    }
+    this._sliceCh.port2.postMessage(0);
+  },
+  _drainInstalls() {
+    const budget = (typeof document !== 'undefined' && document.getElementById('splash')) ? 40 : this.INSTALL_MS;
+    const t0 = performance.now();
+    while (this._installQ.length) {
+      const [fn, done] = this._installQ.shift();
+      try { fn(); } catch (e) { /* a bad strip keeps the procedural cast */ }
+      if (done) done();
+      if (performance.now() - t0 >= budget) break;
+    }
+    if (this._installQ.length) this._nextSlice();
+    else this._installOn = false;
+  },
+  unitArt: {},
+  unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },
+  unitUrl(kind, dir, pose) {
+    return this.UNIT_DIR + this.unitStem(kind, dir, pose) + '.png?v=' + (CFG.ART_V || 1);
+  },
+  /* ---- THE CARCASSES (W12, tests/wild-life.mjs) ----
+       assets/units/carcass-{kind}.png — one strip of SQUARE frames at the
+       kind's own walk density (64px, the bear 96px), three looks in order:
+       [fresh, picked, bones]. Each was made from the shipped walk's own
+       character (PixelLab, ART_PLAN "THE CARCASSES"), so a fallen deer is
+       the deer that was walking. Late tier with the beasts; a 404 keeps
+       the procedural carcass R.corpseOf cuts from the cast. */
+  CARCASS_KINDS: ['deer', 'cow', 'boar', 'wolf', 'bear'],
+  carcass: {},                               // kind -> [fresh, picked, bones]
+  carcassUrl(kind) { return 'assets/units/carcass-' + kind + '.png?v=' + (CFG.ART_V || 1); },
+  _tryLoadCarcass(kind) {
+    const img = new Image();
+    img.onload = () => { this.setCarcassArt(kind, img); };
+    img.onerror = () => {};
+    this._track(this._prio(img, 'low'), false, true);
+    img.src = this.carcassUrl(kind);
+  },
+  setCarcassArt(kind, img) {
+    const F = img && img.height;
+    if (!F || !img.width || img.width % F || img.width / F < 3) return false;
+    const frames = [];
+    for (let i = 0; i < 3; i++) {
+      const c = document.createElement('canvas'); c.width = c.height = F;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      g.drawImage(img, i * F, 0, F, F, 0, 0, F, F);
+      try {
+        const d = g.getImageData(0, 0, F, F);
+        for (let k = 3; k < d.data.length; k += 4) d.data[k] = d.data[k] >= 128 ? 255 : 0;
+        g.putImageData(d, 0, 0);
+      } catch (e) { /* tainted on file:// — it still draws, unsnapped */ }
+      frames.push(c);
+    }
+    this.carcass[kind] = frames;
+    return true;
+  },
+  _tryLoadUnit(kind, dir, pose) {
+    const img = new Image();
+    this._stripLoad(img, this.unitUrl(kind, dir, pose), () => this.setUnitFrames(kind, dir, pose, img), true);   // the LATE tier — see _track
+  },
+  setUnitFrames(kind, dir, pose, img, tunic) {
+    if (!img || !img.height) return false;
+    const fh = img.height, n = Math.floor(img.width / fh);
+    if (n < 1 || img.width !== n * fh) {
+      if (!this._unitWarned) this._unitWarned = {};
+      const wk = kind + '|' + dir + '|' + pose;
+      if (!this._unitWarned[wk]) {
+        this._unitWarned[wk] = 1;
+        console.warn('[unit art] ' + wk + ': strip ' + img.width + '×' + fh +
+          ' is not a whole number of square frames — refused, procedural stands');
+      }
+      return false;
+    }
+    // villager variants bake their faction's tunic at install — once,
+    // here, and never again (the recolor-exactly-once rule) — on the whole
+    // strip before it is cut, so the dye costs one read, not one per frame
+    const src = (tunic && this._dyeStrip(img, tunic)) || img;
+    const frames = [];
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('canvas');
+      c.width = fh; c.height = fh;
+      c.getContext('2d').drawImage(src, i * fh, 0, fh, fh, 0, 0, fh, fh);
+      frames.push(c);
+    }
+    const ua = this.unitArt[kind] || (this.unitArt[kind] = { dirs: {} });
+    const d = ua.dirs[dir] || (ua.dirs[dir] = {});
+    d[pose] = frames;
+    /* playback rate: a full walk cycle takes ~0.9s REGARDLESS of how many
+       frames it ships — more frames buy smoothness, never slow motion.
+       Derived once from the south walk strip so every direction agrees.
+       VILLAGERS RUN SLOWER (the referee’s live-play ruling: “everyone looks
+       like they’re on speed”), but not uniformly. The FORAGING poses — a
+       picker kneeling at a bush, a picker reaching into an orchard — keep
+       the full 1.8s cycle, because that is the pace he judged those two
+       sheets at. Everything else a villager does went half-way back toward
+       the old clock at 1.35s: at 1.8s a walk read as wading. Animals and
+       military keep the original 0.9s. */
+    // Sprites is a script-level const — `window.Sprites` is undefined (the
+    // same trap G, AI and MapGen carry); typeof is the safe guard
+    if (pose === 'walk' && dir === 's' && typeof Sprites !== 'undefined' && Sprites.animFps) {
+      const vill = kind.startsWith('villager-');
+      Sprites.animFps[kind] = Math.max(4, Math.round(n / (vill ? this.VILLAGER_CYCLE : 0.9)));
+      if (vill) {
+        if (!Sprites.animFpsForage) Sprites.animFpsForage = {};
+        Sprites.animFpsForage[kind] = Math.max(4, Math.round(n / this.FORAGE_CYCLE));
+      }
+    }
+    return true;
+  },
+  removeUnitArt(kind) { delete this.unitArt[kind]; },
+
+  /* mean alpha coverage of each footprint cell, as fractions 0..1 —
+     the ?dev=1 workbench reports these in plain words. Null on a taint
+     error (file://), where the pixels cannot be read. */
+  formationCoverage(img, w, h) {
+    try {
+      const S2 = 16;                       // samples per cell side
+      const c = document.createElement('canvas');
+      c.width = w * S2; c.height = h * S2;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.imageSmoothingEnabled = true;      // averaging IS the point here
+      const bandH = Math.min(img.height, h * this.FORMATION_PX);
+      g.drawImage(img, 0, img.height - bandH, img.width, bandH,
+        0, (h * S2) * (1 - bandH / (h * this.FORMATION_PX)), w * S2, (h * S2) * (bandH / (h * this.FORMATION_PX)));
+      const d = g.getImageData(0, 0, w * S2, h * S2).data;
+      const fr = new Float32Array(w * h);
+      for (let cy = 0; cy < h; cy++) for (let cx = 0; cx < w; cx++) {
+        let sum = 0;
+        for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++)
+          sum += d[((cy * S2 + y) * w * S2 + cx * S2 + x) * 4 + 3];
+        fr[cy * w + cx] = sum / (S2 * S2 * 255);
+      }
+      return fr;
+    } catch (e) {
+      return null;
+    }
+  },
+  /* downsample the footprint band of the alpha channel to a WxH coverage
+     grid. Mean alpha per cell against FORMATION_MASK_MIN; a taint error
+     (file://) falls back to the full rectangle. */
+  deriveFormationMask(img, w, h) {
+    const mask = new Uint8Array(w * h);
+    const fr = this.formationCoverage(img, w, h);
+    if (!fr) { mask.fill(1); return mask; }   // file:// taint — full-rect claim
+    for (let i = 0; i < w * h; i++) if (fr[i] >= this.FORMATION_MASK_MIN) mask[i] = 1;
+    return mask;
+  },
+  /* install one piece — startup and the ?dev=1 drop both land HERE. Returns
+     false (with a one-shot warning) for a malformed stem or a width that
+     does not match the declared footprint: a wrong-width piece would scale
+     to the wrong number of tiles and lie about the ground it stands on. */
+  setFormationArt(tName, stem, img, meta) {
+    if (!window.Formations) return false;
+    stem = String(stem).toLowerCase();
+    const p = this.parseFormationStem(stem, null);
+    if (!p || (p.tName !== String(tName).toLowerCase())) return false;
+    if (!img || img.width !== p.w * this.FORMATION_PX) {
+      const k = 'fmw:' + stem;
+      if (!this._fmWarned) this._fmWarned = {};
+      if (!this._fmWarned[k]) {
+        this._fmWarned[k] = 1;
+        console.warn('Formation piece ' + stem + ': width ' + (img && img.width) +
+          ' != ' + (p.w * this.FORMATION_PX) + ' (' + p.w + ' tiles x ' + this.FORMATION_PX + 'px) — refused');
+      }
+      return false;
+    }
+    const mask = this.deriveFormationMask(img, p.w, p.h);
+    const maskCells = [];
+    for (let dy = 0; dy < p.h; dy++) for (let dx = 0; dx < p.w; dx++)
+      if (mask[dy * p.w + dx]) maskCells.push([dx, dy]);
+    if (!maskCells.length) return false;   // fully transparent footprint
+    Formations.addPiece({
+      t: p.tId, stem, w: p.w, h: p.h, shape: p.shape, letter: p.letter,
+      img, mask, maskCells, maskN: maskCells.length,
+      sidecar: meta ? {
+        ox: isFinite(+meta.offsetX) ? +meta.offsetX : 0,
+        oy: isFinite(+meta.offsetY) ? +meta.offsetY : 0,
+        scale: (isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+      } : null,
+      _strip: null,
+    });
+    const k = this.formationSlotKey(p.tName, stem);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+  removeFormationArt(tName, stem) {
+    if (!window.Formations) return false;
+    const p = this.parseFormationStem(stem, String(tName).toLowerCase());
+    if (!p) return false;
+    const k = this.formationSlotKey(p.tName, stem);
+    delete this.art[k];
+    delete this.loaded[k];
+    return Formations.removePiece(p.tId, String(stem).toLowerCase());
+  },
+  formationPiece(tName, stem) {
+    const p = this.parseFormationStem(stem, String(tName).toLowerCase());
+    if (!p || !window.Formations) return null;
+    const c = Formations.catalogs[p.tId];
+    return (c && c[String(stem).toLowerCase()]) || null;
+  },
+
+  /* ---- WORK-SITE STAGE ART: three PNGs per building SLOT ----
+
+       assets/buildings/{id}-l{level}-b{1,2,3}.png
+
+     The shape-and-footprint set this replaces was rejected whole: shared by
+     FORM, its stages could not resolve into a particular building, and the
+     house's read as a conical teepee when the finished house is a round hut.
+     A stage is now authored against ONE slot's finished PNG and must resolve
+     into it — same footprint, same base ring, same post and corner positions,
+     same materials, same palette (ART_PLAN, the build-stage redo).
+
+     SHARING IS BY SLOT, NOT BY FORM. Where two finished buildings genuinely
+     are the same structure — the barracks yard and the archery range yard are
+     the same post-and-rail square — one slot owns the art and the other
+     borrows it by name. Nothing is guessed: a slot with no entry owns its
+     own. A borrowed set still has to resolve into the borrower, which is why
+     the table is an approved list and not a heuristic.
+
+     Every piece is optional and 404s quietly, and the fallbacks stack: this
+     art, then whatever the older shared set still has, then the derived
+     look. So a half-finished sprint is never a broken game. */
+  STAGE_N: 3,
+  /* THE APPROVED SHARE TABLE. A slot listed here draws the stage art of the
+     slot it borrows from. Sharing is allowed only where the two FINISHED
+     buildings genuinely are the same structure, because a borrowed stage that
+     resolves into the wrong building is worse than no art at all — the
+     barracks yard and the archery range yard are the same post-and-rail
+     square at every level, differing only in what is stood inside them once
+     the work is done, and that is exactly what the stages stop short of.
+
+     Everything not listed owns its own set — and a level whose OWN set was
+     never drawn falls to the authored shape-and-footprint work site and the
+     derived partial, which is right for it. That is deliberate: a lumber camp
+     grows a roof at level 2 and a mine grows a headframe at level 3, so level
+     1's stages would resolve into the wrong building, and no art beats wrong
+     art.
+
+     farm-l2 and lodge-l3 USED to borrow from level 1/2 (audit STG-08): the
+     ripe corn field and the dark A-frame lodge are not the structures their
+     lenders raise, so both now own upgrade-shaped sets (W2 pass two). */
+  STAGE_SHARE: {
+    // empty: every slot that ships stages owns its own set now (W2 — the range
+    // and the sappers' camp were redrawn and raise themselves); the table stays
+    // as the extension point for a slot that genuinely shares another's look
+  },
+  stageOwner(id, lv) { const k = this.slotKey(id, lv); return this.STAGE_SHARE[k] || k; },
+  stageName(id, lv, n) { return (String(id) + '-l' + lv + '-b' + n + '.png').toLowerCase(); },
+  stageUrl(id, lv, n) { return this.ART_DIR + this.stageName(id, lv, n) + '?v=' + (CFG.ART_V || 1); },
+  stages: {},
+  // the drawable for a slot's stage (n is 1-based), or null to fall back
+  stageArt(id, lv, n) {
+    const set = this.stages[this.stageOwner(id, lv)];
+    return (set && set[n - 1]) || null;
+  },
+  // every slot that OWNS art: the borrowers ride their owner's files
+  stageOwners() {
+    const seen = {}, out = [];
+    for (const s of this.artSlots().concat([{ id: 'warcamp', lv: 1 }])) {
+      const o = this.stageOwner(s.id, s.lv);
+      if (!seen[o]) { seen[o] = 1; out.push(o); }
+    }
+    return out;
+  },
+  _tryStage(owner, n) {
+    const m = String(owner).match(/^(.*)-l(\d+)$/);
+    if (!m) return;
+    const img = new Image();
+    img.onload = () => {
+      const set = this.stages[owner] || (this.stages[owner] = []);
+      set[n - 1] = img;
+      this.loaded['stage/' + owner + '/' + n] = true;
+    };
+    img.onerror = () => { /* no art for this stage — the fallbacks stand */ };
+    // NOT world art: the title's demo town is already standing, and three
+    // files per slot on the path to the menu buys nothing (the menu is held
+    // to three seconds). A real game still waits on whenIdle.
+    this._track(img, false);
+    img.src = this.stageUrl(m[1], +m[2], n);
+  },
+
+  /* ---- THE DRAWN FORTIFICATIONS (tests/wall-tower-bond.mjs) ----
+
+       assets/fort/wall-l{lv}.png    the curtain: sixteen frames, one per
+                                     connection mask (N=1 E=2 S=4 W=8)
+       assets/fort/tower-l{lv}.png   the WALL TOWER: the body a tower wears
+                                     when it is bonded into a line
+       assets/fort/gate-l{lv}.png    the gatehouse: [east-west face with
+                                     its passage cut out, north-south
+                                     flank, the door that fills the cut]
+
+     Every frame is the SAME canvas (FORT_GEO): the tile's own ground is the
+     box [M, M+T) x [UP, UP+T), so the art may rise UP above its tile — a
+     wall tower stands about a tile and a half tall — and reach M to either side,
+     where a gatehouse's towers stand astride the curtain next door. Wall
+     textures are anchored to WORLD coordinates when the atlas is composed
+     (scratch fort/compose2.cjs), so neighbouring sections meet seamlessly
+     whichever frame each one is.
+
+     THE TOWER IS COMPOSED HERE, NOT BAKED. A tower's tier and its curtain's
+     tier differ (the curtain is raised village-wide from the hall, a tower
+     by itself), so the arms reaching into its tile are drawn from the WALL
+     atlas at the wall's tier, the body at the tower's own, and the curtain
+     running south out of it once more on top from its foot (FORT_WALK — the
+     strip's columns and the row it leaves the tower at). R.drawTowerBond /
+     R.drawTowerWalk do the drawing.
+
+     All three are optional and 404 quietly: a tier with no files keeps the
+     procedural atlas, mural tower and gatehouse it has always had. */
+  FORT_DIR: 'assets/fort/',
+  FORT_PIECES: ['wall', 'tower', 'gate'],
+  FORT_TIERS: [1, 2, 3],
+  FORT_GEO: { T: 58, M: 10, UP: 64, DOWN: 24 },
+  // the curtain leaving a tower southward: the N-S strip's columns and the
+  // row it comes out at, in FORT_GEO canvas px, per tier
+  FORT_WALK: [{ x0: 23, x1: 63, y: 107 }, { x0: 22, x1: 56, y: 105 }, { x0: 23, x1: 65, y: 107 }],
+  /* THE DOOR, in the same canvas px: the passage is CUT OUT of the gatehouse
+     (gate frame 0), so an open gate shows the ground through it, and the
+     closed door / portcullis / dark arch is frame 2, drawn back over the
+     hole by R.drawGateWorks — swung (L1) or slid up (L2, L3) as it opens. */
+  // the row where a curtain's arms meet on each tier's frame (compose2's crestY)
+  FORT_CREST: [80, 67, 64],
+  FORT_DOOR: [{ x0: 20, x1: 60, y0: 47, y1: 109 }, { x0: 27, x1: 53, y0: 58, y1: 110 }, { x0: 28, x1: 52, y0: 60, y1: 110 }],
+  fort: {},
+  fortName(lv, piece) { return (piece + '-l' + lv + '.png').toLowerCase(); },
+  fortUrl(lv, piece) { return this.FORT_DIR + this.fortName(lv, piece) + '?v=' + (CFG.ART_V || 1); },
+  _tryFort(lv, piece) {
+    const img = new Image();
+    img.onload = () => {
+      (this.fort[lv] || (this.fort[lv] = {}))[piece] = img;
+      this.loaded['fort/' + lv + '/' + piece] = true;
+      this.buildFort(lv);
+    };
+    img.onerror = () => { /* no art at this tier — the procedural piece stands */ };
+    this._track(img, true);          // WORLD art: a wall can be standing in the demo town
+    img.src = this.fortUrl(lv, piece);
+  },
+  // the FORT_GEO frame k of a horizontal strip, as a canvas that blitBld
+  // anchors by its tile box (scale = canvas width over the tile's width)
+  _fortFrame(img, k) {
+    const G = this.FORT_GEO, W = G.T + 2 * G.M, H = G.UP + G.T + G.DOWN;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, k * W, 0, W, H, 0, 0, W, H);
+    c._cfArt = { scale: W / G.T, oy: G.DOWN / G.T, fort: true };
+    return c;
+  },
+  /* THE WALL TOWER IS DRAWN AT ITS OWN DENSITY, in the high camera every
+     building wears (operator: "the towers are viewed directly straight, but
+     should be a high top down, like the Town Center"). Its PNG is the body
+     alone, cropped to the drawing, foot on the bottom row; it is drawn
+     FORT_TOWER.d px to a tile, its foot FORT_TOWER.lift tiles above the
+     tile's bottom edge — the curtain's own foot line. */
+  FORT_TOWER: { d: 65, lift: 0.2 },
+  _fortBody(img) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0);
+    c._cfArt = { scale: c.width / this.FORT_TOWER.d, oy: -this.FORT_TOWER.lift, fort: true };
+    return c;
+  },
+  buildFort(lv) {
+    if (typeof Sprites === 'undefined' || typeof document === 'undefined') return;
+    const f = this.fort[lv]; if (!f) return;
+    const li = lv - 1;
+    if (f.wall && Sprites.wallMask && Sprites.wallMask[li]) {
+      for (let m = 0; m < 16; m++) Sprites.wallMask[li][m] = this._fortFrame(f.wall, m);
+      this.fortDrawn = true;
+      // the menu and panel icon: a straight east-west run
+      if (Sprites.building && Sprites.building.wall) Sprites.building.wall[li] = Sprites.wallMask[li][10];
+      if (Sprites.buildingA && Sprites.buildingA.wall) Sprites.buildingA.wall[li] = Sprites.wallMask[li][10];
+    }
+    if (f.tower) (Sprites.towerArt || (Sprites.towerArt = []))[li] = this._fortBody(f.tower);
+    if (f.gate && Sprites.gateMask && Sprites.gateMask[li]) {
+      Sprites.gateMask[li][0] = this._fortFrame(f.gate, 0);
+      Sprites.gateMask[li][1] = this._fortFrame(f.gate, 1);
+      (Sprites.gateDoor || (Sprites.gateDoor = []))[li] = this._fortFrame(f.gate, 2);
+      if (Sprites.building && Sprites.building.gate) Sprites.building.gate[li] = Sprites.gateMask[li][0];
+      if (Sprites.buildingA && Sprites.buildingA.gate) Sprites.buildingA.gate[li] = Sprites.gateMask[li][0];
+      // the third tier's drawbridge is re-cut to the drawn gatehouse's arch
+      if (lv === 3 && Sprites.fitDrawbridge) Sprites.fitDrawbridge();
+    }
+  },
+
+  /* ---- THE FORT GOING UP AND COMING DOWN (tests/wall-tower-bond.mjs) ----
+
+       assets/fort/{piece}-l{lv}-b{1,2,3}.png  the three raising stages
+       assets/fort/{piece}-l{lv}-d{1,2}.png    battered (burn phase 1) and
+                                               breached (burn phase 2)
+
+     Each file is the SAME strip as the finished piece it belongs to — the
+     wall's sixteen masks, the gatehouse's [face, flank, door], the wall
+     tower's body — so a stage or a scar lands on exactly the pixels the
+     finished stone does. They were made as PixelLab edits OF the finished
+     pieces (ART_PLAN, "THE FORT GOING UP AND COMING DOWN") and composed
+     through the same atlas as the finished curtain, its texture windows
+     pinned to the finished pieces' seams. A building stage carries no door:
+     drawGateDoor never runs on a site. A damaged gate's passage is cut by
+     the finished door's own outline, so the battered door swings and slides
+     exactly as the whole one did. The wall tower has no stages of its own —
+     a tower is RAISED as a Watchtower and only bonds once it stands — so it
+     ships its damage alone. Every file is optional and 404s quietly: a state
+     with no art keeps the ghost / darkOf / ruinOf look it always had. */
+  FORT_STATES: { wall: ['b1', 'b2', 'b3', 'd1', 'd2'], gate: ['b1', 'b2', 'b3', 'd1', 'd2'], tower: ['d1', 'd2'] },
+  _tryFortState(lv, piece, st) {
+    const img = new Image();
+    img.onload = () => {
+      const fs = Sprites.fortStates || (Sprites.fortStates = {});
+      const set = (fs[piece] || (fs[piece] = []));
+      const li = lv - 1, tier = set[li] || (set[li] = {});
+      if (piece === 'tower') tier[st] = this._fortBody(img);
+      else {
+        const n = piece === 'wall' ? 16 : 3, fr = [];
+        for (let k = 0; k < n; k++) fr.push(this._fortFrame(img, k));
+        tier[st] = fr;
+      }
+      this.loaded['fort/' + lv + '/' + piece + '-' + st] = true;
+    };
+    img.onerror = () => { /* no art for this state — the old look stands */ };
+    // NOT world art: the title's demo town stands finished and unhurt
+    this._track(img, false);
+    img.src = this.FORT_DIR + (piece + '-l' + lv + '-' + st + '.png').toLowerCase() + '?v=' + (CFG.ART_V || 1);
+  },
+  /* A BUILDING'S OWN DAMAGE, assets/buildings/{id}-l{lv}-d{1,2}.png: the
+     battered and the broken look on the finished art's canvas, replacing
+     darkOf/ruinOf for that slot. Only the kinds listed are probed — a
+     request per slot for art that does not exist would buy nothing. */
+  DMG_IDS: ['tower'],
+  dmg: {},
+  dmgArt(id, lv, k) {
+    const set = this.dmg[this.slotKey(id, lv)];
+    return (set && set[k - 1]) || null;
+  },
+  _tryDmg(id, lv, k) {
+    const img = new Image();
+    img.onload = () => {
+      const key = this.slotKey(id, lv);
+      (this.dmg[key] || (this.dmg[key] = []))[k - 1] = img;
+      this.loaded['dmg/' + key + '/' + k] = true;
+    };
+    img.onerror = () => { /* no damage art — darkOf/ruinOf stand */ };
+    this._track(img, false);
+    img.src = this.ART_DIR + (String(id) + '-l' + lv + '-d' + k + '.png').toLowerCase() + '?v=' + (CFG.ART_V || 1);
+  },
+
+  artIds() { return Object.keys(CFG.BUILDINGS).filter(k => this.EXCLUDE.indexOf(k) < 0); },
+  artSlots() {
+    const out = [];
+    for (const id of this.artIds())
+      for (let lv = 1; lv <= CFG.BUILDINGS[id].levels.length; lv++) out.push({ id, lv });
+    return out;
+  },
+  slotKey(id, lv) { return id + '-l' + lv; },
+  // the canonical filename — ALWAYS lowercase; Pages serves case-sensitively
+  artName(id, lv) { return (String(id) + '-l' + lv + '.png').toLowerCase(); },
+  artUrl(id, lv) { return this.ART_DIR + this.artName(id, lv) + '?v=' + (CFG.ART_V || 1); },
+
+  /* EVERY REQUEST IS COUNTED. Art used to arrive whenever it arrived, and
+     the world was built and shown with whatever had landed — the procedural
+     stand-ins first, the drawn art snapping in over them a few seconds
+     later, one full rebake per family (the operator's phone: "it freezes,
+     it shows me the poorly drawn procedural art for the first 1-5 seconds,
+     then snaps"). Each Image the loaders make passes through _track before
+     its src is set, AFTER its own handlers are attached: a cascade queues
+     its next probe inside onload, so the count never touches zero between
+     two links of a chain, and whenIdle() resolves only when every chain has
+     run to its 404. The game waits on that promise to bake a world
+     (Screens.ensureDemo, R.holdBake); the endgame gallery starts on it. */
+  pending: 0, _idle: [], _everIdle: false,
+  /* …AND THE WORLD'S ART COUNTED APART. The title's demo world needs the
+     ground, the wood, the deposits, the kit, the water and the buildings —
+     not the hundreds of unit strips a founded world also asks for, which
+     on a slow link are the long tail of the wait (the demo stood held for
+     ten seconds after the world's families had landed). The demo waits on
+     whenWorldIdle(); a real game (enterGame) waits on whenIdle(), which
+     is everything. A unit strip landing later installs on its own. */
+  pendingWorld: 0, _idleWorld: [],
+  whenWorldIdle() { return this.pendingWorld > 0 || !this.ready ? new Promise(r => this._idleWorld.push(r)) : Promise.resolve(); },
+  worldReady() { return this.ready && this.pendingWorld <= 0; },
+  /* THE WORLD FIRST. A hint, honoured by the browsers that schedule by it:
+     the ground, the wood, the deposits, the kit, the water and the town's
+     buildings before the hundreds of unit strips a founded world asks for
+     — on a cold cache those strips were what the stone and the kit queued
+     behind for a minute. */
+  _prio(img, p) { try { img.fetchPriority = p; } catch (e) {} return img; },
+  /* a unit strip's place on the wire: LOW for the title's demo world,
+     which founds at page load and must not delay the world's own art;
+     HIGH for a real run, which needs its people drawn now */
+  stripPrio() { return (window.Screens && Screens._demo) ? 'low' : 'high'; },
+  /* THREE TIERS ON THE WIRE. world: what the terrain bake composes with
+     (terrain, buildings, camps, props…) — the demo's bake and a founded run
+     wait for it. plain: the run's own people strips — a real game waits for
+     these too (artReady) so it is played with its art on. LATE: the wild
+     beasts and the undyed hulls (UNIT_ART) — probed only once the world's
+     art has settled, at low priority, and never counted against artReady:
+     a deer may arrive as a PNG a moment after it was procedural, and nobody
+     is held on a plaque for it. allArtReady() is the everything-landed read
+     the art contracts use. */
+  pendingLate: 0,
+  allArtReady() { return this.ready && this.pending <= 0 && this.pendingLate <= 0; },
+  _track(img, world, late) {
+    const done = late ? this._holdLate() : this._hold(world);
+    img.addEventListener('load', done); img.addEventListener('error', done);
+    return img;
+  },
+  /* one request counted, and the call that lets it go — what _track hangs
+     on load/error, and what a strip spends only once it is INSTALLED
+     (_stripLoad). Spent once, however often it is called. */
+  _hold(world) {
+    this.pending++; if (world) this.pendingWorld++;
+    let spent = false;
+    return () => {
+      if (spent) return;
+      spent = true;
+      this.pending--;
+      if (world) { this.pendingWorld--; if (this.pendingWorld <= 0) { this.pendingWorld = 0; this._onIdle(); const w = this._idleWorld; this._idleWorld = []; for (const r of w) r(); } }
+      if (this.pending <= 0) { this.pending = 0; this._everIdle = true; this._onIdle(); const w = this._idle; this._idle = []; for (const r of w) r(); }
+    };
+  },
+  _holdLate() {
+    this.pendingLate++;
+    let spent = false;
+    const done = () => {
+      if (spent) return;
+      spent = true;
+      this.pendingLate--; if (this.pendingLate < 0) this.pendingLate = 0;
+    };
+    done.late = true;                          // what the boot contract tells apart in the install queue
+    return done;
+  },
+  whenIdle() { return this.pending > 0 || !this.ready ? new Promise(r => this._idle.push(r)) : Promise.resolve(); },
+  /* ONE REBUILD PER BURST, WHATEVER THE NETWORK'S PACE. Every world-art
+     install — a tree piece, a kit piece, ground or cover art — used to ask
+     for its own rebuild as it landed (a full rebake, or the mountain layer
+     re-planned), and on a slow link the pieces land one behind the other:
+     twelve full rebakes and twenty-six layer rebuilds were measured during
+     one cold boot. An install now only raises a flag; the flags are acted
+     on here, when no request is in flight — which is what "the burst is
+     over" means — and a world that has not been baked yet simply bakes
+     with everything when its hold lifts. artRev counts world-art installs;
+     the bake stamps the revision it composed with (R._bakedArtRev), so a
+     world baked with the current catalog is never rebaked for nothing. */
+  artRev: 0, _treesDirty: false, _mtnKitDirty: false, _worldDirty: false,
+  /* an install with nothing in flight is its own burst: settle now (a
+     ?dev=1 drop into a quiet page, the dropped-tile contract) */
+  _settleIfQuiet() { if (this.pending <= 0 && this.ready) this._onIdle(); },
+  _onIdle() {
+    if (this._treesDirty) {
+      this._treesDirty = false;
+      if (typeof Sprites !== 'undefined' && Sprites.rebuildForest) Sprites.rebuildForest();
+    }
+    if (this._mtnKitDirty) {
+      this._mtnKitDirty = false;
+      if (typeof R !== 'undefined' && R.rebakeAll) { R._mtnArt = null; R._mtnLayerKey = ''; R._mtnDirty = true; }
+    }
+    if (this._worldDirty) {
+      this._worldDirty = false;
+      if (typeof R !== 'undefined' && typeof R.rebuildTerrain === 'function' && R.terrainCache && R._bakedArtRev !== this.artRev) R.rebuildTerrain();
+    }
+  },
+  artReady() { return this.ready && this.pending <= 0; },
+
+  async init() {
+    /* THE GROUND GOES FIRST. The browser hands out connections in request
+       order, and the terrain — what every bake starts from — used to be
+       queued behind hundreds of strips and props. Terrain, cover, water,
+       trees and the mountain kit, then the buildings, then everything else
+       the bake composes with; the wild beasts (the LATE tier) only once the
+       world's art has settled, so they never stand in front of it. */
+    for (const k of Object.keys(T)) this._tryTerrain(T[k], 1);
+    for (const tName of this.COVER_CATALOG)
+      for (const slot of this.COVER_SLOTS) this._tryCover(tName, slot, 1);
+    this._tryFish(1);
+    this._tryWaterFx();
+    this._tryTrees();
+    this._tryMtnKit();
+    for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
+    for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
+    for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES) this._tryFort(lv, piece);
+    for (const lv of this.FORT_TIERS) for (const piece of Object.keys(this.FORT_STATES))
+      for (const st of this.FORT_STATES[piece]) this._tryFortState(lv, piece, st);
+    for (const id of this.DMG_IDS) if (CFG.BUILDINGS[id])
+      for (let lv = 1; lv <= CFG.BUILDINGS[id].levels.length; lv++) for (let k = 1; k <= 2; k++) this._tryDmg(id, lv, k);
+    for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));
+    for (const tribe of this.campTribes()) {
+      this._tryLoadCamp(tribe);
+      for (let i = 1; i <= this.CAMP_PROP_N; i++) this._tryLoadCampProp(tribe, i);
+    }
+    for (const w of this.wonderKeys()) this._tryLoadWonder(w);
+    for (const k of this.relicKeys()) this._tryLoadRelic(k);
+    // (origin icons are ASKED FOR by the draft — Assets.wantOrigins — never probed here)
+    for (const tName of this.formationTerrains())
+      for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
+    this.ready = true;
+    // the beasts and the undyed hulls: after the world's art, or after a
+    // beat on a wire so slow the world never settles — never before
+    const beasts = () => {
+      for (const kind of Object.keys(this.UNIT_ART))
+        for (const dir of this.UNIT_DIRS8)
+          for (const pose of this.UNIT_ART[kind]) this._tryLoadUnit(kind, dir, pose);
+      for (const kind of this.CARCASS_KINDS) this._tryLoadCarcass(kind);
+    };
+    Promise.race([this.whenWorldIdle(), new Promise(r => setTimeout(r, 6000))]).then(beasts);
+    if (this.pending <= 0) { this._everIdle = true; const w = this._idle; this._idle = []; for (const r of w) r(); }
+    /* THE ENDGAME GALLERY GOES LAST — see startEndgameArt: a real game
+       asks for it once it has been playing a while, one picture at a time,
+       never the boot. Fifty megabytes of pictures nobody sees until a run
+       ends were the first thing on the wire; then, started on the boot's
+       first idle at the same low priority as the unit strips, they stood
+       in front of every villager strip a run founded after them asked for
+       (the operator: "fresh reload, villager art isn't loading"). */
+    return { ok: true, data: { slots: this.artSlots().length + this.campTribes().length } };
+  },
+  /* THE GALLERY, ONE PICTURE AT A TIME. Called by Screens once a real game
+     has been playing for a while; waits for the wire to be quiet, then
+     walks the buckets in one serial chain — a single low-priority request
+     in flight at any moment, so nothing a game asks for later ever queues
+     behind it. A run that ends before the gallery is in still gets
+     whichever pictures had arrived (endgameImgs). Idempotent. */
+  _galleryStarted: false,
+  startEndgameArt() {
+    if (this._galleryStarted) return;
+    this._galleryStarted = true;
+    const buckets = [];
+    for (const outcome of this.ENDGAME_OUTCOMES) for (const mode of this.endgameModes()) buckets.push([outcome, mode]);
+    let bi = 0;
+    const nextBucket = () => { if (bi >= buckets.length) return; const [o, m] = buckets[bi++]; this._tryEndgame(o, m, 1, nextBucket); };
+    this.whenIdle().then(nextBucket);
+  },
+
+  /* probe one ground slot; on a hit, install it and reach for the next
+     variant. The cascade is what keeps a bare repo at one request per
+     terrain instead of TERRAIN_MAX of them. */
+  _tryTerrain(t, n) {
+    const name = this.terrainName(t);
+    if (!name || n > this.TERRAIN_MAX) return;
+    const img = new Image();
+    img.onload = () => {
+      this.setTerrainArt(t, img, true);
+      this._tryTerrain(t, n + 1);
+    };
+    img.onerror = () => { /* no art at this slot — the procedural tile stands */ };
+    this._track(this._prio(img, 'high'), true);
+    img.src = this.terrainUrl(name, n);
+  },
+
+  /* install ground art. The map is baked into R.terrainCache, so a PNG that
+     decodes after the world was built has to ask for a repaint or it will
+     not show until something else happens to dirty a tile. */
+  setTerrainArt(t, img, fromCascade) {
+    const a = this.terrain[t] || (this.terrain[t] = []);
+    if (a.indexOf(img) < 0) a.push(img);
+    this.loaded['terrain/' + this.terrainName(t)] = true;
+    this.artRev++; this._worldDirty = true;
+    /* a startup cascade's install settles once the burst is over
+       (_onIdle); a DIRECT install — a ?dev=1 drop, a contract — is asked
+       for its picture now, as it always was */
+    if (fromCascade) this._settleIfQuiet(); else this._onIdle();
+    return true;
+  },
+
+  _tryLoad(id, lv) {
+    const img = new Image();
+    img.onload = async () => {
+      // the sidecar is fetched only for art that actually exists — and only
+      // over http(s): on file:// the Fetch API rejects the scheme outright
+      // (and logs a console error per attempt), so defaults apply there
+      let meta = null;
+      if (location.protocol !== 'file:') try {
+        const r = await fetch(this.ART_DIR + this.slotKey(id, lv) + '.json?v=' + (CFG.ART_V || 1));
+        if (r.ok) meta = await r.json();
+      } catch (e) { /* no sidecar — defaults */ }
+      // a ?dev=1 drop that landed while this was still in flight wins —
+      // a startup load must never clobber the artist's live preview
+      if (window.DevArt && DevArt.overrides && DevArt.overrides[this.slotKey(id, lv)]) return;
+      this.setBuildingArt(id, lv, img, meta);
+    };
+    img.onerror = () => { this.art[this.slotKey(id, lv)] = null; };
+    this._track(this._prio(img, 'high'), true);
+    img.src = this.artUrl(id, lv);
+  },
+
+  /* `world` marks a prop the TITLE'S DEMO WORLD needs before it can bake —
+     the TC's hearth is one. The work-site set is NOT: the demo founds a town
+     that is already standing, so eight more requests on the path to the menu
+     buy nothing and the menu is held to three seconds. They still ride
+     whenIdle(), so a real game waits for them before it can place anything. */
+  _tryProp(key, url, world) {
+    const img = new Image();
+    img.onload = () => { if (this._place(key, img)) this.loaded[key] = true; };
+    img.onerror = () => { /* no art for this prop — its procedural fallback stands */ };
+    this._track(img, world !== false);
+    img.src = url + '?v=' + (CFG.ART_V || 1);
+  },
+
+  /* install a PNG into a building slot — startup and the ?dev=1 preview both
+     land HERE, one code path. The _cfArt marker is what routes the drawable
+     through R.blitBld's shared anchoring rule (and darkOf/ruinOf carry it
+     onto their burn variants). */
+  setBuildingArt(id, lv, img, meta) {
+    const fam = Sprites.building[id], famA = Sprites.buildingA[id];
+    if (!fam || !famA || lv < 1 || lv > fam.length) return false;
+    img._cfArt = {
+      ox: (meta && isFinite(+meta.offsetX)) ? +meta.offsetX : 0,
+      oy: (meta && isFinite(+meta.offsetY)) ? +meta.offsetY : 0,
+      scale: (meta && isFinite(+meta.scale) && +meta.scale > 0) ? +meta.scale : 1,
+    };
+    fam[lv - 1] = img;
+    famA[lv - 1] = img;
+    const k = this.slotKey(id, lv);
+    this.art[k] = img;
+    this.loaded[k] = true;
+    return true;
+  },
+
+  /* ---- key grammar → a slot in the Sprites tables ----
+     Returns { get(), set(v) } for a valid key, or null. Addresses the
+     procedural tables (misc work-site art, ui/card motifs, terrain, units);
+     building art now arrives via the filename convention above instead. */
+  _slot(key) {
+    const p = String(key).split('/');
+    const at = (obj, prop) => obj && obj[prop] !== undefined
+      ? { get: () => obj[prop], set: v => { obj[prop] = v; } } : null;
+    switch (p[0]) {
+      case 'building':   return at((Sprites.building[p[1]] || {}), +p[2] - 1);
+      case 'building_a': return at((Sprites.buildingA[p[1]] || {}), +p[2] - 1);
+      case 'wall':       return at((Sprites.wallMask[+p[1] - 1] || {}), +p[2]);
+      case 'gate':       return at((Sprites.gateMask[+p[1] - 1] || {}), p[2] === 'v' ? 1 : 0);
+      case 'unit':       return at(((Sprites.unit[p[1]] || {})[p[2]] || {}), +p[3]);
+      case 'terrain': {
+        const t = T[String(p[1]).toUpperCase()];
+        return t === undefined ? null : at((Sprites.terrain[t] || {}), +p[2]);
+      }
+      case 'terrain_rare': {
+        const t = T[String(p[1]).toUpperCase()];
+        return t === undefined ? null : at((Sprites.terrainRare[t] || {}), +p[2]);
+      }
+      case 'icon':       return at(Sprites.icons, p[1]);
+      case 'ui': {
+        // ui/card/<cardKey> — Origin Card art. No procedural slot backs
+        // these: the draft screen falls back to Cards.drawMotif until real
+        // art lands here.
+        if (p[1] !== 'card' || !p[2] || !window.Cards || !Cards.DEFS[p[2]]) return null;
+        const o = this.ui.card;
+        return { get: () => o[p[2]], set: v => { o[p[2]] = v; } };
+      }
+      case 'misc': {
+        /* AN ART-ONLY PROP has no procedural slot to address, and `at`
+           rejects an undefined one — which is the guard that catches typo'd
+           keys everywhere else, so it stays. A key declared in PROPS is
+           art-only BY DEFINITION (the work-site set), so it opens its own
+           slot; everything else must still name one that exists. */
+        if (p.length === 2 && this.PROPS[key] !== undefined && Sprites.misc[p[1]] === undefined) {
+          const o = Sprites.misc;
+          return { get: () => o[p[1]], set: v => { o[p[1]] = v; } };
+        }
+        return p.length > 2
+          ? at((Sprites.misc[p[1]] || {}), +p[2])   // animated misc: misc/kraken/0
+          : at(Sprites.misc, p[1]);
+      }
+      default:           return null;
+    }
+  },
+
+  _place(key, drawable) {
+    const slot = this._slot(key);
+    if (!slot) return false;
+    slot.set(drawable);
+    return true;
+  },
+
+  // the current drawable for a key — image if one loaded, procedural otherwise
+  resolve(key) {
+    const slot = this._slot(key);
+    return slot ? slot.get() : null;
+  },
+
+  isImage(key) { return !!this.loaded[key]; },
+
+  drawSprite(g, key, x, y, opts) {
+    const spr = this.resolve(key);
+    if (!spr) return false;
+    opts = opts || {};
+    const w = opts.w || spr.width, h = opts.h || spr.height;
+    if (opts.alpha !== undefined) {
+      const a = g.globalAlpha;
+      g.globalAlpha = opts.alpha;
+      g.drawImage(spr, x, y, w, h);
+      g.globalAlpha = a;
+    } else g.drawImage(spr, x, y, w, h);
+    return true;
+  },
+};
+
+// classic-script global: guards elsewhere test window.Assets
+window.Assets = Assets;
