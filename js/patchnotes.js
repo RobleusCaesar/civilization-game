@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 121, date: '2026-10-29', title: 'More music',
+    items: [
+      'Three new pieces of music join the theme. Every five minutes or so the music fades into the next one, and round it goes, so a long game no longer plays the same tune over and over.',
+    ],
+  },
+  {
     build: 120, date: '2026-10-29', title: 'Tighter walls',
     items: [
       'Towers no longer slip underneath mountains, and a mountain behind a wall stays behind it.',

@@ -208,6 +208,7 @@ const Sound = {
           try { const p = th.el.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
         }
       }
+      if (this.musicOn() && this._theme && !this._deck2) this._deck2Ensure(true);
       /* resume() IS ASYNCHRONOUS, and that is not a detail. Calling it and
          then asking `ctx.state` in the next statement reads 'suspended'
          still, so startMusic bailed and the music did not begin — on the
@@ -637,44 +638,171 @@ const Sound = {
      an element streams. Routed through Web Audio because iOS ignores an
      element's own volume, and the dial must work there too. It LOOPS as the
      file does, PAUSES while the battle has the floor (and picks up where it
-     left off), and a file that will not load hands over to the generated bed. */
+     left off), and a file that will not load hands over to the generated bed.
+
+     FOUR TUNES IN TURN (operator, build 121: "for longer games, listening to
+     the same few minutes over and over again will get monotonous… set a
+     timer, say 5mn, and then fade into the next song, and then just loop
+     between the 4 tracks"). After ROTATE_S seconds of the theme actually
+     HEARD — the clock stands still through a battle, a hidden tab and a
+     muted bus — the next tune fades in over ROTATE_FADE while the one
+     playing fades out, round the list for good. Two DECKS take turns: the
+     element playing and the one fading in. Both are made, and both played,
+     inside the first gesture (the second on a breath of silence), because
+     iOS lets an element start from a timer only once a tap has started it;
+     a deck keeps that leave when its source changes. A tune is fetched only
+     when its turn comes (a game left inside five minutes never downloads
+     the other three), and one that will not load is skipped. Each tune's
+     `gain` matches it to the first's loudness (all near -14 LUFS). */
+  THEMES: [
+    { src: 'assets/music/theme.mp3', gain: 1.0 },      // -13.9 LUFS
+    { src: 'assets/music/theme-2.mp3', gain: 1.51 },   // -17.5 LUFS: +3.6dB
+    { src: 'assets/music/theme-3.mp3', gain: 1.15 },   // -15.1 LUFS: +1.2dB
+    { src: 'assets/music/theme-4.mp3', gain: 0.90 },   // -13.0 LUFS: -0.9dB
+  ],
   THEME_SRC: 'assets/music/theme.mp3',
   THEME_GAIN: 1.0,            // loudness-matched to the battle's beat (both near -14 LUFS)
-  _theme: null,               // { el, src, g } — module state, never in a save
+  ROTATE_S: 300,              // five minutes of a tune heard, then the next
+  ROTATE_FADE: 8,             // the crossfade between two tunes, in seconds
+  _theme: null,               // the deck playing: { el, src, g, i } — module state, never in a save
+  _deck2: null,               // the other deck: the next tune fades in on it
   _themeFailed: false,
   _themeHeld: false,          // the run ended mid-battle: quiet until the world changes
+  _themeClock: 0,             // seconds of the current tune heard
+  _themeBad: {},              // tune index -> it would not load
+  _themeFading: 0,            // a crossfade's end, in performance.now() ms
+  _themeLevel(i) { const t = this.THEMES[i]; return this.THEME_GAIN * ((t && t.gain) || 1); },
+  // a breath of silence, so the second deck can be played inside the gesture
+  // without fetching anything: 8kHz, 8-bit, 400 samples of the midpoint
+  _silence() {
+    if (this._silenceUri) return this._silenceUri;
+    const n = 400, b = new Uint8Array(44 + n);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) b[o + i] = str.charCodeAt(i); };
+    const u32 = (o, v) => { b[o] = v & 255; b[o + 1] = (v >> 8) & 255; b[o + 2] = (v >> 16) & 255; b[o + 3] = (v >>> 24) & 255; };
+    w(0, 'RIFF'); u32(4, 36 + n); w(8, 'WAVE'); w(12, 'fmt '); u32(16, 16);
+    b[20] = 1; b[22] = 1; u32(24, 8000); u32(28, 8000); b[32] = 1; b[34] = 8;
+    w(36, 'data'); u32(40, n); b.fill(128, 44);
+    let bin = ''; for (let i = 0; i < b.length; i++) bin += String.fromCharCode(b[i]);
+    return (this._silenceUri = 'data:audio/wav;base64,' + btoa(bin));
+  },
+  _deck(i) {
+    const ctx = this.ac();
+    const el = new Audio();
+    el.loop = true; el.preload = 'auto';
+    const d = { el, i, g: null, src: null };
+    el.addEventListener('error', () => {
+      if (d.i == null) return;                         // the breath of silence, or nothing loaded yet
+      if (d.i === 0 && d === this._theme && !this._rotated) {
+        // the first tune will not play: the generated bed takes its place
+        this._themeFailed = true;
+        if (this._music && this._music.rec) { this._music = null; this._startBed(); }
+        return;
+      }
+      this._themeBad[d.i] = true;
+      if (d === this._theme) this._themeNext(true);    // skip on to the next tune
+    });
+    d.src = ctx.createMediaElementSource(el);
+    d.g = ctx.createGain(); d.g.gain.value = 0.0001;
+    d.src.connect(d.g).connect(this.musicBus);
+    return d;
+  },
+  _load(d, i) {
+    d.i = i;
+    d.el.src = this._url((this.THEMES[i] || this.THEMES[0]).src);
+  },
   _themeEnsure() {
     if (this._theme) return this._theme;
     if (this._themeFailed) return null;
     try {
       const ctx = this.ac();
       if (!ctx || !ctx.createMediaElementSource || typeof Audio === 'undefined') { this._themeFailed = true; return null; }
-      const el = new Audio();
-      el.loop = true; el.preload = 'auto';
-      el.addEventListener('error', () => {
-        this._themeFailed = true;
-        // the recording will not play: the generated bed takes its place
-        if (this._music && this._music.rec) { this._music = null; this._startBed(); }
-      });
-      el.src = this._url(this.THEME_SRC);
-      const src = ctx.createMediaElementSource(el);
-      const g = ctx.createGain(); g.gain.value = 0.0001;
-      src.connect(g).connect(this.musicBus);
-      this._theme = { el, src, g };
+      const d = this._deck(0);
+      this._load(d, 0);
+      this._theme = d;
       return this._theme;
     } catch (e) { this._themeFailed = true; return null; }
+  },
+  // the second deck, made and played once inside a gesture so a timer may
+  // start it later (iOS); it plays a breath of silence, never a tune
+  _deck2Ensure(inGesture) {
+    if (this._deck2 || !this._theme) return this._deck2;
+    try {
+      const d = this._deck(null);
+      d.el.loop = false;
+      d.el.src = this._silence();
+      if (inGesture) { const p = d.el.play(); if (p && p.catch) p.catch(() => {}); }
+      this._deck2 = d;
+    } catch (e) { this._deck2 = null; }
+    return this._deck2;
   },
   _themeIn(sec) {
     const th = this._theme;
     if (!th || this._themeHeld || (this._battle && this._battle.mode !== 'off')) return;
     try { clearTimeout(th.pauseT); const p = th.el.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
-    this._ramp(th.g.gain, this.THEME_GAIN, sec);
+    this._ramp(th.g.gain, this._themeLevel(th.i), sec);
   },
   _themeOut(sec) {
-    const th = this._theme; if (!th || !this.ctx) return;
-    this._ramp(th.g.gain, 0, sec);
-    clearTimeout(th.pauseT);
-    th.pauseT = setTimeout(() => { try { if (th.g.gain.value < 0.01) th.el.pause(); } catch (e) {} }, sec * 1000 + 300);
+    if (!this.ctx) return;
+    // both decks: a battle can begin in the middle of a crossfade
+    for (const d of [this._theme, this._deck2]) {
+      if (!d) continue;
+      this._ramp(d.g.gain, 0, sec);
+      clearTimeout(d.pauseT);
+      d.pauseT = setTimeout(() => { try { if (d.g.gain.value < 0.01) d.el.pause(); } catch (e) {} }, sec * 1000 + 300);
+    }
+    this._themeFading = 0;
+  },
+  // the next tune in turn: the other deck loads it, fades it in from the
+  // top, and the one playing fades out under it
+  _themeNext(skip) {
+    const cur = this._theme, nx = this._deck2;
+    if (!cur || !nx || !this.ctx) return false;
+    const N = this.THEMES.length;
+    let i = cur.i == null ? 0 : cur.i;
+    for (let k = 0; k < N; k++) { i = (i + 1) % N; if (!this._themeBad[i]) break; }
+    if (this._themeBad[i] || i === cur.i) { this._themeClock = 0; return false; }
+    const fade = skip ? 1.5 : this.ROTATE_FADE;
+    try {
+      clearTimeout(nx.pauseT);
+      nx.el.loop = true;
+      this._load(nx, i);
+      nx.g.gain.cancelScheduledValues(this.ctx.currentTime);
+      nx.g.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+      const p = nx.el.play();
+      // a deck the browser will not start (no gesture ever played it) must
+      // never fade the music into silence: the tune playing comes back up.
+      // Only for that refusal — a play cut short by a pause (a battle began
+      // mid-load) must stay quiet, or the theme would rise under the battle
+      if (p && p.catch) p.catch((err) => {
+        if (!err || err.name !== 'NotAllowedError') return;
+        if (this._theme !== nx || !this._music || this._themeHeld || this._battle.mode !== 'off') return;
+        this._theme = cur; this._deck2 = nx;
+        clearTimeout(cur.pauseT);
+        try { const q = cur.el.play(); if (q && q.catch) q.catch(() => {}); } catch (e) {}
+        this._ramp(cur.g.gain, this._themeLevel(cur.i), 1.5);
+        this._ramp(nx.g.gain, 0, 0.3);
+        this._themeFading = 0;
+      });
+    } catch (e) { return false; }
+    this._ramp(nx.g.gain, this._themeLevel(i), fade);
+    this._ramp(cur.g.gain, 0, fade);
+    clearTimeout(cur.pauseT);
+    cur.pauseT = setTimeout(() => { try { if (cur !== this._theme && cur.g.gain.value < 0.01) cur.el.pause(); } catch (e) {} }, fade * 1000 + 600);
+    this._theme = nx; this._deck2 = cur;
+    this._rotated = true;
+    this._themeClock = 0;
+    this._themeFading = performance.now() + fade * 1000;
+    return true;
+  },
+  // the clock: seconds of the tune HEARD, four times a second
+  _themeTick(dt) {
+    const th = this._theme;
+    if (!this._music || !this._music.rec || !th || this._themeHeld) return;
+    if (this._battle.mode !== 'off' || th.el.paused || this.vol('music') <= 0) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (this._themeFading && performance.now() < this._themeFading) return;
+    this._themeClock += dt;
+    if (this._themeClock >= this.ROTATE_S) this._themeNext(false);
   },
 
   /* ---- THE BATTLE: it builds on the march and beats in the fight ----
@@ -1085,6 +1213,9 @@ const Sound = {
   _worldTick() {
     try {
       if (!this.ctx || this.ctx.state !== 'running') return;
+      const now = performance.now(), dt = Math.min(1, (now - (this._tickAt || now)) / 1000);
+      this._tickAt = now;
+      this._themeTick(dt);
       this._battleTick();
       if (!this.sfxOn() || !this._inGame() || S.paused) {
         if (this._gallop) { this._ramp(this._gallop.g.gain, 0, 0.3); try { this._gallop.s.stop(this.ctx.currentTime + 0.4); } catch (e) {} this._gallop = null; }
@@ -1111,7 +1242,7 @@ const Sound = {
           if (this._music && this._music.rec && this._theme && this._battle.mode === 'off') this._themeIn(1);
         } else if (this._music && this.ctx) {
           try { this.ctx.suspend(); } catch (e) {}
-          try { if (this._theme) this._theme.el.pause(); } catch (e) {}   // a hidden tab does not run the tune on
+          for (const d of [this._theme, this._deck2]) { try { if (d) d.el.pause(); } catch (e) {} }   // a hidden tab does not run the tune on
         }
       });
       setInterval(() => this._worldTick(), 250);

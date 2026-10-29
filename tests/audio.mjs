@@ -71,15 +71,16 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   };
   walk(root);
   const SFX = ['chop', 'chip', 'gold', 'rake', 'hammer', 'sword', 'arrows', 'trebuchet', 'boulder', 'ship', 'gallop', 'complete', 'select', 'horn'];
-  const want = ['assets/music/theme.mp3', 'assets/music/battle.mp3', ...SFX.map(n => 'assets/sfx/' + n + '.mp3')];
+  const TUNES = ['theme', 'theme-2', 'theme-3', 'theme-4'];
+  const want = [...TUNES.map(n => 'assets/music/' + n + '.mp3'), 'assets/music/battle.mp3', ...SFX.map(n => 'assets/sfx/' + n + '.mp3')];
   const extra = found.filter(f => !want.includes(f)), missing = want.filter(f => !found.includes(f));
   ck('theOnlyAudioIsTheGamesOwnRecordings', !extra.length && !missing.length,
     (extra.length ? 'unexpected: ' + extra.join(', ') : '') + (missing.length ? ' missing: ' + missing.join(', ') : '') || want.length + ' files, all named');
   const size = f => { try { return statSync(join(root, f)).size; } catch (e) { return Infinity; } };
   const sfxTotal = SFX.reduce((t, n) => t + size('assets/sfx/' + n + '.mp3'), 0);
-  ck('andEachIsInsideItsBudget', size('assets/music/theme.mp3') <= 4.2e6 && size('assets/music/battle.mp3') <= 0.6e6 &&
+  ck('andEachIsInsideItsBudget', TUNES.every(n => size('assets/music/' + n + '.mp3') <= 4.2e6) && size('assets/music/battle.mp3') <= 0.6e6 &&
     SFX.every(n => size('assets/sfx/' + n + '.mp3') <= 80e3) && sfxTotal <= 600e3,
-    `theme ${(size('assets/music/theme.mp3') / 1e6).toFixed(2)}MB, battle ${(size('assets/music/battle.mp3') / 1e3).toFixed(0)}KB, effects ${(sfxTotal / 1e3).toFixed(0)}KB`);
+    `tunes ${TUNES.map(n => (size('assets/music/' + n + '.mp3') / 1e6).toFixed(2)).join('/')}MB, battle ${(size('assets/music/battle.mp3') / 1e3).toFixed(0)}KB, effects ${(sfxTotal / 1e3).toFixed(0)}KB`);
   // the module's own source names the same effects it ships
   const src = readFileSync(join(root, 'js/audio.js'), 'utf8');
   ck('andTheModuleNamesTheSameEffects', SFX.every(n => new RegExp('\\n    ' + n + ':\\s+\\{ lufs:').test(src)), '');
@@ -395,6 +396,66 @@ ck('andTheGeneratedBedStandsInForIt',
   ck('andTheTapBringsTheThemeAndTheEffectsButNotTheBattle',
     afterTap.some(q => /music\/theme\.mp3/.test(q)) && afterTap.filter(q => /\/sfx\//.test(q)).length === 14 && !afterTap.some(q => /battle/.test(q)),
     afterTap.length + ' requests: ' + afterTap.map(q => q.split('/').pop()).join(' '));
+
+  /* ---- 14. FOUR TUNES IN TURN (operator, build 121): after ROTATE_S of a
+     tune heard the next fades in over the one playing, round the list for
+     good; a tune is fetched only when its turn comes, the clock stands still
+     through a battle, a tune that will not load is skipped ---- */
+  ck('theOtherTunesWaitForTheirTurn', !afterTap.some(q => /theme-\d/.test(q)),
+    'the tap fetched ' + (afterTap.filter(q => /theme-\d/.test(q)).join(', ') || 'no second tune'));
+  const rot = await p5.evaluate(async () => {
+    const r = {}, wait = ms => new Promise(z => setTimeout(z, ms));
+    r.decks = !!(Sound._theme && Sound._deck2);
+    r.playing = !!(Sound._theme && !Sound._theme.el.paused);
+    // the clock stands still while the battle has the floor
+    const keepB = Sound._battle;
+    Sound._themeClock = 0; Sound._battle = { mode: 'on' };
+    Sound._themeTick(5);
+    r.heldInBattle = Sound._themeClock === 0;
+    Sound._battle = keepB;
+    // a short turn, then watch the decks change hands
+    Sound.ROTATE_S = 0.8; Sound.ROTATE_FADE = 0.4;
+    const seen = [];
+    let fadeIn = null;
+    for (let t = 0; t < 140 && seen.length < 5; t++) {
+      await wait(100);
+      const th = Sound._theme;
+      if (!th) continue;
+      if (!seen.length || seen[seen.length - 1].i !== th.i) {
+        seen.push({ i: th.i, src: th.el.src.replace(/^.*\/music\//, '') });
+        if (th.i === 1 && !fadeIn) {
+          await wait(60);
+          fadeIn = { next: +Sound._theme.g.gain.value.toFixed(3), old: +Sound._deck2.g.gain.value.toFixed(3) };
+        }
+      }
+    }
+    r.seen = seen; r.fadeIn = fadeIn;
+    await wait(700);
+    r.level = { want: Sound._themeLevel(Sound._theme.i), now: +Sound._theme.g.gain.value.toFixed(3), other: +Sound._deck2.g.gain.value.toFixed(4) };
+    // a tune that will not load is skipped
+    Sound.ROTATE_S = 1e9;
+    const from = Sound._theme.i;
+    Sound._themeBad = { [(from + 1) % 4]: true };
+    Sound._themeFading = 0;
+    Sound._themeNext(true);
+    r.skip = { from, to: Sound._theme.i };
+    Sound._themeBad = {};
+    Sound.ROTATE_S = 300; Sound.ROTATE_FADE = 8;
+    return r;
+  });
+  const order = rot.seen.map(x => x.i).join(' → ');
+  ck('fourTunesTakeTurns', rot.decks && rot.playing && rot.seen.length >= 5 &&
+    rot.seen.slice(0, 5).map(x => x.i).join() === '0,1,2,3,0' &&
+    rot.seen.slice(0, 5).map(x => x.src.split('?')[0]).join() === 'theme.mp3,theme-2.mp3,theme-3.mp3,theme-4.mp3,theme.mp3',
+    order + ' (' + rot.seen.map(x => x.src.split('?')[0]).join(', ') + ')');
+  ck('andEachFadesInOverTheOneBefore', !!rot.fadeIn && rot.fadeIn.next > 0.0001 && rot.fadeIn.old > 0.0001 &&
+    Math.abs(rot.level.now - rot.level.want) < 0.05 && rot.level.other < 0.01,
+    JSON.stringify({ fadeIn: rot.fadeIn, level: rot.level }));
+  ck('theClockStandsStillThroughABattle', rot.heldInBattle, '');
+  ck('aTuneThatWillNotLoadIsSkipped', rot.skip.to === (rot.skip.from + 2) % 4,
+    JSON.stringify(rot.skip) + ' with tune ' + ((rot.skip.from + 1) % 4) + ' refusing to load');
+  ck('andEachTuneIsFetchedOnlyOnItsTurn', ['theme-2', 'theme-3', 'theme-4'].every(n => reqs.some(q => q.endsWith('/' + n + '.mp3'))),
+    reqs.filter(q => /theme/.test(q)).map(q => q.split('/').pop()).join(' '));
 
   const v = await p5.evaluate(async () => {
     const r = {}, wait = ms => new Promise(z => setTimeout(z, ms));

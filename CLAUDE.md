@@ -6995,6 +6995,27 @@ little too loud… reduce clicks by 60% since those happen so regularly"):
 music untouched — and the two sounds a tap makes, the selection click
 (`select`, 3.5dB further down) and the synth tap (`tick`), sit at 0.4 of
 their old level.
+**FOUR TUNES IN TURN** (`Sound.THEMES` / `_themeNext` / `_themeTick`,
+tests/audio.mjs §14 — operator, build 121: "listening to the same few
+minutes over and over again will get monotonous… set a timer, say 5mn, and
+then fade into the next song, and then just loop between the 4 tracks"):
+`theme.mp3` then `theme-2/3/4.mp3` (the operator's long cuts, ~2.6 min each,
+shipped as supplied). After `ROTATE_S` (300) seconds of a tune actually
+HEARD — the clock stands still through a battle, a hidden tab, a muted bus
+and a crossfade — the next fades in over `ROTATE_FADE` (8s) while the one
+playing fades out, round the list for good. TWO DECKS take turns
+(`_theme`, the one playing, and `_deck2`), and BOTH are played inside the
+first gesture — the second on a breath of silence from a data URI
+(`_silence`), so nothing is fetched — because iOS lets an element start
+from a timer only once a tap has started it, and a deck keeps that leave
+when its source changes; a deck the browser still refuses never fades the
+music into silence (the tune playing comes back up). A tune is FETCHED ONLY
+ON ITS TURN (a game left inside five minutes downloads one), a tune that
+will not load is SKIPPED (`_themeBad`), and only the first tune failing
+before any rotation hands over to the generated bed. Each tune's `gain`
+matches it to the first's loudness (measured: -13.9 / -17.5 / -15.1 /
+-13.0 LUFS → 1 / 1.51 / 1.15 / 0.90). `_themeOut` fades BOTH decks — a
+battle can begin in the middle of a crossfade.
 **Two traps**: `_live` was already the voice COUNT — a method of the same
 name was overwritten by `onWorldChange` and the director never ran
 (`_inGame` now); and the effects NEVER make a context or draw `Math.random`
