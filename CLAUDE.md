@@ -3685,8 +3685,10 @@ data URL in the stylesheet — dark walnut with a long, faint grain from two
 stitched `feTurbulence` layers — so the browser draws it at the screen's own
 pixels from the first paint (it was a 64px canvas tile made by ui.js and
 blown up 3x on a phone). The bars are OPAQUE `--hud-wood` lit from their
-outer edge, with a dark rule and a gold hairline (`--inlay`, faded at both
-ends) along the edge that meets the map, and they carry NO backdrop blur — it
+outer edge, with a dark rule and a gold hairline (`--inlay`, one solid line
+edge to edge, at 0.42 — operator: "solid across the entire way… a little
+subtler") along the edge that meets the map — the top bar's foot and the
+bottom bar's head alike, and they carry NO backdrop blur — it
 re-blurred the moving map under a 94%-opaque bar every frame. The build cards
 are smooth raised plates (the grain is the bar's, not every card's). The deck
 sheet and the aim bar read the same variable and wear the same walnut.
@@ -4849,13 +4851,19 @@ iOS 26's "one status bar short" bottom band (bug 301108). **iOS reads the tag on
 when the app is ADDED**, so an install made before the change keeps the
 translucent bar until it is removed and re-added — and is defended, not
 abandoned: `html.ios-app` (`navigator.standalone`, set in the boot block)
-gives it `--edge-clear: min(inset × 100, 46px)` — a REPORTED inset in the app
+gives it `--edge-clear: min(inset × 100, 32px)` — a REPORTED inset in the app
 means the page is under the bar, so an opaque-bar install (inset 0) and an
 iPhone on its side (no status bar) get none — and `html.ios-app.under-bar`
 (the page-fit script: upright and as tall as `screen` itself) gives an
 under-the-bar install that reports NO inset the old 44px `--safe-min` floor
-and the same 46px step (some builds did report zero: the
-clock-on-top-of-the-food-counter bug). The floor used to be raised on EVERY
+and the same 32px step (some builds did report zero: the
+clock-on-top-of-the-food-counter bug). **32px is the band measured on the
+reporting iPhone** (it ended ~32pt past a 59pt inset); it was 46px, the
+deepest reach on any phone, and the operator ruled that "down a row too far
+— maybe half a row higher": the clearance costs map on every old install,
+and under the blur shows only the bar's own wood. A 16 Pro Max's deeper band
+(38-45pt) may brush the top of the first row on that model, the accepted
+trade; re-adding the app (the opaque bar) removes the question entirely. The floor used to be raised on EVERY
 standalone launch, which under an opaque bar is a 44px dead strip — and was
 one in landscape all along. The browser tab stays on the real `env()` value.
 The contract emulates each mode at the reporting iPhone's size (Chromium's

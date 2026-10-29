@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 117, date: '2026-10-29', title: 'A higher top bar',
+    items: [
+      'On an iPhone home-screen app, the top bar sits higher, so your food, wood, stone and gold are closer to the clock and the map has a little more room.',
+      'The thin gold line where the top and bottom bars meet the map now runs straight across, a shade quieter.',
+    ],
+  },
+  {
     build: 116, date: '2026-10-29', title: 'A calmer Town Center',
     items: [
       'The Town Center keeps only what you need. Raise the levy and Sound the horn now appear when your town is in danger: something of yours is under attack, or an enemy you can see comes close to the hall.',
