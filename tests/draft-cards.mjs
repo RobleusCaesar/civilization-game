@@ -8,9 +8,16 @@
    sell the idea of the cards burning up… Important that this work doesn't
    hurt the loading rate and speed wins that we just gained." So:
 
-   1. THE BOOT FETCHES NO CARD ART. The trial icons are asked for when the
-      trial screen opens, the origin icons when the draft deals them — the
-      three it dealt and no others. (The boot used to probe all 26.)
+   1. THE BOOT FETCHES NO CARD ART, AND THE TAP BUILDS NOTHING. Nothing on
+      these screens is asked for before the splash lifts; once the title is
+      up and quiet the trial cards are laid out unseen and dressed, every
+      card picture is fetched and the origin frames are built (operator, on
+      the first test build: "when you click New Game, [the live build] loads
+      the difficulty select instantly. We've reintroduced delays"). So the
+      New Game tap builds no frame and its very first frame wears every
+      frame and picture, and the draft finds its three pictures waiting.
+      Both card screens stand on the title's night painting, and the world
+      under it is not drawn (it used to show black until its bake was done).
    2. THE FRAMES ARE VECTORS, BUILT TO THEIR BOX: every trial and origin
       card wears an SVG frame and back, handed over as one picture each (a
       data: URL — the browser rasterises it at the screen's own pixels, and
@@ -55,12 +62,12 @@ async function open(w, h, dpr, opts) {
   await ctx.addInitScript(SEEN);
   if (opts && opts.init) await ctx.addInitScript(opts.init);
   const p = await ctx.newPage();
-  const errs = [], reqs = [];
+  const errs = [], reqs = [], stamps = [];
   p.on('pageerror', e => errs.push(String(e)));
-  p.on('request', r => reqs.push(r.url()));
+  p.on('request', r => { reqs.push(r.url()); stamps.push(Date.now()); });
   await p.goto(URL);
   await p.waitForFunction(() => window.Screens && Screens.current === 'title' && !document.getElementById('splash'), null, { timeout: 30000 });
-  return { ctx, p, errs, reqs };
+  return { ctx, p, errs, reqs, stamps };
 }
 const cardArt = u => /assets\/icons\/cards\//.test(u);
 const toDraft = async (p, mode) => {
@@ -71,10 +78,37 @@ const toDraft = async (p, mode) => {
 
 /* ---- 1-3. the boot, the trial screen, the deal ---- */
 {
-  const { ctx, p, errs, reqs } = await open(390, 844, 3);
-  await p.waitForTimeout(2500);
-  ck('theBootFetchesNoCardArt', !reqs.some(cardArt), reqs.filter(cardArt).join(', ') || 'none');
-  await p.evaluate(() => document.getElementById('btnTitleNew').click());
+  const { ctx, p, errs, reqs, stamps } = await open(390, 844, 3);
+  // the card screens are made ready while the title is read: wait for it
+  await p.waitForFunction(() => Screens._cardPrepAt > 0 && ['calm', 'moderate', 'hard'].every(m => CardFace._trial[m] && CardFace._trial[m].ok) &&
+    Assets.originMotifs().every(m => Assets.originState(m) === 'ok') && !!Screens._fireTex, null, { timeout: 15000 }).catch(() => {});
+  await p.waitForTimeout(200);
+  const prep = await p.evaluate(() => ({ at: performance.timeOrigin + (Screens._cardPrepAt || 0), lifted: !!(window.Boot && Boot.done), n: Assets.originMotifs().length,
+    ok: Assets.originMotifs().filter(m => Assets.originState(m) === 'ok').length, tex: !!Screens._fireTex,
+    trial: ['calm', 'moderate', 'hard'].filter(m => CardFace._trial[m] && CardFace._trial[m].ok).length,
+    dressed: [...document.querySelectorAll('#ngMode .dcard')].filter(c => c.classList.contains('framed')).length }));
+  const early = reqs.filter((u, i) => cardArt(u) && stamps[i] < prep.at - 2);
+  ck('theBootFetchesNoCardArt', prep.at > 0 && prep.lifted && early.length === 0, early.map(u => u.split('/').pop()).join(', ') || 'none before the title was up and quiet');
+  ck('theCardScreensAreMadeReadyWhileTheTitleIsRead', prep.trial === 3 && prep.ok === prep.n && prep.n === 26 && prep.dressed === 3 && prep.tex,
+    JSON.stringify(prep));
+  // THE TAP BUILDS NOTHING, AND ITS FIRST FRAME WEARS EVERYTHING
+  const tap = await p.evaluate(() => new Promise(res => {
+    let built = 0; const f = CardFace.frame;
+    CardFace.frame = function () { built++; return f.apply(this, arguments); };
+    document.getElementById('btnTitleNew').click();
+    CardFace.frame = f;
+    requestAnimationFrame(() => {
+      const ready = [...document.querySelectorAll('#ngMode .dcard')].map(c => {
+        const im = c.querySelector(':scope > img.cfr'), cv = c.querySelector('canvas.dart');
+        let ink = 0;
+        try { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] > 128) ink++; } catch (e) { ink = -1; }
+        return !!(im && im.complete && im.naturalWidth) && ink > 2000;
+      });
+      res({ built, ready, night: document.getElementById('shell').classList.contains('night') && Screens.nightUp() });
+    });
+  }));
+  ck('theTrialScreenOpensOnFinishedCards', tap.built === 0 && tap.ready.length === 3 && tap.ready.every(Boolean), JSON.stringify(tap));
+  ck('andStandsOnTheNight', tap.night, '');
   await p.waitForFunction(() => [...document.querySelectorAll('#ngMode .dcard canvas.dart')].every(c => c._cfFit), null, { timeout: 8000 }).catch(() => {});
   await p.waitForTimeout(900);
   const t = await p.evaluate(() => {
@@ -94,30 +128,40 @@ const toDraft = async (p, mode) => {
   const T = t.cards;
   ck('threeTrialCardsWearVectorFrames', T.length === 3 && T.every(c => c.framed && c.svg && !c.img), JSON.stringify(T.map(c => [c.v, c.framed, c.svg, c.img])));
   ck('andNoTrialWearsAnEmoji', T.every(c => !c.emoji), JSON.stringify(T.map(c => c.emoji)));
-  ck('theTrialIconsAreAskedForWhenTheScreenOpens', ['calm', 'moderate', 'hard'].every(m => reqs.some(u => u.includes('trial-' + m + '.png'))),
-    reqs.filter(cardArt).map(u => u.split('/').pop()).join(', '));
   ck('andAreDrawnAtTheScreensOwnPixels', T.every(c => c.backing === c.dev && c.css >= 48), JSON.stringify(T.map(c => [c.backing, c.dev, c.css])));
   ck('andArePainted', T.every(c => c.ink > 2000), JSON.stringify(T.map(c => c.ink)));
   ck('theTrialWordsFit', T.every(c => c.nameFits && c.lineFits), JSON.stringify(T.map(c => [c.nameFits, c.lineFits])));
-  // the draft: only the three dealt pictures are asked for
+  // the draft: every dealt picture is already here, and the world under the
+  // night is not drawn
   const before = reqs.length;
-  await p.evaluate(() => { const c = document.querySelector('#ngMode .dcard[data-v="moderate"]'); c.click(); c.click(); });
+  await p.evaluate(() => {
+    window.__late = []; window.__draws = 0;
+    const f = Screens.dealOrigin;
+    Screens.dealOrigin = function (el, key) { const m = Cards.DEFS[key] && Cards.DEFS[key].motif; if (m && Assets.originState(m) !== 'ok') window.__late.push(m); return f.apply(this, arguments); };
+    const dr = R.draw; R.draw = function () { if (Screens.current === 'draft') window.__draws++; return dr.apply(this, arguments); };
+    const c = document.querySelector('#ngMode .dcard[data-v="moderate"]'); c.click(); c.click();
+  });
   await p.waitForFunction(() => Screens.current === 'draft', null, { timeout: 30000 });
   await p.waitForTimeout(2200);
+  // a world whose bake is done would be drawn once a second behind any other
+  // shell screen; under the night it is not drawn at all
+  await p.evaluate(() => { R.holdBake = false; R.ensureTerrain(); window.__draws = 0; });
+  await p.waitForTimeout(1600);
   const d = await p.evaluate(() => {
     const dpr = Math.min(3, devicePixelRatio || 1);
     const cards = [...document.querySelectorAll('#draftCards .ocard')];
     return { motifs: S.draft.hand.map(c => Cards.DEFS[c.key].motif), n: cards.length,
       framed: cards.every(c => [c.querySelector('.ofront.framed > img.cfr'), c.querySelector('.oback.framed > img.cfr')].every(i => i && /^data:image\/svg\+xml/.test(i.src))),
       fit: cards.map(c => { const cv = c.querySelector('canvas'); return [cv.width, Math.round(parseFloat(cv.style.width) * dpr)]; }),
-      asked: Object.keys(Assets._origin), tex: !!Screens._fireTex };
+      late: window.__late, draws: window.__draws, night: document.getElementById('shell').classList.contains('night') && Screens.nightUp(),
+      tex: !!Screens._fireTex };
   });
   const got = reqs.slice(before).filter(u => /origin-/.test(u)).map(u => u.split('/').pop().split('?')[0]);
-  ck('theDraftAsksForTheThreeItDealt', d.n === 3 && got.length === 3 && d.motifs.every(m => got.includes('origin-' + m + '.png')) &&
-    d.asked.length === 3, JSON.stringify({ got, motifs: d.motifs, asked: d.asked }));
+  ck('theDraftFindsItsPicturesWaiting', d.n === 3 && got.length === 0 && d.late.length === 0, JSON.stringify({ got, motifs: d.motifs, late: d.late }));
+  ck('andTheWorldUnderTheNightIsNotDrawn', d.night && d.draws === 0, JSON.stringify({ night: d.night, draws: d.draws }));
   ck('theDealtCardsWearVectorFacesAndBacks', d.framed, '');
   ck('andTheirPicturesAreAtTheScreensOwnPixels', d.fit.every(([a, c]) => a === c), JSON.stringify(d.fit));
-  ck('theFiresNoiseIsBuiltWhileTheCardsDeal', d.tex, '');
+  ck('theFiresNoiseIsReadyBeforeTheBurn', d.tex, '');
   ck('thePagesThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await ctx.close();
 }

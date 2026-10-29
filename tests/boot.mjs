@@ -855,9 +855,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     }
     CFG.W = CFG.H = CFG.SIZES[S.sizeKey];
     out.peek = { n, agree, tiles };
-    // a STILL world behind a shell screen is drawn once a second
+    // a STILL world behind a shell screen is drawn once a second (the load
+    // screen here: the new-game screen and the draft stand on the night,
+    // where the world is not drawn at all — tests/draft-cards.mjs)
     R.ensureTerrain();
-    Screens.show('newgame');
+    Screens.show('load');
     const draw = R.draw; let still = 0, moving = 0, which = 'still';
     R.draw = function () { if (which === 'still') still++; else moving++; return draw.apply(this, arguments); };
     try {
@@ -881,7 +883,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theLandformIsPeekedNotPainted', r.peek.agree === r.peek.n && r.peek.tiles === 0,
     `${r.peek.agree}/${r.peek.n} seeds name the world a full generate lays, ${r.peek.tiles} painted a tile`);
   ck('aStillWorldIsDrawnOnceASecond', r.paused && r.still >= 1 && r.still <= 3 && r.moving > r.still,
-    `paused behind the new-game screen: ${r.still} draws in 2.3s; the same world moving: ${r.moving}`);
+    `paused behind the load screen: ${r.still} draws in 2.3s; the same world moving: ${r.moving}`);
   ck('theFoundingRunsClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0,
     errs[0] || 'no page errors');
   await p.close();

@@ -228,7 +228,7 @@ node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every 
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
-node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot (the trials asked for when their screen opens, the three dealt origins when the draft deals), vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
+node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
 
@@ -3576,22 +3576,46 @@ PNGs; the set is SMALLER on the wire than the old 128s, 180KB against 212KB,
 and the Forager's basket lost a checker pattern baked into its master);
 `CardFace.fitCanvas` sizes a canvas's backing store to its CSS box × dpr and
 `fitDraw` draws nearest-neighbour up, smoothed only on a shrink.
-**NOTHING AT BOOT**: the boot used to probe all 26 origin icons; now the
-trial icons are fetched when the trial screen opens (`CardFace.trialImg`)
-and the draft asks for the three it dealt (`Assets.wantOrigins`, untracked —
-no draft waits on them; a picture still loading leaves its window empty
-rather than flash the drawn stand-in). **THE DEAL STAYS CHEAP**: the three
+**NOTHING AT BOOT, NOTHING IN THE TAP** (operator, on the first test
+build: "the current build, when you click New Game, loads the difficulty
+select instantly. We've reintroduced delays… the game map in the
+background… is black for the first few seconds"). The first cut built the
+trial cards INSIDE the New Game tap (a forced layout, three frames, the
+pictures asked for then): measured on the 4×-slow phone profile, 138-197ms
+of handler, a first frame at 270-349ms and the pictures in at ~1s, against
+build 111's 3ms / 30-90ms / at once. So the card screens are made ready
+WHILE THE TITLE IS READ (`Screens.armCardPrep` → `prepCards`, one small step
+per task, `CARD_PREP_MS` after the splash has lifted — the boot itself still
+asks for no card art): the trial icons at high priority
+(`CardFace.trialImg`, `fetchPriority`), the trial screen laid out unseen
+(`.screen.prep`: display, never visibility) and dressed (`prepTrial`), the
+origin frames built (`prewarm`), all 26 origin pictures fetched
+(`Assets.wantOrigins`, ~140KB) and the fire's noise made (`fireTex`). The tap
+then builds nothing and reads no layout — not even the window's size, which
+forces one after a screen change (the card size is keyed on a resize count,
+`_vpGen`) — and its first frame wears every frame and picture; the draft
+finds its three pictures waiting. A tap that beats all of this builds what
+it needs, as before. **THE NIGHT STANDS BEHIND THE CARD SCREENS**
+(`Screens.nightBehind` / `wearNight` / `nightUp`, `#shellNight`): the world
+under the new-game screen and the draft is held until its art has landed
+and its bake is done (`R.holdBake`), which on a phone was seconds — every
+build — of a black canvas under the cards. Those two screens stand on the
+title's own painting (`Boot.t2wear`, the same URL, already decoded) under
+their own gradient, and the world under it is not drawn at all (`G.frame`
+asks `nightUp`), which leaves the thread to the cards; a painting that 404s
+stands down and the world shows through as before. Measured after, three
+runs each against build 111 on the same profile: the tap 1ms (111: 1-3),
+cards complete at the first frame 47-63ms (17-107), the draft up at
+787-1186ms (826-1191), the last flip at 1599-1773ms (1588-1795).
+**THE DEAL STAYS CHEAP**: the three
 cards go into the row first and their shared size is read ONCE (read with
 one card in, the row had not squeezed them yet and the first card was
 dressed twice); names are fitted on a canvas (`nameWidth`), never by reading
 layout; the words in the next frame's own layout (`fitLater`); the frame
-pictures are cached by size and tone (`pic`) and the origin cards' five
-tones and back are BUILT AND DECODED while the player reads the trial screen
-(`prewarm` — the origin cards are the trial cards' size); a name is
+pictures are cached by size and tone (`pic`), so the origin cards' five
+tones and back, built while the title is read, are found ready; a name is
 refitted only when Cinzel really was late (`refitWhenFontsLand`, checked
-once). Measured on the 4×-slow phone profile against build 111: the deal
-~35ms dearer (≈9ms on an ordinary phone), the three flips within ~0.1s of
-the old ones. **THE CARD BURNS UP**: the old 46×62 fire buffer is gone. A
+once). **THE CARD BURNS UP**: the old 46×62 fire buffer is gone. A
 fire cell is two device pixels on a 2×/3× screen and one on a 1× (`cell`);
 the card catches at one point on its foot and a ragged front (seeded jag,
 lag from the catch point, ripple) climbs it, the card's body clipped away
