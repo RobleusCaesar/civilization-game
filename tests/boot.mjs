@@ -725,9 +725,13 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
    iPhone's size — the screen, the page box iOS hands the app, the inset it
    reports (CDP's safe-area override, which env() reads) and
    navigator.standalone — and the counters' row is MEASURED where it lands,
-   with the minimap that hangs below the bar. ---- */
+   with the minimap that hangs below the bar. The clearance is held to the
+   band measured on THIS iPhone (32pt past its 59pt inset): it was held to
+   the deepest reach on any phone (45pt, a 16 Pro Max), and the operator
+   ruled that "a row too far" — the clearance is paid in map on every old
+   install, so it clears the reporting phone's band and no more. ---- */
 {
-  const BAND = 45;                    // the deepest measured reach past the inset
+  const BAND = 32;                    // the reach measured past the reporting iPhone's 59pt inset
   const PHONE = { w: 393, h: 852 };   // the reporting iPhone, in CSS px
   const mode = async ({ app, vw, vh, inset }) => {
     const ctx = await b.newContext({ viewport: { width: vw, height: vh },

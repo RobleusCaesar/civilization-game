@@ -51,7 +51,9 @@
     --wood-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='256'%3E%3Cfilter id='a' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0024 0.085' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.40 0 0 0 0.5 -0.22'/%3E%3C/filter%3E%3Cfilter id='b' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0032 0.15' numOctaves='2' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.03 0 0 0 0 0.02 0 0 0 0 0.01 0 0 0 0.7 -0.30'/%3E%3C/filter%3E%3Crect width='512' height='256' fill='%231b140d'/%3E%3Crect width='512' height='256' filter='url(%23a)'/%3E%3Crect width='512' height='256' filter='url(%23b)'/%3E%3C/svg%3E");
     --hud-wood: #1b140d;
     /* the gold inlay along a bar's inner edge: one hairline, faded at both ends */
-    --inlay: linear-gradient(90deg, transparent, rgba(232,193,90,.5) 12%, rgba(247,217,122,.66) 50%, rgba(232,193,90,.5) 88%, transparent);
+    /* the gold inlay where a bar meets the map: one solid line, edge to edge,
+       on both bars, a shade quieter than the plates' own gold */
+    --inlay: rgba(226,190,98,.42);
     /* THE SAFE AREA IS ONE VARIABLE. Every top-anchored piece of chrome reads
        it, so the notch is handled in exactly one place — and it means where
        READABLE chrome may start: below the status bar AND below anything the
@@ -87,15 +89,18 @@
      the system blurs and tints a band past its inset (it ended ~32pt below
      a 59pt inset on the reporting iPhone, ~38-45pt below a 62pt one on a
      16 Pro Max) and nothing the page sets removes it, so the chrome steps
-     over it. A REPORTED inset in the app means the page is under the bar,
+     over it — by 32px, the reach measured on that iPhone (operator, on 46px:
+     "down a row too far… maybe half a row higher"; the clearance is what an
+     old install pays in map, and the bar's own wood is what shows under the
+     blur). A REPORTED inset in the app means the page is under the bar,
      so the clearance is keyed off the inset itself: an opaque-bar install
      reports 0 and gets none, and so does an iPhone on its side, which has
      no status bar at all. */
-  html.ios-app { --edge-clear: min(env(safe-area-inset-top, 0px) * 100, 46px); }
+  html.ios-app { --edge-clear: min(env(safe-area-inset-top, 0px) * 100, 32px); }
   /* …and one that runs under the clock but reports NO inset. The geometry
      says so instead (the page-fit script: upright and as tall as the screen
      itself), so it takes the old floor, and the same step past the blur. */
-  html.ios-app.under-bar { --safe-min: 44px; --edge-clear: 46px; }
+  html.ios-app.under-bar { --safe-min: 44px; --edge-clear: 32px; }
   @font-face {
     font-family: 'Pixelify Sans';
     src: url('assets/ui/pixelify.woff2') format('woff2');
@@ -2060,45 +2065,45 @@
 
 </div>
 
-<script src="js/feedback.js?v=117"></script>
-<script src="js/config.js?v=117"></script>
-<script src="js/audio.js?v=117"></script>
-<script src="js/config.supabase.js?v=117"></script>
-<script src="js/vendor/supabase.js?v=117"></script>
-<script src="js/backend.js?v=117"></script>
-<script src="js/competition.js?v=117"></script>
-<script src="js/score.js?v=117"></script>
-<script src="js/cards.js?v=117"></script>
-<script src="js/deck.js?v=117"></script>
-<script src="js/artstyle.js?v=117"></script>
-<script src="js/sprites.js?v=117"></script>
-<script src="js/formations.js?v=117"></script>
-<script src="js/relics.js?v=117"></script>
-<script src="js/assets.js?v=117"></script>
-<script src="js/dev.js?v=117"></script>
-<script src="js/map.js?v=117"></script>
-<script src="js/buildings.js?v=117"></script>
-<script src="js/units.js?v=117"></script>
-<script src="js/combat.js?v=117"></script>
-<script src="js/ai.js?v=117"></script>
-<script src="js/render.js?v=117"></script>
-<script src="js/beasts.js?v=117"></script>
-<script src="js/defeatart.js?v=117"></script>
-<script src="js/victoryart.js?v=117"></script>
-<script src="js/ui.js?v=117"></script>
-<script src="js/screens.js?v=117"></script>
-<script src="js/patchnotes.js?v=117"></script>
-<script src="js/settings.js?v=117"></script>
-<script src="js/titlescreen.js?v=117"></script>
-<script src="js/tutorial.js?v=117"></script>
-<script src="js/deckfx.js?v=117"></script>
-<script src="js/deckfx-town.js?v=117"></script>
-<script src="js/deckfx-army.js?v=117"></script>
-<script src="js/deckfx-growth.js?v=117"></script>
-<script src="js/deckfx-rival.js?v=117"></script>
-<script src="js/deckui.js?v=117"></script>
-<script src="js/deckscreens.js?v=117"></script>
-<script src="js/cardintro.js?v=117"></script>
-<script src="js/game.js?v=117"></script>
+<script src="js/feedback.js?v=118"></script>
+<script src="js/config.js?v=118"></script>
+<script src="js/audio.js?v=118"></script>
+<script src="js/config.supabase.js?v=118"></script>
+<script src="js/vendor/supabase.js?v=118"></script>
+<script src="js/backend.js?v=118"></script>
+<script src="js/competition.js?v=118"></script>
+<script src="js/score.js?v=118"></script>
+<script src="js/cards.js?v=118"></script>
+<script src="js/deck.js?v=118"></script>
+<script src="js/artstyle.js?v=118"></script>
+<script src="js/sprites.js?v=118"></script>
+<script src="js/formations.js?v=118"></script>
+<script src="js/relics.js?v=118"></script>
+<script src="js/assets.js?v=118"></script>
+<script src="js/dev.js?v=118"></script>
+<script src="js/map.js?v=118"></script>
+<script src="js/buildings.js?v=118"></script>
+<script src="js/units.js?v=118"></script>
+<script src="js/combat.js?v=118"></script>
+<script src="js/ai.js?v=118"></script>
+<script src="js/render.js?v=118"></script>
+<script src="js/beasts.js?v=118"></script>
+<script src="js/defeatart.js?v=118"></script>
+<script src="js/victoryart.js?v=118"></script>
+<script src="js/ui.js?v=118"></script>
+<script src="js/screens.js?v=118"></script>
+<script src="js/patchnotes.js?v=118"></script>
+<script src="js/settings.js?v=118"></script>
+<script src="js/titlescreen.js?v=118"></script>
+<script src="js/tutorial.js?v=118"></script>
+<script src="js/deckfx.js?v=118"></script>
+<script src="js/deckfx-town.js?v=118"></script>
+<script src="js/deckfx-army.js?v=118"></script>
+<script src="js/deckfx-growth.js?v=118"></script>
+<script src="js/deckfx-rival.js?v=118"></script>
+<script src="js/deckui.js?v=118"></script>
+<script src="js/deckscreens.js?v=118"></script>
+<script src="js/cardintro.js?v=118"></script>
+<script src="js/game.js?v=118"></script>
 </body>
 </html>
