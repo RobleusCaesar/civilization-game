@@ -848,11 +848,14 @@ const UI = {
     } else why.style.display = 'none';
   },
   _missingCostStr() {
+    // the game's OWN price icons (Bld.resIcon — gold is ✨; a coin glyph
+    // here drew as a silver coin on iOS and read as stone), and a WHOLE
+    // number: a scaled price leaves a fractional shortfall, and you need the
+    // next whole unit to pay it (the epsilon keeps float noise from adding one)
     const cost = Bld.effCost('P', this.placing), out = [];
-    const IC = { food: '🍖', wood: '🪵', stone: '🪨', gold: '🪙' };
     for (const k in cost) {
-      const short = cost[k] - (S.res[k] || 0);
-      if (short > 0) out.push((IC[k] || k) + ' ' + short);   // icon-first, the Bld.costStr convention
+      const short = Math.ceil(cost[k] - (S.res[k] || 0) - 1e-6);
+      if (short > 0) out.push(Bld.resIcon(k) + ' ' + short);   // icon-first, the Bld.costStr convention
     }
     return out.join('   ') || '…';
   },

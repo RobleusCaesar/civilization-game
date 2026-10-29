@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 109, date: '2026-10-29', title: 'Clearer prices',
+    items: [
+      'When you are short of something you want to build, the note now shows a whole number and the right resource. Gold no longer looks like stone.',
+    ],
+  },
+  {
     build: 108, date: '2026-10-28', title: 'Gold mines change hands',
     items: [
       'Drive the rival\'s miners off a gold mine and it is yours to take: send a villager and they start work, with no building to tear down first.',

@@ -98,6 +98,18 @@ const out = await p.evaluate(() => {
     const r1 = Bld.canPlace('P', 'house', tc.x + 3, tc.y + 3);
     ck('oneShortIsTheCostState', !r1.ok && r1.code === 'cost', '');
     ck('theCostStateIsNotATileState', Bld.canPlace('P', 'house', tc.x + 3, tc.y + 3, { noCost: true }).ok === true, '');
+    /* THE "NEED" CHIP SAYS WHOLE NUMBERS IN THE GAME'S OWN ICONS (a phone
+       report: "Need 🪙 9.600000000000449" while short of GOLD — the coin
+       glyph drew silver on iOS and read as stone, and a scaled price left
+       a float). A fractional shortfall rounds UP to what must be found. */
+    const was = Bld.effCost;
+    Bld.effCost = () => ({ wood: 10, gold: 39.6 });
+    S.res = { food: 0, wood: 10, stone: 0, gold: 30 };
+    UI.placing = 'house';
+    const need = UI._missingCostStr();
+    Bld.effCost = was; UI.placing = null;
+    ck('theNeedChipSaysWholeGoldInTheGamesOwnIcon',
+      need === Bld.resIcon('gold') + ' 10' && !/🪙/.test(need), need);
   }
 
   // ---- 3. footprints: 2×2 and 3×3 straddling valid and invalid ground ----
