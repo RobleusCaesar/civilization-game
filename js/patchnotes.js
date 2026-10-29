@@ -19,6 +19,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 120, date: '2026-10-29', title: 'Tighter walls',
+    items: [
+      'Towers no longer slip underneath mountains, and a mountain behind a wall stays behind it.',
+      'Walls and towers in a long north to south line no longer flicker over and under each other as people walk past.',
+      'A wall running north to south now climbs halfway up each tower and goes in by a doorway, so the line reads as one wall.',
+      'Walls stop at the edge of the map instead of hanging over the black.',
+      'Walls no longer reach out into water or up into a mountain. A line that meets them ends neatly instead.',
+      'The ends of earthen walls are tidy rounded mounds with no cut off fence, and the log blocks on timber walls are as wide as the walkway they cap.',
+    ],
+  },
+  {
     build: 119, date: '2026-10-29', title: 'Quieter sounds',
     items: [
       'Every sound effect is about 40 percent quieter.',

@@ -170,6 +170,7 @@ node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals
 node tests/fort-states.mjs     # walls, gates and towers go up in 3 drawn stages and come down in 2 drawn damage states — each the finished piece's own canvas, at full alpha, in every pass that draws it
 node tests/burn-down.mjs       # buildings burn in thirds at their OWN anchors; the fall throws dust; 5 days of ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
+node tests/wall-lines.mjs      # the wall sandbox: a man moves only his own pixels, a tower stands in front of the rock behind it, a wall joins walls never water/rock/black, nothing in the black, the walk half way up a tower, whole end caps
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
@@ -2691,17 +2692,40 @@ towers and gates) or a section laid later paints over its neighbour's
 flank. (2) THE TOWER IS COMPOSED AT DRAW TIME, never baked: its arms come
 from the wall atlas at the CURTAIN's tier (`drawTowerBond`), its body at the
 TOWER's own (`R.towerArtFor`), and the curtain leaving south goes back over
-its foot (`drawTowerWalk`, clipped to `Assets.FORT_WALK`) — a level-1 tower
+its face from part way up (`drawTowerWalk`, clipped to `Assets.FORT_WALK` —
+**THE WALK COMES HALF WAY UP A TOWER**, below) — a level-1 tower
 in a stone curtain must not grow palisade arms. (3) A WALL STANDS IN FRONT
-OF WHOEVER IS BEHIND IT (`R.occludeByForts`): buildings all draw before the
-units, so a villager walking inside a north wall used to be painted on its
-battlements; after each unit, the drawn forts in the two rows south of it
-(and any tower that stands over those) are laid over it again, in the
-building pass's own order — and a unit standing ON a gate's own tile is
-inside the passage, so the gatehouse and the curtain either side are laid
-over him too until he steps out the far side (he used to pop in front of
-the whole gatehouse the moment he entered its row: the walk-through
-glitch). A picture only — `R.unitHit` is untouched. **AN OPEN GATE IS
+OF WHOEVER IS BEHIND IT (`R.occludeByForts` → `R.redrawFront`): buildings
+all draw before the units, so a villager walking inside a north wall used to
+be painted on its battlements; after each unit, everything the building pass
+drew in front of him goes back over him, CLIPPED to his own picture — and a
+unit standing ON a gate's own tile is inside the passage, so the gatehouse
+and the curtain either side are laid over him too until he steps out the far
+side (he used to pop in front of the whole gatehouse the moment he entered
+its row: the walk-through glitch). A picture only — `R.unitHit` is
+untouched. **WHAT STANDS IN FRONT IS PAINTED IN FRONT** (`R.redrawFront`,
+`R._bPos`, `_picRect`, `_redrawPic`; tests/wall-lines.mjs — the wall
+sandbox, from the operator's "towers going underneath a mountain… walls and
+towers… glitch… on top and below each other"): the building pass records
+its own order (`R._bPos`, by footprint front edge), and anything drawn LATER
+that stands BEHIND a building — a unit north of a wall, a mountain strip
+north of a tower whose roof rises into the rock — gets the buildings in
+front of it put back: the SUFFIX of the pass's order whose front edge lies
+past the occluder's row, clipped to the occluder's rect, in the pass's own
+order, so inside the clip the picture is exactly the pass's with the
+occluder slotted in at its depth and outside it no pixel moves. The old
+redraw put back a hand-picked list (forts two rows south, towers four)
+UNCLIPPED and was never closed under overlap, so along a north-south line a
+tower came back over the section the pass had laid over its foot and the
+curtain and its towers traded places with every step anybody took beside
+it (measured: 10-43 thousand stray pixels a walk). Units keep the old scope
+(`fortsOnly`: only the drawn forts stand over a man, never a house roof);
+each mountain strip (`msFlush`) takes EVERY building south of its row,
+because a roof rising into the rock was being painted under it. Work sites
+are not redrawn (their stage art is partly translucent) and only opaque
+layers are laid twice — never smoke, light or flames. **And the building
+pass is clipped to the board**, the remembered ghosts too: a wall on the
+first row is cut at the edge rather than standing in the black. **AN OPEN GATE IS
 SEE-THROUGH** (operator: "make the doors transparent instead of black when
 they're open… just open or closed with an animation, keep it simple"): the
 passage (`Assets.FORT_DOOR`, per tier) is CUT OUT of the face frame and the
@@ -2737,6 +2761,23 @@ DRAWN; whether anyone may walk there is `Bld.solid` (**Buildings are solid**,
 below), and the two now agree — a bonded tower really does seal the line.
 Keep them independent rules: an off-line tower blocks its own tile without
 ever drawing a stub.
+**A WALL JOINS WALLS, NEVER THE LAND** (`R.wallMaskAt`, tests/wall-lines.mjs):
+water and mountain used to count as a connection, so a curtain ending at a
+shore or a crag drew an arm reaching into the lake or up under the rock
+(the operator's "walls going into the water"). A wall links only to walls,
+gates and bonded towers, and the off-board rim is never a neighbour; a line
+that meets water or rock simply ENDS there, in the kit's own end cap.
+**THE END CAPS ARE WHOLE** (`assets/fort/wall-l1*.png`, `wall-l2*.png`, same
+test): every level-1 node frame with no west arm carried a sawn-off stub of
+wattle fence (and a slice of rampart) left of its post — a fence cut off in
+mid-air at the end of every line — and every one with no north arm ended its
+mound's back in a flat saw-cut; the fence stub is gone, the mound's west
+flank rounds out and is inked, and its back is rounded at both corners (in
+the finished strip, the stages and the damage alike). The level-2 log block
+was four pixels narrower than the north-south walkway it caps, so the
+walk's right rail stuck out past it at every end and junction; its dark
+side face is let out to the walkway's width. Both were pixel edits of the
+shipped strips (scratch scripts, kept as palette PNGs), not new art.
 **The curtain through a gate IS the wall** (same test): each tier used to
 hand-draw its own version of the band crossing the gate's tile, and they
 drifted — the crenellation stopped dead at the gate and started again the far
@@ -2826,14 +2867,23 @@ the gatehouse (16 fine cells against 20) so the gate stays the biggest thing on
 the wall, wider than the curtain (12) so it still reads as a tower, and stands
 on the same ground line as both — the tile's front edge, so it is planted on
 the ground rather than perched on the curtain that passes it.
-**Where the walk meets it** (`R.drawTowerWalk`, `R.TOWER_WALK`): a curtain
-running SOUTH out of a mural tower must join its flank at WALK HEIGHT, partway
-up the shaft. The tower's body is drawn over the bond stub, so the southern arm
-only reappeared below the tower's foot — and a wall leaving at the foot reads
-as bolted onto the bottom of the tower. The south arm is now drawn AGAIN on top
-of the tower, clipped to the curtain's own width and to everything below
-`TOWER_WALK`; the gatehouse flank brings its own southern walk out at the same
-height. North is the opposite case (it passes behind — see the seam), and
+**Where the walk meets it** (`R.drawTowerWalk` / `drawGateWalk` /
+`_walkOver`, `R.TOWER_HALF`): a curtain running SOUTH out of a mural tower
+must join its face at WALK HEIGHT, partway up the shaft. The tower's body is
+drawn over the bond stub, so the southern arm only reappeared below the
+tower's foot — and a wall leaving at the foot reads as bolted onto the
+bottom of the tower (the operator: "towers sitting on top of walls… Walls
+have to come half way up a tower"). **THE WALK COMES HALF WAY UP A TOWER**:
+the curtain's own straight run (N|S, world-anchored like every section, so
+it meets the section below seamlessly) is drawn AGAIN over the drawn body
+from `TOWER_HALF` (0.64) of the body's height down, clipped to the walk's
+columns (`Assets.FORT_WALK`), going in by a DOORWAY in the tier's own
+material (`R.WALK_DOOR`: wattle and post, oak, a stepped stone arch) with a
+hard sill line where the walk meets the face — at half height with no door
+it read as a plank laid across the tower. A gatehouse seen from the flank
+takes the same walk over its flank body (`R.GATE_FLANK_BODY`, measured off
+`gate-l{n}.png` frame 1 — redraw the flank and re-measure it). With no drawn
+body the procedural stand-in keeps `R.TOWER_WALK`. North is the opposite case (it passes behind — see the seam), and
 east/west already leave at the right height because the wall band crosses the
 tower's middle.
 **The seam** (`R.drawTowerBond`): a tower is an elevation, the curtain north of

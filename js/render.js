@@ -6968,12 +6968,17 @@ const R = {
     }
   },
 
-  // fortification auto-tiling: connect to any adjacent wall/gate — and brace
-  // flush against water, mountains, and the map edge, so a wall anchored on an
-  // obstacle reads as a stout, sealed junction instead of an open end-cap
+  /* fortification auto-tiling: connect to any adjacent wall/gate, and to a
+     tower standing IN the line — and to NOTHING ELSE. It used to "brace"
+     against water, mountains and the map edge too, so a run that met a lake
+     drew its arm out over the water, one that met the black drew into the
+     void, and a run laid ALONGSIDE a crag grew a junction bulge toward the
+     rock at every single section (the wall sandbox, three reported
+     screenshots). A line that cannot go on simply ENDS, on its own tile,
+     in the end cap every frame of the kit already carries. */
   wallMaskAt(x, y, extra) {
     const conn = (xx, yy) => {
-      if (!MapGen.inB(xx, yy)) return true;                 // map edge
+      if (!MapGen.onBoard(xx, yy)) return false;           // the black is nothing to join
       if (Bld.fortAt(xx, yy)) return true;                  // wall / gate ONLY (a house is not a curtain)
       // a finished TOWER standing IN the line bonds to it (see towerLinkMask)
       const tb = Bld.at(xx, yy);
@@ -6981,8 +6986,6 @@ const R = {
         const back = xx === x ? (yy < y ? 4 : 1) : (xx < x ? 2 : 8);   // dir from that tower back to us
         if (this.towerLinkMask(xx, yy).mask & back) return true;
       }
-      const t = S.map.terrain[MapGen.idx(xx, yy)];
-      if (t === T.WATER || t === T.MOUNTAIN) return true;   // natural barrier
       return !!(extra && extra.has(xx + ',' + yy));
     };
     return (conn(x, y - 1) ? 1 : 0) | (conn(x + 1, y) ? 2 : 0) |
@@ -7158,23 +7161,81 @@ const R = {
     if (bph === 2) { const bfa = this.fireAnchors(b); return (bfa && bfa.ground) ? this.darkOf(base) : this.ruinOf(base); }
     return base;
   },
+  /* THE WALL COMES HALF WAY UP THE TOWER (the operator: "walls have to come
+     half way up a tower, so that they look like they are built into a line
+     with each other"). Across an east-west line the arms already meet the
+     tower's flanks at half its height. Down a north-south line the curtain
+     running SOUTH out of it is nearer than the tower, and it used to rejoin
+     only at the tower's foot — so at level 1, whose walk is a low turf
+     rampart, every tower read as a lookout parked on top of the wall strip
+     (a reported screenshot). The walk now comes back over the tower's front
+     from HALF its height: the curtain's own straight run (N|S, world-anchored
+     like every section, so it meets the section below seamlessly), clipped to
+     the walk's columns (Assets.FORT_WALK). The same rule dresses a gatehouse
+     seen from the flank (drawGateWalk). */
+  /* where the walk meets the tower's face, as a share of the drawn body
+     from its TOP: below the roof, half way up the walls under it — high
+     enough that the curtain plainly joins the tower, low enough that the
+     tower still shows its face either side of the walk */
+  TOWER_HALF: 0.64,
+  // the drawn gatehouse's flank BODY, top and bottom rows in its FORT_GEO
+  // frame per tier (measured off assets/fort/gate-l{n}.png frame 1); below
+  // the bottom row the flank IS the curtain's strip
+  GATE_FLANK_BODY: [[32, 109], [35, 109], [39, 109]],
+  // the doorway the walk goes in by, per tier, in FORT_GEO canvas px: its
+  // width and height, and [opening, frame, lintel] colours from the tier's
+  // own material — wattle and post, oak, dressed stone
+  WALK_DOOR: [
+    { w: 12, h: 10, c: ['#21170f', '#5b3d22', '#8a6034', '#3a2818'] },
+    { w: 12, h: 11, c: ['#1d140d', '#4e3420', '#7d5530', '#352416'] },
+    { w: 12, h: 12, c: ['#17161b', '#5d5a5c', '#9b968e', '#2c2a30'], arch: true },
+  ],
+  _walkOver(g, lv, bx, by, bw, y0) {
+    const fam = Sprites.wallMask[Math.min(lv, Sprites.wallMask.length) - 1];
+    const spr = fam && fam[1 | 4];
+    if (!spr || !spr._cfArt) return false;
+    const li = Math.min(lv, 3) - 1;
+    const r = this.artRect(spr, bx, by, bw, bw), k = r.w / spr.width;
+    const wk = Assets.FORT_WALK[li];
+    // snapped to the art's own grain, so the cut and the door sit on its pixels
+    y0 = r.y + Math.round((y0 - r.y) / k) * k;
+    const cx = r.x + (wk.x0 + wk.x1) / 2 * k;
+    // the doorway in the tower's face, the walk running in at its sill
+    const D = this.WALK_DOOR[li];
+    if (D) {
+      const dw = D.w * k, dh = D.h * k, x0 = Math.round((cx - dw / 2 - r.x) / k) * k + r.x;
+      g.fillStyle = D.c[1]; g.fillRect(x0 - k, y0 - dh - k, dw + 2 * k, dh + k);          // the frame
+      g.fillStyle = D.c[0];
+      if (D.arch) {                                                                      // a round head, in steps
+        g.fillRect(x0, y0 - dh + 3 * k, dw, dh - 3 * k);
+        g.fillRect(x0 + k, y0 - dh + k, dw - 2 * k, 2 * k);
+        g.fillRect(x0 + 3 * k, y0 - dh, dw - 6 * k, k);
+      } else g.fillRect(x0, y0 - dh, dw, dh);
+      g.fillStyle = D.c[3]; g.fillRect(x0, y0 - dh + (D.arch ? 3 * k : 0), k, dh - (D.arch ? 3 * k : 0));   // the lit jamb inside
+      g.fillStyle = D.c[2]; g.fillRect(x0 - k, y0 - dh - k, dw + 2 * k, k);              // the lintel's lit edge
+    }
+    g.save();
+    g.beginPath();
+    g.rect(r.x + wk.x0 * k, y0, (wk.x1 - wk.x0) * k, r.y + r.h - y0);
+    g.clip();
+    this.blitBld(g, spr, bx, by, bw, bw);
+    g.restore();
+    // the sill: the walk's end meets the face in a hard shadow line
+    g.fillStyle = 'rgba(20,14,8,0.55)';
+    g.fillRect(r.x + wk.x0 * k, y0, (wk.x1 - wk.x0) * k, k);
+    return true;
+  },
   drawTowerWalk(g, b, bx, by, bw) {
     if (b.construction > 0) return;
     const lk = this.towerLinkMask(b.x, b.y);
     if (!(lk.mask & 4)) return;                          // nothing coming from the south
-    const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
-    if (this.towerArtFor(b)) {
-      // the drawn curtain's strip, from the row it leaves the tower's foot
-      const spr = fam[lk.mask], r = this.artRect(spr, bx, by, bw, bw), k = r.w / spr.width;
-      const wk = Assets.FORT_WALK[Math.min(lk.level, 3) - 1];
-      g.save();
-      g.beginPath();
-      g.rect(r.x + wk.x0 * k, r.y + wk.y * k, (wk.x1 - wk.x0) * k, r.h - wk.y * k);
-      g.clip();
-      this.blitBld(g, spr, bx, by, bw, bw);
-      g.restore();
+    const body = this.towerArtFor(b);
+    if (body) {
+      const br = this.artRect(body, bx, by, bw, bw);
+      this._walkOver(g, lk.level, bx, by, bw, br.y + br.h * this.TOWER_HALF);
       return;
     }
+    const fam = Sprites.wallMask[Math.min(lk.level, Sprites.wallMask.length) - 1];
     const y0 = by + bw * this.TOWER_WALK;
     g.save();
     g.beginPath();
@@ -7182,6 +7243,20 @@ const R = {
     g.clip();
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
     g.restore();
+  },
+  // a gatehouse in a NORTH-SOUTH line shows its flank, a tower-like block over
+  // the run — and the walk leaving it south comes half way up that block too
+  drawGateWalk(g, b, bx, by, bw) {
+    if (b.construction > 0 || !this.gateVerticalAt(b.x, b.y)) return;
+    const s = Bld.at(b.x, b.y + 1);
+    const south = Bld.fortAt(b.x, b.y + 1) ||
+      (s && s.key === 'tower' && s.x === b.x && s.y === b.y + 1 && !(s.construction > 0) && (this.towerLinkMask(s.x, s.y).mask & 1));
+    if (!south) return;
+    const li = Math.min(b.level || 1, 3) - 1;
+    const fl = Sprites.gateMask && Sprites.gateMask[li] && Sprites.gateMask[li][1];
+    if (!fl || !fl._cfArt || !fl._cfArt.fort) return;     // the procedural flank carries its own walk
+    const r = this.artRect(fl, bx, by, bw, bw), k = r.h / fl.height, B = this.GATE_FLANK_BODY[li];
+    this._walkOver(g, b.level || 1, bx, by, bw, r.y + (B[0] + (B[1] - B[0]) * this.TOWER_HALF) * k);
   },
   /* ---- THE DRAWBRIDGE (tests/drawbridge.mjs) ----
      The deck is drawn OVER the finished gate sprite, from its own little
@@ -7266,46 +7341,122 @@ const R = {
      its towers rise well above their own tiles (Assets.FORT_GEO), and every
      building is drawn before the units — so somebody walking along the INSIDE
      of a north wall was painted over its battlements, standing on the walk.
-     After each unit, any finished drawn fortification in the two rows SOUTH
-     of it (a wall tower reaches nearly two tiles up) and the columns beside
-     it (a gatehouse's towers stand astride its neighbours) is laid over it
-     again. Purely a picture: taps still aim at the unit's own sprite
-     (R.unitHit), so a soldier behind a tower is as selectable as ever. */
+     After each unit, everything the building pass drew that stands in front
+     of him goes back over him, through R.redrawFront — clipped to his own
+     picture. Purely a picture: taps still aim at the unit's own sprite
+     (R.unitHit), so a soldier behind a tower is as selectable as ever.
+
+     WALKING THROUGH A GATE: a unit standing ON the gate's own tile is inside
+     the passage — the gatehouse and the curtain either side of it stand in
+     front of him until he steps out the far side. The passage is cut out of
+     the art, so he shows through the opening and only the posts, the lintel
+     and the towers cover him; without this he popped in front of the whole
+     gatehouse the moment he crossed into its row.
+
+     It used to redraw a hand-picked list (forts two rows south, towers four)
+     UNCLIPPED, and the list was never closed under overlap: a tower three
+     rows down came back over the wall section below it that the building
+     pass had laid over its foot, and the wall came back the moment the man
+     walked on. Along a north-south line that was a curtain and its towers
+     trading places with every step anybody took beside it — the operator's
+     "glitching on top and below each other". Clipped, and taking EVERYTHING
+     in front in the pass's own order, no pixel outside the man can change. */
   occludeByForts(g, u) {
-    if (!Sprites.towerArt && !Assets.fortDrawn) return;            // nothing drawn tall yet
-    const tx = u.x | 0, ty = u.y | 0, TL = CFG.TILE;
-    /* Everything that can overlap him, and everything that overlaps THAT —
-       a wall tower two rows below a redrawn curtain still stands over it —
-       redrawn in the building pass's own order, or the curtain north
-       of a tower would come back over the tower's head. */
-    const list = [];
-    /* WALKING THROUGH A GATE: a unit standing ON the gate's own tile is
-       inside the passage — the gatehouse and the curtain either side of it
-       stand in front of him until he steps out the far side. The passage is
-       cut out of the art, so he shows through the opening and only the posts,
-       the lintel and the towers cover him; without this he popped in front of
-       the whole gatehouse the moment he crossed into its row. */
+    if (!this._bHasFort) return;                                   // nothing drawn tall this frame
+    const TL = CFG.TILE, tx = u.x | 0, ty = u.y | 0;
     const here = Bld.at(tx, ty), inGate = here && here.key === 'gate' && here.x === tx && here.y === ty;
-    for (let dy = inGate ? 0 : 1; dy <= 4; dy++) for (let dx = dy > 2 ? -2 : -1; dx <= (dy > 2 ? 2 : 1); dx++) {
-      const b = Bld.at(tx + dx, ty + dy);
-      if (!b || b.x !== tx + dx || b.y !== ty + dy || b.construction > 0 || b.upgrading > 0) continue;
-      if (b.key !== 'wall' && b.key !== 'gate' && b.key !== 'tower') continue;
-      if (dy > 2 && b.key === 'wall') continue;                       // only what stands over the redrawn
-      const spr0 = this.bldSprite(b);
-      if (!(spr0 && spr0._cfArt && spr0._cfArt.fort)) continue;     // the drawn art only
-      if (!G.visibleAt(b.x, b.y)) continue;
-      list.push({ b, spr0, r: b.y * 4 + (b.key === 'wall' ? 0 : 2) });
+    // his picture, generously: a builder leans to his wall (workLean), a
+    // strike frame is a bigger box (frameBox) — redrawing too much is only
+    // cost, redrawing too little is the bug
+    const lean = this.workLean ? this.workLean(u) : null;
+    const wx = lean ? lean.x : u.x, wy = lean ? lean.y : u.y;
+    const B = this.unitBox ? this.unitBox(u) : TL;
+    const foot = wy * TL + TL / 2 - CFG.SPRITE_LIFT;
+    const clip = { x0: wx * TL - B, y0: foot - B * 1.8, x1: wx * TL + B, y1: foot + TL * 0.6 };
+    this.redrawFront(g, clip, inGate ? ty : ty + 1, true);
+  },
+  /* WHAT STANDS IN FRONT IS PAINTED IN FRONT (the wall sandbox). The
+     building pass draws every building before the units and the mountain
+     strips, ordered by its footprint's front edge (R._bPos keeps that order).
+     When something drawn LATER stands BEHIND a building — a unit north of a
+     wall, a mountain strip north of a tower whose roof rises into the rock —
+     the building has to go back over it. This puts back, clipped to `clip`
+     (world px), every building whose front edge lies past `minFoot` (a tile
+     row) and whose picture reaches the clip, in the pass's own order. The
+     set is a SUFFIX of that order (the pass sorts by front edge first), so
+     inside the clip the picture is exactly the pass's, with the occluder
+     slotted in at its depth; outside it nothing moves. `fortsOnly` keeps the
+     units' old scope — only the drawn fortifications stand over a man (a
+     house roof does not) — so the suffix starts at its first fortification.
+     Work sites are not redrawn (their stage art is translucent in places and
+     would darken where it doubled). Answers how many it redrew. */
+  redrawFront(g, clip, minFoot, fortsOnly) {
+    const pos = this._bPos;
+    if (!pos || !pos.size) return 0;
+    const TL = CFG.TILE;
+    const tx0 = Math.floor(clip.x0 / TL) - 3, tx1 = Math.floor(clip.x1 / TL) + 3;
+    const ty0 = Math.max(0, Math.floor(clip.y0 / TL) - 2), ty1 = Math.floor(clip.y1 / TL) + 3;
+    const got = new Set(), list = [];
+    for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
+      if (!MapGen.inB(x, y)) continue;
+      const b = Bld.at(x, y);
+      if (!b || got.has(b)) continue;
+      got.add(b);
+      if (!pos.has(b) || b.y + Bld.size(b) <= minFoot) continue;
+      if (b.construction > 0 || b.upgrading > 0) continue;
+      const r = this._picRect(b);
+      if (r.x1 <= clip.x0 || r.x0 >= clip.x1 || r.y1 <= clip.y0 || r.y0 >= clip.y1) continue;
+      list.push(b);
     }
-    if (!list.some(e => e.b.y <= ty + 2)) return;
-    list.sort((p, q) => p.r - q.r);
-    for (const { b } of list) {
-      const spr = this.wornSprite(b);              // the same picture the building pass drew
-      const bx = b.x * TL, by = b.y * TL;
-      if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, TL);
-      this.blitBld(g, spr, bx, by, TL, TL);
-      if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, TL);
-      if (b.key === 'gate') { this.drawGateWorks(g, b, bx, by, TL, 0, true); this.drawDrawbridge(g, b, bx, by, TL, 0, true); }
+    if (!list.length) return 0;
+    list.sort((p, q) => pos.get(p) - pos.get(q));
+    let k = 0;
+    if (fortsOnly) {
+      const fort = b => (b.key === 'wall' || b.key === 'gate' || b.key === 'tower') && (() => { const s = this.bldSprite(b); return !!(s && s._cfArt && s._cfArt.fort); })();
+      while (k < list.length && !fort(list[k])) k++;
+      if (k === list.length) return 0;
     }
+    const bp = this.boardPx();
+    const cx0 = Math.max(clip.x0, bp.x0), cy0 = Math.max(clip.y0, bp.y0);
+    const cx1 = Math.min(clip.x1, bp.x1), cy1 = Math.min(clip.y1, bp.y1);
+    if (cx1 <= cx0 || cy1 <= cy0) return 0;
+    g.save();
+    g.beginPath(); g.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); g.clip();
+    for (let i = k; i < list.length; i++) this._redrawPic(g, list[i]);
+    g.restore();
+    return list.length - k;
+  },
+  // where a building's picture can land, in world px: its footprint, its
+  // art's own rect (tall art overhangs up), a fortification's whole FORT_GEO
+  // frame (the arms reach into the next tiles) and a gate's deck
+  _picRect(b) {
+    const TL = CFG.TILE, bs = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = bs * TL;
+    let x0 = bx, y0 = by, x1 = bx + bw, y1 = by + bw;
+    const add = (r) => { if (!r) return; x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); };
+    const spr = this.wornSprite(b);
+    if (spr && spr._cfArt) add(this.artRect(spr, bx, by, bw, bw));
+    if (b.key === 'wall' || b.key === 'gate' || b.key === 'tower') {
+      const f = Sprites.wallMask && Sprites.wallMask[0] && Sprites.wallMask[0][5];
+      if (f && f._cfArt) add(this.artRect(f, bx, by, bw, bw));
+      add({ x: bx - bw * 0.5, y: by - bw * 1.2, w: bw * 2, h: bw * 2.6 });
+    }
+    if (b.key === 'gate') add({ x: bx - bw, y: by - bw * 1.6, w: bw * 3, h: bw * 3.6 });   // the deck, either way
+    return { x0: x0 - 1, y0: y0 - 1, x1: x1 + 1, y1: y1 + 1 };
+  },
+  // a FINISHED building's picture again, exactly as the building pass laid it
+  // (the bond under a tower, the deck and doors round a gate, the walk over
+  // a tower's foot) — the opaque layers only: smoke and light are never
+  // laid twice, or they would darken inside the clip
+  _redrawPic(g, b) {
+    const TL = CFG.TILE, bs = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = bs * TL;
+    const spr = this.wornSprite(b);
+    if (!spr) return;
+    if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
+    if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, bw, 0, false); this.drawGateWorks(g, b, bx, by, bw, 0, false); }
+    this.blitBld(g, spr, bx, by, bw, bw);
+    if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
+    if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
+    if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
   },
   /* THE DRAWN GATEHOUSE'S DOOR (Assets.FORT_DOOR, operator: "make the doors
      transparent instead of black when they're open… just open or closed with
@@ -14274,7 +14425,7 @@ const R = {
     const gvx0 = ((this.cam.x / TL) | 0) - 3, gvy0 = ((this.cam.y / TL) | 0) - 3;
     const gvx1 = ((this.cam.x + this.viewW() / this.cam.z) / TL) | 0;
     const gvy1 = ((this.cam.y + this.viewH() / this.cam.z) / TL) | 0;
-    for (const k in S.map.seenB) {
+    this.clipBoard(g, () => { for (const k in S.map.seenB) {
       const i = +k, gx = i % CFG.W, gy = (i / CFG.W) | 0;
       if (gx < gvx0 || gx > gvx1 || gy < gvy0 || gy > gvy1) continue;
       if ((G.vis && G.vis[i]) || !S.map.explored[i]) continue;
@@ -14292,7 +14443,7 @@ const R = {
       // ghosts beside it (which already mask from live neighbours)
       if (snap.key === 'tower') this.drawTowerBond(g, { x: gx, y: gy, construction: 0, level: snap.level }, gx * TL, gy * TL, gs);
       this.blitBld(g, spr, gx * TL, gy * TL, gs, gs);
-    }
+    } });
 
     // fallen game (tests/wild-life.mjs) — a carcass for CORPSE_DAYS.meat
     // days, then bleached bones until .bone: the standing cue for where a
@@ -14367,12 +14518,25 @@ const R = {
     // fields) — laid over that building's own art, so under whoever stands on it
     const cardBld = (S.deck && S.deck.fx && S.deck.fx.length) || this.cardShows.length ? this.cardBldLooks() : null;
     this._cardHeld = cardBld ? this.cardHeldLevels(cardBld) : null;
+    /* WHAT THIS PASS DREW, AND IN WHAT ORDER (R.redrawFront): a unit or a
+       mountain strip drawn later that stands BEHIND a building puts that
+       building back over itself, and every building after it in this very
+       order, clipped to the occluder — so no two buildings can ever trade
+       places (the vertical-line flicker). */
+    const bPos = this._bPos = new Map();
+    this._bHasFort = false;
+    /* NOTHING IS DRAWN IN THE BLACK, buildings included: a wall on the first
+       row rose up into the off-map rim (a reported screenshot) */
+    g.save();
+    { const bp = this.boardPx(); g.beginPath(); g.rect(bp.x0, bp.y0, bp.x1 - bp.x0, bp.y1 - bp.y0); g.clip(); }
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;
       for (let vy = 0; vy < bs && !seen; vy++) for (let vx = 0; vx < bs; vx++)
         if (G.visibleAt(b.x + vx, b.y + vy)) { seen = true; break; }
       if (!seen) continue;
+      bPos.set(b, bPos.size);
+      if (!this._bHasFort && (b.key === 'wall' || b.key === 'gate' || b.key === 'tower')) this._bHasFort = true;
       const bx = b.x * TL, by = b.y * TL, bw = bs * TL;
       if (b.construction > 0 || b.upgrading > 0) {
         // a work site — going up for the first time OR being upgraded. Both
@@ -14482,8 +14646,9 @@ const R = {
         // roof's own silhouette occludes its foot (tests/burn-down.mjs)
         this.drawBurnBack(g, b, bx, by, bw);
         this.blitBld(g, spr, bx, by, bw, bw);
-        // …and the walk running south out of it meets its flank at WALK height
+        // …and the walk running south out of it comes half way up its front
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
+        if (b.key === 'gate') this.drawGateWalk(g, b, bx, by, bw);
         // …and one that falls toward us swings over its own archway — the
         // early tiers' doors and portcullis ride the same two passes
         if (b.key === 'gate') { this.drawGateWorks(g, b, bx, by, bw, dt, true); this.drawDrawbridge(g, b, bx, by, bw, dt, true); }
@@ -14515,6 +14680,7 @@ const R = {
         g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bw - 1);
       }
     }
+    g.restore();
 
     // the dragon's FIRE LINE — the hero shot. Not scattered campfires: one
     // CONNECTED wall of flame. Pass 1 lays a continuous charred, glowing ember
@@ -14645,6 +14811,11 @@ const R = {
         const st = mstrips[msI++];
         if (st.x > msR || st.x + st.c.width < msL || st.y > msB || st.y + st.c.height < msT) continue;
         g.drawImage(st.c, st.x, st.y);
+        /* …and a building standing SOUTH of this strip's ground row is in
+           front of the rock: a tower's roof rises into the row above it and
+           the strip had just painted the mountain over it (a reported
+           screenshot — "towers going underneath a mountain") */
+        this.redrawFront(g, { x0: st.x, y0: st.y, x1: st.x + st.c.width, y1: st.y + st.c.height }, st.row + 1, false);
       }
     };
     const units = S.units.slice().sort((a, b) => a.y - b.y);
