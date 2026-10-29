@@ -150,10 +150,12 @@ const Sound = {
      this same code through an OfflineAudioContext and reports peak and RMS).
      The first cut peaked at 0.077 — about -22dBFS, which is a game nobody can
      hear without turning the system up and then being deafened by everything
-     else. These land the mix near -6dBFS peak with the music sitting well
-     under the effects. */
+     else. These landed the mix near -6dBFS peak with the music sitting well
+     under the effects — and then every effect was 40% too loud in play
+     (operator, 2026-10-29), so the effects' ceiling is 0.6 of the measured
+     2.2 (about 4.4dB down); the music bus is untouched. */
   // what the dials read at 100 — the measured ceiling, not the shipping level
-  SFX_GAIN: 2.2, MUSIC_GAIN: 0.85,
+  SFX_GAIN: 1.32, MUSIC_GAIN: 0.85,
 
   /* Lazily built. Returns null when the browser will not give us audio at
      all, which every caller treats as "then there is no sound", never as an
@@ -446,8 +448,10 @@ const Sound = {
     train(t, v) {
       this._note({ at: t, hz: 392, to: 523, dur: 0.16, type: 'triangle', gain: 0.09 * v });
     },
+    // the tap's click sounds on nearly every press, so it sits 60% under its
+    // old level where the other effects sit 40% under theirs (SFX_GAIN)
     tick(t, v) {
-      this._note({ at: t, hz: 440, dur: 0.06, type: 'triangle', gain: 0.07 * v });
+      this._note({ at: t, hz: 440, dur: 0.06, type: 'triangle', gain: 0.047 * v });
     },
     bad(t, v) {
       this._note({ at: t, hz: 196, to: 150, dur: 0.14, type: 'triangle', gain: 0.09 * v });
@@ -882,7 +886,7 @@ const Sound = {
     ship:      { lufs: -22.1, to: -29.5, cd: 1.10, max: 1 },
     gallop:    { lufs: -28.8, to: -34.0 },
     complete:  { lufs: -19.4, to: -29.0, synth: 'done' },
-    select:    { lufs: -28.3, to: -32.0, cd: 0.12 },
+    select:    { lufs: -28.3, to: -35.5, cd: 0.12 },   // a click on every tap: 60% down, not 40
     horn:      { lufs: -12.3, to: -22.0, cd: 30, synth: 'raid' },
   },
   // seconds between strokes for ONE hand at the centre of the view

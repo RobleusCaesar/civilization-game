@@ -386,6 +386,10 @@ ck('andTheGeneratedBedStandsInForIt',
   const beforeTap = reqs.slice();
   await p5.mouse.click(640, 760);
   await p5.waitForFunction(() => Object.keys(Sound._buf).length >= 14, null, { timeout: 30000 }).catch(() => {});
+  // the theme is a media element streaming on its own clock: on a loaded
+  // machine its first request lands a beat after the effects' buffers, so wait
+  // for the request itself rather than snapshotting the moment they arrive
+  for (let i = 0; i < 100 && !reqs.some(q => /music\/theme\.mp3/.test(q)); i++) await p5.waitForTimeout(100);
   const afterTap = reqs.slice();
   ck('nothingIsFetchedBeforeAGesture', beforeTap.length === 0, beforeTap.join(', ') || 'the boot fetched no audio');
   ck('andTheTapBringsTheThemeAndTheEffectsButNotTheBattle',

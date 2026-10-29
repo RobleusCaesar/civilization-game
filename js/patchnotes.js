@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 119, date: '2026-10-29', title: 'Quieter sounds',
+    items: [
+      'Every sound effect is about 40 percent quieter.',
+      'The click when you tap or select is much softer, since you hear it so often.',
+    ],
+  },
+  {
     build: 118, date: '2026-10-29', title: 'The sound of the valley',
     items: [
       'A new theme plays over the title and your town.',

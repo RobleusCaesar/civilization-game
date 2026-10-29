@@ -6939,6 +6939,12 @@ stand on ground the player sees. Riders moving in view are ONE gallop loop.
 The selection, a finished work and the horn are `Sound.ui` (the player's own
 news; a work finished off camera is said softly; the alarm horn every 30s at
 most). Levels are tuned in dB in `SFX` (`lufs` measured, `to` where it sits).
+**AND EVERY EFFECT IS 40% UNDER ITS FIRST MIX** (operator, build 119: "a
+little too loud… reduce clicks by 60% since those happen so regularly"):
+`SFX_GAIN` is 1.32, 0.6 of the measured 2.2 — the effects bus alone, the
+music untouched — and the two sounds a tap makes, the selection click
+(`select`, 3.5dB further down) and the synth tap (`tick`), sit at 0.4 of
+their old level.
 **Two traps**: `_live` was already the voice COUNT — a method of the same
 name was overwritten by `onWorldChange` and the director never ran
 (`_inGame` now); and the effects NEVER make a context or draw `Math.random`

@@ -869,7 +869,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     try {
       out.paused = S.paused;
       G._shellDrawT = 0;
+      // a sleep overshoots on a loaded machine, and a third second slept is a
+      // fourth honest draw — the bar is read off the time that really passed
+      const t0 = performance.now();
       await sleep(2300);
+      out.stillMs = performance.now() - t0;
       which = 'moving'; S.paused = false; G._shellDrawT = 0;
       await sleep(2300);
     } finally { R.draw = draw; }
@@ -886,8 +890,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     `${r.reads} pixel read(s) for a ${r.frames}-frame strip, its last frame dyed: ${r.dyed}`);
   ck('theLandformIsPeekedNotPainted', r.peek.agree === r.peek.n && r.peek.tiles === 0,
     `${r.peek.agree}/${r.peek.n} seeds name the world a full generate lays, ${r.peek.tiles} painted a tile`);
-  ck('aStillWorldIsDrawnOnceASecond', r.paused && r.still >= 1 && r.still <= 3 && r.moving > r.still,
-    `paused behind the load screen: ${r.still} draws in 2.3s; the same world moving: ${r.moving}`);
+  ck('aStillWorldIsDrawnOnceASecond', r.paused && r.still >= 1 && r.still <= Math.floor(r.stillMs / 1000) + 1 && r.moving > r.still,
+    `paused behind the load screen: ${r.still} draws in ${(r.stillMs / 1000).toFixed(1)}s; the same world moving: ${r.moving}`);
   ck('theFoundingRunsClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0,
     errs[0] || 'no page errors');
   await p.close();
