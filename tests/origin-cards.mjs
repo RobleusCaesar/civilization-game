@@ -43,7 +43,10 @@ const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(1000);
-// give the origin-icon probes time to resolve (assets/icons/origins/{motif}.png)
+// the origin icons are ASKED FOR, never probed at boot (assets/icons/cards/
+// origin-{motif}.png, Assets.wantOrigins) — ask for every one, then wait
+await p.waitForFunction(() => window.Assets && Assets.wantOrigins && window.Cards, null, { timeout: 20000 });
+await p.evaluate(() => Assets.wantOrigins(Assets.originMotifs()));
 await p.waitForFunction(() => window.Assets && window.Cards &&
   Object.keys(Cards.DEFS).every(k => Assets.isImage('ui/card/' + k)),
   null, { timeout: 8000 }).catch(() => {});
@@ -204,8 +207,8 @@ const out = await p.evaluate(() => {
     let blank = null, longText = null, nan = null, noIcon = null;
     G.newGame('77', 'calm', 'medium');
     for (const key of Cards.keys()) {
-      // the shipped 128px icon loaded for every card (the origin-icon
-      // convention — assets/icons/origins/{motif}.png; art-pipeline §1d
+      // the shipped 256px icon loaded for every card (the origin-icon
+      // convention — assets/icons/cards/origin-{motif}.png; art-pipeline §1d
       // owns the deeper checks, this pins set completeness per card)
       if (!(window.Assets && Assets.isImage('ui/card/' + key))) noIcon = noIcon || key;
       // …and the procedural 64-grid motif underneath stays a real drawing —

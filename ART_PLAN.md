@@ -1101,8 +1101,18 @@ one-line entry there — still no manifest.
 ## Origin Card icons: one PNG per motif
 
 ```
-assets/icons/origins/{motif}.png       128×128, true alpha
+assets/icons/cards/origin-{motif}.png  256×256, true alpha (palette PNG + tRNS)
+assets/icons/cards/trial-{mode}.png    256×256, the three trials (calm, moderate, hard)
 ```
+
+The origin set is the 128px masters doubled by ImageMagick's Scale2x
+(`-define magnify:method=scale2x -magnify`: the stair-steps halve and round,
+every colour is the master's) and written as lossless palette PNGs (checked
+pixel-exact). The trials were drawn at 256 (PixelLab pixen, `no_background`,
+one generation each, the origin rules below). None is probed at boot: the
+trial screen fetches its three, the draft asks for the three it dealt
+(`Assets.wantOrigins`). The 128px masters stay in git history at
+`assets/icons/origins/`.
 
 `{motif}` is a `Cards.DEFS` motif key (hearth, spears, rider, … — 26 today),
 **derived from the card table, never hand-kept** — a new card gets a slot for
@@ -1121,10 +1131,11 @@ perspective, no ground plane or cast shadow, one bold centered silhouette
 at the 64px the card shows it at. Hard alpha only — no anti-aliased fringe,
 or it halos on the card's wood panel.
 
-The shown size stays the CSS size; `drawMotif` adopts the image's NATIVE size
-as the canvas backing store (128 ≥ any shown-size × devicePixelRatio in play),
-so icons stay crisp on a 3× phone and the 96px rival-reveal canvas never
-nearest-neighbor-crushes a 128px source. Cards draw ONCE into DOM canvases,
+The shown size stays the CSS size. On the trial and origin cards the canvas
+is FITTED (`CardFace.fitCanvas`: backing store = CSS box × devicePixelRatio)
+and `CardFace.fitDraw` draws the 256px art nearest-neighbour up and smoothed
+only on a shrink; any other canvas adopts the image's NATIVE size as its
+backing store, as before. Cards draw ONCE into DOM canvases,
 so a late-decoding icon repaints any dealt card through the `_cfCardKey`
 stamp (`Assets.setOriginArt` walks them). Contract: the 1d section of
 `tests/art-pipeline.mjs`, plus a node-side completeness check that every

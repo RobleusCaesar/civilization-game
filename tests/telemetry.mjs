@@ -118,10 +118,17 @@ const MOCK = `
       devAmp: L('https:', 'clanfire.online', '?x=1&dev=1'), local: L('https:', 'localhost'),
       loop: L('http:', '127.0.0.1'), lookalike: L('https:', 'clanfire.online.example.com'),
       none: Backend.telemetryAllowed(null),
+      // the test slot (the staging branch at /test/, pages.yml): the live host, the operator's own build
+      slot: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/test/' }),
+      slotPage: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/test/index.html' }),
+      slotRepo: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'robleuscaesar.github.io', search: '', pathname: '/civilization-game/test/' }),
+      livePage: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/index.html' }),
+      testsLike: Backend.telemetryAllowed({ protocol: 'https:', hostname: 'clanfire.online', search: '', pathname: '/tests/x.html' }),
     };
   });
   ck('theShippedHostsAnswerYes', t.site && t.www && t.pages && t.caps, JSON.stringify(t));
   ck('andEveryOtherOriginAnswersNo', !t.http && !t.dev && !t.devAmp && !t.local && !t.loop && !t.lookalike && !t.none, JSON.stringify(t));
+  ck('theTestSlotSendsNothing', !t.slot && !t.slotPage && !t.slotRepo && t.livePage && t.testsLike, JSON.stringify(t));
   ck('theDiskPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await p.close();
 }

@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 112, date: '2026-10-29', title: 'Cards worth keeping',
+    items: [
+      'The difficulty and origin cards are redrawn with carved gold frames, glowing pictures and sharper art on every screen.',
+      'Each difficulty has its own painted picture: an olive branch for Calm, a spear and shield for Moderate, a horned skull for Hard.',
+      'The origin cards you pass over now truly burn up: they catch at one corner, char, and go up in flames, sparks and ash.',
+      'The card pictures are only fetched when a card is on screen, so the game starts a little lighter.',
+    ],
+  },
+  {
     build: 111, date: '2026-10-29', title: 'A quicker start',
     items: [
       'Starting a new game is much smoother: the origin cards deal and turn over straight away instead of stalling while the game loads its people.',

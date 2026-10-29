@@ -861,7 +861,13 @@ const Cards = {
      how a late-decoding icon finds an already-dealt card to repaint. */
   drawMotif(canvas, key) {
     canvas._cfCardKey = key;
+    const motif = this.DEFS[key] && this.DEFS[key].motif;
     if (window.Assets && Assets.isImage && Assets.isImage('ui/card/' + key)) {
+      /* a FITTED canvas (the trial and origin faces, CardFace.fitCanvas) has
+         its backing at the screen's own pixels: the art is drawn to fit it,
+         nearest-neighbour up and smoothed only on a shrink */
+      const fitImg = canvas._cfFit && window.CardFace && Assets.resolve('ui/card/' + key);
+      if (fitImg && fitImg.width) { CardFace.fitDraw(canvas, fitImg); return; }
       /* the backing store adopts the image's NATIVE size (CSS keeps the
          shown size; image-rendering: pixelated does the final scale) — a
          128px icon squeezed into the rival reveal's 96px canvas with
@@ -875,6 +881,13 @@ const Cards = {
       g0.imageSmoothingEnabled = false;
       g0.clearRect(0, 0, canvas.width, canvas.height);
       Assets.drawSprite(g0, 'ui/card/' + key, 0, 0, { w: canvas.width, h: canvas.height });
+      return;
+    }
+    // a picture still on its way leaves the window EMPTY rather than flash
+    // the drawn stand-in for a moment — the load repaints this canvas
+    if (window.Assets && Assets.originState && Assets.originState(motif) === 'loading') {
+      const g1 = canvas.getContext('2d');
+      if (g1) g1.clearRect(0, 0, canvas.width, canvas.height);
       return;
     }
     const C = ART.PALETTE;

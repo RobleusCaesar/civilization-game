@@ -73,23 +73,25 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   if (!ok) fails.push('theFogGhostLookupReadsTheCampsTribe');
 }
 
-/* THE SHIPPED ORIGIN-ICON SET IS COMPLETE AND WELL-FORMED — one 128x128
+/* THE SHIPPED ORIGIN-ICON SET IS COMPLETE AND WELL-FORMED — one 256x256
    true-alpha PNG per motif named in js/cards.js, at
-   assets/icons/origins/{motif}.png (all lowercase; Pages is
-   case-sensitive). Measured on the committed files, because a missing or
-   miscased file is a SILENT fallback to the procedural motif — exactly the
-   failure the building convention documents. */
+   assets/icons/cards/origin-{motif}.png (all lowercase; Pages is
+   case-sensitive), and the three trials beside them (trial-{mode}.png).
+   Measured on the committed files, because a missing or miscased file is a
+   SILENT fallback to the procedural motif — exactly the failure the
+   building convention documents. */
 {
   const { readFileSync, existsSync } = await import('node:fs');
   const src = readFileSync(join(root, 'js/cards.js'), 'utf8');
   const motifs = [...new Set([...src.matchAll(/motif:\s*'([a-z]+)'/g)].map(m => m[1]))];
   const bad = [];
-  for (const m of motifs) {
-    const f = join(root, 'assets/icons/origins', m + '.png');
+  const files = motifs.map(m => 'origin-' + m).concat(['trial-calm', 'trial-moderate', 'trial-hard']);
+  for (const m of files) {
+    const f = join(root, 'assets/icons/cards', m + '.png');
     if (!existsSync(f)) { bad.push(m + ': missing'); continue; }
     const buf = readFileSync(f);
     const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20), ct = buf[25];
-    if (w !== 128 || h !== 128) bad.push(m + ': ' + w + 'x' + h);
+    if (w !== 256 || h !== 256) bad.push(m + ': ' + w + 'x' + h);
     else if (ct !== 6 && !(ct === 3 && buf.includes('tRNS'))) bad.push(m + ': colorType ' + ct + ' has no alpha');
   }
   const ok = motifs.length >= 26 && !bad.length;
@@ -107,7 +109,9 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
   // give the convention loader time to resolve the shipped PNGs / 404s
   await p.waitForFunction(() => window.Assets && Assets.art['tc-l1'] !== undefined &&
     Assets.art['house-l1'] !== undefined, null, { timeout: 8000 }).catch(() => {});
-  // …and the origin-icon probes (one per motif; all ship, so all must land)
+  // …and the origin icons, which the boot never fetches: a draft ASKS for
+  // the ones it dealt (Assets.wantOrigins). Ask for every motif, then wait.
+  await p.evaluate(() => Assets.wantOrigins(Assets.originMotifs()));
   await p.waitForFunction(() => window.Assets && window.Cards &&
     Object.keys(Cards.DEFS).every(k => Assets.isImage('ui/card/' + k)),
     null, { timeout: 8000 }).catch(() => {});
@@ -354,7 +358,7 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     }
 
     // ---- 1d. origin card icons have their OWN convention: one PNG per
-    // MOTIF (assets/icons/origins/{motif}.png) — motifs are DERIVED from
+    // MOTIF (assets/icons/cards/origin-{motif}.png) — motifs are DERIVED from
     // Cards.DEFS, never a hand-kept list, so a 27th card gets a slot for
     // free. A hit installs into ui/card/<cardKey>, which is what
     // Cards.drawMotif already prefers over the procedural 64-grid motif —
@@ -367,7 +371,7 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
         motifs.length > 0 && defKeys.every(k => motifs.includes(Cards.DEFS[k].motif)),
         motifs.length + ' motifs across ' + defKeys.length + ' cards');
       ck('originFilenamesAreLowercase',
-        motifs.every(m => Assets.originName(m) === m.toLowerCase() + '.png'), '');
+        motifs.every(m => Assets.originName(m) === 'origin-' + m.toLowerCase() + '.png'), '');
       ck('originUrlsCarryTheCacheBuster',
         motifs.every(m => Assets.originUrl(m).includes('?v=')), Assets.originUrl('hearth'));
       // the shipped set is COMPLETE: every card's icon really loaded (the

@@ -287,7 +287,18 @@ const Backend = {
     if (loc.protocol !== 'https:') return false;
     if (!this.PROD_HOSTS.includes(String(loc.hostname || '').toLowerCase())) return false;
     if (/[?&]dev=/.test(String(loc.search || ''))) return false;   // the art preview is a developer's page
+    if (this.testSlot(loc)) return false;                          // …and so is the test slot
     return true;
+  },
+  /* THE TEST SLOT (.github/workflows/pages.yml): the `staging` branch is
+     served at /test/ on the live host, for the operator to play a build
+     before it goes to main. Nothing leaves it — its games are not the
+     players', and its build number must not open a release on the
+     dashboard before the release is real. It wears a TEST badge
+     (Screens.init) so it is never mistaken for the live game. */
+  testSlot(loc) {
+    loc = loc || (typeof location !== 'undefined' ? location : null);
+    return !!loc && /(^|\/)test(\/|$)/.test(String(loc.pathname || ''));
   },
 
   /* every row says which BUILD it was played on (the dashboard's release

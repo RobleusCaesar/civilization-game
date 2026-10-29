@@ -211,7 +211,7 @@ const TitleScreen = {
      it mirrored — the strap's gradient mirrored with it so the light still
      falls from the top, the boss and the stone set in page space so their
      glint is always up and to the left. */
-  caps(w, h, c, minor, mid, kind) {
+  caps(w, h, c, minor, mid, kind, gems) {
     const T = minor ? 3.6 : 4.6, L = minor ? 10 : 15, f = n => this.f(n);
     const E = c + L, P = minor ? 2.6 : 3.4;      // where each arm ends, and how far its point runs on
     const k = c + T * (Math.SQRT2 - 1);           // the strap's inner fold
@@ -230,7 +230,7 @@ const TitleScreen = {
         `<circle cx="${f(x)}" cy="${f(y)}" r="${f(gem)}" fill="url(#${mid}gem)"/>` +
         `<path d="M${f(x - gem * 0.62)},${f(y - gem * 0.05)} L${f(x - gem * 0.05)},${f(y - gem * 0.62)}" stroke="#fff" stroke-opacity=".75" stroke-width="${f(gem * 0.32)}" stroke-linecap="round"/>`;
     };
-    const gemCol = ['#ff8a5c', '#cf3518', '#5c0b05'];
+    const gemCol = gems || ['#ff8a5c', '#cf3518', '#5c0b05'];   // a garnet unless a card names its own stone
     return `<defs>${this.metal(mid + 'u', kind === 'gold' ? 'dark' : 'gold', 0, 22, 0, 0)}` +
       `<radialGradient id="${mid}bs" cx=".36" cy=".32" r=".8"><stop offset="0" stop-color="${kind === 'gold' ? '#f0d08a' : '#fff4c9'}"/>` +
         `<stop offset=".45" stop-color="${kind === 'gold' ? '#a8762a' : '#e0ab45'}"/><stop offset="1" stop-color="${kind === 'gold' ? '#4a2c08' : '#7a4c12'}"/></radialGradient>` +

@@ -228,6 +228,7 @@ node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every 
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
+node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot (the trials asked for when their screen opens, the three dealt origins when the draft deals), vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 ```
 
@@ -3190,8 +3191,10 @@ still pay. The card is still the rival's persona (`lean` must name one of
 the six `AI.PERSONAS`), and the six classic keys stay forceable for tests.
 **The motifs are 64-grid now** (4× the pixel count of the 32-grid set),
 shown at 64px so one art cell is one CSS pixel — but they are the FALLBACK:
-**real 128px icons ship for all 26 motifs** by filename convention
-(`assets/icons/origins/{motif}.png` → the `ui/card/<cardKey>` slot
+**real 256px icons ship for all 26 motifs** by filename convention
+(`assets/icons/cards/origin-{motif}.png` — the 128px masters doubled by
+Scale2x, asked for by the draft, never probed at boot; see **THE TRIAL AND
+ORIGIN CARDS** — → the `ui/card/<cardKey>` slot
 `drawMotif` prefers; motifs derived from `Cards.DEFS`, never hand-kept;
 ART_PLAN.md has the authoring rules and the icon-pipeline contract lives in
 `tests/art-pipeline.mjs` §1d). **The outline guard was `window.ART &&` — and
@@ -3547,6 +3550,81 @@ per-pixel rule), about half the parse-time sprite build before. One caution
 from measuring it: headless Chromium rasterises "GPU" canvases in software,
 so a commit-time cost there is not a phone's — compare old and new on the
 SAME harness, and read `(program)` in a profile through a trace.
+**THE TRIAL AND ORIGIN CARDS** (`CardFace` and `Screens._burnCard` in
+js/screens.js, art in `assets/icons/cards/`, tests/draft-cards.mjs — operator,
+once the deck shipped: the difficulty and origin screens "feel bland…
+higher quality looking cards, higher pixel count, maybe card borders, and for
+the difficulty, higher pixel count icons… increase pixel count and frames for
+the flame animations to really sell the idea of the cards burning up… this
+work doesn't hurt the loading rate"). **THE FRAME IS THE TITLE'S PLAQUE, AS
+A CARD**: `CardFace.frame` / `back` build an SVG to the card's own pixels
+from `TitleScreen`'s helpers (`oct`, `metal`, `caps` — the caps now take the
+card's stone), with a lit art window in the card's tone (`TONES`: a trial's
+by its mode, an origin's by its `cat`), a Cinzel name plate straddling the
+window's foot, a text field and a stone on the foot; the back is walnut
+under a gold lattice with the clan's fire in a medallion. ONE GEOMETRY
+(`geo`) places the SVG and the HTML boxes alike. **A FRAME IS ONE PICTURE**
+(`CardFace.img`): the SVG goes to the page as a `data:` image, not inline —
+the browser rasterises a vector image at the screen's pixels, so it is as
+crisp, but a card adds one element instead of a hundred (laid out inline
+they cost ~30ms a card on a 4×-slow phone at the deal) and every gradient id
+lives inside its own picture. **THE ICONS ARE 256px AND AT THE SCREEN'S
+OWN PIXELS**: the three trials were drawn at 256 (PixelLab: an olive
+branch, a spear and red-sun shield, a horned skull — the emoji are gone),
+the 26 origins are their 128px masters through Scale2x (lossless palette
+PNGs; the set is SMALLER on the wire than the old 128s, 180KB against 212KB,
+and the Forager's basket lost a checker pattern baked into its master);
+`CardFace.fitCanvas` sizes a canvas's backing store to its CSS box × dpr and
+`fitDraw` draws nearest-neighbour up, smoothed only on a shrink.
+**NOTHING AT BOOT**: the boot used to probe all 26 origin icons; now the
+trial icons are fetched when the trial screen opens (`CardFace.trialImg`)
+and the draft asks for the three it dealt (`Assets.wantOrigins`, untracked —
+no draft waits on them; a picture still loading leaves its window empty
+rather than flash the drawn stand-in). **THE DEAL STAYS CHEAP**: the three
+cards go into the row first and their shared size is read ONCE (read with
+one card in, the row had not squeezed them yet and the first card was
+dressed twice); names are fitted on a canvas (`nameWidth`), never by reading
+layout; the words in the next frame's own layout (`fitLater`); the frame
+pictures are cached by size and tone (`pic`) and the origin cards' five
+tones and back are BUILT AND DECODED while the player reads the trial screen
+(`prewarm` — the origin cards are the trial cards' size); a name is
+refitted only when Cinzel really was late (`refitWhenFontsLand`, checked
+once). Measured on the 4×-slow phone profile against build 111: the deal
+~35ms dearer (≈9ms on an ordinary phone), the three flips within ~0.1s of
+the old ones. **THE CARD BURNS UP**: the old 46×62 fire buffer is gone. A
+fire cell is two device pixels on a 2×/3× screen and one on a 1× (`cell`);
+the card catches at one point on its foot and a ragged front (seeded jag,
+lag from the catch point, ripple) climbs it, the card's body clipped away
+under it (`clip-path: polygon`), a scorch band riding above the front, the
+front itself white-hot; the flames are NOISE SCROLLING UP through a shape
+that hugs the front, drawn fresh every frame (a propagated Doom fire could
+not keep up with a front that races — it read as a thin wire), from ONE
+256×256 tiling noise texture (`Screens.fireTex`, built while the cards
+deal, two reads a pixel); sparks, tumbling ash and thin smoke are written
+into the same pixel buffer (a colour string parsed per spark per frame cost
+more than the fire), and only the rows holding fire are uploaded. Once the
+front is through, the last flames lift off and burn away from their feet.
+Measured: ~1.3ms a frame for both cards on a desktop, ~7ms median on the
+4×-slow phone. The burn crosses the card in `BURN.ms` (1000) and the world
+opens at `DRAFT_BURN_MS` (1150) — after the front has crossed, where the old
+780ms cut the fire off two thirds of the way up; reduced motion fades the
+card instead; the real-time failsafe still collapses a card whatever the
+fire does. **A PAINTER STANDS DOWN**: without the title's helpers (a cached
+older titlescreen.js) the frames are not built and the old wood face shows.
+
+**THE TEST SLOT** (`.github/workflows/pages.yml`, `Backend.testSlot`): the
+`staging` branch is served at `/test/` on the live host (clanfire.online/test/)
+beside the live game, for the operator to play a build before it goes to
+main. The Pages workflow checks main out at the root and staging into
+`test/` (game files only; a missing branch just leaves the slot out), and is
+run by hand (workflow_dispatch) after a push to staging — a push to staging
+never deploys anything by itself, and nothing on main changes. NOTHING
+LEAVES THE SLOT: `Backend.telemetryAllowed` answers no on a `/test/` path, so
+no telemetry, no feedback relay and no deck sync (its games are not the
+players', and its build number must not open a release on the dashboard
+before the release is real). It wears a TEST BUILD badge (`Screens.init`).
+It shares the live game's ORIGIN, so it shares this device's saves and deck.
+
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a

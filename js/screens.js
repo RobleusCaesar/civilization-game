@@ -20,6 +20,15 @@ const Screens = {
 
   init() {
     this.bind();
+    // the test slot says so, in a corner, on every screen (Backend.testSlot)
+    if (window.Backend && Backend.testSlot && Backend.testSlot()) {
+      const tb = document.createElement('div');
+      tb.id = 'testBadge'; tb.textContent = 'TEST BUILD';
+      tb.style.cssText = 'position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 4px);transform:translateX(-50%);' +
+        'z-index:99;pointer-events:none;font:700 10px/1 sans-serif;letter-spacing:2px;color:#ffd27a;' +
+        'background:rgba(90,20,10,0.82);border:1px solid #e0a040;border-radius:4px;padding:3px 7px;';
+      document.body.appendChild(tb);
+    }
     window.addEventListener('backend-status', e => {
       this.renderChip(e.detail);
       // the backend often comes up after the title first renders — re-resolve
@@ -318,8 +327,17 @@ const Screens = {
     hard: 'An aggressive rival, frequent raids, and no warnings at all. The land rolls small — contact comes early.',
   },
   onNewgame() {
-    this.el('ngMode').querySelectorAll('.dcard').forEach(b =>
-      b.classList.toggle('sel', b.dataset.v === this.newPrefs.mode));
+    // the three trial cards share one size: read it once
+    const c0 = this.el('ngMode').querySelector('.dcard');
+    this._ngSize = c0 && c0.offsetWidth ? { w: c0.offsetWidth, h: c0.offsetHeight } : null;
+    this.el('ngMode').querySelectorAll('.dcard').forEach(b => {
+      b.classList.toggle('sel', b.dataset.v === this.newPrefs.mode);
+      // the framed face, built to its box (and its picture asked for) the
+      // first time the screen shows — never at boot
+      if (window.CardFace) { CardFace.dressTrial(b, this._ngSize); CardFace.watch(b); }
+    });
+    if (window.CardFace) CardFace.prewarm(this._ngSize);   // the origin cards' frames, while the trial is read
+    if (window.CardFace) CardFace.refitWhenFontsLand();
     this.el('ngDesc').textContent = this.MODE_DESC[this.newPrefs.mode] || '';
     // entering the screen disarms any half-made choice: the remembered
     // trial shows selected, but starting always takes the two taps
@@ -666,15 +684,8 @@ const Screens = {
     const w = document.createElement('div');
     w.id = 'replayCardNote';
     w.innerHTML =
-      `<div class="ocard dealt flip"><div class="ocardIn">
-         <div class="oface oback">&#10050;</div>
-         <div class="oface ofront"><canvas width="128" height="128"></canvas>
-           <div class="oname">${this.esc(d.name)}</div>
-           <div class="oboon">${this.esc(d.text(c.roll))}</div>
-           <div class="oflavor">${this.esc(d.flavor)}</div></div>
-       </div></div>
+      `<div class="ocard dealt flip">${this.originCardHTML(d, c)}</div>
        <div class="rcnTip">Your origin, kept from last time &#8212; tap to dismiss</div>`;
-    Cards.drawMotif(w.querySelector('canvas'), c.key);
     let dropped = false;
     const drop = () => {
       if (dropped) return;
@@ -685,6 +696,27 @@ const Screens = {
     w.addEventListener('click', drop);
     setTimeout(drop, 5000);
     document.body.appendChild(w);
+    this.dealOrigin(w.querySelector('.ocard'), c.key);
+  },
+  /* one origin card's markup — the draft's and the replay note's alike.
+     CardFace dresses it once it is in the page (it needs its own size). */
+  originCardHTML(d, c) {
+    return `<div class="ocardIn">
+         <div class="oface oback">&#10050;</div>
+         <div class="oface ofront"><canvas width="128" height="128"></canvas>
+           <div class="oname"><span>${this.esc(d.name)}</span></div>
+           <div class="otext"><div class="oboon">${this.esc(d.text(c.roll))}</div>
+             <div class="oflavor">${this.esc(d.flavor)}</div></div></div>
+       </div>`;
+  },
+  // a card in the page: ask for its picture, dress its faces, keep them fitted
+  dealOrigin(el, key, sz) {
+    if (!el) return;
+    const d = Cards.DEFS[key];
+    el._cfKey = key;
+    if (window.Assets && Assets.wantOrigins && d) Assets.wantOrigins([d.motif]);
+    if (window.CardFace) { CardFace.dressOrigin(el, sz); CardFace.watch(el); CardFace.refitWhenFontsLand(); }
+    if (!el._cfW) Cards.drawMotif(el.querySelector('canvas'), key);   // the frame stood down: the wood face
   },
 
   /* ---------------- ORIGIN CARDS: the draft ----------------
@@ -721,26 +753,30 @@ const Screens = {
     box.innerHTML = '';
     this.el('draftHint').textContent = 'Tap a card to look it over';
     this._draftSel = -1;
-    D.hand.forEach((c, i) => {
-      const d = Cards.DEFS[c.key];
+    // the three pictures are asked for together, before any card is dressed
+    if (window.Assets && Assets.wantOrigins) Assets.wantOrigins(D.hand.map(c => Cards.DEFS[c.key].motif));
+    // all three go into the row FIRST, then one read of the size they share
+    // (read with one card in, the row had not yet squeezed them to fit — the
+    // first card was dressed at the wrong size and then dressed again)
+    const els = D.hand.map((c, i) => {
       const el = document.createElement('div');
       el.className = 'ocard';
-      el.innerHTML =
-        `<div class="ocardIn">
-           <div class="oface oback">❂</div>
-           <div class="oface ofront"><canvas width="128" height="128"></canvas>
-             <div class="oname">${this.esc(d.name)}</div>
-             <div class="oboon">${this.esc(d.text(c.roll))}</div>
-             <div class="oflavor">${this.esc(d.flavor)}</div></div>
-         </div>`;
-      Cards.drawMotif(el.querySelector('canvas'), c.key);
+      el.innerHTML = this.originCardHTML(Cards.DEFS[c.key], c);
       el.addEventListener('click', () => this.draftTap(i, el));
       box.appendChild(el);
+      return el;
+    });
+    const sz = els[0] && els[0].offsetWidth ? { w: els[0].offsetWidth, h: els[0].offsetHeight } : null;
+    D.hand.forEach((c, i) => {
+      const el = els[i];
+      this.dealOrigin(el, c.key, sz);
       if (replay) { el.classList.add('dealt', 'flip'); return; }
       setTimeout(() => el.classList.add('dealt'), 60 + i * 130);        // deal in…
       setTimeout(() => el.classList.add('flip'), 560 + i * 150);        // …then flip
     });
     this._dealtFor = S.seed;
+    // the fire's noise, built while the cards deal (the keep-tap pays nothing)
+    if (!this._fireTex) setTimeout(() => { try { this.fireTex(); } catch (e) {} }, 900);
     let seen = false;
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
@@ -829,119 +865,292 @@ const Screens = {
       if (window.Cards) Cards.announceRival();
     }, this.DRAFT_BURN_MS);
   },
-  DRAFT_BURN_MS: 780,   // long enough to see the fire take, short enough to feel instant
+  /* the world opens once the fire has eaten the cards and is guttering —
+     the burn (BURN.ms) crosses a card in a second, and the run walks in on
+     its last flames rather than cutting it off a third of the way up */
+  DRAFT_BURN_MS: 1150,
 
-  /* an unchosen card is consumed by a pixel fire that climbs it and throws
-     ash into the wind. Each card gets its own seed + wind (outward from the
-     centre) so the two never look like the same animation. */
+  /* AN UNCHOSEN CARD BURNS UP (operator: "increase pixel count and frames for
+     the flame animations to really sell the idea of the cards burning up").
+     It used to be a 46x62 fire buffer blown up to the card — fire cells
+     nearly three CSS pixels square — climbing a straight line. Now:
+
+     - THE FIRE IS FINE-GRAINED: one cell is two device pixels on a 2x/3x
+       screen and one on a 1x (`cell`), roughly sixty times the cells, so the
+       flames read as flames rather than blocks. Still pixel fire, hard-edged
+       and nearest-neighbour; never smeared.
+     - IT BURNS FROM A POINT: the card catches at one spot on its foot and the
+       front spreads up it as a ragged curve (a seeded jag plus a flicker),
+       the card's own body clipped away under the front (clip-path polygon),
+       so it is the CARD that burns, not a wipe.
+     - THE PAPER CHARS BEFORE IT GOES: a scorch band rides just above the
+       front, brown to black, with the front itself a white-hot line — the
+       fire's source row — and flames licking up over what is left.
+     - IT THROWS EMBERS, ASH AND SMOKE: sparks that rise and wink out, flakes
+       of ash that tumble up on the heat and drift with the wind (outward from
+       the centre), and thin smoke over the flame tips.
+     - EVERY FRAME IS A FRAME: the flames are noise scrolling up through a
+       shape that hugs the front, drawn fresh on every animation frame on the
+       clock — full height however fast the front climbs, as smooth at 120Hz
+       as at 60, and the same burn on a slow phone as a fast one.
+
+     The card MUST go whatever the fire does: a failsafe collapses it if the
+     canvas cannot be had or the frames never come, and leaving the draft
+     tears the fire down at once. A player who asks for reduced motion sees
+     the card simply fade. */
+  BURN: { ms: 1000, die: 450 },
+  /* THE FIRE'S NOISE: one 256x256 tile of two-octave value noise, wrapping
+     at its edges, built once per session (onDraft builds it while the cards
+     deal, so the keep-tap pays nothing) and shared by every burning card. */
+  _fireTex: null,
+  fireTex() {
+    if (this._fireTex) return this._fireTex;
+    const N = 256, T = new Uint8Array(N * N);
+    let sd = 0x2545f491;
+    const r = () => { sd ^= sd << 13; sd ^= sd >>> 17; sd ^= sd << 5; return (sd >>> 0) / 4294967296; };
+    const oct = L => {
+      const gr = new Float32Array(L * L);
+      for (let i = 0; i < gr.length; i++) gr[i] = r();
+      return (x, y) => {
+        const fx = x * L / N, fy = y * L / N, xi = fx | 0, yi = fy | 0, xf = fx - xi, yf = fy - yi;
+        const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), x1 = (xi + 1) % L, y1 = (yi + 1) % L;
+        const a = gr[yi * L + xi], b = gr[yi * L + x1], c = gr[y1 * L + xi], d = gr[y1 * L + x1];
+        return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+      };
+    };
+    const o1 = oct(16), o2 = oct(32);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) T[y * N + x] = (o1(x, y) * 0.64 + o2(x, y) * 0.36) * 255;
+    return (this._fireTex = T);
+  },
   _burnCard(card, idx) {
-    const box = this.el('draftCards');
-    // GUARANTEED cleanup. However the fancy fire fares — a rAF the browser
-    // throttles to a crawl, a canvas iOS Safari refuses to allocate — the card
-    // MUST collapse. This failsafe fires no matter what the animation does, so
-    // an unchosen card can never be left standing under the flames.
-    const failsafe = setTimeout(() => card.classList.add('gone'), 1500);
-    const W = Math.round(card.offsetWidth), H = Math.round(card.offsetHeight);
+    const box = this.el('draftCards'), B = this.BURN;
+    const failsafe = setTimeout(() => card.classList.add('gone'), B.ms + B.die + 400);
+    const W = card.offsetWidth, H = card.offsetHeight;
     if (!W || !H) { clearTimeout(failsafe); card.classList.add('gone'); return; }   // not laid out — just drop it
-
-    // Canvas allocation can fail on memory-tight mobile browsers; if it does,
-    // skip the fire but still remove the card (via the failsafe) — never throw.
-    let cvs, g, off, og, imgData, d;
-    const FW = 46, FH = 62, MAXH = 36;   // chunky offscreen fire buffer, scaled up hard
+    let reduce = false;
+    try { reduce = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
+    if (reduce) {
+      card.style.transition = 'opacity .35s ease'; card.style.opacity = '0';
+      setTimeout(() => { clearTimeout(failsafe); card.classList.add('gone'); }, 380);
+      return;
+    }
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const cell = Math.max(1, Math.round(dpr * 0.75)), cs = cell / dpr;   // a fire cell: device px / CSS px
+    const HR = Math.round(H * 0.62), MX = Math.round(W * 0.14);            // headroom above, margin either side
+    const GW = Math.ceil((W + 2 * MX) / cs), GH = Math.ceil((H + HR) / cs);
+    const ry0 = HR / cs;                                                    // the card's top, in cells
+    // the canvas can fail on a memory-tight phone: skip the fire, keep the failsafe
+    let cvs, g, img, px;
     try {
       cvs = document.createElement('canvas');
-      cvs.width = W; cvs.height = H;
-      cvs.style.cssText = `position:absolute;left:${card.offsetLeft}px;top:${card.offsetTop}px;` +
-        `width:${W}px;height:${H}px;z-index:2;pointer-events:none;image-rendering:pixelated;`;
+      cvs.width = GW; cvs.height = GH;
+      cvs.className = 'burnfx';
+      cvs.style.cssText = `position:absolute;left:${card.offsetLeft - MX}px;top:${card.offsetTop - HR}px;` +
+        `width:${(GW * cs).toFixed(2)}px;height:${(GH * cs).toFixed(2)}px;z-index:2;pointer-events:none;image-rendering:pixelated;`;
+      g = cvs.getContext('2d');
+      if (!g) throw new Error('no 2d context');
+      img = g.createImageData(GW, GH);
+      px = new Uint32Array(img.data.buffer);
       box.appendChild(cvs);
-      g = cvs.getContext('2d'); g.imageSmoothingEnabled = false;
-      off = document.createElement('canvas'); off.width = FW; off.height = FH;
-      og = off.getContext('2d');
-      imgData = og.createImageData(FW, FH); d = imgData.data;
-      if (!g || !og) throw new Error('no 2d context');
     } catch (e) {
       if (cvs) cvs.remove();
-      return;   // failsafe still collapses the card a beat later
+      return;   // the failsafe still collapses the card a beat later
     }
-    const buf = new Uint8Array(FW * FH);
-    const PAL = [];
+    cvs._cfCell = cell;   // read by the contract: the fire's grain, in device pixels
+    // a seeded stream per card, so the two never burn alike
+    let sd = (0x9e3779b9 ^ Math.imul(idx + 1, 0x85ebca6b)) >>> 0;
+    const rnd = () => { sd ^= sd << 13; sd ^= sd >>> 17; sd ^= sd << 5; return (sd >>> 0) / 4294967296; };
+    const wind = card.offsetLeft + W / 2 < box.offsetWidth / 2 ? -1 : 1;   // smoke and ash blow outward
+    const MAXH = 64;
+    const le = new DataView(new ArrayBuffer(4));
+    le.setUint32(0, 0x01020304, true);
+    const LE = new Uint32Array(le.buffer)[0] === 0x01020304;
+    const rgba = (r, gg, b, a) => LE ? ((a << 24) | (b << 16) | (gg << 8) | r) >>> 0 : ((r << 24) | (gg << 16) | (b << 8) | a) >>> 0;
+    // the fire's ramp: smoke-red at its cool edge, through orange, to a
+    // white-yellow core — hard steps, the pixel art's own way of shading
+    const PAL = new Uint32Array(MAXH + 1);
     for (let h = 0; h <= MAXH; h++) {
-      const t = h / MAXH; let r, gg, b, a;
-      if (t < 0.03) { r = 0; gg = 0; b = 0; a = 0; }
-      else if (t < 0.35) { r = 70 + t * 360; gg = 12 + t * 60; b = 8; a = 90 + t * 340; }
-      else if (t < 0.70) { r = 235; gg = 70 + (t - 0.35) * 400; b = 18; a = 250; }
-      else { r = 255; gg = 205 + (t - 0.70) * 150; b = 70 + (t - 0.70) * 560; a = 255; }
-      PAL.push([Math.min(255, r | 0), Math.min(255, gg | 0), Math.min(255, b | 0), Math.min(255, a | 0)]);
+      const t = h / MAXH;
+      let r, gg, b, a;
+      if (t < 0.06) { r = gg = b = a = 0; }
+      else if (t < 0.2) { r = 96; gg = 20; b = 10; a = 150; }
+      else if (t < 0.34) { r = 168; gg = 34; b = 12; a = 235; }
+      else if (t < 0.48) { r = 222; gg = 70; b = 14; a = 255; }
+      else if (t < 0.62) { r = 248; gg = 122; b = 22; a = 255; }
+      else if (t < 0.76) { r = 255; gg = 176; b = 44; a = 255; }
+      else if (t < 0.9) { r = 255; gg = 220; b = 98; a = 255; }
+      else { r = 255; gg = 246; b = 196; a = 255; }
+      PAL[h] = rgba(r, gg, b, a);
     }
-    // seeded rng → a distinct fire per card
-    let sd = (0x1234 + idx * 0x9e3779b1) >>> 0;
-    const rnd = () => { sd = (sd + 0x6d2b79f5) | 0; let t = Math.imul(sd ^ (sd >>> 15), 1 | sd);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-    const cardMid = card.offsetLeft + W / 2;
-    const wind = cardMid < box.offsetWidth / 2 ? -1 : 1;    // ash blows outward from centre
-    const decayBias = 0.55 + rnd() * 0.9, flick = 0.6 + rnd() * 0.7, gust = 0.4 + rnd() * 0.5;
-    const ash = [];
-    const DUR = 1150, t0 = performance.now(), ease = x => 1 - (1 - x) * (1 - x);
-
-    const drawAsh = dt => {
-      for (let k = ash.length - 1; k >= 0; k--) {
-        const p = ash[k]; p.age += dt;
-        if (p.age >= p.life) { ash.splice(k, 1); continue; }
-        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 26 * dt; p.vx *= 0.99;
-        const lf = 1 - p.age / p.life;
-        if (p.ember) g.fillStyle = `rgba(255,${(150 + lf * 90) | 0},50,${lf.toFixed(2)})`;
-        else { const v = (44 + lf * 70) | 0; g.fillStyle = `rgba(${v},${v - 8},${v - 14},${(lf * 0.75).toFixed(2)})`; }
-        g.fillRect(p.x | 0, p.y | 0, p.sz, p.sz);
-      }
+    // sparks (hot to dying red), ash (glowing grey to faint), smoke — by life
+    const EMB = [], ASH = [], SMK = [];
+    for (let k = 0; k < 8; k++) {
+      const lf = (k + 0.5) / 8;
+      EMB.push(lf > 0.5 ? rgba(255, (200 + lf * 50) | 0, (90 + lf * 120) | 0, 255) : rgba(255, (90 + lf * 160) | 0, 30, Math.min(255, lf * 2 * 255) | 0));
+      ASH.push(rgba((44 + lf * 30) | 0, (38 + lf * 26) | 0, (34 + lf * 22) | 0, (lf * 0.9 * 255) | 0));
+      SMK.push(rgba(52, 46, 42, (lf * 0.18 * 255) | 0));
+    }
+    // the char: deep brown at the band's top to black at the front
+    const CHAR = [], CN = 12;
+    for (let k = 0; k <= CN; k++) {
+      const u = k / CN;   // 0 = top of the band, 1 = the front
+      CHAR.push(rgba((60 - u * 50) | 0, (34 - u * 30) | 0, (16 - u * 14) | 0, Math.min(255, (u * u * 0.9 + u * 0.25) * 255) | 0));
+    }
+    // the flames are noise scrolling UP through a shape that hugs the front,
+    // drawn fresh every frame — so they stand at full height whatever speed
+    // the front climbs at. The noise is ONE tiling texture (fireTex), built
+    // once while the cards were being dealt: two reads a pixel, no maths.
+    const TEX = this.fireTex(), ox = (rnd() * 256) | 0, oy = (rnd() * 256) | 0;
+    const vn = (x, y) => TEX[(((y * 1.6) | 0) & 255) * 256 + (((x * 1.6 + ox) | 0) & 255)] / 255;   // a slow 1-D-ish read for tongue heights
+    // THE FRONT: where the card is still standing, per column of the card
+    const x0 = 0.25 + rnd() * 0.5;                        // where it catches, along the foot
+    const JN = 48, jag = new Float32Array(JN + 1);        // a seeded ragged edge, smoothed
+    let wv = 0;
+    for (let k = 0; k <= JN; k++) { wv = wv * 0.62 + (rnd() - 0.5); jag[k] = wv; }
+    const ph1 = rnd() * 6.28, ph2 = rnd() * 6.28;
+    const burnt = u => Math.pow(u, 1.4) * 1.5;            // catches slowly, then races (and burns through)
+    const frontAt = (xf, u, tS) => {                      // card-space y of the front at fraction xf
+      const k = xf * JN, j = jag[Math.min(JN, k | 0)] * (1 - (k % 1)) + jag[Math.min(JN, (k | 0) + 1)] * (k % 1);
+      const lag = 0.62 * (xf - x0) * (xf - x0);           // the edges lag the point it caught at
+      const ripple = 0.012 * Math.sin(xf * 19 + tS * 11 + ph1) + 0.008 * Math.sin(xf * 41 - tS * 17 + ph2);
+      return H * (1 - burnt(u) + lag + j * 0.07 + ripple);
     };
-
-    const step = now => {
+    const CLIPN = 28, burntAt = new Float32Array(GW).fill(-1);
+    const FL = H * 0.36;                                   // a tongue's full height, CSS px
+    const parts = [];
+    const t0 = performance.now();
+    let last = t0, frames = 0, cellsLit = 0, collapsed = false;
+    const spawn = (kind, x, y) => {
+      if (parts.length > 340) return;
+      const e = kind === 'ember', a = kind === 'ash';
+      parts.push({ kind, x, y,
+        vx: wind * (e ? 10 + rnd() * 26 : a ? 12 + rnd() * 30 : 6 + rnd() * 10) + (rnd() - 0.5) * (e ? 34 : 16),
+        vy: -(e ? 50 + rnd() * 80 : a ? 24 + rnd() * 36 : 16 + rnd() * 16),
+        age: 0, life: e ? 0.35 + rnd() * 0.6 : a ? 0.8 + rnd() * 0.7 : 0.7 + rnd() * 0.5,
+        sz: kind === 'smoke' ? 3 + ((rnd() * 4) | 0) : a ? 1 + ((rnd() * 2) | 0) : 1, spin: rnd() * 6.28 });
+    };
+    let pY0 = 0, pY1 = 0;                                 // the rows the last frame drew
+    const draw = (u, el) => {
+      const tS = el / 1000, rise = tS * 150;              // the flames' features climb 150 CSS px a second
+      if (pY1 > pY0) px.fill(0, pY0 * GW, pY1 * GW);
+      let y0 = GH, y1 = 0;
+      const band = Math.max(4, H * 0.075) / cs, drift = wind * tS * 24;
+      let lit = 0;
+      for (let gx = 0; gx < GW; gx++) {
+        const X = gx * cs - MX;                           // card-space x
+        if (X < -2 || X >= W + 2) continue;
+        const xf = Math.max(0, Math.min(1, X / W));
+        let fy = frontAt(xf, u, tS), k = 1;
+        if (fy >= H) continue;                            // not caught here yet
+        if (fy <= 0) {                                    // burnt through: the last flames lift off and gutter
+          if (burntAt[gx] < 0) burntAt[gx] = el;
+          const age = el - burntAt[gx];
+          k = 1 - age / B.die;
+          if (k <= 0) continue;
+          fy = -(age / 1000) * FL * 0.8;
+        }
+        // the char band, then the burning edge, then the tongues over both
+        const gyF = ry0 + fy / cs;
+        if (k === 1) {
+          const ya = Math.max(Math.ceil(ry0), Math.floor(gyF - band)), yb = Math.min(GH, Math.ceil(gyF));
+          for (let y = ya; y < yb; y++) px[y * GW + gx] = CHAR[Math.max(0, Math.min(CN, Math.round(((y - (gyF - band)) / band) * CN)))];
+          if (ya < y0) y0 = ya;
+          if (yb > y1) y1 = yb;
+        }
+        const colH = FL * k * (0.55 + 0.75 * vn(X / 16 + 31, tS * 1.7));   // each tongue its own height, breathing
+        const gy0 = Math.max(0, Math.floor(ry0 + (fy - colH * 1.45) / cs)), gy1 = Math.min(GH - 1, Math.round(gyF) + 1);
+        const tx1 = ((X * 2 + ox) | 0) & 255, tx2 = ((X * 2 + 97 + drift) | 0) & 255, inv = 1 / colH;
+        for (let gy = gy0; gy <= gy1; gy++) {
+          const Y = gy * cs - HR, d = (fy - Y) * inv;
+          const n = (TEX[((((Y + rise) * 1.25 + oy) | 0) & 255) * 256 + tx1] * 0.6 +
+                     TEX[((((Y + rise * 1.35) * 1.25 + 53) | 0) & 255) * 256 + tx2] * 0.4) * (1 / 255);
+          let h = (1 - d) * 1.12 + (n - 0.5) * 1.35 - 0.06;
+          if (k === 1) { if (d < 0.06) h += 0.35; }       // the burning edge itself, white-hot
+          else if (d < 0.34) h -= (0.34 - d) * 3.2 * Math.min(1, 0.4 + (1 - k) * 2);   // a lifting flame burns away from its foot
+          if (h <= 0.06) continue;
+          px[gy * GW + gx] = PAL[h >= 1 ? MAXH : (h * MAXH) | 0];
+          lit++;
+          if (gy < y0) y0 = gy;
+          if (gy >= y1) y1 = gy + 1;
+        }
+      }
+      cellsLit = lit;
+      // embers, ash and smoke go into the same buffer, cell for cell — no
+      // per-spark canvas calls (a colour string parsed per spark per frame
+      // cost more than the whole fire)
+      for (const p of parts) {
+        const lf = 1 - p.age / p.life, x = Math.round(p.x / cs), y = Math.round(p.y / cs), b = Math.min(7, (lf * 8) | 0);
+        if (x < 0 || x >= GW - 2 || y < 0 || y >= GH - 2) continue;
+        const i = y * GW + x;
+        if (p.kind === 'ember') {
+          px[i] = EMB[b];
+          if (p.age < 0.12) px[i + 1] = EMB[b];
+        } else if (p.kind === 'ash') {
+          const c = p.age < 0.22 ? EMB[Math.max(0, b - 3)] : ASH[b];
+          const wide = Math.cos(p.spin + p.age * 9) > 0;
+          px[i] = c;
+          for (let q = 1; q <= p.sz; q++) px[wide ? i + q : i + q * GW < px.length ? i + q * GW : i] = c;
+        } else {
+          const r = Math.min(6, (p.sz + (1 - lf) * 5) | 0), c = SMK[b];
+          for (let yy = 0; yy < r; yy++) for (let xx = 0; xx < r; xx++) {
+            const j = (y - (r >> 1) + yy) * GW + x - (r >> 1) + xx;
+            if (j >= 0 && j < px.length && !px[j]) px[j] = c;
+          }
+        }
+        if (y - 4 < y0) y0 = Math.max(0, y - 4);
+        if (y + p.sz + 4 > y1) y1 = Math.min(GH, y + p.sz + 4);
+      }
+      // only the rows that hold fire go up to the canvas (the rest is clear)
+      g.clearRect(0, 0, GW, GH);
+      if (y1 > y0) g.putImageData(img, 0, 0, 0, y0, GW, y1 - y0);
+      pY0 = y0; pY1 = y1;
+      // the card's own body, clipped away under the front
+      if (!collapsed) {
+        let poly = '0px 0px,' + W + 'px 0px';
+        for (let q = CLIPN; q >= 0; q--) {
+          const xf = q / CLIPN, fy = Math.max(0, Math.min(H, frontAt(xf, u, tS)));
+          poly += ',' + (xf * W).toFixed(1) + 'px ' + fy.toFixed(1) + 'px';
+        }
+        const clip = 'polygon(' + poly + ')';
+        card.style.webkitClipPath = clip; card.style.clipPath = clip;
+      }
+      frames++;
+    };
+    const tick = now => {
       if (this.current !== 'draft') { clearTimeout(failsafe); cvs.remove(); card.classList.add('gone'); return; }
-      const t = Math.min(1, (now - t0) / DUR), front = ease(t);
-      const frontRow = Math.round((1 - front) * (FH - 1));
-      // the card body dissolves upward (—webkit— prefix for older iOS Safari,
-      // which ignores the unprefixed clip-path and would leave the card whole)
-      const clip = `inset(0 0 ${(front * 100).toFixed(1)}% 0)`;
-      card.style.webkitClipPath = clip; card.style.clipPath = clip;
-      // the burn front is the fire source
-      for (let x = 0; x < FW; x++)
-        for (let y = frontRow; y < Math.min(FH, frontRow + 3); y++) buf[y * FW + x] = MAXH;
-      // propagate heat upward with per-card wind + decay (classic fire spread)
-      for (let x = 0; x < FW; x++) for (let y = 1; y < FH; y++) {
-        const src = y * FW + x, px = buf[src];
-        if (px === 0) { buf[src - FW] = 0; continue; }
-        const spread = (rnd() * 3) | 0;
-        const dec = (rnd() < flick ? (spread & 1) : 0) + (rnd() < decayBias ? 1 : 0);
-        let dx = x - spread + 1 + (rnd() < gust ? wind : 0);
-        dx = dx < 0 ? 0 : dx >= FW ? FW - 1 : dx;
-        buf[(y - 1) * FW + dx] = Math.max(0, px - dec);
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
+      const el = now - t0, u = Math.min(1, el / B.ms), tS = el / 1000;
+      // throw sparks and ash off the burning front, smoke off the flame tips
+      if (el < B.ms + 120) {
+        const nE = 2 + ((rnd() * 3) | 0), nA = rnd() < 0.7 ? 1 + ((rnd() * 2) | 0) : 0;
+        for (let k = 0; k < nE + nA; k++) {
+          const xf = rnd(), fy = frontAt(xf, u, tS);
+          if (fy <= 0 || fy >= H) continue;
+          spawn(k < nE ? 'ember' : 'ash', MX + xf * W, HR + fy - 2 - rnd() * FL * 0.6);
+        }
+        if (rnd() < 0.55) { const xf = rnd(), fy = frontAt(xf, u, tS); if (fy > 0 && fy < H) spawn('smoke', MX + xf * W, HR + fy - FL * 1.1); }
       }
-      for (let i2 = 0; i2 < FW * FH; i2++) {
-        const c = PAL[buf[i2]], o = i2 * 4;
-        d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = c[3];
+      for (let k = parts.length - 1; k >= 0; k--) {
+        const p = parts[k];
+        p.age += dt;
+        if (p.age >= p.life) { parts.splice(k, 1); continue; }
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.kind === 'ember') { p.vy += 30 * dt; p.vx += Math.sin(p.spin + p.age * 14) * 40 * dt; }
+        else if (p.kind === 'ash') { p.vy += 10 * dt; p.vx += Math.sin(p.spin + p.age * 5) * 22 * dt; p.vx *= 0.995; }
+        else { p.vy *= 0.99; }
       }
-      og.putImageData(imgData, 0, 0);
-      g.clearRect(0, 0, W, H);
-      g.drawImage(off, 0, 0, W, H);
-      // throw ash + embers off the burning front, into the wind
-      const frontPx = (1 - front) * H;
-      if (t < 0.94) for (let s = 0, n = 3 + ((rnd() * 4) | 0); s < n; s++)
-        ash.push({ x: rnd() * W, y: frontPx + rnd() * 8 - 4,
-          vx: wind * (16 + rnd() * 48) + (rnd() * 12 - 6), vy: -(22 + rnd() * 60),
-          life: 0.55 + rnd() * 0.7, age: 0, sz: 2 + ((rnd() * 3) | 0), ember: rnd() < 0.3 });
-      drawAsh(1 / 60);
-      if (t < 1) { requestAnimationFrame(step); return; }
-      // the card is ash now — collapse its slot, let the last embers drift, then clean up
-      clearTimeout(failsafe);
-      if (this.current === 'draft') card.classList.add('gone');
-      let extra = 0;
-      const drift = () => {
-        g.clearRect(0, 0, W, H); extra += 1 / 60; drawAsh(1 / 60);
-        if (ash.length && extra < 0.8) requestAnimationFrame(drift); else cvs.remove();
-      };
-      requestAnimationFrame(drift);
+      draw(u, el);
+      // burnt through: collapse the slot as the last flames gutter
+      if (!collapsed && el >= B.ms) {
+        collapsed = true; clearTimeout(failsafe);
+        if (this.current === 'draft') card.classList.add('gone');
+      }
+      if ((el < B.ms + B.die || parts.length) && el < B.ms + B.die + 900) { requestAnimationFrame(tick); return; }
+      cvs.remove();
     };
-    requestAnimationFrame(step);
+    // the contract reads the fire's grain and pace
+    this._burnStats = () => ({ cell, cs, GW, GH, frames, cellsLit, MAXH });
+    requestAnimationFrame(tick);
   },
 
   /* ---------------- load / save slots ---------------- */
@@ -1671,3 +1880,350 @@ const Screens = {
 
 // classic-script global: game code tests window.Screens for the demo guard
 window.Screens = Screens;
+
+/* ---------------- THE CARD FACES (trial + origin) ----------------
+   The trial and origin cards were a wood panel with a 2px brown border, an
+   emoji or a 128px icon and plain sans-serif text — bland beside the deck's
+   framed paintings (operator, after the deck shipped). They are VECTOR now,
+   built to their box the way the title's plaques are (TitleScreen.plaque):
+   the same ink line, gold-leaf rim, chamfered corners and gold corner caps,
+   a lit art window whose glow is the card's own tone, a name plate in the
+   menu's Cinzel caps, and a stone on the foot. Nothing in the frame is a
+   raster: it is crisp at every DPR and costs no download at all.
+
+   The pictures inside ARE art: 256px icons (assets/icons/cards/ — the
+   origin set doubled by Scale2x, the three trials drawn at 256), fetched
+   only when a screen shows them, never at boot (tests/draft-cards.mjs), and
+   drawn into a canvas at the screen's own pixels (fitDraw).
+
+   ONE GEOMETRY (geo) is read by the SVG and by the HTML boxes alike, so the
+   name always sits on its plate and the icon in its window. Without the
+   title's helpers (a cached older titlescreen.js) the frame stands down and
+   the old wood face is what shows — a painter stands down, it never throws. */
+const CardFace = {
+  f(n) { return Math.round(n * 100) / 100; },
+  // [light, body, edge] of the window's glow, and [glint, stone, shadow] of the gem
+  TONES: {
+    calm:     { glow: ['#e6f2b4', '#6f9a44', '#141c0c'], gem: ['#d4ffc0', '#46a83e', '#0e3810'] },
+    moderate: { glow: ['#ffe9b0', '#c48c30', '#1e1206'], gem: ['#fff0b0', '#e0a228', '#5a3406'] },
+    hard:     { glow: ['#ffc9a4', '#b0301c', '#1e0604'], gem: ['#ff9a6c', '#d23a1a', '#5c0b05'] },
+    econ:     { glow: ['#ffe9b0', '#c48c30', '#1e1206'], gem: ['#fff0b0', '#e0a228', '#5a3406'] },
+    aggro:    { glow: ['#ffc9a4', '#b0301c', '#1e0604'], gem: ['#ff9a6c', '#d23a1a', '#5c0b05'] },
+    def:      { glow: ['#e2ecff', '#5e7eaa', '#0c1220'], gem: ['#dce8ff', '#4f7cd0', '#0e1e4a'] },
+    explore:  { glow: ['#d6f6e2', '#3f8e6c', '#0a1c12'], gem: ['#c4ffe0', '#2fa06c', '#0a3a22'] },
+    naval:    { glow: ['#cdeeff', '#2f7aa8', '#08141f'], gem: ['#cdeeff', '#2a84d0', '#082a4a'] },
+  },
+  geo(W, H, art) {
+    const c = Math.max(6, Math.round(W * 0.075));       // the chamfer
+    const rim = Math.max(2.6, W * 0.03);                 // the gold-leaf band
+    const R = 1 + rim;                                    // the face begins here
+    const pad = R + Math.max(3, W * 0.04);                // the art window's inset
+    const ax = pad, ay = pad, aw = W - 2 * pad, ah = Math.round(H * art);
+    const ph = Math.max(15, Math.round(H * 0.088));       // the name plate
+    const py = Math.round(ay + ah - ph * 0.42), px = Math.round(R + W * 0.012);
+    const gem = Math.max(3, W * 0.03), gy = H - R - gem * 1.3;
+    const tx = Math.round(pad + W * 0.015), ty = py + ph + Math.round(H * 0.02);
+    const th = Math.max(10, Math.round(gy - gem * 1.75 - ty));
+    return { W, H, c, rim, R, ax, ay, aw, ah, px, py, pw: W - 2 * px, ph, tx, ty, tw: W - 2 * tx, th, gem, gy,
+      icon: Math.max(16, Math.floor(Math.min(aw * 0.94, (py - ay) * 0.98))) };
+  },
+  helpers() {
+    const T = typeof TitleScreen !== 'undefined' ? TitleScreen : null;
+    return T && T.oct && T.caps && T.metal && T.rng && T.METAL ? T : null;
+  },
+  // the rim every face shares: ink, gold leaf lit along its top, the ink seat
+  _rim(TS, n, W, H, c, R) {
+    const f = v => this.f(v);
+    return `<path d="${TS.oct(W, H, c, 0)}" fill="#0b0602"/><path d="${TS.oct(W, H, c, 1)}" fill="url(#${n}g)"/>` +
+      `<path d="M${f(c + 0.65)},1.6 H${f(W - c - 0.65)}" stroke="#fff6d4" stroke-opacity=".6" stroke-width=".7"/>` +
+      `<path d="${TS.oct(W, H, c, R)}" fill="#120a03"/>`;
+  },
+  frame(G, tone) {
+    const TS = this.helpers();
+    if (!TS) return '';
+    const T = this.TONES[tone] || this.TONES.moderate, n = 'f', f = v => this.f(v);   // ids live inside the picture: no need to be unique
+    const { W, H, c, R, ax, ay, aw, ah } = G;
+    let s = '<defs>' + TS.metal(n + 'g', 'gold', 0, 0, 0, H) + TS.metal(n + 'm', 'gold', 0, 0, 0, 22) +
+      `<linearGradient id="${n}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b2715"/><stop offset=".55" stop-color="#28190c"/><stop offset="1" stop-color="#170e06"/></linearGradient>` +
+      `<radialGradient id="${n}w" cx=".5" cy=".55" r=".75"><stop offset="0" stop-color="${T.glow[0]}"/><stop offset=".4" stop-color="${T.glow[1]}"/><stop offset="1" stop-color="${T.glow[2]}"/></radialGradient>` +
+      `<radialGradient id="${n}v" cx=".5" cy=".5" r=".75"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".66"/></radialGradient>` +
+      `<linearGradient id="${n}p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#432d16"/><stop offset=".55" stop-color="#26180b"/><stop offset="1" stop-color="#130b04"/></linearGradient>` +
+      `<radialGradient id="${n}e" cx=".38" cy=".34" r=".75"><stop offset="0" stop-color="${T.gem[0]}"/><stop offset=".55" stop-color="${T.gem[1]}"/><stop offset="1" stop-color="${T.gem[2]}"/></radialGradient>`;
+    const wc = Math.max(3, c * 0.45);
+    const win = `M${f(ax + wc)},${f(ay)} H${f(ax + aw - wc)} L${f(ax + aw)},${f(ay + wc)} V${f(ay + ah - wc)} L${f(ax + aw - wc)},${f(ay + ah)} H${f(ax + wc)} L${f(ax)},${f(ay + ah - wc)} V${f(ay + wc)} Z`;
+    s += `<clipPath id="${n}k"><path d="${win}"/></clipPath></defs>`;
+    // the face, and a carved groove one step in from the rim
+    s += this._rim(TS, n, W, H, c, R) + `<path d="${TS.oct(W, H, c, R + 0.8)}" fill="url(#${n}b)"/>` +
+      `<path d="${TS.oct(W, H, c, R + 2.4)}" fill="none" stroke="#0a0502" stroke-opacity=".7" stroke-width="1"/>` +
+      `<path d="${TS.oct(W, H, c, R + 3.2)}" fill="none" stroke="#c9925a" stroke-opacity=".13" stroke-width=".6"/>`;
+    // THE WINDOW: the card's tone as light, faint rays and motes behind the
+    // picture, a shadow for it to stand on, a vignette, an ink and gold edge
+    const cx = ax + aw / 2, cy = ay + (G.py - ay) * 0.55, rl = Math.hypot(aw, ah);
+    s += `<g clip-path="url(#${n}k)"><rect x="${f(ax)}" y="${f(ay)}" width="${f(aw)}" height="${f(ah)}" fill="url(#${n}w)"/>`;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + 0.13, da = i % 2 ? 0.05 : 0.085;
+      s += `<path d="M${f(cx)},${f(cy)} L${f(cx + Math.cos(a - da) * rl)},${f(cy + Math.sin(a - da) * rl)} L${f(cx + Math.cos(a + da) * rl)},${f(cy + Math.sin(a + da) * rl)} Z" fill="${T.glow[0]}" fill-opacity="${i % 2 ? 0.05 : 0.09}"/>`;
+    }
+    const rnd = TS.rng(tone + ':' + W);
+    for (let i = 0; i < 10; i++) s += `<circle cx="${f(ax + rnd() * aw)}" cy="${f(ay + rnd() * ah * 0.8)}" r="${f(0.45 + rnd() * 0.75)}" fill="${T.glow[0]}" fill-opacity="${f(0.3 + rnd() * 0.45)}"/>`;
+    s += `<ellipse cx="${f(cx)}" cy="${f(G.py - 2)}" rx="${f(aw * 0.3)}" ry="${f(Math.max(2, ah * 0.05))}" fill="#000" fill-opacity=".3"/>` +
+      `<rect x="${f(ax)}" y="${f(ay)}" width="${f(aw)}" height="${f(ah)}" fill="url(#${n}v)"/></g>` +
+      `<path d="${win}" fill="none" stroke="#0b0602" stroke-width="1.6"/>` +
+      `<path d="${win}" fill="none" stroke="url(#${n}g)" stroke-width=".8" stroke-opacity=".9"/>`;
+    // the text field
+    s += `<rect x="${f(G.tx - 3)}" y="${f(G.ty - 2)}" width="${f(G.tw + 6)}" height="${f(G.th + 4)}" rx="2.5" fill="#000" fill-opacity=".24" stroke="#e8c88c" stroke-opacity=".1" stroke-width=".6"/>`;
+    // the name plate, straddling the window's foot, with a shadow under it
+    const { px, py, pw, ph } = G, e = ph * 0.5;
+    const plate = `M${f(px)},${f(py + ph / 2)} L${f(px + e)},${f(py)} H${f(px + pw - e)} L${f(px + pw)},${f(py + ph / 2)} L${f(px + pw - e)},${f(py + ph)} H${f(px + e)} Z`;
+    s += `<path d="${plate}" transform="translate(0 1.4)" fill="#000" fill-opacity=".5"/>` +
+      `<path d="${plate}" fill="url(#${n}p)" stroke="url(#${n}g)" stroke-width="1.2" stroke-linejoin="round"/>` +
+      `<path d="M${f(px + e + 1)},${f(py + 1.7)} H${f(px + pw - e - 1)}" stroke="#fff3c6" stroke-opacity=".3" stroke-width=".6"/>`;
+    // the stone on the foot
+    const gx = W / 2, gy = G.gy, gr = G.gem, b = gr * 1.5;
+    s += `<path d="M${f(gx)},${f(gy - b)} L${f(gx + b)},${f(gy)} L${f(gx)},${f(gy + b)} L${f(gx - b)},${f(gy)} Z" fill="url(#${n}m)" stroke="#0b0602" stroke-width="1"/>` +
+      `<path d="M${f(gx)},${f(gy - gr)} L${f(gx + gr)},${f(gy)} L${f(gx)},${f(gy + gr)} L${f(gx - gr)},${f(gy)} Z" fill="url(#${n}e)"/>` +
+      `<path d="M${f(gx - gr * 0.42)},${f(gy - gr * 0.1)} L${f(gx - gr * 0.05)},${f(gy - gr * 0.5)}" stroke="#fff" stroke-opacity=".8" stroke-width="${f(gr * 0.3)}" stroke-linecap="round"/>`;
+    // the corner caps: the title plaques' own, set with the card's stone
+    s += TS.caps(W, H, c, W < 150, n + 'c', 'wood', T.gem);
+    return this.img(W, H, s);
+  },
+  // THE BACK: walnut under a gold lattice, a double rule, and a medallion
+  // with the clan's fire in it — the same rim and caps as the face
+  back(G) {
+    const TS = this.helpers();
+    if (!TS) return '';
+    const n = 'b', f = v => this.f(v), { W, H, c, R } = G;
+    const p = Math.max(7, W * 0.085), cx = W / 2, cy = H / 2, mr = W * 0.25;
+    let s = '<defs>' + TS.metal(n + 'g', 'gold', 0, 0, 0, H) + TS.metal(n + 'm', 'gold', 0, cy - mr, 0, cy + mr) +
+      `<radialGradient id="${n}b" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#3a2514"/><stop offset="1" stop-color="#160d05"/></radialGradient>` +
+      `<radialGradient id="${n}d" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="#4a2c10"/><stop offset="1" stop-color="#140a03"/></radialGradient>` +
+      `<pattern id="${n}l" width="${f(p)}" height="${f(p)}" patternUnits="userSpaceOnUse" x="${f(cx)}" y="${f(cy)}">` +
+      `<path d="M0,0 L${f(p)},${f(p)} M${f(p)},0 L0,${f(p)}" stroke="#e8c070" stroke-opacity=".16" stroke-width=".7"/>` +
+      `<circle cx="0" cy="0" r=".9" fill="#e8c070" fill-opacity=".3"/></pattern>` +
+      `<clipPath id="${n}k"><path d="${TS.oct(W, H, c, R + 0.8)}"/></clipPath>` +
+      // the fire's own gold, in its own box (a page-space gradient inside the
+      // scaled emblem would land on its first stop and paint it cream)
+      `<linearGradient id="${n}f" x1="0" y1="0" x2="0" y2="1">` +
+        TS.METAL.gold.map((col, i) => `<stop offset="${[0, 0.22, 0.44, 0.6, 0.78, 1][i]}" stop-color="${col}"/>`).join('') + '</linearGradient></defs>';
+    s += this._rim(TS, n, W, H, c, R) +
+      `<g clip-path="url(#${n}k)"><rect width="${W}" height="${H}" fill="url(#${n}b)"/><rect width="${W}" height="${H}" fill="url(#${n}l)"/></g>` +
+      `<path d="${TS.oct(W, H, c, R + 4)}" fill="none" stroke="url(#${n}g)" stroke-width=".9" stroke-opacity=".8"/>` +
+      `<path d="${TS.oct(W, H, c, R + 6.2)}" fill="none" stroke="url(#${n}g)" stroke-width=".5" stroke-opacity=".5"/>`;
+    // the medallion, four studs on its ring, and the fire in it
+    s += `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(mr + 2.4)}" fill="#0b0602"/>` +
+      `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(mr)}" fill="url(#${n}d)" stroke="url(#${n}m)" stroke-width="2"/>` +
+      `<circle cx="${f(cx)}" cy="${f(cy)}" r="${f(mr - 3.2)}" fill="none" stroke="#e8c070" stroke-opacity=".38" stroke-width=".6"/>`;
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2, x = cx + Math.cos(a) * mr, y = cy + Math.sin(a) * mr, k = Math.max(2, W * 0.022);
+      s += `<path d="M${f(x)},${f(y - k)} L${f(x + k)},${f(y)} L${f(x)},${f(y + k)} L${f(x - k)},${f(y)} Z" fill="url(#${n}m)" stroke="#0b0602" stroke-width=".8"/>`;
+    }
+    const k = mr * 1.25 / 24;
+    s += `<g transform="translate(${f(cx - 12 * k)} ${f(cy - 10.6 * k)}) scale(${f(k)})">` +
+      `<path d="M12,1.8 C13.6,5.6 17.6,8 17.6,12.8 C17.6,16.3 15.1,18.6 12,18.6 C8.9,18.6 6.4,16.3 6.4,13.2 C6.4,10.6 7.8,9.2 9,7.6 C9.2,9.6 10,10.8 11,11.2 C10.6,8 11,5 12,1.8 Z" fill="url(#${n}f)" stroke="#0b0602" stroke-width="${f(1.1 / Math.max(1, k * 0.7))}" stroke-linejoin="round"/>` +
+      '<path d="M12.3,10.6 C13.2,12.4 14.7,13.4 14.7,15.4 C14.7,17 13.5,17.9 12,17.9 C10.5,17.9 9.4,17 9.4,15.6 C9.4,14.2 10.3,13.3 11,12.6 C11.2,13.6 11.6,14 12.1,14.2 C11.8,13 11.9,11.6 12.3,10.6 Z" fill="#fff3c0" fill-opacity=".55"/>' +
+      '<path d="M5.4,20.6 L18.6,17.4 M5.4,17.4 L18.6,20.6" stroke="#0b0602" stroke-width="2.6" stroke-linecap="round"/>' +
+      '<path d="M5.4,20.6 L18.6,17.4 M5.4,17.4 L18.6,20.6" stroke="#c98a2e" stroke-width="1.3" stroke-linecap="round"/></g>';
+    s += TS.caps(W, H, c, W < 150, n + 'c', 'wood');
+    return this.img(W, H, s);
+  },
+  /* A FRAME IS ONE PICTURE. The SVG is handed to the page as an image (a
+     data: URL) rather than inlined: the browser rasterises a vector image at
+     the screen's own pixels, so it is exactly as crisp, but the card adds ONE
+     element to the page instead of the frame's hundred — laid out inline they
+     cost ~30ms a card on a slow phone, right as the draft deals — and every
+     gradient id lives inside its own picture, so no two cards share one. */
+  _pics: {},
+  pic(key, make) { return this._pics[key] || (this._pics[key] = make()); },   // one string per size and tone
+  img(W, H, body) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${body}</svg>`;
+    return `<img class="cfr" alt="" aria-hidden="true" draggable="false" decoding="sync" width="${W}" height="${H}" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}">`;
+  },
+
+  /* THE PICTURE AT THE SCREEN'S OWN PIXELS. The canvas's backing store is its
+     CSS box times the device's pixel ratio; the art is drawn nearest-
+     neighbour when the screen shows it at or above its own pixels (crisp,
+     the way pixel art should be) and smoothed only when it must be shrunk —
+     nearest-neighbour on a shrink drops whole rows. Boot.t2fit's rule. */
+  fitCanvas(cv, css) {
+    const dpr = Math.min(3, window.devicePixelRatio || 1), b = Math.max(1, Math.round(css * dpr));
+    cv.style.width = cv.style.height = css + 'px';
+    if (cv.width !== b || cv.height !== b) { cv.width = b; cv.height = b; }
+    cv._cfFit = true;
+  },
+  fitDraw(cv, img) {
+    const g = cv.getContext('2d');
+    if (!g) return;
+    const W = cv.width, H = cv.height, iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    g.clearRect(0, 0, W, H);
+    if (!iw || !ih) return;
+    const s = Math.min(W / iw, H / ih), dw = Math.round(iw * s), dh = Math.round(ih * s);
+    g.imageSmoothingEnabled = s < 1;
+    if (s < 1) g.imageSmoothingQuality = 'high';
+    g.drawImage(img, Math.round((W - dw) / 2), Math.round((H - dh) / 2), dw, dh);
+  },
+
+  /* the trial icons: fetched the first time the trial screen opens (a few
+     kilobytes each), never at boot; a card with no picture yet shows its
+     lit window, and the picture arrives in place */
+  TRIAL_URL(mode) { return 'assets/icons/cards/trial-' + mode + '.png?v=' + ((window.CFG && CFG.ART_V) || 1); },
+  _trial: {},
+  trialImg(mode, then) {
+    let e = this._trial[mode];
+    if (!e) {
+      e = this._trial[mode] = { img: new Image(), ok: false, wait: [] };
+      e.img.decoding = 'async';
+      e.img.onload = () => { e.ok = true; for (const fn of e.wait.splice(0)) fn(e.img); };
+      e.img.onerror = () => { e.wait.length = 0; };
+      e.img.src = this.TRIAL_URL(mode);
+    }
+    if (e.ok) then(e.img); else e.wait.push(then);
+  },
+
+  /* fit a one-line name to its plate: the type is stepped down until it
+     fits, then allowed to wrap — MEASURED ON A CANVAS in the plate's own face
+     (Cinzel caps, its letter-spacing), never by reading the page's layout,
+     which forced a layout per step on a card that had just been built */
+  _mc: null,
+  nameWidth(text, px) {
+    if (!this._mc) this._mc = document.createElement('canvas').getContext('2d');
+    const g = this._mc;
+    if (!g) return 0;
+    g.font = `700 ${px}px Cinzel, 'Times New Roman', Georgia, serif`;
+    const t = String(text).toUpperCase();
+    return g.measureText(t).width + t.length * 0.05 * px;
+  },
+  fitName(el, max, room) {
+    const sp = el.firstElementChild;
+    if (!sp) return;
+    const w = this.nameWidth(sp.textContent, max);
+    let sz = w > room && w > 0 ? Math.max(6.5, Math.floor(max * room / w * 2) / 2) : max;
+    el.style.fontSize = sz + 'px';
+    el.style.whiteSpace = this.nameWidth(sp.textContent, sz) > room ? 'normal' : 'nowrap';
+  },
+  // …and the words to their field: smaller type first, the flavour line last
+  fitText(box) {
+    box.classList.remove('tight');
+    let k = 1;
+    box.style.setProperty('--tk', '1');
+    while (box.scrollHeight > box.clientHeight + 1 && k > 0.8) { k -= 0.05; box.style.setProperty('--tk', k.toFixed(2)); }
+    if (box.scrollHeight > box.clientHeight + 1) box.classList.add('tight');
+  },
+  _place(el, x, y, w, h) {
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    if (w != null) el.style.width = w + 'px';
+    if (h != null) el.style.height = h + 'px';
+  },
+
+  // an origin card: the face (frame, picture, plate, words) and the back
+  /* the words are fitted in the NEXT frame, inside the layout that frame
+     does anyway — fitting them as each card is built forced a layout per
+     card, a cost the deal paid three times over on a slow phone */
+  _fitQ: null,
+  fitLater(box) {
+    if (!this._fitQ) {
+      this._fitQ = [];
+      requestAnimationFrame(() => { const q = this._fitQ; this._fitQ = null; for (const b of q) if (b.isConnected) this.fitText(b); });
+    }
+    this._fitQ.push(box);
+  },
+  // the size every card on a screen shares, read once (sz) — or its own
+  dressOrigin(card, sz) {
+    const key = card._cfKey, W = sz ? sz.w : card.offsetWidth, H = sz ? sz.h : card.offsetHeight;
+    if (!key || !W || !H || card.classList.contains('burn') || card.classList.contains('gone')) return;
+    if (card._cfW === W && card._cfH === H) return;
+    const G = this.geo(W, H, 0.44), d = Cards.DEFS[key];
+    const front = card.querySelector('.ofront'), back = card.querySelector('.oback');
+    const tone = (d && d.cat) || 'econ', fr = this.helpers() ? this.pic(W + 'x' + H + ':' + tone, () => this.frame(G, tone)) : '';
+    if (!fr || !front || !back) return;               // no helpers: the wood face stands
+    card._cfW = W; card._cfH = H;
+    card.style.setProperty('--k', (W / 124).toFixed(3));
+    const old = front.querySelector('.cfr');
+    if (old) old.remove();
+    front.insertAdjacentHTML('afterbegin', fr);
+    back.innerHTML = this.pic(W + 'x' + H + ':back', () => this.back(G));
+    front.classList.add('framed'); back.classList.add('framed');
+    const cv = front.querySelector('canvas');
+    if (cv) {
+      this.fitCanvas(cv, G.icon);
+      this._place(cv, Math.round(G.ax + (G.aw - G.icon) / 2), Math.round(G.ay + (G.py - G.ay - G.icon) / 2));
+      Cards.drawMotif(cv, key);
+    }
+    const nm = front.querySelector('.oname'), e = G.ph * 0.5;
+    if (nm) { this._place(nm, G.px + e, G.py, G.pw - 2 * e, G.ph); this.fitName(nm, Math.min(G.ph * 0.6, 7 + W * 0.05), G.pw - 2 * e - 4); }
+    const tx = front.querySelector('.otext');
+    if (tx) { this._place(tx, G.tx, G.ty, G.tw, G.th); this.fitLater(tx); }
+  },
+  // a trial card: the same frame in its trial's tone, its own picture
+  dressTrial(card, sz) {
+    const mode = card.dataset.v, W = sz ? sz.w : card.offsetWidth, H = sz ? sz.h : card.offsetHeight;
+    if (!mode || !W || !H || (card._cfW === W && card._cfH === H)) return;
+    const G = this.geo(W, H, 0.5), fr = this.helpers() ? this.pic(W + 'x' + H + ':trial:' + mode, () => this.frame(G, mode)) : '';
+    if (!fr) return;
+    card._cfW = W; card._cfH = H;
+    card.style.setProperty('--k', (W / 124).toFixed(3));
+    const old = card.querySelector('.cfr');
+    if (old) old.remove();
+    card.insertAdjacentHTML('afterbegin', fr);
+    card.classList.add('framed');
+    const cv = card.querySelector('canvas.dart');
+    if (cv) {
+      this.fitCanvas(cv, G.icon);
+      this._place(cv, Math.round(G.ax + (G.aw - G.icon) / 2), Math.round(G.ay + (G.py - G.ay - G.icon) / 2));
+      this.trialImg(mode, img => this.fitDraw(cv, img));
+    }
+    const nm = card.querySelector('.dname'), e = G.ph * 0.5;
+    if (nm) { this._place(nm, G.px + e, G.py, G.pw - 2 * e, G.ph); this.fitName(nm, Math.min(G.ph * 0.62, 7.5 + W * 0.055), G.pw - 2 * e - 4); }
+    const ln = card.querySelector('.dline');
+    if (ln) { this._place(ln, G.tx, G.ty, G.tw, G.th); this.fitLater(ln); }
+  },
+  /* THE DEAL PAYS NOTHING FOR ITS FRAMES. The origin cards are the trial
+     cards' size, so while the player reads the trial screen the five origin
+     tones and the back are built and decoded in idle slices, one picture a
+     slice; the deal then finds every picture ready (measured: a cold deal
+     cost a slow phone ~80ms more than build 111's, inside the founding). */
+  prewarm(sz) {
+    if (!sz || !this.helpers() || this._warmFor === sz.w + 'x' + sz.h) return;
+    this._warmFor = sz.w + 'x' + sz.h;
+    let narrow = false;
+    try { narrow = !!(window.matchMedia && matchMedia('(max-width: 359px)').matches); } catch (e) {}
+    const W = sz.w, H = narrow ? Math.round(W * 9 / 5) : sz.h, G = this.geo(W, H, 0.44);
+    const jobs = [() => this.pic(W + 'x' + H + ':back', () => this.back(G))];
+    for (const t of ['econ', 'def', 'explore', 'naval', 'aggro']) jobs.push(() => this.pic(W + 'x' + H + ':' + t, () => this.frame(G, t)));
+    this._warm = [];
+    const run = () => {
+      const j = jobs.shift();
+      if (!j) return;
+      const m = /src="([^"]+)"/.exec(j());
+      if (m) { const im = new Image(); im.src = m[1]; this._warm.push(im); }   // decoded ahead, held in the image cache
+      setTimeout(run, 40);
+    };
+    setTimeout(run, 120);
+  },
+  // a card dressed at one size is dressed again at another (rotation, a
+  // window dragged wider); one observer for every card on these screens
+  watch(card) {
+    if (typeof ResizeObserver !== 'function') return;
+    if (!this._ro) this._ro = new ResizeObserver(es => {
+      for (const en of es) {
+        const c = en.target;
+        if (c.classList.contains('dcard')) this.dressTrial(c); else this.dressOrigin(c);
+      }
+    });
+    this._ro.observe(card);
+  },
+  // fonts arrive late on a cold cache: a name measured in the fallback face
+  // is measured again once Cinzel is in — and only then (a resolved
+  // fonts.ready re-dressed every card a second time, every time)
+  refitWhenFontsLand() {
+    if (this._fontOk || this._fontWait || !(document.fonts && document.fonts.load)) return;
+    let ok = true;
+    try { ok = document.fonts.check('700 12px Cinzel'); } catch (e) {}
+    if (ok) { this._fontOk = true; return; }
+    this._fontWait = true;
+    document.fonts.load('700 12px Cinzel').then(() => {
+      this._fontWait = false;
+      for (const c of document.querySelectorAll('.ocard, .dcard')) { c._cfW = 0; if (c.classList.contains('dcard')) this.dressTrial(c); else this.dressOrigin(c); }
+    }, () => { this._fontWait = false; });
+  },
+};
+window.CardFace = CardFace;

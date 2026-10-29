@@ -222,18 +222,25 @@ const Assets = {
 
   /* ---- ORIGIN CARD ICONS: one PNG per MOTIF, not per card ----
 
-       assets/icons/origins/{motif}.png
+       assets/icons/cards/origin-{motif}.png        256x256, true alpha
 
      {motif} is a Cards.DEFS motif key (hearth, spears, rider, …) — DERIVED
      from the card table, never hand-kept, so a new card gets a slot for
      free. A hit installs into the ui/card/<cardKey> slot of EVERY card
      wearing that motif (1:1 today, but shared motifs stay correct), which
      is exactly what Cards.drawMotif already prefers over the procedural
-     64-grid drawing — so every render site (draft screen, rival reveal)
-     takes the image with zero code at the call sites. A 404 keeps the
-     procedural motif, the same deal every other convention makes. Same
-     lowercase rule, same ?v= cache-buster. */
-  ORIGIN_DIR: 'assets/icons/origins/',
+     64-grid drawing — so every render site takes the image with zero code
+     at the call sites. A 404 keeps the procedural motif, the same deal
+     every other convention makes. Same lowercase rule, same ?v= buster.
+
+     ASKED FOR, NEVER PROBED (tests/draft-cards.mjs): the boot used to fetch
+     all 26 to show three of them a whole menu later. A run asks for the
+     three it dealt (Screens.onDraft → wantOrigins) the moment the draft
+     opens; the cards deal face-down for half a second first, and a picture
+     still on its way leaves its window empty rather than flash the drawn
+     stand-in (originState 'loading'). Untracked: no draft waits on them,
+     and artReady() never counts them. */
+  ORIGIN_DIR: 'assets/icons/cards/',
   originMotifs() {
     if (!window.Cards || !Cards.DEFS) return [];
     const seen = {}, out = [];
@@ -244,14 +251,28 @@ const Assets = {
     return out;
   },
   // the canonical filename — ALWAYS lowercase; Pages serves case-sensitively
-  originName(motif) { return String(motif).toLowerCase() + '.png'; },
+  originName(motif) { return 'origin-' + String(motif).toLowerCase() + '.png'; },
   originUrl(motif) { return this.ORIGIN_DIR + this.originName(motif) + '?v=' + (CFG.ART_V || 1); },
+  _origin: {},          // motif -> 'loading' | 'ok' | 'fail' (asked-for icons only)
+  originState(motif) { return this._origin[motif]; },
+  wantOrigins(motifs) {
+    for (const m of motifs || []) if (m && !this._origin[m]) this._tryLoadOrigin(m);
+  },
   _tryLoadOrigin(motif) {
+    this._origin[motif] = 'loading';
     const img = new Image();
-    img.onload = () => { this.setOriginArt(motif, img); };
-    img.onerror = () => { /* no icon — the procedural motif stands */ };
-    this._track(img, true);
+    img.decoding = 'async';
+    img.onload = () => { this._origin[motif] = 'ok'; this.setOriginArt(motif, img); };
+    // no icon — the procedural motif stands, painted into every card waiting on it
+    img.onerror = () => { this._origin[motif] = 'fail'; this._repaintOrigin(motif); };
     img.src = this.originUrl(motif);
+  },
+  _repaintOrigin(motif) {
+    if (typeof document === 'undefined' || !window.Cards) return;
+    for (const c of document.querySelectorAll('canvas')) {
+      const ck = c._cfCardKey;
+      if (ck && Cards.DEFS[ck] && Cards.DEFS[ck].motif === motif) Cards.drawMotif(c, ck);
+    }
   },
   /* install a PNG as a motif's card icon. Cards draw ONCE into DOM
      canvases (not per frame), so an image that decodes after a card was
@@ -264,12 +285,7 @@ const Assets = {
       if (Cards.DEFS[k].motif !== motif) continue;
       if (this._place('ui/card/' + k, img)) { this.loaded['ui/card/' + k] = true; hit = true; }
     }
-    if (hit && typeof document !== 'undefined') {
-      for (const c of document.querySelectorAll('canvas')) {
-        const ck = c._cfCardKey;
-        if (ck && Cards.DEFS[ck] && Cards.DEFS[ck].motif === motif) Cards.drawMotif(c, ck);
-      }
-    }
+    if (hit) this._repaintOrigin(motif);
     return hit;
   },
 
@@ -2255,7 +2271,7 @@ const Assets = {
     }
     for (const w of this.wonderKeys()) this._tryLoadWonder(w);
     for (const k of this.relicKeys()) this._tryLoadRelic(k);
-    for (const m of this.originMotifs()) this._tryLoadOrigin(m);
+    // (origin icons are ASKED FOR by the draft — Assets.wantOrigins — never probed here)
     for (const tName of this.formationTerrains())
       for (const stem of this.FORMATION_CATALOG[tName]) this._tryLoadFormation(tName, stem);
     this.ready = true;

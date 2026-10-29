@@ -51,12 +51,13 @@ const SMOKE = ['boot.mjs', 'tap-audit.mjs', 'placement.mjs', 'patch-notes.mjs'];
 
 // non-script paths → the suites that read them
 const PATHS = [
-  [/^index\.html$/, ['boot.mjs', 'title.mjs', 'desktop-layout.mjs', 'settings.mjs', 'card-intro.mjs', 'calm-peace.mjs', 'art-pipeline.mjs']],
+  [/^index\.html$/, ['boot.mjs', 'title.mjs', 'desktop-layout.mjs', 'settings.mjs', 'card-intro.mjs', 'calm-peace.mjs', 'art-pipeline.mjs', 'draft-cards.mjs']],
   [/^analytics\.html$/, ['analytics.mjs', 'telemetry.mjs']],
   [/^supabase\//, ['analytics.mjs', 'telemetry.mjs', 'deck-sync.mjs', 'deck-core.mjs']],
   [/^assets\/ui\//, ['boot.mjs', 'title.mjs', 'settings.mjs', 'art-pipeline.mjs']],
   [/^assets\/cards\//, ['deck-ui.mjs', 'deck-screens.mjs', 'card-intro.mjs', 'art-pipeline.mjs']],
   [/^assets\/endgame\//, ['deck-screens.mjs', 'art-pipeline.mjs']],
+  [/^assets\/icons\/cards\//, ['draft-cards.mjs', 'origin-cards.mjs', 'art-pipeline.mjs']],
   [/^assets\//, ['art-pipeline.mjs', 'animal-art.mjs', 'build-stages.mjs', 'fort-states.mjs', 'land.mjs', 'mountain.mjs']],
   [/^tools\//, ['patch-notes.mjs']],
   [/^\.github\//, []],

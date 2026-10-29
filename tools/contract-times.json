@@ -35,6 +35,7 @@
  "deck-ui.mjs": 433,
  "defend-hold.mjs": 13,
  "desktop-layout.mjs": 13,
+ "draft-cards.mjs": 51,
  "drag-move.mjs": 18,
  "drawbridge.mjs": 10,
  "endgame-doom-ai.mjs": 7,
