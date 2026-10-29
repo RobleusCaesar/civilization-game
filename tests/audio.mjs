@@ -62,11 +62,21 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     }
   };
   walk(root);
-  ck('notOneByteOfAudioShips', found.length === 0,
-    found.length ? found.join(', ') : 'every sound is synthesised at runtime');
+  // the recordings a TEST PAGE plays sit at the root beside the live game
+  // (assets/music, assets/sfx — CLAUDE.md, THE TEST BUILD: new assets land
+  // at the root, where the live page never asks for them). They are not
+  // shipped by the live game, which the next two checks hold: its sound
+  // module loads nothing, and none of its scripts names those folders.
+  const staged = (f) => /^assets\/(music|sfx)\//.test(f.replace(/\\/g, '/'));
+  const stray = found.filter(f => !staged(f));
+  ck('notOneByteOfAudioShips', stray.length === 0,
+    stray.length ? stray.join(', ') : 'every sound is synthesised at runtime' + (found.length ? ` (${found.length} recordings staged for a test page)` : ''));
   const src = readFileSync(join(root, 'js/audio.js'), 'utf8');
   ck('andTheModuleFetchesNothing', !/new Audio\(|\.src\s*=|fetch\(|XMLHttpRequest/.test(src),
     'no loader, no decode, nothing on the wire');
+  const named = readdirSync(join(root, 'js')).filter(e => /\.js$/.test(e) &&
+    /assets\/(music|sfx)\//.test(readFileSync(join(root, 'js', e), 'utf8')));
+  ck('andNoLiveScriptNamesTheStagedRecordings', named.length === 0, named.join(', ') || 'none');
 }
 
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files', '--autoplay-policy=no-user-gesture-required'] });
