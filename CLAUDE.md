@@ -3637,22 +3637,28 @@ fire does. **A PAINTER STANDS DOWN**: without the title's helpers (a cached
 older titlescreen.js) the frames are not built and the old wood face shows.
 
 **THE TEST BUILD** (`Backend.testSlot`, tests/telemetry.mjs): a build the
-operator plays before it goes to main lives on the `staging` branch and is
-served straight off GitHub by raw.githack.com —
-`https://raw.githack.com/RobleusCaesar/civilization-game/staging/index.html`
-(the repository is public; every path in the game is relative, so it runs
-as it does on Pages). No deploy and no change to main: a push to `staging`
-is live there within minutes, and a code `?v=` bump keeps a phone from
-holding older scripts. It is its OWN ORIGIN, so its saves, deck and tutorial
-memory are its own and never touch the live game's. NOTHING LEAVES IT:
-it is not one of `PROD_HOSTS`, so `telemetryAllowed` answers no — no
-telemetry, no feedback relay, no deck sync, no board post (its games are
-not the players', and its build number must not open a release on the
-dashboard before the release is real). Any https page that is not the live
-site (and any `/test/` path) is a test build and wears a TEST BUILD badge
-(`Screens.init`); a page from disk or a local server wears nothing. A
-`/test/` slot on the live host was considered and set aside: it needs a
-change to main's deploy, and it would share the live game's saves.
+operator plays before it ships goes up as a TEST PAGE beside the live game,
+`https://clanfire.online/test<build>/` (operator: "call it test plus some
+number"; raw.githack.com was tried first and rejected — slow, and its
+interstitial page "looks sketchy"). The folder holds only the build's own
+`index.html` and a copy of `js/`: the page carries `<base href="../">`
+(first in `<head>`, with `noindex`) and its script tags point at
+`test<build>/js/`, so every picture, font and sound is the live site's own
+file and any new art lands at the root, where the live page never asks for
+it. Push it to main as its own commit ON TOP OF main — the live page, its
+scripts and its pictures untouched — and merge that commit into the working
+branch (never rebase: the branch must stay a fast-forward of main). A new
+build number makes a new folder, so a phone that cached the last test
+page's scripts gets the new ones; the old folder goes in the same commit,
+and the RELEASE removes the last one. It is the live game's ORIGIN, so it
+shares the device's saves and deck: a card played there is spent for real,
+and one earned there does not stick. NOTHING LEAVES IT: any `/test/` or
+`/test<digits>/` path, and any https page that is not one of `PROD_HOSTS`,
+answers no to `telemetryAllowed` — no telemetry, no feedback relay, no deck
+sync, no board post (its games are not the players', and its build number
+must not open a release on the dashboard before the release is real) — and
+wears a TEST BUILD badge on the menus (`Screens.init`; a game hides it, it
+sat on the build menu). A page from disk or a local server wears nothing.
 
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
