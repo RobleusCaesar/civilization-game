@@ -20,8 +20,12 @@ const Screens = {
 
   init() {
     this.bind();
-    // the test slot says so, in a corner, on every screen (Backend.testSlot)
+    // the test slot says so on every menu screen (Backend.testSlot); in play
+    // it would sit on the build menu, so a game hides it
     if (window.Backend && Backend.testSlot && Backend.testSlot()) {
+      const st = document.createElement('style');
+      st.textContent = 'body.ingame #testBadge{display:none}';
+      document.head.appendChild(st);
       const tb = document.createElement('div');
       tb.id = 'testBadge'; tb.textContent = 'TEST BUILD';
       tb.style.cssText = 'position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom, 0px) + 4px);transform:translateX(-50%);' +
