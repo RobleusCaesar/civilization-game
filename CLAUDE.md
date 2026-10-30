@@ -170,7 +170,7 @@ node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals
 node tests/fort-states.mjs     # walls, gates and towers go up in 3 drawn stages and come down in 2 drawn damage states — each the finished piece's own canvas, at full alpha, in every pass that draws it
 node tests/burn-down.mjs       # buildings burn in thirds at their OWN anchors; the fall throws dust; 5 days of ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
-node tests/wall-lines.mjs      # the wall sandbox: a man moves only his own pixels, a tower stands in front of the rock behind it, a wall joins walls never water/rock/black, nothing in the black, the walk half way up a tower, whole end caps
+node tests/wall-lines.mjs      # the wall sandbox: a man moves only his own pixels, a tower stands in front of the rock behind it, a wall joins walls never water/rock/black, nothing in the black, the walk half way up a tower, whole end caps at every tier (the L2 block's corner, the L3 bastion's round back, its footings), a line going up is one line, the L2 grate on its gatehouse
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
@@ -2776,8 +2776,34 @@ flank rounds out and is inked, and its back is rounded at both corners (in
 the finished strip, the stages and the damage alike). The level-2 log block
 was four pixels narrower than the north-south walkway it caps, so the
 walk's right rail stuck out past it at every end and junction; its dark
-side face is let out to the walkway's width. Both were pixel edits of the
-shipped strips (scratch scripts, kept as palette PNGs), not new art.
+side face is let out to the walkway's width — and, let out only where the
+block was already that wide, its bevelled lower-right corner first came
+apart into a broken step with two loose pixels (build 122 let the bevel out
+too, from the original art). The LEVEL-3 bastion of every frame with no
+north arm wore a six-pixel strip of the walk's shaded right face standing
+up beside its head, flat-topped and square-cornered — the level-1 stub
+again, read as a dark slab bolted to a round tower; its corner is turned
+on a quarter ellipse so the parapet stands clear and the round back rises
+into it (behind an east arm the curtain fills what the slab gave up). And
+the level-3 FOOTINGS (b1) ran their north lane out of the octagon in those
+same frames; the lane is gone and the trench closes over the ring. All of
+them were pixel edits of the shipped strips (scratch scripts, kept as
+palette PNGs), not new art — each pinned against the pre-fix strips.
+**A LINE GOING UP IS ONE LINE** (`R.lineAt`, same test): a wall or gate
+still being raised is not solid (the work-order rule), so `Bld.fortAt` —
+the block grid — does not see it, and the auto-tiling asked nothing else:
+a dragged line drew as a row of lone end caps, stumps and towers until its
+last section set, and every finished section beside a site wore an end cap
+facing it. `R.wallMaskAt` and `R.gateVerticalAt` count wall and gate SITES
+through `R.lineAt`; every RULE (passability, the seal, the deck) still asks
+`Bld.fortAt`, and a tower site still bonds to nothing. `gateVerticalAt` is
+also what the deck and `gateOutside` read, so a gate in a line whose walls
+are still going up faces that line from the start — the answer it gave
+once they stood. **The level-2 grate hangs on its gatehouse**
+(`R.GATE_DRAWN[1]`, same test): side-on it was a cell and a half out in the
+grass and, raised, floated over the roof — numbers left from an older
+flank; it now hangs just proud of the roofed body's wall (x 13..64 of
+`gate-l2.png` frame 1 at its slot's rows) and climbs that wall when raised.
 **The curtain through a gate IS the wall** (same test): each tier used to
 hand-draw its own version of the band crossing the gate's tile, and they
 drifted — the crenellation stopped dead at the gate and started again the far

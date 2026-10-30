@@ -30,13 +30,26 @@
         level-1 node with no west arm used to carry a sawn-off stub of wattle
         fence left of its post, and one with no north arm a flat saw-cut on
         its mound's back; a level-2 log block was four pixels narrower than
-        the walkway it caps, so the walk's rail stuck out at every end.
+        the walkway it caps, so the walk's rail stuck out at every end — and
+        when it was let out, its bevelled lower corner came apart into a
+        broken step (now whole). A level-3 bastion with no north arm wore a
+        flat-topped slab of the walk's shaded face beside its head (now a
+        round back), and its footings stage a lane running north out of the
+        ring (now ending in the ring).
+     6. A LINE GOING UP IS ONE LINE (R.lineAt): a wall or gate still being
+        raised is not solid, so the block grid does not see it — and a
+        dragged line drew as a row of lone end caps until its last section
+        set. The picture counts sites; every rule still asks Bld.fortAt.
+     7. THE LEVEL-2 GATE'S GRATE HANGS ON ITS GATEHOUSE (R.GATE_DRAWN): side
+        on, it hung a cell and a half out in the grass and, raised, floated
+        over the roof.
 
    Run this after touching any of:
      render.js — occludeByForts / redrawFront / _picRect / _redrawPic /
-                 wallMaskAt / drawTowerWalk / drawGateWalk / _walkOver /
+                 wallMaskAt / lineAt / gateVerticalAt / GATE_DRAWN /
+                 drawTowerWalk / drawGateWalk / _walkOver /
                  the building pass / the mountain strip flush
-     assets/fort/wall-l*.png
+     assets/fort/wall-l*.png, gate-l2.png
 
      node tests/wall-lines.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -184,6 +197,19 @@ const out = await p.evaluate(async () => {
     ck('butItStillJoinsAWall', run === 4, 'a wall south of the row-1 wall: mask ' + run);
   }
 
+  // ---- 2b. a line going up is one line ----
+  {
+    clear('wl-site'); S.wallLevel = 2;
+    const site = (k, x, y) => { const bb = Bld.place('P', k, x, y, { free: true }); if (bb) bb.level = 2; Bld._block = null; return bb; };
+    const a = site('wall', 30, 20); site('wall', 30, 21); const gt = site('gate', 30, 22); site('wall', 30, 23);
+    put('wall', 30, 24, 2);
+    const m = [20, 21, 23, 24].map(y => R.wallMaskAt(30, y)), vert = R.gateVerticalAt(30, 22);
+    ck('aLineGoingUpIsOneLine', a && a.construction > 0 && gt && gt.construction > 0 &&
+      m.join() === '4,5,5,1' && vert,
+      'masks ' + m.join('/') + ' (want 4/5/5/1), the gate site facing the line: ' + vert);
+    ck('butASiteIsStillWalkedThrough', !Bld.fortAt(30, 21) && Path.passable(30, 21, 'P'), 'the picture joins it; the rules do not');
+  }
+
   // ---- 3. nothing is drawn in the black ----
   {
     clear('wl-black'); S.wallLevel = 3;
@@ -299,6 +325,73 @@ const caps = await p.evaluate(async () => {
       }
     }
     ck('level2BlockIsAsWideAsItsWalk', bad.length === 0, bad.length ? bad.join('; ') : 'no rail sticks out past the block');
+  }
+  {
+    // the widened block's bevelled lower corner moved with it: its edge
+    // steps in row by row with no hole just inside it, and nothing loose
+    // lies under it
+    const bad = [];
+    for (const s of ['', '-b1', '-b2', '-b3', '-d1']) {
+      const a = await read('assets/fort/wall-l2' + s + '.png');
+      const op = (f, x, y) => a.at(f, x, y)[3] > 20;
+      for (const f of [0, 1, 4, 8, 9, 12, 13]) {
+        const last = (f & 4) ? 106 : 108;
+        let prev = 99;
+        for (let y = 99; y <= last; y++) {
+          let r = 56; while (r >= 24 && !op(f, r, y)) r--;
+          let holes = 0; for (let x = r - 8; x < r; x++) if (!op(f, x, y)) holes++;
+          if (r > prev || holes) { bad.push('wall-l2' + s + ' frame ' + f + ' row ' + y + ': edge ' + r + ', ' + holes + ' holes'); break; }
+          prev = r;
+        }
+        if (!(f & 4)) for (let y = 109; y <= 112; y++) for (let x = 40; x <= 56; x++) if (op(f, x, y)) bad.push('wall-l2' + s + ' frame ' + f + ' loose pixel ' + x + ',' + y);
+      }
+    }
+    ck('andItsLowerCornerIsWhole', bad.length === 0, bad.length ? bad.slice(0, 6).join('; ') : 'the bevel steps in cleanly under every block, finished, stages and the battered one');
+  }
+  {
+    // THE LEVEL-3 BASTION HAS A ROUND BACK: no slab of the walk's shaded
+    // face stands up beside the head where no north arm runs; behind an
+    // east arm the curtain shows instead
+    const bad = [];
+    for (const s of ['', '-b2', '-b3', '-d1', '-d2']) {
+      const a = await read('assets/fort/wall-l3' + s + '.png');
+      for (const f of NON_N) {
+        let n = 0;
+        for (let y = 54; y <= 57; y++) for (let x = 56; x <= 60; x++) {
+          const c = a.at(f, x, y), w = a.at(10, x, y);
+          if (c[3] > 20 && !(f & 2 && c.every((v, k) => v === w[k]))) n++;
+        }
+        if (n) bad.push('wall-l3' + s + ' frame ' + f + ': ' + n + ' slab px');
+      }
+      let lane = 0; for (let y = 54; y <= 57; y++) for (let x = 56; x <= 60; x++) if (a.at(1, x, y)[3] > 20) lane++;
+      if (lane < 15) bad.push('wall-l3' + s + ' frame 1 lost its walk (' + lane + ')');
+    }
+    ck('level3BastionHasARoundBack', bad.length === 0, bad.length ? bad.join('; ') : 'the head stands clear, the curve rises into it, the walk still runs north where it should');
+  }
+  {
+    // and its first stage, the footings, ends in its own ring
+    const bad = [];
+    const a = await read('assets/fort/wall-l3-b1.png');
+    const cnt = (f) => { let n = 0; for (let y = 54; y <= 75; y++) for (let x = 26; x <= 52; x++) if (a.at(f, x, y)[3] > 20) n++; return n; };
+    for (const f of NON_N) { const n = cnt(f); if (n) bad.push('frame ' + f + ': ' + n + ' px of lane'); }
+    if (cnt(1) < 200) bad.push('frame 1 lost its lane (' + cnt(1) + ')');
+    ck('level3FootingsEndInTheirRing', bad.length === 0, bad.length ? bad.join('; ') : 'no lane runs north out of a ring with nothing north of it');
+  }
+  {
+    // the level-2 gate seen side-on: its grate hangs against the gatehouse
+    // wall, shut or raised, never out in the grass or up in the sky
+    const a = await read('assets/fort/gate-l2.png'), P = R.GATE_DRAWN[1].flank;
+    let L = 99, Rr = -1;
+    for (let y = 96; y <= 108; y++) {
+      let l = 0; while (l < 78 && a.at(1, l, y)[3] <= 20) l++;
+      let r = 77; while (r >= 0 && a.at(1, r, y)[3] <= 20) r--;
+      L = Math.min(L, l); Rr = Math.max(Rr, r);
+    }
+    const fine = (x) => (x - Assets.FORT_GEO.M) * 32 / Assets.FORT_GEO.T;
+    const gw = fine(L) - (P.w + 2), ge = P.e - fine(Rr + 1);
+    const top = P.top - 6;
+    ck('level2GateGrateHugsItsGatehouse', gw >= -0.5 && gw <= 0.75 && ge >= -0.5 && ge <= 0.75 && top >= P.y0 - 8 && P.top <= P.y1,
+      'gap west ' + gw.toFixed(2) + ', east ' + ge.toFixed(2) + ' cells; raised stub ' + top + '..' + P.top + ' against a slot ' + P.y0 + '..' + P.y1);
   }
   return { res, fails };
 });

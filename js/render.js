@@ -6976,10 +6976,23 @@ const R = {
      rock at every single section (the wall sandbox, three reported
      screenshots). A line that cannot go on simply ENDS, on its own tile,
      in the end cap every frame of the kit already carries. */
+  /* A LINE IS ITS STONES AND ITS SITES. A wall or gate still going up is
+     not solid (builders walk through it until the day it stands — the
+     work-order rule), so the block grid Bld.fortAt reads does not know it
+     is there. But the line it belongs to is already laid out: asked of the
+     block grid alone, a dragged line drew as a row of lone end caps, stumps
+     and towers until its last section set, and every finished section
+     beside a site wore an end cap facing it. The picture asks this; every
+     RULE (passability, sealing, the deck) still asks Bld.fortAt. */
+  lineAt(x, y) {
+    if (Bld.fortAt(x, y)) return true;
+    const b = Bld.at(x, y);
+    return !!b && (b.key === 'wall' || b.key === 'gate') && b.construction > 0;
+  },
   wallMaskAt(x, y, extra) {
     const conn = (xx, yy) => {
       if (!MapGen.onBoard(xx, yy)) return false;           // the black is nothing to join
-      if (Bld.fortAt(xx, yy)) return true;                  // wall / gate ONLY (a house is not a curtain)
+      if (this.lineAt(xx, yy)) return true;                 // wall / gate ONLY (a house is not a curtain)
       // a finished TOWER standing IN the line bonds to it (see towerLinkMask)
       const tb = Bld.at(xx, yy);
       if (tb && tb.key === 'tower' && !(tb.construction > 0)) {
@@ -7522,7 +7535,11 @@ const R = {
   ],
   GATE_DRAWN: [
     { flank: { w: -5, e: 35.2, ow: -3, oe: 34.7, y0: 13, y1: 24.5, top: -17.7 } },
-    { flank: { w: -1.9, e: 32.6, ow: -1.9, oe: 32.6, y0: 13, y1: 24.5, top: -16 } },
+    // L2's flank is the roofed body (rows 76..108 of gate-l2's frame 1 stand
+    // at x 13..64): the grate hangs just proud of THAT edge and, raised,
+    // climbs the same wall above its slot — it used to hang a cell and a
+    // half out in the grass and, opened, float in the sky over the roof
+    { flank: { w: -0.7, e: 30.7, ow: -0.7, oe: 30.7, y0: 13, y1: 24.5, top: 13 } },
   ],
   gateWorksGeo(b, vert) {
     const li = Math.min(b.level, 2) - 1;
@@ -7680,7 +7697,7 @@ const R = {
   gateVerticalAt(x, y) {
     const score = (xx, yy) => {
       if (!MapGen.inB(xx, yy)) return 0;
-      if (Bld.fortAt(xx, yy)) return 2;                    // wall or gate — the line itself
+      if (this.lineAt(xx, yy)) return 2;                   // wall or gate — the line itself, sites included
       const t = Bld.at(xx, yy);
       return t && t.key === 'tower' && !(t.construction > 0) ? 2 : 0;   // a mural tower stands IN it
     };

@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 122, date: '2026-10-30', title: 'Timber and stone walls',
+    items: [
+      'A wall that is still being built now joins the sections beside it, so a new line goes up as one wall instead of a row of separate stumps and towers.',
+      'The round towers at the ends and corners of stone walls are round all the way up, with no dark slab standing beside them.',
+      'Stone wall footings no longer leave a short trench of stones running out past the end of the line.',
+      'The log blocks on timber walls have whole corners again.',
+      'On a timber gatehouse seen from the side, the portcullis hangs against the gatehouse and climbs its wall when raised, instead of floating in the grass.',
+    ],
+  },
+  {
     build: 121, date: '2026-10-29', title: 'More music',
     items: [
       'Three new pieces of music join the theme. Every five minutes or so the music fades into the next one, and round it goes, so a long game no longer plays the same tune over and over.',
