@@ -40,7 +40,7 @@
         raised is not solid, so the block grid does not see it — and a
         dragged line drew as a row of lone end caps until its last section
         set. The picture counts sites; every rule still asks Bld.fortAt.
-     7. A NORTH-SOUTH GATE IS A GAP WITH A ROAD (R.gapGate, levels 1 and 2 —
+     7. A NORTH-SOUTH GATE IS A GAP WITH A ROAD (R.gapGate —
         operator: "gates are confusing, can we make them look different from
         towers? Only an issue when it's top down view"). Its flank used to
         be the wall tower's body over the run. Now the curtain ends either
@@ -49,15 +49,20 @@
         road shut and stand aside open — a north-south level-2 gate hangs
         doors, since a portcullis seen edge-on is a line up or down — and a
         man walking through is behind only the south post. Level 3 keeps its
-        gatehouse. The line, the axis and the seal are untouched.
+        drawbridge (operator: "I really really like the drawbridge on level
+        3"): the curtain ends in its bastions, the walk is carried over the
+        road on an arch and goes INTO the north bastion half way up (the
+        operator again: "the gate wall goes into the middle of the towers
+        versus the base"), a tower bonds to it, and a man in the passage is
+        under it. The line, the axis and the seal are untouched.
 
    Run this after touching any of:
      render.js — occludeByForts / redrawFront / _picRect / _redrawPic /
                  wallMaskAt / lineAt / gateVerticalAt / gapGate / GAP_GATE /
-                 drawGateRoads / drawGapDoor / towerLinkMask /
+                 gapPosts / drawGateRoads / drawGapDoor / towerLinkMask /
                  drawTowerWalk / drawGateWalk / _walkOver /
                  the building pass / the mountain strip flush
-     assets/fort/wall-l*.png, gate-l{1,2}*.png, road-l{1,2}.png
+     assets/fort/wall-l*.png, gate-l*.png, road-l*.png
 
      node tests/wall-lines.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -207,16 +212,19 @@ const out = await p.evaluate(async () => {
 
   // ---- 2b. a line going up is one line ----
   {
-    // (at level 3: a north-south gate at levels 1 and 2 is a gap the
-    // curtain ENDS beside — §5 — so only the gatehouse joins its line)
     clear('wl-site'); S.wallLevel = 3;
     const site = (k, x, y) => { const bb = Bld.place('P', k, x, y, { free: true }); if (bb) bb.level = 3; Bld._block = null; return bb; };
-    const a = site('wall', 30, 20); site('wall', 30, 21); const gt = site('gate', 30, 22); site('wall', 30, 23);
+    const a = site('wall', 30, 20); site('wall', 30, 21); site('wall', 30, 22); site('wall', 30, 23);
     put('wall', 30, 24, 3);
-    const m = [20, 21, 23, 24].map(y => R.wallMaskAt(30, y)), vert = R.gateVerticalAt(30, 22);
+    // …and a gate site in a line of wall sites faces that line from the
+    // start — so, being a north-south gate, it is a gap the walls either
+    // side end beside (§5), sites and all
+    site('wall', 33, 20); const gt = site('gate', 33, 21); site('wall', 33, 22);
+    const m = [20, 21, 23, 24].map(y => R.wallMaskAt(30, y)), vert = R.gateVerticalAt(33, 21);
+    const ends = [R.wallMaskAt(33, 20), R.wallMaskAt(33, 22)];
     ck('aLineGoingUpIsOneLine', a && a.construction > 0 && gt && gt.construction > 0 &&
-      m.join() === '4,5,5,1' && vert,
-      'masks ' + m.join('/') + ' (want 4/5/5/1), the gate site facing the line: ' + vert);
+      m.join() === '4,5,5,1' && vert && R.gapGate(gt) && ends.join() === '0,0',
+      'masks ' + m.join('/') + ' (want 4/5/5/1), the gate site facing the line: ' + vert + ', the walls beside it ' + ends.join('/') + ' (want 0/0)');
     ck('butASiteIsStillWalkedThrough', !Bld.fortAt(30, 21) && Path.passable(30, 21, 'P'), 'the picture joins it; the rules do not');
   }
 
@@ -278,7 +286,7 @@ const out = await p.evaluate(async () => {
     ck('theWalkComesHalfWayUpATower', bad.length === 0, bad.length ? bad.join('; ') : 'doorway and walk from about half way down the body to its foot, every tier');
   }
 
-  // ---- 5. a north-south gate is a gap with a road (levels 1 and 2) ----
+  // ---- 5. a north-south gate is a gap with a road (every tier) ----
   {
     const ends = [], rules = [];
     for (const lv of [1, 2, 3]) {
@@ -287,7 +295,9 @@ const out = await p.evaluate(async () => {
       put('wall', 26, 12, lv); put('tower', 26, 13, lv); put('gate', 26, 14, lv); put('wall', 26, 15, lv);
       const n = R.wallMaskAt(20, 13), s = R.wallMaskAt(20, 15), tw = R.towerLinkMask(26, 13).mask;
       const gap = R.gapGate(gt);
-      if (lv < 3 ? (!gap || (n & 4) || (s & 1) || (tw & 4)) : (gap || !(n & 4) || !(s & 1) || !(tw & 4)))
+      // the curtain ends at every tier; a tower ends at the early tiers'
+      // posts, and bonds to the third tier's walk over the road
+      if (!gap || (n & 4) || (s & 1) || (lv < 3 ? (tw & 4) : !(tw & 4)))
         ends.push('L' + lv + ' gap ' + gap + ', masks N ' + n + ' S ' + s + ', tower ' + tw);
       // the picture only: the line, the gate's axis and the block grid are what they were
       gt.raised = true; Bld._block = null;
@@ -297,13 +307,13 @@ const out = await p.evaluate(async () => {
       if (!Bld.fortAt(20, 13) || !Bld.fortAt(20, 14) || !R.gateVerticalAt(20, 14) || shut || !open)
         rules.push('L' + lv + ' fortAt ' + !!Bld.fortAt(20, 13) + '/' + !!Bld.fortAt(20, 14) + ', vertical ' + R.gateVerticalAt(20, 14) + ', passable shut ' + shut + ' open ' + open);
     }
-    ck('theCurtainEndsAtAGapGate', ends.length === 0, ends.length ? ends.join('; ') : 'L1/L2: both neighbours and a tower end in their caps; L3: the gatehouse still joins');
+    ck('theCurtainEndsAtAGapGate', ends.length === 0, ends.length ? ends.join('; ') : 'both neighbours end in their caps at every tier; a tower ends at L1/L2 and bonds to the L3 walk');
     ck('butTheRulesStillSeeOneLine', rules.length === 0, rules.length ? rules.join('; ') : 'the line, the axis and the seal are untouched at every tier');
   }
   {
     // the road: on through open ground east and west, never onto water
     const bad = [];
-    for (const lv of [1, 2]) {
+    for (const lv of [1, 2, 3]) {
       clear('wl-road' + lv); S.wallLevel = lv;
       for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, lv);
       S.map.terrain[MapGen.idx(21, 14)] = T.WATER;
@@ -404,6 +414,45 @@ const out = await p.evaluate(async () => {
     snap();
     R._redrawPic = keep;
     ck('aManInTheGapIsNotPaintedOver', whole === 0, 'the whole gate laid over him ' + whole + ' times');
+  }
+  {
+    // level 3: the walk crosses over the road, so a man in the passage is
+    // under it — the gate goes back over him, as the gatehouse used to
+    clear('wl-walkarch'); S.wallLevel = 3;
+    for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, 3);
+    const gt = Bld.at(20, 14); gt.raised = false; R._dbA[gt.id] = 0; Bld._block = null;
+    settle(); R.cam.z = 2; R.centerOn(20.5, 14.5);
+    const u = Units.spawn('villager', 'P', 20, 14); u.x = 20.5; u.y = 14.5;
+    const keep = R._redrawPic; let whole = 0;
+    R._redrawPic = function (g, bb) { if (bb === gt) whole++; return keep.call(this, g, bb); };
+    snap();
+    R._redrawPic = keep;
+    ck('aManUnderTheLevel3ArchIsUnderTheWalk', whole > 0, 'the gate laid over him ' + whole + ' times');
+  }
+  {
+    // level 3: the walk over the road goes INTO the bastion the curtain north
+    // of it ends in, half way up, by a doorway (operator: "make sure that the
+    // gate wall goes into the middle of the towers versus the base of the
+    // wall / tower") — never just meeting its foot
+    clear('wl-bastion'); S.wallLevel = 3;
+    for (let y = 11; y <= 17; y++) put(y === 14 ? 'gate' : 'wall', 20, y, 3);
+    settle(); R.cam.z = 2; R.centerOn(20.5, 13.5);
+    const real = snap();
+    const keep = R.drawGateWalk; R.drawGateWalk = () => {};
+    const none = snap();
+    R.drawGateWalk = keep;
+    const nw = Bld.at(20, 13), cap = R.wornSprite(nw), cr = R.artRect(cap, 20 * TL, 13 * TL, TL, TL), k = cr.h / cap.height;
+    const B = R.BASTION_BODY;
+    const [, by0] = scr(0, cr.y + B[0] * k), [, by1] = scr(0, cr.y + B[1] * k);
+    const [cx0] = scr(20 * TL, 0), [cx1] = scr(21 * TL, 0);
+    let top = Infinity, bot = -Infinity;
+    for (let y = 0; y < real.height; y++) for (let x = cx0 | 0; x < cx1; x++) {
+      const i = (y * real.width + x) * 4;
+      if (real.data[i] !== none.data[i] || real.data[i + 1] !== none.data[i + 1] || real.data[i + 2] !== none.data[i + 2]) { top = Math.min(top, y); bot = Math.max(bot, y); }
+    }
+    const f = (top - by0) / (by1 - by0), g = (bot - by0) / (by1 - by0);
+    ck('theLevel3WalkGoesIntoTheBastionHalfWay', R.wallMaskAt(20, 13) === 1 && f > 0.4 && f < 0.7 && g > 0.9,
+      'north mask ' + R.wallMaskAt(20, 13) + ', doorway and walk from ' + f.toFixed(2) + ' to ' + g.toFixed(2) + ' of the bastion body');
   }
 
   return { res, fails };
@@ -533,6 +582,31 @@ const caps = await p.evaluate(async () => {
       if (below || (!/-b/.test(st) && stray)) bad.push('gate-l' + lv + st + ': ' + stray + ' px off the posts, ' + below + ' below them');
     }
     ck('theGapGatesFlankIsItsPosts', bad.length === 0, bad.length ? bad.join('; ') : 'every finished and battered flank is two posts; no stage lays anything below them');
+  }
+  {
+    // level 3's flank is the curtain's own walk carried over the road: the
+    // wall's straight run (frame 5, the same state) row for row, nothing
+    // above or below it, and — once the walls stand — the arch's two dark
+    // mouths in its sides at the road
+    const bad = [];
+    const MOUTHS = [[23, 89, 28, 105], [58, 89, 63, 105]];
+    const inMouth = (x, y) => MOUTHS.some(([a, b, c, d]) => x >= a - 2 && x <= c + 2 && y >= b - 3 && y <= d + 2);
+    for (const st of ['', '-b1', '-b2', '-b3', '-d1', '-d2']) {
+      const gt = await read('assets/fort/gate-l3' + st + '.png'), wl = await read('assets/fort/wall-l3' + st + '.png');
+      let off = 0, outside = 0;
+      for (let y = 0; y < 146; y++) for (let x = 0; x < 78; x++) {
+        const c = gt.at(1, x, y);
+        if (y < 56 || y >= 118) { if (c[3] > 20) outside++; continue; }
+        if (inMouth(x, y)) continue;
+        const w = wl.at(5, x, y);
+        if (c.some((v, i) => v !== w[i])) off++;
+      }
+      let dark = 0;
+      for (const [a, b, c, d] of MOUTHS) for (let y = b; y <= d; y++) for (let x = a; x <= c; x++) { const q = gt.at(1, x, y); if (q[3] > 200 && q[0] + q[1] + q[2] < 90) dark++; }
+      const arched = !/-b[12]/.test(st);
+      if (off || outside || (arched ? dark < 120 : dark > 20)) bad.push('gate-l3' + st + ': ' + off + ' px off the run, ' + outside + ' outside the walk, ' + dark + ' px of mouth');
+    }
+    ck('theLevel3FlankIsTheWalkOverTheRoad', bad.length === 0, bad.length ? bad.join('; ') : 'the run row for row, two dark mouths once the walls stand, nothing else');
   }
   return { res, fails };
 });

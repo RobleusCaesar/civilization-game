@@ -1987,10 +1987,10 @@ const Assets = {
      All three are optional and 404 quietly: a tier with no files keeps the
      procedural atlas, mural tower and gatehouse it has always had. */
   FORT_DIR: 'assets/fort/',
-  /* 'road' is the track through a GAP GATE (R.gapGate — a level-1 or
-     level-2 gate in a north-south line): three tiles wide, laid on the
-     ground under every building. No third tier: the L3 gatehouse keeps its
-     own passage, so no road-l3.png is ever asked for. */
+  /* 'road' is the track through a GAP GATE (R.gapGate — a gate in a
+     north-south line): three tiles wide, laid on the ground under every
+     building — a trodden track at level 1, a log corduroy at 2, cobbles
+     under the level-3 arch. */
   FORT_PIECES: ['wall', 'tower', 'gate', 'road'],
   FORT_TIERS: [1, 2, 3],
   FORT_GEO: { T: 58, M: 10, UP: 64, DOWN: 24 },
@@ -2272,7 +2272,7 @@ const Assets = {
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
     for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
     for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES)
-      if (piece !== 'road' || lv < 3) this._tryFort(lv, piece);
+      this._tryFort(lv, piece);
     for (const lv of this.FORT_TIERS) for (const piece of Object.keys(this.FORT_STATES))
       for (const st of this.FORT_STATES[piece]) this._tryFortState(lv, piece, st);
     for (const id of this.DMG_IDS) if (CFG.BUILDINGS[id])

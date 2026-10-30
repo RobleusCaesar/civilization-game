@@ -170,7 +170,7 @@ node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals
 node tests/fort-states.mjs     # walls, gates and towers go up in 3 drawn stages and come down in 2 drawn damage states — each the finished piece's own canvas, at full alpha, in every pass that draws it
 node tests/burn-down.mjs       # buildings burn in thirds at their OWN anchors; the fall throws dust; 5 days of ash
 node tests/wall-tower-bond.mjs # L2 forts are half stone/half timber; an in-line tower joins the curtain
-node tests/wall-lines.mjs      # the wall sandbox: a man moves only his own pixels, a tower stands in front of the rock behind it, a wall joins walls never water/rock/black, nothing in the black, the walk half way up a tower, whole end caps at every tier (the L2 block's corner, the L3 bastion's round back, its footings), a line going up is one line, a north-south L1/L2 gate is a gap with a road (the curtain ends in its caps, the road runs on over open ground, the doors bar it shut and stand aside open, a man in the gap behind only the south post)
+node tests/wall-lines.mjs      # the wall sandbox: a man moves only his own pixels, a tower stands in front of the rock behind it, a wall joins walls never water/rock/black, nothing in the black, the walk half way up a tower, whole end caps at every tier (the L2 block's corner, the L3 bastion's round back, its footings), a line going up is one line, a north-south gate is a gap with a road at every tier (the curtain ends in its caps, the road runs on over open ground; L1/L2: the doors bar it shut and stand aside open, a man in the gap behind only the south post; L3: the walk crosses over the road on an arch and goes into the north bastion half way up, a man in the passage is under it)
 node tests/buildings-block.mjs # every building is solid ground except the worker plots
 node tests/ore-finite.mjs      # felled woods and spent soil grow back; a quarried seam never does
 node tests/fishery.mjs         # shore shoals are half-stocked, deep water three quarters; both return in 120 days
@@ -179,7 +179,7 @@ node tests/wonder.mjs          # the second way to win: one of ten 3×3 monument
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
-node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis (a north-south L2: doors), L3 drawbridge; sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp
+node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis (a north-south L2: doors), L3 drawbridge (a north-south L3: along the road under the arch); sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed
@@ -2801,7 +2801,7 @@ through `R.lineAt`; every RULE (passability, the seal, the deck) still asks
 also what the deck and `gateOutside` read, so a gate in a line whose walls
 are still going up faces that line from the start — the answer it gave
 once they stood. **A NORTH-SOUTH GATE IS A GAP WITH A ROAD** (`R.gapGate`,
-levels 1 and 2, same test §5 — operator: "gates are confusing, can we make
+every tier, same test §5 — operator: "gates are confusing, can we make
 them look different from towers? Only an issue when it's top down view";
 then "I like the road for level 1 and even level 2, but I really really
 like the drawbridge on level 3"): seen from the flank a gatehouse WAS a
@@ -2824,7 +2824,23 @@ hangs two iron-strapped doors instead and its lever says "Open/Close the
 gates" (`Bld.gateLeaves`, also the log line and a `panelSig` bit). A man
 walking through the gap is behind only its south post (`occludeByForts`
 — there is no gatehouse to be inside), and a burning gap gate burns on its
-posts, never the open road. Level 3 keeps its gatehouse and drawbridge.
+posts, never the open road (`R.gapPosts` is that early-tier half — posts,
+doors, the man behind the south post, the fire on the posts). **LEVEL 3
+KEEPS ITS DRAWBRIDGE**: the curtain ends in its bastions too, but the
+flank frame of `gate-l3*.png` is the curtain's own straight run (frame 5
+of `wall-l3*.png`, the same state, rows 56..117) carried over the cobbled
+road (`road-l3.png`) on an arch, its two dark mouths cut in the walk's
+sides once the walls stand (none over the footings or the first courses);
+**the walk goes INTO the north bastion half way up** (operator, approving
+the mock: "make sure that the gate wall goes into the middle of the towers
+versus the base of the wall / tower"): `drawGateWalk` lays the run over the
+north wall's end cap from `TOWER_HALF` of its body (`R.BASTION_BODY`,
+measured off `wall-l3.png` — redraw the cap and re-measure) by a doorway,
+the `_walkOver` a tower takes; the south bastion stands in front of the
+walk's end; a tower either side BONDS to the walk the ordinary way; a man
+in the passage is under the walk (the gate goes back over him, as the
+gatehouse did); and the deck lies along the road and stands beside the arch
+raised (`Sprites.DB_DRAWN`'s side values, re-measured for the arch).
 Pictures only: the line, the gate's axis, the seal and the block grid all
 still ask `Bld.fortAt`. Without the drawn flank (a 404) none of it applies
 and the procedural gatehouse stands.
@@ -2930,10 +2946,10 @@ from `TOWER_HALF` (0.64) of the body's height down, clipped to the walk's
 columns (`Assets.FORT_WALK`), going in by a DOORWAY in the tier's own
 material (`R.WALK_DOOR`: wattle and post, oak, a stepped stone arch) with a
 hard sill line where the walk meets the face — at half height with no door
-it read as a plank laid across the tower. A level-3 gatehouse seen from the flank
-takes the same walk over its flank body (`R.GATE_FLANK_BODY`, measured off
-`gate-l3.png` frame 1 — redraw the flank and re-measure it; a level-1 or
-level-2 north-south gate is a gap and has no walk). With no drawn
+it read as a plank laid across the tower. The walk carried over a level-3
+north-south gate's road goes into the bastion north of it the same way
+(`drawGateWalk`, `R.BASTION_BODY`; see **A NORTH-SOUTH GATE IS A GAP WITH A
+ROAD**). With no drawn
 body the procedural stand-in keeps `R.TOWER_WALK`. North is the opposite case (it passes behind — see the seam), and
 east/west already leave at the right height because the wall band crosses the
 tower's middle.

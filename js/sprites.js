@@ -3882,13 +3882,16 @@ const Sprites = {
   ];
   Sprites.drawbridge = buildDrawbridge();
   Sprites.drawbridgeGeo = DB;
-  /* THE DRAWN GATEHOUSE'S DECK (assets/fort/gate-l3.png): its arch spans
-     fine cells 9.9..23.2 with the threshold on the drawn wall's foot (24.8),
-     the chains run up beside the arch head, and the flank's block stands from
-     cell 4.4 to its east side face at 30.9 — measured off the art (scratch
-     fort/doorcut.cjs prints them), so a redrawn gatehouse means re-measuring
-     these. */
-  Sprites.DB_DRAWN = { CX: 16.5, HALF: 6.4, GND: 25, WX: [9, 24], WY: -4, HX: 31, SGND: 27, SWX: 27, SWY: -6, MX: 17.7, pad: 12 };
+  /* THE DRAWN GATEHOUSE'S DECK (assets/fort/gate-l3.png). The FACE (an
+     east-west line): its arch spans fine cells 9.9..23.2 with the threshold
+     on the drawn wall's foot (24.8) and the chains run up beside the arch
+     head. The FLANK (a north-south line) is the walk carried over the road
+     (R.gapGate): the deck is hinged at the east arch's mouth (HX) on the
+     road's lower half (SGND), its winch on the walk beside it (SWX, SWY),
+     and a west-falling deck is mirrored about the middle between the two
+     mouths (MX). All measured off the art, so a redrawn gatehouse or arch
+     means re-measuring these. */
+  Sprites.DB_DRAWN = { CX: 16.5, HALF: 6.4, GND: 25, WX: [9, 24], WY: -4, HX: 28, SGND: 18, SWX: 26, SWY: 2, MX: 18.2, pad: 12 };
   Sprites.fitDrawbridge = () => {
     DB = Sprites.DB_DRAWN;
     Sprites.drawbridge = buildDrawbridge();

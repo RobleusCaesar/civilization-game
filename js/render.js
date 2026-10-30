@@ -7039,7 +7039,7 @@ const R = {
     for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]]) {
       const nb = this._wgAt(x + dx, y + dy);
       if (!nb || nb.construction > 0) continue;
-      if (dy && this.gapGate(nb)) continue;                // the curtain ends at a gap gate (R.gapGate)
+      if (dy && this.gapPosts(nb)) continue;               // the curtain ends at a gap gate's post (R.gapPosts)
       let lone = true, perp = 0;                           // a stub? or a run turning here?
       for (const [ex, ey] of [[0, -1], [1, 0], [0, 1], [-1, 0]])
         if (this._wgAt(nb.x + ex, nb.y + ey)) {
@@ -7186,17 +7186,13 @@ const R = {
      (a reported screenshot). The walk now comes back over the tower's front
      from HALF its height: the curtain's own straight run (N|S, world-anchored
      like every section, so it meets the section below seamlessly), clipped to
-     the walk's columns (Assets.FORT_WALK). The same rule dresses a gatehouse
-     seen from the flank (drawGateWalk). */
+     the walk's columns (Assets.FORT_WALK). The same rule takes the walk over a
+     level-3 gate's road into the bastion beside it (drawGateWalk). */
   /* where the walk meets the tower's face, as a share of the drawn body
      from its TOP: below the roof, half way up the walls under it — high
      enough that the curtain plainly joins the tower, low enough that the
      tower still shows its face either side of the walk */
   TOWER_HALF: 0.64,
-  // the drawn gatehouse's flank BODY, top and bottom rows in its FORT_GEO
-  // frame per tier (measured off assets/fort/gate-l{n}.png frame 1); below
-  // the bottom row the flank IS the curtain's strip
-  GATE_FLANK_BODY: [[32, 109], [35, 109], [39, 109]],
   // the doorway the walk goes in by, per tier, in FORT_GEO canvas px: its
   // width and height, and [opening, frame, lintel] colours from the tier's
   // own material — wattle and post, oak, dressed stone
@@ -7259,19 +7255,27 @@ const R = {
     g.drawImage(fam[lk.mask], bx, by, bw, bw);
     g.restore();
   },
-  // a gatehouse in a NORTH-SOUTH line shows its flank, a tower-like block over
-  // the run — and the walk leaving it south comes half way up that block too
+  /* A LEVEL-3 GATE IN A NORTH-SOUTH LINE carries the walk over its road on
+     an arch (gapGate; frame 1 of gate-l3.png is the curtain's own run with
+     the arch's two mouths), and the curtain north of it ENDS in its bastion
+     — so the walk crossing the gap goes INTO that bastion half way up, by a
+     doorway, exactly as it goes into a tower (operator, on the mock: "make
+     sure that the gate wall goes into the middle of the towers versus the
+     base of the wall / tower"). The bastion south of it stands in front of
+     the walk and hides its end; a tower on either side bonds and takes the
+     walk the ordinary way (drawTowerWalk / drawTowerBond). The bastion's
+     body, top and foot, in its FORT_GEO frame (measured off wall-l3.png's
+     end-cap frames — redraw the cap and re-measure). */
+  BASTION_BODY: [55, 117],
   drawGateWalk(g, b, bx, by, bw) {
-    if (b.construction > 0 || !this.gateVerticalAt(b.x, b.y) || this.gapGate(b)) return;
-    const s = Bld.at(b.x, b.y + 1);
-    const south = Bld.fortAt(b.x, b.y + 1) ||
-      (s && s.key === 'tower' && s.x === b.x && s.y === b.y + 1 && !(s.construction > 0) && (this.towerLinkMask(s.x, s.y).mask & 1));
-    if (!south) return;
-    const li = Math.min(b.level || 1, 3) - 1;
-    const fl = Sprites.gateMask && Sprites.gateMask[li] && Sprites.gateMask[li][1];
-    if (!fl || !fl._cfArt || !fl._cfArt.fort) return;     // the procedural flank carries its own walk
-    const r = this.artRect(fl, bx, by, bw, bw), k = r.h / fl.height, B = this.GATE_FLANK_BODY[li];
-    this._walkOver(g, b.level || 1, bx, by, bw, r.y + (B[0] + (B[1] - B[0]) * this.TOWER_HALF) * k);
+    if (b.construction > 0 || (b.level || 1) < 3 || !this.gapGate(b)) return;
+    const n = Bld.at(b.x, b.y - 1);
+    if (!n || n.key !== 'wall' || n.x !== b.x || n.y !== b.y - 1 || n.construction > 0 || (n.level || 1) < 3) return;
+    const cap = this.wornSprite(n);
+    if (!cap || !cap._cfArt || !cap._cfArt.fort) return;    // the procedural curtain carries its own end
+    const nx = n.x * CFG.TILE, ny = n.y * CFG.TILE;
+    const r = this.artRect(cap, nx, ny, bw, bw), k = r.h / cap.height, B = this.BASTION_BODY;
+    this._walkOver(g, n.level, nx, ny, bw, r.y + (B[0] + (B[1] - B[0]) * this.TOWER_HALF) * k);
   },
   /* ---- THE DRAWBRIDGE (tests/drawbridge.mjs) ----
      The deck is drawn OVER the finished gate sprite, from its own little
@@ -7388,7 +7392,7 @@ const R = {
     const B = this.unitBox ? this.unitBox(u) : TL;
     const foot = wy * TL + TL / 2 - CFG.SPRITE_LIFT;
     const clip = { x0: wx * TL - B, y0: foot - B * 1.8, x1: wx * TL + B, y1: foot + TL * 0.6 };
-    if (inGate && this.gapGate(here)) {
+    if (inGate && this.gapPosts(here)) {
       // a gap gate has no gatehouse to walk inside: the road is open ground,
       // and only the south post stands in front of him
       this.redrawFront(g, clip, ty + 1, true);
@@ -7499,7 +7503,7 @@ const R = {
      Answers true when it drew (or deliberately drew nothing), so the
      procedural overlays below stand down. */
   drawGateDoor(g, b, bx, by, bw, dt, front) {
-    if (this.gateVerticalAt(b.x, b.y)) return this.gapGate(b) ? this.drawGapDoor(g, b, bx, by, bw, dt, front) : false;
+    if (this.gateVerticalAt(b.x, b.y)) return this.gapPosts(b) ? this.drawGapDoor(g, b, bx, by, bw, dt, front) : false;
     const li = Math.min(b.level || 1, 3) - 1;
     const face = (Sprites.gateMask[li] || [])[0];
     let door = Sprites.gateDoor && Sprites.gateDoor[li];
@@ -7709,9 +7713,9 @@ const R = {
     const ns = score(x, y - 1) + score(x, y + 1), ew = score(x - 1, y) + score(x + 1, y);
     return ns > ew;
   },
-  /* A GATE IN A NORTH-SOUTH LINE IS A GAP WITH A ROAD — levels 1 and 2
-     (operator: "gates are confusing, can we make them look different from
-     towers? Only an issue when it's top down view"). Seen from the flank, a
+  /* A GATE IN A NORTH-SOUTH LINE IS A GAP WITH A ROAD (operator: "gates
+     are confusing, can we make them look different from towers? Only an
+     issue when it's top down view"). Seen from the flank, a
      gatehouse WAS a tower: its north-south self was the wall tower's own
      body over the run, so down a vertical line a gate read as one more
      tower. Now the curtain ENDS either side of it in its own end caps
@@ -7722,7 +7726,14 @@ const R = {
      them (drawGapDoor). Seen edge-on from this camera a portcullis is a line
      whether it is up or down, so a north-south level-2 gate hangs two heavy
      iron-strapped doors instead, and its lever says so (Bld.gateLeaves).
-     Level 3 keeps its gatehouse and its drawbridge. Pictures only: the line,
+     LEVEL 3 KEEPS ITS DRAWBRIDGE (operator: "I really really like the
+     drawbridge on level 3"): there the curtain ends in its bastions, the
+     walk is carried over the road on an arch (frame 1 of gate-l3.png: the
+     run with the arch's two mouths) and goes into the north bastion half
+     way up (drawGateWalk), and the deck lies along the road (R.drawDrawbridge,
+     Sprites.DB_DRAWN). gapPosts is the early tiers' half alone — the posts,
+     the doors, a man in the gap behind only the south post, the fire on the
+     posts — and a tower bonds to the level-3 walk the ordinary way. Pictures only: the line,
      the seal and the block grid all still ask Bld.fortAt. Without the drawn
      flank (a 404) nothing here applies and the old procedural gatehouse
      stands.
@@ -7737,10 +7748,15 @@ const R = {
   // own tile in the middle, its top `top` FORT_GEO rows below the tile's top
   GAP_ROAD: { tile: 58, top: 7 },
   gapGate(b) {
-    if (!b || b.key !== 'gate' || (b.level || 1) > 2) return false;
-    const fl = Sprites.gateMask && Sprites.gateMask[(b.level || 1) - 1];
+    if (!b || b.key !== 'gate') return false;
+    const fl = Sprites.gateMask && Sprites.gateMask[Math.min(b.level || 1, 3) - 1];
     const f1 = fl && fl[1];
     return !!(f1 && f1._cfArt && f1._cfArt.fort) && this.gateVerticalAt(b.x, b.y);
+  },
+  // …and the two early tiers' gap is two gateposts with doors between them;
+  // the third tier's is the walk carried over the road, and a drawbridge
+  gapPosts(b) {
+    return !!b && (b.level || 1) <= 2 && this.gapGate(b);
   },
   _gapAt(x, y) {
     if (!MapGen.inB(x, y)) return false;
@@ -13060,7 +13076,7 @@ const R = {
     // stone sheds; timber burns
     if (b.key === 'tower') return this.drawTowerCrumble(g, b, bx, by, bw, ph);
     const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
-    if (this.gapGate(b) && !(b.construction > 0)) {
+    if (this.gapPosts(b) && !(b.construction > 0)) {
       // a gap gate has nothing standing but its posts and its doors: the
       // fire climbs the posts, never the open road
       const li = Math.min(b.level || 1, 2) - 1, fl = Sprites.gateMask[li][1], P = this.GAP_GATE[li];

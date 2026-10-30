@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 124, date: '2026-10-30', title: 'The stone gate and its drawbridge',
+    items: [
+      'A stone gate in a wall running north to south no longer looks like another tower. The wall ends in its round towers on either side, a cobbled road runs between them, and the wall walk crosses over the road on an arch.',
+      'Where that walk reaches the round tower beside the gate, it goes in through a doorway half way up the tower instead of stopping at its foot.',
+      'The drawbridge stays. Lowered, it lies along the road. Raised, it stands upright beside the arch with its chain running up to the walk.',
+    ],
+  },
+  {
     build: 123, date: '2026-10-30', title: 'Gates that look like gates',
     items: [
       'A gate in a wall running north to south no longer looks like another tower. The wall now ends on either side of it, a road runs through the gap, and two gateposts hold the doors.',

@@ -195,11 +195,12 @@ const out = await p.evaluate(() => {
        gatehouse is laid on the east-west frame, the flank's squat block on
        the north-south one. So the match is structural, and measured where it
        shows — the face stands on the wall's own foot line (a gatehouse
-       floating a few pixels off it reads as pasted on), and below the flank's
-       block the curtain running on south IS the wall's frame, pixel for
-       pixel. (At levels 1 and 2 a north-south gate is a gap with a road and
-       its curtain ends either side — R.gapGate — so only the third tier's
-       flank still stands in the run.) */
+       floating a few pixels off it reads as pasted on). Seen from the flank
+       a north-south gate is a GAP with a road (R.gapGate, tests/wall-lines.mjs
+       §5): the curtain ends either side, so at levels 1 and 2 the flank is
+       two posts and carries no run, and at level 3 it is the curtain's own
+       walk carried over the road — the wall's frame, pixel for pixel, where
+       the arch's mouths are not — ending under the bastion south of it. */
     {
       const data = c => { const k = canvasOf(c); return k.getContext('2d').getImageData(0, 0, k.width, k.height); };
       const lowest = (img, x0, x1) => {
@@ -225,11 +226,13 @@ const out = await p.evaluate(() => {
             'L' + (L + 1) + ' ' + on + ' opaque px below the gap gate\x27s posts');
           continue;
         }
-        let diff = 0;
-        for (let y = 120; y < flank.height; y++) for (let x = 0; x < flank.width; x++)
+        let diff = 0, below = 0;
+        for (let y = 56; y < 86; y++) for (let x = 0; x < flank.width; x++)
           for (let k = 0; k < 4; k++) diff += Math.abs(flank.data[(y * flank.width + x) * 4 + k] - run.data[(y * run.width + x) * 4 + k]);
-        ck('andItsFlankStandsInTheRun' + (L + 1), flank.width === run.width && diff === 0,
-          'L' + (L + 1) + ' the curtain south of the block differs by ' + diff);
+        for (let y = 120; y < flank.height; y++) for (let x = 0; x < flank.width; x++)
+          if (flank.data[(y * flank.width + x) * 4 + 3] > 20) below++;
+        ck('andItsFlankIsTheWalkOverTheRoad' + (L + 1), flank.width === run.width && diff === 0 && below === 0,
+          'L' + (L + 1) + ' the walk above the road differs from the run by ' + diff + ', ' + below + ' px below it');
       }
     }
 
@@ -301,7 +304,8 @@ const out = await p.evaluate(() => {
         const face = rectAlpha(Sprites.gateMask[L][0], r), flank = rectAlpha(Sprites.gateMask[L][1], r);
         const door = Sprites.gateDoor && Sprites.gateDoor[L] ? rectAlpha(Sprites.gateDoor[L], r) : { cover: 0, timber: 0 };
         // (levels 1 and 2 have no flank block to be solid: there the
-        // north-south gate is a gap, and its doors are drawn live)
+        // north-south gate is a gap, and its doors are drawn live; at level 3
+        // the walk is carried over the passage on its arch)
         ck('theOpenPassageIsSeeThrough' + (L + 1), face.cover < 0.25 && (L < 2 || flank.cover > 0.6),
           'L' + (L + 1) + ' face ' + Math.round(face.cover * 100) + '% opaque in the passage · flank ' + Math.round(flank.cover * 100) + '%');
         ck('andTheDoorFillsIt' + (L + 1), door.cover > 0.5,
