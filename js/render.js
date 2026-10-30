@@ -6992,6 +6992,7 @@ const R = {
   wallMaskAt(x, y, extra) {
     const conn = (xx, yy) => {
       if (!MapGen.onBoard(xx, yy)) return false;           // the black is nothing to join
+      if (xx === x && this._gapAt(xx, yy)) return false;    // a gap gate: the curtain ENDS beside it
       if (this.lineAt(xx, yy)) return true;                 // wall / gate ONLY (a house is not a curtain)
       // a finished TOWER standing IN the line bonds to it (see towerLinkMask)
       const tb = Bld.at(xx, yy);
@@ -7038,6 +7039,7 @@ const R = {
     for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]]) {
       const nb = this._wgAt(x + dx, y + dy);
       if (!nb || nb.construction > 0) continue;
+      if (dy && this.gapGate(nb)) continue;                // the curtain ends at a gap gate (R.gapGate)
       let lone = true, perp = 0;                           // a stub? or a run turning here?
       for (const [ex, ey] of [[0, -1], [1, 0], [0, 1], [-1, 0]])
         if (this._wgAt(nb.x + ex, nb.y + ey)) {
@@ -7260,7 +7262,7 @@ const R = {
   // a gatehouse in a NORTH-SOUTH line shows its flank, a tower-like block over
   // the run — and the walk leaving it south comes half way up that block too
   drawGateWalk(g, b, bx, by, bw) {
-    if (b.construction > 0 || !this.gateVerticalAt(b.x, b.y)) return;
+    if (b.construction > 0 || !this.gateVerticalAt(b.x, b.y) || this.gapGate(b)) return;
     const s = Bld.at(b.x, b.y + 1);
     const south = Bld.fortAt(b.x, b.y + 1) ||
       (s && s.key === 'tower' && s.x === b.x && s.y === b.y + 1 && !(s.construction > 0) && (this.towerLinkMask(s.x, s.y).mask & 1));
@@ -7386,6 +7388,21 @@ const R = {
     const B = this.unitBox ? this.unitBox(u) : TL;
     const foot = wy * TL + TL / 2 - CFG.SPRITE_LIFT;
     const clip = { x0: wx * TL - B, y0: foot - B * 1.8, x1: wx * TL + B, y1: foot + TL * 0.6 };
+    if (inGate && this.gapGate(here)) {
+      // a gap gate has no gatehouse to walk inside: the road is open ground,
+      // and only the south post stands in front of him
+      this.redrawFront(g, clip, ty + 1, true);
+      const sp = this._gapPostRect(here);
+      if (!sp || !this._bPos || !this._bPos.has(here)) return;
+      const x0 = Math.max(clip.x0, sp.x), y0 = Math.max(clip.y0, sp.y);
+      const x1 = Math.min(clip.x1, sp.x + sp.w), y1 = Math.min(clip.y1, sp.y + sp.h);
+      if (x1 <= x0 || y1 <= y0) return;
+      g.save();
+      g.beginPath(); g.rect(x0, y0, x1 - x0, y1 - y0); g.clip();
+      this.blitBld(g, this.wornSprite(here), here.x * TL, here.y * TL, TL, TL);
+      g.restore();
+      return;
+    }
     this.redrawFront(g, clip, inGate ? ty : ty + 1, true);
   },
   /* WHAT STANDS IN FRONT IS PAINTED IN FRONT (the wall sandbox). The
@@ -7482,7 +7499,7 @@ const R = {
      Answers true when it drew (or deliberately drew nothing), so the
      procedural overlays below stand down. */
   drawGateDoor(g, b, bx, by, bw, dt, front) {
-    if (this.gateVerticalAt(b.x, b.y)) return false;
+    if (this.gateVerticalAt(b.x, b.y)) return this.gapGate(b) ? this.drawGapDoor(g, b, bx, by, bw, dt, front) : false;
     const li = Math.min(b.level || 1, 3) - 1;
     const face = (Sprites.gateMask[li] || [])[0];
     let door = Sprites.gateDoor && Sprites.gateDoor[li];
@@ -7525,26 +7542,17 @@ const R = {
   },
   /* WHERE EACH TIER'S DOOR IS, in the gate tile's 32-cell fine grid: the
      face's passage (x0..x1 across, y0 lintel/arch head to y1 threshold) and
-     the flank block's outward mouths (w/e) with the rows the door fills.
-     GATE_PROC is the procedural gatehouse's; GATE_DRAWN is measured off the
-     drawn ones (assets/fort/gate-l{lv}.png) — whose doors are far taller,
-     so a redrawn gatehouse means re-measuring these. */
+     the flank block's outward mouths (w/e) with the rows the door fills —
+     for the PROCEDURAL gatehouse, the stand-in while the drawn kit is
+     missing. The drawn kit needs none of it: its face hangs its own door
+     frame (drawGateDoor) and its north-south self at levels 1 and 2 is a
+     gap (drawGapDoor). */
   GATE_PROC: [
     { face: { x0: 11, x1: 21, y0: 9, y1: 30 }, flank: { w: 6.5, e: 23.5, ow: 8.5, oe: 23.5, y0: 17.5, y1: 26.5, top: 4 } },
     { face: { x0: 11, x1: 21, y0: 13, y1: 30 }, flank: { w: 5.5, e: 24.5, ow: 5.5, oe: 24.5, y0: 17, y1: 26, top: 4 } },
   ],
-  GATE_DRAWN: [
-    { flank: { w: -5, e: 35.2, ow: -3, oe: 34.7, y0: 13, y1: 24.5, top: -17.7 } },
-    // L2's flank is the roofed body (rows 76..108 of gate-l2's frame 1 stand
-    // at x 13..64): the grate hangs just proud of THAT edge and, raised,
-    // climbs the same wall above its slot — it used to hang a cell and a
-    // half out in the grass and, opened, float in the sky over the roof
-    { flank: { w: -0.7, e: 30.7, ow: -0.7, oe: 30.7, y0: 13, y1: 24.5, top: 13 } },
-  ],
   gateWorksGeo(b, vert) {
-    const li = Math.min(b.level, 2) - 1;
-    const spr = (Sprites.gateMask[li] || [])[vert ? 1 : 0];
-    const T = (spr && spr._cfArt && spr._cfArt.fort ? this.GATE_DRAWN : this.GATE_PROC)[li];
+    const T = this.GATE_PROC[Math.min(b.level, 2) - 1];
     return vert ? T.flank : T.face;
   },
   drawGateWorks(g, b, bx, by, bw, dt, front) {
@@ -7630,7 +7638,6 @@ const R = {
     // column back on its hinge and the leaves vanish into slivers
     const th = Math.min(1, o * 1.15) * 1.08;
     const cs = Math.cos(th), sn = Math.sin(th);
-    const drawn = P.y0 < 0;                              // the drawn gate's tall doorway
     if (!vert) {
       const away = dir < 0;
       const W = P.x1 - P.x0, H = P.y1 - P.y0;
@@ -7639,14 +7646,12 @@ const R = {
         cell(P.x0, P.y1 - 5, W, 5, SO[2]); cell(P.x0, P.y1 - 5, W, 1, SO[1]);   // the road through
       }
       const leafW = W / 2;
-      if (front && (!away || drawn)) {
+      if (front && !away) {
         // leaves swinging TOWARD you: honest vertical-hinge foreshortening —
         // the leaf narrows to width·cos(θ), walked over SCREEN columns so the
         // panel stays solid (source-indexed columns collide when cos is small
         // and the door dissolved into slivers), with the free edge dropping
-        // toward the camera as it comes. A DRAWN gateway is tall enough that
-        // leaves swung AWAY still show inside it, narrowing on their hinges
-        // and darker, never dropping.
+        // toward the camera as it comes.
         const fall = away ? 0 : 1;
         const proj = Math.max(1, Math.round(leafW * cs));
         for (const [hx, sgn] of [[P.x0, 1], [P.x1, -1]]) {
@@ -7703,6 +7708,175 @@ const R = {
     };
     const ns = score(x, y - 1) + score(x, y + 1), ew = score(x - 1, y) + score(x + 1, y);
     return ns > ew;
+  },
+  /* A GATE IN A NORTH-SOUTH LINE IS A GAP WITH A ROAD — levels 1 and 2
+     (operator: "gates are confusing, can we make them look different from
+     towers? Only an issue when it's top down view"). Seen from the flank, a
+     gatehouse WAS a tower: its north-south self was the wall tower's own
+     body over the run, so down a vertical line a gate read as one more
+     tower. Now the curtain ENDS either side of it in its own end caps
+     (wallMaskAt and towerLinkMask drop the arm toward it), a road crosses
+     east-west through the gap (drawGateRoads, on the ground under every
+     building), two gateposts stand at the road's edges (the flank frame of
+     gate-l{1,2}.png) and the doors are drawn live across the road between
+     them (drawGapDoor). Seen edge-on from this camera a portcullis is a line
+     whether it is up or down, so a north-south level-2 gate hangs two heavy
+     iron-strapped doors instead, and its lever says so (Bld.gateLeaves).
+     Level 3 keeps its gatehouse and its drawbridge. Pictures only: the line,
+     the seal and the block grid all still ask Bld.fortAt. Without the drawn
+     flank (a 404) nothing here applies and the old procedural gatehouse
+     stands.
+     The geometry is the flank frame's, in FORT_GEO px: the gateposts' shared
+     centre column, the road's north and south edges (each post's foot), the
+     posts' height and the doors'. */
+  GAP_GATE: [
+    { cx: 41, n: 74, s: 112, pw: 10, ph: 16, dh: 12 },
+    { cx: 39, n: 74, s: 116, pw: 10, ph: 26, dh: 19 },
+  ],
+  // the road strip (assets/fort/road-l{n}.png): three tiles wide, the gate's
+  // own tile in the middle, its top `top` FORT_GEO rows below the tile's top
+  GAP_ROAD: { tile: 58, top: 7 },
+  gapGate(b) {
+    if (!b || b.key !== 'gate' || (b.level || 1) > 2) return false;
+    const fl = Sprites.gateMask && Sprites.gateMask[(b.level || 1) - 1];
+    const f1 = fl && fl[1];
+    return !!(f1 && f1._cfArt && f1._cfArt.fort) && this.gateVerticalAt(b.x, b.y);
+  },
+  _gapAt(x, y) {
+    if (!MapGen.inB(x, y)) return false;
+    const b = Bld.at(x, y);
+    return !!b && b.x === x && b.y === y && this.gapGate(b);
+  },
+  // may the road run on across this tile? open ground nobody has built on
+  _roadGround(x, y) {
+    return MapGen.onBoard(x, y) && !Bld.at(x, y) && Path.passable(x, y, 'P');
+  },
+  /* THE ROAD THROUGH THE GAP, laid before any building is drawn so every
+     roof and wall stands on it and every unit walks over it. It runs on a
+     tile east and west only across open ground — never onto a building,
+     the water or a wood. */
+  drawGateRoads(g, blds) {
+    const art = Sprites.gateRoad;
+    if (!art) return;
+    const TL = CFG.TILE, RG = this.GAP_ROAD;
+    for (const b of blds) {
+      if (b.key !== 'gate' || !this.gapGate(b)) continue;
+      const rd = art[(b.level || 1) - 1];
+      if (!rd || !G.visibleAt(b.x, b.y)) continue;
+      const k = TL / RG.tile, bx = b.x * TL, by = b.y * TL;
+      const x0 = this._roadGround(b.x - 1, b.y) ? bx - TL : bx;
+      const x1 = this._roadGround(b.x + 1, b.y) ? bx + 2 * TL : bx + TL;
+      g.save();
+      g.beginPath(); g.rect(x0, by, x1 - x0, TL); g.clip();
+      g.imageSmoothingEnabled = false;
+      g.drawImage(rd, bx - RG.tile * k, by + RG.top * k, rd.width * k, rd.height * k);
+      g.restore();
+    }
+  },
+  /* THE DOORS ACROSS THE GAP, drawn on the art's own grain over the posts'
+     frame: two leaves hinged on the posts and meeting in the road. Shut they
+     stand edge-on — a line of timber across the road with its shadow on the
+     ground east of it; opening, each swings OUTWARD (Bld.gateOutside) round
+     its own post until it stands face-on along the road's edge. One eased
+     number (R._dbA, 1 = shut) is the whole animation, as at every gate; the
+     rival never works a lever, so its doors are always drawn shut. The south
+     post is laid back over them last: the leaves hang behind it. */
+  GAP_DOOR: [
+    { o: '#1c130b', t: '#c9a46c', l: '#b08a5a', m: '#946f45', d: '#76563a', b: '#5c432c', burnt: ['#5a4632', '#463626', '#33271b'] },
+    { o: '#0b0704', t: '#e2ae69', l: '#c69657', m: '#a77642', d: '#875e37', b: '#2e2a28', r: '#8a847c', burnt: ['#56422e', '#3f3022', '#2c2219'] },
+  ],
+  drawGapDoor(g, b, bx, by, bw, dt, front) {
+    if (!front || b.construction > 0) return true;
+    const li = Math.min(b.level || 1, 2) - 1;
+    const fl = Sprites.gateMask[li][1], P = this.GAP_GATE[li], C = this.GAP_DOOR[li];
+    const live = Bld.canGateToggle(b) && b.owner === 'P';
+    let a = 1;
+    if (live) {
+      const tgt = b.raised ? 1 : 0;
+      a = this._dbA[b.id];
+      if (a == null) a = tgt;
+      else if (a !== tgt) {
+        const step = Math.max(0, Math.min(0.2, dt || 0)) * this.DB_SPEED;
+        a = tgt > a ? Math.min(tgt, a + step) : Math.max(tgt, a - step);
+      }
+      this._dbA[b.id] = a;
+    }
+    const r = this.artRect(fl, bx, by, bw, bw), k = r.w / fl.width;
+    const cell = (fx, fy, w, h, col) => { g.fillStyle = col; g.fillRect(r.x + fx * k, r.y + fy * k, w * k, h * k); };
+    const bph = Bld.burnPhase(b);
+    const wood = bph >= 1 ? [C.burnt[0], C.burnt[1], C.burnt[2]] : [C.l, C.m, C.d];
+    const dir = Bld.gateOutside(b) >= 0 ? 1 : -1;
+    const th = (1 - a) * Math.PI / 2;
+    const Lf = (P.s - P.n) / 2, H = P.dh, cx = P.cx;
+    const span = Math.round(Lf * Math.sin(th));
+    if (span < 2) {
+      // SHUT (or all but): the two leaves edge-on, a stile of timber from
+      // post to post barring the road, its shadow thrown east across it
+      const top = P.n - H, bot = P.s;
+      g.fillStyle = 'rgba(28,20,12,0.30)';
+      g.fillRect(r.x + (cx + 3) * k, r.y + (P.n + 1) * k, 3 * k, (P.s - P.n - 2) * k);
+      cell(cx - 3, top, 6, bot - top, C.o);
+      cell(cx - 2, top + 1, 1, bot - top - 2, wood[0]);
+      cell(cx - 1, top + 1, 2, bot - top - 2, wood[1]);
+      cell(cx + 1, top + 1, 1, bot - top - 2, wood[2]);
+      cell(cx - 2, top + 1, 3, 1, C.t);                                          // the lit top edge
+      if (C.r) {
+        // level 2: the iron straps' ends, a rivet lit on each
+        for (let y = top + 4; y < bot - 2; y += 7) { cell(cx - 2, y, 4, 2, C.b); cell(cx - 1, y, 1, 1, C.r); }
+      } else {
+        for (let y = top + 4; y < bot - 2; y += 5) cell(cx - 2, y, 4, 1, C.b);  // the ledgers' ends
+      }
+      cell(cx - 3, P.n + Lf - 1, 6, 2, C.o);                                    // where the leaves meet
+    } else {
+      // OPENING: each leaf a panel of boards between its hinge and its free
+      // edge, the free edge sweeping out and toward the post
+      for (const [hy, sg] of [[P.n, 1], [P.s, -1]]) {
+        for (let j = 0; j <= span; j++) {
+          const t = j / span, gy = hy + sg * Lf * Math.cos(th) * t;
+          const fx = cx + dir * j - (dir < 0 ? 1 : 0), y0 = Math.round(gy - H), y1 = Math.round(gy);
+          const edge = j === 0 || j === span;
+          if (bph >= 2 && !edge && ((j * 7 + b.id) % 5) === 0) continue;     // boards knocked out
+          g.fillStyle = 'rgba(28,20,12,0.28)';                                // its foot's shadow
+          g.fillRect(r.x + fx * k, r.y + y1 * k, k, k);
+          if (edge) { cell(fx, y0, 1, y1 - y0 + 1, C.o); continue; }
+          const seam = (j % 3) === 0;
+          cell(fx, y0, 1, y1 - y0 + 1, seam ? wood[2] : wood[(Math.floor(j / 3) % 2) ? 1 : 0]);
+          cell(fx, y0, 1, 1, C.o);
+          cell(fx, y0 + 1, 1, 1, C.t);
+          cell(fx, y1, 1, 1, C.o);
+          if (C.r) {
+            // iron straps across the boards, a rivet on every third
+            for (const q of [0.25, 0.7]) {
+              const yy = Math.round(y0 + q * H);
+              cell(fx, yy, 1, 2, C.b);
+              if ((j % 3) === 2) cell(fx, yy, 1, 1, C.r);
+            }
+          } else {
+            // two ledgers and the brace between them
+            const ya = Math.round(y0 + 0.28 * H), yb = Math.round(y0 + 0.72 * H);
+            cell(fx, ya, 1, 1, C.b); cell(fx, yb, 1, 1, C.b);
+            cell(fx, Math.round(yb - (yb - ya) * t), 1, 1, C.b);
+          }
+        }
+      }
+    }
+    // the south post goes back over the doors' feet
+    const sp = this._gapPostRect(b);
+    if (sp) {
+      g.save();
+      g.beginPath(); g.rect(sp.x, sp.y, sp.w, sp.h); g.clip();
+      this.blitBld(g, this.wornSprite(b), bx, by, bw, bw);
+      g.restore();
+    }
+    return true;
+  },
+  // the south gatepost's picture, in world px
+  _gapPostRect(b) {
+    const li = Math.min(b.level || 1, 2) - 1, fl = Sprites.gateMask[li] && Sprites.gateMask[li][1];
+    if (!fl) return null;
+    const TL = CFG.TILE, bx = b.x * TL, by = b.y * TL;
+    const P = this.GAP_GATE[li], r = this.artRect(fl, bx, by, TL, TL), k = r.w / fl.width;
+    return { x: r.x + (P.cx - P.pw / 2) * k, y: r.y + (P.s - P.ph + 1) * k, w: P.pw * k, h: P.ph * k };
   },
   /* `lv` overrides which LEVEL's art to draw. Defaults to what the building
      is today — but a work site nearing completion must show the level it is
@@ -12886,6 +13060,19 @@ const R = {
     // stone sheds; timber burns
     if (b.key === 'tower') return this.drawTowerCrumble(g, b, bx, by, bw, ph);
     const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
+    if (this.gapGate(b) && !(b.construction > 0)) {
+      // a gap gate has nothing standing but its posts and its doors: the
+      // fire climbs the posts, never the open road
+      const li = Math.min(b.level || 1, 2) - 1, fl = Sprites.gateMask[li][1], P = this.GAP_GATE[li];
+      const r = this.artRect(fl, bx, by, bw, bw), k = r.w / fl.width;
+      const spots = ph === 0 ? [[P.s, 0]] : ph === 1 ? [[P.n, 1], [P.s, 1]] : [[P.n, 0], [P.s, 0]];
+      for (let i = 0; i < spots.length; i++) {
+        const [foot, big] = spots[i];
+        this._flame(g, b, i, big, r.x + P.cx * k + (hsh(i) - 0.5) * 3 * k, r.y + (foot - P.ph * 0.55) * k, (big ? 0.5 : 0.36) * bw);
+      }
+      this.drawBurnSmoke(g, r.x + P.cx * k, r.y + (P.n - P.ph) * k, bw * 0.7, ph, (b.id * 0.37) % 1);
+      return;
+    }
     const a = this.fireAnchors(b);
     if (a && a.ground) return this.drawGroundBurn(g, b, this.fireRect(b, bx, by, bw), a.spots, ph);
     if (a) {
@@ -14546,6 +14733,7 @@ const R = {
        row rose up into the off-map rim (a reported screenshot) */
     g.save();
     { const bp = this.boardPx(); g.beginPath(); g.rect(bp.x0, bp.y0, bp.x1 - bp.x0, bp.y1 - bp.y0); g.clip(); }
+    this.drawGateRoads(g, blds);
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;

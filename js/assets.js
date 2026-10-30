@@ -1987,7 +1987,11 @@ const Assets = {
      All three are optional and 404 quietly: a tier with no files keeps the
      procedural atlas, mural tower and gatehouse it has always had. */
   FORT_DIR: 'assets/fort/',
-  FORT_PIECES: ['wall', 'tower', 'gate'],
+  /* 'road' is the track through a GAP GATE (R.gapGate — a level-1 or
+     level-2 gate in a north-south line): three tiles wide, laid on the
+     ground under every building. No third tier: the L3 gatehouse keeps its
+     own passage, so no road-l3.png is ever asked for. */
+  FORT_PIECES: ['wall', 'tower', 'gate', 'road'],
   FORT_TIERS: [1, 2, 3],
   FORT_GEO: { T: 58, M: 10, UP: 64, DOWN: 24 },
   // the curtain leaving a tower southward: the N-S strip's columns and the
@@ -2054,6 +2058,14 @@ const Assets = {
       if (Sprites.buildingA && Sprites.buildingA.wall) Sprites.buildingA.wall[li] = Sprites.wallMask[li][10];
     }
     if (f.tower) (Sprites.towerArt || (Sprites.towerArt = []))[li] = this._fortBody(f.tower);
+    if (f.road) {
+      const c = document.createElement('canvas');
+      c.width = f.road.naturalWidth || f.road.width; c.height = f.road.naturalHeight || f.road.height;
+      const g = c.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(f.road, 0, 0);
+      (Sprites.gateRoad || (Sprites.gateRoad = []))[li] = c;
+    }
     if (f.gate && Sprites.gateMask && Sprites.gateMask[li]) {
       Sprites.gateMask[li][0] = this._fortFrame(f.gate, 0);
       Sprites.gateMask[li][1] = this._fortFrame(f.gate, 1);
@@ -2259,7 +2271,8 @@ const Assets = {
     this._tryMtnKit();
     for (const s of this.artSlots()) this._tryLoad(s.id, s.lv);
     for (const o of this.stageOwners()) for (let n = 1; n <= this.STAGE_N; n++) this._tryStage(o, n);
-    for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES) this._tryFort(lv, piece);
+    for (const lv of this.FORT_TIERS) for (const piece of this.FORT_PIECES)
+      if (piece !== 'road' || lv < 3) this._tryFort(lv, piece);
     for (const lv of this.FORT_TIERS) for (const piece of Object.keys(this.FORT_STATES))
       for (const st of this.FORT_STATES[piece]) this._tryFortState(lv, piece, st);
     for (const id of this.DMG_IDS) if (CFG.BUILDINGS[id])

@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 123, date: '2026-10-30', title: 'Gates that look like gates',
+    items: [
+      'A gate in a wall running north to south no longer looks like another tower. The wall now ends on either side of it, a road runs through the gap, and two gateposts hold the doors.',
+      'Closing one of these gates swings its doors across the road. Opening it swings them aside, so you can see at a glance that the way is clear.',
+      'A timber gate in a north to south wall now hangs two heavy iron-strapped doors instead of a portcullis, and its button says Open or Close the gates.',
+    ],
+  },
+  {
     build: 122, date: '2026-10-30', title: 'Timber and stone walls',
     items: [
       'A wall that is still being built now joins the sections beside it, so a new line goes up as one wall instead of a row of separate stumps and towers.',

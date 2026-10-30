@@ -40,16 +40,24 @@
         raised is not solid, so the block grid does not see it — and a
         dragged line drew as a row of lone end caps until its last section
         set. The picture counts sites; every rule still asks Bld.fortAt.
-     7. THE LEVEL-2 GATE'S GRATE HANGS ON ITS GATEHOUSE (R.GATE_DRAWN): side
-        on, it hung a cell and a half out in the grass and, raised, floated
-        over the roof.
+     7. A NORTH-SOUTH GATE IS A GAP WITH A ROAD (R.gapGate, levels 1 and 2 —
+        operator: "gates are confusing, can we make them look different from
+        towers? Only an issue when it's top down view"). Its flank used to
+        be the wall tower's body over the run. Now the curtain ends either
+        side in its own caps, a road runs through over open ground (never
+        onto water), two posts stand at the road's edges, the doors bar the
+        road shut and stand aside open — a north-south level-2 gate hangs
+        doors, since a portcullis seen edge-on is a line up or down — and a
+        man walking through is behind only the south post. Level 3 keeps its
+        gatehouse. The line, the axis and the seal are untouched.
 
    Run this after touching any of:
      render.js — occludeByForts / redrawFront / _picRect / _redrawPic /
-                 wallMaskAt / lineAt / gateVerticalAt / GATE_DRAWN /
+                 wallMaskAt / lineAt / gateVerticalAt / gapGate / GAP_GATE /
+                 drawGateRoads / drawGapDoor / towerLinkMask /
                  drawTowerWalk / drawGateWalk / _walkOver /
                  the building pass / the mountain strip flush
-     assets/fort/wall-l*.png, gate-l2.png
+     assets/fort/wall-l*.png, gate-l{1,2}*.png, road-l{1,2}.png
 
      node tests/wall-lines.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -199,10 +207,12 @@ const out = await p.evaluate(async () => {
 
   // ---- 2b. a line going up is one line ----
   {
-    clear('wl-site'); S.wallLevel = 2;
-    const site = (k, x, y) => { const bb = Bld.place('P', k, x, y, { free: true }); if (bb) bb.level = 2; Bld._block = null; return bb; };
+    // (at level 3: a north-south gate at levels 1 and 2 is a gap the
+    // curtain ENDS beside — §5 — so only the gatehouse joins its line)
+    clear('wl-site'); S.wallLevel = 3;
+    const site = (k, x, y) => { const bb = Bld.place('P', k, x, y, { free: true }); if (bb) bb.level = 3; Bld._block = null; return bb; };
     const a = site('wall', 30, 20); site('wall', 30, 21); const gt = site('gate', 30, 22); site('wall', 30, 23);
-    put('wall', 30, 24, 2);
+    put('wall', 30, 24, 3);
     const m = [20, 21, 23, 24].map(y => R.wallMaskAt(30, y)), vert = R.gateVerticalAt(30, 22);
     ck('aLineGoingUpIsOneLine', a && a.construction > 0 && gt && gt.construction > 0 &&
       m.join() === '4,5,5,1' && vert,
@@ -266,6 +276,134 @@ const out = await p.evaluate(async () => {
       if (!(f > 0.4 && f < 0.7 && g > 0.9)) bad.push('L' + lv + ' walk from ' + f.toFixed(2) + ' to ' + g.toFixed(2) + ' of the body');
     }
     ck('theWalkComesHalfWayUpATower', bad.length === 0, bad.length ? bad.join('; ') : 'doorway and walk from about half way down the body to its foot, every tier');
+  }
+
+  // ---- 5. a north-south gate is a gap with a road (levels 1 and 2) ----
+  {
+    const ends = [], rules = [];
+    for (const lv of [1, 2, 3]) {
+      clear('wl-gap' + lv); S.wallLevel = lv;
+      put('wall', 20, 12, lv); put('wall', 20, 13, lv); const gt = put('gate', 20, 14, lv); put('wall', 20, 15, lv); put('wall', 20, 16, lv);
+      put('wall', 26, 12, lv); put('tower', 26, 13, lv); put('gate', 26, 14, lv); put('wall', 26, 15, lv);
+      const n = R.wallMaskAt(20, 13), s = R.wallMaskAt(20, 15), tw = R.towerLinkMask(26, 13).mask;
+      const gap = R.gapGate(gt);
+      if (lv < 3 ? (!gap || (n & 4) || (s & 1) || (tw & 4)) : (gap || !(n & 4) || !(s & 1) || !(tw & 4)))
+        ends.push('L' + lv + ' gap ' + gap + ', masks N ' + n + ' S ' + s + ', tower ' + tw);
+      // the picture only: the line, the gate's axis and the block grid are what they were
+      gt.raised = true; Bld._block = null;
+      const shut = Path.passable(20, 14, 'P');
+      gt.raised = false; Bld._block = null;
+      const open = Path.passable(20, 14, 'P');
+      if (!Bld.fortAt(20, 13) || !Bld.fortAt(20, 14) || !R.gateVerticalAt(20, 14) || shut || !open)
+        rules.push('L' + lv + ' fortAt ' + !!Bld.fortAt(20, 13) + '/' + !!Bld.fortAt(20, 14) + ', vertical ' + R.gateVerticalAt(20, 14) + ', passable shut ' + shut + ' open ' + open);
+    }
+    ck('theCurtainEndsAtAGapGate', ends.length === 0, ends.length ? ends.join('; ') : 'L1/L2: both neighbours and a tower end in their caps; L3: the gatehouse still joins');
+    ck('butTheRulesStillSeeOneLine', rules.length === 0, rules.length ? rules.join('; ') : 'the line, the axis and the seal are untouched at every tier');
+  }
+  {
+    // the road: on through open ground east and west, never onto water
+    const bad = [];
+    for (const lv of [1, 2]) {
+      clear('wl-road' + lv); S.wallLevel = lv;
+      for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, lv);
+      S.map.terrain[MapGen.idx(21, 14)] = T.WATER;
+      settle(); R.cam.z = 2; R.centerOn(20.5, 14.5);
+      const real = snap();
+      const keep = Sprites.gateRoad; Sprites.gateRoad = null;
+      const none = snap();
+      Sprites.gateRoad = keep;
+      const count = (tx) => {
+        const [x0, y0] = scr(tx * TL, 14 * TL), [x1, y1] = scr(tx * TL + TL, 14 * TL + TL);
+        let n = 0;
+        for (let y = Math.ceil(y0); y < y1; y++) for (let x = Math.ceil(x0); x < x1; x++) {
+          const i = (y * real.width + x) * 4;
+          if (real.data[i] !== none.data[i] || real.data[i + 1] !== none.data[i + 1] || real.data[i + 2] !== none.data[i + 2]) n++;
+        }
+        return n;
+      };
+      const w = count(19), e = count(21), mid = count(20);
+      // the control: let the road run onto anything and the probe must see it on the water
+      const keepG = R._roadGround; R._roadGround = () => true;
+      const leak = snap(); R._roadGround = keepG;
+      let eLeak = 0;
+      { const [x0, y0] = scr(21 * TL, 14 * TL), [x1, y1] = scr(22 * TL, 15 * TL);
+        for (let y = Math.ceil(y0); y < y1; y++) for (let x = Math.ceil(x0); x < x1; x++) {
+          const i = (y * leak.width + x) * 4;
+          if (leak.data[i] !== none.data[i] || leak.data[i + 1] !== none.data[i + 1] || leak.data[i + 2] !== none.data[i + 2]) eLeak++;
+        } }
+      if (!(w > 400 && mid > 400 && e === 0 && eLeak > 400)) bad.push('L' + lv + ' west ' + w + ', gate ' + mid + ', water ' + e + ' (unclipped ' + eLeak + ')');
+    }
+    ck('theRoadRunsOnOverOpenGround', bad.length === 0, bad.length ? bad.join('; ') : 'the road runs out across the grass west and stops at the water east');
+  }
+  {
+    // the doors: shut they bar the road, open they stand aside and the road
+    // between the posts is clear
+    const bad = [];
+    for (const lv of [1, 2]) {
+      clear('wl-door' + lv); S.wallLevel = lv;
+      for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, lv);
+      const gt = Bld.at(20, 14);
+      settle(); R.cam.z = 3; R.centerOn(20.5, 14.5);
+      const P = R.GAP_GATE[lv - 1], fl = Sprites.gateMask[lv - 1][1];
+      const r = R.artRect(fl, 20 * TL, 14 * TL, TL, TL), k = r.w / fl.width;
+      const keepDoor = R.drawGapDoor;
+      R.drawGapDoor = () => true;
+      const bare = snap();
+      R.drawGapDoor = keepDoor;
+      gt.raised = true; R._dbA[gt.id] = 1; Bld._block = null;
+      const shut = snap();
+      gt.raised = false; R._dbA[gt.id] = 0; Bld._block = null;
+      const open = snap();
+      const dir = Bld.gateOutside(gt) >= 0 ? 1 : -1;
+      // fraction of a rect (art px) where two pictures differ
+      const frac = (A, B, fx0, fy0, fx1, fy1) => {
+        const [x0, y0] = scr(r.x + fx0 * k, r.y + fy0 * k), [x1, y1] = scr(r.x + fx1 * k, r.y + fy1 * k);
+        let n = 0, d = 0;
+        for (let y = Math.ceil(y0); y < y1; y++) for (let x = Math.ceil(x0); x < x1; x++) {
+          const i = (y * A.width + x) * 4; n++;
+          if (A.data[i] !== B.data[i] || A.data[i + 1] !== B.data[i + 1] || A.data[i + 2] !== B.data[i + 2]) d++;
+        }
+        return n ? d / n : 0;
+      };
+      // the crossing: the line's own column between the posts, across the road
+      const crossShut = frac(shut, bare, P.cx - 2, P.n + 2, P.cx + 2, P.s - P.ph - 1);
+      const crossOpen = frac(open, bare, P.cx - 2, P.n + 2, P.cx + 2, P.s - P.ph - 1);
+      // the north leaf, stood aside face-on along the road's north edge
+      const fa = dir > 0 ? [P.cx + 4, P.cx + 12] : [P.cx - 12, P.cx - 4];
+      const leafOpen = frac(open, bare, fa[0], P.n - P.dh + 3, fa[1], P.n - 2);
+      const leafShut = frac(shut, bare, fa[0], P.n - P.dh + 3, fa[1], P.n - 2);
+      if (!(crossShut > 0.8 && crossOpen === 0 && leafOpen > 0.6 && leafShut === 0))
+        bad.push('L' + lv + ' crossing shut ' + crossShut.toFixed(2) + ' open ' + crossOpen.toFixed(2) + ', leaf open ' + leafOpen.toFixed(2) + ' shut ' + leafShut.toFixed(2));
+    }
+    ck('theDoorsBarTheRoadShutAndStandAsideOpen', bad.length === 0, bad.length ? bad.join('; ') : 'shut: timber across the road; open: the road clear between the posts, the leaves beside it');
+  }
+  {
+    // a portcullis seen edge-on is a line up or down, so a north-south
+    // level-2 gate hangs doors — and its lever says so
+    clear('wl-lever'); S.wallLevel = 2;
+    for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, 2);
+    for (let x = 24; x <= 28; x++) put(x === 26 ? 'gate' : 'wall', x, 20, 2);
+    const v = Bld.at(20, 14), h = Bld.at(26, 20);
+    v.raised = false;
+    UI.select('bld', v.id); UI.renderPanel();
+    const el = document.querySelector('#panel [data-act="drawbridge"]'), label = el ? el.textContent : '';
+    UI.deselect && UI.deselect();
+    ck('aNorthSouthLevel2GateHangsDoors', Bld.gateLeaves(v) && !Bld.gateLeaves(h) && /Close the gates/.test(label),
+      'north-south ' + Bld.gateLeaves(v) + ', east-west ' + Bld.gateLeaves(h) + ', lever "' + label.trim() + '"');
+  }
+  {
+    // walking through the gap: nothing of the gate is laid over him but its
+    // south post (there is no gatehouse to be inside)
+    clear('wl-walkgap'); S.wallLevel = 1;
+    for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, 1);
+    const gt = Bld.at(20, 14); gt.raised = false; R._dbA[gt.id] = 0; Bld._block = null;
+    settle(); R.cam.z = 2; R.centerOn(20.5, 14.5);
+    const u = Units.spawn('villager', 'P', 20, 14); u.x = 20.5; u.y = 14.5;
+    const keep = R._redrawPic; let whole = 0;
+    R._redrawPic = function (g, bb) { if (bb === gt) whole++; return keep.call(this, g, bb); };
+    snap();
+    R._redrawPic = keep;
+    ck('aManInTheGapIsNotPaintedOver', whole === 0, 'the whole gate laid over him ' + whole + ' times');
   }
 
   return { res, fails };
@@ -378,20 +516,23 @@ const caps = await p.evaluate(async () => {
     ck('level3FootingsEndInTheirRing', bad.length === 0, bad.length ? bad.join('; ') : 'no lane runs north out of a ring with nothing north of it');
   }
   {
-    // the level-2 gate seen side-on: its grate hangs against the gatehouse
-    // wall, shut or raised, never out in the grass or up in the sky
-    const a = await read('assets/fort/gate-l2.png'), P = R.GATE_DRAWN[1].flank;
-    let L = 99, Rr = -1;
-    for (let y = 96; y <= 108; y++) {
-      let l = 0; while (l < 78 && a.at(1, l, y)[3] <= 20) l++;
-      let r = 77; while (r >= 0 && a.at(1, r, y)[3] <= 20) r--;
-      L = Math.min(L, l); Rr = Math.max(Rr, r);
+    // the gap gate's flank frame is its two posts and nothing else: no
+    // curtain, no block (the doors are drawn live, the road under it all)
+    const bad = [];
+    for (const lv of [1, 2]) for (const st of ['', '-b1', '-b2', '-b3', '-d1', '-d2']) {
+      const a = await read('assets/fort/gate-l' + lv + st + '.png'), P = R.GAP_GATE[lv - 1];
+      let stray = 0, below = 0;
+      for (let y = 0; y < 146; y++) for (let x = 0; x < 78; x++) {
+        if (a.at(1, x, y)[3] <= 20) continue;
+        if (y > P.s + 4) below++;
+        const inPost = x >= P.cx - P.pw / 2 && x < P.cx + P.pw / 2 &&
+          ((y > P.n - P.ph && y <= P.n) || (y > P.s - P.ph && y <= P.s));
+        if (!inPost) stray++;
+      }
+      // a raising stage lays its timbers and its pits beside the posts
+      if (below || (!/-b/.test(st) && stray)) bad.push('gate-l' + lv + st + ': ' + stray + ' px off the posts, ' + below + ' below them');
     }
-    const fine = (x) => (x - Assets.FORT_GEO.M) * 32 / Assets.FORT_GEO.T;
-    const gw = fine(L) - (P.w + 2), ge = P.e - fine(Rr + 1);
-    const top = P.top - 6;
-    ck('level2GateGrateHugsItsGatehouse', gw >= -0.5 && gw <= 0.75 && ge >= -0.5 && ge <= 0.75 && top >= P.y0 - 8 && P.top <= P.y1,
-      'gap west ' + gw.toFixed(2) + ', east ' + ge.toFixed(2) + ' cells; raised stub ' + top + '..' + P.top + ' against a slot ' + P.y0 + '..' + P.y1);
+    ck('theGapGatesFlankIsItsPosts', bad.length === 0, bad.length ? bad.join('; ') : 'every finished and battered flank is two posts; no stage lays anything below them');
   }
   return { res, fails };
 });

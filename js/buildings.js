@@ -71,6 +71,14 @@ const Bld = {
   canDrawbridge(b) {
     return this.canGateToggle(b) && b.level >= 3;
   },
+  // does this gate shut with DOORS? Every level-1 gate, and a level-2 gate
+  // standing in a north-south line — a gap gate (R.gapGate), whose
+  // portcullis would be a line seen edge-on whether up or down, so it hangs
+  // two iron-strapped doors instead. The lever and the log say so.
+  gateLeaves(b) {
+    if (!b || b.key !== 'gate') return false;
+    return (b.level || 1) <= 1 || (b.level === 2 && !!(window.R && R.gapGate && R.gapGate(b)));
+  },
   bridgeRaised(b) { return !!(b && b.key === 'gate' && b.raised); },
 
   /* ---- THE DECK IS A CROSSING (tests/drawbridge.mjs) ----
@@ -172,7 +180,7 @@ const Bld = {
       G.log(b.level >= 3
         ? (b.raised ? '⛓ The drawbridge is hauled up — the gate is shut fast'
                     : '⛓ The drawbridge is lowered — the gate stands open')
-        : b.level === 2
+        : !this.gateLeaves(b)
           ? (b.raised ? '⛓ The portcullis drops — the gate is shut fast'
                       : '⛓ The portcullis is winched up — the gate stands open')
           : (b.raised ? '🚪 The gates are barred shut'

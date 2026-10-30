@@ -2204,7 +2204,7 @@ const UI = {
         !!b.rally, this.confirmDemolish === b.id,
         // the gate lever reads the OPPOSITE of the door's state, so the
         // label has to flip the moment the order lands (tests/drawbridge.mjs)
-        Bld.canGateToggle(b) ? (b.raised ? 'up' : 'down') : '-',
+        Bld.canGateToggle(b) ? (b.raised ? 'up' : 'down') + (Bld.gateLeaves(b) ? 'L' : '') : '-',
         // the homestead line comes and goes without a tap — a razed partner
         // must take the gold text with it (tests/homestead.mjs)
         Bld.isHomestead(b) ? 'hs' : '-'].join('|');
@@ -2617,14 +2617,15 @@ const UI = {
            gate, and it says what pulling it will DO — open the door when it
            is shut, shut it when it is open — so the gate's state is readable
            from the button alone. Each tier works its own mechanism: L1
-           swings its door leaves, L2 winches a portcullis, L3 hauls the
+           swings its door leaves, L2 winches a portcullis (or, in a
+           north-south line, swings doors — Bld.gateLeaves), L3 hauls the
            drawbridge. Sealed is sealed for EVERYONE, the owner included. */
         if (Bld.canGateToggle(b))
           html += b.level >= 3
             ? (b.raised
               ? `<button class="abtn wide" data-act="drawbridge">⬇ Lower the drawbridge<small>the gate opens — your people pass again</small></button>`
               : `<button class="abtn wide" data-act="drawbridge">⬆ Raise the drawbridge<small>shuts the gate fast — to your own people too</small></button>`)
-            : b.level === 2
+            : !Bld.gateLeaves(b)
               ? (b.raised
                 ? `<button class="abtn wide" data-act="drawbridge">⬆ Raise the portcullis<small>the gate opens — your people pass again</small></button>`
                 : `<button class="abtn wide" data-act="drawbridge">⬇ Drop the portcullis<small>shuts the gate fast — to your own people too</small></button>`)
