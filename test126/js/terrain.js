@@ -275,7 +275,8 @@
       const K = 16, P_ = 256, core = this.core, out = [], TAU = 6.283185307;
       const site = [], spark = [];
       for (let j = 0; j < 32; j++) for (let i = 0; i < 32; i++) { const h = a => core.hash(i, j, 720 + a); site.push([(i + h(1)) * 8 | 0, (j + h(2)) * 8 | 0, 2 + (h(3) * 3.2 | 0), h(4), 0.55 + 0.45 * h(5)]); }
-      for (let j = 0; j < 22; j++) for (let i = 0; i < 22; i++) { const h = a => core.hash(i, j, 760 + a); spark.push([(i + h(1)) * (256 / 22) | 0, (j + h(2)) * (256 / 22) | 0, h(3), h(4)]); }
+      // fewer sun sparkles than there are wavelets: a glance of light here and there, not a glitter
+      for (let j = 0; j < 14; j++) for (let i = 0; i < 14; i++) { const h = a => core.hash(i, j, 760 + a); spark.push([(i + h(1)) * (256 / 14) | 0, (j + h(2)) * (256 / 14) | 0, h(3), h(4)]); }
       // the group wave: integer frequencies so it tiles; a second wave bends its front
       const grp = (x, y, f) => { const a = TAU * (3 * x + 1 * y) / P_ - TAU * f / K + 1.3 * Math.sin(TAU * (1 * x - 2 * y) / P_ + 0.7) + 0.8 * Math.sin(TAU * (2 * x + 3 * y) / P_ - TAU * f / K * 0.0 + 2.1); return 0.5 + 0.5 * Math.sin(a); };
       const q = v => v > 0.78 ? 1 : v > 0.5 ? 0.7 : v > 0.25 ? 0.42 : v > 0.08 ? 0.2 : 0;   // a few hard alpha steps
@@ -297,8 +298,8 @@
           const G = grp(x, y, f); if (G < 0.7) continue;
           const t = ((f / K * 2 + ph) % 1) * K; if (t >= 2.5) continue;
           const I = (t < 1 ? 1 : t < 2 ? 0.7 : 0.4) * (G - 0.7) / 0.3;
-          put(x, y, 255, 253, 240, Math.min(1, 0.6 + I));
-          if (st > 0.3 && I > 0.3) { const arm = 0.35 + 0.5 * I; put(x - 1, y, 255, 250, 232, arm); put(x + 1, y, 255, 250, 232, arm); put(x, y - 1, 255, 250, 232, arm * 0.85); put(x, y + 1, 255, 250, 232, arm * 0.85);
+          put(x, y, 255, 253, 240, Math.min(1, 0.45 + I * 0.8));
+          if (st > 0.6 && I > 0.45) { const arm = 0.35 + 0.5 * I; put(x - 1, y, 255, 250, 232, arm); put(x + 1, y, 255, 250, 232, arm); put(x, y - 1, 255, 250, 232, arm * 0.85); put(x, y + 1, 255, 250, 232, arm * 0.85);
             if (st > 0.75 && I > 0.7) { put(x - 2, y, 255, 250, 232, 0.3); put(x + 2, y, 255, 250, 232, 0.3); } }
         }
         g.putImageData(id, 0, 0); out.push(c);
@@ -358,8 +359,8 @@
         if (did) { this._lastDid = did; this._lastCompose = now; this.stats.lifeComposes = (this.stats.lifeComposes || 0) + 1;
           // the two laid together once, so the screen takes one draw a frame
           const pg = P_.getContext('2d'), [, , w, h] = box; pg.clearRect(0, 0, w, h);
-          pg.globalAlpha = this.opt.causticA || 0.3; pg.drawImage(B, 0, 0, w, h, 0, 0, w, h);
-          pg.globalAlpha = this.opt.rippleA || 1; pg.drawImage(A, 0, 0, w, h, 0, 0, w, h); pg.globalAlpha = 1; }
+          pg.globalAlpha = this.opt.causticA || 0.18; pg.drawImage(B, 0, 0, w, h, 0, 0, w, h);
+          pg.globalAlpha = this.opt.rippleA || 0.62; pg.drawImage(A, 0, 0, w, h, 0, 0, w, h); pg.globalAlpha = 1; }
         this._lifeBK = bk; this._lifeBox = box;
         // only the part in view goes on screen
         const [lx, ly] = box, sx = Math.max(0, Math.floor(vx0) - lx), sy = Math.max(0, Math.floor(vy0) - ly), sw = Math.min(box[2] - sx, Math.ceil(vx1 - vx0) + 2), sh = Math.min(box[3] - sy, Math.ceil(vy1 - vy0) + 2);
@@ -375,7 +376,7 @@
           const ph = (Math.sin(t * 0.8 + W_[i + 4]) + 1) / 2; if (ph < 0.35) continue;
           const off = (1 - ph) * 2.2, nx = W_[i + 2], ny = W_[i + 3], tx = -ny, ty = nx, cx_ = W_[i] + nx * off, cy_ = W_[i + 1] + ny * off;
           if (cx_ < vx0 - 4 || cx_ > vx1 + 4 || cy_ < vy0 - 4 || cy_ > vy1 + 4) continue;
-          g.fillStyle = 'rgba(222,236,230,' + ((ph - 0.35) / 0.65 * 0.5).toFixed(2) + ')';
+          g.fillStyle = 'rgba(222,236,230,' + ((ph - 0.35) / 0.65 * 0.34).toFixed(2) + ')';
           for (let s_ = -2; s_ <= 2; s_++) { const bow = (s_ * s_) * 0.12; g.fillRect(Math.round((cx_ + tx * s_ * 0.5 - nx * bow) * 2) / 2, Math.round((cy_ + ty * s_ * 0.5 - ny * bow) * 2) / 2, 0.5, 0.5); }
         }
       }

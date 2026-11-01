@@ -37,12 +37,15 @@
       geoA: ['#5c5444', '#716751', '#877b5f', '#9b8e6e', '#ad9f7e', '#bdaf8f'],
       geoB: ['#4a3826', '#58432d', '#665035', '#745c3e', '#826947', '#907651'],
       flowers: [['#d23a2a', '#2a1a10'], ['#d23a2a', '#2a1a10'], ['#e04a30', '#3a2010'], ['#f2efe2', '#e8c24a']],
-      shrubs: [['cone', ['#16220f', '#233318', '#30441f', '#3e5527']], ['round', ['#1c2a14', '#2b3d1c', '#3a5024', '#4c642e']]],
-      hillS: 6.5, hillAmp: 3.4, mtnRise: 1.5, mtnR: 7, valley: 1.0, relief: 1.35, mContrast: 2.2, fineAmp: 0.3, fineS: 2.2,
+      // broom: a low green cushion in yellow flower, on the driest clay only
+      shrubs: [['cushion', ['#1e2a14', '#2d3d1c', '#3d5025', '#506530', '#e2c03c']]],
+      grav: ['#4a4236', '#5e5444', '#756a56', '#8c806a', '#a3977f', '#b8ad95'],
+      soil: ['#4d4536', '#5f5642', '#72684f', '#857a5d', '#988c6c', '#aa9e7c'],
+      hillS: 6.5, hillAmp: 3.4, mtnRise: 1.5, mtnR: 7, valley: 1.0, relief: 1.35, mContrast: 1.7, fineAmp: 0.3, fineS: 2.2,
       shadeAmp: 0.4, warm: 0.45, cool: 0.3, ao: 0.12,
-      moist: 0.34, dryT: 0.4, lushT: 0.66, mosaic: 1.0, mosaicS: 3.4, plough: 0.12, wetR: 1.6, stoneA: false, stoneB: false,
-      geoBase: -0.55, geoSlope: 0.9, geoCrest: 0.5, geoHollow: 0, geoDry: 0.25, geoNoise: 0.55, geoS: 2.4, geoRag: 0.45, geoCob: 0, kMode: 'noise',
-      tuft: 0.8, flower: 1.1, shrub: 1.6, shrubMode: 'fieldEdge',
+      moist: 0.34, dryT: 0.46, lushT: 0.68, mosaic: 0.75, mosaicS: 5.5, plough: 0.12, wetR: 1.6, stoneA: false, stoneB: false,
+      geoBase: -0.2, geoSlope: 0.9, geoCrest: 0.5, geoHollow: 0, geoDry: 0.45, geoNoise: 0.55, geoS: 4.2, geoRag: 0.34, geoCob: 0, kMode: 'noise',
+      tuft: 0.8, flower: 1.1, shrub: 0.35, shrubMode: 'dry', gravAmt: 0.45, soilGap: 0.12, cracks: true,
     },
     karst: {
       name: 'Balkan limestone karst', short: 'Karst', ref: 'The Slovenian Karst — grey limestone breaking through dry grass, dolines of red soil, juniper scrub',
@@ -50,14 +53,17 @@
       dry: ['#363a22', '#424728', '#4f542e', '#5c6135', '#696e3c', '#777b44', '#85884d', '#939556', '#a1a261'],
       lush: ['#1e351b', '#264221', '#2e5027', '#365e2c', '#3f6c32', '#497a39', '#548841', '#60954a', '#6da254'],
       geoA: ['#56554e', '#6c6a61', '#838075', '#99968a', '#aeab9e', '#c3c0b2'],
-      geoB: ['#4c2a1e', '#5d3424', '#6f3f2b', '#804a33', '#90563c', '#9e6347'],
+      geoB: ['#4b3226', '#5a3c2d', '#694735', '#78523e', '#865e48', '#936a53'],
       flowers: [['#f2efe2', '#e8c24a'], ['#9b6cc0', '#f0d060'], ['#f0cf4a', '#c8902a']],
-      shrubs: [['cone', ['#14200f', '#1f3016', '#2b401d', '#385124']], ['dotted', ['#1d2814', '#2d3a1b', '#3d4c22', '#4e5e2a', '#a8442c']], ['round', ['#1a2514', '#28361c', '#374824', '#475b2d']]],
-      hillS: 4.5, hillAmp: 1.7, mtnRise: 1.2, mtnR: 6, valley: 0.6, dolines: 1.5, relief: 1.0, mContrast: 1.6, fineAmp: 0.35, fineS: 1.8,
+      // creeping juniper: a flat blue-green mat in the limestone's cracks; winter savory, a grey cushion
+      shrubs: [['mat', ['#1a2a22', '#27392d', '#344a38', '#435c45', '#7b93b8']], ['cushion', ['#2a3122', '#3b432f', '#4d563c', '#626b4c']]],
+      grav: ['#4c4b45', '#62605a', '#7a7870', '#929086', '#aaa89c', '#c0beb2'],
+      soil: ['#544638', '#625343', '#70604e', '#7e6d5a', '#8c7a66', '#9a8772'],
+      hillS: 4.5, hillAmp: 1.7, mtnRise: 1.2, mtnR: 6, valley: 0.6, dolines: 1.5, relief: 1.0, mContrast: 1.4, fineAmp: 0.35, fineS: 1.8,
       shadeAmp: 0.36, warm: 0.4, cool: 0.32, ao: 0.1,
-      moist: 0.36, dryT: 0.36, lushT: 0.66, hollowK: 0.9,
-      geoBase: 0.02, geoSlope: 0.3, geoCrest: 1.2, geoHollow: 0, geoDry: 0.25, geoNoise: 1.0, geoS: 1.7, geoRag: 0.6, geoCob: 0.14, kMode: 'hollow', stoneA: true, stoneB: false, geoPit: 1.15,
-      tuft: 0.7, flower: 0.45, shrub: 0.8, shrubMode: 'rockEdge',
+      moist: 0.36, dryT: 0.42, lushT: 0.68, hollowK: 0.9,
+      geoBase: 0.14, geoSlope: 0.3, geoCrest: 1.2, yard: false, geoHollow: 0, geoDry: 0.25, geoNoise: 1.0, geoS: 3.0, geoRag: 0.45, geoCob: 0.12, kMode: 'hollow', stoneA: true, stoneB: false, geoPit: 1.15,
+      tuft: 0.7, flower: 0.45, shrub: 1.6, shrubMode: 'rockEdge', gravAmt: 1.0, soilGap: 0.75,
     },
     carpathian: {
       name: 'Carpathian foothills', short: 'Carpathian', ref: 'Hay meadows and wildflowers climbing toward the peaks, damp hollows, dark rock on the steeps',
@@ -67,42 +73,50 @@
       geoA: ['#33352f', '#41433b', '#505247', '#606255', '#717363', '#838574'],
       geoB: ['#3b2e1e', '#4a3a25', '#5a462d', '#6a5336', '#7a6040', '#8a6e4b'],
       flowers: [['#8b5cc6', '#f4f1e4'], ['#f4f1e4', '#e8c24a'], ['#f0d04a', '#c8902a'], ['#e7a2c0', '#f4f1e4'], ['#6a8ad8', '#f4f1e4']],
-      shrubs: [['cone', ['#0f1d14', '#18291c', '#213624', '#2c442d']], ['round', ['#17261a', '#223523', '#2d452c', '#3a5636']]],
-      hillS: 5.5, hillAmp: 2.4, mtnRise: 4.5, mtnR: 10, valley: 1.2, relief: 1.2, mContrast: 1.6, fineAmp: 0.3, fineS: 2.0,
+      shrubs: [],
+      grav: ['#36383a', '#46494a', '#585b5b', '#6b6e6c', '#7f827e', '#949691'],
+      soil: ['#3f3a2c', '#4b4535', '#57503e', '#635b47', '#6f6650', '#7b7159'],
+      hillS: 5.5, hillAmp: 2.4, mtnRise: 4.5, mtnR: 10, valley: 1.2, relief: 1.2, mContrast: 1.3, fineAmp: 0.3, fineS: 2.0,
       shadeAmp: 0.4, warm: 0.35, cool: 0.35, ao: 0.12,
       moist: 0.6, dryT: 0.3, lushT: 0.7, hollowK: 0.8,
-      geoBase: -0.85, geoSlope: 1.3, geoCrest: 0.3, geoHollow: 0, geoDry: 0, geoNoise: 0.4, geoS: 2.0, geoRag: 0.45, geoCob: 0.1, kMode: 'slope', stoneA: true, stoneB: false,
-      tuft: 1.0, flower: 1.7, shrub: 0.22, shrubMode: 'forestEdge',
+      geoBase: -0.85, geoSlope: 1.3, geoCrest: 0.3, geoHollow: 0, geoDry: 0, geoNoise: 0.4, geoS: 3.4, geoRag: 0.34, geoCob: 0.1, kMode: 'slope', stoneA: true, stoneB: false,
+      tuft: 1.0, flower: 1.7, shrub: 0, shrubMode: 'none', gravAmt: 0.4, soilGap: 0.3,
     },
     steppe: {
       name: 'Pannonian steppe', short: 'Steppe', ref: 'The Hortobágy puszta — flat pale grassland, white alkali flats in the shallow hollows',
       mid: ['#38401f', '#444c24', '#505a29', '#5d672f', '#6a7435', '#78813c', '#868d44', '#94994e', '#a2a559'],
       dry: ['#4a4628', '#58542e', '#676235', '#76703c', '#857e44', '#948c4d', '#a39a57', '#b1a862', '#beb56f'],
       lush: ['#22381c', '#2a4622', '#335428', '#3c632e', '#467134', '#517f3b', '#5c8c43', '#69994c', '#77a556'],
-      geoA: ['#6d6a5e', '#838072', '#9a9686', '#b0ac9b', '#c5c1b0', '#d7d3c3'],
+      geoA: ['#66625a', '#76726a', '#86827a', '#96928a', '#a4a098', '#b2aea5'],
       geoB: ['#5d5038', '#706143', '#83724f', '#95835b', '#a69467', '#b5a374'],
       flowers: [['#f2efe2', '#e8c24a'], ['#e8d050', '#b8902a'], ['#8e6ab8', '#f2efe2']],
-      shrubs: [['low', ['#2a3120', '#3a4329', '#4b5533', '#5e683e']]],
-      hillS: 9, hillAmp: 0.6, mtnRise: 0.8, mtnR: 5, valley: 0.4, relief: 0.9, mContrast: 1.6, fineAmp: 0.12, fineS: 3.0,
+      // feather grass: a fountain of pale blades with silver plumes, alone on the dry loess
+      shrubs: [['tussock', ['#3c3e26', '#5a5a34', '#7c7a46', '#a39f63', '#e4dfc6']]],
+      grav: ['#5a564a', '#6e6a5c', '#848070', '#9a9685', '#afab99', '#c3bfad'],
+      soil: ['#5c5440', '#6d644d', '#7e745a', '#8f8468', '#a09476', '#b0a484'],
+      hillS: 9, hillAmp: 0.6, mtnRise: 0.8, mtnR: 5, valley: 0.4, relief: 0.9, mContrast: 1.4, fineAmp: 0.12, fineS: 3.0,
       shadeAmp: 0.22, warm: 0.35, cool: 0.2, ao: 0.15,
-      moist: 0.3, dryT: 0.4, lushT: 0.72, hollowK: 0.3,
-      geoBase: -0.35, geoSlope: 0, geoCrest: 0, geoHollow: 2.4, geoDry: 0.2, geoNoise: 0.7, geoS: 2.6, geoRag: 0.55, geoCob: 0, kMode: 'noise', geoWetClear: 2.5, stoneA: false, stoneB: false,
-      tuft: 1.4, flower: 0.35, shrub: 0.08, shrubMode: 'dry',
+      moist: 0.3, dryT: 0.5, lushT: 0.74, hollowK: 0.3, mAmp: 0.36,
+      geoBase: 0.14, geoSlope: 0, geoCrest: 0, geoHollow: 2.4, geoDry: 1.0, geoNoise: 1.25, geoS: 4.6, geoRag: 0.4, geoCob: 0, kMode: 'noise', geoWetClear: 2.5, stoneA: false, stoneB: false,
+      tuft: 1.4, flower: 0.35, shrub: 0.8, shrubMode: 'dry', gravAmt: 0.6, soilGap: 0.5, cracks: true,
     },
     med: {
       name: 'Mediterranean garrigue', short: 'Garrigue', ref: 'Grey-green aromatic scrub on ochre soil, limestone on the crests, lavender in flower',
       mid: ['#2c331d', '#363d22', '#414827', '#4c542d', '#576033', '#636c3a', '#6f7842', '#7c844b', '#899055'],
       dry: ['#3b3d2a', '#474a31', '#545739', '#616441', '#6e714a', '#7b7e54', '#888a5e', '#959769', '#a2a374'],
       lush: ['#20371c', '#284421', '#305227', '#38602c', '#416e32', '#4b7c39', '#568a41', '#62974a', '#6fa354'],
-      geoA: ['#5e3f22', '#734d29', '#885d31', '#9c6c3b', '#ad7c47', '#bc8c55'],
+      geoA: ['#5c4b36', '#6d5a41', '#7e694c', '#8f7858', '#9f8764', '#ae9671'],
       geoB: ['#5b5a52', '#727067', '#89867b', '#9f9c8f', '#b3b0a2', '#c6c3b4'],
       flowers: [['#8a6cc4', '#c7b4e6'], ['#8a6cc4', '#c7b4e6'], ['#f2efe2', '#e8c24a'], ['#f0cf4a', '#c8902a']],
-      shrubs: [['round', ['#1a2414', '#29351c', '#384724', '#4a5a2f']], ['dotted', ['#1f2a16', '#2f3d1e', '#3f5027', '#516331', '#8a6cc4']], ['cone', ['#141e10', '#203018', '#2c3f1f', '#3a5027']]],
-      hillS: 5, hillAmp: 2.1, mtnRise: 2, mtnR: 7, valley: 0.9, relief: 1.15, mContrast: 1.8, fineAmp: 0.3, fineS: 2.0,
+      // the garrigue's own: rosemary and thyme in low grey-green cushions, lavender in flower
+      shrubs: [['cushion', ['#252c1f', '#36402c', '#4a563a', '#62704c', '#9c7fd2']], ['cushion', ['#2a3024', '#3c4433', '#515a45', '#6a735a']]],
+      grav: ['#56514a', '#6c665d', '#847d72', '#9b9488', '#b1aa9d', '#c5bfb1'],
+      soil: ['#5d5340', '#6d624c', '#7d7158', '#8d8064', '#9c8f71', '#ab9e7f'],
+      hillS: 5, hillAmp: 2.1, mtnRise: 2, mtnR: 7, valley: 0.9, relief: 1.15, mContrast: 1.55, fineAmp: 0.3, fineS: 2.0,
       shadeAmp: 0.38, warm: 0.55, cool: 0.25, ao: 0.12,
-      moist: 0.28, dryT: 0.42, lushT: 0.76, hollowK: 0.5,
-      geoBase: -0.12, geoSlope: 0.5, geoCrest: 0.8, geoHollow: 0, geoDry: 0.6, geoNoise: 0.7, geoS: 2.0, geoRag: 0.55, geoCob: 0.04, kMode: 'crest', stoneA: false, stoneB: true,
-      tuft: 0.6, flower: 0.85, shrub: 1.25, shrubMode: 'dry',
+      moist: 0.28, dryT: 0.5, lushT: 0.76, hollowK: 0.5, mAmp: 0.4,
+      geoBase: 0.06, geoSlope: 0.5, geoCrest: 0.8, geoHollow: 0, geoDry: 0.9, geoNoise: 0.7, geoS: 3.8, geoRag: 0.4, geoCob: 0.04, kMode: 'crest', stoneA: false, stoneB: true,
+      tuft: 0.6, flower: 0.85, shrub: 1.3, shrubMode: 'dry', gravAmt: 1.0, soilGap: 0.72,
     },
   };
   // the world the generator rolled says which landscape it is (the production proposal)
@@ -157,39 +171,63 @@
       const this_near = new Uint8Array(N);
       for (const b of (TX.blds || [])) for (let y = Math.max(0, b.y - 4); y < Math.min(H, b.y + b.s + 4); y++) for (let x = Math.max(0, b.x - 4); x < Math.min(W, b.x + b.s + 4); x++) this_near[y * W + x] = 1;
       const e5 = Eb, m5 = new Float32Array(N), g5 = new Float32Array(N), k5 = new Float32Array(N), v5 = new Float32Array(N), s5 = new Float32Array(N), p5 = new Uint8Array(N);
+      /* FOOD SITS DEEP IN THE GREEN: berries and orchards (FERTILE) are the land's richest
+         ground, so the grass round them is lush and no bare earth shows there; the woods
+         keep at least an ordinary sward. A cosmetic read of where the food already is. */
+      const dFert = TX.edt(Uint8Array.from(terr, t => t === T.FERTILE ? 1 : 0), W, H).map(Math.sqrt);
+      const tcM = new Uint8Array(N); for (const b of (TX.blds || [])) if (b.tc) for (let y = b.y; y < b.y + b.s; y++) for (let x = b.x; x < b.x + b.s; x++) if (x >= 0 && y >= 0 && x < W && y < H) tcM[y * W + x] = 1;
+      const dTC = TX.edt(tcM, W, H).map(Math.sqrt);
+      // pass 1: the raw moisture, broad (zones of several tiles, never a tile-sized checker)
+      const M0 = new Float32Array(N), SL = new Float32Array(N), HO = new Float32Array(N), FE = new Float32Array(N), PL = new Uint8Array(N);
+      const ms = P.mScale || 9;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, xm = Math.max(0, x - 1), xp = Math.min(W - 1, x + 1), ym = Math.max(0, y - 1), yp = Math.min(H - 1, y + 1);
-        const gx = (Eb[y * W + xp] - Eb[y * W + xm]) / (xp - xm || 1), gy = (Eb[yp * W + x] - Eb[ym * W + x]) / (yp - ym || 1), slope = Math.hypot(gx, gy);
-        const hollow = Ebig[i] - Eb[i], crest = -hollow, flat = 1 - cl(slope * 2.5);
-        const wet = Math.exp(-F.dWet[i] / (P.wetR || 3)), wood = Math.exp(-F.dForest[i] / 2);
-        let m = P.moist + wet * 0.5 + wood * 0.15 + hollow * (P.hollowK || 0.6) + (fbm(x / 4, y / 4, 711) - 0.5) * 0.3;
-        let fieldEdge = 0, plough = 0;
+        const gx = (Eb[y * W + xp] - Eb[y * W + xm]) / (xp - xm || 1), gy = (Eb[yp * W + x] - Eb[ym * W + x]) / (yp - ym || 1);
+        SL[i] = Math.hypot(gx, gy); HO[i] = Ebig[i] - Eb[i];
+        const wet = Math.exp(-F.dWet[i] / (P.wetR || 3)), wood = Math.exp(-F.dForest[i] / 2), food = Math.exp(-dFert[i] / 1.6);
+        let m = P.moist + wet * 0.5 + wood * 0.15 + food * 0.22 + HO[i] * (P.hollowK || 0.6)
+          + (fbm(x / ms, y / ms, 711) - 0.5) * (P.mAmp || 0.5) + (fbm(x / 4.5, y / 4.5, 713) - 0.5) * 0.1;
         if (P.mosaic) {
           /* FIELDS: the nearest of a jittered lattice, each field one crop — ripe wheat,
              green, or (a few) ploughed earth — so the land reads as a patchwork laid over
-             the hills; the boundaries between two fields are where the cypress may stand */
-          const S_ = P.mosaicS, cx = Math.floor(x / S_), cy = Math.floor(y / S_); let best = 1e9, sec = 1e9, val = 0.5, id = 0, id2 = 0;
+             the hills, a few large fields rather than a tile-sized checker */
+          const S_ = P.mosaicS, cx = Math.floor(x / S_), cy = Math.floor(y / S_); let best = 1e9, val = 0.5, id = 0;
           for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const qx = (cx + ox + 0.15 + 0.7 * hash(cx + ox, cy + oy, 721)) * S_, qy = (cy + oy + 0.15 + 0.7 * hash(cx + ox, cy + oy, 722)) * S_, d = (x + 0.5 - qx) ** 2 + (y + 0.5 - qy) ** 2;
-            if (d < best) { sec = best; id2 = id; best = d; val = hash(cx + ox, cy + oy, 723); id = (cy + oy) * 4096 + cx + ox; } else if (d < sec) { sec = d; id2 = (cy + oy) * 4096 + cx + ox; } }
-          if (val < (P.plough || 0) && !(this_near && this_near[i])) plough = 1 + ((hash(id, 0, 729) * 4) | 0);   // which way its furrows run
+            if (d < best) { best = d; val = hash(cx + ox, cy + oy, 723); id = (cy + oy) * 4096 + cx + ox; } }
+          if (val < (P.plough || 0) && !this_near[i] && dFert[i] > 3) PL[i] = 1 + ((hash(id, 0, 729) * 4) | 0);   // which way its furrows run
           m += P.mosaic * (val - 0.5) * (1 - wet);
-          const gap = Math.sqrt(sec) - Math.sqrt(best), lo = Math.min(id, id2), hi = Math.max(id, id2);
-          if (hash(lo, hi, 727) < 0.4) fieldEdge = Math.exp(-((gap / 0.45) ** 2));
         }
-        m = cl(m);
+        M0[i] = m;
+      }
+      // one soft pass: a zone's edge is a few tiles of change, never a step from tile to tile
+      const MB = blur(M0, W, H, 1);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x, slope = SL[i], hollow = HO[i], crest = -hollow, flat = 1 - cl(slope * 2.5);
+        let m = cl(MB[i]);
         if (P.mContrast) m = sm((m - 0.5) * P.mContrast + 0.5);
+        // round the food the grass is lush, whatever the zone; round the woods at least ordinary
+        const fz = sm((2.6 - dFert[i]) / 2.0), fw = sm((1.3 - F.dForest[i]) / 1.0) * 0.6;
+        m += (Math.max(m, P.lushT + 0.12) - m) * fz;
+        m += (Math.max(m, (P.dryT + P.lushT) / 2 + 0.04) - m) * fw;
+        const plough = PL[i];
         let g = P.geoBase + P.geoSlope * slope + P.geoCrest * crest + (P.geoHollow || 0) * Math.max(0, hollow) * flat + P.geoDry * (0.5 - m) + P.geoNoise * (fbm(x / P.geoS + 30, y / P.geoS + 9, 731) - 0.5);
         if (plough) g = Math.max(g, 0.95);
         // a doline's floor is red earth (where the Karst is farmed): bare ground, terra rossa
         const pit = P.geoPit ? PIT[i] * P.geoPit : 0;
         if (pit > 0.05) g = Math.max(g, Math.min(0.9, pit));
         g *= cl((F.dWet[i] - (P.geoWetClear || 1.2)) / 1.5);          // the bank stays green
+        g *= cl((dFert[i] - 1.6) / 2.0);                               // and so does the orchard's ground
+        if (P.yard !== false) g *= 0.35 + 0.65 * cl((dTC[i] - 1.5) / 2.5);   // and the hall's own yard is mostly sward (the karst's is rock)
         g = cl(g);
         const k = plough || pit > 0.4 ? 1 : P.kMode === 'hollow' ? sm(hollow * 2.2 + 0.35) : P.kMode === 'crest' ? sm(crest * 2.2 + 0.45) : P.kMode === 'slope' ? sm(0.7 - slope * 1.5) : fbm(x / 3 + 5, y / 3 + 50, 741);
-        m5[i] = m; g5[i] = g; k5[i] = k; p5[i] = plough;
+        m5[i] = cl(m); g5[i] = g; k5[i] = k; p5[i] = plough;
         v5[i] = cl(m * 1.1 - g * 0.9 + 0.15);
-        const edge = Math.exp(-(((g - 0.48) / 0.18) ** 2));
-        s5[i] = cl(P.shrubMode === 'rockEdge' ? edge * 1.2 + (1 - m) * 0.2 : P.shrubMode === 'dry' ? (1 - m) * 0.9 + edge * 0.5 : P.shrubMode === 'forestEdge' ? Math.exp(-F.dForest[i] / 1.6) * 1.2 + edge * 0.3 : P.shrubMode === 'fieldEdge' ? fieldEdge : P.shrubMode === 'moistEdge' ? Math.exp(-(((m - 0.55) / 0.12) ** 2)) * 0.8 : 0.3) * cl((F.dWet[i] - 1) / 1.5);
+        /* THE ARID PLANTS: only where the ground is truly dry, mostly at the edge of bare
+           earth (the karst's on the rock's edge); the core then sets them down in a few
+           tiny patches, gated again by a broad field, so most dry ground carries none */
+        const dry = cl((P.dryT + 0.12 - m) / 0.25), edge = Math.exp(-(((g - 0.5) / 0.16) ** 2));
+        s5[i] = cl(P.shrubMode === 'rockEdge' ? edge * (0.3 + dry * 0.7) : P.shrubMode === 'dry' ? dry * (0.35 + edge * 0.65) : 0)
+          * cl((F.dWet[i] - 1) / 1.5) * cl((dFert[i] - 2) / 2) * cl((F.dForest[i] - 1) / 1.5);
       }
       Object.assign(F, { e5, m5, g5, k5, v5, s5, p5 });
     },
