@@ -74,7 +74,10 @@ await new Promise(r => srv.listen(0, '127.0.0.1', r));
 const b = await pw.chromium.launch();
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
-await p.goto('http://127.0.0.1:' + srv.address().port + '/index.html', { waitUntil: 'domcontentloaded' });
+/* the CLASSIC painters are the rollback renderer and this suite measures their pixels;
+   a played world wears V4 by default (tests/terrain-v4.mjs holds that), so the page is
+   asked for the classic ground explicitly */
+await p.goto('http://127.0.0.1:' + srv.address().port + '/index.html?terrain=classic', { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 120000 });
 
 const out = await p.evaluate(() => {

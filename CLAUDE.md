@@ -231,6 +231,7 @@ node tests/title.mjs         # the night title, PUBLIC since build 106: every de
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
 node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
+node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -5110,6 +5111,54 @@ is weight 500, and below 40px (the landscape media query) weight 400 — a
 size-dependent glyph trap that must be re-checked in a screenshot whenever
 the logo's size or weight moves.
 
+**TERRAIN V4 — THE GROUND AND WATER OF A PLAYED WORLD** (`js/terrain.js`,
+`js/terrain-core.js` generated from `tools/terrain-core.src.js` by
+`tools/build-terrain-core.cjs` — edit the SOURCE and rebuild, the contract
+refuses a stale core; `tests/terrain-v4.mjs`; operator, 2026-11-01: "Fix v4,
+push to production… keep a rollback path to the prior renderer"). The core
+paints 8x8-tile chunks at 64 texels a tile in Web Workers, from fields built
+once per world (an SDF of the water, the shade window round the trees, the
+grass and the shore materials); `TerrainX` composites them by hooking the one
+`drawImage` of `R.terrainCache` in `R.draw`, clipped to the board, and then
+lets the cache draw OVER them. **The cache becomes a LAYER**: `setPainters(true)`
+stands the classic ground down (paintGround, paintWaterIn, blockShade,
+terrainEdges, grassCover, the shore layer, the living water, every decal but
+fern and leaf) and keeps what a player READS — the trees, the rock, the ore,
+the worn roads and a star's crater (`hueTint` keeps `wearPaint` and
+`craterPaint`). Three rules came out of shipping it. **THE RESET IS A CLEAR**
+(`R.drawTile` wrapped with `clearRect`): the classic painters reset a repainted
+tile by painting its ground opaque, so stood down nothing erased it and a
+felled wood kept its trees over the new ground (`andItsOwnLayerRepaintsAsItRebakes`,
+cache == rebake after fellings and quarries). **AN EDIT REBUILDS THE SHADE
+WINDOW ROUND ANY CHANGED TILE**, not just a wooded one (a dig into the water
+re-lays the trees on its bank), so the core's patched chunks equal a core
+built from the edited world (`anEditPaintsWhatARebuildWould`). **THE PURGE
+WATCHDOG READS THE RIM** (above, the black map). **WHO GETS IT** (`Terrain4`,
+the switch at the foot of js/terrain.js): a run founded or loaded; the title's
+demo keeps the classic painters. **THE WAY BACK NEEDS NO DEPLOY**: the kill
+switch `CFG.TERRAIN.V4 = false`; the link `?terrain=classic`, remembered on
+the device in `neo-terrain` until `?terrain=v4`; a browser without Worker,
+OffscreenCanvas or createImageBitmap; and a FAILURE — a worker `onerror` or an
+exception in the activation calls `Terrain4.fail`, which stands V4 down for
+the session and repaints the world with the classic painters at once. **The
+classic painters stay the rollback renderer, whole**, and the suites that
+measure THEIR pixels (land, wild-grass, worn-paths,
+frame-hotpath, gold-mine) load `?terrain=classic`; a new suite that reads
+ground pixels must say which renderer it measures. The V4 review's three
+fixes live in the core and the kit: **BEACHES TAPER BY DOMINANCE** (a shore
+pixel's material was an argmax nudged by fine noise, so where sand and grass
+weighed alike whole strips flipped into square teeth; the band now narrows by
+how strongly its material leads, to nothing against grass and to the
+neighbour's width against another material, wandering on a half-tile noise);
+**A MOUNTAIN PIECE IS CUT ON A WANDERING LINE AND INKED** (`MTN.CUT_ALLOW_*`,
+`CUT_WANDER`: the signed distance into the forbidden tiles, always inside the
+honesty bound, the cut's rim taking the piece's own darkest colour; coverage
+counts ROCK — a green skirt weighs `KIT_GREEN_W` 0.3 — and a tile needs
+`KIT_SHOW_MIN` 0.3 of it; the cut is decided per TILE where its 3x3 agree and
+per pixel only on a border, or the worst map's first bake rose from ~0.9s to
+~1.5s); **ORCHARDS ARE SCATTERED** (twelve variants per density, small and
+large trees mixed, never in rows).
+
 **A LIVING GROUND** (`tests/land.mjs`): the land used to be uniform green with
 hard seams and an even sprinkle of decoration, which read as a spreadsheet.
 Five layers fix it, all BAKED into the terrain cache — the frame loop pays
@@ -5471,10 +5520,13 @@ screenshot looks the way it does; the layers that live in a canvas BETWEEN
 frames are what vanish, and on an xlarge map those are the two biggest objects
 the renderer owns (the terrain cache and the shore layer, 16.5MB each, ~40MB
 of canvas in total).
-There is no event for it, so it is DETECTED: `cacheState()` samples four
-pixels of the cache — a baked cache is opaque everywhere, even the off-map rim
-is painted black — and a cache transparent at every one of them has been
-thrown away. **It answers 'ok' | 'lost' | 'unknown', and the third answer is
+There is no event for it, so it is DETECTED: `cacheState()` samples the four
+corners of the off-map RIM first (drawTile paints it opaque black under either
+ground renderer — under V4 the cache is a layer of trees and rock over open
+transparency, and sampling only the board's middle read a HEALTHY V4 cache as
+lost: a needless rebake every 30s and on every return to the tab, pinned by
+`aHealthyV4LayerIsNotAPurge`) and then four inside it, and a cache transparent
+at every one of them has been thrown away. **It answers 'ok' | 'lost' | 'unknown', and the third answer is
 the load-bearing one**: drawing a PNG into a canvas TAINTS it when the art is
 not same-origin (every `file://` page, and any future CDN), and `getImageData`
 then THROWS rather than answering. Reported as a boolean that read would come

@@ -69,7 +69,10 @@ const page = async () => {
   const p = await b.newPage({ viewport: { width: 600, height: 500 } });
   p.on('pageerror', e => console.log('PAGEERROR', String(e).slice(0, 200)));
   await classicWorlds(p);
-  await p.goto('file://' + join(root, 'index.html'));
+  /* the CLASSIC painters are the rollback renderer and this suite measures their pixels;
+     a played world wears V4 by default (tests/terrain-v4.mjs holds that), so the page is
+     asked for the classic ground explicitly */
+  await p.goto('file://' + join(root, 'index.html') + '?terrain=classic');
   await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 20000 });
   // the title's demo world holds its bake for the art (R.holdBake); the
   // checks that read the demo's map want it baked, as it always was
@@ -1436,7 +1439,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   const digRun = async () => {
     const p2 = await b.newPage({ viewport: { width: 430, height: 880 } });
     await classicWorlds(p2);
-    await p2.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+    await p2.goto('file://' + join(root, 'index.html') + '?terrain=classic', { waitUntil: 'domcontentloaded' });
     await p2.waitForTimeout(900);
     const v = await p2.evaluate(() => {
       G.newGame('freeze1', 'moderate', 'large');
@@ -1536,7 +1539,7 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   const port = srv.address().port;
   const p3 = await b.newPage({ viewport: { width: 430, height: 880 } });
   await classicWorlds(p3);
-  await p3.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'domcontentloaded' });
+  await p3.goto('http://127.0.0.1:' + port + '/index.html?terrain=classic', { waitUntil: 'domcontentloaded' });
   await p3.waitForTimeout(1200);
   const R_MIN_GUESS = 1500;
   const v = await p3.evaluate(() => {

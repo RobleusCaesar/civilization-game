@@ -151,6 +151,58 @@ let rulesV4 = null;
   });
   ck('andASavedWorldPaintsTheSameBytes', sl.on && sl.n >= 2 && sl.diff === 0, JSON.stringify(sl));
 
+  // 3b. the worn roads are still drawn: a road is quicker to walk, so a player must see it
+  const road = await p.evaluate(() => {
+    const W = CFG.W, H = CFG.H, terr = S.map.terrain, tl = CFG.TILE, run = [];
+    for (let y = 4; y < H - 4 && !run.length; y++) for (let x = 4; x < W - 12; x++) {
+      if ([...Array(7).keys()].every(i => terr[y * W + x + i] === T.GRASS && !Bld.at(x + i, y))) { for (let i = 0; i < 7; i++) run.push([x + i, y]); break; }
+    }
+    S.map.wear = S.map.wear || {};
+    for (const [x, y] of run) S.map.wear[y * W + x] = [30, S.day];
+    if (G._wearRoads !== undefined) G._wearRoads = run.length;
+    R.rebuildTerrain();
+    const g = R.terrainCache.getContext('2d'); let painted = 0, n = 0;
+    for (const [x, y] of run.slice(1, -1)) { const d = g.getImageData(x * tl, y * tl + 12, tl, 8).data; for (let i = 3; i < d.length; i += 4) { n++; if (d[i] > 0) painted++; } }
+    return { tiles: run.length, share: +(painted / Math.max(1, n)).toFixed(2), on: TerrainX.on, level: G.wearLevel ? G.wearLevel(run[3][0], run[3][1]) : null };
+  });
+  ck('theWornRoadsStillShow', road.on && road.tiles === 7 && road.share > 0.3, JSON.stringify(road));
+
+  /* 5b. the game's own layer over the V4 ground (trees, rock, roads, craters) is
+     repainted as a rebake would paint it: stood down, the classic ground reset
+     erased nothing, and a felled wood kept its trees over the new ground */
+  const ov = await p.evaluate(() => {
+    const W = CFG.W, terr = S.map.terrain, seen = S.map.seenTerrain;
+    const set = (i, t) => { terr[i] = t; if (seen) seen[i] = t; R.drawTileAt(i % W, (i / W) | 0); };
+    R.rebuildTerrain();
+    let felled = 0, quarried = 0;
+    for (let i = 0; i < terr.length && felled < 6; i++) if (terr[i] === T.FOREST) { set(i, T.STUMPS); felled++; }
+    for (let i = 0; i < terr.length && quarried < 3; i++) if (terr[i] === T.HILLS) { set(i, T.PEBBLES); quarried++; }
+    if (R.flushRepaint) R.flushRepaint();
+    const c = R.terrainCache, a = c.getContext('2d').getImageData(0, 0, c.width, c.height).data.slice();
+    R.rebuildTerrain();
+    const d = R.terrainCache.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let diff = 0; for (let i = 0; i < a.length; i++) if (a[i] !== d[i]) diff++;
+    return { on: TerrainX.on, felled, quarried, diff };
+  });
+  ck('andItsOwnLayerRepaintsAsItRebakes', ov.on && ov.felled === 6 && ov.quarried >= 1 && ov.diff === 0, JSON.stringify(ov));
+
+  /* 5c. the purge watchdog (R.cacheState) reads that layer right: it is mostly
+     open transparency over the V4 ground, and read in the board's middle a
+     HEALTHY cache answered "lost" — a needless rebake every 30s and on every
+     return to the tab. A cache whose pixels the OS took back still reads lost. */
+  const pg = await p.evaluate(() => {
+    R.rebuildTerrain();
+    const healthy = R.cacheState();
+    let rebaked = 0; const orig = R.reviveTerrain; R.reviveTerrain = function () { rebaked++; return orig.apply(this, arguments); };
+    R.cacheReturned();
+    const c = R.terrainCache, keep = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+    c.getContext('2d').clearRect(0, 0, c.width, c.height);
+    const purged = R.cacheState();
+    c.getContext('2d').putImageData(keep, 0, 0); R.reviveTerrain = orig;
+    return { on: TerrainX.on, healthy, rebakedOnReturn: rebaked, purged };
+  });
+  ck('aHealthyV4LayerIsNotAPurge', pg.on && pg.healthy === 'ok' && pg.rebakedOnReturn === 0 && pg.purged === 'lost', JSON.stringify(pg));
+
   // 2c. a worker that errors stands V4 down and the classic painters repaint the world
   const fb = await p.evaluate(() => {
     const w = TerrainX.workers[0];

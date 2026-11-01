@@ -42,7 +42,10 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
 const p = await b.newPage({ viewport: { width: 430, height: 880 } });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
-await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+/* the CLASSIC painters are the rollback renderer and this suite measures their pixels;
+   a played world wears V4 by default (tests/terrain-v4.mjs holds that), so the page is
+   asked for the classic ground explicitly */
+await p.goto('file://' + join(root, 'index.html') + '?terrain=classic', { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 
 const out = await p.evaluate(() => {

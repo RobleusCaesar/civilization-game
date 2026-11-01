@@ -446,18 +446,30 @@
       if (this._orig) return;
       this._orig = { paintGround: R.paintGround, paintWaterIn: R.paintWaterIn, blockShade: R.blockShade, terrainEdges: R.terrainEdges,
         grassCover: R.grassCover, hueTint: R.hueTint, meadowRoll: R.meadowRoll, drawDecal: R.drawDecal, buildShoreLayer: R.buildShoreLayer, blitShore: R.blitShore,
-        drawLivingWater: R.drawLivingWater, drawTileAt: R.drawTileAt, drawTilesAt: R.drawTilesAt };
+        drawLivingWater: R.drawLivingWater, drawTileAt: R.drawTileAt, drawTilesAt: R.drawTilesAt, drawTile: R.drawTile };
     },
     setPainters(on) {
       this._capture(); const O = this._orig, self = this;
       if (!on) { Object.assign(R, O); R.shoreLayer = null; R._layerKey = ''; this._painted = false; return; }
       if (this._painted) return;
       const noop = function () {}, keep = new Set(this.opt.keepDecals || ['fern', 'leaf']);
-      R.paintGround = noop; R.paintWaterIn = noop; R.blockShade = noop; R.terrainEdges = noop; R.grassCover = noop; R.hueTint = noop; R.meadowRoll = () => false;
+      R.paintGround = noop; R.paintWaterIn = noop; R.blockShade = noop; R.terrainEdges = noop; R.grassCover = noop; R.meadowRoll = () => false;
+      /* the hue wash goes, but the pass ALSO lays the worn roads and a fallen star's
+         ejecta, and those are things a player reads (a road is quicker to walk):
+         they stay, over the V4 ground */
+      R.hueTint = function (g, x, y, terr) { this.wearPaint(g, x, y, terr); if (this.craterPaint) this.craterPaint(g, x, y, false); };
       R.drawDecal = function (g, dx, dy, kind, px, rnd) { if (!keep.has(kind)) return; return O.drawDecal.call(this, g, dx, dy, kind, px, rnd); };
       // the game's traced shore layer is not drawn at all (and a full-map canvas is not kept for it)
       R.buildShoreLayer = function () { if (!this.shoreLayer || this.shoreLayer.width !== 1) { this.shoreLayer = document.createElement('canvas'); this.shoreLayer.width = this.shoreLayer.height = 1; } };
       R.blitShore = noop; R.drawLivingWater = noop;
+      /* THE RESET IS A CLEAR. The classic painters reset a repainted tile by painting its
+         ground OPAQUE (paintGround / paintWaterIn) and then compositing the rest over it;
+         stood down, nothing erased the tile, so a felled wood kept its trees and a road
+         its old paint over the V4 ground (3,212 stale bytes after six fellings and three
+         quarries). The cache is now a layer OVER the V4 ground, so its reset is
+         transparency — and a whole bake starts from a clear canvas, so the clear changes
+         nothing there and an edit paints exactly what a rebake would. */
+      R.drawTile = function (g, x, y) { const TL = CFG.TILE; g.clearRect(x * TL, y * TL, TL, TL); return O.drawTile.call(this, g, x, y); };
       R.drawTileAt = function () { self._pend = true; return O.drawTileAt.apply(this, arguments); };
       R.drawTilesAt = function () { self._pend = true; return O.drawTilesAt.apply(this, arguments); };
       this._painted = true;

@@ -4907,31 +4907,47 @@ const R = {
   _mtnRockW(px, o) {
     return (px[o + 1] > px[o] + 6 && px[o + 1] >= px[o + 2]) ? MTN.KIT_GREEN_W : 1;
   },
-  /* signed distance (px) from a world pixel into the tiles `bad` forbids:
-     positive inside a forbidden tile (to the nearest allowed one), negative
-     on allowed ground (to the nearest forbidden one), capped at a tile */
-  _mtnCutDist(wx, wy, bad) {
-    const TL = CFG.TILE, tx = Math.floor(wx / TL), ty = Math.floor(wy / TL), fx = wx - tx * TL + 0.5, fy = wy - ty * TL + 0.5;
+  /* a slow, smooth 0..1 wander for the cut (value noise, 14px cells, a finer octave) */
+  _mtnVn(x, y, c, salt) {
+    const u = x / c, v = y / c, i = Math.floor(u), j = Math.floor(v), a = u - i, b = v - j;
+    const sa = a * a * (3 - 2 * a), sb = b * b * (3 - 2 * b);
+    const h00 = this._lh(i, j, salt), h10 = this._lh(i + 1, j, salt), h01 = this._lh(i, j + 1, salt), h11 = this._lh(i + 1, j + 1, salt);
+    return (h00 + (h10 - h00) * sa) * (1 - sb) + (h01 + (h11 - h01) * sa) * sb;
+  },
+  _mtnWander(wx, wy) {
+    return this._mtnVn(wx, wy, 14, 81) * 0.75 + this._mtnVn(wx, wy, 5, 83) * 0.25;
+  },
+  /* the cut's answer for a whole TILE when it can be given without a pixel walk:
+     a tile whose 3x3 all agree is kept whole (all allowed: the distance is -TILE,
+     never past the allowance) or cut whole (all forbidden: +TILE, always past it);
+     only a tile on the border of the two needs the per-pixel distance. Exactly the
+     per-pixel answer, at a ninth of the bad() calls and none of the noise. */
+  _mtnCutTile(tx, ty, bad) {
     const here = bad(tx, ty);
+    let m = 0, mixed = false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const b = bad(tx + dx, ty + dy);
+      if (b) m |= 1 << ((dy + 1) * 3 + dx + 1);
+      if (b !== here) mixed = true;
+    }
+    return { st: mixed ? 2 : here ? 1 : 0, here, m };
+  },
+  /* signed distance (px) from a pixel at (fx, fy) inside its tile into the tiles
+     the cut forbids, from that tile's 3x3 read once (bit (dy+1)*3+(dx+1) set =
+     forbidden): positive inside a forbidden tile (to the nearest allowed one),
+     negative on allowed ground (to the nearest forbidden one), capped at a tile */
+  _mtnCutDistM(fx, fy, here, m) {
+    const TL = CFG.TILE;
     let best = TL;
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dy) continue;
-      if (bad(tx + dx, ty + dy) === here) continue;
+      if (!!(m & (1 << ((dy + 1) * 3 + dx + 1))) === here) continue;
       const ex = dx < 0 ? fx : dx > 0 ? TL - fx : 0, ey = dy < 0 ? fy : dy > 0 ? TL - fy : 0;
       const dd = Math.hypot(ex, ey);
       if (dd < best) best = dd;
     }
     return here ? best : -best;
-  },
-  /* a slow, smooth 0..1 wander for the cut (value noise, 14px cells, a finer octave) */
-  _mtnWander(wx, wy) {
-    const vn = (x, y, c, salt) => {
-      const u = x / c, v = y / c, i = Math.floor(u), j = Math.floor(v), a = u - i, b = v - j;
-      const sa = a * a * (3 - 2 * a), sb = b * b * (3 - 2 * b);
-      const h00 = this._lh(i, j, salt), h10 = this._lh(i + 1, j, salt), h01 = this._lh(i, j + 1, salt), h11 = this._lh(i + 1, j + 1, salt);
-      return (h00 + (h10 - h00) * sa) * (1 - sb) + (h01 + (h11 - h01) * sa) * sb;
-    };
-    return vn(wx, wy, 14, 81) * 0.75 + vn(wx, wy, 5, 83) * 0.25;
   },
   /* the piece's own outline colour: its darkest opaque pixel, read once */
   _mtnInk(pc, sp) {
@@ -5155,7 +5171,18 @@ const R = {
            the summit, and a piece that needed one torn was refused at load. */
         const tear = Math.max(2, Math.min(TEARMAX, Math.round(Math.min(pc.w, pc.h) * 0.17)));
         const bad = q.p.kind === 'fill' ? fillCut : banned, allow = q.p.kind === 'fill' ? MTN.CUT_ALLOW_FILL : MTN.CUT_ALLOW_BAN;
-        const cutAway = new Uint8Array(pc.w * pc.h);
+        const cutAway = new Uint8Array(pc.w * pc.h), tileCut = new Map();
+        let anyCut = false;
+        const cutAt = (wx, wy) => {
+          const tx = Math.floor(wx / TL), ty = Math.floor(wy / TL), tk = ty * 4096 + tx;
+          let c = tileCut.get(tk);
+          if (c === undefined) { c = this._mtnCutTile(tx, ty, bad); tileCut.set(tk, c); }
+          if (c.st !== 2) return c.st === 1;
+          const dist = this._mtnCutDistM(wx - tx * TL + 0.5, wy - ty * TL + 0.5, c.here, c.m);
+          if (dist > allow) return true;                         // past the allowance: cut whatever the wander
+          if (dist <= allow - MTN.CUT_WANDER) return false;      // short of the deepest wander: kept
+          return dist > allow - this._mtnWander(wx, wy) * MTN.CUT_WANDER;
+        };
         for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++) {
           const so = (sy * pc.w + sx) * 4;
           if (sp[so + 3] < 128) continue;
@@ -5173,14 +5200,14 @@ const R = {
              rounds the corners, and still never reaches more than the
              allowance past the ground it stands on (the honesty bound). */
           const wx = q.x + sx, wy = q.y + sy;
-          if (this._mtnCutDist(wx, wy, bad) > allow - this._mtnWander(wx, wy) * MTN.CUT_WANDER) { cutAway[sy * pc.w + sx] = 1; continue; }
+          if (cutAt(wx, wy)) { cutAway[sy * pc.w + sx] = 1; anyCut = true; continue; }
           const oo = (sy * sw + sx) * 4;
           d[oo] = sp[so]; d[oo + 1] = sp[so + 1]; d[oo + 2] = sp[so + 2]; d[oo + 3] = 255;
         }
         /* …and the cut is INKED as the art's own silhouette is: the surviving
            rim takes the piece's darkest colour, the ring inside it a shade,
            so a cut reads as where the rock ends, not where the sprite does */
-        {
+        if (anyCut) {
           const ink = this._mtnInk(pc, sp), edge = [];
           const ca = (x, y) => x >= 0 && y >= 0 && x < pc.w && y < pc.h && cutAway[y * pc.w + x];
           for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++) {
@@ -6449,8 +6476,14 @@ const R = {
     if (!c || !c.width || !c.height) return 'ok';            // nothing baked yet is not "lost"
     let g;
     try { g = c.getContext('2d'); } catch (e) { return 'unknown'; }
-    const w = c.width, h = c.height;
-    const pts = [[w >> 1, h >> 1], [w >> 2, h >> 2], [(w * 3) >> 2, h >> 1], [w >> 1, (h * 3) >> 2]];
+    const w = c.width, h = c.height, r = CFG.TILE >> 1;
+    /* the off-map RIM first: drawTile paints it opaque black whatever the ground
+       renderer, so it is the one sample a healthy cache always answers. Under the V4
+       ground the cache is a layer of trees, rock and roads over open transparency, and
+       the board's middle read as a purge on a healthy map — a needless rebake every
+       30s and on every return to the tab (tests/terrain-v4.mjs) */
+    const pts = [[r, r], [w - r, r], [r, h - r], [w - r, h - r],
+      [w >> 1, h >> 1], [w >> 2, h >> 2], [(w * 3) >> 2, h >> 1], [w >> 1, (h * 3) >> 2]];
     for (const [x, y] of pts) {
       let d;
       try { d = g.getImageData(x, y, 1, 1).data; } catch (e) { return 'unknown'; }
