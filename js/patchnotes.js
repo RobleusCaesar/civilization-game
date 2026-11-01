@@ -19,6 +19,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 125, date: '2026-11-01', title: 'A new look for the land',
+    items: [
+      'Water is brighter and clearer. You can see sand and stones through the shallows, small waves drift across open water, and sunlight sparkles on it.',
+      'Every pond has its own character: some are ringed with reeds and lilies, some are rocky, some are clear over pale sand, and some are deep.',
+      'Grass is crisper, with drier and lusher patches that blend into each other.',
+      'Mountains are drawn as one continuous mass of weathered stone with grassy ledges and foothills, and their edges no longer end in straight cuts.',
+      'Beaches narrow and fade into the grass instead of ending in square blocks of sand.',
+      'Orchards mix big and small trees and no longer stand in neat rows.',
+    ],
+  },
+  {
     build: 124, date: '2026-10-30', title: 'The stone gate and its drawbridge',
     items: [
       'A stone gate in a wall running north to south no longer looks like another tower. The wall ends in its round towers on either side, a cobbled road runs between them, and the wall walk crosses over the road on an arch.',

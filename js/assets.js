@@ -803,8 +803,8 @@ const Assets = {
      range. ONLY_ONE names a group from which at most ONE member may appear
      in any single region: the two small crags are the same rock at the same
      size and standing them side by side reads as a copy-paste. */
-  MTN_KIT_RARE: { 'peak-h': 0.45 },
-  MTN_KIT_ONLY_ONE: { 'peak-i': 'smallcrag', 'peak-j': 'smallcrag' },
+  MTN_KIT_RARE: { 'peak-e': 0.45 },
+  MTN_KIT_ONLY_ONE: { 'peak-o': 'smallcrag', 'peak-p': 'smallcrag' },
   setMtnPiece(kind, img, stem) {
     if (!img || !img.width || !img.height) return false;
     const div = this.MTN_KIT_DIV[kind] || 1;

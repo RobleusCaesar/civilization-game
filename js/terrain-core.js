@@ -1,5 +1,9 @@
-/* GENERATED from tc4.src.js by build.cjs — edit the source */
-/* TERRAIN COMPOSITOR v3 — THE PURE CORE.
+/* GENERATED from tools/terrain-core.src.js by tools/build-terrain-core.cjs — edit the source */
+/* THE TERRAIN CORE (V4) — THE PURE PART. Source of js/terrain-core.js:
+   edit THIS file and run `node tools/build-terrain-core.cjs`; the generated
+   file inlines the bilinear reads (`(X[k00] * w0 + X[k10] * w1 + X[k01] * w2 + X[k11] * w3)`) for the JIT, and
+   tests/terrain-v4.mjs refuses a js/terrain-core.js that is not this file
+   built. Loaded by js/terrain.js, which runs it in Web Workers.
    Everything here is arithmetic on arrays: no DOM, no canvas, no game globals.
    The same function runs inside a Web Worker (built from TCCore.toString())
    and on the main thread as the fallback, so both produce identical pixels.
@@ -502,17 +506,30 @@ function TCCore() {
             let col = 0;
             if (!pureLand) {
               const n3 = NZ3[t256], wm = (fWM[k00] * w0 + fWM[k10] * w1 + fWM[k01] * w2 + fWM[k11] * w3);
-              // which stretch of shore meets the water here (ragged where two meet)
-              const jit = (NZ8[t256] - 0.5) * 0.36 + (n3 - 0.5) * 0.06;
-              const sand = (fSAND[k00] * w0 + fSAND[k10] * w1 + fSAND[k01] * w2 + fSAND[k11] * w3) + jit, rock = (fROCK[k00] * w0 + fROCK[k10] * w1 + fROCK[k01] * w2 + fROCK[k11] * w3) - jit, mud = (fMUD[k00] * w0 + fMUD[k10] * w1 + fMUD[k01] * w2 + fMUD[k11] * w3) + jit * 0.5, grass = 0.5;
-              let m = 3, best = grass;
-              if (sand > best) { best = sand; m = 0; } if (rock > best) { best = rock; m = 1; } if (mud > best) { best = mud; m = 2; }
-              if (wm > 0.5) m = 4;                                      // a dug channel: a cut earth bank
+              // which stretch of shore meets the water here. The choice wanders on a slow noise
+              // (half a tile), never the fine one: thresholded fine noise flipped whole strips of
+              // the band between sand and grass, and every flip was a square tooth of beach.
+              const lo = NZ8[(((ty >> 2) & 255) << 8) | ((tx >> 2) & 255)] - 0.5;
+              const jit = lo * 0.24 + (n3 - 0.5) * 0.03;
+              const w0_ = (fSAND[k00] * w0 + fSAND[k10] * w1 + fSAND[k01] * w2 + fSAND[k11] * w3) + jit, w1_ = (fROCK[k00] * w0 + fROCK[k10] * w1 + fROCK[k01] * w2 + fROCK[k11] * w3) - jit, w2_ = (fMUD[k00] * w0 + fMUD[k10] * w1 + fMUD[k01] * w2 + fMUD[k11] * w3) + jit * 0.5, w4_ = wm > 0.2 ? 0.2 + wm * 1.1 : 0;
+              let m = 3, m2 = 3, best = 0.5, sec = -1;
+              if (w0_ > best) { sec = best; m2 = m; best = w0_; m = 0; } else if (w0_ > sec) { sec = w0_; m2 = 0; }
+              if (w1_ > best) { sec = best; m2 = m; best = w1_; m = 1; } else if (w1_ > sec) { sec = w1_; m2 = 1; }
+              if (w2_ > best) { sec = best; m2 = m; best = w2_; m = 2; } else if (w2_ > sec) { sec = w2_; m2 = 2; }
+              if (w4_ > best) { sec = best; m2 = m; best = w4_; m = 4; } else if (w4_ > sec) { sec = w4_; m2 = 4; }
               const n8 = NZ8[t256];
-              const bw = m === 0 ? (fSANDW[k00] * w0 + fSANDW[k10] * w1 + fSANDW[k01] * w2 + fSANDW[k11] * w3) : m === 1 ? 2.2 + n3 * 3.2 : m === 2 ? 1.2 + n3 * 1.8 : m === 4 ? 2.4 : 0.6 + n8 * 1.6;
+              const bw1 = m === 0 ? (fSANDW[k00] * w0 + fSANDW[k10] * w1 + fSANDW[k01] * w2 + fSANDW[k11] * w3) : m === 1 ? 2.2 + n3 * 3.2 : m === 2 ? 1.2 + n3 * 1.8 : m === 4 ? 2.4 : 0.6 + n8 * 1.6;
+              // a stretch of shore narrows as it loses to the next: to nothing where grass takes
+              // over (the beach tapers out), to the neighbour's own width where another material does
+              const dm = Math.min(1, (best - sec) / 0.2), e = dm * dm * (3 - 2 * dm);
+              let bw = bw1;
+              if (m !== 3) {
+                if (m2 === 3) bw = bw1 * e;
+                else { const bw2 = m2 === 0 ? (fSANDW[k00] * w0 + fSANDW[k10] * w1 + fSANDW[k01] * w2 + fSANDW[k11] * w3) : m2 === 1 ? 2.2 + n3 * 3.2 : m2 === 2 ? 1.2 + n3 * 1.8 : 2.4; bw = bw1 * (0.5 + 0.5 * e) + bw2 * (0.5 - 0.5 * e); }
+              }
               if (s < bw + (n3 - 0.6) * 2) {
                 if (m === 0) {
-                  if (s < 0.9 + n8 * 1.1) { const kk = 1 + ((n8 + bd * 0.5) * 2 | 0); col = PC.wet[kk < 0 ? 0 : kk > 2 ? 2 : kk]; }
+                  if (s < Math.min(0.9 + n8 * 1.1, bw * 0.6)) { const kk = 1 + ((n8 + bd * 0.5) * 2 | 0); col = PC.wet[kk < 0 ? 0 : kk > 2 ? 2 : kk]; }
                   else { let kk = 2 + Math.floor((n8 * 0.8 + n3 * 0.2 - 0.5) * 3 + bd * 0.6); if (s > bw - 1.6 + (n3 - 0.5)) kk -= 2; col = PC.sand[kk < 0 ? 0 : kk > 5 ? 5 : kk]; }
                 } else if (m === 1) {
                   const c = CL[t512];                                   // cobbles: lit tops, dark joints

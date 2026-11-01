@@ -60,6 +60,7 @@ const PATHS = [
   [/^assets\/icons\/cards\//, ['draft-cards.mjs', 'origin-cards.mjs', 'art-pipeline.mjs']],
   [/^assets\/(music|sfx)\//, ['audio.mjs']],
   [/^assets\//, ['art-pipeline.mjs', 'animal-art.mjs', 'build-stages.mjs', 'fort-states.mjs', 'land.mjs', 'mountain.mjs']],
+  [/^tools\/(terrain-core\.src\.js|build-terrain-core\.cjs)$/, ['terrain-v4.mjs']],
   [/^tools\//, ['patch-notes.mjs']],
   [/^\.github\//, []],
 ];
@@ -74,7 +75,8 @@ const fileGlobals = (s) => {
 };
 const NO_GLOBALS = { 'js/deckfx.js': ['deck-fx.mjs'], 'js/deckfx-army.js': ['deck-army.mjs'],
   'js/deckfx-growth.js': ['deck-growth.mjs'], 'js/deckfx-rival.js': ['deck-rival.mjs'],
-  'js/deckfx-town.js': ['deck-town.mjs'], 'js/dev.js': ['art-pipeline.mjs'] };
+  'js/deckfx-town.js': ['deck-town.mjs'], 'js/dev.js': ['art-pipeline.mjs'],
+  'js/terrain.js': ['terrain-v4.mjs'], 'js/terrain-core.js': ['terrain-v4.mjs'] };
 
 // the member each changed line sits in: the nearest method or key above it
 // at the object literal's own indentation (two spaces — the house style)

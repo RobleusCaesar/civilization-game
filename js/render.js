@@ -634,10 +634,14 @@ const MTN = {
      in the kit is five tiles wide, so a tail narrower than that, or the
      stair a diagonal edge leaves under a piece's foot, can never take one
      — such cells are bare by the referee's ruling (buildMtnLayer). */
-  KIT_SHOW_MIN: 0.15,
+  KIT_SHOW_MIN: 0.3,     // share of a tile that must be ROCK (green skirts count KIT_GREEN_W) before the kit has dressed it
+  KIT_GREEN_W: 0.3,
   KIT_LOW: 1,            // 0 drops the rolling/foothill bands entirely
   KIT_PAD_UP: 10,         // tiles of northward headroom a drawn peak may use
-  KIT_TEAR: 16,           // px of the piece's own left/right/bottom edge torn away
+  KIT_TEAR: 16,
+  CUT_ALLOW_FILL: 4,     // px a fill piece's cut edge may stand past honest ground at most (well inside OUT_MAX)
+  CUT_ALLOW_BAN: 3,      // px a piece may reach into the shore gap it is banned from
+  CUT_WANDER: 10,        // px the cut edge wanders INWARD, on a slow smooth noise, so it is never a ruler line           // px of the piece's own left/right/bottom edge torn away
   KIT_COVER_MIN: 0.5,    // share of a tile the rock must hide before a unit on it is ghosted
   KIT_SHORE_GAP: 1,      // tiles of grass kept between the art and any water
   KIT_HUG_DROP: 20,      // px a low piece is drawn BELOW the rock it hugs, so the mountain’s bottom edge never shows beside it
@@ -4899,6 +4903,48 @@ const R = {
      and it stands on the bare tile's own row or just below it. The scores
      are tile-grid sums precomputed once per piece, so a fill costs a few
      thousand additions, not a pixel walk per candidate. */
+  /* how much of a pixel is ROCK: green (a skirt of grass on the piece) is ground */
+  _mtnRockW(px, o) {
+    return (px[o + 1] > px[o] + 6 && px[o + 1] >= px[o + 2]) ? MTN.KIT_GREEN_W : 1;
+  },
+  /* signed distance (px) from a world pixel into the tiles `bad` forbids:
+     positive inside a forbidden tile (to the nearest allowed one), negative
+     on allowed ground (to the nearest forbidden one), capped at a tile */
+  _mtnCutDist(wx, wy, bad) {
+    const TL = CFG.TILE, tx = Math.floor(wx / TL), ty = Math.floor(wy / TL), fx = wx - tx * TL + 0.5, fy = wy - ty * TL + 0.5;
+    const here = bad(tx, ty);
+    let best = TL;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      if (bad(tx + dx, ty + dy) === here) continue;
+      const ex = dx < 0 ? fx : dx > 0 ? TL - fx : 0, ey = dy < 0 ? fy : dy > 0 ? TL - fy : 0;
+      const dd = Math.hypot(ex, ey);
+      if (dd < best) best = dd;
+    }
+    return here ? best : -best;
+  },
+  /* a slow, smooth 0..1 wander for the cut (value noise, 14px cells, a finer octave) */
+  _mtnWander(wx, wy) {
+    const vn = (x, y, c, salt) => {
+      const u = x / c, v = y / c, i = Math.floor(u), j = Math.floor(v), a = u - i, b = v - j;
+      const sa = a * a * (3 - 2 * a), sb = b * b * (3 - 2 * b);
+      const h00 = this._lh(i, j, salt), h10 = this._lh(i + 1, j, salt), h01 = this._lh(i, j + 1, salt), h11 = this._lh(i + 1, j + 1, salt);
+      return (h00 + (h10 - h00) * sa) * (1 - sb) + (h01 + (h11 - h01) * sa) * sb;
+    };
+    return vn(wx, wy, 14, 81) * 0.75 + vn(wx, wy, 5, 83) * 0.25;
+  },
+  /* the piece's own outline colour: its darkest opaque pixel, read once */
+  _mtnInk(pc, sp) {
+    if (pc._ink) return pc._ink;
+    let best = [40, 32, 26], lum = 1e9;
+    if (sp) for (let o = 0; o < sp.length; o += 4) {
+      if (sp[o + 3] < 128) continue;
+      const l = sp[o] * 3 + sp[o + 1] * 6 + sp[o + 2];
+      if (l < lum) { lum = l; best = [sp[o], sp[o + 1], sp[o + 2]]; }
+    }
+    pc._ink = best;
+    return best;
+  },
   _mtnTileGrid(pc) {
     if (pc._tg) return pc._tg;
     const TL = CFG.TILE, sp = Assets.mtnPx(pc), bb = pc.bb;
@@ -4910,9 +4956,11 @@ const R = {
       g.set(key, (g.get(key) || 0) + v);
     };
     for (let sy = bb.y0; sy <= bb.y1; sy++) for (let sx = bb.x0; sx <= bb.x1; sx++) {
-      if (sp && sp[(sy * pc.w + sx) * 4 + 3] < 128) continue;
-      // the torn flanks survive about half the time (drawMtnChained's tear)
-      add(sx, sy, Math.min(sx, pc.w - 1 - sx) < tear ? 0.5 : 1);
+      const o = (sy * pc.w + sx) * 4;
+      if (sp && sp[o + 3] < 128) continue;
+      // the torn flanks survive about half the time (drawMtnChained's tear);
+      // a green skirt is ground, not rock, and counts for KIT_GREEN_W of a pixel
+      add(sx, sy, (Math.min(sx, pc.w - 1 - sx) < tear ? 0.5 : 1) * (sp ? this._mtnRockW(sp, o) : 1));
     }
     const cells = [];
     for (const [key, v] of g) {
@@ -4988,7 +5036,9 @@ const R = {
             // tear or the waterline cut, so a bare pass of the threshold can
             // land a hair short once they have taken their bite
             const solid = Math.min(1, (hits.get(tk) || 0) / (TL * TL) + hitsTarget / (TL * TL));
-            const sc = gain + solid - 1.5 * wet / (TL * TL) - 0.8 * lie / (TL * TL) - 0.02 * (pc.w * pc.h) / (TL * TL);
+            /* a piece that FITS the gap beats a big one trimmed to the tiles: every
+               trim is a cut edge, so lying over the meadow and sheer size both cost */
+            const sc = gain + solid - 1.5 * wet / (TL * TL) - 2.2 * lie / (TL * TL) - 0.07 * (pc.w * pc.h) / (TL * TL);
             if (sc > bestS) { bestS = sc; best = { pc, tx, fy }; }
           }
       }
@@ -5104,6 +5154,8 @@ const R = {
            window onto the grass between them. The top is never torn: that is
            the summit, and a piece that needed one torn was refused at load. */
         const tear = Math.max(2, Math.min(TEARMAX, Math.round(Math.min(pc.w, pc.h) * 0.17)));
+        const bad = q.p.kind === 'fill' ? fillCut : banned, allow = q.p.kind === 'fill' ? MTN.CUT_ALLOW_FILL : MTN.CUT_ALLOW_BAN;
+        const cutAway = new Uint8Array(pc.w * pc.h);
         for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++) {
           const so = (sy * pc.w + sx) * 4;
           if (sp[so + 3] < 128) continue;
@@ -5111,18 +5163,43 @@ const R = {
             const dd = q.p.front ? Math.min(sx, pc.w - 1 - sx, pc.h - 1 - sy) : Math.min(sx, pc.w - 1 - sx);
             if (dd < tear && this._lh(((q.x + sx) / 5) | 0, ((q.y + sy) / 5) | 0, 61) > (dd + 0.5) / tear) continue;
           }
-          /* NO STRAIGHT LINES, AT THE BAN EITHER. Asked at the pixel's own
-             tile the cut fell exactly on the tile boundary — a ruler line
-             down the rock wherever a piece met the water. The sample point
-             is jittered in 6px blocks, so the edge tears like the flanks do. */
-          const jx = (this._lh(((q.x + sx) / 6) | 0, ((q.y + sy) / 6) | 0, 67) - 0.5) * 14;
-          const jy = (this._lh(((q.x + sx) / 6) | 0, ((q.y + sy) / 6) | 0, 71) - 0.5) * 14;
-          const bx = ((q.x + sx + jx) / TL) | 0, by = ((q.y + sy + jy) / TL) | 0;
-          const ox0 = ((q.x + sx) / TL) | 0, oy0 = ((q.y + sy) / TL) | 0;
-          if (q.p.kind === 'fill') { if (fillCut(bx, by) || fillCut(ox0, oy0)) continue; }
-          else if (banned(bx, by) || banned(ox0, oy0)) continue;
+          /* NO STRAIGHT LINES WHERE ROCK MEETS GROUND IT MAY NOT STAND ON.
+             The cut was a test of the tile under the pixel, jittered in 6px
+             blocks: a ruler line down the tile column with stair-steps on it,
+             and nothing to say it was the rock's edge (operator, on the V4
+             review: "unnaturally straight boundaries"). It is a DISTANCE now
+             — how far the pixel stands into the forbidden tiles, signed — so
+             the edge wanders on a smooth slow noise (MTN.CUT_WANDER inward),
+             rounds the corners, and still never reaches more than the
+             allowance past the ground it stands on (the honesty bound). */
+          const wx = q.x + sx, wy = q.y + sy;
+          if (this._mtnCutDist(wx, wy, bad) > allow - this._mtnWander(wx, wy) * MTN.CUT_WANDER) { cutAway[sy * pc.w + sx] = 1; continue; }
           const oo = (sy * sw + sx) * 4;
           d[oo] = sp[so]; d[oo + 1] = sp[so + 1]; d[oo + 2] = sp[so + 2]; d[oo + 3] = 255;
+        }
+        /* …and the cut is INKED as the art's own silhouette is: the surviving
+           rim takes the piece's darkest colour, the ring inside it a shade,
+           so a cut reads as where the rock ends, not where the sprite does */
+        {
+          const ink = this._mtnInk(pc, sp), edge = [];
+          const ca = (x, y) => x >= 0 && y >= 0 && x < pc.w && y < pc.h && cutAway[y * pc.w + x];
+          for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++) {
+            const oo = (sy * sw + sx) * 4;
+            if (d[oo + 3] < 128) continue;
+            if (ca(sx - 1, sy) || ca(sx + 1, sy) || ca(sx, sy - 1) || ca(sx, sy + 1)) edge.push(sy * pc.w + sx);
+          }
+          const isEdge = new Uint8Array(pc.w * pc.h);
+          for (const e of edge) isEdge[e] = 1;
+          for (const e of edge) { const oo = (((e / pc.w) | 0) * sw + (e % pc.w)) * 4; d[oo] = ink[0]; d[oo + 1] = ink[1]; d[oo + 2] = ink[2]; }
+          for (const e of edge) {
+            const ex = e % pc.w, ey = (e / pc.w) | 0;
+            for (const [nx, ny] of [[ex - 1, ey], [ex + 1, ey], [ex, ey - 1], [ex, ey + 1]]) {
+              if (nx < 0 || ny < 0 || nx >= pc.w || ny >= pc.h) continue;
+              const k = ny * pc.w + nx, oo = (ny * sw + nx) * 4;
+              if (isEdge[k] || cutAway[k] || d[oo + 3] < 128) continue;
+              isEdge[k] = 2; d[oo] = (d[oo] * 0.78) | 0; d[oo + 1] = (d[oo + 1] * 0.78) | 0; d[oo + 2] = (d[oo + 2] * 0.8) | 0;
+            }
+          }
         }
         // the ground shadow, cast from what actually survived the tear
         const len = MTN.KIT_SHADOW | 0;
@@ -5152,7 +5229,7 @@ const R = {
         for (let sy = 0; sy < pc.h; sy++) for (let sx = 0; sx < pc.w; sx++)
           if (d[(sy * sw + sx) * 4 + 3] >= 128) {
             const k = (((q.y + sy) / TL) | 0) * W + (((q.x + sx) / TL) | 0);
-            hits.set(k, (hits.get(k) || 0) + 1);
+            hits.set(k, (hits.get(k) || 0) + this._mtnRockW(d, (sy * sw + sx) * 4));
           }
       }
       /* TRIM THE STRIP TO ITS ROCK. Each piece is authored as a sticker with

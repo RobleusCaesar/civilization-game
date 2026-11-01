@@ -15,8 +15,13 @@ const T = {
 };
 
 const CFG = {
+  /* THE TERRAIN RENDERER (js/terrain.js, TERRAIN V4 in CLAUDE.md). V4 paints the
+     ground and water of a played world in Web Workers; false is the KILL SWITCH
+     back to the classic painters, which stay whole as the rollback renderer. A
+     device can also take the classic one with ?terrain=classic (?terrain=v4 undoes it). */
+  TERRAIN: { V4: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 65,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 66,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND

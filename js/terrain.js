@@ -1,12 +1,13 @@
-/* TERRAIN COMPOSITOR v3 — THE MAIN-THREAD SIDE.
-   Needs tc-core.js loaded first (TCCore, TCWorkerMain).
+/* THE TERRAIN COMPOSITOR (V4) — THE MAIN-THREAD SIDE. Needs js/terrain-core.js
+   (TCCore, TCWorkerMain) loaded first; see TERRAIN V4 in CLAUDE.md.
    The main thread does only what needs the page: it rasterises the game's
    traced coastline into a signed distance field, measures the tile fields,
    draws the trees' shade mask with the game's own stamps, and hands all of it
-   to a pool of workers that compose the chunks. Chunks come back as bitmaps;
-   until one arrives, a quarter-resolution thumbnail of it (or a flat tile
-   colour) stands in. The water's movement is a light per-frame layer driven by
-   data each chunk returns: caustic strength, glint points, swash points. */
+   to a pool of workers that compose the ground in 8x8-tile chunks. Chunks come
+   back as bitmaps; until one arrives a quarter-size thumbnail of it (or a flat
+   tile colour) stands in. The water's movement is a light per-frame layer
+   driven by masks each chunk returns. It draws ONLY: S is never written, and
+   every rule (paths, placement, collision, fog) still reads the tile map. */
 (function () {
   const TS = 64, CH = 8, SDF_F = 16, N = 512, TL = 32, LT = 16;   // LT: thumbnail px per tile
   const TX = window.TerrainX = {
@@ -411,8 +412,11 @@
         if (x1 >= 0) near(x0, y0, x1 + 1, y1 + 1, 12); }
       for (const [x, y] of changed) near(x, y, x, y, 3);
       for (const b of bChanged.concat(gone)) { const s_ = b.s || Bld.size(b); near(b.x, b.y, b.x + s_, b.y + s_, 2); }
-      const WOODY = new Set([T.FOREST, T.HILLS, T.PEBBLES, T.RUIN, T.STUMPS]);
-      const woody = changed.filter(([, , a, b]) => WOODY.has(a) || WOODY.has(b));
+      /* the shade mask is the game's own wood and rock stamps, and a stand lays its
+         trees out against the ground round it — so ANY changed tile can move the
+         shade beside it (a dig into the water re-laid the trees on its bank), not
+         just a felled or quarried one; the window is the changed tiles and a margin */
+      const woody = changed;
       if (woody.length) { let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1; for (const [x, y] of woody) { x0 = Math.min(x0, x - 2); y0 = Math.min(y0, y - 2); x1 = Math.max(x1, x + 3); y1 = Math.max(y1, y + 3); } const [sx, sy, w, h] = this.buildShade([x0, y0, x1, y1]); const d = new Uint8Array(w * h); for (let y = 0; y < h; y++) d.set(this.shade.subarray((sy + y) * this.shW + sx, (sy + y) * this.shW + sx + w), y * w); patch.shadeWin = [sx, sy, w, h, d]; }
       this.sendPatch(patch);
       for (const k of hit) { this.dirty.add(k); this.gen.set(k, (this.gen.get(k) || 0) + 1); this.pending.delete(k); }
@@ -513,5 +517,74 @@
       this.hook();
       this.on = true; this.ready = true;
     },
+  };
+})();
+
+
+/* THE SWITCH: V4 FOR A PLAYED WORLD, TODAY'S PAINTERS FOR EVERYTHING ELSE, AND A
+   WAY BACK THAT NEEDS NO DEPLOY (operator, on shipping V4: "keep a rollback path
+   to the prior renderer in case unexpected issues appear").
+   - A run founded or loaded gets the V4 ground; the title's demo world keeps the
+     classic painters (it stands behind an opaque painting anyway).
+   - CLASSIC is one of four things: the kill switch CFG.TERRAIN.V4 = false; the
+     link ?terrain=classic (remembered on the device in neo-terrain until
+     ?terrain=v4); a browser without Web Workers, OffscreenCanvas or
+     createImageBitmap; or a FAILURE — a worker that errors, or an exception in
+     the activation — which stands V4 down for the session and repaints the
+     world with the classic painters at once, so a fault costs a look, never a map.
+   - The classic painters stay the rollback renderer, whole: the contracts that
+     pin them load the page with ?terrain=classic (tests/terrain-v4.mjs holds V4). */
+(function () {
+  if (!window.TerrainX || typeof TCCore === 'undefined') return;
+  const TX = window.TerrainX, KEY = 'neo-terrain';
+  const ls = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} } };
+  try {
+    const q = new URLSearchParams(location.search).get('terrain');
+    if (q === 'classic') ls.set(KEY, 'classic');
+    else if (q === 'v4' || q === 'new') ls.set(KEY, null);
+  } catch (e) {}
+  const T4 = window.Terrain4 = {
+    failed: '',
+    capable() { return typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap === 'function'; },
+    // the one answer to "does a played world get V4 now"
+    wanted() {
+      return !!(typeof CFG !== 'undefined' && CFG.TERRAIN && CFG.TERRAIN.V4) && !this.failed && ls.get(KEY) !== 'classic' && this.capable();
+    },
+    get on() { return !!(TX.on && TX.ready); },
+    fail(e) {
+      if (this.failed) return;
+      this.failed = String((e && e.message) || e || 'error');
+      try { console.warn('terrain V4 stood down:', this.failed); } catch (x) {}
+      try { TX.deactivate(); if (typeof S !== 'undefined' && S && S.map) R.rebuildTerrain(); } catch (x) {}
+    },
+  };
+  let inDemo = false;
+  if (window.Screens && Screens.ensureDemo) {
+    const ensureDemo = Screens.ensureDemo;
+    Screens.ensureDemo = function () { inDemo = true; try { return ensureDemo.apply(this, arguments); } finally { inDemo = false; } };
+  }
+  // the painters are chosen BEFORE the world is made, so its first bake is the right one
+  const before = () => { const on = T4.wanted() && !inDemo; TX.opt = TX.opt || {}; TX.setPainters(on); return on; };
+  const after = on => {
+    if (!on) { TX.deactivate(); return; }
+    const p = TX.activate();
+    if (p && p.catch) p.catch(e => T4.fail(e));
+  };
+  for (const name of ['newGame', 'loadJSON']) {
+    const orig = G[name];
+    G[name] = function () {
+      const on = before();
+      let r;
+      try { r = orig.apply(this, arguments); } catch (e) { TX.setPainters(false); throw e; }
+      try { after(on); } catch (e) { T4.fail(e); }
+      return r;
+    };
+  }
+  // a worker that throws stands V4 down rather than leaving a hole in the ground
+  const startW = TX.startWorkers;
+  TX.startWorkers = function () {
+    startW.apply(this, arguments);
+    for (const w of this.workers) w.onerror = ev => T4.fail('worker: ' + ((ev && ev.message) || 'error'));
   };
 })();

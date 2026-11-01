@@ -941,7 +941,11 @@ const Sprites = {
     const h = (cx * 73856093 ^ cy * 19349663 ^ (seed | 1) * 83492791) >>> 0;
     const foot = cy + rr + 3;
     const fits = a2 => { const ax = cx - (a2.width >> 1), ay = foot - a2.height; return ax >= 0 && ay >= 0 && ax + a2.width <= 32 && foot <= 32; };
-    let art = A.treePiece(style, level === 2 ? 8 : 8, h);
+    /* MIXED SIZES (operator, on the V4 review: "several nearly straight rows of
+       similar trees"): every slot took the large piece, so a wood of them was one
+       silhouette repeated. The hash now picks a small tree for about a third of
+       the open orchard's slots and a fifth of the dense core's. */
+    let art = A.treePiece(style, ((h >>> 7) % (level === 2 ? 5 : 3)) === 0 ? 4 : 8, h);
     if (art && level !== 2 && !fits(art)) art = A.treePiece(style, 4, h);
     if (art && (level === 2 || fits(art))) {
       p.g.drawImage(art, cx - (art.width >> 1), foot - art.height);
@@ -985,10 +989,14 @@ const Sprites = {
     // the DENSE count is measured, not guessed: a fully-enclosed tile of a
     // thicket must close up like the rock core does, or the heart of an
     // orchard reads as open ground you could walk through
+    /* …and SCATTERED, NOT BANDED: the open tiles kept every tree in a 13px
+       band across the middle of the tile, so a run of orchard tiles lined its
+       trees up row on row. The band is most of the tile now; a tree whose
+       crown would not fit falls back to the small piece (fertPiece). */
     const nt = level === 2 ? 38 + (r() * 8 | 0) : level === 1 ? 11 + (r() * 4 | 0) : 2 + (r() * 2 | 0);
-    const span = level === 2 ? 34 : 18, base = level === 2 ? -1 : 7;
+    const span = level === 2 ? 34 : 24, base = level === 2 ? -1 : 4;
     for (let i = 0; i < nt; i++)
-      fruitTree(base + (r() * span) | 0, (level === 2 ? -1 : 8) + (r() * (level === 2 ? 34 : 13)) | 0,
+      fruitTree(base + (r() * span) | 0, (level === 2 ? -1 : 4) + (r() * (level === 2 ? 34 : 22)) | 0,
         seed + i * 23 + 11);
     f(13, 27, 2, 1, AP.berry[1]); f(27, 12, 2, 1, AP.berry[1]);     // windfall fruit
   }
@@ -1052,9 +1060,10 @@ const Sprites = {
     for (let i = 0; i < n; i++) a2.push(tile(p => (i & 1)
       ? berryTile(p, base + i * 47, lvl) : orchardTile(p, base + i * 47, lvl)));
     return a2; };
-  Sprites.terrain[T.FERTILE] = fertSet(17, 0, 6);
-  Sprites.terrainMed[T.FERTILE] = fertSet(311, 1, 6);
-  Sprites.terrainFull[T.FERTILE] = fertSet(577, 2, 6);
+  // twelve of each, not six: with six a run of orchard tiles repeated its layout
+  Sprites.terrain[T.FERTILE] = fertSet(17, 0, 12);
+  Sprites.terrainMed[T.FERTILE] = fertSet(311, 1, 12);
+  Sprites.terrainFull[T.FERTILE] = fertSet(577, 2, 12);
 
   // depleted terrain: felled forest, quarried-out hills, spent soil, ruins
   // a felled stump: lit ring-grain top, a bark rim, an axe notch, ground shadow
