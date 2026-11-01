@@ -18,8 +18,11 @@ const CFG = {
   /* THE TERRAIN RENDERER (js/terrain.js, TERRAIN V4 in CLAUDE.md). V4 paints the
      ground and water of a played world in Web Workers; false is the KILL SWITCH
      back to the classic painters, which stay whole as the rollback renderer. A
-     device can also take the classic one with ?terrain=classic (?terrain=v4 undoes it). */
-  TERRAIN: { V4: true },
+     device can also take the classic one with ?terrain=classic (?terrain=v4 undoes it).
+     V5 (js/terrain-v5.js, TERRAIN V5 in CLAUDE.md) gives V4's ground a REGION — the
+     landscape the world's own landform calls for; false here paints plain V4 again,
+     and so does ?biome=v4 on one device (?biome=auto undoes it). */
+  TERRAIN: { V4: true, V5: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
   ART_V: 66,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting

@@ -1,31 +1,34 @@
-/* TERRAIN V5 — THE PROTOTYPE OF REGIONAL CHARACTER (test page only; production
-   loads no such file and paints V4).
+/* TERRAIN V5 — THE LAND'S REGIONAL CHARACTER (tests/terrain-v4.mjs §V5; CLAUDE.md
+   "TERRAIN V5"). V4's painter, given a REGION: the world the generator rolled picks
+   a landscape (AUTO — highland karst, steppe valley, island garrigue, Tuscan hills,
+   Carpathian foothills), and a few coherent WORLD FIELDS say how it looks.
 
-   One landscape is not one palette: it is a few coherent WORLD FIELDS, each
-   derived from the map the generator already made, and a REGION that says how
-   each field looks. Everything here is cosmetic: no tile, rule, path or save
-   is read differently, and every field is a pure function of the terrain and
-   the seed (so a reload paints the same land).
+   Everything here is cosmetic: no tile, rule, path or save is read differently,
+   and every field is a pure function of the terrain, the buildings and the seed
+   (so a reload paints the same land).
 
      ELEVATION  e5  rolling swells at the region's own scale, rising toward the
-                    mountains and falling toward the water (the valleys hold the
-                    lakes), karst dolines pressed in — read in the core as a C2
-                    spline and LIT, continuously, so a slope is a gradient of light
-                    and never a contour band
-     MOISTURE   m5  near water, in hollows, under the woods; the Tuscan field
-                    mosaic is moisture laid out in fields — picks dry / ordinary /
-                    lush grass, each a density of blades, never a flat blob
-     GEOLOGY    g5  how much ground shows through (slope, crest, hollow, dryness,
-                    a patch noise), and k5 WHICH ground: limestone or terra rossa,
-                    clay or ochre path, alkali crust or loess
-     VEGETATION v5  where tufts and flowers gather; s5 where shrubs grow (on the
-                    rock's edge in the karst, on dry ground in the garrigue)
-
+                    mountains and falling toward the water, karst dolines pressed
+                    in — read in the core as a C2 spline and LIT, continuously, so a
+                    slope is a gradient of light and never a contour band
+     MOISTURE   m5  broad zones (never a tile-sized checker): near water, in
+                    hollows, under the woods, and always lush round the food
+     GEOLOGY    g5  how much ground shows through (slope, crest, hollow, dryness, a
+                    broad patch noise), and k5 WHICH ground: limestone or red earth,
+                    clay or ochre, alkali crust or loess
+     VEGETATION v5  where tufts and flowers gather; s5 where the few squat plants of
+                    dry country may grow
    The core (tools/terrain-core.src.js) reads these as world.F.e5 … s5 and the
-   region as world.R5; with R5 null it paints V4 exactly. */
+   region as world.R5; with R5 null it paints V4 exactly.
+
+   THE WAY BACK: CFG.TERRAIN.V5 false (the kill switch), ?biome=v4 on a device
+   (remembered in neo-biome until ?biome=auto), every V4 way back (V5 rides on V4),
+   and a fault: a field build that throws stands V5 down for the session and the
+   world repaints as V4. ?biome=<name> forces a landscape for testing; the switch
+   chip shows only for a device that asked (a test page, or a ?biome link). */
 (function () {
   if (!window.TerrainX) return;
-  const TX = window.TerrainX, KEY = 'neo-v5biome';
+  const TX = window.TerrainX, KEY = 'neo-biome';
   const ls = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} } };
 
   const BIOMES = {
@@ -142,31 +145,65 @@
 
   const V5 = window.TerrainV5 = {
     BIOMES, AUTO,
+    failed: false,
+    on() { return !(typeof CFG !== 'undefined' && CFG.TERRAIN && CFG.TERRAIN.V5 === false) && !this.failed; },
     choice() { return ls.get(KEY) || 'auto'; },
     // the biome a played world wears now: null = V4
     current() {
+      if (!this.on()) return null;
       const c = this.choice();
       if (c === 'v4') return null;
       if (c !== 'auto' && BIOMES[c]) return c;
       const m = (typeof S !== 'undefined' && S && S.map) || {};
       return AUTO[(m.landform || 'valley') + ':' + (m.variant || 'classic')] || 'tuscan';
     },
+    /* every edit rebuilds the fields (TerrainX.noteEdit diffs them to find what to repaint),
+       so what an edit cannot change is made ONCE per world and region: the noise terms, the
+       field mosaic, the dolines, and the elevation (which moves only when the water or the
+       mountains do). An edit then pays a few array passes, not the noise. */
+    _c: null,
+    _static(W, H, P, F) {
+      const key = SEED + '|' + W + 'x' + H + '|' + P.name, N = W * H;
+      let c = this._c;
+      if (!c || c.key !== key) {
+        c = this._c = { key, nM: new Float32Array(N), nG: new Float32Array(N), nK: new Float32Array(N), nE: new Float32Array(N), mv: new Float32Array(N), mid: new Int32Array(N), pits: [], eSig: null };
+        const ms = P.mScale || 9;
+        if (P.dolines) { const n = Math.round(N / 100 * P.dolines);
+          for (let k = 0; k < n; k++) c.pits.push([hash(k, 1, 901) * W, hash(k, 2, 901) * H, 1.1 + hash(k, 3, 901) * 1.6, 1.0 + hash(k, 4, 901) * 0.9]); }
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y * W + x;
+          c.nE[i] = P.hillAmp * (fbm(x / P.hillS, y / P.hillS, 701) - 0.5) * 2;
+          c.nM[i] = (fbm(x / ms, y / ms, 711) - 0.5) * (P.mAmp || 0.5) + (fbm(x / 4.5, y / 4.5, 713) - 0.5) * 0.1;
+          c.nG[i] = P.geoNoise * (fbm(x / P.geoS + 30, y / P.geoS + 9, 731) - 0.5);
+          c.nK[i] = fbm(x / 3 + 5, y / 3 + 50, 741);
+          if (P.mosaic) {
+            /* FIELDS: the nearest of a jittered lattice, each field one crop — ripe wheat,
+               green, or (a few) ploughed earth — so the land reads as a patchwork laid over
+               the hills, a few large fields rather than a tile-sized checker */
+            const S_ = P.mosaicS, cx = Math.floor(x / S_), cy = Math.floor(y / S_); let best = 1e9, val = 0.5, id = 0;
+            for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const qx = (cx + ox + 0.15 + 0.7 * hash(cx + ox, cy + oy, 721)) * S_, qy = (cy + oy + 0.15 + 0.7 * hash(cx + ox, cy + oy, 722)) * S_, d = (x + 0.5 - qx) ** 2 + (y + 0.5 - qy) ** 2;
+              if (d < best) { best = d; val = hash(cx + ox, cy + oy, 723); id = (cy + oy) * 4096 + cx + ox; } }
+            c.mv[i] = val; c.mid[i] = id;
+          }
+        }
+      }
+      // the elevation: the hills, risen toward the mountains, fallen toward the water, the dolines pressed in
+      let sig = 0; for (let i = 0; i < N; i++) sig = (sig * 31 + Math.round(F.dMtn[i] * 8) * 7 + Math.round(F.dWet[i] * 8)) | 0;
+      if (c.eSig !== sig) {
+        const E = new Float32Array(N), PIT = new Float32Array(N);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y * W + x;
+          let e = c.nE[i] + P.mtnRise * sm(1 - F.dMtn[i] / P.mtnR) - P.valley * Math.exp(-F.dWet[i] / 2.6);
+          for (const [px, py, r, d] of c.pits) { const dd = ((x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2) / (r * r); if (dd < 4) { e -= d * Math.exp(-dd); PIT[i] = Math.max(PIT[i], Math.exp(-dd * 1.6)); } }
+          E[i] = e;
+        }
+        c.Eb = blur(E, W, H, 2); c.Ebig = blur(c.Eb, W, H, 6); c.PIT = PIT; c.eSig = sig;
+      }
+      return c;
+    },
     fields(F, terr, W, H, P) {
       SEED = TX.seed | 0;
-      const N = W * H, E = new Float32Array(N), PIT = new Float32Array(N);
-      // dolines: round sinks pressed into the land, a few per hundred tiles (none in water)
-      const pits = [];
-      if (P.dolines) { const n = Math.round(N / 100 * P.dolines);
-        for (let k = 0; k < n; k++) pits.push([hash(k, 1, 901) * W, hash(k, 2, 901) * H, 1.1 + hash(k, 3, 901) * 1.6, 1.0 + hash(k, 4, 901) * 0.9]); }
-      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const i = y * W + x;
-        let e = P.hillAmp * (fbm(x / P.hillS, y / P.hillS, 701) - 0.5) * 2;
-        e += P.mtnRise * sm(1 - F.dMtn[i] / P.mtnR);
-        e -= P.valley * Math.exp(-F.dWet[i] / 2.6);
-        for (const [px, py, r, d] of pits) { const dd = ((x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2) / (r * r); if (dd < 4) { e -= d * Math.exp(-dd); PIT[i] = Math.max(PIT[i], Math.exp(-dd * 1.6)); } }
-        E[i] = e;
-      }
-      const Eb = blur(E, W, H, 2), Ebig = blur(Eb, W, H, 6);
+      const N = W * H, c = this._static(W, H, P, F), Eb = c.Eb, Ebig = c.Ebig, PIT = c.PIT;
       // the town's own ground is never ploughed
       const this_near = new Uint8Array(N);
       for (const b of (TX.blds || [])) for (let y = Math.max(0, b.y - 4); y < Math.min(H, b.y + b.s + 4); y++) for (let x = Math.max(0, b.x - 4); x < Math.min(W, b.x + b.s + 4); x++) this_near[y * W + x] = 1;
@@ -179,22 +216,15 @@
       const dTC = TX.edt(tcM, W, H).map(Math.sqrt);
       // pass 1: the raw moisture, broad (zones of several tiles, never a tile-sized checker)
       const M0 = new Float32Array(N), SL = new Float32Array(N), HO = new Float32Array(N), FE = new Float32Array(N), PL = new Uint8Array(N);
-      const ms = P.mScale || 9;
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, xm = Math.max(0, x - 1), xp = Math.min(W - 1, x + 1), ym = Math.max(0, y - 1), yp = Math.min(H - 1, y + 1);
         const gx = (Eb[y * W + xp] - Eb[y * W + xm]) / (xp - xm || 1), gy = (Eb[yp * W + x] - Eb[ym * W + x]) / (yp - ym || 1);
         SL[i] = Math.hypot(gx, gy); HO[i] = Ebig[i] - Eb[i];
         const wet = Math.exp(-F.dWet[i] / (P.wetR || 3)), wood = Math.exp(-F.dForest[i] / 2), food = Math.exp(-dFert[i] / 1.6);
-        let m = P.moist + wet * 0.5 + wood * 0.15 + food * 0.22 + HO[i] * (P.hollowK || 0.6)
-          + (fbm(x / ms, y / ms, 711) - 0.5) * (P.mAmp || 0.5) + (fbm(x / 4.5, y / 4.5, 713) - 0.5) * 0.1;
+        let m = P.moist + wet * 0.5 + wood * 0.15 + food * 0.22 + HO[i] * (P.hollowK || 0.6) + c.nM[i];
         if (P.mosaic) {
-          /* FIELDS: the nearest of a jittered lattice, each field one crop — ripe wheat,
-             green, or (a few) ploughed earth — so the land reads as a patchwork laid over
-             the hills, a few large fields rather than a tile-sized checker */
-          const S_ = P.mosaicS, cx = Math.floor(x / S_), cy = Math.floor(y / S_); let best = 1e9, val = 0.5, id = 0;
-          for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const qx = (cx + ox + 0.15 + 0.7 * hash(cx + ox, cy + oy, 721)) * S_, qy = (cy + oy + 0.15 + 0.7 * hash(cx + ox, cy + oy, 722)) * S_, d = (x + 0.5 - qx) ** 2 + (y + 0.5 - qy) ** 2;
-            if (d < best) { best = d; val = hash(cx + ox, cy + oy, 723); id = (cy + oy) * 4096 + cx + ox; } }
-          if (val < (P.plough || 0) && !this_near[i] && dFert[i] > 3) PL[i] = 1 + ((hash(id, 0, 729) * 4) | 0);   // which way its furrows run
+          const val = c.mv[i];
+          if (val < (P.plough || 0) && !this_near[i] && dFert[i] > 3 && F.dMtn[i] > 3 && F.dWet[i] > 1.5) PL[i] = 1 + ((hash(c.mid[i], 0, 729) * 4) | 0);   // which way its furrows run
           m += P.mosaic * (val - 0.5) * (1 - wet);
         }
         M0[i] = m;
@@ -210,7 +240,7 @@
         m += (Math.max(m, P.lushT + 0.12) - m) * fz;
         m += (Math.max(m, (P.dryT + P.lushT) / 2 + 0.04) - m) * fw;
         const plough = PL[i];
-        let g = P.geoBase + P.geoSlope * slope + P.geoCrest * crest + (P.geoHollow || 0) * Math.max(0, hollow) * flat + P.geoDry * (0.5 - m) + P.geoNoise * (fbm(x / P.geoS + 30, y / P.geoS + 9, 731) - 0.5);
+        let g = P.geoBase + P.geoSlope * slope + P.geoCrest * crest + (P.geoHollow || 0) * Math.max(0, hollow) * flat + P.geoDry * (0.5 - m) + c.nG[i];
         if (plough) g = Math.max(g, 0.95);
         // a doline's floor is red earth (where the Karst is farmed): bare ground, terra rossa
         const pit = P.geoPit ? PIT[i] * P.geoPit : 0;
@@ -219,7 +249,7 @@
         g *= cl((dFert[i] - 1.6) / 2.0);                               // and so does the orchard's ground
         if (P.yard !== false) g *= 0.35 + 0.65 * cl((dTC[i] - 1.5) / 2.5);   // and the hall's own yard is mostly sward (the karst's is rock)
         g = cl(g);
-        const k = plough || pit > 0.4 ? 1 : P.kMode === 'hollow' ? sm(hollow * 2.2 + 0.35) : P.kMode === 'crest' ? sm(crest * 2.2 + 0.45) : P.kMode === 'slope' ? sm(0.7 - slope * 1.5) : fbm(x / 3 + 5, y / 3 + 50, 741);
+        const k = plough || pit > 0.4 ? 1 : P.kMode === 'hollow' ? sm(hollow * 2.2 + 0.35) : P.kMode === 'crest' ? sm(crest * 2.2 + 0.45) : P.kMode === 'slope' ? sm(0.7 - slope * 1.5) : c.nK[i];
         m5[i] = cl(m); g5[i] = g; k5[i] = k; p5[i] = plough;
         v5[i] = cl(m * 1.1 - g * 0.9 + 0.15);
         /* THE ARID PLANTS: only where the ground is truly dry, mostly at the edge of bare
@@ -238,7 +268,13 @@
   TX.buildFields = function () {
     const r = bf.apply(this, arguments), b = V5.current();
     this._v5 = b;
-    if (b) V5.fields(this.F, this.terr(), CFG.W, CFG.H, BIOMES[b]);
+    if (b) try { V5.fields(this.F, this.terr(), CFG.W, CFG.H, BIOMES[b]); }
+    catch (e) {
+      // a fault stands V5 down for the session: the world paints as V4, never as a broken map
+      V5.failed = true; this._v5 = null;
+      for (const k of ['e5', 'm5', 'g5', 'k5', 'v5', 's5', 'p5']) delete this.F[k];
+      try { console.warn('Terrain V5 stood down:', e); } catch (e2) {}
+    }
     return r;
   };
   TX.world = function () { const w = wo.apply(this, arguments); w.R5 = this._v5 ? BIOMES[this._v5] : null; return w; };
@@ -282,7 +318,9 @@ body.ingame #v5biome{display:flex}
     V5.paint();
   };
   try { const q = new URLSearchParams(location.search).get('biome'); if (q && (q === 'auto' || q === 'v4' || BIOMES[q])) ls.set(KEY, q === 'auto' ? null : q); } catch (e) {}
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => V5.mount()); else V5.mount();
+  // the switch is a tester's tool: a test page, or a device that asked for a landscape by link
+  V5.tester = function () { try { return /^\/test\d*\//.test(location.pathname) || new URLSearchParams(location.search).has('biome') || ls.get(KEY) != null; } catch (e) { return false; } };
+  if (V5.tester()) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => V5.mount()); else V5.mount(); }
   // a new or loaded world repaints the chip (auto follows the world's name)
   const ng = G.newGame, lj = G.loadJSON;
   G.newGame = function () { const r = ng.apply(this, arguments); V5.paint(); return r; };

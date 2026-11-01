@@ -231,7 +231,7 @@ node tests/title.mjs         # the night title, PUBLIC since build 106: every de
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
 node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
-node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built
+node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch; ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -5158,6 +5158,50 @@ counts ROCK — a green skirt weighs `KIT_GREEN_W` 0.3 — and a tile needs
 per pixel only on a border, or the worst map's first bake rose from ~0.9s to
 ~1.5s); **ORCHARDS ARE SCATTERED** (twelve variants per density, small and
 large trees mixed, never in rows).
+
+**TERRAIN V5 — THE LAND'S REGIONAL CHARACTER** (`js/terrain-v5.js`, the `P5`
+branches of `tools/terrain-core.src.js`; `tests/terrain-v4.mjs` §8–11; operator,
+2026-11-01, after three rounds on the /test126/ page: "I trust you, fix and push
+everything to production"). V4's painter given a REGION: the landform the
+generator rolled picks one of five landscapes (`TerrainV5.AUTO`: highland karst,
+steppe valley, island garrigue, Tuscan valleys, Carpathian foothills) and a few
+WORLD FIELDS, built on the main thread beside V4's (`TX.buildFields` is wrapped;
+`TX.world()` carries the region as `R5`), say how it looks: elevation `e5` (lit
+continuously from a C2 spline read, `tfc` — never a contour band), moisture `m5`,
+geology `g5`/`k5`, vegetation `v5`, the arid plants' mask `s5`, plough `p5`. With
+`R5` null the core paints V4 byte for byte. Rules the three rounds wrote down:
+**ZONES ARE BROAD AND BLEND** (moisture noise at ~9 tiles, one soft pass, the
+grass HUE drifts across a wide band between dry, ordinary and lush while the
+blades keep their crisp steps — the hard per-pixel switch read as a checker);
+**NO STANDING SHRUBS** (cones and bushes off the grass read as trees that cannot
+be cut — the dry land carries a few squat plants of its own, in a few tiny
+patches gated twice); **FOOD SITS DEEP IN THE GREEN** (lush grass and no bare
+earth within ~2.5 tiles of a FERTILE tile, at least ordinary sward by the woods);
+**DRY GROUND IS DRAWN LIKE THE GRASS** (tufts thin in CLUMPS over dusty soil —
+never per-pixel speckle — with a ranked gravel texture whose density field shows
+a few or many of the same stones, cracked clay and alkali crust; bare ground is a
+CONTINUOUS tone between its ramp's steps, never flat plateaus); **ROCK IS
+WEATHERED STONE** (a soft mottle and a few long wandering cracks, `CRK2`, with
+grass in some — the bevelled slab texture read as a mattress), **ringed by its
+own rubble**; **A MOUNTAIN RISES OUT OF ITS OWN TALUS** (within ~2.5 tiles of a
+mountain tile the ground takes the kit's own rock colours, `P5.mtn`, sampled
+from its pieces, strewn with its stones; V4's olive scree patches stand down
+under V5 — the pale plain against the kit read as stickers). **THE FIELDS ARE
+CACHED, NEVER STALE**: every edit rebuilds them (`noteEdit` diffs every field
+against its snapshot and repaints round what moved), so the noise, the field
+mosaic, the dolines and the elevation are made once per world and region
+(`TerrainV5._static`, the elevation re-made only when the water or the mountains
+move) — an edit pays a few array passes (~4ms on a 50×50 map). A reference to
+`TerrainX.F` taken before an edit is STALE after it (the rebuild makes a new
+object). **THE WAY BACK**: `CFG.TERRAIN.V5` false; `?biome=v4` (remembered in
+`neo-biome`, a key of its own so a test page's choice never leaks, until
+`?biome=auto`); every V4 way back; and a field build that throws stands V5 down
+for the session (`TerrainV5.failed`) and the world paints as V4. `?biome=<name>`
+forces a landscape; the switch chip is a TESTER's tool (a /test page or a device
+that asked by link) and a player never sees it. It is cosmetic end to end: no
+tile, rule, path or save is read differently (`theRegionChangesNoRule`). Cost: a
+V5 chunk ~1.7× a V4 one in the workers. The water's shimmer was halved in the
+same release (fewer, dimmer sparkles, a fainter ripple and caustic layer).
 
 **A LIVING GROUND** (`tests/land.mjs`): the land used to be uniform green with
 hard seams and an even sprinkle of decoration, which read as a spreadsheet.

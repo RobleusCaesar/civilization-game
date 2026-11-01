@@ -19,6 +19,18 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 126, date: '2026-11-01', title: 'Every land its own country',
+    items: [
+      'Each world now has the character of a real countryside, chosen by its landform: rolling Tuscan fields of wheat and green, grey limestone karst with red earth in its hollows, a pale steppe with salt flats, Mediterranean garrigue on the islands, and meadow foothills under the high peaks.',
+      'Gentle hills rise and fall across the land, lit by the sun, and the colours of dry and lush ground blend gradually into each other.',
+      'Dry country is drawn with care: tufts of grass thin out over dusty soil, pebbles and small stones lie about, clay and salt crust crack, and bare rock breaks through as weathered outcrops.',
+      'Mountains rise out of their own fallen stone instead of sitting on top of the land.',
+      'Berry bushes and orchards always grow in lush green ground.',
+      'A few low plants that belong to each dry land grow in small patches: thyme and lavender, creeping juniper, feather grass and broom.',
+      'The water shimmers more gently, so it no longer pulls the eye.',
+    ],
+  },
+  {
     build: 125, date: '2026-11-01', title: 'A new look for the land',
     items: [
       'Water is brighter and clearer. You can see sand and stones through the shallows, small waves drift across open water, and sunlight sparkles on it.',

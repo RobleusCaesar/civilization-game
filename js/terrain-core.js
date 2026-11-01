@@ -175,6 +175,159 @@ function TCCore() {
       if (w.sdf) this.blurSDF();
       if (w.F) this.blurBody();
       if (w.terr) this.labelBodies();
+      if ('R5' in w) this.setRegion(w.R5);
+    },
+    /* V5 — A REGION'S CHARACTER (the prototype on the test page; production sends no R5
+       and paints V4 exactly). The ramps, the bare ground, the flowers and the shrubs of
+       one landscape, read by the land pass with the world fields e5/m5/g5/k5/v5/s5. */
+    setRegion(r) {
+      if (!r) { this.P5 = null; return; }
+      const ramp = a => P(a.map(hx)), shrubs = [];
+      const P5 = Object.assign({}, r, { dry: ramp(r.dry), mid: ramp(r.mid), lush: ramp(r.lush), geoA: ramp(r.geoA), geoB: ramp(r.geoB || r.geoA) });
+      P5.flowers = (r.flowers || []).map(([a, b]) => { const petal = pk(...hx(a)), eye = pk(...hx(b)), st = [P5.mid[3], P5.mid[2], P5.mid[4]];
+        return this.sprite(5, 6, p => { p(2, 0, petal); p(1, 1, petal); p(3, 1, petal); p(2, 1, eye); p(2, 2, petal); p(2, 3, st[0]); p(2, 4, st[1]); p(3, 3, st[2]); }); });
+      /* THE ARID PLANTS: short and squat, the dry country's own (a thyme or broom cushion, a
+         creeping juniper mat, a feather-grass tussock) — never a cone or a bush standing up
+         off the grass, which reads as a tree that cannot be cut. Each is outlined in its
+         darkest green, lit from the upper left, and throws a short shadow down-right (sprite
+         value 1 = "darken what is under me"). Six of each kind, `nK` kinds in all. */
+      (r.shrubs || []).forEach(([kind, cols], si) => {
+        const C_ = cols.map(c => pk(...hx(c)));
+        for (let k = 0; k < 6; k++) {
+          const rr = i => this.hash(k + si * 17, i, 1501);
+          let w, h, inside, SX = 2, SY = 1;
+          if (kind === 'tussock') {
+            // a fountain of blades from one foot: dark at the root, pale at the tip, a few plumed
+            w = 11 + Math.floor(rr(0) * 4); h = 10 + Math.floor(rr(1) * 4);
+            const nb = 7 + Math.floor(rr(2) * 4);
+            shrubs.push(this.sprite(w + 2, h + 1, p => {
+              for (let x = Math.floor(w / 2) - 1; x <= Math.floor(w / 2) + 2; x++) p(x, h, 1);
+              for (let bI = 0; bI < nb; bI++) {
+                const spread = (bI / (nb - 1) - 0.5) * 2, len = Math.round(h * (0.6 + 0.4 * rr(20 + bI)) * (1 - Math.abs(spread) * 0.25));
+                for (let j = 0; j < len; j++) { const t = j / len, x = Math.round(w / 2 + spread * (w * 0.42) * t * t), y = h - 1 - j;
+                  p(x, y, t < 0.25 ? C_[1] : t < 0.6 ? C_[2] : C_[3]); }
+                if (rr(40 + bI) < 0.45 && len >= h - 1) { const x = Math.round(w / 2 + spread * (w * 0.42)), y = h - len; p(x, y, C_[4]); p(x + (spread > 0 ? 1 : -1), y, C_[4]); }
+              }
+              p(Math.floor(w / 2), h - 1, C_[0]); p(Math.floor(w / 2) + 1, h - 1, C_[0]);
+            }));
+            continue;
+          }
+          /* a cushion or a mat is built of small round CLUMPS (like a tree's crown, never one
+             shape): heaped toward the middle for a cushion, strung low along the ground for a
+             creeping mat — so its outline is lumpy and organic */
+          const mat = kind === 'mat';
+          w = mat ? 16 + Math.floor(rr(0) * 5) : 11 + Math.floor(rr(0) * 4); h = mat ? 6 + Math.floor(rr(1) * 2) : 7 + Math.floor(rr(1) * 2);
+          const nb = mat ? 6 + Math.floor(rr(2) * 3) : 6 + Math.floor(rr(2) * 3), cl_ = [];
+          for (let bI = 0; bI < nb; bI++) {
+            const r_ = mat ? 1.9 + rr(30 + bI) * 0.8 : 2.2 + rr(30 + bI) * 1.0, ex = (bI + 0.5) / nb * 2 - 1 + (rr(10 + bI) - 0.5) * 0.25;
+            const cx_ = w / 2 + ex * (w / 2 - r_ - 0.3), lift = mat ? rr(20 + bI) * 0.9 : (h - 2 * r_) * Math.sqrt(Math.max(0, 1 - ex * ex)) * (0.55 + 0.45 * rr(20 + bI));
+            cl_.push([cx_, h - r_ - 0.2 - lift, r_]);
+          }
+          inside = (x, y) => { if (y < 0 || y >= h || x < 0 || x >= w) return false; const px_ = x + 0.5, py_ = y + 0.5; for (const [bx, by, br_] of cl_) { const dx = px_ - bx, dy = py_ - by; if (dx * dx + dy * dy < br_ * br_) return true; } return false; };
+          shrubs.push(this.sprite(w + SX + 1, h + SY + 1, p => {
+            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inside(x, y) && !inside(x - SX, y - SY)) p(x + SX, y + SY, 1);
+            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+              if (!inside(x, y)) continue;
+              const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+              const lit = !inside(x - 1, y - 1) && !edge, shd = !inside(x + 1, y + 1) || y === h - 1;
+              const nz = this.hash(x * 7 + k, y * 13 + si, 1509);
+              const lowEdge = !inside(x + 1, y) || !inside(x, y + 1) || !inside(x + 1, y + 1);
+              let c = edge ? (lowEdge ? C_[0] : C_[2]) : lit ? C_[3] : shd ? C_[1] : nz < 0.3 ? C_[1] : nz > 0.8 ? C_[3] : C_[2];
+              if (C_[4] && !lowEdge && nz > 0.7 && nz < 0.82) c = C_[4];
+              p(x, y, c);
+            }
+          }));
+        }
+      });
+      P5.nK = (r.shrubs || []).length;
+      P5.shrubs = shrubs;
+      P5.grav = ramp(r.grav || r.geoA); P5.soil = ramp(r.soil || r.geoA);
+      // the mountain kit's own rock, dark to light (sampled from its pieces): what its apron fades into
+      P5.mtn = ramp(r.mtn || ['#3b3530', '#4f4741', '#62564f', '#7a6a60', '#928070', '#a99683']);
+      P5.gravAmt = r.gravAmt == null ? 0.6 : r.gravAmt; P5.soilGap = r.soilGap == null ? 0.5 : r.soilGap;
+      /* DRY GROUND IS DRAWN LIKE THE GRASS: pebbles in the region's own stone, most of them
+         small, a few half-buried stones a hand across, each lit on its upper left with its
+         shadow under it (value 1) */
+      P5.peb = [];
+      for (let k = 0; k < 14; k++) {
+        const rr = i => this.hash(k, i, 1531), big = k >= 10, w = big ? 6 + Math.floor(rr(0) * 4) : 3 + Math.floor(rr(0) * 3), h = big ? 4 + Math.floor(rr(1) * 2) : 2 + Math.floor(rr(1) * 2), G_ = P5.grav;
+        P5.peb.push(this.sprite(w + 2, h + 2, p => {
+          const ins = (x, y) => { const ex = (x + 0.5 - w / 2) / (w / 2), ey = (y + 0.5 - h / 2) / (h / 2); return ex * ex + ey * ey <= 1.08 + (big ? (this.hash(x, y + k * 9, 1533) - 0.5) * 0.3 : 0); };
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (ins(x, y) && !ins(x - 1, y - 1)) p(x + 1, y + 1, 1);
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            if (!ins(x, y)) continue;
+            const s_ = (x + 0.5 - w / 2) / w + (y + 0.5 - h / 2) / h, edge = !ins(x + 1, y) || !ins(x, y + 1);
+            p(x, y, big && edge ? G_[1] : s_ < -0.35 ? G_[5] : s_ < 0.05 ? G_[4] : s_ < 0.4 ? G_[3] : G_[2]);
+          }
+        }));
+      }
+      // pavement: slabs a third of a tile across, split by dark grikes (clints and grikes)
+      if (!this.SLB) { const t = this.makeMicro(256, 26, 360); this.SLB = t.d; }
+      /* GRIT AND GRAVEL, as a texture: thousands of small stones, each with a RANK, so a
+         density field can show a few (dry grass) or many (bare earth) of the same stones;
+         and CRACKS, a net of fine broken lines for baked clay and alkali crust */
+      if (this._grvSeed !== this.seed) {
+        const GP = 256, GRV = new Uint8Array(GP * GP), GRK = new Float32Array(GP * GP);
+        const put = (x, y, v, rk) => { x &= 255; y &= 255; const q = y * GP + x; if (v === 1 && GRV[q]) return; GRV[q] = v; GRK[q] = rk; };
+        /* stones a texel or two to a hand across (at 64 texels a tile): a lit cap on the upper
+           left, a dark foot on the lower right, a shadow under — round enough to read as a
+           pebble, never a square */
+        const disc = (x, y, w, h, rk) => {
+          const ins = (i, j) => { const ex = (i + 0.5 - w / 2) / (w / 2), ey = (j + 0.5 - h / 2) / (h / 2); return ex * ex + ey * ey <= 1.15; };
+          for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (ins(i, j) && !ins(i - 1, j - 1)) put(x + i + 1, y + j + 1, 1, rk);
+          for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { if (!ins(i, j)) continue; const s_ = (i + 0.5) / w + (j + 0.5) / h; put(x + i, y + j, s_ < 0.75 ? 4 : s_ < 1.3 ? 3 : 2, rk); }
+        };
+        for (let k = 0; k < 2300; k++) {
+          const x = Math.floor(this.hash(k, 1, 1541) * GP), y = Math.floor(this.hash(k, 2, 1541) * GP), rk = this.hash(k, 3, 1541), sz = this.hash(k, 4, 1541);
+          if (sz < 0.3) { put(x + 1, y + 1, 1, rk); put(x + 1, y, 3, rk); put(x, y, 4, rk); put(x, y + 1, 3, rk); put(x + 1, y + 2, 1, rk); put(x + 2, y + 1, 1, rk); }
+          else if (sz < 0.7) disc(x, y, 3, 2 + (sz > 0.55 ? 1 : 0), rk);
+          else if (sz < 0.92) disc(x, y, 4 + (sz > 0.85 ? 1 : 0), 3, rk);
+          else disc(x, y, 6, 4, rk);
+        }
+        const CRK = new Uint8Array(GP * GP), nC = 20, cell = GP / nC, pts = [];
+        for (let j = 0; j < nC; j++) for (let i = 0; i < nC; i++) pts.push([(i + 0.15 + 0.7 * this.hash(i, j, 1551)) * cell, (j + 0.15 + 0.7 * this.hash(i, j, 1552)) * cell]);
+        for (let y = 0; y < GP; y++) for (let x = 0; x < GP; x++) {
+          const gx = Math.floor(x / cell), gy = Math.floor(y / cell); let f1 = 1e9, f2 = 1e9, i1 = 0, i2 = 0;
+          for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const ci = (gx + ox + nC) % nC, cj = (gy + oy + nC) % nC, q = pts[cj * nC + ci];
+            let dx = x - (q[0] + (gx + ox - ci) * cell), dy = y - (q[1] + (gy + oy - cj) * cell); if (dx > GP / 2) dx -= GP; if (dx < -GP / 2) dx += GP; if (dy > GP / 2) dy -= GP; if (dy < -GP / 2) dy += GP;
+            const d = Math.hypot(dx, dy), id = cj * nC + ci; if (d < f1) { f2 = f1; i2 = i1; f1 = d; i1 = id; } else if (d < f2) { f2 = d; i2 = id; } }
+          // most edges crack, a few never do: an open net, not a tiled floor
+          if (f2 - f1 < 1.1 && this.hash(Math.min(i1, i2), Math.max(i1, i2), 1553) < 0.72) CRK[y * GP + x] = 1;
+        }
+        // the clump field: where dry grass gives way to soil first (a slow field ragged by a finer one)
+        const c1 = this.makeNoiseTex(512, 32, 1571).d, c2 = this.makeNoiseTex(512, 80, 1572).d, CLP = new Float32Array(512 * 512);
+        for (let q = 0; q < CLP.length; q++) CLP[q] = c1[q] * 0.78 + c2[q] * 0.22;
+        /* weathered stone's cracks: long and few, half a tile apart, wandering (the lattice is
+           warped by a slow noise) and broken (two in five joints never crack); a crack's lower
+           right lip in its shade */
+        const CRK2 = new Uint8Array(GP * GP), n2 = 9, cell2 = GP / n2, p2 = [], wA = this.makeNoiseTex(GP, 8, 1581).d, wB = this.makeNoiseTex(GP, 8, 1582).d;
+        for (let j = 0; j < n2; j++) for (let i = 0; i < n2; i++) p2.push([(i + 0.2 + 0.6 * this.hash(i, j, 1583)) * cell2, (j + 0.2 + 0.6 * this.hash(i, j, 1584)) * cell2]);
+        for (let y = 0; y < GP; y++) for (let x = 0; x < GP; x++) {
+          const wx = (x + (wA[y * GP + x] - 0.5) * 9 + GP) % GP, wy = (y + (wB[y * GP + x] - 0.5) * 9 + GP) % GP, gx = Math.floor(wx / cell2), gy = Math.floor(wy / cell2);
+          let f1 = 1e9, f2 = 1e9, i1 = 0, i2 = 0;
+          for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const ci = (gx + ox + n2) % n2, cj = (gy + oy + n2) % n2, q = p2[cj * n2 + ci];
+            let dx = wx - q[0], dy = wy - q[1]; if (dx > GP / 2) dx -= GP; if (dx < -GP / 2) dx += GP; if (dy > GP / 2) dy -= GP; if (dy < -GP / 2) dy += GP;
+            const d = Math.hypot(dx, dy), id = cj * n2 + ci; if (d < f1) { f2 = f1; i2 = i1; f1 = d; i1 = id; } else if (d < f2) { f2 = d; i2 = id; } }
+          if (f2 - f1 < 0.9 && this.hash(Math.min(i1, i2), Math.max(i1, i2), 1585) < 0.6) CRK2[y * GP + x] = 1;
+        }
+        for (let y = GP - 1; y >= 0; y--) for (let x = GP - 1; x >= 0; x--) { const q = y * GP + x; if (CRK2[q]) continue; if (CRK2[((y - 1 + GP) % GP) * GP + x] === 1 || CRK2[y * GP + ((x - 1 + GP) % GP)] === 1) CRK2[q] = 2; }
+        this.GRV = GRV; this.GRK = GRK; this.CRK = CRK; this.CRK2 = CRK2; this.CLP = CLP; this._grvSeed = this.seed;
+      }
+      // the light: from the upper left, normalised; the flat ground's own share of it
+      const lx = -0.5, ly = -0.62, lz = 0.6, ll = Math.hypot(lx, ly, lz);
+      P5.L = [lx / ll, ly / ll, lz / ll];
+      this.P5 = P5;
+    },
+    // a cubic B-spline read of a tile field: C2, so a gradient taken from it never shows the tile grid
+    tfc(F, u, v) {
+      const W = this.W, H = this.H, x = u - 0.5, y = v - 0.5, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+      const bw = t => { const t2 = t * t, t3 = t2 * t; return [(1 - 3 * t + 3 * t2 - t3) / 6, (4 - 6 * t2 + 3 * t3) / 6, (1 + 3 * t + 3 * t2 - 3 * t3) / 6, t3 / 6]; };
+      const wx = bw(fx), wy = bw(fy);
+      let acc = 0;
+      for (let j = 0; j < 4; j++) { const yy = Math.max(0, Math.min(H - 1, y0 - 1 + j)), row = yy * W; let a = 0;
+        for (let i = 0; i < 4; i++) a += F[row + Math.max(0, Math.min(W - 1, x0 - 1 + i))] * wx[i];
+        acc += a * wy[j]; }
+      return acc;
     },
     // a window of the SDF or the shade mask replaced after an edit
     patch(p) {
@@ -358,9 +511,11 @@ function TCCore() {
       const n = N / Q + 1, NN = n * n, ox = cx * N, oy = cy * N;
       const nearB = this.blds.filter(b => b.x + b.s + 3 > cx * CH && b.x - 3 < (cx + 1) * CH && b.y + b.s + 3 > cy * CH && b.y - 3 < (cy + 1) * CH);
       // the coarse lattice: every quarter tile
-      const cn = N / CQ + 1, CN = cn * cn, NF = 18, C = [];
+      const P5 = this.P5;
+      let gBk = -1, gBo = 0;                                           // V5: the gravel texture's offset, per 4-tile block
+      const cn = N / CQ + 1, CN = cn * cn, NF = P5 ? 23 : 18, C = [];
       for (let f = 0; f < NF; f++) C.push(new Float32Array(CN));
-      const [cL0, cDRY, cLUSH, cWM, cSHELF, cDMAX, cTOPO, cPERT, cSAND, cROCK, cMUD, cSANDW, cRK, cWN, cEXPO, cKIND, cREFL, cHUE] = C, MT = [0, 0, 0];
+      const [cL0, cDRY, cLUSH, cWM, cSHELF, cDMAX, cTOPO, cPERT, cSAND, cROCK, cMUD, cSANDW, cRK, cWN, cEXPO, cKIND, cREFL, cHUE, cSH5, cM5, cG5, cK5, cAP5] = C, MT = [0, 0, 0];
       for (let j = 0; j < cn; j++) for (let i = 0; i < cn; i++) {
         const u = (ox + i * CQ) / TS, v = (oy + j * CQ) / TS, k = j * cn + i;
         const fF = this.tf(F.dForest, u, v), fM = this.tf(F.dMtn, u, v), fR = this.tf(F.dRock, u, v), fW = this.tf(F.dWet, u, v);
@@ -419,6 +574,18 @@ function TCCore() {
           if (e < 1) worn = Math.max(worn, 1 - e);
         }
         cWN[k] = worn;
+        if (P5) {
+          /* V5 — THE LIE OF THE LAND: the elevation (a smooth tile field read as a C2
+             spline, plus a finer swell) lit from the upper left. Continuous to the last
+             pixel, so a slope is a gradient of light and never a contour band; a hollow
+             takes a little less light (curvature) and holds the moisture. */
+          const eE = (a, b) => this.tfc(F.e5, a, b) + P5.fineAmp * (this.fbm(a / P5.fineS + 77, b / P5.fineS + 31, 171) - 0.5);
+          const d_ = 0.22, e0 = eE(u, v), gx = (eE(u + d_, v) - eE(u - d_, v)) / (2 * d_) * P5.relief, gy = (eE(u, v + d_) - eE(u, v - d_)) / (2 * d_) * P5.relief;
+          const nl = Math.hypot(gx, gy, 1), lam = (-gx * P5.L[0] - gy * P5.L[1] + P5.L[2]) / nl / P5.L[2] - 1;
+          const lap = (eE(u + 0.5, v) + eE(u - 0.5, v) + eE(u, v + 0.5) + eE(u, v - 0.5) - 4 * e0) * 4;
+          cSH5[k] = lam - Math.max(-0.5, Math.min(0.5, lap * P5.ao));
+          cM5[k] = this.tfc(F.m5, u, v); cG5[k] = this.tfc(F.g5, u, v); cK5[k] = this.tfc(F.k5, u, v); cAP5[k] = this.tfc(F.dMtn, u, v);
+        }
       }
       // the fine lattice (every 4 texels = 2 world px): the drawn coast and the coarse fields spread bilinearly
       const step = CQ / Q, FN = new Array(NF), S = new Float32Array(NN), SB = new Float32Array(NN);
@@ -434,7 +601,7 @@ function TCCore() {
           SB[k] = this.sdfAtB((ox + i * Q) / 2, (oy + j * Q) / 2);
         }
       }
-      const [fL0, fDRY, fLUSH, fWM, fSHELF, fDMAX, fTOPO, , fSAND, fROCK, fMUD, fSANDW, fRK, fWN, fEXPO, fKIND, fREFL, fHUE] = FN;
+      const [fL0, fDRY, fLUSH, fWM, fSHELF, fDMAX, fTOPO, , fSAND, fROCK, fMUD, fSANDW, fRK, fWN, fEXPO, fKIND, fREFL, fHUE, fSH5, fM5, fG5, fK5, fAP5] = FN;
       const items = this.decorItems(cx, cy, ox, oy, nearB);
       // relief buffer for the tufts, stamped before the pixel pass
       const TB = new Float32Array(N * N);
@@ -554,8 +721,91 @@ function TCCore() {
             // between them the grass sits a shade darker in the rock's lee
             if (rk > 0) {
               const sv = rk * 0.72 + (NZ8[t256] * 0.5 + t3 * 0.5 - 0.5) * 1.6 + (CL[t512] > 0.05 ? 0.12 : -0.05);
-              if (sv > 0.9) { const kk = Math.floor((L + 0.04) * 6); out[q] = PC.scree[kk < 0 ? 0 : kk > 5 ? 5 : kk]; continue; }
+              if (sv > 0.9 && !P5) { const kk = Math.floor((L + 0.04) * 6); out[q] = PC.scree[kk < 0 ? 0 : kk > 5 ? 5 : kk]; continue; }   // V5 draws its own apron
               L -= rk * 0.07;
+            }
+            if (P5) {
+              /* V5: the grass the moisture calls for, its HUE BLENDED across a broad band from
+                 dry to ordinary to lush (the blades keep their crisp detail, only the colour
+                 drifts — so a zone's edge is a gradual change, never a speckled checker).
+                 DRY GROUND IS DRAWN LIKE THE GRASS: the grass thins in CLUMPS (a slow clump
+                 field, so tufts stand in islands with soil between them, never a speckle),
+                 more as it dries and as the geology says bare earth is near; the soil is a
+                 muted tone mottled at the clump scale, cracked where clay or alkali bakes,
+                 strewn with shaded pebbles; rock breaks through only where the ground is
+                 really bare, as whole outcrops of weathered stone with a few wandering cracks
+                 (never a quilt of bevelled slabs). Every edge is BLENDED: grass dusts toward
+                 the soil it meets, soil greys toward the rock and carries its gravel.
+                 THE MOUNTAIN'S APRON: within two and a half tiles of a mountain the ground
+                 turns to its own talus — bare, in the mountain's rock colours, strewn with its
+                 fallen stones — so a range rises out of the land instead of sitting on it. */
+              const dm = (fAP5[k00] * w0 + fAP5[k10] * w1 + fAP5[k01] * w2 + fAP5[k11] * w3), apL = dm >= 2.6 ? 0 : dm <= 0.4 ? 1 : (2.6 - dm) / 2.2, ap = apL * apL * (3 - 2 * apL);
+              const mj = (fM5[k00] * w0 + fM5[k10] * w1 + fM5[k01] * w2 + fM5[k11] * w3) + (t3 - 0.5) * 0.08 + HM[t512] * 0.1, gv = (fG5[k00] * w0 + fG5[k10] * w1 + fG5[k01] * w2 + fG5[k11] * w3) + (CL[t512] > 0.04 ? P5.geoCob : 0) + ap * 0.4;
+              const bD = 0.16, xD = (P5.dryT + bD - mj) / (2 * bD), xL = (mj - P5.lushT + bD) / (2 * bD);
+              const tD = xD <= 0 ? 0 : xD >= 1 ? 1 : xD * xD * (3 - 2 * xD), tL = xL <= 0 ? 0 : xL >= 1 ? 1 : xL * xL * (3 - 2 * xL);
+              const clp = this.CLP[t512], want = Math.max((gv - 0.36) / 0.34, tD * P5.soilGap * 0.55);
+              const cov = want + (clp - 0.5) * 0.75 + (t3 - 0.5) * 0.12;
+              const pf = F.p5 ? F.p5[Math.min(H - 1, (ty / TS) | 0) * W + Math.min(W - 1, (tx / TS) | 0)] : 0;
+              let br, bg, bb, kk, grav = 0, ground = false;
+              if (cov > 0.5 || pf && gv > 0.62) {
+                ground = true;
+                // real bare ground wears the geology (rock, red earth, clay, crust); between thinning
+                // tufts it is only the soil the grass grows in
+                const bareG = (gv - 0.36) / 0.34 > 0.45 || pf, useB = (fK5[k00] * w0 + fK5[k10] * w1 + fK5[k01] * w2 + fK5[k11] * w3) + (this.CLP[(t512 + 131101) & 262143] - 0.5) * 0.3 > 0.5;
+                const stoneK = bareG && (useB ? P5.stoneB : P5.stoneA) && !pf, sEdge = want + (this.CLP[(t512 + 3001) & 262143] - 0.5) * 0.3 - 0.66, stone = stoneK && sEdge > 0;
+                const R5_ = !bareG ? P5.soil : stone ? (useB ? P5.geoB : P5.geoA) : (useB ? P5.stoneB : P5.stoneA) ? P5.soil : useB ? P5.geoB : P5.geoA;
+                const Ls = (fL0[k00] * w0 + fL0[k10] * w1 + fL0[k01] * w2 + fL0[k11] * w3) + (this.CLP[(t512 + 77777) & 262143] - 0.5) * 0.3;
+                let gl;
+                if (stone) {
+                  // weathered stone: a broad soft mottle, a few long wandering cracks and their shade
+                  const ck = this.CRK2[t256];
+                  gl = 0.5 + (Ls - 0.55) * 0.24 + (this.CLP[(t512 + 52361) & 262143] - 0.5) * 0.3 + (NZ3[(t256 + 4441) & 65535] - 0.5) * 0.1 + (ck === 1 ? -0.2 : ck === 2 ? -0.07 : 0) + Math.min(0.06, sEdge * 0.3) - 0.04;
+                  grav = 0.05 * P5.gravAmt;
+                  if (ck === 1 && t3 > 0.64 && ap < 0.4) { const c = P5.dry[3 + (t3 > 0.8 ? 1 : 0)]; br = c & 255; bg = (c >>> 8) & 255; bb = (c >>> 16) & 255; }   // grass in the cracks
+                } else {
+                  gl = 0.6 + (Ls - 0.55) * 0.45 + (want - 0.6) * 0.1 + (cov < 0.54 ? -0.06 : 0);      // a tuft's shadow at the edge of the soil
+                  // a ploughed field: furrows a few pixels apart, one direction per field
+                  if (pf) { const co = pf === 1 ? ty : pf === 2 ? tx : pf === 3 ? tx + ty : tx - ty, ph = ((co % 7) + 7) % 7; gl += ph < 2 ? -0.16 : ph === 2 ? 0.08 : 0.02; }
+                  else if (bareG && P5.cracks && this.CRK[t256] && want > 0.55) gl -= 0.17;           // baked clay, alkali crust
+                  grav = (0.18 + want * 0.22) * P5.gravAmt;
+                  if (stoneK) grav = Math.max(grav, (0.3 + 0.4 * Math.max(0, 1 + sEdge / 0.25)) * P5.gravAmt);   // the rock's own rubble round an outcrop
+                }
+                // bare ground is a continuous tone between its ramp's steps (with a grain), never flat plateaus
+                const gx6 = Math.max(0, Math.min(4.999, gl * 6 - 0.5)), k0 = gx6 | 0, gf = gx6 - k0; kk = Math.min(5, Math.round(gx6));
+                if (br === undefined) { const c = R5_[k0], c1 = R5_[k0 + 1]; br = (c & 255) + ((c1 & 255) - (c & 255)) * gf; bg = ((c >>> 8) & 255) + (((c1 >>> 8) & 255) - ((c >>> 8) & 255)) * gf; bb = ((c >>> 16) & 255) + (((c1 >>> 16) & 255) - ((c >>> 16) & 255)) * gf;
+                  // soil near an outcrop greys toward the rock it weathers from
+                  if (stoneK && !stone) { const e = Math.max(0, Math.min(1, 1 + sEdge / 0.18)) * 0.4, c2 = (useB ? P5.geoB : P5.geoA)[kk]; br += ((c2 & 255) - br) * e; bg += (((c2 >>> 8) & 255) - bg) * e; bb += (((c2 >>> 16) & 255) - bb) * e; } }
+              } else {
+                kk = Math.floor((L + (gv > 0.5 ? (gv - 0.5) * -0.35 : 0) - (cov > 0.42 ? 0.06 : 0)) * 8.6); kk = kk < 0 ? 0 : kk > 8 ? 8 : kk;
+                const cm = P5.mid[kk]; br = cm & 255; bg = (cm >>> 8) & 255; bb = (cm >>> 16) & 255;
+                if (tD > 0) { const c = P5.dry[kk]; br += ((c & 255) - br) * tD; bg += (((c >>> 8) & 255) - bg) * tD; bb += (((c >>> 16) & 255) - bb) * tD; }
+                if (tL > 0) { const c = P5.lush[kk]; br += ((c & 255) - br) * tL; bg += (((c >>> 8) & 255) - bg) * tL; bb += (((c >>> 16) & 255) - bb) * tL; }
+                // grass about to give way to bare ground is dusted with it: the edge is a blend, not a line
+                if (cov > 0.32) { const e = (cov - 0.32) / 0.18 * 0.42, c = P5.soil[Math.min(5, Math.max(1, (kk * 0.62) | 0))]; br += ((c & 255) - br) * e; bg += (((c >>> 8) & 255) - bg) * e; bb += (((c >>> 16) & 255) - bb) * e; }
+                grav = tD * 0.05 * P5.gravAmt;
+              }
+              // the apron: the ground takes the mountain's own rock colours toward its foot, strewn with its stones
+              if (ap > 0) {
+                const MR = P5.mtn, mk = ground ? Math.min(5, kk + 1) : Math.min(5, ((kk * 0.62) | 0) + 1), c = MR[mk], e = ground ? ap * 0.8 : ap * 0.22;
+                br += ((c & 255) - br) * e; bg += (((c >>> 8) & 255) - bg) * e; bb += (((c >>> 16) & 255) - bb) * e;
+                grav = Math.max(grav, ap * 0.6);
+              }
+              // grit and gravel: the same stones everywhere, more of them shown where it is drier
+              if (grav > 0) {
+                // the texture repeats every four tiles: each block reads it from its own offset
+                const bk = ((ty >> 8) << 12) | (tx >> 8); if (bk !== gBk) { gBk = bk; gBo = (this.hash(tx >> 8, ty >> 8, 1561) * 65536) | 0; }
+                const gq = (((ty + (gBo >> 8)) & 255) << 8) | ((tx + gBo) & 255), gs = this.GRV[gq];
+                if (gs && this.GRK[gq] < grav) {
+                  if (gs === 1) { br *= 0.76; bg *= 0.76; bb *= 0.8; }
+                  else { let gk = gs === 2 ? 1 : gs === 3 ? 3 : 4; if (L < 0.4) gk--; if (L > 0.7) gk++; gk = gk < 0 ? 0 : gk > 5 ? 5 : gk;
+                    const c = P5.grav[gk], c2 = P5.mtn[gk]; br = (c & 255) + (((c2 & 255) - (c & 255)) * ap); bg = ((c >>> 8) & 255) + ((((c2 >>> 8) & 255) - ((c >>> 8) & 255)) * ap); bb = ((c >>> 16) & 255) + ((((c2 >>> 16) & 255) - ((c >>> 16) & 255)) * ap); }
+                }
+              }
+              const sh = (fSH5[k00] * w0 + fSH5[k10] * w1 + fSH5[k01] * w2 + fSH5[k11] * w3) * P5.shadeAmp, f = 1 + sh, wr = sh > 0 ? sh * P5.warm : 0, cb = sh < 0 ? -sh * P5.cool : 0;
+              let r = br * f + wr * 40, g = bg * f + wr * 26, b = bb * f + cb * 30;
+              r = Math.round(r / 3) * 3; g = Math.round(g / 3) * 3; b = Math.round(b / 3) * 3;
+              out[q] = pk(r < 0 ? 0 : r > 255 ? 255 : r, g < 0 ? 0 : g > 255 ? 255 : g, b < 0 ? 0 : b > 255 ? 255 : b);
+              continue;
             }
             // a dry or lush patch is a DENSITY of such blades, thinning to its edge, never a flat blob
             const dry = (fDRY[k00] * w0 + fDRY[k10] * w1 + fDRY[k01] * w2 + fDRY[k11] * w3) * 1.05 + (t3 - 0.5) * 0.95 + HM[t512] * 0.3, lush = (fLUSH[k00] * w0 + fLUSH[k10] * w1 + fLUSH[k01] * w2 + fLUSH[k11] * w3) + (t3 - 0.5) * 0.8 + HM[t512] * 0.3;
@@ -631,10 +881,12 @@ function TCCore() {
         if (it[1] === 6) for (let x = 1; x < st.w - 1; x++) { const xx = x0 + x + 1, yy = y0 + st.h; if (yy < 0 || yy >= N || xx < 0 || xx >= N) continue; const q = yy * N + xx; if (!DB[q] || !st.px[(st.h - 2) * st.w + x]) continue; const c = out[q]; out[q] = pk((c & 255) * 0.82, ((c >>> 8) & 255) * 0.84, ((c >>> 16) & 255) * 0.88); }
       }
       // land things: flowers and pebbles, stamped whole
-      for (const it of items) if (it[1] === 1 || it[1] === 2) {
-        const st = it[1] === 1 ? this.flowers[it[3] % this.flowers.length] : this.pebbles[it[3] % this.pebbles.length];
+      const FLW_ = P5 && P5.flowers.length ? P5.flowers : this.flowers;
+      for (const it of items) if (it[1] === 1 || it[1] === 2 || it[1] === 7) {
+        const st = it[1] === 1 ? FLW_[it[3] % FLW_.length] : it[1] === 7 ? P5.shrubs[it[3] % P5.shrubs.length] : P5 ? P5.peb[it[3] % P5.peb.length] : this.pebbles[it[3] % this.pebbles.length];
         const x0 = it[2] - ox - (st.w >> 1), y0 = it[0] - oy - st.h + 1;
-        for (let y = 0; y < st.h; y++) { const yy = y0 + y; if (yy < 0 || yy >= N) continue; for (let x = 0; x < st.w; x++) { const xx = x0 + x, c = st.px[y * st.w + x]; if (c && xx >= 0 && xx < N && !DB[yy * N + xx]) out[yy * N + xx] = c; } }
+        for (let y = 0; y < st.h; y++) { const yy = y0 + y; if (yy < 0 || yy >= N) continue; for (let x = 0; x < st.w; x++) { const xx = x0 + x, c = st.px[y * st.w + x]; if (c && xx >= 0 && xx < N && !DB[yy * N + xx]) {
+          if (c === 1) { const q = yy * N + xx, o = out[q]; out[q] = pk((o & 255) * 0.7, ((o >>> 8) & 255) * 0.72, ((o >>> 16) & 255) * 0.8); } else out[yy * N + xx] = c; } } }
       }
       // shade from trees and stones: the game's own stamps, offset down-right
       if (this.shade) {
@@ -675,7 +927,7 @@ function TCCore() {
 
     // tufts, flowers, pebbles and bed stones on a WORLD grid, so one crossing a chunk edge is whole in both
     decorItems(cx, cy, ox, oy, nearB) {
-      const W = this.W, H = this.H, T = this.T, F = this.F, terr = this.terr, M = 24, items = [];
+      const W = this.W, H = this.H, T = this.T, F = this.F, terr = this.terr, M = 24, items = [], P5_ = this.P5;
       const okGround = (tx, ty, minS) => {
         const u = tx / TS, v = ty / TS; if (u < 1 || v < 1 || u >= W - 1 || v >= H - 1) return false;
         const t = terr[(v | 0) * W + (u | 0)];
@@ -689,7 +941,8 @@ function TCCore() {
         for (let gx = Math.floor((ox - M) / GC); gx <= Math.floor((ox + N + M) / GC); gx++) {
           const tx = gx * GC + Math.floor(this.hash(gx, gy, 81) * GC), ty = gy * GC + Math.floor(this.hash(gx, gy, 82) * GC), u = tx / TS, v = ty / TS;
           const patch = this.fbm(u / 2.4 + 40, v / 2.4 + 9, 83), fF = this.tf(F.dForest, u, v), fR = this.tf(F.dRock, u, v), fW = this.tf(F.dWet, u, v);
-          const dens = 0.04 + Math.max(0, patch - 0.5) * 1.2 + Math.max(0, 1 - fF / 1.2) * 0.3 + Math.max(0, 1 - fW / 2) * 0.25 - Math.max(0, 1 - fR / 1.5) * 0.3;
+          let dens = 0.04 + Math.max(0, patch - 0.5) * 1.2 + Math.max(0, 1 - fF / 1.2) * 0.3 + Math.max(0, 1 - fW / 2) * 0.25 - Math.max(0, 1 - fR / 1.5) * 0.3;
+          if (P5_) dens = dens * P5_.tuft * (0.35 + this.tfc(F.v5, u, v) * 1.1);
           if (this.hash(gx, gy, 84) > dens || !okGround(tx, ty)) continue;
           items.push([ty, 0, tx, Math.floor(this.hash(gx, gy, 85) * 18)]);
         }
@@ -698,21 +951,46 @@ function TCCore() {
         for (let gx = Math.floor((ox - M) / FC); gx <= Math.floor((ox + N + M) / FC); gx++) {
           const cxp = gx * FC + this.hash(gx, gy, 91) * FC, cyp = gy * FC + this.hash(gx, gy, 92) * FC, u = cxp / TS, v = cyp / TS;
           const sun = this.fbm(u / 3 + 70, v / 3 + 3, 93);
-          if (this.hash(gx, gy, 94) > Math.max(0, sun - 0.55) * 0.9) continue;
-          const kind = Math.floor(this.hash(gx, gy, 95) * 6), nF = 3 + Math.floor(this.hash(gx, gy, 96) * 6);
+          const fdens = Math.max(0, sun - 0.55) * 0.9 * (P5_ ? P5_.flower * (0.2 + this.tfc(F.v5, u, v) * 1.2) : 1);
+          if (this.hash(gx, gy, 94) > fdens) continue;
+          const nK = P5_ && P5_.flowers.length ? P5_.flowers.length : 6;
+          const kind = Math.floor(this.hash(gx, gy, 95) * nK), nF = 3 + Math.floor(this.hash(gx, gy, 96) * 6);
           for (let f = 0; f < nF; f++) {
             const a = this.hash(gx * 13 + f, gy, 97) * 6.283, r = 2 + this.hash(gx, gy * 7 + f, 98) * 9;
             const tx = Math.round(cxp + Math.cos(a) * r), ty = Math.round(cyp + Math.sin(a) * r * 0.7);
-            if (okGround(tx, ty)) items.push([ty, 1, tx, f % 5 === 4 ? (kind + 1) % 6 : kind, f]);
+            if (okGround(tx, ty)) items.push([ty, 1, tx, f % 5 === 4 ? (kind + 1) % nK : kind, f]);
           }
         }
+      /* V5: THE ARID PLANTS, in a few TINY PATCHES only: a patch site every few tiles, kept
+         only where a broad field and the plant mask (s5: dry ground at the edge of bare
+         earth) both allow it, and then two to five plants of one kind within a stride of it */
+      if (P5_ && P5_.nK && P5_.shrub > 0) {
+        const PG = 176, MP = M + 40;
+        for (let gy = Math.floor((oy - MP) / PG); gy <= Math.floor((oy + N + MP) / PG); gy++)
+          for (let gx = Math.floor((ox - MP) / PG); gx <= Math.floor((ox + N + MP) / PG); gx++) {
+            const cxp = gx * PG + this.hash(gx, gy, 161) * PG, cyp = gy * PG + this.hash(gx, gy, 162) * PG, u = cxp / TS, v = cyp / TS;
+            if (u < 1 || v < 1 || u >= W - 1 || v >= H - 1) continue;
+            const gate = this.fbm(u / 7 + 19, v / 7 + 41, 163);
+            const dens = P5_.shrub * this.tfc(F.s5, u, v) * Math.max(0, gate - 0.5) * 6;
+            if (this.hash(gx, gy, 164) > dens) continue;
+            const kind = Math.floor(this.hash(gx, gy, 165) * P5_.nK), n = 2 + Math.floor(this.hash(gx, gy, 166) * 4);
+            for (let f = 0; f < n; f++) {
+              const a = this.hash(gx * 13 + f, gy, 167) * 6.283, r = f === 0 ? 0 : 7 + this.hash(gx, gy * 7 + f, 168) * 22;
+              const tx = Math.round(cxp + Math.cos(a) * r), ty = Math.round(cyp + Math.sin(a) * r * 0.6);
+              if (!okGround(tx, ty, 16) || this.tfc(F.s5, tx / TS, ty / TS) < 0.12) continue;
+              items.push([ty, 7, tx, kind * 6 + Math.floor(this.hash(gx * 5 + f, gy, 169) * 6)]);
+            }
+          }
+      }
       const PCg = 16;
       for (let gy = Math.floor((oy - M) / PCg); gy <= Math.floor((oy + N + M) / PCg); gy++)
         for (let gx = Math.floor((ox - M) / PCg); gx <= Math.floor((ox + N + M) / PCg); gx++) {
           const tx = gx * PCg + Math.floor(this.hash(gx, gy, 101) * PCg), ty = gy * PCg + Math.floor(this.hash(gx, gy, 102) * PCg), u = tx / TS, v = ty / TS;
-          const dens = 0.008 + Math.max(0, 1 - this.tf(F.dRock, u, v) / 1.5) * 0.45;
+          let dens = 0.008 + Math.max(0, 1 - this.tf(F.dRock, u, v) / 1.5) * 0.45;
+          // V5: stones lie about on dry ground, most of all at the edge of bare earth
+          if (P5_) { const dr = Math.min(1, Math.max(0, (P5_.dryT + 0.1 - this.tfc(F.m5, u, v)) / 0.3)), be = Math.min(1, Math.max(0, (this.tfc(F.g5, u, v) - 0.4) / 0.3)); dens += P5_.gravAmt * (dr * 0.025 + be * 0.1); }
           if (this.hash(gx, gy, 103) > dens || !okGround(tx, ty, 6)) continue;
-          items.push([ty, 2, tx, Math.floor(this.hash(gx, gy, 104) * 10)]);
+          items.push([ty, 2, tx, Math.floor(this.hash(gx, gy, 104) * (P5_ ? 14 : 10))]);
         }
       // stones on the bed: clustered off rocky stretches, a few elsewhere, none in a dug channel;
       // along a rocky waterline some break the surface

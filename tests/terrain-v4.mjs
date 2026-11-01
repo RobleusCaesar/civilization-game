@@ -17,6 +17,16 @@
    7. THE CORE IS ITS SOURCE, BUILT: js/terrain-core.js is
       tools/terrain-core.src.js run through tools/build-terrain-core.cjs.
 
+   V5 (js/terrain-v5.js, CLAUDE.md TERRAIN V5) — V4's ground given a REGION:
+   8. A played world wears the region its landform calls for; the core is handed
+      it (world.R5) and the fields (F.m5 …); nothing about the rules moves.
+   9. THE WAY BACK: ?biome=v4 paints V4 byte for byte and is remembered on the
+      device until ?biome=auto; CFG.TERRAIN.V5 = false is the kill switch; a
+      field build that throws stands V5 down for the session.
+  10. THE FIELDS ARE CACHED, NEVER STALE: an edit's rebuild equals a cold one,
+      and an edit near food or a new building repaints what a rebuild would.
+  11. THE SWITCH IS A TESTER'S TOOL: a player's page carries no chip.
+
      node tests/terrain-v4.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +49,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   ck('theCoreIsItsSourceBuilt', out === shipped, out === shipped ? 'js/terrain-core.js == build(tools/terrain-core.src.js)' : 'stale: run node tools/build-terrain-core.cjs');
   const html = readFileSync(join(root, 'index.html'), 'utf8');
   const iG = html.indexOf('js/game.js?v='), iC = html.indexOf('js/terrain-core.js?v='), iT = html.indexOf('js/terrain.js?v=');
-  ck('andItLoadsAfterTheGameItWraps', iG > 0 && iC > iG && iT > iC, JSON.stringify({ game: iG, core: iC, terrain: iT }));
+  const iV = html.indexOf('js/terrain-v5.js?v=');
+  ck('andItLoadsAfterTheGameItWraps', iG > 0 && iC > iG && iT > iC && iV > iT, JSON.stringify({ game: iG, core: iC, terrain: iT, v5: iV }));
 }
 
 const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] });
@@ -250,6 +261,91 @@ let rulesV4 = null;
   await p.waitForTimeout(800);
   const k = await p.evaluate(() => ({ on: TerrainX.on, wanted: Terrain4.wanted(), classic: R.paintGround.toString().length > 40 }));
   ck('theKillSwitchStandsItDown', k.on === false && k.wanted === false && k.classic, JSON.stringify(k));
+  await ctx.close();
+}
+/* ---- 8–11. V5: the region ---- */
+{
+  const { p, ctx } = await page('');
+  const rules5 = await startWorld(p, SEED);
+  await settle(p);
+  const reg = await p.evaluate(() => {
+    const want = TerrainV5.AUTO[S.map.landform + ':' + S.map.variant] || 'tuscan', w = TerrainX.world();
+    return { want, current: TerrainV5.current(), live: TerrainX._v5, r5: !!(w.R5 && w.R5.name), fields: ['e5', 'm5', 'g5', 'k5', 'v5', 's5', 'p5'].every(k => TerrainX.F[k] && TerrainX.F[k].length === CFG.W * CFG.H),
+      chip: !!document.getElementById('v5biome'), stored: localStorage.getItem('neo-biome') };
+  });
+  ck('aPlayedWorldWearsItsRegion', reg.current === reg.want && reg.live === reg.want && reg.r5 && reg.fields, JSON.stringify(reg));
+  ck('andAPlayerSeesNoSwitch', reg.chip === false && reg.stored === null, JSON.stringify({ chip: reg.chip, stored: reg.stored }));
+  ck('theRegionChangesNoRule', rulesV4 && rulesV4.grid === rules5.grid && rulesV4.terr === rules5.terr && rulesV4.save === rules5.save, JSON.stringify({ grid: [rulesV4 && rulesV4.grid, rules5.grid] }));
+
+  // 10. the cached fields are never stale: after edits (water moved, food spent, a hall's neighbour raised) the
+  // warm rebuild equals a cold one, and the chunks an edit repaints equal a core built from the edited world
+  const fe = await p.evaluate(() => {
+    const W = CFG.W, H = CFG.H, terr = S.map.terrain, seen = S.map.seenTerrain;
+    const set = (i, t) => { terr[i] = t; if (seen) seen[i] = t; R.drawTileAt(i % W, (i / W) | 0); };
+    let fert = -1; for (let i = 0; i < terr.length; i++) if (terr[i] === T.FERTILE) { fert = i; break; }
+    if (fert >= 0) set(fert, T.BARREN);
+    let water = -1; for (let i = W * 3; i < terr.length - W * 3; i++) if (terr[i] === T.GRASS && terr[i + 1] === T.WATER && !Bld.at(i % W, (i / W) | 0)) { water = i; break; }
+    if (water >= 0) Terraform.dig(water % W, (water / W) | 0);
+    let spot = null; for (let y = 4; y < H - 4 && !spot; y++) for (let x = 4; x < W - 4 && !spot; x++) if (Bld.canPlace('P', 'house', x, y, { noCost: true, noSeal: true }).ok) spot = [x, y];
+    if (spot) Bld.place('P', 'house', spot[0], spot[1], { free: true, instant: true });
+    if (R.flushRepaint) R.flushRepaint();
+    const t0 = performance.now(); const e = TerrainX.noteEdit(); const editMs = performance.now() - t0;
+    // (the edit builds a NEW fields object: read it after, never through a reference taken before)
+    const warm = {}; for (const k of ['e5', 'm5', 'g5', 'k5', 's5', 'p5']) warm[k] = Array.from(TerrainX.F[k]);
+    TerrainV5._c = null; TerrainX.buildFields();
+    let stale = 0; for (const k of Object.keys(warm)) { const a = warm[k], b = TerrainX.F[k]; for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 1e-6) { stale++; break; } }
+    // every chunk, live (as the edit left it) against a core built afresh from the edited world
+    const nC = Math.ceil(W / 8), nR = Math.ceil(H / 8), keys = []; for (let j = 0; j < nR; j++) for (let i = 0; i < nC; i++) keys.push([i, j]);
+    const live = keys.map(([i, j]) => TerrainX.coreHash(i, j));
+    TerrainX.buildSDF(); TerrainX.buildFields(); TerrainX.buildShade();
+    const fresh = TCCore(); fresh.setWorld(TerrainX.world());
+    const diff = keys.filter(([i, j], k) => TerrainX.coreHash(i, j, fresh) !== live[k]).length;
+    return { fert: fert >= 0, water: water >= 0, house: !!spot, edit: e && e.chunks, stale, chunks: keys.length, diff, editMs: +editMs.toFixed(1) };
+  });
+  ck('theCachedFieldsAreNeverStale', fe.fert && fe.water && fe.house && fe.stale === 0, JSON.stringify(fe));
+  ck('andAnEditOfFoodOrTownPaintsWhatARebuildWould', fe.diff === 0, JSON.stringify({ chunks: fe.chunks, diff: fe.diff, edited: fe.edit, editMs: fe.editMs }));
+
+  // 9c. a field build that throws stands V5 down: the world paints as V4, never as a broken map
+  const ft = await p.evaluate(() => {
+    const keep = TerrainV5.fields; TerrainV5.fields = () => { throw new Error('test fault'); };
+    TerrainX.buildFields(); TerrainV5.fields = keep;
+    const w = TerrainX.world();
+    return { failed: TerrainV5.failed, live: TerrainX._v5, r5: w.R5, m5: !!TerrainX.F.m5, current: TerrainV5.current() };
+  });
+  ck('aFaultStandsTheRegionDownToV4', ft.failed === true && ft.live === null && ft.r5 === null && !ft.m5 && ft.current === null, JSON.stringify(ft));
+  ck('andTheRegionThrewNothingElse', p.errs.length === 0, p.errs.slice(0, 2).join(' | '));
+  await ctx.close();
+}
+/* ---- 9a/9b. ?biome=v4 is V4 byte for byte, remembered until ?biome=auto ---- */
+{
+  const { p, ctx } = await page('?biome=v4');
+  await startWorld(p, SEED);
+  await settle(p);
+  const v = await p.evaluate(() => {
+    const keys = TerrainX.viewChunks(1).slice(0, 6), w = TerrainX.world();
+    // the V4 core with no region at all: the same bytes
+    const plain = TCCore(); const w4 = Object.assign({}, w, { R5: null }); delete w4.F.e5; plain.setWorld(w4);
+    return { live: TerrainX._v5, r5: w.R5, stored: localStorage.getItem('neo-biome'), chip: !!document.getElementById('v5biome'),
+      same: keys.map(([i, j]) => TerrainX.coreHash(i, j) === TerrainX.coreHash(i, j, plain)), n: keys.length };
+  });
+  ck('theV4LinkPaintsV4ByteForByte', v.live === null && v.r5 === null && v.n >= 4 && v.same.every(Boolean), JSON.stringify({ live: v.live, n: v.n, same: v.same.filter(Boolean).length }));
+  await p.goto('file://' + join(root, 'index.html'));
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
+  const r1 = await p.evaluate(() => ({ choice: TerrainV5.choice(), chip: !!document.getElementById('v5biome') }));
+  await p.goto('file://' + join(root, 'index.html') + '?biome=auto');
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
+  const r2 = await p.evaluate(() => ({ choice: TerrainV5.choice(), stored: localStorage.getItem('neo-biome') }));
+  ck('andTheDeviceRemembersItUntilAutoUndoesIt', v.stored === 'v4' && v.chip === true && r1.choice === 'v4' && r1.chip === true && r2.choice === 'auto' && r2.stored === null, JSON.stringify({ stored: v.stored, r1, r2 }));
+  await ctx.close();
+}
+/* ---- 9d. the region's kill switch ---- */
+{
+  const { p, ctx } = await page('');
+  await p.evaluate(() => { CFG.TERRAIN.V5 = false; });
+  await startWorld(p, SEED);
+  await settle(p);
+  const k = await p.evaluate(() => ({ on: TerrainX.on, live: TerrainX._v5, r5: TerrainX.world().R5, current: TerrainV5.current() }));
+  ck('theRegionsKillSwitchPaintsPlainV4', k.on === true && k.live === null && k.r5 === null && k.current === null, JSON.stringify(k));
   await ctx.close();
 }
 await b.close();
