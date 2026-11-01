@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 127, date: '2026-11-02', title: 'Your games, kept safe',
+    items: [
+      'Continue now always opens the game you saved. Before, it could sometimes open a random world with no controls instead, most often on a phone right after the page loaded.',
+      'The title screen no longer freezes when you open the game without a connection.',
+      'Starting a new game and leaving before you play it no longer replaces the unfinished game that Continue was keeping for you.',
+      'A second game in the same visit is now kept safe from its first days, just like the first.',
+    ],
+  },
+  {
     build: 126, date: '2026-11-01', title: 'Every land its own country',
     items: [
       'Each world now has the character of a real countryside, chosen by its landform: rolling Tuscan fields of wheat and green, grey limestone karst with red earth in its hollows, a pale steppe with salt flats, Mediterranean garrigue on the islands, and meadow foothills under the high peaks.',
