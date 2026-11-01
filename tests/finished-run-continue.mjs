@@ -28,11 +28,21 @@
       savescumming is the player's right; Continue just doesn't walk back
       into a told story.
 
+   3. A STATUS WORD REPLACED THE GAME BEING CONTINUED (§4). Continue loads the
+      save, then waits behind "Preparing the world…" while the title is still
+      the current screen — and every backend status word (a sign-in landing, a
+      request failing) re-ran onTitle to re-resolve the Continue button, which
+      rolled a fresh demo world over the loaded game and entered THAT: a
+      random world with no HUD. On a phone's cold cache the plaque stands for
+      seconds while the sign-in lands. A world being entered now outranks the
+      demo (Screens._entering, set by enterGame until _enterNow).
+
    Run this after touching any of:
      backend.js — finalizeRun, noteFinishedSeed/finishedSeeds, autosaveNow,
                   snapshotLocal/readLocalSnapshot/clearLocalSnapshot,
                   markActiveSlot, listSaves (cols)
-     screens.js — onTitle (the Continue pick), continueGame, loadRow
+     screens.js — onTitle (the Continue pick), continueGame, loadRow,
+                  enterGame/_enterNow, ensureDemo, the backend-status listener
      game.js — G.end
 
      node tests/finished-run-continue.mjs      # exits non-zero on any regression
@@ -171,6 +181,38 @@ const out = await p.evaluate(async () => {
     ck('ledgerCappedAt50', list.length === 50, `len=${list.length}`);
     ck('ledgerKeepsNewestAndDedupes', list.includes('s59') && !list.includes('s0') && list.filter(s => s === 's59').length === 1, '');
     localStorage.removeItem('neo-finished-seeds');
+  }
+
+  // ---- 4. a status word never replaces a game being entered ----
+  {
+    G.newGame('8675309', 'calm', 'small'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const json = G.saveJSON();
+    Screens._demo = false; Screens.show('title');           // the title, wearing its demo world
+    Backend.snapshotLocal(json); Screens._newestSlot = 'local';
+    // hold the entry behind the plaque, as a cold phone cache does
+    const realReady = Assets.artReady, realIdle = Assets.whenIdle;
+    let hold = true, release = null;
+    Assets.artReady = function () { return !hold && realReady.call(Assets); };
+    Assets.whenIdle = () => new Promise(r => { release = r; });
+    let during = '';
+    try {
+      await Screens.continueGame();
+      await tick();
+      during = `${Screens.current} seed=${S.seed}`;
+      // the sign-in lands (or a request fails) while the plaque is up
+      window.dispatchEvent(new CustomEvent('backend-status', { detail: { online: true, configured: true, uid: 'u1' } }));
+      await tick();
+    } finally {
+      hold = false; Assets.artReady = realReady; Assets.whenIdle = realIdle; if (release) release();
+    }
+    for (let i = 0; i < 600 && Screens.current !== 'playing'; i++) await tick();
+    const hud = document.body.classList.contains('ingame');
+    ck('aStatusWordNeverReplacesTheGameBeingEntered',
+      Screens.current === 'playing' && String(S.seed) === '8675309' && !Screens._demo && hud,
+      `during: ${during}; after: ${Screens.current} seed=${S.seed} demo=${Screens._demo} hud=${hud}`);
+    ck('andTheTitleIsItselfAgainAfter', !Screens._entering, `entering=${Screens._entering}`);
+    S.paused = true;
+    Backend.clearLocalSnapshot && Backend.clearLocalSnapshot();
   }
 
   return { res, fails };

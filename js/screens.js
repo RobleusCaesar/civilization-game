@@ -41,8 +41,10 @@ const Screens = {
     window.addEventListener('backend-status', e => {
       this.renderChip(e.detail);
       // the backend often comes up after the title first renders — re-resolve
-      // the Continue button so cloud saves win over the local crash net
-      if (this.current === 'title') this.onTitle();
+      // the Continue button so cloud saves win over the local crash net. Not
+      // while a loaded game waits behind its plaque to be entered: the title
+      // is still the current screen then, and onTitle rolls the demo
+      if (this.current === 'title' && !this._entering) this.onTitle();
     });
     // title camera drift
     const pan = () => {
@@ -135,6 +137,13 @@ const Screens = {
   },
   ensureDemo() {
     if (window.S && this._demo) return;
+    /* A WORLD BEING ENTERED OUTRANKS THE DEMO. Continue loads the save and
+       then waits behind "Preparing the world…" with the title still the
+       current screen, and the backend's status word (a sign-in landing, a
+       request failing) re-ran onTitle to re-resolve the Continue button —
+       which rolled a fresh demo over the game just loaded and entered THAT:
+       a random world with no HUD (tests/finished-run-continue.mjs §4). */
+    if (this._entering && window.S) return;
     /* A PENDING DRAFT OUTRANKS THE DEMO. Backing all the way to the title
        with a founded world and an un-kept hand must not roll the demo over
        it — that was a four-tap free re-deal (title round trip → same trial
@@ -343,6 +352,7 @@ const Screens = {
   },
 
   enterGame() {
+    this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
     R.cam.z = R.defaultZoom();   // never the demo's leftover (tests/desktop-layout.mjs)
@@ -366,6 +376,7 @@ const Screens = {
     });
   },
   _enterNow() {
+    this._entering = false;
     /* ANALYTICS: a run BEGINS here — after the draft, so the kept card is
        known, and only for a world G.newGame just founded (G._freshRun), so
        loading a save is never counted as a new run. A start with no matching

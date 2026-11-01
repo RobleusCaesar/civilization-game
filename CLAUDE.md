@@ -1901,6 +1901,17 @@ unfinished other run from last week ("my game is over, New Game is my only
 option"). A save written after the finish revives the button. The slots
 themselves stay fully loadable from the Load screen — savescumming is the
 player's right; Continue just doesn't walk back into a told story.
+**A WORLD BEING ENTERED OUTRANKS THE DEMO** (`Screens._entering`, §4 of the
+same test — found by the player-experience sprint's performance audit and
+reproduced on build 126): Continue loads the save and then waits behind
+"Preparing the world…" while the TITLE is still the current screen, and
+every backend status word (a sign-in landing, a request failing) re-ran
+`onTitle` to re-resolve the Continue button — which rolled a fresh demo
+world over the game just loaded and entered THAT: a random world with no
+HUD. On a phone's cold cache the plaque stands for seconds, exactly while
+the sign-in lands. `enterGame` raises `_entering` until `_enterNow`; the
+status listener skips `onTitle` while it stands, and `ensureDemo` refuses to
+replace a world being entered whoever asks.
 
 **Drag-to-move** (`tests/drag-move.mjs`): the second movement gesture, born of
 the crowded-tile problem — with several units stacked, tapping a destination
