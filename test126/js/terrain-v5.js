@@ -50,13 +50,13 @@
       dry: ['#363a22', '#424728', '#4f542e', '#5c6135', '#696e3c', '#777b44', '#85884d', '#939556', '#a1a261'],
       lush: ['#1e351b', '#264221', '#2e5027', '#365e2c', '#3f6c32', '#497a39', '#548841', '#60954a', '#6da254'],
       geoA: ['#56554e', '#6c6a61', '#838075', '#99968a', '#aeab9e', '#c3c0b2'],
-      geoB: ['#58291b', '#6c3321', '#813e28', '#954a30', '#a75739', '#b66644'],
+      geoB: ['#4c2a1e', '#5d3424', '#6f3f2b', '#804a33', '#90563c', '#9e6347'],
       flowers: [['#f2efe2', '#e8c24a'], ['#9b6cc0', '#f0d060'], ['#f0cf4a', '#c8902a']],
       shrubs: [['cone', ['#14200f', '#1f3016', '#2b401d', '#385124']], ['dotted', ['#1d2814', '#2d3a1b', '#3d4c22', '#4e5e2a', '#a8442c']], ['round', ['#1a2514', '#28361c', '#374824', '#475b2d']]],
       hillS: 4.5, hillAmp: 1.7, mtnRise: 1.2, mtnR: 6, valley: 0.6, dolines: 1.5, relief: 1.0, mContrast: 1.6, fineAmp: 0.35, fineS: 1.8,
       shadeAmp: 0.36, warm: 0.4, cool: 0.32, ao: 0.1,
       moist: 0.36, dryT: 0.36, lushT: 0.66, hollowK: 0.9,
-      geoBase: 0.02, geoSlope: 0.3, geoCrest: 1.2, geoHollow: 0, geoDry: 0.25, geoNoise: 1.0, geoS: 1.7, geoRag: 0.6, geoCob: 0.14, kMode: 'hollow', stoneA: true, stoneB: false,
+      geoBase: 0.02, geoSlope: 0.3, geoCrest: 1.2, geoHollow: 0, geoDry: 0.25, geoNoise: 1.0, geoS: 1.7, geoRag: 0.6, geoCob: 0.14, kMode: 'hollow', stoneA: true, stoneB: false, geoPit: 1.15,
       tuft: 0.7, flower: 0.45, shrub: 0.8, shrubMode: 'rockEdge',
     },
     carpathian: {
@@ -139,7 +139,7 @@
     },
     fields(F, terr, W, H, P) {
       SEED = TX.seed | 0;
-      const N = W * H, E = new Float32Array(N);
+      const N = W * H, E = new Float32Array(N), PIT = new Float32Array(N);
       // dolines: round sinks pressed into the land, a few per hundred tiles (none in water)
       const pits = [];
       if (P.dolines) { const n = Math.round(N / 100 * P.dolines);
@@ -149,14 +149,14 @@
         let e = P.hillAmp * (fbm(x / P.hillS, y / P.hillS, 701) - 0.5) * 2;
         e += P.mtnRise * sm(1 - F.dMtn[i] / P.mtnR);
         e -= P.valley * Math.exp(-F.dWet[i] / 2.6);
-        for (const [px, py, r, d] of pits) { const dd = ((x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2) / (r * r); if (dd < 4) e -= d * Math.exp(-dd); }
+        for (const [px, py, r, d] of pits) { const dd = ((x + 0.5 - px) ** 2 + (y + 0.5 - py) ** 2) / (r * r); if (dd < 4) { e -= d * Math.exp(-dd); PIT[i] = Math.max(PIT[i], Math.exp(-dd * 1.6)); } }
         E[i] = e;
       }
       const Eb = blur(E, W, H, 2), Ebig = blur(Eb, W, H, 6);
       // the town's own ground is never ploughed
       const this_near = new Uint8Array(N);
       for (const b of (TX.blds || [])) for (let y = Math.max(0, b.y - 4); y < Math.min(H, b.y + b.s + 4); y++) for (let x = Math.max(0, b.x - 4); x < Math.min(W, b.x + b.s + 4); x++) this_near[y * W + x] = 1;
-      const e5 = Eb, m5 = new Float32Array(N), g5 = new Float32Array(N), k5 = new Float32Array(N), v5 = new Float32Array(N), s5 = new Float32Array(N);
+      const e5 = Eb, m5 = new Float32Array(N), g5 = new Float32Array(N), k5 = new Float32Array(N), v5 = new Float32Array(N), s5 = new Float32Array(N), p5 = new Uint8Array(N);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
         const i = y * W + x, xm = Math.max(0, x - 1), xp = Math.min(W - 1, x + 1), ym = Math.max(0, y - 1), yp = Math.min(H - 1, y + 1);
         const gx = (Eb[y * W + xp] - Eb[y * W + xm]) / (xp - xm || 1), gy = (Eb[yp * W + x] - Eb[ym * W + x]) / (yp - ym || 1), slope = Math.hypot(gx, gy);
@@ -171,7 +171,7 @@
           const S_ = P.mosaicS, cx = Math.floor(x / S_), cy = Math.floor(y / S_); let best = 1e9, sec = 1e9, val = 0.5, id = 0, id2 = 0;
           for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) { const qx = (cx + ox + 0.15 + 0.7 * hash(cx + ox, cy + oy, 721)) * S_, qy = (cy + oy + 0.15 + 0.7 * hash(cx + ox, cy + oy, 722)) * S_, d = (x + 0.5 - qx) ** 2 + (y + 0.5 - qy) ** 2;
             if (d < best) { sec = best; id2 = id; best = d; val = hash(cx + ox, cy + oy, 723); id = (cy + oy) * 4096 + cx + ox; } else if (d < sec) { sec = d; id2 = (cy + oy) * 4096 + cx + ox; } }
-          if (val < (P.plough || 0) && !(this_near && this_near[i])) plough = 1;
+          if (val < (P.plough || 0) && !(this_near && this_near[i])) plough = 1 + ((hash(id, 0, 729) * 4) | 0);   // which way its furrows run
           m += P.mosaic * (val - 0.5) * (1 - wet);
           const gap = Math.sqrt(sec) - Math.sqrt(best), lo = Math.min(id, id2), hi = Math.max(id, id2);
           if (hash(lo, hi, 727) < 0.4) fieldEdge = Math.exp(-((gap / 0.45) ** 2));
@@ -180,15 +180,18 @@
         if (P.mContrast) m = sm((m - 0.5) * P.mContrast + 0.5);
         let g = P.geoBase + P.geoSlope * slope + P.geoCrest * crest + (P.geoHollow || 0) * Math.max(0, hollow) * flat + P.geoDry * (0.5 - m) + P.geoNoise * (fbm(x / P.geoS + 30, y / P.geoS + 9, 731) - 0.5);
         if (plough) g = Math.max(g, 0.95);
+        // a doline's floor is red earth (where the Karst is farmed): bare ground, terra rossa
+        const pit = P.geoPit ? PIT[i] * P.geoPit : 0;
+        if (pit > 0.05) g = Math.max(g, Math.min(0.9, pit));
         g *= cl((F.dWet[i] - (P.geoWetClear || 1.2)) / 1.5);          // the bank stays green
         g = cl(g);
-        const k = plough ? 1 : P.kMode === 'hollow' ? sm(hollow * 2.2 + 0.35) : P.kMode === 'crest' ? sm(crest * 2.2 + 0.45) : P.kMode === 'slope' ? sm(0.7 - slope * 1.5) : fbm(x / 3 + 5, y / 3 + 50, 741);
-        m5[i] = m; g5[i] = g; k5[i] = k;
+        const k = plough || pit > 0.4 ? 1 : P.kMode === 'hollow' ? sm(hollow * 2.2 + 0.35) : P.kMode === 'crest' ? sm(crest * 2.2 + 0.45) : P.kMode === 'slope' ? sm(0.7 - slope * 1.5) : fbm(x / 3 + 5, y / 3 + 50, 741);
+        m5[i] = m; g5[i] = g; k5[i] = k; p5[i] = plough;
         v5[i] = cl(m * 1.1 - g * 0.9 + 0.15);
         const edge = Math.exp(-(((g - 0.48) / 0.18) ** 2));
         s5[i] = cl(P.shrubMode === 'rockEdge' ? edge * 1.2 + (1 - m) * 0.2 : P.shrubMode === 'dry' ? (1 - m) * 0.9 + edge * 0.5 : P.shrubMode === 'forestEdge' ? Math.exp(-F.dForest[i] / 1.6) * 1.2 + edge * 0.3 : P.shrubMode === 'fieldEdge' ? fieldEdge : P.shrubMode === 'moistEdge' ? Math.exp(-(((m - 0.55) / 0.12) ** 2)) * 0.8 : 0.3) * cl((F.dWet[i] - 1) / 1.5);
       }
-      Object.assign(F, { e5, m5, g5, k5, v5, s5 });
+      Object.assign(F, { e5, m5, g5, k5, v5, s5, p5 });
     },
   };
 

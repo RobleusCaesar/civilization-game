@@ -648,7 +648,11 @@ function TCCore() {
                 const sl = this.SLB[t256];
                 const gl = stone ? 0.52 + (L - 0.55) * 0.35 + (sl > -0.2 ? sl * 0.7 : -0.28) + (gv - 0.62) * 0.25
                   : 0.47 + (L - 0.55) * 0.55 + (NZ3[(t256 + 7919) & 65535] - 0.5) * 0.35 + (GM[t512] < -0.06 ? -0.12 : 0) + (gv - 0.62) * 0.2;
-                kk = Math.floor(gl * 6); kk = kk < 0 ? 0 : kk > 5 ? 5 : kk;
+                // a ploughed field: furrows a few pixels apart, one direction per field
+                const pf = F.p5 ? F.p5[Math.min(H - 1, (ty / TS) | 0) * W + Math.min(W - 1, (tx / TS) | 0)] : 0;
+                let gl2 = gl;
+                if (pf) { const co = pf === 1 ? ty : pf === 2 ? tx : pf === 3 ? tx + ty : tx - ty, ph = ((co % 7) + 7) % 7; gl2 += ph < 2 ? -0.16 : ph === 2 ? 0.08 : 0.02; }
+                kk = Math.floor(gl2 * 6); kk = kk < 0 ? 0 : kk > 5 ? 5 : kk;
               } else {
                 R5_ = m < P5.dryT ? P5.dry : m > P5.lushT ? P5.lush : P5.mid;
                 kk = Math.floor((L + (gv > 0.5 ? (gv - 0.5) * -0.35 : 0)) * 8.6); kk = kk < 0 ? 0 : kk > 8 ? 8 : kk;
