@@ -76,7 +76,13 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
 const p = await b.newPage({ viewport: { width: 500, height: 700 }, deviceScaleFactor: 1 });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
-await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+/* the CLASSIC painters: every check here clears the board by writing S.map.terrain directly
+   and re-bakes with R.rebuildTerrain(), which only the classic ground honours at once. Under
+   V4 the composite still showed the generated world's WATER under the line (its new fields
+   are built asynchronously), and that water animates on the real clock (TerrainX.drawWaterLife),
+   so the two frames of a pair in §1a differed by a few foam pixels on a slow host, failing on
+   CI even alone. The wall kit is the same picture under either ground. */
+await p.goto('file://' + join(root, 'index.html') + '?terrain=classic', { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
 await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('walllines', 'moderate', 'large'); Screens.show('playing'); S.paused = true; });
 // the art, not a timer: the drawn kit at every tier and the wall towers
