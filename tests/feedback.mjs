@@ -262,7 +262,9 @@ const hold = await p.evaluate(async () => {
   // a condition, never a fixed nap: a loaded machine delays the timers
   const until = async (fn, ms) => { const t0 = pn(); while (!fn() && pn() - t0 < ms) await wait(50); return fn(); };
   try {
-    UI.toast('A hut is finished off in the hills', 'note');
+    // the WORLD'S news comes through G.log (it rides the lesson out);
+    // the answer to the player's own tap never waits (section 2b below)
+    G.log('A hut is finished off in the hills', 'note');
     UI.toast('Not enough resources', true);
     out.noteHeld = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
     out.warnAtOnce = __fb.shown(/Not enough resources/).length === 1;
@@ -273,10 +275,10 @@ const hold = await p.evaluate(async () => {
     // a note held past twenty seconds is dropped, never shown late: a fresh
     // note queued behind it (on the advanced clock) proves the flush has run
     up = true;
-    UI.toast('A stale piece of news', 'note');
+    G.log('A stale piece of news', 'note');
     performance.now = () => pn() + off;
     off = 21000;
-    UI.toast('A fresh piece of news', 'note');
+    G.log('A fresh piece of news', 'note');
     up = false;
     out.freshShown = await until(() => __fb.shown(/A fresh piece of news/).length === 1, 6000);
     out.staleDropped = out.freshShown && __fb.nodes().filter(n => /A stale piece of news/.test(n.textContent)).length === 0;
@@ -295,6 +297,39 @@ ck('aWarningShowsAtOnceOverTheLesson', hold.warnAtOnce, '');
 ck('andTheNoteComesOnceTheLessonIsAnswered', hold.shownAfter, '');
 ck('aNoteHeldTwentySecondsIsDropped', hold.staleDropped, '');
 ck('withNoLessonNothingIsHeld', hold.noPredicateNoHold, '');
+
+/* ---- 2b. THE ANSWER TO THE PLAYER'S OWN TAP NEVER WAITS (integration) ----
+   The lesson hold is for the WORLD'S news (G.log, the "N ready" fold). A
+   note that answers what the player just did (a station's "no ground yet",
+   the wall's how-to, a top-bar number's explanation, Build's hint) must show
+   at once over the lesson card, or a tap reads as dead: the tap contract's
+   rule 4, no silent failure. Red on the merged lanes (PX-06's hold kept
+   every note back), green once the hold asks for news alone. */
+const answer = await p.evaluate(async () => {
+  const out = {};
+  __fb.setup('fb-2b');
+  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteUp'), real = Tutorial.noteUp;
+  Tutorial.noteUp = () => true;
+  try {
+    UI.toast('Drag along the ground to lay a wall — release to build', 'note');
+    out.answerAtOnce = __fb.shown(/Drag along the ground to lay a wall/).length === 1;
+    // the real path: a top-bar number tapped during a lesson says what it means
+    UI._toastAt = {};
+    const before = __fb.nodes().length;
+    const chip = document.querySelector('#topbar [data-chip="food"]');
+    if (chip) chip.click();
+    out.chipAtOnce = !!chip && __fb.nodes().length > before;
+    // and the world's news still waits behind the same lesson
+    G.log('A hut is finished off in the hills', 'note');
+    out.newsStillWaits = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
+  } finally {
+    if (had) Tutorial.noteUp = real; else delete Tutorial.noteUp;
+  }
+  return out;
+});
+ck('anAnswerToTheTapShowsAtOnceOverTheLesson', answer.answerAtOnce, JSON.stringify(answer));
+ck('andATappedNumberExplainsItselfOverTheLesson', answer.chipAtOnce, '');
+ck('whileTheWorldsNewsStillWaits', answer.newsStillWaits, '');
 
 /* ---- 3. THE ARMED MODES SAY WHAT TO DO NEXT (PX-12) ---- */
 const arm = await p.evaluate(async () => {
