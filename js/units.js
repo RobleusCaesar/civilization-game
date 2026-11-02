@@ -1258,7 +1258,7 @@ const Units = {
         return;   // sail up against the coast, then land
       }
       u.task = null;
-      if (u.owner === 'P') G.log('No shore to land on — sail the transport up against the coast', true);
+      if (u.owner === 'P') G.log('No shore to land on — sail the transport up against the coast', true, undefined, true);
       else if (u.owner === 'R') this.sailOff(u);   // the raid is off — never park a full longboat forever
       /* a RIVAL hull that cannot find the hostile beach brings its people
          HOME instead of anchoring forever with a hold full of soldiers —
@@ -1312,7 +1312,7 @@ const Units = {
     }
     u.task = null;
     if (u.owner === 'P' && landed) G.log(`${landed} put ashore`);
-    else if (u.owner === 'P' && cargo.length) G.log('No open shore beside the hull — sail closer to land', true);
+    else if (u.owner === 'P' && cargo.length) G.log('No open shore beside the hull — sail closer to land', true, undefined, true);
     // an emptied raider / rival hull has done its job — beach and abandon it
     if ((u.owner === 'R' || u.owner === 'A') && !cargo.length && S.units.includes(u)) S.units.splice(S.units.indexOf(u), 1);
     // a barbarian hull that STILL holds warriors it couldn't land gives up the
@@ -1766,7 +1766,7 @@ const Units = {
         if (!Bld.seamAt(t.x, t.y)) { u.task = null; continue; }
         if ((u.x | 0) !== t.x || (u.y | 0) !== t.y) {
           if (this.followPath(u, dt) && !((u.x | 0) === t.x && (u.y | 0) === t.y)) {
-            if (u.owner === 'P') G.log('The gold seam cannot be reached', true);
+            if (u.owner === 'P') G.log('The gold seam cannot be reached', true, undefined, true);
             u.task = null;
           }
         } else {

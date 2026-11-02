@@ -3405,34 +3405,83 @@ const UI = {
 
   _toastAt: {},
   // Popups are reserved for things that need attention NOW: danger alerts and
-  // "why that didn't work" errors — both flagged `warn`. Everything else (build
-  // confirmations, orders, routine events, enemy micro-actions) is quietly
-  // recorded in the event log instead of popping a toast, so the screen stays
-  // calm. A near-identical note within a few seconds is also collapsed
-  // ("House under attack!" ×9 → one), so even alerts never spam.
+  // "why that didn't work" errors — both flagged `warn` — and the few notes a
+  // player must see (below). A call with NO level is shown nowhere: not on
+  // screen and not in the event log either (G.log is what writes the log), so
+  // an order acknowledgement passes none and the screen stays calm.
   /* THREE LEVELS, not two. `warn` is the gate AND the styling, so anything
-     that wanted to be SEEN had to look like an alarm: false = event log
-     only, true = the red danger stripe, and now 'note' = shown in the
-     game's own gold — for intel that matters (the rival's origin at the
-     first in-game moment, Cards.announceRival) but is not a warning. */
-  toast(msg, warn, ms) {
-    if (!warn) return;                       // routine notes live only in the event log
-    const alarm = warn !== 'note';
+     that wanted to be SEEN had to look like an alarm: false = shown nowhere,
+     true = the red danger stripe, and 'note' = shown in the game's own gold —
+     for intel that matters (the rival's origin at the first in-game moment,
+     Cards.announceRival), the instruction an armed mode gives, and news the
+     player cannot see happen — but is not a warning.
+     A REFUSAL IS READ, AND A REPEAT ANSWERS (tests/feedback.mjs, PX-06): a
+     toast holds for its words (max(3.2 s, 1.2 s + 0.26 s a word) — the day-
+     one station refusals run 24–31 words), and the six-second collapse
+     ("House under attack!" ×9 → one, UI._toastAt) applies only when the
+     caller asks for it with `dedupe` — G.log does, for every game event. A
+     refusal answering the player's own tap always shows: a repeat of one
+     still on screen REPLACES it with one fresh node, and a warning's repeat
+     shakes (a note's never does), so a second tap never reads as dead.
+     WHILE A LESSON'S NOTE IS UP (Tutorial.noteUp) a note waits and is shown
+     once it is answered — never over the lesson's own card; a warning still
+     shows at once, since it answers the player's tap; a note held 20 s is
+     dropped, never shown late. Every map here is UI-local, keyed on S. */
+  _toastEl: null,     // message key → the node on screen (a repeat replaces it)
+  _toastHeld: null,   // notes waiting out a lesson's note: { msg, ms, at }
+  _toastS: null,
+  _toastFlush: 0,
+  toast(msg, warn, ms, dedupe) {
+    if (!warn) return null;
+    msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
-    if (now - (this._toastAt[key] || -1e9) < 6000) return;
+    if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
-    const hold = ms || 3200;
+    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
+    if (warn === 'note' && window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+      this._toastHeld.push({ msg, ms, at: now });
+      if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
+      return null;
+    }
+    return this._showToast(msg, warn, ms, key, dedupe);
+  },
+  _showToast(msg, warn, ms, key, dedupe) {
     const box = document.getElementById('toasts');
+    if (!box) return null;
+    const alarm = warn !== 'note';
+    const words = msg.trim().split(/\s+/).length;
+    const hold = ms || Math.max(3200, 1200 + 260 * words);
+    const old = this._toastEl.get(key);
+    const repeat = !!(old && old.isConnected);
+    if (repeat) old.remove();
     const el = document.createElement('div');
-    el.className = 'toast' + (alarm ? ' warn' : '');
+    // the shake answers a REFUSAL's second tap: a warning the player's own act
+    // raised (no collapse asked for) — never a note, never the world's news
+    el.className = 'toast' + (alarm ? ' warn' : '') + (repeat && warn === true && !dedupe ? ' shake' : '');
     el.textContent = msg;
     box.appendChild(el);
+    this._toastEl.set(key, el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
     setTimeout(() => { el.style.opacity = '0'; }, hold);
-    setTimeout(() => { el.remove(); }, hold + 700);
+    setTimeout(() => { el.remove(); if (this._toastEl && this._toastEl.get(key) === el) this._toastEl.delete(key); }, hold + 700);
+    return el;
   },
-
+  // the held notes come out once the lesson's note is answered (and its breath
+  // has passed — Tutorial.noteUp answers for both); a new world drops them
+  _flushHeld() {
+    this._toastFlush = 0;
+    const q = this._toastHeld;
+    if (!q || !q.length || this._toastS !== S) return;
+    const now = performance.now();
+    for (let i = q.length - 1; i >= 0; i--) if (now - q[i].at > 20000) q.splice(i, 1);
+    if (!q.length) return;
+    if (window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+      this._toastFlush = setTimeout(() => this._flushHeld(), 250);
+      return;
+    }
+    for (const h of q.splice(0)) this._showToast(h.msg, 'note', h.ms, h.msg.replace(/\d+/g, '#'));
+  },
   /* ---------------- HUD buttons (menus live in the Screens shell) ---------------- */
   bindButtons() {
     document.getElementById('bmToggle').addEventListener('click', () => {

@@ -426,12 +426,16 @@ const G = {
     }
   },
 
-  log(msg, warn, ms) {
+  /* `refusal`: this line is the game saying no to the player's own order (no
+     shore to land on, a seam out of reach) — it answers every repeat, as a
+     tap's refusal does (UI.toast, tests/feedback.mjs). Everything else is a
+     game event and keeps the collapse. */
+  log(msg, warn, ms, refusal) {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
     // game-event notes dedupe (repeat "under attack" spam collapses); the
     // full history always lands in the event log above
-    UI.toast(msg, warn, ms, true);
+    UI.toast(msg, warn, ms, !refusal);
   },
 
   /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war

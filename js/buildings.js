@@ -452,7 +452,7 @@ const Bld = {
     if (s && Units.assignTerraform(s, br.x, br.y, 'bridgeup'))
       G.log('Bridge works laid out — a sapper heads over');
     else
-      G.log('Bridge works need a sapper — tap one, then the bridge', true);
+      G.log('Bridge works need a sapper — tap one, then the bridge', true, undefined, true);
     if (window.R && R.updateTile) R.updateTile(br.x, br.y);
     return true;
   },
