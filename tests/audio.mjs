@@ -778,6 +778,11 @@ ck('andTheGeneratedBedStandsInForIt',
       return false;
     };
     const hold = d => { const g = d.g.gain, t = Sound.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.03, t); };
+    // a quiet world: nobody of ours under arms (the rider §15 sent out could
+    // meet a wolf out there, and the battle music it would rightly start is
+    // not this check's to measure), and the sim held still
+    S.units = S.units.filter(u => !(u.owner === 'P' && (Units.isMilitary(u) || Units.isLevied(u))));
+    S.paused = true;
     Sound.ROTATE_S = 1e9;           // no turn of its own while we watch
     r.ready = await full();
     // a) the music switched off
@@ -806,11 +811,11 @@ ck('andTheGeneratedBedStandsInForIt',
     Sound.ROTATE_FADE = 8; Sound.ROTATE_S = 300;
     return r;
   });
-  ck('aTuneSwitchedOffStops', fade.ready && fade.off.paused && !fade.off.clockRuns, JSON.stringify(fade.off));
+  ck('aTuneSwitchedOffStops', fade.ready && fade.off.paused && !fade.off.clockRuns, JSON.stringify({ ready: fade.ready, ...fade.off }));
   ck('aTuneUnderTheBattleWaitsAndPicksUpWhereItLeftOff',
     fade.ready2 && fade.battle.mode === 'on' && fade.battle.paused && fade.battle.back && Math.abs(fade.battle.resumedFrom) < 0.5,
-    JSON.stringify(fade.battle));
-  ck('andTheOldDeckStopsAfterARotation', fade.ready3 && fade.rot.paused && fade.rot.isTheOtherDeck, JSON.stringify(fade.rot));
+    JSON.stringify({ ready: fade.ready2, ...fade.battle }));
+  ck('andTheOldDeckStopsAfterARotation', fade.ready3 && fade.rot.paused && fade.rot.isTheOtherDeck, JSON.stringify({ ready: fade.ready3, ...fade.rot }));
   await p5.close();
   srv.close();
 }
