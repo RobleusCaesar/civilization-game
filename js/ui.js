@@ -2290,7 +2290,13 @@ const UI = {
       if (u) byKind[u.kind] = (byKind[u.kind] || 0) + 1;
     }
     return Object.entries(byKind)
-      .map(([k, n]) => `${n} ${CFG.UNITS[k].name}${n > 1 ? 's' : ''}`).join(', ');
+      .map(([k, n]) => `${n} ${this.plural(CFG.UNITS[k].name, n)}`).join(', ');
+  },
+  // a count reads as English (PX-56): 3 Axemen, 2 Longbowmen, 2 Wolves, 4 Deer
+  plural(name, n) {
+    if (n === 1) return name;
+    return /man$/.test(name) ? name.slice(0, -3) + 'men' : /f$/.test(name) ? name.slice(0, -1) + 'ves'
+      : /(Deer|s)$/.test(name) ? name : name + 's';
   },
 
   // gate price for replacing a wall section, with the wall's demolish refund credited
