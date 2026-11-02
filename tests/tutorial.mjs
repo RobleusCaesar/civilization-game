@@ -68,7 +68,8 @@
       already in the clear leaves the camera alone; a gather lesson looks
       again once, when the first villager selection raises the panel over
       it, and never a third time; no look starts while a finger is down
-      (it waits for the lift); under reduced motion the move is a jump.
+      (it waits for the lift) or while a shell screen covers the world (it
+      waits for the game); under reduced motion the move is a jump.
   18. A NOTE THAT WAITS ON A DEED CAN BE PUT AWAY (PX-29): every
       action-gated contextual note offers "Dismiss" (the spine never does),
       and one tap books it for good. The worked-ground note names the
@@ -1348,6 +1349,22 @@ const out = await p.evaluate(async () => {
         ck('noLookWhileAFingerIsDownItWaitsForTheLift', !!a && !!(Tutorial._show && Tutorial._show.id === 'gatherStone') &&
           duringDown === false && onLift && seen(a),
           JSON.stringify({ duringDown, onLift, after: where(a) }));
+      }
+      // (d2) nor while the world is off the glass: the pause menu over it is not
+      // "the ring is hidden" — the look waits for the game and measures then
+      {
+        const a = upTo('176', 'gatherWood');
+        UI.select('unit', villager().id);
+        if (a) aim(a, R.viewW() + 0.2 * TL_ * R.cam.z, (band().top + band().bottom) / 2);
+        let underShell = null, shown = false;
+        Screens.show('paused');
+        try { tick(3, 0.05); underShell = !!Tutorial._pan; shown = !!(Tutorial._show && Tutorial._show.id === 'gatherWood'); }
+        finally { Screens.show('playing'); S.paused = true; }
+        tick(1, 0.05);
+        const onReturn = !!Tutorial._pan;
+        tick(24, 0.05);
+        ck('noLookUnderAShellScreenItWaitsForTheGame', !!a && shown && underShell === false && onReturn && seen(a),
+          JSON.stringify({ shown, underShell, onReturn, after: where(a) }));
       }
       // (e) reduced motion: the same move, made at once — never a glide
       {

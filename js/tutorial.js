@@ -779,7 +779,9 @@ const Tutorial = {
      the panel, which can cover the very tile the note names. At most two a
      note. Never while a finger is on the glass (UI.pointers, the canvas's own
      record): the look waits for the lift, and _panTo measures again then, so
-     a ring the player dragged into view themselves is left alone. */
+     a ring the player dragged into view themselves is left alone. Nor while
+     the world is off the glass (the pause menu, the art plaque): the screen
+     over it would read as "unseen" and the camera would move under it. */
   _looks() {
     if (!this._show) return;
     if (!this._selLooked && this._villagerSel()) {
@@ -788,6 +790,7 @@ const Tutorial = {
       if (def && def.selLook) this._lookDue = true;
     }
     if (!this._lookDue || (UI.pointers && UI.pointers.size)) return;
+    if (window.Screens && Screens.current !== 'playing') return;
     this._lookDue = false;
     const a = this._anchor();
     if (a && a.u !== undefined) { const u = Units.get(a.u); if (u) this._panTo(u.x, u.y); }
