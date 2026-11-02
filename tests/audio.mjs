@@ -24,6 +24,10 @@
    7. IT NEVER THROWS AT A CALLER. A missing speaker must not cost a frame,
       so every door is wrapped — measured by deleting AudioContext outright
       and calling everything.
+  7c. A DEAD SPEAKER IS NOT A GAME FAULT (PX-51): a device that refuses
+      resume() and suspend() leaks no rejection into the run's error tally,
+      the sounds stop asking it until a real gesture does, and once it
+      answers that gesture brings the sound back, the switches unchanged.
    8. THE THEME IS THE RECORDING, AND THE GENERATED BED STANDS IN for it
       when the recording cannot play: it schedules ahead of the audio clock
       and keeps producing new material.
@@ -33,6 +37,11 @@
   13. THE BATTLE BUILDS ON THE MARCH AND BEATS IN THE FIGHT — the player's
       attack, never a defence at home — and fades back to the theme, or ends
       with the game. Its loop's seam runs straight into its start.
+  15. A HIDDEN TAB IS SILENT, WHATEVER THE MUSIC SAYS (PX-45): the context
+      sleeps, the hooves stop and the world's ear does no work — and the
+      cues come back on return; the music-on case is as it was.
+  16. A FADED TUNE STOPS (PX-45): switched off, under a battle (and picks up
+      where it left off), and the old deck after a rotation.
    9. THE WIRING IS REAL: the settings rows paint from the live state, and
       the game's own events reach the one door.
   10. THERE IS A DIAL, AND IT SHIPS DOWN. On/Off alone shipped a game the
@@ -335,6 +344,94 @@ ck('andTheGeneratedBedStandsInForIt',
   await p3.close();
 }
 
+/* ---- 7c. A DEAD SPEAKER IS NOT A GAME FAULT (PX-51) ----
+   resume() and suspend() answer with promises, and on a device whose audio
+   output will not start they REJECT ("Failed to start the audio device").
+   play() asked resume() again on every sound and nobody caught the answer, so
+   one dead speaker wrote ~30 unhandled rejections a minute into the run's
+   error tally (Feedback.runErrs, the dashboard's "hit an error", which the
+   release comparison reads). Every answer is caught now, and a refusal marks
+   the device failed: play() and startMusic() stop asking until a real gesture
+   asks again — and once the device answers, that gesture brings the sound
+   back with the switches as they were. */
+{
+  const p6 = await b.newPage({ viewport: { width: 900, height: 700 } });
+  const boom = [];
+  p6.on('pageerror', e => boom.push(String(e)));
+  await p6.addInitScript(() => {
+    try { localStorage.setItem('neo-sfx', '1'); localStorage.setItem('neo-music', '1'); } catch (e) {}
+    window.__rej = [];
+    window.addEventListener('unhandledrejection', e => window.__rej.push(String((e.reason && e.reason.message) || e.reason)));
+    // the device will not start: the context reads suspended for good, and
+    // resume() and suspend() are refused in Chromium's own words
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const real = { resume: AC.prototype.resume, suspend: AC.prototype.suspend,
+      state: Object.getOwnPropertyDescriptor(BaseAudioContext.prototype, 'state').get };
+    window.__dev = { dead: true, resumes: 0, real };
+    Object.defineProperty(AC.prototype, 'state', { configurable: true,
+      get() { return window.__dev.dead ? 'suspended' : real.state.call(this); } });
+    AC.prototype.resume = function () {
+      window.__dev.resumes++;
+      return window.__dev.dead ? Promise.reject(new DOMException('Failed to start the audio device', 'InvalidStateError')) : real.resume.call(this);
+    };
+    AC.prototype.suspend = function () {
+      return window.__dev.dead ? Promise.reject(new DOMException('Cannot suspend a closed AudioContext.', 'InvalidStateError')) : real.suspend.call(this);
+    };
+  });
+  await p6.goto('file://' + join(root, 'index.html'));
+  await p6.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 30000 });
+  const e0 = await p6.evaluate(() => Feedback.runErrs || 0);
+  await p6.mouse.click(450, 350);                 // the first real gesture: the device refuses it
+  await p6.waitForTimeout(300);
+  const dead = await p6.evaluate(async (e0) => {
+    const wait = ms => new Promise(z => setTimeout(z, ms));
+    const audio = () => __rej.filter(m => /audio device|AudioContext/i.test(m)).length;
+    const hidden = h => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => h ? 'hidden' : 'visible' });
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    G.newGame('aud-dead', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); S.paused = false;
+    const r0 = __dev.resumes;
+    // the first minute's call sites: a tutorial note, a ghost turning red, the
+    // confirm, a villager trained, a death on camera, the bond, the dry
+    // summer's strike — and twenty taps
+    UI.cue('ok'); UI.cue('bad'); UI.cue('confirm'); Sound.play('train'); Sound.play('die');
+    UI.cue('bond'); Sound.play('thunder');
+    for (let i = 0; i < 20; i++) { UI.cue('ok'); await wait(15); }
+    Sound.startMusic();                            // the music asking again
+    await wait(150);
+    const asked = __dev.resumes - r0;
+    hidden(true); await wait(150);                 // the tab goes: suspend() is refused too
+    hidden(false); await wait(150);                // …and comes back
+    return { asked, rej: audio(), counted: (Feedback.runErrs || 0) - e0, first: Feedback.runErr,
+      music: Sound.musicOn(), sfx: Sound.sfxOn() };
+  }, e0);
+  // the device comes back (headphones in, the output restarted): the next
+  // real gesture must wake the context, and a cue must sound
+  const mid = await p6.evaluate(async () => {
+    __dev.dead = false;
+    try { await __dev.real.suspend.call(Sound.ctx); } catch (e) {}   // really asleep, so the gesture has something to wake
+    return { state: Sound.ctx.state, music: Sound.musicOn() };
+  });
+  await p6.mouse.click(450, 350);
+  await p6.waitForTimeout(400);
+  const back = await p6.evaluate(() => {
+    delete Sound._last.tick;
+    return { state: Sound.ctx.state, cue: Sound.play('tick'), music: Sound.musicOn(),
+      rej: __rej.filter(m => /audio device|AudioContext/i.test(m)).length };
+  });
+  ck('aDeadSpeakerIsNotAGameFault', dead.rej === 0 && dead.counted === 0,
+    dead.rej + ' unhandled rejections, ' + dead.counted + ' counted for the run (first: ' + dead.first + ')' +
+    (boom.length ? ' — ' + boom.slice(0, 2).join(' | ') : ''));
+  ck('andPlayStopsAskingTheDeadDevice', dead.asked === 0,
+    'resume() asked ' + dead.asked + ' times by the sounds after the gesture it refused');
+  ck('andTheNextGestureBringsTheSoundBack',
+    mid.state === 'suspended' && back.state === 'running' && back.cue === true && mid.music === true && back.music === mid.music && back.rej === dead.rej,
+    JSON.stringify({ mid, back }));
+  await p6.close();
+}
+
 /* ---- 9b. the game's own events reach the one door (source) ---- */
 {
   const S_ = f => readFileSync(join(root, f), 'utf8');
@@ -584,6 +681,141 @@ ck('andTheGeneratedBedStandsInForIt',
   ck('theGameOverEndsItAndTheThemeWaits', v.overStart === 'on' && v.over.mode === 'off' && v.over.held === true && v.over.heldAfter === false,
     JSON.stringify(v.over) + ' started ' + v.overStart);
   ck('theLoopsSeamRunsIntoItsStart', !!v.seam && v.seam.startIsTheHit && v.seam.endIsTheLeadIn, JSON.stringify(v.seam));
+
+  /* ---- 15. A HIDDEN TAB IS SILENT, WHATEVER THE MUSIC SAYS (PX-45) ----
+     Hiding the tab put the context to sleep only while the MUSIC was on, so
+     a player with the music off who switched apps left the town chopping and
+     the hooves galloping in their pocket (and the tab's timers unthrottled).
+     Now the context sleeps whenever there is one, the hooves stop, and the
+     world's ear does no work while the tab is hidden — and on return the
+     cues come back. The music-on case is unchanged: asleep, the tune paused,
+     the rotation clock still, and back where it was. */
+  const hid = await p5.evaluate(async () => {
+    const r = {}, wait = ms => new Promise(z => setTimeout(z, ms));
+    // a hidden tab as the browser makes it: the flag flips and the frames stop
+    // (the sim stands where it is); timers keep running
+    const hide = h => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => h ? 'hidden' : 'visible' });
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+      if (h) { window.__raf = window.requestAnimationFrame; window.__rafQ = []; window.requestAnimationFrame = cb => { window.__rafQ.push(cb); return 0; }; }
+      else if (window.__raf) { window.requestAnimationFrame = window.__raf; const q = window.__rafQ || []; window.__rafQ = []; window.__raf = null; for (const cb of q) requestAnimationFrame(cb); }
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    Sound.lsSet('neo-sfx', '1');
+    G.newGame('aud-hide', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); S.paused = false;
+    const tc = Bld.tcOf('P'), TL = CFG.TILE, z = R.cam.z;
+    const top = R.topReserve || 0, H = R.viewH() - (R.bottomReserve || 0);
+    R.cam.x = Bld.cx(tc) * TL - R.viewW() / z / 2; R.cam.y = Bld.cy(tc) * TL - (top + (H - top) / 2) / z;
+    G.freeVis = true; G.updateVisibility();
+    const tiles = t => { const o = []; for (let dy = -8; dy <= 8; dy++) for (let dx = -10; dx <= 10; dx++) { const x = tc.x + dx, y = tc.y + dy; if (MapGen.onBoard(x, y) && S.map.terrain[MapGen.idx(x, y)] === t) o.push({ x, y }); } return o; };
+    const forest = tiles(T.FOREST), hills = tiles(T.HILLS);
+    for (let i = 0; i < 8; i++) Units.spawn('villager', 'P', tc.x + (i % 3), tc.y + 2 + (i / 3 | 0));
+    const vs = S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
+    vs.forEach((u, i) => { const f = i % 2 ? hills[i % hills.length] : forest[i % forest.length]; if (f) Units.assignGather(u, f.x, f.y); });
+    // a rider of ours on the move as the tab goes: the hooves are a LOOP
+    const rd = Units.spawn('rider', 'P', Bld.cx(tc) + 2.5, Bld.cy(tc) + 2.5);
+    let far = null;
+    for (let d = 14; d > 6 && !far; d--) for (let a = 0; a < 24 && !far; a++) {
+      const x = Math.round(Bld.cx(tc) + Math.cos(a / 24 * 6.283) * d), y = Math.round(Bld.cy(tc) + Math.sin(a / 24 * 6.283) * d);
+      if (MapGen.onBoard(x, y) && Path.passable(x, y, 'P') && !Bld.at(x, y)) far = { x, y };
+    }
+    if (far) Units.moveTo(rd, far.x, far.y);
+    Sound.setMusic(false);
+    // the world's ear, counted: how often it does its work
+    let din = 0;
+    const od = Sound._dinTick;
+    Sound._dinTick = function () { din++; return od.call(this); };
+    for (let i = 0; i < 50 && !Sound._gallop; i++) await wait(100);
+    r.gallopBefore = !!Sound._gallop;
+    hide(true);
+    const d0 = din;
+    await wait(1500);
+    r.hidden = { ctx: Sound.ctx.state, din: din - d0, hooves: !!(Sound._gallop && Sound._gallop.g.gain.value > 0.001) };
+    hide(false);
+    await wait(800);
+    const d1 = din;
+    await wait(1000);
+    delete Sound._last.tick;
+    r.back = { ctx: Sound.ctx.state, din: din - d1, cue: Sound.play('tick') };
+    // the music on: as it always was — asleep, the tune paused, the clock still, and back
+    Sound.setMusic(true);
+    for (let i = 0; i < 50 && !(Sound._theme && !Sound._theme.el.paused); i++) await wait(100);
+    const clock = Sound._themeClock;
+    hide(true); await wait(500);
+    r.onHidden = { ctx: Sound.ctx.state, paused: Sound._theme.el.paused, clockStill: Sound._themeClock === clock };
+    hide(false);
+    for (let i = 0; i < 40 && (Sound._theme.el.paused || Sound.ctx.state !== 'running'); i++) await wait(100);
+    r.onBack = { ctx: Sound.ctx.state, paused: Sound._theme.el.paused };
+    Sound._dinTick = od;
+    return r;
+  });
+  ck('aHiddenTabIsSilentWithTheMusicOff',
+    hid.gallopBefore && hid.hidden.ctx === 'suspended' && hid.hidden.din === 0 && !hid.hidden.hooves,
+    JSON.stringify({ hoovesBefore: hid.gallopBefore, hidden: hid.hidden }));
+  ck('andTheCuesComeBackOnReturn', hid.back.ctx === 'running' && hid.back.cue === true && hid.back.din > 0, JSON.stringify(hid.back));
+  ck('andTheMusicOnCaseIsAsItWas',
+    hid.onHidden.ctx === 'suspended' && hid.onHidden.paused && hid.onHidden.clockStill && hid.onBack.ctx === 'running' && !hid.onBack.paused,
+    JSON.stringify({ hidden: hid.onHidden, back: hid.onBack }));
+
+  /* ---- 16. A FADED TUNE STOPS (PX-45) ----
+     _themeOut and _themeNext fade a deck with setTargetAtTime and pause it a
+     beat after the fade — but only if its gain was under 0.01 by then, and an
+     exponential approach is still at 2-4% of the level at that moment. So no
+     faded tune ever paused: the theme played on unheard under the music
+     switched off, under every battle, and the old deck after every rotation.
+     The pause asks what the music INTENDS now, never the gain — and a theme
+     paused under a battle picks up where it left off.
+     Each case runs the real path (stopMusic, _battleStart, _themeNext), then
+     HOLDS the faded deck at 3% — what the fade reads when its timer fires on
+     time — so a timer made late by a loaded machine (the fade then further
+     down) can never let the old level test pass by accident. */
+  const fade = await p5.evaluate(async () => {
+    const r = {}, wait = ms => new Promise(z => setTimeout(z, ms));
+    const th = () => Sound._theme;
+    // the theme playing, faded in near its level, before each case
+    const full = async () => {
+      for (let i = 0; i < 80; i++) { const t = th(); if (t && !t.el.paused && t.g.gain.value >= 0.9 * Sound._themeLevel(t.i)) return true; await wait(100); }
+      return false;
+    };
+    const hold = d => { const g = d.g.gain, t = Sound.ctx.currentTime; g.cancelScheduledValues(t); g.setValueAtTime(0.03, t); };
+    // a quiet world: nobody of ours under arms (the rider §15 sent out could
+    // meet a wolf out there, and the battle music it would rightly start is
+    // not this check's to measure), and the sim held still
+    S.units = S.units.filter(u => !(u.owner === 'P' && (Units.isMilitary(u) || Units.isLevied(u))));
+    S.paused = true;
+    Sound.ROTATE_S = 1e9;           // no turn of its own while we watch
+    r.ready = await full();
+    // a) the music switched off
+    Sound.setMusic(false); hold(th());
+    await wait(2500);
+    const a1 = th().el.currentTime; await wait(400); const a2 = th().el.currentTime;
+    r.off = { paused: th().el.paused, clockRuns: a2 > a1 };
+    Sound.setMusic(true);
+    r.ready2 = await full();
+    // b) the battle takes the floor, then hands it back
+    const deck = th();
+    Sound._battleStart(true); hold(deck);
+    await wait(3000);
+    r.battle = { mode: Sound._battle.mode, paused: deck.el.paused, at: deck.el.currentTime };
+    Sound._battleStop(0.3, false);
+    for (let i = 0; i < 60 && deck.el.paused; i++) await wait(50);
+    r.battle.back = !deck.el.paused && deck === th();
+    r.battle.resumedFrom = +(deck.el.currentTime - r.battle.at).toFixed(2);
+    r.ready3 = await full();
+    // c) a rotation: the deck the new tune faded in over
+    Sound.ROTATE_FADE = 3; Sound._themeFading = 0;
+    const old = th();
+    Sound._themeNext(false); hold(old);
+    await wait(4600);
+    r.rot = { paused: old.el.paused, isTheOtherDeck: old === Sound._deck2 };
+    Sound.ROTATE_FADE = 8; Sound.ROTATE_S = 300;
+    return r;
+  });
+  ck('aTuneSwitchedOffStops', fade.ready && fade.off.paused && !fade.off.clockRuns, JSON.stringify({ ready: fade.ready, ...fade.off }));
+  ck('aTuneUnderTheBattleWaitsAndPicksUpWhereItLeftOff',
+    fade.ready2 && fade.battle.mode === 'on' && fade.battle.paused && fade.battle.back && Math.abs(fade.battle.resumedFrom) < 0.5,
+    JSON.stringify({ ready: fade.ready2, ...fade.battle }));
+  ck('andTheOldDeckStopsAfterARotation', fade.ready3 && fade.rot.paused && fade.rot.isTheOtherDeck, JSON.stringify({ ready: fade.ready3, ...fade.rot }));
   await p5.close();
   srv.close();
 }

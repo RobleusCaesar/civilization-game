@@ -218,15 +218,43 @@ const Sound = {
          silent while the effects were fine. Wait for the promise, and keep a
          statechange listener as the belt to that brace, since a context can
          also come back on its own after the tab returns. */
-      if (ctx.state === 'suspended') {
-        const r = ctx.resume();
-        if (r && r.then) r.then(go, () => {}); else go();
-      } else go();
+      if (ctx.state === 'suspended') this._resume(go);
+      else go();
       if (!this._stateHook) {
         this._stateHook = 1;
-        try { ctx.addEventListener('statechange', () => { if (ctx.state === 'running') go(); }); } catch (e) {}
+        try { ctx.addEventListener('statechange', () => { if (ctx.state === 'running') { this._devFailed = false; go(); } }); } catch (e) {}
       }
     } catch (e) {}
+  },
+
+  /* THE DEVICE CAN SAY NO (PX-51). resume() and suspend() answer with a
+     promise, and that promise can REJECT: a phone whose audio output will not
+     start ("Failed to start the audio device"), a context the browser closed.
+     Uncaught, every refusal was an unhandled rejection in the run's error
+     tally (Feedback.runErrs, the dashboard's "hit an error") — and play()
+     asked again on every sound, so one dead speaker wrote ~30 "errors" a
+     minute. Both are asked through here and every answer is caught. A
+     refused resume() marks the device failed: play() and startMusic() stop
+     asking (_wake) until a real gesture's unlock() asks again, and the mark
+     clears the moment the device answers. A failing device degrades to
+     silence; it is never a game fault. */
+  _devFailed: false,
+  _resume(then) {
+    const done = () => { this._devFailed = false; if (then) { try { then(); } catch (e) {} } };
+    try {
+      const r = this.ctx.resume();
+      if (r && r.then) r.then(done, () => { this._devFailed = true; });
+      else done();
+    } catch (e) { this._devFailed = true; }
+  },
+  _suspend() {
+    try { const r = this.ctx.suspend(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+  },
+  // a sound asked for while the context sleeps: wake it — unless the device
+  // has refused (the next gesture asks) or the tab is hidden (it sleeps on purpose)
+  _wake() {
+    if (this._devFailed || (typeof document !== 'undefined' && document.hidden)) return;
+    this._resume();
   },
 
   /* ---------------- the throttle ---------------- */
@@ -375,7 +403,7 @@ const Sound = {
     try {
       if (!this.sfxOn()) return false;
       const ctx = this.ac(); if (!ctx) return false;
-      if (ctx.state === 'suspended') { ctx.resume(); }
+      if (ctx.state === 'suspended') this._wake();
       const now = ctx.currentTime;
       if (!this._due(kind, now)) return false;
       const v = (opts && opts.gain != null) ? opts.gain : 1;
@@ -509,7 +537,7 @@ const Sound = {
     try {
       if (this._music || !this.musicOn()) return false;
       const ctx = this.ac(); if (!ctx) return false;
-      if (ctx.state === 'suspended') { ctx.resume(); if (ctx.state === 'suspended') return false; }
+      if (ctx.state === 'suspended') { this._wake(); if (ctx.state === 'suspended') return false; }
       // the bus comes up over four seconds: music that starts AT volume
       // announces itself, and this is meant to be noticed only if you listen
       const g = this.musicBus.gain;
@@ -741,6 +769,15 @@ const Sound = {
     try { clearTimeout(th.pauseT); const p = th.el.play(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
     this._ramp(th.g.gain, this._themeLevel(th.i), sec);
   },
+  /* A FADED DECK IS PAUSED BY WHAT THE MUSIC INTENDS, NEVER BY ITS GAIN
+     (PX-45). The fades are setTargetAtTime, an exponential approach, and it
+     is still 2-4% of its level when the pause timer fires — so a test for
+     "under 0.01" never paused anything: the theme played on unheard under the
+     music switched off, under every battle, and the old deck after every
+     rotation (a decoder running for nothing). Paused when it is no longer
+     the theme, the music is off, the battle has the floor or the run ended
+     mid-battle; and a battle's theme picks up where it left off. */
+  _deckOut(d) { return d !== this._theme || !this._music || this._battle.mode !== 'off' || this._themeHeld; },
   _themeOut(sec) {
     if (!this.ctx) return;
     // both decks: a battle can begin in the middle of a crossfade
@@ -748,7 +785,7 @@ const Sound = {
       if (!d) continue;
       this._ramp(d.g.gain, 0, sec);
       clearTimeout(d.pauseT);
-      d.pauseT = setTimeout(() => { try { if (d.g.gain.value < 0.01) d.el.pause(); } catch (e) {} }, sec * 1000 + 300);
+      d.pauseT = setTimeout(() => { try { if (this._deckOut(d)) d.el.pause(); } catch (e) {} }, sec * 1000 + 300);
     }
     this._themeFading = 0;
   },
@@ -787,7 +824,7 @@ const Sound = {
     this._ramp(nx.g.gain, this._themeLevel(i), fade);
     this._ramp(cur.g.gain, 0, fade);
     clearTimeout(cur.pauseT);
-    cur.pauseT = setTimeout(() => { try { if (cur !== this._theme && cur.g.gain.value < 0.01) cur.el.pause(); } catch (e) {} }, fade * 1000 + 600);
+    cur.pauseT = setTimeout(() => { try { if (this._deckOut(cur)) cur.el.pause(); } catch (e) {} }, fade * 1000 + 600);
     this._theme = nx; this._deck2 = cur;
     this._rotated = true;
     this._themeClock = 0;
@@ -1209,16 +1246,23 @@ const Sound = {
       if ((gl.quiet = (gl.quiet || 0) + 1) > 6) { try { gl.s.stop(this.ctx.currentTime + 0.6); } catch (e) {} this._gallop = null; }
     }
   },
-  // the world's ear: four times a second while a real game is on the glass
+  // the hooves faded out and let go (an effects switch, a pause, a hidden tab)
+  _gallopOff() {
+    const gl = this._gallop; if (!gl) return;
+    this._gallop = null;
+    try { this._ramp(gl.g.gain, 0, 0.3); gl.s.stop(this.ctx.currentTime + 0.4); } catch (e) {}
+  },
+  // the world's ear: four times a second while a real game is on the glass —
+  // and NEVER while the tab is hidden (PX-45): nothing in a hidden tab is heard
   _worldTick() {
     try {
-      if (!this.ctx || this.ctx.state !== 'running') return;
+      if (!this.ctx || this.ctx.state !== 'running' || (typeof document !== 'undefined' && document.hidden)) return;
       const now = performance.now(), dt = Math.min(1, (now - (this._tickAt || now)) / 1000);
       this._tickAt = now;
       this._themeTick(dt);
       this._battleTick();
       if (!this.sfxOn() || !this._inGame() || S.paused) {
-        if (this._gallop) { this._ramp(this._gallop.g.gain, 0, 0.3); try { this._gallop.s.stop(this.ctx.currentTime + 0.4); } catch (e) {} this._gallop = null; }
+        this._gallopOff();
         return;
       }
       this._dinTick();
@@ -1240,8 +1284,13 @@ const Sound = {
         if (document.visibilityState === 'visible') {
           this.unlock();
           if (this._music && this._music.rec && this._theme && this._battle.mode === 'off') this._themeIn(1);
-        } else if (this._music && this.ctx) {
-          try { this.ctx.suspend(); } catch (e) {}
+        } else if (this.ctx) {
+          /* THE TAB GOES, THE SOUND GOES — whatever the music says (PX-45).
+             It slept only while the music was on, so a player with the music
+             off who switched apps heard the town chop and the hooves gallop on
+             in their pocket (and an audible tab's timers are never throttled). */
+          this._suspend();
+          this._gallopOff();
           for (const d of [this._theme, this._deck2]) { try { if (d) d.el.pause(); } catch (e) {} }   // a hidden tab does not run the tune on
         }
       });
