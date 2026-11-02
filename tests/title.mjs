@@ -552,6 +552,14 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     const at = await o.p.evaluate(() => { const r = document.getElementById('btnContinue').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
     await o.p.mouse.click(at[0], at[1]);
     await o.p.waitForTimeout(500);
+    // the line fades in over its first frames: wait (briefly) for it to be on
+    // top at its centre before measuring, never one fixed beat on a busy host
+    await o.p.waitForFunction(() => {
+      const el = [...document.querySelectorAll('body *')].find(e => !e.childElementCount && /could not be opened/i.test(e.textContent || ''));
+      if (!el || +getComputedStyle(el).opacity < 1) return false;
+      const q = el.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+      return !!hit && (hit === el || el.contains(hit));
+    }, null, { timeout: 2500 }).catch(() => {});
     const r = await o.p.evaluate(() => {
       const de = document.documentElement, vw = de.clientWidth, vh = de.clientHeight;
       const el = [...document.querySelectorAll('body *')].find(e => !e.childElementCount && /could not be opened/i.test(e.textContent || ''));

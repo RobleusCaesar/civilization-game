@@ -347,6 +347,10 @@ const out = await p.evaluate(async () => {
   };
   // the words a player can see right now that say `re`
   const sees = re => [...document.querySelectorAll('body *')].find(el => !el.childElementCount && re.test(el.textContent || '') && seen(el)) || null;
+  // …looked for over a short while, never at one fixed beat: the line fades
+  // in over its first frames, and a loaded machine stretches those frames
+  // (a read 150 ms after the press caught it at opacity 0 in a busy sweep)
+  const seesSoon = async (re, ms) => { let el = null; for (const t = performance.now() + (ms || 2000); !el && performance.now() < t;) { el = sees(re); if (!el) await tick(); } return el; };
   const prepUp = () => { const e = document.getElementById('prep'); return !!e && e.style.display !== 'none'; };
   const playing = async (ms) => { const t = performance.now() + (ms || 15000); while (Screens.current !== 'playing' && performance.now() < t) await tick(); return Screens.current === 'playing'; };
   // nothing still opening from the step before — a Resume whose art is still
@@ -422,7 +426,7 @@ const out = await p.evaluate(async () => {
       for (let i = 0; i < 200 && Screens._newestSlot !== 3; i++) await tick();
       cont().click(); await wait(150);                      // the save is on its way
       cont().click(); await wait(150);                      // …and nothing has happened yet
-      msg = sees(/Opening your saved game/i);
+      msg = await seesSoon(/Opening your saved game/i);
       gives.splice(0).forEach(g => g());                     // the network answers
       await playing();
       await wait(200);
@@ -458,7 +462,7 @@ const out = await p.evaluate(async () => {
       for (let i = 0; i < 200 && Screens._newestSlot !== 4; i++) await tick();
       label = cont().querySelector('small').textContent + ' / ' + Screens._newestSlot;
       cont().click(); await wait(1100);                     // past the cap
-      msg = sees(/could not be opened/i);
+      msg = await seesSoon(/could not be opened/i);
       busy = !!(Screens._continuing || Screens._entering);
       late.splice(0).forEach(g => g());                      // …and then the cloud answers after all
       await wait(300);
@@ -519,7 +523,7 @@ const out = await p.evaluate(async () => {
     let threw = null;
     try { cont().click(); } catch (e) { threw = String(e); }
     await wait(400);
-    const msg = sees(/could not be opened/i);
+    const msg = await seesSoon(/could not be opened/i);
     const stuck = !!(Screens._continuing || Screens._entering);
     document.getElementById('btnTitleNew').click(); await tick();
     const ng = Screens.current;
@@ -539,7 +543,7 @@ const out = await p.evaluate(async () => {
     const on0 = R.onNewGame; let once = true;
     R.onNewGame = function () { if (once) { once = false; throw new Error('a painter fault mid-load'); } return on0.apply(R, arguments); };
     try { cont().click(); await wait(400); } finally { R.onNewGame = on0; }
-    const msg = sees(/could not be opened/i);
+    const msg = await seesSoon(/could not be opened/i);
     ck('aLoadThatFailsHalfWayLeavesACleanTitle',
       Screens.current === 'title' && Screens._demo && String(S.seed) !== '9292' && !!(R.terrainCache || R._bakeDue || R._bake),
       `title ${Screens.current}, demo ${Screens._demo}, world ${S.seed} (the save was 9292, the old demo ${demoSeed}), ground ${!!R.terrainCache || 'due ' + !!(R._bakeDue || R._bake)}`);
@@ -558,7 +562,7 @@ const out = await p.evaluate(async () => {
       Screens._demo = false; Screens.show('title');
       const label = cont().querySelector('small').textContent;
       cont().click(); await wait(300);
-      const msg = sees(/still checking/i);
+      const msg = await seesSoon(/still checking/i);
       ck('aTapWhileTheLookupIsOutIsAnswered', /looking/.test(label) && !!msg, msg ? `"${msg.textContent}" (Continue read "${label}")` : `nothing a player can see (Continue read "${label}")`);
     } finally {
       if (answer) answer({ ok: true, data: [] });
@@ -624,12 +628,12 @@ const out = await p.evaluate(async () => {
       Screens.backTo = 'paused'; Screens.show('load', { saveMode: true }); await wait(50);
       Backend.autosaveNow = async () => ({ ok: false, error: { code: 500, message: 'Server error' } });
       await Screens.saveToSlot(2, null); await wait(150);
-      const fail = sees(/save failed/i);
+      const fail = await seesSoon(/save failed/i);
       ck('aFailedSaveIsSeen', !!fail, fail ? `"${fail.textContent}" over the ${Screens.current} screen` : 'nothing a player can see');
       // …and one that works ("Did my progress save?")
       Backend.autosaveNow = async () => ({ ok: true, data: null });
       await Screens.saveToSlot(2, null); await wait(150);
-      const good = sees(/saved to slot 2/i);
+      const good = await seesSoon(/saved to slot 2/i);
       ck('andASaveThatWorksIsSeenToo', !!good, good ? `"${good.textContent}" over the ${Screens.current} screen` : 'nothing a player can see');
       // a slot that will not load (the Load screen's own button)
       Screens.backTo = 'title'; Screens.show('load'); await wait(50);
@@ -637,7 +641,7 @@ const out = await p.evaluate(async () => {
       const lb = [...document.querySelectorAll('#slotList .abtn')].find(x => /Load/.test(x.textContent));
       if (lb) lb.click();
       await wait(150);
-      const lf = sees(/could not be opened|timed out/i);
+      const lf = await seesSoon(/could not be opened|timed out/i);
       ck('aSlotThatWillNotLoadIsSeen', !!lb && !!lf && Screens.current === 'load', lf ? `"${lf.textContent}"` : `nothing a player can see (button ${!!lb})`);
       // …and one whose fetch THROWS releases the press, keeps the world in
       // hand and the screen it was on, and says so
@@ -647,7 +651,7 @@ const out = await p.evaluate(async () => {
       const lb2 = [...document.querySelectorAll('#slotList .abtn')].find(x => /Load/.test(x.textContent));
       if (lb2) lb2.click();
       await wait(150);
-      const lt = sees(/could not be opened/i);
+      const lt = await seesSoon(/could not be opened/i);
       const busy = !!(Screens._continuing || Screens._entering);
       ck('aLoadThatThrowsLetsGoOfThePress', !!lt && !busy && Screens.current === 'load' && String(S.seed) === seed0,
         `${lt ? '"' + lt.textContent + '"' : 'nothing a player can see'}; in flight ${busy}; ${Screens.current}; world ${S.seed} (was ${seed0})`);
@@ -656,14 +660,14 @@ const out = await p.evaluate(async () => {
       const dt = new DataTransfer(); dt.items.add(new File(['this is not a save'], 'village.json', { type: 'application/json' }));
       inp.files = dt.files; inp.dispatchEvent(new Event('change'));
       await wait(300);
-      const imp = sees(/could not (be opened|load)/i);
+      const imp = await seesSoon(/could not (be opened|load)/i);
       ck('aFileThatWillNotImportIsSeen', !!imp && Screens.current === 'load', imp ? `"${imp.textContent}"` : 'nothing a player can see');
       // an identity that will not restore, over the settings page
       Screens.show('settings'); await wait(50);
       Backend.importIdentity = async () => ({ ok: false, error: { code: 'bad_token', message: 'That does not look like a recovery token' } });
       document.getElementById('btnImportId').click();
       await wait(150);
-      const idm = sees(/does not look like a recovery token/i);
+      const idm = await seesSoon(/does not look like a recovery token/i);
       ck('aRestoreThatFailsIsSeen', !!idm, idm ? `"${idm.textContent}" over Settings` : 'nothing a player can see');
     } finally {
       Backend.isReady = real.ready; Backend.listSaves = real.list; Backend.loadSlot = real.load;
