@@ -3860,8 +3860,9 @@ install, never by `load`), so `artReady()` still means the people are drawn.
 one pixel read per strip where every frame canvas used to be read back;
 `_swapTunic` is the one pixel rule `recolorTunic` shares). **A fresh run
 fetches the rival's army and sappers in the background tier**
-(`loadMilitaryArt` / `loadSapperArt`'s `later`, from `G.newGame` only — a
-load keeps them counted): they stand under the fog for the opening days.
+(`loadMilitaryArt` / `loadSapperArt`'s `later`): they stand under the fog
+for the opening days — and since build 128 a load does the same (**THE
+PLAQUE WAITS ONLY FOR WHAT THE OPENING WORLD SHOWS**, below).
 **The wished landform is PEEKED** (`MapGen.generate(seed, mode, true)` returns
 `{landform, variant}` before a tile is painted — the same code, so the same
 answer), where `foundRun` used to paint a whole map per rolled seed. **A
@@ -3880,6 +3881,61 @@ per-pixel rule), about half the parse-time sprite build before. One caution
 from measuring it: headless Chromium rasterises "GPU" canvases in software,
 so a commit-time cost there is not a phone's — compare old and new on the
 SAME harness, and read `(program)` in a profile through a trace.
+**THE PLAQUE WAITS ONLY FOR WHAT THE OPENING WORLD SHOWS** (`G.artShown` /
+`G.artPresent`, `Assets.loadUnitsArt`; tests/boot.mjs §6 and §8, PX-09). A
+FOUNDING counts the player's people, every kind standing on the map and
+anything of any owner in sight (`G.visibleAt` after `updateVisibility` —
+never a hidden rival); the keep (`Cards.pick`, `G._freshRun` only, never the
+demo) asks, counted, for what its origin planted, each kind through its own
+loader (the warship by name, `Assets.loadKindArt`), and a loader fault there
+costs a picture, never the keep (try/catch). A LOAD counts what the player
+HOLDS (standing, aboard, queued, in reserve, sheltered), the rival's held
+kinds but its villagers, and anything in sight (the rival's villagers
+included, then): it no longer counts whole armies. Everything else goes to the background tier,
+which `artReady()` never waits for. **ONE REQUEST PER STRIP**
+(`Assets._stripLoad`, key|facing|pose): never fetched or installed twice, an
+installed one never asked for again; a counted ask moves a background strip
+forward and counts it from then on (`_promote`). §6 reads the queues with
+the wire held still (`Assets._stripFlying`), or the pump moves strips while
+they are counted; §8 pins, from a cold cache, every strip a shown unit draws
+with installed or COUNTED before the world opens (`Assets._stripLive`) and
+installed at `_enterNow`, never the procedural stand-in, with the 15 s floor
+lifted for that page alone so it measures what was waited for, never the
+machine's speed; a soldier trained later finds his strips waiting.
+`GAME_ART_FLOOR_MS` (15 s) and `DEMO_ART_FLOOR_MS` (20 s) never moved; the
+demo's bake-release timer is its own world's (`Screens.ensureDemo`), so a
+founded run's bake always waits for its own counted art, which on a slow
+phone puts the ~3 s bake behind the plaque rather than the draft
+(bake-on-world-art, deferred, would move it back). The work moved out of the
+plaque does not vanish: the background tier installs during the first minute
+of play (PX-37's install pacing is the lever if that minute stutters).
+**A BLIP IS NOT A VERDICT** (§9, `Assets._retryLater`, PX-42): a failed
+people strip (villager, soldier, sapper) is asked ONCE more at the head of
+the background tier (`front`; it never holds the plaque again), on `online`
+or `RETRY_MS` (8 s) after a burst, re-armed while `navigator.onLine` is
+false; a strip that fails twice stays procedural, and the beasts and hulls
+never retry. Every people strip ships on disk, so a retry is only ever a real
+failure. **THE GROUND IS READY WHEN THE WORLD OPENS** (`TerrainX.prefetch`,
+from `G.frame`'s shell-skip branch; tests/terrain-v4.mjs §12, boot.mjs §6,
+PX-20): while a founded (`S.played === false`) or entered
+(`Screens._entering`, a Continue's included) world waits undrawn, every
+`G.PREFETCH_MS` (100) the workers are asked for its opening view, this camera
+at `R.defaultZoom()` (enterGame sets that zoom without moving the camera's
+corner) — one arrival a call, under the in-flight cap, `_want` set so
+evict() spares it, the warm queue never started, nothing drawn. Never behind
+the pause menu or Settings, never for the demo, the classic painters or the
+kill switch, and guarded on the method, so a cached older terrain.js stands
+down. §12 waits for the very chunks the world opens on; a world that opens
+before its single worker has built its fields still opens on the stand-in —
+measured on a quiet desktop, a Continue enters 2.6 s after the tap (0.43× of
+127) and then shows the quarter-size stand-in ground for ~6 s (127: ~2 s),
+real ground arriving at about the same moment as before (0.94×). Re-measured
+on a quiet host (load < 3, interleaved with 127): keep → playing 0.38×, phone
+Continue 0.74×, the first minute no worse (its longest gap is the entry
+frame on both builds), so PX-37's install pacing was not built. A harness
+that measures the first minute must compare UNROUNDED times: rounding the
+gap's start against the entry moment dropped the entry gap about half the
+time and read as a 1.78× regression that was not there.
 **THE TRIAL AND ORIGIN CARDS** (`CardFace` and `Screens._burnCard` in
 js/screens.js, art in `assets/icons/cards/`, tests/draft-cards.mjs — operator,
 once the deck shipped: the difficulty and origin screens "feel bland…
