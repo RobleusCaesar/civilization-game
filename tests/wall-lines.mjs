@@ -76,13 +76,7 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
 const p = await b.newPage({ viewport: { width: 500, height: 700 }, deviceScaleFactor: 1 });
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
-/* the CLASSIC painters: every check here clears the board by writing S.map.terrain directly
-   and re-bakes with R.rebuildTerrain(), which only the classic ground honours at once. Under
-   V4 the composite still showed the generated world's WATER under the line (its new fields
-   are built asynchronously), and that water animates on the real clock (TerrainX.drawWaterLife),
-   so the two frames of a pair in §1a differed by a few foam pixels on a slow host, failing on
-   CI even alone. The wall kit is the same picture under either ground. */
-await p.goto('file://' + join(root, 'index.html') + '?terrain=classic', { waitUntil: 'domcontentloaded' });
+await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
 await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('walllines', 'moderate', 'large'); Screens.show('playing'); S.paused = true; });
 // the art, not a timer: the drawn kit at every tier and the wall towers
@@ -116,7 +110,12 @@ const out = await p.evaluate(async () => {
     if (R.redrawFog) R.redrawFog();
   };
   const cv = R.cv;
-  const snap = () => { R.draw(0); return R.g.getImageData(0, 0, cv.width, cv.height); };
+  /* EVERY FRAME READ HERE IS DRAWN WITHOUT AMBIENT LIFE (deck-growth's grab does the same).
+     The butterflies and bird flocks (R.ambient) outlive G.newGame and are spawned in view while
+     the art loads, and their bob is added once per DRAW, so even R.draw(0) moves each a fraction
+     of a pixel: the two frames of a §1a pair differed wherever one sat (1,307 px on a crowded CI
+     shard, ~240 alone; 127 as 128). No clock is read, so holding time would not help. */
+  const snap = () => { R.ambient = []; R.ambientT = 1e9; R.draw(0); return R.g.getImageData(0, 0, cv.width, cv.height); };
   const scr = (wx, wy) => { const z = R.cam.z * (R.dpr || 1); return [(wx - R.cam.x) * z, (wy - R.cam.y) * z]; };
 
   // ---- 1a. a man beside a north-south line moves only his own pixels ----
