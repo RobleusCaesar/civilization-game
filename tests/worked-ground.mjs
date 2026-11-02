@@ -539,6 +539,87 @@ const out = await p.evaluate(() => {
       'workedBy=' + (nearIdx !== null ? S.map.workedBy[nearIdx] : 'n/a'));
   }
 
+  /* ---- 11. THE FIRST TAP SAYS WHAT TO DO FIRST (PX-07) ----
+     On a fresh run no ground has been worked, so the Farm, Lumber Camp,
+     Quarry and Hunter's Lodge cards — four of the five a phone shows — have
+     nowhere to stand. Each tap used to toast its whyGround as a red warning:
+     24–31 words, the joke first and the instruction last, gone before it
+     could be read. Now a station names the work in ONE short line, action
+     first (`whyNone`), told as a gold note; the whyGround joke stays the
+     refusal on a TILE (canPlace's why, checks 1 above, unchanged). And the
+     placement chip, which clips at its 260px, says the short form of that
+     instruction instead of the first words of the joke. */
+  {
+    G.newGame('wg-n', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.map.explored.fill(1); G.freeVis = true; G.updateVisibility();
+    S.res = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const VERB = { lumber: 'Fell', quarry: 'Break', farm: 'Harvest', lodge: 'Hunt' };
+    const lines = STATIONS.map(k => CFG.BUILDINGS[k].whyNone || '');
+    const words = s => s.trim().split(/\s+/).length;
+    ck('everyStationNamesItsWorkInOneShortLine',
+      STATIONS.every((k, i) => lines[i] && words(lines[i]) <= 16 && lines[i].startsWith(VERB[k] + ' ')) &&
+        new Set(lines).size === STATIONS.length,
+      STATIONS.map((k, i) => k + ': ' + (lines[i] ? words(lines[i]) + ' words, "' + lines[i] + '"' : 'none')).join(' | '));
+    // the card's tap, on ground where nothing has been worked yet
+    const told = {};
+    for (const k of STATIONS) {
+      UI.exitPlacement();
+      UI.enterPlacement(k);
+      const el = document.querySelector('#toasts .toast:last-child');
+      told[k] = { opened: UI.placing !== null, text: el ? el.textContent : '', warn: !!(el && el.classList.contains('warn')),
+        shown: !!(el && getComputedStyle(el).display !== 'none' && el.offsetHeight > 0) };
+    }
+    UI.exitPlacement();
+    ck('aCardWithNowhereToStandSaysItAsANote',
+      STATIONS.every(k => !told[k].opened && told[k].shown && !told[k].warn && told[k].text === CFG.BUILDINGS[k].whyNone),
+      STATIONS.map(k => k + ': ' + (told[k].opened ? 'OPENED (ground exists?)' : (told[k].warn ? 'warn ' : 'note ') + '"' + told[k].text.slice(0, 40) + '"')).join(' | '));
+    // …and the CHIP on a tile that was never worked: each station is given
+    // one tile of its own ground to arm on (so placement opens), and its ghost
+    // is moved onto plain grass beside it — the chip must say the station's
+    // work, verb first, whole (the 260px chip clips with an ellipsis)
+    const tc = Bld.tcOf('P');
+    const MAKE = {
+      lumber: (x, y) => { S.map.terrain[MapGen.idx(x, y)] = T.STUMPS; S.map.resAmount[MapGen.idx(x, y)] = 0; },
+      quarry: (x, y) => { S.map.terrain[MapGen.idx(x, y)] = T.PEBBLES; S.map.resAmount[MapGen.idx(x, y)] = 0; },
+      farm: (x, y) => { S.map.terrain[MapGen.idx(x, y)] = T.BARREN; S.map.resAmount[MapGen.idx(x, y)] = 0; },
+      lodge: (x, y) => G.noteHunt(x, y),
+    };
+    const chips = {};
+    const grassy = (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.GRASS && !Bld.at(x, y);
+    STATIONS.forEach((k, n) => {
+      const spot = MapGen.findNear(tc.x - 6 + n * 4, tc.y + 5, 8, (x, y) => grassy(x, y) && grassy(x + 2, y));
+      MAKE[k](spot.x, spot.y); Bld._block = null;
+      const gx = spot.x + 2, gy = spot.y;
+      R.centerOn(gx + 0.5, gy + 0.5);
+      UI.exitPlacement();
+      UI.setMenuCollapsed(true, true);
+      UI.enterPlacement(k);
+      const armed = UI.placing === k && !!UI.placeGhost;
+      UI.placeGhost = { x: gx, y: gy, set: true }; UI._placeCheck(); UI._placeDomSync();
+      const chip = document.getElementById('placeWhy');
+      const cs = chip && getComputedStyle(chip);
+      let onTop = false;
+      if (chip && cs.display !== 'none') {
+        // the chip lets taps through to the ground (pointer-events: none), so the
+        // probe lends it a hit box for one read: is anything drawn over it?
+        const r = chip.getBoundingClientRect();
+        chip.style.pointerEvents = 'auto';
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        chip.style.pointerEvents = '';
+        onTop = hit === chip || chip.contains(hit);
+      }
+      const text = chip ? chip.textContent : '';
+      chips[k] = { armed, code: UI.placeVerdict && UI.placeVerdict.code, text, shown: !!cs && cs.display !== 'none', onTop,
+        whole: !!chip && chip.scrollWidth <= chip.clientWidth + 1, sw: chip && chip.scrollWidth, cw: chip && chip.clientWidth };
+      UI.exitPlacement();
+    });
+    ck('theChipSaysTheWorkBeforeItsEllipsis',
+      STATIONS.every(k => chips[k].armed && chips[k].code === 'ground' && chips[k].shown && chips[k].onTop && chips[k].whole &&
+        new RegExp('^⃠ ' + VERB[k] + ' \\S').test(chips[k].text) && chips[k].text.length <= 2 + 28) &&
+        new Set(STATIONS.map(k => chips[k].text)).size === STATIONS.length,
+      STATIONS.map(k => `${k}: ${chips[k].armed ? '' : 'NOT ARMED '}${chips[k].code} "${chips[k].text}" ${chips[k].sw}/${chips[k].cw}px${chips[k].onTop ? '' : ' COVERED'}`).join(' | '));
+  }
+
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));
