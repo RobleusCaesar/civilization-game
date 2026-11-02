@@ -337,6 +337,9 @@ const UI = {
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        // where the fingers are: the pinch carries the ground under them along
+        // as they travel (pinchMid lives only here, set and read by the pinch)
+        this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         this.downAt = null;
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
@@ -363,15 +366,20 @@ const UI = {
         } else if (this.terraDrag) {
           this.extendTerraDrag(R.screenToTile(e.clientX, e.clientY));
         } else {
-          if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
+          // the step that crosses the tap slop pans by ALL the travel since the
+          // press, not just its own few pixels — or every pan trails the finger
+          let px = dx, py = dy;
+          if (this.downAt && !this.downAt.moved && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8) {
             this.downAt.moved = true;
+            px = e.clientX - this.downAt.x; py = e.clientY - this.downAt.y;
+          }
           if (this.downAt && this.downAt.moved) {
             if (this.moveDragArm) {
               // the press started on the selection — this drag is an order, not
               // a pan: keep the tether pinned to the finger for the ghost
               this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
             } else {
-              R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+              R.cam.x -= px / R.cam.z; R.cam.y -= py / R.cam.z;
               R.clampCam();
             }
           }
@@ -380,16 +388,23 @@ const UI = {
         p.x = e.clientX; p.y = e.clientY;
         const [a, b] = [...this.pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         if (this.pinchD > 0) {
-          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-          this.zoomAt(mid.x, mid.y, d / this.pinchD);
+          // THE GROUND STAYS UNDER THE FINGERS: zoom about where they WERE,
+          // then carry that ground to where they ARE — two fingers moved
+          // together (no zoom) are simply a pan
+          const m0 = this.pinchMid || mid;
+          this.zoomAt(m0.x, m0.y, d / this.pinchD);
+          R.cam.x -= (mid.x - m0.x) / R.cam.z; R.cam.y -= (mid.y - m0.y) / R.cam.z;
+          R.clampCam();
         }
-        this.pinchD = d;
+        this.pinchD = d; this.pinchMid = mid;
       }
       p.x = e.clientX; p.y = e.clientY;
       e.preventDefault();
     });
     const up = e => {
+      const pinchEnds = this.pointers.size === 2 && this.pointers.has(e.pointerId);
       this.pointers.delete(e.pointerId);
       // what the player's people were doing before the gesture: a gesture that
       // changes it is an ORDER given today (G.noteAct — a defeat's card asks
@@ -422,6 +437,20 @@ const UI = {
       }
       if (was && this._orderMoved(was)) G.noteAct();
       if (this.pointers.size < 2) this.pinchD = 0;
+      if (pinchEnds) {
+        // one of two fingers lifted: the other PANS on from where it rests —
+        // re-armed as a drag already under way, so it can never start a wall,
+        // terraform or move drag, nor be taken for a tap when it lifts
+        const [rest] = [...this.pointers.values()];
+        this.downAt = { x: rest.x, y: rest.y, t: performance.now(), moved: true };
+        this.moveDragArm = null; this.pinchMid = null;
+      } else if (this.pointers.size === 2) {
+        // a third finger lifted: the pinch goes on with the two still down,
+        // measured from where they are now (no jump in zoom or ground)
+        const [a, b] = [...this.pointers.values()];
+        this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
       if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
     };
     cv.addEventListener('pointerup', up);
