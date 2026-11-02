@@ -3343,7 +3343,10 @@ warning comes out as a full-width plank at the head of the actions saying
 what is lost and what comes back; the plank or the red button confirms. Both
 carry the same `data-act`, so the handlers bind every match
 (`querySelectorAll`), and tests/banish.mjs and boats-moat-scuttle.mjs pin the
-header placement and the plank.
+header placement and the plank. **AT REST IT IS QUIET** (operator, the same
+day: "too bright, grabs way too much attention… dial back the colors by
+50%"): the plate is the red mixed halfway back to the ordinary button's brown
+and the icon wears half its colour (`.pki`); only the ARMED state is red.
 
 **The levy** (`tests/levy.mjs`): the village called to arms — the player's
 mirror of the rival's townsfolk militia, and the last-ditch lever for a town

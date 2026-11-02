@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 131, date: '2026-11-02', title: 'Quieter red buttons',
+    items: [
+      'The small Demolish, Banish and Scuttle buttons are toned down so they no longer draw the eye. They only turn bright red once you tap them to confirm.',
+    ],
+  },
+  {
     build: 130, date: '2026-11-02', title: 'Tidier panels',
     items: [
       'Demolish, Banish and Scuttle are now a small red button beside the close button, so they no longer take up a big space in every panel. Tap it once and a warning shows what you lose and what comes back. Tap again to confirm.',

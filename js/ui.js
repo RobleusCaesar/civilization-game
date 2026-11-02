@@ -2519,7 +2519,7 @@ const UI = {
      button confirms. Both carry the same data-act, so every handler and
      contract finds them as before. */
   killBtn(act, armed, icon, name) {
-    return `<button class="abtn pkill${armed ? ' danger armed' : ''}" data-act="${act}" title="${name}" aria-label="${name}">${icon}</button>`;
+    return `<button class="abtn pkill${armed ? ' danger armed' : ''}" data-act="${act}" title="${name}" aria-label="${name}"><span class="pki">${icon}</span></button>`;
   },
   killPlank(act, line, small) {
     return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;

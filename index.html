@@ -504,12 +504,18 @@
   /* THE RARE ACT, SMALL AND RED, BESIDE THE ✕ (UI.killBtn — operator,
      2026-11-02): Demolish, Banish and Scuttle are an icon in a dark red
      plate, the ✕'s own size, never a big button in the actions. Armed, it
-     glows and the full warning comes out at the head of the actions. */
+     glows and the full warning comes out at the head of the actions.
+     AT REST IT IS QUIET (operator, the same day: "a little too bright, grabs
+     way too much attention… dial back the colors by 50%"): the plate is the
+     red mixed halfway back to the ordinary button's brown, and the icon
+     wears half its colour (.pki) — only the armed state speaks in red. */
   .abtn.pkill { position: absolute; right: 58px; margin-top: -2px; min-width: 40px; padding: 4px 8px;
-    font-size: 16px; border-color: #5a1f16;
-    background: linear-gradient(180deg, #5a2219, #3a150f); box-shadow: inset 0 1px 0 rgba(255,170,140,.14); }
-  .abtn.pkill:active { background: #6e2a1e; }
+    font-size: 16px; border-color: #3f1e15;
+    background: linear-gradient(180deg, #49271a, #392014); box-shadow: inset 0 1px 0 var(--edge); }
+  .abtn.pkill .pki { filter: saturate(.5) brightness(.85); }
+  .abtn.pkill:active { background: #5d3321; }
   .abtn.pkill.armed { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(224,101,80,.45), inset 0 1px 0 rgba(255,170,140,.2); }
+  .abtn.pkill.armed .pki { filter: none; }
   #helpToggle ~ .abtn.pkill { right: 106px; }
   #panel .phead.k3 > div { padding-right: 144px; }   /* clear the red button, the −/ℹ️ and the ✕ */
 
@@ -2179,48 +2185,48 @@
 
 </div>
 
-<script src="js/feedback.js?v=130"></script>
-<script src="js/config.js?v=130"></script>
-<script src="js/audio.js?v=130"></script>
-<script src="js/config.supabase.js?v=130"></script>
-<script src="js/vendor/supabase.js?v=130"></script>
-<script src="js/backend.js?v=130"></script>
-<script src="js/competition.js?v=130"></script>
-<script src="js/score.js?v=130"></script>
-<script src="js/cards.js?v=130"></script>
-<script src="js/deck.js?v=130"></script>
-<script src="js/artstyle.js?v=130"></script>
-<script src="js/sprites.js?v=130"></script>
-<script src="js/formations.js?v=130"></script>
-<script src="js/relics.js?v=130"></script>
-<script src="js/assets.js?v=130"></script>
-<script src="js/dev.js?v=130"></script>
-<script src="js/map.js?v=130"></script>
-<script src="js/buildings.js?v=130"></script>
-<script src="js/units.js?v=130"></script>
-<script src="js/combat.js?v=130"></script>
-<script src="js/ai.js?v=130"></script>
-<script src="js/render.js?v=130"></script>
-<script src="js/beasts.js?v=130"></script>
-<script src="js/defeatart.js?v=130"></script>
-<script src="js/victoryart.js?v=130"></script>
-<script src="js/ui.js?v=130"></script>
-<script src="js/screens.js?v=130"></script>
-<script src="js/patchnotes.js?v=130"></script>
-<script src="js/settings.js?v=130"></script>
-<script src="js/titlescreen.js?v=130"></script>
-<script src="js/tutorial.js?v=130"></script>
-<script src="js/deckfx.js?v=130"></script>
-<script src="js/deckfx-town.js?v=130"></script>
-<script src="js/deckfx-army.js?v=130"></script>
-<script src="js/deckfx-growth.js?v=130"></script>
-<script src="js/deckfx-rival.js?v=130"></script>
-<script src="js/deckui.js?v=130"></script>
-<script src="js/deckscreens.js?v=130"></script>
-<script src="js/cardintro.js?v=130"></script>
-<script src="js/game.js?v=130"></script>
-<script src="js/terrain-core.js?v=130"></script>
-<script src="js/terrain.js?v=130"></script>
-<script src="js/terrain-v5.js?v=130"></script>
+<script src="js/feedback.js?v=131"></script>
+<script src="js/config.js?v=131"></script>
+<script src="js/audio.js?v=131"></script>
+<script src="js/config.supabase.js?v=131"></script>
+<script src="js/vendor/supabase.js?v=131"></script>
+<script src="js/backend.js?v=131"></script>
+<script src="js/competition.js?v=131"></script>
+<script src="js/score.js?v=131"></script>
+<script src="js/cards.js?v=131"></script>
+<script src="js/deck.js?v=131"></script>
+<script src="js/artstyle.js?v=131"></script>
+<script src="js/sprites.js?v=131"></script>
+<script src="js/formations.js?v=131"></script>
+<script src="js/relics.js?v=131"></script>
+<script src="js/assets.js?v=131"></script>
+<script src="js/dev.js?v=131"></script>
+<script src="js/map.js?v=131"></script>
+<script src="js/buildings.js?v=131"></script>
+<script src="js/units.js?v=131"></script>
+<script src="js/combat.js?v=131"></script>
+<script src="js/ai.js?v=131"></script>
+<script src="js/render.js?v=131"></script>
+<script src="js/beasts.js?v=131"></script>
+<script src="js/defeatart.js?v=131"></script>
+<script src="js/victoryart.js?v=131"></script>
+<script src="js/ui.js?v=131"></script>
+<script src="js/screens.js?v=131"></script>
+<script src="js/patchnotes.js?v=131"></script>
+<script src="js/settings.js?v=131"></script>
+<script src="js/titlescreen.js?v=131"></script>
+<script src="js/tutorial.js?v=131"></script>
+<script src="js/deckfx.js?v=131"></script>
+<script src="js/deckfx-town.js?v=131"></script>
+<script src="js/deckfx-army.js?v=131"></script>
+<script src="js/deckfx-growth.js?v=131"></script>
+<script src="js/deckfx-rival.js?v=131"></script>
+<script src="js/deckui.js?v=131"></script>
+<script src="js/deckscreens.js?v=131"></script>
+<script src="js/cardintro.js?v=131"></script>
+<script src="js/game.js?v=131"></script>
+<script src="js/terrain-core.js?v=131"></script>
+<script src="js/terrain.js?v=131"></script>
+<script src="js/terrain-v5.js?v=131"></script>
 </body>
 </html>
