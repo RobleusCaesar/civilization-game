@@ -1212,8 +1212,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       Assets._stripLoad('order-bg', 'n', 'walk', 'assets/units/__order_bg__.png', undefined, true, false);
       Assets._retryQ.push(['order-retry', 'n', 'walk', 'assets/units/__order_retry__.png', undefined]);
       Assets._retryFlush();
-      return Assets._stripQLate.map(e => e[1].replace('assets/units/', ''));
-    } finally { Assets._stripFlying = fly; Assets._pumpStrips(); }
+      return Assets._stripQLate.map(e => String(e[1]).replace('assets/units/', ''));
+    } catch (e) { return ['(no retry queue: ' + e.message + ')']; }   // a build without the rule reports, never throws
+    finally { Assets._stripFlying = fly; Assets._pumpStrips(); }
   });
   ck('andItGoesBackAheadOfTheBackgroundTier', order[0] === '__order_retry__.png' && order.indexOf('__order_bg__.png') > 0,
     `the background queue after the retry: ${order.slice(0, 4).join(', ')}`);
