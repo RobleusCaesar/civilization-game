@@ -26,9 +26,13 @@
        on screen replaces it with ONE fresh node that shakes (warnings only,
        never a note). A toast holds max(3.2 s, 1.2 s + 0.26 s a word), then
        fades as before. Never more than five on screen.
-     - While a lesson's note is up (Tutorial.noteUp), a NOTE waits and is shown
-       once it is answered; a warning shows at once; a note held 20 s is
-       dropped, never shown late.
+     - While a lesson's card is being read (Tutorial.noteReading: its words'
+       time, and the breath after one), the WORLD'S NEWS waits — three at
+       most, the oldest giving way — and is shown once the card has been
+       read; nothing is dropped for waiting (a card that waits on a deed can
+       stand for minutes: the build 128 review found a 20 s drop lost every
+       piece of news in a tutorial game). A warning, and a note answering the
+       player's own tap, show at once.
      - The armed modes say what to do next ('note'); an order acknowledgement
        says nothing (the calm-screen rule).
      - "X under attack!" sounds on the first blow after ten quiet seconds, per
@@ -250,19 +254,24 @@ ck('aCallWithNoLevelIsShownNowhere', one.silent === 0, `${one.silent} nodes`);
     rule ? `animation ${rule[1]} (moves ${!!shake && MOVES.test(shake)}); reduced motion: ${guard ? guard[1] + (still ? ', still' : ', MOVES') : 'NO GUARD'}` : 'no .toast.shake rule');
 }
 
-/* ---- 2. WHILE A LESSON'S NOTE IS UP, A NOTE WAITS (PX-06, the hold) ---- */
+/* ---- 2. WHILE A LESSON'S CARD IS READ, THE WORLD'S NEWS WAITS (PX-06) ----
+   The hold asks Tutorial.noteReading (the card's reading time and the breath
+   after one), stubbed here; tests/tutorial.mjs §19b holds the real card to it.
+   The build 128 review changed two rules: news is no longer dropped after
+   20 s of waiting (a card that waits on a deed stands for minutes, and every
+   piece of news in a tutorial game was lost), and at most three wait. */
 const hold = await p.evaluate(async () => {
   const out = {};
   __fb.setup('fb-2');
-  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteUp'), real = Tutorial.noteUp;
+  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteReading'), real = Tutorial.noteReading;
   let up = true;
-  Tutorial.noteUp = () => up;
+  Tutorial.noteReading = () => up;
   const pn = performance.now.bind(performance); let off = 0;
   const wait = ms => new Promise(r => setTimeout(r, ms));
   // a condition, never a fixed nap: a loaded machine delays the timers
   const until = async (fn, ms) => { const t0 = pn(); while (!fn() && pn() - t0 < ms) await wait(50); return fn(); };
   try {
-    // the WORLD'S news comes through G.log (it rides the lesson out);
+    // the WORLD'S news comes through G.log (it waits out the card's reading);
     // the answer to the player's own tap never waits (section 2b below)
     G.log('A hut is finished off in the hills', 'note');
     UI.toast('Not enough resources', true);
@@ -272,19 +281,25 @@ const hold = await p.evaluate(async () => {
     out.stillHeld = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
     up = false;
     out.shownAfter = await until(() => __fb.shown(/A hut is finished/).length === 1, 6000);
-    // a note held past twenty seconds is dropped, never shown late: a fresh
-    // note queued behind it (on the advanced clock) proves the flush has run
-    up = true;
-    G.log('A stale piece of news', 'note');
+    // nothing is dropped for waiting: news held past twenty seconds still comes
+    // once the card has been read (it used to be dropped, unread)
+    up = true; __fb.clear();
+    G.log('A long-awaited piece of news', 'note');
     performance.now = () => pn() + off;
     off = 21000;
-    G.log('A fresh piece of news', 'note');
     up = false;
-    out.freshShown = await until(() => __fb.shown(/A fresh piece of news/).length === 1, 6000);
-    out.staleDropped = out.freshShown && __fb.nodes().filter(n => /A stale piece of news/.test(n.textContent)).length === 0;
+    out.lateShown = await until(() => __fb.shown(/A long-awaited piece of news/).length === 1, 6000);
+    performance.now = pn;
+    // three at most wait, and the oldest gives way
+    up = true; __fb.clear();
+    for (const w of ['first', 'second', 'third', 'fourth']) G.log('The ' + w + ' word from afar', 'note');
+    out.heldNone = __fb.nodes().filter(n => /word from afar/.test(n.textContent)).length === 0;
+    up = false;
+    out.newestThree = await until(() => ['second', 'third', 'fourth'].every(w => __fb.shown(new RegExp('The ' + w + ' word')).length === 1), 6000);
+    out.oldestGaveWay = __fb.nodes().filter(n => /The first word from afar/.test(n.textContent)).length === 0;
   } finally {
     performance.now = pn;
-    if (had) Tutorial.noteUp = real; else delete Tutorial.noteUp;
+    if (had) Tutorial.noteReading = real; else delete Tutorial.noteReading;
   }
   // with no lesson predicate at all, nothing is held
   UI._toastAt = {};
@@ -292,10 +307,11 @@ const hold = await p.evaluate(async () => {
   out.noPredicateNoHold = __fb.shown(/An ordinary note/).length === 1;
   return out;
 });
-ck('aNoteWaitsWhileTheLessonsNoteIsUp', hold.noteHeld && hold.stillHeld, JSON.stringify(hold));
+ck('aNoteWaitsWhileTheLessonsCardIsRead', hold.noteHeld && hold.stillHeld, JSON.stringify(hold));
 ck('aWarningShowsAtOnceOverTheLesson', hold.warnAtOnce, '');
-ck('andTheNoteComesOnceTheLessonIsAnswered', hold.shownAfter, '');
-ck('aNoteHeldTwentySecondsIsDropped', hold.staleDropped, '');
+ck('andTheNoteComesOnceTheCardIsRead', hold.shownAfter, '');
+ck('aNoteIsNeverDroppedForWaiting', hold.lateShown, '');
+ck('threeAtMostWaitAndTheOldestGivesWay', hold.heldNone && hold.newestThree && hold.oldestGaveWay, '');
 ck('withNoLessonNothingIsHeld', hold.noPredicateNoHold, '');
 
 /* ---- 2b. THE ANSWER TO THE PLAYER'S OWN TAP NEVER WAITS (integration) ----
@@ -308,8 +324,8 @@ ck('withNoLessonNothingIsHeld', hold.noPredicateNoHold, '');
 const answer = await p.evaluate(async () => {
   const out = {};
   __fb.setup('fb-2b');
-  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteUp'), real = Tutorial.noteUp;
-  Tutorial.noteUp = () => true;
+  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteReading'), real = Tutorial.noteReading;
+  Tutorial.noteReading = () => true;
   try {
     UI.toast('Drag along the ground to lay a wall — release to build', 'note');
     out.answerAtOnce = __fb.shown(/Drag along the ground to lay a wall/).length === 1;
@@ -323,7 +339,7 @@ const answer = await p.evaluate(async () => {
     G.log('A hut is finished off in the hills', 'note');
     out.newsStillWaits = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
   } finally {
-    if (had) Tutorial.noteUp = real; else delete Tutorial.noteUp;
+    if (had) Tutorial.noteReading = real; else delete Tutorial.noteReading;
   }
   return out;
 });

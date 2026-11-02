@@ -748,6 +748,9 @@ const Tutorial = {
     const def = this._defOf();
     const src = (def && def.text) || this.TEXT[id];
     this._el.txt.innerHTML = typeof src === 'function' ? src() : (src || '');
+    // the card's reading time, by the toast's own rule: the world's news waits it out (noteReading)
+    const words = (this._el.txt.textContent || '').trim().split(/\s+/).filter(Boolean).length;
+    this._readMs = Math.max(3200, 1200 + 260 * words);
     // action-gated notes advance themselves; info notes carry the button.
     // A CONTEXTUAL note that waits on a deed can be put away for good (PX-29):
     // it asks for something the player may not want yet or cannot afford, and
@@ -1030,6 +1033,21 @@ const Tutorial = {
   noteUp() {
     if (!window.S || !S.tut || !S.tut.on || S.over || this._actHeld) return false;
     return !!(this._show && this._el && this._el.ui.style.display === 'block') || this._gapT > 0;
+  },
+
+  /* IS THE CARD STILL BEING READ? (public; the toast lane asks it, guarded,
+     before noteUp). The world's news waits only while a FRESH card is read —
+     its words' time by the toast's own rule, max(3.2 s, 1.2 s + 0.26 s a
+     word) — and through the BREATH after one. A card that then waits on a
+     deed stands for minutes, and news held that long was dropped unread: the
+     rival's intel, the first spent tile and the off-view "finished" and
+     "ready" notes never reached a tutorial game (the build 128 review, C1 and
+     PERS-01). Read, the card steps the toast column below its own seat
+     (--tut-h), so the news shows under it, never over it. */
+  noteReading() {
+    if (!this.noteUp()) return false;
+    if (this._gapT > 0) return true;
+    return performance.now() - (this._shownAt || 0) < (this._readMs || 3200);
   },
 
   /* THE TOASTS STEP BELOW THE CARD (the --tut-h contract: index.html's
