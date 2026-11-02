@@ -360,10 +360,23 @@ const Screens = {
         this.enterGame();
         return;
       }
-      const r = await Backend.loadSlot(this._newestSlot);
+      const r = await this._fetchSlot(this._newestSlot);
       if (!r.ok) { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(r.error), true); return; }
       this.loadRow(r.data, true);
     } catch (e) { this._openFailed(e); }
+  },
+  /* a cloud save, or a plain "no" once LOAD_MAX_MS has passed. The opening
+     holds every press that would start another world, so it may never hold
+     them for good: a token refresh that never answers, or a body that stalls
+     once its headers are in (_rest's timer covers the headers alone), would
+     have left New Game saying "Opening your saved game…" forever. The cap
+     is past _rest's own worst case (three tries of TIMEOUT_MS, ~26 s), and
+     an answer that comes after it is dropped, never loaded over the title */
+  LOAD_MAX_MS: 40000,
+  _fetchSlot(slot) {
+    let t = 0;
+    const cap = new Promise(r => { t = setTimeout(() => r({ ok: false, error: { code: 'network', message: 'Request timed out' } }), this.LOAD_MAX_MS); });
+    return Promise.race([Backend.loadSlot(slot), cap]).finally(() => clearTimeout(t));
   },
 
   // `mine`: the caller already holds the opening (Continue, the Load screen)
@@ -1491,7 +1504,7 @@ const Screens = {
           if (this.opening()) return;              // one opening at a time (PX-21a)
           this._continuing = true;
           try {
-            const l = await Backend.loadSlot(slot);
+            const l = await this._fetchSlot(slot);
             if (l.ok) this.loadRow(l.data, true);
             else { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(l.error), true); }   // seen over the Load screen (PX-69)
           } catch (e) { this._openFailed(e); }     // never a press left holding the opening

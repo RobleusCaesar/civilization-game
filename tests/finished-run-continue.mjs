@@ -55,9 +55,10 @@
       can SEE: shown, and on top at its own centre by elementFromPoint, never
       that some element holds the words). One opening at a time
       (Screens._continuing / opening()): a double Continue loads and enters
-      once — a cloud save is fetched once, and the press made while it is
-      on its way is answered — and a New Game tap under the plaque founds
-      nothing, while the title stays live under it. A save that will not open says why on the
+      once — a cloud save is fetched once, the press made while it is on
+      its way is answered, and one that never answers is called off past
+      LOAD_MAX_MS, its late answer dropped — and a New Game tap under the
+      plaque founds nothing, while the title stays live under it. A save that will not open says why on the
       shell's own line (#shellMsg, Screens.say: a toast is display:none off
       the playing screen) and a world the attempt touched leaves a clean
       title; so do a failed or finished cloud save, a slot that will not
@@ -348,6 +349,10 @@ const out = await p.evaluate(async () => {
   const sees = re => [...document.querySelectorAll('body *')].find(el => !el.childElementCount && re.test(el.textContent || '') && seen(el)) || null;
   const prepUp = () => { const e = document.getElementById('prep'); return !!e && e.style.display !== 'none'; };
   const playing = async (ms) => { const t = performance.now() + (ms || 15000); while (Screens.current !== 'playing' && performance.now() < t) await tick(); return Screens.current === 'playing'; };
+  // nothing still opening from the step before — a Resume whose art is still
+  // landing waits behind its own plaque, and a press made then is (rightly)
+  // refused: each section starts from a settled shell
+  const settle = async () => { const t = performance.now() + 20000; while ((Screens._entering || Screens._continuing || Screens._prepRun) && performance.now() < t) await tick(); };
   // a played game in the crash net, and the title in front of it — a fresh page's state
   const netGame = (seed, day) => {
     G.newGame(seed, 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = day;
@@ -389,7 +394,8 @@ const out = await p.evaluate(async () => {
     // …and only on arriving: a Resume from the pause menu says nothing
     UI._toastAt = {};
     const before = new Set(document.querySelectorAll('#toasts .toast'));
-    Screens.show('paused'); Screens.enterGame(); await wait(600);
+    Screens.show('paused'); Screens.enterGame();
+    await playing(); await wait(600);                       // the Resume is in (behind a plaque if the art is still landing)
     const again = [...document.querySelectorAll('#toasts .toast')].filter(t => !before.has(t) && /Welcome back/.test(t.textContent)).length;
     ck('andOnlyOnArriving', again === 0, `${again} new "Welcome back" on a Resume`);
     S.paused = true;
@@ -399,6 +405,7 @@ const out = await p.evaluate(async () => {
   //          nothing on screen yet, which is exactly when a player presses
   //          again — that press is answered, never obeyed ----
   {
+    await settle();
     G.newGame('737373', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 12;
     const state = G.saveJSON();
     Backend.clearLocalSnapshot();
@@ -427,6 +434,44 @@ const out = await p.evaluate(async () => {
       `${fetches} fetch(es), ${loads} load(s), ${enters} entr(ies); ${Screens.current}, seed ${S.seed}`);
     ck('andTheSecondPressIsAnswered', !!msg, msg ? `"${msg.textContent}" is seen while the save is on its way` : 'nothing a player can see');
     S.paused = true;
+  }
+
+  // ---- 7a³. …and a cloud save that NEVER answers (a token refresh that
+  //          hangs, a body that stalls after its headers) cannot hold the
+  //          title's presses for good: past LOAD_MAX_MS the attempt is called
+  //          off, said, and an answer that comes later is never loaded ----
+  {
+    await settle();
+    G.newGame('747474', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 8;
+    const state = G.saveJSON();
+    Backend.clearLocalSnapshot();
+    const realReady = Backend.isReady, realList = Backend.listSaves, realLoad = Backend.loadSlot, cap0 = Screens.LOAD_MAX_MS;
+    const l0 = G.loadJSON, late = [];
+    let loads = 0, msg = null, busy = null, ng = null, after = null, label = '';
+    Backend.isReady = () => true;
+    Backend.listSaves = async () => ({ ok: true, data: [{ slot: 4, name: 'Long Road', day: 8, map_seed: '747474', updated_at: new Date().toISOString(), over: false }] });
+    Backend.loadSlot = (slot) => new Promise(r => late.push(() => r({ ok: true, data: { slot, name: 'Long Road', state } })));   // no answer
+    G.loadJSON = function (j) { loads++; return l0.call(G, j); };
+    Screens.LOAD_MAX_MS = 700;
+    try {
+      Screens._demo = false; Screens.show('title');
+      for (let i = 0; i < 200 && Screens._newestSlot !== 4; i++) await tick();
+      label = cont().querySelector('small').textContent + ' / ' + Screens._newestSlot;
+      cont().click(); await wait(1100);                     // past the cap
+      msg = sees(/could not be opened/i);
+      busy = !!(Screens._continuing || Screens._entering);
+      late.splice(0).forEach(g => g());                      // …and then the cloud answers after all
+      await wait(300);
+      after = { screen: Screens.current, loads };
+      document.getElementById('btnTitleNew').click(); await tick();
+      ng = Screens.current;
+    } finally {
+      Backend.isReady = realReady; Backend.listSaves = realList; Backend.loadSlot = realLoad;
+      G.loadJSON = l0; Screens.LOAD_MAX_MS = cap0;
+    }
+    ck('aCloudSaveThatNeverAnswersLetsGoOfTheTitle', !!msg && !busy && after.loads === 0 && after.screen === 'title' && ng === 'newgame',
+      `${msg ? '"' + msg.textContent + '"' : 'nothing a player can see'} (Continue read "${label}"); in flight ${busy}; a late answer loaded ${after.loads} time(s) (${after.screen}); New game opened "${ng}"`);
+    Screens.show('title');
   }
 
   // ---- 7b. a New Game tap while the plaque is up founds nothing, and the
