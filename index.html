@@ -407,6 +407,26 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.5);
   }
   #placeWhy.amber { border-color: #c8a050; color: #f0e0b8; }
+  /* BEFORE THE GHOST IS PARKED the ✗ stands in a fixed row at the foot of the
+     map, clear of the Build tab under it (the collapsed bar is 10px plus half
+     the home-indicator inset, the tab 22px over it), with one line on how to
+     place beside it (UI._placeDomSync's `pre`, tests/placement.mjs) — never
+     riding the ghost, so a tap meant for the ground can never land on it.
+     The line lets taps through to the map, as the chip does. */
+  #placeBtns.pre {
+    top: auto; left: calc(env(safe-area-inset-left, 0px) + 8px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 40px);
+    gap: 8px; align-items: center;
+  }
+  #placeHow {
+    display: none; max-width: calc(100vw - 76px); padding: 6px 12px; border-radius: 6px;
+    background: rgba(30,22,14,.92); border: 1px solid #8a7550;
+    color: #f0e6cc; font-size: 13px; font-weight: 700; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; letter-spacing: .2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  }
+  #placeBtns.pre #placeHow { display: block; }
+  #placeBtns.pre #placeOk { display: none; }
 
   /* ---- context panel ---- */
   #panel { display: none; }

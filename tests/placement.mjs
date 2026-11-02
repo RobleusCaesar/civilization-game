@@ -434,8 +434,166 @@ const out = await p.evaluate(() => {
     } finally { if (dO) R.drawOrbit = dO; P2.setLineDash = sld; UI.settingRally = null; }
   }
 
+  /* ---- 16. THE WAY OUT SHOWS FROM ARMING (PX-11) ----
+     A build card used to arm a ghost with no word on how to place it and no
+     way out until the ghost was parked: the ✓/✗ pair came only after a tap
+     or a drag on it. Now the ✗ is there from the first frame — in its own
+     fixed row at the foot of the map, beside a one-line instruction, never
+     over the ground round the ghost, where a tap meant for the ground would
+     land on it — and the ✓ still waits for the parked ghost. While the
+     ghost is dragged the row stands aside; parked, the pair is as it was.
+     The Wall, which arms a line tool with no ghost, says how it works, and a
+     laid line says so in the game's gold. The ✓ asks for the 'place' voice
+     (it asked for 'confirm', which no voice answers). Visibility is read as
+     visibility: computed display, and what a finger at the element's centre
+     would hit. */
+  {
+    const tc = arena('pl16');
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    UI.deselect();
+    UI.setMenuCollapsed(true, true);
+    UI.enterPlacement('house');
+    UI._placeDomSync();
+    const $ = id => document.getElementById(id);
+    const shown = el => {
+      if (!el) return false;
+      for (let a = el; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).display === 'none') return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    };
+    // a finger at the element's centre lands on it (an element that lets taps
+    // through is lent a hit box for the one read: is anything drawn over it?)
+    const onTop = el => {
+      if (!shown(el)) return false;
+      const r = el.getBoundingClientRect(), pe = el.style.pointerEvents;
+      if (getComputedStyle(el).pointerEvents === 'none') el.style.pointerEvents = 'auto';
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      el.style.pointerEvents = pe;
+      return hit === el || el.contains(hit);
+    };
+    const g0 = UI.placeGhost && { ...UI.placeGhost };
+    const no = $('placeNo'), okB = $('placeOk'), how = $('placeHow');
+    ck('fromArmingTheWayOutShowsAndTheConfirmWaits',
+      !!g0 && g0.set === false && onTop(no) && !shown(okB),
+      `ghost ${JSON.stringify(g0)}; ✗ shown ${shown(no)} on top ${onTop(no)}; ✓ shown ${shown(okB)}`);
+    ck('andTheRowSaysHowToPlace',
+      !!how && onTop(how) && /drag/i.test(how.textContent) && /✓/.test(how.textContent),
+      how ? `"${how.textContent}" shown ${shown(how)} on top ${onTop(how)}` : 'no instruction');
+    // the row is FIXED: it never rides the ghost, and it is never over the
+    // ground round it (a tap meant for the ground must land on the ground)
+    const TL = CFG.TILE, foot = gh => {
+      const z = R.cam.z, sz = Bld.size('house');
+      return { x: (gh.x * TL - R.cam.x) * z, y: (gh.y * TL - R.cam.y) * z, w: sz * TL * z };
+    };
+    const rNo0 = no.getBoundingClientRect();
+    UI.placeGhost = { x: g0.x - 2, y: g0.y - 2, set: false }; UI._placeCheck(); UI._placeDomSync();
+    const rNo1 = no.getBoundingClientRect();
+    const f = foot(UI.placeGhost);   // (still on screen: the tap below must land on the page)
+    const near = (r, m) => r.right > f.x - m && r.left < f.x + f.w + m && r.bottom > f.y - m && r.top < f.y + f.w + m;
+    ck('theWayOutStaysPutAndClearOfTheGhost',
+      rNo0.width > 0 && Math.abs(rNo0.left - rNo1.left) < 0.5 && Math.abs(rNo0.top - rNo1.top) < 0.5 && !near(rNo1, 60),
+      `✗ at ${Math.round(rNo0.left)},${Math.round(rNo0.top)} then ${Math.round(rNo1.left)},${Math.round(rNo1.top)}; ghost foot ${Math.round(f.x)},${Math.round(f.y)} ${Math.round(f.w)}px`);
+    // a tap 20 px under an UNPARKED ghost is a tap on the ground: it jumps the ghost
+    const tx = f.x + f.w / 2, ty = f.y + f.w + 20;
+    const under = document.elementFromPoint(tx, ty);
+    UI.handleTap(tx, ty);
+    ck('aTap20pxBelowAnUnparkedGhostStillJumpsIt',
+      under === R.cv && !!UI.placeGhost && UI.placeGhost.set === true && UI.placing === 'house',
+      `the finger lands on ${under ? (under.id || under.tagName) : 'nothing'}; ghost ${JSON.stringify(UI.placeGhost)}`);
+    // parked: the pair under the footprint, exactly as before, and no instruction
+    UI._placeDomSync();
+    const fp = foot(UI.placeGhost), rOk = okB.getBoundingClientRect();
+    ck('parkedThePairIsAsItWas',
+      onTop(okB) && onTop(no) && !shown(how) && Math.abs(rOk.top - (fp.y + fp.w + 12)) < 1.5,
+      `✓ ${onTop(okB)} ✗ ${onTop(no)} instruction ${shown(how)}; ✓ top ${Math.round(rOk.top)} vs foot ${Math.round(fp.y + fp.w)}`);
+    // dragging: the whole row stands aside (a release must land on the ground)
+    UI.placeGhost.set = false; UI.placeDragging = true; UI._placeDomSync();
+    const whileDrag = shown(no) || shown(okB) || shown(how);
+    UI.placeDragging = false; UI._placeDomSync();
+    ck('theWayOutStandsAsideWhileTheGhostIsDragged', !whileDrag && shown(no), `while dragging shown ${whileDrag}, after ${shown(no)}`);
+    // the ✓ asks for a voice that exists
+    const asked = [], play = Sound.play;
+    Sound.play = function (k) { asked.push(k); return play.apply(this, arguments); };
+    try {
+      UI.placeGhost = { x: tc.x + 3, y: tc.y + 3, set: true }; UI._placeCheck();
+      UI.confirmPlacement();
+    } finally { Sound.play = play; }
+    ck('theConfirmAsksForAVoiceThatExists',
+      asked.includes('place') && !!(Sound._VOICES && Sound._VOICES.place) && !asked.includes('confirm'),
+      'asked ' + JSON.stringify(asked));
+    UI.exitPlacement();
+    // THE WALL arms a line tool with no ghost: its card says how it works, as a note
+    S.res = { food: 999, wood: 999, stone: 999, gold: 999 };
+    UI.deselect(); UI.setMenuCollapsed(false);
+    const last = () => { const t = document.querySelector('#toasts .toast:last-child'); return t ? { text: t.textContent, warn: t.classList.contains('warn') } : { text: '', warn: false }; };
+    $('buildmenu').querySelector('.bbtn[data-key="wall"]').click();
+    const wt = last();
+    ck('theWallCardSaysHowItWorks', UI.placing === 'wall' && /^Drag along the ground/.test(wt.text) && !wt.warn,
+      `placing ${UI.placing}; ${wt.warn ? 'warn' : 'note'} "${wt.text}"`);
+    // …and a laid line is told in the game's gold, not dropped
+    const row = [];
+    for (let dx = 2; dx <= 5 && row.length < 3; dx++) if (Bld.tileFree(tc.x + dx, tc.y - 2)) row.push({ x: tc.x + dx, y: tc.y - 2 });
+    UI.wallDrag = row.slice(); UI.updateWallGhost(); UI.commitWallDrag();
+    UI.wallDrag = null; UI.wallGhost = null;
+    const lt = last();
+    ck('aLaidWallLineIsToldAsANote', /^Wall line: \d+ section/.test(lt.text) && !lt.warn && UI.placing === null,
+      `${lt.warn ? 'warn' : 'note'} "${lt.text}", placing ${UI.placing}`);
+    UI.exitPlacement();
+  }
+
   return { res, fails };
 });
+
+/* ---- 17. THE RELEASE OVER THE ✗ IS A RELEASE, NOT A CANCEL (real input) ----
+   A click tripwire in the capture phase: arm a house, press ON the ghost,
+   drag it to where the ✗ stands before the drag, and let go there. The ghost
+   parks on that spot and the placement stays armed; no click ever reaches
+   the ✗ (it stands aside for the drag, and the canvas holds the pointer). */
+{
+  const pre = await p.evaluate(() => {
+    // section 16's arena is still the world (cleared, explored, paid for)
+    const tc = Bld.tcOf('P');
+    S.res = { food: 999, wood: 999, stone: 999, gold: 999 };
+    R.centerOn(Bld.cx(tc), Bld.cy(tc));
+    UI.deselect(); UI.setMenuCollapsed(true, true);
+    UI.enterPlacement('house');
+    UI._placeDomSync();
+    window.__clicks = [];
+    if (!window.__clickLog) {
+      window.__clickLog = true;
+      document.addEventListener('click', e => {
+        const b = e.target && e.target.closest && e.target.closest('button');
+        window.__clicks.push(b ? 'button#' + (b.id || '?') : (e.target.id || e.target.tagName));
+      }, true);
+    }
+    const g = UI.placeGhost, TL = CFG.TILE, z = R.cam.z, sz = Bld.size('house');
+    const no = document.getElementById('placeNo').getBoundingClientRect();
+    return { ghost: g && { x: ((g.x + sz / 2) * TL - R.cam.x) * z, y: ((g.y + sz / 2) * TL - R.cam.y) * z },
+      no: no.width ? { x: no.left + no.width / 2, y: no.top + no.height / 2 } : null };
+  });
+  let mid = null, post = null;
+  if (pre.ghost && pre.no) {
+    await p.mouse.move(pre.ghost.x, pre.ghost.y);
+    await p.mouse.down();
+    for (let i = 1; i <= 12; i++) {
+      await p.mouse.move(pre.ghost.x + (pre.no.x - pre.ghost.x) * i / 12, pre.ghost.y + (pre.no.y - pre.ghost.y) * i / 12);
+      await p.waitForTimeout(16);
+      // (two frames first: the row is synced once a frame, and a loaded host
+      // can hold a frame back longer than a few moves take)
+      if (i === 6) mid = await p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r({ dragging: UI.placeDragging,
+        noShown: getComputedStyle(document.getElementById('placeBtns')).display !== 'none' && document.getElementById('placeNo').getBoundingClientRect().width > 0 })))));
+    }
+    await p.mouse.up();
+    await p.waitForTimeout(250);
+    post = await p.evaluate(() => ({ placing: UI.placing, set: !!(UI.placeGhost && UI.placeGhost.set), clicks: window.__clicks.slice() }));
+    await p.evaluate(() => UI.exitPlacement());
+  }
+  const ok = !!post && post.placing === 'house' && post.set && !post.clicks.includes('button#placeNo') && !!mid && mid.dragging && !mid.noShown;
+  out.res.aReleaseOverTheCancelIsARelease = (ok ? 'PASS' : 'FAIL') + ' — ' +
+    (post ? `mid-drag ${JSON.stringify(mid)}; after: placing ${post.placing}, parked ${post.set}, clicks ${JSON.stringify(post.clicks)}` :
+      `no ✗ before the drag (${JSON.stringify(pre)})`);
+  if (!ok) out.fails.push('aReleaseOverTheCancelIsARelease');
+}
 
 console.log(JSON.stringify(out.res, null, 1));
 console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL PLACEMENT CHECKS PASS');
