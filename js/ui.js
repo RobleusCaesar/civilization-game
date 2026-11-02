@@ -130,6 +130,23 @@ const UI = {
     this.buildMenu();
     this.bindCanvas();
     this.bindButtons();
+    /* THE HUD'S NUMBERS EXPLAIN THEMSELVES (PX-18, tests/hud-info.mjs): a tap
+       or a click on a chip — the four goods, the food rate, the tribe, the
+       day — answers with a note in the rules' own numbers (UI.chipNote); Enter
+       or Space does the same from the keyboard. The player's own question, so
+       it is always answered (no collapse is asked for). */
+    this._chipEl = {};
+    document.querySelectorAll('#topbar [data-chip]').forEach(el => {
+      this._chipEl[el.dataset.chip] = el;
+      const say = e => {
+        if (!S || !S.res) return;
+        const rate = el.dataset.chip === 'food' && e && e.target && e.target.closest && e.target.closest('#rFoodNet');
+        const t = this.chipNote(rate ? 'foodRate' : el.dataset.chip);
+        if (t) this.toast(t, 'note');
+      };
+      el.addEventListener('click', say);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); say(e); } });
+    });
   },
 
   /* ---------------- build menu ---------------- */
@@ -3390,6 +3407,113 @@ const UI = {
     n |= 0;
     return n >= 10000 ? (Math.round(n / 100) / 10 + '').replace(/\.0$/, '') + 'k' : String(n);
   },
+  /* THE DAY'S SUMS (PX-19 / PX-18, tests/hud-info.mjs). What the town is SET
+     to bring in each day, by the rules that pay it: every hand sent to gather
+     or fish at the rate the panel's own work line gives it at work
+     (Units.workReport) — on its way there too (handRate), so an order shows
+     at once and a step between two tiles never reads as a loss — and every
+     finished work by the very expression Bld.dailyProduction pays at the turn
+     of the day (its crew on site, the hall's third storey, the mode, a
+     homestead bond, an origin card, a running card), the hall's own gold among
+     them, plus an origin's daily gift. A kill's meat and a card's goods are
+     gifts, not a rate. Read-only: nothing here writes S or draws a number
+     from any RNG. */
+  handRate(u) {
+    const t = u && u.task;
+    if (!t || (t.type !== 'gather' && t.type !== 'fish' && t.type !== 'shorefish')) return null;   // a station's crew is its work's, below
+    const w = Units.workReport(u);
+    if (!w || u.tUnit || u.tBld) return null;
+    if (w.rate) return w.rate;
+    // still on the way: the sum workReport makes once the hand stands at its work
+    const spot = { x: (t.sx == null ? t.x : t.sx) + 0.5, y: (t.sy == null ? t.y : t.sy) + 0.5 };
+    let res = 'food', n;
+    if (t.type === 'gather') {
+      const g = CFG.GATHER[S.map.terrain[MapGen.idx(t.x, t.y)]];
+      if (!g) return null;
+      res = g.res;
+      n = g.rate * Units.dayLen() * Units.gatherMode(u) * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1);
+    } else {
+      n = (t.type === 'shorefish' ? CFG.SHORE_FISH.rate : CFG.FISH.rate) * Units.dayLen() * Units.gatherMode(u) *
+        (window.Cards ? Cards.fishMult(u.owner) : 1);
+    }
+    return { res, n: n * Units.gatherYield(u.owner, spot) };
+  },
+  incomePerDay(res) {
+    let hands = 0, boats = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !u.task) continue;
+      const r = this.handRate(u);
+      if (!r || r.res !== res) continue;
+      if (Units.isVillager(u)) hands += r.n; else boats += r.n;
+    }
+    const works = {}, tc = Bld.tcOf('P');
+    const tcBoost = tc && tc.level >= 3 && Bld.done(tc) ? 1.1 : 1, modeMult = G.modeCfg().output;
+    for (const b of S.buildings) {
+      if (b.owner !== 'P' || !Bld.done(b) || b.upgrading) continue;
+      const out = Bld.lv(b).out;
+      if (!out || !out[res]) continue;
+      let crew = 1;
+      if (Bld.def(b.key).needsWorker && !(crew = Math.min(Bld.workersActive(b), Bld.maxWorkers(b)))) continue;
+      const mult = crew * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b) *
+        (window.Cards ? Cards.prodMult('P', b) : 1) * (window.Deck && Deck.mult ? Deck.mult('produce', 'P', b) : 1);
+      works[b.key] = (works[b.key] || 0) + out[res] * mult;
+    }
+    const hall = works.tc || 0; delete works.tc;
+    const gifts = { food: 0, wood: 0, stone: 0, gold: 0 };
+    if (window.Cards && Cards.dailyExtras) Cards.dailyExtras('P', gifts);
+    const gift = gifts[res] || 0;
+    let total = hands + boats + hall + gift;
+    for (const k in works) total += works[k];
+    return { hands, boats, works, hall, gift, total };
+  },
+  /* THE FOOD RATE IS THE NET (PX-19) — and it does not flicker. What comes in
+     less what is eaten, smoothed over about half a game day: an exponential
+     average in GAME time, so a paused world holds it and a running one
+     settles it, and a hand stepping between two tiles or a villager fleeing a
+     wolf for a breath never turns the sign. A new world or a loaded save
+     starts it afresh at the sum itself. UI-local, keyed on S, never saved. */
+  NET_DAYS: 0.5,
+  _net: null,
+  smoothNet(x) {
+    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, m = this._net;
+    if (!m || m.S !== S || now < m.at) { this._net = { S, at: now, v: x }; return x; }
+    m.v += (x - m.v) * (1 - Math.exp(-(now - m.at) / this.NET_DAYS));
+    m.at = now;
+    return m.v;
+  },
+  /* THE HUD'S NUMBERS EXPLAIN THEMSELVES (PX-18, tests/hud-info.mjs): a tap
+     or a click on a chip says where its number comes from, in the rules' own
+     numbers — the sums above, Units.foodUpkeep, Bld.popCap, CFG.DAY_MS. No
+     popover: the game's own note (UI.init binds the chips). */
+  chipNote(kind) {
+    const f = v => String(Math.round(v * 10) / 10);
+    const sg = v => { const r = Math.round(v * 10) / 10; return (r > 0 ? '+' : r < 0 ? '−' : '±') + Math.abs(r); };
+    const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+    if (kind === 'pop') {
+      const used = Units.popUsed('P'), cap = Bld.popCap('P'), tc = Bld.tcOf('P');
+      const ceil = CFG.TC_POP_CAP[tc ? tc.level - 1 : 0];
+      return `Population ${used} of ${cap}: ` + (cap > used ? `houses and the hall make room for ${cap}, so ${cap - used} more can be trained.`
+        : cap >= ceil ? `the hall holds the town to ${ceil} — raise it a level for more room.`
+        : 'the town is full — build a house for more room.');
+    }
+    if (kind === 'day') return `Day ${S.day}. A day lasts ${f(CFG.DAY_MS / 1000)} seconds; when it turns, the farms and camps pay out and every mouth eats.`;
+    const res = kind === 'foodRate' ? 'food' : kind;
+    if (!S.res || S.res[res] == null) return '';
+    const inc = this.incomePerDay(res);
+    const WORKS = { farm: 'farms', lodge: 'lodges', lumber: 'lumber camps', quarry: 'quarries', mine: 'mines' };
+    const parts = [];
+    if (inc.hall) parts.push('the hall ' + f(inc.hall));
+    if (inc.hands) parts.push({ food: 'gatherers', wood: 'woodcutters', stone: 'stonecutters' }[res] + ' ' + f(inc.hands));
+    if (inc.boats) parts.push('boats ' + f(inc.boats));
+    for (const k in inc.works) parts.push((WORKS[k] || Bld.def(k).name.toLowerCase()) + ' ' + f(inc.works[k]));
+    if (inc.gift) parts.push('your origin ' + f(inc.gift));
+    const eat = res === 'food' ? Units.foodUpkeep('P') : 0, net = inc.total - eat;
+    const come = parts.length ? ' Coming in: ' + list(parts) + '.' : ' Nothing comes in.';
+    const head = res.charAt(0).toUpperCase() + res.slice(1) + ' ' + this.fmtRes(S.res[res]);
+    if (res === 'food') return (kind === 'foodRate' ? `${sg(net)} food a day.` : `${head}: ${sg(net)} a day.`) + come + ` Eaten: ${f(eat)}.`;
+    if (!parts.length) return `${head}: nothing comes in — ` + { wood: 'send a villager to a forest.', stone: 'send a villager to the rocks.', gold: 'a villager can claim a gold seam.' }[res];
+    return `${head}: ${sg(net)} a day.${come}`;
+  },
   /* A SPENT TILE IS NEWS (PX-08, tests/hud-info.mjs). A hand whose tile runs
      out stands idle, and the line that says so was written to the chronicle
      alone. The first of a world now reaches the screen as a note; after it,
@@ -3409,18 +3533,33 @@ const UI = {
     this.refreshT -= dt;
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
-    document.getElementById('rFood').textContent = this.fmtRes(S.res.food);
+    const food = this.fmtRes(S.res.food);
+    document.getElementById('rFood').textContent = food;
     const fnet = document.getElementById('rFoodNet');
+    let net = '';
     if (fnet) {
-      const eat = Units.foodUpkeep('P');
-      fnet.textContent = eat > 0 ? '−' + Math.round(eat) + '/d' : '';
-      fnet.classList.toggle('bad', !!S._famineWarned || (eat > 0 && S.res.food <= 0));
+      // the NET: what comes in less what is eaten (PX-19), "+N/d" or "−N/d",
+      // red while the larder falls — and the famine red as before
+      const eat = Units.foodUpkeep('P'), inc = this.incomePerDay('food').total;
+      const n = Math.round(this.smoothNet(inc - eat));
+      net = !eat && !inc ? '' : (n > 0 ? '+' + n : n < 0 ? '−' + -n : '±0') + '/d';
+      fnet.textContent = net;
+      fnet.classList.toggle('bad', n < 0 || !!S._famineWarned || (eat > 0 && S.res.food <= 0));
     }
     document.getElementById('rWood').textContent = this.fmtRes(S.res.wood);
     document.getElementById('rStone').textContent = this.fmtRes(S.res.stone);
     document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
-    document.getElementById('rPop').textContent = Units.popUsed('P') + '/' + Bld.popCap('P');
+    const pop = Units.popUsed('P') + '/' + Bld.popCap('P');
+    document.getElementById('rPop').textContent = pop;
     document.getElementById('rDay').textContent = 'Day ' + S.day;
+    // the chips' names say their numbers too (role=button names itself by its label)
+    const name = (id, s) => { const el = this._chipEl && this._chipEl[id]; if (el && el.getAttribute('aria-label') !== s) el.setAttribute('aria-label', s); };
+    name('food', 'Food ' + food + (net ? ', ' + net.replace('/d', ' a day') : ''));
+    name('wood', 'Wood ' + this.fmtRes(S.res.wood));
+    name('stone', 'Stone ' + this.fmtRes(S.res.stone));
+    name('gold', 'Gold ' + this.fmtRes(S.res.gold));
+    name('pop', 'Population ' + pop.replace('/', ' of '));
+    name('day', 'Day ' + S.day);
     this.refreshMenu();
     if (this.sel) this.refreshPanel();
   },

@@ -165,7 +165,7 @@ await p.evaluate(() => {
     r1: v => Math.round(v * 10) / 10,
     // "label 12.5" pairs out of a note's list
     parts(s) {
-      const m = /Each day: (.*?)(?: come in| —)/.exec(s);
+      const m = /Coming in: (.*?)\.(?: |$)/.exec(s);
       const out = {};
       if (!m) return out;
       for (const bit of m[1].split(/, | and (?=[a-z ]+ \d)/)) {
@@ -174,7 +174,8 @@ await p.evaluate(() => {
       }
       return out;
     },
-    total(s) { const m = /— ([+−±])([\d.]+) a day/.exec(s) || /^([+−±])([\d.]+) food a day/.exec(s); return m ? (m[1] === '−' ? -1 : m[1] === '±' ? 0 : 1) * +m[2] : NaN; },
+    // the note's daily total ("Stone 76: nothing comes in" is an income of 0)
+    total(s) { const m = /^(?:\w+ [\d.k]+: )?([+−±])([\d.]+)(?: food)? a day/.exec(s); return m ? (m[1] === '−' ? -1 : m[1] === '±' ? 0 : 1) * +m[2] : /^\w+ [\d.k]+: nothing comes in/.test(s) ? 0 : NaN; },
     printed() {
       const t = (document.getElementById('rFoodNet') || {}).textContent || '';
       const m = /^([+−±])(\d+)\/d$/.exec(t);
@@ -219,13 +220,13 @@ const town = await p.evaluate(() => {
   const P = __h.parts;
   const nf = P(out.notes.food), nw = P(out.notes.wood), ns = P(out.notes.stone), ng = P(out.notes.gold);
   const sum = o => Object.values(o).reduce((a, c) => a + c, 0);
-  const eatM = /eats ([\d.]+)/.exec(out.notes.food);
+  const eatM = /Eaten: ([\d.]+)\./.exec(out.notes.food);
   const pop = /Population (\d+) of (\d+)/.exec(out.notes.pop);
   const day = /Day (\d+)\. A day lasts ([\d.]+) seconds/.exec(out.notes.day);
   const tcb = Bld.tcOf('P');
   const hallGold = Bld.lv(tcb).out.gold * G.modeCfg().output;
   out.checks = {
-    foodStored: out.notes.food.startsWith('Food ' + UI.fmtRes(S.res.food) + '.'),
+    foodStored: out.notes.food.startsWith('Food ' + UI.fmtRes(S.res.food) + ': '),
     foodHands: nf.gatherers === __h.r1(handsF),
     foodBoats: !out.boat || nf.boats === __h.r1(boatsF),
     foodWorks: Math.abs(sum(nf) - (nf.gatherers || 0) - (nf.boats || 0) - L.food) < 0.15,
@@ -283,8 +284,8 @@ ck('aHandOnItsWayCountsAtItsWorkRate', !!town.walk && town.walk.onWay != null &&
 /* ---- 2. EVERY CHIP ANSWERS A TAP (PX-18), by real input and by visibility ---- */
 await p.evaluate(() => { __h.fresh('hud-taps', 'moderate'); S.paused = true; UI.refreshT = 0; UI.refresh(0.25); });
 await p.waitForTimeout(250);
-const CHIPS = [['food', '#rFood', /^Food \d/], ['food rate', '#rFoodNet', /^[+−±][\d.]+ food a day/], ['wood', '#rWood', /^Wood \d/],
-  ['stone', '#rStone', /^Stone \d/], ['gold', '#rGold', /^Gold \d/], ['population', '#rPopChip', /^Population \d+ of \d+/], ['day', '#rDay', /^Day \d+\./]];
+const CHIPS = [['food', '#rFood', /^Food \d+: [+−±][\d.]+ a day\./], ['food rate', '#rFoodNet', /^[+−±][\d.]+ food a day\./], ['wood', '#rWood', /^Wood \d+: /],
+  ['stone', '#rStone', /^Stone \d+: /], ['gold', '#rGold', /^Gold \d+: /], ['population', '#rPopChip', /^Population \d+ of \d+/], ['day', '#rDay', /^Day \d+\./]];
 const taps = [];
 for (const [name, sel, re] of CHIPS) {
   const box = await p.evaluate(sel => {
