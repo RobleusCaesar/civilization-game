@@ -31,6 +31,19 @@ const UI = {
   /* kept APART from confirmDemolish on purpose: a building can offer both
      Cancel and Demolish, and one shared slot would arm the pair together */
   confirmCancel: 0,      // building id awaiting cancel-the-works confirmation
+  /* A TWO-TAP CONFIRM IS TWO DECISIONS, NEVER ONE DOUBLE-TAP (tests/banish.mjs,
+     boats-moat-scuttle.mjs, build-cancel.mjs): the first tap arms by
+     relabelling the same button in place, so a quick double-tap used to arm
+     AND confirm in one gesture — a house demolished, a villager banished. Each
+     slot remembers when it was armed; a confirming tap inside CONFIRM_GAP_MS
+     of that is the same gesture, ignored, and the button stays armed. The gap
+     is read off the taps' OWN timestamps, so a busy frame between them can
+     neither stretch a double-tap into two decisions nor squeeze two into one. */
+  CONFIRM_GAP_MS: 400,
+  _armedAt: { confirmDemolish: 0, confirmCancel: 0 },
+  _tapTime(e) { return (e && e.timeStamp > 0) ? e.timeStamp : performance.now(); },
+  armConfirm(slot, id, e) { this[slot] = id; this._armedAt[slot] = this._tapTime(e); this.renderPanel(); },
+  confirmTooSoon(slot, e) { return this._tapTime(e) - (this._armedAt[slot] || 0) < this.CONFIRM_GAP_MS; },
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
@@ -350,7 +363,9 @@ const UI = {
           this.updateTerraGhost();
           this.downAt = null;
         } else {
-          this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+          // timed by the EVENT's own clock (PX-27): a busy frame between the
+          // press and the lift must never turn a tap into nothing
+          this.downAt = { x: e.clientX, y: e.clientY, t: this._tapTime(e), moved: false };
           // DRAG-TO-MOVE: a press that lands ON the current selection arms a
           // move order instead of a camera pan — dragging then pulls a tether
           // to the destination and release sends them. A press that never
@@ -361,6 +376,9 @@ const UI = {
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        // where the fingers are: the pinch carries the ground under them along
+        // as they travel (pinchMid lives only here, set and read by the pinch)
+        this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         this.downAt = null;
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
@@ -387,15 +405,20 @@ const UI = {
         } else if (this.terraDrag) {
           this.extendTerraDrag(R.screenToTile(e.clientX, e.clientY));
         } else {
-          if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
+          // the step that crosses the tap slop pans by ALL the travel since the
+          // press, not just its own few pixels — or every pan trails the finger
+          let px = dx, py = dy;
+          if (this.downAt && !this.downAt.moved && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8) {
             this.downAt.moved = true;
+            px = e.clientX - this.downAt.x; py = e.clientY - this.downAt.y;
+          }
           if (this.downAt && this.downAt.moved) {
             if (this.moveDragArm) {
               // the press started on the selection — this drag is an order, not
               // a pan: keep the tether pinned to the finger for the ghost
               this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
             } else {
-              R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+              R.cam.x -= px / R.cam.z; R.cam.y -= py / R.cam.z;
               R.clampCam();
             }
           }
@@ -404,16 +427,23 @@ const UI = {
         p.x = e.clientX; p.y = e.clientY;
         const [a, b] = [...this.pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         if (this.pinchD > 0) {
-          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-          this.zoomAt(mid.x, mid.y, d / this.pinchD);
+          // THE GROUND STAYS UNDER THE FINGERS: zoom about where they WERE,
+          // then carry that ground to where they ARE — two fingers moved
+          // together (no zoom) are simply a pan
+          const m0 = this.pinchMid || mid;
+          this.zoomAt(m0.x, m0.y, d / this.pinchD);
+          R.cam.x -= (mid.x - m0.x) / R.cam.z; R.cam.y -= (mid.y - m0.y) / R.cam.z;
+          R.clampCam();
         }
-        this.pinchD = d;
+        this.pinchD = d; this.pinchMid = mid;
       }
       p.x = e.clientX; p.y = e.clientY;
       e.preventDefault();
     });
     const up = e => {
+      const pinchEnds = this.pointers.size === 2 && this.pointers.has(e.pointerId);
       this.pointers.delete(e.pointerId);
       // what the player's people were doing before the gesture: a gesture that
       // changes it is an ORDER given today (G.noteAct — a defeat's card asks
@@ -434,7 +464,11 @@ const UI = {
         // release = the order lands where the finger lifted
         this.commitMoveDrag(e.clientX, e.clientY);
         this.moveDrag = null; this.moveDragArm = null;
-      } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
+      } else if (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000) {
+        // A STILL PRESS IS A TAP for up to a second (PX-27): one that never
+        // crossed the slop has no other meaning, so a deliberate half-second
+        // press selects instead of doing nothing (it was 400 ms, read off the
+        // handler's clock — a tap whose lift waited behind a busy frame died)
         // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
         // like unit within the grouping sphere, so a whole trebuchet line / fleet of
         // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
@@ -446,6 +480,20 @@ const UI = {
       }
       if (was && this._orderMoved(was)) G.noteAct();
       if (this.pointers.size < 2) this.pinchD = 0;
+      if (pinchEnds) {
+        // one of two fingers lifted: the other PANS on from where it rests —
+        // re-armed as a drag already under way, so it can never start a wall,
+        // terraform or move drag, nor be taken for a tap when it lifts
+        const [rest] = [...this.pointers.values()];
+        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true };
+        this.moveDragArm = null; this.pinchMid = null;
+      } else if (this.pointers.size === 2) {
+        // a third finger lifted: the pinch goes on with the two still down,
+        // measured from where they are now (no jump in zoom or ground)
+        const [a, b] = [...this.pointers.values()];
+        this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
       if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
     };
     cv.addEventListener('pointerup', up);
@@ -458,9 +506,21 @@ const UI = {
       this.placeDragging = false; this.placePtr = null;   // ghost survives, unparked
     });
     cv.addEventListener('wheel', e => {
-      this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
+      // IN PROPORTION TO THE GESTURE (tests/drag-move.mjs §10): a delta is
+      // read in its own units (lines ×16, pages × the window), so a trackpad
+      // flick of small deltas zooms a little and a mouse notch (~100 px)
+      // about 16%; each event is clamped so none can lurch. A ctrl+wheel is
+      // a trackpad PINCH — Chromium sends deltaY = −100·ln(scale) — so it
+      // follows the fingers' own scale. A fixed 12% a step ran a flick across
+      // the whole zoom range.
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
+      const f = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015));
+      this.zoomAt(e.clientX, e.clientY, Math.max(0.8, Math.min(1.25, f)));
       e.preventDefault();
     }, { passive: false });
+    // a right-click is an order on the map (it always was) — never the
+    // browser's menu too; the HUD and the minimap keep theirs
+    cv.addEventListener('contextmenu', e => e.preventDefault());
 
     document.getElementById('mini').addEventListener('pointerdown', e => {
       const r = e.target.getBoundingClientRect();
@@ -2816,7 +2876,7 @@ const UI = {
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
       this.iconInto(ic, this.panelIconSprite(b));
-      panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
+      panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
         if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) this.toast(Bld.canUpgrade(b2).why, true); }
@@ -2942,7 +3002,8 @@ const UI = {
         }
         else if (btn.dataset.act === 'cancelbuild') {
           if (!Bld.cancelWork(b2)) { this.confirmCancel = 0; this.renderPanel(); return; }
-          if (this.confirmCancel !== b2.id) { this.confirmCancel = b2.id; this.renderPanel(); return; }
+          if (this.confirmCancel !== b2.id) { this.armConfirm('confirmCancel', b2.id, e); return; }
+          if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
           this.confirmCancel = 0;
           // a cancelled SITE deselects itself on its way out (removeToRuin);
           // a cancelled upgrade leaves the building standing and selected
@@ -2952,7 +3013,8 @@ const UI = {
           }
         }
         else if (btn.dataset.act === 'demolish') {
-          if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
+          if (this.confirmDemolish !== b2.id) { this.armConfirm('confirmDemolish', b2.id, e); return; }
+          if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
           this.confirmDemolish = 0; this.confirmCancel = 0;
           if (Bld.demolish(b2)) return;   // demolish deselects via removeToRuin
         }
@@ -3005,8 +3067,9 @@ const UI = {
         else this.toast('Not enough resources', true);
       });
       const demo = panel.querySelector('[data-act="brdemo"]');
-      if (demo) demo.addEventListener('click', () => {
-        if (this.confirmDemolish !== 'bridge') { this.confirmDemolish = 'bridge'; this.renderPanel(); return; }
+      if (demo) demo.addEventListener('click', e => {
+        if (this.confirmDemolish !== 'bridge') { this.armConfirm('confirmDemolish', 'bridge', e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
@@ -3355,33 +3418,36 @@ const UI = {
          off the villager LIVE, so a works that finished between the render
          and the tap simply finds nothing to call off. */
       const canc = panel.querySelector('[data-act="cancelbuild"]');
-      if (canc) canc.addEventListener('click', () => {
+      if (canc) canc.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         const site = this.villagerBuildSite(u2);
         if (!site) { this.confirmCancel = 0; this.renderPanel(); return; }
-        if (this.confirmCancel !== site.id) { this.confirmCancel = site.id; this.renderPanel(); return; }
+        if (this.confirmCancel !== site.id) { this.armConfirm('confirmCancel', site.id, e); return; }
+        if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
         this.confirmCancel = 0;
         if (Bld.cancelBuild(site)) this.toast('Work called off — everything paid is back');
         this.renderPanel();
         this.refreshMenu();
       });
       const ban = panel.querySelector('[data-act="banish"]');
-      if (ban) ban.addEventListener('click', () => {
+      if (ban) ban.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || !Units.canBanish(u2)) return;
-        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         Units.banish(u2);
         this.toast('Banished — they are walking out of the valley');
         this.deselect();
       });
       const scut = panel.querySelector('[data-act="scuttle"]');
-      if (scut) scut.addEventListener('click', () => {
+      if (scut) scut.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
         // never send soldiers down with the ship — an accidental tap would be brutal
         if (Units.isTransport(u2) && u2.cargo && u2.cargo.length) { this.toast('Soldiers are aboard — unload before scuttling', true); return; }
-        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         R.float(u2.x, u2.y - 0.3, '🌊', '#9fc7e8');
         Units.despawn(u2);   // deselects; population headcount follows the roster
         G.log('Hull scuttled — she slips beneath the water');

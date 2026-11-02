@@ -36,8 +36,9 @@ p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 
-const out = await p.evaluate(() => {
+const out = await p.evaluate(async () => {
   const res = {}, fails = [];
+  const nap = ms => new Promise(r => setTimeout(r, ms));
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 
   const setup = (seed) => {
@@ -99,7 +100,15 @@ const out = await p.evaluate(() => {
     const btn2 = document.querySelector('#panel [data-act="scuttle"]');
     const armed = !!btn2 && btn2.classList.contains('danger') && !!Units.get(boat.id);
     ck('firstTapOnlyArms', armed, btn2 ? btn2.textContent.trim() : 'missing');
-    btn2.click();   // second tap sinks her
+    // a quick double-tap is ONE gesture: a tap within the confirm's guard of
+    // the arming is ignored and the button stays armed (PX-26). The
+    // double-tap's second tap lands in the same task (a wall-clock nap is
+    // unreliable on a loaded host; the guard reads the taps' timestamps), and
+    // the deliberate second tap waits past the guard (>= 450 ms after arming)
+    { const q2 = document.querySelector('#panel [data-act="scuttle"]'); if (q2) q2.click(); }
+    ck('aQuickDoubleTapDoesNotSinkHer', !!Units.get(boat.id) && UI.confirmDemolish === boat.id, 'still afloat, still armed');
+    await nap(450);
+    { const q3 = document.querySelector('#panel [data-act="scuttle"]'); if (q3) q3.click(); }   // second tap sinks her
     ck('secondTapSinks', !Units.get(boat.id), '');
     ck('populationFreed', Units.popUsed('P') === pop0 - 1, `${pop0} -> ${Units.popUsed('P')}`);
     ck('nothingRefunded', S.res.food === 500 && S.res.wood === 500 && S.res.stone === 500 && S.res.gold === 500,
@@ -115,7 +124,9 @@ const out = await p.evaluate(() => {
     tr.cargo = [{ kind: 'defender', hp: 60 }];   // one soldier below deck
     UI.select('unit', tr.id);
     const btn = document.querySelector('#panel [data-act="scuttle"]');
-    btn.click(); const btn2 = document.querySelector('#panel [data-act="scuttle"]');
+    // the two taps are spaced past the double-tap guard (PX-26), so it is the
+    // cargo rule — not the guard — that this check proves
+    btn.click(); await nap(450); const btn2 = document.querySelector('#panel [data-act="scuttle"]');
     if (btn2) btn2.click();
     ck('loadedTransportRefuses', !!Units.get(tr.id), 'still afloat with soldiers aboard');
   }
