@@ -117,7 +117,19 @@ const Tutorial = {
       return 'That worked-bare ground can carry a <b>' + CFG.BUILDINGS[key].name + '</b> — tap a villager, open <b>Build</b>, and set the ' +
         noun + ' on ' + on + '. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.';
     },
-    station: 'A station pays only while hands <b>work</b> it — tap a villager, then the camp, to crew it. Its steady wood is what raises every building after.',
+    // the station the note rings names itself (the build 128 review, PLAYER-04:
+    // a Quarry or a Farm was told about "the camp" and "its steady wood");
+    // over a lumber camp the words are exactly what they always were
+    station: () => {
+      const b = S.buildings.find(o => o.owner === 'P' && Tutorial._stationKeys[o.key] && !(o.construction > 0));
+      const [noun, after] = ({
+        quarry: ['quarry', 'Its steady stone builds walls, towers and every storey of the hall.'],
+        farm: ['farm', 'Its steady food feeds the town and trains every new hand.'],
+        lodge: ['lodge', 'Its steady meat feeds the town through lean days.'],
+        mine: ['mine', 'Its steady gold pays for the best troops and every upgrade.'],
+      })[b && b.key] || ['camp', 'Its steady wood is what raises every building after.'];
+      return 'A station pays only while hands <b>work</b> it — tap a villager, then the ' + noun + ', to crew it. ' + after;
+    },
     dock: 'That water can work for you — a <b>Dock</b> trains fishing boats, and transports to carry your people across.',
     sapperE: 'The <b>Sappers’ Camp</b> trains engineers who reshape the land — trenches, causeways, bridges over water. The map itself is a weapon.',
     trade: 'The <b>Trading Post</b> turns surplus into anything else — dearly. When the stone runs out, it is often the only stone there is.',
@@ -748,6 +760,9 @@ const Tutorial = {
     const def = this._defOf();
     const src = (def && def.text) || this.TEXT[id];
     this._el.txt.innerHTML = typeof src === 'function' ? src() : (src || '');
+    // the card's reading time, by the toast's own rule: the world's news waits it out (noteReading)
+    const words = (this._el.txt.textContent || '').trim().split(/\s+/).filter(Boolean).length;
+    this._readMs = Math.max(3200, 1200 + 260 * words);
     // action-gated notes advance themselves; info notes carry the button.
     // A CONTEXTUAL note that waits on a deed can be put away for good (PX-29):
     // it asks for something the player may not want yet or cannot afford, and
@@ -1032,6 +1047,21 @@ const Tutorial = {
     return !!(this._show && this._el && this._el.ui.style.display === 'block') || this._gapT > 0;
   },
 
+  /* IS THE CARD STILL BEING READ? (public; the toast lane asks it, guarded,
+     before noteUp). The world's news waits only while a FRESH card is read —
+     its words' time by the toast's own rule, max(3.2 s, 1.2 s + 0.26 s a
+     word) — and through the BREATH after one. A card that then waits on a
+     deed stands for minutes, and news held that long was dropped unread: the
+     rival's intel, the first spent tile and the off-view "finished" and
+     "ready" notes never reached a tutorial game (the build 128 review, C1 and
+     PERS-01). Read, the card steps the toast column below its own seat
+     (--tut-h), so the news shows under it, never over it. */
+  noteReading() {
+    if (!this.noteUp()) return false;
+    if (this._gapT > 0) return true;
+    return performance.now() - (this._shownAt || 0) < (this._readMs || 3200);
+  },
+
   /* THE TOASTS STEP BELOW THE CARD (the --tut-h contract: index.html's
      #toasts adds it to its top, and the toast lane reads it). A card seated
      at the TOP of the screen covers the head of the toast column (z15 over
@@ -1187,6 +1217,9 @@ const Tutorial = {
     // card never covers the spotlight
     const vh2 = window.innerHeight || R.viewH();
     let seatTop = null;   // the card's top edge while it is seated from the TOP (--tut-h)
+    // a phone on its side seats a world target's card BESIDE the ring (below);
+    // every other seat is the stylesheet's own centred card
+    el.panel.style.transform = ''; el.panel.style.width = ''; el.panel.style.left = ''; el.panel.style.right = '';
     if (hole && hole.rect) {
       if (hole.rect.top + hole.rect.height / 2 < vh2 * 0.5) {
         seatTop = hole.rect.bottom + 12;
@@ -1200,7 +1233,15 @@ const Tutorial = {
       const topPad = (topBar ? topBar.offsetHeight : 0) + 10;
       const botPad = (botBar ? botBar.offsetHeight : 0) + 10;
       const targetHigh = hole ? hole.y < vh2 * 0.48 : false;
-      if (targetHigh) { el.panel.style.top = 'auto'; el.panel.style.bottom = botPad + 'px'; }
+      if (this._sideSeat()) {
+        // no room above or below the ring with the panel up: the card takes the
+        // half of the screen the ring is not in (the build 128 review, PLAYER-02)
+        const vw2 = window.innerWidth || R.viewW(), right = hole ? hole.x < vw2 / 2 : true;
+        el.panel.style.transform = 'none'; el.panel.style.width = this._sideW(hole ? hole.x : 0, hole ? hole.r : 0) + 'px';
+        el.panel.style.left = right ? 'auto' : '12px'; el.panel.style.right = right ? '12px' : 'auto';
+        seatTop = topPad; el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto';
+      }
+      else if (targetHigh) { el.panel.style.top = 'auto'; el.panel.style.bottom = botPad + 'px'; }
       else { seatTop = topPad; el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto'; }
     }
     this._toastStep(seatTop);
@@ -1229,21 +1270,92 @@ const Tutorial = {
     const z = R.cam.z, TL = CFG.TILE, m = 0.3 * TL * z, b = this._freeBand();
     const x = (wx * TL - R.cam.x) * z, y = (wy * TL - R.cam.y) * z - CFG.SPRITE_LIFT * z;
     if (x < b.left + m || x > b.right - m || y < b.top + m || y > b.bottom - m) return false;
+    // the lesson's own card covers no part of the ring — where the card WILL
+    // sit for this ring, since the look runs as the note is told, before the
+    // card is up (the build 128 review, PLAYER-02: on a 320 px phone the card
+    // hid the ring's lower half and the tile itself while the ring's centre,
+    // the old test, stayed clear)
+    const a = this._anchor(), rr = ((a && a.r) || 0.8) * TL * z, c = this._cardRectFor(x, y, rr);
+    if (c && x + rr > c.left && x - rr < c.right && y + rr > c.top && y - rr < c.bottom) return false;
     return document.elementFromPoint(x, y) === (R.cv || document.getElementById('c'));
+  },
+  // where the card seats for a ring at screen (x, y): _syncOverlay's own rules
+  _cardRectFor(x, y, rr) {
+    const side = this._sideSeat(), sw = side ? this._sideW(x, rr || 0) : 0, h = this._cardH(side, sw);
+    if (!h) return null;
+    const vw = window.innerWidth || R.viewW(), vh = window.innerHeight || R.viewH();
+    const w = side ? sw : Math.min(vw * 0.92, 400);
+    const topBar = document.getElementById('topbar'), botBar = document.getElementById('bottombar');
+    const topPad = (topBar ? topBar.offsetHeight : 0) + 10, botPad = (botBar ? botBar.offsetHeight : 0) + 10;
+    const left = side ? (x < vw / 2 ? vw - 12 - w : 12) : (vw - w) / 2;
+    const top = side ? topPad : y < vh * 0.48 ? vh - botPad - h : topPad;
+    return { left, right: left + w, top, bottom: top + h };
+  },
+  // the card's height at the width it will sit at — measured unseen when it is
+  // not on the glass yet (one forced layout, inside the same task: no flicker)
+  _cardH(side, sw) {
+    const el = this._el; if (!el || !el.panel) return 0;
+    const ui = el.ui, pn = el.panel, d = ui.style.display, v = ui.style.visibility, w = pn.style.width;
+    ui.style.visibility = 'hidden'; ui.style.display = 'block'; pn.style.width = side ? (sw || 300) + 'px' : '';
+    const h = pn.offsetHeight;
+    ui.style.display = d; ui.style.visibility = v; pn.style.width = w;
+    return h;
+  },
+  // the side-seated card's width: what the half the ring is not in leaves
+  // beside the ring (the camera cannot always bring the ring off the middle —
+  // a target at the map's edge clamps it), never under 260 px, never past 400
+  _sideW(x, r) {
+    const vw = window.innerWidth || R.viewW(), right = x < vw / 2;
+    const room = right ? vw - 12 - (x + r) - 8 : (x - r) - 12 - 8;
+    return Math.round(Math.max(260, Math.min(vw * 0.46, 400, room)));
+  },
+  // a phone on its side: too short to hold the card above or below a ring
+  _sideSeat() {
+    const vw = window.innerWidth || R.viewW(), vh = window.innerHeight || R.viewH();
+    return vw > vh * 1.3 && vh < 520;
   },
   _panTo(tx, ty) {
     if (this._inFreeBand(tx, ty)) return;   // the player can see it and tap it — the camera is theirs
-    // land the RING in the middle of the free band (the screen's own middle
-    // can sit under a tall panel on a short phone)
+    // land the RING in the free band (the screen's own middle can sit under a
+    // tall panel on a short phone), clear of the lesson's own card
     const z = R.cam.z, TL = CFG.TILE, b = this._freeBand();
-    const mx = (b.left + b.right) / 2;
-    const my = b.bottom > b.top ? (b.top + b.bottom) / 2 : R.viewH() / 2;
+    // on a phone on its side the ring takes the left half, the card the right
+    const side = this._sideSeat();
+    const mx = side ? b.left + (b.right - b.left) * 0.27 : (b.left + b.right) / 2;
+    const my = side ? (b.bottom > b.top ? (b.top + b.bottom) / 2 : R.viewH() / 2) : this._ringRow(b);
     this._glide({
       t: 0, dur: 0.45,
       sx: R.cam.x, sy: R.cam.y,
       tx: tx * TL - mx / z,
       ty: ty * TL - my / z - CFG.SPRITE_LIFT,
     });
+  },
+  /* WHERE IN THE BAND THE RING LANDS (the build 128 review, PLAYER-02): the
+     card seats by the ring — at the BOTTOM when the ring is high (above 48%
+     of the view), at the TOP when it is low (_syncOverlay) — and on a 320 px
+     phone or a phone on its side the band's middle put the ring under the
+     card that seat gave it. So the ring goes in the middle of the part of the
+     band the card will NOT take, clear of it by the ring's own radius: the
+     larger of the two, each kept on its own side of the 48% line so the card
+     seats where this reckoned it would. Too little room for either: the
+     band's middle, as before. */
+  _ringRow(b) {
+    if (!(b.bottom > b.top)) return R.viewH() / 2;
+    const mid = (b.top + b.bottom) / 2;
+    const ph = this._cardH(false);
+    if (!ph) return mid;
+    const vh2 = window.innerHeight || R.viewH(), cut = vh2 * 0.48;
+    const a = this._anchor(), rr = ((a && a.r) || 0.8) * CFG.TILE * R.cam.z;
+    const topBar = document.getElementById('topbar'), botBar = document.getElementById('bottombar');
+    const topPad = (topBar ? topBar.offsetHeight : 0) + 10, botPad = (botBar ? botBar.offsetHeight : 0) + 10;
+    // high: the card at the bottom, the ring between the band's top and the card
+    const hi = [b.top + rr, Math.min(vh2 - botPad - ph - rr, cut - 1)];
+    // low: the card at the top, the ring between the card and the band's foot
+    const lo = [Math.max(topPad + ph + rr, cut), b.bottom - rr];
+    const roomHi = hi[1] - hi[0], roomLo = lo[1] - lo[0];
+    if (roomHi <= 0 && roomLo <= 0) return mid;
+    const r = roomHi >= roomLo ? hi : lo;
+    return (r[0] + r[1]) / 2;
   },
   // every camera move the lesson makes is a short glide — or, for a player
   // who asked for reduced motion, the same move made at once

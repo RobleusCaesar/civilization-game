@@ -2602,7 +2602,7 @@ const UI = {
       const lvN = document.getElementById('levyN');
       if (lvN) {
         const lv = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-        lvN.textContent = `${lv} hand${lv === 1 ? '' : 's'} take up arms — they eat like soldiers`;
+        lvN.textContent = `${lv} hand${lv === 1 ? ' takes' : 's take'} up arms — they eat like soldiers`;
       }
       const upw = panel.querySelector('[data-act="upwalls"]');
       if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
@@ -2782,7 +2782,7 @@ const UI = {
             if (S.levy)
               html += `<button class="abtn sel" data-act="levy">⚔ Stand down<small>tools come out — Back to work returns them</small></button>`;
             else if (vills && threat)
-              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? '' : 's'} take up arms — they eat like soldiers</small></button>`;
+              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? ' takes' : 's take'} up arms — they eat like soldiers</small></button>`;
             if (vills && threat) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
           /* THE YARD'S TOOLS ARE ONE ROW (operator: "shrink the Set Rally
@@ -2939,7 +2939,7 @@ const UI = {
             const n = Units.raiseLevy();
             if (!n) { this.toast('No villagers to call to arms', true); return; }
             R.startHorn(Bld.cx(b2), Bld.cy(b2));
-            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`, 'note');
+            this.toast(`⚔ ${n} villager${n === 1 ? ' takes' : 's take'} up arms — the levy eats like soldiers`, 'note');
           }
           this.renderPanel();
         }
@@ -3698,16 +3698,21 @@ const UI = {
      refusal answering the player's own tap always shows: a repeat of one
      still on screen REPLACES it with one fresh node, and a warning's repeat
      shakes (a note's never does), so a second tap never reads as dead.
-     WHILE A LESSON'S NOTE IS UP (Tutorial.noteUp) the WORLD'S NEWS waits
-     (`news`: G.log's notes and the "N ready" fold) and is shown once the
-     note is answered — never over the lesson's own card; a note held 20 s is
-     dropped, never shown late. Everything else shows at once: a warning, and
+     WHILE A LESSON'S CARD IS BEING READ (Tutorial.noteReading: its words'
+     time, and the breath after one) the WORLD'S NEWS waits (`news`: G.log's
+     notes and the "N ready" fold), three at most, the oldest giving way, and
+     is shown the moment the card has been read — under the card, whose seat
+     steps the column down (--tut-h), never over it; nothing is dropped for
+     waiting (a card that waits on a deed can stand for minutes, and a 20 s
+     drop lost every piece of news in a tutorial game). A cached older
+     tutorial.js without noteReading holds on noteUp, as before. Everything
+     else shows at once: a warning, and
      a note that answers what the player just did (a station's "no ground
      yet", the wall's how-to, a tapped top-bar number) — held, the tap would
      read as dead (the tap contract's rule 4). Every map here is UI-local,
      keyed on S. */
   _toastEl: null,     // message key → the node on screen (a repeat replaces it)
-  _toastHeld: null,   // notes waiting out a lesson's note: { msg, ms, at }
+  _toastHeld: null,   // news waiting out a lesson card's reading: { msg, ms, at }, three at most
   _toastS: null,
   _toastFlush: 0,
   toast(msg, warn, ms, dedupe, news) {
@@ -3718,8 +3723,9 @@ const UI = {
     if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
     if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
-    if (warn === 'note' && news && window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+    if (warn === 'note' && news && this._lessonReading()) {
       this._toastHeld.push({ msg, ms, at: now });
+      while (this._toastHeld.length > 3) this._toastHeld.shift();   // the oldest gives way
       if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
       return null;
     }
@@ -3746,16 +3752,21 @@ const UI = {
     setTimeout(() => { el.remove(); if (this._toastEl && this._toastEl.get(key) === el) this._toastEl.delete(key); }, hold + 700);
     return el;
   },
-  // the held notes come out once the lesson's note is answered (and its breath
-  // has passed — Tutorial.noteUp answers for both); a new world drops them
+  // is a lesson card still being read? (guarded on the method it calls; an
+  // older tutorial.js without noteReading answers by noteUp, as before)
+  _lessonReading() {
+    const T = window.Tutorial;
+    if (!T) return false;
+    if (T.noteReading) return !!T.noteReading();
+    return !!(T.noteUp && T.noteUp());
+  },
+  // the held news comes out once the card has been read (or answered, and its
+  // breath has passed); a new world drops it
   _flushHeld() {
     this._toastFlush = 0;
     const q = this._toastHeld;
     if (!q || !q.length || this._toastS !== S) return;
-    const now = performance.now();
-    for (let i = q.length - 1; i >= 0; i--) if (now - q[i].at > 20000) q.splice(i, 1);
-    if (!q.length) return;
-    if (window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+    if (this._lessonReading()) {
       this._toastFlush = setTimeout(() => this._flushHeld(), 250);
       return;
     }
