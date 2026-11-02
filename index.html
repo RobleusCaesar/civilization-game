@@ -161,6 +161,17 @@
   .res canvas { width: 15px; height: 15px; image-rendering: pixelated; flex: 0 0 auto; }
   .fnet { font-size: 10px; font-weight: 700; opacity: 0.72; margin-left: 1px; }
   .fnet.bad { color: #ff8a80; opacity: 1; }
+  /* THE CHIPS ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a chip holds
+     its number: on a phone each resource chip takes the room its own number
+     needs and the four share what is left, so a five-figure larder and its
+     daily change never spill out of the food chip; the narrowest phones close
+     the gaps a little. A desktop keeps its capped, evenly spread chips. */
+  #topbar [data-chip] { cursor: pointer; }
+  @media (max-width: 899px) { #topbar .trow:first-child .res { flex: 1 1 auto; } }
+  @media (max-width: 400px) {
+    #topbar .trow:first-child { gap: 3px; }
+    #topbar .trow:first-child .res { gap: 3px; padding-left: 4px; padding-right: 4px; }
+  }
   #rPopChip { flex: 0 0 auto; padding: 4px 9px; }
   #rDay { margin-left: auto; color: var(--gold); padding-right: 4px; }
   .iconbtn {
@@ -1717,17 +1728,17 @@
 
 <div id="topbar">
   <div class="trow">
-    <span class="res"><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span><span id="rFoodNet" class="fnet"></span></span>
-    <span class="res"><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
-    <span class="res"><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
-    <span class="res"><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>
+    <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store, and what it gains or loses a day. Tap for the sums."><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span><span id="rFoodNet" class="fnet"></span></span>
+    <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
+    <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
+    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>
   </div>
   <div class="trow">
-    <span class="res" id="rPopChip"><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
-    <span id="rDay">Day 1</span>
+    <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
+    <span id="rDay" data-chip="day" role="button" tabindex="0" aria-label="Day" title="The day. Tap to see how long a day lasts.">Day 1</span>
     <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M5 12 L17 8 L31 12 L43 8 L43 40 L31 44 L17 40 L5 44 Z" fill="#e6cf95" stroke="#140d06" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 8 L31 12 L31 44 L17 40 Z" fill="#7a5a2a" fill-opacity=".22"/><path d="M6.4 11.6 L17 8.2" stroke="#fff6d6" stroke-opacity=".75" stroke-width="1" stroke-linecap="round"/><path d="M5.9 22 Q11 18.4 15 21.6 Q12.6 26.4 5.9 26.6 Z" fill="#6f9fd6" stroke="#3d5f86" stroke-width=".8"/><path d="M20 15.6 Q27 13.4 33.6 17.4 Q38.6 15.6 41.6 19 L41.6 31 Q35 34.6 28.4 31.4 Q22.6 33.6 19.2 29 Q16.6 22.4 20 15.6 Z" fill="#7d9a4c" stroke="#3e5222" stroke-width=".9"/><path d="M24 23.6 L26.6 21.4 L29.4 24 Z" fill="#a8977a" stroke="#4a3f2c" stroke-width=".6"/><path d="M9 35.4 Q14 31.6 19.6 33.6 T30 30.4 T36.4 24.6" fill="none" stroke="#8a2a1c" stroke-width="1.5" stroke-dasharray="2.2 2" stroke-linecap="round"/><path d="M34.2 22.2 L38.6 26.6 M38.6 22.2 L34.2 26.6" stroke="#b3241a" stroke-width="2" stroke-linecap="round"/></svg></button>
-    <button class="iconbtn" id="btnPause">⏸</button>
-    <button class="iconbtn" id="btnMenu">☰</button>
+    <button class="iconbtn" id="btnPause" title="Pause or resume" aria-label="Pause or resume">⏸</button>
+    <button class="iconbtn" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
   </div>
 </div>
 
@@ -2051,7 +2062,8 @@
       <section><div class="gpage">
         <img class="gart" src="assets/ui/guide/wheat.png" alt="" width="96" height="96">
         <h3>Feed the tribe</h3>
-        <p>Hungry villagers down tools. Plant <b>farms</b> by fertile soil, hunt
+        <p>When the stores run dry, soldiers desert — villagers keep working, so
+          the town can farm its way back. Plant <b>farms</b> by fertile soil, hunt
           the woods, fish where the fish jump.</p>
         <p>Station a villager at a farm, lodge or quarry and it works all day —
           a fed village runs itself.</p>

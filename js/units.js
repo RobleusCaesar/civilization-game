@@ -1657,7 +1657,9 @@ const Units = {
               const what = terr === T.FOREST ? 'The forest here is felled — a lumber camp may stand on it'
                 : terr === T.HILLS ? 'The stone here is quarried out — a quarry may stand on it'
                 : 'The soil here is spent — a farm may stand on it';
-              G.log(`${what} — villager idle`);
+              // the first spent tile of a world is a note on the screen, then one
+              // every few game days (UI.idleNote); the chronicle keeps them all
+              G.log(`${what} — villager idle`, UI.idleNote ? UI.idleNote() : undefined);
             }
             u.task = null;
           }
@@ -1810,7 +1812,7 @@ const Units = {
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
-            if (u.owner === 'P') G.log('This shoal is fished out — villager idle');
+            if (u.owner === 'P') G.log('This shoal is fished out — villager idle', UI.idleNote ? UI.idleNote() : undefined);
             u.task = null;
           }
         }
