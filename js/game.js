@@ -3256,8 +3256,13 @@ const G = {
            enough to pick up art landing or the bake finishing, and the thread
            goes to the cards and the people's strips (the playtest's laggy
            draft). The title's demo world moves, and keeps the glance rate. */
-        else if (t - (G._shellDrawT || 0) < (S.paused && !(window.Screens && Screens._demo) ? G.SHELL_STILL_MS : G.SHELL_DRAW_MS)) skip = true;
-        else G._shellDrawT = t;
+        /* …timed by the PAGE's clock, never the frame's timestamp: the first
+           frame after a long task carries the stamp of the vsync it was due
+           on, seconds stale (a 0.9-3.4 s map generation stamped the throttle
+           that far in the past), and the next frame drew again at once
+           (tests/boot.mjs aStillWorldIsDrawnOnceASecond) */
+        else if (performance.now() - (G._shellDrawT || 0) < (S.paused && !(window.Screens && Screens._demo) ? G.SHELL_STILL_MS : G.SHELL_DRAW_MS)) skip = true;
+        else G._shellDrawT = performance.now();
       }
       if (!skip) G._safe(() => R.draw(dt), 'render');
       /* the title is ready when the GLEN is on screen (tests/boot.mjs): the

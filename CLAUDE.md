@@ -3709,7 +3709,12 @@ STILL world is drawn once a second** behind a shell screen
 (`G.SHELL_STILL_MS`): `Screens.show` pauses a real world off the playing
 screen, so the draft's backdrop does not move, and redrawing it every 130ms
 was the biggest cost behind the cards once the bake was done; the title's
-demo keeps the glance rate. And **the outline pass is a flat mask** (four-
+demo keeps the glance rate. Its clock is `performance.now()`, never the
+frame's timestamp: the first frame after a long task carries the stamp of
+the vsync it was due on, seconds stale, and the throttle let a second draw
+straight through (boot.mjs's `aStillWorldIsDrawnOnceASecond` flaked on CI
+and failed two runs in three under load on build 126 itself — the check
+before it generates 36 maps in one block). And **the outline pass is a flat mask** (four-
 neighbour growth, runs of fill — §7 holds it pixel-identical to the
 per-pixel rule), about half the parse-time sprite build before. One caution
 from measuring it: headless Chromium rasterises "GPU" canvases in software,
