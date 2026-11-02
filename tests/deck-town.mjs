@@ -1938,6 +1938,8 @@ await p.evaluate(({ TOWN }) => {
       Deck.tick();
       const last = box.children[box.children.length - 1];
       out.endToast = box.children.length > n0 && /ward on your Town Center fades/.test(last.textContent) && !last.classList.contains('warn');
+      // what the column held, said when the check fails (n0 before, then each node)
+      out.endCol = n0 + ' before; ' + [...box.children].map(c => (c.classList.contains('warn') ? '!' : '') + c.textContent.slice(0, 40)).join(' | ');
       out.endFall = R.cardShows.some(s => s.id === 'unbreakable_hall' && s.fall);
       R.cardShows = [];
     } finally { P2.fillRect = fr; P2.drawImage = di; P2.rect = rc; P2.fill = pf; P2.stroke = ps; }
@@ -1952,7 +1954,7 @@ await p.evaluate(({ TOWN }) => {
   ck('aSwallowedBlowFlashesTheDomesOutlineNeverAFill', r.flashRim >= 0.6 && r.flashMid <= 0.35,
     `${(100 * r.flashRim).toFixed(0)}% of its outline lit, ${(100 * r.flashMid).toFixed(0)}% of the body inside it (a fill: all of it)`);
   ck('heldIsGoldWithADarkEdge', r.heldGold && r.paleGone, `HELD! drawn ${r.heldTexts}× (gold over a dark edge stroked round it ${r.heldGold}); the pale float taken over ${r.paleGone}`);
-  ck('theWardsEndIsNewsOnTheScreen', r.endToast && r.endFall, `a note toast ${r.endToast}; the dome breaks ${r.endFall}`);
+  ck('theWardsEndIsNewsOnTheScreen', r.endToast && r.endFall, `a note toast ${r.endToast}; the dome breaks ${r.endFall}` + (r.endToast ? '' : ` — the column: ${r.endCol}`));
 }
 
 // ---------------- 17. EVERY ACT IS DRAWN AT THE DEVICE'S OWN RESOLUTION ----------------

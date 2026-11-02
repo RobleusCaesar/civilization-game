@@ -1316,6 +1316,7 @@ const rm = await rp.evaluate(async () => {
   out.spent = Deck.count('__bar') === 0; out.food = S.res.food - food0;
   out.rFood = document.getElementById('rFood').textContent === String(UI.fmtRes(S.res.food));
   out.toast = [...document.querySelectorAll('#toasts .toast')].some(t => /\+250 food/.test(t.textContent));
+  out.col = [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent.slice(0, 40)).join(' | ');
   // and the aim, opened and cancelled
   document.getElementById('deckBtn').click(); await wait(300);
   document.querySelector('#dkSheet .dkCell[data-card="__aim"]').click(); await wait(250);
@@ -1327,7 +1328,8 @@ const rm = await rp.evaluate(async () => {
   return out;
 });
 ck('reducedMotionMovesNothing', rm.anims > 0 && rm.moving === 0, `${rm.anims} animations, ${rm.moving} with a transform`);
-ck('butTheInformationIsAllThere', rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim && rm.total <= 1200, `${rm.total}ms`);
+ck('butTheInformationIsAllThere', rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim && rm.total <= 1200,
+  `${rm.total}ms` + (rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim ? '' : ` — spent ${rm.spent}, food ${rm.food}, bar ${rm.rFood}, toast ${rm.toast}, aim ${rm.aim}; the column: ${rm.col}`));
 await rctx.close();
 
 /* ================= 11. A STRIKE SAYS IT ONCE, AND NEVER AS AN ALARM =================
