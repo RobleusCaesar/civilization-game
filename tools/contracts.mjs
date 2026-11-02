@@ -154,13 +154,22 @@ const runOne = (f) => new Promise(res => {
   p.on('close', code => {
     clearTimeout(kill);
     writeFileSync(join(LOGS, f + '.log'), log);
-    res({ f, ok: code === 0, s: Math.round((Date.now() - t0) / 1000) });
+    res({ f, ok: code === 0, s: Math.round((Date.now() - t0) / 1000), log });
   });
 });
 
+/* a red suite says WHICH checks went red, in the run's own output: CI's log
+   artifacts can be out of reach (an egress proxy that refuses the artifact
+   store), and the job log never is. Bounded — a dozen lines at most. */
+const why = (log) => {
+  const lines = String(log || '').split('\n');
+  const hits = lines.filter(l => /FAIL|Error|TIMED OUT/.test(l)).slice(0, 12);
+  return (hits.length ? hits : lines.filter(Boolean).slice(-4)).map(l => '    | ' + l.trim().slice(0, 300)).join('\n');
+};
+
 async function runAll(list, lanes) {
   const out = [], queue = list.slice();
-  const lane = async () => { while (queue.length) { const f = queue.shift(); const r = await runOne(f); out.push(r); console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' ' + r.s + 's'); } };
+  const lane = async () => { while (queue.length) { const f = queue.shift(); const r = await runOne(f); out.push(r); console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' ' + r.s + 's'); if (!r.ok) console.log(why(r.log)); } };
   await Promise.all(Array.from({ length: Math.max(1, lanes) }, lane));
   // the rerun-alone rule: a failure is measured again with the machine to itself
   const red = out.filter(r => !r.ok);
@@ -168,6 +177,7 @@ async function runAll(list, lanes) {
     const again = await runOne(r.f);
     r.rerun = again.ok;
     console.log((again.ok ? 'FLAKY ' : 'FAIL ') + r.f + (again.ok ? ' (failed in the crowd, passed alone)' : ' (failed again, alone)'));
+    if (!again.ok) console.log(why(again.log));
   }
   const failed = out.filter(r => !r.ok && !r.rerun), flaky = out.filter(r => !r.ok && r.rerun);
   console.log(`\n${out.length - failed.length - flaky.length} passed, ${flaky.length} flaky, ${failed.length} failed — logs in ${LOGS}`);
