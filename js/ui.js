@@ -175,7 +175,12 @@ const UI = {
         // tuck the build menu away so the whole map is visible to pick a site
         // (keepPlacing: don't cancel the building we just chose)
         this.setMenuCollapsed(true, true);
-        if (key === 'wall') this.placing = key;   // the wall keeps its line-drag flow
+        if (key === 'wall') {
+          this.placing = key;   // the wall keeps its line-drag flow
+          // …which arms with no ghost and no grid, so it says how it works:
+          // the next drag LAYS the line (PX-11, tests/placement.mjs)
+          this.toast('Drag along the ground to lay a wall — release to build', 'note');
+        }
         else this.enterPlacement(key);
         this.refreshMenu();
       });
@@ -458,6 +463,8 @@ const UI = {
      the scan — the same rule AI.plot's pickSealFree follows. */
   PLACE_HYST: 0.18,      // tiles of stickiness past a cell boundary before the snap moves
   PLACE_EDGE: 44,        // css px band at the viewport edge that auto-pans while dragging
+  // the line beside the ✗ until the ghost is parked (PX-11, tests/placement.mjs)
+  PLACE_HOW: 'Drag to place, then tap ✓',
   /* A STATION'S CHIP SAYS THE WORK, NOT THE JOKE (tests/worked-ground.mjs,
      PX-07): the chip clips at 260px, and every station's whyGround leads
      with a joke and ends with the instruction — so on a tile that was never
@@ -654,7 +661,7 @@ const UI = {
     if (r.warn === 'sealed') this.toast('Your town is walled in — only a gate lets your people out', true);
     // the materials land: a ring of dust billows out from under the new site
     if (R.startPlacePoof) R.startPlacePoof(g.x, g.y, Bld.size(key));
-    this.cue('confirm');
+    this.cue('place');   // the voice that exists ('confirm' had none)
     this.exitPlacement();
   },
   // ✗ / Esc: the ghost is discarded, the menu reopens with the selection
@@ -736,10 +743,13 @@ const UI = {
     if (this._placeEl) return this._placeEl;
     const el = document.createElement('div');
     el.id = 'placeUI';
+    // #placeHow rides the ✗'s row only before the ghost is parked (the
+    // `pre` row, _placeDomSync); parked, the row is the ✓/✗ pair as ever
     el.innerHTML =
       '<div id="placeWhy"></div>' +
       '<div id="placeBtns">' +
       '<button id="placeNo" aria-label="Cancel placement">✕</button>' +
+      '<div id="placeHow">' + this.PLACE_HOW + '</div>' +
       '<button id="placeOk" aria-label="Confirm placement">✓</button>' +
       '</div>';
     document.body.appendChild(el);
@@ -777,11 +787,23 @@ const UI = {
     const TL = CFG.TILE, z = R.cam.z, sz = Bld.size(this.placing);
     const sx = (g.x * TL - R.cam.x) * z, sy = (g.y * TL - R.cam.y) * z, sw = sz * TL * z;
     const vw = R.viewW(), vh = R.viewH();
-    // buttons: visible only when the ghost is parked; positioned above the
-    // footprint, flipped below when the top is tight, always fully on-screen
+    // buttons: the PAIR once the ghost is parked; positioned beneath the
+    // footprint, flipped above when the bottom is tight, always fully on-screen
     const btns = el.querySelector('#placeBtns');
     const showBtns = g.set && !this.placeDragging;
-    btns.style.display = showBtns ? 'flex' : 'none';
+    /* THE WAY OUT SHOWS FROM ARMING (tests/placement.mjs, PX-11): before the
+       ghost is parked the ✗ stands alone in a FIXED row at the foot of the
+       map, above the Build tab (the CSS's `.pre`), with one line on how to
+       place — never over the ground round the ghost, where a tap meant for the
+       ground would land on it. The ✓ still waits for the parked ghost. The
+       row stands aside while the ghost is dragged (a release must land on the
+       ground), and while the menu is open, whose lit card is the way out. */
+    const pre = !g.set && !this.placeDragging && !!this.menuCollapsed;
+    btns.style.display = (showBtns || pre) ? 'flex' : 'none';
+    if (btns.classList.contains('pre') !== pre) {
+      btns.classList.toggle('pre', pre);
+      if (pre) btns.style.transform = '';
+    }
     let btnsBelow = false;
     if (showBtns) {
       // the pair sits BENEATH the footprint — under the doorstep, not on a
@@ -1031,8 +1053,10 @@ const UI = {
         const pick = Units.pickWorkOrder(v, sites.map(b2 => ({ x: b2.x, y: b2.y, diag: true, blocks: true, ref: b2 })));
         if (pick) start = pick.ref;
       }
+      // told in the gold: the line was laid AND paid for on release, so the
+      // player is told it happened (an unmarked toast is shown nowhere)
       if (v && Units.assignBuild(v, start))
-        this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`);
+        this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
       else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
       // done drawing — drop out of placement so stray taps don't add walls
       this.placing = null;

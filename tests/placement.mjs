@@ -486,9 +486,9 @@ const out = await p.evaluate(() => {
       return { x: (gh.x * TL - R.cam.x) * z, y: (gh.y * TL - R.cam.y) * z, w: sz * TL * z };
     };
     const rNo0 = no.getBoundingClientRect();
-    UI.placeGhost = { x: g0.x + 3, y: g0.y - 2, set: false }; UI._placeCheck(); UI._placeDomSync();
+    UI.placeGhost = { x: g0.x - 2, y: g0.y - 2, set: false }; UI._placeCheck(); UI._placeDomSync();
     const rNo1 = no.getBoundingClientRect();
-    const f = foot(UI.placeGhost);
+    const f = foot(UI.placeGhost);   // (still on screen: the tap below must land on the page)
     const near = (r, m) => r.right > f.x - m && r.left < f.x + f.w + m && r.bottom > f.y - m && r.top < f.y + f.w + m;
     ck('theWayOutStaysPutAndClearOfTheGhost',
       rNo0.width > 0 && Math.abs(rNo0.left - rNo1.left) < 0.5 && Math.abs(rNo0.top - rNo1.top) < 0.5 && !near(rNo1, 60),
