@@ -274,9 +274,9 @@ const G = {
     // …and a band within reach of EACH seat, so both sides start with a hunt
     // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
     {
-      // the home ground is thin on game (CFG.WILD_HOME): 30% of the old band, never none
-      const g = Math.max(1, Math.round(((CFG.START_RESOURCE || {}).game || 4) * ((CFG.WILD_HOME || {}).keep || 1)));
-      for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g);
+      // the home ground is thin on game (CFG.WILD_HOME): 30% of the band, never none
+      const g = (CFG.START_RESOURCE || {}).game || 4, keep = (CFG.WILD_HOME || {}).keep;
+      for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g, keep);
     }
     Units.spawnHerd('deer', 8);
     Units.spawnHerd('cow', 8);

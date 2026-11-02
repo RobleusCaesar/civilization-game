@@ -2768,6 +2768,7 @@ const Units = {
   },
 
   spawnWild(kind, minDistTC) {
+    this._thinSpot = null;
     const passive = kind === 'deer' || kind === 'cow';
     const tc = Bld.tcOf('P');
     const open = Path.borderReach();   // keep beasts from popping up inside sealed walls
@@ -2777,7 +2778,9 @@ const Units = {
       if (t !== T.FOREST && !(passive && t === T.GRASS)) continue;
       if (Bld.at(x, y)) continue;
       if (tc && Math.hypot(x - tc.x, y - tc.y) < minDistTC) continue;
-      if (this.homeThinned(x, y)) continue;      // the home ground is thin on game (CFG.WILD_HOME)
+      // the home ground is thin on game (CFG.WILD_HOME) — decided here, applied at the
+      // spawn, so every G.rand() draw of the search is exactly what it was
+      const thin = this.homeThinned(x, y); this._thinSpot = thin ? { x, y } : null;
       /* THE TREELINE COUNTS AS THE OPEN COUNTRY (a real extinction): the
          sealed-walls gate asked the open net about the spawn tile ITSELF —
          but a predator spawns ON forest, forest is impassable, and the
@@ -2796,7 +2799,7 @@ const Units = {
         const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([ox, oy]) =>
           MapGen.inB(x + ox, y + oy) && open[MapGen.idx(x + ox, y + oy)] && !Bld.at(x + ox, y + oy));
         if (!nb) continue;
-        return this.spawn(kind, 'W', x + nb[0], y + nb[1]);
+        return thin ? null : this.spawn(kind, 'W', x + nb[0], y + nb[1]);
       }
       /* NO NET TO ASK (borderReach is null on all-water margins — the
          island landforms): prove the ground the hard way instead of
@@ -2807,13 +2810,13 @@ const Units = {
          dropped island cows into sealed grass pockets (and onto forest
          tiles outright), where they stood for the rest of the run. */
       if (!open) {
-        if (this.wildRoom(x, y, 6)) return this.spawn(kind, 'W', x, y);
+        if (this.wildRoom(x, y, 6)) return thin ? null : this.spawn(kind, 'W', x, y);
         const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([ox, oy]) =>
           MapGen.inB(x + ox, y + oy) && !Bld.at(x + ox, y + oy) && this.wildRoom(x + ox, y + oy, 6));
         if (!nb) continue;
-        return this.spawn(kind, 'W', x + nb[0], y + nb[1]);
+        return thin ? null : this.spawn(kind, 'W', x + nb[0], y + nb[1]);
       }
-      return this.spawn(kind, 'W', x, y);
+      return thin ? null : this.spawn(kind, 'W', x, y);
     }
     return null;
   },
@@ -2826,8 +2829,11 @@ const Units = {
      roll puts them; this puts a band near each town on day one so both sides
      start with a hunt they could actually go and make. Seeded rng, so a seed's
      opening is still its own. */
-  seedGameNear(x, y, n) {
-    let put = 0;
+  seedGameNear(x, y, n, keep) {
+    // `keep` of the band is really put down (CFG.WILD_HOME); the search runs for
+    // all `n`, so its G.rand() draws are exactly what they were
+    const real = keep == null ? n : Math.max(1, Math.round(n * keep));
+    let put = 0, made = 0;
     // one KIND per band — herds are kind-true now, and a mixed handful would
     // spend its first minute sorting itself into two tiny herds
     const kind = G.rand() < 0.5 ? 'deer' : 'cow';
@@ -2838,28 +2844,30 @@ const Units = {
       // never seeded into a sealed pocket — this site checked ONLY the tile
       // itself, which is where the operator's stranded starting cows came from
       if (!this.wildRoom(ax, ay, 6)) continue;
-      this.spawn(kind, 'W', ax, ay);
+      if (made < real) { this.spawn(kind, 'W', ax, ay); made++; }
       put++;
     }
-    return put;
+    return made;
   },
 
   spawnHerd(kind, minDistTC) {
     const first = this.spawnWild(kind, minDistTC);
-    if (!first) return null;
+    // a herd thinned off the home ground still makes its draws (seeded streams stay put)
+    const at = first || this._thinSpot;
+    if (!at) return null;
     const mates = 2 + ((G.rand() * 3) | 0);              // 3–5 head all told
     const open = Path.borderReach();                     // no beast pops up inside a sealed town
     for (let i = 0; i < mates; i++) {
       if (this.count('W', u => this.isPassive(u)) >= CFG.PASSIVE_MAX) break;
       for (let tries = 0; tries < 12; tries++) {
-        const x = Math.round(first.x + G.rand() * 5 - 2.5), y = Math.round(first.y + G.rand() * 5 - 2.5);
+        const x = Math.round(at.x + G.rand() * 5 - 2.5), y = Math.round(at.y + G.rand() * 5 - 2.5);
         if (!Path.passable(x, y) || Bld.at(x, y)) continue;
         if (open && !open[MapGen.idx(x, y)]) continue;
         // net gone (all-water margins): a mate can land in a pocket NEXT
         // to the herd, across a wall of trees — prove its own room too
         if (!open && !this.wildRoom(x, y, 4)) continue;
-        if (this.homeThinned(x, y)) continue;    // CFG.WILD_HOME
-        this.spawn(kind, 'W', x, y); break;
+        if (first && !this.homeThinned(x, y)) this.spawn(kind, 'W', x, y);   // CFG.WILD_HOME
+        break;
       }
     }
     return first;
