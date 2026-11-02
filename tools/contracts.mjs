@@ -21,7 +21,9 @@
    wall-clock checks (land.mjs's repaint ratios, deck-ui's 1.2 s budget) are
    measurements, and CLAUDE.md's standing rule is to rerun a perf failure on
    a quiet machine before believing it. One that passes alone is reported as
-   FLAKY, never silently green, so a check that keeps flaking gets seen.
+   FLAKY, never silently green, so a check that keeps flaking gets seen. The
+   stopwatch suites (SOLO: land.mjs, deck-ui.mjs) skip the crowd altogether
+   and run alone after it, from the start.
 
    HOW `affected` PICKS. Every game script is a classic script that hangs
    one or more globals on the page (ai.js → AI, buildings.js → Bld, …), and
@@ -167,10 +169,32 @@ const why = (log) => {
   return (hits.length ? hits : lines.filter(Boolean).slice(-4)).map(l => '    | ' + l.trim().slice(0, 300)).join('\n');
 };
 
+/* THE STOPWATCH SUITES RUN ALONE (build 128's post-merge sweep). land.mjs
+   times real work — the first bake's ceiling, the repaint ratios, the world
+   pass's 1.5 ms p95, a spadeful's 140 ms — and deck-ui.mjs holds a play to
+   1.2 s. In a lane beside terrain-v4.mjs, which builds terrain in Web Workers
+   on every core, they measured the neighbour: once the shards were
+   re-balanced on the sprint's suite times (Gate 3b) land.mjs shared a shard
+   with it, and land.mjs failed in 3 of the next 4 runs (about 3 in 40
+   before), the test's own fixed reference workload disagreeing with itself
+   by 1.3-1.65x on the same run. They run after the crowd, one at a time —
+   the rerun-alone rule's own condition, from the start — so a red one is a
+   slower frame, never a busier machine. The balance is left as it is: it
+   only decides which shard, and re-weighting would re-roll every
+   neighbour. */
+const SOLO = new Set(['land.mjs', 'deck-ui.mjs']);
+
 async function runAll(list, lanes) {
-  const out = [], queue = list.slice();
-  const lane = async () => { while (queue.length) { const f = queue.shift(); const r = await runOne(f); out.push(r); console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' ' + r.s + 's'); if (!r.ok) console.log(why(r.log)); } };
-  await Promise.all(Array.from({ length: Math.max(1, lanes) }, lane));
+  const out = [];
+  const lane = (queue, tag) => async () => {
+    while (queue.length) {
+      const f = queue.shift(); const r = await runOne(f); out.push(r);
+      console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' ' + r.s + 's' + tag); if (!r.ok) console.log(why(r.log));
+    }
+  };
+  const crowd = list.filter(f => !SOLO.has(f)), solo = list.filter(f => SOLO.has(f));
+  await Promise.all(Array.from({ length: Math.max(1, lanes) }, lane(crowd, '')));
+  await lane(solo, ' (alone)')();
   // the rerun-alone rule: a failure is measured again with the machine to itself
   const red = out.filter(r => !r.ok);
   for (const r of red) {

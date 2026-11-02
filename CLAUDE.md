@@ -27,8 +27,13 @@ hour on this 4-core sandbox and slower beside agents. So:
   parallel balanced on `tools/contract-times.json`, each suite judged by its
   exit code and a failure rerun ONCE, alone, before it counts (CLAUDE.md's
   rerun-alone rule for wall-clock checks, made mechanical — and a suite that
-  passes only alone is printed FLAKY, never silently green). Docs-only pushes
-  skip it. Locally, `node tools/contracts.mjs all --lanes 2` is the same sweep.
+  passes only alone is printed FLAKY, never silently green). The STOPWATCH
+  suites (`SOLO` in tools/contracts.mjs: land.mjs, deck-ui.mjs) never run in
+  the crowd: they run alone after it — beside terrain-v4.mjs's workers
+  land.mjs measured the neighbour, red on build 128's own post-merge sweep.
+  A new suite that times real work joins `SOLO`. Docs-only pushes skip it.
+  Locally, `node tools/contracts.mjs all --lanes 2` is the same sweep — and
+  `shard I N` RUNS that shard; it is not a listing.
 - **Main moves only when that run is green on the branch.** The rule below
   still binds: a red check blocks the merge.
 - **A small fix branches from what is live**, never on top of unreleased
