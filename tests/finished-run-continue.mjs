@@ -83,7 +83,9 @@
      screens.js — onTitle (the Continue pick), continueGame, loadRow,
                   _loadSave, say/unsay, enterGame/_enterNow (the plaque and
                   its tick), showPrep, saveToSlot, the file import, the
-                  title drift in init, ensureDemo, the backend-status listener
+                  title drift in init, ensureDemo, the backend-status
+                  listener, _fetchSlot / _openTok, whyNet, onLoad (▶ Load
+                  and its list line), the identity restore line
      index.html — #shellMsg (the shell's message line)
      game.js — G.end, the autosave cadence in G.dayTick, and the cadence
                restart in G.newGame / G.loadJSON
