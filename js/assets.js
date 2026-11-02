@@ -1720,9 +1720,10 @@ const Assets = {
      while a run's people are downloading left every strip that failed missing
      for the session — villagers flickering between their art and the
      procedural cast by facing and pose. A failed people strip is asked for
-     ONCE more, in the background tier (a retry never holds the plaque again):
-     when the browser says it is back online, or RETRY_MS after the last
-     failure if it never said it was gone. A strip that fails twice stays
+     ONCE more, at the head of the background tier (a retry never holds the
+     plaque again, and never waits behind every strip still to come): when
+     the browser says it is back online, or RETRY_MS after the last failure
+     if it never said it was gone. A strip that fails twice stays
      procedural, as an absent file always has. */
   RETRY_MS: 8000,
   _retryQ: [], _retryT: 0, _retryOn: false,
