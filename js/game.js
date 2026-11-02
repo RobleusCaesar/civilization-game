@@ -2750,7 +2750,7 @@ const G = {
         // its press waited behind "Preparing the world…"
         first_act_s: (typeof st.firstActS === 'number' && st.firstActS >= 0) ? st.firstActS : null,
         tut_skip_at: (typeof st.tutSkipAt === 'string' && st.tutSkipAt) ? st.tutSkipAt.slice(0, 24) : null,
-        wall_s: (op && Screens._vis) ? Math.max(0, Math.round(op.play + (Screens._vis() - op.vis) / 1000)) : null,
+        wall_s: (op && Screens._vis) ? Math.round(op.play + Math.max(0, Screens._vis() - op.vis) / 1000) : null,
         resume_prep_ms: op && op.resumeMs != null ? op.resumeMs : null,
         // THE GAME'S OWN ERRORS (build 107; the dashboard's "hit an error"
         // and its list of the commonest): how many faults the recorder caught

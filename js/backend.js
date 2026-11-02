@@ -624,7 +624,7 @@ const Backend = {
      hidden at the title and played later still says 'title' (the session
      row is a visit, never a duration). Never a page id or a click history. */
   entered: false,
-  leftAt() {
+  sessionAt() {
     try {
       const sc = window.Screens;
       if (!sc) return 'title';
@@ -658,7 +658,7 @@ const Backend = {
     if (secs < 3) return;                       // a bounce is not a session
     this._sessionSent = true;
     this._emit({ kind: 'session', seconds: secs, device: this.deviceKind(),
-      props: Object.assign({ at: this.leftAt(), entered: !!this.entered }, this.formFacts()) });
+      props: Object.assign({ at: this.sessionAt(), entered: !!this.entered }, this.formFacts()) });
   },
 
   /* ---------------- save slots ---------------- */
