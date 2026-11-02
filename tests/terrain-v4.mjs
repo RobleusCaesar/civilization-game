@@ -27,6 +27,13 @@
       and an edit near food or a new building repaints what a rebuild would.
   11. THE SWITCH IS A TESTER'S TOOL: a player's page carries no chip.
 
+   THE GROUND IS READY WHEN THE WORLD OPENS (PX-20):
+  12. While a world is being founded (the draft) or entered (the plaque, a
+      Continue's included) the workers are asked for the view it will open
+      on, without a single draw, so the first frame has no stand-in ground;
+      behind the pause menu nothing is prefetched; and under the classic
+      painters, the kill switch and the title's demo it asks for nothing.
+
      node tests/terrain-v4.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -346,6 +353,147 @@ let rulesV4 = null;
   await settle(p);
   const k = await p.evaluate(() => ({ on: TerrainX.on, live: TerrainX._v5, r5: TerrainX.world().R5, current: TerrainV5.current() }));
   ck('theRegionsKillSwitchPaintsPlainV4', k.on === true && k.live === null && k.r5 === null && k.current === null, JSON.stringify(k));
+  await ctx.close();
+}
+
+/* ---- 12. THE GROUND IS READY WHEN THE WORLD OPENS (PX-20). Chunks were asked
+   for only from R.draw, which does not run behind the draft or the plaque, so
+   every world opened on flat stand-in ground that popped in square by square
+   for seconds. Here R.draw is a counter that draws NOTHING while the world
+   waits, so any ground that arrives was asked for by the prefetch alone. ---- */
+const groundWaits = (p) => p.evaluate(async () => {
+  const sleep = ms => new Promise(res => setTimeout(res, ms));
+  const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+  // the world is never drawn while it waits; a prefetch that drew would be counted here
+  let inPf = false;
+  window.__draws = 0; window.__drawOrig = R.draw; R.draw = function () { if (inPf) window.__draws++; };
+  window.__pf = 0; const pf = TerrainX.prefetch;
+  if (pf) TerrainX.prefetch = function () { window.__pf++; inPf = true; try { return pf.apply(this, arguments); } finally { inPf = false; } };
+  // a world founded and waiting on its draft (Screens.foundRun, then the draft screen)
+  Screens._demo = false;
+  R.deferBake = true; try { G.newGame('pf-bay', 'moderate', 'medium', undefined, 'green'); } finally { R.deferBake = false; }
+  Screens.show('draft');
+  await until(() => TerrainX.ready || !TerrainX.on, 30000);
+  // …until the view it will open on (this camera at the zoom enterGame gives it)
+  // is all in, or a minute: a worker on a loaded machine is slow, never absent
+  const z0 = R.cam.z; R.cam.z = R.defaultZoom();
+  const view = TerrainX.viewChunks(0).map(([a, b]) => a + ',' + b); R.cam.z = z0;
+  const t0 = performance.now();
+  if (TerrainX.on) await until(() => view.every(k => TerrainX.chunks.has(k)), 120000); else await sleep(3000);
+  return { on: TerrainX.on, ready: TerrainX.ready, chunks: TerrainX.chunks.size, pending: TerrainX.pending.size, prefetch: window.__pf, draws: window.__draws, defined: !!pf,
+    view: view.length, have: view.filter(k => TerrainX.chunks.has(k)).length, ms: Math.round(performance.now() - t0) };
+});
+{
+  const { p, ctx } = await page('');
+  const w = await groundWaits(p);
+  // …the card is kept and the world opens: its FIRST frame's view, read before that frame draws
+  const first = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+    let at = null; const draw = window.__drawOrig;
+    R.draw = function () {
+      if (!at && Screens.current === 'playing') { const v = TerrainX.viewChunks(0); at = { view: v.length, have: v.filter(([a, b]) => TerrainX.chunks.has(a + ',' + b)).length, z: R.cam.z }; }
+      return draw.apply(this, arguments);
+    };
+    Cards.pick(0); Screens.enterGame();
+    await until(() => at, 30000);
+    return at;
+  });
+  ck('theOpeningViewIsAskedForWhileTheWorldWaits', w.on && w.ready && w.defined && w.prefetch > 0 && w.view > 0 && w.have === w.view && w.draws === 0,
+    `behind the draft: the opening view ${w.have}/${w.view} in after ${w.ms} ms (${w.chunks} chunks), ${w.prefetch} prefetch calls, ${w.draws} draws`);
+  ck('soTheFirstFrameStandsOnRealGround', first && first.view > 0 && first.have === first.view,
+    `the first frame's view: ${first ? first.have + '/' + first.view : '?'} chunks real at zoom ${first && first.z}`);
+
+  /* the pause menu is not a world being entered: with the camera two screens
+     from the hall, nothing is prefetched there through a ten-second pause, and
+     the view the player left is still standing when they come back. The view
+     is let finish first (the game draws it every frame), so a stand-in on the
+     first frame back is the pause's doing, never the camera's last move; the
+     chunk requests the pause does make are schedule()'s own, from the world's
+     once-a-second draw — the same code as before the prefetch existed. */
+  const pz = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+    const tc = Bld.tcOf('P'), z = R.cam.z;
+    const dx = 2 * R.viewW() / z / CFG.TILE, far = Bld.cx(tc) + dx < CFG.W - 4 ? Bld.cx(tc) + dx : Bld.cx(tc) - dx;
+    R.centerOn(far, Bld.cy(tc));
+    const viewIn = () => TerrainX.viewChunks(0).every(([a, b]) => TerrainX.chunks.has(a + ',' + b));
+    const settled = await until(viewIn, 120000);   // the view in sight — the ring round it may still be filling
+    const pf0 = window.__pf; let asks = 0; const req = TerrainX.request;
+    TerrainX.request = function () { asks++; return req.apply(this, arguments); };
+    Screens.show('paused');
+    await sleep(10000);
+    TerrainX.request = req;
+    const calls = window.__pf - pf0;
+    let at = null; const draw = R.draw, s0 = TerrainX.stats.standIn | 0;
+    R.draw = function () { const r = draw.apply(this, arguments); if (!at && Screens.current === 'playing') at = { standIn: (TerrainX.stats.standIn | 0) - s0 }; return r; };
+    Screens.enterGame();
+    const t0 = performance.now(); while (!at && performance.now() - t0 < 10000) await sleep(20);
+    R.draw = draw;
+    return { settled, calls, asks, standIn: at ? at.standIn : -1, from: Math.round(Math.abs(far - Bld.cx(tc))) };
+  });
+  ck('andNothingIsPrefetchedBehindThePauseMenu', pz.settled && pz.calls === 0 && pz.standIn === 0,
+    `${pz.calls} prefetch calls through a 10 s pause ${pz.from} tiles from the hall (${pz.asks} chunk requests, schedule()'s own); ` +
+    `${pz.standIn} stand-in chunks on the first frame back${pz.settled ? '' : ' (the view never finished before the pause)'}`);
+  ck('thePrefetchThrewNothing', p.errs.length === 0, p.errs.slice(0, 2).join(' | '));
+  await ctx.close();
+}
+/* …a CONTINUE waits behind its plaque on the title: the same, there */
+{
+  const { p, ctx } = await page('');
+  const r = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+    Screens._demo = false; G.newGame('pf-continue', 'moderate', 'medium', undefined, 'green'); Cards.pick(0);
+    const json = G.saveJSON();
+    // the title draws the loaded world now and then behind the plaque; here those
+    // draws paint nothing, so any ground that arrives was the prefetch's asking
+    let inPf = false;
+    const draw = R.draw; let draws = 0; R.draw = function () { if (inPf) draws++; };
+    let pf = 0; const f = TerrainX.prefetch;
+    if (f) TerrainX.prefetch = function () { pf++; inPf = true; try { return f.apply(this, arguments); } finally { inPf = false; } };
+    // the load, then the plaque held up by one request still counted
+    R.deferBake = true; try { G.loadJSON(json); } finally { R.deferBake = false; }
+    const release = Assets._hold(false);
+    Screens.GAME_ART_FLOOR_MS = 600000;   // the plaque stands until release(), however slow the machine
+    Screens.enterGame();
+    await until(() => TerrainX.ready || !TerrainX.on, 60000);
+    // the plaque stands until the view behind it is all in (or a minute: a slow worker, never an absent one)
+    const view = TerrainX.viewChunks(0).map(([a, b]) => a + ',' + b);   // enterGame has set the zoom already
+    await until(() => view.every(k => TerrainX.chunks.has(k)), 120000);
+    const held = { chunks: TerrainX.chunks.size, pf, draws, entering: !!Screens._entering, current: Screens.current,
+      view: view.length, recv: TerrainX.stats.recv | 0, pending: TerrainX.pending.size, workers: TerrainX.workers.length };
+    let at = null;
+    R.draw = function () {
+      if (!at && Screens.current === 'playing') { const v = TerrainX.viewChunks(0); at = { view: v.length, have: v.filter(([a, b]) => TerrainX.chunks.has(a + ',' + b)).length }; }
+      return draw.apply(this, arguments);
+    };
+    release();
+    await until(() => at, 30000);
+    return { held, first: at };
+  });
+  ck('aContinuesPlaqueAsksForItsGroundToo', r.held.entering && r.held.pf > 0 && r.held.chunks > 0 && r.held.draws === 0 && r.first && r.first.have === r.first.view,
+    `behind the Continue plaque: ${r.held.chunks} chunks (view ${r.held.view}; ${r.held.recv} received, ${r.held.pending} in flight, ${r.held.workers} workers), ` +
+    `${r.held.pf} prefetch calls, ${r.held.draws} draws; first frame ${r.first ? r.first.have + '/' + r.first.view : '?'}`);
+  await ctx.close();
+}
+/* …and where V4 is not drawing, it asks for nothing at all */
+for (const [name, q, setup] of [['theClassicLink', '?terrain=classic', null], ['theKillSwitch', '', 'v4off']]) {
+  const { p, ctx } = await page(q);
+  if (setup === 'v4off') await p.evaluate(() => { CFG.TERRAIN.V4 = false; });
+  const w = await groundWaits(p);
+  ck(name + 'PrefetchesNothing', w.on === false && w.prefetch === 0 && w.chunks === 0 && w.pending === 0,
+    `V4 on: ${w.on}; ${w.prefetch} prefetch calls, ${w.chunks} chunks, ${w.pending} pending`);
+  await ctx.close();
+}
+{
+  const { p, ctx } = await page('');
+  const d = await p.evaluate(async () => {
+    let pf = 0; const f = TerrainX.prefetch; if (f) TerrainX.prefetch = function () { pf++; return f.apply(this, arguments); };
+    await new Promise(res => setTimeout(res, 2500));
+    return { demo: !!Screens._demo, current: Screens.current, on: TerrainX.on, pf, chunks: TerrainX.chunks.size, pending: TerrainX.pending.size };
+  });
+  ck('theTitlesDemoPrefetchesNothing', d.demo && d.current === 'title' && d.pf === 0 && d.chunks === 0 && d.pending === 0, JSON.stringify(d));
   await ctx.close();
 }
 await b.close();

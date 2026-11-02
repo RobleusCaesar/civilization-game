@@ -50,7 +50,7 @@
      node tests/boot.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
@@ -799,10 +799,18 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
        frames — and a strip is COUNTED until it is INSTALLED, so artReady()
        still means the people are drawn;
      - a strip is dyed ONCE, on one scratch, never once per frame canvas;
-     - a fresh run fetches the rival's army and sappers in the background
-       tier: they stand under the fog for the opening days;
+     - THE PLAQUE WAITS ONLY FOR WHAT THE OPENING WORLD SHOWS (PX-09): the
+       founding counts the player's people and the kinds standing on the
+       map or in the player's sight; the player's absent army, the
+       sappers nobody has, and the rival's people under the fog are
+       fetched behind them in the background tier (a phone used to sit
+       ~16 s on "Preparing the world…" for soldiers nobody had);
+     - a strip asked for twice is fetched and installed ONCE, and a
+       counted ask for a strip already queued in the background moves it
+       forward rather than fetching it again (the install dedupe);
      - the wished landform is PEEKED, never painted, once per rolled seed;
-     - a paused world behind a shell screen is drawn once a second;
+     - a paused world behind a shell screen is drawn once a second — and
+       the ground prefetch (PX-20) never runs behind one;
      - the outline pass inks exactly the pixels it always did. ---- */
 {
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
@@ -812,14 +820,39 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   const r = await p.evaluate(async () => {
     const out = {};
     const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-    // a founded run — what Screens.foundRun does, minus the draft
+    // a founded run — what Screens.foundRun does, minus the draft. The wire is
+    // held still while the queues are read (nothing lands inside this task, so
+    // nothing frees a slot; the pump simply takes nothing off them), then let go
     Screens._demo = false;
+    const fly = Assets._stripFlying; Assets._stripFlying = 1e9;
     G.newGame('boot-found', 'moderate', 'medium', undefined, 'green');
     out.queued = Assets._stripQ.length;
     out.flightCap = Assets.STRIP_FLIGHT;
-    out.peopleArcher = Assets._stripQ.filter(([, u]) => /unit-archer-/.test(u)).length;
-    out.rivalArcherLate = Assets._stripQLate.filter(([, u]) => /unit-archer-/.test(u)).length;
-    out.rivalSapperLate = Assets._stripQLate.filter(([, u]) => /unit-sapper-/.test(u)).length;
+    // what the founding counts, and what it leaves to the background, by
+    // FILE (the neutral strips are one file for both tribes, so a tribe's
+    // share is a count: 144 villager strips a tribe, 24 an archer kind)
+    const cnt = (q, re) => q.filter(([, u]) => re.test(u)).length;
+    const pKinds = new Set(S.units.filter(u => u.owner === 'P').map(u => u.kind));
+    out.pKinds = [...pKinds];
+    out.rivalSeen = S.units.some(u => u.owner === 'A' && u.kind === 'villager' && G.visibleAt(u.x | 0, u.y | 0));
+    out.countedVillager = cnt(Assets._stripQ, /unit-villager-/);
+    out.lateVillager = cnt(Assets._stripQLate, /unit-villager-/);
+    out.archerPresent = pKinds.has('archer');
+    out.countedArcher = cnt(Assets._stripQ, /unit-archer-/);
+    out.lateArcher = cnt(Assets._stripQLate, /unit-archer-/);
+    out.countedSapper = cnt(Assets._stripQ, /unit-sapper-/);
+    out.lateSapper = cnt(Assets._stripQLate, /unit-sapper-/);
+    /* THE INSTALL DEDUPE: the same strips asked for again add nothing to the
+       wire; a counted ask for a kind waiting in the background tier moves
+       its strips forward (counted from now) and never fetches them twice */
+    const q0 = Assets._stripQ.length + Assets._stripQLate.length;
+    Assets.loadVillagerArt('P');
+    out.reAskAdds = Assets._stripQ.length + Assets._stripQLate.length - q0;
+    const lanceLate0 = cnt(Assets._stripQLate, /unit-lancer-/), pend0 = Assets.pending, q1 = Assets._stripQ.length + Assets._stripQLate.length;
+    Assets.loadMilitaryArt('P', false, ['lancer']);
+    out.promote = { lateBefore: lanceLate0, counted: cnt(Assets._stripQ, /unit-lancer-/), lateAfter: cnt(Assets._stripQLate, /unit-lancer-/),
+      pendingRose: Assets.pending - pend0, added: Assets._stripQ.length + Assets._stripQLate.length - q1 };
+    Assets._stripFlying = fly; Assets._pumpStrips();
     // watch the wire and the count until the people are drawn
     let maxFly = 0;
     const t0 = performance.now();
@@ -863,6 +896,12 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     // screen here: the new-game screen and the draft stand on the night,
     // where the world is not drawn at all — tests/draft-cards.mjs)
     R.ensureTerrain();
+    // the world is entered by nobody here: the ground prefetch (PX-20) is for a
+    // world being founded or entered, never one held behind another screen
+    await new Promise(res => { const t0 = performance.now(); const w = () => (window.TerrainX && TerrainX.ready) || performance.now() - t0 > 15000 ? res() : setTimeout(w, 50); w(); });
+    let prefetch = 0;
+    const pf = window.TerrainX && TerrainX.prefetch;
+    if (pf) TerrainX.prefetch = function () { prefetch++; return pf.apply(this, arguments); };
     Screens.show('load');
     const draw = R.draw; let still = 0, moving = 0, which = 'still';
     R.draw = function () { if (which === 'still') still++; else moving++; return draw.apply(this, arguments); };
@@ -876,22 +915,33 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       out.stillMs = performance.now() - t0;
       which = 'moving'; S.paused = false; G._shellDrawT = 0;
       await sleep(2300);
-    } finally { R.draw = draw; }
+    } finally { R.draw = draw; if (pf) TerrainX.prefetch = pf; }
     out.still = still; out.moving = moving;
+    out.prefetch = { calls: prefetch, txReady: !!(window.TerrainX && TerrainX.ready), exists: !!pf };
     return out;
   });
   ck('theStripsWaitTheirTurn', r.queued > 0 && r.maxFly <= r.flightCap,
     `${r.queued} queued at the founding, never more than ${r.maxFly} of ${r.flightCap} on the wire`);
   ck('andTheyAreCountedUntilInstalled', r.peopleLeftAtReady === 0 && r.villagerDrawn,
     `ready after ${r.readyIn}ms with ${r.peopleLeftAtReady} people strips still to install; the player's villagers drawn: ${r.villagerDrawn}`);
-  ck('theRivalsArmyWaitsBehindThePeople', r.peopleArcher > 0 && r.rivalArcherLate === r.peopleArcher && r.rivalSapperLate > 0,
-    `archer strips: ${r.peopleArcher} counted (the player's), ${r.rivalArcherLate} in the background (the rival's); rival sappers ${r.rivalSapperLate}`);
+  ck('theFoundingCountsOnlyWhatTheWorldShows',
+    !r.rivalSeen && r.countedVillager === 144 && r.lateVillager === 144 &&
+      (r.archerPresent || (r.countedArcher === 0 && r.lateArcher === 48)) &&
+      !r.pKinds.includes('sapper') && r.countedSapper === 0 && r.lateSapper === 64,
+    `the player's kinds ${r.pKinds.join('/')}, no rival villager in sight (${!r.rivalSeen}); villager strips ${r.countedVillager} counted / ${r.lateVillager} behind; ` +
+    `archer ${r.countedArcher} counted / ${r.lateArcher} behind (none standing); sapper ${r.countedSapper} counted / ${r.lateSapper} behind`);
+  ck('aStripAskedTwiceIsFetchedOnce',
+    r.reAskAdds === 0 && r.promote.lateBefore === 48 && r.promote.counted === 24 && r.promote.lateAfter === 24 &&
+      r.promote.pendingRose === 24 && r.promote.added === 0,
+    `the player's villagers asked again: +${r.reAskAdds} on the wire; the lancer moved forward: ${JSON.stringify(r.promote)}`);
   ck('aStripIsDyedOnceNotPerFrame', r.reads === 1 && r.dyed && r.frames === 9,
     `${r.reads} pixel read(s) for a ${r.frames}-frame strip, its last frame dyed: ${r.dyed}`);
   ck('theLandformIsPeekedNotPainted', r.peek.agree === r.peek.n && r.peek.tiles === 0,
     `${r.peek.agree}/${r.peek.n} seeds name the world a full generate lays, ${r.peek.tiles} painted a tile`);
   ck('aStillWorldIsDrawnOnceASecond', r.paused && r.still >= 1 && r.still <= Math.floor(r.stillMs / 1000) + 1 && r.moving > r.still,
     `paused behind the load screen: ${r.still} draws in ${(r.stillMs / 1000).toFixed(1)}s; the same world moving: ${r.moving}`);
+  ck('andTheGroundPrefetchNeverRunsBehindAnotherScreen', r.prefetch.txReady && r.prefetch.calls === 0,
+    `${r.prefetch.calls} prefetch calls behind the load screen (V4 ready: ${r.prefetch.txReady}, prefetch defined: ${r.prefetch.exists})`);
   ck('theFoundingRunsClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0,
     errs[0] || 'no page errors');
   await p.close();
@@ -945,6 +995,234 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     return { cases, same };
   });
   ck('theOutlineInksTheSamePixels', r.same === r.cases, `${r.same}/${r.cases} random sprites identical to the per-pixel rule`);
+  await p.close();
+}
+
+/* ---- 8. EVERY UNIT THE OPENING WORLD SHOWS WEARS ITS OWN STRIPS (PX-09's
+   no-false-gain guard). The plaque waits only for what the opening world
+   shows, so "what it shows" has to be all of it: the player's people and
+   whatever soldiers, sappers and hulls an origin card planted at the keep —
+   the Bowyer's archers, the Delver's sapper, the Sea-Reaver's warship (an
+   undyed hull, never one of the dyed army kinds), the Horselord's rider, the
+   Warlord's spears — and on a Continue every unit of ANY owner standing
+   where the player can see (fog-honest: a hidden rival is never waited for).
+   Each case starts from a COLD cache (every installed strip forgotten),
+   founds or loads through the real path, asks before the world opens that
+   every strip a shown unit draws with is installed or COUNTED, and at the
+   moment it opens (Screens._enterNow) counts the strips each shown unit's
+   kind ships on disk that are not installed under the key it draws with —
+   with the 15 s art floor lifted for this page alone, so the answer is
+   about what was waited for, never about the machine's speed. A soldier
+   the player trains later finds his strips waiting: the background tier
+   ran on. ---- */
+{
+  const files = readdirSync(join(root, 'assets/units')).filter(f => /^unit-.*\.png$/.test(f));
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.goto(url, { waitUntil: 'commit' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 60000 });
+  const r = await p.evaluate(async (fileList) => {
+    const files = new Set(fileList);
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+    // the strips a unit's kind ships on disk, under the key it draws with (R.unitArtKey)
+    const want = (u) => {
+      const key = R.unitArtKey(u), out = [];
+      const add = (file, d, ps) => { if (files.has(file)) out.push([key, d, ps]); };
+      if (u.kind === 'villager') {
+        const t = R.villagerTier(u.owner), s = u.female ? 'f' : 'm';
+        for (const d of Assets.UNIT_DIRS8) for (const ps of Assets.VILLAGER_POSES) add(`unit-villager-l${t}-${s}-${d}-${ps}.png`, d, ps);
+      } else if (u.kind === 'sapper') {
+        const t = R.sapperTier(u.owner);
+        for (const ps in Assets.SAPPER_POSE_DIRS) for (const d of Assets.SAPPER_POSE_DIRS[ps]) add(`unit-sapper-l${t}-${d}-${ps}.png`, d, ps);
+      } else {
+        // a stranger never wears a village dye: a raider of a dyed kind draws procedural by design
+        const dyed = Assets.MILITARY_ART[u.kind];
+        const poses = dyed ? ((u.owner === 'P' || u.owner === 'A') ? dyed : null) : Assets.UNIT_ART[u.kind];
+        if (poses) for (const d of Assets.UNIT_DIRS8) for (const ps of poses) add(`unit-${u.kind}-${d}-${ps}.png`, d, ps);
+      }
+      return out;
+    };
+    const missing = (units) => {
+      let n = 0, of = 0; const who = {};
+      for (const u of units) for (const [key, d, ps] of want(u)) {
+        of++;
+        const a = Assets.unitArt[key];
+        if (!(a && a.dirs[d] && a.dirs[d][ps])) { n++; who[u.owner + ':' + u.kind] = (who[u.owner + ':' + u.kind] || 0) + 1; }
+      }
+      return { n, of, who };
+    };
+    /* …and asked BEFORE the world opens, whatever the machine's speed: is every
+       strip a shown unit draws with installed, or waited for in the counted
+       tier (Assets._stripLive, not late)? The late tier can land a strip in
+       time by luck; this cannot. */
+    const uncounted = (units) => {
+      let n = 0; const who = {}, live = Assets._stripLive || {};
+      for (const u of units) for (const [key, d, ps] of want(u)) {
+        const a = Assets.unitArt[key], rec = live[key + '|' + d + '|' + ps];
+        if ((a && a.dirs[d] && a.dirs[d][ps]) || (rec && !rec.late)) continue;
+        n++; who[u.owner + ':' + u.kind] = (who[u.owner + ':' + u.kind] || 0) + 1;
+      }
+      return { n, who };
+    };
+    // what the opening world shows: the player's own, and anyone on ground in sight
+    const shown = () => S.units.filter(u => u.owner === 'P' || G.visibleAt(u.x | 0, u.y | 0));
+    // a cold cache: nothing in flight, every installed strip forgotten
+    const cold = async () => { await until(() => Assets.allArtReady(), 60000); for (const k in Assets.unitArt) delete Assets.unitArt[k]; };
+    // the moment the world opens, as the game reaches it
+    let at = null;
+    const en = Screens._enterNow;
+    Screens._enterNow = function () { const s = shown(); at = missing(s); at.units = s.length; return en.apply(this, arguments); };
+    const enter = async () => { at = null; Screens.enterGame(); await until(() => Screens.current === 'playing' && at, 300000); return at || { n: -1, of: 0, who: {} }; };
+    // what Screens.foundRun does, minus the draft screen (which pauses the world)
+    const found = (seed) => {
+      Screens._demo = false;
+      R.deferBake = true; try { G.newGame(seed, 'moderate', 'medium', undefined, 'green'); } finally { R.deferBake = false; }
+      S.paused = true;
+      R.holdBake = !Assets.artReady();
+      if (R.holdBake) Screens.waitForArt(Screens.GAME_ART_FLOOR_MS).then(() => { R.holdBake = false; });
+    };
+    /* THE FLOOR IS LIFTED HERE, AND ONLY HERE: GAME_ART_FLOOR_MS (15 s) is what a
+       dead network is owed, and on a slow machine it lets the world open before
+       the art it WAITED FOR has installed — a question of time, which this pin is
+       not. With it out of the way the plaque waits for exactly what is counted,
+       so a unit drawn as a stand-in at the opening is one whose strips were
+       never waited for: the false gain itself, on any machine. */
+    const floor = Screens.GAME_ART_FLOOR_MS; Screens.GAME_ART_FLOOR_MS = 600000;
+    const out = {};
+    for (const key of ['bowyer', 'delver', 'seareaver', 'horselord', 'warlord']) {
+      await cold();
+      let ok = false;
+      for (let i = 0; i < 40 && !ok; i++) {
+        found('nsi-' + key + '-' + i);
+        const tc = Bld.tcOf('P');
+        // the Sea-Reaver's warship rides only where open water lies near the hall
+        ok = key !== 'seareaver' || !!MapGen.findNear(tc.x, tc.y, 11, (x, y) => S.map.terrain[MapGen.idx(x, y)] === T.WATER);
+      }
+      S.draft.hand[0] = { key, roll: Cards.DEFS[key].roll() };
+      Cards.pick(0);
+      const kinds = [...new Set(S.units.filter(u => u.owner === 'P').map(u => u.kind))];
+      const nc = uncounted(shown());               // asked for, counted, before the world opens
+      const m = await enter();
+      out[key] = { seed: S.seed, kinds, missing: m.n, of: m.of, units: m.units, who: m.who, nc: nc.n, ncWho: nc.who };
+    }
+    // a soldier trained after the world opened: the background tier has run on
+    await until(() => Assets.allArtReady(), 300000);
+    {
+      const tc = Bld.tcOf('P'), s = MapGen.findNear(tc.x + 1, tc.y + 3, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      const u = s && Units.spawn('defender', 'P', s.x, s.y);
+      const m = u ? missing([u]) : { n: -1, of: 0 };
+      out.trainedLater = { missing: m.n, of: m.of, allArt: Assets.allArtReady() };
+    }
+    // a CONTINUE with the rival in sight: a rival villager and spearman and a
+    // deer beside the player's hall, saved, then loaded on a cold cache
+    {
+      await cold();
+      found('nsi-continue');
+      Cards.pick(0);
+      const tc = Bld.tcOf('P');
+      const spot = (dx, dy) => MapGen.findNear(tc.x + dx, tc.y + dy, 4, (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y) && G.visibleAt(x, y));
+      for (const [k, o, dx, dy] of [['villager', 'A', 3, 0], ['defender', 'A', 0, 3], ['deer', 'W', -1, 3]]) { const s = spot(dx, dy); if (s) Units.spawn(k, o, s.x, s.y); }
+      G.updateVisibility();
+      const json = G.saveJSON();
+      await cold();
+      R.deferBake = true; try { G.loadJSON(json); } finally { R.deferBake = false; }
+      const seen = S.units.filter(u => u.owner !== 'P' && G.visibleAt(u.x | 0, u.y | 0)).map(u => u.owner + ':' + u.kind);
+      const nc = uncounted(shown());
+      const m = await enter();
+      out.continue = { seen, missing: m.n, of: m.of, units: m.units, who: m.who, nc: nc.n, ncWho: nc.who };
+    }
+    Screens._enterNow = en; Screens.GAME_ART_FLOOR_MS = floor;
+    return out;
+  }, files);
+  const cases = ['bowyer', 'delver', 'seareaver', 'horselord', 'warlord'];
+  const spawned = { bowyer: 'archer', delver: 'sapper', seareaver: 'fireship', horselord: 'rider', warlord: 'defender' };
+  ck('everyUnitTheOpeningWorldShowsWearsItsStrips',
+    cases.every(k => r[k] && r[k].kinds.includes(spawned[k]) && r[k].of > 0 && r[k].missing === 0 && r[k].nc === 0),
+    cases.map(k => `${k} [${r[k].kinds.join('/')}] ${r[k].missing}/${r[k].of} missing${r[k].missing ? ' ' + JSON.stringify(r[k].who) : ''}, ` +
+      `${r[k].nc} never counted${r[k].nc ? ' ' + JSON.stringify(r[k].ncWho) : ''}`).join('; '));
+  ck('andOnAContinueEveryoneInSightDoesToo',
+    ['A:villager', 'A:defender', 'W:deer'].every(k => r.continue.seen.includes(k)) && r.continue.of > 0 && r.continue.missing === 0 && r.continue.nc === 0,
+    `in sight at the load: ${r.continue.seen.join(', ')}; ${r.continue.missing}/${r.continue.of} strips missing at the opening${r.continue.missing ? ' ' + JSON.stringify(r.continue.who) : ''}, ` +
+    `${r.continue.nc} never counted${r.continue.nc ? ' ' + JSON.stringify(r.continue.ncWho) : ''}`);
+  ck('andASoldierTrainedLaterFindsHisWaiting', r.trainedLater.of > 0 && r.trainedLater.missing === 0,
+    `a spearman spawned once the background tier ran: ${r.trainedLater.missing}/${r.trainedLater.of} strips missing`);
+  ck('theOpeningWorldsRunClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0, errs[0] || 'no page errors');
+  await p.close();
+}
+
+/* ---- 9. A STRIP LOST TO A BLIP IS ASKED FOR AGAIN (PX-42). A connection that
+   blinks while a run's people are downloading used to leave every strip that
+   failed missing for the whole session — villagers flickering between their
+   art and the procedural cast by facing and pose (128 of 144 after a 6 s
+   drop). A failed people strip is asked for ONCE more, at the head of the
+   background tier (it never holds the plaque again, and never waits behind
+   every soldier and rival strip still queued), when the browser says it is
+   back online or after a short wait; a strip that fails twice stays
+   procedural, as an absent file always has. ---- */
+{
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.goto(url, { waitUntil: 'commit' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 60000 });
+  const r = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+    /* THE BLIP: while it lasts every villager strip the page asks for fails,
+       as it would offline (both tribes ask the same neutral files); one strip
+       ("dead") keeps failing after it, so a second failure can be watched
+       staying a failure. The timed retry is pushed out of the way, so the
+       connection coming back is what asks again here. */
+    const desc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    let blip = true, deadAsks = 0;
+    const DEAD = /unit-villager-l1-m-n-reach\.png/;
+    Object.defineProperty(HTMLImageElement.prototype, 'src', { configurable: true,
+      get() { return desc.get.call(this); },
+      set(v) {
+        if (/unit-villager-/.test(v)) { if (DEAD.test(v)) deadAsks++; if (blip || DEAD.test(v)) v = 'assets/units/__offline__.png'; }
+        desc.set.call(this, v);
+      } });
+    try {
+      Assets.RETRY_MS = 120000;
+      Screens._demo = false;
+      G.newGame('blip', 'moderate', 'medium', undefined, 'green');
+      await until(() => Assets.artReady(), 60000);
+      const readyAfterBlip = Assets.artReady();          // a lost strip never holds the plaque
+      await until(() => Assets.allArtReady(), 60000);    // every strip of both tribes asked once, through the blip
+      blip = false;
+      const key = 'villager-p-green-l' + R.villagerTier('P');
+      const have = () => { let n = 0; for (const s of ['m', 'f']) { const a = Assets.unitArt[key + '-' + s];
+        for (const d of Assets.UNIT_DIRS8) for (const ps of Assets.VILLAGER_POSES) if (a && a.dirs[d] && a.dirs[d][ps]) n++; } return n; };
+      const lost = 144 - have(), asked = deadAsks;
+      dispatchEvent(new Event('online'));                  // the connection is back
+      const pendingAtRetry = Assets.pending;               // the retry is the background tier's: nothing counted
+      await until(() => have() >= 143 && Assets.allArtReady(), 90000);
+      dispatchEvent(new Event('online'));                  // …and a second blip-end asks nothing a third time
+      await sleep(800);
+      return { readyAfterBlip, lost, back: have(), pendingAtRetry, deadFirst: asked, deadAsks };
+    } finally { Object.defineProperty(HTMLImageElement.prototype, 'src', desc); }
+  });
+  /* …and AHEAD of the background tier, not behind it: a blip that catches a
+     handful of villager strips while a founding's soldier and rival strips are
+     still queued must not leave them waiting for all of those (on 4G, minutes).
+     The wire is held still, one background strip waits, a retry is flushed. */
+  const order = await p.evaluate(() => {
+    const fly = Assets._stripFlying; Assets._stripFlying = 1e9;
+    try {
+      Assets._stripLoad('order-bg', 'n', 'walk', 'assets/units/__order_bg__.png', undefined, true, false);
+      Assets._retryQ.push(['order-retry', 'n', 'walk', 'assets/units/__order_retry__.png', undefined]);
+      Assets._retryFlush();
+      return Assets._stripQLate.map(e => String(e[1]).replace('assets/units/', ''));
+    } catch (e) { return ['(no retry queue: ' + e.message + ')']; }   // a build without the rule reports, never throws
+    finally { Assets._stripFlying = fly; Assets._pumpStrips(); }
+  });
+  ck('andItGoesBackAheadOfTheBackgroundTier', order[0] === '__order_retry__.png' && order.indexOf('__order_bg__.png') > 0,
+    `the background queue after the retry: ${order.slice(0, 4).join(', ')}`);
+  ck('aStripLostToABlipIsAskedForAgain', r.readyAfterBlip && r.lost === 144 && r.back === 143 && r.pendingAtRetry === 0,
+    `${r.lost} of the player's villager strips lost to the blip; ${r.back}/144 drawn once the connection was back; ${r.pendingAtRetry} counted while retrying`);
+  ck('onceAndOnlyOnce', r.deadFirst === 2 && r.deadAsks === 4,
+    `a strip that keeps failing: asked ${r.deadFirst} times through the blip (once a tribe), ${r.deadAsks} in all (once more each, never again)`);
+  ck('theBlipRunsClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0, errs[0] || 'no page errors');
   await p.close();
 }
 

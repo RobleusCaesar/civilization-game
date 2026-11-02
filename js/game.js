@@ -360,10 +360,18 @@ const G = {
        The other shell screens show the demo through a translucent gradient,
        where the procedural cast is the documented fallback. */
     if (!(window.Screens && Screens._demo)) {
-      Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
-      Assets.loadMilitaryArt('P'); Assets.loadSapperArt('P');
-      // the rival's army and sappers stand under the fog for the opening
-      // days: fetched behind the people, never held for (Assets.loadMilitaryArt)
+      /* THE PLAQUE WAITS ONLY FOR WHAT THE OPENING WORLD SHOWS (tests/boot.mjs
+         §6, §8). A phone sat ~16 s on "Preparing the world…" while the
+         founding counted every soldier kind of the player's army, both tribes'
+         villagers and both sapper sets — art for units nobody had. Counted
+         now: the player's people and the kinds standing on the map, and
+         whatever any owner shows on ground in sight (G.artShown); everything
+         else is fetched behind them in the background tier, first the
+         player's own army, then the rival's people under the fog. The keep
+         asks for what an origin card plants (Cards.pick). */
+      Assets.loadUnitsArt(this.artShown());
+      Assets.loadMilitaryArt('P', true); Assets.loadSapperArt('P', true);
+      Assets.loadVillagerArt('A', true);
       Assets.loadMilitaryArt('A', true); Assets.loadSapperArt('A', true);
     }
     // seed the homestead memory QUIETLY: a town that starts or loads already
@@ -401,6 +409,32 @@ const G = {
     for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) want.add(b.tribe);
     for (const u of S.units) if (u.owner === 'R' && u.tribe) want.add(u.tribe);
     for (const t of want) Sprites.barbFor(t);
+  },
+  /* WHAT THE OPENING WORLD SHOWS — the units whose strips a founding or a
+     load waits for (newGame, loadJSON, Cards.pick). artPresent: every unit
+     of one owner the world holds or is about to hold — standing, aboard a
+     hull, in a yard's queue or held reserve, sheltered in the hall (a kind
+     carried as {kind, owner}). artShown: the player's own, and every unit of
+     ANY owner standing on ground the player can see now — fog-honest, so a
+     hidden rival is never waited for and its timing tells nothing. */
+  artPresent(owner) {
+    const out = [];
+    for (const u of S.units) {
+      if (u.owner === owner) out.push(u);
+      if (u.cargo) for (const c of u.cargo) if (c && c.owner === owner) out.push(c);
+    }
+    for (const b of S.buildings) if (b.owner === owner) {
+      for (const q of (b.queue || [])) if (q && q.unit) out.push({ kind: q.unit, owner });
+      for (const q of (b.hold || [])) if (q && q.unit) out.push({ kind: q.unit, owner });
+    }
+    if (owner === 'P' && S.garrison && S.garrison.length) out.push({ kind: 'villager', owner: 'P' });
+    return out;
+  },
+  artShown() {
+    const out = this.artPresent('P');
+    for (const u of S.units)
+      if (u.owner !== 'P' && MapGen.inB(u.x | 0, u.y | 0) && this.visibleAt(u.x | 0, u.y | 0)) out.push(u);
+    return out;
   },
 
   // the rare start extras: a spearman, a scout, a standing workplace, a rich cache
@@ -3150,10 +3184,19 @@ const G = {
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting
     this.warmFx();
     // tier is DERIVED, never stored: a loaded save recomputes from its
-    // Town Centers (onNewGame just dropped the cache) and re-asks for art
-    Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
-    Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
-    Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
+    // Town Centers (onNewGame just dropped the cache) and re-asks for art.
+    /* A LOAD WAITS ONLY FOR THE KINDS IT HOLDS (tests/boot.mjs §8): it used
+       to count both tribes' villagers, both whole armies and both sapper
+       sets — a phone Continue always sat out the plaque's 15 s floor. Counted
+       now: every kind the player holds, every kind the rival holds but its
+       villagers, and anything of any owner on ground in sight (the rival's
+       villagers included, then); everything else goes behind, in the
+       background tier. */
+    Assets.loadUnitsArt(this.artShown());
+    Assets.loadUnitsArt(this.artPresent('A').filter(u => u.kind !== 'villager'));
+    Assets.loadVillagerArt('P', true); Assets.loadVillagerArt('A', true);
+    Assets.loadMilitaryArt('P', true); Assets.loadMilitaryArt('A', true);
+    Assets.loadSapperArt('P', true); Assets.loadSapperArt('A', true);
     // seed the homestead memory QUIETLY: a town that loads already bonded keeps
     // its bonus without celebrating bonds it has had for a hundred days
     Bld.syncHomesteads(true);
@@ -3184,6 +3227,7 @@ const G = {
   },
   SHELL_DRAW_MS: 130,     // how often the world is repainted behind a shell screen
   SHELL_STILL_MS: 1000,   // …and a paused world (the draft, the pause menu), which does not move
+  PREFETCH_MS: 100,       // how often the opening view's ground is asked for while a world waits (TerrainX.prefetch)
   // the title's painted backdrop, decoded and on the page (same file the
   // splash shows, so the cross-fade has no scene change in it)
   titleGlenUp() {
@@ -3301,6 +3345,22 @@ const G = {
         else G._shellDrawT = performance.now();
       }
       if (!skip) G._safe(() => R.draw(dt), 'render');
+      /* THE GROUND IS READY WHEN THE WORLD OPENS (tests/terrain-v4.mjs §12):
+         the V4 ground's chunks are asked for from R.draw alone, which does not
+         run behind the draft or the plaque, so every world opened on flat
+         stand-in ground that popped in square by square. While a world is
+         being FOUNDED (its draft) or ENTERED (the plaque — a Continue's
+         included) and is not being drawn, the workers are asked for the view
+         it will open on: this camera, at the zoom enterGame gives it. Never
+         behind the pause menu or Settings — a played world's own view is what
+         its draws keep — never for the title's demo, never a draw. Guarded on
+         the method, so a cached older terrain.js simply stands down. */
+      else if (window.TerrainX && TerrainX.prefetch && TerrainX.on && TerrainX.ready && !S.over && window.Screens &&
+               !Screens._demo && (Screens._entering || (S.played === false && Screens.current === 'draft')) &&
+               performance.now() - (G._pfT || 0) >= G.PREFETCH_MS) {
+        G._pfT = performance.now();
+        G._safe(() => { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z); }, 'prefetch');
+      }
       /* the title is ready when the GLEN is on screen (tests/boot.mjs): the
          painted backdrop is opaque, so the demo world behind it can bake
          whenever its art lands — waiting for that bake held the splash on a

@@ -225,6 +225,37 @@
       if (this._sync && this._sync.length) { const [cx, cy, k, g] = this._sync.shift(); const r = this.core.chunk(cx, cy); const c = document.createElement('canvas'); c.width = N; c.height = N; c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.buf.buffer), N, N), 0, 0); if ((this.gen.get(k) || 0) === g) this.store(k, c, r.anim); else this.pending.delete(k); }
     },
     _thumbed(cx, cy) { return this._th && this._th.has(cx + ',' + cy); },
+    /* THE GROUND IS READY WHEN THE WORLD OPENS (G.frame, tests/terrain-v4.mjs
+       §12). While a world waits behind its draft or its plaque nothing draws
+       it, so schedule() — called from the draw — never asked for its ground,
+       and the world opened on the flat stand-in. This asks for the view it
+       will open on: a view the screen's size centred on (cx, cy) world px at
+       zoom z, its own chunks first and then the ring schedule() would keep
+       round it (kept here too, so the first draw finds it wanted). One
+       arrival is taken in per call, requests stay under the in-flight cap,
+       the warm queue is never started and nothing is drawn. Answers how many
+       chunks it asked for (0 when V4 is not painting or has no workers). */
+    prefetch(cx, cy, z) {
+      if (!this.on || !this.ready || !this.workers.length) return 0;
+      this.takeArrivals();
+      const span = CH * TL, nC = Math.ceil(CFG.W / CH), nR = Math.ceil(CFG.H / CH);
+      const x0 = cx - R.viewW() / z / 2, y0 = cy - R.viewH() / z / 2, x1 = x0 + R.viewW() / z, y1 = y0 + R.viewH() / z;
+      const ring = (pad) => {
+        const out = [];
+        for (let b = Math.max(0, Math.floor(y0 / span) - pad); b <= Math.min(nR - 1, Math.floor(y1 / span) + pad); b++)
+          for (let a = Math.max(0, Math.floor(x0 / span) - pad); a <= Math.min(nC - 1, Math.floor(x1 / span) + pad); a++) out.push([a, b]);
+        return out;
+      };
+      const vis = new Set(ring(0).map(([a, b]) => a + ',' + b)), want = ring(2);
+      this._want = want;
+      const need = want.filter(([a, b]) => { const k = a + ',' + b; return (!this.chunks.has(k) || this.dirty.has(k)) && !this.pending.has(k); });
+      const d = ([a, b]) => Math.hypot((a + 0.5) * span - cx, (b + 0.5) * span - cy);
+      need.sort((A, B) => ((vis.has(A[0] + ',' + A[1]) ? 0 : 1) - (vis.has(B[0] + ',' + B[1]) ? 0 : 1)) || d(A) - d(B));
+      const cap = Math.max(1, this.workers.length) + 1;
+      let asked = 0;
+      for (const [a, b] of need) { if (this.pending.size >= cap) break; this.request(a, b); asked++; }
+      return asked;
+    },
 
     // ---- per frame -----------------------------------------------------------------------
     drawGround(g) {

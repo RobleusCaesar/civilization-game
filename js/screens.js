@@ -168,7 +168,11 @@ const Screens = {
     try { G.newGame(String((Math.random() * 1e9) | 0), 'moderate', 'large'); }
     finally { R.deferBake = false; }
     R.holdBake = true;
-    this.waitForWorldArt(this.DEMO_ART_FLOOR_MS).then(() => { R.holdBake = false; });
+    /* …released for THIS demo world only: on a slow link the floor can run
+       out after a run has been founded, whose own hold (foundRun) waits for
+       the run's art — the demo's timer must never release that one */
+    const demo = S;
+    this.waitForWorldArt(this.DEMO_ART_FLOOR_MS).then(() => { if (S === demo) R.holdBake = false; });
     Cards.pick((Math.random() * 3) | 0);   // the demo world drafts for itself
     G.freeVis = true;         // newGame resets fog; the demo shows the whole map
     G.updateVisibility();
