@@ -1682,9 +1682,10 @@ const Assets = {
      card's archers, asked for in the background at the founding and then
      planted at the keep). An installed strip is never asked for again.
      `retry`: a people strip (villager, soldier, sapper) that fails is asked
-     for once more — see _retryLater. */
+     for once more — see _retryLater. `front`: queued at the head of its tier
+     (a retry), not at its tail. */
   _stripLive: {},
-  _stripLoad(key, dir, pose, url, tunic, late, retry) {
+  _stripLoad(key, dir, pose, url, tunic, late, retry, front) {
     const a = this.unitArt[key];
     if (a && a.dirs[dir] && a.dirs[dir][pose]) return;
     const id = key + '|' + dir + '|' + pose, live = this._stripLive[id];
@@ -1704,7 +1705,8 @@ const Assets = {
     };
     this._prio(img, late ? 'low' : this.stripPrio());
     rec.entry = [img, url];
-    (late ? this._stripQLate : this._stripQ).push(rec.entry);
+    const queue = late ? this._stripQLate : this._stripQ;
+    if (front) queue.unshift(rec.entry); else queue.push(rec.entry);
     this._pumpStrips();
   },
   // a background strip asked for by something the opening world shows
@@ -1739,7 +1741,11 @@ const Assets = {
     // still offline: wait for the 'online' event, and look again later in case it never comes
     if (typeof navigator !== 'undefined' && navigator.onLine === false) { this._retryT = setTimeout(() => this._retryFlush(), this.RETRY_MS); return; }
     const q = this._retryQ; this._retryQ = [];
-    for (const [key, dir, pose, url, tunic] of q) this._stripLoad(key, dir, pose, url, tunic, true, false);
+    /* back at the HEAD of the background tier, in the order they failed: a
+       blip that caught a handful of villager strips must not leave them
+       queued behind every soldier and rival strip still to come (on 4G that
+       is minutes of a villager drawn procedural from some facings) */
+    for (let i = q.length - 1; i >= 0; i--) { const [key, dir, pose, url, tunic] = q[i]; this._stripLoad(key, dir, pose, url, tunic, true, false, true); }
   },
   _pumpStrips() {
     while (this._stripFlying < this.STRIP_FLIGHT) {
