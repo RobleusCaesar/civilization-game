@@ -2581,6 +2581,11 @@ but a hunt still goes wherever the prey is. Note the lodge itself has NO
 range gate from the hall — it is `freePlace` on any killing ground anywhere
 (tests/worked-ground.mjs) — so where the game dies is the whole geography of
 the lodge, and this rule is what moves that geography out of town.
+**THE HOME GROUND IS THIN ON GAME** (`CFG.WILD_HOME`, `Units.homeThinned`;
+operator, 2026-11-02: herds near the towns were a nuisance and food too
+easy): within `r` (16) of either hall a wild spawn spot is kept for 3 tiles
+in 10 (a tile hash, never `G.rand()`), and each seat's starting band is 30%
+of `START_RESOURCE.game` (never under 1). The wild country is untouched.
 **And the kill LEAVES ITS MARK** (same test): every wild death drops a corpse
 on the spot (`S.corpses`: `{x,y,kind,day}`, in every save, `loadJSON`
 backfills, capped at 80) — a carcass with meat still on it for

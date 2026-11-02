@@ -1012,6 +1012,15 @@ const CFG = {
   // smaller than they used to, tipping fights without deciding them
   WAVES: { minGap: 14, maxGap: 20, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },
+  /* THE HOME GROUND IS THIN ON GAME (operator, 2026-11-02: "the animal population
+     should be about 30% of what it is today… in the starting areas… the
+     undiscovered areas the same"). Within `r` tiles of either tribe's hall a wild
+     beast is put down only at `keep` of today's rate (a spawn spot there is kept
+     for 3 tiles in 10, by a hash of the tile — no RNG draw), and the band each
+     seat is dealt at the start is `keep` of START_RESOURCE.game (never under 1,
+     so a lodge's killing ground is still one hunt away). The wild country beyond
+     is untouched. Food is meant to press early. */
+  WILD_HOME: { r: 16, keep: 0.3 },
 
   /* Difficulty modes. gather/output scale player income; wave* shape barbarian
      pressure; barbMult scales barbarian hp/atk (1.2 on Hard ≈ rival defenders);

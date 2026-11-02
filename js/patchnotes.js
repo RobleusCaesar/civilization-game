@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 129, date: '2026-11-02', title: 'Fewer animals near home',
+    items: [
+      'Far fewer deer and cattle wander near your town and your rival’s, so food is scarcer at the start and the herds no longer crowd your village. The wild country further out is as full of game as before.',
+    ],
+  },
+  {
     build: 128, date: '2026-11-02', title: 'A game that answers you',
     items: [
       'A message that explains why something can’t be done now stays up long enough to read, and tapping again brings it back with a small shake.',

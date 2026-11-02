@@ -2756,6 +2756,17 @@ const Units = {
     return found >= need;
   },
 
+  /* CFG.WILD_HOME: is (x, y) on either tribe's home ground, and does this
+     tile lose its spawn there? A pure hash of the tile, never G.rand(). */
+  homeThinned(x, y) {
+    const H = CFG.WILD_HOME; if (!H) return false;
+    let home = false;
+    for (const o of ['P', 'A']) { const t = Bld.tcOf(o); if (t && Math.hypot(x - t.x - 0.5, y - t.y - 0.5) < H.r) { home = true; break; } }
+    if (!home) return false;
+    const h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
+    return (h % 100) >= H.keep * 100;
+  },
+
   spawnWild(kind, minDistTC) {
     const passive = kind === 'deer' || kind === 'cow';
     const tc = Bld.tcOf('P');
@@ -2766,6 +2777,7 @@ const Units = {
       if (t !== T.FOREST && !(passive && t === T.GRASS)) continue;
       if (Bld.at(x, y)) continue;
       if (tc && Math.hypot(x - tc.x, y - tc.y) < minDistTC) continue;
+      if (this.homeThinned(x, y)) continue;      // the home ground is thin on game (CFG.WILD_HOME)
       /* THE TREELINE COUNTS AS THE OPEN COUNTRY (a real extinction): the
          sealed-walls gate asked the open net about the spawn tile ITSELF —
          but a predator spawns ON forest, forest is impassable, and the
@@ -2846,6 +2858,7 @@ const Units = {
         // net gone (all-water margins): a mate can land in a pocket NEXT
         // to the herd, across a wall of trees — prove its own room too
         if (!open && !this.wildRoom(x, y, 4)) continue;
+        if (this.homeThinned(x, y)) continue;    // CFG.WILD_HOME
         this.spawn(kind, 'W', x, y); break;
       }
     }
