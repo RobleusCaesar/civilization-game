@@ -1694,7 +1694,7 @@ const Bld = {
           G.log(`${name} ready`);
           if (r.el && r.el.isConnected) r.el.remove();
           const many = r.kind ? (/man$/.test(name) ? name.slice(0, -3) + 'men' : name + 's').toLowerCase() : 'units';
-          r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note');
+          r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note', undefined, false, true);
         } else this._readyAt.at.set(b.id, { t: now, n: 1, kind, el: G.log(`${name} ready`, 'note') });
       }
       if (S.stats) S.stats.trained++;

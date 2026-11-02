@@ -440,7 +440,7 @@ const G = {
     // game-event notes dedupe (repeat "under attack" spam collapses); the
     // full history always lands in the event log above. Hands back the toast
     // shown, if one was (Bld.releaseTrained folds a burst into one)
-    return UI.toast(msg, warn, ms, !refusal);
+    return UI.toast(msg, warn, ms, !refusal, true);   // the world's news: it may wait out a lesson's note
   },
 
   /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war

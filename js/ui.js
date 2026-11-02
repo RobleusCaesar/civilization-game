@@ -3698,15 +3698,19 @@ const UI = {
      refusal answering the player's own tap always shows: a repeat of one
      still on screen REPLACES it with one fresh node, and a warning's repeat
      shakes (a note's never does), so a second tap never reads as dead.
-     WHILE A LESSON'S NOTE IS UP (Tutorial.noteUp) a note waits and is shown
-     once it is answered — never over the lesson's own card; a warning still
-     shows at once, since it answers the player's tap; a note held 20 s is
-     dropped, never shown late. Every map here is UI-local, keyed on S. */
+     WHILE A LESSON'S NOTE IS UP (Tutorial.noteUp) the WORLD'S NEWS waits
+     (`news`: G.log's notes and the "N ready" fold) and is shown once the
+     note is answered — never over the lesson's own card; a note held 20 s is
+     dropped, never shown late. Everything else shows at once: a warning, and
+     a note that answers what the player just did (a station's "no ground
+     yet", the wall's how-to, a tapped top-bar number) — held, the tap would
+     read as dead (the tap contract's rule 4). Every map here is UI-local,
+     keyed on S. */
   _toastEl: null,     // message key → the node on screen (a repeat replaces it)
   _toastHeld: null,   // notes waiting out a lesson's note: { msg, ms, at }
   _toastS: null,
   _toastFlush: 0,
-  toast(msg, warn, ms, dedupe) {
+  toast(msg, warn, ms, dedupe, news) {
     if (!warn || msg == null) return null;
     msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
@@ -3714,7 +3718,7 @@ const UI = {
     if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
     if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
-    if (warn === 'note' && window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+    if (warn === 'note' && news && window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
       this._toastHeld.push({ msg, ms, at: now });
       if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
       return null;
