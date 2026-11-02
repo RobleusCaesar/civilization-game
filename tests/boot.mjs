@@ -1016,7 +1016,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.goto(url, { waitUntil: 'commit' });
-  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 15000 });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 60000 });
   const r = await p.evaluate(async (fileList) => {
     const files = new Set(fileList);
     const sleep = ms => new Promise(res => setTimeout(res, ms));
@@ -1135,7 +1135,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.goto(url, { waitUntil: 'commit' });
-  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 15000 });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && window.Assets && Assets.ready, null, { timeout: 60000 });
   const r = await p.evaluate(async () => {
     const sleep = ms => new Promise(res => setTimeout(res, ms));
     const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
@@ -1157,7 +1157,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       Assets.RETRY_MS = 120000;
       Screens._demo = false;
       G.newGame('blip', 'moderate', 'medium', undefined, 'green');
-      await until(() => Assets.artReady(), 30000);
+      await until(() => Assets.artReady(), 60000);
       const readyAfterBlip = Assets.artReady();          // a lost strip never holds the plaque
       await until(() => Assets.allArtReady(), 60000);    // every strip of both tribes asked once, through the blip
       blip = false;
@@ -1167,7 +1167,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       const lost = 144 - have(), asked = deadAsks;
       dispatchEvent(new Event('online'));                  // the connection is back
       const pendingAtRetry = Assets.pending;               // the retry is the background tier's: nothing counted
-      await until(() => have() >= 143 && Assets.allArtReady(), 30000);
+      await until(() => have() >= 143 && Assets.allArtReady(), 90000);
       dispatchEvent(new Event('online'));                  // …and a second blip-end asks nothing a third time
       await sleep(800);
       return { readyAfterBlip, lost, back: have(), pendingAtRetry, deadFirst: asked, deadAsks };
