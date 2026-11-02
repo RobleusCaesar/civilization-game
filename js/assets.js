@@ -1532,8 +1532,10 @@ const Assets = {
      faction's own key (villager-{p|a}-l{tier}-{m|f}) with the tunic ramp
      swapped to the faction's rolled color. Called when the tunics are
      known (new game / load) and again when a Town Center levels up. A
-     missing file is the default state — the procedural villager stands. */
-  loadVillagerArt(owner) {
+     missing file is the default state — the procedural villager stands.
+     `later`: the background tier (see loadMilitaryArt) — the rival's people
+     under the fog are fetched behind everything the opening world shows. */
+  loadVillagerArt(owner, later) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;
     const tier = R.villagerTier(owner);
@@ -1544,10 +1546,8 @@ const Assets = {
       // fresh tunic can never be served last run's baked colors, and an
       // install still in flight from the old run lands under the old key
       const key = 'villager-' + fac + '-' + tunic + '-l' + tier + '-' + sex;
-      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
-      const img = new Image();
-      this._stripLoad(img, this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
-        '.png?v=' + (CFG.ART_V || 1), () => this.setUnitFrames(key, dir, pose, img, tunic));
+      this._stripLoad(key, dir, pose, this.UNIT_DIR + 'unit-villager-l' + tier + '-' + sex + '-' + dir + '-' + pose +
+        '.png?v=' + (CFG.ART_V || 1), tunic, later, true);
     }
   },
   /* ---- MILITARY SHEET ART (the archer line ships first) ----
@@ -1585,25 +1585,26 @@ const Assets = {
                   horsearcher: ['idle', 'walk', 'fight'],
                   lancer:      ['idle', 'walk', 'fight'] },
   /* `later`: the strips go in the background tier — fetched behind the
-     counted ones and never waited for by artReady(). A FRESH run asks it for
-     the rival's soldiers and sappers (G.newGame): they stand in their own
-     town under the fog for the opening days, and a third of the strips a
-     founding asks for is the rival's army — the plaque after the draft
-     waits only for the people the player can see or field. */
-  loadMilitaryArt(owner, later) {
+     counted ones and never waited for by artReady(). THE PLAQUE WAITS ONLY
+     FOR WHAT THE OPENING WORLD SHOWS (G.artShown, tests/boot.mjs §6, §8): a
+     founding or a load counts the kinds standing on the map or in the
+     player's sight, and asks for every other kind here, later — a soldier
+     nobody has yet, the rival's army under the fog. `kinds` (an array or a
+     Set) limits the ask to those kinds; absent, every kind is asked. */
+  loadMilitaryArt(owner, later, kinds) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;
     const fac = owner === 'A' ? 'a' : 'p';
     const tunic = G.tunicOf(owner);
-    for (const kind in this.MILITARY_ART) for (const dir of this.UNIT_DIRS8) for (const pose of this.MILITARY_ART[kind]) {
+    for (const kind in this.MILITARY_ART) {
+      if (kinds && !(kinds.has ? kinds.has(kind) : kinds.indexOf(kind) >= 0)) continue;
       // the tunic rides IN the key, same anti-staleness armor as the
       // villager loader above: a new run's rolled color can never be
       // served frames baked for last run's
       const key = kind + '-' + fac + '-' + tunic;
-      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
-      const img = new Image();
-      this._stripLoad(img, this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
-        () => this.setUnitFrames(key, dir, pose, img, tunic), later);
+      for (const dir of this.UNIT_DIRS8) for (const pose of this.MILITARY_ART[kind])
+        this._stripLoad(key, dir, pose, this.UNIT_DIR + 'unit-' + kind + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+          tunic, later, true);
     }
   },
   /* ---- SAPPER TIER ART: villager doctrine, camp-leveled, no sex axis ----
@@ -1623,12 +1624,38 @@ const Assets = {
     const fac = owner === 'A' ? 'a' : 'p';
     const tunic = G.tunicOf(owner);
     const key = 'sapper-' + fac + '-' + tunic + '-l' + tier;
-    for (const pose in this.SAPPER_POSE_DIRS) for (const dir of this.SAPPER_POSE_DIRS[pose]) {
-      if (this.unitArt[key] && this.unitArt[key].dirs[dir] && this.unitArt[key].dirs[dir][pose]) continue;
-      const img = new Image();
-      this._stripLoad(img, this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
-        () => this.setUnitFrames(key, dir, pose, img, tunic), later);
+    for (const pose in this.SAPPER_POSE_DIRS) for (const dir of this.SAPPER_POSE_DIRS[pose])
+      this._stripLoad(key, dir, pose, this.UNIT_DIR + 'unit-sapper-l' + tier + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+        tunic, later, true);
+  },
+  /* the UNDYED kinds (UNIT_ART: the wild beasts and the working hulls), asked
+     for by name — one sheet serves every owner. The boot probes them all in
+     the background tier; a founding or a load asks here, counted, for the
+     ones the opening world shows (the Sea-Reaver's warship, a deer in sight). */
+  loadKindArt(kinds, later) {
+    for (const kind of kinds) for (const dir of this.UNIT_DIRS8) for (const pose of (this.UNIT_ART[kind] || []))
+      this._stripLoad(kind, dir, pose, this.unitUrl(kind, dir, pose), undefined, later, false);
+  },
+  /* every strip-bearing kind among these units, through its own loader:
+     villagers and sappers by tribe and tier, the dyed army kinds by tribe,
+     the undyed beasts and hulls by name. A stranger (a raider, a beast) never
+     wears a village dye (R.unitArtKey), so a raider of a dyed kind asks for
+     nothing; a kind with no strips at all asks for nothing. */
+  loadUnitsArt(units, later) {
+    const mil = { P: new Set(), A: new Set() }, vill = new Set(), sap = new Set(), plain = new Set();
+    for (const u of units) {
+      const k = u && u.kind, o = u && u.owner;
+      if (!k) continue;
+      if (this.UNIT_ART[k]) plain.add(k);
+      else if (o !== 'P' && o !== 'A') continue;
+      else if (k === 'villager') vill.add(o);
+      else if (k === 'sapper') sap.add(o);
+      else if (this.MILITARY_ART[k]) mil[o].add(k);
     }
+    for (const o of vill) this.loadVillagerArt(o, later);
+    for (const o of sap) this.loadSapperArt(o, later);
+    for (const o in mil) if (mil[o].size) this.loadMilitaryArt(o, later, mil[o]);
+    if (plain.size) this.loadKindArt(plain, later);
   },
   /* A STRIP IS FETCHED A FEW AT A TIME, INSTALLED IN SLICES, AND COUNTED
      UNTIL IT IS. Founding a run asks for ~900 people strips at once, and on
@@ -1647,14 +1674,72 @@ const Assets = {
   INSTALL_MS: 10,
   _stripQ: [], _stripQLate: [], _stripFlying: 0,
   _installQ: [], _installOn: false,
-  _stripLoad(img, url, install, late) {
-    const done = late ? this._holdLate() : this._hold(false);
+  /* ONE REQUEST PER STRIP (the install dedupe, tests/boot.mjs §6). A strip is
+     known by where it installs (key, facing, pose): asked for while it is
+     already queued, on the wire or waiting to install, it is never fetched or
+     installed a second time — and a COUNTED ask for a strip waiting in the
+     background tier moves it forward and counts it from then on (the origin
+     card's archers, asked for in the background at the founding and then
+     planted at the keep). An installed strip is never asked for again.
+     `retry`: a people strip (villager, soldier, sapper) that fails is asked
+     for once more — see _retryLater. */
+  _stripLive: {},
+  _stripLoad(key, dir, pose, url, tunic, late, retry) {
+    const a = this.unitArt[key];
+    if (a && a.dirs[dir] && a.dirs[dir][pose]) return;
+    const id = key + '|' + dir + '|' + pose, live = this._stripLive[id];
+    if (live) { if (!late && live.late) this._promote(live); return; }
+    const img = new Image();
+    const rec = { img, late: !!late, holds: [late ? this._holdLate() : this._hold(false)] };
+    // spent once the strip is installed (or has failed): every hold it took, either tier
+    const done = () => { if (this._stripLive[id] === rec) delete this._stripLive[id]; for (const h of rec.holds) h(); };
+    done.late = rec.late;                      // what the boot contract tells apart in the install queue
+    rec.done = done;
+    this._stripLive[id] = rec;
     const landed = () => { this._stripFlying--; this._pumpStrips(); };
-    img.onload = () => { landed(); this._queueInstall(install, done); };
-    img.onerror = () => { landed(); done(); };   // absent art is the default state
+    img.onload = () => { landed(); this._queueInstall(() => this.setUnitFrames(key, dir, pose, img, tunic), done); };
+    img.onerror = () => {                      // absent art is the default state
+      landed(); done();
+      if (retry) this._retryLater([key, dir, pose, url, tunic]);
+    };
     this._prio(img, late ? 'low' : this.stripPrio());
-    (late ? this._stripQLate : this._stripQ).push([img, url]);
+    rec.entry = [img, url];
+    (late ? this._stripQLate : this._stripQ).push(rec.entry);
     this._pumpStrips();
+  },
+  // a background strip asked for by something the opening world shows
+  _promote(rec) {
+    rec.late = false; rec.done.late = false;
+    rec.holds.push(this._hold(false));
+    const i = this._stripQLate.indexOf(rec.entry);
+    if (i >= 0) { this._stripQLate.splice(i, 1); this._stripQ.push(rec.entry); this._prio(rec.img, this.stripPrio()); }
+  },
+  /* A BLIP IS NOT A VERDICT (tests/boot.mjs §9). A connection that blinks
+     while a run's people are downloading left every strip that failed missing
+     for the session — villagers flickering between their art and the
+     procedural cast by facing and pose. A failed people strip is asked for
+     ONCE more, in the background tier (a retry never holds the plaque again):
+     when the browser says it is back online, or RETRY_MS after the last
+     failure if it never said it was gone. A strip that fails twice stays
+     procedural, as an absent file always has. */
+  RETRY_MS: 8000,
+  _retryQ: [], _retryT: 0, _retryOn: false,
+  _retryLater(spec) {
+    this._retryQ.push(spec);
+    if (!this._retryOn && typeof addEventListener === 'function') {
+      this._retryOn = true;
+      addEventListener('online', () => this._retryFlush());
+    }
+    clearTimeout(this._retryT);                // the wait runs from the LAST failure of a burst
+    this._retryT = setTimeout(() => this._retryFlush(), this.RETRY_MS);
+  },
+  _retryFlush() {
+    if (!this._retryQ.length) return;
+    clearTimeout(this._retryT);
+    // still offline: wait for the 'online' event, and look again later in case it never comes
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) { this._retryT = setTimeout(() => this._retryFlush(), this.RETRY_MS); return; }
+    const q = this._retryQ; this._retryQ = [];
+    for (const [key, dir, pose, url, tunic] of q) this._stripLoad(key, dir, pose, url, tunic, true, false);
   },
   _pumpStrips() {
     while (this._stripFlying < this.STRIP_FLIGHT) {
@@ -1733,8 +1818,7 @@ const Assets = {
     return true;
   },
   _tryLoadUnit(kind, dir, pose) {
-    const img = new Image();
-    this._stripLoad(img, this.unitUrl(kind, dir, pose), () => this.setUnitFrames(kind, dir, pose, img), true);   // the LATE tier — see _track
+    this._stripLoad(kind, dir, pose, this.unitUrl(kind, dir, pose), undefined, true, false);   // the LATE tier — see _track
   },
   setUnitFrames(kind, dir, pose, img, tunic) {
     if (!img || !img.height) return false;
