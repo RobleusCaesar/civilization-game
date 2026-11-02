@@ -1511,7 +1511,8 @@ const Screens = {
       return;
     }
     const r = await Backend.listSaves();
-    if (!r.ok) { box.innerHTML = '<p class="hint">Could not reach the cloud: ' + r.error.message + '</p>'; return; }
+    // named in plain words, never in the server's own (PERS-02, finished-run-continue §7l)
+    if (!r.ok) { box.innerHTML = '<p class="hint">Your cloud saves could not be listed: ' + this.esc(this.whyNet(r.error)) + '</p>'; return; }
     const bySlot = {};
     for (const row of r.data) bySlot[row.slot] = row;
     box.innerHTML = '';
@@ -2208,8 +2209,11 @@ const Screens = {
       const tok = prompt('Paste your recovery token:');
       if (!tok) return;
       const r = await Backend.importIdentity(tok.trim());
-      // seen over Settings, on the shell's own line (PX-69) — a toast was hidden there
-      this.say(r.ok ? 'Identity restored — your cloud saves are back' : r.error.message, !r.ok);
+      // seen over Settings, on the shell's own line (PX-69) — a toast was hidden there.
+      // A token of the wrong shape is ours to word; whatever the sign-in
+      // service said is named in plain words, never quoted (PERS-02, §7l)
+      this.say(r.ok ? 'Identity restored — your cloud saves are back'
+        : r.error.code === 'bad_token' ? r.error.message : 'That recovery token could not be used: ' + this.whyNet(r.error), !r.ok);
       if (r.ok) this.onSettings();
     });
     on('btnExportFile', () => {
