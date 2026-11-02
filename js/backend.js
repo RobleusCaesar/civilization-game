@@ -89,6 +89,21 @@ const Backend = {
     if (!this.mock) {
       this.client = window.supabase.createClient(SUPA_CFG.url, SUPA_CFG.anonKey);
     }
+    /* THE TOKEN STAYS CURRENT (PX-50, tests/telemetry.mjs §8). supabase-js
+       renews the access token about once an hour into a NEW session object,
+       and Backend kept the one it got at sign-in: once that expired, every
+       run_start, closed_tab and session row went out under a dead Bearer, was
+       refused (401) and was dropped without a word (_emit never retries). The
+       client says when it renews; the session follows it — for THIS player
+       only (a sign-in as somebody else is _signIn's and importIdentity's
+       business, never a listener's), and a sign-out (no session) never
+       blanks it. It never writes uid. */
+    try {
+      const au = this.mock ? this.mock.auth : this.client.auth;
+      if (au && au.onAuthStateChange) au.onAuthStateChange((ev, s) => {
+        if (s && s.access_token && (!this.uid || (s.user && s.user.id === this.uid))) this.session = s;
+      });
+    } catch (e) { /* the old token still works until it expires, as before */ }
     return this._signIn();
   },
   // the identity itself — resume the stored session or mint an anonymous one.
