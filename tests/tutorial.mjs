@@ -1276,7 +1276,7 @@ const out = await p.evaluate(async () => {
       for (const st of Tutorial.STEPS) { if (st.id === id) break; S.tut.done[st.id] = 1; }
       return Tutorial._nearTile(id, terrOf[id]);   // the tile the lesson will ring
     };
-    const bres = R.bottomReserve;
+    const bres = R.bottomReserve, menuWas = UI.menuCollapsed;
     R.bottomReserve = 0;   // a first game: the build menu never opened, so R.onScreen has learned no floor
     try {
       // (a) half a tile past the right edge, a villager in hand (the wood lesson as it is met)
@@ -1313,7 +1313,7 @@ const out = await p.evaluate(async () => {
         const a = upTo('173', 'gatherFood');
         UI.select('unit', villager().id);
         const panelTop = rectOf('bottombar').top;
-        UI.deselect();
+        UI.dispatchedWorker();   // the wood order's own deselect: the menu tucked away, as the real flow leaves it
         if (a) aim(a, R.viewW() / 2, panelTop + 30);
         const before = seen(a);
         tick(1, 0.05);
@@ -1362,7 +1362,7 @@ const out = await p.evaluate(async () => {
             !Tutorial._pan && seen(a), JSON.stringify({ pan: !!Tutorial._pan, at: where(a) }));
         } finally { window.matchMedia = mm; }
       }
-    } finally { R.bottomReserve = bres; UI.deselect(); }
+    } finally { UI.deselect(); UI.setMenuCollapsed(menuWas, true); R.bottomReserve = bres; }
   }
 
   // ---- 18. a note that waits on a deed can be put away; the ground names its station (PX-29) ----
