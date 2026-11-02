@@ -379,14 +379,17 @@ const out = await p.evaluate(async () => {
     } finally { G.loadJSON = l0; Screens._enterNow = e0; }
     ck('aDoubleContinueLoadsOnce', loads === 1 && enters === 1 && Screens.current === 'playing' && String(S.seed) === '424243',
       `${loads} load(s), ${enters} entr(ies); ${Screens.current}, seed ${S.seed}`);
-    const note = sees(/Welcome back/);
+    // the note follows the world's first painted frames: look for it a while,
+    // never at one fixed beat (a loaded machine stretches the first frames)
+    let note = null;
+    for (const t = performance.now() + 4000; !note && performance.now() < t;) { note = sees(/Welcome back/); if (!note) await tick(); }
     ck('theArrivalIsTold', !!note && /day 9\b/.test(note.textContent), note ? `"${note.textContent}" is seen` : 'no "Welcome back" a player can see');
     ck('aCrashNetContinueCountsAsSavedThatDay', Screens.lastSavedDay === 9, `lastSavedDay=${Screens.lastSavedDay} on a day-9 Continue`);
     // …and only on arriving: a Resume from the pause menu says nothing
     UI._toastAt = {};
-    const before = document.querySelectorAll('#toasts .toast').length;
-    Screens.show('paused'); Screens.enterGame(); await wait(300);
-    const again = [...document.querySelectorAll('#toasts .toast')].slice(before).filter(t => /Welcome back/.test(t.textContent)).length;
+    const before = new Set(document.querySelectorAll('#toasts .toast'));
+    Screens.show('paused'); Screens.enterGame(); await wait(600);
+    const again = [...document.querySelectorAll('#toasts .toast')].filter(t => !before.has(t) && /Welcome back/.test(t.textContent)).length;
     ck('andOnlyOnArriving', again === 0, `${again} new "Welcome back" on a Resume`);
     S.paused = true;
   }
@@ -505,7 +508,7 @@ const out = await p.evaluate(async () => {
     await playing();
     let back = 0; for (let i = 1; i < samples.length; i++) if (samples[i][1] < samples[i - 1][1]) back++;
     const [tl, wl] = samples[samples.length - 1];
-    ck('thePlaquesBarShowsProgress', back === 0 && wl >= 100 * (tl - 150) / 3000 - 2 && wl > 20,
+    ck('thePlaquesBarShowsProgress', back === 0 && wl >= Math.min(100, 100 * (tl - 150) / 3000) - 2 && wl > 20,
       `${back} step(s) back; ${wl}% at ${Math.round(tl)} ms of a 3000 ms floor (forty pictures pending)`);
     S.paused = true;
   }
@@ -556,6 +559,18 @@ const out = await p.evaluate(async () => {
       await wait(150);
       const lf = sees(/could not be opened|timed out/i);
       ck('aSlotThatWillNotLoadIsSeen', !!lb && !!lf && Screens.current === 'load', lf ? `"${lf.textContent}"` : `nothing a player can see (button ${!!lb})`);
+      // …and one whose fetch THROWS releases the press, keeps the world in
+      // hand and the screen it was on, and says so
+      if (Screens.unsay) Screens.unsay();
+      const seed0 = String(S.seed);
+      Backend.loadSlot = async () => { throw new Error('a fault in the fetch'); };
+      const lb2 = [...document.querySelectorAll('#slotList .abtn')].find(x => /Load/.test(x.textContent));
+      if (lb2) lb2.click();
+      await wait(150);
+      const lt = sees(/could not be opened/i);
+      const busy = !!(Screens._continuing || Screens._entering);
+      ck('aLoadThatThrowsLetsGoOfThePress', !!lt && !busy && Screens.current === 'load' && String(S.seed) === seed0,
+        `${lt ? '"' + lt.textContent + '"' : 'nothing a player can see'}; in flight ${busy}; ${Screens.current}; world ${S.seed} (was ${seed0})`);
       // a save file that will not import
       const inp = document.getElementById('fileLoad');
       const dt = new DataTransfer(); dt.items.add(new File(['this is not a save'], 'village.json', { type: 'application/json' }));

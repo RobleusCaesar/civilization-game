@@ -413,7 +413,8 @@ const Screens = {
     const run = this._prepRun;
     if (run) { run.gone = true; clearTimeout(run.t); this._prepRun = null; }
     try { this.showPrep(false); } catch (e2) {}
-    if (window.S && !this._demo && this.current !== 'playing') { try { this.show('title'); } catch (e2) {} }
+    // it never navigates: the screen in hand (a paused game's Load screen
+    // included) stays as it is, every press answers again, and it says why
     this.say('That save could not be opened: ' + this.whyLoad(e), true);
   },
   // a reason a player can read — never an exception's own words
@@ -480,8 +481,8 @@ const Screens = {
        good, the world never entered. The tick is guarded, and a hard cut-off
        (PREP_MAX_MS, well past the art's own floor) lifts the plaque whatever
        the wait does: the game is entered — the frame loop finishes any bake
-       still owed, under its own guard — or, if even that fails, the title
-       comes back clean and says so. */
+       still owed, under its own guard — or, if even that fails, every press
+       answers again and the line says why (_openFailed). */
     const run = this._prepRun = { gone: false, t: 0 };
     const go = () => {
       if (run.gone) return;
@@ -567,10 +568,16 @@ const Screens = {
        says nothing). It takes over the crash net's "Recovered your last
        session" line, which was never shown: UI.toast drops a line with no
        level, and no toast is visible behind the plaque anyway. */
-    if (this._arrive) {
+    if (this._arrive && window.S && !this._demo) {
       this._arrive = false;
-      if (typeof UI !== 'undefined' && window.S && !this._demo) UI.toast('Welcome back — day ' + S.day, 'note');
+      // …once the world's first frames are painted, so its time on screen is
+      // time the player can read it (an entry on a busy phone can stall)
+      const world = S, day = S.day;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (window.S === world && this.current === 'playing' && typeof UI !== 'undefined') UI.toast('Welcome back — day ' + day, 'note', 4500);
+      }));
     }
+    this._arrive = false;
     // the first Calm game's modal, deferred from draftTap to the moment the
     // world is actually on screen (never under the art plaque)
     if (this._victoryPathsPending) {
@@ -1480,9 +1487,11 @@ const Screens = {
         else this.act(acts, '▶ Load', async () => {
           if (this.opening()) return;              // one opening at a time (PX-21a)
           this._continuing = true;
-          const l = await Backend.loadSlot(slot);
-          if (l.ok) this.loadRow(l.data, true);
-          else { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(l.error), true); }   // seen over the Load screen (PX-69)
+          try {
+            const l = await Backend.loadSlot(slot);
+            if (l.ok) this.loadRow(l.data, true);
+            else { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(l.error), true); }   // seen over the Load screen (PX-69)
+          } catch (e) { this._openFailed(e); }     // never a press left holding the opening
         });
         this.act(acts, '✏️', async () => {
           const name = prompt('Rename save', row.name);
