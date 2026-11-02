@@ -352,6 +352,7 @@ const Screens = {
   },
 
   enterGame() {
+    if (!this._entering) this._prepT0 = performance.now();   // analytics (prep_ms): the press, before any plaque
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
@@ -382,13 +383,40 @@ const Screens = {
        loading a save is never counted as a new run. A start with no matching
        end is how the dashboard sees an abandoned run. */
     try {
+      /* THE FIRST MINUTE (PX-49, tests/telemetry.mjs §7). How long the press
+         waited behind "Preparing the world…" (0 when the world was ready at
+         once) — and, once per world per page (never again on a resume from
+         the pause menu), when and at what play-clock second it OPENED, so its
+         endings can carry wall_s beside 'seconds' (G.runReport) and a
+         CONTINUED world's wait (a Continue sends no run_start) can ride them.
+         Keyed on the world itself in a WeakMap: page state, never the save.
+         The wall clock is the page's VISIBLE clock — a phone that switches
+         apps for an hour has not played for an hour. */
+      const prepMs = this._prepT0 ? Math.max(0, Math.round(performance.now() - this._prepT0)) : 0;
+      this._prepT0 = 0;
+      if (!this._demo && window.S) {
+        if (!this._vis) {
+          let hid = 0, at = document.hidden ? Date.now() : 0;
+          document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { if (!at) at = Date.now(); }
+            else if (at) { hid += Math.max(0, Date.now() - at); at = 0; }
+          });
+          this._vis = () => Date.now() - hid - (at ? Math.max(0, Date.now() - at) : 0);
+        }
+        const op = this._opened || (this._opened = new WeakMap());
+        if (!op.has(S)) op.set(S, { vis: this._vis(), play: S.playtime || 0, resumeMs: G._freshRun ? null : prepMs });
+        if (window.Backend) Backend.entered = true;
+      }
       if (G._freshRun && !this._demo && window.Backend && Backend.logRunStart) {
         G._freshRun = false;
         const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
           && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+        // why the lesson is on or off: the explicit choice, else the auto-on for a first game
+        const ask = this.lsGet('neo-tutorial-ask'), tutOn = !!(S.tut && S.tut.on);
         Backend.logRunStart({
           mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
-          tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null, seed: String(S.seed || ''),
+          tutorial: tutOn, card, origin: S.origin || null, seed: String(S.seed || ''),
+          prepMs, tutSrc: tutOn ? (ask === '1' ? 'ticked' : 'auto') : (ask === '0' ? 'declined' : 'none'),
         });
         S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
         if (window.Feedback) Feedback.runKey = S.runId;   // the error tally is this run's

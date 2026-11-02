@@ -365,7 +365,12 @@ const Backend = {
       run_id: this.runId, kind: 'run_start',
       mode: info.mode || null, landform: info.landform || null, size: info.size || null,
       device: this.deviceKind(),
-      props: { tutorial: !!info.tutorial, card: info.card || null, origin: info.origin || null, seed: info.seed || null },
+      props: Object.assign({ tutorial: !!info.tutorial, card: info.card || null, origin: info.origin || null, seed: info.seed || null,
+        // THE FIRST MINUTE (PX-49, tests/telemetry.mjs §7): how long the press
+        // waited behind "Preparing the world…" (0 when the world was ready at
+        // once), and why the lesson is on or off ('auto' | 'ticked' |
+        // 'declined' | 'none') — both measured by Screens._enterNow
+        prep_ms: Math.max(0, Math.round(+info.prepMs || 0)), tut_src: info.tutSrc || null }, this.formFacts()),
     });
     return { ok: true };
   },
@@ -610,12 +615,50 @@ const Backend = {
       document.addEventListener('visibilitychange', () => { if (document.hidden) send(); });
     } catch (e) { /* headless */ }
   },
+  /* WHERE THE PAGE WAS LEFT (PX-49, tests/telemetry.mjs §7). A player who
+     leaves before any world opens sends this row and nothing else, so it says
+     where they were: 'title' (the menus), 'prep' (behind "Preparing the
+     world…"), 'draft' (the origin cards) or 'game' (a world they played) —
+     and whether this page ever opened one (`entered`, stamped by
+     Screens._enterNow). Read at the FIRST hide, like the row itself: a page
+     hidden at the title and played later still says 'title' (the session
+     row is a visit, never a duration). Never a page id or a click history. */
+  entered: false,
+  leftAt() {
+    try {
+      const sc = window.Screens;
+      if (!sc) return 'title';
+      if (sc._entering) return 'prep';
+      const cur = sc.current;
+      if (cur === 'draft') return 'draft';
+      if (cur === 'title' || cur === 'newgame') return 'title';
+      return (!sc._demo && typeof S !== 'undefined' && S && S.played) ? 'game' : 'title';
+    } catch (e) { return null; }
+  },
+  /* the DEVICE, never the window (deviceKind reads the window's width, so a
+     narrow desktop window reads 'mobile' there): 'phone' | 'tablet' |
+     'desktop' by the primary pointer and the screen's short side, and
+     whether it runs from the home screen */
+  formFacts() {
+    let form = null, standalone = false;
+    try {
+      const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+      const sw = window.screen ? Math.min(screen.width || 0, screen.height || 0) : 0;
+      form = !coarse ? 'desktop' : (sw >= 600 ? 'tablet' : 'phone');
+    } catch (e) {}
+    try {
+      standalone = navigator.standalone === true ||
+        !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+    } catch (e) {}
+    return { form, standalone };
+  },
   endSession() {
     if (this._sessionSent || !this._sessionT0) return;
     const secs = Math.round((Date.now() - this._sessionT0) / 1000);
     if (secs < 3) return;                       // a bounce is not a session
     this._sessionSent = true;
-    this._emit({ kind: 'session', seconds: secs, device: this.deviceKind() });
+    this._emit({ kind: 'session', seconds: secs, device: this.deviceKind(),
+      props: Object.assign({ at: this.leftAt(), entered: !!this.entered }, this.formFacts()) });
   },
 
   /* ---------------- save slots ---------------- */
