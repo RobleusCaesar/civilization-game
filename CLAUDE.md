@@ -7285,8 +7285,20 @@ the villager panel, or half a tile past the edge, as seen. The ring's point
 (the overlay's own maths, `SPRITE_LIFT` included) must lie 0.3 tile inside
 the band no HUD covers (under `#topbar`, above `#bottombar` and `#bmToggle`,
 inside the canvas), over the world canvas by `document.elementFromPoint`;
-`_panTo` asks it instead of `R.onScreen` and lands the ring mid-band, since
-the screen's own middle can sit under a tall panel. **THE LOOK**
+`_panTo` asks it instead of `R.onScreen`, since the screen's own middle can
+sit under a tall panel. **AND NOT UNDER ITS OWN CARD** (§17b, the build 128
+review): the card seats by the ring (bottom when the ring is above 48% of
+the view, top when below), so on a 320 px phone the band's middle put the
+ring under the card it then got. `_inFreeBand` also refuses a ring the card
+WILL cover (`_cardRectFor`: `_syncOverlay`'s own seat rules, the card
+measured unseen by `_cardH`, since the look runs as the note is told), and
+`_ringRow` lands it in the larger part of the band the card does not take,
+clear by the ring's radius and on its own side of the 48% line. **A PHONE ON
+ITS SIDE** (`_sideSeat`: wider than 1.3× its height and under 520 px tall)
+has no room above or below with the panel up, so a world target's card sits
+BESIDE the ring, in the half it is not in, narrowed to the room beside it
+(`_sideW`, 260–400 px; a target at the map's edge clamps the camera and
+keeps the ring mid-screen), and the ring glides to the left half. **THE LOOK**
 (`Tutorial._looks`) runs at most twice a note: as it is told, and for a
 gather lesson (`selLook`) at the first villager selected, whose panel covers
 the tile named; a villager already in hand at presentation is that

@@ -35,7 +35,7 @@ const PATCH_NOTES = [
       'Continue opens your game on the first tap and greets you with the day you left off on. When a saved game can’t be opened, or the cloud doesn’t answer, the menu now says why and every button keeps working. Saving, importing a file and restoring your identity now say whether they worked.',
       'The loading bar moves steadily while the world is prepared, and the loading screen can no longer get stuck.',
       'New games and Continue open sooner, phones most of all: the game no longer waits to download soldiers and boats you don’t have yet.',
-      'A new game opens on its finished ground instead of filling it in square by square.',
+      'The ground of a new game is prepared while you choose your card, so it is usually ready the moment the world opens.',
       'If your connection drops for a moment while a game is loading, your villagers get their proper look back as soon as it returns.',
       'Leaving the game for another app or tab silences it even with the music off, and a tune that fades out really stops.',
       'The Guide’s page on food, the music line in Settings and a war party’s title now say what is true.',
