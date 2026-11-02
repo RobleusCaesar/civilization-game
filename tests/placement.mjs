@@ -551,16 +551,9 @@ const out = await p.evaluate(() => {
    the ✗ (it stands aside for the drag, and the canvas holds the pointer). */
 {
   const pre = await p.evaluate(() => {
-    G.newGame('pl17', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    // section 16's arena is still the world (cleared, explored, paid for)
     const tc = Bld.tcOf('P');
-    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
-      const x = tc.x + dx, y = tc.y + dy;
-      if (MapGen.onBoard(x, y) && !Bld.at(x, y)) S.map.terrain[MapGen.idx(x, y)] = T.GRASS;
-    }
-    Bld._block = null; Bld._openC = null;
     S.res = { food: 999, wood: 999, stone: 999, gold: 999 };
-    for (let i = 0; i < S.map.explored.length; i++) S.map.explored[i] = 1;
-    G.updateVisibility();
     R.centerOn(Bld.cx(tc), Bld.cy(tc));
     UI.deselect(); UI.setMenuCollapsed(true, true);
     UI.enterPlacement('house');
