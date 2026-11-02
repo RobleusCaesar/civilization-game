@@ -585,8 +585,10 @@ const out = await p.evaluate(() => {
     for (let i = 1; i <= 12; i++) {
       await p.mouse.move(pre.ghost.x + (pre.no.x - pre.ghost.x) * i / 12, pre.ghost.y + (pre.no.y - pre.ghost.y) * i / 12);
       await p.waitForTimeout(16);
-      if (i === 6) mid = await p.evaluate(() => ({ dragging: UI.placeDragging,
-        noShown: getComputedStyle(document.getElementById('placeBtns')).display !== 'none' && document.getElementById('placeNo').getBoundingClientRect().width > 0 }));
+      // (two frames first: the row is synced once a frame, and a loaded host
+      // can hold a frame back longer than a few moves take)
+      if (i === 6) mid = await p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r({ dragging: UI.placeDragging,
+        noShown: getComputedStyle(document.getElementById('placeBtns')).display !== 'none' && document.getElementById('placeNo').getBoundingClientRect().width > 0 })))));
     }
     await p.mouse.up();
     await p.waitForTimeout(250);
