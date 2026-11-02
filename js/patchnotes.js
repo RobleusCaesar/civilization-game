@@ -19,6 +19,26 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 128, date: '2026-11-02', title: 'A game that answers you',
+    items: [
+      'A message that explains why something can’t be done now stays up long enough to read, and tapping again brings it back with a small shake.',
+      'Tap any number in the top bar to see where it comes from: what your workers, farms, mines and hall bring in, what is eaten, how much room your town has and how long a day lasts. The number beside your food now shows what your larder really gains or loses each day.',
+      'When a villager’s tree, rock, field or fishing spot runs out, a note tells you, so idle hands don’t go unnoticed.',
+      'Rally, a villager’s Build button, army tactics, sapper tools, saving an army and laying a wall now tell you what to tap next. A farm, lumber camp, quarry or lodge you can’t place yet says in one short line what to do first.',
+      'When you choose a building to place, a cancel button and a short how-to show straight away.',
+      '“Under attack!” now shows on the first blow, and a short note tells you when a building finishes, a unit is trained or a building rises a level where you can’t see it.',
+      'Two fingers now pan the map, a pinch keeps the ground under your fingers, and panning no longer lags behind your finger. A slow, deliberate tap now selects, and a tap made while the game is busy is no longer lost.',
+      'On a computer, trackpad scrolling and pinching zoom smoothly, and right-clicking the map no longer opens the browser’s menu.',
+      'A quick double-tap on Demolish, Banish, Scuttle or Cancel no longer confirms it by accident: tap once to arm it, then again a moment later.',
+      'On phones, the Build tab, the Pause and Menu buttons and the small arrow under the minimap catch a tap that lands a little short of them.',
+      'The tutorial moves the view so the tree, bush or rock it asks you to tap is never hidden, its tips can be dismissed, its messages appear below its card, and news about your rival waits until you can read it.',
+      'Continue opens your game on the first tap and greets you with the day you left off on. When a saved game can’t be opened, or the cloud doesn’t answer, the menu now says why and every button keeps working. Saving, importing a file and restoring your identity now say whether they worked.',
+      'The loading bar moves steadily while the world is prepared, and the loading screen can no longer get stuck.',
+      'Leaving the game for another app or tab silences it even with the music off, and a tune that fades out really stops.',
+      'The Guide’s page on food, the music line in Settings and a war party’s title now say what is true.',
+    ],
+  },
+  {
     build: 127, date: '2026-11-02', title: 'Your games, kept safe',
     items: [
       'Continue now always opens the game you saved. Before, it could sometimes open a random world with no controls instead, most often on a phone right after the page loaded.',
