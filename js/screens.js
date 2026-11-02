@@ -378,11 +378,12 @@ const Screens = {
      is past _rest's own worst case (three tries of TIMEOUT_MS, ~26 s), and
      an answer that comes after it is dropped, never loaded over the title.
      ONE OPENING AT A TIME SURVIVES A RESUME (§7j): every fetch takes the
-     opening's token (_openTok), and any world entered since (_enterNow — a
-     Resume from the pause menu included) or a newer fetch moves it. An
-     answer that comes back after that resolves { stale } and its caller
-     lets it go — never loaded over the game in hand, nor over a save the
-     player chose next, exactly as an answer past the cap is dropped. */
+     opening's token (_openTok), and an entry moves it — enterGame at the
+     press (a Resume from the pause menu included, even one that waits
+     behind its plaque) and _enterNow once the world is in — as does a newer
+     fetch. An answer that comes back after that resolves { stale } and its
+     caller lets it go — never loaded over the game in hand, nor over a save
+     the player chose next, exactly as an answer past the cap is dropped. */
   LOAD_MAX_MS: 40000,
   _openTok: 0,
   _fetchSlot(slot) {
@@ -503,6 +504,9 @@ const Screens = {
   },
 
   enterGame() {
+    // an entry from the PRESS (§7j): a fetch still out belongs to a world the
+    // player has gone past — a Resume waiting behind its plaque included
+    this._openTok++;
     if (!this._entering) { this._prepT0 = performance.now(); this._prepSync = true; Promise.resolve().then(() => { this._prepSync = false; }); }   // analytics (prep_ms): the press — a world that opens in this same task showed no plaque
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
