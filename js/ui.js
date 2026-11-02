@@ -339,7 +339,9 @@ const UI = {
           this.updateTerraGhost();
           this.downAt = null;
         } else {
-          this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+          // timed by the EVENT's own clock (PX-27): a busy frame between the
+          // press and the lift must never turn a tap into nothing
+          this.downAt = { x: e.clientX, y: e.clientY, t: this._tapTime(e), moved: false };
           // DRAG-TO-MOVE: a press that lands ON the current selection arms a
           // move order instead of a camera pan — dragging then pulls a tether
           // to the destination and release sends them. A press that never
@@ -438,7 +440,11 @@ const UI = {
         // release = the order lands where the finger lifted
         this.commitMoveDrag(e.clientX, e.clientY);
         this.moveDrag = null; this.moveDragArm = null;
-      } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
+      } else if (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000) {
+        // A STILL PRESS IS A TAP for up to a second (PX-27): one that never
+        // crossed the slop has no other meaning, so a deliberate half-second
+        // press selects instead of doing nothing (it was 400 ms, read off the
+        // handler's clock — a tap whose lift waited behind a busy frame died)
         // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
         // like unit within the grouping sphere, so a whole trebuchet line / fleet of
         // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
@@ -455,7 +461,7 @@ const UI = {
         // re-armed as a drag already under way, so it can never start a wall,
         // terraform or move drag, nor be taken for a tap when it lifts
         const [rest] = [...this.pointers.values()];
-        this.downAt = { x: rest.x, y: rest.y, t: performance.now(), moved: true };
+        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true };
         this.moveDragArm = null; this.pinchMid = null;
       } else if (this.pointers.size === 2) {
         // a third finger lifted: the pinch goes on with the two still down,
