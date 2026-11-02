@@ -50,12 +50,36 @@
       until it passed the previous run's last day (G.newGame and G.loadJSON
       now restart the cadence).
 
+   6. CONTINUE WORKS THE FIRST TIME AND SAYS WHERE YOU ARE (§7, PX-21a /
+      PX-69 / PX-38 — every message claim is a claim about what the player
+      can SEE: shown, and on top at its own centre by elementFromPoint, never
+      that some element holds the words). One opening at a time
+      (Screens._continuing / opening()): a double Continue loads and enters
+      once — a cloud save is fetched once, the press made while it is on
+      its way is answered, and one that never answers is called off past
+      LOAD_MAX_MS, its late answer dropped — and a New Game tap under the
+      plaque founds nothing, while the title stays live under it. A save that will not open says why on the
+      shell's own line (#shellMsg, Screens.say: a toast is display:none off
+      the playing screen) and a world the attempt touched leaves a clean
+      title; so do a failed or finished cloud save, a slot that will not
+      load, a file that will not import and an identity that will not
+      restore. A tap while the lookup is still out is answered. The title's
+      drift moves only the demo, never a world being entered. A crash-net
+      Continue counts its day as saved, and arriving says "Welcome back —
+      day N" once (a Resume says nothing). The plaque's bar fills by time
+      against the art's floor when the art says nothing, and never goes
+      back; a fault behind the plaque, or a wait that never ends
+      (PREP_MAX_MS), still enters the game.
+
    Run this after touching any of:
      backend.js — finalizeRun, noteFinishedSeed/finishedSeeds, autosaveNow,
                   snapshotLocal/readLocalSnapshot/clearLocalSnapshot,
                   markActiveSlot, listSaves (cols), emit, _rest's catch
      screens.js — onTitle (the Continue pick), continueGame, loadRow,
-                  enterGame/_enterNow, ensureDemo, the backend-status listener
+                  _loadSave, say/unsay, enterGame/_enterNow (the plaque and
+                  its tick), showPrep, saveToSlot, the file import, the
+                  title drift in init, ensureDemo, the backend-status listener
+     index.html — #shellMsg (the shell's message line)
      game.js — G.end, the autosave cadence in G.dayTick, and the cadence
                restart in G.newGame / G.loadJSON
 
@@ -295,6 +319,378 @@ const out = await p.evaluate(async () => {
     S.paused = true;
     Backend.clearLocalSnapshot && Backend.clearLocalSnapshot();
     window.fetch = window.__realFetch; delete window.__realFetch;
+  }
+
+  /* ---- 7. CONTINUE WORKS THE FIRST TIME AND SAYS WHERE YOU ARE (PX-21a /
+     PX-69 / PX-38). Every claim about a message is a claim about what the
+     player can SEE: shown (display, visibility, opacity up the tree) and on
+     top at its own centre (elementFromPoint) — never that some element holds
+     the words, which is how every shell-screen toast stayed "present" while
+     body:not(.ingame) #toasts hid it. ---- */
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const seen = el => {
+    if (!el) return false;
+    for (let e = el; e && e !== document.documentElement; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return false;
+    }
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    // a toast column takes no taps (pointer-events: none), which hit-testing
+    // honours: let the words themselves take the probe for one read, so the
+    // answer is about what is PAINTED on top there, never about taps
+    const pe = el.style.getPropertyValue('pointer-events'), pri = el.style.getPropertyPriority('pointer-events');
+    el.style.setProperty('pointer-events', 'auto', 'important');
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    el.style.setProperty('pointer-events', pe, pri);
+    return !!hit && (hit === el || el.contains(hit));
+  };
+  // the words a player can see right now that say `re`
+  const sees = re => [...document.querySelectorAll('body *')].find(el => !el.childElementCount && re.test(el.textContent || '') && seen(el)) || null;
+  // …looked for over a short while, never at one fixed beat: the line fades
+  // in over its first frames, and a loaded machine stretches those frames
+  // (a read 150 ms after the press caught it at opacity 0 in a busy sweep)
+  const seesSoon = async (re, ms) => { let el = null; for (const t = performance.now() + (ms || 2000); !el && performance.now() < t;) { el = sees(re); if (!el) await tick(); } return el; };
+  const prepUp = () => { const e = document.getElementById('prep'); return !!e && e.style.display !== 'none'; };
+  const playing = async (ms) => { const t = performance.now() + (ms || 15000); while (Screens.current !== 'playing' && performance.now() < t) await tick(); return Screens.current === 'playing'; };
+  // nothing still opening from the step before — a Resume whose art is still
+  // landing waits behind its own plaque, and a press made then is (rightly)
+  // refused: each section starts from a settled shell
+  const settle = async () => { const t = performance.now() + 20000; while ((Screens._entering || Screens._continuing || Screens._prepRun) && performance.now() < t) await tick(); };
+  // a played game in the crash net, and the title in front of it — a fresh page's state
+  const netGame = (seed, day) => {
+    G.newGame(seed, 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = day;
+    Backend.snapshotLocal(G.saveJSON());
+    Screens._demo = false; Screens.lastSavedDay = 0; Screens.show('title');   // the title's own demo world; Continue reads the net
+  };
+  // the art still on its way, as on a cold phone cache: the press waits behind the plaque
+  const holdArt = () => {
+    const h = { ready: Assets.artReady, idle: Assets.whenIdle, release: null, on: true };
+    Assets.artReady = function () { return !h.on && h.ready.call(Assets); };
+    Assets.whenIdle = () => new Promise(r => { h.release = r; });
+    h.let = () => { h.on = false; Assets.artReady = h.ready; Assets.whenIdle = h.idle; if (h.release) h.release(); };
+    return h;
+  };
+  const cont = () => document.getElementById('btnContinue');
+
+  // ---- 7a. a double tap on Continue loads the save ONCE and enters it once;
+  //          the arrival is told; the crash net's day counts as saved ----
+  {
+    netGame('424243', 9);
+    let loads = 0, enters = 0;
+    const l0 = G.loadJSON, e0 = Screens._enterNow;
+    G.loadJSON = function (j) { loads++; return l0.call(G, j); };
+    Screens._enterNow = function () { enters++; return e0.call(Screens); };
+    try {
+      UI._toastAt = {};
+      cont().click(); cont().click();                       // a double tap
+      await playing();
+      await wait(400);
+    } finally { G.loadJSON = l0; Screens._enterNow = e0; }
+    ck('aDoubleContinueLoadsOnce', loads === 1 && enters === 1 && Screens.current === 'playing' && String(S.seed) === '424243',
+      `${loads} load(s), ${enters} entr(ies); ${Screens.current}, seed ${S.seed}`);
+    // the note follows the world's first painted frames: look for it a while,
+    // never at one fixed beat (a loaded machine stretches the first frames)
+    let note = null;
+    for (const t = performance.now() + 4000; !note && performance.now() < t;) { note = sees(/Welcome back/); if (!note) await tick(); }
+    ck('theArrivalIsTold', !!note && /day 9\b/.test(note.textContent), note ? `"${note.textContent}" is seen` : 'no "Welcome back" a player can see');
+    ck('aCrashNetContinueCountsAsSavedThatDay', Screens.lastSavedDay === 9, `lastSavedDay=${Screens.lastSavedDay} on a day-9 Continue`);
+    // …and only on arriving: a Resume from the pause menu says nothing
+    UI._toastAt = {};
+    const before = new Set(document.querySelectorAll('#toasts .toast'));
+    Screens.show('paused'); Screens.enterGame();
+    await playing(); await wait(600);                       // the Resume is in (behind a plaque if the art is still landing)
+    const again = [...document.querySelectorAll('#toasts .toast')].filter(t => !before.has(t) && /Welcome back/.test(t.textContent)).length;
+    ck('andOnlyOnArriving', again === 0, `${again} new "Welcome back" on a Resume`);
+    S.paused = true;
+  }
+
+  // ---- 7a². …and a CLOUD save the same: the press waits on the network with
+  //          nothing on screen yet, which is exactly when a player presses
+  //          again — that press is answered, never obeyed ----
+  {
+    await settle();
+    G.newGame('737373', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 12;
+    const state = G.saveJSON();
+    Backend.clearLocalSnapshot();
+    const realReady = Backend.isReady, realList = Backend.listSaves, realLoad = Backend.loadSlot;
+    const l0 = G.loadJSON, e0 = Screens._enterNow, gives = [];
+    let fetches = 0, loads = 0, enters = 0, msg = null;
+    Backend.isReady = () => true;
+    Backend.listSaves = async () => ({ ok: true, data: [{ slot: 3, name: 'Hill Fort', day: 12, map_seed: '737373', updated_at: new Date().toISOString(), over: false }] });
+    Backend.loadSlot = (slot) => { fetches++; return new Promise(r => gives.push(() => r({ ok: true, data: { slot, name: 'Hill Fort', state } }))); };
+    G.loadJSON = function (j) { loads++; return l0.call(G, j); };
+    Screens._enterNow = function () { enters++; return e0.call(Screens); };
+    try {
+      Screens._demo = false; Screens.show('title');
+      for (let i = 0; i < 200 && Screens._newestSlot !== 3; i++) await tick();
+      cont().click(); await wait(150);                      // the save is on its way
+      cont().click(); await wait(150);                      // …and nothing has happened yet
+      msg = await seesSoon(/Opening your saved game/i);
+      gives.splice(0).forEach(g => g());                     // the network answers
+      await playing();
+      await wait(200);
+    } finally {
+      Backend.isReady = realReady; Backend.listSaves = realList; Backend.loadSlot = realLoad;
+      G.loadJSON = l0; Screens._enterNow = e0;
+    }
+    ck('aDoubleContinueOnACloudSaveFetchesOnce', fetches === 1 && loads === 1 && enters === 1 && Screens.current === 'playing' && String(S.seed) === '737373',
+      `${fetches} fetch(es), ${loads} load(s), ${enters} entr(ies); ${Screens.current}, seed ${S.seed}`);
+    ck('andTheSecondPressIsAnswered', !!msg, msg ? `"${msg.textContent}" is seen while the save is on its way` : 'nothing a player can see');
+    S.paused = true;
+  }
+
+  // ---- 7a³. …and a cloud save that NEVER answers (a token refresh that
+  //          hangs, a body that stalls after its headers) cannot hold the
+  //          title's presses for good: past LOAD_MAX_MS the attempt is called
+  //          off, said, and an answer that comes later is never loaded ----
+  {
+    await settle();
+    G.newGame('747474', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 8;
+    const state = G.saveJSON();
+    Backend.clearLocalSnapshot();
+    const realReady = Backend.isReady, realList = Backend.listSaves, realLoad = Backend.loadSlot, cap0 = Screens.LOAD_MAX_MS;
+    const l0 = G.loadJSON, late = [];
+    let loads = 0, msg = null, busy = null, ng = null, after = null, label = '';
+    Backend.isReady = () => true;
+    Backend.listSaves = async () => ({ ok: true, data: [{ slot: 4, name: 'Long Road', day: 8, map_seed: '747474', updated_at: new Date().toISOString(), over: false }] });
+    Backend.loadSlot = (slot) => new Promise(r => late.push(() => r({ ok: true, data: { slot, name: 'Long Road', state } })));   // no answer
+    G.loadJSON = function (j) { loads++; return l0.call(G, j); };
+    Screens.LOAD_MAX_MS = 700;
+    try {
+      Screens._demo = false; Screens.show('title');
+      for (let i = 0; i < 200 && Screens._newestSlot !== 4; i++) await tick();
+      label = cont().querySelector('small').textContent + ' / ' + Screens._newestSlot;
+      cont().click(); await wait(1100);                     // past the cap
+      msg = await seesSoon(/could not be opened/i);
+      busy = !!(Screens._continuing || Screens._entering);
+      late.splice(0).forEach(g => g());                      // …and then the cloud answers after all
+      await wait(300);
+      after = { screen: Screens.current, loads };
+      document.getElementById('btnTitleNew').click(); await tick();
+      ng = Screens.current;
+    } finally {
+      Backend.isReady = realReady; Backend.listSaves = realList; Backend.loadSlot = realLoad;
+      G.loadJSON = l0; Screens.LOAD_MAX_MS = cap0;
+    }
+    ck('aCloudSaveThatNeverAnswersLetsGoOfTheTitle', !!msg && !busy && after.loads === 0 && after.screen === 'title' && ng === 'newgame',
+      `${msg ? '"' + msg.textContent + '"' : 'nothing a player can see'} (Continue read "${label}"); in flight ${busy}; a late answer loaded ${after.loads} time(s) (${after.screen}); New game opened "${ng}"`);
+    Screens.show('title');
+  }
+
+  // ---- 7b. a New Game tap while the plaque is up founds nothing, and the
+  //          title's drift never moves the world being entered ----
+  {
+    netGame('5151', 4);
+    const h = holdArt();
+    let during = {}, cam0 = null, cam1 = null;
+    try {
+      cont().click(); await wait(120);
+      // the plaque is up; the world behind it bakes (the frame loop's slices)
+      for (let i = 0; i < 200 && (R._bake || R._bakeDue || !R.terrainCache); i++) await tick();
+      cam0 = [R.cam.x, R.cam.y];
+      await wait(400);
+      cam1 = [R.cam.x, R.cam.y];
+      document.getElementById('btnTitleNew').click(); await tick();
+      const screenAfterTap = Screens.current;
+      Screens.newPrefs.mode = 'calm'; Screens.startNewGame();          // a trial tapped twice, wherever the tap landed
+      await wait(250);
+      during = { plaque: prepUp(), screenAfterTap, seed: String(S.seed) };
+    } finally { h.let(); }
+    await playing();
+    ck('aNewGameTapDuringThePlaqueFoundsNothing',
+      during.plaque && during.screenAfterTap === 'title' && during.seed === '5151' && Screens.current === 'playing' && String(S.seed) === '5151' && S.day === 4,
+      `plaque ${during.plaque}; the tap left the title on "${during.screenAfterTap}", the world ${during.seed}; entered ${Screens.current} seed ${S.seed} day ${S.day}`);
+    const moved = cam0 && cam1 ? Math.hypot(cam1[0] - cam0[0], cam1[1] - cam0[1]) : -1;
+    ck('theTitleDriftNeverMovesAWorldBeingEntered', moved === 0, `the loaded world's camera moved ${moved.toFixed ? moved.toFixed(1) : moved}px behind the plaque`);
+    S.paused = true;
+    // …while the title's own demo still drifts
+    Screens._demo = false; Screens.show('title');
+    for (let i = 0; i < 600 && !(R.terrainCache && !R._bake && !R._bakeDue); i++) await tick();
+    const d0 = [R.cam.x, R.cam.y]; await wait(400);
+    const drift = Math.hypot(R.cam.x - d0[0], R.cam.y - d0[1]);
+    ck('butTheDemoStillDrifts', Screens._demo && drift > 0.5, `demo ${Screens._demo}, drifted ${drift.toFixed(1)}px in 0.4 s`);
+  }
+
+  // ---- 7c. a Continue whose save will not open says why, where the player
+  //          can see it, and leaves a title that still answers ----
+  {
+    G.newGame('8181', 'calm', 'small'); Cards.pick(0);
+    const j = JSON.parse(G.saveJSON()); j.v = 99;               // e.g. a snapshot a newer build wrote on this origin
+    localStorage.setItem('neo-emergency', JSON.stringify({ at: Date.now(), day: 7, slot: null, json: JSON.stringify(j) }));
+    Screens._demo = false; Screens.show('title');
+    const label = cont().querySelector('small').textContent;
+    let threw = null;
+    try { cont().click(); } catch (e) { threw = String(e); }
+    await wait(400);
+    const msg = await seesSoon(/could not be opened/i);
+    const stuck = !!(Screens._continuing || Screens._entering);
+    document.getElementById('btnTitleNew').click(); await tick();
+    const ng = Screens.current;
+    ck('aContinueThatCannotOpenSaysWhyVisibly', !!msg && /newer version/i.test(msg.textContent) && !threw,
+      msg ? `"${msg.textContent}" is seen over the title (Continue read "${label}")` : `nothing a player can see (Continue read "${label}")`);
+    ck('andTheTitleStillAnswers', !stuck && ng === 'newgame', `in flight ${stuck}; New game opened "${ng}"`);
+    Screens.show('title');
+    localStorage.removeItem('neo-emergency');
+  }
+
+  // ---- 7d. a load that fails AFTER touching the world leaves a clean title ----
+  {
+    G.newGame('9292', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 3;
+    Backend.snapshotLocal(G.saveJSON());
+    Screens._demo = false; Screens.show('title');
+    const demoSeed = String(S.seed);
+    const on0 = R.onNewGame; let once = true;
+    R.onNewGame = function () { if (once) { once = false; throw new Error('a painter fault mid-load'); } return on0.apply(R, arguments); };
+    try { cont().click(); await wait(400); } finally { R.onNewGame = on0; }
+    const msg = await seesSoon(/could not be opened/i);
+    ck('aLoadThatFailsHalfWayLeavesACleanTitle',
+      Screens.current === 'title' && Screens._demo && String(S.seed) !== '9292' && !!(R.terrainCache || R._bakeDue || R._bake),
+      `title ${Screens.current}, demo ${Screens._demo}, world ${S.seed} (the save was 9292, the old demo ${demoSeed}), ground ${!!R.terrainCache || 'due ' + !!(R._bakeDue || R._bake)}`);
+    ck('andSaysSo', !!msg, msg ? `"${msg.textContent}"` : 'nothing a player can see');
+    Backend.clearLocalSnapshot();
+  }
+
+  // ---- 7e. a tap while the cloud lookup is still out is answered ----
+  {
+    const realReady = Backend.isReady, realList = Backend.listSaves;
+    let answer = null;
+    Backend.isReady = () => true;
+    Backend.listSaves = () => new Promise(r => { answer = r; });
+    Backend.clearLocalSnapshot();
+    try {
+      Screens._demo = false; Screens.show('title');
+      const label = cont().querySelector('small').textContent;
+      cont().click(); await wait(300);
+      const msg = await seesSoon(/still checking/i);
+      ck('aTapWhileTheLookupIsOutIsAnswered', /looking/.test(label) && !!msg, msg ? `"${msg.textContent}" (Continue read "${label}")` : `nothing a player can see (Continue read "${label}")`);
+    } finally {
+      if (answer) answer({ ok: true, data: [] });
+      Backend.isReady = realReady; Backend.listSaves = realList;
+    }
+    await tick();
+  }
+
+  // ---- 7f. the plaque's bar shows progress: time against the art's floor
+  //          when the art says nothing, and it never goes back ----
+  {
+    netGame('3131', 5);
+    const h = holdArt();
+    const floor0 = Screens.GAME_ART_FLOOR_MS, pend0 = Assets.pending;
+    Screens.GAME_ART_FLOOR_MS = 3000;
+    Assets.pending = 40;                                        // forty pictures still on the wire, none landing
+    const samples = [];
+    try {
+      cont().click();
+      const t0 = performance.now();
+      for (let i = 0; i < 16; i++) {
+        await wait(100);
+        const f = document.getElementById('prepFill');
+        samples.push([performance.now() - t0, f ? parseFloat(f.style.width) || 0 : -1]);
+      }
+    } finally { Assets.pending = pend0; Screens.GAME_ART_FLOOR_MS = floor0; h.let(); }
+    await playing();
+    let back = 0; for (let i = 1; i < samples.length; i++) if (samples[i][1] < samples[i - 1][1]) back++;
+    const [tl, wl] = samples[samples.length - 1];
+    ck('thePlaquesBarShowsProgress', back === 0 && wl >= Math.min(100, 100 * (tl - 150) / 3000) - 2 && wl > 20,
+      `${back} step(s) back; ${wl}% at ${Math.round(tl)} ms of a 3000 ms floor (forty pictures pending)`);
+    S.paused = true;
+  }
+
+  // ---- 7g. a fault in the plaque's tick still lifts it and enters the game ----
+  {
+    netGame('7373', 6);
+    const h = holdArt();
+    const tb = R.tickBake; let faults = 0;
+    try {
+      cont().click(); await wait(80);
+      R.tickBake = function () { if (!faults++) throw new Error('a painter fault behind the plaque'); return tb.apply(R, arguments); };
+      R._bakeDue = true;                                        // the bake is still owed when the art lands
+    } finally { h.let(); }
+    const ok = await playing(6000);
+    R.tickBake = tb;
+    ck('aFaultBehindThePlaqueStillEntersTheGame', ok && String(S.seed) === '7373' && !prepUp() && !Screens._entering,
+      `faults ${faults}; ${Screens.current} seed ${S.seed}, plaque ${prepUp()}, entering ${Screens._entering}`);
+    S.paused = true;
+  }
+
+  // ---- 7h. the shell's messages are SEEN: a cloud save that fails or works,
+  //          a slot that will not load, a file that will not import, an
+  //          identity that will not restore ----
+  {
+    G.newGame('6464', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 12;
+    const real = { ready: Backend.isReady, list: Backend.listSaves, load: Backend.loadSlot, auto: Backend.autosaveNow, imp: Backend.importIdentity, prompt: window.prompt };
+    window.prompt = () => 'Test Village';
+    try {
+      Backend.isReady = () => true;
+      Backend.listSaves = async () => ({ ok: true, data: [{ slot: 1, name: 'Old Village', day: 3, landform: 'valley', playtime_seconds: 60, updated_at: new Date().toISOString() }] });
+      // a cloud save that fails — the player is on the Save screen, from the pause menu
+      Screens.backTo = 'paused'; Screens.show('load', { saveMode: true }); await wait(50);
+      Backend.autosaveNow = async () => ({ ok: false, error: { code: 500, message: 'Server error' } });
+      await Screens.saveToSlot(2, null); await wait(150);
+      const fail = await seesSoon(/save failed/i);
+      ck('aFailedSaveIsSeen', !!fail, fail ? `"${fail.textContent}" over the ${Screens.current} screen` : 'nothing a player can see');
+      // …and one that works ("Did my progress save?")
+      Backend.autosaveNow = async () => ({ ok: true, data: null });
+      await Screens.saveToSlot(2, null); await wait(150);
+      const good = await seesSoon(/saved to slot 2/i);
+      ck('andASaveThatWorksIsSeenToo', !!good, good ? `"${good.textContent}" over the ${Screens.current} screen` : 'nothing a player can see');
+      // a slot that will not load (the Load screen's own button)
+      Screens.backTo = 'title'; Screens.show('load'); await wait(50);
+      Backend.loadSlot = async () => ({ ok: false, error: { code: 'network', message: 'Request timed out' } });
+      const lb = [...document.querySelectorAll('#slotList .abtn')].find(x => /Load/.test(x.textContent));
+      if (lb) lb.click();
+      await wait(150);
+      const lf = await seesSoon(/could not be opened|timed out/i);
+      ck('aSlotThatWillNotLoadIsSeen', !!lb && !!lf && Screens.current === 'load', lf ? `"${lf.textContent}"` : `nothing a player can see (button ${!!lb})`);
+      // …and one whose fetch THROWS releases the press, keeps the world in
+      // hand and the screen it was on, and says so
+      if (Screens.unsay) Screens.unsay();
+      const seed0 = String(S.seed);
+      Backend.loadSlot = async () => { throw new Error('a fault in the fetch'); };
+      const lb2 = [...document.querySelectorAll('#slotList .abtn')].find(x => /Load/.test(x.textContent));
+      if (lb2) lb2.click();
+      await wait(150);
+      const lt = await seesSoon(/could not be opened/i);
+      const busy = !!(Screens._continuing || Screens._entering);
+      ck('aLoadThatThrowsLetsGoOfThePress', !!lt && !busy && Screens.current === 'load' && String(S.seed) === seed0,
+        `${lt ? '"' + lt.textContent + '"' : 'nothing a player can see'}; in flight ${busy}; ${Screens.current}; world ${S.seed} (was ${seed0})`);
+      // a save file that will not import
+      const inp = document.getElementById('fileLoad');
+      const dt = new DataTransfer(); dt.items.add(new File(['this is not a save'], 'village.json', { type: 'application/json' }));
+      inp.files = dt.files; inp.dispatchEvent(new Event('change'));
+      await wait(300);
+      const imp = await seesSoon(/could not (be opened|load)/i);
+      ck('aFileThatWillNotImportIsSeen', !!imp && Screens.current === 'load', imp ? `"${imp.textContent}"` : 'nothing a player can see');
+      // an identity that will not restore, over the settings page
+      Screens.show('settings'); await wait(50);
+      Backend.importIdentity = async () => ({ ok: false, error: { code: 'bad_token', message: 'That does not look like a recovery token' } });
+      document.getElementById('btnImportId').click();
+      await wait(150);
+      const idm = await seesSoon(/does not look like a recovery token/i);
+      ck('aRestoreThatFailsIsSeen', !!idm, idm ? `"${idm.textContent}" over Settings` : 'nothing a player can see');
+    } finally {
+      Backend.isReady = real.ready; Backend.listSaves = real.list; Backend.loadSlot = real.load;
+      Backend.autosaveNow = real.auto; Backend.importIdentity = real.imp; window.prompt = real.prompt;
+    }
+    Screens.backTo = 'title'; Screens.show('title');
+  }
+
+  // ---- 7i. the plaque never strands the player: a wait that never ends is
+  //          cut off, and the game is entered (last — on a build without the
+  //          cut-off its pending entry would fire into anything after it) ----
+  {
+    netGame('8383', 8);
+    const h = holdArt();
+    const floor0 = Screens.GAME_ART_FLOOR_MS, max0 = Screens.PREP_MAX_MS;
+    Screens.GAME_ART_FLOOR_MS = 120000;                         // the art never lands
+    Screens.PREP_MAX_MS = 1500;
+    let ok = false;
+    try { cont().click(); ok = await playing(5000); }
+    finally { Screens.GAME_ART_FLOOR_MS = floor0; Screens.PREP_MAX_MS = max0; h.let(); }
+    ck('thePlaqueNeverStrandsThePlayer', ok && String(S.seed) === '8383' && !prepUp(),
+      `after 5 s: ${Screens.current}, seed ${S.seed}, plaque ${prepUp()}`);
+    S.paused = true;
   }
 
   return { res, fails };

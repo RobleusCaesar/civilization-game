@@ -48,10 +48,15 @@
       2px down into its frame, Continue's "no saves yet" sits flat and stays
       legible, the pause menu's plaques are untouched, and a player who asks
       for less motion gets no embers.
+   8. THE TITLE SAYS WHAT HAPPENED: a Continue whose save will not open says
+      why on the shell's own line (#shellMsg, Screens.say — a toast is hidden
+      off the playing screen), SEEN at 320x568 through 1440x900: on top at
+      its centre, inside the window, no scroll, clear of Continue and New
+      game.
 
    Run after touching: index.html's boot block (Boot.title2 / t2*), the title
-   markup or its CSS, js/titlescreen.js, Screens.onTitle, G.titleGlenUp, or
-   assets/ui/title/.
+   markup or its CSS, #shellMsg, js/titlescreen.js, Screens.onTitle /
+   continueGame / say, G.titleGlenUp, or assets/ui/title/.
 
      node tests/title.mjs      # exits non-zero on any regression */
 import { dirname, join, extname } from 'node:path';
@@ -530,6 +535,57 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   ck('theNightCarriesTwiceThePaintingsPixels', grain.length === 2 && grain.every(x => x.split > 0.04 && x.smear === 0),
     grain.map(x => `${x.v}: ${(x.split * 100).toFixed(1)}% of the master's pixels split by Scale2x, ${x.smear} blurred`).join('; '));
   await o.ctx.close();
+}
+
+/* ---- 8. THE TITLE SAYS WHAT HAPPENED, WHERE IT CAN BE SEEN (PX-69): a
+   Continue whose save will not open (here a snapshot a newer build wrote)
+   used to fail into a toast, and every toast is display:none off the
+   playing screen — the press simply did nothing. The reason is SEEN: shown,
+   on top at its own centre (elementFromPoint), inside the window at every
+   size, never pushing the column into a scroll and never over the two
+   plaques the player needs next (Continue to retry, New game to start). ---- */
+{
+  const bad = JSON.stringify({ at: Date.now(), day: 7, slot: null, json: JSON.stringify({ v: 99, map: { terrain: [0] } }) });
+  const said = [];
+  for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3], [844, 390, 3], [1440, 900, 1]]) {
+    const o = await open({ vp: [w, h], dpr, tag: 'say' + w, store: { 'neo-emergency': bad } });
+    const at = await o.p.evaluate(() => { const r = document.getElementById('btnContinue').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+    await o.p.mouse.click(at[0], at[1]);
+    await o.p.waitForTimeout(500);
+    // the line fades in over its first frames: wait (briefly) for it to be on
+    // top at its centre before measuring, never one fixed beat on a busy host
+    await o.p.waitForFunction(() => {
+      const el = [...document.querySelectorAll('body *')].find(e => !e.childElementCount && /could not be opened/i.test(e.textContent || ''));
+      if (!el || +getComputedStyle(el).opacity < 1) return false;
+      const q = el.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+      return !!hit && (hit === el || el.contains(hit));
+    }, null, { timeout: 2500 }).catch(() => {});
+    const r = await o.p.evaluate(() => {
+      const de = document.documentElement, vw = de.clientWidth, vh = de.clientHeight;
+      const el = [...document.querySelectorAll('body *')].find(e => !e.childElementCount && /could not be opened/i.test(e.textContent || ''));
+      if (!el) return { none: true };
+      let shown = true;
+      for (let e = el; e && e !== de; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) shown = false; }
+      const q = el.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+      const clear = id => { const b2 = document.getElementById(id).getBoundingClientRect(), x = document.elementFromPoint(b2.left + b2.width / 2, b2.top + b2.height / 2); return !!x && !el.contains(x) && x !== el; };
+      return { shown, top: !!hit && (hit === el || el.contains(hit)), inside: q.left >= -0.5 && q.top >= -0.5 && q.right <= vw + 0.5 && q.bottom <= vh + 0.5,
+        sideways: de.scrollWidth > vw, scrolls: (() => { const c = document.querySelector('#scrTitle .tcol'); return c.scrollHeight > c.clientHeight + 1; })(),
+        contClear: clear('btnContinue'), newClear: clear('btnTitleNew'), screen: Screens.current, text: el.textContent.trim() };
+    });
+    const why = [];
+    if (r.none) why.push('no reason anywhere');
+    else {
+      if (!r.shown || !r.top) why.push('not seen (shown ' + r.shown + ', on top ' + r.top + ')');
+      if (!r.inside) why.push('outside the window');
+      if (r.sideways || r.scrolls) why.push('pushes a scroll');
+      if (!r.contClear || !r.newClear) why.push('over ' + (!r.contClear ? 'Continue' : 'New game'));
+      if (r.screen !== 'title') why.push('left the title for ' + r.screen);
+    }
+    said.push(`${w}x${h}: ${why.length ? why.join(', ') : 'seen — "' + r.text + '"'}`);
+    if (why.length) said.fail = true;
+    await o.ctx.close();
+  }
+  ck('aContinueThatWillNotOpenSaysWhyAtEverySize', !said.fail, said.join(' | '));
 }
 
 ck('theTitleRunsClean', errs.length === 0, errs[0] || 'no page errors');
