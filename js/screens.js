@@ -409,8 +409,9 @@ const Screens = {
   // …anything else that stops an opening part-way: never a stuck press
   _openFailed(e) {
     this._fault(e, 'a world that would not open');
-    this._continuing = false; this._arrive = false;
-    this._entering = false; this._prepRun = null;
+    this._continuing = false; this._arrive = false; this._entering = false;
+    const run = this._prepRun;
+    if (run) { run.gone = true; clearTimeout(run.t); this._prepRun = null; }
     try { this.showPrep(false); } catch (e2) {}
     if (window.S && !this._demo && this.current !== 'playing') { try { this.show('title'); } catch (e2) {} }
     this.say('That save could not be opened: ' + this.whyLoad(e), true);
@@ -458,8 +459,6 @@ const Screens = {
 
   enterGame() {
     if (!this._entering) { this._prepT0 = performance.now(); this._prepSync = true; Promise.resolve().then(() => { this._prepSync = false; }); }   // analytics (prep_ms): the press — a world that opens in this same task showed no plaque
-    // one plaque at a time: the one already waiting enters this world when it is ready (PX-21a)
-    if (this._entering && this._prepRun) return;
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
@@ -473,6 +472,8 @@ const Screens = {
        plaque: the art settled behind the title long before. */
     const ready = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
     if (ready()) { this._enterNow(); return; }
+    // one plaque at a time: the one already up enters this world when it is ready (PX-21a)
+    if (this._prepRun) return;
     this.showPrep(true);
     /* THE PLAQUE NEVER STRANDS THE PLAYER (PX-21a). A fault in a slice of the
        bake used to kill this tick and leave "Preparing the world…" up for
@@ -507,6 +508,9 @@ const Screens = {
   _enterNow() {
     this._entering = false;
     this._continuing = false;   // the world is in: Continue answers again (PX-21a)
+    // …and a plaque still up for an earlier press retires with it: one entry, never two
+    const run = this._prepRun;
+    if (run) { run.gone = true; clearTimeout(run.t); this._prepRun = null; this.showPrep(false); }
     /* ANALYTICS: a run BEGINS here — after the draft, so the kept card is
        known, and only for a world G.newGame just founded (G._freshRun), so
        loading a save is never counted as a new run. A start with no matching
