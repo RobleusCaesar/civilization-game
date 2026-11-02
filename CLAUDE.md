@@ -95,6 +95,45 @@ If a new feature genuinely needs different tap behaviour, update
 `tests/tap-audit.mjs` in the same commit and say so in the commit message —
 never leave the test failing or weaken a threshold without explaining why.
 
+**A REFUSAL IS READ, AND THE NEWS REACHES A MUTED PLAYER** (`UI.toast` /
+`UI.inOpenBand`, `G.log`'s `refusal`, `Combat.hitBuilding`'s alarm,
+`Bld.finish` / `releaseTrained` / `finishUpgrade`; tests/feedback.mjs, PX-06,
+PX-12, PX-17): rule 4's reason has to be READ. **A TOAST HOLDS FOR ITS
+WORDS**: max(3.2 s, 1.2 s + 0.26 s a word); a toast with no words shows
+nothing, and five at most are on screen. **THE COLLAPSE IS ASKED FOR**:
+`UI.toast(msg, warn, ms, dedupe, news)` drops a repeat inside six seconds
+(`UI._toastAt`, still the map five contracts reset) only under `dedupe`,
+which `G.log` sets for every game event. A refusal to the player's tap always
+shows: a repeat of a toast still on screen REPLACES it (`UI._toastEl`, keyed
+on S), and a refusal's repeat shakes once (`.toast.shake`, 150 ms; reduced
+motion flares the plate instead) — never a note's, nor the world's news. A
+direct `UI.toast` is never collapsed, so never ask one per frame: a game
+event goes through `G.log(msg, warn, ms, refusal)`, which flags the sim's own
+refusals and returns the node shown. **A CALL WITH NO LEVEL IS SHOWN
+NOWHERE** (only `G.log` writes the event log): an armed mode's instruction
+(Rally, Build, a doctrine, a tool, a banner) and the levy's one unseen cost
+(it eats like soldiers) pass 'note'; putting a tool or a doctrine down stays
+silent; an order acknowledgement passes none; the sapper's no-ground refusal
+warns.
+**THE LESSON HOLD IS FOR THE WORLD'S NEWS ALONE** (§2–2b): while
+`Tutorial.noteUp()` holds (read guarded, on the method), only a note marked
+`news` (G.log's, the "N ready" fold) waits until the note is answered and its
+breath has passed, dropped after 20 s, never shown late; a warning, or a note
+answering the player's own act (every 'note' raised in ui.js), shows at once
+— held, the tap reads as dead (rule 4).
+**"X UNDER ATTACK!" ON THE FIRST BLOW** after ten quiet seconds, per
+building, from anyone but the player (`Combat._alarmAt`, real time, keyed on
+S, never saved; a plain `G.log` at every difficulty, never foeNote); the old
+15% roll's `Math.random` draw is KEPT under its exact old guard, result
+unused, so every seeded stream is where it was. **NEWS OFF THE OPEN VIEW IS A
+NOTE**: a finished building, a trained unit or a new level toasts 'note' when
+`UI.inOpenBand` puts it under the top bar, the open panel or its tab, or off
+the sides (by 0.3 tile × zoom; `R.onScreen` counts that ground as seen),
+never for a wall or gate; trained units fold per building per ten seconds
+(`Bld._readyAt`, keyed on S; the event log keeps a line a unit); a new level
+is heard (`Sound.ui('complete')`, the player's own, never a card's). The bars
+are read live, and only at those moments.
+
 ## A red parity or regression check BLOCKS the merge
 
 Standing rule, no waivers. If a byte-parity check (`tests/wild-grass.mjs`'s
@@ -232,6 +271,8 @@ node tests/card-intro.mjs    # the card announcement: the switch ships on, and t
 node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch; ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
+node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
+node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -1930,6 +1971,52 @@ which a tab-hide used to write over the real run, so Continue offered
 `G.loadJSON` restart `Backend._lastAutosaveDay`, which a second game in one
 sitting inherited from the last run — no recovery snapshot until it passed
 that run's last day.
+**CONTINUE WORKS THE FIRST TIME AND SAYS WHERE YOU ARE**
+(`Screens._continuing` / `opening()` / `_loadSave` / `_fetchSlot` / `say`,
+`#shellMsg`; same test §7, tests/title.mjs §8, PX-21a, PX-69, PX-38). **ONE
+OPENING AT A TIME**: `_continuing` holds from the press until `_enterNow` or
+a failure, and every press that would open a world (Continue, Load, an
+import, New Game, the draft's keep) asks `opening()`
+(`_continuing || _entering`). The title stays live under the plaque: `#prep`
+keeps `pointer-events: none` on purpose, since a stuck plaque must never
+become a dead page. A press while a cloud save is on its way, with nothing on
+screen yet, is ANSWERED ("Opening your saved game…"), never obeyed; once the
+plaque is up, the plaque is the answer. **NOTHING HOLDS THE PRESSES FOR
+GOOD**: `_fetchSlot` says the cloud could not be reached once `LOAD_MAX_MS`
+(40 s) has passed (`_rest`'s worst case is ~26 s, but its timer covers the
+headers alone and a token refresh has none) and drops a later answer, never
+loading it over what the player did next. The plaque's tick is guarded, and
+`PREP_MAX_MS` (30 s) lifts it whatever the wait does: the game is entered
+(the frame loop finishes a bake still owed), or every press answers again
+and `_openFailed` says why, never navigating (a paused game's Load screen
+stays the Load screen). One plaque at a time (`_prepRun`), and `_enterNow`
+retires one still up, so a world is entered once. **A SAVE THAT WILL NOT
+OPEN SAYS WHY** (`_loadSave`, the one door every opening goes through): past
+`G.loadJSON`'s own refusal a fault no longer leaves the world half-replaced —
+a replaced world gives way to a clean title world, the world in hand gets its
+ground back, and the player reads "That save could not be opened: …" in
+plain words (`whyLoad` / `whyNet`, never an exception's own). A refusal by
+design (not a save, or a newer build's) is news, not a fault; any other
+fault goes through `_fault` to `Feedback.noteError`. **THE SHELL HAS ONE
+MESSAGE LINE** (`Screens.say` / `unsay`): toasts are hidden off the playing
+screen (`body:not(.ingame) #toasts`), so there `say` writes `#shellMsg` over
+whichever shell screen is up, above the home bar (gold for news, red for a
+failure, put away by a tap or after a few seconds), and in a game a toast;
+entering a game clears the line. "Your game is still kept on this device"
+only when the crash net holds that day. Measure a message as SEEN (computed
+display up the tree, `elementFromPoint` at its centre, over a short while,
+since the line fades in), never as present — presence is how the hidden
+toasts passed. **THE ARRIVAL IS TOLD**: a world opened from a save
+(Continue, Load, a file) says "Welcome back — day N" once, two frames in
+(`_arrive`; a Resume says nothing), in place of the crash net's "Recovered
+your last session"; a crash-net Continue counts its day as saved
+(`lastSavedDay`), so the quit guard counts from it. The title's drift is the
+demo's alone, never a world being entered; the plaque's bar (`showPrep`)
+shows the further of the art's fraction and the time against
+`GAME_ART_FLOOR_MS`, never going back. Unchanged on purpose: which save
+Continue picks (PX-21b, deferred: it changes what loads), its label and the
+quit guard's words. The `window.UI` trap again: `say` and the arrival note
+ask `typeof UI`.
 
 **Drag-to-move** (`tests/drag-move.mjs`): the second movement gesture, born of
 the crowded-tile problem — with several units stacked, tapping a destination
@@ -1958,6 +2045,33 @@ unexplored tap with a villager goes straight to the clamped walk, never into
 those branches). Sub-threshold presses fall through to the ordinary tap
 byte-for-byte (tap-audit still rules); drags starting OFF the selection still
 pan; wall/terraform line-drags keep right of way at pointerdown.
+**THE MAP STAYS UNDER THE FINGERS** (`UI.bindCanvas`, same test §9–11): a
+pinch zooms about where the fingers WERE and carries that ground to where
+they ARE (`UI.pinchMid`), so two fingers moved together pan and a travelling
+pinch never slides the ground away; the move past the 8px slop pans by the
+whole travel since the press. When one of two fingers lifts, the other is
+re-armed as a drag ALREADY MOVING (`downAt.moved = true`, `moveDragArm`
+cleared): it pans, and never starts a wall or sapper line, a move order or a
+tap. When a third finger lifts, the pinch is re-measured from the two still
+down. **A STILL PRESS IS A TAP FOR UP TO A SECOND**, timed by the events' own
+stamps (`UI._tapTime`: `e.timeStamp`, else `performance.now()`), never the
+handler's clock. **THE WHEEL ZOOMS IN PROPORTION**: deltaY read in its own
+units (lines ×16, pages × the window), `exp(−dy × 0.0015)` an event, clamped
+0.8…1.25; a ctrl+wheel is a trackpad pinch, `exp(−dy / 100)`; the canvas
+swallows `contextmenu` (a right-click is an order), while the HUD and the
+minimap keep the browser's menu; `R.minZoom` and the 3.5 ceiling are
+untouched. **MEASURE A GESTURE WITH STAMPED INPUT** (CDP's `timestamp`): an
+awaited command waits on a busy renderer, so a scripted "120 ms" double-tap
+reached the page 0.75–2.3 s apart.
+**A TWO-TAP CONFIRM IS TWO DECISIONS, NEVER ONE DOUBLE-TAP**
+(`UI.armConfirm` / `confirmTooSoon` / `CONFIRM_GAP_MS` 400; tests/banish.mjs,
+boats-moat-scuttle.mjs, build-cancel.mjs): Demolish, bridge Demolish, Cancel
+works (the building's panel and the builder's), Banish and Scuttle arm by
+relabelling their button, so a double-tap armed AND confirmed; now each slot
+remembers when it was armed, and a confirming tap under 400 ms after, by the
+taps' own timestamps, is ignored — still armed, no toast. The contracts fire
+a double-tap's second tap in the first's task (a 120 ms nap measured
+200–600 ms on a loaded host) and wait 450 ms before a deliberate one.
 
 **Chase commit & ground rescue** (`tests/chase-commit.mjs`): the "attacker
 stuck in the trees" glitch. The close-range straight steer (`d < 3` in
@@ -3524,6 +3638,52 @@ RECORD). Every existing gate still holds (site-only `_emit`, `S.played`,
 every walk-away by day and by minutes, split by difficulty and device,
 closed_tab beside struck_banner.
 
+**THE FIRST MINUTE IS VISIBLE** (tests/telemetry.mjs §7, PX-49): additive
+props only (integers, booleans, short enums; never an id, typed text or a
+click history), `'seconds'` keeping `Math.round(S.playtime)` and
+`telemetryAllowed` untouched. The session row names where the page was at
+its FIRST hide (`Backend.sessionAt`, `at`: 'title', the menus and trial
+cards included; 'prep', off `Screens._entering`; 'draft'; or 'game', a
+played world behind any screen) and `entered` (set by `Screens._enterNow`).
+It is still one row a page load, so a page hidden at the title and played
+later reads 'title': a visit, never a duration. run_start carries `prep_ms`
+(wall time from `enterGame` to the world opening, a hidden tab included; 0
+EXACTLY when it opened in the press's own task, the `_prepSync` microtask
+flag, so a forced layout on a busy phone never reads as a plaque) and
+`tut_src` ('auto', the first-two-games default; 'ticked', an explicit '1';
+'declined', an explicit '0': unticked, or a lesson skipped before; 'none');
+both rows carry `form` ('phone' | 'tablet' | 'desktop', from the primary
+pointer and the screen's short side, 600: the DEVICE, where `device` is the
+window) and `standalone`. Every ending (`G.runReport`, real or closed_tab)
+carries, null when unknown, never absent: `first_act_s` (stamped once in
+`G.noteAct` BEFORE its once-a-day return, `S.stats.firstActS`; an older save
+that already gave orders backfills -1, never the clock at its next order,
+and one that gave none learns its first), `tut_skip_at`
+(`S.stats.tutSkipAt`, the FIRST skip's step, stamped in `Tutorial.skip`
+before the step jumps to the end; a skip after the spine names the note on
+show, since step and event ids are disjoint), `wall_s` (BESIDE 'seconds',
+never replacing it: the run's seconds with this page's share on the VISIBLE
+wall clock, `Screens._vis`; a pause still counts there, so the two bracket
+the time played) and `resume_prep_ms` (a Continue's plaque wait, since a
+Continue sends no run_start). The opening record is a WeakMap on the world
+(`Screens._opened`), set the first time a world reaches `_enterNow` in a page
+and never again on a resume from the pause menu, never saved; a world shown
+any other way (a test's `Screens.show('playing')`) answers unknown.
+`firstActS` / `tutSkipAt` are the save's only additions (null in `newGame`,
+backfilled in `loadJSON`), and build 127 loads a save that carries them.
+**THE TOKEN STAYS CURRENT** (§8, PX-50 part 1): supabase-js renews the token
+hourly into a NEW session object, and `Backend.session` kept the old one, so
+every fire-and-forget row went out under a dead Bearer (`_rest` refreshes
+once on a 401; `_emit` never retries, by design). `Backend._init` follows
+`onAuthStateChange`: a session with a token replaces `Backend.session` only
+while nobody is signed in or for the SAME player
+(`s.user.id === Backend.uid`); a sign-out never blanks it, another player's
+is `_signIn`'s and `importIdentity`'s, and `uid` is never written
+(`Deck.sync`'s new-uid rule stands). A mock without the door (every other
+suite's) registers nothing, and a page from disk never builds a client.
+Parts 2–3 (a resent closed_tab/run_start outbox, a reconnect on 'online')
+are deferred.
+
 **THE DASHBOARD COUNTS GAMES, NOT ROWS** (`analytics.html`, migration
 `0010_dashboard.sql`, `tests/analytics.mjs` — operator, 2026-10-28, on the
 past month: "171 games were played, but 434 reached an ending. That doesn't
@@ -3845,6 +4005,43 @@ re-blurred the moving map under a 94%-opaque bar every frame. The build cards
 are smooth raised plates (the grain is the bar's, not every card's). The deck
 sheet and the aim bar read the same variable and wear the same walnut.
 
+**THE HUD'S NUMBERS TELL THE TRUTH AND EXPLAIN THEMSELVES**
+(`UI.incomePerDay` / `handRate` / `smoothNet` / `chipNote` / `idleNote`
+beside `UI.refresh`; tests/hud-info.mjs, PX-19, PX-18, PX-08, PX-56). **THE
+FOOD RATE IS THE NET** (`rFoodNet` printed the upkeep alone): what the town
+is SET to bring in less `Units.foodUpkeep('P')`, as "+N/d", "−N/d" (U+2212)
+or "±0/d", nothing when the town neither eats nor earns, red while it falls
+and in a famine as before. `UI.incomePerDay(res)` is the ONE sum the rate and
+the chip notes share: every hand sent to gather or fish at
+`Units.workReport`'s rate, counted from the order on (`handRate`, pinned
+equal to workReport's own once the hand arrives), so an order shows at once
+and a step between two tiles never reads as a loss; every fishing boat the
+same way; every finished work by the very expression `Bld.dailyProduction`
+pays; plus `Cards.dailyExtras`. A kill's meat and a card's goods are gifts,
+not a rate. It is READ-ONLY: no write to S, no draw from any RNG. **Change
+dailyProduction's expression and change incomePerDay's with it** — hud-info
+judges the notes against the real daily lump. **It does not flicker**: an
+exponential average in GAME time (`NET_DAYS` 0.5), UI-local in a WeakMap
+keyed on the world, never saved; a paused world holds it, and a new world or
+a load starts it at the sum itself (hud-info: its sign agrees with the real
+larder on 60/60 rising and 10/10 falling days). **EVERY CHIP ANSWERS A TAP**
+(the four goods, the food rate, the tribe, the day; `data-chip`, role=button,
+a name that carries its number; Enter and Space too, and a click leaves no
+focus behind) with a note in the rules' own numbers, a full town told only
+the step that can really make more. On a phone the resource chips are
+`flex: 1 1 auto` (flex-grow stays 1 — desktop-layout reads it), gapless under
+400px, so a five-figure larder and its rate fit at 320; no two top-bar hit
+boxes may overlap (probed on a 1px `elementFromPoint` grid). **A SPENT TILE
+IS NEWS** (`UI.idleNote`, from `Units.update`'s two "villager idle" lines:
+the spent tile and the fished-out shoal): the world's first is a NOTE naming
+what ran out, then one every five game days at most, ONE gate for all
+resources; every line still goes to the chronicle, and a note the toast
+rules hold or collapse still spends the gate. The idle badge did not ship,
+and the fishing boat's "fished out" line is untouched. The words: the
+Guide's famine rule (soldiers desert, villagers keep working), the live
+Settings page's music line (the stand-down screen pinned by settings.mjs's
+hash untouched), and `UI.plural` for a party ("Axemen").
+
 **The desktop layout** (`tests/desktop-layout.mjs`): `R.minZoom()` — derived
 from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a
@@ -3855,6 +4052,34 @@ centres via auto-margin pseudo-elements (`justify-content: safe center`
 is dropped by Chromium); below 900px nothing changes. `boot.mjs` reads the
 splash as a fixed slice of the SOURCE — a long comment inside the element
 pushes the `<picture>` past it.
+
+**A PHONE'S SMALL CONTROLS HIT AT 44 PX, AND LOOK THE SAME**
+(tests/desktop-layout.mjs §3, PX-14): the folded build tab (22px tall), Pause
+and Menu (34x34) and the minimap's fold (30x30) each get an INVISIBLE reach,
+a positioned pseudo-element, so `getBoundingClientRect`, the art and the
+tutorial's ring never move. §3 measures the hit box as a finger meets it,
+`elementFromPoint` on a whole-pixel grid reaching 24px past the drawn box (a
+12px margin under-reads the tab as 40). The tab's (`#bmToggle::before`;
+`::after` is the Master Builders badge) reaches 16px up and 6px down, its
+WIDTH its own, **ONLY WHILE FOLDED**
+(`:has(~ #buildmenu[style*="display: none"]):not(:has(~ #panel.show))`): an
+open tab rises with the panel a tap opens, and the click that follows the
+touch landed on its reach and hid that panel; a folded tab only ever moves
+down, away from a finger. A browser without `:has()` keeps the old 22px; if
+the fold stops being an inline `display: none`, the reach turns off silently
+and §3 goes red. Pause and Menu take the bar's 5px above and below
+(`#topbar .iconbtn::after`, the Map and Cards buttons' rule), never past the
+bar nor across the 3px between buttons: 34x44 on a phone, 44x44 on a wide
+window. The deck's count badge is lifted (`z-index: 1`; it takes no taps)
+and §3 holds its pixels to 127's paint order. The minimap's fold reaches
+into the 4px gap under the map, never onto it, 10px down short of the army
+banners and out to the screen's edge (44x44). The trade, measured with real
+touches at 390x844@3: with a villager selected and the panel folded, every
+pixel the tab's reach gains is a walk order taken from the world, one for
+one; an open tab takes nothing 127 did not; and Chromium's touch adjustment
+stacks on top (the folded tab answers ~24px above its top there).
+**"IS THIS TAP ON THE WORLD?" IS ASKED OF `elementFromPoint(x, y)`**, never
+of a drawn rect: no reach lies inside one.
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and
 the same bargain the gate makes — one tap and the whole workforce downs tools
@@ -4869,7 +5094,8 @@ a lift-above-the-thumb draft read as placing two tiles high in play — with
 elsewhere still pans, two fingers still pinch; release parks it and the ✓/✗
 pair (44px, BENEATH the footprint — under the doorstep, not on a neighbour's
 roof — flipping above only when the bottom bar is tight; chip on the opposite
-side) appears; ✓ RE-VALIDATES from scratch — the tint is never trusted.
+side) appears in place of the pre-park ✗ row (`#placeBtns.pre`, below);
+✓ RE-VALIDATES from scratch — the tint is never trusted.
 **The confirm throws dust** (`R.poofSheet`/`startPlacePoof`/`drawPlacePoofs`):
 a ring of two-tone dust billows out from UNDER the new site on all four
 sides — the materials landing — 10 pre-rendered frames per footprint size
@@ -4879,8 +5105,8 @@ dust; render-side only (`R.placePoofs`, the `R.collapses` rule), cleared in
 (menu back, choice intact), Enter = ✓, hover moves the ghost on desktop. The
 wall keeps its line-drag flow untouched (tests/work-order.mjs owns it). A key
 with NOWHERE valid to stand (a farm before any soil is picked bare) never
-opens a ghostless mode — enterPlacement toasts the station's own `whyGround`
-and stays in the menu.
+opens a ghostless mode — enterPlacement toasts the station's `whyNone` as a
+note and stays in the menu.
 **The look** (render.js `drawPlaceGrid`/`drawPlaceGhost`): a quiet surveyor's
 lattice over valid ground, cached full-map like the terrain (repainted only
 when the map or the amber state changes — one blit per frame); framed cells
@@ -4893,6 +5119,32 @@ with the overlay on, map build ~1–11ms on entry only. `UI.cue` is the
 subtle haptic tick and hands its sound to `Sound` (localStorage `neo-sfx`='0'
 silences it; **THE GAME'S VOICE** below). All placement state is UI-local, never saved;
 `exitPlacement` is the only exit and newGame/loadJSON both call it.
+
+**A STATION'S CARD SAYS THE WORK FIRST; PLACEMENT SHOWS ITS WAY OUT FROM
+ARMING** (tests/worked-ground.mjs §11, tests/placement.mjs §16–17, PX-07,
+PX-11). **ONE STYLE FOR REFUSALS: the work first, as a verb the player can do
+(Fell / Break / Harvest / Hunt), then the rule after a dash.** A station card
+with nowhere to stand says its `whyNone` (`CFG.BUILDINGS`, ≤16 words,
+distinct, naming its work) as a `'note'` from `UI.enterPlacement`'s
+no-ground branch, and the dock's and the generic fallback are notes too; the
+`whyGround` jokes are unchanged and stay the refusal on a TILE (`canPlace`'s
+why, the ✓'s toast, worked-ground's keyword checks). The chip, clipped at
+260px, shows `UI.PLACE_GROUND` ("Fell trees here first") for the station's
+own refusal alone (code `'ground'` whose why is its `whyGround`), so the
+burnt wood's ash keeps its own words. **THE WAY OUT SHOWS FROM ARMING**:
+until the ghost is parked `#placeBtns` wears `.pre`, the ✗ alone in a FIXED
+row at the map's foot above the Build tab (CSS-placed with the safe-area
+insets, no layout read), beside `UI.PLACE_HOW` (`#placeHow`, which lets taps
+through like the chip). It never rides the ghost — a real tap 20px under an
+unparked ghost still jumps it, and that is pinned — and it stands aside
+during a drag (a release over the ✗'s spot parks the ghost and placement
+stays armed: §17's click tripwire, real mouse input) or with the build menu
+open. The ✓ still waits for the parked ghost. The Wall says how its line
+tool works as it arms (a note), and a laid line's summary is a note too
+(with no level it was shown nowhere). The ✓ asks for `cue('place')`
+('confirm' had no voice; with the music on it is still quiet behind it).
+**B-06 IS NOT FIXED**: a one-finger drag with the Wall armed still lays and
+pays for a line on release, no confirm, no undo — only the words are new.
 
 **The boot sequence** (`tests/boot.mjs`): the game used to open on a BLACK
 screen wearing a live HUD — a resource bar, an empty minimap, "Day 1", a
@@ -6963,6 +7215,43 @@ position stays last: it is the end of the game. **The price itself is untouched 
 15,000 of each is reachable in a Calm run is Phase 4's question, argued
 with numbers there.
 
+**THE RING IS ONE THE PLAYER CAN SEE** (`Tutorial._inFreeBand`,
+tests/tutorial.mjs §17, PX-05): `R.onScreen` (untouched) counts ground under
+the villager panel, or half a tile past the edge, as seen. The ring's point
+(the overlay's own maths, `SPRITE_LIFT` included) must lie 0.3 tile inside
+the band no HUD covers (under `#topbar`, above `#bottombar` and `#bmToggle`,
+inside the canvas), over the world canvas by `document.elementFromPoint`;
+`_panTo` asks it instead of `R.onScreen` and lands the ring mid-band, since
+the screen's own middle can sit under a tall panel. **THE LOOK**
+(`Tutorial._looks`) runs at most twice a note: as it is told, and for a
+gather lesson (`selLook`) at the first villager selected, whose panel covers
+the tile named; a villager already in hand at presentation is that
+selection. It never runs while `UI.pointers` holds a finger (it waits for
+the lift and measures again, so a ring the player dragged into view is left
+alone) nor while `Screens.current` is not 'playing'; any touch still cancels
+a glide, and reduced motion makes every lesson camera move at once
+(`_glide`).
+**A NOTE THAT WAITS ON A DEED CAN BE PUT AWAY** (§18, PX-29): an action-gated
+CONTEXTUAL note (buildHands, workedGround, station) shows `#tutNext` as
+"Dismiss", booked for good through `_completeShow`; spine steps never do,
+their deeds ARE the lesson. The worked-ground note names the station its
+ground carries (`Tutorial._workedKind`, from the nearest explored worked
+tile, the one it rings), holds until that station is payable and rings its
+card; its words stay in `Tutorial.TEXT`, and over stumps they are word for
+word what they were.
+**THE TOASTS STEP BELOW THE LESSON CARD** (§19): while a card sits at the
+TOP, `#toasts` adds `--tut-h` to its `top` (on `<body>`: the card's bottom
+minus the column's top, else 0px; measured only when a new note, the seat,
+the window or the wonder banner moves, and written only when it changes).
+`Tutorial.noteUp()` is public, asked guarded: true while a card is up or in
+its BREATH, false with the teacher off, after the run, or under a card's act.
+**THE RIVAL'S INTEL WAITS TO BE READ** (`Cards.announceRival`, §20, PX-10c):
+the two lines wait for their own world until `Screens.current === 'playing'`
+and `!Screens.modalUp()` (polled every 250 ms), and past
+`Cards.INTEL_WAIT_MS` (60 s from the founding) or under another world they
+are DROPPED, never posted late. No RNG is drawn, and a Continue never calls
+it.
+
 **THE BALANCE PASS** (`tests/moderate-dials.mjs`, `tests/calm-peace.mjs` §6,
 the retention pass — 191 real games: Moderate won 6.5%, Calm 45.5%,
 Highlands 0 of 39, the Wonder never). The instrument was a scripted-player
@@ -7218,6 +7507,36 @@ name was overwritten by `onWorldChange` and the director never ran
 (`_inGame` now); and the effects NEVER make a context or draw `Math.random`
 (their own `_rnd`) — a blow before any gesture is silent and seeded tests
 stay seeded.
+
+**A DEAD SPEAKER IS NOT A GAME FAULT, AND A HIDDEN TAB IS SILENT**
+(`Sound._resume` / `_suspend` / `_wake` / `_devFailed`, `Sound._deckOut`,
+`Sound._gallopOff`, the tag on `Feedback.noteError`; tests/audio.mjs §7c,
+§15, §16, tests/settings.mjs §5b, PX-51, PX-45): `resume()` and `suspend()`
+REJECT on a dead device ("Failed to start the audio device") or a closed
+context, and `play()` re-asked `resume()` on every sound, uncaught: ~30
+unhandled rejections a minute. Every resume and suspend goes through the
+catching helpers; a refusal marks the device failed and `play()` /
+`startMusic()` stop asking (`_wake`, never for a hidden tab) until a
+gesture's `unlock()`, and the mark clears when the device answers (the
+resolve, or a statechange to running). **WHAT IS NOT THE GAME'S FAULT IS
+KEPT, NEVER COUNTED**: a rejection matching `/fetch|network|load failed/i`
+(`Backend._init`'s offline words) is tagged `'net'`, a filename-less
+`"Script error."` `'external'`; a tagged entry rides in a crash report but
+never moves `Feedback.runErrs` / `runErr` (`G._safe`'s faults are never
+tagged, whatever their words). Read a 126/127 `props.err` the same way (an
+`Unhandled: …` with those words, exactly `Script error.`, or
+`Unhandled: Failed to start the audio device @ promise` began with noise),
+but `err` names only the FIRST fault, so that row's `errors` may still hold
+real ones. **THE TAB GOES, THE SOUND GOES**: the hide handler suspends any
+context and lets the gallop go, and `_worldTick` idles while
+`document.hidden`, music on or off; `unlock()` wakes the context on return.
+**A FADED DECK IS PAUSED BY INTENT, NEVER BY ITS GAIN** (`_deckOut`: not the
+theme, the music off, a battle on, or the run ended mid-battle):
+`setTargetAtTime` is still at 2–4% when the timer fires, so `gain < 0.01`
+never paused a tune; a theme paused under a battle picks up where it left
+off. The contract holds each faded deck at 3% (what an on-time timer sees)
+and runs §16 with nobody of ours under arms, so a late timer cannot pass the
+old test by accident and a real battle cannot fade the theme under the check.
 
 **Four hulls, and one of them is a siege engine** (`tests/boats-moat-scuttle.mjs`
 covers the hulls; the roster lives in `CFG.BUILDINGS.dock.train`): the dock
