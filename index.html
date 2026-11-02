@@ -223,6 +223,12 @@
      from the 3px between them. */
   #topbar .iconbtn { position: relative; }
   #topbar .iconbtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
+  /* …and a positioned Pause paints over whatever positioned thing came
+     before it, which is the deck's count badge: it hangs 6px past the deck
+     button into a phone's 3px gap, and its gold ring lost its right edge
+     under Pause. The badge takes no taps (pointer-events: none), so lifting
+     it gives back 127's picture and moves no hit. */
+  #topbar #deckBtn .dkBadge { z-index: 1; }
   /* …and on a phone the second row makes room for it: four 34px buttons sit
      where three 44px ones did, so two running cards' timers still fit beside
      the tribe and the day (tests/deck-ui.mjs twoRunningCardsFitAPhonesRow).

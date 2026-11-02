@@ -333,6 +333,33 @@ for (const ph of [
   ck(`theMinimapFoldHitsAt44_${ph.k}`, r.fold.hit.w >= 44 && r.fold.hit.h >= 44 && r.fold.drawn.w <= 30.5 && r.fold.drawn.h <= 30.5, sz(r.fold));
   ck(`andTheMapUnderItKeepsEveryPixel_${ph.k}`, r.fold.miniLost === 0 && r.fold.hit.b <= Math.floor(r.fold.armyTop),
     `minimap pixels the fold took: ${r.fold.miniLost}; the fold's reach ends at ${r.fold.hit.b}, the army banners start at ${Math.round(r.fold.armyTop)}`);
+  /* …and THE DECK'S COUNT KEEPS ITS RING. Pause's reach needs Pause
+     positioned, and a positioned Pause paints over the count badge, which
+     hangs 6px past the deck button into a phone's 3px gap (its gold ring
+     lost its right edge). The badge's box must look the same as it does
+     with Pause and Menu static, 127's paint order; the control takes the
+     badge's lift away and must see the ring cut. */
+  const badgeShot = async (css) => {
+    const box = await p.evaluate(async (css) => {
+      let st = document.getElementById('badgeProbe');
+      if (!st) { st = document.createElement('style'); st.id = 'badgeProbe'; document.head.appendChild(st); }
+      st.textContent = css;
+      const btn = document.getElementById('deckBtn'), b = btn && btn.querySelector('.dkBadge');
+      if (!b) return null;
+      btn.classList.remove('empty'); if (!b.textContent) b.textContent = '3';
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const q = b.getBoundingClientRect();
+      return { x: Math.floor(q.left) - 1, y: Math.floor(q.top) - 1, width: Math.ceil(q.width) + 3, height: Math.ceil(q.height) + 3 };
+    }, css);
+    return box ? (await p.screenshot({ clip: box })).toString('base64') : null;
+  };
+  const shotNow = await badgeShot('');
+  const shotOld = await badgeShot('#topbar #btnPause, #topbar #btnMenu { position: static !important; } #topbar #btnPause::after, #topbar #btnMenu::after { display: none !important; }');
+  const shotCut = await badgeShot('#topbar #deckBtn .dkBadge { z-index: auto !important; }');
+  await badgeShot('');
+  ck(`theDeckCountKeepsItsRing_${ph.k}`, !!shotNow && shotNow === shotOld,
+    shotNow ? (shotNow === shotOld ? 'the badge reads as it does with Pause static' : 'Pause is drawn over the badge') : 'no badge on the deck button');
+  ck(`andTheProbeCanSeeACutRing_${ph.k}`, !!shotNow && shotCut !== shotNow, 'with the badge left under Pause, its box differs: ' + (shotCut !== shotNow));
   /* …and A TAP THAT OPENS THE PANEL KEEPS IT. A villager stands in the tab's
      own column, 8px above where its panel will lift the tab; a real touch tap
      selects it, the panel rises under the finger, and the click the browser
