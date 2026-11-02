@@ -62,6 +62,27 @@
   16. THE DECK'S NOTE RETIRES WITH THE DECK: up when the last card is
       played, "tap it and play a card" is put away; due over a deck that is
       already empty, it is booked and never shown.
+  17. THE RING IS ONE THE PLAYER CAN SEE (PX-05): a lesson's ring under the
+      bottom bar, or half a tile past the right edge — both of which
+      R.onScreen calls seen — glides into the band no HUD covers; a ring
+      already in the clear leaves the camera alone; a gather lesson looks
+      again once, when the first villager selection raises the panel over
+      it, and never a third time; no look starts while a finger is down
+      (it waits for the lift) or while a shell screen covers the world (it
+      waits for the game); under reduced motion the move is a jump.
+  18. A NOTE THAT WAITS ON A DEED CAN BE PUT AWAY (PX-29): every
+      action-gated contextual note offers "Dismiss" (the spine never does),
+      and one tap books it for good. The worked-ground note names the
+      station its ground can carry — stumps a Lumber Camp, broken rock a
+      Quarry, spent soil a Farm — and rings it.
+  19. THE TOASTS STEP BELOW THE CARD (--tut-h): while a lesson card sits at
+      the top of the screen the toast column starts at the card's bottom
+      edge, else 0px, written only when it changes; Tutorial.noteUp() is
+      true while a card is on the glass or within the BREATH after one.
+  20. THE RIVAL'S INTEL WAITS TO BE READ (PX-10c): never posted while the
+      Calm modal has the floor or the game is not on screen, posted once
+      when it is, and dropped — never posted late — for another world or
+      past its wait.
 
    Run this after touching any of:
      tutorial.js — everything
@@ -1222,6 +1243,358 @@ const out = await p.evaluate(async () => {
       if (DeckUI.built) DeckUI._stand(false);
       Deck._del(Deck.KEY); Deck._del(Deck.REAL_KEY); Deck._col = null;
     }
+  }
+
+  // ---- 17. the ring the lesson asks the player to tap is one they can SEE (PX-05) ----
+  // R.onScreen (the army banners' "slightly in frame") calls a tile under the
+  // villager panel, or half a tile past the right edge, seen — so on a phone
+  // the first gather lessons rang trees nobody could see and the camera never
+  // moved. Everything here is measured off the DOM and the camera, never by
+  // asking the code under test what it thinks.
+  const TL_ = CFG.TILE;
+  const cv_ = R.cv || document.getElementById('c');
+  const ringPt = a => ({ x: (a.x * TL_ - R.cam.x) * R.cam.z, y: (a.y * TL_ - R.cam.y) * R.cam.z - CFG.SPRITE_LIFT * R.cam.z });
+  const rectOf = id => { const el = document.getElementById(id); if (!el) return null;
+    const q = el.getBoundingClientRect(); return q.width > 0 && q.height > 0 ? q : null; };
+  // the band no HUD covers: under the top bar, above the bottom bar and its tab
+  const band = () => { const tb = rectOf('topbar'); let bot = R.viewH();
+    for (const id of ['bottombar', 'bmToggle']) { const q = rectOf(id); if (q) bot = Math.min(bot, q.top); }
+    return { top: tb ? tb.bottom : 0, bottom: bot, right: R.viewW() }; };
+  // seen = inside that band AND the world canvas is what a finger there would touch
+  const seen = a => { if (!a) return false; const p = ringPt(a), b = band();
+    return p.x > 0 && p.x < b.right && p.y > b.top && p.y < b.bottom && document.elementFromPoint(p.x, p.y) === cv_; };
+  const where = a => { if (!a) return 'no anchor'; const p = ringPt(a), b = band();
+    return '(' + Math.round(p.x) + ',' + Math.round(p.y) + ') band ' + Math.round(b.top) + '..' + Math.round(b.bottom) + ' w' + Math.round(b.right); };
+  // the camera put so a world point's RING lands at (sx, sy) — unclamped: the test owns it
+  const aim = (a, sx, sy) => { R.cam.x = a.x * TL_ - sx / R.cam.z; R.cam.y = a.y * TL_ - (sy + CFG.SPRITE_LIFT * R.cam.z) / R.cam.z; };
+  const villager = () => S.units.find(u => u.owner === 'P' && u.kind === 'villager');
+  {
+    const terrOf = { gatherWood: [T_.FOREST], gatherFood: [T_.FERTILE], gatherStone: [T_.HILLS] };
+    // a gather lesson about to be told: the steps before it booked, nothing on show yet
+    const upTo = (seed, id) => {
+      fresh(seed, 'calm', true);
+      R.cam.z = 1.7; UI.deselect();
+      for (const st of Tutorial.STEPS) { if (st.id === id) break; S.tut.done[st.id] = 1; }
+      return Tutorial._nearTile(id, terrOf[id]);   // the tile the lesson will ring
+    };
+    const bres = R.bottomReserve, menuWas = UI.menuCollapsed;
+    R.bottomReserve = 0;   // a first game: the build menu never opened, so R.onScreen has learned no floor
+    try {
+      // (a) half a tile past the right edge, a villager in hand (the wood lesson as it is met)
+      {
+        const a = upTo('171', 'gatherWood');
+        UI.select('unit', villager().id);
+        if (a) aim(a, R.viewW() + 0.2 * TL_ * R.cam.z, (band().top + band().bottom) / 2);
+        const claimed = !!a && R.onScreen(a.x, a.y), before = seen(a);
+        Tutorial._pan = null;
+        tick(1, 0.05);
+        const glides = !!(Tutorial._show && Tutorial._show.id === 'gatherWood' && Tutorial._pan);
+        tick(24, 0.05);
+        ck('aRingPastTheRightEdgeGlidesIntoView', claimed && !before && glides && seen(a),
+          JSON.stringify({ onScreen: claimed, seenBefore: before, glides, after: where(a) }));
+      }
+      // (b) under the bottom bar — R.onScreen calls that seen too
+      {
+        const a = upTo('172', 'gatherWood');
+        UI.select('unit', villager().id);
+        const bb = rectOf('bottombar');
+        if (a && bb) aim(a, R.viewW() / 2, bb.top + 24);
+        const claimed = !!a && R.onScreen(a.x, a.y), before = seen(a);
+        Tutorial._pan = null;
+        tick(1, 0.05);
+        const glides = !!(Tutorial._show && Tutorial._show.id === 'gatherWood' && Tutorial._pan);
+        tick(24, 0.05);
+        ck('aRingUnderTheBottomBarGlidesIntoView', claimed && !before && glides && seen(a),
+          JSON.stringify({ onScreen: claimed, seenBefore: before, glides, after: where(a) }));
+      }
+      // (c) the food lesson, told with nothing in hand (the last order deselected):
+      // the ring is clear and the camera is left alone — until the first villager
+      // selection raises the panel over it, which looks once more, and only once
+      {
+        const a = upTo('173', 'gatherFood');
+        UI.select('unit', villager().id);
+        const panelTop = rectOf('bottombar').top;
+        UI.dispatchedWorker();   // the wood order's own deselect: the menu tucked away, as the real flow leaves it
+        if (a) aim(a, R.viewW() / 2, panelTop + 30);
+        const before = seen(a);
+        tick(1, 0.05);
+        const quiet = !!(Tutorial._show && Tutorial._show.id === 'gatherFood') && !Tutorial._pan;
+        ck('aRingInTheClearLeavesTheCameraAlone', !!a && before && quiet,
+          JSON.stringify({ seenBefore: before, show: Tutorial._show, pan: !!Tutorial._pan, at: where(a) }));
+        UI.select('unit', villager().id);
+        const hidden = !seen(a);
+        tick(1, 0.05);
+        const glides = !!Tutorial._pan;
+        tick(24, 0.05);
+        ck('theFirstVillagerSelectionLooksAgain', !!a && hidden && glides && seen(a),
+          JSON.stringify({ hiddenBySelection: hidden, glides, after: where(a) }));
+        // hide it again and select afresh: a third look is never taken
+        if (a) aim(a, R.viewW() / 2, rectOf('bottombar').top + 30);
+        UI.deselect(); tick(1, 0.05);
+        UI.select('unit', villager().id); tick(2, 0.05);
+        ck('andNeverAThirdTime', !!a && !Tutorial._pan && !seen(a) && Tutorial._show && Tutorial._show.id === 'gatherFood',
+          JSON.stringify({ pan: !!Tutorial._pan, at: where(a) }));
+      }
+      // (d) never while a finger is down: the look waits for the lift
+      {
+        const a = upTo('174', 'gatherStone');
+        if (a) aim(a, R.viewW() + 0.2 * TL_ * R.cam.z, (band().top + band().bottom) / 2);
+        UI.pointers.set(9917, { x: 2, y: 2 });
+        let duringDown = null;
+        try { tick(3, 0.05); duringDown = !!Tutorial._pan || seen(a); }
+        finally { UI.pointers.delete(9917); }
+        tick(1, 0.05);
+        const onLift = !!Tutorial._pan;
+        tick(24, 0.05);
+        ck('noLookWhileAFingerIsDownItWaitsForTheLift', !!a && !!(Tutorial._show && Tutorial._show.id === 'gatherStone') &&
+          duringDown === false && onLift && seen(a),
+          JSON.stringify({ duringDown, onLift, after: where(a) }));
+      }
+      // (d2) nor while the world is off the glass: the pause menu over it is not
+      // "the ring is hidden" — the look waits for the game and measures then
+      {
+        const a = upTo('176', 'gatherWood');
+        UI.select('unit', villager().id);
+        if (a) aim(a, R.viewW() + 0.2 * TL_ * R.cam.z, (band().top + band().bottom) / 2);
+        let underShell = null, shown = false;
+        Screens.show('paused');
+        try { tick(3, 0.05); underShell = !!Tutorial._pan; shown = !!(Tutorial._show && Tutorial._show.id === 'gatherWood'); }
+        finally { Screens.show('playing'); S.paused = true; }
+        tick(1, 0.05);
+        const onReturn = !!Tutorial._pan;
+        tick(24, 0.05);
+        ck('noLookUnderAShellScreenItWaitsForTheGame', !!a && shown && underShell === false && onReturn && seen(a),
+          JSON.stringify({ shown, underShell, onReturn, after: where(a) }));
+      }
+      // (e) reduced motion: the same move, made at once — never a glide
+      {
+        const mm = window.matchMedia;
+        window.matchMedia = q => /prefers-reduced-motion/.test(q) ? { matches: true, media: q } : mm.call(window, q);
+        try {
+          const a = upTo('175', 'gatherWood');
+          UI.select('unit', villager().id);
+          if (a) aim(a, R.viewW() + 0.2 * TL_ * R.cam.z, (band().top + band().bottom) / 2);
+          tick(1, 0.05);
+          ck('underReducedMotionTheLookJumpsNeverGlides', !!a && !!(Tutorial._show && Tutorial._show.id === 'gatherWood') &&
+            !Tutorial._pan && seen(a), JSON.stringify({ pan: !!Tutorial._pan, at: where(a) }));
+        } finally { window.matchMedia = mm; }
+      }
+    } finally { UI.deselect(); UI.setMenuCollapsed(menuWas, true); R.bottomReserve = bres; }
+  }
+
+  // ---- 18. a note that waits on a deed can be put away; the ground names its station (PX-29) ----
+  {
+    // phase 2 with every other note told, one explored worked tile of one
+    // kind near the hall, everything payable: the worked-ground note is due
+    const askWorked = (seed, terr) => {
+      fresh(seed, 'calm', true);
+      S.tut.phase = 2; S.tut.step = Tutorial.STEPS.length;
+      for (const e of Tutorial.EVENTS) if (e.id !== 'workedGround') S.tut.fired[e.id] = 1;
+      const worked = [T_.STUMPS, T_.PEBBLES, T_.BARREN];
+      for (let i = 0; i < S.map.terrain.length; i++) if (worked.includes(S.map.terrain[i])) S.map.terrain[i] = T_.GRASS;
+      const tc = Bld.tcOf('P');
+      let at = null;
+      for (let r = 3; r <= 8 && !at; r++) for (let dy = -r; dy <= r && !at; dy++) for (let dx = -r; dx <= r && !at; dx++) {
+        const x = tc.x + dx, y = tc.y + dy;
+        if (!MapGen.onBoard(x, y)) continue;
+        const i = MapGen.idx(x, y);
+        if (S.map.terrain[i] === T_.GRASS && S.map.explored[i] && !Bld.at(x, y)) at = { x, y, i };
+      }
+      if (at) S.map.terrain[at.i] = terr;
+      S.res.wood = S.res.stone = S.res.gold = S.res.food = 999;
+      UI.deselect();
+      Tutorial._lastEvAt = -1e9; Tutorial._memo = {};
+      tick(2, 0.6);
+      return at;
+    };
+    const names = { lumber: CFG.BUILDINGS.lumber.name, quarry: CFG.BUILDINGS.quarry.name, farm: CFG.BUILDINGS.farm.name };
+    for (const [check, terr, key] of [['stumpsAskForALumberCamp', T_.STUMPS, 'lumber'],
+                                      ['brokenRockAsksForAQuarry', T_.PEBBLES, 'quarry'],
+                                      ['spentSoilAsksForAFarm', T_.BARREN, 'farm']]) {
+      const at = askWorked('18' + key.length, terr);
+      const up = !!(Tutorial._show && Tutorial._show.id === 'workedGround');
+      const txt = txtOf('tutTxt');
+      const others = Object.keys(names).filter(k => k !== key).map(k => names[k]);
+      const a = Tutorial._anchor();
+      // the ring follows it: its own card, the villager's Build button, or the worked tile
+      const rings = !!a && (a.sel ? (a.sel.includes('"' + key + '"') || a.sel.includes('gobuild'))
+        : (!!at && Math.floor(a.x) === at.x && Math.floor(a.y) === at.y));
+      ck(check, !!at && up && txt.includes(names[key]) && !others.some(n => txt.includes(n)) && rings,
+        JSON.stringify({ at: !!at, up, txt: txt.slice(0, 120), anchor: a }));
+      if (key === 'lumber')
+        ck('theLumberCampCopyIsWordForWord', document.getElementById('tutTxt').innerHTML ===
+          'That worked-bare ground can carry a <b>Lumber Camp</b> — tap a villager, open <b>Build</b>, and set the camp on the stumps. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.',
+          document.getElementById('tutTxt').innerHTML);
+    }
+    // the note waits on a deed the player may not want yet — and now it can be put away for good
+    {
+      askWorked('184', T_.PEBBLES);
+      const nx = document.getElementById('tutNext');
+      const r = nx.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const offered = getComputedStyle(nx).display !== 'none' && r.width > 0 && (hit === nx || nx.contains(hit));
+      ck('aNoteThatWaitsOnADeedOffersDismiss', !!(Tutorial._show && Tutorial._show.id === 'workedGround') && offered &&
+        nx.textContent === 'Dismiss', JSON.stringify({ show: Tutorial._show, offered, label: nx.textContent }));
+      nx.click();
+      tick(1, 0.1);
+      const gone = !Tutorial._show && S.tut.fired.workedGround === 1;
+      Tutorial._lastEvAt = -1e9;
+      tick(8, 0.6);
+      ck('oneDismissPutsItAwayForGood', gone && !(Tutorial._show && Tutorial._show.id === 'workedGround'),
+        JSON.stringify({ gone, show: Tutorial._show }));
+    }
+    // every note that waits on a deed offers it — the builder, the station, the worked ground
+    {
+      fresh('186', 'calm', true);
+      const evs = Tutorial.EVENTS.filter(e => e.adv).map(e => e.id);
+      const labels = {};
+      for (const id of evs) {
+        Tutorial._present('event', id); Tutorial._syncOverlay(0);
+        const nx = document.getElementById('tutNext');
+        labels[id] = getComputedStyle(nx).display !== 'none' ? nx.textContent : '(hidden)';
+        Tutorial._show = null; Tutorial._hideAll();
+      }
+      ck('everyNoteThatWaitsOnADeedOffersDismiss', evs.length >= 3 && evs.every(id => labels[id] === 'Dismiss'), JSON.stringify(labels));
+    }
+    // …and the spine never does: its deeds ARE the lesson
+    {
+      fresh('185', 'calm', true);
+      tick(2, 0.3);
+      const welcomeSays = document.getElementById('tutNext').textContent;
+      for (const st of Tutorial.STEPS) { if (st.id === 'gatherWood') break; S.tut.done[st.id] = 1; }
+      Tutorial._show = null;
+      tick(2, 0.3);
+      const nx = document.getElementById('tutNext');
+      ck('theSpineNeverOffersDismiss', !!(Tutorial._show && Tutorial._show.id === 'gatherWood') &&
+        getComputedStyle(nx).display === 'none' && welcomeSays === 'Got it',
+        JSON.stringify({ show: Tutorial._show, display: getComputedStyle(nx).display, welcomeSays }));
+    }
+  }
+
+  // ---- 19. the toasts step below the lesson's card (--tut-h); noteUp() ----
+  {
+    const tutH = () => getComputedStyle(document.body).getPropertyValue('--tut-h').trim();
+    const box = document.getElementById('toasts');
+    fresh('190', 'calm', true);
+    R.cam.z = 1.7;
+    const tc = Bld.tcOf('P'), hall = { x: tc.x + 1, y: tc.y + 1 };
+    aim(hall, R.viewW() / 2, R.viewH() * 0.62);        // the hall low on the glass: the card sits at the TOP
+    tick(2, 0.3);
+    const pr = document.getElementById('tutPanel').getBoundingClientRect();
+    box.innerHTML = ''; UI._toastAt = {};
+    UI.toast('A word from the scouts.', 'note', 4000);
+    const t0 = box.querySelector('.toast');
+    const tr = t0 ? t0.getBoundingClientRect() : null;
+    const crosses = !tr || (tr.bottom > pr.top && tr.top < pr.bottom && tr.right > pr.left && tr.left < pr.right);
+    const colTop = box.getBoundingClientRect().top;
+    ck('aToastShownWhileTheCardIsUpSitsBelowIt', !!(Tutorial._show && Tutorial._show.id === 'welcome') &&
+      pr.top < R.viewH() / 2 && !crosses && Math.abs(colTop - pr.bottom) <= 1,
+      JSON.stringify({ card: [Math.round(pr.top), Math.round(pr.bottom)], toast: tr && [Math.round(tr.top), Math.round(tr.bottom)], column: Math.round(colTop), tutH: tutH() }));
+    // steady: written only when it changes
+    {
+      const sp = document.body.style.setProperty;
+      let writes = 0;
+      document.body.style.setProperty = function (k, v, p) { if (k === '--tut-h') writes++; return sp.call(this, k, v, p); };
+      try { tick(10, 0.05); } finally { delete document.body.style.setProperty; }
+      ck('itIsWrittenOnlyWhenItChanges', writes === 0 && parseFloat(tutH()) > 0, writes + ' writes over 10 steady frames, --tut-h ' + tutH());
+    }
+    // the card seated at the BOTTOM (the hall high): the column stands where it always did
+    aim(hall, R.viewW() / 2, R.viewH() * 0.3);
+    tick(1, 0.05);
+    const low = document.getElementById('tutPanel').getBoundingClientRect();
+    ck('aCardAtTheBottomStepsNothing', low.top > R.viewH() / 2 && tutH() === '0px', JSON.stringify({ card: Math.round(low.top), tutH: tutH() }));
+    aim(hall, R.viewW() / 2, R.viewH() * 0.62);
+    tick(1, 0.05);
+    const raised = tutH();
+    document.getElementById('tutNext').click();         // answered: the card is gone, so is the step
+    tick(1, 0.05);
+    ck('noCardNoStep', parseFloat(raised) > 0 && tutH() === '0px', JSON.stringify({ raised, after: tutH() }));
+    box.innerHTML = ''; UI._toastAt = {};
+    // noteUp(): true while a card is on the glass or within the BREATH after one
+    {
+      const nu = () => typeof Tutorial.noteUp === 'function' ? Tutorial.noteUp() : 'missing';
+      const rows = {};
+      fresh('191', 'calm', false); rows.off = nu();
+      fresh('192', 'calm', true); tick(2, 0.3); rows.shown = nu();
+      document.getElementById('tutNext').click(); tick(1, 0.1); rows.breath = nu();
+      for (const st of Tutorial.STEPS) if (st.id !== 'tcReady' && st.id !== 'capstone') S.tut.done[st.id] = 1;
+      tick(8, 0.3); rows.quiet = nu();
+      fresh('193', 'calm', true); tick(2, 0.3);
+      const acting = Deck.acting;
+      Deck.acting = () => true;
+      try { tick(1, 0.05); rows.aside = nu(); } finally { Deck.acting = acting; }
+      S.over = 'lost'; rows.over = nu(); S.over = null;
+      const cardsWere = CFG.CARDS.ON;
+      CFG.CARDS.ON = false;
+      try { Tutorial.skip(); rows.skipped = nu(); } finally { CFG.CARDS.ON = cardsWere; }
+      ck('noteUpIsTrueWhileACardIsUpOrWithinTheBreath', rows.off === false && rows.shown === true && rows.breath === true &&
+        rows.quiet === false && rows.aside === false && rows.over === false && rows.skipped === false, JSON.stringify(rows));
+    }
+  }
+
+  // ---- 20. the rival's intel waits for a screen that can show it (PX-10c) ----
+  {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // a post is waited for as a CONDITION, bounded (the post polls every 250ms
+    // and a loaded runner can stretch that past any fixed sleep); an absence
+    // is still read after a fixed beat
+    const until = async (f, ms) => { const t = performance.now(); while (!f() && performance.now() - t < ms) await sleep(50); };
+    const box = document.getElementById('toasts');
+    const intel = () => [...box.querySelectorAll('.toast')].filter(el => /Rival origin|Scouts whisper/.test(el.textContent)).length;
+    const logged = () => S.log.filter(l => /Rival origin|Scouts whisper/.test(l.msg)).length;
+    const wipe = () => { box.innerHTML = ''; UI._toastAt = {}; };
+    const unseen = () => { try { localStorage.removeItem('neo-victory-seen'); } catch (e) {} };
+    // the first Calm game opens on the modal — the intel waits it out, then posts once
+    {
+      unseen(); fresh('200', 'calm', false); wipe();
+      Screens.showVictoryPaths();
+      Cards.announceRival();
+      const under = intel();
+      await sleep(700);
+      const stillUnder = intel();
+      document.getElementById('vpGotIt').click();
+      await until(() => intel() >= 2, 5000);
+      const after = intel(), afterLog = logged();
+      await sleep(700);
+      ck('theRivalsIntelWaitsForTheModalToGo', under === 0 && stillUnder === 0 && after === 2 && afterLog === 2 && intel() === 2 && logged() === 2,
+        JSON.stringify({ under, stillUnder, after, afterLog, later: intel(), laterLog: logged() }));
+    }
+    // …and never under a shell screen: it waits for the game itself
+    {
+      unseen(); fresh('202', 'calm', false); wipe();
+      Screens.show('paused');
+      Cards.announceRival();
+      const hidden = intel();
+      Screens.show('playing'); S.paused = true;
+      await until(() => intel() >= 2, 5000);
+      ck('itWaitsForTheGameToBeOnScreen', hidden === 0 && intel() === 2, JSON.stringify({ hidden, after: intel() }));
+    }
+    // …it is this world's news alone: another world taking the glass drops it
+    {
+      unseen(); fresh('203', 'calm', false); wipe();
+      Screens.showVictoryPaths();
+      Cards.announceRival();
+      Screens.hideVictoryPaths();
+      fresh('204', 'calm', false); wipe();
+      await sleep(700);
+      ck('anotherWorldNeverWearsIt', intel() === 0 && logged() === 0, JSON.stringify({ toasts: intel(), log: logged() }));
+    }
+    // …and too late is never: past its wait it is dropped, not posted into a column nobody reads
+    {
+      const was = Cards.INTEL_WAIT_MS;
+      Cards.INTEL_WAIT_MS = 300;
+      try {
+        unseen(); fresh('205', 'calm', false); wipe();
+        Screens.showVictoryPaths();
+        Cards.announceRival();
+        await sleep(800);
+        Screens.hideVictoryPaths();
+        await sleep(700);
+        ck('pastItsWaitTheIntelIsDropped', intel() === 0 && logged() === 0, JSON.stringify({ toasts: intel(), log: logged() }));
+      } finally { Cards.INTEL_WAIT_MS = was; }
+    }
+    Screens.hideVictoryPaths();
+    wipe(); unseen();
   }
 
   try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}

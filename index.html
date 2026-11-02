@@ -171,8 +171,9 @@
 
   /* ---- toasts / event log ---- */
   #toasts {
-    /* --ww-h: the rival-wonder banner's height while it heads the column */
-    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px));
+    /* --ww-h: the rival-wonder banner's height while it heads the column;
+       --tut-h: how far a lesson card seated at the top reaches past it (js/tutorial.js) */
+    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px) + var(--tut-h, 0px));
     z-index: 9; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
     max-width: 66%;   /* clears the minimap, which now shares the top strip */
   }
