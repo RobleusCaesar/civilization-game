@@ -3475,10 +3475,11 @@ const UI = {
      wolf for a breath never turns the sign. A new world or a loaded save
      starts it afresh at the sum itself. UI-local, keyed on S, never saved. */
   NET_DAYS: 0.5,
-  _net: null,
+  _net: new WeakMap(),       // world → { at, v }: keyed on S without keeping an old world alive
   smoothNet(x) {
-    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, m = this._net;
-    if (!m || m.S !== S || now < m.at) { this._net = { S, at: now, v: x }; return x; }
+    if (!S) return x;
+    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, m = this._net.get(S);
+    if (!m || now < m.at) { this._net.set(S, { at: now, v: x }); return x; }
     m.v += (x - m.v) * (1 - Math.exp(-(now - m.at) / this.NET_DAYS));
     m.at = now;
     return m.v;
@@ -3524,11 +3525,12 @@ const UI = {
      together hears it once. Units.update asks here for the line's level; the
      chronicle still gets every line. UI-local, keyed on S, never saved. */
   IDLE_NOTE_DAYS: 5,
-  _idleNote: null,
+  _idleNote: new WeakMap(),  // world → the game day its last idle note went out
   idleNote() {
-    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, g = this._idleNote;
-    if (g && g.S === S && now >= g.at && now - g.at < this.IDLE_NOTE_DAYS) return undefined;
-    this._idleNote = { S, at: now };
+    if (!S) return undefined;
+    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, at = this._idleNote.get(S);
+    if (at != null && now >= at && now - at < this.IDLE_NOTE_DAYS) return undefined;
+    this._idleNote.set(S, now);
     return 'note';
   },
   refresh(dt) {
