@@ -2509,6 +2509,21 @@ const UI = {
   /* ONE WRITER for the button, because the villager's panel and the
      building's own panel offer exactly the same action on exactly the same
      works, and two copies would drift. */
+  /* THE RARE ACT IS A SMALL RED BUTTON BESIDE THE ✕ (operator, 2026-11-02:
+     "People may want to demolish, but it won't be often… it's no longer a
+     primary part of the UI"). Demolish, Banish and Scuttle — every act that
+     throws something away — sit in the panel's header, an icon in a red
+     plate, never in the actions grid. The first tap ARMS (UI.armConfirm) and
+     the warning comes out as a full-width plank at the head of the actions,
+     saying what is lost and what comes back; either the plank or the red
+     button confirms. Both carry the same data-act, so every handler and
+     contract finds them as before. */
+  killBtn(act, armed, icon, name) {
+    return `<button class="abtn pkill${armed ? ' danger armed' : ''}" data-act="${act}" title="${name}" aria-label="${name}">${icon}</button>`;
+  },
+  killPlank(act, line, small) {
+    return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;
+  },
   cancelWorkButton(b) {
     const kind = Bld.cancelWork(b);
     if (!kind) return '';
@@ -2712,15 +2727,20 @@ const UI = {
       // lives there — that is the whole point of five distinct peoples.
       const nm = b.key === 'raidercamp' && b.tribe
         ? `Camp of ${G.tribeName(b.tribe)}` : d.name;
+      // the hall is never demolished; everything else of ours may be (killBtn)
+      const demoOk = b.owner === 'P' && b.key !== 'tc';
+      const demoArmed = demoOk && this.confirmDemolish === b.id;
+      const demoBack = demoOk ? Bld.costStr(Bld.demolishRefund(b)) : '';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${b.owner === 'A' ? 'Rival ' : ''}${nm} <span style="color:var(--gold)">Lv ${b.level}</span></div>
         <div class="psub">${sub}</div></div>
-        <button class="abtn" id="panelClose">✕</button></div>`;
+        ${demoOk ? this.killBtn('demolish', demoArmed, '🔥', 'Demolish — refund ' + demoBack) : ''}<button class="abtn" id="panelClose">✕</button></div>`;
       // …and each people's one signature habit, so learning a camp's danger
       // is as simple as walking up and reading its fire (tests/tribe-traits.mjs)
       if (b.key === 'raidercamp' && b.tribe && G.tribeDef(b.tribe).trait)
         html += `<div class="psub" style="padding:2px 10px 6px">${G.tribeDef(b.tribe).trait}</div>`;
       html += '<div class="pactions">';
+      if (demoArmed) html += this.killPlank('demolish', 'Confirm demolish', `get back ${demoBack}`);
       if (b.owner === 'P') {
         const worker = Bld.hasWorker(b);
         if ((b.construction > 0 || b.upgrading > 0) && !worker)
@@ -2855,17 +2875,10 @@ const UI = {
             }
             // an odd pay option stays BUTTON-sized, left, with the half-row
             // held by a spacer (the grid packer would otherwise stretch it
-            // panel-wide) — and Back shares its row with Demolish below, so
-            // the whole panel stays as condensed as any other building menu
+            // panel-wide); Back then takes the row below to itself
             if (payN % 2) html += '<span></span>';
             html += `<button class="abtn" data-act="tradeback">← Pick something else</button>`;
           }
-        }
-        if (b.key !== 'tc') {
-          const refund = Bld.costStr(Bld.demolishRefund(b));
-          html += this.confirmDemolish === b.id
-            ? `<button class="abtn danger" data-act="demolish">⚠️ Confirm demolish<small>get back ${refund}</small></button>`
-            : `<button class="abtn" data-act="demolish">💥 Demolish<small>refund ${refund}</small></button>`;
         }
       } else {
         html += `<span class="psub">Enemy structure — order defenders to attack it.</span>`;
@@ -3033,8 +3046,8 @@ const UI = {
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : 'Rival '}${names[lv - 1]} <span style="color:var(--gold)">Lv ${lv}</span></div>
         <div class="psub">HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water</div></div>
-        <button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions"><span class="psub">${own ? 'Reinforce for more stone and HP, or demolish to sever the crossing. Guard it — the enemy can hack it down.' : 'A rival crossing. Send soldiers here to sever it.'}</span>`;
+        ${own ? this.killBtn('brdemo', this.confirmDemolish === 'bridge', '🔥', 'Demolish — sever the crossing') : ''}<button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions">${own && this.confirmDemolish === 'bridge' ? this.killPlank('brdemo', 'Confirm — sever it', 'nothing comes back') : ''}<span class="psub">${own ? 'Reinforce for more stone and HP, or demolish to sever the crossing. Guard it — the enemy can hack it down.' : 'A rival crossing. Send soldiers here to sever it.'}</span>`;
       if (own && works) {
         // the works are standing: show the clock, and say plainly whose hands
         // it is waiting on. A span is reinforced by SAPPERS, like it was built.
@@ -3048,7 +3061,6 @@ const UI = {
         const days = CFG.BRIDGE.levels[lv].time || 2;
         html += `<button class="abtn wide ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
       }
-      if (own) html += `<button class="abtn ${this.confirmDemolish === 'bridge' ? 'danger' : ''}" data-act="brdemo">💥 ${this.confirmDemolish === 'bridge' ? 'Confirm — sever it' : 'Demolish'}</button>`;
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -3066,14 +3078,13 @@ const UI = {
         if (Bld.orderBridgeUpgrade(b2)) { this.toast('Bridge works laid out — Lv ' + b2.upTo); this.renderPanel(); this.refreshMenu(); }
         else this.toast('Not enough resources', true);
       });
-      const demo = panel.querySelector('[data-act="brdemo"]');
-      if (demo) demo.addEventListener('click', e => {
+      panel.querySelectorAll('[data-act="brdemo"]').forEach(demo => demo.addEventListener('click', e => {
         if (this.confirmDemolish !== 'bridge') { this.armConfirm('confirmDemolish', 'bridge', e); return; }
         if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
-      });
+      }));
     } else if (this.sel.type === 'group') {
       this.sel.ids = this.sel.ids.filter(id => Units.get(id));
       if (this.sel.ids.length === 0) { this.deselect(); return; }
@@ -3241,13 +3252,22 @@ const UI = {
       // the how-to text is collapsible for OWN units (enemy hints carry live
       // tactical info like stacked-attack warnings, so those always show):
       // − tucks it away, ℹ️ brings it back; the choice is remembered on-device
+      /* the hull's Scuttle and the villager's Banish ride the header beside
+         the ✕ (UI.killBtn) — rare acts, never the panel's main business */
+      const armedU = this.confirmDemolish === u.id;
+      const canScuttle = own && Units.isNaval(u), canBan = own && Units.isVillager(u);
+      const kill = canScuttle ? this.killBtn('scuttle', armedU, '🌊', 'Scuttle — sink the hull, free its place in the population')
+        : canBan ? this.killBtn('banish', armedU, '👋', 'Banish — send them away for good') : '';
+      const killArmed = !armedU ? ''
+        : canScuttle ? this.killPlank('scuttle', 'Confirm — sink her', 'no resources returned · its place in the population is freed')
+        : canBan ? this.killPlank('banish', 'Confirm — send them away', 'nothing comes back but their place in the population') : '';
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
-      html += `<div class="phead"><canvas id="pIcon"></canvas><div>
+      html += `<div class="phead${kill && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${Units.effDef(u)}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
-        ${helpBtn}<button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions">${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
+        ${helpBtn}${kill}<button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions">${killArmed}${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
       // (a spectral champion is never mended — a spirit eats nothing, and the
       // heal is paid in food: js/deckfx-army.js)
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind] && !u.spectral) {
@@ -3266,12 +3286,8 @@ const UI = {
       }
       // SCUTTLE (tests/boats-moat-scuttle.mjs): any own hull can be sunk on
       // purpose — no resources come back, but its place in the population is
-      // freed. Two taps, same confirm pattern as demolish.
-      if (own && Units.isNaval(u)) {
-        html += this.confirmDemolish === u.id
-          ? `<button class="abtn danger" data-act="scuttle">⚠️ Confirm — sink her<small>no resources returned</small></button>`
-          : `<button class="abtn" data-act="scuttle">🌊 Scuttle<small>sink the hull, free its place in the population</small></button>`;
-      }
+      // freed. Two taps, same confirm pattern as demolish; the button is the
+      // header's small red one (killBtn, above).
       if (own && u.kind === 'sapper') {
         const tier = Units.sapperTier(u.owner);
         const tool = (job, icon, label, minTier) => {
@@ -3286,19 +3302,16 @@ const UI = {
         html += tool('clear', '⛏', 'Clear', 3);
         html += tool('mound', '⛰', 'Mound', 3);
       }
-      /* BUILD and BANISH share a row (tests/banish.mjs). Banish is the
-         villager's Scuttle: nothing comes back but the place in the
-         population, which late on — when the fields are staffed and you want
-         spears instead — is the only thing you actually wanted. Two taps, the
-         same confirm pattern the hulls and demolition use, because it cannot
-         be undone once they reach the rim. */
+      /* BANISH is the villager's Scuttle (tests/banish.mjs): nothing comes
+         back but the place in the population, which late on — when the fields
+         are staffed and you want spears instead — is the only thing you
+         actually wanted. Two taps, the same confirm pattern the hulls and
+         demolition use, because it cannot be undone once they reach the rim.
+         Its button is the header's small red one (killBtn, above). */
       if (own && Units.isVillager(u)) {
         // under arms there is nothing Build could answer — the panel shows
         // only what can act; the hint line carries the why
         if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
-        html += this.confirmDemolish === u.id
-          ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away</button>`
-          : `<button class="abtn" data-act="banish">👋 Banish</button>`;
         /* …and if they are raising something, the works can be called off
            from right here — the same button the building's own panel shows,
            gone the moment there is nothing being raised. */
@@ -3429,8 +3442,7 @@ const UI = {
         this.renderPanel();
         this.refreshMenu();
       });
-      const ban = panel.querySelector('[data-act="banish"]');
-      if (ban) ban.addEventListener('click', e => {
+      panel.querySelectorAll('[data-act="banish"]').forEach(ban => ban.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || !Units.canBanish(u2)) return;
         if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
@@ -3439,9 +3451,8 @@ const UI = {
         Units.banish(u2);
         this.toast('Banished — they are walking out of the valley');
         this.deselect();
-      });
-      const scut = panel.querySelector('[data-act="scuttle"]');
-      if (scut) scut.addEventListener('click', e => {
+      }));
+      panel.querySelectorAll('[data-act="scuttle"]').forEach(scut => scut.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
         // never send soldiers down with the ship — an accidental tap would be brutal
@@ -3452,7 +3463,7 @@ const UI = {
         Units.despawn(u2);   // deselects; population headcount follows the roster
         G.log('Hull scuttled — she slips beneath the water');
         this.toast('Scuttled — its place in the population is freed');
-      });
+      }));
       const heal = panel.querySelector('[data-act="heal"]');
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);

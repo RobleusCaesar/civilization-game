@@ -24,7 +24,7 @@
    Run this after touching any of:
      units.js — banish / canBanish / sendToEdge / edgeTarget / atMapEdge /
                 leaveTheMap, the 'banish' branch in update, workReport
-     ui.js — the villager panel's Build/Banish row and its click handler
+     ui.js — the villager panel's Banish (UI.killBtn, beside the ✕) and its click handler
      buildings.js — popCap; units.js — popUsed
 
      node tests/banish.mjs      # exits non-zero on any regression */
@@ -134,14 +134,12 @@ const out = await p.evaluate(async () => {
     UI.select('unit', v.id);
     const q = (sel) => document.querySelector('#panel ' + sel);
     ck('thePanelOffersIt', !!q('[data-act="banish"]'), '');
-    ck('rightBesideBuild', (() => {
-      const acts = [...document.querySelectorAll('#panel .pactions .abtn')].map(e => e.dataset.act);
-      const i = acts.indexOf('gobuild'), j = acts.indexOf('banish');
-      return i >= 0 && j === i + 1;
-    })(), 'the two share a row');
-    ck('andNeitherIsFullWidth',
-      !q('[data-act="banish"]').classList.contains('wide') &&
-      !q('[data-act="gobuild"]').classList.contains('wide'), '');
+    // a RARE act: the small red button beside the ✕, never a big button in
+    // the actions (operator, 2026-11-02 — UI.killBtn); Build keeps the actions
+    ck('itSitsBesideTheClose',
+      !!document.querySelector('#panel .phead [data-act="banish"].pkill') &&
+      !document.querySelector('#panel .pactions [data-act="banish"]'), 'in the header, not the actions');
+    ck('andBuildKeepsTheActions', !!document.querySelector('#panel .pactions [data-act="gobuild"]'), '');
     // first tap ARMS, second acts — and the second tap is a SECOND decision:
     // a quick double-tap is one gesture, so the confirm ignores a tap that
     // comes within its guard of the arming and stays armed (PX-26). Here the
@@ -154,7 +152,8 @@ const out = await p.evaluate(async () => {
     ck('theFirstTapOnlyArmsIt',
       !!Units.get(v.id) && (!v.task || v.task.type !== 'banish') && UI.confirmDemolish === v.id,
       'it cannot be undone once they reach the rim');
-    ck('andSaysSo', /confirm/i.test(q('[data-act="banish"]').textContent), q('[data-act="banish"]').textContent.slice(0, 40));
+    { const pl = q('.pactions [data-act="banish"]');   // armed: the warning comes out at the head of the actions
+      ck('andSaysSo', !!pl && /confirm/i.test(pl.textContent), pl ? pl.textContent.slice(0, 40) : 'no confirm plank'); }
     tapBan();
     ck('aQuickDoubleTapIsNotTheSecondTap',
       !!Units.get(v.id) && (!v.task || v.task.type !== 'banish') && UI.confirmDemolish === v.id,

@@ -3330,13 +3330,20 @@ them down on the way, the place is freed when they LEAVE rather than when the
 order is given, and any other order before they reach the rim calls it off. A
 villager sealed in with no road out slips away anyway — no way to the edge is
 not a reason to keep feeding them. Two taps (`UI.confirmDemolish`, the same
-confirm the hulls and demolition use) because it cannot be undone. The button
-shares the villager panel's row with Build; **villagers only for now** —
-`Units.canBanish` is the single gate, and soldiers keep their posts.
-**The buttons carry LABELS, not captions**: what banishment costs is explained
-once in the villager's hint line, where the rest of that unit's options are
-explained, because a caption under every button turns the action row into a
-wall of small print.
+confirm the hulls and demolition use) because it cannot be undone.
+**Villagers only for now** — `Units.canBanish` is the single gate, and
+soldiers keep their posts.
+**EVERY ACT THAT THROWS SOMETHING AWAY IS A SMALL RED BUTTON BESIDE THE ✕**
+(`UI.killBtn` / `killPlank`, operator 2026-11-02: "People may want to
+demolish, but it won't be often… it's no longer a primary part of the UI"):
+Demolish (every building but the hall, and a bridge), Banish and Scuttle are
+an icon (🔥 / 👋 / 🌊) in a dark red plate in the panel header, named by its
+title, never a button in the actions grid. The first tap arms it, and the
+warning comes out as a full-width plank at the head of the actions saying
+what is lost and what comes back; the plank or the red button confirms. Both
+carry the same `data-act`, so the handlers bind every match
+(`querySelectorAll`), and tests/banish.mjs and boats-moat-scuttle.mjs pin the
+header placement and the plank.
 
 **The levy** (`tests/levy.mjs`): the village called to arms — the player's
 mirror of the rival's townsfolk militia, and the last-ditch lever for a town

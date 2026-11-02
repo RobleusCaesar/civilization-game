@@ -501,6 +501,17 @@
   .abtn.sel { border-color: var(--gold); background: #514627; }
   #panelClose { position: absolute; right: 10px; margin-top: -2px; }
   #helpToggle { position: absolute; right: 58px; margin-top: -2px; min-width: 40px; }
+  /* THE RARE ACT, SMALL AND RED, BESIDE THE ✕ (UI.killBtn — operator,
+     2026-11-02): Demolish, Banish and Scuttle are an icon in a dark red
+     plate, the ✕'s own size, never a big button in the actions. Armed, it
+     glows and the full warning comes out at the head of the actions. */
+  .abtn.pkill { position: absolute; right: 58px; margin-top: -2px; min-width: 40px; padding: 4px 8px;
+    font-size: 16px; border-color: #5a1f16;
+    background: linear-gradient(180deg, #5a2219, #3a150f); box-shadow: inset 0 1px 0 rgba(255,170,140,.14); }
+  .abtn.pkill:active { background: #6e2a1e; }
+  .abtn.pkill.armed { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(224,101,80,.45), inset 0 1px 0 rgba(255,170,140,.2); }
+  #helpToggle ~ .abtn.pkill { right: 106px; }
+  #panel .phead.k3 > div { padding-right: 144px; }   /* clear the red button, the −/ℹ️ and the ✕ */
 
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }
@@ -2168,48 +2179,48 @@
 
 </div>
 
-<script src="js/feedback.js?v=129"></script>
-<script src="js/config.js?v=129"></script>
-<script src="js/audio.js?v=129"></script>
-<script src="js/config.supabase.js?v=129"></script>
-<script src="js/vendor/supabase.js?v=129"></script>
-<script src="js/backend.js?v=129"></script>
-<script src="js/competition.js?v=129"></script>
-<script src="js/score.js?v=129"></script>
-<script src="js/cards.js?v=129"></script>
-<script src="js/deck.js?v=129"></script>
-<script src="js/artstyle.js?v=129"></script>
-<script src="js/sprites.js?v=129"></script>
-<script src="js/formations.js?v=129"></script>
-<script src="js/relics.js?v=129"></script>
-<script src="js/assets.js?v=129"></script>
-<script src="js/dev.js?v=129"></script>
-<script src="js/map.js?v=129"></script>
-<script src="js/buildings.js?v=129"></script>
-<script src="js/units.js?v=129"></script>
-<script src="js/combat.js?v=129"></script>
-<script src="js/ai.js?v=129"></script>
-<script src="js/render.js?v=129"></script>
-<script src="js/beasts.js?v=129"></script>
-<script src="js/defeatart.js?v=129"></script>
-<script src="js/victoryart.js?v=129"></script>
-<script src="js/ui.js?v=129"></script>
-<script src="js/screens.js?v=129"></script>
-<script src="js/patchnotes.js?v=129"></script>
-<script src="js/settings.js?v=129"></script>
-<script src="js/titlescreen.js?v=129"></script>
-<script src="js/tutorial.js?v=129"></script>
-<script src="js/deckfx.js?v=129"></script>
-<script src="js/deckfx-town.js?v=129"></script>
-<script src="js/deckfx-army.js?v=129"></script>
-<script src="js/deckfx-growth.js?v=129"></script>
-<script src="js/deckfx-rival.js?v=129"></script>
-<script src="js/deckui.js?v=129"></script>
-<script src="js/deckscreens.js?v=129"></script>
-<script src="js/cardintro.js?v=129"></script>
-<script src="js/game.js?v=129"></script>
-<script src="js/terrain-core.js?v=129"></script>
-<script src="js/terrain.js?v=129"></script>
-<script src="js/terrain-v5.js?v=129"></script>
+<script src="js/feedback.js?v=130"></script>
+<script src="js/config.js?v=130"></script>
+<script src="js/audio.js?v=130"></script>
+<script src="js/config.supabase.js?v=130"></script>
+<script src="js/vendor/supabase.js?v=130"></script>
+<script src="js/backend.js?v=130"></script>
+<script src="js/competition.js?v=130"></script>
+<script src="js/score.js?v=130"></script>
+<script src="js/cards.js?v=130"></script>
+<script src="js/deck.js?v=130"></script>
+<script src="js/artstyle.js?v=130"></script>
+<script src="js/sprites.js?v=130"></script>
+<script src="js/formations.js?v=130"></script>
+<script src="js/relics.js?v=130"></script>
+<script src="js/assets.js?v=130"></script>
+<script src="js/dev.js?v=130"></script>
+<script src="js/map.js?v=130"></script>
+<script src="js/buildings.js?v=130"></script>
+<script src="js/units.js?v=130"></script>
+<script src="js/combat.js?v=130"></script>
+<script src="js/ai.js?v=130"></script>
+<script src="js/render.js?v=130"></script>
+<script src="js/beasts.js?v=130"></script>
+<script src="js/defeatart.js?v=130"></script>
+<script src="js/victoryart.js?v=130"></script>
+<script src="js/ui.js?v=130"></script>
+<script src="js/screens.js?v=130"></script>
+<script src="js/patchnotes.js?v=130"></script>
+<script src="js/settings.js?v=130"></script>
+<script src="js/titlescreen.js?v=130"></script>
+<script src="js/tutorial.js?v=130"></script>
+<script src="js/deckfx.js?v=130"></script>
+<script src="js/deckfx-town.js?v=130"></script>
+<script src="js/deckfx-army.js?v=130"></script>
+<script src="js/deckfx-growth.js?v=130"></script>
+<script src="js/deckfx-rival.js?v=130"></script>
+<script src="js/deckui.js?v=130"></script>
+<script src="js/deckscreens.js?v=130"></script>
+<script src="js/cardintro.js?v=130"></script>
+<script src="js/game.js?v=130"></script>
+<script src="js/terrain-core.js?v=130"></script>
+<script src="js/terrain.js?v=130"></script>
+<script src="js/terrain-v5.js?v=130"></script>
 </body>
 </html>

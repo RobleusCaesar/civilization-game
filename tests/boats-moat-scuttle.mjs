@@ -95,10 +95,12 @@ const out = await p.evaluate(async () => {
     const pop0 = Units.popUsed('P');
     UI.select('unit', boat.id);
     const btn1 = document.querySelector('#panel [data-act="scuttle"]');
-    ck('scuttleButtonOffered', !!btn1 && /Scuttle/.test(btn1.textContent), btn1 ? btn1.textContent.trim() : 'missing');
+    // the small red button beside the ✕ (UI.killBtn): its name is its title
+    ck('scuttleButtonOffered', !!btn1 && /Scuttle/.test(btn1.title) && btn1.classList.contains('pkill'), btn1 ? btn1.title : 'missing');
     btn1.click();   // first tap arms the confirm
     const btn2 = document.querySelector('#panel [data-act="scuttle"]');
-    const armed = !!btn2 && btn2.classList.contains('danger') && !!Units.get(boat.id);
+    const armed = !!btn2 && btn2.classList.contains('danger') && !!Units.get(boat.id) &&
+      /confirm/i.test((document.querySelector('#panel .pactions [data-act="scuttle"]') || {}).textContent || '');
     ck('firstTapOnlyArms', armed, btn2 ? btn2.textContent.trim() : 'missing');
     // a quick double-tap is ONE gesture: a tap within the confirm's guard of
     // the arming is ignored and the button stays armed (PX-26). The

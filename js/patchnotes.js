@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 130, date: '2026-11-02', title: 'Tidier panels',
+    items: [
+      'Demolish, Banish and Scuttle are now a small red button beside the close button, so they no longer take up a big space in every panel. Tap it once and a warning shows what you lose and what comes back; tap again to confirm.',
+    ],
+  },
+  {
     build: 129, date: '2026-11-02', title: 'Fewer animals near home',
     items: [
       'Far fewer deer and cattle wander near your town and your rival’s, so food is scarcer at the start and the herds no longer crowd your village. The wild country further out is as full of game as before.',
