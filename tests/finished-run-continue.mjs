@@ -714,7 +714,7 @@ const out = await p.evaluate(async () => {
     };
     const toLoad = () => { Screens.show('paused'); Screens.backTo = 'paused'; Screens.show('load'); };
     const resume = () => { Screens.show('paused'); document.getElementById('btnPauseResume').click(); return playing(); };
-    let a = {}, c = {};
+    let a = {}, c = {}, d = {};
     try {
       // the slow save is asked for, and the player goes back to their game…
       toLoad(); (await loadBtn(1)).click(); await wait(150);
@@ -731,6 +731,19 @@ const out = await p.evaluate(async () => {
       const mid = String(S.seed);
       held.splice(0).forEach(g => g()); await wait(500);
       c = { mid, seed: String(S.seed), screen: Screens.current };
+      // …and a Resume that waits behind its plaque (the art still landing on a
+      // cold cache) is an entry from the press: the slow answer, landing in
+      // that wait, is dropped — never the world the plaque then enters
+      S.paused = true;
+      toLoad(); (await loadBtn(1)).click(); await wait(150);
+      const h = holdArt();
+      try {
+        Screens.show('paused'); document.getElementById('btnPauseResume').click(); await wait(150);
+        d.plaque = prepUp();
+        held.splice(0).forEach(g => g()); await wait(500);   // the slow save answers while the plaque is up
+      } finally { h.let(); }
+      await playing(); await wait(300);
+      d.seed = String(S.seed); d.screen = Screens.current;
     } catch (e) { a.err = a.err || String(e); }
     finally {
       held.splice(0).forEach(g => g());
@@ -742,6 +755,8 @@ const out = await p.evaluate(async () => {
       `the game in hand was 3737; after Back → Resume the slow save (1717) answered and the world is ${a.seed} on "${a.screen}"${a.err ? ' — ' + a.err : ''}`);
     ck('norOverTheSaveChosenAfterIt', c.mid === '2727' && c.seed === '2727' && c.screen === 'playing',
       `after Resume the player loaded 2727 (world ${c.mid}); the slow save then answered and the world is ${c.seed} on "${c.screen}"`);
+    ck('norWhileTheResumeWaitsBehindItsPlaque', d.plaque === true && d.seed === '2727' && d.screen === 'playing',
+      `the Resume waited behind its plaque (${d.plaque}); the slow save answered in that wait and the world entered is ${d.seed} on "${d.screen}" (the game in hand was 2727)`);
     S.paused = true;
   }
 
