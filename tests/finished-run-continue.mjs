@@ -808,7 +808,10 @@ const out = await p.evaluate(async () => {
      lowered ("Save failed: jWT expired.") — table names, quotes and
      underscores on the player's line. A failure is named by its class in
      plain words; the server's words go to the console and the error ring
-     (tagged: kept for a report, never counted as the game's fault). ---- */
+     (tagged: kept for a report, never counted as the game's fault). The
+     shell's two other doors that said what the server said — the Load
+     screen's own line for a save list the cloud refused, and a recovery
+     token the sign-in service refused — name it the same way. ---- */
   {
     // realistic answers: PostgREST's and supabase-js's own words, and the backend's
     const cases = [
@@ -860,6 +863,30 @@ const out = await p.evaluate(async () => {
     ck('whileTheServersWordsAreKeptForAReport', !!kept && kept.tag === 'net' && (Feedback.runErrs || 0) === counted,
       kept ? `the ring keeps "${kept.msg}" tagged ${kept.tag}; the run's tally ${counted} → ${Feedback.runErrs || 0}` : 'nothing in the error ring');
     Backend.markActiveSlot(null);
+    // the shell's two other doors that said what the server said: the save
+    // list the cloud refused (the Load screen's own hint), and a recovery
+    // token the sign-in service refused (the line over Settings)
+    const real2 = { ready: Backend.isReady, list: Backend.listSaves, imp: Backend.importIdentity, prompt: window.prompt };
+    let hint = '', restore = null;
+    try {
+      Backend.isReady = () => true;
+      Backend.listSaves = async () => ({ ok: false, error: { code: 401, message: 'JWT expired' } });
+      Screens.backTo = 'title'; Screens.show('load');
+      for (let i = 0; i < 100 && !/could not/i.test(hint); i++) { await tick(); hint = (document.querySelector('#slotList .hint') || {}).textContent || ''; }
+      Screens.show('settings'); await wait(50); Screens.unsay();
+      window.prompt = () => 'a pasted token';
+      Backend.importIdentity = async () => ({ ok: false, error: { code: 'supabase', message: 'Invalid Refresh Token: Refresh Token Not Found' } });
+      document.getElementById('btnImportId').click();
+      // the shell's own line, read as SEEN (the page itself names tokens and the cloud)
+      const sm = document.getElementById('shellMsg');
+      for (const t = performance.now() + 2000; performance.now() < t && !(sm.classList.contains('show') && seen(sm));) await tick();
+      restore = sm.classList.contains('show') && seen(sm) ? sm : null;
+    } finally {
+      Backend.isReady = real2.ready; Backend.listSaves = real2.list; Backend.importIdentity = real2.imp; window.prompt = real2.prompt;
+    }
+    ck('andTheSaveListTheCloudRefusesIsNamedToo', /could not/i.test(hint) && !/jwt/i.test(hint), `the Load screen reads "${hint}"`);
+    ck('andSoIsARecoveryTokenItRefuses', !!restore && !/refresh token|not found/i.test(restore.textContent),
+      restore ? `"${restore.textContent}" over Settings` : 'nothing a player can see');
     Screens.backTo = 'title'; Screens.show('title');
   }
 
