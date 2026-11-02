@@ -458,6 +458,17 @@ const UI = {
      the scan — the same rule AI.plot's pickSealFree follows. */
   PLACE_HYST: 0.18,      // tiles of stickiness past a cell boundary before the snap moves
   PLACE_EDGE: 44,        // css px band at the viewport edge that auto-pans while dragging
+  /* A STATION'S CHIP SAYS THE WORK, NOT THE JOKE (tests/worked-ground.mjs,
+     PX-07): the chip clips at 260px, and every station's whyGround leads
+     with a joke and ends with the instruction — so on a tile that was never
+     worked (refusal code 'ground', the station's own refusal) the chip says
+     the short, action-first form instead. The joke is still the ✓'s toast. */
+  PLACE_GROUND: {
+    lumber: 'Fell trees here first',
+    quarry: 'Break rock here first',
+    farm: 'Harvest fruit here first',
+    lodge: 'Hunt an animal here first',
+  },
 
   // did a press land on the ghost's drawn footprint? The forgiveness margin
   // is a SCREEN-space read (≥ ~26px), so a zoomed-out ghost is still a real
@@ -487,10 +498,15 @@ const UI = {
     /* NOWHERE TO STAND AT ALL (a farm before any soil is picked bare, a dock
        with no explored water): entering a mode with no ghost, no grid and no
        word of why is the design-review finding this closes — say why in the
-       building's own voice and stay in the menu. */
+       building's own voice and stay in the menu. A STATION SAYS ITS WORK
+       FIRST (tests/worked-ground.mjs, PX-07): on a fresh run this is four of
+       the five cards a phone shows, so the line is its short `whyNone` —
+       what to go and do, then the rule — in the game's gold: it is the
+       lesson of the first minute, not an alarm. The whyGround joke stays the
+       refusal on a tile. */
     const d = CFG.BUILDINGS[key];
-    this.toast(d.whyGround || (key === 'dock' ? 'No open water in reach of your town yet'
-      : 'No ground for this yet — explore or clear more land'), true);
+    this.toast(d.whyNone || d.whyGround || (key === 'dock' ? 'No open water in reach of your town yet'
+      : 'No ground for this yet — explore or clear more land'), 'note');
     this.exitPlacement();
     this.setMenuCollapsed(false);
   },
@@ -787,7 +803,10 @@ const UI = {
     // It always takes the OPPOSITE side of the ✓/✗ pair, so they can't collide.
     const why = el.querySelector('#placeWhy');
     let msg = '';
-    if (v && !v.ok) msg = '⃠ ' + v.why;
+    // a station's own refusal is said as its work (PLACE_GROUND); any other
+    // ground refusal (the burnt wood's ash) keeps its own words
+    const gnd = v && v.code === 'ground' && v.why === (CFG.BUILDINGS[this.placing] || {}).whyGround && this.PLACE_GROUND[this.placing];
+    if (v && !v.ok) msg = '⃠ ' + (gnd || v.why);
     else if (v && !v.afford) msg = '⏳ Need ' + this._missingCostStr();
     // a WARNING rides a valid spot (sealing your own town in is allowed —
     // the chip just says what it means, so the choice is an informed one)
