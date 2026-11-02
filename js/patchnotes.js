@@ -33,6 +33,8 @@ const PATCH_NOTES = [
       'On phones, the Build tab, the Pause and Menu buttons and the small arrow under the minimap catch a tap that lands a little short of them.',
       'The tutorial moves the view so the tree, bush or rock it asks you to tap is never hidden, its tips can be dismissed, its messages appear below its card, and news about your rival waits until you can read it.',
       'Continue opens your game on the first tap and greets you with the day you left off on. When a saved game can’t be opened, or the cloud doesn’t answer, the menu now says why and every button keeps working. Saving, importing a file and restoring your identity now say whether they worked.',
+      'A save you asked to load and then left by going back to your game no longer opens over it later, Load tells you when a game is already opening, and cloud problems, the world board’s included, are explained in plain words.',
+      'With a phone held sideways, a message on the title screen no longer covers the Load and Cards buttons.',
       'The loading bar moves steadily while the world is prepared, and the loading screen can no longer get stuck.',
       'New games and Continue open sooner, phones most of all: the game no longer waits to download soldiers and boats you don’t have yet.',
       'The ground of a new game is prepared while you choose your card, so it is usually ready the moment the world opens.',

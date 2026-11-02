@@ -2025,7 +2025,7 @@ const Screens = {
         if (!sub.ok && !/duplicate/i.test(sub.error.message || '')) {
           if (auto) this._promptName('Couldn’t reach the board — tap Save to try again');
           else { btn.textContent = '💾 Save score'; btn.classList.remove('cant');
-            UI.toast('Could not reach the board: ' + sub.error.message, true); }
+            UI.toast('Your score could not be posted: ' + this.whyNet(sub.error), true); }   // named, never quoted (PERS-02)
           return;
         }
       }
@@ -2075,7 +2075,8 @@ const Screens = {
       return;
     }
     const r = await Backend.topScores(10);
-    if (!r.ok) { box.innerHTML = '<p class="hint">Could not reach the board: ' + this.esc(r.error.message) + '</p>'; return; }
+    // named in plain words, never in the server's own (PERS-02, finished-run-continue §7l)
+    if (!r.ok) { box.innerHTML = '<p class="hint">The world board could not be shown: ' + this.esc(this.whyNet(r.error)) + '</p>'; return; }
     this.renderBoard(r.data, box, -1);
   },
 

@@ -2024,7 +2024,30 @@ shows the further of the art's fraction and the time against
 `GAME_ART_FLOOR_MS`, never going back. Unchanged on purpose: which save
 Continue picks (PX-21b, deferred: it changes what loads), its label and the
 quit guard's words. The `window.UI` trap again: `say` and the arrival note
-ask `typeof UI`.
+ask `typeof UI`. **ONE OPENING AT A TIME SURVIVES A RESUME** (`Screens._openTok`,
+finished-run-continue §7j): every `_fetchSlot` takes a fresh token, and an
+entry moves it — `enterGame` at the press (a Resume from the pause menu
+included, even one waiting behind its plaque) and `_enterNow` again — so an
+answer still out when the player went on resolves `{ stale }` and Continue's
+cloud branch and ▶ Load let it go: never loaded over the game in hand, nor
+over a save chosen after it, exactly as an answer past `LOAD_MAX_MS` is
+dropped. ▶ Load and the file import answer an opening in progress ("Opening
+your saved game…", §7k), like Continue and New Game. **A CLOUD FAILURE IS
+NAMED, NEVER QUOTED** (`Screens.whyNet`, §7l): 401/403, `auth_failed` or a
+JWT/token message is a sign-in the cloud did not accept, any other 4xx a
+refusal, the backend's own `no_slot`/`busy`/`no_game` plain words; the
+server's text goes to the console and the error ring tagged 'net' (kept for a
+report, never counted), and the Load screen's list failure, a refused
+recovery token and the world board (its screen and a score that would not
+post) go through it too (`bad_token` keeps its words). **ON A LANDSCAPE
+WINDOW THE TITLE'S LINE RIDES AT THE TOP** (`#scrTitle.show ~ #shellMsg`,
+title §8): held sideways the column fills the height and the line at the foot
+covered Load and Cards for its seven seconds; §8 measures every title plaque
+on a 6px grid at four sizes and runs a settled mock backend — its pages no
+longer sign in to the live project (on CI a late anonymous sign-in re-ran the
+save lookup after the test's wait, and the press read "Still checking for
+your saves…"). Known and left: a manual score post that fails toasts on the
+end screen, where toasts are hidden (pre-existing).
 
 **Drag-to-move** (`tests/drag-move.mjs`): the second movement gesture, born of
 the crowded-tile problem — with several units stacked, tapping a destination

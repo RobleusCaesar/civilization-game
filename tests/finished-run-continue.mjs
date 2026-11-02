@@ -904,6 +904,17 @@ const out = await p.evaluate(async () => {
     ck('andTheSaveListTheCloudRefusesIsNamedToo', /could not/i.test(hint) && !/jwt/i.test(hint), `the Load screen reads "${hint}"`);
     ck('andSoIsARecoveryTokenItRefuses', !!restore && !/refresh token|not found/i.test(restore.textContent),
       restore ? `"${restore.textContent}" over Settings` : 'nothing a player can see');
+    // …and the world board's own screen, which quoted it too ("Could not reach
+    // the board: JWT expired"), found after the shell fixes by the same review
+    const real3 = { ready: Backend.isReady, top: Backend.topScores };
+    let board = '';
+    try {
+      Backend.isReady = () => true;
+      Backend.topScores = async () => ({ ok: false, error: { code: 401, message: 'JWT expired' } });
+      Screens.backTo = 'title'; Screens.show('leaders');
+      for (let i = 0; i < 100 && !/could not/i.test(board); i++) { await tick(); board = (document.querySelector('#ldrList .hint') || {}).textContent || ''; }
+    } finally { Backend.isReady = real3.ready; Backend.topScores = real3.top; }
+    ck('andSoIsTheWorldBoardItCannotShow', /could not/i.test(board) && !/jwt/i.test(board) && /sign-in/i.test(board), `the board reads "${board}"`);
     Screens.backTo = 'title'; Screens.show('title');
   }
 
