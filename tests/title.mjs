@@ -557,8 +557,9 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       const bt = document.getElementById('btnContinue'), sm = bt && bt.querySelector('small');
       return !!bt && !bt.classList.contains('cant') && !!sm && !/looking/.test(sm.textContent);
     }, null, { timeout: 15000 }).catch(() => {});
-    const at = await o.p.evaluate(() => { const r = document.getElementById('btnContinue').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
-    await o.p.mouse.click(at[0], at[1]);
+    // a real press, once the plaque has stopped moving: the title's plaques pop
+    // in, and a press at the centre measured mid-animation can miss the plaque
+    await o.p.locator('#btnContinue').click({ timeout: 10000 });
     await o.p.waitForTimeout(500);
     // the line fades in over its first frames: wait (briefly) for it to be on
     // top at its centre before measuring, never one fixed beat on a busy host

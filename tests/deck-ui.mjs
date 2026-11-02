@@ -1308,6 +1308,9 @@ const rm = await rp.evaluate(async () => {
   window.__anims.length = 0;
   document.getElementById('deckBtn').click(); await wait(300);
   document.querySelector('#dkSheet .dkCell[data-card="__bar"]').click(); await wait(250);
+  // the play's own result note is what the information check reads: the
+  // column (five notes, the town's news among them since build 128) starts empty
+  document.getElementById('toasts').innerHTML = ''; UI._toastAt = {};
   const t0 = performance.now();
   document.querySelector('#dkInsp .dkPlay').click();
   while (DeckUI.playing && performance.now() - t0 < 3000) await new Promise(r => requestAnimationFrame(r));

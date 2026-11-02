@@ -1931,7 +1931,13 @@ await p.evaluate(({ TOWN }) => {
 
       /* (f) THE WARD'S END IS NEWS: a note on the screen (never the red alarm),
          and the dome breaks where it stood */
-      const box = document.getElementById('toasts'), n0 = box.children.length;
+      // the column holds five and, since build 128, the town's own news reaches
+      // it too (and a refusal stays up for its reading time): a column already
+      // full of background notes would swallow the one this reads, so it starts
+      // empty, and so does the six-second collapse map
+      const box = document.getElementById('toasts');
+      box.innerHTML = ''; UI._toastAt = {};
+      const n0 = box.children.length;
       R.cardShows = [];
       const e = Deck.timed('unbreakable_hall');
       e.until = Deck.now() - 1e-6;
