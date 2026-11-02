@@ -927,10 +927,12 @@ const UI = {
       // genuinely underway: either the sapper is now actively on the job, or
       // (already mid-job elsewhere) this order is truly waiting behind it.
       const working = n > 0 && ((u.task && u.task.type === 'terraform') || (u.jobs && u.jobs.length > 0));
+      // the order that cannot be carried out says why, as a warning (the tap
+      // contract's rule 4); the dispatch itself stays silent
       this.toast(n
         ? (working ? `${noun} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
                    : 'No clear ground to stand beside — try a different tile')
-        : 'Those tiles are already queued');
+        : 'Those tiles are already queued', !!n && !working);
       if (working) this.dispatchedWorker();
       else { this.terraMode = null; this.renderPanel(); }   // nothing actually underway — stays selected
     } else if ((this.terraGhost || []).length) {
@@ -1959,7 +1961,7 @@ const UI = {
       if (!S.armies[m].length) delete S.armies[m];
     }
     S.armies[n] = live.slice();
-    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`);
+    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`, 'note');
     this.renderArmyBar(); this.renderPanel();
     return n;
   },
@@ -2799,7 +2801,7 @@ const UI = {
           this.setMenuCollapsed(true, true);
           this.toast(b2.rally
             ? 'Tap a new spot to move the rally — or tap the building to clear it'
-            : 'Tap a spot to rally — new units head there (tap the building to cancel)');
+            : 'Tap a spot to rally — new units head there (tap the building to cancel)', 'note');
         }
         else if (btn.dataset.act === 'levy') {
           if (S.levy) {
@@ -2809,7 +2811,7 @@ const UI = {
             const n = Units.raiseLevy();
             if (!n) { this.toast('No villagers to call to arms', true); return; }
             R.startHorn(Bld.cx(b2), Bld.cy(b2));
-            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`);
+            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`, 'note');
           }
           this.renderPanel();
         }
@@ -3042,7 +3044,7 @@ const UI = {
         this.toast(!on ? 'Doctrine stood down'
           : mode === 'siege' ? '⚙️ Siege — tap a building to bombard; the line shields the guns'
           : mode === 'chaos' ? '🔥 Chaos — the army falls on everything within reach'
-          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else');
+          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else', on ? 'note' : undefined);
         // the choice is made — the expander folds and its closed label wears it
         this.tacticsOpen = false;
         this.renderPanel();
@@ -3270,7 +3272,7 @@ const UI = {
             : job === 'bridge' ? 'Bridge tool — tap water or a moat to span it'
             : job === 'mound' ? 'Mound tool — raise slow-to-cross berms, or reclaim near-shore water (costs stone & wood)'
             : 'Clear tool — tap or drag across forest 🌲 / rock 🪨 / orchard')
-          : 'Tool down — tap a tile to walk');
+          : 'Tool down — tap a tile to walk', this.terraMode ? 'note' : undefined);
         this.renderPanel();
       }));
       const unload = panel.querySelector('[data-act="unload"]');
@@ -3340,7 +3342,7 @@ const UI = {
         if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
         this.builderFor = vid;    // after deselect/select bookkeeping
-        this.toast('Pick a building, then tap a site — this villager will build it');
+        this.toast('Pick a building, then tap a site — this villager will build it', 'note');
       });
       const grp = panel.querySelector('[data-act="group"]');
       if (grp) grp.addEventListener('click', () => {
