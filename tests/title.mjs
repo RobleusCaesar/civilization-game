@@ -51,8 +51,9 @@
    8. THE TITLE SAYS WHAT HAPPENED: a Continue whose save will not open says
       why on the shell's own line (#shellMsg, Screens.say — a toast is hidden
       off the playing screen), SEEN at 320x568 through 1440x900: on top at
-      its centre, inside the window, no scroll, clear of Continue and New
-      game.
+      its centre, inside the window, no scroll, and over NO title plaque (a
+      phone on its side seats the line at the top). Its pages run a settled
+      mock backend and ask the live project for nothing.
 
    Run after touching: index.html's boot block (Boot.title2 / t2*), the title
    markup or its CSS, #shellMsg, js/titlescreen.js, Screens.onTitle /
@@ -542,13 +543,33 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
    used to fail into a toast, and every toast is display:none off the
    playing screen — the press simply did nothing. The reason is SEEN: shown,
    on top at its own centre (elementFromPoint), inside the window at every
-   size, never pushing the column into a scroll and never over the two
-   plaques the player needs next (Continue to retry, New game to start). ---- */
+   size, never pushing the column into a scroll and never over ANY title
+   plaque — no tap on a plaque may land on the line (on a phone held
+   sideways it sat over Load and Cards for its seven seconds, and a tap on
+   Load only put the line away). These pages sign in to NOTHING: served over
+   HTTP the backend would sign in to the LIVE project, and on a CI runner
+   that sign-in landed late — its status word re-ran the save lookup after
+   the "finished looking" wait below, and the press was answered "Still
+   checking for your saves…". A mock backend, signed in at once with no
+   cloud saves, settles the title before the press, every time. ---- */
 {
   const bad = JSON.stringify({ at: Date.now(), day: 7, slot: null, json: JSON.stringify({ v: 99, map: { terrain: [0] } }) });
-  const said = [];
+  const cloud = new URL(readFileSync(join(root, 'js/config.supabase.js'), 'utf8').match(/url:\s*'([^']+)'/)[1]).host;
+  const SETTLED = `(() => {
+    const session = { access_token: 't', refresh_token: 'r', user: { id: 'title-mock-uid' } };
+    window.__NEO_BACKEND_MOCK = {
+      auth: {
+        async getSession() { return { data: { session }, error: null }; },
+        async signInAnonymously() { return { data: { session }, error: null }; },
+        async refreshSession() { return { data: { session }, error: null }; },
+        onAuthStateChange() {},
+      },
+      rest: async (method, path) => (path.startsWith('/profiles') && method === 'GET') ? [{ id: session.user.id }] : (method === 'GET' ? [] : null),
+    };
+  })();`;
+  const said = [], covered = [], asked = [];
   for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3], [844, 390, 3], [1440, 900, 1]]) {
-    const o = await open({ vp: [w, h], dpr, tag: 'say' + w, store: { 'neo-emergency': bad } });
+    const o = await open({ vp: [w, h], dpr, tag: 'say' + w, store: { 'neo-emergency': bad }, init: SETTLED });
     // Continue first finishes looking for saves: a press made while it still
     // looks is answered "Still checking for your saves…" (also the shell's
     // line), which is the right answer to THAT press and not the one this
@@ -577,9 +598,21 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       for (let e = el; e && e !== de; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) shown = false; }
       const q = el.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
       const clear = id => { const b2 = document.getElementById(id).getBoundingClientRect(), x = document.elementFromPoint(b2.left + b2.width / 2, b2.top + b2.height / 2); return !!x && !el.contains(x) && x !== el; };
+      // EVERY title plaque, at every point of it on a 6px grid: a tap there
+      // must reach the plaque, never the line
+      const under = [], plaques = [...document.querySelectorAll('#scrTitle .plaques .abtn')].filter(b2 => b2.getBoundingClientRect().width > 0);
+      for (const b2 of plaques) {
+        const p2 = b2.getBoundingClientRect();
+        let n = 0, on = 0;
+        for (let y = p2.top + 2; y < p2.bottom - 1; y += 6) for (let x = p2.left + 2; x < p2.right - 1; x += 6) {
+          n++; const e = document.elementFromPoint(x, y); if (e && (e === el || el.contains(e))) on++;
+        }
+        if (on) under.push((b2.id || b2.textContent.trim().slice(0, 12)) + ' ' + Math.round(100 * on / n) + '%');
+      }
       return { shown, top: !!hit && (hit === el || el.contains(hit)), inside: q.left >= -0.5 && q.top >= -0.5 && q.right <= vw + 0.5 && q.bottom <= vh + 0.5,
         sideways: de.scrollWidth > vw, scrolls: (() => { const c = document.querySelector('#scrTitle .tcol'); return c.scrollHeight > c.clientHeight + 1; })(),
-        contClear: clear('btnContinue'), newClear: clear('btnTitleNew'), screen: Screens.current, text: el.textContent.trim() };
+        contClear: clear('btnContinue'), newClear: clear('btnTitleNew'), screen: Screens.current, text: el.textContent.trim(),
+        plaques: plaques.map(b2 => b2.id).join(' '), under };
     });
     const why = [];
     if (r.none) why.push('no reason anywhere');
@@ -592,9 +625,18 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     }
     said.push(`${w}x${h}: ${why.length ? why.join(', ') : 'seen — "' + r.text + '"'}`);
     if (why.length) said.fail = true;
+    // every plaque the title shows (Continue, New game, Leaderboard, Settings,
+    // Guide, Load and the deck's Cards) is measured, so the probe is never vacuous
+    const nPlaques = r.none ? 0 : r.plaques.split(' ').filter(Boolean).length;
+    covered.push(`${w}x${h}: ${r.none ? 'no line to measure' : nPlaques < 7 ? 'only ' + nPlaques + ' plaques (' + r.plaques + ')' : r.under.length ? 'over ' + r.under.join(', ') : nPlaques + ' plaques clear'}`);
+    if (r.none || nPlaques < 7 || r.under.length) covered.fail = true;
+    const cloudReqs = o.reqs.filter(u => { try { return new URL(u).host === cloud; } catch (e) { return false; } });
+    if (cloudReqs.length) asked.push(`${w}x${h}: ${cloudReqs.length} (${cloudReqs[0].replace(/\?.*$/, '')})`);
     await o.ctx.close();
   }
   ck('aContinueThatWillNotOpenSaysWhyAtEverySize', !said.fail, said.join(' | '));
+  ck('andTheLineCoversNoPlaqueAtAnySize', !covered.fail, covered.join(' | '));
+  ck('andThesePagesSignInToNothing', asked.length === 0, asked.length ? 'requests to the live project — ' + asked.join(' | ') : 'no request to ' + cloud);
 }
 
 ck('theTitleRunsClean', errs.length === 0, errs[0] || 'no page errors');

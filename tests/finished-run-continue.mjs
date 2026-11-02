@@ -69,7 +69,12 @@
       day N" once (a Resume says nothing). The plaque's bar fills by time
       against the art's floor when the art says nothing, and never goes
       back; a fault behind the plaque, or a wait that never ends
-      (PREP_MAX_MS), still enters the game.
+      (PREP_MAX_MS), still enters the game. A Load whose save is still on
+      its way when the player goes back to their game (Back → Resume) is
+      called off — its answer never loads over the game in hand or over a
+      save chosen after it — and ▶ Load and a file import pressed while a
+      Continue is on its way are answered. A cloud failure is named in plain
+      words, never in the server's own (kept in the error ring, tagged).
 
    Run this after touching any of:
      backend.js — finalizeRun, noteFinishedSeed/finishedSeeds, autosaveNow,
@@ -78,7 +83,9 @@
      screens.js — onTitle (the Continue pick), continueGame, loadRow,
                   _loadSave, say/unsay, enterGame/_enterNow (the plaque and
                   its tick), showPrep, saveToSlot, the file import, the
-                  title drift in init, ensureDemo, the backend-status listener
+                  title drift in init, ensureDemo, the backend-status
+                  listener, _fetchSlot / _openTok, whyNet, onLoad (▶ Load
+                  and its list line), the identity restore line
      index.html — #shellMsg (the shell's message line)
      game.js — G.end, the autosave cadence in G.dayTick, and the cadence
                restart in G.newGame / G.loadJSON
@@ -673,6 +680,230 @@ const out = await p.evaluate(async () => {
       Backend.isReady = real.ready; Backend.listSaves = real.list; Backend.loadSlot = real.load;
       Backend.autosaveNow = real.auto; Backend.importIdentity = real.imp; window.prompt = real.prompt;
     }
+    Screens.backTo = 'title'; Screens.show('title');
+  }
+
+  /* ---- 7j. ONE OPENING AT A TIME SURVIVES A RESUME. Pause → Load → ▶ Load
+     on a slow line → Back → Resume: the Resume entered the game in hand and
+     let go of the opening while the fetch was still out, so the player could
+     choose ANOTHER save — and the first answer then loaded over whichever
+     game they had gone on to. An answer still out when the player went on is
+     dropped, the way one past LOAD_MAX_MS always was. ---- */
+  {
+    await settle();
+    G.newGame('1717', 'calm', 'small'); Cards.pick(0); S.day = 17; const st1 = G.saveJSON();
+    G.newGame('2727', 'calm', 'small'); Cards.pick(0); S.day = 27; const st2 = G.saveJSON();
+    G.newGame('3737', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 5;
+    Backend.clearLocalSnapshot();
+    const real = { ready: Backend.isReady, list: Backend.listSaves, load: Backend.loadSlot };
+    const held = [];
+    const row = (slot, seed, day) => ({ slot, name: 'Slot ' + slot, day, map_seed: seed, landform: 'valley', playtime_seconds: 60, updated_at: new Date().toISOString() });
+    Backend.isReady = () => true;
+    Backend.listSaves = async () => ({ ok: true, data: [row(1, '1717', 17), row(2, '2727', 27)] });
+    // slot 1 is on the slow line: its answer waits for the test; slot 2 answers at once
+    Backend.loadSlot = slot => {
+      const data = { slot, name: 'Slot ' + slot, state: slot === 1 ? st1 : st2 };
+      return slot === 1 ? new Promise(r => held.push(() => r({ ok: true, data }))) : Promise.resolve({ ok: true, data });
+    };
+    const loadBtn = async slot => {
+      for (let i = 0; i < 150; i++) {
+        const c = Screens.current === 'load' && document.querySelectorAll('#slotList .scard')[slot - 1];
+        const x = c && [...c.querySelectorAll('.abtn')].find(y => /Load/.test(y.textContent));
+        if (x) return x;
+        await tick();
+      }
+      return null;
+    };
+    const toLoad = () => { Screens.show('paused'); Screens.backTo = 'paused'; Screens.show('load'); };
+    const resume = () => { Screens.show('paused'); document.getElementById('btnPauseResume').click(); return playing(); };
+    let a = {}, c = {}, d = {};
+    try {
+      // the slow save is asked for, and the player goes back to their game…
+      toLoad(); (await loadBtn(1)).click(); await wait(150);
+      await resume();
+      held.splice(0).forEach(g => g()); await wait(500);   // …and only then does it answer
+      a = { seed: String(S.seed), screen: Screens.current };
+      // again — and this time, back in their game, the player loads ANOTHER save
+      S.paused = true;
+      toLoad(); (await loadBtn(1)).click(); await wait(150);
+      await resume();
+      S.paused = true;
+      toLoad(); (await loadBtn(2)).click();
+      await playing(); await wait(300);
+      const mid = String(S.seed);
+      held.splice(0).forEach(g => g()); await wait(500);
+      c = { mid, seed: String(S.seed), screen: Screens.current };
+      // …and a Resume that waits behind its plaque (the art still landing on a
+      // cold cache) is an entry from the press: the slow answer, landing in
+      // that wait, is dropped — never the world the plaque then enters
+      S.paused = true;
+      toLoad(); (await loadBtn(1)).click(); await wait(150);
+      const h = holdArt();
+      try {
+        Screens.show('paused'); document.getElementById('btnPauseResume').click(); await wait(150);
+        d.plaque = prepUp();
+        held.splice(0).forEach(g => g()); await wait(500);   // the slow save answers while the plaque is up
+      } finally { h.let(); }
+      await playing(); await wait(300);
+      d.seed = String(S.seed); d.screen = Screens.current;
+    } catch (e) { a.err = a.err || String(e); }
+    finally {
+      held.splice(0).forEach(g => g());
+      await wait(300);
+      Backend.isReady = real.ready; Backend.listSaves = real.list; Backend.loadSlot = real.load;
+    }
+    await settle();
+    ck('aLoadLeftForTheGameNeverLoadsOverIt', a.seed === '3737' && a.screen === 'playing',
+      `the game in hand was 3737; after Back → Resume the slow save (1717) answered and the world is ${a.seed} on "${a.screen}"${a.err ? ' — ' + a.err : ''}`);
+    ck('norOverTheSaveChosenAfterIt', c.mid === '2727' && c.seed === '2727' && c.screen === 'playing',
+      `after Resume the player loaded 2727 (world ${c.mid}); the slow save then answered and the world is ${c.seed} on "${c.screen}"`);
+    ck('norWhileTheResumeWaitsBehindItsPlaque', d.plaque === true && d.seed === '2727' && d.screen === 'playing',
+      `the Resume waited behind its plaque (${d.plaque}); the slow save answered in that wait and the world entered is ${d.seed} on "${d.screen}" (the game in hand was 2727)`);
+    S.paused = true;
+  }
+
+  /* ---- 7k. A LOAD OR A FILE, PRESSED WHILE A CONTINUE IS ON ITS WAY, IS
+     ANSWERED (rule 4: no silent no). Every other door that would open a
+     second world says "Opening your saved game…"; ▶ Load and the file
+     import returned without a word, so a player on a slow line read the
+     press as dead. ---- */
+  {
+    await settle();
+    G.newGame('4848', 'calm', 'small'); Cards.pick(0); S.day = 14; const contState = G.saveJSON();
+    G.newGame('5858', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 6;
+    const fileState = G.saveJSON();
+    Backend.clearLocalSnapshot();
+    const real = { ready: Backend.isReady, list: Backend.listSaves, load: Backend.loadSlot };
+    const held = [], fetched = {};
+    Backend.isReady = () => true;
+    Backend.listSaves = async () => ({ ok: true, data: [
+      { slot: 3, name: 'Hill Fort', day: 14, map_seed: '4848', landform: 'valley', playtime_seconds: 60, updated_at: new Date().toISOString(), over: false },
+      { slot: 4, name: 'Old Ford', day: 6, map_seed: '5858', landform: 'valley', playtime_seconds: 60, updated_at: new Date(Date.now() - 60000).toISOString(), over: false }] });
+    Backend.loadSlot = slot => {
+      fetched[slot] = (fetched[slot] || 0) + 1;
+      const data = { slot, name: 'Slot ' + slot, state: slot === 3 ? contState : fileState };
+      return slot === 3 ? new Promise(r => held.push(() => r({ ok: true, data }))) : Promise.resolve({ ok: true, data });
+    };
+    let loadMsg = null, fileMsg = null, during = {}, end = {};
+    try {
+      Screens._demo = false; Screens.show('title');
+      for (let i = 0; i < 200 && Screens._newestSlot !== 3; i++) await tick();
+      cont().click(); await wait(150);                      // the Continue is on its way…
+      Screens.backTo = 'title'; Screens.show('load');       // …and the player opens Load
+      let lb = null;
+      for (let i = 0; i < 150 && !lb; i++) {
+        const cd = document.querySelectorAll('#slotList .scard')[3];
+        lb = cd && [...cd.querySelectorAll('.abtn')].find(y => /Load/.test(y.textContent));
+        if (!lb) await tick();
+      }
+      Screens.unsay();
+      if (lb) lb.click();
+      loadMsg = await seesSoon(/Opening your saved game/i);
+      Screens.unsay(); await wait(50);
+      const inp = document.getElementById('fileLoad');
+      const dt = new DataTransfer(); dt.items.add(new File([fileState], 'village.json', { type: 'application/json' }));
+      inp.files = dt.files; inp.dispatchEvent(new Event('change'));
+      fileMsg = await seesSoon(/Opening your saved game/i, 3000);
+      during = { slot4: fetched[4] || 0, seed: String(S.seed), screen: Screens.current, button: !!lb };
+      held.splice(0).forEach(g => g());                      // the Continue's save arrives
+      await playing(); await wait(200);
+      end = { seed: String(S.seed), screen: Screens.current };
+    } finally {
+      held.splice(0).forEach(g => g());
+      Backend.isReady = real.ready; Backend.listSaves = real.list; Backend.loadSlot = real.load;
+    }
+    ck('aLoadPressedWhileAContinueIsOnItsWayIsAnswered', !!loadMsg && during.button && during.slot4 === 0,
+      `${loadMsg ? '"' + loadMsg.textContent + '" is seen' : 'nothing a player can see'} (button ${during.button}); the other slot was fetched ${during.slot4} time(s)`);
+    ck('andSoIsAFileImport', !!fileMsg && during.seed !== '5858',
+      `${fileMsg ? '"' + fileMsg.textContent + '" is seen' : 'nothing a player can see'}; the world was ${during.seed} on "${during.screen}"`);
+    ck('andTheContinueStillOpensItsOwnGame', end.seed === '4848' && end.screen === 'playing', `${end.screen}, seed ${end.seed} (the Continue's save was 4848)`);
+    S.paused = true;
+  }
+
+  /* ---- 7l. A CLOUD FAILURE IS NAMED, NEVER QUOTED (PERS-02). The reason
+     line used to fall back to the server's own message with its first letter
+     lowered ("Save failed: jWT expired.") — table names, quotes and
+     underscores on the player's line. A failure is named by its class in
+     plain words; the server's words go to the console and the error ring
+     (tagged: kept for a report, never counted as the game's fault). The
+     shell's two other doors that said what the server said — the Load
+     screen's own line for a save list the cloud refused, and a recovery
+     token the sign-in service refused — name it the same way. ---- */
+  {
+    // realistic answers: PostgREST's and supabase-js's own words, and the backend's
+    const cases = [
+      { code: 401, message: 'JWT expired', srv: true },
+      { code: 403, message: 'new row violates row-level security policy for table "saves"', srv: true },
+      { code: 409, message: 'duplicate key value violates unique constraint "saves_pkey"', srv: true },
+      { code: 400, message: 'invalid input syntax for type uuid: "slot_3"', srv: true },
+      { code: 404, message: 'Request failed (404)', srv: true },
+      { code: 'supabase', message: 'Invalid Refresh Token: Refresh Token Not Found', srv: true },
+      { code: 'PGRST301', message: 'JWSError JWSInvalidSignature', srv: true },
+      { code: 'auth_failed', message: 'Anonymous sign-in returned no session' },
+      { code: 'no_slot', message: 'No cloud slot bound' },
+      { code: 'busy', message: 'Autosave already in flight' },
+      { code: 'not_ready', message: 'Not signed in' },
+      { code: 'network', message: 'Request timed out' },
+      { code: 500, message: 'Server error' },
+      { code: 'empty_slot', message: 'That slot is empty' },
+      { code: 418 },
+    ];
+    const bad = [];
+    for (const c of cases) {
+      const w = String(Screens.whyNet(c));
+      const why = [];
+      if (/[a-z][A-Z]|[A-Z]{2}/.test(w)) why.push('camelCase or capitals');
+      if (/["'`“”‘’]/.test(w)) why.push('quotes');
+      if (/_/.test(w)) why.push('an underscore');
+      if (/jwt|jws|pgrst|postgres|row-level|constraint|uuid/i.test(w)) why.push("the server's vocabulary");
+      if (c.srv && c.message && w.toLowerCase().includes(c.message.toLowerCase().slice(0, 12))) why.push("the server's own words");
+      if (!/^[a-z][^]*[.!?]$/.test(w)) why.push('not a sentence that follows a colon');
+      if (why.length) bad.push(`${c.code} "${c.message || ''}" → "${w}" (${why.join(', ')})`);
+    }
+    ck('aCloudFailureIsNamedInPlainWords', bad.length === 0, bad.join('; ') || `${cases.length} realistic failures, each named in plain words`);
+    // …as the player SEES it: a save refused for a lapsed sign-in
+    G.newGame('6565', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 4;
+    const real = { auto: Backend.autosaveNow, prompt: window.prompt };
+    const counted = Feedback.runErrs || 0;
+    let line = null, kept = null;
+    window.prompt = () => 'Test Village';
+    Backend.autosaveNow = async () => ({ ok: false, error: { code: 401, message: 'JWT expired' } });
+    try {
+      Screens.backTo = 'paused'; Screens.show('load', { saveMode: true }); await wait(50);
+      Screens.unsay();
+      await Screens.saveToSlot(2, null); await wait(150);
+      line = await seesSoon(/save failed/i);
+      kept = (Feedback.errors() || []).find(e => /JWT expired/.test(e.msg || '')) || null;
+    } finally { Backend.autosaveNow = real.auto; window.prompt = real.prompt; }
+    ck('andTheLineThePlayerSeesNeverQuotesTheServer', !!line && !/jwt/i.test(line.textContent) && /sign-in/i.test(line.textContent),
+      line ? `"${line.textContent}" over the ${Screens.current} screen` : 'nothing a player can see');
+    ck('whileTheServersWordsAreKeptForAReport', !!kept && kept.tag === 'net' && (Feedback.runErrs || 0) === counted,
+      kept ? `the ring keeps "${kept.msg}" tagged ${kept.tag}; the run's tally ${counted} → ${Feedback.runErrs || 0}` : 'nothing in the error ring');
+    Backend.markActiveSlot(null);
+    // the shell's two other doors that said what the server said: the save
+    // list the cloud refused (the Load screen's own hint), and a recovery
+    // token the sign-in service refused (the line over Settings)
+    const real2 = { ready: Backend.isReady, list: Backend.listSaves, imp: Backend.importIdentity, prompt: window.prompt };
+    let hint = '', restore = null;
+    try {
+      Backend.isReady = () => true;
+      Backend.listSaves = async () => ({ ok: false, error: { code: 401, message: 'JWT expired' } });
+      Screens.backTo = 'title'; Screens.show('load');
+      for (let i = 0; i < 100 && !/could not/i.test(hint); i++) { await tick(); hint = (document.querySelector('#slotList .hint') || {}).textContent || ''; }
+      Screens.show('settings'); await wait(50); Screens.unsay();
+      window.prompt = () => 'a pasted token';
+      Backend.importIdentity = async () => ({ ok: false, error: { code: 'supabase', message: 'Invalid Refresh Token: Refresh Token Not Found' } });
+      document.getElementById('btnImportId').click();
+      // the shell's own line, read as SEEN (the page itself names tokens and the cloud)
+      const sm = document.getElementById('shellMsg');
+      for (const t = performance.now() + 2000; performance.now() < t && !(sm.classList.contains('show') && seen(sm));) await tick();
+      restore = sm.classList.contains('show') && seen(sm) ? sm : null;
+    } finally {
+      Backend.isReady = real2.ready; Backend.listSaves = real2.list; Backend.importIdentity = real2.imp; window.prompt = real2.prompt;
+    }
+    ck('andTheSaveListTheCloudRefusesIsNamedToo', /could not/i.test(hint) && !/jwt/i.test(hint), `the Load screen reads "${hint}"`);
+    ck('andSoIsARecoveryTokenItRefuses', !!restore && !/refresh token|not found/i.test(restore.textContent),
+      restore ? `"${restore.textContent}" over Settings` : 'nothing a player can see');
     Screens.backTo = 'title'; Screens.show('title');
   }
 

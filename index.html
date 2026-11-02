@@ -631,6 +631,15 @@
   }
   #shellMsg.show { display: block; animation: shellMsgIn .2s ease-out; }
   #shellMsg.bad { border-left-color: var(--danger); }
+  /* …but never over a title plaque (tests/title.mjs §8): held sideways, a
+     phone's title column fills the height, and the line at the foot sat
+     over Load and Cards for its seven seconds — a tap on Load only put it
+     away. On a landscape window the title's line rides at the top (over the
+     logo on a phone, the sky on a desktop) — never a plaque; a portrait
+     title keeps it at the foot, where the column leaves the ground clear. */
+  @media (orientation: landscape) {
+    #scrTitle.show ~ #shellMsg { top: calc(var(--safe-top) + 8px); bottom: auto; }
+  }
   @keyframes shellMsgIn { from { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { #shellMsg.show { animation: none; } }
   .shead {
