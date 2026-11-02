@@ -372,11 +372,16 @@ for (const ph of [
       return o;
     }, g.vid));
   };
-  const g0 = await ghost(false), g1 = await ghost(true);
+  /* Only a tap that SELECTED the villager says anything: on a crowded host a
+     main-thread stall between finger-down and finger-up turns the tap into a
+     hold, which selects nothing (the game's own tap rule), so it is tried
+     again, up to four times. */
+  const tries = async (withReach) => { let g; for (let i = 1; i <= 4; i++) { g = await ghost(withReach); g.tries = i; if (g.selected) break; } return g; };
+  const g0 = await tries(false), g1 = await tries(true);
   ck(`aTapThatOpensThePanelKeepsIt_${ph.k}`, g0.camOk && g0.selected && g0.panelUp,
-    `a villager tapped at (${g0.sx}, ${g0.sy}), 8px above where its panel lifts the tab: selected ${g0.selected} (${g0.sel}, camera placed ${g0.camOk}), panel still up ${g0.panelUp}`);
+    `a villager tapped at (${g0.sx}, ${g0.sy}), 8px above where its panel lifts the tab: selected ${g0.selected} (${g0.sel}, camera placed ${g0.camOk}, tap ${g0.tries}), panel still up ${g0.panelUp}`);
   ck(`andTheProbeCanSeeTheClickTaken_${ph.k}`, g1.camOk && g1.selected && !g1.panelUp,
-    `with the folded tab's reach given to the open tab, the same tap: selected ${g1.selected} (${g1.sel}, camera placed ${g1.camOk}), panel still up ${g1.panelUp} (it must be hidden)`);
+    `with the folded tab's reach given to the open tab, the same tap: selected ${g1.selected} (${g1.sel}, camera placed ${g1.camOk}, tap ${g1.tries}), panel still up ${g1.panelUp} (it must be hidden)`);
   ck(`theTargetsThrewNothing_${ph.k}`, errs.length === 0, errs.slice(0, 2).join(' | '));
   await ctx.close();
 }
