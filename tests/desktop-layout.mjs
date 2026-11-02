@@ -33,15 +33,16 @@
                                      half a row instead of all of it — so a
                                      Town Center's seven actions are two rows
                                      of wood, not four. The phone keeps two.
-     A PHONE'S SMALL CONTROLS HIT    the build tab (22px tall, and the only
-     AT 44 PX, AND LOOK THE SAME     way back after every order folds the
-                                     menu), Pause and Menu (34px) and the
-                                     minimap's fold (30px) each carry an
+     A PHONE'S SMALL CONTROLS HIT    the folded build tab (22px tall, and the
+     AT 44 PX, AND LOOK THE SAME     only way back after every order folds
+                                     the menu), Pause and Menu (34px) and
+                                     the minimap's fold (30px) each carry an
                                      invisible extension that takes the hit
                                      box to 44px where it has room; nothing
-                                     they are drawn with changes, and the
-                                     room they take is room nobody else had
-                                     (§3, PX-14).
+                                     they are drawn with changes, the room
+                                     they take is room nobody else had, and
+                                     an OPEN tab, which moves under the
+                                     finger, takes none (§3, PX-14).
 
    Run after touching: R.minZoom / defaultZoom / clampCam / resize, the pinch
    handler in ui.js, Screens.enterGame, or the #topbar / #buildmenu /
@@ -205,13 +206,20 @@ async function boot(vp) {
    element, so the drawn box (getBoundingClientRect) cannot see it — and it
    is measured as a finger meets it: elementFromPoint on a whole-pixel grid
    round the drawn box with a 24px margin, kept wherever it answers the
-   control. Heights reach 44 everywhere; the tab and the top-bar buttons keep
-   their WIDTHS by design (the tab is already 55-75 wide, and four 34px
-   buttons 3px apart have no width to give), the fold grows both ways.
+   control. Heights reach 44; the tab and the top-bar buttons keep their
+   WIDTHS by design (the tab is already 55-75 wide, and four 34px buttons 3px
+   apart have no width to give), the fold grows both ways.
+   THE TAB'S REACH IS THE FOLDED TAB'S ALONE. An open tab moves: a tap that
+   selects a unit lifts the panel, and the tab with it, under the finger,
+   and the click the browser sends after the tap lands where the finger
+   was — a reach on the open tab hid the panel that tap had just opened
+   (a real touch tap, pinned below, with a control that gives the open tab
+   a reach and must see the click taken). The folded tab only ever moves
+   down, away from any finger.
    And the room each takes is room nobody else had: no pixel of the build
    cards, the panel's buttons or the minimap answers a reach instead of its
-   owner, and the top bar's buttons reach no further than the bar. Measured on three
-   phones, the notch included (the CDP inset override drives env()). */
+   owner, and the top bar's buttons reach no further than the bar. Measured
+   on three phones, the notch included (the CDP inset override drives env()). */
 for (const ph of [
   { k: 'p390', vp: { width: 390, height: 844 }, dpr: 3, inset: { top: 47, bottom: 34 } },
   { k: 'p320', vp: { width: 320, height: 568 }, dpr: 2, inset: null },
@@ -306,8 +314,10 @@ for (const ph of [
   ck(`andTapsJustAboveItFindIt_${ph.k}`, r.near.every(n => n.on), r.near.map(n => `${n.d}px above: ${n.on ? 'the tab' : 'MISSED'}`).join(', '));
   ck(`andItsWidthIsItsOwn_${ph.k}`, ['folded', 'open', 'panel', 'panelFolded'].every(k => Math.abs(T[k].hit.w - T[k].drawn.w) <= 1.5),
     ['folded', 'open', 'panel', 'panelFolded'].map(k => `${T[k].label}: ${T[k].hit.w} vs drawn ${T[k].drawn.w}`).join('; '));
-  ck(`andEveryOtherStateOfTheTabToo_${ph.k}`, ['open', 'panel', 'panelFolded'].every(k => T[k].hit.h >= 44 && T[k].drawn.h <= 24),
-    ['open', 'panel', 'panelFolded'].map(k => `"${T[k].label}" ${sz(T[k])}`).join('; '));
+  ck(`andSoDoesTheFoldedPanelsTab_${ph.k}`, T.panelFolded.hit.h >= 44 && T.panelFolded.drawn.h <= 24,
+    `"${T.panelFolded.label}" ${sz(T.panelFolded)} (a unit selected, its panel tucked away)`);
+  ck(`butAnOpenTabReachesNoFurtherThanItIsDrawn_${ph.k}`, ['open', 'panel'].every(k => T[k].hit.h <= Math.ceil(T[k].drawn.h) + 1),
+    ['open', 'panel'].map(k => `"${T[k].label}" ${sz(T[k])}`).join('; ') + ' (an open tab moves under the finger)');
   ck(`butTheBuildCardsKeepEveryPixel_${ph.k}`, r.cardN > 0 && r.cardsLost.every(n => n === 0),
     `${r.cardN} cards on screen, pixels the tab took from each: ${r.cardsLost.join(',')}`);
   ck(`andThePanelsButtonsToo_${ph.k}`, r.panelN > 0 && r.panelLost.every(n => n === 0),
@@ -323,6 +333,50 @@ for (const ph of [
   ck(`theMinimapFoldHitsAt44_${ph.k}`, r.fold.hit.w >= 44 && r.fold.hit.h >= 44 && r.fold.drawn.w <= 30.5 && r.fold.drawn.h <= 30.5, sz(r.fold));
   ck(`andTheMapUnderItKeepsEveryPixel_${ph.k}`, r.fold.miniLost === 0 && r.fold.hit.b <= Math.floor(r.fold.armyTop),
     `minimap pixels the fold took: ${r.fold.miniLost}; the fold's reach ends at ${r.fold.hit.b}, the army banners start at ${Math.round(r.fold.armyTop)}`);
+  /* …and A TAP THAT OPENS THE PANEL KEEPS IT. A villager stands in the tab's
+     own column, 8px above where its panel will lift the tab; a real touch tap
+     selects it, the panel rises under the finger, and the click the browser
+     sends after the tap must land on the world, not on the tab. The control
+     gives the OPEN tab the folded tab's reach and must see the click taken. */
+  const ghost = async (withReach) => {
+    const g = await p.evaluate(async (withReach) => {
+      const sl = ms => new Promise(r => setTimeout(r, ms));
+      const old = document.getElementById('openReach'); if (old) old.remove();
+      if (withReach) {
+        const st = document.createElement('style'); st.id = 'openReach';
+        st.textContent = '#bmToggle::before{content:"";position:absolute;left:-1px;right:-1px;top:-17px;bottom:-6px}';
+        document.head.appendChild(st);
+      }
+      const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+      // a clear tile mid-map, lit, so the camera can put the villager anywhere on the glass
+      S.map.explored.fill(1); G.freeVis = true; G.updateVisibility();
+      const s = MapGen.findNear(CFG.W >> 1, CFG.H >> 1, 14, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y)
+        && !S.units.some(u => u !== v && Math.hypot(u.x - x - 0.5, u.y - y - 0.5) < 2));
+      v.x = s.x + 0.5; v.y = s.y + 0.5; v.task = null; v.path = null;
+      UI.select('unit', v.id); await sl(150);
+      const tb = document.getElementById('bmToggle').getBoundingClientRect();
+      const sx = Math.round(tb.left + tb.width / 2), sy = Math.floor(tb.top) - 8;
+      UI.deselect(); UI.setMenuCollapsed(true); await sl(120);
+      const TL = CFG.TILE, z = R.cam.z;
+      R.cam.x = v.x * TL - sx / z; R.cam.y = (v.y * TL - CFG.SPRITE_LIFT) - sy / z;
+      await sl(150);
+      return { sx, sy, vid: v.id, camOk: Math.abs(((v.y * TL - CFG.SPRITE_LIFT) - R.cam.y) * z - sy) < 2 };
+    }, withReach);
+    await p.touchscreen.tap(g.sx, g.sy);
+    await p.waitForTimeout(350);
+    return Object.assign(g, await p.evaluate((vid) => {
+      const o = { selected: !!(UI.sel && UI.sel.id === vid), panelUp: document.getElementById('panel').classList.contains('show') && !UI.panelHidden,
+        sel: UI.sel ? UI.sel.type + ' ' + UI.sel.id : 'nothing' };
+      const st = document.getElementById('openReach'); if (st) st.remove();
+      UI.deselect(); UI.setMenuCollapsed(true);
+      return o;
+    }, g.vid));
+  };
+  const g0 = await ghost(false), g1 = await ghost(true);
+  ck(`aTapThatOpensThePanelKeepsIt_${ph.k}`, g0.camOk && g0.selected && g0.panelUp,
+    `a villager tapped at (${g0.sx}, ${g0.sy}), 8px above where its panel lifts the tab: selected ${g0.selected} (${g0.sel}, camera placed ${g0.camOk}), panel still up ${g0.panelUp}`);
+  ck(`andTheProbeCanSeeTheClickTaken_${ph.k}`, g1.camOk && g1.selected && !g1.panelUp,
+    `with the folded tab's reach given to the open tab, the same tap: selected ${g1.selected} (${g1.sel}, camera placed ${g1.camOk}), panel still up ${g1.panelUp} (it must be hidden)`);
   ck(`theTargetsThrewNothing_${ph.k}`, errs.length === 0, errs.slice(0, 2).join(' | '));
   await ctx.close();
 }

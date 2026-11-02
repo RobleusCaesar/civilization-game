@@ -272,14 +272,22 @@
     box-shadow: inset 0 1px 0 rgba(232,193,90,.28);
     font-size: 11px; font-weight: 700; padding: 0 10px;
   }
-  /* THE TAB IS A FINGER TALL WHERE IT IS DRAWN 22px (PX-14,
+  /* THE FOLDED TAB IS A FINGER TALL WHERE IT IS DRAWN 22px (PX-14,
      tests/desktop-layout.mjs §3): every gather, build or station order folds
      the menu, and this tab is the only way back — a tap 12-16px above it
      used to land in the world. An invisible reach 16px up and 6px down (the
-     bar's own top padding, never a card) makes the hit box 44px; its width
-     stays the tab's own. ::before, because ::after is the Master Builders
-     badge (js/deckfx-town.js). The 1px border is why it reads -17px. */
-  #bmToggle::before { content: ''; position: absolute; left: -1px; right: -1px; top: -17px; bottom: -6px; }
+     bar's own top padding) makes the hit box 44px; its width stays the
+     tab's own. FOLDED ONLY — the menu tucked away and no panel up — because
+     an OPEN tab moves: a tap that selects a unit lifts the panel, and the
+     tab with it, under the finger, and the click the browser sends after
+     the tap lands where the finger was. A reach there hid the panel the tap
+     had just opened (measured, a 22px band became 44) and took ground taps
+     from placement. The folded tab only moves DOWN, away from any finger.
+     ::before, because ::after is the Master Builders badge
+     (js/deckfx-town.js). The 1px border is why it reads -17px. */
+  #bmToggle:has(~ #buildmenu[style*="display: none"]):not(:has(~ #panel.show))::before {
+    content: ''; position: absolute; left: -1px; right: -1px; top: -17px; bottom: -6px;
+  }
   #buildmenu {
     display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
     touch-action: pan-x; padding-bottom: 2px;
