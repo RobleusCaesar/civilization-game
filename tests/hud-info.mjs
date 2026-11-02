@@ -27,6 +27,8 @@
        signed "+N/d" or "−N/d", smoothed over about half a game day so a
        step between two tiles never flips it; red when it falls, and the
        famine red as before. Judged against the REAL larder, day by day.
+     - That sum walks the units once and builds the homestead map once, and
+       gives exactly what the helpers give asked one by one (PERF-01).
      - A tap or a click on any chip answers with a note in the rules' own
        numbers; the chips and the ⏸ / ☰ buttons carry a title and a name; no
        chip spills at 320, 360 or 390; no two of the top bar's tap targets
@@ -50,6 +52,7 @@ catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+const __r1 = v => Math.round(v * 10) / 10;
 
 /* ---- 0. the source: the Guide's famine rule (the copy is markup) ---- */
 {
@@ -293,6 +296,45 @@ ck('theRoomNoteAsksOnlyWhatCanBeDone', !!town.pop && /build a house/.test(town.p
   town.pop ? `full under the ceiling: "${town.pop.house}" | at the ceiling: "${town.pop.storey}" | at the last storey: "${town.pop.top}"` : 'no note');
 ck('aHandOnItsWayCountsAtItsWorkRate', !!town.walk && town.walk.onWay != null && town.walk.onWay === town.walk.atWork,
   town.walk ? `on the way ${town.walk.onWay}, at work ${town.walk.atWork}` : 'no way to ask (UI.handRate missing)');
+
+/* ---- 1b. THE NET IS SUMMED IN ONE PASS (the build 128 review, PERF-01) ----
+   UI.refresh asks UI.incomePerDay four times a second. Asked per station, the
+   crew count was a full walk of S.units and the bond a whole homestead-map
+   rebuild (every house against every farm) — per FARM — so the sum grew with
+   the cube of a farming town. It now builds the map once and hands every
+   station its own crew; the totals must be exactly what the helpers give
+   asked one by one. */
+const pass = await p.evaluate(() => {
+  const tc = __h.fresh('hud-pass', 'moderate');
+  G.freeVis = true; G.updateVisibility();
+  // six farms with a house broadside-on, two lone farms, a crew on every other station
+  for (let k = 0; k < 6; k++) {
+    const fp = __h.freePair(tc); if (!fp) break;
+    __h.station('farm', fp.x, fp.y, 2);
+    Bld.place('P', 'house', fp.x + 1, fp.y, { free: true, instant: true }); Bld._block = null;
+  }
+  for (let k = 0; k < 2; k++) { const fp = __h.freePair(tc); if (fp) __h.station('farm', fp.x, fp.y, 1); }
+  for (const key of ['lumber', 'quarry', 'mine']) { const q = __h.freePair(tc); if (q) __h.station(key, q.x, q.y, 2); }
+  const out = { bonded: S.buildings.filter(b => b.owner === 'P' && b.key === 'farm' && Bld.homesteadMult(b) > 1).length };
+  const keep = { map: Bld.homesteadMap, act: Bld.workersActive, mult: Bld.homesteadMult };
+  let maps = 0, bare = 0;
+  Bld.homesteadMap = function () { maps++; return keep.map.apply(this, arguments); };
+  Bld.workersActive = function (b, list) { if (!list) bare++; return keep.act.apply(this, arguments); };
+  try { UI.incomePerDay('food'); } finally { Bld.homesteadMap = keep.map; Bld.workersActive = keep.act; }
+  out.maps = maps; out.bare = bare;
+  // the same four sums, every helper asked on its own (no shared map, no crew list)
+  const goods = ['food', 'wood', 'stone', 'gold'];
+  out.quick = goods.map(r => UI.incomePerDay(r).total);
+  Bld.homesteadMult = function (b) { return keep.mult.call(this, b); };
+  Bld.workersActive = function (b) { return keep.act.call(this, b); };
+  try { out.slow = goods.map(r => UI.incomePerDay(r).total); }
+  finally { Bld.homesteadMult = keep.mult; Bld.workersActive = keep.act; }
+  return out;
+});
+ck('theFoodNetIsSummedInOnePass', pass.bonded >= 3 && pass.maps <= 1 && pass.bare === 0,
+  `${pass.bonded} bonded farms: one food sum built ${pass.maps} homestead map(s) and walked every unit for ${pass.bare} station(s) (at most 1, and none)`);
+ck('andItSumsWhatTheHelpersSumOneByOne', pass.quick.length === 4 && pass.quick.every((v, i) => Math.abs(v - pass.slow[i]) < 1e-9) && pass.quick[0] > 0,
+  `food/wood/stone/gold ${pass.quick.map(__r1).join(' / ')}, asked one by one ${pass.slow.map(__r1).join(' / ')}`);
 
 /* ---- 2. EVERY CHIP ANSWERS A TAP (PX-18), by real input and by visibility ---- */
 await p.evaluate(() => { __h.fresh('hud-taps', 'moderate'); S.paused = true; UI.refreshT = 0; UI.refresh(0.25); });

@@ -4084,7 +4084,14 @@ same way; every finished work by the very expression `Bld.dailyProduction`
 pays; plus `Cards.dailyExtras`. A kill's meat and a card's goods are gifts,
 not a rate. It is READ-ONLY: no write to S, no draw from any RNG. **Change
 dailyProduction's expression and change incomePerDay's with it** — hud-info
-judges the notes against the real daily lump. **It does not flicker**: an
+judges the notes against the real daily lump. **And it is ONE PASS** (the
+build 128 review, PERF-01, hud-info §1b): it runs four times a second, so it
+groups the station crews in the walk the hands already take and builds the
+homestead map once for every farm (`Bld.workersActive(b, list)`,
+`Bld.homesteadMult(b, map)` — the same rules, handed what the caller just
+built); asked per station they cost a unit scan and a whole house × farm
+rebuild apiece, superlinear in the towns that farm the most. The map is
+still derived on every call and never kept. **It does not flicker**: an
 exponential average in GAME time (`NET_DAYS` 0.5), UI-local in a WeakMap
 keyed on the world, never saved; a paused world holds it, and a new world or
 a load starts it at the sum itself (hud-info: its sign agrees with the real

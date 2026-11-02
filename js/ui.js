@@ -3550,22 +3550,31 @@ const UI = {
     return { res, n: n * Units.gatherYield(u.owner, spot) };
   },
   incomePerDay(res) {
+    // ONE PASS EACH (the build 128 review, PERF-01): this runs four times a
+    // second, so the station crews are grouped here, in the walk the hands
+    // already take, and the homestead map is built once for every farm —
+    // asked per station they cost a unit scan and a whole house x farm
+    // rebuild apiece, superlinear in exactly the towns that farm the most.
     let hands = 0, boats = 0;
+    const crews = {};
     for (const u of S.units) {
       if (u.owner !== 'P' || !u.task) continue;
+      if (u.task.type === 'work') (crews[u.task.id] || (crews[u.task.id] = [])).push(u);
       const r = this.handRate(u);
       if (!r || r.res !== res) continue;
       if (Units.isVillager(u)) hands += r.n; else boats += r.n;
     }
     const works = {}, tc = Bld.tcOf('P');
     const tcBoost = tc && tc.level >= 3 && Bld.done(tc) ? 1.1 : 1, modeMult = G.modeCfg().output;
+    let hs = null;
     for (const b of S.buildings) {
       if (b.owner !== 'P' || !Bld.done(b) || b.upgrading) continue;
       const out = Bld.lv(b).out;
       if (!out || !out[res]) continue;
       let crew = 1;
-      if (Bld.def(b.key).needsWorker && !(crew = Math.min(Bld.workersActive(b), Bld.maxWorkers(b)))) continue;
-      const mult = crew * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b) *
+      if (Bld.def(b.key).needsWorker && !(crew = Math.min(Bld.workersActive(b, crews[b.id] || []), Bld.maxWorkers(b)))) continue;
+      if (b.key === 'farm' && !hs) hs = Bld.homesteadMap();
+      const mult = crew * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b, hs) *
         (window.Cards ? Cards.prodMult('P', b) : 1) * (window.Deck && Deck.mult ? Deck.mult('produce', 'P', b) : 1);
       works[b.key] = (works[b.key] || 0) + out[res] * mult;
     }
