@@ -463,9 +463,21 @@ const UI = {
       this.placeDragging = false; this.placePtr = null;   // ghost survives, unparked
     });
     cv.addEventListener('wheel', e => {
-      this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
+      // IN PROPORTION TO THE GESTURE (tests/drag-move.mjs §10): a delta is
+      // read in its own units (lines ×16, pages × the window), so a trackpad
+      // flick of small deltas zooms a little and a mouse notch (~100 px)
+      // about 16%; each event is clamped so none can lurch. A ctrl+wheel is
+      // a trackpad PINCH — Chromium sends deltaY = −100·ln(scale) — so it
+      // follows the fingers' own scale. A fixed 12% a step ran a flick across
+      // the whole zoom range.
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
+      const f = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015));
+      this.zoomAt(e.clientX, e.clientY, Math.max(0.8, Math.min(1.25, f)));
       e.preventDefault();
     }, { passive: false });
+    // a right-click is an order on the map (it always was) — never the
+    // browser's menu too; the HUD and the minimap keep theirs
+    cv.addEventListener('contextmenu', e => e.preventDefault());
 
     document.getElementById('mini').addEventListener('pointerdown', e => {
       const r = e.target.getBoundingClientRect();
