@@ -1241,8 +1241,12 @@ const Bld = {
     return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
       u.task.id === b.id).length;
   },
-  workersActive(b) {
-    return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
+  // `list` (optional) is a subset of S.units already known to hold every hand
+  // that could be on this works — UI.incomePerDay passes each station its own
+  // group so a refresh walks the units once, not once per station. The rule
+  // is this one predicate either way.
+  workersActive(b, list) {
+    return (list || S.units).filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
       u.task.id === b.id && Math.hypot(u.x - b.x - 0.5, u.y - b.y - 0.5) <= 1.4).length;
   },
 
@@ -1503,15 +1507,18 @@ const Bld = {
     }
     return map;
   },
-  homesteadOf(b) {
+  // `map` (optional) is a homesteadMap() the caller built a moment ago for a
+  // whole pass (UI.incomePerDay asks it once per refresh, not once per farm).
+  // Still derived, still never kept: the rule above holds.
+  homesteadOf(b, map) {
     if (!b || (b.key !== 'house' && b.key !== 'farm')) return null;
-    const id = this.homesteadMap()[b.id];
+    const id = (map || this.homesteadMap())[b.id];
     return id == null ? null : this.get(id);
   },
-  isHomestead(b) { return !!this.homesteadOf(b); },
+  isHomestead(b, map) { return !!this.homesteadOf(b, map); },
   // the bonded farm's output multiplier, and the bonded house's extra room
-  homesteadMult(b) {
-    if (b.key !== 'farm' || !this.isHomestead(b)) return 1;
+  homesteadMult(b, map) {
+    if (b.key !== 'farm' || !this.isHomestead(b, map)) return 1;
     // ORIGIN CARDS: Hearthbond deepens the bond — additive on the base rate,
     // and gone with the bond exactly as the base bonus is (derived, never stored)
     return (CFG.HOMESTEAD.food || 1) + (window.Cards ? Cards.homeAdd(b.owner) : 0);
