@@ -255,6 +255,8 @@ const hold = await p.evaluate(async () => {
   Tutorial.noteUp = () => up;
   const pn = performance.now.bind(performance); let off = 0;
   const wait = ms => new Promise(r => setTimeout(r, ms));
+  // a condition, never a fixed nap: a loaded machine delays the timers
+  const until = async (fn, ms) => { const t0 = pn(); while (!fn() && pn() - t0 < ms) await wait(50); return fn(); };
   try {
     UI.toast('A hut is finished off in the hills', 'note');
     UI.toast('Not enough resources', true);
@@ -263,16 +265,17 @@ const hold = await p.evaluate(async () => {
     await wait(700);
     out.stillHeld = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
     up = false;
-    await wait(900);
-    out.shownAfter = __fb.shown(/A hut is finished/).length === 1;
-    // a note held past twenty seconds is dropped, never shown late
+    out.shownAfter = await until(() => __fb.shown(/A hut is finished/).length === 1, 6000);
+    // a note held past twenty seconds is dropped, never shown late: a fresh
+    // note queued behind it (on the advanced clock) proves the flush has run
     up = true;
     UI.toast('A stale piece of news', 'note');
     performance.now = () => pn() + off;
     off = 21000;
+    UI.toast('A fresh piece of news', 'note');
     up = false;
-    await wait(900);
-    out.staleDropped = __fb.nodes().filter(n => /A stale piece of news/.test(n.textContent)).length === 0;
+    out.freshShown = await until(() => __fb.shown(/A fresh piece of news/).length === 1, 6000);
+    out.staleDropped = out.freshShown && __fb.nodes().filter(n => /A stale piece of news/.test(n.textContent)).length === 0;
   } finally {
     performance.now = pn;
     if (had) Tutorial.noteUp = real; else delete Tutorial.noteUp;
