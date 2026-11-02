@@ -549,6 +549,14 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   const said = [];
   for (const [w, h, dpr] of [[320, 568, 2], [390, 844, 3], [844, 390, 3], [1440, 900, 1]]) {
     const o = await open({ vp: [w, h], dpr, tag: 'say' + w, store: { 'neo-emergency': bad } });
+    // Continue first finishes looking for saves: a press made while it still
+    // looks is answered "Still checking for your saves…" (also the shell's
+    // line), which is the right answer to THAT press and not the one this
+    // check reads. On a loaded runner the lookup outlived the page's settle.
+    await o.p.waitForFunction(() => {
+      const bt = document.getElementById('btnContinue'), sm = bt && bt.querySelector('small');
+      return !!bt && !bt.classList.contains('cant') && !!sm && !/looking/.test(sm.textContent);
+    }, null, { timeout: 15000 }).catch(() => {});
     const at = await o.p.evaluate(() => { const r = document.getElementById('btnContinue').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
     await o.p.mouse.click(at[0], at[1]);
     await o.p.waitForTimeout(500);
@@ -559,7 +567,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
       if (!el || +getComputedStyle(el).opacity < 1) return false;
       const q = el.getBoundingClientRect(), hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
       return !!hit && (hit === el || el.contains(hit));
-    }, null, { timeout: 2500 }).catch(() => {});
+    }, null, { timeout: 6000 }).catch(() => {});
     const r = await o.p.evaluate(() => {
       const de = document.documentElement, vw = de.clientWidth, vh = de.clientHeight;
       const el = [...document.querySelectorAll('body *')].find(e => !e.childElementCount && /could not be opened/i.test(e.textContent || ''));
