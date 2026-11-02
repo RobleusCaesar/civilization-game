@@ -45,9 +45,13 @@
                               when unknown, never absent — and 'seconds'
                               keeps its formula. Integers, booleans and short
                               enums only.
+     AND THE TOKEN STAYS      (§8, PX-50 part 1) the access token the client
+     CURRENT                  renews (about hourly) is the one the next row
+                              carries — a sign-out or another player's
+                              session never replaces it.
 
    Run after touching: Backend._emit / build / telemetryAllowed / logRunEnd,
-   Backend.logRunStart / endSession, G.end / runReport / noteAct,
+   Backend.init / logRunStart / endSession, G.end / runReport / noteAct,
    Screens.enterGame / _enterNow, Tutorial.skip, Feedback.noteError /
    resetRunErrors, Screens.show, the S.played / S.stats backfills in
    loadJSON, or any analytics migration.
@@ -894,6 +898,53 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   ck('aTabletIsATabletAndTheHomeScreenSaysSo', tb.form === 'tablet' && tb.standalone === true, JSON.stringify(tb));
   ck('theDevicePageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await ctx.close();
+}
+
+// ---- 8. THE TOKEN STAYS CURRENT (PX-50 part 1): the token the client renewed is the one the next row carries ----
+/* supabase-js renews the access token about once an hour into a NEW session
+   object, and Backend kept the one it got at sign-in: after expiry every
+   run_start, closed_tab and session row went out under a dead Bearer, was
+   refused (401) and was dropped — a fire-and-forget row never retries. The
+   client says when it renews (onAuthStateChange); Backend follows it — for
+   this player only. The mock path carries no token, so the rows here go out
+   over the REAL write path, with fetch recording each Bearer. */
+{
+  const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  // the client's own auth-state door, as supabase-js offers it: the mock keeps every listener
+  await p.addInitScript(() => {
+    window.__MOCK.auth.onAuthStateChange = (cb) => {
+      (window.__MOCK.st.authCbs || (window.__MOCK.st.authCbs = [])).push(cb);
+      return { data: { subscription: { unsubscribe() {} } } };
+    };
+  });
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+  const r = await p.evaluate(async () => {
+    const out = { listeners: (__MOCK.st.authCbs || []).length };
+    const fire = (ev, s) => (__MOCK.st.authCbs || []).forEach(cb => cb(ev, s));
+    const sent = [];
+    const mk = Backend.mock, allowed = Backend.telemetryAllowed, realFetch = window.fetch;
+    Backend.mock = null; Backend.telemetryAllowed = () => true;
+    window.fetch = (u, o) => { sent.push((o && o.headers && o.headers.Authorization) || null); return Promise.resolve({ ok: true, status: 201, json: async () => ({}) }); };
+    try {
+      Backend._emit({ kind: 'session', seconds: 5 });
+      // an hour on, the client renews the token into a new session object
+      fire('TOKEN_REFRESHED', { access_token: 'renewed-1', refresh_token: 'r2', user: { id: Backend.uid } });
+      Backend._emit({ kind: 'session', seconds: 6 });
+      // a sign-out (no session) and a session for somebody else never replace it
+      fire('SIGNED_OUT', null);
+      fire('SIGNED_IN', { access_token: 'stranger', refresh_token: 'r9', user: { id: 'someone-else' } });
+      Backend._emit({ kind: 'session', seconds: 7 });
+    } finally { Backend.mock = mk; Backend.telemetryAllowed = allowed; window.fetch = realFetch; }
+    out.sent = sent; out.after = Backend.session && Backend.session.access_token; out.uid = Backend.uid;
+    return out;
+  });
+  ck('theClientsRenewedTokenIsTheOneTheNextRowCarries', r.listeners >= 1 && r.sent[0] === 'Bearer t' && r.sent[1] === 'Bearer renewed-1', JSON.stringify(r));
+  ck('andNeitherASignOutNorAStrangerReplacesIt', r.sent[2] === 'Bearer renewed-1' && r.after === 'renewed-1' && r.uid === 'mock-uid-0001', JSON.stringify(r));
+  ck('theTokenPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
