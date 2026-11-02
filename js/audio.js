@@ -218,15 +218,43 @@ const Sound = {
          silent while the effects were fine. Wait for the promise, and keep a
          statechange listener as the belt to that brace, since a context can
          also come back on its own after the tab returns. */
-      if (ctx.state === 'suspended') {
-        const r = ctx.resume();
-        if (r && r.then) r.then(go, () => {}); else go();
-      } else go();
+      if (ctx.state === 'suspended') this._resume(go);
+      else go();
       if (!this._stateHook) {
         this._stateHook = 1;
-        try { ctx.addEventListener('statechange', () => { if (ctx.state === 'running') go(); }); } catch (e) {}
+        try { ctx.addEventListener('statechange', () => { if (ctx.state === 'running') { this._devFailed = false; go(); } }); } catch (e) {}
       }
     } catch (e) {}
+  },
+
+  /* THE DEVICE CAN SAY NO (PX-51). resume() and suspend() answer with a
+     promise, and that promise can REJECT: a phone whose audio output will not
+     start ("Failed to start the audio device"), a context the browser closed.
+     Uncaught, every refusal was an unhandled rejection in the run's error
+     tally (Feedback.runErrs, the dashboard's "hit an error") — and play()
+     asked again on every sound, so one dead speaker wrote ~30 "errors" a
+     minute. Both are asked through here and every answer is caught. A
+     refused resume() marks the device failed: play() and startMusic() stop
+     asking (_wake) until a real gesture's unlock() asks again, and the mark
+     clears the moment the device answers. A failing device degrades to
+     silence; it is never a game fault. */
+  _devFailed: false,
+  _resume(then) {
+    const done = () => { this._devFailed = false; if (then) { try { then(); } catch (e) {} } };
+    try {
+      const r = this.ctx.resume();
+      if (r && r.then) r.then(done, () => { this._devFailed = true; });
+      else done();
+    } catch (e) { this._devFailed = true; }
+  },
+  _suspend() {
+    try { const r = this.ctx.suspend(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+  },
+  // a sound asked for while the context sleeps: wake it — unless the device
+  // has refused (the next gesture asks) or the tab is hidden (it sleeps on purpose)
+  _wake() {
+    if (this._devFailed || (typeof document !== 'undefined' && document.hidden)) return;
+    this._resume();
   },
 
   /* ---------------- the throttle ---------------- */
@@ -375,7 +403,7 @@ const Sound = {
     try {
       if (!this.sfxOn()) return false;
       const ctx = this.ac(); if (!ctx) return false;
-      if (ctx.state === 'suspended') { ctx.resume(); }
+      if (ctx.state === 'suspended') this._wake();
       const now = ctx.currentTime;
       if (!this._due(kind, now)) return false;
       const v = (opts && opts.gain != null) ? opts.gain : 1;
@@ -509,7 +537,7 @@ const Sound = {
     try {
       if (this._music || !this.musicOn()) return false;
       const ctx = this.ac(); if (!ctx) return false;
-      if (ctx.state === 'suspended') { ctx.resume(); if (ctx.state === 'suspended') return false; }
+      if (ctx.state === 'suspended') { this._wake(); if (ctx.state === 'suspended') return false; }
       // the bus comes up over four seconds: music that starts AT volume
       // announces itself, and this is meant to be noticed only if you listen
       const g = this.musicBus.gain;
@@ -1241,7 +1269,7 @@ const Sound = {
           this.unlock();
           if (this._music && this._music.rec && this._theme && this._battle.mode === 'off') this._themeIn(1);
         } else if (this._music && this.ctx) {
-          try { this.ctx.suspend(); } catch (e) {}
+          this._suspend();
           for (const d of [this._theme, this._deck2]) { try { if (d) d.el.pause(); } catch (e) {} }   // a hidden tab does not run the tune on
         }
       });

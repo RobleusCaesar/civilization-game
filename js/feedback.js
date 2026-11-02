@@ -72,19 +72,26 @@ const Feedback = {
     return this._errs;
   },
   // record one fault. Consecutive repeats of the same message fold into a
-  // count, so a fault thrown every frame is one line, not twenty.
-  noteError(msg, stack, where) {
+  // count, so a fault thrown every frame is one line, not twenty. A TAGGED
+  // fault ('net', 'external' — see installRing) is not the game's: it is kept
+  // for a report, tag and all, but it never counts in the run's tally.
+  noteError(msg, stack, where, tag) {
     try {
       const m = String(msg || 'Error').slice(0, 300);
+      tag = tag || null;
       // the run's own tally first, so a full ring never loses the count
-      this.runErrs = (this.runErrs || 0) + 1;
-      if (!this.runErr) this.runErr = m.slice(0, 120) + (where ? ' @ ' + String(where).replace(/:\d+$/, '') : '');
+      if (!tag) {
+        this.runErrs = (this.runErrs || 0) + 1;
+        if (!this.runErr) this.runErr = m.slice(0, 120) + (where ? ' @ ' + String(where).replace(/:\d+$/, '') : '');
+      }
       const list = this.errors();
       const last = list[list.length - 1];
-      if (last && last.msg === m) { last.n = (last.n || 1) + 1; last.t = new Date().toISOString(); }
+      if (last && last.msg === m && (last.tag || null) === tag) { last.n = (last.n || 1) + 1; last.t = new Date().toISOString(); }
       else {
-        list.push({ t: new Date().toISOString(), msg: m, at: String(where || '').slice(0, 160),
-          stack: String(stack || '').split('\n').slice(0, 4).join('\n').slice(0, 600), n: 1 });
+        const e = { t: new Date().toISOString(), msg: m, at: String(where || '').slice(0, 160),
+          stack: String(stack || '').split('\n').slice(0, 4).join('\n').slice(0, 600), n: 1 };
+        if (tag) e.tag = tag;
+        list.push(e);
         while (list.length > this.ERR_MAX) list.shift();
       }
       this._saveErrsSoon();
@@ -115,6 +122,19 @@ const Feedback = {
     try { const u = new URL(file, location.href); return u.pathname.split('/').slice(-2).join('/'); }
     catch (e) { return String(file || ''); }
   },
+  /* WHAT IS NOT THE GAME'S FAULT IS KEPT, BUT NEVER COUNTED (PX-51): the
+     run's tally is the dashboard's "hit an error", and the release
+     comparison reads it. Two things reach these listeners that no fix of
+     ours could ever touch, and both go in the ring TAGGED — a crash report
+     still shows them — without counting:
+       'net'       a rejection whose words are the network's (supabase-js
+                   leaks a detached fetch rejection when the line drops:
+                   "Failed to fetch", Safari's "Load failed", Firefox's
+                   "NetworkError…") — the very words Backend reads as offline
+       'external'  "Script error." with no file: another origin's script (an
+                   extension, an in-app browser's injected code), whose
+                   details the browser hides
+     The frame loop's own faults (G._safe) are never tagged, whatever they say. */
   installRing() {
     if (this._ring) return;
     this._ring = true;
@@ -123,11 +143,12 @@ const Feedback = {
         // only SCRIPT errors reach window without capture — a missing PNG
         // fires on its own element and never comes here
         const at = e.filename ? this._short(e.filename) + ':' + (e.lineno || 0) + ':' + (e.colno || 0) : '';
-        this.noteError(e.message || (e.error && e.error.message) || 'Script error', e.error && e.error.stack, at);
+        const msg = e.message || (e.error && e.error.message) || 'Script error';
+        this.noteError(msg, e.error && e.error.stack, at, !e.filename && /^Script error\.?$/.test(msg) ? 'external' : null);
       });
       window.addEventListener('unhandledrejection', e => {
-        const r = e.reason;
-        this.noteError('Unhandled: ' + ((r && r.message) || String(r)), r && r.stack, 'promise');
+        const r = e.reason, m = (r && r.message) || String(r);
+        this.noteError('Unhandled: ' + m, r && r.stack, 'promise', /fetch|network|load failed/i.test(m) ? 'net' : null);
       });
     } catch (e) {}
   },
