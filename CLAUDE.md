@@ -115,12 +115,20 @@ NOWHERE** (only `G.log` writes the event log): an armed mode's instruction
 (it eats like soldiers) pass 'note'; putting a tool or a doctrine down stays
 silent; an order acknowledgement passes none; the sapper's no-ground refusal
 warns.
-**THE LESSON HOLD IS FOR THE WORLD'S NEWS ALONE** (§2–2b): while
-`Tutorial.noteUp()` holds (read guarded, on the method), only a note marked
-`news` (G.log's, the "N ready" fold) waits until the note is answered and its
-breath has passed, dropped after 20 s, never shown late; a warning, or a note
-answering the player's own act (every 'note' raised in ui.js), shows at once
-— held, the tap reads as dead (rule 4).
+**THE LESSON HOLD IS FOR THE WORLD'S NEWS ALONE, AND ONLY WHILE THE CARD IS
+READ** (§2–2b, tests/tutorial.mjs §19b and §20): while
+`Tutorial.noteReading()` holds — a fresh card's reading time by the toast's
+own rule, max(3.2 s, 1.2 s + 0.26 s a word), and the BREATH after one (read
+guarded, on the method; an older tutorial.js without it holds on `noteUp`) —
+only a note marked `news` (G.log's, the "N ready" fold) waits, three at most,
+the oldest giving way, and it shows the moment the card has been read, under
+the card (its seat steps the column down, `--tut-h`). Nothing is dropped for
+waiting: the first cut held news for as long as a card STOOD and dropped it
+after 20 s, and a card that waits on the player's deed stands for minutes, so
+a tutorial game — every new player's first two — never showed the rival's
+intel, a spent tile or an off-view "finished" (the build 128 review). A
+warning, or a note answering the player's own act (every 'note' raised in
+ui.js), shows at once — held, the tap reads as dead (rule 4).
 **"X UNDER ATTACK!" ON THE FIRST BLOW** after ten quiet seconds, per
 building, from anyone but the player (`Combat._alarmAt`, real time, keyed on
 S, never saved; a plain `G.log` at every difficulty, never foeNote); the old
@@ -7300,7 +7308,10 @@ TOP, `#toasts` adds `--tut-h` to its `top` (on `<body>`: the card's bottom
 minus the column's top, else 0px; measured only when a new note, the seat,
 the window or the wonder banner moves, and written only when it changes).
 `Tutorial.noteUp()` is public, asked guarded: true while a card is up or in
-its BREATH, false with the teacher off, after the run, or under a card's act.
+its BREATH, false with the teacher off, after the run, or under a card's act;
+`Tutorial.noteReading()` narrows it to a card still being READ (its words'
+time from `_shownAt`, `_readMs`, set as it is presented) and the breath — the
+one the toast hold asks (**THE LESSON HOLD** above).
 **THE RIVAL'S INTEL WAITS TO BE READ** (`Cards.announceRival`, §20, PX-10c):
 the two lines wait for their own world until `Screens.current === 'playing'`
 and `!Screens.modalUp()` (polled every 250 ms), and past
