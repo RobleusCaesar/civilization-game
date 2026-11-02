@@ -337,7 +337,10 @@ const Screens = {
   _continuing: false,
   opening() { return !!(this._continuing || this._entering); },
   async continueGame() {
-    if (this._continuing) return;
+    // a second press while the save is still on its way (a cloud save can be
+    // seconds out) is answered, never obeyed; once the plaque is up, the
+    // plaque is the answer
+    if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
     if (this._newestSlot == null) {
       // a tap is never lost without a word: the lookup is still out
       const lab = this.el('btnContinue').querySelector('small');

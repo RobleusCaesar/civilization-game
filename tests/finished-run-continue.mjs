@@ -55,8 +55,9 @@
       can SEE: shown, and on top at its own centre by elementFromPoint, never
       that some element holds the words). One opening at a time
       (Screens._continuing / opening()): a double Continue loads and enters
-      once, and a New Game tap under the plaque founds nothing — while the
-      title stays live under it. A save that will not open says why on the
+      once — a cloud save is fetched once, and the press made while it is
+      on its way is answered — and a New Game tap under the plaque founds
+      nothing, while the title stays live under it. A save that will not open says why on the
       shell's own line (#shellMsg, Screens.say: a toast is display:none off
       the playing screen) and a world the attempt touched leaves a clean
       title; so do a failed or finished cloud save, a slot that will not
@@ -391,6 +392,40 @@ const out = await p.evaluate(async () => {
     Screens.show('paused'); Screens.enterGame(); await wait(600);
     const again = [...document.querySelectorAll('#toasts .toast')].filter(t => !before.has(t) && /Welcome back/.test(t.textContent)).length;
     ck('andOnlyOnArriving', again === 0, `${again} new "Welcome back" on a Resume`);
+    S.paused = true;
+  }
+
+  // ---- 7a². …and a CLOUD save the same: the press waits on the network with
+  //          nothing on screen yet, which is exactly when a player presses
+  //          again — that press is answered, never obeyed ----
+  {
+    G.newGame('737373', 'calm', 'small'); Cards.pick(0); Screens._demo = false; Screens.show('playing'); S.paused = true; S.day = 12;
+    const state = G.saveJSON();
+    Backend.clearLocalSnapshot();
+    const realReady = Backend.isReady, realList = Backend.listSaves, realLoad = Backend.loadSlot;
+    const l0 = G.loadJSON, e0 = Screens._enterNow, gives = [];
+    let fetches = 0, loads = 0, enters = 0, msg = null;
+    Backend.isReady = () => true;
+    Backend.listSaves = async () => ({ ok: true, data: [{ slot: 3, name: 'Hill Fort', day: 12, map_seed: '737373', updated_at: new Date().toISOString(), over: false }] });
+    Backend.loadSlot = (slot) => { fetches++; return new Promise(r => gives.push(() => r({ ok: true, data: { slot, name: 'Hill Fort', state } }))); };
+    G.loadJSON = function (j) { loads++; return l0.call(G, j); };
+    Screens._enterNow = function () { enters++; return e0.call(Screens); };
+    try {
+      Screens._demo = false; Screens.show('title');
+      for (let i = 0; i < 200 && Screens._newestSlot !== 3; i++) await tick();
+      cont().click(); await wait(150);                      // the save is on its way
+      cont().click(); await wait(150);                      // …and nothing has happened yet
+      msg = sees(/Opening your saved game/i);
+      gives.splice(0).forEach(g => g());                     // the network answers
+      await playing();
+      await wait(200);
+    } finally {
+      Backend.isReady = realReady; Backend.listSaves = realList; Backend.loadSlot = realLoad;
+      G.loadJSON = l0; Screens._enterNow = e0;
+    }
+    ck('aDoubleContinueOnACloudSaveFetchesOnce', fetches === 1 && loads === 1 && enters === 1 && Screens.current === 'playing' && String(S.seed) === '737373',
+      `${fetches} fetch(es), ${loads} load(s), ${enters} entr(ies); ${Screens.current}, seed ${S.seed}`);
+    ck('andTheSecondPressIsAnswered', !!msg, msg ? `"${msg.textContent}" is seen while the save is on its way` : 'nothing a player can see');
     S.paused = true;
   }
 
