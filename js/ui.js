@@ -31,6 +31,19 @@ const UI = {
   /* kept APART from confirmDemolish on purpose: a building can offer both
      Cancel and Demolish, and one shared slot would arm the pair together */
   confirmCancel: 0,      // building id awaiting cancel-the-works confirmation
+  /* A TWO-TAP CONFIRM IS TWO DECISIONS, NEVER ONE DOUBLE-TAP (tests/banish.mjs,
+     boats-moat-scuttle.mjs, build-cancel.mjs): the first tap arms by
+     relabelling the same button in place, so a quick double-tap used to arm
+     AND confirm in one gesture — a house demolished, a villager banished. Each
+     slot remembers when it was armed; a confirming tap inside CONFIRM_GAP_MS
+     of that is the same gesture, ignored, and the button stays armed. The gap
+     is read off the taps' OWN timestamps, so a busy frame between them can
+     neither stretch a double-tap into two decisions nor squeeze two into one. */
+  CONFIRM_GAP_MS: 400,
+  _armedAt: { confirmDemolish: 0, confirmCancel: 0 },
+  _tapTime(e) { return (e && e.timeStamp > 0) ? e.timeStamp : performance.now(); },
+  armConfirm(slot, id, e) { this[slot] = id; this._armedAt[slot] = this._tapTime(e); this.renderPanel(); },
+  confirmTooSoon(slot, e) { return this._tapTime(e) - (this._armedAt[slot] || 0) < this.CONFIRM_GAP_MS; },
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
@@ -2787,7 +2800,7 @@ const UI = {
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
       this.iconInto(ic, this.panelIconSprite(b));
-      panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
+      panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
         if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) this.toast(Bld.canUpgrade(b2).why, true); }
@@ -2913,7 +2926,8 @@ const UI = {
         }
         else if (btn.dataset.act === 'cancelbuild') {
           if (!Bld.cancelWork(b2)) { this.confirmCancel = 0; this.renderPanel(); return; }
-          if (this.confirmCancel !== b2.id) { this.confirmCancel = b2.id; this.renderPanel(); return; }
+          if (this.confirmCancel !== b2.id) { this.armConfirm('confirmCancel', b2.id, e); return; }
+          if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
           this.confirmCancel = 0;
           // a cancelled SITE deselects itself on its way out (removeToRuin);
           // a cancelled upgrade leaves the building standing and selected
@@ -2923,7 +2937,8 @@ const UI = {
           }
         }
         else if (btn.dataset.act === 'demolish') {
-          if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
+          if (this.confirmDemolish !== b2.id) { this.armConfirm('confirmDemolish', b2.id, e); return; }
+          if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
           this.confirmDemolish = 0; this.confirmCancel = 0;
           if (Bld.demolish(b2)) return;   // demolish deselects via removeToRuin
         }
@@ -2976,8 +2991,9 @@ const UI = {
         else this.toast('Not enough resources', true);
       });
       const demo = panel.querySelector('[data-act="brdemo"]');
-      if (demo) demo.addEventListener('click', () => {
-        if (this.confirmDemolish !== 'bridge') { this.confirmDemolish = 'bridge'; this.renderPanel(); return; }
+      if (demo) demo.addEventListener('click', e => {
+        if (this.confirmDemolish !== 'bridge') { this.armConfirm('confirmDemolish', 'bridge', e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
@@ -3326,33 +3342,36 @@ const UI = {
          off the villager LIVE, so a works that finished between the render
          and the tap simply finds nothing to call off. */
       const canc = panel.querySelector('[data-act="cancelbuild"]');
-      if (canc) canc.addEventListener('click', () => {
+      if (canc) canc.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         const site = this.villagerBuildSite(u2);
         if (!site) { this.confirmCancel = 0; this.renderPanel(); return; }
-        if (this.confirmCancel !== site.id) { this.confirmCancel = site.id; this.renderPanel(); return; }
+        if (this.confirmCancel !== site.id) { this.armConfirm('confirmCancel', site.id, e); return; }
+        if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
         this.confirmCancel = 0;
         if (Bld.cancelBuild(site)) this.toast('Work called off — everything paid is back');
         this.renderPanel();
         this.refreshMenu();
       });
       const ban = panel.querySelector('[data-act="banish"]');
-      if (ban) ban.addEventListener('click', () => {
+      if (ban) ban.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || !Units.canBanish(u2)) return;
-        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         Units.banish(u2);
         this.toast('Banished — they are walking out of the valley');
         this.deselect();
       });
       const scut = panel.querySelector('[data-act="scuttle"]');
-      if (scut) scut.addEventListener('click', () => {
+      if (scut) scut.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
         // never send soldiers down with the ship — an accidental tap would be brutal
         if (Units.isTransport(u2) && u2.cargo && u2.cargo.length) { this.toast('Soldiers are aboard — unload before scuttling', true); return; }
-        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         R.float(u2.x, u2.y - 0.3, '🌊', '#9fc7e8');
         Units.despawn(u2);   // deselects; population headcount follows the roster
         G.log('Hull scuttled — she slips beneath the water');

@@ -143,17 +143,18 @@ const out = await p.evaluate(async () => {
       !q('[data-act="banish"]').classList.contains('wide') &&
       !q('[data-act="gobuild"]').classList.contains('wide'), '');
     // first tap ARMS, second acts — and the second tap is a SECOND decision:
-    // a quick double-tap (two taps 120 ms apart) is one gesture, so the
-    // confirm ignores a tap that comes within its guard of the arming and
-    // stays armed (PX-26). The deliberate second tap waits past the guard
-    // (>= 450 ms after the arming), the way a player reads the button first.
+    // a quick double-tap is one gesture, so the confirm ignores a tap that
+    // comes within its guard of the arming and stays armed (PX-26). Here the
+    // double-tap's second tap lands in the same task as the first — a wall
+    // clock nap of 120 ms measured 200-600 ms on a loaded host, and the guard
+    // reads the taps' own timestamps. The deliberate second tap waits past
+    // the guard (>= 450 ms after the arming), the way a player reads first.
     const tapBan = () => { const el = q('[data-act="banish"]'); if (el) el.click(); return !!el; };
     tapBan();
     ck('theFirstTapOnlyArmsIt',
       !!Units.get(v.id) && (!v.task || v.task.type !== 'banish') && UI.confirmDemolish === v.id,
       'it cannot be undone once they reach the rim');
     ck('andSaysSo', /confirm/i.test(q('[data-act="banish"]').textContent), q('[data-act="banish"]').textContent.slice(0, 40));
-    await nap(120);
     tapBan();
     ck('aQuickDoubleTapIsNotTheSecondTap',
       !!Units.get(v.id) && (!v.task || v.task.type !== 'banish') && UI.confirmDemolish === v.id,

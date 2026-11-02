@@ -101,9 +101,10 @@ const out = await p.evaluate(async () => {
     const armed = !!btn2 && btn2.classList.contains('danger') && !!Units.get(boat.id);
     ck('firstTapOnlyArms', armed, btn2 ? btn2.textContent.trim() : 'missing');
     // a quick double-tap is ONE gesture: a tap within the confirm's guard of
-    // the arming is ignored and the button stays armed (PX-26) — so the
-    // deliberate second tap waits past it (>= 450 ms after the arming)
-    await nap(120);
+    // the arming is ignored and the button stays armed (PX-26). The
+    // double-tap's second tap lands in the same task (a wall-clock nap is
+    // unreliable on a loaded host; the guard reads the taps' timestamps), and
+    // the deliberate second tap waits past the guard (>= 450 ms after arming)
     { const q2 = document.querySelector('#panel [data-act="scuttle"]'); if (q2) q2.click(); }
     ck('aQuickDoubleTapDoesNotSinkHer', !!Units.get(boat.id) && UI.confirmDemolish === boat.id, 'still afloat, still armed');
     await nap(450);

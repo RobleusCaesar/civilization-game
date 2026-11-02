@@ -223,12 +223,13 @@ const out = await p.evaluate(async () => {
 
     // ARMED, then FIRED — the same two taps as demolition. A quick double-tap
     // is ONE gesture: a tap within the confirm's guard of the arming is
-    // ignored and the button stays armed (PX-26), so the deliberate second
-    // tap waits past it (>= 450 ms after the arming)
+    // ignored and the button stays armed (PX-26). The double-tap's second tap
+    // lands in the same task (a wall-clock nap is unreliable on a loaded
+    // host; the guard reads the taps' timestamps), and the deliberate second
+    // tap waits past the guard (>= 450 ms after the arming)
     const tap = () => { const el = document.querySelector('#panel [data-act="cancelbuild"]'); if (el) el.click(); return !!el; };
     ck('theButtonIsTappable', tap(), '');
     ck('oneTapOnlyArmsIt', UI.confirmCancel === site.id && !!Bld.get(site.id), '');
-    await nap(120);
     tap();
     ck('aQuickDoubleTapDoesNotCallItOff', UI.confirmCancel === site.id && !!Bld.get(site.id), 'the button stays armed');
     await nap(450);
@@ -248,7 +249,6 @@ const out = await p.evaluate(async () => {
     UI.select('bld', house.id);
     const demo = () => { const el = document.querySelector('#panel [data-act="demolish"]'); if (el) el.click(); return !!el; };
     const offered = demo();
-    await nap(120);
     demo();
     ck('aDoubleTapOnDemolishLeavesItStanding', offered && !!Bld.get(house.id) && UI.confirmDemolish === house.id,
       offered ? 'standing: ' + !!Bld.get(house.id) : 'no Demolish button');
