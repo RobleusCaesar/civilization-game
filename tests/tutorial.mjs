@@ -1518,6 +1518,10 @@ const out = await p.evaluate(async () => {
   // ---- 20. the rival's intel waits for a screen that can show it (PX-10c) ----
   {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // a post is waited for as a CONDITION, bounded (the post polls every 250ms
+    // and a loaded runner can stretch that past any fixed sleep); an absence
+    // is still read after a fixed beat
+    const until = async (f, ms) => { const t = performance.now(); while (!f() && performance.now() - t < ms) await sleep(50); };
     const box = document.getElementById('toasts');
     const intel = () => [...box.querySelectorAll('.toast')].filter(el => /Rival origin|Scouts whisper/.test(el.textContent)).length;
     const logged = () => S.log.filter(l => /Rival origin|Scouts whisper/.test(l.msg)).length;
@@ -1532,7 +1536,7 @@ const out = await p.evaluate(async () => {
       await sleep(700);
       const stillUnder = intel();
       document.getElementById('vpGotIt').click();
-      await sleep(700);
+      await until(() => intel() >= 2, 5000);
       const after = intel(), afterLog = logged();
       await sleep(700);
       ck('theRivalsIntelWaitsForTheModalToGo', under === 0 && stillUnder === 0 && after === 2 && afterLog === 2 && intel() === 2 && logged() === 2,
@@ -1545,7 +1549,7 @@ const out = await p.evaluate(async () => {
       Cards.announceRival();
       const hidden = intel();
       Screens.show('playing'); S.paused = true;
-      await sleep(700);
+      await until(() => intel() >= 2, 5000);
       ck('itWaitsForTheGameToBeOnScreen', hidden === 0 && intel() === 2, JSON.stringify({ hidden, after: intel() }));
     }
     // …it is this world's news alone: another world taking the glass drops it

@@ -111,9 +111,11 @@ const Tutorial = {
     // the station is the one THIS ground can carry (_workedKind); over stumps
     // the words are exactly what they always were
     workedGround: () => {
-      const k = Tutorial._workedKind() || Tutorial.WORKED[0];
-      return 'That worked-bare ground can carry a <b>' + CFG.BUILDINGS[k.key].name + '</b> — tap a villager, open <b>Build</b>, and set the ' +
-        k.noun + ' on ' + k.on + '. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.';
+      const key = (Tutorial._workedKind() || Tutorial.WORKED[0]).key;
+      const [noun, on] = { lumber: ['camp', 'the stumps'], quarry: ['quarry', 'the broken rock'],
+        farm: ['farm', 'the picked-bare soil'] }[key];
+      return 'That worked-bare ground can carry a <b>' + CFG.BUILDINGS[key].name + '</b> — tap a villager, open <b>Build</b>, and set the ' +
+        noun + ' on ' + on + '. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.';
     },
     station: 'A station pays only while hands <b>work</b> it — tap a villager, then the camp, to crew it. Its steady wood is what raises every building after.',
     dock: 'That water can work for you — a <b>Dock</b> trains fishing boats, and transports to carry your people across.',
@@ -168,11 +170,11 @@ const Tutorial = {
      Lumber Camp whatever had been worked — over broken rock or picked-bare
      soil it named a camp that can never stand there. The nearest explored
      worked tile to the hall (the one the note rings) decides, and the note's
-     hold, ring and words all follow it. */
+     hold, ring and words all follow it (the words stay in TEXT). */
   WORKED: [
-    { terr: 'STUMPS', key: 'lumber', noun: 'camp', on: 'the stumps' },
-    { terr: 'PEBBLES', key: 'quarry', noun: 'quarry', on: 'the broken rock' },
-    { terr: 'BARREN', key: 'farm', noun: 'farm', on: 'the picked-bare soil' },
+    { terr: 'STUMPS', key: 'lumber' },
+    { terr: 'PEBBLES', key: 'quarry' },
+    { terr: 'BARREN', key: 'farm' },
   ],
   _workedKind() {
     const t = this._nearTile('workedGround', [T.STUMPS, T.PEBBLES, T.BARREN]);
