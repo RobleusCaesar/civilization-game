@@ -498,7 +498,11 @@ const out = await p.evaluate(async () => {
     tick(1, 0.1);
     {
       const gb = document.querySelector('#panel [data-act="gobuild"]');
-      const ring = document.getElementById('tutRing').getBoundingClientRect();
+      // the ring's PLACED corner, not its bounding box: the ring pulses by a
+      // scale, which moves the box's edge in proportion to the target's width
+      // — and Build is a full-width button now that Banish moved beside the ✕
+      const rEl = document.getElementById('tutRing');
+      const ring = { left: parseFloat(rEl.style.left), top: parseFloat(rEl.style.top) };
       const ok = gb && (() => { const c = gb.getBoundingClientRect();
         return Math.abs(ring.left - (Math.max(10, c.left) - 5)) < 3 && Math.abs(ring.top - (Math.max(10, c.top) - 5)) < 3; })();
       ck('selectedVillagerRingsBuildButton', !!ok, gb ? 'gobuild at ' + JSON.stringify(gb.getBoundingClientRect()) : 'no gobuild btn');
