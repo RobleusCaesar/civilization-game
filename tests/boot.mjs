@@ -1007,10 +1007,14 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
    Warlord's spears — and on a Continue every unit of ANY owner standing
    where the player can see (fog-honest: a hidden rival is never waited for).
    Each case starts from a COLD cache (every installed strip forgotten),
-   founds or loads through the real path, and at the moment the world opens
-   (Screens._enterNow) counts the strips each shown unit's kind ships on disk
-   that are not installed under the key it draws with. A soldier the player
-   trains later finds his strips waiting: the background tier ran on. ---- */
+   founds or loads through the real path, asks before the world opens that
+   every strip a shown unit draws with is installed or COUNTED, and at the
+   moment it opens (Screens._enterNow) counts the strips each shown unit's
+   kind ships on disk that are not installed under the key it draws with —
+   with the 15 s art floor lifted for this page alone, so the answer is
+   about what was waited for, never about the machine's speed. A soldier
+   the player trains later finds his strips waiting: the background tier
+   ran on. ---- */
 {
   const files = readdirSync(join(root, 'assets/units')).filter(f => /^unit-.*\.png$/.test(f));
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
@@ -1048,6 +1052,19 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       }
       return { n, of, who };
     };
+    /* …and asked BEFORE the world opens, whatever the machine's speed: is every
+       strip a shown unit draws with installed, or waited for in the counted
+       tier (Assets._stripLive, not late)? The late tier can land a strip in
+       time by luck; this cannot. */
+    const uncounted = (units) => {
+      let n = 0; const who = {}, live = Assets._stripLive || {};
+      for (const u of units) for (const [key, d, ps] of want(u)) {
+        const a = Assets.unitArt[key], rec = live[key + '|' + d + '|' + ps];
+        if ((a && a.dirs[d] && a.dirs[d][ps]) || (rec && !rec.late)) continue;
+        n++; who[u.owner + ':' + u.kind] = (who[u.owner + ':' + u.kind] || 0) + 1;
+      }
+      return { n, who };
+    };
     // what the opening world shows: the player's own, and anyone on ground in sight
     const shown = () => S.units.filter(u => u.owner === 'P' || G.visibleAt(u.x | 0, u.y | 0));
     // a cold cache: nothing in flight, every installed strip forgotten
@@ -1056,7 +1073,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     let at = null;
     const en = Screens._enterNow;
     Screens._enterNow = function () { const s = shown(); at = missing(s); at.units = s.length; return en.apply(this, arguments); };
-    const enter = async () => { at = null; Screens.enterGame(); await until(() => Screens.current === 'playing' && at, 60000); return at || { n: -1, of: 0, who: {} }; };
+    const enter = async () => { at = null; Screens.enterGame(); await until(() => Screens.current === 'playing' && at, 300000); return at || { n: -1, of: 0, who: {} }; };
     // what Screens.foundRun does, minus the draft screen (which pauses the world)
     const found = (seed) => {
       Screens._demo = false;
@@ -1065,6 +1082,13 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       R.holdBake = !Assets.artReady();
       if (R.holdBake) Screens.waitForArt(Screens.GAME_ART_FLOOR_MS).then(() => { R.holdBake = false; });
     };
+    /* THE FLOOR IS LIFTED HERE, AND ONLY HERE: GAME_ART_FLOOR_MS (15 s) is what a
+       dead network is owed, and on a slow machine it lets the world open before
+       the art it WAITED FOR has installed — a question of time, which this pin is
+       not. With it out of the way the plaque waits for exactly what is counted,
+       so a unit drawn as a stand-in at the opening is one whose strips were
+       never waited for: the false gain itself, on any machine. */
+    const floor = Screens.GAME_ART_FLOOR_MS; Screens.GAME_ART_FLOOR_MS = 600000;
     const out = {};
     for (const key of ['bowyer', 'delver', 'seareaver', 'horselord', 'warlord']) {
       await cold();
@@ -1078,11 +1102,12 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       S.draft.hand[0] = { key, roll: Cards.DEFS[key].roll() };
       Cards.pick(0);
       const kinds = [...new Set(S.units.filter(u => u.owner === 'P').map(u => u.kind))];
+      const nc = uncounted(shown());               // asked for, counted, before the world opens
       const m = await enter();
-      out[key] = { seed: S.seed, kinds, missing: m.n, of: m.of, units: m.units, who: m.who };
+      out[key] = { seed: S.seed, kinds, missing: m.n, of: m.of, units: m.units, who: m.who, nc: nc.n, ncWho: nc.who };
     }
     // a soldier trained after the world opened: the background tier has run on
-    await until(() => Assets.allArtReady(), 60000);
+    await until(() => Assets.allArtReady(), 300000);
     {
       const tc = Bld.tcOf('P'), s = MapGen.findNear(tc.x + 1, tc.y + 3, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
       const u = s && Units.spawn('defender', 'P', s.x, s.y);
@@ -1103,20 +1128,23 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       await cold();
       R.deferBake = true; try { G.loadJSON(json); } finally { R.deferBake = false; }
       const seen = S.units.filter(u => u.owner !== 'P' && G.visibleAt(u.x | 0, u.y | 0)).map(u => u.owner + ':' + u.kind);
+      const nc = uncounted(shown());
       const m = await enter();
-      out.continue = { seen, missing: m.n, of: m.of, units: m.units, who: m.who };
+      out.continue = { seen, missing: m.n, of: m.of, units: m.units, who: m.who, nc: nc.n, ncWho: nc.who };
     }
-    Screens._enterNow = en;
+    Screens._enterNow = en; Screens.GAME_ART_FLOOR_MS = floor;
     return out;
   }, files);
   const cases = ['bowyer', 'delver', 'seareaver', 'horselord', 'warlord'];
   const spawned = { bowyer: 'archer', delver: 'sapper', seareaver: 'fireship', horselord: 'rider', warlord: 'defender' };
   ck('everyUnitTheOpeningWorldShowsWearsItsStrips',
-    cases.every(k => r[k] && r[k].kinds.includes(spawned[k]) && r[k].of > 0 && r[k].missing === 0),
-    cases.map(k => `${k} [${r[k].kinds.join('/')}] ${r[k].missing}/${r[k].of} missing${r[k].missing ? ' ' + JSON.stringify(r[k].who) : ''}`).join('; '));
+    cases.every(k => r[k] && r[k].kinds.includes(spawned[k]) && r[k].of > 0 && r[k].missing === 0 && r[k].nc === 0),
+    cases.map(k => `${k} [${r[k].kinds.join('/')}] ${r[k].missing}/${r[k].of} missing${r[k].missing ? ' ' + JSON.stringify(r[k].who) : ''}, ` +
+      `${r[k].nc} never counted${r[k].nc ? ' ' + JSON.stringify(r[k].ncWho) : ''}`).join('; '));
   ck('andOnAContinueEveryoneInSightDoesToo',
-    ['A:villager', 'A:defender', 'W:deer'].every(k => r.continue.seen.includes(k)) && r.continue.of > 0 && r.continue.missing === 0,
-    `in sight at the load: ${r.continue.seen.join(', ')}; ${r.continue.missing}/${r.continue.of} strips missing at the opening${r.continue.missing ? ' ' + JSON.stringify(r.continue.who) : ''}`);
+    ['A:villager', 'A:defender', 'W:deer'].every(k => r.continue.seen.includes(k)) && r.continue.of > 0 && r.continue.missing === 0 && r.continue.nc === 0,
+    `in sight at the load: ${r.continue.seen.join(', ')}; ${r.continue.missing}/${r.continue.of} strips missing at the opening${r.continue.missing ? ' ' + JSON.stringify(r.continue.who) : ''}, ` +
+    `${r.continue.nc} never counted${r.continue.nc ? ' ' + JSON.stringify(r.continue.ncWho) : ''}`);
   ck('andASoldierTrainedLaterFindsHisWaiting', r.trainedLater.of > 0 && r.trainedLater.missing === 0,
     `a spearman spawned once the background tier ran: ${r.trainedLater.missing}/${r.trainedLater.of} strips missing`);
   ck('theOpeningWorldsRunClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0, errs[0] || 'no page errors');
