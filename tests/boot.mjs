@@ -820,8 +820,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   const r = await p.evaluate(async () => {
     const out = {};
     const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-    // a founded run — what Screens.foundRun does, minus the draft
+    // a founded run — what Screens.foundRun does, minus the draft. The wire is
+    // held still while the queues are read (nothing lands inside this task, so
+    // nothing frees a slot; the pump simply takes nothing off them), then let go
     Screens._demo = false;
+    const fly = Assets._stripFlying; Assets._stripFlying = 1e9;
     G.newGame('boot-found', 'moderate', 'medium', undefined, 'green');
     out.queued = Assets._stripQ.length;
     out.flightCap = Assets.STRIP_FLIGHT;
@@ -849,6 +852,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     Assets.loadMilitaryArt('P', false, ['lancer']);
     out.promote = { lateBefore: lanceLate0, counted: cnt(Assets._stripQ, /unit-lancer-/), lateAfter: cnt(Assets._stripQLate, /unit-lancer-/),
       pendingRose: Assets.pending - pend0, added: Assets._stripQ.length + Assets._stripQLate.length - q1 };
+    Assets._stripFlying = fly; Assets._pumpStrips();
     // watch the wire and the count until the people are drawn
     let maxFly = 0;
     const t0 = performance.now();
