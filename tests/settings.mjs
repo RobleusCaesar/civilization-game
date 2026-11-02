@@ -28,7 +28,10 @@
       the site sends nothing at all.
    5. THE ERROR RING: script errors, rejected promises and the frame loop's
       recovered faults are kept (last 20) and ride in a Bug or Crash report;
-      an Idea carries no technical details unless asked.
+      an Idea carries no technical details unless asked. What is not the
+      game's fault (PX-51) — a network blip's rejection, another origin's
+      "Script error." — is kept too, tagged 'net' or 'external', and never
+      counts in the run's error tally.
    6. IT FITS at 390x844, 430x932, 768x1024, 1440x900, 1920x1080 and a
       phone on its side (844x390): no sideways scroll, no clipped tab label,
       the frame inside the window and every rail plaque inside the frame —
@@ -477,6 +480,61 @@ const open = async (opts) => {
   ck('aRetriedCopyKeepsItsReference', r.refs.length >= 4 && r.refs.every(x => /^fb-/.test(x)), r.refs.join(','));
   const live = reqs.filter(u => /formsubmit|supabase\.co/.test(u));
   ck('andNothingTouchedTheRealNetwork', live.length === 0, live.slice(0, 2).join(' '));
+  await ctx.close();
+}
+/* ---- 5b. NOT THE GAME'S FAULT: KEPT IN THE RING, NEVER COUNTED (PX-51).
+   The run's own tally (Feedback.runErrs → every ending's props.errors, the
+   dashboard's "hit an error") counted what is not the game's: a network blip
+   that supabase-js leaks as an unhandled rejection when the line drops
+   ("Failed to fetch", Safari's "Load failed", Firefox's "NetworkError…" —
+   the words Backend already reads as "offline"), and another origin's script
+   (an extension, an in-app browser's injected code), whose details the
+   browser hides behind "Script error." with no file. Both stay in the ring,
+   tagged 'net' and 'external' so a crash report still shows them, and
+   neither counts; the game's own faults count exactly as before. ---- */
+{
+  const { ctx, p } = await open({ tag: 'notours', expectErrors: true });
+  const r = await p.evaluate(async () => {
+    const settle = (ms) => new Promise(z => setTimeout(z, ms || 80));
+    const o = {};
+    const c0 = Feedback.runErrs || 0;
+    // ours, and all of them count: a throw in our own code, a promise of ours
+    // nobody caught, a frame fault whose words happen to say "fetch", and a
+    // "Script error." that names a file of ours
+    setTimeout(() => { throw new Error('notours test: a fault in our own code'); }, 0);
+    Promise.reject(new Error('notours test: our own promise nobody caught'));
+    G._safe(() => { throw new TypeError("Cannot read properties of undefined (reading 'fetch')"); }, 'ui');
+    window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.', filename: location.href, lineno: 3 }));
+    await settle();
+    o.ours = (Feedback.runErrs || 0) - c0;
+    o.first = Feedback.runErr;
+    o.ourTags = Feedback.errors().slice(-4).map(e => e.tag || null);
+    // not ours: the line dropping, in three browsers' words, and a script from
+    // another origin (the browser gives no file and no line)
+    const c1 = Feedback.runErrs || 0;
+    Promise.reject(new TypeError('Failed to fetch'));
+    Promise.reject(new TypeError('Load failed'));
+    Promise.reject(new TypeError('NetworkError when attempting to fetch resource.'));
+    window.dispatchEvent(new ErrorEvent('error', { message: 'Script error.' }));
+    await settle();
+    o.notOurs = (Feedback.runErrs || 0) - c1;
+    o.firstAfter = Feedback.runErr;
+    o.tail = Feedback.errors().slice(-4).map(e => ({ msg: e.msg, tag: e.tag || null }));
+    o.inReport = Feedback.details().errors.filter(e => e.tag).map(e => e.tag);
+    return o;
+  });
+  ck('aNetworkBlipOrAForeignScriptIsNotCounted', r.notOurs === 0 && r.firstAfter === r.first,
+    r.notOurs + ' counted; the run\'s first fault ' + JSON.stringify(r.first) + ' → ' + JSON.stringify(r.firstAfter));
+  // (the error event is dispatched at once, the rejections a beat later: the
+  // ring's order is the browser's, so each is read by its own words)
+  const tagOf = m => { const e = r.tail.find(x => x.msg === m); return e ? e.tag : 'missing'; };
+  ck('butBothStayInTheRingTagged',
+    tagOf('Unhandled: Failed to fetch') === 'net' && tagOf('Unhandled: Load failed') === 'net' &&
+    tagOf('Unhandled: NetworkError when attempting to fetch resource.') === 'net' && tagOf('Script error.') === 'external',
+    JSON.stringify(r.tail));
+  ck('andTheGamesOwnFaultsStillCount', r.ours === 4 && r.ourTags.every(t => t === null),
+    r.ours + ' counted, tags ' + JSON.stringify(r.ourTags) + ', first ' + JSON.stringify(r.first));
+  ck('andACrashReportCarriesTheTags', r.inReport.includes('net') && r.inReport.includes('external'), JSON.stringify(r.inReport));
   await ctx.close();
 }
 /* the next load sends what the last one could not */
