@@ -698,11 +698,14 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       out.start1 = (last('run_start') || {}).props || null;
       out.sGame = session();
 
-      // A WARM PRESS opens at once: no plaque, prep_ms 0
+      // A WARM PRESS opens at once: no plaque, prep_ms 0 — exactly, even
+      // when the synchronous entry itself costs milliseconds (a forced layout
+      // on a busy phone, played here by a slow zoom read) — that is no plaque
       G.newGame('fm-warm', 'moderate', 'medium'); Screens._demo = false;
       Assets.artReady = () => true;
-      Screens.enterGame();
-      Assets.artReady = ar;
+      const dz = R.defaultZoom;
+      R.defaultZoom = function () { const t = performance.now(); while (performance.now() - t < 6) {} return dz.apply(this, arguments); };
+      try { Screens.enterGame(); } finally { R.defaultZoom = dz; Assets.artReady = ar; }
       out.warmEntered = Screens.current === 'playing';
       out.warmStart = (last('run_start') || {}).props || null;
 

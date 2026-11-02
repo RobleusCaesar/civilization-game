@@ -352,7 +352,7 @@ const Screens = {
   },
 
   enterGame() {
-    if (!this._entering) this._prepT0 = performance.now();   // analytics (prep_ms): the press, before any plaque
+    if (!this._entering) { this._prepT0 = performance.now(); this._prepSync = true; Promise.resolve().then(() => { this._prepSync = false; }); }   // analytics (prep_ms): the press — a world that opens in this same task showed no plaque
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
@@ -392,7 +392,10 @@ const Screens = {
          Keyed on the world itself in a WeakMap: page state, never the save.
          The wall clock is the page's VISIBLE clock — a phone that switches
          apps for an hour has not played for an hour. */
-      const prepMs = this._prepT0 ? Math.max(0, Math.round(performance.now() - this._prepT0)) : 0;
+      // 0 exactly when the world opened in the press's own task (the plaque
+      // path always reaches here from a later promise or frame): a forced
+      // layout on a busy phone must never read as a plaque
+      const prepMs = (this._prepT0 && !this._prepSync) ? Math.max(0, Math.round(performance.now() - this._prepT0)) : 0;
       this._prepT0 = 0;
       if (!this._demo && window.S) {
         if (!this._vis) {
