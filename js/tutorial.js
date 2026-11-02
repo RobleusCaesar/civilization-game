@@ -1237,7 +1237,7 @@ const Tutorial = {
         // no room above or below the ring with the panel up: the card takes the
         // half of the screen the ring is not in (the build 128 review, PLAYER-02)
         const vw2 = window.innerWidth || R.viewW(), right = hole ? hole.x < vw2 / 2 : true;
-        el.panel.style.transform = 'none'; el.panel.style.width = 'min(46vw, 400px)';
+        el.panel.style.transform = 'none'; el.panel.style.width = this._sideW(hole ? hole.x : 0, hole ? hole.r : 0) + 'px';
         el.panel.style.left = right ? 'auto' : '12px'; el.panel.style.right = right ? '12px' : 'auto';
         seatTop = topPad; el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto';
       }
@@ -1275,16 +1275,16 @@ const Tutorial = {
     // card is up (the build 128 review, PLAYER-02: on a 320 px phone the card
     // hid the ring's lower half and the tile itself while the ring's centre,
     // the old test, stayed clear)
-    const a = this._anchor(), rr = ((a && a.r) || 0.8) * TL * z, c = this._cardRectFor(x, y);
+    const a = this._anchor(), rr = ((a && a.r) || 0.8) * TL * z, c = this._cardRectFor(x, y, rr);
     if (c && x + rr > c.left && x - rr < c.right && y + rr > c.top && y - rr < c.bottom) return false;
     return document.elementFromPoint(x, y) === (R.cv || document.getElementById('c'));
   },
   // where the card seats for a ring at screen (x, y): _syncOverlay's own rules
-  _cardRectFor(x, y) {
-    const side = this._sideSeat(), h = this._cardH(side);
+  _cardRectFor(x, y, rr) {
+    const side = this._sideSeat(), sw = side ? this._sideW(x, rr || 0) : 0, h = this._cardH(side, sw);
     if (!h) return null;
     const vw = window.innerWidth || R.viewW(), vh = window.innerHeight || R.viewH();
-    const w = side ? Math.min(vw * 0.46, 400) : Math.min(vw * 0.92, 400);
+    const w = side ? sw : Math.min(vw * 0.92, 400);
     const topBar = document.getElementById('topbar'), botBar = document.getElementById('bottombar');
     const topPad = (topBar ? topBar.offsetHeight : 0) + 10, botPad = (botBar ? botBar.offsetHeight : 0) + 10;
     const left = side ? (x < vw / 2 ? vw - 12 - w : 12) : (vw - w) / 2;
@@ -1293,13 +1293,21 @@ const Tutorial = {
   },
   // the card's height at the width it will sit at — measured unseen when it is
   // not on the glass yet (one forced layout, inside the same task: no flicker)
-  _cardH(side) {
+  _cardH(side, sw) {
     const el = this._el; if (!el || !el.panel) return 0;
     const ui = el.ui, pn = el.panel, d = ui.style.display, v = ui.style.visibility, w = pn.style.width;
-    ui.style.visibility = 'hidden'; ui.style.display = 'block'; pn.style.width = side ? 'min(46vw, 400px)' : '';
+    ui.style.visibility = 'hidden'; ui.style.display = 'block'; pn.style.width = side ? (sw || 300) + 'px' : '';
     const h = pn.offsetHeight;
     ui.style.display = d; ui.style.visibility = v; pn.style.width = w;
     return h;
+  },
+  // the side-seated card's width: what the half the ring is not in leaves
+  // beside the ring (the camera cannot always bring the ring off the middle —
+  // a target at the map's edge clamps it), never under 260 px, never past 400
+  _sideW(x, r) {
+    const vw = window.innerWidth || R.viewW(), right = x < vw / 2;
+    const room = right ? vw - 12 - (x + r) - 8 : (x - r) - 12 - 8;
+    return Math.round(Math.max(260, Math.min(vw * 0.46, 400, room)));
   },
   // a phone on its side: too short to hold the card above or below a ring
   _sideSeat() {
