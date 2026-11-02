@@ -29,7 +29,16 @@ const Backend = {
   RETRIES: 3,
 
   /* ---------------- status ---------------- */
+  /* ONE WORD PER CHANGE (tests/finished-run-continue.mjs §5). The transport
+     says what it knows on every request that fails, and the title answers a
+     status word by looking for saves — whose own failing requests said it
+     again. Offline, one lookup became three, then nine, and in ten seconds
+     thousands: the title froze. A status that did not CHANGE is not news, so
+     it is not said (Deck.sync's listener already ignored repeats). */
   emit() {
+    const word = this.online + '|' + this.configured + '|' + this.uid;
+    if (word === this._said) return;
+    this._said = word;
     try {
       window.dispatchEvent(new CustomEvent('backend-status', {
         detail: { online: this.online, configured: this.configured, uid: this.uid },
@@ -681,6 +690,12 @@ const Backend = {
   // active cloud slot when one is bound and the backend is reachable.
   async autosaveNow(reason) {
     if (!window.S || S.over) return this._err('no_game', 'No running game');
+    /* a world nobody has ENTERED is not a game (S.played, stamped by
+       Screens.show('playing')): the world founded behind the origin cards,
+       or left pending on the title. Saved on a tab-hide, that day-1 world
+       replaced the real game in the crash net, and Continue offered "day 1"
+       (tests/finished-run-continue.mjs §6). A pre-stamp save loads played. */
+    if (S.played === false) return this._err('not_played', 'No game entered yet');
     const json = G.saveJSON();
     this.snapshotLocal(json);
     /* the cadence stamp lands HERE, after the crash net, not only on cloud

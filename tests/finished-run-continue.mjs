@@ -37,13 +37,27 @@
       seconds while the sign-in lands. A world being entered now outranks the
       demo (Screens._entering, set by enterGame until _enterNow).
 
+   4. OFFLINE, THE TITLE CHASED ITS OWN FAILURES (§5). Every failed request
+      said the status again on backend-status, and the title answered every
+      status word with a save lookup of three tries, each of which failed and
+      said it again: one lookup became thousands in ten seconds and the page
+      froze. Backend.emit now says a status only when it CHANGED.
+
+   5. THE CRASH NET LOST THE GAME THAT WAS PLAYED (§6). A world founded
+      behind the origin cards and never entered was written over the real
+      game on a tab-hide (autosaveNow now refuses a world with S.played
+      false), and a second game in one sitting saved no recovery snapshot
+      until it passed the previous run's last day (G.newGame and G.loadJSON
+      now restart the cadence).
+
    Run this after touching any of:
      backend.js — finalizeRun, noteFinishedSeed/finishedSeeds, autosaveNow,
                   snapshotLocal/readLocalSnapshot/clearLocalSnapshot,
-                  markActiveSlot, listSaves (cols)
+                  markActiveSlot, listSaves (cols), emit, _rest's catch
      screens.js — onTitle (the Continue pick), continueGame, loadRow,
                   enterGame/_enterNow, ensureDemo, the backend-status listener
-     game.js — G.end
+     game.js — G.end, the autosave cadence in G.dayTick, and the cadence
+               restart in G.newGame / G.loadJSON
 
      node tests/finished-run-continue.mjs      # exits non-zero on any regression
 
@@ -213,6 +227,74 @@ const out = await p.evaluate(async () => {
     ck('andTheTitleIsItselfAgainAfter', !Screens._entering, `entering=${Screens._entering}`);
     S.paused = true;
     Backend.clearLocalSnapshot && Backend.clearLocalSnapshot();
+  }
+
+  // ---- 5. the title never chases its own failures (offline) ----
+  {
+    // a dead network: every request fails after a beat, as a real one does
+    const realFetch = window.fetch, realReady = Backend.isReady;
+    let calls = 0, words = 0;
+    const onWord = () => words++;
+    window.fetch = () => { calls++; return new Promise((_, no) => setTimeout(() => no(new TypeError('Failed to fetch')), 40)); };
+    Backend.isReady = () => true;
+    window.addEventListener('backend-status', onWord);
+    Screens._demo = false; Screens.show('title');           // a signed-in player comes back to the title
+    let worst = 0, last = performance.now();
+    const until = last + 3000;
+    while (performance.now() < until) {
+      await new Promise(r => setTimeout(r, 50));
+      const now = performance.now(); worst = Math.max(worst, now - last - 50); last = now;
+    }
+    // stop any storm still running: requests that never answer say nothing
+    window.fetch = () => new Promise(() => {});
+    window.removeEventListener('backend-status', onWord);
+    const label = document.getElementById('btnContinue').querySelector('small').textContent;
+    Backend.isReady = realReady;
+    ck('theTitleNeverChasesItsOwnFailures', calls <= 12 && words <= 2,
+      `${calls} requests and ${words} status words in 3 s offline (one lookup tries 3 times); worst stall ${Math.round(worst)} ms; Continue reads "${label}"`);
+    window.__realFetch = realFetch;                         // put back after §6, which needs no network
+  }
+
+  // ---- 6. the crash net keeps the game that was PLAYED ----
+  {
+    // a world nobody entered (the draft behind the origin cards) never
+    // replaces the played game the crash net is holding
+    G.newGame('6061', 'calm', 'small'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    S.day = 26; Backend.snapshotLocal(G.saveJSON());
+    G.newGame('7071', 'calm', 'small'); Screens._demo = false;   // founded, as foundRun leaves it: never shown
+    await Backend.autosaveNow('hide');
+    const kept = Backend.readLocalSnapshot();
+    const keptSeed = kept && kept.json ? String(JSON.parse(kept.json).seed) : 'none';
+    Screens.show('playing'); S.paused = true;               // entered: now it is the game
+    await Backend.autosaveNow('hide');
+    const now = Backend.readLocalSnapshot();
+    const nowSeed = now && now.json ? String(JSON.parse(now.json).seed) : 'none';
+    ck('aWorldNobodyEnteredNeverReplacesTheCrashNet', keptSeed === '6061' && kept.day === 26,
+      `after a hide on the unentered world the net holds seed ${keptSeed}, day ${kept && kept.day}`);
+    ck('andTheGameOnceEnteredIsSaved', nowSeed === '7071', `after entering, the net holds seed ${nowSeed}`);
+
+    // a SECOND game in one sitting keeps its cadence from day one — and so
+    // does a loaded save, whatever day the last run reached
+    const realSave = Backend.autosaveNow;
+    let cad = 0;
+    Backend.autosaveNow = (why) => { if (why === 'cadence') cad++; return Promise.resolve({ ok: false }); };
+    try {
+      Backend._lastAutosaveDay = 20;                        // the last run's last snapshot was on day 20
+      G.newGame('8081', 'calm', 'small'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      S.day = 1; G.dayTick();                               // → day 2
+      const second = cad;
+      S.day = 5; const day5 = G.saveJSON();
+      Backend._lastAutosaveDay = 22;                        // a later day of some other run
+      G.loadJSON(day5); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      cad = 0; G.dayTick();                                 // → day 6
+      const loaded = cad;
+      ck('aSecondGameKeepsItsCrashNetCadence', second === 1,
+        `${second} cadence snapshot(s) on day 2 of a second game (the last run stopped on day 20)`);
+      ck('andSoDoesALoadedSave', loaded === 1, `${loaded} cadence snapshot(s) on day 6 of a loaded day-5 save (the last run stopped on day 22)`);
+    } finally { Backend.autosaveNow = realSave; }
+    S.paused = true;
+    Backend.clearLocalSnapshot && Backend.clearLocalSnapshot();
+    window.fetch = window.__realFetch; delete window.__realFetch;
   }
 
   return { res, fails };

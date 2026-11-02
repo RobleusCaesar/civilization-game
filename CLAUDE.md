@@ -1912,6 +1912,24 @@ HUD. On a phone's cold cache the plaque stands for seconds, exactly while
 the sign-in lands. `enterGame` raises `_entering` until `_enterNow`; the
 status listener skips `onTitle` while it stands, and `ensureDemo` refuses to
 replace a world being entered whoever asks.
+**ONE STATUS WORD PER CHANGE** (`Backend.emit`, §5 — the sprint's backend
+audit, reproduced on 126 at 2,739 requests in three seconds): `_rest`'s
+catch says the status on EVERY failed request, and the title answers every
+status word with `onTitle` → `listSaves`, three tries, each of which failed
+and said it again — offline (or with the cloud unreachable) a signed-in
+player's title multiplied its own lookups until the page froze. `emit` now
+dispatches only when (online, configured, uid) CHANGED; a listener that
+needs a fresh look asks for one itself (`Screens.show('title')` runs
+`onTitle`). Never re-add a dispatch per failure: `Deck.sync` learned the
+same loop first (its listener answers only a new uid).
+**THE CRASH NET HOLDS THE GAME THAT WAS PLAYED** (§6, same audit): a world
+nobody has entered is not a game — `autosaveNow` refuses `S.played === false`
+(the world founded behind the origin cards, left pending on the title),
+which a tab-hide used to write over the real run, so Continue offered
+"day 1". And the cadence counts from the world it is in: `G.newGame` and
+`G.loadJSON` restart `Backend._lastAutosaveDay`, which a second game in one
+sitting inherited from the last run — no recovery snapshot until it passed
+that run's last day.
 
 **Drag-to-move** (`tests/drag-move.mjs`): the second movement gesture, born of
 the crowded-tile problem — with several units stacked, tapping a destination

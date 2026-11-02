@@ -125,6 +125,9 @@ const G = {
   newGame(seed, modeKey, sizeKey, persona, tunic) {
     // nothing painted while the world is being assembled (R.holdTerrain)
     R.holdTerrain();
+    // the crash net's cadence counts from THIS world: a second game in one
+    // sitting saved nothing until it passed the last one's day (finished-run-continue §6)
+    if (window.Backend) Backend._lastAutosaveDay = 0;
     // a new world is never the old run: its id comes from _enterNow's
     // run_start, or G.end names it (Backend.legacyRunId) — never a leftover
     // from a save loaded before it (tests/telemetry.mjs §5)
@@ -2779,6 +2782,8 @@ const G = {
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Clanfire save file');
     CFG.W = w; CFG.H = h;
+    // …and the crash net's cadence counts from the world just loaded (§6 too)
+    if (window.Backend) Backend._lastAutosaveDay = 0;
     // size labels shifted a tier (old small/medium/large → medium/large/xlarge):
     // re-key old saves by their actual map width so the menu reads true
     if (!CFG.SIZES[data.sizeKey] || CFG.SIZES[data.sizeKey] !== w) {
