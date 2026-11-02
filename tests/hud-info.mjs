@@ -254,6 +254,16 @@ const town = await p.evaluate(() => {
     const atWork = Units.workReport(walker).rate;
     out.walk = { onWay: onWay && __h.r1(onWay.n), atWork: atWork && __h.r1(atWork.n) };
   } else out.walk = null;
+  // the room note asks only what can be done: a house below the hall's ceiling,
+  // a storey at it, and nothing at all from a hall at its last storey
+  if (UI.chipNote) {
+    const keep = { cap: Bld.popCap, used: Units.popUsed, lv: tc.level };
+    const room = (lv, used, cap) => { tc.level = lv; Units.popUsed = () => used; Bld.popCap = () => cap; return UI.chipNote('pop'); };
+    try {
+      out.pop = { house: room(1, 10, 10), storey: room(1, CFG.TC_POP_CAP[0], CFG.TC_POP_CAP[0]),
+        top: room(CFG.TC_POP_CAP.length, CFG.TC_POP_CAP[CFG.TC_POP_CAP.length - 1], CFG.TC_POP_CAP[CFG.TC_POP_CAP.length - 1]), room: room(1, 7, 10) };
+    } finally { Bld.popCap = keep.cap; Units.popUsed = keep.used; tc.level = keep.lv; }
+  }
   // red when it falls; the famine red as before
   for (const u of __h.vills()) if (u.task && u.task.type === 'gather' && u.task.res === 'food') u.task = null;
   for (const bb of S.buildings) if (bb.owner === 'P' && (bb.key === 'farm' || bb.key === 'lodge')) bb.upgrading = 1;
@@ -278,6 +288,9 @@ const failed = Object.entries(town.checks).filter(([, v]) => !v).map(([k]) => k)
 ck('everyNumberInEachNoteIsTheRulesOwn', !failed.length,
   failed.length ? 'wrong: ' + failed.join(', ') + ' — ' + JSON.stringify(town.notes).slice(0, 400)
     : `food "${town.notes.food}" | gold "${town.notes.gold}" | "${town.notes.pop}" | "${town.notes.day}"`);
+ck('theRoomNoteAsksOnlyWhatCanBeDone', !!town.pop && /build a house/.test(town.pop.house) && /raise it a level/.test(town.pop.storey) &&
+  !/raise it|build a house/.test(town.pop.top) && /3 more can be trained/.test(town.pop.room),
+  town.pop ? `full under the ceiling: "${town.pop.house}" | at the ceiling: "${town.pop.storey}" | at the last storey: "${town.pop.top}"` : 'no note');
 ck('aHandOnItsWayCountsAtItsWorkRate', !!town.walk && town.walk.onWay != null && town.walk.onWay === town.walk.atWork,
   town.walk ? `on the way ${town.walk.onWay}, at work ${town.walk.atWork}` : 'no way to ask (UI.handRate missing)');
 
@@ -303,6 +316,16 @@ for (const [name, sel, re] of CHIPS) {
   if (!(box.shown && box.top && got.length)) taps[taps.length - 1] = '✗ ' + taps[taps.length - 1];
 }
 ck('everyChipAnswersATap', taps.every(t => !t.startsWith('✗') && !t.endsWith('missing')), taps.join(' | '));
+// a click leaves no focus on the chip (Enter in placement never also opens a note);
+// a chip the keyboard reached answers Enter
+const keys = await p.evaluate(() => ({ focusLeft: document.activeElement && document.activeElement.closest && !!document.activeElement.closest('#topbar [data-chip]') }));
+await p.evaluate(() => { __h.clear(); document.getElementById('rDay').focus(); });
+await p.keyboard.press('Enter');
+await p.waitForTimeout(120);
+keys.enter = await p.evaluate(() => __h.shown(/^Day \d+\./).length);
+await p.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+ck('theKeyboardReachesTheChipsAndAClickLeavesNoFocus', !keys.focusLeft && keys.enter === 1,
+  `after the clicks the focus ${keys.focusLeft ? 'STAYED on a chip' : 'is not on a chip'}; Enter on the focused day: ${keys.enter} note`);
 
 /* ---- 3. THE CHIPS AND THE BUTTONS CARRY A NAME (PX-18) ---- */
 const names = await p.evaluate(() => ['#topbar .trow:first-child .res:nth-child(1)', '#topbar .trow:first-child .res:nth-child(2)',

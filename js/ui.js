@@ -144,7 +144,9 @@ const UI = {
         const t = this.chipNote(rate ? 'foodRate' : el.dataset.chip);
         if (t) this.toast(t, 'note');
       };
-      el.addEventListener('click', say);
+      // a pointer's click leaves no focus behind, so Enter in placement (or the
+      // deck's own keys) can never also open a note
+      el.addEventListener('click', e => { say(e); if (e.detail) el.blur(); });
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); say(e); } });
     });
   },
@@ -3491,12 +3493,13 @@ const UI = {
     const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
     if (kind === 'pop') {
       const used = Units.popUsed('P'), cap = Bld.popCap('P'), tc = Bld.tcOf('P');
-      const ceil = CFG.TC_POP_CAP[tc ? tc.level - 1 : 0];
+      const lv = tc ? tc.level : 1, ceil = CFG.TC_POP_CAP[lv - 1];
       return `Population ${used} of ${cap}: ` + (cap > used ? `houses and the hall make room for ${cap}, so ${cap - used} more can be trained.`
-        : cap >= ceil ? `the hall holds the town to ${ceil} — raise it a level for more room.`
-        : 'the town is full — build a house for more room.');
+        : cap < ceil ? 'the town is full — build a house for more room.'
+        : lv < CFG.TC_POP_CAP.length ? `the hall holds the town to ${ceil} — raise it a level for more room.`
+        : `the town is full — the hall holds no more than ${ceil}.`);
     }
-    if (kind === 'day') return `Day ${S.day}. A day lasts ${f(CFG.DAY_MS / 1000)} seconds; when it turns, the farms and camps pay out and every mouth eats.`;
+    if (kind === 'day') return `Day ${S.day}. A day lasts ${f(CFG.DAY_MS / 1000)} seconds; when it turns, the hall, farms and camps pay out and every mouth eats.`;
     const res = kind === 'foodRate' ? 'food' : kind;
     if (!S.res || S.res[res] == null) return '';
     const inc = this.incomePerDay(res);
