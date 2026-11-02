@@ -93,14 +93,30 @@ const Combat = {
     this.hitFloat(b, Bld.cx(b), Bld.cy(b), Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
       flame ? '#f2963a' : '#e8d2a0', by);
     if (b.owner === 'P' && by !== 'P' && UI.noteStruck) UI.noteStruck();   // the hall's emergency calls come out
-    if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15)
-      G.log(`${Bld.def(b.key).name} under attack!`, true);
+    /* "X UNDER ATTACK!" ON THE FIRST BLOW (tests/feedback.mjs, PX-17). It
+       used to ride a 15% roll per blow: first seen on blow 5 by the median,
+       and about one lone-raider house in six burned with no toast at all —
+       to a player with the sound off, the only alarm there is. Now the first
+       blow after ten quiet seconds says it, per building, from anyone but the
+       player (stamps in a map keyed on S: never in a save, quiet again in a
+       new world). It stays a plain G.log — every difficulty, never foeNote.
+       The old roll's Math.random draw is KEPT, under exactly its old guard,
+       its result unused: the seeded contracts replay that stream. */
+    if (b.hp > 0 && b.owner === 'P' && Math.random() < 0.15) { /* the old roll: kept for its draw alone */ }
+    if (b.hp > 0 && b.owner === 'P' && by !== 'P') {
+      if (!this._alarmAt || this._alarmAt.s !== S) this._alarmAt = { s: S, at: new Map() };
+      const now = performance.now(), last = this._alarmAt.at.get(b.id);
+      if (last == null || now - last >= 10000) {
+        this._alarmAt.at.set(b.id, now);
+        G.log(`${Bld.def(b.key).name} under attack!`, true);
+      }
+    }
     /* THE HORN. This is the only unprompted defensive alarm the game has —
        the log line beside it is deliberately ungated by difficulty for that
-       reason — so it is the one sound allowed to be big, and it rides the
-       SAME roll rather than firing on every blow: an alarm on each swing is
-       not an alarm, it is the sound of a building being hit. Its own gap in
-       Sound keeps a long siege from becoming a horn section. */
+       reason — so it is the one sound allowed to be big. It is asked for on
+       every blow, and its own 30-second gap in Sound is what keeps a long
+       siege from becoming a horn section: it sounds on the first blow, as the
+       toast above now does. */
     if (b.hp > 0 && b.owner === 'P' && by !== 'P' && typeof Sound !== 'undefined' && Sound.ui) Sound.ui('horn');
   },
 

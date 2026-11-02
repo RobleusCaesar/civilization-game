@@ -13,7 +13,8 @@
      ai.js — every G.foeNote call site (campaigns, war camp, second front,
              marching/splitting host, harassment, the foeSpent finishing blow)
      combat.js — the two barbarian-sighting G.foeNote calls, and
-                 hitBuilding's "under attack" G.log call (must stay G.log)
+                 hitBuilding's "under attack" G.log call (must stay G.log;
+                 it fires on the first blow — tests/feedback.mjs)
 
      node tests/foe-notes.mjs      # exits non-zero on any regression
 
@@ -96,13 +97,15 @@ const out = await p.evaluate(() => {
   for (const mode of ['calm', 'moderate', 'hard']) {
     G.newGame('fn3', mode, 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
     const ptc = Bld.tcOf('P');
-    let toasted = false;
+    let toasted = false, firstHit = null;
     const orig = UI.toast.bind(UI);
     UI.toast = (msg, warn) => { if (warn && /under attack/.test(msg)) toasted = true; };
-    // hit it enough times that the 15% per-hit roll almost certainly fires at least once
-    for (let i = 0; i < 80; i++) Combat.hitBuilding(ptc, 1, false);
+    // the alarm no longer rides a 15% roll per hit (tests/feedback.mjs, PX-17):
+    // it sounds on the FIRST blow after ten quiet seconds, at every difficulty
+    for (let i = 0; i < 80; i++) { Combat.hitBuilding(ptc, 1, false); if (i === 0) firstHit = toasted; }
     UI.toast = orig;
     ck('underAttackFires_' + mode, toasted, `after 80 hits, alarm fired=${toasted}`);
+    ck('underAttackOnTheFirstBlow_' + mode, firstHit === true, `on the first hit, alarm fired=${firstHit}`);
   }
   // ---- foeNote calls are wired up at their real call sites (not just the helper) ----
   {

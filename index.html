@@ -184,6 +184,12 @@
   }
   .toast.warn { border-left-color: var(--danger); }
   @keyframes toastIn { from { transform: translateX(-12px); opacity: 0; } }
+  /* a refusal answering a second tap shakes once (UI.toast, tests/feedback.mjs);
+     under reduced motion it stands still and its plate flares instead */
+  .toast.shake { animation: toastShake .15s linear; }
+  @keyframes toastShake { 25% { transform: translateX(-4px); } 50% { transform: translateX(3px); } 75% { transform: translateX(-2px); } }
+  @media (prefers-reduced-motion: reduce) { .toast.shake { animation: toastFlare .35s ease-out; } }
+  @keyframes toastFlare { from { background: rgba(96,32,22,0.96); } }
 
   /* ---- minimap ---- */
   /* minimap lives top-right, clear of the (almost always open) bottom menu */

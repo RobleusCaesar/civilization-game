@@ -452,7 +452,7 @@ const Bld = {
     if (s && Units.assignTerraform(s, br.x, br.y, 'bridgeup'))
       G.log('Bridge works laid out — a sapper heads over');
     else
-      G.log('Bridge works need a sapper — tap one, then the bridge', true);
+      G.log('Bridge works need a sapper — tap one, then the bridge', true, undefined, true);
     if (window.R && R.updateTile) R.updateTile(br.x, br.y);
     return true;
   },
@@ -1196,14 +1196,21 @@ const Bld = {
     if (b.owner === 'P') {
       const lv = this.lv(b);
       G.reveal(b.x, b.y, lv.vision || 4);   // finished at last — the view opens up
+      /* NEWS OFF THE OPEN VIEW IS A NOTE (tests/feedback.mjs, PX-17): a work
+         finished where the player can see it needs no words, and one finished
+         off the view — or under the panel — used to be told only to the event
+         log, which a muted player never opens. Never a wall or a gate: a
+         dragged line finishes ten sections at a time. */
+      const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
+        !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
-        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`);
+        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`, news);
       } else if (this.def(b.key).needsWorker) {
         G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
       } else {
-        G.log(`${this.def(b.key).name} complete`);
+        G.log(`${this.def(b.key).name} complete`, news);
       }
     }
     /* TAMING ON BUILD (tests/wild-grass.mjs): the wild sward around the new
@@ -1385,7 +1392,12 @@ const Bld = {
     // (a card's raising charts nothing itself: the taller building's own
     // sight opens the ground on the next visibility pass, as any building's does)
     if (b.owner === 'P' && !byCard) {
-      G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
+      // the new level is news off the open view (a note) and is HEARD, as a
+      // finished building is (tests/feedback.mjs, PX-17)
+      const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
+        !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
+      G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news);
+      if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
   },
@@ -1666,7 +1678,25 @@ const Bld = {
     const nu = Units.spawn(kind, b.owner, spot.x, spot.y);
     if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('train');
     if (b.owner === 'P') {
-      G.log(`${CFG.UNITS[kind].name} ready`);
+      /* A UNIT READY OFF THE OPEN VIEW IS A NOTE, one a burst (tests/
+         feedback.mjs, PX-17): a yard releasing three inside ten seconds says
+         "Barracks: 3 defenders ready" once. The event log keeps its line a
+         unit; on the view the log alone, as before. Stamps keyed on S. */
+      const name = CFG.UNITS[kind].name;
+      if (typeof UI === 'undefined' || !UI.inOpenBand || UI.inOpenBand(this.cx(b), this.cy(b))) G.log(`${name} ready`);
+      else {
+        const now = performance.now();
+        if (!this._readyAt || this._readyAt.s !== S) this._readyAt = { s: S, at: new Map() };
+        const r = this._readyAt.at.get(b.id);
+        if (r && now - r.t < 10000) {
+          r.n++;
+          if (r.kind !== kind) r.kind = null;
+          G.log(`${name} ready`);
+          if (r.el && r.el.isConnected) r.el.remove();
+          const many = r.kind ? (/man$/.test(name) ? name.slice(0, -3) + 'men' : name + 's').toLowerCase() : 'units';
+          r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note');
+        } else this._readyAt.at.set(b.id, { t: now, n: 1, kind, el: G.log(`${name} ready`, 'note') });
+      }
       if (S.stats) S.stats.trained++;
     }
     // the rival's fresh fishing boats put their nets straight out

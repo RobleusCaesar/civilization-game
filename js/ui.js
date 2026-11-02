@@ -927,10 +927,12 @@ const UI = {
       // genuinely underway: either the sapper is now actively on the job, or
       // (already mid-job elsewhere) this order is truly waiting behind it.
       const working = n > 0 && ((u.task && u.task.type === 'terraform') || (u.jobs && u.jobs.length > 0));
+      // the order that cannot be carried out says why, as a warning (the tap
+      // contract's rule 4); the dispatch itself stays silent
       this.toast(n
         ? (working ? `${noun} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
                    : 'No clear ground to stand beside — try a different tile')
-        : 'Those tiles are already queued');
+        : 'Those tiles are already queued', !!n && !working);
       if (working) this.dispatchedWorker();
       else { this.terraMode = null; this.renderPanel(); }   // nothing actually underway — stays selected
     } else if ((this.terraGhost || []).length) {
@@ -1959,7 +1961,7 @@ const UI = {
       if (!S.armies[m].length) delete S.armies[m];
     }
     S.armies[n] = live.slice();
-    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`);
+    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`, 'note');
     this.renderArmyBar(); this.renderPanel();
     return n;
   },
@@ -2799,7 +2801,7 @@ const UI = {
           this.setMenuCollapsed(true, true);
           this.toast(b2.rally
             ? 'Tap a new spot to move the rally — or tap the building to clear it'
-            : 'Tap a spot to rally — new units head there (tap the building to cancel)');
+            : 'Tap a spot to rally — new units head there (tap the building to cancel)', 'note');
         }
         else if (btn.dataset.act === 'levy') {
           if (S.levy) {
@@ -2809,7 +2811,7 @@ const UI = {
             const n = Units.raiseLevy();
             if (!n) { this.toast('No villagers to call to arms', true); return; }
             R.startHorn(Bld.cx(b2), Bld.cy(b2));
-            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`);
+            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`, 'note');
           }
           this.renderPanel();
         }
@@ -3042,7 +3044,7 @@ const UI = {
         this.toast(!on ? 'Doctrine stood down'
           : mode === 'siege' ? '⚙️ Siege — tap a building to bombard; the line shields the guns'
           : mode === 'chaos' ? '🔥 Chaos — the army falls on everything within reach'
-          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else');
+          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else', on ? 'note' : undefined);
         // the choice is made — the expander folds and its closed label wears it
         this.tacticsOpen = false;
         this.renderPanel();
@@ -3270,7 +3272,7 @@ const UI = {
             : job === 'bridge' ? 'Bridge tool — tap water or a moat to span it'
             : job === 'mound' ? 'Mound tool — raise slow-to-cross berms, or reclaim near-shore water (costs stone & wood)'
             : 'Clear tool — tap or drag across forest 🌲 / rock 🪨 / orchard')
-          : 'Tool down — tap a tile to walk');
+          : 'Tool down — tap a tile to walk', this.terraMode ? 'note' : undefined);
         this.renderPanel();
       }));
       const unload = panel.querySelector('[data-act="unload"]');
@@ -3340,7 +3342,7 @@ const UI = {
         if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
         this.builderFor = vid;    // after deselect/select bookkeeping
-        this.toast('Pick a building, then tap a site — this villager will build it');
+        this.toast('Pick a building, then tap a site — this villager will build it', 'note');
       });
       const grp = panel.querySelector('[data-act="group"]');
       if (grp) grp.addEventListener('click', () => {
@@ -3405,32 +3407,100 @@ const UI = {
 
   _toastAt: {},
   // Popups are reserved for things that need attention NOW: danger alerts and
-  // "why that didn't work" errors — both flagged `warn`. Everything else (build
-  // confirmations, orders, routine events, enemy micro-actions) is quietly
-  // recorded in the event log instead of popping a toast, so the screen stays
-  // calm. A near-identical note within a few seconds is also collapsed
-  // ("House under attack!" ×9 → one), so even alerts never spam.
+  // "why that didn't work" errors — both flagged `warn` — and the few notes a
+  // player must see (below). A call with NO level is shown nowhere: not on
+  // screen and not in the event log either (G.log is what writes the log), so
+  // an order acknowledgement passes none and the screen stays calm.
   /* THREE LEVELS, not two. `warn` is the gate AND the styling, so anything
-     that wanted to be SEEN had to look like an alarm: false = event log
-     only, true = the red danger stripe, and now 'note' = shown in the
-     game's own gold — for intel that matters (the rival's origin at the
-     first in-game moment, Cards.announceRival) but is not a warning. */
-  toast(msg, warn, ms) {
-    if (!warn) return;                       // routine notes live only in the event log
-    const alarm = warn !== 'note';
+     that wanted to be SEEN had to look like an alarm: false = shown nowhere,
+     true = the red danger stripe, and 'note' = shown in the game's own gold —
+     for intel that matters (the rival's origin at the first in-game moment,
+     Cards.announceRival), the instruction an armed mode gives, and news the
+     player cannot see happen — but is not a warning.
+     A REFUSAL IS READ, AND A REPEAT ANSWERS (tests/feedback.mjs, PX-06): a
+     toast holds for its words (max(3.2 s, 1.2 s + 0.26 s a word) — the day-
+     one station refusals run 24–31 words), and the six-second collapse
+     ("House under attack!" ×9 → one, UI._toastAt) applies only when the
+     caller asks for it with `dedupe` — G.log does, for every game event. A
+     refusal answering the player's own tap always shows: a repeat of one
+     still on screen REPLACES it with one fresh node, and a warning's repeat
+     shakes (a note's never does), so a second tap never reads as dead.
+     WHILE A LESSON'S NOTE IS UP (Tutorial.noteUp) a note waits and is shown
+     once it is answered — never over the lesson's own card; a warning still
+     shows at once, since it answers the player's tap; a note held 20 s is
+     dropped, never shown late. Every map here is UI-local, keyed on S. */
+  _toastEl: null,     // message key → the node on screen (a repeat replaces it)
+  _toastHeld: null,   // notes waiting out a lesson's note: { msg, ms, at }
+  _toastS: null,
+  _toastFlush: 0,
+  toast(msg, warn, ms, dedupe) {
+    if (!warn || msg == null) return null;
+    msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
-    if (now - (this._toastAt[key] || -1e9) < 6000) return;
+    if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
-    const hold = ms || 3200;
+    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
+    if (warn === 'note' && window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+      this._toastHeld.push({ msg, ms, at: now });
+      if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
+      return null;
+    }
+    return this._showToast(msg, warn, ms, key, dedupe);
+  },
+  _showToast(msg, warn, ms, key, dedupe) {
     const box = document.getElementById('toasts');
+    if (!box) return null;
+    const alarm = warn !== 'note';
+    const words = msg.trim().split(/\s+/).length;
+    const hold = ms || Math.max(3200, 1200 + 260 * words);
+    const old = this._toastEl.get(key);
+    const repeat = !!(old && old.isConnected);
+    if (repeat) old.remove();
     const el = document.createElement('div');
-    el.className = 'toast' + (alarm ? ' warn' : '');
+    // the shake answers a REFUSAL's second tap: a warning the player's own act
+    // raised (no collapse asked for) — never a note, never the world's news
+    el.className = 'toast' + (alarm ? ' warn' : '') + (repeat && warn === true && !dedupe ? ' shake' : '');
     el.textContent = msg;
     box.appendChild(el);
+    this._toastEl.set(key, el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
     setTimeout(() => { el.style.opacity = '0'; }, hold);
-    setTimeout(() => { el.remove(); }, hold + 700);
+    setTimeout(() => { el.remove(); if (this._toastEl && this._toastEl.get(key) === el) this._toastEl.delete(key); }, hold + 700);
+    return el;
+  },
+  // the held notes come out once the lesson's note is answered (and its breath
+  // has passed — Tutorial.noteUp answers for both); a new world drops them
+  _flushHeld() {
+    this._toastFlush = 0;
+    const q = this._toastHeld;
+    if (!q || !q.length || this._toastS !== S) return;
+    const now = performance.now();
+    for (let i = q.length - 1; i >= 0; i--) if (now - q[i].at > 20000) q.splice(i, 1);
+    if (!q.length) return;
+    if (window.Tutorial && Tutorial.noteUp && Tutorial.noteUp()) {
+      this._toastFlush = setTimeout(() => this._flushHeld(), 250);
+      return;
+    }
+    for (const h of q.splice(0)) this._showToast(h.msg, 'note', h.ms, h.msg.replace(/\d+/g, '#'));
+  },
+  /* THE OPEN VIEW (PX-17): is this world point on the part of the screen the
+     player can actually see — under the top bar, above the bottom bar (and
+     its tab), inside the sides, by 0.3 tile of margin? R.onScreen counts the
+     ground under the bars as seen, which is why news of a building finished
+     beneath the open panel never reached anyone. The bars are read live: it
+     is asked only when a work finishes or a unit is trained. */
+  inOpenBand(wx, wy) {
+    if (!window.R || !R.cv || !R.cam) return true;
+    const cv = R.cv.getBoundingClientRect();
+    const z = R.cam.z, m = 0.3 * CFG.TILE * z;
+    const sx = cv.left + (wx * CFG.TILE - R.cam.x) * z;
+    const sy = cv.top + (wy * CFG.TILE - R.cam.y) * z;
+    const rect = id => { const el = document.getElementById(id); const r = el && el.getBoundingClientRect(); return r && r.height > 0 ? r : null; };
+    const tb = rect('topbar'), bb = rect('bottombar'), tg = rect('bmToggle');
+    const top = Math.max(cv.top, tb ? tb.bottom : cv.top);
+    const bottom = Math.min(cv.bottom, bb ? bb.top : cv.bottom, tg ? tg.top : cv.bottom);
+    return sx >= cv.left + m && sx <= cv.right - m && sy >= top + m && sy <= bottom - m;
   },
 
   /* ---------------- HUD buttons (menus live in the Screens shell) ---------------- */
