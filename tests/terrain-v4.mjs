@@ -418,7 +418,7 @@ const groundWaits = (p) => p.evaluate(async () => {
     const dx = 2 * R.viewW() / z / CFG.TILE, far = Bld.cx(tc) + dx < CFG.W - 4 ? Bld.cx(tc) + dx : Bld.cx(tc) - dx;
     R.centerOn(far, Bld.cy(tc));
     const viewIn = () => TerrainX.viewChunks(0).every(([a, b]) => TerrainX.chunks.has(a + ',' + b));
-    const settled = await until(() => viewIn() && TerrainX.pending.size === 0, 120000);
+    const settled = await until(viewIn, 120000);   // the view in sight — the ring round it may still be filling
     const pf0 = window.__pf; let asks = 0; const req = TerrainX.request;
     TerrainX.request = function () { asks++; return req.apply(this, arguments); };
     Screens.show('paused');
