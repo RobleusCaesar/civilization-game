@@ -2602,7 +2602,7 @@ const UI = {
       const lvN = document.getElementById('levyN');
       if (lvN) {
         const lv = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-        lvN.textContent = `${lv} hand${lv === 1 ? '' : 's'} take up arms — they eat like soldiers`;
+        lvN.textContent = `${lv} hand${lv === 1 ? ' takes' : 's take'} up arms — they eat like soldiers`;
       }
       const upw = panel.querySelector('[data-act="upwalls"]');
       if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
@@ -2782,7 +2782,7 @@ const UI = {
             if (S.levy)
               html += `<button class="abtn sel" data-act="levy">⚔ Stand down<small>tools come out — Back to work returns them</small></button>`;
             else if (vills && threat)
-              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? '' : 's'} take up arms — they eat like soldiers</small></button>`;
+              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? ' takes' : 's take'} up arms — they eat like soldiers</small></button>`;
             if (vills && threat) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
           /* THE YARD'S TOOLS ARE ONE ROW (operator: "shrink the Set Rally
@@ -2939,7 +2939,7 @@ const UI = {
             const n = Units.raiseLevy();
             if (!n) { this.toast('No villagers to call to arms', true); return; }
             R.startHorn(Bld.cx(b2), Bld.cy(b2));
-            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`, 'note');
+            this.toast(`⚔ ${n} villager${n === 1 ? ' takes' : 's take'} up arms — the levy eats like soldiers`, 'note');
           }
           this.renderPanel();
         }

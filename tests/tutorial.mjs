@@ -1573,6 +1573,23 @@ const out = await p.evaluate(async () => {
     box.innerHTML = ''; UI._toastAt = {};
   }
 
+  // ---- 19c. the station note names the station it rings (the build 128 review, PLAYER-04) ----
+  {
+    const words = () => { const t = Tutorial.TEXT.station; return typeof t === 'function' ? t() : t; };
+    const plant = (key) => {
+      fresh('195', 'calm', true);
+      const tc = Bld.tcOf('P');
+      const b = Bld.place('P', key, tc.x + 4, tc.y + 4, { free: true, instant: true });
+      if (b && b.construction > 0) Bld.finish(b);
+      return b;
+    };
+    const q = plant('quarry'), quarry = words();
+    const l = plant('lumber'), lumber = words();
+    ck('theStationNoteNamesTheStationItRings', !!q && !!l && /quarry/.test(quarry) && /stone/.test(quarry) && !/camp|wood/.test(quarry) &&
+      lumber === 'A station pays only while hands <b>work</b> it — tap a villager, then the camp, to crew it. Its steady wood is what raises every building after.',
+      JSON.stringify({ quarry, lumber }));
+  }
+
   // ---- 20. the rival's intel waits for a screen that can show it (PX-10c) ----
   {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1657,6 +1674,46 @@ const out = await p.evaluate(async () => {
   try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
   return { res, fails };
 });
+
+/* ---- 17b. the ring clears the lesson's OWN card on a 320 px phone and on a
+   phone on its side (the build 128 review, PLAYER-02): the look landed the
+   ring mid-band, the card then seated over it, and the old test asked only
+   the ring's centre. Measured off the DOM, every gather lesson as it is met
+   (a villager in hand), on three seeds. ---- */
+for (const [vw, vh, tag] of [[320, 568, 'OnA320Phone'], [844, 390, 'OnAPhoneOnItsSide']]) {
+  await p.setViewportSize({ width: vw, height: vh });
+  await p.waitForTimeout(300);
+  const rows = await p.evaluate(() => {
+    const rows = [];
+    const tick = (k, dt) => { for (let i = 0; i < k; i++) Tutorial.tick(dt); };
+    for (const seed of ['171', '172', '173']) for (const step of ['gatherWood', 'gatherFood', 'gatherStone']) {
+      try { localStorage.setItem('neo-tutorial-ask', '1'); } catch (e) {}
+      G.newGame(seed, 'calm', 'medium'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      Combat.scanT = 0; Units.herdClock = 0; Tutorial.maybeStart();
+      R.cam.z = 1.7;
+      for (const st of Tutorial.STEPS) { if (st.id === step) break; S.tut.done[st.id] = 1; }
+      const v = S.units.find(u => u.owner === 'P' && u.kind === 'villager');
+      UI.select('unit', v.id);
+      tick(12, 0.3); tick(30, 0.05);   // the note is told, looks, and the glide settles
+      if (!Tutorial._show || Tutorial._show.id !== step) { rows.push({ seed, step, err: 'not shown: ' + (Tutorial._show && Tutorial._show.id) }); continue; }
+      const ring = document.getElementById('tutRing').getBoundingClientRect();
+      const card = document.getElementById('tutPanel').getBoundingClientRect();
+      const ix = Math.max(0, Math.min(ring.right, card.right) - Math.max(ring.left, card.left));
+      const iy = Math.max(0, Math.min(ring.bottom, card.bottom) - Math.max(ring.top, card.top));
+      const covered = ring.width * ring.height > 0 ? (ix * iy) / (ring.width * ring.height) : 1;
+      const a = Tutorial._anchor(), TL = CFG.TILE, z = R.cam.z;
+      const hit = document.elementFromPoint((a.x * TL - R.cam.x) * z, (a.y * TL - R.cam.y) * z);
+      rows.push({ seed, step, covered: +covered.toFixed(2), tile: hit ? (hit.id || hit.tagName) : null });
+    }
+    try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
+    return rows;
+  });
+  const badRows = rows.filter(x => x.err || x.covered > 0.02 || x.tile !== 'c');
+  const name = 'theRingClearsItsOwnCard' + tag;
+  out.res[name] = (badRows.length ? 'FAIL' : 'PASS') + ' — ' + JSON.stringify(badRows.length ? badRows : rows.map(x => x.covered));
+  if (badRows.length) out.fails.push(name);
+}
+await p.setViewportSize({ width: 390, height: 844 });
 
 let bad = out.fails.length;
 for (const [k, v] of Object.entries(out.res)) console.log((v.startsWith('PASS') ? '  ✅' : '  ❌'), k, '—', v);

@@ -310,6 +310,28 @@ const out = await p.evaluate(() => {
     ck('andOneTapStandsItDown', !S.levy, '');
   }
 
+  /* ---- 8b. one hand TAKES up arms (the build 128 review, PLAYER-05: once the
+     levy's cost note reached the screen it read "1 villager take up arms") ---- */
+  {
+    const tc = stage('levy2b');
+    S.units = S.units.filter(u => !(u.owner === 'P' && Units.isVillager(u)));
+    const v = Units.spawn('villager', 'P', tc.x - 2, tc.y + 3);
+    const q = sel2 => document.querySelector('#panel ' + sel2);
+    UI._threatAt = -1e9; UI._threatC = null;
+    const wolf = Units.spawn('wolf', 'W', Bld.cx(tc) + 30, Bld.cy(tc));
+    Units.damage(v, 1, wolf.id, 'W');            // a blow on one of ours: the calls come out
+    S.units.splice(S.units.indexOf(wolf), 1);
+    UI.select('bld', tc.id);
+    const small = q('[data-act="levy"] small');
+    const label = small ? small.textContent : '';
+    const box = document.getElementById('toasts'); box.innerHTML = ''; UI._toastAt = {};
+    if (q('[data-act="levy"]')) q('[data-act="levy"]').click();
+    const said = [...box.querySelectorAll('.toast')].map(t => t.textContent).join(' | ');
+    ck('oneHandTakesUpArms', /^1 hand takes up arms/.test(label) && /1 villager takes up arms/.test(said),
+      JSON.stringify({ label, said }));
+    if (S.levy) Units.standDownLevy();
+  }
+
   /* ---- 9. the save carries the mode; a legacy save loads at peace ---- */
   {
     const tc = stage('levy3');
