@@ -41,8 +41,9 @@ p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 
-const out = await p.evaluate(() => {
+const out = await p.evaluate(async () => {
   const res = {}, fails = [];
+  const nap = ms => new Promise(r => setTimeout(r, ms));
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
   const vill = () => S.units.find(u => u.owner === 'P' && Units.isVillager(u));
 
@@ -141,13 +142,24 @@ const out = await p.evaluate(() => {
     ck('andNeitherIsFullWidth',
       !q('[data-act="banish"]').classList.contains('wide') &&
       !q('[data-act="gobuild"]').classList.contains('wide'), '');
-    // first tap ARMS, second acts
-    q('[data-act="banish"]').click();
+    // first tap ARMS, second acts — and the second tap is a SECOND decision:
+    // a quick double-tap (two taps 120 ms apart) is one gesture, so the
+    // confirm ignores a tap that comes within its guard of the arming and
+    // stays armed (PX-26). The deliberate second tap waits past the guard
+    // (>= 450 ms after the arming), the way a player reads the button first.
+    const tapBan = () => { const el = q('[data-act="banish"]'); if (el) el.click(); return !!el; };
+    tapBan();
     ck('theFirstTapOnlyArmsIt',
       !!Units.get(v.id) && (!v.task || v.task.type !== 'banish') && UI.confirmDemolish === v.id,
       'it cannot be undone once they reach the rim');
     ck('andSaysSo', /confirm/i.test(q('[data-act="banish"]').textContent), q('[data-act="banish"]').textContent.slice(0, 40));
-    q('[data-act="banish"]').click();
+    await nap(120);
+    tapBan();
+    ck('aQuickDoubleTapIsNotTheSecondTap',
+      !!Units.get(v.id) && (!v.task || v.task.type !== 'banish') && UI.confirmDemolish === v.id,
+      'a double-tap arms and must not confirm — the button stays armed');
+    await nap(450);
+    tapBan();
     ck('theSecondTapSendsThemOff', !!v.task && v.task.type === 'banish', v.task ? v.task.type : 'nothing happened');
     ck('andTheSelectionIsLetGo', !UI.sel, '');
     // a soldier is offered nothing of the sort

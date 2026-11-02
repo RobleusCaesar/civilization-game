@@ -51,8 +51,9 @@ p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_
 await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
 await p.waitForTimeout(900);
 
-const out = await p.evaluate(() => {
+const out = await p.evaluate(async () => {
   const res = {}, fails = [];
+  const nap = ms => new Promise(r => setTimeout(r, ms));
   const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
   const fresh = (seed) => {
     G.newGame(seed, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
@@ -220,16 +221,40 @@ const out = await p.evaluate(() => {
     ck('soDoesTheBuildersPanel', has(), '');
     ck('andTheSignatureTracksIt', /\|c\d+:site:/.test(UI.panelSig()), UI.panelSig().split('|').pop());
 
-    // ARMED, then FIRED — the same two taps as demolition
+    // ARMED, then FIRED — the same two taps as demolition. A quick double-tap
+    // is ONE gesture: a tap within the confirm's guard of the arming is
+    // ignored and the button stays armed (PX-26), so the deliberate second
+    // tap waits past it (>= 450 ms after the arming)
     const tap = () => { const el = document.querySelector('#panel [data-act="cancelbuild"]'); if (el) el.click(); return !!el; };
     ck('theButtonIsTappable', tap(), '');
     ck('oneTapOnlyArmsIt', UI.confirmCancel === site.id && !!Bld.get(site.id), '');
+    await nap(120);
+    tap();
+    ck('aQuickDoubleTapDoesNotCallItOff', UI.confirmCancel === site.id && !!Bld.get(site.id), 'the button stays armed');
+    await nap(450);
     tap();
     ck('theSecondTapCallsItOff', !Bld.get(site.id) && UI.confirmCancel === 0, '');
 
     UI.renderPanel();
     ck('andTheButtonIsGoneWithTheWorks', !has(), 'nothing waiting, nothing offered');
     ck('theBuilderIsIdleAgain', !v.task, (v.task && v.task.type) || 'idle');
+
+    // the building panel's other two-tap confirm, Demolish, holds the same
+    // line: a double-tap on a finished house leaves it standing and armed;
+    // a deliberate second tap takes it down
+    const hs = spot('house');
+    const house = Bld.place('P', 'house', hs.x, hs.y, { free: true, instant: true });
+    if (house.construction > 0) Bld.finish(house);
+    UI.select('bld', house.id);
+    const demo = () => { const el = document.querySelector('#panel [data-act="demolish"]'); if (el) el.click(); return !!el; };
+    const offered = demo();
+    await nap(120);
+    demo();
+    ck('aDoubleTapOnDemolishLeavesItStanding', offered && !!Bld.get(house.id) && UI.confirmDemolish === house.id,
+      offered ? 'standing: ' + !!Bld.get(house.id) : 'no Demolish button');
+    await nap(450);
+    demo();
+    ck('andADeliberateSecondTapTakesItDown', !Bld.get(house.id), '');
   }
 
   return { res, fails };
