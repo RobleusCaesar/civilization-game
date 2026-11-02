@@ -391,7 +391,7 @@ const Screens = {
     try { G.loadJSON(json); return true; }
     catch (e) {
       this._continuing = false; this._arrive = false;
-      if (!/not a Clanfire save|newer version/.test(String(e && e.message)) && !(e instanceof SyntaxError)) console.error('a save that would not open', e);
+      if (!/not a Clanfire save|newer version/.test(String(e && e.message)) && !(e instanceof SyntaxError)) this._fault(e, 'a save that would not open');
       try {
         if (window.S !== S0) { this._demo = false; this.ensureDemo(); if (this.current !== 'title') this.show('title'); }
         else if (CFG.W !== W0 || CFG.H !== H0 || (cache0 && !R.terrainCache)) { CFG.W = W0; CFG.H = H0; R.rebuildTerrain(); }
@@ -400,9 +400,15 @@ const Screens = {
       return false;
     } finally { R.deferBake = false; }
   },
+  /* a fault this file catches is still a fault: the error ring and the run's
+     tally hear of it exactly as they did when it escaped (Feedback.noteError) */
+  _fault(e, what) {
+    console.error(what, e);
+    try { if (window.Feedback && Feedback.noteError) Feedback.noteError((e && e.message) || String(e), e && e.stack, 'screens.js'); } catch (e2) {}
+  },
   // …anything else that stops an opening part-way: never a stuck press
   _openFailed(e) {
-    console.error('a world that would not open', e);
+    this._fault(e, 'a world that would not open');
     this._continuing = false; this._arrive = false;
     this._entering = false; this._prepRun = null;
     try { this.showPrep(false); } catch (e2) {}
@@ -491,7 +497,7 @@ const Screens = {
         try {
           if (!R._bakeDue && !R._bake) { go(); return; }
           R.tickBake(30);   // behind the plaque: big slices, the bar still moves
-        } catch (e) { console.error('the bake behind the plaque', e); go(); return; }
+        } catch (e) { this._fault(e, 'the bake behind the plaque'); go(); return; }
         requestAnimationFrame(tick);
       };
       tick();
