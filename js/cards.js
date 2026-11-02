@@ -660,9 +660,10 @@ const Cards = {
        counted, through each kind's own loader — the world never opens on a
        stand-in for them. Only for a world being founded (a loaded save's
        belt-and-braces pick is covered by loadJSON's own ask, made after its
-       tiers are known), and never for the title's demo, which wears no strips. */
+       tiers are known), and never for the title's demo, which wears no strips.
+       A loader fault can only cost a picture: the keep itself always lands. */
     if (!(window.Screens && Screens._demo) && G._freshRun && window.Assets && Assets.loadUnitsArt && G.artShown)
-      Assets.loadUnitsArt(G.artShown());
+      try { Assets.loadUnitsArt(G.artShown()); } catch (e) { /* the procedural cast stands in */ }
     D.done = true; D.pickI = i;
     if (S.stats) S.stats.leanIn = (D.leanKeys || []).includes(c.key) ? 1 : 0;
     const d = this.DEFS[c.key];
