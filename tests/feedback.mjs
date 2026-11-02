@@ -239,11 +239,15 @@ ck('aCallWithNoLevelIsShownNowhere', one.silent === 0, `${one.silent} nodes`);
 {
   const html = readFileSync(join(root, 'index.html'), 'utf8');
   const rule = /\.toast\.shake\s*\{[^}]*animation:\s*([\w-]+)/.exec(html);
-  const kf = rule && new RegExp('@keyframes\\s+' + rule[1] + '\\b').test(html);
+  // a keyframe's own block — its steps, nothing after it
+  const steps = name => { const m = new RegExp('@keyframes\\s+' + name + '\\s*\\{((?:[^{}]*\\{[^{}]*\\})*)[^{}]*\\}').exec(html); return m ? m[1] : null; };
+  const MOVES = /transform|translate|rotate|scale|left|top/;
+  const shake = rule && steps(rule[1]);
   const guard = /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.toast\.shake\s*\{[^}]*animation:\s*(none|[\w-]+)/.exec(html);
-  const guardMoves = guard && guard[1] !== 'none' && new RegExp('@keyframes\\s+' + guard[1] + '\\s*\\{[^@]*transform').test(html);
-  ck('theShakeIsAKeyframeAndReducedMotionStandsItDown', !!rule && !!kf && !!guard && !guardMoves,
-    rule ? `animation ${rule[1]}; reduced motion: ${guard ? guard[1] : 'NO GUARD'}` : 'no .toast.shake rule');
+  // reduced motion's keyframe may not move anything (the shake itself must, or the probe sees nothing)
+  const still = guard && (guard[1] === 'none' || (steps(guard[1]) != null && !MOVES.test(steps(guard[1]))));
+  ck('theShakeIsAKeyframeAndReducedMotionStandsItDown', !!shake && MOVES.test(shake) && !!still,
+    rule ? `animation ${rule[1]} (moves ${!!shake && MOVES.test(shake)}); reduced motion: ${guard ? guard[1] + (still ? ', still' : ', MOVES') : 'NO GUARD'}` : 'no .toast.shake rule');
 }
 
 /* ---- 2. WHILE A LESSON'S NOTE IS UP, A NOTE WAITS (PX-06, the hold) ---- */
