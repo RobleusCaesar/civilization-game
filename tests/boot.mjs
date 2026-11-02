@@ -1127,10 +1127,11 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
    blinks while a run's people are downloading used to leave every strip that
    failed missing for the whole session — villagers flickering between their
    art and the procedural cast by facing and pose (128 of 144 after a 6 s
-   drop). A failed people strip is asked for ONCE more, in the background
-   tier (it never holds the plaque again), when the browser says it is back
-   online or after a short wait; a strip that fails twice stays procedural,
-   as an absent file always has. ---- */
+   drop). A failed people strip is asked for ONCE more, at the head of the
+   background tier (it never holds the plaque again, and never waits behind
+   every soldier and rival strip still queued), when the browser says it is
+   back online or after a short wait; a strip that fails twice stays
+   procedural, as an absent file always has. ---- */
 {
   const p = await b.newPage({ viewport: { width: 390, height: 844 } });
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
@@ -1173,6 +1174,21 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       return { readyAfterBlip, lost, back: have(), pendingAtRetry, deadFirst: asked, deadAsks };
     } finally { Object.defineProperty(HTMLImageElement.prototype, 'src', desc); }
   });
+  /* …and AHEAD of the background tier, not behind it: a blip that catches a
+     handful of villager strips while a founding's soldier and rival strips are
+     still queued must not leave them waiting for all of those (on 4G, minutes).
+     The wire is held still, one background strip waits, a retry is flushed. */
+  const order = await p.evaluate(() => {
+    const fly = Assets._stripFlying; Assets._stripFlying = 1e9;
+    try {
+      Assets._stripLoad('order-bg', 'n', 'walk', 'assets/units/__order_bg__.png', undefined, true, false);
+      Assets._retryQ.push(['order-retry', 'n', 'walk', 'assets/units/__order_retry__.png', undefined]);
+      Assets._retryFlush();
+      return Assets._stripQLate.map(e => e[1].replace('assets/units/', ''));
+    } finally { Assets._stripFlying = fly; Assets._pumpStrips(); }
+  });
+  ck('andItGoesBackAheadOfTheBackgroundTier', order[0] === '__order_retry__.png' && order.indexOf('__order_bg__.png') > 0,
+    `the background queue after the retry: ${order.slice(0, 4).join(', ')}`);
   ck('aStripLostToABlipIsAskedForAgain', r.readyAfterBlip && r.lost === 144 && r.back === 143 && r.pendingAtRetry === 0,
     `${r.lost} of the player's villager strips lost to the blip; ${r.back}/144 drawn once the connection was back; ${r.pendingAtRetry} counted while retrying`);
   ck('onceAndOnlyOnce', r.deadFirst === 2 && r.deadAsks === 4,
