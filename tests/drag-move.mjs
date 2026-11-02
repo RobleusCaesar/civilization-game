@@ -515,6 +515,48 @@ const drag = async (from, to) => {
     JSON.stringify({ topbar: onTop, minimap: onMini }));
 }
 
+/* ---- 11. A STILL PRESS IS A TAP, HOWEVER LONG IT RESTS AND HOWEVER LATE
+   THE PAGE HEARS IT (PX-27 — the desktop page, mouse events with their own
+   timestamps). From ~0.38 s a still press did nothing — no selection, no
+   pan, no word — and a normal tap whose lift waited behind a busy frame was
+   dropped, because the 400 ms limit was read off the clock when the handler
+   RAN. The press and the lift are now timed by the events' own timestamps,
+   and a press that never crossed the 8 px slop is a tap for up to a second
+   (UI.bindCanvas). The events carry explicit timestamps here, the way the
+   OS stamps an input: an awaited CDP command waits for a busy renderer's
+   ack on a loaded host and would stretch the gesture it is measuring. ---- */
+{
+  const sc = await setup('dm11', tc => {
+    S.units = S.units.filter(z => z.owner !== 'W');
+    const v = Units.spawn('villager', 'P', tc.x + 5, tc.y + 4);
+    UI.deselect();
+    return { id: v.id, pts: { v: { x: v.x, y: v.y, lift: 1 } } };
+  });
+  const mc = await p.context().newCDPSession(p);
+  const at = sc.screen.v;
+  const mouse = (type, ts) => mc.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1, timestamp: ts });
+  const nap = ms => new Promise(r => setTimeout(r, ms));
+  const picked = () => p.evaluate(id => !!(UI.sel && UI.sel.type === 'unit' && UI.sel.id === id), sc.id);
+  await mc.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y });
+  // (a) a deliberate press, held still for 600 ms
+  let t0 = Date.now() / 1000;
+  await mouse('mousePressed', t0); await nap(600); await mouse('mouseReleased', t0 + 0.6);
+  await nap(80);
+  const held = await picked();
+  // (b) an 80 ms tap whose lift waits behind a 600 ms busy frame
+  await p.evaluate(() => UI.deselect());
+  await nap(450);   // clear of the double-tap window
+  t0 = Date.now() / 1000;
+  await mouse('mousePressed', t0);
+  await p.evaluate(() => { setTimeout(() => { const t = performance.now(); while (performance.now() - t < 600) {} }, 0); });
+  await nap(80);
+  await mouse('mouseReleased', t0 + 0.08);
+  await nap(120);
+  const late = await picked();
+  ck('aStillPressHeldHalfASecondIsATap', held, held ? 'selected' : 'a 600 ms still press selected nothing');
+  ck('aTapHeardLateIsStillATap', late, late ? 'selected' : 'an 80 ms tap behind a 600 ms busy frame was dropped');
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL DRAG-MOVE CHECKS PASS');
 console.log('errors:', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)));
