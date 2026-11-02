@@ -365,6 +365,7 @@ const Screens = {
         return;
       }
       const r = await this._fetchSlot(this._newestSlot);
+      if (r.stale) return;   // the player went on while it was out: theirs now, never ours
       if (!r.ok) { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(r.error), true); return; }
       this.loadRow(r.data, true);
     } catch (e) { this._openFailed(e); }
@@ -375,12 +376,22 @@ const Screens = {
      once its headers are in (_rest's timer covers the headers alone), would
      have left New Game saying "Opening your saved game…" forever. The cap
      is past _rest's own worst case (three tries of TIMEOUT_MS, ~26 s), and
-     an answer that comes after it is dropped, never loaded over the title */
+     an answer that comes after it is dropped, never loaded over the title.
+     ONE OPENING AT A TIME SURVIVES A RESUME (§7j): every fetch takes the
+     opening's token (_openTok), and any world entered since (_enterNow — a
+     Resume from the pause menu included) or a newer fetch moves it. An
+     answer that comes back after that resolves { stale } and its caller
+     lets it go — never loaded over the game in hand, nor over a save the
+     player chose next, exactly as an answer past the cap is dropped. */
   LOAD_MAX_MS: 40000,
+  _openTok: 0,
   _fetchSlot(slot) {
+    const tok = ++this._openTok;
     let t = 0;
     const cap = new Promise(r => { t = setTimeout(() => r({ ok: false, error: { code: 'network', message: 'Request timed out' } }), this.LOAD_MAX_MS); });
-    return Promise.race([Backend.loadSlot(slot), cap]).finally(() => clearTimeout(t));
+    return Promise.race([Backend.loadSlot(slot), cap]).finally(() => clearTimeout(t)).then(
+      r => tok === this._openTok ? r : { ok: false, stale: true },
+      e => { if (tok === this._openTok) throw e; this._fault(e, 'a save fetch the player had left'); return { ok: false, stale: true }; });
   },
 
   // `mine`: the caller already holds the opening (Continue, the Load screen)
@@ -444,13 +455,26 @@ const Screens = {
     if (/not a Clanfire save/.test(m) || e instanceof SyntaxError) return 'it is not a Clanfire save.';
     return 'it is damaged.';
   },
+  /* …and a cloud failure is NAMED, never quoted (PERS-02, tests/finished-
+     run-continue.mjs §7l): the fallback used to show the server's own words,
+     first letter lowered ("Save failed: jWT expired."), table names, quotes
+     and all. A failure is told by its class; what the server said goes to
+     the console and the error ring, tagged 'net' — a report carries it, the
+     run's tally never counts it (Feedback.noteError). */
   whyNet(err) {
     const c = err && err.code, m = String((err && err.message) || '').trim();
     if (c === 'empty_slot') return 'that slot is empty.';
-    if (c === 'not_ready' || c === 'not_configured') return 'cloud saves are not connected.';
+    if (c === 'not_ready' || c === 'not_configured' || c === 'no_slot') return 'cloud saves are not connected.';
     if (c === 'network') return 'the cloud could not be reached.';
+    if (c === 'busy') return 'another save was still being written. Try again in a moment.';
+    if (c === 'no_game' || c === 'not_played') return 'there is no game in play to save.';
     if (typeof c === 'number' && c >= 500) return 'the cloud is not answering right now.';
-    return m ? m.charAt(0).toLowerCase() + m.slice(1) + (/[.!?…]$/.test(m) ? '' : '.') : 'the cloud did not answer.';
+    if (m) {   // the server's own words: kept for a report, never shown
+      console.warn('the cloud answered', c, m);
+      try { if (window.Feedback && Feedback.noteError) Feedback.noteError('Cloud ' + c + ': ' + m, '', 'screens.js', 'net'); } catch (e) {}
+    }
+    if (c === 401 || c === 403 || c === 'auth_failed' || /\bjw[st]|token|sign.?in|session/i.test(m)) return 'the cloud did not accept your sign-in.';
+    return (typeof c === 'number' && c >= 400) || m ? 'the cloud refused it.' : 'the cloud did not answer.';
   },
 
   /* ONE MESSAGE LINE FOR THE SHELL (PX-69, index.html #shellMsg). Every toast
@@ -527,6 +551,7 @@ const Screens = {
   },
   PREP_MAX_MS: 30000,
   _enterNow() {
+    this._openTok++;            // a fetch still out belongs to a world the player has gone past (§7j)
     this._entering = false;
     this._continuing = false;   // the world is in: Continue answers again (PX-21a)
     // …and a plaque still up for an earlier press retires with it: one entry, never two
@@ -1505,10 +1530,12 @@ const Screens = {
         const acts = card.querySelector('.sacts');
         if (this.saveMode) this.act(acts, '💾 Overwrite', () => this.saveToSlot(slot, row.name));
         else this.act(acts, '▶ Load', async () => {
-          if (this.opening()) return;              // one opening at a time (PX-21a)
+          // one opening at a time (PX-21a), and the press is answered, as at every other door (§7k)
+          if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
           this._continuing = true;
           try {
             const l = await this._fetchSlot(slot);
+            if (l.stale) return;                    // the player went on while it was out (§7j)
             if (l.ok) this.loadRow(l.data, true);
             else { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(l.error), true); }   // seen over the Load screen (PX-69)
           } catch (e) { this._openFailed(e); }     // never a press left holding the opening
@@ -2204,7 +2231,7 @@ const Screens = {
         /* the file's verdict is SEEN (PX-69): _loadSave says why a file will
            not open on the shell's own line and puts the title right; a file
            that opens arrives with "Welcome back — day N" */
-        if (this.opening()) return;
+        if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }   // answered (§7k)
         this._continuing = true;
         try {
           if (!this._loadSave(rd.result)) return;
