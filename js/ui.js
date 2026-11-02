@@ -3434,7 +3434,7 @@ const UI = {
   _toastS: null,
   _toastFlush: 0,
   toast(msg, warn, ms, dedupe) {
-    if (!warn) return null;
+    if (!warn || msg == null) return null;
     msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
