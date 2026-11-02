@@ -3484,6 +3484,25 @@ const UI = {
     }
     for (const h of q.splice(0)) this._showToast(h.msg, 'note', h.ms, h.msg.replace(/\d+/g, '#'));
   },
+  /* THE OPEN VIEW (PX-17): is this world point on the part of the screen the
+     player can actually see — under the top bar, above the bottom bar (and
+     its tab), inside the sides, by 0.3 tile of margin? R.onScreen counts the
+     ground under the bars as seen, which is why news of a building finished
+     beneath the open panel never reached anyone. The bars are read live: it
+     is asked only when a work finishes or a unit is trained. */
+  inOpenBand(wx, wy) {
+    if (!window.R || !R.cv || !R.cam) return true;
+    const cv = R.cv.getBoundingClientRect();
+    const z = R.cam.z, m = 0.3 * CFG.TILE * z;
+    const sx = cv.left + (wx * CFG.TILE - R.cam.x) * z;
+    const sy = cv.top + (wy * CFG.TILE - R.cam.y) * z;
+    const rect = id => { const el = document.getElementById(id); const r = el && el.getBoundingClientRect(); return r && r.height > 0 ? r : null; };
+    const tb = rect('topbar'), bb = rect('bottombar'), tg = rect('bmToggle');
+    const top = Math.max(cv.top, tb ? tb.bottom : cv.top);
+    const bottom = Math.min(cv.bottom, bb ? bb.top : cv.bottom, tg ? tg.top : cv.bottom);
+    return sx >= cv.left + m && sx <= cv.right - m && sy >= top + m && sy <= bottom - m;
+  },
+
   /* ---------------- HUD buttons (menus live in the Screens shell) ---------------- */
   bindButtons() {
     document.getElementById('bmToggle').addEventListener('click', () => {

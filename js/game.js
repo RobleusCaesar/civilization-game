@@ -434,8 +434,9 @@ const G = {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
     // game-event notes dedupe (repeat "under attack" spam collapses); the
-    // full history always lands in the event log above
-    UI.toast(msg, warn, ms, !refusal);
+    // full history always lands in the event log above. Hands back the toast
+    // shown, if one was (Bld.releaseTrained folds a burst into one)
+    return UI.toast(msg, warn, ms, !refusal);
   },
 
   /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war
