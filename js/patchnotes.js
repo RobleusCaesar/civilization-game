@@ -21,7 +21,7 @@ const PATCH_NOTES = [
   {
     build: 130, date: '2026-11-02', title: 'Tidier panels',
     items: [
-      'Demolish, Banish and Scuttle are now a small red button beside the close button, so they no longer take up a big space in every panel. Tap it once and a warning shows what you lose and what comes back; tap again to confirm.',
+      'Demolish, Banish and Scuttle are now a small red button beside the close button, so they no longer take up a big space in every panel. Tap it once and a warning shows what you lose and what comes back. Tap again to confirm.',
     ],
   },
   {
