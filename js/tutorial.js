@@ -524,6 +524,8 @@ const Tutorial = {
 
   skip() {
     if (!window.S || !S.tut) return;
+    // ANALYTICS (tut_skip_at, G.runReport): the lesson's step the FIRST skip left it on — a spine step's id, else the note on show
+    if (S.stats && S.stats.tutSkipAt == null) S.stats.tutSkipAt = ((this.STEPS[S.tut.step] || {}).id) || (this._show && this._show.id) || null;
     // a skip made ON the deck's own note is the player's answer to it: it
     // has been heard, and must not come back a beat later with no Skip on it
     if (this._show && this._show.id === 'deck') (S.tut.fired || (S.tut.fired = {})).deck = 1;

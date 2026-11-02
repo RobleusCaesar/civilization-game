@@ -33,10 +33,28 @@
                               ending its props.errors — 0 for a clean game,
                               never left blank — and props.err, the first
                               fault as "message @ file:line".
+     AND THE FIRST MINUTE     (§7, PX-49) a player who leaves before a world
+                              opens sends only the session row, so it says
+                              WHERE the page was left (at: title / prep /
+                              draft / game) and whether a world was ever
+                              entered; run_start says how long the press
+                              waited behind the plaque (prep_ms) and why the
+                              lesson is on or off (tut_src); every ending,
+                              real and closed_tab, carries first_act_s,
+                              tut_skip_at, wall_s and resume_prep_ms — null
+                              when unknown, never absent — and 'seconds'
+                              keeps its formula. Integers, booleans and short
+                              enums only.
+     AND THE TOKEN STAYS      (§8, PX-50 part 1) the access token the client
+     CURRENT                  renews (about hourly) is the one the next row
+                              carries — a sign-out or another player's
+                              session never replaces it.
 
    Run after touching: Backend._emit / build / telemetryAllowed / logRunEnd,
-   G.end / runReport, Feedback.noteError / resetRunErrors, Screens.show, the
-   S.played backfill in loadJSON, or any analytics migration.
+   Backend.init / logRunStart / endSession, G.end / runReport / noteAct,
+   Screens.enterGame / _enterNow, Tutorial.skip, Feedback.noteError /
+   resetRunErrors, Screens.show, the S.played / S.stats backfills in
+   loadJSON, or any analytics migration.
 
      node tests/telemetry.mjs      # exits non-zero on any regression */
 
@@ -621,6 +639,311 @@ const MOCK = `
   ck('andContinuedItIsTheSameRun', r.continueId && r.noNewStart && r.continueCount === 1 && JSON.stringify(r.continueEnd) === '[1]',
     JSON.stringify({ id: r.continueId, noNewStart: r.noNewStart, count: r.continueCount, end: r.continueEnd }));
   ck('theBuildPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
+}
+
+// ---- 7. THE FIRST MINUTE (PX-49): where a new player stops, how soon they act, whether the plaque or the lesson loses them ----
+/* 147 of 353 new players never had a game last a minute, and nothing they
+   sent said why: a page left before the world opened sent {seconds, build}
+   and no more; a lesson skipped anywhere read as step 20; and the play clock
+   (dt capped at 0.1 s a frame) runs short on a slow phone. The rows now say
+   it — additive props only, and 'seconds' is never redefined. */
+const AT = ['title', 'prep', 'draft', 'game'], SRC = ['auto', 'ticked', 'declined', 'none'], FORM = ['phone', 'tablet', 'desktop'];
+const isInt = v => typeof v === 'number' && Number.isInteger(v);
+{
+  const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+  const r = await p.evaluate(async () => {
+    const tick = (ms) => new Promise(r => setTimeout(r, ms == null ? 30 : ms));
+    const rows = () => __MOCK.st.calls.filter(c => c.path === '/telemetry' && c.body && c.body[0]).map(c => c.body[0]);
+    const last = (kind, f) => rows().filter(x => x.kind === kind && (!f || f(x))).pop();
+    const left = id => last('run_end', x => x.run_id === id && x.cause === 'closed_tab');
+    // the session row goes once per page, at its first hide: re-armed here to read it at each place
+    const session = () => { Backend._sessionSent = false; Backend._sessionT0 = Date.now() - 5000; Backend.endSession(); const s = last('session'); return s ? (s.props || {}) : null; };
+    let H = false;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => H });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (H ? 'hidden' : 'visible') });
+    const hide = async () => { H = true; document.dispatchEvent(new Event('visibilitychange')); await tick(); };
+    const show = async () => { H = false; document.dispatchEvent(new Event('visibilitychange')); await tick(); };
+    // the plaque: the art is "not in" until released
+    const ar = Assets.artReady, wi = Assets.whenIdle; let release = null;
+    const holdArt = () => { Assets.artReady = () => false; Assets.whenIdle = () => new Promise(res => { release = res; }); };
+    const freeArt = () => { Assets.artReady = ar; Assets.whenIdle = wi; if (release) release(); release = null; };
+    const entered = async () => { for (let i = 0; i < 150 && (Screens.current !== 'playing' || Screens._entering); i++) await tick(20); };
+    const keep = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
+    const ask0 = localStorage.getItem('neo-tutorial-ask'), games0 = localStorage.getItem('neo-games');
+    const realNow = Date.now; let off = 0;
+    Date.now = () => realNow.call(Date) + off;   // the wall clock, moved on by hand
+    const out = {};
+    try {
+      // AT THE TITLE, before any world: where they were, and that nothing was entered
+      out.sTitle = session();
+
+      // A FOUNDED RUN, at its origin cards
+      keep('neo-tutorial-ask', null); keep('neo-games', '5');      // a veteran: no lesson
+      G.newGame('fm-draft', 'moderate', 'medium'); Screens._demo = false;
+      Screens.show('draft');
+      out.draftShown = Screens.current === 'draft';
+      out.sDraft = session();
+
+      // THE PRESS WAITS behind "Preparing the world…" — the session row says
+      // so, and run_start says for how long
+      holdArt();
+      Screens.enterGame();
+      const pl = document.getElementById('prep');
+      out.plaqueUp = !!pl && getComputedStyle(pl).display !== 'none';
+      out.sPrep = session();
+      await tick(400);
+      freeArt();
+      await entered();
+      out.start1 = (last('run_start') || {}).props || null;
+      out.sGame = session();
+
+      // A WARM PRESS opens at once: no plaque, prep_ms 0 — exactly, even
+      // when the synchronous entry itself costs milliseconds (a forced layout
+      // on a busy phone, played here by a slow zoom read) — that is no plaque
+      G.newGame('fm-warm', 'moderate', 'medium'); Screens._demo = false;
+      Assets.artReady = () => true;
+      const dz = R.defaultZoom;
+      R.defaultZoom = function () { const t = performance.now(); while (performance.now() - t < 6) {} return dz.apply(this, arguments); };
+      try { Screens.enterGame(); } finally { R.defaultZoom = dz; Assets.artReady = ar; }
+      out.warmEntered = Screens.current === 'playing';
+      out.warmStart = (last('run_start') || {}).props || null;
+
+      // WHY THE LESSON IS ON OR OFF, in four words
+      out.src = {};
+      for (const [name, ask, games] of [['auto', null, '0'], ['ticked', '1', '5'], ['declined', '0', '0'], ['none', null, '5']]) {
+        keep('neo-tutorial-ask', ask); keep('neo-games', games);
+        G.newGame('fm-src-' + name, 'moderate', 'medium'); Screens._demo = false;
+        Tutorial.maybeStart();
+        Screens._enterNow();
+        const s = (last('run_start') || {}).props || {};
+        out.src[name] = { src: s.tut_src, tutorial: s.tutorial };
+      }
+      keep('neo-tutorial-ask', null); keep('neo-games', '5');
+
+      // EVERY ENDING carries the four, null when unknown, never absent
+      G.newGame('fm-end', 'moderate', 'medium'); Screens._demo = false;
+      Screens._enterNow();
+      const id = S.runId;
+      S.day = 2; S.playtime = 20.2;
+      await hide(); const e0 = left(id); await show();
+      out.e0 = e0 && { has: ['first_act_s', 'tut_skip_at', 'wall_s', 'resume_prep_ms'].map(k => k in (e0.props || {})),
+        first: e0.props.first_act_s, skip: e0.props.tut_skip_at, wall: e0.props.wall_s, resume: e0.props.resume_prep_ms };
+      // the run's FIRST ORDER, on the play clock; later orders never move it
+      S.playtime = 42.4; G.noteAct();
+      S.playtime = 50; G.noteAct();
+      S.day = 3; S.playtime = 61; G.noteAct();
+      out.firstActStat = S.stats.firstActS;
+      // the wall clock runs on beside the play clock, which a slow frame holds back…
+      off = 80000; S.playtime = 50.4;
+      // …and a resume from the pause menu is no new opening
+      Screens.show('paused');
+      Assets.artReady = () => true; Screens.enterGame(); Assets.artReady = ar;
+      S.day = 4; await hide();
+      const e1 = left(id); await show();
+      out.e1 = e1 && { first: e1.props.first_act_s, wall: e1.props.wall_s, seconds: e1.seconds, resume: e1.props.resume_prep_ms };
+      // …and the real ending carries the same
+      S.playtime = 50.4;
+      G.end(false, 'test', 'tc_destroyed'); await tick();
+      const e2 = last('run_end', x => x.run_id === id && x.cause === 'tc_destroyed');
+      out.e2 = e2 && { has: ['first_act_s', 'tut_skip_at', 'wall_s', 'resume_prep_ms'].map(k => k in (e2.props || {})),
+        first: e2.props.first_act_s, wall: e2.props.wall_s, seconds: e2.seconds, skip: e2.props.tut_skip_at, resume: e2.props.resume_prep_ms };
+      Screens.show('title');
+
+      // THE LESSON LEFT AT A STEP: tut_skip_at is that step's id, and a second
+      // skip (from the deck's one owed note) never moves it
+      keep('neo-tutorial-ask', '1');
+      G.newGame('fm-skip', 'moderate', 'medium'); Screens._demo = false;
+      Tutorial.maybeStart(); Screens._enterNow();
+      const idS = S.runId;
+      S.tut.done = { welcome: 1, resources: 1 }; S.tut.step = 2;
+      out.skipWant = Tutorial.STEPS[2].id;
+      Tutorial.skip();
+      out.skipFirst = S.stats.tutSkipAt;
+      out.skipDeckOnly = !!S.tut.deckOnly;
+      Tutorial.skip();
+      out.skipSecond = S.stats.tutSkipAt;
+      S.day = 2; await hide(); const ks = left(idS); await show();
+      out.skipRow = ks && ks.props.tut_skip_at;
+      // both ride the save
+      S.playtime = 12.6; G.noteAct();
+      G.loadJSON(G.saveJSON()); Screens._demo = false;
+      out.saved = { skip: S.stats.tutSkipAt, first: S.stats.firstActS };
+      keep('neo-tutorial-ask', null);
+      Screens.show('title');
+
+      // A CONTINUED world sends no run_start: its wait behind the plaque rides
+      // its endings, and its wall clock carries on from the play clock's seconds
+      G.newGame('fm-cont', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+      const idC = S.runId;
+      S.playtime = 300; S.day = 9;
+      const jsonC = G.saveJSON();
+      Screens.show('title');
+      const startsBefore = rows().filter(x => x.kind === 'run_start').length;
+      G.loadJSON(jsonC); Screens._demo = false;
+      holdArt();
+      Screens.enterGame();
+      await tick(300);
+      freeArt();
+      await entered();
+      off += 20000;
+      S.day = 10; S.playtime = 310.4;
+      await hide(); const ce = left(idC); await show();
+      out.cont = ce && { noStart: rows().filter(x => x.kind === 'run_start').length === startsBefore,
+        resume: ce.props.resume_prep_ms, wall: ce.props.wall_s, seconds: ce.seconds };
+      Screens.show('title');
+
+      // A SAVE FROM BEFORE THE STAMP that already gave orders cannot say when
+      // the first came: it reads unknown, never the clock at its next order…
+      G.newGame('fm-old', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
+      S.playtime = 500; S.day = 6; S.stats.actDays = 4; S.stats.actDay = 5;
+      const old = JSON.parse(G.saveJSON()); delete old.stats.firstActS; delete old.stats.tutSkipAt;
+      G.loadJSON(JSON.stringify(old)); Screens._demo = false; Screens._enterNow();
+      out.oldLoaded = { first: S.stats.firstActS === undefined ? 'absent' : S.stats.firstActS, skip: S.stats.tutSkipAt === undefined ? 'absent' : S.stats.tutSkipAt };
+      S.day = 7; G.noteAct();
+      S.day = 8; await hide(); const oe = left(S.runId); await show();
+      out.oldRow = oe && ('first_act_s' in oe.props) ? oe.props.first_act_s : 'absent';
+      // …while one that never gave an order learns its first one now
+      const old0 = JSON.parse(G.saveJSON()); delete old0.stats.firstActS; old0.stats.actDays = 0; old0.stats.actDay = 0; old0.playtime = 33.2;
+      G.loadJSON(JSON.stringify(old0)); Screens._demo = false; Screens._enterNow();
+      G.noteAct();
+      out.old0First = S.stats.firstActS;
+      Screens.show('title');
+
+      // every row this page sent: the new props are integers, booleans, null or a short enum
+      out.all = rows().map(x => ({ kind: x.kind, cause: x.cause || null, props: x.props || {} }));
+      out.stepIds = Tutorial.STEPS.map(s => s.id).concat(Tutorial.EVENTS.map(e => e.id));
+    } finally {
+      Date.now = realNow;
+      keep('neo-tutorial-ask', ask0); keep('neo-games', games0);
+      delete document.hidden; delete document.visibilityState;
+    }
+    return out;
+  });
+  const st = r.sTitle || {}, sd = r.sDraft || {}, sp = r.sPrep || {}, sg = r.sGame || {};
+  ck('aPageLeftAtTheTitleSaysSo', st.at === 'title' && st.entered === false && st.form === 'desktop' && st.standalone === false,
+    JSON.stringify(st));
+  ck('andAtTheOriginCards', r.draftShown && sd.at === 'draft' && sd.entered === false, JSON.stringify(sd));
+  ck('andBehindThePlaque', r.plaqueUp && sp.at === 'prep' && sp.entered === false, JSON.stringify({ plaque: r.plaqueUp, row: sp }));
+  ck('andInAWorldItEntered', sg.at === 'game' && sg.entered === true, JSON.stringify(sg));
+  const s1 = r.start1 || {}, sw = r.warmStart || {};
+  ck('runStartSaysHowLongThePressWaited', isInt(s1.prep_ms) && s1.prep_ms >= 400 && s1.prep_ms < 8000 && s1.tut_src === 'none' &&
+    s1.form === 'desktop' && s1.standalone === false, JSON.stringify(s1));
+  ck('andAWarmPressWaitedNotAtAll', r.warmEntered && sw.prep_ms === 0, JSON.stringify({ entered: r.warmEntered, start: sw }));
+  const sr = r.src || {};
+  ck('runStartSaysWhyTheLessonIsOnOrOff', SRC.every(k => sr[k] && sr[k].src === k) &&
+    sr.auto.tutorial === true && sr.ticked.tutorial === true && sr.declined.tutorial === false && sr.none.tutorial === false, JSON.stringify(sr));
+  const e0 = r.e0 || {};
+  ck('everyEndingCarriesTheFirstMinuteFields', e0.has && e0.has.every(Boolean) && e0.first === null && e0.skip === null &&
+    isInt(e0.wall) && e0.resume === null, JSON.stringify(e0));
+  ck('firstActIsTheRunsFirstOrderOnThePlayClock', r.firstActStat === 42 && r.e1 && r.e1.first === 42 && r.e2 && r.e2.first === 42,
+    JSON.stringify({ stat: r.firstActStat, e1: r.e1 && r.e1.first, e2: r.e2 && r.e2.first }));
+  ck('wallSecondsSitBesideSecondsNeverReplacingThem', r.e1 && r.e1.seconds === 50 && r.e1.wall >= 80 && r.e1.wall <= 82 &&
+    r.e2 && r.e2.seconds === 50 && r.e2.wall >= 80 && r.e2.wall <= 82, JSON.stringify({ e1: r.e1, e2: r.e2 }));
+  ck('andARealEndingCarriesThemToo', r.e2 && r.e2.has && r.e2.has.every(Boolean) && r.e2.skip === null && r.e2.resume === null, JSON.stringify(r.e2));
+  ck('tutSkipAtNamesTheStepTheLessonWasLeftOn', r.skipWant === 'tapVillager' && r.skipFirst === 'tapVillager' && r.skipRow === 'tapVillager',
+    JSON.stringify({ want: r.skipWant, first: r.skipFirst, row: r.skipRow }));
+  ck('andASecondSkipNeverMovesIt', r.skipSecond === 'tapVillager', JSON.stringify({ deckOnly: r.skipDeckOnly, second: r.skipSecond }));
+  ck('bothRideTheSave', r.saved && r.saved.skip === 'tapVillager' && r.saved.first === 13, JSON.stringify(r.saved));
+  const c = r.cont || {};
+  ck('aContinuedWorldsWaitRidesItsEndings', c.noStart === true && isInt(c.resume) && c.resume >= 300 && c.resume < 8000, JSON.stringify(c));
+  ck('andItsWallClockCarriesOnFromItsSeconds', c.seconds === 310 && c.wall >= 320 && c.wall <= 322, JSON.stringify(c));
+  ck('aPreStampSaveThatActedReadsUnknown', r.oldLoaded && r.oldLoaded.first !== 'absent' && r.oldLoaded.skip === null && r.oldRow === null,
+    JSON.stringify({ loaded: r.oldLoaded, row: r.oldRow }));
+  ck('andOneThatNeverActedLearnsItsFirstOrder', r.old0First === 33, 'first act after loading ' + r.old0First);
+  // PRIVACY: integers, booleans, null or a short enum — nothing else, anywhere
+  const bad = [];
+  for (const x of r.all || []) {
+    const pr = x.props;
+    if (x.kind === 'session') {
+      if (!AT.includes(pr.at) || typeof pr.entered !== 'boolean' || !FORM.includes(pr.form) || typeof pr.standalone !== 'boolean') bad.push(x);
+    } else if (x.kind === 'run_start') {
+      if (!isInt(pr.prep_ms) || pr.prep_ms < 0 || !SRC.includes(pr.tut_src) || !FORM.includes(pr.form) || typeof pr.standalone !== 'boolean') bad.push(x);
+    } else if (x.kind === 'run_end') {
+      const okInt = v => v === null || (isInt(v) && v >= 0);
+      if (!okInt(pr.first_act_s) || !okInt(pr.wall_s) || !okInt(pr.resume_prep_ms) ||
+        !(pr.tut_skip_at === null || (r.stepIds || []).includes(pr.tut_skip_at))) bad.push(x);
+    }
+  }
+  ck('theFirstMinuteSpeaksInNumbersBooleansAndShortEnums', (r.all || []).length > 10 && bad.length === 0,
+    bad.length + ' bad of ' + (r.all || []).length + ' ' + JSON.stringify(bad.slice(0, 2)).slice(0, 600));
+  ck('theFirstMinutePageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
+}
+// …and the form factor reads the device, never the window: a phone, a tablet, the home screen
+{
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+  const r = await p.evaluate(() => {
+    const last = () => __MOCK.st.calls.filter(c => c.path === '/telemetry' && c.body && c.body[0] && c.body[0].kind === 'session').map(c => c.body[0]).pop();
+    const session = () => { Backend._sessionSent = false; Backend._sessionT0 = Date.now() - 5000; Backend.endSession(); const s = last(); return s ? (s.props || {}) : null; };
+    const out = { phone: session() };
+    // a tablet's short side, and a home-screen launch (iOS says so on navigator)
+    Object.defineProperty(screen, 'width', { configurable: true, get: () => 820 });
+    Object.defineProperty(screen, 'height', { configurable: true, get: () => 1180 });
+    Object.defineProperty(navigator, 'standalone', { configurable: true, get: () => true });
+    out.tablet = session();
+    return out;
+  });
+  const ph = r.phone || {}, tb = r.tablet || {};
+  ck('aPhoneIsAPhone', ph.form === 'phone' && ph.standalone === false && ph.at === 'title', JSON.stringify(ph));
+  ck('aTabletIsATabletAndTheHomeScreenSaysSo', tb.form === 'tablet' && tb.standalone === true, JSON.stringify(tb));
+  ck('theDevicePageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await ctx.close();
+}
+
+// ---- 8. THE TOKEN STAYS CURRENT (PX-50 part 1): the token the client renewed is the one the next row carries ----
+/* supabase-js renews the access token about once an hour into a NEW session
+   object, and Backend kept the one it got at sign-in: after expiry every
+   run_start, closed_tab and session row went out under a dead Bearer, was
+   refused (401) and was dropped — a fire-and-forget row never retries. The
+   client says when it renews (onAuthStateChange); Backend follows it — for
+   this player only. The mock path carries no token, so the rows here go out
+   over the REAL write path, with fetch recording each Bearer. */
+{
+  const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  // the client's own auth-state door, as supabase-js offers it: the mock keeps every listener
+  await p.addInitScript(() => {
+    window.__MOCK.auth.onAuthStateChange = (cb) => {
+      (window.__MOCK.st.authCbs || (window.__MOCK.st.authCbs = [])).push(cb);
+      return { data: { subscription: { unsubscribe() {} } } };
+    };
+  });
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+  const r = await p.evaluate(async () => {
+    const out = { listeners: (__MOCK.st.authCbs || []).length };
+    const fire = (ev, s) => (__MOCK.st.authCbs || []).forEach(cb => cb(ev, s));
+    const sent = [];
+    const mk = Backend.mock, allowed = Backend.telemetryAllowed, realFetch = window.fetch;
+    Backend.mock = null; Backend.telemetryAllowed = () => true;
+    window.fetch = (u, o) => { sent.push((o && o.headers && o.headers.Authorization) || null); return Promise.resolve({ ok: true, status: 201, json: async () => ({}) }); };
+    try {
+      Backend._emit({ kind: 'session', seconds: 5 });
+      // an hour on, the client renews the token into a new session object
+      fire('TOKEN_REFRESHED', { access_token: 'renewed-1', refresh_token: 'r2', user: { id: Backend.uid } });
+      Backend._emit({ kind: 'session', seconds: 6 });
+      // a sign-out (no session) and a session for somebody else never replace it
+      fire('SIGNED_OUT', null);
+      fire('SIGNED_IN', { access_token: 'stranger', refresh_token: 'r9', user: { id: 'someone-else' } });
+      Backend._emit({ kind: 'session', seconds: 7 });
+    } finally { Backend.mock = mk; Backend.telemetryAllowed = allowed; window.fetch = realFetch; }
+    out.sent = sent; out.after = Backend.session && Backend.session.access_token; out.uid = Backend.uid;
+    return out;
+  });
+  ck('theClientsRenewedTokenIsTheOneTheNextRowCarries', r.listeners >= 1 && r.sent[0] === 'Bearer t' && r.sent[1] === 'Bearer renewed-1', JSON.stringify(r));
+  ck('andNeitherASignOutNorAStrangerReplacesIt', r.sent[2] === 'Bearer renewed-1' && r.after === 'renewed-1' && r.uid === 'mock-uid-0001', JSON.stringify(r));
+  ck('theTokenPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await p.close();
 }
 

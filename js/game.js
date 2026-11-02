@@ -210,7 +210,11 @@ const G = {
                // kills their EXPLICIT attack orders made (never a tower's, never
                // a Defend stance's) — plus the DAYS the player gave an order on
                // (G.noteAct): a fight is engagement over time, never one burst
-               handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0 },
+               handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0,
+               // THE FIRST MINUTE (PX-49, G.runReport): the play-clock second of
+               // the run's first order (G.noteAct) and the lesson's step a skip
+               // left it on (Tutorial.skip) — null until they happen
+               firstActS: null, tutSkipAt: null },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -475,6 +479,11 @@ const G = {
   noteAct() {
     if (typeof S === 'undefined' || !S || !S.stats || S.over) return;
     if (window.Screens && Screens._demo) return;
+    // …and the play clock's second of the run's FIRST order (first_act_s,
+    // PX-49), stamped once, before the once-a-day return. A save from before
+    // the stamp that had already given orders reads -1 (unknown, loadJSON),
+    // never the clock at its next order
+    if (S.stats.firstActS == null) S.stats.firstActS = Math.round(S.playtime || 0);
     if (S.stats.actDay === S.day && S.stats.actDays) return;
     S.stats.actDay = S.day;
     S.stats.actDays = (S.stats.actDays || 0) + 1;
@@ -2687,6 +2696,10 @@ const G = {
     if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) { if (lit && lit[i]) charted++; else seen++; } }
     const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
       && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+    /* THE FIRST MINUTE (PX-49, tests/telemetry.mjs §7): when and how this
+       world opened in THIS page (Screens._enterNow) — never in the save, so a
+       world loaded or entered some other way answers unknown */
+    const op = (window.Screens && Screens._opened && Screens._opened.get(S)) || null;
     return {
       outcome, cause,
       mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
@@ -2726,6 +2739,19 @@ const G = {
         special: S.special || null,
         special_fired: !!S.specialDay,
         special_day: S.specialDay || null,
+        // THE FIRST MINUTE (PX-49): on every ending, real and closed_tab,
+        // null when unknown and never absent. The play clock's second of the
+        // run's first order; the lesson's step a skip left it on; wall_s
+        // BESIDE 'seconds', never replacing it — the run's seconds with this
+        // page's share timed by the wall clock while the page is in view (the
+        // play clock adds at most 0.1 s a frame, so a slow phone counts short;
+        // pauses still count here, so the two bracket the time played); and,
+        // for a world this page CONTINUED (which sends no run_start), how long
+        // its press waited behind "Preparing the world…"
+        first_act_s: (typeof st.firstActS === 'number' && st.firstActS >= 0) ? st.firstActS : null,
+        tut_skip_at: (typeof st.tutSkipAt === 'string' && st.tutSkipAt) ? st.tutSkipAt.slice(0, 24) : null,
+        wall_s: (op && Screens._vis) ? Math.round(op.play + Math.max(0, Screens._vis() - op.vis) / 1000) : null,
+        resume_prep_ms: op && op.resumeMs != null ? op.resumeMs : null,
         // THE GAME'S OWN ERRORS (build 107; the dashboard's "hit an error"
         // and its list of the commonest): how many faults the recorder caught
         // in this sitting, and the first of them, cut short. Guarded on the
@@ -2935,6 +2961,11 @@ const G = {
     if (data.stats.handKills == null) data.stats.handKills = 0;
     // …and could not tell on which days orders were given: every day it reached
     if (data.stats.actDays == null) { data.stats.actDays = Math.max(0, data.day | 0); data.stats.actDay = data.day | 0; }
+    // …nor when the first order came (first_act_s): a save that has given
+    // orders reads unknown (-1), never the clock at its next one; a save that
+    // has given none learns its first. And no lesson's skip was remembered.
+    if (data.stats.firstActS === undefined) data.stats.firstActS = data.stats.actDays ? -1 : null;
+    if (data.stats.tutSkipAt === undefined) data.stats.tutSkipAt = null;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
