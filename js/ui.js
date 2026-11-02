@@ -3390,6 +3390,20 @@ const UI = {
     n |= 0;
     return n >= 10000 ? (Math.round(n / 100) / 10 + '').replace(/\.0$/, '') + 'k' : String(n);
   },
+  /* A SPENT TILE IS NEWS (PX-08, tests/hud-info.mjs). A hand whose tile runs
+     out stands idle, and the line that says so was written to the chronicle
+     alone. The first of a world now reaches the screen as a note; after it,
+     at most one every IDLE_NOTE_DAYS game days, so a town whose tiles run out
+     together hears it once. Units.update asks here for the line's level; the
+     chronicle still gets every line. UI-local, keyed on S, never saved. */
+  IDLE_NOTE_DAYS: 5,
+  _idleNote: null,
+  idleNote() {
+    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, g = this._idleNote;
+    if (g && g.S === S && now >= g.at && now - g.at < this.IDLE_NOTE_DAYS) return undefined;
+    this._idleNote = { S, at: now };
+    return 'note';
+  },
   refresh(dt) {
     this.tickPlacement(dt);   // per-frame: edge scroll + ghost DOM must not wait on the throttle
     this.refreshT -= dt;
