@@ -1409,10 +1409,13 @@ const CFG = {
     PITY: 15,             // wins without an Enlightenment card before one is guaranteed
     STARTER: ['forager_cache', 'fallen_timber', 'willing_hands'],
     QUEUE_MAX: 200,       // offline writes waiting for the cloud
-    /* A VOTE EARNS A CARD (Deck.voteLink, supabase/migrations/0012 and
-       supabase/functions/vote-callback): the vote page, sent the player's
-       id as ?ref=, and the card the server grants — the server's twin is
-       vote_card() in 0012, and the two must name the same card */
-    VOTE: { URL: 'https://vibetoplist.com/vote/clanfire', CARD: 'swift_raiders', GAP_H: 12 },
+    /* A VOTE EARNS A CARD (js/vote.js — the whole feature in one file;
+       supabase/migrations/0012 + 0013 and supabase/functions/vote-callback):
+       ON is its switch (off: no banner, no pop-up, no line, nothing asked of
+       the server); the vote page, sent the player's id as ?ref=; the card a
+       player's FIRST vote earns (the server's twin is vote_card()); the
+       tier every later vote deals at random (vote_later_tier()); and the
+       site's own wait between votes, which is when the banner comes back */
+    VOTE: { ON: true, URL: 'https://vibetoplist.com/vote/clanfire', CARD: 'swift_raiders', LATER: 'stone', GAP_H: 12 },
   },
 };

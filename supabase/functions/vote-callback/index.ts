@@ -1,4 +1,5 @@
-// vote-callback — VibeTopList's vote webhook, turned into a card
+// vote-callback — VibeTopList's vote webhook, turned into a card (0012, and
+// 0013: a player's first vote earns Swift Raiders, every later one a random Stone)
 // (supabase/migrations/0012_vote_reward.sql says the whole story).
 //
 // VibeTopList fires a POST and a GET here after every vote, carrying

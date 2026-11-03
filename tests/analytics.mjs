@@ -215,6 +215,14 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   const F12 = '0012_vote_reward.sql';
   const twice = files.includes(F12) ? sql(readFileSync(join(MIG, F12), 'utf8')) : { error: F12 + ' is missing' };
   ck('theVoteFileTwiceChangesNothing', !twice.error, twice.error ? twice.error.split('\n')[0] : 'applied a second time cleanly');
+  // 0013 after it again (a re-pasted 0012 puts the every-vote rule back; 0013 is pasted after it)
+  const F13 = '0013_vote_traffic.sql';
+  const twice13 = files.includes(F13) ? sql(readFileSync(join(MIG, F13), 'utf8')) : { error: F13 + ' is missing' };
+  ck('theTrafficFileTwiceChangesNothing', !twice13.error, twice13.error ? twice13.error.split('\n')[0] : 'applied a second time cleanly');
+  make('cf_no12');
+  for (const f of files.filter(f => f < '0012')) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_no12' });
+  const no12 = sql(readFileSync(join(MIG, F13), 'utf8'), { db: 'cf_no12' });
+  ck('andItRefusesWithoutTheVoteFile', !!no12.error && /0012/.test(no12.error), no12.error ? no12.error.split('\n').find(l => /0012/.test(l)) || no12.error.split('\n')[0] : 'it applied');
   make('cf_votes');
   for (const f of files) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_votes' });
   const V = n => '00000000-0000-0000-0000-0000000002' + String(n).padStart(2, '0');
@@ -231,7 +239,25 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   // the gap passed: the last grant moved back by hand
   sql(`update public.card_votes set created_at = now() - public.vote_gap() - interval '1 minute' where vote_id = 'v-1';`, { db: 'cf_votes' });
   const later = vote(V(1).toUpperCase(), 'v-3');
-  ck('andOnePastTheGapEarnsAnother', later.granted === true && qty(V(1)) === 2, `${JSON.stringify(later)}; held ${qty(V(1))}`);
+  /* AFTER THE FIRST, A RANDOM STONE CARD (0013): the vote past the gap
+     earns a card of vote_later_tier(), never the first vote's card again */
+  const tierOf = k => sql(`select tier from public.card_catalog where card_key = ${lit(k)};`, { db: 'cf_votes' }).out;
+  const held = (uid, k) => +(sql(`select coalesce((select qty from public.card_collection where user_id = '${uid}' and card_key = ${lit(k)}), 0);`, { db: 'cf_votes' }).out || -1);
+  ck('andOnePastTheGapEarnsARandomStoneCard', later.granted === true && later.first === false && tierOf(later.card) === 'stone' &&
+    later.card !== card && qty(V(1)) === 1 && held(V(1), later.card) === 1,
+    `${JSON.stringify(later)} (a ${tierOf(later.card)} card); the first vote's card held ${qty(V(1))}`);
+  // and every later vote is Stone, dealt at random: twelve more, the gap passed before each
+  const dealt = [];
+  for (let i = 0; i < 12; i++) {
+    sql(`update public.card_votes set created_at = created_at - public.vote_gap() - interval '1 minute' where user_id = '${V(1)}';`, { db: 'cf_votes' });
+    const r = vote(V(1), 'v-later-' + i);
+    dealt.push(r.granted ? r.card : 'none:' + r.reason);
+  }
+  const kinds = [...new Set(dealt)];
+  ck('everyLaterVoteIsAStoneCardDealtAtRandom', dealt.every(k => tierOf(k) === 'stone') && kinds.length >= 3 && !dealt.includes(card),
+    `${dealt.length} later votes dealt ${kinds.length} different cards: ${kinds.join(', ')}`);
+  sql(`delete from public.card_votes where vote_id like 'v-later-%'; update public.card_collection set qty = 0 where user_id = '${V(1)}' and card_key <> public.vote_card() and card_key <> ${lit(later.card)};
+       update public.card_collection set qty = 1 where user_id = '${V(1)}' and card_key = ${lit(later.card)};`, { db: 'cf_votes' });
   const nobody = vote('PlayerName', 'v-4'), ghost = vote('00000000-0000-0000-0000-000000000999', 'v-5'), blank = vote(V(2), '');
   ck('aRefThatIsNoPlayerEarnsNothing', nobody.reason === 'unknown_player' && ghost.reason === 'unknown_player' && blank.reason === 'bad_vote',
     JSON.stringify({ nobody, ghost, blank }));
@@ -240,6 +266,14 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   const peek = as('authenticated', V(2), 'select count(*) from public.card_votes;');
   ck('onlyTheServiceRoleMayGrantAVote', !!asPlayer.error && /permission denied/.test(asPlayer.error) && !!asAnon.error && /permission denied/.test(asAnon.error) &&
     !!peek.error && qty(V(2)) === 0, JSON.stringify({ player: (asPlayer.error || '').split('\n')[0], anon: (asAnon.error || '').split('\n')[0], table: (peek.error || '').split('\n')[0] }));
+  /* WHAT THE NEXT VOTE EARNS, AND WHEN (0013's vote_status): the player's own
+     door — how many votes earned a card and when the last was counted */
+  const st1 = as('authenticated', V(1), 'select public.vote_status();'), st2 = as('authenticated', V(2), 'select public.vote_status();');
+  const stAnon = as('anon', null, 'select public.vote_status();');
+  const lastMs = +sql(`select floor(extract(epoch from max(created_at)) * 1000)::bigint from public.card_votes where user_id = '${V(1)}' and result in ('granted', 'too_soon');`, { db: 'cf_votes' }).out;
+  ck('theStatusSaysWhatTheNextVoteEarns', st1.ok === true && st1.granted === 2 && st1.last_at === lastMs && lastMs > 0 &&
+    st1.first_card === 'swift_raiders' && st1.later_tier === 'stone' && st2.ok === true && st2.granted === 0 && st2.last_at === null && !!stAnon.error,
+    `voted ${JSON.stringify(st1)}; never voted ${JSON.stringify(st2)}; a stranger ${(stAnon.error || '').split('\n')[0]}`);
   const told = as('authenticated', V(1), 'select public.claim_vote_notes();'), told2 = as('authenticated', V(1), 'select public.claim_vote_notes();');
   const stranger = as('anon', null, 'select public.claim_vote_notes();');
   const res = (told.notes || []).map(n => n.result).join(',');
@@ -427,6 +461,7 @@ const D30 = () => ({ p_token: TOKEN, p_from: new Date(Date.now() - 30 * 86400000
     ['analytics_whoami', { p_token: 'nope' }], ['analytics_mark_device', { p_token: 'nope', p_user_id: U('b'), p_mine: true }],
     ['analytics_mark_network', { p_token: 'nope', p_mine: true }], ['analytics_devices', { p_token: 'nope' }],
     ['analytics_feedback', { p_token: 'nope' }], ['analytics_feedback_set', { p_token: 'nope', p_id: 1, p_status: 'fixed' }],
+    ['analytics_traffic', { p_token: 'nope' }],
   ];
   const open = DOORS.filter(([n, a]) => { const r = call(n, a); return !(r && r.ok === false && r.reason === 'bad_token'); }).map(d => d[0]);
   ck('everyDoorRefusesABadPassphrase', open.length === 0, open.join(', ') || DOORS.length + ' doors');
@@ -477,6 +512,70 @@ const D30 = () => ({ p_token: TOKEN, p_from: new Date(Date.now() - 30 * 86400000
   call('analytics_feedback_set', { p_token: TOKEN, p_id: bug.id, p_status: 'new', p_note: '' });
 }
 
+/* ================= 6b. TRAFFIC (0013's analytics_traffic) =================
+   Where visits come from (the session row's src), the site each device
+   FIRST came from (src1) for its players and games, the vote banner's funnel
+   and the votes the site reported — the dashboard's left-out devices left
+   out. Its rows are taken out again, so no other number moves. */
+{
+  const G7 = '00000000-0000-0000-0000-0000000003a1', H7 = '00000000-0000-0000-0000-0000000003a2';
+  const ld = sql(`
+    insert into auth.users (id) values ('${G7}'), ('${H7}') on conflict do nothing;
+    insert into public.profiles (id) values ('${G7}'), ('${H7}') on conflict do nothing;
+    insert into public.telemetry (user_id, run_id, kind, mode, device, seconds, created_at, props) values
+     ('${G7}', null, 'session', null, 'mobile', 300, now() - interval '3 days', '{"src":"vibetoplist.com","src1":"vibetoplist.com","at":"game"}'),
+     ('${G7}', null, 'session', null, 'mobile', 200, now() - interval '2 days', '{"src":"direct","src1":"vibetoplist.com"}'),
+     ('${G7}', 'g71', 'run_start', 'calm', 'mobile', null, now() - interval '3 days', '{"src1":"vibetoplist.com"}'),
+     ('${G7}', 'g72', 'run_start', 'calm', 'mobile', null, now() - interval '2 days', '{"src1":"vibetoplist.com"}'),
+     ('${G7}', null, 'vote', null, 'mobile', null, now() - interval '2 days', '{"step":"seen","where":"title","first":true}'),
+     ('${G7}', null, 'vote', null, 'mobile', null, now() - interval '2 days', '{"step":"seen","where":"title","first":true}'),
+     ('${G7}', null, 'vote', null, 'mobile', null, now() - interval '2 days', '{"step":"open","where":"title","first":true}'),
+     ('${G7}', null, 'vote', null, 'mobile', null, now() - interval '2 days', '{"step":"go","where":"title","first":true}'),
+     ('${G7}', null, 'vote', null, 'mobile', null, now() - interval '1 days', '{"step":"seen","where":"reward","first":false}'),
+     ('${H7}', null, 'session', null, 'desktop', 90, now() - interval '1 days', '{"src":"direct","src1":"direct"}'),
+     ('${H7}', 'h71', 'run_start', 'hard', 'desktop', null, now() - interval '1 days', '{"src1":"direct"}'),
+     ('${H7}', null, 'vote', null, 'desktop', null, now() - interval '1 days', '{"step":"seen","where":"title","first":true}'),
+     ('${H7}', null, 'vote', null, 'desktop', null, now() - interval '1 days', '{"step":"sideways","where":"elsewhere"}'),
+     ('${U('b')}', null, 'session', null, 'mobile', 120, now() - interval '1 days', '{"src":"vibetoplist.com","src1":"earlier"}'),
+     ('${U('a')}', null, 'session', null, 'desktop', 120, now() - interval '1 days', '{"src":"vibetoplist.com","src1":"vibetoplist.com"}'),
+     ('${U('a')}', null, 'vote', null, 'desktop', null, now() - interval '1 days', '{"step":"go","where":"title"}');
+    insert into public.card_votes (vote_id, ref, user_id, card_key, result, created_at) values
+     ('t-1', '${G7}', '${G7}', 'swift_raiders', 'granted', now() - interval '2 days'),
+     ('t-2', '${G7}', '${G7}', null, 'too_soon', now() - interval '2 days' + interval '1 hour'),
+     ('t-3', 'nobody', null, null, 'unknown_player', now() - interval '1 days'),
+     ('t-4', '${U('a')}', '${U('a')}', 'loose_stone', 'granted', now() - interval '1 days'),
+     ('t-5', '${G7}', '${G7}', 'gold_nugget', 'granted', now() - interval '40 days');`);
+  ck('theTrafficRowsLoad', !ld.error, ld.error ? ld.error.split('\n')[0] : 'two new devices, a returning one and the test device');
+  const T = call('analytics_traffic', { p_token: TOKEN, p_from: new Date(Date.now() - 30 * 864e5).toISOString(), p_to: null, p_everyone: false, p_tz: 'UTC', p_src: 'vibetoplist.com' });
+  const S = k => (T.sources || []).find(x => x.src === k) || {};
+  const vtl = S('vibetoplist.com'), dir = S('direct');
+  ck('visitsAreCountedByTheSiteTheyCameFrom', T.ok === true && vtl.visits === 2 && vtl.devices === 2 && dir.visits === 2 && dir.devices === 2,
+    `vibetoplist ${JSON.stringify(vtl)}; direct ${JSON.stringify(dir)}`);
+  ck('andPlayersAndGamesByTheSiteEachDeviceFirstCameFrom', vtl.new_players === 1 && vtl.players === 1 && vtl.games === 2 &&
+    dir.new_players === 1 && dir.players === 1 && dir.games === 1 && S('earlier').visits === 0 && S('earlier').players === 1 && S('earlier').games === 3,
+    `vibetoplist ${JSON.stringify(vtl)}; direct ${JSON.stringify(dir)}; earlier ${JSON.stringify(S('earlier'))}`);
+  const V7 = T.vote || {}, place = k => (V7.by_place || []).find(x => x.where === k) || {};
+  ck('theBannersFunnelIsDevicesAtEachStep', V7.seen && V7.seen.devices === 2 && V7.seen.times === 4 && V7.open.devices === 1 && V7.go.devices === 1 && V7.go.times === 1 &&
+    place('title').seen === 2 && place('reward').seen === 1 && place('other').seen === 0,
+    JSON.stringify(V7));
+  const W7 = T.votes || {};
+  ck('andTheVotesAreWhatTheSiteReported', W7.counted === 2 && W7.voters === 1 && W7.granted === 1 && W7.first_cards === 1 && W7.later_cards === 0 &&
+    W7.too_soon === 1 && W7.unknown === 1, JSON.stringify(W7));
+  const day = (T.daily || []).reduce((a, d) => ({ visits: a.visits + d.visits, from: a.from + d.from_src, fresh: a.fresh + d.new_from_src, go: a.go + d.presses, votes: a.votes + d.votes, cards: a.cards + d.cards }),
+    { visits: 0, from: 0, fresh: 0, go: 0, votes: 0, cards: 0 });
+  ck('everyDayAddsUpToThePeriod', (T.daily || []).length === 31 && day.from === 2 && day.fresh === 1 && day.go === 1 && day.votes === 2 && day.cards === 1,
+    `${(T.daily || []).length} days: ${JSON.stringify(day)}`);
+  const E = call('analytics_traffic', { p_token: TOKEN, p_from: new Date(Date.now() - 30 * 864e5).toISOString(), p_to: null, p_everyone: true, p_tz: 'UTC', p_src: 'vibetoplist.com' });
+  const evtl = (E.sources || []).find(x => x.src === 'vibetoplist.com') || {};
+  ck('theTestDeviceIsLeftOutUnlessEveryoneIsAsked', evtl.visits === 3 && E.vote.go.devices === 2 && E.votes.granted === 2 && E.votes.later_cards === 1,
+    `with everyone: vibetoplist ${JSON.stringify(evtl)}, presses by ${E.vote && E.vote.go.devices} devices, ${E.votes && E.votes.granted} cards`);
+  const bad = call('analytics_traffic', { p_token: 'nope' });
+  ck('andItIsLockedLikeEveryDoor', bad.ok === false && bad.reason === 'bad_token', JSON.stringify(bad));
+  sql(`delete from public.telemetry where user_id in ('${G7}', '${H7}');
+       delete from public.telemetry where user_id in ('${U('a')}', '${U('b')}') and kind in ('session', 'vote');
+       delete from public.card_votes where vote_id like 't-%';`);
+}
+
 /* ================= 8. WHAT THE REVIEW OF BUILD 107 FOUND (the database) =================
    Each check here was red on the dashboard as first committed (76c70e8).
    Their rows live far back in time (240–260 days, and the comparison's
@@ -513,7 +612,7 @@ const UNHOSTILE = `delete from public.telemetry where user_id = '00000000-0000-0
   // ONE function per name: an overload makes PostgREST answer 300
   const dup = sql(`select string_agg(proname || ' x' || n, ', ') from (select proname, count(*) n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
                    where s.nspname = 'public' and proname in ('analytics__games', 'analytics__window', 'analytics_dashboard', 'analytics_compare',
-                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network')
+                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic')
                    group by proname having count(*) > 1) x;`).out;
   ck('andNoDoorIsLeftWithAnOverload', dup === '', dup || 'one function per name, after two applications');
 }
@@ -654,6 +753,7 @@ const UNHOSTILE = `delete from public.telemetry where user_id = '00000000-0000-0
     ['devices', () => call('analytics_devices', { p_token: TOKEN })],
     ['whoami', () => call('analytics_whoami', { p_token: TOKEN, p_user_id: P('ff') })],
     ['inbox', () => call('analytics_feedback', { p_token: TOKEN })],
+    ['traffic', () => call('analytics_traffic', { p_token: TOKEN, p_from: null })],
   ];
   const down = doors.filter(([, f]) => { const r = f(); return !(r && r.ok === true); }).map(([n, f]) => n + ': ' + String((f() || {}).error || '').split('\n')[0]);
   ck('oneHostileRowNeverTakesADoorDown', !hostile.error && down.length === 0, hostile.error ? 'rows refused: ' + hostile.error.split('\n')[0] : down.join(' | ') || doors.length + ' doors answer');
@@ -734,7 +834,9 @@ const unlock = async (p, pass) => {
       relFirst: (document.getElementById('cRel').options[0] || {}).text || '',
       relPicked: document.getElementById('cRel').value,
       thinTiles: document.querySelectorAll('#kpis .tile .v.thin').length,
-      inbox: document.querySelectorAll('#inbox .rep').length, mine: document.getElementById('mine').textContent };
+      inbox: document.querySelectorAll('#inbox .rep').length, mine: document.getElementById('mine').textContent,
+      src: document.getElementById('tSrc').textContent, voteRows: document.querySelectorAll('#tVote tr').length,
+      days: document.getElementById('tTrafficDays').textContent };
   });
   const H = call('analytics_dashboard', D30()).headline;
   ck('theTilesAreTheDatabasesNumbers', v.t.Games && v.t.Games.v === String(H.games) && v.t.Players.v === String(H.players) &&
@@ -760,6 +862,9 @@ const unlock = async (p, pass) => {
   ck('andEveryRateWearsItsCounts', /3 won of 4 finished/.test(v.t['Win rate'].n) && /too few to trust yet/.test(v.t['Win rate'].n) && v.thinTiles >= 4,
     v.thinTiles + ' greyed tiles (every rate here rests on fewer than 30)');
   ck('theInboxRendersEveryOpenReport', v.inbox === 3, v.inbox + ' reports');
+  // TRAFFIC (0013): its own door, its own tables — the fixture's devices played before sources were recorded
+  ck('theTrafficSectionRendersFromItsOwnDoor', seen.includes('analytics_traffic') && /Unknown \(before build 134\)/.test(v.src) && !/Could not/.test(v.src + v.days) && v.voteRows === 6,
+    `sources "${v.src.slice(0, 120)}"; ${v.voteRows} vote rows; days "${v.days.slice(0, 80)}"`);
   ck('thisDeviceIsNamed', /This device/.test(v.mine) && /Counted/.test(v.mine) && /3 games on record/.test(v.mine), v.mine.slice(0, 200));
   ck('theDashboardAsksOnlyItsOwnDoors', !seen.includes('analytics_summary') && ['analytics_dashboard', 'analytics_compare', 'analytics_feedback', 'analytics_whoami', 'analytics_devices'].every(n => seen.includes(n)),
     [...new Set(seen)].join(', '));
@@ -818,6 +923,15 @@ const unlock = async (p, pass) => {
   await unlock(p, PASS);
   const s = await p.evaluate(() => ({ setup: !document.getElementById('setup').hidden, text: document.getElementById('setup').textContent, main: document.getElementById('main').hidden }));
   ck('aMissingMigrationShowsTheSetupNote', s.setup && s.main && /0010_dashboard\.sql/.test(s.text) && /0009_feedback\.sql/.test(s.text), s.text.slice(0, 160));
+  await ctx.close();
+}
+{
+  // a project with 0010 but not 0013: the Traffic section says what it needs, every other number still loads
+  const { ctx, p } = await openPage({ missing: ['analytics_traffic'] });
+  await unlock(p, PASS);
+  await p.waitForFunction(() => document.querySelectorAll('#kpis .tile').length === 8 && /0013/.test(document.getElementById('tSrc').textContent), null, { timeout: 15000 }).catch(() => {});
+  const t = await p.evaluate(() => ({ src: document.getElementById('tSrc').textContent, tiles: document.querySelectorAll('#kpis .tile').length }));
+  ck('withoutTheTrafficFileItsSectionSaysSoAndTheRestLoads', /needs migration 0013/.test(t.src) && t.tiles === 8, JSON.stringify(t));
   await ctx.close();
 }
 {

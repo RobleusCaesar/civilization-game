@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 134, date: '2026-11-03', title: 'Vote and get a free card',
+    items: [
+      'A new gold banner under the title menu: tap it, vote for Clanfire on Vibe Top List, and a free card joins your deck. Your first vote earns Swift Raiders, and every vote after that earns a random Stone card.',
+      'You can vote once every 12 hours. The banner rests while you wait and comes back when you can vote again.',
+      'After you claim a card at the end of a game, the reward screen offers another the same way. The vote link has moved off the Cards screen.',
+    ],
+  },
+  {
     build: 133, date: '2026-11-03', title: 'Vote for a card',
     items: [
       'Vote for Clanfire on Vibe Top List from the Cards screen and a Swift Raiders card joins your deck. You can earn one every 12 hours.',

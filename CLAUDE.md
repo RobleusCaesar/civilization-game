@@ -286,6 +286,7 @@ node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand
 node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch; ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
 node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
 node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
+node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 ```
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
@@ -776,24 +777,50 @@ card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
 false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
 
-**A VOTE EARNS A CARD** (`CFG.CARDS.VOTE`, `Deck.voteLink` / `noteVote` /
-`_voteNotes`, `supabase/migrations/0012_vote_reward.sql`,
-`supabase/functions/vote-callback`; tests/deck-sync.mjs §V and
-tests/analytics.mjs §1c — operator, 2026-11-03: a VibeTopList vote earns
-"a shiny fun card (not the best cards)"). The Cards screen's "Vote for a
-card" opens `vibetoplist.com/vote/clanfire?ref=<the player's uid>` in a new
-tab, offered only where `_syncGate` lets the device talk to the record (never
-a test deck, a test page or a page from disk). The site POSTs and GETs the
-Edge Function (deployed by hand with JWT verification OFF; the callback
-secret is its `VTL_SECRET` and is in no file), which calls `vote_reward()` as
-the SERVICE ROLE alone: Swift Raiders (`vote_card()`, the twin of
-`CFG.CARDS.VOTE.CARD`) into `card_collection`, once per `vote_id` (the POST
-and GET arrive together), at most once per `vote_gap()` (11 hours, the site's
-12 with slack), nothing for a ref that is no player, the voter's IP never
-stored. The device learns it the ordinary way — the next reconcile carries
-the card — and `claim_vote_notes()` says what the vote did ONCE (granted, or
-too soon), asked only by a device that pressed Vote in the last week, and
-looked for as the player comes back to the tab (`VOTE_LOOK_MS`).
+**A VOTE EARNS A CARD** (`js/vote.js` — THE WHOLE FEATURE IN ONE FILE,
+`CFG.CARDS.VOTE`, `supabase/migrations/0012_vote_reward.sql` + `0013_vote_traffic.sql`,
+`supabase/functions/vote-callback`; tests/vote.mjs, tests/analytics.mjs §1c and
+§6b — operator, 2026-11-03: "a shiny fun card", then "No one is going to know to
+click on this link … a banner … Vote and Get A Free Card … the modal … like the
+card announcement pages … After the 12 hours having it re-appear … all future
+free cards are stone … and randomized … keep this whole section containerized
+so we can delete it … add this to the analytics in a traffic section"). The
+title wears a slim gold banner under its menu, "Vote & get a free card"; the
+reward screen, once its card is CLAIMED, "Want another?" (the Cards screen's
+link is gone). Either opens a pop-up in the card announcement's own look (its
+stylesheet re-scoped to `#voteCard`, its SVG chrome and dusk) showing the card
+the vote earns and VOTE NOW, which opens `vibetoplist.com/vote/clanfire?ref=<uid>`
+in a new tab. **THE CARD**: a player's FIRST vote earns `VOTE.CARD` (Swift
+Raiders, `vote_card()`), every later one a random active card of `VOTE.LATER`
+(Stone, `vote_later_tier()`) — the server decides (0013's `vote_reward`), and
+`vote_status()` tells the game which is next, so the pop-up shows Swift Raiders
+or a Stone card face down. **THE OFFER COMES AND GOES** (`Vote.offered`): only
+where `Deck._syncGate` lets the record take the card (never a test deck, a test
+page or a page from disk), only online, never on a window too short to hold it
+under the menu (measured), and never inside the wait — after a press it rests
+`PENDING_MS` (20 min) for the vote to land, then until the last COUNTED vote is
+`GAP_H` (12) hours old, or the whole 12 hours after a press when the status door
+cannot be read. The site POSTs and GETs the Edge Function (JWT verification OFF;
+the secret is its `VTL_SECRET`, in no file), which calls `vote_reward()` as the
+SERVICE ROLE alone: once per `vote_id`, at most once per `vote_gap()` (11 h),
+nothing for a ref that is no player, the voter's IP never stored. The card
+arrives through the next reconcile and `claim_vote_notes()` says what the vote
+did ONCE, by the card's own name (`Vote.afterSync`, from `Deck._syncRun`).
+**TWO GUARDED ONE-LINE HOOKS AND NOTHING ELSE TOUCH IT** (`Deck._syncRun` →
+`Vote.afterSync`, `DeckScreens._setButtons` → `Vote.onReward`): to take it out,
+delete the file, its tag, `CFG.CARDS.VOTE` and tests/vote.mjs; `VOTE.ON = false`
+switches it off with nothing built or asked. **THE TRAFFIC SECTION** (0013's
+`analytics_traffic`, analytics.html): every session row carries `src` (the
+referring site's HOST NAME, a `?utm_source=`, or 'direct' — never a path or a
+query) and every session and run_start row `src1`, the site the DEVICE first
+came from (`Backend.firstSource`, kept in `neo-src1`; 'earlier' for a device
+that held any `neo-`/`sb-` key when backend.js parsed, so today's referrer is
+never credited with an old player). The vote offer sends kind 'vote' rows
+(`seen` once a page per place, `open`, `go`; props `{step, where, first}`).
+The section shows visits by site, new players / players / games by first site,
+the offer's funnel beside the votes the site reported, and the days. **0013
+MUST BE PASTED** after 0012 (re-pasting 0008 narrows the telemetry kinds and
+0012 restores the every-vote rule — paste 0013 again after either).
 
 **THE PLAY ON THE GLASS** (`js/deckui.js`, tests/deck-ui.mjs). **THE CARD
 LEAVES IN LIGHT AT THE SCREEN'S RESOLUTION** (it left in hard pixels until

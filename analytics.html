@@ -194,6 +194,12 @@
     <p class="why">Games started each day of the period, in your own time zone (won in green, lost in red, the rest in grey), and how many people played. A day only partly in the period is drawn faint.</p>
     <div class="card"><svg id="chart" role="img" aria-label="Games per day"></svg><div class="legend" id="chartKey"></div></div>
 
+    <h2>Traffic</h2>
+    <p class="why">Where visits come from (the site that sent each one), and the players and games each site brought, counted by the site a device FIRST came from. Then the vote offer, step by step, and the votes Vibe Top List reported. Recorded from build 134; a device that played before then reads "Before tracking".</p>
+    <div class="card wrap"><table id="tSrc"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tVote"></table><div class="note" id="voteNote" style="margin-top:8px"></div></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tTrafficDays"></table></div>
+
     <h2>Did the update help?</h2>
     <p class="why">The same numbers over two windows of equal length either side of a release, each read as it stood the same time after it began. "Better" or "Worse" means the change is bigger than chance would make it (95%); "Can't tell yet" means it isn't, so far. A rate over games is tested player by player, so each player counts once however many games they played.</p>
     <div class="card">
@@ -276,7 +282,7 @@ let DRAFTS = {};
    must never paint over a newer filter); a Lock moves the epoch, so nothing
    still in flight can paint the last session back. */
 let EPOCH = 0;
-const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0 };
+const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0 };
 const live = (sec, my, ep) => my === SEQ[sec] && ep === EPOCH;
 // the operator's own days: the daily chart is bucketed in this time zone
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } })();
@@ -722,6 +728,50 @@ function renderCompare(c) {
     'A rate over games is tested player by player: each player counts once, however many games they played.';
 }
 
+/* ------------------------------------------------------------- traffic */
+/* WHERE PLAYERS COME FROM (migration 0013's analytics_traffic): the period
+   and "include everyone" are the dashboard's own; the difficulty, device and
+   run filters are about games and do not apply to visits */
+const SRC_NAME = { 'vibetoplist.com': 'Vibe Top List', direct: 'Direct (no referring site)', earlier: 'Before tracking', unknown: 'Unknown (before build 134)', other: 'Other' };
+const srcName = k => SRC_NAME[k] || k;
+async function loadTraffic() {
+  const my = ++SEQ.traffic, ep = EPOCH, tok = TOKEN;
+  const f = filters();
+  const r = await rpc('analytics_traffic', { p_token: tok, p_from: f.p_from, p_to: f.p_to, p_everyone: f.p_everyone, p_tz: TZ, p_src: 'vibetoplist.com' });
+  if (!live('traffic', my, ep)) return;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
+  if (!answered(r)) {
+    const why = missing(r) ? 'The traffic section needs migration 0013 (supabase/migrations/0013_vote_traffic.sql).' : couldNot(r);
+    for (const id of ['tSrc', 'tVote', 'tTrafficDays']) table($(id), [], [], why);
+    $('voteNote').textContent = '';
+    return;
+  }
+  const T = r.data;
+  part($('tSrc'), () => {
+    const rows = (Array.isArray(T.sources) ? T.sources : []).filter(x => x && (x.visits || x.new_players || x.players || x.games));
+    table($('tSrc'), ['Came from', 'Visits', 'New players', 'Players who played', 'Games'],
+      rows.map(x => [srcName(x.src), num(x.visits), num(x.new_players), num(x.players), num(x.games)]), 'No visits in this period.');
+  });
+  part($('tVote'), () => {
+    const V = T.vote || {}, W = T.votes || {}, at = k => (Array.isArray(V.by_place) ? V.by_place : []).find(x => x.where === k) || {};
+    const step = (label, s, note) => [label, num(s && s.devices), num(s && s.times), note || ''];
+    table($('tVote'), ['Vote for a free card', 'Players', 'Times', ''], [
+      step('Saw the offer', V.seen, `title ${num(at('title').seen)} · reward screen ${num(at('reward').seen)}`),
+      step('Opened it', V.open),
+      step('Pressed Vote now', V.go),
+      ['Votes Vibe Top List counted', num(W.voters), num(W.counted), W.too_soon ? `${num(W.too_soon)} too soon for a card` : ''],
+      ['Cards given', '', num(W.granted), `${num(W.first_cards)} first-vote cards · ${num(W.later_cards)} random Stone`],
+    ], 'No votes in this period.');
+    $('voteNote').textContent = (W.unknown ? `${plural(W.unknown, 'vote')} could not be matched to a player (voted on the site, not from the game). ` : '') +
+      'Players are devices; "Times" counts every showing, press and vote.';
+  });
+  part($('tTrafficDays'), () => {
+    const days = (Array.isArray(T.daily) ? T.daily : []).filter(d => d && (d.visits || d.from_src || d.presses || d.votes)).reverse();
+    table($('tTrafficDays'), ['Day', 'Visits', 'From Vibe Top List', 'New players from it', 'Vote presses', 'Votes', 'Cards'],
+      days.map(d => [d.day, num(d.visits), num(d.from_src), num(d.new_from_src), num(d.presses), num(d.votes), num(d.cards)]), 'No traffic on any day of this period.');
+  });
+}
+
 /* ------------------------------------------------------------- the inbox */
 const STATUS = [['new', 'New'], ['triaged', 'Looked at'], ['sent', 'Sent to Claude'], ['fixed', 'Fixed'], ['wontfix', "Won't fix"]];
 async function loadInbox() {
@@ -1011,7 +1061,7 @@ async function loadAll(verify) {
 }
 function others() {
   part(null, fillReleases);
-  return Promise.allSettled([loadCompare(), loadInbox(), loadMine()]);
+  return Promise.allSettled([loadCompare(), loadTraffic(), loadInbox(), loadMine()]);
 }
 function enter(tok) {
   try { sessionStorage.setItem(KEY, tok); } catch (e) {}
@@ -1024,7 +1074,7 @@ function show(which) { $('gate').hidden = which !== 'gate'; $('app').hidden = wh
    can paint it back (the epoch moves). A wrong passphrase typed afterwards
    shows the gate and nothing else. */
 function clearApp() {
-  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
+  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'tVote', 'voteNote', 'tTrafficDays', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
     const el = $(id); if (el) el.innerHTML = '';
   }
   $('stamp').textContent = '—';

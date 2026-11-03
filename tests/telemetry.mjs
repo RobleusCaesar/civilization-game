@@ -950,6 +950,52 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   await p.close();
 }
 
+// ---- 9. WHERE PLAYERS COME FROM (the Traffic section, migration 0013) ----
+// the session row names the site this VISIT came from (src) and every session
+// and run_start row the site this DEVICE first came from (src1, kept on the
+// device); a source is a host name and nothing more, and a device that held
+// anything of the game's before it was recorded says 'earlier'
+{
+  const visit = async (ctx, q) => {
+    const p = await ctx.newPage();
+    const errs = []; p.on('pageerror', e => errs.push(String(e)));
+    await p.goto('file://' + join(root, 'index.html') + (q || ''), { waitUntil: 'domcontentloaded' });
+    await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady(), null, { timeout: 30000 });
+    const r = await p.evaluate(() => {
+      Backend._sessionT0 = Date.now() - 6000; Backend._sessionSent = false;
+      Backend.endSession();
+      Backend.logRunStart({ mode: 'calm' });
+      const rows = __MOCK.st.calls.filter(c => c.path === '/telemetry').flatMap(c => c.body || []);
+      const s = rows.filter(x => x.kind === 'session').pop() || {}, rs = rows.filter(x => x.kind === 'run_start').pop() || {};
+      return { src: s.props && s.props.src, src1: s.props && s.props.src1, start1: rs.props && rs.props.src1, startSrc: rs.props ? ('src' in rs.props) : null,
+        kept: localStorage.getItem('neo-src1') };
+    });
+    await p.close();
+    return Object.assign(r, { errs });
+  };
+  const fresh = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await fresh.addInitScript(MOCK);
+  const a = await visit(fresh, '?utm_source=vibetoplist.com');
+  const back = await visit(fresh, '');
+  await fresh.close();
+  ck('aVisitNamesTheSiteItCameFrom', a.src === 'vibetoplist.com' && a.src1 === 'vibetoplist.com' && a.start1 === 'vibetoplist.com' && a.startSrc === false && a.kept === 'vibetoplist.com',
+    JSON.stringify(a));
+  ck('andTheDeviceKeepsItsFirstSiteOnItsNextVisit', back.src === 'direct' && back.src1 === 'vibetoplist.com' && back.start1 === 'vibetoplist.com', JSON.stringify(back));
+  const old = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await old.addInitScript(MOCK);
+  await old.addInitScript(() => { try { if (!sessionStorage.getItem('t9')) { sessionStorage.setItem('t9', '1'); localStorage.setItem('neo-games', '3'); } } catch (e) {} });
+  const o = await visit(old, '?utm_source=vibetoplist.com');
+  await old.close();
+  ck('aDeviceThatPlayedBeforeSaysEarlierNeverGuesses', o.src === 'vibetoplist.com' && o.src1 === 'earlier' && o.start1 === 'earlier', JSON.stringify(o));
+  const odd = await b.newContext({ viewport: { width: 430, height: 880 } });
+  await odd.addInitScript(MOCK);
+  const h = await visit(odd, '?utm_source=' + encodeURIComponent('evil.com/path?who=you'));
+  await odd.close();
+  const HOST = /^[a-z0-9.-]{1,64}$/;
+  ck('aSourceIsAHostNameAndNothingMore', h.src === 'direct' && h.src1 === 'direct' && [a.src, a.src1, back.src, o.src1].every(x => HOST.test(x)) &&
+    [...a.errs, ...back.errs, ...o.errs, ...h.errs].length === 0, JSON.stringify({ hostile: h, errs: [...a.errs, ...h.errs].slice(0, 2) }));
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 await b.close();
 if (fails.length) { console.log('FAILURES:', fails.join(', ')); process.exit(1); }

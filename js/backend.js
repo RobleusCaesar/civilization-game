@@ -385,7 +385,7 @@ const Backend = {
         // waited behind "Preparing the world…" (0 when the world was ready at
         // once), and why the lesson is on or off ('auto' | 'ticked' |
         // 'declined' | 'none') — both measured by Screens._enterNow
-        prep_ms: Math.max(0, Math.round(+info.prepMs || 0)), tut_src: info.tutSrc || null }, this.formFacts()),
+        prep_ms: Math.max(0, Math.round(+info.prepMs || 0)), tut_src: info.tutSrc || null }, this.formFacts(), this.sourceFacts(false)),
     });
     return { ok: true };
   },
@@ -667,13 +667,59 @@ const Backend = {
     } catch (e) {}
     return { form, standalone };
   },
+  /* WHERE PLAYERS COME FROM (the dashboard's Traffic section, migration
+     0013; tests/telemetry.mjs §9). The session row says which site this
+     VISIT came from (`src`), and the session and run_start rows say which
+     site this DEVICE first came from (`src1`, kept on the device), so a
+     player who found the game on a listing and comes back by bookmark still
+     counts for the listing. A source is a HOST NAME and nothing more — the
+     referring page's host (never its path or query), a ?utm_source= the link
+     carried, or 'direct'. A device that held anything of the game's before
+     this was recorded says 'earlier': guessing would credit today's referrer
+     with a player it did not bring. `_prior` is read as this file PARSES,
+     before any script has written a key of its own. */
+  SRC_KEY: 'neo-src1',
+  _prior: (() => {
+    try {
+      for (let i = 0; i < localStorage.length; i++) if (/^(neo-|sb-)/.test(localStorage.key(i) || '')) return true;
+    } catch (e) {}
+    return false;
+  })(),
+  source() {
+    if (this._src !== undefined) return this._src;
+    let s = 'direct';
+    try {
+      const host = h => String(h || '').toLowerCase().replace(/^www\./, '');
+      const own = host(location.hostname);
+      const q = new URLSearchParams(location.search || '');
+      const utm = host(q.get('utm_source'));
+      const ref = document.referrer ? host(new URL(document.referrer).hostname) : '';
+      const h = utm || (ref && ref !== own ? ref : '');
+      if (h && /^[a-z0-9.-]{1,64}$/.test(h)) s = h;
+    } catch (e) {}
+    this._src = s;
+    return s;
+  },
+  firstSource() {
+    let v = null;
+    try { v = localStorage.getItem(this.SRC_KEY); } catch (e) {}
+    if (v && /^[a-z0-9.-]{1,64}$/.test(v)) return v;
+    v = this._prior ? 'earlier' : this.source();
+    try { localStorage.setItem(this.SRC_KEY, v); } catch (e) {}
+    return v;
+  },
+  sourceFacts(visit) {
+    const o = { src1: this.firstSource() };
+    if (visit) o.src = this.source();
+    return o;
+  },
   endSession() {
     if (this._sessionSent || !this._sessionT0) return;
     const secs = Math.round((Date.now() - this._sessionT0) / 1000);
     if (secs < 3) return;                       // a bounce is not a session
     this._sessionSent = true;
     this._emit({ kind: 'session', seconds: secs, device: this.deviceKind(),
-      props: Object.assign({ at: this.sessionAt(), entered: !!this.entered }, this.formFacts()) });
+      props: Object.assign({ at: this.sessionAt(), entered: !!this.entered }, this.formFacts(), this.sourceFacts(true)) });
   },
 
   /* ---------------- save slots ---------------- */

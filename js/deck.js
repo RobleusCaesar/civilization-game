@@ -1148,66 +1148,6 @@ Object.assign(Deck, {
     if (!B.isReady() || !B.uid) return 'not_ready';
     return '';
   },
-  /* A VOTE EARNS A CARD (CFG.CARDS.VOTE; supabase/migrations/0012 and
-     supabase/functions/vote-callback; tests/deck-sync.mjs §V). The vote page
-     is sent the player's own id as ?ref=, the site calls our Edge Function,
-     and the SERVER grants the card into the record — so the link is offered
-     only where this device syncs (a test deck, a test page or a page from
-     disk has no record to land in). The device learns of it the way it
-     learns everything: the next reconcile carries the card, and
-     claim_vote_notes() says what the vote did, once. */
-  voteLink() {
-    const V = typeof CFG !== 'undefined' && CFG.CARDS && CFG.CARDS.VOTE;
-    if (!V || !V.URL || this._syncGate()) return null;
-    return V.URL + (V.URL.indexOf('?') >= 0 ? '&' : '?') + 'ref=' + encodeURIComponent(window.Backend.uid);
-  },
-  VOTE_KEY: 'neo-vote-at',
-  VOTE_LOOK_MS: [4000, 15000, 45000, 120000],   // after the player comes back: the callback may lag the vote
-  /* the vote button was pressed: remember it (the notes are asked for only
-     on a device that voted lately) and look again as the player comes back */
-  noteVote() {
-    this._set(this.VOTE_KEY, String(Date.now()));
-    const st = this._syncState();
-    if (st.voteArmed) return;
-    st.voteArmed = true;
-    try {
-      document.addEventListener('visibilitychange', () => {
-        if (document.hidden) return;
-        const at = +this._get(this.VOTE_KEY) || 0;
-        if (!at || Date.now() - at > 30 * 60e3) return;
-        for (const t of st.voteLooks || []) clearTimeout(t);
-        st.voteLooks = this.VOTE_LOOK_MS.map(ms => setTimeout(() => this.sync('vote'), ms));
-      });
-    } catch (e) {}
-  },
-  // the device voted in the last week: worth asking the server what came of it
-  _votedLately() { const at = +this._get(this.VOTE_KEY) || 0; return at > 0 && Date.now() - at < 7 * 864e5; },
-  voteLine(n) {
-    const c = this.card(n && n.card) || this.card(CFG.CARDS.VOTE && CFG.CARDS.VOTE.CARD);
-    if (n && n.result === 'granted') return `Thank you for voting! ${c ? c.name : 'A card'} joins your deck.`;
-    const h = (CFG.CARDS.VOTE && CFG.CARDS.VOTE.GAP_H) || 12;
-    return `Thank you for voting! A vote earns a card once every ${h} hours.`;
-  },
-  async _voteNotes(uid) {
-    if (!this._votedLately()) return 0;
-    let r;
-    try { r = await window.Backend.rpc('claim_vote_notes', {}); } catch (e) { return 0; }
-    if (!r || !r.ok || !r.data || r.data.ok !== true || !Array.isArray(r.data.notes)) return 0;
-    if (window.Backend.uid !== uid) return 0;
-    const notes = r.data.notes.filter(n => n && (n.result === 'granted' || n.result === 'too_soon'));
-    if (!notes.length) return 0;
-    // one line: the latest card, or the latest refusal when nothing was given
-    const best = notes.filter(n => n.result === 'granted').pop() || notes[notes.length - 1];
-    const line = this.voteLine(best);
-    // in a game the event log says it (and toasts it); on a menu, the shell's line
-    try {
-      const inGame = typeof G !== 'undefined' && G.log && window.Screens && Screens.current === 'playing' && !Screens._demo;
-      if (inGame) G.log('🗳️ ' + line);
-      else if (window.Screens && Screens.say) Screens.say(line);
-    } catch (e) {}
-    this._changed();
-    return notes.length;
-  },
   /* THE ONE ENTRY: deliver what is queued, then reconcile. Resolves to
      { ok, why, sent, done, dropped, kept, reconciled }; a call while one is
      in flight joins it and runs once more after. */
@@ -1307,8 +1247,9 @@ Object.assign(Deck, {
     // the retry first: a reconcile that finds the disk moved schedules its own
     this._syncLater(c.queue.length > 0);
     if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
-    // what a vote did, told once the record's card is on the device
-    if (out.reconciled) out.votes = await this._voteNotes(uid);
+    // A VOTE EARNS A CARD (js/vote.js, its own file): what a vote did, told
+    // once the record's card is on the device — nothing at all without it
+    if (out.reconciled && window.Vote && Vote.afterSync) { try { out.votes = await Vote.afterSync(uid); } catch (e) {} }
     out.ok = !stop && !c.queue.length;
     out.why = stop || (c.queue.length ? 'held' : '');
     // an op queued while this drain was in flight goes out right behind it
