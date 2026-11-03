@@ -321,7 +321,7 @@ const SettingsPage = {
     return this.card('Audio',
       one('music', 'Music', 'The fireside tune under the game.') +
       one('sfx', 'Sound effects', 'Axes, horns, battle and the clicks of the menus.') +
-      '<p class="sxNote">The music is played by the game itself, not a recording — it never repeats and costs nothing to load.</p>');
+      '<p class="sxNote">The music is four recorded tunes that take turns every few minutes, and battle music plays when your army attacks. Each tune downloads only when its turn comes.</p>');
   },
   /* the audio rows read Sound's LIVE state every time — one source of truth
      for "is the music on", the same rule Screens.paintAudioRows keeps for the

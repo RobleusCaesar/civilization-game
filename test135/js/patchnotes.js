@@ -19,6 +19,77 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 135, date: '2026-11-03', title: 'Buildings settle into the land',
+    items: [
+      'Every building now casts a soft shadow across the grass, so it sits on the ground instead of floating over it.',
+      'The hall and the workplaces stand in a yard of worn earth, wider at the door where the comings and goings are.',
+      'Houses and watchtowers are wrapped in bushes, ferns and long grass, with the doorway always left clear.',
+    ],
+  },
+  {
+    build: 134, date: '2026-11-03', title: 'Vote and get a free card',
+    items: [
+      'A new gold banner under the title menu: tap it, vote for Clanfire on Vibe Top List, and a free card joins your deck. Your first vote earns Swift Raiders, and every vote after that earns a random Stone card.',
+      'You can vote once every 12 hours. The banner rests while you wait and comes back when you can vote again.',
+      'After you claim a card at the end of a game, the reward screen offers another the same way. The vote link has moved off the Cards screen.',
+    ],
+  },
+  {
+    build: 133, date: '2026-11-03', title: 'Vote for a card',
+    items: [
+      'Vote for Clanfire on Vibe Top List from the Cards screen and a Swift Raiders card joins your deck. You can earn one every 12 hours.',
+    ],
+  },
+  {
+    build: 132, date: '2026-11-03', title: 'The village opens looking right',
+    items: [
+      'When a game opens, the ground around your village is now painted before you see it, instead of starting as flat colour and filling in. The loading screen can stay up a few seconds longer while this happens. Ground hidden in the dark still fills in once you are playing.',
+    ],
+  },
+  {
+    build: 131, date: '2026-11-02', title: 'Quieter red buttons',
+    items: [
+      'The small Demolish, Banish and Scuttle buttons are toned down so they no longer draw the eye. They only turn bright red once you tap them to confirm.',
+    ],
+  },
+  {
+    build: 130, date: '2026-11-02', title: 'Tidier panels',
+    items: [
+      'Demolish, Banish and Scuttle are now a small red button beside the close button, so they no longer take up a big space in every panel. Tap it once and a warning shows what you lose and what comes back. Tap again to confirm.',
+    ],
+  },
+  {
+    build: 129, date: '2026-11-02', title: 'Fewer animals near home',
+    items: [
+      'Far fewer deer and cattle wander near your town and your rival’s, so food is scarcer at the start and the herds no longer crowd your village. The wild country further out is as full of game as before.',
+    ],
+  },
+  {
+    build: 128, date: '2026-11-02', title: 'A game that answers you',
+    items: [
+      'A message that explains why something can’t be done now stays up long enough to read, and tapping again brings it back with a small shake.',
+      'Tap any number in the top bar to see where it comes from: what your workers, farms, mines and hall bring in, what is eaten, how much room your town has and how long a day lasts. The number beside your food now shows what your larder really gains or loses each day.',
+      'When a villager’s tree, rock, field or fishing spot runs out, a note tells you, so idle hands don’t go unnoticed.',
+      'Rally, a villager’s Build button, army tactics, sapper tools, saving an army and laying a wall now tell you what to tap next. A farm, lumber camp, quarry or lodge you can’t place yet says in one short line what to do first.',
+      'When you choose a building to place, a cancel button and a short how-to show straight away.',
+      '“Under attack!” now shows on the first blow, and a short note tells you when a building finishes, a unit is trained or a building rises a level where you can’t see it.',
+      'Two fingers now pan the map, a pinch keeps the ground under your fingers, and panning no longer lags behind your finger. A slow, deliberate tap now selects, and a tap made while the game is busy is no longer lost.',
+      'On a computer, trackpad scrolling and pinching zoom smoothly, and right-clicking the map no longer opens the browser’s menu.',
+      'A quick double-tap on Demolish, Banish, Scuttle or Cancel no longer confirms it by accident: tap once to arm it, then again a moment later.',
+      'On phones, the Build tab, the Pause and Menu buttons and the small arrow under the minimap catch a tap that lands a little short of them.',
+      'The tutorial moves the view so the tree, bush or rock it asks you to tap is never hidden, its tips can be dismissed, its messages appear below its card, and news about your rival waits until you can read it.',
+      'Continue opens your game on the first tap and greets you with the day you left off on. When a saved game can’t be opened, or the cloud doesn’t answer, the menu now says why and every button keeps working. Saving, importing a file and restoring your identity now say whether they worked.',
+      'A save you asked to load and then left by going back to your game no longer opens over it later, Load tells you when a game is already opening, and cloud problems, the world board’s included, are explained in plain words.',
+      'With a phone held sideways, a message on the title screen no longer covers the Load and Cards buttons.',
+      'The loading bar moves steadily while the world is prepared, and the loading screen can no longer get stuck.',
+      'New games and Continue open sooner, phones most of all: the game no longer waits to download soldiers and boats you don’t have yet.',
+      'The ground of a new game is prepared while you choose your card, so it is usually ready the moment the world opens.',
+      'If your connection drops for a moment while a game is loading, your villagers get their proper look back as soon as it returns.',
+      'Leaving the game for another app or tab silences it even with the music off, and a tune that fades out really stops.',
+      'The Guide’s page on food, the music line in Settings and a war party’s title now say what is true.',
+    ],
+  },
+  {
     build: 127, date: '2026-11-02', title: 'Your games, kept safe',
     items: [
       'Continue now always opens the game you saved. Before, it could sometimes open a random world with no controls instead, most often on a phone right after the page loaded.',

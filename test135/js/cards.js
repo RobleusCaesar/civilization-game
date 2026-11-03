@@ -639,13 +639,31 @@ const Cards = {
     if (!D || !D.rival || !D.rival.pick) return;
     const cd = this.DEFS[D.rival.pick.key];
     if (!cd) return;
-    // 🎲 not 🃏 — the joker is a modern invention this world never made
-    if (D.intel === 'full')
-      G.log(`🎲 Rival origin: ${cd.name} — ${cd.text(D.rival.pick.roll)}`, 'note', 6400);
-    else if (D.intel === 'name')
-      G.log(`🎲 Rival origin: ${cd.name}.`, 'note', 6400);
-    G.log('🕵 Scouts whisper of the rival chief: ' + AI.persona().blurb + ' ' + cd.whisper, 'note', 6400);
+    /* …AND IT WAITS TO BE READ (PX-10c, tests/tutorial.mjs §20). The first
+       in-game moment is not always one the player can read: on a cold cache
+       the world is still behind its art plaque, and a device's first Calm
+       game opens on the "Two roads to victory" modal — the toast column sits
+       under both, so the intel ran out its hold unseen. So the post waits,
+       for THIS world only, until the game is on screen and no modal has the
+       floor; past INTEL_WAIT_MS it is dropped, never posted late into a
+       column nobody is reading. Nothing here draws the RNG: the wait is a
+       timer and the post is two log lines. */
+    const world = S, t0 = performance.now();
+    const post = () => {
+      if (S !== world || S.over) return;                         // another world took the glass
+      if (performance.now() - t0 > this.INTEL_WAIT_MS) return;    // too late to be news
+      const Sc = window.Screens;
+      if (!Sc || Sc.current !== 'playing' || (Sc.modalUp && Sc.modalUp())) { setTimeout(post, 250); return; }
+      // 🎲 not 🃏 — the joker is a modern invention this world never made
+      if (D.intel === 'full')
+        G.log(`🎲 Rival origin: ${cd.name} — ${cd.text(D.rival.pick.roll)}`, 'note', 6400);
+      else if (D.intel === 'name')
+        G.log(`🎲 Rival origin: ${cd.name}.`, 'note', 6400);
+      G.log('🕵 Scouts whisper of the rival chief: ' + AI.persona().blurb + ' ' + cd.whisper, 'note', 6400);
+    };
+    post();
   },
+  INTEL_WAIT_MS: 60000,   // from the founding: a minute, or the news is stale
 
   // the player keeps card i (the draft screen calls this; tests/demo auto-pick)
   pick(i) {
@@ -654,6 +672,16 @@ const Cards = {
     i = Math.max(0, Math.min(D.hand.length - 1, i | 0));
     const c = D.hand[i];
     this.apply('P', c);
+    /* WHAT THE KEEP PLANTS IS WAITED FOR (tests/boot.mjs §8): the founding
+       counted only what the opening world showed THEN, so the archers, the
+       sapper, the warship or the rider a card plants now are asked for here,
+       counted, through each kind's own loader — the world never opens on a
+       stand-in for them. Only for a world being founded (a loaded save's
+       belt-and-braces pick is covered by loadJSON's own ask, made after its
+       tiers are known), and never for the title's demo, which wears no strips.
+       A loader fault can only cost a picture: the keep itself always lands. */
+    if (!(window.Screens && Screens._demo) && G._freshRun && window.Assets && Assets.loadUnitsArt && G.artShown)
+      try { Assets.loadUnitsArt(G.artShown()); } catch (e) { /* the procedural cast stands in */ }
     D.done = true; D.pickI = i;
     if (S.stats) S.stats.leanIn = (D.leanKeys || []).includes(c.key) ? 1 : 0;
     const d = this.DEFS[c.key];

@@ -210,7 +210,11 @@ const G = {
                // kills their EXPLICIT attack orders made (never a tower's, never
                // a Defend stance's) — plus the DAYS the player gave an order on
                // (G.noteAct): a fight is engagement over time, never one burst
-               handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0 },
+               handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0,
+               // THE FIRST MINUTE (PX-49, G.runReport): the play-clock second of
+               // the run's first order (G.noteAct) and the lesson's step a skip
+               // left it on (Tutorial.skip) — null until they happen
+               firstActS: null, tutSkipAt: null },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -270,8 +274,9 @@ const G = {
     // …and a band within reach of EACH seat, so both sides start with a hunt
     // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
     {
-      const g = (CFG.START_RESOURCE || {}).game || 4;
-      for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g);
+      // the home ground is thin on game (CFG.WILD_HOME): 30% of the band, never none
+      const g = (CFG.START_RESOURCE || {}).game || 4, keep = (CFG.WILD_HOME || {}).keep;
+      for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g, keep);
     }
     Units.spawnHerd('deer', 8);
     Units.spawnHerd('cow', 8);
@@ -356,10 +361,18 @@ const G = {
        The other shell screens show the demo through a translucent gradient,
        where the procedural cast is the documented fallback. */
     if (!(window.Screens && Screens._demo)) {
-      Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
-      Assets.loadMilitaryArt('P'); Assets.loadSapperArt('P');
-      // the rival's army and sappers stand under the fog for the opening
-      // days: fetched behind the people, never held for (Assets.loadMilitaryArt)
+      /* THE PLAQUE WAITS ONLY FOR WHAT THE OPENING WORLD SHOWS (tests/boot.mjs
+         §6, §8). A phone sat ~16 s on "Preparing the world…" while the
+         founding counted every soldier kind of the player's army, both tribes'
+         villagers and both sapper sets — art for units nobody had. Counted
+         now: the player's people and the kinds standing on the map, and
+         whatever any owner shows on ground in sight (G.artShown); everything
+         else is fetched behind them in the background tier, first the
+         player's own army, then the rival's people under the fog. The keep
+         asks for what an origin card plants (Cards.pick). */
+      Assets.loadUnitsArt(this.artShown());
+      Assets.loadMilitaryArt('P', true); Assets.loadSapperArt('P', true);
+      Assets.loadVillagerArt('A', true);
       Assets.loadMilitaryArt('A', true); Assets.loadSapperArt('A', true);
     }
     // seed the homestead memory QUIETLY: a town that starts or loads already
@@ -398,6 +411,32 @@ const G = {
     for (const u of S.units) if (u.owner === 'R' && u.tribe) want.add(u.tribe);
     for (const t of want) Sprites.barbFor(t);
   },
+  /* WHAT THE OPENING WORLD SHOWS — the units whose strips a founding or a
+     load waits for (newGame, loadJSON, Cards.pick). artPresent: every unit
+     of one owner the world holds or is about to hold — standing, aboard a
+     hull, in a yard's queue or held reserve, sheltered in the hall (a kind
+     carried as {kind, owner}). artShown: the player's own, and every unit of
+     ANY owner standing on ground the player can see now — fog-honest, so a
+     hidden rival is never waited for and its timing tells nothing. */
+  artPresent(owner) {
+    const out = [];
+    for (const u of S.units) {
+      if (u.owner === owner) out.push(u);
+      if (u.cargo) for (const c of u.cargo) if (c && c.owner === owner) out.push(c);
+    }
+    for (const b of S.buildings) if (b.owner === owner) {
+      for (const q of (b.queue || [])) if (q && q.unit) out.push({ kind: q.unit, owner });
+      for (const q of (b.hold || [])) if (q && q.unit) out.push({ kind: q.unit, owner });
+    }
+    if (owner === 'P' && S.garrison && S.garrison.length) out.push({ kind: 'villager', owner: 'P' });
+    return out;
+  },
+  artShown() {
+    const out = this.artPresent('P');
+    for (const u of S.units)
+      if (u.owner !== 'P' && MapGen.inB(u.x | 0, u.y | 0) && this.visibleAt(u.x | 0, u.y | 0)) out.push(u);
+    return out;
+  },
 
   // the rare start extras: a spearman, a scout, a standing workplace, a rich cache
   applyStartExtra(ex, p, gen) {
@@ -426,12 +465,17 @@ const G = {
     }
   },
 
-  log(msg, warn, ms) {
+  /* `refusal`: this line is the game saying no to the player's own order (no
+     shore to land on, a seam out of reach) — it answers every repeat, as a
+     tap's refusal does (UI.toast, tests/feedback.mjs). Everything else is a
+     game event and keeps the collapse. */
+  log(msg, warn, ms, refusal) {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
     // game-event notes dedupe (repeat "under attack" spam collapses); the
-    // full history always lands in the event log above
-    UI.toast(msg, warn, ms, true);
+    // full history always lands in the event log above. Hands back the toast
+    // shown, if one was (Bld.releaseTrained folds a burst into one)
+    return UI.toast(msg, warn, ms, !refusal, true);   // the world's news: it may wait out a lesson's note
   },
 
   /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war
@@ -475,6 +519,11 @@ const G = {
   noteAct() {
     if (typeof S === 'undefined' || !S || !S.stats || S.over) return;
     if (window.Screens && Screens._demo) return;
+    // …and the play clock's second of the run's FIRST order (first_act_s,
+    // PX-49), stamped once, before the once-a-day return. A save from before
+    // the stamp that had already given orders reads -1 (unknown, loadJSON),
+    // never the clock at its next order
+    if (S.stats.firstActS == null) S.stats.firstActS = Math.round(S.playtime || 0);
     if (S.stats.actDay === S.day && S.stats.actDays) return;
     S.stats.actDay = S.day;
     S.stats.actDays = (S.stats.actDays || 0) + 1;
@@ -2687,6 +2736,10 @@ const G = {
     if (ex) { for (let i = 0; i < ex.length; i++) if (ex[i]) { if (lit && lit[i]) charted++; else seen++; } }
     const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
       && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+    /* THE FIRST MINUTE (PX-49, tests/telemetry.mjs §7): when and how this
+       world opened in THIS page (Screens._enterNow) — never in the save, so a
+       world loaded or entered some other way answers unknown */
+    const op = (window.Screens && Screens._opened && Screens._opened.get(S)) || null;
     return {
       outcome, cause,
       mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
@@ -2726,6 +2779,19 @@ const G = {
         special: S.special || null,
         special_fired: !!S.specialDay,
         special_day: S.specialDay || null,
+        // THE FIRST MINUTE (PX-49): on every ending, real and closed_tab,
+        // null when unknown and never absent. The play clock's second of the
+        // run's first order; the lesson's step a skip left it on; wall_s
+        // BESIDE 'seconds', never replacing it — the run's seconds with this
+        // page's share timed by the wall clock while the page is in view (the
+        // play clock adds at most 0.1 s a frame, so a slow phone counts short;
+        // pauses still count here, so the two bracket the time played); and,
+        // for a world this page CONTINUED (which sends no run_start), how long
+        // its press waited behind "Preparing the world…"
+        first_act_s: (typeof st.firstActS === 'number' && st.firstActS >= 0) ? st.firstActS : null,
+        tut_skip_at: (typeof st.tutSkipAt === 'string' && st.tutSkipAt) ? st.tutSkipAt.slice(0, 24) : null,
+        wall_s: (op && Screens._vis) ? Math.round(op.play + Math.max(0, Screens._vis() - op.vis) / 1000) : null,
+        resume_prep_ms: op && op.resumeMs != null ? op.resumeMs : null,
         // THE GAME'S OWN ERRORS (build 107; the dashboard's "hit an error"
         // and its list of the commonest): how many faults the recorder caught
         // in this sitting, and the first of them, cut short. Guarded on the
@@ -2935,6 +3001,11 @@ const G = {
     if (data.stats.handKills == null) data.stats.handKills = 0;
     // …and could not tell on which days orders were given: every day it reached
     if (data.stats.actDays == null) { data.stats.actDays = Math.max(0, data.day | 0); data.stats.actDay = data.day | 0; }
+    // …nor when the first order came (first_act_s): a save that has given
+    // orders reads unknown (-1), never the clock at its next one; a save that
+    // has given none learns its first. And no lesson's skip was remembered.
+    if (data.stats.firstActS === undefined) data.stats.firstActS = data.stats.actDays ? -1 : null;
+    if (data.stats.tutSkipAt === undefined) data.stats.tutSkipAt = null;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
@@ -3114,10 +3185,19 @@ const G = {
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting
     this.warmFx();
     // tier is DERIVED, never stored: a loaded save recomputes from its
-    // Town Centers (onNewGame just dropped the cache) and re-asks for art
-    Assets.loadVillagerArt('P'); Assets.loadVillagerArt('A');
-    Assets.loadMilitaryArt('P'); Assets.loadMilitaryArt('A');
-    Assets.loadSapperArt('P'); Assets.loadSapperArt('A');
+    // Town Centers (onNewGame just dropped the cache) and re-asks for art.
+    /* A LOAD WAITS ONLY FOR THE KINDS IT HOLDS (tests/boot.mjs §8): it used
+       to count both tribes' villagers, both whole armies and both sapper
+       sets — a phone Continue always sat out the plaque's 15 s floor. Counted
+       now: every kind the player holds, every kind the rival holds but its
+       villagers, and anything of any owner on ground in sight (the rival's
+       villagers included, then); everything else goes behind, in the
+       background tier. */
+    Assets.loadUnitsArt(this.artShown());
+    Assets.loadUnitsArt(this.artPresent('A').filter(u => u.kind !== 'villager'));
+    Assets.loadVillagerArt('P', true); Assets.loadVillagerArt('A', true);
+    Assets.loadMilitaryArt('P', true); Assets.loadMilitaryArt('A', true);
+    Assets.loadSapperArt('P', true); Assets.loadSapperArt('A', true);
     // seed the homestead memory QUIETLY: a town that loads already bonded keeps
     // its bonus without celebrating bonds it has had for a hundred days
     Bld.syncHomesteads(true);
@@ -3148,6 +3228,7 @@ const G = {
   },
   SHELL_DRAW_MS: 130,     // how often the world is repainted behind a shell screen
   SHELL_STILL_MS: 1000,   // …and a paused world (the draft, the pause menu), which does not move
+  PREFETCH_MS: 100,       // how often the opening view's ground is asked for while a world waits (TerrainX.prefetch)
   // the title's painted backdrop, decoded and on the page (same file the
   // splash shows, so the cross-fade has no scene change in it)
   titleGlenUp() {
@@ -3265,6 +3346,24 @@ const G = {
         else G._shellDrawT = performance.now();
       }
       if (!skip) G._safe(() => R.draw(dt), 'render');
+      /* THE GROUND IS READY WHEN THE WORLD OPENS (tests/terrain-v4.mjs §12):
+         the V4 ground's chunks are asked for from R.draw alone, which does not
+         run behind the draft or the plaque, so every world opened on flat
+         stand-in ground that popped in square by square. While a world is
+         being FOUNDED (its draft) or ENTERED (the plaque — a Continue's
+         included) and is not being drawn, the workers are asked for the view
+         it will open on: this camera, at the zoom enterGame gives it. Never
+         behind the pause menu or Settings — a played world's own view is what
+         its draws keep — never for the title's demo, never a draw. Guarded on
+         the method, so a cached older terrain.js simply stands down. */
+      else if (window.TerrainX && TerrainX.prefetch && TerrainX.on && TerrainX.ready && !S.over && window.Screens &&
+               !Screens._demo && (Screens._entering || (S.played === false && Screens.current === 'draft')) &&
+               performance.now() - (G._pfT || 0) >= (Screens._entering ? 0 : G.PREFETCH_MS)) {
+        // behind the plaque the press is waiting on this ground (enterGame): every frame, and
+        // every arrival in; behind the draft the cards are moving, so a glance rate and one
+        G._pfT = performance.now();
+        G._safe(() => { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z, Screens._entering ? 6 : 0); }, 'prefetch');
+      }
       /* the title is ready when the GLEN is on screen (tests/boot.mjs): the
          painted backdrop is opaque, so the demo world behind it can bake
          whenever its art lands — waiting for that bake held the splash on a

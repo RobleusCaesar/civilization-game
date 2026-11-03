@@ -163,6 +163,17 @@
   .res canvas { width: 15px; height: 15px; image-rendering: pixelated; flex: 0 0 auto; }
   .fnet { font-size: 10px; font-weight: 700; opacity: 0.72; margin-left: 1px; }
   .fnet.bad { color: #ff8a80; opacity: 1; }
+  /* THE CHIPS ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a chip holds
+     its number: on a phone each resource chip takes the room its own number
+     needs and the four share what is left, so a five-figure larder and its
+     daily change never spill out of the food chip; the narrowest phones close
+     the gaps a little. A desktop keeps its capped, evenly spread chips. */
+  #topbar [data-chip] { cursor: pointer; }
+  @media (max-width: 899px) { #topbar .trow:first-child .res { flex: 1 1 auto; } }
+  @media (max-width: 400px) {
+    #topbar .trow:first-child { gap: 3px; }
+    #topbar .trow:first-child .res { gap: 3px; padding-left: 4px; padding-right: 4px; }
+  }
   #rPopChip { flex: 0 0 auto; padding: 4px 9px; }
   #rDay { margin-left: auto; color: var(--gold); padding-right: 4px; }
   .iconbtn {
@@ -173,8 +184,9 @@
 
   /* ---- toasts / event log ---- */
   #toasts {
-    /* --ww-h: the rival-wonder banner's height while it heads the column */
-    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px));
+    /* --ww-h: the rival-wonder banner's height while it heads the column;
+       --tut-h: how far a lesson card seated at the top reaches past it (js/tutorial.js) */
+    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px) + var(--tut-h, 0px));
     z-index: 9; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
     max-width: 66%;   /* clears the minimap, which now shares the top strip */
   }
@@ -186,6 +198,12 @@
   }
   .toast.warn { border-left-color: var(--danger); }
   @keyframes toastIn { from { transform: translateX(-12px); opacity: 0; } }
+  /* a refusal answering a second tap shakes once (UI.toast, tests/feedback.mjs);
+     under reduced motion it stands still and its plate flares instead */
+  .toast.shake { animation: toastShake .15s linear; }
+  @keyframes toastShake { 25% { transform: translateX(-4px); } 50% { transform: translateX(3px); } 75% { transform: translateX(-2px); } }
+  @media (prefers-reduced-motion: reduce) { .toast.shake { animation: toastFlare .35s ease-out; } }
+  @keyframes toastFlare { from { background: rgba(96,32,22,0.96); } }
 
   /* ---- minimap ---- */
   /* minimap lives top-right, clear of the (almost always open) bottom menu */
@@ -203,6 +221,12 @@
     min-width: 30px; min-height: 30px; border: 1px solid #4a4232; border-radius: 8px;
     background: var(--bar-bg); color: var(--dim); font-size: 12px; font-weight: 700;
   }
+  /* …and it hits at 44x44 though it is drawn 30x30 (PX-14): an invisible
+     reach into the 4px gap under the map (never onto it — the map's own
+     canvas scrubs the view), 10px down (short of the army banners), 8px
+     left and 6px right, to the screen's edge. The 1px border is the extra
+     pixel in each number. */
+  #miniToggle::after { content: ''; position: absolute; top: -5px; bottom: -11px; left: -9px; right: -7px; }
   /* THE MAP LIVES IN THE TOP BAR, beside the cards (operator, 2026-10-29:
      "move the map icon up into the header… to keep the game UI clean"). It
      opens and folds the minimap, which still unfolds in its own corner with
@@ -212,6 +236,19 @@
   #mapBtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
   #mapBtn svg { width: 24px; height: 24px; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
   #mapBtn[aria-pressed="true"] { background: var(--btn-hi); box-shadow: inset 0 -2px 0 rgba(232,193,90,.55); }
+  /* EVERY TOP-BAR BUTTON IS A FINGER TALL (PX-14, tests/desktop-layout.mjs
+     §3): Pause and Menu were drawn 34x34 with nothing round them, where the
+     map and the deck already took the bar's 5px above and below. One rule
+     for all four now; the reach stays inside the bar, and no width is taken
+     from the 3px between them. */
+  #topbar .iconbtn { position: relative; }
+  #topbar .iconbtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
+  /* …and a positioned Pause paints over whatever positioned thing came
+     before it, which is the deck's count badge: it hangs 6px past the deck
+     button into a phone's 3px gap, and its gold ring lost its right edge
+     under Pause. The badge takes no taps (pointer-events: none), so lifting
+     it gives back 127's picture and moves no hit. */
+  #topbar #deckBtn .dkBadge { z-index: 1; }
   /* …and on a phone the second row makes room for it: four 34px buttons sit
      where three 44px ones did, so two running cards' timers still fit beside
      the tribe and the day (tests/deck-ui.mjs twoRunningCardsFitAPhonesRow).
@@ -260,6 +297,22 @@
     background-image: linear-gradient(180deg, rgba(255,222,160,.09), rgba(255,222,160,.04)), var(--wood-tex);
     box-shadow: inset 0 1px 0 rgba(232,193,90,.28);
     font-size: 11px; font-weight: 700; padding: 0 10px;
+  }
+  /* THE FOLDED TAB IS A FINGER TALL WHERE IT IS DRAWN 22px (PX-14,
+     tests/desktop-layout.mjs §3): every gather, build or station order folds
+     the menu, and this tab is the only way back — a tap 12-16px above it
+     used to land in the world. An invisible reach 16px up and 6px down (the
+     bar's own top padding) makes the hit box 44px; its width stays the
+     tab's own. FOLDED ONLY — the menu tucked away and no panel up — because
+     an OPEN tab moves: a tap that selects a unit lifts the panel, and the
+     tab with it, under the finger, and the click the browser sends after
+     the tap lands where the finger was. A reach there hid the panel the tap
+     had just opened (measured, a 22px band became 44) and took ground taps
+     from placement. The folded tab only moves DOWN, away from any finger.
+     ::before, because ::after is the Master Builders badge
+     (js/deckfx-town.js). The 1px border is why it reads -17px. */
+  #bmToggle:has(~ #buildmenu[style*="display: none"]):not(:has(~ #panel.show))::before {
+    content: ''; position: absolute; left: -1px; right: -1px; top: -17px; bottom: -6px;
   }
   #buildmenu {
     display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -367,6 +420,26 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.5);
   }
   #placeWhy.amber { border-color: #c8a050; color: #f0e0b8; }
+  /* BEFORE THE GHOST IS PARKED the ✗ stands in a fixed row at the foot of the
+     map, clear of the Build tab under it (the collapsed bar is 10px plus half
+     the home-indicator inset, the tab 22px over it), with one line on how to
+     place beside it (UI._placeDomSync's `pre`, tests/placement.mjs) — never
+     riding the ghost, so a tap meant for the ground can never land on it.
+     The line lets taps through to the map, as the chip does. */
+  #placeBtns.pre {
+    top: auto; left: calc(env(safe-area-inset-left, 0px) + 8px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 40px);
+    gap: 8px; align-items: center;
+  }
+  #placeHow {
+    display: none; max-width: calc(100vw - 76px); padding: 6px 12px; border-radius: 6px;
+    background: rgba(30,22,14,.92); border: 1px solid #8a7550;
+    color: #f0e6cc; font-size: 13px; font-weight: 700; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; letter-spacing: .2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+  }
+  #placeBtns.pre #placeHow { display: block; }
+  #placeBtns.pre #placeOk { display: none; }
 
   /* ---- context panel ---- */
   #panel { display: none; }
@@ -430,6 +503,23 @@
   .abtn.sel { border-color: var(--gold); background: #514627; }
   #panelClose { position: absolute; right: 10px; margin-top: -2px; }
   #helpToggle { position: absolute; right: 58px; margin-top: -2px; min-width: 40px; }
+  /* THE RARE ACT, SMALL AND RED, BESIDE THE ✕ (UI.killBtn — operator,
+     2026-11-02): Demolish, Banish and Scuttle are an icon in a dark red
+     plate, the ✕'s own size, never a big button in the actions. Armed, it
+     glows and the full warning comes out at the head of the actions.
+     AT REST IT IS QUIET (operator, the same day: "a little too bright, grabs
+     way too much attention… dial back the colors by 50%"): the plate is the
+     red mixed halfway back to the ordinary button's brown, and the icon
+     wears half its colour (.pki) — only the armed state speaks in red. */
+  .abtn.pkill { position: absolute; right: 58px; margin-top: -2px; min-width: 40px; padding: 4px 8px;
+    font-size: 16px; border-color: #3f1e15;
+    background: linear-gradient(180deg, #49271a, #392014); box-shadow: inset 0 1px 0 var(--edge); }
+  .abtn.pkill .pki { filter: saturate(.5) brightness(.85); }
+  .abtn.pkill:active { background: #5d3321; }
+  .abtn.pkill.armed { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(224,101,80,.45), inset 0 1px 0 rgba(255,170,140,.2); }
+  .abtn.pkill.armed .pki { filter: none; }
+  #helpToggle ~ .abtn.pkill { right: 106px; }
+  #panel .phead.k3 > div { padding-right: 144px; }   /* clear the red button, the −/ℹ️ and the ✕ */
 
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }
@@ -545,6 +635,32 @@
      waiting for a map to bake */
   #shellNight { position: absolute; inset: 0; display: none; pointer-events: none; }
   #shell.night #shellNight { display: block; }
+  /* THE SHELL'S ONE MESSAGE LINE (Screens.say, PX-69): every toast is hidden
+     off the playing screen, so a failed Continue, a save that failed or
+     worked, a refused import or identity said nothing. One short line over
+     whichever shell screen is up, above the home bar; a tap puts it away. */
+  #shellMsg {
+    position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+    transform: translateX(-50%); z-index: 12; box-sizing: border-box;
+    width: max-content; max-width: min(440px, calc(100% - 32px)); margin: 0;
+    padding: 9px 14px; border-radius: 6px; text-align: center; cursor: pointer;
+    background: rgba(18,14,9,0.95); border: 1px solid var(--edge); border-left: 3px solid var(--gold);
+    color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.4;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.55); display: none;
+  }
+  #shellMsg.show { display: block; animation: shellMsgIn .2s ease-out; }
+  #shellMsg.bad { border-left-color: var(--danger); }
+  /* …but never over a title plaque (tests/title.mjs §8): held sideways, a
+     phone's title column fills the height, and the line at the foot sat
+     over Load and Cards for its seven seconds — a tap on Load only put it
+     away. On a landscape window the title's line rides at the top (over the
+     logo on a phone, the sky on a desktop) — never a plaque; a portrait
+     title keeps it at the foot, where the column leaves the ground clear. */
+  @media (orientation: landscape) {
+    #scrTitle.show ~ #shellMsg { top: calc(var(--safe-top) + 8px); bottom: auto; }
+  }
+  @keyframes shellMsgIn { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #shellMsg.show { animation: none; } }
   .shead {
     display: flex; align-items: center; gap: 10px; width: 100%;
     max-width: 560px; margin: 0 auto; flex: 0 0 auto;
@@ -1657,17 +1773,17 @@
 
 <div id="topbar">
   <div class="trow">
-    <span class="res"><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span><span id="rFoodNet" class="fnet"></span></span>
-    <span class="res"><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
-    <span class="res"><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
-    <span class="res"><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>
+    <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store, and what it gains or loses a day. Tap for the sums."><canvas class="ric" data-ic="food"></canvas><span id="rFood">0</span><span id="rFoodNet" class="fnet"></span></span>
+    <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><canvas class="ric" data-ic="wood"></canvas><span id="rWood">0</span></span>
+    <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><canvas class="ric" data-ic="stone"></canvas><span id="rStone">0</span></span>
+    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><canvas class="ric" data-ic="gold"></canvas><span id="rGold">0</span></span>
   </div>
   <div class="trow">
-    <span class="res" id="rPopChip"><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
-    <span id="rDay">Day 1</span>
+    <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><canvas class="ric" data-ic="pop"></canvas><span id="rPop">0/0</span></span>
+    <span id="rDay" data-chip="day" role="button" tabindex="0" aria-label="Day" title="The day. Tap to see how long a day lasts.">Day 1</span>
     <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M5 12 L17 8 L31 12 L43 8 L43 40 L31 44 L17 40 L5 44 Z" fill="#e6cf95" stroke="#140d06" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 8 L31 12 L31 44 L17 40 Z" fill="#7a5a2a" fill-opacity=".22"/><path d="M6.4 11.6 L17 8.2" stroke="#fff6d6" stroke-opacity=".75" stroke-width="1" stroke-linecap="round"/><path d="M5.9 22 Q11 18.4 15 21.6 Q12.6 26.4 5.9 26.6 Z" fill="#6f9fd6" stroke="#3d5f86" stroke-width=".8"/><path d="M20 15.6 Q27 13.4 33.6 17.4 Q38.6 15.6 41.6 19 L41.6 31 Q35 34.6 28.4 31.4 Q22.6 33.6 19.2 29 Q16.6 22.4 20 15.6 Z" fill="#7d9a4c" stroke="#3e5222" stroke-width=".9"/><path d="M24 23.6 L26.6 21.4 L29.4 24 Z" fill="#a8977a" stroke="#4a3f2c" stroke-width=".6"/><path d="M9 35.4 Q14 31.6 19.6 33.6 T30 30.4 T36.4 24.6" fill="none" stroke="#8a2a1c" stroke-width="1.5" stroke-dasharray="2.2 2" stroke-linecap="round"/><path d="M34.2 22.2 L38.6 26.6 M38.6 22.2 L34.2 26.6" stroke="#b3241a" stroke-width="2" stroke-linecap="round"/></svg></button>
-    <button class="iconbtn" id="btnPause">⏸</button>
-    <button class="iconbtn" id="btnMenu">☰</button>
+    <button class="iconbtn" id="btnPause" title="Pause or resume" aria-label="Pause or resume">⏸</button>
+    <button class="iconbtn" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
   </div>
 </div>
 
@@ -1991,7 +2107,8 @@
       <section><div class="gpage">
         <img class="gart" src="assets/ui/guide/wheat.png" alt="" width="96" height="96">
         <h3>Feed the tribe</h3>
-        <p>Hungry villagers down tools. Plant <b>farms</b> by fertile soil, hunt
+        <p>When the stores run dry, soldiers desert — villagers keep working, so
+          the town can farm its way back. Plant <b>farms</b> by fertile soil, hunt
           the woods, fish where the fish jump.</p>
         <p>Station a villager at a farm, lodge or quarry and it works all day —
           a fed village runs itself.</p>
@@ -2065,50 +2182,55 @@
     <div id="howDots"></div>
   </div>
 
+  <!-- the shell's one message line (Screens.say) -->
+  <p id="shellMsg" role="status" aria-live="polite"></p>
+
 </div>
 
-<script src="test127/js/feedback.js?v=127"></script>
-<script src="test127/js/config.js?v=127"></script>
-<script src="test127/js/audio.js?v=127"></script>
-<script src="test127/js/config.supabase.js?v=127"></script>
-<script src="test127/js/vendor/supabase.js?v=127"></script>
-<script src="test127/js/backend.js?v=127"></script>
-<script src="test127/js/competition.js?v=127"></script>
-<script src="test127/js/score.js?v=127"></script>
-<script src="test127/js/cards.js?v=127"></script>
-<script src="test127/js/deck.js?v=127"></script>
-<script src="test127/js/artstyle.js?v=127"></script>
-<script src="test127/js/sprites.js?v=127"></script>
-<script src="test127/js/formations.js?v=127"></script>
-<script src="test127/js/relics.js?v=127"></script>
-<script src="test127/js/assets.js?v=127"></script>
-<script src="test127/js/dev.js?v=127"></script>
-<script src="test127/js/map.js?v=127"></script>
-<script src="test127/js/buildings.js?v=127"></script>
-<script src="test127/js/units.js?v=127"></script>
-<script src="test127/js/combat.js?v=127"></script>
-<script src="test127/js/ai.js?v=127"></script>
-<script src="test127/js/render.js?v=127"></script>
-<script src="test127/js/beasts.js?v=127"></script>
-<script src="test127/js/defeatart.js?v=127"></script>
-<script src="test127/js/victoryart.js?v=127"></script>
-<script src="test127/js/ui.js?v=127"></script>
-<script src="test127/js/screens.js?v=127"></script>
-<script src="test127/js/patchnotes.js?v=127"></script>
-<script src="test127/js/settings.js?v=127"></script>
-<script src="test127/js/titlescreen.js?v=127"></script>
-<script src="test127/js/tutorial.js?v=127"></script>
-<script src="test127/js/deckfx.js?v=127"></script>
-<script src="test127/js/deckfx-town.js?v=127"></script>
-<script src="test127/js/deckfx-army.js?v=127"></script>
-<script src="test127/js/deckfx-growth.js?v=127"></script>
-<script src="test127/js/deckfx-rival.js?v=127"></script>
-<script src="test127/js/deckui.js?v=127"></script>
-<script src="test127/js/deckscreens.js?v=127"></script>
-<script src="test127/js/cardintro.js?v=127"></script>
-<script src="test127/js/game.js?v=127"></script>
-<script src="test127/js/terrain-core.js?v=127"></script>
-<script src="test127/js/terrain.js?v=127"></script>
-<script src="test127/js/terrain-v5.js?v=127"></script>
+<script src="test135/js/feedback.js?v=135"></script>
+<script src="test135/js/config.js?v=135"></script>
+<script src="test135/js/audio.js?v=135"></script>
+<script src="test135/js/config.supabase.js?v=135"></script>
+<script src="test135/js/vendor/supabase.js?v=135"></script>
+<script src="test135/js/backend.js?v=135"></script>
+<script src="test135/js/competition.js?v=135"></script>
+<script src="test135/js/score.js?v=135"></script>
+<script src="test135/js/cards.js?v=135"></script>
+<script src="test135/js/deck.js?v=135"></script>
+<script src="test135/js/artstyle.js?v=135"></script>
+<script src="test135/js/sprites.js?v=135"></script>
+<script src="test135/js/formations.js?v=135"></script>
+<script src="test135/js/relics.js?v=135"></script>
+<script src="test135/js/assets.js?v=135"></script>
+<script src="test135/js/dev.js?v=135"></script>
+<script src="test135/js/map.js?v=135"></script>
+<script src="test135/js/buildings.js?v=135"></script>
+<script src="test135/js/units.js?v=135"></script>
+<script src="test135/js/combat.js?v=135"></script>
+<script src="test135/js/ai.js?v=135"></script>
+<script src="test135/js/render.js?v=135"></script>
+<script src="test135/js/footing.js?v=135"></script>
+<script src="test135/js/beasts.js?v=135"></script>
+<script src="test135/js/defeatart.js?v=135"></script>
+<script src="test135/js/victoryart.js?v=135"></script>
+<script src="test135/js/ui.js?v=135"></script>
+<script src="test135/js/screens.js?v=135"></script>
+<script src="test135/js/patchnotes.js?v=135"></script>
+<script src="test135/js/settings.js?v=135"></script>
+<script src="test135/js/titlescreen.js?v=135"></script>
+<script src="test135/js/tutorial.js?v=135"></script>
+<script src="test135/js/deckfx.js?v=135"></script>
+<script src="test135/js/deckfx-town.js?v=135"></script>
+<script src="test135/js/deckfx-army.js?v=135"></script>
+<script src="test135/js/deckfx-growth.js?v=135"></script>
+<script src="test135/js/deckfx-rival.js?v=135"></script>
+<script src="test135/js/deckui.js?v=135"></script>
+<script src="test135/js/deckscreens.js?v=135"></script>
+<script src="test135/js/cardintro.js?v=135"></script>
+<script src="test135/js/vote.js?v=135"></script>
+<script src="test135/js/game.js?v=135"></script>
+<script src="test135/js/terrain-core.js?v=135"></script>
+<script src="test135/js/terrain.js?v=135"></script>
+<script src="test135/js/terrain-v5.js?v=135"></script>
 </body>
 </html>

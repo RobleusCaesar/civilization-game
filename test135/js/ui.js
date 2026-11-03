@@ -31,6 +31,19 @@ const UI = {
   /* kept APART from confirmDemolish on purpose: a building can offer both
      Cancel and Demolish, and one shared slot would arm the pair together */
   confirmCancel: 0,      // building id awaiting cancel-the-works confirmation
+  /* A TWO-TAP CONFIRM IS TWO DECISIONS, NEVER ONE DOUBLE-TAP (tests/banish.mjs,
+     boats-moat-scuttle.mjs, build-cancel.mjs): the first tap arms by
+     relabelling the same button in place, so a quick double-tap used to arm
+     AND confirm in one gesture — a house demolished, a villager banished. Each
+     slot remembers when it was armed; a confirming tap inside CONFIRM_GAP_MS
+     of that is the same gesture, ignored, and the button stays armed. The gap
+     is read off the taps' OWN timestamps, so a busy frame between them can
+     neither stretch a double-tap into two decisions nor squeeze two into one. */
+  CONFIRM_GAP_MS: 400,
+  _armedAt: { confirmDemolish: 0, confirmCancel: 0 },
+  _tapTime(e) { return (e && e.timeStamp > 0) ? e.timeStamp : performance.now(); },
+  armConfirm(slot, id, e) { this[slot] = id; this._armedAt[slot] = this._tapTime(e); this.renderPanel(); },
+  confirmTooSoon(slot, e) { return this._tapTime(e) - (this._armedAt[slot] || 0) < this.CONFIRM_GAP_MS; },
   wallDrag: null,        // tile chain while dragging a wall line
   wallGhost: null,       // [{x,y,ok,mask}] preview of the dragged line
   terraDrag: null,       // tile chain while dragging a sapper dig/clear line
@@ -130,6 +143,25 @@ const UI = {
     this.buildMenu();
     this.bindCanvas();
     this.bindButtons();
+    /* THE HUD'S NUMBERS EXPLAIN THEMSELVES (PX-18, tests/hud-info.mjs): a tap
+       or a click on a chip — the four goods, the food rate, the tribe, the
+       day — answers with a note in the rules' own numbers (UI.chipNote); Enter
+       or Space does the same from the keyboard. The player's own question, so
+       it is always answered (no collapse is asked for). */
+    this._chipEl = {};
+    document.querySelectorAll('#topbar [data-chip]').forEach(el => {
+      this._chipEl[el.dataset.chip] = el;
+      const say = e => {
+        if (!S || !S.res) return;
+        const rate = el.dataset.chip === 'food' && e && e.target && e.target.closest && e.target.closest('#rFoodNet');
+        const t = this.chipNote(rate ? 'foodRate' : el.dataset.chip);
+        if (t) this.toast(t, 'note');
+      };
+      // a pointer's click leaves no focus behind, so Enter in placement (or the
+      // deck's own keys) can never also open a note
+      el.addEventListener('click', e => { say(e); if (e.detail) el.blur(); });
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); say(e); } });
+    });
   },
 
   /* ---------------- build menu ---------------- */
@@ -175,7 +207,12 @@ const UI = {
         // tuck the build menu away so the whole map is visible to pick a site
         // (keepPlacing: don't cancel the building we just chose)
         this.setMenuCollapsed(true, true);
-        if (key === 'wall') this.placing = key;   // the wall keeps its line-drag flow
+        if (key === 'wall') {
+          this.placing = key;   // the wall keeps its line-drag flow
+          // …which arms with no ghost and no grid, so it says how it works:
+          // the next drag LAYS the line (PX-11, tests/placement.mjs)
+          this.toast('Drag along the ground to lay a wall — release to build', 'note');
+        }
         else this.enterPlacement(key);
         this.refreshMenu();
       });
@@ -326,7 +363,9 @@ const UI = {
           this.updateTerraGhost();
           this.downAt = null;
         } else {
-          this.downAt = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false };
+          // timed by the EVENT's own clock (PX-27): a busy frame between the
+          // press and the lift must never turn a tap into nothing
+          this.downAt = { x: e.clientX, y: e.clientY, t: this._tapTime(e), moved: false };
           // DRAG-TO-MOVE: a press that lands ON the current selection arms a
           // move order instead of a camera pan — dragging then pulls a tether
           // to the destination and release sends them. A press that never
@@ -337,6 +376,9 @@ const UI = {
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        // where the fingers are: the pinch carries the ground under them along
+        // as they travel (pinchMid lives only here, set and read by the pinch)
+        this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         this.downAt = null;
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
@@ -363,15 +405,20 @@ const UI = {
         } else if (this.terraDrag) {
           this.extendTerraDrag(R.screenToTile(e.clientX, e.clientY));
         } else {
-          if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8)
+          // the step that crosses the tap slop pans by ALL the travel since the
+          // press, not just its own few pixels — or every pan trails the finger
+          let px = dx, py = dy;
+          if (this.downAt && !this.downAt.moved && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8) {
             this.downAt.moved = true;
+            px = e.clientX - this.downAt.x; py = e.clientY - this.downAt.y;
+          }
           if (this.downAt && this.downAt.moved) {
             if (this.moveDragArm) {
               // the press started on the selection — this drag is an order, not
               // a pan: keep the tether pinned to the finger for the ghost
               this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
             } else {
-              R.cam.x -= dx / R.cam.z; R.cam.y -= dy / R.cam.z;
+              R.cam.x -= px / R.cam.z; R.cam.y -= py / R.cam.z;
               R.clampCam();
             }
           }
@@ -380,16 +427,23 @@ const UI = {
         p.x = e.clientX; p.y = e.clientY;
         const [a, b] = [...this.pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
         if (this.pinchD > 0) {
-          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-          this.zoomAt(mid.x, mid.y, d / this.pinchD);
+          // THE GROUND STAYS UNDER THE FINGERS: zoom about where they WERE,
+          // then carry that ground to where they ARE — two fingers moved
+          // together (no zoom) are simply a pan
+          const m0 = this.pinchMid || mid;
+          this.zoomAt(m0.x, m0.y, d / this.pinchD);
+          R.cam.x -= (mid.x - m0.x) / R.cam.z; R.cam.y -= (mid.y - m0.y) / R.cam.z;
+          R.clampCam();
         }
-        this.pinchD = d;
+        this.pinchD = d; this.pinchMid = mid;
       }
       p.x = e.clientX; p.y = e.clientY;
       e.preventDefault();
     });
     const up = e => {
+      const pinchEnds = this.pointers.size === 2 && this.pointers.has(e.pointerId);
       this.pointers.delete(e.pointerId);
       // what the player's people were doing before the gesture: a gesture that
       // changes it is an ORDER given today (G.noteAct — a defeat's card asks
@@ -410,7 +464,11 @@ const UI = {
         // release = the order lands where the finger lifted
         this.commitMoveDrag(e.clientX, e.clientY);
         this.moveDrag = null; this.moveDragArm = null;
-      } else if (this.downAt && !this.downAt.moved && performance.now() - this.downAt.t < 400) {
+      } else if (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000) {
+        // A STILL PRESS IS A TAP for up to a second (PX-27): one that never
+        // crossed the slop has no other meaning, so a deliberate half-second
+        // press selects instead of doing nothing (it was 400 ms, read off the
+        // handler's clock — a tap whose lift waited behind a busy frame died)
         // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
         // like unit within the grouping sphere, so a whole trebuchet line / fleet of
         // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
@@ -422,6 +480,20 @@ const UI = {
       }
       if (was && this._orderMoved(was)) G.noteAct();
       if (this.pointers.size < 2) this.pinchD = 0;
+      if (pinchEnds) {
+        // one of two fingers lifted: the other PANS on from where it rests —
+        // re-armed as a drag already under way, so it can never start a wall,
+        // terraform or move drag, nor be taken for a tap when it lifts
+        const [rest] = [...this.pointers.values()];
+        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true };
+        this.moveDragArm = null; this.pinchMid = null;
+      } else if (this.pointers.size === 2) {
+        // a third finger lifted: the pinch goes on with the two still down,
+        // measured from where they are now (no jump in zoom or ground)
+        const [a, b] = [...this.pointers.values()];
+        this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+        this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
       if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
     };
     cv.addEventListener('pointerup', up);
@@ -434,9 +506,21 @@ const UI = {
       this.placeDragging = false; this.placePtr = null;   // ghost survives, unparked
     });
     cv.addEventListener('wheel', e => {
-      this.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 0.89);
+      // IN PROPORTION TO THE GESTURE (tests/drag-move.mjs §10): a delta is
+      // read in its own units (lines ×16, pages × the window), so a trackpad
+      // flick of small deltas zooms a little and a mouse notch (~100 px)
+      // about 16%; each event is clamped so none can lurch. A ctrl+wheel is
+      // a trackpad PINCH — Chromium sends deltaY = −100·ln(scale) — so it
+      // follows the fingers' own scale. A fixed 12% a step ran a flick across
+      // the whole zoom range.
+      const dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1);
+      const f = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015));
+      this.zoomAt(e.clientX, e.clientY, Math.max(0.8, Math.min(1.25, f)));
       e.preventDefault();
     }, { passive: false });
+    // a right-click is an order on the map (it always was) — never the
+    // browser's menu too; the HUD and the minimap keep theirs
+    cv.addEventListener('contextmenu', e => e.preventDefault());
 
     document.getElementById('mini').addEventListener('pointerdown', e => {
       const r = e.target.getBoundingClientRect();
@@ -458,6 +542,19 @@ const UI = {
      the scan — the same rule AI.plot's pickSealFree follows. */
   PLACE_HYST: 0.18,      // tiles of stickiness past a cell boundary before the snap moves
   PLACE_EDGE: 44,        // css px band at the viewport edge that auto-pans while dragging
+  // the line beside the ✗ until the ghost is parked (PX-11, tests/placement.mjs)
+  PLACE_HOW: 'Drag to place, then tap ✓',
+  /* A STATION'S CHIP SAYS THE WORK, NOT THE JOKE (tests/worked-ground.mjs,
+     PX-07): the chip clips at 260px, and every station's whyGround leads
+     with a joke and ends with the instruction — so on a tile that was never
+     worked (refusal code 'ground', the station's own refusal) the chip says
+     the short, action-first form instead. The joke is still the ✓'s toast. */
+  PLACE_GROUND: {
+    lumber: 'Fell trees here first',
+    quarry: 'Break rock here first',
+    farm: 'Harvest fruit here first',
+    lodge: 'Hunt an animal here first',
+  },
 
   // did a press land on the ghost's drawn footprint? The forgiveness margin
   // is a SCREEN-space read (≥ ~26px), so a zoomed-out ghost is still a real
@@ -487,10 +584,15 @@ const UI = {
     /* NOWHERE TO STAND AT ALL (a farm before any soil is picked bare, a dock
        with no explored water): entering a mode with no ghost, no grid and no
        word of why is the design-review finding this closes — say why in the
-       building's own voice and stay in the menu. */
+       building's own voice and stay in the menu. A STATION SAYS ITS WORK
+       FIRST (tests/worked-ground.mjs, PX-07): on a fresh run this is four of
+       the five cards a phone shows, so the line is its short `whyNone` —
+       what to go and do, then the rule — in the game's gold: it is the
+       lesson of the first minute, not an alarm. The whyGround joke stays the
+       refusal on a tile. */
     const d = CFG.BUILDINGS[key];
-    this.toast(d.whyGround || (key === 'dock' ? 'No open water in reach of your town yet'
-      : 'No ground for this yet — explore or clear more land'), true);
+    this.toast(d.whyNone || d.whyGround || (key === 'dock' ? 'No open water in reach of your town yet'
+      : 'No ground for this yet — explore or clear more land'), 'note');
     this.exitPlacement();
     this.setMenuCollapsed(false);
   },
@@ -638,7 +740,7 @@ const UI = {
     if (r.warn === 'sealed') this.toast('Your town is walled in — only a gate lets your people out', true);
     // the materials land: a ring of dust billows out from under the new site
     if (R.startPlacePoof) R.startPlacePoof(g.x, g.y, Bld.size(key));
-    this.cue('confirm');
+    this.cue('place');   // the voice that exists ('confirm' had none)
     this.exitPlacement();
   },
   // ✗ / Esc: the ghost is discarded, the menu reopens with the selection
@@ -720,10 +822,13 @@ const UI = {
     if (this._placeEl) return this._placeEl;
     const el = document.createElement('div');
     el.id = 'placeUI';
+    // #placeHow rides the ✗'s row only before the ghost is parked (the
+    // `pre` row, _placeDomSync); parked, the row is the ✓/✗ pair as ever
     el.innerHTML =
       '<div id="placeWhy"></div>' +
       '<div id="placeBtns">' +
       '<button id="placeNo" aria-label="Cancel placement">✕</button>' +
+      '<div id="placeHow">' + this.PLACE_HOW + '</div>' +
       '<button id="placeOk" aria-label="Confirm placement">✓</button>' +
       '</div>';
     document.body.appendChild(el);
@@ -761,11 +866,23 @@ const UI = {
     const TL = CFG.TILE, z = R.cam.z, sz = Bld.size(this.placing);
     const sx = (g.x * TL - R.cam.x) * z, sy = (g.y * TL - R.cam.y) * z, sw = sz * TL * z;
     const vw = R.viewW(), vh = R.viewH();
-    // buttons: visible only when the ghost is parked; positioned above the
-    // footprint, flipped below when the top is tight, always fully on-screen
+    // buttons: the PAIR once the ghost is parked; positioned beneath the
+    // footprint, flipped above when the bottom is tight, always fully on-screen
     const btns = el.querySelector('#placeBtns');
     const showBtns = g.set && !this.placeDragging;
-    btns.style.display = showBtns ? 'flex' : 'none';
+    /* THE WAY OUT SHOWS FROM ARMING (tests/placement.mjs, PX-11): before the
+       ghost is parked the ✗ stands alone in a FIXED row at the foot of the
+       map, above the Build tab (the CSS's `.pre`), with one line on how to
+       place — never over the ground round the ghost, where a tap meant for the
+       ground would land on it. The ✓ still waits for the parked ghost. The
+       row stands aside while the ghost is dragged (a release must land on the
+       ground), and while the menu is open, whose lit card is the way out. */
+    const pre = !g.set && !this.placeDragging && !!this.menuCollapsed;
+    btns.style.display = (showBtns || pre) ? 'flex' : 'none';
+    if (btns.classList.contains('pre') !== pre) {
+      btns.classList.toggle('pre', pre);
+      if (pre) btns.style.transform = '';
+    }
     let btnsBelow = false;
     if (showBtns) {
       // the pair sits BENEATH the footprint — under the doorstep, not on a
@@ -787,7 +904,10 @@ const UI = {
     // It always takes the OPPOSITE side of the ✓/✗ pair, so they can't collide.
     const why = el.querySelector('#placeWhy');
     let msg = '';
-    if (v && !v.ok) msg = '⃠ ' + v.why;
+    // a station's own refusal is said as its work (PLACE_GROUND); any other
+    // ground refusal (the burnt wood's ash) keeps its own words
+    const gnd = v && v.code === 'ground' && v.why === (CFG.BUILDINGS[this.placing] || {}).whyGround && this.PLACE_GROUND[this.placing];
+    if (v && !v.ok) msg = '⃠ ' + (gnd || v.why);
     else if (v && !v.afford) msg = '⏳ Need ' + this._missingCostStr();
     // a WARNING rides a valid spot (sealing your own town in is allowed —
     // the chip just says what it means, so the choice is an informed one)
@@ -927,10 +1047,12 @@ const UI = {
       // genuinely underway: either the sapper is now actively on the job, or
       // (already mid-job elsewhere) this order is truly waiting behind it.
       const working = n > 0 && ((u.task && u.task.type === 'terraform') || (u.jobs && u.jobs.length > 0));
+      // the order that cannot be carried out says why, as a warning (the tap
+      // contract's rule 4); the dispatch itself stays silent
       this.toast(n
         ? (working ? `${noun} line: ${n} tile${n > 1 ? 's' : ''} — the sapper works them in order`
                    : 'No clear ground to stand beside — try a different tile')
-        : 'Those tiles are already queued');
+        : 'Those tiles are already queued', !!n && !working);
       if (working) this.dispatchedWorker();
       else { this.terraMode = null; this.renderPanel(); }   // nothing actually underway — stays selected
     } else if ((this.terraGhost || []).length) {
@@ -1010,8 +1132,10 @@ const UI = {
         const pick = Units.pickWorkOrder(v, sites.map(b2 => ({ x: b2.x, y: b2.y, diag: true, blocks: true, ref: b2 })));
         if (pick) start = pick.ref;
       }
+      // told in the gold: the line was laid AND paid for on release, so the
+      // player is told it happened (an unmarked toast is shown nowhere)
       if (v && Units.assignBuild(v, start))
-        this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`);
+        this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
       else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
       // done drawing — drop out of placement so stray taps don't add walls
       this.placing = null;
@@ -1959,7 +2083,7 @@ const UI = {
       if (!S.armies[m].length) delete S.armies[m];
     }
     S.armies[n] = live.slice();
-    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`);
+    this.toast(`🪖 Army ${n} mustered — tap its banner to return to it`, 'note');
     this.renderArmyBar(); this.renderPanel();
     return n;
   },
@@ -2288,7 +2412,13 @@ const UI = {
       if (u) byKind[u.kind] = (byKind[u.kind] || 0) + 1;
     }
     return Object.entries(byKind)
-      .map(([k, n]) => `${n} ${CFG.UNITS[k].name}${n > 1 ? 's' : ''}`).join(', ');
+      .map(([k, n]) => `${n} ${this.plural(CFG.UNITS[k].name, n)}`).join(', ');
+  },
+  // a count reads as English (PX-56): 3 Axemen, 2 Longbowmen, 2 Wolves, 4 Deer
+  plural(name, n) {
+    if (n === 1) return name;
+    return /man$/.test(name) ? name.slice(0, -3) + 'men' : /f$/.test(name) ? name.slice(0, -1) + 'ves'
+      : /(Deer|s)$/.test(name) ? name : name + 's';
   },
 
   // gate price for replacing a wall section, with the wall's demolish refund credited
@@ -2379,6 +2509,21 @@ const UI = {
   /* ONE WRITER for the button, because the villager's panel and the
      building's own panel offer exactly the same action on exactly the same
      works, and two copies would drift. */
+  /* THE RARE ACT IS A SMALL RED BUTTON BESIDE THE ✕ (operator, 2026-11-02:
+     "People may want to demolish, but it won't be often… it's no longer a
+     primary part of the UI"). Demolish, Banish and Scuttle — every act that
+     throws something away — sit in the panel's header, an icon in a red
+     plate, never in the actions grid. The first tap ARMS (UI.armConfirm) and
+     the warning comes out as a full-width plank at the head of the actions,
+     saying what is lost and what comes back; either the plank or the red
+     button confirms. Both carry the same data-act, so every handler and
+     contract finds them as before. */
+  killBtn(act, armed, icon, name) {
+    return `<button class="abtn pkill${armed ? ' danger armed' : ''}" data-act="${act}" title="${name}" aria-label="${name}"><span class="pki">${icon}</span></button>`;
+  },
+  killPlank(act, line, small) {
+    return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;
+  },
   cancelWorkButton(b) {
     const kind = Bld.cancelWork(b);
     if (!kind) return '';
@@ -2472,7 +2617,7 @@ const UI = {
       const lvN = document.getElementById('levyN');
       if (lvN) {
         const lv = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length;
-        lvN.textContent = `${lv} hand${lv === 1 ? '' : 's'} take up arms — they eat like soldiers`;
+        lvN.textContent = `${lv} hand${lv === 1 ? ' takes' : 's take'} up arms — they eat like soldiers`;
       }
       const upw = panel.querySelector('[data-act="upwalls"]');
       if (upw) upw.classList.toggle('cant', !Bld.canUpgradeWalls().ok);
@@ -2582,15 +2727,20 @@ const UI = {
       // lives there — that is the whole point of five distinct peoples.
       const nm = b.key === 'raidercamp' && b.tribe
         ? `Camp of ${G.tribeName(b.tribe)}` : d.name;
+      // the hall is never demolished; everything else of ours may be (killBtn)
+      const demoOk = b.owner === 'P' && b.key !== 'tc';
+      const demoArmed = demoOk && this.confirmDemolish === b.id;
+      const demoBack = demoOk ? Bld.costStr(Bld.demolishRefund(b)) : '';
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${b.owner === 'A' ? 'Rival ' : ''}${nm} <span style="color:var(--gold)">Lv ${b.level}</span></div>
         <div class="psub">${sub}</div></div>
-        <button class="abtn" id="panelClose">✕</button></div>`;
+        ${demoOk ? this.killBtn('demolish', demoArmed, '🔥', 'Demolish — refund ' + demoBack) : ''}<button class="abtn" id="panelClose">✕</button></div>`;
       // …and each people's one signature habit, so learning a camp's danger
       // is as simple as walking up and reading its fire (tests/tribe-traits.mjs)
       if (b.key === 'raidercamp' && b.tribe && G.tribeDef(b.tribe).trait)
         html += `<div class="psub" style="padding:2px 10px 6px">${G.tribeDef(b.tribe).trait}</div>`;
       html += '<div class="pactions">';
+      if (demoArmed) html += this.killPlank('demolish', 'Confirm demolish', `get back ${demoBack}`);
       if (b.owner === 'P') {
         const worker = Bld.hasWorker(b);
         if ((b.construction > 0 || b.upgrading > 0) && !worker)
@@ -2652,7 +2802,7 @@ const UI = {
             if (S.levy)
               html += `<button class="abtn sel" data-act="levy">⚔ Stand down<small>tools come out — Back to work returns them</small></button>`;
             else if (vills && threat)
-              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? '' : 's'} take up arms — they eat like soldiers</small></button>`;
+              html += `<button class="abtn" data-act="levy">⚔ Raise the levy<small id="levyN">${vills} hand${vills === 1 ? ' takes' : 's take'} up arms — they eat like soldiers</small></button>`;
             if (vills && threat) html += `<button class="abtn" data-act="shelter">🔔 Sound the horn<small id="shelterN">${vills} at work — all to shelter</small></button>`;
           }
           /* THE YARD'S TOOLS ARE ONE ROW (operator: "shrink the Set Rally
@@ -2725,17 +2875,10 @@ const UI = {
             }
             // an odd pay option stays BUTTON-sized, left, with the half-row
             // held by a spacer (the grid packer would otherwise stretch it
-            // panel-wide) — and Back shares its row with Demolish below, so
-            // the whole panel stays as condensed as any other building menu
+            // panel-wide); Back then takes the row below to itself
             if (payN % 2) html += '<span></span>';
             html += `<button class="abtn" data-act="tradeback">← Pick something else</button>`;
           }
-        }
-        if (b.key !== 'tc') {
-          const refund = Bld.costStr(Bld.demolishRefund(b));
-          html += this.confirmDemolish === b.id
-            ? `<button class="abtn danger" data-act="demolish">⚠️ Confirm demolish<small>get back ${refund}</small></button>`
-            : `<button class="abtn" data-act="demolish">💥 Demolish<small>refund ${refund}</small></button>`;
         }
       } else {
         html += `<span class="psub">Enemy structure — order defenders to attack it.</span>`;
@@ -2746,7 +2889,7 @@ const UI = {
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
       this.iconInto(ic, this.panelIconSprite(b));
-      panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => {
+      panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
         if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) this.toast(Bld.canUpgrade(b2).why, true); }
@@ -2799,7 +2942,7 @@ const UI = {
           this.setMenuCollapsed(true, true);
           this.toast(b2.rally
             ? 'Tap a new spot to move the rally — or tap the building to clear it'
-            : 'Tap a spot to rally — new units head there (tap the building to cancel)');
+            : 'Tap a spot to rally — new units head there (tap the building to cancel)', 'note');
         }
         else if (btn.dataset.act === 'levy') {
           if (S.levy) {
@@ -2809,7 +2952,7 @@ const UI = {
             const n = Units.raiseLevy();
             if (!n) { this.toast('No villagers to call to arms', true); return; }
             R.startHorn(Bld.cx(b2), Bld.cy(b2));
-            this.toast(`⚔ ${n} villager${n > 1 ? 's' : ''} take up arms — the levy eats like soldiers`);
+            this.toast(`⚔ ${n} villager${n === 1 ? ' takes' : 's take'} up arms — the levy eats like soldiers`, 'note');
           }
           this.renderPanel();
         }
@@ -2872,7 +3015,8 @@ const UI = {
         }
         else if (btn.dataset.act === 'cancelbuild') {
           if (!Bld.cancelWork(b2)) { this.confirmCancel = 0; this.renderPanel(); return; }
-          if (this.confirmCancel !== b2.id) { this.confirmCancel = b2.id; this.renderPanel(); return; }
+          if (this.confirmCancel !== b2.id) { this.armConfirm('confirmCancel', b2.id, e); return; }
+          if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
           this.confirmCancel = 0;
           // a cancelled SITE deselects itself on its way out (removeToRuin);
           // a cancelled upgrade leaves the building standing and selected
@@ -2882,7 +3026,8 @@ const UI = {
           }
         }
         else if (btn.dataset.act === 'demolish') {
-          if (this.confirmDemolish !== b2.id) { this.confirmDemolish = b2.id; this.renderPanel(); return; }
+          if (this.confirmDemolish !== b2.id) { this.armConfirm('confirmDemolish', b2.id, e); return; }
+          if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
           this.confirmDemolish = 0; this.confirmCancel = 0;
           if (Bld.demolish(b2)) return;   // demolish deselects via removeToRuin
         }
@@ -2901,8 +3046,8 @@ const UI = {
       html += `<div class="phead"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : 'Rival '}${names[lv - 1]} <span style="color:var(--gold)">Lv ${lv}</span></div>
         <div class="psub">HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water</div></div>
-        <button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions"><span class="psub">${own ? 'Reinforce for more stone and HP, or demolish to sever the crossing. Guard it — the enemy can hack it down.' : 'A rival crossing. Send soldiers here to sever it.'}</span>`;
+        ${own ? this.killBtn('brdemo', this.confirmDemolish === 'bridge', '🔥', 'Demolish — sever the crossing') : ''}<button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions">${own && this.confirmDemolish === 'bridge' ? this.killPlank('brdemo', 'Confirm — sever it', 'nothing comes back') : ''}<span class="psub">${own ? 'Reinforce for more stone and HP, or demolish to sever the crossing. Guard it — the enemy can hack it down.' : 'A rival crossing. Send soldiers here to sever it.'}</span>`;
       if (own && works) {
         // the works are standing: show the clock, and say plainly whose hands
         // it is waiting on. A span is reinforced by SAPPERS, like it was built.
@@ -2916,7 +3061,6 @@ const UI = {
         const days = CFG.BRIDGE.levels[lv].time || 2;
         html += `<button class="abtn wide ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
       }
-      if (own) html += `<button class="abtn ${this.confirmDemolish === 'bridge' ? 'danger' : ''}" data-act="brdemo">💥 ${this.confirmDemolish === 'bridge' ? 'Confirm — sever it' : 'Demolish'}</button>`;
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -2934,13 +3078,13 @@ const UI = {
         if (Bld.orderBridgeUpgrade(b2)) { this.toast('Bridge works laid out — Lv ' + b2.upTo); this.renderPanel(); this.refreshMenu(); }
         else this.toast('Not enough resources', true);
       });
-      const demo = panel.querySelector('[data-act="brdemo"]');
-      if (demo) demo.addEventListener('click', () => {
-        if (this.confirmDemolish !== 'bridge') { this.confirmDemolish = 'bridge'; this.renderPanel(); return; }
+      panel.querySelectorAll('[data-act="brdemo"]').forEach(demo => demo.addEventListener('click', e => {
+        if (this.confirmDemolish !== 'bridge') { this.armConfirm('confirmDemolish', 'bridge', e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
-      });
+      }));
     } else if (this.sel.type === 'group') {
       this.sel.ids = this.sel.ids.filter(id => Units.get(id));
       if (this.sel.ids.length === 0) { this.deselect(); return; }
@@ -3042,7 +3186,7 @@ const UI = {
         this.toast(!on ? 'Doctrine stood down'
           : mode === 'siege' ? '⚙️ Siege — tap a building to bombard; the line shields the guns'
           : mode === 'chaos' ? '🔥 Chaos — the army falls on everything within reach'
-          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else');
+          : '⚡ Strike — tap ONE target; the whole army hits it and nothing else', on ? 'note' : undefined);
         // the choice is made — the expander folds and its closed label wears it
         this.tacticsOpen = false;
         this.renderPanel();
@@ -3108,13 +3252,22 @@ const UI = {
       // the how-to text is collapsible for OWN units (enemy hints carry live
       // tactical info like stacked-attack warnings, so those always show):
       // − tucks it away, ℹ️ brings it back; the choice is remembered on-device
+      /* the hull's Scuttle and the villager's Banish ride the header beside
+         the ✕ (UI.killBtn) — rare acts, never the panel's main business */
+      const armedU = this.confirmDemolish === u.id;
+      const canScuttle = own && Units.isNaval(u), canBan = own && Units.isVillager(u);
+      const kill = canScuttle ? this.killBtn('scuttle', armedU, '🌊', 'Scuttle — sink the hull, free its place in the population')
+        : canBan ? this.killBtn('banish', armedU, '👋', 'Banish — send them away for good') : '';
+      const killArmed = !armedU ? ''
+        : canScuttle ? this.killPlank('scuttle', 'Confirm — sink her', 'no resources returned · its place in the population is freed')
+        : canBan ? this.killPlank('banish', 'Confirm — send them away', 'nothing comes back but their place in the population') : '';
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
-      html += `<div class="phead"><canvas id="pIcon"></canvas><div>
+      html += `<div class="phead${kill && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${Units.effDef(u)}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
-        ${helpBtn}<button class="abtn" id="panelClose">✕</button></div>
-        <div class="pactions">${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
+        ${helpBtn}${kill}<button class="abtn" id="panelClose">✕</button></div>
+        <div class="pactions">${killArmed}${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
       // (a spectral champion is never mended — a spirit eats nothing, and the
       // heal is paid in food: js/deckfx-army.js)
       if (own && u.hp < u.maxhp && CFG.HEAL_FOOD[u.kind] && !u.spectral) {
@@ -3133,12 +3286,8 @@ const UI = {
       }
       // SCUTTLE (tests/boats-moat-scuttle.mjs): any own hull can be sunk on
       // purpose — no resources come back, but its place in the population is
-      // freed. Two taps, same confirm pattern as demolish.
-      if (own && Units.isNaval(u)) {
-        html += this.confirmDemolish === u.id
-          ? `<button class="abtn danger" data-act="scuttle">⚠️ Confirm — sink her<small>no resources returned</small></button>`
-          : `<button class="abtn" data-act="scuttle">🌊 Scuttle<small>sink the hull, free its place in the population</small></button>`;
-      }
+      // freed. Two taps, same confirm pattern as demolish; the button is the
+      // header's small red one (killBtn, above).
       if (own && u.kind === 'sapper') {
         const tier = Units.sapperTier(u.owner);
         const tool = (job, icon, label, minTier) => {
@@ -3153,19 +3302,16 @@ const UI = {
         html += tool('clear', '⛏', 'Clear', 3);
         html += tool('mound', '⛰', 'Mound', 3);
       }
-      /* BUILD and BANISH share a row (tests/banish.mjs). Banish is the
-         villager's Scuttle: nothing comes back but the place in the
-         population, which late on — when the fields are staffed and you want
-         spears instead — is the only thing you actually wanted. Two taps, the
-         same confirm pattern the hulls and demolition use, because it cannot
-         be undone once they reach the rim. */
+      /* BANISH is the villager's Scuttle (tests/banish.mjs): nothing comes
+         back but the place in the population, which late on — when the fields
+         are staffed and you want spears instead — is the only thing you
+         actually wanted. Two taps, the same confirm pattern the hulls and
+         demolition use, because it cannot be undone once they reach the rim.
+         Its button is the header's small red one (killBtn, above). */
       if (own && Units.isVillager(u)) {
         // under arms there is nothing Build could answer — the panel shows
         // only what can act; the hint line carries the why
         if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
-        html += this.confirmDemolish === u.id
-          ? `<button class="abtn danger" data-act="banish">⚠️ Confirm — send them away</button>`
-          : `<button class="abtn" data-act="banish">👋 Banish</button>`;
         /* …and if they are raising something, the works can be called off
            from right here — the same button the building's own panel shows,
            gone the moment there is nothing being raised. */
@@ -3270,7 +3416,7 @@ const UI = {
             : job === 'bridge' ? 'Bridge tool — tap water or a moat to span it'
             : job === 'mound' ? 'Mound tool — raise slow-to-cross berms, or reclaim near-shore water (costs stone & wood)'
             : 'Clear tool — tap or drag across forest 🌲 / rock 🪨 / orchard')
-          : 'Tool down — tap a tile to walk');
+          : 'Tool down — tap a tile to walk', this.terraMode ? 'note' : undefined);
         this.renderPanel();
       }));
       const unload = panel.querySelector('[data-act="unload"]');
@@ -3285,38 +3431,39 @@ const UI = {
          off the villager LIVE, so a works that finished between the render
          and the tap simply finds nothing to call off. */
       const canc = panel.querySelector('[data-act="cancelbuild"]');
-      if (canc) canc.addEventListener('click', () => {
+      if (canc) canc.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         const site = this.villagerBuildSite(u2);
         if (!site) { this.confirmCancel = 0; this.renderPanel(); return; }
-        if (this.confirmCancel !== site.id) { this.confirmCancel = site.id; this.renderPanel(); return; }
+        if (this.confirmCancel !== site.id) { this.armConfirm('confirmCancel', site.id, e); return; }
+        if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
         this.confirmCancel = 0;
         if (Bld.cancelBuild(site)) this.toast('Work called off — everything paid is back');
         this.renderPanel();
         this.refreshMenu();
       });
-      const ban = panel.querySelector('[data-act="banish"]');
-      if (ban) ban.addEventListener('click', () => {
+      panel.querySelectorAll('[data-act="banish"]').forEach(ban => ban.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2 || !Units.canBanish(u2)) return;
-        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         this.confirmDemolish = 0; this.confirmCancel = 0;
         Units.banish(u2);
         this.toast('Banished — they are walking out of the valley');
         this.deselect();
-      });
-      const scut = panel.querySelector('[data-act="scuttle"]');
-      if (scut) scut.addEventListener('click', () => {
+      }));
+      panel.querySelectorAll('[data-act="scuttle"]').forEach(scut => scut.addEventListener('click', e => {
         const u2 = Units.get(this.sel.id);
         if (!u2) return;
         // never send soldiers down with the ship — an accidental tap would be brutal
         if (Units.isTransport(u2) && u2.cargo && u2.cargo.length) { this.toast('Soldiers are aboard — unload before scuttling', true); return; }
-        if (this.confirmDemolish !== u2.id) { this.confirmDemolish = u2.id; this.renderPanel(); return; }
+        if (this.confirmDemolish !== u2.id) { this.armConfirm('confirmDemolish', u2.id, e); return; }
+        if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
         R.float(u2.x, u2.y - 0.3, '🌊', '#9fc7e8');
         Units.despawn(u2);   // deselects; population headcount follows the roster
         G.log('Hull scuttled — she slips beneath the water');
         this.toast('Scuttled — its place in the population is freed');
-      });
+      }));
       const heal = panel.querySelector('[data-act="heal"]');
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);
@@ -3340,7 +3487,7 @@ const UI = {
         if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
         this.builderFor = vid;    // after deselect/select bookkeeping
-        this.toast('Pick a building, then tap a site — this villager will build it');
+        this.toast('Pick a building, then tap a site — this villager will build it', 'note');
       });
       const grp = panel.querySelector('[data-act="group"]');
       if (grp) grp.addEventListener('click', () => {
@@ -3382,55 +3529,286 @@ const UI = {
     n |= 0;
     return n >= 10000 ? (Math.round(n / 100) / 10 + '').replace(/\.0$/, '') + 'k' : String(n);
   },
+  /* THE DAY'S SUMS (PX-19 / PX-18, tests/hud-info.mjs). What the town is SET
+     to bring in each day, by the rules that pay it: every hand sent to gather
+     or fish at the rate the panel's own work line gives it at work
+     (Units.workReport) — on its way there too (handRate), so an order shows
+     at once and a step between two tiles never reads as a loss — and every
+     finished work by the very expression Bld.dailyProduction pays at the turn
+     of the day (its crew on site, the hall's third storey, the mode, a
+     homestead bond, an origin card, a running card), the hall's own gold among
+     them, plus an origin's daily gift. A kill's meat and a card's goods are
+     gifts, not a rate. Read-only: nothing here writes S or draws a number
+     from any RNG. */
+  handRate(u) {
+    const t = u && u.task;
+    if (!t || (t.type !== 'gather' && t.type !== 'fish' && t.type !== 'shorefish')) return null;   // a station's crew is its work's, below
+    const w = Units.workReport(u);
+    if (!w || u.tUnit || u.tBld) return null;
+    if (w.rate) return w.rate;
+    // still on the way: the sum workReport makes once the hand stands at its work
+    const spot = { x: (t.sx == null ? t.x : t.sx) + 0.5, y: (t.sy == null ? t.y : t.sy) + 0.5 };
+    let res = 'food', n;
+    if (t.type === 'gather') {
+      const g = CFG.GATHER[S.map.terrain[MapGen.idx(t.x, t.y)]];
+      if (!g) return null;
+      res = g.res;
+      n = g.rate * Units.dayLen() * Units.gatherMode(u) * (window.Cards ? Cards.gatherMult(u.owner, g.res) : 1);
+    } else {
+      n = (t.type === 'shorefish' ? CFG.SHORE_FISH.rate : CFG.FISH.rate) * Units.dayLen() * Units.gatherMode(u) *
+        (window.Cards ? Cards.fishMult(u.owner) : 1);
+    }
+    return { res, n: n * Units.gatherYield(u.owner, spot) };
+  },
+  incomePerDay(res) {
+    // ONE PASS EACH (the build 128 review, PERF-01): this runs four times a
+    // second, so the station crews are grouped here, in the walk the hands
+    // already take, and the homestead map is built once for every farm —
+    // asked per station they cost a unit scan and a whole house x farm
+    // rebuild apiece, superlinear in exactly the towns that farm the most.
+    let hands = 0, boats = 0;
+    const crews = {};
+    for (const u of S.units) {
+      if (u.owner !== 'P' || !u.task) continue;
+      if (u.task.type === 'work') (crews[u.task.id] || (crews[u.task.id] = [])).push(u);
+      const r = this.handRate(u);
+      if (!r || r.res !== res) continue;
+      if (Units.isVillager(u)) hands += r.n; else boats += r.n;
+    }
+    const works = {}, tc = Bld.tcOf('P');
+    const tcBoost = tc && tc.level >= 3 && Bld.done(tc) ? 1.1 : 1, modeMult = G.modeCfg().output;
+    let hs = null;
+    for (const b of S.buildings) {
+      if (b.owner !== 'P' || !Bld.done(b) || b.upgrading) continue;
+      const out = Bld.lv(b).out;
+      if (!out || !out[res]) continue;
+      let crew = 1;
+      if (Bld.def(b.key).needsWorker && !(crew = Math.min(Bld.workersActive(b, crews[b.id] || []), Bld.maxWorkers(b)))) continue;
+      if (b.key === 'farm' && !hs) hs = Bld.homesteadMap();
+      const mult = crew * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b, hs) *
+        (window.Cards ? Cards.prodMult('P', b) : 1) * (window.Deck && Deck.mult ? Deck.mult('produce', 'P', b) : 1);
+      works[b.key] = (works[b.key] || 0) + out[res] * mult;
+    }
+    const hall = works.tc || 0; delete works.tc;
+    const gifts = { food: 0, wood: 0, stone: 0, gold: 0 };
+    if (window.Cards && Cards.dailyExtras) Cards.dailyExtras('P', gifts);
+    const gift = gifts[res] || 0;
+    let total = hands + boats + hall + gift;
+    for (const k in works) total += works[k];
+    return { hands, boats, works, hall, gift, total };
+  },
+  /* THE FOOD RATE IS THE NET (PX-19) — and it does not flicker. What comes in
+     less what is eaten, smoothed over about half a game day: an exponential
+     average in GAME time, so a paused world holds it and a running one
+     settles it, and a hand stepping between two tiles or a villager fleeing a
+     wolf for a breath never turns the sign. A new world or a loaded save
+     starts it afresh at the sum itself. UI-local, keyed on S, never saved. */
+  NET_DAYS: 0.5,
+  _net: new WeakMap(),       // world → { at, v }: keyed on S without keeping an old world alive
+  smoothNet(x) {
+    if (!S) return x;
+    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, m = this._net.get(S);
+    if (!m || now < m.at) { this._net.set(S, { at: now, v: x }); return x; }
+    m.v += (x - m.v) * (1 - Math.exp(-(now - m.at) / this.NET_DAYS));
+    m.at = now;
+    return m.v;
+  },
+  /* THE HUD'S NUMBERS EXPLAIN THEMSELVES (PX-18, tests/hud-info.mjs): a tap
+     or a click on a chip says where its number comes from, in the rules' own
+     numbers — the sums above, Units.foodUpkeep, Bld.popCap, CFG.DAY_MS. No
+     popover: the game's own note (UI.init binds the chips). */
+  chipNote(kind) {
+    const f = v => String(Math.round(v * 10) / 10);
+    const sg = v => { const r = Math.round(v * 10) / 10; return (r > 0 ? '+' : r < 0 ? '−' : '±') + Math.abs(r); };
+    const list = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+    if (kind === 'pop') {
+      const used = Units.popUsed('P'), cap = Bld.popCap('P'), tc = Bld.tcOf('P');
+      const lv = tc ? tc.level : 1, ceil = CFG.TC_POP_CAP[lv - 1];
+      return `Population ${used} of ${cap}: ` + (cap > used ? `houses and the hall make room for ${cap}, so ${cap - used} more can be trained.`
+        : cap < ceil ? 'the town is full — build a house for more room.'
+        : lv < CFG.TC_POP_CAP.length ? `the hall holds the town to ${ceil} — raise it a level for more room.`
+        : `the town is full — the hall holds no more than ${ceil}.`);
+    }
+    if (kind === 'day') return `Day ${S.day}. A day lasts ${f(CFG.DAY_MS / 1000)} seconds; when it turns, the hall, farms and camps pay out and every mouth eats.`;
+    const res = kind === 'foodRate' ? 'food' : kind;
+    if (!S.res || S.res[res] == null) return '';
+    const inc = this.incomePerDay(res);
+    const WORKS = { farm: 'farms', lodge: 'lodges', lumber: 'lumber camps', quarry: 'quarries', mine: 'mines' };
+    const parts = [];
+    if (inc.hall) parts.push('the hall ' + f(inc.hall));
+    if (inc.hands) parts.push({ food: 'gatherers', wood: 'woodcutters', stone: 'stonecutters' }[res] + ' ' + f(inc.hands));
+    if (inc.boats) parts.push('boats ' + f(inc.boats));
+    for (const k in inc.works) parts.push((WORKS[k] || Bld.def(k).name.toLowerCase()) + ' ' + f(inc.works[k]));
+    if (inc.gift) parts.push('your origin ' + f(inc.gift));
+    const eat = res === 'food' ? Units.foodUpkeep('P') : 0, net = inc.total - eat;
+    const come = parts.length ? ' Coming in: ' + list(parts) + '.' : ' Nothing comes in.';
+    const head = res.charAt(0).toUpperCase() + res.slice(1) + ' ' + this.fmtRes(S.res[res]);
+    if (res === 'food') return (kind === 'foodRate' ? `${sg(net)} food a day.` : `${head}: ${sg(net)} a day.`) + come + ` Eaten: ${f(eat)}.`;
+    if (!parts.length) return `${head}: nothing comes in — ` + { wood: 'send a villager to a forest.', stone: 'send a villager to the rocks.', gold: 'a villager can claim a gold seam.' }[res];
+    return `${head}: ${sg(net)} a day.${come}`;
+  },
+  /* A SPENT TILE IS NEWS (PX-08, tests/hud-info.mjs). A hand whose tile runs
+     out stands idle, and the line that says so was written to the chronicle
+     alone. The first of a world now reaches the screen as a note; after it,
+     at most one every IDLE_NOTE_DAYS game days, so a town whose tiles run out
+     together hears it once. Units.update asks here for the line's level; the
+     chronicle still gets every line. UI-local, keyed on S, never saved. */
+  IDLE_NOTE_DAYS: 5,
+  _idleNote: new WeakMap(),  // world → the game day its last idle note went out
+  idleNote() {
+    if (!S) return undefined;
+    const now = S.day + (S.dayT || 0) / CFG.DAY_MS, at = this._idleNote.get(S);
+    if (at != null && now >= at && now - at < this.IDLE_NOTE_DAYS) return undefined;
+    this._idleNote.set(S, now);
+    return 'note';
+  },
   refresh(dt) {
     this.tickPlacement(dt);   // per-frame: edge scroll + ghost DOM must not wait on the throttle
     this.refreshT -= dt;
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
-    document.getElementById('rFood').textContent = this.fmtRes(S.res.food);
+    const food = this.fmtRes(S.res.food);
+    document.getElementById('rFood').textContent = food;
     const fnet = document.getElementById('rFoodNet');
+    let net = '';
     if (fnet) {
-      const eat = Units.foodUpkeep('P');
-      fnet.textContent = eat > 0 ? '−' + Math.round(eat) + '/d' : '';
-      fnet.classList.toggle('bad', !!S._famineWarned || (eat > 0 && S.res.food <= 0));
+      // the NET: what comes in less what is eaten (PX-19), "+N/d" or "−N/d",
+      // red while the larder falls — and the famine red as before
+      const eat = Units.foodUpkeep('P'), inc = this.incomePerDay('food').total;
+      const n = Math.round(this.smoothNet(inc - eat));
+      net = !eat && !inc ? '' : (n > 0 ? '+' + n : n < 0 ? '−' + -n : '±0') + '/d';
+      fnet.textContent = net;
+      fnet.classList.toggle('bad', n < 0 || !!S._famineWarned || (eat > 0 && S.res.food <= 0));
     }
     document.getElementById('rWood').textContent = this.fmtRes(S.res.wood);
     document.getElementById('rStone').textContent = this.fmtRes(S.res.stone);
     document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
-    document.getElementById('rPop').textContent = Units.popUsed('P') + '/' + Bld.popCap('P');
+    const pop = Units.popUsed('P') + '/' + Bld.popCap('P');
+    document.getElementById('rPop').textContent = pop;
     document.getElementById('rDay').textContent = 'Day ' + S.day;
+    // the chips' names say their numbers too (role=button names itself by its label)
+    const name = (id, s) => { const el = this._chipEl && this._chipEl[id]; if (el && el.getAttribute('aria-label') !== s) el.setAttribute('aria-label', s); };
+    name('food', 'Food ' + food + (net ? ', ' + net.replace('/d', ' a day') : ''));
+    name('wood', 'Wood ' + this.fmtRes(S.res.wood));
+    name('stone', 'Stone ' + this.fmtRes(S.res.stone));
+    name('gold', 'Gold ' + this.fmtRes(S.res.gold));
+    name('pop', 'Population ' + pop.replace('/', ' of '));
+    name('day', 'Day ' + S.day);
     this.refreshMenu();
     if (this.sel) this.refreshPanel();
   },
 
   _toastAt: {},
   // Popups are reserved for things that need attention NOW: danger alerts and
-  // "why that didn't work" errors — both flagged `warn`. Everything else (build
-  // confirmations, orders, routine events, enemy micro-actions) is quietly
-  // recorded in the event log instead of popping a toast, so the screen stays
-  // calm. A near-identical note within a few seconds is also collapsed
-  // ("House under attack!" ×9 → one), so even alerts never spam.
+  // "why that didn't work" errors — both flagged `warn` — and the few notes a
+  // player must see (below). A call with NO level is shown nowhere: not on
+  // screen and not in the event log either (G.log is what writes the log), so
+  // an order acknowledgement passes none and the screen stays calm.
   /* THREE LEVELS, not two. `warn` is the gate AND the styling, so anything
-     that wanted to be SEEN had to look like an alarm: false = event log
-     only, true = the red danger stripe, and now 'note' = shown in the
-     game's own gold — for intel that matters (the rival's origin at the
-     first in-game moment, Cards.announceRival) but is not a warning. */
-  toast(msg, warn, ms) {
-    if (!warn) return;                       // routine notes live only in the event log
-    const alarm = warn !== 'note';
+     that wanted to be SEEN had to look like an alarm: false = shown nowhere,
+     true = the red danger stripe, and 'note' = shown in the game's own gold —
+     for intel that matters (the rival's origin at the first in-game moment,
+     Cards.announceRival), the instruction an armed mode gives, and news the
+     player cannot see happen — but is not a warning.
+     A REFUSAL IS READ, AND A REPEAT ANSWERS (tests/feedback.mjs, PX-06): a
+     toast holds for its words (max(3.2 s, 1.2 s + 0.26 s a word) — the day-
+     one station refusals run 24–31 words), and the six-second collapse
+     ("House under attack!" ×9 → one, UI._toastAt) applies only when the
+     caller asks for it with `dedupe` — G.log does, for every game event. A
+     refusal answering the player's own tap always shows: a repeat of one
+     still on screen REPLACES it with one fresh node, and a warning's repeat
+     shakes (a note's never does), so a second tap never reads as dead.
+     WHILE A LESSON'S CARD IS BEING READ (Tutorial.noteReading: its words'
+     time, and the breath after one) the WORLD'S NEWS waits (`news`: G.log's
+     notes and the "N ready" fold), three at most, the oldest giving way, and
+     is shown the moment the card has been read — under the card, whose seat
+     steps the column down (--tut-h), never over it; nothing is dropped for
+     waiting (a card that waits on a deed can stand for minutes, and a 20 s
+     drop lost every piece of news in a tutorial game). A cached older
+     tutorial.js without noteReading holds on noteUp, as before. Everything
+     else shows at once: a warning, and
+     a note that answers what the player just did (a station's "no ground
+     yet", the wall's how-to, a tapped top-bar number) — held, the tap would
+     read as dead (the tap contract's rule 4). Every map here is UI-local,
+     keyed on S. */
+  _toastEl: null,     // message key → the node on screen (a repeat replaces it)
+  _toastHeld: null,   // news waiting out a lesson card's reading: { msg, ms, at }, three at most
+  _toastS: null,
+  _toastFlush: 0,
+  toast(msg, warn, ms, dedupe, news) {
+    if (!warn || msg == null) return null;
+    msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
-    if (now - (this._toastAt[key] || -1e9) < 6000) return;
+    if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
-    const hold = ms || 3200;
+    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
+    if (warn === 'note' && news && this._lessonReading()) {
+      this._toastHeld.push({ msg, ms, at: now });
+      while (this._toastHeld.length > 3) this._toastHeld.shift();   // the oldest gives way
+      if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
+      return null;
+    }
+    return this._showToast(msg, warn, ms, key, dedupe);
+  },
+  _showToast(msg, warn, ms, key, dedupe) {
     const box = document.getElementById('toasts');
+    if (!box) return null;
+    const alarm = warn !== 'note';
+    const words = msg.trim().split(/\s+/).length;
+    const hold = ms || Math.max(3200, 1200 + 260 * words);
+    const old = this._toastEl.get(key);
+    const repeat = !!(old && old.isConnected);
+    if (repeat) old.remove();
     const el = document.createElement('div');
-    el.className = 'toast' + (alarm ? ' warn' : '');
+    // the shake answers a REFUSAL's second tap: a warning the player's own act
+    // raised (no collapse asked for) — never a note, never the world's news
+    el.className = 'toast' + (alarm ? ' warn' : '') + (repeat && warn === true && !dedupe ? ' shake' : '');
     el.textContent = msg;
     box.appendChild(el);
+    this._toastEl.set(key, el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
     setTimeout(() => { el.style.opacity = '0'; }, hold);
-    setTimeout(() => { el.remove(); }, hold + 700);
+    setTimeout(() => { el.remove(); if (this._toastEl && this._toastEl.get(key) === el) this._toastEl.delete(key); }, hold + 700);
+    return el;
+  },
+  // is a lesson card still being read? (guarded on the method it calls; an
+  // older tutorial.js without noteReading answers by noteUp, as before)
+  _lessonReading() {
+    const T = window.Tutorial;
+    if (!T) return false;
+    if (T.noteReading) return !!T.noteReading();
+    return !!(T.noteUp && T.noteUp());
+  },
+  // the held news comes out once the card has been read (or answered, and its
+  // breath has passed); a new world drops it
+  _flushHeld() {
+    this._toastFlush = 0;
+    const q = this._toastHeld;
+    if (!q || !q.length || this._toastS !== S) return;
+    if (this._lessonReading()) {
+      this._toastFlush = setTimeout(() => this._flushHeld(), 250);
+      return;
+    }
+    for (const h of q.splice(0)) this._showToast(h.msg, 'note', h.ms, h.msg.replace(/\d+/g, '#'));
+  },
+  /* THE OPEN VIEW (PX-17): is this world point on the part of the screen the
+     player can actually see — under the top bar, above the bottom bar (and
+     its tab), inside the sides, by 0.3 tile of margin? R.onScreen counts the
+     ground under the bars as seen, which is why news of a building finished
+     beneath the open panel never reached anyone. The bars are read live: it
+     is asked only when a work finishes or a unit is trained. */
+  inOpenBand(wx, wy) {
+    if (!window.R || !R.cv || !R.cam) return true;
+    const cv = R.cv.getBoundingClientRect();
+    const z = R.cam.z, m = 0.3 * CFG.TILE * z;
+    const sx = cv.left + (wx * CFG.TILE - R.cam.x) * z;
+    const sy = cv.top + (wy * CFG.TILE - R.cam.y) * z;
+    const rect = id => { const el = document.getElementById(id); const r = el && el.getBoundingClientRect(); return r && r.height > 0 ? r : null; };
+    const tb = rect('topbar'), bb = rect('bottombar'), tg = rect('bmToggle');
+    const top = Math.max(cv.top, tb ? tb.bottom : cv.top);
+    const bottom = Math.min(cv.bottom, bb ? bb.top : cv.bottom, tg ? tg.top : cv.bottom);
+    return sx >= cv.left + m && sx <= cv.right - m && sy >= top + m && sy <= bottom - m;
   },
 
   /* ---------------- HUD buttons (menus live in the Screens shell) ---------------- */

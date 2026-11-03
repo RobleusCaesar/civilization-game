@@ -7597,9 +7597,12 @@ const R = {
     if (!spr) return;
     if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
     if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, bw, 0, false); this.drawGateWorks(g, b, bx, by, bw, 0, false); }
+    // its footing's standing things go back with it, in the pass's own order (js/footing.js)
+    if (window.Footing && Footing.back) Footing.back(g, b);
     this.blitBld(g, spr, bx, by, bw, bw);
     if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
     if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
+    if (window.Footing && Footing.front) Footing.front(g, b);
     if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
   },
   /* THE DRAWN GATEHOUSE'S DOOR (Assets.FORT_DOOR, operator: "make the doors
@@ -14860,6 +14863,8 @@ const R = {
     g.save();
     { const bp = this.boardPx(); g.beginPath(); g.rect(bp.x0, bp.y0, bp.x1 - bp.x0, bp.y1 - bp.y0); g.clip(); }
     this.drawGateRoads(g, blds);
+    // THE GROUND UNDER A BUILDING (js/footing.js): every building's shadow and yard, before any building
+    if (window.Footing && Footing.ground) Footing.ground(g, blds);
     for (const b of blds) {
       const bs = Bld.size(b);
       let seen = false;
@@ -14976,10 +14981,13 @@ const R = {
         // the blaze breaking out BEHIND the ridge goes down first too, so the
         // roof's own silhouette occludes its foot (tests/burn-down.mjs)
         this.drawBurnBack(g, b, bx, by, bw);
+        if (window.Footing && Footing.back) Footing.back(g, b);
         this.blitBld(g, spr, bx, by, bw, bw);
         // …and the walk running south out of it comes half way up its front
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
         if (b.key === 'gate') this.drawGateWalk(g, b, bx, by, bw);
+        // the hedge's long grass and bushes standing in front of its foot (js/footing.js)
+        if (window.Footing && Footing.front) Footing.front(g, b);
         // …and one that falls toward us swings over its own archway — the
         // early tiers' doors and portcullis ride the same two passes
         if (b.key === 'gate') { this.drawGateWorks(g, b, bx, by, bw, dt, true); this.drawDrawbridge(g, b, bx, by, bw, dt, true); }
