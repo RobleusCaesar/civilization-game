@@ -526,6 +526,9 @@ const DeckScreens = {
     const root = this._rootEl(), b = root.querySelector('.ceBtns');
     b.dataset.s = state;
     root.classList.toggle('ceDone', state === 'done');
+    // A VOTE EARNS A CARD (js/vote.js, its own file): once the reward is
+    // claimed, "Want another?" — nothing at all without it
+    if (window.Vote && Vote.onReward) { try { Vote.onReward(b, state); } catch (e) {} }
   },
 
   /* the deck's count as the player should SEE it: the collection minus the

@@ -108,8 +108,28 @@ const Tutorial = {
     /* contextual notes */
     scout: () => 'A rider in <b>' + G.tunicOf('A') + '</b> — the rival tribe’s scout, sizing you up. They grow stronger with every season you give them.',
     neutrality: 'The rival keeps the <b>peace</b> for now — neither side strikes until you do. Race them in quiet, or start the war yourself.',
-    workedGround: 'That worked-bare ground can carry a <b>Lumber Camp</b> — tap a villager, open <b>Build</b>, and set the camp on the stumps. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.',
-    station: 'A station pays only while hands <b>work</b> it — tap a villager, then the camp, to crew it. Its steady wood is what raises every building after.',
+    // the station is the one THIS ground can carry (_workedKind); over stumps
+    // the words are exactly what they always were
+    workedGround: () => {
+      const key = (Tutorial._workedKind() || Tutorial.WORKED[0]).key;
+      const [noun, on] = { lumber: ['camp', 'the stumps'], quarry: ['quarry', 'the broken rock'],
+        farm: ['farm', 'the picked-bare soil'] }[key];
+      return 'That worked-bare ground can carry a <b>' + CFG.BUILDINGS[key].name + '</b> — tap a villager, open <b>Build</b>, and set the ' +
+        noun + ' on ' + on + '. Stations rise from <b>other</b> goods: a camp costs stone, a quarry wood.';
+    },
+    // the station the note rings names itself (the build 128 review, PLAYER-04:
+    // a Quarry or a Farm was told about "the camp" and "its steady wood");
+    // over a lumber camp the words are exactly what they always were
+    station: () => {
+      const b = S.buildings.find(o => o.owner === 'P' && Tutorial._stationKeys[o.key] && !(o.construction > 0));
+      const [noun, after] = ({
+        quarry: ['quarry', 'Its steady stone builds walls, towers and every storey of the hall.'],
+        farm: ['farm', 'Its steady food feeds the town and trains every new hand.'],
+        lodge: ['lodge', 'Its steady meat feeds the town through lean days.'],
+        mine: ['mine', 'Its steady gold pays for the best troops and every upgrade.'],
+      })[b && b.key] || ['camp', 'Its steady wood is what raises every building after.'];
+      return 'A station pays only while hands <b>work</b> it — tap a villager, then the ' + noun + ', to crew it. ' + after;
+    },
     dock: 'That water can work for you — a <b>Dock</b> trains fishing boats, and transports to carry your people across.',
     sapperE: 'The <b>Sappers’ Camp</b> trains engineers who reshape the land — trenches, causeways, bridges over water. The map itself is a weapon.',
     trade: 'The <b>Trading Post</b> turns surplus into anything else — dearly. When the stone runs out, it is often the only stone there is.',
@@ -158,6 +178,28 @@ const Tutorial = {
     this._memo[key] = { t: now, v: best };
     return best;
   },
+  /* THE GROUND NAMES ITS STATION (PX-29): the worked-ground note asked for a
+     Lumber Camp whatever had been worked — over broken rock or picked-bare
+     soil it named a camp that can never stand there. The nearest explored
+     worked tile to the hall (the one the note rings) decides, and the note's
+     hold, ring and words all follow it (the words stay in TEXT). */
+  WORKED: [
+    { terr: 'STUMPS', key: 'lumber' },
+    { terr: 'PEBBLES', key: 'quarry' },
+    { terr: 'BARREN', key: 'farm' },
+  ],
+  _workedKind() {
+    const t = this._nearTile('workedGround', [T.STUMPS, T.PEBBLES, T.BARREN]);
+    if (!t) return null;
+    const terr = S.map.terrain[MapGen.idx(t.x | 0, t.y | 0)];
+    return this.WORKED.find(k => T[k.terr] === terr) || null;
+  },
+  // an own villager is in hand (the tapVillager step's own reading)
+  _villagerSel() {
+    const s = UI.sel; if (!s) return false;
+    const own = id => { const u = Units.get(id); return !!(u && u.owner === 'P' && u.kind === 'villager'); };
+    return s.type === 'unit' ? own(s.id) : s.type === 'group' ? (s.ids || []).some(own) : false;
+  },
 
   /* ================== PHASE 1 — the ordered spine ==================
      { id, anchor?, when?, adv?, end? } — an entry with adv is action-gated;
@@ -188,14 +230,17 @@ const Tutorial = {
         const own = id => { const u = Units.get(id); return !!(u && u.owner === 'P' && u.kind === 'villager'); };
         return s.type === 'unit' ? own(s.id) : s.type === 'group' ? s.ids.some(own) : false;
       } },
-    { id: 'gatherWood',
+    // the gather lessons ring a tile the player taps WITH A VILLAGER IN HAND,
+    // and selecting one raises the panel — which can cover that very tile:
+    // `selLook` lets the first villager selection look once more (_looks)
+    { id: 'gatherWood', selLook: true,
       anchor: () => Tutorial._nearTile('gatherWood', [T.FOREST]),
       adv: () => Tutorial._gatherOn(T.FOREST) },
-    { id: 'gatherFood',
+    { id: 'gatherFood', selLook: true,
       anchor: () => Tutorial._nearTile('gatherFood', [T.FERTILE]),
       adv: () => Tutorial._gatherOn(T.FERTILE) ||
         S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'fish') },
-    { id: 'gatherStone',
+    { id: 'gatherStone', selLook: true,
       anchor: () => Tutorial._nearTile('gatherStone', [T.HILLS]),
       adv: () => Tutorial._gatherOn(T.HILLS) },
     { id: 'gold', anchor: () => ({ union: ['#rGold'] }) },   // the gold CHIP, not just its number
@@ -342,19 +387,16 @@ const Tutorial = {
       },
       anchor: () => ({ sel: '#deckBtn' }) },
     { id: 'workedGround',
-      // an ACTION, not a lecture (playtest): guide the whole chain to a real
-      // Lumber Camp on the player's own stumps — and only once it is payable
-      when() {
-        if (!Tutorial._afford('lumber')) return false;
-        const terr = S.map.terrain, ex = S.map.explored;
-        for (let i = 0; i < terr.length; i++)
-          if (ex[i] && (terr[i] === T.STUMPS || terr[i] === T.PEBBLES || terr[i] === T.BARREN)) return true;
-        return false;
-      },
+      // an ACTION, not a lecture (playtest): guide the whole chain to the
+      // station this worked ground can carry (_workedKind) — a Lumber Camp on
+      // stumps, a Quarry on broken rock, a Farm on spent soil — and only once
+      // that station is payable
+      when() { const k = Tutorial._workedKind(); return !!k && Tutorial._afford(k.key); },
       anchor() {
-        // the same guided chain as the build steps, landing on the stumps
-        const btn = document.querySelector('.bbtn[data-key="lumber"]');
-        if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="lumber"]' };
+        // the same guided chain as the build steps, landing on the worked ground
+        const k = Tutorial._workedKind() || Tutorial.WORKED[0];
+        const btn = document.querySelector('.bbtn[data-key="' + k.key + '"]');
+        if (btn && btn.offsetParent !== null) return { sel: '.bbtn[data-key="' + k.key + '"]' };
         const gb = document.querySelector('#panel [data-act="gobuild"]');
         if (gb && gb.offsetParent !== null) return { sel: '#panel [data-act="gobuild"]' };
         return Tutorial._nearTile('workedGround', [T.STUMPS, T.PEBBLES, T.BARREN]);
@@ -513,6 +555,7 @@ const Tutorial = {
     this._advT = this._evT = this._gapT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
     this._scrolledFor = '';
     this._actGap = this._actTail = 0; this._actHeld = false;
+    this._lookDue = false; this._selLooked = false; this._tutHKey = '';
     this._removeDom();
   },
 
@@ -524,6 +567,8 @@ const Tutorial = {
 
   skip() {
     if (!window.S || !S.tut) return;
+    // ANALYTICS (tut_skip_at, G.runReport): the lesson's step the FIRST skip left it on — a spine step's id, else the note on show
+    if (S.stats && S.stats.tutSkipAt == null) S.stats.tutSkipAt = ((this.STEPS[S.tut.step] || {}).id) || (this._show && this._show.id) || null;
     // a skip made ON the deck's own note is the player's answer to it: it
     // has been heard, and must not come back a beat later with no Skip on it
     if (this._show && this._show.id === 'deck') (S.tut.fired || (S.tut.fired = {})).deck = 1;
@@ -576,6 +621,7 @@ const Tutorial = {
     this._evT -= dt;
     if (this._evT <= 0) { this._evT = 0.5; this._checkEvents(); }
     this._retireShown();
+    this._looks();   // the camera's look at the ring: as a note is told, and a gather lesson's first selection
     this._syncOverlay(dt);
     // SLOW, never stopped: ×0.2 while a note is up, full speed once it is
     // answered or the player touches the world 800ms+ after it appeared
@@ -708,15 +754,24 @@ const Tutorial = {
     this._released = false;
     this._skipArm = 0;
     this._scrolledFor = '';   // this note may scroll the build menu once
+    this._showN = (this._showN || 0) + 1;   // a new card: measured afresh for --tut-h (_toastStep)
     if (kind === 'event') this._lastEvAt = this._shownAt;
     this._ensureDom();
     const def = this._defOf();
     const src = (def && def.text) || this.TEXT[id];
     this._el.txt.innerHTML = typeof src === 'function' ? src() : (src || '');
-    // action-gated notes advance themselves; info notes carry the button
+    // the card's reading time, by the toast's own rule: the world's news waits it out (noteReading)
+    const words = (this._el.txt.textContent || '').trim().split(/\s+/).filter(Boolean).length;
+    this._readMs = Math.max(3200, 1200 + 260 * words);
+    // action-gated notes advance themselves; info notes carry the button.
+    // A CONTEXTUAL note that waits on a deed can be put away for good (PX-29):
+    // it asks for something the player may not want yet or cannot afford, and
+    // with no button it stood there ringing a card and slowing the world.
+    // The spine's own deeds ARE the lesson — a step never offers it.
     const info = !(def && def.adv);
-    this._el.next.style.display = info ? '' : 'none';
-    this._el.next.textContent = id === 'capstone' ? 'Onward' : 'Got it';
+    const dismiss = !info && kind === 'event';
+    this._el.next.style.display = (info || dismiss) ? '' : 'none';
+    this._el.next.textContent = dismiss ? 'Dismiss' : id === 'capstone' ? 'Onward' : 'Got it';
     // a lesson already skipped keeps the teacher for the deck's note alone:
     // there is nothing left to skip, so it offers only the answer
     if (S.tut.deckOnly) this._el.skip.style.display = 'none';
@@ -724,9 +779,36 @@ const Tutorial = {
       const n = this.STEPS.findIndex(s => s.id === id);
       this._el.num.textContent = (n + 1) + '/' + this.STEPS.length;
     } else this._el.num.textContent = '';
-    // glide to a world anchor the player can't currently see — or, for the
-    // fog lesson, glide the ZOOM out until the unexplored dark is in frame
-    if (def && def.zoomOut) { this._zoomToFog(); return; }
+    // the fog lesson glides the ZOOM out until the unexplored dark is in frame
+    if (def && def.zoomOut) { this._lookDue = false; this._zoomToFog(); return; }
+    // every other note LOOKS at a world anchor the player can't currently
+    // see — through _looks, later this same tick, so a finger on the glass
+    // can hold the look until it lifts. A villager already in hand is this
+    // note's selection, looked at now (a gather lesson looks once more only
+    // when one is FIRST taken in hand under it).
+    this._lookDue = true;
+    this._selLooked = this._villagerSel();
+  },
+
+  /* THE LOOK (PX-05) — the only times the lesson moves the camera to a ring:
+     once as a note is told, and, for a gather lesson (`selLook`), once more
+     the first time a villager is selected under it — selecting one raises
+     the panel, which can cover the very tile the note names. At most two a
+     note. Never while a finger is on the glass (UI.pointers, the canvas's own
+     record): the look waits for the lift, and _panTo measures again then, so
+     a ring the player dragged into view themselves is left alone. Nor while
+     the world is off the glass (the pause menu, the art plaque): the screen
+     over it would read as "unseen" and the camera would move under it. */
+  _looks() {
+    if (!this._show) return;
+    if (!this._selLooked && this._villagerSel()) {
+      this._selLooked = true;
+      const def = this._defOf();
+      if (def && def.selLook) this._lookDue = true;
+    }
+    if (!this._lookDue || (UI.pointers && UI.pointers.size)) return;
+    if (window.Screens && Screens.current !== 'playing') return;
+    this._lookDue = false;
     const a = this._anchor();
     if (a && a.u !== undefined) { const u = Units.get(a.u); if (u) this._panTo(u.x, u.y); }
     else if (a && a.x !== undefined) this._panTo(a.x, a.y);
@@ -754,7 +836,7 @@ const Tutorial = {
     tz = Math.max(0.5, Math.min(R.cam.z, tz));
     if (tz >= R.cam.z - 0.02) return;   // the dark is already in frame
     this._zRestore = R.cam.z;
-    this._pan = { t: 0, dur: 0.6, cx: tc.x + 1, cy: tc.y + 1, sz: R.cam.z, tz };
+    this._glide({ t: 0, dur: 0.6, cx: tc.x + 1, cy: tc.y + 1, sz: R.cam.z, tz });
   },
 
   _defOf() {
@@ -802,7 +884,7 @@ const Tutorial = {
     // a note that borrowed the zoom hands it back on its way out
     if (this._zRestore) {
       const tc = this._tc();
-      if (tc) this._pan = { t: 0, dur: 0.6, cx: tc.x + 1, cy: tc.y + 1, sz: R.cam.z, tz: this._zRestore };
+      if (tc) this._glide({ t: 0, dur: 0.6, cx: tc.x + 1, cy: tc.y + 1, sz: R.cam.z, tz: this._zRestore });
       this._zRestore = 0;
     }
     this._hideAll();
@@ -937,6 +1019,7 @@ const Tutorial = {
     (R.cv || document.getElementById('c')).addEventListener('pointerdown', this._onPtr, { passive: true });
   },
   _removeDom() {
+    this._setTutH(0);   // no card, no step in the toast column
     if (!this._dom) return;
     this._dom = false;
     try { (R.cv || document.getElementById('c')).removeEventListener('pointerdown', this._onPtr); } catch (e) {}
@@ -950,6 +1033,61 @@ const Tutorial = {
     if (!this._el) return;
     this._el.dim.style.display = 'none';
     this._el.ui.style.display = 'none';
+    this._setTutH(0);
+  },
+
+  /* IS A LESSON CARD ON THE GLASS? (public; the toast lane asks it, guarded)
+     True while a note's card is on screen, and through the BREATH after one
+     — the beat before the next can arrive. False with the teacher off, once
+     the run is over, and while the lesson stands aside for a card's act
+     (that act's own toast is the one to be read, and the lesson is waiting
+     on it — _cardHolds). */
+  noteUp() {
+    if (!window.S || !S.tut || !S.tut.on || S.over || this._actHeld) return false;
+    return !!(this._show && this._el && this._el.ui.style.display === 'block') || this._gapT > 0;
+  },
+
+  /* IS THE CARD STILL BEING READ? (public; the toast lane asks it, guarded,
+     before noteUp). The world's news waits only while a FRESH card is read —
+     its words' time by the toast's own rule, max(3.2 s, 1.2 s + 0.26 s a
+     word) — and through the BREATH after one. A card that then waits on a
+     deed stands for minutes, and news held that long was dropped unread: the
+     rival's intel, the first spent tile and the off-view "finished" and
+     "ready" notes never reached a tutorial game (the build 128 review, C1 and
+     PERS-01). Read, the card steps the toast column below its own seat
+     (--tut-h), so the news shows under it, never over it. */
+  noteReading() {
+    if (!this.noteUp()) return false;
+    if (this._gapT > 0) return true;
+    return performance.now() - (this._shownAt || 0) < (this._readMs || 3200);
+  },
+
+  /* THE TOASTS STEP BELOW THE CARD (the --tut-h contract: index.html's
+     #toasts adds it to its top, and the toast lane reads it). A card seated
+     at the TOP of the screen covers the head of the toast column (z15 over
+     z9), so while it sits there the column starts at the card's bottom
+     edge: --tut-h on <body> is the card's bottom minus the column's own top,
+     else 0px. Measured only when what it depends on moves (a new note, the
+     seat, the window, the wonder banner heading the column) and written
+     only when it changes — a steady frame pays two compares. */
+  _tutH: 0,
+  _toastStep(seatTop) {
+    if (seatTop == null) { this._setTutH(0); return; }
+    // (the canvas's size, never window.inner*: those force a layout right after the seat's own style writes)
+    const key = this._showN + '|' + Math.round(seatTop) + '|' + R.viewW() + 'x' + R.viewH() + '|' + (UI._wwH || 0);
+    if (key !== this._tutHKey) {
+      const box = document.getElementById('toasts');
+      if (!box || box.offsetParent === null) return;   // the column is off the glass — measure once it is back
+      this._tutHKey = key;
+      const base = box.getBoundingClientRect().top - this._tutH;   // where the column stands without the step
+      this._tutHNeed = Math.max(0, Math.ceil(seatTop + this._el.panel.offsetHeight - base));
+    }
+    this._setTutH(this._tutHNeed || 0);
+  },
+  _setTutH(h) {
+    if (h === this._tutH) return;
+    this._tutH = h;
+    try { document.body.style.setProperty('--tut-h', h + 'px'); } catch (e) { /* no document: nothing to step */ }
   },
 
   _anchor() {
@@ -1078,9 +1216,14 @@ const Tutorial = {
     // names read as one); a world target keeps the opposite-half rule so the
     // card never covers the spotlight
     const vh2 = window.innerHeight || R.viewH();
+    let seatTop = null;   // the card's top edge while it is seated from the TOP (--tut-h)
+    // a phone on its side seats a world target's card BESIDE the ring (below);
+    // every other seat is the stylesheet's own centred card
+    el.panel.style.transform = ''; el.panel.style.width = ''; el.panel.style.left = ''; el.panel.style.right = '';
     if (hole && hole.rect) {
       if (hole.rect.top + hole.rect.height / 2 < vh2 * 0.5) {
-        el.panel.style.top = (hole.rect.bottom + 12) + 'px'; el.panel.style.bottom = 'auto';
+        seatTop = hole.rect.bottom + 12;
+        el.panel.style.top = seatTop + 'px'; el.panel.style.bottom = 'auto';
       } else {
         el.panel.style.bottom = (vh2 - hole.rect.top + 12) + 'px'; el.panel.style.top = 'auto';
       }
@@ -1090,20 +1233,140 @@ const Tutorial = {
       const topPad = (topBar ? topBar.offsetHeight : 0) + 10;
       const botPad = (botBar ? botBar.offsetHeight : 0) + 10;
       const targetHigh = hole ? hole.y < vh2 * 0.48 : false;
-      if (targetHigh) { el.panel.style.top = 'auto'; el.panel.style.bottom = botPad + 'px'; }
-      else { el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto'; }
+      if (this._sideSeat()) {
+        // no room above or below the ring with the panel up: the card takes the
+        // half of the screen the ring is not in (the build 128 review, PLAYER-02)
+        const vw2 = window.innerWidth || R.viewW(), right = hole ? hole.x < vw2 / 2 : true;
+        el.panel.style.transform = 'none'; el.panel.style.width = this._sideW(hole ? hole.x : 0, hole ? hole.r : 0) + 'px';
+        el.panel.style.left = right ? 'auto' : '12px'; el.panel.style.right = right ? '12px' : 'auto';
+        seatTop = topPad; el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto';
+      }
+      else if (targetHigh) { el.panel.style.top = 'auto'; el.panel.style.bottom = botPad + 'px'; }
+      else { seatTop = topPad; el.panel.style.top = topPad + 'px'; el.panel.style.bottom = 'auto'; }
     }
+    this._toastStep(seatTop);
   },
 
+  /* WHERE THE PLAYER CAN SEE (PX-05, tests/tutorial.mjs §17). The gather
+     lessons ring the nearest tree, bush or rock — and on a phone that tile
+     was often under the villager panel, the build tab or past the edge,
+     where R.onScreen (the army banners' "slightly in frame", its HUD floor
+     learned lazily) still called it seen: the ring sat under the HUD, or a
+     chevron pointed off the glass, and the camera never moved. So the lesson
+     asks its own question of the RING'S point — _syncOverlay's own maths,
+     SPRITE_LIFT included: is it inside the live band no HUD covers (under the
+     top bar, above the bottom bar and its tab, inside the canvas's sides),
+     a 0.3-tile margin in from every edge, with the world canvas the thing a
+     finger there would touch? R.onScreen is untouched. */
+  _freeBand() {
+    const box = id => { const el = document.getElementById(id); if (!el) return null;
+      const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? r : null; };
+    const top = box('topbar');
+    let bottom = R.viewH();
+    for (const id of ['bottombar', 'bmToggle']) { const r = box(id); if (r) bottom = Math.min(bottom, r.top); }
+    return { left: 0, right: R.viewW(), top: top ? Math.max(0, top.bottom) : 0, bottom };
+  },
+  _inFreeBand(wx, wy) {
+    const z = R.cam.z, TL = CFG.TILE, m = 0.3 * TL * z, b = this._freeBand();
+    const x = (wx * TL - R.cam.x) * z, y = (wy * TL - R.cam.y) * z - CFG.SPRITE_LIFT * z;
+    if (x < b.left + m || x > b.right - m || y < b.top + m || y > b.bottom - m) return false;
+    // the lesson's own card covers no part of the ring — where the card WILL
+    // sit for this ring, since the look runs as the note is told, before the
+    // card is up (the build 128 review, PLAYER-02: on a 320 px phone the card
+    // hid the ring's lower half and the tile itself while the ring's centre,
+    // the old test, stayed clear)
+    const a = this._anchor(), rr = ((a && a.r) || 0.8) * TL * z, c = this._cardRectFor(x, y, rr);
+    if (c && x + rr > c.left && x - rr < c.right && y + rr > c.top && y - rr < c.bottom) return false;
+    return document.elementFromPoint(x, y) === (R.cv || document.getElementById('c'));
+  },
+  // where the card seats for a ring at screen (x, y): _syncOverlay's own rules
+  _cardRectFor(x, y, rr) {
+    const side = this._sideSeat(), sw = side ? this._sideW(x, rr || 0) : 0, h = this._cardH(side, sw);
+    if (!h) return null;
+    const vw = window.innerWidth || R.viewW(), vh = window.innerHeight || R.viewH();
+    const w = side ? sw : Math.min(vw * 0.92, 400);
+    const topBar = document.getElementById('topbar'), botBar = document.getElementById('bottombar');
+    const topPad = (topBar ? topBar.offsetHeight : 0) + 10, botPad = (botBar ? botBar.offsetHeight : 0) + 10;
+    const left = side ? (x < vw / 2 ? vw - 12 - w : 12) : (vw - w) / 2;
+    const top = side ? topPad : y < vh * 0.48 ? vh - botPad - h : topPad;
+    return { left, right: left + w, top, bottom: top + h };
+  },
+  // the card's height at the width it will sit at — measured unseen when it is
+  // not on the glass yet (one forced layout, inside the same task: no flicker)
+  _cardH(side, sw) {
+    const el = this._el; if (!el || !el.panel) return 0;
+    const ui = el.ui, pn = el.panel, d = ui.style.display, v = ui.style.visibility, w = pn.style.width;
+    ui.style.visibility = 'hidden'; ui.style.display = 'block'; pn.style.width = side ? (sw || 300) + 'px' : '';
+    const h = pn.offsetHeight;
+    ui.style.display = d; ui.style.visibility = v; pn.style.width = w;
+    return h;
+  },
+  // the side-seated card's width: what the half the ring is not in leaves
+  // beside the ring (the camera cannot always bring the ring off the middle —
+  // a target at the map's edge clamps it), never under 260 px, never past 400
+  _sideW(x, r) {
+    const vw = window.innerWidth || R.viewW(), right = x < vw / 2;
+    const room = right ? vw - 12 - (x + r) - 8 : (x - r) - 12 - 8;
+    return Math.round(Math.max(260, Math.min(vw * 0.46, 400, room)));
+  },
+  // a phone on its side: too short to hold the card above or below a ring
+  _sideSeat() {
+    const vw = window.innerWidth || R.viewW(), vh = window.innerHeight || R.viewH();
+    return vw > vh * 1.3 && vh < 520;
+  },
   _panTo(tx, ty) {
-    if (R.onScreen(tx, ty)) return;   // already in view — the camera is the player's
-    const z = R.cam.z, TL = CFG.TILE;
-    this._pan = {
+    if (this._inFreeBand(tx, ty)) return;   // the player can see it and tap it — the camera is theirs
+    // land the RING in the free band (the screen's own middle can sit under a
+    // tall panel on a short phone), clear of the lesson's own card
+    const z = R.cam.z, TL = CFG.TILE, b = this._freeBand();
+    // on a phone on its side the ring takes the left half, the card the right
+    const side = this._sideSeat();
+    const mx = side ? b.left + (b.right - b.left) * 0.27 : (b.left + b.right) / 2;
+    const my = side ? (b.bottom > b.top ? (b.top + b.bottom) / 2 : R.viewH() / 2) : this._ringRow(b);
+    this._glide({
       t: 0, dur: 0.45,
       sx: R.cam.x, sy: R.cam.y,
-      tx: tx * TL - R.viewW() / z / 2,
-      ty: ty * TL - R.viewH() / z / 2,
-    };
+      tx: tx * TL - mx / z,
+      ty: ty * TL - my / z - CFG.SPRITE_LIFT,
+    });
+  },
+  /* WHERE IN THE BAND THE RING LANDS (the build 128 review, PLAYER-02): the
+     card seats by the ring — at the BOTTOM when the ring is high (above 48%
+     of the view), at the TOP when it is low (_syncOverlay) — and on a 320 px
+     phone or a phone on its side the band's middle put the ring under the
+     card that seat gave it. So the ring goes in the middle of the part of the
+     band the card will NOT take, clear of it by the ring's own radius: the
+     larger of the two, each kept on its own side of the 48% line so the card
+     seats where this reckoned it would. Too little room for either: the
+     band's middle, as before. */
+  _ringRow(b) {
+    if (!(b.bottom > b.top)) return R.viewH() / 2;
+    const mid = (b.top + b.bottom) / 2;
+    const ph = this._cardH(false);
+    if (!ph) return mid;
+    const vh2 = window.innerHeight || R.viewH(), cut = vh2 * 0.48;
+    const a = this._anchor(), rr = ((a && a.r) || 0.8) * CFG.TILE * R.cam.z;
+    const topBar = document.getElementById('topbar'), botBar = document.getElementById('bottombar');
+    const topPad = (topBar ? topBar.offsetHeight : 0) + 10, botPad = (botBar ? botBar.offsetHeight : 0) + 10;
+    // high: the card at the bottom, the ring between the band's top and the card
+    const hi = [b.top + rr, Math.min(vh2 - botPad - ph - rr, cut - 1)];
+    // low: the card at the top, the ring between the card and the band's foot
+    const lo = [Math.max(topPad + ph + rr, cut), b.bottom - rr];
+    const roomHi = hi[1] - hi[0], roomLo = lo[1] - lo[0];
+    if (roomHi <= 0 && roomLo <= 0) return mid;
+    const r = roomHi >= roomLo ? hi : lo;
+    return (r[0] + r[1]) / 2;
+  },
+  // every camera move the lesson makes is a short glide — or, for a player
+  // who asked for reduced motion, the same move made at once
+  _still() {
+    try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  },
+  _glide(p) {
+    if (!this._still()) { this._pan = p; return; }
+    this._pan = null;
+    if (p.tz !== undefined) { R.cam.z = p.tz; R.centerOn(p.cx, p.cy); }
+    else { R.cam.x = p.tx; R.cam.y = p.ty; R.clampCam(); }
   },
 };
 

@@ -23,6 +23,9 @@ const CFG = {
      landscape the world's own landform calls for; false here paints plain V4 again,
      and so does ?biome=v4 on one device (?biome=auto undoes it). */
   TERRAIN: { V4: true, V5: true },
+  // THE GROUND UNDER A BUILDING (js/footing.js): a cast shadow under every building, a trodden yard
+  // round the workplaces, a hedge round the homes and towers. A picture only; false (or ?footing=0) stands it down.
+  FOOTING: { ON: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
   ART_V: 66,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
@@ -240,12 +243,18 @@ const CFG = {
 
        The Hunter's Lodge is the one that has no terrain of its own — game is
        not a tile, it is a thing that dies somewhere — so it names a MARK
-       instead (`onHunted`, S.map.hunted). See Bld.stationGround. */
+       instead (`onHunted`, S.map.hunted). See Bld.stationGround.
+
+       `whyNone` is what the CARD says when there is no such ground anywhere
+       yet (the first minute of every run, UI.enterPlacement): one short line,
+       the work first and the rule after it, told as a note — the first tap
+       teaches the rule. `whyGround` stays the refusal on a tile. */
     farm: {
       name: 'Farm', desc: 'Steady food while a villager works it. Thrives beside fertile soil.', needsWorker: true,
       near: { terrain: T.FERTILE, mult: 1.5, radius: 1 },
       onWorked: T.BARREN,
       whyGround: 'Nothing has ever grown here and nothing plans to start. A farm goes on soil already picked bare — an orchard or a berry patch your people have harvested out.',
+      whyNone: 'Harvest an orchard or berry patch bare first — a Farm goes on that soil.',
       levels: [
         { cost: { wood: 60, gold: 5 },     time: 1, hp: 100, out: { food: 15 } },
         { cost: { wood: 120, stone: 40, gold: 10 }, time: 2, hp: 140, out: { food: 30 } },
@@ -258,6 +267,7 @@ const CFG = {
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       onHunted: true,
       whyGround: 'No animal has ever died on this spot. A lodge is raised on a killing ground — go and make one, then come back.',
+      whyNone: "Hunt an animal first — a Hunter's Lodge is raised where it fell.",
       levels: [    // out is PER WORKER — a lone hand yields less than raw foraging
         { cost: { wood: 50, gold: 5 },    time: 1, hp: 120, out: { food: 4.5 } },
         { cost: { wood: 100, stone: 30, gold: 10 }, time: 2, hp: 160, out: { food: 9 } },
@@ -274,6 +284,7 @@ const CFG = {
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       onWorked: T.STUMPS,
       whyGround: 'There are no trees on this tile. Your woodcutters would be standing in the grass looking at each other — a lumber camp goes on a stand you have already felled.',
+      whyNone: 'Fell some trees first — a Lumber Camp is built on the stumps.',
       levels: [    // out is PER WORKER — a lone hand yields less than chopping forest
         { cost: { stone: 25, gold: 5 },   time: 1, hp: 120, out: { wood: 5 } },
         { cost: { stone: 60, gold: 10 },  time: 2, hp: 160, out: { wood: 10 } },
@@ -286,6 +297,7 @@ const CFG = {
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
       onWorked: T.PEBBLES,
       whyGround: 'You could dig here until your grandchildren are old and never strike stone. A quarry goes where the rock has already been broken open.',
+      whyNone: 'Break some rock by hand first — a Quarry stands where stone was cut.',
       levels: [    // out is PER WORKER — a lone hand yields less than mining hills
         { cost: { wood: 80, gold: 5 },    time: 1, hp: 120, out: { stone: 3.5 } },
         { cost: { wood: 170, gold: 10 },  time: 2, hp: 170, out: { stone: 7 } },
@@ -1003,6 +1015,15 @@ const CFG = {
   // smaller than they used to, tipping fights without deciding them
   WAVES: { minGap: 14, maxGap: 20, scaleHp: 0.07, scaleAtk: 0.05 },
   ANIMALS: { graceDays: 8, minDistTC: 12, leash: 7 },
+  /* THE HOME GROUND IS THIN ON GAME (operator, 2026-11-02: "the animal population
+     should be about 30% of what it is today… in the starting areas… the
+     undiscovered areas the same"). Within `r` tiles of either tribe's hall a wild
+     beast is put down only at `keep` of today's rate (a spawn spot there is kept
+     for 3 tiles in 10, by a hash of the tile — no RNG draw), and the band each
+     seat is dealt at the start is `keep` of START_RESOURCE.game (never under 1,
+     so a lodge's killing ground is still one hunt away). The wild country beyond
+     is untouched. Food is meant to press early. */
+  WILD_HOME: { r: 16, keep: 0.3 },
 
   /* Difficulty modes. gather/output scale player income; wave* shape barbarian
      pressure; barbMult scales barbarian hp/atk (1.2 on Hard ≈ rival defenders);
@@ -1391,5 +1412,13 @@ const CFG = {
     PITY: 15,             // wins without an Enlightenment card before one is guaranteed
     STARTER: ['forager_cache', 'fallen_timber', 'willing_hands'],
     QUEUE_MAX: 200,       // offline writes waiting for the cloud
+    /* A VOTE EARNS A CARD (js/vote.js — the whole feature in one file;
+       supabase/migrations/0012 + 0013 and supabase/functions/vote-callback):
+       ON is its switch (off: no banner, no pop-up, no line, nothing asked of
+       the server); the vote page, sent the player's id as ?ref=; the card a
+       player's FIRST vote earns (the server's twin is vote_card()); the
+       tier every later vote deals at random (vote_later_tier()); and the
+       site's own wait between votes, which is when the banner comes back */
+    VOTE: { ON: true, URL: 'https://vibetoplist.com/vote/clanfire', CARD: 'swift_raiders', LATER: 'stone', GAP_H: 12 },
   },
 };

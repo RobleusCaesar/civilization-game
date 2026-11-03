@@ -452,7 +452,7 @@ const Bld = {
     if (s && Units.assignTerraform(s, br.x, br.y, 'bridgeup'))
       G.log('Bridge works laid out — a sapper heads over');
     else
-      G.log('Bridge works need a sapper — tap one, then the bridge', true);
+      G.log('Bridge works need a sapper — tap one, then the bridge', true, undefined, true);
     if (window.R && R.updateTile) R.updateTile(br.x, br.y);
     return true;
   },
@@ -1196,14 +1196,21 @@ const Bld = {
     if (b.owner === 'P') {
       const lv = this.lv(b);
       G.reveal(b.x, b.y, lv.vision || 4);   // finished at last — the view opens up
+      /* NEWS OFF THE OPEN VIEW IS A NOTE (tests/feedback.mjs, PX-17): a work
+         finished where the player can see it needs no words, and one finished
+         off the view — or under the panel — used to be told only to the event
+         log, which a muted player never opens. Never a wall or a gate: a
+         dragged line finishes ten sections at a time. */
+      const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
+        !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
-        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`);
+        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`, news);
       } else if (this.def(b.key).needsWorker) {
         G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
       } else {
-        G.log(`${this.def(b.key).name} complete`);
+        G.log(`${this.def(b.key).name} complete`, news);
       }
     }
     /* TAMING ON BUILD (tests/wild-grass.mjs): the wild sward around the new
@@ -1234,8 +1241,12 @@ const Bld = {
     return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
       u.task.id === b.id).length;
   },
-  workersActive(b) {
-    return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
+  // `list` (optional) is a subset of S.units already known to hold every hand
+  // that could be on this works — UI.incomePerDay passes each station its own
+  // group so a refresh walks the units once, not once per station. The rule
+  // is this one predicate either way.
+  workersActive(b, list) {
+    return (list || S.units).filter(u => u.owner === 'P' && u.task && u.task.type === 'work' &&
       u.task.id === b.id && Math.hypot(u.x - b.x - 0.5, u.y - b.y - 0.5) <= 1.4).length;
   },
 
@@ -1385,7 +1396,12 @@ const Bld = {
     // (a card's raising charts nothing itself: the taller building's own
     // sight opens the ground on the next visibility pass, as any building's does)
     if (b.owner === 'P' && !byCard) {
-      G.log(`${this.def(b.key).name} reached Lv ${b.level}!`);
+      // the new level is news off the open view (a note) and is HEARD, as a
+      // finished building is (tests/feedback.mjs, PX-17)
+      const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
+        !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
+      G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news);
+      if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
   },
@@ -1491,15 +1507,18 @@ const Bld = {
     }
     return map;
   },
-  homesteadOf(b) {
+  // `map` (optional) is a homesteadMap() the caller built a moment ago for a
+  // whole pass (UI.incomePerDay asks it once per refresh, not once per farm).
+  // Still derived, still never kept: the rule above holds.
+  homesteadOf(b, map) {
     if (!b || (b.key !== 'house' && b.key !== 'farm')) return null;
-    const id = this.homesteadMap()[b.id];
+    const id = (map || this.homesteadMap())[b.id];
     return id == null ? null : this.get(id);
   },
-  isHomestead(b) { return !!this.homesteadOf(b); },
+  isHomestead(b, map) { return !!this.homesteadOf(b, map); },
   // the bonded farm's output multiplier, and the bonded house's extra room
-  homesteadMult(b) {
-    if (b.key !== 'farm' || !this.isHomestead(b)) return 1;
+  homesteadMult(b, map) {
+    if (b.key !== 'farm' || !this.isHomestead(b, map)) return 1;
     // ORIGIN CARDS: Hearthbond deepens the bond — additive on the base rate,
     // and gone with the bond exactly as the base bonus is (derived, never stored)
     return (CFG.HOMESTEAD.food || 1) + (window.Cards ? Cards.homeAdd(b.owner) : 0);
@@ -1666,7 +1685,25 @@ const Bld = {
     const nu = Units.spawn(kind, b.owner, spot.x, spot.y);
     if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('train');
     if (b.owner === 'P') {
-      G.log(`${CFG.UNITS[kind].name} ready`);
+      /* A UNIT READY OFF THE OPEN VIEW IS A NOTE, one a burst (tests/
+         feedback.mjs, PX-17): a yard releasing three inside ten seconds says
+         "Barracks: 3 defenders ready" once. The event log keeps its line a
+         unit; on the view the log alone, as before. Stamps keyed on S. */
+      const name = CFG.UNITS[kind].name;
+      if (typeof UI === 'undefined' || !UI.inOpenBand || UI.inOpenBand(this.cx(b), this.cy(b))) G.log(`${name} ready`);
+      else {
+        const now = performance.now();
+        if (!this._readyAt || this._readyAt.s !== S) this._readyAt = { s: S, at: new Map() };
+        const r = this._readyAt.at.get(b.id);
+        if (r && now - r.t < 10000) {
+          r.n++;
+          if (r.kind !== kind) r.kind = null;
+          G.log(`${name} ready`);
+          if (r.el && r.el.isConnected) r.el.remove();
+          const many = r.kind ? (/man$/.test(name) ? name.slice(0, -3) + 'men' : name + 's').toLowerCase() : 'units';
+          r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note', undefined, false, true);
+        } else this._readyAt.at.set(b.id, { t: now, n: 1, kind, el: G.log(`${name} ready`, 'note') });
+      }
       if (S.stats) S.stats.trained++;
     }
     // the rival's fresh fishing boats put their nets straight out

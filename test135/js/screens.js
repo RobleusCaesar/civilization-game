@@ -46,9 +46,13 @@ const Screens = {
       // is still the current screen then, and onTitle rolls the demo
       if (this.current === 'title' && !this._entering) this.onTitle();
     });
-    // title camera drift
+    /* title camera drift — the DEMO world's alone, and never while a world is
+       being entered (PX-21a): a Continue waits behind its plaque with the
+       title still the current screen, and the drift used to carry the loaded
+       world's camera off across the map, so the run opened 13-16 tiles from
+       its own hall */
     const pan = () => {
-      if (this.current === 'title' && window.S && R.terrainCache) {
+      if (this.current === 'title' && this._demo && !this._entering && window.S && R.terrainCache) {
         // a demo world that plays itself to a finish quietly rolls a new one
         if (S.over && this._demo) { this._demo = false; this.ensureDemo(); }
         R.cam.x += 0.22; R.cam.y += 0.09;
@@ -164,7 +168,11 @@ const Screens = {
     try { G.newGame(String((Math.random() * 1e9) | 0), 'moderate', 'large'); }
     finally { R.deferBake = false; }
     R.holdBake = true;
-    this.waitForWorldArt(this.DEMO_ART_FLOOR_MS).then(() => { R.holdBake = false; });
+    /* …released for THIS demo world only: on a slow link the floor can run
+       out after a run has been founded, whose own hold (foundRun) waits for
+       the run's art — the demo's timer must never release that one */
+    const demo = S;
+    this.waitForWorldArt(this.DEMO_ART_FLOOR_MS).then(() => { if (S === demo) R.holdBake = false; });
     Cards.pick((Math.random() * 3) | 0);   // the demo world drafts for itself
     G.freeVis = true;         // newGame resets fog; the demo shows the whole map
     G.updateVisibility();
@@ -323,35 +331,183 @@ const Screens = {
     if (window.TitleScreen) { try { TitleScreen.onTitle(); } catch (e) { console.error('night title', e); } }
   },
 
+  /* CONTINUE WORKS THE FIRST TIME (PX-21a, tests/finished-run-continue.mjs
+     §7). ONE OPENING AT A TIME: from the tap until the world is in
+     (_enterNow) or the attempt has failed, `_continuing` holds — a second
+     tap loaded the save twice and entered it twice, and a New Game tap under
+     the plaque founded a world the plaque then entered. The title stays
+     LIVE under the plaque (a stuck plaque must never become a dead page);
+     the presses that would open a second world ask `opening()` instead. */
+  _continuing: false,
+  opening() { return !!(this._continuing || this._entering); },
   async continueGame() {
-    if (this._newestSlot == null) return;
-    if (this._newestSlot === 'local') {
-      const snap = Backend.readLocalSnapshot();
-      if (!snap) return;
-      R.deferBake = true; try { G.loadJSON(snap.json); } finally { R.deferBake = false; }
-      if (snap.slot) Backend.markActiveSlot(snap.slot);
-      this.enterGame();
-      UI.toast('Recovered your last session — save it to a slot to keep it');
+    // a second press while the save is still on its way (a cloud save can be
+    // seconds out) is answered, never obeyed; once the plaque is up, the
+    // plaque is the answer
+    if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
+    if (this._newestSlot == null) {
+      // a tap is never lost without a word: the lookup is still out
+      const lab = this.el('btnContinue').querySelector('small');
+      if (lab && /looking/.test(lab.textContent)) this.say('Still checking for your saves…');
       return;
     }
-    const r = await Backend.loadSlot(this._newestSlot);
-    if (!r.ok) { UI.toast(r.error.message, true); return; }
-    this.loadRow(r.data);
+    this._continuing = true;
+    try {
+      if (this._newestSlot === 'local') {
+        const snap = Backend.readLocalSnapshot();
+        if (!snap) { this._continuing = false; this.say('That save is no longer on this device.', true); return; }
+        if (!this._loadSave(snap.json)) return;
+        if (snap.slot) Backend.markActiveSlot(snap.slot);
+        // the crash net holds this very day: the quit guard counts from here
+        this.lastSavedDay = S.day;
+        this._arrive = true;          // "Welcome back — day N", once the world is up
+        this.enterGame();
+        return;
+      }
+      const r = await this._fetchSlot(this._newestSlot);
+      if (r.stale) return;   // the player went on while it was out: theirs now, never ours
+      if (!r.ok) { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(r.error), true); return; }
+      this.loadRow(r.data, true);
+    } catch (e) { this._openFailed(e); }
+  },
+  /* a cloud save, or a plain "no" once LOAD_MAX_MS has passed. The opening
+     holds every press that would start another world, so it may never hold
+     them for good: a token refresh that never answers, or a body that stalls
+     once its headers are in (_rest's timer covers the headers alone), would
+     have left New Game saying "Opening your saved game…" forever. The cap
+     is past _rest's own worst case (three tries of TIMEOUT_MS, ~26 s), and
+     an answer that comes after it is dropped, never loaded over the title.
+     ONE OPENING AT A TIME SURVIVES A RESUME (§7j): every fetch takes the
+     opening's token (_openTok), and an entry moves it — enterGame at the
+     press (a Resume from the pause menu included, even one that waits
+     behind its plaque) and _enterNow once the world is in — as does a newer
+     fetch. An answer that comes back after that resolves { stale } and its
+     caller lets it go — never loaded over the game in hand, nor over a save
+     the player chose next, exactly as an answer past the cap is dropped. */
+  LOAD_MAX_MS: 40000,
+  _openTok: 0,
+  _fetchSlot(slot) {
+    const tok = ++this._openTok;
+    let t = 0;
+    const cap = new Promise(r => { t = setTimeout(() => r({ ok: false, error: { code: 'network', message: 'Request timed out' } }), this.LOAD_MAX_MS); });
+    return Promise.race([Backend.loadSlot(slot), cap]).finally(() => clearTimeout(t)).then(
+      r => tok === this._openTok ? r : { ok: false, stale: true },
+      e => { if (tok === this._openTok) throw e; this._fault(e, 'a save fetch the player had left'); return { ok: false, stale: true }; });
   },
 
-  loadRow(row) {
-    R.deferBake = true; try { G.loadJSON(typeof row.state === 'string' ? row.state : JSON.stringify(row.state)); } finally { R.deferBake = false; }
+  // `mine`: the caller already holds the opening (Continue, the Load screen)
+  loadRow(row, mine) {
+    if (!mine && this.opening()) return;
+    this._continuing = true;
+    if (!this._loadSave(typeof row.state === 'string' ? row.state : JSON.stringify(row.state))) return;
     Backend.markActiveSlot(row.slot);
     Backend.activeName = row.name;
     this.lastSavedDay = S.day;
     this._demo = false;
     // a finished run reopens at its tally (loadJSON already raised it) —
     // the score can still be saved to the board from there
-    if (S.over) { G.freeVis = false; return; }
+    if (S.over) { this._continuing = false; G.freeVis = false; return; }
+    this._arrive = true;
     this.enterGame();
   },
 
+  /* OPEN A SAVED GAME, OR SAY WHY NOT (PX-21a). G.loadJSON refuses a file it
+     cannot read before it touches anything (not a save, a newer build's) —
+     but a fault past that point leaves the world half-replaced. Either way
+     the player is TOLD, on the shell's own line (PX-69: a toast is invisible
+     here), and what the attempt touched is put right: a replaced world gives
+     way to a clean title world, and the world in hand gets its ground back. */
+  _loadSave(json) {
+    const S0 = window.S, W0 = CFG.W, H0 = CFG.H, cache0 = R.terrainCache;
+    R.deferBake = true;
+    try { G.loadJSON(json); return true; }
+    catch (e) {
+      this._continuing = false; this._arrive = false;
+      if (!/not a Clanfire save|newer version/.test(String(e && e.message)) && !(e instanceof SyntaxError)) this._fault(e, 'a save that would not open');
+      try {
+        if (window.S !== S0) { this._demo = false; this.ensureDemo(); if (this.current !== 'title') this.show('title'); }
+        else if (CFG.W !== W0 || CFG.H !== H0 || (cache0 && !R.terrainCache)) { CFG.W = W0; CFG.H = H0; R.rebuildTerrain(); }
+      } catch (e2) { console.error('could not put the title right', e2); }
+      this.say('That save could not be opened: ' + this.whyLoad(e), true);
+      return false;
+    } finally { R.deferBake = false; }
+  },
+  /* a fault this file catches is still a fault: the error ring and the run's
+     tally hear of it exactly as they did when it escaped (Feedback.noteError) */
+  _fault(e, what) {
+    console.error(what, e);
+    try { if (window.Feedback && Feedback.noteError) Feedback.noteError((e && e.message) || String(e), e && e.stack, 'screens.js'); } catch (e2) {}
+  },
+  // …anything else that stops an opening part-way: never a stuck press
+  _openFailed(e) {
+    this._fault(e, 'a world that would not open');
+    this._continuing = false; this._arrive = false; this._entering = false;
+    const run = this._prepRun;
+    if (run) { run.gone = true; clearTimeout(run.t); this._prepRun = null; }
+    try { this.showPrep(false); } catch (e2) {}
+    // it never navigates: the screen in hand (a paused game's Load screen
+    // included) stays as it is, every press answers again, and it says why
+    this.say('That save could not be opened: ' + this.whyLoad(e), true);
+  },
+  // a reason a player can read — never an exception's own words
+  whyLoad(e) {
+    const m = String((e && e.message) || '');
+    if (/newer version/.test(m)) return 'it comes from a newer version of the game.';
+    if (/not a Clanfire save/.test(m) || e instanceof SyntaxError) return 'it is not a Clanfire save.';
+    return 'it is damaged.';
+  },
+  /* …and a cloud failure is NAMED, never quoted (PERS-02, tests/finished-
+     run-continue.mjs §7l): the fallback used to show the server's own words,
+     first letter lowered ("Save failed: jWT expired."), table names, quotes
+     and all. A failure is told by its class; what the server said goes to
+     the console and the error ring, tagged 'net' — a report carries it, the
+     run's tally never counts it (Feedback.noteError). */
+  whyNet(err) {
+    const c = err && err.code, m = String((err && err.message) || '').trim();
+    if (c === 'empty_slot') return 'that slot is empty.';
+    if (c === 'not_ready' || c === 'not_configured' || c === 'no_slot') return 'cloud saves are not connected.';
+    if (c === 'network') return 'the cloud could not be reached.';
+    if (c === 'busy') return 'another save was still being written. Try again in a moment.';
+    if (c === 'no_game' || c === 'not_played') return 'there is no game in play to save.';
+    if (typeof c === 'number' && c >= 500) return 'the cloud is not answering right now.';
+    if (m) {   // the server's own words: kept for a report, never shown
+      console.warn('the cloud answered', c, m);
+      try { if (window.Feedback && Feedback.noteError) Feedback.noteError('Cloud ' + c + ': ' + m, '', 'screens.js', 'net'); } catch (e) {}
+    }
+    if (c === 401 || c === 403 || c === 'auth_failed' || /\bjw[st]|token|sign.?in|session/i.test(m)) return 'the cloud did not accept your sign-in.';
+    return (typeof c === 'number' && c >= 400) || m ? 'the cloud refused it.' : 'the cloud did not answer.';
+  },
+
+  /* ONE MESSAGE LINE FOR THE SHELL (PX-69, index.html #shellMsg). Every toast
+     is display:none off the playing screen (body:not(.ingame) #toasts), so a
+     failed Continue, a failed save, a refused import and a failed identity
+     restore said nothing at all — at the very moment a player is most anxious
+     about their game. Off the playing screen the shell says it on a line of
+     its own, over whichever shell screen is up; in a game it is a toast. A
+     tap puts it away; it never holds the screen. */
+  say(msg, bad, ms) {
+    if (!msg) return;
+    const el = this.el('shellMsg');
+    // bare UI, never window.UI: UI is a script-level const (window.UI is undefined)
+    if (this.current === 'playing' || !el) { if (typeof UI !== 'undefined') UI.toast(String(msg), bad ? true : 'note', ms); return; }
+    if (!el._sx) { el._sx = true; el.addEventListener('click', () => this.unsay()); }
+    el.textContent = String(msg);
+    el.classList.toggle('bad', !!bad);
+    el.classList.add('show');
+    clearTimeout(this._sayT);
+    this._sayT = setTimeout(() => this.unsay(), ms || (bad ? 7000 : 4000));
+  },
+  unsay() {
+    clearTimeout(this._sayT);
+    const el = this.el('shellMsg');
+    if (el) el.classList.remove('show');
+  },
+
   enterGame() {
+    // an entry from the PRESS (§7j): a fetch still out belongs to a world the
+    // player has gone past — a Resume waiting behind its plaque included
+    this._openTok++;
+    if (!this._entering) { this._prepT0 = performance.now(); this._prepSync = true; Promise.resolve().then(() => { this._prepSync = false; }); }   // analytics (prep_ms): the press — a world that opens in this same task showed no plaque
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
@@ -363,32 +519,111 @@ const Screens = {
        something to wait for — for the art and for the held bake to finish
        in slices, and only then shows the game. A warm cache never sees the
        plaque: the art settled behind the title long before. */
-    const ready = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
+    /* AND ON ITS OWN GROUND (operator, 2026-11-03: "load the art for the
+       village during the game loading screen… populate everything in the dark
+       areas after the game starts"). The V4 ground is painted by workers a
+       chunk at a time, and a world that opened before the chunks under its
+       view were in stood on the flat, blurred stand-in for seconds. The
+       press now waits for THOSE chunks too (TerrainX.viewFrac, asked of this
+       camera at the zoom just set) — never the rest of the map, which fills
+       in behind the fog after entry as it always did — and no longer than
+       GROUND_MAX_MS from the press, nor less than GROUND_MIN_MS once the art
+       and the bake are in, so a slow phone opens on the stand-in rather than
+       stalling. No work is added: the prefetch was already painting this
+       ground behind the plaque; the plaque now covers it. */
+    const ground = () => !window.TerrainX || !TerrainX.viewFrac || TerrainX.viewFrac() >= 1;
+    const rest = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
+    const ready = () => rest() && ground();
     if (ready()) { this._enterNow(); return; }
+    // one plaque at a time: the one already up enters this world when it is ready (PX-21a)
+    if (this._prepRun) return;
     this.showPrep(true);
+    /* THE PLAQUE NEVER STRANDS THE PLAYER (PX-21a). A fault in a slice of the
+       bake used to kill this tick and leave "Preparing the world…" up for
+       good, the world never entered. The tick is guarded, and a hard cut-off
+       (PREP_MAX_MS, well past the art's own floor) lifts the plaque whatever
+       the wait does: the game is entered — the frame loop finishes any bake
+       still owed, under its own guard — or, if even that fails, every press
+       answers again and the line says why (_openFailed). */
+    const run = this._prepRun = { gone: false, t: 0 };
+    const go = () => {
+      if (run.gone) return;
+      run.gone = true; clearTimeout(run.t);
+      if (this._prepRun === run) this._prepRun = null;
+      this.showPrep(false);
+      try { this._enterNow(); } catch (e) { this._openFailed(e); }
+    };
+    run.t = setTimeout(go, this.PREP_MAX_MS);
+    const t0 = this._prepT0 || performance.now();
+    let groundBy = 0;
     this.waitForArt(this.GAME_ART_FLOOR_MS).then(() => {
       R.holdBake = false;
       const tick = () => {
-        if (!R._bakeDue && !R._bake) { this.showPrep(false); this._enterNow(); return; }
-        R.tickBake(30); requestAnimationFrame(tick);   // behind the plaque: big slices, the bar still moves
+        if (run.gone) return;
+        try {
+          if (!R._bakeDue && !R._bake) {
+            const now = performance.now();
+            if (!groundBy) groundBy = Math.max(t0 + this.GROUND_MAX_MS, now + this.GROUND_MIN_MS);
+            if (ground() || now >= groundBy) { go(); return; }
+          } else R.tickBake(30);   // behind the plaque: big slices, the bar still moves
+        } catch (e) { this._fault(e, 'the bake behind the plaque'); go(); return; }
+        requestAnimationFrame(tick);
       };
       tick();
-    });
+    }, go);
   },
+  PREP_MAX_MS: 30000,
+  GROUND_MAX_MS: 9000,   // the opening view's ground is waited for this long from the press…
+  GROUND_MIN_MS: 2000,   // …and at least this long once the art and the bake are in
   _enterNow() {
+    this._openTok++;            // a fetch still out belongs to a world the player has gone past (§7j)
     this._entering = false;
+    this._continuing = false;   // the world is in: Continue answers again (PX-21a)
+    // …and a plaque still up for an earlier press retires with it: one entry, never two
+    const run = this._prepRun;
+    if (run) { run.gone = true; clearTimeout(run.t); this._prepRun = null; this.showPrep(false); }
     /* ANALYTICS: a run BEGINS here — after the draft, so the kept card is
        known, and only for a world G.newGame just founded (G._freshRun), so
        loading a save is never counted as a new run. A start with no matching
        end is how the dashboard sees an abandoned run. */
     try {
+      /* THE FIRST MINUTE (PX-49, tests/telemetry.mjs §7). How long the press
+         waited behind "Preparing the world…" (0 when the world was ready at
+         once) — and, once per world per page (never again on a resume from
+         the pause menu), when and at what play-clock second it OPENED, so its
+         endings can carry wall_s beside 'seconds' (G.runReport) and a
+         CONTINUED world's wait (a Continue sends no run_start) can ride them.
+         Keyed on the world itself in a WeakMap: page state, never the save.
+         The wall clock is the page's VISIBLE clock — a phone that switches
+         apps for an hour has not played for an hour. */
+      // 0 exactly when the world opened in the press's own task (the plaque
+      // path always reaches here from a later promise or frame): a forced
+      // layout on a busy phone must never read as a plaque
+      const prepMs = (this._prepT0 && !this._prepSync) ? Math.max(0, Math.round(performance.now() - this._prepT0)) : 0;
+      this._prepT0 = 0;
+      if (!this._demo && window.S) {
+        if (!this._vis) {
+          let hid = 0, at = document.hidden ? Date.now() : 0;
+          document.addEventListener('visibilitychange', () => {
+            if (document.hidden) { if (!at) at = Date.now(); }
+            else if (at) { hid += Math.max(0, Date.now() - at); at = 0; }
+          });
+          this._vis = () => Date.now() - hid - (at ? Math.max(0, Date.now() - at) : 0);
+        }
+        const op = this._opened || (this._opened = new WeakMap());
+        if (!op.has(S)) op.set(S, { vis: this._vis(), play: S.playtime || 0, resumeMs: G._freshRun ? null : prepMs });
+        if (window.Backend) Backend.entered = true;
+      }
       if (G._freshRun && !this._demo && window.Backend && Backend.logRunStart) {
         G._freshRun = false;
         const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
           && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
+        // why the lesson is on or off: the explicit choice, else the auto-on for a first game
+        const ask = this.lsGet('neo-tutorial-ask'), tutOn = !!(S.tut && S.tut.on);
         Backend.logRunStart({
           mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
-          tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null, seed: String(S.seed || ''),
+          tutorial: tutOn, card, origin: S.origin || null, seed: String(S.seed || ''),
+          prepMs, tutSrc: tutOn ? (ask === '1' ? 'ticked' : 'auto') : (ask === '0' ? 'declined' : 'none'),
         });
         S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
         if (window.Feedback) Feedback.runKey = S.runId;   // the error tally is this run's
@@ -397,6 +632,22 @@ const Screens = {
     S.paused = false;
     document.getElementById('btnPause').textContent = '⏸';
     this.show('playing');
+    this.unsay();   // nothing the shell said follows the player into the game
+    /* A WORLD OPENED FROM A SAVE SAYS WHERE YOU ARE (PX-21a): one note, once,
+       on arriving (the flag is the opening's — a Resume from the pause menu
+       says nothing). It takes over the crash net's "Recovered your last
+       session" line, which was never shown: UI.toast drops a line with no
+       level, and no toast is visible behind the plaque anyway. */
+    if (this._arrive && window.S && !this._demo) {
+      this._arrive = false;
+      // …once the world's first frames are painted, so its time on screen is
+      // time the player can read it (an entry on a busy phone can stall)
+      const world = S, day = S.day;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (window.S === world && this.current === 'playing' && typeof UI !== 'undefined') UI.toast('Welcome back — day ' + day, 'note', 4500);
+      }));
+    }
+    this._arrive = false;
     // the first Calm game's modal, deferred from draftTap to the moment the
     // world is actually on screen (never under the art plaque)
     if (this._victoryPathsPending) {
@@ -419,8 +670,20 @@ const Screens = {
     if (on) {
       const fill = document.getElementById('prepFill');
       const total = Math.max(1, (window.Assets && Assets.pending) || 1); this._prepTotal = Math.max(this._prepTotal || 0, total);
-      const step = () => { if (el.style.display === 'none') return; const left = (window.Assets && Assets.pending) || 0;
-        fill.style.width = Math.round(100 * (1 - left / this._prepTotal)) + '%'; requestAnimationFrame(step); };
+      /* THE BAR SHOWS PROGRESS (PX-38): it sat near 5% while the pictures
+         trickled in and the game then appeared at the art's floor. It fills
+         by the art's own fraction or the time against that floor, whichever
+         is further on — and it never goes back. */
+      const t0 = performance.now(), floor = Math.max(1, this.GAME_ART_FLOOR_MS), tok = this._barTok = {};
+      let shown = 0;
+      /* …and where V4 paints the ground, the opening view's chunks are the last
+         two fifths of it, so a warm press waiting on its ground never sits on a
+         full bar */
+      const groundFrac = () => (window.TerrainX && TerrainX.on && TerrainX.viewFrac) ? TerrainX.viewFrac() : -1;
+      const step = () => { if (el.style.display === 'none' || this._barTok !== tok) return; const left = (window.Assets && Assets.pending) || 0;
+        const art = 1 - left / this._prepTotal, gf = groundFrac(), part = gf < 0 ? art : 0.6 * art + 0.4 * gf;
+        shown = Math.max(shown, Math.min(1, Math.max(part, (performance.now() - t0) / floor)));
+        fill.style.width = Math.round(100 * shown) + '%'; requestAnimationFrame(step); };
       step();
     } else this._prepTotal = 0;
   },
@@ -473,7 +736,7 @@ const Screens = {
      still in front of the pixels that announce it. `_founding` swallows a
      second press, which would otherwise found two worlds over each other. */
   startNewGame() {
-    if (this._founding) return;
+    if (this._founding || this.opening()) return;   // a saved game on its way in is never founded over (PX-21a)
     /* BACKING OUT IS NOT A REROLL. The draft's back button returns here
        with the world already founded and the hand already dealt; a second
        tap on the SAME trial resumes that exact draft — map, cards and
@@ -914,7 +1177,7 @@ const Screens = {
 
   draftTap(i, el) {
     const D = window.S && S.draft;
-    if (!D || D.done || !el.classList.contains('flip')) return;
+    if (!D || D.done || !el.classList.contains('flip') || this.opening()) return;
     if (this._draftSel !== i) {                    // first tap: lift and consider
       this._draftSel = i;
       for (const o of this.el('draftCards').children) o.classList.remove('lift');
@@ -1278,7 +1541,8 @@ const Screens = {
       return;
     }
     const r = await Backend.listSaves();
-    if (!r.ok) { box.innerHTML = '<p class="hint">Could not reach the cloud: ' + r.error.message + '</p>'; return; }
+    // named in plain words, never in the server's own (PERS-02, finished-run-continue §7l)
+    if (!r.ok) { box.innerHTML = '<p class="hint">Your cloud saves could not be listed: ' + this.esc(this.whyNet(r.error)) + '</p>'; return; }
     const bySlot = {};
     for (const row of r.data) bySlot[row.slot] = row;
     box.innerHTML = '';
@@ -1297,8 +1561,15 @@ const Screens = {
         const acts = card.querySelector('.sacts');
         if (this.saveMode) this.act(acts, '💾 Overwrite', () => this.saveToSlot(slot, row.name));
         else this.act(acts, '▶ Load', async () => {
-          const l = await Backend.loadSlot(slot);
-          if (l.ok) this.loadRow(l.data); else UI.toast(l.error.message, true);
+          // one opening at a time (PX-21a), and the press is answered, as at every other door (§7k)
+          if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
+          this._continuing = true;
+          try {
+            const l = await this._fetchSlot(slot);
+            if (l.stale) return;                    // the player went on while it was out (§7j)
+            if (l.ok) this.loadRow(l.data, true);
+            else { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(l.error), true); }   // seen over the Load screen (PX-69)
+          } catch (e) { this._openFailed(e); }     // never a press left holding the opening
         });
         this.act(acts, '✏️', async () => {
           const name = prompt('Rename save', row.name);
@@ -1335,12 +1606,21 @@ const Screens = {
     Backend.markActiveSlot(slot);
     Backend.activeName = name.trim() || 'Village';
     const r = await Backend.autosaveNow('manual');
+    /* "DID MY PROGRESS SAVE?" (PX-69): both answers are SEEN — on the shell's
+       own line, which stays over the pause menu the success returns to. A
+       failure says the game is still kept here only when the crash net
+       really holds this day (autosaveNow writes it before the cloud is
+       tried, but a full or blocked storage keeps nothing). */
     if (r.ok) {
       this.lastSavedDay = S.day;
-      UI.toast('Saved to slot ' + slot);
+      this.say('Saved to slot ' + slot);
       this.show(this.backTo === 'paused' ? 'paused' : 'load', { saveMode: this.saveMode });
       if (this.backTo === 'paused') this.show('paused');
-    } else UI.toast('Save failed: ' + r.error.message, true);
+    } else {
+      const net = window.Backend && Backend.readLocalSnapshot ? Backend.readLocalSnapshot() : null;
+      const kept = !!(net && window.S && net.day === S.day && Date.now() - (net.at || 0) < 60000);
+      this.say('Save failed: ' + this.whyNet(r.error) + (kept ? ' Your game is still kept on this device.' : ''), true);
+    }
   },
 
   /* ---------------- settings ---------------- */
@@ -1771,7 +2051,7 @@ const Screens = {
         if (!sub.ok && !/duplicate/i.test(sub.error.message || '')) {
           if (auto) this._promptName('Couldn’t reach the board — tap Save to try again');
           else { btn.textContent = '💾 Save score'; btn.classList.remove('cant');
-            UI.toast('Could not reach the board: ' + sub.error.message, true); }
+            UI.toast('Your score could not be posted: ' + this.whyNet(sub.error), true); }   // named, never quoted (PERS-02)
           return;
         }
       }
@@ -1821,7 +2101,8 @@ const Screens = {
       return;
     }
     const r = await Backend.topScores(10);
-    if (!r.ok) { box.innerHTML = '<p class="hint">Could not reach the board: ' + this.esc(r.error.message) + '</p>'; return; }
+    // named in plain words, never in the server's own (PERS-02, finished-run-continue §7l)
+    if (!r.ok) { box.innerHTML = '<p class="hint">The world board could not be shown: ' + this.esc(this.whyNet(r.error)) + '</p>'; return; }
     this.renderBoard(r.data, box, -1);
   },
 
@@ -1831,7 +2112,9 @@ const Screens = {
   bind() {
     const on = (id, fn) => this.el(id).addEventListener('click', fn);
     on('btnContinue', () => this.continueGame());
-    on('btnTitleNew', () => { this.backTo = 'title'; this.show('newgame'); });
+    // the title stays live under the plaque, but a saved game on its way in
+    // is never left for a new one (PX-21a); the plaque itself says why
+    on('btnTitleNew', () => { if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; } this.backTo = 'title'; this.show('newgame'); });
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
     on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
     on('ldrBack', () => {
@@ -1957,7 +2240,11 @@ const Screens = {
       const tok = prompt('Paste your recovery token:');
       if (!tok) return;
       const r = await Backend.importIdentity(tok.trim());
-      UI.toast(r.ok ? 'Identity restored — your cloud saves are back' : r.error.message, !r.ok);
+      // seen over Settings, on the shell's own line (PX-69) — a toast was hidden there.
+      // A token of the wrong shape is ours to word; whatever the sign-in
+      // service said is named in plain words, never quoted (PERS-02, §7l)
+      this.say(r.ok ? 'Identity restored — your cloud saves are back'
+        : r.error.code === 'bad_token' ? r.error.message : 'That recovery token could not be used: ' + this.whyNet(r.error), !r.ok);
       if (r.ok) this.onSettings();
     });
     on('btnExportFile', () => {
@@ -1976,13 +2263,18 @@ const Screens = {
       if (!f) return;
       const rd = new FileReader();
       rd.onload = () => {
+        /* the file's verdict is SEEN (PX-69): _loadSave says why a file will
+           not open on the shell's own line and puts the title right; a file
+           that opens arrives with "Welcome back — day N" */
+        if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }   // answered (§7k)
+        this._continuing = true;
         try {
-          R.deferBake = true; try { G.loadJSON(rd.result); } finally { R.deferBake = false; }
+          if (!this._loadSave(rd.result)) return;
           Backend.markActiveSlot(null);
           this.lastSavedDay = S.day;
+          this._arrive = true;
           this.enterGame();
-          UI.toast('Save file loaded');
-        } catch (err) { UI.toast('Could not load save: ' + err.message, true); }
+        } catch (err) { this._openFailed(err); }
       };
       rd.readAsText(f);
       e.target.value = '';
