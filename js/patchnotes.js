@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 135, date: '2026-11-03', title: 'Buildings settle into the land',
+    items: [
+      'Every building now casts a soft shadow across the grass, so it sits on the ground instead of floating over it.',
+      'The hall and the workplaces stand in a yard of worn earth, wider at the door where the comings and goings are.',
+      'Houses and watchtowers are wrapped in bushes, ferns and long grass, with the doorway always left clear.',
+    ],
+  },
+  {
     build: 134, date: '2026-11-03', title: 'Vote and get a free card',
     items: [
       'A new gold banner under the title menu: tap it, vote for Clanfire on Vibe Top List, and a free card joins your deck. Your first vote earns Swift Raiders, and every vote after that earns a random Stone card.',

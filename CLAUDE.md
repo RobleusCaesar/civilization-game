@@ -287,7 +287,33 @@ node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title
 node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
 node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
+node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 ```
+
+**THE GROUND UNDER A BUILDING** (`js/footing.js`, `CFG.FOOTING`, tests/footing.mjs —
+operator, 2026-11-03, on the V5 land: the buildings "really stand out… a
+sticker on top of it"; of six mockups drawn in the real game the pick was a
+cast shadow under every building, a trodden yard round the workplaces and a
+hedge round the homes and towers). `Footing.look(b)` is the one answer:
+`yard` (the hall and every workplace), `hedge` (houses, a free-standing
+tower), `shadow` (everything else), `none` (walls, gates, the dock, a tower
+`R.towerLinkMask` bonds into a line, a site, an upgrade). Each building is
+MEASURED off its own sprite (`R.wornSprite`, read through a canvas — a page
+from disk taints the PNG and stands a block in for it) on the V4/V5 ground's
+half-pixel grid into three canvases cut to what they hold: `ground` (earth,
+shadow) laid by `R.draw` right after the gate roads, before ANY building;
+`back` and `front` around its own sprite (a bush it stands before, grass in
+front of its foot), and laid again by `R._redrawPic` so a unit or a mountain
+strip behind it never lands in front of its hedge. **A PICTURE, NEVER A RULE**:
+no S write, no RNG (every choice hashes the id and the world position), no
+tile, path or hit-test; the ground layer lies only on grass, stumps,
+picked-bare soil or a building's own plot, never water or the black; the
+hedge keeps the door clear; petals are cream and lilac, never the resource
+colours. **PACED**: measurements wait in a queue drained under `BUDGET_MS`
+(3) a frame, at least one a frame; a building keeps its footing until its
+kind, level, place, sprite (a burn phase) or the ground round it changes,
+and a stale one draws until its replacement is ready. Off (`CFG.FOOTING.ON`
+false, or `?footing=0` for the page) nothing is measured, cached or drawn.
 
 **SPECIAL EVENTS** (`tests/specials.mjs`, `CFG.SPECIALS` / `KRAKEN` /
 `PLAGUE`, all of the roll and the triggers in game.js): the audit measured

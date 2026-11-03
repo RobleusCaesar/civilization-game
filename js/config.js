@@ -23,6 +23,9 @@ const CFG = {
      landscape the world's own landform calls for; false here paints plain V4 again,
      and so does ?biome=v4 on one device (?biome=auto undoes it). */
   TERRAIN: { V4: true, V5: true },
+  // THE GROUND UNDER A BUILDING (js/footing.js): a cast shadow under every building, a trodden yard
+  // round the workplaces, a hedge round the homes and towers. A picture only; false (or ?footing=0) stands it down.
+  FOOTING: { ON: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
   ART_V: 66,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
