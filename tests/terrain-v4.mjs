@@ -477,6 +477,51 @@ const groundWaits = (p) => p.evaluate(async () => {
     `${r.held.pf} prefetch calls, ${r.held.draws} draws; first frame ${r.first ? r.first.have + '/' + r.first.view : '?'}`);
   await ctx.close();
 }
+/* …and THE VILLAGE OPENS ON ITS OWN GROUND (operator, 2026-11-03): a WARM
+   Continue — every picture in, the bake done — used to open at once on the
+   flat stand-in and paint its ground in over the next seconds. The press now
+   waits behind the plaque for the chunks under its view (no longer than
+   Screens.GROUND_MAX_MS), so its first frame stands on real ground. The
+   control lifts the cap to nothing and must see the stand-in, or the probe
+   is not looking. */
+{
+  const { p, ctx } = await page('');
+  const r = await p.evaluate(async () => {
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await sleep(25); return f(); };
+    await until(() => Assets.allArtReady && Assets.allArtReady(), 120000);
+    Screens._demo = false; G.newGame('pf-warm', 'moderate', 'medium', undefined, 'green'); Cards.pick(0);
+    const json = G.saveJSON(), draw = R.draw, out = {};
+    const open = async (label) => {
+      Screens.show('title');
+      let at = null;
+      R.draw = function () {
+        if (!at && Screens.current === 'playing') { const v = TerrainX.viewChunks(0); at = { view: v.length, have: v.filter(([a, b]) => TerrainX.chunks.has(a + ',' + b)).length }; }
+        return draw.apply(this, arguments);
+      };
+      G.loadJSON(json);
+      // a WARM cache: every picture counts as in, so the only thing left to wait for is the ground
+      const ar = Assets.artReady; Assets.artReady = () => true;
+      const warm = !R._bakeDue && !R._bake;
+      const t0 = performance.now(); let plaque;
+      try { Screens.enterGame(); plaque = !!Screens._prepRun; await until(() => at, 60000); }
+      finally { Assets.artReady = ar; R.draw = draw; }
+      out[label] = { warm, plaque, ms: Math.round(performance.now() - t0), on: TerrainX.on, ...(at || { view: -1, have: -1 }) };
+    };
+    await open('waited');
+    const mx = Screens.GROUND_MAX_MS, mn = Screens.GROUND_MIN_MS;
+    Screens.GROUND_MAX_MS = 0; Screens.GROUND_MIN_MS = 0;
+    try { await open('control'); } finally { Screens.GROUND_MAX_MS = mx; Screens.GROUND_MIN_MS = mn; }
+    out.cap = mx;
+    return out;
+  });
+  const w = r.waited, c = r.control;
+  ck('aWarmContinueOpensOnItsOwnGround', w.warm && w.on && w.plaque && w.view > 0 && w.have === w.view && w.ms <= r.cap + 3000,
+    `warm press: the plaque ${w.plaque ? 'held' : 'never showed'} ${w.ms} ms; first frame ${w.have}/${w.view} chunks real`);
+  ck('andTheCapStillOpensTheWorld', c.warm && c.view > 0 && c.have < c.view,
+    `cap lifted to nothing: first frame ${c.have}/${c.view} chunks real after ${c.ms} ms (the stand-in must show, or the probe is not looking)`);
+  await ctx.close();
+}
 /* …and where V4 is not drawing, it asks for nothing at all */
 for (const [name, q, setup] of [['theClassicLink', '?terrain=classic', null], ['theKillSwitch', '', 'v4off']]) {
   const { p, ctx } = await page(q);

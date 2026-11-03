@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 132, date: '2026-11-03', title: 'The village opens looking right',
+    items: [
+      'When a game opens, the ground around your village is now painted before you see it, instead of starting as flat colour and filling in. The loading screen can stay up a few seconds longer while this happens. Ground hidden in the dark still fills in once you are playing.',
+    ],
+  },
+  {
     build: 131, date: '2026-11-02', title: 'Quieter red buttons',
     items: [
       'The small Demolish, Banish and Scuttle buttons are toned down so they no longer draw the eye. They only turn bright red once you tap them to confirm.',

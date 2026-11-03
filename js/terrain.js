@@ -235,9 +235,11 @@
        arrival is taken in per call, requests stay under the in-flight cap,
        the warm queue is never started and nothing is drawn. Answers how many
        chunks it asked for (0 when V4 is not painting or has no workers). */
-    prefetch(cx, cy, z) {
+    prefetch(cx, cy, z, takeMs) {
       if (!this.on || !this.ready || !this.workers.length) return 0;
+      // behind the plaque nothing else is drawn: take in what has arrived, a few ms of it
       this.takeArrivals();
+      if (takeMs > 0) for (const t = performance.now() + takeMs; this._arrive && this._arrive.length && performance.now() < t;) this.takeArrivals();
       const span = CH * TL, nC = Math.ceil(CFG.W / CH), nR = Math.ceil(CFG.H / CH);
       const x0 = cx - R.viewW() / z / 2, y0 = cy - R.viewH() / z / 2, x1 = x0 + R.viewW() / z, y1 = y0 + R.viewH() / z;
       const ring = (pad) => {
@@ -255,6 +257,19 @@
       let asked = 0;
       for (const [a, b] of need) { if (this.pending.size >= cap) break; this.request(a, b); asked++; }
       return asked;
+    },
+
+    /* THE VILLAGE OPENS ON ITS OWN GROUND (Screens.enterGame, tests/terrain-v4.mjs
+       §12): how much of the view the world will open on is real ground, 0..1 —
+       the chunks under this camera, at the zoom enterGame has given it. 1 when
+       V4 is not the painter (the classic painters, the kill switch, a failure)
+       or has no worker to paint with: then it has nothing of its own to wait for. */
+    viewFrac() {
+      if (!this.on || (this.ready && !this.workers.length)) return 1;
+      if (!this.ready) return 0;
+      const v = this.viewChunks(0); if (!v.length) return 1;
+      let have = 0; for (const [a, b] of v) if (this.chunks.has(a + ',' + b)) have++;
+      return have / v.length;
     },
 
     // ---- per frame -----------------------------------------------------------------------

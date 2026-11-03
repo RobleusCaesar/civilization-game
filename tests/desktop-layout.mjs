@@ -83,7 +83,8 @@ async function boot(vp) {
       G.newGame('layout-' + size, 'moderate', size); Screens._demo = false;
       R.cam.z = 0.77;                       // whatever the last screen left behind
       Screens.enterGame();                  // THE real door — the one that sets the opening zoom
-      for (let i = 0; i < 300 && Screens.current !== 'playing'; i++) await new Promise(r => setTimeout(r, 20));
+      // the press waits for the ground under its view, GROUND_MAX_MS at most (terrain-v4 §12)
+      for (const t = performance.now() + Screens.GROUND_MAX_MS + 8000; Screens.current !== 'playing' && performance.now() < t;) await new Promise(r => setTimeout(r, 20));
       const o = { z: +R.cam.z.toFixed(3), min: +R.minZoom().toFixed(3), covers: covers(), entered: Screens.current === 'playing' };
       // every zoom the player can reach still covers the window
       R.cam.z = 0.5; o.floored = covers() && R.cam.z >= R.minZoom() - 1e-9;

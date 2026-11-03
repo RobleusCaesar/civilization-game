@@ -519,7 +519,21 @@ const Screens = {
        something to wait for — for the art and for the held bake to finish
        in slices, and only then shows the game. A warm cache never sees the
        plaque: the art settled behind the title long before. */
-    const ready = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
+    /* AND ON ITS OWN GROUND (operator, 2026-11-03: "load the art for the
+       village during the game loading screen… populate everything in the dark
+       areas after the game starts"). The V4 ground is painted by workers a
+       chunk at a time, and a world that opened before the chunks under its
+       view were in stood on the flat, blurred stand-in for seconds. The
+       press now waits for THOSE chunks too (TerrainX.viewFrac, asked of this
+       camera at the zoom just set) — never the rest of the map, which fills
+       in behind the fog after entry as it always did — and no longer than
+       GROUND_MAX_MS from the press, nor less than GROUND_MIN_MS once the art
+       and the bake are in, so a slow phone opens on the stand-in rather than
+       stalling. No work is added: the prefetch was already painting this
+       ground behind the plaque; the plaque now covers it. */
+    const ground = () => !window.TerrainX || !TerrainX.viewFrac || TerrainX.viewFrac() >= 1;
+    const rest = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
+    const ready = () => rest() && ground();
     if (ready()) { this._enterNow(); return; }
     // one plaque at a time: the one already up enters this world when it is ready (PX-21a)
     if (this._prepRun) return;
@@ -540,13 +554,18 @@ const Screens = {
       try { this._enterNow(); } catch (e) { this._openFailed(e); }
     };
     run.t = setTimeout(go, this.PREP_MAX_MS);
+    const t0 = this._prepT0 || performance.now();
+    let groundBy = 0;
     this.waitForArt(this.GAME_ART_FLOOR_MS).then(() => {
       R.holdBake = false;
       const tick = () => {
         if (run.gone) return;
         try {
-          if (!R._bakeDue && !R._bake) { go(); return; }
-          R.tickBake(30);   // behind the plaque: big slices, the bar still moves
+          if (!R._bakeDue && !R._bake) {
+            const now = performance.now();
+            if (!groundBy) groundBy = Math.max(t0 + this.GROUND_MAX_MS, now + this.GROUND_MIN_MS);
+            if (ground() || now >= groundBy) { go(); return; }
+          } else R.tickBake(30);   // behind the plaque: big slices, the bar still moves
         } catch (e) { this._fault(e, 'the bake behind the plaque'); go(); return; }
         requestAnimationFrame(tick);
       };
@@ -554,6 +573,8 @@ const Screens = {
     }, go);
   },
   PREP_MAX_MS: 30000,
+  GROUND_MAX_MS: 9000,   // the opening view's ground is waited for this long from the press…
+  GROUND_MIN_MS: 2000,   // …and at least this long once the art and the bake are in
   _enterNow() {
     this._openTok++;            // a fetch still out belongs to a world the player has gone past (§7j)
     this._entering = false;
@@ -655,8 +676,13 @@ const Screens = {
          is further on — and it never goes back. */
       const t0 = performance.now(), floor = Math.max(1, this.GAME_ART_FLOOR_MS), tok = this._barTok = {};
       let shown = 0;
+      /* …and where V4 paints the ground, the opening view's chunks are the last
+         two fifths of it, so a warm press waiting on its ground never sits on a
+         full bar */
+      const groundFrac = () => (window.TerrainX && TerrainX.on && TerrainX.viewFrac) ? TerrainX.viewFrac() : -1;
       const step = () => { if (el.style.display === 'none' || this._barTok !== tok) return; const left = (window.Assets && Assets.pending) || 0;
-        shown = Math.max(shown, Math.min(1, Math.max(1 - left / this._prepTotal, (performance.now() - t0) / floor)));
+        const art = 1 - left / this._prepTotal, gf = groundFrac(), part = gf < 0 ? art : 0.6 * art + 0.4 * gf;
+        shown = Math.max(shown, Math.min(1, Math.max(part, (performance.now() - t0) / floor)));
         fill.style.width = Math.round(100 * shown) + '%'; requestAnimationFrame(step); };
       step();
     } else this._prepTotal = 0;

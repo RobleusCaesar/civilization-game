@@ -3983,7 +3983,22 @@ measured on a quiet desktop, a Continue enters 2.6 s after the tap (0.43× of
 real ground arriving at about the same moment as before (0.94×). Re-measured
 on a quiet host (load < 3, interleaved with 127): keep → playing 0.38×, phone
 Continue 0.74×, the first minute no worse (its longest gap is the entry
-frame on both builds), so PX-37's install pacing was not built. A harness
+frame on both builds), so PX-37's install pacing was not built. **AND THE VILLAGE OPENS ON ITS OWN GROUND** (`TerrainX.viewFrac`,
+`Screens.GROUND_MAX_MS` / `GROUND_MIN_MS`; terrain-v4 §12
+`aWarmContinueOpensOnItsOwnGround` — operator, 2026-11-03: "load the art for
+the village during the game loading screen, but populate everything in the
+dark areas after the game starts"): the press also waits for the V4 chunks
+under its opening view (this camera at the zoom enterGame set), never the ring
+round it or the rest of the map, which fill in after entry as before. Capped
+at `GROUND_MAX_MS` (9 s) from the press and at least `GROUND_MIN_MS` (2 s)
+past the art and the bake, so a slow phone opens on the stand-in rather than
+stalling; behind the plaque the prefetch runs every frame and takes in every
+arrival for 6 ms. No work is added — the plaque covers ground the prefetch
+was already painting — and a warm Continue now shows the plaque (~4 s
+measured on a 4-core sandbox) where it opened at once; the plaque's bar gives
+the ground its last two fifths. A test about something else that enters
+through the real door either stubs `TerrainX.viewFrac` (telemetry) or waits
+past the cap (desktop-layout). A harness
 that measures the first minute must compare UNROUNDED times: rounding the
 gap's start against the entry moment dropped the entry gap about half the
 time and read as a 1.78× regression that was not there.

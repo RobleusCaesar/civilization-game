@@ -677,6 +677,9 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
     const ask0 = localStorage.getItem('neo-tutorial-ask'), games0 = localStorage.getItem('neo-games');
     const realNow = Date.now; let off = 0;
     Date.now = () => realNow.call(Date) + off;   // the wall clock, moved on by hand
+    // the ground under the opening view counts as in: what is measured here is the
+    // art's wait (the plaque's wait for the ground is terrain-v4.mjs's §12)
+    const vf = window.TerrainX && TerrainX.viewFrac; if (vf) TerrainX.viewFrac = () => 1;
     const out = {};
     try {
       // AT THE TITLE, before any world: where they were, and that nothing was entered
@@ -702,7 +705,7 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       out.start1 = (last('run_start') || {}).props || null;
       out.sGame = session();
 
-      // A WARM PRESS opens at once: no plaque, prep_ms 0 — exactly, even
+      // A WARM PRESS (its art and its ground in) opens at once: no plaque, prep_ms 0 — exactly, even
       // when the synchronous entry itself costs milliseconds (a forced layout
       // on a busy phone, played here by a slow zoom read) — that is no plaque
       G.newGame('fm-warm', 'moderate', 'medium'); Screens._demo = false;
@@ -818,7 +821,7 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       out.all = rows().map(x => ({ kind: x.kind, cause: x.cause || null, props: x.props || {} }));
       out.stepIds = Tutorial.STEPS.map(s => s.id).concat(Tutorial.EVENTS.map(e => e.id));
     } finally {
-      Date.now = realNow;
+      Date.now = realNow; if (vf) TerrainX.viewFrac = vf;
       keep('neo-tutorial-ask', ask0); keep('neo-games', games0);
       delete document.hidden; delete document.visibilityState;
     }

@@ -3358,9 +3358,11 @@ const G = {
          the method, so a cached older terrain.js simply stands down. */
       else if (window.TerrainX && TerrainX.prefetch && TerrainX.on && TerrainX.ready && !S.over && window.Screens &&
                !Screens._demo && (Screens._entering || (S.played === false && Screens.current === 'draft')) &&
-               performance.now() - (G._pfT || 0) >= G.PREFETCH_MS) {
+               performance.now() - (G._pfT || 0) >= (Screens._entering ? 0 : G.PREFETCH_MS)) {
+        // behind the plaque the press is waiting on this ground (enterGame): every frame, and
+        // every arrival in; behind the draft the cards are moving, so a glance rate and one
         G._pfT = performance.now();
-        G._safe(() => { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z); }, 'prefetch');
+        G._safe(() => { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z, Screens._entering ? 6 : 0); }, 'prefetch');
       }
       /* the title is ready when the GLEN is on screen (tests/boot.mjs): the
          painted backdrop is opaque, so the demo world behind it can bake
