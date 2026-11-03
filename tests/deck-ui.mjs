@@ -1311,12 +1311,21 @@ const rm = await rp.evaluate(async () => {
   // the play's own result note is what the information check reads: the
   // column (five notes, the town's news among them since build 128) starts empty
   document.getElementById('toasts').innerHTML = ''; UI._toastAt = {};
+  // the world runs through the play, and a day is ten seconds: a day that
+  // turned inside the window ate the town's upkeep out of the count (245.5,
+  // main's own sweep on build 133). The day is turned INSIDE the window on
+  // purpose, every run, and what the town ate is counted back in.
+  const eatP = G.applyFoodUpkeep; let eaten = 0;
+  G.applyFoodUpkeep = function (o) { const f = S.res.food; const r = eatP.call(this, o); if (o === 'P') eaten += f - S.res.food; return r; };
+  S.dayT = CFG.DAY_MS - 300;
   const t0 = performance.now();
   document.querySelector('#dkInsp .dkPlay').click();
   while (DeckUI.playing && performance.now() - t0 < 3000) await new Promise(r => requestAnimationFrame(r));
   out.total = Math.round(performance.now() - t0);
   await __until(() => !DeckUI._ticks.length);
-  out.spent = Deck.count('__bar') === 0; out.food = S.res.food - food0;
+  G.applyFoodUpkeep = eatP;
+  out.ate = eaten;
+  out.spent = Deck.count('__bar') === 0; out.food = Math.round((S.res.food - food0 + eaten) * 100) / 100;
   out.rFood = document.getElementById('rFood').textContent === String(UI.fmtRes(S.res.food));
   out.toast = [...document.querySelectorAll('#toasts .toast')].some(t => /\+250 food/.test(t.textContent));
   out.col = [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent.slice(0, 40)).join(' | ');
@@ -1332,7 +1341,7 @@ const rm = await rp.evaluate(async () => {
 });
 ck('reducedMotionMovesNothing', rm.anims > 0 && rm.moving === 0, `${rm.anims} animations, ${rm.moving} with a transform`);
 ck('butTheInformationIsAllThere', rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim && rm.total <= 1200,
-  `${rm.total}ms` + (rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim ? '' : ` — spent ${rm.spent}, food ${rm.food}, bar ${rm.rFood}, toast ${rm.toast}, aim ${rm.aim}; the column: ${rm.col}`));
+  `${rm.total}ms, the town ate ${rm.ate} as the day turned` + (rm.spent && rm.food === 250 && rm.rFood && rm.toast && rm.aim ? '' : ` — spent ${rm.spent}, food ${rm.food} (ate ${rm.ate}), bar ${rm.rFood}, toast ${rm.toast}, aim ${rm.aim}; the column: ${rm.col}`));
 await rctx.close();
 
 /* ================= 11. A STRIKE SAYS IT ONCE, AND NEVER AS AN ALARM =================
