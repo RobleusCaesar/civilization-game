@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 133, date: '2026-11-03', title: 'Vote for a card',
+    items: [
+      'Vote for Clanfire on Vibe Top List from the Cards screen and a Swift Raiders card joins your deck. You can earn one every 12 hours.',
+    ],
+  },
+  {
     build: 132, date: '2026-11-03', title: 'The village opens looking right',
     items: [
       'When a game opens, the ground around your village is now painted before you see it, instead of starting as flat colour and filling in. The loading screen can stay up a few seconds longer while this happens. Ground hidden in the dark still fills in once you are playing.',

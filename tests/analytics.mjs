@@ -204,6 +204,49 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   ck('aWinIsJudgedOnItsModeAsEver', r.win.ok === true, `a Moderate win scoring 100: Iron + Imperial ${say(r.win)}`);
 }
 
+/* ============ 1c. A VOTE EARNS A CARD (0012), on the real door ============
+   VibeTopList's callback reaches supabase/functions/vote-callback, which
+   calls vote_reward() as the service role. Asked here as that role and as
+   the others: one card a vote, never twice for one vote_id (the site's POST
+   and GET arrive together), never two inside vote_gap(), nothing for a ref
+   that is no player, no door for a player or a stranger, and the thank-you
+   told once. Its own database, like 1b. */
+{
+  const F12 = '0012_vote_reward.sql';
+  const twice = files.includes(F12) ? sql(readFileSync(join(MIG, F12), 'utf8')) : { error: F12 + ' is missing' };
+  ck('theVoteFileTwiceChangesNothing', !twice.error, twice.error ? twice.error.split('\n')[0] : 'applied a second time cleanly');
+  make('cf_votes');
+  for (const f of files) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_votes' });
+  const V = n => '00000000-0000-0000-0000-0000000002' + String(n).padStart(2, '0');
+  sql(`insert into auth.users (id) values ('${V(1)}'), ('${V(2)}');`, { db: 'cf_votes' });
+  const as = (role, uid, q) => json(`set role ${role};${uid ? ` set request.jwt.claim.sub = '${uid}';` : ''} ${q}`, { db: 'cf_votes' });
+  const vote = (ref, id) => as('service_role', null, `select public.vote_reward(${lit(ref)}, ${lit(id)});`);
+  const qty = uid => +(sql(`select coalesce((select qty from public.card_collection where user_id = '${uid}' and card_key = public.vote_card()), 0);`, { db: 'cf_votes' }).out || -1);
+  const card = sql('select public.vote_card();', { db: 'cf_votes' }).out;
+  const first = vote(V(1), 'v-1'), again = vote(V(1), 'v-1'), soon = vote(V(1), 'v-2');
+  ck('aVoteGrantsTheVoteCardOnce', card === 'swift_raiders' && first.granted === true && first.card === card && again.already === true && qty(V(1)) === 1,
+    `vote_card ${card}; first ${JSON.stringify(first)}; the same vote again ${JSON.stringify(again)}; held ${qty(V(1))}`);
+  ck('andASecondVoteInsideTheGapEarnsNothing', soon.ok === true && soon.granted === false && soon.reason === 'too_soon' && qty(V(1)) === 1,
+    JSON.stringify(soon));
+  // the gap passed: the last grant moved back by hand
+  sql(`update public.card_votes set created_at = now() - public.vote_gap() - interval '1 minute' where vote_id = 'v-1';`, { db: 'cf_votes' });
+  const later = vote(V(1).toUpperCase(), 'v-3');
+  ck('andOnePastTheGapEarnsAnother', later.granted === true && qty(V(1)) === 2, `${JSON.stringify(later)}; held ${qty(V(1))}`);
+  const nobody = vote('PlayerName', 'v-4'), ghost = vote('00000000-0000-0000-0000-000000000999', 'v-5'), blank = vote(V(2), '');
+  ck('aRefThatIsNoPlayerEarnsNothing', nobody.reason === 'unknown_player' && ghost.reason === 'unknown_player' && blank.reason === 'bad_vote',
+    JSON.stringify({ nobody, ghost, blank }));
+  const asPlayer = as('authenticated', V(2), `select public.vote_reward('${V(2)}', 'v-6');`);
+  const asAnon = as('anon', null, `select public.vote_reward('${V(2)}', 'v-7');`);
+  const peek = as('authenticated', V(2), 'select count(*) from public.card_votes;');
+  ck('onlyTheServiceRoleMayGrantAVote', !!asPlayer.error && /permission denied/.test(asPlayer.error) && !!asAnon.error && /permission denied/.test(asAnon.error) &&
+    !!peek.error && qty(V(2)) === 0, JSON.stringify({ player: (asPlayer.error || '').split('\n')[0], anon: (asAnon.error || '').split('\n')[0], table: (peek.error || '').split('\n')[0] }));
+  const told = as('authenticated', V(1), 'select public.claim_vote_notes();'), told2 = as('authenticated', V(1), 'select public.claim_vote_notes();');
+  const stranger = as('anon', null, 'select public.claim_vote_notes();');
+  const res = (told.notes || []).map(n => n.result).join(',');
+  ck('theThanksIsToldOnceToItsOwnPlayer', told.ok === true && res === 'granted,too_soon,granted' && Array.isArray(told2.notes) && told2.notes.length === 0 && !!stranger.error,
+    `told ${res}; again ${JSON.stringify(told2.notes)}; a stranger ${(stranger.error || '').split('\n')[0]}`);
+}
+
 /* ================= the fixture ================= */
 const PASS = 'a long test passphrase';
 const TOKEN = createHash('sha256').update('clanfire-analytics-v1:' + PASS).digest('hex');

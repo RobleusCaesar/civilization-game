@@ -142,6 +142,12 @@ const MOCK = `
         return { ok: true, uid: st.uid, counts, seen: Object.assign({}, m.seen), starter: !!m.starter,
                  starter_at: m.starter || null, pity: st.pity, medians: st.medians };
       },
+      // 0012's player door: the votes not yet told, told once (vote() below plays the Edge Function's grant)
+      claim_vote_notes() {
+        const m = rec(st.uid), n = (m.votes || []).filter(v => !v.told);
+        for (const v of n) v.told = 1;
+        return { ok: true, notes: n.map(v => ({ result: v.result, card: v.card, at: 1 })) };
+      },
       report_run_end(a) {
         const m = rec(st.uid), r = a.p_row || {};
         if (!r.run_id || r.cause === 'closed_tab') return { ok: false, reason: 'bad_input' };
@@ -181,7 +187,9 @@ const MOCK = `
       if (path.startsWith('/profiles') && method === 'GET') return [{ id: st.uid }];
       return method === 'GET' ? [] : null;
     };
-    return { st, db, rec, auth, rest, pityOf, ended };
+    // a vote the site reported, as 0012's vote_reward() records it (the card in the record on a grant)
+    const vote = (uid, result) => { const m = rec(uid); (m.votes = m.votes || []).push({ result, card: 'swift_raiders' }); if (result === 'granted') add(m, 'swift_raiders', 1); };
+    return { st, db, rec, auth, rest, pityOf, ended, vote };
   })();
   window.__NEO_BACKEND_MOCK = { auth: window.__MOCK.auth, rest: window.__MOCK.rest };
 `;
@@ -969,6 +977,68 @@ function CFG_HARD_FALLBACK() { return 120; }
     new Set(r.ids).size === 1 && r.ids[0] === r.want && r.runIds.length === 1 && r.runIds[0] === r.want &&
     r.paid.length >= 1 && r.gained === r.paid.length && r.again && r.ledger === 1,
     `run ids ${[...new Set(r.ids)].join(',')}; grant_card run ids ${r.runIds.join(',')}; paid ${r.paid.join(',')}; device +${r.gained}`);
+}
+
+/* ---- §V. A VOTE EARNS A CARD (CFG.CARDS.VOTE, Deck.voteLink / noteVote, 0012): the vote page is
+   sent this player's id; the card arrives through the record, and the thanks is said once ---- */
+{
+  const v = await p.evaluate(async () => {
+    const out = {}, said = [];
+    const say0 = Screens.say; Screens.say = function (m) { said.push(m); return say0.apply(this, arguments); };
+    try {
+      out.link = Deck.voteLink();
+      out.want = CFG.CARDS.VOTE.URL + '?ref=' + encodeURIComponent(Backend.uid);
+      out.card = CFG.CARDS.VOTE.CARD;
+      // a test deck has no record for the card to land in: no link
+      Deck.col().test = 1; out.testLink = Deck.voteLink(); delete Deck.col().test;
+      // the collection screen offers it beside "How cards work"
+      DeckScreens.openCollection('title');
+      const a = document.querySelector('#scrCards .clVote');
+      out.shown = !!a && !a.hidden && getComputedStyle(a).display !== 'none' && a.getAttribute('href') === out.link &&
+        a.target === '_blank' && /noopener/.test(a.rel) && !!document.querySelector('#scrCards .clHow');
+      // a device that never voted never asks what its votes did
+      localStorage.removeItem(Deck.VOTE_KEY);
+      let m0 = __t.mark();
+      await Deck.sync('quiet');
+      out.askedUnvoted = __t.rpcs(m0).filter(c => c.path === '/rpc/claim_vote_notes').length;
+      // the press: the page opens in a new tab (held here), and the deck remembers it
+      const hold = e => { if (e.target.closest && e.target.closest('.clVote')) e.preventDefault(); };
+      document.addEventListener('click', hold, true);
+      a.click();
+      document.removeEventListener('click', hold, true);
+      out.stamped = +localStorage.getItem(Deck.VOTE_KEY) > Date.now() - 5000;
+      // the site called back and the server granted the card
+      const before = Deck.col().counts[out.card] || 0;
+      __MOCK.vote(Backend.uid, 'granted');
+      said.length = 0;
+      m0 = __t.mark();
+      await Deck.sync('vote');
+      out.gained = (Deck.col().counts[out.card] || 0) - before;
+      out.asked = __t.rpcs(m0).map(c => c.path.slice(5)).join(',');
+      out.thanks = said.slice();
+      // told once: the next sync asks, hears nothing new and says nothing
+      said.length = 0;
+      await Deck.sync('vote');
+      out.again = said.slice();
+      // a second vote inside the gap earns nothing, and says why
+      __MOCK.vote(Backend.uid, 'too_soon');
+      said.length = 0;
+      await Deck.sync('vote');
+      out.soon = said.slice();
+      out.soonCount = (Deck.col().counts[out.card] || 0) - before;
+      DeckScreens.closeCollection && DeckScreens.closeCollection();
+    } finally { Screens.say = say0; localStorage.removeItem(Deck.VOTE_KEY); }
+    return out;
+  });
+  ck('theVoteLinkCarriesThisPlayersId', v.link && v.link === v.want && v.testLink === null && v.card === 'swift_raiders',
+    `link ${v.link}; a test deck's ${v.testLink}`);
+  ck('andTheCollectionOffersIt', v.shown === true, 'the Vote link beside How cards work, opening the page in a new tab');
+  ck('aVotersCardArrivesThroughTheRecordAndIsThanked', v.askedUnvoted === 0 && v.stamped && v.gained === 1 &&
+    /claim_vote_notes/.test(v.asked) && v.asked.indexOf('my_cards') < v.asked.indexOf('claim_vote_notes') &&
+    v.thanks.length === 1 && /Swift Raiders joins your deck/.test(v.thanks[0]),
+    `never-voted asks ${v.askedUnvoted}; stamped ${v.stamped}; +${v.gained}; rpc ${v.asked}; said ${JSON.stringify(v.thanks)}`);
+  ck('andTheThanksIsSaidOnceAndATooSoonVoteSaysWhy', v.again.length === 0 && v.soon.length === 1 && /once every 12 hours/.test(v.soon[0]) && v.soonCount === 1,
+    `again ${JSON.stringify(v.again)}; too soon ${JSON.stringify(v.soon)}; held +${v.soonCount}`);
 }
 await ctx.close();
 

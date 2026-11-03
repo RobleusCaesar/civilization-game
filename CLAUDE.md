@@ -776,6 +776,25 @@ card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
 false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
 
+**A VOTE EARNS A CARD** (`CFG.CARDS.VOTE`, `Deck.voteLink` / `noteVote` /
+`_voteNotes`, `supabase/migrations/0012_vote_reward.sql`,
+`supabase/functions/vote-callback`; tests/deck-sync.mjs §V and
+tests/analytics.mjs §1c — operator, 2026-11-03: a VibeTopList vote earns
+"a shiny fun card (not the best cards)"). The Cards screen's "Vote for a
+card" opens `vibetoplist.com/vote/clanfire?ref=<the player's uid>` in a new
+tab, offered only where `_syncGate` lets the device talk to the record (never
+a test deck, a test page or a page from disk). The site POSTs and GETs the
+Edge Function (deployed by hand with JWT verification OFF; the callback
+secret is its `VTL_SECRET` and is in no file), which calls `vote_reward()` as
+the SERVICE ROLE alone: Swift Raiders (`vote_card()`, the twin of
+`CFG.CARDS.VOTE.CARD`) into `card_collection`, once per `vote_id` (the POST
+and GET arrive together), at most once per `vote_gap()` (11 hours, the site's
+12 with slack), nothing for a ref that is no player, the voter's IP never
+stored. The device learns it the ordinary way — the next reconcile carries
+the card — and `claim_vote_notes()` says what the vote did ONCE (granted, or
+too soon), asked only by a device that pressed Vote in the last week, and
+looked for as the player comes back to the tab (`VOTE_LOOK_MS`).
+
 **THE PLAY ON THE GLASS** (`js/deckui.js`, tests/deck-ui.mjs). **THE CARD
 LEAVES IN LIGHT AT THE SCREEN'S RESOLUTION** (it left in hard pixels until
 the operator's 2026-10-27 ruling, below): the flying card is the TOP layer,

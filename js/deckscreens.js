@@ -1100,7 +1100,9 @@ const DeckScreens = {
         '<h2>Your cards</h2><b class="clHeld"></b></header>' +
       '<p class="clSum"></p>' +
       // the card announcement, on purpose this time (js/cardintro.js)
-      '<button class="clHow" type="button" data-act="intro">How cards work</button>' +
+      '<div class="clLinks"><button class="clHow" type="button" data-act="intro">How cards work</button>' +
+        // A VOTE EARNS A CARD (Deck.voteLink): shown only where the record can take it
+        '<a class="clVote" data-act="vote" target="_blank" rel="noopener" hidden>Vote for a card</a></div>' +
       '<div class="clTabs" role="tablist"></div>' +
       '<div class="sbody clBody"><div class="clHead"></div><div class="clGrid"></div></div>' +
       `<div class="clZoom" hidden><button class="clX" type="button" data-act="unzoom" aria-label="Close">${this.CLOSE_SVG}</button>` +
@@ -1116,6 +1118,9 @@ const DeckScreens = {
       else if (act === 'unzoom') this._zoomClose(false);
       else if (act === 'zflip') this._zoomFlip();
       else if (act === 'intro' && window.CardIntro) { this._zoomClose(true); CardIntro.show('cards'); }
+      // the link opens the vote page itself (a new tab); the deck remembers
+      // the press and looks for the card as the player comes back
+      else if (act === 'vote' && Deck.noteVote) { Deck.noteVote(); if (window.Screens && Screens.say) Screens.say('Vote, then come back — your card lands here.'); }
     });
     // a tap on the dark around the enlarged card puts it back
     scr.querySelector('.clZoom').addEventListener('click', e => { if (e.target.classList.contains('clZoom')) this._zoomClose(false); });
@@ -1145,6 +1150,10 @@ const DeckScreens = {
     scr.querySelector('.clHeld').textContent = total + (total === 1 ? ' card' : ' cards');
     const sum = scr.querySelector('.clSum');
     sum.textContent = `${found} of ${Deck.CATALOG.length} discovered`;
+    // A VOTE EARNS A CARD: the link carries this player's id, so it is built
+    // afresh each paint and hidden wherever the record cannot take the card
+    const vote = scr.querySelector('.clVote'), href = Deck.voteLink ? Deck.voteLink() : null;
+    if (vote) { vote.hidden = !href; if (href) vote.href = href; else vote.removeAttribute('href'); }
     for (const line of (this._lostLines || [])) {
       const n = document.createElement('span');
       n.className = 'clLost';
@@ -1859,11 +1868,15 @@ DeckScreens.CSS = `
 #scrCards .clSum { width: 100%; max-width: 820px; margin: -4px auto 8px; padding: 0 16px; color: var(--dim); font-size: 12px; text-align: center; }
 /* "How cards work": the card announcement, again — small on the page, a
    44px target under the finger (the invisible ::after) */
-#scrCards .clHow { position: relative; display: flex; align-items: center; gap: 7px; flex: 0 0 auto; margin: -4px auto 10px; height: 26px; padding: 0 12px;
+#scrCards .clLinks { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 10px; flex: 0 0 auto; margin: -4px auto 10px; padding: 0 12px; }
+#scrCards .clHow, #scrCards .clVote { position: relative; display: flex; align-items: center; gap: 7px; flex: 0 0 auto; margin: 0; height: 26px; padding: 0 12px;
   border: 1px solid rgba(214,170,74,0.45); border-radius: 999px; background: #1c140c; color: #f2cd62; cursor: pointer;
   font: 700 11px/1 var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; }
 #scrCards .clHow::before { content: ''; width: 7px; height: 7px; transform: rotate(45deg); background: #f2cd62; box-shadow: 0 0 6px rgba(255,210,100,.6); }
-#scrCards .clHow::after { content: ''; position: absolute; left: -1px; right: -1px; top: -10px; bottom: -10px; }
+#scrCards .clHow::after, #scrCards .clVote::after { content: ''; position: absolute; left: -1px; right: -1px; top: -10px; bottom: -10px; }
+#scrCards .clVote { text-decoration: none; border-color: rgba(242,205,98,0.8); background: linear-gradient(180deg, #3a2a12, #22180b); }
+#scrCards .clVote[hidden] { display: none; }
+#scrCards .clVote::before { content: '★'; font-size: 11px; color: #f2cd62; text-shadow: 0 0 6px rgba(255,210,100,.6); }
 #scrCards .clTabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 820px; margin: 0 auto; padding: 0 10px; flex: 0 0 auto; }
 #scrCards .clTab { min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid #3a2e1d; border-radius: 8px; background: #1b150e; color: var(--text);
   display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; font-family: var(--menufont); }
