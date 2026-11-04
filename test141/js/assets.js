@@ -2095,6 +2095,21 @@ const Assets = {
   // the row where a curtain's arms meet on each tier's frame (compose2's crestY)
   FORT_CREST: [80, 67, 64],
   FORT_DOOR: [{ x0: 20, x1: 60, y0: 47, y1: 109 }, { x0: 27, x1: 53, y0: 58, y1: 110 }, { x0: 28, x1: 52, y0: 60, y1: 110 }],
+  /* NO SILL ACROSS THE GATEWAY (operator, 2026-11-04, on a villager walking
+     through a level-1 gate with his feet under a bar of dirt at its foot:
+     "remove the bottom frame of the gateway… the villager goes under this…
+     check the level 2 and 3 gates too"). A man in the passage has the
+     gatehouse laid back over him (R.occludeByForts), so anything drawn
+     across the passage's foot is drawn across his legs: the level-1 face
+     carried a strip of trodden earth there (rows 109-113), and the battered
+     faces carry rubble at every tier. The passage is cut on down to the foot
+     of the frame on the finished face and its two damage states; the road
+     the player's gates carry (Roads.gateRoads) or the ground is what shows. */
+  _openPassage(c, li) {
+    const D = this.FORT_DOOR[li]; if (!D || !c) return c;
+    c.getContext('2d').clearRect(D.x0, D.y1, D.x1 - D.x0, c.height - D.y1);
+    return c;
+  },
   fort: {},
   fortName(lv, piece) { return (piece + '-l' + lv + '.png').toLowerCase(); },
   fortUrl(lv, piece) { return this.FORT_DIR + this.fortName(lv, piece) + '?v=' + (CFG.ART_V || 1); },
@@ -2158,7 +2173,7 @@ const Assets = {
       (Sprites.gateRoad || (Sprites.gateRoad = []))[li] = c;
     }
     if (f.gate && Sprites.gateMask && Sprites.gateMask[li]) {
-      Sprites.gateMask[li][0] = this._fortFrame(f.gate, 0);
+      Sprites.gateMask[li][0] = this._openPassage(this._fortFrame(f.gate, 0), li);
       Sprites.gateMask[li][1] = this._fortFrame(f.gate, 1);
       (Sprites.gateDoor || (Sprites.gateDoor = []))[li] = this._fortFrame(f.gate, 2);
       if (Sprites.building && Sprites.building.gate) Sprites.building.gate[li] = Sprites.gateMask[li][0];
@@ -2198,6 +2213,8 @@ const Assets = {
       else {
         const n = piece === 'wall' ? 16 : 3, fr = [];
         for (let k = 0; k < n; k++) fr.push(this._fortFrame(img, k));
+        // a battered gatehouse's passage runs to its foot too (no sill, no rubble across it)
+        if (piece === 'gate' && st[0] === 'd') this._openPassage(fr[0], li);
         tier[st] = fr;
       }
       this.loaded['fort/' + lv + '/' + piece + '-' + st] = true;
