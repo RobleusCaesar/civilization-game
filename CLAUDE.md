@@ -291,7 +291,72 @@ node tests/footing.mjs       # the ground under a building: a cast shadow under 
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them, the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn on the platform, tapped where drawn, carried by a save
 ```
+
+**THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
+`Combat.sees` / `losGrid` / `losClear` / `reachOf`, tests/tower-garrison.mjs —
+operator, 2026-11-04: "TOWER ART — REMOVE ROOFS… open elevated platforms…
+size, footprint, tier geometry… ARCHER GARRISON… up to 2 archers… sight AND
+attack radius are doubled… 1 second to garrison, and un-garrison… disappear
+for that second… the enemy AI… does target archers first… fall to their
+death… WALL LINE-OF-SIGHT (bug fix)… an intact wall blocks LOS both ways… a
+hole/breach… opens LOS… garrisoned tower archers shoot over walls").
+**THE ROOFS CAME OFF, NOTHING ELSE MOVED**: the free-standing Watchtower's
+L1/L2 (`assets/buildings/tower-l{1,2}.png`, their `-d1`/`-d2` and `-b3`) and
+the wall towers' L1/L2 bodies (`assets/fort/tower-l{1,2}*.png`) are PixelLab
+inpaints of the shipped art, the roof area alone regenerated as a railed
+platform (wattle at L1, plank and post at L2, each against its own curtain),
+at the SHIPPED size with zero semi-transparent pixels; the L3 pieces and the
+procedural mural tower were already open battlements. **THE BOW STAYS A
+UNIT**: a manned archer (archer, longbow, marksman — `CFG.LOOKOUT.kinds`)
+never leaves `S.units`, so it counts, eats and saves with nothing new; it
+wears `u.perch` (the tower's id) on the platform and `u.climb` ({bid, t, up,
+then}) on the stairs. `Units.update` hands either to `Lookout.tick` and goes
+no further — PINNED to the tower's tile, a leash or a guard post's road never
+taken. **ORDERS FOLLOW THE TRANSPORT'S PATTERN**: bows selected, an own
+finished tower tapped → they walk to its door (`Lookout.door`, south first),
+then `climbS` (1 s) on the stairs — hidden (`R.unitHidden`), untappable
+(`R.unitHit` Infinity) and out of everyone's reach (`Combat.canEngage`, the
+towers' own fire too) — then the platform; two at most (`cap`, claimed by
+the walkers as well), a full tower taking the tap as a LOOK (tap rule 6).
+Any other order given a perched bow takes the stairs down first and is then
+carried out (`down(u, {task})`); an attack ORDER past its reach climbs down
+and pursues; the tower's panel ("Archers down") and the bow's own ("Climb
+down") bring them to the door; an upgrade sends them down; a demolition puts
+them on the ground at once (`evict`). **UP THERE** a bow sees `sightMult` and
+reaches `rangeMult` as far (`Combat.reachOf`, `G.updateVisibility`), never
+chases (a mark past the reach is dropped), and can be struck only by bows
+and engines; the rival's bows rank it `preferBonus` (6) tiles nearer than it
+stands in `Combat.bestFoe` — so its archers mark the towers first and walk
+under their doubled reach to get there — and `AI.seenGuns` never counts it as
+a battery. **THE TOWER TAKES ITS LOOKOUT WITH IT** (`Lookout.towerFalls`,
+from `Bld.damage`'s destroy branch before anything leaves the list, credited
+to the striker's owner — `Bld.damage` takes `by` now): every bow on the
+platform or the stairs dies; one killed on the platform, by the tower or by
+an arrow, FALLS (`Lookout.startFall` from `Units.damage`: tumbling, gathering
+speed, gone in dust at the tower's foot — render state only, never in S).
+**THE PICTURE** (`Lookout.draw`, from the building pass right after the
+tower AND from `R._redrawPic`, so a man behind the tower never lands over
+them): each bow at its slot (`ANCHOR`, per drawn tower: the foot line `fy`,
+the slot `dx` either side, the parapet's top `cy`, in fractions of the art,
+measured off the roofless PNGs) at `drawScale`, then the tower laid back over
+them below `cy` — the front rail or the merlons stand in front of their legs.
+The unit pass skips `perch`/`climb`; `Lookout.hit` measures a tap where the
+figure is drawn. **A WALL BLOCKS SIGHT, BOTH WAYS**: no unit marks, keeps or
+strikes another across a FINISHED wall section, a SEALED gate or a tower in
+the line (`Combat.losGrid`: a bitmap rebuilt only when `Bld._blockGen` or the
+map moves, the block grid forced current first); a site, a breach (a section
+razed) or an open gate lets the eye through; a line between two diagonal
+sections is closed. Every `nearestUnit` that marks a foe passes the seeker
+(`from`) and `bestFoe` asks `sees`; the chase drops a mark the wall hides
+(the player's explicit attack order walks round to the breach, and says so
+if there is none). A bow on a tower sees and is seen over the wall
+(`sees`: either end perched). The towers' own fire never asks, and buildings
+are struck through it as ever — this is about who sees whom. A query with no
+wall near its segment never walks (`_losBox`); A/B on a 120-unit fight split
+by a breached wall: Combat.update ~0.05 ms a frame on both. The fog is
+unchanged: a wall does not hide what the player's people would see.
 
 **THE ROAD BUILDER** (`js/roads.js`, `CFG.ROADS`, `CFG.BUILDINGS.road`, tests/roads.mjs —
 operator, 2026-11-03: "draw lines and create roads between buildings… real,
@@ -4406,7 +4471,10 @@ interstitial page "looks sketchy"). The folder holds only the build's own
 (first in `<head>`, with `noindex`) and its script tags point at
 `test<build>/js/`, so every picture, font and sound is the live site's own
 file and any new art lands at the root, where the live page never asks for
-it. Push it to main as its own commit ON TOP OF main — the live page, its
+it — but a picture REDRAWN under a shipped name (build 145's roofless
+towers) rides in the test folder (`test<build>/assets/…`), the test copy's
+`js/assets.js` pointing those names there, or the live page would wear it
+before its release. Push it to main as its own commit ON TOP OF main — the live page, its
 scripts and its pictures untouched — and merge that commit into the working
 branch (never rebase: the branch must stay a fast-forward of main). A new
 build number makes a new folder, so a phone that cached the last test

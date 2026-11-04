@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 145, date: '2026-11-04', title: 'Archers on the towers',
+    items: [
+      'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
+      'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',
+      'An archer on a tower sees twice as far, shoots twice as far and shoots over walls. Only archers and siege engines can hit them up there.',
+      'If a tower falls, the archers on it fall with it.',
+      'Walls now block sight. Soldiers on either side of an unbroken wall can no longer shoot or strike each other through it, until a breach or an open gate lets them see through.',
+    ],
+  },
+  {
     build: 144, date: '2026-11-04', title: 'A new look for Load and the Guide',
     items: [
       'The Load page has been rebuilt to match Settings: each save shows its map, its day, the land and how long you have played, with a clear Load button.',

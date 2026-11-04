@@ -2061,7 +2061,7 @@ const Bld = {
      (the Unbreakable Hall) — both asked here, before the one subtraction, so
      an attack and the wilds' fire meet the same rule (js/deckfx-town.js).
      With no card running the blow comes back untouched. */
-  damage(b, amt, cause) {
+  damage(b, amt, cause, by) {
     if (!this.attackable(b)) return;   // the seam's works change hands, they never come down
     const wild = cause === 'fire';
     if (b.owner === 'P' && window.Deck && Deck.bldTakes) amt = Deck.bldTakes(b, amt, cause);
@@ -2079,6 +2079,9 @@ const Bld = {
         if (!S.ashes) S.ashes = [];
         S.ashes.push({ x: b.x, y: b.y, sz: this.size(key), key, lv: b.level, day: S.day });
       }
+      // a tower's lookout comes down with it (js/lookout.js) — read before
+      // anything leaves the list: the fall starts from the platform as drawn
+      if (key === 'tower' && window.Lookout) Lookout.towerFalls(b, wild ? undefined : by);
       // a building coming down empties the sky above it (tests/wild-life.mjs)
       if (window.R && R.startle) R.startle(this.cx(b), this.cy(b), 12);
       // …and, if its kind has a collapse registered, TOPPLES on screen. Fired
@@ -2390,6 +2393,7 @@ const Bld = {
     const refund = this.demolishRefund(b);
     for (const k in refund) S.res[k] += refund[k];
     const name = this.def(b.key).name;
+    if (b.key === 'tower' && window.Lookout) Lookout.evict(b);   // its own hands tear it down: the bows come down first
     this.removeToRuin(b);
     G.log(`${name} demolished — recovered ${this.costStr(refund)}`);
     return true;

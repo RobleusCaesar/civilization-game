@@ -1541,6 +1541,17 @@ const UI = {
           : 'Transport is full (or away from shore)', !n);
         return;
       }
+      /* THE TOWER LOOKOUT (js/lookout.js) — the transport's pattern: bows
+         selected, an own finished tower tapped, and up they go (two at most).
+         A full tower takes the tap as a LOOK, like a full station (rule 6). */
+      if (!tapUnit && hitBld && window.Lookout && Lookout.isPost(hitBld, 'P') &&
+          ids.some(id => Lookout.canMan(Units.get(id))) && Lookout.room(hitBld) > 0) {
+        const r = Lookout.orderMany(ids.map(id => Units.get(id)).filter(Boolean), hitBld);
+        if (r.up) {
+          this.toast(`🏹 ${r.up} up the tower${r.left ? ` — it holds ${CFG.LOOKOUT.cap}, ${r.left} stay below` : ''}`);
+          return;
+        }
+      }
       const foeBld = Bld.foeBld(hitBld, 'P') ? hitBld
         : (!hitBld && !tapUnit ? bldNear(0.42, b2 => Bld.foeBld(b2, 'P')) : null);
       if (foeBld) {
@@ -1588,6 +1599,14 @@ const UI = {
           Units.isBoardable(sel)) {
         if (Units.orderBoard(sel, tapUnit)) this.toast('Boarding the ' + CFG.UNITS[tapUnit.kind].name);
         else this.toast('Transport is full (or away from shore)', true);
+        return;
+      }
+      // a bow and an own tower with room: up the stairs (js/lookout.js); a
+      // full one falls through to the look, like a full station (rule 6)
+      if (!tapUnit && hitBld && window.Lookout && Lookout.canMan(sel) && Lookout.isPost(hitBld, 'P') &&
+          sel.perch !== hitBld.id && Lookout.room(hitBld, sel) > 0) {
+        if (Lookout.order(sel, hitBld)) { this.toast('🏹 Up the tower — twice the sight and reach'); return; }
+        this.toast('No way through to the tower door', true);
         return;
       }
       // anything not ours that can be hurt: the rival's works and a barbarian
@@ -2342,7 +2361,9 @@ const UI = {
         Bld.canGateToggle(b) ? (b.raised ? 'up' : 'down') + (Bld.gateLeaves(b) ? 'L' : '') : '-',
         // the homestead line comes and goes without a tap — a razed partner
         // must take the gold text with it (tests/homestead.mjs)
-        Bld.isHomestead(b) ? 'hs' : '-'].join('|');
+        Bld.isHomestead(b) ? 'hs' : '-',
+        // the lookout's count moves without a tap (a bow climbs, falls)
+        b.key === 'tower' && window.Lookout ? Lookout.crew(b).length : '-'].join('|');
       if (b.key === 'tc') {
         // visibility bits: pointless buttons unrender the moment they empty
         const vills = S.units.some(u => u.owner === 'P' && Units.isVillager(u));
@@ -2404,7 +2425,8 @@ const UI = {
       u.owner === 'P' && !Units.isVillager(u) && this.unitBusy(u),   // Stop renders only while there is anything to stop
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
-      this.armyOfUnit(u)];   // …and Remove Army appears the moment this one is the last of it
+      this.armyOfUnit(u),   // …and Remove Army appears the moment this one is the last of it
+      u.perch ? 'P' : u.climb ? 'C' : '-'];   // up a tower, on its stairs, or on the ground (js/lookout.js)
     // the works this builder is on: the Cancel button rides its id, so it
     // appears, arms and disappears with the site itself
     const cw = this.villagerBuildSite(u);
@@ -2716,6 +2738,11 @@ const UI = {
         sub += ` — <b style="color:var(--gold)">🌾 Homestead ${gain}</b>`;
       }
       if (lv.bonus) sub += ` — ${lv.bonus}`;
+      // the tower's lookout: who stands on the platform, or how to put them there
+      if (b.key === 'tower' && b.owner === 'P' && window.Lookout && Lookout.towerLine) {
+        const tl = Lookout.towerLine(b);
+        if (tl) sub += ' — ' + tl;
+      }
       return sub;
     }
     if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
@@ -2828,6 +2855,8 @@ const UI = {
               : (b.raised
                 ? `<button class="abtn" data-act="drawbridge">🚪 Open the gates<small>the doors swing out — your people pass again</small></button>`
                 : `<button class="abtn" data-act="drawbridge">🚪 Close the gates<small>bars the door fast — to your own people too</small></button>`);
+        // the tower's lookout comes down from here (js/lookout.js)
+        if (b.key === 'tower' && window.Lookout && Lookout.towerButtons) html += Lookout.towerButtons(b);
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
@@ -3044,6 +3073,12 @@ const UI = {
           if (v) Units.assignBuild(v, b2);
           G.log('Wall section being rebuilt as a gate' + (v ? ' — a villager heads over' : ' — needs a builder'));
           this.renderPanel();
+        }
+        else if (btn.dataset.act === 'lookoutdown') {
+          const n = window.Lookout ? Lookout.downAll(b2) : 0;
+          this.toast(n ? `⬇ ${n} archer${n === 1 ? '' : 's'} coming down the stairs` : 'Nobody is up there', !n);
+          this.renderPanel();
+          return;
         }
         else if (btn.dataset.act === 'drawbridge') {
           if (!Bld.toggleDrawbridge(b2)) { this.toast('The gate is still being worked on — no door to work yet', true); return; }
@@ -3406,6 +3441,8 @@ const UI = {
             `<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
       }
+      // a bow on a tower's platform comes down from its own panel (js/lookout.js)
+      if (own && u.perch && window.Lookout && Lookout.unitButton) html += Lookout.unitButton(u);
       // Group renders only with somebody in reach to band with (groupmatesNear
       // is the handler's own filter — the button never offers an empty muster)
       if (own && this.groupmatesNear(u))
@@ -3489,6 +3526,14 @@ const UI = {
           : 'Tool down — tap a tile to walk', this.terraMode ? 'note' : undefined);
         this.renderPanel();
       }));
+      const lkDown = panel.querySelector('[data-act="lookoutdown"]');
+      if (lkDown) lkDown.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2 || !u2.perch || !window.Lookout) return;
+        Lookout.down(u2, null);
+        this.toast('⬇ Down the tower stairs');
+        this.renderPanel();
+      });
       const unload = panel.querySelector('[data-act="unload"]');
       if (unload) unload.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);

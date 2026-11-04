@@ -342,6 +342,11 @@ const Units = {
 
   workReport(u) {
     if (!u) return null;
+    // on a tower's stairs or its platform (js/lookout.js)
+    if ((u.perch || u.climb || (u.task && u.task.type === 'mantower')) && window.Lookout) {
+      const lr = Lookout.workReport(u);
+      if (lr) return lr;
+    }
     const t = u.task, at = (x, y) => (u.x | 0) === x && (u.y | 0) === y;
     const mode = G.modeCfg();
     const per = (rate, res) => ({ res, n: rate * this.dayLen() });
@@ -1406,6 +1411,9 @@ const Units = {
         }
         continue;
       }
+      /* THE TOWER LOOKOUT (js/lookout.js): a bow on a tower's stairs or its
+         platform is pinned there — nothing below may walk it about */
+      if ((u.perch || u.climb) && window.Lookout) { Lookout.tick(u, dt); continue; }
       // THE SWALLOWED SUN: an unwarned tribe stands and stares (G.eclipseAwe)
       if (G.eclipseAwe(u)) continue;
 
@@ -1969,6 +1977,9 @@ const Units = {
           const spot = MapGen.findNear(tr.x | 0, tr.y | 0, 2, (x, y) => Path.passable(x, y, u.owner));
           if (!spot || !this.setPath(u, spot.x, spot.y)) u.task = null;
         }
+      } else if (t.type === 'mantower') {
+        // the walk to a tower's door, then the stairs (js/lookout.js)
+        if (window.Lookout) Lookout.walk(u, dt); else u.task = null;
       } else if (t.type === 'unload') {
         if (this.moving(u)) { if (this.followPath(u, dt)) this.disembark(u); }
         else this.disembark(u);
@@ -2577,6 +2588,8 @@ const Units = {
             (u.owner === 'P' || (attacker && attacker.owner === 'P') || attackerOwner === 'P'))
           Sound.play('die');
       } catch (e) {}
+      // a bow killed on a tower's platform falls from it (js/lookout.js)
+      if (u.perch && window.Lookout && Lookout.startFall) { try { Lookout.startFall(u); } catch (e) {} }
       S.units.splice(S.units.indexOf(u), 1);
       /* AN ORDERED KILL (Deck.deeds' fighting allowance): the foe the PLAYER
          sent this soldier at, by their own tap or drag (ui.js stamps the

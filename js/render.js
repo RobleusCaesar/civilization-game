@@ -6578,6 +6578,7 @@ const R = {
     while (this.tickBake(1e9)) { /* finish whatever is left, now */ }
   },
   onNewGame() {
+    if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
@@ -7600,7 +7601,7 @@ const R = {
     // its footing's standing things go back with it, in the pass's own order (js/footing.js)
     if (window.Footing && Footing.back) Footing.back(g, b);
     this.blitBld(g, spr, bx, by, bw, bw);
-    if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
+    if (b.key === 'tower') { this.drawTowerWalk(g, b, bx, by, bw); if (window.Lookout) Lookout.draw(g, b); }
     if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
     if (window.Footing && Footing.front) Footing.front(g, b);
     if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
@@ -11844,6 +11845,7 @@ const R = {
      by both unit passes, so what cannot be seen cannot be selected, and a
      selected one wears no ring over empty ground. */
   unitHidden(u) {
+    if (u.climb) return true;                              // on a tower's stairs (js/lookout.js)
     if (this.summons.length && this._unborn && this._unborn.has(u.id)) return true;
     return !!(u.spectral && window.Deck && Deck.riseOf && Deck.riseOf(u) <= 0);
   },
@@ -13822,6 +13824,10 @@ const R = {
      canvas; a frame whose pixels cannot be read (a tainted canvas) falls back
      to the scaled circle. */
   unitHit(u, wx, wy) {
+    // THE TOWER LOOKOUT (js/lookout.js): a bow on the stairs is not drawn,
+    // and one on the platform is measured where it is drawn, up on the tower
+    if (u.climb) return Infinity;
+    if (u.perch && window.Lookout) return Lookout.hit(u, wx, wy);
     if ((u.spectral || this.summons.length) && this.unitHidden(u)) return Infinity;   // not drawn: not there to tap
     const TL = CFG.TILE, lift = CFG.SPRITE_LIFT / TL;
     const B = this.unitBox(u);
@@ -14992,6 +14998,8 @@ const R = {
         this.blitBld(g, spr, bx, by, bw, bw);
         // …and the walk running south out of it comes half way up its front
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
+        // …and its lookout stands on the open platform (js/lookout.js)
+        if (b.key === 'tower' && window.Lookout) Lookout.draw(g, b);
         if (b.key === 'gate') this.drawGateWalk(g, b, bx, by, bw);
         // the hedge's long grass and bushes standing in front of its foot (js/footing.js)
         if (window.Footing && Footing.front) Footing.front(g, b);
@@ -15171,6 +15179,7 @@ const R = {
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       if (unborn && unborn.has(u.id)) continue;
       if (u.spectral && this.unitHidden(u)) continue;      // a ghost still under the ground: no ring, no bar
+      if (u.perch || u.climb) continue;                    // on a tower's platform (drawn with it) or its stairs (js/lookout.js)
       // B: the kind's draw box (unitBox). Bottom edges align across sizes —
       // for B === TILE these are exactly the coordinates they always were.
       const B = this.unitBox(u);
@@ -15282,6 +15291,7 @@ const R = {
     if (this._mtnOcc && this._mtnOcc.size) for (const u of units) {
       if (!this._mtnOcc.has(((u.y | 0) * CFG.W) + (u.x | 0))) continue;
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
+      if (u.perch || u.climb) continue;
       if ((u.spectral || this.summons.length) && this.unitHidden(u)) continue;   // not out of its light / the ground yet
       const B = this.unitBox(u);
       const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
@@ -15934,6 +15944,7 @@ const R = {
         (S.deck && ((S.deck.fx && S.deck.fx.length) || S.deck.kraken || S.deck.relicMark || (S.deck.spied && S.deck.spied.length)))) this.drawCardWorld(g, dt);
     this.drawCollapses(g, dt);
     this.drawDeaths(g, dt);     // …and villagers keeling over where they stood
+    if (window.Lookout && Lookout.falls.length) Lookout.drawFalls(g, dt);   // …and a bow falling from its tower
 
     // floating text
     g.textAlign = 'center';

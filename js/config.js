@@ -27,7 +27,7 @@ const CFG = {
   // round the workplaces, a hedge round the homes and towers. A picture only; false (or ?footing=0) stands it down.
   FOOTING: { ON: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 66,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 67,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
@@ -1316,6 +1316,25 @@ const CFG = {
      perimeter, may sortie `sortie` beyond it to strike, and returns the moment
      its target falls or it's dragged past the second bound. The perimeter grows
      `levelStep` per building level (TC for land, Dock for ships). */
+  /* THE TOWER LOOKOUT (js/lookout.js, tests/tower-garrison.mjs). Up to
+     `cap` foot bowmen stand on a finished Watchtower's open platform — the
+     roofs came off the towers for this. Up there a bow sees and reaches
+     `sightMult` / `rangeMult` as far, shoots over walls, and can only be
+     answered by bows and engines. Going up or down the stairs inside takes
+     `climbS` seconds, out of sight. The rival's bows rank a garrisoned archer
+     `preferBonus` tiles nearer than it stands. */
+  LOOKOUT: {
+    cap: 2,
+    kinds: ['archer', 'longbow', 'marksman'],
+    climbS: 1,
+    rangeMult: 2,
+    sightMult: 2,
+    preferBonus: 6,
+    seekR: 9,          // how far out a raiding column's bows spot a manned tower and go for it
+    drawScale: 0.66,   // the figures on the platform, against the tower they stand on
+    fallS: 0.75,       // the fall from the platform to the ground
+  },
+
   GUARD: {
     radius: 6,        // fallback hold radius (land classes below override), tiles
     // LAND HOLDS BY DOCTRINE (tests/defend-hold.mjs): fixed, no level scaling —

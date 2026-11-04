@@ -588,8 +588,10 @@ const G = {
           mark(b.x, b.y, this.sightIn((Bld.lv(b).vision || 4) +
             // ORIGIN CARDS: the Warden's towers watch farther
             (b.key === 'tower' && window.Cards ? Cards.towerSight('P') : 0), b));
+      // a bow up on a tower's platform sees twice as far (js/lookout.js)
       for (const u of S.units)
-        if (u.owner === 'P') mark(u.x | 0, u.y | 0, this.sightIn(CFG.UNITS[u.kind].vision || CFG.UNIT_VISION));
+        if (u.owner === 'P') mark(u.x | 0, u.y | 0, this.sightIn((CFG.UNITS[u.kind].vision || CFG.UNIT_VISION) *
+          (u.perch && CFG.LOOKOUT ? CFG.LOOKOUT.sightMult : 1)));
       // ORIGIN CARDS: the Seer's far-seeing eye never closes
       const sn = S.boons && S.boons.P && S.boons.P.seer;
       if (sn) mark(sn.x, sn.y, 3);

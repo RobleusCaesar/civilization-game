@@ -87,7 +87,7 @@ const Combat = {
      counts every rival work that falls, a barbarian's torch included */
   hitBuilding(b, dmg, flame, by) {
     const was = b.hp;
-    const took = Bld.damage(b, dmg);
+    const took = Bld.damage(b, dmg, undefined, by);
     if (by === 'P' && b.owner !== 'P' && was > 0 && b.hp <= 0 && S.stats)
       S.stats.handRazed = (S.stats.handRazed || 0) + 1;
     this.hitFloat(b, Bld.cx(b), Bld.cy(b), Bld.cx(b), b.y - 0.15, took == null || took === dmg ? '-' + dmg : took > 0 ? '-' + Math.max(1, Math.round(took)) : 'Held!',
@@ -156,6 +156,11 @@ const Combat = {
   // Siege towers are armored against arrows: only melee (necessarily outside
   // the wall with it) and the heavy marksman class can bring one down.
   canEngage(u, o) {
+    // THE TOWER LOOKOUT (js/lookout.js): a bow on the stairs inside its
+    // tower is out of everyone's reach for that second, and one up on the
+    // platform is out of a blade's — only bows and engines answer it
+    if (o.climb) return false;
+    if (o.perch && !CFG.UNITS[u.kind].rng && !CFG.UNITS[u.kind].proj) return false;
     if (Units.isNaval(o) && !Units.isNaval(u) && !CFG.UNITS[u.kind].rng) return false;
     if (o.kind === 'siegetower' && CFG.UNITS[u.kind].rng && u.kind !== 'marksman') return false;
     return true;
@@ -184,6 +189,86 @@ const Combat = {
   },
   // building vs unit (towers): does this unit threaten the building's tribe?
   hostileToBld(b, o) { return this.hostileUnits({ owner: b.owner }, o); },
+
+  /* A WALL BLOCKS SIGHT (tests/tower-garrison.mjs — operator, 2026-11-04,
+     after a playtest: archers on either side of an intact wall saw and shot
+     each other as if it were not there). An intact wall stands between two
+     people both ways: nobody marks, keeps or strikes someone on its far side.
+     What blocks is a FINISHED wall section, a SEALED gate (an open one is a
+     doorway) and a tower standing in the line; a site, a breach — a section
+     razed to rubble — or an open gate lets the eye through. Two things see
+     over it: a bow up on a tower's platform (Lookout, either end of the
+     line), and the towers' own fire, which never asks. Buildings are still
+     struck through it: this is about who can SEE whom, and a wall is
+     battered from the outside by design.
+     The grid is rebuilt only when the block grid moves (Bld._blockGen — a
+     wall finishing, falling, a gate worked), forced current first, the
+     `_corkC` discipline; a query with no wall anywhere near its segment never
+     walks it. A walk is a DDA over the tiles between the two (their own
+     tiles left out: a wall is struck from beside it), and a line through a
+     corner both of whose side tiles are wall is closed — a diagonal run of
+     sections is a wall too. */
+  _los: null, _losGen: -1, _losMap: null, _losN: 0, _losBox: null,
+  losGrid() {
+    if (!Bld._block) Bld.rebuildBlock();
+    if (this._los && this._losGen === Bld._blockGen && this._losMap === S.map) return this._los;
+    const W = CFG.W, H = CFG.H, g = new Uint8Array(W * H);
+    let n = 0, x0 = W, y0 = H, x1 = -1, y1 = -1;
+    const mark = (x, y) => {
+      if (!MapGen.inB(x, y)) return;
+      const i = y * W + x; if (g[i]) return;
+      g[i] = 1; n++;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    };
+    const line = (x, y) => MapGen.inB(x, y) && Bld.fortAt(x, y);
+    for (const b of S.buildings) {
+      if (b.construction > 0) continue;
+      if (b.key === 'wall' || (b.key === 'gate' && b.raised)) mark(b.x, b.y);
+      else if (b.key === 'tower' && (line(b.x + 1, b.y) || line(b.x - 1, b.y) || line(b.x, b.y + 1) || line(b.x, b.y - 1)))
+        mark(b.x, b.y);
+    }
+    this._los = g; this._losN = n; this._losBox = { x0, y0, x1, y1 };
+    this._losGen = Bld._blockGen; this._losMap = S.map;
+    return g;
+  },
+  losClear(ax, ay, bx, by) {
+    const g = this.losGrid();
+    if (!this._losN) return true;
+    const W = CFG.W, H = CFG.H;
+    let x = Math.floor(ax), y = Math.floor(ay);
+    const ex = Math.floor(bx), ey = Math.floor(by);
+    if (x === ex && y === ey) return true;
+    const bb = this._losBox;
+    if (Math.max(x, ex) < bb.x0 || Math.min(x, ex) > bb.x1 || Math.max(y, ey) < bb.y0 || Math.min(y, ey) > bb.y1) return true;
+    const dx = bx - ax, dy = by - ay, sx = dx > 0 ? 1 : -1, sy = dy > 0 ? 1 : -1;
+    const tdx = dx !== 0 ? Math.abs(1 / dx) : Infinity, tdy = dy !== 0 ? Math.abs(1 / dy) : Infinity;
+    let tmx = dx !== 0 ? (sx > 0 ? (x + 1 - ax) : (ax - x)) * tdx : Infinity;
+    let tmy = dy !== 0 ? (sy > 0 ? (y + 1 - ay) : (ay - y)) * tdy : Infinity;
+    const at = (cx, cy) => cx >= 0 && cy >= 0 && cx < W && cy < H && g[cy * W + cx] === 1;
+    for (let k = 0; k < 4 * (W + H); k++) {
+      let corner = false;
+      if (Math.abs(tmx - tmy) < 1e-9) {
+        corner = at(x + sx, y) && at(x, y + sy);
+        x += sx; y += sy; tmx += tdx; tmy += tdy;
+      } else if (tmx < tmy) { x += sx; tmx += tdx; }
+      else { y += sy; tmy += tdy; }
+      if (corner) return false;
+      if (x === ex && y === ey) return true;
+      if (x < 0 || y < 0 || x >= W || y >= H) return true;
+      if (g[y * W + x]) return false;
+    }
+    return true;
+  },
+  sees(u, o) {
+    if (!u || !o) return true;
+    if (u.perch || o.perch) return true;     // up on a tower's platform: over the wall, both ways
+    return this.losClear(u.x, u.y, o.x, o.y);
+  },
+  // how far this unit strikes from — a garrisoned bow twice its own reach
+  reachOf(u) {
+    const r = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
+    return u.perch && CFG.LOOKOUT ? r * CFG.LOOKOUT.rangeMult : r;
+  },
 
   /* THE ACQUIRE GRID. acquire() runs every 0.4s and asks nearestUnit or
      bestFoe for every unit without a target — each a scan of every unit —
@@ -219,7 +304,9 @@ const Combat = {
     out.sort((p, q) => p - q);
     return out;
   },
-  nearestUnit(x, y, maxD, pred) {
+  // `from` (optional): the unit doing the looking — a candidate behind an
+  // intact wall is not seen (sees), asked only of one nearer than the best
+  nearestUnit(x, y, maxD, pred, from) {
     let best = null, bd = maxD;
     const c = this._gridCands(x, y, maxD);
     if (c) {
@@ -228,14 +315,14 @@ const Combat = {
         const u = a[c[j]];
         if (!pred(u)) continue;
         const d = Math.hypot(u.x - x, u.y - y);
-        if (d < bd) { bd = d; best = u; }
+        if (d < bd && (!from || this.sees(from, u))) { bd = d; best = u; }
       }
       return best;
     }
     for (const u of S.units) {
       if (!pred(u)) continue;
       const d = Math.hypot(u.x - x, u.y - y);
-      if (d < bd) { bd = d; best = u; }
+      if (d < bd && (!from || this.sees(from, u))) { bd = d; best = u; }
     }
     return best;
   },
@@ -409,8 +496,11 @@ const Combat = {
       const base = CFG.UNITS[o.kind] || {};
       // distance still decides between equals, and a nearly-dead foe is worth
       // finishing — but THREAT now leads, which is the whole point
-      const s = d - (1 - o.hp / (o.maxhp || base.hp || 1)) * 3 - this.threatOf(o);
-      if (s < bs) { bs = s; best = o; }
+      let s = d - (1 - o.hp / (o.maxhp || base.hp || 1)) * 3 - this.threatOf(o);
+      // a bow up on the player's tower is the first mark for anything that
+      // can reach it (js/lookout.js) — it out-ranges everything on the ground
+      if (o.perch && CFG.LOOKOUT && (CFG.UNITS[u.kind].rng || CFG.UNITS[u.kind].proj)) s -= CFG.LOOKOUT.preferBonus;
+      if (s < bs && this.sees(u, o)) { bs = s; best = o; }
     }
     return best;
   },
@@ -424,27 +514,34 @@ const Combat = {
     for (const u of S.units) {
       if (u.tUnit || u.tBld) continue;
       if (u.strife) continue;            // a strife fighter is marked by G.strifeTick: its own war first
+      if (u.climb) continue;             // on a tower's stairs: out of sight for the climb (js/lookout.js)
+      if (u.perch) {                     // up on a tower's platform: its doubled reach, over any wall
+        const e = this.nearestUnit(u.x, u.y, this.reachOf(u), o => this.hostileUnits(u, o) &&
+          !Units.isPassive(o) && this.canEngage(u, o) && !this.easedPrey(u, o));
+        if (e) u.tUnit = e.id;
+        continue;
+      }
       const base = CFG.UNITS[u.kind];
       if (u.kind === 'wolf' && Units.isWild(u)) {
         // ORIGIN CARDS: a Beastward tribe's people are passed over
         const v = this.nearestUnit(u.x, u.y, base.aggro, o => Units.isVillager(o) &&
-          !(window.Cards && Cards.atPeace(o.owner)));
+          !(window.Cards && Cards.atPeace(o.owner)), u);
         if (v) u.tUnit = v.id;
         // …and with no one of the tribes to trouble, a wolf does what a wolf
         // does: works the treeline for GAME. It ranges further after deer than
         // it ever does after people, so the pack is seen hunting long before
         // it is ever a threat to a village (tests/wild-life.mjs).
         else {
-          const d = this.nearestUnit(u.x, u.y, base.aggro * 2.5, o => Units.isPassive(o));
+          const d = this.nearestUnit(u.x, u.y, base.aggro * 2.5, o => Units.isPassive(o), u);
           if (d) u.tUnit = d.id;
         }
       } else if ((u.kind === 'boar' || u.kind === 'bear') && Units.isWild(u)) {
         const v = this.nearestUnit(u.x, u.y, base.aggro,
           o => (o.owner === 'P' || o.owner === 'A') && this.canEngage(u, o) &&
-            !(window.Cards && Cards.atPeace(o.owner)));
+            !(window.Cards && Cards.atPeace(o.owner)), u);
         if (v) u.tUnit = v.id;
         else if (u.kind === 'bear') {                 // a bear takes game too
-          const d = this.nearestUnit(u.x, u.y, base.aggro * 1.8, o => Units.isPassive(o));
+          const d = this.nearestUnit(u.x, u.y, base.aggro * 1.8, o => Units.isPassive(o), u);
           if (d) u.tUnit = d.id;
         }
       } else if ((u.kind === 'bear' || u.kind === 'wolf' || u.kind === 'boar') &&
@@ -455,7 +552,7 @@ const Combat = {
         // ORIGIN CARDS (Houndmaster): a kept guard-beast patrols its home
         // ground — wild predators and enemy soldiers alike answer to it
         const e = this.nearestUnit(u.x, u.y, base.aggro + 1,
-          o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+          o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o), u);
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 8) u.tUnit = e.id;
       } else if (Units.isMilitary(u) && !(u.task && u.task.type === 'raid')) {
         /* ARMY STRATEGIES (tests/army-strategies.mjs) — the three assault
@@ -492,7 +589,7 @@ const Combat = {
               Math.hypot(o.x - g.x, o.y - g.y) <= Units.holdRadius(g, o.x, o.y) + reach + 0.5;
             const e = !(CFG.UNITS[u.kind].atk > 0) ? null
               : u.owner === 'A' ? this.bestFoe(u, g.x, g.y, g.r1 + MAXR + reach, gpred)
-              : this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach, gpred);
+              : this.nearestUnit(g.x, g.y, g.r1 + MAXR + reach, gpred, u);
             // BACK TO YOUR POST: remember where the guard STOOD as the fight
             // began — kill or abandoned chase, returnToGuard walks it back to
             // this exact spot, not a generic point on the ring
@@ -515,7 +612,7 @@ const Combat = {
         const lpred = o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
           !this.easedPrey(u, o);   // eased townsfolk are not prey — see easedPrey
         const e = u.owner === 'A' ? this.bestFoe(u, u.x, u.y, aggroR, lpred)
-          : this.nearestUnit(u.x, u.y, aggroR, lpred);
+          : this.nearestUnit(u.x, u.y, aggroR, lpred, u);
         if (e && Math.hypot(e.x - u.anchor.x, e.y - u.anchor.y) < 9) { u.tUnit = e.id; continue; }
         // ASSAULT autonomy: a unit committed to an attack (the order flagged
         // u.assault) whose target has fallen presses on by itself — a fighter in
@@ -531,7 +628,7 @@ const Combat = {
           if (tc && Math.hypot(u.x - Bld.cx(tc), u.y - Bld.cy(tc)) <= this.MILITIA_RANGE + 1) {
             // militiaFoe, never a hand-rolled owner check — the truce leak
             const e = this.nearestUnit(u.x, u.y, this.MILITIA_RANGE,
-              o => this.militiaFoe(o) && this.canEngage(u, o));
+              o => this.militiaFoe(o) && this.canEngage(u, o), u);
             if (e) { u.tUnit = e.id; u.militia = true; }
           }
         } else if (u.militia) {
@@ -567,7 +664,7 @@ const Combat = {
           if (Math.hypot(u.x - cx, u.y - cy) <= this.MILITIA_RANGE + 1) {
             const e = this.nearestUnit(u.x, u.y, this.MILITIA_RANGE,
               o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o) &&
-                   Math.hypot(o.x - cx, o.y - cy) <= this.MILITIA_RANGE);
+                   Math.hypot(o.x - cx, o.y - cy) <= this.MILITIA_RANGE, u);
             // the anchor is where they STOOD — the chase leash above measures
             // from it, so the pursuit is bounded from the town side out
             if (e) { u.anchor = { x: u.x, y: u.y }; u.tUnit = e.id; }
@@ -611,10 +708,10 @@ const Combat = {
        barbarian camp standing in the middle of it. */
     const foes = ['P', 'A', 'R'].filter(o => this.hostile(u.owner, o));
     const civ = this.nearestUnit(u.x, u.y, this.CHAOS_R, o => this.hostileUnits(u, o) &&
-      !Units.isPassive(o) && (Units.isVillager(o) || Units.isSapper(o)) && this.canEngage(u, o));
+      !Units.isPassive(o) && (Units.isVillager(o) || Units.isSapper(o)) && this.canEngage(u, o), u);
     if (civ && this.canReach(u, civ.x, civ.y, 1.6)) { u.tUnit = civ.id; u.task = { type: 'attack' }; u.anchor = { x: u.x, y: u.y }; return; }
     const sol = this.nearestUnit(u.x, u.y, this.CHAOS_R, o => this.hostileUnits(u, o) &&
-      !Units.isPassive(o) && Units.isMilitary(o) && this.canEngage(u, o));
+      !Units.isPassive(o) && Units.isMilitary(o) && this.canEngage(u, o), u);
     if (sol && this.canReach(u, sol.x, sol.y, 1.6)) { u.tUnit = sol.id; u.task = { type: 'attack' }; u.anchor = { x: u.x, y: u.y }; return; }
     const ECON = { farm: 1, house: 1, lumber: 1, quarry: 1, lodge: 1, trade: 1 };
     const MIL = { barracks: 1, range: 1, stable: 1, siege: 1, warcamp: 1, dock: 1, sapper: 1 };
@@ -645,7 +742,7 @@ const Combat = {
       const rng = CFG.UNITS[u.kind].rng || 0;
       const R = this.SIEGE_PROTECT + (rng ? rng * 0.6 : 0);
       const e = this.nearestUnit(p.x + 0.5, p.y + 0.5, R, o => this.hostileUnits(u, o) &&
-        !Units.isPassive(o) && this.canEngage(u, o));
+        !Units.isPassive(o) && this.canEngage(u, o), u);
       if (e) { u.tUnit = e.id; return; }
     }
     if (Math.hypot(u.x - (p.x + 0.5), u.y - (p.y + 0.5)) > 1.3) {
@@ -688,7 +785,7 @@ const Combat = {
     //    get whittled down). Reachable only, so a defender safe behind the wall
     //    doesn't distract the unit from battering its way in.
     const e = this.nearestUnit(u.x, u.y, R,
-      o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o));
+      o => this.hostileUnits(u, o) && !Units.isPassive(o) && this.canEngage(u, o), u);
     if (e && Math.hypot(e.x - u.x, e.y - u.y) <= R && this.canReach(u, e.x, e.y, 1.7)) {
       u.task = { type: 'attack' }; u.tUnit = e.id; u.tBld = 0; u.anchor = { x: e.x, y: e.y }; return;
     }
@@ -781,6 +878,17 @@ const Combat = {
     // a probe party carries its OWN lane objective; the main force shares ai.raidObj
     const obj = u.raidObj || (ai && ai.raidObj) || null;
     const canWall = Units.isSiege(u) || u.kind === 'axeman' || !!CFG.UNITS[u.kind].bldAtk;
+    /* 0) A BOW ON A TOWER COMES FIRST (js/lookout.js — operator: "update the
+       enemy AI's logic so that it does target archers first"). The column's
+       bows mark a manned tower they can see from well out and walk in until
+       their own reach takes it — under the lookout's doubled reach the whole
+       way, which is the price the tower charges. Blades cannot answer it
+       (canEngage) and carry on with the column. */
+    if (!strike && CFG.LOOKOUT && CFG.UNITS[u.kind].rng && !CFG.UNITS[u.kind].proj) {
+      const up = this.nearestUnit(u.x, u.y, CFG.LOOKOUT.seekR || 9,
+        o => o.perch && this.hostileUnits(u, o) && this.canEngage(u, o), u);
+      if (up && this.canReach(u, up.x, up.y, CFG.UNITS[u.kind].rng)) { u.tUnit = up.id; return; }
+    }
     // 1) a hostile fighter right in our face — engage (don't get picked apart).
     //    Only lock on if we can actually REACH it: a defender safe behind a wall
     //    must not distract the column from battering its way in.
@@ -843,9 +951,9 @@ const Combat = {
     //    Reachability again: villagers tucked behind the walls are NOT a target —
     //    fixating on them is exactly what left raiders idling at the gate.
     //    Never a hand-rolled owner check: the funnel is what the truce gates.
-    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => this.hostileUnits(u, o) && Units.isSapper(o) && this.canEngage(u, o));
+    const sap = strike ? null : this.nearestUnit(u.x, u.y, 8, o => this.hostileUnits(u, o) && Units.isSapper(o) && this.canEngage(u, o), u);
     if (sap && this.canReach(u, sap.x, sap.y, 1.6)) { u.tUnit = sap.id; return; }
-    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o));
+    const soft = strike ? null : this.nearestUnit(u.x, u.y, 7, o => this.hostileUnits(u, o) && Units.isVillager(o) && this.canEngage(u, o), u);
     if (soft && this.canReach(u, soft.x, soft.y, 1.6)) { u.tUnit = soft.id; return; }
     // a player BRIDGE within reach — cutting the crossing severs an expansion or
     // flanking route. Only worth it if we can actually stand beside it.
@@ -1040,7 +1148,7 @@ const Combat = {
     if (u.owner === 'R' && u.leaving) {
       const near = this.nearestUnit(u.x, u.y, 2.5,
         o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o) &&
-             !this.easedPrey(u, o));
+             !this.easedPrey(u, o), u);
       if (near && this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; u.leaving = null; return; }
       if (near) u.path = null;   // drop canReach's best-effort route — it is NOT the exit march
       this.raiderLeave(u);
@@ -1076,7 +1184,7 @@ const Combat = {
           if ((CFG.UNITS[u.kind].atk || 0) > 0) {
             const arc = (CFG.UNITS[u.kind].rng || 2) + 0.5;
             const prey = this.nearestUnit(u.x, u.y, arc,
-              o => this.hostileUnits(u, o) && this.canEngage(u, o));
+              o => this.hostileUnits(u, o) && this.canEngage(u, o), u);
             if (prey) u.tUnit = prey.id;
           }
           return;
@@ -1091,7 +1199,7 @@ const Combat = {
            when the probe fails, DROP the best-effort route. */
         // anyone hacking at the camp itself is the first business of the day
         const atCamp = this.nearestUnit(hx, hy, cR,
-          o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o));
+          o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o), u);
         if (atCamp) {
           if (this.canReach(u, atCamp.x, atCamp.y, 1.6)) { u.tUnit = atCamp.id; return; }
           u.path = null;
@@ -1099,7 +1207,7 @@ const Combat = {
         // …then anything that has strayed into the camp's ground
         const near = this.nearestUnit(u.x, u.y, cR,
           o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o) &&
-               Math.hypot(o.x - hx, o.y - hy) <= cR + 2);
+               Math.hypot(o.x - hx, o.y - hy) <= cR + 2, u);
         if (near) {
           if (this.canReach(u, near.x, near.y, 1.6)) { u.tUnit = near.id; return; }
           u.path = null;
@@ -1132,9 +1240,9 @@ const Combat = {
     // not a hunt.
     const mark = o => u.owner !== 'R' || o.owner === 'R' || !G.barbEase(o.owner);
     const foe = this.nearestUnit(u.x, u.y, 6,
-        o => this.hostileUnits(u, o) && mark(o) && fighter(o) && this.canEngage(u, o))
+        o => this.hostileUnits(u, o) && mark(o) && fighter(o) && this.canEngage(u, o), u)
       || this.nearestUnit(u.x, u.y, 6,
-        o => this.hostileUnits(u, o) && mark(o) && !Units.isNaval(o) && this.canEngage(u, o));
+        o => this.hostileUnits(u, o) && mark(o) && !Units.isNaval(o) && this.canEngage(u, o), u);
     // only lock on if the prey is actually reachable — otherwise a band across a
     // severed crossing would freeze staring at a foe it can never close with
     if (foe) {
@@ -1346,6 +1454,17 @@ const Combat = {
         if (u.strife && tgt.strife) { this.strifeStep(u, tgt, d, dt); continue; }
         // hunting harmless game is a deliberate order — the hunter follows the prey
         if (Units.isPassive(tgt)) u.anchor = { x: u.x, y: u.y };
+        if (u.climb) { u.tUnit = 0; continue; }   // on the stairs: no bow drawn (js/lookout.js)
+        // ON THE PLATFORM a garrisoned bow never leaves its tower to chase: out
+        // of its doubled reach the mark is let go — an ORDERED one takes the
+        // stairs down and the order with it (js/lookout.js)
+        if (u.perch) {
+          if (d > this.reachOf(u) || !this.canEngage(u, tgt)) {
+            if (u.task && u.task.type === 'attack' && window.Lookout && this.canEngage(u, tgt)) Lookout.down(u, { tUnit: tgt.id });
+            else u.tUnit = 0;
+            continue;
+          }
+        } else
         // DEFEND — HOLD THE LINE. A guard never chases a foe out past its bound: it
         // strikes from inside and no further. Beyond the bound it's reined home;
         // inside it, if a step toward the foe would breach the ring it plants its
@@ -1418,8 +1537,15 @@ const Combat = {
           }
         }
         if (!this.canEngage(u, tgt)) { u.tUnit = 0; continue; }
-        const reach = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
-        if (d > reach) {
+        /* A WALL BLOCKS SIGHT (sees): a mark on the far side of an intact
+           wall is not there to strike. One the unit took for itself is let
+           go; one the PLAYER ordered is walked to — round through a gate or a
+           breach — until the line clears, and given up (in words) only when
+           there is no nearer ground to try from. */
+        const los = this.sees(u, tgt);
+        if (!los && !(u.owner === 'P' && u.task && u.task.type === 'attack')) { u.tUnit = 0; u.path = null; continue; }
+        const reach = this.reachOf(u);
+        if (d > reach || !los) {
           /* at close range steer straight at the target — grid waypoints can't
              corner moving prey; fall back to pathfinding around water/walls.
              BUT A COMMITTED DETOUR HAS RIGHT OF WAY. The steer used to fire
@@ -1434,12 +1560,19 @@ const Combat = {
              striking range — so the unit walks the detour like it means it. */
           const step = u.speed * dt;
           const nx = u.x + (tgt.x - u.x) / d * step, ny = u.y + (tgt.y - u.y) / d * step;
-          if ((!Units.moving(u) || d <= reach + 0.5) &&
+          if (los && (!Units.moving(u) || d <= reach + 0.5) &&
               d < 3 && Path.canStep(u.x, u.y, nx, ny, u.owner, Units.domain(u))) {
             u.x = nx; u.y = ny; u.path = null;
           } else {
             if (this.repathOk(u)) {
               u.repathT = 0.5; Units.setPath(u, tgt.x | 0, tgt.y | 0);
+              // an ordered strike at someone behind the wall, with no nearer
+              // ground to try from: say so and stand (no silent failure)
+              if (!los && (!u.path || u.path.length < 2) && !Units.moving(u)) {
+                u.tUnit = 0; u.task = null; u.path = null;
+                if (u.owner === 'P') G.log('A wall stands between them — no line to shoot or strike', true, undefined, true);
+                continue;
+              }
               // a barbarian — or the rival's soldier — whose quarry slips
               // beyond reach (a crossing fell behind it, the woods regrew
               // across the lane) abandons the chase instead of staring at
@@ -1462,8 +1595,8 @@ const Combat = {
             this.launch(u, tgt.x, tgt.y, { kind: 'unit', id: tgt.id, dmg, srcId: u.id });
           } else {
             let sh = null;
-            if (CFG.UNITS[u.kind].rng)
-              this.shots.push(sh = { x1: u.x, y1: u.y - 0.3, x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
+            if (CFG.UNITS[u.kind].rng)   // a garrisoned bow looses from its platform, the tower's own height
+              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
             // THE BASE ARCHER FUMBLES 1 IN 4 SHOTS — the cheap early bowman
             // trained straight off a Lv1 Range; the Lv2/Lv3 upgrades (longbow,
             // marksman) are untouched. Owner-agnostic, same as the tower nerf.
@@ -1510,7 +1643,7 @@ const Combat = {
         // (tests/army-strategies.mjs) — escorting them is the player's job.
         if (!Units.isSiege(u) && u.strat !== 'strike' && u.strat !== 'siege') {
           const foe = this.nearestUnit(u.x, u.y, 2.2,
-            o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
+            o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o), u);
           if (foe) { u.tUnit = foe.id; continue; }
           // A MENDING HAND UNDOES THE BATTERING: a villager repairing or finishing
           // THIS building mid-fight is the smarter target — cut the crew down and
@@ -1518,14 +1651,22 @@ const Combat = {
           // both ways (the player's soldiers switch onto the rival's builders too).
           const mend = this.nearestUnit(u.x, u.y, 6,
             o => this.hostileUnits(u, o) && Units.isVillager(o) &&
-                 o.task && o.task.type === 'build' && o.task.id === b.id && this.canEngage(u, o));
+                 o.task && o.task.type === 'build' && o.task.id === b.id && this.canEngage(u, o), u);
           if (mend && this.canReach(u, mend.x, mend.y, 1.6)) { u.tUnit = mend.id; continue; }
         }
         const d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
         // 1.55 floor so a DIAGONALLY-adjacent attacker (√2 ≈ 1.41 from a 1×1 wall's
         // centre) is still in range — at 1.3 a raider that walked up to a corner of
         // a gate just sat there, forever a hair out of reach, never landing a blow.
-        const bReach = Math.max(1.55, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
+        const bReach = Math.max(1.55, u.perch ? this.reachOf(u) : (CFG.UNITS[u.kind].rng || 0)) + Bld.reach(b);
+        if (u.climb) { u.tBld = 0; continue; }
+        if (d > bReach && u.perch) {
+          // an archer on a tower never walks off it after a mark: an ORDER past
+          // the doubled reach takes the stairs down and goes; anything else drops
+          if (u.task && u.task.type === 'attackBld' && window.Lookout) Lookout.down(u, { tBld: b.id });
+          else u.tBld = 0;
+          continue;
+        }
         if (d > bReach) {
           if (this.repathOk(u)) {
             u.repathT = 0.8; Units.setPath(u, b.x, b.y);
@@ -1571,7 +1712,7 @@ const Combat = {
           } else {
             let sh = null;
             if (CFG.UNITS[u.kind].rng)
-              this.shots.push(sh = { x1: u.x, y1: u.y - 0.3, x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
+              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
             // same base-archer fumble as the unit-target branch above — a
             // player CAN send an archer straight at a wall, so it has to miss
             // there too, not just when trading blows with soldiers.
@@ -1590,7 +1731,7 @@ const Combat = {
         // sever a crossing: walk beside the bridge tile and hack it down
         const br = Bld.bridgeAt ? Bld.bridgeAt(u.tBridge.x, u.tBridge.y) : null;
         if (!br) { u.tBridge = null; continue; }
-        const foe = this.nearestUnit(u.x, u.y, 2.2, o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o));
+        const foe = this.nearestUnit(u.x, u.y, 2.2, o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o), u);
         if (foe) { u.tUnit = foe.id; continue; }
         const bx = br.x + 0.5, by = br.y + 0.5, d = Math.hypot(bx - u.x, by - u.y);
         const reach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
@@ -1628,7 +1769,7 @@ const Combat = {
          1) must never dress the rival's arrows as a buff. */
       const wfR = window.Deck && Deck.mult ? Deck.mult('towerRange', b.owner, b) : 1;
       const tgt = this.nearestUnit(cx, cy, lv.range * wfR,
-        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower' &&
+        o => this.hostileToBld(b, o) && !Units.isPassive(o) && o.kind !== 'siegetower' && !o.climb &&
           (b.owner !== 'P' || wfR === 1 || Math.hypot(o.x - cx, o.y - cy) <= lv.range || G.visibleAt(o.x | 0, o.y | 0)));
       if (tgt) {
         b.cd = 1.4;

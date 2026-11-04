@@ -304,6 +304,9 @@ const AI = {
     const out = [];
     for (const u of S.units) {
       if (u.owner !== 'P' || !Units.isMilitary(u)) continue;
+      // a bow on a tower's platform is the town's own wall-top, not a battery
+      // parked on ground we cannot walk to (the tower tile is solid ground)
+      if (u.perch || u.climb) continue;
       const rng = CFG.UNITS[u.kind].rng || 0;
       if (rng < 4) continue;                       // not a stand-off weapon
       if (!this.canSee(u)) continue;               // never a gun we have not laid eyes on
