@@ -375,7 +375,7 @@ const out = await p.evaluate(async () => {
     const bu = q('[data-act="brup"]'), buAt = bu && rect(bu);
     const bBefore = snapRes();
     ck('theSpanWorksStart', !!br && Bld.orderBridgeUpgrade(br) === true, br ? '' : 'no bridge at ' + bx + ',' + by);
-    if (!br) return { res, fails };
+    if (br) {
     const sap = Units.spawn('sapper', 'P', bx - 2, by); Units.assignTerraform(sap, bx, by, 'bridgeup');
     UI.renderPanel();
     const bc = q('[data-act="brcancel"]');
@@ -385,6 +385,88 @@ const out = await p.evaluate(async () => {
     ck('twoTapsCallTheSpanOff', !(br.upgrading > 0) && (br.level || 1) === 1 && same(bBefore, snapRes()),
       'net ' + JSON.stringify(diff(bBefore, snapRes())));
     ck('andTheSapperLetsGo', !(sap.task && sap.task.job === 'bridgeup'), sap.task ? JSON.stringify(sap.task) : 'idle');
+    }
+  }
+
+  /* ================= 8. TWO TO A ROW, NEVER A LONG BUTTON =================
+     operator, 2026-11-04, on a Barracks Lv 2 panel (a full-width Upgrade,
+     Defender | Axeman, a full-width Champion): "we never want full length
+     buttons. Let's keep upgrade top left button, first defender to the right
+     on the same row, and then the other two soldier buttons on the row below
+     that… two buttons per row, ideally not one long button, unless there is
+     only 1 button… as tight as possible." Measured on the phone (430px):
+     every action is half a row, an odd one stays half, a panel with ONE
+     action lets it fill the row, and the yard's tool row comes after every
+     action. The armed red plank (UI.killPlank) is the one exception. */
+  {
+    fresh('cx8');
+    S.res.food = 9000; S.res.wood = 9000; S.res.stone = 9000; S.res.gold = 9000;
+    const t = tc(); t.level = 2;
+    const look = () => {
+      const pa = document.querySelector('#panel .pactions');
+      if (!pa) return null;
+      const cs = getComputedStyle(pa), W = pa.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const bt = [...pa.querySelectorAll(':scope > .abtn:not(.pkillok)')].map(e => {
+        const r = e.getBoundingClientRect();
+        return { act: e.dataset.act + (e.dataset.unit ? ':' + e.dataset.unit : ''), x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width) };
+      });
+      const tools = pa.querySelector(':scope > .ptools');
+      return { W, bt, rows: new Set(bt.map(o => o.y)).size, long: bt.filter(o => o.w > W * 0.6).map(o => o.act),
+        toolsY: tools ? Math.round(tools.getBoundingClientRect().top) : null };
+    };
+    const tight = (name, g) => {
+      const ok = !!g && g.bt.length > 0 && (g.bt.length === 1 ? g.bt[0].w >= g.W - 2 : g.long.length === 0) &&
+        g.rows === Math.ceil(g.bt.length / 2) && (g.toolsY == null || g.bt.every(o => o.y < g.toolsY));
+      ck(name, ok, g ? `${g.bt.length} buttons in ${g.rows} row(s) of ${Math.round(g.W)}px; long: ${g.long.join(',') || 'none'}; ` +
+        g.bt.map(o => `${o.act}@${o.x},${o.y} ${o.w}w`).join(' · ') : 'no panel');
+    };
+    const show = (kind, id) => { UI.confirmCancel = 0; UI.confirmDemolish = 0; UI.select(kind, id); UI.renderPanel(); return look(); };
+
+    // the operator's own case: Upgrade | Defender, then Axeman | Champion
+    const bs = spot('barracks');
+    const bk = Bld.place('P', 'barracks', bs.x, bs.y, { free: true, instant: true }); if (bk.construction) Bld.finish(bk);
+    bk.level = 2;
+    const g = show('bld', bk.id);
+    tight('theBarracksIsTwoRowsOfTwo', g);
+    const [a1, a2, a3, a4] = g ? g.bt : [];
+    ck('upgradeTopLeftAndTheFirstSoldierBesideIt', !!a2 && a1.act === 'upgrade' && /^train:/.test(a2.act) && a1.y === a2.y && a1.x < a2.x &&
+      !!a4 && /^train:/.test(a3.act) && /^train:/.test(a4.act) && a3.y === a4.y && a3.y > a1.y, g ? g.bt.map(o => o.act).join(' ') : '');
+
+    // the hall: Upgrade, Train, Back to work, the wall works — and the tools last
+    const ws = spot('wall');
+    const wall = Bld.place('P', 'wall', ws.x, ws.y, { free: true, instant: true }); if (wall.construction) Bld.finish(wall);
+    S.garrison.push({ hp: 40, maxhp: 40, post: null });   // one hand sheltered: Back to work shows
+    tight('theHallPacksTwoToARowAndItsToolsComeLast', show('bld', t.id));
+    S.garrison.length = 0;
+
+    // a station: Station worker | Upgrade
+    const fs = freeSpot('farm');
+    const farm = Bld.place('P', 'farm', fs.x, fs.y, { free: true, instant: true, noAutoAssign: true }); Bld.finish(farm);
+    tight('aStationsHandsAndUpgradeShareARow', show('bld', farm.id));
+    // a hand on it: Build | Upgrade farm (and Group, if there is company)
+    const hand = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task);
+    if (hand) hand.task = { type: 'work', id: farm.id };
+    if (hand) tight('itsHandsPanelPacksTwoToARow', show('unit', hand.id));
+    // the upgrade under way with nobody on it: Send builder | Cancel, and an
+    // ARMED Cancel keeps its half slot (it used to take the whole row)
+    Bld.upgrade(farm); if (hand) hand.task = null;
+    for (const u of S.units) if (u.task && u.task.id === farm.id) u.task = null;
+    const g0 = show('bld', farm.id), c0 = g0.bt.find(o => o.act === 'cancelbuild');
+    document.querySelector('#panel [data-act="cancelbuild"]').click();
+    const g1 = look(), c1 = g1.bt.find(o => o.act === 'cancelbuild');
+    ck('anArmedCancelKeepsItsHalfSlot', !!c0 && !!c1 && c1.x === c0.x && c1.y === c0.y && c1.w === c0.w && c1.w < g1.W * 0.6 &&
+      !!document.querySelector('#panel .abtn.danger[data-act="cancelbuild"]'), JSON.stringify([c0, c1]));
+    UI.confirmCancel = 0; Bld.cancelBuild(farm);
+
+    // a lone action fills its row: the wall's Build Gate
+    tight('aLoneActionFillsItsRow', show('bld', wall.id));
+
+    // the trading post: three ways to pay and the way back, two rows of two
+    const ts = freeSpot('trade');
+    const tp = ts && Bld.place('P', 'trade', ts.x, ts.y, { free: true, instant: true });
+    if (tp) { if (tp.construction) Bld.finish(tp); UI.tradeNeed = null; tight('theTradingPostsFourGoodsAreTwoRows', show('bld', tp.id));
+      UI.select('bld', tp.id); UI.tradeNeed = 'wood'; UI.renderPanel(); tight('andItsWaysToPayAreTwoRows', look()); UI.tradeNeed = null; }
+    else ck('theTradingPostsFourGoodsAreTwoRows', false, 'no ground for a post');
   }
 
   return { res, fails };

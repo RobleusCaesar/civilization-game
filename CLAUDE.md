@@ -234,7 +234,7 @@ node tests/mortality.mjs       # a villager dies every so often, of something ap
 node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis (a north-south L2: doors), L3 drawbridge (a north-south L3: along the road under the arch); sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
-node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed; the order's own button BECOMES the call-off (upgrades, sites, the wall works, a span's reinforcing)
+node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed; the order's own button BECOMES the call-off (upgrades, sites, the wall works, a span's reinforcing); every panel two buttons to a row, none full width unless alone
 node tests/board-post.mjs      # every victory goes on the world board — the name box is on the scene, leaving still posts, the cloud gets a second chance, file:// never touches the cloud
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
 node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
@@ -345,8 +345,8 @@ menu's card (`Roads.icon(lv)`, `Sprites.building.road[lv-1]`,
 `UI.menuIconLevel`) is the painter's own road turning past a fingerpost (two
 arms at level 2, a milestone on the via) at 1.3 world px a card pixel. Price:
 10 wood + 5 stone a tile (operator). **The builder's panel** puts Build and
-Cancel build on one row, half and half (`UI.cancelWorkButton(b, half)`);
-armed, the confirm takes the whole row.
+Cancel build on one row, half and half (`UI.cancelWorkButton(b)`); armed,
+the confirm keeps its half (**TWO TO A ROW** below).
 Off (`CFG.ROADS.ON` false): no button, no road drawn or walked, the worn
 paths return.
 
@@ -362,12 +362,33 @@ bridge; a site's sits at the head of its panel. It reads "🛑 Cancel Lv N" (or
 Cancel build), the days left, and a thin gold bar of the work done for an
 upgrade (a site keeps no total), ticked in place by `refreshPanel` (`.cwLeft` /
 `.cwBar`, the button's `data-bid`); the two-tap confirm is unchanged and,
-armed, takes the whole row. A Send builder shares the row half and half; a
+armed ("⚠️ Confirm cancel", what comes back), keeps its half slot. A Send
+builder shares the row; a
 station offers no Station worker while its crew is on the scaffold. The wall
 works and a span's reinforcing can now be called off like any upgrade:
 everything paid comes back (`tc.wallUpPaid`, or the tier's list price for an
 older save; the span's level price), the level stays, the sapper drops the
 job by itself.
+
+**TWO TO A ROW, NEVER A LONG BUTTON** (index.html `#panel .pactions`,
+tests/build-cancel.mjs §8 — operator, 2026-11-04, on a Barracks Lv 2 panel:
+"we never want full length buttons. Let's keep upgrade top left button,
+first defender to the right on the same row, and then the other two soldier
+buttons on the row below that… two buttons per row, ideally not one long
+button, unless there is only 1 button… as tight as possible"). Every panel
+action is HALF a row on a phone (`flex: 0 1 calc(50% - 3px)` — no grow, so an
+odd one left over stays half, never stretched), and only a panel with ONE
+action lets it fill the row (`.pactions:not(:has(> .abtn ~ .abtn))`; on a
+desktop it keeps its quarter). No action wears `.wide` any more — Upgrade,
+the gate levers, Upgrade all walls, Build Gate, Reinforce, a station's
+upgrade on its hand's panel, Remove Army, the works call-off armed or not —
+and the trading post's odd-option spacer is gone. `.wide` is the armed red
+plank's alone (`UI.killPlank`, the operator's own design). The yard's tool
+row (`.ptools`: the queue, rally, call idle) is laid AFTER every action, so
+the hall's Back to work and wall works pair up with the rest. The Barracks
+reads Upgrade | Defender, then Axeman | Champion. A full-row `.psub` hint
+still breaks a row where it stands; put a new one before or after the
+buttons, never between two that would pair.
 
 **THE GROUND UNDER A BUILDING** (`js/footing.js`, `CFG.FOOTING`, tests/footing.mjs —
 operator, 2026-11-03, on the V5 land: the buildings "really stand out… a
