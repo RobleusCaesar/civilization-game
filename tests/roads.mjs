@@ -25,6 +25,10 @@
                        neighbour with no seam; a turn reaches its two sides and
                        a crossroads all four; no two tiles alike; decor at the
                        edges, never over water
+     THROUGH THE GATE  every gate of the player's carries the hall's road down its
+                       passage and a tile out either side; a road beside it never
+                       turns into its flank; nothing is laid in the save; the
+                       fort's road strip is the stand-in (builder off, the rival)
      A HOUSE TAKES THE GROUND; A SAVE KEEPS THE ROADS
      OFF IS OFF        CFG.ROADS.ON false: no button, no road, worn paths back
 
@@ -263,6 +267,66 @@ const { RX, RY } = W0;
   ck('andTheViaRunsOnWithNoSeam', o[3].seam >= 0 && o[3].seam <= 2, 'cells that differ across the shared edge: ' + o[3].seam);
   ck('theQuickeningIsTheSameAtEveryLevel', [1, 2, 3].every(l => Math.abs(o[l].speed - 1.2) < 0.03), [1, 2, 3].map(l => o[l].speed).join(' / '));
   ck('theRoadCardFollowsTheHall', [1, 2, 3].every(l => o[l].card) && r.cards === 3, `three cards (${r.cardPx}), the menu shows the hall's`);
+}
+
+// ---- the road goes through the gate -----------------------------------------------------
+/* operator, 2026-11-04, on a gate with a road either side and grass in its passage: "make
+   sure that the road goes through. Or just maybe make it a road regardless to keep it
+   simple. Gates won't always be the same level of development as the road, so we'll need
+   to make sure the gate road matches the current player road level". */
+{
+  const r = await p.evaluate(async ({ RX, RY }) => {
+    const W = CFG.W, C = CFG.TILE * 2, m = S.map.roads, tc = Bld.tcOf('P'), lv0 = tc.level;
+    const frames = n => new Promise(res => { let k = 0; const f = () => (++k >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    const put = (k, x, y, lv) => { const o = Bld.place('P', k, RX + x, RY + y, { free: true, instant: true }); if (o && o.construction > 0) Bld.finish(o); if (o) { o.level = lv || 1; if (k === 'gate') o.raised = false; } Bld._block = null; return o; };
+    // an east-west wall with a gate: a road up to it from the north, one from the south (the report)
+    for (let x = 2; x <= 8; x++) put(x === 6 ? 'gate' : 'wall', x, 4);
+    for (const [x, y] of [[6, 2], [6, 3], [6, 6], [6, 7]]) m[(RY + y) * W + RX + x] = 1;
+    // a north-south wall with a gate and no road at all
+    for (let y = 1; y <= 8; y++) put(y === 5 ? 'gate' : 'wall', 11, y);
+    // a gate at the END of a line with a road beside its open flank
+    for (let x = 1; x <= 3; x++) put('wall', x, 12); const endGate = put('gate', 4, 12); m[(RY + 12) * W + RX + 5] = 1;
+    Roads._n = -1; Roads._c.clear();
+    const e = (x, y) => Roads._c.get((RY + y) * W + RX + x);
+    const alpha = (cv, x, y) => cv.getContext('2d').getImageData(x, y, 1, 1).data[3];
+    const reach = t => t ? ['N', 'E', 'S', 'W'].filter((s, i) => alpha(t.surf, [C / 2, C - 1, C / 2, 0][i], [0, C / 2, C - 1, C / 2][i]) > 0).join('') : null;
+    const out = { lv: {} };
+    for (const lv of [1, 2, 3]) {
+      tc.level = lv; await frames(20);
+      const g = e(6, 4);
+      out.lv[lv] = { key: g ? g.k.slice(-1) : null, gateLv: Bld.at(RX + 6, RY + 4).level };
+    }
+    tc.level = 2; await frames(20);
+    out.ewGate = reach(e(6, 4)); out.north = reach(e(6, 3)); out.apron = reach(e(6, 5)); out.south = reach(e(6, 6));
+    out.nsGate = reach(e(11, 5)); out.nsAprons = [reach(e(10, 5)), reach(e(12, 5))];
+    out.endGate = reach(e(4, 12)); out.beside = reach(e(5, 12)); out.endAxis = Roads.gateRoads().get((RY + 12) * W + RX + 4);
+    // a picture only: no road is laid, the gate's rules are the gate's
+    const gi = (RY + 4) * W + RX + 6;
+    out.rules = !Roads.at(RX + 6, RY + 4) && !m[gi] && !m[(RY + 5) * W + RX + 6];
+    // the fort's own road strip stands down under the player's gate, and comes back with the builder off
+    const ns = Bld.at(RX + 11, RY + 5);
+    for (let k = 0; k < 60 && !R.gapGate(ns); k++) await frames(10);
+    const snap = () => { R.ambient = []; R.draw(0); return R.g.getImageData(0, 0, R.cv.width, R.cv.height).data; };
+    const z = R.cam.z * (R.dpr || 1), x0 = Math.ceil(((RX + 10) * CFG.TILE - R.cam.x) * z), x1 = Math.floor(((RX + 13) * CFG.TILE - R.cam.x) * z);
+    const y0 = Math.ceil(((RY + 5) * CFG.TILE - R.cam.y) * z), y1 = Math.floor(((RY + 6) * CFG.TILE - R.cam.y) * z);
+    const strip = () => { const a = snap(); const keep = Sprites.gateRoad; Sprites.gateRoad = null; const b2 = snap(); Sprites.gateRoad = keep;
+      let n = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const i = (y * R.cv.width + x) * 4; if (a[i] !== b2[i] || a[i + 1] !== b2[i + 1] || a[i + 2] !== b2[i + 2]) n++; } return n; };
+    out.gap = R.gapGate(ns); out.stripOn = strip();
+    CFG.ROADS.ON = false; out.stripOff = strip(); CFG.ROADS.ON = true;
+    tc.level = lv0;
+    return out;
+  }, { RX, RY });
+  ck('theRoadGoesThroughTheGate', r.ewGate === 'NS' && /S/.test(r.north || '') && r.apron === 'NS' && /N/.test(r.south || ''),
+    `gate ${r.ewGate}, the road north of it ${r.north}, its apron ${r.apron}, the road south ${r.south}`);
+  ck('itIsTheHallsRoadNotTheWalls', [1, 2, 3].every(l => r.lv[l].key === String(l)) && r.lv[1].gateLv === 1,
+    [1, 2, 3].map(l => `hall ${l}: painted ${r.lv[l].key}`).join(' · '));
+  ck('aGateWithNoRoadStillReadsAsAWayThrough', r.nsGate === 'EW' && r.nsAprons.every(a => a === 'E' || a === 'W') && r.nsAprons[0] !== r.nsAprons[1],
+    `north-south gate ${r.nsGate}, its aprons ${r.nsAprons.join(' / ')}`);
+  ck('aRoadBesideItNeverTurnsIntoItsFlank', r.endAxis === 'ns' && !/[EW]/.test(r.endGate || '') && !/W/.test(r.beside || ''),
+    `end gate (${r.endAxis}) ${r.endGate}, the road beside it ${r.beside}`);
+  ck('butNoRoadIsLaidThere', r.rules, 'no road in the save at the gate or its apron');
+  ck('theFortsRoadStripIsTheStandIn', r.gap && r.stripOn === 0 && r.stripOff > 200,
+    `gap gate ${r.gap}; strip pixels with the builder on ${r.stripOn}, off ${r.stripOff}`);
 }
 
 // ---- a house takes the ground; a save keeps the roads ------------------------------------

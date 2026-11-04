@@ -316,8 +316,12 @@ const out = await p.evaluate(async () => {
     ck('butTheRulesStillSeeOneLine', rules.length === 0, rules.length ? rules.join('; ') : 'the line, the axis and the seal are untouched at every tier');
   }
   {
-    // the road: on through open ground east and west, never onto water
-    const bad = [];
+    // the road: on through open ground east and west, never onto water.
+    // This is the fort's own strip, the stand-in: with the road builder on a
+    // player's gate carries the player's road at the hall's level instead
+    // (Roads.gateRoads, tests/roads.mjs), so the strip is measured with it off
+    const bad = [], roadsOn = CFG.ROADS.ON;
+    CFG.ROADS.ON = false;
     for (const lv of [1, 2, 3]) {
       clear('wl-road' + lv); S.wallLevel = lv;
       for (let y = 12; y <= 16; y++) put(y === 14 ? 'gate' : 'wall', 20, y, lv);
@@ -348,6 +352,7 @@ const out = await p.evaluate(async () => {
         } }
       if (!(w > 400 && mid > 400 && e === 0 && eLeak > 400)) bad.push('L' + lv + ' west ' + w + ', gate ' + mid + ', water ' + e + ' (unclipped ' + eLeak + ')');
     }
+    CFG.ROADS.ON = roadsOn;
     ck('theRoadRunsOnOverOpenGround', bad.length === 0, bad.length ? bad.join('; ') : 'the road runs out across the grass west and stops at the water east');
   }
   {

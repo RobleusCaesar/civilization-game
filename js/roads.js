@@ -69,8 +69,42 @@ const Roads = (() => {
     return !!S.map.roads[i] && S.map.terrain[i] === T.GRASS;
   };
   Rd.siteAt = (x, y) => { const b = MapGen.onBoard(x, y) && Bld.at(x, y); return b && b.key === 'road' && b.construction > 0 ? b : null; };
-  // what the picture joins to: a road, or a road going up
-  const link = (x, y) => Rd.at(x, y) || !!Rd.siteAt(x, y);
+  /* THE ROAD GOES THROUGH THE GATE (operator, 2026-11-04, on a gate with a
+     road either side and grass in its passage: "make sure that the road goes
+     through. Or just maybe make it a road regardless to keep it simple…
+     make sure the gate road matches the current player road level"). Every
+     finished gate of the player's carries a road down its passage, at the
+     hall's level like every road, and on a tile either side of it over open
+     grass (its APRON), so a road laid up to a gate joins it and a gate with
+     none still reads as a way through. A picture only, like the levels: the
+     passage's rules are the gate's, and no road is laid in S. The gate's own
+     road runs only along its passage — a road beside the wall never turns
+     into the gate's flank. Rebuilt once a frame by Rd.draw (Rd._gr: idx →
+     'ns' / 'ew' for a gate, 'a' for an apron); null outside the draw. */
+  Rd._gr = null;
+  Rd.gateRoads = function () {
+    const gr = new Map(), W = CFG.W;
+    for (const b of S.buildings) {
+      if (b.key !== 'gate' || b.owner !== 'P' || b.construction > 0) continue;
+      const ax = R.gateVerticalAt && R.gateVerticalAt(b.x, b.y) ? 'ew' : 'ns';
+      gr.set(b.y * W + b.x, ax);
+    }
+    for (const [i, ax] of [...gr]) {
+      const x = i % W, y = (i / W) | 0;
+      for (const d of (ax === 'ns' ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]])) {
+        const nx = x + d[0], ny = y + d[1], j = ny * W + nx;
+        if (gr.has(j) || !MapGen.onBoard(nx, ny) || !S.map.explored[j]) continue;
+        if (S.map.terrain[j] === T.GRASS && !Bld.at(nx, ny)) gr.set(j, 'a');
+      }
+    }
+    return gr;
+  };
+  const gateAx = (x, y) => { const v = Rd._gr && MapGen.inB(x, y) && Rd._gr.get(y * CFG.W + x); return v === 'ns' || v === 'ew' ? v : null; };
+  // what the picture joins to: a road, a road going up, a gate's passage or its apron
+  const link = (x, y) => Rd.at(x, y) || !!Rd.siteAt(x, y) || !!(Rd._gr && MapGen.inB(x, y) && Rd._gr.has(y * CFG.W + x));
+  // …and a gate joins only along its passage, from either side of the step
+  const byGate = (x, y, dx, dy) => { const a = gateAx(x, y); return !a || (a === 'ns' ? dx === 0 : dy === 0); };
+  const joins = (x, y, dx, dy) => link(x + dx, y + dy) && byGate(x, y, dx, dy) && byGate(x + dx, y + dy, -dx, -dy);
   Rd.count = () => {
     if (Rd._world !== S.map) { Rd._world = S.map; Rd._n = -1; Rd._c.clear(); }
     if (Rd._n < 0) { let n = 0; const m = S.map.roads || {}; for (const k in m) if (S.map.terrain[+k] === T.GRASS) n++; Rd._n = n; }
@@ -182,10 +216,10 @@ const Roads = (() => {
       const cx = (x + 0.5) * T_, cy = (y + 0.5) * T_;
       let m = 0, k = 0;
       [[0, -1], [1, 0], [0, 1], [-1, 0]].forEach(([dx, dy], b) => {
-        if (!(extra ? extra(x + dx, y + dy) : link(x + dx, y + dy))) return;
+        if (!(extra ? extra(x + dx, y + dy) : joins(x, y, dx, dy))) return;
         out.push([cx, cy, cx + dx * T_ / 2, cy + dy * T_ / 2, x, y, 0]); m |= 1 << b; k++;
       });
-      if (!k) out.push([cx - 4, cy, cx + 4, cy, x, y, 0]);          // a lone tile: a short patch
+      if (!k) out.push(!extra && gateAx(x, y) === 'ns' ? [cx, cy - 4, cx, cy + 4, x, y, 0] : [cx - 4, cy, cx + 4, cy, x, y, 0]);   // a lone tile: a short patch (a gate's, along its passage)
       // a turn, a T or a crossroads wears its INSIDE corners round — only the
       // quadrants between two joined arms (near()), so a T's straight side
       // stays straight and a turn's outer corner keeps its own curve
@@ -469,15 +503,18 @@ const Roads = (() => {
   // what a tile's picture depends on: the roads and sites round it, its stage, and the hall's level
   function sig(tx, ty, stage, lv) {
     let s = '';
-    for (let y = ty - 2; y <= ty + 2; y++) for (let x = tx - 2; x <= tx + 2; x++) s += link(x, y) ? (Rd.at(x, y) ? 'r' : 's') : '.';
+    for (let y = ty - 2; y <= ty + 2; y++) for (let x = tx - 2; x <= tx + 2; x++) {
+      const gv = Rd._gr && MapGen.inB(x, y) && Rd._gr.get(y * CFG.W + x);
+      s += Rd.at(x, y) ? 'r' : Rd.siteAt(x, y) ? 's' : gv ? (gv === 'a' ? 'a' : gv[0]) : '.';
+    }
     return s + stage + lv;
   }
-  function entry(tx, ty, stage, budget, lv) {
+  function entry(tx, ty, stage, budget, lv, must) {
     const i = ty * CFG.W + tx, k = sig(tx, ty, stage, lv);
     let e = Rd._c.get(i);
     if (e && e.k === k) { Rd._c.delete(i); Rd._c.set(i, e); return e; }      // most recently used last
-    if (budget.left <= 0 && e) return e;                                     // stale but drawn while it waits
-    if (budget.left <= 0) return null;
+    if (budget.left <= 0 && e && !must) return e;                            // stale but drawn while it waits
+    if (budget.left <= 0 && !must) return null;
     const t0 = performance.now();
     try {
       e = { k, surf: stage < 3 ? siteLook(tx, ty, stage, lv) : surface(tx, ty, null, lv), dec: stage < 3 ? null : decor(tx, ty, lv) };
@@ -496,6 +533,7 @@ const Roads = (() => {
     const x0 = Math.max(1, Math.floor(v.x0) - 1), y0 = Math.max(1, Math.floor(v.y0) - 1);
     const x1 = Math.min(CFG.W - 2, Math.ceil(v.x1) + 1), y1 = Math.min(CFG.H - 2, Math.ceil(v.y1) + 1);
     const m = S.map.roads || {}, budget = { left: Rd.BUDGET_MS }, decs = [];
+    const gr = Rd._gr = Rd.gateRoads();
     const sites = S.buildings.filter(b => b.key === 'road' && b.construction > 0 && b.x >= x0 && b.x <= x1 && b.y >= y0 && b.y <= y1);
     const siteSet = new Set(sites.map(b => b.y * CFG.W + b.x));
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
@@ -505,14 +543,17 @@ const Roads = (() => {
       if (siteSet.has(i)) {
         const b = Bld.at(x, y), tot = (Bld.lv(b) && Bld.lv(b).time) || 1, p = Math.max(0, Math.min(1, 1 - b.construction / tot));
         stage = p < 0.34 ? 0 : p < 0.67 ? 1 : 2;
-      } else if (m[i] && S.map.terrain[i] === T.GRASS) stage = 3;
+      } else if ((m[i] && S.map.terrain[i] === T.GRASS) || gr.has(i)) stage = 3;
       else continue;
-      const e = entry(x, y, stage, budget, lv);
+      // a gate's road and its aprons are never left to the budget: a few
+      // tiles, and a passage must not open onto grass for a frame
+      const e = entry(x, y, stage, budget, lv, gr.has(i));
       if (!e) continue;
       blit(g, e.surf, x * T_, y * T_, T_, T_);
       if (e.dec) decs.push(e.dec);
     }
     for (const d of decs) blit(g, d.cv, d.x, d.y, d.w, d.h);
+    Rd._gr = null;
   };
   // the line being dragged: the road's plan, joined along the chain, green where it can go
   Rd.drawGhost = function (g, ghost) {

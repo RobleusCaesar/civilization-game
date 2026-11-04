@@ -288,7 +288,7 @@ node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat a
 node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
-node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; CFG.ROADS.ON false brings the worn paths back
+node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
 ```
 
 **THE ROAD BUILDER** (`js/roads.js`, `CFG.ROADS`, `CFG.BUILDINGS.road`, tests/roads.mjs —
@@ -347,6 +347,21 @@ arms at level 2, a milestone on the via) at 1.3 world px a card pixel. Price:
 10 wood + 5 stone a tile (operator). **The builder's panel** puts Build and
 Cancel build on one row, half and half (`UI.cancelWorkButton(b)`); armed,
 the confirm keeps its half (**TWO TO A ROW** below).
+**THE ROAD GOES THROUGH THE GATE** (`Roads.gateRoads`, tests/roads.mjs —
+operator, 2026-11-04, on grass in a gate's passage between two roads: "make
+sure that the road goes through. Or just maybe make it a road regardless…
+make sure the gate road matches the current player road level"): every
+FINISHED gate of the player's is a road for the picture — down its passage
+(`'ns'` for a gate in an east-west wall, `'ew'` in a north-south one, from
+`R.gateVerticalAt`) and on a tile either side over open grass (its apron) —
+at `Roads.level()`, the hall's, never the wall's tier. A gate joins only
+along its passage, so a road beside the wall never turns into its flank;
+its tiles are never left to the frame budget (`entry`'s `must`). A picture
+only: nothing lands in `S.map.roads`, `Roads.at` answers no there, and the
+speed and the route price are the gate's. The fort's road strip
+(`R.drawGateRoads`) stands down under the player's gates while the builder
+is on and stays the rival's and the builder-off stand-in (wall-lines.mjs
+measures it with the builder off).
 Off (`CFG.ROADS.ON` false): no button, no road drawn or walked, the worn
 paths return.
 
@@ -3167,7 +3182,8 @@ down a vertical line a gate read as one more tower. At levels 1 and 2 the
 curtain now ENDS either side of it in its own end caps (`wallMaskAt` and
 `towerLinkMask` drop the arm toward it), a road crosses east-west through
 the gap (`assets/fort/road-l{1,2}.png`, three tiles wide, laid by
-`R.drawGateRoads` before any building and running on a tile east and west
+`R.drawGateRoads` before any building (the rival's gates, and the player's
+with the road builder off — **THE ROAD GOES THROUGH THE GATE**) and running on a tile east and west
 only over open ground — never onto water, a wood or a building), the flank
 frame of `gate-l{1,2}*.png` is two gateposts at the road's edges (stages:
 pits, then posts; battered: charred, then one snapped), and the doors are
