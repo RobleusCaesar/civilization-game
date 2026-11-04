@@ -656,6 +656,37 @@ const out = await p.evaluate(() => {
       ck('andStayInsideWhicheverWayTheyFace', !out.length && cases === 864 && poses === 864, out.slice(0, 4).join('; ') + (out.length > 4 ? ` (+${out.length - 4})` : '') ||
         `${cases} men (${poses} in the pose and facing asked), ${frames} frames — at rest the body ${Math.max(0, rest).toFixed(1)}px past the outer posts at worst; drawing, the arm ${Math.round(Math.max(0, reach) * 100)}% of his height over the side rail at worst`);
     }
+    // AND EACH MAN'S HEALTH OVER HIM (build 148): two up there stand closer
+    // together than a bar is wide, so two hurt men's bars stand side by side
+    // over the pair — never one laid over the other, which read as one man's
+    // health — each over its own man, the tower's own bar clear of both
+    {
+      const bad2 = []; let pairs = 0;
+      const realBar = R.bar, g2 = document.createElement('canvas').getContext('2d');
+      for (const tw of towers) {
+        const f = Lookout.frame(tw);
+        if (!f || !f.P) continue;
+        const name = (f.spr._cfArt.fort ? 'wall' : 'free') + tw.level;
+        for (const u of S.units) if (u.perch === tw.id) u.perch = 0;
+        const men = [0, 1].map(k => { const m = Units.spawn(kinds[k], 'P', tw.x, tw.y + 1); m.perch = tw.id; m.perchSlot = k; m.hp = Math.round(m.maxhp * 0.4); return m; });
+        const hp0 = tw.hp; tw.hp = Math.round(tw.maxhp * 0.5);
+        const rects = [];
+        R.bar = (g, x, y, w, h, frac, col) => rects.push({ x, y, w, h, col });
+        try { Lookout.draw(g2, tw); } finally { R.bar = realBar; }
+        tw.hp = hp0;
+        const bars = rects.filter(r => r.col === '#7dbb5e').sort((a, c) => a.x - c.x);
+        const sp = men.map(m => Lookout.spot(m)).sort((a, c) => a.x - c.x);
+        pairs++;
+        if (bars.length !== 2) { bad2.push(`${name}: ${bars.length} bars for two hurt men`); S.units = S.units.filter(o => !men.includes(o)); continue; }
+        const [a, c] = bars;
+        const apart = a.x + a.w <= c.x + 0.01 || a.y + a.h <= c.y + 0.01 || c.y + c.h <= a.y + 0.01;
+        const over = bars.every((r, k) => r.x <= sp[k].x && sp[k].x <= r.x + r.w);
+        if (!apart) bad2.push(`${name}: the bars overlap (${a.x.toFixed(1)}+${a.w.toFixed(1)} over ${c.x.toFixed(1)})`);
+        if (!over) bad2.push(`${name}: a bar is not over its own man`);
+        S.units = S.units.filter(o => !men.includes(o));
+      }
+      ck('andEachMansHealthStandsOverHim', !bad2.length && pairs === 6, bad2.join('; ') || `${pairs} towers, two hurt men on each: two bars side by side, each over its own man, as wide as a lone man's`);
+    }
     // TOLD WHAT TO SHOOT (operator, build 147: "click archers on the tower and
     // then click an enemy and have them attack whoever I select… like a
     // house"): a bow tapped on the platform is selected; a foe tapped is shot

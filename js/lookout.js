@@ -522,22 +522,28 @@ const Lookout = {
     }
     // the selection ring rides the rail in front of him (at his feet it would
     // sit behind the parapet), a man wide; the health bar over his head, and
-    // over the tower's own bar when that one is up too (by - 4, R.draw)
+    // over the tower's own bar when that one is up too (by - 4, R.draw).
+    // Two up there stand closer together than a bar is wide (build 148), so
+    // their bars stand SIDE BY SIDE over the pair, each on its own man's side
+    // and as wide as ever — never one laid over the other, which read as one
+    // man's health
     const sel = UI.sel;
     const selIds = sel ? (sel.type === 'unit' ? [sel.id] : sel.type === 'group' ? sel.ids : null) : null;
     const towerBar = b.hp < b.maxhp ? f.by - 4 : Infinity;
-    for (const [u, s] of spots) {
+    const mid = spots.length > 1 ? (spots[0][1].x + spots[1][1].x) / 2 : null;
+    spots.forEach(([u, s], i) => {
       if (selIds && selIds.indexOf(u.id) >= 0) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1;
         g.beginPath(); g.ellipse(s.x, s.rail, 0.2 * s.B, 0.07 * s.B, 0, 0, Math.PI * 2); g.stroke();
       }
       if (u.hp < u.maxhp) {
         const w = Math.max(8, s.B * 0.62);
-        let y = s.head - 3.5;
+        let x = s.x - w / 2, y = s.head - 3.5;
+        if (mid !== null) x = i === 0 ? Math.min(x, mid - 0.75 - w) : Math.max(x, mid + 0.75);
         if (y + 2 > towerBar - 0.5 && y < towerBar + 3.5) y = towerBar - 3;
-        R.bar(g, s.x - w / 2, y, w, 2, u.hp / u.maxhp, u.owner === 'P' ? '#7dbb5e' : '#e06550');
+        R.bar(g, x, y, w, 2, u.hp / u.maxhp, u.owner === 'P' ? '#7dbb5e' : '#e06550');
       }
-    }
+    });
   },
   // a tap at (wx, wy) — tiles — measured to the bow drawn on the platform, in
   // the units the tap contract's thresholds are written in (his own box)
