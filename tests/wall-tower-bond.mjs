@@ -210,8 +210,11 @@ const out = await p.evaluate(() => {
       };
       for (let L = 0; L < 3; L++) {
         const face = data(Sprites.gateMask[L][0]), wall = data(Sprites.wallMask[L][2 | 8]);
-        const fy = lowest(face, 26, 50), wy = lowest(wall, 26, 50);
-        // (the L1 gateway's road spills a few pixels of trodden earth past it)
+        // the gatehouse's foot is its jambs': the passage between them is open
+        // to the ground (NO SILL ACROSS THE GATEWAY, Assets._openPassage —
+        // tests/wall-lines.mjs noSillAcrossTheGateway)
+        const D = Assets.FORT_DOOR[L];
+        const fy = Math.max(lowest(face, D.x0 - 6, D.x0), lowest(face, D.x1, D.x1 + 6)), wy = lowest(wall, 26, 50);
         ck('theGatehouseStandsOnTheCurtainsFoot' + (L + 1), fy >= 0 && Math.abs(fy - wy) <= 6,
           'L' + (L + 1) + ' gate foot row ' + fy + ' · wall foot row ' + wy);
         const flank = data(Sprites.gateMask[L][1]), run = data(Sprites.wallMask[L][1 | 4]);
