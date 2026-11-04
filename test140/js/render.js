@@ -7888,8 +7888,12 @@ const R = {
     const art = Sprites.gateRoad;
     if (!art) return;
     const TL = CFG.TILE, RG = this.GAP_ROAD;
+    // the player's gates carry the player's own road, at the hall's level
+    // (Roads.gateRoads); the fort's road strip is the rival's, and the
+    // stand-in with the road builder off
+    const roads = window.Roads && Roads.on && Roads.on();
     for (const b of blds) {
-      if (b.key !== 'gate' || !this.gapGate(b)) continue;
+      if (b.key !== 'gate' || !this.gapGate(b) || (roads && b.owner === 'P')) continue;
       const rd = art[(b.level || 1) - 1];
       if (!rd || !G.visibleAt(b.x, b.y)) continue;
       const k = TL / RG.tile, bx = b.x * TL, by = b.y * TL;
