@@ -96,6 +96,32 @@ function readPng(path) {
   }
   ck('theRooflessTowersKeepTheirShippedSize', !bad.length, bad.join('; ') || '6 drawings, sizes as shipped');
   ck('andEveryPixelIsSolidOrClear', !soft.length, soft.join('; ') || 'hard alpha throughout');
+  /* …and the rest of the drawing keeps its OUTLINE: the roofed towers' own
+     per-row extents (run-length, "l-r*n", "_" a clear row), taken off the
+     shipped art before the roofs came off. A roofless row may be narrower —
+     the roof was the widest thing — never wider: the first redraw stood its
+     deck 2px out past the old gallery each side, and wall-lines' mountain
+     check caught the rim beside the wall arm. */
+  const OLD_ROWS = {
+    'assets/buildings/tower-l1.png': '40-47 38-49 36-51 34-53 33-54 31-56 29-58 27-60 26-61 24-63 22-65 20-67 18-69 16-71 15-72 14-73 13-74*2 12-75 13-74 12-75*2 13-74 12-75*2 11-76 12-75*2 11-76 12-75 11-76*3 12-75 11-76 12-75 11-76 12-75*2 11-76*4 12-75 14-73 17-70 18-69*2 17-70 16-71*10 15-72*7 13-74 12-75 11-76 10-77 8-79 7-80 6-81 5-82 4-83 3-84 2-85 1-86*2 0-87*28 1-86*2 2-85*2 3-84 5-82 7-80',
+    'assets/buildings/tower-l2.png': '40-43 39-44 37-46 35-48 33-50 31-52 29-54 27-56 25-58 23-60 21-62 19-64 17-66 15-68 14-69 13-70*23 14-69 16-67*14 15-68*3 14-69*4 15-68 16-67*7 15-68 12-71 11-72 9-74 8-75 7-76*2 5-78 4-79 3-80 2-81 1-82 1-83 0-83*14 0-82 0-83*5 1-82*3 3-80 4-79 5-78 7-76 11-72 30-53*6 31-52',
+    'assets/fort/tower-l1.png': '30-37 28-39 26-41 24-43 23-44 21-46 19-48 17-50 16-51 14-53 12-55 10-57 8-59 6-61 5-62 4-63 3-64*2 2-65 3-64 2-65*2 3-64 2-65*2 1-66 2-65*2 1-66 2-65 1-66*3 2-65 1-66 2-65 1-66 2-65*2 1-66*4 2-65 4-63 7-60 8-59 7-60 6-61*21 4-63 3-64 2-65*2 1-66*2 0-67*3 0-66 0-67*4 1-66 0-67*3 1-66*2 3-64',
+    'assets/fort/tower-l2.png': '27-30 26-31 24-33 22-35 20-37 18-39 16-41 14-43 12-45 10-47 8-49 6-51 4-53 2-55 1-56 0-57*23 1-56 3-54*14 2-55*3 1-56*4 2-55 3-54*29 7-50',
+  };
+  const out = [];
+  for (const [f, rl] of Object.entries(OLD_ROWS)) {
+    const rows = [];
+    for (const g of rl.split(' ')) { const [v, n] = g.split('*'); for (let k = 0; k < (+n || 1); k++) rows.push(v === '_' ? null : v.split('-').map(Number)); }
+    const png = readPng(join(root, f)), w = png.w;
+    let bad = 0;
+    for (let y = 0; y < png.h; y++) for (let x = 0; x < w; x++) {
+      if (!png.alpha[y * w + x]) continue;
+      const r = rows[y];
+      if (!r || x < r[0] || x > r[1]) bad++;
+    }
+    if (bad) out.push(`${f}: ${bad} px outside`);
+  }
+  ck('andTheyStayInsideTheirOldOutline', !out.length, out.join('; ') || 'no row wider than the roofed tower was');
   // the damage states and the raising stages share their tower's canvas (fort-states.mjs holds the rest)
   const st = [];
   for (const lv of [1, 2]) for (const k of ['d1', 'd2']) {
