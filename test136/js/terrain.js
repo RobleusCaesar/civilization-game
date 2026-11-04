@@ -93,7 +93,7 @@
         fr = nx_; }
       F.bodyD = bd;
       this.F = F;
-      this.blds = (S.buildings || []).filter(b => b.key !== 'wall' && b.key !== 'gate' && b.key !== 'raidercamp').map(b => ({ x: b.x, y: b.y, s: Bld.size(b), tc: b.key === 'tc', key: b.key }));
+      this.blds = (S.buildings || []).filter(b => b.key !== 'wall' && b.key !== 'gate' && b.key !== 'raidercamp' && b.key !== 'road').map(b => ({ x: b.x, y: b.y, s: Bld.size(b), tc: b.key === 'tc', key: b.key }));
     },
     // trees and stones, drawn with the game's own stamps into a 1-bit mask at world px
     buildShade(win) {
@@ -433,7 +433,7 @@
     noteEdit() {
       const t0 = performance.now(), W = CFG.W, H = CFG.H, terr = this.terr(), old = this._tsnap, changed = [];
       if (old && old.length === terr.length) for (let i = 0; i < terr.length; i++) if (old[i] !== terr[i]) changed.push([i % W, (i / W) | 0, old[i], terr[i]]);
-      const nowB = (S.buildings || []).filter(b => b.key !== 'wall' && b.key !== 'gate' && b.key !== 'raidercamp');
+      const nowB = (S.buildings || []).filter(b => b.key !== 'wall' && b.key !== 'gate' && b.key !== 'raidercamp' && b.key !== 'road');
       const bsig = new Set(nowB.map(b => b.key + '@' + b.x + ',' + b.y)), bChanged = nowB.filter(b => !this._bsig.has(b.key + '@' + b.x + ',' + b.y));
       const gone = [...this._bsig].filter(k => !bsig.has(k)).map(k => { const [, xy] = k.split('@'); const [x, y] = xy.split(',').map(Number); return { x, y, s: 2 }; });
       const wkey = R.waterKey ? R.waterKey() : null, waterMoved = wkey !== this._wkey;

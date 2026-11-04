@@ -52,7 +52,7 @@ const Assets = {
      (one PNG would stamp all ten); a raider camp's look belongs to its
      PEOPLE, not its building id — it has its OWN convention just below
      (camp-{tribe}.png), because one id would otherwise need five looks. */
-  EXCLUDE: ['wall', 'gate', 'wonder', 'raidercamp'],
+  EXCLUDE: ['wall', 'gate', 'wonder', 'raidercamp', 'road'],
 
   /* ---- CAMP ART: one PNG per PEOPLE, not per building id ----
 

@@ -14863,9 +14863,12 @@ const R = {
     g.save();
     { const bp = this.boardPx(); g.beginPath(); g.rect(bp.x0, bp.y0, bp.x1 - bp.x0, bp.y1 - bp.y0); g.clip(); }
     this.drawGateRoads(g, blds);
+    // THE ROADS (js/roads.js): the built roads and the roads going up, ground under everything standing
+    if (window.Roads && Roads.draw) Roads.draw(g);
     // THE GROUND UNDER A BUILDING (js/footing.js): every building's shadow and yard, before any building
     if (window.Footing && Footing.ground) Footing.ground(g, blds);
     for (const b of blds) {
+      if (b.key === 'road') continue;   // a road site is drawn with the roads, as ground
       const bs = Bld.size(b);
       let seen = false;
       for (let vy = 0; vy < bs && !seen; vy++) for (let vx = 0; vx < bs; vx++)
@@ -15763,7 +15766,9 @@ const R = {
     this.drawBondSparks(g, dt);
 
     // placement ghost
-    if (UI.placing === 'wall' && UI.wallGhost && UI.wallGhost.length) {
+    if (UI.placing === 'road' && UI.wallGhost && UI.wallGhost.length && window.Roads && Roads.drawGhost) {
+      Roads.drawGhost(g, UI.wallGhost);                  // the road's plan along the dragged line
+    } else if (UI.placing === 'wall' && UI.wallGhost && UI.wallGhost.length) {
       // dragged wall line: oriented pieces, green when buildable+affordable
       for (const t of UI.wallGhost) {
         g.globalAlpha = 0.65;
