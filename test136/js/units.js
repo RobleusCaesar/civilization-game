@@ -433,6 +433,8 @@ const Units = {
      player can see it (G.noteWear), so a road under the rival's feet would
      make its economy hang on what the player happened to be looking at. */
   wearPrefer(u) {
+    // THE ROAD BUILDER (js/roads.js): built roads call every land unit of the player's
+    if (window.Roads && Roads.on()) return Roads.count() && u.owner === 'P' && !this.isNaval(u) ? Roads.cost() : null;
     if (!G._wearRoads || u.owner !== 'P' || !this.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return null;
     const P = CFG.WEAR.prefer;
     if (!this._wearCost) {
@@ -1367,6 +1369,8 @@ const Units = {
       // as fast (the operator's ruling — the road is worth walking). The
       // player's alone, for wearPrefer's reason: the rival's roads exist only
       // where the player looked, so they are a picture, never a road
+      // …and a BUILT ROAD is quicker for every land unit of the player's (js/roads.js)
+      else if (window.Roads && Roads.on() && u.owner === 'P' && Roads.at(u.x | 0, u.y | 0)) sp *= CFG.ROADS.speed;
       else if (G._wearRoads && u.owner === 'P' && this.isVillager(u) && G.wearLevel(u.x | 0, u.y | 0) >= CFG.WEAR.fastLv) sp *= CFG.WEAR.speed;
     }
     const step = sp * dt;

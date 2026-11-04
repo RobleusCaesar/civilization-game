@@ -345,6 +345,13 @@ const CFG = {
           bonus: 'Full headframe and wash-house — the richest seam works' },
       ],
     },
+    // THE ROAD BUILDER (js/roads.js): laid with the wall's line drag, raised by a villager
+    // in a third of a wall's time, then it is ground — the site leaves the buildings
+    road: {
+      name: 'Road', desc: 'Packed earth your people walk faster on, and keep to.',
+      freePlace: true,
+      levels: [ { cost: { wood: 3, stone: 1 }, time: 0.33, hp: 40 } ],
+    },
     house: {
       name: 'House', desc: 'Raises population cap.',
       levels: [
@@ -1104,6 +1111,10 @@ const CFG = {
      town to a few roads), a villager on trodden earth or better walks
      `speed` times as fast (`fastLv`), and a path waits twice as long
      (`decay` 50) before it starts to grow back. */
+  /* THE ROAD BUILDER (js/roads.js, tests/roads.mjs): built roads replace the worn paths —
+     the player's land units walk `speed` as fast on one and price a road step `prefer` in
+     their route search. false stands it all down and the worn paths come back. */
+  ROADS: { ON: true, speed: 1.2, prefer: 0.55 },
   WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [4, 8, 13], cap: 20, decay: 50,
           pull: 2, prefer: [1, 1, 0.84, 0.76], fastLv: 2, speed: 1.1 },
   /* the plague's earliest day: `from` + a seed-hashed 0..`spread` — the
