@@ -14763,7 +14763,6 @@ const R = {
       if (gx < gvx0 || gx > gvx1 || gy < gvy0 || gy > gvy1) continue;
       if ((G.vis && G.vis[i]) || !S.map.explored[i]) continue;
       const snap = S.map.seenB[k];
-      if (snap.key === 'road') continue;   // a road going up is remembered as the ground it is
       // a remembered camp is still the home of whichever people held it —
       // same routing bldSprite uses live (render.js:4136), keyed off the
       // tribe stamped into the snapshot at G.updateVisibility time

@@ -639,7 +639,7 @@ const G = {
         dirty.push([i % W, (i / W) | 0]);
       }
       const b = liveB.get(i);
-      if (b) {
+      if (b && b.key !== 'road') {   // a road going up is remembered as the ground it is, never a ghost
         // the memory ghost lives at the footprint's top-left tile
         const ti = MapGen.idx(b.x, b.y);
         const sb = S.map.seenB[ti];
