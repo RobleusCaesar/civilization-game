@@ -391,7 +391,9 @@ WorldBoard.CSS = `
 #scrLeaders.wb .wbSeg { display: flex; height: 32px; clip-path: var(--chamfer); background: #120d07; padding: 2px; gap: 2px;
   box-shadow: inset 0 0 0 1px #050302, inset 0 0 0 2px rgba(214,170,74,0.45); flex: 1 1 260px; max-width: 360px; }
 #scrLeaders.wb .wbWhen { flex: 0 1 200px; }
-#scrLeaders.wb .wbSeg button { flex: 1 1 0; min-width: 0; height: 100%; min-height: 0; border: 0; border-radius: 0; padding: 0 4px; cursor: pointer; white-space: nowrap;
+/* each button starts at its own label's width and the rest is shared: an
+   even split cut MODERATE short at 320px on another machine's fonts */
+#scrLeaders.wb .wbSeg button { flex: 1 1 auto; min-width: 0; height: 100%; min-height: 0; border: 0; border-radius: 0; padding: 0 6px; cursor: pointer; white-space: nowrap;
   background: linear-gradient(#2c2216, #1f170e); color: #cdbd99; box-shadow: none; font: 700 11px/1 var(--menufont); letter-spacing: 0.5px; text-transform: uppercase;
   -webkit-appearance: none; appearance: none; }
 #scrLeaders.wb .wbSeg button.on { color: #2b1906; text-shadow: 0 1px 0 rgba(255,240,190,0.5);
@@ -562,7 +564,7 @@ WorldBoard.CSS = `
   #scrLeaders.wb .wbHead { gap: 9px; }
   #scrLeaders.wb .wbHead h2 { font-size: 21px; letter-spacing: 1.2px; }
   #scrLeaders.wb .wbTrophy { width: 30px; height: 30px; }
-  #scrLeaders.wb .wbSeg button { font-size: 10px; letter-spacing: 0.2px; }
+  #scrLeaders.wb .wbSeg button { font-size: 10px; letter-spacing: 0.2px; padding: 0 4px; }
   #scrLeaders.wb .wbMedalBox { width: 44px; height: 51px; }
   #scrLeaders.wb .s1 .wbMedalBox { width: 54px; height: 63px; }
   #scrLeaders.wb .wbNm { font-size: 13px; letter-spacing: 1px; }
