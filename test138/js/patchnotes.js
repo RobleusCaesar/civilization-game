@@ -19,7 +19,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 137, date: '2026-11-04', title: 'Build your own roads',
+    build: 138, date: '2026-11-04', title: 'Build your own roads',
     items: [
       'A new Road sits beside the House in the build menu: drag across the ground and a villager lays it, quickly, for 10 wood and 5 stone a stretch.',
       'Your villagers and soldiers walk faster on a road and keep to the roads when they can.',
@@ -27,6 +27,7 @@ const PATCH_NOTES = [
       'Roads turn, meet and cross, and lie worn into the land with ruts, stones and grass along their edges.',
       'The paths your villagers used to wear by themselves are gone. You build the roads now.',
       'A builder shows Build and Cancel side by side, so the panel takes less room.',
+      'While something is being built or upgraded, its Upgrade button turns into Cancel and shows how far along the work is. That goes for every building, the wall works and bridge works too, and calling it off gives back everything you paid.',
     ],
   },
   {

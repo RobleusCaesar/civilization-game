@@ -2354,7 +2354,7 @@ const UI = {
                '|' + (Units.hornPending('P') > 0) + '|' + idle +
                '|' + (S.levy ? 'L' : '-') +   // the levy lever flips label + villager panels
                '|' + (this.townThreat(b) ? 'T' : '-') +   // the horn and the levy come and go with a threat
-               '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget : '-');
+               '|' + (b.wallUp > 0 ? 'w' + b.wallUpTarget + (this.confirmCancel === 'walls' ? '!' : '') : '-');
       }
       // Trading Post: caravan out/in flips the whole panel; per-good affordability
       // greys the buttons. (The countdown itself ticks in place via refreshPanel.)
@@ -2389,7 +2389,8 @@ const UI = {
       const wk = br.upgrading > 0 ? br.upgrading.toFixed(1) + ':' +
         S.units.filter(u2 => u2.owner === 'P' && u2.task && u2.task.type === 'terraform' &&
           u2.task.job === 'bridgeup' && u2.task.x === br.x && u2.task.y === br.y).length : '';
-      return ['br', br.owner, br.level, br.hp < br.maxhp, Bld.canUpgradeBridge(br), wk, this.confirmDemolish === 'bridge'].join('|');
+      return ['br', br.owner, br.level, br.hp < br.maxhp, Bld.canUpgradeBridge(br), wk, this.confirmDemolish === 'bridge',
+        this.confirmCancel === 'bridge'].join('|');
     }
     const u = Units.get(this.sel.id);
     if (!u) return 'gone';
@@ -2412,7 +2413,7 @@ const UI = {
     // continuously-shrinking day count is NOT here; refreshPanel ticks it in place
     const wb = this.villagerResBld(u);
     if (wb) sig.push('r' + wb.id + ':' + wb.level + ':' +
-      (wb.upgrading > 0 ? 'up' : wb.level >= 3 ? 'max' : Bld.canUpgrade(wb).ok ? 'can' : 'no'));
+      (wb.upgrading > 0 ? 'up' + (this.confirmCancel === wb.id ? '!' : '') : wb.level >= 3 ? 'max' : Bld.canUpgrade(wb).ok ? 'can' : 'no'));
     return sig.join('|');
   },
 
@@ -2535,20 +2536,45 @@ const UI = {
   killPlank(act, line, small) {
     return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;
   },
-  /* `half`: on a builder's own panel the call-off shares a row with Build,
-     half and half (operator, 2026-11-04: "we don't need two large buttons for
-     build and cancel"); armed, it takes the whole row to say what comes back. */
+  /* THE UPGRADE BUTTON BECOMES CANCEL (operator, 2026-11-04: "swap the
+     button for level build and cancel upgrade. These don't need to be two
+     separate buttons. After level upgrade that button becomes cancel. It
+     keeps our build UI tight. Roll that out to all buildings for all
+     upgrades, and builds"). Works in flight — a site, a building's upgrade,
+     the masons' wall works, a span being reinforced — are ONE button in the
+     slot the order came from: it says what is rising and how far it has
+     got (a gold bar, the days left, ticked in place by refreshPanel through
+     .cwLeft/.cwBar), and a tap calls the works off. The first tap arms
+     (UI.armConfirm); armed, the button takes the whole row to say what
+     comes back. ONE WRITER for every such button, so the four can never
+     drift apart. `half`: the slot shares its row (the hall's upgrade beside
+     Train Villager, a builder's Build, a Send builder). */
+  worksButton(o) {
+    const bar = o.frac == null ? '' :
+      `<span class="cwTrack"><span class="cwBar" style="width:${Math.round(Math.max(0, Math.min(1, o.frac)) * 100)}%"></span></span>`;
+    const left = o.left == null ? '' : `<span class="cwLeft">${o.left}d</span> left · `;
+    return o.armed
+      ? `<button class="abtn danger wide" data-act="${o.act}"${o.attr || ''}>⚠️ Confirm — call off ${o.what}<small>${o.back} comes back · ${o.stays}</small></button>`
+      : `<button class="abtn works${o.half ? '' : ' wide'}" data-act="${o.act}"${o.attr || ''}>🛑 ${o.label}` +
+        `<small>${o.half ? left + 'all paid back' : (o.name ? o.name + ' — ' : '') + left + 'everything paid comes back'}</small>${bar}</button>`;
+  },
   cancelWorkButton(b, half) {
     const kind = Bld.cancelWork(b);
     if (!kind) return '';
-    const name = Bld.def(b.key).name;
-    const back = Bld.costStr(Bld.cancelRefund(b));
-    const what = kind === 'upgrade' ? `the ${name} upgrade` : `the ${name} site`;
-    return this.confirmCancel === b.id
-      ? `<button class="abtn danger wide" data-act="cancelbuild">⚠️ Confirm — call off ${what}` +
-        `<small>${back} comes back${kind === 'upgrade' ? ` · stays Lv ${b.level}` : ' · nothing is left on the ground'}</small></button>`
-      : `<button class="abtn${half ? '' : ' wide'}" data-act="cancelbuild">🛑 Cancel ${kind === 'upgrade' ? 'upgrade' : 'build'}` +
-        `<small>${half ? 'everything paid comes back' : name + ' — everything paid comes back'}</small></button>`;
+    const d = Bld.def(b.key), name = d.name, up = kind === 'upgrade';
+    const rate = Units.buildRate(b);
+    return this.worksButton({
+      act: 'cancelbuild', attr: ` data-bid="${b.id}"`, half, armed: this.confirmCancel === b.id,
+      label: up ? `Cancel Lv ${b.level + 1}` : 'Cancel build',
+      name: up ? `${name} upgrading` : name,
+      left: Math.ceil((up ? b.upgrading : b.construction) / rate),
+      // a site carries no total of its own (its build time is the level's),
+      // so the bar is the upgrade's alone
+      frac: up ? 1 - b.upgrading / (b.upgTotal || b.upgrading) : null,
+      what: up ? `the ${name} upgrade` : `the ${name} site`,
+      back: Bld.costStr(Bld.cancelRefund(b)),
+      stays: up ? `stays Lv ${b.level}` : 'nothing is left on the ground',
+    });
   },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
   /* THE YARD'S QUEUE LINE, AND WHAT IS WAITING ON IT (tests/train-spawn.mjs).
@@ -2600,18 +2626,16 @@ const UI = {
       if (u) hc.textContent = this.healThrottled(u) ? 'Cooldown…'
         : Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
     }
-    // tick the resource-station upgrade progress in place (no relayout)
-    if (this.sel.type === 'unit') {
-      const left = document.getElementById('upresLeft');
-      if (left) {
-        const u = Units.get(this.sel.id), wb = u && this.villagerResBld(u);
-        if (wb && wb.upgrading > 0) {
-          left.textContent = Math.ceil(wb.upgrading / Units.buildRate(wb)) + 'd';   // at the pace the works really go
-          const bar = document.getElementById('upresBar');
-          if (bar) bar.style.width = Math.round(Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading))) * 100) + '%';
-        }
-      }
-    }
+    // tick every works call-off's days and bar in place (no relayout) — a
+    // building's own panel and a builder's alike (worksButton, data-bid)
+    document.querySelectorAll('#panel [data-act="cancelbuild"][data-bid]').forEach(btn => {
+      const wb = Bld.get(+btn.dataset.bid);
+      if (!wb) return;
+      const up = wb.upgrading > 0, n = up ? wb.upgrading : wb.construction;
+      const left = btn.querySelector('.cwLeft'), bar = btn.querySelector('.cwBar');
+      if (left && n > 0) left.textContent = Math.ceil(n / Units.buildRate(wb)) + 'd';
+      if (bar && up) bar.style.width = Math.round(Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading))) * 100) + '%';
+    });
     if (this.sel.type === 'bld') {
       const b = Bld.get(this.sel.id);
       if (!b) return;
@@ -2642,12 +2666,12 @@ const UI = {
         const cb = document.getElementById('carBar');
         if (cb) cb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1))) * 100) + '%';
       }
-      // tick the wall-reinforcement countdown in place
-      const wallLeft = document.getElementById('wallLeft');
-      if (wallLeft && b.wallUp > 0) {
-        wallLeft.textContent = Math.ceil(b.wallUp / Units.buildRate(b)) + 'd';
-        const wb = document.getElementById('wallBar');
-        if (wb) wb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1))) * 100) + '%';
+      // tick the wall works' countdown in place (the hall's call-off button)
+      const wc = panel.querySelector('[data-act="cancelwalls"]');
+      if (wc && b.wallUp > 0) {
+        const left = wc.querySelector('.cwLeft'), bar = wc.querySelector('.cwBar');
+        if (left) left.textContent = Math.ceil(b.wallUp / Units.buildRate(b)) + 'd';
+        if (bar) bar.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1))) * 100) + '%';
       }
     }
   },
@@ -2757,18 +2781,27 @@ const UI = {
       if (demoArmed) html += this.killPlank('demolish', 'Confirm demolish', `get back ${demoBack}`);
       if (b.owner === 'P') {
         const worker = Bld.hasWorker(b);
-        if ((b.construction > 0 || b.upgrading > 0) && !worker)
-          html += `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>`;
         /* CALL IT OFF (tests/build-cancel.mjs). Offered on any works of your
            own that have not finished — a site nobody has reached yet is the
            very case a player wants it for. Nothing standing, nothing waiting:
-           no button, so a finished building's panel stays as clean as it was. */
-        html += this.cancelWorkButton(b);
-        if (!b.construction && d.needsWorker && Bld.workersAssigned(b) < Bld.maxWorkers(b))
+           no button, so a finished building's panel stays as clean as it was.
+           The call-off IS the order's own button (worksButton): a site's
+           sits where the panel starts, an upgrade's in the Upgrade slot
+           below — and a Send builder, when nobody is at the works, shares
+           its row half and half. */
+        const works = Bld.cancelWork(b);
+        const worksRow = half =>
+          (!worker ? `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>` : '') +
+          this.cancelWorkButton(b, half || !worker);
+        if (works === 'site') html += worksRow(false);
+        // not while the works stand: the crew is on the scaffold, and comes
+        // back to the plot by itself at the finish (Bld.resumeCrew)
+        if (!b.construction && !b.upgrading && d.needsWorker && Bld.workersAssigned(b) < Bld.maxWorkers(b))
           html += `<button class="abtn" data-act="staff">🧑‍🌾 Station worker<small>${Bld.workersAssigned(b)}/${Bld.maxWorkers(b)} assigned</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
           html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
-        if (b.level < 3 && !b.construction && d.levels[b.level] && b.key !== 'wall' && b.key !== 'gate') {
+        if (works === 'upgrade') html += worksRow(b.key === 'tc');
+        else if (b.level < 3 && !b.construction && d.levels[b.level] && b.key !== 'wall' && b.key !== 'gate') {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
           // the TC's upgrade shares its row with Train Villager (the levy took
@@ -2843,11 +2876,15 @@ const UI = {
           if (S.garrison.length || back)
             html += `<button class="abtn" data-act="release">🔨 Back to work<small id="releaseN">${this.hornBackLine()}</small></button>`;
           if (b.wallUp > 0) {
-            const frac = Math.max(0, Math.min(1, 1 - b.wallUp / (b.wallUpTotal || 1)));
-            html += `<div class="abtn cant wide" style="pointer-events:none">🧱 Reinforcing walls → Lv ${b.wallUpTarget}` +
-              `<small>Town Center busy — <span id="wallLeft">${Math.ceil(b.wallUp / Units.buildRate(b))}d</span> left</small>` +
-              `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
-              `<div id="wallBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
+            // the masons at work: the Upgrade-walls button becomes their call-off
+            html += this.worksButton({
+              act: 'cancelwalls', armed: this.confirmCancel === 'walls',
+              label: `Cancel walls Lv ${b.wallUpTarget}`, name: 'Every wall & gate',
+              left: Math.ceil(b.wallUp / Units.buildRate(b)),
+              frac: 1 - b.wallUp / (b.wallUpTotal || 1),
+              what: 'the wall works', back: Bld.costStr(Bld.wallUpRefund(b)),
+              stays: `walls stay Lv ${S.wallLevel || 1}`,
+            });
           } else if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
             const upw = Bld.canUpgradeWalls();
             html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())} — every wall & gate</small></button>`;
@@ -3027,6 +3064,13 @@ const UI = {
         else if (btn.dataset.act === 'upwalls') {
           if (!Bld.upgradeWalls()) this.toast(Bld.canUpgradeWalls().why, true);
         }
+        else if (btn.dataset.act === 'cancelwalls') {
+          if (!(b2.wallUp > 0)) { this.confirmCancel = 0; this.renderPanel(); return; }
+          if (this.confirmCancel !== 'walls') { this.armConfirm('confirmCancel', 'walls', e); return; }
+          if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
+          this.confirmCancel = 0;
+          if (Bld.cancelWallUpgrade(b2)) this.toast('Wall works called off — everything paid is back');
+        }
         else if (btn.dataset.act === 'cancelbuild') {
           if (!Bld.cancelWork(b2)) { this.confirmCancel = 0; this.renderPanel(); return; }
           if (this.confirmCancel !== b2.id) { this.armConfirm('confirmCancel', b2.id, e); return; }
@@ -3066,10 +3110,18 @@ const UI = {
         // the works are standing: show the clock, and say plainly whose hands
         // it is waiting on. A span is reinforced by SAPPERS, like it was built.
         // the days left at the pace the works really go (a running card's quicker hands — Units.buildRate)
-        const left = Math.max(0, br.upgrading / Units.buildRate(br)).toFixed(1);
-        html += `<span class="psub">⬆ Reinforcing to Lv ${br.upTo} — ${left} of ${br.upTotal} days left` +
-          (onWorks ? ` · ${onWorks} sapper${onWorks > 1 ? 's' : ''} on site` : ' · <b>no sapper on site</b> — tap a sapper, then the bridge') +
-          `</span>`;
+        // The Reinforce button becomes the works' call-off (worksButton); the
+        // line above it says whose hands the works are waiting on.
+        if (!onWorks) html += `<span class="psub"><b>No sapper on site</b> — tap a sapper, then the bridge</span>`;
+        html += this.worksButton({
+          act: 'brcancel', armed: this.confirmCancel === 'bridge',
+          label: `Cancel Lv ${br.upTo}`,
+          name: onWorks ? `${onWorks} sapper${onWorks > 1 ? 's' : ''} on site` : 'Reinforcing',
+          left: Math.ceil(br.upgrading / Units.buildRate(br)),
+          frac: 1 - br.upgrading / (br.upTotal || br.upgrading),
+          what: 'the bridge works', back: Bld.costStr(Bld.bridgeUpRefund(br)),
+          stays: `stays Lv ${lv}`,
+        });
       } else if (own && lv < 3) {
         const cost = CFG.BRIDGE.levels[lv].cost, ok = Bld.canUpgradeBridge(br);
         const days = CFG.BRIDGE.levels[lv].time || 2;
@@ -3092,6 +3144,15 @@ const UI = {
         if (Bld.orderBridgeUpgrade(b2)) { this.toast('Bridge works laid out — Lv ' + b2.upTo); this.renderPanel(); this.refreshMenu(); }
         else this.toast('Not enough resources', true);
       });
+      panel.querySelectorAll('[data-act="brcancel"]').forEach(bc => bc.addEventListener('click', e => {
+        const b2 = Bld.bridgeAt(this.sel.x, this.sel.y);
+        if (!b2 || !(b2.upgrading > 0)) { this.confirmCancel = 0; this.renderPanel(); return; }
+        if (this.confirmCancel !== 'bridge') { this.armConfirm('confirmCancel', 'bridge', e); return; }
+        if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
+        this.confirmCancel = 0;
+        if (Bld.cancelBridgeUpgrade(b2)) this.toast('Bridge works called off — everything paid is back');
+        this.renderPanel(); this.refreshMenu();
+      }));
       panel.querySelectorAll('[data-act="brdemo"]').forEach(demo => demo.addEventListener('click', e => {
         if (this.confirmDemolish !== 'bridge') { this.armConfirm('confirmDemolish', 'bridge', e); return; }
         if (this.confirmTooSoon('confirmDemolish', e)) return;   // a double-tap: stay armed
@@ -3337,11 +3398,9 @@ const UI = {
       if (wb) {
         const rn = Bld.def(wb.key).name;
         if (wb.upgrading > 0) {
-          const frac = Math.max(0, Math.min(1, 1 - wb.upgrading / (wb.upgTotal || wb.upgrading)));
-          html += `<div class="abtn cant" style="pointer-events:none">🏗 Upgrading ${rn} → Lv ${wb.level + 1}` +
-            `<small><span id="upresLeft">${Math.ceil(wb.upgrading / Units.buildRate(wb))}d</span> left</small>` +
-            `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
-            `<div id="upresBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
+          // the station's Upgrade button becomes its call-off — already
+          // beside Build when this hand is one of the builders (cw === wb)
+          if (this.villagerBuildSite(u) !== wb) html += this.cancelWorkButton(wb, true);
         } else if (wb.level >= 3) {
           html += `<button class="abtn cant" disabled>⭐ ${rn} — Max level</button>`;
         } else {
@@ -3446,9 +3505,10 @@ const UI = {
          and the tap simply finds nothing to call off. */
       const canc = panel.querySelector('[data-act="cancelbuild"]');
       if (canc) canc.addEventListener('click', e => {
-        const u2 = Units.get(this.sel.id);
-        const site = this.villagerBuildSite(u2);
-        if (!site) { this.confirmCancel = 0; this.renderPanel(); return; }
+        // the button names its works (data-bid): the site this hand is
+        // raising, or the station it works whose upgrade is under way
+        const site = Bld.get(+canc.dataset.bid);
+        if (!site || !Bld.cancelWork(site)) { this.confirmCancel = 0; this.renderPanel(); return; }
         if (this.confirmCancel !== site.id) { this.armConfirm('confirmCancel', site.id, e); return; }
         if (this.confirmTooSoon('confirmCancel', e)) return;   // a double-tap: stay armed
         this.confirmCancel = 0;
