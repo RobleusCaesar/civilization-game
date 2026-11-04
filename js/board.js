@@ -29,8 +29,20 @@
    not on the list it waits at the foot of the pane, and a device the
    dashboard leaves out is told its wins are kept off the board.
 
-   FILTERS: every difficulty or one, all time or this week — a Calm chief
-   never makes the overall board past a Hard one, and a newcomer's week can.
+   THE FILTERS ARE PUT AWAY (operator, 2026-11-04: "hide the filter (for
+   now). It's too much, makes the page look cluttered and dilutes the value
+   of being on the leaderboard"): FILTERS false builds no bar and the board
+   is always the overall, all-time one. The code stays — every difficulty or
+   one, all time or this week — and FILTERS true brings it back as it was.
+
+   ONE PAGE, NO EMPTY SPACE ("Vertically Re-size the ranking list so there
+   isn't unbalanced empty space. Make sure everything fits on a single
+   page"): the board is the TOP TEN (SHOW), the frame is as tall as what it
+   holds and stands in the middle of the screen with the title, and nothing
+   scrolls. Where the ten do not fit, the rows under the podium are pressed
+   down to ROW_MIN (_fit, measured: the pane's own overflow), and only then
+   are the lowest ranks left off — the player's own row, cut that way,
+   waits at the foot. A phone on its side puts the podium beside the rows.
 
    THE CARD THE BOARD LIFTS (Deck.settle, CFG.CARDS.BOARD): a win whose
    score would stand in the overall top ten raises its reward card a tier
@@ -40,7 +52,10 @@
    seconds after a run is entered and every few minutes of play, from a page
    whose wins go on it (posts). */
 const WorldBoard = {
-  LIMIT: 100,                 // the chiefs a board lists (board_top's own ceiling)
+  LIMIT: 100,                 // the chiefs a board asks for (board_top's own ceiling — the card's lift reads them)
+  SHOW: 10,                   // the chiefs the page shows: the podium and the ranks under it to tenth
+  ROW_MIN: 38,                // how far a row under the podium may be pressed before a rank is left off
+  FILTERS: false,             // the difficulty / week bars: put away for now (the operator's word)
   PEEK_MS: 8 * 60 * 1000,     // how often a game in play looks at the board again
   PEEK_AFTER_MS: 4000,        // …and the first look, this long after the world opens (never in the entry's own frames)
   CACHE_MS: 45 * 1000,        // a filter shown again within this is not asked again
@@ -152,16 +167,17 @@ const WorldBoard = {
     list.id = 'ldrList';
     const C = window.SettingsPage && SettingsPage.cornerSvg ? SettingsPage : null;
     scr.classList.add('wb');
+    if (!this.FILTERS) { this.mode = ''; this.days = 0; }
     scr.innerHTML =
       '<div class="wbShade"></div>' +
       '<header class="wbHead"><span class="wbBackSlot"></span>' + this.TROPHY +
         '<div class="wbTitle"><h2>Leaderboard</h2><small class="wbCount"></small></div></header>' +
       '<div class="wbFrame">' +
         (C ? [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="wbC ${c}">${C.cornerSvg('wbc' + c, fx, fy)}</i>`).join('') : '') +
-        '<div class="wbBar">' +
+        (this.FILTERS ? '<div class="wbBar">' +
           `<div class="wbSeg wbModes" role="tablist" aria-label="Difficulty">${this.MODES.map(([k, n]) => `<button type="button" role="tab" data-mode="${k}">${n}</button>`).join('')}</div>` +
           `<div class="wbSeg wbWhen" role="tablist" aria-label="When">${this.WHEN.map(([k, n]) => `<button type="button" role="tab" data-days="${k}">${n}</button>`).join('')}</div>` +
-        '</div>' +
+        '</div>' : '') +
         '<div class="wbPane"></div>' +
       '</div>';
     if (back) {
@@ -171,7 +187,8 @@ const WorldBoard = {
       scr.querySelector('.wbBackSlot').replaceWith(back);
     }
     scr.querySelector('.wbPane').appendChild(list);
-    scr.querySelector('.wbBar').addEventListener('click', e => {
+    const bar = scr.querySelector('.wbBar');
+    if (bar) bar.addEventListener('click', e => {
       const b = e.target.closest('button');
       if (!b) return;
       if (b.dataset.mode != null) this.mode = b.dataset.mode;
@@ -180,6 +197,11 @@ const WorldBoard = {
       this.load();
     });
     list.addEventListener('click', e => { if (e.target.closest('[data-act="retry"]')) { this._cache.clear(); this.load(); } });
+    // the page is fitted to the window: again whenever the window changes
+    const refit = () => { if (window.Screens && Screens.current === 'leaders') this._fit(); };
+    window.addEventListener('resize', refit);
+    window.addEventListener('cf-fit', refit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit, () => {});
     this.el = scr;
     return scr;
   },
@@ -194,6 +216,7 @@ const WorldBoard = {
   // Screens.onLeaders: every time the board is shown
   onShow() {
     if (!this.mount()) return false;
+    if (!this.FILTERS) { this.mode = ''; this.days = 0; }
     this._paintBar();
     this.load();
     return true;
@@ -204,6 +227,7 @@ const WorldBoard = {
     if (box) box.innerHTML = html;
     const n = this.el && this.el.querySelector('.wbCount');
     if (n) n.textContent = '';
+    this._fit();
   },
   async load() {
     const B = window.Backend;
@@ -241,12 +265,12 @@ const WorldBoard = {
     const rows = Array.isArray(d && d.rows) ? d.rows : [];
     const n = this.el && this.el.querySelector('.wbCount');
     if (n) n.textContent = rows.length ? `${(+d.players || rows.length).toLocaleString('en-US')} chief${(+d.players || rows.length) === 1 ? '' : 's'}${this.mode ? ' · ' + this.modeName(this.mode) : ''}${this.days ? ' · this week' : ''}` : '';
-    if (!rows.length) {
-      box.innerHTML = this.podium([]) + `<p class="wbMsg wbEmpty">${this.days ? 'No victories this week yet' : 'No chiefs on this board yet'} — be the first.</p>` + this.meRow(d, rows) + this.foot(d);
-      return;
-    }
-    const rest = rows.slice(3).map(r => this.row(r)).join('');
-    box.innerHTML = this.podium(rows.slice(0, 3)) + (rest ? `<ol class="wbList">${rest}</ol>` : '') + this.meRow(d, rows) + this.foot(d);
+    const rest = rows.length ? rows.slice(3, this.SHOW).map(r => this.row(r)).join('')
+      : `<p class="wbMsg wbEmpty">${this.days ? 'No victories this week yet' : 'No chiefs on this board yet'} — be the first.</p>`;
+    // the podium, and beside or beneath it the rest: the ranks to tenth, your own best, the foot
+    box.innerHTML = this.podium(rows.slice(0, 3)) +
+      `<div class="wbRest">${rows.length > 3 ? `<ol class="wbList">${rest}</ol>` : rows.length ? '' : rest}${this.meRow(d, rows)}</div>` + this.foot(d);
+    this._fit();
   },
   podium(top) {
     const H = { 1: 66, 2: 46, 3: 32 };
@@ -277,19 +301,50 @@ const WorldBoard = {
       `<span class="wbTags">${tags}</span>` +
       `<span class="wbPts">${this.pts(r.score)}</span></li>`;
   },
-  // the player's own best, at the foot of the pane, when it is not already on the list
+  /* the player's own best, at the foot, when it is not shown above it: past
+     tenth, or cut by the fit (a row the page lists waits here hidden, and
+     _fit shows it the moment its own row is left off) */
   meRow(d, rows) {
-    const me = d && d.me;
-    if (!me) return '';
-    if (me.hidden) return '<p class="wbMine wbAside">Your games on this device are kept off the board.</p>';
-    if (rows.some(r => r.mine)) return '';
-    return `<ol class="wbList wbMeList">${this.row(me, true)}</ol>`;
+    const me = d && d.me, at = rows.findIndex(r => r.mine);
+    if (me && me.hidden) return '<p class="wbMine wbAside">Your games on this device are kept off the board.</p>';
+    if (at >= 0 && at < 3) return '';
+    const r = at >= 0 ? rows[at] : me;
+    if (!r) return '';
+    return `<ol class="wbList wbMeList"${at >= 0 && at < this.SHOW ? ' hidden' : ''}>${this.row(r, true)}</ol>`;
   },
   foot() {
     const K = this.cfg(), C = K && K.CARDS && K.CARDS.BOARD;
     const lift = C && C.ON !== false
       ? ` Win a place in the top ${C.TOP} and your reward card may rise a tier — on the podium, it always does.` : '';
-    return `<p class="wbFoot">One place for each chief — their best victory. The hardest roads score highest.${lift}</p>`;
+    return `<p class="wbFoot">One place for each chief — their best victory.${lift}</p>`;
+  },
+
+  /* ---------------- one page: the rows pressed, then the lowest ranks left off ---------------- */
+  _fit() {
+    const pane = this.el && this.el.querySelector('.wbPane');
+    if (!pane) return;
+    // not laid out yet (the screen is still coming up): measure next frame
+    if (!pane.clientHeight) {
+      if ((this._fitTries = (this._fitTries || 0) + 1) < 30) requestAnimationFrame(() => this._fit());
+      return;
+    }
+    this._fitTries = 0;
+    const list = pane.querySelector('.wbList:not(.wbMeList)');
+    const rows = list ? [...list.children] : [];
+    const meL = pane.querySelector('.wbMeList'), mine = rows.find(r => r.classList.contains('mine'));
+    const sync = () => { if (meL && mine) meL.hidden = !mine.hidden; };
+    for (const r of rows) r.hidden = false;
+    if (list) { list.hidden = false; list.style.removeProperty('--rowh'); }
+    sync();
+    const over = () => pane.scrollHeight - pane.clientHeight;
+    if (!rows.length || over() <= 1) return;
+    // press the rows first, every one the same, as far as ROW_MIN
+    const h0 = rows[0].getBoundingClientRect().height;
+    const h = Math.max(this.ROW_MIN, Math.floor(h0 - Math.ceil(over() / rows.length)));
+    if (h < h0) list.style.setProperty('--rowh', h + 'px');
+    // then leave the lowest ranks off until the page holds
+    for (let i = rows.length - 1; i >= 0 && over() > 1; i--) { rows[i].hidden = true; sync(); }
+    if (rows.every(r => r.hidden)) list.hidden = true;
   },
 
   /* ---------------- the board as last seen (the card's lift) ---------------- */
@@ -349,7 +404,8 @@ WorldBoard.CSS = `
     calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
     calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px));
   --ink: #f3e2b4; --txt: #e8dcbd; --dim: #ab9c7e; --sans: -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: none; color: var(--txt); font-family: var(--menufont); align-items: center; padding: 0; }
+  background: none; color: var(--txt); font-family: var(--menufont); align-items: center; justify-content: center; padding: 0; }
+#scrLeaders.wb [hidden] { display: none !important; }
 #scrLeaders.wb .wbShade { position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse 90% 70% at 50% 40%, rgba(10,7,4,0.25), rgba(10,7,4,0.78)), linear-gradient(rgba(10,7,4,0.55), rgba(10,7,4,0.2) 30%, rgba(10,7,4,0.55)); }
 
@@ -369,8 +425,8 @@ WorldBoard.CSS = `
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.85)); }
 #scrLeaders.wb .wbCount { font: 700 10.5px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: #cdb57c; text-shadow: 0 1px 0 #000; min-height: 10px; }
 
-/* ---- the carved frame (the settings page's) ---- */
-#scrLeaders.wb .wbFrame { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; width: calc(100% - 20px); max-width: 860px;
+/* ---- the carved frame (the settings page's): as tall as what it holds, never taller than the window ---- */
+#scrLeaders.wb .wbFrame { position: relative; z-index: 1; flex: 0 1 auto; min-height: 0; width: calc(100% - 20px); max-width: 860px;
   margin: 0 10px calc(env(safe-area-inset-bottom, 0px) + 10px); display: flex; flex-direction: column; padding: 8px;
   background:
     repeating-linear-gradient(92deg, rgba(255,214,150,0.022) 0 1px, rgba(0,0,0,0) 1px 6px, rgba(0,0,0,0.05) 6px 7px, rgba(0,0,0,0) 7px 13px),
@@ -400,10 +456,11 @@ WorldBoard.CSS = `
   background: linear-gradient(#f0cd6e 0%, #d7a542 50%, #b8862c 100%); box-shadow: inset 0 0 0 1px #fff0b8; }
 #scrLeaders.wb .wbSeg button:focus-visible { outline: 2px solid #e8c15a; outline-offset: -2px; }
 
-/* ---- the pane ---- */
+/* ---- the pane: it never scrolls (WorldBoard._fit) — the scroll is only a last resort on a window too small for the podium ---- */
 #scrLeaders.wb .wbPane { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
   padding: 6px 8px 0; position: relative; z-index: 1; overscroll-behavior: contain; }
-#scrLeaders.wb #ldrList { display: flex; flex-direction: column; min-height: 100%; }
+#scrLeaders.wb #ldrList { display: flex; flex-direction: column; }
+#scrLeaders.wb .wbRest { display: flex; flex-direction: column; min-width: 0; }
 #scrLeaders.wb .wbMsg { margin: 14px 8px; text-align: center; font: 600 13.5px/1.45 var(--sans); color: var(--dim); }
 #scrLeaders.wb .wbMsg.hint { margin-top: 28px; }
 #scrLeaders.wb .wbWait { animation: wbPulse 1.2s ease-in-out infinite; }
@@ -470,8 +527,9 @@ WorldBoard.CSS = `
 #scrLeaders.wb .wbGhost { animation: wbPulse 1.2s ease-in-out infinite; }
 
 /* ---- everyone beneath them ---- */
-#scrLeaders.wb .wbList { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-#scrLeaders.wb .wbRow { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 6px 10px 6px 6px; background: rgba(8,6,3,0.45);
+#scrLeaders.wb .wbList { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+/* a row's height is its --rowh when the page has to press the list to fit (WorldBoard._fit) */
+#scrLeaders.wb .wbRow { display: flex; align-items: center; gap: 10px; min-height: var(--rowh, 48px); padding: 2px 10px 2px 6px; background: rgba(8,6,3,0.45);
   box-shadow: inset 0 0 0 1px rgba(214,170,74,0.14); }
 #scrLeaders.wb .wbRow:nth-child(odd) { background: rgba(20,14,8,0.5); }
 #scrLeaders.wb .wbRk { flex: 0 0 auto; min-width: 36px; height: 30px; padding: 0 4px; display: flex; align-items: center; justify-content: center; clip-path: var(--chamfer);
@@ -492,16 +550,15 @@ WorldBoard.CSS = `
   background: linear-gradient(rgba(22,15,8,0), #1a120a 30%); }
 #scrLeaders.wb .wbMine { margin: 12px 4px 0; padding: 10px 12px; text-align: center; font: 600 12.5px/1.4 var(--sans); color: #cdb57c;
   background: rgba(8,6,3,0.55); box-shadow: inset 0 0 0 1px rgba(214,170,74,0.3); }
-#scrLeaders.wb .wbFoot { margin: auto 6px 0; padding: 16px 4px 14px; text-align: center; font: 12px/1.5 var(--sans); color: #8f8167; }
+#scrLeaders.wb .wbFoot { margin: 0 6px; padding: 12px 4px 10px; text-align: center; font: 12px/1.45 var(--sans); color: #8f8167; text-wrap: balance; }
 #scrLeaders.wb .wbEmpty { margin-top: 8px; }
 
 /* ---- a wide window: the page stands in the middle, everything a size up ---- */
 @media (min-width: 720px) {
-  #scrLeaders.wb { justify-content: center; }
   #scrLeaders.wb .wbHead { padding: calc(var(--safe-top) + 18px) 18px 14px; max-width: 860px; }
   #scrLeaders.wb .wbHead h2 { font-size: 34px; }
   #scrLeaders.wb .wbTrophy { width: 44px; height: 44px; }
-  #scrLeaders.wb .wbFrame { width: calc(100% - 48px); margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); max-height: 820px; padding: 10px; }
+  #scrLeaders.wb .wbFrame { width: calc(100% - 48px); margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); padding: 10px; }
   #scrLeaders.wb .wbC { width: 58px; height: 58px; }
   #scrLeaders.wb .wbC.tl { left: -8px; top: -8px; } #scrLeaders.wb .wbC.tr { right: -8px; top: -8px; }
   #scrLeaders.wb .wbC.bl { left: -8px; bottom: -8px; } #scrLeaders.wb .wbC.br { right: -8px; bottom: -8px; }
@@ -530,34 +587,118 @@ WorldBoard.CSS = `
   #scrLeaders.wb .wbRow .wbTags img.wbMode { width: 21px; height: 21px; }
   #scrLeaders.wb .wbRk { min-width: 42px; height: 34px; font-size: 14px; }
   #scrLeaders.wb .wbFoot { font-size: 13px; }
-  #scrLeaders.wb .wbRow { min-height: 54px; padding: 6px 16px 6px 8px; gap: 14px; }
+  #scrLeaders.wb .wbRow { min-height: var(--rowh, 52px); padding: 2px 16px 2px 8px; gap: 14px; }
   #scrLeaders.wb .wbWhoR b { font-size: 16px; }
   #scrLeaders.wb .wbWhoR small { font-size: 12px; }
   #scrLeaders.wb .wbRow .wbPts { font-size: 17px; min-width: 76px; }
 }
-/* a short wide window — a phone on its side: the header and the podium tighten */
-@media (min-width: 720px) and (max-height: 560px) {
+/* a short desktop window (a laptop): the header and the podium step down so the ten fit */
+@media (min-width: 720px) and (max-height: 860px) {
+  #scrLeaders.wb .wbHead { padding: calc(var(--safe-top) + 10px) 18px 10px; }
+  #scrLeaders.wb .wbHead h2 { font-size: 30px; }
+  #scrLeaders.wb .wbTrophy { width: 40px; height: 40px; }
+  #scrLeaders.wb .wbFrame { margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+  #scrLeaders.wb .wbPodium { padding-top: 18px; }
+  #scrLeaders.wb .wbMedalBox { width: 52px; height: 61px; }
+  #scrLeaders.wb .s1 .wbMedalBox { width: 64px; height: 75px; }
+  #scrLeaders.wb .wbPlinth { height: calc(var(--h) * 1px); }
+  #scrLeaders.wb .wbPlinth b { font-size: 22px; }
+  #scrLeaders.wb .s1 .wbPlinth b { font-size: 28px; }
+}
+/* A PHONE ON ITS SIDE (or any short, wide window): the podium stands beside the rows, everything a step tighter */
+@media (min-aspect-ratio: 4/3) and (max-height: 560px) {
   #scrLeaders.wb .wbHead { padding: calc(var(--safe-top) + 6px) 18px 6px; }
-  #scrLeaders.wb .wbHead h2 { font-size: 26px; }
-  #scrLeaders.wb .wbTrophy { width: 34px; height: 34px; }
-  #scrLeaders.wb .wbFrame { margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); }
-  #scrLeaders.wb .wbBar { padding: 8px 12px; }
-  #scrLeaders.wb .wbSeg { height: 32px; }
-  #scrLeaders.wb .wbPodium { padding-top: 10px; gap: 10px; }
+  #scrLeaders.wb .wbHead h2 { font-size: 24px; }
+  #scrLeaders.wb .wbTrophy { width: 32px; height: 32px; }
+  #scrLeaders.wb .wbFrame { width: calc(100% - 28px); max-width: 940px; margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); padding: 8px; }
+  #scrLeaders.wb .wbC { width: 42px; height: 42px; }
+  #scrLeaders.wb .wbC.tl { left: -6px; top: -6px; } #scrLeaders.wb .wbC.tr { right: -6px; top: -6px; }
+  #scrLeaders.wb .wbC.bl { left: -6px; bottom: -6px; } #scrLeaders.wb .wbC.br { right: -6px; bottom: -6px; }
+  #scrLeaders.wb .wbPane { padding: 6px 12px 0; }
+  /* the podium and the foot on the left, the ranks on the right */
+  #scrLeaders.wb #ldrList { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 16px; }
+  #scrLeaders.wb #ldrList > .wbPodium { grid-area: 1 / 1; align-self: end; margin: 0; padding: 12px 0 0; gap: 8px; }
+  #scrLeaders.wb #ldrList > .wbFoot { grid-area: 2 / 1; align-self: start; }
+  #scrLeaders.wb #ldrList > .wbRest { grid-area: 1 / 2 / 3 / 3; align-self: center; padding-bottom: 6px; }
+  #scrLeaders.wb #ldrList > .wbMsg, #scrLeaders.wb #ldrList > .wbRetry { grid-column: 1 / -1; }
+  #scrLeaders.wb #ldrList > .wbPodium + .wbWait { grid-area: 1 / 2 / 3 / 3; align-self: center; }
+  #scrLeaders.wb .wbRest > .wbList:first-child, #scrLeaders.wb .wbRest > .wbMsg:first-child { margin-top: 0; }
   #scrLeaders.wb .wbMedalBox { width: 40px; height: 46px; }
   #scrLeaders.wb .s1 .wbMedalBox { width: 48px; height: 56px; }
   #scrLeaders.wb .wbCrown { width: 30px; height: 17px; margin-bottom: -5px; }
   #scrLeaders.wb .wbWho { gap: 2px; padding-bottom: 6px; }
-  #scrLeaders.wb .wbNm { font-size: 15px; }
-  #scrLeaders.wb .s1 .wbNm { font-size: 17px; }
-  #scrLeaders.wb .wbStep .wbPts { font-size: 17px; }
-  #scrLeaders.wb .s1 .wbPts { font-size: 20px; }
+  #scrLeaders.wb .wbNm { font-size: 14px; letter-spacing: 1px; }
+  #scrLeaders.wb .s1 .wbNm { font-size: 16px; }
+  #scrLeaders.wb .wbStep .wbPts { font-size: 16px; }
+  #scrLeaders.wb .s1 .wbPts { font-size: 19px; }
   #scrLeaders.wb .wbTags { min-height: 20px; }
   #scrLeaders.wb .wbTags img { width: 22px; height: 22px; }
   #scrLeaders.wb .wbTags img.wbMode { width: 19px; height: 19px; }
+  #scrLeaders.wb .wbCm { height: 19px; font-size: 10.5px; }
+  #scrLeaders.wb .wbCard { width: 10px; height: 14px; }
   #scrLeaders.wb .wbSub { font-size: 11px; }
-  #scrLeaders.wb .wbPlinth { height: calc(var(--h) * 0.6px); }
+  #scrLeaders.wb .wbPlinth { height: calc(var(--h) * 0.7px); }
   #scrLeaders.wb .wbPlinth b, #scrLeaders.wb .s1 .wbPlinth b { font-size: 18px; margin-top: 4px; }
+  #scrLeaders.wb .wbRow { min-height: var(--rowh, 42px); padding: 2px 10px 2px 6px; gap: 10px; }
+  #scrLeaders.wb .wbRk { min-width: 34px; height: 28px; font-size: 13px; }
+  #scrLeaders.wb .wbWhoR { gap: 2px; }
+  #scrLeaders.wb .wbWhoR b { font-size: 14px; }
+  #scrLeaders.wb .wbWhoR small { font-size: 11px; }
+  #scrLeaders.wb .wbRow .wbTags img { width: 20px; height: 20px; }
+  #scrLeaders.wb .wbRow .wbTags img.wbMode { width: 17px; height: 17px; }
+  #scrLeaders.wb .wbRow .wbPts { font-size: 15px; min-width: 56px; }
+  #scrLeaders.wb .wbMeList { margin-top: 6px; padding: 4px 0 4px; }
+  #scrLeaders.wb .wbFoot { padding: 8px 2px 6px; font-size: 11px; }
+}
+@media (min-aspect-ratio: 4/3) and (max-height: 560px) and (max-width: 719px) {
+  #scrLeaders.wb .wbRow .wbTags img.wbOrig { display: none; }
+  #scrLeaders.wb .wbNm { font-size: 13px; }
+  #scrLeaders.wb .s1 .wbNm { font-size: 14px; }
+}
+/* the smallest phone on its side (568x320): the last step down */
+@media (min-aspect-ratio: 4/3) and (max-height: 340px) {
+  #scrLeaders.wb .wbHead { padding: calc(var(--safe-top) + 4px) 18px 4px; }
+  #scrLeaders.wb .wbHead h2 { font-size: 20px; }
+  #scrLeaders.wb .wbTrophy { width: 26px; height: 26px; }
+  #scrLeaders.wb .wbBack { width: 38px; height: 34px; }
+  #scrLeaders.wb .wbTitle { gap: 3px; }
+  #scrLeaders.wb .wbFrame { margin-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); }
+  #scrLeaders.wb #ldrList > .wbPodium { padding-top: 8px; }
+  #scrLeaders.wb .wbMedalBox { width: 32px; height: 37px; }
+  #scrLeaders.wb .s1 .wbMedalBox { width: 38px; height: 44px; }
+  #scrLeaders.wb .wbCrown { width: 24px; height: 14px; margin-bottom: -4px; }
+  #scrLeaders.wb .wbWho { gap: 1px; padding-bottom: 4px; }
+  #scrLeaders.wb .wbStep .wbPts, #scrLeaders.wb .s1 .wbPts { font-size: 15px; }
+  #scrLeaders.wb .wbTags { min-height: 17px; }
+  #scrLeaders.wb .wbTags img { width: 17px; height: 17px; }
+  #scrLeaders.wb .wbTags img.wbMode { width: 15px; height: 15px; }
+  #scrLeaders.wb .wbCm { height: 16px; font-size: 10px; }
+  #scrLeaders.wb .wbSub { font-size: 10px; line-height: 1.15; }
+  #scrLeaders.wb .wbPlinth { height: calc(var(--h) * 0.45px); }
+  #scrLeaders.wb .wbPlinth b, #scrLeaders.wb .s1 .wbPlinth b { font-size: 14px; margin-top: 4px; }
+  #scrLeaders.wb .wbFoot { font-size: 10.5px; line-height: 1.35; padding: 6px 0 4px; }
+}
+/* a short phone held upright (320x568, 375x667): the header, the podium and the foot step down */
+@media (max-aspect-ratio: 4/3) and (max-height: 700px) {
+  #scrLeaders.wb .wbHead { padding: calc(var(--safe-top) + 6px) 14px 6px; }
+  #scrLeaders.wb .wbHead h2 { font-size: 24px; }
+  #scrLeaders.wb .wbTrophy { width: 32px; height: 32px; }
+  #scrLeaders.wb .wbBack { width: 42px; height: 40px; }
+  #scrLeaders.wb .wbPodium { padding-top: 12px; }
+  #scrLeaders.wb .wbMedalBox { width: 38px; height: 44px; }
+  #scrLeaders.wb .s1 .wbMedalBox { width: 46px; height: 54px; }
+  #scrLeaders.wb .wbCrown { width: 28px; height: 16px; margin-bottom: -5px; }
+  #scrLeaders.wb .wbWho { gap: 2px; padding-bottom: 6px; }
+  #scrLeaders.wb .wbNm { margin-top: 1px; }
+  #scrLeaders.wb .wbTags { min-height: 18px; }
+  #scrLeaders.wb .wbTags img { width: 18px; height: 18px; }
+  #scrLeaders.wb .wbTags img.wbMode { width: 16px; height: 16px; }
+  #scrLeaders.wb .wbCm { height: 17px; }
+  #scrLeaders.wb .wbSub { font-size: 10.5px; white-space: nowrap; }
+  #scrLeaders.wb .wbPlinth { height: calc(var(--h) * 0.62px); }
+  #scrLeaders.wb .wbPlinth b, #scrLeaders.wb .s1 .wbPlinth b { font-size: 17px; margin-top: 4px; }
+  #scrLeaders.wb .wbRow { min-height: var(--rowh, 44px); }
+  #scrLeaders.wb .wbFoot { padding: 8px 2px 6px; font-size: 11px; }
 }
 /* the narrowest phones */
 @media (max-width: 359px) {

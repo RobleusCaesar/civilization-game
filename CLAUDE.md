@@ -289,7 +289,7 @@ node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothin
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
-node tests/world-board.mjs   # the world board: a podium for the top three and everyone beneath, one row per chief, a filter for each difficulty and the week, your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
+node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 ```
 
 **THE ROAD BUILDER** (`js/roads.js`, `CFG.ROADS`, `CFG.BUILDINGS.road`, tests/roads.mjs —
@@ -943,11 +943,27 @@ corners, Cinzel caps, a chamfered back plaque — over the title's night
 (`Screens.nightBehind` includes 'leaders'). The three best stand on stone
 plinths (the first in the middle, highest, crowned) under laurelled medals of
 their metal, each with the score, the difficulty's trial icon, the day, the
-wins and the run's ORIGIN CARD icon; the rest are ruled rows beneath; the
-player's own row is gold and, off the list, waits at the foot (sticky); a
+wins and the run's ORIGIN CARD icon; the ranks to tenth are ruled rows
+beneath; the player's own row is gold and, off the list, waits at the foot; a
 device left out reads "Your games on this device are kept off the board."
-Filters: every difficulty or one, all time or this week; a later ask
-overtakes a slow one (`_seq`). Every ornament is SVG (medal, crown, trophy,
+**THE FILTER IS PUT AWAY, THE BOARD IS ONE PAGE** (operator, the same day:
+"hide the filter (for now). It's too much, makes the page look cluttered and
+dilutes the value of being on the leaderboard. Vertically Re-size the
+ranking list so there isn't unbalanced empty space. Make sure everything
+fits on a single page"): `WorldBoard.FILTERS` false builds no bar and asks
+only the overall, all-time board (true brings the difficulty and week bars
+back as they were; a later ask still overtakes a slow one, `_seq`). The page
+is the TOP TEN (`SHOW`): the frame is as tall as what it holds (never
+`flex: 1`, no `min-height: 100%`, the foot right under the rows) and stands
+with the title in the middle of the screen; nothing scrolls. Where ten do
+not fit, `WorldBoard._fit` (on render, resize and `cf-fit`, measured off the
+pane's own overflow) presses every row under the podium alike (`--rowh`,
+down to `ROW_MIN` 38px), then leaves the lowest ranks off; the player's own
+row, cut that way, waits at the foot (the hidden `.wbMeList`). A phone on its
+side (`min-aspect-ratio: 4/3`, `max-height: 560px`) stands the podium and the
+foot on the left, the ranks on the right; a short laptop and a short phone
+step the podium down. tests/world-board.mjs §6 holds it at seven sizes,
+320x568 to 1536x730 and 568x320. Every ornament is SVG (medal, crown, trophy,
 card mark); the only rasters are the 256px trial and origin icons, at ≤26
 CSS px. **ONE ROW PER CHIEF, YOUR DEVICES LEFT OFF** (0014's `board_top`):
 each player's best victory (the earlier of equal scores first) with their

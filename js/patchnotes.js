@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 143, date: '2026-11-04', title: 'The board on one page',
+    items: [
+      'The leaderboard now shows the top ten chiefs on a single page, with nothing to scroll.',
+      'The difficulty and week filters are gone for now, so there is one board to climb.',
+      'On a phone turned on its side, the podium stands beside the rankings.',
+    ],
+  },
+  {
     build: 142, date: '2026-11-04', title: 'A new world board',
     items: [
       'The leaderboard has been rebuilt: the three best chiefs stand on a podium under gold, silver and bronze medals, with everyone else ranked beneath them.',
