@@ -405,21 +405,56 @@ const out = await p.evaluate(() => {
     clear('lk9');
     const t = put('tower', 30, 30, 2);
     const a = Units.spawn('archer', 'P', 30, 32); Lookout.order(a, t); step(3);
-    const s = Lookout.spot(a);
-    const tap = R.unitHit(a, s.x / TL, (s.y - TL * C.drawScale * 0.3) / TL);
+    const s = Lookout.spot(a), am = Lookout.aim(a);
+    const tap = R.unitHit(a, am.x / TL, am.y / TL);
     ck('aBowOnATowerIsTappedWhereItIsDrawn', tap < 0.55, `dead-on ${tap.toFixed(2)}`);
-    // drawn: the frame with the bow and without it differ above the parapet, inside the tower's rect
+    // a man's full size, half of him over the rail (operator, build 146)
+    const body = s.y - s.head, over = (s.cut - s.head) / body;
+    ck('aBowStandsAManHigh', C.drawScale >= 0.99 && body >= 0.8 * TL, `drawScale ${C.drawScale}, body ${body.toFixed(1)}px of a ${TL}px tile`);
+    ck('andHalfOfHimShowsOverTheRail', Math.abs(over - 0.5) < 0.02, `${Math.round(over * 100)}% of him above the parapet's top`);
+    // drawn: the frame with the bow and without it differ above the parapet,
+    // reaching up to his head, and nothing of him below the rail past its ends
     G.updateVisibility(); R.cam.z = 3; R.centerOn(30.5, 30); R.holdBake = false; R.rebuildTerrain(); if (R.ensureTerrain) R.ensureTerrain();
     if (R.redrawFog) R.redrawFog();
+    const X0 = s.x - 24, Y0 = s.head - 6, WW = 48, HH = s.y + 6 - Y0;
     const read = () => { R.draw(0); const z = R.cam.z * (R.dpr || 1);
-      const x0 = Math.round((s.x - 14 - R.cam.x) * z), y0 = Math.round((s.y - 26 - R.cam.y) * z);
-      return R.cv.getContext('2d').getImageData(x0, y0, Math.round(28 * z), Math.round(20 * z)).data; };
+      const x0 = Math.round((X0 - R.cam.x) * z), y0 = Math.round((Y0 - R.cam.y) * z);
+      return { d: R.cv.getContext('2d').getImageData(x0, y0, Math.round(WW * z), Math.round(HH * z)).data, w: Math.round(WW * z), z }; };
+    for (let i = 0; i < 40; i++) R.draw(0);           // the footings (the tower's hedge) are measured over frames: settle them first
     const withBow = read();
     const keep = a.perch; a.perch = 0; S.units = S.units.filter(u => u !== a);
     const without = read();
     a.perch = keep; S.units.push(a);
-    let diff = 0; for (let i = 0; i < withBow.length; i += 4) if (Math.abs(withBow[i] - without[i]) + Math.abs(withBow[i + 1] - without[i + 1]) > 30) diff++;
-    ck('aBowOnATowerIsDrawnOnThePlatform', diff > 60, `${diff} pixels of bow above the parapet`);
+    let diff = 0, top = Infinity;
+    for (let i = 0; i < withBow.d.length; i += 4) {
+      if (Math.abs(withBow.d[i] - without.d[i]) + Math.abs(withBow.d[i + 1] - without.d[i + 1]) <= 30) continue;
+      diff++; top = Math.min(top, Y0 + Math.floor(i / 4 / withBow.w) / withBow.z);
+    }
+    ck('aBowOnATowerIsDrawnOnThePlatform', diff > 60 && top < s.head + 4,
+      `${diff} pixels of bow, his head drawn ${(s.cut - top).toFixed(1)}px over the rail`);
+    // two men pushed out past the parapet's ends: over the rail they show
+    // beyond its ends (the probe sees there), below it nothing of them does
+    const b2 = Units.spawn('archer', 'P', 30, 32); Lookout.order(b2, t); step(3);
+    const hw = Lookout.HALF_W; Lookout.HALF_W = -0.3;
+    const crew = [a, b2], sp = Lookout.spot(a);
+    const at = () => { R.draw(0); const z = R.cam.z * (R.dpr || 1);
+      const x0 = Math.round((sp.l - 28 - R.cam.x) * z), y0 = Math.round((sp.head - 6 - R.cam.y) * z);
+      return { d: R.cv.getContext('2d').getImageData(x0, y0, Math.round((sp.r - sp.l + 56) * z), Math.round((sp.bot - sp.head + 12) * z)).data,
+        w: Math.round((sp.r - sp.l + 56) * z), z, X: sp.l - 28, Y: sp.head - 6 }; };
+    for (let i = 0; i < 10; i++) R.draw(0);
+    const w2 = at();
+    const keep2 = crew.map(u => u.perch); crew.forEach(u => { u.perch = 0; }); S.units = S.units.filter(u => !crew.includes(u));
+    const wo2 = at();
+    crew.forEach((u, i) => { u.perch = keep2[i]; S.units.push(u); }); Lookout.HALF_W = hw;
+    let overPast = 0, underPast = 0;
+    for (let i = 0; i < w2.d.length; i += 4) {
+      if (Math.abs(w2.d[i] - wo2.d[i]) + Math.abs(w2.d[i + 1] - wo2.d[i + 1]) <= 30) continue;
+      const wx = w2.X + ((i / 4) % w2.w) / w2.z, wy = w2.Y + Math.floor(i / 4 / w2.w) / w2.z;
+      if (wx >= sp.l - 1 && wx <= sp.r + 1) continue;
+      if (wy < sp.cut - 1) overPast++; else if (wy > sp.cut + 1) underPast++;
+    }
+    ck('andNoLegHangsBesideTheTower', underPast === 0 && overPast > 50,
+      `${underPast} pixels of them below the rail past the parapet's ends (${overPast} over it, where they may lean out)`);
     // a save carries it up there
     const json = G.saveJSON();
     G.loadJSON(json);

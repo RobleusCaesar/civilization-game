@@ -19,7 +19,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 145, date: '2026-11-04', title: 'Archers on the towers',
+    build: 146, date: '2026-11-04', title: 'Archers on the towers',
     items: [
       'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
       'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',

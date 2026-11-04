@@ -291,7 +291,7 @@ node tests/footing.mjs       # the ground under a building: a cast shadow under 
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
-node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them, the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn on the platform, tapped where drawn, carried by a save
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them, the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn on the platform a man high with half of him over the rail (nothing of him below it past the parapet's ends), tapped where drawn, carried by a save
 ```
 
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
@@ -338,12 +338,17 @@ an arrow, FALLS (`Lookout.startFall` from `Units.damage`: tumbling, gathering
 speed, gone in dust at the tower's foot — render state only, never in S).
 **THE PICTURE** (`Lookout.draw`, from the building pass right after the
 tower AND from `R._redrawPic`, so a man behind the tower never lands over
-them): each bow at its slot (`ANCHOR`, per drawn tower: the foot line `fy`,
-the slot `dx` either side, the parapet's top `cy`, in fractions of the art,
-measured off the roofless PNGs) at `drawScale`, then the tower laid back over
-them below `cy` — the front rail or the merlons stand in front of their legs.
-The unit pass skips `perch`/`climb`; `Lookout.hit` measures a tap where the
-figure is drawn. **A WALL BLOCKS SIGHT, BOTH WAYS**: no unit marks, keeps or
+them): each bow at a man's full size (`drawScale` 1 — operator, build 146:
+"50% bigger… half their body should be above the tower's protective
+fence") with the parapet's top (`ANCHOR`'s `cy`, per drawn tower, in
+fractions of the art, measured off the roofless PNGs) cutting his body at its
+middle (`BODY`: a bow's frame fills its box from 3 to 31 px of 32), the two
+standing inside the parapet's measured span (`px`, `ph`), each against his
+end (`HALF_W`); below the rail nothing of him is drawn past the parapet's
+ends, and the tower is laid back over him below `cy` — the front rail or the
+merlons stand in front of his legs. The selection ring rides the rail at his
+waist. The unit pass skips `perch`/`climb`; `Lookout.hit` and the arrows'
+origin (`Lookout.aim`) are the middle of what shows over the rail. **A WALL BLOCKS SIGHT, BOTH WAYS**: no unit marks, keeps or
 strikes another across a FINISHED wall section, a SEALED gate or a tower in
 the line (`Combat.losGrid`: a bitmap rebuilt only when `Bld._blockGen` or the
 map moves, the block grid forced current first); a site, a breach (a section
@@ -4464,22 +4469,29 @@ older titlescreen.js) the frames are not built and the old wood face shows.
 
 **THE TEST BUILD** (`Backend.testSlot`, tests/telemetry.mjs): a build the
 operator plays before it ships goes up as a TEST PAGE beside the live game,
-`https://clanfire.online/test<build>/` (operator: "call it test plus some
-number"; raw.githack.com was tried first and rejected — slow, and its
-interstitial page "looks sketchy"). The folder holds only the build's own
-`index.html` and a copy of `js/`: the page carries `<base href="../">`
-(first in `<head>`, with `noindex`) and its script tags point at
-`test<build>/js/`, so every picture, font and sound is the live site's own
-file and any new art lands at the root, where the live page never asks for
-it — but a picture REDRAWN under a shipped name (build 145's roofless
-towers) rides in the test folder (`test<build>/assets/…`), the test copy's
-`js/assets.js` pointing those names there, or the live page would wear it
-before its release. Push it to main as its own commit ON TOP OF main — the live page, its
-scripts and its pictures untouched — and merge that commit into the working
-branch (never rebase: the branch must stay a fast-forward of main). A new
-build number makes a new folder, so a phone that cached the last test
-page's scripts gets the new ones; the old folder goes in the same commit,
-and the RELEASE removes the last one. It is the live game's ORIGIN, so it
+and since build 146 there is ONE, at a URL that never changes:
+**`https://clanfire.online/test145/`** (operator, 2026-11-04: "can test145
+be our stable test environment forever after so I don't have to keep
+updating the test page? One stable test URL and one stable production
+url"). The folder name is a fixed address now, not a build number — never
+make a `test<other>/` folder again. Every test build OVERWRITES `test145/`
+in place (the folder rebuilt from the working tree, so nothing stale is
+left in it) and bumps the shared code `?v=` first, which is what makes a
+phone that cached the last test build's scripts fetch the new ones; the
+release leaves the folder standing (it then holds the released build until
+the next test build). The folder holds only the build's own `index.html`
+and a copy of `js/`: the page carries `<base href="../">` (first in
+`<head>`, with `noindex`) and its script tags point at `test145/js/`, so
+every picture, font and sound is the live site's own file and any new art
+lands at the root, where the live page never asks for it — but a picture
+REDRAWN under a shipped name (build 146's roofless towers) rides in the test
+folder (`test145/assets/…`), the test copy's `js/assets.js` pointing those
+names there, or the live page would wear it before its release
+(`tools/mktest.sh SRC DST` lays the folder; its ROUTE block lists those
+pictures and says how to add one). Push it to
+main as its own commit ON TOP OF main — the live page, its scripts and its
+pictures untouched — and merge that commit into the working branch (never
+rebase: the branch must stay a fast-forward of main). It is the live game's ORIGIN, so it
 shares the device's saves and deck: a card played there is spent for real,
 and one earned there does not stick. NOTHING LEAVES IT: any `/test/` or
 `/test<digits>/` path, and any https page that is not one of `PROD_HOSTS`,
