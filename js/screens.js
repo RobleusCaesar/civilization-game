@@ -103,6 +103,7 @@ const Screens = {
     else if (name === 'settings') this.onSettings();
     else if (name === 'paused') this.onPaused();
     else if (name === 'leaders') this.onLeaders();
+    else if (name === 'howto') { if (window.ShellPages && ShellPages.onGuide) ShellPages.onGuide(); }
     else if (name === 'endgame') this.onEndgame(opts);
     else if (name === 'doomed') this.onDoomed();
     else if (name === 'playing') {
@@ -193,7 +194,12 @@ const Screens = {
      nothing, and the world under it is not drawn at all (G.frame asks
      nightUp), which leaves the thread to the cards. A painting that 404s
      stands down: the world shows through as it always did. */
-  nightBehind(name) { return name === 'newgame' || name === 'draft' || name === 'leaders'; },
+  /* the Load and Guide pages stand on the night when opened from the title;
+     from the pause menu the game itself stays behind them (js/pages.js) */
+  nightBehind(name) {
+    return name === 'newgame' || name === 'draft' || name === 'leaders' ||
+      ((name === 'load' || name === 'howto') && this.backTo !== 'paused');
+  },
   wearNight() {
     if (this._night !== undefined) return this._night;
     this._night = null;
@@ -1534,7 +1540,9 @@ const Screens = {
   /* ---------------- load / save slots ---------------- */
   async onLoad(opts) {
     this.saveMode = !!opts.saveMode;
-    this.el('loadTitle').textContent = this.saveMode ? 'Save to a slot' : 'Load game';
+    // dressed in the settings page's chrome (js/pages.js); a cached older pages.js leaves the plain page
+    const P = window.ShellPages && ShellPages.mount && ShellPages.slotCard && ShellPages.mount('load') ? ShellPages : null;
+    this.el('loadTitle').textContent = this.saveMode ? (P ? 'Save game' : 'Save to a slot') : 'Load game';
     const box = this.el('slotList');
     box.innerHTML = '<p class="hint">Fetching slots…</p>';
     if (!window.Backend || !Backend.isReady()) {
@@ -1551,6 +1559,7 @@ const Screens = {
     box.innerHTML = '';
     for (let slot = 1; slot <= 5; slot++) {
       const row = bySlot[slot];
+      if (P) { box.appendChild(this._slotCard(P, row, slot)); continue; }
       const card = document.createElement('div');
       card.className = 'scard';
       if (row) {
@@ -1592,6 +1601,39 @@ const Screens = {
       }
       box.appendChild(card);
     }
+  },
+
+  /* one dressed slot (js/pages.js draws it): the same five acts the plain
+     page wires below — load, overwrite, save here, rename and a two-tap delete */
+  _slotCard(P, row, slot) {
+    const card = P.slotCard(row, slot, this.saveMode);
+    const acts = {
+      load: async () => {
+        // one opening at a time (PX-21a), and the press is answered, as at every other door (§7k)
+        if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
+        this._continuing = true;
+        try {
+          const l = await this._fetchSlot(slot);
+          if (l.stale) return;                    // the player went on while it was out (§7j)
+          if (l.ok) this.loadRow(l.data, true);
+          else { this._continuing = false; this.say('That save could not be opened: ' + this.whyNet(l.error), true); }   // seen over the Load screen (PX-69)
+        } catch (e) { this._openFailed(e); }     // never a press left holding the opening
+      },
+      overwrite: () => this.saveToSlot(slot, row && row.name),
+      save: () => this.saveToSlot(slot, null),
+      rename: async () => {
+        const name = prompt('Rename save', row.name);
+        if (name != null && name.trim()) { await Backend.renameSlot(slot, name.trim()); this.onLoad({ saveMode: this.saveMode }); }
+      },
+      del: async e => {
+        if (!card.dataset.confirm) { card.dataset.confirm = '1'; P.armDelete(e.currentTarget); return; }
+        await Backend.deleteSlot(slot);
+        if (Backend.activeSlot === slot) Backend.markActiveSlot(null);
+        this.onLoad({ saveMode: this.saveMode });
+      },
+    };
+    for (const b of card.querySelectorAll('[data-act]')) { const fn = acts[b.dataset.act]; if (fn) b.addEventListener('click', fn); }
+    return card;
   },
 
   act(parent, label, fn) {
@@ -2199,8 +2241,8 @@ const Screens = {
     on('btnPauseLoad', () => { this.backTo = 'paused'; this.show('load'); });
     on('btnPauseSettings', () => { this.backTo = 'paused'; this.show('settings'); });
     on('btnPauseHow', () => { this.backTo = 'paused'; this.show('howto'); });
-    // guide page dots — one per panel, lit by scroll position
-    {
+    // guide page dots — one per panel, lit by scroll position (js/pages.js draws its own, with BACK / NEXT)
+    if (!(window.ShellPages && ShellPages.onGuide)) {
       const panels = this.el('howPanels'), dots = this.el('howDots');
       if (panels && dots) {
         dots.innerHTML = Array.from(panels.children, () => '<i></i>').join('');
