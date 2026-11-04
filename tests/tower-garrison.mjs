@@ -28,7 +28,9 @@
         well out); its blades cannot
      §8 an intact wall blocks sight both ways; a breach or an open gate lets
         it through; a bow on a tower sees over
-     §9 drawn on the platform, tapped where it is drawn, and a save carries it
+     §9 drawn INSIDE the platform — whole, the tower's own front laid over
+        him, two fitting between the corner posts — tapped where it is drawn,
+        told what to shoot by a tap, and a save carries it
 
    Run this after touching any of:
      js/lookout.js, combat.js (canEngage / sees / losGrid / reachOf /
@@ -400,62 +402,150 @@ const out = await p.evaluate(() => {
     ck('noWallAnywhereIsAClearLine', Combat.sees(g0, g1) && Combat.losGrid() && Combat._losN === 0, 'no walls');
   }
 
-  /* ---- §9 drawn, tapped, saved ---- */
+  /* ---- §9 drawn inside the platform, tapped where drawn, told what to shoot, saved ---- */
   {
     clear('lk9');
     const t = put('tower', 30, 30, 2);
     const a = Units.spawn('archer', 'P', 30, 32); Lookout.order(a, t); step(3);
-    const s = Lookout.spot(a), am = Lookout.aim(a);
+    const am = Lookout.aim(a);
     const tap = R.unitHit(a, am.x / TL, am.y / TL);
     ck('aBowOnATowerIsTappedWhereItIsDrawn', tap < 0.55, `dead-on ${tap.toFixed(2)}`);
-    // a man's full size, half of him over the rail (operator, build 146)
-    const body = s.y - s.head, over = (s.cut - s.head) / body;
-    ck('aBowStandsAManHigh', C.drawScale >= 0.99 && body >= 0.8 * TL, `drawScale ${C.drawScale}, body ${body.toFixed(1)}px of a ${TL}px tile`);
-    ck('andHalfOfHimShowsOverTheRail', Math.abs(over - 0.5) < 0.02, `${Math.round(over * 100)}% of him above the parapet's top`);
-    // drawn: the frame with the bow and without it differ above the parapet,
-    // reaching up to his head, and nothing of him below the rail past its ends
-    G.updateVisibility(); R.cam.z = 3; R.centerOn(30.5, 30); R.holdBake = false; R.rebuildTerrain(); if (R.ensureTerrain) R.ensureTerrain();
-    if (R.redrawFog) R.redrawFog();
-    const X0 = s.x - 24, Y0 = s.head - 6, WW = 48, HH = s.y + 6 - Y0;
-    const read = () => { R.draw(0); const z = R.cam.z * (R.dpr || 1);
-      const x0 = Math.round((X0 - R.cam.x) * z), y0 = Math.round((Y0 - R.cam.y) * z);
-      return { d: R.cv.getContext('2d').getImageData(x0, y0, Math.round(WW * z), Math.round(HH * z)).data, w: Math.round(WW * z), z }; };
-    for (let i = 0; i < 40; i++) R.draw(0);           // the footings (the tower's hedge) are measured over frames: settle them first
-    const withBow = read();
-    const keep = a.perch; a.perch = 0; S.units = S.units.filter(u => u !== a);
-    const without = read();
-    a.perch = keep; S.units.push(a);
-    let diff = 0, top = Infinity;
-    for (let i = 0; i < withBow.d.length; i += 4) {
-      if (Math.abs(withBow.d[i] - without.d[i]) + Math.abs(withBow.d[i + 1] - without.d[i + 1]) <= 30) continue;
-      diff++; top = Math.min(top, Y0 + Math.floor(i / 4 / withBow.w) / withBow.z);
+    // THE BOWS STAND INSIDE THE PLATFORM (operator, build 147): every drawn
+    // tower, both men up, at rest and drawing their bows
+    clear('lk9b');
+    G.updateVisibility(); R.holdBake = false;
+    const towers = [];
+    for (let lv = 1; lv <= 3; lv++) towers.push(put('tower', 20 + lv * 6, 24, lv));
+    for (let lv = 1; lv <= 3; lv++) {
+      S.wallLevel = lv;
+      put('wall', 19 + lv * 6, 34, lv); towers.push(put('tower', 20 + lv * 6, 34, lv)); put('wall', 21 + lv * 6, 34, lv);
     }
-    ck('aBowOnATowerIsDrawnOnThePlatform', diff > 60 && top < s.head + 4,
-      `${diff} pixels of bow, his head drawn ${(s.cut - top).toFixed(1)}px over the rail`);
-    // two men pushed out past the parapet's ends: over the rail they show
-    // beyond its ends (the probe sees there), below it nothing of them does
-    const b2 = Units.spawn('archer', 'P', 30, 32); Lookout.order(b2, t); step(3);
-    const hw = Lookout.HALF_W; Lookout.HALF_W = -0.3;
-    const crew = [a, b2], sp = Lookout.spot(a);
-    const at = () => { R.draw(0); const z = R.cam.z * (R.dpr || 1);
-      const x0 = Math.round((sp.l - 28 - R.cam.x) * z), y0 = Math.round((sp.head - 6 - R.cam.y) * z);
-      return { d: R.cv.getContext('2d').getImageData(x0, y0, Math.round((sp.r - sp.l + 56) * z), Math.round((sp.bot - sp.head + 12) * z)).data,
-        w: Math.round((sp.r - sp.l + 56) * z), z, X: sp.l - 28, Y: sp.head - 6 }; };
-    for (let i = 0; i < 10; i++) R.draw(0);
-    const w2 = at();
-    const keep2 = crew.map(u => u.perch); crew.forEach(u => { u.perch = 0; }); S.units = S.units.filter(u => !crew.includes(u));
-    const wo2 = at();
-    crew.forEach((u, i) => { u.perch = keep2[i]; S.units.push(u); }); Lookout.HALF_W = hw;
-    let overPast = 0, underPast = 0;
-    for (let i = 0; i < w2.d.length; i += 4) {
-      if (Math.abs(w2.d[i] - wo2.d[i]) + Math.abs(w2.d[i + 1] - wo2.d[i + 1]) <= 30) continue;
-      const wx = w2.X + ((i / 4) % w2.w) / w2.z, wy = w2.Y + Math.floor(i / 4 / w2.w) / w2.z;
-      if (wx >= sp.l - 1 && wx <= sp.r + 1) continue;
-      if (wy < sp.cut - 1) overPast++; else if (wy > sp.cut + 1) underPast++;
+    S.wallLevel = 1;
+    const kinds = ['archer', 'longbow', 'marksman'];
+    towers.forEach((tw, i) => { for (let k = 0; k < 2; k++) { const u = Units.spawn(kinds[(i + k) % 3], 'P', tw.x, tw.y + 1); Lookout.order(u, tw); } });
+    step(3);
+    const foe = Units.spawn('defender', 'A', 40, 44); foe.hp = foe.maxhp = 1e9;
+    G.updateVisibility(); R.rebuildTerrain(); if (R.ensureTerrain) R.ensureTerrain(); if (R.redrawFog) R.redrawFog();
+    UI.sel = null;
+    const artPx = (spr) => { const c = document.createElement('canvas'); c.width = spr.width; c.height = spr.height;
+      const q = c.getContext('2d'); q.drawImage(spr, 0, 0); return q.getImageData(0, 0, c.width, c.height).data; };
+    const bad = { front: [], inside: [], whole: [], placed: [] };
+    let measured = 0, minShown = Infinity, maxSpill = -Infinity, deepest = 0;
+    for (const tw of towers) {
+      const crew = S.units.filter(u => u.perch === tw.id);
+      const f = Lookout.frame(tw), P = f && f.P;
+      const name = (f && f.spr._cfArt && f.spr._cfArt.fort ? 'wall' : 'free') + tw.level;
+      if (crew.length !== 2 || !P) { bad.placed.push(`${name}: ${crew.length} up, ${P ? 'measured' : 'no platform'}`); continue; }
+      const prof = Lookout.profile(P), A = artPx(f.spr), W = f.spr.width, H = f.spr.height, sc = f.r.w / W;
+      const opq = (x, y) => x >= 0 && y >= 0 && x < W && y < H && A[(y * W + x) * 4 + 3] > 128;
+      const front = (x, y) => opq(x, y) && prof[x] !== undefined && y >= prof[x];
+      let xs0 = W, xs1 = -1;
+      for (let x = 0; x < W; x++) if (prof[x]) { xs0 = Math.min(xs0, x); xs1 = Math.max(xs1, x); }
+      for (const mode of ['idle', 'fight']) {
+        for (const u of crew) { if (mode === 'fight') { u.tUnit = foe.id; u.task = { type: 'attack', on: foe.id }; } else { u.tUnit = 0; u.task = null; } }
+        R.cam.z = 3; R.centerOn(tw.x + 0.5, tw.y);
+        const z = R.cam.z * (R.dpr || 1);
+        const X0 = f.r.x - 12, Y0 = f.r.y - 24, WW = f.r.w + 24, HH = f.r.h + 30;
+        const read = () => { R.draw(0);
+          return R.cv.getContext('2d').getImageData(Math.round((X0 - R.cam.x) * z), Math.round((Y0 - R.cam.y) * z), Math.round(WW * z), Math.round(HH * z)).data; };
+        for (let i = 0; i < 40; i++) R.draw(0);        // the footings settle over frames first
+        const withMen = read();
+        const list = S.units; S.units = S.units.filter(u => !crew.includes(u));   // the same world with nobody up there
+        const without = read();
+        S.units = list;
+        const again = read();                            // and nothing else moved meanwhile
+        let noise = 0;
+        for (let i = 0; i < again.length; i += 4) if (Math.abs(again[i] - withMen[i]) + Math.abs(again[i + 1] - withMen[i + 1]) + Math.abs(again[i + 2] - withMen[i + 2]) > 12) noise++;
+        if (noise) bad.placed.push(`${name} ${mode}: ${noise} px moved between two identical frames`);
+        if (globalThis.__dbg) globalThis.__dbg.push({ name, mode, X0, Y0, z, w: Math.round(WW * z), h: Math.round(HH * z), r: f.r, sc,
+          diffs: (() => { const o = []; for (let py = 0; py < Math.round(HH * z); py++) for (let px = 0; px < Math.round(WW * z); px++) { const i = (py * Math.round(WW * z) + px) * 4;
+            const dv = Math.abs(withMen[i] - without[i]) + Math.abs(withMen[i + 1] - without[i + 1]) + Math.abs(withMen[i + 2] - without[i + 2]);
+            if (dv > 12) { const wx = X0 + (px + 0.5) / z, wy = Y0 + (py + 0.5) / z; o.push([Math.floor((wx - f.r.x) / sc), Math.floor((wy - f.r.y) / sc), dv]); } } return o; })() });
+        const w = Math.round(WW * z), h = Math.round(HH * z);
+        let frontHit = 0, minX = Infinity, maxX = -Infinity, low = -Infinity;
+        const top = crew.map(() => Infinity);
+        const spots = crew.map(u => Lookout.spot(u, f));
+        for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+          const i = (py * w + px) * 4;
+          const dv = Math.abs(withMen[i] - without[i]) + Math.abs(withMen[i + 1] - without[i + 1]) + Math.abs(withMen[i + 2] - without[i + 2]);
+          const wx = X0 + (px + 0.5) / z, wy = Y0 + (py + 0.5) / z;
+          const ax = Math.floor((wx - f.r.x) / sc), ay = Math.floor((wy - f.r.y) / sc);
+          // inside the front (two art pixels deep — the reach of the picture's
+          // own resampling): exactly the tower, never a man
+          let deep = true;
+          for (let oy = -2; oy <= 2 && deep; oy++) for (let ox = -2; ox <= 2; ox++) if (!front(ax + ox, ay + oy)) { deep = false; break; }
+          if (deep && dv > 12) frontHit++;
+          if (dv <= 30) continue;
+          minX = Math.min(minX, wx); maxX = Math.max(maxX, wx); low = Math.max(low, wy);
+          spots.forEach((sp, k) => { if (Math.abs(wx - sp.x) < sp.B * 0.3) top[k] = Math.min(top[k], wy); });
+        }
+        measured++;
+        if (frontHit) bad.front.push(`${name} ${mode}: ${frontHit} px of a man over the tower's front`);
+        const l = f.r.x + xs0 * sc, rr = f.r.x + (xs1 + 1) * sc, tol = mode === 'fight' ? 2.5 : 1;
+        maxSpill = Math.max(maxSpill, l - minX, maxX - rr);
+        if (!(minX >= l - tol && maxX <= rr + tol)) bad.inside.push(`${name} ${mode}: drawn ${minX.toFixed(1)}..${maxX.toFixed(1)} beyond the platform ${l.toFixed(1)}..${rr.toFixed(1)}`);
+        const feet = Math.max(...spots.map(sp => sp.y));
+        deepest = Math.max(deepest, low - feet);
+        if (low > feet + 1) bad.inside.push(`${name} ${mode}: a man drawn ${(low - feet).toFixed(1)}px below his feet`);
+        spots.forEach((sp, k) => { const man = sp.y - sp.head, shown = sp.rail - top[k];
+          minShown = Math.min(minShown, shown / man);
+          if (!(shown >= 0.55 * man)) bad.whole.push(`${name} ${mode}: ${Math.round(shown / man * 100)}% of a man shows over the rail`); });
+      }
     }
-    ck('andNoLegHangsBesideTheTower', underPast === 0 && overPast > 50,
-      `${underPast} pixels of them below the rail past the parapet's ends (${overPast} over it, where they may lean out)`);
+    for (const u of S.units) if (u.perch) { u.tUnit = 0; u.task = null; }
+    ck('everyTowerCarriesItsLookout', !bad.placed.length && measured === 12, bad.placed.join('; ') || `6 drawn towers, two up on each, ${measured} pictures`);
+    ck('theTowersFrontIsAlwaysInFrontOfItsLookout', !bad.front.length, bad.front.join('; ') || 'the rail, the posts, the merlons and the ladder top stand in front of the men, pixel for pixel');
+    ck('andTheyStandInsideThePlatform', !bad.inside.length, bad.inside.join('; ') || `between the corner posts (the widest bow ${maxSpill.toFixed(1)}px past the platform's edge), nothing ${deepest.toFixed(1)}px below their feet`);
+    ck('andEachIsDrawnWhole', !bad.whole.length, bad.whole.join('; ') || `at least ${Math.round(minShown * 100)}% of every man over the rail, the rest behind it — never cut by a line`);
+    // the measurements are the art's own: the size it was measured on, the
+    // front starting on a drawn pixel of every column, the feet behind the
+    // front at both places, the places between the outer columns
+    const off = [];
+    for (const kind of ['free', 'wall']) Lookout.PLAT[kind].forEach((P, li) => {
+      const tw = towers.find(x => x.level === li + 1 && !!(Lookout.frame(x).spr._cfArt || {}).fort === (kind === 'wall'));
+      const f = tw && Lookout.frame(tw);
+      if (!f || f.P !== P) { off.push(`${kind}${li + 1}: not drawn on its own picture`); return; }
+      const A = artPx(f.spr), W = f.spr.width, prof = Lookout.profile(P);
+      for (let x = 0; x < W; x++) if (prof[x] && !(A[(prof[x] * W + x) * 4 + 3] > 128)) off.push(`${kind}${li + 1}: column ${x}'s front starts on air`);
+      for (const sx of P.slots.concat(P.solo)) if (!(prof[sx] && P.feet >= prof[sx])) off.push(`${kind}${li + 1}: feet ${P.feet} in front of the rail at ${sx}`);
+    });
+    ck('andTheMeasurementsAreTheArtsOwn', !off.length, off.slice(0, 6).join('; ') || 'sizes, fronts, feet and places agree with the shipped art');
+    // TOLD WHAT TO SHOOT (operator, build 147: "click archers on the tower and
+    // then click an enemy and have them attack whoever I select… like a
+    // house"): a bow tapped on the platform is selected; a foe tapped is shot
+    // at from up there, a soldier or a house, while it is in the doubled reach
+    {
+      clear('lk9c');
+      const t2 = put('tower', 30, 30, 2);
+      const b1 = Units.spawn('archer', 'P', 30, 32), b2 = Units.spawn('longbow', 'P', 30, 32);
+      Lookout.order(b1, t2); Lookout.order(b2, t2); step(3);
+      G.updateVisibility(); R.cam.z = 3; R.centerOn(31, 32); UI.sel = null;
+      const tapW = (wx, wy) => UI.handleTap((wx * TL - R.cam.x) * R.cam.z, (wy * TL - R.cam.y) * R.cam.z);
+      const pins = [];
+      const fightP = (sec) => { for (let k = 0; k < sec; k += 0.05) { Combat.update(0.05); Units.update(0.05); for (const [o, x, y] of pins) { o.x = x; o.y = y; o.path = null; } } };
+      let m = Lookout.aim(b1); tapW(m.x / TL, m.y / TL);
+      const picked = UI.sel && UI.sel.type === 'unit' && UI.sel.id === b1.id;
+      const foe2 = Units.spawn('defender', 'A', 33, 35); foe2.hp = foe2.maxhp = 400; pins.push([foe2, foe2.x, foe2.y]);
+      G.updateVisibility();
+      tapW(foe2.x, foe2.y - CFG.SPRITE_LIFT / TL);
+      const told = b1.task && b1.task.type === 'attack' && b1.tUnit === foe2.id;
+      fightP(3);
+      const shotUnit = foe2.hp < 400 && b1.perch === t2.id;
+      S.units = S.units.filter(o => o !== foe2); pins.length = 0;
+      const house = put('house', 35, 31, 1, 'A'); house.hp = house.maxhp = 2000; G.updateVisibility();
+      UI.sel = { type: 'group', ids: [b1.id, b2.id] }; UI.renderPanel();
+      tapW(house.x + 0.5, house.y + 0.5);
+      const toldBoth = [b1, b2].every(o => o.task && o.task.type === 'attackBld' && o.tBld === house.id);
+      fightP(4);
+      const shotHouse = house.hp < 2000 && b1.perch === t2.id && b2.perch === t2.id;
+      UI.sel = null;
+      ck('aBowOnATowerShootsWhatItIsToldTo', picked && told && shotUnit && toldBoth && shotHouse,
+        `tapped on the tower ${picked}; a soldier: ordered ${told}, shot from up there ${shotUnit}; a house: both ordered ${toldBoth}, shot from up there ${shotHouse} (${Math.round(house.hp)}/2000)`);
+    }
     // a save carries it up there
+    clear('lk9d');
+    const t3 = put('tower', 30, 30, 2);
+    const a3 = Units.spawn('archer', 'P', 30, 32); Lookout.order(a3, t3); step(3);
     const json = G.saveJSON();
     G.loadJSON(json);
     const back = S.units.find(u => u.kind === 'archer');
