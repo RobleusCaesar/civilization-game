@@ -263,6 +263,130 @@ const out = await p.evaluate(async () => {
     ck('andADeliberateSecondTapTakesItDown', !Bld.get(house.id), '');
   }
 
+  /* ================= 7. THE ORDER'S BUTTON BECOMES ITS CALL-OFF =================
+     operator, 2026-11-04 (on the hall's panel: a wide Cancel upgrade row over
+     a greyed "Upgrade to Lv 2 — Busy"): "These don't need to be two separate
+     buttons. After level upgrade that button becomes cancel. It keeps our
+     build UI tight. Roll that out to all buildings for all upgrades, and
+     builds." Every works in flight is ONE button in the slot the order came
+     from — a building's upgrade, a site, the masons' wall works, a span's
+     reinforcing — and that button calls them off. */
+  {
+    fresh('cx7');
+    S.res.food = 9000; S.res.wood = 9000; S.res.stone = 9000; S.res.gold = 9000;
+    const q = sel => document.querySelector('#panel ' + sel);
+    const n = sel => document.querySelectorAll('#panel ' + sel).length;
+    const rect = el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width }; };
+    const sameSlot = (a, z) => !!a && !!z && Math.abs(a.x - z.x) < 1 && Math.abs(a.y - z.y) < 1 && Math.abs(a.w - z.w) < 1;
+    const two = async el => { if (!el) return false; el.click(); await nap(450); const again = q('[data-act="' + el.dataset.act + '"]'); if (again) again.click(); };
+
+    // ---- a building's upgrade: the Upgrade button turns into Cancel, in place ----
+    tc().level = 2;
+    const fs = freeSpot('farm');
+    const farm = Bld.place('P', 'farm', fs.x, fs.y, { free: true, instant: true, noAutoAssign: true });
+    Bld.finish(farm);
+    const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task);
+    if (v) v.task = { type: 'work', id: farm.id };
+    UI.select('bld', farm.id); UI.renderPanel();
+    const upBtn = q('[data-act="upgrade"]'), upAt = upBtn && rect(upBtn);
+    ck('anIdleBuildingOffersUpgradeAndNoCancel', !!upBtn && !q('[data-act="cancelbuild"]'), '');
+    Bld.upgrade(farm); UI.renderPanel();
+    const cb = q('[data-act="cancelbuild"]');
+    ck('upgradingTheUpgradeButtonIsGone', !q('[data-act="upgrade"]'), 'no greyed Upgrade beside a Cancel');
+    ck('andCancelStandsInItsSlot', n('[data-act="cancelbuild"]') === 1 && sameSlot(upAt, cb && rect(cb)),
+      cb ? JSON.stringify([upAt, rect(cb)]) : 'no Cancel');
+    ck('itSaysWhatIsRising', !!cb && /Cancel Lv 2/.test(cb.textContent) && /\dd left/.test(cb.textContent), cb ? cb.textContent : '');
+    farm.upgrading = farm.upgTotal * 0.25; UI.refreshPanel();
+    const bar = cb && cb.querySelector('.cwBar');
+    ck('andItsBarIsTheWorkDone', !!bar && bar.style.width === '75%', bar ? bar.style.width : 'no bar');
+    ck('theStationOffersNoHandsWhileItsCrewBuilds', !q('[data-act="staff"]'), '');
+    // the worker's own panel carries ONE call-off, never two
+    const hand = S.units.find(u => u.task && u.task.type === 'build' && u.task.id === farm.id);
+    if (hand) { UI.select('unit', hand.id); UI.renderPanel(); }
+    ck('theBuildersPanelCarriesOneCancel', !!hand && n('[data-act="cancelbuild"]') === 1, hand ? n('[data-act="cancelbuild"]') + ' buttons' : 'nobody on the scaffold');
+    UI.select('bld', farm.id); UI.renderPanel();
+    const before = snapRes();
+    await two(q('[data-act="cancelbuild"]'));
+    UI.renderPanel();
+    ck('twoTapsCallItOff', farm.upgrading === 0 && !same(before, snapRes()), '');
+    ck('andTheUpgradeButtonComesBackInItsSlot', sameSlot(upAt, q('[data-act="upgrade"]') && rect(q('[data-act="upgrade"]'))), '');
+
+    // ---- the hall: Cancel takes the half slot beside Train Villager ----
+    const t = tc(); t.level = 1;
+    for (let i = 0; i < 3; i++) { const h = spot('house'); const hb = Bld.place('P', 'house', h.x, h.y, { free: true, instant: true }); if (hb.construction) Bld.finish(hb); }
+    UI.select('bld', t.id); UI.renderPanel();
+    const tUp = q('[data-act="upgrade"]'), tAt = tUp && rect(tUp);
+    Bld.upgrade(t);
+    const tv = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task); if (tv) Units.assignBuild(tv, t);
+    UI.renderPanel();
+    const tcb = q('[data-act="cancelbuild"]'), tr = q('[data-act="train"]');
+    ck('theHallsCancelSharesTrainsRow', !!t.upgrading && sameSlot(tAt, tcb && rect(tcb)) && !!tr && Math.abs(rect(tr).y - rect(tcb).y) < 1,
+      tcb && tr ? JSON.stringify([tAt, rect(tcb), rect(tr)]) : 'missing');
+    UI.confirmCancel = 0; Bld.cancelBuild(t);
+
+    // ---- a site nobody has reached: Send builder and Cancel share one row ----
+    const ss = spot('house');
+    const site = Bld.place('P', 'house', ss.x, ss.y, { noAutoAssign: true });
+    UI.select('bld', site.id); UI.renderPanel();
+    const sw = q('[data-act="sendworker"]'), sc = q('[data-act="cancelbuild"]');
+    ck('aSitesSendBuilderAndCancelShareARow', !!sw && !!sc && Math.abs(rect(sw).y - rect(sc).y) < 1 && Math.abs(rect(sw).w - rect(sc).w) < 2,
+      sw && sc ? JSON.stringify([rect(sw), rect(sc)]) : 'missing');
+    Bld.cancelBuild(site);
+
+    // ---- the masons' wall works: Upgrade walls becomes their call-off ----
+    t.level = 2; t.upgrading = 0;
+    const ws = spot('wall');
+    const wall = Bld.place('P', 'wall', ws.x, ws.y, { free: true, instant: true }); if (wall.construction) Bld.finish(wall);
+    UI.select('bld', t.id); UI.renderPanel();
+    const uw = q('[data-act="upwalls"]'), uwAt = uw && rect(uw);
+    const wBefore = snapRes();
+    ck('theWallWorksStart', Bld.upgradeWalls() === true, JSON.stringify(Bld.canUpgradeWalls()));
+    const wPaid = diff(snapRes(), wBefore);
+    UI.renderPanel();
+    const cw = q('[data-act="cancelwalls"]');
+    ck('theirButtonBecomesTheCallOff', !q('[data-act="upwalls"]') && sameSlot(uwAt, cw && rect(cw)), cw ? cw.textContent : 'no button');
+    ck('andTheirRefundIsWhatTheMasonsWerePaid', same(wPaid, Bld.wallUpRefund(t)), JSON.stringify(wPaid));
+    const wl = S.wallLevel || 1;
+    await two(q('[data-act="cancelwalls"]'));
+    ck('twoTapsCallTheMasonsOff', !(t.wallUp > 0) && (S.wallLevel || 1) === wl && wall.level === wl && same(wBefore, snapRes()),
+      'net ' + JSON.stringify(diff(wBefore, snapRes())));
+    UI.renderPanel();
+    ck('andTheHallIsFreeAgain', !!q('[data-act="upwalls"]') && !/Reinforcing walls/.test(Bld.canUpgrade(t).why || ''), '');
+
+    // ---- a span's reinforcing: Reinforce becomes its call-off; the sapper lets go ----
+    // a clear 7x7 patch away from the town, a channel down its middle
+    let bx = 0, by = 0;
+    for (const [ox, oy] of [[9, 0], [-9, 0], [0, 9], [0, -9], [9, 9], [-9, -9], [12, 0], [-12, 0]]) {
+      const cx = t.x + ox, cy = t.y + oy; let ok = true;
+      for (let y = cy - 3; y <= cy + 3 && ok; y++) for (let x = cx - 3; x <= cx + 3; x++)
+        if (!MapGen.onBoard(x, y) || Bld.at(x, y)) { ok = false; break; }
+      if (ok) { bx = cx; by = cy; break; }
+    }
+    for (let y = by - 3; y <= by + 3; y++) for (let x = bx - 3; x <= bx + 3; x++) {
+      if (!MapGen.inB(x, y)) continue;
+      const i = MapGen.idx(x, y); S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    for (let y = by - 3; y <= by + 3; y++) S.map.terrain[MapGen.idx(bx, y)] = T.WATER;
+    Bld._block = null;
+    const camp = Bld.place('P', 'sapper', t.x - 4, t.y + 3, { free: true, instant: true }); if (camp && camp.construction) Bld.finish(camp); if (camp) camp.level = 3;
+    Bld.buildBridge('P', bx, by);
+    const br = Bld.bridgeAt(bx, by);
+    UI.selectBridge(bx, by);
+    const bu = q('[data-act="brup"]'), buAt = bu && rect(bu);
+    const bBefore = snapRes();
+    ck('theSpanWorksStart', !!br && Bld.orderBridgeUpgrade(br) === true, br ? '' : 'no bridge at ' + bx + ',' + by);
+    if (!br) return { res, fails };
+    const sap = Units.spawn('sapper', 'P', bx - 2, by); Units.assignTerraform(sap, bx, by, 'bridgeup');
+    UI.renderPanel();
+    const bc = q('[data-act="brcancel"]');
+    ck('reinforceBecomesTheCallOff', !q('[data-act="brup"]') && sameSlot(buAt, bc && rect(bc)), bc ? bc.textContent : 'no button');
+    await two(q('[data-act="brcancel"]'));
+    for (let i = 0; i < 5; i++) Units.update(0.1);
+    ck('twoTapsCallTheSpanOff', !(br.upgrading > 0) && (br.level || 1) === 1 && same(bBefore, snapRes()),
+      'net ' + JSON.stringify(diff(bBefore, snapRes())));
+    ck('andTheSapperLetsGo', !(sap.task && sap.task.job === 'bridgeup'), sap.task ? JSON.stringify(sap.task) : 'idle');
+  }
+
   return { res, fails };
 });
 await b.close();

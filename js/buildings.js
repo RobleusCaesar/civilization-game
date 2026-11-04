@@ -456,6 +456,27 @@ const Bld = {
     if (window.R && R.updateTile) R.updateTile(br.x, br.y);
     return true;
   },
+  /* A SPAN'S WORKS CAN BE CALLED OFF like any building's (operator,
+     2026-11-04: "roll that out to all buildings for all upgrades"): the
+     stone comes back in full, the span stays at the level it stood at, and
+     the sapper on it drops the job by itself — its revalidation asks
+     _bridgeWorks, which needs the clock running. */
+  bridgeUpRefund(br) {
+    if (!br || !(br.upgrading > 0)) return {};
+    const lv = CFG.BRIDGE.levels[(br.upTo || (br.level || 1) + 1) - 1];
+    const out = {}, cost = (lv && lv.cost) || {};
+    for (const k in cost) if (cost[k]) out[k] = cost[k];
+    return out;
+  },
+  cancelBridgeUpgrade(br) {
+    if (!br || br.owner !== 'P' || !(br.upgrading > 0)) return false;
+    const back = this.bridgeUpRefund(br);
+    for (const k in back) S.res[k] = (S.res[k] || 0) + back[k];
+    br.upgrading = 0; br.upTotal = 0; br.upTo = 0;
+    G.log(`Bridge works called off — ${this.costStr(back)} back, still Lv ${br.level || 1}`);
+    if (window.R && R.updateTile) R.updateTile(br.x, br.y);
+    return true;
+  },
   finishBridgeUpgrade(br) {
     br.level = br.upTo || (br.level + 1);
     br.upgrading = 0; br.upTotal = 0; br.upTo = 0;
@@ -2249,6 +2270,25 @@ const Bld = {
     tc.wallUpPaid = c.cost;                      // what the masons were paid (a card that finishes the works hands it back)
     G.noteAct();                                 // player-only: the hall's own panel
     G.log(`⚒ Masons set to work — every wall & gate reinforcing to Lv ${tc.wallUpTarget}. The Town Center is busy (${Math.ceil(days)}d).`);
+    return true;
+  },
+  /* THE MASONS CAN BE CALLED OFF TOO: what they were paid comes back
+     (tc.wallUpPaid; an older save that never kept the bill gets the list
+     price of the tier they were raising — S.wallLevel only moves at the
+     finish, so wallUpgradeCost still prices that very tier), every wall and
+     gate stays at the level it stands at, and the hall is free again. */
+  wallUpRefund(tc) {
+    if (!tc || !(tc.wallUp > 0)) return {};
+    const cost = tc.wallUpPaid || this.wallUpgradeCost(), out = {};
+    for (const k in cost) if (cost[k]) out[k] = cost[k];
+    return out;
+  },
+  cancelWallUpgrade(tc) {
+    if (!tc || tc.owner !== 'P' || !(tc.wallUp > 0)) return false;
+    const back = this.wallUpRefund(tc);
+    for (const k in back) S.res[k] = (S.res[k] || 0) + back[k];
+    tc.wallUp = 0; tc.wallUpTotal = 0; tc.wallUpTarget = 0; delete tc.wallUpPaid;
+    G.log(`Wall works called off — ${this.costStr(back)} back, walls stay Lv ${S.wallLevel || 1}`);
     return true;
   },
   // `byCard`: a tier a CARD raised (Enlightenment) — no feat scored, no line said
