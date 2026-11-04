@@ -1331,7 +1331,6 @@ const CFG = {
     sightMult: 2,
     preferBonus: 6,
     seekR: 9,          // how far out a raiding column's bows spot a manned tower and go for it
-    drawScale: 1,      // the figures on the platform: a man's full size, half of him over the rail
     fallS: 0.75,       // the fall from the platform to the ground
   },
 
