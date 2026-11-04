@@ -2545,35 +2545,31 @@ const UI = {
      slot the order came from: it says what is rising and how far it has
      got (a gold bar, the days left, ticked in place by refreshPanel through
      .cwLeft/.cwBar), and a tap calls the works off. The first tap arms
-     (UI.armConfirm); armed, the button takes the whole row to say what
-     comes back. ONE WRITER for every such button, so the four can never
-     drift apart. `half`: the slot shares its row (the hall's upgrade beside
-     Train Villager, a builder's Build, a Send builder). */
+     (UI.armConfirm) and the armed button keeps its slot, saying what comes
+     back — half a row like every action (TWO TO A ROW, index.html). ONE
+     WRITER for every such button, so the four can never drift apart. */
   worksButton(o) {
     const bar = o.frac == null ? '' :
       `<span class="cwTrack"><span class="cwBar" style="width:${Math.round(Math.max(0, Math.min(1, o.frac)) * 100)}%"></span></span>`;
     const left = o.left == null ? '' : `<span class="cwLeft">${o.left}d</span> left · `;
     return o.armed
-      ? `<button class="abtn danger wide" data-act="${o.act}"${o.attr || ''}>⚠️ Confirm — call off ${o.what}<small>${o.back} comes back · ${o.stays}</small></button>`
-      : `<button class="abtn works${o.half ? '' : ' wide'}" data-act="${o.act}"${o.attr || ''}>🛑 ${o.label}` +
-        `<small>${o.half ? left + 'all paid back' : (o.name ? o.name + ' — ' : '') + left + 'everything paid comes back'}</small>${bar}</button>`;
+      ? `<button class="abtn danger" data-act="${o.act}"${o.attr || ''}>⚠️ Confirm cancel<small>${o.back} back · ${o.stays}</small></button>`
+      : `<button class="abtn works" data-act="${o.act}"${o.attr || ''}>🛑 ${o.label}<small>${left}all paid back</small>${bar}</button>`;
   },
-  cancelWorkButton(b, half) {
+  cancelWorkButton(b) {
     const kind = Bld.cancelWork(b);
     if (!kind) return '';
-    const d = Bld.def(b.key), name = d.name, up = kind === 'upgrade';
+    const up = kind === 'upgrade';
     const rate = Units.buildRate(b);
     return this.worksButton({
-      act: 'cancelbuild', attr: ` data-bid="${b.id}"`, half, armed: this.confirmCancel === b.id,
+      act: 'cancelbuild', attr: ` data-bid="${b.id}"`, armed: this.confirmCancel === b.id,
       label: up ? `Cancel Lv ${b.level + 1}` : 'Cancel build',
-      name: up ? `${name} upgrading` : name,
       left: Math.ceil((up ? b.upgrading : b.construction) / rate),
       // a site carries no total of its own (its build time is the level's),
       // so the bar is the upgrade's alone
       frac: up ? 1 - b.upgrading / (b.upgTotal || b.upgrading) : null,
-      what: up ? `the ${name} upgrade` : `the ${name} site`,
       back: Bld.costStr(Bld.cancelRefund(b)),
-      stays: up ? `stays Lv ${b.level}` : 'nothing is left on the ground',
+      stays: up ? `stays Lv ${b.level}` : 'site cleared',
     });
   },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
@@ -2788,25 +2784,28 @@ const UI = {
            The call-off IS the order's own button (worksButton): a site's
            sits where the panel starts, an upgrade's in the Upgrade slot
            below — and a Send builder, when nobody is at the works, shares
-           its row half and half. */
+           its row. */
         const works = Bld.cancelWork(b);
-        const worksRow = half =>
+        // the yard's tool row is laid AFTER every action (the hall's Back to
+        // work and wall works included), so the buttons pack two to a row
+        let tools = '';
+        const worksRow = () =>
           (!worker ? `<button class="abtn" data-act="sendworker">👷 Send builder<small>needs an idle villager</small></button>` : '') +
-          this.cancelWorkButton(b, half || !worker);
-        if (works === 'site') html += worksRow(false);
+          this.cancelWorkButton(b);
+        if (works === 'site') html += worksRow();
         // not while the works stand: the crew is on the scaffold, and comes
         // back to the plot by itself at the finish (Bld.resumeCrew)
         if (!b.construction && !b.upgrading && d.needsWorker && Bld.workersAssigned(b) < Bld.maxWorkers(b))
           html += `<button class="abtn" data-act="staff">🧑‍🌾 Station worker<small>${Bld.workersAssigned(b)}/${Bld.maxWorkers(b)} assigned</small></button>`;
         if (!b.construction && !b.upgrading && b.hp < b.maxhp && !worker)
           html += `<button class="abtn" data-act="sendworker">🔨 Repair<small>a villager does the work</small></button>`;
-        if (works === 'upgrade') html += worksRow(b.key === 'tc');
+        if (works === 'upgrade') html += worksRow();
         else if (b.level < 3 && !b.construction && d.levels[b.level] && b.key !== 'wall' && b.key !== 'gate') {
           const up = Bld.canUpgrade(b);
           const cost = d.levels[b.level].cost;
-          // the TC's upgrade shares its row with Train Villager (the levy took
-          // the old slot) — every other building keeps the full-width button
-          html += `<button class="abtn ${b.key === 'tc' ? '' : 'wide '}${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
+          // half a row, first in the grid: the barracks reads Upgrade |
+          // Defender, then Axeman | Champion (TWO TO A ROW, index.html)
+          html += `<button class="abtn ${up.ok ? '' : 'cant'}" data-act="upgrade">⬆ Upgrade to Lv ${b.level + 1}<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
         if ((b.key === 'wall' || b.key === 'gate') && !b.construction && b.level < 3)
           html += `<span class="psub">Walls upgrade together — use the Town Center.</span>`;
@@ -2820,15 +2819,15 @@ const UI = {
         if (Bld.canGateToggle(b))
           html += b.level >= 3
             ? (b.raised
-              ? `<button class="abtn wide" data-act="drawbridge">⬇ Lower the drawbridge<small>the gate opens — your people pass again</small></button>`
-              : `<button class="abtn wide" data-act="drawbridge">⬆ Raise the drawbridge<small>shuts the gate fast — to your own people too</small></button>`)
+              ? `<button class="abtn" data-act="drawbridge">⬇ Lower the drawbridge<small>the gate opens — your people pass again</small></button>`
+              : `<button class="abtn" data-act="drawbridge">⬆ Raise the drawbridge<small>shuts the gate fast — to your own people too</small></button>`)
             : !Bld.gateLeaves(b)
               ? (b.raised
-                ? `<button class="abtn wide" data-act="drawbridge">⬆ Raise the portcullis<small>the gate opens — your people pass again</small></button>`
-                : `<button class="abtn wide" data-act="drawbridge">⬇ Drop the portcullis<small>shuts the gate fast — to your own people too</small></button>`)
+                ? `<button class="abtn" data-act="drawbridge">⬆ Raise the portcullis<small>the gate opens — your people pass again</small></button>`
+                : `<button class="abtn" data-act="drawbridge">⬇ Drop the portcullis<small>shuts the gate fast — to your own people too</small></button>`)
               : (b.raised
-                ? `<button class="abtn wide" data-act="drawbridge">🚪 Open the gates<small>the doors swing out — your people pass again</small></button>`
-                : `<button class="abtn wide" data-act="drawbridge">🚪 Close the gates<small>bars the door fast — to your own people too</small></button>`);
+                ? `<button class="abtn" data-act="drawbridge">🚪 Open the gates<small>the doors swing out — your people pass again</small></button>`
+                : `<button class="abtn" data-act="drawbridge">🚪 Close the gates<small>bars the door fast — to your own people too</small></button>`);
         if (d.train && !b.construction) {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
@@ -2858,12 +2857,12 @@ const UI = {
              and the ring once it is armed) and, at the hall, the call to the
              idle hands. They are housekeeping, not the building's actions,
              so they are not .abtn: the actions grid stays the actions. */
-          html += `<div class="ptools"><span class="psub" id="qLine">${this.queueLine(b)}</span>`;
+          tools = `<div class="ptools"><span class="psub" id="qLine">${this.queueLine(b)}</span>`;
           if (b.key === 'tc') {
             const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u) && !u.task && !u.tUnit).length;
-            if (idle) html += `<button class="pchip" data-act="callidle">📣 Call <span id="idleN">${idle}</span> idle</button>`;
+            if (idle) tools += `<button class="pchip" data-act="callidle">📣 Call <span id="idleN">${idle}</span> idle</button>`;
           }
-          html += `<button class="pchip${b.rally ? ' on' : ''}" data-act="rally">🚩 ${b.rally ? 'Move rally' : 'Set rally'}</button></div>`;
+          tools += `<button class="pchip${b.rally ? ' on' : ''}" data-act="rally">🚩 ${b.rally ? 'Move rally' : 'Set rally'}</button></div>`;
         }
         if (b.key === 'tc' && !b.construction) {
           /* THE HORN'S SECOND CALL (tests/muster-horn.mjs). Sounding it was
@@ -2887,12 +2886,12 @@ const UI = {
             });
           } else if ((S.wallLevel || 1) < 3 && Bld.forts().length) {
             const upw = Bld.canUpgradeWalls();
-            html += `<button class="abtn wide ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())} — every wall & gate</small></button>`;
+            html += `<button class="abtn ${upw.ok ? '' : 'cant'}" data-act="upwalls">🧱 Upgrade all walls to Lv ${(S.wallLevel || 1) + 1}<small>${Bld.costStr(Bld.wallUpgradeCost())} — every wall & gate</small></button>`;
           }
         }
         if (b.key === 'wall' && !b.construction && !b.upgrading) {
           const net = this.gateConvertCost(b);
-          html += `<button class="abtn wide ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
+          html += `<button class="abtn ${Bld.canAfford(net) ? '' : 'cant'}" data-act="togate">🚪 Build Gate<small>${Bld.costStr(net)} — replaces this section</small></button>`;
         }
         if (b.key === 'trade' && !b.construction && !b.upgrading) {
           const spec = Bld.tradeSpec(b), ic = r => Bld.resIcon(r);
@@ -2924,13 +2923,11 @@ const UI = {
                 `<small>${c.ok ? `back in ${spec.delay}d` : c.why}</small></button>`;
               payN++;
             }
-            // an odd pay option stays BUTTON-sized, left, with the half-row
-            // held by a spacer (the grid packer would otherwise stretch it
-            // panel-wide); Back then takes the row below to itself
-            if (payN % 2) html += '<span></span>';
+            // an odd pay option stays half a row and Back sits beside it
             html += `<button class="abtn" data-act="tradeback">← Pick something else</button>`;
           }
         }
+        html += tools;
       } else {
         html += `<span class="psub">Enemy structure — order defenders to attack it.</span>`;
       }
@@ -3125,7 +3122,7 @@ const UI = {
       } else if (own && lv < 3) {
         const cost = CFG.BRIDGE.levels[lv].cost, ok = Bld.canUpgradeBridge(br);
         const days = CFG.BRIDGE.levels[lv].time || 2;
-        html += `<button class="abtn wide ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
       }
       html += '</div>';
       panel.innerHTML = html;
@@ -3391,7 +3388,7 @@ const UI = {
            from right here — the same button the building's own panel shows,
            gone the moment there is nothing being raised. */
         const cw = this.villagerBuildSite(u);
-        if (cw) html += this.cancelWorkButton(cw, true);
+        if (cw) html += this.cancelWorkButton(cw);
       }
       // resource-station upgrade, right on the worker's panel
       const wb = own ? this.villagerResBld(u) : null;
@@ -3400,12 +3397,12 @@ const UI = {
         if (wb.upgrading > 0) {
           // the station's Upgrade button becomes its call-off — already
           // beside Build when this hand is one of the builders (cw === wb)
-          if (this.villagerBuildSite(u) !== wb) html += this.cancelWorkButton(wb, true);
+          if (this.villagerBuildSite(u) !== wb) html += this.cancelWorkButton(wb);
         } else if (wb.level >= 3) {
           html += `<button class="abtn cant" disabled>⭐ ${rn} — Max level</button>`;
         } else {
           const up = Bld.canUpgrade(wb), cost = CFG.BUILDINGS[wb.key].levels[wb.level].cost;
-          html += `<button class="abtn wide ${up.ok ? '' : 'cant'}" data-act="upres">⬆ Upgrade ${rn} to Lv ${wb.level + 1}` +
+          html += `<button class="abtn ${up.ok ? '' : 'cant'}" data-act="upres">⬆ Upgrade ${rn} to Lv ${wb.level + 1}` +
             `<small>${Bld.costStr(cost)}${up.ok ? '' : ' — ' + up.why}</small></button>`;
         }
       }
@@ -3434,7 +3431,7 @@ const UI = {
          surprise. */
       const soleArmy = own ? this.armyOfUnit(u) : 0;
       if (soleArmy)
-        html += `<button class="abtn wide" data-act="armyremove">🪖 Remove Army ${soleArmy}<small>the last of it — frees its banner</small></button>`;
+        html += `<button class="abtn" data-act="armyremove">🪖 Remove Army ${soleArmy}<small>the last of it — frees its banner</small></button>`;
       html += '</div>';
       panel.innerHTML = html;
       const ic = panel.querySelector('#pIcon');
@@ -3590,9 +3587,9 @@ const UI = {
        count to two, and stamp .wide on any button left alone in its row. It
        could only ever count to two, which is why the panel could only ever
        be two columns wide. The same rule now lives in the stylesheet as a
-       flex basis plus flex-grow, where the column count follows the
-       viewport and a lone button grows into its row on its own — so the
-       desktop can run four across (#panel .pactions, index.html). */
+       flex basis, where the column count follows the viewport — two to a
+       row on a phone, four on a desktop — and only a panel with ONE action
+       lets it fill the row (TWO TO A ROW, #panel .pactions, index.html). */
     panel.classList.toggle('show', !this.panelHidden);   // a tucked-away panel stays tucked
     document.getElementById('buildmenu').style.display = 'none';
     this.syncBottomToggle();   // non-villagers get a single ▾ minimize, not "🔨 Build"
