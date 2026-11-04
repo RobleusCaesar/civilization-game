@@ -36,11 +36,13 @@
    score would stand in the overall top ten raises its reward card a tier
    half the time, on the podium every time. The place is read off the board
    as last seen (peek) — the reward screen opens in the same task the run
-   ends, with no time to ask the cloud — so the board is looked at as a run
-   is entered and every few minutes of play. */
+   ends, with no time to ask the cloud — so the board is looked at a few
+   seconds after a run is entered and every few minutes of play, from a page
+   whose wins go on it (posts). */
 const WorldBoard = {
   LIMIT: 100,                 // the chiefs a board lists (board_top's own ceiling)
   PEEK_MS: 8 * 60 * 1000,     // how often a game in play looks at the board again
+  PEEK_AFTER_MS: 4000,        // …and the first look, this long after the world opens (never in the entry's own frames)
   CACHE_MS: 45 * 1000,        // a filter shown again within this is not asked again
   MODES: [['', 'All'], ['hard', 'Hard'], ['moderate', 'Moderate'], ['calm', 'Calm']],
   WHEN: [['0', 'All time'], ['7', 'This week']],
@@ -295,9 +297,16 @@ const WorldBoard = {
     if (!data || !Array.isArray(data.rows)) return;
     this._peek = { at: Date.now(), rows: data.rows, me: data.me || null, v2: !!data.v2 };
   },
+  /* only a page whose wins go on the board looks at it for them: the live
+     site, or a test's mock (a test build, ?dev= or a local server holds every
+     win, so its board would lift nothing — and nothing leaves it unasked) */
+  posts() {
+    const B = window.Backend;
+    return !!(B && B.isReady && B.isReady() && (B.mock || (B.telemetryAllowed && B.telemetryAllowed())));
+  },
   async peek() {
     const B = window.Backend;
-    if (!B || !B.isReady || !B.isReady() || this._peeking) return;
+    if (!this.posts() || this._peeking) return;
     this._peeking = true;
     try {
       const r = await B.board({ limit: this.LIMIT });
@@ -307,7 +316,8 @@ const WorldBoard = {
   },
   // look at the board while a game is played — on entry, then every few minutes
   watch() {
-    this.peek();
+    clearTimeout(this._peekT);
+    this._peekT = setTimeout(() => this.peek(), this.PEEK_AFTER_MS);
     if (this._watchT) return;
     this._watchT = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;

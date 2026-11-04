@@ -976,8 +976,10 @@ that win (0008), so no lift is ever refused and NO MIGRATION GATES IT (Calm
 stops at Imperial; a pity Enlightenment is untouched). The place is read off
 the board AS LAST SEEN (`WorldBoard.placeFor`: 1 + other chiefs above), since
 the reward screen settles in the very task the run ends — `WorldBoard.watch`
-looks at the board on entering a game and every `PEEK_MS` (8 min) of visible
-play. A held win (test deck, test build, assisted without the mark) stands
+looks at the board `PEEK_AFTER_MS` (4 s) after a game is entered (never in
+the entry's own frames) and every `PEEK_MS` (8 min) of visible play, and only
+from a page whose wins post (`WorldBoard.posts`: the site, or a test's mock —
+telemetry.mjs's off-site check counts every fetch). A held win (test deck, test build, assisted without the mark) stands
 nowhere and lifts nothing. A lifted card wears `lift: true` in the run's
 ledger and "▲ Board #N" on the reward screen's plate, and `card_granted`
 telemetry carries `place` and `lift`. The nationality picker the operator
