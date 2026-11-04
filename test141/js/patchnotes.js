@@ -19,7 +19,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 140, date: '2026-11-04', title: 'Build your own roads',
+    build: 141, date: '2026-11-04', title: 'Build your own roads',
     items: [
       'A new Road sits beside the House in the build menu: drag across the ground and a villager lays it, quickly, for 10 wood and 5 stone a stretch.',
       'Your villagers and soldiers walk faster on a road and keep to the roads when they can.',
@@ -30,6 +30,7 @@ const PATCH_NOTES = [
       'While something is being built or upgraded, its Upgrade button turns into Cancel and shows how far along the work is. That goes for every building, the wall works and bridge works too, and calling it off gives back everything you paid.',
       'Every panel now lays its buttons out two to a row, with no long buttons, so a Barracks fits Upgrade and its three soldiers in two rows.',
       'Every gate now has a road running through it and a little way out either side, so a road you lay up to a gate carries on through it. It is always your own road, worn track, earth road or paved, whatever level your Town Center has reached.',
+      'The bar of earth across the foot of the wooden gateway is gone, so villagers walking through a gate no longer look cut off at the knees.',
     ],
   },
   {
