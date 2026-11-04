@@ -892,9 +892,10 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     }
     CFG.W = CFG.H = CFG.SIZES[S.sizeKey];
     out.peek = { n, agree, tiles };
-    // a STILL world behind a shell screen is drawn once a second (the load
-    // screen here: the new-game screen and the draft stand on the night,
-    // where the world is not drawn at all — tests/draft-cards.mjs)
+    // a STILL world behind a shell screen is drawn once a second (the save
+    // screen from the pause menu here: the new-game screen, the draft and the
+    // Load page from the title stand on the night, where the world is not
+    // drawn at all — tests/draft-cards.mjs, tests/pages.mjs)
     R.ensureTerrain();
     // the world is entered by nobody here: the ground prefetch (PX-20) is for a
     // world being founded or entered, never one held behind another screen
@@ -902,6 +903,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     let prefetch = 0;
     const pf = window.TerrainX && TerrainX.prefetch;
     if (pf) TerrainX.prefetch = function () { prefetch++; return pf.apply(this, arguments); };
+    Screens.backTo = 'paused';
     Screens.show('load');
     const draw = R.draw; let still = 0, moving = 0, which = 'still';
     R.draw = function () { if (which === 'still') still++; else moving++; return draw.apply(this, arguments); };
