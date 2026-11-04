@@ -193,7 +193,7 @@ const Screens = {
      nothing, and the world under it is not drawn at all (G.frame asks
      nightUp), which leaves the thread to the cards. A painting that 404s
      stands down: the world shows through as it always did. */
-  nightBehind(name) { return name === 'newgame' || name === 'draft'; },
+  nightBehind(name) { return name === 'newgame' || name === 'draft' || name === 'leaders'; },
   wearNight() {
     if (this._night !== undefined) return this._night;
     this._night = null;
@@ -633,6 +633,9 @@ const Screens = {
     document.getElementById('btnPause').textContent = '⏸';
     this.show('playing');
     this.unsay();   // nothing the shell said follows the player into the game
+    // the world board is looked at while the game is played: a win reads
+    // where it stands from it, the moment it ends (WorldBoard.placeFor)
+    if (!this._demo && window.WorldBoard && WorldBoard.watch) { try { WorldBoard.watch(); } catch (e) {} }
     /* A WORLD OPENED FROM A SAVE SAYS WHERE YOU ARE (PX-21a): one note, once,
        on arriving (the flag is the opening's — a Resume from the pause menu
        says nothing). It takes over the crash net's "Recovered your last
@@ -1829,7 +1832,7 @@ const Screens = {
        the card system's reward screen holds it (boardHold) — whatever the
        switch says now: the cards were played, and that is a fact of the run. */
     const bh = this.boardHold(true);
-    this._entry = bh.hold ? null : { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: bh.played };
+    this._entry = bh.hold ? null : { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: bh.played, origin: this.runOrigin() };
     this._submitted = false;
     this._leaveWarned = false;
     this._winMsg = opts.msg || '';
@@ -1954,7 +1957,15 @@ const Screens = {
   boardHold(win) {
     const P = typeof S !== 'undefined' && S && S.deck && Array.isArray(S.deck.played) ? S.deck.played : [];
     const played = P.filter(x => x && (!window.Deck || !Deck.card || Deck.card(x.id))).length;
-    if (!win || !played) return { hold: '', played };
+    if (!win) return { hold: '', played };
+    /* A TEST BUILD POSTS NOTHING (CLAUDE.md, "THE TEST BUILD"): its games
+       are not the players', so its wins stay off the world board — the
+       telemetry rule, Backend.telemetryAllowed (a test's mock is exempt; a
+       page from disk has no cloud to post to anyway) */
+    const B = window.Backend;
+    if (B && B.configured && !B.mock && B.telemetryAllowed && !B.telemetryAllowed())
+      return { hold: 'A test build — this win is not posted to the world board.', played };
+    if (!played) return { hold: '', played };
     const hold = window.Deck && Deck.isTest && Deck.isTest() ? 'Test-deck run — not posted to the world board.'
       : !(window.Backend && Backend.BOARD_MARKS_CARDS) ? 'Not posted to the world board — it cannot wear the card mark yet.' : '';
     return { hold, played };
@@ -2061,16 +2072,25 @@ const Screens = {
     this._note(`✓ On the board as ${chk.name.toUpperCase()} — safe to leave`);
     if (opts.fallback)
       UI.toast(`On the board as ${chk.name.toUpperCase()} — name your chief next time to choose your own`, false, 4200);
-    const top = await Backend.topScores(10);
+    const top = await (Backend.board ? Backend.board({ limit: 50 }) : Backend.topScores(50).then(r => r.ok ? { ok: true, data: { rows: r.data } } : r));
     if (top.ok) {
-      const mine = top.data.findIndex(r =>
-        r.name === chk.name && r.score === entry.score);
+      const rows = top.data.rows || [], v2 = !!top.data.v2, me = top.data.me;
+      // the board has moved: the world board shows it fresh, and the card's lift reads it next time
+      if (window.WorldBoard && WorldBoard._keep) { WorldBoard._keep(top.data); WorldBoard._cache.clear(); }
+      /* WHERE THIS RUN STANDS (one row per chief now): 1 + the OTHER chiefs
+         whose best beats it — the chief's own better win never pushes this
+         one down. Said only when the list reaches that far. */
+      const own = r => r.mine || (!v2 && r.name === chk.name);
+      const place = 1 + rows.filter(r => !own(r) && (+r.score || 0) > entry.score).length;
+      const known = place <= rows.length || rows.length < 50;
+      const mine = rows.findIndex(own);
       // stay compact: top three, plus your row wherever it landed
-      const rows = top.data.slice(0, 3);
+      const shown = rows.slice(0, 3);
       let meIdx = mine >= 0 && mine < 3 ? mine : -1;
-      if (mine >= 3) { rows.push(top.data[mine]); meIdx = rows.length - 1; }
-      this.renderBoard(rows, this.el('endBoard'), meIdx, mine >= 3 ? mine + 1 : 0);
-      const rankText = mine === 0 ? '★ NEW HIGH SCORE ★' : mine > 0 ? `★ GLOBAL RANK #${mine + 1} ★` : '';
+      if (mine >= 3) { shown.push(rows[mine]); meIdx = shown.length - 1; }
+      this.renderBoard(shown, this.el('endBoard'), meIdx, mine >= 3 ? (rows[mine].rank || mine + 1) : 0);
+      const best = !(me && me.score > entry.score) && !rows.some(r => own(r) && r.score > entry.score);
+      const rankText = !known ? '' : place === 1 && best ? '★ NEW HIGH SCORE ★' : `★ GLOBAL RANK #${place} ★`;
       if (rankText) {
         this.el('hsBanner').textContent = rankText; this.el('hsBanner').style.display = 'block';
         // ...and the blinking rank lands on the celebration screen too
@@ -2086,13 +2106,15 @@ const Screens = {
     if (!rows.length) { into.innerHTML = '<p class="hint">No chiefs on the board yet — be the first.</p>'; return; }
     into.innerHTML = rows.map((r, i) =>
       `<div class="ldr${i === 0 ? ' top1' : ''}${i === meIdx ? ' me' : ''}">
-         <span class="rank">${i === 0 ? '👑' : '#' + (lastRank && i === rows.length - 1 ? lastRank : i + 1)}</span>
+         <span class="rank">${(r.rank || i + 1) === 1 ? '👑' : '#' + (lastRank && i === rows.length - 1 ? lastRank : (r.rank || i + 1))}</span>
          <span class="nm">${this.esc(r.name)}</span>
          <span class="pts">${(r.score || 0).toLocaleString()}</span>
          <span class="md">${this.MODE_ICON[r.mode] || ''}</span>
        </div>`).join('');
   },
   async onLeaders() {
+    // the world board, dressed (js/board.js); a cached older board.js-less page paints the plain rows below
+    if (window.WorldBoard && WorldBoard.onShow && WorldBoard.onShow()) return;
     const box = this.el('ldrList');
     box.innerHTML = '<p class="hint">Fetching…</p>';
     if (!window.Backend || !Backend.isReady()) {
@@ -2107,6 +2129,12 @@ const Screens = {
   },
 
   esc(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; },
+  // the origin card the run was founded with (the draft's key), for the board's row
+  runOrigin() {
+    const d = typeof S !== 'undefined' && S && S.draft;
+    const h = d && d.done && Array.isArray(d.hand) && d.pickI != null ? d.hand[d.pickI] : null;
+    return h && typeof h.key === 'string' ? h.key : null;
+  },
 
   /* ---------------- wiring ---------------- */
   bind() {

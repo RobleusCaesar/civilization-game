@@ -140,6 +140,18 @@ const DeckScreens = {
     const rep = Deck.report(win, S.over.cause);
     // back from the board or the collection: the screen is exactly as it was left
     if (opts.back && this._view && this._view.key === rep.key && document.getElementById('cardEnd')) return true;
+    /* WHERE THE WIN STANDS ON THE WORLD BOARD (CFG.CARDS.BOARD): its card
+       may rise a tier for it — read off the board as last seen, since this
+       runs in the very task the run ended (WorldBoard.placeFor). A win held
+       off the board (a test deck, a test build, an assisted win the board
+       cannot mark yet) stands nowhere. */
+    if (win && !rep.place) {
+      try {
+        const held = Screens.boardHold ? Screens.boardHold(true).hold : 'held';
+        const B = window.Backend;
+        if (!held && B && B.configured && window.WorldBoard && WorldBoard.placeFor) rep.place = WorldBoard.placeFor(rep.score);
+      } catch (e) { /* a lift is a nicety: never the reason an ending fails */ }
+    }
     const res = Deck.settle(rep);
     // a card the catalog no longer carries (an older run's grant) never reaches a renderer
     const cards = (res.ok ? res.cards : []).filter(c => c && Deck.card(c.id));
@@ -148,7 +160,7 @@ const DeckScreens = {
     this._runs[rep.key] = claimed;
     const sc = Score.compute(win);
     this._view = {
-      key: rep.key, win, cause: rep.cause, cards, claimed, shown: claimed,
+      key: rep.key, win, cause: rep.cause, cards, claimed, shown: claimed, place: rep.place || null,
       ok: !!res.ok, why: res.why || '', score: sc.total, cw: this._cardW(),
       // a defeat that fell short shows how far it got (Deck.eligible): the
       // row of pips counts whatever is missing — the deeds, else the days
@@ -210,7 +222,8 @@ const DeckScreens = {
     // then an assisted win is held — the safe way round)
     const { hold, played } = Screens.boardHold ? Screens.boardHold(win)
       : { hold: win && this._playedN() ? 'Not posted to the world board — it cannot wear the card mark yet.' : '', played: this._playedN() };
-    Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played } : null;
+    Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played,
+      origin: Screens.runOrigin ? Screens.runOrigin() : null } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
     if (win) Screens._winMsg = msg || '';
@@ -497,7 +510,9 @@ const DeckScreens = {
     if (c) {
       const t = Deck.tier(c.tier);
       plate.style.setProperty('--tc', t.col);
-      kick.innerHTML = `<span>${c.bonus ? 'Bonus card' : 'Reward card'}</span><em>${this.esc(t.name)}</em>`;
+      // a card the world board raised says so, with the place that raised it
+      const lift = c.lift ? `<i class="ceLift" title="Raised a tier by your place on the world board">▲ Board${v.place ? ' #' + v.place : ''}</i>` : '';
+      kick.innerHTML = `<span>${c.bonus ? 'Bonus card' : 'Reward card'}</span>${lift}<em>${this.esc(t.name)}</em>`;
       name.textContent = Deck.card(c.id).name;
     } else if (v.cards.length) {
       plate.style.removeProperty('--tc');
@@ -1692,6 +1707,8 @@ DeckScreens.CSS = `
 #cardEnd .cePlate small > * { white-space: nowrap; }
 #cardEnd.ceLoss .cePlate small { color: #9aa6b8; }
 #cardEnd .cePlate small em { font-style: normal; color: var(--tc, #c9a75c); }
+#cardEnd .cePlate small .ceLift { font-style: normal; padding: 2px 5px 1px; color: #2b1906; letter-spacing: 1px; text-shadow: none;
+  background: linear-gradient(#f6d77a, #c8942f); box-shadow: inset 0 0 0 1px #fff0b8, 0 1px 0 rgba(0,0,0,0.6); border-radius: 2px; }
 #cardEnd .cePlate small em::before { content: ''; display: inline-block; width: 4px; height: 4px; margin: 0 8px 2px 0; background: currentColor; transform: rotate(45deg); }
 #cardEnd .cePlate b { display: block; margin-top: 3px; font-size: clamp(16px, 5.4vw, 21px); font-weight: 700; letter-spacing: 2px; line-height: 1.15;
   text-transform: uppercase; color: var(--ink); text-shadow: 0 2px 0 rgba(0,0,0,0.85); }

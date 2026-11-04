@@ -281,6 +281,83 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
     `told ${res}; again ${JSON.stringify(told2.notes)}; a stranger ${(stranger.error || '').split('\n')[0]}`);
 }
 
+/* ============ 1d. THE WORLD BOARD (0014), on the real doors ============
+   The operator, 2026-11-04: "make a bigger deal out of the top 3 players,
+   then list everyone beneath them … the analytics page allows me to
+   whitelist my IP … Please do that for the leaderboard too." board_top is
+   the board the game shows: one row per chief, the devices the dashboard
+   leaves out left off (marked yours, a test-deck device, one seen on a
+   network marked yours), and the caller told where their own best stands.
+   submit_score carries the run's origin card and its card count, and there
+   is ONE of it — an overload makes PostgREST answer 300 to every post. Its
+   own database, like 1b. */
+{
+  const F14 = '0014_world_board.sql';
+  const twice = files.includes(F14) ? sql(readFileSync(join(MIG, F14), 'utf8')) : { error: F14 + ' is missing' };
+  ck('theBoardFileTwiceChangesNothing', !twice.error, twice.error ? twice.error.split('\n')[0] : 'applied a second time cleanly');
+  make('cf_no10');
+  for (const f of files.filter(f => f < '0010')) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_no10' });
+  const no10 = sql(readFileSync(join(MIG, F14), 'utf8'), { db: 'cf_no10' });
+  ck('andItRefusesWithoutTheDashboardsList', !!no10.error && /0010/.test(no10.error), no10.error ? no10.error.split('\n').find(l => /0010/.test(l)) || no10.error.split('\n')[0] : 'it applied');
+  make('cf_board');
+  for (const f of files) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_board' });
+  const B = n => '00000000-0000-0000-0000-0000000003' + String(n).padStart(2, '0');
+  const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+  sql(`insert into auth.users (id) values ${ids.map(n => `('${B(n)}')`).join(', ')};
+       insert into public.profiles (id) select id from auth.users on conflict do nothing;`, { db: 'cf_board' });
+  const as = (role, uid, q) => json(`set role ${role};${uid ? ` set request.jwt.claim.sub = '${uid}';` : ''} ${q}`, { db: 'cf_board' });
+  const post = (n, name, score, mode, extra) => {
+    const a = Object.assign({ p_name: name, p_score: score, p_mode: mode, p_day: 90, p_map_seed: name + score, p_game_version: '1' }, extra || {});
+    return sql(`set role authenticated; set request.jwt.claim.sub = '${B(n)}';
+      select public.submit_score(${Object.entries(a).map(([k, v]) => k + ' => ' + lit(v)).join(', ')});`, { db: 'cf_board' });
+  };
+  const overloads = +sql(`select count(*) from pg_proc where proname = 'submit_score';`, { db: 'cf_board' }).out;
+  // a game from before this file posts the six names it always sent
+  const old = post(1, 'RIDGE', 9000, 'hard');
+  const more = [post(1, 'RIDGE', 14000, 'hard', { p_origin: 'warlord', p_cards_played: 0 }), post(1, 'RIDGE', 7000, 'moderate'),
+    post(2, 'ASH', 12000, 'moderate', { p_origin: 'caravan_master', p_cards_played: 2 }),
+    post(3, 'FERN', 12000, 'hard', { p_origin: 'Bad Origin!', p_cards_played: 5000 }),
+    post(4, 'MOSS', 3000, 'calm'),
+    post(5, 'OPS', 30000, 'hard'), post(6, 'TESTR', 29000, 'hard'), post(7, 'HOME', 28000, 'hard'),
+    post(8, 'OLDY', 20000, 'hard')];
+  const bad = more.find(r => r.error);
+  ck('oneDoorPostsAndAGameFromBeforeItStillDoes', overloads === 1 && !old.error && !bad,
+    `${overloads} submit_score function(s); the six-name post ${old.error ? old.error.split('\n')[0] : 'landed'}; ${bad ? bad.error.split('\n')[0] : 'every post landed'}`);
+  const row = (name, score) => sql(`select coalesce(origin, '-') || '|' || coalesce(cards_played::text, '-') from public.leaderboard where name = ${lit(name)} and score = ${score};`, { db: 'cf_board' }).out;
+  ck('theRowCarriesTheOriginAndTheCardMark', row('RIDGE', 14000) === 'warlord|0' && row('ASH', 12000) === 'caravan_master|2' &&
+    row('FERN', 12000) === '-|-' && row('RIDGE', 9000) === '-|-',
+    `warlord ${row('RIDGE', 14000)}, assisted ${row('ASH', 12000)}, a bad origin and count left off: ${row('FERN', 12000)}, a six-name post ${row('RIDGE', 9000)}`);
+  // the devices the dashboard leaves out: one marked yours, one that held the test deck, one seen on a network marked yours
+  sql(`insert into public.analytics_excluded (user_id, label) values ('${B(5)}', 'my phone');
+       insert into public.telemetry (user_id, run_id, kind, props) values ('${B(6)}', 'r6', 'run_end', '{"cards_test": true}');
+       set request.headers = '{"x-real-ip": "203.0.113.9"}';
+       insert into public.telemetry (user_id, run_id, kind, props) values ('${B(7)}', 'r7', 'session', '{}');
+       reset request.headers;
+       insert into public.analytics_excluded_nets (net, label) select net, 'home' from public.telemetry where user_id = '${B(7)}' and net is not null;
+       update public.leaderboard set created_at = now() - interval '30 days' where name = 'OLDY';`, { db: 'cf_board' });
+  // FERN posted after ASH at the same score: the earlier one ranks higher
+  const all = as('authenticated', B(2), 'select public.board_top(50);');
+  const names = (all.rows || []).map(r => r.name + '#' + r.rank).join(' ');
+  const ridge = (all.rows || []).find(r => r.name === 'RIDGE') || {};
+  ck('oneRowPerChiefTheirBestRankedOnTheirScore', all.ok === true && names === 'OLDY#1 RIDGE#2 ASH#3 FERN#4 MOSS#5' && ridge.score === 14000 &&
+    ridge.wins === 3 && ridge.origin === 'warlord' && all.players === 5, `${names}; RIDGE ${JSON.stringify(ridge)}; ${all.players} chiefs`);
+  ck('yourOwnPlayIsLeftOffTheBoard', !/OPS|TESTR|HOME/.test(names), 'the board: ' + names);
+  const mine = (all.rows || []).filter(r => r.mine).map(r => r.name).join(',');
+  const ops = as('authenticated', B(5), 'select public.board_top(50);'), anon = as('anon', null, 'select public.board_top(3);');
+  ck('andTheCallerIsToldWhereTheirBestStands', mine === 'ASH' && all.me && all.me.rank === 3 && all.me.hidden === false &&
+    ops.me && ops.me.rank === null && ops.me.hidden === true && ops.me.score === 30000 && !ops.rows.some(r => r.mine) &&
+    anon.ok === true && anon.me === null && anon.rows.length === 3 && anon.players === 5,
+    `ASH's own row ${mine}, its best ${JSON.stringify(all.me)}; the operator's ${JSON.stringify(ops.me)}; a stranger sees ${anon.rows && anon.rows.length} rows of ${anon.players}, me ${JSON.stringify(anon.me)}`);
+  const hard = as('anon', null, `select public.board_top(50, 'hard');`), week = as('anon', null, 'select public.board_top(50, null, 7);');
+  const ln = r => (r.rows || []).map(x => x.name + '#' + x.rank + (x.wins !== 1 ? 'x' + x.wins : '')).join(' ');
+  ck('aBoardForEachDifficultyAndForTheWeek', ln(hard) === 'OLDY#1 RIDGE#2x2 FERN#3' && ln(week) === 'RIDGE#1x3 ASH#2 FERN#3 MOSS#4',
+    `Hard: ${ln(hard)}; this week: ${ln(week)}`);
+  const anonPost = sql(`set role anon; select public.submit_score(p_name => 'X', p_score => 1, p_mode => 'calm');`, { db: 'cf_board' });
+  const peek = as('anon', null, 'select public.analytics__hidden();');
+  ck('theBoardIsPublicThePostAndTheListAreNot', all.ok === true && anon.ok === true && !!anonPost.error && /permission denied/.test(anonPost.error) && !!peek.error,
+    `a stranger posting: ${(anonPost.error || 'allowed').split('\n')[0]}; reading the list: ${(peek.error || 'allowed').split('\n')[0]}`);
+}
+
 /* ================= the fixture ================= */
 const PASS = 'a long test passphrase';
 const TOKEN = createHash('sha256').update('clanfire-analytics-v1:' + PASS).digest('hex');

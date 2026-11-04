@@ -494,6 +494,21 @@ const Deck = {
     for (let i = w.length - 1; i >= 0; i--) if (w[i] > 0) return this.TIERS[i].k;
     return 'stone';
   },
+  /* THE BOARD LIFTS THE CARD (CFG.CARDS.BOARD): a win placed in the world
+     board's top ten rises a tier half the time, on the podium always —
+     capped at the highest tier its own table can roll (the server's
+     ceiling for that win, 0008), so a lifted card is never refused. The
+     chance is drawn from the drop's own rng, never the run's. */
+  lift(tier, rep, rng) {
+    const B = CFG.CARDS.BOARD, p = rep && +rep.place;
+    if (!B || B.ON === false || !rep || !rep.win || !(p >= 1) || p > B.TOP) return tier;
+    if (p > B.PODIUM && (rng || Math.random)() >= B.LIFT) return tier;
+    const w = this.table(rep), ks = this.TIERS.map(t => t.k);
+    let top = -1;
+    for (let i = 0; i < w.length; i++) if (w[i] > 0) top = i;
+    const at = ks.indexOf(tier);
+    return at >= 0 && at < top ? ks[at + 1] : tier;
+  },
   rollCard(tier, rng) {
     const pool = this.ofTier(tier);
     return pool[Math.min(pool.length - 1, Math.floor((rng || Math.random)() * pool.length))].id;
@@ -524,15 +539,22 @@ const Deck = {
     // deck is held — the record's count, and the one the server re-derives
     const pity = real ? real.pity : col.pity;
     for (let i = 0; i < (great ? 2 : 1); i++) {
-      let tier;
+      let tier, lift = false;
       if (i === 0 && rep.win && pity >= CFG.CARDS.PITY) { tier = 'enlight'; forced = true; }
-      else tier = this.rollTier(w, rng);
-      cards.push({ id: this.rollCard(tier, rng), tier, bonus: i > 0 });
+      else {
+        tier = this.rollTier(w, rng);
+        const up = this.lift(tier, rep, rng);
+        lift = up !== tier;
+        tier = up;
+      }
+      const c = { id: this.rollCard(tier, rng), tier, bonus: i > 0 };
+      if (lift) c.lift = true;
+      cards.push(c);
     }
     for (const c of cards) this._add(c.id, 1);
     if (cards.some(c => c.tier === 'enlight')) col.pity = 0;
     else if (rep.win) col.pity++;
-    col.runs[rep.key] = cards.map(c => ({ id: c.id, tier: c.tier, bonus: c.bonus }));
+    col.runs[rep.key] = cards.map(c => c.lift ? { id: c.id, tier: c.tier, bonus: c.bonus, lift: true } : { id: c.id, tier: c.tier, bonus: c.bonus });
     // the cause and the deeds ride the op, so the server can re-run the earn
     // rule (Deck.eligible) on the grant itself as well as on the run's row
     const op = { op: 'grant', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', mode: rep.mode,
@@ -540,8 +562,9 @@ const Deck = {
     this._queue(op);
     if (real) this._stashGrant(real, rep, cards, op);
     this.saveCol();
-    for (const c of cards) this.track('card_granted', { card: c.id, tier: c.tier, outcome: rep.win ? 'win' : 'loss', difficulty: rep.mode, bonus: c.bonus, run: rep.runId });
-    return { ok: true, cards, great, pity: forced };
+    for (const c of cards) this.track('card_granted', { card: c.id, tier: c.tier, outcome: rep.win ? 'win' : 'loss', difficulty: rep.mode, bonus: c.bonus, run: rep.runId,
+      ...(rep.place ? { place: rep.place | 0, lift: !!c.lift } : {}) });
+    return { ok: true, cards, great, pity: forced, place: rep.place || null };
   },
   /* EARNED IS EARNED (tests/deck-core.mjs — the playtest's test-link slice).
      ?cards=all's toy deck outlives the link on purpose (a phone relaunched

@@ -200,11 +200,53 @@ const Backend = {
   },
 
   /* ---------------- arcade leaderboard ---------------- */
-  async topScores(limit) {
+  /* THE WORLD BOARD (migration 0014, tests/world-board.mjs): board_top is
+     the board as the game shows it — one row per chief, their best, the
+     devices the dashboard leaves out left off — and its first answer is how
+     the game learns 0014 is in: from then on a post carries the run's origin
+     card and its card count, and a card-assisted win goes up WEARING the
+     mark instead of being held off (BOARD_MARKS_CARDS, Screens.boardHold).
+     Until then (the function a 404) the table is read as it always was and
+     kept to one row per chief by NAME. Only an answer that is ours counts:
+     a test mock that never heard of board_top answers {ok, data: null}, and
+     believing it would flip the switch on nothing. */
+  boardV2: null,              // null: not asked yet · true: 0014 answers · false: the function is missing
+  BOARD_MARKS_CARDS: false,   // the board can wear the card mark (0014's p_cards_played)
+  async board(opts) {
     if (!this.isReady()) return this._err('not_ready', 'Not signed in');
-    const r = await this._rest('GET', '/leaderboard?select=name,score,mode,day,created_at' +
-      '&order=score.desc&limit=' + (limit || 10));
-    return r.ok ? { ok: true, data: r.data } : r;
+    opts = opts || {};
+    const lim = Math.max(1, Math.min(100, opts.limit || 50));
+    if (this.boardV2 !== false) {
+      const r = await this._rest('POST', '/rpc/board_top', { p_limit: lim, p_mode: opts.mode || null, p_days: opts.days || null });
+      const d = r.ok && r.data;
+      if (d && d.ok === true && Array.isArray(d.rows)) {
+        this.boardV2 = true;
+        this.BOARD_MARKS_CARDS = true;
+        return { ok: true, data: { rows: d.rows, me: d.me || null, players: +d.players || d.rows.length, v2: true } };
+      }
+      if (!r.ok && !(r.error && (r.error.code === 404 || /PGRST202|could not find the function/i.test(r.error.message || '')))) return r;
+      if (!r.ok) this.boardV2 = false;
+    }
+    let q = '/leaderboard?select=name,score,mode,day,created_at&order=score.desc&limit=' + Math.min(400, lim * 6);
+    if (opts.mode) q += '&mode=eq.' + encodeURIComponent(opts.mode);
+    if (opts.days) q += '&created_at=gt.' + encodeURIComponent(new Date(Date.now() - opts.days * 864e5).toISOString());
+    const r = await this._rest('GET', q);
+    if (!r.ok) return r;
+    // one row per chief, by name (the table never says who posted it)
+    const seen = new Map(), rows = [];
+    for (const x of (Array.isArray(r.data) ? r.data : [])) {
+      const k = String(x.name || '').toUpperCase();
+      if (seen.has(k)) { seen.get(k).wins++; continue; }
+      const row = { rank: rows.length + 1, name: x.name, score: x.score, mode: x.mode, day: x.day, at: x.created_at, origin: null, cards: null, wins: 1, mine: false };
+      seen.set(k, row);
+      rows.push(row);
+    }
+    return { ok: true, data: { rows: rows.slice(0, lim), me: null, players: rows.length, v2: false } };
+  },
+  // the top `limit` rows, as the old screens read them (the end scene's mini board)
+  async topScores(limit) {
+    const r = await this.board({ limit: limit || 10 });
+    return r.ok ? { ok: true, data: r.data.rows, me: r.data.me, v2: r.data.v2 } : r;
   },
 
   // one victory → one row; the arcade name also lands on the profile so the
@@ -218,14 +260,22 @@ const Backend = {
     // Postgres function): it forces user_id = auth.uid() server-side and rejects
     // implausible / duplicate / spammed scores. Direct INSERT on the leaderboard
     // table is revoked, so this RPC is the sole write path.
-    const r = await this._rest('POST', '/rpc/submit_score', {
+    const args = {
       p_name: nm,
       p_score: Math.max(0, Math.min(1000000, Math.round(entry.score || 0))),
       p_mode: entry.mode || 'moderate',
       p_day: entry.day || null,
       p_map_seed: entry.seed || null,
       p_game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1),
-    }, null, { keepalive: !!opts.keepalive });
+    };
+    /* PostgREST resolves a function by its parameter NAMES: the two 0014
+       added are sent only once board_top has answered, or a project without
+       0014 would answer every post with a 404 */
+    if (this.boardV2 === true) {
+      args.p_origin = entry.origin || null;
+      args.p_cards_played = entry.cards_played != null ? Math.max(0, entry.cards_played | 0) : null;
+    }
+    const r = await this._rest('POST', '/rpc/submit_score', args, null, { keepalive: !!opts.keepalive });
     if (!r.ok) return r;
     // remember:false is the stand-in name a win goes up under when the chief
     // never gave one — that must not become their name for the next victory

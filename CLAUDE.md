@@ -289,6 +289,7 @@ node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothin
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
+node tests/world-board.mjs   # the world board: a podium for the top three and everyone beneath, one row per chief, a filter for each difficulty and the week, your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 ```
 
 **THE ROAD BUILDER** (`js/roads.js`, `CFG.ROADS`, `CFG.BUILDINGS.road`, tests/roads.mjs —
@@ -864,10 +865,10 @@ it may never conjure one (`noCardPlayIsADeed`). **"No way back"'s Resign is a
 DEFEAT** (cause `'doomed'`), never a struck banner — accepting the truth must
 not cost the card — and the rival's Wonder ends as `'rival_wonder'` (a NULL
 cause fails every server `NOT IN`). **A card-assisted run is marked** (end
-screen, `cards_played` / `cards_test`), and since `submit_score` cannot carry
-the mark yet, an assisted win is held OFF the world board until
-`Backend.BOARD_MARKS_CARDS` is set by whoever ships the parameter; a test
-deck's never posts. **The hold is ONE answer, `Screens.boardHold(win)`**,
+screen, `cards_played` / `cards_test`), and an assisted win is held OFF the
+world board until `Backend.BOARD_MARKS_CARDS` — which board_top's first
+answer sets, since migration 0014 gave `submit_score` its `p_cards_played`
+(**THE WORLD BOARD** below); a test deck's never posts. **The hold is ONE answer, `Screens.boardHold(win)`**,
 asked by the old victory scene and `DeckScreens._armBoard` alike, read off
 `S.deck.played`, NEVER the switch — a run that played cards and ended with
 `?cards=0` was still assisted (board-post
@@ -926,6 +927,62 @@ save be won six times for six cards. The server re-checks the row's
 card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
 false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
+
+**THE WORLD BOARD** (`js/board.js`, `Backend.board`, `CFG.CARDS.BOARD`,
+`Deck.lift`, migration `0014_world_board.sql`; tests/world-board.mjs and
+tests/analytics.mjs §1d on a real PostgreSQL — operator, 2026-11-04: "a bit
+bland … let's get the leaderboard to match [the settings page] … make a
+bigger deal out of the top 3 players, then list everyone beneath them … the
+analytics page allows me to whitelist my IP … do that for the leaderboard
+too … increase the odds for a top tier card when you make the leaderboard,
+especially top 3"). **THE PAGE IS #scrLeaders, DRESSED** (`WorldBoard.mount`,
+once): its own `#ldrBack` (Screens.bind's back to the reward screen) and
+`#ldrList` (every message, `.hint` for a failure) are kept and the settings
+page's chrome built round them — the carved frame, `SettingsPage.cornerSvg`'s
+corners, Cinzel caps, a chamfered back plaque — over the title's night
+(`Screens.nightBehind` includes 'leaders'). The three best stand on stone
+plinths (the first in the middle, highest, crowned) under laurelled medals of
+their metal, each with the score, the difficulty's trial icon, the day, the
+wins and the run's ORIGIN CARD icon; the rest are ruled rows beneath; the
+player's own row is gold and, off the list, waits at the foot (sticky); a
+device left out reads "Your games on this device are kept off the board."
+Filters: every difficulty or one, all time or this week; a later ask
+overtakes a slow one (`_seq`). Every ornament is SVG (medal, crown, trophy,
+card mark); the only rasters are the 256px trial and origin icons, at ≤26
+CSS px. **ONE ROW PER CHIEF, YOUR DEVICES LEFT OFF** (0014's `board_top`):
+each player's best victory (the earlier of equal scores first) with their
+victory count, minus `analytics__hidden()` — a device marked the operator's,
+one that held the card test deck, every device seen on a network marked the
+operator's — retroactively; `me` is the caller's best and its rank. **THE
+GAME LEARNS 0014 IS IN FROM board_top'S FIRST ANSWER** (`Backend.boardV2`):
+only an answer that is ours counts (`ok: true` with rows — a mock's `null`
+flips nothing); until then the table is read as ever and kept to one row per
+chief BY NAME, and a post sends the six names 0005 knows (PostgREST resolves
+by parameter names: a seventh would 404 every post). Once in, a post carries
+`p_origin` (the draft card's key, `Screens.runOrigin`) and `p_cards_played`,
+and `BOARD_MARKS_CARDS` goes true so an assisted win posts wearing the mark.
+0014 DROPS the six-parameter `submit_score` (an overload answers 300);
+re-pasting 0005 brings it back beside the new one — paste 0014 after it.
+**A TEST BUILD POSTS NOTHING**, now in code: `Screens.boardHold` holds any
+win where the backend is configured, unmocked and `telemetryAllowed()` says
+no. **THE RANK SAID AFTER A POST IS THIS RUN'S**: 1 + the other chiefs
+whose best beats it (one row per chief means the run itself may not be
+listed); "NEW HIGH SCORE" only when nobody, the chief included, stands
+higher. **THE BOARD LIFTS THE CARD** (`Deck.lift`, inside `Deck.settle`): a
+win whose place is in the top `TOP` (10) raises each reward card one tier
+with chance `LIFT` (0.5), in the top `PODIUM` (3) every time, never past the
+highest tier its own table rolls — which is exactly the server's ceiling for
+that win (0008), so no lift is ever refused and NO MIGRATION GATES IT (Calm
+stops at Imperial; a pity Enlightenment is untouched). The place is read off
+the board AS LAST SEEN (`WorldBoard.placeFor`: 1 + other chiefs above), since
+the reward screen settles in the very task the run ends — `WorldBoard.watch`
+looks at the board on entering a game and every `PEEK_MS` (8 min) of visible
+play. A held win (test deck, test build, assisted without the mark) stands
+nowhere and lifts nothing. A lifted card wears `lift: true` in the run's
+ledger and "▲ Board #N" on the reward screen's plate, and `card_granted`
+telemetry carries `place` and `lift`. The nationality picker the operator
+floated was NOT built: a profile field and a flag column for little, where
+the origin card is the run's own pride and costs nothing.
 
 **A VOTE EARNS A CARD** (`js/vote.js` — THE WHOLE FEATURE IN ONE FILE,
 `CFG.CARDS.VOTE`, `supabase/migrations/0012_vote_reward.sql` + `0013_vote_traffic.sql`,

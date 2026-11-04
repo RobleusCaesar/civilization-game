@@ -1408,6 +1408,18 @@ const CFG = {
        game: on Hard it takes a subtotal of ~11,400, on Moderate 20,000, on
        Calm 40,000 — a defeat that outscores an average Hard win. */
     BIG_LOSS_SCORE: 20000,
+    /* THE BOARD LIFTS THE CARD (operator, 2026-11-04: "Let's increase the
+       odds for a top tier card when you make the leaderboard, especially top
+       3"; js/board.js, Deck.lift). A win whose final score would stand in
+       the overall world board's top TOP raises each of its reward cards ONE
+       tier with chance LIFT; on the podium (top PODIUM) every time. Never
+       past the highest tier the run's own table can roll — the server's
+       grant_card holds every win to exactly those tiers (0008), so a lift is
+       never a card the next reconcile takes back. The place is read off the
+       board as last seen (WorldBoard.placeFor); a held win (a test deck, a
+       test build, an assisted win the board cannot mark yet) is lifted by
+       nothing, because it does not go on the board. ON false: no lift. */
+    BOARD: { ON: true, TOP: 10, PODIUM: 3, LIFT: 0.5 },
     // [stone, bronze, iron, imperial, enlight] percentages, approved at Gate 1
     // (bigloss: the operator's ruling above)
     DROPS: {

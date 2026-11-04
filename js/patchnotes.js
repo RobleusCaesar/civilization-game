@@ -19,6 +19,19 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 142, date: '2026-11-04', title: 'A new world board',
+    items: [
+      'The leaderboard has been rebuilt: the three best chiefs stand on a podium under gold, silver and bronze medals, with everyone else ranked beneath them.',
+      'Each chief now appears once, at their best victory, with how many victories they have won.',
+      'Every place shows the difficulty, the day of the win and the origin card the clan was founded with.',
+      'Look at the board for one difficulty at a time, or for this week alone.',
+      'Your own place is marked in gold, and if you are not on the list your best victory waits at the bottom.',
+      'Finish in the top ten and your reward card may rise a tier. Finish in the top three and it always does.',
+      'Wins that used cards now go on the board too, marked with a small card and how many were played.',
+      'Wins from test builds no longer go on the board.',
+    ],
+  },
+  {
     build: 141, date: '2026-11-04', title: 'Build your own roads',
     items: [
       'A new Road sits beside the House in the build menu: drag across the ground and a villager lays it, quickly, for 10 wood and 5 stone a stretch.',

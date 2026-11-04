@@ -906,14 +906,15 @@ const out = await p.evaluate(async () => {
       restore ? `"${restore.textContent}" over Settings` : 'nothing a player can see');
     // …and the world board's own screen, which quoted it too ("Could not reach
     // the board: JWT expired"), found after the shell fixes by the same review
-    const real3 = { ready: Backend.isReady, top: Backend.topScores };
+    // (the board reads Backend.board since build 142, js/board.js; topScores is its old name)
+    const real3 = { ready: Backend.isReady, top: Backend.topScores, board: Backend.board };
     let board = '';
     try {
       Backend.isReady = () => true;
-      Backend.topScores = async () => ({ ok: false, error: { code: 401, message: 'JWT expired' } });
+      Backend.topScores = Backend.board = async () => ({ ok: false, error: { code: 401, message: 'JWT expired' } });
       Screens.backTo = 'title'; Screens.show('leaders');
       for (let i = 0; i < 100 && !/could not/i.test(board); i++) { await tick(); board = (document.querySelector('#ldrList .hint') || {}).textContent || ''; }
-    } finally { Backend.isReady = real3.ready; Backend.topScores = real3.top; }
+    } finally { Backend.isReady = real3.ready; Backend.topScores = real3.top; Backend.board = real3.board; }
     ck('andSoIsTheWorldBoardItCannotShow', /could not/i.test(board) && !/jwt/i.test(board) && /sign-in/i.test(board), `the board reads "${board}"`);
     Screens.backTo = 'title'; Screens.show('title');
   }
