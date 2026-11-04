@@ -288,7 +288,47 @@ node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat a
 node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
+node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; cheaper and quicker than a wall; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; CFG.ROADS.ON false brings the worn paths back
 ```
+
+**THE ROAD BUILDER** (`js/roads.js`, `CFG.ROADS`, `CFG.BUILDINGS.road`, tests/roads.mjs —
+operator, 2026-11-03: "draw lines and create roads between buildings… real,
+worn, embedded in the ground… Remove the previous feature… where roads are
+created automatically… a villager builds them… less than the time for a
+wall… Fairly cheap… a small speed boost for their soldiers and villagers…
+steer towards using the roads… next to huts / houses… intersections… north
+south and east west"). **LAID LIKE A WALL, LIVES LIKE GROUND**: Road (beside
+House in `UI.MENU_KEYS`) arms the wall's own line drag (`UI.isLine` — every
+wall-only branch of placement asks it now), so a drag lays orthogonal 1x1
+SITES built by villagers through the ordinary build task, work order and
+Cancel; the site that finishes LEAVES S.buildings (`Roads.finish`, the first
+line of `Bld.finish`) and becomes `S.map.roads[idx]` (in every save,
+`loadJSON` backfills `{}`), so a long road never puts hundreds of buildings
+before the systems that count them. Spent ground under it (stumps, bare
+soil, rubble, pebbles) is paved to GRASS and its regrowth clock dropped; a
+building placed on a road takes the ground (`Roads.clearUnder` from
+`Bld.place`); a road whose ground is dug or flooded is no road (`Roads.at`
+asks the terrain). Passability is untouched. **THE PLAYER'S ROADS**: every
+player land unit walks `CFG.ROADS.speed` (1.2) as fast on one
+(`Units.followPath`) and prices a road step `prefer` (0.55) in its route
+search (`Units.wearPrefer` → `Path.findWeighted`); the rival builds none and
+gets neither, the worn-paths rule. **THE WORN PATHS STAND DOWN** while roads
+are on (`G.noteWear`, `G.wearLevel`, `G.countWearRoads` answer nothing);
+worn-paths.mjs and terrain-v4.mjs §3b pin them with the builder OFF. **THE
+PICTURE**: drawn by `R.draw` before the footings and any building (a road
+site is skipped in the building loop and drawn with the roads; a road site
+is never a fog ghost), from a distance field to the road's skeleton (centre
+to each joined side's middle, the neighbours' included, a disc rounding the
+inside of every turn and junction) with noise in world coordinates — no seam,
+no two tiles alike; sunk earth with a shadowed north-west bank and a lit
+south-east lip, two wandering broken ruts, a grassy crown in places,
+pebbles; tufts and weeds at its edges and the odd bush beside it (decor
+owned by the tile of the nearest skeleton, never over water, a wood or a
+building). Cached per tile at the half-pixel grid (decor cut to what it
+holds), `CACHE_MAX` 360 tiles, generated under `BUDGET_MS` (4) a frame; a
+site shows the road through the turf in three dithered stages with stakes.
+Off (`CFG.ROADS.ON` false): no button, no road drawn or walked, the worn
+paths return.
 
 **THE GROUND UNDER A BUILDING** (`js/footing.js`, `CFG.FOOTING`, tests/footing.mjs —
 operator, 2026-11-03, on the V5 land: the buildings "really stand out… a

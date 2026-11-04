@@ -61,7 +61,9 @@ const UI = {
   // the list because it is the end of the game
   // the Gold Mine is deliberately NOT here (CFG.BUILDINGS.mine.noMenu): a seam
   // is found and claimed in the field, never raised from the menu
-  MENU_KEYS: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
+  MENU_KEYS: ['house', 'road', 'farm', 'lumber', 'quarry', 'lodge', 'wall', 'tower', 'barracks', 'stable', 'range', 'dock', 'siege', 'sapper', 'warcamp', 'trade', 'wonder'],
+  // the keys laid by DRAGGING a line instead of placing one ghost: the wall, and the road (js/roads.js)
+  isLine(k) { return k === 'wall' || k === 'road'; },
   RES_NAME: { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' },
   tradeNeed: null,            // Trading Post step 1 → 2: what the caravan brings home
 
@@ -106,7 +108,7 @@ const UI = {
        the session — gated on state, so entering/exiting placement a hundred
        times leaks nothing (tests/placement.mjs). */
     document.addEventListener('keydown', e => {
-      if (!this.placing || this.placing === 'wall' || !window.S) return;
+      if (!this.placing || this.isLine(this.placing) || !window.S) return;
       if (e.key === 'Escape') { this.cancelPlacement(); e.preventDefault(); }
       else if (e.key === 'Enter' && this.placeGhost && this.placeGhost.set) {
         this.confirmPlacement(); e.preventDefault();
@@ -171,6 +173,7 @@ const UI = {
     for (const key of this.MENU_KEYS) {
       const d = CFG.BUILDINGS[key];
       if (d.noMenu) continue;   // claimed in the field, never bought (the Gold Mine)
+      if (key === 'road' && !(window.Roads && Roads.on())) continue;   // the road builder switched off (CFG.ROADS)
       const btn = document.createElement('button');
       btn.className = 'bbtn'; btn.dataset.key = key;
       // the wonder's button is BUILT here but only SHOWN where the mode offers
@@ -202,16 +205,17 @@ const UI = {
         if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
         // NOT affordable is no longer a refusal — placement opens in its amber
         // "scout the spot you're saving for" state, with ✓ disabled
-        if (key === 'wall' && !Bld.canAfford(Bld.effCost('P', key))) { this.toast('Not enough resources', true); return; }
+        if (this.isLine(key) && !Bld.canAfford(Bld.effCost('P', key))) { this.toast('Not enough resources', true); return; }
         this.deselect();
         // tuck the build menu away so the whole map is visible to pick a site
         // (keepPlacing: don't cancel the building we just chose)
         this.setMenuCollapsed(true, true);
-        if (key === 'wall') {
-          this.placing = key;   // the wall keeps its line-drag flow
+        if (this.isLine(key)) {
+          this.placing = key;   // the wall (and the road) keep the line-drag flow
           // …which arms with no ghost and no grid, so it says how it works:
           // the next drag LAYS the line (PX-11, tests/placement.mjs)
-          this.toast('Drag along the ground to lay a wall — release to build', 'note');
+          this.toast(key === 'road' ? 'Drag along the ground to lay a road — release to build'
+            : 'Drag along the ground to lay a wall — release to build', 'note');
         }
         else this.enterPlacement(key);
         this.refreshMenu();
@@ -344,8 +348,8 @@ const UI = {
       cv.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (this.pointers.size === 1) {
-        if (this.placing === 'wall') {
-          // drag paints a wall line instead of panning
+        if (this.isLine(this.placing)) {
+          // drag paints a wall (or road) line instead of panning
           this.wallDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateWallGhost();
           this.downAt = null;
@@ -606,7 +610,7 @@ const UI = {
      of painting the whole map red. */
   buildPlaceMap() {
     const key = this.placing;
-    if (!key || key === 'wall') { this.placeMap = null; return; }
+    if (!key || this.isLine(key)) { this.placeMap = null; return; }
     if (!Bld._block) Bld.rebuildBlock();     // gen must be CURRENT (the deckAt trap)
     const W = CFG.W, H = CFG.H, sz = Bld.size(key), d = CFG.BUILDINGS[key];
     const t0 = performance.now();
@@ -688,7 +692,7 @@ const UI = {
      translucency and the framed footprint keep it legible under a thumb,
      so the building goes where the finger IS.) */
   placeGhostTo(clientX, clientY, touch) {
-    const key = this.placing; if (!key || key === 'wall') return;
+    const key = this.placing; if (!key || this.isLine(key)) return;
     const sz = Bld.size(key), TL = CFG.TILE;
     const w = R.screenToWorld(clientX, clientY);
     const fox = w.x / TL - sz / 2, foy = w.y / TL - sz / 2;   // fractional footprint origin
@@ -705,7 +709,7 @@ const UI = {
 
   // a tap (or a released drag) parks the ghost and offers ✓/✗
   placeGhostSet(tx, ty) {
-    const key = this.placing; if (!key || key === 'wall') return;
+    const key = this.placing; if (!key || this.isLine(key)) return;
     const sz = Bld.size(key);
     const nx = Math.max(1, Math.min(CFG.W - 1 - sz, tx - ((sz / 2) | 0)));
     const ny = Math.max(1, Math.min(CFG.H - 1 - sz, ty - ((sz / 2) | 0)));
@@ -775,7 +779,7 @@ const UI = {
      map, and the DOM widget riding the ghost. Cheap when idle: three field
      compares and out. */
   tickPlacement(dt) {
-    if (!this.placing || this.placing === 'wall' || !window.S || !S.map) {
+    if (!this.placing || this.isLine(this.placing) || !window.S || !S.map) {
       if (this._placeUIVisible) this._placeDom(false);
       return;
     }
@@ -1087,7 +1091,8 @@ const UI = {
 
   updateWallGhost() {
     const chain = this.wallDrag || [];
-    const cost = Bld.buildSpec('wall').lv.cost;
+    const key = this.isLine(this.placing) ? this.placing : 'wall', road = key === 'road';
+    const cost = Bld.buildSpec(key).lv.cost;
     const budget = Object.assign({}, S.res);
     const chainSet = new Set(chain.map(c => c.x + ',' + c.y));
     this.wallGhost = chain.map(t => {
@@ -1095,26 +1100,27 @@ const UI = {
       // you can afford; canPlace re-checks on commit
       // (seen ground only — a card's chart is not the tribe's eyes, Deck.blindAt —
       // asked before the live map is, so the ghost never says what stands there)
-      let ok = !!S.map.explored[MapGen.idx(t.x, t.y)] && !(window.Deck && Deck.blindAt && Deck.blindAt(t.x, t.y)) &&
-        Bld.tileFree(t.x, t.y);
+      let ok = road ? Bld.canPlace('P', 'road', t.x, t.y, { noCost: true }).ok
+        : !!S.map.explored[MapGen.idx(t.x, t.y)] && !(window.Deck && Deck.blindAt && Deck.blindAt(t.x, t.y)) && Bld.tileFree(t.x, t.y);
       if (ok) {
         for (const k in cost) if ((budget[k] || 0) < cost[k]) { ok = false; break; }
         if (ok) for (const k in cost) budget[k] -= cost[k];
       }
-      return { x: t.x, y: t.y, ok, mask: R.wallMaskAt(t.x, t.y, chainSet) };
+      return { x: t.x, y: t.y, ok, mask: road ? 0 : R.wallMaskAt(t.x, t.y, chainSet) };
     });
   },
 
   commitWallDrag() {
     const ghost = this.wallGhost || [];
+    const key = this.isLine(this.placing) ? this.placing : 'wall', road = key === 'road';
     let placed = 0, first = null, sealed = false;
     const sites = [];
     for (const t of ghost) {
       if (!t.ok) continue;
-      const r = Bld.canPlace('P', 'wall', t.x, t.y);   // re-check with live resources
+      const r = Bld.canPlace('P', key, t.x, t.y);   // re-check with live resources
       if (!r.ok) continue;
       if (r.warn === 'sealed') sealed = true;          // allowed — sealing is the player's choice
-      const b = Bld.place('P', 'wall', t.x, t.y, { noAutoAssign: true });
+      const b = Bld.place('P', key, t.x, t.y, { noAutoAssign: true });
       if (!first) first = b;
       sites.push(b);
       placed++;
@@ -1129,12 +1135,15 @@ const UI = {
       // far half off behind the first stone.
       let start = first;
       if (v && sites.length > 1) {
-        const pick = Units.pickWorkOrder(v, sites.map(b2 => ({ x: b2.x, y: b2.y, diag: true, blocks: true, ref: b2 })));
+        const pick = Units.pickWorkOrder(v, sites.map(b2 => ({ x: b2.x, y: b2.y, diag: true, blocks: !road, ref: b2 })));
         if (pick) start = pick.ref;
       }
       // told in the gold: the line was laid AND paid for on release, so the
       // player is told it happened (an unmarked toast is shown nowhere)
-      if (v && Units.assignBuild(v, start))
+      if (road) {
+        if (v && Units.assignBuild(v, start)) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — a builder is on the way. More hands build it faster.`, 'note');
+        else this.toast(`Road laid out (${placed}) — it needs a builder`, true);
+      } else if (v && Units.assignBuild(v, start))
         this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
       else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
       // done drawing — drop out of placement so stray taps don't add walls

@@ -89,6 +89,7 @@
  "villager-tiers.mjs": 9,
  "vote.mjs": 50,
  "footing.mjs": 10,
+ "roads.mjs": 8,
  "wall-line.mjs": 5,
  "wall-lines.mjs": 12,
  "wall-tower-bond.mjs": 185,

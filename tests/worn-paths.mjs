@@ -79,6 +79,9 @@ const errs = []; p.on('pageerror', e => errs.push(String(e)));
    asked for the classic ground explicitly */
 await p.goto('http://127.0.0.1:' + srv.address().port + '/index.html?terrain=classic', { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 120000 });
+// THE WORN PATHS ARE THE GAME'S ROADS ONLY WHILE THE ROAD BUILDER IS OFF (js/roads.js stands them
+// down): this contract pins the worn paths themselves, so it runs with the builder switched off
+await p.evaluate(() => { if (CFG.ROADS) CFG.ROADS.ON = false; });
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];

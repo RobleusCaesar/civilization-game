@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 136, date: '2026-11-03', title: 'Build your own roads',
+    items: [
+      'A new Road sits beside the House in the build menu: drag across the ground and a villager lays it, quickly and cheaply.',
+      'Your villagers and soldiers walk faster on a road and keep to the roads when they can.',
+      'Roads turn, meet and cross, and lie worn into the land with ruts, stones and grass along their edges.',
+      'The paths your villagers used to wear by themselves are gone. You build the roads now.',
+    ],
+  },
+  {
     build: 135, date: '2026-11-03', title: 'Buildings settle into the land',
     items: [
       'Every building now casts a soft shadow across the grass, so it sits on the ground instead of floating over it.',

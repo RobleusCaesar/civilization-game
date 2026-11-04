@@ -1605,11 +1605,13 @@ const G = {
   _wearToday: null,
   wearLevelOf(d) { const L = CFG.WEAR.levels; return d >= L[2] ? 3 : d >= L[1] ? 2 : d >= L[0] ? 1 : 0; },
   wearLevel(x, y) {
+    if (window.Roads && Roads.on()) return 0;   // built roads replace the worn paths (js/roads.js)
     const w = S.map && S.map.wear; if (!w) return 0;
     const e = w[y * CFG.W + x];
     return e ? this.wearLevelOf(e[0]) : 0;
   },
   noteWear(u, x, y) {
+    if (window.Roads && Roads.on()) return;
     if (!Units.isVillager(u) || !u.task || !CFG.WEAR.tasks.includes(u.task.type)) return;
     if (u.owner !== 'P' && !(u.owner === 'A' && this.visibleAt(x, y))) return;
     if (!this.wearable(x, y)) return;
@@ -1642,6 +1644,7 @@ const G = {
      wearDaily and on load, module state, never in a save */
   _wearRoads: 0,
   countWearRoads() {
+    if (window.Roads && Roads.on()) return this._wearRoads = 0;
     const W = S.map && S.map.wear, L = CFG.WEAR.levels[CFG.WEAR.fastLv - 1];
     let n = 0;
     if (W) for (const k in W) if (W[k][0] >= L) n++;
@@ -3048,7 +3051,8 @@ const G = {
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
     if (!data.map.burnt) data.map.burnt = {};         // the dry summer's ash ground (pre-ash saves: none)
-    if (!data.map.wear) data.map.wear = {};           // pre-path saves: the ground has not worn yet
+    if (!data.map.wear) data.map.wear = {};
+    if (!data.map.roads) data.map.roads = {};          // pre-road saves: nothing built yet (js/roads.js)           // pre-path saves: the ground has not worn yet
     /* PRE-MAKER saves (tests/worked-ground.mjs): spent ground carries no
        maker's mark yet, so deal one by the only honest guess left — the
        nearer hall, within its working range. The point of the backfill is

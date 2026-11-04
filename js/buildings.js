@@ -781,6 +781,8 @@ const Bld = {
        mode offers none. Asked before the ground: it is not about the tile. */
     if (key === 'wonder' && !G.wonderInPlay())
       return { ok: false, code: 'mode', why: 'The Wonder rises only in Calm worlds.' };
+    // a road is ground, not a building: its own rules (js/roads.js)
+    if (key === 'road') return window.Roads && Roads.on() ? Roads.canPlace(owner, x, y, opts) : { ok: false, code: 'key', why: '?' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
     /* A CARD'S MAP IS NOT THE TRIBE'S EYES (tests/deck-rival.mjs): ground a
        card charted that nobody of the player's has seen is refused like the
@@ -1090,6 +1092,8 @@ const Bld = {
       paid: paid || {},
     };
     S.buildings.push(b);
+    // a building raised on a road takes the ground (js/roads.js)
+    if (key !== 'road' && window.Roads && Roads.clearUnder) Roads.clearUnder(x, y, b.sz || 1);
     // a site the PLAYER chose and paid for is an order given today (G.noteAct —
     // a free or instant placement is a start package, an origin card or a card)
     if (owner === 'P' && !opts.free) G.noteAct();
@@ -1165,6 +1169,8 @@ const Bld = {
   },
 
   finish(b, builder) {
+    // a finished road leaves the buildings and becomes ground (js/roads.js)
+    if (b.key === 'road' && window.Roads && Roads.finish) return Roads.finish(b, builder);
     b.construction = 0;
     b.hp = b.maxhp;
     // the good news, and one of the few sounds that is NOT throttled: a work

@@ -170,7 +170,10 @@ let rulesV4 = null;
   ck('andASavedWorldPaintsTheSameBytes', sl.on && sl.n >= 2 && sl.diff === 0, JSON.stringify(sl));
 
   // 3b. the worn roads are still drawn: a road is quicker to walk, so a player must see it
+  // (the worn paths, which stand down while the road builder is on — js/roads.js; with the
+  // builder switched off they are the game's roads again, and V4 must still draw them)
   const road = await p.evaluate(() => {
+    if (CFG.ROADS) CFG.ROADS.ON = false;
     const W = CFG.W, H = CFG.H, terr = S.map.terrain, tl = CFG.TILE, run = [];
     for (let y = 4; y < H - 4 && !run.length; y++) for (let x = 4; x < W - 12; x++) {
       if ([...Array(7).keys()].every(i => terr[y * W + x + i] === T.GRASS && !Bld.at(x + i, y))) { for (let i = 0; i < 7; i++) run.push([x + i, y]); break; }
@@ -181,7 +184,9 @@ let rulesV4 = null;
     R.rebuildTerrain();
     const g = R.terrainCache.getContext('2d'); let painted = 0, n = 0;
     for (const [x, y] of run.slice(1, -1)) { const d = g.getImageData(x * tl, y * tl + 12, tl, 8).data; for (let i = 3; i < d.length; i += 4) { n++; if (d[i] > 0) painted++; } }
-    return { tiles: run.length, share: +(painted / Math.max(1, n)).toFixed(2), on: TerrainX.on, level: G.wearLevel ? G.wearLevel(run[3][0], run[3][1]) : null };
+    const out = { tiles: run.length, share: +(painted / Math.max(1, n)).toFixed(2), on: TerrainX.on, level: G.wearLevel ? G.wearLevel(run[3][0], run[3][1]) : null };
+    if (CFG.ROADS) CFG.ROADS.ON = true;
+    return out;
   });
   ck('theWornRoadsStillShow', road.on && road.tiles === 7 && road.share > 0.3, JSON.stringify(road));
 
