@@ -348,9 +348,9 @@ const CFG = {
     // THE ROAD BUILDER (js/roads.js): laid with the wall's line drag, raised by a villager
     // in a third of a wall's time, then it is ground — the site leaves the buildings
     road: {
-      name: 'Road', desc: 'Packed earth your people walk faster on, and keep to.',
+      name: 'Road', desc: 'A road your people walk faster on, and keep to. It improves as your Town Center does.',
       freePlace: true,
-      levels: [ { cost: { wood: 3, stone: 1 }, time: 0.33, hp: 40 } ],
+      levels: [ { cost: { wood: 10, stone: 5 }, time: 0.33, hp: 40 } ],
     },
     house: {
       name: 'House', desc: 'Raises population cap.',
