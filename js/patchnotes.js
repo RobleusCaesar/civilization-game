@@ -22,6 +22,7 @@ const PATCH_NOTES = [
     build: 143, date: '2026-11-04', title: 'The board on one page',
     items: [
       'The leaderboard now shows the top ten chiefs on a single page, with nothing to scroll.',
+      'Each place now shows just the name, the score and the difficulty.',
       'The difficulty and week filters are gone for now, so there is one board to climb.',
       'On a phone turned on its side, the podium stands beside the rankings.',
     ],

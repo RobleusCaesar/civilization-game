@@ -12,11 +12,16 @@
    filter (for now). It's too much, makes the page look cluttered and
    dilutes the value of being on the leaderboard. Vertically Re-size the
    ranking list so there isn't unbalanced empty space. Make sure everything
-   fits on a single page."
+   fits on a single page." And: "Delete the text at the bottom … Delete
+   the 14 chiefs reference … Get rid of the number of wins under the player
+   and the day … get rid of the icon for the origin card. Just name, points,
+   difficulty and place."
 
    1. THE PODIUM AND THE TOP TEN: the three best stand on plinths under
       medals (first in the middle, crowned), the ranks to tenth are rows
-      below, each chief once; the player's own row is gold. The filter bars
+      below, each chief once; the player's own row is gold. A place says its
+      name, points, difficulty and place and nothing else: no day, no wins,
+      no origin, no card mark, no chief count, no words below. The filter bars
       are put away (WorldBoard.FILTERS) — and flipped back on they still ask
       the board for one difficulty or this week, a later ask winning.
    2. YOUR BEST, WHEREVER IT IS: past tenth, or cut to fit a small window, it
@@ -134,23 +139,32 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const steps = [...L.querySelectorAll('.wbPodium .wbStep')].map(s => ({ cls: s.className, name: (s.querySelector('.wbNm') || {}).textContent,
       medal: !!s.querySelector('svg.wbMedal'), crown: !!s.querySelector('svg.wbCrown'), plinth: !!s.querySelector('.wbPlinth'), top: s.querySelector('.wbPlinth').getBoundingClientRect().top }));
     const rows = [...L.querySelectorAll('.wbList:not(.wbMeList) .wbRow')].filter(r => !r.hidden).map(r => ({ rk: r.querySelector('.wbRk').textContent, name: r.querySelector('.wbWhoR b').firstChild.textContent, mine: r.classList.contains('mine') }));
-    return { steps, rows, back: !!document.querySelector('#scrLeaders #ldrBack.wbBack'), count: document.querySelector('#scrLeaders .wbCount').textContent,
+    // what each place says: the place, the name, the points, the difficulty — and nothing else on the page
+    const say = el => ({ place: !!el.querySelector('svg.wbMedal, .wbRk'), name: !!el.querySelector('.wbNm, .wbWhoR b'), pts: /^[\d,]+$/.test((el.querySelector('.wbPts') || {}).textContent || ''),
+      diff: el.querySelectorAll('img').length === 1 && /trial-(calm|moderate|hard)\.png/.test(el.querySelector('img').src),
+      extra: [...el.querySelectorAll('small, .wbSub, .wbOrig, .wbCm, .wbCard')].length });
+    const places = [...L.querySelectorAll('.wbPodium .wbStep, .wbList:not(.wbMeList) > .wbRow')].map(say);
+    const words = (L.textContent.match(/day|victor|wins?\b|chiefs?\b|card|origin|founded|tier|podium/gi) || []);
+    return { steps, rows, places, words, foot: !!document.querySelector('#scrLeaders .wbFoot'), back: !!document.querySelector('#scrLeaders #ldrBack.wbBack'),
+      count: (document.querySelector('#scrLeaders .wbCount') || {}).textContent || '', head: document.querySelector('#scrLeaders .wbHead').textContent.trim(),
       meList: !!L.querySelector('.wbMeList:not([hidden])'), night: document.getElementById('shell').classList.contains('night') || !(window.Boot && Boot.t2wear),
-      bar: !!document.querySelector('#scrLeaders .wbBar, #scrLeaders .wbSeg'), asks: __MOCK.calls.filter(c => c.path.startsWith('/rpc/board_top')).map(c => (c.body.p_mode || '') + '/' + (c.body.p_days || 0)),
-      ridge: (L.querySelector('.wbPodium .s2 .wbSub') || {}).textContent, foot: (L.querySelector('.wbFoot') || {}).textContent };
+      bar: !!document.querySelector('#scrLeaders .wbBar, #scrLeaders .wbSeg'), asks: __MOCK.calls.filter(c => c.path.startsWith('/rpc/board_top')).map(c => (c.body.p_mode || '') + '/' + (c.body.p_days || 0)) };
   });
   const order = a.steps.map(s => s.name).join(',');
   ck('theBestThreeStandOnThePodiumTheFirstInTheMiddle', order === 'RIDGE,STORMR,ASHKA' && /s2/.test(a.steps[0].cls) && /s1/.test(a.steps[1].cls) && /s3/.test(a.steps[2].cls) &&
     a.steps.every(s => s.medal && s.plinth) && a.steps[1].crown && !a.steps[0].crown && a.steps[1].top < a.steps[0].top && a.steps[0].top < a.steps[2].top,
     `${order}; crowned ${a.steps.map(s => s.crown)}; plinth tops ${a.steps.map(s => Math.round(s.top))}`);
   const names = a.rows.map(r => r.rk + r.name).join(' ');
-  ck('theRanksToTenthBeneathThemEachChiefOnce', names === '4FERN 5BRAN 6MOSSY 7OSRIC 8KAYA 9TOVE 10LUGH' && /3 wins/.test(a.ridge),
-    `${names}; RIDGE's three wins read "${a.ridge}"`);
+  ck('theRanksToTenthBeneathThemEachChiefOnce', names === '4FERN 5BRAN 6MOSSY 7OSRIC 8KAYA 9TOVE 10LUGH', names);
+  const bad = a.places.filter(q => !q.place || !q.name || !q.pts || !q.diff || q.extra);
+  ck('aPlaceIsItsNamePointsDifficultyAndPlaceAlone', a.places.length === 10 && bad.length === 0,
+    `${a.places.length} places; ${bad.length ? 'short or over: ' + JSON.stringify(bad[0]) : 'each the four and nothing else'}`);
+  ck('andThePageSaysNothingElse', !a.foot && !a.count && a.head === 'Leaderboard' && a.words.length === 0,
+    `foot ${a.foot}; count "${a.count}"; header "${a.head}"; stray words ${a.words.join(' ') || 'none'}`);
   ck('theFilterIsPutAway', !a.bar && a.asks.length > 0 && a.asks.every(k => k === '/0'), `bar shown ${a.bar}; asked ${a.asks.join(' ')}`);
-  ck('yourOwnRowIsGoldAndYourDevicesAreLeftOff', a.rows.filter(r => r.mine).map(r => r.name).join() === 'MOSSY' && !/OPS/.test(order + names) && !a.meList && /13 chiefs/.test(a.count),
-    `gold ${a.rows.filter(r => r.mine).map(r => r.name)}; ${a.count}`);
+  ck('yourOwnRowIsGoldAndYourDevicesAreLeftOff', a.rows.filter(r => r.mine).map(r => r.name).join() === 'MOSSY' && !/OPS/.test(order + names) && !a.meList,
+    `gold ${a.rows.filter(r => r.mine).map(r => r.name)}`);
   ck('itStandsOnTheNightAndKeepsItsWayBack', a.back && a.night, `back ${a.back}, night ${a.night}`);
-  ck('andTheFootSaysWhatTheBoardIsWorth', /one place for each chief/i.test(a.foot) && /top 10/.test(a.foot) && /podium/.test(a.foot), a.foot);
   await p.close();
 }
 // the filters, flipped back on (WorldBoard.FILTERS): one difficulty, then this week — and a slow answer overtaken by a later ask is dropped
@@ -196,8 +210,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     return { me: me && me.textContent, shown: !!(me && me.offsetParent), listed: [...document.querySelectorAll('#ldrList .wbList:not(.wbMeList) .wbRow')].filter(r => !r.hidden).length };
   });
   await p.close();
-  // ninth on the board, on a phone too short to show the ranks past eighth: the cut row waits at the foot
-  const cut = ROWS.map(r => r.uid === 'mock-uid-0001' ? Object.assign({}, r, { score: 12000 }) : r);
+  // tenth on the board, on a phone too short to show the ranks past ninth: the cut row waits at the foot
+  const cut = ROWS.map(r => r.uid === 'mock-uid-0001' ? Object.assign({}, r, { score: 11000 }) : r);
   const c = await boot(MOCK({ rows: cut, hidden: ['ops'], name: 'MOSSY' }), { width: 320, height: 568, dsf: 1 });
   await openBoard(c);
   const k = await c.evaluate(() => {
@@ -212,7 +226,7 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await q.close();
   ck('offTheListYourBestWaitsAtTheFoot', a.me && /^123MOSSY/.test(a.me) && a.shown && a.listed === 7,
     `"${a.me}" (shown ${a.shown}); ${a.listed} rows under the podium`);
-  ck('andARowCutToFitWaitsThereToo', k.me && /^9MOSSY/.test(k.me) && k.shown && k.vis && !/\b9\b/.test(k.vis) && /^4,5,6/.test(k.vis),
+  ck('andARowCutToFitWaitsThereToo', k.me && /^10MOSSY/.test(k.me) && k.shown && k.vis && !/\b10\b/.test(k.vis) && /^4,5,6/.test(k.vis),
     `ranks shown ${k.vis}; at the foot "${k.me}"`);
   ck('aDeviceLeftOutIsToldSo', /kept off the board/.test(h.aside || '') && !h.mossy, `"${h.aside}"; MOSSY shown ${h.mossy}`);
 }
@@ -335,7 +349,7 @@ for (const v1 of [true, false]) {
     });
     out.push(`${w}x${h}: ${m.bad.length + m.ras.length + m.over.length + (m.overlap ? 1 : 0) + (m.hscroll ? 1 : 0)} faults`);
     ck(`theChromeIsVectorAndTheIconsWithinTheirPixelsAt${w}x${h}`, m.svg === 5 && m.ras.length === 0 && m.bad.length === 0 &&
-      m.imgs.every(n => /^(trial|origin)-[a-z]+\.png$/.test(n)), `${m.svg} vector medals/crown/trophy; rasters ${m.imgs.join(' ')}; ${m.bad.concat(m.ras).join(' | ') || 'all within their pixels'}`);
+      m.imgs.every(n => /^trial-[a-z]+\.png$/.test(n)), `${m.svg} vector medals/crown/trophy; rasters ${m.imgs.join(' ')}; ${m.bad.concat(m.ras).join(' | ') || 'all within their pixels'}`);
     ck(`andNothingRunsOffAt${w}x${h}`, m.over.length === 0 && !m.overlap && !m.hscroll, m.over.join(' | ') || (m.overlap ? 'two steps overlap' : m.hscroll ? 'the page scrolls sideways' : 'fits'));
     // every size shows at least five ranks under the podium; a tall one shows all seven at their full height
     const g = m.page, tall = h >= 844;
