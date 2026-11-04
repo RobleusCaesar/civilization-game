@@ -244,16 +244,20 @@ const Lookout = {
   },
 
   /* ---- the picture ---- */
-  /* WHERE THE FEET GO, per drawn tower, in fractions of the art: the foot
-     line on the platform (`fy`), the slot either side of the middle (`dx`)
-     and the parapet's top (`cy`) — below it the tower is laid back over the
-     bows, so the front wall stands in front of their feet. Measured off the
-     shipped roofless art (tests/tower-garrison.mjs reads them back). */
+  /* WHERE THEY STAND, per drawn tower, in fractions of the art: the
+     parapet's top (`cy`) — below it the tower is laid back over the bows, so
+     the front rail stands in front of their legs (BODY, below, puts half of
+     each man over it) — and its middle (`px`) and half-width (`ph`) at that
+     row, which the two men stand inside, each against his end. Measured off
+     the shipped roofless art. */
   ANCHOR: {
-    free: [{ fy: 60 / 114, dx: 0.17, cy: 48 / 114 }, { fy: 58 / 116, dx: 0.16, cy: 48 / 116 }, { fy: 25 / 113, dx: 0.17, cy: 13 / 113 }],
-    wall: [{ fy: 54 / 90, dx: 0.17, cy: 45 / 90 }, { fy: 56 / 91, dx: 0.17, cy: 47 / 91 }, { fy: 22 / 85, dx: 0.17, cy: 13 / 85 }],
-    proc: { fy: 0.30, dx: 0.16, cy: 0.20 },
+    free: [{ cy: 48 / 114, px: 44 / 88, ph: 27 / 88 }, { cy: 48 / 116, px: 42 / 84, ph: 26 / 84 }, { cy: 13 / 113, px: 42.5 / 84, ph: 30.5 / 84 }],
+    wall: [{ cy: 45 / 90, px: 34 / 68, ph: 27 / 68 }, { cy: 47 / 91, px: 29 / 58, ph: 26 / 58 }, { cy: 13 / 85, px: 33.5 / 65, ph: 30.5 / 65 }],
+    proc: { cy: 0.20, px: 0.5, ph: 0.4 },
   },
+  // how far in from the parapet's end a bow stands, in boxes: his outer
+  // shoulder just over the end, as a man at the corner of a small lookout
+  HALF_W: 0.17,
   anchorOf(spr, b) {
     const li = Math.min(b.level || 1, 3) - 1;
     if (!spr || !spr._cfArt) return this.ANCHOR.proc;
@@ -267,28 +271,40 @@ const Lookout = {
     const r = spr._cfArt ? R.artRect(spr, bx, by, bw, bw) : { x: bx, y: by, w: bw, h: bw };
     return { spr, r, a: this.anchorOf(spr, b), bx, by, bw };
   },
-  // a bow's place on the platform: x and the foot line, world px
+  /* A BOW STANDS HALF ABOVE THE PARAPET (operator, build 146: "Archers are
+     too small. They should be 50% bigger and look like they're standing on
+     the platform, so half their body should be above the tower's protective
+     fence"). The figure is drawn at `drawScale` (1 — half again the first
+     cut's 0.66) and the parapet's top (the anchor's `cy`) cuts its body at
+     `BODY.above` of its height: the head and chest over the rail, the legs
+     behind it. A bow's frame fills its box from `BODY.top` to `BODY.foot`
+     (measured off the shipped archer, longbow and marksman frames: 3 and 31
+     px of 32), so the feet stand that far below the cut. */
+  BODY: { top: 3 / 32, foot: 31 / 32, above: 0.5 },
+  // a bow's place on the platform, world px: x, the feet (y), the parapet's
+  // top (cut), the top of the head, the box's foot and the box itself
   spot(u, f) {
     const b = Bld.get(u.perch);
     f = f || (b && this.frame(b));
     if (!f) return null;
     const crew = S.units.filter(o => o.perch === u.perch).sort((p, q) => p.id - q.id);
     const n = crew.length, i = Math.max(0, crew.indexOf(u));
-    const off = n < 2 ? 0 : (i === 0 ? -f.a.dx : f.a.dx);
-    return { x: f.r.x + f.r.w * (0.5 + off), y: f.r.y + f.r.h * f.a.fy };
+    const Bd = this.BODY, B = R.unitBox(u) * this.cfg().drawScale, body = (Bd.foot - Bd.top) * B;
+    const mid = f.r.x + f.r.w * f.a.px, reach = f.r.w * f.a.ph;
+    const off = n < 2 ? 0 : Math.max(0, reach - this.HALF_W * B) * (i === 0 ? -1 : 1);
+    const cut = f.r.y + f.r.h * f.a.cy, y = cut + body * (1 - Bd.above);
+    return { x: mid + off, y, cut, head: y - body, bot: y + (1 - Bd.foot) * B, B, l: mid - reach, r: mid + reach };
   },
-  /* a unit's frame stands its feet about FOOT px above the box's foot (at a
-     32px box — measured off the bows' own strips), so a figure whose FEET go
-     on the platform's foot line has its box that much lower, at the
-     platform's scale */
-  FOOT: 6,
-  footOff(k) { return this.FOOT * k; },
+  // where a tap or an arrow finds him: the middle of what shows over the rail
+  aim(u) {
+    const s = this.spot(u);
+    return s && { x: s.x, y: (s.head + s.cut) / 2 };
+  },
   // the arrow leaves from the bow's chest, up on the platform (tiles above u.y)
   shotLift(u) {
-    const s = this.spot(u);
-    if (!s) return 0.6;
-    const TL = CFG.TILE;
-    return Math.max(0.3, u.y - s.y / TL + 0.3 * this.cfg().drawScale);
+    const a = this.aim(u);
+    if (!a) return 0.6;
+    return Math.max(0.3, u.y - a.y / CFG.TILE);
   },
   /* drawn by the building pass right after the tower (and again by
      R._redrawPic, so a man walking behind the tower never lands over them):
@@ -302,40 +318,57 @@ const Lookout = {
     const f = this.frame(b);
     if (!f) return;
     const TL = CFG.TILE, k = this.cfg().drawScale;
-    const sel = UI.sel;
-    const selIds = sel ? (sel.type === 'unit' ? [sel.id] : sel.type === 'group' ? sel.ids : null) : null;
     const cut = f.r.y + f.r.h * f.a.cy;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
+    let x0 = Infinity, x1 = -Infinity;
+    const spots = [];
     for (const u of crew.sort((p, q) => p.id - q.id)) {
       const s = this.spot(u, f);
-      const B = R.unitBox(u) * k;
       const img = R.unitSprite(u);
       const D = R.frameBox(u, img, R.unitBox(u)) * k;
-      if (selIds && selIds.indexOf(u.id) >= 0) {
-        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.2;
-        g.beginPath(); g.ellipse(s.x, s.y, 6, 2.5, 0, 0, Math.PI * 2); g.stroke();
-      }
-      const bot = s.y + this.footOff(k);                // the box's foot, under the figure's
-      g.drawImage(img, s.x - D / 2, bot - D, D, D);
-      x0 = Math.min(x0, s.x - D / 2); x1 = Math.max(x1, s.x + D / 2); y0 = Math.min(y0, bot - D);
-      if (u.hp < u.maxhp) R.bar(g, s.x - (TL - 16) / 2, bot - B - 2, TL - 16, 2.5, u.hp / u.maxhp,
-        u.owner === 'P' ? '#7dbb5e' : '#e06550');
-    }
-    // the parapet in front of their feet: the tower again, below its top
-    if (x1 > x0) {
+      // a man on the platform shows over the rail; below it nothing of him
+      // reaches past the parapet's ends (a bow's leg hung beside the tower)
       g.save();
-      g.beginPath(); g.rect(x0 - 1, cut, x1 - x0 + 2, f.r.y + f.r.h - cut); g.clip();
+      g.beginPath();
+      g.rect(s.x - D, s.bot - 2 * D, 2 * D, cut - (s.bot - 2 * D));
+      g.rect(s.l, cut, s.r - s.l, s.bot - cut + 1);
+      g.clip();
+      g.drawImage(img, s.x - D / 2, s.bot - D, D, D);
+      g.restore();
+      x0 = Math.min(x0, s.x - D / 2); x1 = Math.max(x1, s.x + D / 2);
+      spots.push([u, s]);
+    }
+    // the parapet in front of their legs: the tower again, below its top —
+    // only over the band their legs were drawn in (the parapet's span, down
+    // to their feet), never over what the building pass laid after the tower
+    // (the hedge at its foot, the curtain's walk)
+    if (x1 > x0 && spots.length) {
+      const s0 = spots[0][1];
+      let foot = cut;
+      for (const [, s] of spots) foot = Math.max(foot, s.bot);
+      g.save();
+      g.beginPath(); g.rect(s0.l, cut, s0.r - s0.l, foot - cut + 1); g.clip();
       R.blitBld(g, f.spr, f.bx, f.by, f.bw, f.bw);
       g.restore();
+    }
+    // the selection ring rides the rail at his waist (at his feet it would sit
+    // behind the parapet), and the health bar over his head
+    const sel = UI.sel;
+    const selIds = sel ? (sel.type === 'unit' ? [sel.id] : sel.type === 'group' ? sel.ids : null) : null;
+    for (const [u, s] of spots) {
+      if (selIds && selIds.indexOf(u.id) >= 0) {
+        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.2;
+        g.beginPath(); g.ellipse(s.x, s.cut, 0.3 * s.B, 0.11 * s.B, 0, 0, Math.PI * 2); g.stroke();
+      }
+      if (u.hp < u.maxhp) R.bar(g, s.x - (TL - 16) / 2, s.head - 4, TL - 16, 2.5, u.hp / u.maxhp,
+        u.owner === 'P' ? '#7dbb5e' : '#e06550');
     }
   },
   // a tap at (wx, wy) — tiles — measured to the bow drawn on the platform
   hit(u, wx, wy) {
-    const s = this.spot(u);
-    if (!s) return Infinity;
-    const TL = CFG.TILE, k = this.cfg().drawScale;
-    const cx = s.x / TL, cy = (s.y - TL * k * 0.3) / TL;   // the figure's middle, its feet on the platform
-    return Math.hypot(cx - wx, cy - wy) / k;
+    const a = this.aim(u);
+    if (!a) return Infinity;
+    const TL = CFG.TILE;
+    return Math.hypot(a.x / TL - wx, a.y / TL - wy) / this.cfg().drawScale;
   },
 
   /* ---- THE FALL (operator: "a sprite where they fall to their death off
@@ -351,7 +384,7 @@ const Lookout = {
     const TL = CFG.TILE;
     if (this.falls.length > 8) this.falls.shift();
     this.falls.push({
-      x: s.x, y0: s.y, y1: (b.y + 1) * TL + 3, t: 0, bx: b.x, by: b.y,
+      x: s.x, y0: s.bot, y1: (b.y + 1) * TL + 3, t: 0, bx: b.x, by: b.y,
       spr: R.unitSprite(u), D: R.frameBox(u, R.unitSprite(u), R.unitBox(u)) * this.cfg().drawScale,
       dir: (u.id & 1) ? 1 : -1, land: false,
     });
@@ -370,7 +403,7 @@ const Lookout = {
         const x = f.x + f.dir * 7 * p;                  // thrown a little clear of the wall
         const D = f.D * (1 + 0.25 * p);
         g.save();
-        g.translate(x, y + this.footOff(D / CFG.TILE) - D / 2);   // the figure's middle over its feet
+        g.translate(x, y - D / 2);                      // the figure's middle over its box's foot
         g.rotate(f.dir * (0.4 + p * 2.6));              // tumbling
         g.drawImage(f.spr, -D / 2, -D / 2, D, D);
         g.restore();
