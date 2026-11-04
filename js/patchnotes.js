@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 144, date: '2026-11-04', title: 'A new look for Load and the Guide',
+    items: [
+      'The Load page has been rebuilt to match Settings: each save shows its map, its day, the land and how long you have played, with a clear Load button.',
+      'Renaming and deleting a save are small buttons beside it, and deleting asks you once more before it goes.',
+      'The Guide now turns like a book: a picture for each page, Back and Next, and a dot for every page you can jump to.',
+      'Both pages stand on the night sky when opened from the title screen.',
+    ],
+  },
+  {
     build: 143, date: '2026-11-04', title: 'The board on one page',
     items: [
       'The leaderboard now shows the top ten chiefs on a single page, with nothing to scroll.',

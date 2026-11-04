@@ -53,7 +53,8 @@ const SMOKE = ['boot.mjs', 'tap-audit.mjs', 'placement.mjs', 'patch-notes.mjs'];
 
 // non-script paths → the suites that read them
 const PATHS = [
-  [/^index\.html$/, ['boot.mjs', 'title.mjs', 'desktop-layout.mjs', 'settings.mjs', 'card-intro.mjs', 'calm-peace.mjs', 'art-pipeline.mjs', 'draft-cards.mjs']],
+  [/^index\.html$/, ['boot.mjs', 'title.mjs', 'desktop-layout.mjs', 'settings.mjs', 'card-intro.mjs', 'calm-peace.mjs', 'art-pipeline.mjs', 'draft-cards.mjs', 'pages.mjs']],
+  [/^assets\/ui\/guide\//, ['pages.mjs', 'boot.mjs', 'art-pipeline.mjs']],
   [/^analytics\.html$/, ['analytics.mjs', 'telemetry.mjs']],
   [/^supabase\//, ['analytics.mjs', 'telemetry.mjs', 'deck-sync.mjs', 'deck-core.mjs', 'vote.mjs']],
   [/^assets\/ui\//, ['boot.mjs', 'title.mjs', 'settings.mjs', 'art-pipeline.mjs']],

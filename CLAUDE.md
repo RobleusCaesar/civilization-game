@@ -289,6 +289,7 @@ node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothin
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
+node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 ```
 
@@ -927,6 +928,35 @@ save be won six times for six cards. The server re-checks the row's
 card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
 false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
+
+**THE LOAD AND GUIDE PAGES** (`js/pages.js`, `ShellPages`, tests/pages.mjs —
+operator, 2026-11-04: "Update the design of the Load and Guide pages so they
+match the high quality design of the settings page and the card announcement
+modal"). **THE PAGES ARE THEIR OLD SCREENS, DRESSED** (`ShellPages.mount`,
+once each, the board's pattern): #scrLoad and #scrHowto keep every id the
+game reaches — the back buttons (Screens.bind's), `#loadTitle`, `#slotList`
+(every message, `.hint` for a failure), `#btnImportFile` / `#fileLoad`,
+`#howPanels`, `#howDots` — and get the settings page's chrome round them: a
+chamfered back plaque, an emblem (the settings Saves chest and Notes scroll,
+128px at ≤42 CSS px) and the name in gold Cinzel, the carved frame with
+`SettingsPage.cornerSvg`'s corners, the title's `.plaques` buttons. The old
+screens' styles are keyed on ids, so the new ones are too (`#scrLoad.pg`,
+`#scrHowto.pg`) or they lose. **THE SLOTS** (`ShellPages.slotCard`, wired by
+`Screens._slotCard`; a cached older pages.js leaves the plain page): the
+save's own picture, its name, "Day N · Landform · 1h 30m", a Victory or
+Fallen mark; Load is the green plaque (the title's Continue), rename and
+delete vector icon plaques; delete's first tap turns it red, "Delete?"
+(`armDelete`), the second deletes; from the pause menu the page is "Save
+game" with Overwrite and Save here. **THE GUIDE TURNS LIKE THE
+ANNOUNCEMENT**: each page's picture in a gold medallion, a gold heading over
+the announcement's rule, its serif body; BACK, the NEXT plaque and a dot per
+page (`ShellPages.go` / `paintGuide`), the arrow keys; the last page's plaque
+reads Done and goes back; `ShellPages.onGuide` opens it on page one. Its
+pictures are the 128px masters doubled by Scale2x
+(`assets/ui/guide/*-2x.png`, the masters beside them), `loading="lazy"` — the
+old 96px images in the markup were fetched at boot though the screen was
+hidden. **THE NIGHT FROM THE TITLE, THE GAME FROM THE PAUSE MENU**:
+`Screens.nightBehind` takes 'load' and 'howto' unless `backTo` is 'paused'.
 
 **THE WORLD BOARD** (`js/board.js`, `Backend.board`, `CFG.CARDS.BOARD`,
 `Deck.lift`, migration `0014_world_board.sql`; tests/world-board.mjs and

@@ -368,8 +368,8 @@ ShellPages.CSS = `
   #scrLoad.pg .smeta small { font-size: 13px; }
   #scrLoad.pg .sacts .pgGo { flex: 0 0 auto; min-width: 128px; }
   #scrHowto.pg .pgPane { padding: 22px 24px 4px; }
-  #scrHowto.pg .gmed { width: 140px; height: 140px; margin-bottom: 16px; }
-  #scrHowto.pg .gart { width: 104px; height: 104px; }
+  #scrHowto.pg .gmed { width: 120px; height: 120px; margin-bottom: 16px; }
+  #scrHowto.pg .gart { width: 84px; height: 84px; }
   #scrHowto.pg .gpage { max-width: 600px; }
   #scrHowto.pg .gpage h3 { font-size: 32px; }
   #scrHowto.pg .grule { margin: 12px 0 14px; }

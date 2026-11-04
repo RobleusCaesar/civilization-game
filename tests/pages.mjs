@@ -180,7 +180,9 @@ const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{1F000}-\u{1F2FF}]
     const P = document.getElementById('howPanels'), scr = document.getElementById('scrHowto');
     const state = () => ({ at: Math.round(P.scrollLeft / P.clientWidth), dot: [...document.querySelectorAll('#howDots .pgDot')].findIndex(d => d.classList.contains('on')),
       back: !scr.querySelector('.pgPrev').classList.contains('gone'), next: scr.querySelector('.pgNextL').textContent });
-    const settle = async () => { for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 25)); if (Math.abs(P.scrollLeft / P.clientWidth - Math.round(P.scrollLeft / P.clientWidth)) < 0.01) break; } await new Promise(r => setTimeout(r, 60)); };
+    // a smooth scroll: give it time to start, then wait until it stands still on a page
+    const settle = async () => { await new Promise(r => setTimeout(r, 200)); let last = -1;
+      for (let i = 0; i < 80; i++) { await new Promise(r => setTimeout(r, 40)); const x = P.scrollLeft; if (x === last && Math.abs(x / P.clientWidth - Math.round(x / P.clientWidth)) < 0.01) break; last = x; } };
     const pages = [...P.querySelectorAll('.gpage')];
     const each = pages.map(pg => ({ med: !!pg.querySelector('.gmed .gart'), h: !!pg.querySelector('h3 + .grule'), lazy: (pg.querySelector('.gart') || {}).loading }));
     const out = { n: pages.length, each, dots: document.querySelectorAll('#howDots .pgDot').length, night: Screens.nightUp(), start: state() };
@@ -212,7 +214,10 @@ for (const [w, h, dsf] of [[320, 568, 3], [390, 844, 3], [430, 932, 3], [844, 39
   const out = [];
   for (const page of ['load', 'howto']) {
     if (page === 'load') await openLoad(p); else await openGuide(p);
-    await p.evaluate(() => Promise.all([...document.querySelectorAll('.screen.show img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))));
+    // a lazy picture on a page not yet turned to never loads: wait for what is shown, a little while at most
+    await p.evaluate(() => Promise.race([new Promise(r => setTimeout(r, 2500)),
+      Promise.all([...document.querySelectorAll('.screen.show img')].filter(i => i.loading !== 'lazy' || i.getBoundingClientRect().right > 0 && i.getBoundingClientRect().left < innerWidth)
+        .map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })))]));
     const m = await p.evaluate(guide => {
       const scr = document.querySelector('.screen.show'), W = document.documentElement.clientWidth, bad = [];
       for (const i of scr.querySelectorAll('img')) {
@@ -222,9 +227,13 @@ for (const [w, h, dsf] of [[320, 568, 3], [390, 844, 3], [430, 932, 3], [844, 39
         if (getComputedStyle(i).imageRendering === 'pixelated') bad.push(i.className + ' asks for pixelated drawing');
       }
       const over = [];
+      // the guide's other pages stand off to the side by design: measure the page on show
+      const P = document.getElementById('howPanels'), at = P ? Math.round(P.scrollLeft / Math.max(1, P.clientWidth)) : 0;
+      const shown = guide ? P.children[at] : null;
       for (const el of scr.querySelectorAll('.pgTitle, .pgSlot, .smeta > b, .abtn, .pgFrame, .gpage, .pgNav, #howDots, .pgImport')) {
         const r = el.getBoundingClientRect();
         if (!r.width) continue;
+        if (guide && el.closest('#howPanels > section') && el.closest('#howPanels > section') !== shown) continue;
         if (r.right > W + 0.5 || r.left < -0.5) over.push((el.className || el.id) + ' off the page');
         if (!el.classList.contains('pgFrame') && el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).textOverflow !== 'ellipsis' &&
           !el.querySelector('[style*="ellipsis"], .pgNm')) over.push((el.className || el.id) + ' cut: ' + el.textContent.trim().slice(0, 18));
