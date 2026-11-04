@@ -23,7 +23,7 @@ const PATCH_NOTES = [
     items: [
       'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
       'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',
-      'Archers up there stand inside the platform, behind its rail or battlements, two side by side.',
+      'Archers up there stand inside the platform, behind its rail or in the gaps of its battlements, two side by side.',
       'Tap an archer on a tower, then tap an enemy soldier or building, and he shoots at it from up there.',
       'An archer on a tower sees twice as far, shoots twice as far and shoots over walls. Only archers and siege engines can hit them up there.',
       'If a tower falls, the archers on it fall with it.',

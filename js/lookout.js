@@ -294,6 +294,58 @@ const Lookout = {
   // a bow's frame fills its box from `top` to `foot` (the shipped archer,
   // longbow and marksman frames: rows 3 and 31 of 32)
   BODY: { top: 3 / 32, foot: 31 / 32 },
+  /* HIS FEET STAND ON HIS PLACE, NOT HIS FRAME'S MIDDLE. The bow sheets do
+     not centre their man: facing south an archer stands 8 of his frame's 64
+     px left of its middle, a longbow facing south-west 12 right. Drawn by
+     the frame, a man hopped a third of the platform as he turned to shoot,
+     and on the stone towers stood at a merlon beside the crenel his place
+     is. Measured once per pose — the middle of the lowest rows' ink, the
+     mean over the pose's frames, so the stance is anchored and the
+     animation's own sway kept — as a share of the frame's width; a picture
+     that cannot be read (a page from disk) keeps the frame's middle. Render
+     state only, keyed by the frames themselves. */
+  _feet: new WeakMap(),
+  _fc: null,
+  feetAt(u, img) {
+    const fr = R.sheetFrames ? R.sheetFrames(u) : null;
+    const key = fr && fr.indexOf(img) >= 0 ? fr : img;
+    let v = this._feet.get(key);
+    if (v !== undefined) return v;
+    v = 0.5;
+    try {
+      const c = this._fc || (this._fc = document.createElement('canvas'));
+      const q = c.getContext('2d', { willReadFrequently: true });
+      let sum = 0, n = 0;
+      for (const im of key === img ? [img] : key) {
+        const w = im.width, h = im.height;
+        if (!w || !h) continue;
+        if (c.width < w || c.height < h) { c.width = Math.max(c.width, w); c.height = Math.max(c.height, h); }
+        q.clearRect(0, 0, w, h);
+        q.drawImage(im, 0, 0);
+        const d = q.getImageData(0, 0, w, h).data;
+        let top = -1, bot = -1;
+        for (let y = 0; y < h && top < 0; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 128) { top = y; break; }
+        for (let y = h - 1; y >= 0 && bot < 0; y--) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 128) { bot = y; break; }
+        if (top < 0) continue;
+        let sx = 0, m = 0;
+        for (let y = Math.floor(bot - (bot - top) * 0.12); y <= bot; y++)
+          for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 128) { sx += x; m++; }
+        if (m) { sum += (sx / m + 0.5) / w; n++; }
+      }
+      if (n) v = sum / n;
+    } catch (e) { v = 0.5; }
+    this._feet.set(key, v);
+    return v;
+  },
+  // the picture of a man up there: his frame and the box it is drawn in,
+  // his feet on his place and his box's foot on the floor (a frame bigger
+  // than the kind's box is a bigger picture on the same feet, R.frameBox)
+  pic(u, s) {
+    const img = R.unitSprite(u);
+    if (!img) return null;
+    const D = R.frameBox ? R.frameBox(u, img, s.B) : s.B;
+    return { img, x: s.x - D * this.feetAt(u, img), y: s.top + s.B - D, D };
+  },
   // the tower's drawn rect (world px) and the platform it carries
   frame(b) {
     const TL = CFG.TILE, bw = Bld.size(b) * TL, bx = b.x * TL, by = b.y * TL;
@@ -417,10 +469,9 @@ const Lookout = {
     const pics = [];
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [u, s] of spots) {
-      const img = R.unitSprite(u);
-      if (!img) continue;
-      // a frame bigger than the kind's box is a bigger picture on the same feet (R.frameBox)
-      const D = R.frameBox ? R.frameBox(u, img, s.B) : s.B, x = s.x - D / 2, y = s.top + s.B - D;
+      const p = this.pic(u, s);
+      if (!p) continue;
+      const { img, x, y, D } = p;
       pics.push([img, x, y, D]);
       x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + D); y1 = Math.max(y1, y + D);
     }
@@ -494,12 +545,13 @@ const Lookout = {
     const b = Bld.get(u.perch);
     const s = b && this.spot(u);
     if (!s) return;
-    const TL = CFG.TILE;
+    const TL = CFG.TILE, p = this.pic(u, s);
+    if (!p) return;
     if (this.falls.length > 8) this.falls.shift();
-    // from where he stood (his box's foot), at the size he was drawn up there
+    // from where he was drawn (his box's middle over its foot), at that size
     this.falls.push({
-      x: s.x, y0: s.top + s.B, y1: (b.y + 1) * TL + 3, t: 0, bx: b.x, by: b.y,
-      spr: R.unitSprite(u), D: s.B,
+      x: p.x + p.D / 2, y0: p.y + p.D, y1: (b.y + 1) * TL + 3, t: 0, bx: b.x, by: b.y,
+      spr: p.img, D: p.D,
       dir: (u.id & 1) ? 1 : -1, land: false,
     });
   },

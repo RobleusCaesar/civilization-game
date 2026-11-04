@@ -291,7 +291,7 @@ node tests/footing.mjs       # the ground under a building: a cast shadow under 
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
-node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them, the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, between the corner posts, the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them, the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, between the corner posts (a loosed arrow may cross the edge, never a man), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces (a crenel on the stone towers); tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
@@ -355,9 +355,21 @@ men fit between the corner posts, as a man fits a gate's passage, so a free
 tower's bow is drawn about half a ground unit high and a wall tower's, whose
 art is denser, about two thirds), `feet` (on the floor at the front rail —
 the rail then comes to his thigh), `slots` (two places, the first man up
-keeping his: `u.perchSlot`), `solo` and `art` (the picture's size: art
-redrawn at another size stands down to `PROC`, a straight front, until it
-is measured again). **THE TOWER IS DRAWN ONCE**: the men go on a scratch
+keeping his: `u.perchSlot` — the middle of a rail section on the timber
+towers, a crenel on the stone ones), `solo` and `art` (the picture's size:
+art redrawn at another size stands down to `PROC`, a straight front, until
+it is measured again). **HE STANDS ON HIS OWN FEET** (`Lookout.feetAt` /
+`pic`, `heStandsOnHisOwnFeet`): the bow sheets do not centre their man in
+his frame (facing south an archer stands 8 of 64 px left of its middle, a
+longbow facing south-west 12 right), so a man drawn by his frame's middle
+hopped about the platform as he turned and stood at a merlon beside his
+crenel. His FEET go on his place — measured once per pose, the lowest
+rows' ink over the pose's frames (the animation's own sway kept), cached on
+the frames, the frame's middle for a picture that cannot be read — and the
+draw and the fall both place him through `pic`. A loosed arrow may cross
+the tower's edge; no part of a man may (the contract measures the drawn
+men OPENED by ~0.7 world px, so a shaft drops out and a body stays).
+**THE TOWER IS DRAWN ONCE**: the men go on a scratch
 layer at the world's device pixels (`_scr`), the tower's own picture is
 drawn through `frontClip` with `destination-out` to cut its front out of
 them, and the rest is laid over the tower — relaying the front instead

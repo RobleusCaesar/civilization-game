@@ -463,6 +463,13 @@ const out = await p.evaluate(() => {
             if (dv > 12) { const wx = X0 + (px + 0.5) / z, wy = Y0 + (py + 0.5) / z; o.push([Math.floor((wx - f.r.x) / sc), Math.floor((wy - f.r.y) / sc), dv]); } } return o; })() });
         const w = Math.round(WW * z), h = Math.round(HH * z);
         let frontHit = 0, minX = Infinity, maxX = -Infinity, low = -Infinity;
+        // what is drawn of the men, for the extent: an arrow loosed toward
+        // that side, or a bow held out over the corner, may cross the
+        // tower's edge — a man may not. So the extent is taken of the drawn
+        // pixels OPENED by ~0.7 world px (eroded, then grown back by as
+        // much): a shaft or a limb a pixel or two thick drops out, any part
+        // of a body stays at its full width
+        const M = new Uint8Array(w * h), er = Math.max(1, Math.round(0.7 * z));
         const top = crew.map(() => Infinity);
         const spots = crew.map(u => Lookout.spot(u, f));
         for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
@@ -476,8 +483,16 @@ const out = await p.evaluate(() => {
           for (let oy = -2; oy <= 2 && deep; oy++) for (let ox = -2; ox <= 2; ox++) if (!front(ax + ox, ay + oy)) { deep = false; break; }
           if (deep && dv > 12) frontHit++;
           if (dv <= 30) continue;
-          minX = Math.min(minX, wx); maxX = Math.max(maxX, wx); low = Math.max(low, wy);
+          M[py * w + px] = 1; low = Math.max(low, wy);
           spots.forEach((sp, k) => { if (Math.abs(wx - sp.x) < sp.B * 0.3) top[k] = Math.min(top[k], wy); });
+        }
+        for (let py = er; py < h - er; py++) for (let px = er; px < w - er; px++) {
+          if (!M[py * w + px]) continue;
+          let all = true;
+          for (let oy = -er; oy <= er && all; oy++) for (let ox = -er; ox <= er; ox++) if (!M[(py + oy) * w + px + ox]) { all = false; break; }
+          if (!all) continue;
+          const wx = X0 + (px + 0.5) / z;
+          minX = Math.min(minX, wx - er / z); maxX = Math.max(maxX, wx + er / z);
         }
         measured++;
         if (frontHit) bad.front.push(`${name} ${mode}: ${frontHit} px of a man over the tower's front`);
@@ -495,7 +510,7 @@ const out = await p.evaluate(() => {
     for (const u of S.units) if (u.perch) { u.tUnit = 0; u.task = null; }
     ck('everyTowerCarriesItsLookout', !bad.placed.length && measured === 12, bad.placed.join('; ') || `6 drawn towers, two up on each, ${measured} pictures`);
     ck('theTowersFrontIsAlwaysInFrontOfItsLookout', !bad.front.length, bad.front.join('; ') || 'the rail, the posts, the merlons and the ladder top stand in front of the men, pixel for pixel');
-    ck('andTheyStandInsideThePlatform', !bad.inside.length, bad.inside.join('; ') || `between the corner posts (the widest bow ${maxSpill.toFixed(1)}px past the platform's edge), nothing ${deepest.toFixed(1)}px below their feet`);
+    ck('andTheyStandInsideThePlatform', !bad.inside.length, bad.inside.join('; ') || `between the corner posts (no part of a man ${maxSpill.toFixed(1)}px past the platform's edge, a loosed arrow aside), nothing ${deepest.toFixed(1)}px below their feet`);
     ck('andEachIsDrawnWhole', !bad.whole.length, bad.whole.join('; ') || `at least ${Math.round(minShown * 100)}% of every man over the rail, the rest behind it — never cut by a line`);
     // the measurements are the art's own: the size it was measured on, the
     // front starting on a drawn pixel of every column, the feet behind the
@@ -510,6 +525,41 @@ const out = await p.evaluate(() => {
       for (const sx of P.slots.concat(P.solo)) if (!(prof[sx] && P.feet >= prof[sx])) off.push(`${kind}${li + 1}: feet ${P.feet} in front of the rail at ${sx}`);
     });
     ck('andTheMeasurementsAreTheArtsOwn', !off.length, off.slice(0, 6).join('; ') || 'sizes, fronts, feet and places agree with the shipped art');
+    // HE STANDS ON HIS OWN FEET (build 147's review): the bow sheets do not
+    // centre their man in his frame — facing south an archer stands 8 of 64
+    // px left of its middle, a longbow facing south-west 12 right — so a man
+    // drawn by his frame's middle hopped about the platform as he turned and
+    // stood at a merlon beside his crenel. Every kind, all eight facings, at
+    // rest and shooting, on every tower: the middle of his feet, read off
+    // the very frame drawn, is his place
+    {
+      const dirs = { s: [0, 9], se: [7, 7], e: [9, 0], ne: [7, -7], n: [0, -9], nw: [-7, -7], w: [-9, 0], sw: [-7, 7] };
+      const miss = []; let worst = 0, cases = 0;
+      for (const tw of towers) {
+        const f = Lookout.frame(tw);
+        if (!f || !f.P) continue;
+        for (const u of S.units) if (u.perch === tw.id) u.perch = 0;
+        for (const kind of ['archer', 'longbow', 'marksman']) for (const pose of ['idle', 'fight']) for (const d of Object.keys(dirs)) {
+          const a = Units.spawn(kind, 'P', tw.x, tw.y + 1), o = Units.spawn('archer', 'P', tw.x, tw.y + 1);
+          a.perch = o.perch = tw.id; a.perchSlot = 1; o.perchSlot = 0;
+          let foe = null;
+          if (pose === 'fight') { foe = Units.spawn('defender', 'A', tw.x + dirs[d][0], tw.y + dirs[d][1]); a.tUnit = foe.id; a.task = { type: 'attack', on: foe.id }; }
+          else R._faceMap.set(a, { x: a.x, y: a.y, dir: d });
+          const s = Lookout.spot(a, f), p = Lookout.pic(a, s);
+          const A = artPx(p.img), W = p.img.width, H = p.img.height;
+          let top = -1, bot = -1;
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (A[(y * W + x) * 4 + 3] > 128) { if (top < 0) top = y; bot = y; }
+          let sx = 0, n = 0;
+          for (let y = Math.floor(bot - (bot - top) * 0.12); y <= bot; y++) for (let x = 0; x < W; x++) if (A[(y * W + x) * 4 + 3] > 128) { sx += x; n++; }
+          const off = Math.abs(p.x + (sx / n + 0.5) * p.D / W - s.x) / s.B;
+          worst = Math.max(worst, off); cases++;
+          if (off > 0.06) miss.push(`${(f.spr._cfArt.fort ? 'wall' : 'free') + tw.level} ${kind} ${pose} ${d}: feet ${(off * 100).toFixed(0)}% of a man off his place`);
+          S.units = S.units.filter(x => x !== a && x !== o && x !== foe);
+        }
+      }
+      ck('heStandsOnHisOwnFeet', !miss.length && cases === 288, miss.slice(0, 4).join('; ') + (miss.length > 4 ? ` (+${miss.length - 4})` : '') ||
+        `${cases} pictures — every kind, all eight facings, at rest and shooting: the feet within ${(worst * 100).toFixed(1)}% of a man of the place`);
+    }
     // TOLD WHAT TO SHOOT (operator, build 147: "click archers on the tower and
     // then click an enemy and have them attack whoever I select… like a
     // house"): a bow tapped on the platform is selected; a foe tapped is shot
