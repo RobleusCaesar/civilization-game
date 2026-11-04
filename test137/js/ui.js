@@ -230,6 +230,8 @@ const UI = {
      button shows stone, matching what the villager will actually build, instead
      of the starter palisade for the rest of the game. */
   menuIconLevel(key) {
+    // the road card follows the hall, as the roads themselves do (js/roads.js)
+    if (key === 'road' && typeof Roads !== 'undefined' && Roads.level) return Math.min((Sprites.building.road || []).length || 1, Roads.level());
     const spec = Bld.buildSpec(key, 'P');
     const n = (Sprites.building[key] || []).length || 1;
     return Math.min(n, Math.max(1, spec.level || 1));
@@ -2533,7 +2535,10 @@ const UI = {
   killPlank(act, line, small) {
     return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;
   },
-  cancelWorkButton(b) {
+  /* `half`: on a builder's own panel the call-off shares a row with Build,
+     half and half (operator, 2026-11-04: "we don't need two large buttons for
+     build and cancel"); armed, it takes the whole row to say what comes back. */
+  cancelWorkButton(b, half) {
     const kind = Bld.cancelWork(b);
     if (!kind) return '';
     const name = Bld.def(b.key).name;
@@ -2542,8 +2547,8 @@ const UI = {
     return this.confirmCancel === b.id
       ? `<button class="abtn danger wide" data-act="cancelbuild">⚠️ Confirm — call off ${what}` +
         `<small>${back} comes back${kind === 'upgrade' ? ` · stays Lv ${b.level}` : ' · nothing is left on the ground'}</small></button>`
-      : `<button class="abtn wide" data-act="cancelbuild">🛑 Cancel ${kind === 'upgrade' ? 'upgrade' : 'build'}` +
-        `<small>${name} — everything paid comes back</small></button>`;
+      : `<button class="abtn${half ? '' : ' wide'}" data-act="cancelbuild">🛑 Cancel ${kind === 'upgrade' ? 'upgrade' : 'build'}` +
+        `<small>${half ? 'everything paid comes back' : name + ' — everything paid comes back'}</small></button>`;
   },
   // cheap periodic update: rewrite the sub-line only, rebuild DOM when structure changes
   /* THE YARD'S QUEUE LINE, AND WHAT IS WAITING ON IT (tests/train-spawn.mjs).
@@ -3325,7 +3330,7 @@ const UI = {
            from right here — the same button the building's own panel shows,
            gone the moment there is nothing being raised. */
         const cw = this.villagerBuildSite(u);
-        if (cw) html += this.cancelWorkButton(cw);
+        if (cw) html += this.cancelWorkButton(cw, true);
       }
       // resource-station upgrade, right on the worker's panel
       const wb = own ? this.villagerResBld(u) : null;
