@@ -426,6 +426,34 @@ const out = await p.evaluate(async () => {
     ck('aManInTheGapIsNotPaintedOver', whole === 0, 'the whole gate laid over him ' + whole + ' times');
   }
   {
+    // NO SILL ACROSS THE GATEWAY (operator, 2026-11-04: "remove the bottom frame
+    // of the gateway… the villager goes under this… check the level 2 and 3 gates
+    // too"): a man in the passage has the gatehouse laid back over him, so the
+    // face — finished or battered — carries nothing across the passage's foot.
+    // The control reads the shipped PNG, where level 1's strip of earth is.
+    const bad = [], H = Assets.FORT_GEO.UP + Assets.FORT_GEO.T + Assets.FORT_GEO.DOWN;
+    const across = (cv, li, ox) => {
+      const D = Assets.FORT_DOOR[li], g = cv.getContext ? cv.getContext('2d') : null;
+      let src = g;
+      if (!g) { const c = document.createElement('canvas'); c.width = cv.naturalWidth || cv.width; c.height = cv.naturalHeight || cv.height; src = c.getContext('2d'); src.drawImage(cv, 0, 0); }
+      const d = src.getImageData((ox || 0) + D.x0, D.y1, D.x1 - D.x0, H - D.y1).data;
+      let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++;
+      return n;
+    };
+    let control = -1, dmgN = 0;
+    for (const li of [0, 1, 2]) {
+      const face = Sprites.gateMask[li][0];
+      if (!face || !face._cfArt || !face._cfArt.fort) { bad.push('L' + (li + 1) + ' no drawn face'); continue; }
+      const n = across(face, li);
+      if (n) bad.push('L' + (li + 1) + ' finished ' + n);
+      const st = Sprites.fortStates && Sprites.fortStates.gate && Sprites.fortStates.gate[li];
+      for (const k of ['d1', 'd2']) if (st && st[k]) { dmgN++; const m = across(st[k][0], li); if (m) bad.push('L' + (li + 1) + ' ' + k + ' ' + m); }
+      if (li === 0 && Assets.fort[1] && Assets.fort[1].gate) control = across(Assets.fort[1].gate, 0, 0);
+    }
+    ck('noSillAcrossTheGateway', bad.length === 0 && control > 100 && dmgN === 6,
+      bad.length ? bad.join('; ') : 'every tier open to its foot, finished and ' + dmgN + ' battered faces (the shipped level-1 face has ' + control + ' px there)');
+  }
+  {
     // level 3: the walk crosses over the road, so a man in the passage is
     // under it — the gate goes back over him, as the gatehouse used to
     clear('wl-walkarch'); S.wallLevel = 3;

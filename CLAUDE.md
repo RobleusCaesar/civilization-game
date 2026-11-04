@@ -362,6 +362,15 @@ speed and the route price are the gate's. The fort's road strip
 (`R.drawGateRoads`) stands down under the player's gates while the builder
 is on and stays the rival's and the builder-off stand-in (wall-lines.mjs
 measures it with the builder off).
+**NO SILL ACROSS THE GATEWAY** (`Assets._openPassage`, wall-lines.mjs
+`noSillAcrossTheGateway` — operator, 2026-11-04: "remove the bottom frame of
+the gateway… the villager goes under this… check the level 2 and 3 gates
+too"): a man in a gate's passage has the gatehouse laid back over him
+(`R.occludeByForts`), so anything across the passage's foot crossed his legs
+— the level-1 face's strip of trodden earth (rows 109-113 of
+`gate-l1.png`), and rubble on the battered faces at every tier. The face
+frame and its `d1`/`d2` are cut open from `FORT_DOOR.y1` to the frame's foot
+at load (the PNGs are untouched); the stages keep theirs.
 Off (`CFG.ROADS.ON` false): no button, no road drawn or walked, the worn
 paths return.
 
