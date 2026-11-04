@@ -288,7 +288,7 @@ node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat a
 node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
-node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; cheaper and quicker than a wall; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; CFG.ROADS.ON false brings the worn paths back
+node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; CFG.ROADS.ON false brings the worn paths back
 ```
 
 **THE ROAD BUILDER** (`js/roads.js`, `CFG.ROADS`, `CFG.BUILDINGS.road`, tests/roads.mjs —
@@ -327,6 +327,26 @@ owned by the tile of the nearest skeleton, never over water, a wood or a
 building). Cached per tile at the half-pixel grid (decor cut to what it
 holds), `CACHE_MAX` 360 tiles, generated under `BUDGET_MS` (4) a frame; a
 site shows the road through the turf in three dithered stages with stakes.
+**THREE ROADS, ONE PER STOREY OF THE HALL** (operator, 2026-11-04: "Make
+the current road level 2, create a more rural road (more like a worn path),
+and then a level 3 that's like a Roman road… upgrade when town center
+upgrades (no cost), like villagers… a better icon"): `Roads.level()` is the
+player's hall level, read live and part of every cached tile's key, so a new
+storey repaints the roads a few tiles a frame and costs nothing. Level 1 is a
+worn track (dusty, two bare tracks, the sward taking the edges back in a
+dither and showing through in patches — those cells are left transparent so
+the real ground shows), level 2 the packed-earth road above, level 3 a via
+(polygonal slabs from a Voronoi of a jittered world lattice, mortared, two
+cart ruts, dressed kerb blocks along both edges, a gravel shoulder, the odd
+milestone). A picture only: speed and route price are the same at every
+level. Junction rounding (`segsAround`'s disc) reaches only into the
+quadrants between two joined arms, so a T keeps a straight side. The build
+menu's card (`Roads.icon(lv)`, `Sprites.building.road[lv-1]`,
+`UI.menuIconLevel`) is the painter's own road turning past a fingerpost (two
+arms at level 2, a milestone on the via) at 1.3 world px a card pixel. Price:
+10 wood + 5 stone a tile (operator). **The builder's panel** puts Build and
+Cancel build on one row, half and half (`UI.cancelWorkButton(b, half)`);
+armed, the confirm takes the whole row.
 Off (`CFG.ROADS.ON` false): no button, no road drawn or walked, the worn
 paths return.
 

@@ -19,12 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 136, date: '2026-11-03', title: 'Build your own roads',
+    build: 137, date: '2026-11-04', title: 'Build your own roads',
     items: [
-      'A new Road sits beside the House in the build menu: drag across the ground and a villager lays it, quickly and cheaply.',
+      'A new Road sits beside the House in the build menu: drag across the ground and a villager lays it, quickly, for 10 wood and 5 stone a stretch.',
       'Your villagers and soldiers walk faster on a road and keep to the roads when they can.',
+      'Roads grow with your Town Center, at no cost: a worn track at first, then a packed earth road, then a paved stone road with kerbs and milestones.',
       'Roads turn, meet and cross, and lie worn into the land with ruts, stones and grass along their edges.',
       'The paths your villagers used to wear by themselves are gone. You build the roads now.',
+      'A builder shows Build and Cancel side by side, so the panel takes less room.',
     ],
   },
   {

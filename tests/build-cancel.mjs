@@ -220,6 +220,12 @@ const out = await p.evaluate(async () => {
     UI.select('unit', v.id);
     ck('soDoesTheBuildersPanel', has(), '');
     ck('andTheSignatureTracksIt', /\|c\d+:site:/.test(UI.panelSig()), UI.panelSig().split('|').pop());
+    // and it shares Build's row, half and half (operator, 2026-11-04: "we don't
+    // need two large buttons for build and cancel")
+    { const bb = document.querySelector('#panel [data-act="gobuild"]'), cb = document.querySelector('#panel [data-act="cancelbuild"]');
+      const r1 = bb && bb.getBoundingClientRect(), r2 = cb && cb.getBoundingClientRect();
+      ck('andSharesBuildsRowHalfAndHalf', !!(r1 && r2) && Math.abs(r1.top - r2.top) < 1 && Math.abs(r1.width - r2.width) < 2 && r2.left > r1.right - 1,
+        r1 && r2 ? `build ${Math.round(r1.left)},${Math.round(r1.top)} ${Math.round(r1.width)}w · cancel ${Math.round(r2.left)},${Math.round(r2.top)} ${Math.round(r2.width)}w` : 'a button is missing'); }
 
     // ARMED, then FIRED — the same two taps as demolition. A quick double-tap
     // is ONE gesture: a tap within the confirm's guard of the arming is

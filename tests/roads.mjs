@@ -113,11 +113,12 @@ const { RX, RY } = W0;
     };
     const d = CFG.BUILDINGS.road.levels[0], wl = CFG.BUILDINGS.wall.levels[0];
     const price = o => Object.values(o).reduce((a, v) => a + v, 0);
-    return { n: chain.length, ortho, refuse, cost: price(d.cost), wallCost: price(wl.cost), time: d.time, wallTime: wl.time };
+    return { n: chain.length, ortho, refuse, cost: price(d.cost), wood: d.cost.wood, stone: d.cost.stone, wallCost: price(wl.cost), time: d.time, wallTime: wl.time };
   }, { RX, RY });
   ck('aDragLaysOrthogonalTilesOnly', r.ortho && r.n >= 12, `${r.n} tiles, every step north-south or east-west: ${r.ortho}`);
   ck('refusedGroundIsRefused', r.refuse.water === 'ground' && r.refuse.wood === 'ground' && r.refuse.rival === 'owner' && r.refuse.open === true, JSON.stringify(r.refuse));
-  ck('aRoadIsCheaperAndQuickerThanAWall', r.cost < r.wallCost / 3 && r.time < r.wallTime / 2, `road ${r.cost} goods in ${r.time} days; wall ${r.wallCost} in ${r.wallTime}`);
+  // the operator's price (2026-11-04): ten wood and five stone a tile, still under a wall's
+  ck('aRoadIsCheaperAndQuickerThanAWall', r.wood === 10 && r.stone === 5 && r.cost < r.wallCost && r.time < r.wallTime / 2, `road ${r.wood} wood + ${r.stone} stone in ${r.time} days; wall ${r.wallCost} in ${r.wallTime}`);
 }
 
 // ---- a villager builds it, and it becomes ground ------------------------------------
@@ -138,7 +139,7 @@ const { RX, RY } = W0;
       bldAt: !!Bld.at(RX + 2, RY + 6), samePass: pass() === before, paved: S.map.terrain[(RY + 6) * CFG.W + RX + 1] === T.GRASS,
       decay: !!(S.map.decay && S.map.decay[(RY + 6) * CFG.W + RX + 1]), builder: !!v };
   }, { RX, RY });
-  ck('theLineIsPaidATileAtATime', r.sites === 5 && r.paid.wood === 15 && r.paid.stone === 5, JSON.stringify({ sites: r.sites, paid: r.paid }));
+  ck('theLineIsPaidATileAtATime', r.sites === 5 && r.paid.wood === 50 && r.paid.stone === 25, JSON.stringify({ sites: r.sites, paid: r.paid }));
   ck('aVillagerBuildsItInTheRealBuildTask', r.builder && r.left === 0 && r.roads === 5, `${r.roads} of 5 roads in ${r.days} game days`);
   ck('andTheFinishedRoadIsGroundNotABuilding', !r.bldAt && r.samePass, JSON.stringify({ bldAt: r.bldAt, samePass: r.samePass }));
   ck('spentGroundIsPavedAndStopsRegrowing', r.paved && !r.decay, JSON.stringify({ paved: r.paved, decay: r.decay }));
@@ -185,6 +186,7 @@ const { RX, RY } = W0;
   await p.evaluate(({ RX, RY }) => {
     const m = S.map.roads, W = CFG.W;
     for (const [x, y] of [[4, 11], [4, 12], [4, 9], [4, 8], [9, 11], [9, 12], [10, 12]]) m[(RY + y) * W + RX + x] = 1;
+    window.__lv0 = Bld.tcOf('P').level; Bld.tcOf('P').level = 2;      // the geometry below is the packed-earth road's
     Roads._n = -1; Roads._c.clear();
   }, { RX, RY });
   await p.evaluate(() => new Promise(r => { let k = 0; const f = () => (++k >= 40 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }));
@@ -216,6 +218,51 @@ const { RX, RY } = W0;
     JSON.stringify({ straight: r.straightRun, cross: r.cross, tee: r.tee, turn: r.turn }));
   ck('noTwoTilesAlike', r.of >= 4 && r.unique === r.of, `${r.unique} distinct of ${r.of} straight tiles`);
   ck('andNothingGrowsOverTheWater', r.bad === 0, 'decor cells over water: ' + r.bad);
+}
+
+// ---- the roads follow the hall ---------------------------------------------------------
+/* operator, 2026-11-04: "Show me designs for level 1, 2 and 3. Have roads upgrade when
+   town center upgrades (no cost), like villagers. Make the current road level 2, create a
+   more rural road (more like a worn path), and then a level 3 that's like a Roman road.
+   Come up with a better icon for the road in the build menu." */
+{
+  const r = await p.evaluate(async ({ RX, RY }) => {
+    const tc = Bld.tcOf('P'), C = CFG.TILE * 2, out = {};
+    const frames = n => new Promise(res => { let k = 0; const f = () => (++k >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    const e = (x, y) => Roads._c.get((RY + y) * CFG.W + RX + x);
+    const px = t => t.surf.getContext('2d').getImageData(0, 0, C, C).data;
+    const res0 = JSON.stringify(S.res);
+    for (const lv of [1, 2, 3]) {
+      tc.level = lv; await frames(30);
+      const t = e(5, 10), a = e(6, 10), b2 = e(7, 10), d = t && px(t);
+      let fill = 0, kerb = 0, mortar = 0, h = 2166136261;
+      if (d) for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue; fill++;
+        if (d[i] === 0xb6 && d[i + 1] === 0xac && d[i + 2] === 0x97) kerb++;           // a kerb block's face
+        if (d[i] === 0x3a && d[i + 1] === 0x39 && d[i + 2] === 0x35) mortar++;         // the via's mortar
+        h = Math.imul(h ^ (d[i] + d[i + 1] * 7 + d[i + 2] * 13), 16777619);
+      }
+      let seam = -1;
+      if (a && b2) { const L = a.surf.getContext('2d').getImageData(C - 1, 0, 1, C).data, Rr = b2.surf.getContext('2d').getImageData(0, 0, 1, C).data; seam = 0; for (let y = 0; y < C; y++) if (!!L[y * 4 + 3] !== !!Rr[y * 4 + 3]) seam++; }
+      // the same quickening at every level
+      const walk = y => { const u = Units.spawn('villager', 'P', RX + 2.5, y + 0.5); u.path = [{ x: RX + 9, y }]; u.pathI = 0;
+        const x0 = u.x; for (let k = 0; k < 10; k++) Units.followPath(u, 0.05); const dd = u.x - x0; S.units.splice(S.units.indexOf(u), 1); return dd; };
+      out[lv] = { level: Roads.level(), key: t ? t.k.slice(-1) : null, fill, kerb, mortar, sig: h >>> 0, seam,
+        speed: +(walk(RY + 10) / walk(RY + 12)).toFixed(3), card: UI.menuIconSprite('road') === Sprites.building.road[lv - 1] };
+    }
+    tc.level = window.__lv0;
+    const cards = Sprites.building.road.map(c => c.toDataURL());
+    return { out, free: JSON.stringify(S.res) === res0, cards: new Set(cards).size, cardPx: Sprites.building.road.map(c => c.width + 'x' + c.height).join(' ') };
+  }, { RX, RY });
+  const o = r.out;
+  ck('theRoadsFollowTheHall', [1, 2, 3].every(l => o[l].level === l && o[l].key === String(l)), [1, 2, 3].map(l => `hall ${l}: road ${o[l].level}, painted ${o[l].key}`).join(' · '));
+  ck('andRiseWithItForNothing', r.free, 'no resource moved while the roads changed');
+  ck('eachLevelIsItsOwnRoad', new Set([1, 2, 3].map(l => o[l].sig)).size === 3 && o[1].fill < o[2].fill && o[2].fill < o[3].fill,
+    'cells filled on one straight tile: worn track ' + o[1].fill + ', earth road ' + o[2].fill + ', via ' + o[3].fill);
+  ck('theViaIsKerbedAndMortaredStone', o[3].kerb > 30 && o[3].mortar > 30 && o[2].kerb === 0 && o[1].kerb === 0, `via: ${o[3].kerb} kerb, ${o[3].mortar} mortar cells`);
+  ck('andTheViaRunsOnWithNoSeam', o[3].seam >= 0 && o[3].seam <= 2, 'cells that differ across the shared edge: ' + o[3].seam);
+  ck('theQuickeningIsTheSameAtEveryLevel', [1, 2, 3].every(l => Math.abs(o[l].speed - 1.2) < 0.03), [1, 2, 3].map(l => o[l].speed).join(' / '));
+  ck('theRoadCardFollowsTheHall', [1, 2, 3].every(l => o[l].card) && r.cards === 3, `three cards (${r.cardPx}), the menu shows the hall's`);
 }
 
 // ---- a house takes the ground; a save keeps the roads ------------------------------------
