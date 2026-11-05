@@ -292,7 +292,7 @@ node tests/roads.mjs         # the road builder: Road beside House arms the line
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
-node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there a bow hits harder and takes less by the tower's storey, two base archers out-shooting the old tower at every storey, the number floated the number taken, an engine's stone covered as it lands; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (seven tenths of one on a free tower, nine tenths on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits half again his own ground blow and takes half, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower at every storey, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
@@ -346,22 +346,51 @@ landings, the engine road) is unchanged: a tower can be manned in a second.
 `perchFire`): the card's 'towerRange' and 'towerAtk' land on the player's
 bows up there — reach in `reachOf`, the blow in the strike (one expression,
 ×1 off the platform), the farther band only on ground the player sees, the
-burning arrow only while the card runs. **THE PLATFORM MAKES A BOW A BETTER ONE**
-(`CFG.LOOKOUT.atk` / `hurt`, `Lookout.atkMult` / `hurtMult` / `cover`,
-`Combat.covered`, `UI.atkShown` — operator, build 149: "Tougher archers. Hit
-for more, take less damage. Two archers should be more powerful than the
-tower by itself previously"): up there a bow strikes `atk[storey − 1]`
-(1.25 / 1.5 / 2) times as hard — at units and at works, folded into the
-strike's one expression beside the Watchfires — and takes `hurt[storey − 1]`
-(0.6 / 0.5 / 0.4) of every blow, asked where each blow that can reach him is
+burning arrow only while the card runs. **THE PLATFORM MAKES A BOW A BETTER ONE,
+THE SAME ON EVERY TOWER** (`CFG.LOOKOUT.atk` / `hurt`, `Lookout.atkMult` /
+`hurtMult` / `cover`, `Combat.covered`, `UI.atkShown` — operator, build 149:
+"Tougher archers. Hit for more, take less damage. Two archers should be more
+powerful than the tower by itself previously"; then build 150, on 149's
+ladder by storey: "That's way too much of a damage boost. How about the
+archers just do 50% more than what they do on the ground? No special damage
+based on the archer type. Better archers on the ground mean better archers
+in the tower, regardless of the towers level. The only benefit to higher
+towers is that they're harder to knock down"): up there a bow strikes `atk`
+(1.5) times his own ground blow (`Units.effAtk`) — at units and at works,
+folded into the strike's one expression beside the Watchfires — and takes
+`hurt` (0.5) of every blow, asked where each blow that can reach him is
 dealt (a bow's arrow, an engine's stone or bolt AS IT LANDS, a tower's
 volley) and before its number is floated, so the number shown is the number
-taken; `Units.damage` is untouched (a falling tower still kills). The
-storey sets both: wattle, timber, stone. Measured against a RIVAL tower,
-which still fires the old way: two base archers out-shoot it 4.3x / 1.7x /
-2.1x at Lv1/2/3 over 30 s (the L3 signal fire rides `effAtk`), two longbows
-beat it too. The unit panel's ATK and the tower's line say so. Off the
-platform both answer 1: the old expressions, byte for byte.
+taken; `Units.damage` is untouched (a falling tower still kills). ONE
+FIGURE for every kind of bow and every storey: an archer reads ATK 11 on a
+wattle, a timber and a stone tower alike, a marksman 17, a longbow 9 — and
+the level-3 tower's SIGNAL FIRE (+2 to the soldiers round it, `effAtk`)
+lifts the ground, never the bows on its own platform (`!u.perch`), or the
+storey would add a blow. A storey adds health (and its own sight) alone.
+Measured against a RIVAL tower, which still fires the old way: two base
+archers out-shoot it 5.5x / 1.7x / 1.2x at Lv1/2/3 over 30 s, two longbows
+(the slow bow) at the timber storeys but not the stone one's 19-point
+volley. The unit panel's ATK and the tower's line ("hit 50% harder, take
+half the damage") say so. Off the platform both answer 1: the old
+expressions, byte for byte. **AT HIS POST, NOT IN A PARTY** (`Lookout.onTower`
+/ `sentUp`, `UI.sentUp` / `onTower` / `defendOffered` / `stopOffered` /
+`shedClimbers` — operator, build 150: "Remove the defend button when
+archers are on the tower since that's a given. When an archer goes up a
+tower deselect them (after sending an archer up a tower I click something
+else and then my archer comes down again, it's a bit annoying)… If you
+select all soldiers in an area, archers in the towers shouldn't be
+selectable. They should only be selectable when they're on the ground"):
+the bows a tap sends up a tower LEAVE THE SELECTION the moment the order
+lands (the dispatched-worker convention; whoever stays below — the tower
+full, a blade of the same party — stays in hand, with no second select
+chime); a bow on the platform or its stairs offers no Defend and no Stop
+(unit and group panels and their `panelSig`); and a bow on a tower, on its
+stairs or walking to man one is passed over by every AREA selection — a
+double tap (and a double tap ON him is an ordinary tap), Group nearby
+(`groupmatesNear` and its handler), a banner's recall (`selectArmy` takes
+the ground's men and leaves him on the roster; an army all up the towers
+selects nothing and says so). A tap on the man himself still selects him:
+that is how he is told what to shoot.
 **THE TOWER TAKES ITS LOOKOUT WITH IT** (`Lookout.towerFalls`,
 from `Bld.damage`'s destroy branch before anything leaves the list, credited
 to the striker's owner — `Bld.damage` takes `by` now): every bow on the
@@ -382,7 +411,7 @@ pixels, never a ruler line. `PLAT` carries each drawn tower's platform IN
 THE ART'S OWN PIXELS, measured off the six roofless PNGs: `front` (the row
 each column's front begins, as runs — the rail or wattle, the front corner
 posts, the free L1's ladder top, the L3 merlons and crenel sills; a column
-not listed is front from its top), `man` (53 art px, feet to crown — see
+not listed is front from its top), `man` (59 art px, feet to crown — see
 **A MAN'S SIZE** below), `feet` (on the floor at the front rail — the rail
 then comes to his knee), `slots` (two places, the first man up keeping
 his: `u.perchSlot` — as far apart as his body at rest allows inside the
@@ -403,9 +432,12 @@ men: "make them 40% bigger, but make sure the physics of them staying
 inside the fence at the top of the tower remains… They just look so so
 small relative to the villagers… It's okay if the archers are a little
 squished next to each other, as long as their bodies stay inside the
-fence"): `man` went 38 → 53 art px, so a bow on a free tower stands about
-seven tenths of a villager and one on a wall tower, whose art is denser,
-about nine tenths. A man's body at rest is wider than a rail section now,
+fence"), and a tenth again at build 150 ("Can we boost archer sizes
+another 10-20% in size, okay if no"): `man` went 38 → 53 → 59 art px, so a
+bow on a free tower stands about eight tenths of a villager and one on a
+wall tower, whose art is denser, about his height (59 is the largest size
+at which the two still read as two men on the smallest platforms; past it
+the second stands over the first). A man's body at rest is wider than a rail section now,
 so the places are FITTED to his body, not to the art's sections: the
 widest pair where, at rest, in all eight facings and every frame, no part
 of him (his bow aside) passes the platform's outer posts, and drawing his

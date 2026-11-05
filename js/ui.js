@@ -1549,6 +1549,7 @@ const UI = {
         const r = Lookout.orderMany(ids.map(id => Units.get(id)).filter(Boolean), hitBld);
         if (r.up) {
           this.toast(`🏹 ${r.up} up the tower${r.left ? ` — it holds ${CFG.LOOKOUT.cap}, ${r.left} stay below` : ''}`);
+          this.shedClimbers();
           return;
         }
       }
@@ -1605,7 +1606,7 @@ const UI = {
       // full one falls through to the look, like a full station (rule 6)
       if (!tapUnit && hitBld && window.Lookout && Lookout.canMan(sel) && Lookout.isPost(hitBld, 'P') &&
           sel.perch !== hitBld.id && Lookout.room(hitBld, sel) > 0) {
-        if (Lookout.order(sel, hitBld)) { this.toast('🏹 Up the tower — twice the sight and reach'); return; }
+        if (Lookout.order(sel, hitBld)) { this.toast('🏹 Up the tower — twice the sight and reach'); this.shedClimbers(); return; }
         this.toast('No way through to the tower door', true);
         return;
       }
@@ -1830,6 +1831,22 @@ const UI = {
   // "Group nearby / Group fleet" button forms (soldiers & siege on land; warships,
   // fireships & transports at sea). Villagers, sappers and fishing boats are left out.
   groupable(u) { return Units.isMilitary(u) || Units.isFleetable(u) || Units.isLevied(u); },
+  /* A BOW ON A TOWER IS AT HIS POST, NOT IN A PARTY (js/lookout.js, build
+     150): on the platform, on its stairs or walking to man one, a double
+     tap, Group nearby and a banner's recall pass him over — so the next
+     order the party is given never calls him down — and a man up there
+     offers no Defend (the tower is the defence) and no Stop. A tap on the
+     man himself still selects him. */
+  sentUp(o) { return !!(o && window.Lookout && Lookout.sentUp && Lookout.sentUp(o)); },
+  onTower(o) { return !!(o && window.Lookout && Lookout.onTower && Lookout.onTower(o)); },
+  // the unit panel's stance slot: Defend (or Stand Down) where the stance
+  // would hold — never up a tower — else Stop while there is anything to stop
+  defendOffered(u) {
+    return u.owner === 'P' && Units.canDefend(u) && !this.onTower(u) && (u.defend || Units.inDefendBounds(u));
+  },
+  stopOffered(u) {
+    return u.owner === 'P' && !this.onTower(u) && (!Units.isVillager(u) || Units.isLevied(u)) && this.unitBusy(u);
+  },
 
   /* A WORK ORDER ON A LEVIED HAND IS REFUSED WITH THE REASON (the tap
      contract's rule 4, tests/levy.mjs): the mode must be stood down first,
@@ -1859,11 +1876,15 @@ const UI = {
       const d = R.unitHit(u, wx, wy);   // the drawn sprite, lifted and boxed as R.draw puts it
       if (d < hd) { hd = d; hit = u; }
     }
-    // not on one of our army/fleet units → treat it as an ordinary tap so nothing is lost
-    if (!hit || !this.groupable(hit)) { this.handleTap(sx, sy); return; }
+    // not on one of our army/fleet units → treat it as an ordinary tap so
+    // nothing is lost. A bow up a tower (or on his way up) is never swept
+    // into a group, nor anchors one (build 150 — "archers in the towers
+    // shouldn't be selectable… only when they're on the ground"): a double
+    // tap on him is an ordinary tap, which takes him alone in hand.
+    if (!hit || !this.groupable(hit) || this.sentUp(hit)) { this.handleTap(sx, sy); return; }
     const R2 = CFG.GROUP_R;
     const ids = S.units
-      .filter(o => o.owner === 'P' && this.groupable(o) && this.sameSelType(o, hit) &&
+      .filter(o => o.owner === 'P' && this.groupable(o) && !this.sentUp(o) && this.sameSelType(o, hit) &&
         Math.hypot(o.x - hit.x, o.y - hit.y) <= R2)
       .map(o => o.id);
     if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
@@ -1943,6 +1964,23 @@ const UI = {
   dispatchedWorker() {
     this.deselect();
     this.setMenuCollapsed(true, true);
+  },
+  /* SENT UP A TOWER IS SENT (build 150 — operator: "When an archer goes up
+     a tower deselect them (after sending an archer up a tower I click
+     something else and then my archer comes down again, it's a bit
+     annoying)"). The bows on their way up leave the selection the moment
+     the order lands, the way a dispatched worker does; whoever stays below
+     (the tower was full, or a blade of the same party) stays in hand. */
+  shedClimbers() {
+    if (!this.sel) return;
+    const ids = this.sel.type === 'group' ? this.sel.ids : this.sel.type === 'unit' ? [this.sel.id] : [];
+    const left = ids.filter(id => { const u = Units.get(id); return u && !this.sentUp(u); });
+    if (left.length === ids.length) return;
+    if (!left.length) { this.dispatchedWorker(); return; }
+    // no second 'select' chime: nothing new was taken in hand
+    this.sel = left.length === 1 ? { type: 'unit', id: left[0] } : { type: 'group', ids: left };
+    this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;
+    this.renderPanel();
   },
 
   /* WHAT THE PLAYER'S PEOPLE ARE DOING, as references — the order a tap or a
@@ -2033,10 +2071,10 @@ const UI = {
   // the levy bands and fights exactly as a war party does (tests/levy.mjs)
   landFighter(o) { return (Units.isMilitary(o) && !Units.isNaval(o)) || Units.isLevied(o); },
   groupmatesNear(u) {
-    if (!u || u.owner !== 'P') return false;
+    if (!u || u.owner !== 'P' || this.sentUp(u)) return false;   // a bow at his tower post bands with nobody
     const naval = Units.isNaval(u);
     if (!(Units.isFleetable(u) || this.landFighter(u))) return false;
-    return S.units.some(o => o.owner === 'P' && o.id !== u.id &&
+    return S.units.some(o => o.owner === 'P' && o.id !== u.id && !this.sentUp(o) &&
       (naval ? Units.isFleetable(o) : this.landFighter(o)) &&
       Math.hypot(o.x - u.x, o.y - u.y) <= CFG.GROUP_R);
   },
@@ -2141,7 +2179,16 @@ const UI = {
       if (R.onScreen(u.x, u.y)) seen = true;
     }
     if (!seen) R.centerOn(cx / alive.length, cy / alive.length);
-    this.sel = { type: 'group', ids: alive.slice() };
+    /* …but a bow at his tower post stays at it (build 150): the banner takes
+       the rest of the army in hand, so its next order never calls him down.
+       He stays on the roster; an army that is all up on the towers says so. */
+    const ground = alive.filter(id => !this.sentUp(Units.get(id)));
+    if (!ground.length) {
+      this.deselect();
+      this.toast(`Army ${n} is up on the towers — tap an archer there to give him an order`, 'note');
+      return;
+    }
+    this.sel = { type: 'group', ids: ground };
     if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
     this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
@@ -2390,7 +2437,7 @@ const UI = {
       if (!mem.length) return 'gone';
       // Defend eligibility moves with the party's feet — the button must
       // appear/vanish as they march in and out of the defended ground
-      const defEl = mem.filter(o => Units.canDefend(o) && (o.defend || Units.inDefendBounds(o))).length;
+      const defEl = mem.filter(o => Units.canDefend(o) && !this.onTower(o) && (o.defend || Units.inDefendBounds(o))).length;
       const land = mem.filter(o => (Units.canDefend(o) && !Units.isNaval(o)) || Units.isLevied(o));
       const gStrat = land.length && land.every(o => o.strat === land[0].strat) ? (land[0].strat || '-') : 'mix';
       // Halt renders only while there is anything to halt; Siege only while
@@ -2421,7 +2468,7 @@ const UI = {
         (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0)).length;
     const sig = ['u', u.id, u.hp < u.maxhp, stack, u.cargo ? u.cargo.length : 0,
       !!CFG.HEAL_FOOD[u.kind] && !u.spectral && S.res.food >= this.healCost(u), Bld.inHealZone(u), this.healThrottled(u),
-      Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)),   // Defend button follows the bounds
+      this.defendOffered(u),   // Defend button follows the bounds (and never rides a tower)
       u.owner === 'P' && !Units.isVillager(u) && this.unitBusy(u),   // Stop renders only while there is anything to stop
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
@@ -2751,7 +2798,7 @@ const UI = {
     return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}` : '';
   },
   // the blow a unit strikes with — a bow on a tower's platform strikes harder
-  // (Lookout.atkMult, build 149); both of the panel's writers read this one
+  // (Lookout.atkMult: half again as hard, build 150); both of the panel's writers read this one
   atkShown(u) {
     return Math.round(Units.effAtk(u) * (u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1));
   },
@@ -3205,8 +3252,9 @@ const UI = {
       const fleet = this.sel.ids.every(id => { const o = Units.get(id); return o && Units.isNaval(o); });
       const gMil = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
       // Defend shows only for members on ground the stance would hold (or
-      // already in the stance — Stand Down stays available anywhere)
-      const gDefEligible = gMil.filter(o => o.defend || Units.inDefendBounds(o));
+      // already in the stance — Stand Down stays available anywhere), and
+      // never for a bow up a tower: the tower is his defence (build 150)
+      const gDefEligible = gMil.filter(o => !this.onTower(o) && (o.defend || Units.inDefendBounds(o)));
       const gAllDef = gDefEligible.length > 0 && gDefEligible.every(o => o.defend);
       // troop-carrier count aboard the whole selection — a fleet of transports can
       // put everyone ashore in one order (each hull lands beside wherever it sits)
@@ -3315,7 +3363,7 @@ const UI = {
       });
       const gdef = panel.querySelector('[data-act="gdefend"]');
       if (gdef) gdef.addEventListener('click', () => {
-        const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o));
+        const mem = this.sel.ids.map(id => Units.get(id)).filter(o => o && Units.canDefend(o) && !this.onTower(o));
         // turning the stance ON only takes members standing on defended
         // ground — it must never yank the far half of a mixed party home.
         // Standing DOWN releases everyone.
@@ -3459,9 +3507,12 @@ const UI = {
       // Defend is offered only on ground the stance would actually hold — a
       // soldier out beyond the defended bounds is attacking, not defending
       // (a unit already in the stance keeps Stand Down wherever it is)
-      if (own && Units.canDefend(u) && (u.defend || Units.inDefendBounds(u)))
+      // A bow up a tower is offered neither (defendOffered / stopOffered,
+      // build 150): the tower IS the defence, and he climbs down by his own
+      // button.
+      if (own && this.defendOffered(u))
         html += `<button class="abtn ${u.defend ? 'sel' : ''}" data-act="defend">${u.defend ? '🛡 Stand Down' : '🛡 Defend'}</button>`;
-      else if (own && (!Units.isVillager(u) || Units.isLevied(u)) && this.unitBusy(u))
+      else if (own && this.stopOffered(u))
         html += `<button class="abtn" data-act="stop">✋ Stop</button>`;
       /* THE LAST OF AN ARMY (tests/army-groups.mjs). A war party ground down to
          one soldier still flies its banner, but a one-member group renders as
@@ -3619,7 +3670,7 @@ const UI = {
         // troops; the two can't march/sail together
         const naval = Units.isNaval(u2);
         const ids = S.units
-          .filter(o => o.owner === 'P' && (naval ? Units.isFleetable(o) : this.landFighter(o)) &&
+          .filter(o => o.owner === 'P' && !this.sentUp(o) && (naval ? Units.isFleetable(o) : this.landFighter(o)) &&
             Math.hypot(o.x - u2.x, o.y - u2.y) <= CFG.GROUP_R)
           .map(o => o.id);
         if (ids.length < 2) { this.toast(naval ? 'No other ships within reach' : 'No other soldiers within reach', true); return; }

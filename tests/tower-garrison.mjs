@@ -26,13 +26,22 @@
         with archers they should shoot"): empty, it looses nothing at any
         level and says so on its panel; manned, its bows do the shooting;
         the rival's towers still fire by themselves
-     §4c the platform makes a bow a better one (build 149: "Tougher archers.
-        Hit for more, take less damage. Two archers should be more powerful
-        than the tower by itself previously"): two base archers (and two
-        longbows) on a player tower out-shoot a rival tower firing the old way
-        at every storey; up there a bow hits CFG.LOOKOUT.atk and takes
-        CFG.LOOKOUT.hurt of every blow (an engine's stone too), the number
-        floated is the number taken, the panel shows both; off it, nothing
+     §3b at his post, not in a party (build 150): a bow sent up a tower
+        leaves the selection (the rest of a party stays in hand); up there
+        his panel offers no Defend and no Stop; a double tap, Group nearby
+        and a banner take the ground's men alone; a tap on him still selects
+        him
+     §4c the platform makes a bow a better one, the same on every tower
+        (build 149: "Tougher archers. Hit for more, take less damage. Two
+        archers should be more powerful than the tower by itself
+        previously"; build 150: "just do 50% more than what they do on the
+        ground… regardless of the towers level"): two base archers (and two
+        longbows) on a player tower out-shoot a rival tower firing the old
+        way at every storey; up there every kind of bow, on every storey,
+        hits half again his own ground blow (a better bow on the ground is a
+        better bow up there) and takes CFG.LOOKOUT.hurt of every blow (an
+        engine's stone too), the number floated is the number taken, the
+        panel shows both; off it, nothing
      §5 an order off the platform takes the stairs down first, a second hidden
      §6 the tower falls and takes its lookout: dead, a fall on screen, the
         population freed — and one killed up there falls too
@@ -254,6 +263,81 @@ const out = await p.evaluate(() => {
     UI.deselect && UI.deselect();
   }
 
+  /* ---- §3b at his post, not in a party (build 150 — operator: "Remove the
+     defend button when archers are on the tower since that's a given. When
+     an archer goes up a tower deselect them (after sending an archer up a
+     tower I click something else and then my archer comes down again…). If
+     you select all soldiers in an area, archers in the towers shouldn't be
+     selectable. They should only be selectable when they're on the ground")
+     ---- */
+  {
+    clear('lk3c');
+    const hall = Bld.tcOf('P'); hall.x = 33; hall.y = 29; Bld._block = null;   // the hall beside it: defended ground
+    const t = put('tower', 30, 30, 1);
+    G.updateVisibility(); R.cam.z = 2; R.centerOn(30.5, 31.5);
+    const scr = (wx, wy) => [(wx * TL - R.cam.x) * R.cam.z, (wy * TL - R.cam.y) * R.cam.z];
+    // one bow sent up by a tap: out of hand the moment the order lands
+    const a1 = Units.spawn('archer', 'P', 28.5, 32.5);
+    UI.select('unit', a1.id);
+    UI.handleTap(...scr(30.5, 30.45));
+    const sentOne = !!(a1.task && a1.task.type === 'mantower'), freedOne = !UI.sel;
+    // a party — two bows and a blade — at a tower with room for one more:
+    // the bow that fits leaves the selection, the rest stay in hand
+    const a2 = Units.spawn('longbow', 'P', 29.5, 32.5), a3 = Units.spawn('archer', 'P', 30.5, 32.6), d1 = Units.spawn('defender', 'P', 31.5, 32.5);
+    UI.sel = { type: 'group', ids: [a2.id, a3.id, d1.id] }; UI.renderPanel();
+    UI.handleTap(...scr(30.5, 30.45));
+    const upOf = [a2, a3].filter(u => u.task && u.task.type === 'mantower').length;
+    const kept = UI.sel && UI.sel.type === 'group' ? UI.sel.ids.slice() : UI.sel && UI.sel.type === 'unit' ? [UI.sel.id] : [];
+    const climber = [a2, a3].find(u => u.task && u.task.type === 'mantower');
+    const shed = upOf === 1 && kept.length === 2 && !kept.includes(climber.id) && kept.includes(d1.id);
+    ck('aBowSentUpATowerLeavesTheSelection', sentOne && freedOne && shed,
+      `one bow sent: ordered ${sentOne}, selection cleared ${freedOne}; a party at a tower with room for one: ${upOf} sent, ${kept.length} still in hand (the one going up ${climber && kept.includes(climber.id) ? 'STILL' : 'not'} among them)`);
+    UI.deselect && UI.deselect();
+    step(4);
+    const below = [a2, a3].find(u => !u.perch);
+    // his panel: Climb down, no Defend, no Stop — not even with a mark in hand
+    const foe = Units.spawn('defender', 'A', 70, 70);
+    a1.tUnit = foe.id;
+    UI.select('unit', a1.id);
+    const ph = document.getElementById('panel').innerHTML;
+    const busyUp = UI.unitBusy(a1);
+    a1.tUnit = 0;
+    UI.select('unit', below.id);
+    const gh = document.getElementById('panel').innerHTML, groundDef = /data-act="defend"/.test(gh) && Units.inDefendBounds(below);
+    UI.deselect && UI.deselect();
+    S.units = S.units.filter(o => o !== foe);
+    ck('noDefendOrStopUpATower', a1.perch === t.id && busyUp && !/data-act="defend"/.test(ph) && !/data-act="stop"/.test(ph) && /data-act="lookoutdown"/.test(ph) && groundDef,
+      `up there (busy ${busyUp}): Defend ${/data-act="defend"/.test(ph)}, Stop ${/data-act="stop"/.test(ph)}, Climb down ${/data-act="lookoutdown"/.test(ph)}; the bow on the ground beside him offers Defend ${groundDef}`);
+    // the area takes the ground alone: a double tap, Group nearby, a banner
+    G.updateVisibility();
+    const [bx, by] = scr(below.x, below.y - CFG.SPRITE_LIFT / TL);
+    UI.handleDoubleTap(bx, by);
+    const dbl = UI.sel && UI.sel.type === 'unit' ? [UI.sel.id] : UI.sel && UI.sel.ids ? UI.sel.ids.slice() : [];
+    const a4 = Units.spawn(below.kind, 'P', 29.5, 33.5); G.updateVisibility();   // a double tap gathers its own kind
+    UI.handleDoubleTap(bx, by);
+    const dbl2 = UI.sel && UI.sel.ids ? UI.sel.ids.slice() : UI.sel ? [UI.sel.id] : [];
+    UI.deselect && UI.deselect();
+    const perched = [a1, a2, a3].filter(u => u.perch === t.id);
+    const areaOk = perched.length === 2 && dbl.length === 1 && dbl[0] === below.id &&
+      dbl2.length === 2 && dbl2.includes(below.id) && dbl2.includes(a4.id) && !perched.some(u => dbl2.includes(u.id));
+    if (perched.length < 2 || !below) { ck('anAreaSelectionLeavesTheTowersBows', false, `${perched.length} bows got up the tower`); return { res, fails }; }
+    const nearUp = UI.groupmatesNear(perched[0]), nearDown = UI.groupmatesNear(below);
+    S.armies = { 1: [perched[0].id, below.id, d1.id], 2: perched.map(u => u.id) };
+    UI.selectArmy(1);
+    const army1 = UI.sel && UI.sel.ids ? UI.sel.ids.slice() : [];
+    UI.selectArmy(2);
+    const army2 = UI.sel;
+    UI.deselect && UI.deselect();
+    ck('anAreaSelectionLeavesTheTowersBows', areaOk && !nearUp && nearDown && army1.length === 2 && !army1.includes(perched[0].id) && !army2 &&
+      (S.armies[1] || []).includes(perched[0].id),
+      `a double tap: ${dbl.length} then ${dbl2.length} selected (${perched.filter(u => dbl2.includes(u.id)).length} of the 2 up the tower); Group nearby from up there ${nearUp}, from below ${nearDown}; a banner: ${army1.length} of 3 taken in hand, the one up the tower kept on its roster ${(S.armies[1] || []).includes(perched[0].id)}; a banner all up the towers selects ${army2 ? 'SOMETHING' : 'nothing'}`);
+    // a tap on the man himself still takes him in hand (how he is told what to shoot)
+    const m = Lookout.aim(perched[0]);
+    UI.handleTap(...scr(m.x / TL, m.y / TL));
+    ck('butATapOnHimStillSelectsHim', UI.sel && UI.sel.type === 'unit' && UI.sel.id === perched[0].id, JSON.stringify(UI.sel));
+    UI.deselect && UI.deselect();
+  }
+
   /* ---- §4 twice the sight and the reach ---- */
   {
     clear('lk4');
@@ -336,9 +420,15 @@ const out = await p.evaluate(() => {
     ck('theRivalsTowersStillFireByThemselves', riv.own > 0 && riv.lost > 0, `the rival tower's arrows ${riv.own}, the foe lost ${riv.lost}`);
   }
 
-  /* ---- §4c the platform makes a bow a better one (build 149 — operator:
-     "Tougher archers. Hit for more, take less damage. Two archers should be
-     more powerful than the tower by itself previously") ---- */
+  /* ---- §4c the platform makes a bow a better one, the same on every tower
+     (build 149 — operator: "Tougher archers. Hit for more, take less damage.
+     Two archers should be more powerful than the tower by itself
+     previously"; build 150, on 149's ladder by storey: "That's way too much
+     of a damage boost. How about the archers just do 50% more than what they
+     do on the ground? No special damage based on the archer type. Better
+     archers on the ground mean better archers in the tower, regardless of
+     the towers level. The only benefit to higher towers is that they're
+     harder to knock down") ---- */
   {
     const C = CFG.LOOKOUT;
     // what a pinned, unkillable foe loses in `sec` seconds (it never strikes back)
@@ -371,9 +461,15 @@ const out = await p.evaluate(() => {
       }
       rows.push({ lv, old, archer: two.archer, longbow: two.longbow });
     }
-    ck('twoArchersOutshootTheOldTowerAtEveryStorey', rows.every(r => r.archer > r.old * 1.2),
+    // (build 150: half again a base archer's own blow, at every storey —
+    // the stone storey's old 19-point volley is the closest race)
+    ck('twoArchersOutshootTheOldTowerAtEveryStorey', rows.every(r => r.archer > r.old),
       rows.map(r => `Lv${r.lv}: two archers ${r.archer} vs the old tower ${r.old} (${(r.archer / Math.max(1, r.old)).toFixed(2)}x)`).join('; '));
-    ck('andSoDoTwoLongbows', rows.every(r => r.longbow > r.old),
+    // the longbow is the slow bow (a blow every 1.4 swings, 6 to the
+    // archer's 7): half again his own blow out-shoots the timber storeys'
+    // old fire, and comes short of the stone tower's 19-point volley (build
+    // 150 — the storey adds nothing to a bow's blow)
+    ck('andSoDoTwoLongbowsOnTheTimberStoreys', rows.filter(r => r.lv < 3).every(r => r.longbow > r.old),
       rows.map(r => `Lv${r.lv}: two longbows ${r.longbow} vs ${r.old}`).join('; '));
 
     // the numbers themselves: what a bow up there strikes and takes, floated
@@ -396,8 +492,8 @@ const out = await p.evaluate(() => {
       // the game's own figures (the L3 signal fire and home turf ride effAtk)
       const ground = Math.max(1, Math.round(Units.effAtk(r) - Units.effDef(a)));
       trade.push({ lv, ours, theirs, aLost: aHp - a.hp, rLost: rHp - r.hp, ground,
-        hit: Math.max(1, Math.round(Units.effAtk(a) * C.atk[lv - 1] - Units.effDef(r))),
-        take: Math.max(1, Math.round(ground * C.hurt[lv - 1])),
+        hit: Math.max(1, Math.round(Units.effAtk(a) * 1.5 - Units.effDef(r))),
+        take: Math.max(1, Math.round(ground * C.hurt)),
         shown: UI.atkShown ? UI.atkShown(a) : -1, base: Math.round(Units.effAtk(a)), perched: a.perch === t.id });
     }
     ck('aBowUpThereHitsHarder', trade.every(w => w.perched && w.ours.length > 3 && w.ours.every(n => n === w.hit) && w.hit > w.base && w.shown === w.hit),
@@ -417,8 +513,8 @@ const out = await p.evaluate(() => {
     const h0 = ae.hp;
     Combat.launch(cat, ae.x, ae.y, { kind: 'unit', id: ae.id, dmg: 20, srcId: cat.id });
     fight(4, () => { cat.cd = 99; cat.tUnit = 0; });
-    ck('anEnginesStoneLandsCoveredToo', ae.perch === te.id && h0 - ae.hp === Math.max(1, Math.round(20 * C.hurt[1])),
-      `a 20 stone took ${h0 - ae.hp} (expected ${Math.max(1, Math.round(20 * C.hurt[1]))})`);
+    ck('anEnginesStoneLandsCoveredToo', ae.perch === te.id && h0 - ae.hp === Math.max(1, Math.round(20 * C.hurt)),
+      `a 20 stone took ${h0 - ae.hp} (expected ${Math.max(1, Math.round(20 * C.hurt))})`);
 
     // off the platform nothing changes, and the tower's panel names what its storey gives
     clear('lk4cg');
@@ -430,7 +526,42 @@ const out = await p.evaluate(() => {
     UI.deselect && UI.deselect();
     ck('offThePlatformABowIsItself', Lookout.atkMult(g) === 1 && Combat.covered(g, 7) === 7 && UI.atkShown(g) === CFG.UNITS.archer.atk,
       `atk ×${Lookout.atkMult(g)}, a 7 blow takes ${Combat.covered(g, 7)}, panel ATK ${UI.atkShown(g)}`);
-    ck('andTheTowerSaysWhatItsStoreyGives', /twice as hard|% harder/.test(tline) && /less damage|half the damage/.test(tline), tline);
+    ck('andTheTowerSaysWhatThePlatformGives', /hit 50% harder/.test(tline) && /take half the damage/.test(tline), tline);
+
+    // HALF AGAIN, EVERY BOW, EVERY STOREY (build 150): the platform's figure
+    // is one number — no kind of bow and no storey of tower moves it — so a
+    // bow up there strikes half again his own ground blow, and a better bow
+    // on the ground is a better bow up there
+    const grid = [];
+    let fireOnTheGround = -1;
+    for (const lv of [1, 2, 3]) {
+      clear('lk4cf' + lv);
+      const t = put('tower', 20, 20, lv);
+      // the stone storey's signal fire still lifts the soldiers on the ground round it
+      if (lv === 3) { const g3 = Units.spawn('archer', 'P', 20.5, 23.5); fireOnTheGround = Units.effAtk(g3); S.units = S.units.filter(o => o !== g3); }
+      const ups = [];
+      for (const kind of ['archer', 'longbow', 'marksman']) {
+        const u = Units.spawn(kind, 'P', 20, 22);
+        Lookout.order(u, t); step(3);
+        const row = { lv, kind, perched: u.perch === t.id, atk: Lookout.atkMult(u), hurt: Lookout.hurtMult(u),
+          shown: UI.atkShown(u), ground: Units.effAtk(u) };
+        ups.push(row); grid.push(row);
+        Lookout.down(u, null); step(2);
+        S.units = S.units.filter(o => o !== u);
+      }
+    }
+    ck('halfAgainForEveryBowAtEveryStorey', grid.length === 9 && grid.every(g => g.perched && g.atk === 1.5 && g.hurt === C.hurt && g.shown === Math.round(g.ground * 1.5)),
+      grid.map(g => `Lv${g.lv} ${g.kind}: ×${g.atk}, takes ×${g.hurt}, ATK ${g.shown} (ground ${Math.round(g.ground)})`).join('; '));
+    const byKind = k => grid.filter(g => g.kind === k && g.lv === 1)[0];
+    ck('aBetterBowOnTheGroundIsABetterBowUpThere', byKind('marksman').shown > byKind('archer').shown && byKind('archer').shown > byKind('longbow').shown,
+      `on a Lv1 tower: marksman ${byKind('marksman').shown}, archer ${byKind('archer').shown}, longbow ${byKind('longbow').shown} — their ground order, kept`);
+    // …and the storey adds no blow: the same ATK on a wattle, a timber and a
+    // stone tower — the stone tower's signal fire lifts the ground round it,
+    // never the bows on its own platform
+    const sameAtL = k => new Set(grid.filter(g => g.kind === k).map(g => g.shown)).size === 1;
+    ck('andTheTowersStoreyAddsNoBlow', ['archer', 'longbow', 'marksman'].every(sameAtL) && C.atk === 1.5 && !Array.isArray(C.atk) && !Array.isArray(C.hurt) &&
+      fireOnTheGround === CFG.UNITS.archer.atk + 2,
+      `ATK by storey: ${['archer', 'longbow', 'marksman'].map(k => k + ' ' + grid.filter(g => g.kind === k).map(g => g.shown).join('/')).join(', ')}; CFG.LOOKOUT.atk ${JSON.stringify(C.atk)}, hurt ${JSON.stringify(C.hurt)}; an archer on the ground by the stone tower ${fireOnTheGround} (its signal fire)`);
   }
 
   /* ---- §5 down the stairs ---- */
