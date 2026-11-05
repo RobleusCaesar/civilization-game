@@ -19,8 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 151, date: '2026-11-05', title: 'Archers on the towers',
+    build: 152, date: '2026-11-05', title: 'Archers on the towers',
     items: [
+      'The Archery Range is now ready from the start: you no longer need to upgrade your Town Center to build one.',
+      'A new Barracks sends its first Defender the moment it is finished, and a new Archery Range sends its first archer, so you can defend yourself sooner.',
+      'A new Watchtower tells you that it shoots only with archers on it, and its panel says where to train them.',
+      'The tutorial now teaches you to build an Archery Range and send an archer up your Watchtower, and the Guide has a page on manning your towers.',
       'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
       'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',
       'Archers you send up a tower are let go from your selection, so your next tap is a fresh one and never calls them back down.',

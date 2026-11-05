@@ -153,7 +153,8 @@ const out = await p.evaluate(async () => {
     const t0 = S.tut; Tutorial.maybeStart();
     ck('neverReArms', S.tut === t0, '');
     // the lesson's larder: a tutorial start affords the taught builds
-    ck('larderToppedUp', S.res.wood >= 200 && S.res.stone >= 100 && S.res.gold >= 20,
+    // (build 152: the range joined the taught builds — its gold, wood and stone)
+    ck('larderToppedUp', S.res.wood >= 260 && S.res.stone >= 120 && S.res.gold >= 35,
       JSON.stringify(S.res));
   }
 
@@ -535,6 +536,44 @@ const out = await p.evaluate(async () => {
     ck('walkingThePostAnswersIt', S.tut.done.guard === 1, JSON.stringify(S.tut.done));
   }
 
+  // ---- THE YARD SENDS ITS FIRST SOLDIER (build 152): in real play the
+  //      barracks is a SITE a villager finishes, and its first Defender
+  //      answers the soldier step at once — the lesson goes straight on to
+  //      posting him; the range's first archer is the one rung to man the tower
+  {
+    fresh('152', 'calm', true);
+    for (const st of Tutorial.STEPS)
+      if (['welcome', 'resources', 'tapVillager', 'gatherWood', 'gatherFood', 'gatherStone',
+           'gold', 'house', 'train', 'fog', 'minimap'].includes(st.id)) S.tut.done[st.id] = 1;
+    for (const e of Tutorial.EVENTS) S.tut.fired[e.id] = 1;
+    S.res.wood = 600; S.res.stone = 300; S.res.gold = 80; S.res.food = 300;
+    const tc = S.buildings.find(o => o.owner === 'P' && o.key === 'tc');
+    const site = (key) => {
+      const at = MapGen.findNear(tc.x + 4, tc.y + 4, 10, (x, y) => Bld.canPlace('P', key, x, y, { noCost: true }).ok);
+      return at && Bld.place('P', key, at.x, at.y, { free: true });
+    };
+    tick(3, 0.3);
+    const bk = site('barracks');
+    tick(3, 0.3);
+    Bld.finish(bk);
+    tick(8, 0.3);
+    ck('theBarracksFirstDefenderAnswersTheSoldierStep',
+      S.tut.done.soldier === 1 && S.units.some(u => u.owner === 'P' && u.kind === 'defender') &&
+      Tutorial._show && Tutorial._show.id === 'guard', JSON.stringify(Tutorial._show));
+    { const sp = S.units.find(u => u.owner === 'P' && u.kind === 'defender');
+      Units.moveTo(sp, (sp.x | 0) + 3, sp.y | 0); }      // a real walk order answers the guard step
+    tick(6, 0.3);
+    const rg = site('range'); tick(3, 0.3); Bld.finish(rg);
+    const tw = site('tower'); tick(3, 0.3); Bld.finish(tw);
+    tick(8, 0.3);
+    const bow = S.units.find(u => u.owner === 'P' && u.kind === 'archer');
+    ck('theRangesFirstArcherIsTheOneRung', !!bow && Tutorial._show && Tutorial._show.id === 'manTower' &&
+      (Tutorial._anchor() || {}).u === bow.id && /Tap your/.test(txtOf('tutTxt')),
+      JSON.stringify(Tutorial._show) + ' ' + txtOf('tutTxt'));
+    ck('andTheTowersOwnNoteLeavesItToTheCard',
+      !S.log.slice(0, 6).some(l => /shoots only with archers/.test(l.msg)), S.log.slice(0, 6).map(l => l.msg).join(' | '));
+  }
+
   // ---- the taught town: barracks → tower → wall, each held until payable,
   //      and the upgrade note only when Bld.canUpgrade says YES ----
   {
@@ -562,12 +601,46 @@ const out = await p.evaluate(async () => {
     ck('paidShowsBarracks', Tutorial._show && Tutorial._show.id === 'barracks',
       JSON.stringify(Tutorial._show));
     put('barracks'); tick(8, 0.3);
+    /* THE BOWS BEFORE THE TOWER (build 152): the range is taught before the
+       tower, and the tower is taught MANNED — its own step, answered by the
+       order that sends a bow up */
+    ck('thenRange', Tutorial._show && Tutorial._show.id === 'range', JSON.stringify(Tutorial._show));
+    ck('theRangeNoteSaysTowersNeedArchers', /Archery Range/.test(txtOf('tutTxt')) && /archers/.test(txtOf('tutTxt')),
+      txtOf('tutTxt'));
+    put('range'); tick(8, 0.3);
     ck('thenTower', Tutorial._show && Tutorial._show.id === 'tower', JSON.stringify(Tutorial._show));
-    put('tower'); tick(8, 0.3);
+    const tw = put('tower'); tick(8, 0.3);
+    // an instant range sends no archer (only a finished SITE does), so the
+    // note asks for one to be trained and rings the range
+    ck('thenManTheTower', Tutorial._show && Tutorial._show.id === 'manTower', JSON.stringify(Tutorial._show));
+    ck('withNoArcherItSaysTrainOne', /Train an/.test(txtOf('tutTxt')) && /shoots nothing/.test(txtOf('tutTxt')),
+      txtOf('tutTxt'));
+    {
+      const rg = S.buildings.find(o => o.owner === 'P' && o.key === 'range');
+      const a = Tutorial._anchor();
+      ck('itRingsTheRange', !!a && !!rg && Math.abs(a.x - Bld.cx(rg)) < 0.01 && Math.abs(a.y - Bld.cy(rg)) < 0.01,
+        JSON.stringify(a));
+    }
+    // a bow on the ground: the ring moves to him, and with him in hand to the tower
+    const bow = Units.spawn('archer', 'P', tw.x + 0.5, tw.y + 2.5);
+    tick(1, 0.3);
+    ck('aBowOnTheGroundIsRung', (Tutorial._anchor() || {}).u === bow.id, JSON.stringify(Tutorial._anchor()));
+    UI.select('unit', bow.id);
+    tick(1, 0.3);
+    {
+      const a = Tutorial._anchor();
+      ck('withTheBowInHandTheTowerIsRung', !!a && Math.abs(a.x - Bld.cx(tw)) < 0.01, JSON.stringify(a));
+    }
+    // the REAL order sends him up — and answers the lesson
+    ck('theOrderLands', Lookout.order(bow, tw) === true, JSON.stringify(bow.task));
+    UI.deselect();
+    tick(3, 0.3);
+    ck('sendingHimUpAnswersIt', S.tut.done.manTower === 1, JSON.stringify(S.tut.done));
+    tick(5, 0.3);                                    // through the breath after an answered note
     ck('thenWall', Tutorial._show && Tutorial._show.id === 'wall', JSON.stringify(Tutorial._show));
     put('wall'); tick(8, 0.3);
     ck('thenWinCond', Tutorial._show && Tutorial._show.id === 'winCond', JSON.stringify(Tutorial._show));
-    put('house');                                    // support: barracks+tower+house = 3
+    put('house');                                    // support: barracks+range+tower+house ≥ 3
     clickNext();                                     // answer winCond
     /* THE STANDING GOAL closes the silent gap: after the win conditions the
        lesson names the hall as the objective, prices it, and counts what is

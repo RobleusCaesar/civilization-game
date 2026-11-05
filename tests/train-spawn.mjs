@@ -27,8 +27,15 @@
                       start extras and the Town Center's two-survivor reprieve
                       carried the same unchecked fallback and now share it.
 
+     THE FIRST       A player's Barracks or Archery Range SITE finishing
+     SOLDIER         puts one Defender or archer on its doorstep (build 152,
+                     Bld.giftFirst): never an upgrade, an instant placement
+                     or the rival's; a gift, never counted as training; past
+                     the cap if need be; held in reserve when hemmed in.
+
    Run after touching: Bld.update's training block, Bld.spawnRoom /
    spawnSpotAt / spawnSpot / releaseTrained / holdTrained / releaseHeld,
+   Bld.finish / giftFirst,
    UI.queueLine, or the reprieve / start-extra spawns in game.js.
 
      node tests/train-spawn.mjs      # exits non-zero on any regression */
@@ -169,6 +176,77 @@ const out = await p.evaluate(async () => {
     const back = S.buildings.find(x => x.key === 'barracks' && x.owner === 'P');
     ck('theReserveSurvivesASaveRoundTrip', !!back && (back.hold || []).length === before,
       before + ' held -> ' + ((back && back.hold) || []).length);
+  }
+
+  /* ---- 7. THE YARD SENDS ITS FIRST SOLDIER (operator, build 152: "When a
+     level 1 barracks or archery range is built, automatically provide the
+     player with 1 unit (either Defender or archer). This speeds up the
+     players ability to defend themselves") — the player's own site, finished
+     through Bld.finish: one unit on its doorstep, a gift and never training.
+     And the range itself waits on no hall ("make an archery range available
+     at level 1 TC (instead of 2)"). ---- */
+  {
+    fresh('ts7');
+    const tc = Bld.tcOf('P');
+    tc.level = 1;
+    const spot = (key) => MapGen.findNear(tc.x + 5, tc.y + 5, 9, (x, y) => Bld.canPlace('P', key, x, y, { noCost: true }).ok);
+    const rs = spot('range');
+    ck('theRangeStandsAtTheFirstHall', !!rs && !CFG.BUILDINGS.range.reqTC,
+      rs ? 'placeable at hall Lv 1' : JSON.stringify(Bld.canPlace('P', 'range', tc.x + 5, tc.y + 5, { noCost: true })));
+    const count = (kind) => S.units.filter(u => u.owner === 'P' && u.kind === kind).length;
+    const site = (key) => { const at = spot(key); const bl = Bld.place('P', key, at.x, at.y, { free: true }); return bl; };
+    const trained0 = S.stats.trained;
+    // a barracks SITE finishing: one Defender on its doorstep, and the note says so
+    const d0 = count('defender'), bk = site('barracks');
+    const isSite = bk.construction > 0;
+    const log0 = S.log.length;
+    Bld.finish(bk);
+    const said = S.log.slice(0, S.log.length - log0 + 1).map(l => l.msg).join(' | ');
+    const nd = S.units.filter(u => u.owner === 'P' && u.kind === 'defender').pop();
+    ck('aFinishedBarracksSendsItsFirstDefender', isSite && count('defender') === d0 + 1,
+      'defenders ' + d0 + ' -> ' + count('defender'));
+    ck('heStandsOnItsDoorstep', !!nd && Bld.spawnRoom('P', 'land', nd.x | 0, nd.y | 0) &&
+      Math.hypot(nd.x - Bld.cx(bk), nd.y - Bld.cy(bk)) <= Bld.SPAWN_R + 2,
+      nd ? nd.x.toFixed(1) + ',' + nd.y.toFixed(1) : 'none');
+    ck('andTheNoteSaysWhereHeCameFrom', /Barracks complete/.test(said) && /first Defender/.test(said), said);
+    // a range SITE finishing: one archer
+    const a0 = count('archer'), rg = site('range');
+    Bld.finish(rg);
+    ck('aFinishedRangeSendsItsFirstArcher', count('archer') === a0 + 1, 'archers ' + a0 + ' -> ' + count('archer'));
+    ck('aGiftIsNotTraining', S.stats.trained === trained0, 'trained ' + trained0 + ' -> ' + S.stats.trained);
+    // …and nothing else sends one: an upgrade, an instant placement, a house, the rival
+    const n0 = S.units.length;
+    Bld.finishUpgrade(bk);
+    const inst = put('barracks', spot('barracks').x, spot('barracks').y);
+    const hs = site('house'); Bld.finish(hs);
+    ck('onlyALevelOneSiteFinishingSendsOne', S.units.length === n0 && inst && inst.level === 1,
+      'units ' + n0 + ' -> ' + S.units.length);
+    const ta = Bld.tcOf('A');
+    const ra = MapGen.findNear(ta.x + 4, ta.y + 4, 9, (x, y) => Bld.canPlace('A', 'barracks', x, y, { noCost: true }).ok);
+    const ab = Bld.place('A', 'barracks', ra.x, ra.y, { free: true });
+    const na = S.units.filter(u => u.owner === 'A').length;
+    Bld.finish(ab);
+    ck('theRivalsYardsSendNobody', S.units.filter(u => u.owner === 'A').length === na,
+      na + ' -> ' + S.units.filter(u => u.owner === 'A').length);
+    // at the population cap the gift still stands (a card's soldier may too)
+    const cap = Bld.popCap('P');
+    while (Units.popUsed('P') < cap) Units.spawn('villager', 'P', tc.x + 0.5, tc.y + 2.5);
+    const d1 = count('defender'), bk2 = site('barracks');
+    Bld.finish(bk2);
+    ck('itStandsEvenAtTheCap', count('defender') === d1 + 1, 'pop ' + Units.popUsed('P') + '/' + cap);
+    // hemmed in: the gift waits at the gate with the reserve, and comes out
+    // as no training when the ground opens
+    const bk3 = site('barracks');
+    entomb(bk3, Bld.SPAWN_R + 2);
+    const d2 = count('defender'), t2 = S.stats.trained;
+    Bld.finish(bk3);
+    ck('hemmedInItWaitsAtTheGate', count('defender') === d2 && !!(bk3.hold && bk3.hold.length === 1 && bk3.hold[0].gift),
+      JSON.stringify(bk3.hold));
+    for (let dy = -1; dy <= Bld.size(bk3); dy++) for (let dx = -1; dx <= Bld.size(bk3); dx++)
+      if (!Bld.covers(bk3, bk3.x + dx, bk3.y + dy)) openOne(bk3, dx, dy);
+    Bld.update(0.01);
+    ck('andComesOutWhenTheGroundOpens', count('defender') === d2 + 1 && !bk3.hold.length && S.stats.trained === t2,
+      'defenders ' + d2 + ' -> ' + count('defender') + ', trained ' + t2 + ' -> ' + S.stats.trained);
   }
 
   /* ---- 6. ONE HELPER, SHARED BY EVERY SPAWN THAT STANDS A UNIT DOWN ---- */

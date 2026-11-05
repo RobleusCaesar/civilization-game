@@ -1236,6 +1236,27 @@ const Bld = {
         G.log(`${this.def(b.key).name} complete — the builder stays on to work it`, news);
       } else if (this.def(b.key).needsWorker) {
         G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
+      } else if (this.def(b.key).firstUnit && (b.level || 1) === 1) {
+        /* A FINISH THAT HANDS THE PLAYER SOMETHING IS NEWS WHEREVER IT IS
+           (tests/train-spawn.mjs): the yard's first soldier is a unit the
+           player did not order, so the line says where it came from even on
+           the open view — the plain "complete" stays in the log alone there */
+        // (with no ground to stand on it waits at the gate, and holdTrained's
+        // own warning says so — one line, not two)
+        if (this.giftFirst(b))
+          G.log(`${this.def(b.key).name} complete — its first ${CFG.UNITS[this.def(b.key).firstUnit].name} reports for duty`, 'note');
+        else G.log(`${this.def(b.key).name} complete`, news);
+      } else if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length) &&
+                 !S.units.some(u => u.owner === 'P' && u.perch) &&
+                 !(S.tut && S.tut.on && S.tut.phase === 1 && !(S.tut.done || {}).manTower)) {
+        /* AN EMPTY TOWER SAYS WHAT IT NEEDS (operator, build 152: "update the
+           tower notes / instructions to let players know they need to create
+           archers and station them in the towers for actual defense"): while
+           no bow of the player's stands on any tower, a finished one tells
+           them how — once they man one, the plain news returns (and while
+           the lesson's own "man the tower" card is still to come, the card
+           says it: one voice, not two) */
+        G.log(`${this.def(b.key).name} complete — it shoots only with archers on it: select archers, then tap the tower`, 'note');
       } else {
         G.log(`${this.def(b.key).name} complete`, news);
       }
@@ -1427,7 +1448,11 @@ const Bld = {
       // finished building is (tests/feedback.mjs, PX-17)
       const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
         !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
-      G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news);
+      // the masons sent the tower's bows down the stairs (Lookout.tick), and
+      // nothing sends them back: an empty tower shoots nothing, so it says so
+      if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length))
+        G.log(`${this.def(b.key).name} reached Lv ${b.level}! Send archers back up — it shoots only with archers on it`, 'note');
+      else G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news);
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
@@ -1707,11 +1732,33 @@ const Bld = {
     return this.spawnSpotAt(b.owner, kind, b.x, naval ? b.y : b.y + this.size(b));
   },
 
-  /* put a finished unit on the ground and hand it its first orders */
-  releaseTrained(b, kind, spot) {
+  /* THE YARD SENDS ITS FIRST SOLDIER (operator, build 152; CFG.BUILDINGS
+     barracks/range `firstUnit`; tests/train-spawn.mjs). A player's Barracks
+     or Archery Range finishing at level 1 puts one Defender or archer on its
+     doorstep, through the same room-checked spot a trained unit takes (and
+     the same reserve when there is none). Asked from Bld.finish alone, so an
+     instant placement (a start package, an origin's prebuilt range), an
+     upgrade and the rival's yards send nobody. It is a gift, not training:
+     no price, no queue, and never counted in S.stats.trained — the deeds and
+     the score count what the player ORDERED. It may stand past the
+     population cap, as a card's soldier may. Returns the unit, or null when
+     it waits at the gate. */
+  giftFirst(b) {
+    const kind = this.def(b.key).firstUnit;
+    if (!kind || b.owner !== 'P' || (b.level || 1) !== 1 || !CFG.UNITS[kind]) return null;
+    const spot = this.spawnSpot(b, kind);
+    if (!spot) { this.holdTrained(b, { unit: kind, t: 0, gift: true }); return null; }
+    return this.releaseTrained(b, kind, spot, true);
+  },
+
+  /* put a finished unit on the ground and hand it its first orders —
+     `gift` (the yard's first soldier) says nothing of its own and counts as
+     no training: Bld.finish has already said where it came from */
+  releaseTrained(b, kind, spot, gift) {
     const nu = Units.spawn(kind, b.owner, spot.x, spot.y);
     if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('train');
-    if (b.owner === 'P') {
+    if (b.owner === 'P' && gift) { /* told by the finish line */ }
+    else if (b.owner === 'P') {
       /* A UNIT READY OFF THE OPEN VIEW IS A NOTE, one a burst (tests/
          feedback.mjs, PX-17): a yard releasing three inside ten seconds says
          "Barracks: 3 defenders ready" once. The event log keeps its line a
@@ -1777,7 +1824,7 @@ const Bld = {
       const spot = this.spawnSpot(b, item.unit);
       if (!spot) return;                       // still hemmed in — wait
       b.hold.shift();
-      this.releaseTrained(b, item.unit, spot);
+      this.releaseTrained(b, item.unit, spot, !!item.gift);
       if (b.owner === 'P' && b.holdWarn && !b.hold.length)
         G.log(`The way is clear — the ${this.def(b.key).name} releases its reserve`);
     }

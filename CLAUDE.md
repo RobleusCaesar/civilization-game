@@ -249,7 +249,7 @@ node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it 
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
 node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
-node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some
+node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some; a player's Barracks/Range site finishing sends its first Defender/archer (a gift, not training)
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
 node tests/telemetry.mjs     # the board reports the SITE alone (https, shipped hosts, never ?dev=) and only a world somebody PLAYED; a closed tab is one provisional abandon, the real ending wins; every row names its build, every ending its errors (0 for a clean game) — the RUN's tally, never reset by the title's demo world or a refused load; a Continue is the same run (no second run_start), and quitting to the title is a walk-away
@@ -344,6 +344,39 @@ have (`Lookout.postReach`: the farthest bow the player fields, else the base
 archer, doubled), and the rival's towers and every War Camp fire by
 themselves as before. The AI's reading of the player's towers (lanes,
 landings, the engine road) is unchanged: a tower can be manned in a second.
+**THE BOWS COME FROM DAY ONE, AND THE TOWER SAYS SO** (operator, build 152:
+"make an archery range available at level 1 TC (instead of 2). Since towers
+no longer shoot on their own, you need to be able to generate archers
+faster. Make sure you update the tower notes / instructions… Update the
+Tutorial and Guide, as this is now a key game play element"): the Archery
+Range carries no `reqTC` (the gate was the player's alone — `canPlace` asks
+it of 'P' only — so the rival's opening is untouched), and the Bowyer's
+prebuilt range is no longer ahead of a gate, only built and paid for. The
+tower tells the player what it needs at every moment it is looked at: the
+placement chip on a valid spot ("🏹 Shoots only with archers on it",
+`UI._placeDomSync`), the finish line (a `'note'`, "…it shoots only with
+archers on it: select archers, then tap the tower") while no bow of the
+player's stands on ANY tower — and never while the lesson's own manTower
+card is still to come (one voice) — the upgrade line when the masons sent
+its bows down ("Send archers back up", nothing sends them back by itself),
+and the empty tower's panel naming the Archery Range. The lesson raises the
+range before the tower and teaches the tower MANNED (**THE TUTORIAL**), and
+the Guide's tower page is "Man your towers".
+**THE YARD SENDS ITS FIRST SOLDIER** (`Bld.giftFirst`, `CFG.BUILDINGS`
+barracks/range `firstUnit`; tests/train-spawn.mjs §7 — operator, build 152:
+"When a level 1 barracks or archery range is built, automatically provide
+the player with 1 unit (either Defender or archer). This speeds up the
+players ability to defend themselves"): a player's Barracks or Archery
+Range SITE finishing (`Bld.finish`, level 1) puts one Defender or archer
+on its doorstep through the room-checked `spawnSpot`, or in the reserve
+(`b.hold`, `gift: true`) when hemmed in. Never from an upgrade, an instant
+placement (a start package, an origin's prebuilt range — `place` with
+`instant` never reaches `finish`) or the rival's yards. A GIFT, NOT
+TRAINING: no price, no queue, never counted in `S.stats.trained` (the deeds
+and the score count what the player ordered; `releaseTrained`'s `gift`
+flag), and it may stand past the population cap as a card's soldier may.
+The finish line says where he came from, as a `'note'` even on the open
+view: a finish that HANDS the player something is news wherever it is.
 **WATCHFIRES ON THE PLATFORM** (`Combat.perchMult` / `perchSees` /
 `perchFire`): the card's 'towerRange' and 'towerAtk' land on the player's
 bows up there — reach in `reachOf`, the blow in the strike (one expression,
@@ -7732,7 +7765,8 @@ for dynamic bits (the rival's tunic colour, the calm/war win conditions).
 Edit copy there and nowhere else.
 **The engine is data-driven**: `Tutorial.STEPS` is phase 1's ordered spine
 (hall → resources → select → the three gathers → gold → house → train → fog
-→ **the map** → **barracks → soldier → guard → tower → wall** → win
+→ **the map** → **barracks → soldier → guard → range → tower → man the
+tower → wall** → win
 conditions → **the standing goal** → the TC2 upgrade → the capstone;
 the GOAL step is what closes the silent gap a playtest reported ("it feels
 like the training ends abruptly"): after the win conditions the spine used
@@ -7774,9 +7808,19 @@ enough resources" behind the upgrade note): house/barracks/tower/wall ask
 `Tutorial._afford` (effCost + canAfford), train asks for pop ROOM and
 food, and tcReady asks `Bld.canUpgrade(tc).ok` — which carries the whole
 gate, three finished buildings AND the goods. **The lesson's larder**
-(`maybeStart`): a tutorial start is topped up to wood 200 / stone 100 /
-gold 20 — enough for the taught builds, a top-up never a cut, and never
-enough for the hall upgrade, because earning that is the lesson's arc.
+(`maybeStart`): a tutorial start is topped up to wood 260 / stone 120 /
+gold 35 — enough for the taught builds (the Archery Range joined them in
+build 152), a top-up never a cut, and never enough for the hall upgrade,
+because earning that is the lesson's arc. **THE BOWS BEFORE THE TOWER**
+(build 152): the `range` step comes before `tower` (its first archer
+reports the day it stands, **THE YARD SENDS ITS FIRST SOLDIER**), and
+`manTower` after it holds for a finished tower and a bow (or a finished
+range to train one), rings the bow on the ground, the tower once a bow is
+in hand, and with no bow at all the range's Train Archer; the ORDER that
+sends a bow up answers it (`Lookout.sentUp`), as a walk order answers the
+guard step. In real play the barracks' first Defender answers the soldier
+step the moment the site finishes, so the lesson goes straight to posting
+him.
 **THE SPINE HAS RIGHT OF WAY**: contextual notes fire only in the quiet
 stretches (a held step, phase 2), ≥25s apart — except the scout, whose
 `urgent` flag lets it preempt, because it is on screen NOW. The `_lastEvAt`

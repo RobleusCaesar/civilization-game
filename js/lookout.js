@@ -688,7 +688,7 @@ const Lookout = {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
     return n ? `🏹 ${n}/${cap} archers on the lookout: they shoot all the tower sees, ${this.perkLine()}`
-      : 'No archers on it, so it shoots nothing — select archers, then tap the tower';
+      : 'No archers on it, so it shoots nothing — train archers at the Archery Range, select them, then tap the tower';
   },
   towerButtons(b) {
     if (b.owner !== 'P') return '';

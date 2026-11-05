@@ -930,6 +930,10 @@ const UI = {
     // the count (playtest g2)
     else if (v && v.ok && window.Deck && Deck.masterHand && Deck.masterHand('P', this.placing))
       msg = '⚒ Stands at once · ' + Deck.masterHand('P', this.placing) + ' left';
+    // …and a Watchtower says, where the choice is made, that it is nothing
+    // without its bows (operator, build 152 — the player's towers shoot only
+    // through the archers posted on them; short enough for the 260px chip)
+    else if (v && v.ok && this.placing === 'tower') msg = '🏹 Shoots only with archers on it';
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;

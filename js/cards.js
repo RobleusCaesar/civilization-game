@@ -411,7 +411,7 @@ const Cards = {
       text(r) { return `an Archery Range stands built + ${r.n} archer${r.n > 1 ? 's' : ''}`; },
       val(r) { return 150 + r.n * 75; },
       apply(side, r) {
-        // the range normally waits on a level-2 hall; the bowyer brought his own
+        // the range stands on day one, built and paid for, his archers on it
         const b = Cards._prebuild(side, 'range');
         if (!b) Cards._res(side).wood += 90;
         Cards._crew(side, 'archer', r.n);

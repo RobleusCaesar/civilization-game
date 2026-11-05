@@ -363,7 +363,7 @@ const CFG = {
     tower: {
       // fortifications got a real HP curve (siege engines exist now) — and a
       // matching price curve. L1 stays affordable: it's the early-game shield.
-      name: 'Watchtower', desc: 'Extends vision. Manned by archers, it sees twice as far and shoots all it sees.', vision: true,
+      name: 'Watchtower', desc: 'Shoots only with archers on it: post up to two from the Archery Range and they see twice as far and shoot all it sees.', vision: true,
       levels: [
         { cost: { wood: 45, stone: 45 },              time: 2, hp: 420,  atk: 8,  range: 4.5, vision: 6 },
         { cost: { wood: 110, stone: 130, gold: 10 },  time: 2, hp: 950,  atk: 13, range: 5,   vision: 7 },
@@ -392,6 +392,12 @@ const CFG = {
     barracks: {
       name: 'Barracks', desc: 'Trains defenders to protect the village.',
       size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
+      /* THE YARD SENDS ITS FIRST SOLDIER (Bld.giftFirst, tests/train-spawn.mjs
+         — operator, build 152: "When a level 1 barracks or archery range is
+         built, automatically provide the player with 1 unit… This speeds up
+         the players ability to defend themselves"): the player's own, when a
+         site of it finishes; never an upgrade, an instant gift or the rival's */
+      firstUnit: 'defender',
       train: {
         defender: { cost: { food: 40, wood: 30 }, time: 1 },
         axeman:   { cost: { food: 50, wood: 40, gold: 8 }, time: 1.2, reqLevel: 2 },
@@ -422,8 +428,13 @@ const CFG = {
       ],
     },
     range: {
-      name: 'Archery Range', desc: 'Trains archers who fight from a distance.', reqTC: 2,
+      // NO HALL GATE (operator, build 152: "make an archery range available at
+      // level 1 TC… Since towers no longer shoot on their own, you need to be
+      // able to generate archers faster") — the player's towers shoot only
+      // through the bows posted on them, so the bows come from day one
+      name: 'Archery Range', desc: 'Trains archers who fight from a distance — and man your towers.',
       size: 2,   // a PRIMARY work — two tiles on a side (tests/footprint.mjs)
+      firstUnit: 'archer',   // the yard's first soldier (see barracks)
       train: {
         archer:   { cost: { food: 40, wood: 40 }, time: 1 },
         longbow:  { cost: { food: 40, wood: 60, gold: 10 }, time: 1.2, reqLevel: 2 },
