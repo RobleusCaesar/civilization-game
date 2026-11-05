@@ -1622,7 +1622,7 @@ const Combat = {
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const wfA = u.perch ? this.perchMult(u, 'towerAtk') : 1;   // 1 off the platform: the old expression exactly
-          // …and the platform's own weight (Lookout.atkMult, build 149): 1 off it
+          // …and the platform's own weight (Lookout.atkMult: ×1.5 up there, every bow, every storey — build 150): 1 off it
           const pk = u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1;
           const dmg = Math.max(1, Math.round(Units.effAtk(u) * pk * wfA - Units.effDef(tgt)));
           // the blow is heard where it is struck: a bow's volley or a blade (the wilds' jaws are not weapons)
