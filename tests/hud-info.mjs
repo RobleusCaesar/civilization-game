@@ -19,27 +19,45 @@
         recording (it is four recorded tunes), and a war party of axemen was
         "3 Axemans".
 
+   And on build 153 the operator asked for a cleaner bar (build 154): "move
+   the population stat to the same row as the other resources… remove the
+   food icon that tells you how much food is being consumed. But show it if
+   clicked by a player in the existing note… Remove excess empty space on
+   that row and try to balance out population stat and all resources…
+   higher numbers… decimals and 'k'"; then "we still have to show the food
+   stat, we just hide the addition of the food being consumed".
+
    The rules this pins:
      - The food rate is the NET: what the town is set to bring in a day
        (UI.incomePerDay — every hand sent to gather or fish at the rate
        Units.workReport gives it at work, every finished work by the
-       expression Bld.dailyProduction pays) less Units.foodUpkeep('P'),
-       signed "+N/d" or "−N/d", smoothed over about half a game day so a
-       step between two tiles never flips it; red when it falls, and the
-       famine red as before. Judged against the REAL larder, day by day.
+       expression Bld.dailyProduction pays) less Units.foodUpkeep('P').
+       Since build 154 it rides the food chip's NOTE ("Food 1,401: +35 a
+       day…", U+2212 for a fall), never the bar; the bar's number turns red
+       when the store will run dry within UI.LOW_DAYS at the smoothed rate
+       (smoothed over about half a game day, so a step between two tiles
+       never flips it), and in a famine as before — a falling larder with
+       weeks in it stays plain — and the note says when it runs out. Judged
+       against the REAL larder, day by day.
+     - ONE ROW: the four goods and the people are five chips on the first
+       row, of one width while they fit (a longer number takes its room, the
+       rest share), never spilling at 320, 360 or 390 with the widest numbers
+       the game prints; a number past 9,999 shortens DOWN to 12.4k / 123k /
+       1.2M (UI.fmtRes) and the note says it exactly (UI.fmtFull).
      - That sum walks the units once and builds the homestead map once, and
        gives exactly what the helpers give asked one by one (PERF-01).
      - A tap or a click on any chip answers with a note in the rules' own
        numbers; the chips and the ⏸ / ☰ buttons carry a title and a name; no
-       chip spills at 320, 360 or 390; no two of the top bar's tap targets
-       overlap.
+       two of the top bar's tap targets overlap, the saved armies' banners on
+       its second row included.
      - The first spent tile of a world (and the first fished-out shoal) is a
        NOTE on the screen naming what ran out; after it, at most one such
        note every five game days. Every line still goes to the chronicle.
      - The Guide, Settings and the war-party title say what is true.
 
-   Run this after touching UI.refresh's food rate, UI.incomePerDay /
-   handRate / chipNote / idleNote, the #topbar chips' markup or CSS, the
+   Run this after touching UI.refresh's food cue, UI.incomePerDay /
+   handRate / chipNote / idleNote / fmtRes / fmtFull / foodLow, the #topbar
+   chips' markup or CSS, the
    spent-tile lines in Units.update, or the Guide / Settings copy.
 
      node tests/hud-info.mjs      # exits non-zero on any regression        */
@@ -53,6 +71,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const res = {}, fails = [];
 const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 const __r1 = v => Math.round(v * 10) / 10;
+// a note's daily total, read in node (the page has its own, __h.total)
+const __h_total = s => { const m = /^(?:\w+ [\d,]+: )?([+−±])([\d.]+)(?: food)? a day/.exec(s || ''); return m ? (m[1] === '−' ? -1 : m[1] === '±' ? 0 : 1) * +m[2] : NaN; };
 
 /* ---- 0. the source: the Guide's famine rule (the copy is markup) ---- */
 {
@@ -178,11 +198,20 @@ await p.evaluate(() => {
       return out;
     },
     // the note's daily total ("Stone 76: nothing comes in" is an income of 0)
-    total(s) { const m = /^(?:\w+ [\d.k]+: )?([+−±])([\d.]+)(?: food)? a day/.exec(s); return m ? (m[1] === '−' ? -1 : m[1] === '±' ? 0 : 1) * +m[2] : /^\w+ [\d.k]+: nothing comes in/.test(s) ? 0 : NaN; },
-    printed() {
-      const t = (document.getElementById('rFoodNet') || {}).textContent || '';
-      const m = /^([+−±])(\d+)\/d$/.exec(t);
-      return { t, n: m ? (m[1] === '−' ? -1 : m[1] === '+' ? 1 : 0) * +m[2] : NaN, bad: document.getElementById('rFoodNet').classList.contains('bad') };
+    total(s) { const m = /^(?:\w+ [\d,]+: )?([+−±])([\d.]+)(?: food)? a day/.exec(s); return m ? (m[1] === '−' ? -1 : m[1] === '±' ? 0 : 1) * +m[2] : /^\w+ [\d,]+: nothing comes in/.test(s) ? 0 : NaN; },
+    // the bar as the player sees it (build 154): the food number, its red,
+    // and whether any rate is still printed anywhere in the top bar
+    bar() {
+      const el = document.getElementById('rFood');
+      const txt = document.getElementById('topbar').textContent;
+      return { num: el.textContent, low: el.classList.contains('low'), net: UI.chipNote('food') || '',
+        rate: !!document.getElementById('rFoodNet') || /\/d\b|a day/.test(txt) };
+    },
+    // the SMOOTHED net the red rides on, as the food chip's accessible name says it
+    smoothed() {
+      const a = document.querySelector('#topbar [data-chip="food"]').getAttribute('aria-label') || '';
+      const m = /, ([+−±])(\d+) a day$/.exec(a);
+      return { t: a.replace(/^Food [^,]*, /, ''), n: m ? (m[1] === '−' ? -1 : m[1] === '+' ? 1 : 0) * +m[2] : NaN };
     },
   };
 });
@@ -208,18 +237,20 @@ const town = await p.evaluate(() => {
   const w = __h.water();
   if (w) { const bt = Units.spawn('fishboat', 'P', w.x, w.y); bt.x = w.x + 0.5; bt.y = w.y + 0.5; bt.task = { type: 'fish', x: w.x, y: w.y }; bt.path = null; }
   out.boat = !!w;
-  // the town stands like this for days: the printed rate has settled
+  // the town stands like this for days: the smoothed rate has settled
   UI.refreshT = 0; UI.refresh(0.25);
   S.day += 10;
   UI.refreshT = 0; UI.refresh(0.25);
   const L = __h.lump(), eat = Units.foodUpkeep('P');
   const handsF = __h.handSum('food'), boatsF = __h.handSum('food', true);
-  out.expect = Math.round(handsF + boatsF + L.food - eat);
+  out.exact = handsF + boatsF + L.food - eat;
+  out.expect = Math.round(out.exact);
   out.parts = { hands: __h.r1(handsF), boats: __h.r1(boatsF), works: __h.r1(L.food), eat };
-  out.printed = __h.printed();
+  out.bar = __h.bar();
+  out.barNum = UI.fmtRes(S.res.food);
   // the notes, read through the chips' own door
   const note = k => (UI.chipNote ? UI.chipNote(k) : '') || '';
-  out.notes = { food: note('food'), rate: note('foodRate'), wood: note('wood'), stone: note('stone'), gold: note('gold'), pop: note('pop'), day: note('day') };
+  out.notes = { food: note('food'), wood: note('wood'), stone: note('stone'), gold: note('gold'), pop: note('pop'), day: note('day') };
   const P = __h.parts;
   const nf = P(out.notes.food), nw = P(out.notes.wood), ns = P(out.notes.stone), ng = P(out.notes.gold);
   const sum = o => Object.values(o).reduce((a, c) => a + c, 0);
@@ -229,13 +260,12 @@ const town = await p.evaluate(() => {
   const tcb = Bld.tcOf('P');
   const hallGold = Bld.lv(tcb).out.gold * G.modeCfg().output;
   out.checks = {
-    foodStored: out.notes.food.startsWith('Food ' + UI.fmtRes(S.res.food) + ': '),
+    foodStored: out.notes.food.startsWith('Food ' + (UI.fmtFull ? UI.fmtFull(S.res.food) : S.res.food) + ': '),
     foodHands: nf.gatherers === __h.r1(handsF),
     foodBoats: !out.boat || nf.boats === __h.r1(boatsF),
     foodWorks: Math.abs(sum(nf) - (nf.gatherers || 0) - (nf.boats || 0) - L.food) < 0.15,
     foodEat: !!eatM && +eatM[1] === __h.r1(eat),
     foodNet: Math.abs(__h.total(out.notes.food) - (handsF + boatsF + L.food - eat)) < 0.15,
-    rateNet: Math.abs(__h.total(out.notes.rate) - (handsF + boatsF + L.food - eat)) < 0.15 && out.notes.rate !== out.notes.food,
     woodHands: nw.woodcutters === __h.r1(__h.handSum('wood')),
     woodWorks: Math.abs(sum(nw) - (nw.woodcutters || 0) - L.wood) < 0.15,
     woodNet: Math.abs(__h.total(out.notes.wood) - (__h.handSum('wood') + L.wood)) < 0.15,
@@ -267,26 +297,36 @@ const town = await p.evaluate(() => {
         top: room(CFG.TC_POP_CAP.length, CFG.TC_POP_CAP[CFG.TC_POP_CAP.length - 1], CFG.TC_POP_CAP[CFG.TC_POP_CAP.length - 1]), room: room(1, 7, 10) };
     } finally { Bld.popCap = keep.cap; Units.popUsed = keep.used; tc.level = keep.lv; }
   }
-  // red when it falls; the famine red as before
+  // a falling store reads red only when it will run DRY within LOW_DAYS; the famine red as before
   for (const u of __h.vills()) if (u.task && u.task.type === 'gather' && u.task.res === 'food') u.task = null;
   for (const bb of S.buildings) if (bb.owner === 'P' && (bb.key === 'farm' || bb.key === 'lodge')) bb.upgrading = 1;
   S.units = S.units.filter(u => u.kind !== 'fishboat');
   S.day += 10; UI.refreshT = 0; UI.refresh(0.25);
-  out.falling = __h.printed();
+  const fall = UI.incomePerDay('food').total - Units.foodUpkeep('P');
+  out.fall = __h.r1(fall);
+  S.res.food = Math.max(1, Math.round(-fall * 2.5)); UI.refreshT = 0; UI.refresh(0.25);
+  out.dry = Object.assign(__h.bar(), { food: S.res.food, days: Math.floor(S.res.food / -fall) });
+  S.res.food = Math.round(-fall * 40); UI.refreshT = 0; UI.refresh(0.25);
+  out.weeks = Object.assign(__h.bar(), { food: S.res.food });
   for (const bb of S.buildings) if (bb.owner === 'P' && (bb.key === 'farm' || bb.key === 'lodge')) bb.upgrading = 0;
-  S.day += 10; UI.refreshT = 0; UI.refresh(0.25);
-  out.rising = __h.printed();
+  S.res.food = 40; S.day += 10; UI.refreshT = 0; UI.refresh(0.25);
+  out.rising = __h.bar();
   S._famineWarned = true; UI.refreshT = 0; UI.refresh(0.25);
-  out.famine = __h.printed();
+  out.famine = __h.bar();
   S._famineWarned = false;
   return out;
 });
-ck('theFoodRateIsTheNet', town.hands.every(Boolean) && town.bonded && town.printed.n === town.expect,
-  `printed "${town.printed.t}", the rules say ${town.expect >= 0 ? '+' : '−'}${Math.abs(town.expect)}/d (gatherers ${town.parts.hands}, boats ${town.parts.boats}, works ${town.parts.works} with a homestead bond, eaten ${town.parts.eat})`);
-ck('andItKeepsItsGlyphs', /^[+−±]\d+\/d$/.test(town.printed.t) && !town.printed.t.includes('-'), `"${town.printed.t}" — U+2212 for a fall, "/d" kept`);
-ck('aFallingLarderReadsRed', town.falling.n < 0 && town.falling.bad && town.rising.n > 0 && !town.rising.bad,
-  `falling "${town.falling.t}" ${town.falling.bad ? 'red' : 'NOT red'}; rising "${town.rising.t}" ${town.rising.bad ? 'RED' : 'plain'}`);
-ck('theFamineRedStillShows', town.famine.bad, `"${town.famine.t}" with the famine warned: ${town.famine.bad ? 'red' : 'NOT red'}`);
+ck('theFoodNoteCarriesTheNet', town.hands.every(Boolean) && town.bonded && Math.abs(__h_total(town.notes.food) - town.exact) < 0.15,
+  `"${town.notes.food.slice(0, 60)}…", the rules say ${town.expect >= 0 ? '+' : '−'}${Math.abs(town.expect)} a day (gatherers ${town.parts.hands}, boats ${town.parts.boats}, works ${town.parts.works} with a homestead bond, eaten ${town.parts.eat})`);
+ck('andTheBarCarriesTheNumberAlone', !town.bar.rate && town.bar.num === town.barNum,
+  `the food chip reads "${town.bar.num}"${town.bar.rate ? ' — and a RATE is still printed in the bar' : ', no rate anywhere in the bar'}`);
+ck('andItKeepsItsGlyphs', /: −[\d.]+ a day\./.test(town.dry.net) && !/: -/.test(town.dry.net) && /: \+[\d.]+ a day\./.test(town.rising.net),
+  `falling "${town.dry.net.slice(0, 40)}…", rising "${town.rising.net.slice(0, 40)}…" — U+2212 for a fall`);
+ck('aFallingLarderReadsRedOnlyWhenItRunsDry', town.fall < 0 && town.dry.low && !town.weeks.low && !town.rising.low,
+  `falling ${town.fall} a day: ${town.dry.food} in store (${town.dry.days} days) ${town.dry.low ? 'red' : 'NOT red'}; ${town.weeks.food} in store ${town.weeks.low ? 'RED' : 'plain'}; rising ${town.rising.low ? 'RED' : 'plain'}`);
+ck('andTheNoteSaysWhenItRunsOut', new RegExp('runs out in about ' + town.dry.days + ' days?\\.').test(town.dry.net) && !/runs out/.test(town.rising.net),
+  `"${(town.dry.net.match(/At this rate[^.]*\./) || ['no line'])[0]}"`);
+ck('theFamineRedStillShows', town.famine.low, `with the famine warned the number is ${town.famine.low ? 'red' : 'NOT red'}`);
 const failed = Object.entries(town.checks).filter(([, v]) => !v).map(([k]) => k);
 ck('everyNumberInEachNoteIsTheRulesOwn', !failed.length,
   failed.length ? 'wrong: ' + failed.join(', ') + ' — ' + JSON.stringify(town.notes).slice(0, 400)
@@ -339,8 +379,8 @@ ck('andItSumsWhatTheHelpersSumOneByOne', pass.quick.length === 4 && pass.quick.e
 /* ---- 2. EVERY CHIP ANSWERS A TAP (PX-18), by real input and by visibility ---- */
 await p.evaluate(() => { __h.fresh('hud-taps', 'moderate'); S.paused = true; UI.refreshT = 0; UI.refresh(0.25); });
 await p.waitForTimeout(250);
-const CHIPS = [['food', '#rFood', /^Food \d+: [+−±][\d.]+ a day\./], ['food rate', '#rFoodNet', /^[+−±][\d.]+ food a day\./], ['wood', '#rWood', /^Wood \d+: /],
-  ['stone', '#rStone', /^Stone \d+: /], ['gold', '#rGold', /^Gold \d+: /], ['population', '#rPopChip', /^Population \d+ of \d+/], ['day', '#rDay', /^Day \d+\./]];
+const CHIPS = [['food', '#rFood', /^Food [\d,]+: [+−±][\d.]+ a day\./], ['wood', '#rWood', /^Wood [\d,]+: /],
+  ['stone', '#rStone', /^Stone [\d,]+: /], ['gold', '#rGold', /^Gold [\d,]+: /], ['population', '#rPopChip', /^Population \d+ of \d+/], ['day', '#rDay', /^Day \d+\./]];
 const taps = [];
 for (const [name, sel, re] of CHIPS) {
   const box = await p.evaluate(sel => {
@@ -371,13 +411,17 @@ ck('theKeyboardReachesTheChipsAndAClickLeavesNoFocus', !keys.focusLeft && keys.e
 
 /* ---- 3. THE CHIPS AND THE BUTTONS CARRY A NAME (PX-18) ---- */
 const names = await p.evaluate(() => ['#topbar .trow:first-child .res:nth-child(1)', '#topbar .trow:first-child .res:nth-child(2)',
-  '#topbar .trow:first-child .res:nth-child(3)', '#topbar .trow:first-child .res:nth-child(4)', '#rPopChip', '#rDay', '#btnPause', '#btnMenu']
+  '#topbar .trow:first-child .res:nth-child(3)', '#topbar .trow:first-child .res:nth-child(4)', '#topbar .trow:first-child .res:nth-child(5)', '#rDay', '#btnPause', '#btnMenu']
   .map(s => { const el = document.querySelector(s); return { s, title: el && el.getAttribute('title'), aria: el && el.getAttribute('aria-label') }; }));
 const unnamed = names.filter(n => !n.title || !n.aria);
 ck('theChipsAndButtonsCarryNames', !unnamed.length,
   unnamed.length ? 'no title or name: ' + unnamed.map(n => n.s).join(', ') : names.map(n => `"${n.aria}"`).join(', '));
 
-/* ---- 4. NO CHIP SPILLS ON A PHONE (PX-18; challenge-A a03fit's labels) ---- */
+/* ---- 4. ONE ROW OF FIVE, AND NO CHIP SPILLS ON A PHONE (PX-18; build 154) ----
+   The four goods and the people share the first row. With the widest
+   numbers the game prints (fmtRes keeps every one to five characters) no
+   chip spills, none is cut by the row and every number stands whole inside
+   its own chip; with ordinary numbers the five are one width. */
 const fit = [];
 for (const w of [320, 360, 390]) {
   await p.setViewportSize({ width: w, height: 800 });
@@ -387,28 +431,54 @@ for (const w of [320, 360, 390]) {
     const chips = [...row.querySelectorAll('.res')];
     const orig = UI.refresh; UI.refresh = () => {};
     const bad = [];
+    const set = (id, v) => { document.getElementById(id).textContent = v; };
+    let even = null;
     try {
-      for (const [food, lab] of [['368', '−5/d'], ['368', '+12/d'], ['12.4k', '−24/d'], ['12.4k', '+120/d'], ['9999', '+140/d'], ['9999', '−140/d']]) {
-        document.getElementById('rFood').textContent = food; document.getElementById('rFoodNet').textContent = lab;
-        document.getElementById('rWood').textContent = '12.4k'; document.getElementById('rStone').textContent = '9999'; document.getElementById('rGold').textContent = '9999';
+      for (const [food, wood, stone, gold, pop] of [['368', '75', '40', '12', '7/10'], ['9999', '9999', '9999', '9999', '60/60'],
+        ['99.9k', '123k', '9999', '1.2M', '64/60'], ['12.4k', '99.9k', '999k', '9.9M', '60/60']]) {
+        set('rFood', food); set('rWood', wood); set('rStone', stone); set('rGold', gold); set('rPop', pop);
         const rr = row.getBoundingClientRect();
         const tops = new Set(chips.map(c => Math.round(c.getBoundingClientRect().top)));
         const over = chips.some(c => c.scrollWidth > c.clientWidth + 1) || row.scrollWidth > row.clientWidth + 1;
         const clipped = chips.some(c => { const q = c.getBoundingClientRect(); return q.right > rr.right + 0.5 || q.left < rr.left - 0.5; });
-        const fr = document.getElementById('rFoodNet').getBoundingClientRect(), cr = chips[0].getBoundingClientRect();
-        if (tops.size !== 1 || over || clipped || fr.right > cr.right + 0.5) bad.push(`${food} ${lab}`);
+        const cut = chips.some(c => { const q = c.querySelector('span').getBoundingClientRect(), cq = c.getBoundingClientRect(); return q.right > cq.right - 1 || q.left < cq.left + 1; });
+        if (chips.length !== 5 || tops.size !== 1 || over || clipped || cut) bad.push(`${food}/${wood}/${stone}/${gold}/${pop}`);
+        if (even == null) { const ws = chips.map(c => c.getBoundingClientRect().width); even = Math.max(...ws) - Math.min(...ws); }
       }
     } finally { UI.refresh = orig; }
-    return { w, bad };
+    return { w, bad, even: Math.round(even * 10) / 10, five: chips.length };
   }, w));
 }
 await p.setViewportSize({ width: 390, height: 844 });
+ck('theGoodsAndThePeopleShareOneRow', fit.every(f => f.five === 5), fit.map(f => `${f.w}: ${f.five} chips on the first row`).join('; '));
 ck('noChipSpillsOnAPhone', fit.every(f => !f.bad.length), fit.map(f => `${f.w}: ${f.bad.length ? 'SPILLS ' + f.bad.join(', ') : 'fits'}`).join('; '));
+ck('andTheFiveAreOneWidth', fit.every(f => f.even <= 1.5), fit.map(f => `${f.w}: widths within ${f.even}px`).join('; '));
+
+/* ---- 4b. A NUMBER SHORTENS DOWN, NEVER UP, AND THE NOTE SAYS IT ALL (build 154) ---- */
+const nums = await p.evaluate(() => {
+  const cases = [[0, '0'], [7.9, '7'], [9999, '9999'], [10000, '10k'], [12450, '12.4k'], [12499, '12.4k'], [99999, '99.9k'],
+    [100000, '100k'], [123456, '123k'], [999999, '999k'], [1000000, '1M'], [1250000, '1.2M'], [9999999, '9.9M']];
+  const bad = cases.filter(([n, want]) => UI.fmtRes(n) !== want).map(([n, want]) => `${n} → "${UI.fmtRes(n)}" (want "${want}")`);
+  const long = [0, 9999, 99999, 123456, 999999, 9999999, 123456789].filter(n => UI.fmtRes(n).length > 5).map(n => UI.fmtRes(n));
+  __h.fresh('hud-nums', 'moderate');
+  S.res.wood = 12450;
+  const wood = (UI.chipNote('wood') || '').split(':')[0];
+  return { bad, long, wood, full: UI.fmtFull(1234567) };
+});
+ck('aNumberShortensDownNeverUp', !nums.bad.length && !nums.long.length,
+  nums.bad.length ? nums.bad.join('; ') : nums.long.length ? 'too long: ' + nums.long.join(', ') : '9999 stays exact, 12,450 is 12.4k, 123,456 is 123k, 1,250,000 is 1.2M — five characters at most');
+ck('andTheNoteSaysTheWholeNumber', nums.wood === 'Wood 12,450' && nums.full === '1,234,567', `"${nums.wood}", ${nums.full}`);
 
 /* ---- 5. NO TWO TAP TARGETS IN THE TOP BAR OVERLAP (a G/matrix-style probe:
    each target's EFFECTIVE hit box, by elementFromPoint on a 1px grid, so a
    ::after extension counts) ---- */
 const hits = [];
+await p.evaluate(() => {
+  const tc = __h.fresh('hud-hits', 'moderate');
+  const mk = (k, n) => { const ids = []; for (let i = 0; i < n; i++) ids.push(Units.spawn(k, 'P', tc.x + 3 + i, tc.y + 3).id); return ids; };
+  for (const [k, n] of [['defender', 2], ['archer', 2], ['defender', 1]]) UI.saveArmy(mk(k, n));
+  UI.tickArmies(); UI.refreshT = 0; UI.refresh(0.25);
+});
 for (const w of [320, 390]) {
   await p.setViewportSize({ width: w, height: 800 });
   await p.waitForTimeout(250);
@@ -430,11 +500,11 @@ for (const w of [320, 390]) {
       const ix = Math.min(a.x1, c.x1) - Math.max(a.x0, c.x0) + 1, iy = Math.min(a.y1, c.y1) - Math.max(a.y0, c.y0) + 1;
       if (ix > 2 && iy > 2) ov.push(`${a.id}×${c.id} ${ix}×${iy}`);
     }
-    return { w, n: boxes.length, ov };
+    return { w, n: boxes.length, ov, armies: document.querySelectorAll('#armyBar button').length };
   }, w));
 }
 await p.setViewportSize({ width: 390, height: 844 });
-ck('noTwoTopBarTargetsOverlap', hits.every(h => !h.ov.length), hits.map(h => `${h.w}: ${h.n} targets, ${h.ov.length ? 'OVERLAP ' + h.ov.join(', ') : 'none overlap'}`).join('; '));
+ck('noTwoTopBarTargetsOverlap', hits.every(h => !h.ov.length && h.armies === 3), hits.map(h => `${h.w}: ${h.n} targets (${h.armies} army banners), ${h.ov.length ? 'OVERLAP ' + h.ov.join(', ') : 'none overlap'}`).join('; '));
 
 /* ---- 6. A SPENT TILE SAYS SO, ON SCREEN — ONCE, THEN ONE A FIVE DAYS (PX-08) ---- */
 const idle = await p.evaluate(() => {
@@ -492,12 +562,13 @@ ck('andTheNextWaitsFiveDays', idle.second && idle.secondShown === 0 && idle.seco
   `half a day later: ${idle.secondShown} shown (in the chronicle: ${idle.secondLogged}); five days on: ${idle.thirdShown} shown`);
 ck('aFishedOutShoalSaysSoToo', idle.shoal && idle.shoalIdle && idle.shoalShown === 1, idle.shoal ? `${idle.shoalShown} visible note` : 'no shoal on the map');
 
-/* ---- 7. THE PRINTED RATES AGAINST THE REAL STORES (PX-19 / PX-18 amendments):
+/* ---- 7. THE RATES AGAINST THE REAL STORES (PX-19 / PX-18 amendments):
    a town run day by day in the real sim, the HUD sampled 4× a second. Each
-   day the printed food sign (and each note's income) is judged against what
-   the stores really did that day; over the run, the magnitude against the
-   real mean; and the printed sign may change no more often than the
-   larder's real daily direction. Three economies that rise — two hands on
+   day the smoothed food net — the one the bar's red rides on, said in the
+   food chip's name since build 154 took it off the bar — and each note's
+   income are judged against what the stores really did that day; over the
+   run, the magnitude against the real mean; and the smoothed sign may change
+   no more often than the larder's real daily direction, or the red flickers. Three economies that rise — two hands on
    food, a homestead farm, two hands under a Harvest Festival — and one that
    falls. A hand whose tile runs out stands idle for a moment before it is
    sent on, as a player's would. ---- */
@@ -539,7 +610,7 @@ for (const kind of ['hands', 'homestead', 'festival', 'none']) {
       }
     };
     const sgn = v => v > 0.5 ? 1 : v < -0.5 ? -1 : 0;
-    const sample = () => { UI.refreshT = 0; UI.refresh(0.25); return __h.printed(); };
+    const sample = () => { UI.refreshT = 0; UI.refresh(0.25); return __h.smoothed(); };
     const rows = [], signs = [];
     const R = ['food', 'wood', 'stone', 'gold'];
     // one day for the town to settle into its work, then the measured days
@@ -575,9 +646,9 @@ ck('theFoodSignIsTheLarders', !errRuns.length && tot >= 60 && ag >= tot * 57 / 6
   errRuns.length ? errRuns.map(r => r.kind + ': ' + r.error).join('; ')
     : `${ag}/${tot} rising days agree (hands, homestead, festival), ${fall.agree.food}/${fall.n} falling days; ${rise.map(r => r.kind + ' ' + r.sample.split(' ').slice(0, 3).join(' ')).join(' | ')}`);
 ck('andItsSizeIsTheLarders', !errRuns.length && runs.every(r => r.mag.food.err <= 0.15),
-  runs.map(r => `${r.kind} printed ${r.mag.food.pr} vs real ${r.mag.food.rl}`).join('; '));
-ck('thePrintedSignNeverFlickers', !errRuns.length && runs.every(r => r.printedChanges <= r.realChanges),
-  runs.map(r => `${r.kind}: ${r.printedChanges} printed changes in ${r.samples} samples, the larder's direction changed ${r.realChanges} times`).join('; '));
+  runs.map(r => `${r.kind} smoothed ${r.mag.food.pr} vs real ${r.mag.food.rl}`).join('; '));
+ck('theSmoothedSignNeverFlickers', !errRuns.length && runs.every(r => r.printedChanges <= r.realChanges),
+  runs.map(r => `${r.kind}: ${r.printedChanges} sign changes in ${r.samples} samples, the larder's direction changed ${r.realChanges} times`).join('; '));
 {
   const incomes = ['wood', 'stone', 'gold'].map(k => {
     const all = runs.filter(r => !r.error);

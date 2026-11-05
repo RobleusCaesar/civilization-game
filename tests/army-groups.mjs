@@ -24,12 +24,12 @@
    Run this after touching any of:
      units.js — formationMove / groupMove
      ui.js — armyAlive/pruneArmies/armyOf/nextArmySlot/saveArmy/removeArmy/
-             selectArmy/armyIsNaval/drawShip/drawHelmet/drawArmyIcon/
+             selectArmy/armyIsNaval/ARMY_SVG/armyIcon/
              renderArmyBar/tickArmies, the group panel buttons, unitBusy/
              groupmatesNear/panelSig, syncBottomToggle/setMenuCollapsed
      render.js — onScreen
      game.js — S.armies init in newGame, the loadJSON armies migration
-     index.html — #armyBar
+     index.html — #armyBar (the top bar's second row since build 154)
 
      node tests/army-groups.mjs      # exits non-zero on any regression
 
@@ -224,27 +224,42 @@ const out = await p.evaluate(() => {
     UI.removeArmy(nf);
     const nm = UI.saveArmy(mixed);
     ck('mostOfItAfloatIsStillAFleet', UI.armyIsNaval(nm) === true, '2 hulls to 1 pair of boots');
-    // the art itself: the ship is drawn, and it is not the helmet
-    const draw = (art) => {
-      const c = document.createElement('canvas'); c.width = c.height = 34;
-      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-      (art === 'ship' ? UI.drawShip : UI.drawHelmet).call(UI, g, 6, 3);
-      return c.toDataURL();
-    };
-    ck('theShipIsItsOwnDrawing', draw('ship') !== draw('helm'), '');
-    ck('theShipFitsTheHelmetsFootprint',
-      UI.ARMY_SHIP.length === UI.ARMY_HELM.length &&
-      UI.ARMY_SHIP.every(r => r.length === UI.ARMY_HELM[0].length),
-      UI.ARMY_SHIP[0].length + 'x' + UI.ARMY_SHIP.length);
-    ck('everyShipPixelHasAColour',
-      UI.ARMY_SHIP.every(r => [...r].every(c => c === '.' || UI.ARMY_SHIP_COL[c])), '');
+    // the art itself (build 154: vectors, the deck icon's rule): the ship is
+    // its own drawing, on the helmet's own 48x48 box, with no ids to collide
+    const A = UI.ARMY_SVG || {};
+    ck('theShipIsItsOwnDrawing', !!A.ship && !!A.helm && A.ship !== A.helm, '');
+    ck('theShipFitsTheHelmetsFootprint', /viewBox="0 0 48 48"/.test(UI.armyIcon(nm)) && /viewBox="0 0 48 48"/.test(UI.armyIcon(na)), 'one 48x48 box for both');
+    ck('theBannersCarryNoIdsOrGradients', ![A.ship, A.helm].some(m => /\bid=|Gradient|url\(/.test(m || '')), 'flat fills, nothing looked up document-wide');
     // and the banner the fleet actually renders differs from an army's
-    const icon = (n) => {
-      const c = document.createElement('canvas'); c.width = c.height = 34;
-      UI.drawArmyIcon(c.getContext('2d'), n);
-      return c.toDataURL();
-    };
-    ck('theRailTellsThemApart', icon(nm) !== icon(na), 'fleet banner vs army banner');
+    ck('theRailTellsThemApart', UI.armyIcon(nm) !== UI.armyIcon(na), 'fleet banner vs army banner');
+  }
+
+  /* ---- 5c. THE BANNERS RIDE THE TOP BAR (operator, build 154: "move the
+     Army 1, 2, and 3 icons to the left hand side of the second row (the one
+     with the map, pause and settings buttons). This keeps our game UI /
+     screen as clean as possible") — they stood on the map under the minimap.
+     Each is a button of the row's own kind, drawn (an inline SVG, never a
+     stamped canvas), carrying its number and its name. ---- */
+  {
+    const tc = setup('ag5c');
+    const g = [[mk('defender', tc.x + 2, tc.y)], [mk('archer', tc.x + 4, tc.y)], [mk('fireship', tc.x + 2, tc.y + 2), mk('fireship', tc.x + 3, tc.y + 2)]];
+    const ns = g.map(units => UI.saveArmy(units.map(u => u.id)));
+    UI.tickArmies();
+    const bar = document.getElementById('armyBar'), row2 = document.querySelector('#topbar .trow + .trow');
+    const btns = [...bar.querySelectorAll('button')];
+    ck('theBannersRideTheSecondRowsLeft', !!row2 && row2.contains(bar) && row2.firstElementChild === bar &&
+      !document.querySelector('body > #armyBar'), row2 ? 'first in the row: #' + (row2.firstElementChild && row2.firstElementChild.id) : 'no second row');
+    const day = document.getElementById('rDay').getBoundingClientRect(), tb = document.getElementById('topbar').getBoundingClientRect();
+    ck('andStandLeftOfTheDayInsideTheBar', btns.length === 3 && btns.every(b2 => { const q = b2.getBoundingClientRect(); return q.width > 0 && q.right <= day.left && q.top >= tb.top && q.bottom <= tb.bottom; }),
+      btns.map(b2 => { const q = b2.getBoundingClientRect(); return `${b2.dataset.army}: ${Math.round(q.left)}..${Math.round(q.right)}`; }).join(', ') + ` | the day starts at ${Math.round(day.left)}`);
+    ck('eachIsADrawnButtonOfTheRow', btns.every(b2 => b2.classList.contains('iconbtn') && !!b2.querySelector('svg') && !b2.querySelector('canvas')), '');
+    const said = btns.map(b2 => ({ n: b2.dataset.army, num: (b2.querySelector('.armyN') || {}).textContent, name: b2.getAttribute('aria-label') }));
+    ck('andCarriesItsNumberAndName', said.length === 3 && said.every((x, i) => x.n === String(ns[i]) && x.num === x.n && (x.name === 'Army ' + x.n || x.name === 'Fleet ' + x.n)) &&
+      said[2].name === 'Fleet ' + ns[2], said.map(x => `${x.num} "${x.name}"`).join(', '));
+    // a tap on the banner still selects its army
+    btns[1].click();
+    ck('aTapOnTheBannerSelectsItsArmy', UI.sel && (UI.sel.type === 'unit' ? UI.sel.id === g[1][0].id : UI.sel.ids.includes(g[1][0].id)), UI.sel ? UI.sel.type : 'nothing selected');
+    UI.deselect();
   }
 
   // ---- 6. the group panel offers Save (next slot named), then Remove ----

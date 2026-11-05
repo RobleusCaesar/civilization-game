@@ -215,7 +215,7 @@ node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged 
 node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
 node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
 node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, exactly once, never into debt
-node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on right-rail banners
+node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on drawn, numbered banners at the left of the top bar's second row
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals — DERIVED from the target art; a stage on the finished canvas takes the finished rect; the stations own upgrade-shaped sets
@@ -285,7 +285,7 @@ node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, 
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch; ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
 node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
-node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
+node tests/hud-info.mjs      # the four goods and the people on ONE row, one width; food's net in its note (never the bar) and its number red only when it runs dry within days; numbers shorten DOWN (12.4k) and the note says them whole; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back; a building of the player's a road meets edge-on works a tenth better (stations yield, yards and the hall train, the post's caravans, forts take less, a house holds one more), never on top of a homestead, gone with the road, gold on its panel, promised on the placement chip, one small twinkle
@@ -2904,8 +2904,18 @@ three (`UI.saveArmy` → `S.armies`, slot → unit ids, in every save file;
 `loadJSON` backfills `{}`); Remove frees a number without renumbering the
 rest, and the NEXT save fills the gap; a banner whose last soldier falls
 vanishes on its own (`UI.tickArmies`, ~1s heartbeat from `UI.init`).
-Banners render as pixel buttons (1/2/3 marks) on the
-right rail under the minimap (`#armyBar`); tapping one selects the army.
+**THE BANNERS RIDE THE TOP BAR** (operator, build 154: "move the Army 1, 2,
+and 3 icons to the left hand side of the second row… This keeps our game UI /
+screen as clean as possible"): `#armyBar` is the first thing in the top bar's
+second row (the day, the map, the deck, Pause and Menu after it), where it
+stood on the map under the minimap. Each banner is a button of the row's own
+kind (`.iconbtn`, so it takes the 44px reach every top-bar button has) holding
+the army's helmet — or a fleet's ship — as a VECTOR (`UI.ARMY_SVG`,
+`UI.armyIcon`: top-bar chrome at the screen's own pixels, the deck icon's
+rule — no ids, no gradients) and its NUMBER (`.armyN`), which the old 21x28
+pixel banner told by fanning one, two or three helmets; its name says "Army
+N" or "Fleet N". Empty, the strip takes no room (`:empty`). Tapping one
+selects the army.
 **The camera only moves when the army is nowhere to be seen** — `R.onScreen`
 tests each member's sprite box against the visible band, discounting what the
 HUD covers (`topReserve` / `bottomReserve`), so one soldier half off the edge
@@ -2921,9 +2931,9 @@ and pointedly NOT for one member of a larger one, where disbanding the lot from
 one man's panel would be a surprise.
 **A banner whose roster mostly FLOATS flies a SHIP** (`UI.armyIsNaval` — most,
 not all, so a scout tagging along with a fleet doesn't turn it back into an
-army): `UI.ARMY_SHIP`, the same 21×28 footprint and dulled palette as
-`ARMY_HELM`, square sail on its yard, masthead pennant, shielded gunwale, and
-water under the keel. One banner per soldier — saving units into a
+army): `UI.ARMY_SVG.ship`, on the helmet's own 48x48 box — a striped square
+sail on its yard, a long hull with shields along the gunwale, and water under
+the keel. One banner per soldier — saving units into a
 new army pulls them out of any old one.
 **THE PANEL SHOWS ONLY WHAT CAN ACT** (same test, section 8 — from a playtest
 where a war party's six buttons plus the open map covered two thirds of the
@@ -4778,10 +4788,19 @@ sheet and the aim bar read the same variable and wear the same walnut.
 (`UI.incomePerDay` / `handRate` / `smoothNet` / `chipNote` / `idleNote`
 beside `UI.refresh`; tests/hud-info.mjs, PX-19, PX-18, PX-08, PX-56). **THE
 FOOD RATE IS THE NET** (`rFoodNet` printed the upkeep alone): what the town
-is SET to bring in less `Units.foodUpkeep('P')`, as "+N/d", "−N/d" (U+2212)
-or "±0/d", nothing when the town neither eats nor earns, red while it falls
-and in a famine as before. `UI.incomePerDay(res)` is the ONE sum the rate and
-the chip notes share: every hand sent to gather or fish at
+is SET to bring in less `Units.foodUpkeep('P')`. **IT RIDES THE NOTE, NOT THE
+BAR** (operator, build 154: "remove the food icon that tells you how much
+food is being consumed. But show it if clicked… we still have to show the
+food stat, we just hide the addition of the food being consumed"): the food
+chip's note says it ("Food 1,401: +35 a day.", U+2212 for a fall, then what
+comes in and what is eaten, and when it falls "At this rate it runs out in
+about N days."), and the chip's accessible name carries the smoothed figure;
+the bar prints no rate at all. **THE NUMBER IS THE WARNING**
+(`UI.foodLow`, `LOW_DAYS` 10 — about a hundred seconds): `#rFood` turns red (`.low`) when the store will
+run dry within LOW_DAYS at the smoothed rate, and in a famine as before (mouths
+to feed and an empty store, or the famine warned) — a falling larder with
+weeks in it stays plain, so the red is news. `UI.incomePerDay(res)` is the ONE
+sum the note and the warning share: every hand sent to gather or fish at
 `Units.workReport`'s rate, counted from the order on (`handRate`, pinned
 equal to workReport's own once the hand arrives), so an order shows at once
 and a step between two tiles never reads as a loss; every fishing boat the
@@ -4800,14 +4819,31 @@ still derived on every call and never kept. **It does not flicker**: an
 exponential average in GAME time (`NET_DAYS` 0.5), UI-local in a WeakMap
 keyed on the world, never saved; a paused world holds it, and a new world or
 a load starts it at the sum itself (hud-info: its sign agrees with the real
-larder on 60/60 rising and 10/10 falling days). **EVERY CHIP ANSWERS A TAP**
-(the four goods, the food rate, the tribe, the day; `data-chip`, role=button,
-a name that carries its number; Enter and Space too, and a click leaves no
-focus behind) with a note in the rules' own numbers, a full town told only
-the step that can really make more. On a phone the resource chips are
-`flex: 1 1 auto` (flex-grow stays 1 — desktop-layout reads it), gapless under
-400px, so a five-figure larder and its rate fit at 320; no two top-bar hit
-boxes may overlap (probed on a 1px `elementFromPoint` grid). **A SPENT TILE
+larder on 60/60 rising and 10/10 falling days, and the red never flickers).
+**EVERY CHIP ANSWERS A TAP** (the four goods, the tribe, the day; `data-chip`,
+role=button, a name that carries its number; Enter and Space too, and a click
+leaves no focus behind) with a note in the rules' own numbers, a full town
+told only the step that can really make more. **ONE ROW HOLDS WHAT THE TOWN
+HOLDS** (build 154: "move the population stat to the same row as the other
+resources… remove excess empty space on that row and try to balance out
+population stat and all resources"): food, wood, stone, gold and the people
+are five chips on the first row (`#rPopChip` moved up from the second), of
+ONE width — `flex: 1 1 0` with `min-width: auto`, so a chip whose number needs
+more takes it and the rest share (flex-grow stays 1 — desktop-layout reads
+it) — capped at 150px and centred where a wide phone has room to spare; the
+narrower phones step the type, the icon and the padding down rather than clip
+a number. **THE ICONS ARE DRAWN** ("increase the pixel count… right now
+they're fuzzy blobs"): meat on the bone, a stack of logs, a split stone, gold
+coins with a glint and two of the tribe, inline SVGs in the markup (`.ric`,
+`data-ic`) — where they were 8x8 sprites stretched to 15px — and the deck's
+flying goods clone them (`DeckUI._spray`; `Sprites.icons` stays for the
+procedural asset slot alone). **A NUMBER SHORTENS DOWN, NEVER UP**
+(`UI.fmtRes`: "when resources get to higher numbers… decimals and 'k'"):
+exact to 9,999, then 12.4k, 123k, 1.2M (whole-number division, floored, five
+characters at most — 12,450 reads 12.4k, never a price it cannot pay), and
+the note says the whole number (`UI.fmtFull`, "12,450"). Nothing spills at
+320 with every chip at its widest; no two top-bar hit boxes may overlap,
+three army banners included (probed on a 1px `elementFromPoint` grid). **A SPENT TILE
 IS NEWS** (`UI.idleNote`, from `Units.update`'s two "villager idle" lines:
 the spent tile and the fished-out shoal): the world's first is a NOTE naming
 what ran out, then one every five game days at most, ONE gate for all
@@ -4823,7 +4859,7 @@ from the live viewport and the map — floors every zoom (clampCam and the
 pinch), so the world always covers the window; `R.defaultZoom()` opens a
 run at 1.7 on a phone and 1.25 on a wide window (a played game used to
 inherit the title demo's leftover), set in `Screens.enterGame`; at ≥900px
-the four resource chips are capped and spread evenly and the build menu
+the five chips (the goods and the people) are capped and spread evenly and the build menu
 centres via auto-margin pseudo-elements (`justify-content: safe center`
 is dropped by Chromium); below 900px nothing changes. `boot.mjs` reads the
 splash as a fixed slice of the SOURCE — a long comment inside the element
@@ -4848,8 +4884,9 @@ and §3 goes red. Pause and Menu take the bar's 5px above and below
 bar nor across the 3px between buttons: 34x44 on a phone, 44x44 on a wide
 window. The deck's count badge is lifted (`z-index: 1`; it takes no taps)
 and §3 holds its pixels to 127's paint order. The minimap's fold reaches
-into the 4px gap under the map, never onto it, 10px down short of the army
-banners and out to the screen's edge (44x44). The trade, measured with real
+into the 4px gap under the map, never onto it, 10px down and out to the
+screen's edge (44x44); the army banners that stood under it ride the top bar
+since build 154, and the saved armies' buttons take the row's own reach. The trade, measured with real
 touches at 390x844@3: with a villager selected and the panel folded, every
 pixel the tab's reach gains is a walk order taken from the world, one for
 one; an open tab takes nothing 127 did not; and Chromium's touch adjustment

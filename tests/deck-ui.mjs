@@ -218,9 +218,10 @@ ck('theButtonNeverMovesTheBar', on.barH === off.barH, `bar ${off.barH}px off, ${
 await settle(p);
 
 /* the row at phone and desktop widths: same bar height, nothing overlapping —
-   with two timers running, which is the crowded case */
+   with two timers running and, since build 154, three saved armies' banners
+   at the row's head: the crowded case */
 const layout = [];
-for (const [w, h] of [[320, 568], [390, 844], [430, 880], [900, 700], [1280, 800], [1440, 900]]) {
+for (const [w, h] of [[320, 568], [360, 780], [390, 844], [430, 880], [900, 700], [1280, 800], [1440, 900]]) {
   await p.setViewportSize({ width: w, height: h });
   await p.waitForTimeout(250);
   layout.push(await p.evaluate(async (w) => {
@@ -229,6 +230,9 @@ for (const [w, h] of [[320, 568], [390, 844], [430, 880], [900, 700], [1280, 800
     const btn = document.getElementById('deckBtn');
     // the height with the deck's chrome taken out, against the height with it in
     const tm = document.getElementById('dkTimers');
+    const tc = Bld.tcOf('P'), armyIds = [];
+    for (let k = 0; k < 3; k++) { const u = Units.spawn('defender', 'P', tc.x + 3 + k, tc.y + 3); armyIds.push(u.id); UI.saveArmy([u.id]); }
+    UI.tickArmies();
     btn.style.display = 'none'; tm.style.display = 'none';
     const bare = bar.offsetHeight;
     btn.style.display = ''; tm.style.display = '';
@@ -239,12 +243,16 @@ for (const [w, h] of [[320, 568], [390, 844], [430, 880], [900, 700], [1280, 800
     const full = bar.offsetHeight;
     const r = id => document.getElementById(id).getBoundingClientRect();
     const rows = [...bar.querySelectorAll('.trow')].map(x => x.getBoundingClientRect());
-    const ids = ['rPopChip', 'dkTimers', 'rDay', 'deckBtn', 'btnPause', 'btnMenu'];
+    const ids = ['armyBar', 'dkTimers', 'rDay', 'mapBtn', 'deckBtn', 'btnPause', 'btnMenu'];
     const rects = ids.map(r);
     let overlap = null;
     for (let i = 0; i + 1 < rects.length; i++) if (rects[i].width && rects[i + 1].width && rects[i].right > rects[i + 1].left + 0.5) overlap = ids[i] + '>' + ids[i + 1];
     const out = { w, bare, full, overlap, oneRow: w >= 900 ? Math.abs((rows[0].top + rows[0].bottom) - (rows[1].top + rows[1].bottom)) < 4 : rows[1].top >= rows[0].bottom,
-      btnH: Math.round(r('deckBtn').height), hit: Math.round(parseFloat(getComputedStyle(btn, '::after').top)) };
+      btnH: Math.round(r('deckBtn').height), hit: Math.round(parseFloat(getComputedStyle(btn, '::after').top)),
+      armies: document.querySelectorAll('#armyBar button').length, past: Math.round(r('btnMenu').right - bar.getBoundingClientRect().right) };
+    for (const n of [1, 2, 3]) UI.removeArmy(n);
+    S.units = S.units.filter(u => !armyIds.includes(u.id));
+    UI.tickArmies();
     S.deck.fx = [];
     DeckUI._t = 0;
     await __until(() => !document.querySelector('#dkTimers .dkT'));
@@ -253,8 +261,8 @@ for (const [w, h] of [[320, 568], [390, 844], [430, 880], [900, 700], [1280, 800
 }
 await p.setViewportSize({ width: 430, height: 880 });
 await p.waitForTimeout(200);
-ck('theRowFitsEveryWidth', layout.every(l => l.full === l.bare && !l.overlap && l.oneRow),
-  layout.map(l => `${l.w}: ${l.bare}→${l.full}px${l.overlap ? ' OVERLAP ' + l.overlap : ''}${l.oneRow ? '' : ' ROWS'}`).join('; '));
+ck('theRowFitsEveryWidth', layout.every(l => l.full === l.bare && !l.overlap && l.oneRow && l.armies === 3 && l.past <= 0),
+  layout.map(l => `${l.w}: ${l.bare}→${l.full}px, ${l.armies} banners${l.overlap ? ' OVERLAP ' + l.overlap : ''}${l.oneRow ? '' : ' ROWS'}${l.past > 0 ? ' PAST THE BAR ' + l.past : ''}`).join('; '));
 ck('andTheBarStaysOneRowOnADesktop', layout.filter(l => l.w >= 900).every(l => l.full <= 56), layout.filter(l => l.w >= 900).map(l => l.full).join('/'));
 ck('theTouchTargetReaches44', layout.every(l => l.btnH + 2 * -l.hit >= 44), layout.map(l => l.btnH + 2 * -l.hit).join('/'));
 
@@ -1180,9 +1188,15 @@ const strip = await p.evaluate(async () => {
     out.twoWhole = shown().every(whole);
     // the time reads like the HUD's numbers (relative luminance of the label)
     const lum = el => { const m = getComputedStyle(el).color.match(/\d+(\.\d+)?/g).map(Number).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]; };
-    // three bronze buffs and a stone one, all fresh: four different glyphs
+    // three bronze buffs and a stone one, all fresh: four different glyphs —
+    // beside three saved armies' banners (build 154), so the strip is the
+    // crowded one and the fourth folds into the "+k" the badge check reads
     S.deck.fx = []; DeckUI._t = 0;
     await __until(() => !document.querySelector('#dkTimers .dkT'));
+    const tcS = Bld.tcOf('P'), armyIds = [];
+    for (let k = 0; k < 3; k++) { const u = Units.spawn('defender', 'P', tcS.x + 3 + k, tcS.y + 3); armyIds.push(u.id); UI.saveArmy([u.id]); }
+    UI.tickArmies();
+    out.armies = document.querySelectorAll('#armyBar button').length;
     const ids = ['harvest_festival', 'bountiful_land', 'watchfires', 'quick_hands'];
     for (const id of ids) Deck.addTimed(id, 6);
     DeckUI._t = 0;
@@ -1239,12 +1253,15 @@ const strip = await p.evaluate(async () => {
     out.fullText = t.includes(Deck.card('harvest_festival').text);
     S.deck.fx = []; DeckUI._t = 0;
     await __until(() => !document.querySelector('#dkTimers .dkT'));
+    for (const n of [1, 2, 3]) UI.removeArmy(n);
+    S.units = S.units.filter(u => !armyIds.includes(u.id));
+    UI.tickArmies();
   } finally { UI.refresh = refresh; }
   return out;
 });
 ck('twoRunningCardsFitAPhonesRow', strip.two.length === 2 && !strip.twoK && strip.twoWhole,
   `390px, "6/13", "Day 12": ${strip.two.join(' + ') || 'none'} shown${strip.twoK ? ' and a +k' : ''}`);
-ck('andTheBadgeIsWhole', strip.badge && strip.badgeWhole, `badge ${strip.badge ? (strip.badgeWhole ? 'whole' : 'CLIPPED') : 'missing'}`);
+ck('andTheBadgeIsWhole', strip.armies === 3 && strip.badge && strip.badgeWhole, `beside ${strip.armies} army banners: badge ${strip.badge ? (strip.badgeWhole ? 'whole' : 'CLIPPED') : 'missing'}`);
 ck('eachRunningCardWearsItsOwnGlyph', strip.distinct === 4, `${strip.distinct} different chips for 4 cards (3 bronze buffs, 1 stone)`);
 ck('theChipIsAVectorDrawnAtTheScreensOwnResolution', strip.crisp.length === 4 && strip.crisp.every(c => c.svg && c.vb && !c.bitmap && c.css >= 16 &&
     !/pixelated|crisp-edges/.test(c.ir) && !/crispedges|optimizespeed/i.test(c.sr) && c.scale > 7 && c.scale < 11 && c.soft1 > 0.05 && c.soft3 > 0.05),

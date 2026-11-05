@@ -96,7 +96,8 @@ async function boot(vp) {
     const chips = [...document.querySelectorAll('#topbar .trow:first-child .res')].map(e => e.getBoundingClientRect());
     const bar = document.getElementById('topbar').getBoundingClientRect();
     out.chipMax = Math.round(Math.max(...chips.map(c => c.width)));
-    out.chipSpread = Math.round(chips[3].right - chips[0].left);
+    out.chipSpread = Math.round(chips[chips.length - 1].right - chips[0].left);   // the four goods and the people (build 154)
+    out.chipN = chips.length;
     out.barW = Math.round(bar.width);
     /* ONE ROW. The two .trow boxes share a line here, which is a y-overlap —
        not an equal top, because each is centred on its own height and the
@@ -158,8 +159,8 @@ async function boot(vp) {
   }
   /* the chips spread across the space they HAVE — which is the bar less the
      tribe, the day and the two buttons now sharing the line with them */
-  ck('theChipsAreCappedAndSpread', r.chipMax <= 260 && r.chipSpread >= r.barW * 0.62 && r.rowsSpanTheBar,
-    `widest chip ${r.chipMax}px, spread ${r.chipSpread}px of ${r.barW}px; the two groups span the bar: ${r.rowsSpanTheBar}`);
+  ck('theChipsAreCappedAndSpread', r.chipN === 5 && r.chipMax <= 260 && r.chipSpread >= r.barW * 0.62 && r.rowsSpanTheBar,
+    `${r.chipN} chips, widest ${r.chipMax}px, spread ${r.chipSpread}px of ${r.barW}px; the two groups span the bar: ${r.rowsSpanTheBar}`);
   ck('theTopBarIsOneRow', r.rowsShareALine && r.barH <= 56,
     `the two groups share a line: ${r.rowsShareALine}, bar ${r.barH}px tall (stacked it is ~75)`);
   ck('thePanelPutsFourOnARow', r.actN >= 4 && r.actPerRow >= 4 && r.actRows <= 2,
@@ -184,7 +185,7 @@ async function boot(vp) {
     const cs = getComputedStyle(bm);
     const rows = [...document.querySelectorAll('#topbar .trow')].map(e => e.getBoundingClientRect());
     return { z: +R.cam.z.toFixed(3), min: +R.minZoom().toFixed(3),
-      chipsFill: Math.round(chips[3].right - chips[0].left) >= Math.round(row.width) - 14,
+      chipsFill: chips.length === 5 && Math.round(chips[chips.length - 1].right - chips[0].left) >= Math.round(row.width) - 14,
       chipW: Math.round(chips[0].width),
       // a phone cannot hold eight chips on a line: it still stacks, and the
       // panel still runs two across (notes 3 and 4 were desktop-only)
@@ -305,8 +306,8 @@ for (const ph of [
     out.bar = { t: bar.top, b: bar.bottom };
     out.top = [...document.querySelectorAll('#topbar .iconbtn')].filter(live).map(e => ({ id: e.id, drawn: drawn(e), hit: hit(e) }));
     // the minimap's fold: 44 both ways, and the map under its reach keeps every pixel
-    const mt = $('#miniToggle'), mini = $('#mini'), army = $('#armyBar');
-    out.fold = { drawn: drawn(mt), hit: hit(mt), miniLost: stolen(mini, mt), armyTop: army.getBoundingClientRect().top };
+    const mt = $('#miniToggle'), mini = $('#mini');
+    out.fold = { drawn: drawn(mt), hit: hit(mt), miniLost: stolen(mini, mt) };
     return out;
   });
   const T = r.tab, sz = o => `${o.hit.w}x${o.hit.h} hit, drawn ${o.drawn.w}x${o.drawn.h}`;
@@ -332,8 +333,8 @@ for (const ph of [
   ck(`andNoTopBarButtonReachesPastTheBar_${ph.k}`, r.top.every(t => t.hit.t >= Math.floor(r.bar.t) && t.hit.b <= Math.ceil(r.bar.b)),
     `bar ${Math.round(r.bar.t)}..${Math.round(r.bar.b)}: ` + r.top.map(t => `${t.id} ${t.hit.t}..${t.hit.b}`).join(', '));
   ck(`theMinimapFoldHitsAt44_${ph.k}`, r.fold.hit.w >= 44 && r.fold.hit.h >= 44 && r.fold.drawn.w <= 30.5 && r.fold.drawn.h <= 30.5, sz(r.fold));
-  ck(`andTheMapUnderItKeepsEveryPixel_${ph.k}`, r.fold.miniLost === 0 && r.fold.hit.b <= Math.floor(r.fold.armyTop),
-    `minimap pixels the fold took: ${r.fold.miniLost}; the fold's reach ends at ${r.fold.hit.b}, the army banners start at ${Math.round(r.fold.armyTop)}`);
+  ck(`andTheMapUnderItKeepsEveryPixel_${ph.k}`, r.fold.miniLost === 0 && r.fold.hit.b <= Math.ceil(r.fold.drawn.b) + 12,
+    `minimap pixels the fold took: ${r.fold.miniLost}; the fold's reach ends at ${r.fold.hit.b}, ${Math.round(r.fold.hit.b - r.fold.drawn.b)}px under its drawn foot (the army banners ride the top bar since build 154)`);
   /* …and THE DECK'S COUNT KEEPS ITS RING. Pause's reach needs Pause
      positioned, and a positioned Pause paints over the count badge, which
      hangs 6px past the deck button into a phone's 3px gap (its gold ring
