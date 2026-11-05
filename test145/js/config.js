@@ -1332,7 +1332,26 @@ const CFG = {
     preferBonus: 6,
     seekR: 9,          // how far out a raiding column's bows spot a manned tower and go for it
     fallS: 0.75,       // the fall from the platform to the ground
+    /* THE PLATFORM MAKES A BOW A BETTER ONE (build 149 — operator: "Tougher
+       archers. Hit for more, take less damage. Two archers should be more
+       powerful than the tower by itself previously"): up there a bow strikes
+       atk[storey − 1] times as hard and takes hurt[storey − 1] of every blow
+       (Lookout.atkMult / cover) — wattle, timber, stone. Two base archers
+       out-shoot the old tower's own fire at every storey, measured against a
+       rival tower (which still fires the old way) in tests/tower-garrison.mjs. */
+    atk: [1.25, 1.5, 2],
+    hurt: [0.6, 0.5, 0.4],
   },
+
+  /* THE TEST PAGE IS A SANDBOX (CLAUDE.md, THE TEST BUILD — operator, build
+     149: "set all resources in the test environment to 2,000 and give the
+     full complement of cards … This speeds up testing things at all
+     levels"). On a test build (Backend.testSlot: clanfire.online/test145/) a
+     run founded there starts with `res` of every good (G.newGame), and the
+     deck holds one of every card on every load, kept under storage keys of
+     its own so the live game's collection on the same site is never touched
+     (deck.js, its foot). The live site never: testSlot answers no there. */
+  TEST_PAGE: { res: 2000 },
 
   GUARD: {
     radius: 6,        // fallback hold radius (land classes below override), tiles

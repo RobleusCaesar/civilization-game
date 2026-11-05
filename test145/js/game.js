@@ -122,6 +122,11 @@ const G = {
              econ: Math.round(econOf()), nudged, scarceReached, nearWater };
   },
 
+  // a test build's page (CLAUDE.md, THE TEST BUILD): the sandbox's one question
+  testPage() {
+    return !!(CFG.TEST_PAGE && typeof Backend !== 'undefined' && Backend.testSlot && Backend.testSlot());
+  },
+
   newGame(seed, modeKey, sizeKey, persona, tunic) {
     // nothing painted while the world is being assembled (R.holdTerrain)
     R.holdTerrain();
@@ -246,6 +251,12 @@ const G = {
     // VARIABLE OPENINGS: roll the start package (seeded — a seed reproduces it)
     const pk = this.rollStart(gen, mode, gen.spawns.player);
     S.res = pk.res;
+    // THE TEST PAGE IS A SANDBOX (CFG.TEST_PAGE): a run founded on a test
+    // build starts with plenty of every good, so every storey and upgrade can
+    // be tried at once. Never the live site (Backend.testSlot answers no
+    // there), never the title's demo world, and no RNG is drawn for it.
+    if (this.testPage() && !(typeof Screens !== 'undefined' && Screens._demo))
+      for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = Math.max(S.res[k] || 0, CFG.TEST_PAGE.res);
     S.stats.originBonus = pk.originBonus;
     S.origin = pk.origin;
     for (let i = 0; i < pk.villagers; i++)
