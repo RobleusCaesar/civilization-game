@@ -604,12 +604,30 @@ const Lookout = {
   },
   onWorldChange() { this.falls = []; },
 
+  /* ---- how far a tower's arrows fly (build 148: the player's towers shoot
+     only through their bows — Combat's tower loop passes them over) ----
+     crewReach: the farthest bow standing on THIS tower, at its doubled
+     reach (0 with nobody up — an empty tower shoots nothing). postReach:
+     what a bow posted on one of the owner's towers WOULD reach — the
+     farthest-reaching kind the owner fields, else the base archer — for the
+     placement ghost's ring. */
+  crewReach(b) {
+    let r = 0;
+    if (b) for (const u of S.units) if (u.perch === b.id) r = Math.max(r, (CFG.UNITS[u.kind].rng || 0) * this.cfg().rangeMult);
+    return r;
+  },
+  postReach(owner) {
+    let r = 0;
+    for (const u of S.units) if (u.owner === owner && this.canMan(u)) r = Math.max(r, CFG.UNITS[u.kind].rng || 0);
+    return (r || CFG.UNITS[this.cfg().kinds[0]].rng || 0) * this.cfg().rangeMult;
+  },
+
   /* ---- the panels (ui.js asks these, guarded on the method) ---- */
   towerLine(b) {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
     return n ? `🏹 ${n}/${cap} archers on the lookout — twice the sight and reach`
-      : 'Select archers, then tap the tower to man it';
+      : 'No archers on it, so it shoots nothing — select archers, then tap the tower';
   },
   towerButtons(b) {
     if (b.owner !== 'P') return '';

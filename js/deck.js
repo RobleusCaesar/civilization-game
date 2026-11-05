@@ -102,7 +102,7 @@ const Deck = {
       when: "Your Town Center stands." },
     { id: "watchfires", tier: "bronze", cat: "buff", target: "none", days: 6,
       name: "Watchfires",
-      text: "Your towers and War Camps hit 50% harder and reach 50% farther for 6 days.",
+      text: "Your tower archers and War Camps hit 50% harder and reach 50% farther for 6 days.",
       flavor: "Pitch on every tower. Let the night come and see what it gets.",
       when: "You have at least one finished tower or War Camp." },
     { id: "master_builders", tier: "bronze", cat: "buff", target: "none",

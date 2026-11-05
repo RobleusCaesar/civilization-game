@@ -203,7 +203,7 @@ node tests/endgame-doom.mjs    # the no-way-back offer fires only when it is tru
 node tests/endgame-doom-ai.mjs # the rival finishes a spent town, fog-honestly
 node tests/camp-crew.mjs       # a station's own hands raise its upgrade, then return
 node tests/foe-notes.mjs       # enemy/raider intel toasts are gated by difficulty
-node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4
+node tests/tower-archer-miss.mjs # Lv1 towers miss 1/3, base archers miss 1/4; the player's towers fire nothing by themselves
 node tests/sapper-deselect-heal.mjs # sapper dispatch deselects; sapper heals at the TC
 node tests/heal-limit.mjs      # at most 3 heals/unit per rolling 60s real-time window
 node tests/bridge-resource-shore.mjs # a resource-shored bank is bridgeable; no silent failures; reinforcing takes days and a sapper
@@ -291,7 +291,7 @@ node tests/footing.mjs       # the ground under a building: a cast shadow under 
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
-node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them, the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (seven tenths of one on a free tower, nine tenths on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (seven tenths of one on a free tower, nine tenths on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
@@ -330,7 +330,22 @@ chases (a mark past the reach is dropped), and can be struck only by bows
 and engines; the rival's bows rank it `preferBonus` (6) tiles nearer than it
 stands in `Combat.bestFoe` — so its archers mark the towers first and walk
 under their doubled reach to get there — and `AI.seenGuns` never counts it as
-a battery. **THE TOWER TAKES ITS LOOKOUT WITH IT** (`Lookout.towerFalls`,
+a battery. **THE PLAYER'S TOWER SHOOTS ONLY THROUGH ITS BOWS** (operator,
+build 148: "towers should no longer shoot arrows. Only if they're manned
+with archers they should shoot"; asked: the player's towers only, and the
+archers only): Combat's tower loop passes a player Watchtower over before its
+cooldown, so an empty one looses nothing at any level and its storeys add
+health and sight alone; its panel says so ("No archers on it, so it shoots
+nothing"), the placement ghost's ring is the reach a bow posted there would
+have (`Lookout.postReach`: the farthest bow the player fields, else the base
+archer, doubled), and the rival's towers and every War Camp fire by
+themselves as before. The AI's reading of the player's towers (lanes,
+landings, the engine road) is unchanged: a tower can be manned in a second.
+**WATCHFIRES ON THE PLATFORM** (`Combat.perchMult` / `perchSees` /
+`perchFire`): the card's 'towerRange' and 'towerAtk' land on the player's
+bows up there — reach in `reachOf`, the blow in the strike (one expression,
+×1 off the platform), the farther band only on ground the player sees, the
+burning arrow only while the card runs. **THE TOWER TAKES ITS LOOKOUT WITH IT** (`Lookout.towerFalls`,
 from `Bld.damage`'s destroy branch before anything leaves the list, credited
 to the striker's owner — `Bld.damage` takes `by` now): every bow on the
 platform or the stairs dies; one killed on the platform, by the tower or by
@@ -1583,12 +1598,13 @@ light (the town turns granite and keeps a sleeve of it; a halved blow floats
 in the skin's blue and throws chips); the Hall's swallowed blow flashes the
 dome's outline, never a fill, and the ward's end is a note on the screen.
 **WATCHFIRES LENGTHEN THE ARROWS, NOT THE WATCH**: ×1.5 reach and attack for
-the player's towers and War Camps in ONE expression (`Math.round(lv.atk *
-wfA)`, shared with the Swallowed Sun's softening), the level-1 fumble's
-`G.rand` draw where it was; the farther band strikes only ground the player
-SEES and the burning arrow flies only while the card runs, both asked of
-`b.owner === 'P'` alone; a selected tower shows the longer reach as the
-orbit. **A MASTER BUILDERS CHARGE IS SPENT AT THE ✓, NEVER IN `Bld.place`**
+the player's War Camps in ONE expression (`Math.round(lv.atk * wfA)`, shared
+with the Swallowed Sun's softening) and for the bows on the player's towers
+(`Combat.perchMult` — since build 148 a player tower shoots only through
+them), the fumbles' `G.rand` draws where they were; the farther band strikes
+only ground the player SEES and the burning arrow flies only while the card
+runs, both asked of the player's forts alone; a selected tower shows its
+bows' longer reach as the orbit (`watchfires.reach0`: none with nobody up). **A MASTER BUILDERS CHARGE IS SPENT AT THE ✓, NEVER IN `Bld.place`**
 (`Deck.masterHand` / `masterRaise` from `UI.confirmPlacement`): `Bld.place`
 is also the rival's, the start package's, the origins' and the wall drag's
 (three charges for one drag). Never walls, gates or the Wonder (`finish` on a
@@ -2054,7 +2070,10 @@ sequence stays reproducible.
 **Tower/archer miss chance** (`tests/tower-archer-miss.mjs`): a level-1
 Watchtower (and the War Camp, which fires like one — no upgrade path of its
 own) misses 1 shot in 3; a base Archer misses 1 in 4, against both units and
-buildings. A deliberate early-game nerf so upgrading actually matters — Lv2/Lv3
+buildings. Since build 148 only the RIVAL's towers fire by themselves (the
+player's shoot through the bows posted on them — **THE PLAYER'S TOWER SHOOTS
+ONLY THROUGH ITS BOWS**), so the tower's rate is measured on the rival's and
+the player's are pinned silent at every level. A deliberate early-game nerf so upgrading actually matters — Lv2/Lv3
 towers, longbow and marksman are all untouched, and it's owner-agnostic (same
 combat.js code path fires for the rival's towers/archers, no `owner === 'P'`
 branch anywhere in the check). A miss shows `'Miss!'` via the same `R.float`

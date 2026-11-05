@@ -8660,7 +8660,10 @@ const R = {
     const lv = (spec.level || 1);
     const rings = [];
     const lvDef = d.levels[Math.min(lv, d.levels.length) - 1];
-    if (lvDef && lvDef.range) rings.push(lvDef.range);
+    // the player's towers shoot only through the bows posted on them (build
+    // 148), so a tower's ring is how far those bows reach from its platform
+    if (key === 'tower' && window.Lookout && Lookout.postReach) rings.push(Lookout.postReach('P'));
+    else if (lvDef && lvDef.range) rings.push(lvDef.range);
     if (d.near && d.near.radius) rings.push(d.near.radius);
     if (key === 'warcamp') rings.push(CFG.BUILD_RANGE);
     const now = performance.now() / 1000;

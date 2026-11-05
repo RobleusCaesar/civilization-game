@@ -465,6 +465,14 @@ await p.evaluate(({ TOWN }) => {
 }
 
 // ---------------- 4. WATCHFIRES ----------------
+/* Since build 148 the player's Watchtowers loose nothing of their own (the
+   operator: "towers should no longer shoot arrows. Only if they're manned
+   with archers they should shoot"), so the card that makes "your towers" hit
+   harder and reach farther does it to the BOWS POSTED ON THEM (Combat.
+   perchMult, the same Deck.mult kinds) — and to the player's War Camps, whose
+   own fire is unchanged. Every number below is measured on bows standing on
+   a tower, on a camp, or on the rival's towers (which still fire by
+   themselves and which the card never touches). */
 {
   const r = await p.evaluate(() => {
     const out = {};
@@ -478,38 +486,48 @@ await p.evaluate(({ TOWN }) => {
     const site = Deck.play('watchfires');
     out.refused = !none.ok && none.why === 'You need a finished tower or War Camp.' && !site.ok &&
       site.why === none.why && Deck.count('watchfires') === n0;
-    /* what one of the player's forts does to a foe standing `dist` from it
-       for four seconds, with or without the card: the foe is held on its
-       spot (whatever it wants to do about the tower) so only the arrows move */
-    /* `soft` injects ANOTHER card's multipliers for the rival's forts — a
-       stand-in for the rival group's Swallowed Sun, which softens the
-       rival's towers on the same Deck.mult kinds ({towerAtk: 0.7}) — so the
-       contract sees what a merge would: the watchfires' look and its fog
-       gate must stay the player's, whatever else multiplies in */
-    const shoot = (key, lvl, owner, foeOwner, dist, card, sec, hide, soft) => {
+    /* what one fort does to a foe standing `dist` from it for `sec` seconds,
+       with or without the card: the foe is held on its spot (whatever it
+       wants to do about the fort) so only the arrows move. `crew` posts bows
+       of those kinds on a tower (their cooldowns ticked here, since the
+       test drives Combat alone); `soft` injects ANOTHER card's multipliers
+       for the rival — a stand-in for the Swallowed Sun, which softens the
+       rival's towers on the same Deck.mult kinds — so the contract sees
+       what a merge would: the watchfires' look and its fog gate stay the
+       player's, whatever else multiplies in */
+    const shoot = o => {
+      const { key, lvl, owner, foeOwner, dist, card, sec, hide, soft } = o, crew = o.crew || [];
       __tw.fresh('town-wf-shoot');
       __tw.flat();
       if (owner !== 'P' || card) __tw.bld('P', 'tower', 3, 28);   // a fort of the player's own, to play it with
       const t = __tw.lift(__tw.bld(owner, key, 20, 20), lvl);
+      const bows = crew.map(k => {
+        const u = __tw.unit(k, owner, t.x + 0.5, t.y + 0.5);
+        u.perch = t.id; u.anchor = { x: u.x, y: u.y };
+        return u;
+      });
       if (card) Deck.play('watchfires');
       if (soft) {
         Deck.FX.__soft = { mult: {} };
-        for (const k in soft) Deck.FX.__soft.mult[k] = o => o === 'A' ? soft[k] : 1;
+        for (const k in soft) Deck.FX.__soft.mult[k] = o2 => o2 === 'A' ? soft[k] : 1;
         S.deck.fx.push({ id: '__soft', from: Deck.now(), until: Deck.now() + 50 });
       }
       const fx = t.x + 0.5 + dist, fy = t.y + 0.5;
       const foe = __tw.unit('defender', foeOwner, fx, fy, 1000);
-      // the player's sight as it stands; `hide` puts the foe's ground in the fog
+      // the player's sight as it stands; `hide` puts the foe's ground in the
+      // fog, and otherwise it is in sight (somebody's eyes on it: a bow's
+      // doubled reach already runs past the tower's own watch)
       G.updateVisibility();
-      if (hide) G.vis[MapGen.idx(fx | 0, fy | 0)] = 0;
+      G.vis[MapGen.idx(fx | 0, fy | 0)] = hide ? 0 : 1;
       const rng0 = S.rngState;
-      // every arrow the fort looses, as it is loosed (its own origin)
+      // every arrow the fort or its bows loose, as it is loosed (the tower's own column)
       const shots = [], push0 = Combat.shots.push;
       Combat.shots.push = function (...a) { for (const sh of a) if (Math.abs(sh.x1 - (t.x + 0.5)) < 1e-9) shots.push(sh); return push0.apply(this, a); };
       let floats;
       try {
         floats = __tw.floatsDuring(() => {
           for (let i = 0; i < (sec || 4) * 20; i++) {
+            for (const u of bows) if (u.cd > 0) u.cd -= 0.05;
             Combat.update(0.05);
             foe.x = fx; foe.y = fy; foe.path = null; foe.tBld = 0; foe.tUnit = 0; foe.task = null;
           }
@@ -519,81 +537,109 @@ await p.evaluate(({ TOWN }) => {
         if (soft) { delete Deck.FX.__soft; S.deck.fx = S.deck.fx.filter(e => e.id !== '__soft'); }
       }
       return { lost: 1000 - foe.hp, floats, rngMoved: S.rngState !== rng0, rng: S.rngState,
-        shots: shots.length, fire: shots.filter(sh => sh.fire).length };
+        shots: shots.length, fire: shots.filter(sh => sh.fire).length,
+        atk: bows.length ? Units.effAtk(bows[0]) : 0, reach: bows.length ? Combat.reachOf(bows[0]) : 0 };
     };
-    const L2 = Bld.lv({ key: 'tower', level: 2 }), def = CFG.UNITS.defender.def;
-    // the reach: a foe between the old range and the new
-    const far0 = shoot('tower', 2, 'P', 'A', L2.range * 1.3, false);
-    const far1 = shoot('tower', 2, 'P', 'A', L2.range * 1.3, true);
-    const per = Math.round(L2.atk * 1.5) - def;
-    out.reach = far0.lost === 0 && far1.lost > 0 && far1.lost % per === 0;
+    const def = CFG.UNITS.defender.def;
+    /* THE BOWS ON A PLAYER TOWER. A longbow (it never misses), on a level-2
+       tower: its doubled reach is the base; the card lengthens it by half */
+    const LB = { key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', crew: ['longbow'] };
+    const R0 = CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult;
+    // an unmanned player tower shoots nothing, with the card or without
+    const bare0 = shoot({ key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', dist: 3, card: false });
+    const bare1 = shoot({ key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', dist: 3, card: true });
+    out.bare = bare0.lost === 0 && bare0.shots === 0 && bare1.lost === 0 && bare1.shots === 0;
+    out.bareN = [bare0.shots, bare1.shots];
+    // the reach: a foe between the bows' old reach and the new
+    const far0 = shoot({ ...LB, dist: R0 * 1.3, card: false });
+    const far1 = shoot({ ...LB, dist: R0 * 1.3, card: true });
+    const per0 = Math.max(1, Math.round(far0.atk - def)), per = Math.max(1, Math.round(far1.atk * 1.5 - def));
+    out.reach = far0.lost === 0 && far1.lost > 0 && far1.lost % per === 0 && Math.abs(far1.reach - R0 * 1.5) < 1e-9;
     out.per = per; out.far1 = far1.lost;
     // …and not past it
-    const past = shoot('tower', 2, 'P', 'A', L2.range * 1.55, true);
+    const past = shoot({ ...LB, dist: R0 * 1.55, card: true });
     out.notPast = past.lost === 0;
     /* …and the farther band only takes what the watch can SEE: the same foe
        with its ground in the fog draws no arrow (an engine never shells
-       ground it can't watch), while inside the old range the fog changes
-       nothing — that is the tower's own reach, as it always was */
-    const fog = shoot('tower', 2, 'P', 'A', L2.range * 1.3, true, 4, true);
-    const fogNear = shoot('tower', 2, 'P', 'A', 3, true, 4, true);
+       ground it can't watch), while inside the bows' own reach the fog
+       changes nothing — that is their reach, as it always was */
+    const fog = shoot({ ...LB, dist: R0 * 1.3, card: true, hide: true });
+    const fogNear = shoot({ ...LB, dist: 3, card: true, hide: true });
     out.fog = fog.lost === 0 && fog.floats.length === 0 && fogNear.lost > 0;
-    // the arrows: inside the old range, 50% harder
-    const near0 = shoot('tower', 2, 'P', 'A', 3, false), near1 = shoot('tower', 2, 'P', 'A', 3, true);
-    out.harder = near0.lost > 0 && near0.lost % (L2.atk - def) === 0 && near1.lost % per === 0 &&
-      near1.lost / per === near0.lost / (L2.atk - def);
+    // the arrows: inside the old reach, 50% harder
+    const near0 = shoot({ ...LB, dist: 3, card: false }), near1 = shoot({ ...LB, dist: 3, card: true });
+    out.harder = near0.lost > 0 && near0.lost % per0 === 0 && near1.lost % per === 0 &&
+      near1.lost / per === near0.lost / per0 && per > per0;
     out.near = [near0.lost, near1.lost];
-    // a War Camp too
+    // a War Camp too — its own fire, as before
     const wcL = Bld.lv({ key: 'warcamp', level: 1 });
-    const wc0 = shoot('warcamp', 1, 'P', 'A', wcL.range * 1.3, false), wc1 = shoot('warcamp', 1, 'P', 'A', wcL.range * 1.3, true);
+    const wc0 = shoot({ key: 'warcamp', lvl: 1, owner: 'P', foeOwner: 'A', dist: wcL.range * 1.3, card: false });
+    const wc1 = shoot({ key: 'warcamp', lvl: 1, owner: 'P', foeOwner: 'A', dist: wcL.range * 1.3, card: true });
     out.camp = wc0.lost === 0 && wc1.lost > 0;
-    // the rival's towers never
-    const riv0 = shoot('tower', 2, 'A', 'P', 3, false), riv1 = shoot('tower', 2, 'A', 'P', 3, true);
-    const rivFar = shoot('tower', 2, 'A', 'P', L2.range * 1.3, true);
+    // the rival's towers never: they shoot by themselves, and the card is the player's
+    const L2 = Bld.lv({ key: 'tower', level: 2 });
+    const RT = { key: 'tower', lvl: 2, owner: 'A', foeOwner: 'P' };
+    const riv0 = shoot({ ...RT, dist: 3, card: false }), riv1 = shoot({ ...RT, dist: 3, card: true });
+    const rivFar = shoot({ ...RT, dist: L2.range * 1.3, card: true });
     out.rival = riv0.lost === riv1.lost && riv1.lost > 0 && rivFar.lost === 0;
     /* THE BURNING ARROW IS WATCHFIRES' OWN LOOK, AND THE PLAYER'S: every
-       arrow a player tower looses under the card burns, none without it, and
-       a rival tower never does — not with the card running, and not with
-       ANOTHER card's multiplier on its arrows, under 1 or over (the review's
-       merge hazard: a look keyed on "any factor but 1" dressed a SOFTENED
-       rival tower as buffed). The softener itself still lands, through the
-       one damage expression (the rival group's: round(atk × factor)). */
-    const wfOn = shoot('tower', 2, 'P', 'A', 3, true), wfOff = shoot('tower', 2, 'P', 'A', 3, false);
-    const rivSoft = shoot('tower', 2, 'A', 'P', 3, true, 4, false, { towerAtk: 0.7 });
-    const rivHard = shoot('tower', 2, 'A', 'P', 3, true, 4, false, { towerAtk: 1.3 });
+       arrow the bows on a player tower loose under the card burns, none
+       without it, and a rival tower never does — not with the card running,
+       and not with ANOTHER card's multiplier on its arrows, under 1 or over
+       (the review's merge hazard: a look keyed on "any factor but 1" dressed
+       a SOFTENED rival tower as buffed). The softener itself still lands,
+       through the one damage expression (round(atk × factor)). */
+    const wfOn = shoot({ ...LB, dist: 3, card: true }), wfOff = shoot({ ...LB, dist: 3, card: false });
+    const camp1 = shoot({ key: 'warcamp', lvl: 1, owner: 'P', foeOwner: 'A', dist: 3, card: true });
+    const rivSoft = shoot({ ...RT, dist: 3, card: true, soft: { towerAtk: 0.7 } });
+    const rivHard = shoot({ ...RT, dist: 3, card: true, soft: { towerAtk: 1.3 } });
     const pSoft = Math.max(1, Math.round(L2.atk * 0.7) - def);
     out.fireLook = wfOn.shots > 0 && wfOn.fire === wfOn.shots && wfOff.shots > 0 && wfOff.fire === 0 &&
+      camp1.shots > 0 && camp1.fire === camp1.shots &&
       riv1.shots > 0 && riv1.fire === 0 && rivSoft.shots > 0 && rivSoft.fire === 0 && rivHard.shots > 0 && rivHard.fire === 0;
-    out.fireN = [wfOn.fire + '/' + wfOn.shots, wfOff.fire + '/' + wfOff.shots, riv1.fire + '/' + riv1.shots,
+    out.fireN = [wfOn.fire + '/' + wfOn.shots, wfOff.fire + '/' + wfOff.shots, camp1.fire + '/' + camp1.shots, riv1.fire + '/' + riv1.shots,
       rivSoft.fire + '/' + rivSoft.shots, rivHard.fire + '/' + rivHard.shots];
     out.soft = rivSoft.lost > 0 && rivSoft.lost % pSoft === 0 && rivSoft.lost / pSoft === riv1.lost / (L2.atk - def);
     out.softN = [rivSoft.lost, pSoft];
-    /* …and the fog gate is the PLAYER's sight, asked of the player's towers
+    /* …and the fog gate is the PLAYER's sight, asked of the player's forts
        only: a rival tower whose reach another card lengthened takes a mark
        out there whatever the player's fog says (on the first cut it read
        the player's vision for whoever owned the tower) */
-    const rivReach = shoot('tower', 2, 'A', 'P', L2.range * 1.3, false, 4, true, { towerRange: 1.5 });
+    const rivReach = shoot({ ...RT, dist: L2.range * 1.3, card: false, hide: true, soft: { towerRange: 1.5 } });
     out.rivFog = rivReach.lost > 0;
-    /* THE LEVEL-1 FUMBLE draws exactly as it always did: the same number of
-       G.rand draws (the run's RNG ends in the same state), the misses on the
-       same shots — only the hits are heavier */
-    const f0 = shoot('tower', 1, 'P', 'A', 3, false, 8), f1 = shoot('tower', 1, 'P', 'A', 3, true, 8);
+    /* THE FUMBLES draw exactly as they always did: the same number of G.rand
+       draws (the run's RNG ends in the same state), the misses on the same
+       shots — only the hits are heavier. A base archer on a tower (1 in 4)
+       and a War Camp (1 in 3, the level-1 tower's) */
     const miss = fl => fl.map(t => t === 'Miss!' ? 'M' : 'H').join('');
-    const L1 = Bld.lv({ key: 'tower', level: 1 });
-    out.fumble = f0.rngMoved && f0.rng === f1.rng && miss(f0.floats) === miss(f1.floats) && /M/.test(miss(f0.floats)) &&
-      f0.floats.filter(t => t !== 'Miss!').every(t => t === '-' + (L1.atk - def)) &&
-      f1.floats.filter(t => t !== 'Miss!').every(t => t === '-' + (Math.round(L1.atk * 1.5) - def));
-    out.fumbleSeq = miss(f0.floats) + ' / ' + miss(f1.floats);
+    const AR = { key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', crew: ['archer'], dist: 3, sec: 30 };
+    const a0 = shoot({ ...AR, card: false }), a1 = shoot({ ...AR, card: true });
+    const aPer0 = Math.max(1, Math.round(a0.atk - def)), aPer1 = Math.max(1, Math.round(a1.atk * 1.5 - def));
+    const c0 = shoot({ key: 'warcamp', lvl: 1, owner: 'P', foeOwner: 'A', dist: 3, card: false, sec: 8 });
+    const c1 = shoot({ key: 'warcamp', lvl: 1, owner: 'P', foeOwner: 'A', dist: 3, card: true, sec: 8 });
+    const W1 = Bld.lv({ key: 'warcamp', level: 1 });
+    out.fumble = a0.rngMoved && a0.rng === a1.rng && miss(a0.floats) === miss(a1.floats) && /M/.test(miss(a0.floats)) &&
+      a0.floats.filter(t => t !== 'Miss!').every(t => t === '-' + aPer0) &&
+      a1.floats.filter(t => t !== 'Miss!').every(t => t === '-' + aPer1) &&
+      c0.rngMoved && c0.rng === c1.rng && miss(c0.floats) === miss(c1.floats) && /M/.test(miss(c0.floats)) &&
+      c0.floats.filter(t => t !== 'Miss!').every(t => t === '-' + (W1.atk - def)) &&
+      c1.floats.filter(t => t !== 'Miss!').every(t => t === '-' + (Math.round(W1.atk * 1.5) - def));
+    out.fumbleSeq = miss(a0.floats) + ' / ' + miss(a1.floats) + ' · camp ' + miss(c0.floats) + ' / ' + miss(c1.floats);
     // the numbers, the days, the extension, the end
     __tw.fresh('town-wf-days'); __tw.flat();
     const t = __tw.bld('P', 'tower', 12, 12);
+    const bare = __tw.bld('P', 'tower', 14, 18);
+    const lb = __tw.unit('longbow', 'P', t.x + 0.5, t.y + 0.5); lb.perch = t.id;
     const rng0 = S.rngState;
     const rr = Deck.play('watchfires');
     const e = Deck.timed('watchfires');
     out.days = rr.ok && Math.abs(e.until - e.from - 6) < 1e-9 && Deck.card('watchfires').days === 6 && S.rngState === rng0;
     out.mult = Deck.mult('towerRange', 'P', t) === 1.5 && Deck.mult('towerAtk', 'P', t) === 1.5 &&
       Deck.mult('towerRange', 'A', t) === 1 && Deck.mult('towerAtk', 'A', t) === 1;
-    out.show = !!R.cardShows.find(s => s.id === 'watchfires' && s.list.length === 1 && s.list[0].r1 === Bld.lv(t).range * 1.5);
+    // the play's ring: the bows' reach on the manned tower, none round the empty one
+    const sh = R.cardShows.find(s => s.id === 'watchfires');
+    const fm = sh && sh.list.find(f => f.id === t.id), fb = sh && sh.list.find(f => f.id === bare.id);
+    out.show = !!fm && !!fb && fm.r0 === R0 && fm.r1 === R0 * 1.5 && fb.r0 === 0 && fb.r1 === 0;
     const until = e.until;
     Deck.play('watchfires');
     out.longer = Math.abs(Deck.timed('watchfires').until - (until + 6)) < 1e-9 && Deck.mult('towerAtk', 'P', t) === 1.5;
@@ -604,19 +650,20 @@ await p.evaluate(({ TOWN }) => {
     return out;
   });
   ck('watchfiresRefusedWithNoFinishedFort', r.refused, 'no fort, a tower site, the rival\'s tower: refused “You need a finished tower or War Camp.”, kept');
-  ck('watchfiresReachHalfAgainAsFar', r.reach && r.notPast, `a foe at 1.3× the old range takes ${r.far1} (shots of ${r.per}); at 1.55× nothing ${r.notPast}`);
-  ck('andHitHalfAgainAsHard', r.harder, `inside the old range: ${r.near[0]} → ${r.near[1]}`);
-  ck('theFartherReachTakesOnlyWhatTheWatchCanSee', r.fog, 'a foe in the fog past the old range draws no arrow and no float; inside it the tower shoots as ever');
+  ck('anEmptyTowerShootsNothingCardOrNot', r.bare, `arrows from a player tower with nobody up: ${r.bareN[0]} without the card, ${r.bareN[1]} with`);
+  ck('watchfiresReachHalfAgainAsFar', r.reach && r.notPast, `a foe at 1.3× the bows' old reach takes ${r.far1} (shots of ${r.per}); at 1.55× nothing ${r.notPast}`);
+  ck('andHitHalfAgainAsHard', r.harder, `inside the old reach: ${r.near[0]} → ${r.near[1]}`);
+  ck('theFartherReachTakesOnlyWhatTheWatchCanSee', r.fog, 'a foe in the fog past the old reach draws no arrow and no float; inside it the bows shoot as ever');
   ck('aWarCampBurnsToo', r.camp);
   ck('theRivalsTowersNever', r.rival);
   ck('theBurningArrowIsTheWatchfiresAndThePlayersAlone', r.fireLook,
-    `burning/loosed — player with the card ${r.fireN[0]}, without ${r.fireN[1]}; rival with the card running ${r.fireN[2]}, ` +
-    `softened ×0.7 ${r.fireN[3]}, hardened ×1.3 ${r.fireN[4]}`);
+    `burning/loosed — the player's tower bows with the card ${r.fireN[0]}, without ${r.fireN[1]}; a camp with it ${r.fireN[2]}; ` +
+    `rival with the card running ${r.fireN[3]}, softened ×0.7 ${r.fireN[4]}, hardened ×1.3 ${r.fireN[5]}`);
   ck('anotherCardsFactorOnTheRivalsArrowsStillLands', r.soft, `a softened rival tower took ${r.softN[0]} in shots of ${r.softN[1]}`);
-  ck('theFogGateIsAskedOfThePlayersTowersOnly', r.rivFog, 'a rival tower reaching farther by another card shoots past the player\'s fog');
-  ck('theLevelOneFumbleDrawsAsItAlwaysDid', r.fumble, `misses (M) and hits (H) without / with: ${r.fumbleSeq}`);
+  ck('theFogGateIsAskedOfThePlayersFortsOnly', r.rivFog, 'a rival tower reaching farther by another card shoots past the player\'s fog');
+  ck('theFumblesDrawAsTheyAlwaysDid', r.fumble, `misses (M) and hits (H) without / with: ${r.fumbleSeq}`);
   ck('watchfiresBurnSixDaysAndASecondCardLengthens', r.days && r.mult && r.show && r.longer && r.still && r.over,
-    `6 days ${r.days}, ×1.5/×1.5 the player's only ${r.mult}, the play's ring at the new reach ${r.show}, +6 not ×2 ${r.longer}, burns down on its day ${r.over}`);
+    `6 days ${r.days}, ×1.5/×1.5 the player's only ${r.mult}, the play's ring at the bows' new reach and none round an empty tower ${r.show}, +6 not ×2 ${r.longer}, burns down on its day ${r.over}`);
 }
 
 // ---------------- 5. STONE SKIN ----------------
@@ -824,7 +871,7 @@ await p.evaluate(({ TOWN }) => {
     trade_caravan: ['+250 food, +250 wood and +100 gold.', 'bronze', 0],
     mending: ['Every building you have is repaired to full and its fires put out. Walls and gates included; work sites excluded.', 'stone', 0],
     master_builders: ['The next 3 buildings you place stand complete the moment they are placed, at full strength. You still pay for them. (Not walls, gates or the Wonder.)', 'bronze', 0],
-    watchfires: ['Your towers and War Camps hit 50% harder and reach 50% farther for 6 days.', 'bronze', 6],
+    watchfires: ['Your tower archers and War Camps hit 50% harder and reach 50% farther for 6 days.', 'bronze', 6],
     stone_skin: ['Your buildings take half damage for 8 days — double their strength.', 'iron', 8],
     unbreakable_hall: ['For 12 days your Town Center cannot fall: blows may scorch it, but it never drops below a sliver of strength.', 'enlight', 12],
   };
@@ -1594,17 +1641,22 @@ await p.evaluate(({ TOWN }) => {
     let above = 0, below = 0;
     for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) { if (!d[(y * 160 + x) * 4 + 3]) continue; if (y > 80 + 6) below++; else above++; }
     out.above = above; out.below = below;
-    // …and selected, it shows its reach: the ORBIT on the ring at range × 1.5
-    // (the operator's ruling on every area card — one bead of gold and its
-    // fading thread, in the GROUND pass, where the two rings of fire-dots
-    // were "a little pixelated and low quality")
-    const big = document.createElement('canvas'), R1 = Bld.lv(tw).range * WF.mult.towerRange * TL, S2 = Math.ceil(R1 * 2 + 40);
+    // …and selected, it shows its reach: the ORBIT on the ring at the reach
+    // of the bows on it × 1.5 (the operator's ruling on every area card —
+    // one bead of gold and its fading thread, in the GROUND pass, where the
+    // two rings of fire-dots were "a little pixelated and low quality").
+    // Since build 148 a player tower shoots only through its bows, so with
+    // nobody up there is no reach to show
+    const RB = CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult;
+    const big = document.createElement('canvas'), R1 = RB * WF.mult.towerRange * TL, S2 = Math.ceil(R1 * 2 + 40);
     big.width = big.height = S2;
     const bg = big.getContext('2d'); bg.translate(-(Bld.cx(tw) * TL - S2 / 2), -(Bld.cy(tw) * TL - S2 / 2));
     const reach = () => { bg.save(); bg.setTransform(1, 0, 0, 1, 0, 0); bg.clearRect(0, 0, S2, S2); bg.restore();
       WF.drawLive(bg, e); if (WF.drawGround) WF.drawGround(bg, e);
       const dd = bg.getImageData(0, 0, S2, S2).data; let n = 0;
       for (let y = 0; y < S2; y++) for (let x = 0; x < S2; x++) { if (!dd[(y * S2 + x) * 4 + 3]) continue; if (Math.abs(Math.hypot(x - S2 / 2, y - S2 / 2) - R1) < 3) n++; } return n; };
+    UI.sel = { type: 'bld', id: tw.id }; out.ringEmpty = reach();
+    const lb = __tw.unit('longbow', 'P', tw.x + 0.5, tw.y + 0.5); lb.perch = tw.id;
     UI.sel = null; out.ringOff = reach();
     UI.sel = { type: 'bld', id: tw.id }; out.ringOn = reach();
     UI.sel = null;
@@ -1615,7 +1667,8 @@ await p.evaluate(({ TOWN }) => {
     `at its height the light covers ${(100 * r.worst).toFixed(0)}% of the house's ${r.silN} silhouette pixels (a flat flash: all of them)`);
   ck('theLandingFlashIsHardRingsNotADisc', r.hitHard && r.ringSoft, r.hitCss);
   ck('aBeaconLightsNothingBelowItsBrazier', r.above > 30 && r.below === 0, `${r.above} px of flame and embers above, ${r.below} below the brazier`);
-  ck('andASelectedTowerShowsItsLongerReach', r.ringOff === 0 && r.ringOn > 40, `the orbit's pixels at range × 1.5: ${r.ringOff} unselected, ${r.ringOn} selected`);
+  ck('andASelectedTowerShowsItsLongerReach', r.ringEmpty === 0 && r.ringOff === 0 && r.ringOn > 40,
+    `the orbit's pixels at its bows' reach × 1.5: ${r.ringEmpty} selected with nobody up, ${r.ringOff} unselected, ${r.ringOn} selected`);
 }
 
 // ---------------- 16. MASTER BUILDERS: THE MARK, AND A BUILD RATHER THAN A SWAP ----------------

@@ -4,6 +4,12 @@
    makes upgrading the Range hall and the Watchtower actually matter — Lv2/Lv3
    towers, longbow and marksman are all untouched, and it applies identically
    to the player and the rival (same combat.js code path, no owner branching).
+   Since build 148 the PLAYER's Watchtowers loose nothing of their own (the
+   operator: "towers should no longer shoot arrows. Only if they're manned with
+   archers they should shoot") — so the tower's rate is measured on the RIVAL's
+   towers, which still fire by themselves, and the player's War Camp, and the
+   player's towers are pinned silent (0). A bow posted on a player tower is a
+   bow: it misses at the archer's rate (tests/tower-garrison.mjs §4).
 
    Run this after touching any of:
      combat.js — the tower/warcamp fire loop, the tUnit and tBld ranged-attack
@@ -18,8 +24,9 @@
      1. A Lv1 tower misses ~1/3 of its shots; a miss deals NO damage
      2. Lv2 and Lv3 towers never miss
      3. A War Camp misses at the same ~1/3 rate as a Lv1 tower
-     4. The rival's Lv1 towers and base archers miss at the SAME rate as the
+     4. The rival's War Camp and base archers miss at the SAME rate as the
         player's — no owner branching anywhere in the miss check
+     4b. The PLAYER's towers fire nothing by themselves, at any level
      5. A base Archer misses ~1/4 of its shots, against units AND buildings
      6. longbow / marksman / horsearcher never miss — only the base archer
      7. The hit/miss sequence is deterministic per seed (uses G.rand, the
@@ -123,16 +130,16 @@ const out = await p.evaluate(() => {
     return { hits, misses, total: hits + misses };
   };
 
-  // ---- Lv1 tower ≈ 1/3 miss ----
+  // ---- Lv1 tower ≈ 1/3 miss (the rival's: the player's shoot only through their bows) ----
   {
-    const r = fireTower('tower', 1, 'P', 240);
+    const r = fireTower('tower', 1, 'A', 240);
     const rate = r.misses / r.total;
     ck('lv1TowerMissRate', rate > 0.27 && rate < 0.40, `${r.misses}/${r.total} = ${rate.toFixed(3)} (want ~0.333)`);
     ck('lv1TowerMissNoDamage', r.dead === false, `foe still alive after ${r.total} shots`);
   }
   // ---- Lv2/Lv3 tower never miss ----
   for (const lv of [2, 3]) {
-    const r = fireTower('tower', lv, 'P', 60);
+    const r = fireTower('tower', lv, 'A', 60);
     ck(`lv${lv}TowerNeverMisses`, r.misses === 0 && r.hits === r.total, `${r.misses} misses / ${r.total} shots`);
   }
   // ---- War Camp ≈ 1/3 miss, same as Lv1 tower ----
@@ -141,11 +148,36 @@ const out = await p.evaluate(() => {
     const rate = r.misses / r.total;
     ck('warcampMissRate', rate > 0.27 && rate < 0.40, `${r.misses}/${r.total} = ${rate.toFixed(3)}`);
   }
-  // ---- rival's Lv1 tower misses at the SAME rate (owner-agnostic) ----
+  // ---- the rival's War Camp misses at the SAME rate (owner-agnostic) ----
   {
-    const r = fireTower('tower', 1, 'A', 240);
+    const r = fireTower('warcamp', null, 'A', 240);
     const rate = r.misses / r.total;
-    ck('rivalLv1TowerSameRate', rate > 0.27 && rate < 0.40, `${r.misses}/${r.total} = ${rate.toFixed(3)}`);
+    ck('rivalWarCampSameRate', rate > 0.27 && rate < 0.40, `${r.misses}/${r.total} = ${rate.toFixed(3)}`);
+  }
+  // ---- the PLAYER's towers fire nothing by themselves, at any level (build 148) ----
+  {
+    const fired = [];
+    for (const lv of [1, 2, 3]) {
+      setup('miss-silent');
+      const tc = Bld.tcOf('P');
+      const bb = Bld.place('P', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
+      bb.level = lv;
+      const foe = Units.spawn('defender', 'A', tc.x + 6.5, tc.y + 1);
+      // every arrow loosed from the tower's own crown (cx, cy - 0.6), and
+      // every float in the tower's own colour — none may appear
+      let shots = 0;
+      const push0 = Combat.shots.push, origFloat = R.float.bind(R);
+      Combat.shots.push = function (...a) {
+        for (const sh of a) if (Math.abs(sh.x1 - (bb.x + 0.5)) < 1e-9 && Math.abs(sh.y1 - (bb.y - 0.1)) < 1e-9) shots++;
+        return push0.apply(this, a);
+      };
+      R.float = (x, y, txt, col) => { if (col === '#f0d27a') shots++; };
+      try {
+        for (let i = 0; i < 200; i++) { foe.hp = foe.maxhp; foe.x = tc.x + 6.5; foe.y = tc.y + 1; foe.path = null; foe.tUnit = 0; foe.tBld = 0; Combat.update(0.05); }
+      } finally { delete Combat.shots.push; R.float = origFloat; }
+      fired.push(shots);
+    }
+    ck('aPlayerTowerNeverFiresByItself', fired.every(n => n === 0), `arrows over 10 s beside a foe, Lv1/Lv2/Lv3: ${fired.join('/')}`);
   }
   // ---- base archer ≈ 1/4 miss, vs a unit ----
   {
@@ -174,9 +206,9 @@ const out = await p.evaluate(() => {
   {
     const seqFor = () => {
       setup('missdet');
-      const tc = Bld.tcOf('P');
-      const bb = Bld.place('P', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
-      const foe = Units.spawn('defender', 'A', tc.x + 6.5, tc.y + 1);
+      const tc = Bld.tcOf('A');
+      const bb = Bld.place('A', 'tower', tc.x + 6, tc.y, { free: true, instant: true });
+      const foe = Units.spawn('defender', 'P', tc.x + 6.5, tc.y + 1);
       const seq = [];
       const origFloat = R.float.bind(R);
       R.float = (x, y, txt) => { seq.push(txt === 'Miss!' ? 'm' : 'h'); };

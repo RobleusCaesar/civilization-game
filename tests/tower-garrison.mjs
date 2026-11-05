@@ -21,6 +21,11 @@
         stairs — hidden, untappable, out of every reach — then the platform
      §3 two to a tower: a third bow is refused; the panel and the tap say so
      §4 twice the sight and twice the reach, and only bows and engines answer
+     §4b the player's tower shoots ONLY through its bows (operator, build
+        148: "towers should no longer shoot arrows. Only if they're manned
+        with archers they should shoot"): empty, it looses nothing at any
+        level and says so on its panel; manned, its bows do the shooting;
+        the rival's towers still fire by themselves
      §5 an order off the platform takes the stairs down first, a second hidden
      §6 the tower falls and takes its lookout: dead, a fall on screen, the
         population freed — and one killed up there falls too
@@ -271,6 +276,57 @@ const out = await p.evaluate(() => {
     ck('andShootsWhatOnlyTheDoubledReachCanReach', foe.hp < hp0 && a.perch === t.id, `foe ${hp0} → ${Math.round(foe.hp)} at ${(base * 1.7).toFixed(1)} tiles`);
     ck('aBladeCannotStrikeABowOnATower', !Combat.canEngage(foe, a) && Combat.canEngage(Units.spawn('archer', 'A', 30, 30), a),
       'defender no, archer yes');
+  }
+
+  /* ---- §4b the player's tower shoots only through its bows (build 148) ---- */
+  {
+    // every arrow loosed from a tower's own crown (cx, cy - 0.6), every float
+    // in the tower's own colour, and what the foe beside it lost
+    const watch = (tw, foe, sec) => {
+      let own = 0;
+      const fx = foe.x, fy = foe.y, hp0 = foe.hp;
+      const push0 = Combat.shots.push, f0 = R.float;
+      Combat.shots.push = function (...a) {
+        for (const sh of a) if (Math.abs(sh.x1 - (tw.x + 0.5)) < 1e-9 && Math.abs(sh.y1 - (tw.y - 0.1)) < 1e-9) own++;
+        return push0.apply(this, a);
+      };
+      R.float = function (x, y, txt, col) { if (col === '#f0d27a') own++; return f0.apply(this, arguments); };
+      try {
+        fight(sec, () => { foe.x = fx; foe.y = fy; foe.path = null; foe.tUnit = 0; foe.tBld = 0; foe.task = null; foe.hp = Math.max(foe.hp, 1); });
+      } finally { delete Combat.shots.push; R.float = f0; }
+      return { own, lost: hp0 - foe.hp };
+    };
+    const empty = [];
+    for (const lv of [1, 2, 3]) {
+      clear('lk4b' + lv);
+      const t = put('tower', 20, 20, lv);
+      const foe = Units.spawn('defender', 'A', 22.5, 20.5);   // two tiles out: inside every level's old range
+      empty.push(watch(t, foe, 6));
+    }
+    ck('anEmptyPlayerTowerShootsNothingAtAnyLevel', empty.every(w => w.own === 0 && w.lost === 0),
+      `Lv1/Lv2/Lv3 — the tower's own arrows ${empty.map(w => w.own).join('/')}, the foe lost ${empty.map(w => w.lost).join('/')}`);
+    // …and its panel says so, and how to man it
+    clear('lk4bp');
+    const tp = put('tower', 20, 20, 2);
+    UI.select('bld', tp.id);
+    const line = UI.panelSub().replace(/<[^>]+>/g, '');
+    UI.deselect && UI.deselect();
+    ck('andItsPanelSaysItShootsNothingUnmanned', /shoots nothing/.test(line) && /archers/.test(line), line);
+    // manned, its bows shoot — and still nothing of the tower's own
+    clear('lk4bm');
+    const tm = put('tower', 20, 20, 2);
+    const a = Units.spawn('archer', 'P', 20, 22);
+    Lookout.order(a, tm); step(3);
+    const fm = Units.spawn('defender', 'A', 22.5, 20.5);
+    const man = watch(tm, fm, 6);
+    ck('mannedItsBowsDoTheShooting', a.perch === tm.id && man.lost > 0 && man.own === 0,
+      `perched ${a.perch === tm.id}; the foe lost ${man.lost}, the tower's own arrows ${man.own}`);
+    // the rival's towers still fire by themselves
+    clear('lk4br');
+    const tr = put('tower', 20, 20, 2, 'A');
+    const fr = Units.spawn('defender', 'P', 22.5, 20.5);
+    const riv = watch(tr, fr, 6);
+    ck('theRivalsTowersStillFireByThemselves', riv.own > 0 && riv.lost > 0, `the rival tower's arrows ${riv.own}, the foe lost ${riv.lost}`);
   }
 
   /* ---- §5 down the stairs ---- */

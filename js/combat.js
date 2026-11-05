@@ -265,9 +265,34 @@ const Combat = {
     return this.losClear(u.x, u.y, o.x, o.y);
   },
   // how far this unit strikes from — a garrisoned bow twice its own reach
+  // (and the player's half again while the Watchfires burn: perchMult)
   reachOf(u) {
     const r = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
-    return u.perch && CFG.LOOKOUT ? r * CFG.LOOKOUT.rangeMult : r;
+    return u.perch && CFG.LOOKOUT ? r * CFG.LOOKOUT.rangeMult * this.perchMult(u, 'towerRange') : r;
+  },
+  /* WATCHFIRES ON THE PLATFORM (build 148 — operator: "towers should no
+     longer shoot arrows. Only if they're manned with archers they should
+     shoot"): the player's Watchtowers loose nothing of their own, so the
+     card that lengthens and weights the arrows of "your towers" lengthens
+     and weights THEIRS — the same Deck.mult kinds the tower's own fire
+     reads ('towerRange', 'towerAtk'), asked of the tower the bow stands
+     on. The player's bows alone: no other card's factor is laid on a bow
+     a second time (the Swallowed Sun softens the rival inside
+     Units.effAtk already). */
+  perchMult(u, kind) {
+    if (!u.perch || u.owner !== 'P' || !(window.Deck && Deck.mult)) return 1;
+    return Deck.mult(kind, 'P', Bld.get(u.perch));
+  },
+  // …and the farther band a card adds takes only what the player SEES (the
+  // tower's own rule: an arrow never lands on a soldier hidden in the fog)
+  perchSees(u, o) {
+    if (this.perchMult(u, 'towerRange') <= 1) return true;
+    const base = (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE) * CFG.LOOKOUT.rangeMult;
+    return Math.hypot(o.x - u.x, o.y - u.y) <= base || !!G.visibleAt(o.x | 0, o.y | 0);
+  },
+  // a bow on the platform under the card looses burning arrows (R.arrowStrike)
+  perchFire(u, wfA) {
+    return wfA > 1 && !!(window.Deck && Deck.timed && Deck.timed('watchfires'));
   },
 
   /* THE ACQUIRE GRID. acquire() runs every 0.4s and asks nearestUnit or
@@ -517,7 +542,7 @@ const Combat = {
       if (u.climb) continue;             // on a tower's stairs: out of sight for the climb (js/lookout.js)
       if (u.perch) {                     // up on a tower's platform: its doubled reach, over any wall
         const e = this.nearestUnit(u.x, u.y, this.reachOf(u), o => this.hostileUnits(u, o) &&
-          !Units.isPassive(o) && this.canEngage(u, o) && !this.easedPrey(u, o));
+          !Units.isPassive(o) && this.canEngage(u, o) && !this.easedPrey(u, o) && this.perchSees(u, o));
         if (e) u.tUnit = e.id;
         continue;
       }
@@ -1459,7 +1484,7 @@ const Combat = {
         // of its doubled reach the mark is let go — an ORDERED one takes the
         // stairs down and the order with it (js/lookout.js)
         if (u.perch) {
-          if (d > this.reachOf(u) || !this.canEngage(u, tgt)) {
+          if (d > this.reachOf(u) || !this.canEngage(u, tgt) || !this.perchSees(u, tgt)) {
             if (u.task && u.task.type === 'attack' && window.Lookout && this.canEngage(u, tgt)) Lookout.down(u, { tUnit: tgt.id });
             else u.tUnit = 0;
             continue;
@@ -1587,7 +1612,8 @@ const Combat = {
           }
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
-          const dmg = Math.max(1, Math.round(Units.effAtk(u) - Units.effDef(tgt)));
+          const wfA = u.perch ? this.perchMult(u, 'towerAtk') : 1;   // 1 off the platform: the old expression exactly
+          const dmg = Math.max(1, Math.round(Units.effAtk(u) * wfA - Units.effDef(tgt)));
           // the blow is heard where it is struck: a bow's volley or a blade (the wilds' jaws are not weapons)
           if (u.owner !== 'W' && !CFG.UNITS[u.kind].proj && typeof Sound !== 'undefined' && Sound.at)
             Sound.at(CFG.UNITS[u.kind].rng ? 'arrows' : 'sword', u.x, u.y, u.owner);
@@ -1596,7 +1622,7 @@ const Combat = {
           } else {
             let sh = null;
             if (CFG.UNITS[u.kind].rng)   // a garrisoned bow looses from its platform, the tower's own height
-              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
+              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: tgt.x, y2: tgt.y, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire || this.perchFire(u, wfA) });
             // THE BASE ARCHER FUMBLES 1 IN 4 SHOTS — the cheap early bowman
             // trained straight off a Lv1 Range; the Lv2/Lv3 upgrades (longbow,
             // marksman) are untouched. Owner-agnostic, same as the tower nerf.
@@ -1701,8 +1727,9 @@ const Combat = {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           // catapults/trebuchets break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch
+          const wfA = u.perch ? this.perchMult(u, 'towerAtk') : 1;   // a bow on a tower under the Watchfires
           const dmg = this.bldAtkOf(u) ||
-            Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
+            Math.max(1, Math.round(Units.effAtk(u) * wfA * (CFG.UNITS[u.kind].bldMult || 1)));
           if (u.owner !== 'W' && !CFG.UNITS[u.kind].proj && typeof Sound !== 'undefined' && Sound.at)
             Sound.at(CFG.UNITS[u.kind].rng ? 'arrows' : 'sword', u.x, u.y, u.owner);
           if (CFG.UNITS[u.kind].proj) {
@@ -1712,7 +1739,7 @@ const Combat = {
           } else {
             let sh = null;
             if (CFG.UNITS[u.kind].rng)
-              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });
+              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire || this.perchFire(u, wfA) });
             // same base-archer fumble as the unit-target branch above — a
             // player CAN send an archer straight at a wall, so it has to miss
             // there too, not just when trading blows with soldiers.
@@ -1751,11 +1778,22 @@ const Combat = {
     // watchtowers — and War Camps, which loose arrows like a Watchtower L1
     for (const b of S.buildings) {
       if ((b.key !== 'tower' && b.key !== 'warcamp') || !Bld.done(b) || b.upgrading > 0) continue;
+      /* THE PLAYER'S TOWERS SHOOT ONLY THROUGH THEIR ARCHERS (build 148 —
+         operator: "towers should no longer shoot arrows. Only if they're
+         manned with archers they should shoot"; asked: the player's towers
+         only, and the archers only). A player Watchtower looses nothing of
+         its own: the bows posted on it (js/lookout.js) are its whole fire,
+         at twice their own reach, and its storeys add health and sight.
+         The rival's towers and every War Camp fire below as they always
+         did (a War Camp is a camp, not a tower). Asked before the
+         cooldown, so a player tower's arrows are never even timed. */
+      if (b.key === 'tower' && b.owner === 'P') continue;
       if (b.cd > 0) { b.cd -= dt; continue; }
       const lv = Bld.lv(b);
       const cx = b.x + 0.5, cy = b.y + 0.5;
       /* WATCHFIRES (js/deckfx-town.js): a card may lengthen the reach and
-         weight the arrows of the PLAYER's towers and camps — Deck.mult's
+         weight the arrows of the PLAYER's camps — its towers' bows take
+         theirs on the platform (Combat.perchMult) — Deck.mult's
          numbers answer 1 for the rival and with no card running. The L1
          fumble below draws exactly as it always did. The longer reach only
          takes what the watch can SEE: a tower's own range always sat inside
@@ -1763,7 +1801,7 @@ const Combat = {
          there must be on ground in view — an arrow (and its float) never
          lands on a soldier hidden in the fog (the trebuchet's rule: an
          engine never shells ground it can't watch). Base range: untouched.
-         The fog is the PLAYER's, so that gate is asked of the player's towers
+         The fog is the PLAYER's, so that gate is asked of the player's camps
          alone, and so is the burning arrow: it is Watchfires' own look, and a
          multiplier from another card (a rival tower SOFTENED, a factor under
          1) must never dress the rival's arrows as a buff. */

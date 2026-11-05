@@ -1634,16 +1634,26 @@
       },
     },
 
-    /* BRONZE — Watchfires: the player's towers and War Camps hit 50% harder
-       and reach 50% farther for the card's 6 days (Deck.mult 'towerAtk' /
-       'towerRange', read in the tower fire — combat.js). The attack is the
-       tower's own stat ×1.5, before the target's defence; the L1 fumble is
-       untouched. A beacon blazes on every one of them while it runs, and the
-       play shows the longer reach: a ring of fire-dots growing from each
-       tower's old range out to its new one. */
+    /* BRONZE — Watchfires: the archers on the player's towers, and the
+       player's War Camps, hit 50% harder and reach 50% farther for the card's
+       6 days (Deck.mult 'towerAtk' / 'towerRange', read in the War Camp's fire
+       and, for a tower, on its platform — Combat.perchMult: since build 148 a
+       player tower shoots only through the bows posted on it). The attack is
+       the camp's own stat, or the bow's, ×1.5 before the target's defence;
+       the fumbles are untouched. A beacon blazes on every tower and camp
+       while it runs, and the play shows the longer reach: a ring growing
+       from each one's old reach out to its new one (a tower with nobody up
+       has no reach, and only its beacon catches). */
     watchfires: {
       at: 'tc', mult: { towerAtk: 1.5, towerRange: 1.5 }, IGNITE: 18,   // tiles a second the kindling runs out from the hall
       forts() { return S.buildings.filter(b => b.owner === 'P' && (b.key === 'tower' || b.key === 'warcamp') && Bld.done(b)); },
+      // how far one fort's arrows fly without the card: a camp's own range, a
+      // tower's farthest bow on its platform (Lookout.crewReach; 0 with none)
+      reach0(b) {
+        if (b.key === 'tower') return window.Lookout && Lookout.crewReach ? Lookout.crewReach(b) : 0;
+        const lv = Bld.lv(b);
+        return lv && lv.range || 0;
+      },
       can() { return this.forts().length ? { ok: true } : { ok: false, why: 'You need a finished tower or War Camp.' }; },
       apply() {
         const ok = this.can();
@@ -1654,8 +1664,8 @@
           : '🔥 Watchfires blaze on every tower and War Camp you hold: they hit 50% harder and reach 50% farther for ' + days + ' days.');
         const hx = tc ? Bld.cx(tc) : Bld.cx(forts[0]), hy = tc ? Bld.cy(tc) : Bld.cy(forts[0]);
         const list = forts.map(b => {
-          const lv = Bld.lv(b);
-          return { id: b.id, d: Math.hypot(Bld.cx(b) - hx, Bld.cy(b) - hy), ox: b.x + 0.5, oy: b.y + 0.5, r0: lv.range, r1: lv.range * this.mult.towerRange };
+          const r0 = this.reach0(b);
+          return { id: b.id, d: Math.hypot(Bld.cx(b) - hx, Bld.cy(b) - hy), ox: b.x + 0.5, oy: b.y + 0.5, r0, r1: r0 * this.mult.towerRange };
         });
         const far = Math.max(0, ...list.map(f => f.d));
         TX.show('watchfires', { list, fresh: !was, ms: Math.min(3600, (far / this.IGNITE + 2.2) * 1000) });
@@ -1665,7 +1675,7 @@
         return { ok: true, until: e.until, msg: was ? 'The watchfires burn on — ' + days + ' more days.'
           : 'Watchfires blaze on ' + what + ': half again as hard and as far for ' + days + ' days.' };
       },
-      end() { G.log('🔥 The watchfires burn down — your towers shoot as they did before.'); },
+      end() { G.log('🔥 The watchfires burn down — your tower archers and camps shoot as they did before.'); },
       /* THE BEACON ON ONE TOWER: an iron brazier and a big flame in the burning
          town's own strip (flameBig, half again a hall fire's size) with a few
          embers going up off it — and NO LIGHT round it (the playtest's
@@ -1711,9 +1721,9 @@
          arrows land — under the town and the fog. Each tower on its own
          place on the lap. */
       reach(g, b, e) {
-        const lv = Bld.lv(b);
-        if (!lv || !lv.range) return null;
-        return R.drawOrbit(g, Bld.cx(b), Bld.cy(b), lv.range * this.mult.towerRange, performance.now() / 1000,
+        const r0 = this.reach0(b);
+        if (!r0) return null;   // an empty tower shoots nothing: no reach to show
+        return R.drawOrbit(g, Bld.cx(b), Bld.cy(b), r0 * this.mult.towerRange, performance.now() / 1000,
           { phase: (b.id * 0.618034) % 1, fade: e ? Math.min(1, Math.max(0, (e.until - Deck.now()) / 0.5)) : 1 });
       },
       selected() {
@@ -1766,7 +1776,7 @@
             // growing out to the new one, smooth, its hue tied to its light
             const gq = cl((tl - 0.15) / 0.7), r = f.r0 + (f.r1 - f.r0) * eo(gq);
             const a = gq < 1 ? 0.9 : 0.9 * cl(1 - (tl - 0.85) / 1.2);
-            if (a > 0) {
+            if (a > 0 && f.r1 > 0) {
               TX.halo(g, f.ox * TL, f.oy * TL, f.r0 * TL, 1, a * 0.35, 'bronze', 1.2);
               TX.halo(g, f.ox * TL, f.oy * TL, r * TL, 1, a, 'bronze', 2.2);
             }
