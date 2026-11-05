@@ -152,6 +152,8 @@ const Roads = (() => {
     }
     if (S.stats) S.stats.roads = (S.stats.roads || 0) + 1;
     Rd._n = -1; Rd.dirty(b.x, b.y);
+    // a building this tile reaches starts working the better for it (Bld.roadBoost) — it twinkles
+    if (b.owner === 'P' && Bld.roadArrived) Bld.roadArrived(b.x, b.y);
     // the other hands on this tile go on to the next tile of the line
     for (const u of S.units) {
       if (u === builder || !u.task || u.task.type !== 'build' || u.task.id !== b.id) continue;

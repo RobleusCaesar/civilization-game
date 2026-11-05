@@ -396,7 +396,8 @@ const Units = {
       const tc = Bld.tcOf(u.owner);
       const tcBoost = tc && tc.level >= 3 && Bld.done(tc) ? 1.1 : 1;
       const modeMult = u.owner === 'P' ? mode.output : (mode.aiOutput || 1);
-      const n = out[key] * Bld.nearBonus(b) * tcBoost * modeMult *
+      // a homestead's share, or else a road's (never both — Bld.roadBoost), as Bld.dailyProduction pays
+      const n = out[key] * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b) * Bld.roadMult(b, 'yield') *
         (window.Cards ? Cards.prodMult(u.owner, b) : 1) *
         (window.Deck && Deck.mult ? Deck.mult('produce', u.owner, b) : 1);   // a card's richer work (Bld.dailyProduction)
       return { icon: '🛠️', what: 'Working the ' + nm, rate: { res: key, n }, working: true };

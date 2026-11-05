@@ -19,6 +19,20 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 153, date: '2026-11-05', title: 'Roads that pay',
+    items: [
+      'A building with a road running up to one of its sides now works 10 percent better, and its panel says so in gold.',
+      'Farms, lumber camps, quarries, hunting lodges and gold mines on a road bring in 10 percent more.',
+      'A Barracks, Archery Range, Horse Stable, Siege Workshop, Sappers\' Camp, Dock or Town Center on a road trains 10 percent faster.',
+      'A Trading Post on a road brings its caravans home 10 percent sooner.',
+      'Walls, gates, watchtowers and War Camps on a road are 10 percent stronger: every blow takes a little less off them.',
+      'A house on a road holds one more villager.',
+      'A farm and a house that already share a homestead keep its bonus, and a road adds nothing more on top.',
+      'A road only counts if it touches a side of the building, not just a corner. If the road is built over or dug away, the bonus goes with it.',
+      'A small gold sparkle shows the moment a road starts helping a building, and placing a building beside a road tells you what it will get.',
+    ],
+  },
+  {
     build: 152, date: '2026-11-05', title: 'Archers on the towers',
     items: [
       'The Archery Range is now ready from the start: you no longer need to upgrade your Town Center to build one.',

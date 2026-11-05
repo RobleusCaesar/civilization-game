@@ -871,12 +871,14 @@ const UI = {
   placeWouldRoad(g) {
     const kind = g && window.Roads && Roads.on && Roads.on() && (CFG.ROADS.boosts || {})[this.placing];
     if (!kind) return '';
-    if ((kind === 'room' || this.placing === 'farm') && this.placeWouldBond(g)) return '';
     const s = Bld.size(this.placing);
-    for (let i = 0; i < s; i++)
-      if (Roads.at(g.x + i, g.y - 1) || Roads.at(g.x + i, g.y + s) || Roads.at(g.x - 1, g.y + i) || Roads.at(g.x + s, g.y + i))
-        return '✦ ' + Bld.roadWords(this.placing, kind, (Bld.buildSpec(this.placing, 'P') || {}).level || 1);
-    return '';
+    let near = false;
+    for (let i = 0; i < s && !near; i++)
+      near = Roads.at(g.x + i, g.y - 1) || Roads.at(g.x + i, g.y + s) || Roads.at(g.x - 1, g.y + i) || Roads.at(g.x + s, g.y + i);
+    if (!near) return '';
+    // the bond, asked only beside a road (it walks the farms): a bond outranks the road
+    if ((kind === 'room' || this.placing === 'farm') && this.placeWouldBond(g)) return '';
+    return '✦ ' + Bld.roadWords(this.placing, kind, (Bld.buildSpec(this.placing, 'P') || {}).level || 1);
   },
   _placeDomSync() {
     const g = this.placeGhost, v = this.placeVerdict;
@@ -923,7 +925,7 @@ const UI = {
     // never leave the player guessing, never chatter when everything is fine.
     // It always takes the OPPOSITE side of the ✓/✗ pair, so they can't collide.
     const why = el.querySelector('#placeWhy');
-    let msg = '';
+    let msg = '', road = '', boon = false;
     // a station's own refusal is said as its work (PLACE_GROUND); any other
     // ground refusal (the burnt wood's ash) keeps its own words
     const gnd = v && v.code === 'ground' && v.why === (CFG.BUILDINGS[this.placing] || {}).whyGround && this.PLACE_GROUND[this.placing];
@@ -937,7 +939,7 @@ const UI = {
        accident once in ten games is a bonus nobody plays for. On a valid spot
        that WOULD bond, the chip says so — the same gold the panels use, on the
        one screen where the choice is still yours to move. */
-    else if (v && v.ok && this.placeWouldBond(g)) msg = '🌾 Homestead — beside the field';
+    else if (v && v.ok && this.placeWouldBond(g)) { msg = '🌾 Homestead — beside the field'; boon = true; }
     // …and a Master Builders charge about to be spent says so (js/deckfx-town.js)
     // — short enough for the chip's 260px on a 320px phone: the long form
     // read "⚒ Master Builders: stands compl…" and lost both the point and
@@ -949,7 +951,7 @@ const UI = {
     // through the archers posted on them; short enough for the 260px chip)
     else if (v && v.ok && this.placing === 'tower') msg = '🏹 Shoots only with archers on it';
     // …and the road's tenth, said on the spot that would earn it (Bld.roadBoost)
-    else if (v && v.ok && this.placeWouldRoad(g)) msg = this.placeWouldRoad(g);
+    else if (v && v.ok && (road = this.placeWouldRoad(g))) { msg = road; boon = true; }
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;
@@ -972,6 +974,7 @@ const UI = {
       }
       why.style.transform = `translate(${cx2 | 0}px, ${cy2 | 0}px)`;
       why.classList.toggle('amber', !!(v && v.ok && !v.afford));
+      why.classList.toggle('boon', boon);
     } else why.style.display = 'none';
   },
   _missingCostStr() {

@@ -1631,8 +1631,11 @@ const Bld = {
     if ((k === 'room' || (k === 'yield' && b.key === 'farm')) && this.isHomestead(b, map)) return null;
     return this.roadsBeside(b).length ? k : null;
   },
-  // the factor a road lays on one of this building's effects (1: none)
+  // the factor a road lays on one of this building's effects (1: none) — a
+  // kind that is not the building's answers at once, so a blow on a farm never
+  // builds the homestead map to learn that a farm has no 'guard'
   roadMult(b, kind, map) {
+    if (this.roadKind(b) !== kind) return 1;
     return this.roadBoost(b, map) === kind ? (CFG.ROADS.boost || 1) : 1;
   },
   // a house's extra room on a road (0: none, or the bond's instead)

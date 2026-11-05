@@ -1276,6 +1276,9 @@ const Bld = {
     // a finished house or farm may have just made a homestead (or completed
     // the other half of one) — see syncHomesteads
     if (b.key === 'house' || b.key === 'farm') this.syncHomesteads();
+    // …and a work finished beside a road starts working the better for it:
+    // a small gold twinkle where the road meets it (Bld.roadSparkle)
+    if (b.owner === 'P') this.roadSparkle(b);
   },
 
   // any of the OWNER'S villagers currently working this site (construction/upgrade/repair)?
@@ -1575,9 +1578,112 @@ const Bld = {
     // and gone with the bond exactly as the base bonus is (derived, never stored)
     return (CFG.HOMESTEAD.food || 1) + (window.Cards ? Cards.homeAdd(b.owner) : 0);
   },
-  homesteadPop(b) {
-    if (b.key !== 'house' || !this.isHomestead(b)) return 0;
+  homesteadPop(b, map) {
+    if (b.key !== 'house' || !this.isHomestead(b, map)) return 0;
     return (CFG.HOMESTEAD.pop || 0) + (window.Cards ? Cards.homePop(b.owner) : 0);
+  },
+
+  /* ================= THE ROAD IS WORTH BUILDING TO (tests/roads.mjs §10) =================
+     (operator, build 153: "so that roads have value. Any building that
+     touches a road gets a 10% boost… If the road disappears the bonus should
+     disappear too.") A FINISHED building of the PLAYER's whose footprint
+     shares an EDGE with a finished road (Roads.at — a road that only meets a
+     corner leads to no door: the homestead's broadside rule) works
+     CFG.ROADS.boost better, each kind in its own way, CFG.ROADS.boosts the
+     whole audit: a station brings in more ('yield'), a yard trains faster
+     ('pace' — the hall's villagers included), the Trading Post's caravans
+     come home sooner ('trade'), a fort takes less of every blow ('guard'),
+     a house holds one more ('room').
+
+       NOT TWICE    a bonded farm keeps its homestead's share and a bonded
+                    house its homestead's villager — the road adds nothing
+                    over either (the operator: "shouldn't stack").
+       DERIVED      asked of the board every time it is wanted and stored
+                    nowhere, the homestead's rule: a road built over, dug or
+                    flooded takes its bonus with it on the frame it goes,
+                    and a save carries nothing new.
+       THE PLAYER'S the roads are theirs (the rival builds none, js/roads.js)
+                    — and a road laid up to a rival wall never strengthens it. */
+  roadKind(b) {
+    if (!b || b.owner !== 'P' || !this.done(b)) return null;
+    if (!window.Roads || !Roads.on()) return null;
+    return (CFG.ROADS.boosts || {})[b.key] || null;
+  },
+  // the finished road tiles beside a footprint, EDGE-ON: [{x, y, dx, dy}] —
+  // (x, y) the road tile, (dx, dy) the way out of the building toward it
+  roadsBeside(b) {
+    const out = [], s = this.size(b);
+    if (!window.Roads || !Roads.at) return out;
+    for (let i = 0; i < s; i++) {
+      if (Roads.at(b.x + i, b.y - 1)) out.push({ x: b.x + i, y: b.y - 1, dx: 0, dy: -1 });
+      if (Roads.at(b.x + i, b.y + s)) out.push({ x: b.x + i, y: b.y + s, dx: 0, dy: 1 });
+      if (Roads.at(b.x - 1, b.y + i)) out.push({ x: b.x - 1, y: b.y + i, dx: -1, dy: 0 });
+      if (Roads.at(b.x + s, b.y + i)) out.push({ x: b.x + s, y: b.y + i, dx: 1, dy: 0 });
+    }
+    return out;
+  },
+  /* what a road beside it is doing for this building RIGHT NOW: its kind, or
+     null. `map` (optional) is a homesteadMap() built a moment ago for a whole
+     pass, as homesteadOf takes it — still derived, never kept. */
+  roadBoost(b, map) {
+    const k = this.roadKind(b);
+    if (!k) return null;
+    if ((k === 'room' || (k === 'yield' && b.key === 'farm')) && this.isHomestead(b, map)) return null;
+    return this.roadsBeside(b).length ? k : null;
+  },
+  // the factor a road lays on one of this building's effects (1: none) — a
+  // kind that is not the building's answers at once, so a blow on a farm never
+  // builds the homestead map to learn that a farm has no 'guard'
+  roadMult(b, kind, map) {
+    if (this.roadKind(b) !== kind) return 1;
+    return this.roadBoost(b, map) === kind ? (CFG.ROADS.boost || 1) : 1;
+  },
+  // a house's extra room on a road (0: none, or the bond's instead)
+  roadPop(b, map) {
+    return b && b.key === 'house' && this.roadBoost(b, map) === 'room' ? (CFG.ROADS.room || 0) : 0;
+  },
+  // the gold line a building's panel wears while a road works for it ('' if none)
+  roadLine(b) {
+    const k = this.roadBoost(b);
+    return k ? this.roadWords(b.key, k, b.level) : '';
+  },
+  // what a road does for a kind, in the words the panel and the placement chip share
+  roadWords(key, kind, level) {
+    const pct = Math.round(((CFG.ROADS.boost || 1) - 1) * 100) + '%';
+    if (kind === 'yield') {
+      const lv = this.def(key).levels[Math.max(0, (level || 1) - 1)] || {};
+      return `Road +${pct} ${Object.keys(lv.out || {})[0] || 'output'}`;
+    }
+    if (kind === 'pace') return `Road: trains ${pct} faster`;
+    if (kind === 'trade') return `Road: caravans ${pct} faster`;
+    if (kind === 'guard') return `Road: ${pct} stronger`;
+    const n = CFG.ROADS.room || 0;
+    return `Road +${n} villager${n === 1 ? '' : 's'}`;
+  },
+  /* THE SPARKLE IS EDGE-TRIGGERED, THE BONUS IS NOT (the homestead's rule
+     again, with nothing remembered at all). The two moments a road starts
+     working for a building are the road reaching it (Roads.finish → `tile`,
+     the new road tile: every building beside it for which that tile is its
+     ONLY road just gained the boost) and the building finishing beside a
+     road (Bld.finish → no tile). A small gold twinkle where the road meets
+     the building, nothing big; a bonus that comes back by itself (a bond
+     broken, rubble healed under a road) comes back quietly. */
+  roadSparkle(b, tile) {
+    if (!window.R || !R.startRoadSpark || !this.roadBoost(b)) return;
+    const here = this.roadsBeside(b);
+    const at = tile ? here.filter(r => r.x === tile.x && r.y === tile.y) : here;
+    if (!at.length || (tile && here.length !== at.length)) return;   // another road was already working here
+    R.startRoadSpark(at.slice(0, 4).map(r => ({ x: r.x + 0.5 - r.dx * 0.5, y: r.y + 0.5 - r.dy * 0.5 })));
+  },
+  // a road tile just finished at (x, y): sparkle every building it reached
+  roadArrived(x, y) {
+    const seen = new Set();
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      const o = MapGen.onBoard(x + dx, y + dy) && this.at(x + dx, y + dy);
+      if (!o || seen.has(o.id)) continue;
+      seen.add(o.id);
+      this.roadSparkle(o, { x, y });
+    }
   },
 
   /* THE CELEBRATION IS EDGE-TRIGGERED, THE BONUS IS NOT. The bonus is derived
@@ -1621,9 +1727,14 @@ const Bld = {
   },
 
   popCap(owner) {
-    let cap = 0;
-    for (const b of this.list(owner))
-      if (this.done(b)) cap += (this.lv(b).pop || 0) + this.homesteadPop(b);
+    let cap = 0, hs = null;
+    for (const b of this.list(owner)) {
+      if (!this.done(b)) continue;
+      cap += this.lv(b).pop || 0;
+      // a house's bond, or else its road (never both) — the homestead map
+      // built once for the whole count, not once a house
+      if (b.key === 'house') { if (!hs) hs = this.homesteadMap(); cap += this.homesteadPop(b, hs) + this.roadPop(b, hs); }
+    }
     // the Town Center sets a hard ceiling — houses only help up to it
     const tc = this.tcOf(owner);
     const ceil = tc ? CFG.TC_POP_CAP[tc.level - 1] : CFG.TC_POP_CAP[0];
@@ -1836,7 +1947,8 @@ const Bld = {
     for (const b of S.buildings) {
       // a Trading Post caravan is out — count it down and pay out on return
       if (b.caravan) {
-        b.caravan.t -= dtDays;
+        // a road to the post brings its caravans home sooner (Bld.roadBoost)
+        b.caravan.t -= dtDays * this.roadMult(b, 'trade');
         if (b.caravan.t <= 0) {
           const bag = b.owner === 'P' ? S.res : S.ai.res;
           const haul = this.caravanHaul(b.caravan);
@@ -1866,7 +1978,8 @@ const Bld = {
       // — the moment there is somewhere to stand, they come out (see holdTrained)
       if (b.hold && b.hold.length) this.releaseHeld(b);
       if (b.queue.length && !b.upgrading && !(b.wallUp > 0)) {   // level-up / wall works pause the training yard
-        b.queue[0].t -= dtDays;
+        // a road to the yard trains it faster — soldiers, villagers, sappers, hulls (Bld.roadBoost)
+        b.queue[0].t -= dtDays * this.roadMult(b, 'pace');
         if (b.queue[0].t <= 0) {
           const item = b.queue.shift();
           const spot = this.spawnSpot(b, item.unit);
@@ -1949,6 +2062,7 @@ const Bld = {
          Module state, re-dealt every day, never in a save (R.collapses). */
       this._aiCrew = aiCrew;
     }
+    let hs = null;
     for (const b of this.list(owner)) {
       if (!this.done(b) || b.upgrading) continue;
       const out = this.lv(b).out;
@@ -1961,7 +2075,11 @@ const Bld = {
                              : (aiCrew[b.id] || 0);
         if (!crew) continue;
       }
-      const mult = crew * this.nearBonus(b) * tcBoost * modeMult * this.homesteadMult(b) *
+      if (b.key === 'farm' && !hs) hs = this.homesteadMap();   // one map for every farm
+      /* a road beside a station brings in a tenth more — never on top of a
+         homestead's share (Bld.roadBoost); UI.incomePerDay and the work line
+         (Units.workReport) say the same expression */
+      const mult = crew * this.nearBonus(b) * tcBoost * modeMult * this.homesteadMult(b, hs) * this.roadMult(b, 'yield', hs) *
         (window.Cards ? Cards.prodMult(owner, b) : 1) *   // ORIGIN CARDS: Harvest Lord farms
         /* THE CARD SYSTEM (Deck.mult, js/deckfx.js): a timed card's richer
            (or, on the rival, poorer) work — asked per BUILDING, not folded
@@ -2112,6 +2230,11 @@ const Bld = {
     if (!this.attackable(b)) return;   // the seam's works change hands, they never come down
     const wild = cause === 'fire';
     if (b.owner === 'P' && window.Deck && Deck.bldTakes) amt = Deck.bldTakes(b, amt, cause);
+    /* a road beside a wall, a gate, a tower or the War Camp makes it a tenth
+       stronger: it takes 1/boost of every blow (Bld.roadBoost) — asked here,
+       before the one subtraction, so the number returned (and floated by
+       Combat.hitBuilding) is the number taken */
+    if (b.owner === 'P') { const gd = this.roadMult(b, 'guard'); if (gd > 1) amt /= gd; }
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };

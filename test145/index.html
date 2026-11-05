@@ -420,6 +420,8 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.5);
   }
   #placeWhy.amber { border-color: #c8a050; color: #f0e0b8; }
+  /* a bonus the spot would earn (a homestead, a road) reads in the panels' gold */
+  #placeWhy.boon { border-color: #c8a050; color: var(--gold); }
   /* BEFORE THE GHOST IS PARKED the ✗ stands in a fixed row at the foot of the
      map, clear of the Build tab under it (the collapsed bar is 10px plus half
      the home-indicator inset, the tab 22px over it), with one line on how to
@@ -2107,6 +2109,8 @@
         <p>Tap a building, tap the ground — your villagers do the rest.</p>
         <p>Everything grows from the <b>Town Center</b>. Raise it through three
           levels and each one unlocks new buildings, new soldiers, new tricks.</p>
+        <p>Lay <b>roads</b> to your buildings: one a road touches works 10%
+          better, and says so in gold.</p>
       </div></section>
       <section><div class="gpage">
         <img class="gart" src="assets/ui/guide/gather-2x.png" alt="" width="96" height="96" loading="lazy" decoding="async">
@@ -2201,54 +2205,54 @@
 
 </div>
 
-<script src="test145/js/feedback.js?v=152"></script>
-<script src="test145/js/config.js?v=152"></script>
-<script src="test145/js/audio.js?v=152"></script>
-<script src="test145/js/config.supabase.js?v=152"></script>
-<script src="test145/js/vendor/supabase.js?v=152"></script>
-<script src="test145/js/backend.js?v=152"></script>
-<script src="test145/js/competition.js?v=152"></script>
-<script src="test145/js/score.js?v=152"></script>
-<script src="test145/js/cards.js?v=152"></script>
-<script src="test145/js/deck.js?v=152"></script>
-<script src="test145/js/artstyle.js?v=152"></script>
-<script src="test145/js/sprites.js?v=152"></script>
-<script src="test145/js/formations.js?v=152"></script>
-<script src="test145/js/relics.js?v=152"></script>
-<script src="test145/js/assets.js?v=152"></script>
-<script src="test145/js/dev.js?v=152"></script>
-<script src="test145/js/map.js?v=152"></script>
-<script src="test145/js/buildings.js?v=152"></script>
-<script src="test145/js/units.js?v=152"></script>
-<script src="test145/js/combat.js?v=152"></script>
-<script src="test145/js/ai.js?v=152"></script>
-<script src="test145/js/render.js?v=152"></script>
-<script src="test145/js/footing.js?v=152"></script>
-<script src="test145/js/roads.js?v=152"></script>
-<script src="test145/js/beasts.js?v=152"></script>
-<script src="test145/js/defeatart.js?v=152"></script>
-<script src="test145/js/victoryart.js?v=152"></script>
-<script src="test145/js/ui.js?v=152"></script>
-<script src="test145/js/lookout.js?v=152"></script>
-<script src="test145/js/screens.js?v=152"></script>
-<script src="test145/js/patchnotes.js?v=152"></script>
-<script src="test145/js/settings.js?v=152"></script>
-<script src="test145/js/board.js?v=152"></script>
-<script src="test145/js/pages.js?v=152"></script>
-<script src="test145/js/titlescreen.js?v=152"></script>
-<script src="test145/js/tutorial.js?v=152"></script>
-<script src="test145/js/deckfx.js?v=152"></script>
-<script src="test145/js/deckfx-town.js?v=152"></script>
-<script src="test145/js/deckfx-army.js?v=152"></script>
-<script src="test145/js/deckfx-growth.js?v=152"></script>
-<script src="test145/js/deckfx-rival.js?v=152"></script>
-<script src="test145/js/deckui.js?v=152"></script>
-<script src="test145/js/deckscreens.js?v=152"></script>
-<script src="test145/js/cardintro.js?v=152"></script>
-<script src="test145/js/vote.js?v=152"></script>
-<script src="test145/js/game.js?v=152"></script>
-<script src="test145/js/terrain-core.js?v=152"></script>
-<script src="test145/js/terrain.js?v=152"></script>
-<script src="test145/js/terrain-v5.js?v=152"></script>
+<script src="test145/js/feedback.js?v=153"></script>
+<script src="test145/js/config.js?v=153"></script>
+<script src="test145/js/audio.js?v=153"></script>
+<script src="test145/js/config.supabase.js?v=153"></script>
+<script src="test145/js/vendor/supabase.js?v=153"></script>
+<script src="test145/js/backend.js?v=153"></script>
+<script src="test145/js/competition.js?v=153"></script>
+<script src="test145/js/score.js?v=153"></script>
+<script src="test145/js/cards.js?v=153"></script>
+<script src="test145/js/deck.js?v=153"></script>
+<script src="test145/js/artstyle.js?v=153"></script>
+<script src="test145/js/sprites.js?v=153"></script>
+<script src="test145/js/formations.js?v=153"></script>
+<script src="test145/js/relics.js?v=153"></script>
+<script src="test145/js/assets.js?v=153"></script>
+<script src="test145/js/dev.js?v=153"></script>
+<script src="test145/js/map.js?v=153"></script>
+<script src="test145/js/buildings.js?v=153"></script>
+<script src="test145/js/units.js?v=153"></script>
+<script src="test145/js/combat.js?v=153"></script>
+<script src="test145/js/ai.js?v=153"></script>
+<script src="test145/js/render.js?v=153"></script>
+<script src="test145/js/footing.js?v=153"></script>
+<script src="test145/js/roads.js?v=153"></script>
+<script src="test145/js/beasts.js?v=153"></script>
+<script src="test145/js/defeatart.js?v=153"></script>
+<script src="test145/js/victoryart.js?v=153"></script>
+<script src="test145/js/ui.js?v=153"></script>
+<script src="test145/js/lookout.js?v=153"></script>
+<script src="test145/js/screens.js?v=153"></script>
+<script src="test145/js/patchnotes.js?v=153"></script>
+<script src="test145/js/settings.js?v=153"></script>
+<script src="test145/js/board.js?v=153"></script>
+<script src="test145/js/pages.js?v=153"></script>
+<script src="test145/js/titlescreen.js?v=153"></script>
+<script src="test145/js/tutorial.js?v=153"></script>
+<script src="test145/js/deckfx.js?v=153"></script>
+<script src="test145/js/deckfx-town.js?v=153"></script>
+<script src="test145/js/deckfx-army.js?v=153"></script>
+<script src="test145/js/deckfx-growth.js?v=153"></script>
+<script src="test145/js/deckfx-rival.js?v=153"></script>
+<script src="test145/js/deckui.js?v=153"></script>
+<script src="test145/js/deckscreens.js?v=153"></script>
+<script src="test145/js/cardintro.js?v=153"></script>
+<script src="test145/js/vote.js?v=153"></script>
+<script src="test145/js/game.js?v=153"></script>
+<script src="test145/js/terrain-core.js?v=153"></script>
+<script src="test145/js/terrain.js?v=153"></script>
+<script src="test145/js/terrain-v5.js?v=153"></script>
 </body>
 </html>

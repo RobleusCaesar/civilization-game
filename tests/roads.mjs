@@ -596,15 +596,23 @@ const { BX, BY } = B0;
     __rb.road(5, 15);
     const chip2 = UI.placeWouldRoad({ x: BX + 6, y: BY + 14 });
     UI.placing = null;
+    // …and the real chip says it, in the panels' gold
+    UI.enterPlacement('barracks'); UI.placeGhostSet(BX + 7, BY + 15); UI._placeDomSync();   // the footprint centred on the tap: (6, 14)
+    const el = document.getElementById('placeWhy');
+    const shown = { text: el && el.textContent, gold: !!el && el.classList.contains('boon'), col: el && getComputedStyle(el).color,
+      ghost: UI.placeGhost && [UI.placeGhost.x - BX, UI.placeGhost.y - BY] };
+    UI.exitPlacement();
     const save = G.saveJSON();
     const yd = Bld.list('P').find(o => o.key === 'lumber');
     CFG.ROADS.ON = false;
     const off = Bld.roadBoost(yd), offLump = __rb.lump('wood');
     CFG.ROADS.ON = true;
-    return { chip, chip2, saved: /roadBoost|roadSpark|roadKind/.test(save), off, offLump, onLump: __rb.lump('wood'),
+    return { chip, chip2, shown, saved: /roadBoost|roadSpark|roadKind/.test(save), off, offLump, onLump: __rb.lump('wood'),
       desc: CFG.BUILDINGS.road.desc, guide: (document.getElementById('howPanels') || {}).textContent || '' };
   }, { BX, BY });
-  ck('thePlacementChipPromisesItOnTheSpot', r.chip === '' && r.chip2 === '✦ Road: trains 10% faster', `apart: "${r.chip}"; beside a road: "${r.chip2}"`);
+  ck('thePlacementChipPromisesItOnTheSpot', r.chip === '' && r.chip2 === '✦ Road: trains 10% faster' &&
+      r.shown.text === r.chip2 && r.shown.gold && r.shown.col === 'rgb(232, 193, 90)',
+    `apart: "${r.chip}"; beside a road: "${r.chip2}"; on the chip: ${JSON.stringify(r.shown)}`);
   ck('aSaveCarriesNothingNew', !r.saved, 'the bonus is derived from the roads the save already keeps');
   ck('switchedOffTheRoadsGiveNothing', r.off === null && Math.abs(r.onLump / r.offLump - 1.1) < 1e-9, `off: ${r.off}, ${r.offLump} → ${r.onLump} wood`);
   ck('theRoadCardAndTheGuideSayIt', /10% better/.test(r.desc) && /roads.*10%/s.test(r.guide), `"${r.desc}"`);
