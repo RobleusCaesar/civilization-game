@@ -54,6 +54,18 @@ const Lookout = {
     return n;
   },
   room(b, except) { return this.isPost(b) ? Math.max(0, this.cfg().cap - this.claimed(b, except)) : 0; },
+  /* ON THE TOWER, OR SENT UP IT (build 150 — operator: "Remove the defend
+     button when archers are on the tower since that's a given… When an
+     archer goes up a tower deselect them… If you select all soldiers in an
+     area, archers in the towers shouldn't be selectable. They should only be
+     selectable when they're on the ground"). `onTower`: on the platform or
+     its stairs — his panel offers no Defend (the tower IS the defence) and
+     no Stop. `sentUp`: that, or walking to a door to man one — a double tap,
+     Group nearby and a banner's recall leave him at his post, so the next
+     order given to the party never brings him down. A tap on the man
+     himself still selects him: that is how he is told what to shoot. */
+  onTower(u) { return !!(u && (u.perch || u.climb)); },
+  sentUp(u) { return !!(u && (u.perch || u.climb || (u.task && u.task.type === 'mantower'))); },
   // the doorstep: open ground beside the tower, the south side first (the
   // stair door faces the camera), else the side nearest `from`
   door(b, from) {
@@ -262,9 +274,10 @@ const Lookout = {
      inside the fence at the top of the tower remains… They just look so so
      small relative to the villagers… It's okay if the archers are a little
      squished next to each other, as long as their bodies stay inside the
-     fence"). He stands 40% taller than the first cut (38 art px → 53): on
-     a free tower about seven tenths of a villager, on a wall tower, whose
-     art is denser, about nine tenths. His places are as far apart as his
+     fence"), and a tenth again at build 150 ("Can we boost archer sizes
+     another 10-20% in size"): 38 art px at the first cut, 53, now 59 — on
+     a free tower about eight tenths of a villager, on a wall tower, whose
+     art is denser, about his height. His places are as far apart as his
      body allows: at rest, whichever way he faces and in every frame, no
      part of him (his bow aside) passes the platform's outer posts; drawing
      his bow, his arm may reach over the side rail by at most a sixth of his
@@ -288,22 +301,22 @@ const Lookout = {
   PLAT: {
     free: [
       { front: '15:41 16-17:39 18:40 19-21:45 22:49 23:50 24:51 25-27:50 28:51 29:49 30:48 31:49 32:51 33:52 34-35:54 36-51:55 52-54:54 55:51 56:49 57:48 58:49 59:51 60-62:50 63:51 64:50 65:49 66-68:45 69:40 70-71:39 72:41',
-        man: 53, feet: 60, slots: [32, 55], solo: 34, art: [88, 114] },
+        man: 59, feet: 60, slots: [34, 53], solo: 34, art: [88, 114] },
       { front: '15:38 16-18:37 19:40 20:42 21-61:48 62:42 63:40 64-67:37 68:38',
-        man: 53, feet: 58, slots: [32, 51], solo: 42, art: [84, 116] },
+        man: 59, feet: 58, slots: [34, 49], solo: 42, art: [84, 116] },
       { front: '12:8 13-19:7 20-21:12 22-23:18 24:14 25-30:12 31:13 32-36:18 37:13 38-45:12 46:13 47-51:18 52:13 53-58:12 59:13 60-61:18 62:13 63-64:12 65-71:7 72:8',
-        man: 53, feet: 27, slots: [29, 55], solo: 34, art: [84, 113] },
+        man: 59, feet: 27, slots: [31, 53], solo: 34, art: [84, 113] },
     ],
     wall: [
       { front: '5:37 6:36 7:35 8-9:34 10:35 11:36 12:35 13-20:44 21-22:45 23-27:44 28-29:45 30-32:46 33-38:45 39-45:44 46-47:45 48-54:44 55:36 56:35 57-58:34 59:35 60:36 61:37',
-        man: 53, feet: 57, slots: [22, 44], solo: 34, art: [68, 90] },
+        man: 59, feet: 57, slots: [25, 41], solo: 34, art: [68, 90] },
       { front: '1:38 2:37 3-4:36 5:37 6:38 7-8:39 9-17:47 18:48 19-49:47 50-51:39 52:37 53-54:36 55:37 56:38',
-        man: 53, feet: 57, slots: [18, 39], solo: 29, art: [58, 91] },
+        man: 59, feet: 57, slots: [21, 36], solo: 29, art: [58, 91] },
       { front: '3:8 4-8:7 9-12:12 13-14:18 15:14 16-21:12 22:13 23-27:18 28:13 29-36:12 37:13 38-42:18 43:13 44-50:12 51-52:18 53:11 54-58:12 59-62:7 63:8',
-        man: 53, feet: 27, slots: [20, 46], solo: 25, art: [65, 85] },
+        man: 59, feet: 27, slots: [23, 43], solo: 25, art: [65, 85] },
     ],
   },
-  PROC: { cy: 0.22, man: 0.59, feet: 0.34, slots: [0.33, 0.67], solo: 0.5 },
+  PROC: { cy: 0.22, man: 0.66, feet: 0.34, slots: [0.33, 0.67], solo: 0.5 },
   // a bow's frame fills its box from `top` to `foot` (the shipped archer,
   // longbow and marksman frames: rows 3 and 31 of 32)
   BODY: { top: 3 / 32, foot: 31 / 32 },
@@ -622,26 +635,27 @@ const Lookout = {
     return (r || CFG.UNITS[this.cfg().kinds[0]].rng || 0) * this.cfg().rangeMult;
   },
 
-  /* THE PLATFORM MAKES A BOW A BETTER ONE (build 149 — operator: "Tougher
-     archers. Hit for more, take less damage. Two archers should be more
-     powerful than the tower by itself previously"). A bow on the platform
-     strikes CFG.LOOKOUT.atk[storey − 1] times as hard (Combat's strike, at
-     units and at works alike) and takes hurt[storey − 1] of every blow that
-     reaches him (Combat.covered, asked where the blow is dealt and before
-     its number is floated): the tower's storey sets both — wattle, timber,
-     stone. Off the platform (on the stairs included) both answer 1, so the
-     old expressions are the old numbers exactly. */
-  storey(u) {
-    const b = u && u.perch ? Bld.get(u.perch) : null;
-    return b ? Math.max(1, Math.min(3, b.level || 1)) : 0;
-  },
-  atkMult(u) { const lv = this.storey(u), a = this.cfg().atk; return lv && a ? (a[lv - 1] || 1) : 1; },
-  hurtMult(u) { const lv = this.storey(u), h = this.cfg().hurt; return lv && h ? (h[lv - 1] || 1) : 1; },
+  /* THE PLATFORM MAKES A BOW A BETTER ONE, THE SAME ON EVERY TOWER (build
+     150 — operator, on build 149's ladder by storey: "the archers just do 50%
+     more than what they do on the ground? No special damage based on the
+     archer type. Better archers on the ground mean better archers in the
+     tower, regardless of the towers level. The only benefit to higher towers
+     is that they're harder to knock down"). A bow on a platform strikes
+     CFG.LOOKOUT.atk (1.5) times his own ground blow — Units.effAtk, every
+     bonus a man standing there would have included — (Combat's strike, at
+     units and at works alike) and takes `hurt` (0.5) of every blow that
+     reaches him (Combat.covered, asked where the blow is dealt and before its
+     number is floated). One figure for every kind of bow and every storey: a
+     better bow on the ground is a better bow up there, and a taller tower is
+     only harder to knock down. Off the platform (on the stairs included)
+     both answer 1, so the old expressions are the old numbers exactly. */
+  onPlatform(u) { return !!(u && u.perch && Bld.get(u.perch)); },
+  atkMult(u) { const a = +this.cfg().atk || 1; return this.onPlatform(u) ? a : 1; },
+  hurtMult(u) { const h = +this.cfg().hurt || 1; return this.onPlatform(u) ? h : 1; },
   cover(u, dmg) { const h = this.hurtMult(u); return h < 1 ? Math.max(1, Math.round(dmg * h)) : dmg; },
-  // the tower panel's words for what its storey gives the bows on it
-  perkLine(lv) {
-    const c = this.cfg(), i = Math.max(1, Math.min(3, lv || 1)) - 1;
-    const a = Math.round(((c.atk && c.atk[i]) || 1) * 100 - 100), h = Math.round(100 - ((c.hurt && c.hurt[i]) || 1) * 100);
+  // the tower panel's words for what the platform gives the bows on it
+  perkLine() {
+    const c = this.cfg(), a = Math.round((+c.atk || 1) * 100 - 100), h = Math.round(100 - (+c.hurt || 1) * 100);
     return (a === 100 ? 'hit twice as hard' : `hit ${a}% harder`) + ', ' + (h === 50 ? 'take half the damage' : `take ${h}% less damage`);
   },
 
@@ -649,7 +663,7 @@ const Lookout = {
   towerLine(b) {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
-    return n ? `🏹 ${n}/${cap} archers on the lookout: twice the reach, ${this.perkLine(b.level)}`
+    return n ? `🏹 ${n}/${cap} archers on the lookout: twice the reach, ${this.perkLine()}`
       : 'No archers on it, so it shoots nothing — select archers, then tap the tower';
   },
   towerButtons(b) {

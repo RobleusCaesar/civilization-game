@@ -247,8 +247,12 @@ const Units = {
     // the levy fights at its own figure — max(), so an armed village's lodge
     // spears (base 2 + 4, above) still count for more, never less
     if (this.isLevied(u)) atk = Math.max(atk, (CFG.LEVY || {}).atk || 5);
-    if (u.owner === 'P' && this.isMilitary(u)) {
-      // Watchtower L3 signal fire aura
+    // Watchtower L3 signal fire aura — for the soldiers on the ground round
+    // it, never a bow up a tower's platform (build 150 — operator: "Better
+    // archers on the ground mean better archers in the tower, regardless of
+    // the towers level"): up there a bow strikes half again his own blow,
+    // Lookout.atkMult, and the storey under him adds nothing to it
+    if (u.owner === 'P' && this.isMilitary(u) && !u.perch) {
       for (const b of S.buildings)
         if (b.owner === 'P' && b.key === 'tower' && b.level >= 3 && Bld.done(b) &&
             Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y) < 6) { atk += 2; break; }

@@ -19,15 +19,19 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 149, date: '2026-11-05', title: 'Archers on the towers',
+    build: 150, date: '2026-11-05', title: 'Archers on the towers',
     items: [
       'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
       'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',
+      'Archers you send up a tower are let go from your selection, so your next tap is a fresh one and never calls them back down.',
       'Archers up there stand inside the platform, behind its rail or its battlements, two side by side.',
       'Tap an archer on a tower, then tap an enemy soldier or building, and he shoots at it from up there.',
+      'Selecting all the soldiers around a spot, grouping nearby soldiers or tapping an army banner leaves the archers on your towers at their posts. Only a tap on the archer himself selects him.',
+      'An archer on a tower has no Defend button, since guarding is what he is up there for.',
       'An archer on a tower sees twice as far, shoots twice as far and shoots over walls. Only archers and siege engines can hit them up there.',
       'Your towers no longer shoot on their own. A tower fights only when archers are on it, so send some up to defend it.',
-      'Archers on a tower hit harder and take less damage, and more so the higher the tower is upgraded. Two archers on a tower outshoot what the tower used to do alone.',
+      'Archers on a tower hit 50 percent harder than they do on the ground and take half the damage. Every kind of archer gets the same boost on every tower, so a better archer on the ground is a better archer up there. Two archers on a tower still outshoot what the tower used to do alone.',
+      'Upgrading a tower makes it harder to knock down. It does not change how hard the archers on it hit.',
       'The Watchfires card now makes the archers on your towers, and your War Camps, hit harder and shoot farther.',
       'If a tower falls, the archers on it fall with it.',
       'Walls now block sight. Soldiers on either side of an unbroken wall can no longer shoot or strike each other through it, until a breach or an open gate lets them see through.',
