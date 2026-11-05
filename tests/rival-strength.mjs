@@ -203,7 +203,18 @@ const out = await p.evaluate(async () => {
      whole war re-times — and the rival's own card (its persona) can change.
      Razings now land d52 / d77 / d176; seed 44's bar moved 150 → 200 for the
      same reason as the HOLD_FLOOR move — the chief still finds, grows,
-     fortifies, brings engines and gets inside, which is the user's bar. */
+     fortifies, brings engines and gets inside, which is the user's bar.
+       Build 148 (the operator: "towers should no longer shoot arrows. Only
+     if they're manned with archers they should shoot") took the eight
+     towers' own volleys away, and with them most of this town's defence:
+     re-measured, razings land d43 / d58 / d55, and two seeds raze the town
+     outright before they need an engine (so ReachesTC3 and DevelopsSiege
+     pass on their own documented "razed instead" branch). Posting the four
+     marksmen on the two towers facing the rival measured d37 / d52 / d52,
+     and all eight towers manned by sixteen marksmen d52 / d51 / d88 — bows
+     on a platform can be shot down, a tower's own volley could not. The
+     scenario is kept as it was, the user's play shape before the rule; the
+     engine road itself is pinned by the direct checks in §2 above. */
   const SEEDS = [
     //            anchor≤  tc3≤  engine≤  raze≤  wallsMin  towersMin
     { seed: '375918148', anchor: 80, tc3: 210, engine: 215, raze: 130, walls: 5, towers: 3 },

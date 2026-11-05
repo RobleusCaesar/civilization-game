@@ -1207,14 +1207,17 @@ await p.evaluate(() => {
     P.x = 15; P.y = 15; Bld._block = null;   // the whole ring on the board
     Screens.show('playing');
     const TL = CFG.TILE;
-    // a tower of the player's, finished, for the Watchfires' reach
+    // a tower of the player's, finished, for the Watchfires' reach — with an
+    // archer up it: since build 148 a player tower shoots only through the
+    // bows posted on it, and the reach the card lengthens is theirs
     const tw = __g.bld('P', 'tower', P.x + 4, P.y + 4);
+    const bow = Units.spawn('archer', 'P', tw.x, tw.y); bow.perch = tw.id; bow.x = tw.x + 0.5; bow.y = tw.y + 0.5;
     Deck._add('watchfires', 3);
     Deck.play('bountiful_land'); Deck.play('watchfires');
     R.cardShows.length = 0;   // the looks as they stand once the plays have played
     const looks = [
       { id: 'bountiful_land', sel: null, c: () => Deck.FX.bountiful_land.centre(), r: () => Deck.FX.bountiful_land.R },
-      { id: 'watchfires', sel: tw.id, c: () => ({ x: Bld.cx(tw), y: Bld.cy(tw) }), r: () => Bld.lv(tw).range * Deck.FX.watchfires.mult.towerRange },
+      { id: 'watchfires', sel: tw.id, c: () => ({ x: Bld.cx(tw), y: Bld.cy(tw) }), r: () => Lookout.crewReach(tw) * Deck.FX.watchfires.mult.towerRange },
     ];
     const C2 = CanvasRenderingContext2D.prototype;
     out.cards = {};
@@ -1292,6 +1295,12 @@ await p.evaluate(() => {
       if (dO) R.drawOrbit = function () { n++; return dO.apply(this, arguments); };
       try { Deck.FX.watchfires.drawGround && Deck.FX.watchfires.drawGround(g, Deck.timed('watchfires')); } finally { R.drawOrbit = dO; }
       out.wfUnselected = n;
+      // …nor round a selected tower nobody stands on (it shoots nothing)
+      let m = 0;
+      bow.perch = null; UI.sel = { type: 'bld', id: tw.id };
+      if (dO) R.drawOrbit = function () { m++; return dO.apply(this, arguments); };
+      try { Deck.FX.watchfires.drawGround && Deck.FX.watchfires.drawGround(g, Deck.timed('watchfires')); } finally { R.drawOrbit = dO; UI.sel = null; }
+      out.wfEmpty = m;
     }
     S.deck.fx = []; R.cardShows.length = 0;
     return out;
@@ -1305,7 +1314,8 @@ await p.evaluate(() => {
   const say = id => per(id).map(o => `${o.orbits} orbits, ${o.rects} rects, arc ${o.arc}°/${o.span}°, ink ${o.near} px/° behind the bead → ${o.far} half way round, thread ${o.width}px < art px ${o.artPx}, ${o.off} px off the circle, gco ${o.gco}`).join(' | ')
     + (r.ok ? '' : ' (no R.drawOrbit)');
   ck('bountifulLandWearsTheOrbitAndNothingElse', orbitOk('bountiful_land'), say('bountiful_land'));
-  ck('andTheWatchfiresReachIsTheOrbit', orbitOk('watchfires') && r.wfUnselected === 0, say('watchfires') + `; unselected: ${r.wfUnselected} orbits`);
+  ck('andTheWatchfiresReachIsTheOrbit', orbitOk('watchfires') && r.wfUnselected === 0 && r.wfEmpty === 0,
+    say('watchfires') + `; unselected: ${r.wfUnselected} orbits; an empty tower selected: ${r.wfEmpty}`);
   ck('theOrbitIsFinerThanTheWorldsPixelArt', fine('bountiful_land') && fine('watchfires'),
     ['bountiful_land', 'watchfires'].map(id => id + ' ' + per(id).map(o => o.width + '/' + o.artPx).join(', ')).join('; ') + (r.ok ? '' : ' (no R.drawOrbit)'));
   ck('andIsRenderStateOnly', r.ok && clean('bountiful_land') && clean('watchfires'),
