@@ -66,16 +66,39 @@
                               side of the hinge to the other in a single
                               frame.
 
-     ONE TILE, BOTH WAYS      Sprites' DB_LEN is one tile of ground, and the
-                              deck is the same board in both states: 30 cells
-                              lying down, 30 cells standing up. The ground is
-                              drawn top-down and is NOT foreshortened, so there
-                              is no cheat factor and no jump in size when it
-                              lands. The canvases are TWO tiles in the fall
-                              direction, and the level-3 gateway was rebuilt
+     ONE TILE, BOTH WAYS      Sprites' DB_LEN is one tile of height: raised,
+                              the deck stands 30 cells tall in the arch it
+                              closes, and the level-3 gateway was rebuilt
                               around the door — a tall plain arch between the
                               turrets, so a full-height deck has somewhere to
-                              stand.
+                              stand. The canvases are TWO tiles in the fall
+                              direction, plus the landing.
+
+     IT LANDS ON THE FAR      Lowered, it reaches from its hinge ACROSS THE
+     BANK                     WHOLE TILE it spans and onto the far bank, in
+                              every view, a mirrored west deck included (the
+                              operator, build 151: "it doesn't quite reach
+                              across a dug channel"). The hinge is the drawn
+                              threshold, a few cells inside the gate's own
+                              tile, so a 30-cell board lying down left four to
+                              nine cells of water past its end. The free end
+                              swings on the ellipse between the two lengths —
+                              smooth and monotone, no jump when it lands.
+
+     A LOWERED DECK IS        Everyone on it stands ON it. When the gatehouse
+     GROUND                   is laid back over a man (R.occludeByForts) the
+                              lowered deck is not (R.deckDown) — it went back
+                              over the men crossing a far-side deck, and they
+                              "walked under the bridge". The gatehouse still
+                              goes over him: under its arch in the passage,
+                              and in front of his feet on a deck beyond the
+                              wall. A deck that is up, or on its way, stands
+                              in the arch like a door and still covers whoever
+                              is behind it. And the north-south deck's walking
+                              face is the line a man's feet are drawn on in
+                              the passage's middle (DB_DRAWN.SGND), so he
+                              crosses ON its planks, not a quarter tile below
+                              them in the water.
 
      TWO VIEWS, NOT ONE       Like the gatehouse it hangs on, the deck has an
      ROTATED                  east-west self (it lies south, toward you) and a
@@ -200,6 +223,35 @@ const out = await p.evaluate(() => {
       face[0].lo > face[face.length - 1].lo + 8 &&
       face[face.length - 1].hi < face[0].hi - 8,
       'down reaches row ' + face[0].lo + ', up climbs to row ' + face[face.length - 1].hi);
+
+    /* IT LANDS ON THE FAR BANK — in every view. Fine cells of the gate's own
+       tile: the tile it spans ends at 64 (south, east) or 0 → -32 (north,
+       west, the tile above / to the left); the deck must lie at least two
+       cells past that edge, on the bank. The west deck is the east strip
+       MIRRORED about MX, so its landing is measured through the mirror. */
+    const geo = Sprites.drawbridgeGeo || {}, pad = geo.pad || 0, MX = geo.MX != null ? geo.MX : 16;
+    const cols = (c) => {
+      const g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
+      let l = -1, r = -1;
+      for (let x = 0; x < c.width; x++) for (let y = 0; y < c.height; y++) {
+        const i = (y * c.width + x) * 4;
+        if (d[i + 3] < 100 || d[i] - d[i + 2] < 26) continue;
+        if (l < 0) l = x; r = x; break;
+      }
+      return { l, r };
+    };
+    const south = face[0].lo / 2 - pad + 0.5;                       // last timber row, in cells
+    const north = rows(fam[2][0]).hi / 2 - pad;                      // first timber row of the far-side deck
+    const east = cols(fam[1][0]).r / 2 + 0.5, west = 2 * MX - east;
+    ck('theLoweredDeckLandsOnTheFarBank',
+      south >= 66 && north <= -2 && east >= 66 && west <= -34,
+      'south to cell ' + south + ' (bank at 64), north to ' + north + ' (bank at 0), east to ' +
+      east.toFixed(1) + ' (bank at 64), west to ' + west.toFixed(1) + ' (bank at -32)');
+    // …while the RAISED deck is still one tile tall in its arch, not the
+    // long lying board stood on end (it would rise over the battlements)
+    const up = face[face.length - 1];
+    ck('andRaisedItIsStillOneTileTall', (up.lo - up.hi) / 2 <= 34,
+      'the raised face deck stands ' + ((up.lo - up.hi) / 2) + ' cells tall');
   }
 
   /* ---------- 2. THE RULES ---------- */
@@ -628,6 +680,94 @@ const out = await p.evaluate(() => {
       Bld._block = null; Bld.blockAt(1, 1);
       ck('andRecomputedWhenTheyDo', Bld._blockGen !== gen0, '');
     }
+  }
+
+  /* ---- 2f-iv. A LOWERED DECK IS GROUND: the men crossing it stand ON it
+     (the operator, build 151: "soldiers walk under the bridge instead of
+     over it. Important that soldiers walk on the bridge and under the
+     gate"). A far-side deck — the one drawn under the gatehouse — with a
+     man on the tile it spans: the frame is drawn with him and without him,
+     and what differs inside his picture is what of him can be SEEN. With
+     the lowered deck laid back over him (the old redraw, put back by hand
+     as the control) the planks hid most of him; now only the gatehouse in
+     front of his feet does. And the gatehouse still goes back over him (he
+     is behind the wall), the lowered deck never — but a RAISED deck does:
+     it stands in the arch like a door. ---- */
+  {
+    G.newGame('db-man', 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+    const t = Bld.tcOf('P'), gy = t.y - 6, gx = t.x;
+    for (let y = gy - 4; y <= gy + 3; y++) for (let x = gx - 6; x <= gx + 6; x++) {
+      const i = MapGen.idx(x, y); S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1;
+    }
+    S.buildings = S.buildings.filter(z => z.key === 'tc' || z.x < gx - 5 || z.x > gx + 5 || z.y < gy - 3 || z.y > gy + 2);
+    let g = null;
+    for (let d = -3; d <= 3; d++) { const nb = Bld.place('P', d === 0 ? 'gate' : 'wall', gx + d, gy, { instant: true }); if (d === 0) g = nb; }
+    S.wallLevel = 3;
+    for (const z of S.buildings) if (z.key === 'wall' || z.key === 'gate') { z.level = 3; z.maxhp = z.hp = CFG.BUILDINGS[z.key].levels[2].hp; z.construction = 0; }
+    g.raised = false; R._dbA[g.id] = 0; Bld._block = null;
+    S.units = S.units.filter(u => Math.hypot(u.x - gx, u.y - gy) > 8);
+    const span = Bld.drawbridgeSpan(g);
+    const man = Units.spawn('elite', 'P', span.x + 0.5, span.y + 0.5);
+    man.x = span.x + 0.5; man.y = span.y + 0.5;
+    ck('theDeckFallsNorthForThisCheck', Bld.gateOutside(g) === -1 && span.y === gy - 1, '');
+    G.freeVis = true; G.updateVisibility(); R.holdBake = false; R.rebuildTerrain(); if (R.ensureTerrain) R.ensureTerrain();
+    R.cam.z = 3; R.centerOn(gx + 0.5, gy);
+    const pn = performance.now.bind(performance); performance.now = () => 123456;   // nothing moves between the two frames
+    const cv = document.getElementById('c'), cx = cv.getContext('2d');
+    const box = () => {
+      const TL = CFG.TILE, B = R.unitBox ? R.unitBox(man) : TL, z = R.cam.z * (R.dpr || 1);
+      const wx0 = man.x * TL - B / 2, wy0 = man.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
+      return { x: Math.round((wx0 - R.cam.x) * z), y: Math.round((wy0 - R.cam.y) * z), w: Math.round(B * z), h: Math.round(B * z) };
+    };
+    const shot = () => { R.draw(0); const k = box(); return cx.getImageData(k.x, k.y, k.w, k.h).data; };
+    const seen = () => {
+      const a = shot(), keep = S.units; S.units = S.units.filter(u => u !== man); const c = shot(); S.units = keep;
+      let n = 0;
+      for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - c[i]) + Math.abs(a[i + 1] - c[i + 1]) + Math.abs(a[i + 2] - c[i + 2]) > 30) n++;
+      return n;
+    };
+    const k0 = box(), sc = document.createElement('canvas'); sc.width = k0.w; sc.height = k0.h;
+    const sg = sc.getContext('2d'); sg.imageSmoothingEnabled = false; sg.drawImage(R.unitSprite(man), 0, 0, k0.w, k0.h);
+    const sd = sg.getImageData(0, 0, k0.w, k0.h).data; let own = 0;
+    for (let i = 3; i < sd.length; i += 4) if (sd[i] > 100) own++;
+    const now = seen();
+    const dd = R.deckDown; R.deckDown = () => false; const old = seen(); R.deckDown = dd;
+    ck('aManOnTheLoweredDeckStandsOnIt', own > 200 && now >= own * 0.7,
+      now + ' of his ' + own + ' pixels seen (' + Math.round(100 * now / Math.max(1, own)) + '%)');
+    ck('andTheProbeSeesTheDeckThatHidHim', old <= own * 0.4,
+      'with the lowered deck laid back over him: ' + old + ' of ' + own);
+    // the redraw over a man: the gatehouse yes, the lowered deck no, a raised one yes
+    const calls = []; const od = R.drawDrawbridge;
+    R.drawDrawbridge = function () { calls.push(1); return od.apply(this, arguments); };
+    let blits = 0; const ob = R.blitBld; R.blitBld = function () { blits++; return ob.apply(this, arguments); };
+    try {
+      R.occludeByForts(cx, man);
+      const downCalls = calls.length, downBlits = blits;
+      g.raised = true; R._dbA[g.id] = 1; Bld._block = null; calls.length = 0;
+      R.occludeByForts(cx, man);
+      ck('theGatehouseStillGoesOverHimTheLoweredDeckNever', downBlits > 0 && downCalls === 0,
+        downBlits + ' blits, ' + downCalls + ' deck draws');
+      ck('butARaisedDeckStandsLikeADoor', calls.length > 0, calls.length + ' deck draws');
+    } finally {
+      R.drawDrawbridge = od; R.blitBld = ob; performance.now = pn;
+      g.raised = false; R._dbA[g.id] = 0; Bld._block = null;
+    }
+    /* THE NORTH-SOUTH DECK'S WALKING FACE IS UNDER HIS FEET: a man walking
+       the passage's middle (u.y at the tile's centre) is drawn with his
+       feet near the foot of his box (TL/2 − SPRITE_LIFT below the centre);
+       the drawn flank deck's plank face (DB_DRAWN.SGND, fine cells of the
+       gate's tile) must sit at his soles, or he walks beside it, in the
+       water. Measured off his own sprite. */
+    const spr = R.unitSprite(man), s2 = document.createElement('canvas'); s2.width = spr.width; s2.height = spr.height;
+    const g2 = s2.getContext('2d'); g2.drawImage(spr, 0, 0);
+    const d2 = g2.getImageData(0, 0, spr.width, spr.height).data; let low = -1;
+    for (let y = spr.height - 1; y >= 0 && low < 0; y--) for (let x = 0; x < spr.width; x++) if (d2[(y * spr.width + x) * 4 + 3] > 100) { low = y; break; }
+    const TL = CFG.TILE, B = R.unitBox ? R.unitBox(man) : TL;
+    const boxBottom = TL / 2 + TL / 2 - CFG.SPRITE_LIFT;              // fine cells of his tile, at its centre
+    const soles = boxBottom - B + (low + 1) * (B / spr.height);
+    const face = Sprites.DB_DRAWN.SGND;
+    ck('theNorthSouthDeckIsUnderHisFeet', face >= soles - 4 && face <= soles + 1,
+      'plank face at cell ' + face + ', his soles at ' + soles.toFixed(1));
   }
 
   // ---- 2g. a legacy save has open gates, and knows it ----

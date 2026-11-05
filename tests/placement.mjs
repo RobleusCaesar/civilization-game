@@ -414,10 +414,13 @@ const out = await p.evaluate(() => {
       UI.enterPlacement('tower');
       /* since build 148 the player's tower shoots only through the bows posted
          on it, so its ring is THEIR reach from the platform: the farthest bow
-         the player fields at twice its own reach, else the base archer's */
+         the player fields at twice its own reach, else the base archer's —
+         and since build 151 no farther than the ground a new tower and a bow
+         on it light (Lookout.sightOf: the bows shoot only what is seen) */
       const tw = frame(), tr = Lookout.postReach('P'), arch = CFG.UNITS.archer.rng * CFG.LOOKOUT.rangeMult;
-      ck('andATowersRangeToo', tw.orbits.length === 1 && tw.orbits[0].r === tr && tr >= arch && tw.dashed === 0,
-        `${tw.orbits.length} orbit(s), radius ${tw.orbits[0] && tw.orbits[0].r} (a bow posted on it reaches ${tr}, a base archer ${arch}); ${tw.dashed} dashed`);
+      const lit = Math.max(CFG.UNIT_VISION * CFG.LOOKOUT.sightMult, CFG.BUILDINGS.tower.levels[0].vision);
+      ck('andATowersRangeToo', tw.orbits.length === 1 && tw.orbits[0].r === tr && tr >= Math.min(arch, lit) && tr <= lit && tw.dashed === 0,
+        `${tw.orbits.length} orbit(s), radius ${tw.orbits[0] && tw.orbits[0].r} (a bow posted on it reaches ${tr}: a base archer doubled ${arch}, the lit ground ${lit}); ${tw.dashed} dashed`);
       UI.exitPlacement();
       // the heal zone: a hurt villager selected by the hall
       const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));

@@ -21,6 +21,16 @@
         stairs — hidden, untappable, out of every reach — then the platform
      §3 two to a tower: a third bow is refused; the panel and the tap say so
      §4 twice the sight and twice the reach, and only bows and engines answer
+     §4a HE SHOOTS ONLY WHAT IS SEEN (build 151 — operator: "archers in the
+        tower can see beyond the lit area. Even with their extended view,
+        they should only be able to shoot visible enemies. Pull in their
+        range so they can't shoot enemies until they're within visible
+        range"): the doubled reach ends at the ground the platform lights
+        (Lookout.sightOf — his doubled sight, or the tower's watch if it is
+        farther), a foe in the dark past it is never struck and one walking
+        into the light is, a foe inside the reach on ground the player cannot
+        see is never marked (Combat.perchSees), and the placement ring is
+        that reach
      §4b the player's tower shoots ONLY through its bows (operator, build
         148: "towers should no longer shoot arrows. Only if they're manned
         with archers they should shoot"): empty, it looses nothing at any
@@ -35,13 +45,15 @@
         (build 149: "Tougher archers. Hit for more, take less damage. Two
         archers should be more powerful than the tower by itself
         previously"; build 150: "just do 50% more than what they do on the
-        ground… regardless of the towers level"): two base archers (and two
-        longbows) on a player tower out-shoot a rival tower firing the old
-        way at every storey; up there every kind of bow, on every storey,
-        hits half again his own ground blow (a better bow on the ground is a
-        better bow up there) and takes CFG.LOOKOUT.hurt of every blow (an
-        engine's stone too), the number floated is the number taken, the
-        panel shows both; off it, nothing
+        ground… regardless of the towers level"; build 151: "Bring damage
+        down to 25% above normal and defense to 25% above normal"): two base
+        archers (and two longbows) on a player tower out-shoot a rival tower
+        firing the old way on the wattle and timber storeys (the stone
+        storey's old volley is now a shade ahead); up there every kind of
+        bow, on every storey, hits CFG.LOOKOUT.atk times his own ground blow
+        (a better bow on the ground is a better bow up there) and takes
+        CFG.LOOKOUT.hurt of every blow (an engine's stone too), the number
+        floated is the number taken, the panel shows both; off it, nothing
      §5 an order off the platform takes the stairs down first, a second hidden
      §6 the tower falls and takes its lookout: dead, a fall on screen, the
         population freed — and one killed up there falls too
@@ -179,7 +191,10 @@ const out = await p.evaluate(() => {
     S.buildings = S.buildings.filter(bb => bb.key === 'tc'); S.units = []; S.peace = false;
     for (let i = 0; i < S.map.terrain.length; i++) { S.map.terrain[i] = T.GRASS; S.map.seenTerrain[i] = T.GRASS; S.map.explored[i] = 1; }
     Bld._block = null;
-    G.freeVis = true;
+    // everything in sight — and the visibility map REDRAWN under it: a bow up
+    // a tower shoots only what the player sees (build 151, Combat.perchSees),
+    // and the map newGame left was laid before freeVis was set
+    G.freeVis = true; G.updateVisibility();
     if (window.Combat) Combat.scanT = 0;
   };
   const put = (k, x, y, lv, owner) => {
@@ -345,7 +360,8 @@ const out = await p.evaluate(() => {
     const a = Units.spawn('archer', 'P', 20, 22);
     Lookout.order(a, t); step(3);
     const base = CFG.UNITS.archer.rng, vis = CFG.UNITS.archer.vision || CFG.UNIT_VISION;
-    ck('aBowOnATowerReachesTwiceAsFar', Math.abs(Combat.reachOf(a) - base * C.rangeMult) < 1e-9, `${Combat.reachOf(a)} vs ${base}`);
+    ck('aBowOnATowerReachesTwiceAsFarWithinWhatItSees', Math.abs(Combat.reachOf(a) - Math.min(base * C.rangeMult, Lookout.sightOf(a))) < 1e-9 && Combat.reachOf(a) > base,
+      `${Combat.reachOf(a)} vs ${base} on the ground, ${base * C.rangeMult} doubled, the platform lights ${Lookout.sightOf(a)}`);
     // sight, measured in the real visibility pass (towers mark their own; read a tile past both)
     G.freeVis = false;
     const far = Math.round(t.x + 0.5 + vis * 1.8) | 0;
@@ -367,6 +383,59 @@ const out = await p.evaluate(() => {
     ck('andShootsWhatOnlyTheDoubledReachCanReach', foe.hp < hp0 && a.perch === t.id, `foe ${hp0} → ${Math.round(foe.hp)} at ${(base * 1.7).toFixed(1)} tiles`);
     ck('aBladeCannotStrikeABowOnATower', !Combat.canEngage(foe, a) && Combat.canEngage(Units.spawn('archer', 'A', 30, 30), a),
       'defender no, archer yes');
+  }
+
+  /* ---- §4a HE SHOOTS ONLY WHAT IS SEEN (build 151) ---- */
+  {
+    clear('lk4a');
+    const t = put('tower', 20, 20, 1);
+    const m = Units.spawn('marksman', 'P', 20, 22);
+    Lookout.order(m, t); step(3);
+    const lit = Lookout.sightOf(m), dbl = CFG.UNITS.marksman.rng * C.rangeMult;
+    const own = (CFG.UNITS.marksman.vision || CFG.UNIT_VISION) * C.sightMult;
+    ck('theReachEndsAtTheLitGround', m.perch === t.id && lit === Math.max(own, Bld.lv(t).vision) && lit < dbl && Combat.reachOf(m) === lit,
+      `a marksman on a level 1 tower: doubled reach ${dbl}, the platform lights ${lit} (his ${own}, the tower's ${Bld.lv(t).vision}), reach ${Combat.reachOf(m)}`);
+    // the real fog from here on: what the player sees is what G.updateVisibility marks
+    G.freeVis = false;
+    const live = (sec, keep) => fight(sec, () => { G.updateVisibility(); keep(); });
+    const fx = 20.5 + lit + 1.6;                    // past the lit ground, inside the old doubled reach
+    const dark = Units.spawn('defender', 'A', fx, 20.5);
+    const hp0 = dark.hp;
+    G.updateVisibility();
+    const unseen = !G.visibleAt(fx | 0, 20);
+    live(6, () => { dark.x = fx; dark.y = 20.5; dark.path = null; dark.tUnit = 0; dark.hp = Math.max(dark.hp, 1); });
+    ck('aFoeInTheDarkIsNeverStruck', unseen && dark.hp === hp0 && m.tUnit !== dark.id,
+      `${(fx - 20.5).toFixed(1)} tiles out, seen ${!unseen}: ${hp0} → ${dark.hp}`);
+    // …and one walking into the light is
+    const nx = 20.5 + lit - 1.2;
+    live(6, () => { dark.x = nx; dark.y = 20.5; dark.path = null; dark.tUnit = 0; dark.hp = Math.max(dark.hp, 1); });
+    ck('andOneWalkingIntoTheLightIs', dark.hp < hp0 && !!G.visibleAt(nx | 0, 20),
+      `${(nx - 20.5).toFixed(1)} tiles out: ${hp0} → ${Math.round(dark.hp)}`);
+    // THE FOG ITSELF IS ASKED: inside the reach, on ground the player cannot see, nothing is marked
+    dark.hp = dark.maxhp; m.tUnit = 0;
+    const vis0 = G.visibleAt, hid = (x, y) => x === (nx | 0) && y === 20;
+    G.visibleAt = function (x, y) { return hid(x, y) ? false : vis0.call(this, x, y); };
+    let hpH = dark.hp;
+    try {
+      fight(6, () => { dark.x = nx; dark.y = 20.5; dark.path = null; dark.tUnit = 0; dark.hp = Math.max(dark.hp, 1); });
+      hpH = dark.hp;
+    } finally { G.visibleAt = vis0; }
+    ck('aFoeInsideTheReachButUnseenIsNeverMarked', hpH === dark.maxhp && Math.hypot(nx - 20.5, 0) < Combat.reachOf(m),
+      `inside the reach (${(nx - 20.5).toFixed(1)} of ${Combat.reachOf(m)}), its tile hidden: ${dark.maxhp} → ${hpH}`);
+    G.freeVis = true; G.updateVisibility();
+    // a stone tower watches farther, so its bows reach farther — never past their own doubled reach
+    clear('lk4a3');
+    const t3 = put('tower', 20, 20, 3);
+    const m3 = Units.spawn('marksman', 'P', 20, 22), a3 = Units.spawn('archer', 'P', 20.4, 22);
+    Lookout.order(m3, t3); Lookout.order(a3, t3); step(4);
+    const w3 = Bld.lv(t3).vision;
+    ck('aTowerThatSeesFartherLetsThemReachFarther', m3.perch === t3.id && a3.perch === t3.id &&
+      Combat.reachOf(m3) === Math.min(dbl, w3) && Combat.reachOf(a3) === Math.min(CFG.UNITS.archer.rng * C.rangeMult, w3),
+      `level 3 watches ${w3}: marksman ${Combat.reachOf(m3)}, archer ${Combat.reachOf(a3)} (doubled ${CFG.UNITS.archer.rng * C.rangeMult})`);
+    // the placement ghost's ring is the reach a bow posted on a new tower would have
+    const ring = Lookout.postReach('P'), L1 = CFG.BUILDINGS.tower.levels[0];
+    ck('andThePlacementRingIsThatReach', ring === Math.min(dbl, Math.max(own, L1.vision)),
+      `ring ${ring} — the farthest bow fielded (a marksman, ${dbl} doubled) on a new tower that watches ${Math.max(own, L1.vision)}`);
   }
 
   /* ---- §4b the player's tower shoots only through its bows (build 148) ---- */
@@ -461,14 +530,16 @@ const out = await p.evaluate(() => {
       }
       rows.push({ lv, old, archer: two.archer, longbow: two.longbow });
     }
-    // (build 150: half again a base archer's own blow, at every storey —
-    // the stone storey's old 19-point volley is the closest race)
-    ck('twoArchersOutshootTheOldTowerAtEveryStorey', rows.every(r => r.archer > r.old),
+    // (build 151: a quarter again a base archer's own blow, every storey —
+    // the operator brought it down from build 150's half again. Two still
+    // out-shoot the old wattle and timber towers; the stone storey's old
+    // 19-point volley is now a shade ahead, and the row says by how much)
+    ck('twoArchersOutshootTheOldTowerOnTheTimberStoreys', rows.filter(r => r.lv < 3).every(r => r.archer > r.old),
       rows.map(r => `Lv${r.lv}: two archers ${r.archer} vs the old tower ${r.old} (${(r.archer / Math.max(1, r.old)).toFixed(2)}x)`).join('; '));
     // the longbow is the slow bow (a blow every 1.4 swings, 6 to the
-    // archer's 7): half again his own blow out-shoots the timber storeys'
-    // old fire, and comes short of the stone tower's 19-point volley (build
-    // 150 — the storey adds nothing to a bow's blow)
+    // archer's 7): a quarter again his own blow out-shoots the timber
+    // storeys' old fire, and comes short of the stone tower's 19-point
+    // volley (build 150 — the storey adds nothing to a bow's blow)
     ck('andSoDoTwoLongbowsOnTheTimberStoreys', rows.filter(r => r.lv < 3).every(r => r.longbow > r.old),
       rows.map(r => `Lv${r.lv}: two longbows ${r.longbow} vs ${r.old}`).join('; '));
 
@@ -492,7 +563,7 @@ const out = await p.evaluate(() => {
       // the game's own figures (the L3 signal fire and home turf ride effAtk)
       const ground = Math.max(1, Math.round(Units.effAtk(r) - Units.effDef(a)));
       trade.push({ lv, ours, theirs, aLost: aHp - a.hp, rLost: rHp - r.hp, ground,
-        hit: Math.max(1, Math.round(Units.effAtk(a) * 1.5 - Units.effDef(r))),
+        hit: Math.max(1, Math.round(Units.effAtk(a) * C.atk - Units.effDef(r))),
         take: Math.max(1, Math.round(ground * C.hurt)),
         shown: UI.atkShown ? UI.atkShown(a) : -1, base: Math.round(Units.effAtk(a)), perched: a.perch === t.id });
     }
@@ -526,7 +597,11 @@ const out = await p.evaluate(() => {
     UI.deselect && UI.deselect();
     ck('offThePlatformABowIsItself', Lookout.atkMult(g) === 1 && Combat.covered(g, 7) === 7 && UI.atkShown(g) === CFG.UNITS.archer.atk,
       `atk ×${Lookout.atkMult(g)}, a 7 blow takes ${Combat.covered(g, 7)}, panel ATK ${UI.atkShown(g)}`);
-    ck('andTheTowerSaysWhatThePlatformGives', /hit 50% harder/.test(tline) && /take half the damage/.test(tline), tline);
+    // build 151 (operator: "Bring damage down to 25% above normal and defense
+    // to 25% above normal"): a quarter again his blow, a quarter tougher
+    ck('aQuarterHarderAndAQuarterTougher', C.atk === 1.25 && Math.abs(1 / C.hurt - 1.25) < 1e-9, `atk ×${C.atk}, hurt ×${C.hurt}`);
+    const pa = Math.round(C.atk * 100 - 100), pt = Math.round(100 / C.hurt - 100);
+    ck('andTheTowerSaysWhatThePlatformGives', tline.includes(`hit ${pa}% harder`) && tline.includes(`${pt}% tougher`) && /shoot all the tower sees/.test(tline), tline);
 
     // HALF AGAIN, EVERY BOW, EVERY STOREY (build 150): the platform's figure
     // is one number — no kind of bow and no storey of tower moves it — so a
@@ -550,7 +625,7 @@ const out = await p.evaluate(() => {
         S.units = S.units.filter(o => o !== u);
       }
     }
-    ck('halfAgainForEveryBowAtEveryStorey', grid.length === 9 && grid.every(g => g.perched && g.atk === 1.5 && g.hurt === C.hurt && g.shown === Math.round(g.ground * 1.5)),
+    ck('oneBoostForEveryBowAtEveryStorey', grid.length === 9 && grid.every(g => g.perched && g.atk === C.atk && g.hurt === C.hurt && g.shown === Math.round(g.ground * C.atk)),
       grid.map(g => `Lv${g.lv} ${g.kind}: ×${g.atk}, takes ×${g.hurt}, ATK ${g.shown} (ground ${Math.round(g.ground)})`).join('; '));
     const byKind = k => grid.filter(g => g.kind === k && g.lv === 1)[0];
     ck('aBetterBowOnTheGroundIsABetterBowUpThere', byKind('marksman').shown > byKind('archer').shown && byKind('archer').shown > byKind('longbow').shown,
@@ -559,7 +634,7 @@ const out = await p.evaluate(() => {
     // stone tower — the stone tower's signal fire lifts the ground round it,
     // never the bows on its own platform
     const sameAtL = k => new Set(grid.filter(g => g.kind === k).map(g => g.shown)).size === 1;
-    ck('andTheTowersStoreyAddsNoBlow', ['archer', 'longbow', 'marksman'].every(sameAtL) && C.atk === 1.5 && !Array.isArray(C.atk) && !Array.isArray(C.hurt) &&
+    ck('andTheTowersStoreyAddsNoBlow', ['archer', 'longbow', 'marksman'].every(sameAtL) && typeof C.atk === 'number' && C.atk > 1 && !Array.isArray(C.atk) && !Array.isArray(C.hurt) &&
       fireOnTheGround === CFG.UNITS.archer.atk + 2,
       `ATK by storey: ${['archer', 'longbow', 'marksman'].map(k => k + ' ' + grid.filter(g => g.kind === k).map(g => g.shown).join('/')).join(', ')}; CFG.LOOKOUT.atk ${JSON.stringify(C.atk)}, hurt ${JSON.stringify(C.hurt)}; an archer on the ground by the stone tower ${fireOnTheGround} (its signal fire)`);
   }

@@ -7433,21 +7433,23 @@ const R = {
     const fr = Math.max(0, Math.min(fam.length - 1, Math.round(a * (fam.length - 1))));
     // TWO tiles in the direction the deck falls — it spans a whole one — plus
     // `pad` rows above the tile for the drawn gatehouse's high winches
-    const geo = Sprites.drawbridgeGeo || {}, cpx = bw / 32, pad = (geo.pad || 0) * cpx;
+    // …and `ext` past the second tile, where the lowered deck lands on the
+    // far bank (Sprites' LAND — it reaches across the whole tile it spans)
+    const geo = Sprites.drawbridgeGeo || {}, cpx = bw / 32, pad = (geo.pad || 0) * cpx, ext = (geo.ext || 0) * cpx;
     if (away) {
       // the gate's tile is the BOTTOM half of that canvas; the tile above it is
       // the ground beyond the wall
-      g.drawImage(fam[fr], bx, by - bw - pad, bw, bw * 2 + pad);
+      g.drawImage(fam[fr], bx, by - bw - pad, bw, bw * 2 + pad + ext);
     } else if (vert) {
       if (dir < 0) {                          // …falling WEST: mirror about the block's own middle
         const mx = bx + (geo.MX != null ? geo.MX : 16) * cpx;
         g.save();
         g.translate(mx, 0); g.scale(-1, 1); g.translate(-mx, 0);
-        g.drawImage(fam[fr], bx, by - pad, bw * 2, bw + pad);
+        g.drawImage(fam[fr], bx, by - pad, bw * 2 + ext, bw + pad);
         g.restore();
-      } else g.drawImage(fam[fr], bx, by - pad, bw * 2, bw + pad);
+      } else g.drawImage(fam[fr], bx, by - pad, bw * 2 + ext, bw + pad);
     } else {
-      g.drawImage(fam[fr], bx, by - pad, bw, bw * 2 + pad);
+      g.drawImage(fam[fr], bx, by - pad, bw, bw * 2 + pad + ext);
     }
   },
   /* ---- THE EARLY GATES WORK TOO (tests/drawbridge.mjs) ----
@@ -7567,9 +7569,24 @@ const R = {
     if (cx1 <= cx0 || cy1 <= cy0) return 0;
     g.save();
     g.beginPath(); g.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); g.clip();
-    for (let i = k; i < list.length; i++) this._redrawPic(g, list[i]);
+    for (let i = k; i < list.length; i++) this._redrawPic(g, list[i], fortsOnly);
     g.restore();
     return list.length - k;
+  },
+  /* A LOWERED DECK IS GROUND (the operator, build 151: "soldiers walk under
+     the bridge instead of over it… Important that soldiers walk on the bridge
+     and under the gate"). The deck lying over the ditch is as flat as the
+     road: everyone on it or beyond it stands ON it, so when the gatehouse is
+     laid back over a man (occludeByForts) the deck is not — it went back over
+     the men crossing it, a far-side deck over their whole bodies. The
+     gatehouse still goes over him: in its passage he is under the arch, and
+     on a deck beyond the wall the wall stands in front of his feet. A deck
+     that is up, or on its way, stands in the arch like a door and still
+     covers whoever is behind it. Render only. */
+  deckDown(b) {
+    if (!b || b.key !== 'gate' || b.raised || !Bld.canDrawbridge(b)) return false;
+    const a = this._dbA[b.id];
+    return a == null || a < 0.02;
   },
   // where a building's picture can land, in world px: its footprint, its
   // art's own rect (tall art overhangs up), a fortification's whole FORT_GEO
@@ -7585,24 +7602,26 @@ const R = {
       if (f && f._cfArt) add(this.artRect(f, bx, by, bw, bw));
       add({ x: bx - bw * 0.5, y: by - bw * 1.2, w: bw * 2, h: bw * 2.6 });
     }
-    if (b.key === 'gate') add({ x: bx - bw, y: by - bw * 1.6, w: bw * 3, h: bw * 3.6 });   // the deck, either way
+    if (b.key === 'gate') add({ x: bx - bw * 1.25, y: by - bw * 1.6, w: bw * 3.5, h: bw * 3.85 });   // the deck, either way, onto the far bank
     return { x0: x0 - 1, y0: y0 - 1, x1: x1 + 1, y1: y1 + 1 };
   },
   // a FINISHED building's picture again, exactly as the building pass laid it
   // (the bond under a tower, the deck and doors round a gate, the walk over
   // a tower's foot) — the opaque layers only: smoke and light are never
   // laid twice, or they would darken inside the clip
-  _redrawPic(g, b) {
+  _redrawPic(g, b, overMan) {
     const TL = CFG.TILE, bs = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = bs * TL;
     const spr = this.wornSprite(b);
     if (!spr) return;
+    // over a man, a lowered deck stays under him (deckDown)
+    const deck = !(overMan && this.deckDown(b));
     if (b.key === 'tower') this.drawTowerBond(g, b, bx, by, bw);
-    if (b.key === 'gate') { this.drawDrawbridge(g, b, bx, by, bw, 0, false); this.drawGateWorks(g, b, bx, by, bw, 0, false); }
+    if (b.key === 'gate') { if (deck) this.drawDrawbridge(g, b, bx, by, bw, 0, false); this.drawGateWorks(g, b, bx, by, bw, 0, false); }
     // its footing's standing things go back with it, in the pass's own order (js/footing.js)
     if (window.Footing && Footing.back) Footing.back(g, b);
     this.blitBld(g, spr, bx, by, bw, bw);
     if (b.key === 'tower') { this.drawTowerWalk(g, b, bx, by, bw); if (window.Lookout) Lookout.draw(g, b); }
-    if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
+    if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); if (deck) this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
     if (window.Footing && Footing.front) Footing.front(g, b);
     if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
   },

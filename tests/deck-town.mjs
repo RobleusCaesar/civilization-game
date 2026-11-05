@@ -545,9 +545,12 @@ await p.evaluate(({ TOWN }) => {
     };
     const def = CFG.UNITS.defender.def;
     /* THE BOWS ON A PLAYER TOWER. A longbow (it never misses), on a level-2
-       tower: its doubled reach is the base; the card lengthens it by half */
+       tower: its doubled reach, ended at the ground the platform lights
+       (build 151, Lookout.sightOf — the tower's watch, or the bow's doubled
+       sight), is the base; the card lengthens it by half */
     const LB = { key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', crew: ['longbow'] };
-    const R0 = CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult;
+    const R0 = Math.min(CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult,
+      Math.max((CFG.UNITS.longbow.vision || CFG.UNIT_VISION) * CFG.LOOKOUT.sightMult, Bld.lv({ key: 'tower', level: 2 }).vision));
     // an unmanned player tower shoots nothing, with the card or without
     const bare0 = shoot({ key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', dist: 3, card: false });
     const bare1 = shoot({ key: 'tower', lvl: 2, owner: 'P', foeOwner: 'A', dist: 3, card: true });
@@ -562,13 +565,14 @@ await p.evaluate(({ TOWN }) => {
     // …and not past it
     const past = shoot({ ...LB, dist: R0 * 1.55, card: true });
     out.notPast = past.lost === 0;
-    /* …and the farther band only takes what the watch can SEE: the same foe
-       with its ground in the fog draws no arrow (an engine never shells
-       ground it can't watch), while inside the bows' own reach the fog
-       changes nothing — that is their reach, as it always was */
+    /* …and the bows take only what the watch can SEE: the same foe with its
+       ground in the fog draws no arrow (an engine never shells ground it
+       can't watch) — in the farther band, and since build 151 inside the
+       bows' own reach too (the operator: "they should only be able to
+       shoot visible enemies"); the same foe in sight is shot (near1 below) */
     const fog = shoot({ ...LB, dist: R0 * 1.3, card: true, hide: true });
     const fogNear = shoot({ ...LB, dist: 3, card: true, hide: true });
-    out.fog = fog.lost === 0 && fog.floats.length === 0 && fogNear.lost > 0;
+    out.fog = fog.lost === 0 && fog.floats.length === 0 && fogNear.lost === 0 && fogNear.floats.length === 0;
     // the arrows: inside the old reach, 50% harder
     const near0 = shoot({ ...LB, dist: 3, card: false }), near1 = shoot({ ...LB, dist: 3, card: true });
     out.harder = near0.lost > 0 && near0.lost % per0 === 0 && near1.lost % per === 0 &&
@@ -642,7 +646,9 @@ await p.evaluate(({ TOWN }) => {
     // the play's ring: the bows' reach on the manned tower, none round the empty one
     const sh = R.cardShows.find(s => s.id === 'watchfires');
     const fm = sh && sh.list.find(f => f.id === t.id), fb = sh && sh.list.find(f => f.id === bare.id);
-    out.show = !!fm && !!fb && fm.r0 === R0 && fm.r1 === R0 * 1.5 && fb.r0 === 0 && fb.r1 === 0;
+    // (this tower is a level-1 one: its longbow's reach ends at the ground IT lights)
+    const Rt = Math.min(CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult, Lookout.sightOf(lb));
+    out.show = !!fm && !!fb && fm.r0 === Rt && fm.r1 === Rt * 1.5 && fb.r0 === 0 && fb.r1 === 0;
     const until = e.until;
     Deck.play('watchfires');
     out.longer = Math.abs(Deck.timed('watchfires').until - (until + 6)) < 1e-9 && Deck.mult('towerAtk', 'P', t) === 1.5;
@@ -656,7 +662,7 @@ await p.evaluate(({ TOWN }) => {
   ck('anEmptyTowerShootsNothingCardOrNot', r.bare, `arrows from a player tower with nobody up: ${r.bareN[0]} without the card, ${r.bareN[1]} with`);
   ck('watchfiresReachHalfAgainAsFar', r.reach && r.notPast, `a foe at 1.3× the bows' old reach takes ${r.far1} (shots of ${r.per}); at 1.55× nothing ${r.notPast}`);
   ck('andHitHalfAgainAsHard', r.harder, `inside the old reach: ${r.near[0]} → ${r.near[1]}`);
-  ck('theFartherReachTakesOnlyWhatTheWatchCanSee', r.fog, 'a foe in the fog past the old reach draws no arrow and no float; inside it the bows shoot as ever');
+  ck('theBowsTakeOnlyWhatTheWatchCanSee', r.fog, 'a foe in the fog draws no arrow and no float — past the old reach, and inside it too (build 151)');
   ck('aWarCampBurnsToo', r.camp);
   ck('theRivalsTowersNever', r.rival);
   ck('theBurningArrowIsTheWatchfiresAndThePlayersAlone', r.fireLook,
@@ -1650,7 +1656,8 @@ await p.evaluate(({ TOWN }) => {
     // two rings of fire-dots were "a little pixelated and low quality").
     // Since build 148 a player tower shoots only through its bows, so with
     // nobody up there is no reach to show
-    const RB = CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult;
+    // (its reach ends at the ground the platform lights — build 151)
+    const RB = Math.min(CFG.UNITS.longbow.rng * CFG.LOOKOUT.rangeMult, Lookout.sightOf({ kind: 'longbow', owner: 'P', perch: tw.id }));
     const big = document.createElement('canvas'), R1 = RB * WF.mult.towerRange * TL, S2 = Math.ceil(R1 * 2 + 40);
     big.width = big.height = S2;
     const bg = big.getContext('2d'); bg.translate(-(Bld.cx(tw) * TL - S2 / 2), -(Bld.cy(tw) * TL - S2 / 2));

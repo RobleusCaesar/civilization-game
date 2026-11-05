@@ -19,7 +19,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 150, date: '2026-11-05', title: 'Archers on the towers',
+    build: 151, date: '2026-11-05', title: 'Archers on the towers',
     items: [
       'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
       'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',
@@ -28,13 +28,15 @@ const PATCH_NOTES = [
       'Tap an archer on a tower, then tap an enemy soldier or building, and he shoots at it from up there.',
       'Selecting all the soldiers around a spot, grouping nearby soldiers or tapping an army banner leaves the archers on your towers at their posts. Only a tap on the archer himself selects him.',
       'An archer on a tower has no Defend button, since guarding is what he is up there for.',
-      'An archer on a tower sees twice as far, shoots twice as far and shoots over walls. Only archers and siege engines can hit them up there.',
+      'An archer on a tower sees twice as far and shoots over walls. He shoots only enemies you can see, and no farther than the lit ground around his tower. Only archers and siege engines can hit them up there.',
       'Your towers no longer shoot on their own. A tower fights only when archers are on it, so send some up to defend it.',
-      'Archers on a tower hit 50 percent harder than they do on the ground and take half the damage. Every kind of archer gets the same boost on every tower, so a better archer on the ground is a better archer up there. Two archers on a tower still outshoot what the tower used to do alone.',
-      'Upgrading a tower makes it harder to knock down. It does not change how hard the archers on it hit.',
+      'Archers on a tower hit 25 percent harder and are 25 percent tougher than they are on the ground. Every kind of archer gets the same boost on every tower, so a better archer on the ground is a better archer up there.',
+      'Upgrading a tower makes it harder to knock down, and a taller tower sees a little farther, so its archers can shoot a little farther. It does not change how hard they hit.',
       'The Watchfires card now makes the archers on your towers, and your War Camps, hit harder and shoot farther.',
       'If a tower falls, the archers on it fall with it.',
       'Walls now block sight. Soldiers on either side of an unbroken wall can no longer shoot or strike each other through it, until a breach or an open gate lets them see through.',
+      'A lowered drawbridge now reaches all the way across the ditch in front of its gate and rests on the far bank.',
+      'Soldiers crossing a drawbridge walk on top of it, and pass under the arch of the gate as they go through.',
     ],
   },
   {

@@ -250,7 +250,7 @@ const Units = {
     // Watchtower L3 signal fire aura — for the soldiers on the ground round
     // it, never a bow up a tower's platform (build 150 — operator: "Better
     // archers on the ground mean better archers in the tower, regardless of
-    // the towers level"): up there a bow strikes half again his own blow,
+    // the towers level"): up there a bow strikes CFG.LOOKOUT.atk times his own blow,
     // Lookout.atkMult, and the storey under him adds nothing to it
     if (u.owner === 'P' && this.isMilitary(u) && !u.perch) {
       for (const b of S.buildings)

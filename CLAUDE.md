@@ -231,7 +231,7 @@ node tests/wonder.mjs          # the second way to win: one of ten 3×3 monument
 node tests/gold-mine.mjs       # gold seams are found, claimed, worked and held — and the seam outlives the mine
 node tests/raider-camps.mjs    # barbarian camps are standing, tended, burnable ground — the wild country has owners
 node tests/mortality.mjs       # a villager dies every so often, of something apt — and their post is left empty
-node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis (a north-south L2: doors), L3 drawbridge (a north-south L3: along the road under the arch); sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp
+node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis (a north-south L2: doors), L3 drawbridge (a north-south L3: along the road under the arch); sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp; lowered, the deck lands on the far bank in every view and a man crossing stands ON it (the gatehouse over him, a lowered deck never; the north-south deck's planks at his soles)
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed; the order's own button BECOMES the call-off (upgrades, sites, the wall works, a span's reinforcing); every panel two buttons to a row, none full width unless alone
@@ -292,7 +292,7 @@ node tests/roads.mjs         # the road builder: Road beside House arms the line
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
-node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits half again his own ground blow and takes half, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower at every storey, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
@@ -326,7 +326,9 @@ carried out (`down(u, {task})`); an attack ORDER past its reach climbs down
 and pursues; the tower's panel ("Archers down") and the bow's own ("Climb
 down") bring them to the door; an upgrade sends them down; a demolition puts
 them on the ground at once (`evict`). **UP THERE** a bow sees `sightMult` and
-reaches `rangeMult` as far (`Combat.reachOf`, `G.updateVisibility`), never
+reaches `rangeMult` as far (`Combat.reachOf`, `G.updateVisibility`) — but
+never past the ground the platform lights and never at anything the player
+cannot see (**HE SHOOTS ONLY WHAT IS SEEN** below) — never
 chases (a mark past the reach is dropped), and can be struck only by bows
 and engines; the rival's bows rank it `preferBonus` (6) tiles nearer than it
 stands in `Combat.bestFoe` — so its archers mark the towers first and walk
@@ -346,7 +348,27 @@ landings, the engine road) is unchanged: a tower can be manned in a second.
 `perchFire`): the card's 'towerRange' and 'towerAtk' land on the player's
 bows up there — reach in `reachOf`, the blow in the strike (one expression,
 ×1 off the platform), the farther band only on ground the player sees, the
-burning arrow only while the card runs. **THE PLATFORM MAKES A BOW A BETTER ONE,
+burning arrow only while the card runs. **HE SHOOTS ONLY WHAT IS SEEN**
+(`Lookout.sightOf`, `Combat.reachOf` / `perchSees` / `perchSeesBld`;
+tests/tower-garrison.mjs §4a — operator, build 151: "archers in the tower
+can see beyond the lit area. Even with their extended view, they should
+only be able to shoot visible enemies. Pull in their range so they can't
+shoot enemies until they're within visible range"): a bow's doubled reach
+ENDS at the radius the platform LIGHTS round him — his own doubled sight
+(vision × `sightMult`, 6) or the tower's watch (its level's vision, the
+Warden's bonus) where that is farther, through the same `G.sightIn` the
+fog's two marks use, so an eclipse pulls both in. An archer (doubled 7)
+reaches 6 on a wattle tower and 7 above it; a longbow or a marksman
+(doubled 10) 6 / 7 / 8 by storey — a taller tower's wider watch is the one
+thing besides its health a storey gives its bows. And every mark a player's
+bow takes or keeps, a soldier or a building, must stand on ground the
+player SEES (`G.visibleAt`), inside the reach as well as in the Watchfires'
+farther band (×1.5 laid on the clamped reach). `Lookout.crewReach` and
+`postReach` (the Watchfires orbit, the placement ghost's ring) are the
+clamped reach. The rival mans no tower, so the fog gate asks the player's
+bows alone. A test that drives combat must REDRAW the visibility map after
+setting `G.freeVis` (`G.updateVisibility()`): newGame lays it first, and a
+stale map hides the foe from the bows. **THE PLATFORM MAKES A BOW A BETTER ONE,
 THE SAME ON EVERY TOWER** (`CFG.LOOKOUT.atk` / `hurt`, `Lookout.atkMult` /
 `hurtMult` / `cover`, `Combat.covered`, `UI.atkShown` — operator, build 149:
 "Tougher archers. Hit for more, take less damage. Two archers should be more
@@ -355,23 +377,27 @@ ladder by storey: "That's way too much of a damage boost. How about the
 archers just do 50% more than what they do on the ground? No special damage
 based on the archer type. Better archers on the ground mean better archers
 in the tower, regardless of the towers level. The only benefit to higher
-towers is that they're harder to knock down"): up there a bow strikes `atk`
-(1.5) times his own ground blow (`Units.effAtk`) — at units and at works,
+towers is that they're harder to knock down"; then build 151: "Bring damage
+down to 25% above normal and defense to 25% above normal" — a quarter again
+his blow, and a quarter tougher: `hurt` is 1/1.25, a man who takes a quarter
+more punishment before he falls): up there a bow strikes `atk`
+(1.25) times his own ground blow (`Units.effAtk`) — at units and at works,
 folded into the strike's one expression beside the Watchfires — and takes
-`hurt` (0.5) of every blow, asked where each blow that can reach him is
+`hurt` (0.8) of every blow, asked where each blow that can reach him is
 dealt (a bow's arrow, an engine's stone or bolt AS IT LANDS, a tower's
 volley) and before its number is floated, so the number shown is the number
 taken; `Units.damage` is untouched (a falling tower still kills). ONE
-FIGURE for every kind of bow and every storey: an archer reads ATK 11 on a
-wattle, a timber and a stone tower alike, a marksman 17, a longbow 9 — and
+FIGURE for every kind of bow and every storey: an archer reads ATK 9 on a
+wattle, a timber and a stone tower alike, a marksman 14, a longbow 8 — and
 the level-3 tower's SIGNAL FIRE (+2 to the soldiers round it, `effAtk`)
 lifts the ground, never the bows on its own platform (`!u.perch`), or the
 storey would add a blow. A storey adds health (and its own sight) alone.
 Measured against a RIVAL tower, which still fires the old way: two base
-archers out-shoot it 5.5x / 1.7x / 1.2x at Lv1/2/3 over 30 s, two longbows
-(the slow bow) at the timber storeys but not the stone one's 19-point
-volley. The unit panel's ATK and the tower's line ("hit 50% harder, take
-half the damage") say so. Off the platform both answer 1: the old
+archers out-shoot it 4.25x / 1.30x at the wattle and timber storeys over
+30 s and come a shade short of the stone storey's 19-point volley (0.92x,
+the price of build 151's quarter), two longbows (the slow bow) at the timber
+storeys too. The unit panel's ATK and the tower's line ("they shoot all the
+tower sees, hit 25% harder and are 25% tougher") say so. Off the platform both answer 1: the old
 expressions, byte for byte. **AT HIS POST, NOT IN A PARTY** (`Lookout.onTower`
 / `sentUp`, `UI.sentUp` / `onTower` / `defendOffered` / `stopOffered` /
 `shedClimbers` — operator, build 150: "Remove the defend button when
@@ -5459,13 +5485,36 @@ generations, or it reads a stale deck while `_blockGen` is still the old number.
 `deckSide` / `deckFaceAway` / `tileDB`): eight stills per orientation, frame 0
 fully down and the last fully up — raising and lowering are the SAME strip read
 one way or the other — drawn over the finished gate by `R.drawDrawbridge`.
-**ONE TILE, BOTH WAYS**: the deck is a FULL TILE long (`DB_LEN` 30 fine cells of
-a 32-cell tile), because a bridge that lands mid-moat crosses nothing. So the
-canvases are TWO TILES in the fall direction, the second hanging off the side
-the deck falls toward: the east-west face is 1 wide × 2 TALL (it lies south,
-toward you), the north-south flank 2 WIDE × 1 (the passage runs east-west, so it
-lies east). Two authored views, like the gatehouse itself — neither is the other
-rotated. The same board stands up as lies down; nothing grows on landing.
+**ONE TILE TALL, AND IT LANDS ON THE FAR BANK** (operator, build 151: "when
+a soldier walks to a level 3 drawbridge it doesn't quite reach across a dug
+channel and soldiers walk under the bridge instead of over it. Important
+that soldiers walk on the bridge and under the gate"): raised, the deck
+stands `DB_LEN` (30 fine cells) tall in the arch it closes; LOWERED it
+reaches from its hinge ACROSS THE WHOLE TILE it spans and `LAND` (3) cells
+onto the far bank, in every view (sprites.js `REACH` per view; a
+west-falling flank deck is the east strip mirrored about `MX`, whose hinge
+stands 2·(MX − 16) farther from its bank, so the shared strip reaches far
+enough for both). The hinge is the drawn threshold, a few cells INSIDE the
+gate's own tile, so a 30-cell board lying down used to leave four to nine
+cells of water past its end. The free end swings on the ellipse between the
+two lengths — smooth and monotone, no jump on landing. The canvases are TWO
+TILES in the fall direction plus `EXT` (9) cells for the landing
+(`Sprites.drawbridgeGeo.ext`, read by `R.drawDrawbridge`): the east-west face
+is 1 wide × 2 TALL (it lies south, toward you), the north-south flank 2 WIDE
+× 1 (the passage runs east-west, so it lies east). Two authored views, like
+the gatehouse itself — neither is the other rotated.
+**A LOWERED DECK IS GROUND** (`R.deckDown`, `_redrawPic`'s `overMan`): when
+the gatehouse is laid back over a man (`R.occludeByForts` → `redrawFront`)
+the lowered deck is NOT — it went back over everyone crossing a far-side
+deck (the one drawn under the gatehouse), and they walked under the bridge.
+The gatehouse still goes over him: under its arch in the passage, and in
+front of his feet on a deck beyond the wall. A deck that is up, or on its
+way (`R._dbA` ≥ 0.02), stands in the arch like a door and still covers
+whoever is behind it. And the north-south deck's plank face
+(`DB_DRAWN.SGND` 25) is the line a man's feet are drawn on when he walks
+the passage's middle (his box foot is TL/2 − SPRITE_LIFT below the tile's
+centre), so he crosses ON the planks; at 18, mid-doorway, he walked a
+quarter tile below them, in the water.
 **A bigger door needs a plainer gateway.** A full-tile deck stood upright fills
 the whole archway, so `gateFaceT3`'s central block was widened (`A0/A1` 11..20,
 `AT` 14) and its machicolated gallery over the passage dropped for a plain coped
@@ -5473,12 +5522,12 @@ head — the turrets keep theirs, so the gatehouse still reads as a gatehouse
 while the raised deck has somewhere to be. The chains hang from winches at the
 TURRET heads (row 6) rather than off the gallery that is no longer there.
 **Do not "fix" the edge-on frames.** The face view uses the honest projection —
-`yEnd = GND + LEN·cosθ·FORE − LEN·sinθ`, the ground reach at `FORE` 1 now that
-the deck must cover a whole tile of ground — which walks the free end SMOOTHLY
+`yEnd = GND + REACH·cosθ·FORE − LEN·sinθ` (REACH the lying length onto the far
+bank, LEN the standing height), the ground reach at `FORE` 1 — which walks the free end SMOOTHLY
 across the hinge, through a two-row slab mid-swing that is exactly what a deck
 pointing at the camera looks like. Taking a `max()` of the two terms to keep it
 "visible" teleports the deck from one side of the hinge to the other in a single
-frame. The away view's extent curve is `LEN·cos(θ)^1.6·0.94 + 1.5` rather than a
+frame. The away view's extent curve is `(REACH − 1.5)·cos(θ)^1.6 + 1.5` rather than a
 plain cosine: at this length a plain cosine rounds frames 0 and 1 to the same
 pixels and the strip reads as a stutter.
 **The swing is render state** (`R._dbA`, eased per gate id): never on the
