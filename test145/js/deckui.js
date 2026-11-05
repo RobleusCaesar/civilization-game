@@ -1216,14 +1216,14 @@ const DeckUI = {
   _spray(L, dest, cx, cy, start, dur, rank) {
     const per = Math.min(10, 4 + rank * 2);
     for (const ch of dest.chips) {
-      const ic = ch.res && Sprites.icons[ch.res];
+      // the goods wear the chip's own drawn icon (build 154: the bar's icons
+      // are vectors in its markup), so what flies is what it lands on
+      const ic = ch.res && document.querySelector(`#topbar .ric[data-ic="${ch.res}"]`);
       for (let i = 0; i < per; i++) {
         let cv;
         if (ic) {
-          cv = document.createElement('canvas');
-          cv.className = 'dkGood';
-          cv.width = cv.height = 16;
-          cv.getContext('2d').drawImage(ic, 0, 0, 16, 16);
+          cv = ic.cloneNode(true);
+          cv.setAttribute('class', 'dkGood');
           L.insertBefore(cv, L.querySelector(':scope > .dkFCard'));
         } else cv = this._bit(L, 'dkSpark trail');
         cv.style.left = cx + 'px'; cv.style.top = cy + 'px';
@@ -1257,9 +1257,14 @@ const DeckUI = {
         // appear (beside the tribe) — and so does one held as charges, whose
         // chip appears there too — anything else on the resource bar itself
         const chipped = Deck.card(id).days || (Deck.FX[id] && Deck.FX[id].chip);
-        const at = chipped ? document.getElementById('rPopChip') : document.querySelector('#topbar .trow');
-        const r = at ? at.getBoundingClientRect() : { left: 0, top: 0, width: vw, height: 30 };
-        chips.push({ res: null, x: chipped ? r.right + 20 : r.left + r.width / 2, y: r.top + r.height / 2 });
+        // the timers' strip sits after the saved armies at the second row's
+        // head (build 154): a new chip lands past the last one shown, else
+        // past the armies' banners, else at the row's own start
+        const row2 = document.querySelector('#topbar .trow + .trow');
+        const lead = [this.el && this.el.timers, document.getElementById('armyBar')].find(e => e && e.offsetWidth);
+        const at = chipped ? (lead || row2) : document.querySelector('#topbar .trow');
+        const r = at ? at.getBoundingClientRect() : { left: 0, top: 0, right: 0, width: vw, height: 30 };
+        chips.push({ res: null, x: chipped ? (lead ? r.right + 20 : r.left + 20) : r.left + r.width / 2, y: r.top + r.height / 2 });
       }
       /* a card whose goods ARRIVE in the world (Deck.FX[id].showAtHall — the
          town's goods land in a moment at the hall's door) brings the hall on
@@ -1870,6 +1875,9 @@ const DeckUI = {
     more.firstChild.textContent = '+' + k;
     more.setAttribute('aria-label', k + ' cards running');
     tm.appendChild(more);
+    // …and a row with no room even for the "+k" (a narrow phone with three
+    // saved armies, build 154) shows nothing rather than half a button
+    if (tm.scrollWidth > tm.clientWidth + 1) more.remove();
   },
   // the card a key of S.deck.charges belongs to: its own id, or the card that
   // names it as its `chargeKey`; null for a key no card wears a chip for
@@ -2077,9 +2085,11 @@ body.dk-aiming #bottombar { visibility: hidden; }
    own dark disc is the container) — 48px, so two fit beside a "6/13" tribe
    and a "Day 12". The badge rides the last chip's corner, 5px proud of it:
    the strip's padding makes room for it INSIDE the clip (overflow: hidden
-   cut its top half off), and an equal negative margin keeps the row's
-   layout exactly as it was. */
-#dkTimers { display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 6px 0 0; margin: -6px -6px 0 0; }
+   cut its top half off), and an equal negative margin on top keeps the
+   row's height exactly as it was. Since build 154 the saved armies share the
+   row and can fill it, so the RIGHT padding stays a spacer (no negative
+   margin there): a badge never reaches the day beside it. */
+#dkTimers { display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 6px 0 0; margin: -6px 0 0 0; }
 #dkTimers:empty { display: none; }
 /* the count in the HUD's own type (the bar's face, weight and size, its own
    text colour, no shadow) — the chip is a quiet reminder, not a badge */
@@ -2229,7 +2239,7 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkFly .dkSpark.ember { background: #ffe7a0; }
 #dkFly .dkSpark.trail { width: 6px; height: 6px; margin: -3px 0 0 -3px; }
 #dkFly .dkChipGlow { border-radius: 8px; opacity: 0; box-shadow: 0 0 0 2px var(--tc), 0 0 0 4px rgba(10,7,3,.85); }
-#dkFly .dkGood { width: 22px; height: 22px; margin: -11px 0 0 -11px; image-rendering: pixelated; opacity: 0;
+#dkFly .dkGood { width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: 0;
   filter: drop-shadow(0 1px 0 rgba(0,0,0,.8)); }
 @media (prefers-reduced-motion: reduce) {
   #dkAim .dkRet { animation: none; }
