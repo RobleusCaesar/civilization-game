@@ -626,13 +626,34 @@ const Lookout = {
      placement ghost's ring. */
   crewReach(b) {
     let r = 0;
-    if (b) for (const u of S.units) if (u.perch === b.id) r = Math.max(r, (CFG.UNITS[u.kind].rng || 0) * this.cfg().rangeMult);
+    if (b) for (const u of S.units) if (u.perch === b.id) r = Math.max(r, Math.min((CFG.UNITS[u.kind].rng || 0) * this.cfg().rangeMult, this.sightOf(u)));
     return r;
   },
   postReach(owner) {
-    let r = 0;
-    for (const u of S.units) if (u.owner === owner && this.canMan(u)) r = Math.max(r, CFG.UNITS[u.kind].rng || 0);
-    return (r || CFG.UNITS[this.cfg().kinds[0]].rng || 0) * this.cfg().rangeMult;
+    let r = 0, k = this.cfg().kinds[0];
+    for (const u of S.units) if (u.owner === owner && this.canMan(u) && (CFG.UNITS[u.kind].rng || 0) > r) { r = CFG.UNITS[u.kind].rng || 0; k = u.kind; }
+    r = r || CFG.UNITS[k].rng || 0;
+    // …pulled in to what a new (level 1) tower and a bow on it light
+    const L = (CFG.BUILDINGS.tower.levels || [])[0] || {};
+    const lit = Math.max((CFG.UNITS[k].vision || CFG.UNIT_VISION) * (this.cfg().sightMult || 1),
+      (L.vision || 4) + (window.Cards && Cards.towerSight ? Cards.towerSight(owner) : 0));
+    return Math.min(r * this.cfg().rangeMult, lit);
+  },
+  /* HE SHOOTS ONLY WHAT IS SEEN (build 151 — the operator: "archers in the
+     tower can see beyond the lit area. Even with their extended view, they
+     should only be able to shoot visible enemies. Pull in their range so
+     they can't shoot enemies until they're within visible range"). The
+     radius the platform LIGHTS round a bow up there: his own doubled sight,
+     or the tower's watch where it sees farther — the two marks
+     G.updateVisibility lays, through the same G.sightIn, so an eclipse
+     pulls both in. Combat.reachOf never lets his doubled reach pass it, and
+     Combat.perchSees refuses a mark on ground the player cannot see. */
+  sightOf(u) {
+    const k = CFG.UNITS[u.kind] || {}, b = u.perch ? Bld.get(u.perch) : null;
+    let r = G.sightIn((k.vision || CFG.UNIT_VISION) * (this.cfg().sightMult || 1), null, u.owner);
+    if (b && Bld.done(b)) r = Math.max(r, G.sightIn((Bld.lv(b).vision || 4) +
+      (b.key === 'tower' && window.Cards && Cards.towerSight ? Cards.towerSight(b.owner) : 0), b, b.owner));
+    return r;
   },
 
   /* THE PLATFORM MAKES A BOW A BETTER ONE, THE SAME ON EVERY TOWER (build
@@ -641,29 +662,32 @@ const Lookout = {
      archer type. Better archers on the ground mean better archers in the
      tower, regardless of the towers level. The only benefit to higher towers
      is that they're harder to knock down"). A bow on a platform strikes
-     CFG.LOOKOUT.atk (1.5) times his own ground blow — Units.effAtk, every
+     CFG.LOOKOUT.atk (1.25 since build 151) times his own ground blow — Units.effAtk, every
      bonus a man standing there would have included — (Combat's strike, at
-     units and at works alike) and takes `hurt` (0.5) of every blow that
+     units and at works alike) and takes `hurt` (0.8) of every blow that
      reaches him (Combat.covered, asked where the blow is dealt and before its
      number is floated). One figure for every kind of bow and every storey: a
      better bow on the ground is a better bow up there, and a taller tower is
-     only harder to knock down. Off the platform (on the stairs included)
+     harder to knock down (and, watching farther, lets its long bows reach
+     farther — sightOf — but never hit harder). Off the platform (on the stairs included)
      both answer 1, so the old expressions are the old numbers exactly. */
   onPlatform(u) { return !!(u && u.perch && Bld.get(u.perch)); },
   atkMult(u) { const a = +this.cfg().atk || 1; return this.onPlatform(u) ? a : 1; },
   hurtMult(u) { const h = +this.cfg().hurt || 1; return this.onPlatform(u) ? h : 1; },
   cover(u, dmg) { const h = this.hurtMult(u); return h < 1 ? Math.max(1, Math.round(dmg * h)) : dmg; },
-  // the tower panel's words for what the platform gives the bows on it
+  // the tower panel's words for what the platform gives the bows on it —
+  // the toughness as the operator put it (build 151: "defense to 25% above
+  // normal"): `hurt` 0.8 is a man who takes 1.25 times the punishment
   perkLine() {
-    const c = this.cfg(), a = Math.round((+c.atk || 1) * 100 - 100), h = Math.round(100 - (+c.hurt || 1) * 100);
-    return (a === 100 ? 'hit twice as hard' : `hit ${a}% harder`) + ', ' + (h === 50 ? 'take half the damage' : `take ${h}% less damage`);
+    const c = this.cfg(), a = Math.round((+c.atk || 1) * 100 - 100), t = Math.round(100 / (+c.hurt || 1) - 100);
+    return (a === 100 ? 'hit twice as hard' : `hit ${a}% harder`) + ' and ' + (t === 100 ? 'are twice as tough' : `are ${t}% tougher`);
   },
 
   /* ---- the panels (ui.js asks these, guarded on the method) ---- */
   towerLine(b) {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
-    return n ? `🏹 ${n}/${cap} archers on the lookout: twice the reach, ${this.perkLine()}`
+    return n ? `🏹 ${n}/${cap} archers on the lookout: they shoot all the tower sees, ${this.perkLine()}`
       : 'No archers on it, so it shoots nothing — select archers, then tap the tower';
   },
   towerButtons(b) {

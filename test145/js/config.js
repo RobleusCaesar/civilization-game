@@ -363,7 +363,7 @@ const CFG = {
     tower: {
       // fortifications got a real HP curve (siege engines exist now) — and a
       // matching price curve. L1 stays affordable: it's the early-game shield.
-      name: 'Watchtower', desc: 'Extends vision. Manned by archers, it sees and shoots twice as far.', vision: true,
+      name: 'Watchtower', desc: 'Extends vision. Manned by archers, it sees twice as far and shoots all it sees.', vision: true,
       levels: [
         { cost: { wood: 45, stone: 45 },              time: 2, hp: 420,  atk: 8,  range: 4.5, vision: 6 },
         { cost: { wood: 110, stone: 130, gold: 10 },  time: 2, hp: 950,  atk: 13, range: 5,   vision: 7 },
@@ -1318,9 +1318,11 @@ const CFG = {
      `levelStep` per building level (TC for land, Dock for ships). */
   /* THE TOWER LOOKOUT (js/lookout.js, tests/tower-garrison.mjs). Up to
      `cap` foot bowmen stand on a finished Watchtower's open platform — the
-     roofs came off the towers for this. Up there a bow sees and reaches
-     `sightMult` / `rangeMult` as far, shoots over walls, and can only be
-     answered by bows and engines. Going up or down the stairs inside takes
+     roofs came off the towers for this. Up there a bow sees `sightMult` and
+     reaches `rangeMult` as far — but never past the ground the platform
+     lights, and never at anything the player cannot see (build 151,
+     Lookout.sightOf / Combat.perchSees) — shoots over walls, and can only
+     be answered by bows and engines. Going up or down the stairs inside takes
      `climbS` seconds, out of sight. The rival's bows rank a garrisoned archer
      `preferBonus` tiles nearer than it stands. */
   LOOKOUT: {
@@ -1340,12 +1342,16 @@ const CFG = {
        the towers level. The only benefit to higher towers is that they're
        harder to knock down"): up there a bow strikes `atk` times his own
        ground blow and takes `hurt` of every blow that reaches him
-       (Lookout.atkMult / cover) — every kind of bow, every storey. Two base
-       archers still out-shoot the old tower's own fire at every storey,
-       measured against a rival tower (which still fires the old way) in
-       tests/tower-garrison.mjs. */
-    atk: 1.5,
-    hurt: 0.5,
+       (Lookout.atkMult / cover) — every kind of bow, every storey. Build 151
+       brought both in (operator: "Bring damage down to 25% above normal and
+       defense to 25% above normal"): a quarter again his ground blow, and a
+       quarter tougher — `hurt` 0.8 is 1/1.25, a man who takes a quarter more
+       punishment before he falls. Two base archers still out-shoot the old
+       wattle and timber towers' own fire, and come a shade short of the stone
+       one's volley, measured against a rival tower (which still fires the old
+       way) in tests/tower-garrison.mjs. */
+    atk: 1.25,
+    hurt: 0.8,
   },
 
   /* THE TEST PAGE IS A SANDBOX (CLAUDE.md, THE TEST BUILD — operator, build

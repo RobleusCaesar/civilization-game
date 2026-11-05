@@ -273,11 +273,17 @@ const Combat = {
     if (u.perch || o.perch) return true;     // up on a tower's platform: over the wall, both ways
     return this.losClear(u.x, u.y, o.x, o.y);
   },
-  // how far this unit strikes from — a garrisoned bow twice its own reach
-  // (and the player's half again while the Watchfires burn: perchMult)
+  // how far this unit strikes from — a garrisoned bow twice its own reach,
+  // but NEVER PAST THE GROUND THE PLATFORM LIGHTS (Lookout.sightOf, build
+  // 151 — the operator: "they should only be able to shoot visible enemies.
+  // Pull in their range so they can't shoot enemies until they're within
+  // visible range"); the player's half again while the Watchfires burn
+  // (perchMult), its farther band striking only ground the player SEES
   reachOf(u) {
     const r = CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE;
-    return u.perch && CFG.LOOKOUT ? r * CFG.LOOKOUT.rangeMult * this.perchMult(u, 'towerRange') : r;
+    if (!(u.perch && CFG.LOOKOUT)) return r;
+    const lit = window.Lookout && Lookout.sightOf ? Lookout.sightOf(u) : Infinity;
+    return Math.min(r * CFG.LOOKOUT.rangeMult, lit) * this.perchMult(u, 'towerRange');
   },
   /* WATCHFIRES ON THE PLATFORM (build 148 — operator: "towers should no
      longer shoot arrows. Only if they're manned with archers they should
@@ -292,12 +298,21 @@ const Combat = {
     if (!u.perch || u.owner !== 'P' || !(window.Deck && Deck.mult)) return 1;
     return Deck.mult(kind, 'P', Bld.get(u.perch));
   },
-  // …and the farther band a card adds takes only what the player SEES (the
-  // tower's own rule: an arrow never lands on a soldier hidden in the fog)
+  // …and a PLAYER'S bow up there shoots only what the player SEES (build
+  // 151): the reach above keeps it inside the lit ground, and this asks the
+  // fog itself — every mark it takes or keeps, the Watchfires' farther band
+  // and an eclipse's halved sight included. An arrow never lands on a
+  // soldier hidden in the dark. (The rival mans no tower.)
   perchSees(u, o) {
-    if (this.perchMult(u, 'towerRange') <= 1) return true;
-    const base = (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE) * CFG.LOOKOUT.rangeMult;
-    return Math.hypot(o.x - u.x, o.y - u.y) <= base || !!G.visibleAt(o.x | 0, o.y | 0);
+    if (u.owner !== 'P') return true;
+    return !!G.visibleAt(o.x | 0, o.y | 0);
+  },
+  // …the same for a building: some of its ground in sight
+  perchSeesBld(u, b) {
+    if (u.owner !== 'P') return true;
+    const n = Bld.size(b);
+    for (let y = b.y; y < b.y + n; y++) for (let x = b.x; x < b.x + n; x++) if (G.visibleAt(x, y)) return true;
+    return false;
   },
   // a bow on the platform under the card looses burning arrows (R.arrowStrike)
   perchFire(u, wfA) {
@@ -1622,7 +1637,7 @@ const Combat = {
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const wfA = u.perch ? this.perchMult(u, 'towerAtk') : 1;   // 1 off the platform: the old expression exactly
-          // …and the platform's own weight (Lookout.atkMult: ×1.5 up there, every bow, every storey — build 150): 1 off it
+          // …and the platform's own weight (Lookout.atkMult: CFG.LOOKOUT.atk up there, every bow, every storey): 1 off it
           const pk = u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1;
           const dmg = Math.max(1, Math.round(Units.effAtk(u) * pk * wfA - Units.effDef(tgt)));
           // the blow is heard where it is struck: a bow's volley or a blade (the wilds' jaws are not weapons)
@@ -1698,9 +1713,10 @@ const Combat = {
         // a gate just sat there, forever a hair out of reach, never landing a blow.
         const bReach = Math.max(1.55, u.perch ? this.reachOf(u) : (CFG.UNITS[u.kind].rng || 0)) + Bld.reach(b);
         if (u.climb) { u.tBld = 0; continue; }
-        if (d > bReach && u.perch) {
+        if (u.perch && (d > bReach || !this.perchSeesBld(u, b))) {
           // an archer on a tower never walks off it after a mark: an ORDER past
-          // the doubled reach takes the stairs down and goes; anything else drops
+          // the doubled reach (or into the dark — perchSeesBld) takes the stairs
+          // down and goes; anything else drops
           if (u.task && u.task.type === 'attackBld' && window.Lookout) Lookout.down(u, { tBld: b.id });
           else u.tBld = 0;
           continue;
