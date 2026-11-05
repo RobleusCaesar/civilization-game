@@ -857,10 +857,14 @@ const UI = {
     if (!g || (this.placing !== 'house' && this.placing !== 'farm')) return false;
     const want = this.placing === 'house' ? 'farm' : 'house';
     const ghost = { x: g.x, y: g.y, key: this.placing, sz: Bld.size(this.placing) };
+    // asked every frame the ghost is up: the cheap edge test first, and the
+    // homestead map built once, only when a partner actually touches the ghost
+    let map = null;
     for (const o of Bld.list('P')) {
       if (o.key !== want || !Bld.done(o) || o.construction > 0) continue;
-      if (Bld.isHomestead(o)) continue;            // already spoken for
-      if (Bld.broadside(ghost, o)) return true;
+      if (!Bld.broadside(ghost, o)) continue;
+      if (Bld.isHomestead(o, map || (map = Bld.homesteadMap()))) continue;   // already spoken for
+      return true;
     }
     return false;
   },
@@ -868,7 +872,7 @@ const UI = {
      would meet a road edge-on says what the road will do for it — asked of
      the SAME tiles the bonus reads (Roads.at beside the footprint), with the
      homestead's no-stacking rule. '' when it would earn nothing. */
-  placeWouldRoad(g) {
+  placeWouldRoad(g, bond) {
     const kind = g && window.Roads && Roads.on && Roads.on() && (CFG.ROADS.boosts || {})[this.placing];
     if (!kind) return '';
     const s = Bld.size(this.placing);
@@ -876,8 +880,9 @@ const UI = {
     for (let i = 0; i < s && !near; i++)
       near = Roads.at(g.x + i, g.y - 1) || Roads.at(g.x + i, g.y + s) || Roads.at(g.x - 1, g.y + i) || Roads.at(g.x + s, g.y + i);
     if (!near) return '';
-    // the bond, asked only beside a road (it walks the farms): a bond outranks the road
-    if ((kind === 'room' || this.placing === 'farm') && this.placeWouldBond(g)) return '';
+    // the bond, asked only beside a road (it walks the farms), and not at all when the
+    // caller already knows the answer (`bond`): a bond outranks the road
+    if ((kind === 'room' || this.placing === 'farm') && (bond != null ? bond : this.placeWouldBond(g))) return '';
     return '✦ ' + Bld.roadWords(this.placing, kind, (Bld.buildSpec(this.placing, 'P') || {}).level || 1);
   },
   _placeDomSync() {
@@ -951,7 +956,8 @@ const UI = {
     // through the archers posted on them; short enough for the 260px chip)
     else if (v && v.ok && this.placing === 'tower') msg = '🏹 Shoots only with archers on it';
     // …and the road's tenth, said on the spot that would earn it (Bld.roadBoost)
-    else if (v && v.ok && (road = this.placeWouldRoad(g))) { msg = road; boon = true; }
+    // (the homestead branch above has already answered no — the bond is not asked again)
+    else if (v && v.ok && (road = this.placeWouldRoad(g, false))) { msg = road; boon = true; }
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;
