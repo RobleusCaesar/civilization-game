@@ -6595,6 +6595,7 @@ const R = {
     this.placePoofs = [];                                        // no dust carried across runs (the R.collapses rule)
     this._sky = null; this._fireFx = null; this._shake = null; this._flash = null; this._burnLayout = null; this._smoulder = null;   // the sky's acts are render state too
     this.bondSparks = [];                                        // …nor a homestead's gold
+    this.roadSparks = [];                                        // …nor a road's twinkle
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
     // caller has somewhere better to spend the wait (see deferBake)
@@ -8584,6 +8585,54 @@ const R = {
       const f = Math.max(0, Math.min(this.BOND_FRAMES - 1, (p.t / MS * this.BOND_FRAMES) | 0));
       g.drawImage(sheet.frames[f], p.x * TL - sheet.pad - TL / 2, p.y * TL - sheet.pad - TL / 2);
     }
+  },
+
+  /* ================= A ROAD'S SMALL TWINKLE (Bld.roadSparkle) =================
+     (operator, build 153: "a small little golden sparkle when they're done
+     (nothing big and flashy)".) Where a road meets a building that it has
+     just started working for, three hair-thin gold glints wink one after
+     another along the join and a mote or two lifts off — about a second, a
+     tile across, then gone. SMOOTH, at the device's own resolution (R.fxSpark /
+     R.fxDot — the effects ruling of 2026-10-27), in the hall's gold with the
+     hue tied to the light, so it lies on the meadow as gold, never lime.
+     Points are TILE coordinates of each join's middle. Render state only:
+     never in S, cleared in onNewGame (the R.collapses rule), clipped to the
+     board, and capped so a long road finishing past a row of houses is a
+     ripple, not a firework. */
+  ROAD_SPARK: { ms: 1100, glints: 3, cap: 12 },
+  roadSparks: [],
+  startRoadSpark(points) {
+    if (!points || !points.length) return;
+    if (!this.roadSparks) this.roadSparks = [];
+    for (const p of points) {
+      if (this.roadSparks.length >= this.ROAD_SPARK.cap) this.roadSparks.shift();
+      this.roadSparks.push({ x: p.x, y: p.y, t: 0, seed: ((p.x * 73856093) ^ (p.y * 19349663)) & 1023 });
+    }
+  },
+  drawRoadSparks(g, dt) {
+    if (!this.roadSparks || !this.roadSparks.length) return;
+    const TL = CFG.TILE, cfg = this.ROAD_SPARK, S1 = cfg.ms / 1000;
+    for (const sp of this.roadSparks) sp.t += dt;
+    this.roadSparks = this.roadSparks.filter(sp => sp.t < S1);
+    if (!this.roadSparks.length) return;
+    this.clipBoard(g, () => {
+      for (const sp of this.roadSparks) {
+        const cx = sp.x * TL, cy = sp.y * TL;
+        // the glints wink in turn along the join, each a short swell and fade
+        for (let k = 0; k < cfg.glints; k++) {
+          const h = this._fxHash(sp.seed, k), h2 = this._fxHash(k + 7, sp.seed);
+          const t0 = k * 0.16, life = 0.56;
+          const q = (sp.t - t0) / life;
+          if (q <= 0 || q >= 1) continue;
+          const a = Math.sin(q * Math.PI);
+          const ox = (h - 0.5) * TL * 0.7, oy = (h2 - 0.5) * TL * 0.35 - q * TL * 0.12;
+          this.fxSpark(g, cx + ox, cy + oy, 3.6 + 3.2 * a, 0.95 * a, 'gold', { rot: (h2 - 0.5) * 0.5 });
+        }
+        // a mote or two lifting off the join as the glints fade
+        this.fxMotes(g, cx, cy, { n: 2, t: sp.t, seed: sp.seed, rise: TL * 0.5, spread: TL * 0.5,
+          a: Math.max(0, Math.min(1, sp.t / 0.3, (S1 - sp.t) / 0.4)) * 0.8, tone: 'gold', size: 1.1, speed: 0.9 });
+      }
+    });
   },
 
   startPlacePoof(x, y, sz, opts) {
@@ -15800,6 +15849,8 @@ const R = {
     this.drawPlacePoofs(g, dt);
     // the homestead's gold rides above the dust — it is a reward, not debris
     this.drawBondSparks(g, dt);
+    // …and so does a road's small twinkle where it reaches a building
+    this.drawRoadSparks(g, dt);
 
     // placement ghost
     if (UI.placing === 'road' && UI.wallGhost && UI.wallGhost.length && window.Roads && Roads.drawGhost) {

@@ -30,6 +30,20 @@
                        turns into its flank; nothing is laid in the save; the
                        fort's road strip is the stand-in (builder off, the rival)
      A HOUSE TAKES THE GROUND; A SAVE KEEPS THE ROADS
+     WORTH BUILDING TO (§10, build 153) a finished building of the player's
+                       that meets a road EDGE-ON works a tenth better, each
+                       kind its own way (CFG.ROADS.boosts — every kind
+                       audited): a station's day, the HUD's sum and the work
+                       line × 1.1; a yard (the hall too) trains and a post's
+                       caravans come home 1.1× as fast, its panel counting the
+                       days at that pace; a fort takes 1/1.1 of a blow (the
+                       number floated the number taken); a house holds one
+                       more. A bonded farm or house keeps the bond, never
+                       both; a corner is no door; a site has none until it
+                       stands; the rival's never; built over or dug away it
+                       goes. The panel says so in gold, the placement chip
+                       promises it, a twinkle marks the moment it starts (once,
+                       small, gone in about a second); the save carries nothing new
      OFF IS OFF        CFG.ROADS.ON false: no button, no road, worn paths back
 
    Run after touching: js/roads.js, CFG.ROADS / CFG.BUILDINGS.road, UI.isLine and
@@ -341,6 +355,259 @@ const { RX, RY } = W0;
   }, { RX, RY });
   ck('aHouseRaisedOnARoadTakesTheGround', r.had && r.gone, JSON.stringify(r));
   ck('aSaveKeepsTheRoads', r.n > 10 && r.after === r.n && r.at, JSON.stringify(r));
+}
+
+// ---- 10. A ROAD IS WORTH BUILDING TO (Bld.roadBoost — operator, build 153) ------------------
+// A fresh world: an open meadow, the player's hall and nothing else of theirs, so every
+// figure below is the one building's own.
+const B0 = await p.evaluate(() => {
+  G.newGame('roads-boost', 'moderate', 'medium'); Screens._demo = false;
+  const W = CFG.W, H = CFG.H, t = S.map.terrain, hall = Bld.tcOf('P');
+  let BX = 0, BY = 0, best = -1;
+  for (let y = 2; y < H - 20; y++) for (let x = 2; x < W - 20; x++) {
+    // the patch keeps clear of the player's own hall (and a tile round it)
+    if (hall.x + 2 >= x - 1 && hall.x <= x + 18 && hall.y + 2 >= y - 1 && hall.y <= y + 18) continue;
+    let n = 0; for (let j = 0; j < 18; j++) for (let i = 0; i < 18; i++) if (t[(y + j) * W + x + i] === T.GRASS) n++;
+    if (n > best) { best = n; BX = x; BY = y; }
+  }
+  for (let j = 0; j < 18; j++) for (let i = 0; i < 18; i++) { const k = (BY + j) * W + BX + i; t[k] = T.GRASS; if (S.map.resAmount) S.map.resAmount[k] = 0; }
+  S.units = []; S.garrison = [];
+  S.buildings = S.buildings.filter(o => o.owner !== 'P' || o.key === 'tc');
+  S.buildings = S.buildings.filter(o => !(o.x >= BX - 2 && o.x < BX + 20 && o.y >= BY - 2 && o.y < BY + 20));
+  S.map.roads = {};
+  Bld._block = null; R.rebuildTerrain();
+  Screens.show('playing'); S.paused = true;
+  G.freeVis = true; for (let i = 0; i < S.map.explored.length; i++) S.map.explored[i] = 1; G.updateVisibility();
+  R.cam.z = 1.4; R.centerOn(BX + 9, BY + 9);
+  S.res.wood = 10000; S.res.stone = 10000; S.res.food = 10000; S.res.gold = 10000;
+  window.__rb = {
+    put(k, x, y, owner) { const o = Bld.place(owner || 'P', k, BX + x, BY + y, { free: true, instant: true }); Bld._block = null; return o; },
+    road(x, y) { S.map.roads[(BY + y) * CFG.W + BX + x] = 1; Roads._n = -1; },
+    unroad(x, y) { delete S.map.roads[(BY + y) * CFG.W + BX + x]; Roads._n = -1; },
+    hand(o) { const v = Units.spawn('villager', 'P', o.x, o.y); v.x = o.x + 0.5; v.y = o.y + 0.5; v.task = { type: 'work', id: o.id }; v.path = null; return v; },
+    lump(res) { const r0 = Object.assign({}, S.res); Bld.dailyProduction('P'); const n = S.res[res] - r0[res]; S.res = r0; return n; },
+    sub(o) { UI.select('bld', o.id); UI.renderPanel(); const el = document.querySelector('#panel .phead .psub'); return el ? { html: el.innerHTML, text: el.textContent } : null; },
+    gold(o) {
+      UI.select('bld', o.id); UI.renderPanel();
+      const b = [...document.querySelectorAll('#panel .phead .psub b')].find(e => /Road/.test(e.textContent));
+      return b ? { text: b.textContent, col: getComputedStyle(b).color } : null;
+    },
+  };
+  return { BX, BY };
+});
+const { BX, BY } = B0;
+{
+  // THE AUDIT: every kind of building has its road, or is left out on purpose
+  const r = await p.evaluate(() => {
+    const B = CFG.BUILDINGS, K = CFG.ROADS.boosts, out = { missing: [], wrong: [] };
+    const left = ['road', 'wonder', 'raidercamp'];
+    for (const k in B) {
+      if (left.includes(k)) { if (K[k]) out.wrong.push(k + ' should be left out'); continue; }
+      if (!K[k]) { out.missing.push(k); continue; }
+      const want = B[k].needsWorker ? 'yield' : B[k].train ? 'pace' : k === 'trade' ? 'trade' : k === 'house' ? 'room' : ['wall', 'gate', 'tower', 'warcamp'].includes(k) ? 'guard' : '?';
+      if (K[k] !== want) out.wrong.push(`${k}: ${K[k]} (want ${want})`);
+    }
+    out.boost = CFG.ROADS.boost; out.room = CFG.ROADS.room;
+    return out;
+  });
+  ck('everyBuildingHasItsRoad', !r.missing.length && !r.wrong.length && r.boost === 1.1 && r.room === 1,
+    r.missing.length || r.wrong.length ? `missing ${r.missing.join(', ')}; ${r.wrong.join('; ')}` : 'stations yield, yards pace (the hall too), the post trades, forts guard, a house has room — at 1.1');
+}
+{
+  // A STATION BRINGS IN A TENTH MORE — the day's lump, the HUD's sum and the work line alike
+  const r = await p.evaluate(() => {
+    const cmp = __rb.put('lumber', 2, 2); const v = __rb.hand(cmp);
+    const base = __rb.lump('wood'), hud0 = UI.incomePerDay('wood').total, line0 = Units.workReport(v).rate.n;
+    __rb.road(3, 1);                                    // a corner touch: no door
+    const corner = Bld.roadBoost(cmp);
+    __rb.unroad(3, 1);
+    __rb.road(3, 2);                                    // edge-on: the road meets it
+    const out = { corner, kind: Bld.roadBoost(cmp), base, lump: __rb.lump('wood'), hud: UI.incomePerDay('wood').total, hud0,
+      line: Units.workReport(v).rate.n, line0, gold: __rb.gold(cmp), sub: __rb.sub(cmp) };
+    return out;
+  });
+  ck('aRoadBesideAStationBringsInATenthMore', r.kind === 'yield' && Math.abs(r.lump / r.base - 1.1) < 1e-9,
+    `${r.base} → ${r.lump} wood a day`);
+  ck('andTheHudAndTheWorkLineSayTheSame', Math.abs(r.hud - r.lump) < 1e-9 && Math.abs(r.hud0 - r.base) < 1e-9 && Math.abs(r.line / r.line0 - 1.1) < 1e-9,
+    `HUD ${r.hud0} → ${r.hud}; the hand's line ${r.line0} → ${r.line}`);
+  ck('aCornerIsNotARoadToItsDoor', r.corner === null, `diagonal only: ${r.corner}`);
+  ck('itsPanelSaysSoInGold', !!r.gold && r.gold.text === '✦ Road +10% wood' && r.gold.col === 'rgb(232, 193, 90)' && !/</.test(r.sub.text) && /\+5\.5 wood\/day/.test(r.sub.text),
+    `${JSON.stringify(r.gold)} — "${r.sub && r.sub.text}"`);
+}
+{
+  // A BONDED FARM KEEPS ITS BOND, NEVER BOTH; a lone farm takes the road
+  const r = await p.evaluate(() => {
+    const farm = __rb.put('farm', 2, 6); __rb.hand(farm);
+    const house = __rb.put('house', 3, 6);              // broadside: the homestead
+    __rb.road(1, 6);                                    // …and a road on the farm's other side
+    const pop0 = Bld.popCap('P');
+    const both = { hs: Bld.homesteadMult(farm), road: Bld.roadMult(farm, 'yield'), houseRoad: Bld.roadBoost(house), gold: __rb.gold(farm) };
+    const lumpBond = __rb.lump('food');
+    __rb.road(4, 6);                                    // a road beside the bonded house too
+    const popBondRoad = Bld.popCap('P');
+    // the house goes: the bond with it — and the road takes over the farm, at the same tenth
+    Bld.removeToRuin(house);
+    const after = { hs: Bld.homesteadMult(farm), kind: Bld.roadBoost(farm), lump: __rb.lump('food'), gold: __rb.gold(farm) };
+    return { both, lumpBond, after, pop0, popBondRoad };
+  });
+  ck('aBondedFarmTakesTheBondNotTheRoadToo', r.both.hs === 1.1 && r.both.road === 1 && r.after.kind === 'yield' && Math.abs(r.after.lump - r.lumpBond) < 1e-9,
+    `bonded: homestead ×${r.both.hs}, road ×${r.both.road} (${r.lumpBond} food); the house gone: road ${r.after.kind} (${r.after.lump} food)`);
+  ck('andABondedHouseHoldsOneMoreNotTwo', r.both.houseRoad === null && r.popBondRoad === r.pop0,
+    `a bonded house beside a road: road ${r.both.houseRoad}, pop cap ${r.pop0} → ${r.popBondRoad}`);
+  ck('theGoldLineFollowsWhoIsPaying', !r.both.gold && !!r.after.gold && r.after.gold.text === '✦ Road +10% food',
+    `bonded farm's road line: ${JSON.stringify(r.both.gold)}; alone: ${JSON.stringify(r.after.gold)}`);
+}
+{
+  // A HOUSE BESIDE A ROAD HOLDS ONE MORE
+  const r = await p.evaluate(() => {
+    const h = __rb.put('house', 8, 2);
+    const c0 = Bld.popCap('P');
+    __rb.road(8, 1);
+    const c1 = Bld.popCap('P');
+    return { c0, c1, kind: Bld.roadBoost(h), gold: __rb.gold(h) };
+  });
+  ck('aHouseBesideARoadHoldsOneMore', r.kind === 'room' && r.c1 === r.c0 + 1 && !!r.gold && r.gold.text === '✦ Road +1 villager',
+    `pop cap ${r.c0} → ${r.c1}; ${JSON.stringify(r.gold)}`);
+}
+{
+  // A YARD TRAINS A TENTH FASTER — the war halls, the hall's villagers, the sappers, the dock
+  const r = await p.evaluate(() => {
+    const yd = __rb.put('barracks', 11, 2);              // 2×2: 11..12, 2..3
+    const tc = Bld.tcOf('P');
+    const tick = o => { o.queue = [{ unit: o.key === 'tc' ? 'villager' : 'defender', t: 5 }]; Bld.update(0.1); const d = 5 - o.queue[0].t; o.queue = []; return d; };
+    const d0 = tick(yd);
+    __rb.road(13, 3);                                   // beside its east face
+    const d1 = tick(yd);
+    // the hall: a road beside its own footprint
+    S.map.roads[(tc.y - 1) * CFG.W + tc.x] = 1; S.map.terrain[(tc.y - 1) * CFG.W + tc.x] = T.GRASS;
+    Bld._block = null;
+    const busy = Bld.at(tc.x, tc.y - 1);
+    const t1 = busy ? null : tick(tc);
+    delete S.map.roads[(tc.y - 1) * CFG.W + tc.x];
+    const t0 = tick(tc);
+    return { d0, d1, kind: Bld.roadBoost(yd), t0, t1, busy: !!busy, gold: __rb.gold(yd) };
+  });
+  ck('aYardTrainsATenthFaster', r.kind === 'pace' && Math.abs(r.d1 / r.d0 - 1.1) < 1e-9 && !!r.gold && r.gold.text === '✦ Road: trains 10% faster',
+    `a tenth of a day's training: ${r.d0} → ${r.d1}; ${JSON.stringify(r.gold)}`);
+  ck('andTheHallTrainsItsVillagersFaster', r.busy || Math.abs(r.t1 / r.t0 - 1.1) < 1e-9, r.busy ? 'the hall\'s north side was built on' : `${r.t0} → ${r.t1}`);
+}
+{
+  // CARAVANS COME HOME A TENTH SOONER, and the post's panel counts the days at that pace
+  const r = await p.evaluate(() => {
+    const tp = __rb.put('trade', 2, 10);                // 2×2: 2..3, 10..11
+    const tick = () => { tp.caravan = { need: 'wood', pay: 'food', cost: 80, amt: 20, t: 2, total: 2 }; Bld.update(0.1); const d = 2 - tp.caravan.t; return d; };
+    const d0 = tick();
+    __rb.road(4, 10);
+    const d1 = tick();
+    // 2.1 days of road left reads 2 at a tenth faster (3 at the plain pace), 1.05 reads 1 (2)
+    tp.caravan.t = 2.1; UI.select('bld', tp.id); UI.renderPanel();
+    const left = (document.getElementById('carLeft') || {}).textContent;
+    tp.caravan.t = 1.05; UI.refreshPanel();
+    const left2 = (document.getElementById('carLeft') || {}).textContent;
+    tp.caravan = null; UI.tradeNeed = null; UI.renderPanel();
+    const each = (document.getElementById('panel').textContent.match(/post, ([\d.]+)d each way/) || [])[1];
+    return { d0, d1, left, left2, each, delay: Bld.tradeSpec(tp).delay, gold: __rb.gold(tp) };
+  });
+  ck('caravansComeHomeATenthSooner', Math.abs(r.d1 / r.d0 - 1.1) < 1e-9 && !!r.gold && r.gold.text === '✦ Road: caravans 10% faster',
+    `${r.d0} → ${r.d1} of the road home a tick; ${JSON.stringify(r.gold)}`);
+  ck('andThePostCountsTheDaysAtThatPace', r.left === '2d' && r.left2 === '1d' && +r.each === Math.round(r.delay / 1.1 * 10) / 10,
+    `2.1d left reads ${r.left}, 1.05d reads ${r.left2}; a ${r.delay}d trip reads ${r.each}d each way`);
+}
+{
+  // A FORT TAKES A TENTH LESS OF EVERY BLOW — the wall, the gate, the tower; the number floated is the number taken
+  const r = await p.evaluate(() => {
+    const wl = __rb.put('wall', 8, 6), tw = __rb.put('tower', 10, 6), gt = __rb.put('gate', 12, 6);
+    const hit = o => { const h0 = o.hp; const ret = Bld.damage(o, 110, 'test'); const took = h0 - o.hp; o.hp = o.maxhp; return { ret, took }; };
+    const bare = [hit(wl), hit(tw), hit(gt)];
+    __rb.road(8, 7); __rb.road(10, 7); __rb.road(12, 7);
+    const roaded = [hit(wl), hit(tw), hit(gt)];
+    // a rival wall beside the player's road is NOT made stronger
+    const rw = __rb.put('wall', 14, 6, 'A'); __rb.road(14, 7);
+    const rival = hit(rw);
+    return { bare, roaded, rival, kinds: [wl, tw, gt].map(o => Bld.roadBoost(o)), rk: Bld.roadBoost(rw), gold: __rb.gold(wl) };
+  });
+  ck('aFortTakesATenthLessOfEveryBlow', r.kinds.every(k => k === 'guard') && r.bare.every(h => h.took === 110) &&
+      r.roaded.every(h => Math.abs(h.took - 100) < 1e-9 && Math.abs(h.ret - h.took) < 1e-9) && !!r.gold && r.gold.text === '✦ Road: 10% stronger',
+    `a 110 blow takes ${r.bare.map(h => h.took).join('/')} bare, ${r.roaded.map(h => +h.took.toFixed(3) + ' (floats ' + +h.ret.toFixed(3) + ')').join(' / ')} beside a road; ${JSON.stringify(r.gold)}`);
+  ck('andTheRivalsWallsNeverGetIt', r.rk === null && r.rival.took === 110, `a rival wall beside the player's road: ${r.rk}, takes ${r.rival.took}`);
+}
+{
+  // THE BONUS GOES WITH THE ROAD: built over, or dug away — and a work site has none until it stands
+  const r = await p.evaluate(({ BX, BY }) => {
+    const yd = Bld.list('P').find(o => o.key === 'barracks');
+    const had = Bld.roadBoost(yd);
+    UI.select('bld', yd.id); UI.renderPanel();
+    // a house raised ON the road tile takes the ground, and the bonus with it
+    __rb.put('house', 13, 3);
+    const builtOver = Bld.roadBoost(yd);
+    UI.refreshPanel();
+    const line = !!document.querySelector('#panel .phead .psub') && /Road/.test(document.querySelector('#panel .phead .psub').textContent);
+    // a road dug into a trench is no road
+    const cmp = Bld.list('P').find(o => o.key === 'lumber');
+    const i = (BY + 2) * CFG.W + BX + 3, t0 = S.map.terrain[i];
+    S.map.terrain[i] = T.TRENCH;
+    const dug = Bld.roadBoost(cmp);
+    S.map.terrain[i] = t0;
+    const back = Bld.roadBoost(cmp);
+    // a site beside a road: nothing until it stands
+    __rb.road(16, 10);
+    const site = Bld.place('P', 'range', BX + 14, BY + 10, { free: true }); Bld._block = null;
+    const onSite = Bld.roadBoost(site);
+    Bld.finish(site);
+    const stood = Bld.roadBoost(site);
+    return { had, builtOver, line, dug, back, onSite, stood };
+  }, { BX, BY });
+  ck('theBonusGoesWithTheRoad', r.had === 'pace' && r.builtOver === null && !r.line && r.dug === null && r.back === 'yield',
+    `the yard: ${r.had} → built over ${r.builtOver} (gold line still there: ${r.line}); the camp dug: ${r.dug}, filled back: ${r.back}`);
+  ck('aWorkSiteHasNoneUntilItStands', r.onSite === null && r.stood === 'pace', `site ${r.onSite} → finished ${r.stood}`);
+}
+{
+  // IT TWINKLES ONCE WHEN IT STARTS: a road reaching a building, or a building finishing beside one
+  const r = await p.evaluate(async ({ BX, BY }) => {
+    R.roadSparks = [];
+    const tw = __rb.put('tower', 2, 14);
+    const lay = (x, y) => { const s = Bld.place('P', 'road', BX + x, BY + y); Bld._block = null; if (s) Bld.finish(s); return !!s; };
+    const laid = lay(3, 14);                            // the first road to reach it
+    const first = R.roadSparks.length;
+    const laid2 = lay(2, 15);                           // a second road to the same tower: already working
+    const second = R.roadSparks.length - first;
+    const site = Bld.place('P', 'house', BX + 4, BY + 14, { free: true }); Bld._block = null;
+    Bld.finish(site);                                   // a house finishing beside the road
+    const third = R.roadSparks.length - first - second;
+    const pts = R.roadSparks.slice();
+    // small, and over in about a second
+    const frames = n => new Promise(res => { let k = 0; const f = () => (++k >= n ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    S.paused = false; const t0 = performance.now();
+    while (R.roadSparks.length && performance.now() - t0 < 4000) await frames(5);
+    const gone = performance.now() - t0; S.paused = true;
+    return { laid, laid2, first, second, third, pts, gone, ms: R.ROAD_SPARK.ms, left: R.roadSparks.length, tower: [tw.x, tw.y] };
+  }, { BX, BY });
+  ck('itTwinklesOnceWhenTheRoadArrives', r.laid && r.laid2 && r.first === 1 && r.second === 0 && r.third === 1,
+    `the first road ${r.first} twinkle, a second road ${r.second}, a house finishing beside a road ${r.third}`);
+  ck('whereTheRoadMeetsIt', Math.abs(r.pts[0].x - (BX + 3)) < 1e-9 && Math.abs(r.pts[0].y - (BY + 14.5)) < 1e-9,
+    `at ${JSON.stringify(r.pts[0])}, the tower's east face is x ${BX + 3}`);
+  ck('andItIsSmallAndBrief', r.ms <= 1500 && r.left === 0 && r.gone < 3000, `${r.ms} ms by design; gone in ${Math.round(r.gone)} ms`);
+}
+{
+  // THE PLACEMENT CHIP PROMISES IT ON THE SPOT, a save carries nothing new, and off is off
+  const r = await p.evaluate(({ BX, BY }) => {
+    UI.placing = 'barracks';
+    const chip = UI.placeWouldRoad({ x: BX + 6, y: BY + 14 });   // a road at (5,14)? none — and then beside one
+    __rb.road(5, 15);
+    const chip2 = UI.placeWouldRoad({ x: BX + 6, y: BY + 14 });
+    UI.placing = null;
+    const save = G.saveJSON();
+    const yd = Bld.list('P').find(o => o.key === 'lumber');
+    CFG.ROADS.ON = false;
+    const off = Bld.roadBoost(yd), offLump = __rb.lump('wood');
+    CFG.ROADS.ON = true;
+    return { chip, chip2, saved: /roadBoost|roadSpark|roadKind/.test(save), off, offLump, onLump: __rb.lump('wood'),
+      desc: CFG.BUILDINGS.road.desc, guide: (document.getElementById('howPanels') || {}).textContent || '' };
+  }, { BX, BY });
+  ck('thePlacementChipPromisesItOnTheSpot', r.chip === '' && r.chip2 === '✦ Road: trains 10% faster', `apart: "${r.chip}"; beside a road: "${r.chip2}"`);
+  ck('aSaveCarriesNothingNew', !r.saved, 'the bonus is derived from the roads the save already keeps');
+  ck('switchedOffTheRoadsGiveNothing', r.off === null && Math.abs(r.onLump / r.offLump - 1.1) < 1e-9, `off: ${r.off}, ${r.offLump} → ${r.onLump} wood`);
+  ck('theRoadCardAndTheGuideSayIt', /10% better/.test(r.desc) && /roads.*10%/s.test(r.guide), `"${r.desc}"`);
 }
 
 // ---- off is off -----------------------------------------------------------------------

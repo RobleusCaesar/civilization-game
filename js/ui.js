@@ -864,6 +864,20 @@ const UI = {
     }
     return false;
   },
+  /* …AND SO IS THE ROAD (tests/roads.mjs §10): a valid spot whose footprint
+     would meet a road edge-on says what the road will do for it — asked of
+     the SAME tiles the bonus reads (Roads.at beside the footprint), with the
+     homestead's no-stacking rule. '' when it would earn nothing. */
+  placeWouldRoad(g) {
+    const kind = g && window.Roads && Roads.on && Roads.on() && (CFG.ROADS.boosts || {})[this.placing];
+    if (!kind) return '';
+    if ((kind === 'room' || this.placing === 'farm') && this.placeWouldBond(g)) return '';
+    const s = Bld.size(this.placing);
+    for (let i = 0; i < s; i++)
+      if (Roads.at(g.x + i, g.y - 1) || Roads.at(g.x + i, g.y + s) || Roads.at(g.x - 1, g.y + i) || Roads.at(g.x + s, g.y + i))
+        return '✦ ' + Bld.roadWords(this.placing, kind, (Bld.buildSpec(this.placing, 'P') || {}).level || 1);
+    return '';
+  },
   _placeDomSync() {
     const g = this.placeGhost, v = this.placeVerdict;
     if (!g) { if (this._placeUIVisible) this._placeDom(false); return; }
@@ -934,6 +948,8 @@ const UI = {
     // without its bows (operator, build 152 — the player's towers shoot only
     // through the archers posted on them; short enough for the 260px chip)
     else if (v && v.ok && this.placing === 'tower') msg = '🏹 Shoots only with archers on it';
+    // …and the road's tenth, said on the spot that would earn it (Bld.roadBoost)
+    else if (v && v.ok && this.placeWouldRoad(g)) msg = this.placeWouldRoad(g);
     if (msg) {
       why.style.display = 'block';
       if (why.textContent !== msg) why.textContent = msg;
@@ -2413,6 +2429,9 @@ const UI = {
         // the homestead line comes and goes without a tap — a razed partner
         // must take the gold text with it (tests/homestead.mjs)
         Bld.isHomestead(b) ? 'hs' : '-',
+        // …and so does a road's (a road laid, built over or dug away) — the
+        // trading post's day counts and the gold line follow it (Bld.roadBoost)
+        Bld.roadBoost(b) || '-',
         // the lookout's count moves without a tap (a bow climbs, falls)
         b.key === 'tower' && window.Lookout ? Lookout.crew(b).length : '-'].join('|');
       if (b.key === 'tc') {
@@ -2731,7 +2750,7 @@ const UI = {
       // tick a Trading Post caravan's return countdown in place
       const carLeft = document.getElementById('carLeft');
       if (carLeft && b.caravan) {
-        carLeft.textContent = Math.ceil(b.caravan.t) + 'd';
+        carLeft.textContent = Math.ceil(b.caravan.t / Bld.roadMult(b, 'trade')) + 'd';   // at the pace it is really coming home (a road to the post)
         const cb = document.getElementById('carBar');
         if (cb) cb.style.width = Math.round(Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1))) * 100) + '%';
       }
@@ -2771,7 +2790,9 @@ const UI = {
         // …and a running card's richer work (the Harvest Festival), the same
         // factor Bld.dailyProduction pays (refreshPanel re-writes this line every tick)
         const cm = window.Deck && Deck.mult ? Deck.mult('produce', b.owner, b) : 1;
-        sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * shown * Bld.nearBonus(b) * hs * cm * 10) / 10} ${k}/day`).join(', ');
+        // …and a road's tenth beside a station (Bld.roadBoost), never on top of the bond's
+        const rm = Bld.roadMult(b, 'yield');
+        sub += ' — ' + Object.entries(lv.out).map(([k, v]) => `+${Math.round(v * shown * Bld.nearBonus(b) * hs * cm * rm * 10) / 10} ${k}/day`).join(', ');
         if (Bld.maxWorkers(b) > 1) sub += crew ? '' : ' (per worker)';
       }
       if (lv.pop) sub += ` — +${lv.pop} pop`;
@@ -2788,6 +2809,13 @@ const UI = {
           : `+${Bld.homesteadPop(b)} villager${Bld.homesteadPop(b) > 1 ? 's' : ''}`;
         sub += ` — <b style="color:var(--gold)">🌾 Homestead ${gain}</b>`;
       }
+      /* THE ROAD, IN GOLD (tests/roads.mjs §10 — operator, build 153: "in the
+         instructions for the building we should have some gold text
+         signifying the boost is in play"). The homestead's colour and its
+         rule: derived on every write, so a road built over or dug away takes
+         the line with it. The ✦ is the twinkle the road made when it arrived. */
+      const road = Bld.roadLine(b);
+      if (road) sub += ` — <b style="color:var(--gold)">✦ ${road}</b>`;
       if (lv.bonus) sub += ` — ${lv.bonus}`;
       // the tower's lookout: who stands on the platform, or how to put them there
       if (b.key === 'tower' && b.owner === 'P' && window.Lookout && Lookout.towerLine) {
@@ -2980,18 +3008,20 @@ const UI = {
         }
         if (b.key === 'trade' && !b.construction && !b.upgrading) {
           const spec = Bld.tradeSpec(b), ic = r => Bld.resIcon(r);
+          // a road to the post brings the caravans home a tenth sooner (Bld.roadBoost)
+          const trip = Math.round(spec.delay / Bld.roadMult(b, 'trade') * 10) / 10;
           if (b.caravan) {
             const haul = Bld.caravanHaul(b.caravan);
             const frac = Math.max(0, Math.min(1, 1 - b.caravan.t / (b.caravan.total || 1)));
             html += `<div class="abtn cant" style="pointer-events:none">🐫 Caravan out — ${ic(haul.pay)} for ${ic(haul.need)} +${haul.amt}` +
-              `<small><span id="carLeft">${Math.ceil(b.caravan.t)}d</span> to return</small>` +
+              `<small><span id="carLeft">${Math.ceil(b.caravan.t / Bld.roadMult(b, 'trade'))}d</span> to return</small>` +
               `<div style="height:4px;margin-top:5px;background:rgba(0,0,0,0.4);border-radius:2px;overflow:hidden">` +
               `<div id="carBar" style="height:100%;width:${Math.round(frac * 100)}%;background:var(--gold)"></div></div></div>`;
           } else if (!this.tradeNeed) {
             /* STEP 1 — what do you need? Pick the resource coming BACK first:
                that's the question a player actually arrives with ("I'm out of
                wood"), and it keeps the second step down to three choices. */
-            html += `<span class="psub">🐫 <b>What do you need?</b> Pick what the caravan brings home — Lv ${b.level} post, ${spec.delay}d each way.</span>`;
+            html += `<span class="psub">🐫 <b>What do you need?</b> Pick what the caravan brings home — Lv ${b.level} post, ${trip}d each way.</span>`;
             for (const res of CFG.TRADE.goods)
               html += `<button class="abtn" data-act="tradeneed" data-res="${res}">${ic(res)} ${this.RES_NAME[res]}<small>${res === 'gold' ? 'the dearest thing to buy' : 'paid for in goods or gold'}</small></button>`;
           } else {
@@ -3005,7 +3035,7 @@ const UI = {
               if (!deal) continue;
               html += `<button class="abtn ${c.ok ? '' : 'cant'}" data-act="trade" data-res="${need}" data-pay="${pay}">` +
                 `${ic(pay)} ${deal.pay} → ${ic(need)} ${deal.get}` +
-                `<small>${c.ok ? `back in ${spec.delay}d` : c.why}</small></button>`;
+                `<small>${c.ok ? `back in ${trip}d` : c.why}</small></button>`;
               payN++;
             }
             // an odd pay option stays half a row and Back sits beside it
@@ -3761,7 +3791,7 @@ const UI = {
       let crew = 1;
       if (Bld.def(b.key).needsWorker && !(crew = Math.min(Bld.workersActive(b, crews[b.id] || []), Bld.maxWorkers(b)))) continue;
       if (b.key === 'farm' && !hs) hs = Bld.homesteadMap();
-      const mult = crew * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b, hs) *
+      const mult = crew * Bld.nearBonus(b) * tcBoost * modeMult * Bld.homesteadMult(b, hs) * Bld.roadMult(b, 'yield', hs) *
         (window.Cards ? Cards.prodMult('P', b) : 1) * (window.Deck && Deck.mult ? Deck.mult('produce', 'P', b) : 1);
       works[b.key] = (works[b.key] || 0) + out[res] * mult;
     }

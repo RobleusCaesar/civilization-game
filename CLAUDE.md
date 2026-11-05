@@ -288,7 +288,7 @@ node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat a
 node tests/hud-info.mjs      # food is the net; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
-node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
+node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back; a building of the player's a road meets edge-on works a tenth better (stations yield, yards and the hall train, the post's caravans, forts take less, a house holds one more), never on top of a homestead, gone with the road, gold on its panel, promised on the placement chip, one small twinkle
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
@@ -621,6 +621,51 @@ too"): a man in a gate's passage has the gatehouse laid back over him
 `gate-l1.png`), and rubble on the battered faces at every tier. The face
 frame and its `d1`/`d2` are cut open from `FORT_DOOR.y1` to the frame's foot
 at load (the PNGs are untouched); the stages keep theirs.
+**A ROAD IS WORTH BUILDING TO** (`Bld.roadBoost` / `roadMult` / `roadPop` /
+`roadLine` / `roadSparkle`, `CFG.ROADS.boost` / `boosts` / `room`,
+tests/roads.mjs §10 — operator, build 153: "so that roads have value. Any
+building that touches a road gets a 10% boost. You'll have to audit and decide
+for each building… Shouldn't stack for bonded farms and houses… If the road
+disappears the bonus should disappear too"). A FINISHED building of the
+PLAYER's whose footprint shares an EDGE with a road (`Roads.at` — a corner is
+no door, the homestead's broadside rule; a gate's own passage road is a
+picture and counts for nothing) works `boost` (1.1) better, and
+`CFG.ROADS.boosts` is the whole audit, one kind a key: **yield** — farm,
+lodge, lumber camp, quarry, gold mine — a tenth more in `Bld.dailyProduction`,
+`UI.incomePerDay` AND the work line (`Units.workReport`, which now carries the
+homestead's share too: the three are one expression); **pace** — the hall
+(its villagers, a refinement), barracks, range, stable, siege workshop,
+sappers' camp, dock — the training queue ticks 1.1× in `Bld.update`;
+**trade** — the post's caravan ticks 1.1×, and its panel counts the days at
+that pace (the countdown, "Nd each way", "back in Nd"); **guard** — wall,
+gate, tower, War Camp (a refinement: the forward base "falls easily") — takes
+1/1.1 of every blow, divided in `Bld.damage` before the one subtraction, so
+the number floated is the number taken; **room** — a house holds `room` (1)
+more in `Bld.popCap` (a tenth of four is not a person; at the third storey
+it is exactly a tenth). Left out on purpose: the road itself, the Wonder
+(finishing it ends the run) and a barbarian camp. **NOT TWICE**: a bonded
+farm keeps its homestead's share and a bonded house its homestead's
+villager, and the road adds nothing (`roadBoost` answers null for them); the
+bond broken, the road takes over at the same tenth, with no twinkle.
+**DERIVED, NEVER STORED**: asked of the board every time (the homestead's
+rule), so a building raised on the road (`Roads.clearUnder`), a dug or
+flooded road tile or the switch off (`CFG.ROADS.ON`) takes the bonus with it
+on the frame it goes, and the save carries nothing new. **THE PLAYER'S
+ALONE** (the rival builds no roads): a road laid up to a rival wall never
+strengthens it. **SAID IN GOLD**: `UI.panelSub` adds `✦ Road +10% wood` /
+`Road: trains 10% faster` / `Road: caravans 10% faster` / `Road: 10%
+stronger` / `Road +1 villager` (`Bld.roadWords`, shared with the placement
+chip's promise, `UI.placeWouldRoad` — after the homestead's and the
+tower's), the station's rate shown boosted, and the kind rides in `panelSig`
+so the line comes and goes without a tap. **ONE SMALL TWINKLE** (operator:
+"nothing big and flashy"): edge-triggered with nothing remembered — a road
+FINISHING (`Roads.finish` → `Bld.roadArrived`) twinkles every building for
+which that tile is its only road, a building FINISHING beside one
+(`Bld.finish`) twinkles itself; three hair-thin gold glints and a mote or two
+at the join (`R.startRoadSpark` / `drawRoadSparks`, `R.ROAD_SPARK`: 1.1 s,
+smooth at the device's resolution, clipped to the board, capped, render
+state only). The road's build card and the Guide's "Raise your village" say
+it.
 Off (`CFG.ROADS.ON` false): no button, no road drawn or walked, the worn
 paths return.
 

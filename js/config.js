@@ -348,7 +348,7 @@ const CFG = {
     // THE ROAD BUILDER (js/roads.js): laid with the wall's line drag, raised by a villager
     // in a third of a wall's time, then it is ground — the site leaves the buildings
     road: {
-      name: 'Road', desc: 'A road your people walk faster on, and keep to. It improves as your Town Center does.',
+      name: 'Road', desc: 'A road your people walk faster on, and keep to. A building beside one works 10% better. It improves as your Town Center does.',
       freePlace: true,
       levels: [ { cost: { wood: 10, stone: 5 }, time: 0.33, hp: 40 } ],
     },
@@ -1125,7 +1125,34 @@ const CFG = {
   /* THE ROAD BUILDER (js/roads.js, tests/roads.mjs): built roads replace the worn paths —
      the player's land units walk `speed` as fast on one and price a road step `prefer` in
      their route search. false stands it all down and the worn paths come back. */
-  ROADS: { ON: true, speed: 1.2, prefer: 0.55 },
+  /* …AND A ROAD IS WORTH BUILDING TO (Bld.roadBoost, tests/roads.mjs §10 —
+     operator, build 153: "so that roads have value. Any building that
+     touches a road gets a 10% boost… Military units produce 10% faster.
+     Resource stations produce 10% more. Shouldn't stack for bonded farms
+     and houses. Walls and towers are 10% stronger. Sappers produce 10%
+     faster, trade caravans return 10% faster, docks produce ships 10%
+     quicker… If the road disappears the bonus should disappear too"). A
+     finished building of the player's whose footprint shares an EDGE with a
+     road works `boost` (1.1) better, each in its own way — `boosts` is the
+     whole audit, one line a kind:
+       yield  the stations bring in a tenth more
+       pace   a yard trains a tenth faster — the hall's villagers included
+       trade  the Trading Post's caravans come home a tenth sooner
+       guard  walls, gates, towers and the War Camp take a tenth less of every
+              blow (the number floated is the number taken)
+       room   a house holds `room` (1) more — a tenth of a house is not a
+              person, and at the third storey it is exactly a tenth
+     A bonded farm or house keeps its homestead's share instead, never both.
+     Not the road (it IS the road), the Wonder (finishing it ends the run),
+     a barbarian camp or anything of the rival's. */
+  ROADS: { ON: true, speed: 1.2, prefer: 0.55, boost: 1.1, room: 1,
+    boosts: {
+      farm: 'yield', lodge: 'yield', lumber: 'yield', quarry: 'yield', mine: 'yield',
+      tc: 'pace', barracks: 'pace', range: 'pace', stable: 'pace', siege: 'pace', sapper: 'pace', dock: 'pace',
+      trade: 'trade',
+      wall: 'guard', gate: 'guard', tower: 'guard', warcamp: 'guard',
+      house: 'room',
+    } },
   WEAR: { tasks: ['gather', 'work', 'build', 'claim'], levels: [4, 8, 13], cap: 20, decay: 50,
           pull: 2, prefer: [1, 1, 0.84, 0.76], fastLv: 2, speed: 1.1 },
   /* the plague's earliest day: `from` + a seed-hashed 0..`spread` — the
