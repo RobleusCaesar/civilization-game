@@ -2748,7 +2748,12 @@ const UI = {
     if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
     if (this.sel.type === 'bridge') { const br = Bld.bridgeAt(this.sel.x, this.sel.y); return br ? `HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water` : ''; }
     const u = Units.get(this.sel.id);
-    return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${Units.effDef(u)}` : '';
+    return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}` : '';
+  },
+  // the blow a unit strikes with — a bow on a tower's platform strikes harder
+  // (Lookout.atkMult, build 149); both of the panel's writers read this one
+  atkShown(u) {
+    return Math.round(Units.effAtk(u) * (u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1));
   },
   renderPanel() {
     const panel = document.getElementById('panel');
@@ -3371,7 +3376,7 @@ const UI = {
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
       html += `<div class="phead${kill && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
-        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${Math.round(Units.effAtk(u))} · DEF ${Units.effDef(u)}</div>
+        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}${kill}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${killArmed}${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;

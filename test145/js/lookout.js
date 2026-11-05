@@ -622,11 +622,34 @@ const Lookout = {
     return (r || CFG.UNITS[this.cfg().kinds[0]].rng || 0) * this.cfg().rangeMult;
   },
 
+  /* THE PLATFORM MAKES A BOW A BETTER ONE (build 149 — operator: "Tougher
+     archers. Hit for more, take less damage. Two archers should be more
+     powerful than the tower by itself previously"). A bow on the platform
+     strikes CFG.LOOKOUT.atk[storey − 1] times as hard (Combat's strike, at
+     units and at works alike) and takes hurt[storey − 1] of every blow that
+     reaches him (Combat.covered, asked where the blow is dealt and before
+     its number is floated): the tower's storey sets both — wattle, timber,
+     stone. Off the platform (on the stairs included) both answer 1, so the
+     old expressions are the old numbers exactly. */
+  storey(u) {
+    const b = u && u.perch ? Bld.get(u.perch) : null;
+    return b ? Math.max(1, Math.min(3, b.level || 1)) : 0;
+  },
+  atkMult(u) { const lv = this.storey(u), a = this.cfg().atk; return lv && a ? (a[lv - 1] || 1) : 1; },
+  hurtMult(u) { const lv = this.storey(u), h = this.cfg().hurt; return lv && h ? (h[lv - 1] || 1) : 1; },
+  cover(u, dmg) { const h = this.hurtMult(u); return h < 1 ? Math.max(1, Math.round(dmg * h)) : dmg; },
+  // the tower panel's words for what its storey gives the bows on it
+  perkLine(lv) {
+    const c = this.cfg(), i = Math.max(1, Math.min(3, lv || 1)) - 1;
+    const a = Math.round(((c.atk && c.atk[i]) || 1) * 100 - 100), h = Math.round(100 - ((c.hurt && c.hurt[i]) || 1) * 100);
+    return (a === 100 ? 'hit twice as hard' : `hit ${a}% harder`) + ', ' + (h === 50 ? 'take half the damage' : `take ${h}% less damage`);
+  },
+
   /* ---- the panels (ui.js asks these, guarded on the method) ---- */
   towerLine(b) {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
-    return n ? `🏹 ${n}/${cap} archers on the lookout — twice the sight and reach`
+    return n ? `🏹 ${n}/${cap} archers on the lookout: twice the reach, ${this.perkLine(b.level)}`
       : 'No archers on it, so it shoots nothing — select archers, then tap the tower';
   },
   towerButtons(b) {

@@ -44,6 +44,15 @@ const Combat = {
   hitFloat(who, x, y, fx, fy, txt, col, by) {
     if (this.seenHit(who, x, y, by) && window.R && R.float) R.float(fx, fy, txt, col);
   },
+  /* THE PLATFORM IS COVER (js/lookout.js, build 149): a blow on a bow standing
+     on a tower's platform lands at Lookout.cover's share of its weight. Asked
+     where every blow that can reach him is dealt — a bow's arrow, an engine's
+     stone or bolt as it lands, a tower's volley — and BEFORE its number is
+     floated, so the number shown is the number taken. Off the platform it is
+     the blow itself, unchanged. */
+  covered(u, dmg) {
+    return u && u.perch && window.Lookout && Lookout.cover ? Lookout.cover(u, dmg) : dmg;
+  },
   // a projectile reaches its mark: land the damage and throw a burst
   impact(p) {
     const t = p.tgt, flame = p.kind === 'flame';
@@ -54,7 +63,7 @@ const Combat = {
       if (b && p.kind !== 'bolt' && typeof Sound !== 'undefined' && Sound.at) Sound.at('boulder', p.x2, p.y2, p.owner);
     } else {
       const tu = Units.get(t.id);
-      if (tu) { this.hitFloat(tu, tu.x, tu.y, tu.x, tu.y - 0.4, '-' + t.dmg, '#f08a7a', p.owner); Units.damage(tu, t.dmg, t.srcId || 0, p.owner); }
+      if (tu) { const d = this.covered(tu, t.dmg); this.hitFloat(tu, tu.x, tu.y, tu.x, tu.y - 0.4, '-' + d, '#f08a7a', p.owner); Units.damage(tu, d, t.srcId || 0, p.owner); }
     }
     R.impact(p.x2, p.y2, p.kind, p.fx);
   },
@@ -1613,7 +1622,9 @@ const Combat = {
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const wfA = u.perch ? this.perchMult(u, 'towerAtk') : 1;   // 1 off the platform: the old expression exactly
-          const dmg = Math.max(1, Math.round(Units.effAtk(u) * wfA - Units.effDef(tgt)));
+          // …and the platform's own weight (Lookout.atkMult, build 149): 1 off it
+          const pk = u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1;
+          const dmg = Math.max(1, Math.round(Units.effAtk(u) * pk * wfA - Units.effDef(tgt)));
           // the blow is heard where it is struck: a bow's volley or a blade (the wilds' jaws are not weapons)
           if (u.owner !== 'W' && !CFG.UNITS[u.kind].proj && typeof Sound !== 'undefined' && Sound.at)
             Sound.at(CFG.UNITS[u.kind].rng ? 'arrows' : 'sword', u.x, u.y, u.owner);
@@ -1632,14 +1643,15 @@ const Combat = {
               if (sh) this.overshoot(sh);
               this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf', u.owner);
             } else {
-              this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f08a7a', u.owner);
+              const hit = this.covered(tgt, dmg);   // a bow on a platform takes less (build 149)
+              this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + hit, '#f08a7a', u.owner);
               // A LANDED SWORD DRAWS BLOOD (operator: small, never grotesque):
               // sword-armed kinds only — the Bronze Champion today — nick a
               // short crimson slash at the blade's reach. Render-side only,
               // zero G.rand draws, so every seeded combat stream is untouched.
               if (this.SWORD_KINDS[u.kind] && window.R && R.meleeSlash)
                 R.meleeSlash(u.x, u.y, tgt.x, tgt.y);
-              Units.damage(tgt, dmg, u.id);
+              Units.damage(tgt, hit, u.id);
             }
           }
         }
@@ -1728,8 +1740,9 @@ const Combat = {
           // catapults/trebuchets break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch
           const wfA = u.perch ? this.perchMult(u, 'towerAtk') : 1;   // a bow on a tower under the Watchfires
+          const pk = u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1;   // …and the platform's own weight
           const dmg = this.bldAtkOf(u) ||
-            Math.max(1, Math.round(Units.effAtk(u) * wfA * (CFG.UNITS[u.kind].bldMult || 1)));
+            Math.max(1, Math.round(Units.effAtk(u) * pk * wfA * (CFG.UNITS[u.kind].bldMult || 1)));
           if (u.owner !== 'W' && !CFG.UNITS[u.kind].proj && typeof Sound !== 'undefined' && Sound.at)
             Sound.at(CFG.UNITS[u.kind].rng ? 'arrows' : 'sword', u.x, u.y, u.owner);
           if (CFG.UNITS[u.kind].proj) {
@@ -1826,7 +1839,7 @@ const Combat = {
           this.overshoot(sh);
           this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, 'Miss!', '#cfcfcf', b.owner);
         } else {
-          const dmg = Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt));
+          const dmg = this.covered(tgt, Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt)));
           this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a', b.owner);
           Units.damage(tgt, dmg, 0, b.owner);
         }

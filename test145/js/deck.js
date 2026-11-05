@@ -265,7 +265,7 @@ const Deck = {
          card in the catalog (ensureStarter, the door every screen passes) —
          so all 36 can be played on a phone over the live site without first
          being earned. */
-      this._all = /[?&]cards=all\b/.test(q);
+      this._all = /[?&]cards=all\b/.test(q) || !!this.TEST_PAGE;   // the test page deals it on every load
       this._dev = this._get('neo-cards-dev') === '1';
     }
     return this._dev;
@@ -1031,6 +1031,21 @@ const Deck = {
   },
 };
 window.Deck = Deck;
+/* THE TEST PAGE IS A SANDBOX (CFG.TEST_PAGE, CLAUDE.md "THE TEST BUILD" —
+   operator, build 149: "give the full complement of cards … This speeds up
+   testing things at all levels"). A test build (Backend.testSlot:
+   clanfire.online/test145/) shares the live game's origin, so its storage:
+   dealt into the live keys, the full deck would stand in the live game's slot
+   and put the player's real collection aside (dealAll's REAL_KEY). So the
+   test page keeps its deck under keys of its own — the live collection and
+   anything the live page set aside are never read or written there — and
+   deals one of every card on every load (devOn's ?cards=all deal, marked
+   `test`, so it neither syncs nor reports). */
+try {
+  if (typeof CFG !== 'undefined' && CFG.TEST_PAGE && typeof Backend !== 'undefined' && Backend.testSlot && Backend.testSlot()) {
+    Deck.KEY = 'neo-deck-testpage'; Deck.REAL_KEY = 'neo-deck-testpage-real'; Deck.TEST_PAGE = true;
+  }
+} catch (e) {}
 
 /* ================= THE CLOUD: Deck.sync (tests/deck-sync.mjs) =================
    The collection lives on the device so it reads at once and plays offline;
