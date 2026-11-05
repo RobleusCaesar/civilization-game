@@ -135,28 +135,23 @@ const UI = {
     // the enemy monument rises — the days on it are the whole endgame clock
     setInterval(() => { try { this.tickWonderWarn(); } catch (e) {} }, 900);
     // the HUD's material (--wood-tex) is a vector in index.html's :root now —
-    // drawn at the screen's own pixels, present from the first paint
-    // resource icons in the top bar
-    document.querySelectorAll('.ric').forEach(c => {
-      c.width = 16; c.height = 16;
-      const ic = Sprites.icons[c.dataset.ic];
-      if (ic) c.getContext('2d').drawImage(ic, 0, 0);
-    });
+    // drawn at the screen's own pixels, present from the first paint — and so
+    // are the top bar's resource icons (the .ric SVGs in its markup, build 154)
     this.buildMenu();
     this.bindCanvas();
     this.bindButtons();
     /* THE HUD'S NUMBERS EXPLAIN THEMSELVES (PX-18, tests/hud-info.mjs): a tap
-       or a click on a chip — the four goods, the food rate, the tribe, the
-       day — answers with a note in the rules' own numbers (UI.chipNote); Enter
-       or Space does the same from the keyboard. The player's own question, so
-       it is always answered (no collapse is asked for). */
+       or a click on a chip — the four goods, the tribe, the day — answers
+       with a note in the rules' own numbers (UI.chipNote); Enter or Space does
+       the same from the keyboard. The player's own question, so it is always
+       answered (no collapse is asked for). Food's note carries the day's net,
+       which no longer rides the chip itself (build 154). */
     this._chipEl = {};
     document.querySelectorAll('#topbar [data-chip]').forEach(el => {
       this._chipEl[el.dataset.chip] = el;
-      const say = e => {
+      const say = () => {
         if (!S || !S.res) return;
-        const rate = el.dataset.chip === 'food' && e && e.target && e.target.closest && e.target.closest('#rFoodNet');
-        const t = this.chipNote(rate ? 'foodRate' : el.dataset.chip);
+        const t = this.chipNote(el.dataset.chip);
         if (t) this.toast(t, 'note');
       };
       // a pointer's click leaves no focus behind, so Enter in placement (or the
@@ -2222,100 +2217,47 @@ const UI = {
     this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
-  // Centurion helmet, front view, 21x28 — tall serrated crest on a dark
-  // stand, bronze dome, and the bold one-piece dark T-visor that makes the
-  // silhouette read HELMET at a glance. K is the black outline the sprite
-  // carries everywhere (the buttons have no background box of their own).
-  ARMY_HELM: [
-    '.....K.KK.KK.K.......',
-    '....KrKrrKrrKrK......',
-    '...KrRrRrRrRrRrK.....',
-    '..KrRrRrRrRrRrRrK....',
-    '..KrRrRrRrRrRrRrK....',
-    '..KrRrRrRrRrRrRrK....',
-    '..KrrRrRrRrRrRrrK....',
-    '...KrrrrrrrrrrrK.....',
-    '...KKDDDDDDDDDKK.....',
-    '..KKKKKKKKKKKKKKKK...',
-    '.KhhHHHHHHHHHHhhdK...',
-    'KhhHHHHHHHHHHHHhhdK..',
-    'KhHHHHHHHHHHHHHhhddK.',
-    'KhHHHHHHHHHHHHHhhddK.',
-    'KhHHHHHHHHHHHHhhhddK.',
-    'KhhHhhhhhhhhhhhhhddK.',
-    'KhhhhhhhhhhhhhhhhddK.',
-    'KhhhKKKKKKKKKKKKKddK.',
-    'KhhhKsssssssssssKddK.',
-    'KhhhKsssssssssssKddK.',
-    'KhhhKKKKKssKKKKKKddK.',
-    '.KhhhhhhKssKhhhhhdK..',
-    '.KhhhhhhKssKhhhhhdK..',
-    '.KdhhhhhKssKhhhhddK..',
-    '..KdhhhhKssKhhhddK...',
-    '..KKddhhKssKhhddKK...',
-    '...KKKdhKKKKhdKK.....',
-    '.....KKKK..KKKK......',
-  ],
-  /* Bronze and crest sit 20% DOWN from their first values (every channel
-     ×0.8) so the right-rail buttons read as part of the UI instead of
-     shouting over it. The black outline K and the near-black visor s are
-     left alone — they carry the silhouette, and darkening near-black buys
-     no subtlety. Original: r a92f24 / R d84a2f / D 54401b / h c9a24a /
-     H e6c878 / d 96742f. */
-  ARMY_HELM_COL: {
-    K: '#17110a', r: '#87261d', R: '#ad3b26', D: '#433316',
-    h: '#a1823b', H: '#b8a060', d: '#785d26', s: '#241a0c',
+  /* THE BANNERS ARE DRAWN (build 154): the saved armies ride the top bar's
+     second row now, beside the map and the deck, so they are chrome — vectors
+     at the screen's own pixels, never blown-up pixel art (the deck's rule) —
+     where they were 21x28 sprites stamped on the map. An army flies a bronze
+     helmet under a red crest, a fleet a striped sail over a shielded hull;
+     the button carries the army's NUMBER (1, 2 or 3), which the old banner
+     told by fanning one, two or three helmets. No ids, no gradients: the
+     light and shade are flat fills (the deck icon's rule). */
+  ARMY_SVG: {
+    helm:
+      '<path d="M8.6 17.2 Q9.6 4.6 24 4.2 Q38.4 4.6 39.4 17.2 L33.8 17.2 Q33 10.4 24 10.2 Q15 10.4 14.2 17.2 Z" fill="#a8392a" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M11.4 13.4 Q13.4 6.8 24 6.6 Q29.6 6.7 32.6 8.6" stroke="#d65d42" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+      '<path d="M13.6 9.6 L15.2 11.4 M17.4 7.4 L18.4 9.6 M21.6 6.4 L22 8.8 M26.2 6.4 L25.8 8.8 M30.4 7.4 L29.4 9.6 M34.2 9.6 L32.6 11.4" stroke="#6e2216" stroke-width="1.1" stroke-linecap="round"/>' +
+      '<path d="M10.4 39.6 L10.6 24.4 C10.8 16 16.6 11.8 24 11.8 C31.4 11.8 37.2 16 37.4 24.4 L37.6 39.6 C37.6 42.4 35.6 44 33 44 L28.4 44 L27.4 31.4 L20.6 31.4 L19.6 44 L15 44 C12.4 44 10.4 42.4 10.4 39.6 Z" fill="#b8913f" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<path d="M13 30 C12.8 20.4 17 15 23.2 14.4 C19 17.6 16.4 22.6 16.2 30.2 Z" fill="#e2c477"/>' +
+      '<path d="M34.6 24.6 C34.4 18.8 31.6 15.6 27.6 14.6 C31.6 17.6 33 22 33.2 41.6 L35.2 41 C35.4 35 35 29 34.6 24.6 Z" fill="#87652a"/>' +
+      '<path d="M13.6 22.6 Q18 20.8 22.2 22.2 L22.2 26 L25.8 26 L25.8 22.2 Q30 20.8 34.4 22.6 L34 26.6 Q29.6 27.8 27.2 27.8 L27.2 31.6 L20.8 31.6 L20.8 27.8 Q18.4 27.8 14 26.6 Z" fill="#1d150c" stroke="#140d06" stroke-width="1.2" stroke-linejoin="round"/>' +
+      '<path d="M22.4 26.2 L22.4 31.2" stroke="#87652a" stroke-width="0.9"/>' +
+      '<path d="M14 19.2 Q24 15 34 19.2" stroke="#87652a" stroke-width="1.1" fill="none" stroke-dasharray="1.2 2.4" stroke-linecap="round"/>',
+    ship:
+      '<path d="M3 42.6 Q8 40.4 13 42.6 T23 42.6 T33 42.6 T45 42.6" stroke="#4a7fb0" stroke-width="2.4" fill="none" stroke-linecap="round"/>' +
+      '<path d="M24 31 L24 4.6" stroke="#140d06" stroke-width="3.6" stroke-linecap="round"/>' +
+      '<path d="M24 31 L24 4.6" stroke="#7a5a2c" stroke-width="1.6" stroke-linecap="round"/>' +
+      '<path d="M11 8.4 L37 8.4 Q38.6 17 36.4 25.4 L11.6 25.4 Q9.4 17 11 8.4 Z" fill="#e6dab6" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M15.6 8.8 Q14.6 17 15.8 25 L20 25 Q18.8 17 19.8 8.8 Z M28.2 8.8 Q29.2 17 28 25 L32.2 25 Q33.4 17 32.4 8.8 Z" fill="#a8392a"/>' +
+      '<path d="M11.8 9.8 Q10.8 16 11.8 22" stroke="#fff8e0" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+      '<path d="M10 8.4 L38 8.4" stroke="#140d06" stroke-width="2.4" stroke-linecap="round"/>' +
+      '<path d="M4.2 26.6 Q6.4 30.2 9.4 30.6 L38.6 30.6 Q41.6 30.2 43.8 26.6 Q44.6 33.6 39.6 38.6 Q36 41.4 30 41.4 L18 41.4 Q12 41.4 8.4 38.6 Q3.4 33.6 4.2 26.6 Z" fill="#7a5a2c" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<path d="M7.6 35 Q12 37.6 18 37.8 L30 37.8 Q36 37.6 40.4 35" stroke="#5a3f1c" stroke-width="1.2" fill="none"/>' +
+      '<path d="M6 30.4 Q9 33.6 13 34 L35 34 Q39 33.6 42 30.4" stroke="#a07a40" stroke-width="1.2" fill="none"/>' +
+      '<circle cx="12" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
+      '<circle cx="12" cy="30.4" r="0.9" fill="#140d06"/>' +
+      '<circle cx="18" cy="30.4" r="2.9" fill="#e6dab6" stroke="#140d06" stroke-width="1.2"/>' +
+      '<circle cx="18" cy="30.4" r="0.9" fill="#140d06"/>' +
+      '<circle cx="24" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
+      '<circle cx="24" cy="30.4" r="0.9" fill="#140d06"/>' +
+      '<circle cx="30" cy="30.4" r="2.9" fill="#e6dab6" stroke="#140d06" stroke-width="1.2"/>' +
+      '<circle cx="30" cy="30.4" r="0.9" fill="#140d06"/>' +
+      '<circle cx="36" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
+      '<circle cx="36" cy="30.4" r="0.9" fill="#140d06"/>',
   },
-  /* THE FLEET'S OWN MARK. A saved army whose soldiers float gets a SHIP on its
-     banner instead of a helmet — the same 21x28 footprint and the same dulled
-     palette, so the rail reads as one set, but unmistakable at a glance: square
-     sail on its yard, masthead pennant, clinker hull with a row of shields
-     along the gunwale, stem and stern posts, and the water under her keel. */
-  ARMY_SHIP: [
-    '..........Krr........',
-    '.........KmKrr.......',
-    '.........KmK.........',
-    '..KmmmmmmmmmmmmmmmK..',
-    '..KKKKKKKKKKKKKKKKK..',
-    '..KsssssssssssssssK..',
-    '..KsssssssssssssssK..',
-    '..KsssSSSSSSSSSsssK..',
-    '..KrrrrrrrrrrrrrrrK..',
-    '..KrrrrrrrrrrrrrrrK..',
-    '..KsssssssssssssssK..',
-    '..KsssSSSSSSSSSsssK..',
-    '..KsssssssssssssssK..',
-    '..KsssssssssssssssK..',
-    '..KSSSSSSSSSSSSSSSK..',
-    '..KKKKKKKKKKKKKKKKK..',
-    '.........KmmK........',
-    '.........KmmK........',
-    '.KK......KmmK.....KK.',
-    '.KbK.....KmmK....KbK.',
-    'KbbWWWWWWWmmWWWWWWbbK',
-    'KbWbWbWbWbWbWbWbWbWbK',
-    'KwwwwwwwwwwwwwwwwwwwK',
-    '.KwwwwwwwwwwwwwwwwwK.',
-    '..KwwwwwwwwwwwwwwwK..',
-    '...KKwwwwwwwwwwwKK...',
-    '.....KKKKKKKKKKK.....',
-    '...uu...uuu...uu.....',
-  ],
-  ARMY_SHIP_COL: {
-    K: '#17110a', m: '#7a5a2c', s: '#bdb28f', S: '#9c8f6a', r: '#8c3a2a',
-    W: '#8a6534', w: '#66471f', b: '#a1823b', u: '#4a6b86',
-  },
-  _stamp(g, art, col, x, y) {
-    for (let ry = 0; ry < art.length; ry++)
-      for (let rx = 0; rx < art[ry].length; rx++) {
-        const c = art[ry][rx];
-        if (c === '.') continue;
-        g.fillStyle = col[c];
-        g.fillRect(x + rx, y + ry, 1, 1);
-      }
-  },
-  drawHelmet(g, x, y) { this._stamp(g, this.ARMY_HELM, this.ARMY_HELM_COL, x, y); },
-  drawShip(g, x, y) { this._stamp(g, this.ARMY_SHIP, this.ARMY_SHIP_COL, x, y); },
   // a banner flies the ship when MOST of its roster floats — one scout tagging
   // along with a fleet should not turn it back into an army
   armyIsNaval(n) {
@@ -2325,16 +2267,8 @@ const UI = {
     for (const id of alive) { const u = Units.get(id); if (u && Units.isNaval(u)) sea++; }
     return sea * 2 > alive.length;
   },
-  // 1 mark for Army 1, 2 fanned for Army 2, 3 fanned for Army 3 — full-size
-  // sprites overlapped (never downscaled), so every copy stays pixel-crisp
-  drawArmyIcon(g, n) {
-    g.imageSmoothingEnabled = false;
-    g.clearRect(0, 0, 34, 34);
-    const mark = this.armyIsNaval(n) ? (gg, x, y) => this.drawShip(gg, x, y)
-                                     : (gg, x, y) => this.drawHelmet(gg, x, y);
-    if (n === 1) mark(g, 6, 3);
-    else if (n === 2) { mark(g, 11, 0); mark(g, 2, 6); }
-    else { mark(g, 13, 0); mark(g, 7, 3); mark(g, 0, 6); }
+  armyIcon(n) {
+    return `<svg viewBox="0 0 48 48" aria-hidden="true">${this.ARMY_SVG[this.armyIsNaval(n) ? 'ship' : 'helm']}</svg>`;
   },
   renderArmyBar() {
     const bar = document.getElementById('armyBar');
@@ -2344,12 +2278,13 @@ const UI = {
     for (const n of [1, 2, 3]) {
       if (!this.armyAlive(n).length) continue;
       const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'iconbtn';
       btn.dataset.army = n;
-      btn.title = this.armyIsNaval(n) ? `Fleet ${n}` : `Army ${n}`;
-      const cv = document.createElement('canvas');
-      cv.width = cv.height = 34;
-      this.drawArmyIcon(cv.getContext('2d'), n);
-      btn.appendChild(cv);
+      const name = this.armyIsNaval(n) ? `Fleet ${n}` : `Army ${n}`;
+      btn.title = name;
+      btn.setAttribute('aria-label', name);
+      btn.innerHTML = this.armyIcon(n) + `<b class="armyN">${n}</b>`;
       btn.addEventListener('click', (e) => { e.stopPropagation(); this.selectArmy(n); });
       bar.appendChild(btn);
     }
@@ -3740,10 +3675,24 @@ const UI = {
   },
 
   /* ---------------- top bar / periodic refresh ---------------- */
+  /* A CHIP'S NUMBER FITS ITS CHIP (operator, build 154: "when resources get
+     to higher numbers, thousands or tens of thousands we might run out of
+     space and have to start using decimals and 'k'"): exact to 9,999 — four
+     digits fit every phone — then 12.4k, 123k and 1.2M, never more than five
+     characters. Shortened DOWN, never up: 12,450 is 12.4k, because a store
+     that reads as 12.5k would promise a price it cannot pay. The chip's note
+     says the exact number (fmtFull). */
   fmtRes(n) {
-    n |= 0;
-    return n >= 10000 ? (Math.round(n / 100) / 10 + '').replace(/\.0$/, '') + 'k' : String(n);
+    n = Math.max(0, Math.floor(+n || 0));
+    if (n < 10000) return String(n);
+    // whole-number division throughout, so a float never rounds a step up
+    for (const [s, u] of [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']]) {
+      if (n < s * 100) return (Math.floor(n / (s / 10)) / 10).toFixed(1).replace(/\.0$/, '') + u;   // 12.4k, 1.2M
+      if (n < s * 1000) return Math.floor(n / s) + u;                                                // 123k, 123M
+    }
+    return Math.floor(n / 1e12) + 'T';
   },
+  fmtFull(n) { return String(Math.max(0, Math.floor(+n || 0))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); },
   /* THE DAY'S SUMS (PX-19 / PX-18, tests/hud-info.mjs). What the town is SET
      to bring in each day, by the rules that pay it: every hand sent to gather
      or fish at the rate the panel's own work line gives it at work
@@ -3819,6 +3768,16 @@ const UI = {
      wolf for a breath never turns the sign. A new world or a loaded save
      starts it afresh at the sum itself. UI-local, keyed on S, never saved. */
   NET_DAYS: 0.5,
+  /* …and the bar's one food cue (build 154): the number turns red when the
+     store will run dry within LOW_DAYS at the smoothed rate, and in a famine
+     (mouths to feed and an empty store, or the famine already warned) — a
+     falling larder with weeks in it stays plain, so the red is news. Ten days
+     is about a hundred seconds: time to send hands to the fields. */
+  LOW_DAYS: 10,
+  foodLow(net, eat) {
+    if (S._famineWarned || (eat > 0 && S.res.food <= 0)) return true;
+    return net < -0.05 && S.res.food / -net < this.LOW_DAYS;
+  },
   _net: new WeakMap(),       // world → { at, v }: keyed on S without keeping an old world alive
   smoothNet(x) {
     if (!S) return x;
@@ -3845,7 +3804,7 @@ const UI = {
         : `the town is full — the hall holds no more than ${ceil}.`);
     }
     if (kind === 'day') return `Day ${S.day}. A day lasts ${f(CFG.DAY_MS / 1000)} seconds; when it turns, the hall, farms and camps pay out and every mouth eats.`;
-    const res = kind === 'foodRate' ? 'food' : kind;
+    const res = kind;
     if (!S.res || S.res[res] == null) return '';
     const inc = this.incomePerDay(res);
     const WORKS = { farm: 'farms', lodge: 'lodges', lumber: 'lumber camps', quarry: 'quarries', mine: 'mines' };
@@ -3857,8 +3816,14 @@ const UI = {
     if (inc.gift) parts.push('your origin ' + f(inc.gift));
     const eat = res === 'food' ? Units.foodUpkeep('P') : 0, net = inc.total - eat;
     const come = parts.length ? ' Coming in: ' + list(parts) + '.' : ' Nothing comes in.';
-    const head = res.charAt(0).toUpperCase() + res.slice(1) + ' ' + this.fmtRes(S.res[res]);
-    if (res === 'food') return (kind === 'foodRate' ? `${sg(net)} food a day.` : `${head}: ${sg(net)} a day.`) + come + ` Eaten: ${f(eat)}.`;
+    const head = res.charAt(0).toUpperCase() + res.slice(1) + ' ' + this.fmtFull(S.res[res]);
+    if (res === 'food') {
+      // a falling store says when it runs dry: the number the chip's red warns of
+      const left = net < -0.05 ? S.res.food / -net : Infinity;
+      const dry = left === Infinity ? '' : S.res.food <= 0 ? ' The store is empty.'
+        : ` At this rate it runs out in ${left < 1 ? 'under a day' : 'about ' + Math.floor(left) + ' day' + (Math.floor(left) === 1 ? '' : 's')}.`;
+      return `${head}: ${sg(net)} a day.` + come + ` Eaten: ${f(eat)}.` + dry;
+    }
     if (!parts.length) return `${head}: nothing comes in — ` + { wood: 'send a villager to a forest.', stone: 'send a villager to the rocks.', gold: 'a villager can claim a gold seam.' }[res];
     return `${head}: ${sg(net)} a day.${come}`;
   },
@@ -3883,18 +3848,19 @@ const UI = {
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
     const food = this.fmtRes(S.res.food);
-    document.getElementById('rFood').textContent = food;
-    const fnet = document.getElementById('rFoodNet');
-    let net = '';
-    if (fnet) {
-      // the NET: what comes in less what is eaten (PX-19), "+N/d" or "−N/d",
-      // red while the larder falls — and the famine red as before
-      const eat = Units.foodUpkeep('P'), inc = this.incomePerDay('food').total;
-      const n = Math.round(this.smoothNet(inc - eat));
-      net = !eat && !inc ? '' : (n > 0 ? '+' + n : n < 0 ? '−' + -n : '±0') + '/d';
-      fnet.textContent = net;
-      fnet.classList.toggle('bad', n < 0 || !!S._famineWarned || (eat > 0 && S.res.food <= 0));
-    }
+    const fEl = document.getElementById('rFood');
+    fEl.textContent = food;
+    /* THE NET RIDES THE NOTE, AND THE NUMBER WARNS (operator, build 154: "we
+       still have to show the food stat, we just hide the addition of the food
+       being consumed (ex. +35/d)"): the day's net — what comes in less what is
+       eaten (PX-19), smoothed so a step between two tiles never flips it — is
+       said by the chip's note (chipNote) and in its accessible name. The bar
+       keeps one cue that costs no room: the number turns red when the store
+       will run dry within LOW_DAYS at this rate, and in a famine as before. */
+    const eat = Units.foodUpkeep('P'), inc = this.incomePerDay('food').total;
+    const sm = this.smoothNet(inc - eat), n = Math.round(sm);
+    const net = !eat && !inc ? '' : (n > 0 ? '+' + n : n < 0 ? '−' + -n : '±0') + ' a day';
+    fEl.classList.toggle('low', this.foodLow(sm, eat));
     document.getElementById('rWood').textContent = this.fmtRes(S.res.wood);
     document.getElementById('rStone').textContent = this.fmtRes(S.res.stone);
     document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
@@ -3903,7 +3869,7 @@ const UI = {
     document.getElementById('rDay').textContent = 'Day ' + S.day;
     // the chips' names say their numbers too (role=button names itself by its label)
     const name = (id, s) => { const el = this._chipEl && this._chipEl[id]; if (el && el.getAttribute('aria-label') !== s) el.setAttribute('aria-label', s); };
-    name('food', 'Food ' + food + (net ? ', ' + net.replace('/d', ' a day') : ''));
+    name('food', 'Food ' + food + (net ? ', ' + net : ''));
     name('wood', 'Wood ' + this.fmtRes(S.res.wood));
     name('stone', 'Stone ' + this.fmtRes(S.res.stone));
     name('gold', 'Gold ' + this.fmtRes(S.res.gold));

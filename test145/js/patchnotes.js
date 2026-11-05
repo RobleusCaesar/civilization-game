@@ -19,6 +19,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 154, date: '2026-11-05', title: 'A cleaner top bar',
+    items: [
+      'Your population now sits on the top row beside food, wood, stone and gold, and the five share the row evenly.',
+      'The food, wood, stone, gold and population icons are redrawn sharp and clear: meat on the bone, a stack of logs, stone, gold coins and your people.',
+      'The daily food change no longer sits beside your food. Tap your food to see it, with what comes in, what is eaten and, when it is falling, how many days it will last.',
+      'Your food count turns red when your stores will run out soon, within ten days at the current rate, and during a famine.',
+      'Big numbers stay short so they always fit: up to 9,999 they are shown in full, then with a k for thousands and an M for millions. Tap a resource to see the exact amount.',
+      'Your saved armies now sit at the left of the second row of the top bar, out of the way of the map, each with its number on it.',
+    ],
+  },
+  {
     build: 153, date: '2026-11-05', title: 'Roads that pay',
     items: [
       'A building with a road running up to one of its sides now works 10 percent better, and its panel says so in gold.',
