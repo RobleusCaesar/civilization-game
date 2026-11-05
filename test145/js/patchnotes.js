@@ -19,13 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 147, date: '2026-11-04', title: 'Archers on the towers',
+    build: 148, date: '2026-11-04', title: 'Archers on the towers',
     items: [
       'The watchtowers have lost their roofs: every tower now has an open lookout platform on top.',
       'Select archers and tap one of your towers to send up to two of them onto it. Climbing up or down the stairs takes a second, and they cannot be hit on the way.',
-      'Archers up there stand inside the platform, behind its rail or in the gaps of its battlements, two side by side.',
+      'Archers up there stand inside the platform, behind its rail or its battlements, two side by side.',
       'Tap an archer on a tower, then tap an enemy soldier or building, and he shoots at it from up there.',
       'An archer on a tower sees twice as far, shoots twice as far and shoots over walls. Only archers and siege engines can hit them up there.',
+      'Your towers no longer shoot on their own. A tower fights only when archers are on it, so send some up to defend it.',
+      'The Watchfires card now makes the archers on your towers, and your War Camps, hit harder and shoot farther.',
       'If a tower falls, the archers on it fall with it.',
       'Walls now block sight. Soldiers on either side of an unbroken wall can no longer shoot or strike each other through it, until a breach or an open gate lets them see through.',
     ],

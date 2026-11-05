@@ -81,7 +81,7 @@ const Tutorial = {
     soldier: 'Tap the Barracks and train a <b>Defender</b> to stand between your workers and the wild. Your first spear answers the call at once.',
     guard: 'Tap your <b>defender</b>, then the ground where a raid would come in — they hold wherever you set them. Keep your spears between the wild and your workers.',
     buildHands: 'Those works are waiting for <b>hands</b>. Tap a villager, then the site, and they will raise it.',
-    tower: 'Raise a <b>Watchtower</b> where the road into your town runs — it watches and shoots for itself. Stone tiers see and strike farther.',
+    tower: 'Raise a <b>Watchtower</b> where the road into your town runs. It shoots only when manned: send <b>archers</b> up and they see and shoot twice as far.',
     wall: 'A run of <b>wall</b> across a narrow place turns a raid aside — even a short line buys time. Tap a finished section to build a <b>gate</b> through it: a door only your people may pass.',
     winCond: () => (S.peace
       ? 'Two roads to victory: raze the rival’s hall, or raise the <b>Ancient Wonder</b> and win without a war. The rival is racing for their own.'
