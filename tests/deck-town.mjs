@@ -538,7 +538,10 @@ await p.evaluate(({ TOWN }) => {
       }
       return { lost: 1000 - foe.hp, floats, rngMoved: S.rngState !== rng0, rng: S.rngState,
         shots: shots.length, fire: shots.filter(sh => sh.fire).length,
-        atk: bows.length ? Units.effAtk(bows[0]) : 0, reach: bows.length ? Combat.reachOf(bows[0]) : 0 };
+        // the blow as struck from the platform: the bow's own attack under the
+        // tower's storey (Lookout.atkMult, build 149) — the card's ×1.5 goes on top
+        atk: bows.length ? Units.effAtk(bows[0]) * (Lookout.atkMult ? Lookout.atkMult(bows[0]) : 1) : 0,
+        reach: bows.length ? Combat.reachOf(bows[0]) : 0 };
     };
     const def = CFG.UNITS.defender.def;
     /* THE BOWS ON A PLAYER TOWER. A longbow (it never misses), on a level-2

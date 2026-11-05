@@ -62,6 +62,7 @@
  "naval-art.mjs": 5,
  "ore-finite.mjs": 6,
  "origin-cards.mjs": 25,
+ "pages.mjs": 70,
  "patch-notes.mjs": 3,
  "placement.mjs": 13,
  "raider-camps.mjs": 19,
@@ -80,8 +81,10 @@
  "tc-upgrade.mjs": 4,
  "telemetry.mjs": 37,
  "terrain-v4.mjs": 70,
+ "test-page.mjs": 12,
  "title.mjs": 83,
  "tower-archer-miss.mjs": 11,
+ "tower-garrison.mjs": 40,
  "trade-post.mjs": 4,
  "train-spawn.mjs": 5,
  "tree-fall.mjs": 7,
@@ -99,7 +102,5 @@
  "work-order.mjs": 7,
  "worked-ground.mjs": 8,
  "world-board.mjs": 75,
- "pages.mjs": 70,
- "worn-paths.mjs": 8,
- "tower-garrison.mjs": 40
+ "worn-paths.mjs": 8
 }

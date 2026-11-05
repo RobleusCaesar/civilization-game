@@ -26,6 +26,13 @@
         with archers they should shoot"): empty, it looses nothing at any
         level and says so on its panel; manned, its bows do the shooting;
         the rival's towers still fire by themselves
+     §4c the platform makes a bow a better one (build 149: "Tougher archers.
+        Hit for more, take less damage. Two archers should be more powerful
+        than the tower by itself previously"): two base archers (and two
+        longbows) on a player tower out-shoot a rival tower firing the old way
+        at every storey; up there a bow hits CFG.LOOKOUT.atk and takes
+        CFG.LOOKOUT.hurt of every blow (an engine's stone too), the number
+        floated is the number taken, the panel shows both; off it, nothing
      §5 an order off the platform takes the stairs down first, a second hidden
      §6 the tower falls and takes its lookout: dead, a fall on screen, the
         population freed — and one killed up there falls too
@@ -327,6 +334,103 @@ const out = await p.evaluate(() => {
     const fr = Units.spawn('defender', 'P', 22.5, 20.5);
     const riv = watch(tr, fr, 6);
     ck('theRivalsTowersStillFireByThemselves', riv.own > 0 && riv.lost > 0, `the rival tower's arrows ${riv.own}, the foe lost ${riv.lost}`);
+  }
+
+  /* ---- §4c the platform makes a bow a better one (build 149 — operator:
+     "Tougher archers. Hit for more, take less damage. Two archers should be
+     more powerful than the tower by itself previously") ---- */
+  {
+    const C = CFG.LOOKOUT;
+    // what a pinned, unkillable foe loses in `sec` seconds (it never strikes back)
+    const bleed = (foe, sec) => {
+      foe.hp = foe.maxhp = 1e5;
+      const fx = foe.x, fy = foe.y;
+      fight(sec, () => { foe.x = fx; foe.y = fy; foe.path = null; foe.tUnit = 0; foe.tBld = 0; foe.task = null; foe.cd = 99; });
+      return 1e5 - foe.hp;
+    };
+    const man = (t, kind) => {
+      const bows = [Units.spawn(kind, 'P', 20, 22), Units.spawn(kind, 'P', 20.4, 22)];
+      for (const a of bows) Lookout.order(a, t);
+      step(4);
+      return bows;
+    };
+    // "the tower by itself previously" is a RIVAL tower: it still fires the
+    // old way (its storey's arrow every 1.4 s, the L1 fumble), and the foe
+    // stands where both fires reach it
+    const SEC = 30, rows = [];
+    for (const lv of [1, 2, 3]) {
+      clear('lk4cr' + lv);
+      put('tower', 20, 20, lv, 'A');
+      const old = bleed(Units.spawn('defender', 'P', 22.5, 20.5), SEC);
+      const two = {};
+      for (const kind of ['archer', 'longbow']) {
+        clear('lk4cp' + lv + kind);
+        const t = put('tower', 20, 20, lv);
+        const bows = man(t, kind);
+        two[kind] = bows.every(a => a.perch === t.id) ? bleed(Units.spawn('defender', 'A', 22.5, 20.5), SEC) : -1;
+      }
+      rows.push({ lv, old, archer: two.archer, longbow: two.longbow });
+    }
+    ck('twoArchersOutshootTheOldTowerAtEveryStorey', rows.every(r => r.archer > r.old * 1.2),
+      rows.map(r => `Lv${r.lv}: two archers ${r.archer} vs the old tower ${r.old} (${(r.archer / Math.max(1, r.old)).toFixed(2)}x)`).join('; '));
+    ck('andSoDoTwoLongbows', rows.every(r => r.longbow > r.old),
+      rows.map(r => `Lv${r.lv}: two longbows ${r.longbow} vs ${r.old}`).join('; '));
+
+    // the numbers themselves: what a bow up there strikes and takes, floated
+    // as dealt — ONE bow on the platform and a rival archer (def 0) trade shots
+    const trade = [];
+    for (const lv of [1, 2, 3]) {
+      clear('lk4ct' + lv);
+      const t = put('tower', 20, 20, lv);
+      const a = Units.spawn('archer', 'P', 20, 22);
+      Lookout.order(a, t); step(4);
+      const r = Units.spawn('archer', 'A', 22.5, 20.5);
+      a.hp = a.maxhp = 1e4; r.hp = r.maxhp = 1e4;
+      const ours = [], theirs = [], f0 = R.float;
+      R.float = function (x, y, txt, col) {
+        if (col === '#f08a7a' && /^-\d+$/.test(txt)) (Math.hypot(x - r.x, y + 0.4 - r.y) < 0.05 ? ours : theirs).push(+txt.slice(1));
+        return f0.apply(this, arguments);
+      };
+      const aHp = a.hp, rHp = r.hp, rx = r.x, ry = r.y;
+      try { fight(12, () => { r.x = rx; r.y = ry; r.path = null; }); } finally { R.float = f0; }
+      // the game's own figures (the L3 signal fire and home turf ride effAtk)
+      const ground = Math.max(1, Math.round(Units.effAtk(r) - Units.effDef(a)));
+      trade.push({ lv, ours, theirs, aLost: aHp - a.hp, rLost: rHp - r.hp, ground,
+        hit: Math.max(1, Math.round(Units.effAtk(a) * C.atk[lv - 1] - Units.effDef(r))),
+        take: Math.max(1, Math.round(ground * C.hurt[lv - 1])),
+        shown: UI.atkShown ? UI.atkShown(a) : -1, base: Math.round(Units.effAtk(a)), perched: a.perch === t.id });
+    }
+    ck('aBowUpThereHitsHarder', trade.every(w => w.perched && w.ours.length > 3 && w.ours.every(n => n === w.hit) && w.hit > w.base && w.shown === w.hit),
+      trade.map(w => `Lv${w.lv}: hits ${[...new Set(w.ours)].join('/')} (expected ${w.hit}, ${w.base} on the ground, panel ATK ${w.shown})`).join('; '));
+    ck('andTakesLessThanABowOnTheGround', trade.every(w => w.theirs.length > 3 && w.theirs.every(n => n === w.take) && w.take < w.ground),
+      trade.map(w => `Lv${w.lv}: takes ${[...new Set(w.theirs)].join('/')} (expected ${w.take}, on the ground ${w.ground})`).join('; '));
+    ck('andTheNumberShownIsTheNumberTaken', trade.every(w => w.aLost === w.theirs.reduce((s, n) => s + n, 0) && w.rLost === w.ours.reduce((s, n) => s + n, 0)),
+      trade.map(w => `Lv${w.lv}: took ${w.aLost} (floated ${w.theirs.reduce((s, n) => s + n, 0)}), dealt ${w.rLost} (floated ${w.ours.reduce((s, n) => s + n, 0)})`).join('; '));
+
+    // an engine's stone lands covered too (asked where it lands, not where it was thrown)
+    clear('lk4ce');
+    const te = put('tower', 20, 20, 2);
+    const [ae] = man(te, 'archer');
+    ae.hp = ae.maxhp = 1e4;
+    const cat = Units.spawn('catapult', 'A', 24.5, 20.5);
+    cat.hp = cat.maxhp = 1e4; cat.cd = 99;   // it throws only the one stone below
+    const h0 = ae.hp;
+    Combat.launch(cat, ae.x, ae.y, { kind: 'unit', id: ae.id, dmg: 20, srcId: cat.id });
+    fight(4, () => { cat.cd = 99; cat.tUnit = 0; });
+    ck('anEnginesStoneLandsCoveredToo', ae.perch === te.id && h0 - ae.hp === Math.max(1, Math.round(20 * C.hurt[1])),
+      `a 20 stone took ${h0 - ae.hp} (expected ${Math.max(1, Math.round(20 * C.hurt[1]))})`);
+
+    // off the platform nothing changes, and the tower's panel names what its storey gives
+    clear('lk4cg');
+    const g = Units.spawn('archer', 'P', 30, 30);
+    const tl = put('tower', 20, 20, 3);
+    man(tl, 'archer');
+    UI.select('bld', tl.id);
+    const tline = UI.panelSub().replace(/<[^>]+>/g, '');
+    UI.deselect && UI.deselect();
+    ck('offThePlatformABowIsItself', Lookout.atkMult(g) === 1 && Combat.covered(g, 7) === 7 && UI.atkShown(g) === CFG.UNITS.archer.atk,
+      `atk ×${Lookout.atkMult(g)}, a 7 blow takes ${Combat.covered(g, 7)}, panel ATK ${UI.atkShown(g)}`);
+    ck('andTheTowerSaysWhatItsStoreyGives', /twice as hard|% harder/.test(tline) && /less damage|half the damage/.test(tline), tline);
   }
 
   /* ---- §5 down the stairs ---- */

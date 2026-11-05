@@ -291,7 +291,8 @@ node tests/footing.mjs       # the ground under a building: a cast shadow under 
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
-node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (seven tenths of one on a free tower, nine tenths on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
+node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
+node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach, only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there a bow hits harder and takes less by the tower's storey, two base archers out-shooting the old tower at every storey, the number floated the number taken, an engine's stone covered as it lands; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (seven tenths of one on a free tower, nine tenths on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
@@ -345,7 +346,23 @@ landings, the engine road) is unchanged: a tower can be manned in a second.
 `perchFire`): the card's 'towerRange' and 'towerAtk' land on the player's
 bows up there — reach in `reachOf`, the blow in the strike (one expression,
 ×1 off the platform), the farther band only on ground the player sees, the
-burning arrow only while the card runs. **THE TOWER TAKES ITS LOOKOUT WITH IT** (`Lookout.towerFalls`,
+burning arrow only while the card runs. **THE PLATFORM MAKES A BOW A BETTER ONE**
+(`CFG.LOOKOUT.atk` / `hurt`, `Lookout.atkMult` / `hurtMult` / `cover`,
+`Combat.covered`, `UI.atkShown` — operator, build 149: "Tougher archers. Hit
+for more, take less damage. Two archers should be more powerful than the
+tower by itself previously"): up there a bow strikes `atk[storey − 1]`
+(1.25 / 1.5 / 2) times as hard — at units and at works, folded into the
+strike's one expression beside the Watchfires — and takes `hurt[storey − 1]`
+(0.6 / 0.5 / 0.4) of every blow, asked where each blow that can reach him is
+dealt (a bow's arrow, an engine's stone or bolt AS IT LANDS, a tower's
+volley) and before its number is floated, so the number shown is the number
+taken; `Units.damage` is untouched (a falling tower still kills). The
+storey sets both: wattle, timber, stone. Measured against a RIVAL tower,
+which still fires the old way: two base archers out-shoot it 4.3x / 1.7x /
+2.1x at Lv1/2/3 over 30 s (the L3 signal fire rides `effAtk`), two longbows
+beat it too. The unit panel's ATK and the tower's line say so. Off the
+platform both answer 1: the old expressions, byte for byte.
+**THE TOWER TAKES ITS LOOKOUT WITH IT** (`Lookout.towerFalls`,
 from `Bld.damage`'s destroy branch before anything leaves the list, credited
 to the striker's owner — `Bld.damage` takes `by` now): every bow on the
 platform or the stairs dies; one killed on the platform, by the tower or by
@@ -4572,14 +4589,39 @@ pictures and says how to add one). Push it to
 main as its own commit ON TOP OF main — the live page, its scripts and its
 pictures untouched — and merge that commit into the working branch (never
 rebase: the branch must stay a fast-forward of main). It is the live game's ORIGIN, so it
-shares the device's saves and deck: a card played there is spent for real,
-and one earned there does not stick. NOTHING LEAVES IT: any `/test/` or
+shares the device's storage and saves (a Continue on the live site can open a
+game played there). NOTHING LEAVES IT: any `/test/` or
 `/test<digits>/` path, and any https page that is not one of `PROD_HOSTS`,
 answers no to `telemetryAllowed` — no telemetry, no feedback relay, no deck
 sync, no board post (its games are not the players', and its build number
 must not open a release on the dashboard before the release is real) — and
 wears a TEST BUILD badge on the menus (`Screens.init`; a game hides it, it
 sat on the build menu). A page from disk or a local server wears nothing.
+**THE TEST PAGE IS A SANDBOX** (`CFG.TEST_PAGE`, `G.testPage`, the foot of
+js/deck.js; tests/test-page.mjs — operator, build 149: "going forward, can you
+set all resources in the test environment to 2,000 and give the full
+compliment of cards. This speeds up testing things at all levels… Push
+everything to test quickly so I can start testing. We can always do final
+checks before pushing to production"). On a test build (`Backend.testSlot`)
+a run FOUNDED there starts with `CFG.TEST_PAGE.res` (2,000) of every good,
+never less than its own start package (`G.newGame`, after the package is
+rolled; no RNG drawn; never the title's demo world; a loaded save keeps its
+own goods), and the deck holds ONE OF EVERY CARD, dealt again on every load
+(devOn's `?cards=all` deal, a `test` deck: no sync, no reports). That deck
+lives under keys of its own (`Deck.KEY` 'neo-deck-testpage', `REAL_KEY`
+'neo-deck-testpage-real', set right after `window.Deck = Deck`, before
+anything reads the collection): dealt into the live keys it would stand in
+the live game's slot, and the deal's first move (`dealAll` stashing the slot
+under `REAL_KEY`) would have deleted whatever the live page had set aside.
+The contract serves the repo under /test145/ and / on ONE origin, seeds a
+live collection and a set-aside one, and holds both byte for byte through a
+deal, a played card and a reload; at / the same seed starts with its package
+and the player's own collection. The rival is untouched. Every future test
+build gets it by itself: the rule is the page's path, not the folder.
+**A TEST PUSH NEED NOT WAIT FOR THE FULL SWEEP** (the same ruling): run the
+suites nearest the change, push the test page, and let the branch's CI run
+behind it; anything red is fixed before the build goes to production, where
+the green-sweep rule still binds.
 
 **THE HUD'S MATERIAL IS A VECTOR** (index.html `:root`, operator 2026-10-29:
 the plank tile "really basic… something that silently sits in the
