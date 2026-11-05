@@ -363,7 +363,7 @@ const CFG = {
     tower: {
       // fortifications got a real HP curve (siege engines exist now) — and a
       // matching price curve. L1 stays affordable: it's the early-game shield.
-      name: 'Watchtower', desc: 'Shoots raiders and beasts. Extends vision.', vision: true,
+      name: 'Watchtower', desc: 'Extends vision. Manned by archers, it sees and shoots twice as far.', vision: true,
       levels: [
         { cost: { wood: 45, stone: 45 },              time: 2, hp: 420,  atk: 8,  range: 4.5, vision: 6 },
         { cost: { wood: 110, stone: 130, gold: 10 },  time: 2, hp: 950,  atk: 13, range: 5,   vision: 7 },

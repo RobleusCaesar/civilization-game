@@ -252,12 +252,24 @@ const Lookout = {
      tower top… It also looks unnatural having half their body cut off.
      Remember how we had villagers looking more natural walking under the
      gate…"). A man up there is drawn WHOLE, standing on the platform's
-     floor, sized so that two of them fit between its corner posts; and the
-     parts of the tower that stand IN FRONT of him — the front rail or
-     wattle, the front corner posts, a ladder's top, the merlons and the
-     crenels' sills — hide him, as a gatehouse hides a man in its passage
-     (R.occludeByForts). What hides him is the tower's own pixels, never a
-     ruler line.
+     floor; and the parts of the tower that stand IN FRONT of him — the
+     front rail or wattle, the front corner posts, a ladder's top, the
+     merlons and the crenels' sills — hide him, as a gatehouse hides a man
+     in its passage (R.occludeByForts). What hides him is the tower's own
+     pixels, never a ruler line.
+     HIS SIZE IS A MAN'S, HIS BODY STAYS INSIDE THE FENCE (operator, build
+     148: "make them 40% bigger, but make sure the physics of them staying
+     inside the fence at the top of the tower remains… They just look so so
+     small relative to the villagers… It's okay if the archers are a little
+     squished next to each other, as long as their bodies stay inside the
+     fence"). He stands 40% taller than the first cut (38 art px → 53): on
+     a free tower about seven tenths of a villager, on a wall tower, whose
+     art is denser, about nine tenths. His places are as far apart as his
+     body allows: at rest, whichever way he faces and in every frame, no
+     part of him (his bow aside) passes the platform's outer posts; drawing
+     his bow, his arm may reach over the side rail by at most a sixth of his
+     height, as an archer leans out to shoot. Two up there stand a little
+     squeezed together, side by side.
 
      PLAT, per drawn tower, in the art's own pixels (measured off the shipped
      roofless PNGs — tests/tower-garrison.mjs reads them back off the files):
@@ -265,9 +277,10 @@ const Lookout = {
               column not listed is front from its top: the tower under the
               platform, the mound). Above it — the back fence, the back
               posts, the floor you see — stands behind a man up there.
-       man    a man's height, feet to crown: a fence comes to his thigh
+       man    a man's height, feet to crown: a fence comes to his knee
        feet   the row his feet stand on, on the floor behind the front rail
-       slots  where two stand (the first up keeps his place); solo, one man
+       slots  where two stand (the first up keeps his place), as far apart
+              as his body at rest allows inside the outer posts; solo, one
        art    the picture's size the rest was measured on
      A tower without that picture (the procedural stand-in while the PNG is
      missing, or art redrawn at another size — measure it again) takes PROC,
@@ -275,22 +288,22 @@ const Lookout = {
   PLAT: {
     free: [
       { front: '15:41 16-17:39 18:40 19-21:45 22:49 23:50 24:51 25-27:50 28:51 29:49 30:48 31:49 32:51 33:52 34-35:54 36-51:55 52-54:54 55:51 56:49 57:48 58:49 59:51 60-62:50 63:51 64:50 65:49 66-68:45 69:40 70-71:39 72:41',
-        man: 38, feet: 60, slots: [31, 57], solo: 31, art: [88, 114] },
+        man: 53, feet: 60, slots: [32, 55], solo: 34, art: [88, 114] },
       { front: '15:38 16-18:37 19:40 20:42 21-61:48 62:42 63:40 64-67:37 68:38',
-        man: 38, feet: 58, slots: [31, 53], solo: 42, art: [84, 116] },
+        man: 53, feet: 58, slots: [32, 51], solo: 42, art: [84, 116] },
       { front: '12:8 13-19:7 20-21:12 22-23:18 24:14 25-30:12 31:13 32-36:18 37:13 38-45:12 46:13 47-51:18 52:13 53-58:12 59:13 60-61:18 62:13 63-64:12 65-71:7 72:8',
-        man: 38, feet: 27, slots: [34, 49], solo: 34, art: [84, 113] },
+        man: 53, feet: 27, slots: [29, 55], solo: 34, art: [84, 113] },
     ],
     wall: [
       { front: '5:37 6:36 7:35 8-9:34 10:35 11:36 12:35 13-20:44 21-22:45 23-27:44 28-29:45 30-32:46 33-38:45 39-45:44 46-47:45 48-54:44 55:36 56:35 57-58:34 59:35 60:36 61:37',
-        man: 38, feet: 57, slots: [24, 44], solo: 34, art: [68, 90] },
+        man: 53, feet: 57, slots: [22, 44], solo: 34, art: [68, 90] },
       { front: '1:38 2:37 3-4:36 5:37 6:38 7-8:39 9-17:47 18:48 19-49:47 50-51:39 52:37 53-54:36 55:37 56:38',
-        man: 38, feet: 57, slots: [19, 40], solo: 29, art: [58, 91] },
+        man: 53, feet: 57, slots: [18, 39], solo: 29, art: [58, 91] },
       { front: '3:8 4-8:7 9-12:12 13-14:18 15:14 16-21:12 22:13 23-27:18 28:13 29-36:12 37:13 38-42:18 43:13 44-50:12 51-52:18 53:11 54-58:12 59-62:7 63:8',
-        man: 38, feet: 27, slots: [25, 40], solo: 25, art: [65, 85] },
+        man: 53, feet: 27, slots: [20, 46], solo: 25, art: [65, 85] },
     ],
   },
-  PROC: { cy: 0.22, man: 0.42, feet: 0.34, slots: [0.33, 0.67], solo: 0.5 },
+  PROC: { cy: 0.22, man: 0.59, feet: 0.34, slots: [0.33, 0.67], solo: 0.5 },
   // a bow's frame fills its box from `top` to `foot` (the shipped archer,
   // longbow and marksman frames: rows 3 and 31 of 32)
   BODY: { top: 3 / 32, foot: 31 / 32 },
@@ -509,22 +522,28 @@ const Lookout = {
     }
     // the selection ring rides the rail in front of him (at his feet it would
     // sit behind the parapet), a man wide; the health bar over his head, and
-    // over the tower's own bar when that one is up too (by - 4, R.draw)
+    // over the tower's own bar when that one is up too (by - 4, R.draw).
+    // Two up there stand closer together than a bar is wide (build 148), so
+    // their bars stand SIDE BY SIDE over the pair, each on its own man's side
+    // and as wide as ever — never one laid over the other, which read as one
+    // man's health
     const sel = UI.sel;
     const selIds = sel ? (sel.type === 'unit' ? [sel.id] : sel.type === 'group' ? sel.ids : null) : null;
     const towerBar = b.hp < b.maxhp ? f.by - 4 : Infinity;
-    for (const [u, s] of spots) {
+    const mid = spots.length > 1 ? (spots[0][1].x + spots[1][1].x) / 2 : null;
+    spots.forEach(([u, s], i) => {
       if (selIds && selIds.indexOf(u.id) >= 0) {
         g.strokeStyle = '#e8c15a'; g.lineWidth = 1;
         g.beginPath(); g.ellipse(s.x, s.rail, 0.2 * s.B, 0.07 * s.B, 0, 0, Math.PI * 2); g.stroke();
       }
       if (u.hp < u.maxhp) {
         const w = Math.max(8, s.B * 0.62);
-        let y = s.head - 3.5;
+        let x = s.x - w / 2, y = s.head - 3.5;
+        if (mid !== null) x = i === 0 ? Math.min(x, mid - 0.75 - w) : Math.max(x, mid + 0.75);
         if (y + 2 > towerBar - 0.5 && y < towerBar + 3.5) y = towerBar - 3;
-        R.bar(g, s.x - w / 2, y, w, 2, u.hp / u.maxhp, u.owner === 'P' ? '#7dbb5e' : '#e06550');
+        R.bar(g, x, y, w, 2, u.hp / u.maxhp, u.owner === 'P' ? '#7dbb5e' : '#e06550');
       }
-    }
+    });
   },
   // a tap at (wx, wy) — tiles — measured to the bow drawn on the platform, in
   // the units the tap contract's thresholds are written in (his own box)
@@ -585,12 +604,30 @@ const Lookout = {
   },
   onWorldChange() { this.falls = []; },
 
+  /* ---- how far a tower's arrows fly (build 148: the player's towers shoot
+     only through their bows — Combat's tower loop passes them over) ----
+     crewReach: the farthest bow standing on THIS tower, at its doubled
+     reach (0 with nobody up — an empty tower shoots nothing). postReach:
+     what a bow posted on one of the owner's towers WOULD reach — the
+     farthest-reaching kind the owner fields, else the base archer — for the
+     placement ghost's ring. */
+  crewReach(b) {
+    let r = 0;
+    if (b) for (const u of S.units) if (u.perch === b.id) r = Math.max(r, (CFG.UNITS[u.kind].rng || 0) * this.cfg().rangeMult);
+    return r;
+  },
+  postReach(owner) {
+    let r = 0;
+    for (const u of S.units) if (u.owner === owner && this.canMan(u)) r = Math.max(r, CFG.UNITS[u.kind].rng || 0);
+    return (r || CFG.UNITS[this.cfg().kinds[0]].rng || 0) * this.cfg().rangeMult;
+  },
+
   /* ---- the panels (ui.js asks these, guarded on the method) ---- */
   towerLine(b) {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
     return n ? `🏹 ${n}/${cap} archers on the lookout — twice the sight and reach`
-      : 'Select archers, then tap the tower to man it';
+      : 'No archers on it, so it shoots nothing — select archers, then tap the tower';
   },
   towerButtons(b) {
     if (b.owner !== 'P') return '';

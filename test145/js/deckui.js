@@ -1910,7 +1910,7 @@ const DeckUI = {
     harvest_festival:   { g: 'sheaf',  line: 'All gathering and work comes in 40% richer.' },
     bountiful_land:     { g: 'leaf',   line: 'Near your hall, everything comes in 50% richer.' },
     golden_age:         {              line: 'Everything 50% richer, built 50% faster.' },
-    watchfires:         { g: 'flame',  line: 'Your towers hit harder and reach farther.' },
+    watchfires:         { g: 'flame',  line: 'Your tower archers and camps hit harder and reach farther.' },
     stone_skin:         { g: 'shield', line: 'Your buildings take half damage.' },
     unbreakable_hall:   { g: 'keep',   line: 'Your Town Center cannot fall.' },
     ancestors_host:     { g: 'ghost',  line: 'The host fights beside you, then fades.' },
