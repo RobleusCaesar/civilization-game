@@ -1606,7 +1606,7 @@ const UI = {
       // full one falls through to the look, like a full station (rule 6)
       if (!tapUnit && hitBld && window.Lookout && Lookout.canMan(sel) && Lookout.isPost(hitBld, 'P') &&
           sel.perch !== hitBld.id && Lookout.room(hitBld, sel) > 0) {
-        if (Lookout.order(sel, hitBld)) { this.toast('🏹 Up the tower — twice the sight and reach'); this.shedClimbers(); return; }
+        if (Lookout.order(sel, hitBld)) { this.toast('🏹 Up the tower — he sees twice as far and shoots all he sees'); this.shedClimbers(); return; }
         this.toast('No way through to the tower door', true);
         return;
       }
@@ -2798,7 +2798,7 @@ const UI = {
     return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}` : '';
   },
   // the blow a unit strikes with — a bow on a tower's platform strikes harder
-  // (Lookout.atkMult: half again as hard, build 150); both of the panel's writers read this one
+  // (Lookout.atkMult: CFG.LOOKOUT.atk times as hard); both of the panel's writers read this one
   atkShown(u) {
     return Math.round(Units.effAtk(u) * (u.perch && window.Lookout && Lookout.atkMult ? Lookout.atkMult(u) : 1));
   },

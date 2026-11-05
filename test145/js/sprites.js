@@ -1922,8 +1922,19 @@ const Sprites = {
      is how many rows each canvas carries ABOVE the tile, because a drawn
      gatehouse's winches hang far higher than the procedural turret heads;
      R.drawDrawbridge reads it back off Sprites.drawbridgeGeo. */
-  const DB_PROC = { CX: 15.5, HALF: 5, GND: 30, WX: [8, 23], WY: 6, HX: 26, SGND: 29, SWX: 20, SWY: 6, MX: 16, pad: 0 };
+  const DB_PROC = { CX: 15.5, HALF: 5, GND: 30, WX: [8, 23], WY: 6, HX: 26, SGND: 29, SWX: 20, SWY: 6, MX: 16, pad: 4 };
   let DB = DB_PROC;
+  /* AND IT LANDS ON THE FAR BANK (the operator, build 151: "it doesn't quite
+     reach across a dug channel"). The hinge is the drawn threshold, which
+     stands a few cells INSIDE the gate's own tile, so a 30-cell board lying
+     down stopped short of the far side of the tile it spans — four to nine
+     cells of water showed past its end in every orientation. Lying, the deck
+     now reaches from its hinge across the whole tile beyond and LAND cells
+     onto the far bank; standing, it is still DB_LEN tall, the arch it closes.
+     The free end swings on the ellipse between the two (smooth, monotone, no
+     jump), which this projection already is: ground is drawn top-down,
+     heights 1:1. EXT is the canvas the landing needs past the second tile. */
+  const LAND = 3, EXT = 9;
 
   // a hanging chain: alternating dark/lit links, straight when the winch has
   // it taut, sagging a little once it has been let out
@@ -1967,8 +1978,9 @@ const Sprites = {
     // one tile of ground, one tile of height — see DB_LEN. FORE is 1: the
     // terrain is drawn top-down, so a tile of ground IS a tile of screen.
     const GND = DB.GND, LEN = DB_LEN, CX = DB.CX, FORE = 1, HALF = DB.HALF;
+    const REACH = 64 + LAND - GND;                // lying: across the tile beyond, onto the far bank
     const th = t * Math.PI / 2;
-    const yEnd = GND + LEN * Math.cos(th) * FORE - LEN * Math.sin(th);
+    const yEnd = GND + REACH * Math.cos(th) * FORE - LEN * Math.sin(th);
     const span = Math.abs(yEnd - GND) || 0.001;
     const y0 = Math.round(Math.min(GND, yEnd)), y1 = Math.round(Math.max(GND, yEnd));
     const frac = y => Math.min(1, Math.abs(y - GND) / span);      // 0 at the hinge, 1 at the free end
@@ -2009,10 +2021,15 @@ const Sprites = {
   function deckSide(q, t) {
     const WD = AP.wood;
     const HX = DB.HX, GND = DB.SGND, LEN = DB_LEN, TH = 3;   // hinge at the block's east flank
+    // lying: across the tile beyond, onto the far bank — and a west-falling
+    // deck is THIS strip mirrored about MX, whose hinge stands 2·(MX − 16)
+    // farther from its far bank, so the strip reaches far enough for both
+    const REACH = 64 + LAND - HX + Math.max(0, 2 * ((DB.MX != null ? DB.MX : 16) - 16));
     const th = t * Math.PI / 2;
-    const ex = HX + LEN * Math.cos(th), ey = GND - LEN * Math.sin(th);
-    // march the deck's length, stamping its thickness across at each step
-    const n = Math.max(4, Math.round(LEN));
+    const ex = HX + REACH * Math.cos(th), ey = GND - LEN * Math.sin(th);
+    // march the deck's length, stamping its thickness across at each step —
+    // a step a cell or less, so the long lying deck has no gaps in it
+    const n = Math.max(4, Math.ceil(Math.hypot(ex - HX, ey - GND)) + 1);
     const nx = Math.sin(th), ny = Math.cos(th);   // across the deck, from its walking face
     for (let i = 0; i <= n; i++) {
       const f = i / n, s = f * LEN;
@@ -2062,7 +2079,8 @@ const Sprites = {
        it honest (monotone, fastest through the middle of the swing) while
        giving every frame its own length. The +1.5 floor leaves a last sliver
        of deck showing against the parapet rather than popping to nothing. */
-    const ext = LEN * Math.pow(Math.cos(th), 1.6) * 0.94 + 1.5;
+    const REACH = HINGE + LAND;                    // lying: across the tile above, onto the far bank
+    const ext = (REACH - 1.5) * Math.pow(Math.cos(th), 1.6) + 1.5;
     const yEnd = HINGE - ext;
     const y0 = Math.round(yEnd), y1 = HINGE;
     const frac = y => Math.min(1, (HINGE - y) / (ext || 0.001));
@@ -2088,7 +2106,7 @@ const Sprites = {
      deckFaceAway offsets itself by TILE to say so. */
   function tileDB(tall, draw) {
     const pad = DB.pad;
-    const c = mk(tall ? 64 : 128, (tall ? 128 : 64) + pad * 2), g = c.getContext('2d');
+    const c = mk(tall ? 64 : 128 + EXT * 2, (tall ? 128 + EXT * 2 : 64) + pad * 2), g = c.getContext('2d');
     g.imageSmoothingEnabled = false;
     const q = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x * 2, (y + pad) * 2, (w || 1) * 2, (h || 1) * 2); };
     draw(q);
@@ -3890,21 +3908,24 @@ const Sprites = {
     Array.from({ length: DRAWBRIDGE_N }, (_, i) => tileDB(true, q => deckFaceAway(q, i / (DRAWBRIDGE_N - 1)))),
   ];
   Sprites.drawbridge = buildDrawbridge();
-  Sprites.drawbridgeGeo = DB;
+  Sprites.drawbridgeGeo = Object.assign({ ext: EXT }, DB);
   /* THE DRAWN GATEHOUSE'S DECK (assets/fort/gate-l3.png). The FACE (an
      east-west line): its arch spans fine cells 9.9..23.2 with the threshold
      on the drawn wall's foot (24.8) and the chains run up beside the arch
      head. The FLANK (a north-south line) is the walk carried over the road
-     (R.gapGate): the deck is hinged at the east arch's mouth (HX) on the
-     road's lower half (SGND), its winch on the walk beside it (SWX, SWY),
+     (R.gapGate): the deck is hinged at the east arch's mouth (HX) at its
+     threshold (SGND — the line a man's feet are drawn on when he walks the
+     passage's middle, so a soldier crossing walks ON the planks; at 18,
+     mid-doorway, he walked a quarter tile below them, in the water), its
+     winch on the walk beside it (SWX, SWY),
      and a west-falling deck is mirrored about the middle between the two
      mouths (MX). All measured off the art, so a redrawn gatehouse or arch
      means re-measuring these. */
-  Sprites.DB_DRAWN = { CX: 16.5, HALF: 6.4, GND: 25, WX: [9, 24], WY: -4, HX: 28, SGND: 18, SWX: 26, SWY: 2, MX: 18.2, pad: 12 };
+  Sprites.DB_DRAWN = { CX: 16.5, HALF: 6.4, GND: 25, WX: [9, 24], WY: -4, HX: 28, SGND: 25, SWX: 26, SWY: 2, MX: 18.2, pad: 12 };
   Sprites.fitDrawbridge = () => {
     DB = Sprites.DB_DRAWN;
     Sprites.drawbridge = buildDrawbridge();
-    Sprites.drawbridgeGeo = DB;
+    Sprites.drawbridgeGeo = Object.assign({ ext: EXT }, DB);
   };
 
   /* ================= THE ANCIENT WONDERS (tests/wonder.mjs) =================
