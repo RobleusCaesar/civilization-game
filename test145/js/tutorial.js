@@ -77,11 +77,15 @@ const Tutorial = {
     house: 'Tap a <b>villager</b>, open their <b>Build</b> menu, and raise a House. Each roof shelters four more of your people.',
     fog: 'All that <b>darkness</b> is land your people have not walked yet — and it is not empty: wild bands and beasts roam it. Scout carefully, and don’t send anyone far alone.',
     minimap: 'Tap the <b>map</b> to unfold it — it keeps everything your people have seen. The picture grows as you explore, and when the rival tribe is found, they will show there too.',
-    barracks: 'Tap a <b>villager</b>, open their Build menu, and raise a <b>Barracks</b> — its defenders are the spears that hold your line.',
+    barracks: 'Tap a <b>villager</b>, open their Build menu, and raise a <b>Barracks</b>. The day it stands, its first <b>Defender</b> reports for duty.',
     soldier: 'Tap the Barracks and train a <b>Defender</b> to stand between your workers and the wild. Your first spear answers the call at once.',
     guard: 'Tap your <b>defender</b>, then the ground where a raid would come in — they hold wherever you set them. Keep your spears between the wild and your workers.',
     buildHands: 'Those works are waiting for <b>hands</b>. Tap a villager, then the site, and they will raise it.',
-    tower: 'Raise a <b>Watchtower</b> where the road into your town runs. It shoots only when manned: send <b>archers</b> up and they see and shoot twice as far.',
+    range: 'Now raise an <b>Archery Range</b>: your towers shoot only with <b>archers</b> on them. The day it stands, its first archer reports for duty.',
+    tower: 'Raise a <b>Watchtower</b> where the road into your town runs. It shoots nothing by itself — the archers you post on it do the shooting.',
+    manTower: () => (Tutorial._groundBow()
+      ? 'Tap your <b>archer</b>, then the <b>Watchtower</b>: they climb up, see twice as far and shoot everything in sight. A tower with no archers on it shoots nothing.'
+      : 'A tower with no archers on it shoots nothing. Train an <b>archer</b> at the Archery Range, then tap them and the <b>Watchtower</b>.'),
     wall: 'A run of <b>wall</b> across a narrow place turns a raid aside — even a short line buys time. Tap a finished section to build a <b>gate</b> through it: a door only your people may pass.',
     winCond: () => (S.peace
       ? 'Two roads to victory: raze the rival’s hall, or raise the <b>Ancient Wonder</b> and win without a war. The rival is racing for their own.'
@@ -195,6 +199,22 @@ const Tutorial = {
     return this.WORKED.find(k => T[k.terr] === terr) || null;
   },
   // an own villager is in hand (the tapVillager step's own reading)
+  // THE BOWS AND THEIR POST (build 152): a finished tower of the player's
+  // that can take a bow, a bow of theirs on the ground (not on a tower, on
+  // its stairs or walking to man one), and whether one is in hand
+  _postTower() {
+    if (!window.Lookout || !Lookout.isPost) return null;
+    return S.buildings.find(b => b.owner === 'P' && Lookout.isPost(b, 'P')) || null;
+  },
+  _groundBow() {
+    if (!window.Lookout || !Lookout.canMan || !Lookout.sentUp) return null;
+    return S.units.find(u => u.owner === 'P' && Lookout.canMan(u) && !Lookout.sentUp(u)) || null;
+  },
+  _bowSel() {
+    const s = UI.sel; if (!s || !window.Lookout || !Lookout.canMan) return false;
+    const own = id => { const u = Units.get(id); return !!(u && u.owner === 'P' && Lookout.canMan(u)); };
+    return s.type === 'unit' ? own(s.id) : s.type === 'group' ? (s.ids || []).some(own) : false;
+  },
   _villagerSel() {
     const s = UI.sel; if (!s) return false;
     const own = id => { const u = Units.get(id); return !!(u && u.owner === 'P' && u.kind === 'villager'); };
@@ -302,10 +322,35 @@ const Tutorial = {
       },
       adv: () => S.units.some(u => u.owner === 'P' && Units.isMilitary(u) &&
         u.task && u.task.type === 'move') },
+    /* THE BOWS BEFORE THE TOWER (operator, build 152: "Update the Tutorial
+       and Guide, as this is now a key game play element"): the player's
+       towers shoot only through the archers posted on them, so the lesson
+       raises the Archery Range first — its first archer reports the day it
+       stands (Bld.giftFirst) — then the tower, then sends the archer up it */
+    { id: 'range',
+      when: () => Tutorial._afford('range'),
+      anchor: () => Tutorial._buildAnchor('range'),
+      adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'range') },
     { id: 'tower',
       when: () => Tutorial._afford('tower'),
       anchor: () => Tutorial._buildAnchor('tower'),
       adv: () => S.buildings.some(b => b.owner === 'P' && b.key === 'tower') },
+    // …and MAN it: a bow in hand rings the tower, else the bow to pick up;
+    // with no bow at all (the first one fell) the range's Train Archer. The
+    // ORDER answers it, as a walk order answers the guard step.
+    { id: 'manTower',
+      when: () => !!Tutorial._postTower() && (!!Tutorial._groundBow() ||
+        S.buildings.some(b => b.owner === 'P' && b.key === 'range' && !(b.construction > 0))),
+      anchor() {
+        const tw = Tutorial._postTower(), bow = Tutorial._groundBow();
+        if (tw && Tutorial._bowSel()) return { x: Bld.cx(tw), y: Bld.cy(tw), r: 1.2 };
+        if (bow) return { u: bow.id };
+        const t = document.querySelector('#panel [data-act="train"][data-unit="archer"]');
+        if (t && t.offsetParent !== null) return { sel: '#panel [data-act="train"][data-unit="archer"]' };
+        const rg = S.buildings.find(o => o.owner === 'P' && o.key === 'range' && !(o.construction > 0));
+        return rg ? { x: Bld.cx(rg), y: Bld.cy(rg), r: 1.4 } : tw && { x: Bld.cx(tw), y: Bld.cy(tw), r: 1.2 };
+      },
+      adv: () => !!(window.Lookout && Lookout.sentUp) && S.units.some(u => u.owner === 'P' && Lookout.sentUp(u)) },
     { id: 'wall',
       when: () => Tutorial._afford('wall'),
       anchor: () => Tutorial._buildAnchor('wall'),
@@ -467,12 +512,14 @@ const Tutorial = {
     S.tut = { on: true, phase: 1, step: 0, done: {}, fired: {},
               scoutDay: 9 + (Math.abs(h) % 5), scoutSpawned: 0, scoutId: 0, scoutLeg: 0 };
     // THE LESSON'S LARDER (playtest): a tutorial start must afford the builds
-    // it teaches — a couple of roofs, the barracks, a tower, a few sections
-    // of wall — whatever package the cards rolled. A TOP-UP, never a cut,
-    // and never the hall upgrade: earning THAT is the lesson's whole arc.
-    S.res.wood = Math.max(S.res.wood, 200);
-    S.res.stone = Math.max(S.res.stone, 100);
-    S.res.gold = Math.max(S.res.gold, 20);
+    // it teaches — a couple of roofs, the barracks, the archery range, a
+    // tower, a few sections of wall — whatever package the cards rolled. A
+    // TOP-UP, never a cut, and never the hall upgrade: earning THAT is the
+    // lesson's whole arc. (Build 152 added the range: 15 more gold and the
+    // wood and stone it takes, or its note waited days on the hall's trickle.)
+    S.res.wood = Math.max(S.res.wood, 260);
+    S.res.stone = Math.max(S.res.stone, 120);
+    S.res.gold = Math.max(S.res.gold, 35);
     // the lesson opens with the MAP FOLDED (playtest: day-one clutter) —
     // the minimap step after the fog lesson teaches unfolding it.
     // Bare UI, NEVER window.UI: UI is a script-level const, so window.UI is
