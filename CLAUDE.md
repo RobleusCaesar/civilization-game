@@ -2389,7 +2389,13 @@ passive): the old chief razed NOTHING on any seed; the new one razes 7 of 8
 towns, anchor by d42–60, TC3 d113–176, walls L2/L3, engines trained when the
 towers stop the first raid. The contract runs three seeds of it end to end,
 seeded (`Math.random` + `Combat.scanT = 0` + `Units.herdClock = 0`) so the
-bars are deterministic.
+bars are deterministic. **Since build 148 those eight towers are silent**
+(**THE PLAYER'S TOWER SHOOTS ONLY THROUGH ITS BOWS**): the town falls d43 /
+d58 / d55 and two seeds raze it before they need an engine, passing on the
+checks' own "razed instead" branch; manning towers did not bring the old
+fortress back (four marksmen posted: d37 / d52 / d52; sixteen on all eight:
+d52 / d51 / d88 — a bow on a platform can be shot down, a tower's volley
+could not). The engine road stays pinned by the direct checks.
 
 **Finished run & Continue** (`tests/finished-run-continue.mjs`): winning (or
 losing) must never eat a manual save, and must actually retire Continue.
