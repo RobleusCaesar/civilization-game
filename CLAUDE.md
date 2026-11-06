@@ -292,6 +292,7 @@ node tests/roads.mjs         # the road builder: Road beside House arms the line
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
+node tests/barb-bands.mjs    # every band its own fight: light / mid / heavy tiers worth their cost by the square law, a strength budget bought by each people's odds (five skirmishers or two brutes), wolves with the Wolfskins and a bear with the Flintfolk (at their camps too, over the quota), harry (hurt ones run, hands first) and press (each fall calls one more up, a few a band), drawn off the seed and never G.rand, in the save
 node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, at the villagers' density (a brute 80px into a 40 box, a head taller), a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
 node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
@@ -5424,6 +5425,42 @@ no camp holds asks for its own the first time it is drawn. A strip not yet
 there draws the procedural rig per lookup. The tap contract measures a
 brute as a foe (`tests/tap-audit.mjs`: every opaque pixel of his frame,
 by tap and by drag) — he is the wild's alone, like the bear.
+
+**EVERY BAND IS ITS OWN FIGHT** (`CFG.BARB_BANDS`, `G.composeBand` /
+`spawnBarb` / `bandHurt` / `bandLoss` / `campBeasts` / `barbRand`;
+tests/barb-bands.mjs — operator, build 156: "mix up the experiences when
+fighting the different barbarian tribes… larger, make them harder to kill,
+and hit harder, but slower… different tiers… different odds… one group is
+more likely to attack and run, and another is more likely to keep throwing
+people at you… wolves… a bear… don't overengineer"). A band is a strength
+BUDGET (the old band's `n` raiders × `budgetPer` 1.5) spent in TIERS — light
+(a raider at 0.7 hp, 0.8 blow, 1.15 pace, cost 1.2), mid (the plain raider,
+1.5), heavy (the brute: 140 hp, 15 blow, 1.6 pace, `cdMult` 1.35, cost 3),
+and the peoples' beasts (a wolf at 1.5× for 1.2, a bear for 3) — priced by
+the square law a melee is fought by (hp × blow rate / cost², each within
+about a quarter of the mid's), so a budget of 6 buys five light, four mid or
+two heavy. It is bought as one of its people's FORMS (swarm, line, shield —
+a heavy bought first, wall, pack, beasts) and fights in one of three STYLES
+(`u.style`): **harry** — a hurt fighter (under `harryAt` 45%) breaks off and
+runs for the edge, `u.fled` keeping it from turning back, and soft prey is
+marked before soldiers (raiderSeek); **press** — each fall calls one fresh
+skirmisher up from the muster, `reinf` [1, 2, 3] a band by difficulty, held in
+`S.barbBands` (every save; `loadJSON` backfills `{}`; a lapsed band is swept
+after 30 days); **band** — as before. `PEOPLE` holds each people's odds:
+Wolfskins pack and harry, Flintfolk wall and bear and press, the Broken
+press, Woadkin swarm and harry, the Sea Folk shield and line. Heavies and
+bears wait for wave `heavyFrom` (3). **A beast is the band's** (`u.beast`,
+owner 'R'): it fights what its band fights through the hostility funnel,
+never takes a building mark — with no foe it keeps at the heels of its own
+(and is not "stranded" there), with none left it leaves. **The draw is
+hashed** (`G.barbRand`, off the seed and the wave's number) and never G.rand,
+so a band's make-up moves no other roll; the waves' own G.rand draws are
+unchanged in number. Camps: one G.rand draw a hand as ever (under the
+people's heavy share a brute, the rest split light / mid by its `light`
+share; the Flintfolk keep `fleshBruteP`), and the Wolfskins' wolves (1/2/2 by
+difficulty) and the Flintfolk's bear (1) stand at the fire OVER the quota
+(`campBeasts`; `tickRaiderCamps` counts hands alone). The sighting's note
+names the make-up and the style ("2 brutes, 1 raider — they keep coming").
 
 **The wilds EASE OFF a gutted town** (`G.barbEase`, same test): barbarians
 SEASON a war — they must never decide it. A rival ground down to a hall and a

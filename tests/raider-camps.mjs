@@ -235,7 +235,9 @@ const out = await p.evaluate(() => {
     ck('andTheGroundIsQuietForADayOrTwo', G.campTenders(camp).length === 0,
       'not instant — CFG.RAIDER_CAMPS.remanDays is ' + CFG.RAIDER_CAMPS.remanDays);
     for (let d = 0; d < (CFG.RAIDER_CAMPS.remanDays || 6) * (quota + 1); d++) G.dayTick();
-    ck('butTheCampRaisesMoreSpears', G.campTenders(camp).length === quota,
+    // the HANDS come back to the quota; a people's beasts stand at the fire
+    // over and above it (CFG.BARB_BANDS, tests/barb-bands.mjs)
+    ck('butTheCampRaisesMoreSpears', G.campTenders(camp).filter(u => !u.beast).length === quota,
       G.campTenders(camp).length + ' back, to its own quota of ' + quota);
   }
 

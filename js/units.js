@@ -2587,6 +2587,9 @@ const Units = {
       if (S.peace && ((ao === 'P' && u.owner === 'A') || (ao === 'A' && u.owner === 'P')))
         G.breakPeace();
     }
+    // EVERY BAND IS ITS OWN FIGHT (CFG.BARB_BANDS): a harrier hurt past its
+    // nerve breaks off and runs (G.bandHurt)
+    if (u.hp > 0 && u.owner === 'R' && u.style === 'harry') G.bandHurt(u);
     if (u.hp <= 0) {
       try {
         if (typeof Sound !== 'undefined' && Sound.place && Sound.place(u.x, u.y) &&
@@ -2596,6 +2599,8 @@ const Units = {
       // a bow killed on a tower's platform falls from it (js/lookout.js)
       if (u.perch && window.Lookout && Lookout.startFall) { try { Lookout.startFall(u); } catch (e) {} }
       S.units.splice(S.units.indexOf(u), 1);
+      // …and a pressing band calls the next one up (G.bandLoss)
+      if (u.owner === 'R' && u.bandId) G.bandLoss(u);
       /* AN ORDERED KILL (Deck.deeds' fighting allowance): the foe the PLAYER
          sent this soldier at, by their own tap or drag (ui.js stamps the
          order's `on`), falls to it. Never a tower's arrow, a Defend stance or

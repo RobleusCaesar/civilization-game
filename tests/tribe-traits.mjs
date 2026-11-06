@@ -262,6 +262,9 @@ const out = await p.evaluate(() => {
     const band = G.campTenders(camp).filter(u => u.kind === 'raider' || u.kind === 'brute');
     const u0 = band[0];
     for (let i = 1; i < band.length; i++) { band[i].x = u0.x + 1; band[i].y = u0.y; }
+    // the fire's wolves are the pack too (build 156): stand them off for this
+    const wolves = G.campTenders(camp).filter(u => u.beast);
+    for (const w of wolves) { w.x = u0.x + 12; w.y = u0.y + 12; }
     const packed = Units.effAtk(u0);
     for (let i = 1; i < band.length; i++) { band[i].x = u0.x + 8; band[i].y = u0.y + 8; }
     const alone = Units.effAtk(u0);

@@ -192,6 +192,7 @@ const G = {
       },
       buildings: [], units: [],
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
+      barbBands: {},                        // pressing war bands' reinforcements: id → {style,left,x,y,tribe,disp,scale,day} (CFG.BARB_BANDS)
       ruins: [],                            // what a razed building left, drawn on its rubble: {x,y,sz,c,v,m,day} — a picture only (js/ruins.js)
       ashes: [],                            // burned-down buildings: {x,y,sz,key,lv,day} — unbuildable for CFG.ASH_DAYS (tests/burn-down.mjs)
       corpses: [],                          // fallen game: {x,y,kind,day} — carcass then skeleton, the lodge-ground cue (tests/wild-life.mjs)
@@ -2284,6 +2285,115 @@ const G = {
   },
   tribeName(key) { return this.tribeDef(key).name; },
 
+  /* ================= EVERY BAND IS ITS OWN FIGHT (CFG.BARB_BANDS) ==========
+     tests/barb-bands.mjs. A band is bought from a strength budget in tiers
+     (light / mid / heavy, and the beasts of the peoples that keep them),
+     drawn as one of its people's FORMS, and fights in one of three STYLES.
+     The draw is HASHED off the seed and the band's own key (barbRand) —
+     never G.rand — so a band's make-up moves no other roll of the run. */
+  barbRand(key) {
+    let a = hashSeed(String(S.seed == null ? '' : S.seed) + '::band::' + key) | 0;
+    return () => {   // mulberry32
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  },
+  _pick(weights, rnd) {
+    let tot = 0; for (const k in weights) tot += weights[k];
+    let r = rnd() * tot;
+    for (const k in weights) { r -= weights[k]; if (r < 0) return k; }
+    return Object.keys(weights)[0];
+  },
+  barbPeople(tribe) {
+    const BB = CFG.BARB_BANDS || {};
+    return (BB.PEOPLE && BB.PEOPLE[tribe]) || (BB.PEOPLE && BB.PEOPLE.broken) || {};
+  },
+  /* the band's make-up: { form, style, roles } — roles bought in order, the
+     form's `lead` first, then by the form's weights while the budget and the
+     cap allow. Heavies and bears wait for `heavyFrom` waves. */
+  composeBand(tribe, budget, cap, rnd, waveNo) {
+    const BB = CFG.BARB_BANDS, T = BB.TIERS, P = this.barbPeople(tribe);
+    const late = waveNo == null || waveNo >= (BB.heavyFrom || 3);
+    const okRole = r => T[r] && (late || (r !== 'heavy' && r !== 'bear')) &&
+      (!T[r].beast || r === P.beast);
+    // a form whose beasts this people does not keep is not theirs to draw
+    const forms = {};
+    for (const f in (P.forms || { line: 1 })) {
+      const F = BB.FORMS[f];
+      if (!F) continue;
+      if (F.lead && !okRole(F.lead) && T[F.lead] && T[F.lead].beast) continue;
+      forms[f] = P.forms[f];
+    }
+    const form = this._pick(Object.keys(forms).length ? forms : { line: 1 }, rnd);
+    const style = this._pick(P.styles || { band: 1 }, rnd);
+    const F = BB.FORMS[form] || BB.FORMS.line;
+    const roles = [];
+    let left = budget, beasts = 0;
+    const buy = r => { roles.push(r); left -= T[r].cost; if (T[r].beast) beasts++; };
+    if (F.lead && okRole(F.lead) && T[F.lead].cost <= left + 0.01) buy(F.lead);
+    while (roles.length < cap) {
+      const w = {};
+      for (const r in F.mix) {
+        if (!okRole(r) || T[r].cost > left + 0.01) continue;
+        if (T[r].beast && beasts >= (F.beasts || 0)) continue;
+        w[r] = F.mix[r];
+      }
+      if (!Object.keys(w).length) break;
+      buy(this._pick(w, rnd));
+    }
+    // never a band of beasts alone, never nobody
+    if (!roles.some(r => !T[r].beast)) { if (roles.length >= cap) roles.pop(); roles.unshift('light'); }
+    return { form, style, roles };
+  },
+  /* raise one fighter of a tier: the unit's kind, then the tier's figures on
+     top of whatever the band's scale already gave it */
+  spawnBarb(role, x, y, opts) {
+    const T = CFG.BARB_BANDS.TIERS[role] || CFG.BARB_BANDS.TIERS.mid;
+    const u = Units.spawn(T.kind, 'R', x, y, opts);
+    u.tier = role;
+    if (T.hp) { u.maxhp = Math.max(1, Math.round(u.maxhp * T.hp)); u.hp = u.maxhp; }
+    if (T.atk) u.atk = Math.max(1, Math.round(u.atk * T.atk));
+    if (T.speed) u.speed = +(u.speed * T.speed).toFixed(3);
+    if (T.beast) { u.beast = true; u.tribe = (opts && opts.tribe) || u.tribe; }
+    return u;
+  },
+  // the band's make-up in a few words, for the sighting's note: "2 brutes, 3 raiders"
+  bandWords(roles) {
+    const n = { heavy: 0, raider: 0, wolf: 0, bear: 0 };
+    for (const r of roles) n[r === 'light' || r === 'mid' ? 'raider' : r]++;
+    const w = [];
+    if (n.heavy) w.push(n.heavy + (n.heavy > 1 ? ' brutes' : ' brute'));
+    if (n.raider) w.push(n.raider + (n.raider > 1 ? ' raiders' : ' raider'));
+    if (n.wolf) w.push(n.wolf + (n.wolf > 1 ? ' wolves' : ' wolf'));
+    if (n.bear) w.push(n.bear > 1 ? n.bear + ' bears' : 'a bear');
+    return w.join(', ');
+  },
+  STYLE_WORDS: { harry: 'they strike and run', press: 'they keep coming', band: '' },
+  /* HIT AND RUN: a harrier hurt past `harryAt` breaks off and makes for the
+     edge of the world — and the band's soft-prey taste lives in raiderSeek */
+  bandHurt(u) {
+    if (u.style !== 'harry' || u.leaving || u.campId) return;
+    if (u.hp >= u.maxhp * (CFG.BARB_BANDS.harryAt || 0.45)) return;
+    u.fled = true; u.tUnit = 0; u.tBld = 0; u.path = null;
+    Combat.raiderLeave(u);
+  },
+  /* IT KEEPS COMING: every fall in a pressing band calls a fresh skirmisher up
+     from where the band mustered, `reinf` a band (by difficulty) */
+  bandLoss(u) {
+    const b = u.bandId && S.barbBands && S.barbBands[u.bandId];
+    if (!b || b.style !== 'press' || !(b.left > 0)) return;
+    if (this.barbEase(b.disp === 'A' ? 'A' : 'P') && b.disp !== 'ALL') return;
+    const spot = MapGen.findNear(b.x, b.y, 4, (x, y) => Path.passable(x, y, 'R') && !Bld.at(x, y));
+    if (!spot) return;
+    b.left--;
+    const r = this.spawnBarb('light', spot.x, spot.y, { scale: b.scale || 1, tribe: b.tribe });
+    r.hostileTo = b.disp; r.style = 'press'; r.bandId = u.bandId;
+    if (b.left === 0 || Math.random() < 0.5)
+      this.foeNote('⚔ Another of ' + this.tribeName(b.tribe) + ' comes up to take the fallen one’s place.');
+  },
+
   /* ================= THE PEOPLES KEEP THEIR HOME GROUND =================
      (tests/tribe-traits.mjs.) MapGen seats the camps for spacing and
      fairness; WHICH people takes which fire — and exactly where it burns —
@@ -2516,16 +2626,41 @@ const G = {
         Path.passable(sx, sy, 'R') && !Bld.at(sx, sy));
       if (!spot) break;
       // FLINTFOLK BREED BRUTES (tests/tribe-traits.mjs): the antler-crowned
-      // old blood fields the big folk at more than twice the common rate
-      const bruteP = b.tribe === 'flint' ? (RC.fleshBruteP || 0.6) : 0.25;
-      const kind = this.rand() < bruteP ? 'brute' : 'raider';
-      const u = Units.spawn(kind, 'R', spot.x, spot.y, { tribe: b.tribe });
+      // old blood fields the big folk at more than twice the common rate.
+      // ONE draw a hand, as ever: under the heavy share it is a brute, and
+      // the rest of the same draw splits the small folk into the people's
+      // light and mid hands (CFG.BARB_BANDS.PEOPLE)
+      const PP = this.barbPeople(b.tribe);
+      const bruteP = b.tribe === 'flint' ? (RC.fleshBruteP || 0.6) : (PP.heavy != null ? PP.heavy : 0.25);
+      const r = this.rand();
+      const role = r < bruteP ? 'heavy'
+        : ((r - bruteP) / Math.max(1e-6, 1 - bruteP) < (PP.light != null ? PP.light : 0.5) ? 'light' : 'mid');
+      const u = this.spawnBarb(role, spot.x, spot.y, { tribe: b.tribe });
       u.hostileTo = 'ALL';          // a camp band answers to nobody
       u.campId = b.id;
       u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };
       put++;
     }
+    this.campBeasts(b);
     return put;
+  },
+  /* THE PEOPLES WHO KEEP BEASTS keep them at the fire (CFG.BARB_BANDS.PEOPLE
+     .campBeasts, by difficulty): the Wolfskins' wolves, the Flintfolk's bear.
+     Over and above the camp's quota — a beast is the band's, not a hand —
+     topped up whenever the camp mans itself. Draws no G.rand. */
+  campBeasts(b) {
+    const PP = this.barbPeople(b.tribe);
+    if (!PP.beast || !PP.campBeasts) return;
+    const mi = ['calm', 'moderate', 'hard'].indexOf(S.mode);
+    const want = PP.campBeasts[mi < 0 ? 1 : mi] || 0;
+    let have = this.campTenders(b).filter(u => u.beast).length;
+    while (have < want) {
+      const spot = MapGen.findNear(b.x, b.y, 3, (sx, sy) => Path.passable(sx, sy, 'R') && !Bld.at(sx, sy));
+      if (!spot) return;
+      const u = this.spawnBarb(PP.beast, spot.x, spot.y, { tribe: b.tribe });
+      u.hostileTo = 'ALL'; u.campId = b.id; u.anchor = { x: b.x + 0.5, y: b.y + 0.5 };
+      have++;
+    }
   },
   /* A CAMP RE-MANS ITSELF. Kill the band and the camp simply raises another
      in a few days — "always tended" has to mean always, or clearing one is a
@@ -2536,11 +2671,13 @@ const G = {
     for (const b of Bld.list('R')) {
       if (b.key !== 'raidercamp' || b.construction > 0) continue;
       if (b.quota == null) b.quota = this.campQuota();
-      const have = this.campTenders(b).length;
+      const have = this.campTenders(b).filter(u => !u.beast).length;   // a beast is no hand
       if (have >= b.quota) { b.reman = 0; continue; }
       b.reman = (b.reman || 0) + 1;
       if (b.reman >= (RC.remanDays || 6)) { b.reman = 0; this.manRaiderCamp(b, 1); }
     }
+    // a pressing band's call for help lapses once the fight is long over
+    if (S.barbBands) for (const id in S.barbBands) if (S.day - (S.barbBands[id].day || 0) > 30) delete S.barbBands[id];
     // …and the Sea Folk look to their boats (checked whether the camp is
     // full or thin — a sortie is about who is READY, not who is missing)
     for (const b of Bld.list('R'))
@@ -2903,6 +3040,7 @@ const G = {
     // is a NEW-RUN promise, never something a mid-war save wakes up inside
     if (data.peace == null) data.peace = false;
     if (!Array.isArray(data.ashes)) data.ashes = [];
+    if (!data.barbBands || typeof data.barbBands !== 'object') data.barbBands = {};   // pre-156: no band remembers its reinforcements
     if (!Array.isArray(data.ruins)) data.ruins = [];   // pre-156 saves: the scorch alone, no drawn remains   // pre-burn saves: no smouldering ground
     // pre-sapper saves: no bridges, and rebuild the fast passability mirror
     if (!Array.isArray(data.bridges)) data.bridges = [];
@@ -3064,7 +3202,7 @@ const G = {
         if ((u.kind === 'raider' || u.kind === 'brute') && !u.tribe) {
           u.tribe = (u.campId && byCamp[u.campId]) || pick();
           if (u.female == null) u.female = Math.random() < 0.5;
-        }
+        } else if (u.beast && u.campId && byCamp[u.campId]) u.tribe = byCamp[u.campId];   // a fire's beasts are its people's
     }
     if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet

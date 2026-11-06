@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 156, date: '2026-11-06', title: 'No two war bands alike',
+    items: [
+      'Barbarian brutes are now much harder to kill and hit much harder, but they walk and swing slowly. One brute is worth two or three of the small fighters.',
+      'Every band is built from the same strength in a different way: five quick skirmishers one time, two brutes the next, or a brute with a few raiders around him.',
+      'Each people fights its own way. The Wolfskins and the Woadkin strike and run, and go for your villagers first. The Broken and the Flintfolk keep coming, sending a fresh fighter for each one you cut down.',
+      'The Wolfskins hunt with wolves at their side, and the Flintfolk bring a bear. Their camps keep their beasts too.',
+      'The warning when a band is sighted now says what is coming, and how they fight.',
+    ],
+  },
+  {
     build: 155, date: '2026-11-06', title: 'The wild peoples, drawn',
     items: [
       'Every barbarian is redrawn by hand at the same detail as your Bronze Champion: the Wolfskins in their wolf masks, the antlered Flintfolk, the Broken in their dented helms, the limed Woadkin and the plumed Sea Folk.',
