@@ -333,7 +333,9 @@ const out48 = await p.evaluate(async () => {
   const vil = Units.spawn('villager', 'P', bx - 6.5, by - 3.5, {});
   const spear = Units.spawn('defender', 'P', bx - 6.5, by - 1.5, {});
   const bow = Units.spawn('archer', 'P', bx + 6.5, by - 3.5, {});
-  const KINDS = Object.keys(Assets.UNIT_BOX).filter(k => CFG.UNITS[k] && k !== 'bear');
+  // the bear and the barbarian brute are the wild's alone: no tribe owns one,
+  // so they are measured below as what a player meets them as — a foe
+  const KINDS = Object.keys(Assets.UNIT_BOX).filter(k => CFG.UNITS[k] && k !== 'bear' && k !== 'brute');
   const naval = k => !!CFG.UNITS[k].naval;
   const units = {};
   for (const k of KINDS) for (const o of ['P', 'A'])
@@ -396,6 +398,29 @@ const out48 = await p.evaluate(async () => {
     park(foe, 6, 2);
   }
   ok('48 box: the frames really are the big box', box48 === KINDS.length * 2, box48 + ' of ' + KINDS.length * 2 + ' own frames drawn at 48');
+  /* ---- THE BRUTE (build 155): a barbarian brute draws his drawn strips in a
+     40 box (80px frames, a head taller than the raiders round him). Every
+     opaque pixel of his frame is "on" him for an attack, by tap and by drag. */
+  {
+    const br = Units.spawn('brute', 'R', 6, 4, {}); br.tribe = 'wolf'; br.female = false;
+    const t1 = performance.now();
+    while (!R.sheetFrames(br) && performance.now() - t1 < 60000) await new Promise(r => setTimeout(r, 150));
+    ok('40 box: the brute draws from his own drawn sheet', !!R.sheetFrames(br) && R.unitBox(br) === 40,
+      R.sheetFrames(br) ? 'box ' + R.unitBox(br) : 'never loaded');
+    if (R.sheetFrames(br)) for (const face of ['s', 'e']) {
+      const zx = bx + 0.5, zy = by - 3.5;
+      park(br, zx, zy); R._faceMap.set(br, { x: br.x, y: br.y, dir: face }); R.centerOn(zx, zy - 0.5);
+      for (const [wx, wy] of opaque(br).pts) {
+        park(spear, bx - 6.5, by - 1.5);
+        UI.deselect(); UI.select('unit', spear.id); tap(wx, wy);
+        bump('own soldier selected → tapping a barbarian brute attacks him', 'brute/' + face, spear.tUnit === br.id);
+        park(spear, spear.x, spear.y);
+        UI.deselect(); UI.select('unit', spear.id); UI.commitMoveDrag(...scr(wx, wy));
+        bump('a drag dropped on a barbarian brute attacks him', 'brute/' + face, spear.tUnit === br.id);
+      }
+      park(br, 6, 4);
+    }
+  }
   for (const [name, t] of Object.entries(tally))
     ok('48 box: ' + name, t.bad === 0, (t.n - t.bad) + '/' + t.n + (t.bad ? ' — misses by kind/facing ' + JSON.stringify(t.worst) : ''));
   // ---- the crowd: a two-per-tile rank of riders — the rider under the finger wins

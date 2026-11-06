@@ -292,6 +292,8 @@ node tests/roads.mjs         # the road builder: Road beside House arms the line
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
+node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, at the villagers' density (a brute 80px into a 40 box, a head taller), a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
+node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
@@ -3929,6 +3931,36 @@ continuous checker across a 2×2 footprint and read as the universal
 missing-texture pattern at the exact moment the player is guaranteed to be
 looking.
 
+**THE RUINS A BUILDING LEAVES** (`js/ruins.js`, `R.ruinScorch`; tests/ruins.mjs —
+operator, build 155: "the destroyed tile square is also still low pixel
+count and bland… different destruction tile types for different buildings…
+a wall or tower, maybe it's a more visual rubble pile, although still
+walkable"). The ground is still `T.RUIN` — walkable, on the rubble clock
+back to grass, every rule unchanged — but it no longer paints the old
+blocky brown square: the tile paints the living ground under a ragged
+scorch (`R.ruinScorch`, one-pixel cells, translucent, thinning toward any
+side that opens onto un-ruined ground, charcoal and ash flecks; inside the
+terrain cache, box-exact, no RNG), and **the building's own remains lie on
+it as art**: `assets/ruins/ruin-{class}-{n}.png`, PixelLab edits of the
+shipped buildings (the burnt roundhouse, the timber house's charred frame,
+the fallen stone house, a Town Center's and a range's shell, a barracks'
+and a trading post's wreck) and heaps made in their style (masonry rubble,
+charred palisade stakes). `Ruins.classOf` picks the kind: a palisade
+(walls, gates, towers at level 1) leaves **stakes**, stone forts a
+**rubble** heap, a 1x1 building a burnt **timber** frame or at level 3 a
+**stonehouse** or rubble, a 2x2 a **yard** wreck or at a great level a
+**hall** shell, a barbarian camp its compound spread over the yard. Drawn
+bottom-centre on the footprint and scaled to its width (the building art's
+rule), mirrored by a position hash, after the corpses and before the ash
+heap (which stands down where a drawn ruin stands — `Ruins.covers`) and
+every building, on explored memory, held off while a tower is still
+toppling (`R.collapseAt`). **A PICTURE, NEVER A RULE**: a record
+`{x, y, sz, c, v, m, day}` in `S.ruins` (every save; `loadJSON` backfills
+`[]`), noted only where `Bld.removeToRuin` really laid rubble (a site called
+off leaves clean ground and no ruin), read by the draw alone, pruned by the
+day tick once no footprint tile is still rubble or a building stands on it.
+No RNG is drawn. A missing PNG draws nothing — the scorch alone stands.
+
 **Boats on moats + Scuttle** (`tests/boats-moat-scuttle.mjs`): a MOAT is open
 water to a HULL — the water-domain branch of `Path.passable` accepts it like
 lake water, friend and foe alike (the tradeoff of digging one). It still
@@ -5364,6 +5396,34 @@ lines — a note that only says "barbarians" tells you nothing about who is
 coming. `loadJSON` deals a people to every camp and barbarian in a pre-peoples
 save, hashed off the SAVE'S OWN SEED so loading twice deals the same peoples and
 the run's roll sequence is never disturbed.
+
+**THE WILD COUNTRY'S PEOPLE ARE DRAWN** (`Assets.BARB_ART` / `barbKey` /
+`loadBarbArt`, `R.unitArtKey`, `Assets.UNIT_BOX.brute`; tests/barb-art.mjs —
+operator, build 155: "they still look low pixel density… increase them so
+they look higher quality like some of the hero units for the player (bronze
+champion and fire archer)… unique, creative and different from each
+other"). Each of the five peoples has three drawn fighters — a raider man, a
+raider woman and a brute — made as PixelLab characters with the champion's
+own south view as the style reference, animated in five facings (the west
+three are mirrors) and three poses: walk (12 frames), idle (8) and fight
+(12). The strips are `assets/units/unit-barb-{tribe}-{raider-m|raider-f|brute}-{dir}-{pose}.png`,
+keyed out of the workbench sheets by a scratch composer (the frame window
+bottom-centred on the walk and idle's own feet, specks of six pixels or
+fewer swept). A raider is 64px frames into the 32 box like every soldier;
+**A BRUTE IS A HEAD TALLER** — 80px frames into a 40 box (`UNIT_BOX.brute`),
+the same 2:1 density, because a great helm or a moose's antlers cut off at
+64 read as a broken sprite; the big box applies only while his sheet is
+drawn (the procedural brute keeps the 32 box). A strike may ship a bigger
+square frame (the thrust of a spear), drawn through `R.frameBox` on the same
+feet. **A BAND WEARS ITS OWN PEOPLE AND SEX** (`u.tribe`, `u.female`; a
+female brute wears the brute). **NOT AT BOOT**: the title's demo world asks
+for none (`barbKey`'s lazy ask stands down under `Screens._demo`); a played
+world asks for its camps' peoples in the background tier
+(`G.warmTribes`), a load counts the bands it holds, and a band of a people
+no camp holds asks for its own the first time it is drawn. A strip not yet
+there draws the procedural rig per lookup. The tap contract measures a
+brute as a foe (`tests/tap-audit.mjs`: every opaque pixel of his frame,
+by tap and by drag) — he is the wild's alone, like the bear.
 
 **The wilds EASE OFF a gutted town** (`G.barbEase`, same test): barbarians
 SEASON a war — they must never decide it. A rival ground down to a hall and a

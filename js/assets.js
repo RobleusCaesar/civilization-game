@@ -1461,7 +1461,12 @@ const Assets = {
      must never read as a midget on a pony beside their own footmen. */
   UNIT_BOX: { bear: 48, transport: 48, fireship: 48, bombard: 48,
               trebuchet: 48, siegetower: 48, catapult: 48, ballista: 48,
-              rider: 48, horsearcher: 48, lancer: 48 },
+              rider: 48, horsearcher: 48, lancer: 48,
+              /* a barbarian BRUTE is a head taller and twice as broad as
+                 the raiders round him: his drawn strips (unit-barb-*-brute)
+                 are 80px frames into a 40 box, the same 2:1 density, so a
+                 great helm or a moose's antlers stand whole (build 155) */
+              brute: 40 },
   /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
      Appearance tier by Town Center level — a TABLE, deliberately, so tiers
      can lag or lead the TC later without touching the resolver. */
@@ -1622,7 +1627,9 @@ const Assets = {
     const key = 'barb-' + t + '-' + (kind === 'brute' ? 'brute' : 'raider-' + (female ? 'f' : 'm'));
     // a band of a people no camp of this map holds (one marched in off the
     // edge) asks for its look the first time it is drawn, in the background
-    if (!this._barbAsked[key] && this.unitArt && !this.unitArt[key]) this.loadBarbArt([t], true, [key]);
+    // (never for the title's demo world: it stands behind the night, and boot asks for no strip)
+    if (!this._barbAsked[key] && this.unitArt && !this.unitArt[key] &&
+        !(typeof Screens !== 'undefined' && Screens._demo)) this.loadBarbArt([t], true, [key]);
     return key;
   },
   /* `kinds`: a Set of barbKey strings to ask for (counted or later); absent,
