@@ -13,7 +13,7 @@
    the collapsed stone house, the fallen hall), or a heap made in the same
    style (masonry rubble for a stone wall or tower, a tangle of charred
    stakes for a palisade). Drawn through the building art's own anchoring
-   (R.artRect: bottom-centre on the footprint, scaled to its width), so the
+   (the building art's rule: bottom-centre on the footprint, scaled to its width), so the
    ruin lies exactly where the building stood.
 
    A PICTURE, NEVER A RULE: a record is {x, y, sz, c, v, m, day} in S.ruins
@@ -29,7 +29,7 @@ const Ruins = {
   FORTS: { wall: 1, gate: 1, tower: 1 },
   _img: {},
   classOf(b) {
-    const lv = b.level || 1, sz = (window.Bld && Bld.size) ? Bld.size(b) : 1;
+    const lv = b.level || 1, sz = (typeof Bld !== 'undefined' && Bld.size) ? Bld.size(b) : 1;
     if (this.FORTS[b.key]) return lv >= 2 ? 'rubble' : 'stakes';
     if (b.key === 'raidercamp') return 'yard';
     if (sz >= 2) return (lv >= 3 || (b.key === 'tc' && lv >= 2) || b.key === 'wonder') ? 'hall' : 'yard';
@@ -68,7 +68,7 @@ const Ruins = {
     const im = new Image();
     im.decoding = 'async';
     im.onerror = () => { im._bad = true; };
-    im.src = 'assets/ruins/ruin-' + k + '.png?v=' + ((window.CFG && CFG.ART_V) || 1);
+    im.src = 'assets/ruins/ruin-' + k + '.png?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 1);
     this._img[k] = im;
   },
   // ask for every ruin a world already holds (newGame / loadJSON)
@@ -79,7 +79,7 @@ const Ruins = {
     for (let dy = 0; dy < r.sz; dy++) for (let dx = 0; dx < r.sz; dx++) {
       if (!MapGen.inB(r.x + dx, r.y + dy)) continue;
       if (S.map.terrain[MapGen.idx(r.x + dx, r.y + dy)] === T.RUIN) any = true;
-      if (window.Bld && Bld.at(r.x + dx, r.y + dy)) return false;
+      if (Bld.at(r.x + dx, r.y + dy)) return false;
     }
     return any;
   },
