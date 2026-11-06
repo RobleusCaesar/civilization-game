@@ -192,6 +192,7 @@ const G = {
       },
       buildings: [], units: [],
       bridges: [],                          // {x,y,owner,hp,maxhp} — attackable crossings (Sapper tier 2)
+      ruins: [],                            // what a razed building left, drawn on its rubble: {x,y,sz,c,v,m,day} — a picture only (js/ruins.js)
       ashes: [],                            // burned-down buildings: {x,y,sz,key,lv,day} — unbuildable for CFG.ASH_DAYS (tests/burn-down.mjs)
       corpses: [],                          // fallen game: {x,y,kind,day} — carcass then skeleton, the lodge-ground cue (tests/wild-life.mjs)
       garrison: [],                         // villagers sheltered inside the Town Center
@@ -421,6 +422,9 @@ const G = {
     for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) want.add(b.tribe);
     for (const u of S.units) if (u.owner === 'R' && u.tribe) want.add(u.tribe);
     for (const t of want) Sprites.barbFor(t);
+    // …and their drawn bands, in the background tier (Assets.BARB_ART)
+    if (typeof Assets !== 'undefined' && Assets.loadBarbArt && !(window.Screens && Screens._demo))
+      Assets.loadBarbArt([...want], true);
   },
   /* WHAT THE OPENING WORLD SHOWS — the units whose strips a founding or a
      load waits for (newGame, loadJSON, Cards.pick). artPresent: every unit
@@ -886,6 +890,7 @@ const G = {
     // buildable ground again (the ruined tiles beneath fade on their own clock)
     if (S.ashes && S.ashes.length)
       S.ashes = S.ashes.filter(a => S.day - a.day < CFG.ASH_DAYS);
+    if (window.Ruins && Ruins.prune) Ruins.prune();   // healed or built-over rubble lets its remains go
     // fallen game weathers away: meat for CORPSE_DAYS.meat, bone until .bone
     if (S.corpses && S.corpses.length)
       S.corpses = S.corpses.filter(c => S.day - c.day < CFG.CORPSE_DAYS.bone);
@@ -2897,7 +2902,8 @@ const G = {
     // pre-truce saves: whatever fighting was underway continues — the truce
     // is a NEW-RUN promise, never something a mid-war save wakes up inside
     if (data.peace == null) data.peace = false;
-    if (!Array.isArray(data.ashes)) data.ashes = [];   // pre-burn saves: no smouldering ground
+    if (!Array.isArray(data.ashes)) data.ashes = [];
+    if (!Array.isArray(data.ruins)) data.ruins = [];   // pre-156 saves: the scorch alone, no drawn remains   // pre-burn saves: no smouldering ground
     // pre-sapper saves: no bridges, and rebuild the fast passability mirror
     if (!Array.isArray(data.bridges)) data.bridges = [];
     if (!Array.isArray(data.map.bridge)) data.map.bridge = new Array(w * h).fill(0);
@@ -3200,6 +3206,7 @@ const G = {
     R.onNewGame();
     this.updateVisibility();
     this.warmTribes();      // build the resident peoples' rigs here, not on first sighting
+    if (window.Ruins && Ruins.warm) Ruins.warm();
     this.warmFx();
     // tier is DERIVED, never stored: a loaded save recomputes from its
     // Town Centers (onNewGame just dropped the cache) and re-asks for art.

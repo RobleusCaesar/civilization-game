@@ -1607,6 +1607,41 @@ const Assets = {
           tunic, later, true);
     }
   },
+  /* ---- THE FIVE PEOPLES' WAR BANDS (CFG.TRIBES, tests/raider-camps.mjs) ----
+     Every people fields its own drawn raiders — a man and a woman — and its
+     own brute, UNDYED (a war band wears its people, never a village's
+     colour): assets/units/unit-barb-{tribe}-{raider-m|raider-f|brute}-
+     {dir}-{pose}.png at the archer line's density (64px frames into the
+     32 box). Installed under the same key ('barb-wolf-raider-f'), which is
+     what R.unitArtKey resolves for an 'R' raider or brute; a missing file
+     keeps the procedural rig (Sprites.barbFor) per lookup, as ever. A female
+     brute wears the brute (one hulk per people). */
+  BARB_ART: { raider: ['idle', 'walk', 'fight'], brute: ['idle', 'walk', 'fight'] },
+  barbKey(tribe, kind, female) {
+    const t = tribe || 'wolf';
+    const key = 'barb-' + t + '-' + (kind === 'brute' ? 'brute' : 'raider-' + (female ? 'f' : 'm'));
+    // a band of a people no camp of this map holds (one marched in off the
+    // edge) asks for its look the first time it is drawn, in the background
+    if (!this._barbAsked[key] && this.unitArt && !this.unitArt[key]) this.loadBarbArt([t], true, [key]);
+    return key;
+  },
+  /* `kinds`: a Set of barbKey strings to ask for (counted or later); absent,
+     every look of every tribe in `tribes` is asked for. */
+  _barbAsked: {},
+  loadBarbArt(tribes, later, keys) {
+    if (!tribes) return;
+    for (const t of tribes) for (const look of ['raider-m', 'raider-f', 'brute']) {
+      const key = 'barb-' + t + '-' + look;
+      if (keys && !(keys.has ? keys.has(key) : keys.indexOf(key) >= 0)) continue;
+      // asked once a session per look (counted or not): a 404 is the procedural rig, not a retry
+      const was = this._barbAsked[key];
+      if (was === 'counted' || (was && later)) continue;
+      this._barbAsked[key] = later ? 'later' : 'counted';
+      for (const dir of this.UNIT_DIRS8) for (const pose of this.BARB_ART.raider)
+        this._stripLoad(key, dir, pose, this.UNIT_DIR + 'unit-' + key + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+          undefined, later, false);
+    }
+  },
   /* ---- SAPPER TIER ART: villager doctrine, camp-leveled, no sex axis ----
      Neutral files unit-sapper-l{tier}-{dir}-{pose}.png install under
      sapper-{p|a}-{tunic}-l{tier}. The four terraform crafts ship the four
@@ -1642,11 +1677,12 @@ const Assets = {
      wears a village dye (R.unitArtKey), so a raider of a dyed kind asks for
      nothing; a kind with no strips at all asks for nothing. */
   loadUnitsArt(units, later) {
-    const mil = { P: new Set(), A: new Set() }, vill = new Set(), sap = new Set(), plain = new Set();
+    const mil = { P: new Set(), A: new Set() }, vill = new Set(), sap = new Set(), plain = new Set(), barb = new Set();
     for (const u of units) {
       const k = u && u.kind, o = u && u.owner;
       if (!k) continue;
       if (this.UNIT_ART[k]) plain.add(k);
+      else if (this.BARB_ART[k] && o === 'R') barb.add(this.barbKey(u.tribe, k, u.female));
       else if (o !== 'P' && o !== 'A') continue;
       else if (k === 'villager') vill.add(o);
       else if (k === 'sapper') sap.add(o);
@@ -1656,6 +1692,7 @@ const Assets = {
     for (const o of sap) this.loadSapperArt(o, later);
     for (const o in mil) if (mil[o].size) this.loadMilitaryArt(o, later, mil[o]);
     if (plain.size) this.loadKindArt(plain, later);
+    if (barb.size) this.loadBarbArt(this.campTribes(), later, barb);
   },
   /* A STRIP IS FETCHED A FEW AT A TIME, INSTALLED IN SLICES, AND COUNTED
      UNTIL IT IS. Founding a run asks for ~900 people strips at once, and on

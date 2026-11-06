@@ -5860,8 +5860,14 @@ const R = {
       else if (img) g.drawImage(img, x * TL, y * TL);   // (hills have no tile sprite — see rockMass)
     } else if (ovr) {
       this.blitTile(g, ovr, x, y);
+    } else if (t === T.RUIN) {
+      /* THE RUBBLE IS A SCORCH ON THE LIVING GROUND (js/ruins.js): the
+         building's own remains are drawn over it as art; the tile paints
+         the ground and a ragged burn that runs on across the footprint */
+      this.paintGround(g, x, y, h);
+      this.ruinScorch(g, x, y, at);
     } else {
-      g.drawImage(img, x * TL, y * TL);           // water / barren / ruin / camp / mound base
+      g.drawImage(img, x * TL, y * TL);           // water / barren / camp / mound base
     }
 
     /* THE NATURAL COAST IS NOT DRAWN HERE. It comes from the traced region
@@ -8052,6 +8058,41 @@ const R = {
      straight back. Sprites at or below their destination size — every
      procedural sprite in the game — take the untouched nearest-neighbour path
      and are pixel-identical to before. */
+  /* the scorch a razed building leaves on its tile (T.RUIN): burnt earth in
+     2px cells whose ragged edge is value noise in WORLD space, so it runs on
+     unbroken across a footprint and wanders where it meets living ground —
+     it fades toward any side that borders a tile that is not rubble, so a
+     lone ruin is a blot, never a square. Charcoal and ash in the hash.
+     Box-exact and a pure function of the map: cache == rebake. */
+  RUIN_SCORCH: ['rgba(30,20,14,0.30)', 'rgba(30,20,14,0.42)', 'rgba(26,17,12,0.55)'],
+  ruinScorch(g, x, y, at) {
+    const TL = CFG.TILE, C = 1, N = TL / C, R0 = T.RUIN;
+    const open = [at(x - 1, y) !== R0, at(x + 1, y) !== R0, at(x, y - 1) !== R0, at(x, y + 1) !== R0];
+    const hh = (a, b, s) => { let h = (a * 374761393 + b * 668265263 + s * 982451653) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+    const vn = (u, v, s) => {
+      const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv);
+      const a = hh(i, j, s), b = hh(i + 1, j, s), c = hh(i, j + 1, s), d = hh(i + 1, j + 1, s);
+      return a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv;
+    };
+    const P = this.RUIN_SCORCH;
+    for (let cy = 0; cy < N; cy++) for (let cx = 0; cx < N; cx++) {
+      const wx = x * N + cx + 0.5, wy = y * N + cy + 0.5;
+      // distance (in px) to the nearest side that opens onto living ground
+      let d = 99;
+      if (open[0]) d = Math.min(d, cx + 0.5); if (open[1]) d = Math.min(d, N - cx - 0.5);
+      if (open[2]) d = Math.min(d, cy + 0.5); if (open[3]) d = Math.min(d, N - cy - 0.5);
+      const edge = Math.min(1, d / (N * 0.45));
+      const n = vn(wx / 11, wy / 11, 11) * 0.6 + vn(wx / 4, wy / 4, 12) * 0.4;
+      const v = edge * 0.75 + (n - 0.5) * 0.9;
+      if (v < 0.5) continue;
+      let col = P[v > 0.72 ? 2 : v > 0.6 ? 1 : 0];
+      const q = hh(wx, wy, 14);
+      if (v > 0.66 && q < 0.012) col = '#17110d';                 // a crumb of charcoal
+      else if (v > 0.6 && q > 0.992) col = '#8a8178';            // a fleck of grey ash
+      g.fillStyle = col;
+      g.fillRect(x * TL + cx * C, y * TL + cy * C, C, C);
+    }
+  },
   blitBld(g, spr, x, y, w, h) {
     /* HAND-AUTHORED ART TAKES THE ONE SHARED ANCHORING RULE (ART_PLAN.md):
        bottom-center on the footprint, scaled to footprint width, aspect
@@ -13525,6 +13566,9 @@ const R = {
     // a war-wolf (Hunter's Pack) wears the tribe's collar in its own frames
     if (u.kind === 'wolf' && u.warWolf && window.Deck && Deck.warWolfKey) return Deck.warWolfKey();
     if (u.kind !== 'villager') {
+      // a war band wears its PEOPLE's drawn look (Assets.BARB_ART), undyed
+      if ((u.kind === 'raider' || u.kind === 'brute') && window.Assets && Assets.barbKey)
+        return Assets.barbKey(u.tribe, u.kind, u.female);
       // the sapper tiers by its camp like the villager tiers by its hall
       if (u.kind === 'sapper')
         return 'sapper-' + (u.owner === 'A' ? 'a' : 'p') + '-' + G.tunicOf(u.owner) +
@@ -14881,6 +14925,9 @@ const R = {
       }
     });
 
+    // the drawn remains of razed buildings, on their rubble (js/ruins.js)
+    if (window.Ruins && Ruins.draw && S.ruins && S.ruins.length) this.clipBoard(g, () => Ruins.draw(g, this));
+
     // ash piles — what burned-down buildings left, cooling on the ground
     // (drawn under everything that walks or stands; explored memory is enough,
     // a cold heap doesn't move)
@@ -14890,6 +14937,8 @@ const R = {
       // leaves, and showing it under a tower that is visibly still falling
       // gives the ending away a second and a half early
       if (this.collapseAt(a.x, a.y)) continue;
+      // the drawn ruin stands in for the procedural heap where it has landed
+      if (window.Ruins && Ruins.covers && Ruins.covers(a.x, a.y)) continue;
       g.drawImage(this.ashOf(a.key, a.lv), a.x * TL, a.y * TL, a.sz * TL, a.sz * TL);
     }
 
