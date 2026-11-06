@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 155, date: '2026-11-06', title: 'The wild peoples, drawn',
+    items: [
+      'Every barbarian is redrawn by hand at the same detail as your Bronze Champion: the Wolfskins in their wolf masks, the antlered Flintfolk, the Broken in their dented helms, the limed Woadkin and the plumed Sea Folk.',
+      'Each people has its own raider, its own women warriors and its own brute, and every one of them walks, waits and fights in all eight directions.',
+      'Brutes now stand a head taller than the raiders around them, so you can spot the dangerous ones at a glance.',
+      'A destroyed building now leaves its own ruins: a burnt hut, a fallen stone house, a collapsed hall, a wrecked yard, charred stakes where a palisade stood and a heap of rubble where a stone wall or tower fell.',
+      'The ground under a ruin is scorched and ragged instead of a plain brown square, and it is still walkable. The ruins fade as the grass grows back.',
+    ],
+  },
+  {
     build: 154, date: '2026-11-05', title: 'A cleaner top bar',
     items: [
       'Your population now sits on the top row beside food, wood, stone and gold, and the five share the row evenly.',
