@@ -45,10 +45,12 @@ const out = await p.evaluate(() => {
       R.unitArtKey(l) === 'longbow-a-' + ta &&
       R.unitArtKey(m) === 'marksman-p-' + tp,
       R.unitArtKey(a) + ' / ' + R.unitArtKey(l));
-    // the control kind must stay OUTSIDE every art registry — 'rider'
-    // joined MILITARY_ART with the stable line, so the barbarian stands in
-    const s = Units.spawn('raider', 'R', 16, 10);
-    ck('unlistedKindsStayPlain', R.unitArtKey(s) === 'raider', R.unitArtKey(s));
+    // the control kind keeps its PLAIN key: 'rider' joined MILITARY_ART
+    // with the stable line, and the barbarian raider got its people's drawn
+    // sheets in build 155 (barb-{tribe}-raider-{m|f}), so no kind is outside
+    // every registry any more — an undyed hull (UNIT_ART) stands in
+    const s = Units.spawn('fireship', 'P', 16, 10);
+    ck('unlistedKindsStayPlain', R.unitArtKey(s) === 'fireship', R.unitArtKey(s));
     S.units = S.units.filter(z => z !== a && z !== l && z !== m && z !== s);
   }
 

@@ -341,7 +341,10 @@ await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('beasts'
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1.6e6 / 8, uploadThroughput: 0.75e6 / 8 });
   let r7 = null;
   try {
-    await q.goto('http://127.0.0.1:' + srv.address().port + '/index.html?cards=all', { waitUntil: 'domcontentloaded' });
+    // 5.3MB of scripts at ~200KB/s is ~27s of wire before the parse ends:
+    // Playwright's default 30s goto left no headroom (it timed out on build
+    // 154's own code too), so the goto waits as long as the title does
+    await q.goto('http://127.0.0.1:' + srv.address().port + '/index.html?cards=all', { waitUntil: 'domcontentloaded', timeout: 240000 });
     await q.waitForFunction(() => window.Deck && window.DeckUI && window.Screens && Screens.current === 'title', null, { timeout: 240000 });
     await q.evaluate(() => {
       // the stand-ins, counted every time one is drawn
