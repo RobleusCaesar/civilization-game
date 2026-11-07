@@ -34,6 +34,42 @@
     "w": 3
    }
   },
+  "barb-wolf-brute": {
+   "fight2": {
+    "e": 8,
+    "n": 8,
+    "ne": 6,
+    "nw": 6,
+    "s": 7,
+    "se": 6,
+    "sw": 6,
+    "w": 8
+   }
+  },
+  "barb-wolf-raider-f": {
+   "fight2": {
+    "e": 6,
+    "n": 8,
+    "ne": 8,
+    "nw": 8,
+    "s": 6,
+    "se": 7,
+    "sw": 7,
+    "w": 6
+   }
+  },
+  "barb-wolf-raider-m": {
+   "fight2": {
+    "e": 7,
+    "n": 8,
+    "ne": 6,
+    "nw": 6,
+    "s": 6,
+    "se": 5,
+    "sw": 5,
+    "w": 7
+   }
+  },
   "defender": {
    "fight2": {
     "e": 6,
@@ -104,6 +140,15 @@
   },
   "axeman": {
    "fight": 3
+  },
+  "barb-wolf-brute": {
+   "fight": 5
+  },
+  "barb-wolf-raider-f": {
+   "fight": 3
+  },
+  "barb-wolf-raider-m": {
+   "fight": 7
   },
   "defender": {
    "fight": 3
