@@ -17,7 +17,8 @@
       twice running; a bow on a platform keeps its one strip; the wild keeps its tempo
    §7 the dead lie BODY_S seconds, then go — and the pool spreads under them
    §8 a miss stands in the ground (a ripple on water); a stone digs a crater,
-      a bolt digs nothing, a stone into a building flinches it
+      a bolt digs nothing, a stone into a building flinches it; a charging
+      horse kicks dust up behind it (a canter, a ride with no mark: none)
    §9 the battle strips are LAZY (none at boot, a character's when one is drawn),
       the table names exactly the files on disk, every impact frame is inside
       its strip, every death ends lying down, and a dyed character's cloth is
@@ -145,10 +146,17 @@ const out = await p.evaluate(async (DIRS) => {
     for (let i = 0; i < 120; i++) kill(i % 3 ? 'defender' : 'archer', i % 2 ? 'P' : 'A', fx + ((i % 5) - 2) * 0.3, fy + ((i / 5 | 0) % 5 - 2) * 0.3);
     for (let i = 0; i < 300; i++) BattleFX.arrowLanded({ miss: true, x1: fx - 3, y1: fy, x2: fx + (i % 7 - 3) * 0.2, y2: fy + 0.1 });
     for (let i = 0; i < 90; i++) BattleFX.siegeLanded({ kind: i % 2 ? 'flame' : 'stone', x2: fx + (i % 5 - 2) * 0.4, y2: fy }, null);
+    // a squadron charging: forty horses kicking dust at once
+    const herd = [];
+    for (let i = 0; i < 40; i++) { const h = Units.spawn('rider', 'P', fx - 2 + (i % 8) * 0.4, fy - 1 + (i / 8 | 0) * 0.4); h.tUnit = 1; herd.push(h); }
+    const was = S.paused; S.paused = false;
+    for (let f = 0; f < 30; f++) { for (const h of herd) h.x += 0.1; BattleFX.beginFrame(0.05); }
+    S.paused = was;
     const F = BattleFX;
     ck('everyPoolIsCapped', F.bodies.length <= F.BODY_MAX && F.arrows.length <= F.ARROW_MAX && F.craters.length <= F.CRATER_MAX &&
-      F.chips.length <= F.CHIP_MAX && F.bursts.length <= F.BURST_MAX && F.stains.length <= F.STAIN_MAX,
-      `bodies ${F.bodies.length}/${F.BODY_MAX} arrows ${F.arrows.length}/${F.ARROW_MAX} craters ${F.craters.length}/${F.CRATER_MAX} chips ${F.chips.length}/${F.CHIP_MAX}`);
+      F.chips.length <= F.CHIP_MAX && F.bursts.length <= F.BURST_MAX && F.stains.length <= F.STAIN_MAX && F.kicks.length <= F.KICK_MAX && F.kicks.length > 0,
+      `bodies ${F.bodies.length}/${F.BODY_MAX} arrows ${F.arrows.length}/${F.ARROW_MAX} craters ${F.craters.length}/${F.CRATER_MAX} chips ${F.chips.length}/${F.CHIP_MAX} kicks ${F.kicks.length}/${F.KICK_MAX}`);
+    for (const h of herd) Units.despawn(h);
   }
 
   /* ---- §5 the strike lands on the blow ---- */
@@ -260,6 +268,32 @@ const out = await p.evaluate(async (DIRS) => {
     ck('aStoneIntoAHouseFlinchesItAndThrowsItsStuff', Math.abs(jolt) === 1 && chips >= 8 && BattleFX.bldJolt(h) === 0 && !BattleFX.craters.length,
       'jolt ' + jolt + ', chips ' + chips + ', hp ' + hp0 + '→' + h.hp);
     Bld.removeToRuin(h, true);
+  }
+
+  /* ---- §8b THE CHARGE RAISES DUST ---- */
+  {
+    const ride = (mark, speed, hidden) => {
+      clear();
+      let x = fx - 1.5, y = fy;
+      if (hidden) {
+        G.freeVis = false; G.updateVisibility();
+        for (let yy = 2; yy < CFG.H - 2 && hidden === true; yy++) for (let xx = 2; xx < CFG.W - 4; xx++)
+          if (!G.visibleAt(xx, yy) && !G.visibleAt(xx + 1, yy) && S.map.terrain[MapGen.idx(xx, yy)] === T.GRASS) { x = xx + 0.2; y = yy + 0.5; hidden = 1; break; }
+      }
+      const h = Units.spawn('lancer', 'P', x, y); if (mark) h.tUnit = 1;
+      const was = S.paused; S.paused = false;
+      for (let f = 0; f < 16; f++) { h.x += speed * 0.05; BattleFX.beginFrame(0.05); }
+      S.paused = was;
+      const n = BattleFX.kicks.length, behind = BattleFX.kicks.every(k => k.x < h.x && k.dx < 0);
+      Units.despawn(h);
+      if (hidden) { G.freeVis = true; G.updateVisibility(); }
+      return { n, behind };
+    };
+    const charge = ride(true, 3.2), canter = ride(true, 1), stand = ride(false, 3.2), fog = ride(true, 3.2, true);
+    ck('aChargingHorseKicksDustBehindIt', charge.n >= 3 && charge.behind, charge.n + ' puffs, behind ' + charge.behind);
+    ck('andACanterOrARideWithNoMarkRaisesNone', canter.n === 0 && stand.n === 0, 'canter ' + canter.n + ', no mark ' + stand.n);
+    ck('andNoneOnGroundNobodySees', fog.n === 0, fog.n + ' in the fog');
+    clear();
   }
 
   /* ---- §9 lazy art, impact frames inside their strips, deaths that lie down ---- */

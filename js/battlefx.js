@@ -61,7 +61,12 @@ const BattleFX = {
   // the blood: dark, muted, never the bright berry red of the forage
   BLOOD: ['#3e1513', '#561a19', '#6c2422'],
 
-  bodies: [], stains: [], arrows: [], craters: [], chips: [], bursts: [], falls: [],
+  KICK_MAX: 40,              // hoof dust off a charging horse: a few puffs in the air at once
+  KICK_S: 0.5,
+  KICK_GAP: 0.11,            // seconds between two puffs off one horse
+
+  bodies: [], stains: [], arrows: [], craters: [], chips: [], bursts: [], falls: [], kicks: [],
+  _kick: new WeakMap(),      // horse -> { x, y, at } — where it was last frame, and its puff clock
   _hit: new WeakMap(),       // unit -> performance.now() of the last blow taken
   _spat: new WeakMap(),      // unit -> last spatter time
   _blow: new WeakMap(),      // unit -> { cd, n } — the blow counter the variants ride
@@ -73,6 +78,7 @@ const BattleFX = {
   reset() {
     this.bodies = []; this.stains = []; this.arrows = []; this.craters = [];
     this.chips = []; this.bursts = []; this.falls = []; this._bHit = new Map();
+    this.kicks = []; this._kick = new WeakMap();
     this._hit = new WeakMap(); this._spat = new WeakMap(); this._blow = new WeakMap();
   },
 
@@ -567,6 +573,7 @@ const BattleFX = {
       const b = this.bursts[i]; b.t += dt;
       if (b.t >= this.BURST_LIFE[b.kind]) this.bursts.splice(i, 1);
     }
+    this.kickTick(dt);
     for (let i = this.chips.length - 1; i >= 0; i--) {
       const c = this.chips[i];
       c.t += dt;
@@ -593,6 +600,27 @@ const BattleFX = {
       }
     }
   },
+  /* THE CHARGE RAISES DUST: a horse at the gallop with a mark to ride at
+     (a unit or a building) kicks a puff of dry earth up behind its hooves
+     every KICK_GAP seconds — what tells a charge from a canter. Where it
+     was is a WeakMap (render state, never in S); on ground nobody sees, nothing. */
+  kickTick(dt) {
+    for (let i = this.kicks.length - 1; i >= 0; i--) { this.kicks[i].t += dt; if (this.kicks[i].t >= this.KICK_S) this.kicks.splice(i, 1); }
+    if (!dt || typeof S === 'undefined' || !S.units) return;
+    for (const u of S.units) {
+      if (!this.mounted(u)) continue;
+      const k = this._kick.get(u);
+      if (!k) { this._kick.set(u, { x: u.x, y: u.y, at: 0 }); continue; }
+      const dx = u.x - k.x, dy = u.y - k.y, d = Math.hypot(dx, dy);
+      k.x = u.x; k.y = u.y; k.at += dt;
+      if (d / dt < 1.5 || d > 1 || k.at < this.KICK_GAP) continue;     // a gallop (a jump is a teleport, not a stride)
+      if (!(u.tUnit || u.tBld) || this.wetAt(u.x, u.y) || !this.seen(u.x, u.y)) continue;
+      k.at = 0;
+      if (this.kicks.length >= this.KICK_MAX) this.kicks.shift();
+      this.kicks.push({ x: u.x - dx / d * 0.28 + (Math.random() - 0.5) * 0.12, y: u.y - dy / d * 0.14 + 0.16,
+        dx: -dx / d, dy: -dy / d, t: 0, seed: Math.random() });
+    }
+  },
   dieDur(b) { return b.sink ? 2.6 : b.frames ? b.frames.length / this.DIE_FPS : 0.6; },
   /* where the body lies, in tiles: the middle of the last frame's ink, a
      little above its lowest row (the pool spreads under the torso, never
@@ -617,7 +645,7 @@ const BattleFX = {
 
   // the ground pass: blood specks and pools, craters — under everyone
   drawGround(g) {
-    if (!this.ON || !(this.stains.length || this.craters.length)) return;
+    if (!this.ON || !(this.stains.length || this.craters.length || this.kicks.length)) return;
     const TL = CFG.TILE;
     R.clipBoard(g, () => {
       for (const c of this.craters) {
@@ -642,6 +670,24 @@ const BattleFX = {
           }
         }
       }
+      // hoof dust: a few specks of dry earth thrown up and back, thinning
+      const P = ART.PALETTE, KC = [P.soil[3], P.bone[1], P.soil[2]];
+      for (const k of this.kicks) {
+        if (!this.seen(k.x, k.y)) continue;
+        const f = k.t / this.KICK_S, sn = (k.seed * 10000) | 0;
+        for (let i = 0; i < 8; i++) {
+          const h = this.hash(i, sn, 21), h2 = this.hash(i, sn, 22);
+          const back = TL * (0.05 + 0.24 * Math.sqrt(f)) * (0.5 + h);
+          const side = TL * (h2 - 0.5) * 0.22 * (0.4 + f);
+          const up = TL * 0.18 * Math.sin(Math.min(1, f * 1.3) * Math.PI * 0.9) * (0.4 + h2);
+          const x = k.x * TL + k.dx * back - k.dy * side, y = k.y * TL + k.dy * back * 0.5 + k.dx * side * 0.5 - up;
+          const z = Math.max(1, Math.round((2.4 - 1.4 * f) * (0.6 + h)));
+          g.globalAlpha = Math.max(0, 0.7 * (1 - f * f));
+          g.fillStyle = KC[i % 3];
+          g.fillRect(Math.round(x - z / 2), Math.round(y - z / 2), z, z);
+        }
+      }
+      g.globalAlpha = 1;
       for (const s of this.stains) {
         if (!this.seen(s.x, s.y)) continue;
         const life = s.life || this.STAIN_S;
