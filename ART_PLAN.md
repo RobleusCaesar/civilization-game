@@ -946,6 +946,57 @@ snap pass silently processed 4 of 16 strips and the copy installed a
 mixed raw/snapped set. Never pipe a working script through -First;
 capture to a variable and slice that.
 
+## THE BATTLE STRIPS: strike variants and deaths (build 160 — SHIPPED)
+
+Every fighter carries up to two more strikes (`fight2`, `fight3`) and a death
+(`die`) beside its shipped `walk` / `idle` / `fight`:
+`assets/units/unit-{fileKey}-{dir}-{pose}.png`, the same square frames at the
+same 2:1 density, asked for lazily the first time the character is drawn
+(`Assets.BATTLE_ART`, js/battlefx.js). The rules the pipeline came to:
+
+- **The SAME character, never a new one.** Each strip is PixelLab
+  `animate_character` (v3) on the character that already ships (its id is in
+  the art agents' brief), from its own rotation, so the helmet, the cloth and
+  the weapon are the walk's. A fresh `create_character` is a different man.
+- **Stood on the shipped feet** (`tools/battle-compose.py`): the generation's
+  reference frame is registered on the shipped idle (else walk) frame 0 of the
+  same facing by alpha IoU, every frame is cut into a square window with the
+  shipped window bottom-centred in it (a bigger frame only grows up and out —
+  a thrust, a body lying flat), and nothing sinks below the shipped ground
+  line. 16 frames a strike (12 for cavalry), 12 a death (10 for cavalry).
+- **The player's soldiers have 8 real facings; the barbarians, villagers and
+  sappers 5 and a mirror** — a mirrored player soldier would swap his shield
+  hand between poses.
+- **No effects in the frames.** Every prompt ends "no motion trails, no
+  effects, no blood"; the composer still sweeps pixels in colours the
+  character never wears (`--clean`), and a slash that covers the body is a
+  re-roll. The engine draws the blood, the dust and the flash itself.
+- **THE DYE IS TWO EXACT COLOURS** (`tools/battle-palette.py`): a dyed
+  character (soldiers, villagers, sappers) is recoloured at install by
+  swapping `Assets.TUNIC_KEY` (#3f6d99 / #2c4e70) and nothing else. A
+  re-animation brings back a ramp of near-blues the swap never touches — a
+  red soldier would strike and die in a blue coat. The palette pass moves
+  every saturated cloth blue onto the body or accent key by lightness (darker
+  shade onto the character's own shade blues) and hair-close drift onto
+  shipped colours; tests/battle-fx.mjs counts off-key cloth blue in every
+  dyed battle strip. The barbarians take the drift snap alone (the Woadkin's
+  paint IS blue). Run it after any compose.
+- **The impact frame is decided by eye** (the spear fully out, the blade
+  connecting, the arrow leaving the string) and kept in
+  `tools/battle-impacts.json`; `tools/battle-tables.py --write [--reports DIR]`
+  writes `Assets.BATTLE_ART` (a bitmask of the facings on disk per pose) and
+  `BattleFX.STRIKE_AT` (the impact frame per facing) from the files. The
+  engine lands that frame on the blow.
+- **A death ends lying still** for its last 2-3 frames, no taller than two
+  thirds of its first (the contract measures it); the engine holds the last
+  frame on the ground for `BODY_S` seconds.
+- A facing that would not come right after two re-rolls is DROPPED, not
+  shipped: the engine falls back to the base strike or the procedural fall
+  for that facing alone.
+- The siege craters (`assets/fx/crater-{s,l}[-fire].png`) are PixelLab
+  pixflux art on the soil and charcoal ramps; the procedural crater stands in
+  without them.
+
 ## Villager tiers: the recolor law (settled BEFORE the art sprint)
 
 Villager appearance tier derives from the owner's Town Center level

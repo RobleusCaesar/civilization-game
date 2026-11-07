@@ -15,7 +15,8 @@ blue too, and dyes with the tunic), and a darker one the nearest shipped shade.
 Any other colour within a hair (SNAP) of a shipped colour is moved onto it, so
 the new frames read as the same character's.
 
-The barbarians are not dyed (their peoples wear their own colours) and are left alone.
+The barbarians are not dyed (their peoples wear their own colours — the Woadkin's
+paint IS blue): they take the hair-close snap alone, never the key rule.
 
 usage: tools/battle-palette.py [--check] [filekey ...]      (no keys: every battle strip on disk)
   --check   change nothing; exit 1 if any strip would change
@@ -52,7 +53,7 @@ def blue(c):                     # c: (...,3) int array → bool mask of the dye
 keys = a.keys or sorted(k for k, fs in files.items() if any(p in BATTLE for _, p, _ in fs))
 changed = 0
 for key in keys:
-    if key.startswith('barb-'): continue
+    dyed = not key.startswith('barb-')
     fs = files.get(key, [])
     shipped = [f for _, p, f in fs if p not in BATTLE]
     battle = [f for _, p, f in fs if p in BATTLE]
@@ -71,8 +72,8 @@ for key in keys:
         remap = {}
         for c in cols:
             t = tuple(int(v) for v in c)
-            if t in (KB, KA): continue
-            if blue(c[None])[0]:
+            if dyed and t in (KB, KA): continue
+            if dyed and blue(c[None])[0]:
                 if lum(t) >= DARK: remap[t] = KB if lum(t) >= LK else KA
                 elif t not in pal and len(PB):
                     d = np.sqrt(((PB - c) ** 2).sum(1)); remap[t] = tuple(int(v) for v in PB[d.argmin()])
