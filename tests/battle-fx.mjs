@@ -72,7 +72,9 @@ const out = await p.evaluate(async (DIRS) => {
   // the people's strips (the defender's among them) are on the page before the checks read them
   for (let i = 0; i < 400 && !(Assets.artReady && Assets.artReady()); i++) await new Promise(r => setTimeout(r, 100));
   Assets.loadMilitaryArt && Assets.loadMilitaryArt('P', false, ['defender', 'axeman', 'archer', 'elite']);
-  for (let i = 0; i < 100 && !(Assets.unitArt['defender-p-' + G.tunicOf('P')] && Assets.unitArt['defender-p-' + G.tunicOf('P')].dirs.s && Assets.unitArt['defender-p-' + G.tunicOf('P')].dirs.s.fight); i++) await new Promise(r => setTimeout(r, 100));
+  // every facing's strike: the strips install one facing and pose at a time, and §5 reads the east one
+  const defFought = () => { const a = Assets.unitArt['defender-p-' + G.tunicOf('P')]; return !!a && DIRS.every(d => a.dirs[d] && a.dirs[d].fight); };
+  for (let i = 0; i < 200 && !defFought(); i++) await new Promise(r => setTimeout(r, 100));
   // a field of open, visible grass to stage on
   let fx = 0, fy = 0;
   for (let y = 4; y < CFG.H - 4 && !fx; y++) for (let x = 4; x < CFG.W - 4; x++) {
