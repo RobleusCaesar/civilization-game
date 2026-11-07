@@ -133,7 +133,7 @@ const BattleFX = {
     'horsearcher': {"fight":[7,7,7,7,5,7,7,7]},
     'lancer': {"fight":[5,6,6,6,2,5,5,4]},
     'longbow': {"fight":[3,9,9,7,8,9,8,9],"fight2":[11,12,null,8,8,13,7,12]},
-    'marksman': {"fight":[7,7,7,8,5,4,6,8]},
+    'marksman': {"fight":[7,7,7,8,5,4,6,8],"fight2":[7,4,11,9,13,6,13,3]},
     'rider': {"fight":[5,4,6,5,3,7,6,5]},
     'trebuchet': {"fight":[6,5,5,6,5,5,5,4]},
     'wolf': {"fight":[5,5,4,4,4,5,6,6]},

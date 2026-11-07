@@ -1643,7 +1643,7 @@ const Assets = {
     'defender': {"fight2": 127, "fight3": 63, "die": 255},
     'elite': {"fight2": 255, "fight3": 223, "die": 255},
     'longbow': {"fight2": 251, "die": 255},
-    'marksman': {"die": 255},
+    'marksman': {"fight2": 255, "die": 255},
   },
   _battleAsked: {},
   loadBattleArt(artKey, fileKey, tunic) {
