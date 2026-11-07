@@ -1645,10 +1645,13 @@ const Assets = {
     if (this._battleAsked[artKey]) return;
     const poses = this.BATTLE_ART[fileKey];
     this._battleAsked[artKey] = 1;
-    if (!poses || !poses.length) return;
-    for (const dir of this.UNIT_DIRS8) for (const pose of poses)
+    if (!poses) return;
+    // {pose: mask}, a bit per facing in UNIT_DIRS8 order: only the strips on disk are asked for
+    for (const pose in poses) this.UNIT_DIRS8.forEach((dir, i) => {
+      if (!(poses[pose] & (1 << i))) return;
       this._stripLoad(artKey, dir, pose, this.UNIT_DIR + 'unit-' + fileKey + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
         tunic, true, false);
+    });
   },
   barbKey(tribe, kind, female) {
     const t = tribe || 'wolf';

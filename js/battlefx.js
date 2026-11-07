@@ -243,6 +243,9 @@ const BattleFX = {
      living thing the player can see — a few dark specks off the wound. */
   onHit(u, amt, attacker) {
     if (!this.ON || !u) return;
+    // the first blow of a fight asks for the crater pictures (four small
+    // files), so the first stone to land digs the drawn crater, not the stand-in
+    if (!this._craterWarm) { this._craterWarm = 1; for (const k of ['s', 'l']) for (const f of [0, 1]) this.craterPic({ big: k === 'l', fire: f, r: 0.3, v: 0 }); }
     const t = this.now();
     this._hit.set(u, t);
     if (!this.organic(u) || !this.seen(u.x, u.y)) return;

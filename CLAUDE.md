@@ -295,6 +295,7 @@ node tests/test-page.mjs     # the test page is a sandbox: a run founded there s
 node tests/barb-bands.mjs    # every band its own fight: light / mid / heavy tiers worth their cost by the square law, a strength budget bought by each people's odds (five skirmishers or two brutes), wolves with the Wolfskins and a bear with the Flintfolk (at their camps too, over the quota), harry (hurt ones run, hands first) and press (each fall calls one more up, a few a band), drawn off the seed and never G.rand, in the save
 node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, a raider drawn in a 28 box and a light skirmisher in a 26 (their strips fill the frame, so at the cast's 32 they stood the brute's height), a brute 80px into a 40 box, a head over the raider by the drawn ink, a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
 node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
+node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running; the dead lie, then go; a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; strips lazy, the table the disk, deaths lie down
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
@@ -5495,6 +5496,67 @@ no camp holds asks for its own the first time it is drawn. A strip not yet
 there draws the procedural rig per lookup. The tap contract measures a
 brute as a foe (`tests/tap-audit.mjs`: every opaque pixel of his frame,
 by tap and by drag) — he is the wild's alone, like the bear.
+
+**THE FIGHT IS DRAWN** (`js/battlefx.js`, `BattleFX`; tests/battle-fx.mjs —
+operator, build 160: "Add more sprites to fights so the animations are
+smoother… 1-2 unique fighting animations per fighter type… dying sprites…
+leave the bodies on the ground for a few seconds… very very mild blood…
+arrows sticking out of the ground when shots are missed… small craters…
+small explosions, if they're on fire… more pixels and sprites for siege
+shots, especially when they crash against buildings"). A PICTURE of the
+fight the sim already resolves: render state only (module pools cleared by
+`R.onNewGame`, never in S or a save), no `G.rand` (Math.random or a hash),
+fog-honest (nothing written where `G.visibleAt` says no), every pass in
+`R.clipBoard`, every pool capped (`BODY_MAX`, `ARROW_MAX`, `CRATER_MAX`,
+`CHIP_MAX`, `BURST_MAX`, `STAIN_MAX`); `BattleFX.ON` false is the kill
+switch (draws nothing, changes no strike). **THE STRIKE LANDS ON THE
+BLOW**: a synced fighter's fight strip is read off its own attack cooldown
+(`strikeIndex`: the impact frame `STRIKE_AT[fileKey][pose][facing]` on the
+instant `u.cd` resets, the follow-through after, the next strike's wind-up
+before, the frame before impact while a blow is due), at
+`max(STRIKE_FPS 12, frames / cooldown)`; read by `R.unitSprite` through the
+`R._strikeK` that `R.sheetFrames` sets when `pickStrike` chooses. Not the
+wild (owner 'W', the beasts' `UNIT_ART`, the Animal Strife's own tempo).
+**A FIGHTER VARIES ITS STRIKES**: `fight2`/`fight3` strips (PixelLab, the
+SAME character, composed on the shipped feet — ART_PLAN, "THE BATTLE
+STRIPS") are picked one per blow by `blowOf` (a cooldown that jumps up is a
+blow), never the same twice running, the strike seen winding up the one that
+lands; a bow on a platform keeps its one strip (the fence was fitted to it).
+**THE DEAD LIE THERE**: `onDeath` (from `Units.damage`'s death branch,
+before the unit leaves the list) plays the character's `die` strip, or tips
+its own sprite over (`fallSheet`: a man about his heels, a horse sinks onto
+its side, an engine sags and darkens and throws timbers), and the body lies
+`BODY_S` (7) seconds, then fades over `BODY_FADE_S`; a small dark pool
+spreads under its torso (`torso`, off the last frame's ink); arrows that
+killed him stay in him; a hull lists and goes under; a wild beast tips over
+before the carcass the hunting ground keeps (the corpse waits, `falling`).
+**VERY MILD BLOOD**: a speck or two off one blow in three (always for a
+heavy blow, `amt` ≥ 14), dark and muted (`BLOOD`, never the berry red), as
+stains that fade in `STAIN_S`; nothing on a hull, an engine or a ghost. **A
+MISS STANDS IN THE GROUND**: Combat's shot expiry hands `arrowLanded` the
+shot — a fumbled shaft stands where it overshot (a ripple on water), a shaft
+loosed at a building sticks in its face for a few seconds. **A STONE DIGS A
+CRATER**: `siegeLanded` (from `Combat.impact`; never a bolt) lays a drawn
+crater (`assets/fx/crater-{s,l}[-fire].png`, PixelLab art on the soil and
+charcoal ramps — small for a catapult, large for the firestorm and the
+blast — `craterPic`, the procedural crater the stand-in) with a crown of
+dust and clods, a burning shot bursts into a pixel fireball and scorches it;
+on water, a splash. **A STONE INTO A BUILDING**: chips of what it is built of
+(`material`: thatch and wood, stone and timber by kind and storey) and a
+smash of dust off its face, and the building FLINCHES (`bldJolt` shoves its
+one blit a world pixel away from the blow and `drawBldFlash` flashes its
+white silhouette, `BHIT_S`). **THE SHOT IN FLIGHT** is a turning pixel stone,
+a comet of graded fire (`drawProjectile`: discs along the arc's true heading,
+smoke behind) or a dark iron shell with a fuse spark; the bolt keeps its
+shaft. **A STRUCK UNIT FLASHES WHITE** (`drawFlash`, `FLASH_S`). **THE
+STRIPS ARE LAZY**: `Assets.BATTLE_ART[fileKey][pose]` is a bitmask of the
+facings on disk (s se e ne n nw w sw); a character's are asked for the first
+time one is drawn (`BattleFX.want` → `Assets.loadBattleArt`, background
+tier, never the demo or the boot); a facing with no strip falls back per
+lookup. Both tables are WRITTEN BY A SCRIPT off the files and the art
+reports (`tools/battle-tables.py --write --reports DIR`): the contract holds the table to the disk
+exactly, every impact frame inside its strip, every strip at its
+character's own scale, and every death ending lying down.
 
 **EVERY BAND IS ITS OWN FIGHT** (`CFG.BARB_BANDS`, `G.composeBand` /
 `spawnBarb` / `bandHurt` / `bandLoss` / `campBeasts` / `barbRand`;

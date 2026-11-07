@@ -270,7 +270,18 @@ const out = await p.evaluate(async (DIRS) => {
     if (mil) {
       const u = Units.spawn(mil, 'P', fx, fy);
       R.sheetFrames(u);
-      lazy = BattleFX._wanted.has(R.unitArtKey(u)) && Assets._battleAsked[R.unitArtKey(u)] ? 'ok' : 'not asked';
+      const ak = R.unitArtKey(u);
+      lazy = BattleFX._wanted.has(ak) && Assets._battleAsked[ak] ? 'ok' : 'not asked';
+      // ... and the strips really arrive: every facing the table lists, installed on the character
+      if (lazy === 'ok') {
+        const want = [];
+        for (const [pose, mask] of Object.entries(Assets.BATTLE_ART[mil])) for (let i = 0; i < 8; i++) if (mask & (1 << i)) want.push([DIRS[i], pose]);
+        const t0 = performance.now();
+        const missing = () => want.filter(([d, p]) => !(Assets.unitArt[ak] && Assets.unitArt[ak].dirs[d] && Assets.unitArt[ak].dirs[d][p]));
+        while (missing().length && performance.now() - t0 < 15000) await new Promise(r => setTimeout(r, 100));
+        const m = missing();
+        if (m.length) lazy = m.length + ' of ' + want.length + ' strips never installed, e.g. ' + m[0].join('-');
+      }
       Units.despawn(u);
     }
     res.__lazy = lazy;
