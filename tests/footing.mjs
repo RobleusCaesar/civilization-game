@@ -25,6 +25,12 @@
      PACED              a frame with no budget left measures one building
      A NEW LOOK         a burning building's art re-measures its footing
      TRIMMED            each layer canvas is cut to what it holds
+     EVERY HOUSE ITS    seven yards a house (Footing.HOME: a woodpile and chopping
+     OWN YARD           block, a herb bed and pail, the washing out, a bench, a hand
+                        cart, clay jars and a basket, or let grow wild) on a
+                        lattice, so neighbours never match; three hedge layouts;
+                        three yards a workplace and three shadows the rest;
+                        the door still clear, the same ground the same yard
      OFF IS NOTHING     CFG.FOOTING.ON false: nothing measured, cached or drawn;
                         ?footing=0 stands it down for the page
 
@@ -230,6 +236,73 @@ await frames(p, 3);
   ck('aFrameWithNoBudgetLeftMeasuresOneBuilding', r.one === 1 && r.all > 5, `${r.one} of ${r.all}`);
   ck('aBurningBuildingIsMeasuredAgain', r.recast, String(r.recast));
   ck('theLayersAreCutToWhatTheyHold', r.avg < 45000 && r.worst < 140000, `avg ${r.avg} cells a building, worst ${r.worst} (untrimmed: ~110k / ~200k)`);
+}
+
+// ---- every house its own yard ----------------------------------------------------
+/* operator, build 159: "for something like a house, you might create a lot, and then the
+   copied bushes don't look as good. Create 2-3 options for the bigger buildings and then
+   like 5+ for the houses… what might the villagers have left in their front yard?" */
+{
+  const r = await p.evaluate(async () => {
+    G.newGame('footing-2', 'moderate', 'medium'); Screens._demo = false;
+    const W = CFG.W, H = CFG.H, t = S.map.terrain;
+    let RX = 0, RY = 0, best = -1;
+    for (let y = 2; y < H - 12; y++) for (let x = 2; x < W - 32; x++) {
+      let n = 0; for (let j = 0; j < 10; j++) for (let i = 0; i < 30; i++) if (t[(y + j) * W + x + i] === T.GRASS) n++;
+      if (n > best) { best = n; RX = x; RY = y; }
+    }
+    for (let j = 0; j < 10; j++) for (let i = 0; i < 30; i++) t[(RY + j) * W + RX + i] = T.GRASS;
+    S.units = []; S.garrison = [];
+    S.buildings = S.buildings.filter(o => o.key === 'tc' && o.owner === 'P' || !(o.x >= RX - 3 && o.x < RX + 33 && o.y >= RY - 3 && o.y < RY + 13));
+    const put = (key, x, y) => Bld.place('P', key, RX + x, RY + y, { free: true, instant: true });
+    const houses = [], yards = [], plain = [];
+    for (let k = 0; k < 14; k++) houses.push(put('house', 1 + k * 2, 1));
+    for (let k = 0; k < 6; k++) yards.push(put('barracks', 1 + k * 4, 4));
+    for (let k = 0; k < 6; k++) plain.push(put('farm', 1 + k * 4, 8));
+    Bld._block = null; R.rebuildTerrain();
+    Footing._c.clear(); Footing._q.length = 0; Footing._qs.clear();
+    for (const o of [...houses, ...yards, ...plain]) { Footing._q.push(o.id); Footing._qs.add(o.id); }
+    Footing.flush();
+    const P = Footing.PAL, key = c => c.join(',');
+    const props = new Set([...P.wood, ...P.heart, ...P.clay, ...P.straw, ...P.iron, ...P.cloth.flat()].map(key));
+    const look = (o, li) => { const e = Footing._c.get(o.id); const L = e && e.L[li]; if (!L) return null; return { L, d: L.cv.getContext('2d').getImageData(0, 0, L.cv.width, L.cv.height).data }; };
+    const sig = o => { let h = 2166136261; for (const li of [0, 1, 2]) { const x = look(o, li); if (!x) { h = Math.imul(h ^ 7, 16777619); continue; } h = Math.imul(h ^ x.L.cv.width, 16777619); for (let i = 0; i < x.d.length; i += 3) h = Math.imul(h ^ x.d[i], 16777619); } return h >>> 0; };
+    const things = o => { let n = 0; for (const li of [0, 1, 2]) { const x = look(o, li); if (!x) continue; for (let i = 0; i < x.d.length; i += 4) if (x.d[i + 3] === 255 && props.has(x.d[i] + ',' + x.d[i + 1] + ',' + x.d[i + 2])) n++; } return n; };
+    const TL = CFG.TILE, door = o => {
+      const e = Footing._c.get(o.id), bs = Bld.size(o), dx = (o.x + bs / 2) * TL, foot = (o.y + bs) * TL; let n = 0;
+      for (const L of [e.L[1], e.L[2]]) { if (!L) continue;
+        const d = L.cv.getContext('2d').getImageData(0, 0, L.cv.width, L.cv.height).data, w = L.cv.width;
+        for (let i = 0; i < d.length; i += 4) { if (!d[i + 3]) continue;
+          const wx = L.x + (i / 4 % w + 0.5) * L.w / w, wy = L.y + (((i / 4 / w) | 0) + 0.5) * L.h / L.cv.height;
+          if (Math.abs(wx - dx) < 3.5 && wy > foot - 6 && wy < foot + 8) n++; } }
+      return n; };
+    let offGround = 0;
+    for (const o of [...houses, ...yards, ...plain]) { const x = look(o, 0); if (!x) continue; const w = x.L.cv.width;
+      for (let i = 0; i < x.d.length; i += 4) { if (!x.d[i + 3]) continue;
+        const tx = Math.floor((x.L.x + (i / 4 % w + 0.5) * x.L.w / w) / TL), ty = Math.floor((x.L.y + (((i / 4 / w) | 0) + 0.5) * x.L.h / x.L.cv.height) / TL);
+        const ter = MapGen.onBoard(tx, ty) ? S.map.terrain[ty * CFG.W + tx] : -1;
+        if (!(ter === T.GRASS || ter === T.STUMPS || ter === T.BARREN || (ter >= 0 && !!Bld.at(tx, ty)))) offGround++; } }
+    const hv = houses.map(o => Footing.HOME[Footing.variant(o, 'hedge').v]);
+    const hasProps = houses.map((o, i) => hv[i] === 'wild' ? null : things(o));
+    const before = houses.map(sig);
+    const yardV = yards.map(o => Footing.variant(o, 'yard').v), yardLooks = new Set(yards.map(sig)).size, yardThings = yards.map(things);
+    const plainV = plain.map(o => Footing.variant(o, 'shadow').v), plainLooks = new Set(plain.map(sig)).size;
+    Footing._c.clear(); for (const o of houses) { Footing._q.push(o.id); Footing._qs.add(o.id); } Footing.flush();
+    const after = houses.map(sig);
+    // neighbours in the row: never the same yard side by side
+    let twins = 0; for (let i = 1; i < hv.length; i++) if (hv[i] === hv[i - 1]) twins++;
+    return { kinds: Footing.HOME.length, hv, used: new Set(hv).size, looks: new Set(before).size, twins,
+      hasProps, doors: houses.map(door), offGround, same: before.every((v, i) => v === after[i]),
+      yardV, yardLooks, yardThings, plainV, plainLooks };
+  });
+  ck('aHouseHasAtLeastFiveYards', r.kinds >= 5 && r.used >= 5 && r.looks >= 10, `${r.kinds} yards, ${r.used} worn along a row of 14 houses, ${r.looks} distinct pictures: ${r.hv.join(' ')}`);
+  ck('andNeighboursNeverWearTheSameOne', r.twins === 0, 'side-by-side twins: ' + r.twins);
+  ck('eachYardHoldsWhatTheHouseholdLeftOut', r.hasProps.every(n => n === null || n > 25), JSON.stringify(r.hasProps));
+  ck('andEveryDoorIsStillClear', r.doors.every(n => n === 0), 'cells in front of each door: ' + r.doors.join(','));
+  ck('andTheGardenLiesOnOpenGroundOnly', r.offGround === 0, 'off-ground cells: ' + r.offGround);
+  ck('theWorkplacesWearThreeYards', new Set(r.yardV).size === 3 && r.yardLooks >= 3 && r.yardThings.some(n => n > 25), JSON.stringify({ v: r.yardV, looks: r.yardLooks, things: r.yardThings }));
+  ck('andThePlainShadowThreeOfItsOwn', new Set(r.plainV).size >= 2 && r.plainLooks >= 2, JSON.stringify({ v: r.plainV, looks: r.plainLooks }));
+  ck('theSameGroundWearsTheSameYardAgain', r.same, 'every house re-measured to the same picture: ' + r.same);
 }
 
 // ---- off is nothing --------------------------------------------------------------

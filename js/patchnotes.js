@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 159, date: '2026-11-07', title: 'Homes that look lived in',
+    items: [
+      'Houses no longer wear the same hedge. Each yard is one of seven: a woodpile with an axe in the chopping block, a herb bed and a pail, the washing hung out, a bench by the wall, a hand cart, clay jars and a basket, or one left to grow wild.',
+      'Neighbouring houses never get the same yard, and the bushes round them grow in three different ways.',
+      'Workshops and yards come in three looks too, some with barrels, crates, a log pile or a heap of stone beside the door.',
+      'Crossroads grow a little bush in one corner. Other junctions get a bush, a stone cairn or a patch of wildflowers, and fence posts, fallen branches and stones turn up along the roadside.',
+    ],
+  },
+  {
     build: 158, date: '2026-11-07', title: 'Rally points put new units to work',
     items: [
       'Set a rally point on something and new units get straight to work there: archers climb a tower, soldiers board a transport, villagers gather, build or work a camp.',

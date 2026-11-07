@@ -614,6 +614,17 @@ owned by the tile of the nearest skeleton, never over water, a wood or a
 building). Cached per tile at the half-pixel grid (decor cut to what it
 holds), `CACHE_MAX` 360 tiles, generated under `BUDGET_MS` (4) a frame; a
 site shows the road through the turf in three dithered stages with stakes.
+**A JUNCTION KEEPS A CORNER** (`Roads.cornerOf`, tests/roads.mjs — operator,
+build 159: "maybe consider a little bush at crossroads, or other little
+elements that make the place feel more real and lived in"): a crossroads
+grows a bush (flowers on it now and then) in one of the four angles between
+its arms, a T a bush, a waymark cairn (not on the worn track) or a clump of
+wildflowers — out past the road's edge (+4 px) on open grass, never on a
+road, a building, water or the rim, the corner hashed off the tile. Along a
+run, rarely (one in a few tiles), a candidate nothing else used turns into a
+clump of wildflowers, two stones, a fence post with a twist of rope (a
+fallen branch on the worn track) or, on the via, more stones. All decor,
+cached and drawn as before.
 **THREE ROADS, ONE PER STOREY OF THE HALL** (operator, 2026-11-04: "Make
 the current road level 2, create a more rural road (more like a worn path),
 and then a level 3 that's like a Roman road… upgrade when town center
@@ -765,7 +776,28 @@ no S write, no RNG (every choice hashes the id and the world position), no
 tile, path or hit-test; the ground layer lies only on grass, stumps,
 picked-bare soil or a building's own plot, never water or the black; the
 hedge keeps the door clear; petals are cream and lilac, never the resource
-colours. **PACED**: measurements wait in a queue drained under `BUDGET_MS`
+colours. **NO TWO NEIGHBOURS ALIKE** (`Footing.variant` / `HOME` / `PAL`,
+tests/footing.mjs's last block — operator, build 159: "for something like a
+house, you might create a lot, and then the copied bushes don't look as
+good… 2-3 options for the bigger buildings… 5+ for the houses… what might
+the villagers have left in their front yard?"): a house wears one of seven
+YARDS (`HOME`: a woodpile with the axe in the chopping block, a herb bed and
+a pail, the washing on a line with a basket, a log bench and a pail, a hand
+cart, clay jars and a basket, or `wild`, let grow) beside its door on one
+side, the prop taking that side's corner bush, and one of three hedge
+LAYOUTS (a corner clump, one tall shrub, a low run); a workplace one of
+three yards (bare, barrels and crates, a log pile or a stone heap with the
+far corner let grow — the door lobe wanders with it); everything else (a
+farm, the wonder; never a raider camp, which has its own dress) one of three
+shadows (bare, tufts and a flower, a bush and stones). The pick is a
+LATTICE off the building's place, never its id or an RNG — `(2x + 3y + r)`
+mod 7 for the yard, `(x + 2y + r)` mod 3 for the layout, `r` hashed per
+16x16 region — so a row of houses wears every yard before one repeats and
+side-by-side twins never happen (pinned), and a load wears the same yard.
+Props are drawn in the footing's own cells from wood, heartwood, wicker,
+clay, iron and linen ramps (no gold, fire or berry), each on open ground
+(`free`: the ok mask and off the sprite), with a soft shadow, laid FRONT or
+BACK by `layerFor` like the hedge. **PACED**: measurements wait in a queue drained under `BUDGET_MS`
 (3) a frame, at least one a frame; a building keeps its footing until its
 kind, level, place, sprite (a burn phase) or the ground round it changes,
 and a stale one draws until its replacement is ready. Off (`CFG.FOOTING.ON`

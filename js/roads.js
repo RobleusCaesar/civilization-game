@@ -414,6 +414,30 @@ const Roads = (() => {
     }
     for (const [xx, yy] of [[-1, -7], [0, -7], [1, -7], [-1, -5], [1, -5], [0, -4]]) L.put(x + xx, y + yy, P.kerb[1]);   // the miles, cut in
   }
+  /* A JUNCTION KEEPS A CORNER (operator, build 159: "maybe consider a little bush
+     at crossroads"): a crossroads grows a bush in one of the four angles between
+     its arms, a T a bush, a waymark cairn or a clump of flowers — out past the
+     road's edge on open grass, never on a road, a building or the water. The
+     corner is hashed off the tile (Roads.cornerOf answers which, for the test). */
+  function cornerPick(tx, ty, lv, segs, joins) {
+    if (joins < 3) return null;
+    const T_ = TL(), cx0 = (tx + 0.5) * T_, cy0 = (ty + 0.5) * T_, q0 = Math.floor(hx(tx, ty, 71) * 4);
+    for (let q = 0; q < 4; q++) {
+      const qq = (q0 + q) & 3, sx = qq & 1 ? 1 : -1, sy = qq & 2 ? 1 : -1;
+      const wx = cx0 + sx * T_ * 0.6, wy = cy0 + sy * T_ * 0.62, n = near(segs, wx, wy);   // out in the angle between two arms
+      if (n.d < width(lv, wx, wy) + 4) continue;
+      const ctx_ = Math.floor(wx / T_), cty = Math.floor(wy / T_);
+      if (!MapGen.onBoard(ctx_, cty) || S.map.terrain[cty * CFG.W + ctx_] !== T.GRASS || link(ctx_, cty) || Bld.at(ctx_, cty)) continue;
+      const pick = hx(tx, ty, 72);
+      return { wx, wy, q: qq, kind: joins === 4 || pick < 0.45 ? 'bush' : pick < 0.75 && lv > 1 ? 'cairn' : 'flowers' };
+    }
+    return null;
+  }
+  Rd.cornerOf = function (tx, ty, lv) {
+    lv = lv || Rd.level();
+    const segs = segsAround(tx, ty, 2);
+    return cornerPick(tx, ty, lv, segs, segs.filter(s => s[4] === tx && s[5] === ty && !s[6]).length);
+  };
   const MRG = 16;                                       // decor margin, world px
   function decor(tx, ty, lv, extra) {
     lv = lv || Rd.level();
@@ -444,6 +468,7 @@ const Roads = (() => {
           if (r < 0.04 && joins <= 2) bush(L, px, py, 5 + hx(gx, gy, 55) * 4, s);
           else if (r < 0.12) weed(L, px, py, s);
           else if (r < 0.24) tuft(L, px, py, 6 + hx(gx, gy, 56) * 5, s, true);
+          else if (r > 0.4 && joins <= 2) roadside(L, px, py, lv, s, hx(gx, gy, 58));
         } else if (d < 2.4 && r < 0.12) tuft(L, px, py, 3 + hx(gx, gy, 57) * 3, s, false);
         else if (d < w - 3 && r < 0.03) tuft(L, px, py, 3, s, false);
       } else if (lv === 3) {                              // a kept road: grass only at the shoulder, a milestone now and then
@@ -453,6 +478,7 @@ const Roads = (() => {
           if (r < 0.03 && joins <= 2) bush(L, px, py, 6 + hx(gx, gy, 55) * 4, s);
           else if (r < 0.07) weed(L, px, py, s);
           else if (r < 0.15) tuft(L, px, py, 6 + hx(gx, gy, 56) * 5, s, true);
+          else if (r > 0.4 && joins <= 2) roadside(L, px, py, lv, s, hx(gx, gy, 58));
         }
       } else {
         if (d > w - 1.6 && d < w + 1.2) { if (r < 0.34) tuft(L, px, py, 5 + hx(gx, gy, 54) * 5, s, r < 0.1); }
@@ -460,9 +486,18 @@ const Roads = (() => {
           if (r < 0.035 && joins <= 2) bush(L, px, py, 6 + hx(gx, gy, 55) * 4, s);
           else if (r < 0.1) weed(L, px, py, s);
           else if (r < 0.2) tuft(L, px, py, 6 + hx(gx, gy, 56) * 5, s, true);
+          else if (r > 0.4 && joins <= 2) roadside(L, px, py, lv, s, hx(gx, gy, 58));
         } else if (d < 2 && r < 0.05) tuft(L, px, py, 4, s, false);
         else if (d < w - 3 && r < 0.012) blob(L, px, py - 2, 3.2, 2.2, P.stone, s);
       }
+    }
+    // the corner of a junction: a bush, a cairn or a clump of flowers in one of its quiet corners
+    const cn = !extra && cornerPick(tx, ty, lv, segs, joins);
+    if (cn) {
+      const px = (cn.wx - x0) * K, py = (cn.wy - y0) * K, s = tx * 977 + ty * 31 + cn.q;
+      if (cn.kind === 'bush') { bush(L, px, py, 7 + hx(tx, ty, 73) * 3, s); bloomOn(L, px, py, 7, s); }
+      else if (cn.kind === 'cairn') cairn(L, px, py, s);
+      else flowers(L, px, py, s);
     }
     // cut to what it holds
     let bx0 = S_, by0 = S_, bx1 = -1, by1 = -1;
@@ -478,6 +513,55 @@ const Roads = (() => {
     const pal = hx(s, 2, 2) < 0.5 ? P.bush : P.bush2;
     blob(L, x, y - r * 0.72, r, r * 0.78, pal, s);
     blob(L, x - r * 0.45, y - r * 0.95, r * 0.62, r * 0.55, pal, s + 1);
+  }
+  // flowers on a bush's crown: single specks, cream or lilac (paired dots read as eyes)
+  function bloomOn(L, x, y, r, s) {
+    if (hx(s, 9, 9) < 0.35) return;
+    const c = P.petal[hx(s, 8, 8) < 0.5 ? 0 : 1];
+    for (let k = 0; k < r * 1.6; k++) {
+      const a = hx(s, k, 1) * Math.PI * 2, d = Math.sqrt(hx(s, k, 2)) * r * 0.8;
+      if (hx(s, k, 3) < 0.6) L.put(Math.round(x + Math.cos(a) * d), Math.round(y - r * 0.8 + Math.sin(a) * d * 0.7), c);
+    }
+  }
+  // a clump of wildflowers: a handful of weeds close together
+  function flowers(L, x, y, s) {
+    for (let k = 0; k < 4 + Math.floor(hx(s, 5, 5) * 3); k++) weed(L, Math.round(x + (hx(s, k, 6) - 0.5) * 9), Math.round(y + (hx(s, k, 7) - 0.5) * 5), s + k * 13);
+    tuft(L, x, y + 2, 6, s + 3, true);
+  }
+  // a waymark cairn: three stones piled at the corner of a junction
+  function cairn(L, x, y, s) {
+    for (let k = 0; k < 6; k++) L.put(Math.round(x + 2 + k), Math.round(y + 1), P.grass[0]);
+    blob(L, x, y - 2, 4.2, 2.6, P.stone, s);
+    blob(L, x + 0.5, y - 6, 3.2, 2.2, P.stone, s + 1);
+    blob(L, x - 0.3, y - 9.2, 2.2, 1.7, P.stone, s + 2);
+    tuft(L, x - 5, y + 1, 5, s + 4, false);
+  }
+  // a fence post leaning by the road, a twist of rope on it
+  function post(L, x, y, s) {
+    x = Math.round(x); y = Math.round(y);
+    const lean = hx(s, 1, 4) < 0.5 ? -1 : 1;
+    for (let k = 0; k < 4; k++) L.put(x + 2 + k, y + 1, P.grass[0]);
+    for (let t = 0; t < 12; t++) { const xx = x + (t > 7 ? lean : 0); L.put(xx, y - t, P.stake[t < 2 ? 0 : 1]); L.put(xx + 1, y - t, P.stake[t < 2 ? 0 : t > 10 ? 2 : 1]); }
+    L.put(x, y - 6, P.seed[0]); L.put(x + 1, y - 6, P.seed[1]); L.put(x, y - 5, P.seed[1]);
+    tuft(L, x - 1, y + 1, 5, s, false);
+  }
+  // a fallen branch, its bark dark, its broken end pale
+  function log(L, x, y, s) {
+    const len = 9 + Math.floor(hx(s, 2, 1) * 6), sl = (hx(s, 3, 1) - 0.5) * 0.5;
+    for (let t = 0; t < len; t++) { const yy = Math.round(y + t * sl); L.put(Math.round(x + t), yy, P.stake[1]); L.put(Math.round(x + t), yy + 1, P.stake[0]); }
+    L.put(Math.round(x + len), Math.round(y + len * sl), P.seed[2]); L.put(Math.round(x + len), Math.round(y + len * sl) + 1, P.seed[1]);
+    if (hx(s, 4, 1) < 0.6) tuft(L, x + len * 0.5, y + 2, 5, s, false);
+  }
+  // a couple of stones at the road's shoulder
+  function pebbles(L, x, y, s) { blob(L, x, y - 1, 2.6, 1.8, P.stone, s); if (hx(s, 6, 1) < 0.6) blob(L, x + 4, y + 0.5, 1.8, 1.3, P.stone, s + 1); }
+  // what else grows or lies by a road, by the hall's level: rare, one in a stretch
+  function roadside(L, x, y, lv, s, r2) {
+    if (r2 > 0.03) return;
+    const k = Math.floor(r2 / 0.03 * 4);
+    if (k === 0) flowers(L, x, y, s);
+    else if (k === 1) pebbles(L, x, y, s);
+    else if (k === 2) (lv === 1 ? log : post)(L, x, y, s);
+    else (lv === 3 ? pebbles : log)(L, x, y, s);
   }
   // a site coming up: the turf cut and the road showing through in stages, with its stakes
   function siteLook(tx, ty, stage, lv) {

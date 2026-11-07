@@ -236,6 +236,23 @@ const { RX, RY } = W0;
     JSON.stringify({ straight: r.straightRun, cross: r.cross, tee: r.tee, turn: r.turn }));
   ck('noTwoTilesAlike', r.of >= 4 && r.unique === r.of, `${r.unique} distinct of ${r.of} straight tiles`);
   ck('andNothingGrowsOverTheWater', r.bad === 0, 'decor cells over water: ' + r.bad);
+  // operator, build 159: "maybe consider a little bush at crossroads, or other little elements"
+  const j = await p.evaluate(({ RX, RY }) => {
+    const at = (x, y) => Roads.cornerOf(RX + x, RY + y), e = (x, y) => Roads._c.get((RY + y) * CFG.W + RX + x);
+    const cross = at(4, 10), tee = at(9, 10), straight = at(6, 10);
+    // the cross tile's decor holds the bush where cornerOf says it stands
+    let near = 0;
+    const d = e(4, 10) && e(4, 10).dec;
+    if (d && cross) { const px = d.cv.getContext('2d').getImageData(0, 0, d.cv.width, d.cv.height).data;
+      for (let k = 0; k < px.length; k += 4) { if (!px[k + 3]) continue;
+        const wx = d.x + ((k / 4) % d.cv.width + 0.5) * d.w / d.cv.width, wy = d.y + (((k / 4 / d.cv.width) | 0) + 0.5) * d.h / d.cv.height;
+        if (Math.hypot(wx - cross.wx, wy - cross.wy + 2.5) < 4) near++; } }
+    const ok = c => c && S.map.terrain[Math.floor(c.wy / CFG.TILE) * CFG.W + Math.floor(c.wx / CFG.TILE)] === T.GRASS && !Roads.at(Math.floor(c.wx / CFG.TILE), Math.floor(c.wy / CFG.TILE));
+    return { cross: cross && cross.kind, tee: tee && tee.kind, straight, near, onGrass: ok(cross) && ok(tee),
+      again: JSON.stringify(Roads.cornerOf(RX + 4, RY + 10)) === JSON.stringify(cross) };
+  }, { RX, RY });
+  ck('aCrossroadsGrowsABushInOneOfItsCorners', j.cross === 'bush' && j.near > 20 && j.onGrass && j.again, JSON.stringify(j));
+  ck('andATeeKeepsACornerAStraightRunNone', !!j.tee && ['bush', 'cairn', 'flowers'].includes(j.tee) && j.straight === null, JSON.stringify({ tee: j.tee, straight: j.straight }));
 }
 
 // ---- the roads follow the hall ---------------------------------------------------------
