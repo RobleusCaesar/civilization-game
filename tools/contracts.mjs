@@ -62,6 +62,8 @@ const PATHS = [
   [/^assets\/endgame\//, ['deck-screens.mjs', 'art-pipeline.mjs']],
   [/^assets\/icons\/cards\//, ['draft-cards.mjs', 'origin-cards.mjs', 'art-pipeline.mjs']],
   [/^assets\/(music|sfx)\//, ['audio.mjs']],
+  [/^assets\/units\/unit-.*-(fight2|fight3|die)\.png$/, ['battle-fx.mjs', 'art-pipeline.mjs', 'tap-audit.mjs']],
+  [/^assets\/fx\/crater-[ls]/, ['battle-fx.mjs']],
   [/^assets\//, ['art-pipeline.mjs', 'animal-art.mjs', 'build-stages.mjs', 'fort-states.mjs', 'land.mjs', 'mountain.mjs']],
   [/^tools\/(terrain-core\.src\.js|build-terrain-core\.cjs)$/, ['terrain-v4.mjs']],
   [/^tools\//, ['patch-notes.mjs']],

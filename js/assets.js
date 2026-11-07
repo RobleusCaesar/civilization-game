@@ -1628,6 +1628,28 @@ const Assets = {
      keeps the procedural rig (Sprites.barbFor) per lookup, as ever. A female
      brute wears the brute (one hulk per people). */
   BARB_ART: { raider: ['idle', 'walk', 'fight'], brute: ['idle', 'walk', 'fight'] },
+  /* ---- THE BATTLE STRIPS (js/battlefx.js, build 160) ----
+     The second and third strikes a fighter picks between blows, and the death
+     it plays when it falls — the SAME character as its walk, composed on the
+     same feet. Keyed by FILE key (unit-{fileKey}-{dir}-{pose}.png) and never
+     on the boot path or the plaque: a character's are asked for the first
+     time one of them is drawn (BattleFX.want → loadBattleArt), in the
+     background tier, so a run pays only for the people it actually meets. A
+     strip that is not there leaves the base strike and the procedural fall. */
+  BATTLE_ART: {
+    'archer': {"fight2": 255, "die": 255},
+    'elite': {"fight2": 255, "fight3": 223, "die": 255},
+  },
+  _battleAsked: {},
+  loadBattleArt(artKey, fileKey, tunic) {
+    if (this._battleAsked[artKey]) return;
+    const poses = this.BATTLE_ART[fileKey];
+    this._battleAsked[artKey] = 1;
+    if (!poses || !poses.length) return;
+    for (const dir of this.UNIT_DIRS8) for (const pose of poses)
+      this._stripLoad(artKey, dir, pose, this.UNIT_DIR + 'unit-' + fileKey + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
+        tunic, true, false);
+  },
   barbKey(tribe, kind, female) {
     const t = tribe || 'wolf';
     const key = 'barb-' + t + '-' + (kind === 'brute' ? 'brute' : 'raider-' + (female ? 'f' : 'm'));

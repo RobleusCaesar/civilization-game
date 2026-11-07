@@ -56,8 +56,13 @@ const Combat = {
   // a projectile reaches its mark: land the damage and throw a burst
   impact(p) {
     const t = p.tgt, flame = p.kind === 'flame';
+    let hb = null;
     if (t.kind === 'bld') {
       const b = Bld.get(t.id);
+      hb = b || null;
+      // the stone smashes against the face (js/battlefx.js) before the blow can
+      // bring the building down and take it out of the list
+      if (b && window.BattleFX && BattleFX.siegeLanded) { try { BattleFX.siegeLanded(p, b); } catch (e) {} }
       if (b) this.hitBuilding(b, t.dmg, flame, p.owner);
       // a stone (or a burning ball) into the works — never a ballista's bolt
       if (b && p.kind !== 'bolt' && typeof Sound !== 'undefined' && Sound.at) Sound.at('boulder', p.x2, p.y2, p.owner);
@@ -66,6 +71,8 @@ const Combat = {
       if (tu) { const d = this.covered(tu, t.dmg); this.hitFloat(tu, tu.x, tu.y, tu.x, tu.y - 0.4, '-' + d, '#f08a7a', p.owner); Units.damage(tu, d, t.srcId || 0, p.owner); }
     }
     R.impact(p.x2, p.y2, p.kind, p.fx);
+    // …and a shot into the ground digs its crater, throws its clods and, burning, bursts
+    if (!hb && window.BattleFX && BattleFX.siegeLanded) { try { BattleFX.siegeLanded(p, null); } catch (e) {} }
   },
   // the kinds whose melee strike is a SWORD stroke — the blood-slash gate.
   // The Bronze Champion is the roster's only sworded trainable today; the
@@ -1788,7 +1795,7 @@ const Combat = {
           } else {
             let sh = null;
             if (CFG.UNITS[u.kind].rng)
-              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire || this.perchFire(u, wfA) });
+              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire || this.perchFire(u, wfA), bld: b.id });
             // same base-archer fumble as the unit-target branch above — a
             // player CAN send an archer straight at a wall, so it has to miss
             // there too, not just when trading blows with soldiers.
@@ -1891,6 +1898,9 @@ const Combat = {
       // calls the damage floats above have always made.
       if (s.fire) R.arrowStrike(s.x2, s.y2);
       else if (s.miss) R.impact(s.x2, s.y2, 'bolt');
+      // …and the shaft stays where it went in: in the ground past a miss, in a
+      // wall's face (js/battlefx.js — a picture only)
+      if (window.BattleFX && BattleFX.arrowLanded) { try { BattleFX.arrowLanded(s); } catch (e) {} }
       this.shots.splice(i, 1);
     }
     // advance siege projectiles; when one lands, apply its damage + burst

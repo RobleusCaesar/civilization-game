@@ -2722,6 +2722,9 @@ const Units = {
     // EVERY BAND IS ITS OWN FIGHT (CFG.BARB_BANDS): a harrier hurt past its
     // nerve breaks off and runs (G.bandHurt)
     if (u.hp > 0 && u.owner === 'R' && u.style === 'harry') G.bandHurt(u);
+    // THE BLOW IS SEEN (js/battlefx.js): a white beat over the sprite and a
+    // few dark specks off a living thing — a picture, never a write to S
+    if (window.BattleFX && BattleFX.onHit) { try { BattleFX.onHit(u, amt, attacker); } catch (e) {} }
     if (u.hp <= 0) {
       try {
         if (typeof Sound !== 'undefined' && Sound.place && Sound.place(u.x, u.y) &&
@@ -2730,6 +2733,9 @@ const Units = {
       } catch (e) {}
       // a bow killed on a tower's platform falls from it (js/lookout.js)
       if (u.perch && window.Lookout && Lookout.startFall) { try { Lookout.startFall(u); } catch (e) {} }
+      // …and a fighter falls where he stood and lies there a while (js/battlefx.js):
+      // read off the unit (its facing, its art) BEFORE it leaves the list
+      if (window.BattleFX && BattleFX.onDeath) { try { BattleFX.onDeath(u, attacker, attackerOwner); } catch (e) {} }
       S.units.splice(S.units.indexOf(u), 1);
       // …and a pressing band calls the next one up (G.bandLoss)
       if (u.owner === 'R' && u.bandId) G.bandLoss(u);

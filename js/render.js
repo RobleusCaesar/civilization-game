@@ -6633,6 +6633,7 @@ const R = {
     this.slashes = [];         // …and its sword nicks
     this.blasts = [];          // …and its bombard craters
     this.blazes = [];          // …and its trebuchet ground fires
+    if (window.BattleFX && BattleFX.reset) BattleFX.reset();   // …and its bodies, blood, arrows and craters
     Combat.shots.length = 0; Combat.projectiles.length = 0;
     const tc = Bld.tcOf('P');
     if (tc) this.centerOn(tc.x + 0.5, tc.y + 0.5);
@@ -13703,6 +13704,8 @@ const R = {
       (Assets.unitArt[key] || Assets.unitArt[u.kind]);
     this._sheetKey = (window.Assets && Assets.unitArt && Assets.unitArt[key]) ? key : u.kind;
     if (!ua) return null;
+    // the first sight of a character asks for its battle strips (js/battlefx.js)
+    if (window.BattleFX && BattleFX.want && !BattleFX._wanted.has(this._sheetKey)) BattleFX.want(u, this._sheetKey);
     const pose = this.unitPose(u);
     let face = this.unitFacing(u);
     /* A HULL HOLDS ITS HEADING. Every facing correction below is written
@@ -13791,8 +13794,21 @@ const R = {
     // (fight falls to walk — motion — and gather-ish poses to idle)
     // (a close blow with no strike sheet of its own borrows the CHARGE first:
     // a boar's head-down tusk thrust is the same body as its charge)
-    const fr = d[pose] || (pose === 'fight' && d.charge) ||
+    let fr = d[pose] || (pose === 'fight' && d.charge) ||
       ((pose === 'fight' || pose === 'charge') ? d.walk : d.idle) || d.walk || d.idle || null;
+    /* THE STRIKE LANDS ON THE BLOW (js/battlefx.js, build 160): a fighter's
+       strip is chosen per blow among its strikes (fight / fight2 / fight3)
+       and read off its attack cooldown in unitSprite, so the frame where the
+       weapon connects is on screen the instant the blow is dealt. The wild,
+       the Animal Strife and a strip borrowed from the walk keep their own
+       clocks (_strikeK null). Guarded on the method: a cached older
+       battlefx.js (or none) leaves the old loop. */
+    this._strikeK = null;
+    if (fr && fr === d[pose] && (pose === 'fight' || pose === 'guard') &&
+        window.BattleFX && BattleFX.pickStrike) {
+      const ps = BattleFX.pickStrike(u, d, fr, pose, face, this._sheetKey);
+      if (ps && ps.fr) { fr = ps.fr; this._strikeK = ps.k; }
+    }
     this._sheetPose = (fr && fr === d.idle) ? 'idle' : pose;   // what actually resolved (for the idle tempo)
     this._sheetFace = face;                                      // the facing that resolved (probes, tests)
     /* A STATIONARY POSE BORROWED FROM THE WALK IS HELD, NOT PLAYED (the
@@ -14028,6 +14044,9 @@ const R = {
     const fr2 = this.sheetFrames(u);
     if (fr2 && fr2.length) {
       if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
+      // a synced strike: the impact frame on the blow (js/battlefx.js)
+      if (this._strikeK != null && window.BattleFX && BattleFX.strikeIndex)
+        return fr2[Math.max(0, Math.min(fr2.length - 1, BattleFX.strikeIndex(u, fr2.length, this._strikeK)))];
       // fps by the SHEET's key (villager variants carry their own rate;
       // the 2-frame procedural villager below keeps its own 4fps default)
       /* …and FORAGING runs slower than the rest. The referee judged the
@@ -14917,6 +14936,8 @@ const R = {
     if (S.corpses && S.corpses.length) this.clipBoard(g, () => {
       for (const c of S.corpses) {
         if (!this.rememberedAt(MapGen.idx(c.x | 0, c.y | 0))) continue;
+        // a beast still going over where it fell: the carcass waits for it (js/battlefx.js)
+        if (window.BattleFX && BattleFX.falls.length && BattleFX.falling(c.x, c.y)) continue;
         // the drawn carcass (W12) when its strip has landed; the procedural
         // one cut from the cast is the fallback
         const art = window.Assets && Assets.carcass && Assets.carcass[c.kind];
@@ -15118,7 +15139,10 @@ const R = {
         // roof's own silhouette occludes its foot (tests/burn-down.mjs)
         this.drawBurnBack(g, b, bx, by, bw);
         if (window.Footing && Footing.back) Footing.back(g, b);
-        this.blitBld(g, spr, bx, by, bw, bw);
+        // a siege stone just landed on it: it flinches (js/battlefx.js)
+        const jolt = window.BattleFX && BattleFX._bHit.size ? BattleFX.bldJolt(b) : 0;
+        this.blitBld(g, spr, bx + jolt, by, bw, bw);
+        if (jolt || (window.BattleFX && BattleFX._bHit.size)) BattleFX.drawBldFlash(g, b, spr, bx + jolt, by, bw);
         // …and the walk running south out of it comes half way up its front
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
         // …and its lookout stands on the open platform (js/lookout.js)
@@ -15241,6 +15265,12 @@ const R = {
       g.globalAlpha = 1;
     }
 
+    /* THE BATTLE ON THE GROUND (js/battlefx.js): blood and craters lie under
+       everyone; the bodies and the stuck arrows are drawn in the units' own
+       depth order (flushed at each unit's feet below). */
+    const bfx = window.BattleFX && BattleFX.ON && BattleFX.beginFrame ? BattleFX : null;
+    if (bfx) { bfx.beginFrame(dt); bfx.drawGround(g); bfx.prepFlush(); }
+
     // units (y-sorted)
     const selIds = !UI.sel ? null
       : UI.sel.type === 'unit' ? new Set([UI.sel.id])
@@ -15299,6 +15329,7 @@ const R = {
     const unborn = this.summons.length && this._unborn;   // a card's muster: not out of its light yet
     for (const u of units) {
       msFlush(u.y);
+      if (bfx) bfx.flush(g, u.y);                          // the dead and the arrows north of his feet
       if (!G.visibleAt(u.x | 0, u.y | 0)) continue;
       if (unborn && unborn.has(u.id)) continue;
       if (u.spectral && this.unitHidden(u)) continue;      // a ghost still under the ground: no ring, no bar
@@ -15393,6 +15424,8 @@ const R = {
           try { Deck.drawUnit(g, u, img, dx0, dy0, D); }
           catch (err) { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(img, dx0, dy0, D, D); }
         } else g.drawImage(img, dx0, dy0, D, D);
+        // a blow just taken: one white beat over the sprite (js/battlefx.js)
+        if (bfx && !u.spectral) bfx.drawFlash(g, u, img, dx0, dy0, D, D);
       }
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
@@ -15405,6 +15438,7 @@ const R = {
       this.occludeByForts(g, u);
     }
     msFlush(1e9);
+    if (bfx) bfx.flush(g, 1e9);
     /* A UNIT BEHIND A MOUNTAIN IS HIDDEN, NOT LOST. Anyone standing on
        ground the lifted art covers (`_mtnOcc` — walkable tiles only, stamped
        at bake) just vanished under the strips above, which is the depth cue
@@ -15627,6 +15661,8 @@ const R = {
       const sh = 2 + 2 * k;
       g.fillStyle = 'rgba(20,16,10,0.28)';
       g.fillRect(wx * TL - sh, p.y2 * TL - 1, sh * 2, 2);            // shadow on the ground line
+      // a stone or a burning ball drawn as a turning pixel stone (js/battlefx.js)
+      if (bfx && bfx.drawProjectile(g, p, px, py, k)) continue;
       if (p.kind === 'flame') {
         // fx 'firestorm' (the trebuchet): the same flaming ball, just BIGGER —
         // a longer ember wake, a fatter core, and a smoke smudge chasing it
@@ -15763,6 +15799,8 @@ const R = {
       g.fillRect(pt.x * TL - s / 2, pt.y * TL - s / 2, s, s);
     }
     g.globalAlpha = 1; g.lineWidth = 1.5;
+    // the battle in the air: chips, bursts, cracks, the wild going over (js/battlefx.js)
+    if (bfx) bfx.drawAir(g);
 
     // ---- sword slashes: a short bowed crimson nick at the blade's reach,
     // opening over two frames and gone in 0.18s — dark berry underlay with
