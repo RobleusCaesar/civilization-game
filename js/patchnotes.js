@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 157, date: '2026-11-07', title: 'Barbarians in proportion',
+    items: [
+      'Barbarian raiders are drawn a little smaller, so a brute now stands a head taller than the fighters around him.',
+      'The quick light skirmishers are the smallest of all, so you can read a band at a glance.',
+    ],
+  },
+  {
     build: 156, date: '2026-11-06', title: 'No two war bands alike',
     items: [
       'Barbarian brutes are now much harder to kill and hit much harder, but they walk and swing slowly. One brute is worth two or three of the small fighters.',

@@ -333,9 +333,10 @@ const out48 = await p.evaluate(async () => {
   const vil = Units.spawn('villager', 'P', bx - 6.5, by - 3.5, {});
   const spear = Units.spawn('defender', 'P', bx - 6.5, by - 1.5, {});
   const bow = Units.spawn('archer', 'P', bx + 6.5, by - 3.5, {});
-  // the bear and the barbarian brute are the wild's alone: no tribe owns one,
-  // so they are measured below as what a player meets them as — a foe
-  const KINDS = Object.keys(Assets.UNIT_BOX).filter(k => CFG.UNITS[k] && k !== 'bear' && k !== 'brute');
+  // the bear and the barbarians (the brute's 40 box, the raider's 28) are the
+  // wild's alone: no tribe owns one, so they are measured below as what a
+  // player meets them as — a foe
+  const KINDS = Object.keys(Assets.UNIT_BOX).filter(k => CFG.UNITS[k] && Assets.UNIT_BOX[k] === 48 && k !== 'bear');
   const naval = k => !!CFG.UNITS[k].naval;
   const units = {};
   for (const k of KINDS) for (const o of ['P', 'A'])
@@ -398,14 +399,17 @@ const out48 = await p.evaluate(async () => {
     park(foe, 6, 2);
   }
   ok('48 box: the frames really are the big box', box48 === KINDS.length * 2, box48 + ' of ' + KINDS.length * 2 + ' own frames drawn at 48');
-  /* ---- THE BRUTE (build 155): a barbarian brute draws his drawn strips in a
-     40 box (80px frames, a head taller than the raiders round him). Every
-     opaque pixel of his frame is "on" him for an attack, by tap and by drag. */
-  {
-    const br = Units.spawn('brute', 'R', 6, 4, {}); br.tribe = 'wolf'; br.female = false;
+  /* ---- THE BARBARIANS (builds 155, 157): a brute draws his drawn strips in
+     a 40 box (80px frames, a head taller than the raiders round him), a raider
+     his 64px frames in a 28 box and a light skirmisher in a 26 (smaller than
+     the cast's 32, so the brute stands over them). Every opaque pixel of each
+     frame is "on" him for an attack, by tap and by drag. */
+  for (const [kind, tier, B] of [['brute', null, 40], ['raider', 'mid', 28], ['raider', 'light', 26]]) {
+    const br = Units.spawn(kind, 'R', 6, 4, {}); br.tribe = 'wolf'; br.female = false; if (tier) br.tier = tier;
+    const nm = tier ? kind + '-' + tier : kind;
     const t1 = performance.now();
     while (!R.sheetFrames(br) && performance.now() - t1 < 60000) await new Promise(r => setTimeout(r, 150));
-    ok('40 box: the brute draws from his own drawn sheet', !!R.sheetFrames(br) && R.unitBox(br) === 40,
+    ok(B + ' box: the ' + nm + ' draws from his own drawn sheet', !!R.sheetFrames(br) && R.unitBox(br) === B,
       R.sheetFrames(br) ? 'box ' + R.unitBox(br) : 'never loaded');
     if (R.sheetFrames(br)) for (const face of ['s', 'e']) {
       const zx = bx + 0.5, zy = by - 3.5;
@@ -413,10 +417,10 @@ const out48 = await p.evaluate(async () => {
       for (const [wx, wy] of opaque(br).pts) {
         park(spear, bx - 6.5, by - 1.5);
         UI.deselect(); UI.select('unit', spear.id); tap(wx, wy);
-        bump('own soldier selected → tapping a barbarian brute attacks him', 'brute/' + face, spear.tUnit === br.id);
+        bump('own soldier selected → tapping a barbarian ' + kind + ' attacks him', nm + '/' + face, spear.tUnit === br.id);
         park(spear, spear.x, spear.y);
         UI.deselect(); UI.select('unit', spear.id); UI.commitMoveDrag(...scr(wx, wy));
-        bump('a drag dropped on a barbarian brute attacks him', 'brute/' + face, spear.tUnit === br.id);
+        bump('a drag dropped on a barbarian ' + kind + ' attacks him', nm + '/' + face, spear.tUnit === br.id);
       }
       park(br, 6, 4);
     }

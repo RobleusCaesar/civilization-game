@@ -1466,7 +1466,13 @@ const Assets = {
                  the raiders round him: his drawn strips (unit-barb-*-brute)
                  are 80px frames into a 40 box, the same 2:1 density, so a
                  great helm or a moose's antlers stand whole (build 155) */
-              brute: 40 },
+              brute: 40,
+              /* …and the plain RAIDER is drawn smaller than the cast's 32:
+                 his strips fill 61 of their 64 rows, a brute's 62 of 80, so
+                 at 32 the two stood the same height (build 157). 28 puts the
+                 brute a head over him; the light skirmisher is smaller still
+                 (CFG.BARB_BANDS.TIERS.light.box, read by R.unitBox) */
+              raider: 28 },
   /* ---- VILLAGER TIERS (phase 1 plumbing; the art arrives in phase 2) ----
      Appearance tier by Town Center level — a TABLE, deliberately, so tiers
      can lag or lead the TC later without touching the resolver. */

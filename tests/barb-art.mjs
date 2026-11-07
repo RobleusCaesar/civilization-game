@@ -9,9 +9,17 @@
                     raider woman and a brute, each in all eight facings and
                     three poses (idle, walk, fight) — PixelLab characters made
                     in the champion's own style, at the villagers' density:
-                    64px frames into the 32px box, a brute's 80px into a 40
-                    box (Assets.UNIT_BOX — he is a head taller). A strike may take a bigger
-                    square frame (R.frameBox): same feet, same column.
+                    64px frames, a brute's 80px into a 40 box (Assets.UNIT_BOX).
+                    A strike may take a bigger square frame (R.frameBox):
+                    same feet, same column.
+     A HEAD TALLER, MEASURED  A raider's strips fill 61 of their 64 rows and
+                    a brute's 62 of 80, so drawn at the cast's 32 the two
+                    stood the same height (operator, build 157: "the little
+                    guys are the same height as the slow moving but big
+                    guys"). The raider draws at 28 and the light skirmisher
+                    at 26 (CFG.BARB_BANDS.TIERS.light.box, R.unitBox): the
+                    walk's own ink, as drawn, puts the brute a head over the
+                    plain raider in every people and the light man under him.
      ITS OWN PEOPLE  A band wears its camp's people (u.tribe) and its own
                     sex (u.female): the key is barb-{tribe}-raider-{m|f} or
                     barb-{tribe}-brute.
@@ -83,7 +91,7 @@ const out = await p.evaluate(async () => {
   }
   r.drawn = us.map(u => { const ua = Assets.unitArt[R.unitArtKey(u)]; return !!(ua && ua.dirs && ua.dirs.s && ua.dirs.s.walk && ua.dirs.s.walk.length >= 4); });
   // the drawn frame is the art, and a strike's bigger frame stands on the same feet
-  const u = us[1], B = CFG.TILE; r.tile = B;
+  const u = us[1], B = R.unitBox(u); r.tile = CFG.TILE;
   const walk = R.unitSprite(u);
   r.walkW = walk && walk.width;
   r.boxWalk = R.frameBox(u, walk, B);
@@ -96,17 +104,59 @@ const out = await p.evaluate(async () => {
   const br = us[2];
   const bimg = R.unitSprite(br);
   r.bruteBox = R.unitBox(br); r.bruteW = bimg && bimg.width;
+  // the boxes each tier is drawn at (a light man is a raider of the light tier)
+  const lt = Units.spawn('raider', 'R', tc.x + 6, tc.y + 6); lt.tribe = 'wolf'; lt.tier = 'light';
+  r.boxes = { light: R.unitBox(lt), mid: R.unitBox(u), heavy: R.unitBox(br) };
   return r;
+});
+// the drawn height of each fighter: its south walk's ink, averaged over the
+// frames, scaled by the box it is drawn at (data URIs: nothing is tainted)
+const UNITS = join(root, 'assets/units');
+const ink = await (async () => {
+  const p2 = await b.newPage();
+  const list = [];
+  for (const t of tribes) for (const look of ['raider-m', 'raider-f', 'brute'])
+    list.push([t + '|' + look, readFileSync(join(UNITS, `unit-barb-${t}-${look}-s-walk.png`)).toString('base64')]);
+  const r = await p2.evaluate(async (list) => {
+    const o = {};
+    for (const [k, data] of list) {
+      const img = new Image(); img.src = 'data:image/png;base64,' + data; await img.decode();
+      const H = img.height, n = Math.round(img.width / H);
+      const c = document.createElement('canvas'); c.width = img.width; c.height = H;
+      const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, img.width, H).data; let sum = 0;
+      for (let f = 0; f < n; f++) {
+        let top = H, bot = -1;
+        for (let y = 0; y < H; y++) for (let xx = 0; xx < H; xx++) if (d[(y * img.width + f * H + xx) * 4 + 3] > 127) { if (y < top) top = y; bot = y; }
+        sum += bot - top + 1;
+      }
+      o[k] = { h: sum / n, F: H };
+    }
+    return o;
+  }, list);
+  await p2.close();
+  return r;
+})();
+const drawn = (t, look, box) => ink[t + '|' + look].h * box / ink[t + '|' + look].F;
+const heights = tribes.map(t => {
+  const raider = Math.max(drawn(t, 'raider-m', out.boxes.mid), drawn(t, 'raider-f', out.boxes.mid));
+  const light = Math.max(drawn(t, 'raider-m', out.boxes.light), drawn(t, 'raider-f', out.boxes.light));
+  return { t, light: +light.toFixed(1), raider: +raider.toFixed(1), brute: +drawn(t, 'brute', out.boxes.heavy).toFixed(1) };
 });
 ck('aBandWearsItsOwnPeopleAndSex', out.keys.every((k, i) => {
   const t = tribes[(i / 3) | 0], look = ['raider-m', 'raider-f', 'brute'][i % 3];
   return k === `barb-${t}-${look}`;
 }), out.keys.join(' '));
 ck('andIsDrawnFromTheStrips', out.drawn.every(Boolean), out.drawn.map((d, i) => d ? '' : out.keys[i]).filter(Boolean).join(', '));
-ck('theWalkIs64pxIntoTheBox', out.walkW === 64 && out.boxWalk === out.tile, `frame ${out.walkW}, box ${out.boxWalk}`);
+ck('theWalkIs64pxIntoTheRaidersBox', out.walkW === 64 && out.boxWalk === out.boxes.mid && out.boxes.mid < out.tile,
+  `frame ${out.walkW}, box ${out.boxWalk}, raider box ${out.boxes.mid}`);
 ck('aBiggerStrikeIsABiggerPictureOnTheSameFeet', out.boxFight === null || (out.boxFight > out.boxWalk && out.feetSame),
   out.boxFight === null ? 'no oversize strike' : `strike ${out.fightW}px → box ${out.boxFight}`);
-ck('aBruteStandsAHeadTaller', out.bruteBox === 40 && out.bruteW === 80, `box ${out.bruteBox}, frame ${out.bruteW}`);
+ck('aBruteIsDrawnFromHis80pxFrames', out.bruteBox === 40 && out.bruteW === 80, `box ${out.bruteBox}, frame ${out.bruteW}`);
+// a head taller than the plain raider (a tenth at the least, the tallest
+// raider of the people against its brute), and the light man under the raider
+ck('aBruteStandsAHeadOverTheRaider', heights.every(h => h.brute >= h.raider * 1.1), JSON.stringify(heights));
+ck('andTheLightManIsTheSmallest', out.boxes.light < out.boxes.mid && heights.every(h => h.light < h.raider), JSON.stringify(out.boxes));
 const bad = errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e));
 ck('noErrors', !bad.length, bad.slice(0, 3).join(' | '));
 console.log(JSON.stringify(res, null, 1));

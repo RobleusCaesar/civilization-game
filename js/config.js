@@ -961,8 +961,12 @@ const CFG = {
     TIERS: {
       // priced by the square law a melee is fought by (strength ∝ hp × blow
       // rate, numbers count squared), so a budget of 6 buys five light, four
-      // mid or two heavy at about the same fighting worth
-      light: { kind: 'raider', cost: 1.2, hp: 0.7, atk: 0.8, speed: 1.15 },
+      // mid or two heavy at about the same fighting worth. `box` is the
+      // size it is DRAWN at (R.unitBox): a raider's strips stand as tall in
+      // their 64px frame as a brute's do in his 80, so drawn at the cast's 32
+      // he was the brute's height — the light man is the smallest, the
+      // brute (Assets.UNIT_BOX's 40) a head over the plain raider
+      light: { kind: 'raider', cost: 1.2, hp: 0.7, atk: 0.8, speed: 1.15, box: 26 },
       mid:   { kind: 'raider', cost: 1.5 },
       heavy: { kind: 'brute',  cost: 3 },
       wolf:  { kind: 'wolf',   cost: 1.2, hp: 1.5, atk: 1.5, beast: true },

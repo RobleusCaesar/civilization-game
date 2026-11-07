@@ -13915,7 +13915,10 @@ const R = {
     return { x: lx, y: ly };
   },
   unitBox(u) {
-    const b = window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind];
+    let b = window.Assets && Assets.UNIT_BOX && Assets.UNIT_BOX[u.kind];
+    // a barbarian's tier may draw him smaller than his kind (the light man)
+    const t = u.tier && CFG.BARB_BANDS && CFG.BARB_BANDS.TIERS[u.tier];
+    if (b && t && t.box) b = t.box;
     return (b && this.sheetUnit(u)) ? b : CFG.TILE;
   },
   /* HOW FAR A TAP AT (wx, wy) — world TILES — IS FROM UNIT u, in the units the
