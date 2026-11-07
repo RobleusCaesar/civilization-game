@@ -20,7 +20,8 @@
       a bolt digs nothing, a stone into a building flinches it
    §9 the battle strips are LAZY (none at boot, a character's when one is drawn),
       the table names exactly the files on disk, every impact frame is inside
-      its strip, and every death ends lying down
+      its strip, every death ends lying down, and a dyed character's cloth is
+      the two key blues alone (so the rival's red reaches every new frame)
    §10 nothing in the black: every pass is clipped to the board
 
      node tests/battle-fx.mjs      # exits non-zero on any regression */
@@ -295,7 +296,24 @@ const out = await p.evaluate(async (DIRS) => {
       for (let y = 0; y < H; y++) for (let x = 0; x < H; x++) if (d[(y * H + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       return x1 < 0 ? null : { w: x1 - x0 + 1, h: y1 - y0 + 1 };
     };
-    const badK = [], upright = [], wrongBox = [];
+    const badK = [], upright = [], wrongBox = [], undyed = [];
+    // a dyed character's cloth is the two key colours (Assets.TUNIC_KEY) and nothing near them
+    const hx = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const KB = hx(Assets.TUNIC_KEY.body), KA = hx(Assets.TUNIC_KEY.accent);
+    const offKey = (im) => {
+      const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+      const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        if (!d[i + 3]) continue;
+        const r = d[i], gg = d[i + 1], bb = d[i + 2];
+        if (bb < r + 40 || bb < gg || 0.3 * r + 0.59 * gg + 0.11 * bb < 52) continue;   // not a cloth blue
+        if ((r === KB[0] && gg === KB[1] && bb === KB[2]) || (r === KA[0] && gg === KA[1] && bb === KA[2])) continue;
+        n++;
+      }
+      return n;
+    };
     for (const [key, row] of Object.entries(BattleFX.STRIKE_AT)) for (const [pose, ks] of Object.entries(row)) {
       for (let i = 0; i < 8; i++) {
         if (ks[i] == null) continue;
@@ -315,6 +333,7 @@ const out = await p.evaluate(async (DIRS) => {
         const walk = await load('assets/units/unit-' + key + '-' + DIRS[i] + '-walk.png') || await load('assets/units/unit-' + key + '-s-walk.png');
         const W = im.height, base = walk ? walk.height : W;
         if (im.width % W || W < base || W > base * 1.75) wrongBox.push(key + '-' + DIRS[i] + '-' + pose + ' ' + W + ' vs ' + base);
+        if (!key.startsWith('barb-')) { const n = offKey(im); if (n) undyed.push(key + '-' + DIRS[i] + '-' + pose + ' ' + n + 'px'); }
         if (pose === 'die') {
           const n = im.width / W, a = ink(im, 0, n), z = ink(im, n - 1, n);
           // lying down: the last frame no taller than two thirds of the first
@@ -325,6 +344,9 @@ const out = await p.evaluate(async (DIRS) => {
     ck('everyImpactFrameIsInsideItsStrip', !badK.length, badK.slice(0, 5).join('; '));
     ck('everyBattleStripIsItsCharactersOwnSize', !wrongBox.length, wrongBox.slice(0, 5).join('; '));
     ck('everyDeathEndsLyingDown', !upright.length, upright.slice(0, 5).join('; '));
+    // the rival's tunic is a swap of two EXACT colours: a near-blue a re-animation brought back
+    // would keep a red soldier in a blue coat for his new strikes and his death (tools/battle-palette.py)
+    ck('aDyedCharactersNewStripsWearOnlyTheKeyBlues', !undyed.length, undyed.slice(0, 5).join('; '));
   }
 
   /* ---- §10 nothing in the black ---- */
