@@ -107,7 +107,7 @@ const BattleFX = {
      at 55% of its length. */
   STRIKE_AT: {
     'archer': {"fight":[8,8,9,7,7,8,8,6],"fight2":[9,7,10,10,10,10,10,11]},
-    'axeman': {"fight":[3,3,3,5,5,4,5,3],"fight2":[4,6,6,5,5,7,6,7],"fight3":[5,4,3,8,6,4,3,5]},
+    'axeman': {"fight":[5,3,3,5,5,4,5,3],"fight2":[4,6,6,5,5,7,6,7],"fight3":[5,4,3,8,6,4,3,5]},
     'ballista': {"fight":[3,3,3,4,5,4,4,2]},
     'barb-broken-brute': {"fight":[6,7,9,6,4,6,9,7]},
     'barb-broken-raider-f': {"fight":[8,6,5,5,8,5,5,6]},
@@ -132,7 +132,7 @@ const BattleFX = {
     'fireship': {"fight":[5,7,7,7,7,6,7,6]},
     'horsearcher': {"fight":[7,7,7,7,5,7,7,7]},
     'lancer': {"fight":[5,6,6,6,2,5,5,4]},
-    'longbow': {"fight":[3,9,9,7,8,9,8,9]},
+    'longbow': {"fight":[3,9,9,7,8,9,8,9],"fight2":[11,12,null,8,8,13,7,12]},
     'marksman': {"fight":[7,7,7,8,5,4,6,8]},
     'rider': {"fight":[5,4,6,5,3,7,6,5]},
     'trebuchet': {"fight":[6,5,5,6,5,5,5,4]},

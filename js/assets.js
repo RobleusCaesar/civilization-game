@@ -1639,9 +1639,11 @@ const Assets = {
   BATTLE_ART: {
     'archer': {"fight2": 255, "die": 255},
     'axeman': {"fight2": 255, "fight3": 255, "die": 255},
+    'barb-wolf-raider-m': {"die": 255},
     'defender': {"fight2": 127, "fight3": 63, "die": 255},
     'elite': {"fight2": 255, "fight3": 223, "die": 255},
-    'longbow': {"die": 255},
+    'longbow': {"fight2": 251, "die": 255},
+    'marksman': {"die": 255},
   },
   _battleAsked: {},
   loadBattleArt(artKey, fileKey, tunic) {
