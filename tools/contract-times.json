@@ -79,6 +79,7 @@
   "stable-art.mjs": 3,
   "tap-audit.mjs": 45,
   "barb-art.mjs": 25,
+  "rally.mjs": 20,
   "ruins.mjs": 15,
   "tc-upgrade.mjs": 4,
   "telemetry.mjs": 37,

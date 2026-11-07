@@ -298,6 +298,40 @@ node tests/ruins.mjs         # a razed building leaves its own remains on the ru
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
+**THE RALLY IS AN ORDER IN WAITING** (`Units.rallyPlan` / `rallyTo` /
+`rallyStand` / `rallyPoint` / `gatherRoom`, `UI.rallyPick` / `rallyPreview`,
+`UI.rallyRing`; tests/rally.mjs — operator, build 158: "when you're building
+a unit, and you click something for Move / Set Rally point, the unit should
+automatically start doing something if they can at the point… If the tower
+is full, the archer just stands at the base… a little ring that blinks
+once… Don't forget transport ships too… If the item gets full, don't move
+the rally point"). `b.rally` is `{x, y}` plus `bid` (a building) or `uid`
+(an own transport) when it was set ON something (an older save's `{x, y}`
+reads as before). `rallyPlan(u, rally)` is the ONE answer to "what would a
+fresh unit do there" — a bow climbs an own tower (`Lookout.order`), a land
+unit boards an own transport (`orderBoard`), a villager builds or repairs a
+site, works a station, gathers a resource tile, claims a seam or line-fishes
+a shoal, a fishing boat fishes, a soldier attacks a foe's works only while
+`Combat.hostileToBld` says so (never in the truce) — and the tap's toast
+(`UI.rallyPreview`, the building's trainable kinds as stubs) and the release
+(`Bld.releaseTrained` → `rallyTo`) both ask it, so the words never promise
+what the unit will not do. IT STACKS while there is ROOM (`Lookout.room`,
+`workersAssigned < maxWorkers`, an untaken working edge — `gatherRoom`, a
+hull seat — `cargoClaimed`), every count including the ones still walking;
+no room or a refused order (a levied hand) and the unit STANDS BY it
+(`rallyStand`: a tower's door, open ground beside a building or a moored
+hull, the rallied tile or its edge). The rally itself never moves. THE TAP
+PICKS (`UI.rallyPick`): an own transport under the finger (`R.unitHit`), the
+building under it, one a sliver (0.42) off only where a trainee could act
+there, a tile `snapNear`s to only where one could act, else the plain tile;
+only what the player owns, sees or remembers (`S.map.seenB`). An actionable
+rally blinks ONE gold ring round its target (`UI.rallyRing`, 0.75 s, a solid
+line on a dark ink edge at the canvas's resolution, riding a hull, clipped to
+the board; render state, cleared on a new world); a plain-ground rally keeps
+the old flag flourish and no ring. The flag of a selected building stands on
+the target (`Units.rallyPoint`). Reach is still `CFG.RALLY_RANGE` from the
+building to the target's anchor.
+
 **THE TOWER LOOKOUT AND THE WALL BETWEEN** (`js/lookout.js`, `CFG.LOOKOUT`,
 `Combat.sees` / `losGrid` / `losClear` / `reachOf`, tests/tower-garrison.mjs —
 operator, 2026-11-04: "TOWER ART — REMOVE ROOFS… open elevated platforms…

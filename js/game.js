@@ -347,7 +347,7 @@ const G = {
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // ghost, grid, ✓/✗ — all of it
     UI.builderFor = null;
-    UI.settingRally = null;
+    UI.settingRally = null; UI.rallyRing = null; UI.rallyFlash = null;
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one
     UI._threatAt = -1e9; UI._threatC = null;   // the hall's emergency calls start a world hidden

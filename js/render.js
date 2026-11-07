@@ -15993,7 +15993,9 @@ const R = {
     if (UI.sel && UI.sel.type === 'bld') {
       const rb = Bld.get(UI.sel.id);
       if (rb && rb.rally) {
-        const fx = (rb.rally.x + 0.5) * TL, fy = (rb.rally.y + 0.5) * TL;
+        // on the thing it names (a transport moves, and the flag rides it)
+        const rp = Units.rallyPoint(rb.rally);
+        const fx = rp.x * TL, fy = rp.y * TL;
         g.strokeStyle = 'rgba(232,193,90,0.5)'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(Bld.cx(rb) * TL, Bld.cy(rb) * TL); g.lineTo(fx, fy); g.stroke();
         g.strokeStyle = '#e8c15a'; g.lineWidth = 2;
@@ -16005,6 +16007,32 @@ const R = {
     // rally CONFIRM flourish: a placed rally auto-deselects, so flash the flag it
     // dropped for a beat — an expanding pulse + a popped-in flag that fades out —
     // so the player sees exactly where it landed before the panel closes.
+    /* THE RALLY'S ACKNOWLEDGEMENT (tests/rally.mjs — operator, build 158:
+       "a little ring that blinks once, just an acknowledgement that you're
+       sending under development soldiers or villagers to a selectable spot"):
+       one smooth gold ring round what the rally names, in and out once,
+       riding a transport as it moves. Render state only, never in a save. */
+    if (UI.rallyRing) {
+      const f = UI.rallyRing;
+      f.t += dt;
+      if (f.t >= f.life) UI.rallyRing = null;
+      else {
+        const k = f.t / f.life, rp = Units.rallyPoint(f.rally);
+        const tg = Units.rallyTarget(f.rally);
+        const half = tg && tg.bld ? Bld.size(tg.bld) / 2 : 0.5;
+        const r = (half * 0.82 + 0.16) * TL * (0.92 + 0.14 * k);
+        // a solid gold line on a dark ink edge (gold over grass alone reads
+        // as olive) — smooth, at the canvas's own resolution
+        const a = Math.sin(Math.PI * Math.min(1, k * 1.15));
+        this.clipBoard(g, () => {
+          g.save();
+          g.beginPath(); g.ellipse(rp.x * TL, rp.y * TL, r, r * 0.72, 0, 0, Math.PI * 2);
+          g.strokeStyle = 'rgba(20,14,6,' + (0.55 * a) + ')'; g.lineWidth = 3.6; g.stroke();
+          g.strokeStyle = 'rgba(244,206,104,' + a + ')'; g.lineWidth = 1.8; g.stroke();
+          g.restore();
+        });
+      }
+    }
     if (UI.rallyFlash) {
       const f = UI.rallyFlash;
       f.t -= dt;

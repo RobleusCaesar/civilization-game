@@ -1896,17 +1896,12 @@ const Bld = {
       const fs = MapGen.findNear(b.x, b.y, 5, (x, y) => Units.canFish(x, y));
       if (fs) Units.assignFish(nu, fs.x, fs.y);
     }
-    // rally point: fresh units head there; villagers rallied onto a
-    // resource tile (or boats onto stocked water) start gathering immediately
-    if (b.owner === 'P' && b.rally) {
-      // a refused work order (a levied hand, a claimed shoal) falls back
-      // to the plain walk — a rally point always MEANS "go there"
-      if (Units.isVillager(nu) && CFG.GATHER[S.map.terrain[MapGen.idx(b.rally.x, b.rally.y)]] &&
-          Units.assignGather(nu, b.rally.x, b.rally.y)) { /* gathering there */ }
-      else if (nu.kind === 'fishboat' && Units.canFish(b.rally.x, b.rally.y) &&
-          Units.assignFish(nu, b.rally.x, b.rally.y)) { /* fishing there */ }
-      else Units.moveTo(nu, b.rally.x, b.rally.y);
-    }
+    // rally point: fresh units head there and take up the work it names —
+    // a tower to climb, a hull to board, a station or a site, a resource, a
+    // foe's works (Units.rallyPlan, tests/rally.mjs); with no room, or an
+    // order refused (a levied hand, a claimed shoal), they stand by it — a
+    // rally point always MEANS "go there", and it never moves itself
+    if (b.owner === 'P' && b.rally) Units.rallyTo(nu, b.rally);
     return nu;
   },
 

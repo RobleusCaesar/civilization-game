@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 158, date: '2026-11-07', title: 'Rally points put new units to work',
+    items: [
+      'Set a rally point on something and new units get straight to work there: archers climb a tower, soldiers board a transport, villagers gather, build or work a camp.',
+      'Units keep stacking while there is room, two archers to a tower or two hands to a camp, and once it is full the rest wait beside it.',
+      'A small gold ring blinks once on whatever you rallied to, and the message says what new units will do.',
+    ],
+  },
+  {
     build: 157, date: '2026-11-07', title: 'Barbarians in proportion',
     items: [
       'Barbarian raiders are drawn a little smaller, so a brute now stands a head taller than the fighters around him.',
