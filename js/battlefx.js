@@ -351,7 +351,7 @@ const BattleFX = {
         // a band's beast or a war-wolf sinks onto its side as the wild do and lies
         // as a body (no carcass takes it over); a man tips about his heels, one way
         // or the other by his id — never his mirror, which would turn his face
-        const mode = this.engine(u) ? 'e' : (beast || this.mounted(u)) ? 'c' : ((u.id & 1) ? 'pl' : 'p');
+        const mode = this.engine(u) ? 'e' : (beast || this.mounted(u)) ? 'c' : ((Math.imul(u.id | 0, 2654435761) >>> 15) & 1 ? 'pl' : 'p');
         frames = this.fallSheet(cur, mode); proc = true;
         // the size he was drawn at (a strike frame is a bigger box), on the same feet
         D = R.frameBox(u, cur, B) * frames[0].width / cur.width;
