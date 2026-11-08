@@ -19,6 +19,19 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 160, date: '2026-11-08', title: 'Battles you can watch',
+    items: [
+      'Every blow now lands on the frame where the weapon strikes, instead of somewhere in the middle of a swing.',
+      'Defenders, axemen, champions, archers, longbows, marksmen and the Wolfskin raiders each have new ways to strike, and they change it up from blow to blow.',
+      'The fallen now drop and lie on the field for a few seconds before they fade, with a little blood beneath them. A man cut down by arrows keeps them.',
+      'A struck soldier flashes for an instant, and a heavy blow leaves a few dark specks on the ground.',
+      'An arrow that misses sticks in the ground where it landed, or in the wall it hit.',
+      'Catapult stones turn in the air and dig a small crater where they land. Fire shots trail flame and burst into a fireball, and bombard shells hiss on their way in.',
+      'A stone that hits a building throws off chips of thatch, wood or stone and a puff of dust, and the building shudders.',
+      'Riders at the charge kick up dust behind them.',
+    ],
+  },
+  {
     build: 159, date: '2026-11-07', title: 'Homes that look lived in',
     items: [
       'Houses no longer wear the same hedge. Each yard is one of seven: a woodpile with an axe in the chopping block, a herb bed and a pail, the washing hung out, a bench by the wall, a hand cart, clay jars and a basket, or one left to grow wild.',
