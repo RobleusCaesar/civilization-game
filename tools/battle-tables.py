@@ -49,10 +49,17 @@ for rp in (glob.glob(REPORTS + '/*.json') if REPORTS else []):
 # the by-eye frames live in the repo (tools/battle-impacts.json); a run with
 # --reports refreshes them from the art agents' reports first
 IMP = os.path.join(REPO, 'tools', 'battle-impacts.json')
+# the stored frames are the base; a reports directory only adds or replaces the
+# keys and poses it names (a batch holding one group never drops the others')
+if os.path.exists(IMP):
+    d = json.load(open(IMP))
+    for name, fresh in (('exact', exact), ('over', over)):
+        merged = d.get(name, {})
+        for key, poses in fresh.items(): merged.setdefault(key, {}).update(poses)
+        if name == 'exact': exact = merged
+        else: over = merged
 if REPORTS:
     json.dump({'exact': exact, 'over': over}, open(IMP, 'w'), indent=1, sort_keys=True)
-elif os.path.exists(IMP):
-    d = json.load(open(IMP)); exact = d.get('exact', {}); over = d.get('over', {})
 
 art = {}
 for pose in BATTLE:

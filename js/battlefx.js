@@ -14,8 +14,9 @@
    keeps:
    - RENDER STATE ONLY. Nothing is written to S and nothing rides a save; the
      pools are module state, cleared by R.onNewGame (the R.collapses rule).
-   - NO RUN RNG. Every jitter is Math.random or a hash of a position — a
-     G.rand draw would re-deal every seeded combat stream.
+   - NO RUN RNG. Every jitter is BattleFX.rnd (its own xorshift) or a hash of
+     a position — a G.rand draw, or one from the shared Math.random stream the
+     seeded contracts replay, would re-deal a seeded combat.
    - FOG-HONEST. A body, a stain, a crater or a burst is drawn only on ground
      the player can see right now (G.visibleAt) — a blow struck in the black
      is not written on the map.
@@ -83,6 +84,13 @@ const BattleFX = {
   },
 
   now() { return performance.now() / 1000; },
+  /* THE PICTURE DRAWS ITS OWN DICE: every scatter here comes from this
+     xorshift, never Math.random — the hooks run inside Units.update and
+     Combat.update, and a draw count that hung on the wall clock (the spatter
+     gap) or on what the player can see would shift the seeded contracts'
+     shared stream (combat.js keeps an unused draw for that very stream). */
+  _rs: 0x2545f491,
+  rnd() { let x = this._rs | 0; x ^= x << 13; x ^= x >>> 17; x ^= x << 5; this._rs = x; return (x >>> 0) / 4294967296; },
   seen(x, y) { return typeof G !== 'undefined' && G.visibleAt && G.visibleAt(x | 0, y | 0); },
   hash(a, b, c) {
     let h = (a * 374761393 + b * 668265263 + (c || 0) * 2246822519) | 0;
@@ -150,7 +158,9 @@ const BattleFX = {
   },
   impactAt(fk, pose, face, n) {
     const t = this.STRIKE_AT[fk] && this.STRIKE_AT[fk][pose];
-    const k = t && t[face] != null ? t[face] : Math.round(n * 0.55);
+    // the table is in Assets.UNIT_DIRS8 order: a facing NAME is its column
+    const i = typeof face === 'number' ? face : (window.Assets && Assets.UNIT_DIRS8 ? Assets.UNIT_DIRS8.indexOf(face) : -1);
+    const k = t && i >= 0 && t[i] != null ? t[i] : Math.round(n * 0.55);
     return Math.max(1, Math.min(n - 1, k));
   },
   /* a character's battle strips are fetched the first time one of them is
@@ -159,9 +169,9 @@ const BattleFX = {
   _wanted: new Set(),
   want(u, artKey) {
     if (!this.ON || !artKey || this._wanted.has(artKey)) return;
+    if (typeof Screens !== 'undefined' && Screens._demo) return;       // the title's demo world asks for nothing (and marks nothing asked)
     this._wanted.add(artKey);
     if (!window.Assets || !Assets.loadBattleArt || !Assets.unitArt || !Assets.unitArt[artKey]) { this._wanted.delete(artKey); return; }
-    if (typeof Screens !== 'undefined' && Screens._demo) return;       // the title's demo world asks for nothing
     const fk = this.fileKey(u, artKey);
     if (!Assets.BATTLE_ART[fk]) return;
     // a dyed key carries its tunic (the village's colour, swapped once at install)
@@ -211,7 +221,7 @@ const BattleFX = {
       }
     }
     if (!opts.length) opts.push([pose, fr]);
-    let o = opts[0];
+    let o = opts[0], wind = false;
     const b = this.blowOf(u);
     if (opts.length > 1) {
       const L = opts.length;
@@ -222,20 +232,23 @@ const BattleFX = {
       const tail = (first - this.impactAt(this.fileKey(u, artKey), opts[b.cur % L][0], face, first)) / Math.max(this.STRIKE_FPS, first / cd);
       if (s > tail || !(u.cd > 0)) {
         if (b.next < 0) { b.n++; b.next = this._choose(u, b, L, b.cur); b.n--; }
-        o = opts[b.next % L];
+        o = opts[b.next % L]; wind = true;
       } else o = opts[b.cur % L];
     }
     if (!o[1] || !o[1].length) return { fr, k: null };
-    return { fr: o[1], k: this.impactAt(this.fileKey(u, artKey), o[0], face, o[1].length) };
+    return { fr: o[1], k: this.impactAt(this.fileKey(u, artKey), o[0], face, o[1].length), wind };
   },
   /* the frame of a synced strike: the impact frame k on the blow itself, the
      follow-through after it, the wind-up of the next before it, and the
      ready frame between (a slow weapon). Coiled (k-1) while the cooldown is
      spent and no blow has come — the moment before it lands. */
-  strikeIndex(u, n, k) {
+  strikeIndex(u, n, k, wind) {
     const cd = this.cdOf(u);
     if (!(u.cd > 0)) return Math.max(0, k - 1);
     const fps = Math.max(this.STRIKE_FPS, n / cd);
+    // the NEXT strike winding up (pickStrike's switch): only its frames before
+    // the blow, timed to the blow — never the follow-through of a strike not yet thrown
+    if (wind) return Math.max(0, Math.min(k - 1, Math.floor(k - u.cd * fps)));
     const s = Math.max(0, cd - u.cd);
     const f = k + s * fps;
     if (f < n) return f | 0;
@@ -251,29 +264,30 @@ const BattleFX = {
     if (!this.ON || !u) return;
     // the first blow of a fight asks for the crater pictures (four small
     // files), so the first stone to land digs the drawn crater, not the stand-in
-    if (!this._craterWarm) { this._craterWarm = 1; for (const k of ['s', 'l']) for (const f of [0, 1]) this.craterPic({ big: k === 'l', fire: f, r: 0.3, v: 0 }); }
+    if (!this._craterWarm && !(typeof Screens !== 'undefined' && Screens._demo)) { this._craterWarm = 1; for (const k of ['s', 'l']) for (const f of [0, 1]) this.craterPic({ big: k === 'l', fire: f, r: 0.3, v: 0 }); }
     const t = this.now();
     this._hit.set(u, t);
-    if (!this.organic(u) || !this.seen(u.x, u.y)) return;
+    if (!this.organic(u) || u.perch || u.climb || !this.seen(u.x, u.y)) return;
     const last = this._spat.get(u);
     if (last != null && t - last < this.SPATTER_GAP) return;
     this._spat.set(u, t);
+    const at = this.drawnAt(u);
     let dx = 0, dy = 0;
     if (attacker) { dx = u.x - attacker.x; dy = u.y - attacker.y; }
     const dl = Math.hypot(dx, dy) || 1;
     dx /= dl; dy /= dl;
-    if (!attacker) { const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); }
+    if (!attacker) { const a = this.rnd() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); }
     // VERY MILD (the operator's words): a speck or two off one blow in three —
     // a heavy blow (a brute's, an engine's) always marks the ground
-    if (amt < 14 && Math.random() > 0.34) return;
+    if (amt < 14 && this.rnd() > 0.34) return;
     const n = amt >= 14 ? 2 : 1;
     for (let i = 0; i < n; i++) {
       if (this.chips.length >= this.CHIP_MAX) break;
-      const sp = 0.7 + Math.random() * 0.9, side = (Math.random() - 0.5) * 0.9;
+      const sp = 0.7 + this.rnd() * 0.9, side = (this.rnd() - 0.5) * 0.9;
       this.chips.push({
-        x: u.x + (Math.random() - 0.5) * 0.12, y: u.y + 0.06, z: 0.42 + Math.random() * 0.12,
-        vx: (dx + -dy * side) * sp, vy: (dy + dx * side) * sp * 0.7, vz: 0.6 + Math.random() * 0.9,
-        g: 6.5, sz: Math.random() < 0.4 ? 1.5 : 1, col: this.BLOOD[1 + (i % 2)], t: 0, life: 1.2,
+        x: at.x + (this.rnd() - 0.5) * 0.12, y: at.y + 0.06, z: 0.42 + this.rnd() * 0.12,
+        vx: (dx + -dy * side) * sp, vy: (dy + dx * side) * sp * 0.7, vz: 0.6 + this.rnd() * 0.9,
+        g: 6.5, sz: this.rnd() < 0.4 ? 1.5 : 1, col: this.BLOOD[1 + (i % 2)], t: 0, life: 1.2,
         blood: true, rest: 0, bounce: 0,
       });
     }
@@ -310,44 +324,66 @@ const BattleFX = {
      facing, frame and art key are read off it). */
   onDeath(u, attacker, attackerOwner) {
     if (!this.ON || !u || typeof R === 'undefined') return;
-    if (u.perch || u.climb || u.spectral || u.krakenTaken || u.burnT > 0 || u.dieT > 0) return;
-    const TL = CFG.TILE;
+    // burnT is defined from the dragon's first breath on, and stays (at 0) once
+    // it has run: a burned man is ash, never a body
+    if (u.perch || u.climb || u.spectral || u.krakenTaken || u.burnT != null || u.dieT > 0) return;
+    const at = this.drawnAt(u);
+    if (!this.seen(at.x, at.y)) return;                // a death in the fog leaves nothing to find
     try {
       if (typeof Units !== 'undefined' && Units.isNaval && Units.isNaval(u)) return this.sink(u);
       const B = R.unitBox(u);
       const cur = R.unitSprite(u);
       const key = R._sheetKey, face = R._sheetFace || 's';
-      if (u.owner === 'W' || (window.Assets && Assets.UNIT_ART && Assets.UNIT_ART[u.kind])) {
+      const beast = !!(window.Assets && Assets.UNIT_ART && Assets.UNIT_ART[u.kind]);
+      if (u.owner === 'W') {
         // a wild beast goes over before the carcass the hunting ground keeps
         if (this.falls.length >= 16) this.falls.shift();
-        this.falls.push({ x: u.x, y: u.y, t: 0, sheet: this.fallSheet(cur, 'c'), B, D: R.frameBox(u, cur, B), flip: (u.id & 1) === 1, organic: true });
+        this.falls.push({ x: at.x, y: at.y, t: 0, sheet: this.fallSheet(cur, 'c'), B, D: R.frameBox(u, cur, B), flip: false, organic: true });
         return;
       }
-      const ua = window.Assets && Assets.unitArt && key ? Assets.unitArt[key] : null;
+      const ua = !beast && window.Assets && Assets.unitArt && key ? Assets.unitArt[key] : null;
       const d = ua && ua.dirs[face];
       let frames = d && d.die && d.die.length ? d.die : null;
       let base = null;
       if (ua) { const s = ua.dirs.s || ua.dirs[face]; base = s && ((s.walk && s.walk[0]) || (s.idle && s.idle[0])); }
-      let proc = false;
-      if (!frames) { frames = this.fallSheet(cur, this.engine(u) ? 'e' : this.mounted(u) ? 'c' : 'p'); proc = true; base = cur; }
-      const D = base && base.width ? B * frames[0].width / base.width : B;
+      let proc = false, D;
+      if (!frames) {
+        // a band's beast or a war-wolf sinks onto its side as the wild do and lies
+        // as a body (no carcass takes it over); a man tips about his heels, one way
+        // or the other by his id — never his mirror, which would turn his face
+        const mode = this.engine(u) ? 'e' : (beast || this.mounted(u)) ? 'c' : ((u.id & 1) ? 'pl' : 'p');
+        frames = this.fallSheet(cur, mode); proc = true;
+        // the size he was drawn at (a strike frame is a bigger box), on the same feet
+        D = R.frameBox(u, cur, B) * frames[0].width / cur.width;
+      } else D = base && base.width ? B * frames[0].width / base.width : B;
       if (this.bodies.length >= this.BODY_MAX) this.bodies.shift();
       const body = {
-        x: u.x, y: u.y, t: 0, frames, B, D, proc, kind: u.kind, owner: u.owner,
-        flip: proc && !this.mounted(u) && (u.id & 1) === 1, organic: this.organic(u), engine: this.engine(u), mounted: this.mounted(u),
+        x: at.x, y: at.y, t: 0, frames, B, D, proc, kind: u.kind, owner: u.owner,
+        flip: false, organic: this.organic(u), engine: this.engine(u), mounted: this.mounted(u) || beast,
         seed: u.id, pooled: false, arrows: null,
       };
-      // the arrow that killed him stays in him (a bow, a tower's volley)
-      const ak = attacker && CFG.UNITS[attacker.kind];
-      if (body.organic && ((ak && ak.rng && !ak.proj) || (!attacker && attackerOwner && attackerOwner !== 'W'))) {
-        const dx = attacker ? u.x - attacker.x : 0.7, dy = attacker ? u.y - attacker.y : 0.4;
-        body.arrows = [{ ang: Math.atan2(dy, dx), r1: Math.random(), r2: Math.random() }];
-        if (Math.random() < 0.35) body.arrows.push({ ang: Math.atan2(dy, dx) + 0.3, r1: Math.random(), r2: Math.random() });
+      // the arrow that killed him stays in him: a bow's, or a tower's volley
+      // (Combat's tower loop says so) — never a star, a dragon or a stone
+      const ak = attacker && CFG.UNITS[attacker.kind], vo = this._volley;
+      if (body.organic && ((ak && ak.rng && !ak.proj) || (!attacker && vo))) {
+        const dx = attacker ? u.x - attacker.x : (vo.x != null ? u.x - vo.x : 0.7),
+          dy = attacker ? u.y - attacker.y : (vo.y != null ? u.y - vo.y : 0.4);
+        body.arrows = [{ ang: Math.atan2(dy, dx), r1: this.rnd(), r2: this.rnd() }];
+        if (this.rnd() < 0.35) body.arrows.push({ ang: Math.atan2(dy, dx) + 0.3, r1: this.rnd(), r2: this.rnd() });
       }
       this.bodies.push(body);
       if (body.engine) this.breakUp(u, B);
     } catch (e) { /* a picture that cannot be cut never takes the death down */ }
   },
+  // where the unit is DRAWN: a builder or a soldier battering a wall leans to it
+  drawnAt(u) {
+    const lp = typeof R !== 'undefined' && R.workLean ? R.workLean(u) : null;
+    return lp ? { x: lp.x, y: lp.y } : { x: u.x, y: u.y };
+  },
+  // a tower's volley in flight (set round its Units.damage by Combat): the arrows stay in the dead
+  _volley: null,
+  // a death the world takes back (a villager the Woadkin carry off is no body)
+  forget(id) { this.bodies = this.bodies.filter(b => b.seed !== id); },
   // a wild fall still playing over this spot: the carcass waits for it
   falling(x, y) {
     for (const f of this.falls) if (Math.abs(f.x - x) < 0.01 && Math.abs(f.y - y) < 0.01) return true;
@@ -362,20 +398,26 @@ const BattleFX = {
     let m = this._fall.get(base);
     if (m && m[key]) return m[key];
     if (!m) { m = {}; this._fall.set(base, m); }
-    const N = 8, W = base.width, H = base.height, out = [];
-    const pivX = W * 0.5, pivY = H * 0.86;
+    const N = 8, W0 = base.width, H0 = base.height, out = [];
+    // a man tipped about his heels lies a body's length to one side: his frame
+    // is a square TWICE his own, he stands at its bottom middle (the same feet,
+    // R.frameBox's rule), and the size he is drawn at doubles with it
+    const tip = key === 'p' || key === 'pl';
+    const W = tip ? W0 * 2 : W0, H = tip ? H0 * 2 : H0, ox = (W - W0) / 2, oy = H - H0;
+    const pivX = W0 * 0.5, pivY = H0 * 0.86;           // in the man's own frame
     for (let i = 0; i < N; i++) {
       const p = i / (N - 1);
       const c = document.createElement('canvas'); c.width = W; c.height = H;
       const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
       g.save();
+      g.translate(ox, oy);
       if (engine) {
         // the timbers give: it sags, leans and spreads as it breaks
         const sq = 1 - 0.42 * Math.min(1, p * 1.3);
         g.translate(pivX, pivY); g.rotate(0.12 * Math.min(1, p * 1.5)); g.scale(1 + 0.12 * p, sq); g.translate(-pivX, -pivY);
         g.drawImage(base, 0, 0);
         g.globalCompositeOperation = 'source-atop';
-        g.fillStyle = 'rgba(20,14,8,' + (0.5 * p) + ')'; g.fillRect(0, 0, W, H);
+        g.fillStyle = 'rgba(20,14,8,' + (0.5 * p) + ')'; g.fillRect(0, 0, W0, H0);
       } else if (key === 'c') {
         // a horse goes down where it stood: it buckles, sinks onto its side
         // and lies there (tipped about its hooves it stood on its haunches)
@@ -383,9 +425,9 @@ const BattleFX = {
         g.translate(pivX, pivY); g.rotate((p < 0.3 ? -0.06 : 0.1) * Math.min(1, q * 1.5)); g.scale(1 + 0.1 * q, 1 - 0.5 * q); g.translate(-pivX, -pivY);
         g.drawImage(base, 0, 0);
       } else {
-        const ang = 1.5 * Math.min(1, Math.pow(p / 0.8, 1.8));
+        const ang = (key === 'pl' ? -1.5 : 1.5) * Math.min(1, Math.pow(p / 0.8, 1.8));
         g.translate(pivX, pivY); g.rotate(ang); g.translate(-pivX, -pivY);
-        g.drawImage(base, 0, Math.round((W / 32) * 2 * Math.sin(Math.min(1, p / 0.8) * Math.PI)));
+        g.drawImage(base, 0, Math.round((W0 / 32) * 2 * Math.sin(Math.min(1, p / 0.8) * Math.PI)));
       }
       g.restore();
       out.push(c);
@@ -400,19 +442,19 @@ const BattleFX = {
     if (this.bodies.length >= this.BODY_MAX) this.bodies.shift();
     this.bodies.push({ x: u.x, y: u.y, t: 0, sink: true, spr, B, D: R.frameBox(u, spr, B), seed: u.id, flip: (u.id & 1) === 1 });
     for (let i = 0; i < 7 && this.chips.length < this.CHIP_MAX; i++) {
-      const a = Math.random() * Math.PI * 2, s = 0.3 + Math.random() * 0.6;
-      this.chips.push({ x: u.x, y: u.y, z: 0.2, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 0.6 + Math.random() * 0.6,
-        g: 5, sz: 2, len: 3 + (Math.random() * 3 | 0), col: ART.PALETTE.wood[1 + (i % 2)], t: 0, life: 6, float: true, rest: 0, bounce: 0 });
+      const a = this.rnd() * Math.PI * 2, s = 0.3 + this.rnd() * 0.6;
+      this.chips.push({ x: u.x, y: u.y, z: 0.2, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 0.6 + this.rnd() * 0.6,
+        g: 5, sz: 2, len: 3 + (this.rnd() * 3 | 0), col: ART.PALETTE.wood[1 + (i % 2)], t: 0, life: 6, float: true, rest: 0, bounce: 0 });
     }
   },
   // an engine breaks up: timbers thrown, a crack of splinters, smoke
   breakUp(u, B) {
     const W = ART.PALETTE.wood;
     for (let i = 0; i < 14 && this.chips.length < this.CHIP_MAX; i++) {
-      const a = -Math.PI * Math.random(), s = 0.8 + Math.random() * 1.6;
-      this.chips.push({ x: u.x + (Math.random() - 0.5) * 0.4, y: u.y, z: 0.3 + Math.random() * 0.3,
-        vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.5, vz: 1 + Math.random() * 1.6, g: 7,
-        sz: 1.5, len: 2 + (Math.random() * 4 | 0), col: W[1 + (i % 3)], t: 0, life: 6, rest: 0, bounce: 0, spin: Math.random() * 6 });
+      const a = -Math.PI * this.rnd(), s = 0.8 + this.rnd() * 1.6;
+      this.chips.push({ x: u.x + (this.rnd() - 0.5) * 0.4, y: u.y, z: 0.3 + this.rnd() * 0.3,
+        vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.5, vz: 1 + this.rnd() * 1.6, g: 7,
+        sz: 1.5, len: 2 + (this.rnd() * 4 | 0), col: W[1 + (i % 3)], t: 0, life: 6, rest: 0, bounce: 0, spin: this.rnd() * 6 });
     }
     this.burst(u.x, u.y - 0.2, 'dust', 1.1);
   },
@@ -427,8 +469,9 @@ const BattleFX = {
     if (s.miss) {
       if (!this.seen(s.x2, s.y2)) return;
       if (wet) { this.burst(s.x2, s.y2, 'ripple', 0.5); return; }
+      if (this.onBld(s.x2, s.y2)) return;              // a shaft never stands on a roof
       if (this.arrows.length >= this.ARROW_MAX) this.arrows.shift();
-      this.arrows.push({ x: s.x2, y: s.y2, ang: Math.atan2(s.y2 - s.y1, s.x2 - s.x1), t: 0, life: this.ARROW_S, seed: Math.random() });
+      this.arrows.push({ x: s.x2, y: s.y2, ang: Math.atan2(s.y2 - s.y1, s.x2 - s.x1), t: 0, life: this.ARROW_S, seed: this.rnd() });
       return;
     }
     if (s.bld) {
@@ -436,13 +479,17 @@ const BattleFX = {
       if (!b || !this.seen(Bld.cx(b), Bld.cy(b))) return;
       const sz = Bld.size(b);
       if (this.arrows.length >= this.ARROW_MAX) this.arrows.shift();
-      this.arrows.push({ x: Bld.cx(b) + (Math.random() - 0.5) * sz * 0.7, y: b.y + sz - 0.08,
-        lift: 0.15 + Math.random() * 0.45 * sz, ang: Math.atan2(s.y2 - s.y1, s.x2 - s.x1), t: 0, life: 5, wall: true, seed: Math.random() });
+      this.arrows.push({ x: Bld.cx(b) + (this.rnd() - 0.5) * sz * 0.7, y: b.y + sz - 0.08, bid: b.id,
+        lift: 0.15 + this.rnd() * 0.45 * sz, ang: Math.atan2(s.y2 - s.y1, s.x2 - s.x1), t: 0, life: 5, wall: true, seed: this.rnd() });
     }
   },
+  // a building's footprint (its art is drawn under the ground layer's marks)
+  onBld(x, y) { return typeof Bld !== 'undefined' && !!Bld.at(x | 0, y | 0); },
   wetAt(x, y) {
     if (typeof S === 'undefined' || !S.map) return false;
     if (!MapGen.inB(x | 0, y | 0)) return false;
+    // a bridge's deck, or a lowered drawbridge's, is dry ground for a stone or a shaft
+    if (typeof Bld !== 'undefined' && ((Bld.bridgeAt && Bld.bridgeAt(x | 0, y | 0)) || (Bld.deckAt && Bld.deckAt(x | 0, y | 0)))) return false;
     const t = S.map.terrain[MapGen.idx(x | 0, y | 0)];
     return t === T.WATER || t === T.MOAT;
   },
@@ -460,8 +507,11 @@ const BattleFX = {
     const x = p.x2, y = p.y2;
     if (!this.seen(x, y)) return;
     if (this.wetAt(x, y)) { this.burst(x, y, 'splash', big ? 1.3 : 1); return; }
-    if (this.craters.length >= this.CRATER_MAX) this.craters.shift();
-    this.craters.push({ x, y, t: 0, r: big ? 0.42 : 0.3, big, fire: fire || p.fx === 'blast', v: (Math.random() * 3) | 0, flip: Math.random() < 0.5 });
+    const scar = !this.onBld(x, y);                    // over a plot or a site: dust and clods, no crater on its art
+    if (scar) {
+      if (this.craters.length >= this.CRATER_MAX) this.craters.shift();
+      this.craters.push({ x, y, t: 0, r: big ? 0.42 : 0.3, big, fire: fire || p.fx === 'blast', v: (this.rnd() * 3) | 0, flip: this.rnd() < 0.5 });
+    }
     this.burst(x, y, 'crown', big ? 1.3 : 1);
     if (fire || p.fx === 'blast') this.burst(x, y - 0.1, 'boom', big ? 1.25 : 0.8);
     this.clods(x, y, big ? 12 : 8);
@@ -469,19 +519,19 @@ const BattleFX = {
   hitBuilding(b, p, fire, big) {
     const sz = Bld.size(b);
     // the face: somewhere across the front of the building, part way up it
-    const hx = Bld.cx(b) + (Math.random() - 0.5) * sz * 0.55;
+    const hx = Bld.cx(b) + (this.rnd() - 0.5) * sz * 0.55;
     const hy = b.y + sz - 0.18;
-    const lift = 0.2 + Math.random() * Math.min(0.9, 0.35 * sz + 0.2);
+    const lift = 0.2 + this.rnd() * Math.min(0.9, 0.35 * sz + 0.2);
     if (!this.seen(hx, hy - 0.5)) return;
     const mat = this.material(b);
     const n = big ? 18 : 13;
     for (let i = 0; i < n && this.chips.length < this.CHIP_MAX; i++) {
-      const a = Math.PI * (0.15 + Math.random() * 0.7);   // out of the face, toward the viewer
-      const s = 0.8 + Math.random() * 1.9;
-      const piece = mat[(Math.random() * mat.length) | 0];
-      this.chips.push({ x: hx + (Math.random() - 0.5) * 0.2, y: hy + 0.04, z: lift,
-        vx: Math.cos(a) * s * (Math.random() < 0.5 ? -1 : 1), vy: Math.sin(a) * s * 0.45, vz: 0.4 + Math.random() * 1.4,
-        g: 7.5, sz: piece.sz, len: piece.len || 0, col: piece.col, t: 0, life: 4.5, rest: 0, bounce: 0, spin: Math.random() * 6 });
+      const a = Math.PI * (0.15 + this.rnd() * 0.7);   // out of the face, toward the viewer
+      const s = 0.8 + this.rnd() * 1.9;
+      const piece = mat[(this.rnd() * mat.length) | 0];
+      this.chips.push({ x: hx + (this.rnd() - 0.5) * 0.2, y: hy + 0.04, z: lift,
+        vx: Math.cos(a) * s * (this.rnd() < 0.5 ? -1 : 1), vy: Math.sin(a) * s * 0.45, vz: 0.4 + this.rnd() * 1.4,
+        g: 7.5, sz: piece.sz, len: piece.len || 0, col: piece.col, t: 0, life: 4.5, rest: 0, bounce: 0, spin: this.rnd() * 6 });
     }
     this.burst(hx, hy - lift, 'smash', big ? 1.25 : 1);
     if (fire || p.fx === 'blast') this.burst(hx, hy - lift, 'boom', big ? 1.15 : 0.75);
@@ -528,14 +578,14 @@ const BattleFX = {
   clods(x, y, n) {
     const S2 = ART.PALETTE.soil;
     for (let i = 0; i < n && this.chips.length < this.CHIP_MAX; i++) {
-      const a = Math.random() * Math.PI * 2, s = 0.6 + Math.random() * 1.5;
-      this.chips.push({ x, y, z: 0.05, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 1 + Math.random() * 1.6,
-        g: 8, sz: 1.5 + Math.random(), col: S2[(Math.random() * 3) | 0], t: 0, life: 3.2, rest: 0, bounce: 0 });
+      const a = this.rnd() * Math.PI * 2, s = 0.6 + this.rnd() * 1.5;
+      this.chips.push({ x, y, z: 0.05, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 1 + this.rnd() * 1.6,
+        g: 8, sz: 1.5 + this.rnd(), col: S2[(this.rnd() * 3) | 0], t: 0, life: 3.2, rest: 0, bounce: 0 });
     }
   },
   burst(x, y, kind, scale) {
     if (this.bursts.length >= this.BURST_MAX) this.bursts.shift();
-    this.bursts.push({ x, y, kind, s: scale || 1, t: 0, seed: Math.random() });
+    this.bursts.push({ x, y, kind, s: scale || 1, t: 0, seed: this.rnd() });
   },
 
   /* ---------------- THE FRAME ----------------
@@ -560,6 +610,7 @@ const BattleFX = {
       if (b.organic && !b.pooled && b.t >= this.dieDur(b) * 0.75) {
         b.pooled = true;
         const at = this.torso(b);
+        if (!this.seen(at.x, at.y) || this.wetAt(at.x, at.y) || this.onBld(at.x, at.y)) continue;
         if (this.stains.length >= this.STAIN_MAX) this.stains.shift();
         this.stains.push({ x: at.x + (this.hash(b.seed, 1) - 0.5) * 0.06, y: at.y, pool: true, r: 0.13 + this.hash(b.seed, 2) * 0.04,
           t: 0, life: this.BODY_S + this.BODY_FADE_S + 5, seed: b.seed });
@@ -567,6 +618,9 @@ const BattleFX = {
     }
     kill(this.stains, this.STAIN_S);
     kill(this.arrows, this.ARROW_S);
+    if (this.arrows.length && typeof Bld !== 'undefined')
+      this.arrows = this.arrows.filter(a => a.bid == null || Bld.get(a.bid));   // the wall fell: so do its shafts
+    if (this._bHit.size) { const now = this.now(); for (const [id, h] of this._bHit) if (now - h.t > this.BHIT_S) this._bHit.delete(id); }
     kill(this.craters, this.CRATER_S);
     for (let i = this.falls.length - 1; i >= 0; i--) { this.falls[i].t += dt; if (this.falls[i].t >= 0.7) this.falls.splice(i, 1); }
     for (let i = this.bursts.length - 1; i >= 0; i--) {
@@ -585,7 +639,7 @@ const BattleFX = {
       if (c.z <= 0) {
         c.z = 0;
         if (c.blood) {                       // a drop lands: a speck on the ground
-          if (this.seen(c.x, c.y) && !this.wetAt(c.x, c.y)) {
+          if (this.seen(c.x, c.y) && !this.wetAt(c.x, c.y) && !this.onBld(c.x, c.y)) {
             if (this.stains.length >= this.STAIN_MAX) this.stains.shift();
             this.stains.push({ x: c.x, y: c.y, t: 0, life: this.STAIN_S, sz: c.sz, col: c.col });
           }
@@ -617,8 +671,8 @@ const BattleFX = {
       if (!(u.tUnit || u.tBld) || this.wetAt(u.x, u.y) || !this.seen(u.x, u.y)) continue;
       k.at = 0;
       if (this.kicks.length >= this.KICK_MAX) this.kicks.shift();
-      this.kicks.push({ x: u.x - dx / d * 0.28 + (Math.random() - 0.5) * 0.12, y: u.y - dy / d * 0.14 + 0.16,
-        dx: -dx / d, dy: -dy / d, t: 0, seed: Math.random() });
+      this.kicks.push({ x: u.x - dx / d * 0.28 + (this.rnd() - 0.5) * 0.12, y: u.y - dy / d * 0.14 + 0.16,
+        dx: -dx / d, dy: -dy / d, t: 0, seed: this.rnd() });
     }
   },
   dieDur(b) { return b.sink ? 2.6 : b.frames ? b.frames.length / this.DIE_FPS : 0.6; },
@@ -723,8 +777,11 @@ const BattleFX = {
     if (!o) return;
     while (this._oi < o.length && o[this._oi].y <= uptoY) {
       const e = o[this._oi++];
-      if (e.frames || e.sink) this.drawBody(g, e);
-      else this.drawArrow(g, e);
+      if (e.frames || e.sink) {
+        this.drawBody(g, e);
+        // a body north of a wall, or in a gate's passage, lies behind it as a man would stand
+        if (R.occludeByForts && this.seen(e.x, e.y)) R.occludeByForts(g, { x: e.x, y: e.y, kind: e.kind, owner: e.owner });
+      } else this.drawArrow(g, e);
     }
   },
   drawBody(g, b) {

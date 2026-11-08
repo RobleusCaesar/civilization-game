@@ -13803,11 +13803,12 @@ const R = {
        the Animal Strife and a strip borrowed from the walk keep their own
        clocks (_strikeK null). Guarded on the method: a cached older
        battlefx.js (or none) leaves the old loop. */
-    this._strikeK = null;
+    this._strikeK = null; this._strikeWind = false;
     if (fr && fr === d[pose] && (pose === 'fight' || pose === 'guard') &&
         window.BattleFX && BattleFX.pickStrike) {
-      const ps = BattleFX.pickStrike(u, d, fr, pose, face, this._sheetKey);
-      if (ps && ps.fr) { fr = ps.fr; this._strikeK = ps.k; }
+      // the facing the strips really came from (a missing facing borrows the south's)
+      const ps = BattleFX.pickStrike(u, d, fr, pose, ua.dirs[face] ? face : 's', this._sheetKey);
+      if (ps && ps.fr) { fr = ps.fr; this._strikeK = ps.k; this._strikeWind = !!ps.wind; }
     }
     this._sheetPose = (fr && fr === d.idle) ? 'idle' : pose;   // what actually resolved (for the idle tempo)
     this._sheetFace = face;                                      // the facing that resolved (probes, tests)
@@ -14046,7 +14047,7 @@ const R = {
       if (this._sheetHold) return fr2[0];   // standing on borrowed walk legs: hold the stance
       // a synced strike: the impact frame on the blow (js/battlefx.js)
       if (this._strikeK != null && window.BattleFX && BattleFX.strikeIndex)
-        return fr2[Math.max(0, Math.min(fr2.length - 1, BattleFX.strikeIndex(u, fr2.length, this._strikeK)))];
+        return fr2[Math.max(0, Math.min(fr2.length - 1, BattleFX.strikeIndex(u, fr2.length, this._strikeK, this._strikeWind)))];
       // fps by the SHEET's key (villager variants carry their own rate;
       // the 2-frame procedural villager below keeps its own 4fps default)
       /* …and FORAGING runs slower than the rest. The referee judged the

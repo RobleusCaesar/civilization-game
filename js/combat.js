@@ -1884,7 +1884,9 @@ const Combat = {
         } else {
           const dmg = this.covered(tgt, Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt)));
           this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a', b.owner);
-          Units.damage(tgt, dmg, 0, b.owner);
+          // the picture's note that this was a volley (the dead keep its arrows); never read by the sim
+          const BF = window.BattleFX; if (BF) BF._volley = { x: Bld.cx(b), y: Bld.cy(b) };
+          try { Units.damage(tgt, dmg, 0, b.owner); } finally { if (BF) BF._volley = null; }
         }
       } else b.cd = 0.3;
     }

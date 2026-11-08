@@ -24,6 +24,12 @@
       its strip, every death ends lying down, and a dyed character's cloth is
       the two key blues alone (so the rival's red reaches every new frame)
    §10 nothing in the black: every pass is clipped to the board
+   §11 the review's findings: the impact table read by the facing's column,
+      a wind-up never playing a follow-through, no draw from the shared
+      Math.random, arrows only in a bow's or a volley's dead, a burned man is
+      ash, a death in the fog leaves nothing, a fall never cut at its frame's
+      edge, a band's beast lies as a body, a taken villager leaves none,
+      nothing on a building's art, the demo marks no character asked
 
      node tests/battle-fx.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -187,6 +193,11 @@ const out = await p.evaluate(async (DIRS) => {
       const strips = [d.fight, d.fight2, d.fight3].filter(Boolean);
       const hit = strips.some(st => st[k2] === spr);
       ck('theSheetSeamDrawsTheImpactFrame', k2 != null && hit, 'k=' + k2 + ', face ' + R._sheetFace);
+      // …and that frame is the TABLE's, read by the facing's column (a facing name is no index)
+      const name = ['fight', 'fight2', 'fight3'].find(pn => d[pn] && d[pn][k2] === spr);
+      const want = name && BattleFX.STRIKE_AT.defender && BattleFX.STRIKE_AT.defender[name] &&
+        BattleFX.STRIKE_AT.defender[name][Assets.UNIT_DIRS8.indexOf(R._sheetFace)];
+      ck('andItIsTheTablesFrameForThatFacing', want != null && k2 === want, name + ' k=' + k2 + ' table ' + want);
       Units.despawn(foe); u.tUnit = null;
     } else ck('theSheetSeamDrawsTheImpactFrame', false, 'no defender art installed');
     Units.despawn(u);
@@ -383,6 +394,125 @@ const out = await p.evaluate(async (DIRS) => {
     // the rival's tunic is a swap of two EXACT colours: a near-blue a re-animation brought back
     // would keep a red soldier in a blue coat for his new strikes and his death (tools/battle-palette.py)
     ck('aDyedCharactersNewStripsWearOnlyTheKeyBlues', !undyed.length, undyed.slice(0, 5).join('; '));
+  }
+
+  /* ---- §11 the review's findings, pinned ---- */
+  {
+    clear();
+    // the impact table is read by facing NAME
+    const T8 = Assets.UNIT_DIRS8, tab = BattleFX.STRIKE_AT.defender.fight;
+    ck('theImpactTableIsReadByTheFacingsColumn', T8.every((d, i) => tab[i] == null || BattleFX.impactAt('defender', 'fight', d, 12) === tab[i]),
+      T8.map(d => BattleFX.impactAt('defender', 'fight', d, 12)).join(',') + ' vs ' + tab.join(','));
+    // the next strike winding up shows only its frames before the blow, timed to it
+    {
+      const u = Units.spawn('defender', 'P', fx, fy), cd = BattleFX.cdOf(u), n = 16, k = 9;
+      let ok = true, last = -1, seen = [];
+      for (let c = cd; c >= 0; c -= 0.02) { u.cd = c; const f = BattleFX.strikeIndex(u, n, k, true); seen.push(f); if (f >= k || f < last) ok = false; last = f; }
+      u.cd = 0; const due = BattleFX.strikeIndex(u, n, k, true);
+      ck('aWindUpNeverPlaysAFollowThroughBeforeItsBlow', ok && due === k - 1, seen.slice(-6).join(',') + ' due ' + due);
+      Units.despawn(u);
+    }
+    // the picture draws its own dice: not one Math.random through a whole skirmish
+    {
+      // (the spawns draw for themselves: they stand outside the count)
+      const a = Units.spawn('archer', 'P', fx - 2, fy), v = Units.spawn('axeman', 'A', fx, fy);
+      R.unitSprite(v); R.unitSprite(a);
+      const real = Math.random; let calls = 0;
+      Math.random = function () { calls++; return real(); };
+      try {
+        for (let i = 0; i < 6; i++) BattleFX.onHit(v, 20, a);
+        BattleFX.onDeath(v, a, 'P');
+        BattleFX.arrowLanded({ miss: true, x1: fx - 3, y1: fy, x2: fx + 0.4, y2: fy + 0.3 });
+        BattleFX.siegeLanded({ kind: 'flame', fx: 'firestorm', x2: fx + 1, y2: fy }, null);
+        step(1.5);
+        const c = document.createElement('canvas').getContext('2d');
+        BattleFX.drawGround(c); BattleFX.prepFlush(); BattleFX.flush(c, 1e9); BattleFX.drawAir(c);
+      } finally { Math.random = real; }
+      Units.despawn(a); Units.despawn(v);
+      ck('theEffectsNeverDrawTheSharedMathRandom', calls === 0, calls + ' draws');
+    }
+    // arrows stay only in a bow's or a tower's dead; a star, a dragon or a stone leaves none
+    {
+      clear();
+      const v1 = Units.spawn('defender', 'A', fx, fy);
+      BattleFX.onDeath(v1, null, 'P'); Units.despawn(v1);
+      const bare = BattleFX.bodies.length === 1 && !BattleFX.bodies[0].arrows;
+      clear();
+      const v2 = Units.spawn('defender', 'A', fx, fy);
+      BattleFX._volley = { x: fx - 3, y: fy }; BattleFX.onDeath(v2, null, 'P'); BattleFX._volley = null; Units.despawn(v2);
+      const shot = BattleFX.bodies.length === 1 && !!BattleFX.bodies[0].arrows;
+      ck('arrowsStayOnlyInAVolleysOrABowsDead', bare && shot, 'card kill ' + (bare ? 'bare' : 'arrows') + ', volley ' + (shot ? 'arrows' : 'bare'));
+    }
+    // a burned man is ash (burnT stays defined once the breath has run), and a death in the fog leaves nothing
+    {
+      clear();
+      const v = Units.spawn('defender', 'A', fx, fy); v.burnT = 0;
+      BattleFX.onDeath(v, null, 'P'); Units.despawn(v);
+      const burned = BattleFX.bodies.length;
+      G.freeVis = false; G.updateVisibility();
+      let hx = -1, hy = -1;
+      for (let y = 2; y < CFG.H - 2 && hx < 0; y++) for (let x = 2; x < CFG.W - 2; x++)
+        if (!G.visibleAt(x, y) && S.map.terrain[MapGen.idx(x, y)] === T.GRASS) { hx = x + 0.5; hy = y + 0.5; break; }
+      const w = Units.spawn('defender', 'A', hx, hy);
+      BattleFX.onDeath(w, null, 'P'); Units.despawn(w);
+      const fogged = BattleFX.bodies.length;
+      G.freeVis = true; G.updateVisibility();
+      ck('aBurnedManIsAshAndAFoggedDeathLeavesNothing', burned === 0 && fogged === 0, 'burned ' + burned + ', fogged ' + fogged);
+    }
+    // the procedural fall keeps the whole man: the last frame's ink is the standing frame's
+    {
+      clear();
+      const inkN = (c) => { const d = c.getContext ? c.getContext('2d').getImageData(0, 0, c.width, c.height).data : null; let n = 0; if (d) for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; };
+      const asCanvas = (img) => { if (img.getContext) return img; const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.getContext('2d').drawImage(img, 0, 0); return c; };
+      const cut = [];
+      for (const mode of ['p', 'pl']) {
+        const base = document.createElement('canvas'); base.width = 64; base.height = 64;
+        const bg = base.getContext('2d'); bg.fillStyle = '#7a5a3a'; bg.fillRect(26, 6, 12, 50);   // a man 50 px tall
+        const fr = BattleFX.fallSheet(base, mode), last = fr[fr.length - 1];
+        const a = inkN(base), z = inkN(asCanvas(last));
+        if (z < a * 0.95) cut.push(mode + ' ' + a + '→' + z);
+      }
+      ck('aFallingManIsNeverCutAtHisFramesEdge', !cut.length, cut.join('; ') || 'whole');
+    }
+    // a band's beast (or a war-wolf) lies as a body, not a 0.7 s wild fall
+    {
+      clear();
+      const w = Units.spawn('wolf', 'R', fx, fy);
+      BattleFX.onDeath(w, null, 'P'); Units.despawn(w);
+      ck('aBandsBeastLiesAsABody', BattleFX.bodies.length === 1 && !BattleFX.falls.length, 'bodies ' + BattleFX.bodies.length + ', falls ' + BattleFX.falls.length);
+      clear();
+    }
+    // a villager the Woadkin carry off leaves no body
+    {
+      clear();
+      const v = Units.spawn('villager', 'P', fx, fy);
+      BattleFX.onDeath(v, null, 'R'); BattleFX.forget(v.id); Units.despawn(v);
+      ck('aTakenVillagerLeavesNoBody', BattleFX.bodies.length === 0, BattleFX.bodies.length + ' bodies');
+    }
+    // nothing of the fight lies on a building's art: no shaft on its roof, no crater on its plot;
+    // a wall's shafts fall with it; a bridge's deck is dry ground
+    {
+      clear();
+      const h = Bld.place('A', 'house', fx | 0, (fy | 0) + 2, { free: true, instant: true });
+      BattleFX.arrowLanded({ miss: true, x1: fx - 3, y1: h.y + 0.5, x2: h.x + 0.5, y2: h.y + 0.5 });
+      BattleFX.siegeLanded({ kind: 'stone', x2: h.x + 0.5, y2: h.y + 0.5 }, null);
+      const onRoof = BattleFX.arrows.length + BattleFX.craters.length;
+      BattleFX.arrowLanded({ x1: fx - 3, y1: h.y + 0.5, x2: h.x + 0.5, y2: h.y + 0.5, bld: h.id });
+      const stuck = BattleFX.arrows.length;
+      Bld.removeToRuin(h, true); step(0.1);
+      ck('nothingOfTheFightLiesOnABuildingsArt', onRoof === 0 && stuck === 1 && BattleFX.arrows.length === 0,
+        'on the roof ' + onRoof + ', in the wall ' + stuck + ', after it fell ' + BattleFX.arrows.length);
+    }
+    // the title's demo world marks no character asked
+    {
+      const was = Screens._demo; Screens._demo = true;
+      const u = Units.spawn('axeman', 'A', fx, fy), key = 'axeman-a-test';
+      BattleFX._wanted.delete(key); BattleFX.want(u, key);
+      const marked = BattleFX._wanted.has(key);
+      Screens._demo = was; Units.despawn(u);
+      ck('theDemoWorldMarksNoCharacterAsked', !marked);
+    }
+    clear();
   }
 
   /* ---- §10 nothing in the black ---- */

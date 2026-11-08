@@ -2749,6 +2749,8 @@ const G = {
       if (guardsNear(victim.x, victim.y, loneR).length) return;
       b.tookDay = S.day; b.quota++;
       this.manRaiderCamp(b, 1);
+      // carried off, not killed: no body is left where they were taken
+      if (window.BattleFX && BattleFX.forget) BattleFX.forget(victim.id);
       this.log('🌀 A villager is taken — painted, and gone to the Woadkin fire.', true);
       return;
     }

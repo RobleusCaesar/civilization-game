@@ -1656,8 +1656,9 @@ const Assets = {
     // {pose: mask}, a bit per facing in UNIT_DIRS8 order: only the strips on disk are asked for
     for (const pose in poses) this.UNIT_DIRS8.forEach((dir, i) => {
       if (!(poses[pose] & (1 << i))) return;
+      // a soldier's strip like any other people strip: a blip is asked once more (the mask says it is on disk)
       this._stripLoad(artKey, dir, pose, this.UNIT_DIR + 'unit-' + fileKey + '-' + dir + '-' + pose + '.png?v=' + (CFG.ART_V || 1),
-        tunic, true, false);
+        tunic, true, true);
     });
   },
   barbKey(tribe, kind, female) {
