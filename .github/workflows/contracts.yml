@@ -23,7 +23,7 @@ concurrency:
 jobs:
   contracts:
     name: Contracts ${{ matrix.shard }}/8
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: Playwright 1.56.1 cannot install Chromium on ubuntu-latest (26.04)
     timeout-minutes: 45
     strategy:
       fail-fast: false
