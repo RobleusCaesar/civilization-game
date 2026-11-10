@@ -1407,7 +1407,31 @@ win where the backend is configured, unmocked and `telemetryAllowed()` says
 no. **THE RANK SAID AFTER A POST IS THIS RUN'S**: 1 + the other chiefs
 whose best beats it (one row per chief means the run itself may not be
 listed); "NEW HIGH SCORE" only when nobody, the chief included, stands
-higher. **THE BOARD LIFTS THE CARD** (`Deck.lift`, inside `Deck.settle`): a
+higher — and never for a device board_top leaves out (`me.hidden`): that
+scene says "Posted — but games on this device are kept off the world board",
+and `WorldBoard.placeFor` answers null, so its card is lifted by nothing.
+**A WIN IS KEPT UNTIL THE BOARD HAS IT** (`Screens.keepWin` / `winPosted` /
+`flushWins`, `Backend.hasScore`, localStorage `neo-pending-wins`; board-post
+§10 — build 161, the operator: "Literally anyone that wins should take the
+tenth spot"; an audit of every post path found the post lived only as long
+as the end screen): a phone swiped home from the reward screen fires no
+pagehide, a failed post was never tried again, and a post on the wire when
+the page went (Menu, then the app closed) was lost. Every entry the board may
+take is written to the device the moment it is taken (both entry sites:
+`showEnd`'s and `DeckScreens._armBoard`'s), struck off only when the board
+has it (posted, a duplicate, already on the table, held for good), and
+`flushWins` sends the rest whenever the cloud answers (a new uid's
+`backend-status`, `online`, 4 s after boot), under the name typed, else the
+chief's saved name, else the stand-in, for up to `WIN_MAX_MS` (7 days) and
+only under the uid it was won with. It asks the public table first
+(`hasScore`: this player, this score, mode and seed), and submit_score
+refuses the same run twice in a day, so a resend never doubles a row. A
+hidden page (`visibilitychange`) posts keepalive only a win with a valid name
+typed; a nameless one waits on the device rather than going up under the
+stand-in behind a player still choosing. A refused name or a failed Save is
+said in the scene's note line (toasts are hidden off the playing screen).
+An http page on a `PROD_HOSTS` host moves itself to https (`Backend.init`):
+over http every win read as a test build. **THE BOARD LIFTS THE CARD** (`Deck.lift`, inside `Deck.settle`): a
 win whose place is in the top `TOP` (10) raises each reward card one tier
 with chance `LIFT` (0.5), in the top `PODIUM` (3) every time, never past the
 highest tier its own table rolls — which is exactly the server's ceiling for
@@ -5122,6 +5146,10 @@ golden radiance and drifting motes for the rest of the run (`R.drawWonderShine`)
 rule as `R._fighting`); `S.wonder` does, and legacy saves backfill it from
 their own seed. The rival finishing one simply ends the run — no held frame,
 the defeat scene has its own staging.
+**The held frame is a beat, not a gate** (`G._marvelEnd`, wonder.mjs
+`aWonderWinIsCalledAtOnceWhenThePageIsHidden`, build 161): a page hidden in
+the 7 s ends the run on the spot — killed in the beat, the crash net held a
+finished Wonder and no victory, and nothing ever called it again.
 **Two traps this cost, both the same trap**: `G` and `Sprites` are script-level
 `const`s, so `window.G` and `window.Sprites` are **undefined** — only `R`,
 `Assets`, `Cards`, `Backend`, `Screens`, `Terraform`, `Score`, `Defeat` and

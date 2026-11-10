@@ -225,6 +225,7 @@ const DeckScreens = {
       : { hold: win && this._playedN() ? 'Not posted to the world board — it cannot wear the card mark yet.' : '', played: this._playedN() };
     Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played,
       origin: Screens.runOrigin ? Screens.runOrigin() : null } : null;
+    if (Screens._entry && Screens.keepWin) Screens.keepWin(Screens._entry);   // kept until the board has it
     Screens._submitted = false;
     Screens._leaveWarned = false;
     Screens._markWait = false;

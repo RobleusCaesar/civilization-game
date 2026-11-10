@@ -394,6 +394,7 @@ const WorldBoard = {
   placeFor(score) {
     const c = this._peek;
     if (!c || !Array.isArray(c.rows)) return null;
+    if (c.me && c.me.hidden) return null;   // a device the board leaves out stands nowhere, so lifts nothing
     let above = 0;
     for (const r of c.rows) if (!r.mine && (+r.score || 0) > (+score || 0)) above++;
     return above + 1;

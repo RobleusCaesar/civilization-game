@@ -238,7 +238,7 @@ const G = {
     };
     Bld._block = null;
     this._freshRun = true;   // analytics: this world was founded, not loaded (Screens._enterNow logs it)
-    this._marvel = false;
+    this._marvel = false; clearTimeout(this._marvelT); this._marvelEnd = null;
     this._dying = null;
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)    // …and no announced death is left pending
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
@@ -2829,12 +2829,20 @@ const G = {
       R.centerOn(Bld.cx(b), Bld.cy(b));
       R.marvel = { x: Bld.cx(b), y: Bld.cy(b), t: 0, name: w.name, blurb: w.blurb };
     }
-    setTimeout(() => {
+    /* the held frame is a beat, not a gate: a phone sent home in it (the hide
+       handler below) ends the run on the spot, so the win is recorded and
+       goes on the board — killed in the beat, the crash net had a finished
+       Wonder and no victory, and nothing ever called it again */
+    const fin = () => {
+      clearTimeout(G._marvelT); G._marvelT = 0; G._marvelEnd = null;
+      if (!G._marvel) return;
       G._marvel = false;
       if (window.R) R.marvel = null;
       // cause 'wonder' is what the analytics count as a wonder win (0003 wonder_win_pct) — it went out as plain 'win' until 2026-09-11
       G.end(true, `You raised ${w.name}. ${w.blurb} Long after the last spear has rusted, it will still be standing.`, 'wonder');
-    }, CFG.WONDER.marvelMs);
+    };
+    this._marvelEnd = fin;
+    this._marvelT = setTimeout(fin, CFG.WONDER.marvelMs);
   },
   _marvel: false,   // render/flow only — never in S, so it can't survive a save
 
@@ -3562,6 +3570,7 @@ window.addEventListener('load', () => {
     Backend.init();   // async; the game never waits on the network
     if (Backend.startSession) Backend.startSession();   // analytics: time on site
     document.addEventListener('visibilitychange', () => {
+      if (document.hidden && G._marvel && G._marvelEnd) G._marvelEnd();   // a Wonder's held beat ends now
       if (document.hidden && window.S && !S.over &&
           !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');
     });

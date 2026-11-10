@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 161, date: '2026-11-10', title: 'Every win reaches the board',
+    items: [
+      'The world board now always shows all ten places, on every screen. On some laptops the tenth chief was left off to make the page fit.',
+      'A win where you played cards now goes on the board as soon as the board answers, instead of sometimes being held back for good.',
+      'If your win could not be posted, because you had no signal or closed the game on the reward screen, it is kept on your device and sent the next time the game opens.',
+      'If a name is refused or a score cannot be sent, the reason now shows on the victory screen.',
+      'Closing the game during the Wonder celebration no longer loses the victory.',
+    ],
+  },
+  {
     build: 160, date: '2026-11-08', title: 'Battles you can watch',
     items: [
       'Every blow now lands on the frame where the weapon strikes, instead of somewhere in the middle of a swing.',

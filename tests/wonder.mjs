@@ -479,6 +479,23 @@ await p.evaluate(() => {
     !!S.over && S.over.win === true && S.over.msg.indexOf(G.wonderDef().name) >= 0,
     S.over ? S.over.msg.slice(0, 60) + '…' : 'still playing');
   ck('theHoldIsOver', !R.marvel && G._marvel === false, '');
+
+  // a phone sent home in the held beat ends the run there and then (build
+  // 161): killed in the beat, the crash net held a finished Wonder and no
+  // victory, and the win never reached the board
+  CFG.WONDER.marvelMs = 60000;
+  G.newGame('hidew', 'calm', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = false;
+  S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 };
+  S.units = [];
+  const tc2 = Bld.tcOf('P');
+  window.clearFor(tc2.x + 4, tc2.y, 2);
+  Bld.finish(Bld.place('P', 'wonder', tc2.x + 4, tc2.y, { noAutoAssign: true }));
+  const held = G._marvel === true && !S.over;
+  Object.defineProperty(document, 'hidden', { get: () => true, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  delete document.hidden;
+  ck('aWonderWinIsCalledAtOnceWhenThePageIsHidden', held && !!S.over && S.over.win === true && S.over.cause === 'wonder' && !G._marvel && !R.marvel,
+    JSON.stringify({ held, over: !!S.over, cause: S.over && S.over.cause }));
   CFG.WONDER.marvelMs = window.__savedMs;
 
   // the RIVAL finishing one simply loses the run — no held frame, the defeat

@@ -431,6 +431,28 @@ for (const v1 of [true, false]) {
     return { place: DeckScreens._view && DeckScreens._view.place, tiers: run.map(c => c.tier + (c.lift ? '↑' : '')).join(',') };
   });
   ck('aHeldWinIsLiftedByNothing', !h.place && /^bronze(,|$)/.test(h.tiers), `place ${h.place}; cards ${h.tiers}`);
+  // a device the board leaves out (the operator's own, a network marked as
+  // theirs) stands nowhere: its card is lifted by nothing, and after the post
+  // the scene says it is kept off rather than naming a rank nobody will find
+  const hd = await p.evaluate(async () => {
+    __MOCK.hidden.push(__MOCK.uid);
+    await WorldBoard.peek();
+    G.newGame('lifthid', 'moderate', 'large'); Screens._demo = false; Screens.show('playing');
+    S.played = true;
+    const roll = Deck.rollTier; Deck.rollTier = () => 'bronze';
+    const sc = Score.compute; Score.compute = win => Object.assign(sc.call(Score, win), { total: 40000 });
+    try { G.end(true, 'test'); } finally { Deck.rollTier = roll; }
+    const t0 = performance.now();
+    while (!Screens._submitted && performance.now() - t0 < 4000) await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 300));
+    Score.compute = sc;
+    const run = Deck.col().runs[Deck.report(true, 'test').key] || [];
+    const shown = id => { const el = document.getElementById(id); return el && getComputedStyle(el).display !== 'none' ? el.textContent : ''; };
+    return { place: DeckScreens._view && DeckScreens._view.place, tiers: run.map(c => c.tier + (c.lift ? '↑' : '')).join(','),
+      posted: Screens._submitted, note: shown('savedNote'), rank: shown('vicRank') + shown('hsBanner') };
+  });
+  ck('aDeviceTheBoardLeavesOutIsToldSoAndLiftsNothing', !hd.place && /^bronze(,|$)/.test(hd.tiers) && hd.posted && /kept off the world board/.test(hd.note) && !hd.rank,
+    JSON.stringify(hd));
   await p.close();
 }
 

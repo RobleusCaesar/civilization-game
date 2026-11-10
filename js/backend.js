@@ -49,6 +49,16 @@ const Backend = {
 
   /* ---------------- boot ---------------- */
   async init() {
+    /* the live site is https: a page reached over plain http (an old link, a
+       typed address) reads as a test build and posts no win, so it moves
+       itself to https before anything is signed in */
+    try {
+      if (typeof location !== 'undefined' && location.protocol === 'http:' &&
+          this.PROD_HOSTS.includes(String(location.hostname || '').toLowerCase())) {
+        location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+        return this._err('moved', 'Moving to https');
+      }
+    } catch (e) { /* stay where we are */ }
     try { return await this._init(); }
     catch (e) {   // nothing in boot may ever throw into game code
       this.emit();
@@ -247,6 +257,22 @@ const Backend = {
   async topScores(limit) {
     const r = await this.board({ limit: limit || 10 });
     return r.ok ? { ok: true, data: r.data.rows, me: r.data.me, v2: r.data.v2 } : r;
+  },
+
+  /* is this win already on the table under this player? (the leaderboard is
+     public to read). → {ok, data: true|false}; anything that is not our
+     answer (a mock's null, a refusal) is not a no. Screens.flushWins asks it
+     before resending a kept win, so a post whose answer was lost is never
+     sent twice. */
+  async hasScore(entry) {
+    if (!this.isReady()) return this._err('not_ready', 'Not signed in');
+    const q = '/leaderboard?select=id&user_id=eq.' + this.uid +
+      '&score=eq.' + Math.max(0, Math.round(entry.score || 0)) +
+      '&mode=eq.' + encodeURIComponent(entry.mode || 'moderate') +
+      (entry.seed != null ? '&map_seed=eq.' + encodeURIComponent(String(entry.seed)) : '') + '&limit=1';
+    const r = await this._rest('GET', q);
+    if (!r.ok) return r;
+    return Array.isArray(r.data) ? { ok: true, data: r.data.length > 0 } : this._err('unknown', 'No answer');
   },
 
   // one victory → one row; the arcade name also lands on the profile so the

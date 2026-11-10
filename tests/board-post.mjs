@@ -79,9 +79,15 @@ const MOCK = `
       st.calls.push({ method, path, body });
       if (path.startsWith('/rpc/submit_score')) {
         if (st.rpcFail) { const e = st.rpcFail; st.rpcFail = null; return { error: e }; }
+        if (st.rpcDown) return { error: { status: 503, message: 'down' } };
         if (st.dupNext) { st.dupNext = false; return { error: { status: 400, message: 'duplicate submission' } }; }
-        st.board.push({ name: body.p_name, score: body.p_score, mode: body.p_mode, day: body.p_day, created_at: new Date().toISOString() });
+        st.board.push({ name: body.p_name, score: body.p_score, mode: body.p_mode, day: body.p_day, map_seed: body.p_map_seed, user_id: st.uid, created_at: new Date().toISOString() });
         return null;
+      }
+      if (path.startsWith('/leaderboard?select=id&user_id=')) {   // Backend.hasScore: this player's row for this run
+        const q = new URLSearchParams(path.split('?')[1]), v = k => (q.get(k) || '').replace(/^eq\./, '');
+        return st.board.filter(r => r.user_id === v('user_id') && String(r.score) === v('score') && r.mode === v('mode') &&
+          (!q.get('map_seed') || String(r.map_seed) === v('map_seed'))).slice(0, 1).map((r, i) => ({ id: i + 1 }));
       }
       if (path.startsWith('/leaderboard')) return st.board.slice().sort((a, b) => b.score - a.score);
       if (path.startsWith('/profiles') && method === 'GET') return [Object.assign({ id: st.uid, chief_name: null }, st.profile)];
@@ -381,6 +387,81 @@ for (const cards of [true, false]) {
     r.asked.sent && r.asked.sent.p_cards_played === 2 && r.asks >= 1 && !/cannot wear/.test(r.asked.note),
     JSON.stringify({ posts: r.asked.posts, sent: r.asked.sent && r.asked.sent.p_cards_played, marks: r.asked.marksAfter, asks: r.asks, note: r.asked.note }));
   await p.close();
+}
+
+// ---- 10. A WIN IS KEPT UNTIL THE BOARD HAS IT (build 161): a phone swiped
+// away from the reward screen fires no pagehide, a failed post was never
+// tried again, and a post on the wire when the page went was lost. Every win
+// the board may take is kept on the device (neo-pending-wins) until the
+// board has it, and sent whenever the cloud answers ----
+{
+  const KEY = 'neo-pending-wins';
+  // (a) on the scene: kept the moment it is won; a hidden page posts a NAMED
+  // win at once and keeps a nameless one for later; the post strikes it off
+  {
+    const p = await boot(MOCK);
+    await p.waitForFunction(() => Backend.isReady(), null, { timeout: 5000 });
+    const r = await p.evaluate(async (KEY) => {
+      const kept = () => JSON.parse(localStorage.getItem(KEY) || '[]');
+      const posts = () => __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score')).length;
+      G.newGame('keep', 'moderate', 'large'); Screens._demo = false; Screens.show('playing');
+      G.end(true, 'test');
+      await new Promise(r => setTimeout(r, 400));
+      const a = { kept: kept().length, posts: posts(), uid: (kept()[0] || {}).uid };
+      const hide = () => { Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+        document.dispatchEvent(new Event('visibilitychange')); delete document.visibilityState; };
+      hide(); await new Promise(r => setTimeout(r, 400));
+      const b2 = { kept: kept().length, posts: posts() };
+      document.getElementById('arcadeName').value = 'ROLAND';
+      hide(); await new Promise(r => setTimeout(r, 600));
+      const sent = __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score')).pop();
+      return { a, b2, c: { kept: kept().length, posts: posts(), name: sent && sent.body.p_name, submitted: Screens._submitted } };
+    }, KEY);
+    ck('aWinIsKeptOnTheDeviceTheMomentItIsWon', r.a.kept === 1 && r.a.posts === 0 && r.a.uid === 'mock-uid-0001', JSON.stringify(r.a));
+    ck('aHiddenPageKeepsANamelessWinForLater', r.b2.kept === 1 && r.b2.posts === 0, JSON.stringify(r.b2));
+    ck('andPostsANamedOneAtOnceStrikingItOff', r.c.posts === 1 && r.c.name === 'ROLAND' && r.c.kept === 0 && r.c.submitted, JSON.stringify(r.c));
+    await p.close();
+  }
+  // (b) the next boot: a kept win goes up under the stand-in; one already on
+  // the table is struck off unsent; another player's is dropped; one the cloud
+  // will not take yet waits, and goes up when the page comes back online
+  {
+    const seed = `localStorage.setItem('${KEY}', JSON.stringify([
+      { k: 'lost|moderate|40|4321', e: { score: 4321, mode: 'moderate', day: 40, seed: 'lost', cards_played: 0 }, uid: 'mock-uid-0001', at: Date.now() - 3600e3 },
+      { k: 'there|moderate|41|5555', e: { score: 5555, mode: 'moderate', day: 41, seed: 'there', cards_played: 0 }, uid: 'mock-uid-0001', at: Date.now() - 3600e3 },
+      { k: 'theirs|moderate|42|6666', e: { score: 6666, mode: 'moderate', day: 42, seed: 'theirs', cards_played: 0 }, uid: 'someone-else', at: Date.now() - 3600e3 },
+      { k: 'named|hard|43|7777', e: { score: 7777, mode: 'hard', day: 43, seed: 'named', cards_played: 0 }, uid: 'mock-uid-0001', name: 'ASTRID', at: Date.now() - 3600e3 } ]));
+      __MOCK.board.push({ name: 'OLD', score: 5555, mode: 'moderate', day: 41, map_seed: 'there', user_id: 'mock-uid-0001' });`;
+    const p = await boot(MOCK + seed);
+    await p.waitForFunction(() => Backend.isReady(), null, { timeout: 5000 });
+    await p.waitForFunction((KEY) => JSON.parse(localStorage.getItem(KEY) || '[]').length === 0, KEY, { timeout: 9000 }).catch(() => {});
+    const r = await p.evaluate((KEY) => {
+      const sent = __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score')).map(c => [c.body.p_name, c.body.p_score, c.body.p_mode]);
+      return { kept: JSON.parse(localStorage.getItem(KEY) || '[]').map(w => w.k), sent, fb: Score.fallbackName(Backend.uid) };
+    }, KEY);
+    const s = k => r.sent.filter(x => x[1] === k);
+    ck('theNextBootSendsAKeptWinUnderTheStandIn', s(4321).length === 1 && s(4321)[0][0] === r.fb, JSON.stringify(r));
+    ck('andAsTypedWhenANameWasGiven', s(7777).length === 1 && s(7777)[0][0] === 'ASTRID' && s(7777)[0][2] === 'hard', JSON.stringify(r.sent));
+    ck('aWinAlreadyOnTheTableIsStruckOffUnsent', !s(5555).length && !r.kept.includes('there|moderate|41|5555'), JSON.stringify(r));
+    ck('anotherPlayersWinIsNeverSentUnderThisOne', !s(6666).length && r.kept.length === 0, JSON.stringify(r));
+    await p.close();
+    const q = await boot(MOCK + `__MOCK.rpcDown = true;` + seed.split('\n')[0].replace(/\[$/, '[') + `
+      { k: 'wait|moderate|40|4321', e: { score: 4321, mode: 'moderate', day: 40, seed: 'wait', cards_played: 0 }, uid: 'mock-uid-0001', at: Date.now() } ]));`);
+    await q.waitForFunction(() => Backend.isReady(), null, { timeout: 5000 });
+    await q.waitForTimeout(5500);
+    const w = await q.evaluate(async (KEY) => {
+      const kept = () => JSON.parse(localStorage.getItem(KEY) || '[]').length;
+      const until = async (f, ms) => { const t0 = performance.now(); while (!f() && performance.now() - t0 < ms) await new Promise(r => setTimeout(r, 100)); };
+      await until(() => !Screens._flushing, 8000);
+      const a = kept();
+      __MOCK.rpcDown = false; window.dispatchEvent(new Event('online'));
+      await until(() => kept() === 0, 8000);
+      const sent = __MOCK.board.filter(x => x.map_seed === 'wait').length;
+      return { a, b: kept(), sent };
+    }, KEY);
+    ck('aWinTheCloudWillNotTakeYetWaitsAndGoesUpWhenBackOnline', w.a === 1 && w.b === 0 && w.sent === 1, JSON.stringify(w));
+    await q.close();
+  }
 }
 
 await b.close();

@@ -45,7 +45,11 @@ const Screens = {
       // while a loaded game waits behind its plaque to be entered: the title
       // is still the current screen then, and onTitle rolls the demo
       if (this.current === 'title' && !this._entering) this.onTitle();
+      // a win the board never took goes up the moment the cloud answers
+      if (e.detail && e.detail.uid) this.flushWins();
     });
+    window.addEventListener('online', () => setTimeout(() => this.flushWins(), 1500));
+    setTimeout(() => this.flushWins(), 4000);   // a sign-in that landed before this listener
     /* title camera drift — the DEMO world's alone, and never while a world is
        being entered (PX-21a): a Continue waits behind its plaque with the
        title still the current screen, and the drift used to carry the loaded
@@ -1875,6 +1879,7 @@ const Screens = {
        switch says now: the cards were played, and that is a fact of the run. */
     const bh = this.boardHold(true);
     this._entry = bh.hold ? null : { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: bh.played, origin: this.runOrigin() };
+    this.keepWin(this._entry);
     this._submitted = false;
     this._leaveWarned = false;
     this._markWait = false;
@@ -2040,11 +2045,82 @@ const Screens = {
     if (B.boardV2 !== false && B.isReady && B.isReady()) { try { await B.board({ limit: 10 }); } catch (err) { /* asked again at the next try */ } }
     if (B.BOARD_MARKS_CARDS) return true;
     if (B.boardV2 === false && this._entry === e) {
+      this.winPosted(e);
       this._entry = null;
       this.el('nameRow').style.display = 'none';
       this._note(this.MARK_HELD, 'var(--dim)');
     }
     return false;
+  },
+
+  /* A WIN IS KEPT UNTIL THE BOARD HAS IT (build 161, "Literally anyone
+     that wins should take the tenth spot"). The post used to live only as
+     long as the end screen: a phone swiped away from the reward screen
+     fires no pagehide, so a nameless first winner's win never went up; a
+     post that failed (offline, a blip) was never tried again; a post still
+     on the wire when the page went (Menu, then the app closed) was lost.
+     So every win the board may take is written to the device the moment
+     its entry is taken (keepWin), struck off only when the board has it
+     (winPosted: posted, already there, or held for good), and sent again
+     by flushWins whenever the cloud answers — a sign-in, coming back
+     online, a later boot — under the name the player typed, else the
+     chief's saved name, else the village's stand-in. The server already
+     refuses the same run twice in a day, and the drain asks the table
+     first, so a resend never doubles a row. Never for a test build or a
+     test deck (their entries are never taken), never for another player's
+     win on a shared key (the uid it was won under). */
+  WIN_KEY: 'neo-pending-wins',
+  WIN_MAX_MS: 7 * 86400000,
+  _winK(e) { return [e.seed, e.mode, e.day, e.score].join('|'); },
+  _winsGet() {
+    try { const a = JSON.parse(this.lsGet(this.WIN_KEY) || '[]'); return Array.isArray(a) ? a.filter(w => w && w.e && w.k) : []; }
+    catch (e) { return []; }
+  },
+  _winsSet(a) { this.lsSet(this.WIN_KEY, JSON.stringify(a.slice(-6))); },
+  keepWin(entry, name) {
+    if (!entry || !window.Backend || !Backend.configured) return;
+    const k = this._winK(entry), a = this._winsGet(), old = a.find(w => w.k === k);
+    const w = old || { k, e: entry, at: Date.now() };
+    if (Backend.uid && !w.uid) w.uid = Backend.uid;
+    if (name) w.name = name;
+    this._winsSet(old ? a : a.concat([w]));
+  },
+  winPosted(entry) {
+    if (!entry) return;
+    const k = this._winK(entry), a = this._winsGet();
+    if (a.some(w => w.k === k)) this._winsSet(a.filter(w => w.k !== k));
+  },
+  async flushWins() {
+    const B = window.Backend;
+    if (this._flushing || !B || !B.configured || !B.isReady || !B.isReady()) return;
+    if (B.telemetryAllowed && !B.mock && !B.telemetryAllowed()) return;   // a test build posts nothing
+    this._flushing = true;
+    try {
+      for (const w of this._winsGet()) {
+        // the end screen on show posts its own entry
+        if (this._entry && w.k === this._winK(this._entry) && !this._submitted && this.atEnd()) continue;
+        if (Date.now() - (w.at || 0) > this.WIN_MAX_MS || (w.uid && w.uid !== B.uid)) { this.winPosted(w.e); continue; }
+        if (w.e.cards_played && !B.BOARD_MARKS_CARDS) {
+          if (B.boardV2 !== false) { try { await B.board({ limit: 10 }); } catch (err) { /* asked again next time */ } }
+          if (!B.BOARD_MARKS_CARDS) { if (B.boardV2 === false) this.winPosted(w.e); continue; }
+        }
+        // already up (a post whose answer was lost): struck off, nothing sent
+        const have = B.hasScore ? await B.hasScore(w.e) : { ok: false };
+        if (have.ok && have.data === true) { this.winPosted(w.e); continue; }
+        if (!have.ok && have.error && have.error.code === 'network') break;
+        const typed = !!(w.name && Score.cleanName(w.name).ok);
+        let nm = typed ? Score.cleanName(w.name).name : '';
+        if (!nm) {
+          const p = await B.getProfile().catch(() => ({ ok: false }));
+          const s = p.ok && p.data && p.data.arcade_name;
+          nm = s && Score.cleanName(s).ok ? Score.cleanName(s).name : Score.fallbackName(B.uid);
+        }
+        const sub = await B.submitScore(nm, w.e, { remember: typed });
+        const why = (sub.error && sub.error.message) || '';
+        if (sub.ok || /duplicate/i.test(why) || /exceeds|out of range/i.test(why)) this.winPosted(w.e);
+        else break;   // not reached, or slow down: tried again next time
+      }
+    } finally { this._flushing = false; }
   },
 
   // the one line under the name box
@@ -2067,6 +2143,10 @@ const Screens = {
      Fired as the page closes, the post goes keepalive and skips the
      pre-check so the request is on the wire before the page is gone. */
   _postBeforeLeaving(unloading) {
+    if (this._entry && !this._submitted) {
+      const typed = Score.cleanName(this.el('arcadeName').value);
+      if (typed.ok) this.keepWin(this._entry, typed.name);
+    }
     if (!this._entry || this._submitted || this._posting) return;
     if (!window.Backend || !Backend.isReady()) return;
     // an assisted win the board has not yet said it can mark is never posted blind
@@ -2118,7 +2198,7 @@ const Screens = {
     const chk = Score.cleanName(auto || this.el('arcadeName').value);
     if (!chk.ok) {
       if (auto) this._promptName('Name your chief to put this score on the board');
-      else UI.toast(chk.why, true);
+      else this._note(chk.why, 'var(--warn, #e39a5b)');   // said on the scene: toasts are hidden off the playing screen
       return;
     }
     const btn = this.el('btnSubmitScore');
@@ -2146,11 +2226,13 @@ const Screens = {
         if (!sub.ok && !/duplicate/i.test(sub.error.message || '')) {
           if (auto) this._promptName('Couldn’t reach the board — tap Save to try again');
           else { btn.textContent = '💾 Save score'; btn.classList.remove('cant');
-            UI.toast('Your score could not be posted: ' + this.whyNet(sub.error), true); }   // named, never quoted (PERS-02)
+            // named, never quoted (PERS-02), and said on the scene; the win is kept and sent again (keepWin)
+            this._note('Your score could not be posted: ' + this.whyNet(sub.error) + ' — it will be tried again.', 'var(--warn, #e39a5b)'); }
           return;
         }
       }
       this._submitted = true;
+      this.winPosted(entry);
     } finally { this._posting = false; }
     this.el('nameRow').style.display = 'none';
     this._note(`✓ On the board as ${chk.name.toUpperCase()} — safe to leave`);
@@ -2174,13 +2256,18 @@ const Screens = {
       if (mine >= 3) { shown.push(rows[mine]); meIdx = shown.length - 1; }
       this.renderBoard(shown, this.el('endBoard'), meIdx, mine >= 3 ? (rows[mine].rank || mine + 1) : 0);
       const best = !(me && me.score > entry.score) && !rows.some(r => own(r) && r.score > entry.score);
-      const rankText = !known ? '' : place === 1 && best ? '★ NEW HIGH SCORE ★' : `★ GLOBAL RANK #${place} ★`;
+      /* a device the board leaves out (the operator's own, or one seen on a
+         network marked as theirs) is told so, never handed a rank it will not
+         find on the board */
+      const kept = v2 && me && me.hidden;
+      const rankText = !known || kept ? '' : place === 1 && best ? '★ NEW HIGH SCORE ★' : `★ GLOBAL RANK #${place} ★`;
+      if (kept) this._note('Posted — but games on this device are kept off the world board.', 'var(--dim)');
       if (rankText) {
         this.el('hsBanner').textContent = rankText; this.el('hsBanner').style.display = 'block';
         // ...and the blinking rank lands on the celebration screen too
         this.el('vicRank').textContent = rankText; this.el('vicRank').style.display = 'block';
       }
-      if (!opts.quiet) UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score on the board');
+      if (!opts.quiet && !kept) UI.toast(mine >= 0 ? 'You made the board, chief!' : 'Score on the board');
     }
   },
 
@@ -2302,6 +2389,14 @@ const Screens = {
     on('btnDoomStay', () => this.doomStay());
     // endgame
     window.addEventListener('pagehide', () => { if (this.atEnd()) this._postBeforeLeaving(true); });
+    /* a phone sent to its home screen fires visibilitychange and often no
+       pagehide: a win with a NAME goes up keepalive then; a nameless one waits
+       on the device (keepWin) for the next time the game opens, so a player
+       still choosing a name is not posted under the stand-in behind their back */
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'hidden' || !this.atEnd() || !this._entry || this._submitted) return;
+      if (Score.cleanName(this.el('arcadeName').value).ok) this._postBeforeLeaving(true);
+    });
     on('btnVicScore', () => this.openTally());   // "A New Dawn" victory buttons
     on('btnScoreBack', () => this.closeTally());
     on('btnVicAgain', () => this.endReplay());
