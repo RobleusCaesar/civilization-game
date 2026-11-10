@@ -56,8 +56,13 @@ const Combat = {
   // a projectile reaches its mark: land the damage and throw a burst
   impact(p) {
     const t = p.tgt, flame = p.kind === 'flame';
+    let hb = null;
     if (t.kind === 'bld') {
       const b = Bld.get(t.id);
+      hb = b || null;
+      // the stone smashes against the face (js/battlefx.js) before the blow can
+      // bring the building down and take it out of the list
+      if (b && window.BattleFX && BattleFX.siegeLanded) { try { BattleFX.siegeLanded(p, b); } catch (e) {} }
       if (b) this.hitBuilding(b, t.dmg, flame, p.owner);
       // a stone (or a burning ball) into the works — never a ballista's bolt
       if (b && p.kind !== 'bolt' && typeof Sound !== 'undefined' && Sound.at) Sound.at('boulder', p.x2, p.y2, p.owner);
@@ -66,6 +71,8 @@ const Combat = {
       if (tu) { const d = this.covered(tu, t.dmg); this.hitFloat(tu, tu.x, tu.y, tu.x, tu.y - 0.4, '-' + d, '#f08a7a', p.owner); Units.damage(tu, d, t.srcId || 0, p.owner); }
     }
     R.impact(p.x2, p.y2, p.kind, p.fx);
+    // …and a shot into the ground digs its crater, throws its clods and, burning, bursts
+    if (!hb && window.BattleFX && BattleFX.siegeLanded) { try { BattleFX.siegeLanded(p, null); } catch (e) {} }
   },
   // the kinds whose melee strike is a SWORD stroke — the blood-slash gate.
   // The Bronze Champion is the roster's only sworded trainable today; the
@@ -1195,6 +1202,8 @@ const Combat = {
     // but never the people of an eased town (easedPrey): re-marking one only
     // feeds the ease-drop in update() and the band vibrates in place forever.
     if (u.owner === 'R' && u.leaving) {
+      // a harrier broken off hurt does not turn back to fight (G.bandHurt)
+      if (u.fled) { this.raiderLeave(u); return; }
       const near = this.nearestUnit(u.x, u.y, 2.5,
         o => this.hostileUnits(u, o) && !Units.isNaval(o) && this.canEngage(u, o) &&
              !this.easedPrey(u, o), u);
@@ -1288,7 +1297,11 @@ const Combat = {
     // Struck, a barbarian still hits back — that is Units.damage's retaliation,
     // not a hunt.
     const mark = o => u.owner !== 'R' || o.owner === 'R' || !G.barbEase(o.owner);
-    const foe = this.nearestUnit(u.x, u.y, 6,
+    // A HARRYING band (CFG.BARB_BANDS) goes for the soft prey first — the
+    // hands in the fields before the spears that guard them
+    const soft = o => this.hostileUnits(u, o) && mark(o) && !Units.isNaval(o) && !fighter(o) && this.canEngage(u, o);
+    const foe = (u.style === 'harry' && this.nearestUnit(u.x, u.y, 6, soft, u))
+      || this.nearestUnit(u.x, u.y, 6,
         o => this.hostileUnits(u, o) && mark(o) && fighter(o) && this.canEngage(u, o), u)
       || this.nearestUnit(u.x, u.y, 6,
         o => this.hostileUnits(u, o) && mark(o) && !Units.isNaval(o) && this.canEngage(u, o), u);
@@ -1297,6 +1310,20 @@ const Combat = {
     if (foe) {
       if (this.canReach(u, foe.x, foe.y, 1.6)) { u.tUnit = foe.id; return; }
       u.path = null;   // drop canReach's best-effort route before deciding what's next
+    }
+    /* A BEAST GOES WITH ITS PEOPLE (CFG.BARB_BANDS): the Wolfskins' wolves
+       and the Flintfolk's bear fight what their band fights, but they do not
+       chew on walls — with no one in reach they keep at the heels of the
+       nearest of their own, and with none left they go back to the wild */
+    if (u.beast) {
+      const kin = this.nearestUnit(u.x, u.y, 30, o => o.owner === 'R' && !o.beast &&
+        !Units.isNaval(o) && (u.bandId ? o.bandId === u.bandId : o.tribe === u.tribe), u);
+      if (!kin) { this.raiderLeave(u); return; }
+      u.stallT = 0;   // at its people's heels is not stranded (the units.js backstop)
+      if (Math.hypot(kin.x - u.x, kin.y - u.y) > 1.8 && this.repathOk(u)) {
+        u.repathT = 0.8; Units.setPath(u, kin.x | 0, kin.y | 0);
+      }
+      return;
     }
     // barbarians loot and burn everything EXCEPT Town Centers — razing a
     // tribe's heart is normally beyond them, so they can't win the game for
@@ -1768,7 +1795,7 @@ const Combat = {
           } else {
             let sh = null;
             if (CFG.UNITS[u.kind].rng)
-              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire || this.perchFire(u, wfA) });
+              this.shots.push(sh = { x1: u.x, y1: u.y - (u.perch && window.Lookout ? Lookout.shotLift(u) : 0.3), x2: Bld.cx(b), y2: Bld.cy(b), t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire || this.perchFire(u, wfA), bld: b.id });
             // same base-archer fumble as the unit-target branch above — a
             // player CAN send an archer straight at a wall, so it has to miss
             // there too, not just when trading blows with soldiers.
@@ -1857,7 +1884,9 @@ const Combat = {
         } else {
           const dmg = this.covered(tgt, Math.max(1, Math.round(lv.atk * wfA) - Units.effDef(tgt)));
           this.hitFloat(tgt, tgt.x, tgt.y, tgt.x, tgt.y - 0.4, '-' + dmg, '#f0d27a', b.owner);
-          Units.damage(tgt, dmg, 0, b.owner);
+          // the picture's note that this was a volley (the dead keep its arrows); never read by the sim
+          const BF = window.BattleFX; if (BF) BF._volley = { x: Bld.cx(b), y: Bld.cy(b) };
+          try { Units.damage(tgt, dmg, 0, b.owner); } finally { if (BF) BF._volley = null; }
         }
       } else b.cd = 0.3;
     }
@@ -1871,6 +1900,9 @@ const Combat = {
       // calls the damage floats above have always made.
       if (s.fire) R.arrowStrike(s.x2, s.y2);
       else if (s.miss) R.impact(s.x2, s.y2, 'bolt');
+      // …and the shaft stays where it went in: in the ground past a miss, in a
+      // wall's face (js/battlefx.js — a picture only)
+      if (window.BattleFX && BattleFX.arrowLanded) { try { BattleFX.arrowLanded(s); } catch (e) {} }
       this.shots.splice(i, 1);
     }
     // advance siege projectiles; when one lands, apply its damage + burst
@@ -1995,7 +2027,31 @@ const Combat = {
     if (disp === 'ALL' && (easeP || easeA)) disp = easeP ? 'A' : 'P';
     if ((disp === 'P' && easeP) || (disp === 'A' && easeA)) disp = easeP ? 'A' : 'P';
     if (pact) disp = 'A';   // the pact's band (the rival is not eased — that waited above)
-    const brute = i => (S.wave.count >= 4 && i % 3 === 2) ? 'brute' : 'raider';
+    /* EVERY BAND IS ITS OWN FIGHT (CFG.BARB_BANDS, tests/barb-bands.mjs): the
+       old band's n raiders become a strength BUDGET, bought by the people's
+       own odds (G.composeBand) once the people is known — drawn off the
+       seed and the wave's number, never G.rand, so no other roll moves */
+    const BB = CFG.BARB_BANDS;
+    const bandCap = Math.max(2, m.bandCap || 6);
+    const budget = n * (BB.budgetPer || 1.5);
+    const raise = (tribe, x, y, sea) => {
+      const rnd = G.barbRand('wave:' + S.wave.count + (sea ? ':sea' : ''));
+      const band = G.composeBand(tribe, budget, sea ? Math.min(bandCap, CFG.UNITS.transport.cap || 5) : bandCap,
+        rnd, S.wave.count);
+      const id = 'w' + S.wave.count;
+      if (band.style === 'press') {
+        const mi = ['calm', 'moderate', 'hard'].indexOf(S.mode);
+        if (!S.barbBands) S.barbBands = {};
+        S.barbBands[id] = { style: 'press', left: (BB.reinf || [1, 2, 3])[mi < 0 ? 1 : mi],
+          x, y, tribe, disp, scale, day: S.day };
+      }
+      return { band, id };
+    };
+    const stamp = (u, bb) => { u.hostileTo = disp; u.style = bb.band.style; u.bandId = bb.id; return u; };
+    const bandNote = bb => {
+      const w = G.STYLE_WORDS[bb.band.style];
+      return ' (' + G.bandWords(bb.band.roles) + ')' + (w ? ' — ' + w + '.' : '!');
+    };
     /* WHICH PEOPLE IS ON THE MOVE (CFG.TRIBES, tests/raider-camps.mjs). A band
        mustered AT a camp is that camp's own people — walk up to the northern
        fire and it is the same faces every time. A band marching in off the map
@@ -2032,16 +2088,16 @@ const Combat = {
           tr.hostileTo = disp;
           tr.cargo = [];
           if (G.rand() < 0.9) bandTribe = 'sea';     // a crew off the water is nearly always the Sea Folk
-          const aboard = Math.min(n, CFG.UNITS[kindT].cap);
-          for (let i = 0; i < aboard; i++) {
-            const ru = Units.spawn(brute(i), 'R', start.x, start.y, { scale, tribe: bandTribe });
-            ru.hostileTo = disp;
+          const bb = raise(bandTribe, landing.x, landing.y, true);
+          const aboard = bb.band.roles.length;
+          for (const role of bb.band.roles) {
+            const ru = stamp(G.spawnBarb(role, start.x, start.y, { scale, tribe: bandTribe }), bb);
             S.units.splice(S.units.indexOf(ru), 1);   // they ride in the hull
             tr.cargo.push(ru);
           }
           Units.orderUnload(tr, landing.x, landing.y);
           if (pact) Deck.pactTurned(bandTribe, aboard);   // the player bought this band: told at every difficulty
-          else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + '⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore!');
+          else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + '⛵ Sails on the horizon — a longboat of ' + G.tribeName(bandTribe) + ' makes for the shore' + bandNote(bb));
           return;
         }
       }
@@ -2126,12 +2182,13 @@ const Combat = {
        with no road to the rival would make the pact a shield for ever */
     if (pact && (!spot || !fight || !inNet(spot.x, spot.y))) { if (Deck.pactLost) Deck.pactLost(); return; }
     if (!spot) return;
-    for (let i = 0; i < n; i++) {
+    const bb = raise(bandTribe, spot.x, spot.y, false);
+    for (const role of bb.band.roles) {
       const p = MapGen.findNear(spot.x, spot.y, 4, farOk) ||
                 MapGen.findNear(spot.x, spot.y, 4, inNet) || spot;
-      Units.spawn(brute(i), 'R', p.x, p.y, { scale, tribe: bandTribe }).hostileTo = disp;
+      stamp(G.spawnBarb(role, p.x, p.y, { scale, tribe: bandTribe }), bb);
     }
-    if (pact) Deck.pactTurned(bandTribe, n);   // the player bought this band: told at every difficulty
-    else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + `⚔ A war band of ${G.tribeName(bandTribe)} is on the move (${n})!`);
+    if (pact) Deck.pactTurned(bandTribe, bb.band.roles.length);   // the player bought this band: told at every difficulty
+    else G.foeNote((pactWaited ? Deck.PACT_WAITED + ' ' : '') + `⚔ A war band of ${G.tribeName(bandTribe)} is on the move` + bandNote(bb));
   },
 };

@@ -1239,6 +1239,138 @@ const Units = {
     this.setPath(u, spot.x, spot.y);
     return true;
   },
+  /* ---- THE RALLY IS AN ORDER IN WAITING (tests/rally.mjs) ----
+     Operator, build 158: "when you're building a unit, and you click
+     something for Move / Set Rally point, the unit should automatically start
+     doing something if they can at the point… If the tower is full, the
+     archer just stands at the base… Villagers and soldiers can keep stacking
+     as long as it's available… If the item gets full, don't move the rally
+     point". `b.rally` is {x, y} and, when it was set ON something, `bid` (a
+     building) or `uid` (an own transport). rallyPlan is the ONE answer to
+     "what would a fresh unit do there" — the tap's preview and the release
+     both ask it, so the toast can never promise what the unit will not do.
+     It returns null for a plain walk, else {act, label, room, run}: `room`
+     says whether a place is free now (a tower bow, a station hand, an
+     untaken edge of the resource, a seat in the hull), `run` gives the order
+     and answers whether it took. No room, or a refused order, and the unit
+     STANDS BY the target (rallyStand); the rally itself never moves. */
+  rallyTarget(rally) {
+    if (!rally) return null;
+    if (rally.uid) {
+      const t = S.units.find(o => o.id === rally.uid);
+      return t && t.hp > 0 ? { unit: t } : null;
+    }
+    if (rally.bid) {
+      const b = Bld.get(rally.bid);
+      return b && b.hp > 0 ? { bld: b } : null;
+    }
+    return null;
+  },
+  // the middle of whatever the rally names, in tiles (the flag and the ring)
+  rallyPoint(rally) {
+    const t = this.rallyTarget(rally);
+    if (t && t.unit) return { x: t.unit.x, y: t.unit.y };
+    if (t && t.bld) return { x: Bld.cx(t.bld), y: Bld.cy(t.bld) };
+    return { x: rally.x + 0.5, y: rally.y + 0.5 };
+  },
+  // a resource tile has room while one of its working edges is untaken
+  gatherRoom(u, tx, ty) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = tx + ox, y = ty + oy;
+      if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
+      if (!S.units.some(o => o !== u && o.task && o.task.type === 'gather' &&
+          o.task.x === tx && o.task.y === ty && o.task.sx === x && o.task.sy === y)) return true;
+    }
+    return false;
+  },
+  rallyPlan(u, rally) {
+    if (!rally || !u) return null;
+    const own = u.owner, vill = this.isVillager(u), naval = this.isNaval(u);
+    const fighter = this.isMilitary(u) && !naval;
+    const t = this.rallyTarget(rally);
+    if (t && t.unit) {
+      const tr = t.unit;
+      if (!this.isTransport(tr) || tr.owner !== own || naval) return null;
+      return { act: 'board', label: 'board the ' + CFG.UNITS[tr.kind].name,
+        room: this.cargoClaimed(tr) < this.cargoCap(tr), run: () => this.orderBoard(u, tr) };
+    }
+    if (t && t.bld) {
+      const b = t.bld, d = Bld.def(b.key), name = d.name;
+      if (b.owner === own) {
+        if (window.Lookout && Lookout.isPost(b, own) && Lookout.canMan(u))
+          return { act: 'man', label: 'climb the ' + name, room: Lookout.room(b, u) > 0, run: () => Lookout.order(u, b) };
+        if (!vill) return null;
+        if (b.construction > 0 || b.upgrading > 0 || b.hp < b.maxhp) {
+          const fix = !(b.construction > 0) && !(b.upgrading > 0);
+          return { act: fix ? 'repair' : 'build', label: (fix ? 'repair the ' : 'build the ') + name,
+            room: true, run: () => this.assignBuild(u, b) };
+        }
+        if (d.needsWorker)
+          return { act: 'work', label: 'work the ' + name, room: Bld.workersAssigned(b) < Bld.maxWorkers(b),
+            run: () => {
+              if (this.isLevied(u)) return false;
+              u.task = { type: 'work', id: b.id }; u.tUnit = 0; u.tBld = 0;
+              return this.setPath(u, b.x, b.y);
+            } };
+        return null;
+      }
+      if (fighter && Bld.foeBld(b, own) && Combat.hostileToBld(b, u))
+        return { act: 'attack', label: 'attack the ' + name, room: true,
+          run: () => { u.defend = false; u.assault = true; this.orderAttackBuilding(u, b); return true; } };
+      return null;
+    }
+    const x = rally.x, y = rally.y;
+    if (!MapGen.onBoard(x, y)) return null;
+    const i = MapGen.idx(x, y), ter = S.map.terrain[i];
+    if (vill) {
+      const g = CFG.GATHER[ter];
+      if (g && S.map.resAmount[i] > 0)
+        return { act: 'gather', label: 'gather ' + g.res, room: this.gatherRoom(u, x, y), run: () => this.assignGather(u, x, y) };
+      if (Bld.seamAt(x, y) && !Bld.at(x, y))
+        return { act: 'mine', label: 'claim the gold seam', room: Bld.canClaimSeam(own, x, y).ok, run: () => this.assignMine(u, x, y) };
+      if (MapGen.shoal(x, y) && S.map.resAmount[i] > 0)
+        return { act: 'fish', label: 'fish from the shore', room: true, run: () => this.assignShoreFish(u, x, y) };
+      return null;
+    }
+    if (u.kind === 'fishboat' && this.fishableTile(x, y))
+      return { act: 'fish', label: 'fish here', room: true, run: () => this.assignFish(u, x, y) };
+    return null;
+  },
+  // the order itself, from Bld.releaseTrained: do the job if there is room,
+  // else stand by it. Returns what the unit was set to ('walk' for standing by)
+  rallyTo(u, rally) {
+    const p = this.rallyPlan(u, rally);
+    if (p && p.room && p.run()) return p.act;
+    this.rallyStand(u, rally);
+    return 'walk';
+  },
+  // stand BY the target: a tower's door, open ground beside a building or a
+  // hull's mooring, or the rallied tile (its edge, when the tile itself is
+  // solid — a full wood or rock has no ground on it to stand on)
+  rallyStand(u, rally) {
+    const t = this.rallyTarget(rally);
+    if (this.isNaval(u)) {
+      const p = t && t.unit ? { x: t.unit.x | 0, y: t.unit.y | 0 } : { x: rally.x, y: rally.y };
+      return this.moveTo(u, p.x, p.y);
+    }
+    const open = (x, y) => MapGen.onBoard(x, y) && Path.passable(x, y, u.owner) && !Bld.at(x, y);
+    let spot = null;
+    if (t && t.bld && window.Lookout && Lookout.isPost(t.bld)) spot = Lookout.door(t.bld, u);
+    if (!spot && t && t.bld) {
+      const b = t.bld, n = Bld.size(b);
+      let bd = Infinity;
+      for (let yy = b.y - 1; yy <= b.y + n; yy++) for (let xx = b.x - 1; xx <= b.x + n; xx++) {
+        if (Bld.covers(b, xx, yy) || !open(xx, yy)) continue;
+        const d = Math.hypot(xx + 0.5 - u.x, yy + 0.5 - u.y);
+        if (d < bd) { bd = d; spot = { x: xx, y: yy }; }
+      }
+    }
+    if (!spot) {
+      const c = t && t.unit ? { x: t.unit.x | 0, y: t.unit.y | 0 } : t && t.bld ? { x: t.bld.x, y: t.bld.y } : { x: rally.x, y: rally.y };
+      spot = open(c.x, c.y) ? c : (MapGen.findNear(c.x, c.y, 3, open) || c);
+    }
+    return this.moveTo(u, spot.x, spot.y);
+  },
   // sail to the water beside the marked shore tile, then put everyone ashore
   orderUnload(u, tx, ty) {
     u.task = { type: 'unload', x: tx, y: ty };
@@ -2587,6 +2719,12 @@ const Units = {
       if (S.peace && ((ao === 'P' && u.owner === 'A') || (ao === 'A' && u.owner === 'P')))
         G.breakPeace();
     }
+    // EVERY BAND IS ITS OWN FIGHT (CFG.BARB_BANDS): a harrier hurt past its
+    // nerve breaks off and runs (G.bandHurt)
+    if (u.hp > 0 && u.owner === 'R' && u.style === 'harry') G.bandHurt(u);
+    // THE BLOW IS SEEN (js/battlefx.js): a white beat over the sprite and a
+    // few dark specks off a living thing — a picture, never a write to S
+    if (window.BattleFX && BattleFX.onHit) { try { BattleFX.onHit(u, amt, attacker); } catch (e) {} }
     if (u.hp <= 0) {
       try {
         if (typeof Sound !== 'undefined' && Sound.place && Sound.place(u.x, u.y) &&
@@ -2595,7 +2733,12 @@ const Units = {
       } catch (e) {}
       // a bow killed on a tower's platform falls from it (js/lookout.js)
       if (u.perch && window.Lookout && Lookout.startFall) { try { Lookout.startFall(u); } catch (e) {} }
+      // …and a fighter falls where he stood and lies there a while (js/battlefx.js):
+      // read off the unit (its facing, its art) BEFORE it leaves the list
+      if (window.BattleFX && BattleFX.onDeath) { try { BattleFX.onDeath(u, attacker, attackerOwner); } catch (e) {} }
       S.units.splice(S.units.indexOf(u), 1);
+      // …and a pressing band calls the next one up (G.bandLoss)
+      if (u.owner === 'R' && u.bandId) G.bandLoss(u);
       /* AN ORDERED KILL (Deck.deeds' fighting allowance): the foe the PLAYER
          sent this soldier at, by their own tap or drag (ui.js stamps the
          order's `on`), falls to it. Never a tower's arrow, a Defend stance or

@@ -19,6 +19,80 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 162, date: '2026-11-10', title: 'Archers on the towers',
+    items: [
+      'Archers on a tower now hit exactly as hard as they do on the ground. They still take a quarter less damage up there.',
+      'Archers on a tower are drawn bigger, and between shots they keep watch facing outward, one to each side.',
+    ],
+  },
+  {
+    build: 161, date: '2026-11-10', title: 'Every win reaches the board',
+    items: [
+      'The world board now always shows all ten places, on every screen. On some laptops the tenth chief was left off to make the page fit.',
+      'A win where you played cards now goes on the board as soon as the board answers, instead of sometimes being held back for good.',
+      'If your win could not be posted, because you had no signal or closed the game on the reward screen, it is kept on your device and sent the next time the game opens.',
+      'If a name is refused or a score cannot be sent, the reason now shows on the victory screen.',
+      'Closing the game during the Wonder celebration no longer loses the victory.',
+    ],
+  },
+  {
+    build: 160, date: '2026-11-08', title: 'Battles you can watch',
+    items: [
+      'Every blow now lands on the frame where the weapon strikes, instead of somewhere in the middle of a swing.',
+      'Defenders, axemen, champions, archers, longbows, marksmen and the Wolfskin raiders each have new ways to strike, and they change it up from blow to blow.',
+      'The fallen now drop and lie on the field for a few seconds before they fade, with a little blood beneath them. A man cut down by arrows keeps them.',
+      'A struck soldier flashes for an instant, and a heavy blow leaves a few dark specks on the ground.',
+      'An arrow that misses sticks in the ground where it landed, or in the wall it hit.',
+      'Catapult stones turn in the air and dig a small crater where they land. Fire shots trail flame and burst into a fireball, and bombard shells hiss on their way in.',
+      'A stone that hits a building throws off chips of thatch, wood or stone and a puff of dust, and the building shudders.',
+      'Riders at the charge kick up dust behind them.',
+    ],
+  },
+  {
+    build: 159, date: '2026-11-07', title: 'Homes that look lived in',
+    items: [
+      'Houses no longer wear the same hedge. Each yard is one of seven: a woodpile with an axe in the chopping block, a herb bed and a pail, the washing hung out, a bench by the wall, a hand cart, clay jars and a basket, or one left to grow wild.',
+      'Neighbouring houses never get the same yard, and the bushes round them grow in three different ways.',
+      'Workshops and yards come in three looks too, some with barrels, crates, a log pile or a heap of stone beside the door.',
+      'Crossroads grow a little bush in one corner. Other junctions get a bush, a stone cairn or a patch of wildflowers, and fence posts, fallen branches and stones turn up along the roadside.',
+    ],
+  },
+  {
+    build: 158, date: '2026-11-07', title: 'Rally points put new units to work',
+    items: [
+      'Set a rally point on something and new units get straight to work there: archers climb a tower, soldiers board a transport, villagers gather, build or work a camp.',
+      'Units keep stacking while there is room, two archers to a tower or two hands to a camp, and once it is full the rest wait beside it.',
+      'A small gold ring blinks once on whatever you rallied to, and the message says what new units will do.',
+    ],
+  },
+  {
+    build: 157, date: '2026-11-07', title: 'Barbarians in proportion',
+    items: [
+      'Barbarian raiders are drawn a little smaller, so a brute now stands a head taller than the fighters around him.',
+      'The quick light skirmishers are the smallest of all, so you can read a band at a glance.',
+    ],
+  },
+  {
+    build: 156, date: '2026-11-06', title: 'No two war bands alike',
+    items: [
+      'Barbarian brutes are now much harder to kill and hit much harder, but they walk and swing slowly. One brute is worth two or three of the small fighters.',
+      'Every band is built from the same strength in a different way: five quick skirmishers one time, two brutes the next, or a brute with a few raiders around him.',
+      'Each people fights its own way. The Wolfskins and the Woadkin strike and run, and go for your villagers first. The Broken and the Flintfolk keep coming, sending a fresh fighter for each one you cut down.',
+      'The Wolfskins hunt with wolves at their side, and the Flintfolk bring a bear. Their camps keep their beasts too.',
+      'The warning when a band is sighted now says what is coming, and how they fight.',
+    ],
+  },
+  {
+    build: 155, date: '2026-11-06', title: 'The wild peoples, drawn',
+    items: [
+      'Every barbarian is redrawn by hand at the same detail as your Bronze Champion: the Wolfskins in their wolf masks, the antlered Flintfolk, the Broken in their dented helms, the limed Woadkin and the plumed Sea Folk.',
+      'Each people has its own raider, its own women warriors and its own brute, and every one of them walks, waits and fights in all eight directions.',
+      'Brutes now stand a head taller than the raiders around them, so you can spot the dangerous ones at a glance.',
+      'A destroyed building now leaves its own ruins: a burnt hut, a fallen stone house, a collapsed hall, a wrecked yard, charred stakes where a palisade stood and a heap of rubble where a stone wall or tower fell.',
+      'The ground under a ruin is scorched and ragged instead of a plain brown square, and it is still walkable. The ruins fade as the grass grows back.',
+    ],
+  },
+  {
     build: 154, date: '2026-11-05', title: 'A cleaner top bar',
     items: [
       'Your population now sits on the top row beside food, wood, stone and gold, and the five share the row evenly.',

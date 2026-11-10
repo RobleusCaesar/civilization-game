@@ -27,7 +27,7 @@ const CFG = {
   // round the workplaces, a hedge round the homes and towers. A picture only; false (or ?footing=0) stands it down.
   FOOTING: { ON: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 67,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 68,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
@@ -617,7 +617,10 @@ const CFG = {
     boar:     { name: 'Boar',           hp: 48,  atk: 6,  def: 1, speed: 1.8, aggro: 2 },
     bear:     { name: 'Bear',           hp: 110, atk: 13, def: 2, speed: 2.2, aggro: 3.5 },  // very rare forest terror
     raider:   { name: 'Barbarian',       hp: 50,  atk: 7,  def: 1, speed: 2.3, aggro: 2.5 },
-    brute:    { name: 'Barbarian Brute', hp: 95,  atk: 12, def: 2, speed: 1.9, aggro: 2.5 },
+    // the big folk (build 156): much harder to kill and a heavier blow, but a
+    // slow walk and a slow swing — one of them is worth two or three of the
+    // small ones (CFG.BARB_BANDS)
+    brute:    { name: 'Barbarian Brute', hp: 140, atk: 15, def: 2, speed: 1.6, aggro: 2.5, cdMult: 1.35 },
     deer:     { name: 'Deer',           hp: 20,  atk: 0,  def: 0, speed: 2.0, aggro: 0 },
     cow:      { name: 'Wild Cow',       hp: 35,  atk: 0,  def: 0, speed: 1.2, aggro: 0 },
     // naval — these move only on water
@@ -933,6 +936,68 @@ const CFG = {
     takeCooldown: 2, takeQuotaCap: 3, loneR: 6,
     sortieDays: 12, sortieMin: 3 },
 
+  /* EVERY BAND IS ITS OWN FIGHT (tests/barb-bands.mjs — operator, build 156:
+     "mix up the experiences when fighting the different barbarian tribes…
+     different tiers of speed, damage and strength… different odds that each
+     is generated… one group is more likely to attack and run, and another is
+     more likely to keep throwing people at you"). A war band is BOUGHT from a
+     strength budget, so the same strength comes as five skirmishers or two
+     brutes:
+       TIERS   what each fighter costs and how it differs from the plain raider
+               (hp / atk / speed multipliers on the unit; the brute's own figures
+               live on CFG.UNITS.brute). The beasts fight beside their people.
+       FORMS   the mixes a band can be drawn as: role weights, an optional `lead`
+               bought first, a cap on beasts.
+       STYLES  how the band fights: harry (hit and run — a hurt fighter breaks
+               off and leaves, soft prey first), press (it keeps coming — every
+               fall brings a fresh skirmisher up from the muster, `reinf` a band)
+               and band (as before).
+       PEOPLE  each people's odds of every form and style, its camp's split of
+               light / heavy hands, and its beasts.
+     The draw is HASHED off the seed (G.barbRand), never G.rand: a band's make-up
+     moves no other roll of the run. Heavies and bears wait for `heavyFrom`
+     waves, so the opening is never a lone brute at the door. */
+  BARB_BANDS: {
+    TIERS: {
+      // priced by the square law a melee is fought by (strength ∝ hp × blow
+      // rate, numbers count squared), so a budget of 6 buys five light, four
+      // mid or two heavy at about the same fighting worth. `box` is the
+      // size it is DRAWN at (R.unitBox): a raider's strips stand as tall in
+      // their 64px frame as a brute's do in his 80, so drawn at the cast's 32
+      // he was the brute's height — the light man is the smallest, the
+      // brute (Assets.UNIT_BOX's 40) a head over the plain raider
+      light: { kind: 'raider', cost: 1.2, hp: 0.7, atk: 0.8, speed: 1.15, box: 26 },
+      mid:   { kind: 'raider', cost: 1.5 },
+      heavy: { kind: 'brute',  cost: 3 },
+      wolf:  { kind: 'wolf',   cost: 1.2, hp: 1.5, atk: 1.5, beast: true },
+      bear:  { kind: 'bear',   cost: 3,   beast: true },
+    },
+    FORMS: {
+      swarm:  { mix: { light: 6, mid: 1 } },                         // many and quick
+      line:   { mix: { mid: 5, light: 1, heavy: 1 } },               // the plain war band
+      shield: { lead: 'heavy', mix: { light: 2, mid: 2 } },          // one big one, small ones round him
+      wall:   { mix: { heavy: 4, mid: 1 } },                         // few and huge
+      pack:   { lead: 'wolf', mix: { light: 2, mid: 1, wolf: 3 }, beasts: 3 },   // Wolfskins and their wolves
+      beasts: { lead: 'bear', mix: { mid: 2, light: 1, heavy: 1 }, beasts: 1 },  // Flintfolk and their bear
+    },
+    PEOPLE: {
+      wolf:   { forms: { pack: 4, swarm: 2, line: 1, shield: 1 }, styles: { harry: 3, band: 1 },
+                light: 0.6, heavy: 0.15, beast: 'wolf', campBeasts: [1, 2, 2] },
+      flint:  { forms: { wall: 3, beasts: 3, shield: 2, line: 1 }, styles: { press: 2, band: 2 },
+                light: 0.3, heavy: 0.6, beast: 'bear', campBeasts: [1, 1, 1] },
+      broken: { forms: { line: 3, shield: 2, wall: 1, swarm: 1 }, styles: { press: 3, band: 1 },
+                light: 0.3, heavy: 0.25 },
+      woad:   { forms: { swarm: 4, line: 1, shield: 1 }, styles: { harry: 3, band: 1 },
+                light: 0.7, heavy: 0.15 },
+      sea:    { forms: { shield: 3, line: 2, wall: 1 }, styles: { band: 2, press: 1, harry: 1 },
+                light: 0.4, heavy: 0.3 },
+    },
+    budgetPer: 1.5,     // the old band's n raiders, in mid-tier money
+    heavyFrom: 3,       // the wave from which heavies and bears may be bought
+    harryAt: 0.45,      // a harrier breaks off below this share of its health
+    reinf: [1, 2, 3],   // press: fresh skirmishers a band can call up (calm, moderate, hard)
+  },
+
   /* THE FIVE PEOPLES OF THE WILD COUNTRY (tests/raider-camps.mjs). The wild
      country is not one undifferentiated mass of "barbarians": five distinct
      peoples walk it, each with its own look, its own camp and its own name in
@@ -947,13 +1012,13 @@ const CFG = {
      subjects: Units.effAtk, G.manRaiderCamp, G.campTakes, G.seaSortie). */
   TRIBES: [
     { key: 'wolf',   name: 'Wolfskins',    note: 'Pelt-hooded raiders who take the wolf as a war-mask',
-      trait: 'Pack tactics — they strike half again as hard side by side.' },
+      trait: 'Pack tactics — they strike half again as hard side by side, run with wolves, and strike and run.' },
     { key: 'flint',  name: 'Flintfolk',    note: 'Old blood of the stone country, antler-crowned',
-      trait: 'Stone-country blood — their bands breed brutes.' },
+      trait: 'Stone-country blood — their bands breed brutes, bring a bear, and keep coming.' },
     { key: 'broken', name: 'the Broken',   note: 'What is left of a third village, still in its ragged mail',
-      trait: 'The deserter’s toll — a soldier left standing alone may lay down your banner.' },
+      trait: 'The deserter’s toll — a soldier left standing alone may lay down your banner. They keep coming.' },
     { key: 'woad',   name: 'Woadkin',      note: 'Painted fighters with hair limed white',
-      trait: 'The painting — a villager caught alone is taken to their fire.' },
+      trait: 'The painting — a villager caught alone is taken to their fire. They strike and run.' },
     { key: 'sea',    name: 'the Sea Folk', note: 'Plumed crews off the water, come to take what floats',
       trait: 'Longboat sorties — their war parties come by water.' },
   ],
@@ -1387,8 +1452,11 @@ const CFG = {
        punishment before he falls. Two base archers still out-shoot the old
        wattle and timber towers' own fire, and come a shade short of the stone
        one's volley, measured against a rival tower (which still fires the old
-       way) in tests/tower-garrison.mjs. */
-    atk: 1.25,
+       way) in tests/tower-garrison.mjs. Build 162 took the blow back to
+       the ground's (operator: "reduce archers in the tower to their normal
+       on the ground damage. They're too strong right now"): `atk` 1, the
+       toughness kept. */
+    atk: 1,
     hurt: 0.8,
   },
 
