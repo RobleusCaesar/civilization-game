@@ -147,7 +147,8 @@ const DeckScreens = {
        cannot mark yet) stands nowhere. */
     if (win && !rep.place) {
       try {
-        const held = Screens.boardHold ? Screens.boardHold(true).hold : 'held';
+        const bh = Screens.boardHold ? Screens.boardHold(true) : { hold: 'held' };
+        const held = bh.hold || (bh.ask ? 'not asked' : '');   // a board never seen places nothing
         const B = window.Backend;
         if (!held && B && B.configured && window.WorldBoard && WorldBoard.placeFor) rep.place = WorldBoard.placeFor(rep.score);
       } catch (e) { /* a lift is a nicety: never the reason an ending fails */ }
@@ -226,6 +227,7 @@ const DeckScreens = {
       origin: Screens.runOrigin ? Screens.runOrigin() : null } : null;
     Screens._submitted = false;
     Screens._leaveWarned = false;
+    Screens._markWait = false;
     if (win) Screens._winMsg = msg || '';
     for (const id of ['vicRank', 'hsBanner', 'nameRow', 'savedNote']) {
       const el = document.getElementById(id);

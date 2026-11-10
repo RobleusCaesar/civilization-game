@@ -336,9 +336,11 @@ for (const cards of [true, false]) {
   const r = await p.evaluate(async () => {
     const vis = id => getComputedStyle(document.getElementById(id)).display !== 'none';
     const posts = () => __MOCK.calls.filter(c => c.path.startsWith('/rpc/submit_score'));
+    // marks: true (the board said it can mark), false (a project without 0014: board_top missing), null (never asked yet)
     const run = async (seed, marks, mode) => {
-      const was = Backend.BOARD_MARKS_CARDS, on = CFG.CARDS.ON;
-      Backend.BOARD_MARKS_CARDS = marks;
+      const was = Backend.BOARD_MARKS_CARDS, v2 = Backend.boardV2, on = CFG.CARDS.ON;
+      Backend.BOARD_MARKS_CARDS = marks === true;
+      Backend.boardV2 = marks === null ? null : marks;
       CFG.CARDS.ON = false;   // the kill switch thrown at the end of a run that played cards
       G.newGame(seed, mode, 'large'); Screens._demo = false; Screens.show('playing');
       S.deck = S.deck || {};
@@ -353,18 +355,31 @@ for (const cards of [true, false]) {
       document.getElementById('btnVicTitle').click();
       await new Promise(r => setTimeout(r, 300));
       o.leftPosts = posts().length - n0;
-      Backend.BOARD_MARKS_CARDS = was;
+      o.sent = (posts().slice(n0)[0] || {}).body || null;
+      o.marksAfter = Backend.BOARD_MARKS_CARDS;
+      Backend.BOARD_MARKS_CARDS = was; Backend.boardV2 = v2;
       CFG.CARDS.ON = on;
       return o;
     };
+    // THE BOARD NOT ASKED YET (build 161): a run whose peek never landed asks board_top at the post, and the
+    // win goes up wearing its mark — this mock's board_top answers as 0014 does for that one run
+    const rest = __NEO_BACKEND_MOCK.rest;
+    const asked = async () => {
+      __NEO_BACKEND_MOCK.rest = (mt, path, body) => path.startsWith('/rpc/board_top') ? (__MOCK.calls.push({ method: mt, path, body }), { ok: true, rows: [], me: null, players: 0 }) : rest(mt, path, body);
+      try { return await run('assisted3', null, 'calm'); } finally { __NEO_BACKEND_MOCK.rest = rest; }
+    };
     // (the control on another difficulty: the board's own duplicate check
     // must never be what keeps a second run of the same score off it)
-    return { held: await run('assisted', false, 'moderate'), marked: await run('assisted2', true, 'hard') };
+    return { held: await run('assisted', false, 'moderate'), marked: await run('assisted2', true, 'hard'), asked: await asked(),
+      asks: __MOCK.calls.filter(c => c.path.startsWith('/rpc/board_top')).length };
   });
   ck('aCardAssistedWinIsHeldWithTheSwitchOff', r.held.off && r.held.scene && r.held.posts === 0 && r.held.leftPosts === 0 && r.held.entry === null &&
     !r.held.row && r.held.noteShown && /cannot wear the card mark/.test(r.held.note), JSON.stringify(r.held));
   ck('andGoesUpCountedOnceTheBoardCanMarkIt', r.marked.off && r.marked.posts === 1 && r.marked.entry && r.marked.entry.cards_played === 2,
     JSON.stringify({ posts: r.marked.posts, entry: r.marked.entry }));
+  ck('aBoardNotAskedYetIsAskedAtThePostAndTheWinGoesUpMarked', r.asked.posts === 1 && r.asked.leftPosts === 1 && r.asked.marksAfter === true &&
+    r.asked.sent && r.asked.sent.p_cards_played === 2 && r.asks >= 1 && !/cannot wear/.test(r.asked.note),
+    JSON.stringify({ posts: r.asked.posts, sent: r.asked.sent && r.asked.sent.p_cards_played, marks: r.asked.marksAfter, asks: r.asks, note: r.asked.note }));
   await p.close();
 }
 

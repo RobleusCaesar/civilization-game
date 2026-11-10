@@ -1877,6 +1877,7 @@ const Screens = {
     this._entry = bh.hold ? null : { score: this._score.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: bh.played, origin: this.runOrigin() };
     this._submitted = false;
     this._leaveWarned = false;
+    this._markWait = false;
     this._winMsg = opts.msg || '';
     // the scene answers to the difficulty you conquered alone now (js/victoryart.js)
     if (window.VictoryArt) {
@@ -1976,6 +1977,12 @@ const Screens = {
         const r = await Backend.reconnect();
         if (!r.ok || !Backend.isReady()) { this._promptName('The world board is out of reach — tap Retry', '↻ Retry'); return; }
       }
+      // an assisted win waits for a board that can wear its mark (boardHold's `ask`)
+      this._markWait = false;
+      if (!(await this._markReady())) {
+        if (this._entry) { this._markWait = true; this._promptName('The world board is out of reach — tap Retry', '↻ Retry'); }
+        return;
+      }
       const inp = this.el('arcadeName');
       const r = await Backend.getProfile().catch(() => ({ ok: false }));
       const saved = r.ok && r.data && r.data.arcade_name;
@@ -2008,9 +2015,36 @@ const Screens = {
     if (B && B.configured && !B.mock && B.telemetryAllowed && !B.telemetryAllowed())
       return { hold: 'A test build — this win is not posted to the world board.', played };
     if (!played) return { hold: '', played };
-    const hold = window.Deck && Deck.isTest && Deck.isTest() ? 'Test-deck run — not posted to the world board.'
-      : !(window.Backend && Backend.BOARD_MARKS_CARDS) ? 'Not posted to the world board — it cannot wear the card mark yet.' : '';
-    return { hold, played };
+    if (window.Deck && Deck.isTest && Deck.isTest()) return { hold: 'Test-deck run — not posted to the world board.', played };
+    if (B && B.BOARD_MARKS_CARDS) return { hold: '', played };
+    /* THE BOARD NOT ASKED YET IS NOT A BOARD THAT CANNOT MARK (build 161,
+       "Literally anyone that wins should take the tenth spot"): the mark
+       was learned only from the board's peek a few seconds into the game
+       (WorldBoard.watch), so a run whose peek never landed — signed in
+       late, a blip on the network, a page the peek skipped — held its
+       assisted win off the board for good, and every new player holds
+       three cards. Now the post ASKS (_offerSubmit, submitScore): the
+       entry is taken, and it goes up the moment board_top answers; only a
+       project that really lacks 0014 (boardV2 false) holds it. `ask` keeps
+       the card's lift out of it — a board never seen places nothing. */
+    if (B && B.configured && B.boardV2 !== false) return { hold: '', played, ask: true };
+    return { hold: this.MARK_HELD, played };
+  },
+  MARK_HELD: 'Not posted to the world board — it cannot wear the card mark yet.',
+  /* an assisted entry may go up only on a board that can wear its mark:
+     asked of the board itself when it has not been asked yet. false holds
+     the entry (and says why); true lets the post go on. */
+  async _markReady() {
+    const e = this._entry, B = window.Backend;
+    if (!e || !e.cards_played || !B || B.BOARD_MARKS_CARDS) return true;
+    if (B.boardV2 !== false && B.isReady && B.isReady()) { try { await B.board({ limit: 10 }); } catch (err) { /* asked again at the next try */ } }
+    if (B.BOARD_MARKS_CARDS) return true;
+    if (B.boardV2 === false && this._entry === e) {
+      this._entry = null;
+      this.el('nameRow').style.display = 'none';
+      this._note(this.MARK_HELD, 'var(--dim)');
+    }
+    return false;
   },
 
   // the one line under the name box
@@ -2035,6 +2069,9 @@ const Screens = {
   _postBeforeLeaving(unloading) {
     if (!this._entry || this._submitted || this._posting) return;
     if (!window.Backend || !Backend.isReady()) return;
+    // an assisted win the board has not yet said it can mark is never posted blind
+    // (the screen asked as it opened — _offerSubmit — so this is a board that never answered)
+    if (this._entry.cards_played && !Backend.BOARD_MARKS_CARDS) return;
     const chk = Score.cleanName(this.el('arcadeName').value);
     const name = chk.ok ? chk.name : Score.fallbackName(Backend.uid);
     this.submitScore(name, { remember: chk.ok, fallback: !chk.ok, keepalive: !!unloading, quiet: true });
@@ -2088,6 +2125,11 @@ const Screens = {
     if (!auto) { btn.textContent = '…'; btn.classList.add('cant'); }
     this._posting = true;
     try {
+      // an assisted win goes up only once the board says it can wear the mark
+      if (entry.cards_played && !Backend.BOARD_MARKS_CARDS && !(await this._markReady())) {
+        if (this._entry) this._promptName('The world board is out of reach — tap Retry', '↻ Retry');
+        return;
+      }
       // idempotent: never double-post the same run — reopening a finished
       // victory, or an auto-post that already landed, just shows the board
       let already = false;
@@ -2193,7 +2235,7 @@ const Screens = {
       if (this.backTo === 'endgame' && window.S && S.over) { this.show('endgame', { win: S.over.win, msg: S.over.msg, back: true }); return; }
       this.show(this.backTo === 'paused' ? 'paused' : 'title');
     });
-    on('btnSubmitScore', () => (window.Backend && Backend.isReady()) ? this.submitScore() : this._offerSubmit());
+    on('btnSubmitScore', () => (window.Backend && Backend.isReady() && !this._markWait) ? this.submitScore() : this._offerSubmit());
     on('btnTitleSettings', () => { this.backTo = 'title'; this.show('settings'); });
     on('btnTitleHow', () => { this.backTo = 'title'; this.show('howto'); });
     for (const id of ['ngBack', 'loadBack', 'setBack', 'howBack'])

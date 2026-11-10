@@ -38,8 +38,9 @@
       or under its own pixels on a 3x screen; nothing runs off the page or
       off its plate from 320 to 1440 wide, a phone on its side included; and
       ONE PAGE: nothing scrolls, the frame is as tall as what it holds, it
-      stands in the middle of the screen, and a short window presses the
-      rows before it leaves a rank off.
+      stands in the middle of the screen, and ALL TEN ARE SHOWN at every
+      size — a short window presses the rows, puts the hidden device's note
+      away and shrinks the podium, and never leaves a rank off.
    7. THE BOARD LIFTS THE CARD: a win placed in the top ten rises a tier
       half the time, on the podium always, never past the highest tier its
       own table rolls (the server's ceiling), never on a loss, a held win or
@@ -210,14 +211,16 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     return { me: me && me.textContent, shown: !!(me && me.offsetParent), listed: [...document.querySelectorAll('#ldrList .wbList:not(.wbMeList) .wbRow')].filter(r => !r.hidden).length };
   });
   await p.close();
-  // tenth on the board, on a phone too short to show the ranks past ninth: the cut row waits at the foot
+  // tenth on the board, on the smallest phone: tenth is shown in its place (a rank is never left off to fit), nothing waits at the foot
   const cut = ROWS.map(r => r.uid === 'mock-uid-0001' ? Object.assign({}, r, { score: 11000 }) : r);
   const c = await boot(MOCK({ rows: cut, hidden: ['ops'], name: 'MOSSY' }), { width: 320, height: 568, dsf: 1 });
   await openBoard(c);
   const k = await c.evaluate(() => {
     const vis = [...document.querySelectorAll('#ldrList .wbList:not(.wbMeList) .wbRow')].filter(r => !r.hidden).map(r => r.querySelector('.wbRk').textContent);
-    const me = document.querySelector('#ldrList .wbMeList:not([hidden]) .wbRow');
-    return { vis: vis.join(','), me: me && me.textContent, shown: !!(me && me.offsetParent) };
+    const me = document.querySelector('#ldrList .wbMeList .wbRow');
+    const ten = [...document.querySelectorAll('#ldrList .wbList:not(.wbMeList) .wbRow')].find(r => r.querySelector('.wbRk').textContent === '10');
+    const pane = document.querySelector('#scrLeaders .wbPane');
+    return { vis: vis.join(','), me: me && me.textContent, tenth: ten ? ten.textContent : '', mine: !!(ten && ten.classList.contains('mine')), scroll: pane.scrollHeight - pane.clientHeight };
   });
   await c.close();
   const q = await boot(MOCK({ rows: ROWS, hidden: ['ops', 'mock-uid-0001'], name: 'MOSSY' }));
@@ -226,8 +229,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   await q.close();
   ck('offTheListYourBestWaitsAtTheFoot', a.me && /^123MOSSY/.test(a.me) && a.shown && a.listed === 7,
     `"${a.me}" (shown ${a.shown}); ${a.listed} rows under the podium`);
-  ck('andARowCutToFitWaitsThereToo', k.me && /^10MOSSY/.test(k.me) && k.shown && k.vis && !/\b10\b/.test(k.vis) && /^4,5,6/.test(k.vis),
-    `ranks shown ${k.vis}; at the foot "${k.me}"`);
+  ck('andTenthIsShownInItsPlaceOnTheSmallestPhone', k.vis === '4,5,6,7,8,9,10' && /^10MOSSY/.test(k.tenth) && k.mine && !k.me && k.scroll <= 1,
+    `ranks shown ${k.vis}; tenth "${k.tenth}" (gold ${k.mine}); at the foot "${k.me || 'nothing'}"; pane overflow ${k.scroll}`);
   ck('aDeviceLeftOutIsToldSo', /kept off the board/.test(h.aside || '') && !h.mossy, `"${h.aside}"; MOSSY shown ${h.mossy}`);
 }
 
@@ -302,10 +305,15 @@ for (const v1 of [true, false]) {
 
 // ---- 6. vector chrome, icons within their pixels, and it fits ----
 {
-  const sizes = [[320, 568, 3], [390, 844, 3], [430, 932, 3], [844, 390, 3], [568, 320, 2], [1536, 730, 1], [1440, 900, 1]];
+  // every size, and the two hard cases of build 161 (the tenth was left off a 1280x720 laptop): a device kept off the board,
+  // whose note takes room at the foot, and a player past tenth, whose own row waits there
+  const LOW = ROWS.map(r => r.uid === 'mock-uid-0001' ? Object.assign({}, r, { score: 100 }) : r);
+  const sizes = [[320, 568, 3], [390, 844, 3], [430, 932, 3], [844, 390, 3], [568, 320, 2], [1536, 730, 1], [1440, 900, 1], [1280, 720, 1], [1280, 600, 1],
+    [1280, 720, 1, 'kept'], [1536, 730, 1, 'kept'], [320, 568, 3, 'kept'], [1280, 720, 1, 'past'], [568, 320, 2, 'past'], [844, 390, 3, 'past'], [1280, 600, 1, 'past']];
   const out = [];
-  for (const [w, h, dsf] of sizes) {
-    const p = await boot(MOCK({ rows: ROWS, hidden: ['ops'], name: 'MOSSY' }), { width: w, height: h, dsf });
+  for (const [w, h, dsf, kase] of sizes) {
+    const tag = kase ? `${w}x${h}${kase === 'kept' ? 'KeptOff' : 'PastTenth'}` : `${w}x${h}`;
+    const p = await boot(MOCK({ rows: kase === 'past' ? LOW : ROWS, hidden: kase === 'kept' ? ['ops', 'mock-uid-0001'] : ['ops'], name: 'MOSSY' }), { width: w, height: h, dsf });
     await openBoard(p);
     await p.evaluate(() => Promise.all([...document.querySelectorAll('#scrLeaders img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))));
     const m = await p.evaluate(() => {
@@ -339,23 +347,29 @@ for (const v1 of [true, false]) {
       const pane = scr.querySelector('.wbPane'), fr = scr.querySelector('.wbFrame').getBoundingClientRect();
       const back = scr.querySelector('#ldrBack').getBoundingClientRect(), H = document.documentElement.clientHeight;
       const kids = [...pane.querySelectorAll('#ldrList > *, .wbRest > *')].filter(e => e.offsetParent).map(e => e.getBoundingClientRect().bottom);
-      const shownRows = [...scr.querySelectorAll('.wbList:not(.wbMeList) > .wbRow')].filter(r => !r.hidden);
+      const shownRows = [...scr.querySelectorAll('.wbList:not(.wbMeList) > .wbRow')].filter(r => !r.hidden && r.offsetParent);
+      // a row the page lists is IN view: never under the player's own row stuck at the foot, never past the pane
+      const pr = pane.getBoundingClientRect(), foot = scr.querySelector('.wbMeList');
+      const footTop = foot && foot.offsetParent ? foot.getBoundingClientRect().top : Infinity;
+      const inView = shownRows.filter(r => { const b = r.getBoundingClientRect(); return b.top >= pr.top - 0.5 && b.bottom <= Math.min(pr.bottom, footTop) + 0.5; }).length;
       const page = { scroll: pane.scrollHeight - pane.clientHeight, docScroll: document.documentElement.scrollHeight - H, frameBottom: Math.round(fr.bottom), H,
         slack: Math.round(pane.getBoundingClientRect().bottom - Math.max(...kids)), above: Math.round(back.top), below: Math.round(H - fr.bottom),
-        rows: shownRows.length, rowH: shownRows[0] ? Math.round(shownRows[0].getBoundingClientRect().height) : 0 };
+        rows: shownRows.length, inView, rowH: shownRows[0] ? Math.round(shownRows[0].getBoundingClientRect().height) : 0,
+        me: !!(foot && foot.offsetParent), note: !!scr.querySelector('.wbAside') };
       return { page, svg: scr.querySelectorAll('svg.wbMedal').length + scr.querySelectorAll('svg.wbCrown').length + scr.querySelectorAll('svg.wbTrophy').length,
         imgs: [...scr.querySelectorAll('img')].map(i => i.src.split('/').pop().split('?')[0]).filter((v, i, a) => a.indexOf(v) === i),
         bad, ras, over, overlap, hscroll: document.documentElement.scrollWidth > W + 1 };
     });
-    out.push(`${w}x${h}: ${m.bad.length + m.ras.length + m.over.length + (m.overlap ? 1 : 0) + (m.hscroll ? 1 : 0)} faults`);
-    ck(`theChromeIsVectorAndTheIconsWithinTheirPixelsAt${w}x${h}`, m.svg === 5 && m.ras.length === 0 && m.bad.length === 0 &&
+    out.push(`${tag}: ${m.bad.length + m.ras.length + m.over.length + (m.overlap ? 1 : 0) + (m.hscroll ? 1 : 0)} faults`);
+    ck(`theChromeIsVectorAndTheIconsWithinTheirPixelsAt${tag}`, m.svg === 5 && m.ras.length === 0 && m.bad.length === 0 &&
       m.imgs.every(n => /^trial-[a-z]+\.png$/.test(n)), `${m.svg} vector medals/crown/trophy; rasters ${m.imgs.join(' ')}; ${m.bad.concat(m.ras).join(' | ') || 'all within their pixels'}`);
-    ck(`andNothingRunsOffAt${w}x${h}`, m.over.length === 0 && !m.overlap && !m.hscroll, m.over.join(' | ') || (m.overlap ? 'two steps overlap' : m.hscroll ? 'the page scrolls sideways' : 'fits'));
-    // every size shows at least five ranks under the podium; a tall one shows all seven at their full height
+    ck(`andNothingRunsOffAt${tag}`, m.over.length === 0 && !m.overlap && !m.hscroll, m.over.join(' | ') || (m.overlap ? 'two steps overlap' : m.hscroll ? 'the page scrolls sideways' : 'fits'));
+    // EVERY size shows all seven ranks under the podium, in view (operator, build 161: "Literally anyone that wins should take the
+    // tenth spot"): the page presses its rows, its note and its podium instead; a tall one shows them at their full height
     const g = m.page, tall = h >= 844;
-    ck(`andItIsOnePageAt${w}x${h}`, g.scroll <= 1 && g.docScroll <= 1 && g.frameBottom <= g.H && g.slack <= 12 && Math.abs(g.above - g.below) <= 16 &&
-      g.rows >= 5 && (!tall || g.rows === 7) && g.rowH >= 38,
-      `pane overflow ${g.scroll}, page ${g.docScroll}; empty band in the frame ${g.slack}px; above ${g.above} / below ${g.below}; ${g.rows} ranks at ${g.rowH}px`);
+    ck(`andItIsOnePageWithAllTenAt${tag}`, g.scroll <= 1 && g.docScroll <= 1 && g.frameBottom <= g.H && g.slack <= 12 && Math.abs(g.above - g.below) <= 16 &&
+      g.rows === 7 && g.inView === 7 && g.rowH >= 26 && (!tall || g.rowH >= 42) && (kase !== 'past' || g.me) && (kase !== 'kept' || g.note),
+      `pane overflow ${g.scroll}, page ${g.docScroll}; empty band in the frame ${g.slack}px; above ${g.above} / below ${g.below}; ${g.rows} ranks (${g.inView} in view) at ${g.rowH}px; own row at the foot ${g.me}; note ${g.note}`);
     await p.close();
   }
 }

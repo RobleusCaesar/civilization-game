@@ -235,7 +235,7 @@ node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcull
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed; the order's own button BECOMES the call-off (upgrades, sites, the wall works, a span's reinforcing); every panel two buttons to a row, none full width unless alone
-node tests/board-post.mjs      # every victory goes on the world board — the name box is on the scene, leaving still posts, the cloud gets a second chance, file:// never touches the cloud
+node tests/board-post.mjs      # every victory goes on the world board — the name box is on the scene, leaving still posts, the cloud gets a second chance, file:// never touches the cloud; a card-assisted win asks a board not asked yet and goes up marked
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
 node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep the ground they were raised on
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
@@ -290,7 +290,7 @@ node tests/vote.mjs          # a vote earns a card: the title's banner and the r
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back; a building of the player's a road meets edge-on works a tenth better (stations yield, yards and the hall train, the post's caravans, forts take less, a house holds one more), never on top of a homestead, gone with the road, gold on its panel, promised on the placement chip, one small twinkle
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
-node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE (nothing scrolls, the frame as tall as what it holds, centred, rows pressed before a rank is left off), your best at the foot, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
+node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE WITH ALL TEN (nothing scrolls, the frame as tall as what it holds, centred; a short window presses the rows, puts the hidden device's note away and shrinks the podium, never leaving a rank off — 1280x720 showed nine), your best at the foot past tenth, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
 node tests/test-page.mjs     # the test page is a sandbox: a run founded there starts with 2,000 of every good, the deck is all 36 cards on every load under keys of its own, the live collection never touched; the live site none of it
 node tests/barb-bands.mjs    # every band its own fight: light / mid / heavy tiers worth their cost by the square law, a strength budget bought by each people's odds (five skirmishers or two brutes), wolves with the Wolfskins and a bear with the Flintfolk (at their camps too, over the quota), harry (hurt ones run, hands first) and press (each fall calls one more up, a few a band), drawn off the seed and never G.rand, in the save
 node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, a raider drawn in a 28 box and a light skirmisher in a 26 (their strips fill the frame, so at the cast's 32 they stood the brute's height), a brute 80px into a 40 box, a head over the raider by the drawn ink, a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
@@ -1229,10 +1229,22 @@ it may never conjure one (`noCardPlayIsADeed`). **"No way back"'s Resign is a
 DEFEAT** (cause `'doomed'`), never a struck banner — accepting the truth must
 not cost the card — and the rival's Wonder ends as `'rival_wonder'` (a NULL
 cause fails every server `NOT IN`). **A card-assisted run is marked** (end
-screen, `cards_played` / `cards_test`), and an assisted win is held OFF the
-world board until `Backend.BOARD_MARKS_CARDS` — which board_top's first
-answer sets, since migration 0014 gave `submit_score` its `p_cards_played`
-(**THE WORLD BOARD** below); a test deck's never posts. **The hold is ONE answer, `Screens.boardHold(win)`**,
+screen, `cards_played` / `cards_test`), and an assisted win goes up WEARING
+THE MARK once `Backend.BOARD_MARKS_CARDS` — which board_top's first answer
+sets, since migration 0014 gave `submit_score` its `p_cards_played`
+(**THE WORLD BOARD** below); a test deck's never posts. **A BOARD NOT ASKED
+YET IS ASKED AT THE POST** (build 161, `boardHold`'s `ask`,
+`Screens._markReady`): the mark was learned only from the board's peek a
+few seconds into the game, so a run whose peek never landed (signed in late,
+a network blip) held its assisted win off the board for good — and every
+new player holds three starter cards. Now the entry is taken and
+`_offerSubmit` / `submitScore` ask board_top first; it goes up the moment
+the board answers, a board that does not answer offers Retry
+(`_markWait` routes it back through the ask), and only a project that
+really lacks 0014 (`boardV2 === false`) holds it, in the old words
+(`MARK_HELD`). An unconfirmed assisted entry is never posted blind on the
+way out (`_postBeforeLeaving`), and `ask` places nothing for the card's
+lift (a board never seen). **The hold is ONE answer, `Screens.boardHold(win)`**,
 asked by the old victory scene and `DeckScreens._armBoard` alike, read off
 `S.deck.played`, NEVER the switch — a run that played cards and ended with
 `?cards=0` was still assisted (board-post
@@ -1355,16 +1367,27 @@ only the overall, all-time board (true brings the difficulty and week bars
 back as they were; a later ask still overtakes a slow one, `_seq`). The page
 is the TOP TEN (`SHOW`): the frame is as tall as what it holds (never
 `flex: 1`, no `min-height: 100%`) and stands
-with the title in the middle of the screen; nothing scrolls. Where ten do
-not fit, `WorldBoard._fit` (on render, resize and `cf-fit`, measured off the
-pane's own overflow) presses every row under the podium alike (`--rowh`,
-down to `ROW_MIN` 38px), then leaves the lowest ranks off; the player's own
-row, cut that way, waits at the foot (the hidden `.wbMeList`). A phone on its
+with the title in the middle of the screen; nothing scrolls. **EVERY ONE OF
+THE TEN IS SHOWN, AT EVERY SIZE** (operator, build 161: "It only shows 9 and
+not 10 … Literally anyone that wins should take the tenth spot" — build 143
+left the lowest ranks off a short window, and on a 1280x720 laptop, the
+operator's own hidden-device note at the foot taking room, that was the
+tenth). `WorldBoard._fit` (on render, resize and `cf-fit`, measured off the
+pane's own STRICT overflow — a tenth row 1px past the pane is under its
+edge) gives way in order, each step taking only what the page needs (a
+search for the tallest row, the largest podium): the rows under the podium
+pressed alike (`--rowh`, to `ROW_MIN` 38px); the hidden device's note put
+away (`.wbAside` — the one thing ever hidden); the podium drawn smaller
+(CSS `zoom`, to `POD_MIN` 0.62, so its layout shrinks with it); the rows
+tightened (`.wbTight`: a smaller rank chip and padding, to `ROW_FLOOR`
+26px, the player's own foot row with them). A window too small even for
+that scrolls with all ten in it; a rank is never left off, so the player's
+own row waits at the foot only when they stand past tenth. A phone on its
 side (`min-aspect-ratio: 4/3`, `max-height: 560px`) stands the podium on the
 left, the ranks on the right; a short laptop and a short phone step the
-podium down. Once ranks are left off, the rows that stay take the tallest
-height that still fits (a search, so no band is left empty). tests/world-board.mjs §6 holds it at seven sizes,
-320x568 to 1536x730 and 568x320. Every ornament is SVG (medal, crown, trophy);
+podium down. tests/world-board.mjs §6 holds all seven ranks IN VIEW at nine
+sizes, 320x568 to 1536x730, 568x320 and 1280x600, and the two hard cases
+(a device kept off the board, a player past tenth) at four more. Every ornament is SVG (medal, crown, trophy);
 the only rasters are the 256px trial icons, at ≤30 CSS px. **ONE ROW PER CHIEF, YOUR DEVICES LEFT OFF** (0014's `board_top`):
 each player's best victory (the earlier of equal scores first) with their
 victory count, minus `analytics__hidden()` — a device marked the operator's,

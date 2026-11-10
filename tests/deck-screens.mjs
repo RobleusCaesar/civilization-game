@@ -383,8 +383,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     const out = {};
     const t0 = Deck.total();
     const note = () => { const e = document.getElementById('savedNote'); return __shown(e) && !!e.closest('#cardEnd') ? e.textContent : ''; };
-    const was = Backend.BOARD_MARKS_CARDS;
-    Backend.BOARD_MARKS_CARDS = false;
+    // a project without 0014 (board_top missing): the board cannot wear the mark — a board merely not asked yet asks at the post (board-post.mjs)
+    const was = Backend.BOARD_MARKS_CARDS, v2 = Backend.boardV2;
+    Backend.BOARD_MARKS_CARDS = false; Backend.boardV2 = false;
     window.__run({ seed: 'ds-short', win: true, secs: 120, played: [{ id: 'forager_cache', day: 2 }] });
     const root = document.getElementById('cardEnd');
     out.card = !!root.querySelector('.ceMove .ccard');
@@ -394,7 +395,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.heldNote = note();
     out.nameBox = __shown(document.getElementById('nameRow'));
     out.assist = __shown(root.querySelector('.ceAssist'));
-    Backend.BOARD_MARKS_CARDS = true;
+    Backend.BOARD_MARKS_CARDS = true; Backend.boardV2 = true;
     window.__run({ seed: 'ds-short-b', win: true, secs: 120, played: [{ id: 'forager_cache', day: 2 }] });
     out.cards = Screens._entry && Screens._entry.cards_played;
     out.markedNote = note();
@@ -407,7 +408,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     window.__run({ seed: 'ds-short-u', win: true, secs: 120 });
     out.testUnassisted = !!Screens._entry && Screens._entry.cards_played === 0;
     delete Deck.col().test;
-    Backend.BOARD_MARKS_CARDS = was;
+    Backend.BOARD_MARKS_CARDS = was; Backend.boardV2 = v2;
     return out;
   });
   ck('aShortWinStillEarns', q.card && !q.why && q.gained >= 1, `card ${q.card}, why shown ${q.why}, gained ${q.gained}`);
