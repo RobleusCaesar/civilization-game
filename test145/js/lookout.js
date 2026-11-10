@@ -274,15 +274,20 @@ const Lookout = {
      inside the fence at the top of the tower remains… They just look so so
      small relative to the villagers… It's okay if the archers are a little
      squished next to each other, as long as their bodies stay inside the
-     fence"), and a tenth again at build 150 ("Can we boost archer sizes
-     another 10-20% in size"): 38 art px at the first cut, 53, now 59 — on
-     a free tower about eight tenths of a villager, on a wall tower, whose
-     art is denser, about his height. His places are as far apart as his
-     body allows: at rest, whichever way he faces and in every frame, no
+     fence"), a tenth again at build 150 ("Can we boost archer sizes
+     another 10-20% in size"), and at build 162 ("they still look a little
+     tiny, can we redesign them slightly… Overlapping is okay"): 38 art px at
+     the first cut, 53, 59, now 76 on a free tower (a villager's height
+     beside him) and 68 on a wall tower, whose art is denser (a tenth over
+     him). What made the room is the RESTING POSE (restFace): a man used to
+     rest in whatever facing he arrived in, so his places were fitted to his
+     widest view; now he keeps watch turned three-quarter out over his own
+     side, and the fit is set by his drawn bow. His places are as far apart
+     as his body allows: at rest, in his resting facing and every frame, no
      part of him (his bow aside) passes the platform's outer posts; drawing
-     his bow, his arm may reach over the side rail by at most a sixth of his
-     height, as an archer leans out to shoot. Two up there stand a little
-     squeezed together, side by side.
+     his bow, in any of eight facings, his arm may reach over the side rail
+     by at most a sixth of his height, as an archer leans out to shoot. Two
+     up there stand shoulder to shoulder, a little overlapped.
 
      PLAT, per drawn tower, in the art's own pixels (measured off the shipped
      roofless PNGs — tests/tower-garrison.mjs reads them back off the files):
@@ -301,22 +306,22 @@ const Lookout = {
   PLAT: {
     free: [
       { front: '15:41 16-17:39 18:40 19-21:45 22:49 23:50 24:51 25-27:50 28:51 29:49 30:48 31:49 32:51 33:52 34-35:54 36-51:55 52-54:54 55:51 56:49 57:48 58:49 59:51 60-62:50 63:51 64:50 65:49 66-68:45 69:40 70-71:39 72:41',
-        man: 59, feet: 60, slots: [34, 53], solo: 34, art: [88, 114] },
+        man: 76, feet: 60, slots: [38, 49], solo: 43, art: [88, 114] },
       { front: '15:38 16-18:37 19:40 20:42 21-61:48 62:42 63:40 64-67:37 68:38',
-        man: 59, feet: 58, slots: [34, 49], solo: 42, art: [84, 116] },
+        man: 76, feet: 58, slots: [38, 45], solo: 41, art: [84, 116] },
       { front: '12:8 13-19:7 20-21:12 22-23:18 24:14 25-30:12 31:13 32-36:18 37:13 38-45:12 46:13 47-51:18 52:13 53-58:12 59:13 60-61:18 62:13 63-64:12 65-71:7 72:8',
-        man: 59, feet: 27, slots: [31, 53], solo: 34, art: [84, 113] },
+        man: 76, feet: 27, slots: [35, 49], solo: 42, art: [84, 113] },
     ],
     wall: [
       { front: '5:37 6:36 7:35 8-9:34 10:35 11:36 12:35 13-20:44 21-22:45 23-27:44 28-29:45 30-32:46 33-38:45 39-45:44 46-47:45 48-54:44 55:36 56:35 57-58:34 59:35 60:36 61:37',
-        man: 59, feet: 57, slots: [25, 41], solo: 34, art: [68, 90] },
+        man: 68, feet: 57, slots: [25, 40], solo: 32, art: [68, 90] },
       { front: '1:38 2:37 3-4:36 5:37 6:38 7-8:39 9-17:47 18:48 19-49:47 50-51:39 52:37 53-54:36 55:37 56:38',
-        man: 59, feet: 57, slots: [21, 36], solo: 29, art: [58, 91] },
+        man: 68, feet: 57, slots: [21, 35], solo: 28, art: [58, 91] },
       { front: '3:8 4-8:7 9-12:12 13-14:18 15:14 16-21:12 22:13 23-27:18 28:13 29-36:12 37:13 38-42:18 43:13 44-50:12 51-52:18 53:11 54-58:12 59-62:7 63:8',
-        man: 59, feet: 27, slots: [23, 43], solo: 25, art: [65, 85] },
+        man: 68, feet: 27, slots: [23, 42], solo: 32, art: [65, 85] },
     ],
   },
-  PROC: { cy: 0.22, man: 0.66, feet: 0.34, slots: [0.33, 0.67], solo: 0.5 },
+  PROC: { cy: 0.22, man: 0.84, feet: 0.34, slots: [0.33, 0.67], solo: 0.5 },
   // a bow's frame fills its box from `top` to `foot` (the shipped archer,
   // longbow and marksman frames: rows 3 and 31 of 32)
   BODY: { top: 3 / 32, foot: 31 / 32 },
@@ -452,6 +457,26 @@ const Lookout = {
     const B = man / (Bd.foot - Bd.top);
     const top = feet - Bd.foot * B;
     return { x, y: feet, head: feet - man, rail: Math.min(rail, feet), B, left: x - B / 2, top, k: B / R.unitBox(u) };
+  },
+  /* A LOOKOUT AT REST LOOKS OUT (build 162 — operator: "they still look a
+     little tiny, can we redesign them slightly when they're in the tower to
+     look bigger, but still fit inside the fence? Overlapping is okay, or
+     modifying their design or look slightly is too"): a bow on the platform
+     with nothing to shoot keeps watch over his own side — the left man turned
+     out to the south-west, the right man to the south-east, a lone man
+     straight out to the south (REST) — and turns to his mark the moment he
+     has one (the fight pose faces the target, as on the ground). Turned
+     three-quarter out, two men stand a little apart and each shows his face
+     and his tribe's tunic; the facing he arrived in (any of eight) used to
+     decide his width, so the places were fitted to his widest view. Render
+     only: no facing is ever stored, and the sim never asks. */
+  REST: { left: 'sw', right: 'se', solo: 's' },
+  restFace(u) {
+    if (!u || !u.perch) return null;
+    let crew = null;
+    for (const o of S.units) if (o.perch === u.perch) (crew || (crew = [])).push(o);
+    if (!crew || crew.length < 2) return this.REST.solo;
+    return this.slotOf(u, crew) === 0 ? this.REST.left : this.REST.right;
   },
   // which of the two places is his: the one he took, else by who came first
   slotOf(u, crew) {
@@ -662,7 +687,8 @@ const Lookout = {
      archer type. Better archers on the ground mean better archers in the
      tower, regardless of the towers level. The only benefit to higher towers
      is that they're harder to knock down"). A bow on a platform strikes
-     CFG.LOOKOUT.atk (1.25 since build 151) times his own ground blow — Units.effAtk, every
+     CFG.LOOKOUT.atk (1 since build 162 — operator: "reduce archers in the tower to their
+     normal on the ground damage. They're too strong right now") times his own ground blow — Units.effAtk, every
      bonus a man standing there would have included — (Combat's strike, at
      units and at works alike) and takes `hurt` (0.8) of every blow that
      reaches him (Combat.covered, asked where the blow is dealt and before its
@@ -678,16 +704,21 @@ const Lookout = {
   // the tower panel's words for what the platform gives the bows on it —
   // the toughness as the operator put it (build 151: "defense to 25% above
   // normal"): `hurt` 0.8 is a man who takes 1.25 times the punishment
+  // (no blow bonus since build 162: then only the toughness is said)
   perkLine() {
     const c = this.cfg(), a = Math.round((+c.atk || 1) * 100 - 100), t = Math.round(100 / (+c.hurt || 1) - 100);
-    return (a === 100 ? 'hit twice as hard' : `hit ${a}% harder`) + ' and ' + (t === 100 ? 'are twice as tough' : `are ${t}% tougher`);
+    const parts = [];
+    if (a > 0) parts.push(a === 100 ? 'hit twice as hard' : `hit ${a}% harder`);
+    if (t > 0) parts.push(t === 100 ? 'are twice as tough' : `are ${t}% tougher`);
+    return parts.join(' and ');
   },
 
   /* ---- the panels (ui.js asks these, guarded on the method) ---- */
   towerLine(b) {
     if (!this.isPost(b, 'P') && !this.crew(b).length) return '';
     const n = this.crew(b).length, cap = this.cfg().cap;
-    return n ? `🏹 ${n}/${cap} archers on the lookout: they shoot all the tower sees, ${this.perkLine()}`
+    const perk = this.perkLine();
+    return n ? `🏹 ${n}/${cap} archers on the lookout: they shoot all the tower sees${perk ? ' and ' + perk : ''}`
       : 'No archers on it, so it shoots nothing — train archers at the Archery Range, select them, then tap the tower';
   },
   towerButtons(b) {

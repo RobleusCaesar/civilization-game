@@ -44,10 +44,15 @@
    isn't unbalanced empty space. Make sure everything fits on a single
    page"): the board is the TOP TEN (SHOW), the frame is as tall as what it
    holds and stands in the middle of the screen with the title, and nothing
-   scrolls. Where the ten do not fit, the rows under the podium are pressed
-   down to ROW_MIN (_fit, measured: the pane's own overflow), and only then
-   are the lowest ranks left off — the player's own row, cut that way,
-   waits at the foot. A phone on its side puts the podium beside the rows.
+   scrolls. EVERY ONE OF THE TEN IS SHOWN (operator, build 161: "It only
+   shows 9 and not 10 … Literally anyone that wins should take the tenth
+   spot"): build 143 left the lowest ranks off a window too short for them,
+   and on a 1280x720 laptop that was the tenth. Where the ten do not fit,
+   _fit (measured: the pane's own overflow) presses the rows under the
+   podium down to ROW_MIN, puts away the hidden device's note, shrinks the
+   podium (POD_MIN), then tightens the rows (ROW_FLOOR) — and on a window
+   too small even for that the pane scrolls with all ten in it. A rank is
+   never left off. A phone on its side puts the podium beside the rows.
 
    THE CARD THE BOARD LIFTS is said on the reward screen ("▲ Board #N"),
    never here.
@@ -62,7 +67,9 @@
 const WorldBoard = {
   LIMIT: 100,                 // the chiefs a board asks for (board_top's own ceiling — the card's lift reads them)
   SHOW: 10,                   // the chiefs the page shows: the podium and the ranks under it to tenth
-  ROW_MIN: 38,                // how far a row under the podium may be pressed before a rank is left off
+  ROW_MIN: 38,                // how far a row under the podium is pressed before anything else gives
+  POD_MIN: 0.62,              // how small the podium may be drawn (a zoom) to keep the ten on one page
+  ROW_FLOOR: 26,              // the tightest row, its rank chip and padding stepped down (.wbTight)
   FILTERS: false,             // the difficulty / week bars: put away for now (the operator's word)
   PEEK_MS: 8 * 60 * 1000,     // how often a game in play looks at the board again
   PEEK_AFTER_MS: 4000,        // …and the first look, this long after the world opens (never in the entry's own frames)
@@ -284,19 +291,24 @@ const WorldBoard = {
       `<span class="wbTags">${this.modeIcon(r.mode)}</span>` +
       `<span class="wbPts">${this.pts(r.score)}</span></li>`;
   },
-  /* the player's own best, at the foot, when it is not shown above it: past
-     tenth, or cut by the fit (a row the page lists waits here hidden, and
-     _fit shows it the moment its own row is left off) */
+  /* the player's own best, at the foot, when the ten above do not hold it
+     (every one of the ten is always shown, so a listed row is never cut) */
   meRow(d, rows) {
     const me = d && d.me, at = rows.findIndex(r => r.mine);
     if (me && me.hidden) return '<p class="wbMine wbAside">Your games on this device are kept off the board.</p>';
-    if (at >= 0 && at < 3) return '';
+    if (at >= 0 && at < this.SHOW) return '';
     const r = at >= 0 ? rows[at] : me;
     if (!r) return '';
-    return `<ol class="wbList wbMeList"${at >= 0 && at < this.SHOW ? ' hidden' : ''}>${this.row(r, true)}</ol>`;
+    return `<ol class="wbList wbMeList">${this.row(r, true)}</ol>`;
   },
 
-  /* ---------------- one page: the rows pressed, then the lowest ranks left off ---------------- */
+  /* ---------------- one page: every rank shown, the page pressed to hold them ---------------- */
+  /* What gives, in order, until the pane holds without scrolling: the rows
+     (to ROW_MIN), the hidden device's note, the podium (a zoom, to POD_MIN),
+     the rows again (.wbTight, to ROW_FLOOR). Each step takes only what the
+     page needs — the tallest row and the largest podium that still fit — so
+     no band is left empty. Nothing is ever hidden but the note; a window too
+     small for all of that scrolls, with every rank in it. */
   _fit() {
     const pane = this.el && this.el.querySelector('.wbPane');
     if (!pane) return;
@@ -308,23 +320,40 @@ const WorldBoard = {
     this._fitTries = 0;
     const list = pane.querySelector('.wbList:not(.wbMeList)');
     const rows = list ? [...list.children] : [];
-    const meL = pane.querySelector('.wbMeList'), mine = rows.find(r => r.classList.contains('mine'));
-    const sync = () => { if (meL && mine) meL.hidden = !mine.hidden; };
+    const pod = pane.querySelector('.wbPodium'), aside = pane.querySelector('.wbAside');
+    const press = h => list && list.style.setProperty('--rowh', h + 'px');
+    const zoom = z => { if (pod) { if (z < 1) pod.style.zoom = String(z); else pod.style.removeProperty('zoom'); } };
     for (const r of rows) r.hidden = false;
-    if (list) { list.hidden = false; list.style.removeProperty('--rowh'); }
-    sync();
-    const over = () => pane.scrollHeight - pane.clientHeight > 1;
-    if (!rows.length || !over()) return;
-    const h0 = Math.round(rows[0].getBoundingClientRect().height);
-    const press = h => list.style.setProperty('--rowh', h + 'px');
-    // pressed as far as ROW_MIN, leave the lowest ranks off until the page holds…
-    press(this.ROW_MIN);
-    for (let i = rows.length - 1; i >= 0 && over(); i--) { rows[i].hidden = true; sync(); }
-    if (rows.every(r => r.hidden)) { list.hidden = true; return; }
-    // …then give the ranks that stay the tallest row that still fits (no band left empty)
-    let lo = this.ROW_MIN, hi = h0;
-    while (lo < hi) { const m = Math.ceil((lo + hi) / 2); press(m); if (over()) hi = m - 1; else lo = m; }
-    press(lo);
+    if (list) { list.hidden = false; list.classList.remove('wbTight'); list.style.removeProperty('--rowh'); }
+    if (aside) aside.hidden = false;
+    zoom(1);
+    const over = () => pane.scrollHeight > pane.clientHeight;   // strict: a tenth row hanging 1px past the pane is under its edge
+    if (!over()) return;
+    // the largest value in [lo, hi] (whole steps of `step`) that still fits, set; false when even lo does not
+    const tallest = (set, lo, hi, step) => {
+      set(lo);
+      if (over()) return false;
+      let a = 0, b = Math.max(0, Math.round((hi - lo) / step));
+      while (a < b) { const m = Math.ceil((a + b) / 2); set(lo + m * step); if (over()) b = m - 1; else a = m; }
+      set(lo + a * step);
+      return true;
+    };
+    const h0 = rows.length ? Math.round(rows[0].getBoundingClientRect().height) : 0;
+    // 1. the rows, pressed
+    if (rows.length && tallest(press, Math.min(this.ROW_MIN, h0), h0, 1)) return;
+    // 2. the hidden device's note put away (the ranks matter more)
+    if (aside) {
+      aside.hidden = true;
+      if (!rows.length ? !over() : tallest(press, Math.min(this.ROW_MIN, h0), h0, 1)) return;
+    }
+    // 3. the podium, drawn smaller (CSS zoom: its layout shrinks with it)
+    if (pod && 'zoom' in pod.style && tallest(zoom, this.POD_MIN, 1, 0.02)) return;
+    // 4. the rows tightened, the podium at its smallest
+    if (rows.length) {
+      list.classList.add('wbTight');
+      if (tallest(press, this.ROW_FLOOR, this.ROW_MIN, 1)) return;
+    }
+    // 5. a window too small even for that: the pane scrolls, every rank still in it
   },
 
   /* ---------------- the board as last seen (the card's lift) ---------------- */
@@ -365,6 +394,7 @@ const WorldBoard = {
   placeFor(score) {
     const c = this._peek;
     if (!c || !Array.isArray(c.rows)) return null;
+    if (c.me && c.me.hidden) return null;   // a device the board leaves out stands nowhere, so lifts nothing
     let above = 0;
     for (const r of c.rows) if (!r.mine && (+r.score || 0) > (+score || 0)) above++;
     return above + 1;
@@ -435,7 +465,7 @@ WorldBoard.CSS = `
   background: linear-gradient(#f0cd6e 0%, #d7a542 50%, #b8862c 100%); box-shadow: inset 0 0 0 1px #fff0b8; }
 #scrLeaders.wb .wbSeg button:focus-visible { outline: 2px solid #e8c15a; outline-offset: -2px; }
 
-/* ---- the pane: it never scrolls (WorldBoard._fit) — the scroll is only a last resort on a window too small for the podium ---- */
+/* ---- the pane: it never scrolls (WorldBoard._fit) — the scroll is only a last resort on a window too small for all ten, pressed ---- */
 #scrLeaders.wb .wbPane { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; touch-action: pan-y;
   padding: 6px 8px 0; position: relative; z-index: 1; overscroll-behavior: contain; }
 #scrLeaders.wb #ldrList { display: flex; flex-direction: column; }
@@ -517,6 +547,14 @@ WorldBoard.CSS = `
   text-shadow: 0 1.5px 0 rgba(0,0,0,0.9); }
 #scrLeaders.wb .wbRow.mine { background: linear-gradient(90deg, rgba(122,88,30,0.55), rgba(60,42,14,0.5)); box-shadow: inset 0 0 0 1px #f2cf6c, inset 0 0 0 2px rgba(60,40,10,0.8); }
 #scrLeaders.wb .wbRow.mine .wbRk { color: #2b1906; background: linear-gradient(#f4d272, #c8942f); box-shadow: inset 0 0 0 1px #fff0b8; }
+/* the tightest rows (WorldBoard._fit's last step): the rank chip and the padding step down so a row can be ROW_FLOOR */
+#scrLeaders.wb .wbList.wbTight { gap: 2px; margin-top: 4px; }
+#scrLeaders.wb .wbList.wbTight .wbRow { padding-top: 1px; padding-bottom: 1px; }
+#scrLeaders.wb .wbList.wbTight .wbRk { height: 24px; }
+#scrLeaders.wb .wbList.wbTight .wbTags img { width: 20px; height: 20px; }
+#scrLeaders.wb .wbList.wbTight ~ .wbMeList { margin-top: 3px; padding: 2px 0 0; }
+#scrLeaders.wb .wbList.wbTight ~ .wbMeList .wbRow { min-height: 26px; padding-top: 1px; padding-bottom: 1px; }
+#scrLeaders.wb .wbList.wbTight ~ .wbMeList .wbRk { height: 24px; }
 /* the player's own best, held at the foot of the pane */
 #scrLeaders.wb .wbMeList { position: sticky; bottom: 0; z-index: 2; margin-top: 10px; padding: 6px 0 8px;
   background: linear-gradient(rgba(22,15,8,0), #1a120a 30%); }

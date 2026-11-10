@@ -147,7 +147,8 @@ const DeckScreens = {
        cannot mark yet) stands nowhere. */
     if (win && !rep.place) {
       try {
-        const held = Screens.boardHold ? Screens.boardHold(true).hold : 'held';
+        const bh = Screens.boardHold ? Screens.boardHold(true) : { hold: 'held' };
+        const held = bh.hold || (bh.ask ? 'not asked' : '');   // a board never seen places nothing
         const B = window.Backend;
         if (!held && B && B.configured && window.WorldBoard && WorldBoard.placeFor) rep.place = WorldBoard.placeFor(rep.score);
       } catch (e) { /* a lift is a nicety: never the reason an ending fails */ }
@@ -224,8 +225,10 @@ const DeckScreens = {
       : { hold: win && this._playedN() ? 'Not posted to the world board — it cannot wear the card mark yet.' : '', played: this._playedN() };
     Screens._entry = win && !hold ? { score: sc.total, mode: S.mode, day: S.day, seed: S.seed, cards_played: played,
       origin: Screens.runOrigin ? Screens.runOrigin() : null } : null;
+    if (Screens._entry && Screens.keepWin) Screens.keepWin(Screens._entry);   // kept until the board has it
     Screens._submitted = false;
     Screens._leaveWarned = false;
+    Screens._markWait = false;
     if (win) Screens._winMsg = msg || '';
     for (const id of ['vicRank', 'hsBanner', 'nameRow', 'savedNote']) {
       const el = document.getElementById(id);

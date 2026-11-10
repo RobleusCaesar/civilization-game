@@ -61,6 +61,24 @@ const Footing = (() => {
     if (F.KINDS.hedge.includes(b.key)) return 'hedge';
     return 'shadow';
   };
+  /* WHICH OF ITS LOOKS (operator, build 159: "create 2-3 options for the bigger
+     buildings and then like 5+ for the houses… what might the villagers have
+     left in their front yard?"): hashed off the building's PLACE, never its id
+     or an RNG, so a load wears the same yard and neighbours seldom match. A
+     house picks one of Footing.HOME's seven yards and one of three hedge
+     layouts; a workplace one of three yards (bare, a cooper's barrels and
+     crates, a log pile or stone heap with a bush let grow); everything else one
+     of three shadows. side: which side of the door the clutter stands. */
+  F.YARDS = 3; F.LAYS = 3;
+  F.variant = (b, look) => {
+    // a lattice, not a coin: a step east turns the yard on two, a step south on
+    // three (seven yards are a prime cycle, so a row of houses wears all seven
+    // before one repeats), offset per 16x16 region so the map shows no pattern
+    const r = s => Math.floor(hx(b.x >> 4, b.y >> 4, s) * 64);
+    const n = look === 'hedge' && b.key === 'house' ? F.HOME.length : F.YARDS;
+    return { v: (b.x * 2 + b.y * 3 + r(91)) % n, lay: (b.x + b.y * 2 + r(92)) % F.LAYS,
+      side: hx(b.x * 31 + 7, b.y * 17 + 3, 93) < 0.5 ? -1 : 1 };
+  };
 
   // ---- noise, all hashed: no RNG is ever drawn ------------------------------
   const hx = (x, y, s) => { let h = (x * 374761393 + y * 668265263 + (s | 0) * 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
@@ -82,7 +100,15 @@ const Footing = (() => {
     bush2: ['#1f2a12', '#33461c', '#4a6424', '#61802d', '#7c9a39', '#9db556'].map(hex),
     stone: ['#34322c', '#55534b', '#706d63', '#8a867a', '#a7a294'].map(hex),
     petal: ['#e9e3d0', '#b9a3d6'].map(hex),
-    shadow: [14, 24, 10]
+    shadow: [14, 24, 10],
+    // what a household leaves about: split wood, wicker, clay, linen (no gold, fire or berry)
+    wood: ['#2e1d10', '#4a3020', '#6b472c', '#8c623c', '#a87c4e'].map(hex),
+    heart: ['#7f6446', '#9a7b55', '#b59670', '#c9ae86'].map(hex),
+    straw: ['#5e5236', '#7a6c47', '#978a5f', '#b3a67c', '#cbc09a'].map(hex),
+    clay: ['#3f2c22', '#5f4232', '#7c5a44', '#977258', '#b08c70'].map(hex),
+    iron: ['#26282a', '#3d4042', '#5a5d5e'].map(hex),
+    cloth: [['#bdb59d', '#ddd5bd'], ['#9483ad', '#b9a3d6'], ['#5f6f80', '#7c8ea0'], ['#857356', '#a4916d']].map(c => c.map(hex)),
+    deep: [34, 42, 40]
   };
 
   // ---- a building's ground plan, measured off its own sprite ----------------
@@ -177,7 +203,7 @@ const Footing = (() => {
       const dirY = y > Q.bb ? 1.4 : y < Q.baseTop ? 0.55 : 1;
       const n = fbm(wx(Q, x) / 22, wy(Q, y) / 22, s) - 0.5, n2 = fbm(wx(Q, x) / 9, wy(Q, y) / 9, s + 2) - 0.5;
       let rr = R0 * K * dirY * (1 + n * 0.8 + n2 * 0.25);
-      if (y > Q.bb - K) { const gx = (x - Q.dx) / (lobeW * K); rr += lobe * K * Math.exp(-gx * gx); }
+      if (y > Q.bb - K) { const gx = (x - Q.dx - (Q.v || 0) * (Q.side || 1) * (Q.big ? 7 : 4)) / ((lobeW + (Q.v === 2 ? 3 : 0)) * K); rr += lobe * K * Math.exp(-gx * gx); }
       const t = (rr - d) / edge;
       if (t <= 0) continue;
       const jit = hx(wx(Q, x), wy(Q, y), s + 3);
@@ -279,34 +305,265 @@ const Footing = (() => {
     put(Q, l, x, y, P.grass[1]); put(Q, l, x, y - 1, P.grass[2]);
     put(Q, l, x, y - 2, c); put(Q, l, x - 1, y - 2, c); put(Q, l, x + 1, y - 2, c); put(Q, l, x, y - 3, c);
   }
-  // the hedge: a clump wrapping each corner, ferns, long grass and flowers along the foot, the door kept clear
+  // a corner's foot: where the walls meet the ground at the building's side
+  const sideFoot = (Q, side) => { const x0 = side < 0 ? Q.bl : Q.br; let f = -1;
+    for (let k = 0; k < 6; k++) { const xx = x0 - side * k; if (xx >= 0 && xx < Q.W && Q.foot[xx] > f) f = Q.foot[xx]; }
+    return [x0, f < 0 ? Q.fpBot : f]; };
+  const footAt = (Q, x) => { let f = -1; for (let k = -3; k <= 3; k++) { const xx = (x | 0) + k; if (xx >= 0 && xx < Q.W) f = Math.max(f, Q.foot[xx]); } return f < 0 ? Q.fpBot : f; };
+  /* THE HEDGE: a clump wrapping each corner, ferns, long grass and flowers along
+     the foot, the door kept clear. Three LAYOUTS of the green (a home is the
+     one building a town raises by the dozen, so no two neighbours should wear
+     the same hedge), and on a house one of seven YARDS: what the household
+     left out front (Footing.HOME). A prop takes the place of its side's corner
+     bush, so the house never wears both. */
   function hedge(Q) {
-    const sideFoot = side => { const x0 = side < 0 ? Q.bl : Q.br; let f = -1;
-      for (let k = 0; k < 6; k++) { const xx = x0 - side * k; if (xx >= 0 && xx < Q.W && Q.foot[xx] > f) f = Q.foot[xx]; }
-      return [x0, f < 0 ? Q.fpBot : f]; };
-    const R0 = Q.big ? 10 : 8;
+    const R0 = Q.big ? 10 : 8, lay = Q.lay, yard = Q.home ? F.HOME[Q.v] : null, propSide = Q.side;
+    const wild = yard === 'wild';
     for (const side of [-1, 1]) {
-      const [x, f] = sideFoot(side);
-      bush(Q, x + side * R0 * 0.1, f - 2, R0 + rnd(Q, side + 3) * 3, Q.id * 7 + side, rnd(Q, side + 8) > 0.5 ? P.bush : P.bush2, rnd(Q, side + 9) > 0.55 ? P.petal[side > 0 ? 0 : 1] : null);
-      bush(Q, x + side * R0 * 0.9, f + 3, R0 * 0.6, Q.id * 7 + side * 3, P.bush);
-      bush(Q, x - side * R0 * 0.2, f - Q.bw * K * 0.28, R0 * 0.75, Q.id * 7 + side * 5, P.bush2);
-      fern(Q, x + side * R0 * 1.5, f + 4, 8);
-      tuft(Q, x + side * R0 * 1.9, f + 1, 10, Q.id * 3 + side, true);
+      const [x, f] = sideFoot(Q, side), busy = yard && !wild && side === propSide;
+      const pal = rnd(Q, side + 8) > 0.5 ? P.bush : P.bush2, bloom = rnd(Q, side + 9) > (wild ? 0.2 : 0.55) ? P.petal[side > 0 ? 0 : 1] : null;
+      if (!busy) {
+        if (lay === 0) {                                                  // a clump wrapping the corner
+          bush(Q, x + side * R0 * 0.1, f - 2, R0 + rnd(Q, side + 3) * 3 + (wild ? 2 : 0), Q.id * 7 + side, pal, bloom);
+          bush(Q, x + side * R0 * 0.9, f + 3, R0 * 0.6, Q.id * 7 + side * 3, P.bush);
+          bush(Q, x - side * R0 * 0.2, f - Q.bw * K * 0.28, R0 * 0.75, Q.id * 7 + side * 5, P.bush2);
+        } else if (lay === 1) {                                           // one tall shrub against the wall, low growth at its foot
+          bush(Q, x - side * R0 * 0.15, f - Q.bw * K * 0.22, R0 * 0.95 + rnd(Q, side + 4) * 2, Q.id * 11 + side, pal, bloom);
+          bush(Q, x + side * R0 * 0.55, f + 2, R0 * 0.5, Q.id * 11 + side * 3, P.bush2);
+          fern(Q, x + side * R0 * 0.2, f + 5, 6);
+        } else {                                                          // a low run of shrubs out from the corner
+          for (let k = 0; k < 3; k++) bush(Q, x + side * (R0 * 0.2 + k * R0 * 0.75), f + 1 + k, R0 * (0.62 - k * 0.1), Q.id * 13 + side * 5 + k, k % 2 ? P.bush2 : pal, k === 0 ? bloom : null);
+        }
+      }
+      fern(Q, x + side * R0 * (busy ? 2.6 : 1.5), f + 4, wild ? 10 : 8);
+      tuft(Q, x + side * R0 * (busy ? 2.9 : 1.9), f + 1, wild ? 14 : 10, Q.id * 3 + side, true);
+      if (wild) { tuft(Q, x + side * R0 * 1.2, f + 6, 13, Q.id * 5 + side, true); flower(Q, x + side * R0 * 0.6, f + 7, Q.id + side); }
     }
     for (let x = Q.bl; x <= Q.br; x++) {
       const f = Q.foot[x];
-      if (f < 0 || Math.abs(x - Q.dx) < 15 || (x % 4) !== 0 || rnd(Q, x) > 0.6) continue;   // the door kept clear, leaning blades and all
-      if (rnd(Q, x + 100) < 0.8) tuft(Q, x, f + 3, 8 + rnd(Q, x + 3) * 5, Q.id * 13 + x, rnd(Q, x + 7) > 0.5);
+      if (f < 0 || Math.abs(x - Q.dx) < 15 || (x % 4) !== 0 || rnd(Q, x) > (wild ? 0.85 : 0.6)) continue;   // the door kept clear, leaning blades and all
+      if (yard && !wild && Math.sign(x - Q.dx) === propSide && Math.abs(x - Q.dx) > 16) continue;          // the yard's own side is the household's
+      if (rnd(Q, x + 100) < 0.8) tuft(Q, x, f + 3, (wild ? 11 : 8) + rnd(Q, x + 3) * 5, Q.id * 13 + x, rnd(Q, x + 7) > 0.5);
       else flower(Q, x, f + 3, x);
     }
+    if (yard && !wild) homeYard(Q, yard, propSide);
+  }
+
+  // ---- the things people leave about ---------------------------------------------
+  const shade = (c, f) => [c[0] * f, c[1] * f, c[2] * f];
+  const free = (Q, x, y) => okAt(Q, x, y) && !opq(Q, x, y);
+  // a soft shadow on the ground under a thing, down and to the right
+  function under(Q, x, y, rx, ry, a) {
+    for (let yy = Math.floor(y - ry); yy <= y + ry; yy++) for (let xx = Math.floor(x - rx); xx <= x + rx; xx++) {
+      const dx = (xx - x) / rx, dy = (yy - y) / ry;
+      if (dx * dx + dy * dy <= 1 && free(Q, xx, yy)) put(Q, 0, xx, yy, P.shadow, a == null ? 0.32 : a);
+    }
+  }
+  function disc(Q, l, cx, cy, r, ramp, rim) {
+    for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy, d = Math.hypot(dx, dy); if (d > r) continue;
+      let c = d > r - 1 ? (dx + dy > 0 ? rim : ramp[1]) : (dx + dy < -r * 0.5 ? ramp[3] : ramp[2]);
+      if (d < 0.8) c = ramp[0];
+      put(Q, l, x, y, c);
+    }
+  }
+  // split wood stacked against the wall, log ends out
+  function woodpile(Q, x, y, s) {
+    const rows = [4, 3, 2].slice(0, 2 + (hx(s, 1, 1) < 0.6 ? 1 : 0)), l = layerFor(Q, x, y, 11, 12);
+    under(Q, x + 2, y + 1, 12, 3);
+    rows.forEach((n, ri) => { for (let k = 0; k < n; k++) {
+      const cx = x - (n - 1) * 2.6 + k * 5.2 + (hx(s, ri * 7 + k, 2) - 0.5), cy = y - 2.4 - ri * 4.3;
+      disc(Q, l, cx, cy, 2.7, P.heart, P.wood[0]);
+    } });
+  }
+  // a chopping block, the axe left in it
+  function block(Q, x, y) {
+    const l = layerFor(Q, x, y, 5, 12);
+    under(Q, x + 1, y + 1, 5, 2);
+    for (let yy = y - 4; yy <= y; yy++) for (let xx = x - 3; xx <= x + 3; xx++) put(Q, l, xx, yy, P.wood[yy === y ? 0 : xx <= x - 2 ? 3 : xx >= x + 2 ? 1 : 2]);
+    for (let xx = x - 3; xx <= x + 3; xx++) { put(Q, l, xx, y - 5, P.heart[xx < x ? 3 : 2]); put(Q, l, xx, y - 6, P.heart[xx === x - 3 || xx === x + 3 ? 1 : 2]); }
+    put(Q, l, x, y - 6, P.heart[0]);
+    for (let t = 0; t < 8; t++) put(Q, l, x + 1 + Math.round(t * 0.6), y - 6 - t, P.wood[t < 2 ? 2 : 4]);   // the haft
+    put(Q, l, x - 1, y - 6, P.iron[2]); put(Q, l, x, y - 7, P.iron[1]); put(Q, l, x - 1, y - 7, P.iron[2]); put(Q, l, x + 1, y - 7, P.iron[0]);
+  }
+  // a wooden pail, bound with two hoops
+  function pail(Q, x, y) {
+    const l = layerFor(Q, x, y, 4, 9);
+    under(Q, x + 1, y + 1, 4, 1.5);
+    for (let yy = y - 5; yy <= y; yy++) for (let xx = x - 2; xx <= x + 2; xx++) {
+      const hoop = yy === y - 1 || yy === y - 4;
+      put(Q, l, xx, yy, hoop ? P.iron[xx < x ? 2 : 1] : P.wood[yy === y ? 1 : xx === x - 2 ? 4 : xx === x + 2 ? 2 : 3]);
+    }
+    for (let xx = x - 2; xx <= x + 2; xx++) put(Q, l, xx, y - 6, Math.abs(xx - x) < 2 ? P.deep : P.wood[3]);
+    for (const [xx, yy] of [[-3, -7], [-2, -9], [0, -10], [2, -9], [3, -7]]) put(Q, l, x + xx, y + yy, P.iron[1]);
+  }
+  // a wicker basket, greens in it
+  function basket(Q, x, y, s) {
+    const l = layerFor(Q, x, y, 5, 7);
+    under(Q, x + 1, y + 1, 5, 1.5);
+    for (let yy = y - 4; yy <= y; yy++) for (let xx = x - 4; xx <= x + 4; xx++) {
+      if ((yy === y && Math.abs(xx - x) > 3) || (yy === y - 4 && Math.abs(xx - x) > 3)) continue;
+      put(Q, l, xx, yy, yy === y ? P.straw[0] : P.straw[(xx + yy) & 1 ? 2 : 3 + (xx < x ? 1 : 0) - 1]);
+    }
+    const herbs = hx(s, 3, 3) < 0.5;
+    for (let xx = x - 3; xx <= x + 3; xx++) put(Q, l, xx, y - 5, herbs ? P.grass[(xx & 1) ? 3 : 4] : P.cloth[0][(xx & 1)]);
+    if (herbs) { put(Q, l, x - 1, y - 6, P.grass[5]); put(Q, l, x + 2, y - 6, P.grass[4]); }
+  }
+  // clay jars, two or three, mouths dark
+  function pots(Q, x, y, s) {
+    const n = hx(s, 2, 9) < 0.5 ? 2 : 3;
+    under(Q, x + 2, y + 1, 4 + n * 2.5, 2);
+    for (let k = 0; k < n; k++) {
+      const cx = x - (n - 1) * 3.5 + k * 7, h = 6 + Math.round(hx(s, k, 8) * 3), rw = 2.4 + hx(s, k, 6) * 0.9, l = layerFor(Q, cx, y, 3, h + 2);
+      for (let yy = 0; yy <= h; yy++) {
+        const t = yy / h, half = Math.max(1, rw * Math.sin(Math.PI * (0.15 + t * 0.8)));
+        for (let xx = -Math.ceil(half); xx <= Math.ceil(half); xx++) {
+          if (Math.abs(xx) > half + 0.4) continue;
+          const lit = -xx / (half + 1) + (t - 0.5) * 0.6;
+          put(Q, l, cx + xx, y - yy, yy === 0 || (Math.abs(xx) >= Math.floor(half) && xx > 0) ? P.clay[0] : P.clay[lit > 0.4 ? 4 : lit > 0 ? 3 : 2]);
+        }
+      }
+      put(Q, l, cx - 1, y - h - 1, P.clay[1]); put(Q, l, cx, y - h - 1, P.deep); put(Q, l, cx + 1, y - h - 1, P.clay[1]);
+    }
+  }
+  // two posts and a line, the washing out
+  function washing(Q, x0, x1, y, s) {
+    const top = y - 17, l = layerFor(Q, (x0 + x1) / 2, y, (x1 - x0) / 2 + 2, 18);
+    under(Q, (x0 + x1) / 2 + 2, y + 1, (x1 - x0) / 2 + 3, 2, 0.2);
+    for (const px of [x0, x1]) for (let yy = top; yy <= y; yy++) { put(Q, l, px, yy, P.wood[2]); put(Q, l, px + 1, yy, P.wood[yy === top ? 3 : 1]); }
+    const sag = x => top + 1 + Math.round(2 * Math.sin(Math.PI * (x - x0) / (x1 - x0)));
+    for (let xx = x0 + 1; xx < x1; xx++) put(Q, l, xx, sag(xx), P.wood[0]);
+    let xx = x0 + 3;
+    for (let k = 0; xx + 3 < x1 - 1; k++) {
+      const w = 4 + Math.round(hx(s, k, 4) * 3), h = 5 + Math.round(hx(s, k, 5) * 4), col = P.cloth[Math.floor(hx(s, k, 6) * 4)];
+      if (xx + w >= x1 - 1) break;
+      for (let a = 0; a < w; a++) { const ty = sag(xx + a) + 1;
+        for (let b = 0; b < h; b++) put(Q, l, xx + a, ty + b, a === w - 1 || b === h - 1 ? shade(col[0], 0.8) : col[a < w / 2 ? 1 : 0]); }
+      put(Q, l, xx, sag(xx), P.wood[3]); put(Q, l, xx + w - 1, sag(xx + w - 1), P.wood[3]);   // the pegs
+      xx += w + 2;
+    }
+  }
+  // a little bed of herbs and greens, dug in rows
+  function garden(Q, x, y, w, h) {
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) {
+      if (!free(Q, xx, yy)) continue;
+      const edge = yy === y || yy === y + h - 1 || xx === x || xx === x + w - 1;
+      put(Q, 0, xx, yy, edge ? P.stone[(xx + yy) % 3 === 0 ? 3 : 2] : P.earth[((yy - y) % 3 === 1) ? 2 : 1]);
+    }
+    for (let yy = y + 2; yy < y + h - 1; yy += 3) for (let xx = x + 2; xx < x + w - 1; xx += 3) {
+      if (!free(Q, xx, yy)) continue;
+      const l = layerFor(Q, xx, yy, 1, 3), k = hx(xx + Q.ox * K, yy + Q.oy * K, 5) < 0.5;
+      put(Q, l, xx, yy, P.grass[2]); put(Q, l, xx, yy - 1, P.grass[k ? 4 : 3]); put(Q, l, xx - 1, yy - 1, P.grass[3]); put(Q, l, xx + 1, yy - 2, P.grass[k ? 5 : 4]);
+    }
+  }
+  // a log bench by the wall
+  function bench(Q, x, y, w) {
+    const l = layerFor(Q, x + w / 2, y, w / 2 + 1, 6);
+    under(Q, x + w / 2 + 1, y + 1, w / 2 + 2, 1.5);
+    for (const lx of [x + 2, x + w - 3]) { put(Q, l, lx, y, P.wood[0]); put(Q, l, lx, y - 1, P.wood[1]); }
+    for (let xx = x; xx < x + w; xx++) { put(Q, l, xx, y - 2, P.wood[0]); put(Q, l, xx, y - 3, P.wood[2]); put(Q, l, xx, y - 4, P.wood[xx & 3 ? 3 : 4]); }
+    put(Q, l, x, y - 3, P.heart[2]); put(Q, l, x, y - 4, P.heart[3]);
+  }
+  // a hand cart, its shafts on the ground, a load of logs or a sack
+  function cart(Q, x, y, s) {
+    const l = layerFor(Q, x + 6, y, 12, 14);
+    under(Q, x + 6, y + 1, 12, 2);
+    for (let t = 0; t <= 9; t++) put(Q, l, x + 12 + t, y - 6 + Math.round(t * 0.66), P.wood[t & 1 ? 2 : 3]);   // the shafts, down to the ground
+    for (let yy = y - 10; yy <= y - 5; yy++) for (let xx = x - 2; xx <= x + 13; xx++)
+      put(Q, l, xx, yy, yy === y - 5 ? P.wood[0] : yy === y - 10 ? P.wood[4] : P.wood[(yy - y) % 2 ? 3 : 2]);
+    if (hx(s, 4, 4) < 0.5) for (let k = 0; k < 3; k++) disc(Q, l, x + 1 + k * 4.5, y - 12, 2.2, P.heart, P.wood[0]);
+    else for (let yy = y - 15; yy <= y - 11; yy++) for (let xx = x + 1; xx <= x + 9; xx++) if (!(yy === y - 15 && (xx === x + 1 || xx === x + 9))) put(Q, l, xx, yy, P.cloth[3][xx < x + 5 ? 1 : 0]);
+    for (let yy = y - 8; yy <= y; yy++) for (let xx = x + 1; xx <= x + 9; xx++) {          // the wheel
+      const d = Math.hypot(xx - (x + 5), yy - (y - 4));
+      if (d <= 4.4 && d > 3.3) put(Q, l, xx, yy, P.wood[d > 3.9 ? 0 : 1]);
+      else if (d < 0.9) put(Q, l, xx, yy, P.iron[1]);
+      else if (d <= 3.3 && (xx === x + 5 || yy === y - 4)) put(Q, l, xx, yy, P.wood[2]);
+    }
+  }
+  // a barrel, staves and two hoops
+  function barrel(Q, x, y) {
+    const l = layerFor(Q, x, y, 4, 10);
+    for (let yy = y - 8; yy <= y; yy++) { const half = yy === y || yy === y - 8 ? 2 : 3;
+      for (let xx = x - half; xx <= x + half; xx++) {
+        const hoop = yy === y - 2 || yy === y - 6;
+        put(Q, l, xx, yy, hoop ? P.iron[xx < x ? 2 : 1] : xx === x + half || yy === y ? P.wood[0] : P.wood[xx < x - 1 ? 4 : xx < x + 1 ? 3 : 2]);
+      } }
+    for (let xx = x - 2; xx <= x + 2; xx++) put(Q, l, xx, y - 9, P.wood[xx === x ? 1 : 3]);
+  }
+  // a crate, a second on it sometimes
+  function crate(Q, x, y, two) {
+    const one = (cx, cy) => { const l = layerFor(Q, cx + 3, cy, 4, 8);
+      for (let yy = cy - 6; yy <= cy; yy++) for (let xx = cx; xx <= cx + 6; xx++) {
+        const edge = xx === cx + 6 || yy === cy, rim = xx === cx || yy === cy - 6, brace = xx - cx === cy - yy;
+        put(Q, l, xx, yy, edge ? P.wood[0] : rim ? P.wood[4] : brace ? P.wood[1] : P.wood[(xx - cx) % 3 === 0 ? 2 : 3]);
+      } };
+    under(Q, x + 4, y + 1, 5, 1.5);
+    one(x, y); if (two) one(x + 1, y - 7);
+  }
+  // a heap of fieldstone
+  function stones(Q, x, y, s) {
+    under(Q, x + 1, y + 1, 6, 1.5, 0.25);
+    const l = layerFor(Q, x, y, 6, 6);
+    for (let k = 0; k < 4; k++) blob(Q, l, x - 4 + k * 2.6 + hx(s, k, 1) * 1.5, y - 1.5 - (k === 1 || k === 2 ? 2 : 0), 2.2 + hx(s, k, 2), 1.8, P.stone, s + k, 0.3, false);
+  }
+  F.PAL = P;
+  F.HOME = ['woodpile', 'garden', 'washing', 'bench', 'cart', 'pots', 'wild'];
+  // what the household left out, beside the door on its side, never in front of it
+  function homeYard(Q, yard, side) {
+    const [cx, f0] = sideFoot(Q, side), s = Q.id * 17 + 3;
+    const at = off => { const x = Math.round(Q.dx + side * off), f = footAt(Q, x); return [x, f + 4]; };
+    const go = (x, y, fn) => { if (free(Q, x, y) && free(Q, x, y - 1)) fn(x, y); };
+    if (yard === 'woodpile') {
+      const [x, y] = at(26); go(x, y - 1, (a, b) => woodpile(Q, a, b, s));
+      const [bx, by] = at(15); go(bx, by + 2, (a, b) => block(Q, a, b));
+    } else if (yard === 'garden') {
+      const [x, y] = at(19); const w = 16, gx = side > 0 ? x - 2 : x - w + 2;
+      garden(Q, gx, y + 1, w, 9);
+      const [px, py] = at(13); go(px, py + 1, (a, b) => pail(Q, a, b));
+    } else if (yard === 'washing') {
+      const [x, y] = at(16); const x1 = x + side * 22;
+      go(x, y + 4, () => washing(Q, Math.min(x, x1), Math.max(x, x1), y + 4, s));
+      const [bx, by] = at(31); go(bx, by + 4, (a, b) => basket(Q, a, b, s));
+    } else if (yard === 'bench') {
+      const [x, y] = at(17); const w = 14; go(x, y - 1, () => bench(Q, side > 0 ? x : x - w, y - 1, w));
+      const [px, py] = at(33); go(px, py, (a, b) => pail(Q, a, b));
+    } else if (yard === 'cart') {
+      const [x, y] = at(20); go(x, y + 3, (a, b) => cart(Q, side > 0 ? a : a - 10, b, s));
+    } else if (yard === 'pots') {
+      const [x, y] = at(22); go(x, y, (a, b) => pots(Q, a, b, s));
+      const [bx, by] = at(15); go(bx, by + 3, (a, b) => basket(Q, a, b, s + 1));
+    }
+  }
+  // the workplaces' clutter: a cooper's barrels, a crate or two, a log pile, a heap of stone, a bush let grow
+  function workYard(Q) {
+    const v = Q.v, side = Q.side, s = Q.id * 23 + 1;
+    const at = off => { const x = Math.round(Q.dx + side * off), f = footAt(Q, x); return [x, f + 5]; };
+    const go = (x, y, fn) => { if (free(Q, x, y) && free(Q, x, y - 1)) fn(x, y); };
+    const far = Q.big ? 1.6 : 0.75;
+    if (v === 1) {
+      const [x, y] = at(24 * far); go(x, y, (a, b) => { barrel(Q, a, b); barrel(Q, a + side * 7, b + 2); });
+      const [cx, cy] = at(38 * far); go(cx, cy, (a, b) => crate(Q, a - 3, b, hx(s, 1, 1) < 0.6));
+    } else if (v === 2) {
+      const [x, y] = at(28 * far); go(x, y, (a, b) => (hx(s, 2, 2) < 0.5 ? woodpile(Q, a, b, s) : stones(Q, a, b, s)));
+      const [x2, f2] = sideFoot(Q, -side);                                // the far corner let grow
+      bush(Q, x2 - side * 3, f2 - 1, (Q.big ? 9 : 7) + rnd(Q, 31) * 2, s, rnd(Q, 32) > 0.5 ? P.bush : P.bush2, rnd(Q, 33) > 0.6 ? P.petal[0] : null);
+      tuft(Q, x2 - side * 13, f2 + 3, 10, s + 5, true);
+    }
+  }
+  // the plain shadow's few touches: tufts and a flower at one corner, or a bush and a stone
+  function shadowTouches(Q) {
+    const [x, f] = sideFoot(Q, Q.side), s = Q.id * 29;
+    if (Q.v === 1) { tuft(Q, x + Q.side * 6, f + 3, 11, s, true); tuft(Q, x + Q.side * 12, f + 5, 8, s + 1, false); if (free(Q, x + Q.side * 9, f + 7)) flower(Q, x + Q.side * 9, f + 7, s); }
+    else if (Q.v === 2) { if (free(Q, x + Q.side * 7, f + 2)) bush(Q, x + Q.side * 7, f + 2, 7, s, P.bush2, null); if (free(Q, x + Q.side * 16, f + 5)) stones(Q, x + Q.side * 16, f + 5, s); }
   }
 
   // ---- measure one building into its three trimmed canvases -----------------
   function build(b, spr, look) {
-    const Q = prep(b, spr);
-    if (look === 'yard') { yardEarth(Q); cast(Q, 0.3); contact(Q, 0.8); }
+    const Q = prep(b, spr), vr = F.variant(b, look);
+    Q.v = vr.v; Q.side = vr.side; Q.lay = vr.lay; Q.home = b.key === 'house';
+    if (look === 'yard') { yardEarth(Q); cast(Q, 0.3); contact(Q, 0.8); workYard(Q); }
     else if (look === 'hedge') { cast(Q, 0.3); contact(Q, 0.85); hedge(Q); }
-    else { cast(Q, 0.3); contact(Q, 1.15); }
+    else { cast(Q, 0.3); contact(Q, 1.15); if (b.key !== 'raidercamp') shadowTouches(Q); }
     return Q.L.map(A => {
       let x0 = Q.W, y0 = Q.H, x1 = -1, y1 = -1;
       for (let y = 0; y < Q.H; y++) for (let x = 0; x < Q.W; x++) if (A[(y * Q.W + x) * 4 + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }

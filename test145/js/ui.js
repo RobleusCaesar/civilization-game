@@ -52,6 +52,7 @@ const UI = {
   moveDrag: null,        // {ax,ay,sx,sy} live drag-to-move: tether anchor (tiles) + finger (screen)
   moveFlash: null,       // {x,y,t,life} confirmation pulse where a drag order landed
   settingRally: null,    // building id waiting for a rally-point tap
+  rallyRing: null,       // {rally, t, life}: the once-blink round a rally's target (R.draw)
   /* The build menu. NO GATE HERE — a gate is not raised on open ground, it is
      cut into a wall you have already built: select a standing section and use
      "🚪 Build Gate" (see the wall panel in renderPanel / the `togate` action).
@@ -1240,6 +1241,57 @@ const UI = {
     return best;
   },
 
+  /* THE RALLY'S TARGET (tests/rally.mjs). What a trainee of `rb` could act
+     on is what the tap may land on: an own transport under the finger, the
+     building under it (or one a sliver off, when its trainees could do
+     something there), else the tile — and, from a hall, a resource a sliver
+     off. Only what the player has explored or can see. Returns the rally
+     record itself: {x, y} with `uid` or `bid` when it names something. */
+  rallyKinds(rb) {
+    const t = Bld.def(rb.key).train;
+    return t ? Object.keys(t).filter(k => CFG.UNITS[k]) : [];
+  },
+  rallyStub(rb, kind) {
+    return { id: -1, kind, owner: rb.owner, x: Bld.cx(rb), y: Bld.cy(rb), hp: 1 };
+  },
+  // the first kind this building trains that would act at the rally
+  rallyPreview(rb, rally) {
+    for (const k of this.rallyKinds(rb)) {
+      const p = Units.rallyPlan(this.rallyStub(rb, k), rally);
+      if (p) return { act: p.act, label: p.label, room: p.room, who: this.plural(CFG.UNITS[k].name).toLowerCase() };
+    }
+    return null;
+  },
+  rallyPick(rb, tile, wx, wy) {
+    const plain = { x: tile.x, y: tile.y };
+    const acts = r => !!this.rallyPreview(rb, r);
+    // an own transport under the finger, by its drawn sprite
+    let tr = null, td = 0.7;
+    for (const o of S.units) {
+      if (o.owner !== 'P' || !Units.isTransport(o) || !(o.hp > 0)) continue;
+      const d = R.unitHit(o, wx, wy);
+      if (d < td) { td = d; tr = o; }
+    }
+    if (tr) return { x: tr.x | 0, y: tr.y | 0, uid: tr.id };
+    const known = (b) => b.owner === 'P' || G.visibleAt(b.x, b.y) ||
+      !!(S.map.seenB && S.map.seenB[MapGen.idx(b.x, b.y)]);
+    const on = Bld.at(tile.x, tile.y);
+    if (on && on !== rb && known(on)) return { x: on.x, y: on.y, bid: on.id };
+    // a sliver of a miss, only toward something a trainee could act on
+    let nb = null, nd = 0.42;
+    for (const b of S.buildings) {
+      if (b === rb || !known(b)) continue;
+      const n = Bld.size(b);
+      const d = Math.hypot(wx - Math.max(b.x, Math.min(wx, b.x + n)), wy - Math.max(b.y, Math.min(wy, b.y + n)));
+      if (d < nd && acts({ x: b.x, y: b.y, bid: b.id })) { nd = d; nb = b; }
+    }
+    if (nb) return { x: nb.x, y: nb.y, bid: nb.id };
+    if (!acts(plain)) {
+      const gt = this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] && acts({ x, y }));
+      if (gt) return { x: gt.x, y: gt.y };
+    }
+    return plain;
+  },
   snapNear(wx, wy, okFn, snapR = 0.45) {
     const tx = Math.floor(wx), ty = Math.floor(wy);
     let best = null, bd = snapR;
@@ -1467,20 +1519,29 @@ const UI = {
         rb.rally = null; this.settingRally = null;
         this.toast('Rally cleared — new units stay by the building');
         if (this.sel) this.renderPanel();
-      } else if (Math.hypot(rb.x - tile.x, rb.y - tile.y) <= CFG.RALLY_RANGE) {
-        rb.rally = { x: tile.x, y: tile.y };
+      } else {
+        /* THE RALLY LANDS ON WHAT WAS TAPPED (Units.rallyPlan, tests/rally.mjs):
+           an own transport, a building — the finger a sliver off still counts
+           where a trainee could act there — or the tile, a resource snapped
+           to the way a villager's order is. Out of reach keeps the tool armed. */
+        const pick = this.rallyPick(rb, tile, wx, wy);
+        if (Math.hypot(rb.x - pick.x, rb.y - pick.y) > CFG.RALLY_RANGE) {
+          this.toast(`Too far — rally must be within ${CFG.RALLY_RANGE} tiles`, true);
+          return;
+        }
+        rb.rally = pick;
         this.settingRally = null;
-        const gatherable = !!CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]];
-        this.toast(gatherable && rb.key === 'tc'
-          ? 'Rally set — new villagers will gather here'
+        const plan = this.rallyPreview(rb, pick);
+        this.toast(plan
+          ? `Rally set — new ${plan.who} will ${plan.label}${plan.room ? '' : ' (full for now — they will wait beside it)'}`
           : 'Rally point set — new units will head here');
         // leave a brief flag flourish where it landed so the player sees it took,
         // then deselect — the marker plays on after the panel closes (see R.draw)
-        this.rallyFlash = { x: tile.x, y: tile.y, bx: Bld.cx(rb), by: Bld.cy(rb), t: 1.25, life: 1.25 };
+        const fp = Units.rallyPoint(pick);
+        this.rallyFlash = { x: fp.x - 0.5, y: fp.y - 0.5, bx: Bld.cx(rb), by: Bld.cy(rb), t: 1.25, life: 1.25 };
+        // …and a ring that blinks once round the thing the units will work
+        if (plan) this.rallyRing = { rally: pick, t: 0, life: 0.75 };
         this.deselect();
-      } else {
-        // out of range — keep the tool armed so a second tap can still land it
-        this.toast(`Too far — rally must be within ${CFG.RALLY_RANGE} tiles`, true);
       }
       return;
     }
