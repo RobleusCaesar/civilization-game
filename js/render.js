@@ -13736,6 +13736,8 @@ const R = {
         if (fb) face = this.faceBuilding(u, fb) || face;
       }
     }
+    // A LOOKOUT AT REST LOOKS OUT over his side of the platform (Lookout.restFace)
+    if (u.perch && pose !== 'fight' && window.Lookout && Lookout.restFace) face = Lookout.restFace(u) || face;
     // …and a wolf at the kill faces the kill, whichever side of it it sits
     if (pose === 'eat' && u.feed) {
       const fdx = u.feed.x - u.x, fdy = u.feed.y - u.y;

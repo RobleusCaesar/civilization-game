@@ -449,26 +449,31 @@ archers just do 50% more than what they do on the ground? No special damage
 based on the archer type. Better archers on the ground mean better archers
 in the tower, regardless of the towers level. The only benefit to higher
 towers is that they're harder to knock down"; then build 151: "Bring damage
-down to 25% above normal and defense to 25% above normal" — a quarter again
-his blow, and a quarter tougher: `hurt` is 1/1.25, a man who takes a quarter
-more punishment before he falls): up there a bow strikes `atk`
-(1.25) times his own ground blow (`Units.effAtk`) — at units and at works,
+down to 25% above normal and defense to 25% above normal"; then build 162:
+"reduce archers in the tower to their normal on the ground damage. They're
+too strong right now" — his own blow, and still a quarter tougher: `hurt` is
+1/1.25, a man who takes a quarter more punishment before he falls): up there
+a bow strikes `atk` (1, the hook kept so the dial can come back) times his
+own ground blow (`Units.effAtk`) — at units and at works,
 folded into the strike's one expression beside the Watchfires — and takes
 `hurt` (0.8) of every blow, asked where each blow that can reach him is
 dealt (a bow's arrow, an engine's stone or bolt AS IT LANDS, a tower's
 volley) and before its number is floated, so the number shown is the number
 taken; `Units.damage` is untouched (a falling tower still kills). ONE
-FIGURE for every kind of bow and every storey: an archer reads ATK 9 on a
-wattle, a timber and a stone tower alike, a marksman 14, a longbow 8 — and
+FIGURE for every kind of bow and every storey: an archer reads ATK 7 on a
+wattle, a timber and a stone tower alike, a marksman 11, a longbow 6 — his
+ground figure — and
 the level-3 tower's SIGNAL FIRE (+2 to the soldiers round it, `effAtk`)
 lifts the ground, never the bows on its own platform (`!u.perch`), or the
 storey would add a blow. A storey adds health (and its own sight) alone.
-Measured against a RIVAL tower, which still fires the old way: two base
-archers out-shoot it 4.25x / 1.30x at the wattle and timber storeys over
-30 s and come a shade short of the stone storey's 19-point volley (0.92x,
-the price of build 151's quarter), two longbows (the slow bow) at the timber
-storeys too. The unit panel's ATK and the tower's line ("they shoot all the
-tower sees, hit 25% harder and are 25% tougher") say so. Off the platform both answer 1: the old
+Measured against a RIVAL tower, which still fires the old way: at their
+ground blow two base archers (and two longbows) still out-shoot the wattle
+storey over 30 s (3.04x), and no longer the timber or stone ones (0.93x /
+0.66x) — the tower's
+height buys them reach, sight and health, never a blow. The unit panel's ATK
+and the tower's line ("they shoot all the tower sees and are 25% tougher" —
+`Lookout.perkLine` names only what is more than 1) say so. Off the platform
+both answer 1: the old
 expressions, byte for byte. **AT HIS POST, NOT IN A PARTY** (`Lookout.onTower`
 / `sentUp`, `UI.sentUp` / `onTower` / `defendOffered` / `stopOffered` /
 `shedClimbers` — operator, build 150: "Remove the defend button when
@@ -530,16 +535,26 @@ inside the fence at the top of the tower remains… They just look so so
 small relative to the villagers… It's okay if the archers are a little
 squished next to each other, as long as their bodies stay inside the
 fence"), and a tenth again at build 150 ("Can we boost archer sizes
-another 10-20% in size, okay if no"): `man` went 38 → 53 → 59 art px, so a
-bow on a free tower stands about eight tenths of a villager and one on a
-wall tower, whose art is denser, about his height (59 is the largest size
-at which the two still read as two men on the smallest platforms; past it
-the second stands over the first). A man's body at rest is wider than a rail section now,
+another 10-20% in size, okay if no"), and again at build 162 ("they still
+look a little tiny… redesign them slightly when they're in the tower to look
+bigger, but still fit inside the fence? Overlapping is okay, or modifying
+their design or look slightly is too"): `man` went 38 → 53 → 59 art px, then
+76 on a free tower and 68 on a wall tower, so a bow stands about a villager's
+height on a free tower and a fifth over it on a wall tower. **AT REST HE
+KEEPS WATCH OUTWARD** (`Lookout.REST` / `restFace`, read by `R.sheetFrames`
+for a perched man not drawing his bow): the left man faces south-west, the
+right man south-east, a lone man south — whatever way he came up the stairs —
+because a three-quarter view is narrower than a profile and two men turned
+apart read as two at the overlap the build-162 size needs (they overlap now,
+the operator's allowance). Drawing his bow he turns to his mark in any of the
+eight facings, as before. A man's body at rest is wider than a rail section now,
 so the places are FITTED to his body, not to the art's sections: the
 widest pair where, at rest, in all eight facings and every frame, no part
 of him (his bow aside) passes the platform's outer posts, and drawing his
 bow his arm reaches over the side rail by at most a sixth of his height
-(measured: half a world px and 13%). Two up there stand a little squeezed
+(measured at build 162: 0.1 world px and 16% — the fight rule now sets the
+places; `tools/lookout-fit.mjs` fits them with the contract's own strict
+thresholds — run it with the sizes in `MEN` after any change of size or art). Two up there stand a little squeezed
 together, side by side. The body is a frame's ink OPENED by two of its own
 pixels — a shaft, a string or a bow drops out, an arm, a cloak, a head
 stays — measured on every frame by the sweep and on the drawn picture by

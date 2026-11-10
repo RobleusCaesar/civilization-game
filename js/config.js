@@ -1452,8 +1452,11 @@ const CFG = {
        punishment before he falls. Two base archers still out-shoot the old
        wattle and timber towers' own fire, and come a shade short of the stone
        one's volley, measured against a rival tower (which still fires the old
-       way) in tests/tower-garrison.mjs. */
-    atk: 1.25,
+       way) in tests/tower-garrison.mjs. Build 162 took the blow back to
+       the ground's (operator: "reduce archers in the tower to their normal
+       on the ground damage. They're too strong right now"): `atk` 1, the
+       toughness kept. */
+    atk: 1,
     hurt: 0.8,
   },
 

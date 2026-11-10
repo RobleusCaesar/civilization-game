@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 162, date: '2026-11-10', title: 'Archers on the towers',
+    items: [
+      'Archers on a tower now hit exactly as hard as they do on the ground. They still take a quarter less damage up there.',
+      'Archers on a tower are drawn bigger, and between shots they keep watch facing outward, one to each side.',
+    ],
+  },
+  {
     build: 161, date: '2026-11-10', title: 'Every win reaches the board',
     items: [
       'The world board now always shows all ten places, on every screen. On some laptops the tenth chief was left off to make the page fit.',

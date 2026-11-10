@@ -534,13 +534,18 @@ const out = await p.evaluate(() => {
     // the operator brought it down from build 150's half again. Two still
     // out-shoot the old wattle and timber towers; the stone storey's old
     // 19-point volley is now a shade ahead, and the row says by how much)
-    ck('twoArchersOutshootTheOldTowerOnTheTimberStoreys', rows.filter(r => r.lv < 3).every(r => r.archer > r.old),
+    // (build 162 — operator: "reduce archers in the tower to their normal on
+    // the ground damage. They're too strong right now": up there a bow
+    // strikes his ground blow, so the old tower's fire is no longer the bar;
+    // the wattle storey's is still well under two archers', and the rows say
+    // by how much on every storey)
+    ck('twoArchersOutshootTheOldWattleTower', rows.filter(r => r.lv === 1).every(r => r.archer > r.old),
       rows.map(r => `Lv${r.lv}: two archers ${r.archer} vs the old tower ${r.old} (${(r.archer / Math.max(1, r.old)).toFixed(2)}x)`).join('; '));
     // the longbow is the slow bow (a blow every 1.4 swings, 6 to the
     // archer's 7): a quarter again his own blow out-shoots the timber
     // storeys' old fire, and comes short of the stone tower's 19-point
     // volley (build 150 — the storey adds nothing to a bow's blow)
-    ck('andSoDoTwoLongbowsOnTheTimberStoreys', rows.filter(r => r.lv < 3).every(r => r.longbow > r.old),
+    ck('andSoDoTwoLongbows', rows.filter(r => r.lv === 1).every(r => r.longbow > r.old),
       rows.map(r => `Lv${r.lv}: two longbows ${r.longbow} vs ${r.old}`).join('; '));
 
     // the numbers themselves: what a bow up there strikes and takes, floated
@@ -567,7 +572,7 @@ const out = await p.evaluate(() => {
         take: Math.max(1, Math.round(ground * C.hurt)),
         shown: UI.atkShown ? UI.atkShown(a) : -1, base: Math.round(Units.effAtk(a)), perched: a.perch === t.id });
     }
-    ck('aBowUpThereHitsHarder', trade.every(w => w.perched && w.ours.length > 3 && w.ours.every(n => n === w.hit) && w.hit > w.base && w.shown === w.hit),
+    ck('aBowUpThereHitsAsHeDoesOnTheGround', trade.every(w => w.perched && w.ours.length > 3 && w.ours.every(n => n === w.hit) && w.hit === w.base && w.shown === w.base),
       trade.map(w => `Lv${w.lv}: hits ${[...new Set(w.ours)].join('/')} (expected ${w.hit}, ${w.base} on the ground, panel ATK ${w.shown})`).join('; '));
     ck('andTakesLessThanABowOnTheGround', trade.every(w => w.theirs.length > 3 && w.theirs.every(n => n === w.take) && w.take < w.ground),
       trade.map(w => `Lv${w.lv}: takes ${[...new Set(w.theirs)].join('/')} (expected ${w.take}, on the ground ${w.ground})`).join('; '));
@@ -597,11 +602,12 @@ const out = await p.evaluate(() => {
     UI.deselect && UI.deselect();
     ck('offThePlatformABowIsItself', Lookout.atkMult(g) === 1 && Combat.covered(g, 7) === 7 && UI.atkShown(g) === CFG.UNITS.archer.atk,
       `atk ×${Lookout.atkMult(g)}, a 7 blow takes ${Combat.covered(g, 7)}, panel ATK ${UI.atkShown(g)}`);
-    // build 151 (operator: "Bring damage down to 25% above normal and defense
-    // to 25% above normal"): a quarter again his blow, a quarter tougher
-    ck('aQuarterHarderAndAQuarterTougher', C.atk === 1.25 && Math.abs(1 / C.hurt - 1.25) < 1e-9, `atk ×${C.atk}, hurt ×${C.hurt}`);
-    const pa = Math.round(C.atk * 100 - 100), pt = Math.round(100 / C.hurt - 100);
-    ck('andTheTowerSaysWhatThePlatformGives', tline.includes(`hit ${pa}% harder`) && tline.includes(`${pt}% tougher`) && /shoot all the tower sees/.test(tline), tline);
+    // build 151 made it a quarter tougher; build 162 took his blow back to
+    // the ground's ("reduce archers in the tower to their normal on the
+    // ground damage"), the toughness kept
+    ck('hisGroundBlowAndAQuarterTougher', C.atk === 1 && Math.abs(1 / C.hurt - 1.25) < 1e-9, `atk ×${C.atk}, hurt ×${C.hurt}`);
+    const pt = Math.round(100 / C.hurt - 100);
+    ck('andTheTowerSaysWhatThePlatformGives', !/harder/.test(tline) && tline.includes(`and are ${pt}% tougher`) && /shoot all the tower sees/.test(tline), tline);
 
     // HALF AGAIN, EVERY BOW, EVERY STOREY (build 150): the platform's figure
     // is one number — no kind of bow and no storey of tower moves it — so a
@@ -634,7 +640,7 @@ const out = await p.evaluate(() => {
     // stone tower — the stone tower's signal fire lifts the ground round it,
     // never the bows on its own platform
     const sameAtL = k => new Set(grid.filter(g => g.kind === k).map(g => g.shown)).size === 1;
-    ck('andTheTowersStoreyAddsNoBlow', ['archer', 'longbow', 'marksman'].every(sameAtL) && typeof C.atk === 'number' && C.atk > 1 && !Array.isArray(C.atk) && !Array.isArray(C.hurt) &&
+    ck('andTheTowersStoreyAddsNoBlow', ['archer', 'longbow', 'marksman'].every(sameAtL) && typeof C.atk === 'number' && C.atk === 1 && !Array.isArray(C.atk) && !Array.isArray(C.hurt) &&
       fireOnTheGround === CFG.UNITS.archer.atk + 2,
       `ATK by storey: ${['archer', 'longbow', 'marksman'].map(k => k + ' ' + grid.filter(g => g.kind === k).map(g => g.shown).join('/')).join(', ')}; CFG.LOOKOUT.atk ${JSON.stringify(C.atk)}, hurt ${JSON.stringify(C.hurt)}; an archer on the ground by the stone tower ${fireOnTheGround} (its signal fire)`);
   }
@@ -891,7 +897,9 @@ const out = await p.evaluate(() => {
     // I think it breaks the illusion too much"): the man drawn up there, his
     // ink from crown to foot, against a villager's on the ground — on a free
     // tower at least two thirds of one, on a wall tower (denser art, so a
-    // bigger man for the same art) at least nine tenths
+    // bigger man for the same art) at least nine tenths; build 162 ("they
+    // still look a little tiny"): a villager's height on a free tower (0.95
+    // at least), a tenth over him on a wall tower (1.05 at least)
     {
       const inkH = (img, D) => { const A = artPx(img), W = img.width, H = img.height; let t = -1, bt = -1;
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (A[(y * W + x) * 4 + 3] > 128) { if (t < 0) t = y; bt = y; }
@@ -906,7 +914,7 @@ const out = await p.evaluate(() => {
           R._faceMap.set(u, { x: u.x, y: u.y, dir: 's' });
           const p = Lookout.pic(u, Lookout.spot(u, f)), k = inkH(p.img, p.D) / vh;
           seen.push((wall ? 'wall' : 'free') + tw.level + ' ' + k.toFixed(2));
-          if (!(k >= (wall ? 0.9 : 2 / 3))) short.push(`${wall ? 'wall' : 'free'}${tw.level} ${u.kind}: ${k.toFixed(2)} of a villager`);
+          if (!(k >= (wall ? 1.05 : 0.95))) short.push(`${wall ? 'wall' : 'free'}${tw.level} ${u.kind}: ${k.toFixed(2)} of a villager`);
         }
       }
       ck('andTheyStandAMansHeightBesideTheVillagers', vh > 20 && seen.length === 12 && !short.length, short.join('; ') ||
@@ -999,13 +1007,17 @@ const out = await p.evaluate(() => {
         for (let x = 0; x < W; x++) if (prof[x]) { xs0 = Math.min(xs0, x); xs1 = Math.max(xs1, x); }
         const l = f.r.x + xs0 * sc, rr = f.r.x + (xs1 + 1) * sc;
         for (const u of S.units) if (u.perch === tw.id) u.perch = 0;
-        for (const place of [0, 1, 'alone']) for (const kind of kinds) for (const pose of ['idle', 'fight']) for (const d of Object.keys(dirs)) {
+        // at rest he keeps watch in his resting facing whatever way he came up
+        // (Lookout.restFace, build 162: the left man south-west, the right man
+        // south-east, a lone man south); drawing his bow, any of the eight
+        const restD = place => place === 'alone' ? Lookout.REST.solo : place === 0 ? Lookout.REST.left : Lookout.REST.right;
+        for (const place of [0, 1, 'alone']) for (const kind of kinds) for (const pose of ['idle', 'fight']) for (const d of (pose === 'idle' ? [restD(place)] : Object.keys(dirs))) {
           const a = Units.spawn(kind, 'P', tw.x, tw.y + 1);
           a.perch = tw.id;
           let o = null, foe = null;
           if (place !== 'alone') { o = Units.spawn('archer', 'P', tw.x, tw.y + 1); o.perch = tw.id; a.perchSlot = place; o.perchSlot = 1 - place; }
           if (pose === 'fight') { foe = Units.spawn('defender', 'A', tw.x + dirs[d][0], tw.y + dirs[d][1]); a.tUnit = foe.id; a.task = { type: 'attack', on: foe.id }; }
-          else R._faceMap.set(a, { x: a.x, y: a.y, dir: d });
+          else R._faceMap.set(a, { x: a.x, y: a.y, dir: 'n' });   // came up facing away: the rest facing still holds
           const s = Lookout.spot(a, f), man = s.y - s.head, fr = R.sheetFrames(a);
           if (fr && R._sheetPose === pose && R._sheetFace === d) poses++;
           for (const img of fr || [R.unitSprite(a)]) {
@@ -1019,7 +1031,7 @@ const out = await p.evaluate(() => {
           S.units = S.units.filter(x => x !== a && x !== o && x !== foe);
         }
       }
-      ck('andStayInsideWhicheverWayTheyFace', !out.length && cases === 864 && poses === 864, out.slice(0, 4).join('; ') + (out.length > 4 ? ` (+${out.length - 4})` : '') ||
+      ck('andStayInsideWhicheverWayTheyFace', !out.length && cases === 486 && poses === 486, out.slice(0, 4).join('; ') + (out.length > 4 ? ` (+${out.length - 4})` : '') ||
         `${cases} men (${poses} in the pose and facing asked), ${frames} frames — at rest the body ${Math.max(0, rest).toFixed(1)}px past the outer posts at worst; drawing, the arm ${Math.round(Math.max(0, reach) * 100)}% of his height over the side rail at worst`);
     }
     // AND EACH MAN'S HEALTH OVER HIM (build 148): two up there stand closer
