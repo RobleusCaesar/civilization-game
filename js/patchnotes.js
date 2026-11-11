@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 164, date: '2026-11-11', title: 'The hall burns',
+    items: [
+      'A Town Center under attack now burns from the inside: the doorway and the windows glow first, then the flames break through the roof, and at the last only the charred frame or the stone shell stands over the fire.',
+      'A thick column of smoke rises over a burning hall, lit from below by the flames, with sparks drifting away on the wind.',
+      'When a hall falls, its roof caves in with a burst of sparks and a thud, the camera comes to it, and the words go up before the last screen, whether the hall was yours or the rival\'s.',
+    ],
+  },
+  {
     build: 163, date: '2026-11-11', title: 'Houses that rise',
     items: [
       'A house being raised to a timber or a stone home now goes up in three real steps: the footing and its posts, the whole frame and its rafters, then the walls with half the roof thatched.',

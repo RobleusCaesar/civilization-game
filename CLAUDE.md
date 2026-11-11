@@ -295,6 +295,7 @@ node tests/test-page.mjs     # the test page is a sandbox: a run founded there s
 node tests/barb-bands.mjs    # every band its own fight: light / mid / heavy tiers worth their cost by the square law, a strength budget bought by each people's odds (five skirmishers or two brutes), wolves with the Wolfskins and a bear with the Flintfolk (at their camps too, over the quota), harry (hurt ones run, hands first) and press (each fall calls one more up, a few a band), drawn off the seed and never G.rand, in the save
 node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, a raider drawn in a 28 box and a light skirmisher in a 26 (their strips fill the frame, so at the cast's 32 they stood the brute's height), a brute 80px into a 40 box, a head over the raider by the drawn ink, a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
 node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
+node tests/hall-fire.mjs     # the Town Center burns in its own art: catch, blaze and gutted by the burn phase, at its own level, landing on the finished picture; asked the first time a hall is hurt, never at boot or by the demo; one picture for every caller, no flame sprite over it; the smoke and sparks draw no RNG and nothing in the black; it falls in its own place and the ground waits for it; a fall the player sees holds the end screen a beat (a hidden page, a new world, an unseen fall, no fall art: at once), in the defeat's words or the victory's
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
@@ -4079,6 +4080,67 @@ variants (sprites.js): the old whole-tile dither resolved into one
 continuous checker across a 2×2 footprint and read as the universal
 missing-texture pattern at the exact moment the player is guaranteed to be
 looking.
+
+**THE HALL ON FIRE** (`R.HALL_FIRE` / `hallFireArt` / `hallFirePic` /
+`drawHallSmoke` / `startHallFall` / `drawHallFallSky` / `groundHeld`,
+`Assets.wantHallFire`, the held curtain in `G.end`; tests/hall-fire.mjs —
+operator, build 164: "We have charred ruins and fire, but it looks really
+basic… There should be fire inside the building, coming from the building,
+part of the building, not just fire sprites placed on top of a darkened
+building… this is the culmination of the game… It should look really high
+quality either way"). A building burns from the INSIDE OUT: the doorway and
+the windows glow, flames roll out of the openings with soot above them, then
+the roof burns through and the frame or the stone shell stands over an
+inferno until it caves in under a burst of sparks, a dark column of smoke
+lit from below leaning downwind with embers in it. So the hall's fire IS
+ITS OWN ART: `assets/fire/tc-l{lv}-{catch,blaze,gutted,fall,ruin}.png`,
+strips of square 256px frames — PixelLab edits of each level's finished
+hall at three quarters on a 256 canvas (`assets/masters/tc/`: `-m75` the
+hall, `-catch`/`-blaze`/`-gutted` the stills), each loop animated from its
+still with the hall held still outside its own fire (a scratch script), the
+fall sixteen frames, the ruin a loop. **THE PHASE PICKS THE STATE**
+(`Bld.burnPhase` 0/1/2 → catch/blaze/gutted; −1 the plain hall), and **IT
+LANDS ON THE FINISHED PICTURE**: a frame draws at `scale` 4/3, so the
+three-quarter hall falls exactly on the finished PNG's rect and the headroom
+holds the flames (pinned at every level). **ONE PICTURE**: a frame is copied
+into one scratch canvas per hall when it changes, and `wornSprite` hands
+that to every caller (the building pass, `_redrawPic`, a card's overlay);
+`wornSprite(b, true)` is the plain hall, the footing's yard. **NO FLAME
+SPRITE OVER IT**: `drawBurnBack` and `drawBurn` stand down for a hall in its
+own fire; with the strips missing (a 404, `on` false) the scorched sprite
+and its flames stand in. **LAZY**: asked the first time a hall of that level
+is hurt and drawn — never at boot, never by the title's demo — at high
+priority, kept as decoded images drawn by source rect (frame canvases would
+pin the megabytes iOS purges). **THE SMOKE AND THE SPARKS ARE THE SCREEN'S**:
+soft billows (`R._smokeTex`, a texture of soft lumps per tone, smoothed,
+source-over — the shared 32px puff blown up read as square blocks beside the
+hall's fine-grained fire) and plain device-pixel embers cooling white → gold
+→ red (`R.fxDot` lays each through two non-separable passes, and fifty of
+them took the frame from 0.6 ms to 14 in the headless profile), on their own
+stream (`R._hrnd`, never the page's Math.random), on the page's clock,
+clipped to the board with the building pass. **IT FALLS IN ITS OWN PLACE**
+(`startCollapse` → `startHallFall`, before `removeToRuin`): a collapse entry
+carrying a pseudo-building (`_fall`) drawn IN THE BUILDING PASS where the
+hall stood — the fall's frames at `fallFps`, then the ruin loop — so a unit
+in front walks over it and the ash and the remains wait (`collapseAt`); the
+dust is one small burst at its foot on the cave-in (`boomS` 0.62 s, with a
+shake, the impact and the birds), since the full burst hid the roof going.
+**THE GROUND WAITS** (`_groundHold`): every repaint its death asks for —
+`updateTile`, the sliced queue (the wild verge growing back), TerrainX's
+held edit (`R.groundHeld`) — waits until the fall is down and
+`_releaseGround` paints it; without it a pale V4 scar spread under a hall
+still standing in its flames, and the cache's ruin showed through the caved
+roof. **THE CURTAIN WAITS FOR IT**: a fall the player SEES (`R.hallFall`) is
+the run's last beat — the camera settles it a little above the middle, the
+edges darken, "YOUR HALL HAS FALLEN" or "THE RIVAL'S HALL HAS FALLEN" goes up
+under it (`R.actTitle`'s `y`), and `G.end` holds the end screen `holdMs`
+(3.8 s). The run is over at once — S.over, its score, the row, the crash net
+— only the screen waits, and it is the end screen in place AT the ending
+that is shown (a contract that stands it down is never shown it later). A
+hidden page is shown its ending at once (the hide handler calls
+`G._fallEnd`), a new world none; an unseen fall or a missing fall strip
+holds nothing. The world is still (S.over stops the sim): the fight stands
+and watches the hall go.
 
 **THE RUINS A BUILDING LEAVES** (`js/ruins.js`, `R.ruinScorch`; tests/ruins.mjs —
 operator, build 155: "the destroyed tile square is also still low pixel

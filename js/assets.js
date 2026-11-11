@@ -658,6 +658,36 @@ const Assets = {
   },
   fxFrames(name) { const a = this.fx[name]; return a && a.length ? a : null; },
 
+  /* THE HALL ON FIRE (R.HALL_FIRE, tests/hall-fire.mjs): the Town Center's
+     own burning art, `assets/fire/tc-l{lv}-{state}.png`, one strip of square
+     256px frames per state — catch, blaze, gutted (the three burn phases),
+     fall (the collapse) and ruin (the heap it leaves, still burning). Asked
+     for the first time a hall of that level is hurt (R.hallFireArt, never at
+     boot, never by the title's demo), at HIGH priority, counted in nothing
+     artReady waits on. The strips are kept as DECODED IMAGES and drawn by
+     source rect — slicing them into frame canvases would pin ~2MB a strip,
+     the canvas memory iOS purges the terrain to win back. A 404 leaves the
+     hall its old scorched sprite and flames. */
+  HALL_FIRE_DIR: 'assets/fire/',
+  HALL_FIRE_STATES: ['catch', 'blaze', 'gutted', 'fall', 'ruin'],
+  hallFire: {},                   // 'tc-l2-blaze' -> the decoded strip
+  _hallAsked: {},                 // level -> true once its strips are asked for
+  wantHallFire(lv) {
+    lv = Math.max(1, Math.min(3, lv | 0 || 1));
+    if (this._hallAsked[lv]) return;
+    this._hallAsked[lv] = true;
+    for (const st of this.HALL_FIRE_STATES) {
+      const name = 'tc-l' + lv + '-' + st, img = new Image();
+      img.onload = () => {
+        if (img.width && img.height && img.width % img.height === 0) this.hallFire[name] = img;
+      };
+      img.onerror = () => { /* that state stays the old scorched sprite */ };
+      this._track(this._prio(img, 'high'), false, true);
+      img.src = this.HALL_FIRE_DIR + name + '.png?v=' + (CFG.ART_V || 1);
+    }
+  },
+  hallFireStrip(lv, st) { return this.hallFire['tc-l' + lv + '-' + st] || null; },
+
   /* ---- THE WATER'S MOTION PASS: three authored files -----------------
 
        assets/terrain/water/surface.png   a seamless grayscale texture the

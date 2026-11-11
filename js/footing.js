@@ -587,7 +587,7 @@ const Footing = (() => {
   // the building's footing if it is measured and current; queue it otherwise (a stale one still draws)
   function entry(b) {
     const look = F.look(b); if (look === 'none') return null;
-    const spr = R.wornSprite(b), sig = sigOf(b, look);
+    const spr = R.wornSprite(b, true), sig = sigOf(b, look);
     let e = F._c.get(b.id);
     if (!e || e.sig !== sig || e.spr !== spr) {
       if (!F._qs.has(b.id)) { F._qs.add(b.id); F._q.push(b.id); }
@@ -602,7 +602,7 @@ const Footing = (() => {
       const id = F._q.shift(); F._qs.delete(id);
       const b = S.buildings.find(o => o.id === id), look = b && F.look(b);
       if (b && look !== 'none') {
-        const spr = R.wornSprite(b);
+        const spr = R.wornSprite(b, true);
         try { F._c.set(id, { sig: sigOf(b, look), spr, L: build(b, spr, look), used: F._frame }); }
         catch (e) { F._c.delete(id); }                                  // a painter stands down rather than throwing
       }

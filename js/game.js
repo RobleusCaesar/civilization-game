@@ -239,6 +239,7 @@ const G = {
     Bld._block = null;
     this._freshRun = true;   // analytics: this world was founded, not loaded (Screens._enterNow logs it)
     this._marvel = false; clearTimeout(this._marvelT); this._marvelEnd = null;
+    clearTimeout(this._fallT); this._fallT = 0; this._fallEnd = null;   // …and a hall's held fall
     this._dying = null;
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)    // …and no announced death is left pending
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
@@ -2887,8 +2888,31 @@ const G = {
     // the run is over: its save slot is stamped finished and the crash net
     // cleared — the title's Continue will not walk back into a told story
     if (window.Backend) Backend.finalizeRun();
+    /* THE HALL FALLS BEFORE THE CURTAIN (R.startHallFall, tests/hall-fire.mjs):
+       a hall the player SEES coming down is the run's last beat, so the end
+       screen waits R.HALL_FIRE.holdMs for the camera, the fall, the thud and
+       the words. The run is already over — S.over, the score, the row, the
+       crash net are all done above — only the screen waits. A beat, never a
+       gate: a page hidden in it (the hide handler below) is shown its ending
+       at once, and a world replaced in it (a new game, a load) shows none. */
+    if (window.R && R.hallFall && R.hallFall.seen && R.HALL_FIRE && !document.hidden &&
+        window.Screens && Screens.current === 'playing') {
+      // the curtain the run ends on is the one in place NOW (a contract that
+      // stands the end screen down for a check is never shown it later)
+      const s0 = S, show = UI.showEnd;
+      const fin = () => {
+        clearTimeout(G._fallT); G._fallT = 0; G._fallEnd = null;
+        if (S !== s0 || !S.over) return;
+        show.call(UI, win, msg);
+      };
+      clearTimeout(this._fallT);
+      this._fallEnd = fin;
+      this._fallT = setTimeout(fin, R.HALL_FIRE.holdMs);
+      return;
+    }
     UI.showEnd(win, msg);
   },
+  _fallEnd: null,   // the held end screen behind a falling hall — flow only, never in S
 
   /* THE RUN, AS THE DASHBOARD READS IT — one builder shared by every ending
      (G.end) and by the tab closing on a live run (G.noteLeaving), so a
@@ -3571,6 +3595,7 @@ window.addEventListener('load', () => {
     if (Backend.startSession) Backend.startSession();   // analytics: time on site
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && G._marvel && G._marvelEnd) G._marvelEnd();   // a Wonder's held beat ends now
+      if (document.hidden && G._fallEnd) G._fallEnd();                     // …and so does a falling hall's
       if (document.hidden && window.S && !S.over &&
           !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');
     });
