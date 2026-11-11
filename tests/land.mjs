@@ -2618,6 +2618,49 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
 }
 function LAND_STEPS(v) { return 16; }
 
+/* ---- 19b. A FROZEN FRAME IS A STILL FRAME ----
+   The foam pairs above compare two draws at one clock, which holds only if
+   nothing in the draw rolls dice per CALL. A wandering critter re-rolled its
+   heading on every draw while its turn window was open, so at dt 0 the
+   second draw could face it the other way: CI run 218 (build 165) read 9
+   "foam" pixels on dry grass at (1424, 316), the same pair's own scan box,
+   once, alone, and a critter planted there failed the pairs half the time on
+   build 164 as on 165. The heading is re-rolled once per window now. Plant
+   one in its window at that pixel, answer Math.random 0.1 for one draw and
+   0.9 for the next: not one byte may move. The control: the same frame with
+   no critter in it differs, so the probe can see him. */
+{
+  const p = await page();
+  await p.evaluate(() => (window.Assets && Assets.whenWorldIdle) ? Assets.whenWorldIdle() : null);
+  const v = await p.evaluate(new Function(boot + `
+    const out = {};
+    try {
+      R.centerOn(41 + 3.5, 8 + 3.5);
+      for (let k = 0; k < 12; k++) R.draw(0.016);          // the lazy work settles first
+      const fox = () => [{ kind: 'critter', sub: 'fox', x: 44.5, y: 9.95, homeX: 44, homeY: 8, vx: 0.3, vy: 0,
+        t: 2, ttl: 6, ph: (Math.PI / 2 + 2 * Math.PI) / 3.1 - 2, face: 1, state: 'wander' }];   // sin = 1: in the window
+      R.ambientT = 1e9; R.smokeT = 1e9;                     // nothing new is spawned
+      const pnow = performance.now, tFix = pnow.call(performance), mr = Math.random;
+      const grab = () => R.g.getImageData(0, 0, R.cv.width, R.cv.height).data;
+      performance.now = () => tFix;
+      let A, B, E;
+      try {
+        R.ambient = fox();
+        Math.random = () => 0.1; R.draw(0); A = grab();
+        Math.random = () => 0.9; R.draw(0); B = grab();
+        R.ambient = []; R.draw(0); E = grab();
+      } finally { performance.now = pnow; Math.random = mr; }
+      let moved = 0, seen = 0;
+      for (let i = 0; i < A.length; i++) { if (A[i] !== B[i]) moved++; if (A[i] !== E[i]) seen++; }
+      out.moved = moved; out.seen = seen;
+    } catch (e) { out.thrown = String(e && e.stack || e); }
+    return out;`));
+  await p.close();
+  ck('aFrozenFrameIsAStillFrame', !v.thrown && v.seen > 0 && v.moved === 0,
+    v.thrown || (v.moved + ' bytes moved between two draws at one clock with a wandering critter in its turn window ' +
+      '(Math.random 0.1, then 0.9); the critter itself is ' + v.seen + ' bytes of the frame'));
+}
+
 /* ---- 21. THE RAMP, THE BATHYMETRY AND THE SANDBARS ----
    The ramp is EVEN, which is the whole reason it was rebuilt in OKLab:
    adjacent steps differ by roughly equal LIGHTNESS. Bunch the steps and

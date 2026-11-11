@@ -8286,6 +8286,17 @@ counts) while `S.rngState` stayed in lockstep. The test re-zeroes both clocks
 beside its re-seed; any future suite that drives `Units.update`/`Combat.update`
 directly wants the same three lines (seed, `scanT`, `herdClock`).
 
+**A DRAW THAT ROLLS DICE PER CALL IS THE FOURTH** (`tests/land.mjs` §19b
+`aFrozenFrameIsAStillFrame`, build 165's CI run 218): freezing
+`performance.now` across a pair of `R.draw(0)` calls only stills what moves
+on the clock. A wandering ambient critter re-rolled its heading with
+`Math.random` on EVERY draw while its turn window was open, so the second
+draw of a pair could face it the other way: nine "foam" pixels on dry grass,
+once, alone, on build 164's code as on 165's. It re-rolls once per window
+now (`a.turned`), and §19b plants one in its window, answers `Math.random`
+0.1 then 0.9, and holds the frame to zero bytes moved. Decor may draw on the
+clock or a hash; a draw-time roll belongs on a transition, never on a call.
+
 **A contract sweep must key on EXIT CODES, never on grepping the output**
 (learned the hard way): every `tests/*.mjs` exits non-zero on failure, but the
 suites do not share a failure vocabulary — `tap-audit.mjs` ends with

@@ -16557,7 +16557,13 @@ const R = {
         if (a.state === 'emerge' && a.t > 0.8) a.state = 'wander';
         if (a.state !== 'flee' && a.t > a.ttl - 1.6) a.state = 'flee';
         if (a.state === 'wander') {
-          if (Math.sin((a.t + a.ph) * 3.1) > 0.985) { a.vx = (Math.random() - 0.5) * 0.6; a.vy = (Math.random() - 0.5) * 0.5; }
+          // a new heading ONCE per turn window, never once per draw: re-rolled on
+          // every call, a critter flickered its facing for the window's tenth of
+          // a second, and two draws at one moment (dt 0) could face it opposite
+          // ways — read as foam on dry grass by land.mjs's frozen-clock pairs
+          const turn = Math.sin((a.t + a.ph) * 3.1) > 0.985;
+          if (turn && !a.turned) { a.vx = (Math.random() - 0.5) * 0.6; a.vy = (Math.random() - 0.5) * 0.5; }
+          a.turned = turn;
           const hop = Math.max(0, Math.sin((a.t + a.ph) * 7));      // scurry between little pauses
           a.x += a.vx * dt * hop; a.y += a.vy * dt * hop;
         } else if (a.state === 'flee') {
