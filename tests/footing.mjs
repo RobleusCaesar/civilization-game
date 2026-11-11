@@ -230,7 +230,11 @@ await frames(p, 3);
     // the canvases' cells against the footprint each serves
     let cells = 0, n = 0, worst = 0;
     for (const [, e] of Footing._c) { let c = 0; for (const L of e.L) if (L) c += L.cv.width * L.cv.height; cells += c; n++; worst = Math.max(worst, c); }
-    return { one, all: all.length, recast: !!now && now.spr !== was && now.spr === R.wornSprite(Object.assign({}, house, { hp: Math.round(house.maxhp * 0.5) })),
+    // (measured off the PLAIN picture, R.wornSprite(b, true): a building that
+    // burns in its own art — R.FIRE_ART, tests/building-fire.mjs — draws its
+    // fire frame on the same foot, and a frame changing nine times a second is
+    // no reason to measure the ground again)
+    return { one, all: all.length, recast: !!now && now.spr !== was && now.spr === R.wornSprite(Object.assign({}, house, { hp: Math.round(house.maxhp * 0.5) }), true),
       avg: Math.round(cells / Math.max(1, n)), worst };
   }, town.ids);
   ck('aFrameWithNoBudgetLeftMeasuresOneBuilding', r.one === 1 && r.all > 5, `${r.one} of ${r.all}`);
