@@ -3239,6 +3239,19 @@ the hearth smoke follows the art (`R.SMOKE_AT.trade` is per level — only L3
 smokes — and the war camp's anchor is its yard fire). The DOCK keeps its
 procedural four-facing stages: one PNG would override all four shore
 orientations.
+**AND THE HOUSES' UPPER STOREYS** (build 163 — operator: the level-2 house's
+middle stage was "just a flat icon of the front of a building… It should look
+like a 3D building under construction and coming together"): the level-2 and
+level-3 house stages were older trimmed sets stretched into the footprint
+square, and three of the six were flat elevations (a timber gable with no
+depth, a stone plan seen straight down). All six are now edits of the
+FINISHED house on its own 256 canvas, in the house camera — the stone footing
+laid on the finished plan with its posts (a cord, a log stack, a mallet), the
+whole frame and bare rafters standing, then the walls up and one roof slope
+thatched with a ladder on the other — so `R.blitStage` lands each on the
+finished rect and the house grows in place. Shipped as lossless palette PNGs
+(256 colours or fewer, about 60% under the RGBA files). The level-1
+roundhouse set keeps its fitted canvases.
 
 **The Watchtower has BESPOKE stage art** (same test): the first building with
 its own three-sprite raising — `misc/towerBuild1/2/3` at DOUBLE resolution

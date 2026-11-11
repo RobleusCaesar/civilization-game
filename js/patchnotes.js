@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 163, date: '2026-11-11', title: 'Houses that rise',
+    items: [
+      'A house being raised to a timber or a stone home now goes up in three real steps: the footing and its posts, the whole frame and its rafters, then the walls with half the roof thatched.',
+      'Every step stands exactly where the finished house will, so the home grows in place instead of jumping.',
+    ],
+  },
+  {
     build: 162, date: '2026-11-10', title: 'Archers on the towers',
     items: [
       'Archers on a tower now hit exactly as hard as they do on the ground. They still take a quarter less damage up there.',
