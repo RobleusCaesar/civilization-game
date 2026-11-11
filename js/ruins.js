@@ -27,6 +27,11 @@ const Ruins = {
      (assets/ruins/ruin-{class}-{n}.png, n from 1) */
   SETS: { timber: 2, stonehouse: 1, rubble: 4, stakes: 4, yard: 2, hall: 2 },
   FORTS: { wall: 1, gate: 1, tower: 1 },
+  /* A HOUSE FALLS ONTO ITS OWN RUIN (R.FIRE_ART, R.startFireFall): its fall's
+     last frame is the ruin drawn from these, so the ruin is PINNED — the
+     roundhouse leaves the burnt roundhouse, the timber house its charred
+     frame, the stone house its fallen walls — never mirrored */
+  PIN: { house: [['timber', 1], ['timber', 2], ['stonehouse', 1]] },
   _img: {},
   classOf(b) {
     const lv = b.level || 1, sz = (typeof Bld !== 'undefined' && Bld.size) ? Bld.size(b) : 1;
@@ -49,12 +54,14 @@ const Ruins = {
     // a camp is one tile in a 3x3 yard: its remains spread over the yard
     const sz = b.key === 'raidercamp' ? 1 : Bld.size(b);
     const r = { x: b.x, y: b.y, sz, c, v: 1 + Math.floor(this.hash(b.x, b.y, 3) * n), m: this.hash(b.x, b.y, 5) < 0.5 ? 1 : 0, day: S.day };
+    const pin = this.PIN[b.key] && this.PIN[b.key][Math.max(1, Math.min(3, b.level || 1)) - 1];
+    if (pin) { r.c = pin[0]; r.v = pin[1]; r.m = 0; }
     if (b.key === 'raidercamp') r.big = 2;
     // a newer ruin on the same ground replaces the older
     S.ruins = S.ruins.filter(o => !(o.x === r.x && o.y === r.y));
     S.ruins.push(r);
     if (S.ruins.length > 160) S.ruins.splice(0, S.ruins.length - 160);
-    this.want(c, r.v);
+    this.want(r.c, r.v);   // the picture it will wear (a pinned house's own), asked while it falls
   },
   img(c, v) {
     const k = c + '-' + v, im = this._img[k];

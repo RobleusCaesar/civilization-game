@@ -53,6 +53,8 @@ const Footing = (() => {
   // which look a building wears ('none' for a fortification, a site, a bonded tower)
   F.look = b => {
     if (!b || b.construction > 0 || b.upgrading > 0 || F.KINDS.none.includes(b.key)) return 'none';
+    // a house coming down in its own art (R.startFireFall) has lost its yard with it
+    if (b._fall && !b._fall.hall) return 'none';
     if (b.key === 'tower' && R.towerLinkMask) {                         // bonded into a wall line: part of the wall, not a building beside it
       const lm = R.towerLinkMask(b.x, b.y);
       if (lm && (typeof lm === 'object' ? lm.mask : lm)) return 'none';

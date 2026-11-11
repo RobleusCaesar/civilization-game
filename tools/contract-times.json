@@ -21,6 +21,7 @@
   "build-stages.mjs": 6,
   "build-stand.mjs": 5,
   "buildings-block.mjs": 11,
+  "building-fire.mjs": 20,
   "burn-down.mjs": 10,
   "calm-peace.mjs": 14,
   "camp-crew.mjs": 10,

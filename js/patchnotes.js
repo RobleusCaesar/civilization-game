@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 165, date: '2026-11-11', title: 'Every building burns',
+    items: [
+      'Houses, farms, camps, workshops and every other building now burn in their own pictures when attacked: the doors and windows glow first, then the roof catches, and at the end only the blackened frame or the stone shell stands in the fire.',
+      'A house that is burned down caves in where it stood and leaves its own ruin behind: the burnt roundhouse, the charred timber frame or the fallen stone walls.',
+      'Smoke rises from every burning building and sparks drift off on the wind, and even a whole town on fire stays easy to read.',
+      'A building on fire no longer puffs its peaceful chimney smoke, and no smoke drifts out past the edge of the map.',
+    ],
+  },
+  {
     build: 164, date: '2026-11-11', title: 'The hall burns',
     items: [
       'A Town Center under attack now burns from the inside: the doorway and the windows glow first, then the flames break through the roof, and at the last only the charred frame or the stone shell stands over the fire.',

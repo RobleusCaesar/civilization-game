@@ -7292,9 +7292,13 @@ const R = {
   wornSprite(b, plain) {
     const held = this._cardHeld && this._cardHeld.get(b.id);
     if (typeof held === 'number' && held > 0) return this.bldSprite(b, held);
-    // THE HALL ON FIRE (R.HALL_FIRE): its own burning frame, or its fall —
-    // `plain` asks for the hall without its fire (the footing's yard)
-    if (!plain && b.key === 'tc') { const hf = b._fall ? this._fallPic(b) : this.hallFirePic(b); if (hf) return hf; }
+    // THE HALL ON FIRE, AND EVERY BUILDING (R.HALL_FIRE, R.FIRE_ART): its own
+    // burning frame, or its fall (null once a house is down and its ruin
+    // drawn) — `plain` asks for the building without its fire (the footing's yard)
+    if (!plain) {
+      if (b._fall) return this.fallPic(b);
+      if (b.key === 'tc' || this.FIRE_ART[b.key]) { const hf = this.firePic(b); if (hf) return hf; }
+    }
     const bph = Bld.burnPhase(b), base = this.bldSprite(b);
     if (bph >= 1) { const d = this.dmgArt(b, bph); if (d) return d; }
     if (bph === 1) return this.darkOf(base);
@@ -8748,6 +8752,13 @@ const R = {
     // …and only a little of it, rolling out at its foot: the fall's own sparks are the moment, and
     // the full burst laid over the hall hid the roof caving in
     if (hf) { this.startPlacePoof(b.x, b.y, sz, { delay, scale: 0.6 }); return; }
+    // a house falling in its own art (startFireFall): a breath of dust as it goes, the cloud as it caves in
+    const ff = this.collapses.find(c => c.fire && c.pseudo && c.pseudo.id === b.id);
+    if (ff) {
+      this.startPlacePoof(b.x, b.y, sz, { scale: 0.5 });
+      this.startPlacePoof(b.x, b.y, sz, { delay: ff.until * this.BFIRE.boomAt * 1000, scale: 0.85 });
+      return;
+    }
     this.startPlacePoof(b.x, b.y, sz, { delay });
     this.startPlacePoof(b.x, b.y, sz, { delay: delay + 250, scale: 0.65 });
   },
@@ -12525,6 +12536,8 @@ const R = {
 
   startCollapse(b) {
     if (b.key === 'tc') return this.startHallFall(b);   // the hall falls as its own art (THE HALL ON FIRE)
+    // …and a house in its own art, onto its ruin (R.FIRE_ART, startFireFall)
+    if (this.FIRE_ART[b.key] && this.FIRE_ART[b.key].fall && this.startFireFall(b)) return;
     const cfg = this.COLLAPSE[b.key];
     if (!cfg) return;                              // this kind doesn't topple
     /* A WORK SITE HAS NOTHING TO TOPPLE. The collapse is cut from the
@@ -12806,8 +12819,10 @@ const R = {
 
   // is a topple still playing over this tile? (the ash it leaves waits for it)
   collapseAt(x, y) {
-    for (const c of this.collapses)
+    for (const c of this.collapses) {
+      if (c.until != null && c.t >= c.until) continue;   // a house is down: its ruin is drawn now (startFireFall)
       if (x >= c.x && x < c.x + c.sz && y >= c.y && y < c.y + c.sz) return c;
+    }
     return null;
   },
 
@@ -12825,7 +12840,7 @@ const R = {
         if (c.hall && this._groundHold) this._releaseGround();   // the hall is down: its ground may change now
         continue;
       }
-      if (c.hall) continue;                        // a hall falls in the building pass, in its own place
+      if (c.hall || c.fire) continue;              // a hall or a house falls in the building pass, in its own place
       if (!G.visibleAt(c.x, c.y)) continue;        // a tower falling in the fog is not seen
       const PD = this.COLLAPSE_PAD;
       const bw = c.sz * TL, bx = c.x * TL, by = c.y * TL;
@@ -13245,7 +13260,7 @@ const R = {
   drawBurnBack(g, b, bx, by, bw) {
     const ph = Bld.burnPhase(b);
     if (ph !== 1) return;
-    if (b.key === 'tc' && this.hallBurning(b)) return;   // the hall's fire is in its own art
+    if (this.fireBurning(b)) return;   // a building burning in its own art carries its own flames
     const a = this.fireAnchors(b);
     if (!a || a.ground) return;
     const rct = this.fireRect(b, bx, by, bw);
@@ -13329,6 +13344,8 @@ const R = {
     if (b.key === 'tower') return this.drawTowerCrumble(g, b, bx, by, bw, ph);
     // the hall burns in its own art: only its smoke and its embers are drawn here
     if (b.key === 'tc' && this.hallBurning(b)) return this.drawHallSmoke(g, b, bx, by, bw, ph);
+    // …and so does every building with fire art of its own (R.FIRE_ART)
+    if (this.FIRE_ART[b.key] && this.fireBurning(b)) return this.drawFireSmoke(g, b, bx, by, bw, ph);
     const hsh = (n) => ((((b.id * 2654435761 + n * 40503) >>> 0) >>> 7) % 1000) / 1000;
     if (this.gapPosts(b) && !(b.construction > 0)) {
       // a gap gate has nothing standing but its posts and its doors: the
@@ -13443,8 +13460,10 @@ const R = {
     if (!sc || sc.width !== F) {
       sc = document.createElement('canvas'); sc.width = sc.height = F;
       sc._cfArt = { scale: this.HALL_FIRE.scale };
+      sc._fireScr = true;
       this._hallScr.set(id, sc);
     }
+    sc._at = performance.now() / 1000;
     if (sc._src !== strip || sc._f !== f) {
       const g = sc.getContext('2d');
       g.clearRect(0, 0, F, F);
@@ -13476,9 +13495,306 @@ const R = {
   },
   // the hall's place in the building pass while it comes down (startHallFall)
   drawHallFall(g, b, bx, by, bw) {
+    if (!b._fall.hall) return this.drawFireFall(g, b, bx, by, bw);   // a house comes down in its own art
     const spr = this.wornSprite(b);
     if (spr) this.blitBld(g, spr, bx, by, bw, bw);
     this.drawHallSmoke(g, b, bx, by, bw, 3);
+  },
+
+  /* ============ EVERY BUILDING BURNS IN ITS OWN ART (tests/building-fire.mjs) ============
+     Operator, build 165, after the hall ("Yes please. With the most effort
+     put into the most common buildings"): the hall's way for the town. A
+     house, a farm, a camp, a yard burns from the inside out in its OWN
+     picture — the fire takes the room and shows at the doorway, breaks
+     through the thatch, roars out of the roof, and leaves the shell or the
+     frame over the last of it — one state per burn phase (catch, blaze,
+     gutted: Bld.burnPhase 0, 1, 2), each an 8-frame loop animated from a
+     PixelLab edit of that kind's finished art at its own pixel density
+     (assets/masters/fire), with the building held still outside its fire.
+     A house, the commonest thing that burns, also FALLS in its own art when
+     it dies: the roof caves in, the walls go, and the last frame IS its ruin
+     (Ruins pins the house's ruin to the one the fall lands on), so the ruins
+     pass takes over without a seam, the smoke thinning over it.
+     The machinery is the hall's: the strips asked the first time a building
+     of that kind and level is hurt (Assets.wantFireArt — never at boot,
+     never by the title's demo), one scratch canvas per building that
+     wornSprite hands every caller (R._hallScr, keyed by id), no flame sprite
+     over its own art, its smoke and embers drawn with the building on their
+     own stream. A building wears its fire only on the finished picture it
+     was made from (w × h): a PNG redrawn under the same name stands it down
+     to the old scorched look until its fire is made again. `n` is the art's
+     width IN THE FRAME, so the frame is drawn at frame / n footprints and
+     the building in it lands exactly on its finished picture; `ox` is the
+     half pixel its master's centring rounded. `sm` is where the smoke rises
+     in each state (frame fractions [x, y, spread], read off the stills'
+     flames). Render state only, never in a save. */
+  BFIRE: { on: true, fps: 9, fallFps: 8, smoulderS: 3.5, boomAt: 0.45, falls: 8, puffMax: 240, emberMax: 200 },
+  FIRE_STATES: ['catch', 'blaze', 'gutted'],
+  FIRE_STATES_FALL: ['catch', 'blaze', 'gutted', 'fall'],
+  FIRE_ART: {
+    house: { fall: true, lv: [
+      { w: 256, h: 256, f: 256, n: 192, sm: { catch: [0.359, 0.457, 0.18], blaze: [0.5, 0.23, 0.211], gutted: [0.488, 0.344, 0.188] } },
+      { w: 256, h: 256, f: 256, n: 192, sm: { catch: [0.438, 0.422, 0.336], blaze: [0.504, 0.332, 0.355], gutted: [0.492, 0.27, 0.258] } },
+      { w: 256, h: 256, f: 256, n: 192, sm: { catch: [0.539, 0.383, 0.25], blaze: [0.469, 0.258, 0.324], gutted: [0.469, 0.234, 0.18] } },
+    ] },
+    farm: { lv: [
+      { w: 256, h: 256, f: 256, n: 192, sm: { catch: [0.242, 0.367, 0.12], blaze: [0.484, 0.41, 0.434], gutted: [0.465, 0.383, 0.457] } },
+      { w: 256, h: 256, f: 256, n: 192, sm: { catch: [0.488, 0.434, 0.422], blaze: [0.496, 0.301, 0.379], gutted: [0.531, 0.309, 0.367] } },
+      { w: 256, h: 256, f: 256, n: 192, sm: { catch: [0.59, 0.527, 0.32], blaze: [0.477, 0.367, 0.445], gutted: [0.496, 0.336, 0.168] } },
+    ] },
+    lumber: { lv: [
+      { w: 228, h: 228, f: 152, n: 114, sm: { catch: [0.632, 0.388, 0.329], blaze: [0.507, 0.263, 0.283], gutted: [0.52, 0.349, 0.217] } },
+      { w: 280, h: 280, f: 188, n: 140, sm: { catch: [0.436, 0.383, 0.266], blaze: [0.5, 0.282, 0.298], gutted: [0.489, 0.452, 0.181] } },
+      { w: 284, h: 284, f: 192, n: 142, sm: { catch: [0.552, 0.401, 0.151], blaze: [0.49, 0.255, 0.26], gutted: [0.495, 0.281, 0.224] } },
+    ] },
+    quarry: { lv: [
+      { w: 232, h: 232, f: 156, n: 116, sm: { catch: [0.506, 0.801, 0.128], blaze: [0.449, 0.282, 0.147], gutted: [0.5, 0.333, 0.186] } },
+      { w: 228, h: 228, f: 152, n: 114, sm: { catch: [0.289, 0.796, 0.401], blaze: [0.336, 0.336, 0.296], gutted: [0.441, 0.599, 0.151] } },
+      { w: 224, h: 224, f: 152, n: 112, sm: { catch: [0.316, 0.704, 0.12], blaze: [0.329, 0.283, 0.12], gutted: [0.355, 0.447, 0.145] } },
+    ] },
+    mine: { lv: [
+      { w: 107, h: 89, f: 144, n: 107, ox: 0.5 / 107, sm: { catch: [0.493, 0.639, 0.208], blaze: [0.5, 0.326, 0.229], gutted: [0.479, 0.285, 0.16] } },
+      { w: 115, h: 144, f: 172, n: 115, ox: 0.5 / 115, sm: { catch: [0.483, 0.209, 0.209], blaze: [0.488, 0.151, 0.233], gutted: [0.506, 0.238, 0.12] } },
+      { w: 128, h: 144, f: 88, n: 64, sm: { catch: [0.489, 0.273, 0.136], blaze: [0.477, 0.216, 0.239], gutted: [0.477, 0.364, 0.12] } },
+    ] },
+    barracks: { lv: [
+      { w: 244, h: 248, f: 164, n: 122, sm: { catch: [0.628, 0.262, 0.177], blaze: [0.494, 0.177, 0.372], gutted: [0.482, 0.293, 0.238] } },
+      { w: 276, h: 276, f: 184, n: 138, sm: { catch: [0.641, 0.37, 0.212], blaze: [0.495, 0.25, 0.375], gutted: [0.522, 0.321, 0.337] } },
+      { w: 276, h: 280, f: 184, n: 138, sm: { catch: [0.603, 0.315, 0.163], blaze: [0.505, 0.217, 0.386], gutted: [0.467, 0.255, 0.277] } },
+    ] },
+    range: { lv: [
+      { w: 224, h: 248, f: 152, n: 112, sm: { catch: [0.625, 0.289, 0.12], blaze: [0.5, 0.217, 0.388], gutted: [0.474, 0.355, 0.263] } },
+      { w: 256, h: 256, f: 172, n: 128, sm: { catch: [0.657, 0.337, 0.12], blaze: [0.465, 0.25, 0.39], gutted: [0.494, 0.36, 0.291] } },
+      { w: 256, h: 256, f: 172, n: 128, sm: { catch: [0.448, 0.506, 0.337], blaze: [0.483, 0.326, 0.401], gutted: [0.506, 0.291, 0.337] } },
+    ] },
+    lodge: { lv: [
+      { w: 128, h: 144, f: 88, n: 64, sm: { catch: [0.659, 0.341, 0.205], blaze: [0.545, 0.216, 0.33], gutted: [0.545, 0.375, 0.193] } },
+      { w: 128, h: 144, f: 88, n: 64, sm: { catch: [0.409, 0.239, 0.148], blaze: [0.489, 0.193, 0.307], gutted: [0.489, 0.205, 0.159] } },
+      { w: 128, h: 144, f: 88, n: 64, sm: { catch: [0.455, 0.33, 0.125], blaze: [0.477, 0.193, 0.25], gutted: [0.511, 0.239, 0.148] } },
+    ] },
+    stable: { lv: [
+      { w: 272, h: 272, f: 184, n: 136, sm: { catch: [0.663, 0.386, 0.12], blaze: [0.554, 0.245, 0.397], gutted: [0.478, 0.402, 0.217] } },
+      { w: 256, h: 256, f: 172, n: 128, sm: { catch: [0.593, 0.343, 0.366], blaze: [0.494, 0.267, 0.419], gutted: [0.512, 0.273, 0.302] } },
+      { w: 280, h: 280, f: 188, n: 140, sm: { catch: [0.596, 0.356, 0.12], blaze: [0.5, 0.234, 0.383], gutted: [0.479, 0.213, 0.287] } },
+    ] },
+    siege: { lv: [
+      { w: 280, h: 280, f: 188, n: 140, sm: { catch: [0.676, 0.388, 0.245], blaze: [0.489, 0.266, 0.367], gutted: [0.5, 0.383, 0.25] } },
+      { w: 292, h: 292, f: 196, n: 146, sm: { catch: [0.622, 0.408, 0.179], blaze: [0.48, 0.265, 0.337], gutted: [0.495, 0.316, 0.199] } },
+      { w: 240, h: 256, f: 160, n: 120, sm: { catch: [0.6, 0.331, 0.269], blaze: [0.488, 0.25, 0.4], gutted: [0.488, 0.219, 0.213] } },
+    ] },
+    sapper: { lv: [
+      { w: 252, h: 252, f: 168, n: 126, sm: { catch: [0.345, 0.512, 0.137], blaze: [0.476, 0.304, 0.298], gutted: [0.488, 0.351, 0.137] } },
+      { w: 280, h: 280, f: 188, n: 140, sm: { catch: [0.633, 0.559, 0.335], blaze: [0.495, 0.34, 0.287], gutted: [0.521, 0.335, 0.12] } },
+      { w: 232, h: 236, f: 156, n: 116, sm: { catch: [0.321, 0.481, 0.205], blaze: [0.436, 0.205, 0.365], gutted: [0.481, 0.282, 0.12] } },
+    ] },
+    trade: { lv: [
+      { w: 248, h: 256, f: 168, n: 124, sm: { catch: [0.667, 0.387, 0.12], blaze: [0.476, 0.238, 0.292], gutted: [0.488, 0.458, 0.256] } },
+      { w: 244, h: 260, f: 164, n: 122, sm: { catch: [0.567, 0.293, 0.159], blaze: [0.488, 0.22, 0.348], gutted: [0.494, 0.268, 0.189] } },
+      { w: 276, h: 276, f: 184, n: 138, sm: { catch: [0.576, 0.386, 0.283], blaze: [0.478, 0.234, 0.342], gutted: [0.489, 0.304, 0.147] } },
+    ] },
+    warcamp: { lv: [
+      { w: 240, h: 240, f: 160, n: 120, sm: { catch: [0.375, 0.3, 0.12], blaze: [0.469, 0.263, 0.313], gutted: [0.513, 0.438, 0.25] } },
+    ] },
+  },
+  _fireLive: 0, _fireSum: 0,  // smoke puffs alive last frame, every fire together (BFIRE.puffMax)
+  _emberLive: 0, _emberSum: 0,
+  // this building's row in FIRE_ART at its level: {e, lv, d}, or null
+  fireDef(b) {
+    const e = b && this.FIRE_ART[b.key];
+    if (!e) return null;
+    const lv = Math.max(1, Math.min(e.lv.length, b.level || 1));
+    return { e, lv, d: e.lv[lv - 1] };
+  },
+  // is its finished picture the one its fire was drawn from?
+  _fireFits(b, d) {
+    const base = this.bldSprite(b);
+    return !!(base && base.width === d.w && base.height === d.h);
+  },
+  // the strip this building wears now, or null (the old look). A hurt
+  // building of a kind with fire art asks for its strips.
+  fireArt(b) {
+    if (!b) return null;
+    if (b.key === 'tc') return this.hallFireArt(b);
+    if (!this.BFIRE.on || b.construction > 0 || b.upgrading > 0 || !(b.hp < b.maxhp)) return null;
+    if (typeof Assets === 'undefined' || !Assets.wantFireArt) return null;
+    if (window.Screens && Screens._demo) return null;       // the title's demo world asks for nothing
+    const f = this.fireDef(b);
+    if (!f || !this._fireFits(b, f.d)) return null;
+    const ph = Bld.burnPhase(b);
+    if (ph < 0) return null;
+    Assets.wantFireArt(b.key, f.lv, f.e.fall ? this.FIRE_STATES_FALL : this.FIRE_STATES);
+    return Assets.fireStrip(b.key, f.lv, this.FIRE_STATES[ph]);
+  },
+  // one frame of a strip in this building's scratch, drawn at frame / n footprints
+  _fireFrame(b, strip, f, d) {
+    const F = strip.height, k = d.f / d.n;
+    if (F !== d.f) return null;                 // a strip not made for this table stands down
+    let sc = this._hallScr.get(b.id);
+    if (!sc || sc.width !== F || !sc._cfArt || sc._cfArt.scale !== k) {
+      sc = document.createElement('canvas'); sc.width = sc.height = F;
+      sc._cfArt = { scale: k, ox: d.ox || 0 };
+      sc._fireScr = true;
+      this._hallScr.set(b.id, sc);
+    }
+    sc._at = performance.now() / 1000;
+    if (sc._src !== strip || sc._f !== f) {
+      const g = sc.getContext('2d');
+      g.clearRect(0, 0, F, F);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(strip, f * F, 0, F, F, 0, 0, F, F);
+      sc._src = strip; sc._f = f;
+    }
+    return sc;
+  },
+  // the picture a burning building wears now (the hall's included), or null
+  firePic(b) {
+    if (b.key === 'tc') return this.hallFirePic(b);
+    const st = this.fireArt(b);
+    if (!st) return null;
+    const n = Math.max(1, (st.width / st.height) | 0);
+    const now = this._hallNow || performance.now() / 1000;
+    return this._fireFrame(b, st, Math.floor(now * this.BFIRE.fps + b.id * 3) % n, this.fireDef(b).d);
+  },
+  // is this building wearing its own fire (and so none of the flame sprites)?
+  fireBurning(b) {
+    if (!b) return false;
+    return b.key === 'tc' ? this.hallBurning(b) : !!(b._fall || this.fireArt(b));
+  },
+  // the picture of a building coming down: the hall's, or a house's fall —
+  // null once a house is down (its ruin is drawn by the ruins pass then)
+  fallPic(b) {
+    const c = b._fall;
+    if (c.hall) return this._fallPic(b);
+    const fall = Assets.fireStrip(c.fire.key, c.fire.lv, 'fall');
+    if (!fall) return null;
+    const nF = (fall.width / fall.height) | 0, ff = Math.floor(c.t * this.BFIRE.fallFps);
+    if (ff >= nF) return null;
+    return this._fireFrame(b, fall, ff, c.fire.d);
+  },
+  /* A HOUSE COMES DOWN IN ITS OWN ART (startCollapse → here, from
+     Bld.damage's destroy branch, before removeToRuin — the hall's road): a
+     pseudo-building on the collapse entry, drawn in the building pass in
+     its own place, the fall's frames once through (BFIRE.fallFps), then its
+     smoke thinning over the ruin for BFIRE.smoulderS. Its ruin and its ash
+     wait for the fall alone (R.collapseAt honours `until`); the fall's last
+     frame is the ruin the ruins pass then draws. At most BFIRE.falls at once
+     — past that a house simply goes, as every building used to. */
+  startFireFall(b) {
+    const f = this.fireDef(b);
+    if (!f || !f.e.fall || !this.BFIRE.on || b.construction > 0 || b.upgrading > 0) return false;
+    if (typeof Assets === 'undefined' || !Assets.fireStrip) return false;
+    if (window.Screens && Screens._demo) return false;
+    const fall = Assets.fireStrip(b.key, f.lv, 'fall');
+    if (!fall || !this._fireFits(b, f.d)) return false;
+    let live = 0;
+    for (const c of this.collapses) if (c.fire) live++;
+    if (live >= this.BFIRE.falls) return false;
+    const sz = Bld.size(b), dur = ((fall.width / fall.height) | 0) / this.BFIRE.fallFps;
+    const c = { x: b.x, y: b.y, sz, t: 0, key: b.key, flip: false, until: dur,
+      cfg: { ms: (dur + this.BFIRE.smoulderS) * 1000 }, fire: { key: b.key, lv: f.lv, d: f.d } };
+    c.pseudo = { id: b.id, key: b.key, owner: b.owner, level: f.lv, x: b.x, y: b.y, sz, hp: 0, maxhp: 1,
+      construction: 0, upgrading: 0, _fall: c };
+    this.collapses.push(c);
+    return true;
+  },
+  // a house's place in the building pass while it comes down, then its smoulder
+  drawFireFall(g, b, bx, by, bw) {
+    const c = b._fall, spr = this.fallPic(b);
+    if (spr) this.blitBld(g, spr, bx, by, bw, bw);
+    this.drawFireSmoke(g, b, bx, by, bw, c.t < c.until ? 3 : 4);
+  },
+  /* THE SMOKE AND THE EMBERS OF ANY FIRE BUT THE HALL'S (the hall's own,
+     drawHallSmoke, scaled to a building's footprint): thin from the first
+     catch, a dark column over the blaze, a tall one over the gutted shell,
+     the most as it falls (ph 3) and a thin smoulder over the ruin (ph 4).
+     It rises where that state's flames are drawn (FIRE_ART `sm`), the young
+     puffs lit from beneath; embers cool white → gold → red. Every fire
+     together keeps under BFIRE.puffMax puffs and BFIRE.emberMax embers, so a
+     burning town is a scene, not a whiteout. No RNG, no write to S. */
+  drawFireSmoke(g, b, bx, by, bw, ph) {
+    const now = performance.now() / 1000;
+    let fx = this._hallFx.get(b.id);
+    if (!fx) { fx = { puffs: [], embers: [], tP: 0, tE: 0, at: now }; this._hallFx.set(b.id, fx); }
+    const dt = Math.min(0.1, Math.max(0, now - fx.at)); fx.at = now;
+    const d = (b._fall && b._fall.fire) ? b._fall.fire.d : (this.fireDef(b) || {}).d;
+    if (!d) return;
+    // the frame's own square, where the building pass lays it (artRect at f / n)
+    const r = this.artRect({ width: 1, height: 1, _cfArt: { scale: d.f / d.n, ox: d.ox || 0 } }, bx, by, bw, bw);
+    const fx0 = r.x, fy0 = r.y, fw = r.w;
+    const st = ph >= 3 ? (ph === 4 ? 'ruin' : 'gutted') : this.FIRE_STATES[ph];
+    const a = (d.sm && d.sm[st]) || (ph === 4 ? [0.5, 0.78, 0.36] : [0.5, 0.36, 0.34]);
+    const cx = fx0 + fw * a[0], cy = fy0 + fw * a[1], spread = fw * a[2];
+    const TL = CFG.TILE, s = Math.max(0.55, Bld.size(b) / 2);
+    const RATE = [0.5, 0.2, 0.13, 0.08, 0.55][ph], SZ = [0.9, 1.3, 1.6, 1.9, 0.85][ph] * s;
+    const N = Math.round([8, 20, 26, 34, 8][ph] * s);
+    fx.tP += dt;
+    while (fx.tP > RATE && fx.puffs.length < N && this._fireLive < this.BFIRE.puffMax) {
+      fx.tP -= RATE; this._fireLive++;
+      const u = this._hrnd(), v = this._hrnd();
+      fx.puffs.push({ x: cx + (u - 0.5) * spread, y: cy + (v - 0.5) * fw * 0.05, t: 0,
+        life: 2.4 + v * 1.6, s: SZ * (0.75 + u * 0.5), sway: this._hrnd() * 6.28 });
+    }
+    if (fx.tP > RATE) fx.tP = RATE;
+    const ER = [0.4, 0.09, 0.05, 0.03, 0.7][ph], EN = Math.round([5, 22, 32, 44, 3][ph] * s);
+    fx.tE += dt;
+    while (fx.tE > ER && fx.embers.length < EN && this._emberLive < this.BFIRE.emberMax) {
+      fx.tE -= ER; this._emberLive++;
+      const u = this._hrnd();
+      fx.embers.push({ x: cx + (u - 0.5) * spread * 1.2, y: cy + fw * (0.03 + this._hrnd() * 0.1), t: 0,
+        life: 0.8 + this._hrnd() * 1.3, vx: (this._hrnd() - 0.3) * TL * 0.4 * s, vy: -TL * (0.8 + this._hrnd()) * s,
+        w: this._hrnd() * 6.28, hot: this._hrnd() });
+    }
+    if (fx.tE > ER) fx.tE = ER;
+    this._fireSum += fx.puffs.length; this._emberSum += fx.embers.length;
+    const wind = TL * 0.42 * s;
+    const sm = g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled = true;
+    const dk = this._smokeTex(false), lt = this._smokeTex(true);
+    for (let i = fx.puffs.length - 1; i >= 0; i--) {
+      const p = fx.puffs[i];
+      p.t += dt; if (p.t >= p.life) { fx.puffs.splice(i, 1); continue; }
+      const k = p.t / p.life;
+      const px = p.x + wind * p.t * (0.4 + k) + Math.sin(p.sway + p.t * 1.3) * TL * 0.1 * k * s;
+      const py = p.y - TL * 0.95 * s * p.t * (1 - k * 0.25);
+      const D = TL * 0.5 * p.s * (0.8 + k * 1.6);
+      const al = (ph === 4 ? 0.6 : ph >= 2 ? 0.88 : 0.8) * (1 - k) * Math.min(1, p.t / 0.35);
+      g.globalAlpha = al;
+      g.drawImage(dk, px - D / 2, py - D / 2, D, D);
+      if (k < 0.3 && ph < 4) { g.globalAlpha = al * (1 - k / 0.3) * 0.85; g.drawImage(lt, px - D / 2, py - D / 2, D, D); }
+    }
+    g.imageSmoothingEnabled = sm;
+    g.globalAlpha = 1;
+    const dp = this.fxPx ? this.fxPx(g) : 0.5;
+    for (let i = fx.embers.length - 1; i >= 0; i--) {
+      const e = fx.embers[i];
+      e.t += dt; if (e.t >= e.life) { fx.embers.splice(i, 1); continue; }
+      const k = e.t / e.life;
+      e.x += (e.vx + wind * 0.9 + Math.sin(e.w + e.t * 5) * TL * 0.5 * s) * dt;
+      e.y += e.vy * dt; e.vy *= (1 - 0.6 * dt);
+      const al = (1 - k) * (k < 0.15 ? k / 0.15 : 1);
+      if (al < 0.02) continue;
+      const rr = dp * (e.hot > 0.7 ? 1.2 : 0.9) * (1 - k * 0.45);
+      const heat = e.hot * (1 - k);
+      g.globalAlpha = al * 0.24; g.fillStyle = '#ff6414';
+      g.beginPath(); g.arc(e.x, e.y, rr * 2.4, 0, 6.2832); g.fill();
+      g.globalAlpha = al;
+      g.fillStyle = heat > 0.62 ? '#fff3c4' : heat > 0.36 ? '#ffc63e' : heat > 0.16 ? '#ff8a24' : '#d9461a';
+      g.beginPath(); g.arc(e.x, e.y, rr, 0, 6.2832); g.fill();
+    }
+    g.globalAlpha = 1;
+  },
+  /* the frame's bookkeeping, once per building pass: every fire's smoke
+     counted together (the budget), and the scratch, smoke and sparks of a
+     building nobody has drawn for a few seconds let go — a town that burned
+     and was rebuilt keeps none of them */
+  fireTick() {
+    this._fireLive = this._fireSum; this._fireSum = 0;
+    this._emberLive = this._emberSum; this._emberSum = 0;
+    const now = performance.now() / 1000;
+    if (now - (this._fireSweep || 0) < 3) return;
+    this._fireSweep = now;
+    for (const [id, sc] of this._hallScr) if (now - (sc._at || 0) > 4) this._hallScr.delete(id);
+    for (const [id, fx] of this._hallFx) if (now - (fx.at || 0) > 4) this._hallFx.delete(id);
   },
   /* THE COLUMN OF SMOKE AND THE EMBERS IN IT. Thin from the first hole in
      the thatch, a dense dark column when the roof is ablaze, a towering one
@@ -15329,8 +15645,9 @@ const R = {
       }
       blds.push(b);
     }
-    // a hall coming down is drawn in its own place in this pass (R.startHallFall)
+    // a hall or a house coming down is drawn in its own place in this pass (R.startHallFall, startFireFall)
     for (const c of this.collapses) if (c.pseudo) blds.push(c.pseudo);
+    this.fireTick();   // every fire's smoke counted together, and the stale let go (R.BFIRE)
     /* Within one row the CURTAIN goes down first: a drawn section reaches a
        third of a tile into its neighbours (Assets.FORT_GEO), so a straight run
        laid after the tower or gatehouse beside it would paint over their
@@ -15875,6 +16192,8 @@ const R = {
       if (this.smoke.length < 36) {
         for (const b of S.buildings) {
           if (b.construction > 0) continue;
+          // a building on fire breathes its fire's smoke, never its hearth's
+          if (Bld.burnPhase(b) >= 0) continue;
           const rate = b.key === 'tc' ? 0.9 : (b.key === 'house' || b.key === 'lodge') ? 0.2 : 0;
           if (!rate || Math.random() > rate) continue;
           if (!G.visibleAt(b.x, b.y)) continue;
@@ -15892,18 +16211,22 @@ const R = {
         }
       }
     }
-    for (let i = this.smoke.length - 1; i >= 0; i--) {
-      const s = this.smoke[i];
-      s.t += dt;
-      if (s.t > s.ttl) { this.smoke.splice(i, 1); continue; }
-      const k = s.t / s.ttl;
-      const sx = (s.x + Math.sin((s.t + s.x * 7) * 1.6) * 0.06 + s.t * 0.03) * TL;
-      const sy = (s.y - s.t * 0.28) * TL;
-      const a0 = s.a || 0.30;
-      const size = (a0 < 0.2 ? 1.5 : 2) + k * (a0 < 0.2 ? 4 : 5);
-      g.fillStyle = 'rgba(206,200,190,' + (a0 * (1 - k)).toFixed(3) + ')';
-      g.fillRect(sx - size / 2, sy - size / 2, size, size);
-    }
+    // (clipped to the board: a hearth on the first row smokes into the sky,
+    // never into the black beyond the map — tests/building-fire.mjs)
+    if (this.smoke.length) this.clipBoard(g, () => {
+      for (let i = this.smoke.length - 1; i >= 0; i--) {
+        const s = this.smoke[i];
+        s.t += dt;
+        if (s.t > s.ttl) { this.smoke.splice(i, 1); continue; }
+        const k = s.t / s.ttl;
+        const sx = (s.x + Math.sin((s.t + s.x * 7) * 1.6) * 0.06 + s.t * 0.03) * TL;
+        const sy = (s.y - s.t * 0.28) * TL;
+        const a0 = s.a || 0.30;
+        const size = (a0 < 0.2 ? 1.5 : 2) + k * (a0 < 0.2 ? 4 : 5);
+        g.fillStyle = 'rgba(206,200,190,' + (a0 * (1 - k)).toFixed(3) + ')';
+        g.fillRect(sx - size / 2, sy - size / 2, size, size);
+      }
+    });
 
     // hostiles piled on one tile: a head-count badge so the stack is readable
     const stacks = new Map();
