@@ -803,8 +803,71 @@ const out = await p.evaluate(() => {
     UI.sel = null;
     const artPx = (spr) => { const c = document.createElement('canvas'); c.width = spr.width; c.height = spr.height;
       const q = c.getContext('2d'); q.drawImage(spr, 0, 0); return q.getImageData(0, 0, c.width, c.height).data; };
+    /* THE BODY IS WHAT IS MEASURED, ON EVERY FRAME (build 162's re-measure):
+       the rule's body is a frame's ink OPENED by two of its own pixels — a
+       shaft, a string or a bow drops out, an arm, a cloak, a head stays. This
+       check used to open the DRAWN picture instead, and at its zoom a frame
+       is drawn up 1.8x with smoothing, which fused a marksman's bow and its
+       string into one solid band the opening kept: his bow at rest read as a
+       body 3.7px past the rail. And it read whichever frame the clock showed.
+       So each frame of the pose is swapped for its own opened ink and drawn
+       through the real draw path twice, white then black; what the two
+       pictures disagree on is the body's coverage at the screen's pixels,
+       and every frame of every man up there is visited in turn. */
+    const OPEN = 2;
+    const bodies = new Map();
+    const bodyOf = (img) => {
+      let bc = bodies.get(img);
+      if (bc) return bc;
+      const A = artPx(img), W = img.width, H = img.height, r = OPEN, ink = new Uint8Array(W * H), er = new Uint8Array(W * H), op = new Uint8Array(W * H);
+      for (let i = 0; i < W * H; i++) ink[i] = A[i * 4 + 3] > 128 ? 1 : 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        let all = 1;
+        for (let oy = -r; oy <= r && all; oy++) for (let ox = -r; ox <= r; ox++) {
+          const xx = x + ox, yy = y + oy;
+          if (xx < 0 || yy < 0 || xx >= W || yy >= H || !ink[yy * W + xx]) { all = 0; break; }
+        }
+        er[y * W + x] = all;
+      }
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (er[y * W + x])
+        for (let oy = -r; oy <= r; oy++) for (let ox = -r; ox <= r; ox++) {
+          const xx = x + ox, yy = y + oy;
+          if (xx >= 0 && yy >= 0 && xx < W && yy < H) op[yy * W + xx] = 1;
+        }
+      bc = [255, 0].map(v => {
+        const c = document.createElement('canvas'); c.width = W; c.height = H;
+        const q = c.getContext('2d'), id = q.createImageData(W, H);
+        for (let i = 0; i < W * H; i++) if (op[i]) { id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 255; }
+        q.putImageData(id, 0, 0);
+        return c;
+      });
+      bodies.set(img, bc);
+      return bc;
+    };
+    // every state that shows a new frame of u's pose: its idle clock at rest,
+    // its cooldown in a synced strike (else the strip's own clock)
+    const frameStates = (u) => {
+      const st = [], seen = new Set(), t0 = u.animT, c0 = u.cd;
+      let fr = R.sheetFrames(u);
+      if (!fr || !fr.length) return st;
+      const key = R._sheetKey, synced = R._strikeK != null && window.BattleFX && BattleFX.cdOf;
+      const fps = (Sprites.animFps && (Sprites.animFps[key] || Sprites.animFps[u.kind])) || 8;
+      const span = synced ? BattleFX.cdOf(u) : (fr.length / fps) * 4;
+      for (let i = 0; i <= 256; i++) {
+        const v = span * (i + 0.5) / 257;
+        if (synced) u.cd = v; else u.animT = v;
+        fr = R.sheetFrames(u);
+        const img = R.unitSprite(u), k = fr ? fr.indexOf(img) : -1;
+        if (k < 0 || seen.has(fr.length + ':' + k)) continue;
+        seen.add(fr.length + ':' + k);
+        Lookout.feetAt(u, img);               // the feet are the real frames', read before any swap
+        st.push({ u, v, synced, fr });
+      }
+      u.animT = t0; u.cd = c0;
+      return st;
+    };
     const bad = { front: [], inside: [], whole: [], placed: [] };
-    let measured = 0, minShown = Infinity, maxSpill = -Infinity, maxReach = -Infinity, deepest = 0;
+    let measured = 0, minShown = Infinity, maxSpill = -Infinity, maxReach = -Infinity, deepest = 0, statesSeen = 0;
     for (const tw of towers) {
       const crew = S.units.filter(u => u.perch === tw.id);
       const f = Lookout.frame(tw), P = f && f.P;
@@ -837,16 +900,12 @@ const out = await p.evaluate(() => {
             if (dv > 12) { const wx = X0 + (px + 0.5) / z, wy = Y0 + (py + 0.5) / z; o.push([Math.floor((wx - f.r.x) / sc), Math.floor((wy - f.r.y) / sc), dv]); } } return o; })() });
         const w = Math.round(WW * z), h = Math.round(HH * z);
         let frontHit = 0, minX = Infinity, maxX = -Infinity, low = -Infinity;
-        // what is drawn of the men, for the extent: an arrow loosed toward
-        // that side, or a bow held out over the corner, may cross the
-        // tower's edge — a man may not. So the extent is taken of the drawn
-        // pixels OPENED by at least two of the frame's own pixels at the size
-        // it is drawn (eroded, then grown back by as much; a bow frame is 64px
-        // in a box B wide): a shaft, a string or a bow drops out, any part of
-        // a body stays at its full width
+        // what is drawn of the men: in front of the tower's front never, and
+        // where their heads and feet are. Their EXTENT is the body pass below:
+        // an arrow loosed toward that side, or a bow held out over the
+        // corner, may cross the tower's edge — a man may not (bodyOf)
         const top = crew.map(() => Infinity);
         const spots = crew.map(u => Lookout.spot(u, f));
-        const M = new Uint8Array(w * h), er = Math.max(1, Math.ceil(2 * spots[0].B / 64 * z));
         for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
           const i = (py * w + px) * 4;
           const dv = Math.abs(withMen[i] - without[i]) + Math.abs(withMen[i + 1] - without[i + 1]) + Math.abs(withMen[i + 2] - without[i + 2]);
@@ -858,17 +917,36 @@ const out = await p.evaluate(() => {
           for (let oy = -2; oy <= 2 && deep; oy++) for (let ox = -2; ox <= 2; ox++) if (!front(ax + ox, ay + oy)) { deep = false; break; }
           if (deep && dv > 12) frontHit++;
           if (dv <= 30) continue;
-          M[py * w + px] = 1; low = Math.max(low, wy);
+          low = Math.max(low, wy);
           spots.forEach((sp, k) => { if (Math.abs(wx - sp.x) < sp.B * 0.3) top[k] = Math.min(top[k], wy); });
         }
-        for (let py = er; py < h - er; py++) for (let px = er; px < w - er; px++) {
-          if (!M[py * w + px]) continue;
-          let all = true;
-          for (let oy = -er; oy <= er && all; oy++) for (let ox = -er; ox <= er; ox++) if (!M[(py + oy) * w + px + ox]) { all = false; break; }
-          if (!all) continue;
-          const wx = X0 + (px + 0.5) / z;
-          minX = Math.min(minX, wx - er / z); maxX = Math.max(maxX, wx + er / z);
+        // the BODY's extent: every frame of each man's pose in turn (the other
+        // man as the clock left him), his opened ink drawn white, then black
+        const states = [];
+        for (const u of crew) states.push(...frameStates(u));
+        statesSeen += states.length;
+        const swapped = new Map();
+        for (const s of states) if (!swapped.has(s.fr)) swapped.set(s.fr, s.fr.slice());
+        const shots = [[], []];
+        for (const c of [0, 1]) {
+          for (const [arr, orig] of swapped) for (let i = 0; i < arr.length; i++) arr[i] = bodyOf(orig[i])[c];
+          for (const s of states) {
+            const t0 = s.u.animT, c0 = s.u.cd;
+            if (s.synced) s.u.cd = s.v; else s.u.animT = s.v;
+            shots[c].push(read());
+            s.u.animT = t0; s.u.cd = c0;
+          }
         }
+        for (const [arr, orig] of swapped) for (let i = 0; i < arr.length; i++) arr[i] = orig[i];
+        if (!states.length) bad.placed.push(`${name} ${mode}: no frame of the men could be visited`);
+        states.forEach((s, j) => {
+          const Wt = shots[0][j], Bk = shots[1][j];
+          for (let py = 0; py < h; py++) for (let px = 0; px < w; px++) {
+            const i = (py * w + px) * 4;
+            if (Wt[i] - Bk[i] < 128) continue;              // the body covers at least half this pixel
+            minX = Math.min(minX, X0 + px / z); maxX = Math.max(maxX, X0 + (px + 1) / z);
+          }
+        });
         measured++;
         if (frontHit) bad.front.push(`${name} ${mode}: ${frontHit} px of a man over the tower's front`);
         // at rest within a world pixel of the outer posts (the picture's own
@@ -890,7 +968,7 @@ const out = await p.evaluate(() => {
     for (const u of S.units) if (u.perch) { u.tUnit = 0; u.task = null; }
     ck('everyTowerCarriesItsLookout', !bad.placed.length && measured === 12, bad.placed.join('; ') || `6 drawn towers, two up on each, ${measured} pictures`);
     ck('theTowersFrontIsAlwaysInFrontOfItsLookout', !bad.front.length, bad.front.join('; ') || 'the rail, the posts, the merlons and the ladder top stand in front of the men, pixel for pixel');
-    ck('andTheyStandInsideThePlatform', !bad.inside.length, bad.inside.join('; ') || `between the corner posts (at rest no part of a man ${Math.max(0, maxSpill).toFixed(1)}px past the platform's edge; drawing, his arm ${Math.round(Math.max(0, maxReach) * 100)}% of his height over the rail, a loosed arrow aside), nothing ${deepest.toFixed(1)}px below their feet`);
+    ck('andTheyStandInsideThePlatform', !bad.inside.length, bad.inside.join('; ') || `between the corner posts, every frame (${statesSeen} pictures of the body: at rest no part of a man ${Math.max(0, maxSpill).toFixed(1)}px past the platform's edge; drawing, his arm ${Math.round(Math.max(0, maxReach) * 100)}% of his height over the rail, a bow or a loosed arrow aside), nothing ${deepest.toFixed(1)}px below their feet`);
     ck('andEachIsDrawnWhole', !bad.whole.length, bad.whole.join('; ') || `at least ${Math.round(minShown * 100)}% of every man over the rail, the rest behind it — never cut by a line`);
     // A MAN'S SIZE BESIDE THE VILLAGERS (operator, build 148: "could you make
     // them 40% bigger… They just look so so small relative to the villagers.

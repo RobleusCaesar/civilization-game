@@ -558,7 +558,13 @@ thresholds — run it with the sizes in `MEN` after any change of size or art). 
 together, side by side. The body is a frame's ink OPENED by two of its own
 pixels — a shaft, a string or a bow drops out, an arm, a cloak, a head
 stays — measured on every frame by the sweep and on the drawn picture by
-`andTheyStandInsideThePlatform` (opened by at least as much). Refit the
+`andTheyStandInsideThePlatform`, which swaps each frame of the pose for its
+own opened ink and draws it through the real draw path, white then black (the
+difference is the body's coverage at the screen's pixels), every frame of
+every man in turn. It used to open the DRAWN picture: at its zoom a frame is
+drawn up 1.8x with smoothing, which fused a marksman's bow and its string
+into one band the opening kept (3.7px "past the rail" at rest), and it read
+whichever frame the clock showed, so it failed only on some runs. Refit the
 places by the same rule if the bow sheets are ever redrawn.
 **THE TOWER IS DRAWN ONCE**: the men go on a scratch
 layer at the world's device pixels (`_scr`), the tower's own picture is
