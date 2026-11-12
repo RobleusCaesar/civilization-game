@@ -529,7 +529,8 @@
           // nothing is drawn in the black: the chunks run past the board's edge (a map is not a
           // whole number of chunks), so the ground and the water life are clipped to the board
           const b = R.boardPx(); this.save(); this.beginPath(); this.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); this.clip();
-          try { if (self.ready) { if (self._pend) { self._pend = false; self.noteEdit(); } self.drawGround(this); } else self.drawStandIn(this); } finally { this.restore(); }
+          // (an edit waits while a hall comes down — R.groundHeld: the scar must not show under it)
+          try { if (self.ready) { if (self._pend && !(R.groundHeld && R.groundHeld())) { self._pend = false; self.noteEdit(); } self.drawGround(this); } else self.drawStandIn(this); } finally { this.restore(); }
         }
         return orig.apply(this, arguments);
       };

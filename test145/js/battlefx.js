@@ -300,13 +300,16 @@ const BattleFX = {
   },
   whiteOf(img) {
     let w = this._white.get(img);
-    if (w) return w;
-    w = document.createElement('canvas'); w.width = img.width; w.height = img.height;
+    // a burning building's frame changes under the same canvas (R._fireFrame):
+    // its white follows the frame it wears now
+    if (w && (!img._fireScr || (w._src === img._src && w._f === img._f))) return w;
+    if (!w) { w = document.createElement('canvas'); this._white.set(img, w); }
+    w.width = img.width; w.height = img.height;
     const g = w.getContext('2d');
     g.drawImage(img, 0, 0);
     g.globalCompositeOperation = 'source-in';
     g.fillStyle = '#fff6e8'; g.fillRect(0, 0, w.width, w.height);
-    this._white.set(img, w);
+    w._src = img._src; w._f = img._f;
     return w;
   },
   // drawn by the unit pass right over the sprite it just drew

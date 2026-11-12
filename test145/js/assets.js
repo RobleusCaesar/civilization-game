@@ -658,6 +658,49 @@ const Assets = {
   },
   fxFrames(name) { const a = this.fx[name]; return a && a.length ? a : null; },
 
+  /* THE HALL ON FIRE (R.HALL_FIRE, tests/hall-fire.mjs): the Town Center's
+     own burning art, `assets/fire/tc-l{lv}-{state}.png`, one strip of square
+     256px frames per state — catch, blaze, gutted (the three burn phases),
+     fall (the collapse) and ruin (the heap it leaves, still burning). Asked
+     for the first time a hall of that level is hurt (R.hallFireArt, never at
+     boot, never by the title's demo), at HIGH priority, counted in nothing
+     artReady waits on. The strips are kept as DECODED IMAGES and drawn by
+     source rect — slicing them into frame canvases would pin ~2MB a strip,
+     the canvas memory iOS purges the terrain to win back. A 404 leaves the
+     hall its old scorched sprite and flames. */
+  HALL_FIRE_DIR: 'assets/fire/',
+  HALL_FIRE_STATES: ['catch', 'blaze', 'gutted', 'fall', 'ruin'],
+  hallFire: {},                   // 'tc-l2-blaze', 'house-l1-fall' -> the decoded strip (every kind's)
+  _hallAsked: {},                 // the hall: level -> true once its strips are asked for
+  _fireAsked: {},                 // every kind: 'house-l2' -> true once its strips are asked for
+  wantHallFire(lv) {
+    lv = Math.max(1, Math.min(3, lv | 0 || 1));
+    if (this._hallAsked[lv]) return;
+    this._hallAsked[lv] = true;
+    this.wantFireArt('tc', lv, this.HALL_FIRE_STATES);
+  },
+  /* EVERY BUILDING BURNS IN ITS OWN ART (R.FIRE_ART, tests/building-fire.mjs):
+     the same strips for every burnable kind, `assets/fire/{key}-l{lv}-{state}.png`,
+     asked the first time a building of that kind and level is hurt
+     (R.fireArt), at high priority, counted in nothing artReady waits on —
+     the hall's rule. A 404 leaves that state the old scorched look. */
+  wantFireArt(key, lv, states) {
+    const id = key + '-l' + lv;
+    if (this._fireAsked[id]) return;
+    this._fireAsked[id] = true;
+    for (const st of states) {
+      const name = id + '-' + st, img = new Image();
+      img.onload = () => {
+        if (img.width && img.height && img.width % img.height === 0) this.hallFire[name] = img;
+      };
+      img.onerror = () => { /* that state stays the old scorched sprite */ };
+      this._track(this._prio(img, 'high'), false, true);
+      img.src = this.HALL_FIRE_DIR + name + '.png?v=' + (CFG.ART_V || 1);
+    }
+  },
+  fireStrip(key, lv, st) { return this.hallFire[key + '-l' + lv + '-' + st] || null; },
+  hallFireStrip(lv, st) { return this.fireStrip('tc', lv, st); },
+
   /* ---- THE WATER'S MOTION PASS: three authored files -----------------
 
        assets/terrain/water/surface.png   a seamless grayscale texture the

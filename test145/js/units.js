@@ -2769,7 +2769,7 @@ const Units = {
          construction. AI.deadGround is what stops the day-136 conveyor:
          a hand sent every few days to die at ground no other read of the
          chief's could know was a kill zone. */
-      if (u.owner === 'A' && !this.isNaval(u)) AI.noteDeath(u.x, u.y);
+      if (u.owner === 'A' && !this.isNaval(u)) AI.noteDeath(u.x, u.y, u);
       // a hull the kraken took has already been announced by the deep itself
       // …and a spectral champion (js/deckfx-army.js) goes back to the earth
       // without an alarm: fifteen red "was killed" toasts for a host that was

@@ -239,6 +239,7 @@ const G = {
     Bld._block = null;
     this._freshRun = true;   // analytics: this world was founded, not loaded (Screens._enterNow logs it)
     this._marvel = false; clearTimeout(this._marvelT); this._marvelEnd = null;
+    clearTimeout(this._fallT); this._fallT = 0; this._fallEnd = null;   // …and a hall's held fall
     this._dying = null;
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)    // …and no announced death is left pending
     this._easeC = null;    // the ease day-cache must not leak across runs (day numbers collide)
@@ -2887,8 +2888,31 @@ const G = {
     // the run is over: its save slot is stamped finished and the crash net
     // cleared — the title's Continue will not walk back into a told story
     if (window.Backend) Backend.finalizeRun();
+    /* THE HALL FALLS BEFORE THE CURTAIN (R.startHallFall, tests/hall-fire.mjs):
+       a hall the player SEES coming down is the run's last beat, so the end
+       screen waits R.HALL_FIRE.holdMs for the camera, the fall, the thud and
+       the words. The run is already over — S.over, the score, the row, the
+       crash net are all done above — only the screen waits. A beat, never a
+       gate: a page hidden in it (the hide handler below) is shown its ending
+       at once, and a world replaced in it (a new game, a load) shows none. */
+    if (window.R && R.hallFall && R.hallFall.seen && R.HALL_FIRE && !document.hidden &&
+        window.Screens && Screens.current === 'playing') {
+      // the curtain the run ends on is the one in place NOW (a contract that
+      // stands the end screen down for a check is never shown it later)
+      const s0 = S, show = UI.showEnd;
+      const fin = () => {
+        clearTimeout(G._fallT); G._fallT = 0; G._fallEnd = null;
+        if (S !== s0 || !S.over) return;
+        show.call(UI, win, msg);
+      };
+      clearTimeout(this._fallT);
+      this._fallEnd = fin;
+      this._fallT = setTimeout(fin, R.HALL_FIRE.holdMs);
+      return;
+    }
     UI.showEnd(win, msg);
   },
+  _fallEnd: null,   // the held end screen behind a falling hall — flow only, never in S
 
   /* THE RUN, AS THE DASHBOARD READS IT — one builder shared by every ending
      (G.end) and by the tab closing on a live run (G.noteLeaving), so a
@@ -3153,6 +3177,17 @@ const G = {
     if (data.specialDay === undefined) data.specialDay = 0;
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
     if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
+    /* THE CHIEF'S MAP READ (js/ai.js AI.geo, tests/rival-geo.mjs): what a save
+       from before it lacks. Absent means none — no party out by sea, no
+       coast tried, no sea war decided yet (the next day's read decides it).
+       A soldier's errand (`u.detail`) and the workers' days on the death
+       ledger (`deadAt[k].wd`) are read as absent where they are missing. */
+    if (data.ai) {
+      if (data.ai.seaParty === undefined) data.ai.seaParty = null;
+      if (data.ai.seaOnly === undefined) data.ai.seaOnly = false;
+      if (data.ai.assaultLane === undefined) data.ai.assaultLane = null;
+      if (data.ai.memory && !data.ai.memory.seaTried) data.ai.memory.seaTried = {};
+    }
     if (!data.boons) data.boons = { P: {}, A: {} };   // pre-cards save: no boons in play
     if (!data.deck || typeof data.deck !== 'object') data.deck = { played: [], fx: [], charges: {} };   // pre-deck save: nothing played
     if (!data.draft)                                   // pre-cards save: the draft is history
@@ -3410,6 +3445,67 @@ const G = {
       document.querySelector('#scrTitle .tbg img');
     return !!(img && img.complete && img.naturalWidth > 0);
   },
+  /* THE SIM HALF OF A FRAME, as one call (tools/ai-harness.mjs). Everything
+     that advances the WORLD by `sdt` simulated seconds lives here, in the
+     order the frame has always run it — the day tick, the buildings, the
+     units, combat, then the world's own clocks — so a headless harness that
+     steps the game calls this and picks up every tick added later without
+     being edited. `dt` is the REAL frame time: the fog's refresh cadence has
+     always counted that, not the scaled time (a tutorial note's slow motion
+     never slowed the fog), and a caller with no real clock passes none and
+     gets sdt. What stays in G.frame: the pause/over gate, the slow-motion
+     scale, S.playtime (real seconds) and everything drawn or shown. */
+  simStep(sdt, dt) {
+    if (dt == null) dt = sdt;
+    const dtDays = sdt * 1000 / CFG.DAY_MS;
+    G._safe(() => {
+      S.dayT += sdt * 1000;
+      let guard = 0;
+      while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
+        S.dayT -= CFG.DAY_MS;
+        G.dayTick();
+        if (!S || S.over) break;
+      }
+    }, 'day');
+    if (S && !S.over) {
+      G._safe(() => Bld.update(dtDays), 'buildings');
+      G._safe(() => Units.update(sdt), 'units');
+      G._safe(() => Combat.update(sdt), 'combat');
+      G._safe(() => {
+        G.dyingTick(sdt);      // the villager whose death was announced a beat ago
+        G.krakenTick(sdt);
+        G.eclipseTick(sdt);
+        G.fireTick(sdt);
+        G.strifeTick(sdt);
+        G.starfallTick(sdt);
+        G.dragonTick(sdt);
+        // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
+        if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
+        // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
+        if (S.deck && S.deck.strike && window.Deck && Deck.strikeTick) Deck.strikeTick(sdt);
+        // …and a card's kraken risen against the rival (js/deckfx-rival.js)
+        if (S.deck && S.deck.kraken && window.Deck && Deck.krakenTick) Deck.krakenTick(sdt);
+        G.dragonT = (G.dragonT || 0) - sdt;
+        if (G.dragonT <= 0) {
+          G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
+          G.maybeDragon(); G.maybeSons();
+          if (G.maybeCache) G.maybeCache();
+          if (G.maybeWinter) G.maybeWinter();
+          if (G.maybePlague) G.maybePlague();
+        }
+        G.visT -= dt;
+        if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+        // the rival sees as it walks, not only at dawn (AI.glance): twice more a day
+        { const third = (S.dayT * 3 / CFG.DAY_MS) | 0;
+          if (third !== G._glT) { G._glT = third; if (third > 0 && S.ai && AI.glance) AI.glance(); } }
+        /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
+           state (a multi-megabyte JSON.stringify) every 10 real seconds
+           into a field nothing ever read — a metronome of frame hitches
+           for zero benefit. The real safety nets are Backend.autosaveNow
+           (cadence + tab-hide), which drops the local crash snapshot. */
+      }, 'world');
+    }
+  },
   frame(t) {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
@@ -3425,52 +3521,8 @@ const G = {
       // (Screens.showVictoryPaths; a flag, never a DOM query per frame)
       if (window.Screens && Screens._modalUp) scale = Math.min(scale, (window.Tutorial && Tutorial.SLOW) || 0.2);
       const sdt = dt * scale;
-      const dtDays = sdt * 1000 / CFG.DAY_MS;
       S.playtime = (S.playtime || 0) + dt;
-      G._safe(() => {
-        S.dayT += sdt * 1000;
-        let guard = 0;
-        while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
-          S.dayT -= CFG.DAY_MS;
-          G.dayTick();
-          if (!S || S.over) break;
-        }
-      }, 'day');
-      if (S && !S.over) {
-        G._safe(() => Bld.update(dtDays), 'buildings');
-        G._safe(() => Units.update(sdt), 'units');
-        G._safe(() => Combat.update(sdt), 'combat');
-        G._safe(() => {
-          G.dyingTick(sdt);      // the villager whose death was announced a beat ago
-          G.krakenTick(sdt);
-          G.eclipseTick(sdt);
-          G.fireTick(sdt);
-          G.strifeTick(sdt);
-          G.starfallTick(sdt);
-          G.dragonTick(sdt);
-          // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
-          if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
-          // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
-          if (S.deck && S.deck.strike && window.Deck && Deck.strikeTick) Deck.strikeTick(sdt);
-          // …and a card's kraken risen against the rival (js/deckfx-rival.js)
-          if (S.deck && S.deck.kraken && window.Deck && Deck.krakenTick) Deck.krakenTick(sdt);
-          G.dragonT = (G.dragonT || 0) - sdt;
-          if (G.dragonT <= 0) {
-            G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
-            G.maybeDragon(); G.maybeSons();
-            if (G.maybeCache) G.maybeCache();
-            if (G.maybeWinter) G.maybeWinter();
-            if (G.maybePlague) G.maybePlague();
-          }
-          G.visT -= dt;
-          if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
-          /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
-             state (a multi-megabyte JSON.stringify) every 10 real seconds
-             into a field nothing ever read — a metronome of frame hitches
-             for zero benefit. The real safety nets are Backend.autosaveNow
-             (cadence + tab-hide), which drops the local crash snapshot. */
-        }, 'world');
-      }
+      G.simStep(sdt, dt);
     }
     if (S) {
       // a terrain bake left DUE by founding a run is spread over these frames
@@ -3571,6 +3623,7 @@ window.addEventListener('load', () => {
     if (Backend.startSession) Backend.startSession();   // analytics: time on site
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && G._marvel && G._marvelEnd) G._marvelEnd();   // a Wonder's held beat ends now
+      if (document.hidden && G._fallEnd) G._fallEnd();                     // …and so does a falling hall's
       if (document.hidden && window.S && !S.over &&
           !(window.Screens && Screens._demo)) Backend.autosaveNow('hide');
     });

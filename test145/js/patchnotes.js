@@ -19,6 +19,40 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 166, date: '2026-11-12', title: 'A smarter rival',
+    items: [
+      'The rival tribe reads the map before it plans: on islands it builds a dock early, sends a small party across the water to find you, and comes by sea when the sea is the only road.',
+      'The rival no longer walls its own people in. A wall section that shuts its town becomes a gate, and it will not raise a building or dig a ditch across its last way out.',
+      'Its soldiers stop standing about under orders they cannot carry out. A raid is only sent where feet can reach, and survivors of a landing go on fighting what they can get to.',
+      'On Moderate and Hard the rival walks its wounded home to mend, and a crafty chief whose land raids keep failing will raid your coast by boat instead.',
+      'The rival learns where its workers keep dying and stops sending builders there, so it is not bled dry by a barbarian camp it has never seen.',
+    ],
+  },
+  {
+    build: 165, date: '2026-11-11', title: 'Every building burns',
+    items: [
+      'Houses, farms, camps, workshops and every other building now burn in their own pictures when attacked: the doors and windows glow first, then the roof catches, and at the end only the blackened frame or the stone shell stands in the fire.',
+      'A house that is burned down caves in where it stood and leaves its own ruin behind: the burnt roundhouse, the charred timber frame or the fallen stone walls.',
+      'Smoke rises from every burning building and sparks drift off on the wind, and even a whole town on fire stays easy to read.',
+      'A building on fire no longer puffs its peaceful chimney smoke, and no smoke drifts out past the edge of the map.',
+    ],
+  },
+  {
+    build: 164, date: '2026-11-11', title: 'The hall burns',
+    items: [
+      'A Town Center under attack now burns from the inside: the doorway and the windows glow first, then the flames break through the roof, and at the last only the charred frame or the stone shell stands over the fire.',
+      'A thick column of smoke rises over a burning hall, lit from below by the flames, with sparks drifting away on the wind.',
+      'When a hall falls, its roof caves in with a burst of sparks and a thud, the camera comes to it, and the words go up before the last screen, whether the hall was yours or the rival\'s.',
+    ],
+  },
+  {
+    build: 163, date: '2026-11-11', title: 'Houses that rise',
+    items: [
+      'A house being raised to a timber or a stone home now goes up in three real steps: the footing and its posts, the whole frame and its rafters, then the walls with half the roof thatched.',
+      'Every step stands exactly where the finished house will, so the home grows in place instead of jumping.',
+    ],
+  },
+  {
     build: 162, date: '2026-11-10', title: 'Archers on the towers',
     items: [
       'Archers on a tower now hit exactly as hard as they do on the ground. They still take a quarter less damage up there.',
