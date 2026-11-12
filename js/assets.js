@@ -1489,7 +1489,10 @@ const Assets = {
                  not a generated sheet; 'gather' is the fishing haul. */
               fishboat: ['walk', 'idle', 'gather'],
               transport: ['walk', 'idle'],
-              fireship: ['walk', 'idle', 'fight'] },
+              /* build 167: the Bronze Age fire galley rows, flings its fire
+                 pots, BURNS when hurt (R.HULL_BURN_AT) and SINKS in its own
+                 art (BattleFX.sink) */
+              fireship: ['walk', 'idle', 'fight', 'burn', 'sink'] },
   /* the DRAW BOX per kind, in world px — default CFG.TILE (32). A bigger
      animal is a draw-box question, not a canvas question (ART_PLAN): the
      bear ships 96px frames into a 48px box, the same exact 2:1 native
@@ -1621,7 +1624,8 @@ const Assets = {
                   elite:    ['idle', 'walk', 'fight'],
                   // the one dyed hull: the bombard ship flies its village's
                   // colours on the stern banner (the ONLY keyed region)
-                  bombard:  ['idle', 'walk', 'fight'],
+                  // (build 167: the Roman artillery bireme — it burns and sinks in its own art too)
+                  bombard:  ['idle', 'walk', 'fight', 'burn', 'sink'],
                   /* the siege train: wooden machines with a keyed pennant
                      (the only dyed region — a captured-looking engine is a
                      friend/foe bug). No idle sheets on purpose: a machine

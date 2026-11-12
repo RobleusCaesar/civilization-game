@@ -8954,6 +8954,29 @@ far bank), so the reaction got stronger, not weaker. Below a level-3 yard the
 chief falls back to the Fire Warship, which at least reaches the bank. The
 ordinary naval quota keeps at most **two** bombards — the same restraint it
 shows with trebuchets, since a fleet of them could not defend itself.
+**SHIPS OF THEIR AGE** (build 167, tests/naval-art.mjs §7 — operator: "Redesign
+the warship. It looks bad with permanent smoke… a steam engine, not a Bronze Age
+warship… more primitive, closer to the water… design the sprites for fighting
+and being attacked (fires), and sinking. Drop the price slightly and move to
+level 2 dock… the bombadier ship… Romans"). The Fire Warship is a Late Bronze
+Age war galley (the Aegean/Sea Peoples' "black ship": a low dark hull, a
+bird-head stem post, a bronze ram, shields along the rail, a furled square
+sail, a fire pot on deck and NO standing smoke), from a LEVEL-2 dock at 110
+wood / 35 gold; the Bombard Ship is a Roman artillery bireme (an onager on a
+raised foredeck), still level 3, its stern banner the dye key. Both are
+PixelLab characters (five facings animated, the west three mirrored) on the
+hull strips' 96px frames: `walk` (rowing), `idle` (walk f0 + a 1px lift),
+`fight`, `burn` (a ping-pong loop of the character on fire) and `sink`.
+**A HULL ON FIRE SAILS ON FIRE**: below `R.HULL_BURN_AT` (half) of its hp a
+hull that ships a `burn` strip wears it in place of the row and the bob
+(`R.sheetFrames`; a blow still plays its strike). **IT SINKS IN ITS OWN
+ART**: `BattleFX.sink` plays the facing's `sink` strip (no alpha fade — the
+strip takes her under in dithered steps), the rings and planks as before;
+any other hull keeps the tilt-and-slide. The sinking strips are GENERATED
+from each facing's own burn frame (a dithered waterline closing from the
+edges in, the hull darkening toward the sea, foam on the line): PixelLab's
+"sinking" came back as an explosion and a ship that bobbed back up. The
+fight impact frames are by eye in tools/battle-impacts.json.
 **Retired hulls are RECREWED on load, never deleted** (`G.loadJSON`'s `RECREW`):
 `warship` → `fireship`, `bigtransport` → `transport`, in `S.units` *and* in
 every building's training queue. Deleting the keys instead would put `undefined`

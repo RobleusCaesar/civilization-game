@@ -27,7 +27,7 @@ const CFG = {
   // round the workplaces, a hedge round the homes and towers. A picture only; false (or ?footing=0) stands it down.
   FOOTING: { ON: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 69,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 70,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
@@ -484,15 +484,15 @@ const CFG = {
       train: {
         fishboat: { cost: { wood: 40, gold: 5 }, time: 1 },
         transport: { cost: { wood: 90, gold: 20 }, time: 1.8 },
-        fireship: { cost: { wood: 130, gold: 45 }, time: 2.5, reqLevel: 3 },
+        fireship: { cost: { wood: 110, gold: 35 }, time: 2.5, reqLevel: 2 },   // build 167: cheaper, from the level-2 yard
         bombard:  { cost: { wood: 200, stone: 60, gold: 60 }, time: 3.5, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 60, gold: 5 },              time: 2, hp: 220, vision: 5 },
         { cost: { wood: 100, stone: 40, gold: 15 }, time: 2, hp: 340, vision: 6,
-          bonus: 'Sturdier hulls, wider watch' },
+          bonus: 'Unlocks the Fire Warship' },
         { cost: { wood: 160, stone: 90, gold: 30 }, time: 3, hp: 480, vision: 7,
-          bonus: 'Unlocks Fire Warship & Bombard Ship' },
+          bonus: 'Unlocks the Bombard Ship' },
       ],
     },
     /* Trading Post — a late-game relief valve: turn a surplus of food/wood/stone

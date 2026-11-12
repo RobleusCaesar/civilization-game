@@ -133,11 +133,11 @@ const BattleFX = {
     'barb-wolf-raider-f': {"fight":[5,3,3,5,2,5,3,3],"fight2":[6,7,6,8,8,8,6,7]},
     'barb-wolf-raider-m': {"fight":[9,7,5,7,9,7,5,7],"fight2":[6,5,7,6,8,6,7,5]},
     'bear': {"fight":[5,4,5,4,5,4,4,4]},
-    'bombard': {"fight":[4,6,3,4,3,3,3,2]},
+    'bombard': {"fight":[7,6,6,6,7,6,6,6]},
     'catapult': {"fight":[5,4,4,6,2,3,3,7]},
     'defender': {"fight":[3,3,3,3,3,3,3,3],"fight2":[6,6,6,7,8,7,8,null],"fight3":[11,10,13,10,9,12,null,null]},
     'elite': {"fight":[4,5,5,5,5,3,3,5],"fight2":[6,6,7,7,7,7,7,8],"fight3":[3,9,7,8,8,null,10,10]},
-    'fireship': {"fight":[5,7,7,7,7,6,7,6]},
+    'fireship': {"fight":[4,4,5,4,5,4,5,4]},
     'horsearcher': {"fight":[7,7,7,7,5,7,7,7]},
     'lancer': {"fight":[5,6,6,6,2,5,5,4]},
     'longbow': {"fight":[10,9,9,10,8,9,8,9],"fight2":[12,10,null,11,12,10,12,12]},
@@ -443,7 +443,16 @@ const BattleFX = {
   sink(u) {
     const B = R.unitBox(u), spr = R.unitSprite(u);
     if (this.bodies.length >= this.BODY_MAX) this.bodies.shift();
-    this.bodies.push({ x: u.x, y: u.y, t: 0, sink: true, spr, B, D: R.frameBox(u, spr, B), seed: u.id, flip: (u.id & 1) === 1 });
+    /* A HULL THAT SHIPS ITS OWN SINKING (build 167: the fire warship and the
+       bombard) plays it — timbers burst, she lists, the sea takes her — in
+       the facing she died in; the rings and the drifting planks stay. Any
+       other hull lists and slides under its waterline as before. */
+    const key = R._sheetKey, face = R._sheetFace || 's';
+    const ua = window.Assets && Assets.unitArt && Assets.unitArt[key];
+    const sd = ua && ua.dirs && (ua.dirs[face] || ua.dirs.s);
+    const frames = sd && sd.sink && sd.sink.length ? sd.sink : null;
+    this.bodies.push({ x: u.x, y: u.y, t: 0, sink: true, spr, frames: null, sinkFr: frames, B,
+      D: R.frameBox(u, frames ? frames[0] : spr, B), seed: u.id, flip: !frames && (u.id & 1) === 1 });
     for (let i = 0; i < 7 && this.chips.length < this.CHIP_MAX; i++) {
       const a = this.rnd() * Math.PI * 2, s = 0.3 + this.rnd() * 0.6;
       this.chips.push({ x: u.x, y: u.y, z: 0.2, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 0.6 + this.rnd() * 0.6,
@@ -823,6 +832,12 @@ const BattleFX = {
     const drop = Math.pow(k, 1.6) * D * 0.62;
     const waterY = b.y * TL + TL * 0.32;          // the hull's own waterline
     R.clipBoard(g, () => {
+      if (b.sinkFr) {
+        // its own sinking, played once over the act — the strip itself takes
+        // her under in dithered steps (no alpha fade: art is never cross-faded)
+        const n = b.sinkFr.length, f = Math.min(n - 1, (k * n) | 0);
+        g.drawImage(b.sinkFr[f], x0, y0, D, D);
+      } else {
       g.save();
       g.beginPath(); g.rect(x0 - D, y0 - D, D * 3, waterY - (y0 - D)); g.clip();
       g.translate(b.x * TL, waterY);
@@ -830,6 +845,7 @@ const BattleFX = {
       g.translate(-b.x * TL, -waterY);
       g.drawImage(b.spr, x0, y0 + drop, D, D);
       g.restore();
+      }
       // the sea closing over it: rings of foam, spreading
       for (let i = 0; i < 3; i++) {
         const kk = (k * 1.4 - i * 0.22);

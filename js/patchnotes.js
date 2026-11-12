@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 167, date: '2026-11-12', title: 'Ships of their age',
+    items: [
+      'The Fire Warship is now a low Bronze Age war galley: a black hull close to the water, a bird-head prow, a bronze ram and a row of oars, with no smoke rising from it while it sails.',
+      'The Fire Warship can be built from a level 2 Dock and costs a little less.',
+      'The Bombard Ship is now a Roman war galley with a stone-throwing engine on its foredeck, and it still needs a level 3 Dock.',
+      'Both ships row, attack and burn in their own pictures: a badly damaged ship sails on in flames, and a sunken one breaks up and goes under.',
+    ],
+  },
+  {
     build: 166, date: '2026-11-12', title: 'A smarter rival',
     items: [
       'The rival tribe reads the map before it plans: on islands it builds a dock early, sends a small party across the water to find you, and comes by sea when the sea is the only road.',

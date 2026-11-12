@@ -218,6 +218,41 @@ const out = await p.evaluate(() => {
       'the drawUnitShadow gate keys on Units.isNaval');
   }
 
+  /* ---- 7. build 167: ships of their age (the operator: "move to level 2 dock… drop the
+     price slightly… sprites for fighting and being attacked (fires), and sinking") ---- */
+  {
+    const tr = CFG.BUILDINGS.dock.train;
+    ck('theFireWarshipComesFromTheLevel2Dock', tr.fireship.reqLevel === 2 && tr.bombard.reqLevel === 3,
+      'fireship ' + tr.fireship.reqLevel + ', bombard ' + tr.bombard.reqLevel);
+    ck('andCostsALittleLess', tr.fireship.cost.wood === 110 && tr.fireship.cost.gold === 35 && !tr.fireship.cost.stone,
+      JSON.stringify(tr.fireship.cost));
+    ck('bothWarshipsShipABurnAndASink',
+      ['burn', 'sink'].every(q => Assets.UNIT_ART.fireship.includes(q) && Assets.MILITARY_ART.bombard.includes(q)));
+    // a hurt hull sails on fire: below HULL_BURN_AT it wears its burn strip, a blow still strikes
+    const fs = Units.spawn('fireship', 'P', wx, wy); fs.x = wx; fs.y = wy; fs.path = null;
+    const walk = mkStrip(4), burn = mkStrip(4, ['#c04010', '#c04010', '#c04010', '#c04010']);
+    for (const dir of Assets.UNIT_DIRS8) {
+      Assets.setUnitFrames('fireship', dir, 'walk', walk); Assets.setUnitFrames('fireship', dir, 'idle', walk);
+      Assets.setUnitFrames('fireship', dir, 'burn', burn); Assets.setUnitFrames('fireship', dir, 'sink', burn);
+    }
+    const ua = Assets.unitArt.fireship;
+    const isBurn = () => { const fr = R.sheetFrames(fs); return !!fr && fr === ua.dirs[R._sheetFace || 's'].burn; };
+    fs.hp = fs.maxhp;
+    const whole = isBurn();
+    fs.hp = Math.floor(fs.maxhp * R.HULL_BURN_AT) - 1;
+    const hurt = isBurn();
+    ck('aHurtWarshipSailsOnFire', !whole && hurt, 'whole ' + whole + ', below half ' + hurt);
+    // it sinks in its own frames
+    BattleFX.bodies.length = 0;
+    BattleFX.sink(fs);
+    const body = BattleFX.bodies[BattleFX.bodies.length - 1];
+    ck('andSinksInItsOwnArt', !!body && Array.isArray(body.sinkFr) && body.sinkFr.length === 4,
+      body ? String(body.sinkFr && body.sinkFr.length) : 'no body');
+    BattleFX.bodies.length = 0;
+    Assets.removeUnitArt('fireship');
+    S.units = S.units.filter(z => z !== fs);
+  }
+
   return { res, fails };
 });
 

@@ -14447,6 +14447,14 @@ const R = {
     // a boar's head-down tusk thrust is the same body as its charge)
     let fr = d[pose] || (pose === 'fight' && d.charge) ||
       ((pose === 'fight' || pose === 'charge') ? d.walk : d.idle) || d.walk || d.idle || null;
+    /* A HULL ON FIRE SAILS ON FIRE (build 167, the operator: "design the
+       sprites for fighting and being attacked (fires), and sinking"): a
+       warship that has lost HULL_BURN_AT of its timbers shows its own
+       burning strip in place of the row and the bob — flames on deck, the
+       crew beating at them — until it is mended or sunk. A blow still
+       plays its strike. Only a hull that ships the strip (d.burn); every
+       other hull keeps the old look. */
+    if (afloat && fr && pose !== 'fight' && d.burn && u.maxhp && u.hp < u.maxhp * this.HULL_BURN_AT) fr = d.burn;
     /* THE STRIKE LANDS ON THE BLOW (js/battlefx.js, build 160): a fighter's
        strip is chosen per blow among its strikes (fight / fight2 / fight3)
        and read off its attack cooldown in unitSprite, so the frame where the
@@ -14473,6 +14481,7 @@ const R = {
     else this._sheetHold = false;
     return fr;
   },
+  HULL_BURN_AT: 0.5,                 // a warship below half its timbers burns (sheetFrames)
   sheetUnit(u) { return !!this.sheetFrames(u); },
   /* the square box a unit's sprite draws into, in world px. CFG.TILE for
      the whole cast; a character-class kind may declare a bigger one
