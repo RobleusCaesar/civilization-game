@@ -248,6 +248,9 @@ node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
+node tests/rival-geo.mjs      # the chief reads its map: never razes its hall, the cork round a whole footprint, a cut section is a gate, no builder to works that kill, the dock scored off the map, the search by sea, only those who can walk march, the hurt mend
+node tests/ai-coverage.mjs    # the rival keeps up: every building and unit in AI.KNOWS, training lines off the config, personas and cards ask only for what exists, every mode carries the dials, the sea is the pathfinder's sea, every landform read and thought on
+node tests/rival-scorecard.mjs # a whole game on every landform through tools/ai-harness.mjs, against universal gates
 node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some; a player's Barracks/Range site finishing sends its first Defender/archer (a gift, not training)
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
@@ -2689,6 +2692,59 @@ checks' own "razed instead" branch; manning towers did not bring the old
 fortress back (four marksmen posted: d37 / d52 / d52; sixteen on all eight:
 d52 / d51 / d88 — a bow on a platform can be shot down, a tower's volley
 could not). The engine road stays pinned by the direct checks.
+
+**THE RIVAL READS ITS MAP, AND KEEPS UP WITH THE GAME** (build 166 —
+`tools/ai-harness.mjs`, `tests/rival-geo.mjs`, `tests/ai-coverage.mjs`,
+`tests/rival-scorecard.mjs`; operator: the rival "still gets stuck in its own
+walls, doesn't know how to play the land mass and never uses the dock and
+ships… Create a harness so the enemy AI can adapt as new buildings features
+and land masses are pushed to production"). **MEASURE FIRST**: the harness
+plays whole games headlessly (`G.simStep`, a virtual clock, seeded) over
+every `MapGen.VARIANTS` face × mode × a scripted passive / turtle /
+aggressive player and measures from ground truth: trapped, sealed, corked and
+stuck unit-days, the yard's day, hulls, landings, razes, the day tick's cost,
+AI methods never called and what `AI.KNOWS` lists that no game used
+(`--compare A B` prints before/after). **ONE MAP READ A DAY** (`AI.geo`):
+land masses and seas labelled once per tick and block generation
+(`Path.floats` is what counts as water), which masses feet can reach
+(`walkMass`), whether the known enemy is over the water (`foeSeaOnly`), how
+much the sea matters (`seaNeed`), and whether the search has to go by boat
+(`seaSearch`). The dock is scored off it, a troop hull is laid before the
+nets in a sea war, `AI.seaSearch` lands a small scouting party on the darkest
+shore it can walk at least twelve tiles from, and a sea-minded chief raids
+the coast by boat (`seaMinded`, `_raidShore`). **ONLY WHERE FEET CAN REACH**
+(`AI.walksTo`): raids, probes and harassment are never sent at a mark on a
+land mass nobody can set foot on; `stormTheHall` drafts only those who can
+walk there. **THE TOWN IS NEVER SHUT BY ITS OWN WORKS**: every SOLID
+building site counts as the stone it will be in the seal floods
+(`_siteSolid`), the cork is looked for round a whole footprint, the hall and
+a monument are never razed, a cut section becomes a GATE on the spot
+(`_doorIn`), `freeTheTown` asks the cork cutter when a gate cannot cure, and
+the chief's own ditches take the stone's two questions. **THE GROUND
+REMEMBERS**: a dead villager marks where he fell AND the works he was sent
+to (`noteDeath`); two different days in a month, or three in a season, and
+no hand is sent there or down a road across it (`deadWork` / `deadRoad` /
+`deadSite`), walls and towers keep off it, and unmanned sites are capped at
+one a hand. **NOBODY STANDS UNDER AN ORDER HE CANNOT CARRY OUT**: a rival
+soldier lets go a mark he has stood out of reach of for three seconds
+(`shun`), a loose one batters round or drops a building he cannot get to,
+and a landing's survivors are given one reachable mark a day (`AI.maraud`,
+from `ai.knownB` alone). The hurt walk home to mend at the player's own
+price on Moderate and Hard (`mendTheHurt`, `aiMend`). **THE LEDGER**
+(`AI.KNOWS`): every key of `CFG.BUILDINGS` and `CFG.UNITS` is listed once,
+with the routine the chief comes by it through or a `skip` and its reason;
+the training lines are read off the config (`AI.lines`). **Add a building, a
+unit, a mode or a landform and tests/ai-coverage.mjs goes red until the
+chief has a line for it**; the scorecard then plays every face for 120 days
+against universal gates (no fault, the hall stands, no town shut in, nobody
+left standing, the town grows, a yard where the sea is the only road). Its
+milliseconds are printed, never gated. Fog-honest throughout (terrain is the
+chief's own map; enemy facts come from `ai.knownB` / `ai.seen`), no card is
+played, the truce is asked of the funnel, and the new state rides in the
+save (`seaParty`, `deadAt`, `marauder`, `shun`). **Known and left**: a seat
+with a war band's camp inside about eleven tiles on Hard is still overrun
+(the scorecard allows one such seat), and the rival still builds almost no
+bridges.
 
 **Finished run & Continue** (`tests/finished-run-continue.mjs`): winning (or
 losing) must never eat a manual save, and must actually retire Continue.

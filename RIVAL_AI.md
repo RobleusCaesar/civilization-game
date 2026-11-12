@@ -401,3 +401,16 @@ coherence and the Origin-Card sweep.
 | Origin Cards → persona / boon / opening bias | `js/cards.js` (`Cards`) |
 | Day tick that calls `AI.daily()`, start-package roll | `js/game.js` (`G`) |
 | Difficulty knobs, unit/building stat tables | `js/config.js` (`CFG`) |
+
+## Build 166 — the map read, the ledger and the harness
+
+- `node tools/ai-harness.mjs --quick` plays whole games headlessly and prints
+  what the chief did; `--compare before.json after.json` prints the deltas.
+- `AI.geo()` is the one daily map read (land masses, seas, what feet can
+  reach, how the known enemy can be reached). New planners should ask it
+  rather than flood the map again.
+- `AI.KNOWS` lists every building and unit with the routine the chief uses it
+  through. Adding content to `CFG` without a line there fails
+  `tests/ai-coverage.mjs`; `tests/rival-scorecard.mjs` then plays every
+  landform against universal gates.
+- Known gaps: a seat with a barbarian camp at its door on Hard, and bridges.
