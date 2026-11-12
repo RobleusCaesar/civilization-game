@@ -272,7 +272,7 @@
       calls: {}, callsByDecision: {}, neverCalled: [],
       cost: { aiDailyMs: [], dayTickMs: [], wallMs: 0, stepMs: 0, sampleMs: 0, botMs: 0 },
       errors: { safe: {}, safeTotal: 0, page: [], bot: {}, botTotal: 0, foreignSteps: 0, forcedUnpause: 0 },
-      player: null, rival: null, digest: null, dayDigests: [], trace: [],
+      player: null, rival: null, digest: null, dayDigests: [], trace: [], knows: null,
     };
   }
 
@@ -1556,6 +1556,11 @@
     M.player = AIH.bot ? AIH.bot.final() : null;
     M.digest = digest();
     M.errors.foreignSteps = AIH.foreignSteps;
+    // what the chief SAYS it knows how to use (AI.KNOWS) — the node side reports
+    // which of these no run ever built or trained
+    M.knows = (typeof AI !== 'undefined' && AI.KNOWS) ? {
+      buildings: Object.keys(AI.KNOWS.buildings).filter(k => AI.KNOWS.buildings[k].by),
+      units: Object.keys(AI.KNOWS.units).filter(k => AI.KNOWS.units[k].by) } : null;
     M.ai = S.ai ? { posture: S.ai.posture, camp: S.ai.camp ? { strat: S.ai.camp.strat, rounds: S.ai.camp.rounds, tried: S.ai.camp.tried } : null,
       memory: S.ai.memory ? Object.keys(S.ai.memory).filter(k => S.ai.memory[k] && typeof S.ai.memory[k] !== 'object').reduce((o, k) => { o[k] = S.ai.memory[k]; return o; }, {}) : null,
       knownB: S.ai.knownB ? Object.keys(S.ai.knownB).length : 0, peace: !!S.peace } : null;

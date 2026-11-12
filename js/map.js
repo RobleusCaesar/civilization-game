@@ -1567,6 +1567,11 @@ const BLOCK_TERR = (() => {
 const Path = {
   // does this terrain id block a land unit? (water/mountain/forest/hills/fertile)
   blocksLand(terr) { return BLOCK_TERR[terr] === 1; },
+  /* WHAT A HULL CAN SAIL ON — the one declaration (tests/ai-coverage.mjs).
+     `passable` below asks it for the water domain and the rival's map read
+     (AI.geo) labels its seas by it, so a new kind of water is water to the
+     boats and to the chief on the same day. */
+  floats(terr) { return terr === T.WATER || terr === T.MOAT; },
 
   passable(x, y, owner, domain) {
     if (!MapGen.inB(x, y)) return false;
@@ -1579,7 +1584,7 @@ const Path = {
     // (Bld.tileFree / R.draw); the player builds up to it on row 1, which is
     // ordinary passable ground.
     if (!MapGen.onBoard(x, y)) return false;
-    if (domain === 'water') return terr === T.WATER || terr === T.MOAT;   // boats: open water — a flooded moat included (docks don't block hulls)
+    if (domain === 'water') return this.floats(terr);   // boats: open water — a flooded moat included (docks don't block hulls)
     if (BLOCK_TERR[terr]) {
       // a standing bridge makes a water/moat tile crossable to land units —
       // and so does a LOWERED DRAWBRIDGE, whose deck spans the tile in front

@@ -176,6 +176,9 @@ const Combat = {
     // tower is out of everyone's reach for that second, and one up on the
     // platform is out of a blade's — only bows and engines answer it
     if (o.climb) return false;
+    // a mark this unit just gave up as out of reach (the futile-chase rule in
+    // update) is not taken straight back
+    if (u.shun === o.id && (u.shunTo || 0) > S.day + (S.dayT || 0) / CFG.DAY_MS) return false;
     if (o.perch && !CFG.UNITS[u.kind].rng && !CFG.UNITS[u.kind].proj) return false;
     if (Units.isNaval(o) && !Units.isNaval(u) && !CFG.UNITS[u.kind].rng) return false;
     if (o.kind === 'siegetower' && CFG.UNITS[u.kind].rng && u.kind !== 'marksman') return false;
@@ -1660,6 +1663,25 @@ const Combat = {
               }
             }
             Units.followPath(u, dt);
+            /* AT THE END OF THE ROAD AND STILL OUT OF REACH (tests/rival-geo.mjs).
+               The abandon above lets a road that ends within a tile of the
+               weapon's reach stand — the quarry is usually moving. One that
+               is NOT (a hull lying off the beach, a man on a ledge) held its
+               hunters on the nearest shore for good: five rival bows stood
+               for a hundred days marking a barbarian boat four tiles out,
+               half a tile past their reach. Standing still and out of reach
+               for three seconds lets the mark go, and it is not taken
+               straight back (canEngage's shun, a fifth of a day). The
+               rival's and the wilds' own marks only; an ordered strike of
+               the player's is the player's. */
+            if ((u.owner === 'A' || u.owner === 'R') && !Units.moving(u)) {
+              if ((u.futT = (u.futT || 0) + dt) > 3) {
+                u.futT = 0; u.shun = tgt.id; u.shunTo = S.day + (S.dayT || 0) / CFG.DAY_MS + 0.2;
+                u.tUnit = 0; u.path = null;
+                if (u.task && u.task.type === 'attack') u.task = null;
+                continue;
+              }
+            } else u.futT = 0;
           }
         } else if (u.cd <= 0) {
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
@@ -1757,7 +1779,13 @@ const Combat = {
               // barbarians that can no longer reach their mark (the bridge they
               // crossed is gone) give up the siege and leave, not shuffle forever
               if (u.owner === 'R') { u.tBld = 0; continue; }
-              if (u.owner === 'P' && b.key !== 'wall' && b.key !== 'gate') {
+              // …and so does a RIVAL soldier that is not on a raid's roster
+              // (aiRaidSeek has its own wall plan): a landing's survivor, a
+              // marauder, a storm party. With no wall to break either, the
+              // mark is dropped — it used to be kept for good, the man
+              // standing three tiles from a tower he could not get to.
+              const loose = u.owner === 'A' && !(u.task && u.task.type === 'raid');
+              if ((u.owner === 'P' || loose) && b.key !== 'wall' && b.key !== 'gate') {
                 // a PLAYER-ordered attack that stalls short of its mark is walled off:
                 // batter the blocking wall/gate open, remembering the real target so
                 // the unit resumes on it once the breach is made. Otherwise footmen
@@ -1769,6 +1797,7 @@ const Combat = {
                   continue;   // canReach already set the path to the wall
                 }
               }
+              if (loose) { u.tBld = 0; u.path = null; if (u.task && u.task.type === 'attackBld') u.task = null; continue; }
               /* SEALED OFF FOR NOW — and this is the trench freeze: an A*
                  that cannot land floods the whole reachable region before
                  giving up, and a sapper's channel cutting the approach put

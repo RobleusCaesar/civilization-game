@@ -89,6 +89,64 @@ const AI = {
 
   persona() { return this.PERSONAS[S.ai && S.ai.persona] || this.PERSONAS.homesteader; },
 
+  /* WHAT THE CHIEF KNOWS HOW TO USE (tests/ai-coverage.mjs) — the ledger the
+     adaptation harness reads. Every building in CFG.BUILDINGS and every unit
+     in CFG.UNITS is listed here ONCE: either with the routine(s) through
+     which the chief comes by it (`by` — real method names on this object,
+     at least one of which names the key, or a persona's order/mix does), or
+     with `skip` and the reason it is deliberately not the chief's.
+     Add a building or a unit to the config and tests/ai-coverage.mjs goes
+     red until it has a line here, so "the rival never learned about the new
+     thing" is a failing contract on the day the thing is added — not a
+     report from a player three builds later. The harness then says which
+     listed capabilities no run ever exercised (tools/ai-harness.mjs,
+     "declared but never used"). The training lines (which hall, which
+     rank) are NOT listed: they are read off the config (AI.lines). */
+  KNOWS: {
+    buildings: {
+      tc:         { by: ['bestBuild'], note: 'founded with the world; its storeys are a savings goal' },
+      farm:       { by: ['openingBook', 'growthKey', 'bestBuild'] },
+      house:      { by: ['openingBook', 'growthKey', 'bestBuild'] },
+      lumber:     { by: ['openingBook', 'growthKey', 'bestBuild'] },
+      quarry:     { by: ['openingBook', 'growthKey', 'bestBuild'] },
+      lodge:      { by: ['openingBook', 'bestBuild'] },
+      tower:      { by: ['openingBook', 'towerSpot', 'bestBuild'] },
+      barracks:   { by: ['openingBook', 'growthKey', 'bestBuild'] },
+      range:      { by: ['openingBook', 'bestBuild'] },
+      stable:     { by: ['openingBook', 'bestBuild'] },
+      siege:      { by: ['openingBook', 'bestBuild'] },
+      sapper:     { by: ['bestBuild'] },
+      dock:       { by: ['bestBuild', '_buildDock'], note: 'scored off the map read (AI.geo)' },
+      trade:      { by: ['bestBuild'] },
+      warcamp:    { by: ['aiWarCamp'] },
+      wall:       { by: ['maybeWalls'] },
+      gate:       { by: ['maybeWalls', '_doorIn'] },
+      mine:       { by: ['maybeMine', 'plotMine'], note: 'claimed by a villager, never built' },
+      wonder:     { by: ['maybeWonder'], note: 'Calm only (G.wonderInPlay)' },
+      road:       { skip: 'the road builder and its boosts are the player\'s alone' },
+      raidercamp: { skip: 'a barbarian camp belongs to the wilds; the chief burns them (maybePurge)' },
+    },
+    units: {
+      villager:    { by: ['_daily'], note: 'hired through the forage valve, not the queue' },
+      sapper:      { by: ['trainForces'] },
+      defender:    { by: ['trainArmy'] }, axeman:      { by: ['trainArmy'] }, elite:    { by: ['trainArmy'] },
+      archer:      { by: ['trainArmy'] }, longbow:     { by: ['trainArmy'] }, marksman: { by: ['trainArmy'] },
+      rider:       { by: ['trainArmy'] }, horsearcher: { by: ['trainArmy'] }, lancer:   { by: ['trainArmy'] },
+      catapult:    { by: ['trainArmy', 'trainForces'] },
+      ballista:    { by: ['trainArmy'] },
+      trebuchet:   { by: ['trainForces'] },
+      siegetower:  { by: ['trainForces'] },
+      fishboat:    { by: ['trainForces'] }, transport: { by: ['trainForces'] },
+      fireship:    { by: ['trainForces'] }, bombard:   { by: ['trainForces'] },
+      wolf: { skip: 'a beast of the wild' }, boar: { skip: 'a beast of the wild' }, bear: { skip: 'a beast of the wild' },
+      deer: { skip: 'a beast of the wild' }, cow:  { skip: 'a beast of the wild' },
+      raider: { skip: 'the barbarians\' fighter' }, brute: { skip: 'the barbarians\' fighter' },
+    },
+    // mode dials the chief reads with a default of its own (a mode may leave them out)
+    optionalDials: ['aiEarly', 'aiHarass', 'aiHarassLead', 'aiRaidCdMult', 'aiVulnDay', 'aiWonderDay', 'aiGather',
+      'aiActions', 'aiRampDays', 'aiVillEvery', 'aiVillCap'],
+  },
+
   init(spawn, pk) {
     /* VARIABLE OPENINGS: the rival opens on its own rolled package (same
        bands as the player's — see G.rollStart). Its persona, opening bias
@@ -450,6 +508,20 @@ const AI = {
     if (u && Units.isVillager(u)) { wd = (wd || []).filter(d => d !== S.day); wd.push(S.day); wd = wd.slice(-4); }
     if (wd && wd.length) ne.wd = wd;
     ai.deadAt[k] = ne;
+    /* …AND THE WORKS IT WAS SENT TO. A hand set upon at a site runs for the
+       hall and falls on the way: eleven builders in a row died five tiles
+       from the tower site that killed them, so neither the site nor the road
+       to it ever read as deadly. The order is the tribe's own knowledge —
+       where it SENT the hand — so the ground of the job is marked too. */
+    if (u && Units.isVillager(u) && u.task && !this._jobMark) {
+      const t = u.task, jb = (t.type === 'build' || t.type === 'work') && t.id ? Bld.get(t.id) : null;
+      const jx = jb ? jb.x : (t.x != null ? t.x : null), jy = jb ? jb.y : (t.y != null ? t.y : null);
+      if (jx != null && jy != null && (t.type === 'build' || t.type === 'gather' || t.type === 'claim' || t.type === 'work') &&
+          Math.max(Math.abs(jx - (x | 0)), Math.abs(jy - (y | 0))) > this.DEAD_R) {
+        this._jobMark = true;
+        try { this.noteDeath(jx, jy, { kind: u.kind }); } finally { this._jobMark = false; }
+      }
+    }
   },
   deadGround(x, y, r) {
     const ai = S.ai, dead = ai && ai.deadAt;
@@ -474,7 +546,7 @@ const AI = {
      falls a step or two off — gets no more builders; an unstarted one is
      called off and paid back. A hall is never called off. */
   DEAD_R: 2,
-  DEAD_WORK_DAYS: 30,
+  DEAD_WORK_DAYS: 30, DEAD_WORK_LONG: 90,
   /* villagers fell within `r` of this tile on TWO DIFFERENT DAYS of the last
      month. Days, not bodies: a war band that storms the town kills three
      hands in one afternoon beside the granary and that ground is not
@@ -482,15 +554,29 @@ const AI = {
   deadWork(x, y, r) {
     const dead = S.ai && S.ai.deadAt; if (!dead) return false;
     r = r == null ? this.DEAD_R : r;
-    let d0 = -1;
+    // two different days inside a month — or three inside a season: ground
+    // that has killed again and again is remembered longer, or a chief sent
+    // a fresh hand down the same road the day the month ran out
+    let d0 = -1, long = null;
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const e = dead[(x + dx) + ',' + (y + dy)];
       if (!e || !e.wd) continue;
       for (const d of e.wd) {
-        if (S.day - d > this.DEAD_WORK_DAYS) continue;
-        if (d0 < 0) d0 = d; else if (d !== d0) return true;
+        const age = S.day - d;
+        if (age <= this.DEAD_WORK_DAYS) { if (d0 < 0) d0 = d; else if (d !== d0) return true; }
+        if (age <= this.DEAD_WORK_LONG) { (long || (long = new Set())).add(d); if (long.size >= 3) return true; }
       }
     }
+    return false;
+  },
+  /* A ROAD THAT KILLS (tests/rival-geo.mjs). The ledger is about where a hand
+     FELL, and a builder falls on the way: one island chief sent eleven
+     villagers in a row to a tower site four tiles from where each of them
+     died, on the road past a war band's camp it had never laid eyes on.
+     Does this walk cross ground that keeps killing workers? */
+  deadRoad(route) {
+    if (!route || !S.ai || !S.ai.deadAt) return false;
+    for (let i = 0; i < route.length; i++) if (this.deadWork(route[i].x, route[i].y, 1)) return true;
     return false;
   },
   deadSite(b) {
@@ -1137,10 +1223,7 @@ const AI = {
     // each "still open" while the other's section is being raised would let
     // the last stone be laid and shut the town the day both finish. A wall
     // site (or a foreign gate site) is solid here the moment it is laid.
-    const siteSolid = (x, y) => {
-      const b = Bld.at(x, y);
-      return !!(b && b.construction > 0 && (b.key === 'wall' || (b.key === 'gate' && b.owner !== 'A')));
-    };
+    const siteSolid = (x, y) => this._siteSolid(Bld.at(x, y));
     // `openTile` asks the counterfactual "…and if we cut THIS section out?"
     const pass = (x, y) => MapGen.inB(x, y) && !(x >= bx && x < bx + bs && y >= by && y < by + bs) &&
       ((x === ox && y === oy) || (Path.passable(x, y, 'A') && !siteSolid(x, y)));
@@ -1155,6 +1238,17 @@ const AI = {
       seed(cx + 1, cy); seed(cx - 1, cy); seed(cx, cy + 1); seed(cx, cy - 1);
     }
     return false;
+  },
+  /* INTENT COUNTS, FOR EVERY SOLID WORK (tests/rival-geo.mjs). Planning used
+     to count only a WALL site as the stone it will be. A house, a tower or a
+     yard going up is walkable until the day it finishes, so two of them
+     raised in a town's last two lanes each read the other as open ground and
+     both were approved — measured: a karst town shut itself in six times in
+     one game and tore a building down each time. Any site that will be
+     solid is solid here from the day it is laid; a gate of our own never
+     is. */
+  _siteSolid(b) {
+    return !!(b && b.construction > 0 && (b.key === 'gate' ? b.owner !== 'A' : Bld.solid(b.key)));
   },
   // would walling this tile shut the town in? (cheap: only asked about ring tiles)
   wallWouldSeal(tc, x, y, sz) { return this.townOut(tc) && !this.townOut(tc, { x, y, sz: sz || 1 }); },
@@ -1182,7 +1276,8 @@ const AI = {
     if (blockSet) blockIdx = -1;
     let q;
     if (Array.isArray(sx)) {                     // several seeds (tile indices): one flood from all of them
-      q = sx.filter(i => i >= 0 && i < seen.length && i !== blockIdx && !(blockSet && blockSet.has(i)));
+      q = sx.filter(i => i >= 0 && i < seen.length && i !== blockIdx && !(blockSet && blockSet.has(i)) &&
+        (ignoreOwnForts || !this._siteSolid(Bld.at(i % W, (i / W) | 0))));
       for (const i of q) seen[i] = 1;
       if (!q.length) return seen;
     } else {
@@ -1199,8 +1294,7 @@ const AI = {
         if (seen[ni] || ni === blockIdx || (blockSet && blockSet.has(ni))) continue;
         let ok = Path.passable(nx, ny, 'A');
         const bb = ok || ignoreOwnForts ? Bld.at(nx, ny) : null;
-        if (ok && !ignoreOwnForts && bb && bb.construction > 0 &&
-            (bb.key === 'wall' || (bb.key === 'gate' && bb.owner !== 'A'))) ok = false;   // a site is a wall-to-be
+        if (ok && !ignoreOwnForts && this._siteSolid(bb)) ok = false;   // a site is the work it will be
         if (!ok && ignoreOwnForts) {
           // "…and if our own works weren't in the way?" Every SOLID own
           // building counts, not just stone: a hut plugs a choke exactly as
@@ -1322,8 +1416,12 @@ const AI = {
        PEEL below is for a double line of stone and takes stone alone. */
     const mem = S.ai.memory || (S.ai.memory = {});
     const razedLately = (mem.corkRazed || []).filter(d => S.day - d <= 40).length;
+    // a SITE across real ground is simply called off (it is paid back, and the
+    // seal clamp refuses the same plot tomorrow); a pocket that only holds a
+    // man or two keeps the two-in-forty limit, site or not
+    const siteOk = pen.gained >= 24;
     const cutCand = (b) => b.owner === 'A' && b.key !== 'gate' && b.key !== 'tc' && b.key !== 'wonder' &&
-      Bld.solid(b.key) && (b.key === 'wall' || razedLately < 2);
+      Bld.solid(b.key) && (b.key === 'wall' || (b.construction > 0 && siteOk) || razedLately < 2);
     let best = null, bs = -1e9;
     // every tile orthogonally beside a building's footprint (a 2x2 has eight)
     const around = (b) => {
@@ -1375,7 +1473,7 @@ const AI = {
     }
     if (!best) return false;
     mem.peel = peeled ? { day: S.day, gained: pen.gained } : null;
-    if (best.key !== 'wall') (mem.corkRazed || (mem.corkRazed = [])).push(S.day);
+    if (best.key !== 'wall' && !(best.construction > 0 && siteOk)) (mem.corkRazed || (mem.corkRazed = [])).push(S.day);
     this._doorIn(best);
     mem.sealed = S.day;
     G.foeNote('The rival tears a doorway through its own wall — its host can march again');
@@ -1422,6 +1520,12 @@ const AI = {
      (the stone is already there). Anything but a wall simply comes down. */
   _doorIn(b) {
     const x = b.x, y = b.y, wasWall = b.key === 'wall';
+    if (!wasWall && b.construction > 0) {         // a site in the lane is called off, and paid back
+      const paid = b.paid || (!('paid' in b) && CFG.BUILDINGS[b.key].levels[0].cost) || {};
+      for (const k in paid) S.ai.res[k] = (S.ai.res[k] || 0) + paid[k];
+      Bld.removeToRuin(b, true);
+      return;
+    }
     Bld.removeToRuin(b, wasWall);                 // a swapped section leaves no rubble
     if (wasWall) Bld.place('A', 'gate', x, y, { free: true, instant: true });
   },
@@ -1460,7 +1564,11 @@ const AI = {
      else happened to ask. One call a day, on floods the day's placement
      clamps already cache. */
   freeTheTown(tc) {
-    if (Bld.forts('A').length && !this.townOut(tc)) return this.openTheGate(tc);
+    // the ring's own stone first; what a gate cannot cure (a hut in the one
+    // lane, a yard across the causeway) is the cork cutter's — it used to be
+    // never asked while any fort stood, and one measured town sat shut for
+    // 41 days behind a house with a working gate six tiles away
+    if (Bld.forts('A').length && !this.townOut(tc) && this.openTheGate(tc)) return true;
     return this.cutTheCork(tc);
   },
   maybeWalls(tc) {
@@ -1571,6 +1679,8 @@ const AI = {
         // from >= 24 tiles of marchable ground is refused (gates exempt: a
         // gate opens for its owner)
         if (!isGate && (this.wallWouldSeal(tc, x, y) || this.corkedGround(tc, { x, y }))) continue;
+        // …nor a section on ground that kills the hands sent to raise it
+        if (this.deadWork(x, y) || this.campGround(x, y)) continue;
         // THE RING NEVER RAIDS THE WAR CHEST — except when the war is at the
         // door. Walling ran outside the savings reservation, so a chief saving
         // for its next Town Center tier spent the fund on palisade a fistful at
@@ -1685,7 +1795,8 @@ const AI = {
          capped; quality is not. While the host is short of its veteran share,
          keep drilling the good troops — that is what the treasury is for. */
       if (advN >= vetWant) return false;
-      const VET = { barracks: 'elite', range: 'marksman', stable: 'lancer' };
+      const L0 = this.lines(), VET = {};
+      for (const h of L0.war) VET[h] = L0.top[h];              // each war hall's top rank
       const vh = S.buildings.find(bb => bb.owner === 'A' && VET[bb.key] &&
         bb.level >= 3 && Bld.done(bb) && !bb.upgrading && bb.queue.length === 0);
       if (!vh) return false;
@@ -1703,12 +1814,11 @@ const AI = {
       for (const [k] of mix) { const alt = hallOf(k); if (alt) { kind = k; b = alt; break; } }
       if (!b) return false;
     }
-    const ADV = { defender: 'elite', archer: 'marksman', rider: 'lancer' };
+    const ADV = this.lines().adv;                               // basic rank -> its hall's top rank
     const adv = ADV[kind] && b.level >= 3 && S.ai.res.gold >= 25 && advN < vetWant;
     if (Bld.train(b, adv ? ADV[kind] : kind)) return true;
     // rolled a unit the hall can't make yet (still level 1) — drill the basic line
-    const BASIC = { barracks: 'defender', range: 'archer', stable: 'rider', siege: 'catapult' };
-    return Bld.train(b, BASIC[b.key]);
+    return Bld.train(b, this.lines().basic[b.key]);
   },
 
   /* the build order is an OPENING, not a life plan — after it's done the
@@ -1857,6 +1967,17 @@ const AI = {
       let slots = 0;
       for (const b of Bld.list('A')) if (Bld.def(b.key).needsWorker) slots += Bld.maxWorkers(b);
       if (slots >= pool + 1) return false;
+    }
+    /* …AND NO NEW WORKS WHILE THE LAST ONES STAND UNTOUCHED. A site is paid
+       for the day it is laid; a town with no hands to raise them laid twenty
+       tower sites in a row (measured), every plank it earned sunk into
+       foundations nobody would ever build. One site per hand, and two for a
+       town that has lost them all. Stone on the ring is the wall pass's. */
+    if (!S.ai._free) {
+      const hands = Units.count('A', u => Units.isVillager(u));
+      let open = 0;
+      for (const b of Bld.list('A')) if (b.construction > 0 && b.key !== 'wall' && b.key !== 'gate') open++;
+      if (open >= Math.max(2, hands)) return false;
     }
     const cost = CFG.BUILDINGS[key].levels[0].cost;
     // a starving chief's food works pay from the jar — see foodUrgent above
@@ -3052,10 +3173,35 @@ const AI = {
      pre-empting steps anymore — they're just very high-utility candidates
      that COMPOSE. Utilities are continuous, so behavior shifts smoothly.
      =================================================================== */
-  HALL_OF: { defender: 'barracks', axeman: 'barracks', elite: 'barracks',
-    archer: 'range', longbow: 'range', marksman: 'range',
-    rider: 'stable', horsearcher: 'stable', lancer: 'stable',
-    catapult: 'siege', ballista: 'siege', trebuchet: 'siege' },
+  /* THE TRAINING LINES ARE READ OFF THE CONFIG (tests/ai-coverage.mjs). Which
+     hall trains a unit, a hall's basic rank and its top one used to be four
+     hand-kept tables here (HALL_OF, BASIC, ADV, VET) — so a unit added to a
+     hall's `train` list in CFG.BUILDINGS was a unit the chief could never
+     roll, drill up to or fall back from until somebody remembered this
+     file. They are derived now: a hall's BASIC rank is its first unit with
+     no level gate, its TOP rank the one with the highest `reqLevel`, and
+     the WAR halls are the ones that train only soldiers who march. */
+  lines() {
+    const c = this._linesC;
+    if (c && c.src === CFG.BUILDINGS) return c;
+    const hallOf = {}, basic = {}, top = {}, adv = {}, war = [];
+    for (const bk in CFG.BUILDINGS) {
+      const tr = CFG.BUILDINGS[bk].train; if (!tr) continue;
+      let b = null, t = null, tl = -1, soldiers = true;
+      for (const uk in tr) {
+        hallOf[uk] = bk;
+        const rl = tr[uk].reqLevel || 1;
+        if (rl <= 1 && !b) b = uk;
+        if (rl > tl) { tl = rl; t = uk; }
+        const u = { kind: uk };
+        if (!CFG.UNITS[uk] || !Units.isMilitary(u) || Units.isSiege(u) || Units.isNaval(u)) soldiers = false;
+      }
+      basic[bk] = b; top[bk] = t;
+      if (soldiers) { war.push(bk); if (b && t && b !== t) adv[b] = t; }
+    }
+    return (this._linesC = { src: CFG.BUILDINGS, hallOf, basic, top, adv, war });
+  },
+  get HALL_OF() { return this.lines().hallOf; },
 
   // re-weight the army mix toward the hard counters the read calls for
   counterMix(mix, read) {
@@ -3638,14 +3784,19 @@ const AI = {
   chooseRaidObj(read, push) {
     const ai = S.ai, atc = Bld.tcOf('A'), ptc = read.knownTC || read.anchor;   // only what we've found — any building anchors
     const mem = ai.memory || {};
-    if (!push && read.exposed && read.exposed.length) {
+    // only what FEET can reach (AI.walksTo): a column ordered at a mark over
+    // the water stands on its own beach. The boats have their own planners.
+    const soft = () => {
       let best = null, bd = 1e9;
-      for (const e of read.exposed) {
+      for (const e of (read.exposed || [])) {
+        if (!this.walksTo(e.x, e.y)) continue;
         const d = atc ? Math.hypot(e.x - atc.x, e.y - atc.y) : 0;
         if (d < bd) { bd = d; best = e; }
       }
-      if (best) return { type: 'econ', x: Math.round(best.x), y: Math.round(best.y) };
-    }
+      return best ? { type: 'econ', x: Math.round(best.x), y: Math.round(best.y) } : null;
+    };
+    if (!push) { const e = soft(); if (e) return e; }
+    if (ptc && !this.walksTo(ptc.x, ptc.y)) return soft();   // an outpost on our own shore, or nothing
     if (ptc) {
       const carrySiege = S.units.some(u => u.owner === 'A' && u.task && u.task.type === 'raid' && Units.isSiege(u));
       const wf = read.weakFlank;
@@ -3762,8 +3913,11 @@ const AI = {
     const beachedNow = ai.stall && S.day - (ai.stall.t || 0) <= 6;
     const seaWar = !S.peace && (campStrat === 'TIDEWRACK' || ai.seaOnly || !!gT.foeSeaOnly);
     const seaLook = !S.peace && !seaWar && !!gT.seaSearch;
+    // a sea raider keeps a hull for its landings (AI.seaMinded), paid from spare coin only
+    const seaRaid = !S.peace && !seaWar && !seaLook && this.seaMinded(read) &&
+      (ai.posture === 'PUSH' || ai.posture === 'PRESSURE');
     let hullQueued = false;
-    if (dock && !dock.upgrading && dock.queue.length === 0 && (seaWar || seaLook || beachedNow)) {
+    if (dock && !dock.upgrading && dock.queue.length === 0 && (seaWar || seaLook || beachedNow || seaRaid)) {
       const key = 'transport';                       // one troop hull now
       const cap = CFG.UNITS.transport.cap || 5;
       // enough hulls to put a DECISIVE wave ashore in a single crossing rather than
@@ -3771,7 +3925,8 @@ const AI = {
       // whole landing force (up to ~10) at once, fleet capped at five hulls. A
       // search needs one.
       const infantry = Units.count('A', u => Units.isMilitary(u) && !Units.isNaval(u) && u.kind !== 'siegetower' && !Units.isSiege(u));
-      const wantHulls = seaLook ? 1 : Math.max(2, Math.min(5, Math.ceil(Math.min(infantry, 10) / cap)));
+      const wantHulls = seaLook ? 1 : seaRaid ? (infantry >= 10 ? 2 : 1)
+        : Math.max(2, Math.min(5, Math.ceil(Math.min(infantry, 10) / cap)));
       const trs = Units.count('A', u => Units.isTransport(u));
       // the hulls ARE the war while the land road is stuck or does not exist —
       // the savings jar must not beach the landing it exists to pay for
@@ -4045,8 +4200,17 @@ const AI = {
       cand.push({ x, y, s });
     }
     cand.sort((a, b) => b.s - a.s);
-    for (let k = 0; k < Math.min(6, cand.length); k++)
-      if (Units.assignTerraform(idle, cand[k].x, cand[k].y)) { this._escort(idle); return; }
+    /* …AND THE DITCH NEVER SHUTS THE TOWN (validated on the pick, a few
+       deep). Terraform.digWouldSeal only asks that 24 tiles stay round the
+       hall, and never asks at all about a ditch beside water — so a ring of
+       trench could close at radius four with the whole town inside it. A
+       dug tile is asked the stone's own two questions: does the ring still
+       open, and is no marchable ground cut away. */
+    for (let k = 0; k < Math.min(6, cand.length); k++) {
+      const c = cand[k];
+      if (this.wallWouldSeal(tc, c.x, c.y) || this.corkedGround(tc, { x: c.x, y: c.y })) continue;
+      if (Units.assignTerraform(idle, c.x, c.y)) { this._escort(idle); return; }
+    }
   },
 
   // debug overlay (window.DEBUG_AI = true): a compact dump of the world read,
@@ -4125,6 +4289,7 @@ const AI = {
        homeMass      the land mass the hall stands on
        seaHome[b]    water bodies its own coast touches (it can launch there)
        massBySea[m]  land masses that one of those seas also touches
+       walkMass[m]   land masses its people can set foot on today
        beyond        open ground on its OWN mass it cannot walk to (woods,
                      rock or stone between: a cut or a harvest opens it)
        overseas      open ground on OTHER masses its seas reach
@@ -4154,7 +4319,9 @@ const AI = {
   _geoRead(atc) {
     const W = CFG.W, H = CFG.H, N = W * H, terr = S.map.terrain, ai = S.ai, seen = ai.seen || [];
     const K = this.GEO;
-    const wet = i => terr[i] === T.WATER || terr[i] === T.MOAT;
+    // what counts as water is the pathfinder's own declaration (Path.floats):
+    // a terrain added to it is read as sea here with no edit to this file
+    const wet = i => Path.floats(terr[i]);
     const home = this.aiLandReach();
     // --- label every on-board tile: dry masses (> 0) and water bodies (< 0) ---
     const lab = new Int16Array(N), massSize = [0], seaSize = [0], q = new Int32Array(N);
@@ -4182,9 +4349,13 @@ const AI = {
     // --- the seas its coast touches (big enough to float a yard), and the land they lead to ---
     const seaHome = new Uint8Array(seaSize.length), massBySea = new Uint8Array(massSize.length);
     let homeN = 0, homeSeen = 0, coast = 0;
+    // the land masses its people can set foot on today (its own, and any a
+    // bridge or a lowered deck already joins to it)
+    const walkMass = new Uint8Array(massSize.length);
     if (home) for (let i = 0; i < N; i++) {
       if (!home[i]) continue;
       homeN++; if (seen[i]) homeSeen++;
+      if (lab[i] > 0) walkMass[lab[i]] = 1;
       const x = i % W, y = (i / W) | 0;
       let wetSide = false;
       for (let d = 0; d < 4; d++) {
@@ -4251,7 +4422,7 @@ const AI = {
     if (anc) seaNeed = foeLand ? Math.min(0.35, seaShare * 0.5) : (foeSea ? 1 : seaNeed);
     else if (seaSearch) seaNeed = Math.max(seaNeed, 0.9);
     else if (overseas >= K.overseasMin && homeExplored >= K.exploredLate) seaNeed = Math.max(seaNeed, 0.55);
-    return { home, lab, massSize, seaSize, seaHome, massBySea, seaTouch, seaLeads, massOpen,
+    return { home, lab, massSize, seaSize, seaHome, massBySea, seaTouch, seaLeads, massOpen, walkMass,
       homeMass, homeN, homeExplored, coast, homeWater,
       beyond, overseas, overseasSeen, overseasDark, seaShare, seaNeed, blind, landDone, seaSearch,
       foeLand, foeSea, foeMass, foeSeaOnly };
@@ -4287,6 +4458,33 @@ const AI = {
     while (h < q.length) { const c = q[h++], cx = c % W, cy = (c / W) | 0; seed(cx + 1, cy); seed(cx - 1, cy); seed(cx, cy + 1); seed(cx, cy - 1); }
     return mask;
   },
+  /* CAN FEET GET THERE AT ALL? (tests/rival-geo.mjs) Every order that marches
+     men at a point asked nothing about the water in between: a harassing
+     pair sent at a field on the far island stood on its own beach under a
+     raid order for six days, was let go, and the next pair was sent the
+     day the cooldown ran out — 367 soldier-days of standing still in one
+     measured game. The question is the LAND MASS, not the road: a target
+     behind the enemy's wall or a wood is still marched at (the walk to the
+     obstacle is how a siege starts, and a stall there is what arms the
+     sappers); a target no foot can ever stand beside is a job for the
+     boats. Unknown ground (no hall, no map read) answers yes. */
+  walksTo(x, y) {
+    const g = this.geo();
+    if (!g || !g.walkMass) return true;
+    x = Math.round(x); y = Math.round(y);
+    if (!MapGen.inB(x, y)) return false;
+    let l = g.lab[MapGen.idx(x, y)];
+    if (l <= 0) {          // the point itself is water (a dock, a bridge): any bank beside it will do
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!MapGen.inB(x + dx, y + dy)) continue;
+        const l2 = g.lab[MapGen.idx(x + dx, y + dy)];
+        if (l2 > 0 && g.walkMass[l2]) return true;
+      }
+      return false;
+    }
+    return !!g.walkMass[l];
+  },
+
   // does our land touch the player's hall? (a plain raid can walk in — no campaign needed)
   _reachesTown(reach, ptc) {
     if (!reach || !ptc) return false;
@@ -5243,8 +5441,10 @@ const AI = {
   // shore (warships screen). Troops resume the assault the moment they hit the beach.
   _launchAmphib(read, parallel) {
     const ai = S.ai, ptc = read.knownTC || read.anchor, ctx = this.probeAssault(read);
-    if (!ptc || !ctx || !ctx.shore || !ctx.shore.land) return false;
-    const land = ctx.shore.land;
+    // the assault's own beach (a shore the army cannot walk to) — or, for a
+    // sea RAID on an enemy a road also reaches, a beach picked for the raid
+    const land = (ctx && ctx.shore && ctx.shore.land) || (parallel === 'raid' ? this._raidShore(read) : null);
+    if (!ptc || !land) return false;
     const idleHull = u => u.owner === 'A' && Units.isTransport(u) && !(u.task && u.task.type === 'unload');
     /* a hull still holding a previous wave sails FIRST — its cargo is a
        landing party already paid for. (The stranded-hold leak: readiness
@@ -5331,7 +5531,8 @@ const AI = {
       if (ai.camp) { ai.camp.beach = { x: land.x, y: land.y }; ai.camp.sailIds = sailIds; }
       G.foeNote(this.CAMPAIGN_CRY.TIDEWRACK);
     } else {
-      G.foeNote('⛵ Rival sails slip past the moat — a second force is landing on your shore!');
+      G.foeNote(parallel === 'raid' ? '⛵ Rival sails off your coast — a raiding party is coming ashore!'
+        : '⛵ Rival sails slip past the moat — a second force is landing on your shore!');
     }
     return true;
   },
@@ -5347,16 +5548,116 @@ const AI = {
     const ai = S.ai;
     if (S.peace) return false;                 // no fronts at all while the truce holds
     if (!read.knownTC && !read.anchor) return false;
-    if (!(ai.stall && S.day - (ai.stall.t || 0) <= 6)) return false;      // the land route is open — no need
+    const stalled = !!(ai.stall && S.day - (ai.stall.t || 0) <= 6);
+    /* …OR THE CHIEF IS A SEA RAIDER (AI.seaMinded, tests/rival-geo.mjs). The
+       second front used to exist only for a column parked at a moat. A
+       chief whose whole plan is the water — or a crafty one whose land
+       raids keep breaking on the same towers — takes the coast with the
+       road wide open: a shore is the flank no wall line covers. Slower
+       than the stalled case's cadence, and only on the attack. */
+    const raider = !stalled && this.seaMinded(read) && (ai.posture === 'PUSH' || ai.posture === 'PRESSURE');
+    if (!stalled && !raider) return false;      // the land route is open and the sea is not this chief's road
     if ((ai.seaCd || 0) > 0) { ai.seaCd--; return false; }
     const hulls = S.units.filter(u => u.owner === 'A' && Units.isTransport(u) &&
       !(u.task && u.task.type === 'unload'));               // a loaded idle hull re-sails
     if (!hulls.length) return false;
     const reserve = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
       u.kind !== 'siegetower' && !(u.task && u.task.type === 'raid'));
-    if (reserve.length < 3) return false;                                 // don't strip the home guard for a token landing
-    if (this._launchAmphib(read, true)) { ai.seaCd = 24; return true; }
+    if (reserve.length < (raider ? 5 : 3)) return false;                  // don't strip the home guard for a token landing
+    if (this._launchAmphib(read, raider ? 'raid' : true)) { ai.seaCd = raider ? 30 : 24; return true; }
     return false;
+  },
+  /* A SEA RAIDER'S BEACH: on the known enemy's own coast, on a sea our yard
+     can sail — as near their exposed works (or the anchor) as a hull can
+     get, away from any tower the tribe has seen, with room to step off the
+     sand, never a beach a landing already died on, and well clear of our
+     own town (a "raid" that lands at home is a ferry ride). Terrain is the
+     tribe's map; towers and works come from its memory alone. */
+  _raidShore(read) {
+    const g = this.geo(), anc = read && (read.knownTC || read.anchor), tc = Bld.tcOf('A');
+    if (!g || !anc || !tc) return null;
+    const W = CFG.W, H = CFG.H, kb = S.ai.knownB || {};
+    const twr = [];
+    for (const k in kb) if (kb[k] && kb[k].key === 'tower') twr.push({ x: (+k) % W, y: ((+k) / W) | 0 });
+    const aims = (read.exposed && read.exposed.length ? read.exposed : [anc]).map(e => ({ x: e.x, y: e.y }));
+    let best = null, bs = 1e9;
+    for (let y = Math.max(2, anc.y - 14); y <= Math.min(H - 3, anc.y + 14); y++)
+      for (let x = Math.max(2, anc.x - 14); x <= Math.min(W - 3, anc.x + 14); x++) {
+        if (!Path.passable(x, y, 'A') || Bld.at(x, y)) continue;
+        if (Math.hypot(x - tc.x, y - tc.y) < 14) continue;
+        let sea = false;
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const l = g.lab[(y + oy) * W + x + ox];
+          if (l < 0 && g.seaHome[-l]) { sea = true; break; }
+        }
+        if (!sea) continue;
+        let d = 1e9; for (const a of aims) d = Math.min(d, Math.hypot(a.x - x, a.y - y));
+        if (d > 14) continue;
+        let guns = 0; for (const t of twr) if (Math.hypot(t.x - x, t.y - y) <= 7) guns++;
+        const sc = d + guns * 10;
+        if (sc >= bs) continue;
+        if (this._beachRoom(x, y) < this.BEACH_ROOM || this._beachBurned(x, y)) continue;
+        bs = sc; best = { x, y };
+      }
+    return best;
+  },
+  /* does this chief think of the sea as a road to the KNOWN enemy? The
+     mariner always does; any chief crafty enough (AI.creativity) does once
+     its land raids have been stopped by towers or a wall. Needs a home sea
+     that actually touches the enemy's land (AI.geo's foeSea). */
+  seaMinded(read) {
+    const g = this.geo(); if (!g || !g.foeSea || !read || !read.anchor) return false;
+    if (this.plan().win === 'naval') return true;
+    const mem = S.ai.memory || {};
+    return !!(mem.towerStop || mem.wallStop) && this.creativity() >= 0.5;
+  },
+  /* THE HURT GO HOME TO MEND (tests/rival-geo.mjs). A rival soldier never
+     healed: it fought at whatever it had left until it died, so a chief
+     threw away its veterans one wound at a time while the player mended
+     theirs at the hall between every fight. Between fights now — nobody
+     hostile within reach — a badly hurt soldier walks to the tribe's own
+     healing ground (Bld.healZoneFor: the hall's ring, a forward camp, a
+     dock for a hull) and is mended there AT THE PLAYER'S OWN PRICE
+     (CFG.HEAL_FOOD, scaled by what is missing), from the tribe's own
+     granary, never into hunger, and no oftener than a player may
+     (CFG.HEAL_LIMIT_N in a real minute is one mend every other day).
+     A mode dial (CFG.MODES[m].aiMend) so Calm's chief stays the gentler
+     opponent. Units on a raid in contact are left to the raid's own
+     retreat rule; a man with no road home (ashore abroad) stays. */
+  MEND: { at: 0.4, raidAt: 0.28, keepFood: 150, every: 2 },
+  mendTheHurt(read) {
+    const ai = S.ai, M = this.MEND;
+    if (!G.modeCfg().aiMend) return 0;
+    let done = 0;
+    for (const u of S.units) {
+      if (u.owner !== 'A' || !CFG.HEAL_FOOD[u.kind] || u.spectral) continue;
+      if (!Units.isMilitary(u) && u.kind !== 'sapper') continue;
+      const frac = u.hp / u.maxhp;
+      if (frac >= M.at) { if (u.detail && u.detail.kind === 'mend') u.detail = null; continue; }
+      const z = Bld.healZoneFor(u); if (!z) continue;
+      const foeNear = Combat.nearestUnit(u.x, u.y, 4, o => Combat.hostileUnits(u, o) && !Units.isVillager(o), u);
+      if (Math.hypot(u.x - z.x, u.y - z.y) <= z.r) {
+        // on the healing ground: mend, if the granary can spare it and nobody is at our throat
+        if (foeNear || S.day - (u.mendDay || -9) < M.every) continue;
+        const cost = Math.max(1, Math.ceil((1 - frac) * CFG.HEAL_FOOD[u.kind]));
+        if ((ai.res.food || 0) < cost + M.keepFood) continue;
+        ai.res.food -= cost; u.hp = u.maxhp; u.mendDay = S.day; u.detail = null; done++;
+        continue;
+      }
+      // out in the field: go home — unless it is in a fight, scouting, or has no road
+      if (foeNear || u.tUnit || u.scouting || u.perch || this.onDetail(u)) continue;
+      const raiding = u.task && u.task.type === 'raid';
+      if (raiding && frac >= M.raidAt) continue;
+      if (!Units.isNaval(u) && this.offHome(u)) continue;
+      const hx = Math.round(z.x), hy = Math.round(z.y);
+      const sp = Units.isNaval(u) ? { x: hx, y: hy }
+        : MapGen.findNear(hx, hy, Math.max(2, z.r | 0), (x, y) => Path.passable(x, y, 'A') && !Bld.at(x, y) && Math.hypot(x + 0.5 - z.x, y + 0.5 - z.y) <= z.r - 0.4);
+      if (!sp || !Units.setPath(u, sp.x, sp.y)) continue;
+      u.task = { type: 'move', x: sp.x, y: sp.y }; u.tUnit = 0; u.tBld = 0; u.raidObj = null; u.assault = false;
+      u.anchor = { x: sp.x + 0.5, y: sp.y + 0.5 };
+      this.detail(u, 'mend', 4);
+    }
+    return done;
   },
 
   /* THE SEARCH GOES BY SEA (tests/rival-geo.mjs). Every attack layer needs an
@@ -5476,7 +5777,7 @@ const AI = {
     const W = CFG.W, H = CFG.H, t = S.map.terrain, seen = S.ai.seen;
     const hl = g.lab[(hull.y | 0) * W + (hull.x | 0)];
     if (!(hl < 0)) return null;
-    let best = null, bs = -1e9;
+    const cands = [];
     for (let y = 2; y < H - 2; y++) for (let x = 2; x < W - 2; x++) {
       const i = y * W + x, m = g.lab[i];
       if (!(m > 0) || m === g.homeMass || g.home[i]) continue;
@@ -5499,9 +5800,32 @@ const AI = {
       }
       if (room < 3) continue;
       const sc = dark * 1.0 + Math.min(40, g.massOpen[m] / 6) - Math.hypot(x - hull.x, y - hull.y) * 0.35 + this.tileNoise(x, y) * 2;
-      if (sc > bs) { bs = sc; best = { x, y, mass: m }; }
+      cands.push({ x, y, mass: m, sc });
     }
-    return best;
+    /* …AND THE BEACH LEADS SOMEWHERE (validated on the pick, the seal clamp's
+       rule: a flood per candidate is the storm). The mass may hold a hundred
+       open tiles and this strip of sand two of them, shut in by a wood: a
+       party set down there looked at the trees for 270 days in one measured
+       game. The men must be able to walk `minLand` tiles from where they
+       step off. */
+    cands.sort((p, q) => q.sc - p.sc);
+    for (let k = 0; k < cands.length && k < 10; k++)
+      if (this._walkRoom(cands[k].x, cands[k].y, this.SEA_PARTY.minLand) >= this.SEA_PARTY.minLand) return cands[k];
+    return null;
+  },
+  // how many tiles its people could walk from here, counted up to `cap`
+  _walkRoom(x0, y0, cap) {
+    const W = CFG.W, seen = new Set([y0 * W + x0]), q = [x0, y0];
+    let n = 0, h = 0;
+    while (h < q.length && n < cap) {
+      const x = q[h++], y = q[h++]; n++;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + ox, ny = y + oy;
+        if (!MapGen.onBoard(nx, ny) || seen.has(ny * W + nx) || !Path.passable(nx, ny, 'A')) continue;
+        seen.add(ny * W + nx); q.push(nx, ny);
+      }
+    }
+    return n;
   },
   // a steady 0..1 per tile from the world's seed (a tie-break that draws no RNG)
   tileNoise(x, y) {
@@ -5699,6 +6023,18 @@ const AI = {
              ground; an upgrade in the same spot just waits — the building
              itself is finished and standing. */
           const route = Path.find(best.x | 0, best.y | 0, site.x, site.y, 'A');
+          // …nor down a road that keeps killing the hands sent along it: the
+          // works wait (three days of that and an unstarted site is called
+          // off, paid back, to be sited again on ground that can be reached)
+          if (site.key !== 'tc' && this.deadRoad(route)) {
+            site.deadRd = (site.deadRd || 0) + 1;
+            if (site.deadRd >= 3 && site.construction > 0 && site.key !== 'wonder') {
+              const paid = site.paid || (!('paid' in site) && CFG.BUILDINGS[site.key].levels[0].cost) || {};
+              for (const k in paid) ai.res[k] = (ai.res[k] || 0) + paid[k];
+              Bld.removeToRuin(site, true);
+            }
+            continue;
+          }
           const rEnd = route && route.length ? route[route.length - 1] : null;
           const standable = rEnd &&
             Math.hypot(rEnd.x + 0.5 - Bld.cx(site), rEnd.y + 0.5 - Bld.cy(site)) <= 1.55 + Bld.reach(site);
@@ -6304,12 +6640,14 @@ const AI = {
       const burnt = !!mem.towerStop;   // cleared by SUCCESS (a razing raid), not by time
       const hasEngine = troops.some(u => Units.isSiege(u) || u.kind === 'ballista');
       if (push && towered && burnt && !hasEngine) strong = false;
-      if (strong && troops.length >= need) {
+      raidOut: if (strong && troops.length >= need) {
         const party = troops.slice(0, Math.max(need, Math.ceil(troops.length * share)));
         // LAYER 4: pick the main objective. Prefer the LEAST-DEFENDED approach
         // lane (memory + remembered towers) when committing a PUSH.
-        const lanes = this.playerLanes();
+        const lanes = this.playerLanes().filter(l => this.walksTo(l.mid.x, l.mid.y));
         const mainObj = this.chooseRaidObj(read, push);
+        // nothing feet can reach: no column marches (and no cooldown is spent)
+        if (!mainObj) break raidOut;
         const mainLane = lanes[0] || null;
         if (push && mainLane && mainObj && mainObj.type === 'tc' && !mainObj.flank) {
           mainObj.x = mainLane.mid.x; mainObj.y = mainLane.mid.y; mainObj.lane = mainLane.key;
@@ -6437,10 +6775,13 @@ const AI = {
     if (!hushed && m.aiHarass && !S.peace && read.anchor && ai.harassCd <= 0 && !read.underThreat &&
         ai.posture !== 'DEFEND' && ai.posture !== 'REBUILD' &&
         S.day >= Math.max(16, (m.aiRaidDay || 40) - (m.aiHarassLead != null ? m.aiHarassLead : 16))) {
-      const targets = (read.exposed || []);
+      // …at workers their feet can reach: a field over the water is the
+      // raiding hulls' business (secondFront), never two riders on a beach
+      const targets = (read.exposed || []).filter(e => this.walksTo(e.x, e.y));
       if (targets.length) {
         const free = S.units.filter(u => u.owner === 'A' && Units.isMilitary(u) && !Units.isNaval(u) &&
-          !Units.isSiege(u) && u.kind !== 'siegetower' && !u.harass && !(u.task && u.task.type === 'raid'));
+          !Units.isSiege(u) && u.kind !== 'siegetower' && !u.harass && !(u.task && u.task.type === 'raid') &&
+          !this.offHome(u) && !u.perch);
         if (free.length >= 4) {
           const fast = free.slice().sort((a, b2) => (CFG.UNITS[b2.kind].speed || 2) - (CFG.UNITS[a.kind].speed || 2)).slice(0, 2);
           const tgt = targets[(G.rand() * targets.length) | 0];
@@ -6464,13 +6805,78 @@ const AI = {
     // Fighting hulls are not stamped at all: the coastal watch above owns
     // their stance, and this line put every one of them back on Defend the
     // moment that block had stood them down.
+    this.mendTheHurt(read);
     for (const u of S.units) {
       if (u.owner !== 'A' || !Units.isMilitary(u)) continue;
       if (Units.isNaval(u)) { if (this.onDetail(u)) u.defend = false; continue; }
       // …and Defend is the HOME ground's stance: a soldier standing on land
       // the town cannot walk to (a landing's survivor, a search party) would
       // only march to the nearest shore and stare across
-      u.defend = !u.scouting && !(u.task && u.task.type === 'raid') && !this.onDetail(u) && !this.offHome(u);
+      const away = this.offHome(u);
+      u.defend = !u.scouting && !(u.task && u.task.type === 'raid') && !this.onDetail(u) && !away;
+      /* A LANDING'S SURVIVORS TURN MARAUDER (tests/rival-geo.mjs, AI.maraud
+         below). Marked here; ordered once a day by maraud(). Never a search
+         party's lookouts — their eyes are worth more than their spears —
+         and never at peace. */
+      const lookout = ai.seaParty && ai.seaParty.ids && ai.seaParty.ids.indexOf(u.id) >= 0;
+      u.marauder = !!(away && !S.peace && !u.scouting && !lookout && !u.perch &&
+        !(u.task && u.task.type === 'raid') && !this.onDetail(u));
     }
+    this.maraud();
+  },
+
+  /* THE MARAUDERS' ORDER OF THE DAY. The hulls are one-way: when a wave's
+     objective fell, or its raid was called off, the men left ashore had no
+     order and no road home, and stood where they were for the rest of the
+     game — 839 soldier-days beside the player's wall in one measured run,
+     2,227 in another once they were merely told "attack anything" (the
+     nearest building is asked of the crow, and a man shut on a strip of
+     beach by a wall cannot fly). So once a day each stranded band is given
+     ONE mark its feet can reach: a flood from where it stands, the works
+     of the player the tribe has SEEN (ai.knownB, checked against what
+     still stands — the truth may refuse, never offer), soft things first,
+     a wall or a gate when stone is all there is. Nothing in reach: they
+     hold, and the next wave to land on that shore takes them under its
+     objective. One bounded flood per band per day. */
+  MARAUD_CAP: 900,
+  maraud() {
+    const ai = S.ai;
+    if (S.peace || !ai) return 0;
+    const idle = S.units.filter(u => u.owner === 'A' && u.marauder && !u.tUnit && !u.tBld &&
+      !(u.task && (u.task.type === 'raid' || u.task.type === 'move')));
+    if (!idle.length) return 0;
+    const W = CFG.W, kb = ai.knownB || {}, done = new Set();
+    const TIER = { farm: 0, house: 0, lumber: 0, quarry: 0, lodge: 0, mine: 0, trade: 0,
+      barracks: 1, range: 1, stable: 1, siege: 1, sapper: 1, dock: 1, warcamp: 1, tc: 2, wonder: 0, tower: 3, wall: 4, gate: 4 };
+    let sent = 0;
+    for (const lead of idle) {
+      if (done.has(lead.id)) continue;
+      // the ground this band can walk (bounded: a band on the open mainland needs no map of it)
+      const seen = new Set([(lead.y | 0) * W + (lead.x | 0)]), q = [lead.x | 0, lead.y | 0];
+      for (let h = 0; h < q.length && seen.size < this.MARAUD_CAP; h += 2) {
+        for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = q[h] + ox, ny = q[h + 1] + oy;
+          if (!MapGen.onBoard(nx, ny) || seen.has(ny * W + nx) || !Path.passable(nx, ny, 'A')) continue;
+          seen.add(ny * W + nx); q.push(nx, ny);
+        }
+      }
+      const band = idle.filter(u => !done.has(u.id) && seen.has((u.y | 0) * W + (u.x | 0)));
+      for (const u of band) done.add(u.id);
+      let best = null, bs = 1e9;
+      for (const b of S.buildings) {
+        if (b.owner !== 'P' || !Bld.attackable(b) || !kb[MapGen.idx(b.x, b.y)]) continue;
+        const sz = Bld.size(b);
+        let touch = false;
+        for (let k2 = -1; k2 <= sz && !touch; k2++)
+          for (const [x, y] of [[b.x + k2, b.y - 1], [b.x + k2, b.y + sz], [b.x - 1, b.y + k2], [b.x + sz, b.y + k2]])
+            if (MapGen.inB(x, y) && seen.has(y * W + x)) { touch = true; break; }
+        if (!touch && !(b.construction > 0 && seen.has(b.y * W + b.x))) continue;
+        const sc = (TIER[b.key] != null ? TIER[b.key] : 2) * 6 + Math.hypot(Bld.cx(b) - lead.x, Bld.cy(b) - lead.y);
+        if (sc < bs) { bs = sc; best = b; }
+      }
+      if (!best) continue;
+      for (const u of band) { Units.orderAttackBuilding(u, best); sent++; }
+    }
+    return sent;
   },
 };

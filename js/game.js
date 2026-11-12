@@ -3177,6 +3177,17 @@ const G = {
     if (data.specialDay === undefined) data.specialDay = 0;
     if (!data.origin) data.origin = 'An old tribe, from before the tellers kept count.';
     if (data.ai && !data.ai.opening) data.ai.opening = { bias: null, fired: false, until: 0 };
+    /* THE CHIEF'S MAP READ (js/ai.js AI.geo, tests/rival-geo.mjs): what a save
+       from before it lacks. Absent means none — no party out by sea, no
+       coast tried, no sea war decided yet (the next day's read decides it).
+       A soldier's errand (`u.detail`) and the workers' days on the death
+       ledger (`deadAt[k].wd`) are read as absent where they are missing. */
+    if (data.ai) {
+      if (data.ai.seaParty === undefined) data.ai.seaParty = null;
+      if (data.ai.seaOnly === undefined) data.ai.seaOnly = false;
+      if (data.ai.assaultLane === undefined) data.ai.assaultLane = null;
+      if (data.ai.memory && !data.ai.memory.seaTried) data.ai.memory.seaTried = {};
+    }
     if (!data.boons) data.boons = { P: {}, A: {} };   // pre-cards save: no boons in play
     if (!data.deck || typeof data.deck !== 'object') data.deck = { played: [], fx: [], charges: {} };   // pre-deck save: nothing played
     if (!data.draft)                                   // pre-cards save: the draft is history

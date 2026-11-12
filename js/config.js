@@ -1283,7 +1283,9 @@ const CFG = {
 
   /* Difficulty gates the rival's APPETITE and SCALE, never its decision
      quality — the perception → posture → utility → tactics brain runs at
-     every level (see js/ai.js). aiAggro is the exploitation appetite
+     every level (see js/ai.js). aiMend lets the chief's hurt soldiers walk
+     home and be mended at the hall for the player's own price (AI.mendTheHurt;
+     off on Calm). aiAggro is the exploitation appetite
      (higher = commits to pushes on a smaller edge, all-ins more readily);
      aiOutput/aiArmyCap/aiArmyDiv/aiEliteShare scale its economy and army;
      aiRaidDay is only the non-vulnerability raid floor (a real opening
@@ -1321,7 +1323,7 @@ const CFG = {
       campMult: 0.4, campGuard: [2, 3],   // rarer, harder camps: meeting one should hurt
       deathEvery: [34, 52],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 2, animalChance: 0.15, aiRaidDay: 110, aiRampDays: 12,
-      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4,
+      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 5, aiArmyDiv: 14, aiEliteShare: 0.1, aiAggro: 0.4, aiMend: false,
       aiVillCap: 12, aiVillEvery: 11, aiActions: 2, aiHarass: 0,   // calm: no harassment parties
       /* the earliest a SCOUTED thin town may be raided. Absent, this read
          the code's default of 12 — Hard's number — so a Calm player who
@@ -1366,7 +1368,7 @@ const CFG = {
          16 days before it), and the first wave (40 → 52, off the first raid's
          window). aiVulnDay is the earliest a scouted THIN town may be hit:
          Hard keeps the old 12, Moderate waits for day 25. */
-      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 10, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.95, aiEarly: 0.75,
+      aiBuildEvery: 2, aiOutput: 1.0, aiArmyCap: 10, aiArmyDiv: 8, aiEliteShare: 0.45, aiAggro: 0.95, aiMend: true, aiEarly: 0.75,
       aiRaidCdMult: 1.35, aiVulnDay: 25,
       // days per +1 on the standing-army CAP past day 60 (AI.armyWant). The
       // code has always read a mode dial here and NO mode declared one, so
@@ -1401,7 +1403,7 @@ const CFG = {
       campMult: 1.0, campGuard: [3, 4],   // rarer, harder camps: meeting one should hurt
       deathEvery: [18, 28],   // days between villager deaths (tests/mortality.mjs)
       animalMax: 4, animalChance: 0.3, aiRaidDay: 32, aiRampDays: 12,
-      aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2,
+      aiBuildEvery: 1, aiOutput: 1.25, aiArmyCap: 15, aiArmyDiv: 5, aiEliteShare: 0.8, aiAggro: 1.2, aiMend: true,
       aiVillCap: 18, aiVillEvery: 8, aiActions: 4, aiHarass: 5, aiVulnDay: 12,
       foeNoteChance: 0,   // enemy/raider intel toasts (see G.foeNote) — none get through: everything a surprise
     },

@@ -279,7 +279,21 @@ export function summarize(runs, opts) {
     for (const k in r.posture.days) postures[k] = (postures[k] || 0) + r.posture.days[k];
     if (r.rival) personas[r.rival.persona + '/' + r.rival.card] = (personas[r.rival.persona + '/' + r.rival.card] || 0) + 1;
   }
-  return { dockDay, rows, total, aiFunctions: Object.keys(calls).length, neverCalled: never, decisions, calls, errors,
+  /* DECLARED BUT NEVER USED: AI.KNOWS says the chief knows how to come by
+     these; across every run of this matrix it never once did. Not a failure
+     by itself (a short matrix on meadow maps trains no bombard) — it is the
+     list to read after adding content, and the reason to widen the matrix
+     before believing a "never". */
+  const built = new Set(), made = new Set();
+  let knows = null;
+  for (const r of ok) {
+    if (r.knows) knows = r.knows;
+    for (const k in (r.growth.bldEver || {})) built.add(k);
+    for (const k in (r.growth.bldPeak || {})) built.add(k);
+    for (const k in (r.growth.trained || {})) made.add(k);
+  }
+  const unused = knows ? { buildings: knows.buildings.filter(k => !built.has(k)), units: knows.units.filter(k => !made.has(k)) } : null;
+  return { dockDay, rows, total, aiFunctions: Object.keys(calls).length, neverCalled: never, decisions, calls, errors, unused,
     campaignDays: camps, raidLanes: lanes, postureDays: postures, personas, failed: runs.filter(r => !r || r.failed).length };
 }
 
@@ -437,6 +451,7 @@ async function main() {
   console.log('rival personas/cards: ' + JSON.stringify(s.personas));
   console.log('decision calls: ' + Object.entries(s.decisions).map(([k, v]) => k + ' ' + v).join(', '));
   console.log('AI functions never called in any run (' + s.neverCalled.length + '/' + s.aiFunctions + '): ' + (s.neverCalled.join(', ') || '—'));
+  if (s.unused) console.log('declared in AI.KNOWS but never used in any run — buildings: ' + (s.unused.buildings.join(', ') || '—') + '; units: ' + (s.unused.units.join(', ') || '—'));
   if (Object.keys(s.errors).length) console.log('recovered faults (G._safe): ' + JSON.stringify(s.errors, null, 1));
   if (s.failed) console.log('FAILED RUNS: ' + s.failed);
   if (out.coverage) {
