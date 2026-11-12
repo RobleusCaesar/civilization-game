@@ -67,6 +67,7 @@ const PATHS = [
   [/^assets\/(fire|masters\/(tc|fire))\//, ['hall-fire.mjs', 'burn-down.mjs', 'building-fire.mjs', 'ruins.mjs']],
   [/^assets\//, ['art-pipeline.mjs', 'animal-art.mjs', 'build-stages.mjs', 'fort-states.mjs', 'land.mjs', 'mountain.mjs']],
   [/^tools\/(terrain-core\.src\.js|build-terrain-core\.cjs)$/, ['terrain-v4.mjs']],
+  [/^tools\/ai-harness/, ['rival-scorecard.mjs', 'ai-coverage.mjs']],
   [/^tools\//, ['patch-notes.mjs']],
   [/^\.github\//, []],
 ];

@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 166, date: '2026-11-12', title: 'A smarter rival',
+    items: [
+      'The rival tribe reads the map before it plans: on islands it builds a dock early, sends a small party across the water to find you, and comes by sea when the sea is the only road.',
+      'The rival no longer walls its own people in. A wall section that shuts its town becomes a gate, and it will not raise a building or dig a ditch across its last way out.',
+      'Its soldiers stop standing about under orders they cannot carry out. A raid is only sent where feet can reach, and survivors of a landing go on fighting what they can get to.',
+      'On Moderate and Hard the rival walks its wounded home to mend, and a crafty chief whose land raids keep failing will raid your coast by boat instead.',
+      'The rival learns where its workers keep dying and stops sending builders there, so it is not bled dry by a barbarian camp it has never seen.',
+    ],
+  },
+  {
     build: 165, date: '2026-11-11', title: 'Every building burns',
     items: [
       'Houses, farms, camps, workshops and every other building now burn in their own pictures when attacked: the doors and windows glow first, then the roof catches, and at the end only the blackened frame or the stone shell stands in the fire.',
