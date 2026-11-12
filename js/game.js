@@ -3434,6 +3434,64 @@ const G = {
       document.querySelector('#scrTitle .tbg img');
     return !!(img && img.complete && img.naturalWidth > 0);
   },
+  /* THE SIM HALF OF A FRAME, as one call (tools/ai-harness.mjs). Everything
+     that advances the WORLD by `sdt` simulated seconds lives here, in the
+     order the frame has always run it — the day tick, the buildings, the
+     units, combat, then the world's own clocks — so a headless harness that
+     steps the game calls this and picks up every tick added later without
+     being edited. `dt` is the REAL frame time: the fog's refresh cadence has
+     always counted that, not the scaled time (a tutorial note's slow motion
+     never slowed the fog), and a caller with no real clock passes none and
+     gets sdt. What stays in G.frame: the pause/over gate, the slow-motion
+     scale, S.playtime (real seconds) and everything drawn or shown. */
+  simStep(sdt, dt) {
+    if (dt == null) dt = sdt;
+    const dtDays = sdt * 1000 / CFG.DAY_MS;
+    G._safe(() => {
+      S.dayT += sdt * 1000;
+      let guard = 0;
+      while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
+        S.dayT -= CFG.DAY_MS;
+        G.dayTick();
+        if (!S || S.over) break;
+      }
+    }, 'day');
+    if (S && !S.over) {
+      G._safe(() => Bld.update(dtDays), 'buildings');
+      G._safe(() => Units.update(sdt), 'units');
+      G._safe(() => Combat.update(sdt), 'combat');
+      G._safe(() => {
+        G.dyingTick(sdt);      // the villager whose death was announced a beat ago
+        G.krakenTick(sdt);
+        G.eclipseTick(sdt);
+        G.fireTick(sdt);
+        G.strifeTick(sdt);
+        G.starfallTick(sdt);
+        G.dragonTick(sdt);
+        // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
+        if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
+        // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
+        if (S.deck && S.deck.strike && window.Deck && Deck.strikeTick) Deck.strikeTick(sdt);
+        // …and a card's kraken risen against the rival (js/deckfx-rival.js)
+        if (S.deck && S.deck.kraken && window.Deck && Deck.krakenTick) Deck.krakenTick(sdt);
+        G.dragonT = (G.dragonT || 0) - sdt;
+        if (G.dragonT <= 0) {
+          G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
+          G.maybeDragon(); G.maybeSons();
+          if (G.maybeCache) G.maybeCache();
+          if (G.maybeWinter) G.maybeWinter();
+          if (G.maybePlague) G.maybePlague();
+        }
+        G.visT -= dt;
+        if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+        /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
+           state (a multi-megabyte JSON.stringify) every 10 real seconds
+           into a field nothing ever read — a metronome of frame hitches
+           for zero benefit. The real safety nets are Backend.autosaveNow
+           (cadence + tab-hide), which drops the local crash snapshot. */
+      }, 'world');
+    }
+  },
   frame(t) {
     const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
     G.lastT = t;
@@ -3449,52 +3507,8 @@ const G = {
       // (Screens.showVictoryPaths; a flag, never a DOM query per frame)
       if (window.Screens && Screens._modalUp) scale = Math.min(scale, (window.Tutorial && Tutorial.SLOW) || 0.2);
       const sdt = dt * scale;
-      const dtDays = sdt * 1000 / CFG.DAY_MS;
       S.playtime = (S.playtime || 0) + dt;
-      G._safe(() => {
-        S.dayT += sdt * 1000;
-        let guard = 0;
-        while (S.dayT >= CFG.DAY_MS && guard++ < 4) {
-          S.dayT -= CFG.DAY_MS;
-          G.dayTick();
-          if (!S || S.over) break;
-        }
-      }, 'day');
-      if (S && !S.over) {
-        G._safe(() => Bld.update(dtDays), 'buildings');
-        G._safe(() => Units.update(sdt), 'units');
-        G._safe(() => Combat.update(sdt), 'combat');
-        G._safe(() => {
-          G.dyingTick(sdt);      // the villager whose death was announced a beat ago
-          G.krakenTick(sdt);
-          G.eclipseTick(sdt);
-          G.fireTick(sdt);
-          G.strifeTick(sdt);
-          G.starfallTick(sdt);
-          G.dragonTick(sdt);
-          // the cards' timed effects run on game days, so a pause freezes them (js/deck.js)
-          if (S.deck && S.deck.fx && S.deck.fx.length && window.Deck) Deck.tick();
-          // …and so does a card's strike in flight (js/deckfx.js: the star falls on sim time)
-          if (S.deck && S.deck.strike && window.Deck && Deck.strikeTick) Deck.strikeTick(sdt);
-          // …and a card's kraken risen against the rival (js/deckfx-rival.js)
-          if (S.deck && S.deck.kraken && window.Deck && Deck.krakenTick) Deck.krakenTick(sdt);
-          G.dragonT = (G.dragonT || 0) - sdt;
-          if (G.dragonT <= 0) {
-            G.dragonT = 1.3;   // the special-event pulse: each maybe* self-gates on its armed state
-            G.maybeDragon(); G.maybeSons();
-            if (G.maybeCache) G.maybeCache();
-            if (G.maybeWinter) G.maybeWinter();
-            if (G.maybePlague) G.maybePlague();
-          }
-          G.visT -= dt;
-          if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
-          /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
-             state (a multi-megabyte JSON.stringify) every 10 real seconds
-             into a field nothing ever read — a metronome of frame hitches
-             for zero benefit. The real safety nets are Backend.autosaveNow
-             (cadence + tab-hide), which drops the local crash snapshot. */
-        }, 'world');
-      }
+      G.simStep(sdt, dt);
     }
     if (S) {
       // a terrain bake left DUE by founding a run is spread over these frames
