@@ -7494,6 +7494,18 @@ against the phase-2 composite's 256ms (the mountains left the bake), repeat
 bake 211ms, terrain edit p95 0.7ms, frame med 0.1ms / p95 0.3ms at play zoom
 with the whole massif on screen.
 
+**A BUILDING WITH NO MOUNTAIN BELOW IT STANDS IN FRONT OF THE ROCK**
+(`R.frontOfRock`, the `rockAbove` flag msFlush passes `redrawFront`;
+tests/mountain.mjs `aTowerAtAMountainsFootStandsInFrontOfIt` — operator,
+build 168, with a screenshot: "Towers built at the base of mountains go
+under the mountains"). A drawn kit piece is ONE strip whose row is the
+piece's southernmost foot, so a piece that also dresses rock running further
+south BESIDE a tower carried the tower's own row, and the strip's redraw
+(minFoot = row + 1) left the tower and its archers under the cliff. Rock may
+stand over walkable ground only as the lift of a mountain SOUTH of it in the
+same column (PAD_UP / KIT_PAD_UP), so a building with no mountain tile below
+it in any of its columns within that reach is redrawn over every strip; one
+with rock below keeps the row rule (it may really stand in the shadow).
 **THE GENERATION MAKES MASSIFS, NOT SPINES** (`massif()` in map.js): the old
 painter walked a ~3-wide brush and laid WALLS — measured over every
 mountain-bearing xlarge seed, the interior-depth histogram was

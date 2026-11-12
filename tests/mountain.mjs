@@ -499,6 +499,57 @@ const ck = (name, ok, info) => { res[name] = (ok ? 'PASS' : 'FAIL') + (info ? ' 
   await p.close();
 }
 
+/* ---- A TOWER AT THE FOOT OF A MOUNTAIN STANDS IN FRONT OF IT (build 168 —
+   operator, with a screenshot: "Towers built at the base of mountains go
+   under the mountains"). A drawn kit piece is ONE strip whose row is the
+   piece's southernmost foot, so a piece that also dresses rock running
+   further south BESIDE a tower carried the tower's own row, and the strip's
+   redraw (minFoot = row + 1) left the tower — and the archers on it — under
+   the rock. fd15 (medium) at (7, 14) is such a spot, found by scanning: a
+   strip tagged row >= 14 lays rock on the tower's own art. R.frontOfRock is
+   the rule: no mountain below a building in its own columns (within the
+   lift's reach) means any rock over it came from the north. ---- */
+{
+  const p = await page();
+  const v = await p.evaluate(() => {
+    Boot.force(); G.newGame('fd15', 'moderate', 'medium', 'highlands');
+    Screens._demo = false; Screens.show('playing'); S.paused = true; G.freeVis = true; G.updateVisibility();
+    const x = 7, y = 14, TL = CFG.TILE;
+    const t = Bld.place('P', 'tower', x, y, { free: true, instant: true });
+    R.cam.z = 2; R.cam.x = (x + 0.5) * TL - R.viewW() / 2 / R.cam.z; R.cam.y = y * TL - R.viewH() / 2 / R.cam.z;
+    R._mtnDirty = true; R.draw(0);                       // fills R._bPos, the pass's own order
+    const spr = R.wornSprite(t), ar = R.artRect(spr, x * TL, y * TL, TL, TL);
+    const scratch = document.createElement('canvas').getContext('2d');
+    let covering = 0, redrawn = 0, oldRule = 0;
+    for (const st of R.mtnStrips() || []) {
+      if (st.row < y) continue;
+      const ix0 = Math.max(0, Math.floor(ar.x - st.x)), iy0 = Math.max(0, Math.floor(ar.y - st.y));
+      const ix1 = Math.min(st.c.width, Math.ceil(ar.x + ar.w - st.x)), iy1 = Math.min(st.c.height, Math.ceil(ar.y + ar.h - st.y));
+      if (ix1 <= ix0 || iy1 <= iy0) continue;
+      const d = st.c.getContext('2d').getImageData(ix0, iy0, ix1 - ix0, iy1 - iy0).data; let n = 0;
+      for (let k = 3; k < d.length; k += 4) if (d[k] > 128) n++;
+      if (n < 40) continue;
+      covering++;
+      const clip = { x0: st.x, y0: st.y, x1: st.x + st.c.width, y1: st.y + st.c.height };
+      oldRule += R.redrawFront(scratch, clip, st.row + 1, false) > 0 ? 1 : 0;
+      redrawn += R.redrawFront(scratch, clip, st.row + 1, false, true) > 0 ? 1 : 0;
+    }
+    // a building in the mountain's SHADOW (rock directly south of it) is still behind
+    const W = CFG.W, terr = S.map.seenTerrain || S.map.terrain;
+    let shadowB = null;
+    for (let yy = 2; yy < CFG.H - 3 && !shadowB; yy++) for (let xx = 2; xx < W - 2; xx++)
+      if (terr[yy * W + xx] !== T.MOUNTAIN && terr[(yy + 1) * W + xx] === T.MOUNTAIN) { shadowB = { x: xx, y: yy, sz: 1, key: 'tower' }; break; }
+    return { covering, redrawn, oldRule, front: R.frontOfRock(t), shadow: shadowB ? R.frontOfRock(shadowB) : null };
+  });
+  ck('aTowerAtAMountainsFootStandsInFrontOfIt', v.covering > 0 && v.redrawn === v.covering && v.front === true,
+    v.covering + ' rock strip(s) tagged at or south of the tower lie on its art; redrawn over ' + v.redrawn);
+  ck('andTheProbeSeesTheOldFault', v.covering > 0 && v.oldRule === 0,
+    'the old row rule redrew it under ' + v.oldRule + ' of them (it must be 0, or this probe proves nothing)');
+  ck('andABuildingInTheShadowStaysBehind', v.shadow === false,
+    'rock directly south of it — the lift really does stand in front');
+  await p.close();
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL MOUNTAIN CHECKS PASS');
 await b.close();

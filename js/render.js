@@ -7555,7 +7555,7 @@ const R = {
      house roof does not) — so the suffix starts at its first fortification.
      Work sites are not redrawn (their stage art is translucent in places and
      would darken where it doubled). Answers how many it redrew. */
-  redrawFront(g, clip, minFoot, fortsOnly) {
+  redrawFront(g, clip, minFoot, fortsOnly, rockAbove) {
     const pos = this._bPos;
     if (!pos || !pos.size) return 0;
     const TL = CFG.TILE;
@@ -7567,7 +7567,8 @@ const R = {
       const b = Bld.at(x, y);
       if (!b || got.has(b)) continue;
       got.add(b);
-      if (!pos.has(b) || b.y + Bld.size(b) <= minFoot) continue;
+      if (!pos.has(b)) continue;
+      if (b.y + Bld.size(b) <= minFoot && !(rockAbove && this.frontOfRock(b))) continue;
       if (b.construction > 0 || b.upgrading > 0) continue;
       const r = this._picRect(b);
       if (r.x1 <= clip.x0 || r.x0 >= clip.x1 || r.y1 <= clip.y0 || r.y0 >= clip.y1) continue;
@@ -7590,6 +7591,26 @@ const R = {
     for (let i = k; i < list.length; i++) this._redrawPic(g, list[i], fortsOnly);
     g.restore();
     return list.length - k;
+  },
+  /* A BUILDING WITH NO MOUNTAIN SOUTH OF IT STANDS IN FRONT OF EVERY ROCK
+     (build 168 — operator, with a screenshot: "Towers built at the base of
+     mountains go under the mountains"). A drawn kit piece is ONE strip, its
+     row the piece's southernmost foot, so a piece that also covers rock
+     running further south BESIDE a tower carried the tower's own row (or a
+     later one) and the strip's redraw (minFoot = row + 1) counted the tower
+     as behind it. Rock may only stand over walkable ground as the lift of a
+     mountain SOUTH of it in the same column (the honesty bound, PAD_UP /
+     KIT_PAD_UP), so a building with no mountain tile below it in any of its
+     columns within that reach can only be overlapped by rock from the north
+     — it is in front, whatever the strip's row says. A building with rock
+     below it keeps the old row rule (it may really stand in the shadow). */
+  frontOfRock(b) {
+    const terr = (S.map.seenTerrain || S.map.terrain), W = CFG.W, H = CFG.H;
+    const s = Bld.size(b), reach = Math.max(MTN.PAD_UP, MTN.KIT_PAD_UP) + 1;
+    for (let x = b.x; x < b.x + s; x++)
+      for (let y = b.y + s; y < Math.min(H, b.y + s + reach); y++)
+        if (x >= 0 && x < W && terr[y * W + x] === T.MOUNTAIN) return false;
+    return true;
   },
   /* A LOWERED DECK IS GROUND (the operator, build 151: "soldiers walk under
      the bridge instead of over it… Important that soldiers walk on the bridge
@@ -15988,7 +16009,7 @@ const R = {
            front of the rock: a tower's roof rises into the row above it and
            the strip had just painted the mountain over it (a reported
            screenshot — "towers going underneath a mountain") */
-        this.redrawFront(g, { x0: st.x, y0: st.y, x1: st.x + st.c.width, y1: st.y + st.c.height }, st.row + 1, false);
+        this.redrawFront(g, { x0: st.x, y0: st.y, x1: st.x + st.c.width, y1: st.y + st.c.height }, st.row + 1, false, true);
       }
     };
     const units = S.units.slice().sort((a, b) => a.y - b.y);

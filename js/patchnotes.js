@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 168, date: '2026-11-12', title: 'Towers in front of the mountains',
+    items: [
+      'A tower built at the foot of a mountain now stands in front of the rock, and the archers on it are no longer hidden under the cliff.',
+    ],
+  },
+  {
     build: 167, date: '2026-11-12', title: 'Ships of their age',
     items: [
       'The Fire Warship is now a low Bronze Age war galley: a black hull close to the water, a bird-head prow, a bronze ram and a row of oars, with no smoke rising from it while it sails.',
