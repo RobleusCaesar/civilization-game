@@ -277,7 +277,13 @@ const out = await p.evaluate(() => {
     const opened = AI.openTheGate(tc);
     ck('sealSelfHeals', opened && AI.townOut(tc), `openTheGate=${opened} nowOpen=${AI.townOut(tc)}`);
     // the door it cut leads to real ground, not into a lake
-    const out = AI.wallRing(tc).filter(([x, y]) => !Bld.at(x, y) && Path.passable(x, y, 'A'));
+    // (the door is a GATE now — the cut section is swapped in place, see
+    // tests/rival-geo.mjs — so an opening is a ring tile its owner can walk:
+    // bare ground, or its own gate)
+    const out = AI.wallRing(tc).filter(([x, y]) => {
+      const b2 = Bld.at(x, y);
+      return (!b2 || (b2.key === 'gate' && b2.owner === 'A')) && Path.passable(x, y, 'A');
+    });
     ck('doorLeadsSomewhere', out.length > 0 && out.some(([x, y]) =>
       [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([ox, oy]) => {
         const nx = x + ox, ny = y + oy;
@@ -385,8 +391,15 @@ const out = await p.evaluate(() => {
     S.ai.res.wood = 0;
     AI.maybeWalls(tc);
     const n1 = wallsN();
-    const opened = pass.find(([x, y]) => !Bld.at(x, y));
+    /* THE CUT SECTION BECOMES A GATE (tests/rival-geo.mjs): the cure used to
+       leave a bare hole and a note nothing read, so the seam closer walled
+       it again and the town was cut open again, in a loop. A gate opens for
+       its owner and bars everyone else — the same tile, in one step. */
+    const opened = pass.find(([x, y]) => { const b2 = Bld.at(x, y); return !b2 || b2.key === 'gate'; });
+    const door = opened ? Bld.at(opened[0], opened[1]) : null;
     ck('corkIsCut', n1 === n0 - 1 && !!opened && !AI.corkedGround(tc), `walls ${n0}->${n1}`);
+    ck('andTheCutSectionIsAGate', !!door && door.key === 'gate' && door.owner === 'A' && !(door.construction > 0),
+      door ? door.key : 'bare ground');
     const path = Path.find(31, 12, 21, 12, 'A');
     const end = path && path.length ? path[path.length - 1] : null;
     ck('armyMarchesOut', !!end && Math.hypot(end.x - 21, end.y - 12) < 1.1,
@@ -396,6 +409,7 @@ const out = await p.evaluate(() => {
     // intent counts — a SITE on the cut tile corks just the same, even though
     // movement still passes through it while it raises
     S.ai.res.wood = 900;
+    if (door) Bld.removeToRuin(door, true);      // the gate out of the way: the question is about a wall there
     const site = Bld.place('A', 'wall', opened[0], opened[1]);
     ck('siteIsAWallToBe', !!site && site.construction > 0 && !!AI.corkedGround(tc),
       site ? `construction=${+site.construction.toFixed(2)}` : 'site failed to place');

@@ -3484,6 +3484,9 @@ const G = {
         }
         G.visT -= dt;
         if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
+        // the rival sees as it walks, not only at dawn (AI.glance): twice more a day
+        { const third = (S.dayT * 3 / CFG.DAY_MS) | 0;
+          if (third !== G._glT) { G._glT = third; if (third > 0 && S.ai && AI.glance) AI.glance(); } }
         /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
            state (a multi-megabyte JSON.stringify) every 10 real seconds
            into a field nothing ever read — a metronome of frame hitches
