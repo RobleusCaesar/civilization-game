@@ -300,6 +300,7 @@ node tests/barb-art.mjs      # the wild country's people are drawn: every people
 node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
 node tests/hall-fire.mjs     # the Town Center burns in its own art: catch, blaze and gutted by the burn phase, at its own level, landing on the finished picture; asked the first time a hall is hurt, never at boot or by the demo; one picture for every caller, no flame sprite over it; the smoke and sparks draw no RNG and nothing in the black; it falls in its own place and the ground waits for it; a fall the player sees holds the end screen a beat (a hidden page, a new world, an unseen fall, no fall art: at once), in the defeat's words or the victory's
 node tests/resource-front.mjs  # a gatherer working a resource from the NORTH is drawn behind it: his feet a set depth below the art's top in his columns (measured off the V4 cache, specks ignored, the step held), the art laid back over him from the knees down and never above; from the side or the south nothing changes; the classic renderer stands down; a picture only
+node tests/dock-shore.mjs      # a dock stands on its shore: the fuller flank is the shore, a half-land flank slides the jetty onto the land, the picture seated so its sill or footing stands on the bank at every level and facing, a site the same; a picture only
 node tests/building-fire.mjs # every other building burns in its own art (R.FIRE_ART: 13 kinds, 37 levels): catch, blaze and gutted by the burn phase, every strip on disk at its size, each loop starting on its still, no paper-white flash; nothing asked at boot, by the demo or by a whole town, a hurt building asks for its own strips once; a site, an upgrade or a redrawn picture keeps the old look; it lands on the finished picture at every kind and level; one picture for every caller, no flame sprite over it, the rival's too; smoke and embers draw no RNG, write nothing and stay under their caps, nothing in the black, and a burning house puffs no hearth smoke; a house falls in its own place onto its own pinned ruin, the footing and the remains waiting for it
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
@@ -2352,6 +2353,34 @@ evenly between for more, alternate rows staggered), in the build task's
 standing branch in units.js. Only within the tile they already legally stand
 on, and a slot that would carry a builder past the at-site distance check is
 skipped — taking it would flip the builder back into pathing and jitter.
+
+**AND THE WHOLE CREW STAYS ON A NEW STATION** (`Bld.finish`, same test —
+operator, build 170: "if two villagers are building a resource structure
+for the first time, when they're done both should automatically start
+working (not just one)"): the finishing builder used to be the only one
+stationed and the other found the site done and walked off. Every other
+hand of the player's still raising the site now takes a `work` place on it
+too, while `workersAssigned` is under `maxWorkers` (a third hand on a
+two-hand camp is let go as before, a farm keeps one). The rival mans its
+stations by its own daily deal and is untouched.
+
+**THE DOCK STANDS ON ITS SHORE** (`Bld.dockShore` / `dockLat`,
+`R.dockPic` / `DOCK_SEAT`, the dock's land end in `Sprites` `dock()`;
+tests/dock-shore.mjs — operator, build 170: "docks don't look integrated
+into the land, there's a visible stop of water between the dock and land…
+make sure it works for all three levels"). The jetty sat a few pixels in
+from the plot's edge, the traced coast rounds every corner, and a flank
+that was land on ONE tile had the deck butting half into the water beside
+it. Now: the FULLER flank is the shore (two land tiles beat one, ties
+N→S→W→E — still the tiles alone); on a half-land flank `dockLat` (-1/+1)
+slides the jetty half a tile across onto the land tile; and the picture is
+SEATED `DOCK_SEAT.IN` (0.13 of the plot) toward the shore through an
+`_cfArt` offset on a cached copy of the face (`R.dockPic`), so every pass
+that draws a building — the pass, the redraw over a unit, a site's stage,
+the fire and ruin variants — lands it in one place. The land end reaches
+the canvas's own edge (a log sill and stakes at L1, the stone footing at
+L2/L3), and on a north or south shore the shed stands at the land end. A
+picture only: the quay's tiles, block grid, siting and hulls are unchanged.
 
 **Foe notes** (`tests/foe-notes.mjs`): telegraphs of the rival's plans
 (campaigns, war camps, marching hosts, harassment sorties) and barbarian

@@ -160,6 +160,47 @@ const out = await p.evaluate(() => {
     ck('and every hand still works the site', atSite && hands.every(u => u.task && u.task.type === 'build'),
       'the spread never carries a builder out of working range');
   }
+  /* THE WHOLE CREW STAYS ON A NEW STATION (operator, build 170: "if two
+     villagers are building a resource structure for the first time, when
+     they're done both should automatically start working (not just one)").
+     The finishing builder used to be the only one stationed; the other found
+     the site done and went idle. Every hand still raising it now takes a
+     place on it, up to the station's cap — and a third hand on a two-hand
+     camp is let go as before. Driven through the real build tick. */
+  {
+    const crewRun = (n, key) => {
+      G.newGame('crew-site-' + n + key, 'moderate', 'large'); Screens._demo = false; Screens.show('playing'); S.paused = true;
+      S.res = { food: 9000, wood: 9000, stone: 9000, gold: 9000 };
+      const tc = Bld.tcOf('P');
+      const spot = MapGen.findNear(tc.x + 4, tc.y + 3, 10, (x, y) => Bld.tileFree(x, y) && !Bld.at(x, y));
+      const d = Bld.def(key);
+      if (d.onWorked != null) S.map.terrain[MapGen.idx(spot.x, spot.y)] = d.onWorked;
+      if (d.onHunted) G.noteHunt(spot.x, spot.y);
+      Bld._block = null;
+      for (const u of S.units.slice()) if (u.owner === 'P' && Units.isVillager(u)) u.hp = 0;
+      S.units = S.units.filter(u => !(u.owner === 'P' && Units.isVillager(u)));
+      const site = Bld.place('P', key, spot.x, spot.y, { free: true, noAutoAssign: true });
+      const hands = [];
+      for (let i = 0; i < n; i++) {
+        const v = Units.spawn('villager', 'P', site.x + 0.5, site.y + 1.5);
+        Units.assignBuild(v, site); hands.push(v);
+      }
+      let t = 0;
+      while (site.construction > 0 && t < 400) { Units.update(0.1); t += 0.1; }
+      const working = hands.filter(u => u.task && u.task.type === 'work' && u.task.id === site.id).length;
+      return { done: !(site.construction > 0), working, cap: Bld.maxWorkers(site), assigned: Bld.workersAssigned(site),
+               idle: hands.filter(u => !u.task).length };
+    };
+    const two = crewRun(2, 'lumber');
+    ck('both builders of a new camp stay on to work it', two.done && two.working === 2 && two.assigned === 2,
+      `${two.working} of 2 working (cap ${two.cap})`);
+    const three = crewRun(3, 'quarry');
+    ck('a third hand on a two-hand station is let go', three.done && three.working === 2 && three.assigned === three.cap,
+      `${three.working} working, cap ${three.cap}`);
+    const farm = crewRun(2, 'farm');
+    ck('a one-hand farm keeps one', farm.done && farm.working === 1 && farm.assigned === 1,
+      `${farm.working} working, cap ${farm.cap}`);
+  }
   return { res, fails };
 });
 console.log(JSON.stringify(out.res, null, 1));

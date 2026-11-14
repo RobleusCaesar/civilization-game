@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 170, date: '2026-11-14', title: 'Crews stay on, docks reach the shore',
+    items: [
+      'When two villagers raise a lumber camp, quarry, mine or lodge together, both now stay on and start working it the moment it is finished, not just the one who laid the last plank.',
+      'Docks now stand on the shore at every level: the jetty reaches onto the bank with its footing on dry ground, and on a bit of coast that is land on one side only it sits against the land, so no strip of water shows between the boards and the bank.',
+    ],
+  },
+  {
     build: 169, date: '2026-11-14', title: 'Working behind the stones',
     items: [
       'A villager working a stone pile, a wood, a berry bush or an orchard from its far side now stands behind it, with the stones, trees or bushes hiding them from the knees down, instead of looking as if they stood on top of it.',

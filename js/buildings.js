@@ -596,26 +596,40 @@ const Bld = {
      flickering. */
   dockShore(b) {
     if (!this._block) this.rebuildBlock();
-    if (this._dockGen !== this._blockGen) { this._dockGen = this._blockGen; this._dockAt = {}; }
+    if (this._dockGen !== this._blockGen || !this._dockLat) { this._dockGen = this._blockGen; this._dockAt = {}; this._dockLat = {}; }
     const hit = this._dockAt[b.id];
     if (hit) return hit;
     const sz = this.size(b);
     const sides = [
       ['n', 0, -1], ['s', 0, sz], ['w', -1, 0], ['e', sz, 0],
     ];
-    let found = 'n';
+    /* THE FULLER SHORE WINS (operator, build 170: "docks don't look
+       integrated into the land, there's a visible stop of water between the
+       dock and land"): a flank that is land along its whole length beats one
+       that touches land on a single tile, ties broken N→S→W→E as before. The
+       jetty is then laid against the land it meets — `lat` says which tile
+       of a half-land flank that is (-1 the first, +1 the second, 0 both), so
+       the deck lands on ground instead of half on the water beside it
+       (R.dockPic). Still a question of the TILES alone. */
+    let found = 'n', best = 0, lat = 0;
     for (const [name, ox, oy] of sides) {
-      let land = false;
-      for (let k = 0; k < sz && !land; k++) {
+      let land = 0, k0 = -1;
+      for (let k = 0; k < sz; k++) {
         const x = b.x + (ox === -1 ? -1 : ox === sz ? sz : k);
         const y = b.y + (oy === -1 ? -1 : oy === sz ? sz : k);
-        if (MapGen.inB(x, y) && Path.passable(x, y, b.owner)) land = true;
+        if (MapGen.inB(x, y) && Path.passable(x, y, b.owner)) { land++; if (k0 < 0) k0 = k; }
       }
-      if (land) { found = name; break; }
+      if (land > best) {
+        best = land; found = name;
+        lat = land === sz || sz < 2 ? 0 : (k0 < sz / 2 ? -1 : 1);
+      }
     }
     this._dockAt[b.id] = found;
+    this._dockLat[b.id] = lat;
     return found;
   },
+  // which way across its shore the jetty sits (see dockShore): -1, 0 or +1
+  dockLat(b) { this.dockShore(b); return this._dockLat[b.id] || 0; },
 
   dockSiteOk(x, y, owner) {
     owner = owner || 'P';
@@ -1233,7 +1247,24 @@ const Bld = {
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
-        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`, news);
+        /* THE WHOLE CREW STAYS ON (operator, build 170: "if two villagers are
+           building a resource structure for the first time, when they're done
+           both should automatically start working"): every other hand of the
+           player's still raising this site takes a place on it too, while
+           there is room — the finishing builder first, then the others in
+           list order. The rival mans its stations by its own daily deal. */
+        let crew = 1;
+        if (b.owner === 'P') {
+          const cap = this.maxWorkers(b);
+          for (const u of S.units) {
+            if (this.workersAssigned(b) >= cap) break;
+            if (u === builder || u.owner !== 'P' || !u.task || u.task.type !== 'build' ||
+                u.task.id !== b.id || !Units.isVillager(u)) continue;
+            if (Units.isLevied && Units.isLevied(u)) continue;
+            u.task = { type: 'work', id: b.id }; u.path = null; crew++;
+          }
+        }
+        G.log(`${this.def(b.key).name} complete — ${crew > 1 ? 'its builders stay on to work it' : 'the builder stays on to work it'}`, news);
       } else if (this.def(b.key).needsWorker) {
         G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
       } else if (this.def(b.key).firstUnit && (b.level || 1) === 1) {

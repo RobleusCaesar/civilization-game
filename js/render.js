@@ -8929,6 +8929,41 @@ const R = {
     }
   },
 
+  /* THE DOCK STANDS ON ITS SHORE (operator, build 170: "docks don't look
+     integrated into the land, there's a visible stop of water between the
+     dock and land… make sure it works for all three levels"). The jetty is
+     drawn on the 2×2 of water it stands on, its land end a few pixels in from
+     the plot's edge — and the traced coast rounds every corner, so a strip of
+     water showed between the boards and the bank, the whole width of the deck
+     wherever only one tile of the flank was land. So the picture is SEATED:
+     pushed DOCK_SEAT.IN of the plot toward the shore, so its land end and its
+     footing (the stub poles, the stone sill) stand on the bank, and slid half
+     a tile across onto the land tile when only one tile of the flank is land
+     (Bld.dockLat). An _cfArt offset on a copy of the face, so every pass that
+     draws a building (the building pass, the redraw over a unit, a stage, the
+     fire and the ruin variants) lands it in the same place. A picture only:
+     the dock's tiles, its hulls and its taps are where they always were. */
+  DOCK_SEAT: { IN: 0.13, LAT: 0.25 },
+  _dockPics: null,
+  dockPic(f, b, side) {
+    if (!f || !b) return f;
+    side = side || Bld.dockShore(b);
+    const lat = Bld.dockLat ? Bld.dockLat(b) : 0;
+    const k = side + lat;
+    if (!this._dockPics) this._dockPics = new WeakMap();
+    let m = this._dockPics.get(f);
+    if (!m) { m = {}; this._dockPics.set(f, m); }
+    if (m[k]) return m[k];
+    const D = this.DOCK_SEAT, c = document.createElement('canvas');
+    c.width = f.width; c.height = f.height;
+    c.getContext('2d').drawImage(f, 0, 0);
+    let ox = 0, oy = 0;
+    if (side === 'n') oy = -D.IN; else if (side === 's') oy = D.IN;
+    else if (side === 'w') ox = -D.IN; else ox = D.IN;
+    if (side === 'n' || side === 's') ox += lat * D.LAT; else oy += lat * D.LAT;
+    c._cfArt = { ox, oy, dock: true };
+    return (m[k] = c);
+  },
   bldSprite(b, lv) {
     const L = Math.max(1, lv || b.level);
     /* A DOCK FACES ITS SHORE. The deck runs out from the land, and which flank
@@ -8942,11 +8977,9 @@ const R = {
       const over = famD && famD[Math.min(L, famD.length) - 1];
       if (!(over && over._cfArt)) {
         const side = Bld.dockShore(b);
-        if (side !== 'n') {
-          const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
-          const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
-          if (f) return f;
-        }
+        const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
+        const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
+        if (f) return this.dockPic(f, b, side);
       }
     }
     if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
@@ -9481,7 +9514,7 @@ const R = {
     if (b.key === 'wonder')
       return stage < 2 ? Sprites.misc['wonderBuild' + (stage + 1)] : this.bldSprite(b, tgt);
     if (b.key === 'dock' && Sprites.dockBuildFace)
-      return Sprites.dockBuildFace[Bld.dockShore(b)][stage];
+      return this.dockPic(Sprites.dockBuildFace[Bld.dockShore(b)][stage], b);
     if (Sprites.misc[b.key + 'Build1'] && !this.ownStage(b.key, tgt, stage))
       return Sprites.misc[b.key + (up ? 'Up' : 'Build') + (stage + 1)];
     // a fortification's bldSprite is its auto-tiled mask — the wrong picture
@@ -15888,11 +15921,8 @@ const R = {
                'n' goes through the ordinary misc/ name so a manifest image can
                still override the canonical set. */
             const side = Bld.dockShore(b);
-            if (side === 'n') {
-              Assets.drawSprite(g, 'misc/dock' + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
-            } else {
-              this.blitBld(g, Sprites.dockBuildFace[side][stage], bx, by, bw, bw);
-            }
+            // seated on its shore like the finished deck (R.dockPic), every facing
+            this.blitBld(g, this.dockPic(Sprites.dockBuildFace[side][stage], b, side), bx, by, bw, bw);
           } else if (Sprites.misc[b.key + 'Build1'] && !this.ownStage(b.key, tgt, stage)) {
             // BESPOKE stage art (the tower — tests/build-stages.mjs): its own
             // three raising sprites for ALL three stages, no derived look —
