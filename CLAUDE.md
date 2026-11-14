@@ -2382,6 +2382,26 @@ the canvas's own edge (a log sill and stakes at L1, the stone footing at
 L2/L3), and on a north or south shore the shed stands at the land end. A
 picture only: the quay's tiles, block grid, siting and hulls are unchanged.
 
+**THE DOCK IS DRAWN, ONE PICTURE A SHORE** (`Assets.DOCK_DIR` /
+`_tryDock` / `setDockArt`; tests/dock-shore.mjs — operator, build 171:
+"increase the pixel count and quality of design for the dock. Look up
+historical examples, and redesign. Make sure it touches land"). Each level
+ships three faces, `assets/dock/dock-l{lv}-{n,s,e}.png`, the land on that
+side, 256 px for the 2x2 plot (twice the procedural jetty's density); the
+west face is the east one MIRRORED at install. L1 a lake-dwelling pole
+jetty on driven piles with a dugout, L2 a Hedeby plank jetty on a
+fieldstone footing with a turf-roofed boathouse, stockfish racks and a
+clinker boat, L3 a Roman ashlar quay (Portus, Ostia) with bollards, a
+treadwheel crane, amphorae, a tiled horreum and a merchant ship. Each is a
+PixelLab EDIT of the procedural face it replaces (the face rendered 2x as the
+source), so its land end meets the canvas edge where the procedural one did
+and `R.dockPic` seats it on the bank as before; the land edge must carry ink
+the deck's width within four pixels of the canvas edge (`andItsFootingIsDrawnThere`
+— L1's south face was moved down 5 px to meet it). The PNGs replace the
+canvases in `Sprites.dockFace` (both tribes); a face that 404s keeps the
+procedural jetty, and the work-site stages stay procedural. Loaded off the
+title's path (`_track(img, false)`), never baked into the terrain.
+
 **Foe notes** (`tests/foe-notes.mjs`): telegraphs of the rival's plans
 (campaigns, war camps, marching hosts, harassment sorties) and barbarian
 sightings all go through `G.foeNote`, gated by `CFG.MODES[mode].foeNoteChance`

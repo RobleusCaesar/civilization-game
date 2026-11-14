@@ -2254,6 +2254,49 @@ const Assets = {
     this._track(img, true);          // WORLD art: a wall can be standing in the demo town
     img.src = this.fortUrl(lv, piece);
   },
+  /* THE DOCK IS DRAWN, ONE PICTURE A SHORE (build 171 — operator: "increase
+     the pixel count and quality of design for the dock. Look up historical
+     examples… make sure it touches land"). A dock faces whichever flank of
+     its plot is the shore (Bld.dockShore), so each level ships THREE faces —
+     assets/dock/dock-l{lv}-{n,s,e}.png, the land on that side, at 256 px for
+     the 2x2 plot (twice the procedural jetty's density) — and the west face
+     is the east one mirrored. L1 a lake-dwelling pole jetty, L2 a Hedeby
+     plank jetty with a turf-roofed boathouse, L3 a Roman stone quay with a
+     treadwheel crane and a horreum. Each is a PixelLab edit of the
+     procedural face it replaces, so the land end meets the canvas edge the
+     same way and R.dockPic seats it on the bank. A face that 404s keeps the
+     procedural jetty (Sprites.dockFace's own canvas). */
+  DOCK_DIR: 'assets/dock/',
+  DOCK_FACES: ['n', 's', 'e'],
+  dock: {},
+  _tryDock(lv, f) {
+    const img = new Image();
+    img.onload = () => this.setDockArt(lv, f, img);
+    img.onerror = () => { /* the procedural face stands */ };
+    this._track(img, false);
+    img.src = this.DOCK_DIR + 'dock-l' + lv + '-' + f + '.png?v=' + (CFG.ART_V || 1);
+  },
+  setDockArt(lv, f, img) {
+    const set = typeof Sprites !== 'undefined' && Sprites.dockFace;
+    if (!set || !set.P || !set.P[lv - 1]) return false;
+    const copy = (flip) => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      if (flip) { g.translate(c.width, 0); g.scale(-1, 1); }
+      g.drawImage(img, 0, 0);
+      c._dockArt = true;
+      return c;
+    };
+    const put = (face, c) => {
+      for (const o of ['P', 'A']) if (set[o] && set[o][lv - 1]) set[o][lv - 1][face] = c;
+      (this.dock[lv] || (this.dock[lv] = {}))[face] = c;
+      this.loaded['dock/' + lv + '/' + face] = true;
+    };
+    put(f, copy(false));
+    if (f === 'e') put('w', copy(true));
+    return true;
+  },
   // the FORT_GEO frame k of a horizontal strip, as a canvas that blitBld
   // anchors by its tile box (scale = canvas width over the tile's width)
   _fortFrame(img, k) {
@@ -2513,6 +2556,7 @@ const Assets = {
       this._tryFort(lv, piece);
     for (const lv of this.FORT_TIERS) for (const piece of Object.keys(this.FORT_STATES))
       for (const st of this.FORT_STATES[piece]) this._tryFortState(lv, piece, st);
+    for (let lv = 1; lv <= 3; lv++) for (const f of this.DOCK_FACES) this._tryDock(lv, f);
     for (const id of this.DMG_IDS) if (CFG.BUILDINGS[id])
       for (let lv = 1; lv <= CFG.BUILDINGS[id].levels.length; lv++) for (let k = 1; k <= 2; k++) this._tryDmg(id, lv, k);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));

@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 171, date: '2026-11-14', title: 'Harbours worth the name',
+    items: [
+      'Docks are redrawn in far finer detail, after real harbours of their age, and still reach onto the shore at every level.',
+      'A first dock is a lakeside jetty of lashed poles on driven piles, with a dugout canoe tied alongside.',
+      'A second dock is a Norse plank jetty on a stone footing, with a turf-roofed boathouse, racks of drying fish and a rowing boat at its side.',
+      'A third dock is a Roman stone quay with mooring posts, a treadwheel crane, stacked amphorae, a tiled warehouse and a merchant ship moored alongside.',
+    ],
+  },
+  {
     build: 170, date: '2026-11-14', title: 'Crews stay on, docks reach the shore',
     items: [
       'When two villagers raise a lumber camp, quarry, mine or lodge together, both now stay on and start working it the moment it is finished, not just the one who laid the last plank.',
