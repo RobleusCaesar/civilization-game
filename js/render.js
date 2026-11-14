@@ -6587,6 +6587,7 @@ const R = {
   },
   onNewGame() {
     if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
+    this._resTops = null;                                        // the art a gatherer stands behind (resTopAt) is this world's
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
@@ -7539,6 +7540,66 @@ const R = {
       return;
     }
     this.redrawFront(g, clip, inGate ? ty : ty + 1, true);
+  },
+  /* A RESOURCE SOUTH OF A MAN STANDS IN FRONT OF HIS LEGS (operator, with a
+     screenshot of a miner on the stones: "When villagers are standing on the
+     tile above a resource chopping down they look like they're standing on
+     the tile, versus behind it… you wouldn't see the villager from the knees
+     down"). The trees, stones and bushes are baked into the terrain cache,
+     which draws before every unit, so a gatherer working from the NORTH edge
+     stood on the very thing he was cutting. After each unit, the cache is
+     laid back over his lower body — from his knees (`KNEE` of a tile above
+     his feet) down — but only inside the resource tiles in a row SOUTH of
+     the tile he really stands on (the sim's, not the lean's: a woodcutter
+     and a forager are drawn leaning into the tile they work, and a tile
+     beside him or behind him never covers him),
+     and only on the V4 layer, where the cache holds the objects over
+     transparent ground: the classic cache paints its ground opaque and would
+     lay a square of grass over him. A burning wood is drawn elsewhere and
+     is skipped. Purely a picture: R.unitHit is untouched. Answers how many
+     tiles it laid. */
+  RES_FRONT: { KNEE: 0.34, OVER: 0.4, SIDE: 0.25 },
+  occludeByResource(g, u) {
+    const TX = window.TerrainX;
+    if (!this.terrainCache || !TX || !TX.on || !TX._painted) return 0;
+    if (u.perch || u.climb || (Units.isNaval && Units.isNaval(u))) return 0;
+    const TL = CFG.TILE, F = this.RES_FRONT, terr = S.map.seenTerrain || S.map.terrain;
+    const lean = this.workLean ? this.workLean(u) : null;
+    const wx = lean ? lean.x : u.x, wy = lean ? lean.y : u.y;
+    const B = this.unitBox ? this.unitBox(u) : TL;
+    const foot = wy * TL + TL / 2 - CFG.SPRITE_LIFT;
+    const knee = foot - TL * F.KNEE, bot = foot + TL * 0.5;
+    const ux0 = wx * TL - B / 2, ux1 = wx * TL + B / 2;
+    let n = 0, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    const rects = [];
+    const tx0 = Math.floor(ux0 / TL), tx1 = Math.floor((ux1 - 0.01) / TL);
+    const ty0 = Math.floor(foot / TL), ty1 = Math.floor(bot / TL);
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+      if (!MapGen.onBoard(tx, ty)) continue;
+      const i = MapGen.idx(tx, ty), t = terr[i];
+      if (t !== T.FOREST && t !== T.HILLS && t !== T.FERTILE) continue;
+      if (ty <= (u.y | 0)) continue;                               // not south of the ground he stands on
+      if (t === T.FOREST && this.burningAt && this.burningAt(i)) continue;
+      const x0 = Math.max(ux0, (tx - F.SIDE) * TL), x1 = Math.min(ux1, (tx + 1 + F.SIDE) * TL);
+      const y0 = Math.max(knee, (ty - F.OVER) * TL), y1 = Math.min(bot, (ty + 1) * TL);
+      if (x1 <= x0 || y1 <= y0) continue;
+      rects.push([x0, y0, x1 - x0, y1 - y0]);
+      bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1);
+      n++;
+    }
+    if (!n) return 0;
+    // ONE draw through one clip: two tiles' rects overlap at their edges, and
+    // a translucent contact shadow laid twice would darken there
+    g.save();
+    g.beginPath();
+    for (const r of rects) g.rect(r[0], r[1], r[2], r[3]);
+    g.clip();
+    const sx = Math.max(0, Math.floor(bx0)), sy = Math.max(0, Math.floor(by0));
+    const sw = Math.min(this.terrainCache.width, Math.ceil(bx1)) - sx, sh = Math.min(this.terrainCache.height, Math.ceil(by1)) - sy;
+    // the 9-argument form: the V4 hook lays its ground only under a whole-cache draw
+    if (sw > 0 && sh > 0) g.drawImage(this.terrainCache, sx, sy, sw, sh, sx, sy, sw, sh);
+    g.restore();
+    return n;
   },
   /* WHAT STANDS IN FRONT IS PAINTED IN FRONT (the wall sandbox). The
      building pass draws every building before the units and the mountain
@@ -14524,6 +14585,66 @@ const R = {
      outside its site's footprint (capped, so a far worker leans rather
      than teleports), while the sim position, taps and combat stay
      exactly where they were. Returns the draw position or null. */
+  /* A GATHERER NORTH OF HIS WORK STANDS BEHIND IT (operator, with a
+     screenshot of a miner on the stones: "when villagers are standing on the
+     tile above a resource… they look like they're standing on the tile,
+     versus behind it"). The sim keeps him on the open tile north of the
+     resource; the picture puts his feet `DEPTH` of a tile BELOW the top of
+     the art he works — the stones, the crowns, the bushes, read off the
+     terrain cache in the columns his body covers — so occludeByResource
+     lays that art over him from the knees down. Measured, never a fixed
+     step: a pile reaching to the tile's top edge and a few low stones at
+     its foot want different depths, and a fixed one stood him on one and
+     in open grass beside the other. The step is held to [-UP, DOWN] of a
+     tile; a tile with no art in his columns (or a cache the page cannot
+     read — a page from disk taints it — or the classic painters, whose
+     cache is opaque ground) answers null and the old lean stands. Draw
+     time only, like every lean: the sim, the taps and the pathing are
+     untouched. The profile is kept per tile for `MS` (a mined pile wears
+     down, so it is read again). */
+  RES_BEHIND: { DEPTH: 0.3, UP: 0.15, DOWN: 0.45, BODY: 5, WIDE: 5, MS: 1500 },
+  _resTops: null,
+  resBehind(u, tx, ty) {
+    const top = this.resTopAt(tx, ty, u.x * CFG.TILE);
+    if (top == null) return null;
+    const TL = CFG.TILE, K = this.RES_BEHIND;
+    const foot = u.y * TL + TL / 2 - CFG.SPRITE_LIFT;
+    const dy = Math.max(-K.UP * TL, Math.min(K.DOWN * TL, top + K.DEPTH * TL - foot));
+    return { x: u.x, y: u.y + dy / TL };
+  },
+  // the highest opaque row (world px) of the resource art standing in tile
+  // tx,ty under the columns cx ± BODY — what a man north of it stands behind
+  resTopAt(tx, ty, cx) {
+    const TX = window.TerrainX, c = this.terrainCache;
+    if (!c || !TX || !TX.on || !TX._painted || this._resTopBad) return null;
+    const TL = CFG.TILE, F = this.RES_FRONT, K = this.RES_BEHIND, i = ty * CFG.W + tx;
+    const cache = this._resTops || (this._resTops = new Map()), now = performance.now();
+    let e = cache.get(i);
+    if (!e || now - e.t > K.MS || e.c !== c) {
+      const x0 = tx * TL, y0 = Math.max(0, Math.round((ty - F.OVER) * TL)), h = (ty + 1) * TL - y0;
+      let d;
+      try { d = c.getContext('2d').getImageData(x0, y0, TL, h).data; }
+      catch (err) { this._resTopBad = true; return null; }     // tainted: never ask again
+      const m = new Uint8Array(TL * h);
+      for (let k = 0; k < m.length; k++) m[k] = d[k * 4 + 3] > 200 ? 1 : 0;
+      if (cache.size > 256) cache.clear();
+      cache.set(i, e = { t: now, c, x0, y0, h, m });
+    }
+    /* the top is the first row where the art spans WIDE across his body,
+       two rows running — a scree pebble or a fern tip is a speck, and
+       standing a man behind a speck lifted him onto the open grass */
+    const a = Math.max(0, Math.round(cx - K.BODY) - e.x0), b = Math.min(TL - 1, Math.round(cx + K.BODY) - e.x0);
+    if (b < a) return null;
+    const need = Math.min(K.WIDE, b - a + 1);
+    let run = 0;
+    for (let y = 0; y < e.h; y++) {
+      let n = 0;
+      for (let x = a; x <= b; x++) n += e.m[y * TL + x];
+      run = n >= need ? run + 1 : 0;
+      if (run === 2) return e.y0 + y - 1;
+    }
+    return null;
+  },
   workLean(u) {
     /* a WOODCUTTER leans INTO the stand (the referee's live-play note: the
        axe should land on the trees, not swing at open grass beside them).
@@ -14535,6 +14656,11 @@ const R = {
     if (u.task && u.task.type === 'gather' && S && S.map) {
       const pose = this.unitPose(u);
       const tt = S.map.terrain[u.task.y * CFG.W + u.task.x];
+      // working it from the NORTH: he stands behind it (resBehind)
+      if (pose !== 'walk' && pose !== 'idle' && u.task.y > (u.y | 0) && u.task.x === (u.x | 0)) {
+        const b = this.resBehind(u, u.task.x, u.task.y);
+        if (b) return b;
+      }
       // …and a forager leans to the bush or under the bough the same way —
       // a shorter step than the woodcutter's: the plant is smaller
       const max = (pose === 'gather' && tt === T.FOREST) ? 0.34
@@ -16122,6 +16248,7 @@ const R = {
       // the bar keeps the cast's own width, centred over the kind's box
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
+      this.occludeByResource(g, u);
       this.occludeByForts(g, u);
     }
     msFlush(1e9);

@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 169, date: '2026-11-14', title: 'Working behind the stones',
+    items: [
+      'A villager working a stone pile, a wood, a berry bush or an orchard from its far side now stands behind it, with the stones, trees or bushes hiding them from the knees down, instead of looking as if they stood on top of it.',
+    ],
+  },
+  {
     build: 168, date: '2026-11-12', title: 'Towers in front of the mountains',
     items: [
       'A tower built at the foot of a mountain now stands in front of the rock, and the archers on it are no longer hidden under the cliff.',

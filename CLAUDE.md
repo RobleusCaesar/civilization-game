@@ -299,6 +299,7 @@ node tests/barb-bands.mjs    # every band its own fight: light / mid / heavy tie
 node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, a raider drawn in a 28 box and a light skirmisher in a 26 (their strips fill the frame, so at the cast's 32 they stood the brute's height), a brute 80px into a 40 box, a head over the raider by the drawn ink, a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
 node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
 node tests/hall-fire.mjs     # the Town Center burns in its own art: catch, blaze and gutted by the burn phase, at its own level, landing on the finished picture; asked the first time a hall is hurt, never at boot or by the demo; one picture for every caller, no flame sprite over it; the smoke and sparks draw no RNG and nothing in the black; it falls in its own place and the ground waits for it; a fall the player sees holds the end screen a beat (a hidden page, a new world, an unseen fall, no fall art: at once), in the defeat's words or the victory's
+node tests/resource-front.mjs  # a gatherer working a resource from the NORTH is drawn behind it: his feet a set depth below the art's top in his columns (measured off the V4 cache, specks ignored, the step held), the art laid back over him from the knees down and never above; from the side or the south nothing changes; the classic renderer stands down; a picture only
 node tests/building-fire.mjs # every other building burns in its own art (R.FIRE_ART: 13 kinds, 37 levels): catch, blaze and gutted by the burn phase, every strip on disk at its size, each loop starting on its still, no paper-white flash; nothing asked at boot, by the demo or by a whole town, a hurt building asks for its own strips once; a site, an upgrade or a redrawn picture keeps the old look; it lands on the finished picture at every kind and level; one picture for every caller, no flame sprite over it, the rival's too; smoke and embers draw no RNG, write nothing and stay under their caps, nothing in the black, and a burning house puffs no hearth smoke; a house falls in its own place onto its own pinned ruin, the footing and the remains waiting for it
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
@@ -3526,6 +3527,32 @@ see, asked BEFORE the throttle, with the jitter's `Math.random` drawn either
 way. **AND SO IS A BLOW'S NUMBER** (`Combat.seenHit` / `hitFloat`, §7b — 31
 written over unseen ground in 25 s): a hit or "Miss!" floats only where the
 player sees the struck thing, or where the player's own are in the fight.
+**A GATHERER NORTH OF HIS WORK STANDS BEHIND IT** (`R.resBehind` /
+`resTopAt` / `occludeByResource`, `R.RES_BEHIND` / `RES_FRONT`;
+tests/resource-front.mjs — operator, build 169, with a screenshot of a miner
+standing on a stone pile: "they look like they're standing on the tile,
+versus behind it… you wouldn't see the villager from the knees down… check
+all different resource tiles"). The trees, stones and bushes are baked into
+the terrain cache, which draws before every unit, so a gatherer working from
+the north edge stood on what he cut. Two halves, both draw time only (the
+sim, the taps and the paths untouched). **HE IS DRAWN BEHIND IT**: a
+gatherer at work on the tile south of his own (the north side, `workLean`'s
+gather branch first) is drawn with his feet `DEPTH` (0.3) of a tile below the
+TOP of that tile's art in his columns, read off the cache's alpha (`resTopAt`:
+the first row where the art spans 5 of his 11 columns two rows running, so a
+scree pebble lifts nobody; a profile per tile kept 1.5 s, since a mined pile
+wears down), the step held to [-0.15, +0.45] of a tile; a tile with no art in
+his columns keeps the old lean. **THE ART GOES BACK OVER HIS LEGS**: after
+each unit, the cache is laid back over him from his knees (`KNEE` 0.34 of a
+tile above his feet) down, inside the forest, ore and fertile tiles in a row
+SOUTH of the tile he really stands on (a tile beside him or behind him never
+covers him), in one clipped draw (a translucent shadow is never doubled),
+skipping a burning wood. **ONLY THE V4 LAYER**: there the cache holds the
+objects over transparent ground; the classic painters' cache is opaque ground
+and would lay a square of grass over him, so under `?terrain=classic` (and on
+a page from disk, whose tainted cache cannot be read) nothing is measured and
+only the old lean stands.
+
 **THE WALK IS DRIVEN BY DISTANCE** (`R.walkPhase` / `walkStride` /
 `WALK_CYCLE_S`, tests/animal-art.mjs §2b — operator ruling on audit VIL-01 /
 MIL-04 / ANI-05, which RETIRES the 1.35s villager walk-tempo ruling): a
