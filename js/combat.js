@@ -101,6 +101,17 @@ const Combat = {
      `by` is the striker's owner: a building the PLAYER'S OWN soldiers bring
      down is a deed (S.stats.handRazed, Deck.deeds) — the score's `razed`
      counts every rival work that falls, a barbarian's torch included */
+  /* HOW FAR A UNIT STRIKES A BUILDING FROM — the ONE rule the strike below
+     and R.unitPose both ask (tests/battle-fx.mjs, build 172: a spearman
+     battering a hall from 1.5–1.55 tiles past its edge was in reach here and
+     out of it in the pose, so he was drawn walking — frozen mid-stride —
+     through every blow). 1.55 floor so a DIAGONALLY-adjacent attacker
+     (√2 ≈ 1.41 from a 1×1 wall's centre) is still in range. */
+  bldReach(u, b) {
+    const rng = u.perch ? this.reachOf(u) : ((CFG.UNITS[u.kind] && CFG.UNITS[u.kind].rng) || 0);
+    return Math.max(1.55, rng) + Bld.reach(b);
+  },
+  bridgeReach(u) { return Math.max(1.3, (CFG.UNITS[u.kind] && CFG.UNITS[u.kind].rng) || 0); },
   hitBuilding(b, dmg, flame, by) {
     const was = b.hp;
     const took = Bld.damage(b, dmg, undefined, by);
@@ -1760,7 +1771,7 @@ const Combat = {
         // 1.55 floor so a DIAGONALLY-adjacent attacker (√2 ≈ 1.41 from a 1×1 wall's
         // centre) is still in range — at 1.3 a raider that walked up to a corner of
         // a gate just sat there, forever a hair out of reach, never landing a blow.
-        const bReach = Math.max(1.55, u.perch ? this.reachOf(u) : (CFG.UNITS[u.kind].rng || 0)) + Bld.reach(b);
+        const bReach = this.bldReach(u, b);
         if (u.climb) { u.tBld = 0; continue; }
         if (u.perch && (d > bReach || !this.perchSeesBld(u, b))) {
           // an archer on a tower never walks off it after a mark: an ORDER past
@@ -1807,7 +1818,12 @@ const Combat = {
             }
           }
           Units.followPath(u, dt);
-        } else if (u.cd <= 0) {
+        } else {
+          // at the wall: the road that brought him is spent (a path left
+          // standing reads as walking — R.unitPose drew him mid-stride and
+          // frozen, swinging at nothing, the build-172 report)
+          if (u.path) { u.path = null; u.pathI = 0; }
+          if (!(u.cd <= 0)) continue;
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           // catapults/trebuchets break stone — boulders, not spear-pokes; the
           // axeman's heavy blade also bites deeper into timber and thatch
@@ -1846,11 +1862,13 @@ const Combat = {
         const foe = this.nearestUnit(u.x, u.y, 2.2, o => this.hostileUnits(u, o) && Units.isMilitary(o) && this.canEngage(u, o), u);
         if (foe) { u.tUnit = foe.id; continue; }
         const bx = br.x + 0.5, by = br.y + 0.5, d = Math.hypot(bx - u.x, by - u.y);
-        const reach = Math.max(1.3, CFG.UNITS[u.kind].rng || 0);
+        const reach = this.bridgeReach(u);
         if (d > reach) {
           if (this.repathOk(u)) { u.repathT = 0.8; const s = this.tileAdjOpen(br.x, br.y, u.owner); if (s) Units.setPath(u, s.x, s.y); else { u.tBridge = null; continue; } }
           Units.followPath(u, dt);
-        } else if (u.cd <= 0) {
+        } else {
+          if (u.path) { u.path = null; u.pathI = 0; }   // at the span: standing, not walking
+          if (!(u.cd <= 0)) continue;
           u.cd = CFG.ATTACK_COOLDOWN * (CFG.UNITS[u.kind].cdMult || 1);
           const dmg = this.bldAtkOf(u) || Math.max(1, Math.round(Units.effAtk(u) * (CFG.UNITS[u.kind].bldMult || 1)));
           if (CFG.UNITS[u.kind].rng) this.shots.push({ x1: u.x, y1: u.y - 0.3, x2: bx, y2: by, t: 0.24, t0: 0.24, fire: !!CFG.UNITS[u.kind].fire });

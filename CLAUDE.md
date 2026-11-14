@@ -5920,6 +5920,21 @@ impacts). Strips shipped for the soldiers and bows of the three yards
 raiders and brute; every other fighter strikes with its one shipped strip
 and falls by `fallSheet` until its art is made.
 
+**A FIGHTER AT A BUILDING IS DRAWN FIGHTING** (`Combat.bldReach` /
+`bridgeReach`, `R.unitPose`; tests/battle-fx.mjs §12 — operator, build 172,
+with a picture of a spearman standing still beside a burning hall: "the
+enemy is attacking my hall and there is no attack animation… also when my
+soldiers attack the various barbarian buildings"). The pose kept a reach of
+its own, 1.5 + the footprint's, while Combat strikes from max(1.55, the
+weapon's range) + the footprint's, and the path that walked a fighter in was
+never cleared at the wall: every melee kind (villager militia, sapper, the
+three yards, cavalry, raiders, brutes, beasts) landing blows from just past
+1.5 read as MOVING and was drawn mid-stride and frozen. `Combat.bldReach(u,
+b)` is now the ONE answer the strike and the pose ask (the pose with 0.05 of
+slack), the path is spent once a fighter is in reach of a building or a
+span, and a span being cut down (`u.tBridge`) is a fight pose too. Facing
+and the lean to the wall were already right once the pose said fight.
+
 **EVERY BAND IS ITS OWN FIGHT** (`CFG.BARB_BANDS`, `G.composeBand` /
 `spawnBarb` / `bandHurt` / `bandLoss` / `campBeasts` / `barbRand`;
 tests/barb-bands.mjs — operator, build 156: "mix up the experiences when

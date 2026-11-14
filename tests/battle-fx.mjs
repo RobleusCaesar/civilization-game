@@ -531,6 +531,49 @@ const out = await p.evaluate(async (DIRS) => {
     R.clipBoard = real;
     ck('everyPassIsClippedToTheBoard', g1 >= 1 && g2 >= g1 + 2 && g3 >= g2 + 1, g1 + '/' + g2 + '/' + g3);
   }
+  /* ---- §12 A FIGHTER AT A BUILDING IS DRAWN FIGHTING (build 172 — the
+     operator: "the enemy is attacking my hall and there is no attack
+     animation… also when my soldiers attack the various barbarian
+     buildings"). The pose kept its own reach, 1.5 + the footprint's, while
+     Combat strikes from 1.55: a spearman landing blows from just past it,
+     his walking path never cleared, was drawn mid-stride and frozen. The
+     pose asks Combat.bldReach now, and the path is spent at the wall. */
+  {
+    const tc = Bld.tcOf('P');
+    const camp = S.buildings.find(o => o.key === 'raidercamp') ||
+      Bld.place('R', 'raidercamp', Math.max(2, (fx | 0) - 1), Math.max(2, (fy | 0) - 1), { free: true, instant: true });
+    const kinds = Object.keys(CFG.UNITS).filter(k => CFG.UNITS[k].atk && !CFG.UNITS[k].rng && !CFG.UNITS[k].proj &&
+      !Units.isNaval({ kind: k }));
+    const off = [], walk = [], gate = [];
+    const wasP = S.paused; S.paused = false;
+    for (const [own, b] of [['A', tc], ['P', camp]]) {
+      if (!b) { off.push('no ' + own + ' target'); continue; }
+      const hp0 = b.hp; b.hp = b.maxhp = 1e7;
+      for (const k of kinds) {
+        const u = Units.spawn(k, own, Math.floor(Bld.cx(b) + 4), Math.floor(Bld.cy(b)));
+        if (!u) continue;
+        u.tBld = b.id; if (own === 'P') u.task = { type: 'attackBld' };
+        for (let i = 0; i < 240; i++) { Units.update(1 / 30); Combat.update(1 / 30); }
+        const pose = R.unitPose(u), d = Math.hypot(Bld.cx(b) - u.x, Bld.cy(b) - u.y);
+        if (u.tBld === b.id && b.hp < 1e7 && !(pose === 'fight' || pose === 'guard')) off.push(own + ':' + k + ' ' + pose + ' at ' + d.toFixed(2));
+        if (u.tBld === b.id && Units.moving(u)) walk.push(own + ':' + k);
+        // the gate and the strike are one rule: just inside the reach fights, just past it does not
+        const r = Combat.bldReach ? Combat.bldReach(u, b) : Math.max(1.55, CFG.UNITS[u.kind].rng || 0) + Bld.reach(b);
+        u.path = null; u.y = Bld.cy(b);
+        u.x = Bld.cx(b) + r - 0.01; const pin = R.unitPose(u);
+        u.x = Bld.cx(b) + r + 0.2; const pout = R.unitPose(u);
+        if (!(pin === 'fight' || pin === 'guard') || pout === 'fight' || pout === 'guard') gate.push(own + ':' + k + ' ' + pin + '/' + pout);
+        Units.despawn(u);
+        b.hp = b.maxhp = 1e7;
+      }
+      b.hp = b.maxhp = hp0;
+    }
+    S.paused = wasP;
+    ck('aFighterAtABuildingIsDrawnFighting', !off.length, off.slice(0, 6).join('; ') || kinds.length + ' melee kinds, at the hall and a camp');
+    ck('andStandsThereNotOnAWalkingPath', !walk.length, walk.slice(0, 6).join('; '));
+    ck('thePoseAndTheStrikeShareOneReach', !gate.length, gate.slice(0, 6).join('; '));
+  }
+
   return { res, fails };
 }, DIRS);
 

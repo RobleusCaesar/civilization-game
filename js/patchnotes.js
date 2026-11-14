@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 172, date: '2026-11-14', title: 'Blows against buildings are seen',
+    items: [
+      'Soldiers attacking a building now swing at it: raiders battering your Town Center and your own troops pulling down a barbarian camp play their attack instead of standing frozen mid-stride beside the walls.',
+      'Soldiers cutting down a bridge swing at it too.',
+    ],
+  },
+  {
     build: 171, date: '2026-11-14', title: 'Harbours worth the name',
     items: [
       'Docks are redrawn in far finer detail, after real harbours of their age, and still reach onto the shore at every level.',

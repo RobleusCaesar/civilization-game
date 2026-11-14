@@ -14201,12 +14201,24 @@ const R = {
       return 'walk';
     }
     const fb = u.tBld && Bld.get(u.tBld);
-    // ranged units volley buildings from their OWN reach, not melee's: an
-    // archer loosing at a wall from five tiles is fighting, and with real
-    // shoot art it must look like it (the old 1.5-tile gate left ranged
-    // attackers idling through their own volleys)
-    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) <
-        Math.max(1.5, (CFG.UNITS[u.kind].rng || 0) + 0.3) + Bld.reach(fb)) return vil ? 'guard' : 'fight';
+    /* AT A BUILDING, THE POSE ASKS THE STRIKE'S OWN REACH (Combat.bldReach;
+       tests/battle-fx.mjs — build 172, the operator: "the enemy is attacking
+       my hall and there is no attack animation"). This gate kept a reach of
+       its own, 1.5 + the footprint's, while Combat strikes from 1.55: a
+       spearman battering from just past it was drawn walking, frozen on a
+       stride, through every blow — against the hall, the camps, everything.
+       Ranged kinds volley from their own reach the same way. A hair of
+       slack so a fighter settling onto his spot never flickers. */
+    if (fb) {
+      const reach = (typeof Combat !== 'undefined' && Combat.bldReach) ? Combat.bldReach(u, fb)
+        : Math.max(1.55, (CFG.UNITS[u.kind].rng || 0)) + Bld.reach(fb);
+      if (Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) <= reach + 0.05) return vil ? 'guard' : 'fight';
+    }
+    // …and a span being cut down (Combat's tBridge branch) is a fight too
+    if (u.tBridge && !Units.moving(u)) {
+      const reach = (typeof Combat !== 'undefined' && Combat.bridgeReach) ? Combat.bridgeReach(u) : 1.3;
+      if (Math.hypot(u.tBridge.x + 0.5 - u.x, u.tBridge.y + 0.5 - u.y) <= reach + 0.05) return vil ? 'guard' : 'fight';
+    }
     if (Units.moving(u)) return 'walk';
     if (u.eating) return 'eat';              // a wolf at the kill (Units.wolfFeed); no eat sheet → idle
     const t = u.task;
