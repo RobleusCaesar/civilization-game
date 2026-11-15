@@ -60,6 +60,65 @@ const Units = {
     return u;
   },
 
+  /* A SOLDIER RISES A RANK (UI.rankBtn, tests/rank-up.mjs — operator, build
+     174: "allow the player to upgrade those units… pay a fee and upgrade to
+     an axe man… 50% of the build cost for the upgraded unit… immediate…
+     archers in the manned towers… greyed out until the military building
+     is at the correct level"). The ladders are the three yards' own
+     training lines, in order; the rank above is trained at the yard's level
+     its `reqLevel` names, and that is the gate: a FINISHED yard of the
+     player's at that level or higher. The price is half the rank's own
+     training bill, rounded up, paid at once; the soldier stays where he
+     stands, keeps his orders, his post on a tower, his health in
+     proportion and every stamp he carried (the origin card's, the
+     sky-iron, a Veteran's 1.25). The player's alone, never a card's ghost
+     or war-wolf; the rival raises no ranks. */
+  RANK_YARDS: ['barracks', 'range', 'stable'],
+  rankLine(kind) {
+    for (const key of this.RANK_YARDS) {
+      const line = Object.keys(CFG.BUILDINGS[key].train);
+      const i = line.indexOf(kind);
+      if (i >= 0) return { yard: key, line, i };
+    }
+    return null;
+  },
+  rankNext(u) {
+    if (!u || u.owner !== 'P' || u.spectral || u.warWolf) return null;
+    const r = this.rankLine(u.kind);
+    if (!r || r.i >= r.line.length - 1) return null;
+    const to = r.line[r.i + 1], t = CFG.BUILDINGS[r.yard].train[to];
+    const cost = {};
+    for (const k in t.cost) cost[k] = Math.ceil(t.cost[k] / 2);
+    return { to, yard: r.yard, lv: t.reqLevel || 1, cost };
+  },
+  // the answer the button, its grey and its refusal all read
+  rankCheck(u) {
+    const n = this.rankNext(u);
+    if (!n) return null;
+    const yardName = Bld.def(n.yard).name, toName = CFG.UNITS[n.to].name;
+    const has = S.buildings.some(b => b.owner === 'P' && b.key === n.yard && !(b.construction > 0) && (b.level || 1) >= n.lv);
+    if (!has) return Object.assign(n, { ok: false, code: 'yard',
+      why: `${toName} needs a ${yardName} at level ${n.lv}` });
+    if (!Bld.canAfford(n.cost)) return Object.assign(n, { ok: false, code: 'cost',
+      why: `Upgrading to ${toName} costs ${Bld.costStr(n.cost)}` });
+    return Object.assign(n, { ok: true, code: 'ok', why: '' });
+  },
+  rankUp(u) {
+    const c = this.rankCheck(u);
+    if (!c || !c.ok) return c;
+    Bld.pay(c.cost);
+    const base = CFG.UNITS[c.to], frac = u.maxhp > 0 ? u.hp / u.maxhp : 1;
+    const probe = { kind: c.to, owner: u.owner, hp: base.hp, maxhp: base.hp, atk: base.atk, def: base.def, speed: base.speed };
+    if (window.Cards && Cards.onSpawn) Cards.onSpawn(probe);
+    const vet = u.vet || 1;
+    u.kind = c.to;
+    u.maxhp = Math.round(probe.maxhp * vet); u.hp = Math.max(1, Math.round(frac * u.maxhp));
+    u.atk = (probe.atk + (u.skyIron ? 1 : 0)) * vet;
+    u.def = probe.def; u.speed = probe.speed;
+    if (window.Assets && Assets.loadUnitsArt) { try { Assets.loadUnitsArt([u]); } catch (e) { /* the stand-in draws */ } }
+    return c;
+  },
+
   isMilitary(u) {
     return u.kind === 'defender' || u.kind === 'axeman' || u.kind === 'elite' ||
            u.kind === 'rider' || u.kind === 'horsearcher' || u.kind === 'lancer' ||

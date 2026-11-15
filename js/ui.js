@@ -2501,7 +2501,8 @@ const UI = {
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
       this.armyOfUnit(u),   // …and Remove Army appears the moment this one is the last of it
-      u.perch ? 'P' : u.climb ? 'C' : '-'];   // up a tower, on its stairs, or on the ground (js/lookout.js)
+      u.perch ? 'P' : u.climb ? 'C' : '-',   // up a tower, on its stairs, or on the ground (js/lookout.js)
+      u.kind, (c => c ? c.code : '-')(Units.rankCheck ? Units.rankCheck(u) : null)];   // the rank button greys and lights without a tap
     // the works this builder is on: the Cancel button rides its id, so it
     // appears, arms and disappears with the site itself
     const cw = this.villagerBuildSite(u);
@@ -2629,6 +2630,18 @@ const UI = {
      contract finds them as before. */
   killBtn(act, armed, icon, name) {
     return `<button class="abtn pkill${armed ? ' danger armed' : ''}" data-act="${act}" title="${name}" aria-label="${name}"><span class="pki">${icon}</span></button>`;
+  },
+  /* A SOLDIER'S NEXT RANK, A SMALL BUTTON BESIDE THE ℹ️ (Units.rankCheck,
+     tests/rank-up.mjs — operator, build 174). Two gold chevrons, a vector at
+     the screen's own pixels; greyed (.cant) while the yard is short of the
+     rank's level or the purse of its price, and a tap on a greyed one says
+     which. Nothing for a soldier at the top of his line. */
+  RANK_SVG: '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 10.5 10 4l7 6.5" fill="none" stroke="#2a1a08" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 16.5 10 10l7 6.5" fill="none" stroke="#2a1a08" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 10.5 10 4l7 6.5" fill="none" stroke="#f0c75a" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 16.5 10 10l7 6.5" fill="none" stroke="#f0c75a" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+  rankBtn(u) {
+    const c = Units.rankCheck ? Units.rankCheck(u) : null;
+    if (!c) return '';
+    const name = c.ok ? `Upgrade to ${CFG.UNITS[c.to].name} — ${Bld.costStr(c.cost)}` : c.why;
+    return `<button class="abtn prank${c.ok ? '' : ' cant'}" data-act="rankup" title="${name}" aria-label="${name}">${this.RANK_SVG}</button>`;
   },
   killPlank(act, line, small) {
     return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;
@@ -3461,11 +3474,13 @@ const UI = {
         : canScuttle ? this.killPlank('scuttle', 'Confirm — sink her', 'no resources returned · its place in the population is freed')
         : canBan ? this.killPlank('banish', 'Confirm — send them away', 'nothing comes back but their place in the population') : '';
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
-      html += `<div class="phead${kill && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
+      // a soldier's next rank rides the header beside the ℹ️ (UI.rankBtn)
+      const rank = own && !kill ? this.rankBtn(u) : '';
+      html += `<div class="phead${(kill || rank) && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
-        ${helpBtn}${kill}<button class="abtn" id="panelClose">✕</button></div>
+        ${helpBtn}${kill}${rank}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${killArmed}${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
       // (a spectral champion is never mended — a spirit eats nothing, and the
       // heal is paid in food: js/deckfx-army.js)
@@ -3675,6 +3690,21 @@ const UI = {
         G.log('Hull scuttled — she slips beneath the water');
         this.toast('Scuttled — its place in the population is freed');
       }));
+      const rankB = panel.querySelector('[data-act="rankup"]');
+      if (rankB) rankB.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2) return;
+        const c = Units.rankCheck(u2);
+        if (!c) return;
+        if (!c.ok) { this.toast(c.why, true); return; }
+        Units.rankUp(u2);
+        const nm = CFG.UNITS[u2.kind].name;
+        R.float(u2.x, u2.y - 0.6, '⬆ ' + nm, '#f0c75a');
+        if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete');
+        this.toast(`Upgraded to ${nm} — ${Bld.costStr(c.cost)}`);
+        G.log(`A soldier rose to ${nm}`);
+        this.renderPanel();
+      });
       const heal = panel.querySelector('[data-act="heal"]');
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);

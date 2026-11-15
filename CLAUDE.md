@@ -234,6 +234,7 @@ node tests/mortality.mjs       # a villager dies every so often, of something ap
 node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcullis (a north-south L2: doors), L3 drawbridge (a north-south L3: along the road under the arch); sealed is a WALL — to its owner too; born closed; opens away from the hall/war camp; lowered, the deck lands on the far bank in every view and a man crossing stands ON it (the gatehouse over him, a lowered deck never; the north-south deck's planks at his soles)
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
+node tests/rank-up.mjs         # a soldier rises a rank on the spot: his yard's own line, half the rank's price, gated on the yard's level, a bow on a tower too; greyed and said when it cannot
 node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed; the order's own button BECOMES the call-off (upgrades, sites, the wall works, a span's reinforcing); every panel two buttons to a row, none full width unless alone
 node tests/board-post.mjs      # every victory goes on the world board — the name box is on the scene, leaving still posts, the cloud gets a second chance, file:// never touches the cloud; a card-assisted win asks a board not asked yet and goes up marked
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
@@ -407,6 +408,30 @@ its bows down ("Send archers back up", nothing sends them back by itself),
 and the empty tower's panel naming the Archery Range. The lesson raises the
 range before the tower and teaches the tower MANNED (**THE TUTORIAL**), and
 the Guide's tower page is "Man your towers".
+**A SOLDIER RISES A RANK** (`Units.rankLine` / `rankNext` / `rankCheck` /
+`rankUp`, `UI.rankBtn` / `RANK_SVG`; tests/rank-up.mjs — operator, build
+174: "allow the player to upgrade those units… pay a fee and upgrade to an
+axe man… 50% of the build cost for the upgraded unit… a small button next
+to the 'i' button… immediate… archers in the manned towers… greyed out
+until the military building is at the correct level… if clicked, show a
+message about the military building level required"). The ladders are the
+three yards' own training lines in key order (`RANK_YARDS`: barracks,
+range, stable — defender → axeman → elite, archer → longbow → marksman,
+rider → horse archer → lancer), so a rank added to a yard's `train` joins
+its line for free. The gate is the rank's own `reqLevel` on a FINISHED yard
+of the player's; the price is half the rank's training bill, each good
+rounded up, paid at once. The man keeps his id, place, orders, stance and
+a tower post (`u.perch` — the platform is where the operator wants it
+most), his health as a fraction of the new maximum, his origin-card stamps
+(`Cards.onSpawn` run on a probe of the new kind), his sky-iron +1 and his
+Veteran ×`u.vet`. Never the rival's, a ghost or a war-wolf, never past the
+top of a line. THE BUTTON is two gold chevrons in the unit panel's header
+beside the ℹ️ (`.abtn.prank`, where `pkill` sits for a villager — a soldier
+has none), greyed (`.cant`, still clickable) while `rankCheck` says no, and
+a greyed tap toasts its reason ("Axeman needs a Barracks at level 2", or
+the price); its state rides in `panelSig` (`u.kind` and the check's code)
+so it lights the moment the yard finishes.
+
 **THE YARD SENDS ITS FIRST SOLDIER** (`Bld.giftFirst`, `CFG.BUILDINGS`
 barracks/range `firstUnit`; tests/train-spawn.mjs §7 — operator, build 152:
 "When a level 1 barracks or archery range is built, automatically provide

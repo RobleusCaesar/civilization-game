@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 174, date: '2026-11-15', title: 'Soldiers can rise a rank',
+    items: [
+      'A soldier from the Barracks, the Archery Range or the Horse Stable can now be upgraded on the spot to the next rank of his line: a Defender becomes an Axeman, an Axeman a Bronze Champion, an archer a longbow, a rider a horse archer, and so on.',
+      'The gold chevrons beside the info button on his panel do it, for half of what training the new rank would cost. He keeps his place, his orders and his wounds.',
+      'Archers on a tower can be upgraded where they stand, without coming down.',
+      'The button stays greyed until the yard is built up to the rank: an Axeman needs a Barracks at level two. Tapping it then tells you what is missing.',
+    ],
+  },
+  {
     build: 173, date: '2026-11-15', title: 'One dusk over the whole field',
     items: [
       'When a Town Center falls, the darkening dusk now covers the whole map down to the bottom bar, instead of stopping short and leaving a bright strip at the foot of the screen.',
