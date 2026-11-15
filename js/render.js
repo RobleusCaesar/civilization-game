@@ -12532,9 +12532,22 @@ const R = {
      screen — the OPEN BAND between the bars (openBand): drawn edge to edge,
      its top and bottom bands lay under the HUD and only the two sides
      showed, as bars. */
+  /* The band is MEASURED off the bars as they stand (the hall's fall,
+     build 173, with a screenshot: the dusk stopped a panel's height above a
+     folded build menu and the strip under it showed the world untinted).
+     bottomReserve is the OPEN menu's height, learned once, so with the menu
+     folded it reached ~80px into the map. A hidden bar (a shell screen, a
+     test) falls back to the reserves. */
   openBand() {
     const dpr = this.dpr || 1, W = this.cv.width, H = this.cv.height;
-    const y0 = Math.round((this.topReserve || 0) * dpr), y1 = H - Math.round((this.bottomReserve || 0) * dpr);
+    let top = this.topReserve || 0, bot = (H / dpr) - (this.bottomReserve || 0);
+    try {
+      const cr = this.cv.getBoundingClientRect ? this.cv.getBoundingClientRect() : { top: 0 };
+      const tb = document.getElementById('topbar'), bb = document.getElementById('bottombar');
+      if (tb && tb.offsetHeight > 0) top = tb.getBoundingClientRect().bottom - cr.top;
+      if (bb && bb.offsetHeight > 0) bot = bb.getBoundingClientRect().top - cr.top;
+    } catch (e) { /* the reserves stand */ }
+    const y0 = Math.max(0, Math.round(top * dpr)), y1 = Math.min(H, Math.round(bot * dpr));
     return { x0: 0, y0, x1: W, y1: Math.max(y0 + 8, y1) };
   },
   stepVignette(g, rgb, a, lv, depth, box) {

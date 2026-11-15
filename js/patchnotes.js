@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 173, date: '2026-11-15', title: 'One dusk over the whole field',
+    items: [
+      'When a Town Center falls, the darkening dusk now covers the whole map down to the bottom bar, instead of stopping short and leaving a bright strip at the foot of the screen.',
+    ],
+  },
+  {
     build: 172, date: '2026-11-14', title: 'Blows against buildings are seen',
     items: [
       'Soldiers attacking a building now swing at it: raiders battering your Town Center and your own troops pulling down a barbarian camp play their attack instead of standing frozen mid-stride beside the walls.',
