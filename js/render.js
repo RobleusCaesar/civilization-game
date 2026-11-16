@@ -5715,6 +5715,142 @@ const R = {
     };
   },
 
+  /* THE EARTHWORKS (tests/earthwork.mjs — operator, build 175: "If I create a
+     trench just so I have a protective barrier it kinda looks like a long fake
+     chocolate bar… make it look a little more like a ditch… Check that
+     mounding also looks good"). A dry TRENCH was one flat chocolate slab from
+     tile edge to tile edge with a two-pixel rim: a bar laid on the meadow, not
+     a hole in it. Both works are now drawn from a DISTANCE FIELD to the ground
+     around them, in the tile's own 16 art cells, wobbled by value noise in
+     WORLD cells so a dug line is one ragged channel with no seam where two
+     tiles meet:
+       the DITCH — a ragged spoil of upcast earth on the lip, a crisp rim, the
+       walls (the north and west ones in shadow, since the light comes from the
+       north-west, the south and east ones lit), the rim's cast shadow across
+       the floor, and a damp, uneven floor with stones and the odd puddle;
+       the BANK — a rounded heap rising off the meadow, its north-west slopes
+       lit, its south-east slopes shaded down to a dark foot, a grassy crown
+       with scuffs of bare earth and a few stones.
+     A picture only: box-exact (nothing outside its own tile), no RNG, no S
+     write; the tile's terrain decides every rule as before. */
+  _ewN(wx, wy, s) {
+    const hs = (a, b) => { let k = (a * 374761393 + b * 668265263 + s * 2246822519) >>> 0; k = Math.imul(k ^ (k >>> 13), 1274126177) >>> 0; return ((k ^ (k >>> 16)) >>> 0) / 4294967296; };
+    const x0 = Math.floor(wx), y0 = Math.floor(wy), fx = wx - x0, fy = wy - y0;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = hs(x0, y0), b = hs(x0 + 1, y0), c = hs(x0, y0 + 1), d = hs(x0 + 1, y0 + 1);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  },
+  _ewH(wx, wy, s) { let k = (wx * 73856093 ^ wy * 19349663 ^ s * 83492791) >>> 0; k = Math.imul(k ^ (k >>> 15), 2246822519) >>> 0; return ((k ^ (k >>> 13)) >>> 0) / 4294967296; },
+  /* distance (in art cells) from cell (i, j) of tile (x, y) to the edge of the
+     work, and which way that edge faces — the outward normal of the nearest
+     open side. A corner where two sides open is ROUNDED (radius R). */
+  _ewField(x, y, t, at, R) {
+    const same = v => t === T.TRENCH ? (v === T.TRENCH || v === T.MOAT) : v === T.MOUND;
+    const oN = !same(at(x, y - 1)), oS = !same(at(x, y + 1)), oW = !same(at(x - 1, y)), oE = !same(at(x + 1, y));
+    const dNW = !oN && !oW && !same(at(x - 1, y - 1)), dNE = !oN && !oE && !same(at(x + 1, y - 1));
+    const dSW = !oS && !oW && !same(at(x - 1, y + 1)), dSE = !oS && !oE && !same(at(x + 1, y + 1));
+    return (i, j) => {
+      const u = i + 0.5, v = j + 0.5, dn = v, ds = 16 - v, dw = u, de = 16 - u;
+      let d = 99, nx = 0, ny = 0;
+      const take = (dd, ax, ay) => { if (dd < d) { d = dd; nx = ax; ny = ay; } };
+      if (oN) take(dn, 0, -1); if (oS) take(ds, 0, 1); if (oW) take(dw, -1, 0); if (oE) take(de, 1, 0);
+      // two open sides meeting: round the corner
+      const corner = (o1, o2, d1, d2, ax, ay) => {
+        if (!(o1 && o2) || d1 >= R || d2 >= R) return;
+        const a = R - d1, b = R - d2, r = Math.hypot(a, b), dd = R - r;
+        if (dd < d) { d = dd; nx = ax * a / (r || 1); ny = ay * b / (r || 1); }
+      };
+      corner(oN, oW, dn, dw, -1, -1); corner(oN, oE, dn, de, 1, -1); corner(oS, oW, ds, dw, -1, 1); corner(oS, oE, ds, de, 1, 1);
+      // only a diagonal open: the inside of a turn, a rounded bite
+      const bite = (on, cx, cy) => { if (!on) return; const ax = u - cx, ay = v - cy, dd = Math.hypot(ax, ay); if (dd < d) { d = dd; nx = -ax / (dd || 1); ny = -ay / (dd || 1); } };
+      bite(dNW, 0, 0); bite(dNE, 16, 0); bite(dSW, 0, 16); bite(dSE, 16, 16);
+      return { d, nx, ny };
+    };
+  },
+  earthwork(g, x, y, t, at) {
+    const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE, bx = x * TL, by = y * TL;
+    const fill = (i, j, c) => { g.fillStyle = c; g.fillRect(bx + i * px, by + j * px, px, px); };
+    if (t === T.TRENCH) {
+      const F = this._ewField(x, y, t, at, 6);
+      /* the cut seen from above and a little south: the bank beyond it (north)
+         shows its whole face, dark, turned from the north-west sun; the near
+         bank (south) is a thin lit edge; west faces read shaded, east lit */
+      const GR = 1.5, SP = 1.4, LIP = 0.8;
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+        const wx = x * 16 + i, wy = y * 16 + j;
+        const f = F(i, j);
+        const wob = (this._ewN(wx / 5, wy / 5, 11) - 0.5) * 1.8 + (this._ewN(wx / 2, wy / 2, 12) - 0.5) * 0.7;
+        const d = f.d + wob;
+        const hsh = this._ewH(wx, wy, 7);
+        const back = f.ny < -0.5, near = f.ny > 0.5, west = !back && !near && f.nx < 0;
+        const WALL = back ? 3.4 : near ? 0.8 : 1.6;
+        if (d < GR) continue;                                      // the meadow left standing
+        if (d < GR + SP) {
+          // the SPOIL thrown up along the edge: broken lumps of earth in the grass
+          const lump = this._ewN(wx / 2.4, wy / 2.4, 13);
+          if (lump > (d > GR + SP - 0.7 ? 0.38 : 0.6)) {
+            const lit = this._ewN((wx - 1) / 2.4, (wy - 1) / 2.4, 13) < lump - 0.05;
+            fill(i, j, hsh < 0.16 ? AP.grass[1] : lit ? AP.soil[2] : AP.soil[1]);
+          }
+        } else if (d < GR + SP + LIP) {
+          fill(i, j, near ? AP.soil[3] : back ? AP.soil[1] : west ? AP.soil[1] : AP.soil[2]);   // the cut edge
+        } else if (d < GR + SP + LIP + WALL) {
+          // the WALL: the far face dark and banded with the strata it was cut through
+          if (back) {
+            const k = (d - GR - SP - LIP) / WALL, band = this._ewN(wx / 6, wy, 16);
+            let c = k < 0.35 ? AP.soil[1] : k < 0.75 ? AP.soil[0] : AP.ink[1];
+            if (band > 0.72 && k < 0.75) c = AP.ink[2];
+            if (hsh > 0.99) c = AP.stone[1];
+            fill(i, j, c);
+          } else fill(i, j, near ? AP.soil[2] : west ? AP.ink[2] : AP.soil[1]);
+        } else {
+          // the FLOOR: dark damp earth, a cast shadow under the far bank, the odd puddle
+          const n = this._ewN(wx / 3, wy / 3, 14);
+          let c = n < 0.45 ? AP.soil[0] : n < 0.8 ? AP.ink[2] : AP.soil[1];
+          if (f.ny < 0 && f.d < GR + SP + LIP + 3.4 + 1.5) c = AP.ink[1];
+          const pud = this._ewN(wx / 4, wy / 4, 15);
+          if (pud > 0.84) c = pud > 0.9 ? AP.water[1] : AP.water[0];
+          else if (hsh > 0.988) c = AP.stone[1];
+          fill(i, j, c);
+          if (pud > 0.9 && hsh < 0.08) fill(i, j, AP.water[2]);
+        }
+      }
+    } else {
+      const F = this._ewField(x, y, t, at, 5);
+      /* a BANK of heaped earth: bare soil on its flanks with the turf it was
+         cut from laid back over its crown, lit on its north-west slopes, dark
+         on its south-east ones, and throwing a shadow on the meadow south-east */
+      const RISE = 4.2;
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+        const wx = x * 16 + i, wy = y * 16 + j;
+        const f = F(i, j);
+        const wob = (this._ewN(wx / 5, wy / 5, 21) - 0.5) * 1.8 + (this._ewN(wx / 2, wy / 2, 22) - 0.5) * 0.7;
+        const d = f.d + wob - 1.0;
+        const hsh = this._ewH(wx, wy, 17);
+        const light = -(f.nx + f.ny) * 0.7071;          // the slope's turn toward the north-west sun
+        if (d < 0) {
+          if (light < -0.2 && d > -1.6) { g.fillStyle = 'rgba(14,10,4,0.34)'; g.fillRect(bx + i * px, by + j * px, px, px); }
+          continue;
+        }
+        const turf = this._ewN(wx / 2.6, wy / 2.6, 23);
+        let c;
+        if (d < RISE) {
+          const k = d / RISE;
+          if (light > 0.25) c = turf > 0.66 ? AP.grass[2] : k > 0.55 ? AP.soil[3] : AP.soil[2];
+          else if (light < -0.25) c = turf > 0.7 ? AP.leaf[1] : k < 0.4 ? AP.ink[2] : AP.soil[0];
+          else c = turf > 0.68 ? AP.grass[1] : k < 0.35 ? AP.soil[1] : AP.soil[2];
+          if (d < 0.7) c = light > 0.25 ? AP.soil[1] : AP.ink[2];        // the foot, dug into the ground
+          if (hsh > 0.992) c = AP.stone[2];
+        } else {
+          // the CROWN: turf laid back, scuffed bare in places
+          c = turf > 0.34 ? (this._ewN(wx / 2, wy / 2, 24) > 0.55 ? AP.grass[3] : AP.grass[2]) : AP.soil[2];
+          if (d < RISE + 0.8 && light > 0.25 && turf > 0.34) c = AP.grass[3];             // the lit edge of the crown
+          if (hsh > 0.993) c = AP.stone[2];
+        }
+        fill(i, j, c);
+      }
+    }
+  },
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
     // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
@@ -5747,9 +5883,8 @@ const R = {
     else if (wet(t)) {
       // water is painted procedurally in the ground-layer step below (paintWater):
       // calm world-space swells that run across tile borders, so no per-tile pattern
-    } else if (t === T.MOUND) {
-      const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
-      img = gr[(x * 7 + y * 13) % gr.length];
+    } else if (t === T.MOUND || t === T.TRENCH) {
+      // drawn by R.earthwork over the ground, no tile sprite
     } else if (t === T.FOREST) {
       // density from how enclosed the tile is: a lone/edge tile is SPARSE, a
       // perimeter tile MEDIUM, a fully-surrounded core tile DENSE — a natural
@@ -5858,6 +5993,13 @@ const R = {
       if (t !== T.HILLS) this.blockShade(g, x, y, terr);
       if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
       else if (img) g.drawImage(img, x * TL, y * TL);   // (hills have no tile sprite — see rockMass)
+    } else if (t === T.TRENCH || t === T.MOUND) {
+      /* A DUG DITCH AND A HEAPED BANK (R.earthwork, build 175): the ground
+         first, then the work cut into it or piled on it — never a flat slab
+         edge to edge (the operator's "long fake chocolate bar") */
+      this.paintGround(g, x, y, h);
+      if (ovr) this.blitTile(g, ovr, x, y);
+      else this.earthwork(g, x, y, t, at);
     } else if (ovr) {
       this.blitTile(g, ovr, x, y);
     } else if (t === T.RUIN) {
@@ -5875,58 +6017,6 @@ const R = {
        which is the whole reason the tracing exists. The rule this branch used
        to carry, that RECLAIMED land raises no shore, went with it: see `nat`
        in buildShoreLayer. */
-    /* (an empty `if (t === T.TRENCH) {}` stood here since fa08f38, which made
-       the branch below unreachable — a dug ditch has been drawing its bare
-       floor with no clods and no earth walls ever since.) */
-    if (t === T.TRENCH) {
-      // scattered clods of overturned soil, placed from the tile's own map hash so
-      // no two ditch tiles share a pattern — a wide floor never shows a grid
-      let hh = h;
-      for (let k = 0; k < 5; k++) {
-        hh = (hh * 1103515245 + 12345) >>> 0;
-        g.fillStyle = (hh & 1) ? AP.ink[0] : AP.soil[1];
-        g.fillRect(x * TL + (1 + (hh >> 4) % 13) * px, y * TL + (1 + (hh >> 12) % 13) * px, px, px);
-      }
-      // dry ditch: raise a sloped earth wall only on edges facing solid ground, so
-      // a dug line of tiles merges into ONE continuous channel (no per-tile borders
-      // between neighbouring ditches). Near walls (N/W) catch light and far walls
-      // (S/E) drop into shadow, so the uniform floor reads as a sunken divot.
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const tt = at(x + ox, y + oy);
-        if (tt === T.TRENCH || tt === T.MOAT) continue;   // same channel — floor runs straight through
-        const band = (col, off) => {
-          g.fillStyle = col;
-          if (ox === 1) g.fillRect(x * TL + TL - (off + 1) * px, y * TL, px, TL);
-          else if (ox === -1) g.fillRect(x * TL + off * px, y * TL, px, TL);
-          else if (oy === 1) g.fillRect(x * TL, y * TL + TL - (off + 1) * px, TL, px);
-          else g.fillRect(x * TL, y * TL + off * px, TL, px);
-        };
-        const lit = ox === -1 || oy === -1;               // top & left walls face the light
-        band(lit ? AP.soil[3] : AP.soil[1], 0);           // ground-level lip at the rim
-        band(lit ? AP.soil[2] : AP.ink[0], 1);            // slope wall dropping toward the floor
-      }
-    } else if (t === T.MOUND) {
-      // a raised grassy earthwork — brighter than the surrounding turf, with a lit
-      // top-left crown and a shadowed lower-right that sell the elevation; a line of
-      // them merges into one continuous embankment (shared edges, no seams)
-      const mnd = v => v === T.MOUND;
-      const li = mnd(at(x - 1, y)) ? 0 : 2, ri = mnd(at(x + 1, y)) ? 0 : 2;
-      const ti = mnd(at(x, y - 1)) ? 0 : 2, bi = mnd(at(x, y + 1)) ? 0 : 2;
-      const bx = x * TL, by = y * TL, w = TL - (li + ri) * px, hgt = TL - (ti + bi) * px;
-      g.fillStyle = AP.grass[3]; g.fillRect(bx + li * px, by + ti * px, w, hgt);            // raised grassy body
-      g.fillStyle = AP.grass[4];                                                            // sunlit crown
-      g.fillRect(bx + li * px, by + ti * px, w, 2 * px);
-      if (!mnd(at(x - 1, y))) g.fillRect(bx + li * px, by + ti * px, px, hgt);              // lit left face
-      let hh = h;   // a scrape of bare earth + a few stones so it reads as heaped-up ground
-      for (let k = 0; k < 6; k++) {
-        hh = (hh * 1103515245 + 12345) >>> 0;
-        const r3 = hh & 3;
-        g.fillStyle = r3 === 0 ? AP.soil[2] : r3 === 1 ? AP.stone[2] : AP.grass[2];
-        g.fillRect(bx + (3 + (hh >> 4) % 10) * px, by + (5 + (hh >> 12) % 6) * px, px, px);
-      }
-      if (!mnd(at(x + 1, y))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + TL - (ri + 2) * px, by + ti * px, 2 * px, hgt); g.fillStyle = AP.ink[0]; g.fillRect(bx + TL - (ri + 1) * px, by + ti * px, px, hgt); }   // shaded right slope + dark edge
-      if (!mnd(at(x, y + 1))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + li * px, by + TL - (bi + 2) * px, w, 2 * px); g.fillStyle = AP.ink[0]; g.fillRect(bx + li * px, by + TL - bi * px, w, px); }            // shaded foot
-    }
     /* NO ELEVATION HINTS ON ORE (operator ruling, audit ORE-01/03). The
        northern catch-light (hillRelief) and the cast band on the ground to
        the south (hillShadow) date from when HILLS meant raised ground; the

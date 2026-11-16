@@ -8003,6 +8003,25 @@ tier's key at all three levels; and on DISK, all 288 tier/gender/pose/
 facing strips exist (the strips load lazily for the tier a hall is standing
 at, so an in-page probe would only ever see one of the three).
 
+**A TRENCH IS A DITCH, A MOUND IS A BANK** (`R.earthwork` / `_ewField` /
+`_ewN` / `_ewH` in render.js — operator, build 175: a dry trench "kinda looks
+like a long fake chocolate bar… make it look a little more like a ditch… Check
+that mounding also looks good"). The old painter filled the tile edge to edge
+with one brown and two straight bands, opaque over the V4 ground. Both are now
+painted from a DISTANCE FIELD to the tile's open sides (a TRENCH joins TRENCH
+and MOAT, a MOUND only MOUND; two open sides meeting round the corner, a
+diagonal-only opening bites the inside of a turn), with world-space noise
+wobbling the edge, so a line is one seamless cut and never a ruled slab.
+TRENCH: meadow left standing at the edge (transparent under V4), broken spoil
+lumps, a cut edge, then the far (north) bank's whole face dark and banded, the
+near bank a thin lit lip, west faces shaded and east lit (the NW sun), and a
+damp floor with a cast shadow under the far bank, the odd puddle and stone.
+MOUND: bare earth flanks lit north-west and dark south-east, turf laid back on
+the crown, a translucent shadow cast on the meadow south-east. Box-exact, no
+RNG, a pure function of the 3x3 (inside the ±2 reset), so cache == rebake
+holds; a flooded channel (`T.MOAT`) is still water. A supplied
+`assets/terrain/trench.png` / `mound.png` still wins.
+
 **THE BUILDER'S LEAN LANDS ON GROUND HE COULD STAND ON** (`R.workLean`'s
 `stand`, pinned by `aPlotsOwnHandNeverLeansIntoTheWater` and its four
 neighbours in tests/villager-tiers.mjs §5d — operator report, day 126, with

@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 175, date: '2026-11-16', title: 'Trenches look like ditches',
+    items: [
+      'A trench dug without water in it now looks like a real ditch cut into the meadow: earth thrown up along its edges, a dark far bank in shadow, a damp floor with the odd puddle, and grass left standing around it.',
+      'Raised earth banks now look heaped up, lit on one side and shaded on the other, with turf laid back over the top.',
+    ],
+  },
+  {
     build: 174, date: '2026-11-15', title: 'Soldiers can rise a rank',
     items: [
       'A soldier from the Barracks, the Archery Range or the Horse Stable can now be upgraded on the spot to the next rank of his line: a Defender becomes an Axeman, an Axeman a Bronze Champion, an archer a longbow, a rider a horse archer, and so on.',
