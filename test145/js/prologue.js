@@ -1158,13 +1158,21 @@ const Prologue = {
   /* ================= THE GUIDE ON SCREEN =================
      MIRA, the clan's young storyteller (operator, build 181: "a younger
      woman … pretty but not aggressively beautiful … double or triple the
-     number of images"): nine faces, ONE PixelLab portrait edited into each
-     expression so she is the same woman in every one (assets/ui/mira/: the
-     128px masters and their Scale2x doubles, shown at 64/56/48 CSS px). The
-     code keeps the old Elder's ids (#proElder …); the player meets Mira. */
+     number of images"; build 182: "focus more on European ancestors
+     somewhere between Scotland, France, Italy, and Greece" — the clan's
+     third age is Rome's legions): an auburn-haired Gaulish girl, a braided
+     crown, freckles, a terracotta mantle with a Greek-key border pinned at
+     the shoulder over a cream tunic. Nine faces, ONE PixelLab portrait
+     edited into each expression so she is the same woman in every one
+     (assets/ui/mira/: the 128px masters and their Scale2x doubles, shown at
+     64/56/48 CSS px). The code keeps the old Elder's ids (#proElder …); the
+     player meets Mira. Her faces were redrawn under the same names, so
+     their URL carries its own step after the art's version ('.2'): a
+     device that held build 181's faces fetches the new ones, and no other
+     picture in the game is fetched again for it. */
   NAME: 'Mira',
   FACES: ['neutral', 'pleased', 'concerned', 'point', 'excited', 'thinking', 'proud', 'surprised', 'determined']
-    .reduce((o, f) => { o[f] = 'assets/ui/mira/mira-' + f + '-2x.png?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 0); return o; }, {}),
+    .reduce((o, f) => { o[f] = 'assets/ui/mira/mira-' + f + '-2x.png?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 0) + '.2'; return o; }, {}),
   // asked as the world is founded: a new face never blinks in empty
   _warmFaces() {
     if (this._facesWarm) return;
@@ -1260,8 +1268,8 @@ const Prologue = {
     let rb = b && b.ring ? b : (this._aside && this._aside.keepRing ? this._shown : null);
     if (rb && this._stale(rb)) rb = null;
     const raw = rb && rb.ring ? rb.ring.call(this) : null;
-    // a ringed build card is scrolled to the middle of the menu, once each time it is ringed
-    if (raw && raw.sel && raw.sel.indexOf('.bbtn') === 0) this._cardInView(raw.sel); else this._cardFor = '';
+    // a ringed build card is brought into the menu's view until it is seen there
+    if (raw && raw.sel && raw.sel.indexOf('.bbtn') === 0) this._cardInView(raw.sel); else if (this._cardSt) this._cardSt.sel = '';
     const tgt = raw ? this._resolve(raw) : null;
     /* the ring stands only where a tap can reach it: a target under the
        panel, the minimap or a bar is not ringed until the look has brought
@@ -1298,21 +1306,11 @@ const Prologue = {
     } catch (e) {}
     return false;
   },
-  /* a card past the menu's fold is no target at all: centre it once (the
-     tutorial's rule, Tutorial._scrollCardIntoView) and leave the player's own
-     scrolling alone after that */
-  _cardFor: '',
-  _cardInView(sel) {
-    if (this._cardFor === sel) return;
-    const btn = document.querySelector(sel), wrap = document.getElementById('buildmenu');
-    if (!btn || !wrap || btn.offsetParent === null || wrap.offsetParent === null) return;
-    this._cardFor = sel;
-    if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
-    const wr = wrap.getBoundingClientRect(), br = btn.getBoundingClientRect();
-    const left = Math.max(0, Math.min(wrap.scrollWidth - wrap.clientWidth, wrap.scrollLeft + (br.left + br.width / 2) - (wr.left + wr.width / 2)));
-    if (Math.abs(left - wrap.scrollLeft) < 2) return;
-    try { wrap.scrollTo({ left, behavior: 'smooth' }); } catch (e) { wrap.scrollLeft = left; }
-  },
+  /* a card past the menu's fold is no target at all: it is brought into the
+     menu's view until it is SEEN there, and the player's own scrolling is left
+     alone after that (UI.cardIntoView — the lesson's rule too) */
+  _cardSt: null,
+  _cardInView(sel) { if (UI.cardIntoView) UI.cardIntoView(sel, this._cardSt || (this._cardSt = {})); },
   // a target, resolved to the screen: {x,y,r} world, {u} a unit, {sel} an element
   _resolve(t) {
     if (!t) return null;
@@ -1700,6 +1698,14 @@ const Prologue = {
        passed the title that clears it, and opened with no start and no glide */
     if (name === 'playing' && typeof S !== 'undefined' && S && S.scenario && this._began !== S) {
       this._began = S;
+      /* A LESSON OPENS CLEAN (operator, build 182: "Start with the map hidden…
+         it makes things confusing to have it open"): Mira is the teacher, so
+         every journey world opens with the map folded; the top bar's map
+         button brings it back. The unit tips need nothing here: they start
+         put away for every player now (UI.helpHidden, "Start with the
+         villager instructions hidden too"), and a player who asked for them
+         with the panel's ℹ️ keeps them — that choice is remembered. */
+      if (typeof UI !== 'undefined' && UI.setMiniCollapsed) UI.setMiniCollapsed(true);
       this.track('start', { game: Scenarios.game() });
       this.glide();
     }

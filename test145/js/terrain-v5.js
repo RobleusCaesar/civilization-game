@@ -25,7 +25,8 @@
    (remembered in neo-biome until ?biome=auto), every V4 way back (V5 rides on V4),
    and a fault: a field build that throws stands V5 down for the session and the
    world repaints as V4. ?biome=<name> forces a landscape for testing; the switch
-   chip shows only for a device that asked (a test page, or a ?biome link). */
+   chip showed only for a device that asked (a test page, or a ?biome link) and is
+   put away for now (V5.CHIP, build 182). */
 (function () {
   if (!window.TerrainX) return;
   const TX = window.TerrainX, KEY = 'neo-biome';
@@ -322,7 +323,13 @@ body.ingame #v5biome{display:flex}
   try { const q = new URLSearchParams(location.search).get('biome'); if (q && (q === 'auto' || q === 'v4' || BIOMES[q])) ls.set(KEY, q === 'auto' ? null : q); } catch (e) {}
   // the switch is a tester's tool: a test page, or a device that asked for a landscape by link
   V5.tester = function () { try { return /^\/test\d*\//.test(location.pathname) || new URLSearchParams(location.search).has('biome') || ls.get(KEY) != null; } catch (e) { return false; } };
-  if (V5.tester()) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => V5.mount()); else V5.mount(); }
+  /* PUT AWAY FOR NOW (operator, build 182: "hide the ability for me to change
+     the map background for now… Will be useful in the future for additional map
+     designs, but right now it just clutters my UI"): nothing is mounted. The
+     chip, the list and V5.set stand ready (CHIP true brings it back as it was);
+     a ?biome= link still forces a landscape and ?biome=auto still undoes it */
+  V5.CHIP = false;
+  if (V5.CHIP && V5.tester()) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => V5.mount()); else V5.mount(); }
   // a new or loaded world repaints the chip (auto follows the world's name)
   const ng = G.newGame, lj = G.loadJSON;
   G.newGame = function () { const r = ng.apply(this, arguments); V5.paint(); return r; };
