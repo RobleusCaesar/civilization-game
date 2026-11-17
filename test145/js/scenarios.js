@@ -41,7 +41,7 @@ const Scenarios = {
       case ',': return T.STUMPS;
       case ':': return T.PEBBLES;
       case '_': return T.BARREN;
-      case 'x': return T.RUIN;          // the scar a razed building leaves (game 1's old village)
+      case 'x': return T.RUIN;          // the scar a razed building leaves (no journey map carries one)
       default: return T.GRASS;
     }
   },
@@ -195,10 +195,13 @@ const Scenarios = {
       const d = Relics.DEFS[sc.relic.key];
       S.relic = { key: sc.relic.key, x: sc.relic.x, y: sc.relic.y, w: d.w || 1, h: d.h || 1, found: 0, amount: 0 };
     }
-    /* THE OLD VILLAGE (game 1): what a razed building leaves, drawn by the
-       ruins pass (js/ruins.js) on its rubble ground. Authored rubble is put
-       on no clock (G.scheduleRevert is never asked), so it stands for the
-       world's life; a house raised on it takes the ground as ever. */
+    /* AUTHORED RUINS: what a razed building leaves, drawn by the ruins pass
+       (js/ruins.js) on its rubble ground ('x'). Authored rubble is put on no
+       clock (G.scheduleRevert is never asked), so it stands for the world's
+       life; a house raised on it takes the ground as ever. No journey map
+       carries any (operator, build 183: the old village burned OFF the map —
+       a new home is not raised beside the ashes of the last one); the
+       format keeps them for a later campaign. */
     S.ruins = (sc.ruins || []).map(r => ({ x: r.x, y: r.y, sz: r.sz || 1, c: r.c, v: r.v || 1, m: r.m ? 1 : 0, day: 0 }));
     if (window.Ruins && Ruins.want) for (const r of S.ruins) Ruins.want(r.c, r.v);
     // how far the land is known at the first morning (game 1 shows its whole

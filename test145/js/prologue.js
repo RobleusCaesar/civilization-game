@@ -603,7 +603,7 @@ const Prologue = {
     1() {
       const P = this;
       return [
-        { id: 'open', face: 'point', text: 'The old village is gone. We begin again. Send someone to gather berries.',
+        { id: 'open', face: 'point', text: 'Another clan burned our home. We few escaped. Send someone to gather berries.',
           goal: 'Gather berries', ring: P.sendTo('berries'), taps: P.sendTaps('berries'),
           done: () => P.ordered('food'), praise: 'Good!' },
         { id: 'wood', face: 'pleased', text: 'Berries for tonight. Now send someone to cut wood.',
@@ -702,7 +702,7 @@ const Prologue = {
       const P = this;
       return [
         // the two roads are said once the raid is beaten, where the choice is the player's
-        { id: 'barracks', face: 'determined', text: 'Raiders roam these hills, chief. Build a barracks.',
+        { id: 'barracks', face: 'determined', text: 'They have found us, chief. Build a barracks.',
           goal: () => P.afford('barracks') ? 'Build a barracks' : 'Gather for a barracks: ' + P.costLine('barracks'),
           when: () => P.afford('barracks') || P.has('barracks'), hold: (c) => P.needLine('A barracks', null, c),
           on: () => Scenarios.unlock('barracks'),
@@ -814,7 +814,7 @@ const Prologue = {
       test() { const v = this._shown; if (v && v.phase === 'hands') return null; return this.unbuilt(); },
       ring() { const b = this.unbuilt(); return b ? (this.selVil() ? { x: Bld.cx(b), y: Bld.cy(b), r: 1.1 } : (this.idleVil() ? { u: this.idleVil().id } : null)) : null; },
       taps() { const b = this.unbuilt(), v = this.idleVil(); return [v && !this.selVil() ? { u: v.id } : null, b ? { x: Bld.cx(b), y: Bld.cy(b), r: 1 } : null].filter(Boolean); } },
-    { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares this valley. They mean no harm.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
+    { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares this valley. Not the ones who burned us.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
       test() { return Scenarios.game() === 2 && S.units.some(u => u.owner === 'A' && G.visibleAt && G.visibleAt(u.x | 0, u.y | 0)); } },
     { id: 'relic', face: 'surprised', text: 'Old stones! Our people will put them to use.', hold: 0.2, once: true, auto: 3200, quiet: true, keepRing: true,
       test() { return Scenarios.game() === 2 && !!(S.relic && S.relic.found); } },
@@ -1596,7 +1596,7 @@ const Prologue = {
     this._held = { win, msg, s0: S, g };
     this._shown = null; this._viewKey = null; this._aside = null; this._goalBeat = null;
     this._collapsed = false; this._userHid = false;
-    this.say(g === 1 ? 'Our first fire burns bright. Well done, chief.' : g === 2 ? 'A great hall! The clan is proud, chief.' : 'Well done, chief.', 'proud');
+    this.say(g === 1 ? 'Our first fire burns, chief. May they never see its smoke.' : g === 2 ? 'A great hall! The clan is proud, chief.' : 'Well done, chief.', 'proud');
     try { if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete'); } catch (e) {}
     const tc = this.tc();
     if (tc) { const t = this._resolve({ x: tc.x + 1, y: tc.y + 1 }); if (t) this._burst(this._dom(), t.x, t.y); }
