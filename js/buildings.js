@@ -818,6 +818,10 @@ const Bld = {
        mode offers none. Asked before the ground: it is not about the tile. */
     if (key === 'wonder' && !G.wonderInPlay())
       return { ok: false, code: 'mode', why: 'The Wonder rises only in Calm worlds.' };
+    /* THE PROLOGUE's menu is its lesson (Scenarios.allows): a building it has
+       not taught yet cannot be raised by the player any other way either */
+    if (owner === 'P' && window.Scenarios && Scenarios.allows && !Scenarios.allows(key))
+      return { ok: false, code: 'mode', why: 'Not yet — the Elder will show you when.' };
     // a road is ground, not a building: its own rules (js/roads.js)
     if (key === 'road') return window.Roads && Roads.on() ? Roads.canPlace(owner, x, y, opts) : { ok: false, code: 'key', why: '?' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
@@ -1072,7 +1076,7 @@ const Bld = {
     // THE AGE OF MARBLE (js/deckfx-growth.js): the player's Wonder a quarter
     // cheaper for the rest of the run — the one cost point, so the menu, the
     // ghost, the "% saved" line and the payment all read the same price
-    // THE FIRST GAME's monument is a fraction of the price (CFG.MODES.first_quick.wonderCost)
+    // a profile's monument may be a fraction of the price (CFG.MODES.prologue_3.wonderCost)
     if (owner === 'P' && key === 'wonder') {
       // a number for every good, or a share per good ({food, wood, stone, gold})
       const wc = (CFG.MODES[S && S.mode] || {}).wonderCost;
@@ -1359,10 +1363,18 @@ const Bld = {
      to close. Owner-agnostic: the rival's chief builds a town before a hall
      on the same terms. */
   TC_SUPPORT: 3,
+  /* THE PROLOGUE may ask less of its halls (Scenarios.support): game 1's
+     hall rises on ONE finished building, game 2's on three of any storey —
+     the rule is the same rule, its numbers the scenario's */
+  supportRule(tc) {
+    const r = window.Scenarios && Scenarios.support ? Scenarios.support(tc) : null;
+    return r || { n: this.TC_SUPPORT, lv: tc.level };
+  },
   tcSupport(tc) {
+    const lv = this.supportRule(tc).lv;
     return this.list(tc.owner).filter(o =>
       o.key !== 'tc' && o.key !== 'wall' && o.key !== 'gate' &&
-      !(o.construction > 0) && o.level >= tc.level).length;
+      !(o.construction > 0) && o.level >= lv).length;
   },
 
   canUpgrade(b) {
@@ -1378,9 +1390,10 @@ const Bld = {
       const tc = this.tcOf(b.owner);
       if (!tc || tc.level < b.level + 1)
         return { ok: false, why: `Needs Town Center Lv ${b.level + 1}` };
-    } else if (this.tcSupport(b) < this.TC_SUPPORT) {
+    } else if (this.tcSupport(b) < this.supportRule(b).n) {
       // the hall rises on the town's shoulders, not the other way round
-      return { ok: false, why: `Needs ${this.TC_SUPPORT} buildings at Lv ${b.level} ` +
+      const sr = this.supportRule(b);
+      return { ok: false, why: `Needs ${sr.n} building${sr.n === 1 ? '' : 's'} at Lv ${sr.lv} ` +
         `(have ${this.tcSupport(b)})` };
     }
     const res = b.owner === 'P' ? S.res : S.ai.res;
@@ -1460,14 +1473,6 @@ const Bld = {
      the building is every bit as raised, but it scores no "upgrade finished"
      (a card's gift is not the town's feat) and says nothing per building:
      the card says it once, itself, and its own light shows each one rising. */
-  milestone(b) {
-    const M = CFG.FIRST_QUICK && CFG.FIRST_QUICK.MILESTONE;
-    if (!M || !M.ON || !S || S.milestone || S.mode !== CFG.FIRST_QUICK.MODE || b.level !== (M.AT_LEVEL || 2)) return;
-    if (!window.Deck || !Deck.milestone) return;
-    const got = Deck.milestone(S.runId || ('seed:' + S.seed));
-    S.milestone = S.day || 1;            // spent for the run, granted or not (rides the save)
-    if (got && window.DeckScreens && DeckScreens.milestoneReveal) DeckScreens.milestoneReveal(got);
-  },
   finishUpgrade(b, byCard) {
     b.upgrading = 0;
     b.level++;
@@ -1506,9 +1511,9 @@ const Bld = {
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
-    // THE FIRST AGE'S MILESTONE (tests/first-quick.mjs): a first game's hall
-    // reaching its second storey pays one card, once a run
-    if (b.owner === 'P' && b.key === 'tc') this.milestone(b);
+    // THE PROLOGUE's goal (js/scenarios.js): a hall reaching the storey its
+    // scenario asks for wins the game
+    if (b.owner === 'P' && b.key === 'tc' && window.Scenarios && Scenarios.onHall) Scenarios.onHall(b);
   },
 
   /* training queue: entries { unit, t } (days remaining) */
@@ -2284,7 +2289,7 @@ const Bld = {
        before the one subtraction, so the number returned (and floated by
        Combat.hitBuilding) is the number taken */
     if (b.owner === 'P') { const gd = this.roadMult(b, 'guard'); if (gd > 1) amt /= gd; }
-    // THE FIRST GAME's rival hall comes down sooner (CFG.MODES.first_quick.aiHallTake)
+    // a profile's rival hall may come down sooner (CFG.MODES.prologue_3.aiHallTake)
     if (b.owner === 'A' && b.key === 'tc') { const ht = (CFG.MODES[S.mode] || {}).aiHallTake; if (ht > 0) amt *= ht; }
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)

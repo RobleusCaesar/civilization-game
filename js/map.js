@@ -1270,7 +1270,7 @@ const MapGen = {
          being few on the board and lean in the ground (×0.6 stock), not by
          being absent from somebody's whole country. */
       const SR0 = CFG.START_RESOURCE || { min: 3, r: 14 };
-      // THE FIRST GAME's seat stands on richer ground (CFG.MODES.first_quick.startResMin)
+      // a profile's seat may stand on richer ground (a mode's startResMin)
       const srMin = (CFG.MODES[mode] || {}).startResMin;
       const SR = srMin > SR0.min ? Object.assign({}, SR0, { min: srMin }) : SR0;
       for (const s of [player, ai]) {

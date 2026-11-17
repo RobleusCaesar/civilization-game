@@ -568,26 +568,26 @@ const Deck = {
       ...(rep.place ? { place: rep.place | 0, lift: !!c.lift } : {}) });
     return { ok: true, cards, great, pity: forced, place: rep.place || null };
   },
-  /* THE FIRST AGE'S MILESTONE (CFG.FIRST_QUICK.MILESTONE, tests/first-quick.mjs):
-     a first game's hall rising to its second storey pays one guaranteed card
-     mid-run — of the MILESTONE tier (Iron: the operator's "mid or higher, to
-     get them excited"). Once per run (the ledger's 'ms:' line, and the save's
-     S.milestone), drawn on Math.random, never the run's RNG; the cloud op
-     goes through migration 0017's grant_milestone, which checks the run was a
-     first_quick run and that the player never had one before. */
-  milestone(runId) {
-    const M = CFG.FIRST_QUICK && CFG.FIRST_QUICK.MILESTONE;
-    if (!this.on() || !M || !M.ON || !runId) return null;
-    const col = this.col(), key = 'ms:' + runId;
+  /* THE PROLOGUE'S CARD (CFG.PROLOGUE.CARD, js/scenarios.js): a prologue
+     game's win pays exactly ONE card, of its game's tier — Bronze, Iron,
+     Imperial — once per player, EVER (the ledger's 'pro:N' line on the
+     device; migration 0018's grant_prologue on the record, which checks a
+     prologue_N run_start and its won run_end). No drop table, no great
+     victory, no pity and no board lift: the prologue's reward is the
+     journey's, not the difficulty's. Drawn on Math.random, never the run's
+     RNG. A run with no telemetry id (offline, a test page) keeps its card on
+     the device; the record can only take one it can check against a run. */
+  prologue(game, runId) {
+    const tier = CFG.PROLOGUE && CFG.PROLOGUE.CARD && CFG.PROLOGUE.CARD[game];
+    if (!this.on() || !tier) return null;
+    const col = this.col(), key = 'pro:' + game;
     if (col.runs[key]) return null;
-    const tier = M.TIER, id = this.rollCard(tier, Math.random);
+    const id = this.rollCard(tier, Math.random);
     this._add(id, 1);
-    col.runs[key] = [{ id, tier, bonus: false, milestone: true }];
-    // a run with no telemetry id (offline, a test page) keeps its card on the
-    // device; the record can only take one it can check against a run_start
-    if (!/^seed:/.test(runId)) this._queue({ op: 'milestone', run: runId, card: id });
+    col.runs[key] = [{ id, tier, bonus: false, prologue: game }];
+    if (runId && !/^seed:/.test(runId)) this._queue({ op: 'prologue', run: runId, game, card: id });
     this.saveCol();
-    this.track('card_granted', { card: id, tier, outcome: 'milestone', difficulty: (typeof S !== 'undefined' && S && S.mode) || null, bonus: false, run: runId });
+    this.track('card_granted', { card: id, tier, outcome: 'prologue', difficulty: (typeof S !== 'undefined' && S && S.mode) || null, bonus: false, run: runId || null });
     return { id, tier };
   },
   /* EARNED IS EARNED (tests/deck-core.mjs — the playtest's test-link slice).
@@ -669,9 +669,12 @@ const Deck = {
        games, and a test link whose deck then hides for the whole spine reads
        as broken. Theirs stands from the first morning; the note still rings
        it once the spine is done. */
-    // …and the first game's milestone card brings the deck in with it: the
-    // card flies INTO the deck, so the deck must be there to take it
-    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1 && !S.milestone && !this.isTest();
+    if (typeof S === 'undefined' || !S) return false;
+    /* THE PROLOGUE keeps the deck out of its first game and brings it into
+       the second when its Elder teaches it (Prologue.deckHolds) — for a test
+       deck too: the journey is played as a new player plays it */
+    if (S.scenario && window.Prologue && Prologue.deckHolds) return !!Prologue.deckHolds();
+    return !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
   },
   /* A CARD HAS THE FLOOR (tests/tutorial.mjs §15 — the five-player
      playtest, on the operator's own path: a fresh device arms the tutorial by
@@ -1261,7 +1264,7 @@ Object.assign(Deck, {
       if (v.asked) out.sent++;
       op.n = (op.n || 0) + 1;
       op.why = v.why;
-      if (v.verdict === 'wait' && (op.op === 'grant' || op.op === 'milestone')) {
+      if (v.verdict === 'wait' && (op.op === 'grant' || op.op === 'milestone' || op.op === 'prologue')) {
         op.wait = op.wait || Date.now();
         if (op.n >= this.SYNC.NO_RUN_TRIES && Date.now() - op.wait > this.SYNC.NO_RUN_DAYS * 864e5) {
           v.verdict = 'drop';
@@ -1277,11 +1280,11 @@ Object.assign(Deck, {
         else { out.dropped++; this._syncNote(op, v.why); }
       } else if (v.verdict === 'wait') {
         for (const id of (op.cards || [])) held[id] = 1;
-        if (op.op === 'milestone' && op.card) held[op.card] = 1;
+        if ((op.op === 'milestone' || op.op === 'prologue') && op.card) held[op.card] = 1;
       } else if (v.verdict === 'bad') {
         op.bad = op.bad || Date.now();
         if (op.op === 'grant') for (const id of (op.cards || [])) held[id] = 1;
-        if (op.op === 'milestone' && op.card) held[op.card] = 1;
+        if ((op.op === 'milestone' || op.op === 'prologue') && op.card) held[op.card] = 1;
         bad.push(op);
       } else { stop = v.why || 'network'; break; }
     }
@@ -1348,9 +1351,15 @@ Object.assign(Deck, {
       name = 'grant_card';
       args = { p_run_id: String(op.run), p_cards: (op.cards || []).slice(0, 2), p_outcome: op.outcome || null };
     } else if (op.op === 'milestone') {
+      // a retired first-game op (build 178's test page only): the door
+      // still answers if 0017 was pasted
       if (!op.run || !op.card) return { verdict: 'drop', why: 'no_run_id' };
       name = 'grant_milestone';
       args = { p_run_id: String(op.run), p_card: String(op.card) };
+    } else if (op.op === 'prologue') {
+      if (!op.run || !op.card || !op.game) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_prologue';
+      args = { p_run_id: String(op.run), p_game: op.game | 0, p_card: String(op.card) };
     } else if (op.op === 'consume') {
       name = 'consume_card';
       args = { p_card_key: op.card, p_play_id: op.play, p_run_id: op.run || null,

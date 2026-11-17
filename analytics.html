@@ -201,9 +201,12 @@
     <div class="card wrap" style="margin-top:10px"><table id="tFirstMinWho"></table></div>
     <div class="card wrap" style="margin-top:10px"><table id="tLeftAt"></table><div class="note" id="firstMinNote" style="margin-top:8px"></div></div>
 
-    <h2>First game</h2>
-    <p class="why">Each player's first game. From build 178 a device's first game is the short first-game profile (the smallest map, a slow Calm rival, a cheaper Wonder and a card when the hall first rises). Here it stands beside first games started before that release: how many finished (won or lost), the win rate, the median day of a win, and how many played again within a week (counted once that week has passed). Needs migration 0017.</p>
-    <div class="card wrap"><table id="tFirstQuick"></table><div class="note" id="firstQuickNote" style="margin-top:8px"></div></div>
+    <h2>Prologue</h2>
+    <p class="why">A new device plays three guided games before the full game opens: The First Fire, The Growing Clan and The Two Roads. Each game's starts, how many finished and how fast a win came; the journey player by player (a rung counts only players who won the one before); every line the Elder showed, how many games got past it, how long it took and how often the hand had to point; and players whose first game was the journey beside everyone else's first game, played again within a week (counted once that week has passed). Needs migration 0018.</p>
+    <div class="card wrap"><table id="tProGames"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tProJourney"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tProBeats"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tProAgain"></table><div class="note" id="proNote" style="margin-top:8px"></div></div>
 
     <h2>Traffic</h2>
     <p class="why">Where visits come from (the site that sent each one), and the players and games each site brought, counted by the site a device FIRST came from. The vote-for-a-card offer was retired in build 176; its old rows are kept and summed in one line. Recorded from build 134; a device that played before then reads "Before tracking".</p>
@@ -293,7 +296,7 @@ let DRAFTS = {};
    must never paint over a newer filter); a Lock moves the epoch, so nothing
    still in flight can paint the last session back. */
 let EPOCH = 0;
-const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0, fmin: 0, fq: 0 };
+const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0, fmin: 0, pro: 0 };
 const live = (sec, my, ep) => my === SEQ[sec] && ep === EPOCH;
 // the operator's own days: the daily chart is bucketed in this time zone
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } })();
@@ -795,28 +798,50 @@ async function loadFirstMinute() {
   });
 }
 
-async function loadFirstQuick() {
-  const my = ++SEQ.fq, ep = EPOCH, tok = TOKEN;
+/* THE PROLOGUE (migration 0018's analytics_prologue) */
+const PRO_GAME = { 1: 'The First Fire', 2: 'The Growing Clan', 3: 'The Two Roads' };
+const PRO_CHOICE = { journey: 'Continue the journey', random: 'A random world', retry: 'Try again', open: 'Your own world', menu: 'Menu', named: 'Named their chief', other: 'Other' };
+function mins(s) { return s == null ? '—' : (s < 600 ? (s / 60).toFixed(1) : Math.round(s / 60)) + ' min'; }
+async function loadPrologue() {
+  const my = ++SEQ.pro, ep = EPOCH, tok = TOKEN;
   const f = filters();
-  const r = await rpc('analytics_first_quick', { p_token: tok, p_release: null, p_everyone: f.p_everyone });
-  if (!live('fq', my, ep)) return;
+  const r = await rpc('analytics_prologue', { p_token: tok, p_from: f.p_from, p_to: f.p_to, p_everyone: f.p_everyone });
+  if (!live('pro', my, ep)) return;
   if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
   if (!answered(r)) {
-    table($('tFirstQuick'), [], [], missing(r) ? 'The first-game section needs migration 0017 (supabase/migrations/0017_first_quick.sql).' : couldNot(r));
-    $('firstQuickNote').textContent = '';
+    const why = missing(r) ? 'The prologue section needs migration 0018 (supabase/migrations/0018_prologue.sql).' : couldNot(r);
+    for (const id of ['tProGames', 'tProJourney', 'tProBeats', 'tProAgain']) table($(id), [], [], why);
+    $('proNote').textContent = '';
     return;
   }
-  part($('tFirstQuick'), () => {
-    const C = (r.data && r.data.cohorts) || {};
-    const row = (label, c) => {
-      c = c || {};
-      const g = c.games || 0, wl = (c.won || 0) + (c.lost || 0);
-      return [label, num(g), rate(wl, g), rate(c.won || 0, wl), c.median_win_day != null ? 'day ' + num(c.median_win_day) : '—', rate(c.again_n || 0, c.again_of || 0)];
-    };
-    table($('tFirstQuick'), ['First games', 'Games', 'Finished', 'Win rate', 'Median win day', 'Played again in a week'],
-      [row('Before the first-game profile', C.before), row('First-game profile (build 178+)', C.first_quick)], 'No first games recorded.');
-    const rel = r.data && r.data.release;
-    $('firstQuickNote').textContent = rel ? `The profile's first game was started ${String(rel).slice(0, 10)}; earlier first games are the "before" row. ${num((C.first_quick || {}).milestones || 0)} milestone cards granted.` : 'No first game has been played in the profile yet.';
+  const D = r.data || {};
+  part($('tProGames'), () => {
+    const G = (Array.isArray(D.games) ? D.games : []).filter(g => g && g.started);
+    table($('tProGames'), ['Journey game', 'Started', 'Finished', 'Win rate', 'Median time to win', 'Quit or left'],
+      G.map(g => [(g.game || '?') + '. ' + (PRO_GAME[g.game] || 'Game'), num(g.started), rate(g.finished || 0, g.started),
+        rate(g.won || 0, g.finished || 0), mins(g.median_win_seconds), rate((g.quit || 0) + (g.left || 0), g.started)]),
+      'No journey game was started in this period.');
+  });
+  part($('tProJourney'), () => {
+    const J = D.journey || {}, base = J.started1 || 0;
+    const rungs = [['Began The First Fire', J.started1], ['Won it', J.won1], ['Began The Growing Clan', J.started2], ['Won it', J.won2],
+      ['Began The Two Roads', J.started3], ['Won it (the journey done)', J.won3]];
+    table($('tProJourney'), ['The journey, player by player', 'Players'], base ? rungs.map(([k, n]) => [k, rate(n || 0, base)]) : [],
+      'Nobody began the journey in this period.');
+  });
+  part($('tProBeats'), () => {
+    const B = (Array.isArray(D.funnel) ? D.funnel : []).filter(b => b && (b.shown || b.done));
+    table($('tProBeats'), ['Game · the Elder\'s line', 'Shown', 'Done', 'Median time to do it', 'Needed the hand'],
+      B.map(b => [(b.game || '?') + ' · ' + b.beat, num(b.shown), rate(b.done || 0, b.shown || 0), secs(b.median_ms_to_done), rate(b.handed || 0, b.done || 0)]),
+      'No line of the Elder\'s was shown in this period.');
+  });
+  part($('tProAgain'), () => {
+    const A = D.again || {}, row = (label, c) => { c = c || {}; return [label, num(c.players || 0), rate(c.again || 0, c.n || 0)]; };
+    table($('tProAgain'), ['First game ever', 'Players', 'Played again in a week'],
+      [row('The journey (The First Fire)', A.prologue), row('Anything else', A.before)], 'No first games recorded.');
+    const S2 = D.skips || {}, C = (Array.isArray(D.choices) ? D.choices : []).filter(c => c && c.n);
+    const ch = C.map(c => `${PRO_GAME[c.game] || 'Game ' + c.game}: ${PRO_CHOICE[c.choice] || c.choice} ${num(c.n)}`).join(' · ');
+    $('proNote').textContent = `Skipped the journey: ${num(S2.title || 0)} from the title, ${num(S2.game || 0)} from inside a game.` + (ch ? ' End screens — ' + ch + '.' : '');
   });
 }
 
@@ -1138,7 +1163,7 @@ async function loadAll(verify) {
 }
 function others() {
   part(null, fillReleases);
-  return Promise.allSettled([loadCompare(), loadFirstMinute(), loadFirstQuick(), loadTraffic(), loadInbox(), loadMine()]);
+  return Promise.allSettled([loadCompare(), loadFirstMinute(), loadPrologue(), loadTraffic(), loadInbox(), loadMine()]);
 }
 function enter(tok) {
   try { sessionStorage.setItem(KEY, tok); } catch (e) {}
@@ -1151,7 +1176,7 @@ function show(which) { $('gate').hidden = which !== 'gate'; $('app').hidden = wh
    can paint it back (the epoch moves). A wrong passphrase typed afterwards
    shows the gate and nothing else. */
 function clearApp() {
-  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'voteNote', 'tTrafficDays', 'tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt', 'firstMinNote', 'tFirstQuick', 'firstQuickNote', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
+  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'voteNote', 'tTrafficDays', 'tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt', 'firstMinNote', 'tProGames', 'tProJourney', 'tProBeats', 'tProAgain', 'proNote', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
     const el = $(id); if (el) el.innerHTML = '';
   }
   $('stamp').textContent = '—';

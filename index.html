@@ -214,8 +214,9 @@
   /* ---- toasts / event log ---- */
   #toasts {
     /* --ww-h: the rival-wonder banner's height while it heads the column;
-       --tut-h: how far a lesson card seated at the top reaches past it (js/tutorial.js) */
-    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px) + var(--tut-h, 0px));
+       --tut-h: how far a lesson card seated at the top reaches past it (js/tutorial.js);
+       --pro-h: the prologue's goal tracker (js/prologue.js) */
+    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px) + var(--tut-h, 0px) + var(--pro-h, 0px));
     z-index: 9; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
     max-width: 66%;   /* clears the minimap, which now shares the top strip */
   }
@@ -2266,6 +2267,9 @@
 <script src="js/pages.js?v=178"></script>
 <script src="js/titlescreen.js?v=178"></script>
 <script src="js/tutorial.js?v=178"></script>
+<script src="js/scenario-maps.js?v=178"></script>
+<script src="js/scenarios.js?v=178"></script>
+<script src="js/prologue.js?v=178"></script>
 <script src="js/deckfx.js?v=178"></script>
 <script src="js/deckfx-town.js?v=178"></script>
 <script src="js/deckfx-army.js?v=178"></script>

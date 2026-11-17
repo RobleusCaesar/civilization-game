@@ -145,7 +145,7 @@ const DeckScreens = {
        runs in the very task the run ended (WorldBoard.placeFor). A win held
        off the board (a test deck, a test build, an assisted win the board
        cannot mark yet) stands nowhere. */
-    if (win && !rep.place) {
+    if (win && !rep.place && !S.scenario) {
       try {
         const bh = Screens.boardHold ? Screens.boardHold(true) : { hold: 'held' };
         const held = bh.hold || (bh.ask ? 'not asked' : '');   // a board never seen places nothing
@@ -153,7 +153,10 @@ const DeckScreens = {
         if (!held && B && B.configured && window.WorldBoard && WorldBoard.placeFor) rep.place = WorldBoard.placeFor(rep.score);
       } catch (e) { /* a lift is a nicety: never the reason an ending fails */ }
     }
-    const res = Deck.settle(rep);
+    /* THE PROLOGUE's win pays its journey's card (Prologue.endCard: one of
+       its game's tier, once per player ever) — never the drop tables */
+    const pro = (win && S.scenario && window.Prologue && Prologue.endCard) ? Prologue.endCard(rep) : null;
+    const res = pro || Deck.settle(rep);
     // a card the catalog no longer carries (an older run's grant) never reaches a renderer
     const cards = (res.ok ? res.cards : []).filter(c => c && Deck.card(c.id));
     const prior = this._runs[rep.key];
@@ -336,9 +339,9 @@ const DeckScreens = {
                  score is one row there), so the mark is the only line under it */
               `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
               (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
-              // THE FIRST GAME ends inviting the next (CFG.FIRST_QUICK.NEXT_LINE)
-              ((CFG.FIRST_QUICK && S.mode === CFG.FIRST_QUICK.MODE && CFG.FIRST_QUICK.NEXT_LINE)
-                ? `<p class="ceNext">${this.esc(CFG.FIRST_QUICK.NEXT_LINE)}</p>` : '') +
+              // THE PROLOGUE ends on its journey's line (Prologue.endLine)
+              ((window.Prologue && Prologue.endLine && Prologue.endLine())
+                ? `<p class="ceNext">${this.esc(Prologue.endLine())}</p>` : '') +
               '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
             /* the list of cards played and the deck tile are a WIDE
                window's (the same ruling, then "those additions are fine on
@@ -353,9 +356,9 @@ const DeckScreens = {
                Claim); a wide window has the room for its words */
             '<div class="ceBtns" style="--i:4">' +
               '<button class="ceBtn gold ceClaim" type="button" data-act="claim"><i class="ceDia"></i>Claim reward<i class="ceDia"></i></button>' +
-              '<div class="ceRow"><button class="ceBtn" type="button" data-act="replay">Replay</button>' +
-                '<button class="ceBtn" type="button" data-act="menu">Menu</button></div>' +
-              `<button class="ceBtn navy ceLb" type="button" data-act="board" aria-label="Leaderboard" title="Leaderboard">${this.PODIUM_SVG}<span class="ceLbW">Leaderboard</span></button>` +
+              '<div class="ceRow">' + this._rowHTML(v) + '</div>' +
+              ((window.Prologue && Prologue.endRow && Prologue.endRow(v.win)) ? '' :
+                `<button class="ceBtn navy ceLb" type="button" data-act="board" aria-label="Leaderboard" title="Leaderboard">${this.PODIUM_SVG}<span class="ceLbW">Leaderboard</span></button>`) +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -543,6 +546,15 @@ const DeckScreens = {
     return order.map(id => Deck.card(id).name + (n[id] > 1 ? ' ×' + n[id] : '')).join(', ') || 'None';
   },
 
+  /* the row under the card: Replay and Menu — or, in THE PROLOGUE, the
+     journey's own two doors (Prologue.endRow: "Continue the journey" and
+     "Play a random world"; a lost third game's retry) */
+  _rowHTML(v) {
+    const pro = window.Prologue && Prologue.endRow ? Prologue.endRow(v.win) : null;
+    if (pro) return pro.map(b => `<button class="ceBtn${b.gold ? ' gold' : ''}" type="button" data-act="${b.act}">${this.esc(b.label)}</button>`).join('');
+    return '<button class="ceBtn" type="button" data-act="replay">Replay</button>' +
+      '<button class="ceBtn" type="button" data-act="menu">Menu</button>';
+  },
   _setButtons(state) {
     const root = this._rootEl(), b = root.querySelector('.ceBtns');
     b.dataset.s = state;
@@ -601,6 +613,8 @@ const DeckScreens = {
       return this.openCollection('endgame', best ? best.tier : null, ids);
     }
     if (act === 'board') { this._skip(); Screens.backTo = 'endgame'; Screens.show('leaders'); return; }
+    // the journey's own doors (js/prologue.js)
+    if (window.Prologue && Prologue.endAct && Prologue.endAct(act)) { this._skip(); return; }
     // REPLAY and MENU leave through Screens' own door, which posts the
     // run to the board on the way out exactly as the old scenes did
     if (act === 'replay') { this._skip(); Screens.endReplay(); return; }
@@ -1307,120 +1321,6 @@ const DeckScreens = {
     const st = document.createElement('style');
     st.id = 'deckScreensCss';
     st.textContent = this.CSS;
-    document.head.appendChild(st);
-  },
-  /* THE FIRST AGE'S MILESTONE (tests/first-quick.mjs, CFG.FIRST_QUICK.MILESTONE):
-     the end screen's reveal, compact, over the living world. The world
-     holds still (S.paused) while it has the floor; the card rises in its
-     tier's light, a tap turns it, CLAIM flies it into the deck button and
-     the world goes on. The card is already in the collection (Deck.milestone
-     granted it): this is the ceremony, never the transaction. */
-  _ms: null,
-  milestoneUp() { return !!this._ms; },
-  milestoneDrop() {
-    const ms = this._ms;
-    if (!ms) return;
-    this._ms = null;
-    ms.done = true;
-    if (ms.el.isConnected) ms.el.remove();
-  },
-  milestoneReveal(got) {
-    if (!got || !Deck.card(got.id) || this._ms) return null;
-    this._msCss();
-    const c = Deck.card(got.id), t = Deck.tier(got.tier) || Deck.TIERS[0];
-    const was = !!(window.S && S.paused);
-    if (window.S) S.paused = true;
-    const el = document.createElement('div');
-    el.id = 'msCard';
-    el.style.setProperty('--tc', t.col);
-    el.style.setProperty('--glow', t.glow);
-    el.innerHTML =
-      '<div class="msGlow"></div><div class="msRays"></div>' +
-      '<div class="msCol">' +
-        '<p class="msEye">Your hall has risen</p>' +
-        '<h3 class="msHead">A gift for your first age</h3>' +
-        '<div class="msStage"></div>' +
-        '<p class="msHint">Tap the card to turn it</p>' +
-        '<button class="abtn big gold msClaim" type="button">Claim</button>' +
-      '</div>';
-    document.body.appendChild(el);
-    const vp = this._vp();
-    const w = Math.max(140, Math.min(176, Math.floor(Math.min(vp.w * 0.46, (vp.h - 260) * 176 / 244))));
-    const face = Deck.face(got.id, { w });
-    face.setAttribute('role', 'button');
-    face.setAttribute('aria-label', c.name + ', ' + t.name);
-    el.querySelector('.msStage').appendChild(face);
-    const ms = this._ms = { el, face, was, done: false, at: performance.now() };
-    if (!this.reduced()) {
-      face.animate([
-        { transform: 'translateY(60px) scale(.6)', opacity: 0, filter: 'brightness(2.2)' },
-        { transform: 'translateY(-8px) scale(1.04)', opacity: 1, filter: 'brightness(1.4)', offset: 0.7 },
-        { transform: 'none', opacity: 1, filter: 'none' },
-      ], { duration: 900, easing: 'cubic-bezier(.2,.9,.3,1)' });
-    }
-    face.addEventListener('click', () => { if (!ms.done) { face.classList.toggle('flip'); this.cue('ok'); } });
-    el.querySelector('.msClaim').addEventListener('click', () => this.milestoneClaim());
-    this.cue('complete');
-    return el;
-  },
-  milestoneClaim() {
-    const ms = this._ms;
-    if (!ms || ms.done) return;
-    ms.done = true;
-    const { el, face } = ms;
-    const finish = () => {
-      if (el.isConnected) el.remove();
-      if (this._ms === ms) this._ms = null;
-      if (window.S && !S.over) S.paused = ms.was;
-      this.cue('bond');
-    };
-    face.classList.remove('flip');
-    const deck = document.getElementById('deckBtn');
-    const dr = deck && deck.getBoundingClientRect();
-    el.classList.add('msGo');
-    if (!dr || !dr.width || this.reduced()) { setTimeout(finish, 200); return; }
-    const fr = face.getBoundingClientRect();
-    const dx = dr.left + dr.width / 2 - (fr.left + fr.width / 2), dy = dr.top + dr.height / 2 - (fr.top + fr.height / 2);
-    const s = Math.max(0.06, dr.width / fr.width);
-    const a = face.animate([
-      { transform: 'none', opacity: 1 },
-      { transform: 'translate(0,-14px) scale(1.05) rotate(-2deg)', opacity: 1, offset: 0.2 },
-      { transform: `translate(${dx}px, ${dy}px) scale(${s}) rotate(-14deg)`, opacity: 1, offset: 0.88 },
-      { transform: `translate(${dx}px, ${dy}px) scale(${s * 0.7}) rotate(-14deg)`, opacity: 0 },
-    ], { duration: this.FLY_MS, easing: 'cubic-bezier(.45,0,.35,1)', fill: 'forwards' });
-    let gone = false;
-    const once = () => { if (!gone) { gone = true; finish(); } };
-    a.onfinish = once;
-    setTimeout(once, this.FLY_MS + 500);
-  },
-  _msCss() {
-    if (document.getElementById('msCss')) return;
-    const st = document.createElement('style');
-    st.id = 'msCss';
-    st.textContent = `
-#msCard { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at 50% 46%, rgba(10,8,6,.55), rgba(6,5,4,.86) 70%); animation: msIn .3s ease-out both;
-  padding: env(safe-area-inset-top,0px) max(16px, env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(16px, env(safe-area-inset-left,0px)); }
-#msCard .msGlow { position: absolute; left: 50%; top: 48%; width: min(90vw, 520px); height: min(90vw, 520px); transform: translate(-50%,-50%);
-  background: radial-gradient(circle, var(--glow) 0%, transparent 62%); opacity: .8; pointer-events: none; animation: msPulse 2.4s ease-in-out infinite; }
-#msCard .msRays { position: absolute; left: 50%; top: 48%; width: min(110vw, 640px); height: min(110vw, 640px); transform: translate(-50%,-50%);
-  background: repeating-conic-gradient(from 0deg, rgba(255,240,200,.10) 0 6deg, transparent 6deg 22deg);
-  -webkit-mask: radial-gradient(circle, #000 18%, transparent 62%); mask: radial-gradient(circle, #000 18%, transparent 62%);
-  pointer-events: none; animation: msSpin 26s linear infinite; }
-#msCard .msCol { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; max-width: 420px; }
-#msCard .msEye { margin: 0; font: 600 12px/1.2 var(--menufont, Georgia, serif); letter-spacing: .14em; text-transform: uppercase; color: var(--tc); }
-#msCard .msHead { margin: 0 0 6px; font: 700 22px/1.2 var(--menufont, Georgia, serif); color: #f3e2b4; text-wrap: balance; text-shadow: 0 2px 0 #000; }
-#msCard .msStage { min-height: 120px; display: flex; justify-content: center; }
-#msCard .msStage .ccard { cursor: pointer; filter: drop-shadow(0 0 18px var(--glow)); }
-#msCard .msHint { margin: 4px 0 0; font: 13px/1.3 Georgia, serif; color: #cdbf9c; }
-#msCard .msClaim { min-width: 180px; margin-top: 6px; }
-#msCard.msGo { animation: msOut .5s ease-in .35s both; }
-#msCard.msGo .msClaim, #msCard.msGo .msHint { visibility: hidden; }
-@keyframes msIn { from { opacity: 0; } }
-@keyframes msOut { to { background: transparent; } }
-@keyframes msPulse { 50% { opacity: .55; } }
-@keyframes msSpin { to { transform: translate(-50%,-50%) rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { #msCard, #msCard .msGlow, #msCard .msRays { animation: none; } }`;
     document.head.appendChild(st);
   },
 

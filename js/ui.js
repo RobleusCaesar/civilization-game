@@ -196,6 +196,7 @@ const UI = {
       btn.appendChild(nm); btn.appendChild(co);
       if (key === 'wonder') { const pg = document.createElement('div'); pg.className = 'bprog'; btn.appendChild(pg); }
       btn.addEventListener('click', () => {
+        if (window.Scenarios && Scenarios.seen) Scenarios.seen(key);   // the NEW mark has done its job
         if (this.placing === key) { this.exitPlacement(); return; }   // tapping the lit button quits cleanly
         const tc = Bld.tcOf('P');
         if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
@@ -298,8 +299,18 @@ const UI = {
 
   refreshMenu() {
     const tc = Bld.tcOf('P');
+    // THE PROLOGUE shows only what its lesson has taught: hidden, never greyed (Scenarios.allows)
+    const allows = k => !(window.Scenarios && Scenarios.allows) || Scenarios.allows(k);
     document.querySelectorAll('.bbtn').forEach(b => {
       const key = b.dataset.key;
+      if (!allows(key)) {
+        if (b.style.display !== 'none') b.style.display = 'none';
+        if (this.placing === key) this.exitPlacement();
+        return;
+      }
+      if (key !== 'wonder' && b.style.display === 'none') b.style.display = '';
+      // …and a card it has just taught wears NEW until it is tapped
+      b.classList.toggle('new', !!(window.Scenarios && Scenarios.isNew && Scenarios.isNew(key)));
       if (key === 'wonder') {
         const show = this.wonderOffered();
         b.style.display = show ? '' : 'none';

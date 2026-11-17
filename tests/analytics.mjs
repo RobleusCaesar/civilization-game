@@ -326,6 +326,59 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
     `told ${res}; again ${JSON.stringify(told2.notes)}; a stranger ${(stranger.error || '').split('\n')[0]}`);
 }
 
+/* ============ 1f. THE JOURNEY'S CARD (0018's grant_prologue) ============
+   A new device plays three guided games (js/prologue.js); each WIN pays one
+   card of that game's tier — Bronze, Iron, Imperial — once per player, ever.
+   Only for a run this player won in that game's own mode (a real ending; the
+   same run asking again is a duplicate), only of the game's tier. 0018 is
+   pasted after 0016 and 0017, which narrow the telemetry checks again, so it
+   is applied a second time here first — and that must change nothing. Its
+   own database, like 1b. */
+{
+  const F18 = '0018_prologue.sql';
+  const twice = files.includes(F18) ? sql(readFileSync(join(MIG, F18), 'utf8')) : { error: F18 + ' is missing' };
+  ck('theJourneyFileTwiceChangesNothing', !twice.error, twice.error ? twice.error.split('\n')[0] : 'applied a second time cleanly');
+  make('cf_pro');
+  for (const f of files) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_pro' });
+  const P = n => '00000000-0000-0000-0000-0000000006' + String(n).padStart(2, '0');
+  const st = (n, run, mode) => `('${P(n)}', '${run}', 'run_start', '${mode}', null, null, now() - interval '2 hours')`;
+  const en = (n, run, mode, outcome, cause) => `('${P(n)}', '${run}', 'run_end', '${mode}', '${outcome}', '${cause}', now() - interval '1 hours')`;
+  const load = sql(`insert into auth.users (id) values ${[1, 2, 3].map(n => `('${P(n)}')`).join(', ')};
+    insert into public.profiles (id) select id from auth.users on conflict do nothing;
+    insert into public.telemetry (user_id, run_id, kind, mode, outcome, cause, created_at) values
+      ${[st(1, 'p1', 'prologue_1'), en(1, 'p1', 'prologue_1', 'win', 'hall'), st(1, 'p1b', 'prologue_1'), en(1, 'p1b', 'prologue_1', 'win', 'hall'),
+         st(1, 'p12', 'prologue_2'), en(1, 'p12', 'prologue_2', 'win', 'hall'),
+         st(1, 'p13', 'prologue_3'), en(1, 'p13', 'prologue_3', 'win', 'razed_rival_tc'),
+         st(2, 'p2', 'prologue_1'), en(2, 'p2', 'prologue_1', 'win', 'hall'),
+         st(3, 'c3', 'calm'), en(3, 'c3', 'calm', 'win', 'razed_rival_tc'),
+         st(3, 'l3', 'prologue_3'), en(3, 'l3', 'prologue_3', 'loss', 'tc_destroyed'),
+         st(3, 't3', 'prologue_1'), en(3, 't3', 'prologue_1', 'abandoned', 'closed_tab')].join(',\n      ')};
+    insert into public.telemetry (user_id, run_id, kind, mode, props) values
+      ('${P(1)}', 'p1', 'prologue', 'prologue_1', '{"ev":"beat","game":1,"beat":"open","i":0}');`, { db: 'cf_pro' });
+  ck('theTelemetryTakesTheJourneysRows', !load.error, load.error ? load.error.split('\n')[0] : 'prologue_1..3 runs and a prologue row land');
+  const pro = (n, run, game, card) => json(`set role authenticated; set request.jwt.claim.sub = '${P(n)}'; select public.grant_prologue(${lit(run)}, ${game}, ${lit(card)});`, { db: 'cf_pro' });
+  const qty = (n, card) => +(sql(`select coalesce((select qty from public.card_collection where user_id = '${P(n)}' and card_key = ${lit(card)}), 0);`, { db: 'cf_pro' }).out || -1);
+  const r = {
+    g1: pro(1, 'p1', 1, 'war_band'), again: pro(1, 'p1', 1, 'war_band'), second: pro(1, 'p1b', 1, 'watchfires'),
+    g2: pro(1, 'p12', 2, 'siege_train'), g3: pro(1, 'p13', 3, 'golden_age'),
+    tierIron: pro(2, 'p2', 1, 'siege_train'), tierOk: pro(2, 'p2', 1, 'war_band'),
+    nope: pro(3, 'nope', 1, 'war_band'), calm: pro(3, 'c3', 1, 'war_band'), lost: pro(3, 'l3', 3, 'golden_age'), closed: pro(3, 't3', 1, 'war_band'),
+    wrongGame: pro(2, 'p2', 2, 'siege_train'),
+  };
+  const say = o => o && (o.ok ? 'ok' + (o.already ? ' (already)' : '') : o.reason || o.error);
+  ck('eachJourneyWinPaysOneCardOfItsTier', r.g1.ok === true && r.g2.ok === true && r.g3.ok === true &&
+    qty(1, 'war_band') === 1 && qty(1, 'siege_train') === 1 && qty(1, 'golden_age') === 1,
+    `game 1 Bronze ${say(r.g1)}, game 2 Iron ${say(r.g2)}, game 3 Imperial ${say(r.g3)}`);
+  ck('andOnlyOnceAGameEver', r.again.ok === true && r.again.already === true && r.second.ok === false && r.second.reason === 'already_had' && qty(1, 'watchfires') === 0,
+    `the same run again ${say(r.again)}; another won run ${say(r.second)}`);
+  ck('andOnlyOfThatGamesTier', r.tierIron.ok === false && r.tierIron.reason === 'bad_card' && r.tierOk.ok === true,
+    `game 1 asking Iron ${say(r.tierIron)}, then Bronze ${say(r.tierOk)}`);
+  ck('andOnlyForARunWonInThatGame', r.nope.reason === 'no_run' && r.calm.reason === 'no_run' && r.lost.reason === 'no_run' && r.closed.reason === 'no_run' && r.wrongGame.reason === 'no_run',
+    `no run ${say(r.nope)}; a Calm win ${say(r.calm)}; a journey loss ${say(r.lost)}; a closed tab ${say(r.closed)}; game 1's run for game 2 ${say(r.wrongGame)}`);
+  const anon = json(`set role anon; select public.grant_prologue('p1', 1, 'war_band');`, { db: 'cf_pro' });
+  ck('andTheJourneysDoorIsShutToStrangers', !!anon.error && /permission denied/.test(anon.error), anon.error ? anon.error.split('\n')[0] : JSON.stringify(anon));
+}
+
 /* ============ 1d. THE WORLD BOARD (0014), on the real doors ============
    The operator, 2026-11-04: "make a bigger deal out of the top 3 players,
    then list everyone beneath them … the analytics page allows me to
@@ -790,6 +843,77 @@ const D30 = () => ({ p_token: TOKEN, p_from: new Date(Date.now() - 30 * 86400000
   sql(`delete from public.telemetry where user_id in (${[1, 2, 3, 4, 5].map(n => `'${Q(n)}'`).join(', ')}); delete from public.telemetry where user_id = '${U('a')}' and run_id = 'qa';`);
 }
 
+/* ================= 6e. THE PROLOGUE (0018's analytics_prologue) =================
+   The three guided games: each game's starts, finishes and median win time;
+   the journey player by player (a rung only counts players who won the one
+   before); every line of the Elder's, shown and done, with the hand's help;
+   the skips and the end screen's choices; and played-again-within-a-week for
+   players whose first game was the journey against everyone else's first
+   game. 0018 is applied again first (1c re-pasted 0016, which narrows the
+   kinds). Its rows are taken out again. */
+{
+  sql(readFileSync(join(MIG, '0018_prologue.sql'), 'utf8'));
+  const J = n => '00000000-0000-0000-0000-0000000007' + String(n).padStart(2, '0');
+  const st = (u, run, mode, ago) => `('${u}', '${run}', 'run_start', ${lit(mode)}, now() - interval '${ago}')`;
+  const en = (u, run, mode, ago, outcome, secs) => `('${u}', '${run}', 'run_end', ${lit(mode)}, now() - interval '${ago}', ${lit(outcome)}, ${lit(outcome === 'win' ? 'hall' : 'tc_destroyed')}, ${secs})`;
+  const ev = (u, run, ago, props) => `('${u}', ${lit(run)}, 'prologue', now() - interval '${ago}', ${lit(JSON.stringify(props))})`;
+  const runs = [
+    // J1: the whole journey, game 1 in 300 s, game 2 in 600 s, game 3 lost then won
+    st(J(1), 'j1a', 'prologue_1', '20 days'), st(J(1), 'j1b', 'prologue_2', '20 days'), st(J(1), 'j1c', 'prologue_3', '19 days'), st(J(1), 'j1d', 'prologue_3', '19 days'),
+    // J2: won game 1 (400 s), began game 2 and left it
+    st(J(2), 'j2a', 'prologue_1', '15 days'), st(J(2), 'j2b', 'prologue_2', '15 days'),
+    // J3: game 1 started, nothing came back (this week: its week has not passed)
+    st(J(3), 'j3a', 'prologue_1', '2 days'),
+    // J4: a player from before the journey: a Calm first game, played again in the week
+    st(J(4), 'c4', 'calm', '30 days'), st(J(4), 'c4b', 'calm', '28 days'),
+    // the left-out test device's journey
+    st(U('a'), 'jxa', 'prologue_1', '10 days'),
+  ];
+  const ends = [en(J(1), 'j1a', 'prologue_1', '20 days', 'win', 300), en(J(1), 'j1b', 'prologue_2', '20 days', 'win', 600),
+    en(J(1), 'j1c', 'prologue_3', '19 days', 'loss', 700), en(J(1), 'j1d', 'prologue_3', '19 days', 'win', 900),
+    en(J(2), 'j2a', 'prologue_1', '15 days', 'win', 400), en(U('a'), 'jxa', 'prologue_1', '10 days', 'win', 100)];
+  const evs = [
+    ev(J(1), 'j1a', '20 days', { ev: 'shown', game: 1, beat: 'open', i: 0 }), ev(J(1), 'j1a', '20 days', { ev: 'beat', game: 1, beat: 'open', i: 0, shown_ms: 2000, done_ms: 9000, hints: 0, hand: 0 }),
+    ev(J(1), 'j1a', '20 days', { ev: 'beat', game: 1, beat: 'open', i: 0, shown_ms: 2000, done_ms: 9000, hints: 0, hand: 0 }),   // a resent row counts once
+    ev(J(2), 'j2a', '15 days', { ev: 'shown', game: 1, beat: 'open', i: 0 }), ev(J(2), 'j2a', '15 days', { ev: 'beat', game: 1, beat: 'open', i: 0, shown_ms: 1000, done_ms: 21000, hints: 2, hand: 1 }),
+    ev(J(3), 'j3a', '2 days', { ev: 'shown', game: 1, beat: 'open', i: 0 }),
+    ev(J(1), 'j1a', '20 days', { ev: 'choice', game: 1, choice: 'journey' }), ev(J(2), 'j2a', '15 days', { ev: 'choice', game: 1, choice: 'random' }),
+    ev(J(3), null, '2 days', { ev: 'skip', from: 'title', game: 1, visit: 'v-j3' }),
+    ev(J(1), 'j1a', '20 days', { ev: 'beat', game: 1, beat: 'grow', i: 9, shown_ms: 'lots', done_ms: '9e99', hints: 'x' }),   // a hostile row counts, its junk does not
+    ev(U('a'), 'jxa', '10 days', { ev: 'shown', game: 1, beat: 'open', i: 0 }),
+  ];
+  const ld = sql(`
+    insert into auth.users (id) values ${[1, 2, 3, 4].map(n => `('${J(n)}')`).join(', ')} on conflict do nothing;
+    insert into public.profiles (id) select id from auth.users on conflict do nothing;
+    insert into public.telemetry (user_id, run_id, kind, mode, created_at) values ${runs.join(',\n')};
+    insert into public.telemetry (user_id, run_id, kind, mode, created_at, outcome, cause, seconds) values ${ends.join(',\n')};
+    insert into public.telemetry (user_id, run_id, kind, created_at, props) values ${evs.join(',\n')};`);
+  ck('theJourneysRowsLoad', !ld.error, ld.error ? ld.error.split('\n')[0] : `${runs.length + ends.length + evs.length} rows`);
+  const from = new Date(Date.now() - 40 * 864e5).toISOString();
+  const A = call('analytics_prologue', { p_token: TOKEN, p_from: from, p_to: null, p_everyone: false });
+  const g = n => (A.games || []).find(x => x.game === n) || {};
+  ck('eachJourneyGameIsCountedOnceWithItsWinTime', A.ok === true && g(1).started === 3 && g(1).won === 2 && g(1).open === 1 && g(1).median_win_seconds === 350 &&
+    g(2).started === 2 && g(2).won === 1 && g(3).started === 2 && g(3).won === 1 && g(3).lost === 1,
+    JSON.stringify(A.games));
+  const J0 = A.journey || {};
+  ck('theJourneyIsAFunnelPlayerByPlayer', J0.started1 === 3 && J0.won1 === 2 && J0.started2 === 2 && J0.won2 === 1 && J0.started3 === 1 && J0.won3 === 1, JSON.stringify(J0));
+  const open1 = (A.funnel || []).find(x => x.game === 1 && x.beat === 'open') || {};
+  ck('everyLineIsShownAndDoneOnceAGame', open1.shown === 3 && open1.done === 2 && open1.median_ms_to_done === 13500 && open1.hinted === 1 && open1.handed === 1,
+    JSON.stringify(open1));
+  const grow = (A.funnel || []).find(x => x.game === 1 && x.beat === 'grow') || {};
+  ck('andAHostileRowsJunkIsLeftOut', A.ok === true && grow.done === 1 && grow.median_ms_to_done == null && grow.hinted === 0, JSON.stringify(grow));
+  const ch = c => ((A.choices || []).find(x => x.game === 1 && x.choice === c) || {}).n;
+  ck('theSkipsAndTheEndScreensChoicesAreCounted', (A.skips || {}).title === 1 && ch('journey') === 1 && ch('random') === 1, JSON.stringify({ skips: A.skips, choices: A.choices }));
+  const ag = A.again || {};
+  ck('andPlayedAgainComparesTheJourneyWithFirstGamesBefore', (ag.prologue || {}).players === 3 && (ag.prologue || {}).n === 2 && (ag.prologue || {}).again === 2 &&
+    (ag.before || {}).again >= 1, JSON.stringify(ag));
+  const E = call('analytics_prologue', { p_token: TOKEN, p_from: from, p_to: null, p_everyone: true });
+  ck('theLeftOutDeviceCountsOnlyForEveryoneInTheJourneyToo', ((E.games || []).find(x => x.game === 1) || {}).started === 4, JSON.stringify(E.games));
+  const bad = call('analytics_prologue', { p_token: 'nope' });
+  ck('andTheJourneysDashboardDoorIsLocked', bad.ok === false && bad.reason === 'bad_token', JSON.stringify(bad));
+  sql(`delete from public.telemetry where user_id in (${[1, 2, 3, 4].map(n => `'${J(n)}'`).join(', ')}); delete from public.telemetry where user_id = '${U('a')}' and run_id = 'jxa';`);
+}
+
 /* ================= 8. WHAT THE REVIEW OF BUILD 107 FOUND (the database) =================
    Each check here was red on the dashboard as first committed (76c70e8).
    Their rows live far back in time (240–260 days, and the comparison's
@@ -826,7 +950,7 @@ const UNHOSTILE = `delete from public.telemetry where user_id = '00000000-0000-0
   // ONE function per name: an overload makes PostgREST answer 300
   const dup = sql(`select string_agg(proname || ' x' || n, ', ') from (select proname, count(*) n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
                    where s.nspname = 'public' and proname in ('analytics__games', 'analytics__window', 'analytics_dashboard', 'analytics_compare',
-                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic', 'analytics_first_minute', 'analytics_first_quick')
+                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic', 'analytics_first_minute', 'analytics_first_quick', 'analytics_prologue', 'grant_prologue')
                    group by proname having count(*) > 1) x;`).out;
   ck('andNoDoorIsLeftWithAnOverload', dup === '', dup || 'one function per name, after two applications');
 }

@@ -1013,7 +1013,7 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   const atTitle = (await steps()).map(x => x.props.step);
   const press = sel => p.evaluate(q => document.querySelector(q).click(), sel);
   await press('#btnTitleNew');
-  // a fresh device's first game skips the difficulty (CFG.FIRST_QUICK, tests/first-quick.mjs)
+  // the prologue (js/prologue.js) stands down under automation, so New Game opens the difficulty
   await p.waitForFunction(() => Screens.current === 'newgame' || Screens.current === 'draft', null, { timeout: 10000 });
   if (await p.evaluate(() => Screens.current === 'newgame')) {
     await press('#ngMode .dcard[data-v="moderate"]'); await p.waitForTimeout(150);
@@ -1077,6 +1077,56 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
     by('hide').props.last === 'play60' && by('playable').props.fresh === true, JSON.stringify(by('hide').props));
   ck('theFirstMinutePageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
   await p.close();
+}
+
+// ---- 12. THE PROLOGUE'S GUIDE (js/prologue.js, Backend.lesson, migration 0018) ----
+/* A new device's first game is the journey's first (the prologue stands down
+   under automation unless the link asks for it). The game is logged in its
+   own mode; every line the Elder shows is a 'prologue' row when it is shown
+   and when it is done, with the moment of each; every row carries the page's
+   visit, the form and whether the device is new; a skip from the title is
+   no run's. */
+{
+  const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  await p.goto('file://' + join(root, 'index.html') + '?prologue=reset', { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady() && window.Boot && Boot.done && document.getElementById('btnBegin'), null, { timeout: 30000 });
+  const rows = kind => p.evaluate(k => __MOCK.st.calls.filter(c => c.path === '/telemetry').flatMap(c => c.body || []).filter(x => x.kind === k), kind);
+  await p.evaluate(() => document.getElementById('btnBegin').click());
+  await p.waitForFunction(() => Screens.current === 'playing' && !Screens._entering, null, { timeout: 60000 });
+  await p.waitForTimeout(500);
+  // the first line's deed, by the game's own order, on the sim's clock
+  await p.evaluate(() => { const [bx, by] = Scenarios.live().marks.berries; Units.assignGather(Prologue.vils()[0], bx, by); for (let i = 0; i < 160; i++) G.simStep(0.05, 0.05); });
+  await p.waitForTimeout(300);
+  const L = await rows('prologue'), runId = await p.evaluate(() => Backend.runId);
+  const rs = (await rows('run_start')).find(x => x.run_id === runId) || {};
+  const ev = (e, beat) => L.find(x => x.props && x.props.ev === e && (!beat || x.props.beat === beat));
+  const start = ev('start'), shown = ev('shown', 'open'), done = ev('beat', 'open');
+  ck('theJourneysFirstGameIsLoggedInItsOwnMode', rs.mode === 'prologue_1' && !!start && start.props.game === 1 && start.mode === 'prologue_1' && start.run_id === runId,
+    `run_start ${rs.mode}; start ${start && JSON.stringify(start.props)}`);
+  ck('eachLineIsReportedShownThenDone', !!shown && !!done && shown.props.i === 0 && done.props.game === 1 && done.run_id === runId &&
+    Number.isInteger(done.props.shown_ms) && Number.isInteger(done.props.done_ms) && done.props.done_ms >= done.props.shown_ms && Number.isInteger(done.props.hints),
+    done ? JSON.stringify(done.props) : 'no beat row: ' + L.map(x => x.props.ev + ':' + x.props.beat).join(', '));
+  ck('andEveryRowCarriesTheVisitTheFormAndFirst', L.length >= 3 && L.every(x => /^[A-Za-z0-9_-]{1,64}$/.test(x.props.visit) && ['phone', 'tablet', 'desktop'].includes(x.props.form) && typeof x.props.first === 'boolean'),
+    L.length + ' rows');
+  ck('theJourneysPageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
+  // the journey skipped from the title: two taps, a row that is no run's, and the title's own menu back
+  const q = await b.newPage({ viewport: { width: 390, height: 844 } });
+  await q.addInitScript(MOCK);
+  await q.goto('file://' + join(root, 'index.html') + '?prologue=reset', { waitUntil: 'domcontentloaded' });
+  await q.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady() && window.Boot && Boot.done && document.getElementById('btnSkipJourney'), null, { timeout: 30000 });
+  await q.evaluate(() => document.getElementById('btnSkipJourney').click());
+  await q.waitForTimeout(250);
+  const oneTap = await q.evaluate(() => Prologue.active());
+  await q.evaluate(() => document.getElementById('btnSkipJourney').click());
+  await q.waitForTimeout(600);
+  const sk = (await q.evaluate(() => __MOCK.st.calls.filter(c => c.path === '/telemetry').flatMap(c => c.body || []).filter(x => x.kind === 'prologue' && x.props.ev === 'skip')));
+  const after = await q.evaluate(() => ({ active: Prologue.active(), newVis: !!(document.getElementById('btnTitleNew') && document.getElementById('btnTitleNew').offsetParent) }));
+  ck('aSkipTakesTwoTapsAndIsNoRunsRow', oneTap === true && after.active === false && after.newVis && sk.length === 1 && sk[0].props.from === 'title' && sk[0].run_id == null,
+    `one tap: active ${oneTap}; two: ${JSON.stringify(after)}; rows ${JSON.stringify(sk.map(x => [x.props.from, x.run_id]))}`);
+  await q.close();
 }
 
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);

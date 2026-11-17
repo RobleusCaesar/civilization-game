@@ -496,6 +496,34 @@ const Backend = {
       return true;
     } catch (e) { return false; }
   },
+  /* THE PROLOGUE'S GUIDE (js/prologue.js; migration 0018's analytics_prologue;
+     tests/telemetry.mjs §12): one 'prologue' row per event —
+       start   a journey game entered                  { game }
+       shown   a beat first shown                      { game, beat, i }
+       beat    a beat completed                        { game, beat, i, shown_ms, done_ms, hints, hand }
+       finish  a journey game ended                    { game, outcome, seconds }
+       skip    "Skip the journey"                      { from: 'title' | 'game', game }
+       choice  the end screen's button, or the naming  { game, choice }
+     with the page's visit, first and form like a step, the world's mode, and
+     its run id (a skip from the title carries none). The rows ride the steps'
+     queue, so they wait on the device until the sign-in lands, and every gate
+     _emit has holds — the live site only, never a test build. */
+  LESSON_EVS: ['start', 'shown', 'beat', 'finish', 'skip', 'choice'],
+  lesson(ev, extra) {
+    try {
+      if (this.LESSON_EVS.indexOf(ev) < 0) return false;
+      if (!this._stepQ) { this._stepSeen = this._stepSeen || {}; this._stepQ = []; }
+      const props = Object.assign({ ev, visit: this.visit(), first: !this._prior }, this.formFacts());
+      for (const k in (extra || {})) props[k] = extra[k];
+      const world = typeof S !== 'undefined' && S && S.scenario ? S : null;
+      const inRun = !!world && !(ev === 'skip' && props.from === 'title');
+      this._stepQ.push({ kind: 'prologue', run_id: inRun ? (this.runId || null) : null,
+        mode: world ? (world.mode || null) : null, device: this.deviceKind(), props });
+      if (this._stepQ.length > 90) this._stepQ.splice(0, this._stepQ.length - 90);
+      this.flushSteps();
+      return true;
+    } catch (e) { return false; }
+  },
   flushSteps() {
     if (!this._stepQ || !this._stepQ.length) return;
     if (!this.telemetryOn || !this.isReady() || !this.uid) return;   // kept until the sign-in lands

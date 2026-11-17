@@ -54,7 +54,7 @@ const G = {
     }
     // lean AGAINST the map: the scarce resource gets a head start back
     if (res[gen.scarce] !== undefined) res[gen.scarce] += O.scarceLean;
-    // THE FIRST GAME starts richer (CFG.MODES.first_quick.startResMult) — no draw moves
+    // a profile may start richer (a mode's startResMult) — no draw moves
     const srm = (CFG.MODES[mode] || {}).startResMult;
     if (srm > 0 && srm !== 1) for (const k of keys) res[k] = Math.round(res[k] * srm);
     // a dry start (no water within reach) carries extra food
@@ -133,6 +133,12 @@ const G = {
   newGame(seed, modeKey, sizeKey, persona, tunic) {
     // nothing painted while the world is being assembled (R.holdTerrain)
     R.holdTerrain();
+    /* THE PROLOGUE'S WORLDS (js/scenarios.js): an authored world rides
+       G._scenario for exactly this founding (Scenarios.found). Its rules over
+       CFG come off first, whoever founds next — the scenario puts its own
+       back below, once S exists. */
+    if (window.Scenarios && Scenarios.restore) Scenarios.restore();
+    const sc = (window.Scenarios && this._scenario) || null;
     // the crash net's cadence counts from THIS world: a second game in one
     // sitting saved nothing until it passed the last one's day (finished-run-continue §6)
     if (window.Backend) Backend._lastAutosaveDay = 0;
@@ -148,7 +154,7 @@ const G = {
     const mode = CFG.MODES[modeKey] ? modeKey : 'moderate';
     const size = CFG.SIZES[sizeKey] ? sizeKey : 'medium';
     CFG.W = CFG.H = CFG.SIZES[size];
-    const gen = MapGen.generate(seed, mode);
+    const gen = sc ? Scenarios.gen(sc) : MapGen.generate(seed, mode);
     // village tunic colours — your people vs the rival's, at a glance. The rival
     // always takes a contrasting colour so the two never blur together.
     const pTunic = (Sprites.villager && Sprites.villager[tunic]) ? tunic : 'blue';
@@ -166,7 +172,10 @@ const G = {
       paused: false, over: null,
       played: false,                        // has the playing screen ever shown this world (Screens.show)
       runId: null,                          // analytics: the run_start's id, so a CONTINUED save ends the same run
-      milestone: null,                      // the day a first game's milestone card was paid (Bld.milestone)
+      scenario: null,                       // THE PROLOGUE: the authored world this run plays (js/scenarios.js), else null
+      allow: null,                          // …its build menu (keys shown; hidden, never greyed) — null: the whole menu
+      allowNew: null,                       // …and the keys just unlocked, worn as "new" until tapped
+      pro: null,                            // …and where the Elder's script stands (js/prologue.js)
       res: Object.assign({}, CFG.START_RES),
       wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
       wonder: null,                         // this run's ANCIENT WONDER key (set by G.setWonder, below)
@@ -251,30 +260,37 @@ const G = {
     // which ANCIENT WONDER this run may raise — hashed off the seed, so it
     // never disturbs the run's own RNG sequence (see G.rollWonder)
     this.setWonder(this.rollWonder(seed).key);
+    if (sc) Scenarios.apply(sc.id);   // its rules over CFG, for as long as this world is live
     const p = gen.spawns.player;
     G.clearFootprint(p.x, p.y, 'tc');
     Bld.place('P', 'tc', p.x, p.y, { free: true, instant: true });
     this.reveal(p.x, p.y, 6);
     // VARIABLE OPENINGS: roll the start package (seeded — a seed reproduces it)
     const pk = this.rollStart(gen, mode, gen.spawns.player);
-    S.res = pk.res;
-    // THE TEST PAGE IS A SANDBOX (CFG.TEST_PAGE): a run founded on a test
-    // build starts with plenty of every good, so every storey and upgrade can
-    // be tried at once. Never the live site (Backend.testSlot answers no
-    // there), never the title's demo world, and no RNG is drawn for it.
-    if (this.testPage() && !(typeof Screens !== 'undefined' && Screens._demo))
-      for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = Math.max(S.res[k] || 0, CFG.TEST_PAGE.res);
     S.stats.originBonus = pk.originBonus;
     S.origin = pk.origin;
-    for (let i = 0; i < pk.villagers; i++)
-      Units.spawn('villager', 'P', p.x - 1 + (i % 4), p.y + 2 + (i / 4 | 0));
-    for (const ex of pk.extras) this.applyStartExtra(ex, p, gen);
+    if (!sc) {
+      S.res = pk.res;
+      // THE TEST PAGE IS A SANDBOX (CFG.TEST_PAGE): a run founded on a test
+      // build starts with plenty of every good, so every storey and upgrade can
+      // be tried at once. Never the live site (Backend.testSlot answers no
+      // there), never the title's demo world, and no RNG is drawn for it.
+      // (Never a prologue world either: it is played as a new player plays it.)
+      if (this.testPage() && !(typeof Screens !== 'undefined' && Screens._demo))
+        for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = Math.max(S.res[k] || 0, CFG.TEST_PAGE.res);
+      for (let i = 0; i < pk.villagers; i++)
+        Units.spawn('villager', 'P', p.x - 1 + (i % 4), p.y + 2 + (i / 4 | 0));
+      for (const ex of pk.extras) this.applyStartExtra(ex, p, gen);
+    }
     // the rival rolls its own package (same bands), then ORIGIN CARDS deals
     // both hands: the rival keeps a card at once (the card IS its persona);
     // the player's hand waits in S.draft for the draft screen / Cards.pick
     const pkA = this.rollStart(gen, mode, gen.spawns.ai);
-    AI.init(gen.spawns.ai, pkA);
-    /* THE FIRST GAME SHOWS WHERE THE RIVAL LIVES (CFG.MODES.first_quick
+    // an authored world puts down its own people, buildings, animals and
+    // relic, and seats the rival itself (Scenarios.populate)
+    if (sc) Scenarios.populate(sc, p, pkA);
+    else AI.init(gen.spawns.ai, pkA);
+    /* A PROFILE MAY SHOW WHERE THE RIVAL LIVES (CFG.MODES.prologue_3
        .revealRival): its hall's ground is charted and the hall remembered,
        so the road to "raze their hall" is on the map from day one */
     if ((CFG.MODES[mode] || {}).revealRival) {
@@ -285,6 +301,8 @@ const G = {
       }
     }
     Cards.deal(pk, pkA, persona);
+    // a prologue world that deals no origin cards answers its draft at once
+    if (sc && !sc.draft) Scenarios.closeDraft();
     S.opening = { player: pk,
       rival: { villagers: pkA.villagers, res: pkA.res, rich: pkA.rich, poor: pkA.poor,
                econ: pkA.econ, card: S.draft.rival.pick.key } };
@@ -296,18 +314,20 @@ const G = {
        country is dangerous from day one and a lone villager sent across the
        map is a villager sent past somebody's spears. */
     this.plantTribalCamps(gen.spawns.camps || []);
-    // …and the wild country hides ONE thing worth stumbling on (js/relics.js —
-    // reads the finished map, writes nothing to it, seeded off the map seed)
-    if (window.Relics) Relics.place(gen);
-    // …and a band within reach of EACH seat, so both sides start with a hunt
-    // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
-    {
-      // the home ground is thin on game (CFG.WILD_HOME): 30% of the band, never none
-      const g = (CFG.START_RESOURCE || {}).game || 4, keep = (CFG.WILD_HOME || {}).keep;
-      for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g, keep);
+    if (!sc) {
+      // …and the wild country hides ONE thing worth stumbling on (js/relics.js —
+      // reads the finished map, writes nothing to it, seeded off the map seed)
+      if (window.Relics) Relics.place(gen);
+      // …and a band within reach of EACH seat, so both sides start with a hunt
+      // they could go and make (a lodge needs a killing ground — CFG.START_RESOURCE)
+      {
+        // the home ground is thin on game (CFG.WILD_HOME): 30% of the band, never none
+        const g = (CFG.START_RESOURCE || {}).game || 4, keep = (CFG.WILD_HOME || {}).keep;
+        for (const s of [gen.spawns.player, gen.spawns.ai]) Units.seedGameNear(s.x, s.y, g, keep);
+      }
+      Units.spawnHerd('deer', 8);
+      Units.spawnHerd('cow', 8);
     }
-    Units.spawnHerd('deer', 8);
-    Units.spawnHerd('cow', 8);
     /* SPECIAL EVENTS — one roll for the whole game (CFG.SPECIALS,
        tests/specials.mjs): at most ONE event, `chance` of games get any, and
        the pick is WEIGHTED over the events this map can actually stage
@@ -321,7 +341,8 @@ const G = {
     {
       const SP = CFG.SPECIALS, KR = CFG.KRAKEN;
       const u0 = G.rand(), u1 = G.rand(), u2 = G.rand();
-      S.special = this.pickSpecial(mode, u0, u1);
+      // (a prologue world rolls no event: its clock is its lesson's)
+      S.special = sc ? null : this.pickSpecial(mode, u0, u1);
       S.specialDay = 0;   // the day the armed event FIRED (G.specialFired) — telemetry
       // the kraken's visit comes DELAY days after the first hull on open water
       S.kraken = { avail: S.special === 'kraken', done: {}, ev: null, launch: 0, day: 0,
@@ -358,6 +379,7 @@ const G = {
     this.countWearRoads();  // a new world has no roads (the route search's gate)
     this._eclFree = null;   // nobody carries a broken stare into another world
     R.onNewGame();
+    if (sc) Scenarios.camera(sc);   // the authored opening view
     this.updateVisibility();
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // ghost, grid, ✓/✗ — all of it
@@ -367,15 +389,19 @@ const G = {
                          // inherit a stale cooldown on whatever unit id collides with an old one
     UI._threatAt = -1e9; UI._threatC = null;   // the hall's emergency calls start a world hidden
     if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
+    if (window.Prologue) Prologue.onWorldChange();   // the Elder's script is this world's (js/prologue.js)
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // the deck's sheet, aim and flight (nothing, with cards off)
     document.getElementById('btnPause').textContent = '⏸';
     // opening notes linger twice as long — there's a lot to take in on day 1
-    const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
-    this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`, false, 6400);
-    this.log('🏕 ' + S.origin, false, 6400);
-    this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, false, 6400);
-    this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
+    // (a prologue world's first words are the Elder's — js/prologue.js)
+    if (!sc) {
+      const LAND = { valley: 'a green valley', lakeland: 'a land of lakes', highlands: 'rugged highlands', islands: 'a chain of islands' };
+      this.log(`A new tribe settles ${LAND[gen.landform] || 'the wilds'} (${this.modeCfg().name}). Destroy the rival Town Center to win.`, false, 6400);
+      this.log('🏕 ' + S.origin, false, 6400);
+      this.log(`Scouts report: ${gen.scarce} is scarce in this valley — claim it before the rival does.`, false, 6400);
+      this.log('First barbarian raids expected around day ' + S.wave.next, false, 6400);
+    }
     this.warmTribes();
     this.warmFx();
     // villager tier art for both halls, now the tunics are rolled (phase-1:
@@ -2902,6 +2928,11 @@ const G = {
     // the run is over: its save slot is stamped finished and the crash net
     // cleared — the title's Continue will not walk back into a told story
     if (window.Backend) Backend.finalizeRun();
+    /* THE PROLOGUE KEEPS ITS PLACE AND HAS THE LAST WORD (js/prologue.js):
+       a won journey game is booked done on the device at once, and the
+       Elder's closing line (and, after the first game, the chief's name)
+       plays before the end screen — the run is over, only the screen waits */
+    if (window.Prologue && Prologue.holdEnd) { let held = false; try { held = Prologue.holdEnd(win, msg, cause); } catch (e) {} if (held) return; }
     /* THE HALL FALLS BEFORE THE CURTAIN (R.startHallFall, tests/hall-fire.mjs):
        a hall the player SEES coming down is the run's last beat, so the end
        screen waits R.HALL_FIRE.holdMs for the camera, the fall, the thud and
@@ -3054,6 +3085,12 @@ const G = {
     if (data.map.terrain.length !== w * h)
       throw new Error('not a Clanfire save file');
     CFG.W = w; CFG.H = h;
+    // THE PROLOGUE's rules over CFG belong to the world they were made for:
+    // off for any load, back on for a prologue save (js/scenarios.js)
+    if (window.Scenarios && Scenarios.restore) {
+      Scenarios.restore();
+      if (data.scenario && Scenarios.def(data.scenario)) Scenarios.apply(data.scenario);
+    }
     // …and the crash net's cadence counts from the world just loaded (§6 too)
     if (window.Backend) Backend._lastAutosaveDay = 0;
     // size labels shifted a tier (old small/medium/large → medium/large/xlarge):
@@ -3208,7 +3245,10 @@ const G = {
       data.draft = { hand: [], leanKeys: [], rival: { hand: [], pick: null }, intel: 'none', done: true, pickI: null };
     if (!data.playtime) data.playtime = 0;
     if (data.played === undefined) data.played = true;   // a save is a world somebody played
-    if (data.milestone === undefined) data.milestone = null;
+    if (data.scenario === undefined) data.scenario = null;   // THE PROLOGUE (js/scenarios.js)
+    if (data.allow === undefined) data.allow = null;
+    if (data.allowNew === undefined) data.allowNew = null;
+    if (data.pro === undefined) data.pro = null;              // …and where its Elder's script stood
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',
@@ -3370,6 +3410,7 @@ const G = {
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     UI._threatAt = -1e9; UI._threatC = null;
     if (window.Tutorial) Tutorial.onWorldChange();
+    if (window.Prologue) Prologue.onWorldChange();   // a prologue save picks its script up where it was
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // a load mid-aim puts the card back, untouched
     this._marvel = false;   // a save loaded mid-marvel is just a save
@@ -3513,6 +3554,12 @@ const G = {
         // the rival sees as it walks, not only at dawn (AI.glance): twice more a day
         { const third = (S.dayT * 3 / CFG.DAY_MS) | 0;
           if (third !== G._glT) { G._glT = third; if (third > 0 && S.ai && AI.glance) AI.glance(); } }
+        /* THE PROLOGUE'S GUIDE (js/prologue.js) reads the world on the SIM's
+           clock, so the scripted harness (tools/ai-harness.mjs, which never
+           runs G.frame) plays it exactly as a player does; its pictures are
+           G.frame's (Prologue.frame). Real seconds: a line's reading time is
+           a person's. One falsy read outside a prologue world. */
+        if (S.scenario && window.Prologue && Prologue.simTick) Prologue.simTick(dt);
         /* G.autosave is GONE, on purpose: it serialized the ENTIRE game
            state (a multi-megabyte JSON.stringify) every 10 real seconds
            into a field nothing ever read — a metronome of frame hitches
@@ -3597,7 +3644,8 @@ const G = {
          its draws keep — never for the title's demo, never a draw. Guarded on
          the method, so a cached older terrain.js simply stands down. */
       else if (window.TerrainX && TerrainX.prefetch && TerrainX.on && TerrainX.ready && !S.over && window.Screens &&
-               !Screens._demo && (Screens._entering || (S.played === false && Screens.current === 'draft')) &&
+               !Screens._demo && (Screens._entering || (S.played === false && (Screens.current === 'draft' ||
+                 (Screens.current === 'title' && S.scenario)))) &&
                performance.now() - (G._pfT || 0) >= (Screens._entering ? 0 : G.PREFETCH_MS)) {
         // behind the plaque the press is waiting on this ground (enterGame): every frame, and
         // every arrival in; behind the draft the cards are moving, so a glance rate and one
@@ -3618,6 +3666,9 @@ const G = {
       // one falsy check and nothing else — no DOM, no listeners, no scans
       if (S.tut && S.tut.on && window.Tutorial)
         G._safe(() => Tutorial.tick(dt), 'tutorial');
+      // THE PROLOGUE's Elder, pulse, hand and goal (js/prologue.js): its
+      // pictures every frame, paused or not; one falsy read elsewhere
+      if (window.Prologue && Prologue.frame && (S.scenario || Prologue.up)) G._safe(() => Prologue.frame(dt), 'prologue');
       // THE CARD SYSTEM's in-game deck (js/deckui.js): with the switch off this
       // is one falsy read — no DOM, no listeners, nothing built. It runs after
       // UI.refresh on purpose: a resource number counting up holds the bar.

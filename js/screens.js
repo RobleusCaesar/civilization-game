@@ -127,8 +127,8 @@ const Screens = {
     // leaving the game takes the victory modal with it (it was stamped seen
     // when shown, so it never comes back over a resumed or reloaded world)
     if (name !== 'playing' && this.hideVictoryPaths) this.hideVictoryPaths();
-    // the milestone card is already in the deck: leaving the game just ends its ceremony
-    if (name !== 'playing' && window.DeckScreens && DeckScreens.milestoneDrop) DeckScreens.milestoneDrop();
+    // the Elder speaks over the playing screen only (js/prologue.js)
+    if (window.Prologue && Prologue.onScreen) { try { Prologue.onScreen(name); } catch (e) {} }
     // the card announcement stands over one screen only (js/cardintro.js):
     // leaving it takes the announcement away — a no-op when none is open
     if (window.CardIntro) { try { CardIntro.onScreen(name); } catch (e) {} }
@@ -164,6 +164,10 @@ const Screens = {
        instead; New game → the same trial resumes it, any explicit act that
        replaces S (Continue, Load, a different trial) forfeits it honestly. */
     if (window.S && S.draft && !S.draft.done && !S.over) return;
+    /* THE PROLOGUE'S NEXT WORLD OUTRANKS THE DEMO (js/prologue.js): a new
+       device's next journey game is founded behind the title so BEGIN opens
+       it at once — the demo never rolls over it */
+    if (window.S && window.Prologue && Prologue.holding && Prologue.holding()) return;
     this._demo = true;
     /* THE DEMO BAKES ONCE, WITH THE ART. Founded here at page load, it used
        to bake at once — procedural, since no PNG had decoded yet — and then
@@ -282,6 +286,8 @@ const Screens = {
   },
 
   onTitle() {
+    // a new device's journey founds its next world here, in place of the demo
+    if (window.Prologue && Prologue.preload) { try { Prologue.preload(); } catch (e) { console.error('prologue preload', e); } }
     this.ensureDemo();
     this.armCardPrep();
     this.backTo = 'title';
@@ -303,7 +309,7 @@ const Screens = {
     };
     if (window.Backend && Backend.isReady()) {
       Backend.listSaves().then(r => {
-        if (r.ok && Array.isArray(r.data)) this._cloudSaves = r.data.length;   // the first game asks (firstQuickWanted)
+        if (r.ok && Array.isArray(r.data)) this._cloudSaves = r.data.length;   // the prologue asks (Prologue.eligible)
         const rows = ((r.ok && r.data) || []).slice()
           .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
         /* a run that FINISHED is a told story in ALL its snapshots, not just
@@ -344,6 +350,8 @@ const Screens = {
     // THE NIGHT TITLE (js/titlescreen.js) — staged; an early return everywhere else.
     // After the deck's plaque, so the Cards plaque is dressed with the rest.
     if (window.TitleScreen) { try { TitleScreen.onTitle(); } catch (e) { console.error('night title', e); } }
+    // THE PROLOGUE's title: one dominant BEGIN and a small skip (js/prologue.js)
+    if (window.Prologue && Prologue.onTitle) { try { Prologue.onTitle(); } catch (e) { console.error('prologue title', e); } }
   },
 
   /* CONTINUE WORKS THE FIRST TIME (PX-21a, tests/finished-run-continue.mjs
@@ -813,13 +821,10 @@ const Screens = {
     const pinRaw = (location.search.match(/[?&]seed=([^&]+)/) || [])[1] || '';
     this._pinnedRun = !!pinRaw && !this.tutorialExplicit();
     const tut = this.tutorialWanted() && !this._pinnedRun;
-    // THE FIRST GAME's world is the profile's (CFG.FIRST_QUICK): smallest, Valley · Classic
-    const FQ = CFG.FIRST_QUICK, fq = !!(FQ && p.mode === FQ.MODE);
     const lean = this.SIZE_LEAN[p.mode] || this.SIZE_LEAN.moderate;
     let roll = Math.random(), size = lean[0][0];
     for (const [k, w] of lean) { if ((roll -= w) <= 0) { size = k; break; } }
     if (tut) size = 'medium';
-    if (fq) size = FQ.SIZE;
     /* A PINNED WORLD (?seed=…&size=…): the URL names the seed and the run
        founds exactly that world instead of rolling one — the replay door
        for a seed read off the victory screen, and the only way to reach a
@@ -851,12 +856,12 @@ const Screens = {
         history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
       } catch (e) { /* an exotic embedder without history — the pin just stays */ }
     } else {
-      const wantLf = fq ? FQ.LANDFORM : tut ? 'valley'
+      const wantLf = tut ? 'valley'
         : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
       for (let i = 0; i < 160; i++) {
         const s = String((Math.random() * 1e9) | 0);
         const g = MapGen.generate(s, undefined, true);   // the name alone (MapGen.generate's peek)
-        if (g.landform === wantLf && (fq ? g.variant === FQ.VARIANT : (!tut || g.variant === 'classic'))) { seed = s; break; }
+        if (g.landform === wantLf && (!tut || g.variant === 'classic')) { seed = s; break; }
       }
       if (!seed) seed = String((Math.random() * 1e9) | 0);   // the roll stands anyway
     }
@@ -895,8 +900,8 @@ const Screens = {
      as a reminder of what the tribe carries; a tap waves it away early.
      A player who wants a FRESH world goes Menu → New Game. */
   replayRun() {
-    // the first game is never replayed as itself: game two is the ordinary trial screen
-    if (window.S && CFG.FIRST_QUICK && S.mode === CFG.FIRST_QUICK.MODE) { this.backTo = 'title'; this.show('newgame'); return; }
+    // a prologue game replays as itself: its own authored world, afresh (Prologue.retry)
+    if (window.S && S.scenario && window.Prologue && Prologue.retry) { Prologue.retry(); return; }
     const ok = window.S && S.seed != null && CFG.SIZES[S.sizeKey];
     if (!ok) { this.backTo = 'title'; this.show('newgame'); return; }   // nothing to replay
     const r = {
@@ -977,29 +982,13 @@ const Screens = {
     const v = this.lsGet('neo-tutorial-ask');
     if (v === '1') return true;
     if (v === '0') return false;
+    // a device the prologue has taught (or that skipped it) is never handed the old lesson by default
+    if (window.Prologue && Prologue.taught && Prologue.taught()) return false;
     return this.gamesFounded() < this.TUT_AUTO_GAMES;
   },
   tutorialExplicit() { return this.lsGet('neo-tutorial-ask') === '1'; },
-  /* THE FIRST GAME (CFG.FIRST_QUICK, build 178): a device that has founded no
-     game, with no game of its own in the cloud and no card history, plays the
-     short first_quick profile — never told, never offered on a menu. A shared
-     ?seed= link still overrides (the pin founds the world it names, at the
-     difficulty chosen). Game two on is the ordinary trial screen. */
+  // how many cloud saves this player holds (onTitle's listSaves; 0 until it answers)
   _cloudSaves: 0,
-  firstQuickWanted() {
-    const FQ = CFG.FIRST_QUICK;
-    if (!FQ || !FQ.ON || !CFG.MODES[FQ.MODE]) return false;
-    if (/[?&]seed=/.test(location.search)) return false;
-    if (this.gamesFounded() > 0 || this._cloudSaves > 0) return false;
-    try {
-      if (window.Deck && Deck.col) {
-        const c = Deck.col(), starter = (CFG.CARDS && CFG.CARDS.STARTER) || [];
-        if (Object.keys(c.runs || {}).length) return false;                     // a run already earned or ended
-        if (Object.keys(c.counts || {}).some(k => !starter.includes(k))) return false;   // a card won before
-      }
-    } catch (e) {}
-    return true;
-  },
   // the world foundRun forces for a lesson: the only one the lesson promises
   teachableWorld() {
     return !!(window.S && S.map && S.map.landform === 'valley' && S.map.variant === 'classic' && S.sizeKey === 'medium');
@@ -1046,7 +1035,7 @@ const Screens = {
   // (js/deckui.js) — a lesson note under a card is two things to read at once
   modalUp() {
     return (this._modalUp && !!document.getElementById('victoryModal')) ||
-      !!(window.DeckScreens && DeckScreens.milestoneUp && DeckScreens.milestoneUp()) ||
+      !!(window.Prologue && Prologue.modalUp && Prologue.modalUp()) ||
       !!(window.DeckUI && DeckUI.hasFloor());
   },
   hideVictoryPaths() {
@@ -1059,8 +1048,8 @@ const Screens = {
     this.hideVictoryPaths();
     this.lsSet('neo-victory-seen', '1');
     this._modalUp = true;
-    // the price and the days THIS run asks (a first game's monument is scaled:
-    // CFG.MODES.first_quick.wonderCost / wonderTime) — the modal must stay true
+    // the price and the days THIS run asks (a profile's monument may be scaled:
+    // CFG.MODES.prologue_3.wonderCost / wonderTime) — the modal must stay true
     const d = CFG.BUILDINGS.wonder, lv = (d.levels || [])[0] || {};
     const cost = (Bld.effCost && Bld.effCost('P', 'wonder')) || lv.cost || {};
     const days = Math.max(1, Math.round((lv.time || 45) * (Bld.wonderTimeMult ? Bld.wonderTimeMult() : 1)));
@@ -1212,6 +1201,8 @@ const Screens = {
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
     this.syncTutToggle();
+    // a prologue draft is part of its lesson: the old lesson's switch is not offered there
+    { const tt = this.el('btnTutToggle'); if (tt) tt.style.display = (window.S && S.scenario) ? 'none' : ''; }
     /* SETTINGS CAN TICK THE LESSON ON TOO (js/settings.js). A pending draft on
        a world the lesson cannot teach is founded again here — the draft
        toggle's own rule (audit MAP-V01) — so the lesson is never armed on an
@@ -1281,7 +1272,7 @@ const Screens = {
          And the games-founded count steps AFTER the arming read, so game
          two reads 1, not 2. A PINNED run (a shared ?seed= link that beat an
          auto want, foundRun) arms nothing and spends nothing. */
-      if (!this._pinnedRun) {
+      if (!this._pinnedRun && !(window.S && S.scenario)) {
         if (window.Tutorial) Tutorial.maybeStart();
         this.noteGameFounded();
       }
@@ -1290,7 +1281,7 @@ const Screens = {
          screen is actually up: on a cold cache enterGame parks behind the
          art plaque for seconds, and a modal appended under the shell then
          was stamped seen, its Escape live, and invisible */
-      this._victoryPathsPending = this.victoryPathsDue();
+      this._victoryPathsPending = !(window.S && S.scenario) && this.victoryPathsDue();   // the Elder teaches the two roads in the prologue
       this.enterGame();
       // the rival's origin is a NOTIFICATION now, difficulty-gated, and it
       // has to land in-game: toasts are hidden on every shell screen
@@ -2056,10 +2047,10 @@ const Screens = {
     const P = typeof S !== 'undefined' && S && S.deck && Array.isArray(S.deck.played) ? S.deck.played : [];
     const played = P.filter(x => x && (!window.Deck || !Deck.card || Deck.card(x.id))).length;
     if (!win) return { hold: '', played };
-    /* THE FIRST GAME is not a board game (CFG.FIRST_QUICK): a short, softened
-       world whose score would sit beside every real Calm win, so it is held */
-    if (typeof S !== 'undefined' && S && CFG.FIRST_QUICK && S.mode === CFG.FIRST_QUICK.MODE)
-      return { hold: 'Your first game is not posted to the world board — the next one is.', played };
+    /* THE PROLOGUE is not a board game (js/scenarios.js): an authored,
+       softened world whose score would sit beside every real Calm win */
+    if (typeof S !== 'undefined' && S && S.scenario)
+      return { hold: 'The journey\'s games stay off the world board — your next one goes up.', played };
     /* A TEST BUILD POSTS NOTHING (CLAUDE.md, "THE TEST BUILD"): its games
        are not the players', so its wins stay off the world board — the
        telemetry rule, Backend.telemetryAllowed (a test's mock is exempt; a
@@ -2365,9 +2356,6 @@ const Screens = {
       if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
       if (window.Backend && Backend.step) Backend.step('newgame');
       this.backTo = 'title';
-      // THE FIRST GAME skips the difficulty: straight to the origin cards
-      if (this.firstQuickWanted()) { this.newPrefs.mode = CFG.FIRST_QUICK.MODE; this.startNewGame(); return; }
-      if (this.newPrefs.mode === (CFG.FIRST_QUICK && CFG.FIRST_QUICK.MODE)) this.newPrefs.mode = 'moderate';
       this.show('newgame');
     });
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
@@ -2415,7 +2403,7 @@ const Screens = {
     });
     on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
     // back to the trial pick; the pending draft rides S and resumes intact
-    on('btnDraftBack', () => this.show(window.S && CFG.FIRST_QUICK && S.mode === CFG.FIRST_QUICK.MODE ? 'title' : 'newgame'));
+    on('btnDraftBack', () => this.show(window.S && S.scenario ? 'title' : 'newgame'));
     on('btnDraftGotIt', () => {
       this.el('draftOverlay').style.display = 'none';
       try { localStorage.setItem('neo-draft-help', '1'); } catch (e) {}

@@ -743,7 +743,7 @@ const Tutorial = {
         o.queue && o.queue.length && o.queue[0].unit === 'defender');
       if (b) { t.soldierGiven = 1; b.queue[0].t = 0.0001; }
     }
-    // THE FIRST GAME'S SHORTER LESSON (CFG.MODES.first_quick.tutCut): the
+    // A PROFILE'S SHORTER LESSON (a mode's tutCut): the
     // steps a short game does without are booked done, so they never hold
     // the spine waiting to be affordable (towers and walls)
     const cut = (CFG.MODES[S.mode] || {}).tutCut;

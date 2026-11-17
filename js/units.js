@@ -1829,6 +1829,8 @@ const Units = {
           // card's richer load is credited apart from the take (gatherYield),
           // so a Harvest Festival makes the larder fuller, never the deeds longer
           if (u.owner === 'P' && S.stats) S.stats.handGathered = (S.stats.handGathered || 0) + take;
+          // THE PROLOGUE's Elder notices the first berries and the first log (js/prologue.js)
+          if (u.owner === 'P' && S.scenario && window.Prologue && Prologue.onGather) Prologue.onGather(u, g.res, take, t.x, t.y);
           S.map.resAmount[idx] -= take;
           /* A DEPOSIT SHOWS THE WORK. Stone cracks open in thirds as it is
              mined (R.oreWear), so the tile has to be repainted when it
