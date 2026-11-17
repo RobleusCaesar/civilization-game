@@ -643,6 +643,8 @@ const Cards = {
   announceRival() {
     const D = S && S.draft;
     if (!D || !D.rival || !D.rival.pick) return;
+    // the journey's games are taught by the Elder alone: no rival intel over the lesson
+    if (S.scenario) return;
     const cd = this.DEFS[D.rival.pick.key];
     if (!cd) return;
     /* …AND IT WAITS TO BE READ (PX-10c, tests/tutorial.mjs §20). The first

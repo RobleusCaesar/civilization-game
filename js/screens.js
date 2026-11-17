@@ -1200,6 +1200,8 @@ const Screens = {
     let seen = false;
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
+    // the journey's draft is explained by the Elder in one line, never the help panel
+    if (window.Prologue && Prologue.onDraft) { try { Prologue.onDraft(); } catch (e) {} }
     this.syncTutToggle();
     // a prologue draft is part of its lesson: the old lesson's switch is not offered there
     { const tt = this.el('btnTutToggle'); if (tt) tt.style.display = (window.S && S.scenario) ? 'none' : ''; }
@@ -2363,7 +2365,12 @@ const Screens = {
     on('ldrBack', () => {
       // the card system's reward screen sends its LEADERBOARD here and is
       // brought back to itself, as it was left (js/deckscreens.js)
-      if (this.backTo === 'endgame' && window.S && S.over) { this.show('endgame', { win: S.over.win, msg: S.over.msg, back: true }); return; }
+      const back = () => {
+        if (!(this.backTo === 'endgame' && typeof S !== 'undefined' && S && S.over)) return false;
+        this.show('endgame', { win: S.over.win, msg: S.over.msg, back: true });
+        return true;
+      };
+      if (window.Prologue && Prologue.asEnd ? Prologue.asEnd(back) : back()) return;
       this.show(this.backTo === 'paused' ? 'paused' : 'title');
     });
     on('btnSubmitScore', () => (window.Backend && Backend.isReady() && !this._markWait) ? this.submitScore() : this._offerSubmit());

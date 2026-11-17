@@ -81,11 +81,11 @@ const Scenarios = {
     },
     prologue_3: {
       game: 3, mode: 'prologue_3', title: 'The Two Roads',
-      start: { food: 200, wood: 180, stone: 60, gold: 30 },
+      start: { food: 300, wood: 300, stone: 120, gold: 60 },
       storey: 1,
       allowed: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'mine'],
       win: { standard: true },
-      draft: true, stock: 1.25,
+      draft: true, stock: 2,
     },
   },
   def(id) {

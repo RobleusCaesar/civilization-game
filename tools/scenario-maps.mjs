@@ -4,13 +4,16 @@
    header) — compiled here into js/scenario-maps.js, so the game reads them
    with no fetch. Edit the JSON and run:  node tools/scenario-maps.mjs
    Checks each map's shape first (38 rows of 38, a void rim, known
-   characters, marks on the board) and refuses to write a broken one. */
+   characters, marks on the board) and refuses to write a broken one.
+   --check writes nothing and fails if js/scenario-maps.js is not the build
+   of the JSON as it stands (tests/prologue.mjs asks it). */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SRC = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, 'tools', 'scenarios');
+const ARGS = process.argv.slice(2), CHECK = ARGS.includes('--check'), DIR = ARGS.find(a => !a.startsWith('--'));
+const SRC = DIR ? path.resolve(DIR) : path.join(ROOT, 'tools', 'scenarios');
 const OUT = path.join(ROOT, 'js', 'scenario-maps.js');
 const CHARS = new Set('#.T~rb^g,:_x'.split(''));
 const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'reveal', 'units', 'animals', 'buildings', 'ruins', 'relic', 'camera', 'glideFrom', 'marks'];
@@ -45,5 +48,11 @@ const body = `"use strict";
 const SCENARIO_MAPS = ${JSON.stringify(maps, null, 1).replace(/\[\n\s+(-?\d+),\n\s+(-?\d+)\n\s+\]/g, '[$1, $2]')};
 window.SCENARIO_MAPS = SCENARIO_MAPS;
 `;
+if (CHECK) {
+  const now = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
+  if (now !== body) { console.error(`${path.relative(ROOT, OUT)} is not the build of tools/scenarios: run node tools/scenario-maps.mjs`); process.exit(1); }
+  console.log(`${path.relative(ROOT, OUT)} is current: ${Object.keys(maps).join(', ')}`);
+  process.exit(0);
+}
 fs.writeFileSync(OUT, body);
 console.log(`wrote ${path.relative(ROOT, OUT)}: ${Object.keys(maps).join(', ') || '(none)'}`);

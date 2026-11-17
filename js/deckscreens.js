@@ -1112,9 +1112,14 @@ const DeckScreens = {
   closeCollection() {
     this._lostLines = [];
     this._zoomClose(true);
-    if (this._colFrom === 'endgame' && typeof S !== 'undefined' && S && S.over)
+    // back to the reward screen as it was left — asked of the finished run even
+    // when the journey's next game is already held behind it (Prologue.asEnd)
+    const back = () => {
+      if (!(this._colFrom === 'endgame' && typeof S !== 'undefined' && S && S.over)) return false;
       Screens.show('endgame', { win: S.over.win, msg: S.over.msg, back: true });
-    else Screens.show('title');
+      return true;
+    };
+    if (!(window.Prologue && Prologue.asEnd ? Prologue.asEnd(back) : back())) Screens.show('title');
   },
   // the tier of the card most recently found: where a player opening the
   // collection most likely wants to look

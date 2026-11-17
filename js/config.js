@@ -1627,8 +1627,11 @@ CFG.MODES.prologue_2 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
 CFG.MODES.prologue_3 = Object.assign({}, CFG.MODES.calm, {
   name: 'The Two Roads', base: 'calm', hidden: true, prologue: 3,
   aiOutput: 0.8, aiVillCap: 9, aiVillEvery: 14, aiBuildEvery: 3, aiArmyCap: 2, aiArmyDiv: 22,
-  aiHallTake: 1.8, aiWonderDay: 70, revealRival: true,
-  wonderCost: { food: 0.2, wood: 0.2, stone: 0.12, gold: 0.2 }, wonderTime: 0.45,
+  aiHallTake: 1.8, aiWonderDay: 90, revealRival: true,
+  // the Elder's road: 480 food and wood, 240 stone, 120 gold (the hall's own
+  // trickle pays the gold), raised in about a third of the days; the rival
+  // breaks ground no sooner than day 90, a clear quarter hour of race
+  wonderCost: { food: 0.08, wood: 0.08, stone: 0.06, gold: 0.08 }, wonderTime: 0.35, gather: 1.25,
   waveFirst: 1e9, barbMult: 0.6, campMult: 0, deathEvery: [1e9, 1e9], animalMax: 0, animalChance: 0,
 });
 CFG.PROLOGUE = {

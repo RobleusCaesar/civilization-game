@@ -3593,7 +3593,11 @@ const G = {
       /* BEHIND THE SPLASH THE THREAD HAS NOTHING ELSE TO DO, so the held
          bake runs in big slices there (a 6ms slice at a throttled phone's
          frame rate stretched a one-second bake over twenty seconds). */
-      G._safe(() => R.tickBake(document.getElementById('splash') ? 40 : 6), 'bake');
+      /* …and behind the title or a reward screen holding the journey's next game
+         (Prologue.holding) a bigger slice: those screens animate on the
+         compositor, and the bake is what the next press is waiting on */
+      G._safe(() => R.tickBake(document.getElementById('splash') ? 40
+        : (window.Prologue && Prologue.holding && Prologue.holding() && window.Screens && Screens.current !== 'playing') ? 12 : 6), 'bake');
       // …and the slow TAIL of a terrain repaint (a sapper joining a lake hands
       // drawTilesAt a whole water region) drains here too, so the spadeful
       // that asked for it does not freeze the frame — see R.tickRepaint
@@ -3645,7 +3649,9 @@ const G = {
          the method, so a cached older terrain.js simply stands down. */
       else if (window.TerrainX && TerrainX.prefetch && TerrainX.on && TerrainX.ready && !S.over && window.Screens &&
                !Screens._demo && (Screens._entering || (S.played === false && (Screens.current === 'draft' ||
-                 (Screens.current === 'title' && S.scenario)))) &&
+                 (Screens.current === 'title' && S.scenario) ||
+                 // the journey's next game, founded behind the reward screen (Prologue._armNext)
+                 (window.Prologue && Prologue.holding && Prologue.holding())))) &&
                performance.now() - (G._pfT || 0) >= (Screens._entering ? 0 : G.PREFETCH_MS)) {
         // behind the plaque the press is waiting on this ground (enterGame): every frame, and
         // every arrival in; behind the draft the cards are moving, so a glance rate and one

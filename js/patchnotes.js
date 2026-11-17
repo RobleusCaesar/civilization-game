@@ -19,13 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 178, date: '2026-11-17', title: 'A first game that fits an evening',
+    build: 179, date: '2026-11-17', title: 'A journey for your first three games',
     items: [
-      'Your very first game is a short one: a small valley, a gentler rival, rich ground near home and a cheaper Wonder.',
-      'New Game on a first visit goes straight to your origin cards, chosen from six friendly openings.',
-      'The lesson is shorter, so you reach the good part sooner.',
-      'When your Town Center first rises a level in that first game, you are handed an Iron card on the spot.',
-      'From your second game on, everything is as before, with the full choice of difficulty.',
+      'A new player now begins with a short journey of three games, each on a hand-made valley, with the Elder at your side.',
+      'The Elder says one thing at a time, points at exactly where to tap, and shows a hand if you wait.',
+      'The First Fire teaches food, wood, a house and a new villager. The Growing Clan adds stone, camps and a farm, scouting and your first card. The Two Roads is your first real rival.',
+      'Each journey game won pays a card: Bronze, then Iron, then Imperial.',
+      'After the first game the people ask what to call you.',
+      'The next journey game is made ready while you look at your reward, so it opens the moment you tap Continue, and your clan keeps its colour through all three.',
+      'New worlds paint their ground sooner after you press start.',
+      'Played before? The journey stays out of your way, and anyone can skip it from the title.',
     ],
   },
   {

@@ -793,6 +793,17 @@ const Assets = {
   _tryTrees() {
     for (const style of this.TREE_STYLES) for (const size of ['s', 'l', 'xl'])
       this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
+    this._treesAsked = true;
+    if (this.pendingTrees <= 0) this._treeDone(0);
+  },
+  /* THE TREES ARE IN: every cascade has met its first 404. The V4 ground's
+     shade is these stamps alone (TerrainX.activate), so a new world's ground
+     waits for them — not for the whole world's art */
+  pendingTrees: 0, _treesAsked: false, _idleTrees: [],
+  whenTreesIdle() { return (!this._treesAsked || this.pendingTrees > 0) ? new Promise(r => this._idleTrees.push(r)) : Promise.resolve(); },
+  _treeDone(d) {
+    this.pendingTrees -= d;
+    if (this.pendingTrees <= 0 && this._treesAsked && this._idleTrees.length) { const l = this._idleTrees; this._idleTrees = []; for (const f of l) f(); }
   },
   /* ---- THE MOUNTAIN KIT: drawn massifs, CHAINED into ranges ----
 
@@ -997,8 +1008,10 @@ const Assets = {
   _tryTreePiece(style, size, li) {
     if (li >= 18) return;                         // letters a..r, the cascade stops at the first 404
     const img = new Image();
-    img.onload = () => { this.setTreePiece(style + '-' + size, img, String.fromCharCode(97 + li)); this._tryTreePiece(style, size, li + 1); };
-    img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
+    this.pendingTrees++;
+    // the next letter is asked for before this one is counted done, so a cascade never reads as idle mid-way
+    img.onload = () => { this.setTreePiece(style + '-' + size, img, String.fromCharCode(97 + li)); this._tryTreePiece(style, size, li + 1); this._treeDone(1); };
+    img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ this._treeDone(1); };
     this._track(this._prio(img, 'high'), true);
     img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
   },

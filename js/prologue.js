@@ -171,13 +171,22 @@ const Prologue = {
   found(g, still) {
     const id = 'prologue_' + g;
     if (!Scenarios.def(id)) return false;
-    // your people's tunic: the same roll a run takes (red stays the rival's)
+    // your people's tunic: the same roll a run takes (red stays the rival's) —
+    // rolled ONCE for the journey and kept (the record's `tunic`), so the clan
+    // wears one colour through its three games and the next game finds its
+    // people's strips already dyed and installed (a new dye is a new install)
     const pool = ((typeof Sprites !== 'undefined' && Sprites.villagerTunics) || ['blue']).filter(t => t !== 'red');
-    const tunic = pool[(Math.random() * pool.length) | 0] || 'blue';
+    const p = this.prog(), was = typeof S !== 'undefined' && S && S.scenario && S.tunic && S.tunic.P;
+    let tunic = [p.tunic, was].find(t => t && pool.indexOf(t) >= 0);
+    if (!tunic) tunic = pool[(Math.random() * pool.length) | 0] || 'blue';
+    if (p.tunic !== tunic) { p.tunic = tunic; this._set(p); }
     Screens._demo = false;
     G.freeVis = false;
     const prev = R.deferBake; R.deferBake = true;   // the bake in slices behind the title, never a frozen press
     try { Scenarios.found(id, { tunic }); } finally { R.deferBake = prev; }
+    /* held for the counted art, as a founded run's is (foundRun): on a 4x phone
+       baking beside the people's strips was measured SLOWER (the two share the
+       thread, and the strips are what the press waits for last) */
     R.holdBake = !(window.Assets && Assets.artReady && Assets.artReady());
     if (R.holdBake && Screens.waitForArt) { const w = S; Screens.waitForArt(Screens.GAME_ART_FLOOR_MS).then(() => { if (S === w) R.holdBake = false; }); }
     if (window.Backend) { try { Backend.markActiveSlot(null); Backend.activeName = null; } catch (e) {} }
@@ -225,9 +234,86 @@ const Prologue = {
   journey() {
     const g = this.next();
     if (g > 3) { Screens.backTo = 'title'; Screens.show('newgame'); return; }
-    this.found(g, true);
-    this._pre = null;
+    if (!(this.holding() && S.scenario === 'prologue_' + g)) this.found(g, true);
+    this._pre = null; this._endS = null;
     this._enterGame(g);
+  },
+
+  /* THE NEXT GAME WAITS BEHIND THE REWARD (the brief: "preload the next map,
+     under 1 s on a desktop, 2 s on a phone"). Founded at the press, the next
+     world paid its founding, its art, its bake and the ground under its
+     opening view (4.7 s on a desktop, 7.4 s on a 4x-throttled phone, measured)
+     behind a plaque. So once a journey WIN's reward card has settled, the next
+     game is founded behind the reward screen — held still and unplayed, the
+     title's own preload (holding()) — and its ground asked for (G.frame) while
+     the player reads; "Continue the journey" then opens it at once. The
+     finished world is KEPT (_endS) for everything the reward screen still asks
+     of it: the way back from the collection or the board (asEnd), the game a
+     door is tracked for (endGame). Never after a loss (Try again founds that
+     world afresh), never after the last game, never over an opening. */
+  NEXT_AFTER_MS: 900,   // the reward screen's own entrance first
+  NEXT_WAIT_MS: 8000,   // a reveal that never settles is not waited on for longer
+  _endS: null, _endG: 0, _nextT: 0,
+  _armNext() {
+    clearTimeout(this._nextT); this._nextT = 0;
+    if (typeof S === 'undefined' || !S || !S.scenario || !S.over || !S.over.win || S === this._endS) return;
+    const g = Scenarios.game();
+    if (!(g >= 1 && g < 3) || this.next() !== g + 1 || !this.active()) return;
+    const w = S, t0 = performance.now();
+    const tryNow = () => {
+      this._nextT = 0;
+      if (typeof S === 'undefined' || S !== w || !S.over || !window.Screens || !(Screens.atEnd && Screens.atEnd())) return;
+      // the reward card rising or flying to the deck keeps the thread: the founding waits for it
+      const D = window.DeckScreens;
+      const busy = (D && (D._flying || (D._view && !D._ready && Screens.current === 'endgame'))) || (Screens.opening && Screens.opening());
+      if (busy && performance.now() - t0 < this.NEXT_WAIT_MS) { this._nextT = setTimeout(tryNow, 200); return; }
+      this._preNext(w, g);
+    };
+    this._nextT = setTimeout(tryNow, this.NEXT_AFTER_MS);
+  },
+  _preNext(w, g) {
+    if (typeof S === 'undefined' || S !== w || this.next() !== g + 1) return false;
+    this._endS = w; this._endG = g;
+    let ok = false;
+    try { ok = this.found(g + 1, true); } catch (e) { console.error('prologue: the next world', e); }
+    if (!ok) { this._endS = null; if (typeof S !== 'undefined' && S !== w && !this.holding()) S = w; }
+    return ok;
+  },
+  // the game the reward screen is FOR (the next one may already be held behind it)
+  endGame() {
+    return (this._endS && typeof S !== 'undefined' && S !== this._endS && this._endG) || Scenarios.game();
+  },
+  /* what the reward screen asks of its own run once the next world is held
+     behind it — the way back from the collection or the board re-shows it —
+     is asked of the finished world, in one synchronous call */
+  asEnd(fn) {
+    const E = this._endS;
+    if (!E || typeof S === 'undefined' || S === E || !E.over || !this.holding()) return fn();
+    const cur = S;
+    S = E;
+    try { return fn(); } finally { if (S === E) S = cur; }
+  },
+  /* GAME 3's DRAFT: the Elder says it in one line under the cards; the old
+     help panel (its Calm / Moderate / Hard words) is not shown on the journey */
+  DRAFT_LINE: 'Every clan begins with a gift. Choose the one you want.',
+  onDraft() {
+    const on = !!(typeof S !== 'undefined' && S && S.scenario);
+    let el = document.getElementById('proDraft');
+    if (!on) { if (el) el.style.display = 'none'; return; }
+    const ov = document.getElementById('draftOverlay');
+    if (ov) ov.style.display = 'none';
+    this._css();
+    if (!el) {
+      const host = document.querySelector('#scrDraft .sbody');
+      if (!host) return;
+      el = document.createElement('div');
+      el.id = 'proDraft';
+      el.innerHTML = '<div class="pePic"><img alt="" src="' + this.FACES.pleased + '"></div>' +
+        '<div class="peBody"><b class="peName">The Elder</b><p class="peTxt"></p></div>';
+      host.appendChild(el);
+    }
+    el.querySelector('.peTxt').textContent = this.DRAFT_LINE;
+    el.style.display = '';
   },
   /* "Play a random world": an ordinary Calm world, no difficulty asked — the
      journey waits on the title for whenever the player comes back */
@@ -246,12 +332,23 @@ const Prologue = {
   },
   tc() { return Bld.tcOf('P'); },
   vils() { return S.units.filter(u => u.owner === 'P' && u.kind === 'villager'); },
-  isIdle(u) { return !u.task && !(u.path && u.path.length) && !(window.Units && Units.isLevied && Units.isLevied(u)); },
-  // the nearest idle villager to the hall (idle hands strongly preferred), never one already busy if any is free
+  /* idle: no task, no mark and not walking — asked the way the game asks it
+     (Units.moving: a walk that has ARRIVED keeps its path, pathI at its end,
+     and a scout standing at the mark he was sent to read as walking for good) */
+  isIdle(u) {
+    const U = typeof Units !== 'undefined' ? Units : null;
+    const walking = U && U.moving ? !!U.moving(u) : !!(u.path && u.path.length);
+    return !u.task && !u.tUnit && !walking && !(U && U.isLevied && U.isLevied(u));
+  },
+  /* the hand to send: the nearest idle one to the hall; with none idle, a
+     hand-gatherer before a builder, and a station's own hand last of all —
+     nothing in the lesson puts a station's worker back */
   idleVil() {
     const tc = this.tc(); let best = null, bd = 1e9;
     for (const u of this.vils()) {
-      const d = (tc ? Math.hypot(u.x - tc.x - 1, u.y - tc.y - 1) : 0) - (this.isIdle(u) ? 1e6 : 0);
+      const t = u.task && u.task.type;
+      const rank = this.isIdle(u) ? 0 : t === 'build' ? 2 : t === 'work' ? 3 : 1;
+      const d = (tc ? Math.hypot(u.x - tc.x - 1, u.y - tc.y - 1) : 0) + rank * 1e6;
       if (d < bd) { bd = d; best = u; }
     }
     return best;
@@ -268,6 +365,50 @@ const Prologue = {
   count(key, finished) { return S.buildings.filter(b => b.owner === 'P' && b.key === key && (!finished || !(b.construction > 0))).length; },
   vis(sel) { const e = document.querySelector(sel); return !!(e && e.offsetParent !== null); },
   soldiers() { return S.units.filter(u => u.owner === 'P' && Units.isMilitary && Units.isMilitary(u)); },
+  /* THE OTHER ROAD: the player has struck the rival (the truce broken, or a
+     soldier sent at its works) — remembered for the rest of the game */
+  marching() {
+    if (S.pro && S.pro.march) return true;
+    let m = !!(CFG.MODES[S.mode] && CFG.MODES[S.mode].peace && S.peace === false);
+    if (!m) for (const u of S.units) {
+      if (u.owner !== 'P' || !u.tBld || !u.task || u.task.type !== 'attackBld') continue;
+      const t = Bld.get(u.tBld);
+      if (t && t.owner === 'A') { m = true; break; }
+    }
+    if (m && S.pro) S.pro.march = 1;
+    return m;
+  },
+  // a works of the player's still going up, and the hands to send to it
+  siteOf(key) { return S.buildings.find(b => b.owner === 'P' && b.key === key && b.construction > 0) || null; },
+  // the next pair of hands for a site: one not already at it, idle first, then the nearest
+  handFor(w) {
+    let best = null, bd = 1e9;
+    for (const u of this.vils()) {
+      if (this.buildsAt(u, w)) continue;
+      const d = (Bld.cx(w) - u.x) ** 2 + (Bld.cy(w) - u.y) ** 2 - (this.isIdle(u) ? 1e6 : 0);
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  },
+  buildsAt(u, w) { return !!(u && u.task && u.task.type === 'build' && u.task.id === w.id); },
+  siteRing(key) {
+    const w = this.siteOf(key); if (!w) return null;
+    const at = { x: Bld.cx(w), y: Bld.cy(w), r: 1.6 }, sel = this.selVil();
+    if (sel && !this.buildsAt(sel, w)) return at;
+    const v = this.handFor(w); return v ? { u: v.id } : null;
+  },
+  siteTaps(key) {
+    const w = this.siteOf(key); if (!w) return [];
+    const at = { x: Bld.cx(w), y: Bld.cy(w), r: 1.6 }, sel = this.selVil();
+    if (sel && !this.buildsAt(sel, w)) return [at];
+    const v = this.handFor(w); return v ? [{ u: v.id }, at] : [];
+  },
+  // soldiers standing, and those already in a yard's queue
+  armyComing() {
+    let n = this.soldiers().length;
+    for (const b of S.buildings) if (b.owner === 'P' && b.key === 'barracks' && Array.isArray(b.queue)) n += b.queue.length;
+    return n;
+  },
 
   /* "send someone to X": hold a villager → ring X; else ring the hands */
   sendTo(target) {
@@ -299,9 +440,14 @@ const Prologue = {
      the player is in it. */
   buildRing(key, site) {
     return () => {
+      if (!UI.placing) this._seated = null;   // a fresh placement seats the ghost again
       if (UI.placing === key) {
         this._seatGhost(key, site);
-        if (this.vis('#placeOk')) return { sel: '#placeOk' };
+        // ✓ only while the ghost stands where the building may: a slip of the
+        // finger moves it onto ground it cannot take, and a tap on the site
+        // jumps it back (the ✓ there is greyed and answers nothing)
+        const v = UI.placeVerdict;
+        if ((!v || v.ok) && this.vis('#placeOk')) return { sel: '#placeOk' };
         const m = this.mark(site); return m || null;
       }
       const card = '.bbtn[data-key="' + key + '"]';
@@ -340,12 +486,17 @@ const Prologue = {
   // what the hall's next storey still asks, in a few words ("Wood 40/100 · Food 12/50")
   /* the good the standing goal is shortest of (the beat held for its price,
      or the hall's next storey), by the share still missing */
-  need() {
+  // the price the standing goal asks: the beat's own, a house, a villager, or the hall's next storey
+  goalCost() {
     const b = this.beat(), tc = this.tc();
-    let cost = null;
-    if (b && b.id === 'house') cost = Bld.effCost('P', 'house');
-    else if (b && b.id === 'train') cost = (CFG.UNITS.villager && CFG.UNITS.villager.cost) || null;
-    else if (tc && CFG.BUILDINGS.tc.levels[tc.level]) cost = CFG.BUILDINGS.tc.levels[tc.level].cost;
+    if (b && b.cost) return b.cost.call(this);
+    if (b && b.id === 'house') return Bld.effCost('P', 'house');
+    if (b && b.id === 'train') return (CFG.UNITS.villager && CFG.UNITS.villager.cost) || null;
+    if (tc && CFG.BUILDINGS.tc.levels[tc.level]) return CFG.BUILDINGS.tc.levels[tc.level].cost;
+    return null;
+  },
+  need() {
+    const cost = this.goalCost();
     let best = null, bw = 0;
     for (const k of ['food', 'wood', 'stone']) {
       const c = cost && cost[k]; if (!c) continue;
@@ -355,13 +506,20 @@ const Prologue = {
     return best || ((S.res.food || 0) < (S.res.wood || 0) ? 'food' : 'wood');
   },
   // what the standing goal asks of a good, in whole units (0 when it asks none)
-  needOf(res) {
-    const b = this.beat(), tc = this.tc();
-    let cost = null;
-    if (b && b.id === 'house') cost = Bld.effCost('P', 'house');
-    else if (b && b.id === 'train') cost = (CFG.UNITS.villager && CFG.UNITS.villager.cost) || null;
-    else if (tc && CFG.BUILDINGS.tc.levels[tc.level]) cost = CFG.BUILDINGS.tc.levels[tc.level].cost;
-    return (cost && cost[res]) || 0;
+  needOf(res) { const cost = this.goalCost(); return (cost && cost[res]) || 0; },
+  /* an idle hand's work: the good the goal is shortest of, counting the hands
+     already on each — so three idle hands spread over food, wood and stone
+     rather than crowding one bush */
+  spread() {
+    const cost = this.goalCost();
+    let best = null, bw = 0;
+    for (const k of ['food', 'wood', 'stone']) {
+      const c = cost && cost[k]; if (!c) continue;
+      const miss = 1 - Math.min(1, (S.res[k] || 0) / c);
+      const w = miss / (1 + this.gatherers(k).length);
+      if (w > bw) { bw = w; best = k; }
+    }
+    return best || this.need();
   },
   // the good a hand is gathering, or null
   resOf(u) {
@@ -545,23 +703,43 @@ const Prologue = {
         { id: 'soldiers', face: 'neutral', text: 'Train soldiers at the barracks.',
           goal: () => 'Soldiers ' + Math.min(3, P.soldiers().length) + '/3',
           when: () => P.has('barracks', true),
-          ring: P.yardRing('barracks', '#panel [data-act="train"]'),
-          taps: () => { const r = P.yardRing('barracks', '#panel [data-act="train"]')(); return r ? [r] : []; },
+          // three trained or on the way: the Elder points at nothing more (no spending the larder on a fourth)
+          ring: () => P.armyComing() >= 3 ? null : P.yardRing('barracks', '#panel [data-act="train"]')(),
+          taps: () => { const r = P.armyComing() >= 3 ? null : P.yardRing('barracks', '#panel [data-act="train"]')(); return r ? [r] : []; },
           done: () => P.soldiers().length >= 3 },
         { id: 'raid', face: 'concerned', text: 'Raiders! Send your soldiers to meet them.',
           goal: 'Drive off the raiders',
           when: () => P.soldiers().length >= 2 || S.day >= 22,
           on: () => P.raid(),
-          ring: () => { const r = P.raiders()[0]; return r ? { u: r.id } : null; },
+          // a soldier first (he stands in sight), then the raiders — the view goes to them once he is in hand
+          ring: () => { const r = P.raiders()[0]; if (!r) return null; const s = P.soldiers()[0]; return P.selSoldier() || !s ? { u: r.id } : { u: s.id }; },
           taps: () => { const s = P.soldiers()[0], r = P.raiders()[0]; return [s && !P.selSoldier() ? { u: s.id } : null, r ? { u: r.id } : null].filter(Boolean); },
           done: () => P._raided && !P.raiders().length },
-        { id: 'beaten', face: 'pleased', text: 'They\'re beaten! Our people are safe.', auto: 3200 },
-        { id: 'roads', face: 'neutral', text: 'Now choose: march on their hall, or raise the Wonder here.',
+        // the fight over, every hand goes back to the work it left (the horn's own rule)
+        { id: 'beaten', face: 'pleased', text: 'They\'re beaten! Back to work, everyone.', auto: 3200,
+          on: () => { try { if (typeof Units !== 'undefined' && Units.backToWork) Units.backToWork('P'); } catch (e) {} } },
+        { id: 'roads', face: 'neutral', text: 'Now choose: march on their hall, or raise the Wonder here.', auto: 4600,
           goal: 'Raze their hall, or raise the Wonder',
-          on: () => { Scenarios.unlock('wonder'); },
-          ring: () => P.vis('.bbtn[data-key="wonder"]') ? { sel: '.bbtn[data-key="wonder"]' } : null,
-          done: () => P.has('wonder') || !!(S.units.some(u => u.owner === 'P' && u.task && u.task.type === 'attackBld' && (Bld.get ? Bld.get(u.task.id) : null))) },
-        { id: 'go', face: 'pleased', text: 'The clan is with you, chief. See it through.', auto: 3600 },
+          on: () => { Scenarios.unlock('wonder'); } },
+        /* THE WONDER'S ROAD, guided: save, raise, build. A player who strikes
+           the rival instead (marching) has chosen the other road, and the
+           Elder stands aside from the Wonder for the rest of the game. */
+        { id: 'save', face: 'neutral', text: 'A Wonder needs much. Fill the stores, chief.', gather: true,
+          goal: () => 'Wonder: ' + P.costLine('wonder'), cost: () => Bld.effCost('P', 'wonder'),
+          skipIf: () => P.marching(),
+          done: () => P.afford('wonder') || P.has('wonder') },
+        { id: 'wonder', face: 'pleased', text: 'We have enough. Raise the Wonder here!',
+          goal: 'Raise the Wonder', skipIf: () => P.marching(),
+          ring: P.buildRing('wonder', 'wonderSite'), taps: () => { const r = P.buildRing('wonder', 'wonderSite')(); return r ? [r] : []; },
+          done: () => P.has('wonder') },
+        // three pairs of hands raise it in a third of the days one does
+        { id: 'masons', face: 'neutral', text: 'Send villagers to build it. Many hands, quick work.',
+          goal: () => { const w = P.siteOf('wonder'); return 'Builders ' + Math.min(3, w ? P.builders(w).length : 3) + '/3'; },
+          skipIf: () => P.marching(),
+          ring: () => P.siteRing('wonder'), taps: () => P.siteTaps('wonder'),
+          done: () => { const w = P.siteOf('wonder'); return !w || P.builders(w).length >= Math.min(3, P.vils().length); } },
+        { id: 'go', face: 'pleased', text: 'The clan is with you, chief. See it through.', auto: 3600,
+          goal: () => P.marching() ? 'Raze their hall' : 'The Wonder is rising' },
       ];
     },
   },
@@ -601,7 +779,7 @@ const Prologue = {
      hostile to everyone; they seek the town like any band. */
   raiders() { return S.units.filter(u => u.proRaid && u.hp > 0); },
   raid() {
-    if (this._raided || !window.G || !G.spawnBarb) return;
+    if (this._raided || typeof G === 'undefined' || !G.spawnBarb) return;   // G is a script const: never window.G
     const from = this.mark('raidFrom'), tc = this.tc();
     if (!from || !tc) return;
     this._raided = true;
@@ -630,11 +808,11 @@ const Prologue = {
     { id: 'idle', face: 'concerned', text: 'Idle hands, chief. Send them to gather.', hold: 10,
       test() {
         const b = this.beat(); if (!b) return false;
-        const waiting = b.id === 'grow' || (b.when && !S.pro.said[b.id] && !this._shown);
+        const waiting = b.id === 'grow' || b.gather || (b.when && !S.pro.said[b.id] && !this._shown);
         return waiting && this.vils().some(u => this.isIdle(u));
       },
-      ring() { const v = this.selVil(); if (v && this.isIdle(v)) return this.workFor(v); const iv = this.idleVil(); return iv && this.isIdle(iv) ? { u: iv.id } : null; },
-      taps() { const iv = this.idleVil(); return iv && this.isIdle(iv) ? [{ u: iv.id }, this.workFor(iv)].filter(Boolean) : []; } },
+      ring() { const v = this.selVil(); if (v && this.isIdle(v)) return this.workFor(v, this.spread()); const iv = this.idleVil(); return iv && this.isIdle(iv) ? { u: iv.id } : null; },
+      taps() { const iv = this.idleVil(); return iv && this.isIdle(iv) ? [{ u: iv.id }, this.workFor(iv, this.spread())].filter(Boolean) : []; } },
     /* THE WRONG WORK: every hand busy, none on the good the goal is short
        of (a held beat's price, or the hall's) — the tracker says "Food 0/50"
        and nothing will ever change it. The Elder names the good; the ring
@@ -643,7 +821,7 @@ const Prologue = {
       text() { return { food: 'We need food. Send someone to the berries.', wood: 'We need wood. Send someone to the trees.', stone: 'We need stone. Send someone to the grey rocks.' }[this.need()] || 'Send someone to gather.'; },
       test() {
         const b = this.beat(); if (!b) return false;
-        const waiting = b.id === 'grow' || (b.when && !S.pro.said[b.id] && !this._shown);
+        const waiting = b.id === 'grow' || b.gather || (b.when && !S.pro.said[b.id] && !this._shown);
         if (!waiting) return false;
         const r = this.need(), have = Math.floor(S.res[r] || 0);
         if (!r || this.gatherers(r).length) return false;
@@ -885,6 +1063,7 @@ const Prologue = {
     if (!S || !S.scenario || !window.Screens || Screens.current !== 'playing' && !this._held) {
       if (this._el && this._el.root.style.display !== 'none') this._el.root.style.display = 'none';
       if (document.body.classList.contains('pro-nobuild')) document.body.classList.remove('pro-nobuild');
+      if (this._goalH) { this._goalH = 0; document.body.style.setProperty('--pro-h', '0px'); }
       return;
     }
     const E = this._dom();
@@ -898,6 +1077,8 @@ const Prologue = {
     const b = this._aside || this._shown;
     // the target the pulse rings, on screen (and brought into view once a line)
     const raw = b && b.ring ? b.ring.call(this) : null;
+    // a ringed build card is scrolled to the middle of the menu, once each time it is ringed
+    if (raw && raw.sel && raw.sel.indexOf('.bbtn') === 0) this._cardInView(raw.sel); else this._cardFor = '';
     const tgt = raw ? this._resolve(raw) : null;
     this._ringTo(E, tgt);
     if (Screens.current === 'playing' && !this._held) this._look(raw, tgt, B);
@@ -914,9 +1095,25 @@ const Prologue = {
     E.mini.style.display = !open && (b || this._held) && !(window.DeckUI && DeckUI.open) ? 'block' : 'none';
     if (open) this._seat(E, B, tgt);
     else this._seatMini(E, B);
+    this._toastStep(E, B, open);
     // the idle hand: 6 s of nothing on an action beat, and it shows the taps
     this._handTick(E, b, now);
     this._fxTick(E, now);
+  },
+  /* a card past the menu's fold is no target at all: centre it once (the
+     tutorial's rule, Tutorial._scrollCardIntoView) and leave the player's own
+     scrolling alone after that */
+  _cardFor: '',
+  _cardInView(sel) {
+    if (this._cardFor === sel) return;
+    const btn = document.querySelector(sel), wrap = document.getElementById('buildmenu');
+    if (!btn || !wrap || btn.offsetParent === null || wrap.offsetParent === null) return;
+    this._cardFor = sel;
+    if (wrap.scrollWidth <= wrap.clientWidth + 1) return;
+    const wr = wrap.getBoundingClientRect(), br = btn.getBoundingClientRect();
+    const left = Math.max(0, Math.min(wrap.scrollWidth - wrap.clientWidth, wrap.scrollLeft + (br.left + br.width / 2) - (wr.left + wr.width / 2)));
+    if (Math.abs(left - wrap.scrollLeft) < 2) return;
+    try { wrap.scrollTo({ left, behavior: 'smooth' }); } catch (e) { wrap.scrollLeft = left; }
   },
   // a target, resolved to the screen: {x,y,r} world, {u} a unit, {sel} an element
   _resolve(t) {
@@ -958,7 +1155,7 @@ const Prologue = {
     let txt = b && b.goal ? (typeof b.goal === 'function' ? b.goal.call(this) : b.goal) : '';
     if (this._held) txt = '';
     const el = E.goal;
-    if (!txt) { if (el.style.display !== 'none') { el.style.display = 'none'; document.body.style.setProperty('--pro-h', '0px'); } return; }
+    if (!txt) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
     el.style.display = 'block';
     const [head, ...rest] = String(txt).split(': ');
     const t = el.querySelector('.pgt'), n = el.querySelector('.pgn');
@@ -970,7 +1167,22 @@ const Prologue = {
     const ww = document.getElementById('wonderWarn');
     const wwH = ww && ww.offsetParent !== null ? ww.offsetHeight + 6 : 0;
     el.style.top = (B.top + 6 + wwH) + 'px';
-    const h = el.offsetHeight + 6;
+  },
+  /* THE TOASTS STEP BELOW THE JOURNEY (index.html's #toasts adds --pro-h to
+     its top): under the goal tracker, and under the Elder's card while it is
+     seated at the top over the toasts' column — the news is never written
+     over the line being read. */
+  _toastStep(E, B, open) {
+    let bottom = 0;
+    if (E.goal.style.display !== 'none') bottom = E.goal.getBoundingClientRect().bottom;
+    const s = this._seatBox;
+    if (open && s && s.y < (B.top + B.bot) / 2 && s.x < B.vw * 0.66) bottom = Math.max(bottom, s.y + s.h);
+    let h = 0;
+    if (bottom) {
+      const ww = document.getElementById('wonderWarn');
+      const wwH = ww && ww.offsetParent !== null ? ww.offsetHeight + 6 : 0;
+      h = Math.max(0, Math.round(bottom + 6 - (B.top - 6 + wwH)));
+    }
     if (this._goalH !== h) { this._goalH = h; document.body.style.setProperty('--pro-h', h + 'px'); }
   },
   _seat(E, B, tgt) {
@@ -1023,9 +1235,9 @@ const Prologue = {
     if (!raw || raw.sel || !tgt) return;
     const key = ((this._aside || this._shown || {}).id || '') + ':' + (raw.u !== undefined ? 'u' + raw.u : (raw.x | 0) + ',' + (raw.y | 0));
     if (this._looked === key) return;
-    const m = 24, inView = tgt.x > m && tgt.x < B.vw - m && tgt.y > B.top + m && tgt.y < B.bot - m;
+    const m = 24, inView = tgt.x > m && tgt.x < B.vw - m && tgt.y > B.top + m && tgt.y < B.bot - m && this._open(tgt.x, tgt.y);
     if (inView) { this._looked = key; return; }
-    if (window.UI && UI.pointers && UI.pointers.size) return;
+    if (typeof UI !== 'undefined' && UI.pointers && UI.pointers.size) return;
     this._looked = key;
     let wx = raw.x, wy = raw.y;
     if (raw.u !== undefined) { const u = Units.get(raw.u); if (!u) return; wx = u.x; wy = u.y - CFG.SPRITE_LIFT / CFG.TILE; }
@@ -1047,6 +1259,23 @@ const Prologue = {
     };
     requestAnimationFrame(step);
   },
+  /* is this screen point world the player can see AND tap? The band alone is
+     not enough: the minimap, the Elder's own card and the goal tracker stand
+     over the world, and a tap under the minimap moves the camera instead of
+     sending anyone (a scout's mark under it was never reached) */
+  _open(x, y) {
+    let el = null;
+    try { el = document.elementFromPoint(x, y); } catch (e) { return true; }
+    if (!el) return true;   // no layout to ask (a page that is not drawn): trust the band
+    if (el.id !== 'c') return false;
+    const E = this._el;
+    for (const o of [E && E.goal, E && E.elder]) {
+      if (!o || o.style.display === 'none') continue;
+      const r = o.getBoundingClientRect();
+      if (r.width && x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) return false;
+    }
+    return true;
+  },
   _seatMini(E, B) {
     const m = E.mini;
     m.style.left = '10px';
@@ -1059,7 +1288,10 @@ const Prologue = {
     const h = E.hand;
     const can = b && !b.auto && b.taps && !this._asking && !(window.DeckUI && DeckUI.open) && Screens.current === 'playing';
     if (!can || now - this._lastIn < this.IDLE_MS) { h.style.display = 'none'; this._hand = null; return; }
-    if (!this._hand) { this._hand = { t0: now, i: 0 }; this._handN++; if (this._handN === 1) this._collapsed = false; }
+    if (!this._hand) {
+      this._hand = { t0: now, i: 0 }; this._handN++; if (this._handN === 1) this._collapsed = false;
+      this._looked = null;   // a player who has stopped is shown the target again, wherever the camera went
+    }
     const taps = (b.taps.call(this) || []).map(t => this._resolve(t)).filter(Boolean);
     if (!taps.length) { h.style.display = 'none'; return; }
     const CYCLE = 1500, k = (now - this._hand.t0) / CYCLE, i = Math.floor(k) % taps.length, f = k - Math.floor(k);
@@ -1209,9 +1441,9 @@ const Prologue = {
   },
   endAct(act) {
     // Menu keeps its own door (DeckScreens._click); the journey only notes it
-    if (act === 'menu' && typeof S !== 'undefined' && S && S.scenario) { this.track('choice', { game: Scenarios.game(), choice: 'menu' }); return false; }
+    if (act === 'menu' && typeof S !== 'undefined' && S && S.scenario) { this.track('choice', { game: this.endGame(), choice: 'menu' }); return false; }
     if (!/^pro-/.test(act) || !window.Screens) return false;
-    const g = Scenarios.game();
+    const g = this.endGame();
     const choice = { 'pro-next': 'journey', 'pro-random': 'random', 'pro-retry': 'retry', 'pro-open': 'open' }[act];
     this.track('choice', { game: g, choice });
     const go = act === 'pro-next' ? () => this.journey()
@@ -1225,14 +1457,24 @@ const Prologue = {
   endLine() {
     if (typeof S === 'undefined' || !S || !S.scenario || !S.over) return '';
     const g = Scenarios.game();
-    if (!S.over.win) return 'The raiders won this time. Try again — the clan believes in you.';
+    if (!S.over.win) {
+      const c = S.over.cause;
+      return (c === 'rival_wonder' ? 'The other clan raised their Wonder first.'
+        : c === 'tc_destroyed' ? 'Our hall fell this time.' : 'Not this time.') + ' Try again — the clan believes in you.';
+    }
     if (g === 1) return 'Your journey has begun: ' + this.NAMES[2] + ' is next.';
     if (g === 2) return 'One road left: ' + this.NAMES[3] + '.';
     return 'The journey is complete. Every world is yours now.';
   },
   onScreen(name) {
     if (name !== 'playing' && this._el && !this._held) this._el.root.style.display = 'none';
-    if (name === 'playing' && typeof S !== 'undefined' && S && S.scenario && !this._began) {
+    // the reward screen and its two detours keep the finished world; anything else lets it go
+    if (name === 'endgame') this._armNext();
+    else if (name !== 'cards' && name !== 'leaders') { clearTimeout(this._nextT); this._nextT = 0; this._endS = null; }
+    /* every journey world entered once: `!this._began` let only the first —
+       a game opened from the reward screen ("Continue the journey") never
+       passed the title that clears it, and opened with no start and no glide */
+    if (name === 'playing' && typeof S !== 'undefined' && S && S.scenario && this._began !== S) {
       this._began = S;
       this.track('start', { game: Scenarios.game() });
       this.glide();
@@ -1329,6 +1571,14 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 .bbtn.new { position: relative; box-shadow: 0 0 0 2px #e8c15a, 0 0 14px rgba(255,205,96,.6) !important; }
 .bbtn.new::before { content: 'NEW'; position: absolute; top: -7px; right: -4px; z-index: 2; padding: 2px 5px; border-radius: 3px;
   font: 800 9px/1 'Cinzel',Georgia,serif; letter-spacing: 1px; color: #2a1505; background: linear-gradient(#fbe49a, #d9a83f); box-shadow: 0 1px 0 #0b0704; }
+#proDraft { display: flex; align-items: center; gap: 12px; box-sizing: border-box; width: min(440px, 100%); margin: 14px auto 0; padding: 12px 14px;
+  text-align: left; color: #f1e5cb; border-radius: 2px; background: linear-gradient(#2a1d11, #1c140b 60%, #160f08);
+  box-shadow: inset 0 0 0 2px #0b0704, inset 0 0 0 4px #b98a32, inset 0 0 0 5px #f3d27a, inset 0 0 0 6px #6b4a16, inset 0 0 0 8px #0b0704, 0 10px 26px rgba(0,0,0,.55); }
+#proDraft .pePic { flex: none; width: 56px; height: 56px; background: #0d0905; box-shadow: 0 0 0 1px #0b0704, 0 0 0 3px #a87b2e, 0 0 0 4px #f0cf76, 0 0 0 5px #4a3210; }
+#proDraft .pePic img { width: 56px; height: 56px; display: block; image-rendering: pixelated; }
+#proDraft .peBody { min-width: 0; flex: 1; }
+#proDraft .peName { display: block; margin: 0 0 5px; font: 700 11px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.6px; text-transform: uppercase; color: #f2cd6a; }
+#proDraft .peTxt { margin: 0; font: 600 15px/1.38 Georgia,'Times New Roman',serif; color: #f1e5cb; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
 #scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad { display: none !important; }
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }

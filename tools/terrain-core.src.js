@@ -1039,7 +1039,10 @@ function TCWorkerMain() {
   const core = TCCore();
   self.onmessage = (e) => {
     const m = e.data;
-    if (m.type === 'world') { core.setWorld(m.world); core.warm(); return; }
+    // no warm-up chunks first: the first chunks asked for are the view's own, and
+    // building the busiest shore chunk twice before them held every new world's
+    // ground back 0.7-1.5 s on a desktop (the JIT warms on the real chunks)
+    if (m.type === 'world') { core.setWorld(m.world); return; }
     if (m.type === 'patch') { core.patch(m.patch); return; }
     if (m.type === 'chunk') {
       const t0 = performance.now(), r = core.chunk(m.cx, m.cy), ms = performance.now() - t0;

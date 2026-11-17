@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/first-quick.mjs   # a device's first game: the hidden short profile, the curated origins, the cut lesson, one Iron card when the hall first rises, the next game invited, off the board
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; one BEGIN and a two-tap skip; each game won by following the Elder's taps alone, no line past fifteen words; the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below the Elder's line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1523,45 +1523,117 @@ where each page was left. **0016 MUST BE PASTED AFTER 0013** (re-pasting
 0008/0012/0013 narrows the telemetry kinds again — paste 0016 after any of
 them), or every step row is refused.
 
-**THE FIRST GAME** (`CFG.MODES.first_quick`, `CFG.FIRST_QUICK`,
-`CFG.baseMode`, `Screens.firstQuickWanted`, `Bld.milestone` / `Deck.milestone`
-/ `DeckScreens.milestoneReveal`, migration `0017_first_quick.sql`;
-tests/first-quick.mjs, tests/analytics.mjs §1d and §6d — operator, build 178:
-"891 games started but only 377 lasted a minute, only 13% of games reach a
-result, winning takes ~140 days"). A device that has founded no game, holds
-no save in the cloud and has won no card plays a HIDDEN profile, mode
-`first_quick`, never offered on a menu: New Game skips the trial screen to
-three origins dealt from `FIRST_QUICK.ORIGINS` (six land openings, no sea),
-on the smallest board, Valley · Classic. **ONE PROFILE, A BASE MODE**: it is
-Calm with dials (`base: 'calm'`, `hidden: true`) and every table keyed by
-difficulty reads `CFG.baseMode(m)` (score, openings, art, drop tables —
-the server, like `Deck.table`, falls back to Moderate for a mode it does
-not know). The dials: a slower rival (`aiOutput`, `aiVillCap`, `aiArmyCap`
-…), its hall `aiHallTake` (1.8×) softer to the player's blows, shown on the
-map from day one (`revealRival`), richer ground by the seat (`startResMin`,
-`startResMult`), a Wonder at a fifth of the price (stone 0.12) in 0.45 of
-the days (`wonderCost` / `wonderTime`, read in `Bld.effCost` and
-`Bld.wonderTimeMult` — the "two roads" modal reads both, so it stays true),
-the rival's own race from day 70, and four fort steps cut from the lesson
-(`tutCut`). Measured with tools/ai-harness.mjs (styles `aggressive` and the
-new `wonder`) on eight seeds: a razing player wins 7/8 by a median day 30,
-a Wonder player 7/8 by a median day 61, a passive player never. **THE
-MILESTONE CARD**: the first game's hall reaching level 2 pays ONE card of
-`MILESTONE.TIER` (Iron — the operator: "mid or higher, to get them
-excited"), once a run (`S.milestone` in the save, the ledger's `ms:` line),
-drawn on `Math.random`; the world holds (`S.paused`) while the compact
-reveal plays (rise, glow, tap to turn, CLAIM flies it to `#deckBtn`), the
-lesson holds its notes (`Screens.modalUp`), and the milestone lets the deck
-in early (`Deck.lessonHolds`). The cloud op `milestone` goes to 0017's
-`grant_milestone`, which asks for this run's `first_quick` run_start, the
-milestone tier, no earlier game of another mode and none before (one a
-player, ever). **THE END** invites the next game (`FIRST_QUICK.NEXT_LINE`)
-and the win is held off the world board (`Screens.boardHold`). Game two on
-is untouched; a `?seed=` link overrides. **0017 MUST BE PASTED BEFORE BUILD
-178 GOES LIVE**: 0003's telemetry check allows only calm/moderate/hard, so
-without it every first game's run rows — and its end-of-game card — are
-refused. The dashboard's First game section compares first games in the
-profile with first games before it (`analytics_first_quick`).
+**THE PROLOGUE** (`js/scenarios.js`, `js/scenario-maps.js` built by
+`tools/scenario-maps.mjs` from `tools/scenarios/prologue_N.json`,
+`js/prologue.js`, `CFG.PROLOGUE`, `CFG.MODES.prologue_1/2/3`, migration
+`0018_prologue.sql`; tests/prologue.mjs, tests/analytics.mjs §1f and §6e,
+tests/telemetry.mjs §12 — operator, the Prologue brief: "short, beautiful,
+obvious, and ends in a win … SIMPLE. SIMPLE. SIMPLE."). It SUPERSEDES the
+first game of build 178: the `first_quick` profile is gone from the client
+and its dials are game 3's. A brand-new device plays THREE authored games in
+order and is never offered difficulty, the old lesson's checkbox or an origin
+choice before the third: **The First Fire** (raise the hall to level 2:
+select, berries, wood, a house, a villager, the upgrade and its builders; no
+rival in reach — `aiOff`, its hall in a sealed pocket), **The Growing Clan**
+(level 3: stone, a lumber camp, a quarry and a farm on their own worked
+ground, a relic to scout, the deck's first play; a rival at peace) and **The
+Two Roads** (three of the six friendly origins in `CFG.PROLOGUE.ORIGINS`,
+a barracks and three soldiers, a raid of two light raiders from the map's
+edge, then the Wonder — saved for, raised on its site, built — or the rival's
+hall razed). **WHO**: `neo-prologue` (`{v, at, veteran, done, skipped, tunic}`) is
+decided once: a device with any trace of earlier play (`Screens.gamesFounded`)
+is a veteran and never sent; `?prologue=reset` forgets the record,
+`?prologue=0` is off, and an automated browser meets it only with
+`?prologue=1` or `reset`. **THE TITLE** wears one BEGIN ("The First Fire · 1
+of 3") and a small "Skip the journey" (two taps; `skip` writes the record and
+spends the old lesson's two teaching games); New Game, the board, the cards
+and Load are put away. The next world is founded BEHIND the title in place of
+the demo (`Prologue.preload` from `Screens.onTitle`, `holding()`), so BEGIN
+opens that very world, its ground and art already asked for. **THE WORLDS
+ARE DATA** (`SCENARIO_MAPS[id]`: 38 rows of `#.T~rb^g,:_x`, the halls, the
+people, animals, buildings, the old village's `ruins`, a relic, the camera and
+the glide, and the named `marks` the Elder points at) **AND RULES**
+(`Scenarios.RULES[id]`: the stores, the hall's storey, its levels' price,
+days and support, the build menu, the win, the draft, a stock multiplier):
+`G._scenario` hands `Scenarios.gen` and `populate` to `G.newGame` in place of
+the generator and the rolled start, `apply`/`restore` patch the hall's
+storeys over CFG only while that world is live (restored at the top of every
+newGame and loadJSON), `S.scenario` rides the save. **The berry bush the
+Elder names IS a berry bush** (`R.fertileKindAt`, a pure function of the
+tile — pinned): re-check the marks whenever a map is redrawn, and rebuild
+with `node tools/scenario-maps.mjs` (`--check` is the contract's). **THE
+BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
+the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
+NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE
+SCRIPT** (`Prologue.SCRIPTS[g]`) is beats — a line of fifteen words or fewer
+with ONE instruction, a face, a goal for the tracker, `when` (held), `done`
+(the deed answers it), `auto` (a celebration), `ring`/`taps` (the pulse and
+the idle hand's taps), `on`, `skipIf`, `gather`/`cost` (a saving beat the
+asides watch) — and ASIDES said over a beat while their condition holds (no
+builder on a site, idle hands, every hand on the wrong good, the rival's
+riders once). It runs on the SIM's clock (`simTick` from `G.simStep`), so the
+harness plays it as a person does. The rings follow the game's own doors:
+the Build tab → the card (scrolled to the middle of the menu once,
+`_cardInView`) → the ghost seated on the authored site → ✓; the deck → a
+card that plays at once → Play (nothing while it is in the air); a soldier,
+then the raiders, the view carried to them once a line (`_look`; a touch
+cancels it). An idle hand's work is the good the goal is shortest of,
+counting the hands already on each (`spread`). **THE GUIDE NEVER POINTS
+WHERE A TAP CANNOT GO** (tests/prologue.mjs §2b — three faults the bot found
+playing at a person's pace): a ring is in view only where
+`document.elementFromPoint` finds the world canvas and neither the goal
+tracker nor the Elder's card stands over it (`_open`; a scout's mark under
+the minimap was "seen", and a tap there moved the camera and sent nobody);
+the ✓ is rung only while the ghost's verdict is good, a ghost a slip moved is
+pointed back to its site (a tap jumps it there), and a placement armed afresh
+seats again; the idle hand's arrival shows the target once more wherever the
+camera went; and the toasts step below the goal tracker AND an Elder's card
+seated at the top (`_toastStep`, `--pro-h`). **THE NEXT GAME WAITS BEHIND
+THE REWARD** (`Prologue._armNext` / `_preNext` / `endGame` / `asEnd`, tests/prologue.mjs
+§3–4 — the brief: "preload the next map: under 1 s on a desktop, under 2 s on a
+mid-range phone, measured"): founded at the press, the next game paid its founding, art,
+bake and opening ground behind a plaque (4.3–5.4 s desktop, 8.3–8.8 s on a 4x-throttled
+phone). Once a journey WIN's reward card has SETTLED (`DeckScreens._ready`, never while
+it rises or flies; `NEXT_AFTER_MS` 900, `NEXT_WAIT_MS` 8000), game g+1 is founded
+behind the reward screen exactly as the title holds one (`found(g+1, true)`: still,
+unplayed, `holding()`), `G.frame` prefetches its ground behind any screen while
+`Prologue.holding()` and bakes it in 12 ms slices there (6 elsewhere), and "Continue
+the journey" (`journey()`) opens THAT world (measured 10–120 ms for a reader; about 1 s
+for a desktop press 0.3 s after the doors appear). Its bake still waits for the counted
+art, as a founded run's does: baking beside the people's strips was measured SLOWER on a
+4x phone (the two share the thread, and the strips are what the press waits on last). The
+finished world is KEPT (`_endS`) for what the reward screen still asks of its run: the
+way back from the collection or the board re-shows it under `asEnd` (the global `S` is
+the finished world for that one synchronous call), and a door's telemetry names
+`endGame()`. Never after a loss, the last game or an opening; leaving the reward screen
+(but for its two detours) lets the finished world go. **ONE CLAN, ONE COLOUR**: the
+journey's tunic is rolled once and kept in the record (`tunic`), so each next game finds
+its people's strips already dyed. And every journey world entered is BEGUN (`_began !==
+S`): a game opened from the reward screen never passed the title that cleared the old
+flag, and opened with no start telemetry and no glide. **THE ENDINGS**: a hall win
+holds the end screen for the Elder's last word (`holdEnd`), and after game 1
+asks "What should the people call you?" (the chief's name, `neo-chief` and
+`Backend.setChiefName`); each WIN pays ONE card of its game's tier, once per
+player ever (`Deck.prologue`, `CFG.PROLOGUE.CARD` Bronze / Iron / Imperial,
+`pro:N` in the ledger, the cloud op `prologue` → 0018's `grant_prologue`);
+the end screen's doors are the journey's (`endRow`: Continue the journey /
+Play a random world; after game 3, Your own world; a loss, Try again, which
+founds that world afresh — a lost game 3 still earns the ordinary defeat card
+by its deeds); every journey win is held off the world board
+(`Screens.boardHold`). Game 3's draft is explained by the Elder in one line
+(`#proDraft`), never the old help panel, and the rival's intel is not posted
+over a journey game (`Cards.announceRival`). **GAME 3'S CLOCK** (measured with
+the guide-following bot): the Wonder at 480 food and wood, 240 stone and 120
+gold (`wonderCost`), raised in 0.35 of its days, gathering at 1.25, rich
+stores (`start`, `stock` 2, a berry grove by the hall) and the rival's own
+race from day 90 (`aiWonderDay`) — a quarter hour of slack. **THE WINDOW TRAP
+AGAIN**: the raid never spawned while `raid()` asked `window.G` (a script
+const — undefined); ask `typeof G`, `typeof UI`, `typeof Units`. **0018 MUST
+BE PASTED BEFORE THE PROLOGUE GOES LIVE, AFTER 0016 AND 0017** (re-pasting
+0008/0012/0013/0016/0017 narrows the telemetry kinds or modes again — paste
+0018 after any of them), or every journey row and card is refused. 0017 (the
+retired first game's server half) stays in the repo: 0018 builds on its
+checks, and the dashboard's First game section reads it.
 
 **THE VOTE OFFER IS RETIRED** (build 176 — operator: "146 players saw it, 1
 voted. Remove it"). `js/vote.js`, its tag, `CFG.CARDS.VOTE`, both hooks
@@ -7333,7 +7405,14 @@ re-lays the trees on its bank), so the core's patched chunks equal a core
 built from the edited world (`anEditPaintsWhatARebuildWould`). **THE PURGE
 WATCHDOG READS THE RIM** (above, the black map). **WHO GETS IT** (`Terrain4`,
 the switch at the foot of js/terrain.js): a run founded or loaded; the title's
-demo keeps the classic painters. **THE WAY BACK NEEDS NO DEPLOY**: the kill
+demo keeps the classic painters. **A NEW WORLD'S GROUND STARTS AT ONCE** (`TerrainX.activate`, the worker's `'world'`
+message — the prologue's load pass): the shade waits for the TREE catalog alone
+(`Assets.whenTreesIdle`, raced with the whole world's art and 8 s) — it is the wood's and
+the deposits' own stamps, never the hundreds of buildings and kit pieces a cold phone is
+still fetching; the workers are started before this thread's own core takes its world,
+so the two set-ups run side by side; and a worker no longer builds the busiest shore
+chunk twice as a warm-up before the first chunk asked for (0.7–1.5 s on a desktop held
+every new world's ground back — the JIT warms on the view's own chunks). **THE WAY BACK NEEDS NO DEPLOY**: the kill
 switch `CFG.TERRAIN.V4 = false`; the link `?terrain=classic`, remembered on
 the device in `neo-terrain` until `?terrain=v4`; a browser without Worker,
 OffscreenCanvas or createImageBitmap; and a FAILURE — a worker `onerror` or an
