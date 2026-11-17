@@ -3755,7 +3755,8 @@ const UI = {
         if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
         this.builderFor = vid;    // after deselect/select bookkeeping
-        this.toast('Pick a building, then tap a site — this villager will build it', 'note');
+        // the journey's guide says it and rings the card: no second voice over her line
+        if (!(S && S.scenario)) this.toast('Pick a building, then tap a site — this villager will build it', 'note');
       });
       const grp = panel.querySelector('[data-act="group"]');
       if (grp) grp.addEventListener('click', () => {
