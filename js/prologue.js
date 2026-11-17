@@ -514,8 +514,7 @@ const Prologue = {
           goal: 'Play a card',
           skipIf: () => !(window.Deck && Deck.on && Deck.on() && Deck.total && Deck.total() > 0),
           on: () => { P._deckOpen = true; },
-          ring: () => P.vis('#deckBtn') ? { sel: '#deckBtn' } : null,
-          taps: () => P.vis('#deckBtn') ? [{ sel: '#deckBtn' }] : [],
+          ring: () => P.deckRing(), taps: () => { const r = P.deckRing(); return r ? [r] : []; },
           done: () => !!(S.deck && S.deck.played && S.deck.played.length) },
         { id: 'deckok', face: 'pleased', text: 'Well played! Cards help when times are hard.', auto: 3200,
           when: () => !(window.Deck && Deck.acting && Deck.acting()) },
@@ -565,6 +564,32 @@ const Prologue = {
         { id: 'go', face: 'pleased', text: 'The clan is with you, chief. See it through.', auto: 3600 },
       ];
     },
+  },
+  /* THE DECK CHAIN: the deck button → a card that plays at once (the starter
+     hand is all of that kind) → PLAY; an aimed card's ✓ if one was lifted */
+  deckRing() {
+    if (window.DeckUI && DeckUI.playing) return null;   // the card is in the air: point at nothing
+    if (this.vis('.dkAGo')) return { sel: '.dkAGo' };
+    if (this.vis('#dkInsp .dkPlay')) return { sel: '#dkInsp .dkPlay' };
+    if (window.DeckUI && DeckUI.open) {
+      const id = this.deckPick(), cell = id && '.dkCell[data-card="' + id + '"]';
+      return cell && this.vis(cell) ? { sel: cell } : null;
+    }
+    return this.vis('#deckBtn') ? { sel: '#deckBtn' } : null;
+  },
+  deckPick() {
+    let best = null;
+    try {
+      const k = Deck.col().counts;
+      for (const id in k) {
+        if (!(k[id] > 0)) continue;
+        const c = Deck.card(id);
+        if (!c || !Deck.canPlay(id).ok) continue;
+        if (c.target === 'none') return id;
+        if (!best) best = id;
+      }
+    } catch (e) {}
+    return best;
   },
   afford2(unit) { const tc = this.tc(); return !!tc && Bld.canTrain && Bld.canTrain(tc, unit).ok; },
   trained() { const tc = this.tc(); return this.vils().length > this._n0 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
