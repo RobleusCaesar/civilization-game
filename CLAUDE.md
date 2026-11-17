@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second and no ring drawn where a tap cannot land, no line past fifteen words; her nine faces on disk; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 teaches food, wood and stone, game 2 is islands and lakes and teaches the hunt and the lodge where the deer fell (near home), a road, a barracks, a range, a manned tower and a wall, game 3 the stations on their worked ground and the seam; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second and no ring drawn where a tap cannot land, no line past fifteen words; her nine faces on disk; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1533,14 +1533,28 @@ first game of build 178: the `first_quick` profile is gone from the client
 and its dials are game 3's. A brand-new device plays THREE authored games in
 order and is never offered difficulty, the old lesson's checkbox or an origin
 choice before the third: **The First Fire** (raise the hall to level 2:
-select, berries, wood, a house, a villager, the upgrade and its builders; no
-rival in reach — `aiOff`, its hall in a sealed pocket), **The Growing Clan**
-(level 3: stone, a lumber camp, a quarry and a farm on their own worked
-ground, a relic to scout, the deck's first play; a rival at peace) and **The
-Two Roads** (three of the six friendly origins in `CFG.PROLOGUE.ORIGINS`,
-a barracks and three soldiers, a raid of two light raiders from the map's
-edge, then the Wonder — saved for, raised on its site, built — or the rival's
-hall razed). **WHO**: `neo-prologue` (`{v, at, veteran, done, skipped, tunic}`) is
+select, berries, wood, stone, a house, a villager, the upgrade and its
+builders — its storey asks for all three goods; no rival in reach — `aiOff`,
+its hall in a sealed pocket), **The Growing Clan** (level 3, on ISLANDS AND
+LAKES: a home island joined to the rival's mainland by a land bridge, four
+islets, two lakes; the hunt — a lone deer held grazing in sight until struck
+(`still` in the map's animals: its `wanderT`, or it walked off toward the
+islet herd before the hunter came) — and a hunter's lodge on the ground it
+fell on (`Prologue.huntSpot`), a road, a barracks, an archery range, a
+watchtower by the bridge manned by the range's first archer, a wall across
+the bridge, then the deck's first play; all six paid from the stores, only
+the hall's storey gathered for; a rival at peace) and **The Two Roads**
+(three of the six friendly origins in `CFG.PROLOGUE.ORIGINS`, a barracks
+and three soldiers, a lumber camp, a quarry and a farm on their own worked
+ground and a gold seam claimed — a station an origin planted passes its line
+unsaid and still opens its card (`unlocks`) — then a raid of two light
+raiders from the map's edge, then the Wonder — saved for, raised on its
+site, built — or the rival's hall razed) — operator, build 184: "Move wood,
+food and stone education to level 1. Add roads, hunters lodge, barracks,
+archers towers and walls to level 2. Add the other key buildings to level 3
+… the level 2 map … something like islands and lakes". The stable, the
+dock, the trading post and the siege workshop want a higher hall than the
+journey's and are left to the full game. **WHO**: `neo-prologue` (`{v, at, veteran, done, skipped, tunic}`) is
 decided once: a device with any trace of earlier play (`Screens.gamesFounded`)
 is a veteran and never sent; `?prologue=reset` forgets the record,
 `?prologue=0` is off, and an automated browser meets it only with
@@ -1558,8 +1572,9 @@ puts BEGIN on the name's centre line. The next world is founded BEHIND the title
 the demo (`Prologue.preload` from `Screens.onTitle`, `holding()`), so BEGIN
 opens that very world, its ground and art already asked for. **THE WORLDS
 ARE DATA** (`SCENARIO_MAPS[id]`: 38 rows of `#.T~rb^g,:_x`, the halls, the
-people, animals, buildings, `ruins` (none on any journey map: **THE OLD HOME
-BURNED OFF THE MAP** below), a relic, the camera and the glide, and the
+people, animals (`still`: grazing in place until frightened), buildings,
+`ruins` (none on any journey map: **THE OLD HOME BURNED OFF THE MAP**
+below), a relic (none since build 184), the camera and the glide, and the
 named `marks` the guide points at) **AND RULES**
 (`Scenarios.RULES[id]`: the stores, the hall's storey, its levels' price,
 days and support, the build menu, the win, the draft, a stock multiplier):
@@ -1591,10 +1606,11 @@ Gather it at the trees.", and once every hand is on it "… It is coming in."),
 `site`/`hands`/`handsText` (a works still short of builders), `wait` (the
 world at work), `done` (the result: the next beat), `praise` (said in the NEXT
 line's first words, never a line of its own), `auto` (the last word only),
-`ring`/`taps` (the pulse and the idle hand's taps), `on`, `skipIf`,
-`gather`/`gwait`/`cost` (a saving beat and its waiting line) — and three
-ASIDES said over a beat (no builder on a site; the rival's riders and the
-relic, the world's news, `quiet`: said only at a quiet moment, let go after
+`ring`/`taps` (the pulse and the idle hand's taps), `on`, `unlocks` (a card
+opened when the beat is done, said or passed over), `skipIf`,
+`gather`/`gwait`/`cost` (a saving beat and its waiting line) — and two
+ASIDES said over a beat (no builder on a site; the rival's riders, the
+world's news, `quiet`: said only at a quiet moment, let go after
 `QUIET_MAX`, keeping the beat's ring, never while a card has the floor). It
 runs on the SIM's clock (`simTick` from `G.simStep`), so the harness plays it
 as a person does. **THE GUIDE ANSWERS A TAP WITHIN A SECOND**

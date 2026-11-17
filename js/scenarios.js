@@ -65,14 +65,18 @@ const Scenarios = {
       game: 1, mode: 'prologue_1', title: 'The First Fire',
       start: { food: 15, wood: 5, stone: 0, gold: 0 },
       storey: 1,
-      tc: { 2: { cost: { wood: 100, food: 50 }, time: 2, support: { n: 1, lv: 1 } } },
+      // the hall asks for all three goods the game teaches (food, wood, stone)
+      tc: { 2: { cost: { wood: 100, food: 50, stone: 40 }, time: 2, support: { n: 1, lv: 1 } } },
       allowed: [],
       win: { hall: 2 },
       draft: false, stock: 1.4,
     },
     prologue_2: {
       game: 2, mode: 'prologue_2', title: 'The Growing Clan',
-      start: { food: 120, wood: 90, stone: 0, gold: 20 },
+      // its six lessons are built, not saved for: the stores pay for the lodge,
+      // a road, the barracks, the range, the tower and a wall, and only the
+      // hall's storey is gathered for (operator, build 184)
+      start: { food: 150, wood: 330, stone: 130, gold: 40 },
       storey: 2,
       tc: { 3: { cost: { wood: 220, stone: 120 }, time: 3, support: { n: 3, lv: 1 } } },
       allowed: ['house'],
@@ -81,9 +85,12 @@ const Scenarios = {
     },
     prologue_3: {
       game: 3, mode: 'prologue_3', title: 'The Two Roads',
-      start: { food: 300, wood: 300, stone: 120, gold: 60 },
+      start: { food: 300, wood: 380, stone: 120, gold: 60 },
       storey: 1,
-      allowed: ['house', 'farm', 'lumber', 'quarry', 'lodge', 'mine'],
+      // what games 1 and 2 taught; the camps, the quarry and the farm are
+      // this game's lessons (their cards arrive marked NEW), and a seam is
+      // claimed, never built (the mine has no card)
+      allowed: ['house', 'road', 'lodge', 'barracks', 'range', 'tower', 'wall', 'mine'],
       win: { standard: true },
       draft: true, stock: 2,
     },
@@ -187,9 +194,15 @@ const Scenarios = {
     const seat = sc.rival || (sc.marks && sc.marks.rivalPocket && { x: sc.marks.rivalPocket[0], y: sc.marks.rivalPocket[1] });
     if (seat) AI.init(seat, pkA);
     else AI.init({ x: CFG.W - 4, y: CFG.H - 4 }, pkA);
-    // the animals
-    for (const a of (sc.animals || [])) Units.spawn(a.kind, 'W', a.x, a.y);
-    // a relic waiting to be found (game 2)
+    /* the animals. One marked `still` grazes where it was put until something
+       frightens it (game 2's lesson deer: a lone deer roams, and left to it
+       walked off toward the herd across the water before the hunt began) —
+       wanderT is grazeIdle's own step clock, so the bolt is untouched */
+    for (const a of (sc.animals || [])) {
+      const u = Units.spawn(a.kind, 'W', a.x, a.y);
+      if (u && a.still) u.wanderT = 1e9;
+    }
+    // a relic waiting to be found (no journey map carries one since build 184; the format keeps it)
     S.relic = null;
     if (sc.relic && window.Relics && Relics.DEFS && Relics.DEFS[sc.relic.key]) {
       const d = Relics.DEFS[sc.relic.key];
@@ -205,7 +218,8 @@ const Scenarios = {
     S.ruins = (sc.ruins || []).map(r => ({ x: r.x, y: r.y, sz: r.sz || 1, c: r.c, v: r.v || 1, m: r.m ? 1 : 0, day: 0 }));
     if (window.Ruins && Ruins.want) for (const r of S.ruins) Ruins.want(r.c, r.v);
     // how far the land is known at the first morning (game 1 shows its whole
-    // valley; game 2 keeps the fog its scouting lesson needs)
+    // valley; game 2 its own island and the land bridge, the rival's shore
+    // left in the fog for its riders to come out of)
     if (sc.reveal && sc.reveal > 6) G.reveal(Bld.cx(tc) | 0, Bld.cy(tc) | 0, sc.reveal);
     S.map.biome = sc.region || null;
     S.map.worldName = sc.title;

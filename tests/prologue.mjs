@@ -7,8 +7,12 @@
                   every mark the Elder points at stands on the ground it
                   names (the berry bush IS a berry bush — R.fertileKindAt),
                   on ground the village walks to; game 1 shows its whole
-                  valley and no rival; game 2 hides a relic within reach;
-                  game 3 deals three of the six friendly origins.
+                  valley and no rival (berries, wood, stone, a house); game 2
+                  is islands and lakes — a deer to hunt, and ground for a
+                  road, a barracks, a range, a tower and a wall on the land
+                  bridge; game 3 has the worked ground for its lumber camp,
+                  quarry and farm, a gold seam, and deals three of the six
+                  friendly origins.
      THE TITLE    a fresh device sees one BEGIN (the game's name, N of 3) and
                   a small Skip; New Game, the board, the cards and Load are
                   put away; the next world waits behind the title, and BEGIN
@@ -108,14 +112,53 @@ const page = async (q, done) => {
       }
       if (g === 2) {
         o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
-        o.lumber = place('lumber', 'stumps'); o.quarry = place('quarry', 'pebbles'); o.farm = place('farm', 'barren');
-        o.relic = S.relic ? { key: S.relic.key, x: S.relic.x, y: S.relic.y, reach: near(S.relic.x, S.relic.y), found: S.relic.found } : null;
         o.hall = Bld.tcOf('P') && Bld.tcOf('P').level;
+        o.relic = !!S.relic;
+        /* ISLANDS AND LAKES (operator, build 184): the board's land in pieces
+           the sea parts (4-connected, a few tiles or more), lakes the sea
+           never reaches (water off the board's edge), and water a large
+           share of the playable board */
+        const wet = i => S.map.terrain[i] === T.WATER || S.map.terrain[i] === T.MOAT;
+        const lab = new Int32Array(W * CFG.H).fill(-1), comps = [];
+        for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < W - 1; x++) {
+          const i0 = y * W + x;
+          if (lab[i0] >= 0) continue;
+          const w0 = wet(i0), q = [i0], c = { wet: w0, n: 0, edge: false, home: false };
+          lab[i0] = comps.length;
+          while (q.length) {
+            const i = q.pop(), xx = i % W, yy = (i / W) | 0;
+            c.n++;
+            if (xx <= 1 || yy <= 1 || xx >= W - 2 || yy >= CFG.H - 2) c.edge = true;
+            if (has(i)) c.home = true;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = xx + dx, ny = yy + dy, j = ny * W + nx;
+              if (!MapGen.onBoard(nx, ny) || lab[j] >= 0 || wet(j) !== w0) continue;
+              lab[j] = comps.length; q.push(j);
+            }
+          }
+          comps.push(c);
+        }
+        let water = 0, board = 0;
+        for (let y = 1; y < CFG.H - 1; y++) for (let x = 1; x < W - 1; x++) { board++; if (wet(y * W + x)) water++; }
+        o.isles = comps.filter(c => !c.wet && c.n >= 6).length;
+        o.lakes = comps.filter(c => c.wet && !c.edge && c.n >= 4).length;
+        o.water = +(water / board).toFixed(2);
+        // the six lessons' ground: a road, the barracks, the range, the tower, a wall on the bridge
+        o.road = place('road', 'roadSite'); o.barracks = place('barracks', 'barracksSite'); o.range = place('range', 'rangeSite');
+        o.tower = place('tower', 'towerSite'); o.wall = place('wall', 'wallSite');
+        // the deer grazing in sight of the village, and a lodge may stand where it falls
+        G.updateVisibility();
+        const deer = S.units.filter(u => u.owner === 'W' && u.kind === 'deer');
+        const d0 = m.deer && deer.find(u => Math.hypot(u.x - m.deer[0] - 0.5, u.y - m.deer[1] - 0.5) < 1.5);
+        o.deer = { n: deer.length, mark: !!d0, seen: !!(d0 && G.visibleAt(d0.x | 0, d0.y | 0)), reach: !!(d0 && near(d0.x | 0, d0.y | 0)) };
+        if (d0) { G.noteHunt(d0.x | 0, d0.y | 0); o.lodge = place('lodge', 'deer'); }
       }
       if (g === 3) {
         o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
         o.barracks = place('barracks', 'barracksSite');
         o.wonder = place('wonder', 'wonderSite');
+        // the stations' worked ground (a felled stand, broken rock, picked-bare soil) and the seam
+        o.lumber = place('lumber', 'stumps'); o.quarry = place('quarry', 'pebbles'); o.farm = place('farm', 'barren');
         o.hand = (S.draft && S.draft.hand || []).map(c => c.key);
         o.pool = CFG.PROLOGUE.ORIGINS.slice();
         o.rivalSeen = S.buildings.some(x => x.owner === 'A' && x.key === 'tc' && S.map.explored[x.y * W + x.x]);
@@ -130,6 +173,8 @@ const page = async (q, done) => {
     [1, 2, 3].map(g => r[g].scenario + '/' + r[g].mode + ' ' + r[g].rows + ' rows, ' + r[g].home + ' doorstep tiles').join(', '));
   ck('gameOnesBerryBushIsABerryBushWithinReach', markOn(g1, 'berries', 'FERTILE') && g1.berryKind === 'berry', JSON.stringify(g1.marks.berries) + ' ' + g1.berryKind);
   ck('gameOnesWoodAndHouseSiteAreWhereTheGuideSays', markOn(g1, 'forest', 'FOREST') && g1.house === 'ok', JSON.stringify(g1.marks.forest) + ' house ' + g1.house);
+  // game 1 teaches all three goods (operator, build 184: "Move wood, food and stone education to level 1")
+  ck('andItsGreyRocksAreStoneWithinReach', markOn(g1, 'stone', 'HILLS'), JSON.stringify(g1.marks.stone));
   /* THE OLD HOME BURNED OFF THE MAP (operator, build 183: "it doesn't make sense to
      build a new villager next to the burned out village … Removed all the burned out
      buildings"): no journey world lays ruins or their rubble ground */
@@ -137,11 +182,21 @@ const page = async (q, done) => {
     [1, 2, 3].map(g => `game ${g}: ${r[g].ruins} ruins, ${r[g].rubble} rubble tiles`).join('; '));
   ck('gameOneShowsItsWholeValleyAndNoRival', g1.seen >= 0.999 && !g1.rival.seen && g1.rival.close >= 5 && g1.build0 === 0,
     `charted ${(g1.seen * 100).toFixed(1)}%, rival halls ${g1.rival.n} seen ${g1.rival.seen} nearest walkable ${g1.rival.close}, menu ${g1.build0}`);
-  ck('gameTwosStationsStandOnTheirOwnWorkedGround', markOn(g2, 'stone', 'HILLS') && g2.lumber === 'ok' && g2.quarry === 'ok' && g2.farm === 'ok' && g2.berryKind === 'berry',
-    `stone ${JSON.stringify(g2.marks.stone)}, lumber ${g2.lumber}, quarry ${g2.quarry}, farm ${g2.farm}, berry ${g2.berryKind}`);
-  ck('gameTwoHidesARelicWithinReachAndOpensGrown', !!g2.relic && g2.relic.reach && !g2.relic.found && g2.hall === 2, JSON.stringify(g2.relic) + ' hall ' + g2.hall);
+  /* GAME 2 IS ISLANDS AND LAKES (operator, build 184: "Make the level 2 map totally
+     different from the last one. It should be something like islands and lakes") */
+  ck('gameTwoIsIslandsAndLakes', g2.isles >= 4 && g2.lakes >= 2 && g2.water >= 0.35,
+    `${g2.isles} land masses, ${g2.lakes} lakes, water ${g2.water} of the board`);
+  ck('andOpensGrownWithNoRelic', g2.hall === 2 && !g2.relic && markOn(g2, 'stone', 'HILLS') && g2.berryKind === 'berry',
+    `hall ${g2.hall}, relic ${g2.relic}, stone ${JSON.stringify(g2.marks.stone)}, berry ${g2.berryKind}`);
+  ck('gameTwosLessonsStandWhereTheGuideSays', ['road', 'barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
+    ['road', 'barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
+  ck('andItsDeerGrazesInSightWhereALodgeMayStand', g2.deer.mark && g2.deer.seen && g2.deer.reach && g2.lodge === 'ok', JSON.stringify(g2.deer) + ' lodge ' + g2.lodge);
   ck('gameThreesSitesStandWhereTheGuideSays', g3.barracks === 'ok' && g3.wonder === 'ok' && markOn(g3, 'stone', 'HILLS') && g3.berryKind === 'berry' && markOn(g3, 'gold', 'GOLDORE'),
     `barracks ${g3.barracks}, wonder ${g3.wonder}, stone ${JSON.stringify(g3.marks.stone)}, gold ${JSON.stringify(g3.marks.gold)}, berry ${g3.berryKind}`);
+  // the other key buildings (operator, build 184): each station on the ground its own work left
+  ck('gameThreesStationsStandOnTheirOwnWorkedGround', g3.lumber === 'ok' && g3.quarry === 'ok' && g3.farm === 'ok'
+    && markOn(g3, 'stumps', 'STUMPS') && markOn(g3, 'pebbles', 'PEBBLES') && markOn(g3, 'barren', 'BARREN'),
+    `lumber ${g3.lumber}, quarry ${g3.quarry}, farm ${g3.farm}, marks ${['stumps', 'pebbles', 'barren'].map(k => JSON.stringify(g3.marks[k])).join(' ')}`);
   ck('gameThreeDealsThreeOfTheSixFriendlyOrigins', g3.hand.length === 3 && g3.hand.every(k => g3.pool.includes(k)) && g3.rivalSeen,
     `${g3.hand.join(', ')} of ${g3.pool.join(', ')}; rival hall shown ${g3.rivalSeen}`);
   /* EVERY LINE IS SHORT: each beat's ask, its waiting-on-goods lines (a hand
@@ -351,13 +406,22 @@ const endScreen = async (p) => {
 };
 
 /* ---- 2b. THE GUIDE NEVER POINTS WHERE A TAP CANNOT GO (found at a person's
-   pace: a scout's mark under the minimap, where a tap moves the camera and
-   nobody is sent; a ghost a slip moved onto ground it cannot take, with the
-   guide still ringing the greyed ✓; a toast written over the Elder's line) ---- */
+   pace: a mark under the minimap, where a tap moves the camera and nobody is
+   sent; a ghost a slip moved onto ground it cannot take, with the guide still
+   ringing the greyed ✓; a toast written over the Elder's line). Played in
+   game 3 since build 184: its gold seam is a mark a hand is sent to, its farm
+   a ghost seated on picked-bare soil — with an origin that plants no station,
+   so the farm's line is still to be said ---- */
 {
-  const { p, ctx } = await page('?prologue=1', { 1: Date.now() - 60000 });
+  const { p, ctx } = await page('?prologue=1', { 1: Date.now() - 120000, 2: Date.now() - 60000 });
   await p.click('#btnBegin').catch(() => {});
-  await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_2', null, { timeout: 40000 }).catch(() => {});
+  await p.waitForFunction(() => Screens.current === 'draft', null, { timeout: 40000 }).catch(() => {});
+  await p.evaluate(() => {
+    const plants = ['grainkeeper', 'timberwright', 'stoneheart'], h = (S.draft && S.draft.hand) || [];
+    let i = h.findIndex(c => !plants.includes(c.key)); if (i < 0) i = 0;
+    Cards.pick(i); Screens.enterGame();
+  });
+  await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_3', null, { timeout: 40000 }).catch(() => {});
   await p.waitForTimeout(3500);   // the establishing glide
   /* A LESSON OPENS CLEAN (operator, build 182): the map folded, the unit tips put
      away (Mira teaches), the map button and the panel's ℹ️ there to bring them back */
@@ -371,14 +435,14 @@ const endScreen = async (p) => {
     return out;
   });
   ck('aLessonOpensWithTheMapFoldedAndTheTipsPutAway', clean.folded && clean.mapBtn && !clean.tips && clean.info === 'ℹ️', JSON.stringify(clean));
-  // the scout's line, a villager in hand, and its mark parked under the minimap (a player who opened it)
+  // the seam's line, a villager in hand, and its mark parked under the minimap (a player who opened it)
   const pre = await p.evaluate(() => {
     const P = Prologue;
     UI.setMiniCollapsed(false);
-    S.pro.i = P._beats.findIndex(b => b.id === 'scout'); P._shown = null; P._aside = null;
+    S.pro.i = P._beats.findIndex(b => b.id === 'mine'); P._shown = null; P._aside = null;
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
     const v = P.vils()[0]; UI.select('unit', v.id);
-    const m = P.mark('scoutTo', 1), mini = document.getElementById('miniWrap').getBoundingClientRect();
+    const m = P.mark('gold', 1), mini = document.getElementById('miniWrap').getBoundingClientRect();
     const z = R.cam.z, TL = CFG.TILE, sx = mini.left + mini.width / 2, sy = mini.top + mini.height / 2;
     R.cam.x = m.x * TL - sx / z; R.cam.y = m.y * TL - sy / z;
     P._looked = null;
@@ -391,7 +455,7 @@ const endScreen = async (p) => {
     const el = t && document.elementFromPoint(t.x, t.y);
     return { at: t && [Math.round(t.x), Math.round(t.y)], hit: el && (el.id || el.className) };
   });
-  ck('theGuideNeverRingsAMarkUnderTheMinimap', pre.line === 'scout' && pre.under && !pre.open && post.hit === 'c',
+  ck('theGuideNeverRingsAMarkUnderTheMinimap', pre.line === 'mine' && pre.under && !pre.open && post.hit === 'c',
     `before: ${JSON.stringify(pre)}; after: ${JSON.stringify(post)}`);
   // the farm's line: the ghost on its site, then a slip onto the berries beside it
   const g = await p.evaluate(() => {
@@ -428,10 +492,10 @@ const endScreen = async (p) => {
     UI.cancelPlacement && UI.cancelPlacement();
     const P = Prologue, E = P._dom();
     // the ring low on the screen: the card takes the top seat
-    S.pro.i = P._beats.findIndex(b => b.id === 'scout'); P._shown = null; P._aside = null;
+    S.pro.i = P._beats.findIndex(b => b.id === 'mine'); P._shown = null; P._aside = null;
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
     const v = P.vils()[0]; UI.select('unit', v.id);
-    const m = P.mark('scoutTo', 1), z = R.cam.z, TL = CFG.TILE;
+    const m = P.mark('gold', 1), z = R.cam.z, TL = CFG.TILE;
     R.cam.x = m.x * TL - (innerWidth / 2) / z; R.cam.y = m.y * TL - (innerHeight * 0.8) / z;
     P._gliding = true;   // no glide: the camera stays where it was put (a look waits on a glide in flight)
     UI.toast('A word from the world, long enough to need a whole line here', 'note', 6000);
@@ -626,7 +690,10 @@ const endScreen = async (p) => {
   ck('andEveryLineItSaidWasShort', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andTheRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
-  const win = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '' }));
+  const win = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '',
+    done: Object.keys((S.pro && S.pro.done) || {}) }));
+  // food, wood and stone, then a roof and a new villager (operator, build 184)
+  ck('andGameOneTeachesFoodWoodAndStone', ['open', 'wood', 'stone', 'house', 'train'].every(k => win.done.includes(k)), win.done.join(', '));
   ck('theHallWinsAndTheGuideHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
   await p.waitForFunction(() => Prologue._asking, null, { timeout: 12000 }).catch(() => {});
   const ask = await p.evaluate(() => ({ asking: !!Prologue._asking, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '', name: (document.querySelector('#proElder .peIn') || {}).value || '' }));
@@ -698,6 +765,18 @@ const endScreen = async (p) => {
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   await p.waitForTimeout(3000);
   const run = await follow(p, 1400);
+  const g2w = await p.evaluate(() => ({ done: Object.keys((S.pro && S.pro.done) || {}),
+    has: ['lodge', 'barracks', 'range', 'tower', 'wall'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)),
+    roads: Object.keys((S.map && S.map.roads) || {}).length + S.buildings.filter(b => b.owner === 'P' && b.key === 'road').length,
+    up: S.units.filter(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)).length,
+    lodgeAt: (S.buildings.find(b => b.owner === 'P' && b.key === 'lodge') || {}), tc: Bld.tcOf('P') }));
+  const lodgeD = g2w.lodgeAt.x != null ? Math.hypot(g2w.lodgeAt.x - g2w.tc.x, g2w.lodgeAt.y - g2w.tc.y) : 99;
+  /* THE LAKE ISLES' SIX WORKS (operator, build 184: "Add roads, hunters lodge, barracks,
+     archers towers and walls to level 2"): each taught and standing, an archer on the
+     tower, and the deer — held grazing until the hunter came — fallen near home */
+  ck('gameTwoTeachesTheHuntRoadsAndDefences', ['hunt', 'lodge', 'road', 'barracks', 'range', 'tower', 'man', 'wall', 'deck'].every(k => g2w.done.includes(k))
+    && g2w.has.length === 5 && g2w.roads > 0 && g2w.up > 0 && lodgeD < 10,
+    `taught ${g2w.done.join(', ')}; standing ${g2w.has.join(', ')}; road tiles ${g2w.roads}; archers up ${g2w.up}; lodge ${lodgeD.toFixed(1)} tiles from the hall`);
   ck('gameTwoIsWonByFollowingTheGuideAlone', run.over && run.played >= 1, `over ${run.over} at ${run.clk.toFixed(0)} s, ${run.clicks} taps, cards played ${run.played}, lines ${run.seen.map(s => s.id).join(' › ')}`);
   ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapOfGameTwoWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
@@ -735,10 +814,17 @@ const endScreen = async (p) => {
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   await p.waitForTimeout(3000);
   const run = await follow(p, 2400);
-  const fin = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, march: !!(S.pro && S.pro.march), wonder: S.buildings.some(x => x.owner === 'P' && x.key === 'wonder'), done: Object.keys((S.pro && S.pro.done) || {}) }));
+  const fin = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, march: !!(S.pro && S.pro.march), wonder: S.buildings.some(x => x.owner === 'P' && x.key === 'wonder'), done: Object.keys((S.pro && S.pro.done) || {}),
+    has: ['lumber', 'quarry', 'farm', 'mine'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)), allow: S.allow.slice() }));
   const ids = run.seen.map(s => s.id);
   ck('gameThreeIsWonByFollowingTheGuideAlone', run.over && fin.win, `over ${run.over} at ${run.clk.toFixed(0)} s, ${JSON.stringify(fin)}, ${run.clicks} taps, lines ${ids.join(' › ')}`);
   ck('andTheRaidIsMetAndBeaten', ids.includes('raid') && fin.done.includes('raid'), ids.join(' › ') + ' / done ' + fin.done.join(','));
+  /* THE OTHER KEY BUILDINGS (operator, build 184): a lumber camp, a quarry and a farm on
+     their own worked ground, and the gold seam claimed — each taught (or planted by the
+     origin, its card opened all the same) before the raid */
+  ck('andGameThreeTeachesTheStationsAndTheSeam', ['lumber', 'quarry', 'farm', 'mine'].every(k => fin.done.includes(k) && fin.has.includes(k))
+    && ['lumber', 'quarry', 'farm'].every(k => fin.allow.includes(k)) && ids.indexOf('raid') > Math.max(...['lumber', 'quarry', 'farm', 'mine'].map(k => ids.indexOf(k))),
+    `done ${fin.done.join(',')}; standing ${fin.has.join(',')}; menu ${fin.allow.join(',')}; lines ${ids.join(' › ')}`);
   ck('andTheWonderIsTheRoadTheGuideWalks', ['save', 'wonder'].every(x => ids.includes(x) && fin.done.includes(x)) && fin.wonder, ids.join(' › ') + ' / done ' + fin.done.join(','));
   ck('andEveryTapOfGameThreeWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andGameThreesRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');

@@ -439,6 +439,8 @@ const Prologue = {
   /* THE BUILD CHAIN: the Build tab → the card (marked NEW) → the ghost
      already standing on the right ground → ✓. One ring at a time, wherever
      the player is in it. */
+  // a site by its mark's name, or a site that moves (a function: the lodge's killing ground)
+  siteMark(site) { return typeof site === 'function' ? site.call(this) : this.mark(site); },
   buildRing(key, site) {
     return () => {
       if (!UI.placing) this._seated = null;   // a fresh placement seats the ghost again
@@ -449,7 +451,7 @@ const Prologue = {
         // jumps it back (the ✓ there is greyed and answers nothing)
         const v = UI.placeVerdict;
         if ((!v || v.ok) && this.vis('#placeOk')) return { sel: '#placeOk' };
-        const m = this.mark(site); return m || null;
+        const m = this.siteMark(site); return m || null;
       }
       const card = '.bbtn[data-key="' + key + '"]';
       if (this.vis(card)) return { sel: card };
@@ -461,7 +463,7 @@ const Prologue = {
   // the ghost seats itself on the authored site once per placement (never fights a drag)
   _seatGhost(key, site) {
     if (this._seated === UI.placing + ':' + (UI._placeGen || 0) || UI.placeDragging) return;
-    const m = this.mark(site);
+    const m = this.siteMark(site);
     if (!m) return;
     const x = Math.floor(m.x), y = Math.floor(m.y);
     let v = null;
@@ -470,6 +472,19 @@ const Prologue = {
     if (!v || !v.ok) return;
     UI.placeGhost = { x, y, set: true };
     try { if (UI._placeCheck) UI._placeCheck(); } catch (e) {}
+  },
+  /* THE LINE CHAIN (a road, a wall): the Build tab → the card → the site
+     itself, where one tap lays a stretch (a drag lays a longer one: UI's
+     line drag, which takes no ✓) */
+  lineRing(key, site) {
+    return () => {
+      if (UI.placing === key) return this.mark(site);
+      const card = '.bbtn[data-key="' + key + '"]';
+      if (this.vis(card)) return { sel: card };
+      if (this.vis('#panel [data-act="gobuild"]')) return { sel: '#panel [data-act="gobuild"]' };
+      if (this.vis('#bmToggle')) return { sel: '#bmToggle' };
+      return null;
+    };
   },
   hallRing(sel) {
     return () => {
@@ -578,7 +593,7 @@ const Prologue = {
   },
   afford(key) { return Bld.canAfford(Bld.effCost('P', key), S.res); },
 
-  /* Each beat: { id, face, text, goal, when, hold, ack, site, wait, done, praise, auto, ring, taps, on, skipIf }
+  /* Each beat: { id, face, text, goal, when, hold, ack, site, wait, done, praise, auto, ring, taps, on, unlocks, skipIf }
        text   the guide's line (≤ 12 words, one instruction: a praise of ≤ 3 goes before it)
        goal   the tracker's objective (a string or a function), while the beat stands
        when   the beat is HELD until this is true — and while it is, the `hold`
@@ -595,6 +610,7 @@ const Prologue = {
        ring   the pulse's target: {x,y,r} tile-centred | {u:id} | {sel:'css'}
        taps   the idle hand's taps, in order (same shapes)
        on     done once, when the beat is first asked (an unlock, a raid)
+       unlocks a card opened when the beat is done, said or passed over
        skipIf a beat with nothing to teach on this device is passed over
      THE GUIDE ANSWERS A TAP IN THE FRAME IT LANDS (operator, build 181: "the
      next thing … can take between two and three seconds to pop up … shoot
@@ -609,6 +625,9 @@ const Prologue = {
         { id: 'wood', face: 'pleased', text: 'Berries for tonight. Now send someone to cut wood.',
           goal: 'Cut wood', ring: P.sendTo('forest'), taps: P.sendTaps('forest'),
           done: () => P.ordered('wood'), praise: 'Good, strong timber!' },
+        { id: 'stone', face: 'point', text: 'Now send someone to the grey rocks for stone.',
+          goal: 'Gather stone', ring: P.sendTo('stone'), taps: P.sendTaps('stone'),
+          done: () => P.ordered('stone'), praise: 'Good stone!' },
         { id: 'house', face: 'point', text: 'We need a roof. Build a house beside the fire.',
           goal: () => P.afford('house') ? 'Build a house' : 'Gather wood for a house: ' + P.costLine('house'),
           when: () => P.afford('house') || P.has('house'), hold: (c) => P.needLine('A house', null, c),
@@ -646,36 +665,65 @@ const Prologue = {
     2() {
       const P = this;
       return [
-        { id: 'stone', face: 'point', text: 'Welcome back, chief. We need stone. Send someone to the grey rocks.',
-          goal: 'Gather stone', ring: P.sendTo('stone'), taps: P.sendTaps('stone'),
-          done: () => P.ordered('stone'), praise: 'Good stone!' },
-        { id: 'lumber', face: 'point', text: 'Old felled trees lie nearby. Build a lumber camp there.',
-          goal: () => P.afford('lumber') ? 'Build a lumber camp' : 'Gather for a lumber camp: ' + P.costLine('lumber'),
-          when: () => P.afford('lumber') || P.has('lumber'), hold: (c) => P.needLine('A lumber camp', null, c),
-          on: () => Scenarios.unlock('lumber'),
-          ring: P.buildRing('lumber', 'stumps'), taps: () => { const r = P.buildRing('lumber', 'stumps')(); return r ? [r] : []; },
-          ack: () => P.has('lumber'), site: () => P.siteOf('lumber'),
-          done: () => P.raised('lumber'), praise: 'A lumber camp!' },
-        { id: 'quarry', face: 'point', text: 'Now a quarry, on the broken rock.',
-          goal: () => P.afford('quarry') ? 'Build a quarry' : 'Gather for a quarry: ' + P.costLine('quarry'),
-          when: () => P.afford('quarry') || P.has('quarry'), hold: (c) => P.needLine('A quarry', null, c),
-          on: () => Scenarios.unlock('quarry'),
-          ring: P.buildRing('quarry', 'pebbles'), taps: () => { const r = P.buildRing('quarry', 'pebbles')(); return r ? [r] : []; },
-          ack: () => P.has('quarry'), site: () => P.siteOf('quarry'),
-          done: () => P.raised('quarry'), praise: 'A quarry!' },
-        { id: 'farm', face: 'point', text: 'And a farm, where the berries were picked bare.',
-          goal: () => P.afford('farm') ? 'Build a farm' : 'Gather for a farm: ' + P.costLine('farm'),
-          when: () => P.afford('farm') || P.has('farm'), hold: (c) => P.needLine('A farm', null, c),
-          on: () => Scenarios.unlock('farm'),
-          ring: P.buildRing('farm', 'barren'), taps: () => { const r = P.buildRing('farm', 'barren')(); return r ? [r] : []; },
-          ack: () => P.has('farm'), site: () => P.siteOf('farm'),
-          done: () => P.raised('farm'), praise: 'A farm!' },
-        // the find is news when it comes (the relic aside): the lesson goes on while the scout walks
-        { id: 'scout', face: 'point', text: 'Something old lies out there. Send someone to look.',
-          goal: 'Explore', ring: P.sendTo(() => P.mark('scoutTo', 1) || P.mark('relic', 1)),
-          taps: P.sendTaps(() => P.mark('scoutTo', 1) || P.mark('relic', 1)),
-          skipIf: () => !S.relic,
-          done: () => !!(S.relic && S.relic.found) || P.scouting(), praise: 'Good.' },
+        /* THE LAKE ISLES (operator, build 184: "Add roads, hunters lodge,
+           barracks, archers towers and walls to level 2 … something like
+           islands and lakes"): six things to raise, paid from the stores,
+           and the hall's storey the only thing gathered for */
+        { id: 'hunt', face: 'point', text: 'Welcome back, chief. A deer grazes nearby. Send someone to hunt it.',
+          goal: 'Hunt a deer', ring: () => P.huntRing(), taps: () => P.huntTaps(),
+          ack: () => P.hunting() || P.killed(), wait: 'The hunt is on.',
+          done: () => P.killed(), praise: 'Fresh meat!' },
+        { id: 'lodge', face: 'point', text: "Build a hunter's lodge where the deer fell.",
+          goal: () => P.afford('lodge') ? "Build a hunter's lodge" : "Gather for a lodge: " + P.costLine('lodge'),
+          when: () => P.afford('lodge') || P.has('lodge'), hold: (c) => P.needLine("A hunter's lodge", null, c),
+          on: () => Scenarios.unlock('lodge'),
+          ring: P.buildRing('lodge', () => P.huntSpot()), taps: () => { const r = P.buildRing('lodge', () => P.huntSpot())(); return r ? [r] : []; },
+          ack: () => P.has('lodge'), site: () => P.siteOf('lodge'),
+          done: () => P.raised('lodge'), praise: 'A lodge!' },
+        { id: 'road', face: 'point', text: 'Roads speed our people. Lay one beside the hall.',
+          goal: 'Lay a road',
+          when: () => P.afford('road') || P.laid(), hold: (c) => P.needLine('A road', null, c),
+          on: () => Scenarios.unlock('road'),
+          ring: P.lineRing('road', 'roadSite'), taps: () => { const r = P.lineRing('road', 'roadSite')(); return r ? [r] : []; },
+          ack: () => P.laid(), site: () => P.siteOf('road'),
+          done: () => P.laid() && (!P.siteOf('road') || P.builders(P.siteOf('road')).length > 0), praise: 'A fine road!' },
+        { id: 'barracks', face: 'point', text: 'Now a barracks, to train our defenders.',
+          goal: () => P.afford('barracks') ? 'Build a barracks' : 'Gather for a barracks: ' + P.costLine('barracks'),
+          when: () => P.afford('barracks') || P.has('barracks'), hold: (c) => P.needLine('A barracks', null, c),
+          on: () => Scenarios.unlock('barracks'),
+          ring: P.buildRing('barracks', 'barracksSite'), taps: () => { const r = P.buildRing('barracks', 'barracksSite')(); return r ? [r] : []; },
+          ack: () => P.has('barracks'), site: () => P.siteOf('barracks'), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
+          wait: 'The barracks is going up.',
+          done: () => P.has('barracks', true), praise: 'A barracks, and its first soldier!' },
+        { id: 'range', face: 'point', text: 'Archers guard our towers. Build an archery range.',
+          goal: () => P.afford('range') ? 'Build an archery range' : 'Gather for a range: ' + P.costLine('range'),
+          when: () => P.afford('range') || P.has('range'), hold: (c) => P.needLine('An archery range', null, c),
+          on: () => Scenarios.unlock('range'),
+          ring: P.buildRing('range', 'rangeSite'), taps: () => { const r = P.buildRing('range', 'rangeSite')(); return r ? [r] : []; },
+          ack: () => P.has('range'), site: () => P.siteOf('range'), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
+          wait: 'The range is going up.',
+          done: () => P.has('range', true), praise: 'A range, and its first archer!' },
+        { id: 'tower', face: 'point', text: 'Build a watchtower by the land bridge.',
+          goal: () => P.afford('tower') ? 'Build a watchtower' : 'Gather for a tower: ' + P.costLine('tower'),
+          when: () => P.afford('tower') || P.has('tower'), hold: (c) => P.needLine('A tower', null, c),
+          on: () => Scenarios.unlock('tower'),
+          ring: P.buildRing('tower', 'towerSite'), taps: () => { const r = P.buildRing('tower', 'towerSite')(); return r ? [r] : []; },
+          ack: () => P.has('tower'), site: () => P.siteOf('tower'), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
+          wait: 'The tower is going up.',
+          done: () => P.has('tower', true), praise: 'A tower!' },
+        // the tower shoots only through the bows posted on it (the game's rule since build 148)
+        { id: 'man', face: 'point', text: 'A tower shoots only with archers on it. Send your archer up.',
+          goal: 'Send the archer up the tower',
+          when: () => P.has('tower', true) && !!(P.bow() || P.manned()),
+          ring: () => P.manRing(), taps: () => P.manTaps(),
+          done: () => P.manned(), praise: 'Sharp eyes up there!' },
+        { id: 'wall', face: 'point', text: 'Walls keep raiders out. Build one on the land bridge.',
+          goal: () => P.afford('wall') ? 'Build a wall' : 'Gather for a wall: ' + P.costLine('wall'),
+          when: () => P.afford('wall') || P.has('wall'), hold: (c) => P.needLine('A wall', null, c),
+          on: () => Scenarios.unlock('wall'),
+          ring: P.lineRing('wall', 'wallSite'), taps: () => { const r = P.lineRing('wall', 'wallSite')(); return r ? [r] : []; },
+          ack: () => P.has('wall'), site: () => P.siteOf('wall'), wait: 'The wall is going up.',
+          done: () => P.raised('wall'), praise: 'A strong wall!' },
         { id: 'deck', face: 'point', text: 'You carry cards. Tap your deck and play one.',
           goal: 'Play a card',
           skipIf: () => !(window.Deck && Deck.on && Deck.on() && Deck.total && Deck.total() > 0),
@@ -718,6 +766,37 @@ const Prologue = {
           taps: () => { const r = P.yardRing('barracks', '#panel [data-act="train"]')(); return r ? [r] : []; },
           ack: () => P.armyComing() >= 3, wait: 'Good. They will be ready soon.',
           done: () => P.soldiers().length >= 2 || S.day >= 22 },
+        /* THE OTHER KEY BUILDINGS (operator, build 184: "Add the other key
+           buildings to level 3"): each station on the ground its own work
+           left, and the gold seam claimed by a hand — while the soldiers drill.
+           An origin that planted one (Timberwright, Stoneheart, Grainkeeper)
+           has already answered its line, which is passed over unsaid — its
+           card is opened all the same (`unlocks`). */
+        { id: 'lumber', face: 'point', text: 'Old felled trees lie nearby. Build a lumber camp there.',
+          goal: () => P.afford('lumber') ? 'Build a lumber camp' : 'Gather for a lumber camp: ' + P.costLine('lumber'),
+          when: () => P.afford('lumber') || P.has('lumber'), hold: (c) => P.needLine('A lumber camp', null, c),
+          on: () => Scenarios.unlock('lumber'), unlocks: 'lumber',
+          ring: P.buildRing('lumber', 'stumps'), taps: () => { const r = P.buildRing('lumber', 'stumps')(); return r ? [r] : []; },
+          ack: () => P.has('lumber'), site: () => P.siteOf('lumber'),
+          done: () => P.raised('lumber'), praise: 'A lumber camp!' },
+        { id: 'quarry', face: 'point', text: 'Now a quarry, on the broken rock.',
+          goal: () => P.afford('quarry') ? 'Build a quarry' : 'Gather for a quarry: ' + P.costLine('quarry'),
+          when: () => P.afford('quarry') || P.has('quarry'), hold: (c) => P.needLine('A quarry', null, c),
+          on: () => Scenarios.unlock('quarry'), unlocks: 'quarry',
+          ring: P.buildRing('quarry', 'pebbles'), taps: () => { const r = P.buildRing('quarry', 'pebbles')(); return r ? [r] : []; },
+          ack: () => P.has('quarry'), site: () => P.siteOf('quarry'),
+          done: () => P.raised('quarry'), praise: 'A quarry!' },
+        { id: 'farm', face: 'point', text: 'And a farm, where the berries were picked bare.',
+          goal: () => P.afford('farm') ? 'Build a farm' : 'Gather for a farm: ' + P.costLine('farm'),
+          when: () => P.afford('farm') || P.has('farm'), hold: (c) => P.needLine('A farm', null, c),
+          on: () => Scenarios.unlock('farm'), unlocks: 'farm',
+          ring: P.buildRing('farm', 'barren'), taps: () => { const r = P.buildRing('farm', 'barren')(); return r ? [r] : []; },
+          ack: () => P.has('farm'), site: () => P.siteOf('farm'),
+          done: () => P.raised('farm'), praise: 'A farm!' },
+        // a seam is claimed, never built: a hand walks out and the works go up round them
+        { id: 'mine', face: 'point', text: 'A gold seam lies by the woods. Send someone to claim it.',
+          goal: 'Claim the gold seam', ring: P.sendTo('gold'), taps: P.sendTaps('gold'),
+          done: () => P.claiming() || P.has('mine'), praise: 'Gold!' },
         { id: 'raid', face: 'determined', text: 'Raiders! Send your soldiers to meet them.',
           goal: 'Drive off the raiders',
           on: () => P.raid(),
@@ -814,10 +893,8 @@ const Prologue = {
       test() { const v = this._shown; if (v && v.phase === 'hands') return null; return this.unbuilt(); },
       ring() { const b = this.unbuilt(); return b ? (this.selVil() ? { x: Bld.cx(b), y: Bld.cy(b), r: 1.1 } : (this.idleVil() ? { u: this.idleVil().id } : null)) : null; },
       taps() { const b = this.unbuilt(), v = this.idleVil(); return [v && !this.selVil() ? { u: v.id } : null, b ? { x: Bld.cx(b), y: Bld.cy(b), r: 1 } : null].filter(Boolean); } },
-    { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares this valley. Not the ones who burned us.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
+    { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares these lakes. Not the ones who burned us.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
       test() { return Scenarios.game() === 2 && S.units.some(u => u.owner === 'A' && G.visibleAt && G.visibleAt(u.x | 0, u.y | 0)); } },
-    { id: 'relic', face: 'surprised', text: 'Old stones! Our people will put them to use.', hold: 0.2, once: true, auto: 3200, quiet: true, keepRing: true,
-      test() { return Scenarios.game() === 2 && !!(S.relic && S.relic.found); } },
   ],
   // the hands building a site or a storey
   builders(b) { return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'build' && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id)); },
@@ -853,13 +930,75 @@ const Prologue = {
   tcWorks() { const tc = this.tc(); return tc && tc.upgrading > 0 ? tc : null; },
   // a station standing, or raised with hands on it: the lesson goes on while it rises
   raised(key) { if (!this.has(key)) return false; const w = this.siteOf(key); return !w || this.builders(w).length > 0; },
-  // a hand walking to the scout's mark (or already there)
-  scouting() {
-    const m = this.mark('scoutTo', 1) || this.mark('relic', 1);
-    if (!m) return false;
-    return this.vils().some(u => u.task && u.task.type === 'move' && Math.hypot(u.task.x + 0.5 - m.x, u.task.y + 0.5 - m.y) < 3.5);
-  },
   played() { return !!(S.deck && S.deck.played && S.deck.played.length); },
+  /* THE HUNT (game 2): a villager in hand → the nearest deer in sight (a
+     deer in the fog cannot be tapped: its meadow, then); else the hand to
+     send. The order is the line's answer; the kill — a killing ground the
+     lodge may stand on (G.noteHunt) — is the result */
+  prey(from) {
+    const tc = this.tc(), o = from || (tc ? { x: Bld.cx(tc), y: Bld.cy(tc) } : { x: CFG.W / 2, y: CFG.H / 2 });
+    let best = null, bd = 1e9;
+    for (const u of S.units) {
+      if (u.owner !== 'W' || !Units.isPassive(u) || !(u.hp > 0) || !G.visibleAt(u.x | 0, u.y | 0)) continue;
+      const d = (u.x - o.x) ** 2 + (u.y - o.y) ** 2;
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  },
+  huntRing() {
+    const v = this.selVil(), d = this.prey(v), at = d ? { u: d.id } : this.mark('deer');
+    if (v) return at;
+    const iv = this.idleVil(); return iv ? { u: iv.id } : at;
+  },
+  huntTaps() {
+    const v = this.selVil(), d = this.prey(v), at = d ? { u: d.id } : this.mark('deer');
+    if (v) return at ? [at] : [];
+    const iv = this.idleVil(); return [iv ? { u: iv.id } : null, at].filter(Boolean);
+  },
+  hunting() { return this.vils().some(u => { const t = u.tUnit && Units.get(u.tUnit); return !!(t && t.owner === 'W'); }); },
+  killed() { const h = S.map && S.map.hunted; return !!(h && Object.keys(h).length); },
+  // the killing ground nearest the hall that a lodge may stand on (where the deer fell)
+  huntSpot() {
+    const h = S.map && S.map.hunted, tc = this.tc();
+    if (!h) return null;
+    let best = null, bd = 1e9;
+    for (const k in h) {
+      const i = +k, x = i % CFG.W, y = (i / CFG.W) | 0;
+      let ok = false;
+      try { const v = Bld.canPlace('P', 'lodge', x, y, { noCost: true, noSeal: true }); ok = !!(v && v.ok); } catch (e) {}
+      if (!ok) continue;
+      const d = tc ? Math.hypot(x - tc.x, y - tc.y) : 0;
+      if (d < bd) { bd = d; best = { x: x + 0.5, y: y + 0.5, r: 0.8 }; }
+    }
+    return best;
+  },
+  // a road laid: a stretch still going down, or ground already paved
+  laid() { return this.has('road') || !!(S.map && S.map.roads && Object.keys(S.map.roads).length); },
+  /* THE TOWER'S BOW (game 2): an archer on the ground who could go up, the
+     one in hand, and whether any is up there (or on the stairs, or on his
+     way — the order is the answer, Lookout.sentUp) */
+  bow() { return S.units.find(u => u.owner === 'P' && window.Lookout && Lookout.canMan(u) && !Lookout.sentUp(u)) || null; },
+  selBow() {
+    const s = UI.sel; if (!s || !window.Lookout) return null;
+    const ids = s.type === 'unit' ? [s.id] : s.type === 'group' ? s.ids || [] : [];
+    for (const id of ids) { const u = Units.get(id); if (u && u.owner === 'P' && Lookout.canMan(u)) return u; }
+    return null;
+  },
+  manned() { return S.units.some(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)); },
+  post() { return S.buildings.find(b => b.owner === 'P' && b.key === 'tower' && !(b.construction > 0)) || null; },
+  manRing() {
+    const t = this.post(); if (!t) return null;
+    if (this.selBow()) return { x: Bld.cx(t), y: Bld.cy(t), r: 1.1 };
+    const a = this.bow(); return a ? { u: a.id } : null;
+  },
+  manTaps() {
+    const t = this.post(); if (!t) return [];
+    const at = { x: Bld.cx(t), y: Bld.cy(t), r: 1.1 };
+    if (this.selBow()) return [at];
+    const a = this.bow(); return a ? [{ u: a.id }, at] : [];
+  },
+  // a hand sent to claim a gold seam (game 3)
+  claiming() { return this.vils().some(u => u.task && u.task.type === 'claim'); },
   /* a soldier of ours set on a raider — the order, the fight he found
      himself, or a march onto them: a raider not yet in sight cannot be
      tapped (the fog), so the tap is a walk to where he is, and that is the
@@ -1085,6 +1224,8 @@ const Prologue = {
   _advance(b, silent) {
     const P = S.pro;
     P.done[b.id] = 1;
+    // a beat passed over unsaid (an origin planted its station) still opens its card
+    if (b.unlocks) { try { Scenarios.unlock(b.unlocks); } catch (e) {} }
     P.i++;
     this._viewKey = null;
     this._praise = '';
