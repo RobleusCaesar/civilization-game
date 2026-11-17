@@ -16876,10 +16876,19 @@ const R = {
         } else { a.x += a.vx * dt; a.y += a.vy * dt; }
         if (a.vx) a.face = a.vx < 0 ? -1 : 1;
       } else if (a.kind === 'flock') {
-        a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 1.5) * 0.006;
+        // the bob is a SPEED (tiles a second, times dt), never a step per call:
+        // added once a draw it ran twice as fast at 120 Hz as at 60, and two
+        // draws at one moment (dt 0) moved the flock (tests/land.mjs §19b).
+        // 0.36 is the old 0.006 a frame at 60 Hz, so the flight looks the same
+        a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 1.5) * 0.36 * dt;
       } else {
-        a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 5) * 0.010;
-        if (Math.sin((a.t + a.ph) * 2.3) > 0.97) { a.vx = (Math.random() - 0.5) * 0.5; a.vy = (Math.random() - 0.5) * 0.4; }
+        // the butterfly's flutter the same way (0.6 = the old 0.010 a frame at
+        // 60 Hz), and its new heading once per turn window, never once per draw
+        // (the critter's rule above)
+        a.x += a.vx * dt; a.y += a.vy * dt + Math.sin((a.t + a.ph) * 5) * 0.6 * dt;
+        const turn = Math.sin((a.t + a.ph) * 2.3) > 0.97;
+        if (turn && !a.turned) { a.vx = (Math.random() - 0.5) * 0.5; a.vy = (Math.random() - 0.5) * 0.4; }
+        a.turned = turn;
       }
       // onBoard, NEVER inB: inB only means "inside the array" and INCLUDES the
       // off-map rim, so a bird gliding out of the world flapped on across the

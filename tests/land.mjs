@@ -2628,7 +2628,15 @@ function LAND_STEPS(v) { return 16; }
    build 164 as on 165. The heading is re-rolled once per window now. Plant
    one in its window at that pixel, answer Math.random 0.1 for one draw and
    0.9 for the next: not one byte may move. The control: the same frame with
-   no critter in it differs, so the probe can see him. */
+   no critter in it differs, so the probe can see him.
+   AND THE BUTTERFLY AND THE FLOCK (build 180's branch sweep: resource-front's
+   two draws at one clock differed by 14-288 pixels over a forager, crowd and
+   alone): both added their bob to their position once a CALL, not once a
+   second, so at dt 0 each draw moved them (and at 120 Hz they bobbed twice as
+   fast as at 60), and the butterfly re-rolled its heading on every draw of
+   its turn window. The bob is a speed times dt now and the heading turns once
+   a window. Planted beside the fox, a butterfly in its window and a flock:
+   not one byte moves, and each of the three is seen on its own. */
 {
   const p = await page();
   await p.evaluate(() => (window.Assets && Assets.whenWorldIdle) ? Assets.whenWorldIdle() : null);
@@ -2637,28 +2645,33 @@ function LAND_STEPS(v) { return 16; }
     try {
       R.centerOn(41 + 3.5, 8 + 3.5);
       for (let k = 0; k < 12; k++) R.draw(0.016);          // the lazy work settles first
-      const fox = () => [{ kind: 'critter', sub: 'fox', x: 44.5, y: 9.95, homeX: 44, homeY: 8, vx: 0.3, vy: 0,
-        t: 2, ttl: 6, ph: (Math.PI / 2 + 2 * Math.PI) / 3.1 - 2, face: 1, state: 'wander' }];   // sin = 1: in the window
+      const fox = () => ({ kind: 'critter', sub: 'fox', x: 44.5, y: 9.95, homeX: 44, homeY: 8, vx: 0.3, vy: 0,
+        t: 2, ttl: 6, ph: (Math.PI / 2 + 2 * Math.PI) / 3.1 - 2, face: 1, state: 'wander' });   // sin = 1: in the window
+      const fly = () => ({ kind: 'fly', x: 42.6, y: 10.7, vx: 0.2, vy: 0.1, t: 2, ttl: 10,
+        ph: (Math.PI / 2 + 2 * Math.PI) / 2.3 - 2, col: '#e8d070' });                          // in its turn window
+      const flock = () => ({ kind: 'flock', x: 46.2, y: 11.6, dir: 1, vx: 1.5, vy: 0.1, t: 2, ttl: 7, ph: -1, n: 4 });
       R.ambientT = 1e9; R.smokeT = 1e9;                     // nothing new is spawned
       const pnow = performance.now, tFix = pnow.call(performance), mr = Math.random;
       const grab = () => R.g.getImageData(0, 0, R.cv.width, R.cv.height).data;
+      const diff = (X, Y) => { let n = 0; for (let i = 0; i < X.length; i++) if (X[i] !== Y[i]) n++; return n; };
       performance.now = () => tFix;
-      let A, B, E;
+      let A, B, E, F = {};
       try {
-        R.ambient = fox();
+        R.ambient = [fox(), fly(), flock()];
         Math.random = () => 0.1; R.draw(0); A = grab();
         Math.random = () => 0.9; R.draw(0); B = grab();
         R.ambient = []; R.draw(0); E = grab();
+        for (const [k, mk] of [['fox', fox], ['fly', fly], ['flock', flock]]) { R.ambient = [mk()]; R.draw(0); F[k] = diff(grab(), E); }
+        R.ambient = [];
       } finally { performance.now = pnow; Math.random = mr; }
-      let moved = 0, seen = 0;
-      for (let i = 0; i < A.length; i++) { if (A[i] !== B[i]) moved++; if (A[i] !== E[i]) seen++; }
-      out.moved = moved; out.seen = seen;
+      out.moved = diff(A, B); out.seen = diff(A, E); out.each = F;
     } catch (e) { out.thrown = String(e && e.stack || e); }
     return out;`));
   await p.close();
-  ck('aFrozenFrameIsAStillFrame', !v.thrown && v.seen > 0 && v.moved === 0,
-    v.thrown || (v.moved + ' bytes moved between two draws at one clock with a wandering critter in its turn window ' +
-      '(Math.random 0.1, then 0.9); the critter itself is ' + v.seen + ' bytes of the frame'));
+  ck('aFrozenFrameIsAStillFrame', !v.thrown && v.seen > 0 && v.moved === 0 && v.each && v.each.fox > 0 && v.each.fly > 0 && v.each.flock > 0,
+    v.thrown || (v.moved + ' bytes moved between two draws at one clock with a wandering critter and a butterfly in their ' +
+      'turn windows and a flock overhead (Math.random 0.1, then 0.9); they are ' + v.seen + ' bytes of the frame (fox ' +
+      v.each.fox + ', butterfly ' + v.each.fly + ', flock ' + v.each.flock + ')'));
 }
 
 /* ---- 21. THE RAMP, THE BATHYMETRY AND THE SANDBARS ----

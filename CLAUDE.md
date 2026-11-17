@@ -9093,6 +9093,15 @@ once, alone, on build 164's code as on 165's. It re-rolls once per window
 now (`a.turned`), and §19b plants one in its window, answers `Math.random`
 0.1 then 0.9, and holds the frame to zero bytes moved. Decor may draw on the
 clock or a hash; a draw-time roll belongs on a transition, never on a call.
+**A STEP TAKEN PER CALL IS THE SAME FAULT** (build 180's branch sweep:
+resource-front read 14-288 pixels moved over a forager, in the crowd and
+alone): the ambient butterflies and flocks added their bob to their
+position once a DRAW, not times dt, so two draws at one moment moved them
+(and at 120 Hz they bobbed twice as fast as at 60), and the butterfly
+re-rolled its heading on every draw of its turn window. The bob is a speed
+times dt now (the old step at 60 Hz, so the flight looks the same) and the
+heading turns once a window; §19b plants a butterfly and a flock beside the
+fox. Anything the draw moves moves by dt.
 
 **A contract sweep must key on EXIT CODES, never on grepping the output**
 (learned the hard way): every `tests/*.mjs` exits non-zero on failure, but the
