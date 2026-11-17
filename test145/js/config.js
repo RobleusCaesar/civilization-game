@@ -27,7 +27,7 @@ const CFG = {
   // round the workplaces, a hedge round the homes and towers. A picture only; false (or ?footing=0) stands it down.
   FOOTING: { ON: true },
   SAVE_VERSION: 2,     // bump when the save shape changes; loadJSON migrates older saves
-  ART_V: 69,           // cache-buster on every art URL (?v=N) — bump when a PNG in
+  ART_V: 71,           // cache-buster on every art URL (?v=N) — bump when a PNG in
                        // v40: the desktop glen is the supplied painting
                        // (assets/ui/title-bg-wide.png, re-encoded to webp/jpg).
                        // THE GLEN URLS IN index.html CARRY THIS NUMBER BY HAND
@@ -484,15 +484,15 @@ const CFG = {
       train: {
         fishboat: { cost: { wood: 40, gold: 5 }, time: 1 },
         transport: { cost: { wood: 90, gold: 20 }, time: 1.8 },
-        fireship: { cost: { wood: 130, gold: 45 }, time: 2.5, reqLevel: 3 },
+        fireship: { cost: { wood: 110, gold: 35 }, time: 2.5, reqLevel: 2 },   // build 167: cheaper, from the level-2 yard
         bombard:  { cost: { wood: 200, stone: 60, gold: 60 }, time: 3.5, reqLevel: 3 },
       },
       levels: [
         { cost: { wood: 60, gold: 5 },              time: 2, hp: 220, vision: 5 },
         { cost: { wood: 100, stone: 40, gold: 15 }, time: 2, hp: 340, vision: 6,
-          bonus: 'Sturdier hulls, wider watch' },
+          bonus: 'Unlocks the Fire Warship' },
         { cost: { wood: 160, stone: 90, gold: 30 }, time: 3, hp: 480, vision: 7,
-          bonus: 'Unlocks Fire Warship & Bombard Ship' },
+          bonus: 'Unlocks the Bombard Ship' },
       ],
     },
     /* Trading Post — a late-game relief valve: turn a surplus of food/wood/stone
@@ -1591,13 +1591,60 @@ const CFG = {
     PITY: 15,             // wins without an Enlightenment card before one is guaranteed
     STARTER: ['forager_cache', 'fallen_timber', 'willing_hands'],
     QUEUE_MAX: 200,       // offline writes waiting for the cloud
-    /* A VOTE EARNS A CARD (js/vote.js — the whole feature in one file;
-       supabase/migrations/0012 + 0013 and supabase/functions/vote-callback):
-       ON is its switch (off: no banner, no pop-up, no line, nothing asked of
-       the server); the vote page, sent the player's id as ?ref=; the card a
-       player's FIRST vote earns (the server's twin is vote_card()); the
-       tier every later vote deals at random (vote_later_tier()); and the
-       site's own wait between votes, which is when the banner comes back */
-    VOTE: { ON: true, URL: 'https://vibetoplist.com/vote/clanfire', CARD: 'swift_raiders', LATER: 'stone', GAP_H: 12 },
   },
 };
+
+/* ================= THE PROLOGUE (js/scenarios.js, js/prologue.js) =================
+   A brand-new device plays THREE hand-designed games in order before the
+   full game opens (operator, the Prologue brief: "short, beautiful, obvious,
+   and ends in a win"). Each is a MODE KEY built FROM Calm — every dial the
+   game, the rival and the tables read is Calm's unless the profile names it
+   here, so a new Calm dial is the profile's for free (tests/ai-coverage.mjs
+   holds every mode to the chief's dials). `base` is the mode it plays as
+   wherever a table is keyed by difficulty (CFG.baseMode); `hidden` keeps it
+   off every menu and every picture keyed by mode; `prologue` is the game's
+   number. Runs are tagged mode 'prologue_N' in telemetry (migration 0018)
+   and kept off the world board (Screens.boardHold). The WORLD is authored
+   (Scenarios.DEFS: map, placements, allowed buildings, rules, win), never
+   rolled; these dials are what the authored world cannot say.
+     1  THE FIRST FIRE   — nothing threatens: no rival in reach (aiOff), no
+                           raiders, no deaths, no predators, no events
+     2  THE GROWING CLAN — the rival lives and explores at peace; still no
+                           raiders, deaths or predators
+     3  THE TWO ROADS    — the old first-game profile (the measured dials):
+                           a slower rival with a softer hall shown on the
+                           map, a cheap Wonder clock, light late wilds */
+const PROLOGUE_QUIET = { waveFirst: 1e9, barbMult: 0, campMult: 0, deathEvery: [1e9, 1e9],
+  animalMax: 0, animalChance: 0, aiHarass: 0 };
+CFG.MODES.prologue_1 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
+  name: 'The First Fire', base: 'calm', hidden: true, prologue: 1,
+  aiOff: true, gather: 1.25,
+});
+CFG.MODES.prologue_2 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
+  name: 'The Growing Clan', base: 'calm', hidden: true, prologue: 2,
+  gather: 1.2, aiWonderDay: 1e9, revealRival: false,
+});
+CFG.MODES.prologue_3 = Object.assign({}, CFG.MODES.calm, {
+  name: 'The Two Roads', base: 'calm', hidden: true, prologue: 3,
+  aiOutput: 0.8, aiVillCap: 9, aiVillEvery: 14, aiBuildEvery: 3, aiArmyCap: 2, aiArmyDiv: 22,
+  aiHallTake: 1.8, aiWonderDay: 90, revealRival: true,
+  // the Elder's road: 480 food and wood, 240 stone, 120 gold (the hall's own
+  // trickle pays the gold), raised in about a third of the days; the rival
+  // breaks ground no sooner than day 90, a clear quarter hour of race
+  wonderCost: { food: 0.08, wood: 0.08, stone: 0.06, gold: 0.08 }, wonderTime: 0.35, gather: 1.25,
+  waveFirst: 1e9, barbMult: 0.6, campMult: 0, deathEvery: [1e9, 1e9], animalMax: 0, animalChance: 0,
+});
+CFG.PROLOGUE = {
+  ON: true,
+  GAMES: 3,
+  // the card each game's win pays, once per player, ever (migration 0018's grant_prologue)
+  CARD: { 1: 'bronze', 2: 'iron', 3: 'imperial' },
+  /* THE ORIGINS GAME 3 DEALS (three of these six): easy to read, each changes
+     the opening where the player can see it on day one, none needs water or
+     a shore — Homesteader and Refugee Host (more hands at once), Grainkeeper,
+     Timberwright and Stoneheart (a worked station standing on day one),
+     Bowyer (an Archery Range and its archers: the road by force) */
+  ORIGINS: ['homesteader', 'refugeehost', 'grainkeeper', 'timberwright', 'stoneheart', 'bowyer'],
+};
+// the mode a table keyed by difficulty reads for a profile (Calm for the first game)
+CFG.baseMode = m => (CFG.MODES[m] && CFG.MODES[m].base) || m;

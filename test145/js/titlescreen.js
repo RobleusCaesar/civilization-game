@@ -76,8 +76,9 @@ const TitleScreen = {
   },
 
   /* ---------------- the plaques ---------------- */
-  KIND: { btnTitleNew: 'gold', btnTitleBoard: 'navy', btnContinue: 'wood' },
-  ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnTitleBoard: 'trophy',
+  // btnBegin: the prologue's one plaque (js/prologue.js), New Game's gold
+  KIND: { btnTitleNew: 'gold', btnBegin: 'gold', btnTitleBoard: 'navy', btnContinue: 'wood' },
+  ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnBegin: 'flame', btnTitleBoard: 'trophy',
     btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleLoad: 'scroll', btnTitleCards: 'cards' },
   dress() {
     if (!this.el) return;

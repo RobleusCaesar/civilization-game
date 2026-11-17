@@ -39,6 +39,7 @@ const Backend = {
     const word = this.online + '|' + this.configured + '|' + this.uid;
     if (word === this._said) return;
     this._said = word;
+    if (this.uid) { try { this.bootSteps(); this.flushSteps(); } catch (e) {} }
     try {
       window.dispatchEvent(new CustomEvent('backend-status', {
         detail: { online: this.online, configured: this.configured, uid: this.uid },
@@ -434,18 +435,125 @@ const Backend = {
   _emit(row) {
     if (!this.telemetryOn || !this.isReady() || !this.uid) return;
     if (!this.mock && !this.telemetryAllowed()) return;
-    const body = Object.assign({ user_id: this.uid, game_version: String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1) }, this._stamp(row));
+    const gv = String((typeof CFG !== 'undefined' && CFG.SAVE_VERSION) || 1);
+    const rows = (Array.isArray(row) ? row : [row]).map(r => Object.assign({ user_id: this.uid, game_version: gv }, this._stamp(r)));
+    if (!rows.length) return;
     try {
-      if (this.mock) { this.mock.rest('POST', '/telemetry', [body], null); return; }
+      if (this.mock) { this.mock.rest('POST', '/telemetry', rows, null); return; }
       fetch(SUPA_CFG.url + '/rest/v1/telemetry', {
         method: 'POST',
         keepalive: true,
         headers: Object.assign(
           { apikey: SUPA_CFG.anonKey, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
           this.session ? { Authorization: 'Bearer ' + this.session.access_token } : {}),
-        body: JSON.stringify([body]),
+        body: JSON.stringify(rows),
       }).catch(() => {});
     } catch (e) { /* analytics may never be felt in the game */ }
+  },
+
+  /* THE FIRST MINUTE, STEP BY STEP (build 177; tests/telemetry.mjs §11;
+     migration 0016's analytics_first_minute). Half of all games ended before
+     a minute of play and nothing said where, so a page writes one 'step' row
+     the FIRST time it reaches each of these, with the milliseconds since the
+     page began loading (performance.now — the navigation's own clock):
+       load      the document began to parse (the inline boot block)
+       splash    the splash's first paint
+       title     the splash lifted: the title answers taps
+       newgame   New Game tapped
+       origin    the origin cards dealt (the draft shown)
+       picked    an origin kept
+       playable  a world opened (founded or continued) — its first frame
+       map_tap   the first tap on a played world's map
+       villager  the first order a villager was given
+       building  the first building placed (the ✓)
+       play30    30 seconds of play since this page opened the world
+       play60    60 seconds of it
+       hide      the page hidden or closed, with the last step reached
+     Once per PAGE LOAD (`visit`, a random id, never a person), and a world's
+     steps carry its run id. `first` says whether the device held nothing of
+     the game's before this page (Backend._prior). Rows wait on the device
+     until the sign-in lands, then go together; every gate _emit has holds —
+     the live site only, a played world only (never the title's demo), and
+     the dashboard leaves out the operator's devices (analytics__hidden). */
+  STEP_NAMES: ['load', 'splash', 'title', 'newgame', 'origin', 'picked', 'playable', 'map_tap', 'villager', 'building', 'play30', 'play60', 'hide'],
+  _stepSeen: null, _stepQ: null, _visit: null, _lastStep: null, _play0: null,
+  visit() { return this._visit || (this._visit = this.newRunId()); },
+  step(name, extra) {
+    try {
+      if (!this._stepSeen) { this._stepSeen = {}; this._stepQ = []; }
+      if (this._stepSeen[name] || this.STEP_NAMES.indexOf(name) < 0) return false;
+      this._stepSeen[name] = 1;
+      extra = extra || {};
+      const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+      const ms = Math.max(0, Math.round(extra.ms != null ? extra.ms : now));
+      const inRun = ['playable', 'map_tap', 'villager', 'building', 'play30', 'play60'].indexOf(name) >= 0;
+      const props = Object.assign({ step: name, ms, visit: this.visit(), first: !this._prior }, this.formFacts());
+      for (const k in extra) if (k !== 'ms') props[k] = extra[k];
+      if (name !== 'hide') this._lastStep = name;
+      this._stepQ.push({ kind: 'step', run_id: inRun ? (this.runId || null) : null, device: this.deviceKind(), props });
+      if (this._stepQ.length > 30) this._stepQ.splice(0, this._stepQ.length - 30);
+      this.flushSteps();
+      return true;
+    } catch (e) { return false; }
+  },
+  /* THE PROLOGUE'S GUIDE (js/prologue.js; migration 0018's analytics_prologue;
+     tests/telemetry.mjs §12): one 'prologue' row per event —
+       start   a journey game entered                  { game }
+       shown   a beat first shown                      { game, beat, i }
+       beat    a beat completed                        { game, beat, i, shown_ms, done_ms, hints, hand }
+       finish  a journey game ended                    { game, outcome, seconds }
+       skip    "Skip the journey"                      { from: 'title' | 'game', game }
+       choice  the end screen's button, or the naming  { game, choice }
+     with the page's visit, first and form like a step, the world's mode, and
+     its run id (a skip from the title carries none). The rows ride the steps'
+     queue, so they wait on the device until the sign-in lands, and every gate
+     _emit has holds — the live site only, never a test build. */
+  LESSON_EVS: ['start', 'shown', 'beat', 'finish', 'skip', 'choice'],
+  lesson(ev, extra) {
+    try {
+      if (this.LESSON_EVS.indexOf(ev) < 0) return false;
+      if (!this._stepQ) { this._stepSeen = this._stepSeen || {}; this._stepQ = []; }
+      const props = Object.assign({ ev, visit: this.visit(), first: !this._prior }, this.formFacts());
+      for (const k in (extra || {})) props[k] = extra[k];
+      const world = typeof S !== 'undefined' && S && S.scenario ? S : null;
+      const inRun = !!world && !(ev === 'skip' && props.from === 'title');
+      this._stepQ.push({ kind: 'prologue', run_id: inRun ? (this.runId || null) : null,
+        mode: world ? (world.mode || null) : null, device: this.deviceKind(), props });
+      if (this._stepQ.length > 90) this._stepQ.splice(0, this._stepQ.length - 90);
+      this.flushSteps();
+      return true;
+    } catch (e) { return false; }
+  },
+  flushSteps() {
+    if (!this._stepQ || !this._stepQ.length) return;
+    if (!this.telemetryOn || !this.isReady() || !this.uid) return;   // kept until the sign-in lands
+    const rows = this._stepQ.splice(0);
+    this._emit(rows);
+  },
+  // the three the boot block saw before this file parsed: asked on the lift,
+  // at sign-in and at the first hide (each step is sent once, whoever asks)
+  bootSteps() {
+    try {
+      const B = window.Boot;
+      if (!B) return;
+      this.step('load', { ms: B.t0 || 0 });
+      let paint = null;
+      try {
+        const e = performance.getEntriesByType('paint');
+        for (const p of e) if (p.name === 'first-paint' || p.name === 'first-contentful-paint') paint = paint == null ? p.startTime : Math.min(paint, p.startTime);
+      } catch (e) {}
+      if (paint != null) this.step('splash', { ms: paint });
+      if (B.done && B.liftAt != null) this.step('title', { ms: B.liftAt });
+    } catch (e) {}
+  },
+  // a played world's clock, asked a frame at a time by G.frame (cheap: two
+  // compares once both are sent)
+  stepTick() {
+    if (!this._stepSeen || this._stepSeen.play60 || this._play0 == null) return;
+    if (typeof S === 'undefined' || !S || (window.Screens && Screens._demo) || !S.played) return;
+    const t = (S.playtime || 0) - this._play0;
+    if (t >= 30) this.step('play30');
+    if (t >= 60) this.step('play60');
   },
 
   // a run was founded. Called from G.newGame, once the world exists.
@@ -700,7 +808,11 @@ const Backend = {
   startSession() {
     if (this._sessionT0) return;
     this._sessionT0 = Date.now();
-    const send = () => this.endSession();
+    const send = () => {
+      // the first hide closes the first minute: where the page got to
+      try { this.bootSteps(); if (this._stepSeen && !this._stepSeen.hide) this.step('hide', { last: this._lastStep || null }); } catch (e) {}
+      this.endSession();
+    };
     try {
       window.addEventListener('pagehide', send);
       document.addEventListener('visibilitychange', () => { if (document.hidden) send(); });

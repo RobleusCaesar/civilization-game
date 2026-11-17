@@ -551,14 +551,25 @@
       this.ready = false; this.on = true; this.stopWorkers(); this.releaseAll();
       this.paintThumbBase();
       const wait = ms => new Promise(r => setTimeout(r, ms));
-      const art = () => (window.Assets && Assets.whenWorldIdle && !(Assets.worldReady && Assets.worldReady())) ? Promise.race([Assets.whenWorldIdle(), wait(8000)]) : Promise.resolve();
+      /* the shade is the wood's and the deposits' own stamps (R.forestStampBand),
+         so it waits for the TREE catalog — never the whole world's art, which on
+         a cold phone is hundreds of buildings and kit pieces the ground does not
+         draw (Assets.whenTreesIdle; whichever answers first, and never past 8 s) */
+      const art = () => {
+        if (!window.Assets || !Assets.whenWorldIdle || (Assets.worldReady && Assets.worldReady())) return Promise.resolve();
+        const w = [Assets.whenWorldIdle(), wait(8000)];
+        if (Assets.whenTreesIdle) w.push(Assets.whenTreesIdle());
+        return Promise.race(w);
+      };
       const steps = [
         () => { this.seed = 0; const s = String(S.seed || ''); for (let i = 0; i < s.length; i++) this.seed = (Math.imul(this.seed, 31) + s.charCodeAt(i)) | 0; this.buildSDF(); },
         () => this.buildFields(),
         () => art(),
         () => this.buildShade(),
+        // the workers first: their own world set-up runs beside this thread's core below
+        () => this.startWorkers(),
         () => { this.core = this.core || TCCore(); this.core.setWorld(this.world()); },
-        () => { this.startWorkers(); this.snapshot(); if (!this.caus) this.makeCaustics(); if (!this.rip) this.makeRipples(); this.ready = true; this.stats.prep = performance.now() - t0; },
+        () => { this.snapshot(); if (!this.caus) this.makeCaustics(); if (!this.rip) this.makeRipples(); this.ready = true; this.stats.prep = performance.now() - t0; },
       ];
       return (async () => { for (const st of steps) { if (gen !== this._actGen) return false; await st(); await wait(0); } return true; })();
     },

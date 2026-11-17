@@ -120,6 +120,8 @@ const CardIntro = {
     if (typeof S !== 'undefined' && S && !Screens._demo) return false;
     if (typeof S !== 'undefined' && S && S.tut && S.tut.on) return false;
     if (Deck.lessonHolds && Deck.lessonHolds()) return false;
+    // a new device on its journey learns the cards from the Elder (js/prologue.js)
+    if (window.Prologue && Prologue.active && Prologue.active()) return false;
     if (Screens.modalUp && Screens.modalUp()) return false;
     return true;
   },

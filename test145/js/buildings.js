@@ -308,6 +308,8 @@ const Bld = {
     return { level: lvN, lv: d.levels[lvN - 1] };
   },
   lv(b) { return CFG.BUILDINGS[b.key].levels[b.level - 1]; },
+  // the share of the Wonder's days a mode asks (the first game's is shorter; both tribes)
+  wonderTimeMult() { const m = (CFG.MODES[S && S.mode] || {}).wonderTime; return m > 0 ? m : 1; },
   get(id) { return S.buildings.find(b => b.id === id); },
   /* ---- footprints: b.x/b.y is the top-left tile; most buildings are 1×1,
      the Town Center claims size×size. All hit-testing, placement and
@@ -596,26 +598,40 @@ const Bld = {
      flickering. */
   dockShore(b) {
     if (!this._block) this.rebuildBlock();
-    if (this._dockGen !== this._blockGen) { this._dockGen = this._blockGen; this._dockAt = {}; }
+    if (this._dockGen !== this._blockGen || !this._dockLat) { this._dockGen = this._blockGen; this._dockAt = {}; this._dockLat = {}; }
     const hit = this._dockAt[b.id];
     if (hit) return hit;
     const sz = this.size(b);
     const sides = [
       ['n', 0, -1], ['s', 0, sz], ['w', -1, 0], ['e', sz, 0],
     ];
-    let found = 'n';
+    /* THE FULLER SHORE WINS (operator, build 170: "docks don't look
+       integrated into the land, there's a visible stop of water between the
+       dock and land"): a flank that is land along its whole length beats one
+       that touches land on a single tile, ties broken N→S→W→E as before. The
+       jetty is then laid against the land it meets — `lat` says which tile
+       of a half-land flank that is (-1 the first, +1 the second, 0 both), so
+       the deck lands on ground instead of half on the water beside it
+       (R.dockPic). Still a question of the TILES alone. */
+    let found = 'n', best = 0, lat = 0;
     for (const [name, ox, oy] of sides) {
-      let land = false;
-      for (let k = 0; k < sz && !land; k++) {
+      let land = 0, k0 = -1;
+      for (let k = 0; k < sz; k++) {
         const x = b.x + (ox === -1 ? -1 : ox === sz ? sz : k);
         const y = b.y + (oy === -1 ? -1 : oy === sz ? sz : k);
-        if (MapGen.inB(x, y) && Path.passable(x, y, b.owner)) land = true;
+        if (MapGen.inB(x, y) && Path.passable(x, y, b.owner)) { land++; if (k0 < 0) k0 = k; }
       }
-      if (land) { found = name; break; }
+      if (land > best) {
+        best = land; found = name;
+        lat = land === sz || sz < 2 ? 0 : (k0 < sz / 2 ? -1 : 1);
+      }
     }
     this._dockAt[b.id] = found;
+    this._dockLat[b.id] = lat;
     return found;
   },
+  // which way across its shore the jetty sits (see dockShore): -1, 0 or +1
+  dockLat(b) { this.dockShore(b); return this._dockLat[b.id] || 0; },
 
   dockSiteOk(x, y, owner) {
     owner = owner || 'P';
@@ -802,6 +818,10 @@ const Bld = {
        mode offers none. Asked before the ground: it is not about the tile. */
     if (key === 'wonder' && !G.wonderInPlay())
       return { ok: false, code: 'mode', why: 'The Wonder rises only in Calm worlds.' };
+    /* THE PROLOGUE's menu is its lesson (Scenarios.allows): a building it has
+       not taught yet cannot be raised by the player any other way either */
+    if (owner === 'P' && window.Scenarios && Scenarios.allows && !Scenarios.allows(key))
+      return { ok: false, code: 'mode', why: 'Not yet — the Elder will show you when.' };
     // a road is ground, not a building: its own rules (js/roads.js)
     if (key === 'road') return window.Roads && Roads.on() ? Roads.canPlace(owner, x, y, opts) : { ok: false, code: 'key', why: '?' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
@@ -1056,6 +1076,12 @@ const Bld = {
     // THE AGE OF MARBLE (js/deckfx-growth.js): the player's Wonder a quarter
     // cheaper for the rest of the run — the one cost point, so the menu, the
     // ghost, the "% saved" line and the payment all read the same price
+    // a profile's monument may be a fraction of the price (CFG.MODES.prologue_3.wonderCost)
+    if (owner === 'P' && key === 'wonder') {
+      // a number for every good, or a share per good ({food, wood, stone, gold})
+      const wc = (CFG.MODES[S && S.mode] || {}).wonderCost;
+      if (wc) { const sc = {}; for (const k in cost) { const f = typeof wc === 'number' ? wc : (wc[k] != null ? wc[k] : 1); sc[k] = Math.round(cost[k] * f); } cost = sc; }
+    }
     if (owner === 'P' && key === 'wonder' && window.Deck && Deck.wonderCost) cost = Deck.wonderCost(cost);
     return window.Cards ? Cards.buildCost(owner, key, cost) : cost;
   },
@@ -1079,7 +1105,7 @@ const Bld = {
     const spec = this.buildSpec(key, owner);
     const res = owner === 'P' ? S.res : S.ai.res;
     // ORIGIN CARDS: discounts and haste read BEFORE the Nomad charge burns
-    const tMult = window.Cards ? Cards.buildTimeMult(owner) : 1;
+    const tMult = (window.Cards ? Cards.buildTimeMult(owner) : 1) * (key === 'wonder' ? this.wonderTimeMult() : 1);
     /* WHAT IT ACTUALLY COST, kept on the building. An Origin Card may have
        discounted this site, and a cancelled site hands back what was PAID —
        refunding the list price would mint resources out of nothing. */
@@ -1233,7 +1259,24 @@ const Bld = {
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
-        G.log(`${this.def(b.key).name} complete — the builder stays on to work it`, news);
+        /* THE WHOLE CREW STAYS ON (operator, build 170: "if two villagers are
+           building a resource structure for the first time, when they're done
+           both should automatically start working"): every other hand of the
+           player's still raising this site takes a place on it too, while
+           there is room — the finishing builder first, then the others in
+           list order. The rival mans its stations by its own daily deal. */
+        let crew = 1;
+        if (b.owner === 'P') {
+          const cap = this.maxWorkers(b);
+          for (const u of S.units) {
+            if (this.workersAssigned(b) >= cap) break;
+            if (u === builder || u.owner !== 'P' || !u.task || u.task.type !== 'build' ||
+                u.task.id !== b.id || !Units.isVillager(u)) continue;
+            if (Units.isLevied && Units.isLevied(u)) continue;
+            u.task = { type: 'work', id: b.id }; u.path = null; crew++;
+          }
+        }
+        G.log(`${this.def(b.key).name} complete — ${crew > 1 ? 'its builders stay on to work it' : 'the builder stays on to work it'}`, news);
       } else if (this.def(b.key).needsWorker) {
         G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
       } else if (this.def(b.key).firstUnit && (b.level || 1) === 1) {
@@ -1320,10 +1363,18 @@ const Bld = {
      to close. Owner-agnostic: the rival's chief builds a town before a hall
      on the same terms. */
   TC_SUPPORT: 3,
+  /* THE PROLOGUE may ask less of its halls (Scenarios.support): game 1's
+     hall rises on ONE finished building, game 2's on three of any storey —
+     the rule is the same rule, its numbers the scenario's */
+  supportRule(tc) {
+    const r = window.Scenarios && Scenarios.support ? Scenarios.support(tc) : null;
+    return r || { n: this.TC_SUPPORT, lv: tc.level };
+  },
   tcSupport(tc) {
+    const lv = this.supportRule(tc).lv;
     return this.list(tc.owner).filter(o =>
       o.key !== 'tc' && o.key !== 'wall' && o.key !== 'gate' &&
-      !(o.construction > 0) && o.level >= tc.level).length;
+      !(o.construction > 0) && o.level >= lv).length;
   },
 
   canUpgrade(b) {
@@ -1339,9 +1390,10 @@ const Bld = {
       const tc = this.tcOf(b.owner);
       if (!tc || tc.level < b.level + 1)
         return { ok: false, why: `Needs Town Center Lv ${b.level + 1}` };
-    } else if (this.tcSupport(b) < this.TC_SUPPORT) {
+    } else if (this.tcSupport(b) < this.supportRule(b).n) {
       // the hall rises on the town's shoulders, not the other way round
-      return { ok: false, why: `Needs ${this.TC_SUPPORT} buildings at Lv ${b.level} ` +
+      const sr = this.supportRule(b);
+      return { ok: false, why: `Needs ${sr.n} building${sr.n === 1 ? '' : 's'} at Lv ${sr.lv} ` +
         `(have ${this.tcSupport(b)})` };
     }
     const res = b.owner === 'P' ? S.res : S.ai.res;
@@ -1459,6 +1511,9 @@ const Bld = {
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
+    // THE PROLOGUE's goal (js/scenarios.js): a hall reaching the storey its
+    // scenario asks for wins the game
+    if (b.owner === 'P' && b.key === 'tc' && window.Scenarios && Scenarios.onHall) Scenarios.onHall(b);
   },
 
   /* training queue: entries { unit, t } (days remaining) */
@@ -2234,6 +2289,8 @@ const Bld = {
        before the one subtraction, so the number returned (and floated by
        Combat.hitBuilding) is the number taken */
     if (b.owner === 'P') { const gd = this.roadMult(b, 'guard'); if (gd > 1) amt /= gd; }
+    // a profile's rival hall may come down sooner (CFG.MODES.prologue_3.aiHallTake)
+    if (b.owner === 'A' && b.key === 'tc') { const ht = (CFG.MODES[S.mode] || {}).aiHallTake; if (ht > 0) amt *= ht; }
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };

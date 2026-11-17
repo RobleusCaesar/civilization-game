@@ -2790,12 +2790,16 @@ const Sprites = {
         if (lv >= 2) { put(a - 1, c, AP.bone[1]); put(a, c, AP.bone[0]); }             // lashing / iron band
       }
       // ---- the land end: what the deck is anchored INTO ----
+      /* It reaches back to the canvas's own edge (a = -PAD): R.dockPic seats
+         the picture so that edge stands on the bank, and what stands there is
+         the footing the deck is fixed to — never a strip of water. */
       if (lv === 1) {
         for (let c = -w - 2; c <= w + 2; c++) { put(0, c, WD[1]); put(1, c, WD[2]); }
-        for (const c of [-w, 0, w]) { put(-2, c, WD[2]); put(-1, c, WD[3]); }           // stub poles ashore
+        for (let c = -w - 3; c <= w + 3; c++) { put(-4, c, WD[3]); put(-3, c, WD[2]); put(-2, c, WD[1]); }   // a log sill on the bank
+        for (const c of [-w - 1, 0, w + 1]) { put(-6, c, WD[2]); put(-5, c, WD[3]); put(-1, c, WD[0]); }   // stakes driven ashore
       } else {
         const foot = lv >= 3 ? AP.stone : AP.stone;
-        for (let a = -4; a <= 3; a++) for (let c = -w - 3; c <= w + 3; c++) {
+        for (let a = -DOCK.PAD; a <= 3; a++) for (let c = -w - 3; c <= w + 3; c++) {
           const [x, y] = M(a, c);
           const course = lv >= 3 ? (((a + 6) / 3) | 0) : 0;
           const joint = lv >= 3 ? (((c + 40 + course * 4) % 9) === 0 || (a + 6) % 3 === 0)
@@ -2820,7 +2824,11 @@ const Sprites = {
          two, in drystone under a shingle roof to match the tier. */
       if (lv >= 2) {
         const sw = lv === 2 ? 26 : 36, sh = lv === 2 ? 15 : 20;
-        const [ax, ay] = M(lv === 2 ? 16 : 20, -(w + 4 + sw / 2));
+        /* on a north or south shore the shed stands ON the bank at the deck's
+           land end (the canvas keeps its roof from going any higher on a
+           north shore); beside an east or west one it stands up the jetty */
+        const ns = face === 's' || face === 'n';
+        const [ax, ay] = M(ns ? -2 : lv === 2 ? 16 : 20, -(w + 4 + sw / 2));
         const cx = Math.max(sw / 2 + 4, Math.min(128 - sw / 2 - 4, ax));
         const gy = Math.max(sh + 16, Math.min(124, ay + sh / 2));
         dockShed(q, cx, gy, sw, sh, lv, fac);

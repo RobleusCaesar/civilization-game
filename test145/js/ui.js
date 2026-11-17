@@ -196,6 +196,7 @@ const UI = {
       btn.appendChild(nm); btn.appendChild(co);
       if (key === 'wonder') { const pg = document.createElement('div'); pg.className = 'bprog'; btn.appendChild(pg); }
       btn.addEventListener('click', () => {
+        if (window.Scenarios && Scenarios.seen) Scenarios.seen(key);   // the NEW mark has done its job
         if (this.placing === key) { this.exitPlacement(); return; }   // tapping the lit button quits cleanly
         const tc = Bld.tcOf('P');
         if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
@@ -298,8 +299,18 @@ const UI = {
 
   refreshMenu() {
     const tc = Bld.tcOf('P');
+    // THE PROLOGUE shows only what its lesson has taught: hidden, never greyed (Scenarios.allows)
+    const allows = k => !(window.Scenarios && Scenarios.allows) || Scenarios.allows(k);
     document.querySelectorAll('.bbtn').forEach(b => {
       const key = b.dataset.key;
+      if (!allows(key)) {
+        if (b.style.display !== 'none') b.style.display = 'none';
+        if (this.placing === key) this.exitPlacement();
+        return;
+      }
+      if (key !== 'wonder' && b.style.display === 'none') b.style.display = '';
+      // …and a card it has just taught wears NEW until it is tapped
+      b.classList.toggle('new', !!(window.Scenarios && Scenarios.isNew && Scenarios.isNew(key)));
       if (key === 'wonder') {
         const show = this.wonderOffered();
         b.style.display = show ? '' : 'none';
@@ -479,8 +490,13 @@ const UI = {
         this.lastTap = dbl ? null : { x: e.clientX, y: e.clientY, t: now };
         if (dbl) this.handleDoubleTap(e.clientX, e.clientY);
         else this.handleTap(e.clientX, e.clientY);
+        // THE FIRST MINUTE: the first tap on a played world's map (Backend.step)
+        if (was && window.Backend && Backend.step) Backend.step('map_tap');
       }
-      if (was && this._orderMoved(was)) G.noteAct();
+      if (was && this._orderMoved(was)) {
+        G.noteAct();
+        if (window.Backend && Backend.step && this._villagerMoved(was)) Backend.step('villager');
+      }
       if (this.pointers.size < 2) this.pinchD = 0;
       if (pinchEnds) {
         // one of two fingers lifted: the other PANS on from where it rests —
@@ -737,6 +753,7 @@ const UI = {
     const mb = window.Deck && Deck.masterHand ? Deck.masterHand('P', key) : 0;
     const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true } : { builderId: this.builderFor });
     if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, this.builderFor);
+    if (nb && window.Backend && Backend.step) Backend.step('building');   // the first minute
     // a sealing placement was allowed, and is ACKNOWLEDGED — the player chose
     // to shut their own people in, and the toast marks the moment they did
     if (r.warn === 'sealed') this.toast('Your town is walled in — only a gate lets your people out', true);
@@ -2085,6 +2102,16 @@ const UI = {
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
     return false;
   },
+  // did the gesture change a VILLAGER's order? (the first-minute 'villager' step)
+  _villagerMoved(a) {
+    const b = this._orderSnap();
+    if (!b || b.length !== a.length) return false;
+    for (let i = 1; i + 7 < a.length; i += 8) {
+      if (!a[i] || a[i].kind !== 'villager') continue;
+      for (let k = 1; k < 8; k++) if (a[i + k] !== b[i + k]) return true;
+    }
+    return false;
+  },
   // panel buttons that only turn the page — never an order (UI.init's listener)
   VIEW_ACTS: { tradeneed: 1, tradeback: 1, gtactics: 1, gobuild: 1, garmysave: 1, garmyremove: 1, armyremove: 1 },
 
@@ -2501,7 +2528,8 @@ const UI = {
       this.groupmatesNear(u),                // …and Group only while there is anyone to band with
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
       this.armyOfUnit(u),   // …and Remove Army appears the moment this one is the last of it
-      u.perch ? 'P' : u.climb ? 'C' : '-'];   // up a tower, on its stairs, or on the ground (js/lookout.js)
+      u.perch ? 'P' : u.climb ? 'C' : '-',   // up a tower, on its stairs, or on the ground (js/lookout.js)
+      u.kind, (c => c ? c.code : '-')(Units.rankCheck ? Units.rankCheck(u) : null)];   // the rank button greys and lights without a tap
     // the works this builder is on: the Cancel button rides its id, so it
     // appears, arms and disappears with the site itself
     const cw = this.villagerBuildSite(u);
@@ -2629,6 +2657,18 @@ const UI = {
      contract finds them as before. */
   killBtn(act, armed, icon, name) {
     return `<button class="abtn pkill${armed ? ' danger armed' : ''}" data-act="${act}" title="${name}" aria-label="${name}"><span class="pki">${icon}</span></button>`;
+  },
+  /* A SOLDIER'S NEXT RANK, A SMALL BUTTON BESIDE THE ℹ️ (Units.rankCheck,
+     tests/rank-up.mjs — operator, build 174). Two gold chevrons, a vector at
+     the screen's own pixels; greyed (.cant) while the yard is short of the
+     rank's level or the purse of its price, and a tap on a greyed one says
+     which. Nothing for a soldier at the top of his line. */
+  RANK_SVG: '<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M3 10.5 10 4l7 6.5" fill="none" stroke="#2a1a08" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 16.5 10 10l7 6.5" fill="none" stroke="#2a1a08" stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 10.5 10 4l7 6.5" fill="none" stroke="#f0c75a" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 16.5 10 10l7 6.5" fill="none" stroke="#f0c75a" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+  rankBtn(u) {
+    const c = Units.rankCheck ? Units.rankCheck(u) : null;
+    if (!c) return '';
+    const name = c.ok ? `Upgrade to ${CFG.UNITS[c.to].name} — ${Bld.costStr(c.cost)}` : c.why;
+    return `<button class="abtn prank${c.ok ? '' : ' cant'}" data-act="rankup" title="${name}" aria-label="${name}">${this.RANK_SVG}</button>`;
   },
   killPlank(act, line, small) {
     return `<button class="abtn danger wide pkillok" data-act="${act}">⚠️ ${line}${small ? `<small>${small}</small>` : ''}</button>`;
@@ -3461,11 +3501,13 @@ const UI = {
         : canScuttle ? this.killPlank('scuttle', 'Confirm — sink her', 'no resources returned · its place in the population is freed')
         : canBan ? this.killPlank('banish', 'Confirm — send them away', 'nothing comes back but their place in the population') : '';
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
-      html += `<div class="phead${kill && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
+      // a soldier's next rank rides the header beside the ℹ️ (UI.rankBtn)
+      const rank = own && !kill ? this.rankBtn(u) : '';
+      html += `<div class="phead${(kill || rank) && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
-        ${helpBtn}${kill}<button class="abtn" id="panelClose">✕</button></div>
+        ${helpBtn}${kill}${rank}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${killArmed}${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;
       // (a spectral champion is never mended — a spirit eats nothing, and the
       // heal is paid in food: js/deckfx-army.js)
@@ -3675,6 +3717,21 @@ const UI = {
         G.log('Hull scuttled — she slips beneath the water');
         this.toast('Scuttled — its place in the population is freed');
       }));
+      const rankB = panel.querySelector('[data-act="rankup"]');
+      if (rankB) rankB.addEventListener('click', () => {
+        const u2 = Units.get(this.sel.id);
+        if (!u2) return;
+        const c = Units.rankCheck(u2);
+        if (!c) return;
+        if (!c.ok) { this.toast(c.why, true); return; }
+        Units.rankUp(u2);
+        const nm = CFG.UNITS[u2.kind].name;
+        R.float(u2.x, u2.y - 0.6, '⬆ ' + nm, '#f0c75a');
+        if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete');
+        this.toast(`Upgraded to ${nm} — ${Bld.costStr(c.cost)}`);
+        G.log(`A soldier rose to ${nm}`);
+        this.renderPanel();
+      });
       const heal = panel.querySelector('[data-act="heal"]');
       if (heal) heal.addEventListener('click', () => {
         const u2 = Units.get(this.sel.id);

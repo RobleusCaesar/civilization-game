@@ -58,7 +58,7 @@ const Defeat = {
   // hand-authored picture for it if one has been uploaded; called once as
   // the Game Over screen opens
   begin(mode) {
-    this.mode = CFG.MODES && CFG.MODES[mode] ? mode : 'moderate';
+    this.mode = CFG.MODES && CFG.MODES[mode] ? CFG.baseMode(mode) : 'moderate';
     this.tod = this.mode === 'calm' ? 'day' : this.mode === 'hard' ? 'night' : 'dusk';
     const imgs = window.Assets ? Assets.endgameImgs('loss', this.mode) : [];
     this.img = imgs.length ? this.pick(imgs) : null;
