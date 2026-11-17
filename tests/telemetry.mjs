@@ -1013,9 +1013,12 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   const atTitle = (await steps()).map(x => x.props.step);
   const press = sel => p.evaluate(q => document.querySelector(q).click(), sel);
   await press('#btnTitleNew');
-  await p.waitForFunction(() => Screens.current === 'newgame', null, { timeout: 10000 });
-  await press('#ngMode .dcard[data-v="moderate"]'); await p.waitForTimeout(150);
-  await press('#ngMode .dcard[data-v="moderate"]');
+  // a fresh device's first game skips the difficulty (CFG.FIRST_QUICK, tests/first-quick.mjs)
+  await p.waitForFunction(() => Screens.current === 'newgame' || Screens.current === 'draft', null, { timeout: 10000 });
+  if (await p.evaluate(() => Screens.current === 'newgame')) {
+    await press('#ngMode .dcard[data-v="moderate"]'); await p.waitForTimeout(150);
+    await press('#ngMode .dcard[data-v="moderate"]');
+  }
   await p.waitForFunction(() => Screens.current === 'draft' && document.querySelectorAll('#draftCards .flip').length === 3, null, { timeout: 30000 });
   await p.waitForTimeout(400);
   await press('#draftCards > :nth-child(1)'); await p.waitForTimeout(200);
@@ -1023,7 +1026,7 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   await p.waitForFunction(() => Screens.current === 'playing' && !Screens._entering, null, { timeout: 60000 });
   await p.waitForTimeout(500);
   // put any lesson card away so the map takes the taps
-  await p.evaluate(() => { try { if (window.Tutorial && Tutorial.skip) Tutorial.skip(); } catch (e) {} });
+  await p.evaluate(() => { try { if (window.Tutorial && Tutorial.skip) Tutorial.skip(); } catch (e) {} try { Screens.hideVictoryPaths(); } catch (e) {} });
   await p.waitForTimeout(300);
   const tapAt = await p.evaluate(() => {
     const tc = S.buildings.find(x => x.key === 'tc' && x.owner === 'P'), T = CFG.TILE;
