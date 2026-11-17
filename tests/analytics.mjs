@@ -912,7 +912,7 @@ const unlock = async (p, pass) => {
       relPicked: document.getElementById('cRel').value,
       thinTiles: document.querySelectorAll('#kpis .tile .v.thin').length,
       inbox: document.querySelectorAll('#inbox .rep').length, mine: document.getElementById('mine').textContent,
-      src: document.getElementById('tSrc').textContent, voteRows: document.querySelectorAll('#tVote tr').length,
+      src: document.getElementById('tSrc').textContent, voteRows: document.querySelectorAll('#tVote').length, voteLine: document.getElementById('voteNote').textContent,
       days: document.getElementById('tTrafficDays').textContent };
   });
   const H = call('analytics_dashboard', D30()).headline;
@@ -940,8 +940,8 @@ const unlock = async (p, pass) => {
     v.thinTiles + ' greyed tiles (every rate here rests on fewer than 30)');
   ck('theInboxRendersEveryOpenReport', v.inbox === 3, v.inbox + ' reports');
   // TRAFFIC (0013): its own door, its own tables — the fixture's devices played before sources were recorded
-  ck('theTrafficSectionRendersFromItsOwnDoor', seen.includes('analytics_traffic') && /Unknown \(before build 134\)/.test(v.src) && !/Could not/.test(v.src + v.days) && v.voteRows === 6,
-    `sources "${v.src.slice(0, 120)}"; ${v.voteRows} vote rows; days "${v.days.slice(0, 80)}"`);
+  ck('theTrafficSectionRendersFromItsOwnDoor', seen.includes('analytics_traffic') && /Unknown \(before build 134\)/.test(v.src) && !/Could not/.test(v.src + v.days) && v.voteRows === 0 && (v.voteLine === "" || /retired in build 176: \d+ players saw it/.test(v.voteLine)),
+    `sources "${v.src.slice(0, 120)}"; vote table ${v.voteRows}, line "${v.voteLine}"; days "${v.days.slice(0, 80)}"`);
   ck('thisDeviceIsNamed', /This device/.test(v.mine) && /Counted/.test(v.mine) && /3 games on record/.test(v.mine), v.mine.slice(0, 200));
   ck('theDashboardAsksOnlyItsOwnDoors', !seen.includes('analytics_summary') && ['analytics_dashboard', 'analytics_compare', 'analytics_feedback', 'analytics_whoami', 'analytics_devices'].every(n => seen.includes(n)),
     [...new Set(seen)].join(', '));

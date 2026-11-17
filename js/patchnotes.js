@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 176, date: '2026-11-17', title: 'A cleaner title screen',
+    items: [
+      'The vote for a free card banner is gone from the title screen and the reward screen.',
+    ],
+  },
+  {
     build: 175, date: '2026-11-16', title: 'Trenches look like ditches',
     items: [
       'A trench dug without water in it now looks like a real ditch cut into the meadow: earth thrown up along its edges, a dark far bank in shadow, a damp floor with the odd puddle, and grass left standing around it.',

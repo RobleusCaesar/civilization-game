@@ -1285,9 +1285,6 @@ Object.assign(Deck, {
     // the retry first: a reconcile that finds the disk moved schedules its own
     this._syncLater(c.queue.length > 0);
     if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
-    // A VOTE EARNS A CARD (js/vote.js, its own file): what a vote did, told
-    // once the record's card is on the device — nothing at all without it
-    if (out.reconciled && window.Vote && Vote.afterSync) { try { out.votes = await Vote.afterSync(uid); } catch (e) {} }
     out.ok = !stop && !c.queue.length;
     out.why = stop || (c.queue.length ? 'held' : '');
     // an op queued while this drain was in flight goes out right behind it

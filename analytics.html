@@ -195,9 +195,9 @@
     <div class="card"><svg id="chart" role="img" aria-label="Games per day"></svg><div class="legend" id="chartKey"></div></div>
 
     <h2>Traffic</h2>
-    <p class="why">Where visits come from (the site that sent each one), and the players and games each site brought, counted by the site a device FIRST came from. Then the vote offer, step by step, and the votes Vibe Top List reported. Recorded from build 134; a device that played before then reads "Before tracking".</p>
+    <p class="why">Where visits come from (the site that sent each one), and the players and games each site brought, counted by the site a device FIRST came from. The vote-for-a-card offer was retired in build 176; its old rows are kept and summed in one line. Recorded from build 134; a device that played before then reads "Before tracking".</p>
     <div class="card wrap"><table id="tSrc"></table></div>
-    <div class="card wrap" style="margin-top:10px"><table id="tVote"></table><div class="note" id="voteNote" style="margin-top:8px"></div></div>
+    <div class="note" id="voteNote" style="margin-top:8px"></div>
     <div class="card wrap" style="margin-top:10px"><table id="tTrafficDays"></table></div>
 
     <h2>Did the update help?</h2>
@@ -742,7 +742,7 @@ async function loadTraffic() {
   if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
   if (!answered(r)) {
     const why = missing(r) ? 'The traffic section needs migration 0013 (supabase/migrations/0013_vote_traffic.sql).' : couldNot(r);
-    for (const id of ['tSrc', 'tVote', 'tTrafficDays']) table($(id), [], [], why);
+    for (const id of ['tSrc', 'tTrafficDays']) table($(id), [], [], why);
     $('voteNote').textContent = '';
     return;
   }
@@ -752,23 +752,14 @@ async function loadTraffic() {
     table($('tSrc'), ['Came from', 'Visits', 'New players', 'Players who played', 'Games'],
       rows.map(x => [srcName(x.src), num(x.visits), num(x.new_players), num(x.players), num(x.games)]), 'No visits in this period.');
   });
-  part($('tVote'), () => {
-    const V = T.vote || {}, W = T.votes || {}, at = k => (Array.isArray(V.by_place) ? V.by_place : []).find(x => x.where === k) || {};
-    const step = (label, s, note) => [label, num(s && s.devices), num(s && s.times), note || ''];
-    table($('tVote'), ['Vote for a free card', 'Players', 'Times', ''], [
-      step('Saw the offer', V.seen, `title ${num(at('title').seen)} · reward screen ${num(at('reward').seen)}`),
-      step('Opened it', V.open),
-      step('Pressed Vote now', V.go),
-      ['Votes Vibe Top List counted', num(W.voters), num(W.counted), W.too_soon ? `${num(W.too_soon)} too soon for a card` : ''],
-      ['Cards given', '', num(W.granted), `${num(W.first_cards)} first-vote cards · ${num(W.later_cards)} random Stone`],
-    ], 'No votes in this period.');
-    $('voteNote').textContent = (W.unknown ? `${plural(W.unknown, 'vote')} could not be matched to a player (voted on the site, not from the game). ` : '') +
-      'Players are devices; "Times" counts every showing, press and vote.';
-  });
+  // THE VOTE OFFER WAS RETIRED (build 176): 146 players saw it, one voted.
+  // Its rows stay in the table; the period's tally is one line.
+  { const V = T.vote || {}, W = T.votes || {}, seen = V.seen && V.seen.devices;
+    $('voteNote').textContent = (seen || W.counted) ? `Vote offer (retired in build 176): ${num(seen)} players saw it, ${num(V.go && V.go.devices)} pressed Vote, ${num(W.counted)} votes counted, ${num(W.granted)} cards given.` : ''; }
   part($('tTrafficDays'), () => {
     const days = (Array.isArray(T.daily) ? T.daily : []).filter(d => d && (d.visits || d.from_src || d.presses || d.votes)).reverse();
-    table($('tTrafficDays'), ['Day', 'Visits', 'From Vibe Top List', 'New players from it', 'Vote presses', 'Votes', 'Cards'],
-      days.map(d => [d.day, num(d.visits), num(d.from_src), num(d.new_from_src), num(d.presses), num(d.votes), num(d.cards)]), 'No traffic on any day of this period.');
+    table($('tTrafficDays'), ['Day', 'Visits', 'From Vibe Top List', 'New players from it'],
+      days.map(d => [d.day, num(d.visits), num(d.from_src), num(d.new_from_src)]), 'No traffic on any day of this period.');
   });
 }
 
@@ -1074,7 +1065,7 @@ function show(which) { $('gate').hidden = which !== 'gate'; $('app').hidden = wh
    can paint it back (the epoch moves). A wrong passphrase typed afterwards
    shows the gate and nothing else. */
 function clearApp() {
-  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'tVote', 'voteNote', 'tTrafficDays', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
+  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'voteNote', 'tTrafficDays', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
     const el = $(id); if (el) el.innerHTML = '';
   }
   $('stamp').textContent = '—';

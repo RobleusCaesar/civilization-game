@@ -56,7 +56,7 @@ const PATHS = [
   [/^index\.html$/, ['boot.mjs', 'title.mjs', 'desktop-layout.mjs', 'settings.mjs', 'card-intro.mjs', 'calm-peace.mjs', 'art-pipeline.mjs', 'draft-cards.mjs', 'pages.mjs']],
   [/^assets\/ui\/guide\//, ['pages.mjs', 'boot.mjs', 'art-pipeline.mjs']],
   [/^analytics\.html$/, ['analytics.mjs', 'telemetry.mjs']],
-  [/^supabase\//, ['analytics.mjs', 'telemetry.mjs', 'deck-sync.mjs', 'deck-core.mjs', 'vote.mjs']],
+  [/^supabase\//, ['analytics.mjs', 'telemetry.mjs', 'deck-sync.mjs', 'deck-core.mjs']],
   [/^assets\/ui\//, ['boot.mjs', 'title.mjs', 'settings.mjs', 'art-pipeline.mjs']],
   [/^assets\/cards\//, ['deck-ui.mjs', 'deck-screens.mjs', 'card-intro.mjs', 'art-pipeline.mjs']],
   [/^assets\/endgame\//, ['deck-screens.mjs', 'art-pipeline.mjs']],

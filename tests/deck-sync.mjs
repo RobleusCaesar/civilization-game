@@ -338,7 +338,7 @@ await p.waitForFunction(() => window.Screens && Screens.current === 'title' && B
 await p.waitForFunction(() => Deck.col().synced && !Deck.col().queue.length && !(Deck._sy && Deck._sy.busy), null, { timeout: 20000 }).catch(() => {});
 
 const boot = await p.evaluate(() => {
-  // the deck's own doors: the vote banner's status (js/vote.js, tests/vote.mjs) is another feature's
+  // the deck's own doors: vote_status was the retired vote offer's door (build 176)
   const rpc = __MOCK.st.calls.filter(c => c.path.startsWith('/rpc/') && c.path !== '/rpc/vote_status').map(c => c.path.slice(5));
   return { rpc, uid: Deck.col().uid, counts: JSON.stringify(Deck.col().counts), armed: !!(Deck._sy && Deck._sy.armed) };
 });

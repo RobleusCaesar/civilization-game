@@ -290,7 +290,6 @@ node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand
 node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch; ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
 node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
 node tests/hud-info.mjs      # the four goods and the people on ONE row, one width; food's net in its note (never the bar) and its number red only when it runs dry within days; numbers shorten DOWN (12.4k) and the note says them whole; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
-node tests/vote.mjs          # a vote earns a card: the title's banner and the reward screen's line, the pop-up in the announcement's look, first Swift Raiders then a random Stone face down, the 12-hour wait, thanked once by name, the rows; off builds nothing
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back; a building of the player's a road meets edge-on works a tenth better (stations yield, yards and the hall train, the post's caravans, forts take less, a house holds one more), never on top of a homestead, gone with the road, gold on its panel, promised on the placement chip, one small twinkle
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
@@ -1126,6 +1125,390 @@ run: the HUD button, the sheet, the aim, the play, the timer chips),
 cards' alike). A five-player playtest on the phone found most Stone and
 Bronze plays flat or broken, and three rounds of fixes reworked every card's
 play — **THE PLAY ON THE GLASS** and **AN ACT'S HOUSE STYLE** below are what
+they left. Rules:
+- **THE SWITCH SHIPS ON — PUBLIC SINCE BUILD 106** (operator, 2026-10-28:
+  "push everything to main. Don't hold any updates back"). `CFG.CARDS.ON` is
+  true; it shipped false while the deck was staged behind the test link
+  (`?cards=1` turned it on for one device, remembered in `neo-cards-dev`;
+  `?cards=0` forgets that flag — and a test deck with it — but no longer
+  turns the deck off). **A NEW PLAYER STARTS WITH THREE CARDS**
+  (`CFG.CARDS.STARTER`: Forager's Cache, Fallen Timber, Willing Hands — and
+  0008's `starter_qty` names the same three; deck-core
+  `aNewPlayerStartsWithTheThreeStarterCards`); all 36 come only with the
+  `?cards=all` test link, a test deck that syncs, reports and posts nothing.
+  It is still THE KILL SWITCH. Off, no element, stylesheet, listener or write of the
+  DECK exists (`Deck.sync`'s boot `load` listener is registered only when the
+  deck is on as the script parses), the end of a run is today's victory and
+  defeat scenes, and every game hook answers exactly what the game answered
+  before cards existed — every contract pins its half, booting with the
+  switch THROWN OFF where the claim is about the boot (`SWITCH_OFF`: a
+  MutationObserver set before the page parses turns `CFG.CARDS.ON` false
+  the moment js/config.js has run, before any card file parses — the
+  parser's microtask checkpoint before the next `<script>`). Two things run
+  whatever the switch says, because they are TELEMETRY, not cards: the
+  run_end resend (`neo-pending-ends`, `report_run_end`) and the lineage run
+  id (`Backend.legacyRunId`).
+- **THE COLLECTION IS THE PLAYER'S, NEVER THE RUN'S**: it lives in
+  `localStorage` `neo-deck` — synced to the cloud through migration 0008 once
+  that is applied (**THE CLOUD IS THE COLLECTION'S RECORD**) — and never in
+  `S`. What a RUN remembers rides in `S.deck` (`played`, the live timers
+  `fx`, `charges`, the one `strike` in the sky, the card-lit map `lit`, a
+  card's `kraken` act, the `relicMark`, and — made when first needed — a
+  star's `craters` and the spy's `spied` marks) in every save; `loadJSON`
+  backfills and `Deck.run()` fills the newer fields.
+- **ONE DOOR**: `Deck.play(id, tgt)` asks the effect first and takes the
+  card only on `{ok: true}` — a refusal hands it back with the reason.
+- **NO CARD DRAWS THE RUN'S RNG**: drops roll `Math.random`, and a card's
+  dragon draws its flames' jitter from `Math.random` too (the rolled dragon
+  keeps its `G.rand` draws), and so does a relic Scout's Fire finds
+  (`Relics.checkDiscovery(Math.random)`; its default, `G.rand`, still rolls a
+  find on foot — `andTheFindDrawsNoRng`). Timers run on fractional game days
+  (`Deck.now()`).
+- **A CARD IS THE PLAYER'S ACT**: its kills are kills and its razes are razes,
+  but nothing it summons scores as the world's gift (`dragonSeen`,
+  `specialFired`), the play itself scores nothing, and no card buys a card (a
+  card's free work is no deed). **NO ONE-CARD WINS**: `Deck.hitBld` clamps the
+  rival's hall BEFORE `Bld.damage` is asked anything, whatever the cause.
+  **The rival never plays cards.**
+- **THE TRUCE IS ASKED OF WHAT THE PLAYER KNOWS** (`Deck.reachesRival`): a
+  rival unit on ground in sight, a rival building in `S.map.seenB`. The
+  warning is re-asked on every move of the mark, so a read of `S` would sweep
+  the fog like a lamp, and the truce's END asks the same question, so the
+  peace never breaks over a soldier nobody saw. A hidden rival thing is
+  spared anyway while the peace holds (`Deck.foe` asks `Combat.hostile`).
+- **AN AIMED CARD'S TARGET IS A WORLD POINT** — the middle of the marked
+  tile, exactly where the reticle's cross is drawn (deck-ui measures the
+  cross off the screen). A mouse hover only previews; a click or Enter
+  chooses, because the way to ✓ crosses the ground.
+- **EVERY HOOK GUARDS ON THE METHOD IT CALLS** (`window.Deck && Deck.mult ?
+  … : 1`), never on `Deck` alone: `deck.js` always defines `Deck`, and a
+  cached older `deckfx.js` beside a fresh `units.js` must stand down rather
+  than throw on every gatherer every frame (the shared-`?v=` lesson).
+- **A CARD FACE IS WHOLE DEVICE PIXELS** (`Deck.face` at 176×244, scaled by
+  `Deck.fit`); its art lands by FILENAME (`assets/cards/art/{id}.png`, the
+  tier's `assets/cards/frame-{tier}.png`) over a procedural placeholder. Its
+  inline styles go through `attr()` — a raw `url("…")` ended `style="…"` at
+  its first quote and no art ever drew. The name is stepped down until it
+  fits its plate in two lines (`Deck.nmFit`, `everyNameFitsItsPlate`); the
+  BACK plate names the card, its tier in small caps above (it printed the
+  tier, so every Legendary back read "Enlightenment"); the foil's mask is the
+  frame minus `Deck.PLATE`; `theFramesCarryNoStrayPixels` holds the frames.
+- **THE CLOSER LOOK IS SMALLER, ITS BACK IS NOT** (`Deck.liftFit` /
+  `Deck.backText`, deck-ui §12b, deck-screens `andItsCloserLookIsTheDecksOwn`
+  — operator, 2026-10-28: "the cards when clicked are too large and
+  pixelated. Let's shrink them down by 40%… Keep the text about the same size
+  on the backside"). The in-game lift and the collection's zoom both take the
+  first whole multiple AT OR ABOVE six tenths (`LIFT_SCALE`) of the face the
+  room used to give them — on a 3x phone 352px → 235px, on a 2x screen
+  352 → 264 — never the step below (half the card on a 2x/1x screen, whose
+  back could not hold its words) and never under the art's own size unless it
+  already was (a phone on its side keeps its 176px). The back's words are in
+  `--tu`, not `--u`: set at the size the old face gave them and stepped down
+  only as far as THAT card's text needs to fit its paper, never below the
+  face's own. On the 3x phone 5 of 36 keep 14.4px, the median reads 12.2, the
+  wordiest 10. The paper's box is already the frame's whole clear window
+  below the pennant — there is no more room to give the words.
+- **EVERY RUNNING CARD IS SEEN, OR COUNTED** (`DeckUI._fitChips`): chips that
+  fit are whole, the rest a `+k` badge whose tap names them, and a card held
+  as CHARGES wears a chip like a timer (**THE TOWN'S CARDS**). A chip is its
+  ring and its count in the card's own glyph (`DeckUI.CHIP` / `CHIP_ICONS`),
+  so two fit a phone's row, and a tap says one short line. A play is over
+  inside 1.2 s (880 ms by design) — and that budget and the lift checks are
+  WALL-CLOCK: under a loaded machine `deck-ui.mjs` flakes on any commit, so
+  rerun it alone before believing it. The reward is GRANTED when the screen
+  opens (idempotent per run); CLAIM only flies it to the deck.
+- **THE LESSON HAS THE FLOOR** (`Deck.lessonHolds`, tests/tutorial.mjs §14):
+  while the tutorial's SPINE runs (phase 1) DeckUI builds no button, timer or
+  sheet (`DeckUI.tutHides`) and `Deck.canPlay` refuses as a backstop; the
+  starter hand still lands. The capstone answered or the lesson skipped, the
+  deck ARRIVES in the same run (`DeckUI._arriveFlare`, a ring of hard gold
+  pixels) and the last note (`Tutorial.EVENTS` 'deck') says to tap it. A skip
+  mid-spine keeps the teacher for that one note (`S.tut.deckOnly`), a skip ON
+  that note is its answer, and with the cards off the note is never waited
+  for. A TEST deck never waits for the lesson (the tutorial turns itself on
+  for a fresh device's first two games, and a test link whose deck hid read
+  as broken). The deck's note RETIRES with the deck (`retire`, §16): put
+  away with no chime when the last card goes, never shown over an empty one.
+- **A CARD HAS THE FLOOR** (`Deck.acting()`, tests/tutorial.mjs §15): the
+  tutorial is on for a fresh device's first two games, and it smothered every
+  act — dim, ring and note over the show, the world at 0.2× (the dragon's
+  act took 19.6 s). `Deck.acting()` is the ONE question "is a card being
+  played, or its act still running" (the deck's floor, a show, summons, a
+  star's settling sky, the strike, the kraken, the card's dragon and the view
+  it borrowed — never the world's own beasts); while it holds,
+  `Tutorial._cardHolds` puts the lesson away at full speed, and the booked
+  note returns after `BREATH` once the act's toast is read (`ACT_TOAST_S`, 6
+  at most), on an opaque card.
+- **THE TEST LINK** (`?cards=all`, deck-core): every load carrying it turns
+  the deck on and deals a fresh TEST deck, one of every card — read before
+  the switch, so it still deals once `CFG.CARDS.ON` ships true. A test deck
+  is marked `test`: it queues, reports and syncs nothing. A REAL collection
+  it lands on is put aside exactly as stored, unsynced queue and all
+  (`Deck.REAL_KEY`, `neo-deck-real`), and `?cards=0` gives it back as stored —
+  plus what was earned meanwhile: **EARNED IS EARNED** (`_stashGrant`, the
+  playtest's repro): a card won while the toy deck is held is ALSO banked in
+  the put-aside collection (card, first-seen, ledger line, the pity the legend
+  guarantee counts), its grant op in the stash's OWN queue to sync on return;
+  a device with none gets one made, and a run is never banked twice.
+  (`?cards=slice`, the gate's five, is retired; the sync still reads it as a
+  test link.) "Deck" means the card collection only: the origin draft deals
+  "origin cards" (`theOriginDraftNeverCallsItsCardsTheDeck`).
+
+**A WIN ALWAYS EARNS; A DEFEAT EARNS FOR A REAL FIGHT** (`Deck.eligible` /
+`Deck.deeds` / `G.noteAct`, `CFG.CARDS.LOSS_DEEDS` 5 and `LOSS_DAYS` 6,
+tests/deck-core.mjs): the ten-minute / 500-score gate is GONE — it told a
+two-minute victory to play longer and paid a passive player who merely
+survived. A win earns, however short. A defeat asks for **DEEDS**, what only
+the player's own hand starts: a finished building they raised (not walls or
+gates — one drag lays ten), a unit trained, an upgrade, an enemy work their
+soldiers razed, one per `DEED_GATHER` (300) gathered by hand (cap 3), one per
+`DEED_KILLS` (3) ORDERED kills (cap 2) — **AND DAYS**: orders given on
+`LOSS_DAYS` distinct game days (`S.stats.actDays`), because a twenty-second
+burst of houses and villagers bought 5–10 deeds, then nothing. **A day is
+stamped only where input lands**: a paid `Bld.place` for 'P', `Bld.train`,
+the upgrade orders, and in ui.js a gesture that CHANGES an order
+(`UI._orderSnap` / `_orderMoved` round the canvas pointerup) or a panel
+`[data-act]` that acts (never `UI.VIEW_ACTS` or a `.cant`) — never
+`Units.assign*`, which rally points, an origin's boats and `returnToPost`
+call with no input. **The score's tallies are the trap**: `razed` counts a
+barbarian's torch, `gathered` a fishing boat's nets, and towers kill for a
+passive player — so the deeds read hand-only tallies: `handGathered` at the
+BASE take (a card's richer share is `gatherYield`'s, apart), `handRazed`
+(`Combat.hitBuilding`'s `by`), `handKills` only when the foe that falls is
+the one the killer was SENT at (`task.on`, read before death cleanup clears
+the marks). A card may HASTEN the player's own paid work and the deed stands;
+it may never conjure one (`noCardPlayIsADeed`). **"No way back"'s Resign is a
+DEFEAT** (cause `'doomed'`), never a struck banner — accepting the truth must
+not cost the card — and the rival's Wonder ends as `'rival_wonder'` (a NULL
+cause fails every server `NOT IN`). **A card-assisted run is marked** (end
+screen, `cards_played` / `cards_test`), and an assisted win goes up WEARING
+THE MARK once `Backend.BOARD_MARKS_CARDS` — which board_top's first answer
+sets, since migration 0014 gave `submit_score` its `p_cards_played`
+(**THE WORLD BOARD** below); a test deck's never posts. **A BOARD NOT ASKED
+YET IS ASKED AT THE POST** (build 161, `boardHold`'s `ask`,
+`Screens._markReady`): the mark was learned only from the board's peek a
+few seconds into the game, so a run whose peek never landed (signed in late,
+a network blip) held its assisted win off the board for good — and every
+new player holds three starter cards. Now the entry is taken and
+`_offerSubmit` / `submitScore` ask board_top first; it goes up the moment
+the board answers, a board that does not answer offers Retry
+(`_markWait` routes it back through the ask), and only a project that
+really lacks 0014 (`boardV2 === false`) holds it, in the old words
+(`MARK_HELD`). An unconfirmed assisted entry is never posted blind on the
+way out (`_postBeforeLeaving`), and `ask` places nothing for the card's
+lift (a board never seen). **The hold is ONE answer, `Screens.boardHold(win)`**,
+asked by the old victory scene and `DeckScreens._armBoard` alike, read off
+`S.deck.played`, NEVER the switch — a run that played cards and ended with
+`?cards=0` was still assisted (board-post
+`aCardAssistedWinIsHeldWithTheSwitchOff`).
+**A BIG DEFEAT PAYS BETTER** (`CFG.CARDS.BIG_LOSS_SCORE` 20,000,
+`DROPS.bigloss` [0, 60, 40, 0, 0], `Deck.table`, migration
+`0011_card_big_loss.sql`, deck-core / deck-sync — operator, 2026-10-28,
+after a 33,000-point Hard defeat paid a Gold Nugget: "anything over 20,000
+points and bronze is the floor and iron is the ceiling"). A defeat that
+EARNS a card (the deeds and days above, untouched; still one card, still no
+pity) and whose FINAL score reaches the line rolls Bronze 60 / Iron 40. The
+final score is the end screen's and the run_end row's — the difficulty
+multiplier IN, never the subtotal, which would have left that very run on
+the plain table (33,000 on Hard is a subtotal near 18,900). **One number**:
+`G.end` fixes it on `S.over.score`, and `G.runReport` and `Deck.report` both
+read it, so a kill tallied after the row is sent (G.end runs inside
+Combat.update) or an ended save loaded later can never split the server's
+verdict from the game's. The server's twin is `card_big_loss_min_score()`
+and the 'bigloss' tiers, seeded as a CEILING (Stone, Bronze, Iron — an older
+game's Stone is never refused), and grant_card judges the run's LATEST loss
+ending, as it judges its deeds. **0011 MUST BE PASTED BEFORE THE GAME THAT
+ROLLS THE BIG TABLE SHIPS**, or 0008 refuses a big defeat's Iron card
+('bad_cards') and the next reconcile takes it back with a line; re-pasting
+0008 undoes 0011 (paste 0011 again after).
+
+**THE CLOUD IS THE COLLECTION'S RECORD** (`Deck.sync` at the foot of
+js/deck.js, `supabase/migrations/0008_cards.sql`, tests/deck-sync.mjs): the
+deck lives on the device so it reads at once and plays offline, and every
+change is QUEUED (`starter` / `grant` / `consume`) for 0008's SECURITY
+DEFINER doors, granted to `authenticated` alone over RLS tables with every
+privilege revoked — Supabase grants new objects to `anon` BY NAME, which
+`revoke … from public` never touches. **In order, and only what was answered
+leaves the queue**: ok, or ok + `already` (a duplicate), is done; refused for
+good is dropped; NOT REACHED (offline, 5xx, a 404 before 0008 lands, signed
+out, the hourly `slow_down`) is KEPT and the drain stops. **`no_run` is "not
+yet"** (its run_end may be in flight): the grant waits, holding back only its
+own cards' plays, until `NO_RUN_DAYS` AND `NO_RUN_TRIES`. **A poisoned op
+never walls the queue**: another 4xx is stepped past and given up after
+`BAD_TRIES` / `BAD_DAYS` — but only once the server is SEEN answering
+something else, or an outage throws a day's earnings away. **An answer that
+is not ours is no answer**: an unmocked RPC reads `{ok: true, data: null}`,
+and believing it passes every test silently. **The record REPLACES the
+mirror** (a merge lets any client bug mint cards), and a card it takes back
+is SAID once (`Deck.tellLost`), never vanishes. One mirror per player
+(`neo-deck@<uid>` parks another's); two tabs never erase each other
+(`storage` drops a stale copy, a drain re-reads a disk that moved — `_colRaw`
+— and never saves over it; never a save FROM the `storage` handler, or tabs
+ping-pong). A sync starts on a NEW uid, never on every `backend-status`,
+which fires on each failed request. **The evidence goes first**
+(`Backend._emitEnd` / `flushEnds`): an unsent run_end is kept
+(`neo-pending-ends`) and resent via `report_run_end`, deduped by run AND
+outcome. **An id-less run is named by its lineage, never the dice**
+(`Backend.legacyRunId`, seed|mode|size): a random id per load let one old
+save be won six times for six cards. The server re-checks the row's
+`props.deeds` (`G.runReport`), not the days: a stricter client never has a
+card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
+false`, never deleted) and never touches `analytics_summary` (the Cards
+section has its own `analytics_cards`).
+
+**THE LOAD AND GUIDE PAGES** (`js/pages.js`, `ShellPages`, tests/pages.mjs —
+operator, 2026-11-04: "Update the design of the Load and Guide pages so they
+match the high quality design of the settings page and the card announcement
+modal"). **THE PAGES ARE THEIR OLD SCREENS, DRESSED** (`ShellPages.mount`,
+once each, the board's pattern): #scrLoad and #scrHowto keep every id the
+game reaches — the back buttons (Screens.bind's), `#loadTitle`, `#slotList`
+(every message, `.hint` for a failure), `#btnImportFile` / `#fileLoad`,
+`#howPanels`, `#howDots` — and get the settings page's chrome round them: a
+chamfered back plaque, an emblem (the settings Saves chest and Notes scroll,
+128px at ≤42 CSS px) and the name in gold Cinzel, the carved frame with
+`SettingsPage.cornerSvg`'s corners, the title's `.plaques` buttons. The old
+screens' styles are keyed on ids, so the new ones are too (`#scrLoad.pg`,
+`#scrHowto.pg`) or they lose. **THE SLOTS** (`ShellPages.slotCard`, wired by
+`Screens._slotCard`; a cached older pages.js leaves the plain page): the
+save's own picture, its name, "Day N · Landform · 1h 30m", a Victory or
+Fallen mark; Load is the green plaque (the title's Continue), rename and
+delete vector icon plaques; delete's first tap turns it red, "Delete?"
+(`armDelete`), the second deletes; from the pause menu the page is "Save
+game" with Overwrite and Save here. **THE GUIDE TURNS LIKE THE
+ANNOUNCEMENT**: each page's picture in a gold medallion, a gold heading over
+the announcement's rule, its serif body; BACK, the NEXT plaque and a dot per
+page (`ShellPages.go` / `paintGuide`), the arrow keys; the last page's plaque
+reads Done and goes back; `ShellPages.onGuide` opens it on page one. Its
+pictures are the 128px masters doubled by Scale2x
+(`assets/ui/guide/*-2x.png`, the masters beside them), `loading="lazy"` — the
+old 96px images in the markup were fetched at boot though the screen was
+hidden. **THE NIGHT FROM THE TITLE, THE GAME FROM THE PAUSE MENU**:
+`Screens.nightBehind` takes 'load' and 'howto' unless `backTo` is 'paused'.
+
+**THE WORLD BOARD** (`js/board.js`, `Backend.board`, `CFG.CARDS.BOARD`,
+`Deck.lift`, migration `0014_world_board.sql`; tests/world-board.mjs and
+tests/analytics.mjs §1d on a real PostgreSQL — operator, 2026-11-04: "a bit
+bland … let's get the leaderboard to match [the settings page] … make a
+bigger deal out of the top 3 players, then list everyone beneath them … the
+analytics page allows me to whitelist my IP … do that for the leaderboard
+too … increase the odds for a top tier card when you make the leaderboard,
+especially top 3"). **THE PAGE IS #scrLeaders, DRESSED** (`WorldBoard.mount`,
+once): its own `#ldrBack` (Screens.bind's back to the reward screen) and
+`#ldrList` (every message, `.hint` for a failure) are kept and the settings
+page's chrome built round them — the carved frame, `SettingsPage.cornerSvg`'s
+corners, Cinzel caps, a chamfered back plaque — over the title's night
+(`Screens.nightBehind` includes 'leaders'). The three best stand on stone
+plinths (the first in the middle, highest, crowned) under laurelled medals of
+their metal; the ranks to tenth are ruled rows beneath. **A PLACE IS ITS NAME,
+POINTS, DIFFICULTY AND PLACE, AND NOTHING ELSE** (operator, the same day:
+"Delete the text at the bottom … Delete the 14 chiefs reference … Get rid of
+the number of wins under the player and the day … get rid of the icon for the
+origin card. Just name, points, difficulty and place"): the difficulty is its
+trial icon; no day, win count, origin icon or card mark is drawn, no chief
+count heads the board and no words sit under it (the rows still carry the
+origin and the card count — the post and the table keep them — and the
+card's lift is said on the reward screen alone). The player's own row is gold
+and, off the list, waits at the foot; a device left out reads "Your games on
+this device are kept off the board."
+**THE FILTER IS PUT AWAY, THE BOARD IS ONE PAGE** (operator, the same day:
+"hide the filter (for now). It's too much, makes the page look cluttered and
+dilutes the value of being on the leaderboard. Vertically Re-size the
+ranking list so there isn't unbalanced empty space. Make sure everything
+fits on a single page"): `WorldBoard.FILTERS` false builds no bar and asks
+only the overall, all-time board (true brings the difficulty and week bars
+back as they were; a later ask still overtakes a slow one, `_seq`). The page
+is the TOP TEN (`SHOW`): the frame is as tall as what it holds (never
+`flex: 1`, no `min-height: 100%`) and stands
+with the title in the middle of the screen; nothing scrolls. **EVERY ONE OF
+THE TEN IS SHOWN, AT EVERY SIZE** (operator, build 161: "It only shows 9 and
+not 10 … Literally anyone that wins should take the tenth spot" — build 143
+left the lowest ranks off a short window, and on a 1280x720 laptop, the
+operator's own hidden-device note at the foot taking room, that was the
+tenth). `WorldBoard._fit` (on render, resize and `cf-fit`, measured off the
+pane's own STRICT overflow — a tenth row 1px past the pane is under its
+edge) gives way in order, each step taking only what the page needs (a
+search for the tallest row, the largest podium): the rows under the podium
+pressed alike (`--rowh`, to `ROW_MIN` 38px); the hidden device's note put
+away (`.wbAside` — the one thing ever hidden); the podium drawn smaller
+(CSS `zoom`, to `POD_MIN` 0.62, so its layout shrinks with it); the rows
+tightened (`.wbTight`: a smaller rank chip and padding, to `ROW_FLOOR`
+26px, the player's own foot row with them). A window too small even for
+that scrolls with all ten in it; a rank is never left off, so the player's
+own row waits at the foot only when they stand past tenth. A phone on its
+side (`min-aspect-ratio: 4/3`, `max-height: 560px`) stands the podium on the
+left, the ranks on the right; a short laptop and a short phone step the
+podium down. tests/world-board.mjs §6 holds all seven ranks IN VIEW at nine
+sizes, 320x568 to 1536x730, 568x320 and 1280x600, and the two hard cases
+(a device kept off the board, a player past tenth) at four more. Every ornament is SVG (medal, crown, trophy);
+the only rasters are the 256px trial icons, at ≤30 CSS px. **ONE ROW PER CHIEF, YOUR DEVICES LEFT OFF** (0014's `board_top`):
+each player's best victory (the earlier of equal scores first) with their
+victory count, minus `analytics__hidden()` — a device marked the operator's,
+one that held the card test deck, every device seen on a network marked the
+operator's — retroactively; `me` is the caller's best and its rank. **THE
+GAME LEARNS 0014 IS IN FROM board_top'S FIRST ANSWER** (`Backend.boardV2`):
+only an answer that is ours counts (`ok: true` with rows — a mock's `null`
+flips nothing); until then the table is read as ever and kept to one row per
+chief BY NAME, and a post sends the six names 0005 knows (PostgREST resolves
+by parameter names: a seventh would 404 every post). Once in, a post carries
+`p_origin` (the draft card's key, `Screens.runOrigin`) and `p_cards_played`,
+and `BOARD_MARKS_CARDS` goes true so an assisted win posts wearing the mark.
+0014 DROPS the six-parameter `submit_score` (an overload answers 300);
+re-pasting 0005 brings it back beside the new one — paste 0014 after it.
+**A TEST BUILD POSTS NOTHING**, now in code: `Screens.boardHold` holds any
+win where the backend is configured, unmocked and `telemetryAllowed()` says
+no. **THE RANK SAID AFTER A POST IS THIS RUN'S**: 1 + the other chiefs
+whose best beats it (one row per chief means the run itself may not be
+listed); "NEW HIGH SCORE" only when nobody, the chief included, stands
+higher — and never for a device board_top leaves out (`me.hidden`): that
+scene says "Posted — but games on this device are kept off the world board",
+and `WorldBoard.placeFor` answers null, so its card is lifted by nothing.
+**A WIN IS KEPT UNTIL THE BOARD HAS IT** (`Screens.keepWin` / `winPosted` /
+`flushWins`, `Backend.hasScore`, localStorage `neo-pending-wins`; board-post
+§10 — build 161, the operator: "Literally anyone that wins should take the
+tenth spot"; an audit of every post path found the post lived only as long
+as the end screen): a phone swiped home from the reward screen fires no
+pagehide, a failed post was never tried again, and a post on the wire when
+the page went (Menu, then the app closed) was lost. Every entry the board may
+take is written to the device the moment it is taken (both entry sites:
+`showEnd`'s and `DeckScreens._armBoard`'s), struck off only when the board
+has it (posted, a duplicate, already on the table, held for good), and
+`flushWins` sends the rest whenever the cloud answers (a new uid's
+`backend-status`, `online`, 4 s after boot), under the name typed, else the
+chief's saved name, else the stand-in, for up to `WIN_MAX_MS` (7 days) and
+only under the uid it was won with. It asks the public table first
+(`hasScore`: this player, this score, mode and seed), and submit_score
+refuses the same run twice in a day, so a resend never doubles a row. A
+hidden page (`visibilitychange`) posts keepalive only a win with a valid name
+typed; a nameless one waits on the device rather than going up under the
+stand-in behind a player still choosing. A refused name or a failed Save is
+said in the scene's note line (toasts are hidden off the playing screen).
+An http page on a `PROD_HOSTS` host moves itself to https (`Backend.init`):
+over http every win read as a test build. **THE BOARD LIFTS THE CARD** (`Deck.lift`, inside `Deck.settle`): a
+win whose place is in the top `TOP` (10) raises each reward card one tier
+with chance `LIFT` (0.5), in the top `PODIUM` (3) every time, never past the
+highest tier its own table rolls — which is exactly the server's ceiling for
+that win (0008), so no lift is ever refused and NO MIGRATION GATES IT (Calm
+stops at Imperial; a pity Enlightenment is untouched). The place is read off
+the board AS LAST SEEN (`WorldBoard.placeFor`: 1 + other chiefs above), since
+the reward screen settles in the very task the run ends — `WorldBoard.watch`
+looks at the board `PEEK_AFTER_MS` (4 s) after a game is entered (never in
+the entry's own frames) and every `PEEK_MS` (8 min) of visible play, and only
+from a page whose wins post (`WorldBoard.posts`: the site, or a test's mock —
+telemetry.mjs's off-site check counts every fetch). A held win (test deck, test build, assisted without the mark) stands
+nowhere and lifts nothing. A lifted card wears `lift: true` in the run's
+ledger and "▲ Board #N" on the reward screen's plate, and `card_granted`
+telemetry carries `place` and `lift`. The nationality picker the operator
+floated was NOT built: a profile field and a flag column for little, where
+the origin card is the run's own pride and costs nothing.
+
+**THE VOTE OFFER IS RETIRED** (build 176 — operator: "146 players saw it, 1
+voted. Remove it"). `js/vote.js`, its tag, `CFG.CARDS.VOTE`, both hooks
+(`Deck._syncRun`, `DeckScreens._setButtons`) and tests/vote.mjs are gone. The
+server keeps its rows and functions (0012/0013; tests/analytics.mjs §1c still
+holds them), and the dashboard's Traffic section sums the old offer in one line
+(`#voteNote`) under the visits by site.
+
+**THE PLAY ON THE GLASS** and **AN ACT'S HOUSE STYLE** below are what
 they left. Rules:
 - **THE SWITCH SHIPS ON — PUBLIC SINCE BUILD 106** (operator, 2026-10-28:
   "push everything to main. Don't hold any updates back"). `CFG.CARDS.ON` is
