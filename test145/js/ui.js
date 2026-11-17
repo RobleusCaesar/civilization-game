@@ -127,9 +127,12 @@ const UI = {
       const b = e.target && e.target.closest && e.target.closest('[data-act]');
       if (b && !this.VIEW_ACTS[b.dataset.act] && !b.classList.contains('cant')) G.noteAct();
     }, true);
-    // remembered preference: once the player knows the ropes they can tuck the
-    // unit help-text away (− button); ℹ️ brings it back. Persists across games.
-    try { this.helpHidden = localStorage.getItem('neo-unit-help') === '1'; } catch (e) { this.helpHidden = false; }
+    // remembered preference: the unit help-text is tucked away until a player
+    // asks for it (operator, build 182: "Start with the villager instructions
+    // hidden… keep everything as clean as possible") — ℹ️ brings it back, −
+    // puts it away again, and the choice persists across games (neo-unit-help:
+    // '0' shown, '1' or never chosen hidden)
+    try { this.helpHidden = localStorage.getItem('neo-unit-help') !== '0'; } catch (e) { this.helpHidden = true; }
     // saved-army heartbeat: banners follow their soldiers (see tickArmies)
     setInterval(() => { try { this.tickArmies(); } catch (e) {} }, 900);
     // rival-wonder countdown (tests/calm-peace.mjs): a standing warning while
@@ -2144,6 +2147,38 @@ const UI = {
         R.bottomReserve = bar.offsetHeight;
       if (R.clampCam) R.clampCam();
     }
+  },
+  /* A RINGED BUILD CARD IS BROUGHT INTO THE MENU'S VIEW — and the job is done
+     only once the card is SEEN there (build 182; the one rule the lesson and
+     the journey share: Tutorial._scrollCardIntoView, Prologue._cardInView).
+     It was one shot "however it lands", and on a busy phone it landed on a
+     menu still being laid out (nothing to scroll yet), or its smooth scroll
+     was undone when the menu was rebuilt for the very card it had unlocked —
+     and the ring stood past the screen's edge, where no tap could reach it
+     (found by tests/prologue.mjs under a slowed CPU: game 3's barracks card
+     ringed at x 399 on a 390px phone). Now: centred the first time it is
+     ringed, as ever; then, a beat apart (a smooth scroll in flight is left to
+     land), asked again while the card is not yet whole inside the menu and
+     the screen, CARD_TRIES times at most; once seen whole, the menu is the
+     player's again and a scroll of theirs is never fought. `st` is the
+     caller's own {sel, at, tries, seen}; the caller re-arms it by clearing
+     `st.sel` when its ring leaves the menu. */
+  CARD_RETRY_MS: 900, CARD_TRIES: 3,
+  cardIntoView(sel, st) {
+    const now = performance.now(), fresh = st.sel !== sel;
+    if (!fresh && (st.seen || st.tries >= this.CARD_TRIES || now - st.at < this.CARD_RETRY_MS)) return;
+    const btn = document.querySelector(sel), wrap = document.getElementById('buildmenu');
+    if (!btn || !wrap || btn.offsetParent === null || wrap.offsetParent === null) return;
+    if (fresh) { st.sel = sel; st.tries = 0; st.seen = false; }
+    st.at = now;
+    const wr = wrap.getBoundingClientRect(), br = btn.getBoundingClientRect();
+    const whole = br.left >= Math.max(0, wr.left) - 1 && br.right <= Math.min(window.innerWidth, wr.right) + 1;
+    if (!fresh && whole) { st.seen = true; return; }
+    st.tries++;
+    if (wrap.scrollWidth <= wrap.clientWidth + 1) return;              // nothing to scroll (yet)
+    const left = Math.max(0, Math.min(wrap.scrollWidth - wrap.clientWidth, wrap.scrollLeft + (br.left + br.width / 2) - (wr.left + wr.width / 2)));
+    if (Math.abs(left - wrap.scrollLeft) < 2) return;
+    try { wrap.scrollTo({ left, behavior: 'smooth' }); } catch (e) { wrap.scrollLeft = left; }   // older engines: no options object
   },
   setMiniCollapsed(v) {
     this.miniCollapsed = v;
