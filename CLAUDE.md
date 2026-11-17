@@ -1558,8 +1558,9 @@ puts BEGIN on the name's centre line. The next world is founded BEHIND the title
 the demo (`Prologue.preload` from `Screens.onTitle`, `holding()`), so BEGIN
 opens that very world, its ground and art already asked for. **THE WORLDS
 ARE DATA** (`SCENARIO_MAPS[id]`: 38 rows of `#.T~rb^g,:_x`, the halls, the
-people, animals, buildings, the old village's `ruins`, a relic, the camera and
-the glide, and the named `marks` the guide points at) **AND RULES**
+people, animals, buildings, `ruins` (none on any journey map: **THE OLD HOME
+BURNED OFF THE MAP** below), a relic, the camera and the glide, and the
+named `marks` the guide points at) **AND RULES**
 (`Scenarios.RULES[id]`: the stores, the hall's storey, its levels' price,
 days and support, the build menu, the win, the draft, a stock multiplier):
 `G._scenario` hands `Scenarios.gen` and `populate` to `G.newGame` in place of
@@ -1568,7 +1569,17 @@ storeys over CFG only while that world is live (restored at the top of every
 newGame and loadJSON), `S.scenario` rides the save. **The berry bush the
 guide names IS a berry bush** (`R.fertileKindAt`, a pure function of the
 tile — pinned): re-check the marks whenever a map is redrawn, and rebuild
-with `node tools/scenario-maps.mjs` (`--check` is the contract's). **THE
+with `node tools/scenario-maps.mjs` (`--check` is the contract's). **THE OLD
+HOME BURNED OFF THE MAP** (operator, build 183, on a game-1 screenshot: "it
+doesn't make sense to build a new villager next to the burned out village …
+the survivors of a clan that was attacked by another clan. Tiny dread, not
+too much over explaining"): no journey world lays `ruins` or their rubble
+ground (`noJourneyWorldOpensBesideABurnedVillage`); Mira says it in her first
+line ("Another clan burned our home. We few escaped." —
+`andSaysAnotherClanBurnedTheOldHome`), game 1's last word leaves the hook
+("May they never see its smoke"), game 2's riders are "not the ones who
+burned us", and game 3 opens "They have found us", so its "march on their
+hall" is that clan's. Nothing more is explained. **THE
 BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
 the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
 NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE
@@ -3833,8 +3844,8 @@ Down is that stance's own control): the group's Halt and the single unit's
 Stop render only while it answers yes, and both CLEAR everything it counts
 (doctrine included — a Stop that left `u.strat` set would keep rendering a
 button that does nothing). Same rule everywhere else something could only
-refuse: Unload renders only with someone aboard (the hull's capacity moved
-into the hint line), Group nearby/fleet only with somebody in reach to band
+refuse: Unload renders only with someone aboard (the hull's capacity rides
+its stat line, "Carries 5", there with the unit tips put away), Group nearby/fleet only with somebody in reach to band
 with (`UI.groupmatesNear`, the handler's own domain filter). Hiding is NOT a
 silent failure under the tap contract's rule 4 — absence of an impossible
 order is the panel telling the truth — and every one of these moves without

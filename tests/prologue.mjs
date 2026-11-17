@@ -86,6 +86,9 @@ const page = async (q, done) => {
       // the ground alone: the lesson unlocks the card when its beat comes (Scenarios.unlock)
       const place = (key, k) => { if (!m[k]) return 'no mark'; Scenarios.unlock(key); const v = Bld.canPlace('P', key, m[k][0], m[k][1], { noCost: true, noSeal: true }); return v && v.ok ? 'ok' : (v && (v.code || v.why)); };
       const o = { scenario: S.scenario, mode: S.mode, marks: {}, rows: SCENARIO_MAPS['prologue_' + g].rows.length, home: home.length };
+      // no burned village anywhere in the journey (its old home burned off the map)
+      o.ruins = (S.ruins || []).length; o.rubble = 0;
+      for (let i = 0; i < S.map.terrain.length; i++) if (S.map.terrain[i] === T.RUIN) o.rubble++;
       for (const k of Object.keys(m)) o.marks[k] = at(k);
       if (g === 1) {
         o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
@@ -127,6 +130,11 @@ const page = async (q, done) => {
     [1, 2, 3].map(g => r[g].scenario + '/' + r[g].mode + ' ' + r[g].rows + ' rows, ' + r[g].home + ' doorstep tiles').join(', '));
   ck('gameOnesBerryBushIsABerryBushWithinReach', markOn(g1, 'berries', 'FERTILE') && g1.berryKind === 'berry', JSON.stringify(g1.marks.berries) + ' ' + g1.berryKind);
   ck('gameOnesWoodAndHouseSiteAreWhereTheGuideSays', markOn(g1, 'forest', 'FOREST') && g1.house === 'ok', JSON.stringify(g1.marks.forest) + ' house ' + g1.house);
+  /* THE OLD HOME BURNED OFF THE MAP (operator, build 183: "it doesn't make sense to
+     build a new villager next to the burned out village … Removed all the burned out
+     buildings"): no journey world lays ruins or their rubble ground */
+  ck('noJourneyWorldOpensBesideABurnedVillage', [1, 2, 3].every(g => r[g].ruins === 0 && r[g].rubble === 0),
+    [1, 2, 3].map(g => `game ${g}: ${r[g].ruins} ruins, ${r[g].rubble} rubble tiles`).join('; '));
   ck('gameOneShowsItsWholeValleyAndNoRival', g1.seen >= 0.999 && !g1.rival.seen && g1.rival.close >= 5 && g1.build0 === 0,
     `charted ${(g1.seen * 100).toFixed(1)}%, rival halls ${g1.rival.n} seen ${g1.rival.seen} nearest walkable ${g1.rival.close}, menu ${g1.build0}`);
   ck('gameTwosStationsStandOnTheirOwnWorkedGround', markOn(g2, 'stone', 'HILLS') && g2.lumber === 'ok' && g2.quarry === 'ok' && g2.farm === 'ok' && g2.berryKind === 'berry',
@@ -611,6 +619,8 @@ const endScreen = async (p) => {
   });
   ck('andGameOneOpensWithNoBuildMenu', e1.nob && !e1.tab, 'pro-nobuild ' + e1.nob + ', Build tab shown ' + e1.tab);
   ck('theGuideSpeaksFirst', e1.up && /berries/i.test(e1.txt), JSON.stringify(e1));
+  // and says in a breath why the clan starts again: another clan burned its home (the hook of game 3)
+  ck('andSaysAnotherClanBurnedTheOldHome', /another clan/i.test(e1.txt) && /burn/i.test(e1.txt), e1.txt);
   const run = await follow(p, 700);
   ck('gameOneIsWonByFollowingTheGuideAlone', run.over && run.clicks > 4, `over ${run.over} at ${run.clk.toFixed(0)} s of play, ${run.clicks} taps, lines ${run.seen.map(s => s.id).join(' › ')}`);
   ck('andEveryLineItSaidWasShort', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');

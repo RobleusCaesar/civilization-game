@@ -3540,7 +3540,7 @@ const UI = {
       const rank = own && !kill ? this.rankBtn(u) : '';
       html += `<div class="phead${(kill || rank) && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
         <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
-        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}</div>
+        <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}${Units.isTransport(u) ? ' · Carries ' + CFG.UNITS[u.kind].cap : ''}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}${kill}${rank}<button class="abtn" id="panelClose">✕</button></div>
         <div class="pactions">${killArmed}${own && this.helpHidden ? '' : `<span class="psub">${hint}</span>`}`;

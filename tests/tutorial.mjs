@@ -1375,7 +1375,13 @@ const out = await p.evaluate(async () => {
         const a = upTo('172', 'gatherWood');
         UI.select('unit', villager().id);
         const bb = rectOf('bottombar');
-        if (a && bb) aim(a, R.viewW() / 2, bb.top + 24);
+        // under the bar's top edge, and short of the line R.onScreen still calls
+        // seen: a fresh world's camera re-learns the open menu's height as its
+        // floor (R.clampCam), and the villager panel with its tips put away
+        // (build 182) is shorter than that menu, so bb.top + 24 sat within a
+        // pixel of the line and read either way by machine
+        const floor = R.viewH() - (R.bottomReserve || 0) + TL_ * R.cam.z * 0.5;
+        if (a && bb) aim(a, R.viewW() / 2, Math.min(bb.top + 24, (bb.top + floor) / 2));
         const claimed = !!a && R.onScreen(a.x, a.y), before = seen(a);
         Tutorial._pan = null;
         tick(1, 0.05);

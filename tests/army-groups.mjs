@@ -360,12 +360,20 @@ const out = await p.evaluate(() => {
     ck('groupAppearsWithAMateInReach', !!q('[data-act="group"]'), '');
 
     // transports: Unload renders only with someone aboard; the hull's
-    // capacity rides in the hint line instead of a dead button
+    // capacity is said on its stat line instead of a dead button — there
+    // whether or not the unit tips are shown (build 182 put them away by
+    // default: neo-unit-help '0' shows them)
     const tr = Units.spawn('transport', 'P', far.x + 3, far.y + 3);
     UI.select('unit', tr.id);
     ck('anEmptyHullOffersNoUnload', !q('[data-act="unload"]'), '');
-    ck('theHintCarriesTheCapacity',
-      new RegExp('carries ' + CFG.UNITS.transport.cap).test(document.getElementById('panel').textContent), '');
+    const capOn = () => new RegExp('carries ' + CFG.UNITS.transport.cap, 'i').test((document.querySelector('#panel .phead') || {}).textContent || '');
+    const tipsWere = UI.helpHidden;
+    UI.helpHidden = true; UI.renderPanel();
+    const capHidden = capOn();
+    UI.helpHidden = false; UI.renderPanel();
+    const capShown = capOn();
+    UI.helpHidden = tipsWere; UI.renderPanel();
+    ck('theStatLineCarriesTheCapacity', capHidden && capShown, JSON.stringify({ tipsHidden: capHidden, tipsShown: capShown }));
     tr.cargo = [{ kind: 'defender' }, { kind: 'archer' }];
     UI.renderPanel();
     ck('aLadenHullUnloads', !!q('[data-act="unload"]') && /2\//.test(q('[data-act="unload"]').textContent), '');
