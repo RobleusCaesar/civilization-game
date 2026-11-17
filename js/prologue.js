@@ -1583,6 +1583,21 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }
 #scrTitle #btnBegin small { display: block; margin-top: 3px; font: 600 12px/1.2 Georgia,serif; letter-spacing: .3px; text-transform: none; opacity: .85; }
+/* THE BEGIN PLATE (the night title's gold): the word and the game's name
+   share one centre line — the flame hangs left of the word and an empty
+   twin balances it on the right — and both sit inside the carved groove
+   (8.6px in from the rim), the name struck into the gold in dark ink like
+   the word (cream on gold could not be read, and on a 58px plate the line
+   lay across the bottom bevel) */
+#scrTitle.t2 .plaques #btnBegin { --bi: 27px; min-height: 76px; padding: 10px 14px; }
+#scrTitle.t2 #btnBegin .t2i { width: var(--bi); height: var(--bi); }
+#scrTitle.t2 #btnBegin .blab::after { content: ''; flex: 0 0 auto; width: var(--bi); }
+#scrTitle.t2 .plaques #btnBegin small { margin-top: 4px; font: 700 13px/1.15 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.3px;
+  text-transform: none; white-space: nowrap; color: #4a2709; opacity: 1; text-shadow: 0 1px 0 rgba(255,243,205,.62); }
+@media (max-height: 600px) {
+  #scrTitle.t2 .plaques #btnBegin { --bi: 23px; min-height: 64px; padding: 8px 12px; }
+  #scrTitle.t2 .plaques #btnBegin small { margin-top: 2px; font-size: 12px; }
+}
 #scrTitle .proSkip { display: block; margin: 14px auto 0; padding: 8px 14px; border: 0; background: none; cursor: pointer;
   color: rgba(243,226,180,.72); font: 600 13px/1 Georgia,serif; text-decoration: underline; text-underline-offset: 3px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
 #scrTitle .proSkip.arm { color: #ffd77a; }

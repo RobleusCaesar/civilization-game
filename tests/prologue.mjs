@@ -281,6 +281,72 @@ const endScreen = async (p) => {
   await ctx.close();
 }
 
+/* ---- 2c. THE BEGIN PLATE IS READ (operator, on a phone: "The first fire
+   text isn't visible and it looks crowded. It also appears to be imposed
+   over the bevel of the button. Make it visible and make everything
+   centered"). The game's name was cream at 63% on the GOLD plate — no
+   contrast — and the 58px plate (52 on a short window) could not hold the
+   word, the flame and the line, so the name lay across the carved groove
+   8.6px in from the rim; the flame beside the word pushed BEGIN 19px off
+   the name's centre. Measured on the plate as drawn, at six sizes: the
+   name's ink stands out from the gold under it (4.5:1), the word and the
+   name share the plate's centre line, both stand inside the groove with
+   room and balanced above and below, the name on one line. ---- */
+{
+  const { p, ctx } = await page('?prologue=reset');
+  // TitleScreen.plaque: the rim R = 1 + 3.2 in, the carved groove R + 4.4 in
+  const GROOVE = 8.6, CAPS = 24;
+  const sizes = [[430, 727], [390, 664], [375, 560], [320, 480], [844, 390], [1440, 900]];
+  const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+  const bad = [], read = [];
+  for (const [w, h] of sizes) {
+    await p.setViewportSize({ width: w, height: h });
+    await p.waitForTimeout(300);
+    const m = await p.evaluate(() => {
+      const btn = document.getElementById('btnBegin'), sm = btn && btn.querySelector('small'), lab = btn && btn.querySelector('.blab');
+      if (!btn || !sm || !lab) return null;
+      const box = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
+      const txt = [...lab.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+      let word = null;
+      if (txt) { const rg = document.createRange(); rg.selectNodeContents(txt); word = box(rg); }
+      let op = 1;
+      for (let e = sm; e && e !== document.documentElement; e = e.parentElement) op *= +getComputedStyle(e).opacity;
+      const s = getComputedStyle(sm);
+      return { kind: btn.dataset.t2 || '', b: box(btn), s: box(sm), l: box(lab), word, color: s.color, op, lh: parseFloat(s.lineHeight) || 16 };
+    });
+    if (!m) { bad.push(`${w}x${h}: no BEGIN plate`); continue; }
+    // the gold under the name: the plate drawn with the name hidden, its median
+    await p.evaluate(() => { document.querySelector('#btnBegin small').style.visibility = 'hidden'; });
+    const shot = await p.screenshot({ clip: { x: m.s.x, y: m.s.y, width: Math.max(1, m.s.w), height: Math.max(1, m.s.h) } });
+    await p.evaluate(() => { document.querySelector('#btnBegin small').style.visibility = ''; });
+    const plate = await p.evaluate(async (b64) => {
+      const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+      const d = x.getImageData(0, 0, c.width, c.height).data, ch = [[], [], []];
+      for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) ch[k].push(d[i + k]);
+      return ch.map(a => a.sort((p, q) => p - q)[a.length >> 1]);
+    }, shot.toString('base64'));
+    const cm = /rgba?\(([^)]+)\)/.exec(m.color), cv = cm ? cm[1].split(',').map(Number) : [255, 255, 255, 1];
+    const a = (cv.length > 3 ? cv[3] : 1) * m.op, ink = [0, 1, 2].map(k => cv[k] * a + plate[k] * (1 - a));
+    const L1 = lum(plate), L2 = lum(ink), contrast = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
+    const cx = m.b.x + m.b.w / 2, top = m.l.y - m.b.y, bottom = m.b.y + m.b.h - (m.s.y + m.s.h);
+    const wordOff = m.word ? Math.abs(m.word.x + m.word.w / 2 - cx) : 99, nameOff = Math.abs(m.s.x + m.s.w / 2 - cx);
+    const why = [];
+    if (contrast < 4.5) why.push(`name ${contrast.toFixed(2)}:1 on the plate`);
+    if (wordOff > 2.5) why.push(`BEGIN ${wordOff.toFixed(1)}px off the centre`);
+    if (nameOff > 2) why.push(`name ${nameOff.toFixed(1)}px off the centre`);
+    if (Math.min(top, bottom) < GROOVE + 1.5) why.push(`inside the groove by ${(Math.min(top, bottom) - GROOVE).toFixed(1)}px`);
+    if (Math.abs(top - bottom) > 2.5) why.push(`${top.toFixed(1)}px above, ${bottom.toFixed(1)}px below`);
+    if (m.s.h > m.lh * 1.5) why.push('name on two lines');
+    if (m.s.w > m.b.w - 2 * CAPS) why.push('name under the corner caps');
+    read.push(`${w}x${h} ${contrast.toFixed(1)}:1 ${top.toFixed(0)}/${bottom.toFixed(0)} plate ${m.b.h.toFixed(0)}`);
+    if (why.length) bad.push(`${w}x${h} (${m.kind}): ${why.join(', ')}`);
+  }
+  ck('theBeginPlatesNameIsReadCentredInsideItsGroove', bad.length === 0, bad.join(' | ') || read.join('; '));
+  await ctx.close();
+}
+
 /* ---- 3. THE TITLE, and game 1 played by following the guide alone ---- */
 {
   const { p, ctx } = await page('?prologue=reset');

@@ -19,7 +19,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 179, date: '2026-11-17', title: 'A journey for your first three games',
+    build: 180, date: '2026-11-17', title: 'A journey for your first three games',
     items: [
       'A new player now begins with a short journey of three games, each on a hand-made valley, with the Elder at your side.',
       'The Elder says one thing at a time, points at exactly where to tap, and shows a hand if you wait.',
