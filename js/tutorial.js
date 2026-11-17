@@ -743,6 +743,11 @@ const Tutorial = {
         o.queue && o.queue.length && o.queue[0].unit === 'defender');
       if (b) { t.soldierGiven = 1; b.queue[0].t = 0.0001; }
     }
+    // THE FIRST GAME'S SHORTER LESSON (CFG.MODES.first_quick.tutCut): the
+    // steps a short game does without are booked done, so they never hold
+    // the spine waiting to be affordable (towers and walls)
+    const cut = (CFG.MODES[S.mode] || {}).tutCut;
+    if (cut) for (const id of cut) t.done[id] = 1;
     // OUT-OF-ORDER: anything already done in the world is done in the book
     for (let i = t.step; i < this.STEPS.length; i++) {
       const st = this.STEPS[i];

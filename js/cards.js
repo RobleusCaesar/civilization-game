@@ -533,9 +533,13 @@ const Cards = {
   // build one side's 3-card offer from its rolled start package (see header)
   offer(side, pk) {
     const water = S.map.terrain.includes(T.WATER);
-    const [vLo, vHi] = CFG.OPENING.villagers[S.mode] || CFG.OPENING.villagers.moderate;
+    const [vLo, vHi] = CFG.OPENING.villagers[CFG.baseMode(S.mode)] || CFG.OPENING.villagers.moderate;
     const cand = [];
-    for (const key of this.keys()) {
+    /* THE FIRST GAME deals from a curated pool (CFG.FIRST_QUICK.ORIGINS) —
+       the player's hand only; the rival keeps the whole deck */
+    const FQ = CFG.FIRST_QUICK, pool0 = side === 'P' && FQ && FQ.ON && S.mode === FQ.MODE && FQ.ORIGINS;
+    const keys = pool0 ? this.keys().filter(k => pool0.includes(k)) : this.keys();
+    for (const key of keys) {
       const d = this.DEFS[key];
       if (d.axis && (d.axis === pk.rich || d.axis === pk.poor)) continue;         // no-cancel
       if (d.axis === 'crew' && (pk.villagers <= vLo || pk.villagers >= vHi)) continue;  // crew variance is variance too
@@ -548,6 +552,8 @@ const Cards = {
       if (d.fav && S.map.scarce === d.fav) w *= 0.45;
       cand.push({ key, w, lean: (d.syn || []).includes(pk.rich) });
     }
+    // …and a curated pool always deals three: the variance filters give way
+    if (pool0) for (const key of keys) if (cand.length < 3 && !cand.some(c => c.key === key)) cand.push({ key, w: 1, lean: false });
     const hand = [];
     const draw = pool => {
       const total = pool.reduce((a, c) => a + c.w, 0);
@@ -609,7 +615,7 @@ const Cards = {
     S.draft = {
       hand: handP, leanKeys,
       rival: { hand: handA, pick: pickA, temper },
-      intel: S.mode === 'calm' ? 'full' : S.mode === 'moderate' ? 'name' : 'none',
+      intel: CFG.baseMode(S.mode) === 'calm' ? 'full' : S.mode === 'moderate' ? 'name' : 'none',
       done: false, pickI: null,
     };
 

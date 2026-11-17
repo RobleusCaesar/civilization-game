@@ -1057,6 +1057,7 @@
       });
       // 7. the hall, and the three buildings it rises on
       act('hall', () => {
+        if (style === 'wonder' && t.level >= 2) return;   // saving for the monument
         if (Bld.canUpgrade(t).ok) { if (Bld.upgrade(t)) rep.upgrades++; return; }
         if (t.level >= 3 || t.upgrading > 0) return;
         if (t.level >= 2 && Bld.tcSupport(t) < Bld.TC_SUPPORT) {
@@ -1069,6 +1070,7 @@
       // 8. with goods to spare, the town improves (turtle and aggressive lean on this too)
       act('upgrades', () => {
         if (day % 3) return;
+        if (style === 'wonder' && day >= 25) return;   // the monument's savings come first
         const rich = (S.res.wood || 0) > 500 && (S.res.stone || 0) > 300;
         if (!rich) return;
         const fed = (S.res.food || 0) > 350;
@@ -1327,6 +1329,29 @@
         // roofs for an army as well as a workforce
         act('warhouse', () => { if (Units.popUsed('P') + 3 >= Bld.popCap('P') && (S.res.wood || 0) > 120 && !S.buildings.some(b => b.owner === 'P' && b.key === 'house' && b.construction > 0)) build('house', siteNear('house', 2, 8)); });
         war();
+      } else if (style === 'wonder') {
+        /* THE PEACEFUL ROAD (the first-game profile's second win): the town
+           of the passive player, which then lays the Wonder the day it can pay
+           for it and keeps four hands on the works */
+        act('wonder', () => {
+          if (!G.wonderInPlay || !G.wonderInPlay()) return;
+          const w = S.buildings.find(b => b.owner === 'P' && b.key === 'wonder');
+          if (!w) {
+            const cost = Bld.effCost('P', 'wonder');
+            if (!Bld.canAfford(cost, S.res)) return;
+            const spot = siteNear('wonder', 3, 12);
+            const nb = build('wonder', spot);
+            if (nb) { rep.wonderLaid = S.day; }
+            return;
+          }
+          if (!(w.construction > 0)) return;
+          const on = vills().filter(u => u.task && u.task.type === 'build' && u.task.id === w.id);
+          for (const u of vills()) {
+            if (on.length >= 5) break;
+            if (u.task && u.task.type === 'build') continue;
+            if (Units.assignBuild && Units.assignBuild(u, w)) on.push(u);
+          }
+        });
       }
       rep.razed = (S.stats && S.stats.razed) || 0;
       M.cost.botMs += realNow() - t0;

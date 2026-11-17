@@ -204,6 +204,47 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   ck('aWinIsJudgedOnItsModeAsEver', r.win.ok === true, `a Moderate win scoring 100: Iron + Imperial ${say(r.win)}`);
 }
 
+/* ============ 1d. THE FIRST AGE'S MILESTONE CARD (0017's grant_milestone) ============
+   One Iron card for a first game's hall reaching its second storey: only for
+   a run whose run_start says 'first_quick', only of the milestone tier, once
+   a player ever (the same run asking again is a duplicate), never for a
+   player who played another mode first — and 0017 lets the telemetry table
+   take the new mode at all. Its own database, like 1b. */
+{
+  const F17 = '0017_first_quick.sql';
+  const twice = files.includes(F17) ? sql(readFileSync(join(MIG, F17), 'utf8')) : { error: F17 + ' is missing' };
+  ck('theFirstGameFileTwiceChangesNothing', !twice.error, twice.error ? twice.error.split('\n')[0] : 'applied a second time cleanly');
+  make('cf_ms');
+  for (const f of files) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_ms' });
+  const P = n => '00000000-0000-0000-0000-0000000004' + String(n).padStart(2, '0');
+  const load = sql(`insert into auth.users (id) values ('${P(1)}'), ('${P(2)}'), ('${P(3)}');
+    insert into public.profiles (id) select id from auth.users on conflict do nothing;
+    insert into public.telemetry (user_id, run_id, kind, mode, created_at) values
+      ('${P(1)}', 'fq1', 'run_start', 'first_quick', now() - interval '2 hours'),
+      ('${P(1)}', 'fq1b', 'run_start', 'first_quick', now() - interval '1 hours'),
+      ('${P(2)}', 'old', 'run_start', 'calm', now() - interval '3 days'),
+      ('${P(2)}', 'fq2', 'run_start', 'first_quick', now() - interval '1 hours'),
+      ('${P(3)}', 'cm3', 'run_start', 'calm', now() - interval '1 hours');`, { db: 'cf_ms' });
+  ck('theTelemetryTakesTheFirstGameMode', !load.error, load.error ? load.error.split('\n')[0] : 'first_quick rows land');
+  const ms = (n, run, card) => json(`set role authenticated; set request.jwt.claim.sub = '${P(n)}'; select public.grant_milestone(${lit(run)}, ${lit(card)});`, { db: 'cf_ms' });
+  const qty = (n, card) => +(sql(`select coalesce((select qty from public.card_collection where user_id = '${P(n)}' and card_key = ${lit(card)}), 0);`, { db: 'cf_ms' }).out || -1);
+  const r = {
+    bronze: ms(1, 'fq1', 'war_band'), ok: ms(1, 'fq1', 'siege_train'), again: ms(1, 'fq1', 'siege_train'),
+    second: ms(1, 'fq1b', 'veterans'), nostart: ms(3, 'nope', 'siege_train'), calm: ms(3, 'cm3', 'siege_train'),
+    notFirst: ms(2, 'fq2', 'siege_train'),
+  };
+  const say = o => o && (o.ok ? 'ok' + (o.already ? ' (already)' : '') : o.reason || o.error);
+  ck('aFirstGamesHallPaysOneIronCard', r.ok.ok === true && r.again.ok === true && r.again.already === true && qty(1, 'siege_train') === 1,
+    `Iron ${say(r.ok)}, asked again ${say(r.again)}, held ${qty(1, 'siege_train')}`);
+  ck('onlyTheMilestoneTierAndOnlyOnce', r.bronze.ok === false && r.bronze.reason === 'bad_cards' && r.second.ok === false && r.second.reason === 'already_had' && qty(1, 'veterans') === 0,
+    `Bronze ${say(r.bronze)}; a second run ${say(r.second)}`);
+  ck('andOnlyForAFirstGame', r.nostart.ok === false && r.nostart.reason === 'no_run' && r.calm.ok === false && r.calm.reason === 'not_first_quick' &&
+    r.notFirst.ok === false && r.notFirst.reason === 'not_first',
+    `no run_start ${say(r.nostart)}; a Calm run ${say(r.calm)}; after a Calm game ${say(r.notFirst)}`);
+  const anon = json(`set role anon; select public.grant_milestone('fq1', 'siege_train');`, { db: 'cf_ms' });
+  ck('andTheMilestoneDoorIsShutToStrangers', !!anon.error && /permission denied/.test(anon.error), anon.error ? anon.error.split('\n')[0] : JSON.stringify(anon));
+}
+
 /* ============ 1c. A VOTE EARNS A CARD (0012), on the real door ============
    VibeTopList's callback reaches supabase/functions/vote-callback, which
    calls vote_reward() as the service role. Asked here as that role and as
@@ -707,6 +748,48 @@ const D30 = () => ({ p_token: TOKEN, p_from: new Date(Date.now() - 30 * 86400000
   sql(`delete from public.telemetry where user_id in ('${F1}', '${F2}'); delete from public.telemetry where user_id = '${U('a')}' and kind = 'step';`);
 }
 
+/* ================= 6d. THE FIRST GAME (0017's analytics_first_quick) =================
+   A player's first game in the new profile against first games before it:
+   games, finished, win rate, median win day, played again within a week —
+   the week counted only once it has passed — and the operator's devices
+   left out. Its rows are taken out again. */
+{
+  const Q = n => '00000000-0000-0000-0000-0000000005' + String(n).padStart(2, '0');
+  const st = (u, run, mode, ago) => `('${u}', '${run}', 'run_start', ${lit(mode)}, now() - interval '${ago}')`;
+  const en = (u, run, mode, ago, outcome, day) => `('${u}', '${run}', 'run_end', ${lit(mode)}, now() - interval '${ago}', ${lit(outcome)}, ${lit(outcome === 'win' ? 'razed_rival_tc' : 'tc_destroyed')}, ${day})`;
+  const rows = [
+    // before the release: a first game lost, played again within the week
+    st(Q(1), 'b1', 'calm', '40 days'), st(Q(1), 'b1x', 'calm', '38 days'),
+    // before: a first game never finished, never played again
+    st(Q(2), 'b2', 'moderate', '35 days'),
+    // the profile: won day 60, played again; won day 80, not again; left open
+    st(Q(3), 'q3', 'first_quick', '20 days'), st(Q(3), 'q3x', 'calm', '18 days'),
+    st(Q(4), 'q4', 'first_quick', '15 days'),
+    st(Q(5), 'q5', 'first_quick', '2 days'),
+    // the left-out test device's first game
+    st(U('a'), 'qa', 'first_quick', '10 days'),
+  ];
+  const ends = [en(Q(1), 'b1', 'calm', '39 days', 'loss', 50), en(Q(3), 'q3', 'first_quick', '19 days', 'win', 60), en(Q(4), 'q4', 'first_quick', '14 days', 'win', 80),
+    en(U('a'), 'qa', 'first_quick', '9 days', 'win', 20)];
+  const ld = sql(`
+    insert into auth.users (id) values ${[1, 2, 3, 4, 5].map(n => `('${Q(n)}')`).join(', ')} on conflict do nothing;
+    insert into public.profiles (id) select id from auth.users on conflict do nothing;
+    insert into public.telemetry (user_id, run_id, kind, mode, created_at) values ${rows.join(',\n')};
+    insert into public.telemetry (user_id, run_id, kind, mode, created_at, outcome, cause, day) values ${ends.join(',\n')};`);
+  ck('theFirstGameRowsLoad', !ld.error, ld.error ? ld.error.split('\n')[0] : `${rows.length + ends.length} rows`);
+  const A = call('analytics_first_quick', { p_token: TOKEN, p_release: new Date(Date.now() - 25 * 864e5).toISOString(), p_everyone: false });
+  const q = (A.cohorts || {}).first_quick || {}, b = (A.cohorts || {}).before || {};
+  ck('theFirstGameIsComparedWithFirstGamesBefore', A.ok === true && q.games === 3 && q.won === 2 && q.win_pct === 100 && q.median_win_day === 70 && q.finished_pct === 66.7 &&
+    b.games >= 2 && b.lost >= 1,
+    JSON.stringify(A.cohorts));
+  ck('andPlayedAgainCountsOnlyAPassedWeek', q.again_of === 2 && q.again_n === 1 && q.again_pct === 50, `first_quick again ${q.again_n}/${q.again_of}`);
+  const E = call('analytics_first_quick', { p_token: TOKEN, p_release: new Date(Date.now() - 25 * 864e5).toISOString(), p_everyone: true });
+  ck('theLeftOutDeviceCountsOnlyForEveryoneHereToo', ((E.cohorts || {}).first_quick || {}).games === 4, JSON.stringify((E.cohorts || {}).first_quick));
+  const bad = call('analytics_first_quick', { p_token: 'nope' });
+  ck('andTheFirstGameDoorIsLocked', bad.ok === false && bad.reason === 'bad_token', JSON.stringify(bad));
+  sql(`delete from public.telemetry where user_id in (${[1, 2, 3, 4, 5].map(n => `'${Q(n)}'`).join(', ')}); delete from public.telemetry where user_id = '${U('a')}' and run_id = 'qa';`);
+}
+
 /* ================= 8. WHAT THE REVIEW OF BUILD 107 FOUND (the database) =================
    Each check here was red on the dashboard as first committed (76c70e8).
    Their rows live far back in time (240–260 days, and the comparison's
@@ -743,7 +826,7 @@ const UNHOSTILE = `delete from public.telemetry where user_id = '00000000-0000-0
   // ONE function per name: an overload makes PostgREST answer 300
   const dup = sql(`select string_agg(proname || ' x' || n, ', ') from (select proname, count(*) n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
                    where s.nspname = 'public' and proname in ('analytics__games', 'analytics__window', 'analytics_dashboard', 'analytics_compare',
-                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic', 'analytics_first_minute')
+                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic', 'analytics_first_minute', 'analytics_first_quick')
                    group by proname having count(*) > 1) x;`).out;
   ck('andNoDoorIsLeftWithAnOverload', dup === '', dup || 'one function per name, after two applications');
 }
@@ -968,7 +1051,8 @@ const unlock = async (p, pass) => {
       inbox: document.querySelectorAll('#inbox .rep').length, mine: document.getElementById('mine').textContent,
       src: document.getElementById('tSrc').textContent, voteRows: document.querySelectorAll('#tVote').length, voteLine: document.getElementById('voteNote').textContent,
       days: document.getElementById('tTrafficDays').textContent,
-      fmin: ['tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt'].map(id => document.getElementById(id).textContent).join(' | ') };
+      fmin: ['tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt'].map(id => document.getElementById(id).textContent).join(' | '),
+      fq: document.getElementById('tFirstQuick').textContent };
   });
   const H = call('analytics_dashboard', D30()).headline;
   ck('theTilesAreTheDatabasesNumbers', v.t.Games && v.t.Games.v === String(H.games) && v.t.Players.v === String(H.players) &&
@@ -997,6 +1081,8 @@ const unlock = async (p, pass) => {
   // TRAFFIC (0013): its own door, its own tables — the fixture's devices played before sources were recorded
   ck('theFirstMinuteSectionRendersFromItsOwnDoor', seen.includes('analytics_first_minute') && !/Could not|needs migration/.test(v.fmin) && (/Page began to load/.test(v.fmin) && /60 seconds of play/.test(v.fmin) || /No page loads recorded in this period/.test(v.fmin)),
     v.fmin.slice(0, 200));
+  ck('theFirstGameSectionRendersFromItsOwnDoor', seen.includes('analytics_first_quick') && !/Could not|needs migration/.test(v.fq) && /Before the first-game profile/.test(v.fq) && /First-game profile/.test(v.fq),
+    v.fq.slice(0, 200));
   ck('theTrafficSectionRendersFromItsOwnDoor', seen.includes('analytics_traffic') && /Unknown \(before build 134\)/.test(v.src) && !/Could not/.test(v.src + v.days) && v.voteRows === 0 && (v.voteLine === "" || /retired in build 176: \d+ players saw it/.test(v.voteLine)),
     `sources "${v.src.slice(0, 120)}"; vote table ${v.voteRows}, line "${v.voteLine}"; days "${v.days.slice(0, 80)}"`);
   ck('thisDeviceIsNamed', /This device/.test(v.mine) && /Counted/.test(v.mine) && /3 games on record/.test(v.mine), v.mine.slice(0, 200));

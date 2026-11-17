@@ -370,7 +370,7 @@ export async function runMatrix(input) {
   const modes = list(opts.modes), sizes = list(opts.sizes), styles = list(opts.styles);
   for (const m of modes) if (!tables.modes.includes(m)) bad.push('mode ' + m);
   for (const s of sizes) if (!tables.sizes.includes(s)) bad.push('size ' + s);
-  for (const s of styles) if (!['passive', 'turtle', 'aggressive'].includes(s)) bad.push('style ' + s);
+  for (const s of styles) if (!['passive', 'turtle', 'aggressive', 'wonder'].includes(s)) bad.push('style ' + s);
   if (bad.length) { await b0.close(); throw new Error('not in the game\'s tables: ' + bad.join(', ') + '\nworlds: ' + tables.worlds.join(' ')); }
   const seeds = await p0.page.evaluate(o => AIH.findSeeds(o), { worlds, sizes, modes, n: opts.seeds, base: opts.base, geo: opts.geo, cap: opts.geo === 'any' ? 6000 : 1500 });
   await b0.close();

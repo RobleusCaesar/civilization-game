@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 178, date: '2026-11-17', title: 'A first game that fits an evening',
+    items: [
+      'Your very first game is a short one: a small valley, a gentler rival, rich ground near home and a cheaper Wonder.',
+      'New Game on a first visit goes straight to your origin cards, chosen from six friendly openings.',
+      'The lesson is shorter, so you reach the good part sooner.',
+      'When your Town Center first rises a level in that first game, you are handed an Iron card on the spot.',
+      'From your second game on, everything is as before, with the full choice of difficulty.',
+    ],
+  },
+  {
     build: 177, date: '2026-11-17', title: 'Learning where new players stop',
     items: [
       'The game now notes how far each visit gets in its first minute, so we can find and fix the places new players get stuck.',

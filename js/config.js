@@ -1587,9 +1587,65 @@ const CFG = {
     },
     // a win before this day is a GREAT victory (+1 card). The server computes
     // the live medians from real wins; these are the offline fallback.
-    MEDIAN_DAY: { calm: 160, moderate: 120, hard: 120 },
+    MEDIAN_DAY: { calm: 160, moderate: 120, hard: 120, first_quick: 80 },
     PITY: 15,             // wins without an Enlightenment card before one is guaranteed
     STARTER: ['forager_cache', 'fallen_timber', 'willing_hands'],
     QUEUE_MAX: 200,       // offline writes waiting for the cloud
   },
 };
+
+/* ================= THE FIRST GAME (build 178 — the 'first_quick' profile) =================
+   A device's very first game is a short, complete, winnable one: Calm's
+   world made smaller and quicker, never named to the player (operator, the
+   first-game overhaul: "a hidden profile, not a visible mode… build it as a
+   reusable profile so it could become a visible Quick mode later").
+
+   IT IS A MODE KEY, `first_quick`, built FROM Calm: every dial the game, the
+   rival and the tables read is Calm's unless the profile names it here, so a
+   new Calm dial is the profile's for free (tests/ai-coverage.mjs holds every
+   mode to the chief's dials). `base` is the mode it plays as wherever a table
+   is keyed by difficulty (CFG.baseMode); `hidden` keeps it off every menu and
+   every picture keyed by mode. Its runs are tagged mode 'first_quick' in
+   telemetry (migration 0017) and kept off the world board (Screens.boardHold).
+
+   The dials, measured with the scripted players (tools/ai-harness.mjs,
+   styles aggressive / wonder / passive; the gate report has the tables):
+     rival  slower to grow (aiOutput, aiVillCap/Every, aiBuildEvery) and to
+            arm (aiArmyCap/Div), its hall taking `aiHallTake` × every blow
+     start  richer ground (startResMin workable tiles of each resource by
+            the seat) and a richer package (startResMult)
+     wonder `wonderCost` × the price and `wonderTime` × the days, so the
+            peaceful road fits under day 100 — and the rival races for its own
+            from `aiWonderDay`, so a passive town is still a game it can lose
+     wilds  later and lighter (waveFirst, barbMult), fewer deaths
+     lesson the tutorial steps `tutCut` are booked done (towers and walls —
+            the steps that held the spine longest waiting to be affordable) */
+CFG.MODES.first_quick = Object.assign({}, CFG.MODES.calm, {
+  name: 'Calm', base: 'calm', hidden: true,
+  aiOutput: 0.8, aiVillCap: 9, aiVillEvery: 14, aiBuildEvery: 3, aiArmyCap: 2, aiArmyDiv: 22,
+  aiHallTake: 1.8, aiWonderDay: 70, revealRival: true,
+  startResMin: 5, startResMult: 1.4,
+  wonderCost: { food: 0.2, wood: 0.2, stone: 0.12, gold: 0.2 }, wonderTime: 0.45,
+  waveFirst: 60, barbMult: 0.6, deathEvery: [60, 90],
+  tutCut: ['range', 'tower', 'manTower', 'wall'],
+});
+CFG.FIRST_QUICK = {
+  ON: true,
+  MODE: 'first_quick', SIZE: 'medium', LANDFORM: 'valley', VARIANT: 'classic',
+  /* THE ORIGINS DEALT (three of these six): easy to read, each changes the
+     opening where the player can see it on day one, none needs water or a
+     shore the valley may not have — Homesteader and Refugee Host (more
+     hands at once), Grainkeeper, Timberwright and Stoneheart (a worked
+     station standing on day one), Bowyer (an Archery Range and its archers:
+     the road by force) */
+  ORIGINS: ['homesteader', 'refugeehost', 'grainkeeper', 'timberwright', 'stoneheart', 'bowyer'],
+  /* THE MILESTONE CARD: the first time the hall rises to level 2, one card
+     of TIER (Iron — a middle tier or higher, operator: "make sure it's a mid
+     or higher tier card to get them excited"), once per run, first game only;
+     the server's door is migration 0017's grant_milestone */
+  MILESTONE: { ON: true, TIER: 'iron', AT_LEVEL: 2 },
+  // the end screen's one line for the next game
+  NEXT_LINE: 'Your first age is done. Next time, the world is larger.',
+};
+// the mode a table keyed by difficulty reads for a profile (Calm for the first game)
+CFG.baseMode = m => (CFG.MODES[m] && CFG.MODES[m].base) || m;

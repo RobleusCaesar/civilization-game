@@ -308,6 +308,8 @@ const Bld = {
     return { level: lvN, lv: d.levels[lvN - 1] };
   },
   lv(b) { return CFG.BUILDINGS[b.key].levels[b.level - 1]; },
+  // the share of the Wonder's days a mode asks (the first game's is shorter; both tribes)
+  wonderTimeMult() { const m = (CFG.MODES[S && S.mode] || {}).wonderTime; return m > 0 ? m : 1; },
   get(id) { return S.buildings.find(b => b.id === id); },
   /* ---- footprints: b.x/b.y is the top-left tile; most buildings are 1×1,
      the Town Center claims size×size. All hit-testing, placement and
@@ -1070,6 +1072,12 @@ const Bld = {
     // THE AGE OF MARBLE (js/deckfx-growth.js): the player's Wonder a quarter
     // cheaper for the rest of the run — the one cost point, so the menu, the
     // ghost, the "% saved" line and the payment all read the same price
+    // THE FIRST GAME's monument is a fraction of the price (CFG.MODES.first_quick.wonderCost)
+    if (owner === 'P' && key === 'wonder') {
+      // a number for every good, or a share per good ({food, wood, stone, gold})
+      const wc = (CFG.MODES[S && S.mode] || {}).wonderCost;
+      if (wc) { const sc = {}; for (const k in cost) { const f = typeof wc === 'number' ? wc : (wc[k] != null ? wc[k] : 1); sc[k] = Math.round(cost[k] * f); } cost = sc; }
+    }
     if (owner === 'P' && key === 'wonder' && window.Deck && Deck.wonderCost) cost = Deck.wonderCost(cost);
     return window.Cards ? Cards.buildCost(owner, key, cost) : cost;
   },
@@ -1093,7 +1101,7 @@ const Bld = {
     const spec = this.buildSpec(key, owner);
     const res = owner === 'P' ? S.res : S.ai.res;
     // ORIGIN CARDS: discounts and haste read BEFORE the Nomad charge burns
-    const tMult = window.Cards ? Cards.buildTimeMult(owner) : 1;
+    const tMult = (window.Cards ? Cards.buildTimeMult(owner) : 1) * (key === 'wonder' ? this.wonderTimeMult() : 1);
     /* WHAT IT ACTUALLY COST, kept on the building. An Origin Card may have
        discounted this site, and a cancelled site hands back what was PAID —
        refunding the list price would mint resources out of nothing. */
@@ -1452,6 +1460,14 @@ const Bld = {
      the building is every bit as raised, but it scores no "upgrade finished"
      (a card's gift is not the town's feat) and says nothing per building:
      the card says it once, itself, and its own light shows each one rising. */
+  milestone(b) {
+    const M = CFG.FIRST_QUICK && CFG.FIRST_QUICK.MILESTONE;
+    if (!M || !M.ON || !S || S.milestone || S.mode !== CFG.FIRST_QUICK.MODE || b.level !== (M.AT_LEVEL || 2)) return;
+    if (!window.Deck || !Deck.milestone) return;
+    const got = Deck.milestone(S.runId || ('seed:' + S.seed));
+    S.milestone = S.day || 1;            // spent for the run, granted or not (rides the save)
+    if (got && window.DeckScreens && DeckScreens.milestoneReveal) DeckScreens.milestoneReveal(got);
+  },
   finishUpgrade(b, byCard) {
     b.upgrading = 0;
     b.level++;
@@ -1490,6 +1506,9 @@ const Bld = {
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
+    // THE FIRST AGE'S MILESTONE (tests/first-quick.mjs): a first game's hall
+    // reaching its second storey pays one card, once a run
+    if (b.owner === 'P' && b.key === 'tc') this.milestone(b);
   },
 
   /* training queue: entries { unit, t } (days remaining) */
@@ -2265,6 +2284,8 @@ const Bld = {
        before the one subtraction, so the number returned (and floated by
        Combat.hitBuilding) is the number taken */
     if (b.owner === 'P') { const gd = this.roadMult(b, 'guard'); if (gd > 1) amt /= gd; }
+    // THE FIRST GAME's rival hall comes down sooner (CFG.MODES.first_quick.aiHallTake)
+    if (b.owner === 'A' && b.key === 'tc') { const ht = (CFG.MODES[S.mode] || {}).aiHallTake; if (ht > 0) amt *= ht; }
     b.hp -= amt;
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };

@@ -38,7 +38,7 @@ const G = {
     const O = CFG.OPENING;
     const keys = ['food', 'wood', 'stone', 'gold'];
     // villagers: band by difficulty, weighted toward the middle
-    const [vLo, vHi] = O.villagers[mode] || O.villagers.moderate;
+    const [vLo, vHi] = O.villagers[CFG.baseMode(mode)] || O.villagers.moderate;
     let villagers = vLo + Math.round(((G.rand() + G.rand()) / 2) * (vHi - vLo));
     // resources: one axis runs rich, one runs lean — never all-high or all-low
     const rich = keys[(G.rand() * 4) | 0];
@@ -54,6 +54,9 @@ const G = {
     }
     // lean AGAINST the map: the scarce resource gets a head start back
     if (res[gen.scarce] !== undefined) res[gen.scarce] += O.scarceLean;
+    // THE FIRST GAME starts richer (CFG.MODES.first_quick.startResMult) — no draw moves
+    const srm = (CFG.MODES[mode] || {}).startResMult;
+    if (srm > 0 && srm !== 1) for (const k of keys) res[k] = Math.round(res[k] * srm);
     // a dry start (no water within reach) carries extra food
     let nearWater = false;
     sp = sp || gen.spawns.player;   // ORIGIN CARDS: the rival rolls a package too
@@ -163,6 +166,7 @@ const G = {
       paused: false, over: null,
       played: false,                        // has the playing screen ever shown this world (Screens.show)
       runId: null,                          // analytics: the run_start's id, so a CONTINUED save ends the same run
+      milestone: null,                      // the day a first game's milestone card was paid (Bld.milestone)
       res: Object.assign({}, CFG.START_RES),
       wallLevel: 1,                         // village-wide fortification tier (all walls & gates)
       wonder: null,                         // this run's ANCIENT WONDER key (set by G.setWonder, below)
@@ -270,6 +274,16 @@ const G = {
     // the player's hand waits in S.draft for the draft screen / Cards.pick
     const pkA = this.rollStart(gen, mode, gen.spawns.ai);
     AI.init(gen.spawns.ai, pkA);
+    /* THE FIRST GAME SHOWS WHERE THE RIVAL LIVES (CFG.MODES.first_quick
+       .revealRival): its hall's ground is charted and the hall remembered,
+       so the road to "raze their hall" is on the map from day one */
+    if ((CFG.MODES[mode] || {}).revealRival) {
+      const rt = Bld.tcOf('A');
+      if (rt) {
+        this.reveal(rt.x + 1, rt.y + 1, 3);
+        if (S.map.seenB) S.map.seenB[MapGen.idx(rt.x, rt.y)] = { key: rt.key, level: rt.level, owner: rt.owner, tribe: rt.tribe };
+      }
+    }
     Cards.deal(pk, pkA, persona);
     S.opening = { player: pk,
       rival: { villagers: pkA.villagers, res: pkA.res, rich: pkA.rich, poor: pkA.poor,
@@ -1199,7 +1213,7 @@ const G = {
       }
       return;
     }
-    const calm = S.mode === 'calm', cap = C.cap[S.mode] || C.cap.moderate;
+    const bm = CFG.baseMode(S.mode), calm = bm === 'calm', cap = C.cap[bm] || C.cap.moderate;
     const keys = Object.keys(F.burning);
     for (const k of keys) {
       const i = +k;
@@ -1385,7 +1399,7 @@ const G = {
      aiDelayS. The first VILLAGER at the crater takes the gold and the
      sky-iron; the two gold seams stay on the map for anyone to claim. */
   starfallDayOf(seed, mode) {
-    const C = CFG.STARFALL, calm = mode === 'calm';
+    const C = CFG.STARFALL, calm = CFG.baseMode(mode) === 'calm';
     const lo = calm ? C.calmMin : C.dayMin, hi = calm ? C.calmMax : C.dayMax;
     let d = lo + Math.abs(hashSeed(String(seed == null ? '' : seed) + '::star') | 0) % (hi - lo + 1);
     while ((d - 1) % 12 < 10) d++;
@@ -3194,6 +3208,7 @@ const G = {
       data.draft = { hand: [], leanKeys: [], rival: { hand: [], pick: null }, intel: 'none', done: true, pickI: null };
     if (!data.playtime) data.playtime = 0;
     if (data.played === undefined) data.played = true;   // a save is a world somebody played
+    if (data.milestone === undefined) data.milestone = null;
     if (!data.stats) data.stats = {};
     for (const k of ['trained', 'razed', 'gathered', 'kills', 'built', 'walls',
                      'upgrades', 'peakPop', 'krakenSlain', 'dragonSeen', 'originBonus', 'leanIn',

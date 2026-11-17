@@ -473,7 +473,9 @@ const Deck = {
      0, and a config without the table stands down to the loss table. */
   table(rep) {
     const D = CFG.CARDS.DROPS;
-    if (rep.win) return D[rep.mode] || D.loss;
+    // a win of a mode with no table of its own rolls Moderate's: the server's
+    // own fallback (grant_card's v_tbl), or the grant would be refused
+    if (rep.win) return D[rep.mode] || D.moderate;
     const line = CFG.CARDS.BIG_LOSS_SCORE;
     if (D.bigloss && line > 0 && (+rep.score || 0) >= line) return D.bigloss;
     return D.loss;
@@ -566,6 +568,28 @@ const Deck = {
       ...(rep.place ? { place: rep.place | 0, lift: !!c.lift } : {}) });
     return { ok: true, cards, great, pity: forced, place: rep.place || null };
   },
+  /* THE FIRST AGE'S MILESTONE (CFG.FIRST_QUICK.MILESTONE, tests/first-quick.mjs):
+     a first game's hall rising to its second storey pays one guaranteed card
+     mid-run — of the MILESTONE tier (Iron: the operator's "mid or higher, to
+     get them excited"). Once per run (the ledger's 'ms:' line, and the save's
+     S.milestone), drawn on Math.random, never the run's RNG; the cloud op
+     goes through migration 0017's grant_milestone, which checks the run was a
+     first_quick run and that the player never had one before. */
+  milestone(runId) {
+    const M = CFG.FIRST_QUICK && CFG.FIRST_QUICK.MILESTONE;
+    if (!this.on() || !M || !M.ON || !runId) return null;
+    const col = this.col(), key = 'ms:' + runId;
+    if (col.runs[key]) return null;
+    const tier = M.TIER, id = this.rollCard(tier, Math.random);
+    this._add(id, 1);
+    col.runs[key] = [{ id, tier, bonus: false, milestone: true }];
+    // a run with no telemetry id (offline, a test page) keeps its card on the
+    // device; the record can only take one it can check against a run_start
+    if (!/^seed:/.test(runId)) this._queue({ op: 'milestone', run: runId, card: id });
+    this.saveCol();
+    this.track('card_granted', { card: id, tier, outcome: 'milestone', difficulty: (typeof S !== 'undefined' && S && S.mode) || null, bonus: false, run: runId });
+    return { id, tier };
+  },
   /* EARNED IS EARNED (tests/deck-core.mjs — the playtest's test-link slice).
      ?cards=all's toy deck outlives the link on purpose (a phone relaunched
      from the home screen drops the query, and the tester's deck must still
@@ -645,7 +669,9 @@ const Deck = {
        games, and a test link whose deck then hides for the whole spine reads
        as broken. Theirs stands from the first morning; the note still rings
        it once the spine is done. */
-    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
+    // …and the first game's milestone card brings the deck in with it: the
+    // card flies INTO the deck, so the deck must be there to take it
+    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1 && !S.milestone && !this.isTest();
   },
   /* A CARD HAS THE FLOOR (tests/tutorial.mjs §15 — the five-player
      playtest, on the operator's own path: a fresh device arms the tutorial by
@@ -1235,7 +1261,7 @@ Object.assign(Deck, {
       if (v.asked) out.sent++;
       op.n = (op.n || 0) + 1;
       op.why = v.why;
-      if (v.verdict === 'wait' && op.op === 'grant') {
+      if (v.verdict === 'wait' && (op.op === 'grant' || op.op === 'milestone')) {
         op.wait = op.wait || Date.now();
         if (op.n >= this.SYNC.NO_RUN_TRIES && Date.now() - op.wait > this.SYNC.NO_RUN_DAYS * 864e5) {
           v.verdict = 'drop';
@@ -1251,9 +1277,11 @@ Object.assign(Deck, {
         else { out.dropped++; this._syncNote(op, v.why); }
       } else if (v.verdict === 'wait') {
         for (const id of (op.cards || [])) held[id] = 1;
+        if (op.op === 'milestone' && op.card) held[op.card] = 1;
       } else if (v.verdict === 'bad') {
         op.bad = op.bad || Date.now();
         if (op.op === 'grant') for (const id of (op.cards || [])) held[id] = 1;
+        if (op.op === 'milestone' && op.card) held[op.card] = 1;
         bad.push(op);
       } else { stop = v.why || 'network'; break; }
     }
@@ -1319,6 +1347,10 @@ Object.assign(Deck, {
       if (!op.run) return { verdict: 'drop', why: 'no_run_id' };
       name = 'grant_card';
       args = { p_run_id: String(op.run), p_cards: (op.cards || []).slice(0, 2), p_outcome: op.outcome || null };
+    } else if (op.op === 'milestone') {
+      if (!op.run || !op.card) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_milestone';
+      args = { p_run_id: String(op.run), p_card: String(op.card) };
     } else if (op.op === 'consume') {
       name = 'consume_card';
       args = { p_card_key: op.card, p_play_id: op.play, p_run_id: op.run || null,

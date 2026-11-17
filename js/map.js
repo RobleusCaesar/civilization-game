@@ -851,10 +851,11 @@ const MapGen = {
        Hard gets nothing and must fortify itself. The reachability clamp below still
        guarantees a way out and to every resource. */
     if (mode !== 'hard') {
-      const shelter = mode === 'calm' ? 0.85 : 0.5;      // how thick the cover rolls in
+      const calmish = CFG.baseMode(mode) === 'calm';
+      const shelter = calmish ? 0.85 : 0.5;      // how thick the cover rolls in
       const barrier = () => (rnd() < 0.6 ? T.FOREST : T.HILLS);
       const toRival = Math.atan2(ai.y - player.y, ai.x - player.x);   // the lane we keep clearest
-      const R0 = 4.5, R1 = mode === 'calm' ? 8.5 : 7.5, RMID = (R0 + R1) / 2, RHALF = (R1 - R0) / 2;
+      const R0 = 4.5, R1 = calmish ? 8.5 : 7.5, RMID = (R0 + R1) / 2, RHALF = (R1 - R0) / 2;
       const lim = Math.ceil(R1) + 1;
       for (let dy = -lim; dy <= lim; dy++) for (let dx = -lim; dx <= lim; dx++) {
         if (!dx && !dy) continue;
@@ -1268,7 +1269,10 @@ const MapGen = {
          dead. The scarce resource is guaranteed too — it stays scarce by
          being few on the board and lean in the ground (×0.6 stock), not by
          being absent from somebody's whole country. */
-      const SR = CFG.START_RESOURCE || { min: 3, r: 14 };
+      const SR0 = CFG.START_RESOURCE || { min: 3, r: 14 };
+      // THE FIRST GAME's seat stands on richer ground (CFG.MODES.first_quick.startResMin)
+      const srMin = (CFG.MODES[mode] || {}).startResMin;
+      const SR = srMin > SR0.min ? Object.assign({}, SR0, { min: srMin }) : SR0;
       for (const s of [player, ai]) {
         const sreach = flood(s.x, s.y);
         const beside = (x, y) => {

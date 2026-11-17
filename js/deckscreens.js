@@ -276,7 +276,7 @@ const DeckScreens = {
     const E = this.EYEBROW;
     if (!v.win) return v.cause === 'struck_banner' ? E.struck : E.loss;
     if (v.cause === 'wonder') return E.wonder;
-    return E[S.mode] || E.moderate;
+    return E[CFG.baseMode(S.mode)] || E.moderate;
   },
 
   _render(play, fresh) {
@@ -336,6 +336,9 @@ const DeckScreens = {
                  score is one row there), so the mark is the only line under it */
               `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
               (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
+              // THE FIRST GAME ends inviting the next (CFG.FIRST_QUICK.NEXT_LINE)
+              ((CFG.FIRST_QUICK && S.mode === CFG.FIRST_QUICK.MODE && CFG.FIRST_QUICK.NEXT_LINE)
+                ? `<p class="ceNext">${this.esc(CFG.FIRST_QUICK.NEXT_LINE)}</p>` : '') +
               '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
             /* the list of cards played and the deck tile are a WIDE
                window's (the same ruling, then "those additions are fine on
@@ -1306,6 +1309,121 @@ const DeckScreens = {
     st.textContent = this.CSS;
     document.head.appendChild(st);
   },
+  /* THE FIRST AGE'S MILESTONE (tests/first-quick.mjs, CFG.FIRST_QUICK.MILESTONE):
+     the end screen's reveal, compact, over the living world. The world
+     holds still (S.paused) while it has the floor; the card rises in its
+     tier's light, a tap turns it, CLAIM flies it into the deck button and
+     the world goes on. The card is already in the collection (Deck.milestone
+     granted it): this is the ceremony, never the transaction. */
+  _ms: null,
+  milestoneUp() { return !!this._ms; },
+  milestoneDrop() {
+    const ms = this._ms;
+    if (!ms) return;
+    this._ms = null;
+    ms.done = true;
+    if (ms.el.isConnected) ms.el.remove();
+  },
+  milestoneReveal(got) {
+    if (!got || !Deck.card(got.id) || this._ms) return null;
+    this._msCss();
+    const c = Deck.card(got.id), t = Deck.tier(got.tier) || Deck.TIERS[0];
+    const was = !!(window.S && S.paused);
+    if (window.S) S.paused = true;
+    const el = document.createElement('div');
+    el.id = 'msCard';
+    el.style.setProperty('--tc', t.col);
+    el.style.setProperty('--glow', t.glow);
+    el.innerHTML =
+      '<div class="msGlow"></div><div class="msRays"></div>' +
+      '<div class="msCol">' +
+        '<p class="msEye">Your hall has risen</p>' +
+        '<h3 class="msHead">A gift for your first age</h3>' +
+        '<div class="msStage"></div>' +
+        '<p class="msHint">Tap the card to turn it</p>' +
+        '<button class="abtn big gold msClaim" type="button">Claim</button>' +
+      '</div>';
+    document.body.appendChild(el);
+    const vp = this._vp();
+    const w = Math.max(140, Math.min(176, Math.floor(Math.min(vp.w * 0.46, (vp.h - 260) * 176 / 244))));
+    const face = Deck.face(got.id, { w });
+    face.setAttribute('role', 'button');
+    face.setAttribute('aria-label', c.name + ', ' + t.name);
+    el.querySelector('.msStage').appendChild(face);
+    const ms = this._ms = { el, face, was, done: false, at: performance.now() };
+    if (!this.reduced()) {
+      face.animate([
+        { transform: 'translateY(60px) scale(.6)', opacity: 0, filter: 'brightness(2.2)' },
+        { transform: 'translateY(-8px) scale(1.04)', opacity: 1, filter: 'brightness(1.4)', offset: 0.7 },
+        { transform: 'none', opacity: 1, filter: 'none' },
+      ], { duration: 900, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    }
+    face.addEventListener('click', () => { if (!ms.done) { face.classList.toggle('flip'); this.cue('ok'); } });
+    el.querySelector('.msClaim').addEventListener('click', () => this.milestoneClaim());
+    this.cue('complete');
+    return el;
+  },
+  milestoneClaim() {
+    const ms = this._ms;
+    if (!ms || ms.done) return;
+    ms.done = true;
+    const { el, face } = ms;
+    const finish = () => {
+      if (el.isConnected) el.remove();
+      if (this._ms === ms) this._ms = null;
+      if (window.S && !S.over) S.paused = ms.was;
+      this.cue('bond');
+    };
+    face.classList.remove('flip');
+    const deck = document.getElementById('deckBtn');
+    const dr = deck && deck.getBoundingClientRect();
+    el.classList.add('msGo');
+    if (!dr || !dr.width || this.reduced()) { setTimeout(finish, 200); return; }
+    const fr = face.getBoundingClientRect();
+    const dx = dr.left + dr.width / 2 - (fr.left + fr.width / 2), dy = dr.top + dr.height / 2 - (fr.top + fr.height / 2);
+    const s = Math.max(0.06, dr.width / fr.width);
+    const a = face.animate([
+      { transform: 'none', opacity: 1 },
+      { transform: 'translate(0,-14px) scale(1.05) rotate(-2deg)', opacity: 1, offset: 0.2 },
+      { transform: `translate(${dx}px, ${dy}px) scale(${s}) rotate(-14deg)`, opacity: 1, offset: 0.88 },
+      { transform: `translate(${dx}px, ${dy}px) scale(${s * 0.7}) rotate(-14deg)`, opacity: 0 },
+    ], { duration: this.FLY_MS, easing: 'cubic-bezier(.45,0,.35,1)', fill: 'forwards' });
+    let gone = false;
+    const once = () => { if (!gone) { gone = true; finish(); } };
+    a.onfinish = once;
+    setTimeout(once, this.FLY_MS + 500);
+  },
+  _msCss() {
+    if (document.getElementById('msCss')) return;
+    const st = document.createElement('style');
+    st.id = 'msCss';
+    st.textContent = `
+#msCard { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 46%, rgba(10,8,6,.55), rgba(6,5,4,.86) 70%); animation: msIn .3s ease-out both;
+  padding: env(safe-area-inset-top,0px) max(16px, env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(16px, env(safe-area-inset-left,0px)); }
+#msCard .msGlow { position: absolute; left: 50%; top: 48%; width: min(90vw, 520px); height: min(90vw, 520px); transform: translate(-50%,-50%);
+  background: radial-gradient(circle, var(--glow) 0%, transparent 62%); opacity: .8; pointer-events: none; animation: msPulse 2.4s ease-in-out infinite; }
+#msCard .msRays { position: absolute; left: 50%; top: 48%; width: min(110vw, 640px); height: min(110vw, 640px); transform: translate(-50%,-50%);
+  background: repeating-conic-gradient(from 0deg, rgba(255,240,200,.10) 0 6deg, transparent 6deg 22deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, transparent 62%); mask: radial-gradient(circle, #000 18%, transparent 62%);
+  pointer-events: none; animation: msSpin 26s linear infinite; }
+#msCard .msCol { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; max-width: 420px; }
+#msCard .msEye { margin: 0; font: 600 12px/1.2 var(--menufont, Georgia, serif); letter-spacing: .14em; text-transform: uppercase; color: var(--tc); }
+#msCard .msHead { margin: 0 0 6px; font: 700 22px/1.2 var(--menufont, Georgia, serif); color: #f3e2b4; text-wrap: balance; text-shadow: 0 2px 0 #000; }
+#msCard .msStage { min-height: 120px; display: flex; justify-content: center; }
+#msCard .msStage .ccard { cursor: pointer; filter: drop-shadow(0 0 18px var(--glow)); }
+#msCard .msHint { margin: 4px 0 0; font: 13px/1.3 Georgia, serif; color: #cdbf9c; }
+#msCard .msClaim { min-width: 180px; margin-top: 6px; }
+#msCard.msGo { animation: msOut .5s ease-in .35s both; }
+#msCard.msGo .msClaim, #msCard.msGo .msHint { visibility: hidden; }
+@keyframes msIn { from { opacity: 0; } }
+@keyframes msOut { to { background: transparent; } }
+@keyframes msPulse { 50% { opacity: .55; } }
+@keyframes msSpin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #msCard, #msCard .msGlow, #msCard .msRays { animation: none; } }`;
+    document.head.appendChild(st);
+  },
+
 };
 
 /* THE CHROME IS DRAWN, NOT BLOWN UP (the operator's standing ruling: the
@@ -1727,6 +1845,7 @@ DeckScreens.CSS = `
 #cardEnd .ceMeta { margin: 1px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: #b5a888; }
 #cardEnd .ceMeta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 9px; row-gap: 2px; }
 #cardEnd .ceDay, #cardEnd .ceAssist { white-space: nowrap; }
+#cardEnd .ceNext { margin: 6px 0 0; font: italic 600 13px/1.35 Georgia, 'Times New Roman', serif; color: #f0dca0; text-wrap: balance; }
 #cardEnd .ceAssist { display: inline-flex; align-items: center; gap: 4px; color: #e8c15a; }
 #cardEnd .ceAssist::before { content: '·'; color: #b5a888; margin-right: 5px; }
 #cardEnd .ceAssist svg { width: 16px; height: 16px; margin: -2px 0; flex: 0 0 auto; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }

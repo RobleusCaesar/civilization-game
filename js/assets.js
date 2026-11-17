@@ -308,7 +308,7 @@ const Assets = {
   ENDGAME_DIR: 'assets/endgame/',
   ENDGAME_MAX: 12,                 // most pictures probed per bucket
   ENDGAME_OUTCOMES: ['win', 'loss'],
-  endgameModes() { return Object.keys(CFG.MODES); },
+  endgameModes() { return Object.keys(CFG.MODES).filter(m => !CFG.MODES[m].hidden); },   // a profile wears its base's pictures
   endgame: {},                     // 'win/calm' -> [img, …] in the order they were found
   endgameKey(outcome, mode) { return outcome + '/' + mode; },
   endgameUrl(outcome, mode, n) {

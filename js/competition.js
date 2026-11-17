@@ -85,7 +85,7 @@ const Competition = {
     // undefined — the same trap G and Bld carry. Reading it through window
     // silently returned 1 and told a calm player they needed 500 when the
     // gate actually asked 250 of them.
-    const mult = (typeof CFG !== 'undefined' && CFG.SCORE && CFG.SCORE.mult && CFG.SCORE.mult[S.mode]) || 1;
+    const mult = (typeof CFG !== 'undefined' && CFG.SCORE && CFG.SCORE.mult && CFG.SCORE.mult[CFG.baseMode(S.mode)]) || 1;
     // what the gate measures, and the same thing said in the player's own numbers
     const gateHave = this.GATE_PRE_MULTIPLIER ? (sc.subtotal || 0) : score;
     const gateNeed = this.MIN_SCORE;
