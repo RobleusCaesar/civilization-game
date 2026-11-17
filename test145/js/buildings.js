@@ -821,7 +821,7 @@ const Bld = {
     /* THE PROLOGUE's menu is its lesson (Scenarios.allows): a building it has
        not taught yet cannot be raised by the player any other way either */
     if (owner === 'P' && window.Scenarios && Scenarios.allows && !Scenarios.allows(key))
-      return { ok: false, code: 'mode', why: 'Not yet — the Elder will show you when.' };
+      return { ok: false, code: 'mode', why: 'Not yet — Mira will show you when.' };
     // a road is ground, not a building: its own rules (js/roads.js)
     if (key === 'road') return window.Roads && Roads.on() ? Roads.canPlace(owner, x, y, opts) : { ok: false, code: 'key', why: '?' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };

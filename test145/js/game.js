@@ -529,6 +529,9 @@ const G = {
   log(msg, warn, ms, refusal) {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
+    // a journey world speaks with one voice, its guide's (Prologue.quiet):
+    // the news is chronicled above, and toasted only when the guide does not say it
+    if (S.scenario && window.Prologue && Prologue.quiet && Prologue.quiet(msg, warn, refusal)) return null;
     // game-event notes dedupe (repeat "under attack" spam collapses); the
     // full history always lands in the event log above. Hands back the toast
     // shown, if one was (Bld.releaseTrained folds a burst into one)
@@ -552,7 +555,9 @@ const G = {
     S.log.unshift({ day: S.day, msg });
     if (S.log.length > 60) S.log.pop();
     const chance = this.modeCfg().foeNoteChance;
-    if (chance == null || chance >= 1 || this.rand() < chance) UI.toast(msg, true, ms, true);
+    // the draw is made whatever is shown (a seed's rolls stay where they were); a journey world's guide keeps the floor
+    const show = chance == null || chance >= 1 || this.rand() < chance;
+    if (show && !(S.scenario && window.Prologue && Prologue.quiet && Prologue.quiet(msg, true))) UI.toast(msg, true, ms, true);
   },
 
   /* THE TRUCE BREAKS ONCE (tests/calm-peace.mjs). Called from every player

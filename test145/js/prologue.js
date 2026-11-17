@@ -195,6 +195,7 @@ const Prologue = {
     if (still) S.paused = true;   // nothing moves until BEGIN
     this._pre = S;
     this._warmGlide();
+    this._warmFaces();   // her nine faces, fetched while the world is founded
     return true;
   },
   // the establishing glide's opening view: its ground asked for too
@@ -309,7 +310,7 @@ const Prologue = {
       el = document.createElement('div');
       el.id = 'proDraft';
       el.innerHTML = '<div class="pePic"><img alt="" src="' + this.FACES.pleased + '"></div>' +
-        '<div class="peBody"><b class="peName">The Elder</b><p class="peTxt"></p></div>';
+        '<div class="peBody"><b class="peName">' + this.NAME + '</b><p class="peTxt"></p></div>';
       host.appendChild(el);
     }
     el.querySelector('.peTxt').textContent = this.DRAFT_LINE;
@@ -530,13 +531,15 @@ const Prologue = {
   onRes(u, res) { return this.resOf(u) === res; },
   gatherers(res) { return this.vils().filter(u => this.onRes(u, res)); },
   // the hand to move: the selected one, else the nearest gatherer of another good, else any villager
+  // a hand at a works or a station stays there: the guide never pulls one off
+  busy(u) { return !!(u && u.task && (u.task.type === 'build' || u.task.type === 'work' || u.task.type === 'claim')); },
   spareHand() {
     const need = this.need(), sel = this.selVil();
-    if (sel && !this.onRes(sel, need)) return sel;
+    if (sel && !this.busy(sel) && !this.onRes(sel, need)) return sel;
     const t = this.workFor({ x: (this.tc() ? Bld.cx(this.tc()) : CFG.W / 2), y: (this.tc() ? Bld.cy(this.tc()) : CFG.H / 2) }, need);
     let best = null, bd = 1e9;
     for (const u of this.vils()) {
-      if (this.onRes(u, need) || (u.task && u.task.type === 'build')) continue;
+      if (this.onRes(u, need) || this.busy(u)) continue;
       const d = t ? (u.x - t.x) ** 2 + (u.y - t.y) ** 2 : 0;
       if (d < bd) { bd = d; best = u; }
     }
@@ -575,170 +578,173 @@ const Prologue = {
   },
   afford(key) { return Bld.canAfford(Bld.effCost('P', key), S.res); },
 
-  /* Each beat: { id, face, text, goal, when, done, auto, ring, taps, cheer, on, skipIf }
-       text   the Elder's line (≤ 15 words, one instruction)
+  /* Each beat: { id, face, text, goal, when, hold, ack, site, wait, done, praise, auto, ring, taps, on, skipIf }
+       text   the guide's line (≤ 12 words, one instruction: a praise of ≤ 3 goes before it)
        goal   the tracker's objective (a string or a function), while the beat stands
-       when   the beat is HELD (not shown) until this is true
-       done   the beat completes (an action beat: no button, the deed answers it)
-       auto   a celebration: shown for this many ms, then the next beat
+       when   the beat is HELD until this is true — and while it is, the `hold`
+              line says what to do about it (the good it is short of), ringing
+              the hand to move and then its work (gatherRing): never silence
+       ack    the ORDER the line asks for has been given: the ring leaves its
+              target that frame, and the beat waits on the world (`wait`, a line
+              of what is happening now) — or, a `site` with nobody at it, asks
+              for the hands to raise it (`hands` of them, the builder chain)
+       done   the beat's result: the next line is said in the same tick
+       praise words said before the NEXT line (the deed answered at once; the
+              old three-second "well done" lines held the next instruction back)
+       auto   a line shown this many ms, then the next beat (the last word only)
        ring   the pulse's target: {x,y,r} tile-centred | {u:id} | {sel:'css'}
        taps   the idle hand's taps, in order (same shapes)
-       cheer  on completion: this good flies from the deed to its counter
-       on     done once, when the beat is first shown (an unlock, a raid)
-       skipIf a beat with nothing to teach on this device is passed over */
+       on     done once, when the beat is first asked (an unlock, a raid)
+       skipIf a beat with nothing to teach on this device is passed over
+     THE GUIDE ANSWERS A TAP IN THE FRAME IT LANDS (operator, build 181: "the
+     next thing … can take between two and three seconds to pop up … shoot
+     for a second at Max"): every line follows the ORDER, never its result. */
   SCRIPTS: {
     1() {
       const P = this;
       return [
-        { id: 'open', face: 'neutral', text: 'The old village is gone. Here we begin again. Send someone to gather berries.',
+        { id: 'open', face: 'point', text: 'The old village is gone. We begin again. Send someone to gather berries.',
           goal: 'Gather berries', ring: P.sendTo('berries'), taps: P.sendTaps('berries'),
-          done: () => (P._got.food || 0) >= 1, cheer: 'food' },
-        { id: 'berries', face: 'pleased', text: 'Berries! Nobody goes hungry tonight.', auto: 3200 },
-        { id: 'wood', face: 'neutral', text: 'Now send someone to cut wood.',
+          done: () => P.ordered('food'), praise: 'Good!' },
+        { id: 'wood', face: 'pleased', text: 'Berries for tonight. Now send someone to cut wood.',
           goal: 'Cut wood', ring: P.sendTo('forest'), taps: P.sendTaps('forest'),
-          done: () => (P._got.wood || 0) >= 1, cheer: 'wood' },
-        { id: 'timber', face: 'pleased', text: 'Good, strong timber. We\'ll need it.', auto: 3000 },
-        { id: 'house', face: 'neutral', text: 'We need a roof. Build a house beside the fire.',
+          done: () => P.ordered('wood'), praise: 'Good, strong timber!' },
+        { id: 'house', face: 'point', text: 'We need a roof. Build a house beside the fire.',
           goal: () => P.afford('house') ? 'Build a house' : 'Gather wood for a house: ' + P.costLine('house'),
-          when: () => P.afford('house') || P.has('house'),
+          when: () => P.afford('house') || P.has('house'), hold: (c) => P.needLine('A house', null, c),
           on: () => Scenarios.unlock('house'),
           ring: P.buildRing('house', 'houseSite'), taps: () => { const r = P.buildRing('house', 'houseSite')(); return r ? [r] : []; },
-          done: () => P.has('house') },
-        { id: 'home', face: 'pleased', text: 'A home! Now there\'s room for one more.', auto: 3200,
-          when: () => P.has('house', true) },
-        { id: 'train', face: 'neutral', text: 'Train a new villager at the hall.',
+          ack: () => P.has('house'), site: () => P.siteOf('house'), wait: 'The house is going up.',
+          done: () => P.has('house', true), praise: 'A home!' },
+        { id: 'train', face: 'point', text: 'Now train a new villager at the hall.',
           goal: () => P.afford2('villager') ? 'Train a villager' : 'Gather food for a villager: Food ' + Math.floor(S.res.food || 0) + '/50',
-          when: () => P.afford2('villager') || P.trained(),
+          when: () => P.afford2('villager') || P.trained(), hold: (c) => P.needLine('A villager', 'food', c),
           ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
-          done: () => P.trained() },
-        { id: 'welcome', face: 'pleased', text: 'Welcome, little one!', auto: 2600,
-          when: () => P.vils().length > P._n0 },
-        { id: 'work', face: 'neutral', text: 'Give the newcomer some work.',
+          ack: () => P.trained(), wait: 'A new villager is on the way.',
+          done: () => P.vils().length > P._n0, praise: 'Welcome, little one!' },
+        { id: 'work', face: 'excited', text: 'Give the newcomer some work.',
           goal: 'Put the newcomer to work',
           ring: () => { const n = P.newcomer(); if (!n) return null; return P.selVil() === n ? P.mark('forest') : { u: n.id }; },
           taps: () => { const n = P.newcomer(); return n ? [{ u: n.id }, P.mark('forest')].filter(Boolean) : []; },
-          done: () => { const n = P.newcomer(); return !n || !!n.task; } },
-        { id: 'grow', face: 'neutral', text: 'Now our hall must grow. Gather what it needs.',
-          goal: () => 'Hall Lv 2: ' + P.hallNeeds(),
-          done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); } },
-        { id: 'raise', face: 'pleased', text: 'We have enough. Raise the hall!',
+          done: () => { const n = P.newcomer(); return !n || !!n.task; }, praise: 'Good.' },
+        { id: 'grow', face: 'thinking', text: 'Now our hall must grow. Gather what it needs.', gather: true,
+          gwait: () => 'Our hall must grow. The ' + P.need() + ' is coming in.',
+          goal: () => 'Hall Lv 2: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
+          done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
+          praise: 'We have enough!' },
+        // an upgrade rises only with hands on it (the game's rule): the guide sends them
+        { id: 'raise', face: 'excited', text: 'Raise the hall!',
           goal: 'Raise the hall', ring: P.hallRing('#panel [data-act="upgrade"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="upgrade"]')(); return r ? [r] : []; },
-          done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0); } },
-        // an upgrade rises only with hands on it (the game's rule): the Elder sends them
-        { id: 'build', face: 'neutral', text: 'Send villagers to build it. Many hands, quick work.',
-          goal: 'Send builders to the hall', ring: () => P.builderRing(), taps: () => P.builderTaps(),
-          done: () => { const tc = P.tc(); return !tc || !(tc.upgrading > 0) || P.builders(tc).length > 0; } },
-        { id: 'rising', face: 'pleased', text: 'Everyone helps. The hall is rising.', auto: 3200, goal: 'The hall is rising' },
+          ack: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0); },
+          site: () => P.tcWorks(), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
+          wait: 'Everyone helps. The hall is rising.', waitFace: 'proud',
+          done: () => { const tc = P.tc(); return !!tc && tc.level >= 2; } },
       ];
     },
     2() {
       const P = this;
       return [
-        { id: 'open', face: 'pleased', text: 'Welcome back, chief. Our clan has grown.', auto: 3200 },
-        { id: 'stone', face: 'neutral', text: 'We need stone. Send someone to the grey rocks.',
+        { id: 'stone', face: 'point', text: 'Welcome back, chief. We need stone. Send someone to the grey rocks.',
           goal: 'Gather stone', ring: P.sendTo('stone'), taps: P.sendTaps('stone'),
-          done: () => (P._got.stone || 0) >= 1, cheer: 'stone' },
-        { id: 'stoneok', face: 'pleased', text: 'Good stone. Great halls are made of it.', auto: 3000 },
-        { id: 'lumber', face: 'neutral', text: 'Old felled trees lie nearby. Build a lumber camp there.',
+          done: () => P.ordered('stone'), praise: 'Good stone!' },
+        { id: 'lumber', face: 'point', text: 'Old felled trees lie nearby. Build a lumber camp there.',
           goal: () => P.afford('lumber') ? 'Build a lumber camp' : 'Gather for a lumber camp: ' + P.costLine('lumber'),
-          when: () => P.afford('lumber') || P.has('lumber'),
+          when: () => P.afford('lumber') || P.has('lumber'), hold: (c) => P.needLine('A lumber camp', null, c),
           on: () => Scenarios.unlock('lumber'),
           ring: P.buildRing('lumber', 'stumps'), taps: () => { const r = P.buildRing('lumber', 'stumps')(); return r ? [r] : []; },
-          done: () => P.has('lumber') },
-        { id: 'lumberok', face: 'pleased', text: 'A camp! Its workers bring wood without walking far.', auto: 3400,
-          when: () => P.has('lumber', true) },
-        { id: 'quarry', face: 'neutral', text: 'Now a quarry, on the broken rock.',
+          ack: () => P.has('lumber'), site: () => P.siteOf('lumber'),
+          done: () => P.raised('lumber'), praise: 'A lumber camp!' },
+        { id: 'quarry', face: 'point', text: 'Now a quarry, on the broken rock.',
           goal: () => P.afford('quarry') ? 'Build a quarry' : 'Gather for a quarry: ' + P.costLine('quarry'),
-          when: () => P.afford('quarry') || P.has('quarry'),
+          when: () => P.afford('quarry') || P.has('quarry'), hold: (c) => P.needLine('A quarry', null, c),
           on: () => Scenarios.unlock('quarry'),
           ring: P.buildRing('quarry', 'pebbles'), taps: () => { const r = P.buildRing('quarry', 'pebbles')(); return r ? [r] : []; },
-          done: () => P.has('quarry') },
-        { id: 'farm', face: 'neutral', text: 'And a farm, where the berries were picked bare.',
+          ack: () => P.has('quarry'), site: () => P.siteOf('quarry'),
+          done: () => P.raised('quarry'), praise: 'A quarry!' },
+        { id: 'farm', face: 'point', text: 'And a farm, where the berries were picked bare.',
           goal: () => P.afford('farm') ? 'Build a farm' : 'Gather for a farm: ' + P.costLine('farm'),
-          when: () => P.afford('farm') || P.has('farm'),
+          when: () => P.afford('farm') || P.has('farm'), hold: (c) => P.needLine('A farm', null, c),
           on: () => Scenarios.unlock('farm'),
           ring: P.buildRing('farm', 'barren'), taps: () => { const r = P.buildRing('farm', 'barren')(); return r ? [r] : []; },
-          done: () => P.has('farm') },
-        { id: 'scout', face: 'neutral', text: 'Something old lies out there. Send someone to look.',
+          ack: () => P.has('farm'), site: () => P.siteOf('farm'),
+          done: () => P.raised('farm'), praise: 'A farm!' },
+        // the find is news when it comes (the relic aside): the lesson goes on while the scout walks
+        { id: 'scout', face: 'point', text: 'Something old lies out there. Send someone to look.',
           goal: 'Explore', ring: P.sendTo(() => P.mark('scoutTo', 1) || P.mark('relic', 1)),
           taps: P.sendTaps(() => P.mark('scoutTo', 1) || P.mark('relic', 1)),
           skipIf: () => !S.relic,
-          done: () => !!(S.relic && S.relic.found) },
-        { id: 'relic', face: 'pleased', text: 'Old stones! Our people will put them to use.', auto: 3200,
-          skipIf: () => !S.relic },
-        { id: 'deck', face: 'neutral', text: 'You carry cards. Tap your deck and play one.',
+          done: () => !!(S.relic && S.relic.found) || P.scouting(), praise: 'Good.' },
+        { id: 'deck', face: 'point', text: 'You carry cards. Tap your deck and play one.',
           goal: 'Play a card',
           skipIf: () => !(window.Deck && Deck.on && Deck.on() && Deck.total && Deck.total() > 0),
           on: () => { P._deckOpen = true; },
           ring: () => P.deckRing(), taps: () => { const r = P.deckRing(); return r ? [r] : []; },
-          done: () => !!(S.deck && S.deck.played && S.deck.played.length) },
-        { id: 'deckok', face: 'pleased', text: 'Well played! Cards help when times are hard.', auto: 3200,
-          when: () => !(window.Deck && Deck.acting && Deck.acting()) },
-        { id: 'grow', face: 'neutral', text: 'Now raise the hall again. Gather what it needs.',
-          goal: () => 'Hall Lv 3: ' + P.hallNeeds(),
-          done: () => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); } },
-        { id: 'raise', face: 'pleased', text: 'We have enough. Raise the hall!',
+          // the card's own act answers the Play; the next line comes the moment it is over
+          ack: () => P.played(),
+          done: () => P.played() && !(window.Deck && Deck.acting && Deck.acting()), praise: 'Well played!' },
+        { id: 'grow', face: 'thinking', text: 'Now raise the hall again. Gather what it needs.', gather: true,
+          gwait: () => 'The hall will rise again. The ' + P.need() + ' is coming in.',
+          goal: () => 'Hall Lv 3: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
+          done: () => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
+          praise: 'We have enough!' },
+        { id: 'raise', face: 'excited', text: 'Raise the hall!',
           goal: 'Raise the hall', ring: P.hallRing('#panel [data-act="upgrade"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="upgrade"]')(); return r ? [r] : []; },
-          done: () => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0); } },
-        // an upgrade rises only with hands on it (the game's rule): the Elder sends them
-        { id: 'build', face: 'neutral', text: 'Send villagers to build it. Many hands, quick work.',
-          goal: 'Send builders to the hall', ring: () => P.builderRing(), taps: () => P.builderTaps(),
-          done: () => { const tc = P.tc(); return !tc || !(tc.upgrading > 0) || P.builders(tc).length > 0; } },
-        { id: 'rising', face: 'pleased', text: 'Everyone helps. The hall is rising.', auto: 3200, goal: 'The hall is rising' },
+          ack: () => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0); },
+          site: () => P.tcWorks(), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
+          wait: 'Everyone helps. The hall is rising.', waitFace: 'proud',
+          done: () => { const tc = P.tc(); return !!tc && tc.level >= 3; } },
       ];
     },
     3() {
       const P = this;
       return [
-        { id: 'open', face: 'neutral', text: 'Two roads to victory: burn their hall, or raise a Wonder.', auto: 4200 },
-        { id: 'barracks', face: 'neutral', text: 'Raiders roam these hills. Build a barracks.',
+        // the two roads are said once the raid is beaten, where the choice is the player's
+        { id: 'barracks', face: 'determined', text: 'Raiders roam these hills, chief. Build a barracks.',
           goal: () => P.afford('barracks') ? 'Build a barracks' : 'Gather for a barracks: ' + P.costLine('barracks'),
-          when: () => P.afford('barracks') || P.has('barracks'),
+          when: () => P.afford('barracks') || P.has('barracks'), hold: (c) => P.needLine('A barracks', null, c),
           on: () => Scenarios.unlock('barracks'),
           ring: P.buildRing('barracks', 'barracksSite'), taps: () => { const r = P.buildRing('barracks', 'barracksSite')(); return r ? [r] : []; },
-          done: () => P.has('barracks') },
-        { id: 'soldiers', face: 'neutral', text: 'Train soldiers at the barracks.',
-          goal: () => 'Soldiers ' + Math.min(3, P.soldiers().length) + '/3',
+          ack: () => P.has('barracks'), site: () => P.siteOf('barracks'), wait: 'The barracks is going up.',
+          done: () => P.has('barracks', true), praise: 'A barracks, and its first soldier!' },
+        { id: 'soldiers', face: 'point', text: 'Train more soldiers at the barracks.',
+          // counted the moment they are ordered: each tap on Train moves the tally
+          goal: () => 'Soldiers ' + Math.min(3, P.armyComing()) + '/3',
           when: () => P.has('barracks', true),
-          // three trained or on the way: the Elder points at nothing more (no spending the larder on a fourth)
-          ring: () => P.armyComing() >= 3 ? null : P.yardRing('barracks', '#panel [data-act="train"]')(),
-          taps: () => { const r = P.armyComing() >= 3 ? null : P.yardRing('barracks', '#panel [data-act="train"]')(); return r ? [r] : []; },
-          done: () => P.soldiers().length >= 3 },
-        { id: 'raid', face: 'concerned', text: 'Raiders! Send your soldiers to meet them.',
+          // three trained or on the way: the guide points at nothing more (no spending the larder on a fourth)
+          ring: () => P.yardRing('barracks', '#panel [data-act="train"]')(),
+          taps: () => { const r = P.yardRing('barracks', '#panel [data-act="train"]')(); return r ? [r] : []; },
+          ack: () => P.armyComing() >= 3, wait: 'Good. They will be ready soon.',
+          done: () => P.soldiers().length >= 2 || S.day >= 22 },
+        { id: 'raid', face: 'determined', text: 'Raiders! Send your soldiers to meet them.',
           goal: 'Drive off the raiders',
-          when: () => P.soldiers().length >= 2 || S.day >= 22,
           on: () => P.raid(),
           // a soldier first (he stands in sight), then the raiders — the view goes to them once he is in hand
           ring: () => { const r = P.raiders()[0]; if (!r) return null; const s = P.soldiers()[0]; return P.selSoldier() || !s ? { u: r.id } : { u: s.id }; },
           taps: () => { const s = P.soldiers()[0], r = P.raiders()[0]; return [s && !P.selSoldier() ? { u: s.id } : null, r ? { u: r.id } : null].filter(Boolean); },
-          done: () => P._raided && !P.raiders().length },
-        // the fight over, every hand goes back to the work it left (the horn's own rule)
-        { id: 'beaten', face: 'pleased', text: 'They\'re beaten! Back to work, everyone.', auto: 3200,
-          on: () => { try { if (typeof Units !== 'undefined' && Units.backToWork) Units.backToWork('P'); } catch (e) {} } },
-        { id: 'roads', face: 'neutral', text: 'Now choose: march on their hall, or raise the Wonder here.', auto: 4600,
-          goal: 'Raze their hall, or raise the Wonder',
-          on: () => { Scenarios.unlock('wonder'); } },
+          ack: () => P.attacking(), wait: 'Good! Drive them off.', waitFace: 'determined',
+          done: () => P._raided && !P.raiders().length, praise: 'They\'re beaten!' },
         /* THE WONDER'S ROAD, guided: save, raise, build. A player who strikes
            the rival instead (marching) has chosen the other road, and the
-           Elder stands aside from the Wonder for the rest of the game. */
-        { id: 'save', face: 'neutral', text: 'A Wonder needs much. Fill the stores, chief.', gather: true,
+           guide stands aside from the Wonder for the rest of the game. The
+           fight over, every hand goes back to the work it left (the horn's own rule). */
+        { id: 'save', face: 'neutral', text: 'Now choose: raise a Wonder here, or march on their hall.', gather: true,
+          gwait: 'Everyone is gathering. A Wonder here, or march on their hall?',
           goal: () => 'Wonder: ' + P.costLine('wonder'), cost: () => Bld.effCost('P', 'wonder'),
+          on: () => { Scenarios.unlock('wonder'); try { if (typeof Units !== 'undefined' && Units.backToWork) Units.backToWork('P'); } catch (e) {} },
+          ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           skipIf: () => P.marching(),
-          done: () => P.afford('wonder') || P.has('wonder') },
-        { id: 'wonder', face: 'pleased', text: 'We have enough. Raise the Wonder here!',
-          goal: 'Raise the Wonder', skipIf: () => P.marching(),
-          ring: P.buildRing('wonder', 'wonderSite'), taps: () => { const r = P.buildRing('wonder', 'wonderSite')(); return r ? [r] : []; },
-          done: () => P.has('wonder') },
+          done: () => P.afford('wonder') || P.has('wonder'), praise: 'We have enough!' },
         // three pairs of hands raise it in a third of the days one does
-        { id: 'masons', face: 'neutral', text: 'Send villagers to build it. Many hands, quick work.',
-          goal: () => { const w = P.siteOf('wonder'); return 'Builders ' + Math.min(3, w ? P.builders(w).length : 3) + '/3'; },
+        { id: 'wonder', face: 'excited', text: 'Raise the Wonder here!',
+          goal: () => { const w = P.siteOf('wonder'); return w ? 'Builders ' + Math.min(3, P.builders(w).length) + '/3' : 'Raise the Wonder'; },
           skipIf: () => P.marching(),
-          ring: () => P.siteRing('wonder'), taps: () => P.siteTaps('wonder'),
-          done: () => { const w = P.siteOf('wonder'); return !w || P.builders(w).length >= Math.min(3, P.vils().length); } },
-        { id: 'go', face: 'pleased', text: 'The clan is with you, chief. See it through.', auto: 3600,
+          ring: P.buildRing('wonder', 'wonderSite'), taps: () => { const r = P.buildRing('wonder', 'wonderSite')(); return r ? [r] : []; },
+          ack: () => P.has('wonder'), site: () => P.siteOf('wonder'), hands: 3, handsText: 'Send villagers to build it. Many hands, quick work.',
+          done: () => { const w = P.siteOf('wonder'); return P.has('wonder') && (!w || P.builders(w).length >= Math.min(3, P.vils().length)); } },
+        { id: 'go', face: 'proud', text: 'The clan is with you, chief. See it through.', auto: 3600,
           goal: () => P.marching() ? 'Raze their hall' : 'The Wonder is rising' },
       ];
     },
@@ -794,43 +800,24 @@ const Prologue = {
   },
 
   /* CONTEXTUAL LINES: said over the current beat while their condition holds
-     (N seconds steady), then the beat comes back */
+     (N seconds steady), then the beat comes back. IDLE HANDS and THE WRONG
+     WORK are no longer asides: a beat that waits on goods (held, or a
+     gathering beat) rings the hand to move from its first frame (gatherRing)
+     — at 8–10 s they read as a guide that had stopped answering. News of the
+     world (`quiet`) is said only at a quiet moment — never over a line the
+     player is still acting on — keeps the beat's ring (`keepRing`), and is
+     let go if no quiet moment comes within QUIET_MAX. */
+  QUIET_MAX: 25000,
   ASIDES: [
-    { id: 'nobuilder', face: 'concerned', text: 'No one is building it. Send a villager to the frame.', hold: 5,
-      test() { return this.unbuilt(); },
+    // a works going up with nobody at it — not the current beat's own (its `hands` line asks already)
+    { id: 'nobuilder', face: 'concerned', text: 'No one is building it. Send a villager to the frame.', hold: 2,
+      test() { const v = this._shown; if (v && v.phase === 'hands') return null; return this.unbuilt(); },
       ring() { const b = this.unbuilt(); return b ? (this.selVil() ? { x: Bld.cx(b), y: Bld.cy(b), r: 1.1 } : (this.idleVil() ? { u: this.idleVil().id } : null)) : null; },
       taps() { const b = this.unbuilt(), v = this.idleVil(); return [v && !this.selVil() ? { u: v.id } : null, b ? { x: Bld.cx(b), y: Bld.cy(b), r: 1 } : null].filter(Boolean); } },
-    /* IDLE HANDS: a gatherer whose tile runs out stands idle (the game's own
-       rule — a spent tile is news), so while the player is gathering toward
-       a goal (a beat held until it is affordable, or the hall's storey) a
-       hand idle 10 s is pointed back to work: the hand, then the nearest
-       tile of the good the goal is shortest of */
-    { id: 'idle', face: 'concerned', text: 'Idle hands, chief. Send them to gather.', hold: 10,
-      test() {
-        const b = this.beat(); if (!b) return false;
-        const waiting = b.id === 'grow' || b.gather || (b.when && !S.pro.said[b.id] && !this._shown);
-        return waiting && this.vils().some(u => this.isIdle(u));
-      },
-      ring() { const v = this.selVil(); if (v && this.isIdle(v)) return this.workFor(v, this.spread()); const iv = this.idleVil(); return iv && this.isIdle(iv) ? { u: iv.id } : null; },
-      taps() { const iv = this.idleVil(); return iv && this.isIdle(iv) ? [{ u: iv.id }, this.workFor(iv, this.spread())].filter(Boolean) : []; } },
-    /* THE WRONG WORK: every hand busy, none on the good the goal is short
-       of (a held beat's price, or the hall's) — the tracker says "Food 0/50"
-       and nothing will ever change it. The Elder names the good; the ring
-       takes the nearest hand on other work, then the tile. */
-    { id: 'need', face: 'concerned', hold: 8,
-      text() { return { food: 'We need food. Send someone to the berries.', wood: 'We need wood. Send someone to the trees.', stone: 'We need stone. Send someone to the grey rocks.' }[this.need()] || 'Send someone to gather.'; },
-      test() {
-        const b = this.beat(); if (!b) return false;
-        const waiting = b.id === 'grow' || b.gather || (b.when && !S.pro.said[b.id] && !this._shown);
-        if (!waiting) return false;
-        const r = this.need(), have = Math.floor(S.res[r] || 0);
-        if (!r || this.gatherers(r).length) return false;
-        return !this.vils().some(u => this.isIdle(u)) && have < this.needOf(r);
-      },
-      ring() { const v = this.selVil(); if (v && !this.onRes(v, this.need())) return this.workFor(v); const h = this.spareHand(); return h ? { u: h.id } : null; },
-      taps() { const h = this.spareHand(); return h ? [{ u: h.id }, this.workFor(h)].filter(Boolean) : []; } },
-    { id: 'rival', face: 'neutral', text: 'Riders! Another clan shares this valley. They mean no harm.', hold: 0.5, once: true, auto: 4200,
+    { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares this valley. They mean no harm.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
       test() { return Scenarios.game() === 2 && S.units.some(u => u.owner === 'A' && G.visibleAt && G.visibleAt(u.x | 0, u.y | 0)); } },
+    { id: 'relic', face: 'surprised', text: 'Old stones! Our people will put them to use.', hold: 0.2, once: true, auto: 3200, quiet: true, keepRing: true,
+      test() { return Scenarios.game() === 2 && !!(S.relic && S.relic.found); } },
   ],
   // the hands building a site or a storey
   builders(b) { return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'build' && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id)); },
@@ -855,6 +842,92 @@ const Prologue = {
     return null;
   },
 
+  /* ---- what the new beats ask of the world (every one a read, never a write) ---- */
+  // a hand SENT to a good since its line was first asked — the order, never its first load home
+  ordered(res) {
+    const n = this.gatherers(res).length, base = this._g0 && this._g0[res] != null ? this._g0[res] : 0;
+    return n > base;
+  },
+  _snapGather() { const o = {}; for (const r of ['food', 'wood', 'stone', 'gold']) o[r] = this.gatherers(r).length; this._g0 = o; },
+  // the hall's own storey going up (the works a `raise` beat sends hands to)
+  tcWorks() { const tc = this.tc(); return tc && tc.upgrading > 0 ? tc : null; },
+  // a station standing, or raised with hands on it: the lesson goes on while it rises
+  raised(key) { if (!this.has(key)) return false; const w = this.siteOf(key); return !w || this.builders(w).length > 0; },
+  // a hand walking to the scout's mark (or already there)
+  scouting() {
+    const m = this.mark('scoutTo', 1) || this.mark('relic', 1);
+    if (!m) return false;
+    return this.vils().some(u => u.task && u.task.type === 'move' && Math.hypot(u.task.x + 0.5 - m.x, u.task.y + 0.5 - m.y) < 3.5);
+  },
+  played() { return !!(S.deck && S.deck.played && S.deck.played.length); },
+  /* a soldier of ours set on a raider — the order, the fight he found
+     himself, or a march onto them: a raider not yet in sight cannot be
+     tapped (the fog), so the tap is a walk to where he is, and that is the
+     order the line asked for */
+  attacking() {
+    const rs = this.raiders();
+    if (!rs.length) return false;
+    const ids = new Set(rs.map(r => r.id));
+    return this.soldiers().some(s => (s.tUnit && ids.has(s.tUnit)) ||
+      (s.task && s.task.type === 'move' && s.task.x != null && rs.some(r => Math.hypot(s.task.x + 0.5 - r.x, s.task.y + 0.5 - r.y) < 4)));
+  },
+  /* THE LINE OF A HELD BEAT: what it is short of, in the guide's words —
+     true whether or not a hand is free to move (the ring says which) */
+  WHERE: { food: 'the berries', wood: 'the trees', stone: 'the grey rocks', gold: 'the gold seam' },
+  needLine(thing, res, coming) {
+    const r = res || this.need();
+    return thing + ' needs more ' + r + (coming ? '. It is coming in.' : '. Gather it at ' + (this.WHERE[r] || 'the hills') + '.');
+  },
+  // the line when a gather beat needs a hand again
+  gatherLine() {
+    const sel = this.selVil(), iv = this.idleVil(), r = this.need();
+    if ((sel && this.isIdle(sel)) || (!sel && iv && this.isIdle(iv))) return 'A villager is idle. Put them to work.';
+    return 'We need ' + r + '. Send someone to ' + (this.WHERE[r] || 'gather it') + '.';
+  },
+  /* THE HAND TO MOVE while the goal waits on goods, and then its work: the
+     selected hand when it is idle (to the good the hands are fewest on) or
+     on another good (to the one the goal is shortest of); else an idle hand;
+     else, with nobody on the short good at all, a hand on other work. A hand
+     building or stationed is never pulled off. Null: every hand is on it. */
+  gatherRing(idleOnly) {
+    const need = this.need(), sel = this.selVil(), busy = u => this.busy(u);
+    if (sel && !busy(sel)) {
+      if (this.isIdle(sel)) return this.workFor(sel, this.spread());
+      if (!idleOnly && !this.onRes(sel, need)) return this.workFor(sel, need);
+    }
+    const iv = this.idleVil();
+    if (iv && iv !== sel && this.isIdle(iv) && !busy(iv)) return { u: iv.id };
+    if (idleOnly || this.gatherers(need).length) return null;
+    const h = this.spareHand();
+    // never the hand already in hand: a tap on it again would only let it go
+    return h && h !== sel ? { u: h.id } : null;
+  },
+  gatherTaps(idleOnly) {
+    const r = this.gatherRing(idleOnly);
+    if (!r) return [];
+    if (r.u === undefined) return [r];
+    const u = Units.get(r.u);
+    return [r, u ? this.workFor(u, this.isIdle(u) ? this.spread() : this.need()) : null].filter(Boolean);
+  },
+  // a works of the current beat still wanting hands, and the chain that sends them
+  _needsHands(b) {
+    const w = b.site ? b.site.call(this) : null;
+    if (!w || !(w.construction > 0 || w.upgrading > 0)) return false;
+    return this.builders(w).length < Math.max(1, Math.min(b.hands || 1, this.vils().length));
+  },
+  handsRing(b) {
+    const w = b.site.call(this); if (!w) return null;
+    const at = { x: Bld.cx(w), y: Bld.cy(w), r: w.key === 'tc' ? 1.4 : 1.2 }, sel = this.selVil();
+    if (sel && !this.buildsAt(sel, w)) return at;
+    const v = this.handFor(w); return v ? { u: v.id } : null;
+  },
+  handsTaps(b) {
+    const w = b.site.call(this); if (!w) return [];
+    const at = { x: Bld.cx(w), y: Bld.cy(w), r: 1.2 }, sel = this.selVil();
+    if (sel && !this.buildsAt(sel, w)) return [at];
+    const v = this.handFor(w); return v ? [{ u: v.id }, at] : [];
+  },
+
   /* ================= THE RUNNER ================= */
   _got: {},
   _n0: 0,
@@ -870,14 +943,14 @@ const Prologue = {
   beat() { return this._beats && S.pro ? this._beats[S.pro.i] || null : null; },
   // a world became live (G.newGame / loadJSON): the script is this world's
   onWorldChange() {
-    this._got = {};
+    this._got = {}; this._flown = {};
     this._beats = null;
-    this._aside = null; this._asideT = {};
-    this._shown = null; this._lineT0 = 0;
+    this._aside = null; this._asideT = {}; this._asideWait = {};
+    this._shown = null; this._viewKey = null; this._lineT0 = 0; this._beatT0 = 0; this._praise = ''; this._g0 = null; this._ackAt = {};
     this._hand = null; this._handN = 0; this._clk = 0; this._lastIn = 0;
     this._finale = null; this._held = null; this._raided = false;
     this._seated = null; this._deckOpen = false; this._collapsed = false;
-    this._celebrate = [];
+    this._celebrate = []; this._looked = null; this._lookCam = null; this._lookStuck = null; this._lookAt = 0; this._gliding = false;
     if (typeof S !== 'undefined' && S && S.scenario) {
       const g = Scenarios.game();
       this._beats = (this.SCRIPTS[g] ? this.SCRIPTS[g].call(this) : []);
@@ -896,103 +969,208 @@ const Prologue = {
     return false;
   },
   modalUp() { return !!(this._held && this._asking); },
+  // the first of each good a journey game brings home flies to its counter (whatever line is up)
   onGather(u, res, take) {
     this._got[res] = (this._got[res] || 0) + take;
-    const b = this.beat();
-    // the first of a good the lesson asked for flies to its counter
-    if (b && b.cheer === res && !this._cheered && this._got[res] >= 1) {
-      this._cheered = true;
+    if (!this._flown[res] && this._got[res] >= 1 && (res === 'food' || res === 'wood' || res === 'stone')) {
+      this._flown[res] = true;
       this.fly(res, u.x, u.y);
     }
   },
 
-  /* the script's clock: the SIM's (G.simStep), in real seconds */
+  /* the script's clock: the SIM's (G.simStep), in real seconds. Every tick
+     asks the current beat where it stands (_phaseOf) and says a new line
+     the moment that changes — the deed and its answer share a tick. */
   simTick(dt) {
     if (!S || !S.scenario || S.over || !this._beats) return;
     if (!S.pro) return;
     this._clk += (dt > 0 ? dt : 0);
     const P = S.pro, now = this.now();
-    let b = this.beat();
-    // pass over what has nothing to teach here, or is already done
-    let guard = 0;
-    while (b && guard++ < 20) {
-      if (b.skipIf && b.skipIf.call(this)) { this._advance(b, true); b = this.beat(); continue; }
-      if (!P.said[b.id] && !b.auto && b.done && b.done.call(this) && !this._shown) { this._advance(b, true); b = this.beat(); continue; }
+    for (let step = 0; step < 4; step++) {
+      let b = this.beat();
+      // pass over what has nothing to teach here, or is already done
+      let guard = 0;
+      while (b && guard++ < 20) {
+        if (b.skipIf && b.skipIf.call(this)) { this._advance(b, true); b = this.beat(); continue; }
+        if (!P.said[b.id] && !b.auto && b.done && b.done.call(this) && !this._viewKey) { this._advance(b, true); b = this.beat(); continue; }
+        break;
+      }
+      if (!b) { if (!this._aside) this._shown = null; this._viewKey = null; break; }
+      const ph = this._phaseOf(b);
+      this._goalBeat = b;
+      if (ph === 'silent') { if (!this._aside) this._shown = null; this._viewKey = null; break; }
+      if (this._viewKey !== b.id + ':' + ph || !this._shown) this._show(b, ph);
+      if (b.auto) { if (now - this._beatT0 >= b.auto) { this._advance(b); continue; } break; }
+      // the result: the next beat is asked in this same tick
+      if (!this._heldPh(b, ph) && b.done && b.done.call(this)) { this._complete(b); continue; }
       break;
-    }
-    if (!b) { if (!this._aside) this._shown = null; this._asides(dt); return; }
-    // a held beat waits, silently: the tracker carries its goal meanwhile
-    // (the asides still watch: a held beat is exactly when idle or misplaced hands stall the goal)
-    if (b.when && !b.when.call(this) && !P.said[b.id]) { if (!this._aside) this._shown = null; this._goalBeat = b; this._asides(dt); return; }
-    if (this._shown !== b) this._present(b);
-    if (b.auto) {
-      if (now - this._lineT0 >= b.auto) this._advance(b);
-    } else if (b.done && b.done.call(this)) {
-      this._complete(b);
     }
     this._asides(dt);
   },
-  _present(b) {
-    const P = S.pro;
-    this._shown = b;
-    this._lineT0 = this.now();
-    this._lastIn = Math.max(this._lastIn, this._lineT0);   // the idle hand counts from the line
-    this._hand = null; this._handN = 0; this._cheered = false;
+  /* where a beat stands: held (its `when` not yet true — said only if it has
+     a `hold` line, else silent), ask (its line), hands (asked and ordered,
+     its works waiting on builders), wait (ordered, the world at work) */
+  /* an order given stays given for ACK_HOLD: a soldier between two raiders
+     holds no mark for a tick, and the line flickered back to its ask */
+  ACK_HOLD: 1500,
+  _acked(b) {
+    if (!b.ack) return false;
+    const now = this.now();
+    if (b.ack.call(this)) { this._ackAt[b.id] = now; return true; }
+    const t = this._ackAt[b.id];
+    return t != null && now - t < this.ACK_HOLD;
+  },
+  _phaseOf(b) {
+    // waiting on goods: 'held' while a hand can still be sent, 'gwait' once every hand is on it
+    if (b.when && !S.pro.said[b.id] && !b.when.call(this)) return b.hold ? (this.gatherRing() ? 'held' : 'gwait') : 'silent';
+    if (this._acked(b)) {
+      if (b.site && this._needsHands(b)) return 'hands';
+      if (b.wait) return 'wait';
+    }
+    if (b.gather && b.gwait && S.pro.said[b.id] && !this.gatherRing()) return 'gwait';
+    return 'ask';
+  },
+  // the line a phase says, and what it rings (a view: the bot, the frame and the hand all read it)
+  _viewOf(b, ph) {
+    const P = this, base = { id: b.id, beat: b, phase: ph, goal: b.goal };
+    const txt = t => typeof t === 'function' ? t.call(P) : t;
+    if (ph === 'held') return Object.assign(base, { face: b.holdFace || 'thinking', text: txt(b.hold), ring: () => P.gatherRing(), taps: () => P.gatherTaps(), gather: true });
+    // every hand is on it: said at once, so a tap that sent the last one is answered
+    if (ph === 'gwait') return Object.assign(base, { face: 'pleased', text: b.hold && !S.pro.said[b.id] ? b.hold.call(P, true) : txt(b.gwait), ring: () => P.gatherRing(), taps: () => P.gatherTaps(), gather: true });
+    if (ph === 'hands') return Object.assign(base, { face: 'point', text: txt(b.handsText) || 'Now send a villager to build it.', ring: () => P.handsRing(b), taps: () => P.handsTaps(b) });
+    if (ph === 'wait') return Object.assign(base, { face: b.waitFace || 'pleased', text: txt(b.wait), ring: () => P.gatherRing(true), taps: () => P.gatherTaps(true) });
+    return Object.assign(base, { face: b.face, text: txt(b.text), ring: b.ring, taps: b.taps, auto: b.auto, gather: b.gather });
+  },
+  // a phase that waits on the beat's `when` (its line not yet asked)
+  _heldPh(b, ph) { return ph === 'held' || (ph === 'gwait' && !!b.when && !S.pro.said[b.id]); },
+  _show(b, ph) {
+    const P = S.pro, v = this._viewOf(b, ph), now = this.now(), prev = this._shown;
+    const fresh = prev ? prev.beat !== b : true;
+    this._viewKey = b.id + ':' + ph;
+    this._shown = v;
+    this._lineT0 = now;
+    if (fresh) { this._beatT0 = now; this._handN = 0; this._looked = null; }
+    this._lastIn = Math.max(this._lastIn, now);   // the idle hand counts from the line
+    this._hand = null;
     this._collapsed = false; this._acted = false;
-    this._goalBeat = b;
-    if (!P.said[b.id]) {
+    if (!this._heldPh(b, ph) && !P.said[b.id]) {
       P.said[b.id] = 1;
       P.t[b.id] = Math.round(S.playtime || 0);
+      this._snapGather();
       if (b.on) { try { b.on.call(this); } catch (e) { console.error('prologue beat', b.id, e); } }
       this.track('shown', { game: Scenarios.game(), beat: b.id, i: P.i });
     }
-    this.say(b.text, b.face);
+    // the last hand sent: the waiting line answers it
+    if (ph === 'gwait' && prev && prev.beat === b && (prev.phase === 'held' || prev.phase === 'ask') && !this._praise) this._praise = 'Good.';
+    // a gather line asked again (a hand went idle, a good ran short): why, not the lesson again
+    if (ph === 'ask' && b.gather && prev && prev.beat === b && prev.phase === 'gwait') { v.text = this.gatherLine(); v.face = 'point'; }
+    // the deed just done is praised in the next line's first words
+    if (this._praise) {
+      const both = this._praise + ' ' + v.text;
+      if (both.split(/\s+/).filter(Boolean).length <= 15) v.text = both;
+      this._praise = '';
+    }
+    if (!this._aside) this.say(v.text, v.face);
   },
   _complete(b) {
     const P = S.pro;
-    const target = b.ring ? this._resolve(b.ring.call(this)) : null;
-    this.celebrate(target, b.cheer);
+    const raw = this._shown && this._shown.beat === b && this._shown.ring ? this._shown.ring.call(this) : null;
+    this.celebrate(raw ? this._resolve(raw) : null);
     this.track('beat', { game: Scenarios.game(), beat: b.id, i: P.i,
       shown_ms: Math.round(((P.t[b.id] != null ? P.t[b.id] : 0)) * 1000),
       done_ms: Math.round((S.playtime || 0) * 1000), hints: this._handN, hand: this._handN ? 1 : 0 });
     this._advance(b);
+    this._praise = b.praise || '';
   },
   _advance(b, silent) {
     const P = S.pro;
     P.done[b.id] = 1;
     P.i++;
-    this._shown = null;
+    this._viewKey = null;
+    this._praise = '';
     if (silent) P.said[b.id] = P.said[b.id] || 0;
+  },
+  // a moment the player is not acting on the line: no order asked, or a line read and left alone
+  _quietNow() {
+    const v = this._shown, now = this.now();
+    if ((window.DeckUI && DeckUI.open) || (window.Deck && Deck.acting && Deck.acting())) return false;   // her card is hidden: the news would be said to nobody
+    if (!v || v.phase === 'wait' || v.phase === 'held' || v.phase === 'gwait' || v.auto) return true;
+    return now - this._lineT0 > 6000 && now - this._lastIn > 3000;
   },
   _asides(dt) {
     const now = this.now();
     if (this._aside) {
       const a = this._aside;
       const gone = a.auto ? now - this._asideT0 > a.auto : !a.test.call(this);
-      if (gone) { this._aside = null; this._shown = null; }   // the beat comes back
+      if (gone) {   // the beat comes back, as it stands now
+        this._aside = null;
+        const v = this._shown;
+        if (v) { this._lineT0 = now; this.say(v.text, v.face); }
+      }
       return;
     }
     for (const a of this.ASIDES) {
       if (a.once && S.pro.said['aside:' + a.id]) continue;
       if (a.test.call(this)) {
         this._asideT[a.id] = (this._asideT[a.id] || 0) + dt;
-        if (this._asideT[a.id] >= a.hold) {
-          this._asideT[a.id] = 0;
-          this._aside = a; this._asideT0 = now;
-          if (a.once) S.pro.said['aside:' + a.id] = 1;
-          this._lineT0 = now; this._hand = null; this._collapsed = false;
-          // the words are fixed when the aside is shown (the need aside names its good)
-          if (typeof a.text === 'function') this._aside = Object.assign({}, a, { text: a.text.call(this) });
-          this.say(this._aside.text, a.face);
-          this.track('shown', { game: Scenarios.game(), beat: 'aside:' + a.id, i: S.pro.i });
-          return;
+        if (this._asideT[a.id] < a.hold) continue;
+        // the world's news waits for a quiet moment, and is let go if none comes
+        if (a.quiet && !this._quietNow()) {
+          if (!this._asideWait[a.id]) this._asideWait[a.id] = now;
+          if (now - this._asideWait[a.id] > this.QUIET_MAX && a.once) S.pro.said['aside:' + a.id] = 1;
+          continue;
         }
+        this._asideT[a.id] = 0;
+        this._aside = a; this._asideT0 = now;
+        if (a.once) S.pro.said['aside:' + a.id] = 1;
+        this._lineT0 = now; this._hand = null; this._collapsed = false;
+        this.say(a.text, a.face);
+        this.track('shown', { game: Scenarios.game(), beat: 'aside:' + a.id, i: S.pro.i });
+        return;
       } else this._asideT[a.id] = 0;
     }
   },
 
-  /* ================= THE ELDER ON SCREEN ================= */
-  FACES: { neutral: 'assets/ui/elder/elder-neutral-2x.png', pleased: 'assets/ui/elder/elder-pleased-2x.png', concerned: 'assets/ui/elder/elder-concerned-2x.png' },
+  /* ================= ONE VOICE =================
+     THE JOURNEY SPEAKS WITH ONE VOICE (operator, build 181: "cut the amount
+     of notifications down by like 70% … they clash with the instructions"):
+     in a journey world the guide's line IS the instruction, so the world's
+     news goes to the chronicle and is not toasted — every line of it still
+     lands in S.log. Never quieted: a refusal to the player's own act (tap
+     rule 4: G.log's `refusal`, and every refusal ui.js toasts directly),
+     and the news a player must act on that the guide does not say — a
+     famine, a desertion, a death, the rival's monument, a hall fallen, and
+     an attack, except the scripted raid's, which the guide's own line
+     announces. */
+  KEEP: /☠|famine|desert|starv|was killed|monument|has raised|has fallen/i,
+  quiet(msg, warn, refusal) {
+    if (refusal || typeof S === 'undefined' || !S || !S.scenario || (window.Screens && Screens._demo)) return false;
+    const m = String(msg == null ? '' : msg);
+    if (/under attack/i.test(m)) return this._raidSaid();
+    return !this.KEEP.test(m);
+  },
+  // the guide is already telling the player about the raiders (game 3's raid line, raiders in the field)
+  _raidSaid() {
+    const v = this._shown;
+    return !!(v && v.id === 'raid' && this.raiders && this.raiders().length);
+  },
+
+  /* ================= THE GUIDE ON SCREEN =================
+     MIRA, the clan's young storyteller (operator, build 181: "a younger
+     woman … pretty but not aggressively beautiful … double or triple the
+     number of images"): nine faces, ONE PixelLab portrait edited into each
+     expression so she is the same woman in every one (assets/ui/mira/: the
+     128px masters and their Scale2x doubles, shown at 64/56/48 CSS px). The
+     code keeps the old Elder's ids (#proElder …); the player meets Mira. */
+  NAME: 'Mira',
+  FACES: ['neutral', 'pleased', 'concerned', 'point', 'excited', 'thinking', 'proud', 'surprised', 'determined']
+    .reduce((o, f) => { o[f] = 'assets/ui/mira/mira-' + f + '-2x.png?v=' + ((typeof CFG !== 'undefined' && CFG.ART_V) || 0); return o; }, {}),
+  // asked as the world is founded: a new face never blinks in empty
+  _warmFaces() {
+    if (this._facesWarm) return;
+    this._facesWarm = [];
+    for (const k in this.FACES) { const im = new Image(); im.src = this.FACES[k]; this._facesWarm.push(im); }
+  },
   _el: null,
   _dom() {
     if (this._el) return this._el;
@@ -1004,14 +1182,14 @@ const Prologue = {
     root.innerHTML =
       '<div id="proGoal" aria-live="polite"><i class="pgd"></i><span class="pgt"></span><small class="pgn"></small></div>' +
       '<i id="proRing"></i>' +
-      '<div id="proElder" role="dialog" aria-label="The Elder">' + corners +
+      '<div id="proElder" role="dialog" aria-label="' + this.NAME + ', your guide">' + corners +
         '<div class="pePic"><img alt="" src="' + this.FACES.neutral + '"></div>' +
-        '<div class="peBody"><b class="peName">The Elder</b><p class="peTxt"></p>' +
+        '<div class="peBody"><b class="peName">' + this.NAME + '</b><p class="peTxt"></p>' +
           '<div class="peAsk"><input class="peIn" maxlength="24" autocomplete="off" spellcheck="false" aria-label="Your name">' +
           '<button class="peBtn gold" type="button" data-act="me">That\'s me</button></div></div>' +
         '<button class="peHide" type="button" aria-label="Hide">▾</button>' +
       '</div>' +
-      '<button id="proMini" type="button" aria-label="The Elder"><img alt="" src="' + this.FACES.neutral + '"></button>' +
+      '<button id="proMini" type="button" aria-label="' + this.NAME + ', your guide: show her line"><img alt="" src="' + this.FACES.neutral + '"></button>' +
       '<div id="proHand" aria-hidden="true">' + this.HAND_SVG + '<i class="phr"></i></div>' +
       '<div id="proFx" aria-hidden="true"></div>';
     document.body.appendChild(root);
@@ -1022,8 +1200,7 @@ const Prologue = {
       mini: root.querySelector('#proMini'), miniPic: root.querySelector('#proMini img'),
       hand: root.querySelector('#proHand'), fx: root.querySelector('#proFx'),
     };
-    // preload the three faces: a new face must never blink in empty
-    for (const k in this.FACES) { const im = new Image(); im.src = this.FACES[k]; }
+    this._warmFaces();
     E.mini.addEventListener('click', () => { this._collapsed = false; this._userHid = false; this._lineT0 = this.now(); });
     root.querySelector('.peHide').addEventListener('click', () => { this._collapsed = true; this._userHid = true; });
     root.querySelector('[data-act="me"]').addEventListener('click', () => this._named());
@@ -1075,13 +1252,23 @@ const Prologue = {
     const B = this._band();
     const line = this._aside || this._shown || (this._held ? { text: E.txt.textContent } : null);
     const b = this._aside || this._shown;
-    // the target the pulse rings, on screen (and brought into view once a line)
-    const raw = b && b.ring ? b.ring.call(this) : null;
+    /* the target the pulse rings, on screen (and brought into view): the
+       line's own, or — under the world's news, which keeps it — the beat's.
+       Never a target already acted on: between the tap and the next sim
+       tick the old line still stands, and its ring would flash back to
+       where the player has just been (the Build tab, a ✓ ago) */
+    let rb = b && b.ring ? b : (this._aside && this._aside.keepRing ? this._shown : null);
+    if (rb && this._stale(rb)) rb = null;
+    const raw = rb && rb.ring ? rb.ring.call(this) : null;
     // a ringed build card is scrolled to the middle of the menu, once each time it is ringed
     if (raw && raw.sel && raw.sel.indexOf('.bbtn') === 0) this._cardInView(raw.sel); else this._cardFor = '';
     const tgt = raw ? this._resolve(raw) : null;
-    this._ringTo(E, tgt);
-    if (Screens.current === 'playing' && !this._held) this._look(raw, tgt, B);
+    /* the ring stands only where a tap can reach it: a target under the
+       panel, the minimap or a bar is not ringed until the look has brought
+       it into the open — a ring drawn over the hall's panel was tapped, and
+       the tap landed on its Cancel */
+    const open = Screens.current === 'playing' && !this._held ? this._look(raw, tgt, B) : true;
+    this._ringTo(E, open ? tgt : null);
     // the goal tracker: the standing objective, whatever line is up
     this._goal(E, B);
     // the line: open, or folded to a portrait once the player is working on it
@@ -1089,16 +1276,27 @@ const Prologue = {
     if (b && !b.auto && this._acted && !this._userHid && now - this._lineT0 > reading + 4000 && !this._asking) this._collapsed = true;
     // …and opens again for a player who has stopped (the hand comes with it)
     if (this._collapsed && !this._userHid && b && !b.auto && now - this._lastIn > 11000) { this._collapsed = false; this._lineT0 = now; }
-    const open = !!line && !this._collapsed && !(window.DeckUI && DeckUI.open) && !(window.Deck && Deck.acting && Deck.acting());
-    E.elder.style.display = open ? '' : 'none';
+    const card = !!line && !this._collapsed && !(window.DeckUI && DeckUI.open) && !(window.Deck && Deck.acting && Deck.acting());
+    E.elder.style.display = card ? '' : 'none';
     // #proGoal, #proMini and #proHand are hidden by the stylesheet: a show is an explicit value, never ''
-    E.mini.style.display = !open && (b || this._held) && !(window.DeckUI && DeckUI.open) ? 'block' : 'none';
-    if (open) this._seat(E, B, tgt);
+    E.mini.style.display = !card && (b || this._held) && !(window.DeckUI && DeckUI.open) ? 'block' : 'none';
+    if (card) this._seat(E, B, tgt);
     else this._seatMini(E, B);
-    this._toastStep(E, B, open);
+    this._toastStep(E, B, card);
     // the idle hand: 6 s of nothing on an action beat, and it shows the taps
-    this._handTick(E, b, now);
+    this._handTick(E, b && !this._stale(b) ? b : null, now);
     this._fxTick(E, now);
+  },
+  /* a line whose deed is already done (or whose order was just given) stands
+     only until the next sim tick says the next line: nothing to ring */
+  _stale(v) {
+    const b = v && v.beat;
+    if (!b || b.auto || this._heldPh(b, v.phase)) return false;
+    try {
+      if (b.done && b.done.call(this)) return true;
+      if (v.phase === 'ask' && b.ack && b.ack.call(this)) return true;
+    } catch (e) {}
+    return false;
   },
   /* a card past the menu's fold is no target at all: centre it once (the
      tutorial's rule, Tutorial._scrollCardIntoView) and leave the player's own
@@ -1226,38 +1424,64 @@ const Prologue = {
       : { l: tgt.x - (tgt.r || 20) - pad, t: tgt.y - (tgt.r || 20) - pad, r: tgt.x + (tgt.r || 20) + pad, b: tgt.y + (tgt.r || 20) + pad };
     return !(s.x + w < tr.l || s.x > tr.r || s.y + h < tr.t || s.y > tr.b);
   },
-  /* THE LOOK: a line whose ring stands off the visible band brings it into
-     view once — a short glide that lands it in the half of the band the
-     Elder does not sit in. Any touch cancels the glide (the camera is the
-     player's); reduced motion makes the move at once; a finger already down
-     waits for the lift. */
+  /* THE LOOK: a ring the player cannot see AND tap — off the visible band,
+     or under a panel, the minimap, the goal tracker or the guide's own card
+     — brings its target into the open band: a short glide that lands it in
+     the half of the band the guide does not sit in. Asked again whenever
+     the line, its target or the selection changes (a villager selected
+     opens a panel over the ground the next line points at), and every
+     LOOK_MS while the target stays covered and the camera is where the last
+     look left it: the camera is the player's the moment they move it. A
+     finger down waits for the lift, any touch cancels a glide, reduced
+     motion makes the move at once, and a look that cannot move the camera
+     (the map's edge) is not tried again for that target. */
+  LOOK_MS: 1200,
   _look(raw, tgt, B) {
-    if (!raw || raw.sel || !tgt) return;
-    const key = ((this._aside || this._shown || {}).id || '') + ':' + (raw.u !== undefined ? 'u' + raw.u : (raw.x | 0) + ',' + (raw.y | 0));
-    if (this._looked === key) return;
+    if (!raw || raw.sel || !tgt) return true;
+    if (this._gliding) return false;
+    const v = this._aside || this._shown || {}, cam = R.cam, t = performance.now();
+    const us = typeof UI !== 'undefined' && UI.sel ? UI.sel : null;
+    const sel = us ? us.type + ':' + (us.id != null ? us.id : (us.ids ? us.ids.join(',') : '')) : '';
+    const key = (v.id || '') + ':' + (v.phase || '') + ':' + (raw.u !== undefined ? 'u' + raw.u : (raw.x | 0) + ',' + (raw.y | 0)) + ':' + sel;
     const m = 24, inView = tgt.x > m && tgt.x < B.vw - m && tgt.y > B.top + m && tgt.y < B.bot - m && this._open(tgt.x, tgt.y);
-    if (inView) { this._looked = key; return; }
-    if (typeof UI !== 'undefined' && UI.pointers && UI.pointers.size) return;
-    this._looked = key;
+    const here = () => ({ x: cam.x, y: cam.y, z: cam.z });
+    if (this._looked === key) {
+      if (inView || this._lookStuck === key) return true;
+      // covered since the last look: again only while the camera is where that look left it
+      const lc = this._lookCam;
+      if (!lc || Math.abs(cam.x - lc.x) > 2 || Math.abs(cam.y - lc.y) > 2 || Math.abs(cam.z - lc.z) > 0.001) return false;
+      if (t - (this._lookAt || 0) < this.LOOK_MS) return false;
+    } else if (inView) { this._looked = key; this._lookCam = here(); this._lookAt = t; return true; }
+    if (typeof UI !== 'undefined' && UI.pointers && UI.pointers.size) return false;
+    this._looked = key; this._lookAt = t;
     let wx = raw.x, wy = raw.y;
-    if (raw.u !== undefined) { const u = Units.get(raw.u); if (!u) return; wx = u.x; wy = u.y - CFG.SPRITE_LIFT / CFG.TILE; }
-    const z = R.cam.z, TL = CFG.TILE, seat = this._seatBox;
-    const elderLow = !seat || seat.y > (B.top + B.bot) / 2;
-    const sy = B.top + (B.bot - B.top) * (elderLow ? 0.38 : 0.66), sx = B.vw / 2;
-    const tx = wx * TL - sx / z, ty = wy * TL - sy / z;
+    if (raw.u !== undefined) { const u = Units.get(raw.u); if (!u) return false; wx = u.x; wy = u.y - CFG.SPRITE_LIFT / CFG.TILE; }
+    const z = cam.z, TL = CFG.TILE, seat = this._seatBox;
+    const low = !seat || seat.y > (B.top + B.bot) / 2;
+    const sy = B.top + (B.bot - B.top) * (low ? 0.38 : 0.66), sx = B.vw / 2;
+    // where the camera can really go (the map's edge clamps it): nowhere new, no glide
+    const x0 = cam.x, y0 = cam.y;
+    cam.x = wx * TL - sx / z; cam.y = wy * TL - sy / z; if (R.clampCam) R.clampCam();
+    const tx = cam.x, ty = cam.y;
+    cam.x = x0; cam.y = y0;
+    // the camera cannot bring it out (the map's edge): ring it where it is, as before
+    if (Math.abs(tx - x0) < 2 && Math.abs(ty - y0) < 2) { this._lookStuck = key; this._lookCam = here(); return true; }
     const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) { R.cam.x = tx; R.cam.y = ty; R.clampCam && R.clampCam(); return; }
-    const x0 = R.cam.x, y0 = R.cam.y, t0 = performance.now(), MS = 450, world = S;
+    if (reduced) { cam.x = tx; cam.y = ty; this._lookCam = here(); return false; }
+    const t0 = t, MS = 450, world = S;
     let stop = false;
     const cancel = () => { stop = true; };
+    const end = () => { this._gliding = false; this._lookCam = here(); this._lookAt = performance.now(); document.removeEventListener('pointerdown', cancel, true); };
     document.addEventListener('pointerdown', cancel, { once: true, capture: true });
+    this._gliding = true;
     const step = now => {
-      if (stop || S !== world) { document.removeEventListener('pointerdown', cancel, true); return; }
+      if (stop || S !== world) { end(); return; }
       const k = Math.min(1, (now - t0) / MS), e = 1 - Math.pow(1 - k, 3);
-      R.cam.x = x0 + (tx - x0) * e; R.cam.y = y0 + (ty - y0) * e; R.clampCam && R.clampCam();
-      if (k < 1) requestAnimationFrame(step); else document.removeEventListener('pointerdown', cancel, true);
+      cam.x = x0 + (tx - x0) * e; cam.y = y0 + (ty - y0) * e; if (R.clampCam) R.clampCam();
+      if (k < 1) requestAnimationFrame(step); else end();
     };
     requestAnimationFrame(step);
+    return false;
   },
   /* is this screen point world the player can see AND tap? The band alone is
      not enough: the minimap, the Elder's own card and the goal tracker stand
@@ -1292,7 +1516,7 @@ const Prologue = {
       this._hand = { t0: now, i: 0 }; this._handN++; if (this._handN === 1) this._collapsed = false;
       this._looked = null;   // a player who has stopped is shown the target again, wherever the camera went
     }
-    const taps = (b.taps.call(this) || []).map(t => this._resolve(t)).filter(Boolean);
+    const taps = (b.taps.call(this) || []).map(t => this._resolve(t)).filter(t => t && (t.rect || this._open(t.x, t.y)));
     if (!taps.length) { h.style.display = 'none'; return; }
     const CYCLE = 1500, k = (now - this._hand.t0) / CYCLE, i = Math.floor(k) % taps.length, f = k - Math.floor(k);
     const p = taps[i], q = taps[(i + taps.length - 1) % taps.length];
@@ -1372,9 +1596,9 @@ const Prologue = {
     this.track('finish', { game: g, outcome: win ? 'win' : (cause === 'struck_banner' ? 'abandoned' : 'loss'), seconds: Math.round(S.playtime || 0) });
     if (!win || !this._finale || document.hidden || !window.Screens || Screens.current !== 'playing') return false;
     this._held = { win, msg, s0: S, g };
-    this._shown = null; this._aside = null; this._goalBeat = null;
+    this._shown = null; this._viewKey = null; this._aside = null; this._goalBeat = null;
     this._collapsed = false; this._userHid = false;
-    this.say(g === 1 ? 'Our first fire burns bright. Well done, chief.' : g === 2 ? 'A great hall! The clan is proud, chief.' : 'Well done, chief.', 'pleased');
+    this.say(g === 1 ? 'Our first fire burns bright. Well done, chief.' : g === 2 ? 'A great hall! The clan is proud, chief.' : 'Well done, chief.', 'proud');
     try { if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete'); } catch (e) {}
     const tc = this.tc();
     if (tc) { const t = this._resolve({ x: tc.x + 1, y: tc.y + 1 }); if (t) this._burst(this._dom(), t.x, t.y); }
@@ -1419,7 +1643,7 @@ const Prologue = {
     try { if (window.Backend && Backend.isReady && Backend.isReady() && Backend.setChiefName) Backend.setChiefName(name); } catch (e) {}
     this.track('choice', { game: 1, choice: 'named' });
     this._asking = false;
-    this.say('Welcome, Chief ' + name + '.', 'pleased');
+    this.say('Welcome, Chief ' + name + '.', 'excited');
     this._heldT = setTimeout(() => this.release(), 1600);
   },
   /* THE JOURNEY'S CARD (Deck.prologue): one of the game's tier, once per player ever */
