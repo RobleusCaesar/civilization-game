@@ -479,8 +479,13 @@ const UI = {
         this.lastTap = dbl ? null : { x: e.clientX, y: e.clientY, t: now };
         if (dbl) this.handleDoubleTap(e.clientX, e.clientY);
         else this.handleTap(e.clientX, e.clientY);
+        // THE FIRST MINUTE: the first tap on a played world's map (Backend.step)
+        if (was && window.Backend && Backend.step) Backend.step('map_tap');
       }
-      if (was && this._orderMoved(was)) G.noteAct();
+      if (was && this._orderMoved(was)) {
+        G.noteAct();
+        if (window.Backend && Backend.step && this._villagerMoved(was)) Backend.step('villager');
+      }
       if (this.pointers.size < 2) this.pinchD = 0;
       if (pinchEnds) {
         // one of two fingers lifted: the other PANS on from where it rests —
@@ -737,6 +742,7 @@ const UI = {
     const mb = window.Deck && Deck.masterHand ? Deck.masterHand('P', key) : 0;
     const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true } : { builderId: this.builderFor });
     if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, this.builderFor);
+    if (nb && window.Backend && Backend.step) Backend.step('building');   // the first minute
     // a sealing placement was allowed, and is ACKNOWLEDGED — the player chose
     // to shut their own people in, and the toast marks the moment they did
     if (r.warn === 'sealed') this.toast('Your town is walled in — only a gate lets your people out', true);
@@ -2083,6 +2089,16 @@ const UI = {
     const b = this._orderSnap();
     if (!b || b.length !== a.length) return !!b;
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
+    return false;
+  },
+  // did the gesture change a VILLAGER's order? (the first-minute 'villager' step)
+  _villagerMoved(a) {
+    const b = this._orderSnap();
+    if (!b || b.length !== a.length) return false;
+    for (let i = 1; i + 7 < a.length; i += 8) {
+      if (!a[i] || a[i].kind !== 'villager') continue;
+      for (let k = 1; k < 8; k++) if (a[i + k] !== b[i + k]) return true;
+    }
     return false;
   },
   // panel buttons that only turn the page — never an order (UI.init's listener)

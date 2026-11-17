@@ -3523,6 +3523,7 @@ const G = {
       const sdt = dt * scale;
       S.playtime = (S.playtime || 0) + dt;
       G.simStep(sdt, dt);
+      if (Backend.stepTick) Backend.stepTick();   // the first minute's 30 s / 60 s
     }
     if (S) {
       // a terrain bake left DUE by founding a run is spread over these frames

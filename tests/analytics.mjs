@@ -219,6 +219,10 @@ const make = (db) => { sql('create database ' + db + ';', { db: 'postgres' }); r
   const F13 = '0013_vote_traffic.sql';
   const twice13 = files.includes(F13) ? sql(readFileSync(join(MIG, F13), 'utf8')) : { error: F13 + ' is missing' };
   ck('theTrafficFileTwiceChangesNothing', !twice13.error, twice13.error ? twice13.error.split('\n')[0] : 'applied a second time cleanly');
+  // …and 0016 after that (0013 narrows the kinds again; 0016 is pasted after it)
+  const F16 = '0016_first_minute.sql';
+  const twice16 = files.includes(F16) ? sql(readFileSync(join(MIG, F16), 'utf8')) : { error: F16 + ' is missing' };
+  ck('theFirstMinuteFileTwiceChangesNothing', !twice16.error, twice16.error ? twice16.error.split('\n')[0] : 'applied a second time cleanly');
   make('cf_no12');
   for (const f of files.filter(f => f < '0012')) sql(readFileSync(join(MIG, f), 'utf8'), { db: 'cf_no12' });
   const no12 = sql(readFileSync(join(MIG, F13), 'utf8'), { db: 'cf_no12' });
@@ -653,6 +657,56 @@ const D30 = () => ({ p_token: TOKEN, p_from: new Date(Date.now() - 30 * 86400000
        delete from public.card_votes where vote_id like 't-%';`);
 }
 
+/* ================= 6c. THE FIRST MINUTE (0016's analytics_first_minute) =================
+   Step rows, one per page load and step: the funnel counts page loads at each
+   step against those that reached 'load', the median milliseconds to each,
+   split by device form and by first-time vs returning, the last step reached
+   before the page was left — and the dashboard's left-out devices left out.
+   A doubled row never counts twice. Its rows are taken out again. */
+{
+  const F1 = '00000000-0000-0000-0000-0000000003b1', F2 = '00000000-0000-0000-0000-0000000003b2';
+  const row = (u, visit, step, ms, form, first, extra) => `('${u}', 'step', 'mobile', now() - interval '1 days', '${JSON.stringify(Object.assign({ step, ms, visit, form, first }, extra || {}))}')`;
+  const rows = [
+    // a phone, first time: reached the world and the first minute
+    ...['load:100', 'splash:400', 'title:2400', 'newgame:5000', 'origin:6000', 'picked:9000', 'playable:12000', 'map_tap:14000', 'villager:15000', 'building:30000', 'play30:43000', 'play60:73000']
+      .map(x => row(F1, 'v1', x.split(':')[0], +x.split(':')[1], 'phone', true)),
+    row(F1, 'v1', 'load', 100, 'phone', true),                                   // a doubled row
+    row(F1, 'v1', 'hide', 90000, 'phone', true, { last: 'play60' }),
+    // a desktop, returning: left at the title
+    row(F2, 'v2', 'load', 50, 'desktop', false), row(F2, 'v2', 'splash', 200, 'desktop', false), row(F2, 'v2', 'title', 1200, 'desktop', false),
+    row(F2, 'v2', 'hide', 8000, 'desktop', false, { last: 'title' }),
+    // the same desktop, another page load: left behind the splash
+    row(F2, 'v3', 'load', 80, 'desktop', false), row(F2, 'v3', 'splash', 300, 'desktop', false), row(F2, 'v3', 'hide', 3000, 'desktop', false, { last: 'splash' }),
+    // a hostile row: no visit, a nonsense ms — never counted, never a cast that throws
+    `('${F2}', 'step', 'mobile', now() - interval '1 days', '{"step":"load","ms":"lots","visit":"x y"}')`,
+    // the left-out test device
+    row(U('a'), 'v9', 'load', 10, 'phone', true), row(U('a'), 'v9', 'title', 900, 'phone', true),
+  ];
+  const ld = sql(`
+    insert into auth.users (id) values ('${F1}'), ('${F2}') on conflict do nothing;
+    insert into public.profiles (id) values ('${F1}'), ('${F2}') on conflict do nothing;
+    insert into public.telemetry (user_id, kind, device, created_at, props) values ${rows.join(',\n')};`);
+  ck('theStepRowsLoad', !ld.error, ld.error ? ld.error.split('\n')[0] : `${rows.length} rows`);
+  const M = call('analytics_first_minute', { p_token: TOKEN, p_from: new Date(Date.now() - 30 * 864e5).toISOString(), p_to: null, p_everyone: false });
+  const at = k => (M.steps || []).find(x => x.step === k) || {};
+  ck('theFunnelCountsPageLoadsAtEachStep', M.ok === true && M.base === 3 && at('load').visits === 3 && at('splash').visits === 3 && at('title').visits === 2 &&
+    at('newgame').visits === 1 && at('play60').visits === 1 && at('hide').visits === 3 && at('title').pct === 66.7 && (M.steps || []).length === 13,
+    JSON.stringify((M.steps || []).map(x => x.step + ' ' + x.visits + ' ' + x.pct + '% ' + x.median_ms + 'ms')));
+  ck('andTheMedianTimeToEach', at('load').median_ms === 80 && at('title').median_ms === 1800 && at('playable').median_ms === 12000,
+    `load ${at('load').median_ms}, title ${at('title').median_ms}, playable ${at('playable').median_ms}`);
+  const fo = (k, f) => ((at(k).forms || {})[f] || {}), wh = (k, w) => ((at(k).who || {})[w]);
+  ck('splitByDeviceAndByFirstTime', fo('title', 'phone').visits === 1 && fo('title', 'desktop').visits === 1 && fo('title', 'desktop').pct === 50 &&
+    (wh('playable', 'first') || {}).visits === 1 && !wh('playable', 'returning') && (M.bases || {}).who && M.bases.who.returning === 2 && M.bases.forms.phone === 1,
+    JSON.stringify({ title: at('title').forms, playable: at('playable').who, bases: M.bases }));
+  const left = k => ((M.left || []).find(x => x.last === k) || {}).visits;
+  ck('andWhereEachPageWasLeft', left('play60') === 1 && left('title') === 1 && left('splash') === 1, JSON.stringify(M.left));
+  const E = call('analytics_first_minute', { p_token: TOKEN, p_from: new Date(Date.now() - 30 * 864e5).toISOString(), p_to: null, p_everyone: true });
+  ck('theLeftOutDeviceCountsOnlyForEveryone', E.base === 4 && ((E.steps || []).find(x => x.step === 'title') || {}).visits === 3, `everyone: base ${E.base}`);
+  const bad = call('analytics_first_minute', { p_token: 'nope' });
+  ck('andTheFirstMinuteIsLockedLikeEveryDoor', bad.ok === false && bad.reason === 'bad_token', JSON.stringify(bad));
+  sql(`delete from public.telemetry where user_id in ('${F1}', '${F2}'); delete from public.telemetry where user_id = '${U('a')}' and kind = 'step';`);
+}
+
 /* ================= 8. WHAT THE REVIEW OF BUILD 107 FOUND (the database) =================
    Each check here was red on the dashboard as first committed (76c70e8).
    Their rows live far back in time (240–260 days, and the comparison's
@@ -689,7 +743,7 @@ const UNHOSTILE = `delete from public.telemetry where user_id = '00000000-0000-0
   // ONE function per name: an overload makes PostgREST answer 300
   const dup = sql(`select string_agg(proname || ' x' || n, ', ') from (select proname, count(*) n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
                    where s.nspname = 'public' and proname in ('analytics__games', 'analytics__window', 'analytics_dashboard', 'analytics_compare',
-                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic')
+                     'analytics_devices', 'analytics_feedback', 'analytics_feedback_set', 'analytics_whoami', 'analytics_mark_device', 'analytics_mark_network', 'analytics_traffic', 'analytics_first_minute')
                    group by proname having count(*) > 1) x;`).out;
   ck('andNoDoorIsLeftWithAnOverload', dup === '', dup || 'one function per name, after two applications');
 }
@@ -913,7 +967,8 @@ const unlock = async (p, pass) => {
       thinTiles: document.querySelectorAll('#kpis .tile .v.thin').length,
       inbox: document.querySelectorAll('#inbox .rep').length, mine: document.getElementById('mine').textContent,
       src: document.getElementById('tSrc').textContent, voteRows: document.querySelectorAll('#tVote').length, voteLine: document.getElementById('voteNote').textContent,
-      days: document.getElementById('tTrafficDays').textContent };
+      days: document.getElementById('tTrafficDays').textContent,
+      fmin: ['tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt'].map(id => document.getElementById(id).textContent).join(' | ') };
   });
   const H = call('analytics_dashboard', D30()).headline;
   ck('theTilesAreTheDatabasesNumbers', v.t.Games && v.t.Games.v === String(H.games) && v.t.Players.v === String(H.players) &&
@@ -940,6 +995,8 @@ const unlock = async (p, pass) => {
     v.thinTiles + ' greyed tiles (every rate here rests on fewer than 30)');
   ck('theInboxRendersEveryOpenReport', v.inbox === 3, v.inbox + ' reports');
   // TRAFFIC (0013): its own door, its own tables — the fixture's devices played before sources were recorded
+  ck('theFirstMinuteSectionRendersFromItsOwnDoor', seen.includes('analytics_first_minute') && !/Could not|needs migration/.test(v.fmin) && (/Page began to load/.test(v.fmin) && /60 seconds of play/.test(v.fmin) || /No page loads recorded in this period/.test(v.fmin)),
+    v.fmin.slice(0, 200));
   ck('theTrafficSectionRendersFromItsOwnDoor', seen.includes('analytics_traffic') && /Unknown \(before build 134\)/.test(v.src) && !/Could not/.test(v.src + v.days) && v.voteRows === 0 && (v.voteLine === "" || /retired in build 176: \d+ players saw it/.test(v.voteLine)),
     `sources "${v.src.slice(0, 120)}"; vote table ${v.voteRows}, line "${v.voteLine}"; days "${v.days.slice(0, 80)}"`);
   ck('thisDeviceIsNamed', /This device/.test(v.mine) && /Counted/.test(v.mine) && /3 games on record/.test(v.mine), v.mine.slice(0, 200));

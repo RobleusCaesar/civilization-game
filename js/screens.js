@@ -79,6 +79,8 @@ const Screens = {
   show(name, opts) {
     opts = opts || {};
     this.current = name;
+    // THE FIRST MINUTE: the origin cards are dealt (Backend.step, once a page)
+    if (name === 'draft' && window.Backend && Backend.step) Backend.step('origin');
     this.el('shell').classList.toggle('show', name !== 'playing');
     const night = this.nightBehind(name) && !!this.wearNight();
     this.el('shell').classList.toggle('night', night);
@@ -624,6 +626,7 @@ const Screens = {
         if (!op.has(S)) op.set(S, { vis: this._vis(), play: S.playtime || 0, resumeMs: G._freshRun ? null : prepMs });
         if (window.Backend) Backend.entered = true;
       }
+      let fresh = false;
       if (G._freshRun && !this._demo && window.Backend && Backend.logRunStart) {
         G._freshRun = false;
         const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
@@ -637,6 +640,13 @@ const Screens = {
         });
         S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
         if (window.Feedback) Feedback.runKey = S.runId;   // the error tally is this run's
+        fresh = true;
+      }
+      /* THE FIRST MINUTE: the world is playable — and its play clock starts
+         here for the 30 s and 60 s steps (Backend.stepTick) */
+      if (!this._demo && window.S && window.Backend && Backend.step) {
+        if (Backend._play0 == null) Backend._play0 = S.playtime || 0;
+        Backend.step('playable', { fresh });
       }
     } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
@@ -1207,6 +1217,7 @@ const Screens = {
        old Begin): a loaded save and the pause screen's Resume also pass
        through enterGame and must never arm one. */
     Cards.pick(i);
+    if (window.Backend && Backend.step) Backend.step('picked');
     /* THE KEEP SEALS THE DOOR. The pick is applied and the run is committed
        — the burn is the transition INTO the game, not a screen the player
        is still on. The back button disappears the same instant, or a
@@ -2313,7 +2324,7 @@ const Screens = {
     on('btnContinue', () => this.continueGame());
     // the title stays live under the plaque, but a saved game on its way in
     // is never left for a new one (PX-21a); the plaque itself says why
-    on('btnTitleNew', () => { if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; } this.backTo = 'title'; this.show('newgame'); });
+    on('btnTitleNew', () => { if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; } if (window.Backend && Backend.step) Backend.step('newgame'); this.backTo = 'title'; this.show('newgame'); });
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
     on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
     on('ldrBack', () => {

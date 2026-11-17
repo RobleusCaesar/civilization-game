@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 177, date: '2026-11-17', title: 'Learning where new players stop',
+    items: [
+      'The game now notes how far each visit gets in its first minute, so we can find and fix the places new players get stuck.',
+    ],
+  },
+  {
     build: 176, date: '2026-11-17', title: 'A cleaner title screen',
     items: [
       'The vote for a free card banner is gone from the title screen and the reward screen.',

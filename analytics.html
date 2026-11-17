@@ -194,6 +194,13 @@
     <p class="why">Games started each day of the period, in your own time zone (won in green, lost in red, the rest in grey), and how many people played. A day only partly in the period is drawn faint.</p>
     <div class="card"><svg id="chart" role="img" aria-label="Games per day"></svg><div class="legend" id="chartKey"></div></div>
 
+    <h2>First minute</h2>
+    <p class="why">Every page load, step by step, from the moment it began to load: the loading steps on their own (so a slow load shows), then the first minute of the game. Each step counts page loads that reached it, as a share of those that began to load, with the median time from the start of the load. Split by device and by first-time vs returning players (a returning device held a save or a setting from before). Recorded from build 177; needs migration 0016.</p>
+    <div class="card wrap"><table id="tLoadSteps"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tFirstMin"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tFirstMinWho"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tLeftAt"></table><div class="note" id="firstMinNote" style="margin-top:8px"></div></div>
+
     <h2>Traffic</h2>
     <p class="why">Where visits come from (the site that sent each one), and the players and games each site brought, counted by the site a device FIRST came from. The vote-for-a-card offer was retired in build 176; its old rows are kept and summed in one line. Recorded from build 134; a device that played before then reads "Before tracking".</p>
     <div class="card wrap"><table id="tSrc"></table></div>
@@ -282,7 +289,7 @@ let DRAFTS = {};
    must never paint over a newer filter); a Lock moves the epoch, so nothing
    still in flight can paint the last session back. */
 let EPOCH = 0;
-const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0 };
+const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0, fmin: 0 };
 const live = (sec, my, ep) => my === SEQ[sec] && ep === EPOCH;
 // the operator's own days: the daily chart is bucketed in this time zone
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } })();
@@ -734,6 +741,56 @@ function renderCompare(c) {
    run filters are about games and do not apply to visits */
 const SRC_NAME = { 'vibetoplist.com': 'Vibe Top List', direct: 'Direct (no referring site)', earlier: 'Before tracking', unknown: 'Unknown (before build 134)', other: 'Other' };
 const srcName = k => SRC_NAME[k] || k;
+/* ------------------------------------------------------------- the first minute */
+const STEP_LABEL = {
+  load: 'Page began to load', splash: 'Splash shown', title: 'Title ready to tap', newgame: 'Tapped New Game',
+  origin: 'Origin cards shown', picked: 'Origin picked', playable: 'World playable', map_tap: 'First tap on the map',
+  villager: 'First villager order', building: 'First building placed', play30: '30 seconds of play', play60: '60 seconds of play',
+  hide: 'Page hidden or closed', none: 'Nothing yet', other: 'Something else',
+};
+const LOAD_STEPS = ['load', 'splash', 'title'];
+const GAME_STEPS = ['newgame', 'origin', 'picked', 'playable', 'map_tap', 'villager', 'building', 'play30', 'play60'];
+function secs(ms) { return ms == null ? '—' : (ms < 10000 ? (ms / 1000).toFixed(1) : Math.round(ms / 1000)) + ' s'; }
+async function loadFirstMinute() {
+  const my = ++SEQ.fmin, ep = EPOCH, tok = TOKEN;
+  const f = filters();
+  const r = await rpc('analytics_first_minute', { p_token: tok, p_from: f.p_from, p_to: f.p_to, p_everyone: f.p_everyone });
+  if (!live('fmin', my, ep)) return;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
+  if (!answered(r)) {
+    const why = missing(r) ? 'The first-minute section needs migration 0016 (supabase/migrations/0016_first_minute.sql).' : couldNot(r);
+    for (const id of ['tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt']) table($(id), [], [], why);
+    $('firstMinNote').textContent = '';
+    return;
+  }
+  const M = r.data, base = M.base || 0, at = k => (Array.isArray(M.steps) ? M.steps : []).find(x => x && x.step === k) || {};
+  const bf = (M.bases && M.bases.forms) || {}, bw = (M.bases && M.bases.who) || {};
+  const sub = (x, k, n) => { const o = (x || {})[k] || {}; return rate(o.visits || 0, n || 0); };
+  const med = (x, k) => secs(((x || {})[k] || {}).median_ms);
+  part($('tLoadSteps'), () => {
+    table($('tLoadSteps'), ['Loading', 'Page loads', 'Median time', 'Phone', 'Tablet', 'Desktop'],
+      LOAD_STEPS.map(k => { const s = at(k); return [STEP_LABEL[k], rate(s.visits || 0, base), secs(s.median_ms), med(s.forms, 'phone'), med(s.forms, 'tablet'), med(s.forms, 'desktop')]; }),
+      'No page loads recorded in this period.');
+  });
+  part($('tFirstMin'), () => {
+    table($('tFirstMin'), ['First minute', 'Page loads', 'Median time', 'Phone', 'Tablet', 'Desktop'],
+      GAME_STEPS.map(k => { const s = at(k); return [STEP_LABEL[k], rate(s.visits || 0, base), secs(s.median_ms), sub(s.forms, 'phone', bf.phone), sub(s.forms, 'tablet', bf.tablet), sub(s.forms, 'desktop', bf.desktop)]; }),
+      'No page loads recorded in this period.');
+  });
+  part($('tFirstMinWho'), () => {
+    table($('tFirstMinWho'), ['First-time vs returning', 'First time', 'Median', 'Returning', 'Median'],
+      LOAD_STEPS.concat(GAME_STEPS).map(k => { const s = at(k); return [STEP_LABEL[k], sub(s.who, 'first', bw.first), med(s.who, 'first'), sub(s.who, 'returning', bw.returning), med(s.who, 'returning')]; }),
+      'No page loads recorded in this period.');
+  });
+  part($('tLeftAt'), () => {
+    const L = (Array.isArray(M.left) ? M.left : []).filter(x => x && x.visits);
+    const all = L.reduce((a, x) => a + x.visits, 0);
+    table($('tLeftAt'), ['Last step before the page was left', 'Page loads'],
+      L.map(x => [STEP_LABEL[x.last] || STEP_LABEL.other, rate(x.visits, all)]), 'No page was left in this period.');
+    $('firstMinNote').textContent = base ? `${num(base)} page loads in this period. A page load is counted once per step; times are from the moment it began to load.` : '';
+  });
+}
+
 async function loadTraffic() {
   const my = ++SEQ.traffic, ep = EPOCH, tok = TOKEN;
   const f = filters();
@@ -1052,7 +1109,7 @@ async function loadAll(verify) {
 }
 function others() {
   part(null, fillReleases);
-  return Promise.allSettled([loadCompare(), loadTraffic(), loadInbox(), loadMine()]);
+  return Promise.allSettled([loadCompare(), loadFirstMinute(), loadTraffic(), loadInbox(), loadMine()]);
 }
 function enter(tok) {
   try { sessionStorage.setItem(KEY, tok); } catch (e) {}
@@ -1065,7 +1122,7 @@ function show(which) { $('gate').hidden = which !== 'gate'; $('app').hidden = wh
    can paint it back (the epoch moves). A wrong passphrase typed afterwards
    shows the gate and nothing else. */
 function clearApp() {
-  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'voteNote', 'tTrafficDays', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
+  for (const id of DASH_PARTS.concat(['tCmp', 'cmpNote', 'tSrc', 'voteNote', 'tTrafficDays', 'tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt', 'firstMinNote', 'inboxCount', 'inboxBar', 'inbox', 'mine', 'tDevices', 'appErr', 'cRel'])) {
     const el = $(id); if (el) el.innerHTML = '';
   }
   $('stamp').textContent = '—';

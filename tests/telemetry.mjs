@@ -996,6 +996,86 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
     [...a.errs, ...back.errs, ...o.errs, ...h.errs].length === 0, JSON.stringify({ hostile: h, errs: [...a.errs, ...h.errs].slice(0, 2) }));
 }
 
+// ---- 11. THE FIRST MINUTE, STEP BY STEP (build 177, migration 0016) ----
+/* A real page, played through its own buttons: one 'step' row the first time
+   the page reaches each moment, the milliseconds since it began to load in
+   order, one visit id, the world's steps carrying its run id, the title's
+   demo world never counted, and the hide naming the last step reached. */
+{
+  const p = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  await p.addInitScript(MOCK);
+  await p.goto('file://' + join(root, 'index.html'), { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && Backend.isReady() && window.Boot && Boot.done, null, { timeout: 30000 });
+  const steps = () => p.evaluate(() => __MOCK.st.calls.filter(c => c.path === '/telemetry').flatMap(c => c.body || []).filter(x => x.kind === 'step'));
+  // a tap on the title's demo world is no map tap
+  await p.mouse.click(215, 500);
+  const atTitle = (await steps()).map(x => x.props.step);
+  const press = sel => p.evaluate(q => document.querySelector(q).click(), sel);
+  await press('#btnTitleNew');
+  await p.waitForFunction(() => Screens.current === 'newgame', null, { timeout: 10000 });
+  await press('#ngMode .dcard[data-v="moderate"]'); await p.waitForTimeout(150);
+  await press('#ngMode .dcard[data-v="moderate"]');
+  await p.waitForFunction(() => Screens.current === 'draft' && document.querySelectorAll('#draftCards .flip').length === 3, null, { timeout: 30000 });
+  await p.waitForTimeout(400);
+  await press('#draftCards > :nth-child(1)'); await p.waitForTimeout(200);
+  await press('#draftCards > :nth-child(1)');
+  await p.waitForFunction(() => Screens.current === 'playing' && !Screens._entering, null, { timeout: 60000 });
+  await p.waitForTimeout(500);
+  // put any lesson card away so the map takes the taps
+  await p.evaluate(() => { try { if (window.Tutorial && Tutorial.skip) Tutorial.skip(); } catch (e) {} });
+  await p.waitForTimeout(300);
+  const tapAt = await p.evaluate(() => {
+    const tc = S.buildings.find(x => x.key === 'tc' && x.owner === 'P'), T = CFG.TILE;
+    const v = S.units.find(u => u.owner === 'P' && u.kind === 'villager');
+    UI.sel = { type: 'unit', id: v.id };
+    // a free grass tile a few tiles from the hall, on screen
+    for (let r = 3; r < 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (!Path.passable(x, y, 'P') || Bld.at(x, y) || S.map.terrain[y * CFG.W + x] !== T_GRASS()) continue;
+      const sx = ((x + 0.5) * T - R.cam.x) * R.cam.z, sy = ((y + 0.5) * T - R.cam.y) * R.cam.z;
+      const el = document.elementFromPoint(sx, sy);
+      if (el && el.id === 'c' && sy > 150 && sy < innerHeight - 200) return { sx, sy };
+    }
+    return null;
+    function T_GRASS() { return window.T ? T.GRASS : 0; }
+  });
+  if (tapAt) { await p.mouse.click(tapAt.sx, tapAt.sy); await p.waitForTimeout(150); }
+  await p.evaluate(() => {
+    UI.enterPlacement('house');
+    if (UI.placeGhost && UI.placeGhost.set) UI.confirmPlacement();
+    else if (UI.placeGhost) { UI.placeGhost.set = true; UI.confirmPlacement(); }
+  });
+  await p.evaluate(() => { S.playtime = (S.playtime || 0) + 70; });
+  await p.waitForTimeout(400);
+  const runId = await p.evaluate(() => S.runId);
+  await p.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await p.waitForTimeout(150);
+  // a second hide sends nothing new
+  await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await p.waitForTimeout(100);
+  const all = await steps();
+  const names = all.map(x => x.props.step), by = k => all.find(x => x.props.step === k) || { props: {} };
+  const want = ['load', 'splash', 'title', 'newgame', 'origin', 'picked', 'playable', 'map_tap', 'villager', 'building', 'play30', 'play60', 'hide'];
+  const order = want.map(k => by(k).props.ms);
+  const inRun = ['playable', 'map_tap', 'villager', 'building', 'play30', 'play60'];
+  ck('everyStepOfTheFirstMinuteIsSentOnce', want.every(k => names.filter(n => n === k).length === 1) && names.length === want.length,
+    names.join(' > '));
+  ck('andTheTitlesDemoWorldIsNoMapTap', !atTitle.includes('map_tap') && atTitle.includes('load') && atTitle.includes('title'), 'at the title: ' + atTitle.join(', '));
+  ck('eachCarriesItsTimeSinceTheLoadInOrder', order.every(v => Number.isInteger(v) && v >= 0) && order.every((v, i) => i === 0 || v >= order[i - 1] || want[i] === 'splash'),
+    want.map((k, i) => k + ' ' + order[i]).join(', '));
+  ck('oneVisitAndTheWorldsStepsCarryItsRun', new Set(all.map(x => x.props.visit)).size === 1 && /^[A-Za-z0-9_-]{1,64}$/.test(all[0].props.visit) &&
+    inRun.every(k => by(k).run_id === runId) && ['load', 'title', 'newgame', 'picked'].every(k => !by(k).run_id),
+    `visit ${all[0] && all[0].props.visit}, run ${runId}`);
+  ck('andSaysFirstTimeFormAndTheLastStepReached', all.every(x => x.props.first === true && ['phone', 'tablet', 'desktop'].includes(x.props.form)) &&
+    by('hide').props.last === 'play60' && by('playable').props.fresh === true, JSON.stringify(by('hide').props));
+  ck('theFirstMinutePageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
+  await p.close();
+}
+
 for (const [k, v] of Object.entries(res)) console.log((v.startsWith('PASS') ? ' ' : '✗') + ' ' + k + ': ' + v);
 await b.close();
 if (fails.length) { console.log('FAILURES:', fails.join(', ')); process.exit(1); }

@@ -1501,6 +1501,27 @@ telemetry carries `place` and `lift`. The nationality picker the operator
 floated was NOT built: a profile field and a flag column for little, where
 the origin card is the run's own pride and costs nothing.
 
+**THE FIRST MINUTE, STEP BY STEP** (`Backend.step` / `flushSteps` /
+`bootSteps` / `stepTick`, migration `0016_first_minute.sql`'s
+`analytics_first_minute`, the dashboard's First minute section;
+tests/telemetry.mjs §11, tests/analytics.mjs §6c — operator, build 177: "Half
+of all games end before a minute of play and we don't know where"). A page
+writes one kind 'step' row the FIRST time it reaches each of `load`, `splash`,
+`title`, `newgame`, `origin`, `picked`, `playable`, `map_tap`, `villager`,
+`building`, `play30`, `play60`, `hide` (the last naming the step before it),
+with `ms` since the page began to load (`performance.now`; the boot block's
+`Boot.t0`, the first paint, `Boot.liftAt`), a random `visit` id per page
+load, `first` (`!Backend._prior`) and `form`; a world's steps carry its run
+id. Rows wait on the device until the sign-in lands and go together (`_emit`
+takes an array now); every `_emit` gate holds, the title's demo world is never
+a map tap (`UI._orderSnap` answers null there), and play30/60 count from the
+moment THIS page opened the world (`Backend._play0`). The dashboard counts
+page loads per step against those that reached `load`, with medians, split by
+form and first-time vs returning, the loading steps in their own table, and
+where each page was left. **0016 MUST BE PASTED AFTER 0013** (re-pasting
+0008/0012/0013 narrows the telemetry kinds again — paste 0016 after any of
+them), or every step row is refused.
+
 **THE VOTE OFFER IS RETIRED** (build 176 — operator: "146 players saw it, 1
 voted. Remove it"). `js/vote.js`, its tag, `CFG.CARDS.VOTE`, both hooks
 (`Deck._syncRun`, `DeckScreens._setButtons`) and tests/vote.mjs are gone. The

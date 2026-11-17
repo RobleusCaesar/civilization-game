@@ -1618,6 +1618,9 @@
       if (this.done || !this.ready) return;
       if (!this.held && !this.skipped) return;
       this.done = true;
+      /* THE FIRST MINUTE: the title answers taps from here (Backend.step) */
+      this.liftAt = now();
+      try { if (window.Backend && Backend.bootSteps) Backend.bootSteps(); } catch (e) {}
       var el = document.getElementById('splash');
       if (!el) return;
       var drop = function () { if (el.parentNode) el.parentNode.removeChild(el); };
@@ -2225,55 +2228,55 @@
 
 </div>
 
-<script src="js/feedback.js?v=176"></script>
-<script src="js/config.js?v=176"></script>
-<script src="js/audio.js?v=176"></script>
-<script src="js/config.supabase.js?v=176"></script>
-<script src="js/vendor/supabase.js?v=176"></script>
-<script src="js/backend.js?v=176"></script>
-<script src="js/competition.js?v=176"></script>
-<script src="js/score.js?v=176"></script>
-<script src="js/cards.js?v=176"></script>
-<script src="js/deck.js?v=176"></script>
-<script src="js/artstyle.js?v=176"></script>
-<script src="js/sprites.js?v=176"></script>
-<script src="js/formations.js?v=176"></script>
-<script src="js/relics.js?v=176"></script>
-<script src="js/assets.js?v=176"></script>
-<script src="js/dev.js?v=176"></script>
-<script src="js/map.js?v=176"></script>
-<script src="js/buildings.js?v=176"></script>
-<script src="js/units.js?v=176"></script>
-<script src="js/combat.js?v=176"></script>
-<script src="js/ai.js?v=176"></script>
-<script src="js/render.js?v=176"></script>
-<script src="js/battlefx.js?v=176"></script>
-<script src="js/footing.js?v=176"></script>
-<script src="js/ruins.js?v=176"></script>
-<script src="js/roads.js?v=176"></script>
-<script src="js/beasts.js?v=176"></script>
-<script src="js/defeatart.js?v=176"></script>
-<script src="js/victoryart.js?v=176"></script>
-<script src="js/ui.js?v=176"></script>
-<script src="js/lookout.js?v=176"></script>
-<script src="js/screens.js?v=176"></script>
-<script src="js/patchnotes.js?v=176"></script>
-<script src="js/settings.js?v=176"></script>
-<script src="js/board.js?v=176"></script>
-<script src="js/pages.js?v=176"></script>
-<script src="js/titlescreen.js?v=176"></script>
-<script src="js/tutorial.js?v=176"></script>
-<script src="js/deckfx.js?v=176"></script>
-<script src="js/deckfx-town.js?v=176"></script>
-<script src="js/deckfx-army.js?v=176"></script>
-<script src="js/deckfx-growth.js?v=176"></script>
-<script src="js/deckfx-rival.js?v=176"></script>
-<script src="js/deckui.js?v=176"></script>
-<script src="js/deckscreens.js?v=176"></script>
-<script src="js/cardintro.js?v=176"></script>
-<script src="js/game.js?v=176"></script>
-<script src="js/terrain-core.js?v=176"></script>
-<script src="js/terrain.js?v=176"></script>
-<script src="js/terrain-v5.js?v=176"></script>
+<script src="js/feedback.js?v=177"></script>
+<script src="js/config.js?v=177"></script>
+<script src="js/audio.js?v=177"></script>
+<script src="js/config.supabase.js?v=177"></script>
+<script src="js/vendor/supabase.js?v=177"></script>
+<script src="js/backend.js?v=177"></script>
+<script src="js/competition.js?v=177"></script>
+<script src="js/score.js?v=177"></script>
+<script src="js/cards.js?v=177"></script>
+<script src="js/deck.js?v=177"></script>
+<script src="js/artstyle.js?v=177"></script>
+<script src="js/sprites.js?v=177"></script>
+<script src="js/formations.js?v=177"></script>
+<script src="js/relics.js?v=177"></script>
+<script src="js/assets.js?v=177"></script>
+<script src="js/dev.js?v=177"></script>
+<script src="js/map.js?v=177"></script>
+<script src="js/buildings.js?v=177"></script>
+<script src="js/units.js?v=177"></script>
+<script src="js/combat.js?v=177"></script>
+<script src="js/ai.js?v=177"></script>
+<script src="js/render.js?v=177"></script>
+<script src="js/battlefx.js?v=177"></script>
+<script src="js/footing.js?v=177"></script>
+<script src="js/ruins.js?v=177"></script>
+<script src="js/roads.js?v=177"></script>
+<script src="js/beasts.js?v=177"></script>
+<script src="js/defeatart.js?v=177"></script>
+<script src="js/victoryart.js?v=177"></script>
+<script src="js/ui.js?v=177"></script>
+<script src="js/lookout.js?v=177"></script>
+<script src="js/screens.js?v=177"></script>
+<script src="js/patchnotes.js?v=177"></script>
+<script src="js/settings.js?v=177"></script>
+<script src="js/board.js?v=177"></script>
+<script src="js/pages.js?v=177"></script>
+<script src="js/titlescreen.js?v=177"></script>
+<script src="js/tutorial.js?v=177"></script>
+<script src="js/deckfx.js?v=177"></script>
+<script src="js/deckfx-town.js?v=177"></script>
+<script src="js/deckfx-army.js?v=177"></script>
+<script src="js/deckfx-growth.js?v=177"></script>
+<script src="js/deckfx-rival.js?v=177"></script>
+<script src="js/deckui.js?v=177"></script>
+<script src="js/deckscreens.js?v=177"></script>
+<script src="js/cardintro.js?v=177"></script>
+<script src="js/game.js?v=177"></script>
+<script src="js/terrain-core.js?v=177"></script>
+<script src="js/terrain.js?v=177"></script>
+<script src="js/terrain-v5.js?v=177"></script>
 </body>
 </html>
