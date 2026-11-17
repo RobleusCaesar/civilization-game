@@ -202,7 +202,7 @@
     <div class="card wrap" style="margin-top:10px"><table id="tLeftAt"></table><div class="note" id="firstMinNote" style="margin-top:8px"></div></div>
 
     <h2>Prologue</h2>
-    <p class="why">A new device plays three guided games before the full game opens: The First Fire, The Growing Clan and The Two Roads. Each game's starts, how many finished and how fast a win came; the journey player by player (a rung counts only players who won the one before); every line the Elder showed, how many games got past it, how long it took and how often the hand had to point; and players whose first game was the journey beside everyone else's first game, played again within a week (counted once that week has passed). Needs migration 0018.</p>
+    <p class="why">A new device plays three guided games before the full game opens: The First Fire, The Growing Clan and The Two Roads. Each game's starts, how many finished and how fast a win came; the journey player by player (a rung counts only players who won the one before); every line the guide (Mira) showed, how many games got past it, how long it took and how often the hand had to point; and players whose first game was the journey beside everyone else's first game, played again within a week (counted once that week has passed). Needs migration 0018.</p>
     <div class="card wrap"><table id="tProGames"></table></div>
     <div class="card wrap" style="margin-top:10px"><table id="tProJourney"></table></div>
     <div class="card wrap" style="margin-top:10px"><table id="tProBeats"></table></div>
@@ -831,9 +831,9 @@ async function loadPrologue() {
   });
   part($('tProBeats'), () => {
     const B = (Array.isArray(D.funnel) ? D.funnel : []).filter(b => b && (b.shown || b.done));
-    table($('tProBeats'), ['Game · the Elder\'s line', 'Shown', 'Done', 'Median time to do it', 'Needed the hand'],
+    table($('tProBeats'), ['Game · the guide\'s line', 'Shown', 'Done', 'Median time to do it', 'Needed the hand'],
       B.map(b => [(b.game || '?') + ' · ' + b.beat, num(b.shown), rate(b.done || 0, b.shown || 0), secs(b.median_ms_to_done), rate(b.handed || 0, b.done || 0)]),
-      'No line of the Elder\'s was shown in this period.');
+      'No line of the guide\'s was shown in this period.');
   });
   part($('tProAgain'), () => {
     const A = D.again || {}, row = (label, c) => { c = c || {}; return [label, num(c.players || 0), rate(c.again || 0, c.n || 0)]; };

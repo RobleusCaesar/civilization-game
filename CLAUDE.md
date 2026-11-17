@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following the Elder's taps alone, no line past fifteen words; the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below the Elder's line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second and no ring drawn where a tap cannot land, no line past fifteen words; her nine faces on disk; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1559,27 +1559,53 @@ the demo (`Prologue.preload` from `Screens.onTitle`, `holding()`), so BEGIN
 opens that very world, its ground and art already asked for. **THE WORLDS
 ARE DATA** (`SCENARIO_MAPS[id]`: 38 rows of `#.T~rb^g,:_x`, the halls, the
 people, animals, buildings, the old village's `ruins`, a relic, the camera and
-the glide, and the named `marks` the Elder points at) **AND RULES**
+the glide, and the named `marks` the guide points at) **AND RULES**
 (`Scenarios.RULES[id]`: the stores, the hall's storey, its levels' price,
 days and support, the build menu, the win, the draft, a stock multiplier):
 `G._scenario` hands `Scenarios.gen` and `populate` to `G.newGame` in place of
 the generator and the rolled start, `apply`/`restore` patch the hall's
 storeys over CFG only while that world is live (restored at the top of every
 newGame and loadJSON), `S.scenario` rides the save. **The berry bush the
-Elder names IS a berry bush** (`R.fertileKindAt`, a pure function of the
+guide names IS a berry bush** (`R.fertileKindAt`, a pure function of the
 tile — pinned): re-check the marks whenever a map is redrawn, and rebuild
 with `node tools/scenario-maps.mjs` (`--check` is the contract's). **THE
 BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
 the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
 NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE
 SCRIPT** (`Prologue.SCRIPTS[g]`) is beats — a line of fifteen words or fewer
-with ONE instruction, a face, a goal for the tracker, `when` (held), `done`
-(the deed answers it), `auto` (a celebration), `ring`/`taps` (the pulse and
-the idle hand's taps), `on`, `skipIf`, `gather`/`cost` (a saving beat the
-asides watch) — and ASIDES said over a beat while their condition holds (no
-builder on a site, idle hands, every hand on the wrong good, the rival's
-riders once). It runs on the SIM's clock (`simTick` from `G.simStep`), so the
-harness plays it as a person does. The rings follow the game's own doors:
+with ONE instruction, a face, a goal for the tracker, `when` (held until true;
+its `hold(coming)` line says what it is short of — "A house needs more wood.
+Gather it at the trees.", and once every hand is on it "… It is coming in."),
+`ack` (the ORDER given: the line answers the order, never its result),
+`site`/`hands`/`handsText` (a works still short of builders), `wait` (the
+world at work), `done` (the result: the next beat), `praise` (said in the NEXT
+line's first words, never a line of its own), `auto` (the last word only),
+`ring`/`taps` (the pulse and the idle hand's taps), `on`, `skipIf`,
+`gather`/`gwait`/`cost` (a saving beat and its waiting line) — and three
+ASIDES said over a beat (no builder on a site; the rival's riders and the
+relic, the world's news, `quiet`: said only at a quiet moment, let go after
+`QUIET_MAX`, keeping the beat's ring, never while a card has the floor). It
+runs on the SIM's clock (`simTick` from `G.simStep`), so the harness plays it
+as a person does. **THE GUIDE ANSWERS A TAP WITHIN A SECOND**
+(`_phaseOf` / `_viewOf` / `_show`, tests/prologue.mjs
+`andEveryTapWasAnsweredWithinASecond` and its game 2 and 3 twins — operator,
+build 181: "…can take between two and three seconds to pop up … long enough
+for me as the play tester to wonder if it was broken … shoot for a second at
+Max … If that requires some tweaks to the architecture, please go ahead"):
+the first runner waited on RESULTS (the first berries home, the house
+standing, a villager born) and said three-second praise lines between, so
+most taps were answered by nothing for 2–21 s. Every sim tick now asks the
+beat which PHASE it stands in — `held`, `gwait`, `ask`, `hands`, `wait` — and
+the view (`_shown`: line, face, ring, taps) changes the tick the phase does,
+so a deed and its answer share a tick; an order holds `ACK_HOLD` (1.5 s), so a
+soldier between two raiders never flickers the line back, a gathering beat
+asked again says why (`gatherLine`: "A villager is idle. Put them to work."),
+a march onto raiders in the fog is the order the raid line asked for
+(`attacking`), and a tap toward a tally ("Soldiers 2/3") is answered by the
+tally. The contract's follower holds the real loop's sim, taps only the ring
+as DRAWN after a reaction time and once the camera has settled (the hand's
+taps only after the hand's six seconds), and counts a glide's real time
+against the second: every tap of all three games is answered. The rings follow the game's own doors:
 the Build tab → the card (scrolled to the middle of the menu once,
 `_cardInView`) → the ghost seated on the authored site → ✓; the deck → a
 card that plays at once → Play (nothing while it is in the air); a soldier,
@@ -1589,13 +1615,50 @@ counting the hands already on each (`spread`). **THE GUIDE NEVER POINTS
 WHERE A TAP CANNOT GO** (tests/prologue.mjs §2b — three faults the bot found
 playing at a person's pace): a ring is in view only where
 `document.elementFromPoint` finds the world canvas and neither the goal
-tracker nor the Elder's card stands over it (`_open`; a scout's mark under
+tracker nor the guide's card stands over it (`_open`; a scout's mark under
 the minimap was "seen", and a tap there moved the camera and sent nobody);
+**AND A RING STANDS ONLY WHERE A TAP CAN LAND** (`_look` answers whether it
+may stand, `_stale`, build 181 — the bot found a villager ringed under the
+hall's panel the moment "Upgrade" was pressed, and two taps there called the
+upgrade off through its Cancel): a target under the panel, the minimap or a
+bar is not ringed until the look has glided it into the open, asked again
+when the line, its target or the SELECTION changes (a villager selected opens
+a panel over the ground) and every `LOOK_MS` while the target stays covered
+and the camera is where the last look left it (the camera is the player's
+the moment they move it); a target the camera cannot bring out is ringed
+where it is. A line whose deed is done or whose order was just given rings
+nothing until the next tick says the next line (a ✓ flashed the ring back to
+the Build tab), the idle hand points only at open ground, and the guide
+never rings a hand at a works or a station, nor the hand already in hand (a
+tap on it lets it go — game 2's farm looped there);
 the ✓ is rung only while the ghost's verdict is good, a ghost a slip moved is
 pointed back to its site (a tap jumps it there), and a placement armed afresh
 seats again; the idle hand's arrival shows the target once more wherever the
-camera went; and the toasts step below the goal tracker AND an Elder's card
-seated at the top (`_toastStep`, `--pro-h`). **THE NEXT GAME WAITS BEHIND
+camera went; and the toasts step below the goal tracker AND the guide's card
+seated at the top (`_toastStep`, `--pro-h`). **MIRA** (`Prologue.NAME` /
+`FACES` / `_warmFaces`, `assets/ui/mira/`, tests/prologue.mjs
+`herNineFacesAreDrawnAndEveryLineWearsOne` — operator, build 181: "Swap the
+image of the village elder for a younger woman … pretty but not aggressively
+beautiful or sexual … think of someone like Pocahontas … double or triple the
+number of images"): the guide is the clan's young storyteller, nine faces of
+ONE PixelLab portrait (neutral, pleased, concerned, point, excited, thinking,
+proud, surprised, determined — each an edit of the same master, so she is the
+same woman in every one): 128px masters and their Scale2x doubles, palette
+PNGs with hard alpha, shown at 64/56/48 CSS px and fetched when a journey
+world is founded. The code keeps the old ids (`#proElder`, `#proMini`); the
+player meets Mira. **ONE VOICE** (`Prologue.quiet`, asked by `G.log` and
+`G.foeNote`, tests/prologue.mjs §2d — operator, build 181: "cut the amount of
+notifications down by like 70% … they clash with the instructions"): in a
+journey world the world's news goes to the chronicle (`S.log`) and is not
+toasted — a builder wanted, a spent tile, a finished building, the hall's new
+storey, the relic's find, the rival's intel — and the villager panel's Build
+hint stays silent (the guide rings the card). Never quieted: a refusal to the
+player's own order (`G.log`'s `refusal`, and every refusal ui.js toasts
+itself) and what the player must act on that the guide does not say (`KEEP`:
+a death, a famine, a desertion, the rival's monument and its rise, a hall
+fallen, and an attack — but the scripted raid's while the raid line is up).
+`foeNote`'s roll is drawn whatever is shown, so a seed's rolls stay where they
+were. Measured on the bot's three games: 20 toasts → 1 (a card's own result). **THE NEXT GAME WAITS BEHIND
 THE REWARD** (`Prologue._armNext` / `_preNext` / `endGame` / `asEnd`, tests/prologue.mjs
 §3–4 — the brief: "preload the next map: under 1 s on a desktop, under 2 s on a
 mid-range phone, measured"): founded at the press, the next game paid its founding, art,
@@ -1618,7 +1681,7 @@ journey's tunic is rolled once and kept in the record (`tunic`), so each next ga
 its people's strips already dyed. And every journey world entered is BEGUN (`_began !==
 S`): a game opened from the reward screen never passed the title that cleared the old
 flag, and opened with no start telemetry and no glide. **THE ENDINGS**: a hall win
-holds the end screen for the Elder's last word (`holdEnd`), and after game 1
+holds the end screen for Mira's last word (`holdEnd`), and after game 1
 asks "What should the people call you?" (the chief's name, `neo-chief` and
 `Backend.setChiefName`); each WIN pays ONE card of its game's tier, once per
 player ever (`Deck.prologue`, `CFG.PROLOGUE.CARD` Bronze / Iron / Imperial,
@@ -1627,7 +1690,7 @@ the end screen's doors are the journey's (`endRow`: Continue the journey /
 Play a random world; after game 3, Your own world; a loss, Try again, which
 founds that world afresh — a lost game 3 still earns the ordinary defeat card
 by its deeds); every journey win is held off the world board
-(`Screens.boardHold`). Game 3's draft is explained by the Elder in one line
+(`Screens.boardHold`). Game 3's draft is explained by Mira in one line
 (`#proDraft`), never the old help panel, and the rival's intel is not posted
 over a journey game (`Cards.announceRival`). **GAME 3'S CLOCK** (measured with
 the guide-following bot): the Wonder at 480 food and wood, 240 stone and 120

@@ -34,6 +34,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
 let pw;
 try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
@@ -134,50 +135,166 @@ const page = async (q, done) => {
     `barracks ${g3.barracks}, wonder ${g3.wonder}, stone ${JSON.stringify(g3.marks.stone)}, gold ${JSON.stringify(g3.marks.gold)}, berry ${g3.berryKind}`);
   ck('gameThreeDealsThreeOfTheSixFriendlyOrigins', g3.hand.length === 3 && g3.hand.every(k => g3.pool.includes(k)) && g3.rivalSeen,
     `${g3.hand.join(', ')} of ${g3.pool.join(', ')}; rival hall shown ${g3.rivalSeen}`);
-  // EVERY LINE IS SHORT: each beat's words, every aside, the draft's and the endings'
+  /* EVERY LINE IS SHORT: each beat's ask, its waiting-on-goods lines (a hand
+     to send, every hand on it), its builders' and its waiting lines, every
+     aside, the line that asks a gathering beat again, and the draft's. (The
+     praise for a deed rides on the next line only while the two fit —
+     Prologue._show — so it is held by the game itself.) */
   const lines = await p.evaluate(() => {
-    const out = [];
+    const out = [], P = Prologue, txt = (t, a) => typeof t === 'function' ? t.call(P, a) : t;
     for (const g of [1, 2, 3]) {
       Scenarios.found('prologue_' + g);
-      Prologue.onWorldChange();
-      for (const bt of Prologue.SCRIPTS[g].call(Prologue)) out.push({ g, id: bt.id, t: bt.text });
-      for (const a of Prologue.ASIDES) { const t = typeof a.text === 'function' ? a.text.call(Prologue) : a.text; out.push({ g, id: 'aside:' + a.id, t }); }
+      P.onWorldChange();
+      for (const bt of P._beats) {
+        for (const [k, t] of [['', txt(bt.text)], [':hold', bt.hold && txt(bt.hold, false)], [':holdWait', bt.hold && txt(bt.hold, true)],
+          [':hands', txt(bt.handsText)], [':wait', txt(bt.wait)], [':gwait', txt(bt.gwait)]]) if (t || k === '') out.push({ g, id: bt.id + k, t });
+      }
+      for (const a of P.ASIDES) out.push({ g, id: 'aside:' + a.id, t: txt(a.text) });
+      out.push({ g, id: 'gatherLine', t: P.gatherLine() });
     }
-    out.push({ id: 'draft', t: Prologue.DRAFT_LINE });
+    out.push({ id: 'draft', t: P.DRAFT_LINE });
     return out;
   });
   const long = lines.filter(l => !l.t || String(l.t).split(/\s+/).filter(Boolean).length > 15);
-  ck('noLineTheElderSaysRunsPastFifteenWords', lines.length > 20 && !long.length, long.length ? long.map(l => l.g + ':' + l.id + ' "' + l.t + '"').join('; ') : lines.length + ' lines');
+  ck('noLineTheGuideSaysRunsPastFifteenWords', lines.length > 40 && !long.length, long.length ? long.map(l => l.g + ':' + l.id + ' "' + l.t + '"').join('; ') : lines.length + ' lines');
+  /* HER FACES (operator, build 181: "a younger woman … double or triple the
+     number of images … more diversity in the character"): nine faces of one
+     woman, each a 256px picture on disk (her 128px master doubled), hard
+     pixels only, and every face a line asks for is one of them */
+  const fc = await p.evaluate(() => {
+    const P = Prologue, want = new Set(['neutral', 'pleased', 'proud', 'excited', 'thinking', 'point']);
+    for (const g of [1, 2, 3]) {
+      Scenarios.found('prologue_' + g); P.onWorldChange();
+      for (const bt of P._beats) for (const f of [bt.face, bt.holdFace, bt.waitFace]) if (f) want.add(f);
+    }
+    for (const a of P.ASIDES) if (a.face) want.add(a.face);
+    const dom = P._dom();
+    return { name: P.NAME, faces: P.FACES, want: [...want], label: dom.elder.getAttribute('aria-label'), shown: dom.root.querySelector('.peName').textContent };
+  });
+  const png = f => {
+    const b = readFileSync(join(root, f));
+    if (b.readUInt32BE(12) !== 0x49484452) return { err: 'not a PNG' };
+    const w = b.readUInt32BE(16), h = b.readUInt32BE(20), ct = b[25];
+    let soft = 0, trns = null;
+    for (let o = 8; o < b.length - 8;) {
+      const n = b.readUInt32BE(o), t = b.toString('ascii', o + 4, o + 8);
+      if (t === 'tRNS') { trns = b.subarray(o + 8, o + 8 + n); for (const v of trns) if (v !== 0 && v !== 255) soft++; }
+      o += 12 + n;
+    }
+    return { w, h, ct, soft, trns: !!trns };
+  };
+  const bad = [];
+  for (const [k, url] of Object.entries(fc.faces)) {
+    const f = url.split('?')[0];
+    if (!existsSync(join(root, f))) { bad.push(k + ': missing'); continue; }
+    const m = png(f);
+    if (m.err || m.w !== 256 || m.h !== 256) bad.push(`${k}: ${m.err || m.w + 'x' + m.h}`);
+    else if (m.ct !== 3 && m.ct !== 0 && m.ct !== 2) bad.push(`${k}: colour type ${m.ct} (ship a palette PNG)`);
+    else if (m.soft) bad.push(`${k}: ${m.soft} half-transparent palette entries`);
+  }
+  const missing = fc.want.filter(f => !fc.faces[f]);
+  ck('herNineFacesAreDrawnAndEveryLineWearsOne', Object.keys(fc.faces).length >= 9 && !bad.length && !missing.length,
+    bad.concat(missing.map(f => 'no face "' + f + '"')).join('; ') || Object.keys(fc.faces).join(', '));
+  ck('andTheCardNamesHer', fc.name === 'Mira' && fc.shown === 'Mira' && /Mira/.test(fc.label || ''), JSON.stringify({ name: fc.name, shown: fc.shown, label: fc.label }));
   await ctx.close();
 }
 
-/* THE GUIDE, FOLLOWED: each pass reads the line on screen, taps the pulse
-   the Elder rings with a real mouse click (the next tap wherever the player
-   is in the chain; the first of the hand's taps when nothing is rung), lets
-   the world run a second, and goes again. Nothing else touches the game. */
-const follow = async (p, maxIter) => {
-  const seen = [];
-  let clicks = 0, last = '';
-  for (let k = 0; k < maxIter; k++) {
-    const st = await p.evaluate(() => {
-      const P = Prologue, line = P._aside || P._shown;
-      const txt = line ? (typeof line.text === 'function' ? line.text.call(P) : line.text) : '';
-      const taps = line && line.taps ? (line.taps.call(P) || []).map(t => { const r = P._resolve(t); return r ? { x: Math.round(r.x), y: Math.round(r.y), u: t.u !== undefined } : null; }).filter(Boolean) : [];
-      // a person taps the PULSE: the ring is the next tap wherever they are in the chain
-      const rr = line && line.ring && taps.length ? P._resolve(line.ring.call(P)) : null;
-      const ring = rr ? { x: Math.round(rr.x), y: Math.round(rr.y) } : null;
-      return { over: !!S.over, cur: Screens.current, id: line ? (P._aside ? 'aside:' : '') + line.id : '', txt: txt || '', taps, ring, vil: !!P.selVil(), clk: P.now() / 1000, played: S.deck && S.deck.played ? S.deck.played.length : 0 };
-    });
-    if (st.over) return { over: true, clk: st.clk, clicks, seen, played: st.played };
-    if (st.id && st.id !== last) { seen.push({ id: st.id, words: st.txt.split(/\s+/).filter(Boolean).length }); last = st.id; await p.waitForTimeout(250); }
-    let q = st.ring ? [st.ring] : st.taps;
-    if (!st.ring && q.length > 1 && q[0].u && st.vil) q = q.slice(1);
-    if (q.length && q[0].x > 4 && q[0].y > 4 && q[0].x < W - 4 && q[0].y < H - 4) { await p.mouse.click(q[0].x, q[0].y); clicks++; await p.waitForTimeout(120); }
-    await p.evaluate(() => { for (let i = 0; i < 20; i++) G.simStep(0.05, 0.05); });
-    await p.waitForTimeout(30);
+/* THE GUIDE, FOLLOWED — and timed (operator, build 181: "the next thing
+   that you're supposed to do … can take between two and three seconds to
+   pop up … shoot for a second at Max"). The real loop's sim is held; only
+   the follower moves the world, on the script's own clock. A person taps
+   the PULSE as it is DRAWN (#proRing shown — a covered target is not ringed
+   until the look brings it out), a reaction time after it appears, once
+   the camera has settled; the first of the hand's taps when nothing is
+   rung. After every tap the guide must answer within a second: a new line,
+   a ring on something else, a card's act — or, on a line that only waits,
+   the ring let go. And the ring is never drawn where a tap cannot land. */
+const READ = () => {
+  const P = Prologue, line = P._aside || P._shown, E = P._el;
+  try { P.frame(0.016); } catch (e) {}
+  let rb = line && line.ring ? line : (P._aside && P._aside.keepRing ? P._shown : null);
+  try { if (rb && P._stale(rb)) rb = null; } catch (e) {}
+  let raw = null;
+  try { raw = rb && rb.ring ? rb.ring.call(P) : null; } catch (e) {}
+  const drawn = !!(E && E.ring.style.display !== 'none');
+  const r = raw && drawn ? P._resolve(raw) : null;
+  const kOf = t => t.sel ? 'sel:' + t.sel : t.u !== undefined ? 'u:' + t.u : 'tile:' + Math.floor(t.x) + ',' + Math.floor(t.y);
+  const key = r ? kOf(raw) : null;
+  // where the drawn ring stands, a tap must land on the world (or on the element it rings)
+  let blocked = null;
+  if (r) {
+    const el = document.elementFromPoint(r.x, r.y);
+    if (raw.sel) { const t = document.querySelector(raw.sel); if (el && t && !t.contains(el)) blocked = el.id || String(el.className); }
+    else if (el && el.id !== 'c') blocked = el.id || String(el.className);
   }
-  const clk = await p.evaluate(() => Prologue.now() / 1000);
-  return { over: false, clk, clicks, seen };
+  let taps = [];
+  try { taps = rb && rb.taps ? (rb.taps.call(P) || []).map(t => { const q = P._resolve(t); return q && (q.rect || P._open(q.x, q.y)) ? { x: Math.round(q.x), y: Math.round(q.y), u: t.u !== undefined, k: kOf(t) } : null; }).filter(Boolean) : []; } catch (e) {}
+  return { over: !!S.over, id: line ? (P._aside ? 'aside:' : '') + line.id : '', phase: (line && line.phase) || '', auto: !!(line && line.auto),
+    goal: E && E.goal.style.display !== 'none' ? E.goal.textContent : '', gliding: !!P._gliding,
+    txt: E ? E.txt.textContent : '', open: !!(E && E.elder.style.display !== 'none' && E.root.style.display !== 'none'),
+    key, ring: r ? { x: Math.round(r.x), y: Math.round(r.y) } : null, blocked, taps, vil: !!P.selVil(), clk: P.now() / 1000,
+    acting: !!((window.Deck && Deck.acting && Deck.acting()) || (window.DeckUI && DeckUI.playing)),
+    played: S.deck && S.deck.played ? S.deck.played.length : 0 };
+};
+const follow = async (p, maxT) => {
+  const RT = 0.6, RETRY = 4, ANSWER = 1.0;
+  await p.evaluate(() => {
+    if (G.__realStep) return;
+    G.__realStep = G.simStep;
+    G.simStep = function (a, c) { if (!window.__mine) return; return G.__realStep.call(this, a, c); };
+  });
+  const step = sec => p.evaluate(sec => { window.__mine = true; try { for (let i = 0; i < Math.round(sec / 0.05); i++) G.simStep(0.05, 0.05); } finally { window.__mine = false; } }, sec);
+  const seen = [], slow = [], blocked = [], said = new Set();
+  let clicks = 0, last = '', lastKey = null, keySince = 0, lastTap = null, pend = null;
+  let st = await p.evaluate(READ);
+  const t0 = st.clk;
+  for (let k = 0; k < 20000 && !st.over && st.clk - t0 < maxT; k++) {
+    if (st.id && st.id !== last) { seen.push({ id: st.id }); last = st.id; }
+    if (st.open && st.txt && !said.has(st.txt)) said.add(st.txt);
+    if (st.blocked && blocked.length < 6) blocked.push(`${st.clk.toFixed(1)}s ${st.id} ${st.key} under ${st.blocked}`);
+    if (st.key !== lastKey) { lastKey = st.key; keySince = st.clk; }
+    // the look's glide is real time a person spends waiting: counted against the second, the sim held
+    if (pend && st.gliding) {
+      const w0 = Date.now();
+      await p.waitForFunction(() => !Prologue._gliding, null, { timeout: 3000, polling: 20 }).catch(() => {});
+      pend.extra = (pend.extra || 0) + (Date.now() - w0) / 1000;
+      st = await p.evaluate(READ);
+      continue;
+    }
+    if (pend) {
+      const dt = st.clk - pend.t0 + (pend.extra || 0);
+      const waits = !st.key && (st.phase === 'wait' || st.phase === 'gwait' || st.auto || !st.id);
+      // a tap that counts toward the goal (one of three soldiers) is answered by the tally moving
+      const answered = (st.open && st.txt !== pend.txt) || (st.key && st.key !== pend.key) || (waits && st.key !== pend.key) || st.acting || st.goal !== pend.goal;
+      if (answered) pend = null;
+      else if (dt > ANSWER + 0.05) { slow.push(`${pend.t0.toFixed(1)}s [${pend.line}] ${pend.key}: nothing for ${dt.toFixed(1)} s`); pend = null; }
+    }
+    // the drawn ring; with none, the hand's taps — seen only once the idle hand comes (Prologue.IDLE_MS)
+    let q = st.ring ? [{ x: st.ring.x, y: st.ring.y, k: st.key }] : (st.clk - keySince >= 6 ? st.taps : []);
+    if (!st.ring && q.length > 1 && q[0].u && st.vil) q = q.slice(1);
+    const tg = q[0];
+    const again = lastTap && tg && lastTap.k === tg.k && st.clk - lastTap.t >= RETRY;
+    if (tg && st.clk - keySince >= RT && (!lastTap || lastTap.k !== tg.k || again)) {
+      // a person waits for the view to settle, then taps the target where it now is
+      await p.waitForFunction(() => !Prologue._gliding, null, { timeout: 2000, polling: 30 }).catch(() => {});
+      await p.waitForTimeout(60);
+      const fr = await p.evaluate(READ);
+      const q2 = fr.ring && fr.key === tg.k ? fr.ring : fr.taps.find(t => t.k === tg.k);
+      if (!q2 || q2.x < 4 || q2.y < 4 || q2.x > W - 4 || q2.y > H - 4) { st = fr; if (!q2) continue; }
+      else {
+        await p.mouse.click(q2.x, q2.y); clicks++;
+        lastTap = { t: fr.clk, k: tg.k };
+        pend = { t0: fr.clk, key: tg.k, txt: fr.txt, goal: fr.goal, line: fr.id };
+        await p.waitForTimeout(40);
+        st = await p.evaluate(READ);
+        continue;
+      }
+    }
+    await step(pend || st.clk - keySince < RT + 0.15 ? 0.1 : 1.0);
+    st = await p.evaluate(READ);
+  }
+  await p.evaluate(() => { if (G.__realStep) { G.simStep = G.__realStep; delete G.__realStep; } });
+  return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, played: st.played };
 };
 // the end screen's card, claimed, and the doors it leaves
 const endScreen = async (p) => {
@@ -266,7 +383,7 @@ const endScreen = async (p) => {
     const v = P.vils()[0]; UI.select('unit', v.id);
     const m = P.mark('scoutTo', 1), z = R.cam.z, TL = CFG.TILE;
     R.cam.x = m.x * TL - (innerWidth / 2) / z; R.cam.y = m.y * TL - (innerHeight * 0.8) / z;
-    P._looked = 'scout:' + (m.x | 0) + ',' + (m.y | 0);   // no glide: the camera stays where it was put
+    P._gliding = true;   // no glide: the camera stays where it was put (a look waits on a glide in flight)
     UI.toast('A word from the world, long enough to need a whole line here', 'note', 6000);
     return true;
   });
@@ -277,7 +394,45 @@ const endScreen = async (p) => {
     const over = ts.some(r => !(r.right < er.left || r.left > er.right || r.bottom < er.top || r.top > er.bottom));
     return { top, over, elder: [Math.round(er.top), Math.round(er.bottom)], toasts: ts.map(r => [Math.round(r.top), Math.round(r.bottom)]) };
   });
-  ck('aToastLandsBelowTheEldersLineNeverOverIt', ov.top && ov.toasts.length > 0 && !ov.over, JSON.stringify(ov));
+  ck('aToastLandsBelowTheGuidesLineNeverOverIt', ov.top && ov.toasts.length > 0 && !ov.over, JSON.stringify(ov));
+  await p.evaluate(() => { Prologue._gliding = false; });
+  await ctx.close();
+}
+
+/* ---- 2d. ONE VOICE (operator, build 181: "cut the amount of notifications
+   down by like 70% … they clash with the instructions"): in a journey world
+   the world's news goes to the chronicle and is not toasted — but a refusal
+   to the player's own order, a famine and an attack always are; an ordinary
+   world toasts all of it, as ever ---- */
+{
+  const { p, ctx } = await page('?prologue=0');
+  const r = await p.evaluate(() => {
+    const shown = [], real = UI._showToast;
+    UI._showToast = function (msg) { shown.push(String(msg)); return real.apply(this, arguments); };
+    const say = () => {
+      shown.length = 0; UI._toastAt = {};
+      const n0 = S.log.length;
+      G.log('House needs a builder — tap a villager, then the site', true);
+      G.log('The soil here is spent — a farm may stand on it — villager idle', 'note');
+      G.log('Farm complete — the builder stays on to work it', 'note');
+      G.foeNote('A war band musters in the west.');
+      G.log('No clear ground beside that seam.', true, null, true);
+      G.log('⚠️ Famine! Food has run out — raise farms, lodges or fishing boats before your soldiers desert.', true);
+      G.log('Lumber Camp under attack!', true);
+      return { shown: shown.slice(), logged: S.log.length - n0 };
+    };
+    Screens._demo = false;
+    Scenarios.found('prologue_1'); Prologue.onWorldChange();
+    const journey = say();
+    G.newGame('plain-seed', 'calm', 'medium');
+    const plain = say();
+    UI._showToast = real;
+    return { journey, plain };
+  });
+  const keep = ['No clear ground beside that seam.', '⚠️ Famine!', 'Lumber Camp under attack!'];
+  const kept = r.journey.shown.length === 3 && keep.every(k => r.journey.shown.some(m => m.startsWith(k)));
+  ck('aJourneyWorldToastsOnlyWhatTheGuideDoesNotSay', kept && r.journey.logged === 7, JSON.stringify(r.journey));
+  ck('andAnOrdinaryWorldToastsItAll', r.plain.shown.length === 7, JSON.stringify(r.plain));
   await ctx.close();
 }
 
@@ -373,12 +528,14 @@ const endScreen = async (p) => {
       nob: document.body.classList.contains('pro-nobuild'), tab: !!(tg && getComputedStyle(tg).display !== 'none') };
   });
   ck('andGameOneOpensWithNoBuildMenu', e1.nob && !e1.tab, 'pro-nobuild ' + e1.nob + ', Build tab shown ' + e1.tab);
-  ck('theElderSpeaksFirst', e1.up && /berries/i.test(e1.txt), JSON.stringify(e1));
+  ck('theGuideSpeaksFirst', e1.up && /berries/i.test(e1.txt), JSON.stringify(e1));
   const run = await follow(p, 700);
   ck('gameOneIsWonByFollowingTheGuideAlone', run.over && run.clicks > 4, `over ${run.over} at ${run.clk.toFixed(0)} s of play, ${run.clicks} taps, lines ${run.seen.map(s => s.id).join(' › ')}`);
-  ck('andEveryLineItSaidWasShort', run.seen.every(s => s.words <= 15), run.seen.filter(s => s.words > 15).map(s => s.id + ':' + s.words).join(', ') || run.seen.length + ' lines');
+  ck('andEveryLineItSaidWasShort', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
+  ck('andEveryTapWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
+  ck('andTheRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
   const win = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '' }));
-  ck('theHallWinsAndTheElderHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
+  ck('theHallWinsAndTheGuideHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
   await p.waitForFunction(() => Prologue._asking, null, { timeout: 12000 }).catch(() => {});
   const ask = await p.evaluate(() => ({ asking: !!Prologue._asking, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '', name: (document.querySelector('#proElder .peIn') || {}).value || '' }));
   ck('andAsksWhatThePeopleShouldCallTheChief', ask.asking && /call you/i.test(ask.txt) && ask.name.length > 1, JSON.stringify(ask));
@@ -450,7 +607,9 @@ const endScreen = async (p) => {
   await p.waitForTimeout(3000);
   const run = await follow(p, 1400);
   ck('gameTwoIsWonByFollowingTheGuideAlone', run.over && run.played >= 1, `over ${run.over} at ${run.clk.toFixed(0)} s, ${run.clicks} taps, cards played ${run.played}, lines ${run.seen.map(s => s.id).join(' › ')}`);
-  ck('andEveryLineItSaidWasShortToo', run.seen.every(s => s.words <= 15), run.seen.filter(s => s.words > 15).map(s => s.id + ':' + s.words).join(', ') || run.seen.length + ' lines');
+  ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
+  ck('andEveryTapOfGameTwoWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
+  ck('andItsRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
   const end = await endScreen(p);
   ck('theSecondWinPaysOneIronCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:2': ['iron'] }), JSON.stringify(end.runs));
   ck('andOffersTheThirdGame', end.doors.includes('pro-next:Continue the journey') && /Two Roads/.test(end.line), end.doors.join(', ') + ' / ' + end.line);
@@ -476,7 +635,7 @@ const endScreen = async (p) => {
     return { cur: Screens.current, overlay: ov ? getComputedStyle(ov).display : 'none', elder: !!(el && el.offsetParent !== null), txt: el ? el.textContent : '' };
   });
   ck('gameThreeOpensOnItsOriginCards', d.cur === 'draft', d.cur);
-  ck('andTheElderExplainsThemInOneLine', d.overlay === 'none' && d.elder && /gift/i.test(d.txt), JSON.stringify(d));
+  ck('andTheGuideExplainsThemInOneLine', d.overlay === 'none' && d.elder && /gift/i.test(d.txt), JSON.stringify(d));
   await p.waitForFunction(() => document.querySelectorAll('#draftCards > .flip').length >= 3, null, { timeout: 20000 }).catch(() => {});
   await p.waitForTimeout(600);
   await p.click('#draftCards > .flip >> nth=0'); await p.waitForTimeout(400);
@@ -484,11 +643,14 @@ const endScreen = async (p) => {
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   await p.waitForTimeout(3000);
   const run = await follow(p, 2400);
-  const fin = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, march: !!(S.pro && S.pro.march), wonder: S.buildings.some(x => x.owner === 'P' && x.key === 'wonder') }));
+  const fin = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, march: !!(S.pro && S.pro.march), wonder: S.buildings.some(x => x.owner === 'P' && x.key === 'wonder'), done: Object.keys((S.pro && S.pro.done) || {}) }));
   const ids = run.seen.map(s => s.id);
   ck('gameThreeIsWonByFollowingTheGuideAlone', run.over && fin.win, `over ${run.over} at ${run.clk.toFixed(0)} s, ${JSON.stringify(fin)}, ${run.clicks} taps, lines ${ids.join(' › ')}`);
-  ck('andTheRaidIsMetAndBeaten', ids.includes('raid') && ids.includes('beaten'), ids.join(' › '));
-  ck('andTheWonderIsTheRoadTheGuideWalks', ['save', 'wonder', 'masons'].every(x => ids.includes(x)) && fin.wonder, ids.join(' › '));
+  ck('andTheRaidIsMetAndBeaten', ids.includes('raid') && fin.done.includes('raid'), ids.join(' › ') + ' / done ' + fin.done.join(','));
+  ck('andTheWonderIsTheRoadTheGuideWalks', ['save', 'wonder'].every(x => ids.includes(x) && fin.done.includes(x)) && fin.wonder, ids.join(' › ') + ' / done ' + fin.done.join(','));
+  ck('andEveryTapOfGameThreeWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
+  ck('andItsRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
+  ck('andEveryLineOfGameThreeWasShort', run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   const end = await endScreen(p);
   ck('theThirdWinPaysOneImperialCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:3': ['imperial'] }), JSON.stringify(end.runs));
   ck('andTheJourneyEndsOpeningTheWholeGame', end.doors.includes('pro-open:Your own world') && /journey is complete/i.test(end.line) && Object.keys(end.prog.done || {}).length === 3,
