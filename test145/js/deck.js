@@ -473,7 +473,9 @@ const Deck = {
      0, and a config without the table stands down to the loss table. */
   table(rep) {
     const D = CFG.CARDS.DROPS;
-    if (rep.win) return D[rep.mode] || D.loss;
+    // a win of a mode with no table of its own rolls Moderate's: the server's
+    // own fallback (grant_card's v_tbl), or the grant would be refused
+    if (rep.win) return D[rep.mode] || D.moderate;
     const line = CFG.CARDS.BIG_LOSS_SCORE;
     if (D.bigloss && line > 0 && (+rep.score || 0) >= line) return D.bigloss;
     return D.loss;
@@ -566,6 +568,28 @@ const Deck = {
       ...(rep.place ? { place: rep.place | 0, lift: !!c.lift } : {}) });
     return { ok: true, cards, great, pity: forced, place: rep.place || null };
   },
+  /* THE PROLOGUE'S CARD (CFG.PROLOGUE.CARD, js/scenarios.js): a prologue
+     game's win pays exactly ONE card, of its game's tier — Bronze, Iron,
+     Imperial — once per player, EVER (the ledger's 'pro:N' line on the
+     device; migration 0018's grant_prologue on the record, which checks a
+     prologue_N run_start and its won run_end). No drop table, no great
+     victory, no pity and no board lift: the prologue's reward is the
+     journey's, not the difficulty's. Drawn on Math.random, never the run's
+     RNG. A run with no telemetry id (offline, a test page) keeps its card on
+     the device; the record can only take one it can check against a run. */
+  prologue(game, runId) {
+    const tier = CFG.PROLOGUE && CFG.PROLOGUE.CARD && CFG.PROLOGUE.CARD[game];
+    if (!this.on() || !tier) return null;
+    const col = this.col(), key = 'pro:' + game;
+    if (col.runs[key]) return null;
+    const id = this.rollCard(tier, Math.random);
+    this._add(id, 1);
+    col.runs[key] = [{ id, tier, bonus: false, prologue: game }];
+    if (runId && !/^seed:/.test(runId)) this._queue({ op: 'prologue', run: runId, game, card: id });
+    this.saveCol();
+    this.track('card_granted', { card: id, tier, outcome: 'prologue', difficulty: (typeof S !== 'undefined' && S && S.mode) || null, bonus: false, run: runId || null });
+    return { id, tier };
+  },
   /* EARNED IS EARNED (tests/deck-core.mjs — the playtest's test-link slice).
      ?cards=all's toy deck outlives the link on purpose (a phone relaunched
      from the home screen drops the query, and the tester's deck must still
@@ -645,7 +669,12 @@ const Deck = {
        games, and a test link whose deck then hides for the whole spine reads
        as broken. Theirs stands from the first morning; the note still rings
        it once the spine is done. */
-    return typeof S !== 'undefined' && !!S && !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
+    if (typeof S === 'undefined' || !S) return false;
+    /* THE PROLOGUE keeps the deck out of its first game and brings it into
+       the second when its Elder teaches it (Prologue.deckHolds) — for a test
+       deck too: the journey is played as a new player plays it */
+    if (S.scenario && window.Prologue && Prologue.deckHolds) return !!Prologue.deckHolds();
+    return !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
   },
   /* A CARD HAS THE FLOOR (tests/tutorial.mjs §15 — the five-player
      playtest, on the operator's own path: a fresh device arms the tutorial by
@@ -1235,7 +1264,7 @@ Object.assign(Deck, {
       if (v.asked) out.sent++;
       op.n = (op.n || 0) + 1;
       op.why = v.why;
-      if (v.verdict === 'wait' && op.op === 'grant') {
+      if (v.verdict === 'wait' && (op.op === 'grant' || op.op === 'milestone' || op.op === 'prologue')) {
         op.wait = op.wait || Date.now();
         if (op.n >= this.SYNC.NO_RUN_TRIES && Date.now() - op.wait > this.SYNC.NO_RUN_DAYS * 864e5) {
           v.verdict = 'drop';
@@ -1251,9 +1280,11 @@ Object.assign(Deck, {
         else { out.dropped++; this._syncNote(op, v.why); }
       } else if (v.verdict === 'wait') {
         for (const id of (op.cards || [])) held[id] = 1;
+        if ((op.op === 'milestone' || op.op === 'prologue') && op.card) held[op.card] = 1;
       } else if (v.verdict === 'bad') {
         op.bad = op.bad || Date.now();
         if (op.op === 'grant') for (const id of (op.cards || [])) held[id] = 1;
+        if ((op.op === 'milestone' || op.op === 'prologue') && op.card) held[op.card] = 1;
         bad.push(op);
       } else { stop = v.why || 'network'; break; }
     }
@@ -1285,9 +1316,6 @@ Object.assign(Deck, {
     // the retry first: a reconcile that finds the disk moved schedules its own
     this._syncLater(c.queue.length > 0);
     if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
-    // A VOTE EARNS A CARD (js/vote.js, its own file): what a vote did, told
-    // once the record's card is on the device — nothing at all without it
-    if (out.reconciled && window.Vote && Vote.afterSync) { try { out.votes = await Vote.afterSync(uid); } catch (e) {} }
     out.ok = !stop && !c.queue.length;
     out.why = stop || (c.queue.length ? 'held' : '');
     // an op queued while this drain was in flight goes out right behind it
@@ -1322,6 +1350,16 @@ Object.assign(Deck, {
       if (!op.run) return { verdict: 'drop', why: 'no_run_id' };
       name = 'grant_card';
       args = { p_run_id: String(op.run), p_cards: (op.cards || []).slice(0, 2), p_outcome: op.outcome || null };
+    } else if (op.op === 'milestone') {
+      // a retired first-game op (build 178's test page only): the door
+      // still answers if 0017 was pasted
+      if (!op.run || !op.card) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_milestone';
+      args = { p_run_id: String(op.run), p_card: String(op.card) };
+    } else if (op.op === 'prologue') {
+      if (!op.run || !op.card || !op.game) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_prologue';
+      args = { p_run_id: String(op.run), p_game: op.game | 0, p_card: String(op.card) };
     } else if (op.op === 'consume') {
       name = 'consume_card';
       args = { p_card_key: op.card, p_play_id: op.play, p_run_id: op.run || null,

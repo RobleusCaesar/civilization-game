@@ -143,7 +143,7 @@ const AI = {
       raider: { skip: 'the barbarians\' fighter' }, brute: { skip: 'the barbarians\' fighter' },
     },
     // mode dials the chief reads with a default of its own (a mode may leave them out)
-    optionalDials: ['aiEarly', 'aiHarass', 'aiHarassLead', 'aiRaidCdMult', 'aiVulnDay', 'aiWonderDay', 'aiGather',
+    optionalDials: ['aiOff', 'aiEarly', 'aiHarass', 'aiHarassLead', 'aiRaidCdMult', 'aiVulnDay', 'aiWonderDay', 'aiGather',
       'aiActions', 'aiRampDays', 'aiVillEvery', 'aiVillCap'],
   },
 
@@ -2095,6 +2095,7 @@ const AI = {
      dawn pass's alone, untouched, and nothing is forgotten here. No RNG. */
   glance() {
     const ai = S.ai; if (!ai || !ai.seen || !Bld.tcOf('A')) return;
+    if (G.modeCfg().aiOff) return;   // a rival asleep (prologue_1) looks at nothing
     const W = CFG.W, N = W * CFG.H, seen = ai.seen;
     if (!this._gl || this._gl.length !== N) this._gl = new Uint8Array(N); else this._gl.fill(0);
     const got = this._gl; let any = false;
@@ -5848,6 +5849,11 @@ const AI = {
   _daily() {
     const ai = S.ai;
     const m = G.modeCfg();
+    /* A RIVAL ASLEEP (CFG.MODES.prologue_1.aiOff): the first prologue game
+       teaches with nobody else on the map; its rival hall stands dormant in a
+       pocket nobody can reach, so the run has a rival to be won against and
+       nothing that moves */
+    if (m.aiOff) return;
     const P = this.persona();
     this.assess();          // LAYER 1: read the board before deciding anything
     const tc = Bld.tcOf('A');

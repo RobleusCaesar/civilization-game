@@ -308,7 +308,7 @@ const Assets = {
   ENDGAME_DIR: 'assets/endgame/',
   ENDGAME_MAX: 12,                 // most pictures probed per bucket
   ENDGAME_OUTCOMES: ['win', 'loss'],
-  endgameModes() { return Object.keys(CFG.MODES); },
+  endgameModes() { return Object.keys(CFG.MODES).filter(m => !CFG.MODES[m].hidden); },   // a profile wears its base's pictures
   endgame: {},                     // 'win/calm' -> [img, …] in the order they were found
   endgameKey(outcome, mode) { return outcome + '/' + mode; },
   endgameUrl(outcome, mode, n) {
@@ -793,6 +793,17 @@ const Assets = {
   _tryTrees() {
     for (const style of this.TREE_STYLES) for (const size of ['s', 'l', 'xl'])
       this._tryTreePiece(style, size, 0);   // xl exists only for dome (the elder) — 404s are free
+    this._treesAsked = true;
+    if (this.pendingTrees <= 0) this._treeDone(0);
+  },
+  /* THE TREES ARE IN: every cascade has met its first 404. The V4 ground's
+     shade is these stamps alone (TerrainX.activate), so a new world's ground
+     waits for them — not for the whole world's art */
+  pendingTrees: 0, _treesAsked: false, _idleTrees: [],
+  whenTreesIdle() { return (!this._treesAsked || this.pendingTrees > 0) ? new Promise(r => this._idleTrees.push(r)) : Promise.resolve(); },
+  _treeDone(d) {
+    this.pendingTrees -= d;
+    if (this.pendingTrees <= 0 && this._treesAsked && this._idleTrees.length) { const l = this._idleTrees; this._idleTrees = []; for (const f of l) f(); }
   },
   /* ---- THE MOUNTAIN KIT: drawn massifs, CHAINED into ranges ----
 
@@ -997,8 +1008,10 @@ const Assets = {
   _tryTreePiece(style, size, li) {
     if (li >= 18) return;                         // letters a..r, the cascade stops at the first 404
     const img = new Image();
-    img.onload = () => { this.setTreePiece(style + '-' + size, img, String.fromCharCode(97 + li)); this._tryTreePiece(style, size, li + 1); };
-    img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ };
+    this.pendingTrees++;
+    // the next letter is asked for before this one is counted done, so a cascade never reads as idle mid-way
+    img.onload = () => { this.setTreePiece(style + '-' + size, img, String.fromCharCode(97 + li)); this._tryTreePiece(style, size, li + 1); this._treeDone(1); };
+    img.onerror = () => { /* the catalog ends here — procedural fills the gaps */ this._treeDone(1); };
     this._track(this._prio(img, 'high'), true);
     img.src = this.treeUrl(style, size, String.fromCharCode(97 + li));
   },
@@ -1489,7 +1502,10 @@ const Assets = {
                  not a generated sheet; 'gather' is the fishing haul. */
               fishboat: ['walk', 'idle', 'gather'],
               transport: ['walk', 'idle'],
-              fireship: ['walk', 'idle', 'fight'] },
+              /* build 167: the Bronze Age fire galley rows, flings its fire
+                 pots, BURNS when hurt (R.HULL_BURN_AT) and SINKS in its own
+                 art (BattleFX.sink) */
+              fireship: ['walk', 'idle', 'fight', 'burn', 'sink'] },
   /* the DRAW BOX per kind, in world px — default CFG.TILE (32). A bigger
      animal is a draw-box question, not a canvas question (ART_PLAN): the
      bear ships 96px frames into a 48px box, the same exact 2:1 native
@@ -1621,7 +1637,8 @@ const Assets = {
                   elite:    ['idle', 'walk', 'fight'],
                   // the one dyed hull: the bombard ship flies its village's
                   // colours on the stern banner (the ONLY keyed region)
-                  bombard:  ['idle', 'walk', 'fight'],
+                  // (build 167: the Roman artillery bireme — it burns and sinks in its own art too)
+                  bombard:  ['idle', 'walk', 'fight', 'burn', 'sink'],
                   /* the siege train: wooden machines with a keyed pennant
                      (the only dyed region — a captured-looking engine is a
                      friend/foe bug). No idle sheets on purpose: a machine
@@ -2250,6 +2267,49 @@ const Assets = {
     this._track(img, true);          // WORLD art: a wall can be standing in the demo town
     img.src = this.fortUrl(lv, piece);
   },
+  /* THE DOCK IS DRAWN, ONE PICTURE A SHORE (build 171 — operator: "increase
+     the pixel count and quality of design for the dock. Look up historical
+     examples… make sure it touches land"). A dock faces whichever flank of
+     its plot is the shore (Bld.dockShore), so each level ships THREE faces —
+     assets/dock/dock-l{lv}-{n,s,e}.png, the land on that side, at 256 px for
+     the 2x2 plot (twice the procedural jetty's density) — and the west face
+     is the east one mirrored. L1 a lake-dwelling pole jetty, L2 a Hedeby
+     plank jetty with a turf-roofed boathouse, L3 a Roman stone quay with a
+     treadwheel crane and a horreum. Each is a PixelLab edit of the
+     procedural face it replaces, so the land end meets the canvas edge the
+     same way and R.dockPic seats it on the bank. A face that 404s keeps the
+     procedural jetty (Sprites.dockFace's own canvas). */
+  DOCK_DIR: 'assets/dock/',
+  DOCK_FACES: ['n', 's', 'e'],
+  dock: {},
+  _tryDock(lv, f) {
+    const img = new Image();
+    img.onload = () => this.setDockArt(lv, f, img);
+    img.onerror = () => { /* the procedural face stands */ };
+    this._track(img, false);
+    img.src = this.DOCK_DIR + 'dock-l' + lv + '-' + f + '.png?v=' + (CFG.ART_V || 1);
+  },
+  setDockArt(lv, f, img) {
+    const set = typeof Sprites !== 'undefined' && Sprites.dockFace;
+    if (!set || !set.P || !set.P[lv - 1]) return false;
+    const copy = (flip) => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth || img.width; c.height = img.naturalHeight || img.height;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+      if (flip) { g.translate(c.width, 0); g.scale(-1, 1); }
+      g.drawImage(img, 0, 0);
+      c._dockArt = true;
+      return c;
+    };
+    const put = (face, c) => {
+      for (const o of ['P', 'A']) if (set[o] && set[o][lv - 1]) set[o][lv - 1][face] = c;
+      (this.dock[lv] || (this.dock[lv] = {}))[face] = c;
+      this.loaded['dock/' + lv + '/' + face] = true;
+    };
+    put(f, copy(false));
+    if (f === 'e') put('w', copy(true));
+    return true;
+  },
   // the FORT_GEO frame k of a horizontal strip, as a canvas that blitBld
   // anchors by its tile box (scale = canvas width over the tile's width)
   _fortFrame(img, k) {
@@ -2509,6 +2569,7 @@ const Assets = {
       this._tryFort(lv, piece);
     for (const lv of this.FORT_TIERS) for (const piece of Object.keys(this.FORT_STATES))
       for (const st of this.FORT_STATES[piece]) this._tryFortState(lv, piece, st);
+    for (let lv = 1; lv <= 3; lv++) for (const f of this.DOCK_FACES) this._tryDock(lv, f);
     for (const id of this.DMG_IDS) if (CFG.BUILDINGS[id])
       for (let lv = 1; lv <= CFG.BUILDINGS[id].levels.length; lv++) for (let k = 1; k <= 2; k++) this._tryDmg(id, lv, k);
     for (const key of Object.keys(this.PROPS)) this._tryProp(key, this.PROPS[key], !this.WORK_SITE_RE.test(key));

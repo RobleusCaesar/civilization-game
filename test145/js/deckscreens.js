@@ -145,7 +145,7 @@ const DeckScreens = {
        runs in the very task the run ended (WorldBoard.placeFor). A win held
        off the board (a test deck, a test build, an assisted win the board
        cannot mark yet) stands nowhere. */
-    if (win && !rep.place) {
+    if (win && !rep.place && !S.scenario) {
       try {
         const bh = Screens.boardHold ? Screens.boardHold(true) : { hold: 'held' };
         const held = bh.hold || (bh.ask ? 'not asked' : '');   // a board never seen places nothing
@@ -153,7 +153,10 @@ const DeckScreens = {
         if (!held && B && B.configured && window.WorldBoard && WorldBoard.placeFor) rep.place = WorldBoard.placeFor(rep.score);
       } catch (e) { /* a lift is a nicety: never the reason an ending fails */ }
     }
-    const res = Deck.settle(rep);
+    /* THE PROLOGUE's win pays its journey's card (Prologue.endCard: one of
+       its game's tier, once per player ever) — never the drop tables */
+    const pro = (win && S.scenario && window.Prologue && Prologue.endCard) ? Prologue.endCard(rep) : null;
+    const res = pro || Deck.settle(rep);
     // a card the catalog no longer carries (an older run's grant) never reaches a renderer
     const cards = (res.ok ? res.cards : []).filter(c => c && Deck.card(c.id));
     const prior = this._runs[rep.key];
@@ -276,7 +279,7 @@ const DeckScreens = {
     const E = this.EYEBROW;
     if (!v.win) return v.cause === 'struck_banner' ? E.struck : E.loss;
     if (v.cause === 'wonder') return E.wonder;
-    return E[S.mode] || E.moderate;
+    return E[CFG.baseMode(S.mode)] || E.moderate;
   },
 
   _render(play, fresh) {
@@ -336,6 +339,9 @@ const DeckScreens = {
                  score is one row there), so the mark is the only line under it */
               `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
               (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
+              // THE PROLOGUE ends on its journey's line (Prologue.endLine)
+              ((window.Prologue && Prologue.endLine && Prologue.endLine())
+                ? `<p class="ceNext">${this.esc(Prologue.endLine())}</p>` : '') +
               '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
             /* the list of cards played and the deck tile are a WIDE
                window's (the same ruling, then "those additions are fine on
@@ -350,9 +356,9 @@ const DeckScreens = {
                Claim); a wide window has the room for its words */
             '<div class="ceBtns" style="--i:4">' +
               '<button class="ceBtn gold ceClaim" type="button" data-act="claim"><i class="ceDia"></i>Claim reward<i class="ceDia"></i></button>' +
-              '<div class="ceRow"><button class="ceBtn" type="button" data-act="replay">Replay</button>' +
-                '<button class="ceBtn" type="button" data-act="menu">Menu</button></div>' +
-              `<button class="ceBtn navy ceLb" type="button" data-act="board" aria-label="Leaderboard" title="Leaderboard">${this.PODIUM_SVG}<span class="ceLbW">Leaderboard</span></button>` +
+              '<div class="ceRow">' + this._rowHTML(v) + '</div>' +
+              ((window.Prologue && Prologue.endRow && Prologue.endRow(v.win)) ? '' :
+                `<button class="ceBtn navy ceLb" type="button" data-act="board" aria-label="Leaderboard" title="Leaderboard">${this.PODIUM_SVG}<span class="ceLbW">Leaderboard</span></button>`) +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -540,13 +546,19 @@ const DeckScreens = {
     return order.map(id => Deck.card(id).name + (n[id] > 1 ? ' ×' + n[id] : '')).join(', ') || 'None';
   },
 
+  /* the row under the card: Replay and Menu — or, in THE PROLOGUE, the
+     journey's own two doors (Prologue.endRow: "Continue the journey" and
+     "Play a random world"; a lost third game's retry) */
+  _rowHTML(v) {
+    const pro = window.Prologue && Prologue.endRow ? Prologue.endRow(v.win) : null;
+    if (pro) return pro.map(b => `<button class="ceBtn${b.gold ? ' gold' : ''}" type="button" data-act="${b.act}">${this.esc(b.label)}</button>`).join('');
+    return '<button class="ceBtn" type="button" data-act="replay">Replay</button>' +
+      '<button class="ceBtn" type="button" data-act="menu">Menu</button>';
+  },
   _setButtons(state) {
     const root = this._rootEl(), b = root.querySelector('.ceBtns');
     b.dataset.s = state;
     root.classList.toggle('ceDone', state === 'done');
-    // A VOTE EARNS A CARD (js/vote.js, its own file): once the reward is
-    // claimed, "Want another?" — nothing at all without it
-    if (window.Vote && Vote.onReward) { try { Vote.onReward(b, state); } catch (e) {} }
   },
 
   /* the deck's count as the player should SEE it: the collection minus the
@@ -601,6 +613,8 @@ const DeckScreens = {
       return this.openCollection('endgame', best ? best.tier : null, ids);
     }
     if (act === 'board') { this._skip(); Screens.backTo = 'endgame'; Screens.show('leaders'); return; }
+    // the journey's own doors (js/prologue.js)
+    if (window.Prologue && Prologue.endAct && Prologue.endAct(act)) { this._skip(); return; }
     // REPLAY and MENU leave through Screens' own door, which posts the
     // run to the board on the way out exactly as the old scenes did
     if (act === 'replay') { this._skip(); Screens.endReplay(); return; }
@@ -1098,9 +1112,14 @@ const DeckScreens = {
   closeCollection() {
     this._lostLines = [];
     this._zoomClose(true);
-    if (this._colFrom === 'endgame' && typeof S !== 'undefined' && S && S.over)
+    // back to the reward screen as it was left — asked of the finished run even
+    // when the journey's next game is already held behind it (Prologue.asEnd)
+    const back = () => {
+      if (!(this._colFrom === 'endgame' && typeof S !== 'undefined' && S && S.over)) return false;
       Screens.show('endgame', { win: S.over.win, msg: S.over.msg, back: true });
-    else Screens.show('title');
+      return true;
+    };
+    if (!(window.Prologue && Prologue.asEnd ? Prologue.asEnd(back) : back())) Screens.show('title');
   },
   // the tier of the card most recently found: where a player opening the
   // collection most likely wants to look
@@ -1309,6 +1328,7 @@ const DeckScreens = {
     st.textContent = this.CSS;
     document.head.appendChild(st);
   },
+
 };
 
 /* THE CHROME IS DRAWN, NOT BLOWN UP (the operator's standing ruling: the
@@ -1730,6 +1750,7 @@ DeckScreens.CSS = `
 #cardEnd .ceMeta { margin: 1px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: #b5a888; }
 #cardEnd .ceMeta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; column-gap: 9px; row-gap: 2px; }
 #cardEnd .ceDay, #cardEnd .ceAssist { white-space: nowrap; }
+#cardEnd .ceNext { margin: 6px 0 0; font: italic 600 13px/1.35 Georgia, 'Times New Roman', serif; color: #f0dca0; text-wrap: balance; }
 #cardEnd .ceAssist { display: inline-flex; align-items: center; gap: 4px; color: #e8c15a; }
 #cardEnd .ceAssist::before { content: '·'; color: #b5a888; margin-right: 5px; }
 #cardEnd .ceAssist svg { width: 16px; height: 16px; margin: -2px 0; flex: 0 0 auto; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }

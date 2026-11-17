@@ -155,6 +155,8 @@
       if (c === 'v4') return null;
       if (c !== 'auto' && BIOMES[c]) return c;
       const m = (typeof S !== 'undefined' && S && S.map) || {};
+      // an AUTHORED world names its own landscape (js/scenarios.js — the prologue's maps)
+      if (m.biome && BIOMES[m.biome]) return m.biome;
       return AUTO[(m.landform || 'valley') + ':' + (m.variant || 'classic')] || 'tuscan';
     },
     /* every edit rebuilds the fields (TerrainX.noteEdit diffs them to find what to repaint),

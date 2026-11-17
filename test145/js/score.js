@@ -57,7 +57,7 @@ const Score = {
     if (st.leanIn) add('🎲', 'Read the land — a canny Origin', C.leanIn);
 
     const subtotal = lines.reduce((a, l) => a + l.pts, 0);
-    const mult = C.mult[S.mode] || 1;
+    const mult = C.mult[CFG.baseMode(S.mode)] || 1;
     return {
       lines, subtotal, mult, win: !!win,
       total: Math.round(subtotal * mult),

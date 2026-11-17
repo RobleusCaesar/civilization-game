@@ -57,7 +57,7 @@ const VictoryArt = {
   // hand-authored picture for it if one has been uploaded; called once as
   // the victory screen opens
   begin(mode) {
-    this.mode = CFG.MODES && CFG.MODES[mode] ? mode : 'moderate';
+    this.mode = CFG.MODES && CFG.MODES[mode] ? CFG.baseMode(mode) : 'moderate';
     this.tod = this.TOD_BY_MODE[this.mode] || 'midday';
     this.scene = this.SCENE_BY_MODE[this.mode] || 'hamlet';
     const imgs = window.Assets ? Assets.endgameImgs('win', this.mode) : [];

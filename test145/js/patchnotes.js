@@ -19,6 +19,97 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 179, date: '2026-11-17', title: 'A journey for your first three games',
+    items: [
+      'A new player now begins with a short journey of three games, each on a hand-made valley, with the Elder at your side.',
+      'The Elder says one thing at a time, points at exactly where to tap, and shows a hand if you wait.',
+      'The First Fire teaches food, wood, a house and a new villager. The Growing Clan adds stone, camps and a farm, scouting and your first card. The Two Roads is your first real rival.',
+      'Each journey game won pays a card: Bronze, then Iron, then Imperial.',
+      'After the first game the people ask what to call you.',
+      'The next journey game is made ready while you look at your reward, so it opens the moment you tap Continue, and your clan keeps its colour through all three.',
+      'New worlds paint their ground sooner after you press start.',
+      'Played before? The journey stays out of your way, and anyone can skip it from the title.',
+    ],
+  },
+  {
+    build: 177, date: '2026-11-17', title: 'Learning where new players stop',
+    items: [
+      'The game now notes how far each visit gets in its first minute, so we can find and fix the places new players get stuck.',
+    ],
+  },
+  {
+    build: 176, date: '2026-11-17', title: 'A cleaner title screen',
+    items: [
+      'The vote for a free card banner is gone from the title screen and the reward screen.',
+    ],
+  },
+  {
+    build: 175, date: '2026-11-16', title: 'Trenches look like ditches',
+    items: [
+      'A trench dug without water in it now looks like a real ditch cut into the meadow: earth thrown up along its edges, a dark far bank in shadow, a damp floor with the odd puddle, and grass left standing around it.',
+      'Raised earth banks now look heaped up, lit on one side and shaded on the other, with turf laid back over the top.',
+    ],
+  },
+  {
+    build: 174, date: '2026-11-15', title: 'Soldiers can rise a rank',
+    items: [
+      'A soldier from the Barracks, the Archery Range or the Horse Stable can now be upgraded on the spot to the next rank of his line: a Defender becomes an Axeman, an Axeman a Bronze Champion, an archer a longbow, a rider a horse archer, and so on.',
+      'The gold chevrons beside the info button on his panel do it, for half of what training the new rank would cost. He keeps his place, his orders and his wounds.',
+      'Archers on a tower can be upgraded where they stand, without coming down.',
+      'The button stays greyed until the yard is built up to the rank: an Axeman needs a Barracks at level two. Tapping it then tells you what is missing.',
+    ],
+  },
+  {
+    build: 173, date: '2026-11-15', title: 'One dusk over the whole field',
+    items: [
+      'When a Town Center falls, the darkening dusk now covers the whole map down to the bottom bar, instead of stopping short and leaving a bright strip at the foot of the screen.',
+    ],
+  },
+  {
+    build: 172, date: '2026-11-14', title: 'Blows against buildings are seen',
+    items: [
+      'Soldiers attacking a building now swing at it: raiders battering your Town Center and your own troops pulling down a barbarian camp play their attack instead of standing frozen mid-stride beside the walls.',
+      'Soldiers cutting down a bridge swing at it too.',
+    ],
+  },
+  {
+    build: 171, date: '2026-11-14', title: 'Harbours worth the name',
+    items: [
+      'Docks are redrawn in far finer detail, after real harbours of their age, and still reach onto the shore at every level.',
+      'A first dock is a lakeside jetty of lashed poles on driven piles, with a dugout canoe tied alongside.',
+      'A second dock is a Norse plank jetty on a stone footing, with a turf-roofed boathouse, racks of drying fish and a rowing boat at its side.',
+      'A third dock is a Roman stone quay with mooring posts, a treadwheel crane, stacked amphorae, a tiled warehouse and a merchant ship moored alongside.',
+    ],
+  },
+  {
+    build: 170, date: '2026-11-14', title: 'Crews stay on, docks reach the shore',
+    items: [
+      'When two villagers raise a lumber camp, quarry, mine or lodge together, both now stay on and start working it the moment it is finished, not just the one who laid the last plank.',
+      'Docks now stand on the shore at every level: the jetty reaches onto the bank with its footing on dry ground, and on a bit of coast that is land on one side only it sits against the land, so no strip of water shows between the boards and the bank.',
+    ],
+  },
+  {
+    build: 169, date: '2026-11-14', title: 'Working behind the stones',
+    items: [
+      'A villager working a stone pile, a wood, a berry bush or an orchard from its far side now stands behind it, with the stones, trees or bushes hiding them from the knees down, instead of looking as if they stood on top of it.',
+    ],
+  },
+  {
+    build: 168, date: '2026-11-12', title: 'Towers in front of the mountains',
+    items: [
+      'A tower built at the foot of a mountain now stands in front of the rock, and the archers on it are no longer hidden under the cliff.',
+    ],
+  },
+  {
+    build: 167, date: '2026-11-12', title: 'Ships of their age',
+    items: [
+      'The Fire Warship is now a low Bronze Age war galley: a black hull close to the water, a bird-head prow, a bronze ram and a row of oars, with no smoke rising from it while it sails.',
+      'The Fire Warship can be built from a level 2 Dock and costs a little less.',
+      'The Bombard Ship is now a Roman war galley with a stone-throwing engine on its foredeck, and it still needs a level 3 Dock.',
+      'Both ships row, attack and burn in their own pictures: a badly damaged ship sails on in flames, and a sunken one breaks up and goes under.',
+    ],
+  },
+  {
     build: 166, date: '2026-11-12', title: 'A smarter rival',
     items: [
       'The rival tribe reads the map before it plans: on islands it builds a dock early, sends a small party across the water to find you, and comes by sea when the sea is the only road.',

@@ -79,6 +79,8 @@ const Screens = {
   show(name, opts) {
     opts = opts || {};
     this.current = name;
+    // THE FIRST MINUTE: the origin cards are dealt (Backend.step, once a page)
+    if (name === 'draft' && window.Backend && Backend.step) Backend.step('origin');
     this.el('shell').classList.toggle('show', name !== 'playing');
     const night = this.nightBehind(name) && !!this.wearNight();
     this.el('shell').classList.toggle('night', night);
@@ -125,6 +127,8 @@ const Screens = {
     // leaving the game takes the victory modal with it (it was stamped seen
     // when shown, so it never comes back over a resumed or reloaded world)
     if (name !== 'playing' && this.hideVictoryPaths) this.hideVictoryPaths();
+    // the Elder speaks over the playing screen only (js/prologue.js)
+    if (window.Prologue && Prologue.onScreen) { try { Prologue.onScreen(name); } catch (e) {} }
     // the card announcement stands over one screen only (js/cardintro.js):
     // leaving it takes the announcement away — a no-op when none is open
     if (window.CardIntro) { try { CardIntro.onScreen(name); } catch (e) {} }
@@ -160,6 +164,10 @@ const Screens = {
        instead; New game → the same trial resumes it, any explicit act that
        replaces S (Continue, Load, a different trial) forfeits it honestly. */
     if (window.S && S.draft && !S.draft.done && !S.over) return;
+    /* THE PROLOGUE'S NEXT WORLD OUTRANKS THE DEMO (js/prologue.js): a new
+       device's next journey game is founded behind the title so BEGIN opens
+       it at once — the demo never rolls over it */
+    if (window.S && window.Prologue && Prologue.holding && Prologue.holding()) return;
     this._demo = true;
     /* THE DEMO BAKES ONCE, WITH THE ART. Founded here at page load, it used
        to bake at once — procedural, since no PNG had decoded yet — and then
@@ -278,6 +286,8 @@ const Screens = {
   },
 
   onTitle() {
+    // a new device's journey founds its next world here, in place of the demo
+    if (window.Prologue && Prologue.preload) { try { Prologue.preload(); } catch (e) { console.error('prologue preload', e); } }
     this.ensureDemo();
     this.armCardPrep();
     this.backTo = 'title';
@@ -299,6 +309,7 @@ const Screens = {
     };
     if (window.Backend && Backend.isReady()) {
       Backend.listSaves().then(r => {
+        if (r.ok && Array.isArray(r.data)) this._cloudSaves = r.data.length;   // the prologue asks (Prologue.eligible)
         const rows = ((r.ok && r.data) || []).slice()
           .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
         /* a run that FINISHED is a told story in ALL its snapshots, not just
@@ -339,6 +350,8 @@ const Screens = {
     // THE NIGHT TITLE (js/titlescreen.js) — staged; an early return everywhere else.
     // After the deck's plaque, so the Cards plaque is dressed with the rest.
     if (window.TitleScreen) { try { TitleScreen.onTitle(); } catch (e) { console.error('night title', e); } }
+    // THE PROLOGUE's title: one dominant BEGIN and a small skip (js/prologue.js)
+    if (window.Prologue && Prologue.onTitle) { try { Prologue.onTitle(); } catch (e) { console.error('prologue title', e); } }
   },
 
   /* CONTINUE WORKS THE FIRST TIME (PX-21a, tests/finished-run-continue.mjs
@@ -624,6 +637,7 @@ const Screens = {
         if (!op.has(S)) op.set(S, { vis: this._vis(), play: S.playtime || 0, resumeMs: G._freshRun ? null : prepMs });
         if (window.Backend) Backend.entered = true;
       }
+      let fresh = false;
       if (G._freshRun && !this._demo && window.Backend && Backend.logRunStart) {
         G._freshRun = false;
         const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
@@ -637,6 +651,13 @@ const Screens = {
         });
         S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
         if (window.Feedback) Feedback.runKey = S.runId;   // the error tally is this run's
+        fresh = true;
+      }
+      /* THE FIRST MINUTE: the world is playable — and its play clock starts
+         here for the 30 s and 60 s steps (Backend.stepTick) */
+      if (!this._demo && window.S && window.Backend && Backend.step) {
+        if (Backend._play0 == null) Backend._play0 = S.playtime || 0;
+        Backend.step('playable', { fresh });
       }
     } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
@@ -879,6 +900,8 @@ const Screens = {
      as a reminder of what the tribe carries; a tap waves it away early.
      A player who wants a FRESH world goes Menu → New Game. */
   replayRun() {
+    // a prologue game replays as itself: its own authored world, afresh (Prologue.retry)
+    if (window.S && S.scenario && window.Prologue && Prologue.retry) { Prologue.retry(); return; }
     const ok = window.S && S.seed != null && CFG.SIZES[S.sizeKey];
     if (!ok) { this.backTo = 'title'; this.show('newgame'); return; }   // nothing to replay
     const r = {
@@ -959,9 +982,13 @@ const Screens = {
     const v = this.lsGet('neo-tutorial-ask');
     if (v === '1') return true;
     if (v === '0') return false;
+    // a device the prologue has taught (or that skipped it) is never handed the old lesson by default
+    if (window.Prologue && Prologue.taught && Prologue.taught()) return false;
     return this.gamesFounded() < this.TUT_AUTO_GAMES;
   },
   tutorialExplicit() { return this.lsGet('neo-tutorial-ask') === '1'; },
+  // how many cloud saves this player holds (onTitle's listSaves; 0 until it answers)
+  _cloudSaves: 0,
   // the world foundRun forces for a lesson: the only one the lesson promises
   teachableWorld() {
     return !!(window.S && S.map && S.map.landform === 'valley' && S.map.variant === 'classic' && S.sizeKey === 'medium');
@@ -1008,6 +1035,7 @@ const Screens = {
   // (js/deckui.js) — a lesson note under a card is two things to read at once
   modalUp() {
     return (this._modalUp && !!document.getElementById('victoryModal')) ||
+      !!(window.Prologue && Prologue.modalUp && Prologue.modalUp()) ||
       !!(window.DeckUI && DeckUI.hasFloor());
   },
   hideVictoryPaths() {
@@ -1020,7 +1048,11 @@ const Screens = {
     this.hideVictoryPaths();
     this.lsSet('neo-victory-seen', '1');
     this._modalUp = true;
-    const d = CFG.BUILDINGS.wonder, lv = (d.levels || [])[0] || {}, cost = lv.cost || {};
+    // the price and the days THIS run asks (a profile's monument may be scaled:
+    // CFG.MODES.prologue_3.wonderCost / wonderTime) — the modal must stay true
+    const d = CFG.BUILDINGS.wonder, lv = (d.levels || [])[0] || {};
+    const cost = (Bld.effCost && Bld.effCost('P', 'wonder')) || lv.cost || {};
+    const days = Math.max(1, Math.round((lv.time || 45) * (Bld.wonderTimeMult ? Bld.wonderTimeMult() : 1)));
     const price = Bld.costStr ? Bld.costStr(cost) : '';
     const el = document.createElement('div');
     el.id = 'victoryModal';
@@ -1035,7 +1067,7 @@ const Screens = {
           '<div class="vpRoad"><canvas class="vpArt" data-art="wonder"></canvas>' +
             // "Raise the The Sun Obelisk": half the monuments carry their own article
             '<b>Raise ' + (/^the\b/i.test(d.name || '') ? '' : 'the ') + (d.name || 'Ancient Wonder') + '</b>' +
-            '<p>Build it — <span class="vpPrice">' + price + '</span>, ' + (lv.time || 45) + ' days of work — and win without a war. ' +
+            '<p>Build it — <span class="vpPrice">' + price + '</span>, ' + days + ' days of work — and win without a war. ' +
             'It waits at the <b>end of your Build menu</b>. The rival is racing for their own.</p></div>' +
         '</div>' +
         '<button class="abtn big gold" id="vpGotIt">Got it</button>' +
@@ -1168,7 +1200,11 @@ const Screens = {
     let seen = false;
     try { seen = !!localStorage.getItem('neo-draft-help'); } catch (e) {}
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
+    // the journey's draft is explained by the Elder in one line, never the help panel
+    if (window.Prologue && Prologue.onDraft) { try { Prologue.onDraft(); } catch (e) {} }
     this.syncTutToggle();
+    // a prologue draft is part of its lesson: the old lesson's switch is not offered there
+    { const tt = this.el('btnTutToggle'); if (tt) tt.style.display = (window.S && S.scenario) ? 'none' : ''; }
     /* SETTINGS CAN TICK THE LESSON ON TOO (js/settings.js). A pending draft on
        a world the lesson cannot teach is founded again here — the draft
        toggle's own rule (audit MAP-V01) — so the lesson is never armed on an
@@ -1207,6 +1243,7 @@ const Screens = {
        old Begin): a loaded save and the pause screen's Resume also pass
        through enterGame and must never arm one. */
     Cards.pick(i);
+    if (window.Backend && Backend.step) Backend.step('picked');
     /* THE KEEP SEALS THE DOOR. The pick is applied and the run is committed
        — the burn is the transition INTO the game, not a screen the player
        is still on. The back button disappears the same instant, or a
@@ -1237,7 +1274,7 @@ const Screens = {
          And the games-founded count steps AFTER the arming read, so game
          two reads 1, not 2. A PINNED run (a shared ?seed= link that beat an
          auto want, foundRun) arms nothing and spends nothing. */
-      if (!this._pinnedRun) {
+      if (!this._pinnedRun && !(window.S && S.scenario)) {
         if (window.Tutorial) Tutorial.maybeStart();
         this.noteGameFounded();
       }
@@ -1246,7 +1283,7 @@ const Screens = {
          screen is actually up: on a cold cache enterGame parks behind the
          art plaque for seconds, and a modal appended under the shell then
          was stamped seen, its Escape live, and invisible */
-      this._victoryPathsPending = this.victoryPathsDue();
+      this._victoryPathsPending = !(window.S && S.scenario) && this.victoryPathsDue();   // the Elder teaches the two roads in the prologue
       this.enterGame();
       // the rival's origin is a NOTIFICATION now, difficulty-gated, and it
       // has to land in-game: toasts are hidden on every shell screen
@@ -2012,6 +2049,10 @@ const Screens = {
     const P = typeof S !== 'undefined' && S && S.deck && Array.isArray(S.deck.played) ? S.deck.played : [];
     const played = P.filter(x => x && (!window.Deck || !Deck.card || Deck.card(x.id))).length;
     if (!win) return { hold: '', played };
+    /* THE PROLOGUE is not a board game (js/scenarios.js): an authored,
+       softened world whose score would sit beside every real Calm win */
+    if (typeof S !== 'undefined' && S && S.scenario)
+      return { hold: 'The journey\'s games stay off the world board — your next one goes up.', played };
     /* A TEST BUILD POSTS NOTHING (CLAUDE.md, "THE TEST BUILD"): its games
        are not the players', so its wins stay off the world board — the
        telemetry rule, Backend.telemetryAllowed (a test's mock is exempt; a
@@ -2313,13 +2354,23 @@ const Screens = {
     on('btnContinue', () => this.continueGame());
     // the title stays live under the plaque, but a saved game on its way in
     // is never left for a new one (PX-21a); the plaque itself says why
-    on('btnTitleNew', () => { if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; } this.backTo = 'title'; this.show('newgame'); });
+    on('btnTitleNew', () => {
+      if (this.opening()) { if (!this._prepRun) this.say('Opening your saved game…'); return; }
+      if (window.Backend && Backend.step) Backend.step('newgame');
+      this.backTo = 'title';
+      this.show('newgame');
+    });
     on('btnTitleLoad', () => { this.backTo = 'title'; this.show('load'); });
     on('btnTitleBoard', () => { this.backTo = 'title'; this.show('leaders'); });
     on('ldrBack', () => {
       // the card system's reward screen sends its LEADERBOARD here and is
       // brought back to itself, as it was left (js/deckscreens.js)
-      if (this.backTo === 'endgame' && window.S && S.over) { this.show('endgame', { win: S.over.win, msg: S.over.msg, back: true }); return; }
+      const back = () => {
+        if (!(this.backTo === 'endgame' && typeof S !== 'undefined' && S && S.over)) return false;
+        this.show('endgame', { win: S.over.win, msg: S.over.msg, back: true });
+        return true;
+      };
+      if (window.Prologue && Prologue.asEnd ? Prologue.asEnd(back) : back()) return;
       this.show(this.backTo === 'paused' ? 'paused' : 'title');
     });
     on('btnSubmitScore', () => (window.Backend && Backend.isReady() && !this._markWait) ? this.submitScore() : this._offerSubmit());
@@ -2359,7 +2410,7 @@ const Screens = {
     });
     on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
     // back to the trial pick; the pending draft rides S and resumes intact
-    on('btnDraftBack', () => this.show('newgame'));
+    on('btnDraftBack', () => this.show(window.S && S.scenario ? 'title' : 'newgame'));
     on('btnDraftGotIt', () => {
       this.el('draftOverlay').style.display = 'none';
       try { localStorage.setItem('neo-draft-help', '1'); } catch (e) {}

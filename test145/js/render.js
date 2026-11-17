@@ -5715,6 +5715,142 @@ const R = {
     };
   },
 
+  /* THE EARTHWORKS (tests/earthwork.mjs — operator, build 175: "If I create a
+     trench just so I have a protective barrier it kinda looks like a long fake
+     chocolate bar… make it look a little more like a ditch… Check that
+     mounding also looks good"). A dry TRENCH was one flat chocolate slab from
+     tile edge to tile edge with a two-pixel rim: a bar laid on the meadow, not
+     a hole in it. Both works are now drawn from a DISTANCE FIELD to the ground
+     around them, in the tile's own 16 art cells, wobbled by value noise in
+     WORLD cells so a dug line is one ragged channel with no seam where two
+     tiles meet:
+       the DITCH — a ragged spoil of upcast earth on the lip, a crisp rim, the
+       walls (the north and west ones in shadow, since the light comes from the
+       north-west, the south and east ones lit), the rim's cast shadow across
+       the floor, and a damp, uneven floor with stones and the odd puddle;
+       the BANK — a rounded heap rising off the meadow, its north-west slopes
+       lit, its south-east slopes shaded down to a dark foot, a grassy crown
+       with scuffs of bare earth and a few stones.
+     A picture only: box-exact (nothing outside its own tile), no RNG, no S
+     write; the tile's terrain decides every rule as before. */
+  _ewN(wx, wy, s) {
+    const hs = (a, b) => { let k = (a * 374761393 + b * 668265263 + s * 2246822519) >>> 0; k = Math.imul(k ^ (k >>> 13), 1274126177) >>> 0; return ((k ^ (k >>> 16)) >>> 0) / 4294967296; };
+    const x0 = Math.floor(wx), y0 = Math.floor(wy), fx = wx - x0, fy = wy - y0;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = hs(x0, y0), b = hs(x0 + 1, y0), c = hs(x0, y0 + 1), d = hs(x0 + 1, y0 + 1);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  },
+  _ewH(wx, wy, s) { let k = (wx * 73856093 ^ wy * 19349663 ^ s * 83492791) >>> 0; k = Math.imul(k ^ (k >>> 15), 2246822519) >>> 0; return ((k ^ (k >>> 13)) >>> 0) / 4294967296; },
+  /* distance (in art cells) from cell (i, j) of tile (x, y) to the edge of the
+     work, and which way that edge faces — the outward normal of the nearest
+     open side. A corner where two sides open is ROUNDED (radius R). */
+  _ewField(x, y, t, at, R) {
+    const same = v => t === T.TRENCH ? (v === T.TRENCH || v === T.MOAT) : v === T.MOUND;
+    const oN = !same(at(x, y - 1)), oS = !same(at(x, y + 1)), oW = !same(at(x - 1, y)), oE = !same(at(x + 1, y));
+    const dNW = !oN && !oW && !same(at(x - 1, y - 1)), dNE = !oN && !oE && !same(at(x + 1, y - 1));
+    const dSW = !oS && !oW && !same(at(x - 1, y + 1)), dSE = !oS && !oE && !same(at(x + 1, y + 1));
+    return (i, j) => {
+      const u = i + 0.5, v = j + 0.5, dn = v, ds = 16 - v, dw = u, de = 16 - u;
+      let d = 99, nx = 0, ny = 0;
+      const take = (dd, ax, ay) => { if (dd < d) { d = dd; nx = ax; ny = ay; } };
+      if (oN) take(dn, 0, -1); if (oS) take(ds, 0, 1); if (oW) take(dw, -1, 0); if (oE) take(de, 1, 0);
+      // two open sides meeting: round the corner
+      const corner = (o1, o2, d1, d2, ax, ay) => {
+        if (!(o1 && o2) || d1 >= R || d2 >= R) return;
+        const a = R - d1, b = R - d2, r = Math.hypot(a, b), dd = R - r;
+        if (dd < d) { d = dd; nx = ax * a / (r || 1); ny = ay * b / (r || 1); }
+      };
+      corner(oN, oW, dn, dw, -1, -1); corner(oN, oE, dn, de, 1, -1); corner(oS, oW, ds, dw, -1, 1); corner(oS, oE, ds, de, 1, 1);
+      // only a diagonal open: the inside of a turn, a rounded bite
+      const bite = (on, cx, cy) => { if (!on) return; const ax = u - cx, ay = v - cy, dd = Math.hypot(ax, ay); if (dd < d) { d = dd; nx = -ax / (dd || 1); ny = -ay / (dd || 1); } };
+      bite(dNW, 0, 0); bite(dNE, 16, 0); bite(dSW, 0, 16); bite(dSE, 16, 16);
+      return { d, nx, ny };
+    };
+  },
+  earthwork(g, x, y, t, at) {
+    const TL = CFG.TILE, px = TL / 16, AP = ART.PALETTE, bx = x * TL, by = y * TL;
+    const fill = (i, j, c) => { g.fillStyle = c; g.fillRect(bx + i * px, by + j * px, px, px); };
+    if (t === T.TRENCH) {
+      const F = this._ewField(x, y, t, at, 6);
+      /* the cut seen from above and a little south: the bank beyond it (north)
+         shows its whole face, dark, turned from the north-west sun; the near
+         bank (south) is a thin lit edge; west faces read shaded, east lit */
+      const GR = 1.5, SP = 1.4, LIP = 0.8;
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+        const wx = x * 16 + i, wy = y * 16 + j;
+        const f = F(i, j);
+        const wob = (this._ewN(wx / 5, wy / 5, 11) - 0.5) * 1.8 + (this._ewN(wx / 2, wy / 2, 12) - 0.5) * 0.7;
+        const d = f.d + wob;
+        const hsh = this._ewH(wx, wy, 7);
+        const back = f.ny < -0.5, near = f.ny > 0.5, west = !back && !near && f.nx < 0;
+        const WALL = back ? 3.4 : near ? 0.8 : 1.6;
+        if (d < GR) continue;                                      // the meadow left standing
+        if (d < GR + SP) {
+          // the SPOIL thrown up along the edge: broken lumps of earth in the grass
+          const lump = this._ewN(wx / 2.4, wy / 2.4, 13);
+          if (lump > (d > GR + SP - 0.7 ? 0.38 : 0.6)) {
+            const lit = this._ewN((wx - 1) / 2.4, (wy - 1) / 2.4, 13) < lump - 0.05;
+            fill(i, j, hsh < 0.16 ? AP.grass[1] : lit ? AP.soil[2] : AP.soil[1]);
+          }
+        } else if (d < GR + SP + LIP) {
+          fill(i, j, near ? AP.soil[3] : back ? AP.soil[1] : west ? AP.soil[1] : AP.soil[2]);   // the cut edge
+        } else if (d < GR + SP + LIP + WALL) {
+          // the WALL: the far face dark and banded with the strata it was cut through
+          if (back) {
+            const k = (d - GR - SP - LIP) / WALL, band = this._ewN(wx / 6, wy, 16);
+            let c = k < 0.35 ? AP.soil[1] : k < 0.75 ? AP.soil[0] : AP.ink[1];
+            if (band > 0.72 && k < 0.75) c = AP.ink[2];
+            if (hsh > 0.99) c = AP.stone[1];
+            fill(i, j, c);
+          } else fill(i, j, near ? AP.soil[2] : west ? AP.ink[2] : AP.soil[1]);
+        } else {
+          // the FLOOR: dark damp earth, a cast shadow under the far bank, the odd puddle
+          const n = this._ewN(wx / 3, wy / 3, 14);
+          let c = n < 0.45 ? AP.soil[0] : n < 0.8 ? AP.ink[2] : AP.soil[1];
+          if (f.ny < 0 && f.d < GR + SP + LIP + 3.4 + 1.5) c = AP.ink[1];
+          const pud = this._ewN(wx / 4, wy / 4, 15);
+          if (pud > 0.84) c = pud > 0.9 ? AP.water[1] : AP.water[0];
+          else if (hsh > 0.988) c = AP.stone[1];
+          fill(i, j, c);
+          if (pud > 0.9 && hsh < 0.08) fill(i, j, AP.water[2]);
+        }
+      }
+    } else {
+      const F = this._ewField(x, y, t, at, 5);
+      /* a BANK of heaped earth: bare soil on its flanks with the turf it was
+         cut from laid back over its crown, lit on its north-west slopes, dark
+         on its south-east ones, and throwing a shadow on the meadow south-east */
+      const RISE = 4.2;
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+        const wx = x * 16 + i, wy = y * 16 + j;
+        const f = F(i, j);
+        const wob = (this._ewN(wx / 5, wy / 5, 21) - 0.5) * 1.8 + (this._ewN(wx / 2, wy / 2, 22) - 0.5) * 0.7;
+        const d = f.d + wob - 1.0;
+        const hsh = this._ewH(wx, wy, 17);
+        const light = -(f.nx + f.ny) * 0.7071;          // the slope's turn toward the north-west sun
+        if (d < 0) {
+          if (light < -0.2 && d > -1.6) { g.fillStyle = 'rgba(14,10,4,0.34)'; g.fillRect(bx + i * px, by + j * px, px, px); }
+          continue;
+        }
+        const turf = this._ewN(wx / 2.6, wy / 2.6, 23);
+        let c;
+        if (d < RISE) {
+          const k = d / RISE;
+          if (light > 0.25) c = turf > 0.66 ? AP.grass[2] : k > 0.55 ? AP.soil[3] : AP.soil[2];
+          else if (light < -0.25) c = turf > 0.7 ? AP.leaf[1] : k < 0.4 ? AP.ink[2] : AP.soil[0];
+          else c = turf > 0.68 ? AP.grass[1] : k < 0.35 ? AP.soil[1] : AP.soil[2];
+          if (d < 0.7) c = light > 0.25 ? AP.soil[1] : AP.ink[2];        // the foot, dug into the ground
+          if (hsh > 0.992) c = AP.stone[2];
+        } else {
+          // the CROWN: turf laid back, scuffed bare in places
+          c = turf > 0.34 ? (this._ewN(wx / 2, wy / 2, 24) > 0.55 ? AP.grass[3] : AP.grass[2]) : AP.soil[2];
+          if (d < RISE + 0.8 && light > 0.25 && turf > 0.34) c = AP.grass[3];             // the lit edge of the crown
+          if (hsh > 0.993) c = AP.stone[2];
+        }
+        fill(i, j, c);
+      }
+    }
+  },
   drawTile(g, x, y) {
     // THE MAP EDGE — the outermost ring is the hard border no unit may enter and
     // nothing may be built on (Path.passable / Bld.tileFree). Paint it as the same
@@ -5747,9 +5883,8 @@ const R = {
     else if (wet(t)) {
       // water is painted procedurally in the ground-layer step below (paintWater):
       // calm world-space swells that run across tile borders, so no per-tile pattern
-    } else if (t === T.MOUND) {
-      const gr = Sprites.terrain[T.GRASS];               // a berm sits on a grass base
-      img = gr[(x * 7 + y * 13) % gr.length];
+    } else if (t === T.MOUND || t === T.TRENCH) {
+      // drawn by R.earthwork over the ground, no tile sprite
     } else if (t === T.FOREST) {
       // density from how enclosed the tile is: a lone/edge tile is SPARSE, a
       // perimeter tile MEDIUM, a fully-surrounded core tile DENSE — a natural
@@ -5858,6 +5993,13 @@ const R = {
       if (t !== T.HILLS) this.blockShade(g, x, y, terr);
       if (ovr) this.blitTile(g, ovr, x, y);       // ...then the transparent-floored resource on top
       else if (img) g.drawImage(img, x * TL, y * TL);   // (hills have no tile sprite — see rockMass)
+    } else if (t === T.TRENCH || t === T.MOUND) {
+      /* A DUG DITCH AND A HEAPED BANK (R.earthwork, build 175): the ground
+         first, then the work cut into it or piled on it — never a flat slab
+         edge to edge (the operator's "long fake chocolate bar") */
+      this.paintGround(g, x, y, h);
+      if (ovr) this.blitTile(g, ovr, x, y);
+      else this.earthwork(g, x, y, t, at);
     } else if (ovr) {
       this.blitTile(g, ovr, x, y);
     } else if (t === T.RUIN) {
@@ -5875,58 +6017,6 @@ const R = {
        which is the whole reason the tracing exists. The rule this branch used
        to carry, that RECLAIMED land raises no shore, went with it: see `nat`
        in buildShoreLayer. */
-    /* (an empty `if (t === T.TRENCH) {}` stood here since fa08f38, which made
-       the branch below unreachable — a dug ditch has been drawing its bare
-       floor with no clods and no earth walls ever since.) */
-    if (t === T.TRENCH) {
-      // scattered clods of overturned soil, placed from the tile's own map hash so
-      // no two ditch tiles share a pattern — a wide floor never shows a grid
-      let hh = h;
-      for (let k = 0; k < 5; k++) {
-        hh = (hh * 1103515245 + 12345) >>> 0;
-        g.fillStyle = (hh & 1) ? AP.ink[0] : AP.soil[1];
-        g.fillRect(x * TL + (1 + (hh >> 4) % 13) * px, y * TL + (1 + (hh >> 12) % 13) * px, px, px);
-      }
-      // dry ditch: raise a sloped earth wall only on edges facing solid ground, so
-      // a dug line of tiles merges into ONE continuous channel (no per-tile borders
-      // between neighbouring ditches). Near walls (N/W) catch light and far walls
-      // (S/E) drop into shadow, so the uniform floor reads as a sunken divot.
-      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const tt = at(x + ox, y + oy);
-        if (tt === T.TRENCH || tt === T.MOAT) continue;   // same channel — floor runs straight through
-        const band = (col, off) => {
-          g.fillStyle = col;
-          if (ox === 1) g.fillRect(x * TL + TL - (off + 1) * px, y * TL, px, TL);
-          else if (ox === -1) g.fillRect(x * TL + off * px, y * TL, px, TL);
-          else if (oy === 1) g.fillRect(x * TL, y * TL + TL - (off + 1) * px, TL, px);
-          else g.fillRect(x * TL, y * TL + off * px, TL, px);
-        };
-        const lit = ox === -1 || oy === -1;               // top & left walls face the light
-        band(lit ? AP.soil[3] : AP.soil[1], 0);           // ground-level lip at the rim
-        band(lit ? AP.soil[2] : AP.ink[0], 1);            // slope wall dropping toward the floor
-      }
-    } else if (t === T.MOUND) {
-      // a raised grassy earthwork — brighter than the surrounding turf, with a lit
-      // top-left crown and a shadowed lower-right that sell the elevation; a line of
-      // them merges into one continuous embankment (shared edges, no seams)
-      const mnd = v => v === T.MOUND;
-      const li = mnd(at(x - 1, y)) ? 0 : 2, ri = mnd(at(x + 1, y)) ? 0 : 2;
-      const ti = mnd(at(x, y - 1)) ? 0 : 2, bi = mnd(at(x, y + 1)) ? 0 : 2;
-      const bx = x * TL, by = y * TL, w = TL - (li + ri) * px, hgt = TL - (ti + bi) * px;
-      g.fillStyle = AP.grass[3]; g.fillRect(bx + li * px, by + ti * px, w, hgt);            // raised grassy body
-      g.fillStyle = AP.grass[4];                                                            // sunlit crown
-      g.fillRect(bx + li * px, by + ti * px, w, 2 * px);
-      if (!mnd(at(x - 1, y))) g.fillRect(bx + li * px, by + ti * px, px, hgt);              // lit left face
-      let hh = h;   // a scrape of bare earth + a few stones so it reads as heaped-up ground
-      for (let k = 0; k < 6; k++) {
-        hh = (hh * 1103515245 + 12345) >>> 0;
-        const r3 = hh & 3;
-        g.fillStyle = r3 === 0 ? AP.soil[2] : r3 === 1 ? AP.stone[2] : AP.grass[2];
-        g.fillRect(bx + (3 + (hh >> 4) % 10) * px, by + (5 + (hh >> 12) % 6) * px, px, px);
-      }
-      if (!mnd(at(x + 1, y))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + TL - (ri + 2) * px, by + ti * px, 2 * px, hgt); g.fillStyle = AP.ink[0]; g.fillRect(bx + TL - (ri + 1) * px, by + ti * px, px, hgt); }   // shaded right slope + dark edge
-      if (!mnd(at(x, y + 1))) { g.fillStyle = AP.leaf[1]; g.fillRect(bx + li * px, by + TL - (bi + 2) * px, w, 2 * px); g.fillStyle = AP.ink[0]; g.fillRect(bx + li * px, by + TL - bi * px, w, px); }            // shaded foot
-    }
     /* NO ELEVATION HINTS ON ORE (operator ruling, audit ORE-01/03). The
        northern catch-light (hillRelief) and the cast band on the ground to
        the south (hillShadow) date from when HILLS meant raised ground; the
@@ -6587,6 +6677,7 @@ const R = {
   },
   onNewGame() {
     if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
+    this._resTops = null;                                        // the art a gatherer stands behind (resTopAt) is this world's
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
@@ -7540,6 +7631,66 @@ const R = {
     }
     this.redrawFront(g, clip, inGate ? ty : ty + 1, true);
   },
+  /* A RESOURCE SOUTH OF A MAN STANDS IN FRONT OF HIS LEGS (operator, with a
+     screenshot of a miner on the stones: "When villagers are standing on the
+     tile above a resource chopping down they look like they're standing on
+     the tile, versus behind it… you wouldn't see the villager from the knees
+     down"). The trees, stones and bushes are baked into the terrain cache,
+     which draws before every unit, so a gatherer working from the NORTH edge
+     stood on the very thing he was cutting. After each unit, the cache is
+     laid back over his lower body — from his knees (`KNEE` of a tile above
+     his feet) down — but only inside the resource tiles in a row SOUTH of
+     the tile he really stands on (the sim's, not the lean's: a woodcutter
+     and a forager are drawn leaning into the tile they work, and a tile
+     beside him or behind him never covers him),
+     and only on the V4 layer, where the cache holds the objects over
+     transparent ground: the classic cache paints its ground opaque and would
+     lay a square of grass over him. A burning wood is drawn elsewhere and
+     is skipped. Purely a picture: R.unitHit is untouched. Answers how many
+     tiles it laid. */
+  RES_FRONT: { KNEE: 0.34, OVER: 0.4, SIDE: 0.25 },
+  occludeByResource(g, u) {
+    const TX = window.TerrainX;
+    if (!this.terrainCache || !TX || !TX.on || !TX._painted) return 0;
+    if (u.perch || u.climb || (Units.isNaval && Units.isNaval(u))) return 0;
+    const TL = CFG.TILE, F = this.RES_FRONT, terr = S.map.seenTerrain || S.map.terrain;
+    const lean = this.workLean ? this.workLean(u) : null;
+    const wx = lean ? lean.x : u.x, wy = lean ? lean.y : u.y;
+    const B = this.unitBox ? this.unitBox(u) : TL;
+    const foot = wy * TL + TL / 2 - CFG.SPRITE_LIFT;
+    const knee = foot - TL * F.KNEE, bot = foot + TL * 0.5;
+    const ux0 = wx * TL - B / 2, ux1 = wx * TL + B / 2;
+    let n = 0, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    const rects = [];
+    const tx0 = Math.floor(ux0 / TL), tx1 = Math.floor((ux1 - 0.01) / TL);
+    const ty0 = Math.floor(foot / TL), ty1 = Math.floor(bot / TL);
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+      if (!MapGen.onBoard(tx, ty)) continue;
+      const i = MapGen.idx(tx, ty), t = terr[i];
+      if (t !== T.FOREST && t !== T.HILLS && t !== T.FERTILE) continue;
+      if (ty <= (u.y | 0)) continue;                               // not south of the ground he stands on
+      if (t === T.FOREST && this.burningAt && this.burningAt(i)) continue;
+      const x0 = Math.max(ux0, (tx - F.SIDE) * TL), x1 = Math.min(ux1, (tx + 1 + F.SIDE) * TL);
+      const y0 = Math.max(knee, (ty - F.OVER) * TL), y1 = Math.min(bot, (ty + 1) * TL);
+      if (x1 <= x0 || y1 <= y0) continue;
+      rects.push([x0, y0, x1 - x0, y1 - y0]);
+      bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1);
+      n++;
+    }
+    if (!n) return 0;
+    // ONE draw through one clip: two tiles' rects overlap at their edges, and
+    // a translucent contact shadow laid twice would darken there
+    g.save();
+    g.beginPath();
+    for (const r of rects) g.rect(r[0], r[1], r[2], r[3]);
+    g.clip();
+    const sx = Math.max(0, Math.floor(bx0)), sy = Math.max(0, Math.floor(by0));
+    const sw = Math.min(this.terrainCache.width, Math.ceil(bx1)) - sx, sh = Math.min(this.terrainCache.height, Math.ceil(by1)) - sy;
+    // the 9-argument form: the V4 hook lays its ground only under a whole-cache draw
+    if (sw > 0 && sh > 0) g.drawImage(this.terrainCache, sx, sy, sw, sh, sx, sy, sw, sh);
+    g.restore();
+    return n;
+  },
   /* WHAT STANDS IN FRONT IS PAINTED IN FRONT (the wall sandbox). The
      building pass draws every building before the units and the mountain
      strips, ordered by its footprint's front edge (R._bPos keeps that order).
@@ -7555,7 +7706,7 @@ const R = {
      house roof does not) — so the suffix starts at its first fortification.
      Work sites are not redrawn (their stage art is translucent in places and
      would darken where it doubled). Answers how many it redrew. */
-  redrawFront(g, clip, minFoot, fortsOnly) {
+  redrawFront(g, clip, minFoot, fortsOnly, rockAbove) {
     const pos = this._bPos;
     if (!pos || !pos.size) return 0;
     const TL = CFG.TILE;
@@ -7567,7 +7718,8 @@ const R = {
       const b = Bld.at(x, y);
       if (!b || got.has(b)) continue;
       got.add(b);
-      if (!pos.has(b) || b.y + Bld.size(b) <= minFoot) continue;
+      if (!pos.has(b)) continue;
+      if (b.y + Bld.size(b) <= minFoot && !(rockAbove && this.frontOfRock(b))) continue;
       if (b.construction > 0 || b.upgrading > 0) continue;
       const r = this._picRect(b);
       if (r.x1 <= clip.x0 || r.x0 >= clip.x1 || r.y1 <= clip.y0 || r.y0 >= clip.y1) continue;
@@ -7590,6 +7742,26 @@ const R = {
     for (let i = k; i < list.length; i++) this._redrawPic(g, list[i], fortsOnly);
     g.restore();
     return list.length - k;
+  },
+  /* A BUILDING WITH NO MOUNTAIN SOUTH OF IT STANDS IN FRONT OF EVERY ROCK
+     (build 168 — operator, with a screenshot: "Towers built at the base of
+     mountains go under the mountains"). A drawn kit piece is ONE strip, its
+     row the piece's southernmost foot, so a piece that also covers rock
+     running further south BESIDE a tower carried the tower's own row (or a
+     later one) and the strip's redraw (minFoot = row + 1) counted the tower
+     as behind it. Rock may only stand over walkable ground as the lift of a
+     mountain SOUTH of it in the same column (the honesty bound, PAD_UP /
+     KIT_PAD_UP), so a building with no mountain tile below it in any of its
+     columns within that reach can only be overlapped by rock from the north
+     — it is in front, whatever the strip's row says. A building with rock
+     below it keeps the old row rule (it may really stand in the shadow). */
+  frontOfRock(b) {
+    const terr = (S.map.seenTerrain || S.map.terrain), W = CFG.W, H = CFG.H;
+    const s = Bld.size(b), reach = Math.max(MTN.PAD_UP, MTN.KIT_PAD_UP) + 1;
+    for (let x = b.x; x < b.x + s; x++)
+      for (let y = b.y + s; y < Math.min(H, b.y + s + reach); y++)
+        if (x >= 0 && x < W && terr[y * W + x] === T.MOUNTAIN) return false;
+    return true;
   },
   /* A LOWERED DECK IS GROUND (the operator, build 151: "soldiers walk under
      the bridge instead of over it… Important that soldiers walk on the bridge
@@ -8847,6 +9019,41 @@ const R = {
     }
   },
 
+  /* THE DOCK STANDS ON ITS SHORE (operator, build 170: "docks don't look
+     integrated into the land, there's a visible stop of water between the
+     dock and land… make sure it works for all three levels"). The jetty is
+     drawn on the 2×2 of water it stands on, its land end a few pixels in from
+     the plot's edge — and the traced coast rounds every corner, so a strip of
+     water showed between the boards and the bank, the whole width of the deck
+     wherever only one tile of the flank was land. So the picture is SEATED:
+     pushed DOCK_SEAT.IN of the plot toward the shore, so its land end and its
+     footing (the stub poles, the stone sill) stand on the bank, and slid half
+     a tile across onto the land tile when only one tile of the flank is land
+     (Bld.dockLat). An _cfArt offset on a copy of the face, so every pass that
+     draws a building (the building pass, the redraw over a unit, a stage, the
+     fire and the ruin variants) lands it in the same place. A picture only:
+     the dock's tiles, its hulls and its taps are where they always were. */
+  DOCK_SEAT: { IN: 0.13, LAT: 0.25 },
+  _dockPics: null,
+  dockPic(f, b, side) {
+    if (!f || !b) return f;
+    side = side || Bld.dockShore(b);
+    const lat = Bld.dockLat ? Bld.dockLat(b) : 0;
+    const k = side + lat;
+    if (!this._dockPics) this._dockPics = new WeakMap();
+    let m = this._dockPics.get(f);
+    if (!m) { m = {}; this._dockPics.set(f, m); }
+    if (m[k]) return m[k];
+    const D = this.DOCK_SEAT, c = document.createElement('canvas');
+    c.width = f.width; c.height = f.height;
+    c.getContext('2d').drawImage(f, 0, 0);
+    let ox = 0, oy = 0;
+    if (side === 'n') oy = -D.IN; else if (side === 's') oy = D.IN;
+    else if (side === 'w') ox = -D.IN; else ox = D.IN;
+    if (side === 'n' || side === 's') ox += lat * D.LAT; else oy += lat * D.LAT;
+    c._cfArt = { ox, oy, dock: true };
+    return (m[k] = c);
+  },
   bldSprite(b, lv) {
     const L = Math.max(1, lv || b.level);
     /* A DOCK FACES ITS SHORE. The deck runs out from the land, and which flank
@@ -8860,11 +9067,9 @@ const R = {
       const over = famD && famD[Math.min(L, famD.length) - 1];
       if (!(over && over._cfArt)) {
         const side = Bld.dockShore(b);
-        if (side !== 'n') {
-          const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
-          const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
-          if (f) return f;
-        }
+        const set = (Sprites.dockFace || {})[b.owner === 'A' ? 'A' : 'P'];
+        const f = set && set[Math.min(L, 3) - 1] && set[Math.min(L, 3) - 1][side];
+        if (f) return this.dockPic(f, b, side);
       }
     }
     if (b.key === 'wall') return Sprites.wallMask[Math.min(L, Sprites.wallMask.length) - 1][this.wallMaskAt(b.x, b.y)];
@@ -9399,7 +9604,7 @@ const R = {
     if (b.key === 'wonder')
       return stage < 2 ? Sprites.misc['wonderBuild' + (stage + 1)] : this.bldSprite(b, tgt);
     if (b.key === 'dock' && Sprites.dockBuildFace)
-      return Sprites.dockBuildFace[Bld.dockShore(b)][stage];
+      return this.dockPic(Sprites.dockBuildFace[Bld.dockShore(b)][stage], b);
     if (Sprites.misc[b.key + 'Build1'] && !this.ownStage(b.key, tgt, stage))
       return Sprites.misc[b.key + (up ? 'Up' : 'Build') + (stage + 1)];
     // a fortification's bldSprite is its auto-tiled mask — the wrong picture
@@ -12417,9 +12622,22 @@ const R = {
      screen — the OPEN BAND between the bars (openBand): drawn edge to edge,
      its top and bottom bands lay under the HUD and only the two sides
      showed, as bars. */
+  /* The band is MEASURED off the bars as they stand (the hall's fall,
+     build 173, with a screenshot: the dusk stopped a panel's height above a
+     folded build menu and the strip under it showed the world untinted).
+     bottomReserve is the OPEN menu's height, learned once, so with the menu
+     folded it reached ~80px into the map. A hidden bar (a shell screen, a
+     test) falls back to the reserves. */
   openBand() {
     const dpr = this.dpr || 1, W = this.cv.width, H = this.cv.height;
-    const y0 = Math.round((this.topReserve || 0) * dpr), y1 = H - Math.round((this.bottomReserve || 0) * dpr);
+    let top = this.topReserve || 0, bot = (H / dpr) - (this.bottomReserve || 0);
+    try {
+      const cr = this.cv.getBoundingClientRect ? this.cv.getBoundingClientRect() : { top: 0 };
+      const tb = document.getElementById('topbar'), bb = document.getElementById('bottombar');
+      if (tb && tb.offsetHeight > 0) top = tb.getBoundingClientRect().bottom - cr.top;
+      if (bb && bb.offsetHeight > 0) bot = bb.getBoundingClientRect().top - cr.top;
+    } catch (e) { /* the reserves stand */ }
+    const y0 = Math.max(0, Math.round(top * dpr)), y1 = Math.min(H, Math.round(bot * dpr));
     return { x0: 0, y0, x1: W, y1: Math.max(y0 + 8, y1) };
   },
   stepVignette(g, rgb, a, lv, depth, box) {
@@ -14086,12 +14304,24 @@ const R = {
       return 'walk';
     }
     const fb = u.tBld && Bld.get(u.tBld);
-    // ranged units volley buildings from their OWN reach, not melee's: an
-    // archer loosing at a wall from five tiles is fighting, and with real
-    // shoot art it must look like it (the old 1.5-tile gate left ranged
-    // attackers idling through their own volleys)
-    if (fb && Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) <
-        Math.max(1.5, (CFG.UNITS[u.kind].rng || 0) + 0.3) + Bld.reach(fb)) return vil ? 'guard' : 'fight';
+    /* AT A BUILDING, THE POSE ASKS THE STRIKE'S OWN REACH (Combat.bldReach;
+       tests/battle-fx.mjs — build 172, the operator: "the enemy is attacking
+       my hall and there is no attack animation"). This gate kept a reach of
+       its own, 1.5 + the footprint's, while Combat strikes from 1.55: a
+       spearman battering from just past it was drawn walking, frozen on a
+       stride, through every blow — against the hall, the camps, everything.
+       Ranged kinds volley from their own reach the same way. A hair of
+       slack so a fighter settling onto his spot never flickers. */
+    if (fb) {
+      const reach = (typeof Combat !== 'undefined' && Combat.bldReach) ? Combat.bldReach(u, fb)
+        : Math.max(1.55, (CFG.UNITS[u.kind].rng || 0)) + Bld.reach(fb);
+      if (Math.hypot(Bld.cx(fb) - u.x, Bld.cy(fb) - u.y) <= reach + 0.05) return vil ? 'guard' : 'fight';
+    }
+    // …and a span being cut down (Combat's tBridge branch) is a fight too
+    if (u.tBridge && !Units.moving(u)) {
+      const reach = (typeof Combat !== 'undefined' && Combat.bridgeReach) ? Combat.bridgeReach(u) : 1.3;
+      if (Math.hypot(u.tBridge.x + 0.5 - u.x, u.tBridge.y + 0.5 - u.y) <= reach + 0.05) return vil ? 'guard' : 'fight';
+    }
     if (Units.moving(u)) return 'walk';
     if (u.eating) return 'eat';              // a wolf at the kill (Units.wolfFeed); no eat sheet → idle
     const t = u.task;
@@ -14447,6 +14677,14 @@ const R = {
     // a boar's head-down tusk thrust is the same body as its charge)
     let fr = d[pose] || (pose === 'fight' && d.charge) ||
       ((pose === 'fight' || pose === 'charge') ? d.walk : d.idle) || d.walk || d.idle || null;
+    /* A HULL ON FIRE SAILS ON FIRE (build 167, the operator: "design the
+       sprites for fighting and being attacked (fires), and sinking"): a
+       warship that has lost HULL_BURN_AT of its timbers shows its own
+       burning strip in place of the row and the bob — flames on deck, the
+       crew beating at them — until it is mended or sunk. A blow still
+       plays its strike. Only a hull that ships the strip (d.burn); every
+       other hull keeps the old look. */
+    if (afloat && fr && pose !== 'fight' && d.burn && u.maxhp && u.hp < u.maxhp * this.HULL_BURN_AT) fr = d.burn;
     /* THE STRIKE LANDS ON THE BLOW (js/battlefx.js, build 160): a fighter's
        strip is chosen per blow among its strikes (fight / fight2 / fight3)
        and read off its attack cooldown in unitSprite, so the frame where the
@@ -14473,6 +14711,7 @@ const R = {
     else this._sheetHold = false;
     return fr;
   },
+  HULL_BURN_AT: 0.5,                 // a warship below half its timbers burns (sheetFrames)
   sheetUnit(u) { return !!this.sheetFrames(u); },
   /* the square box a unit's sprite draws into, in world px. CFG.TILE for
      the whole cast; a character-class kind may declare a bigger one
@@ -14494,6 +14733,66 @@ const R = {
      outside its site's footprint (capped, so a far worker leans rather
      than teleports), while the sim position, taps and combat stay
      exactly where they were. Returns the draw position or null. */
+  /* A GATHERER NORTH OF HIS WORK STANDS BEHIND IT (operator, with a
+     screenshot of a miner on the stones: "when villagers are standing on the
+     tile above a resource… they look like they're standing on the tile,
+     versus behind it"). The sim keeps him on the open tile north of the
+     resource; the picture puts his feet `DEPTH` of a tile BELOW the top of
+     the art he works — the stones, the crowns, the bushes, read off the
+     terrain cache in the columns his body covers — so occludeByResource
+     lays that art over him from the knees down. Measured, never a fixed
+     step: a pile reaching to the tile's top edge and a few low stones at
+     its foot want different depths, and a fixed one stood him on one and
+     in open grass beside the other. The step is held to [-UP, DOWN] of a
+     tile; a tile with no art in his columns (or a cache the page cannot
+     read — a page from disk taints it — or the classic painters, whose
+     cache is opaque ground) answers null and the old lean stands. Draw
+     time only, like every lean: the sim, the taps and the pathing are
+     untouched. The profile is kept per tile for `MS` (a mined pile wears
+     down, so it is read again). */
+  RES_BEHIND: { DEPTH: 0.3, UP: 0.15, DOWN: 0.45, BODY: 5, WIDE: 5, MS: 1500 },
+  _resTops: null,
+  resBehind(u, tx, ty) {
+    const top = this.resTopAt(tx, ty, u.x * CFG.TILE);
+    if (top == null) return null;
+    const TL = CFG.TILE, K = this.RES_BEHIND;
+    const foot = u.y * TL + TL / 2 - CFG.SPRITE_LIFT;
+    const dy = Math.max(-K.UP * TL, Math.min(K.DOWN * TL, top + K.DEPTH * TL - foot));
+    return { x: u.x, y: u.y + dy / TL };
+  },
+  // the highest opaque row (world px) of the resource art standing in tile
+  // tx,ty under the columns cx ± BODY — what a man north of it stands behind
+  resTopAt(tx, ty, cx) {
+    const TX = window.TerrainX, c = this.terrainCache;
+    if (!c || !TX || !TX.on || !TX._painted || this._resTopBad) return null;
+    const TL = CFG.TILE, F = this.RES_FRONT, K = this.RES_BEHIND, i = ty * CFG.W + tx;
+    const cache = this._resTops || (this._resTops = new Map()), now = performance.now();
+    let e = cache.get(i);
+    if (!e || now - e.t > K.MS || e.c !== c) {
+      const x0 = tx * TL, y0 = Math.max(0, Math.round((ty - F.OVER) * TL)), h = (ty + 1) * TL - y0;
+      let d;
+      try { d = c.getContext('2d').getImageData(x0, y0, TL, h).data; }
+      catch (err) { this._resTopBad = true; return null; }     // tainted: never ask again
+      const m = new Uint8Array(TL * h);
+      for (let k = 0; k < m.length; k++) m[k] = d[k * 4 + 3] > 200 ? 1 : 0;
+      if (cache.size > 256) cache.clear();
+      cache.set(i, e = { t: now, c, x0, y0, h, m });
+    }
+    /* the top is the first row where the art spans WIDE across his body,
+       two rows running — a scree pebble or a fern tip is a speck, and
+       standing a man behind a speck lifted him onto the open grass */
+    const a = Math.max(0, Math.round(cx - K.BODY) - e.x0), b = Math.min(TL - 1, Math.round(cx + K.BODY) - e.x0);
+    if (b < a) return null;
+    const need = Math.min(K.WIDE, b - a + 1);
+    let run = 0;
+    for (let y = 0; y < e.h; y++) {
+      let n = 0;
+      for (let x = a; x <= b; x++) n += e.m[y * TL + x];
+      run = n >= need ? run + 1 : 0;
+      if (run === 2) return e.y0 + y - 1;
+    }
+    return null;
+  },
   workLean(u) {
     /* a WOODCUTTER leans INTO the stand (the referee's live-play note: the
        axe should land on the trees, not swing at open grass beside them).
@@ -14505,6 +14804,11 @@ const R = {
     if (u.task && u.task.type === 'gather' && S && S.map) {
       const pose = this.unitPose(u);
       const tt = S.map.terrain[u.task.y * CFG.W + u.task.x];
+      // working it from the NORTH: he stands behind it (resBehind)
+      if (pose !== 'walk' && pose !== 'idle' && u.task.y > (u.y | 0) && u.task.x === (u.x | 0)) {
+        const b = this.resBehind(u, u.task.x, u.task.y);
+        if (b) return b;
+      }
       // …and a forager leans to the bush or under the bough the same way —
       // a shorter step than the woodcutter's: the plant is smaller
       const max = (pose === 'gather' && tt === T.FOREST) ? 0.34
@@ -15732,11 +16036,8 @@ const R = {
                'n' goes through the ordinary misc/ name so a manifest image can
                still override the canonical set. */
             const side = Bld.dockShore(b);
-            if (side === 'n') {
-              Assets.drawSprite(g, 'misc/dock' + (up ? 'Up' : 'Build') + (stage + 1), bx, by, { w: bw, h: bw });
-            } else {
-              this.blitBld(g, Sprites.dockBuildFace[side][stage], bx, by, bw, bw);
-            }
+            // seated on its shore like the finished deck (R.dockPic), every facing
+            this.blitBld(g, this.dockPic(Sprites.dockBuildFace[side][stage], b, side), bx, by, bw, bw);
           } else if (Sprites.misc[b.key + 'Build1'] && !this.ownStage(b.key, tgt, stage)) {
             // BESPOKE stage art (the tower — tests/build-stages.mjs): its own
             // three raising sprites for ALL three stages, no derived look —
@@ -15979,7 +16280,7 @@ const R = {
            front of the rock: a tower's roof rises into the row above it and
            the strip had just painted the mountain over it (a reported
            screenshot — "towers going underneath a mountain") */
-        this.redrawFront(g, { x0: st.x, y0: st.y, x1: st.x + st.c.width, y1: st.y + st.c.height }, st.row + 1, false);
+        this.redrawFront(g, { x0: st.x, y0: st.y, x1: st.x + st.c.width, y1: st.y + st.c.height }, st.row + 1, false, true);
       }
     };
     const units = S.units.slice().sort((a, b) => a.y - b.y);
@@ -16092,6 +16393,7 @@ const R = {
       // the bar keeps the cast's own width, centred over the kind's box
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
         u.owner === 'P' ? '#7dbb5e' : '#e06550');
+      this.occludeByResource(g, u);
       this.occludeByForts(g, u);
     }
     msFlush(1e9);
