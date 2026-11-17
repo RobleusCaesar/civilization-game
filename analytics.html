@@ -801,7 +801,7 @@ async function loadFirstMinute() {
 /* THE PROLOGUE (migration 0018's analytics_prologue) */
 const PRO_GAME = { 1: 'The First Fire', 2: 'The Growing Clan', 3: 'The Two Roads' };
 const PRO_CHOICE = { journey: 'Continue the journey', random: 'A random world', retry: 'Try again', open: 'Your own world', menu: 'Menu', named: 'Named their chief', other: 'Other' };
-function mins(s) { return s == null ? '—' : (s < 600 ? (s / 60).toFixed(1) : Math.round(s / 60)) + ' min'; }
+function proMins(s) { return s == null ? '—' : (s < 600 ? (s / 60).toFixed(1) : Math.round(s / 60)) + ' min'; }
 async function loadPrologue() {
   const my = ++SEQ.pro, ep = EPOCH, tok = TOKEN;
   const f = filters();
@@ -819,7 +819,7 @@ async function loadPrologue() {
     const G = (Array.isArray(D.games) ? D.games : []).filter(g => g && g.started);
     table($('tProGames'), ['Journey game', 'Started', 'Finished', 'Win rate', 'Median time to win', 'Quit or left'],
       G.map(g => [(g.game || '?') + '. ' + (PRO_GAME[g.game] || 'Game'), num(g.started), rate(g.finished || 0, g.started),
-        rate(g.won || 0, g.finished || 0), mins(g.median_win_seconds), rate((g.quit || 0) + (g.left || 0), g.started)]),
+        rate(g.won || 0, g.finished || 0), proMins(g.median_win_seconds), rate((g.quit || 0) + (g.left || 0), g.started)]),
       'No journey game was started in this period.');
   });
   part($('tProJourney'), () => {

@@ -28,7 +28,7 @@
    sees them. S.scenario (the id) rides the save; a load re-applies. */
 const Scenarios = {
   ON: true,
-  CHARS: '#.T~rb^g,:_',
+  CHARS: '#.T~rb^g,:_x',
   // the character of each tile → its terrain (the rim '#' is ordinary grass under the void)
   terrainOf(ch) {
     switch (ch) {
@@ -41,6 +41,7 @@ const Scenarios = {
       case ',': return T.STUMPS;
       case ':': return T.PEBBLES;
       case '_': return T.BARREN;
+      case 'x': return T.RUIN;          // the scar a razed building leaves (game 1's old village)
       default: return T.GRASS;
     }
   },
@@ -194,6 +195,15 @@ const Scenarios = {
       const d = Relics.DEFS[sc.relic.key];
       S.relic = { key: sc.relic.key, x: sc.relic.x, y: sc.relic.y, w: d.w || 1, h: d.h || 1, found: 0, amount: 0 };
     }
+    /* THE OLD VILLAGE (game 1): what a razed building leaves, drawn by the
+       ruins pass (js/ruins.js) on its rubble ground. Authored rubble is put
+       on no clock (G.scheduleRevert is never asked), so it stands for the
+       world's life; a house raised on it takes the ground as ever. */
+    S.ruins = (sc.ruins || []).map(r => ({ x: r.x, y: r.y, sz: r.sz || 1, c: r.c, v: r.v || 1, m: r.m ? 1 : 0, day: 0 }));
+    if (window.Ruins && Ruins.want) for (const r of S.ruins) Ruins.want(r.c, r.v);
+    // how far the land is known at the first morning (game 1 shows its whole
+    // valley; game 2 keeps the fog its scouting lesson needs)
+    if (sc.reveal && sc.reveal > 6) G.reveal(Bld.cx(tc) | 0, Bld.cy(tc) | 0, sc.reveal);
     S.map.biome = sc.region || null;
     S.map.worldName = sc.title;
   },

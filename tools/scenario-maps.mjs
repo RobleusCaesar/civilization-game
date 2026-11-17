@@ -12,8 +12,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, 'tools', 'scenarios');
 const OUT = path.join(ROOT, 'js', 'scenario-maps.js');
-const CHARS = new Set('#.T~rb^g,:_'.split(''));
-const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'units', 'animals', 'buildings', 'relic', 'camera', 'glideFrom', 'marks'];
+const CHARS = new Set('#.T~rb^g,:_x'.split(''));
+const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'reveal', 'units', 'animals', 'buildings', 'ruins', 'relic', 'camera', 'glideFrom', 'marks'];
 
 const maps = {};
 const errs = [];

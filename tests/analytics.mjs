@@ -1176,7 +1176,7 @@ const unlock = async (p, pass) => {
       src: document.getElementById('tSrc').textContent, voteRows: document.querySelectorAll('#tVote').length, voteLine: document.getElementById('voteNote').textContent,
       days: document.getElementById('tTrafficDays').textContent,
       fmin: ['tLoadSteps', 'tFirstMin', 'tFirstMinWho', 'tLeftAt'].map(id => document.getElementById(id).textContent).join(' | '),
-      fq: document.getElementById('tFirstQuick').textContent };
+      pro: ['tProGames', 'tProJourney', 'tProBeats', 'tProAgain', 'proNote'].map(id => document.getElementById(id).textContent).join(' | ') };
   });
   const H = call('analytics_dashboard', D30()).headline;
   ck('theTilesAreTheDatabasesNumbers', v.t.Games && v.t.Games.v === String(H.games) && v.t.Players.v === String(H.players) &&
@@ -1205,8 +1205,11 @@ const unlock = async (p, pass) => {
   // TRAFFIC (0013): its own door, its own tables — the fixture's devices played before sources were recorded
   ck('theFirstMinuteSectionRendersFromItsOwnDoor', seen.includes('analytics_first_minute') && !/Could not|needs migration/.test(v.fmin) && (/Page began to load/.test(v.fmin) && /60 seconds of play/.test(v.fmin) || /No page loads recorded in this period/.test(v.fmin)),
     v.fmin.slice(0, 200));
-  ck('theFirstGameSectionRendersFromItsOwnDoor', seen.includes('analytics_first_quick') && !/Could not|needs migration/.test(v.fq) && /Before the first-game profile/.test(v.fq) && /First-game profile/.test(v.fq),
-    v.fq.slice(0, 200));
+  // THE PROLOGUE (0018): its own door; the page fixture has no journey rows, so every table answers in words
+  ck('thePrologueSectionRendersFromItsOwnDoor', seen.includes('analytics_prologue') && !/Could not|needs migration/.test(v.pro) &&
+    (/Journey game/.test(v.pro) || /No journey game was started in this period/.test(v.pro)) &&
+    (/Played again in a week/.test(v.pro) || /No first games recorded/.test(v.pro)) && /Skipped the journey: \d+ from the title/.test(v.pro),
+    v.pro.slice(0, 240));
   ck('theTrafficSectionRendersFromItsOwnDoor', seen.includes('analytics_traffic') && /Unknown \(before build 134\)/.test(v.src) && !/Could not/.test(v.src + v.days) && v.voteRows === 0 && (v.voteLine === "" || /retired in build 176: \d+ players saw it/.test(v.voteLine)),
     `sources "${v.src.slice(0, 120)}"; vote table ${v.voteRows}, line "${v.voteLine}"; days "${v.days.slice(0, 80)}"`);
   ck('thisDeviceIsNamed', /This device/.test(v.mine) && /Counted/.test(v.mine) && /3 games on record/.test(v.mine), v.mine.slice(0, 200));
