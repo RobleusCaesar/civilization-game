@@ -19,16 +19,18 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 181, date: '2026-11-17', title: 'A journey for your first three games',
+    build: 182, date: '2026-11-17', title: 'A journey for your first three games',
     items: [
       'A new player now begins with a short journey of three games, each on a hand-made valley, with Mira, the clan\'s young storyteller, at your side.',
       'Mira says one thing at a time, points at exactly where to tap, and answers the moment you act: the next step shows within a second.',
+      'Each journey game opens with the map folded away, so the valley is all you see. The map button at the top brings it back.',
       'While you learn, the game keeps quiet. Only what truly needs you, like a famine or an attack, speaks over her.',
       'The First Fire teaches food, wood, a house and a new villager. The Growing Clan adds stone, camps and a farm, scouting and your first card. The Two Roads is your first real rival.',
       'Each journey game won pays a card: Bronze, then Iron, then Imperial.',
       'After the first game the people ask what to call you.',
       'The next journey game is made ready while you look at your reward, so it opens the moment you tap Continue, and your clan keeps its colour through all three.',
       'New worlds paint their ground sooner after you press start.',
+      'The how-to tips on a selected unit are now tucked away until you ask for them. The information button on its panel shows them, and the game remembers your choice.',
       'Played before? The journey stays out of your way, and anyone can skip it from the title.',
     ],
   },

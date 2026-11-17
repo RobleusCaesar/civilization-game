@@ -52,7 +52,7 @@ const Tutorial = {
   _pan: null,         // eased camera glide toward an offscreen anchor
   _memo: {},          // per-step anchor memos (nearest-tile scans, 1s ttl)
   _skipArm: 0,        // two-tap skip confirm (performance.now deadline)
-  _scrolledFor: '',   // the menu card this presentation already scrolled to
+  _cardSt: null,      // the menu card this presentation brings into view (UI.cardIntoView)
   _lastEvAt: -1e9,    // real-time spacing between contextual notes — NEVER 0,
                       // or the gate blocks the first 25s of every page load
   _actGap: 0,         // a card's act is over: the breath left before the note returns
@@ -558,26 +558,18 @@ const Tutorial = {
   /* BRING THE RINGED CARD INTO VIEW (playtest: the barracks lesson rings a
      card that sits past the fold of the horizontally-scrolling build menu, so
      opening Build showed a highlight the player could not see). When a note
-     points at a menu card, the menu scrolls so that card sits in the MIDDLE —
-     once per presentation, the moment the card actually becomes visible,
-     which is normally the frame the player opens the menu.
+     points at a menu card, the menu scrolls so that card sits in the MIDDLE
+     the moment the card actually becomes visible, which is normally the
+     frame the player opens the menu.
 
-     ONCE, deliberately: the tutorial never takes control, so a player who
-     scrolls somewhere else afterwards is left alone. Smooth where the browser
-     offers it, and a no-op when the card is already in the middle. */
+     UNTIL IT IS SEEN, THEN NEVER AGAIN (build 182, UI.cardIntoView): a first
+     scroll that lands on a menu still being laid out, or is undone by the
+     menu being rebuilt, is asked again a beat later, a few times at most;
+     once the card has been seen whole the tutorial never takes control, so a
+     player who scrolls somewhere else afterwards is left alone. Smooth where
+     the browser offers it, and a no-op when the card is already in the middle. */
   _scrollCardIntoView(sel) {
-    if (this._scrolledFor === sel) return;
-    const btn = document.querySelector(sel);
-    const wrap = document.getElementById('buildmenu');
-    if (!btn || !wrap || btn.offsetParent === null || wrap.offsetParent === null) return;
-    this._scrolledFor = sel;                       // one shot, however it lands
-    if (wrap.scrollWidth <= wrap.clientWidth + 1) return;   // nothing to scroll
-    const wr = wrap.getBoundingClientRect(), br = btn.getBoundingClientRect();
-    const delta = (br.left + br.width / 2) - (wr.left + wr.width / 2);
-    const left = Math.max(0, Math.min(wrap.scrollWidth - wrap.clientWidth, wrap.scrollLeft + delta));
-    if (Math.abs(left - wrap.scrollLeft) < 2) return;
-    try { wrap.scrollTo({ left, behavior: 'smooth' }); }
-    catch (e) { wrap.scrollLeft = left; }          // older engines: no options object
+    if (UI.cardIntoView) UI.cardIntoView(sel, this._cardSt || (this._cardSt = {}));
   },
 
   // the nearest own villager to the hall, idle hands strongly preferred
@@ -600,7 +592,7 @@ const Tutorial = {
     this._show = null; this._pan = null; this._zRestore = 0; this._memo = {};
     this._stuckSince = 0;
     this._advT = this._evT = this._gapT = 0; this._skipArm = 0; this._lastEvAt = -1e9;
-    this._scrolledFor = '';
+    if (this._cardSt) this._cardSt.sel = '';
     this._actGap = this._actTail = 0; this._actHeld = false;
     this._lookDue = false; this._selLooked = false; this._tutHKey = '';
     this._removeDom();
@@ -805,7 +797,7 @@ const Tutorial = {
     this._shownAt = performance.now();
     this._released = false;
     this._skipArm = 0;
-    this._scrolledFor = '';   // this note may scroll the build menu once
+    if (this._cardSt) this._cardSt.sel = '';   // this note may bring a build card into view
     this._showN = (this._showN || 0) + 1;   // a new card: measured afresh for --tut-h (_toastStep)
     if (kind === 'event') this._lastEvAt = this._shownAt;
     this._ensureDom();
@@ -1186,7 +1178,7 @@ const Tutorial = {
       return { x: left + rect.width / 2, y: top + rect.height / 2,
                r: Math.max(rect.width, rect.height) / 2 + 8, rect };
     };
-    if (!(a && a.sel && a.sel.indexOf('.bbtn') === 0)) this._scrolledFor = '';
+    if (!(a && a.sel && a.sel.indexOf('.bbtn') === 0) && this._cardSt) this._cardSt.sel = '';
     if (a && a.union) {
       // the union of several chips (each ringed at its bordered wrapper) —
       // a tight box around exactly the things the note names
@@ -1205,7 +1197,7 @@ const Tutorial = {
       // a ringed BUILD-MENU card is scrolled into the middle of the menu the
       // moment it becomes visible — otherwise the highlight sits past the fold
       if (a.sel.indexOf('.bbtn') === 0) this._scrollCardIntoView(a.sel);
-      else this._scrolledFor = '';
+      else if (this._cardSt) this._cardSt.sel = '';
       const t = document.querySelector(a.sel);
       if (t && t.offsetParent !== null) hole = uiHole(t.getBoundingClientRect());
     } else if (a) {

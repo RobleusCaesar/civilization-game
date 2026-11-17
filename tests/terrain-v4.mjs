@@ -347,7 +347,17 @@ let rulesV4 = null;
   await p.goto('file://' + join(root, 'index.html') + '?biome=auto');
   await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
   const r2 = await p.evaluate(() => ({ choice: TerrainV5.choice(), stored: localStorage.getItem('neo-biome') }));
-  ck('andTheDeviceRemembersItUntilAutoUndoesIt', v.stored === 'v4' && v.chip === true && r1.choice === 'v4' && r1.chip === true && r2.choice === 'auto' && r2.stored === null, JSON.stringify({ stored: v.stored, r1, r2 }));
+  ck('andTheDeviceRemembersItUntilAutoUndoesIt', v.stored === 'v4' && r1.choice === 'v4' && r2.choice === 'auto' && r2.stored === null, JSON.stringify({ stored: v.stored, r1, r2 }));
+  /* THE SWITCH IS PUT AWAY FOR NOW (operator, build 182: "hide the ability … to change
+     the map background for now"): no chip on a device that asked by link, and none on a
+     test page's path; the machinery stands ready (CHIP true and a mount bring it back) */
+  const away = await p.evaluate(() => {
+    const before = !!document.getElementById('v5biome');
+    const was = TerrainV5.CHIP; TerrainV5.CHIP = true; TerrainV5.mount(); const back = !!document.getElementById('v5biome');
+    const el = document.getElementById('v5biome'); if (el) el.remove(); TerrainV5.CHIP = was;
+    return { before, back, chip: was, tester: TerrainV5.tester() };
+  });
+  ck('theLandSwitchIsPutAwayForNow', v.chip === false && r1.chip === false && away.before === false && away.chip === false && away.back === true, JSON.stringify({ v: v.chip, r1: r1.chip, away }));
   await ctx.close();
 }
 /* ---- 9d. the region's kill switch ---- */

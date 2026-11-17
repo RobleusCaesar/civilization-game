@@ -282,13 +282,13 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second and no ring drawn where a tap cannot land, no line past fifteen words; her nine faces on disk; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second and no ring drawn where a tap cannot land, no line past fifteen words; her nine faces on disk; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
 node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
-node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch; ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
+node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch (and the testers' land switch is put away for now); ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
 node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
 node tests/hud-info.mjs      # the four goods and the people on ONE row, one width; food's net in its note (never the bar) and its number red only when it runs dry within days; numbers shorten DOWN (12.4k) and the note says them whole; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
@@ -1605,9 +1605,22 @@ a march onto raiders in the fog is the order the raid line asked for
 tally. The contract's follower holds the real loop's sim, taps only the ring
 as DRAWN after a reaction time and once the camera has settled (the hand's
 taps only after the hand's six seconds), and counts a glide's real time
-against the second: every tap of all three games is answered. The rings follow the game's own doors:
-the Build tab → the card (scrolled to the middle of the menu once,
-`_cardInView`) → the ghost seated on the authored site → ✓; the deck → a
+against the second: every tap of all three games is answered. **AND IT
+LEAVES A PAUSED WORLD STILL, AS THE REAL LOOP DOES** (build 182 — CI read
+game 3 "lost to the rival's Wonder" at ~1050 sim-s with the player's own
+standing since ~250): a raised Wonder's marvel pauses the world for 7 REAL
+seconds before the run is called, and the follower stepped `G.simStep`
+straight through `S.paused`, so a fast runner simulated ~800 s inside the
+victory beat and the rival's Wonder landed first. A paused world (the
+marvel, the deck's sheet) is now waited out in real time and the follower's
+clock runs on through the wait; game 3 is won at ~250 s. A ring drawn past
+the screen's edge is BLOCKED there, like one under a bar — but for the beat
+its target is sliding in (a build card the guide is scrolling into the menu,
+the deck's sheet rising from below: an animation running on it or round it,
+`document.getAnimations()`), and a check asked by two games keeps both
+answers (`ck` numbers a repeat). The rings follow the game's own doors:
+the Build tab → the card (brought into the menu's view until it is seen
+there, `_cardInView` → `UI.cardIntoView`) → the ghost seated on the authored site → ✓; the deck → a
 card that plays at once → Play (nothing while it is in the air); a soldier,
 then the raiders, the view carried to them once a line (`_look`; a touch
 cancels it). An idle hand's work is the good the goal is shortest of,
@@ -1646,7 +1659,25 @@ proud, surprised, determined — each an edit of the same master, so she is the
 same woman in every one): 128px masters and their Scale2x doubles, palette
 PNGs with hard alpha, shown at 64/56/48 CSS px and fetched when a journey
 world is founded. The code keeps the old ids (`#proElder`, `#proMini`); the
-player meets Mira. **ONE VOICE** (`Prologue.quiet`, asked by `G.log` and
+player meets Mira. **SHE IS EUROPEAN** (operator, build 182, on the first
+portrait: "looks Native American … focus more on European ancestors
+somewhere between Scotland, France, Italy, and Greece" — the clan's third
+age is Rome's legions): an auburn-haired Gaulish girl with a braided crown
+and freckles, a terracotta mantle with a Greek-key border pinned at the
+shoulder over a cream tunic; same age, same warmth. Redrawn under the same
+file names, so `FACES` carries its own step after the art's version
+(`?v=<ART_V>.2`): a device that held build 181's faces fetches the new ones
+and no other picture is fetched again — redraw her again and step it again.
+**A LESSON OPENS CLEAN** (`Prologue.onScreen`, tests/prologue.mjs
+`aLessonOpensWithTheMapFoldedAndTheTipsPutAway` — operator, build 182:
+"Start with the map hidden / collapsed … it makes things confusing to have
+it open … Start with the villager instructions hidden too … keep everything
+as clean as possible"): every journey world opens with the map folded
+(`UI.setMiniCollapsed(true)`, the old lesson's own move), the top bar's map
+button bringing it back; and the unit tips start put away for EVERY player
+now (`UI.helpHidden`: `neo-unit-help` '0' shows them, '1' or never chosen
+hides them) — the panel's ℹ️ shows them and the choice is remembered, so a
+player who asked for them keeps them, in the journey too. **ONE VOICE** (`Prologue.quiet`, asked by `G.log` and
 `G.foeNote`, tests/prologue.mjs §2d — operator, build 181: "cut the amount of
 notifications down by like 70% … they clash with the instructions"): in a
 journey world the world's news goes to the chronicle (`S.log`) and is not
@@ -7544,8 +7575,13 @@ object). **THE WAY BACK**: `CFG.TERRAIN.V5` false; `?biome=v4` (remembered in
 `neo-biome`, a key of its own so a test page's choice never leaks, until
 `?biome=auto`); every V4 way back; and a field build that throws stands V5 down
 for the session (`TerrainV5.failed`) and the world paints as V4. `?biome=<name>`
-forces a landscape; the switch chip is a TESTER's tool (a /test page or a device
-that asked by link) and a player never sees it. It is cosmetic end to end: no
+forces a landscape; the switch chip was a TESTER's tool (a /test page or a device
+that asked by link) and a player never saw it — and it is PUT AWAY FOR NOW
+(`TerrainV5.CHIP` false, operator, build 182: "hide the ability for me to change
+the map background for now … useful in the future for additional map designs,
+but right now it just clutters my UI"): nothing is mounted on any page, while
+`?biome=` still forces a landscape and `?biome=auto` still undoes it; CHIP true
+brings the chip back as it was (terrain-v4 §9c `theLandSwitchIsPutAwayForNow`). It is cosmetic end to end: no
 tile, rule, path or save is read differently (`theRegionChangesNoRule`). Cost: a
 V5 chunk ~1.7× a V4 one in the workers. The water's shimmer was halved in the
 same release (fewer, dimmer sparkles, a fainter ripple and caustic layer).
@@ -9234,11 +9270,19 @@ phone playtest as "confusing". World targets keep the circle and the
 opposite-half card rule. **A ringed build-menu CARD is scrolled into the middle of the menu**
 (`Tutorial._scrollCardIntoView`, from a playtest: the barracks card sits
 past the fold of the horizontally-scrolling menu, so opening Build showed
-a highlight the player could not see). ONE SHOT per opening — the
-tutorial never takes control, so a player who scrolls elsewhere is left
-alone; the one-shot re-arms on any frame whose anchor is NOT a menu card
-(closing the menu makes `_buildAnchor` fall back to the villager), so
-each fresh opening centres again.
+a highlight the player could not see). **UNTIL IT IS SEEN, THEN NEVER
+AGAIN** (`UI.cardIntoView`, the journey's rule too — build 182): it was one
+shot "however it lands", and on a busy phone the shot landed on a menu still
+being laid out, or a menu the beat's own unlock then rebuilt back to its
+start, and the ring stood past the screen's edge for good (tests/prologue.mjs
+`aRingedCardIsBroughtIntoViewEvenWhenItsFirstScrollIsUndone`, red on the
+one-shot). Now it centres the card when first ringed and, a beat apart
+(`CARD_RETRY_MS` 900, a smooth scroll left to land), asks again while the
+card is not whole inside the menu and the screen, `CARD_TRIES` (3) at most;
+once the card has been seen whole the tutorial never takes control — a
+player who scrolls elsewhere is left alone. The state re-arms on any frame
+whose anchor is NOT a menu card (closing the menu makes `_buildAnchor` fall
+back to the villager), so each fresh opening centres again.
 **The house step rings the HOUSE CARD itself**
 (`.bbtn[data-key="house"]`) whenever the build menu is open, and only a
 closed menu falls back to ringing the toggle. The title's old "Tutorial" button was renamed **"Guide"**

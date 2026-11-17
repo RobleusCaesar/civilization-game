@@ -40,7 +40,8 @@ try { pw = (await import('playwright')).default; }
 catch { pw = (await import('/opt/node22/lib/node_modules/playwright/index.js')).default; }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const res = {}, fails = [], errs = [];
-const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+// a name asked twice keeps both answers (a second game's check once overwrote the first's failing detail)
+const ck = (n, ok, i) => { if (n in res) { let k = 2; while ((n + ' #' + k) in res) k++; n += ' #' + k; } res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
 const W = 390, H = 844;
 
 /* ---- 1. THE MAPS ARE THEIR SOURCES, BUILT ---- */
@@ -222,7 +223,17 @@ const READ = () => {
   const key = r ? kOf(raw) : null;
   // where the drawn ring stands, a tap must land on the world (or on the element it rings)
   let blocked = null;
-  if (r) {
+  /* a ring drawn past the screen's edge (a card scrolled out of the menu) is one no
+     tap can reach — but for the moment its target is sliding in: the guide brings a
+     ringed build card into view with a smooth scroll (UI.cardIntoView), and the
+     deck's sheet rises from below the screen (an animation on it or on the card);
+     the ring rides either in. Past that beat a ring still off the screen is a fault */
+  const offScreen = r && (r.x < 0 || r.y < 0 || r.x > innerWidth || r.y > innerHeight);
+  const tEl = offScreen && raw.sel ? document.querySelector(raw.sel) : null;
+  const moving = t => { try { return !!t && document.getAnimations().some(a => a.playState === 'running' && a.effect && a.effect.target && a.effect.target.contains && a.effect.target.contains(t)); } catch (e) { return false; } };
+  const cs = P._cardSt, sliding = offScreen && raw.sel && ((cs && cs.sel === raw.sel && !cs.seen && performance.now() - cs.at < 1500) || moving(tEl));
+  if (offScreen && !sliding) blocked = 'off the screen';
+  else if (r && !offScreen) {
     const el = document.elementFromPoint(r.x, r.y);
     if (raw.sel) { const t = document.querySelector(raw.sel); if (el && t && !t.contains(el)) blocked = el.id || String(el.className); }
     else if (el && el.id !== 'c') blocked = el.id || String(el.className);
@@ -243,10 +254,28 @@ const follow = async (p, maxT) => {
     G.__realStep = G.simStep;
     G.simStep = function (a, c) { if (!window.__mine) return; return G.__realStep.call(this, a, c); };
   });
-  const step = sec => p.evaluate(sec => { window.__mine = true; try { for (let i = 0; i < Math.round(sec / 0.05); i++) G.simStep(0.05, 0.05); } finally { window.__mine = false; } }, sec);
+  /* A PAUSED WORLD STANDS STILL, AS THE REAL LOOP LEAVES IT (G.frame steps
+     nothing while S.paused): the deck's sheet holds it, and so does a raised
+     Wonder's marvel, whose 7 s are REAL time before the run is called. Stepped
+     through that hold, the world ran on and the rival's own Wonder could land
+     inside the player's victory beat — on a fast runner the 7 s were ~800 sim-s
+     of it (CI, build 181: "rival_wonder" at 1044 s with the player's Wonder
+     standing since ~250 s). So a paused world is waited out in real time, and
+     the follower's clock (`off`) runs on through the wait — a person's
+     reaction and the second the guide has to answer are counted there too. */
+  let off = 0;
+  const step = async sec => {
+    const ran = await p.evaluate(sec => {
+      if (S && S.paused && !S.over) return false;
+      window.__mine = true; try { for (let i = 0; i < Math.round(sec / 0.05); i++) G.simStep(0.05, 0.05); } finally { window.__mine = false; }
+      return true;
+    }, sec);
+    if (!ran) { const w = Math.min(sec, 0.25); await p.waitForTimeout(w * 1000); off += w; }
+  };
+  const read = async () => { const r = await p.evaluate(READ); r.clk += off; return r; };
   const seen = [], slow = [], blocked = [], said = new Set();
   let clicks = 0, last = '', lastKey = null, keySince = 0, lastTap = null, pend = null;
-  let st = await p.evaluate(READ);
+  let st = await read();
   const t0 = st.clk;
   for (let k = 0; k < 20000 && !st.over && st.clk - t0 < maxT; k++) {
     if (st.id && st.id !== last) { seen.push({ id: st.id }); last = st.id; }
@@ -258,7 +287,7 @@ const follow = async (p, maxT) => {
       const w0 = Date.now();
       await p.waitForFunction(() => !Prologue._gliding, null, { timeout: 3000, polling: 20 }).catch(() => {});
       pend.extra = (pend.extra || 0) + (Date.now() - w0) / 1000;
-      st = await p.evaluate(READ);
+      st = await read();
       continue;
     }
     if (pend) {
@@ -278,7 +307,7 @@ const follow = async (p, maxT) => {
       // a person waits for the view to settle, then taps the target where it now is
       await p.waitForFunction(() => !Prologue._gliding, null, { timeout: 2000, polling: 30 }).catch(() => {});
       await p.waitForTimeout(60);
-      const fr = await p.evaluate(READ);
+      const fr = await read();
       const q2 = fr.ring && fr.key === tg.k ? fr.ring : fr.taps.find(t => t.k === tg.k);
       if (!q2 || q2.x < 4 || q2.y < 4 || q2.x > W - 4 || q2.y > H - 4) { st = fr; if (!q2) continue; }
       else {
@@ -286,12 +315,12 @@ const follow = async (p, maxT) => {
         lastTap = { t: fr.clk, k: tg.k };
         pend = { t0: fr.clk, key: tg.k, txt: fr.txt, goal: fr.goal, line: fr.id };
         await p.waitForTimeout(40);
-        st = await p.evaluate(READ);
+        st = await read();
         continue;
       }
     }
     await step(pend || st.clk - keySince < RT + 0.15 ? 0.1 : 1.0);
-    st = await p.evaluate(READ);
+    st = await read();
   }
   await p.evaluate(() => { if (G.__realStep) { G.simStep = G.__realStep; delete G.__realStep; } });
   return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, played: st.played };
@@ -322,9 +351,22 @@ const endScreen = async (p) => {
   await p.click('#btnBegin').catch(() => {});
   await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_2', null, { timeout: 40000 }).catch(() => {});
   await p.waitForTimeout(3500);   // the establishing glide
-  // the scout's line, a villager in hand, and its mark parked under the minimap
+  /* A LESSON OPENS CLEAN (operator, build 182): the map folded, the unit tips put
+     away (Mira teaches), the map button and the panel's ℹ️ there to bring them back */
+  const clean = await p.evaluate(() => {
+    const v = Prologue.vils()[0]; UI.select('unit', v.id); UI.renderPanel();
+    const mini = document.getElementById('miniWrap'), help = document.querySelector('#panel #helpToggle');
+    const out = { folded: UI.miniCollapsed === true && getComputedStyle(mini).display === 'none',
+      mapBtn: !!document.getElementById('mapBtn') && document.getElementById('mapBtn').offsetWidth > 0,
+      tips: !!document.querySelector('#panel .pactions .psub'), info: help ? help.textContent.trim() : null };
+    UI.deselect && UI.deselect();
+    return out;
+  });
+  ck('aLessonOpensWithTheMapFoldedAndTheTipsPutAway', clean.folded && clean.mapBtn && !clean.tips && clean.info === 'ℹ️', JSON.stringify(clean));
+  // the scout's line, a villager in hand, and its mark parked under the minimap (a player who opened it)
   const pre = await p.evaluate(() => {
     const P = Prologue;
+    UI.setMiniCollapsed(false);
     S.pro.i = P._beats.findIndex(b => b.id === 'scout'); P._shown = null; P._aside = null;
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
     const v = P.vils()[0]; UI.select('unit', v.id);
@@ -396,6 +438,46 @@ const endScreen = async (p) => {
   });
   ck('aToastLandsBelowTheGuidesLineNeverOverIt', ov.top && ov.toasts.length > 0 && !ov.over, JSON.stringify(ov));
   await p.evaluate(() => { Prologue._gliding = false; });
+  /* A RINGED CARD IS BROUGHT INTO VIEW UNTIL IT IS SEEN (UI.cardIntoView, build 182 —
+     found under a slowed CPU: game 3's barracks card ringed at x 399 on this 390px
+     phone, and the bot never tapped). The guide's one scroll to the card could land
+     before the beat's unlock rebuilt the menu, and the rebuild put the menu back at
+     its start: one shot, spent, and the ring past the screen's edge for good. Here
+     the guide rings the row's last card through its own frames, the first scroll is
+     undone the same way, and its next seconds must bring the card back; once the
+     card has been seen, a scroll of the player's is left alone. */
+  const cv = await p.evaluate(() => {
+    UI.cancelPlacement && UI.cancelPlacement(); UI.deselect && UI.deselect();
+    for (const k of Object.keys(CFG.BUILDINGS)) { try { Scenarios.unlock(k); } catch (e) {} }
+    if (UI.setMenuCollapsed) UI.setMenuCollapsed(false);
+    const wrap = document.getElementById('buildmenu');
+    const cards = [...wrap.querySelectorAll('.bbtn')].filter(x => x.offsetParent !== null && x.dataset.key);
+    const sel = '.bbtn[data-key="' + cards[cards.length - 1].dataset.key + '"]';
+    wrap.scrollTo({ left: 0, behavior: 'instant' });
+    S.paused = true;                    // the line holds still while it is measured (the guide's frames run on)
+    Prologue._aside = null; Prologue._cardSt = null;
+    Prologue._shown = { id: 'card', text: 'Build this here.', face: 'point', ring: () => ({ sel }) };
+    window.__cardSel = sel;
+    return { sel, overflow: wrap.scrollWidth > wrap.clientWidth + 1, n: cards.length };
+  });
+  const cWhole = () => p.evaluate(() => {
+    const wrap = document.getElementById('buildmenu'), wr = wrap.getBoundingClientRect(), br = document.querySelector(window.__cardSel).getBoundingClientRect();
+    const r = Prologue._el && Prologue._el.ring.style.display !== 'none' ? Prologue._el.ring.getBoundingClientRect() : null;
+    return { whole: br.left >= Math.max(0, wr.left) - 1 && br.right <= Math.min(innerWidth, wr.right) + 1, at: Math.round(br.left + br.width / 2),
+      left: Math.round(wrap.scrollLeft), ring: r && Math.round(r.left + r.width / 2), st: Prologue._cardSt };
+  });
+  await p.waitForTimeout(150);          // the first ringing frames: the one scroll sets off…
+  await p.evaluate(() => { UI.buildMenu(); document.getElementById('buildmenu').scrollTo({ left: 0, behavior: 'instant' }); });   // …and the unlock's rebuild undoes it
+  const cUndone = await cWhole();
+  await p.waitForTimeout(2600);         // the guide's next seconds
+  const cBack = await cWhole();
+  await p.evaluate(() => document.getElementById('buildmenu').scrollTo({ left: 0, behavior: 'instant' }));   // the player looks along the row
+  await p.waitForTimeout(1600);
+  const cLeft = await cWhole();
+  await p.evaluate(() => { Prologue._shown = null; S.paused = false; });
+  ck('aRingedCardIsBroughtIntoViewEvenWhenItsFirstScrollIsUndone', cv.overflow && !cUndone.whole && cBack.whole && cBack.ring > 0 && cBack.ring < 390 && !!(cBack.st && cBack.st.seen),
+    JSON.stringify({ cv, undone: { whole: cUndone.whole, at: cUndone.at }, back: { whole: cBack.whole, at: cBack.at, ring: cBack.ring, st: cBack.st } }));
+  ck('andOnceSeenThePlayersScrollIsLeftAlone', cLeft.left === 0 && !cLeft.whole, JSON.stringify({ left: cLeft.left, whole: cLeft.whole }));
   await ctx.close();
 }
 
@@ -649,7 +731,7 @@ const endScreen = async (p) => {
   ck('andTheRaidIsMetAndBeaten', ids.includes('raid') && fin.done.includes('raid'), ids.join(' › ') + ' / done ' + fin.done.join(','));
   ck('andTheWonderIsTheRoadTheGuideWalks', ['save', 'wonder'].every(x => ids.includes(x) && fin.done.includes(x)) && fin.wonder, ids.join(' › ') + ' / done ' + fin.done.join(','));
   ck('andEveryTapOfGameThreeWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
-  ck('andItsRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
+  ck('andGameThreesRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
   ck('andEveryLineOfGameThreeWasShort', run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   const end = await endScreen(p);
   ck('theThirdWinPaysOneImperialCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:3': ['imperial'] }), JSON.stringify(end.runs));
