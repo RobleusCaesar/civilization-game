@@ -1541,8 +1541,8 @@ islets, two lakes; the hunt — a lone deer held grazing in sight until struck
 (`still` in the map's animals: its `wanderT`, or it walked off toward the
 islet herd before the hunter came) — and a hunter's lodge on the ground it
 fell on (`Prologue.huntSpot`), a road, a barracks, an archery range, a
-watchtower by the bridge manned by the range's first archer, a wall across
-the bridge, then the deck's first play; all six paid from the stores, only
+watchtower by the bridge manned by the range's first archer, the wall across
+the bridge, then the deck's first play; all of it paid from the stores, only
 the hall's storey gathered for; a rival at peace) and **The Two Roads**
 (three of the six friendly origins in `CFG.PROLOGUE.ORIGINS`, a barracks
 and three soldiers, a lumber camp, a quarry and a farm on their own worked
@@ -1554,7 +1554,36 @@ food and stone education to level 1. Add roads, hunters lodge, barracks,
 archers towers and walls to level 2. Add the other key buildings to level 3
 … the level 2 map … something like islands and lakes". The stable, the
 dock, the trading post and the siege workshop want a higher hall than the
-journey's and are left to the full game. **WHO**: `neo-prologue` (`{v, at, veteran, done, skipped, tunic}`) is
+journey's and are left to the full game. **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
+`nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
+`_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;
+tests/prologue.mjs `andItsThreeWallSectionsCloseTheLandBridge`,
+`andItLaysTheWallASectionAtATimeUntilTheBridgeIsClosed`,
+`thenAScoutComesToTheWallAndFallsToTheTowersArcher`,
+`thenASectionIsCutIntoAGateAndOpened` — operator, build 187: "get them to
+place it and then place the wall next to it, and then another wall. It shows
+a completed wall. Then show an enemy coming to scout and getting shot at by
+the archer. This gives the basic premise of protection. Then maybe teach the
+player how to build a gate out of a wall and why this is helpful. THEN we can
+move on to the Town Center upgrade"). Six beats where one stood: `wall`,
+`wall2`, `wall3` lay the three sections of the land bridge (the map's
+`wall1..3` marks), each asked the moment the last is laid and crewed, the
+ring on the next gap BESIDE a section already down; a section with nobody on
+the whole line asks for hands (a builder on the next stretch is no idle site —
+`unbuilt()` reads a wall, gate or road site with a hand on a same-kind site
+within 6 as attended, since the work order walks him on); `wall3` waits for
+the finished line. `scout` asks nothing: one light raider of the wild country
+(`G.spawnBarb`, hostile to the player's works alone, `SCOUT_PACE` 0.6 of his
+pace) comes out of the wood beyond the bridge (`scoutFrom`), the view brought
+onto the wall (a ringless line's `look`), his ground lit while he comes
+(`Prologue.watch`, read by `G.updateVisibility`), and he batters the closed
+wall while the tower's archer shoots him down; with nobody on the tower he
+goes home after `SCOUT_DAYS` (4), so the lesson never waits on a fight that
+cannot happen. `gate` rings a whole section of the line (never a dented one: a
+villager in hand tapping it would be sent to mend it), then its panel's Build
+Gate — "A gate opens for us, never raiders" — and `opengate` the lever, since
+a player's gate is born shut. The stores pay for it all (`start` wood 420,
+gold 55). **WHO**: `neo-prologue` (`{v, at, veteran, done, skipped, tunic}`) is
 decided once: a device with any trace of earlier play (`Screens.gamesFounded`)
 is a veteran and never sent; `?prologue=reset` forgets the record,
 `?prologue=0` is off, and an automated browser meets it only with
@@ -1780,7 +1809,15 @@ hint stays silent (the guide rings the card). Never quieted: a refusal to the
 player's own order (`G.log`'s `refusal`, and every refusal ui.js toasts
 itself) and what the player must act on that the guide does not say (`KEEP`:
 a death, a famine, a desertion, the rival's monument and its rise, a hall
-fallen, and an attack — but the scripted raid's while the raid line is up).
+fallen, and an attack — but the scripted raid's while the raid line is up,
+and game 2's scout's while his line is). **AND THE LINE TOOL SAYS NOTHING
+OVER HER** (`Prologue.toolQuiet`, asked by ui.js — operator, build 187: three
+wall sections said seven things over her line): in a journey world the Wall
+and Road tool's arming instruction ("Drag along the ground…") and the line's
+summary ("Wall line: 1 section — builder en route…", "…needs a builder") are
+not toasted (her ring shows where, her `hands` line asks for builders), and
+the seal warning ("Your town is walled in…") is hers while her own `wall`
+line asked for the closing stone; anywhere else, all of it as ever.
 `foeNote`'s roll is drawn whatever is shown, so a seed's rolls stay where they
 were. Measured on the bot's three games: 20 toasts → 1 (a card's own result). **THE NEXT GAME WAITS BEHIND
 THE REWARD** (`Prologue._armNext` / `_preNext` / `endGame` / `asEnd`, tests/prologue.mjs

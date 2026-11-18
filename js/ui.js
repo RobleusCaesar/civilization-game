@@ -214,8 +214,10 @@ const UI = {
           this.placing = key;   // the wall (and the road) keep the line-drag flow
           // …which arms with no ghost and no grid, so it says how it works:
           // the next drag LAYS the line (PX-11, tests/placement.mjs)
-          this.toast(key === 'road' ? 'Drag along the ground to lay a road — release to build'
-            : 'Drag along the ground to lay a wall — release to build', 'note');
+          // (in a journey world the guide's ring shows where: Prologue.toolQuiet)
+          if (!(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('arm')))
+            this.toast(key === 'road' ? 'Drag along the ground to lay a road — release to build'
+              : 'Drag along the ground to lay a wall — release to build', 'note');
         }
         else this.enterPlacement(key);
         this.refreshMenu();
@@ -1172,7 +1174,7 @@ const UI = {
       sites.push(b);
       placed++;
     }
-    if (sealed) this.toast('Your town is walled in — only a gate lets your people out', true);
+    if (sealed && !(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('sealed'))) this.toast('Your town is walled in — only a gate lets your people out', true);
     if (placed) {
       const v = Units.nearestIdleVillager(first.x, first.y);
       // start at the RIGHT end of the line: the nearest section whose finished
@@ -1186,13 +1188,18 @@ const UI = {
         if (pick) start = pick.ref;
       }
       // told in the gold: the line was laid AND paid for on release, so the
-      // player is told it happened (an unmarked toast is shown nowhere)
-      if (road) {
-        if (v && Units.assignBuild(v, start)) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — a builder is on the way. More hands build it faster.`, 'note');
-        else this.toast(`Road laid out (${placed}) — it needs a builder`, true);
-      } else if (v && Units.assignBuild(v, start))
-        this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
-      else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
+      // player is told it happened (an unmarked toast is shown nowhere) — but
+      // in a journey world the guide says it (her next line, or her ask for
+      // hands), and seven of these over three sections buried her
+      const sent = !!(v && Units.assignBuild(v, start));
+      if (!(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('laid'))) {
+        if (road) {
+          if (sent) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — a builder is on the way. More hands build it faster.`, 'note');
+          else this.toast(`Road laid out (${placed}) — it needs a builder`, true);
+        } else if (sent)
+          this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
+        else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
+      }
       // done drawing — drop out of placement so stray taps don't add walls
       this.placing = null;
       this.placeTile = null;

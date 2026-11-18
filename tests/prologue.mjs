@@ -9,8 +9,11 @@
                   on ground the village walks to; game 1 shows its whole
                   valley and no rival (berries, wood, stone, a house); game 2
                   is islands and lakes — a deer to hunt, and ground for a
-                  road, a barracks, a range, a tower and a wall on the land
-                  bridge; game 3 has the worked ground for its lumber camp,
+                  road, a barracks, a range, a tower and the three wall
+                  sections that close the land bridge (a scout comes out of
+                  the wood beyond it, is shot down from the tower, and a
+                  section is cut into a gate and opened); game 3 has the
+                  worked ground for its lumber camp,
                   quarry and farm, a gold seam, and deals three of the six
                   friendly origins.
      THE TITLE    a fresh device sees one BEGIN (the game's name, N of 3) and
@@ -154,6 +157,18 @@ const page = async (q, done) => {
         o.deer = { n: deer.length, mark: !!d0, seen: !!(d0 && G.visibleAt(d0.x | 0, d0.y | 0)), reach: !!(d0 && near(d0.x | 0, d0.y | 0)),
           oneBlow: !!(d0 && d0.hp > 0 && d0.hp <= CFG.UNITS.villager.atk && d0.maxhp === d0.hp) };
         if (d0) { G.noteHunt(d0.x | 0, d0.y | 0); o.lodge = place('lodge', 'deer'); }
+        /* THE BRIDGE CLOSED BY THREE SECTIONS (operator, build 187: "place it and
+           then place the wall next to it, and then another wall … Then show an
+           enemy coming to scout"): each of the line's tiles takes a wall, the
+           scout's wood is the mainland the bridge joins, and the three sections
+           standing cut it off from the hall's doorstep */
+        const lineT = ['wall1', 'wall2', 'wall3'].map(k => m[k]).filter(Boolean);
+        o.line = ['wall1', 'wall2', 'wall3'].map(k => place('wall', k));
+        const sfI = m.scoutFrom ? m.scoutFrom[1] * W + m.scoutFrom[0] : -1;
+        o.scoutWood = sfI >= 0 && has(sfI) && S.map.terrain[sfI] === T.GRASS;
+        for (const [x, y] of lineT) Bld.place('P', 'wall', x, y, { free: true, noAutoAssign: true });
+        const shut = Path.reachFrom(home, true);
+        o.lineShuts = lineT.length === 3 && sfI >= 0 && !!shut && !shut[sfI];
       }
       if (g === 3) {
         o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
@@ -192,6 +207,8 @@ const page = async (q, done) => {
     `hall ${g2.hall}, relic ${g2.relic}, stone ${JSON.stringify(g2.marks.stone)}, berry ${g2.berryKind}`);
   ck('gameTwosLessonsStandWhereTheGuideSays', ['road', 'barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
     ['road', 'barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
+  ck('andItsThreeWallSectionsCloseTheLandBridge', g2.line.every(v => v === 'ok') && g2.scoutWood && g2.lineShuts,
+    `sections ${g2.line.join(', ')}; scout's wood on the mainland ${g2.scoutWood}; closed by the three ${g2.lineShuts}`);
   ck('andItsDeerGrazesInSightWhereALodgeMayStand', g2.deer.mark && g2.deer.seen && g2.deer.reach && g2.lodge === 'ok', JSON.stringify(g2.deer) + ' lodge ' + g2.lodge);
   /* build 185: at a deer's 20 health a villager's hunt bolted it from blow to
      blow, away from the hunter and so from the hall — three hunts in ten ended
@@ -1121,9 +1138,24 @@ const endScreen = async (p) => {
   await p.click('#btnBegin');
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   await p.waitForTimeout(3000);
+  // the scout's wounds, and who dealt them: an archer up the tower, by the arrows' own source
+  await p.evaluate(() => {
+    window.__scout = { hits: 0, fromTower: 0, wall: 0, toasts: [] };
+    const dmg = Units.damage;
+    Units.damage = function (u, amt, by) {
+      if (u && u.proScout) { window.__scout.hits++; const a = by && Units.get(by); if (a && a.perch) window.__scout.fromTower++; }
+      return dmg.apply(this, arguments);
+    };
+    const bd = Bld.damage;
+    Bld.damage = function (b, amt) { if (b && b.owner === 'P' && b.key === 'wall' && Prologue.scout && Prologue.scout()) window.__scout.wall++; return bd.apply(this, arguments); };
+    const t = UI._showToast;
+    if (t) UI._showToast = function (msg) { if (Prologue._shown && /^(wall|scout|gate)/.test(Prologue._shown.id)) window.__scout.toasts.push(String(msg)); return t.apply(this, arguments); };
+  });
   const run = await follow(p, 1400);
   const g2w = await p.evaluate(() => ({ done: Object.keys((S.pro && S.pro.done) || {}),
-    has: ['lodge', 'barracks', 'range', 'tower', 'wall'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)),
+    has: ['lodge', 'barracks', 'range', 'tower', 'wall', 'gate'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)),
+    line: Prologue.lineForts().map(b => b.key + (b.construction > 0 ? ' site' : '') + (b.raised ? ' shut' : '')),
+    scout: window.__scout, scoutLeft: !!Prologue.scout(),
     roads: Object.keys((S.map && S.map.roads) || {}).length + S.buildings.filter(b => b.owner === 'P' && b.key === 'road').length,
     up: S.units.filter(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)).length,
     lodgeAt: (S.buildings.find(b => b.owner === 'P' && b.key === 'lodge') || {}), tc: Bld.tcOf('P') }));
@@ -1132,8 +1164,21 @@ const endScreen = async (p) => {
      archers towers and walls to level 2"): each taught and standing, an archer on the
      tower, and the deer — held grazing until the hunter came — fallen near home */
   ck('gameTwoTeachesTheHuntRoadsAndDefences', ['hunt', 'lodge', 'road', 'barracks', 'range', 'tower', 'man', 'wall', 'deck'].every(k => g2w.done.includes(k))
-    && g2w.has.length === 5 && g2w.roads > 0 && g2w.up > 0 && lodgeD < 10,
+    && g2w.has.length === 6 && g2w.roads > 0 && g2w.up > 0 && lodgeD < 10,
     `taught ${g2w.done.join(', ')}; standing ${g2w.has.join(', ')}; road tiles ${g2w.roads}; archers up ${g2w.up}; lodge ${lodgeD.toFixed(1)} tiles from the hall`);
+  /* THE WALL, THE SCOUT AND THE GATE (operator, build 187): three sections laid one
+     beside the other close the bridge, a scout comes out of the wood to the finished
+     wall and falls to the archer on the tower (his blows land on the wall, never on
+     anyone behind it), then a section is cut into a gate and the gate is opened —
+     and while those lines are up the line tool says nothing over the guide */
+  const order = run.seen.map(s => s.id), at = id => order.indexOf(id);
+  ck('andItLaysTheWallASectionAtATimeUntilTheBridgeIsClosed', ['wall', 'wall2', 'wall3'].every(k => g2w.done.includes(k)) && at('wall') < at('wall2') && at('wall2') < at('wall3')
+    && g2w.line.length === 3, `lines ${order.join(' › ')}; the line ${g2w.line.join(', ')}`);
+  ck('thenAScoutComesToTheWallAndFallsToTheTowersArcher', g2w.done.includes('scout') && at('scout') > at('wall3') && !g2w.scoutLeft
+    && g2w.scout.fromTower >= 3 && g2w.scout.fromTower === g2w.scout.hits, JSON.stringify(g2w.scout));
+  ck('thenASectionIsCutIntoAGateAndOpened', ['gate', 'opengate'].every(k => g2w.done.includes(k)) && at('gate') > at('scout') && at('opengate') > at('gate') && at('deck') > at('opengate')
+    && g2w.line.filter(x => x === 'gate').length === 1 && g2w.line.filter(x => x === 'wall').length === 2, `the line ${g2w.line.join(', ')}; lines ${order.join(' › ')}`);
+  ck('andTheLineToolSaysNothingOverTheGuide', !g2w.scout.toasts.some(t => /Drag along|Wall line|needs a builder|walled in|under attack/i.test(t)), g2w.scout.toasts.join(' | ') || 'quiet');
   ck('gameTwoIsWonByFollowingTheGuideAlone', run.over && run.played >= 1, `over ${run.over} at ${run.clk.toFixed(0)} s, ${run.clicks} taps, cards played ${run.played}, lines ${run.seen.map(s => s.id).join(' › ')}`);
   ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapOfGameTwoWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
