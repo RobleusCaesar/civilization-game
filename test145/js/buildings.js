@@ -550,6 +550,14 @@ const Bld = {
      Use this for ANY price shown to the player; never hand-format one. */
   RES_ICON: { food: '🍖', wood: '🪵', stone: '🪨', gold: '✨' },
   resIcon(k) { return this.RES_ICON[k] || k; },
+  /* what a price is still short of, in words: "123 wood and 5 stone" (the refusal a grey
+     Upgrade answers a tap with — operator, build 191: "click on greyed out things and then
+     see a notification about what they're missing") */
+  shortfall(cost, res) {
+    res = res || S.res; const out = [];
+    for (const k of ['food', 'wood', 'stone', 'gold']) { const n = Math.ceil((cost[k] || 0) - (res[k] || 0)); if (n > 0) out.push(n + ' ' + k); }
+    return out.length > 1 ? out.slice(0, -1).join(', ') + ' and ' + out[out.length - 1] : (out[0] || '');
+  },
   costStr(cost) {
     // A NBSP binds each icon to ITS number so a pair can never wrap apart
     // (the old format could drop an icon onto the next line, away from its
@@ -1406,7 +1414,7 @@ const Bld = {
         `(have ${this.tcSupport(b)})` };
     }
     const res = b.owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources' };
+    if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources', short: this.shortfall(next.cost, res) };
     return { ok: true, cost: next.cost };
   },
 

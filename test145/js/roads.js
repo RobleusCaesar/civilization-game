@@ -619,7 +619,7 @@ const Roads = (() => {
     const x0 = Math.max(1, Math.floor(v.x0) - 1), y0 = Math.max(1, Math.floor(v.y0) - 1);
     const x1 = Math.min(CFG.W - 2, Math.ceil(v.x1) + 1), y1 = Math.min(CFG.H - 2, Math.ceil(v.y1) + 1);
     const m = S.map.roads || {}, budget = { left: Rd.BUDGET_MS }, decs = [];
-    const gr = Rd._gr = Rd.gateRoads();
+    const gr = Rd._gr = Rd.gateRoads(), snap = R.snapper ? R.snapper(g) : (x, y, w, h) => [x, y, w, h];
     const sites = S.buildings.filter(b => b.key === 'road' && b.construction > 0 && b.x >= x0 && b.x <= x1 && b.y >= y0 && b.y <= y1);
     const siteSet = new Set(sites.map(b => b.y * CFG.W + b.x));
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
@@ -635,7 +635,7 @@ const Roads = (() => {
       // tiles, and a passage must not open onto grass for a frame
       const e = entry(x, y, stage, budget, lv, gr.has(i));
       if (!e) continue;
-      blit(g, e.surf, x * T_, y * T_, T_, T_);
+      { const d = snap(x * T_, y * T_, T_, T_); blit(g, e.surf, d[0], d[1], d[2], d[3]); }   // whole device pixels: no seam between two tiles of road (R.snapper)
       if (e.dec) decs.push(e.dec);
     }
     for (const d of decs) blit(g, d.cv, d.x, d.y, d.w, d.h);

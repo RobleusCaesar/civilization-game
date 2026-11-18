@@ -3160,7 +3160,7 @@ const UI = {
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
-        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) this.toast(Bld.canUpgrade(b2).why, true); }
+        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); } }
         else if (btn.dataset.act === 'train') {
           if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true);
           this.refreshMenu();
