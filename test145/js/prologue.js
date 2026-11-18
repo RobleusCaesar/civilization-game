@@ -16,8 +16,9 @@
                 pulse rings and the hand points at, and what completes it —
                 read on the SIM's clock (simTick), so the scripted harness
                 plays it as a person does
-     THE ELDER  the panel (the Settings page's carved frame), the pulse, the
-                idle hand, the goal tracker, the celebration
+     THE ELDER  the panel (the Settings page's carved frame) fixed at the top
+                with the task in its header, its folded strip, the pulse, the
+                idle hand, the celebration
      ENDINGS    the Elder's last word before the end screen (holdEnd), the
                 chief's name after game 1, the journey's card and the end
                 screen's two doors (endCard / endRow / endAct)
@@ -609,6 +610,8 @@ const Prologue = {
     return out.join(' · ');
   },
   costLine(key) { return this.priceLine(Bld.effCost('P', key)); },
+  // the deed, and while it is short the goods it waits on: "Build a house: Wood 20/30"
+  buildGoal(key, deed) { return this.afford(key) ? deed : deed + ': ' + this.costLine(key); },
   // a price as the tracker says it ("Food 30/50 · Wood 5/30")
   priceLine(c) {
     c = c || {};
@@ -656,14 +659,14 @@ const Prologue = {
           goal: 'Gather stone', ring: P.sendTo('stone'), taps: P.sendTaps('stone'),
           done: () => P.ordered('stone'), praise: 'Good stone!' },
         { id: 'house', face: 'point', text: 'We need a roof. Build a house beside the fire.', key: 'house',
-          goal: () => P.afford('house') ? 'Build a house' : 'Gather wood for a house: ' + P.costLine('house'),
+          goal: () => P.buildGoal('house', 'Build a house'),
           when: () => P.afford('house') || P.has('house'), hold: (c) => P.needLine('A house', null, c),
           on: () => Scenarios.unlock('house'),
           ring: P.buildRing('house', 'houseSite'), taps: () => { const r = P.buildRing('house', 'houseSite')(); return r ? [r] : []; },
           ack: () => P.has('house'), site: () => P.siteOf('house'), wait: 'The house is going up.',
           done: () => P.has('house', true), praise: 'A home!' },
         { id: 'train', face: 'point', text: 'Now train a new villager at the hall.', unit: 'villager',
-          goal: () => P.afford2('villager') ? 'Train a villager' : 'Gather food for a villager: ' + P.priceLine(P.trainPrice('villager')),
+          goal: () => 'Train a villager' + (P.afford2('villager') ? '' : ': ' + P.priceLine(P.trainPrice('villager'))),
           when: () => P.afford2('villager') || P.trained(), hold: (c) => P.needLine('A villager', null, c),
           ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
@@ -676,7 +679,7 @@ const Prologue = {
           done: () => { const n = P.newcomer(); return !n || !!n.task; }, praise: 'Good.' },
         { id: 'grow', face: 'thinking', text: 'Now our hall must grow. Gather what it needs.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
-          goal: () => 'Hall Lv 2: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
+          goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
           praise: 'We have enough!' },
         // an upgrade rises only with hands on it (the game's rule): the guide sends them
@@ -701,7 +704,7 @@ const Prologue = {
           ack: () => P.hunting() || P.killed(), wait: 'The hunt is on.',
           done: () => P.killed(), praise: 'Fresh meat!' },
         { id: 'lodge', face: 'point', text: "Build a hunter's lodge where the deer fell.", key: 'lodge',
-          goal: () => P.afford('lodge') ? "Build a hunter's lodge" : "Gather for a lodge: " + P.costLine('lodge'),
+          goal: () => P.buildGoal('lodge', "Build a hunter's lodge"),
           when: () => P.afford('lodge') || P.has('lodge'), hold: (c) => P.needLine("A hunter's lodge", null, c),
           on: () => Scenarios.unlock('lodge'),
           ring: P.buildRing('lodge', () => P.huntSpot()), taps: () => { const r = P.buildRing('lodge', () => P.huntSpot())(); return r ? [r] : []; },
@@ -715,7 +718,7 @@ const Prologue = {
           ack: () => P.laid(), site: () => P.siteOf('road'),
           done: () => P.laid() && (!P.siteOf('road') || P.builders(P.siteOf('road')).length > 0), praise: 'A fine road!' },
         { id: 'barracks', face: 'point', text: 'Now a barracks, to train our defenders.', key: 'barracks',
-          goal: () => P.afford('barracks') ? 'Build a barracks' : 'Gather for a barracks: ' + P.costLine('barracks'),
+          goal: () => P.buildGoal('barracks', 'Build a barracks'),
           when: () => P.afford('barracks') || P.has('barracks'), hold: (c) => P.needLine('A barracks', null, c),
           on: () => Scenarios.unlock('barracks'),
           ring: P.buildRing('barracks', 'barracksSite'), taps: () => { const r = P.buildRing('barracks', 'barracksSite')(); return r ? [r] : []; },
@@ -723,7 +726,7 @@ const Prologue = {
           wait: 'The barracks is going up.',
           done: () => P.has('barracks', true), praise: 'A barracks, and its first soldier!' },
         { id: 'range', face: 'point', text: 'Archers guard our towers. Build an archery range.', key: 'range',
-          goal: () => P.afford('range') ? 'Build an archery range' : 'Gather for a range: ' + P.costLine('range'),
+          goal: () => P.buildGoal('range', 'Build an archery range'),
           when: () => P.afford('range') || P.has('range'), hold: (c) => P.needLine('An archery range', null, c),
           on: () => Scenarios.unlock('range'),
           ring: P.buildRing('range', 'rangeSite'), taps: () => { const r = P.buildRing('range', 'rangeSite')(); return r ? [r] : []; },
@@ -731,7 +734,7 @@ const Prologue = {
           wait: 'The range is going up.',
           done: () => P.has('range', true), praise: 'A range, and its first archer!' },
         { id: 'tower', face: 'point', text: 'Build a watchtower by the land bridge.', key: 'tower',
-          goal: () => P.afford('tower') ? 'Build a watchtower' : 'Gather for a tower: ' + P.costLine('tower'),
+          goal: () => P.buildGoal('tower', 'Build a watchtower'),
           when: () => P.afford('tower') || P.has('tower'), hold: (c) => P.needLine('A tower', null, c),
           on: () => Scenarios.unlock('tower'),
           ring: P.buildRing('tower', 'towerSite'), taps: () => { const r = P.buildRing('tower', 'towerSite')(); return r ? [r] : []; },
@@ -745,7 +748,7 @@ const Prologue = {
           ring: () => P.manRing(), taps: () => P.manTaps(),
           done: () => P.manned(), praise: 'Sharp eyes up there!' },
         { id: 'wall', face: 'point', text: 'Walls keep raiders out. Build one on the land bridge.', key: 'wall',
-          goal: () => P.afford('wall') ? 'Build a wall' : 'Gather for a wall: ' + P.costLine('wall'),
+          goal: () => P.buildGoal('wall', 'Build a wall'),
           when: () => P.afford('wall') || P.has('wall'), hold: (c) => P.needLine('A wall', null, c),
           on: () => Scenarios.unlock('wall'),
           ring: P.lineRing('wall', 'wallSite'), taps: () => { const r = P.lineRing('wall', 'wallSite')(); return r ? [r] : []; },
@@ -761,7 +764,7 @@ const Prologue = {
           done: () => P.played() && !(window.Deck && Deck.acting && Deck.acting()), praise: 'Well played!' },
         { id: 'grow', face: 'thinking', text: 'Now raise the hall again. Gather what it needs.', gather: true,
           gwait: () => 'The hall will rise again. The ' + P.naming(P.need()) + ' is coming in.',
-          goal: () => 'Hall Lv 3: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
+          goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           done: () => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
           praise: 'We have enough!' },
         { id: 'raise', face: 'excited', text: 'Raise the hall!',
@@ -778,7 +781,7 @@ const Prologue = {
       return [
         // the two roads are said once the raid is beaten, where the choice is the player's
         { id: 'barracks', face: 'determined', text: 'They have found us, chief. Build a barracks.', key: 'barracks',
-          goal: () => P.afford('barracks') ? 'Build a barracks' : 'Gather for a barracks: ' + P.costLine('barracks'),
+          goal: () => P.buildGoal('barracks', 'Build a barracks'),
           when: () => P.afford('barracks') || P.has('barracks'), hold: (c) => P.needLine('A barracks', null, c),
           on: () => Scenarios.unlock('barracks'),
           ring: P.buildRing('barracks', 'barracksSite'), taps: () => { const r = P.buildRing('barracks', 'barracksSite')(); return r ? [r] : []; },
@@ -800,21 +803,21 @@ const Prologue = {
            has already answered its line, which is passed over unsaid — its
            card is opened all the same (`unlocks`). */
         { id: 'lumber', face: 'point', text: 'Old felled trees lie nearby. Build a lumber camp there.', key: 'lumber',
-          goal: () => P.afford('lumber') ? 'Build a lumber camp' : 'Gather for a lumber camp: ' + P.costLine('lumber'),
+          goal: () => P.buildGoal('lumber', 'Build a lumber camp'),
           when: () => P.afford('lumber') || P.has('lumber'), hold: (c) => P.needLine('A lumber camp', null, c),
           on: () => Scenarios.unlock('lumber'), unlocks: 'lumber',
           ring: P.buildRing('lumber', 'stumps'), taps: () => { const r = P.buildRing('lumber', 'stumps')(); return r ? [r] : []; },
           ack: () => P.has('lumber'), site: () => P.siteOf('lumber'),
           done: () => P.raised('lumber'), praise: 'A lumber camp!' },
         { id: 'quarry', face: 'point', text: 'Now a quarry, on the broken rock.', key: 'quarry',
-          goal: () => P.afford('quarry') ? 'Build a quarry' : 'Gather for a quarry: ' + P.costLine('quarry'),
+          goal: () => P.buildGoal('quarry', 'Build a quarry'),
           when: () => P.afford('quarry') || P.has('quarry'), hold: (c) => P.needLine('A quarry', null, c),
           on: () => Scenarios.unlock('quarry'), unlocks: 'quarry',
           ring: P.buildRing('quarry', 'pebbles'), taps: () => { const r = P.buildRing('quarry', 'pebbles')(); return r ? [r] : []; },
           ack: () => P.has('quarry'), site: () => P.siteOf('quarry'),
           done: () => P.raised('quarry'), praise: 'A quarry!' },
         { id: 'farm', face: 'point', text: 'And a farm, where the berries were picked bare.', key: 'farm',
-          goal: () => P.afford('farm') ? 'Build a farm' : 'Gather for a farm: ' + P.costLine('farm'),
+          goal: () => P.buildGoal('farm', 'Build a farm'),
           when: () => P.afford('farm') || P.has('farm'), hold: (c) => P.needLine('A farm', null, c),
           on: () => Scenarios.unlock('farm'), unlocks: 'farm',
           ring: P.buildRing('farm', 'barren'), taps: () => { const r = P.buildRing('farm', 'barren')(); return r ? [r] : []; },
@@ -838,7 +841,7 @@ const Prologue = {
            fight over, every hand goes back to the work it left (the horn's own rule). */
         { id: 'save', face: 'neutral', text: 'Now choose: raise a Wonder here, or march on their hall.', gather: true,
           gwait: 'Everyone is gathering. A Wonder here, or march on their hall?',
-          goal: () => 'Wonder: ' + P.costLine('wonder'), cost: () => Bld.effCost('P', 'wonder'),
+          goal: () => 'Raise the Wonder: ' + P.costLine('wonder'), cost: () => Bld.effCost('P', 'wonder'),
           on: () => { Scenarios.unlock('wonder'); try { if (typeof Units !== 'undefined' && Units.backToWork) Units.backToWork('P'); } catch (e) {} },
           ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           skipIf: () => P.marching(),
@@ -1392,23 +1395,32 @@ const Prologue = {
     root.id = 'proUI';
     const corners = (window.SettingsPage && SettingsPage.cornerSvg)
       ? [['tl', 0, 0], ['tr', 1, 0], ['bl', 0, 1], ['br', 1, 1]].map(([c, fx, fy]) => `<i class="pc ${c}">${SettingsPage.cornerSvg('proc' + c, fx, fy)}</i>`).join('') : '';
+    /* THE TASK RIDES IN THE CARD (operator, build 186: "instead [of] a separate
+       gold tag for the task … incorporate that into the image text … The key is
+       not to make the instructions any taller"): the card's header line — where
+       her name stood — carries the standing objective, and her name is a gold
+       plate on her portrait's frame. Folded, the card is a slim strip in the
+       same place: her portrait and the same task line. */
+    const task = '<span class="peTask" aria-live="polite"><i class="pgd"></i><span class="pgt"></span><span class="pgn"></span></span>';
     root.innerHTML =
-      '<div id="proGoal" aria-live="polite"><i class="pgd"></i><span class="pgt"></span><small class="pgn"></small></div>' +
       '<i id="proRing"></i>' +
       '<div id="proElder" role="dialog" aria-label="' + this.NAME + ', your guide">' + corners +
-        '<div class="pePic"><img alt="" src="' + this.FACES.neutral + '"></div>' +
-        '<div class="peBody"><b class="peName">' + this.NAME + '</b><p class="peTxt"></p>' +
+        '<div class="pePic"><img alt="" src="' + this.FACES.neutral + '"><b class="peName">' + this.NAME + '</b></div>' +
+        '<div class="peBody">' + task + '<p class="peTxt"></p>' +
           '<div class="peAsk"><input class="peIn" maxlength="24" autocomplete="off" spellcheck="false" aria-label="Your name">' +
           '<button class="peBtn gold" type="button" data-act="me">That\'s me</button></div></div>' +
-        '<button class="peHide" type="button" aria-label="Hide">▾</button>' +
+        '<button class="peHide" type="button" aria-label="Fold her card away">▴</button>' +
       '</div>' +
-      '<button id="proMini" type="button" aria-label="' + this.NAME + ', your guide: show her line"><img alt="" src="' + this.FACES.neutral + '"></button>' +
+      '<button id="proMini" type="button" aria-label="' + this.NAME + ', your guide: show her line"><span class="pmPic"><img alt="" src="' + this.FACES.neutral + '"></span>' +
+        task + '<i class="pmOpen" aria-hidden="true">▾</i></button>' +
       '<div id="proHand" aria-hidden="true">' + this.HAND_SVG + '<i class="phr"></i></div>' +
       '<div id="proFx" aria-hidden="true"></div>';
     document.body.appendChild(root);
     const E = this._el = {
-      root, goal: root.querySelector('#proGoal'), ring: root.querySelector('#proRing'),
+      root, ring: root.querySelector('#proRing'),
       elder: root.querySelector('#proElder'), pic: root.querySelector('#proElder .pePic img'),
+      // the task line: the card's header (E.goal, the objective the tests read) and the folded strip's
+      goal: root.querySelector('#proElder .peTask'), miniTask: root.querySelector('#proMini .peTask'),
       txt: root.querySelector('.peTxt'), ask: root.querySelector('.peAsk'), inp: root.querySelector('.peIn'),
       mini: root.querySelector('#proMini'), miniPic: root.querySelector('#proMini img'),
       hand: root.querySelector('#proHand'), fx: root.querySelector('#proFx'),
@@ -1454,6 +1466,7 @@ const Prologue = {
       if (this._el && this._el.root.style.display !== 'none') this._el.root.style.display = 'none';
       if (document.body.classList.contains('pro-nobuild')) document.body.classList.remove('pro-nobuild');
       if (this._goalH) { this._goalH = 0; document.body.style.setProperty('--pro-h', '0px'); }
+      if (this._mapH) { this._mapH = 0; document.body.style.setProperty('--pro-map', '0px'); }
       return;
     }
     const E = this._dom();
@@ -1482,20 +1495,33 @@ const Prologue = {
        the tap landed on its Cancel */
     const open = Screens.current === 'playing' && !this._held ? this._look(raw, tgt, B) : true;
     this._ringTo(E, open ? tgt : null);
-    // the goal tracker: the standing objective, whatever line is up
-    this._goal(E, B);
-    // the line: open, or folded to a portrait once the player is working on it
+    // the task line: the standing objective, whatever line is up
+    this._task(E);
+    // the line: open, or folded to its strip once the player is working on it
     const reading = Math.max(3200, 1200 + 260 * ((line && line.text) || '').split(/\s+/).length);
     if (b && !b.auto && this._acted && !this._userHid && now - this._lineT0 > reading + 4000 && !this._asking) this._collapsed = true;
     // …and opens again for a player who has stopped (the hand comes with it)
     if (this._collapsed && !this._userHid && b && !b.auto && now - this._lastIn > 11000) { this._collapsed = false; this._lineT0 = now; }
-    const card = !!line && !this._collapsed && !(window.DeckUI && DeckUI.open) && !(window.Deck && Deck.acting && Deck.acting());
+    let card = !!line && !this._collapsed && !(window.DeckUI && DeckUI.open) && !(window.Deck && Deck.acting && Deck.acting());
+    const seat = this._seat(E, B);
+    /* the card never moves: a target it would cover that the look could not
+       bring out (the map's edge), or an element under it, folds it to its strip
+       for as long as that lasts — and it opens again where it was */
+    if (card && open && tgt && this._seatCovers(seat, seat.w, seat.h, tgt)) card = false;
     E.elder.style.display = card ? '' : 'none';
-    // #proGoal, #proMini and #proHand are hidden by the stylesheet: a show is an explicit value, never ''
-    E.mini.style.display = !card && (b || this._held) && !(window.DeckUI && DeckUI.open) ? 'block' : 'none';
-    if (card) this._seat(E, B, tgt);
-    else this._seatMini(E, B);
-    this._toastStep(E, B, card);
+    if (card) { this._cardH = E.elder.offsetHeight || this._cardH; this._fitTask(E.goal); }
+    // #proMini and #proHand are hidden by the stylesheet: a show is an explicit value, never ''
+    let strip = !card && !!(b || this._held) && !(window.DeckUI && DeckUI.open);
+    if (strip) {
+      this._seatMini(E, B, seat);
+      if (E.mini.style.display !== 'flex') E.mini.style.display = 'flex';
+      this._fitTask(E.miniTask);
+      // …and a strip that would cover it too stands aside while it does
+      if (open && tgt) { const r = E.mini.getBoundingClientRect(); if (this._seatCovers({ x: r.left, y: r.top }, r.width, r.height, tgt)) strip = false; }
+    }
+    if (!strip && E.mini.style.display !== 'none') E.mini.style.display = 'none';
+    this._mapStep(B, card ? seat : null);
+    this._toastStep(E, B, card, strip);
     // the idle hand: 6 s of nothing on an action beat, and it shows the taps
     this._handTick(E, b && !this._stale(b) ? b : null, now);
     this._fxTick(E, now);
@@ -1523,6 +1549,15 @@ const Prologue = {
       const el = document.querySelector(t.sel);
       if (!el || el.offsetParent === null) return null;
       const r = el.getBoundingClientRect();
+      /* a build card scrolling in (UI.cardIntoView) is ringed from the moment the
+         menu opens — the ring rides in with it from past the screen's edge — but
+         not while its middle crosses the strip of the bar's own wood between the
+         menu's edge and the screen's, where a tap lands on nothing */
+      const box = el.closest && el.closest('#buildmenu');
+      if (box) {
+        const b = box.getBoundingClientRect(), cx = r.left + r.width / 2;
+        if ((cx < b.left && cx >= 0) || (cx > b.right && cx <= innerWidth)) return null;
+      }
       return { rect: r, x: r.left + r.width / 2, y: r.top + r.height / 2 };
     }
     let wx = t.x, wy = t.y, rr = t.r || 0.8, lift = 0;
@@ -1551,75 +1586,113 @@ const Prologue = {
       r.style.width = r.style.height = (rad * 2) + 'px';
     }
   },
-  _goal(E, B) {
+  /* THE TASK LINE (operator, build 186): the standing objective, in the card's
+     header where her name stood, and on the folded strip. A goal is "Head" or
+     "Head: Food 30/50 · Wood 5/30"; each good of the tail is drawn with the top
+     bar's own icon, so the line and the bar answer each other. Built only when
+     the words change. */
+  _task(E) {
     const b = this._goalBeat || this._shown;
     let txt = b && b.goal ? (typeof b.goal === 'function' ? b.goal.call(this) : b.goal) : '';
     if (this._held) txt = '';
-    const el = E.goal;
-    if (!txt) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
-    el.style.display = 'block';
-    const [head, ...rest] = String(txt).split(': ');
-    const t = el.querySelector('.pgt'), n = el.querySelector('.pgn');
-    const tail = rest.join(': ');
-    if (t.textContent !== head) t.textContent = head;
-    if (n.textContent !== tail) n.textContent = tail;
-    n.style.display = tail ? '' : 'none';
-    // under the top bar (and under the rival's wonder banner when it stands)
-    const ww = document.getElementById('wonderWarn');
-    const wwH = ww && ww.offsetParent !== null ? ww.offsetHeight + 6 : 0;
-    el.style.top = (B.top + 6 + wwH) + 'px';
+    txt = String(txt || '');
+    if (txt === this._taskTxt) return;
+    this._taskTxt = txt;
+    const [head, ...rest] = txt.split(': ');
+    const html = rest.join(': ').split(' · ').filter(Boolean).map(it => this._taskItem(it)).join('');
+    for (const row of [E.goal, E.miniTask]) {
+      row.style.display = txt ? '' : 'none';
+      row.querySelector('.pgt').textContent = head;
+      const n = row.querySelector('.pgn');
+      n.innerHTML = html; n.style.display = html ? '' : 'none';
+      row.dataset.fit = '';
+    }
+  },
+  TASK_IC: { Food: 'food', Wood: 'wood', Stone: 'stone', Gold: 'gold', Buildings: 'bld' },
+  // a building of the hall's support, in the bar's own drawing hand (ink edge, lit plane)
+  BLD_SVG: '<svg class="pic" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 23 L10 41.6 L38 41.6 L38 23" fill="#d6bf93" stroke="#140d06" stroke-width="2.4" stroke-linejoin="round"/>' +
+    '<path d="M12.6 25 L12.6 39.4 L20 39.4 L20 25 Z" fill="#ecdcb6"/><path d="M28 41.6 L28 30.4 Q24 26.6 20 30.4 L20 41.6 Z" fill="#5c3b1c" stroke="#140d06" stroke-width="1.8" stroke-linejoin="round"/>' +
+    '<path d="M3.8 26 L24 6.8 L44.2 26 Z" fill="#b5862f" stroke="#140d06" stroke-width="2.6" stroke-linejoin="round"/><path d="M8.6 23.6 L24 9.2 L28.2 13 L14.8 25.2 Z" fill="#efc76c"/>' +
+    '<path d="M16.4 22.4 L24.6 14.8 M30.6 16.4 L37.4 22.6 M34 15.2 L39 19.8" stroke="#7d5821" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  _taskItem(it) {
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const m = /^(Food|Wood|Stone|Gold|Buildings) (\d+)\/(\d+)$/.exec(it);
+    if (!m) return '<span class="pgi">' + esc(it) + '</span>';
+    let ic = '';
+    if (m[1] === 'Buildings') ic = this.BLD_SVG;
+    else {
+      const s = document.querySelector('#topbar svg.ric[data-ic="' + this.TASK_IC[m[1]] + '"]');
+      if (s) ic = s.outerHTML.replace('class="ric"', 'class="pic"');
+    }
+    return '<span class="pgi' + (+m[2] >= +m[3] ? ' ok' : '') + '">' + ic + '<span class="sr">' + m[1] + ' </span>' + m[2] + '/' + m[3] + '</span>';
+  },
+  /* THE TASK LINE NEVER WRAPS (the card is no taller for carrying it): when the
+     words do not fit, the goods already in give way, then the type steps down,
+     then the diamond goes, then the goods close up; only then is the head cut
+     short. Measured when the words or the room change, never per frame. */
+  _fitTask(row) {
+    if (!row || row.style.display === 'none') return;
+    const key = row.clientWidth + '|' + this._taskTxt;
+    if (row.dataset.fit === key) return;
+    row.classList.remove('f1', 'f2', 'f3', 'f4');
+    const t = row.querySelector('.pgt'), over = () => t.scrollWidth > t.clientWidth + 0.5;
+    for (const c of ['f1', 'f2', 'f3', 'f4']) { if (!over()) break; row.classList.add(c); }
+    row.dataset.fit = key;
   },
   /* THE TOASTS STEP BELOW THE JOURNEY (index.html's #toasts adds --pro-h to
-     its top): under the goal tracker, and under the Elder's card while it is
-     seated at the top over the toasts' column — the news is never written
-     over the line being read. */
-  _toastStep(E, B, open) {
+     its top): under the guide's card, or its folded strip — the news is never
+     written over the line being read. Measured off the toasts' own column, so
+     the step is exact whatever the top bar's height. */
+  _toastStep(E, B, card, strip) {
     let bottom = 0;
-    if (E.goal.style.display !== 'none') bottom = E.goal.getBoundingClientRect().bottom;
     const s = this._seatBox;
-    if (open && s && s.y < (B.top + B.bot) / 2 && s.x < B.vw * 0.66) bottom = Math.max(bottom, s.y + s.h);
+    if (card && s) bottom = s.y + (this._cardH || s.h);
+    else if (strip) bottom = E.mini.getBoundingClientRect().bottom;
     let h = 0;
     if (bottom) {
-      const ww = document.getElementById('wonderWarn');
-      const wwH = ww && ww.offsetParent !== null ? ww.offsetHeight + 6 : 0;
-      h = Math.max(0, Math.round(bottom + 6 - (B.top - 6 + wwH)));
+      const ts = document.getElementById('toasts'), tr = ts && ts.getBoundingClientRect();
+      let base;
+      if (tr && (tr.top || tr.height)) base = tr.top - (this._goalH || 0);
+      else {
+        const ww = document.getElementById('wonderWarn');
+        base = B.top - 6 + (ww && ww.offsetParent !== null ? ww.offsetHeight + 6 : 0);
+      }
+      h = Math.max(0, Math.round(bottom + 6 - base));
     }
     if (this._goalH !== h) { this._goalH = h; document.body.style.setProperty('--pro-h', h + 'px'); }
   },
-  _seat(E, B, tgt) {
+  /* AN OPENED MAP STANDS BELOW HER CARD: on a phone the card takes the whole
+     width under the top bar, where the map opens — so the map steps down below
+     it (--pro-map, read by #miniWrap and #miniToggle) rather than the card
+     moving or covering it. The folded strip leaves the map's corner clear. */
+  _mapStep(B, seat) {
+    let h = 0;
+    const mw = document.getElementById('miniWrap');
+    if (seat && mw && getComputedStyle(mw).display !== 'none') {
+      const r = mw.getBoundingClientRect(), top0 = r.top - (this._mapH || 0);
+      if (seat.x + seat.w > r.left - 4) h = Math.max(0, Math.round(seat.y + (this._cardH || seat.h) + 8 - top0));
+    }
+    if (this._mapH !== h) { this._mapH = h; document.body.style.setProperty('--pro-map', h + 'px'); }
+  },
+  /* ONE SEAT, AT THE TOP (operator, build 186: "The instructions keep changing
+     from the bottom to the top. Since the build menu is in the bottom, let's fix
+     the instructions to the top, so they don't shift all over the place"): under
+     the top bar, and under the rival's wonder banner while it stands — a phone's
+     whole width, a desktop's 420 at the left, a phone on its side 44% at the
+     left. It never moves to clear what a line points at: the look brings the
+     target into the ground the card leaves open (_look), and a target that
+     cannot be brought out folds the card to its strip (frame). */
+  _seat(E, B) {
     const el = E.elder, vw = B.vw, vh = B.vh;
     const side = vw > vh * 1.3 && vh < 520, desk = vw >= 900;
     const w = side ? Math.min(380, Math.round(vw * 0.44)) : desk ? 420 : Math.min(vw - 16, 460);
-    el.style.width = w + 'px';
-    const h = el.offsetHeight || 96;
-    const goalBottom = E.goal.style.display !== 'none' ? E.goal.getBoundingClientRect().bottom + 6 : B.top + 8;
-    const seats = side
-      ? [{ x: 8, y: Math.max(B.top + 8, Math.min(B.bot - h - 8, (B.top + B.bot - h) / 2)) },
-         { x: vw - w - 8, y: Math.max(B.top + 8, Math.min(B.bot - h - 8, (B.top + B.bot - h) / 2)) }]
-      : desk
-        ? [{ x: 16, y: B.bot - h - 12 }, { x: 16, y: goalBottom }, { x: vw - w - 16, y: B.bot - h - 12 }]
-        : [{ x: (vw - w) / 2, y: B.bot - h - 8 }, { x: (vw - w) / 2, y: goalBottom }];
-    // the first seat that leaves the target clear (a little room round it)
-    let pick = seats[0];
-    if (tgt) {
-      const pad = 22;
-      const tr = tgt.rect ? { l: tgt.rect.left - pad, t: tgt.rect.top - pad, r: tgt.rect.right + pad, b: tgt.rect.bottom + pad }
-        : { l: tgt.x - (tgt.r || 20) - pad, t: tgt.y - (tgt.r || 20) - pad, r: tgt.x + (tgt.r || 20) + pad, b: tgt.y + (tgt.r || 20) + pad };
-      const over = s => !(s.x + w < tr.l || s.x > tr.r || s.y + h < tr.t || s.y > tr.b);
-      pick = seats.find(s => !over(s)) || seats[0];
-    }
-    // hold a seat a moment before moving (no flicker on a target at the edge) —
-    // but never a seat that covers the target: then it moves at once
-    const key = pick.x + ',' + Math.round(pick.y);
-    if (this._seatKey !== key) {
-      const [ox, oy] = (this._seatKey || key).split(',');
-      const coversNow = tgt && this._seatCovers && this._seatCovers({ x: +ox, y: +oy }, w, h, tgt);
-      if (coversNow || !this._seatAt || performance.now() - this._seatAt > 350) { this._seatKey = key; this._seatAt = performance.now(); }
-      else pick = { x: +ox, y: +oy };
-    }
-    this._seatBox = { x: pick.x, y: pick.y, w, h };
-    el.style.left = Math.round(pick.x) + 'px';
-    el.style.top = Math.round(pick.y) + 'px';
+    const x = desk ? 16 : 8;
+    const ww = document.getElementById('wonderWarn');
+    const y = Math.round(Math.max(B.top + 6, ww && ww.offsetParent !== null ? ww.getBoundingClientRect().bottom + 6 : 0));
+    if (el.style.width !== w + 'px') el.style.width = w + 'px';
+    if (el.style.left !== x + 'px') el.style.left = x + 'px';
+    if (el.style.top !== y + 'px') el.style.top = y + 'px';
+    return (this._seatBox = { x, y, w, h: this._cardH || 96 });
   },
   _seatCovers(s, w, h, tgt) {
     const pad = 22;
@@ -1628,9 +1701,9 @@ const Prologue = {
     return !(s.x + w < tr.l || s.x > tr.r || s.y + h < tr.t || s.y > tr.b);
   },
   /* THE LOOK: a ring the player cannot see AND tap — off the visible band,
-     or under a panel, the minimap, the goal tracker or the guide's own card
-     — brings its target into the open band: a short glide that lands it in
-     the half of the band the guide does not sit in. Asked again whenever
+     or under a panel, the minimap or the guide's own card (or its strip) —
+     brings its target into the open band: a short glide that lands it in the
+     middle of the ground the guide's card leaves open. Asked again whenever
      the line, its target or the selection changes (a villager selected
      opens a panel over the ground the next line points at), and every
      LOOK_MS while the target stays covered and the camera is where the last
@@ -1646,7 +1719,7 @@ const Prologue = {
     const us = typeof UI !== 'undefined' && UI.sel ? UI.sel : null;
     const sel = us ? us.type + ':' + (us.id != null ? us.id : (us.ids ? us.ids.join(',') : '')) : '';
     const key = (v.id || '') + ':' + (v.phase || '') + ':' + (raw.u !== undefined ? 'u' + raw.u : (raw.x | 0) + ',' + (raw.y | 0)) + ':' + sel;
-    const m = 24, inView = tgt.x > m && tgt.x < B.vw - m && tgt.y > B.top + m && tgt.y < B.bot - m && this._open(tgt.x, tgt.y);
+    const m = 24, inView = tgt.x > m && tgt.x < B.vw - m && tgt.y > B.top + m && tgt.y < B.bot - m && this._open(tgt.x, tgt.y) && !this._cardOver(tgt);
     const here = () => ({ x: cam.x, y: cam.y, z: cam.z });
     if (this._looked === key) {
       if (inView || this._lookStuck === key) return true;
@@ -1659,13 +1732,26 @@ const Prologue = {
     this._looked = key; this._lookAt = t;
     let wx = raw.x, wy = raw.y;
     if (raw.u !== undefined) { const u = Units.get(raw.u); if (!u) return false; wx = u.x; wy = u.y - CFG.SPRITE_LIFT / CFG.TILE; }
-    const z = cam.z, TL = CFG.TILE, seat = this._seatBox;
-    const low = !seat || seat.y > (B.top + B.bot) / 2;
-    const sy = B.top + (B.bot - B.top) * (low ? 0.38 : 0.66), sx = B.vw / 2;
-    // where the camera can really go (the map's edge clamps it): nowhere new, no glide
+    /* into the middle of the ground the card leaves open: beside a narrow card,
+       else below it — and below it too when the map's edge holds the target
+       under a narrow one (a phone on its side). Each landing is tried where
+       the camera can really go (the edge clamps it); the first the card
+       leaves clear wins */
+    const z = cam.z, TL = CFG.TILE, seat = this._seatBox, ch = this._cardH || (seat ? seat.h : 0);
+    const cv = R.cv && R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { left: 0, top: 0 };
+    const lands = [];
+    if (seat && seat.w < B.vw * 0.6) lands.push([(Math.min(B.vw - 40, seat.x + seat.w) + B.vw) / 2, B.top + (B.bot - B.top) * 0.55]);
+    lands.push([B.vw / 2, seat ? (Math.min(B.bot - 40, seat.y + ch) + B.bot) / 2 : B.top + (B.bot - B.top) * 0.55]);
     const x0 = cam.x, y0 = cam.y;
-    cam.x = wx * TL - sx / z; cam.y = wy * TL - sy / z; if (R.clampCam) R.clampCam();
-    const tx = cam.x, ty = cam.y;
+    let best = null;
+    for (const [sx, sy] of lands) {
+      cam.x = wx * TL - sx / z; cam.y = wy * TL - sy / z; if (R.clampCam) R.clampCam();
+      const at = { x: cv.left + (wx * TL - cam.x) * z, y: cv.top + (wy * TL - cam.y) * z, r: tgt.r };
+      const c = { x: cam.x, y: cam.y, ok: !(seat && this._seatCovers(seat, seat.w, ch, at)) };
+      if (!best || (c.ok && !best.ok)) best = c;
+      if (c.ok) break;
+    }
+    const tx = best.x, ty = best.y;
     cam.x = x0; cam.y = y0;
     // the camera cannot bring it out (the map's edge): ring it where it is, as before
     if (Math.abs(tx - x0) < 2 && Math.abs(ty - y0) < 2) { this._lookStuck = key; this._lookCam = here(); return true; }
@@ -1686,8 +1772,18 @@ const Prologue = {
     requestAnimationFrame(step);
     return false;
   },
+  /* would the guide's card stand over this target? Asked of where it SITS, shown
+     or not: folded away over a target the look has not yet brought out, the
+     card would otherwise vouch for ground it hides the moment it opens again */
+  _cardOver(t) {
+    const s = this._seatBox, E = this._el;
+    if (!s || !t) return false;
+    if (!this._collapsed) return this._seatCovers(s, s.w, this._cardH || s.h, t);
+    const r = E && E.mini.style.display !== 'none' ? E.mini.getBoundingClientRect() : null;
+    return !!(r && r.width) && this._seatCovers({ x: r.left, y: r.top }, r.width, r.height, t);
+  },
   /* is this screen point world the player can see AND tap? The band alone is
-     not enough: the minimap, the Elder's own card and the goal tracker stand
+     not enough: the minimap and the guide's own card (or its strip) stand
      over the world, and a tap under the minimap moves the camera instead of
      sending anyone (a scout's mark under it was never reached) */
   _open(x, y) {
@@ -1696,17 +1792,23 @@ const Prologue = {
     if (!el) return true;   // no layout to ask (a page that is not drawn): trust the band
     if (el.id !== 'c') return false;
     const E = this._el;
-    for (const o of [E && E.goal, E && E.elder]) {
+    for (const o of [E && E.elder, E && E.mini]) {
       if (!o || o.style.display === 'none') continue;
       const r = o.getBoundingClientRect();
       if (r.width && x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) return false;
     }
     return true;
   },
-  _seatMini(E, B) {
+  // the folded strip: the card's own corner, as wide as its task line — never over an opened map
+  _seatMini(E, B, seat) {
     const m = E.mini;
-    m.style.left = '10px';
-    m.style.top = Math.round(B.bot - 54) + 'px';
+    if (m.style.left !== seat.x + 'px') m.style.left = seat.x + 'px';
+    if (m.style.top !== seat.y + 'px') m.style.top = seat.y + 'px';
+    let maxW = seat.w;
+    const mw = document.getElementById('miniWrap');
+    if (mw && getComputedStyle(mw).display !== 'none') maxW = Math.min(maxW, mw.getBoundingClientRect().left - 8 - seat.x);
+    const mx = Math.max(150, Math.round(maxW)) + 'px';
+    if (m.style.maxWidth !== mx) m.style.maxWidth = mx;
   },
   /* THE HAND: after IDLE_MS with nothing done on an action beat, a hand
      shows the taps, one after the other, until the player acts */
@@ -2026,12 +2128,6 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
   pointer-events: none; animation: proPulse 1.4s ease-in-out infinite; box-sizing: border-box; }
 #proRing.box { border-radius: 10px; }
 @keyframes proPulse { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.12); opacity: .55 } }
-#proGoal { position: fixed; left: 8px; display: none; max-width: min(66%, calc(100% - 130px)); box-sizing: border-box; pointer-events: none;
-  padding: 6px 12px 6px 10px; border-radius: 8px; background: linear-gradient(#2a1d11, #1a120a); color: #f3e2b4;
-  box-shadow: inset 0 0 0 1px #0b0704, inset 0 0 0 2px rgba(214,170,74,.65), 0 4px 12px rgba(0,0,0,.5);
-  font: 700 12.5px/1.3 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .6px; }
-#proGoal .pgd { display: inline-block; width: 7px; height: 7px; margin: 0 8px 1px 0; transform: rotate(45deg); background: #e8c15a; box-shadow: 0 0 6px rgba(255,210,110,.8); }
-#proGoal .pgn { display: block; margin-top: 2px; font: 600 12px/1.25 Georgia,serif; letter-spacing: 0; color: #d8c79c; }
 #proElder { position: fixed; display: none; box-sizing: border-box; pointer-events: auto; padding: 12px 34px 13px 12px; gap: 12px; align-items: center;
   display: flex; color: #f1e5cb; border-radius: 2px;
   background: repeating-linear-gradient(92deg, rgba(255,214,150,0.022) 0 1px, rgba(0,0,0,0) 1px 6px, rgba(0,0,0,0.05) 6px 7px, rgba(0,0,0,0) 7px 13px),
@@ -2039,7 +2135,7 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
   box-shadow: inset 0 0 0 2px #0b0704, inset 0 0 0 4px #b98a32, inset 0 0 0 5px #f3d27a, inset 0 0 0 6px #6b4a16, inset 0 0 0 8px #0b0704,
     inset 0 0 26px rgba(0,0,0,0.65), 0 12px 34px rgba(0,0,0,0.65); }
 #proElder.in { animation: proIn .28s ease-out; }
-@keyframes proIn { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+@keyframes proIn { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
 #proElder .pc { position: absolute; width: 34px; height: 34px; z-index: 3; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
 #proElder .pc svg { width: 100%; height: 100%; overflow: visible; }
 #proElder .pc.tl { left: -5px; top: -5px; } #proElder .pc.tr { right: -5px; top: -5px; transform: scaleX(-1); }
@@ -2048,8 +2144,34 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
   box-shadow: 0 0 0 1px #0b0704, 0 0 0 3px #a87b2e, 0 0 0 4px #f0cf76, 0 0 0 5px #4a3210, 0 3px 8px 5px rgba(0,0,0,.45); }
 #proElder .pePic img { width: 64px; height: 64px; display: block; image-rendering: pixelated; }
 #proElder .peBody { min-width: 0; flex: 1; position: relative; z-index: 1; }
-#proElder .peName { display: block; font: 700 11.5px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.6px; text-transform: uppercase;
-  background: linear-gradient(#fff3c8, #f2cd6a 45%, #c08a2c); -webkit-background-clip: text; background-clip: text; color: transparent; margin: 0 0 5px; }
+/* HER NAME IS A PLATE ON HER PORTRAIT'S FRAME (build 186): the header line it
+   left carries the task, and the card is no taller for it */
+#proElder .peName { position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); z-index: 2; margin: 0; padding: 2px 6px 2px 7px;
+  white-space: nowrap; font: 800 8.5px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.4px; text-transform: uppercase; color: #2a1505;
+  border-radius: 2px; background: linear-gradient(#fbe49a, #ecc25e 45%, #c99235); box-shadow: 0 0 0 1px #0b0704, inset 0 1px 0 rgba(255,250,220,.6), 0 2px 3px rgba(0,0,0,.6); }
+/* THE TASK LINE: where her name stood — one line, exactly the height her name
+   took (12px + 4.5px), gold Cinzel for the deed, the top bar's own icons for
+   the goods it waits on */
+.peTask { display: flex; align-items: center; gap: 6px; min-width: 0; height: 12px; white-space: nowrap; }
+/* the line reaches into the card's right margin: the fold arrow sits at the
+   card's foot, out of its way */
+#proElder .peTask { margin: 0 -20px 4.5px 0; }
+.peTask .pgd { flex: none; width: 6px; height: 6px; margin: 0 1px 0 1px; transform: rotate(45deg); background: #e8c15a; box-shadow: 0 0 5px rgba(255,210,110,.75); }
+.peTask .pgt { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 700 12.5px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .5px;
+  color: #f2cd6a; text-shadow: 0 1px 0 rgba(0,0,0,.65); }
+.peTask .pgn { flex: none; display: flex; align-items: center; gap: 7px; margin-left: 2px; font: 700 12px/1 Georgia,'Times New Roman',serif; color: #eadcb6; text-shadow: 0 1px 0 rgba(0,0,0,.7); }
+.peTask .pgi { display: inline-flex; align-items: center; gap: 2px; }
+.peTask .pgi.ok { color: #a9d98a; }
+.peTask .pic { width: 13px; height: 13px; flex: none; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.5)); }
+.peTask .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.peTask.f1 .pgi.ok { display: none; }
+.peTask.f2 .pgt { font-size: 11px; letter-spacing: .2px; }
+.peTask.f2 .pgn { font-size: 11px; gap: 5px; }
+.peTask.f2 .pic { width: 12px; height: 12px; }
+.peTask.f3 .pgd { display: none; }
+.peTask.f4 .pgn { font-size: 10.5px; gap: 3px; margin-left: 0; }
+.peTask.f4 .pgi { gap: 1px; }
+.peTask.f4 .pic { width: 11px; height: 11px; }
 #proElder .peTxt { margin: 0; font: 600 15.5px/1.38 Georgia,'Times New Roman',serif; color: #f1e5cb; text-shadow: 0 2px 0 rgba(0,0,0,.7); }
 #proElder .peAsk { display: flex; gap: 8px; margin-top: 9px; }
 #proElder .peIn { flex: 1; min-width: 0; height: 38px; box-sizing: border-box; padding: 0 10px; border-radius: 4px; border: 1px solid rgba(214,170,74,.6);
@@ -2057,10 +2179,19 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #proElder .peBtn { height: 38px; padding: 0 14px; border: 0; border-radius: 4px; cursor: pointer; white-space: nowrap;
   font: 700 12.5px/1 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.2px; text-transform: uppercase; color: #2a1505;
   background: linear-gradient(#fbe49a, #ecc25e 40%, #c99235); box-shadow: inset 0 0 0 1px #6b4a16, 0 2px 0 #0b0704; }
-#proElder .peHide { position: absolute; right: 10px; top: 8px; width: 24px; height: 24px; border: 0; padding: 0; background: none; color: #c9a75e; font-size: 14px; cursor: pointer; z-index: 2; }
-#proMini { position: fixed; display: none; width: 48px; height: 48px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; pointer-events: auto; overflow: hidden; background: #0d0905;
-  box-shadow: 0 0 0 1px #0b0704, 0 0 0 3px #a87b2e, 0 0 0 4px #f0cf76, 0 0 0 5px #4a3210, 0 4px 10px rgba(0,0,0,.55); }
-#proMini img { width: 48px; height: 48px; display: block; image-rendering: pixelated; }
+#proElder .peHide { position: absolute; right: 9px; bottom: 9px; width: 24px; height: 24px; border: 0; padding: 0; background: none; color: #c9a75e; font-size: 14px; cursor: pointer; z-index: 2; }
+/* FOLDED, THE CARD IS A STRIP IN ITS OWN CORNER (build 186): her portrait and
+   the same task line, so the standing objective never leaves the screen; a tap
+   opens the card again where it was */
+#proMini { position: fixed; display: none; align-items: center; gap: 9px; box-sizing: border-box; height: 46px; padding: 0 30px 0 7px;
+  border: 0; border-radius: 2px; cursor: pointer; pointer-events: auto; text-align: left; color: #f1e5cb;
+  background: radial-gradient(ellipse 80% 70% at 50% 0%, rgba(110,74,34,0.25), rgba(0,0,0,0) 70%), linear-gradient(#2a1d11, #1c140b 60%, #160f08);
+  box-shadow: inset 0 0 0 1px #0b0704, inset 0 0 0 3px #b98a32, inset 0 0 0 4px #f3d27a, inset 0 0 0 5px #6b4a16, inset 0 0 0 6px #0b0704,
+    inset 0 0 16px rgba(0,0,0,0.55), 0 8px 22px rgba(0,0,0,0.6); }
+#proMini .pmPic { flex: none; width: 32px; height: 32px; background: #0d0905; box-shadow: 0 0 0 1px #0b0704, 0 0 0 2px #a87b2e, 0 0 0 3px #f0cf76; }
+#proMini .pmPic img { width: 32px; height: 32px; display: block; }
+#proMini .peTask { flex: 0 1 auto; }
+#proMini .pmOpen { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: #c9a75e; font-size: 13px; font-style: normal; line-height: 1; }
 #proHand { position: fixed; left: 0; top: 0; display: none; width: 44px; height: 52px; margin: -4px 0 0 -14px; pointer-events: none;
   filter: drop-shadow(0 3px 3px rgba(0,0,0,.55)); transition: transform .08s linear; }
 #proHand svg { transition: transform .12s ease-out; transform-origin: 30% 10%; }
@@ -2077,7 +2208,7 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #proFx .pflS b { display: block; width: 100%; height: 100%; background: radial-gradient(circle, #fffdf0 0 20%, #ffe08a 42%, #e9a93a 78%);
   clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%); }
 .bbtn.new { position: relative; box-shadow: 0 0 0 2px #e8c15a, 0 0 14px rgba(255,205,96,.6) !important; }
-.bbtn.new::before { content: 'NEW'; position: absolute; top: -7px; right: -4px; z-index: 2; padding: 2px 5px; border-radius: 3px;
+.bbtn.new::before { content: 'NEW'; position: absolute; top: -6px; right: -4px; z-index: 2; padding: 2px 5px; border-radius: 3px;
   font: 800 9px/1 'Cinzel',Georgia,serif; letter-spacing: 1px; color: #2a1505; background: linear-gradient(#fbe49a, #d9a83f); box-shadow: 0 1px 0 #0b0704; }
 #proDraft { display: flex; align-items: center; gap: 12px; box-sizing: border-box; width: min(440px, 100%); margin: 14px auto 0; padding: 12px 14px;
   text-align: left; color: #f1e5cb; border-radius: 2px; background: linear-gradient(#2a1d11, #1c140b 60%, #160f08);

@@ -19,11 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 185, date: '2026-11-18', title: 'A journey for your first three games',
+    build: 186, date: '2026-11-18', title: 'A journey for your first three games',
     items: [
       'A new player now begins with a short journey of three games, each on a hand-made world, with Mira, the clan\'s young storyteller, at your side.',
       'You lead the few who escaped when another clan burned your old home, and you begin again somewhere new.',
       'Mira says one thing at a time, points at exactly where to tap, and answers the moment you act: the next step shows within a second.',
+      'Her card stays in one place at the top of the screen, clear of the build menu, and never jumps to the bottom.',
+      'The task at hand rides in her card where her name used to be, with the goods it still needs beside it, and her name sits on her portrait.',
+      'Folded away, her card becomes a slim strip in the same corner that still shows the task. Tap it to open her card again.',
+      'The NEW mark on a build card is no longer cut off at the top.',
       'Each journey game opens with the map folded away, so the land around you is all you see. The map button at the top brings it back.',
       'While you learn, the game keeps quiet. Only what truly needs you, like a famine or an attack, speaks over her.',
       'The First Fire teaches food, wood and stone, a house and a new villager.',
