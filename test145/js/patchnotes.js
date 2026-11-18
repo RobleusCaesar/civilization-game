@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 189, date: '2026-11-18', title: 'Stone that matches',
+    items: [
+      'The small stone deposits between the big rock piles are redrawn to match them: the same grey granite, the same dark outline and the same light, with about twice the detail they had.',
+      'Side by side, no two of them are the same rock.',
+      'The loose chips scattered round a deposit are now small grey pebbles of the same stone instead of tan specks.',
+    ],
+  },
+  {
     build: 188, date: '2026-11-18', title: 'A ring of gold underfoot',
     items: [
       'Whoever you select now stands in a ring of gold laid on the ground at their feet. It runs behind them where they stand, so it reads as part of the world rather than floating over it.',
