@@ -68,8 +68,10 @@ const Scenarios = {
       /* the hall asks for all three goods the game teaches (food, wood, stone) — and,
          since build 193, enough of them that the lumber camp and the quarry earn it
          (operator: "use that as a way for the player to gather even more resources
-         to then ultimately build the town center … more like 4 to 5 minutes") */
-      tc: { 2: { cost: { wood: 650, food: 350, stone: 450 }, time: 2, support: { n: 1, lv: 1 } } },
+         to then ultimately build the town center … more like 4 to 5 minutes"); 500 wood
+         and 500 stone since build 195 ("reduce wood and stone to 500"), the wait now
+         filled with a road, a hunt and a hunter's lodge */
+      tc: { 2: { cost: { wood: 500, food: 350, stone: 500 }, time: 2, support: { n: 1, lv: 1 } } },
       allowed: [],
       win: { hall: 2 },
       draft: false, stock: 1.4,
@@ -100,14 +102,16 @@ const Scenarios = {
     },
     prologue_2: {
       game: 2, mode: 'prologue_2', title: 'The Growing Clan',
-      // its lessons are built, not saved for: the stores pay for the lodge, a
-      // road, the barracks, the range, the tower, three stretches of wall and
-      // the gate cut into them, and only the hall's storey is gathered for
-      // (operator, builds 184 and 187)
-      start: { food: 150, wood: 420, stone: 130, gold: 55 },
+      // its lessons are built, not saved for: the stores pay for the barracks,
+      // the range, the tower, three stretches of wall and the gate cut into
+      // them, and only the hall's storey is gathered for (operator, builds 184
+      // and 187); the road and the hunter's lodge are game 1's since build 195
+      // ("pull that back from game 2"), so their price left the stores and
+      // their cards are open from the start
+      start: { food: 150, wood: 360, stone: 125, gold: 50 },
       storey: 2,
       tc: { 3: { cost: { wood: 220, stone: 120 }, time: 3, support: { n: 3, lv: 1 } } },
-      allowed: ['house'],
+      allowed: ['house', 'road', 'lodge'],
       win: { hall: 3 },
       draft: false, stock: 1.3,
     },

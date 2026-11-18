@@ -76,6 +76,13 @@ const SCENARIO_MAPS = {
   "animals": [
    {
     "kind": "deer",
+    "x": 14,
+    "y": 23,
+    "still": true,
+    "hp": 2
+   },
+   {
+    "kind": "deer",
     "x": 23,
     "y": 27
    },
@@ -114,9 +121,11 @@ const SCENARIO_MAPS = {
   },
   "marks": {
    "berries": [20, 21],
+   "deer": [14, 23],
    "forest": [15, 20],
    "houseSite": [21, 21],
    "rivalPocket": [29, 3],
+   "roadSite": [16, 20],
    "stone": [21, 15]
   },
   "tileStock": {
