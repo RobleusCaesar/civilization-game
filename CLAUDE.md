@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 teaches food, wood and stone, game 2 is islands and lakes and teaches the hunt and the lodge where the deer fell (near home), a road, a barracks, a range, a manned tower and a wall, game 3 the stations on their worked ground and the seam; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second and no ring drawn where a tap cannot land, no line past fifteen words; her nine faces on disk; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 teaches food, wood and stone, game 2 is islands and lakes and teaches the hunt and the lodge where the deer fell (near home), a road, a barracks, a range, a manned tower and a wall, game 3 the stations on their worked ground and the seam; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1608,12 +1608,43 @@ world at work), `done` (the result: the next beat), `praise` (said in the NEXT
 line's first words, never a line of its own), `auto` (the last word only),
 `ring`/`taps` (the pulse and the idle hand's taps), `on`, `unlocks` (a card
 opened when the beat is done, said or passed over), `skipIf`,
-`gather`/`gwait`/`cost` (a saving beat and its waiting line) — and two
+`gather`/`gwait`/`cost` (a saving beat and its waiting line), `key`/`unit`
+(the building a beat raises or the unit it trains: its price is the goal a
+`hold` line is short of) — and two
 ASIDES said over a beat (no builder on a site; the rival's riders, the
 world's news, `quiet`: said only at a quiet moment, let go after
 `QUIET_MAX`, keeping the beat's ring, never while a card has the floor). It
 runs on the SIM's clock (`simTick` from `G.simStep`), so the harness plays it
-as a person does. **THE GUIDE ANSWERS A TAP WITHIN A SECOND**
+as a person does. **THE RING POINTS AT THE GOOD THE LINE NAMES**
+(`Prologue.need` / `naming` / `_keyOf`, `gatherRing`'s `named`;
+tests/prologue.mjs §2e and the follower's `andItRangTheGoodItsLineNamed` —
+operator, build 185: "after it asked you to build a house it seems like it
+then says collect berries, but it points you to the wood so it's
+confusing"): the train beat read its price off `CFG.UNITS`, which carries
+none (a villager's price is the hall's train line, `trainPrice`), so
+`need()` fell back to "food if food < wood, else wood" — and right after a
+house, wood is the smaller pile. A held line's good is now the beat's own
+price (`goalCost`: `cost`, `key`, `unit`, else the hall's next storey —
+never the hall's for a building beat), the good a line names is KEPT while
+it is still short (two goods short by the same share traded places with
+every load home, the ring hopping under one line), the view remembers it
+(`v.good`) and its ring and taps send hands to THAT good (never `spread()`
+under a line naming one), and once it is in, the line naming the next is
+said at once (the view's key carries the good). **THE TOP BAR ANSWERS THE
+DEED** (`Prologue.flutter` / `_chipWatch`, `S.pro.fl` / `h0`; §2e — the
+same ruling: "once you start collecting berries or chopping wood or mining
+the stone give a little gold flutter around the resource bar … for that
+icon … do the same thing as well for the house and then give a little
+flutter around the population"): the first of each good a journey game
+brings home flies to its counter (`fly`) and the chip flutters gold as it
+lands — a gold ring hugging the chip that breathes out and fades, a dozen
+star sparks fluttering off its edge, the number flaring gold (CSS at the
+screen's own pixels, nothing raster; reduced motion keeps the ring alone) —
+or at once when the hand is off the screen; the people chip flutters for
+the first house finished (its room) and the first villager born, once
+each a game. What was answered rides the save (`S.pro.fl`), so a Continue
+answers nothing twice, and a save from before build 185 answers nothing.
+**THE GUIDE ANSWERS A TAP WITHIN A SECOND**
 (`_phaseOf` / `_viewOf` / `_show`, tests/prologue.mjs
 `andEveryTapWasAnsweredWithinASecond` and its game 2 and 3 twins — operator,
 build 181: "…can take between two and three seconds to pop up … long enough

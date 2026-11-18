@@ -150,7 +150,9 @@ const page = async (q, done) => {
         G.updateVisibility();
         const deer = S.units.filter(u => u.owner === 'W' && u.kind === 'deer');
         const d0 = m.deer && deer.find(u => Math.hypot(u.x - m.deer[0] - 0.5, u.y - m.deer[1] - 0.5) < 1.5);
-        o.deer = { n: deer.length, mark: !!d0, seen: !!(d0 && G.visibleAt(d0.x | 0, d0.y | 0)), reach: !!(d0 && near(d0.x | 0, d0.y | 0)) };
+        // and falls to a villager's first blow (a deer bolts from every blow, away from the hall)
+        o.deer = { n: deer.length, mark: !!d0, seen: !!(d0 && G.visibleAt(d0.x | 0, d0.y | 0)), reach: !!(d0 && near(d0.x | 0, d0.y | 0)),
+          oneBlow: !!(d0 && d0.hp > 0 && d0.hp <= CFG.UNITS.villager.atk && d0.maxhp === d0.hp) };
         if (d0) { G.noteHunt(d0.x | 0, d0.y | 0); o.lodge = place('lodge', 'deer'); }
       }
       if (g === 3) {
@@ -191,6 +193,10 @@ const page = async (q, done) => {
   ck('gameTwosLessonsStandWhereTheGuideSays', ['road', 'barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
     ['road', 'barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
   ck('andItsDeerGrazesInSightWhereALodgeMayStand', g2.deer.mark && g2.deer.seen && g2.deer.reach && g2.lodge === 'ok', JSON.stringify(g2.deer) + ' lodge ' + g2.lodge);
+  /* build 185: at a deer's 20 health a villager's hunt bolted it from blow to
+     blow, away from the hunter and so from the hall — three hunts in ten ended
+     11+ tiles out, and the lodge with them. The lesson deer falls to the first */
+  ck('andFallsToTheFirstBlowWhereItGrazes', g2.deer.oneBlow, JSON.stringify(g2.deer));
   ck('gameThreesSitesStandWhereTheGuideSays', g3.barracks === 'ok' && g3.wonder === 'ok' && markOn(g3, 'stone', 'HILLS') && g3.berryKind === 'berry' && markOn(g3, 'gold', 'GOLDORE'),
     `barracks ${g3.barracks}, wonder ${g3.wonder}, stone ${JSON.stringify(g3.marks.stone)}, gold ${JSON.stringify(g3.marks.gold)}, berry ${g3.berryKind}`);
   // the other key buildings (operator, build 184): each station on the ground its own work left
@@ -303,7 +309,24 @@ const READ = () => {
   }
   let taps = [];
   try { taps = rb && rb.taps ? (rb.taps.call(P) || []).map(t => { const q = P._resolve(t); return q && (q.rect || P._open(q.x, q.y)) ? { x: Math.round(q.x), y: Math.round(q.y), u: t.u !== undefined, k: kOf(t) } : null; }).filter(Boolean) : []; } catch (e) {}
-  return { over: !!S.over, id: line ? (P._aside ? 'aside:' : '') + line.id : '', phase: (line && line.phase) || '', auto: !!(line && line.auto),
+  /* a line whose instruction NAMES a good ("Send someone to gather berries",
+     "Now send someone to cut wood", "…the grey rocks for stone", "A villager
+     needs more food. Gather it at the berries.") and a ring drawn on a tile of
+     ANOTHER good is the fault the operator met in game 1 (build 185): said
+     berries, rang a tree. The instruction is the line's last sentence (the
+     first may be a callback — "Berries for tonight." — or the praise of the
+     deed before); a sentence naming no good, or two, is not judged */
+  const said = E ? E.txt.textContent : '';
+  const last = said.split(/(?<=[.!?])\s+/).filter(Boolean).pop() || '';
+  const GOODS = { food: /berr(y|ies)|\bfood\b/i, wood: /\bwood|timber|\btrees?\b/i, stone: /\bstone|\brocks?\b/i, gold: /\bgold\b/i };
+  const hits = Object.keys(GOODS).filter(k => GOODS[k].test(last));
+  const named = hits.length === 1 ? hits[0] : null;
+  let wrong = null;
+  if (named && r && raw && raw.x !== undefined && !raw.sel) {
+    const g = CFG.GATHER[S.map.terrain[(raw.y | 0) * CFG.W + (raw.x | 0)]];
+    if (g && g.res !== named) wrong = `said ${named}, rang ${g.res}`;
+  }
+  return { over: !!S.over, id: line ? (P._aside ? 'aside:' : '') + line.id : '', phase: (line && line.phase) || '', auto: !!(line && line.auto), wrong,
     goal: E && E.goal.style.display !== 'none' ? E.goal.textContent : '', gliding: !!P._gliding,
     txt: E ? E.txt.textContent : '', open: !!(E && E.elder.style.display !== 'none' && E.root.style.display !== 'none'),
     key, ring: r ? { x: Math.round(r.x), y: Math.round(r.y) } : null, blocked, taps, vil: !!P.selVil(), clk: P.now() / 1000,
@@ -336,7 +359,7 @@ const follow = async (p, maxT) => {
     if (!ran) { const w = Math.min(sec, 0.25); await p.waitForTimeout(w * 1000); off += w; }
   };
   const read = async () => { const r = await p.evaluate(READ); r.clk += off; return r; };
-  const seen = [], slow = [], blocked = [], said = new Set();
+  const seen = [], slow = [], blocked = [], wrong = [], said = new Set();
   let clicks = 0, last = '', lastKey = null, keySince = 0, lastTap = null, pend = null;
   let st = await read();
   const t0 = st.clk;
@@ -344,6 +367,7 @@ const follow = async (p, maxT) => {
     if (st.id && st.id !== last) { seen.push({ id: st.id }); last = st.id; }
     if (st.open && st.txt && !said.has(st.txt)) said.add(st.txt);
     if (st.blocked && blocked.length < 6) blocked.push(`${st.clk.toFixed(1)}s ${st.id} ${st.key} under ${st.blocked}`);
+    if (st.wrong && wrong.length < 6) wrong.push(`${st.clk.toFixed(1)}s ${st.id}: ${st.wrong} ("${st.txt}")`);
     if (st.key !== lastKey) { lastKey = st.key; keySince = st.clk; }
     // the look's glide is real time a person spends waiting: counted against the second, the sim held
     if (pend && st.gliding) {
@@ -386,7 +410,7 @@ const follow = async (p, maxT) => {
     st = await read();
   }
   await p.evaluate(() => { if (G.__realStep) { G.simStep = G.__realStep; delete G.__realStep; } });
-  return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, played: st.played };
+  return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, wrong, played: st.played };
 };
 // the end screen's card, claimed, and the doors it leaves
 const endScreen = async (p) => {
@@ -590,6 +614,164 @@ const endScreen = async (p) => {
   await ctx.close();
 }
 
+/* ---- 2e. THE RING POINTS AT THE GOOD THE LINE NAMES (operator, build 185:
+   "after it asked you to build a house it seems like it then says collect
+   berries, but it points you to the wood so it's confusing"). The train
+   beat's price was read off CFG.UNITS, which carries none (a villager's price
+   is the HALL's train line), so need() fell back to "food if food < wood,
+   else wood" — and right after the house, wood is the smaller pile: the line
+   said berries, the ring rang a tree. Now a held line's good is the beat's
+   own price (`key`, `unit`), the ring sends hands to the very good the line
+   named (never spread() under it), and the good is KEPT while still short,
+   so two goods short by the same share never trade places under one line.
+   And THE TOP BAR ANSWERS THE DEED (the same ruling: "once you start
+   collecting berries or chopping wood or mining the stone give a little gold
+   flutter around the resource bar … for that icon … do the same thing as
+   well for the house and then give a little flutter around the population"):
+   the first of each good a game brings home flutters its chip gold, and the
+   people chip flutters for the first house's room and the first newborn —
+   once each a game, carried in the save, CSS at the screen's own pixels ---- */
+{
+  const { p, ctx } = await page('?prologue=reset');
+  await p.click('#btnBegin').catch(() => {});
+  await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_1', null, { timeout: 40000 }).catch(() => {});
+  await p.waitForTimeout(3500);   // the establishing glide
+  // the reported moment: the house stands, the train beat holds on food, wood the smaller pile
+  const tr = await p.evaluate(() => {
+    const P = Prologue, tile = t => { if (!t || t.x === undefined) return t && t.u !== undefined ? 'hand' : null; const g = CFG.GATHER[S.map.terrain[(t.y | 0) * CFG.W + (t.x | 0)]]; return g ? g.res : 'none'; };
+    for (const id of ['open', 'wood', 'stone', 'house']) { S.pro.done[id] = 1; S.pro.said[id] = 1; }
+    S.pro.i = P._beats.findIndex(b => b.id === 'train'); P._shown = null; P._viewKey = null; P._aside = null;
+    S.res.food = 30; S.res.wood = 5; S.res.stone = 10;
+    for (const u of P.vils()) { u.task = null; u.path = null; }
+    UI.deselect && UI.deselect();
+    P.simTick(0.05);
+    const v0 = P._shown, line0 = P._el.txt.textContent, none = v0.ring.call(P), taps = v0.taps.call(P).map(tile);
+    UI.select('unit', P.vils()[0].id);
+    P.simTick(0.05);
+    const v = P._shown;
+    return { id: v.id, phase: v.phase, line: line0, good: v.good, inHand: tile(v.ring.call(P)), none: tile(none), taps, price: JSON.stringify(P.goalCost()) };
+  });
+  ck('aHeldLineAndItsRingNameOneGood', tr.id === 'train' && tr.phase === 'held' && /needs more food/.test(tr.line) && /berries/.test(tr.line)
+    && tr.good === 'food' && tr.inHand === 'food' && tr.none === 'hand' && tr.taps[0] === 'hand' && tr.taps[1] === 'food' && tr.price === '{"food":50}', JSON.stringify(tr));
+  // a building's own price, never the hall's; and the named good, never spread(), for the hand in hand
+  const bk = await p.evaluate(() => {
+    const P = Prologue, tile = t => { if (!t || t.x === undefined) return null; const g = CFG.GATHER[S.map.terrain[(t.y | 0) * CFG.W + (t.x | 0)]]; return g ? g.res : 'none'; };
+    UI.deselect && UI.deselect();
+    S.pro.done.train = 1; S.pro.said.train = 1;
+    const at = id => { S.pro.i = P._beats.findIndex(b => b.id === id); P._shown = null; P._viewKey = null; P._aside = null; P._needS = null; };
+    at('house');
+    delete S.pro.said.house; delete S.pro.done.house;
+    const hc = Bld.effCost('P', 'house');
+    S.res.food = 0; S.res.wood = 0; S.res.stone = 0;
+    P.simTick(0.05);
+    const house = { line: P._el.txt.textContent, good: P._shown.good, price: JSON.stringify(P.goalCost()) };
+    // two goods short by the same share: the first named is KEPT while still short
+    // (the beat held whatever the stores say, so its price alone decides the good)
+    const v = P.vils(), price = { wood: 40, stone: 40 }, hb = P._beats[S.pro.i], when0 = hb.when;
+    hb.cost = () => price; hb.when = () => false;
+    S.res.wood = 20; S.res.stone = 20; P._needS = null; P._shown = null; P._viewKey = null;
+    P.simTick(0.05);
+    const first = P._shown.good;
+    S.res.stone = 12; P.simTick(0.05);
+    const kept = P._shown.good, keptLine = P._el.txt.textContent;
+    // a hand already on the named good, another idle in hand: the ring still sends it to the named good
+    const w = P.workFor(v[1], first); Units.assignGather(v[1], w.x | 0, w.y | 0);
+    UI.select('unit', v[0].id); v[0].task = null; v[0].path = null;
+    P.simTick(0.05);
+    const ringGood = tile(P._shown.ring.call(P)), spreadWas = P.spread();
+    // the named good comes in: the line names the next at once
+    S.res[first] = 40; P.simTick(0.05);
+    const next = P._shown.good, nextLine = P._el.txt.textContent;
+    delete hb.cost; hb.when = when0;
+    return { house, first, kept, keptLine, ringGood, spreadWas, next, nextLine };
+  });
+  ck('andABuildingsHeldLineNamesItsOwnPrice', /A house needs more wood/.test(bk.house.line) && bk.house.good === 'wood' && JSON.parse(bk.house.price).wood > 0, JSON.stringify(bk.house));
+  ck('andTheGoodItNamesIsKeptWhileStillShort', bk.first === 'wood' && bk.kept === 'wood' && /wood/.test(bk.keptLine) && bk.next === 'stone' && /stone/.test(bk.nextLine),
+    JSON.stringify({ first: bk.first, kept: bk.kept, keptLine: bk.keptLine, next: bk.next, nextLine: bk.nextLine }));
+  ck('andTheHandInHandIsSentToThatGoodNeverSpread', bk.ringGood === 'wood' && bk.spreadWas === 'stone', `ring ${bk.ringGood}, spread() would have sent it to ${bk.spreadWas}`);
+  await ctx.close();
+}
+{
+  const { p, ctx } = await page('?prologue=reset');
+  await p.click('#btnBegin').catch(() => {});
+  await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_1', null, { timeout: 40000 }).catch(() => {});
+  await p.waitForTimeout(3500);
+  // a hand to each good, the sim stepped until each comes home: the fly lands, the chip flutters
+  await p.evaluate(() => {
+    const P = Prologue, v = P.vils();
+    window.__fl = [];
+    // each flutter measured as it is drawn: its ring hugging its chip, its sparks, and nothing raster in it
+    const real = P.flutter;
+    P.flutter = function (c) {
+      const ok = real.call(this, c);
+      const rings = document.querySelectorAll(`#proFx .pflR[data-chip="${c}"]`), ring = rings[rings.length - 1], chip = document.querySelector(`#topbar [data-chip="${c}"]`);
+      // the ring's own box (its animation scales it as it breathes, so never its transformed rect)
+      const a = ring && { left: parseFloat(ring.style.left), top: parseFloat(ring.style.top), width: parseFloat(ring.style.width), height: parseFloat(ring.style.height) };
+      const b = chip && chip.getBoundingClientRect();
+      const fx = [...document.querySelectorAll('#proFx .pflR, #proFx .pflS, #proFx .pflS b')];
+      window.__fl.push({ c, ok, at: performance.now(), ring: !!ring, sparks: document.querySelectorAll('#proFx .pflS').length,
+        hugs: !!(a && b) && Math.abs(a.left + a.width / 2 - (b.left + b.width / 2)) < 4 && Math.abs(a.top + a.height / 2 - (b.top + b.height / 2)) < 4 && a.width >= b.width,
+        raster: fx.some(e => /url\(/.test(getComputedStyle(e).backgroundImage)) });
+      return ok;
+    };
+    [['berries', 0], ['forest', 1], ['stone', 2]].forEach(([m, i]) => { const t = P.mark(m); Units.assignGather(v[i], t.x | 0, t.y | 0); });
+    for (let i = 0; i < 400 && !(S.pro.fl.food && S.pro.fl.wood && S.pro.fl.stone); i++) G.simStep(0.05, 0.05);
+  });
+  await p.waitForFunction(() => ['food', 'wood', 'stone'].every(c => window.__fl.some(f => f.c === c)), null, { timeout: 8000 }).catch(() => {});
+  const g = await p.evaluate(() => {
+    const out = {};
+    for (const c of ['food', 'wood', 'stone']) {
+      const f = window.__fl.filter(x => x.c === c);
+      out[c] = { fl: S.pro.fl[c], calls: f.length, ok: !!(f[0] && f[0].ok), ring: !!(f[0] && f[0].ring), hugs: !!(f[0] && f[0].hugs), sparks: f[0] ? f[0].sparks : 0 };
+    }
+    out.raster = window.__fl.some(x => x.raster);
+    return out;
+  });
+  ck('theFirstOfEachGoodFluttersItsChipGold', ['food', 'wood', 'stone'].every(c => g[c].fl === 1 && g[c].calls === 1 && g[c].ok && g[c].ring && g[c].hugs && g[c].sparks > 0),
+    JSON.stringify(g));
+  ck('andTheFlutterIsDrawnNotPainted', !g.raster, 'a raster in the flutter: ' + g.raster);
+  // more of the same good flutters nothing more
+  const more = await p.evaluate(() => { for (let i = 0; i < 200; i++) G.simStep(0.05, 0.05); return ['food', 'wood', 'stone'].map(c => window.__fl.filter(f => f.c === c).length); });
+  await p.waitForTimeout(300);
+  ck('andOnlyOnceAGame', more.every(n => n === 1), JSON.stringify(more));
+  // the house's room, then the newborn: the people chip flutters for each, once
+  const pop = await p.evaluate(() => {
+    const P = Prologue, m = P.mark('houseSite');
+    Scenarios.unlock('house'); S.res.wood = Math.max(S.res.wood, 200);
+    const cap0 = Bld.popCap('P');
+    const h = Bld.place('P', 'house', m.x | 0, m.y | 0);
+    const before = window.__fl.filter(f => f.c === 'pop').length;
+    G.simStep(0.05, 0.05);
+    const site = window.__fl.filter(f => f.c === 'pop').length;   // a site makes no room
+    Bld.finish(h);
+    G.simStep(0.05, 0.05);
+    const room = window.__fl.filter(f => f.c === 'pop').length;
+    S.res.food = Math.max(S.res.food, 200);
+    const tc = Bld.tcOf('P'); Bld.train(tc, 'villager');
+    if (tc.queue[0]) tc.queue[0].t = 0.001;   // trained at once: the newborn is what is measured
+    for (let i = 0; i < 400 && P.vils().length <= P._n0; i++) G.simStep(0.05, 0.05);
+    G.simStep(0.05, 0.05);
+    const born = window.__fl.filter(f => f.c === 'pop').length;
+    return { before, site, room, born, cap0, cap: Bld.popCap('P'), fl: S.pro.fl };
+  });
+  const popRing = await p.evaluate(() => window.__fl.filter(f => f.c === 'pop').every(f => f.ok && f.ring && f.hugs));
+  ck('theHousesRoomFluttersThePeopleChip', pop.before === 0 && pop.site === 0 && pop.room === 1 && pop.cap > pop.cap0 && pop.fl.room === 1, JSON.stringify(pop));
+  ck('andSoDoesTheFirstNewborn', pop.born === 2 && pop.fl.born === 1 && popRing, JSON.stringify({ born: pop.born, fl: pop.fl, popRing }));
+  // the save carries what was answered: a reload flutters nothing again; an older save, nothing at all
+  const re = await p.evaluate(() => {
+    const n0 = window.__fl.length, js = G.saveJSON ? G.saveJSON() : JSON.stringify(S);
+    G.loadJSON(js); Prologue.onWorldChange();
+    for (let i = 0; i < 40; i++) G.simStep(0.05, 0.05);
+    const again = window.__fl.length - n0;
+    const old = JSON.parse(js); delete old.pro.fl;
+    G.loadJSON(JSON.stringify(old)); Prologue.onWorldChange();
+    for (let i = 0; i < 40; i++) G.simStep(0.05, 0.05);
+    return { again, old: window.__fl.length - n0 - again, fl: S.pro.fl };
+  });
+  ck('aContinueFluttersNothingTwice', re.again === 0 && re.old === 0 && re.fl.food === 1 && re.fl.room === 1, JSON.stringify(re));
+  await ctx.close();
+}
+
 /* ---- 2c. THE BEGIN PLATE IS READ (operator, on a phone: "The first fire
    text isn't visible and it looks crowded. It also appears to be imposed
    over the bevel of the button. Make it visible and make everything
@@ -690,6 +872,7 @@ const endScreen = async (p) => {
   ck('andEveryLineItSaidWasShort', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andTheRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
+  ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
   const win = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '',
     done: Object.keys((S.pro && S.pro.done) || {}) }));
   // food, wood and stone, then a roof and a new villager (operator, build 184)
@@ -781,6 +964,7 @@ const endScreen = async (p) => {
   ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapOfGameTwoWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andItsRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
+  ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
   const end = await endScreen(p);
   ck('theSecondWinPaysOneIronCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:2': ['iron'] }), JSON.stringify(end.runs));
   ck('andOffersTheThirdGame', end.doors.includes('pro-next:Continue the journey') && /Two Roads/.test(end.line), end.doors.join(', ') + ' / ' + end.line);
@@ -828,6 +1012,7 @@ const endScreen = async (p) => {
   ck('andTheWonderIsTheRoadTheGuideWalks', ['save', 'wonder'].every(x => ids.includes(x) && fin.done.includes(x)) && fin.wonder, ids.join(' › ') + ' / done ' + fin.done.join(','));
   ck('andEveryTapOfGameThreeWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andGameThreesRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
+  ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
   ck('andEveryLineOfGameThreeWasShort', run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   const end = await endScreen(p);
   ck('theThirdWinPaysOneImperialCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:3': ['imperial'] }), JSON.stringify(end.runs));

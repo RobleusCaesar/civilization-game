@@ -19,7 +19,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 184, date: '2026-11-17', title: 'A journey for your first three games',
+    build: 185, date: '2026-11-18', title: 'A journey for your first three games',
     items: [
       'A new player now begins with a short journey of three games, each on a hand-made world, with Mira, the clan\'s young storyteller, at your side.',
       'You lead the few who escaped when another clan burned your old home, and you begin again somewhere new.',
@@ -27,6 +27,8 @@ const PATCH_NOTES = [
       'Each journey game opens with the map folded away, so the land around you is all you see. The map button at the top brings it back.',
       'While you learn, the game keeps quiet. Only what truly needs you, like a famine or an attack, speaks over her.',
       'The First Fire teaches food, wood and stone, a house and a new villager.',
+      'The first berries, wood and stone you bring home make their counters at the top flutter gold, so you can see where each one goes.',
+      'Your people\'s counter flutters gold when your first house makes room for more, and again when your first new villager arrives.',
       'The Growing Clan, among islands and lakes, teaches the hunt and a hunter\'s lodge, roads, a barracks, archers on a watchtower, a wall, and your first card.',
       'The Two Roads adds the lumber camp, the quarry, the farm and a gold mine, then sets you against your first real rival.',
       'Each journey game won pays a card: Bronze, then Iron, then Imperial.',

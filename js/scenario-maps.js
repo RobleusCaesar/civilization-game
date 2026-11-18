@@ -205,7 +205,8 @@ const SCENARIO_MAPS = {
     "kind": "deer",
     "x": 16,
     "y": 25,
-    "still": true
+    "still": true,
+    "hp": 2
    },
    {
     "kind": "deer",

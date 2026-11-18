@@ -197,10 +197,15 @@ const Scenarios = {
     /* the animals. One marked `still` grazes where it was put until something
        frightens it (game 2's lesson deer: a lone deer roams, and left to it
        walked off toward the herd across the water before the hunt began) —
-       wanderT is grazeIdle's own step clock, so the bolt is untouched */
+       wanderT is grazeIdle's own step clock, so the bolt is untouched. One
+       given `hp` falls to that many blows' worth: the lesson deer (2) falls
+       to a villager's first, where it grazes — a deer bolts from every blow,
+       away from the hunter and so from the hall, and at its full 20 three
+       hunts in ten ended 11+ tiles out, the lodge with them (build 185) */
     for (const a of (sc.animals || [])) {
       const u = Units.spawn(a.kind, 'W', a.x, a.y);
       if (u && a.still) u.wanderT = 1e9;
+      if (u && a.hp > 0) { u.maxhp = a.hp; u.hp = a.hp; }
     }
     // a relic waiting to be found (no journey map carries one since build 184; the format keeps it)
     S.relic = null;
