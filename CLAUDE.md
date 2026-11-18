@@ -1660,7 +1660,13 @@ camp takes the road's tenth (`Bld.roadBoost`; she says it, the wood chip
 flutters), then a deer hunted (a `still` one, `hp` 2, on `deer` by the
 woods) and a hunter's lodge raised where it fell; the road and the lodge
 cards are open from game 2's start (`allowed`) and game 2 opens on a
-`welcome` line instead of the hunt.
+`welcome` line instead of the hunt. The follower's game 1: 336 s, 81 taps
+(the road, the hunt and the lodge 192–213 s). **THE BUILD CHAIN CLOSES
+ANOTHER PANEL FIRST** (`Prologue.buildDoor`, asked by `buildRing` and
+`lineRing`): with the hall in hand after a training, the Build tab only
+folds the hall's panel and the menu never opens, so the guide rings the
+panel's ✕ (`#panelClose`) before the tab whenever anything but a villager is
+selected — the road beat rang the tab for good without it.
 **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
 `nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
 `_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;
