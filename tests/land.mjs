@@ -883,6 +883,117 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
   await p.close();
 }
 
+/* ---- 9d. THE SMALL STONES ARE THE PILES' OWN STONE --------------------
+   Build 189 — the operator, with a phone shot of a deposit: the small ones
+   "stand out and look poorer / lower quality relative to the other ore…
+   Increase the pixel counts… make sure the coloring and the outlines are
+   balanced". The loose stone between the piles was procedural: two lumps
+   four or five pixels across in the warm ore ramp with no real rim, and
+   the chips round the deposit tan specks of the same ramp — a second,
+   poorer stone beside the drawn grey granite. The loose stone is now a
+   drawn kit of its own ('stone-s'), made the way the piles were (drawn at
+   twice the size, brought down by averaging, every colour onto the piles'
+   palette, the darkest of the rim onto their ink). Pinned here, each half
+   by measurement, never by eye:
+     - every loose tile wears a piece of that kit (the stand-in only while
+       it has not landed), with about twice the old stamp's pixels;
+     - every pixel of the kit is a colour of the piles;
+     - its rim is as dark, for its size, as theirs: the share of rim pixels
+       that are near-black within 0.15 of the piles' own (the old stamps
+       had none, a stone drawn small and outlined in black has nine in ten);
+     - no two touching loose tiles wear the same rock;
+     - the chips round a deposit are drawn in the piles' ramp alone. ---- */
+{
+  const p = await page();
+  await p.evaluate(new Function(boot));
+  await p.waitForFunction(() => window.Assets && Assets.slabStage && (Assets.slabStage(0) || []).length > 0
+    && (Assets.slabStage(0, 'stone-s') || []).length >= 12, null, { timeout: 30000 }).catch(() => {});
+  const v = await p.evaluate(() => {
+    const W = CFG.W, H = CFG.H, TL = CFG.TILE, t = S.map.terrain;
+    const kit = Assets._muted('stone-s') || [], piles = Assets._muted('stone-l') || [];
+    const read = (c) => {
+      const g2 = document.createElement('canvas'); g2.width = c.width; g2.height = c.height;
+      const cx = g2.getContext('2d'); cx.drawImage(c, 0, 0);
+      return cx.getImageData(0, 0, c.width, c.height).data;
+    };
+    const hex = (d, o) => '#' + [d[o], d[o + 1], d[o + 2]].map(n => n.toString(16).padStart(2, '0')).join('');
+    const lum = (d, o) => 0.299 * d[o] + 0.587 * d[o + 1] + 0.114 * d[o + 2];
+    // the rim: an opaque pixel with a clear 4-neighbour; dark: under luminance 30
+    const rim = (c) => {
+      const d = read(c), w = c.width, h = c.height;
+      const op = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] >= 128;
+      let n = 0, dark = 0, ink = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (!op(x, y)) continue; ink++;
+        if (op(x - 1, y) && op(x + 1, y) && op(x, y - 1) && op(x, y + 1)) continue;
+        n++; if (lum(d, (y * w + x) * 4) < 30) dark++;
+      }
+      return { n, dark, ink };
+    };
+    const pal = new Set();
+    for (const c of piles) { const d = read(c); for (let o = 0; o < d.length; o += 4) if (d[o + 3] >= 128) pal.add(hex(d, o)); }
+    let pr = 0, pd = 0, pi = 0, kr = 0, kd = 0, ki = 0, offPal = 0;
+    for (const c of piles) { const r = rim(c); pr += r.n; pd += r.dark; pi += r.ink; }
+    for (const c of kit) {
+      const r = rim(c); kr += r.n; kd += r.dark; ki += r.ink;
+      const d = read(c); for (let o = 0; o < d.length; o += 4) if (d[o + 3] >= 128 && !pal.has(hex(d, o))) offPal++;
+    }
+    // the deposit's own tiles: which rock each loose tile wears
+    const piece = new Int16Array(W * H).fill(-1);
+    let loose = 0, fromKit = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (t[y * W + x] !== T.HILLS) continue;
+      const st = R.oreStoneAt(x, y, t);
+      if (!st || st.pile) continue;
+      loose++;
+      const i = kit.indexOf(st.stone);
+      if (i >= 0) { fromKit++; piece[y * W + x] = i >> 1; }
+    }
+    let pairs = 0, twins = 0;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const a = piece[y * W + x]; if (a < 0) continue;
+      for (const [ox, oy] of [[1, 0], [0, 1], [1, 1], [-1, 1]]) {
+        const x2 = x + ox, y2 = y + oy;
+        if (x2 < 0 || y2 < 0 || x2 >= W || y2 >= H) continue;
+        const b2 = piece[y2 * W + x2]; if (b2 < 0) continue;
+        pairs++; if (a === b2) twins++;
+      }
+    }
+    // the chips round a deposit, each scree tile drawn alone onto clear ground
+    const ramp = new Set(R.SCREE_RAMP.map(s => s.toLowerCase()));
+    const sc = document.createElement('canvas'); sc.width = TL; sc.height = TL;
+    const g = sc.getContext('2d');
+    let screeTiles = 0, screePx = 0, screeOff = 0;
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      if (t[y * W + x] === T.HILLS) continue;
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, TL, TL);
+      g.setTransform(1, 0, 0, 1, -x * TL, -y * TL);
+      R.rockScree(g, x, y, t);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      const d = g.getImageData(0, 0, TL, TL).data;
+      let any = 0;
+      for (let o = 0; o < d.length; o += 4) if (d[o + 3]) { any = 1; screePx++; if (!ramp.has(hex(d, o))) screeOff++; }
+      screeTiles += any;
+    }
+    const rampInPiles = R.SCREE_RAMP.every(s => pal.has(s.toLowerCase()));
+    return { kit: kit.length, loose, fromKit, pileDark: pd / pr, kitDark: kd / (kr || 1),
+      kitInk: ki / (kit.length || 1), pileInk: pi / (piles.length || 1), offPal,
+      pairs, twins, screeTiles, screePx, screeOff, rampInPiles };
+  });
+  const f2 = (n) => Math.round(n * 100) / 100;
+  ck('theSmallStonesAreDrawnFromTheirOwnKit',
+    v.kit >= 12 && v.loose > 0 && v.fromKit === v.loose && v.kitInk >= 180,
+    v.kit + ' kit stamps; ' + v.fromKit + ' of ' + v.loose + ' loose tiles wear one; ' + Math.round(v.kitInk) + 'px each (the procedural stamp ~125)');
+  ck('inThePilesOwnColours', v.kit > 0 && v.offPal === 0, v.offPal + ' kit pixels in a colour the piles do not wear');
+  ck('withARimAsDarkForItsSizeAsTheirs', v.kit > 0 && Math.abs(v.kitDark - v.pileDark) <= 0.15,
+    'near-black share of the rim: kit ' + f2(v.kitDark) + ', piles ' + f2(v.pileDark));
+  ck('noTwoTouchingLooseTilesWearOneRock', v.pairs > 0 && v.twins === 0,
+    v.twins + ' of ' + v.pairs + ' touching pairs of loose tiles share a rock');
+  ck('andTheChipsRoundADepositAreItsStone', v.screeTiles > 0 && v.screeOff === 0 && v.rampInPiles,
+    v.screePx + 'px of chips on ' + v.screeTiles + ' tiles, ' + v.screeOff + ' off the piles\' ramp; ramp in the piles: ' + v.rampInPiles);
+  await p.close();
+}
+
 /* ---- 10. HILLS ARE STILL ORDINARY GROUND -----------------------------
    The elevation hints are a DRAWING. A hill must stay exactly as passable
    and as buildable as it was before anything was shaded on it. ---- */

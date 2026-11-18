@@ -242,7 +242,7 @@ node tests/footprint.mjs       # the primary works stand on 2×2; old saves keep
 node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring rule; ?dev=1 preview = the shipping path
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
-node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit
+node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit; the small stones between the piles are the piles' own stone (§9d: their kit, their colours, a rim as dark for its size, no two neighbours alike, the chips in their ramp)
 node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder, and its countdown banner fits every screen
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do; no mountain tile is an invisible wall
 node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal; a card's act has the floor (no note, no dim, no slow motion), the deck's note retires with the deck
@@ -8754,10 +8754,11 @@ resource with nothing drawn on it — so any tile the lattice leaves bare gets
 one centred boulder of its own.
 **WHAT MAY CROSS THE LINE IS LIMITED ON PURPOSE**: `ROCK_WANDER` stays well
 under half a tile, the fringe thins out (`ROCK_FRINGE`), and past the
-boundary only round SCREE pebbles in the deposit's own `oreD` ramp lie on
-the ground — the spill that says "the ore is over there", in the ore's own
-language. A supplied `assets/terrain/hills.png` still wins and stands the
-whole scatter down.
+boundary only round SCREE pebbles lie on the ground — the spill that says
+"the ore is over there", in the ore's own language: with the drawn stone
+catalog installed that is the piles' own ramp (`R.SCREE_RAMP`,
+`SCREE_PEBBLES`, build 189), else the procedural `oreD` one. A supplied
+`assets/terrain/hills.png` still wins and stands the whole scatter down.
 **ORE IS A CLAIM, NOT A CARPET — AND IT SITS IN THE CREVASSES** (map.js,
 Part B2/B3, tightened again on a player report that deposits felt strewn
 about): a settlement needs a FEW workable deposits, not sprawling fields —
@@ -8806,6 +8807,35 @@ INK box, never the canvas, because a loose stamp is a full tile wide with
 its boulders inset. `R.oreStoneAt` stays the ONE entry point the wood, the
 fallback drawer and the contract all go through, so `groundRing`'s
 `ORE_RING` repaint rings are unchanged.
+**THE SMALL STONES ARE THE PILES' OWN STONE** (`assets/terrain/trees/stone-s-a..f`,
+`Assets.slabStage(wear, 'stone-s')`, `R.SCREE_RAMP`; tests/land.mjs §9d —
+operator, build 189, with a phone shot of a journey deposit: the small ones
+"stand out and look poorer / lower quality relative to the other ore…
+Increase the pixel counts… make sure the coloring and the outlines are
+balanced"). The procedural loose stamp above was two lumps four or five
+pixels across in the warm `oreD` ramp with no real rim, and the scree tan
+specks of the same ramp: a second, poorer stone beside the drawn granite.
+The loose stone is now a drawn kit of its own, six pieces (a boulder with
+one or two smaller ones against it, each mirrored at install), made THE WAY
+THE PILES WERE: drawn at twice the size (PixelLab Pro, the pile as the style
+image), brought down to two thirds by area averaging in premultiplied alpha,
+hard alpha where half a pixel is covered, every colour onto the piles'
+palette, the rim's pixels under luminance 48 onto their ink. That is what
+"balanced" measures: a stone drawn small and outlined in black has nine of
+ten rim pixels near-black and its rim a third of its ink; the piles have
+half, and a fifth — the kit has 0.54 and 0.22. About 230px a stamp (the old
+~125, the pile ~520), and `andTheLooseStoneIsTheLesserOfTheTwo` still holds.
+A kit with no wear letters wears the same rock at every stage of mining. **NO
+TWO NEIGHBOURS ALIKE**: the piece is a lattice off the place, `(x + 2y + r)`
+over the pieces with `r` hashed per 16x16 region (the footing's rule), so no
+two touching loose tiles wear one rock; the mirror is the tile hash. The
+scree is pebbles of a few pixels in the piles' ramp, a step darker on top
+than their crowns (a chip as bright as a boulder's crown reads as a white
+speck), dark underneath, whole inside its own tile. The procedural stamp and
+the `oreD` scree are the stand-ins while the catalog has not landed. Note the
+live page's older code also probes `stone-s-*` (the tree cascade probes every
+style and size) and stores it unused, so new pieces at the root change nothing
+there.
 **AND THE VILLAGER WAS NEVER THE FAULT** (`tests/villager-tiers.mjs` §9,
 the report's other half — "make sure this is cleaned up for all three
 levels, not just level one villager"): `R.unitPose` is tier-blind by

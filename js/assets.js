@@ -1281,9 +1281,15 @@ const Assets = {
   VILLAGER_CYCLE: 1.35,
   FORAGE_CYCLE: 1.8,
   SLAB_STAGES: ['abcd', 'efgh', 'ijkl'],
-  slabStage(wear) {
-    const all = this._muted('stone-l');
+  /* `kit` is the piles' 'stone-l' unless asked otherwise: the LOOSE STONE
+     between the piles is a kit of its own, 'stone-s' (build 189), drawn in
+     the piles' own stone, outline and light. A kit that carries no wear
+     letters (fewer than the stages' twelve) wears the same stones at every
+     stage, so a tile never swaps its stone for another as it is mined. */
+  slabStage(wear, kit) {
+    const all = this._muted(kit || 'stone-l');
     if (!all || !all.length) return null;
+    if (kit && kit !== 'stone-l' && all.length < 24) return all;
     /* RESOLVED FRESH, NEVER CACHED. The catalog decodes one letter at a
        time and the terrain bakes before the cascade finishes, so a set
        frozen on the first call is a set built out of the three or four

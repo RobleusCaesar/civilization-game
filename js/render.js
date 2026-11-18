@@ -1757,7 +1757,44 @@ const R = {
        tile between the peaks carries two or three loose boulders at a third
        the mass. The deposit still reads as sprinkled — the piles are still
        never adjacent — and there is no longer any ground in it a pick can
-       swing at for nothing. */
+       swing at for nothing.
+       THE LOOSE STONE IS DRAWN LIKE THE PILES (build 189 — operator, with a
+       phone shot of a deposit: the small ones "stand out and look poorer /
+       lower quality relative to the other ore… Increase the pixel counts…
+       make sure the coloring and the outlines are balanced"). The procedural
+       stamp below was two boulders four or five pixels across in the darker,
+       warmer ore ramp with no real outline: pointed lumps beside the piles'
+       pale, black-outlined, faceted rock. The 'stone-s' kit is the piles' own
+       stone at about half their mass (a boulder with one or two smaller ones
+       against it, six of them, each mirrored), made the way the piles were:
+       drawn at twice the size and brought down by averaging, every colour
+       onto the piles' palette, the darkest of the rim onto their ink — so
+       its outline is as heavy, for its size, as theirs, never a black ring
+       round a few pixels of grey. The procedural stamp is the stand-in only
+       while that kit has not landed (or is not on disk). */
+    const loose = (typeof Assets !== 'undefined' && Assets.slabStage) ? Assets.slabStage(this.oreWear(x, y), 'stone-s') : null;
+    if (loose && loose.length) {
+      /* NO TWO NEIGHBOURS ALIKE (the footing's rule): the kit comes as a
+         piece and its mirror side by side, and the piece is a LATTICE off
+         the tile's place, (x + 2y + r) over the pieces, r hashed per 16x16
+         region — a step east moves it on one, a step south two, a diagonal
+         one or three, so no two touching tiles wear the same rock however
+         the deposit lies. Pure in (x, y): a repaint never changes a stone. */
+      const pairs = loose.length >> 1;
+      let st;
+      if (pairs >= 2) {
+        const r = (Math.imul(x >> 4, 0x2545f491) ^ Math.imul(y >> 4, 0x9e3779b1) ^ this.landSeed()) >>> 0;
+        const pc = ((x + 2 * y + (r % pairs)) % pairs + pairs) % pairs;
+        st = loose[2 * pc + ((h >>> 9) & 1)];
+      } else st = loose[(h >>> 3) % loose.length];
+      // jitter a few px either side of the tile's middle, never past its edge;
+      // the stone sits in the lower part of its tile, as the pile does
+      const jx = Math.min(4, Math.max(0, (TL - st.width) >> 1));
+      const lo = st.height + 4, room = Math.max(1, TL - lo + 1);
+      return { wx: x * TL + (TL >> 1) + ((h >>> 5) % (2 * jx + 1)) - jx,
+               wy: y * TL + lo + ((h >>> 11) % room),
+               stone: st };
+    }
     return { wx: x * TL + (TL >> 1) + ((h >>> 5) % 7) - 3,
              wy: y * TL + 28 + ((h >>> 11) % 5),        // the stamp is 28 tall: 28..32 keeps it in-tile
              stone: this.oreLooseStamp(h) };
@@ -2142,10 +2179,27 @@ const R = {
     if (trees.length) this._stampForest(g, trees);
   },
 
+  /* the scree's pebbles with the drawn stone catalog installed: rows of
+     digits into SCREE_RAMP, the shipped piles' own ramp ('0' their rim ink,
+     '5' their lit top), '.' clear. Lit from the upper left like the piles,
+     dark where they sit on the ground, no rim all round — a 1px rim round a
+     three-pixel chip is a black dot — and a step darker on top than the
+     piles' own lit faces: the scree is the spill round a deposit, and a
+     chip as bright as a boulder's crown reads as a white speck. */
+  SCREE_RAMP: ['#14100a', '#26282c', '#4b4e55', '#6f7579', '#999d9c', '#d5d6cc'],
+  SCREE_PEBBLES: [
+    ['43', '21'],
+    ['443', '210'],
+    ['.4.', '432', '.1.'],
+    ['.54.', '4332', '.21.'],
+    ['.43.', '4332', '.210'],
+    ['54..', '4332', '.211'],
+  ],
   /* LOOSE CHIPS ON THE GROUND OUTSIDE. Scree is what a crag sheds, it is
      walkable, and it is what lets the deposit's outline fade instead of
-     stopping at a line. Only ever 1-2px, and only on ground that touches the
-     deposit — never a boulder, which would read as an obstruction. */
+     stopping at a line. Only ever a few pixels, and only on ground that
+     touches the deposit — never a boulder, which would read as an
+     obstruction. */
   rockScree(g, x, y, terr) {
     const AP = ART.PALETTE, TL = CFG.TILE, W = CFG.W, H = CFG.H;
     const t = terr[MapGen.idx(x, y)];
@@ -2163,6 +2217,30 @@ const R = {
     if (!near) return;
     let hh = (Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ this.landSeed()) >>> 0;
     const rnd = () => { hh = Math.imul(hh ^ (hh >>> 15), 0x2c1b3c6d); hh = (hh ^ (hh >>> 12)) >>> 0; return hh / 4294967295; };
+    /* THE CHIPS SPEAK THE PILES' STONE (build 189 — operator, with a phone
+       shot of the deposits: "make sure the coloring and the outlines are
+       balanced"). With the drawn stone catalog installed the deposit is
+       grey granite with a near-black rim, and tan specks of the old
+       procedural ore round it read as a second, poorer stone. So the chips
+       are little pebbles in the piles' own ramp (SCREE_RAMP) — a grey lit
+       top, a darker body, a dark underside where they sit on the ground —
+       whole inside their own tile, so a repaint of one tile never strands
+       half of one. */
+    const kit = typeof Assets !== 'undefined' && Assets.trees && Assets.trees['stone-l'] && Assets.trees['stone-l'].length;
+    if (kit) {
+      const PEB = this.SCREE_PEBBLES, RAMP = this.SCREE_RAMP;
+      for (let i = 0; i < 4; i++) {
+        if (rnd() > LAND.ROCK_SCREE) continue;
+        const pb = PEB[(rnd() * PEB.length) | 0], ph = pb.length, pw = pb[0].length;
+        const cx = x * TL + ((rnd() * (TL - pw + 1)) | 0), cy = y * TL + ((rnd() * (TL - ph + 1)) | 0);
+        for (let r = 0; r < ph; r++) for (let c = 0; c < pw; c++) {
+          const k = pb[r].charCodeAt(c) - 48;
+          if (k < 0 || k > 5) continue;
+          g.fillStyle = RAMP[k]; g.fillRect(cx + c, cy + r, 1, 1);
+        }
+      }
+      return;
+    }
     const P = AP.oreD;
     for (let i = 0; i < 4; i++) {
       if (rnd() > LAND.ROCK_SCREE) continue;

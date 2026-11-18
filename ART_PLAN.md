@@ -1918,6 +1918,22 @@ orchard, scrub for a new continent) in the shipped forest's voice:
   tree mute: that transform calls a pixel grey only when it is near-neutral
   AND light, so a slab’s dark outline fell through to the warm ramp and came
   back brown. Outlines are floored onto ink[0] instead.
+  THE SMALL STONES (assets/terrain/trees/stone-s-a..f, build 189) are the
+  loose stone between the piles, and they are made the same way so they
+  read as the same rock: PixelLab Pro at 48x32 with the pile (stone-l-a,
+  doubled) as the style image and "a boulder with a smaller one tucked
+  against it" as the brief, the content trimmed and brought down to two
+  thirds by AREA averaging in premultiplied alpha (a pixel stays where at
+  least half of it was covered), every colour mapped to the nearest colour
+  the piles wear (luma-weighted RGB), then the rim pixels darker than
+  luminance 48 floored onto ink[0]. Measure the result, not the picture: a
+  pile's rim is about half near-black and a fifth of its ink; a small stone
+  drawn at world scale and outlined in black was nine tenths and a half —
+  the heavy ring the operator called "poorer". Six pieces, each mirrored at
+  install, about 230px of ink apiece. Generating them AT world scale (24x16)
+  is the wrong road: the generator outlines every pebble in solid black.
+  The scripts were scratch (small2x.py, smallf.py, rimfloor.py in the
+  session); the recipe is the record.
   SPRINKLED, NEVER PILED, NOTHING UNDERNEATH (the referee’s ruling): a tile
   carries a stone only if its land hash beats its eight neighbours’ — pure
   per tile, terrain-blind, so no two stones can ever overlap and a repaint
