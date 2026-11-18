@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 195, date: '2026-11-18', title: 'Roads and the hunt come first',
+    items: [
+      'The bigger hall in The First Fire now costs 500 wood and 500 stone.',
+      'While your camp and quarry gather for it, Mira shows you how to lay a road beside the lumber camp. A building on a road works a tenth faster, and your people walk faster on roads.',
+      'Then she has you hunt a deer and build a hunter\'s lodge where it fell, for food that keeps coming.',
+      'The Growing Clan no longer repeats the road and the hunt, so it gets to the soldiers sooner.',
+    ],
+  },
+  {
     build: 194, date: '2026-11-18', title: 'More hands, faster',
     items: [
       'While you gather for the bigger hall in The First Fire, Mira tells you to train more villagers when you have food to spare: more hands gather faster.',
