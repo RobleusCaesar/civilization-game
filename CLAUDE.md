@@ -1631,7 +1631,19 @@ STATION** (`handFor`: idle first, then the nearest busy hand, a station's own
 hand last; game 1's `raise` asks one builder): the hall rose on the camp's two
 hands and left the camp Mira had just praised standing empty. Measured with
 the follower: the bot's game 1 went from 195 s to 340 s of play, 36 → 58
-taps; a person also reads seven more lines.
+taps; a person also reads seven more lines. **MORE HANDS GATHER FASTER**
+(a beat's `tip`, phase `'tip'`, `Prologue.spareHands`; tests/prologue.mjs
+`whileTheHallIsGatheredForSheTipsToTrainMoreVillagers` — operator, build
+194, on the hall's wait at 221/650 wood with 864 food banked: "Give a tip
+here that the player should create more villagers to collect resources
+faster"): in game 1's `grow`, while every hand is at work (the beat's
+`gwait`), a villager can be trained (`afford2`: price, room, queue), none is
+on the way and the food left after it still covers the hall's own, the
+waiting line is the tip ("Food to spare! Train more villagers. More hands
+gather faster.") ringing the hall's Train Villager; the villager stands by
+the full quarry (the rally's rule) and the gather line sends them out, and
+the tip comes back until the houses are full (the follower trains to
+the cap of 10, and its game 1 falls to 310 s).
 **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
 `nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
 `_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;

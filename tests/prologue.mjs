@@ -1247,6 +1247,12 @@ const endScreen = async (p) => {
     'rally on the quarry ' + win.rally + ', quarry crew ' + win.qcrew + ', villagers ' + win.vils + ', ' + ord.join(' › '));
   // …and the camp Mira praised is still worked when the hall rises (the hall's builders come from elsewhere)
   ck('andTheCampKeepsItsTwoHandsToTheEnd', win.crew === 2, 'crew ' + win.crew);
+  /* MORE HANDS GATHER FASTER (operator, build 194: "Give a tip here that the player
+     should create more villagers to collect resources faster"): while the hall is
+     gathered for, every hand at work and food to spare, Mira's waiting line is the tip,
+     and the follower — tapping only her rings — trains past the third villager */
+  ck('whileTheHallIsGatheredForSheTipsToTrainMoreVillagers', run.said.some(t => /Train more villagers/.test(t)) && win.vils > 6,
+    'villagers ' + win.vils + ' — ' + (run.said.filter(t => /villagers?\b/i.test(t)).join(' | ') || 'never said'));
   // what she says of a station is true in this world: a station's hand outworks a hand at the same good
   ck('andAStationsHandOutworksAHandHere', win.wood && win.stone && win.wood.st > win.wood.hand && win.stone.st > win.stone.hand,
     JSON.stringify({ wood: win.wood, stone: win.stone }));
