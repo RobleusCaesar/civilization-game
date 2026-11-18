@@ -273,13 +273,17 @@
     },
 
     // ---- per frame -----------------------------------------------------------------------
+    /* THE CHUNKS MEET WITHOUT A SEAM (R.snapper, tests/terrain-v4.mjs §13): a chunk's
+       rect goes down on whole device pixels, or desktop Chrome's GPU canvas leaves a dark
+       hairline where two chunks meet — a grid every eight tiles. */
+    _snapper(g) { return R.snapper ? R.snapper(g) : (x, y, w, h) => [x, y, w, h]; },
     drawGround(g) {
-      const span = CH * TL, sm = g.imageSmoothingEnabled;
+      const span = CH * TL, sm = g.imageSmoothingEnabled, snap = this._snapper(g);
       this.schedule();
       for (const [cx, cy] of this.viewChunks(0)) {
-        const c = this.chunks.get(cx + ',' + cy);
-        if (c) { g.imageSmoothingEnabled = false; g.drawImage(c.img, cx * span, cy * span, span, span); }
-        else { g.imageSmoothingEnabled = true; const L = CH * LT; g.drawImage(this.thumb, cx * L, cy * L, L, L, cx * span, cy * span, span, span); this.stats.standIn = (this.stats.standIn || 0) + 1; }
+        const c = this.chunks.get(cx + ',' + cy), d = snap(cx * span, cy * span, span, span);
+        if (c) { g.imageSmoothingEnabled = false; g.drawImage(c.img, d[0], d[1], d[2], d[3]); }
+        else { g.imageSmoothingEnabled = true; const L = CH * LT; g.drawImage(this.thumb, cx * L, cy * L, L, L, d[0], d[1], d[2], d[3]); this.stats.standIn = (this.stats.standIn || 0) + 1; }
       }
       g.imageSmoothingEnabled = sm;
       if (this.opt.anim !== false) this.drawWaterLife(g);
@@ -537,8 +541,8 @@
     },
     // until the core is ready: the flat stand-in for whatever is in view
     drawStandIn(g) {
-      if (!this.thumb) return; const span = CH * TL, L = CH * LT, sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = true;
-      for (const [cx, cy] of this.viewChunks(0)) g.drawImage(this.thumb, cx * L, cy * L, L, L, cx * span, cy * span, span, span);
+      if (!this.thumb) return; const span = CH * TL, L = CH * LT, sm = g.imageSmoothingEnabled, snap = this._snapper(g); g.imageSmoothingEnabled = true;
+      for (const [cx, cy] of this.viewChunks(0)) { const d = snap(cx * span, cy * span, span, span); g.drawImage(this.thumb, cx * L, cy * L, L, L, d[0], d[1], d[2], d[3]); }
       g.imageSmoothingEnabled = sm;
     },
     // ---- the real game: a run founded or loaded ---------------------------------------------

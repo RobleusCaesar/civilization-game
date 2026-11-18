@@ -589,21 +589,50 @@ const Prologue = {
     }
     return best;
   },
-  // the nearest tile of a good from a hand, on ground the player has seen
+  /* the nearest tile of a good from a hand, on ground the player has seen — on the HOME
+     SIDE of the town's own wall when that side holds any (operator, build 191: "this
+     instruction sends someone to build north of the wall we just created (that's no good);
+     redesign so we send them to one of the bushes inside the players territory") */
   workFor(u, res) {
     res = res || this.need();
     const W = CFG.W, H = CFG.H, ter = S.map.terrain, amt = S.map.resAmount, ex = S.map.explored;
     // never a tile the lesson keeps the hands off (Scenarios.mayGather): the ring would promise a refusal
     const may = window.Scenarios && Scenarios.mayGather ? Scenarios.mayGather.bind(Scenarios) : null;
-    let best = null, bd = 1e9;
+    const home = this.homeSide();
+    let best = null, bd = 1e9, near = null, nd = 1e9;
     for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
       const i = y * W + x, g = CFG.GATHER[ter[i]];
       if (!g || g.res !== res || !(amt[i] > 0) || (ex && !ex[i])) continue;
       if (may && !may(x, y)) continue;
       const d = (x + 0.5 - u.x) ** 2 + (y + 0.5 - u.y) ** 2;
       if (d < bd) { bd = d; best = { x: x + 0.5, y: y + 0.5, r: 0.8 }; }
+      if (home && d < nd && (home[i - 1] || home[i + 1] || home[i - W] || home[i + W])) { nd = d; near = { x: x + 0.5, y: y + 0.5, r: 0.8 }; }
     }
-    return best;
+    return near || best;
+  },
+  /* THE HOME SIDE: the ground the hall's own people reach from its doorstep without
+     passing the town's wall line — every wall and gate of the player's, built, rising or
+     standing open, counts as the line. A tile of a good is on the home side when a hand
+     can stand beside it there. Kept until the day, the block grid or the buildings move. */
+  homeSide() {
+    const tc = Bld.tcOf && Bld.tcOf('P'); if (!tc || !S.map) return null;
+    const key = S.day + '|' + (Bld._blockGen | 0) + '|' + S.buildings.length + '|' + tc.id;
+    if (this._homeK === key) return this._home;
+    const W = CFG.W, H = CFG.H, open = new Uint8Array(W * H), line = new Uint8Array(W * H), q = [];
+    for (const b of S.buildings) if (b.owner === 'P' && (b.key === 'wall' || b.key === 'gate')) {
+      const sz = Bld.size(b); for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) line[(b.y + dy) * W + b.x + dx] = 1;
+    }
+    const push = (x, y) => {
+      if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) return;
+      const i = y * W + x;
+      if (open[i] || line[i] || !Path.passable(x, y, 'P')) return;
+      open[i] = 1; q.push(i);
+    };
+    const sz = Bld.size(tc);
+    for (let dy = -1; dy <= sz; dy++) for (let dx = -1; dx <= sz; dx++) push(tc.x + dx, tc.y + dy);
+    for (let h = 0; h < q.length; h++) { const i = q[h], x = i % W, y = (i / W) | 0; push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1); }
+    this._homeK = key; this._home = q.length ? open : null;
+    return this._home;
   },
   hallNeeds() {
     const tc = this.tc(); if (!tc) return '';
@@ -634,6 +663,17 @@ const Prologue = {
   pickLine(coming) {
     this.naming('food');
     return coming ? 'The berry bush is nearly bare. Keep picking.' : 'Pick the berry bush bare. A farm can grow there.';
+  },
+  // the train beat held: why a villager, and what to gather for one (naming the good, so the ring agrees)
+  trainLine(coming) {
+    const r = this.naming(this.need());
+    return coming ? 'More hands gather more. The ' + r + ' for a new villager is coming in.'
+      : 'Next, gather ' + r + ' at ' + (this.WHERE[r] || 'the hills') + ' to train a new villager.';
+  },
+  // the newest villager, where the newcomer beat looks
+  newcomerView() {
+    let u = null; for (const x of this.vils()) if (!u || x.id > u.id) u = x;
+    return u ? { x: u.x, y: u.y, r: 0.5 } : this.homeView();
   },
   // the house and the farm side by side: the view the bond is said over
   homeView() {
@@ -680,7 +720,7 @@ const Prologue = {
     1() {
       const P = this;
       return [
-        { id: 'open', face: 'point', text: 'Another clan burned our home. We few escaped. Send someone to gather berries.',
+        { id: 'open', face: 'point', text: "We've arrived in an untamed world. Send people for food so we don't go hungry.",
           goal: 'Gather berries', ring: P.sendTo('berries'), taps: P.sendTaps('berries'),
           done: () => P.ordered('food'), praise: 'Good!' },
         { id: 'wood', face: 'pleased', text: 'Berries for tonight. Now send someone to cut wood.',
@@ -689,7 +729,7 @@ const Prologue = {
         { id: 'stone', face: 'point', text: 'Now send someone to the grey rocks for stone.',
           goal: 'Gather stone', ring: P.sendTo('stone'), taps: P.sendTaps('stone'),
           done: () => P.ordered('stone'), praise: 'Good stone!' },
-        { id: 'house', face: 'point', text: 'We need a roof. Build a house beside the berry bush.', key: 'house',
+        { id: 'house', face: 'point', text: 'A house shelters our people. Build one beside the berry bush.', key: 'house',
           goal: () => P.buildGoal('house', 'Build a house'),
           when: () => P.afford('house') || P.has('house'), hold: (c) => P.needLine('A house', null, c),
           on: () => Scenarios.unlock('house'),
@@ -712,24 +752,34 @@ const Prologue = {
           on: () => Scenarios.unlock('farm'),
           ring: P.buildRing('farm', 'berries'), taps: () => { const r = P.buildRing('farm', 'berries')(); return r ? [r] : []; },
           ack: () => P.has('farm'), site: () => P.siteOf('farm'), wait: 'The farm is going up.',
-          done: () => P.has('farm', true), praise: 'A farm!' },
-        { id: 'bond', face: 'excited', text: 'A home beside its farm feeds more, and shelters one more.', auto: 5200,
-          goal: 'A home beside its farm', look: () => P.homeView(),
-          on: () => { P.flutter('food'); P.flutter('pop'); } },
-        { id: 'train', face: 'point', text: 'Now train a new villager at the hall.', unit: 'villager',
+          done: () => P.has('farm', true) },
+        /* WHAT THE HOMESTEAD GIVES, IN NUMBERS (operator, build 191: "explain what the
+           player gets by building a house next to a farm. Make the dazzle a little more
+           noticeable"): the food and people chips flutter big */
+        { id: 'bond', face: 'excited', text: 'Beside a home, a farm grows 10% more food. The home fits one more villager.', auto: 7000,
+          goal: 'Farm + home: more food, more room', look: () => P.homeView(),
+          on: () => { P.flutter('food', true); P.flutter('pop', true); } },
+        /* WHY WE TRAIN (operator, build 191: "Next we must collect more food so we can
+           expand and add more villagers … Make why we create villagers more obvious") */
+        { id: 'train', face: 'point', text: 'More hands gather more. Train a new villager at the hall.', unit: 'villager',
           goal: () => 'Train a villager' + (P.afford2('villager') ? '' : ': ' + P.priceLine(P.trainPrice('villager'))),
-          when: () => P.afford2('villager') || P.trained(), hold: (c) => P.needLine('A villager', null, c),
+          when: () => P.afford2('villager') || P.trained(), hold: (c) => P.trainLine(c),
           ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
           ack: () => P.trained(), wait: 'A new villager is on the way.',
-          done: () => P.vils().length > P._n0, praise: 'Welcome, little one!' },
-        { id: 'grow', face: 'thinking', text: 'Now our hall must grow. Gather what it needs.', gather: true,
+          done: () => P.vils().length > P._n0 },
+        /* THE NEWCOMER IS MET (operator, build 191: "when the villager was created the game
+           skipped right to 'Raise the hall!' Give Mira a happy look and say, 'A new villager
+           joins our clan.'"): a beat of its own before the next instruction */
+        { id: 'newcomer', face: 'excited', text: 'A new villager joins our clan! More hands for food, wood and stone.', auto: 5600,
+          goal: 'A new villager', look: () => P.newcomerView() },
+        { id: 'grow', face: 'thinking', text: 'Next, a bigger hall. Gather the food, wood and stone it needs.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
           praise: 'We have enough!' },
         // an upgrade rises only with hands on it (the game's rule): the guide sends them
-        { id: 'raise', face: 'excited', text: 'Raise the hall!',
+        { id: 'raise', face: 'excited', text: 'Tap the hall, then Upgrade. A bigger hall, a stronger clan.',
           goal: 'Raise the hall', ring: P.hallRing('#panel [data-act="upgrade"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="upgrade"]')(); return r ? [r] : []; },
           ack: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0); },
@@ -763,7 +813,28 @@ const Prologue = {
           ring: P.lineRing('road', 'roadSite'), taps: () => { const r = P.lineRing('road', 'roadSite')(); return r ? [r] : []; },
           ack: () => P.laid(), site: () => P.siteOf('road'),
           done: () => P.laid() && (!P.siteOf('road') || P.builders(P.siteOf('road')).length > 0), praise: 'A fine road!' },
-        { id: 'barracks', face: 'point', text: 'Now a barracks, to train our defenders.', key: 'barracks',
+        /* THE CARD LESSON PLAYS MASTER BUILDERS, WHERE ITS WORK IS SEEN (operator, build 191:
+           "For game 1, make Master Builder the default card … If we don't have a specific card
+           we play for a specific reason in game 2 … we could rely on this card for the
+           teaching"): game 1's win pays it, and the lesson comes before the barracks, so the
+           barracks, the range and the tower stand the moment they are placed. Any other card
+           (a device that holds none) is played as before, and the line says so plainly. */
+        { id: 'deck', face: 'point',
+          text: () => P.holdsMB() ? 'Cards can help. Play Master Builders: our next buildings stand at once.' : 'You carry cards. Tap your deck and play one.',
+          goal: () => P.holdsMB() ? 'Play Master Builders' : 'Play a card',
+          skipIf: () => !(window.Deck && Deck.on && Deck.on() && Deck.total && Deck.total() > 0),
+          on: () => { P._deckOpen = true; },
+          ring: () => P.deckRing(), taps: () => { const r = P.deckRing(); return r ? [r] : []; },
+          // the card's own act answers the Play; the next line comes the moment it is over
+          ack: () => P.played(),
+          done: () => P.played() && !(window.Deck && Deck.acting && Deck.acting()), praise: 'Well played!' },
+        /* WHY A BARRACKS (operator, build 191: "add a little more context … these are
+           dangerous times. We could be attacked by animals, enemy villagers, or the others …
+           If it can't fit on 1 card, maybe we expand to 2 cards"): a short warning of its own,
+           then the instruction */
+        { id: 'danger', face: 'concerned', text: 'Dangerous times. Wolves, raiders, or the clan that burned us may strike.', auto: 5200,
+          goal: 'Dangerous times' },
+        { id: 'barracks', face: 'determined', text: 'So we need soldiers. Build a barracks to train them.', key: 'barracks',
           goal: () => P.buildGoal('barracks', 'Build a barracks'),
           when: () => P.afford('barracks') || P.has('barracks'), hold: (c) => P.needLine('A barracks', null, c),
           on: () => Scenarios.unlock('barracks'),
@@ -826,6 +897,15 @@ const Prologue = {
           goal: 'Watch the tower',
           on: () => P.sendScout(), look: () => P.wallView(),
           done: () => P.scoutDone(), praise: 'The wall held!' },
+        /* MEND WHAT HE BROKE (operator, build 191: "right after we defeat the attacker, teach
+           the player how to repair a wall by clicking on the wall that is on fire"): a villager
+           in hand, a tap on the hurt section, and the section is whole again. Passed over when
+           the scout never landed a blow. */
+        { id: 'mend', face: 'point', text: 'Mend the damaged wall: tap a villager, then the wall.',
+          goal: 'Mend the wall', skipIf: () => !P.hurtFort(),
+          ring: () => P.handsRing({ site: () => P.hurtFort() }), taps: () => P.handsTaps({ site: () => P.hurtFort() }),
+          ack: () => { const w = P.hurtFort(); return !w || P.builders(w).length > 0; }, wait: 'The wall is being mended.',
+          done: () => !P.hurtFort(), praise: 'Good as new!' },
         { id: 'gate', face: 'point', text: 'A gate opens for us, never raiders. Build one in the wall.',
           goal: () => P.gateGoal(), cost: () => P.gateCost(),
           when: () => P.canGate() || !!P.gateOnLine(), hold: (c) => P.needLine('A gate', null, c),
@@ -836,14 +916,18 @@ const Prologue = {
           goal: 'Open the gate',
           ring: () => P.openRing(), taps: () => { const r = P.openRing(); return r ? [r] : []; },
           done: () => { const g = P.gateOnLine(); return !!g && !(g.construction > 0) && !g.raised; }, praise: 'Our people pass freely!' },
-        { id: 'deck', face: 'point', text: 'You carry cards. Tap your deck and play one.',
-          goal: 'Play a card',
-          skipIf: () => !(window.Deck && Deck.on && Deck.on() && Deck.total && Deck.total() > 0),
-          on: () => { P._deckOpen = true; },
-          ring: () => P.deckRing(), taps: () => { const r = P.deckRing(); return r ? [r] : []; },
-          // the card's own act answers the Play; the next line comes the moment it is over
-          ack: () => P.played(),
-          done: () => P.played() && !(window.Deck && Deck.acting && Deck.acting()), praise: 'Well played!' },
+        /* A GREY BUTTON SAYS WHAT IT IS MISSING (operator, build 191: "The player might be
+           confused when they need to raise the hall to level 3 … teach them that they can click
+           on greyed out things and then see a notification about what they're missing … right
+           beneath Mira and her comment"): the hall's Upgrade, grey, is tapped; the refusal names
+           the goods still wanting (Bld.canUpgrade's `short`) under her card. Passed over when the
+           hall can already rise. */
+        { id: 'greyed', face: 'thinking', text: "Grey buttons are not ready. Tap the hall's grey Upgrade.",
+          goal: 'Tap the grey Upgrade', skipIf: () => { const tc = P.tc(); return !tc || tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok; },
+          ring: P.hallRing('#panel [data-act="upgrade"]'),
+          taps: () => { const r = P.hallRing('#panel [data-act="upgrade"]')(); return r ? [r] : []; },
+          done: () => P._greyAt > (P._beatT0 || 0) || (() => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); })(),
+          praise: 'See? It says what is missing.' },
         { id: 'grow', face: 'thinking', text: 'Now raise the hall again. Gather what it needs.', gather: true,
           gwait: () => 'The hall will rise again. The ' + P.naming(P.need()) + ' is coming in.',
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
@@ -952,10 +1036,14 @@ const Prologue = {
     }
     return this.vis('#deckBtn') ? { sel: '#deckBtn' } : null;
   },
+  // the device holds game 1's card (asked before the deck is shown, when nothing can be played yet)
+  holdsMB() { try { return Deck.col().counts.master_builders > 0 && !!Deck.card('master_builders'); } catch (e) { return false; } },
   deckPick() {
     let best = null;
     try {
       const k = Deck.col().counts;
+      // the lesson's own card, when the device holds it and it can play (game 1's reward)
+      if (k.master_builders > 0 && Deck.card('master_builders') && Deck.canPlay('master_builders').ok) return 'master_builders';
       for (const id in k) {
         if (!(k[id] > 0)) continue;
         const c = Deck.card(id);
@@ -1003,6 +1091,15 @@ const Prologue = {
     return b && b.owner === 'P' && (b.key === 'wall' || b.key === 'gate') ? b : null;
   },
   lineForts() { return this.lineTiles().map(t => this.fortOn(t)).filter(Boolean); },
+  // the most hurt finished section of the line (the scout's work), or null when all are whole
+  hurtFort() {
+    let w = null, wr = 1;
+    for (const b of this.lineForts()) {
+      if (b.construction > 0 || !(b.maxhp > 0) || b.hp >= b.maxhp - 0.5) continue;
+      const r = b.hp / b.maxhp; if (r < wr) { wr = r; w = b; }
+    }
+    return w;
+  },
   laidOnLine() { return this.lineForts().length; },
   // the next section: the first gap beside a section already laid, else the first gap
   nextLineTile() {
@@ -1366,7 +1463,7 @@ const Prologue = {
     const P = S.pro, fl = P && P.fl;
     if (!fl) return;
     if (!fl.room && this.count('house', true) > (P.h0 || 0)) { fl.room = 1; this.flutter('pop'); }
-    if (!fl.born && this.vils().length > this._n0) { fl.born = 1; this.flutter('pop'); }
+    if (!fl.born && this.vils().length > this._n0) { fl.born = 1; this.flutter('pop', true); }
   },
 
   /* the script's clock: the SIM's (G.simStep), in real seconds. Every tick
@@ -1648,6 +1745,8 @@ const Prologue = {
     E.inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); this._named(); } });
     // any touch is input: the idle hand stands down and counts again
     document.addEventListener('pointerdown', () => { this._lastIn = this.now(); if (this._hand) this._hand = null; if (this._shown) this._acted = true; }, true);
+    // a tap on a grey (.cant) action in the panel: the greyed lesson's deed (its refusal is the game's own toast)
+    document.addEventListener('click', e => { const t = e.target && e.target.closest && e.target.closest('#panel .cant'); if (t) this._greyAt = this.now() + 1e-3; }, true);
     return E;
   },
   say(text, face) {
@@ -2143,52 +2242,62 @@ const Prologue = {
      edge and its number flares gold — all CSS at the screen's own pixels (an
      effect is never chunky), over the bar. `chip` is a data-chip: food, wood,
      stone, gold or pop. Reduced motion: the ring alone, fading. */
-  FLUTTER_MS: 1700,
-  flutter(chip) {
+  /* …AND IT IS SEEN (operator, build 191: "Make the gold that appears around the
+     resources when they're collected a little more obvious, and last a little longer.
+     We really want to connect what happens in the game to the resources in the top
+     bar"): a thicker ring that breathes twice over 2.8 s, a halo behind the chip, more
+     sparks thrown farther, the number gold for longer. `big` (the homestead's two chips:
+     "make the dazzle a little more noticeable") breathes three times over 3.6 s with
+     twice the sparks in two waves. */
+  FLUTTER_MS: 2800,
+  FLUTTER_BIG_MS: 3600,
+  flutter(chip, big) {
     const box = typeof document !== 'undefined' && document.querySelector(`#topbar [data-chip="${chip}"]`);
     if (!box || !box.getBoundingClientRect || box.offsetParent === null) return false;
     const r = box.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0)) return false;
-    const E = this._dom(), MS = this.FLUTTER_MS;
+    const E = this._dom(), MS = big ? this.FLUTTER_BIG_MS : this.FLUTTER_MS;
     const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     this._flutters = (this._flutters || 0) + 1;
     // the bar says its new number on the next frame, not the next quarter second (UI is a script const: never window.UI)
     if (typeof UI !== 'undefined') UI.refreshT = 0;
     const ring = document.createElement('i');
-    ring.className = 'pflR';
+    ring.className = 'pflR' + (big ? ' big' : '');
     ring.dataset.chip = chip;
-    ring.style.left = (r.left - 3) + 'px'; ring.style.top = (r.top - 3) + 'px';
-    ring.style.width = (r.width + 6) + 'px'; ring.style.height = (r.height + 6) + 'px';
+    ring.style.left = (r.left - 4) + 'px'; ring.style.top = (r.top - 4) + 'px';
+    ring.style.width = (r.width + 8) + 'px'; ring.style.height = (r.height + 8) + 'px';
     E.fx.appendChild(ring);
     const done = () => { ring.remove(); };
     if (ring.animate) {
-      const a = ring.animate(reduced
-        ? [{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }]
-        : [{ opacity: 0, transform: 'scale(.82)' }, { opacity: 1, transform: 'scale(1)', offset: 0.16 },
-          { opacity: 0.7, transform: 'scale(1.05)', offset: 0.42 }, { opacity: 1, transform: 'scale(1)', offset: 0.6 },
-          { opacity: 0, transform: 'scale(1.12)' }], { duration: MS, easing: 'ease-out' });
+      const breaths = big ? 3 : 2, kf = [{ opacity: 0, transform: 'scale(.8)' }];
+      for (let k = 0; k < breaths; k++) {
+        const o0 = (k + 0.18) / (breaths + 0.35), o1 = (k + 0.62) / (breaths + 0.35);
+        kf.push({ opacity: 1, transform: 'scale(1)', offset: +o0.toFixed(3) }, { opacity: 0.72, transform: 'scale(1.07)', offset: +o1.toFixed(3) });
+      }
+      kf.push({ opacity: 1, transform: 'scale(1)', offset: +(breaths / (breaths + 0.35)).toFixed(3) }, { opacity: 0, transform: 'scale(1.14)' });
+      const a = ring.animate(reduced ? [{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }] : kf, { duration: MS, easing: 'ease-out' });
       a.onfinish = done;
     } else setTimeout(done, MS);
     // the number flares gold, and the chip lifts a hair
     const num = box.querySelector('span[id]');
     if (num && num.animate) {
       const c0 = getComputedStyle(num).color;
-      num.animate([{ color: '#fff4c4', textShadow: '0 0 8px rgba(255,214,120,1)' }, { color: '#ffd46a', textShadow: '0 0 6px rgba(255,200,90,.8)', offset: 0.55 }, { color: c0, textShadow: 'none' }],
+      num.animate([{ color: '#fff4c4', textShadow: '0 0 10px rgba(255,214,120,1)' }, { color: '#ffd46a', textShadow: '0 0 8px rgba(255,200,90,.9)', offset: 0.7 }, { color: c0, textShadow: 'none' }],
         { duration: MS, easing: 'ease-out' });
     }
-    if (!reduced && box.animate) box.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.12)', offset: 0.22 }, { transform: 'scale(1)' }], { duration: 560, easing: 'ease-out' });
+    if (!reduced && box.animate) box.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.16)', offset: 0.18 }, { transform: 'scale(1)', offset: 0.5 }, { transform: 'scale(1.08)', offset: 0.68 }, { transform: 'scale(1)' }], { duration: big ? 1400 : 1100, easing: 'ease-out' });
     if (reduced) return true;
-    // the sparks: round the chip's edge, each fluttering a little way out
-    const N = 12, cx = r.left + r.width / 2, cy = r.top + r.height / 2, per = 2 * (r.width + r.height);
-    for (let i = 0; i < N; i++) {
-      // an even walk round the edge, started at a corner and turned a little each time
-      let d = ((i + 0.35) / N) * per, x, y;
+    // the sparks: round the chip's edge, each fluttering out — one wave, or two for the big one
+    const N = big ? 18 : 16, waves = big ? 2 : 1, cx = r.left + r.width / 2, cy = r.top + r.height / 2, per = 2 * (r.width + r.height);
+    for (let w = 0; w < waves; w++) for (let i = 0; i < N; i++) {
+      // an even walk round the edge, started at a corner and turned a little each time (the second wave half a step on)
+      let d = ((i + 0.35 + w * 0.5) / N) * per, x, y;
       if (d < r.width) { x = r.left + d; y = r.top; }
       else if ((d -= r.width) < r.height) { x = r.right; y = r.top + d; }
       else if ((d -= r.height) < r.width) { x = r.right - d; y = r.bottom; }
       else { d -= r.width; x = r.left; y = r.bottom - d; }
       let nx = x - cx, ny = (y - cy) * 2.2; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
-      const out = 10 + (i % 3) * 4, wob = (i % 2 ? 1 : -1) * 4;
+      const out = 14 + (i % 3) * 6, wob = (i % 2 ? 1 : -1) * 5;
       // never up past the screen's top: a spark on the top edge drifts out sideways
       if (y + ny * out < 2) ny = Math.max(ny, 0);
       const s = document.createElement('i');
@@ -2199,10 +2308,10 @@ const Prologue = {
       const tx = nx * out, ty = ny * out, px = -ny * wob, py = nx * wob;
       const an = s.animate([
         { transform: 'translate(-50%,-50%) translate(0px,0px) scale(0) rotate(0deg)', opacity: 0 },
-        { transform: `translate(-50%,-50%) translate(${(tx * 0.35 + px).toFixed(1)}px,${(ty * 0.35 + py).toFixed(1)}px) scale(1.15) rotate(40deg)`, opacity: 1, offset: 0.3 },
-        { transform: `translate(-50%,-50%) translate(${(tx * 0.72 - px).toFixed(1)}px,${(ty * 0.72 - py).toFixed(1)}px) scale(.85) rotate(85deg)`, opacity: 0.95, offset: 0.66 },
+        { transform: `translate(-50%,-50%) translate(${(tx * 0.35 + px).toFixed(1)}px,${(ty * 0.35 + py).toFixed(1)}px) scale(1.3) rotate(40deg)`, opacity: 1, offset: 0.3 },
+        { transform: `translate(-50%,-50%) translate(${(tx * 0.72 - px).toFixed(1)}px,${(ty * 0.72 - py).toFixed(1)}px) scale(.95) rotate(85deg)`, opacity: 0.95, offset: 0.66 },
         { transform: `translate(-50%,-50%) translate(${tx.toFixed(1)}px,${ty.toFixed(1)}px) scale(0) rotate(130deg)`, opacity: 0 }],
-        { duration: 760 + (i % 4) * 110, delay: 60 + i * 55, easing: 'cubic-bezier(.2,.7,.35,1)', fill: 'backwards' });
+        { duration: 1000 + (i % 4) * 140, delay: 60 + i * 70 + w * (MS * 0.42), easing: 'cubic-bezier(.2,.7,.35,1)', fill: 'backwards' });
       an.onfinish = () => s.remove();
     }
     return true;
@@ -2252,7 +2361,7 @@ const Prologue = {
     this._held = { win, msg, s0: S, g };
     this._shown = null; this._viewKey = null; this._aside = null; this._goalBeat = null;
     this._collapsed = false; this._userHid = false;
-    this.say(g === 1 ? 'Our first fire burns, chief. May they never see its smoke.' : g === 2 ? 'A great hall! The clan is proud, chief.' : 'Well done, chief.', 'proud');
+    this.say(g === 1 ? 'Our first fire burns, chief. May the clan that burned our home never see it.' : g === 2 ? 'A great hall! The clan is proud, chief.' : 'Well done, chief.', 'proud');
     try { if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete'); } catch (e) {}
     const tc = this.tc();
     if (tc) { const t = this._resolve({ x: tc.x + 1, y: tc.y + 1 }); if (t) this._burst(this._dom(), t.x, t.y); }
@@ -2487,9 +2596,11 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #proFx { position: fixed; inset: 0; pointer-events: none; }
 #proFx .pfs { position: fixed; width: 7px; height: 7px; background: #ffd77a; box-shadow: 0 0 6px rgba(255,214,120,.9); }
 #proFx .pfly { position: fixed; width: 26px; height: 26px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
-#proFx .pflR { position: fixed; box-sizing: border-box; border-radius: 9px; pointer-events: none; border: 2px solid #ffd77a;
-  box-shadow: 0 0 0 1px rgba(20,12,4,.85), inset 0 0 0 1px rgba(20,12,4,.5), 0 0 12px 2px rgba(255,205,96,.6), inset 0 0 9px rgba(255,214,120,.3); }
-#proFx .pflS { position: fixed; left: 0; top: 0; width: 11px; height: 11px; pointer-events: none; filter: drop-shadow(0 0 2px rgba(255,214,120,.95)) drop-shadow(0 1px 1px rgba(20,12,4,.7)); }
+#proFx .pflR { position: fixed; box-sizing: border-box; border-radius: 10px; pointer-events: none; border: 3px solid #ffd77a;
+  background: radial-gradient(ellipse at center, rgba(255,214,120,.22), rgba(255,214,120,0) 70%);
+  box-shadow: 0 0 0 1px rgba(20,12,4,.85), inset 0 0 0 1px rgba(20,12,4,.5), 0 0 16px 4px rgba(255,205,96,.7), inset 0 0 12px rgba(255,214,120,.4); }
+#proFx .pflR.big { border-width: 4px; box-shadow: 0 0 0 1px rgba(20,12,4,.85), inset 0 0 0 1px rgba(20,12,4,.5), 0 0 24px 7px rgba(255,205,96,.78), inset 0 0 14px rgba(255,214,120,.5); }
+#proFx .pflS { position: fixed; left: 0; top: 0; width: 13px; height: 13px; pointer-events: none; filter: drop-shadow(0 0 2px rgba(255,214,120,.95)) drop-shadow(0 1px 1px rgba(20,12,4,.7)); }
 #proFx .pflS b { display: block; width: 100%; height: 100%; background: radial-gradient(circle, #fffdf0 0 20%, #ffe08a 42%, #e9a93a 78%);
   clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%); }
 .bbtn.new { position: relative; box-shadow: 0 0 0 2px #e8c15a, 0 0 14px rgba(255,205,96,.6) !important; }
