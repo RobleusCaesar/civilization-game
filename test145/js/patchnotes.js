@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 190, date: '2026-11-18', title: 'A farm beside the home',
+    items: [
+      'In The First Fire, Mira has you build your first house right beside the berry bush, and once the bush is picked bare, a farm on the soil it leaves.',
+      'A farm next to a house feeds the clan a little more and makes room for one more villager, and Mira tells you so when it happens.',
+      'In the first game you gather and build only where Mira points, so the lesson never wanders off.',
+      'When Mira asks for a worker, she now points to the villager standing nearest the job, so two villagers never end up on the same spot.',
+    ],
+  },
+  {
     build: 189, date: '2026-11-18', title: 'Stone that matches',
     items: [
       'The small stone deposits between the big rock piles are redrawn to match them: the same grey granite, the same dark outline and the same light, with about twice the detail they had.',
