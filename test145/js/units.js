@@ -715,6 +715,8 @@ const Units = {
 
   assignGather(u, tx, ty) {
     if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
+    // a lesson's own ground (Scenarios.mayGather, game 1): the taps say why (UI.lessonBars)
+    if (u.owner === 'P' && window.Scenarios && Scenarios.mayGather && !Scenarios.mayGather(tx, ty)) return false;
     const g = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
     if (!g) return false;
     const best = this.gatherEdge(u, tx, ty);
@@ -795,6 +797,7 @@ const Units = {
   // villagers can line-fish a shoal from the beach beside it
   assignShoreFish(u, tx, ty) {
     if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
+    if (u.owner === 'P' && window.Scenarios && Scenarios.fishWhy && Scenarios.fishWhy()) return false;   // not a lesson's good
     if (!this.isVillager(u) || !MapGen.shoal(tx, ty) || S.map.resAmount[MapGen.idx(tx, ty)] <= 0)
       return false;
     let best = null, bd = 1e9;
@@ -1383,11 +1386,12 @@ const Units = {
     const i = MapGen.idx(x, y), ter = S.map.terrain[i];
     if (vill) {
       const g = CFG.GATHER[ter];
-      if (g && S.map.resAmount[i] > 0)
+      const lesson = own === 'P' && window.Scenarios && Scenarios.mayGather;   // a lesson's own ground: a rally there stands by it
+      if (g && S.map.resAmount[i] > 0 && !(lesson && !Scenarios.mayGather(x, y)))
         return { act: 'gather', label: 'gather ' + g.res, room: this.gatherRoom(u, x, y), run: () => this.assignGather(u, x, y) };
       if (Bld.seamAt(x, y) && !Bld.at(x, y))
         return { act: 'mine', label: 'claim the gold seam', room: Bld.canClaimSeam(own, x, y).ok, run: () => this.assignMine(u, x, y) };
-      if (MapGen.shoal(x, y) && S.map.resAmount[i] > 0)
+      if (MapGen.shoal(x, y) && S.map.resAmount[i] > 0 && !(lesson && Scenarios.fishWhy && Scenarios.fishWhy()))
         return { act: 'fish', label: 'fish from the shore', room: true, run: () => this.assignShoreFish(u, x, y) };
       return null;
     }

@@ -822,6 +822,15 @@ const Bld = {
        not taught yet cannot be raised by the player any other way either */
     if (owner === 'P' && window.Scenarios && Scenarios.allows && !Scenarios.allows(key))
       return { ok: false, code: 'mode', why: 'Not yet — Mira will show you when.' };
+    /* …and where it teaches a building, the building stands on the lesson's
+       own site (Scenarios.siteRefusal, game 1 since build 190): the house
+       beside the berry bush, the farm on its picked-bare soil — so the two
+       bond. Asked before the ground: anywhere else is refused in the
+       lesson's words, and the site itself answers every rule below. */
+    if (owner === 'P' && window.Scenarios && Scenarios.siteRefusal) {
+      const why = Scenarios.siteRefusal(key, x, y);
+      if (why) return { ok: false, code: 'lesson', why };
+    }
     // a road is ground, not a building: its own rules (js/roads.js)
     if (key === 'road') return window.Roads && Roads.on() ? Roads.canPlace(owner, x, y, opts) : { ok: false, code: 'key', why: '?' };
     if (!MapGen.onBoard(x, y)) return { ok: false, code: 'edge', why: 'Off the map' };
