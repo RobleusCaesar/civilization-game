@@ -1660,7 +1660,7 @@ camp takes the road's tenth (`Bld.roadBoost`; she says it, the wood chip
 flutters), then a deer hunted (a `still` one, `hp` 2, on `deer` by the
 woods) and a hunter's lodge raised where it fell; the road and the lodge
 cards are open from game 2's start (`allowed`) and game 2 opens on a
-`welcome` line instead of the hunt. TIMING_PLACEHOLDER
+`welcome` line instead of the hunt.
 **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
 `nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
 `_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;
