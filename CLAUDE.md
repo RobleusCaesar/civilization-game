@@ -1534,9 +1534,10 @@ first game of build 178: the `first_quick` profile is gone from the client
 and its dials are game 3's. A brand-new device plays THREE authored games in
 order and is never offered difficulty, the old lesson's checkbox or an origin
 choice before the third: **The First Fire** (raise the hall to level 2:
-select, berries, wood, stone, a house, a villager, the upgrade and its
-builders — its storey asks for all three goods; no rival in reach — `aiOff`,
-its hall in a sealed pocket), **The Growing Clan** (level 3, on ISLANDS AND
+select, berries, wood, stone, a house beside the berry bush, the farm on the
+bush's picked-bare soil and the homestead the two make, a villager, the
+upgrade and its builders — its storey asks for all three goods; no rival in
+reach — `aiOff`, its hall in a sealed pocket), **The Growing Clan** (level 3, on ISLANDS AND
 LAKES: a home island joined to the rival's mainland by a land bridge, four
 islets, two lakes; the hunt — a lone deer held grazing in sight until struck
 (`still` in the map's animals: its `wanderT`, or it walked off toward the
@@ -1555,7 +1556,39 @@ food and stone education to level 1. Add roads, hunters lodge, barracks,
 archers towers and walls to level 2. Add the other key buildings to level 3
 … the level 2 map … something like islands and lakes". The stable, the
 dock, the trading post and the siege workshop want a higher hall than the
-journey's and are left to the full game. **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
+journey's and are left to the full game. **GAME 1 IS TAUGHT ON ITS OWN GROUND**
+(`Scenarios.RULES.prologue_1.strict`, `Scenarios.mayGather` / `gatherWhy` /
+`fishWhy` / `siteRefusal`, the map's `tileStock`, `UI.lessonOk` /
+`lessonBars`, `Prologue.idleVil(near)`; tests/prologue.mjs §2g — operator,
+build 190: "build a farm after exhausting the berry bush … build a house next
+to the berry bush that was picked … teach them about berries, a farm, and
+the benefits of building a home next to the farm … force people to build and
+gather resources in a selected spot and no where else … have the villager
+next to the wood be the one selected, so there isn't that tight overlap
+between villagers"). Each good is gathered only round its mark (`r` tiles,
+`wide` once the beat `after` is done — the bush alone, its neighbours once
+the farm stands), and a good the lesson never names (a shoal) not at all:
+EVERY gather order of the player's asks — `Units.assignGather` /
+`assignShoreFish` (the backstop), a rally (`rallyPlan` stands by instead),
+the taps, the drag and the idle-villager conveniences, and the guide's own
+`workFor` (a ring never promises a refusal). An order on refused ground is
+answered in the lesson's words as a warning (rule 4); a near-miss snap never
+lands there (rule 3, `UI.lessonOk` inside `gatherable` and the snap
+predicates), and `gatherFallback` takes the nearest tile of the stand the
+lesson allows. The house stands only on `houseSite` (east of the bush) and
+the farm only on the bush's own tile (`canPlace` code `'lesson'`, asked
+before the ground) until one of its kind stands there. The bush holds 40
+(`tileStock`, a mark's own stock); the farm beat holds while it stands ("Pick
+the berry bush bare", its price the food still on it, `farmCost`), then on
+its wood, then rings the build chain onto the spent soil; the bond line says
+what a homestead gives (both chips flutter) — and only THEN the villager:
+the clan eats 3 food a day, and a bush paying a villager's price was eaten
+before it could (the bot deadlocked on day 71 with every hand idle). The
+line that sends a hand to a good rings the idle hand NEAREST that good
+(`idleVil(near)` from `sendTo`): the hand nearest the hall was sent to the
+trees and stood on the spot of the one already beside them, and the stone's
+ring fell on the pair; the woodcutter starts a tile off the forest's stand.
+**THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
 `nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
 `_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;
 tests/prologue.mjs `andItsThreeWallSectionsCloseTheLandBridge`,

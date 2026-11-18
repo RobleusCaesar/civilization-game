@@ -16,7 +16,7 @@ const ARGS = process.argv.slice(2), CHECK = ARGS.includes('--check'), DIR = ARGS
 const SRC = DIR ? path.resolve(DIR) : path.join(ROOT, 'tools', 'scenarios');
 const OUT = path.join(ROOT, 'js', 'scenario-maps.js');
 const CHARS = new Set('#.T~rb^g,:_x'.split(''));
-const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'reveal', 'units', 'animals', 'buildings', 'ruins', 'relic', 'camera', 'glideFrom', 'marks'];
+const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'reveal', 'units', 'animals', 'buildings', 'ruins', 'relic', 'camera', 'glideFrom', 'marks', 'tileStock'];
 
 const maps = {};
 const errs = [];
@@ -36,6 +36,8 @@ for (const f of fs.readdirSync(SRC).filter(f => /^prologue_\d\.json$/.test(f)).s
   const on = (x, y) => x >= 1 && y >= 1 && x <= 36 && y <= 36;
   if (!j.hall || !on(j.hall.x, j.hall.y)) bad('hall off the board');
   for (const [k, v] of Object.entries(j.marks || {})) if (!Array.isArray(v) || !on(v[0], v[1])) bad(`mark ${k} off the board`);
+  // a mark's own stock (a lesson that needs its bush to run out on cue): a named mark, a whole positive number
+  for (const [k, v] of Object.entries(j.tileStock || {})) if (!(j.marks || {})[k] || !(Number.isInteger(v) && v > 0)) bad(`tileStock ${k}: needs a mark and a whole number`);
   const out = {};
   for (const k of KEEP) if (j[k] !== undefined) out[k] = j[k];
   maps[id] = out;

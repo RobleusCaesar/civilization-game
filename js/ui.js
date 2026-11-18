@@ -1234,7 +1234,23 @@ const UI = {
     const i = MapGen.idx(x, y);
     if (!S.map.explored[i]) return false;
     if (!CFG.GATHER[S.map.terrain[i]] || !(S.map.resAmount[i] > 0)) return false;
+    if (u.owner === 'P' && !this.lessonOk(x, y)) return false;   // a lesson's own ground (assignGather's gate)
     return !!Units.gatherEdge(u, x, y);
+  },
+  /* THE LESSON'S OWN GROUND (Scenarios.mayGather / fishWhy, game 1 since
+     build 190): a resource a lesson keeps the player's hands off is no snap
+     target (rule 3: a snap only lands where the order could be carried out),
+     and an order on it is answered in the lesson's words (rule 4) — the
+     guide's ring shows where the work is. */
+  lessonOk(x, y) {
+    return !(window.Scenarios && Scenarios.mayGather) || Scenarios.mayGather(x, y);
+  },
+  lessonBars(x, y, fish) {
+    if (!window.Scenarios) return false;
+    const why = fish ? (Scenarios.fishWhy && Scenarios.fishWhy()) : (Scenarios.gatherWhy && Scenarios.gatherWhy(x, y));
+    if (!why) return false;
+    this.toast(why, true);
+    return true;
   },
   /* …AND IF IT CANNOT, TAKE THE NEAREST TILE OF THE SAME STAND THAT CAN.
 
@@ -1511,11 +1527,11 @@ const UI = {
       let rt = CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0
         ? { x: tile.x, y: tile.y }
         : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
-            CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0, 0.42);
+            CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0 && this.lessonOk(x, y), 0.42);
       if (rt) {
         const wk = this.gatherable(sel, rt.x, rt.y) ? rt : this.gatherFallback(sel, rt.x, rt.y);
         if (wk && Units.assignGather(sel, wk.x, wk.y)) this.dispatchedWorker();
-        else this.toast('No clear ground to stand beside that resource', true);
+        else if (!this.lessonBars(rt.x, rt.y)) this.toast('No clear ground to stand beside that resource', true);
         return;
       }
     }
@@ -1802,7 +1818,7 @@ const UI = {
           // nearest gatherable neighbour the finger clearly aimed at
           const gt = CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] ? tile
             : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
-                CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0);
+                CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0 && this.lessonOk(x, y));
           if (gt) {
             if (this.levyBlocks(sel)) return;
             // the finger may have landed in the INTERIOR of the stand, where
@@ -1810,7 +1826,7 @@ const UI = {
             // stand that can be worked before refusing (see gatherFallback)
             const wk = this.gatherable(sel, gt.x, gt.y) ? gt : this.gatherFallback(sel, gt.x, gt.y);
             if (wk && Units.assignGather(sel, wk.x, wk.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedWorker(); }
-            else this.toast('No clear ground to stand beside that resource', true);
+            else if (!this.lessonBars(gt.x, gt.y)) this.toast('No clear ground to stand beside that resource', true);
             return;
           }
         }
@@ -1834,7 +1850,7 @@ const UI = {
         if (Units.isVillager(sel) && S.map.terrain[MapGen.idx(tile.x, tile.y)] === T.WATER) {
           // shore fishing — but only where the fish actually are
           if (MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
-            if (this.levyBlocks(sel)) return;
+            if (this.levyBlocks(sel) || this.lessonBars(tile.x, tile.y, true)) return;
             if (Units.assignShoreFish(sel, tile.x, tile.y)) { this.toast('Line out — fishing from the shore 🎣'); this.dispatchedWorker(); }
             else this.toast('No clear shore to fish from', true);
           } else this.toast('No fish here — watch for fish breaking the surface', true);
@@ -1906,6 +1922,7 @@ const UI = {
     // selected → send an idle villager
     if (explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && !this.sel) {
       if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
+      if (this.lessonBars(tile.x, tile.y)) return;
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignGather(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to gather');
@@ -1923,6 +1940,7 @@ const UI = {
     }
     if (explored && !this.sel && MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0) {
       if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
+      if (this.lessonBars(tile.x, tile.y, true)) return;
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignShoreFish(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to fish the shoal 🎣');

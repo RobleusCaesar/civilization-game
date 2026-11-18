@@ -59,7 +59,7 @@ const SCENARIO_MAPS = {
    {
     "kind": "villager",
     "x": 16,
-    "y": 20
+    "y": 21
    },
    {
     "kind": "villager",
@@ -69,7 +69,7 @@ const SCENARIO_MAPS = {
    },
    {
     "kind": "villager",
-    "x": 18,
+    "x": 19,
     "y": 20
    }
   ],
@@ -113,11 +113,14 @@ const SCENARIO_MAPS = {
    "z": 0.85
   },
   "marks": {
-   "berries": [19, 21],
+   "berries": [20, 21],
    "forest": [15, 20],
-   "houseSite": [20, 18],
+   "houseSite": [21, 21],
    "rivalPocket": [29, 3],
    "stone": [21, 15]
+  },
+  "tileStock": {
+   "berries": 40
   }
  },
  "prologue_2": {

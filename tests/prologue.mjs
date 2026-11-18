@@ -1029,6 +1029,131 @@ const endScreen = async (p) => {
   await ctx.close();
 }
 
+/* ---- 2g. GAME 1 IS TAUGHT ON ITS OWN GROUND (operator, build 190: "build a
+   farm after exhausting the berry bush … build a house next to the berry bush
+   that was picked … teach them about berries, a farm, and the benefits of
+   building a home next to the farm … force people to build and gather
+   resources in a selected spot and no where else … have the villager next to
+   the wood be the one selected, so there isn't that tight overlap between
+   villagers"). Each good is gathered only round its mark, and an order off it
+   is refused in the lesson's words; the house stands beside the bush and the
+   farm on its picked-bare soil, nowhere else; the line that sends a hand to a
+   good rings the idle hand NEAREST that good (the hand nearest the hall was
+   sent to the trees and stood on the spot of the one already beside them, and
+   the next ring fell on the pair); the bush, picked bare, holds the farm's
+   line until it is, and the farm beside the house bonds the two ---- */
+{
+  const { p, ctx } = await page('?prologue=reset');
+  await p.click('#btnBegin').catch(() => {});
+  await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_1', null, { timeout: 40000 }).catch(() => {});
+  await p.waitForTimeout(3500);   // the establishing glide
+  // the three goods' lines, each answered as the guide asks: who is rung, and who stands near them
+  const g = await p.evaluate(() => {
+    const P = Prologue, out = { rung: [] };
+    UI.deselect && UI.deselect();
+    const clear = u => Math.min(...P.vils().filter(o => o !== u).map(o => Math.hypot(o.x - u.x, o.y - u.y)));
+    for (const [beat, mark] of [['open', 'berries'], ['wood', 'forest'], ['stone', 'stone']]) {
+      P.simTick(0.05);
+      const v = P._shown, raw = v && v.ring ? v.ring.call(P) : null;
+      const u = raw && raw.u !== undefined ? Units.get(raw.u) : null, m = P.mark(mark);
+      const idle = P.vils().filter(o => P.isIdle(o)).sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y));
+      out.rung.push({ beat, line: v && v.id, nearest: !!u && u === idle[0], clear: u ? +clear(u).toFixed(2) : 0 });
+      if (u) Units.assignGather(u, m.x | 0, m.y | 0);
+      for (let i = 0; i < 60; i++) G.simStep(0.05, 0.05);   // the hand walks to its work
+    }
+    for (let i = 0; i < 200; i++) G.simStep(0.05, 0.05);
+    const v = P.vils(); let min = 99;
+    for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) min = Math.min(min, Math.hypot(v[i].x - v[j].x, v[i].y - v[j].y));
+    out.min = +min.toFixed(2);
+    out.at = P._shown && P._shown.id;
+    return out;
+  });
+  ck('eachGoodsLineRingsTheIdleHandNearestItsWork', g.rung.length === 3 && g.rung.every((r, i) => r.line === ['open', 'wood', 'stone'][i] && r.nearest),
+    JSON.stringify(g.rung));
+  ck('andNoTwoVillagersStandOnOneSpot', g.rung.every(r => r.clear >= 0.9) && g.min >= 1, `rung clear of the others by ${g.rung.map(r => r.clear).join(', ')} tiles; at work ${g.min} apart; then ${g.at}`);
+  // an order off the lesson's ground: refused, in the lesson's words, with the hand in hand and with none
+  const off = await p.evaluate(() => {
+    const P = Prologue, W = CFG.W, x = 9, y = 18, shown = [], real = UI._showToast;
+    UI._showToast = function (msg) { shown.push(String(msg)); return real.apply(this, arguments); };
+    const pre = { forest: S.map.terrain[y * W + x] === T.FOREST, seen: !!S.map.explored[y * W + x], may: Scenarios.mayGather(x, y) };
+    const v = P.vils().find(o => P.onRes(o, 'wood')) || P.vils()[0], task0 = JSON.stringify(v.task);
+    const z = R.cam.z, TL = CFG.TILE, sx = innerWidth / 2, sy = innerHeight / 2;
+    R.cam.x = (x + 0.5) * TL - sx / z; R.cam.y = (y + 0.5) * TL - sy / z;
+    UI.select('unit', v.id);
+    UI._toastAt = {}; UI.handleTap(sx, sy);
+    const held = { msgs: shown.slice(), task: JSON.stringify(v.task) === task0 };
+    shown.length = 0; UI.deselect && UI.deselect();
+    const idle = P.vils()[0]; idle.task = null; idle.path = null;
+    UI._toastAt = {}; UI.handleTap(sx, sy);
+    const none = { msgs: shown.slice(), task: !idle.task };
+    const direct = Units.assignGather(idle, x, y);
+    UI._showToast = real;
+    return { pre, held, none, direct };
+  });
+  ck('aGatherOffTheLessonsGroundIsRefusedInItsWords', off.pre.forest && off.pre.seen && !off.pre.may && off.held.task && off.held.msgs.includes('Cut the trees Mira showed you.')
+    && off.none.task && off.none.msgs.includes('Cut the trees Mira showed you.') && off.direct === false, JSON.stringify(off));
+  // the two buildings the game teaches stand on their sites and nowhere else, until one stands there
+  const site = await p.evaluate(() => {
+    const m = Scenarios.live().marks, cp = (k, x, y) => { const v = Bld.canPlace('P', k, x, y, { noCost: true, noSeal: true }); return v.ok ? 'ok' : v.code + ': ' + v.why; };
+    const a0 = S.allow.slice();   // the cards are opened for the asking alone: the farm's beat opens its own
+    Scenarios.unlock('house'); Scenarios.unlock('farm');
+    const out = { house: cp('house', m.houseSite[0], m.houseSite[1]), houseElse: cp('house', m.houseSite[0] + 1, m.houseSite[1] + 2), farmElse: cp('farm', m.berries[0] - 1, m.berries[1] + 1),
+      side: Math.abs(m.houseSite[0] - m.berries[0]) + Math.abs(m.houseSite[1] - m.berries[1]) };
+    S.allow = a0;
+    return out;
+  });
+  ck('theHouseAndTheFarmStandOnlyOnTheirSites', site.house === 'ok' && site.side === 1 && site.houseElse === 'lesson: The house goes beside the berry bush.' && site.farmElse === 'lesson: The farm goes where the berries grew.',
+    JSON.stringify(site));
+  // the farm's line: held while the bush stands (pick it bare), then on the wood, then the build chain onto its soil
+  const fm = await p.evaluate(() => {
+    const P = Prologue, m = Scenarios.live().marks, W = CFG.W, bi = m.berries[1] * W + m.berries[0];
+    const tile = t => { if (!t || t.x === undefined) return t && t.u !== undefined ? 'hand' : null; const g = CFG.GATHER[S.map.terrain[(t.y | 0) * W + (t.x | 0)]]; return g ? g.res + '@' + (t.x | 0) + ',' + (t.y | 0) : 'none'; };
+    for (const id of ['open', 'wood', 'stone', 'house', 'train']) { S.pro.done[id] = 1; S.pro.said[id] = 1; }
+    S.pro.i = P._beats.findIndex(b => b.id === 'farm'); P._shown = null; P._viewKey = null; P._aside = null; P._needS = null;
+    S.map.resAmount[bi] = 10; S.res.food = 0; S.res.wood = 0;
+    const v = P.vils(); for (const u of v) { u.task = null; u.path = null; }
+    UI.select('unit', v[0].id);
+    P.simTick(0.05);
+    const pick = { phase: P._shown.phase, line: P._el.txt.textContent, good: P._shown.good, ring: tile(P._shown.ring.call(P)), goal: P._shown.goal.call(P), menu: Scenarios.allows('farm') };
+    S.map.resAmount[bi] = 0; S.map.terrain[bi] = CFG.DEPLETED[T.FERTILE]; R.updateTile(m.berries[0], m.berries[1]);
+    P.simTick(0.05);
+    const wood = { phase: P._shown.phase, line: P._el.txt.textContent, good: P._shown.good, ring: tile(P._shown.ring.call(P)) };
+    S.res.wood = 200; S.res.gold = Math.max(S.res.gold || 0, 20);
+    UI.deselect && UI.deselect();
+    P.simTick(0.05);
+    const ask = { phase: P._shown.phase, line: P._el.txt.textContent, menu: Scenarios.allows('farm') };
+    return { pick, wood, ask, bush: m.berries };
+  });
+  ck('theBushHoldsTheFarmsLineUntilItIsPickedBare', fm.pick.phase === 'held' && /Pick the berry bush bare/.test(fm.pick.line) && fm.pick.good === 'food'
+    && fm.pick.ring === 'food@' + fm.bush.join(',') && /Food \d+\/40/.test(fm.pick.goal) && !fm.pick.menu, JSON.stringify(fm.pick));
+  ck('thenTheWoodItAsks', fm.wood.phase === 'held' && /A farm needs more wood/.test(fm.wood.line) && fm.wood.good === 'wood' && /^wood@/.test(fm.wood.ring || ''), JSON.stringify(fm.wood));
+  ck('thenAFarmOnItsSoil', fm.ask.phase === 'ask' && /Build a farm on its soil/.test(fm.ask.line) && fm.ask.menu, JSON.stringify(fm.ask));
+  await p.evaluate(() => UI.enterPlacement('farm'));
+  await p.waitForTimeout(500);
+  const ghost = await p.evaluate(() => { const gh = UI.placeGhost, v = UI.placeVerdict, m = Scenarios.live().marks; return { at: gh && [gh.x, gh.y], bush: m.berries, ok: !!(v && v.ok) }; });
+  ck('andItsGhostIsSeatedOnTheBushsSoil', !!ghost.at && ghost.at[0] === ghost.bush[0] && ghost.at[1] === ghost.bush[1] && ghost.ok, JSON.stringify(ghost));
+  // the farm beside the house: the two bond, and Mira says what a homestead gives, both chips fluttering
+  const bond = await p.evaluate(() => {
+    const P = Prologue, m = Scenarios.live().marks;
+    UI.exitPlacement && UI.exitPlacement();
+    window.__fl2 = [];
+    const real = P.flutter; P.flutter = function (c) { window.__fl2.push(c); return real.call(this, c); };
+    const h = Bld.place('P', 'house', m.houseSite[0], m.houseSite[1], { free: true, noAutoAssign: true }); Bld.finish(h);
+    const f = Bld.place('P', 'farm', m.berries[0], m.berries[1], { free: true, noAutoAssign: true });
+    G.simStep(0.05, 0.05);
+    const wait = P._shown && P._shown.phase;
+    Bld.finish(f);
+    for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
+    const out = { wait, line: P._el.txt.textContent, id: P._shown && P._shown.id, bonded: !!Bld.homesteadOf(f), fl: window.__fl2.slice(),
+      room: Bld.homesteadPop ? Bld.homesteadPop(h) : null };
+    P.flutter = real;
+    return out;
+  });
+  ck('theFarmBesideTheHouseBondsAndMiraSaysWhatItGives', bond.bonded && bond.id === 'bond' && /home beside its farm/.test(bond.line) && bond.fl.includes('food') && bond.fl.includes('pop'),
+    JSON.stringify(bond));
+  await ctx.close();
+}
+
 /* ---- 3. THE TITLE, and game 1 played by following the guide alone ---- */
 {
   const { p, ctx } = await page('?prologue=reset');
@@ -1064,10 +1189,20 @@ const endScreen = async (p) => {
   ck('andEveryTapWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andTheRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
   ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
-  const win = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '',
-    done: Object.keys((S.pro && S.pro.done) || {}) }));
+  const win = await p.evaluate(() => {
+    const m = Scenarios.live().marks, on = (k, mk) => S.buildings.find(b => b.owner === 'P' && b.key === k && b.x === m[mk][0] && b.y === m[mk][1]) || null;
+    const farm = on('farm', 'berries'), house = on('house', 'houseSite');
+    return { win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '',
+      done: Object.keys((S.pro && S.pro.done) || {}), farm: !!farm, house: !!house, bond: !!(farm && house && Bld.homesteadOf(farm) === house) };
+  });
   // food, wood and stone, then a roof and a new villager (operator, build 184)
   ck('andGameOneTeachesFoodWoodAndStone', ['open', 'wood', 'stone', 'house', 'train'].every(k => win.done.includes(k)), win.done.join(', '));
+  /* …and the farm on the picked bush, beside the house, before the newcomer
+     (operator, build 190): the farm feeds the clan, the bond houses the child */
+  const ord = run.seen.map(s => s.id);
+  ck('andTheFarmStandsOnThePickedBushBondedToTheHouse', ['farm', 'bond'].every(k => win.done.includes(k)) && win.farm && win.house && win.bond
+    && ord.indexOf('house') < ord.indexOf('farm') && ord.indexOf('farm') < ord.indexOf('bond') && ord.indexOf('bond') < ord.indexOf('train'),
+    JSON.stringify({ farm: win.farm, house: win.house, bond: win.bond }) + ' ' + ord.join(' › '));
   ck('theHallWinsAndTheGuideHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
   await p.waitForFunction(() => Prologue._asking, null, { timeout: 12000 }).catch(() => {});
   const ask = await p.evaluate(() => ({ asking: !!Prologue._asking, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '', name: (document.querySelector('#proElder .peIn') || {}).value || '' }));

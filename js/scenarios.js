@@ -70,6 +70,25 @@ const Scenarios = {
       allowed: [],
       win: { hall: 2 },
       draft: false, stock: 1.4,
+      /* THE LESSON'S OWN GROUND (operator, build 190: "force people to build
+         and gather resources in a selected spot and no where else so we can
+         tightly control the flow and education"): each good is gathered only
+         round its mark (`r` tiles; `wide` once the beat `after` is done), and
+         each building the game teaches stands only on its site — the bush is
+         picked bare where the house stands beside it, and the farm goes on its
+         soil, so the two bond (Scenarios.mayGather / siteRefusal) */
+      strict: {
+        gather: {
+          food: { mark: 'berries', r: 0, wide: 3, after: 'farm', why: 'Pick the berries Mira showed you.' },
+          wood: { mark: 'forest', r: 2.5, why: 'Cut the trees Mira showed you.' },
+          stone: { mark: 'stone', r: 2.5, why: 'Break the grey rocks Mira showed you.' },
+        },
+        fishWhy: 'Not here. Gather where Mira points.',
+        sites: {
+          house: { mark: 'houseSite', why: 'The house goes beside the berry bush.' },
+          farm: { mark: 'berries', why: 'The farm goes where the berries grew.' },
+        },
+      },
     },
     prologue_2: {
       game: 2, mode: 'prologue_2', title: 'The Growing Clan',
@@ -106,6 +125,49 @@ const Scenarios = {
   live() { return (typeof S !== 'undefined' && S && S.scenario) ? this.def(S.scenario) : null; },
   game() { const d = this.live(); return d ? d.game : 0; },
 
+  /* THE LESSON'S OWN GROUND (RULES[id].strict, game 1 since build 190): a
+     resource tile the player's hands may work. Not a resource: not ours to
+     judge. A good the lesson names: within `r` of its mark (`wide` once its
+     beat `after` is done). A good it never names (gold, a shoal): refused.
+     Asked by every gather order of the player's (Units.assignGather, the
+     taps' UI.lessonBars, a rally) and by the guide's own ring (workFor). */
+  strictOf() { const sc = this.live(); return (sc && sc.strict) || null; },
+  _gatherRule(x, y) {
+    const st = this.strictOf();
+    if (!st || !st.gather || typeof S === 'undefined' || !S || !S.map) return null;
+    const g = CFG.GATHER[S.map.terrain[y * CFG.W + x]];
+    if (!g) return null;
+    return { res: g.res, rule: st.gather[g.res] || null };
+  },
+  mayGather(x, y) {
+    const r = this._gatherRule(x, y);
+    if (!r) return true;
+    if (!r.rule) return false;
+    const sc = this.live(), m = sc.marks && sc.marks[r.rule.mark];
+    if (!m) return true;
+    const open = r.rule.after && S.pro && S.pro.done && S.pro.done[r.rule.after];
+    const reach = open && r.rule.wide != null ? r.rule.wide : (r.rule.r || 0);
+    return Math.hypot(x - m[0], y - m[1]) <= reach + 1e-6;
+  },
+  // the words a refused gather is answered with (null: not refused)
+  gatherWhy(x, y) {
+    if (this.mayGather(x, y)) return null;
+    const r = this._gatherRule(x, y), st = this.strictOf();
+    return (r && r.rule && r.rule.why) || (st && st.fishWhy) || 'Not here.';
+  },
+  // a shoal is a good no lesson of game 1 names: line-fishing waits for the full game
+  fishWhy() { const st = this.strictOf(); return st && st.gather && !st.gather.fish ? (st.fishWhy || 'Not here.') : null; },
+  /* a building the lesson teaches stands on its site and nowhere else — until
+     one of its kind stands there, when the rule has done its work */
+  siteRefusal(key, x, y) {
+    const st = this.strictOf(), s = st && st.sites && st.sites[key];
+    if (!s || typeof S === 'undefined' || !S) return null;
+    const sc = this.live(), m = sc.marks && sc.marks[s.mark];
+    if (!m || (x === m[0] && y === m[1])) return null;
+    if (S.buildings.some(b => b.owner === 'P' && b.key === key && b.x === m[0] && b.y === m[1])) return null;
+    return s.why;
+  },
+
   /* THE TERRAIN, in MapGen.generate's own shape. Stock follows the generator's
      rule (the middle of CFG.RES_AMOUNT, ×0.6 for a tile with fewer than four
      same-kind neighbours, ×1.5 for one with all eight) times the scenario's
@@ -129,6 +191,15 @@ const Scenarios = {
       }
       const k = same < 4 ? 0.6 : same === 8 ? 1.5 : 1;
       resAmount[i] = Math.round((R[0] + R[1]) / 2 * k * mult);
+    }
+    /* A MARK'S OWN STOCK (`tileStock`, the map's): a lesson that needs its
+       ground to run out on cue — game 1's bush is picked bare for one
+       villager's price, and the farm is raised on its soil (build 190) */
+    for (const k in (sc.tileStock || {})) {
+      const m = sc.marks && sc.marks[k];
+      if (!m) continue;
+      const i = m[1] * W + m[0];
+      if (CFG.RES_AMOUNT[terrain[i]]) resAmount[i] = sc.tileStock[k];
     }
     const gold = [];
     for (let i = 0; i < N; i++) if (terrain[i] === T.GOLDORE) gold.push({ x: i % W, y: (i / W) | 0 });

@@ -342,15 +342,20 @@ const Prologue = {
     const walking = U && U.moving ? !!U.moving(u) : !!(u.path && u.path.length);
     return !u.task && !u.tUnit && !walking && !(U && U.isLevied && U.isLevied(u));
   },
-  /* the hand to send: the nearest idle one to the hall; with none idle, a
-     hand-gatherer before a builder, and a station's own hand last of all —
-     nothing in the lesson puts a station's worker back */
-  idleVil() {
+  /* the hand to send: the nearest idle one to the hall — or, given the work
+     it is sent to (`near`), the nearest idle one to THAT (operator, build 190:
+     "have the villager next to the wood be the one selected, so there isn't
+     that tight overlap between villagers": the hand nearest the hall was sent
+     to the trees and stood on the spot of the one already beside them); with
+     none idle, a hand-gatherer before a builder, and a station's own hand last
+     of all — nothing in the lesson puts a station's worker back */
+  idleVil(near) {
     const tc = this.tc(); let best = null, bd = 1e9;
+    const at = near && near.x != null ? near : (tc ? { x: tc.x + 1, y: tc.y + 1 } : null);
     for (const u of this.vils()) {
       const t = u.task && u.task.type;
       const rank = this.isIdle(u) ? 0 : t === 'build' ? 2 : t === 'work' ? 3 : 1;
-      const d = (tc ? Math.hypot(u.x - tc.x - 1, u.y - tc.y - 1) : 0) + rank * 1e6;
+      const d = (at ? Math.hypot(u.x - at.x, u.y - at.y) : 0) + rank * 1e6;
       if (d < bd) { bd = d; best = u; }
     }
     return best;
@@ -418,7 +423,7 @@ const Prologue = {
       const t = typeof target === 'function' ? target() : this.mark(target);
       const v = this.selVil();
       if (v || this.sent(t)) return t;
-      const iv = this.idleVil();
+      const iv = this.idleVil(t);
       return iv ? { u: iv.id } : t;
     };
   },
@@ -427,7 +432,7 @@ const Prologue = {
       const t = typeof target === 'function' ? target() : this.mark(target);
       if (this.sent(t) && !this.selVil()) return [];   // someone is on the way: nothing to show
       if (this.selVil()) return t ? [t] : [];
-      const iv = this.idleVil();
+      const iv = this.idleVil(t);
       return [iv ? { u: iv.id } : null, t].filter(Boolean);
     };
   },
@@ -588,10 +593,13 @@ const Prologue = {
   workFor(u, res) {
     res = res || this.need();
     const W = CFG.W, H = CFG.H, ter = S.map.terrain, amt = S.map.resAmount, ex = S.map.explored;
+    // never a tile the lesson keeps the hands off (Scenarios.mayGather): the ring would promise a refusal
+    const may = window.Scenarios && Scenarios.mayGather ? Scenarios.mayGather.bind(Scenarios) : null;
     let best = null, bd = 1e9;
     for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
       const i = y * W + x, g = CFG.GATHER[ter[i]];
       if (!g || g.res !== res || !(amt[i] > 0) || (ex && !ex[i])) continue;
+      if (may && !may(x, y)) continue;
       const d = (x + 0.5 - u.x) ** 2 + (y + 0.5 - u.y) ** 2;
       if (d < bd) { bd = d; best = { x: x + 0.5, y: y + 0.5, r: 0.8 }; }
     }
@@ -610,6 +618,29 @@ const Prologue = {
     return out.join(' · ');
   },
   costLine(key) { return this.priceLine(Bld.effCost('P', key)); },
+  /* THE BERRY BUSH OF GAME 1 (build 190): what is left on it, and whether it
+     is picked bare (its tile spent soil, the farm's ground) */
+  bushTile() { const m = this.mark('berries'); return m ? (m.y | 0) * CFG.W + (m.x | 0) : -1; },
+  bushLeft() { const i = this.bushTile(); return i >= 0 && S.map.terrain[i] === T.FERTILE ? Math.ceil(S.map.resAmount[i] || 0) : 0; },
+  bare() { const i = this.bushTile(); return i < 0 || S.map.terrain[i] !== T.FERTILE; },
+  // the farm beat's price: while the bush stands, the food still on it (the line names food); then the farm's
+  farmCost() { return this.bare() ? Bld.effCost('P', 'farm') : { food: Math.floor(S.res.food || 0) + Math.max(1, this.bushLeft()) }; },
+  // the deed and how far it has come: "Pick the berry bush: Food 33/40" (picked of what it held)
+  farmGoal() {
+    if (this.bare()) return this.buildGoal('farm', 'Build a farm');
+    const i = this.bushTile(), had = Math.round((S.map.resMax && S.map.resMax[i]) || 0), left = this.bushLeft();
+    return had > 0 ? 'Pick the berry bush: Food ' + Math.max(0, Math.min(had, had - left)) + '/' + had : 'Pick the berry bush bare';
+  },
+  pickLine(coming) {
+    this.naming('food');
+    return coming ? 'The berry bush is nearly bare. Keep picking.' : 'Pick the berry bush bare. A farm can grow there.';
+  },
+  // the house and the farm side by side: the view the bond is said over
+  homeView() {
+    const h = S.buildings.find(b => b.owner === 'P' && b.key === 'house'), f = S.buildings.find(b => b.owner === 'P' && b.key === 'farm');
+    if (!h || !f) return f ? { x: Bld.cx(f), y: Bld.cy(f), r: 0.5 } : null;
+    return { x: (Bld.cx(h) + Bld.cx(f)) / 2, y: (Bld.cy(h) + Bld.cy(f)) / 2, r: 0.5 };
+  },
   // the deed, and while it is short the goods it waits on: "Build a house: Wood 20/30"
   buildGoal(key, deed) { return this.afford(key) ? deed : deed + ': ' + this.costLine(key); },
   // a price as the tracker says it ("Food 30/50 · Wood 5/30")
@@ -658,13 +689,33 @@ const Prologue = {
         { id: 'stone', face: 'point', text: 'Now send someone to the grey rocks for stone.',
           goal: 'Gather stone', ring: P.sendTo('stone'), taps: P.sendTaps('stone'),
           done: () => P.ordered('stone'), praise: 'Good stone!' },
-        { id: 'house', face: 'point', text: 'We need a roof. Build a house beside the fire.', key: 'house',
+        { id: 'house', face: 'point', text: 'We need a roof. Build a house beside the berry bush.', key: 'house',
           goal: () => P.buildGoal('house', 'Build a house'),
           when: () => P.afford('house') || P.has('house'), hold: (c) => P.needLine('A house', null, c),
           on: () => Scenarios.unlock('house'),
           ring: P.buildRing('house', 'houseSite'), taps: () => { const r = P.buildRing('house', 'houseSite')(); return r ? [r] : []; },
           ack: () => P.has('house'), site: () => P.siteOf('house'), wait: 'The house is going up.',
           done: () => P.has('house', true), praise: 'A home!' },
+        /* THE BUSH, THE FARM AND THE HOME (operator, build 190: "build a farm
+           after exhausting the berry bush … a house next to the berry bush
+           that was picked … teach them about berries, a farm, and the benefits
+           of building a home next to the farm"): the bush is picked bare, its
+           soil takes the farm beside the house, and the two bond. Held until the bush is bare — the line says to
+           pick it — and then until the wood is in. Before the villager is
+           trained: the clan eats every day, and the farm (and the bushes
+           round it, open once it stands) feed the newcomer; the bond's
+           extra room is where the newcomer sleeps */
+        { id: 'farm', face: 'point', text: 'The bush is picked bare. Build a farm on its soil.', key: 'farm',
+          cost: () => P.farmCost(), goal: () => P.farmGoal(),
+          when: () => (P.bare() && P.afford('farm')) || P.has('farm'),
+          hold: (c) => P.bare() ? P.needLine('A farm', null, c) : P.pickLine(c),
+          on: () => Scenarios.unlock('farm'),
+          ring: P.buildRing('farm', 'berries'), taps: () => { const r = P.buildRing('farm', 'berries')(); return r ? [r] : []; },
+          ack: () => P.has('farm'), site: () => P.siteOf('farm'), wait: 'The farm is going up.',
+          done: () => P.has('farm', true), praise: 'A farm!' },
+        { id: 'bond', face: 'excited', text: 'A home beside its farm feeds more, and shelters one more.', auto: 5200,
+          goal: 'A home beside its farm', look: () => P.homeView(),
+          on: () => { P.flutter('food'); P.flutter('pop'); } },
         { id: 'train', face: 'point', text: 'Now train a new villager at the hall.', unit: 'villager',
           goal: () => 'Train a villager' + (P.afford2('villager') ? '' : ': ' + P.priceLine(P.trainPrice('villager'))),
           when: () => P.afford2('villager') || P.trained(), hold: (c) => P.needLine('A villager', null, c),
@@ -672,11 +723,6 @@ const Prologue = {
           taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
           ack: () => P.trained(), wait: 'A new villager is on the way.',
           done: () => P.vils().length > P._n0, praise: 'Welcome, little one!' },
-        { id: 'work', face: 'excited', text: 'Give the newcomer some work.',
-          goal: 'Put the newcomer to work',
-          ring: () => { const n = P.newcomer(); if (!n) return null; return P.selVil() === n ? P.mark('forest') : { u: n.id }; },
-          taps: () => { const n = P.newcomer(); return n ? [{ u: n.id }, P.mark('forest')].filter(Boolean) : []; },
-          done: () => { const n = P.newcomer(); return !n || !!n.task; }, praise: 'Good.' },
         { id: 'grow', face: 'thinking', text: 'Now our hall must grow. Gather what it needs.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
@@ -922,7 +968,6 @@ const Prologue = {
   },
   afford2(unit) { const tc = this.tc(); return !!tc && Bld.canTrain && Bld.canTrain(tc, unit).ok; },
   trained() { const tc = this.tc(); return this.vils().length > this._n0 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
-  newcomer() { const v = this.vils(); return v.length > this._n0 ? v.reduce((a, b) => (b.id > a.id ? b : a)) : null; },
   selSoldier() { const s = UI.sel; if (!s) return false; const ids = s.type === 'unit' ? [s.id] : s.type === 'group' ? s.ids || [] : []; return ids.some(id => { const u = Units.get(id); return u && u.owner === 'P' && Units.isMilitary && Units.isMilitary(u); }); },
 
   /* GAME 3's RAID: a small band the player can see coming, from the map's far
