@@ -571,8 +571,16 @@ const Lookout = {
     const mid = spots.length > 1 ? (spots[0][1].x + spots[1][1].x) / 2 : null;
     spots.forEach(([u, s], i) => {
       if (selIds && selIds.indexOf(u.id) >= 0) {
-        g.strokeStyle = '#e8c15a'; g.lineWidth = 1;
-        g.beginPath(); g.ellipse(s.x, s.rail, 0.2 * s.B, 0.07 * s.B, 0, 0, Math.PI * 2); g.stroke();
+        const q = { cx: s.x, cy: s.rail, rx: 0.2 * s.B, ry: 0.07 * s.B };
+        if (R.drawGRing && R.gringSel) {
+          // the game's own gold ring (R.GRING), its snap and flurry the moment he is taken
+          const nowS = performance.now() / 1000, sl = R.gringSel(R._gSel && R._gSel.get(u.id), nowS);
+          R.drawGRing(g, q, u.owner === 'P' ? 'sel' : 'foe', { a: sl.a, s: sl.s, t: nowS, seed: u.id, flash: sl.flash });
+          if (u.owner === 'P' && sl.age < R.GRING.burstS) R.drawGRingBurst(g, q, sl.age, u.id, sl.n);
+        } else {
+          g.strokeStyle = '#e8c15a'; g.lineWidth = 1;
+          g.beginPath(); g.ellipse(q.cx, q.cy, q.rx, q.ry, 0, 0, Math.PI * 2); g.stroke();
+        }
       }
       if (u.hp < u.maxhp) {
         const w = Math.max(8, s.B * 0.62);
