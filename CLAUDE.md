@@ -1547,14 +1547,15 @@ select, berries, wood, stone, a house beside the berry bush, the farm on the
 bush's picked-bare soil and the homestead the two make, a villager, a
 lumber camp on the felled grove, the hall's rally set on it and a second
 villager trained who walks there, a quarry on the broken rock, the rally
-moved to it and a third villager, the upgrade and its builder — its storey
-asks for all three goods; no rival in reach — `aiOff`, its hall in a sealed
-pocket), **The Growing Clan** (level 3, on ISLANDS AND
+moved to it and a third villager, then — while the stations gather the
+hall's price — a road beside the lumber camp, the hunt — a lone deer held
+grazing in sight until struck (`still` in the map's animals: its `wanderT`,
+or it walked off before the hunter came) — and a hunter's lodge on the
+ground it fell on (`Prologue.huntSpot`), then the upgrade and its builder —
+its storey asks for all three goods; no rival in reach — `aiOff`, its hall
+in a sealed pocket), **The Growing Clan** (level 3, on ISLANDS AND
 LAKES: a home island joined to the rival's mainland by a land bridge, four
-islets, two lakes; the hunt — a lone deer held grazing in sight until struck
-(`still` in the map's animals: its `wanderT`, or it walked off toward the
-islet herd before the hunter came) — and a hunter's lodge on the ground it
-fell on (`Prologue.huntSpot`), a road, the deck's first play (Master
+islets, two lakes; a welcome, the deck's first play (Master
 Builders, game 1's prize, where held — **THE CARD LESSON** below), a
 warning of its own (`danger`), a barracks, an archery range, a
 watchtower by the bridge manned by the range's first archer, the wall across
@@ -1625,8 +1626,8 @@ there through `Units.rallyPlan` and works it, so each station ends with two
 hands. **WHAT SHE SAYS OF A STATION IS TRUE HERE**: game 1's stations, farm
 and hall gold work `output` 2.5× (`CFG.MODES.prologue_1`), so a camp's hand
 earns 18.75 wood a day against a woodcutter's 10 (a level-1 station only
-matches a hand in the full game). The hall's storey costs 650 wood, 350 food
-and 450 stone, which the stations earn. **THE GUIDE NEVER EMPTIES A
+matches a hand in the full game). The hall's storey costs 500 wood, 350 food
+and 500 stone (build 195; 650/350/450 before), which the stations earn. **THE GUIDE NEVER EMPTIES A
 STATION** (`handFor`: idle first, then the nearest busy hand, a station's own
 hand last; game 1's `raise` asks one builder): the hall rose on the camp's two
 hands and left the camp Mira had just praised standing empty. Measured with
@@ -1643,7 +1644,23 @@ waiting line is the tip ("Food to spare! Train more villagers. More hands
 gather faster.") ringing the hall's Train Villager; the villager stands by
 the full quarry (the rally's rule) and the gather line sends them out, and
 the tip comes back until the houses are full (the follower trains to
-the cap of 10, and its game 1 falls to 310 s).
+the cap of 10, and its game 1 falls to 310 s). **THE WAIT TEACHES THE ROAD
+AND THE HUNT** (`hallnext`, `road`, `roadboost`, `hunt`, `lodge` between
+`train3` and `grow`; `Prologue.paved`, the map's `roadSite` and `deer` marks;
+tests/prologue.mjs `gameOneLaysARoadBesideTheLumberCampWhileTheHallIsGatheredFor`,
+`andHuntsADeerAndRaisesAHuntersLodgeWhereItFell` — operator, build 195:
+"Teach the player about roads while the villagers are collecting resources
+(pull that back from game 2). We need to fill some of the time while the
+villagers collect resources. Do the same with the hunting hut … most key
+basic economics and movement which also gives a resource bump. This creates
+a solid foundation for level 2"): once both stations are full Mira names the
+hall ("Our stations will gather what it needs"), and while they work she has
+a road laid on `roadSite`, the tile on the lumber camp's east edge, so the
+camp takes the road's tenth (`Bld.roadBoost`; she says it, the wood chip
+flutters), then a deer hunted (a `still` one, `hp` 2, on `deer` by the
+woods) and a hunter's lodge raised where it fell; the road and the lodge
+cards are open from game 2's start (`allowed`) and game 2 opens on a
+`welcome` line instead of the hunt. TIMING_PLACEHOLDER
 **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
 `nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
 `_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;

@@ -7,9 +7,9 @@
                   every mark the Elder points at stands on the ground it
                   names (the berry bush IS a berry bush — R.fertileKindAt),
                   on ground the village walks to; game 1 shows its whole
-                  valley and no rival (berries, wood, stone, a house); game 2
-                  is islands and lakes — a deer to hunt, and ground for a
-                  road, a barracks, a range, a tower and the three wall
+                  valley and no rival (berries, wood, stone, a house, a road
+                  beside the lumber camp, a deer to hunt); game 2 is islands
+                  and lakes — ground for a barracks, a range, a tower and the three wall
                   sections that close the land bridge (a scout comes out of
                   the wood beyond it, is shot down from the tower, and a
                   section is cut into a gate and opened); game 3 has the
@@ -112,6 +112,22 @@ const page = async (q, done) => {
         G.updateVisibility();
         o.rival = { n: rb.length, seen: rb.some(x => { for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) { const i = (x.y + dy) * W + x.x + dx; if (G.visibleAt(x.x + dx, x.y + dy) || (S.map.seenB && S.map.seenB[i])) return true; } return false; }), close: +close.toFixed(1) };
         o.build = Array.isArray(S.allow) ? S.allow.length : -1;
+        /* THE ROAD AND THE HUNT ARE GAME 1's (operator, build 195: "Teach the player about
+           roads while the villagers are collecting resources (pull that back from game 2)
+           … Do the same with the hunting hut"): the road's ground beside the lumber camp's
+           grove (an edge, so the camp works a tenth better), and the deer grazing in sight
+           of the village, where a lodge may stand once it falls */
+        o.road = place('road', 'roadSite');
+        o.roadTouchesCamp = !!(m.roadSite && m.forest && Math.abs(m.roadSite[0] - m.forest[0]) + Math.abs(m.roadSite[1] - m.forest[1]) === 1);
+        G.updateVisibility();
+        const deer = S.units.filter(u => u.owner === 'W' && u.kind === 'deer');
+        const d0 = m.deer && deer.find(u => Math.hypot(u.x - m.deer[0] - 0.5, u.y - m.deer[1] - 0.5) < 1.5);
+        // and falls to a villager's first blow (a deer bolts from every blow, away from the hall)
+        o.deer = { n: deer.length, mark: !!d0, seen: !!(d0 && G.visibleAt(d0.x | 0, d0.y | 0)), reach: !!(d0 && near(d0.x | 0, d0.y | 0)),
+          oneBlow: !!(d0 && d0.hp > 0 && d0.hp <= CFG.UNITS.villager.atk && d0.maxhp === d0.hp) };
+        if (d0) { G.noteHunt(d0.x | 0, d0.y | 0); o.lodge = place('lodge', 'deer'); }
+        // the hall's storey, 500 wood and 500 stone (operator, build 195)
+        o.hallCost = Scenarios.RULES.prologue_1.tc[2].cost;
       }
       if (g === 2) {
         o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
@@ -146,17 +162,9 @@ const page = async (q, done) => {
         o.isles = comps.filter(c => !c.wet && c.n >= 6).length;
         o.lakes = comps.filter(c => c.wet && !c.edge && c.n >= 4).length;
         o.water = +(water / board).toFixed(2);
-        // the six lessons' ground: a road, the barracks, the range, the tower, a wall on the bridge
-        o.road = place('road', 'roadSite'); o.barracks = place('barracks', 'barracksSite'); o.range = place('range', 'rangeSite');
+        // the lessons' ground: the barracks, the range, the tower, a wall on the bridge
+        o.barracks = place('barracks', 'barracksSite'); o.range = place('range', 'rangeSite');
         o.tower = place('tower', 'towerSite'); o.wall = place('wall', 'wallSite');
-        // the deer grazing in sight of the village, and a lodge may stand where it falls
-        G.updateVisibility();
-        const deer = S.units.filter(u => u.owner === 'W' && u.kind === 'deer');
-        const d0 = m.deer && deer.find(u => Math.hypot(u.x - m.deer[0] - 0.5, u.y - m.deer[1] - 0.5) < 1.5);
-        // and falls to a villager's first blow (a deer bolts from every blow, away from the hall)
-        o.deer = { n: deer.length, mark: !!d0, seen: !!(d0 && G.visibleAt(d0.x | 0, d0.y | 0)), reach: !!(d0 && near(d0.x | 0, d0.y | 0)),
-          oneBlow: !!(d0 && d0.hp > 0 && d0.hp <= CFG.UNITS.villager.atk && d0.maxhp === d0.hp) };
-        if (d0) { G.noteHunt(d0.x | 0, d0.y | 0); o.lodge = place('lodge', 'deer'); }
         /* THE BRIDGE CLOSED BY THREE SECTIONS (operator, build 187: "place it and
            then place the wall next to it, and then another wall … Then show an
            enemy coming to scout"): each of the line's tiles takes a wall, the
@@ -205,15 +213,18 @@ const page = async (q, done) => {
     `${g2.isles} land masses, ${g2.lakes} lakes, water ${g2.water} of the board`);
   ck('andOpensGrownWithNoRelic', g2.hall === 2 && !g2.relic && markOn(g2, 'stone', 'HILLS') && g2.berryKind === 'berry',
     `hall ${g2.hall}, relic ${g2.relic}, stone ${JSON.stringify(g2.marks.stone)}, berry ${g2.berryKind}`);
-  ck('gameTwosLessonsStandWhereTheGuideSays', ['road', 'barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
-    ['road', 'barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
+  ck('gameTwosLessonsStandWhereTheGuideSays', ['barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
+    ['barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
   ck('andItsThreeWallSectionsCloseTheLandBridge', g2.line.every(v => v === 'ok') && g2.scoutWood && g2.lineShuts,
     `sections ${g2.line.join(', ')}; scout's wood on the mainland ${g2.scoutWood}; closed by the three ${g2.lineShuts}`);
-  ck('andItsDeerGrazesInSightWhereALodgeMayStand', g2.deer.mark && g2.deer.seen && g2.deer.reach && g2.lodge === 'ok', JSON.stringify(g2.deer) + ' lodge ' + g2.lodge);
+  // the road and the hunt moved to game 1 (operator, build 195)
+  ck('gameOnesRoadGroundTouchesTheLumberCampsGrove', g1.road === 'ok' && g1.roadTouchesCamp, 'road ' + g1.road + ', an edge of the grove ' + g1.roadTouchesCamp + ' ' + JSON.stringify(g1.marks.roadSite));
+  ck('andItsDeerGrazesInSightWhereALodgeMayStand', g1.deer.mark && g1.deer.seen && g1.deer.reach && g1.lodge === 'ok', JSON.stringify(g1.deer) + ' lodge ' + g1.lodge);
   /* build 185: at a deer's 20 health a villager's hunt bolted it from blow to
      blow, away from the hunter and so from the hall — three hunts in ten ended
      11+ tiles out, and the lodge with them. The lesson deer falls to the first */
-  ck('andFallsToTheFirstBlowWhereItGrazes', g2.deer.oneBlow, JSON.stringify(g2.deer));
+  ck('andFallsToTheFirstBlowWhereItGrazes', g1.deer.oneBlow, JSON.stringify(g1.deer));
+  ck('andGameOnesHallAsksFiveHundredWoodAndStone', g1.hallCost && g1.hallCost.wood === 500 && g1.hallCost.stone === 500, JSON.stringify(g1.hallCost));
   ck('gameThreesSitesStandWhereTheGuideSays', g3.barracks === 'ok' && g3.wonder === 'ok' && markOn(g3, 'stone', 'HILLS') && g3.berryKind === 'berry' && markOn(g3, 'gold', 'GOLDORE'),
     `barracks ${g3.barracks}, wonder ${g3.wonder}, stone ${JSON.stringify(g3.marks.stone)}, gold ${JSON.stringify(g3.marks.gold)}, berry ${g3.berryKind}`);
   // the other key buildings (operator, build 184): each station on the ground its own work left
@@ -1210,6 +1221,10 @@ const endScreen = async (p) => {
     return { win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '',
       done: Object.keys((S.pro && S.pro.done) || {}), farm: !!farm, house: !!house, bond: !!(farm && house && Bld.homesteadOf(farm) === house),
       camp: !!camp, quarry: !!quarry, crew: camp ? Bld.workersAssigned(camp) : 0, qcrew: quarry ? Bld.workersAssigned(quarry) : 0, rally: !!(tc && quarry && tc.rally && tc.rally.bid === quarry.id),
+      // the road beside the camp (and the camp's tenth more for it), and the lodge where the deer fell
+      roads: Object.keys((S.map && S.map.roads) || {}).length, boost: !!(camp && Bld.roadBoost && Bld.roadBoost(camp)),
+      lodge: (() => { const l = S.buildings.find(b => b.owner === 'P' && b.key === 'lodge'); if (!l) return null;
+        const h = S.map.hunted || {}; return { hunted: !!h[l.y * CFG.W + l.x], fromDeer: +Math.hypot(l.x - m.deer[0], l.y - m.deer[1]).toFixed(1), done: !(l.construction > 0), crew: Bld.workersAssigned(l) }; })(),
       vils: S.units.filter(u => u.owner === 'P' && u.kind === 'villager').length, wood: rate(camp, 'wood', T.FOREST), stone: rate(quarry, 'stone', T.HILLS) };
   });
   // food, wood and stone, then a roof and a new villager (operator, build 184)
@@ -1253,6 +1268,20 @@ const endScreen = async (p) => {
      and the follower — tapping only her rings — trains past the third villager */
   ck('whileTheHallIsGatheredForSheTipsToTrainMoreVillagers', run.said.some(t => /Train more villagers/.test(t)) && win.vils > 6,
     'villagers ' + win.vils + ' — ' + (run.said.filter(t => /villagers?\b/i.test(t)).join(' | ') || 'never said'));
+  /* THE WAIT IS SPENT ON A ROAD AND A HUNT (operator, build 195: "Teach the player about
+     roads while the villagers are collecting resources (pull that back from game 2). We
+     need to fill some of the time while the villagers collect resources. Do the same with
+     the hunting hut"): the hall named, a road laid beside the lumber camp (which then works
+     a tenth better, and she says so), a deer hunted and a lodge raised where it fell — all
+     after the stations are full and before the hall's last gathering */
+  ck('gameOneLaysARoadBesideTheLumberCampWhileTheHallIsGatheredFor', ['hallnext', 'road', 'roadboost'].every(k => win.done.includes(k))
+    && at('train3') < at('hallnext') && at('hallnext') < at('road') && at('road') < at('roadboost') && at('roadboost') < at('grow')
+    && win.roads > 0 && win.boost && run.said.some(t => /lay a road beside the lumber camp/.test(t)) && run.said.some(t => /10% faster/.test(t)),
+    `road tiles ${win.roads}, camp boosted ${win.boost}; ${ord.join(' › ')}`);
+  ck('andHuntsADeerAndRaisesAHuntersLodgeWhereItFell', ['hunt', 'lodge'].every(k => win.done.includes(k))
+    && at('roadboost') < at('hunt') && at('hunt') < at('lodge') && at('lodge') < at('grow')
+    && !!win.lodge && win.lodge.hunted && win.lodge.fromDeer <= 2 && win.lodge.done && win.lodge.crew > 0,
+    JSON.stringify(win.lodge) + ' ' + ord.join(' › '));
   // what she says of a station is true in this world: a station's hand outworks a hand at the same good
   ck('andAStationsHandOutworksAHandHere', win.wood && win.stone && win.wood.st > win.wood.hand && win.stone.st > win.stone.hand,
     JSON.stringify({ wood: win.wood, stone: win.stone }));
@@ -1366,21 +1395,19 @@ const endScreen = async (p) => {
   });
   const run = await follow(p, 1400);
   const g2w = await p.evaluate(() => ({ done: Object.keys((S.pro && S.pro.done) || {}),
-    has: ['lodge', 'barracks', 'range', 'tower', 'wall', 'gate'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)),
+    has: ['barracks', 'range', 'tower', 'wall', 'gate'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)),
     line: Prologue.lineForts().map(b => b.key + (b.construction > 0 ? ' site' : '') + (b.raised ? ' shut' : '')),
     scout: window.__scout, scoutLeft: !!Prologue.scout(),
-    roads: Object.keys((S.map && S.map.roads) || {}).length + S.buildings.filter(b => b.owner === 'P' && b.key === 'road').length,
     up: S.units.filter(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)).length,
-    lodgeAt: (S.buildings.find(b => b.owner === 'P' && b.key === 'lodge') || {}), tc: Bld.tcOf('P'),
+    tc: Bld.tcOf('P'),
     playedIds: (S.deck && S.deck.played) || [], mbPlayed: JSON.stringify((S.deck && S.deck.played) || []).includes('master_builders'),
     grey: window.__grey, out: window.__out, hurt: !!Prologue.hurtFort() }));
-  const lodgeD = g2w.lodgeAt.x != null ? Math.hypot(g2w.lodgeAt.x - g2w.tc.x, g2w.lodgeAt.y - g2w.tc.y) : 99;
-  /* THE LAKE ISLES' SIX WORKS (operator, build 184: "Add roads, hunters lodge, barracks,
-     archers towers and walls to level 2"): each taught and standing, an archer on the
-     tower, and the deer — held grazing until the hunter came — fallen near home */
-  ck('gameTwoTeachesTheHuntRoadsAndDefences', ['hunt', 'lodge', 'road', 'barracks', 'range', 'tower', 'man', 'wall', 'deck'].every(k => g2w.done.includes(k))
-    && g2w.has.length === 6 && g2w.roads > 0 && g2w.up > 0 && lodgeD < 10,
-    `taught ${g2w.done.join(', ')}; standing ${g2w.has.join(', ')}; road tiles ${g2w.roads}; archers up ${g2w.up}; lodge ${lodgeD.toFixed(1)} tiles from the hall`);
+  /* THE LAKE ISLES' WORKS (operator, build 184: "Add roads, hunters lodge, barracks,
+     archers towers and walls to level 2"; the road and the lodge went to game 1 in build
+     195): the clan greeted, each work taught and standing, an archer on the tower */
+  ck('gameTwoTeachesTheDefences', ['welcome', 'barracks', 'range', 'tower', 'man', 'wall', 'deck'].every(k => g2w.done.includes(k))
+    && !['hunt', 'lodge', 'road'].some(k => g2w.done.includes(k)) && g2w.has.length === 5 && g2w.up > 0,
+    `taught ${g2w.done.join(', ')}; standing ${g2w.has.join(', ')}; archers up ${g2w.up}`);
   /* THE WALL, THE SCOUT AND THE GATE (operator, build 187): three sections laid one
      beside the other close the bridge, a scout comes out of the wood to the finished
      wall and falls to the archer on the tower (his blows land on the wall, never on
@@ -1395,7 +1422,7 @@ const endScreen = async (p) => {
      so the barracks, range and tower stand the moment they are placed; then a warning of its
      own says why a barracks ("these are dangerous times … animals, enemy villagers, or the
      others"), then the instruction */
-  ck('gameTwoPlaysMasterBuildersBeforeTheBarracks', g2w.done.includes('deck') && at('road') < at('deck') && at('deck') < at('danger') && at('danger') < at('barracks')
+  ck('gameTwoPlaysMasterBuildersBeforeTheBarracks', g2w.done.includes('deck') && at('welcome') < at('deck') && at('deck') < at('danger') && at('danger') < at('barracks')
     && run.said.some(t => /Play Master Builders/.test(t)) && g2w.mbPlayed,
     `lines ${order.join(' › ')}; played ${JSON.stringify(g2w.playedIds)}`);
   ck('andTheBarracksLineSaysWhy', g2w.done.includes('danger') && run.said.some(t => /Dangerous times/.test(t) && /clan that burned us/.test(t))

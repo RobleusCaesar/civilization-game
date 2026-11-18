@@ -884,13 +884,43 @@ const Prologue = {
           taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
           ack: () => P.trained3(), wait: 'The new villager is on the way to the quarry.',
           done: () => P.crew('quarry') >= 2, look: () => P.stationView('quarry'), praise: 'Both stations full!' },
+        /* THE WAIT IS SPENT ON ROADS AND THE HUNT (operator, build 195: "Teach the player
+           about roads while the villagers are collecting resources (pull that back from
+           game 2). We need to fill some of the time while the villagers collect resources.
+           Do the same with the hunting hut … most key basic economics and movement which
+           also gives a resource bump"): the hall is named, and while the stations bring
+           its price in a road is laid beside the lumber camp (a building on a road works
+           10% better: the camp's twinkle and its gold line say so), a deer is hunted and a
+           hunter's lodge raised where it fell */
+        { id: 'hallnext', face: 'thinking', text: 'Next, a bigger hall. Our stations will gather what it needs.', auto: 5600,
+          goal: () => 'Raise the hall: ' + P.hallNeeds(), look: () => P.stationView('lumber') },
+        { id: 'road', face: 'point', text: 'While they work, lay a road beside the lumber camp.', key: 'road',
+          goal: 'Lay a road',
+          when: () => P.afford('road') || P.laid(), hold: (c) => P.needLine('A road', null, c),
+          on: () => Scenarios.unlock('road'),
+          ring: P.lineRing('road', 'roadSite'), taps: () => { const r = P.lineRing('road', 'roadSite')(); return r ? [r] : []; },
+          ack: () => P.laid(), site: () => P.siteOf('road'), wait: 'The road is going down.',
+          done: () => P.paved(), praise: 'A fine road!' },
+        { id: 'roadboost', face: 'excited', text: 'On a road, the camp works 10% faster. Our people walk faster on roads.', auto: 6400,
+          goal: 'Roads: faster work, faster feet', look: () => P.stationView('lumber'), on: () => P.flutter('wood', true) },
+        { id: 'hunt', face: 'point', text: 'A deer grazes nearby. Send someone to hunt it.',
+          goal: 'Hunt a deer', ring: () => P.huntRing(), taps: () => P.huntTaps(),
+          ack: () => P.hunting() || P.killed(), wait: 'The hunt is on.',
+          done: () => P.killed(), praise: 'Fresh meat!' },
+        { id: 'lodge', face: 'point', text: "Build a hunter's lodge where the deer fell. It brings food for good.", key: 'lodge',
+          goal: () => P.buildGoal('lodge', "Build a hunter's lodge"),
+          when: () => P.afford('lodge') || P.has('lodge'), hold: (c) => P.needLine("A hunter's lodge", null, c),
+          on: () => Scenarios.unlock('lodge'),
+          ring: P.buildRing('lodge', () => P.huntSpot()), taps: () => { const r = P.buildRing('lodge', () => P.huntSpot())(); return r ? [r] : []; },
+          ack: () => P.has('lodge'), site: () => P.siteOf('lodge'), wait: "The hunter's lodge is going up.",
+          done: () => P.raised('lodge'), praise: 'A lodge!' },
         /* MORE HANDS GATHER FASTER (operator, build 194, on the hall's long wait at
            221/650 wood with 864 food banked: "Give a tip here that the player should
            create more villagers to collect resources faster"): while every hand is at
            work and food is to spare, the waiting line is the tip, ringing the hall's
            Train Villager; the villager it brings stands by the full quarry and the
            gather line sends them out — and the tip comes back until the houses are full */
-        { id: 'grow', face: 'thinking', text: 'Next, a bigger hall. Gather the food, wood and stone it needs.', gather: true,
+        { id: 'grow', face: 'thinking', text: 'The hall needs more yet. Gather the food, wood and stone.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
           tip: { when: () => P.spareHands(), face: 'excited', text: 'Food to spare! Train more villagers. More hands gather faster.',
             ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]') },
@@ -913,26 +943,12 @@ const Prologue = {
       return [
         /* THE LAKE ISLES (operator, build 184: "Add roads, hunters lodge,
            barracks, archers towers and walls to level 2 … something like
-           islands and lakes"): six things to raise, paid from the stores,
-           and the hall's storey the only thing gathered for */
-        { id: 'hunt', face: 'point', text: 'Welcome back, chief. A deer grazes nearby. Send someone to hunt it.',
-          goal: 'Hunt a deer', ring: () => P.huntRing(), taps: () => P.huntTaps(),
-          ack: () => P.hunting() || P.killed(), wait: 'The hunt is on.',
-          done: () => P.killed(), praise: 'Fresh meat!' },
-        { id: 'lodge', face: 'point', text: "Build a hunter's lodge where the deer fell.", key: 'lodge',
-          goal: () => P.buildGoal('lodge', "Build a hunter's lodge"),
-          when: () => P.afford('lodge') || P.has('lodge'), hold: (c) => P.needLine("A hunter's lodge", null, c),
-          on: () => Scenarios.unlock('lodge'),
-          ring: P.buildRing('lodge', () => P.huntSpot()), taps: () => { const r = P.buildRing('lodge', () => P.huntSpot())(); return r ? [r] : []; },
-          ack: () => P.has('lodge'), site: () => P.siteOf('lodge'),
-          done: () => P.raised('lodge'), praise: 'A lodge!' },
-        { id: 'road', face: 'point', text: 'Roads speed our people. Lay one beside the hall.', key: 'road',
-          goal: 'Lay a road',
-          when: () => P.afford('road') || P.laid(), hold: (c) => P.needLine('A road', null, c),
-          on: () => Scenarios.unlock('road'),
-          ring: P.lineRing('road', 'roadSite'), taps: () => { const r = P.lineRing('road', 'roadSite')(); return r ? [r] : []; },
-          ack: () => P.laid(), site: () => P.siteOf('road'),
-          done: () => P.laid() && (!P.siteOf('road') || P.builders(P.siteOf('road')).length > 0), praise: 'A fine road!' },
+           islands and lakes"): its works paid from the stores, and the hall's
+           storey the only thing gathered for (the road and the lodge moved to
+           game 1 in build 195) */
+        // the hunt, the lodge and the road were game 1's since build 195: the clan is greeted
+        { id: 'welcome', face: 'pleased', text: 'Welcome back, chief. Our clan has grown on these lake isles.', auto: 5200,
+          goal: 'The Growing Clan' },
         /* THE CARD LESSON PLAYS MASTER BUILDERS, WHERE ITS WORK IS SEEN (operator, build 191:
            "For game 1, make Master Builder the default card … If we don't have a specific card
            we play for a specific reason in game 2 … we could rely on this card for the
@@ -1380,7 +1396,7 @@ const Prologue = {
   // a station standing, or raised with hands on it: the lesson goes on while it rises
   raised(key) { if (!this.has(key)) return false; const w = this.siteOf(key); return !w || this.builders(w).length > 0; },
   played() { return !!(S.deck && S.deck.played && S.deck.played.length); },
-  /* THE HUNT (game 2): a villager in hand → the nearest deer in sight (a
+  /* THE HUNT (game 1 since build 195): a villager in hand → the nearest deer in sight (a
      deer in the fog cannot be tapped: its meadow, then); else the hand to
      send. The order is the line's answer; the kill — a killing ground the
      lodge may stand on (G.noteHunt) — is the result */
@@ -1423,6 +1439,8 @@ const Prologue = {
   },
   // a road laid: a stretch still going down, or ground already paved
   laid() { return this.has('road') || !!(S.map && S.map.roads && Object.keys(S.map.roads).length); },
+  // ground paved and nothing of the line still going down (the road's boost is a finished road's)
+  paved() { return !this.has('road') && !!(S.map && S.map.roads && Object.keys(S.map.roads).length); },
   /* THE TOWER'S BOW (game 2): an archer on the ground who could go up, the
      one in hand, and whether any is up there (or on the stairs, or on his
      way — the order is the answer, Lookout.sentUp) */
