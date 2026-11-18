@@ -19,6 +19,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 193, date: '2026-11-18', title: 'Camps that never run out',
+    items: [
+      'The First Fire is longer: after your first new villager, Mira has you build a lumber camp where the grove was felled and a quarry where the rock was broken.',
+      'Mira shows you the hall\'s rally flag: set it on the lumber camp, train a villager, and they walk there and start chopping on their own. Then you move the flag to the quarry for the next one.',
+      'Camps and quarries never run out, and in The First Fire they gather faster than a villager working by hand.',
+      'The bigger hall now costs more, so your new camp and quarry earn it.',
+      'Mira no longer pulls a worker off a camp to build the hall.',
+    ],
+  },
+  {
     build: 192, date: '2026-11-18', title: 'A card you can read',
     items: [
       'The reward card on the pedestal stands bigger, as big as your screen has room for.',

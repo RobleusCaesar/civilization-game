@@ -1544,9 +1544,12 @@ and its dials are game 3's. A brand-new device plays THREE authored games in
 order and is never offered difficulty, the old lesson's checkbox or an origin
 choice before the third: **The First Fire** (raise the hall to level 2:
 select, berries, wood, stone, a house beside the berry bush, the farm on the
-bush's picked-bare soil and the homestead the two make, a villager, the
-upgrade and its builders — its storey asks for all three goods; no rival in
-reach — `aiOff`, its hall in a sealed pocket), **The Growing Clan** (level 3, on ISLANDS AND
+bush's picked-bare soil and the homestead the two make, a villager, a
+lumber camp on the felled grove, the hall's rally set on it and a second
+villager trained who walks there, a quarry on the broken rock, the rally
+moved to it and a third villager, the upgrade and its builder — its storey
+asks for all three goods; no rival in reach — `aiOff`, its hall in a sealed
+pocket), **The Growing Clan** (level 3, on ISLANDS AND
 LAKES: a home island joined to the rival's mainland by a land bridge, four
 islets, two lakes; the hunt — a lone deer held grazing in sight until struck
 (`still` in the map's animals: its `wanderT`, or it walked off toward the
@@ -1599,6 +1602,36 @@ line that sends a hand to a good rings the idle hand NEAREST that good
 (`idleVil(near)` from `sendTo`): the hand nearest the hall was sent to the
 trees and stood on the spot of the one already beside them, and the stone's
 ring fell on the pair; the woodcutter starts a tile off the forest's stand.
+**GAME 1 RAISES TWO STATIONS AND TEACHES THE RALLY** (`lumber`, `rally`,
+`train2`, `stations`, `quarry`, `rally2`, `train3` between `newcomer` and
+`grow`; `Prologue.spent` / `spentCost` / `spentGoal` / `fellLine` /
+`breakLine` / `rallied` / `rallyRing` / `crew` / `trained2` / `trained3`;
+tests/prologue.mjs `gameOneRaisesALumberCampAndAQuarryOnTheGroundItWorked`
+and the four checks after it — operator, build 193: "Game 1 is a little too
+short … create a second villager … teach them how to use the move / set rally
+button … a wood chopping station and an ore mining station … putting up to
+two villagers on one of those stations … they don't expire which leaves
+people stranded … more like 4 to 5 minutes"). The forest and stone marks are
+ONE tile each (`strict` `r: 0`, `tileStock` forest 100, stone 40), felled and
+broken bare by the hands the opening sent (each left idle when its tile is
+spent — the "stranded" Mira names), and the stand round each opens
+(`wide: 2.5`) once its station stands; the lumber camp may stand only on the
+forest mark and the quarry on the stone mark (`sites`). A held station beat
+names the good still on its mark ("Fell the last trees of the grove…") and
+then the station's price. The rally beats ring the hall, then its Set rally /
+Move rally chip, then the station while `UI.settingRally` waits (the arming
+toast is the guide's: `toolQuiet('rally')`); the villager trained next walks
+there through `Units.rallyPlan` and works it, so each station ends with two
+hands. **WHAT SHE SAYS OF A STATION IS TRUE HERE**: game 1's stations, farm
+and hall gold work `output` 2.5× (`CFG.MODES.prologue_1`), so a camp's hand
+earns 18.75 wood a day against a woodcutter's 10 (a level-1 station only
+matches a hand in the full game). The hall's storey costs 650 wood, 350 food
+and 450 stone, which the stations earn. **THE GUIDE NEVER EMPTIES A
+STATION** (`handFor`: idle first, then the nearest busy hand, a station's own
+hand last; game 1's `raise` asks one builder): the hall rose on the camp's two
+hands and left the camp Mira had just praised standing empty. Measured with
+the follower: the bot's game 1 went from 195 s to 340 s of play, 36 → 58
+taps; a person also reads seven more lines.
 **THE BRIDGE, THE SCOUT AND THE GATE** (game 2's defences, `Prologue.LINE` /
 `nextLineTile` / `lineSite` / `lineDone`, `sendScout` / `SCOUT_PACE` /
 `_scoutTick` / `watch` / `wallView`, `gateWall` / `gateRing` / `openRing`;

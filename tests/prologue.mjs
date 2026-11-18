@@ -381,7 +381,7 @@ const follow = async (p, maxT) => {
   let st = await read();
   const t0 = st.clk;
   for (let k = 0; k < 20000 && !st.over && st.clk - t0 < maxT; k++) {
-    if (st.id && st.id !== last) { seen.push({ id: st.id }); last = st.id; }
+    if (st.id && st.id !== last) { seen.push({ id: st.id, t: Math.round(st.clk - t0) }); last = st.id; }
     if (st.open && st.txt && !said.has(st.txt)) said.add(st.txt);
     if (st.blocked && blocked.length < 6) blocked.push(`${st.clk.toFixed(1)}s ${st.id} ${st.key} under ${st.blocked}`);
     if (st.wrong && wrong.length < 6) wrong.push(`${st.clk.toFixed(1)}s ${st.id}: ${st.wrong} ("${st.txt}")`);
@@ -1203,8 +1203,14 @@ const endScreen = async (p) => {
   const win = await p.evaluate(() => {
     const m = Scenarios.live().marks, on = (k, mk) => S.buildings.find(b => b.owner === 'P' && b.key === k && b.x === m[mk][0] && b.y === m[mk][1]) || null;
     const farm = on('farm', 'berries'), house = on('house', 'houseSite');
+    const camp = on('lumber', 'forest'), quarry = on('quarry', 'stone'), tc = S.buildings.find(b => b.owner === 'P' && b.key === 'tc');
+    // a station's hand against a hand at the same good, in this world's own dials (CFG.MODES.prologue_1)
+    const md = CFG.MODES[S.mode], day = Units.dayLen();
+    const rate = (b, res, t) => b ? { st: Bld.lv(b).out[res] * Bld.nearBonus(b) * md.output, hand: CFG.GATHER[t].rate * day * md.gather } : null;
     return { win: !!(S.over && S.over.win), cause: S.over && S.over.cause, cur: Screens.current, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '',
-      done: Object.keys((S.pro && S.pro.done) || {}), farm: !!farm, house: !!house, bond: !!(farm && house && Bld.homesteadOf(farm) === house) };
+      done: Object.keys((S.pro && S.pro.done) || {}), farm: !!farm, house: !!house, bond: !!(farm && house && Bld.homesteadOf(farm) === house),
+      camp: !!camp, quarry: !!quarry, crew: camp ? Bld.workersAssigned(camp) : 0, qcrew: quarry ? Bld.workersAssigned(quarry) : 0, rally: !!(tc && quarry && tc.rally && tc.rally.bid === quarry.id),
+      vils: S.units.filter(u => u.owner === 'P' && u.kind === 'villager').length, wood: rate(camp, 'wood', T.FOREST), stone: rate(quarry, 'stone', T.HILLS) };
   });
   // food, wood and stone, then a roof and a new villager (operator, build 184)
   ck('andGameOneTeachesFoodWoodAndStone', ['open', 'wood', 'stone', 'house', 'train'].every(k => win.done.includes(k)), win.done.join(', '));
@@ -1220,6 +1226,30 @@ const endScreen = async (p) => {
   const nc = run.seen.find(s => s.id === 'newcomer');
   ck('aNewVillagerIsMetWithAHappyLineOfItsOwn', !!nc && win.done.includes('newcomer') && ord.indexOf('train') < ord.indexOf('newcomer') && ord.indexOf('newcomer') < ord.indexOf('grow')
     && run.said.some(t => /A new villager joins our clan/.test(t)), (nc ? JSON.stringify(nc) : 'never said') + ' ' + ord.join(' › '));
+  /* STATIONS THAT NEVER RUN OUT, AND THE RALLY THAT FILLS THEM (operator, build 193:
+     "Have the player create a second villager … teach them how to use the move / set
+     rally button … the creation of a wood chopping station and an ore mining station …
+     putting up to two villagers on one of those stations … the stations will allow them
+     to collect resources much faster and they don't expire"): the grove felled and a
+     lumber camp raised on its stumps, the hall's rally set ON the camp, a second villager
+     trained who walks there and works it beside the first, then a quarry on the broken
+     rock — all before the hall's gathering, and the camp still crewed when the hall rises */
+  const at = id => ord.indexOf(id);
+  ck('gameOneRaisesALumberCampAndAQuarryOnTheGroundItWorked', win.camp && win.quarry && ['lumber', 'quarry'].every(k => win.done.includes(k))
+    && at('newcomer') < at('lumber') && at('quarry') < at('grow'), JSON.stringify({ camp: win.camp, quarry: win.quarry }) + ' ' + ord.join(' › '));
+  ck('andTeachesTheHallsRallyOnTheCamp', win.done.includes('rally') && at('lumber') < at('rally') && at('rally') < at('train2')
+    && run.said.some(t => /Set rally/.test(t)), ord.join(' › ') + ' — ' + run.said.filter(t => /rally/i.test(t)).join(' | '));
+  ck('andTheSecondVillagerWalksToTheCampAndWorksItBesideTheFirst', ['train2', 'stations'].every(k => win.done.includes(k)) && at('train2') < at('stations')
+    && at('stations') < at('quarry') && win.vils >= 5 && run.said.some(t => /never runs out/.test(t)), 'villagers ' + win.vils + ', ' + ord.join(' › '));
+  // …then the rally MOVED to the quarry (the chip reads Move rally once one stands), and a third villager works it
+  ck('andTheRallyIsMovedToTheQuarryForAThirdVillager', ['rally2', 'train3'].every(k => win.done.includes(k)) && at('quarry') < at('rally2')
+    && at('rally2') < at('train3') && at('train3') < at('grow') && win.rally && win.qcrew === 2 && win.vils >= 6 && run.said.some(t => /Move rally/.test(t)),
+    'rally on the quarry ' + win.rally + ', quarry crew ' + win.qcrew + ', villagers ' + win.vils + ', ' + ord.join(' › '));
+  // …and the camp Mira praised is still worked when the hall rises (the hall's builders come from elsewhere)
+  ck('andTheCampKeepsItsTwoHandsToTheEnd', win.crew === 2, 'crew ' + win.crew);
+  // what she says of a station is true in this world: a station's hand outworks a hand at the same good
+  ck('andAStationsHandOutworksAHandHere', win.wood && win.stone && win.wood.st > win.wood.hand && win.stone.st > win.stone.hand,
+    JSON.stringify({ wood: win.wood, stone: win.stone }));
   ck('theHallWinsAndTheGuideHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
   // …and it names the clan that burned the old home: the hook game 2's riders and game 3's raid answer
   ck('andHerLastWordNamesTheClanThatBurnedTheirHome', /burned our home/i.test(win.txt), win.txt);
