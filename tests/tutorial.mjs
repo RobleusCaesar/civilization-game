@@ -483,7 +483,18 @@ const out = await p.evaluate(async () => {
       ck('andItLandsInTheMiddle',
         Math.abs((br.left + br.width / 2) - (wr.left + wr.width / 2)) < 6,
         'off centre by ' + Math.round((br.left + br.width / 2) - (wr.left + wr.width / 2)) + 'px');
-      // …and a player who scrolls elsewhere is NOT fought
+      /* …and a player who scrolls elsewhere is NOT fought. The real loop ticks
+         every frame, so the card is SEEN whole on the first tick past the
+         retry window (UI.CARD_RETRY_MS) and left alone after; this test ticks
+         by hand, and with no tick in that window the settle poll alone decided
+         it — on a slow CI runner (over 0.9 s) the retry fired after the
+         player's scroll and centred the card again (build 192, run 291:
+         scrollLeft 237 / 166). So the player looks at the card a beat first. */
+      {
+        const st = Tutorial._cardSt, gap = st && st.at ? UI.CARD_RETRY_MS + 60 - (performance.now() - st.at) : 0;
+        if (gap > 0) await new Promise(res => setTimeout(res, gap));
+        Tutorial.tick(0.3);
+      }
       wrap.scrollLeft = 0;
       for (let i = 0; i < 3; i++) Tutorial.tick(0.3);
       await new Promise(res => setTimeout(res, 300));
