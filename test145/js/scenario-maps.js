@@ -120,7 +120,9 @@ const SCENARIO_MAPS = {
    "stone": [21, 15]
   },
   "tileStock": {
-   "berries": 40
+   "berries": 40,
+   "forest": 100,
+   "stone": 40
   }
  },
  "prologue_2": {

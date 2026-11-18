@@ -387,12 +387,16 @@ const Prologue = {
   },
   // a works of the player's still going up, and the hands to send to it
   siteOf(key) { return S.buildings.find(b => b.owner === 'P' && b.key === key && b.construction > 0) || null; },
-  // the next pair of hands for a site: one not already at it, idle first, then the nearest
+  /* the next pair of hands for a site: one not already at it, idle first, then the
+     nearest busy one — and a station's own hand last of all (build 193: game 1's hall
+     rose on the lumber camp's two hands, the nearest, and left the camp Mira had just
+     praised standing empty; nothing in the lesson sends a station's hand back) */
   handFor(w) {
     let best = null, bd = 1e9;
     for (const u of this.vils()) {
       if (this.buildsAt(u, w)) continue;
-      const d = (Bld.cx(w) - u.x) ** 2 + (Bld.cy(w) - u.y) ** 2 - (this.isIdle(u) ? 1e6 : 0);
+      const rank = this.isIdle(u) ? 0 : u.task && u.task.type === 'work' ? 2 : 1;
+      const d = (Bld.cx(w) - u.x) ** 2 + (Bld.cy(w) - u.y) ** 2 + rank * 1e6;
       if (d < bd) { bd = d; best = u; }
     }
     return best;
@@ -655,6 +659,48 @@ const Prologue = {
   // the farm beat's price: while the bush stands, the food still on it (the line names food); then the farm's
   farmCost() { return this.bare() ? Bld.effCost('P', 'farm') : { food: Math.floor(S.res.food || 0) + Math.max(1, this.bushLeft()) }; },
   // the deed and how far it has come: "Pick the berry bush: Food 33/40" (picked of what it held)
+  /* THE GROVE AND THE ROCK (game 1, build 193): a mark's own tile, whether its good is
+     spent (stumps, broken rock), what is still on it, and the words that ask for it */
+  markIdx(name) { const m = this.mark(name); return m ? (m.y | 0) * CFG.W + (m.x | 0) : -1; },
+  spent(name) { const i = this.markIdx(name); return i < 0 || !CFG.GATHER[S.map.terrain[i]]; },
+  leftAt(name) { const i = this.markIdx(name); return i >= 0 && CFG.GATHER[S.map.terrain[i]] ? Math.ceil(S.map.resAmount[i] || 0) : 0; },
+  // while the mark stands, its good still on it (the line names it); then the station's price
+  spentCost(name, key) {
+    if (this.spent(name)) return Bld.effCost('P', key);
+    const i = this.markIdx(name), res = CFG.GATHER[S.map.terrain[i]].res;
+    return { [res]: Math.floor(S.res[res] || 0) + Math.max(1, this.leftAt(name)) };
+  },
+  spentGoal(name, key, deed, build) {
+    if (this.spent(name)) return this.buildGoal(key, build);
+    const i = this.markIdx(name), had = Math.round((S.map.resMax && S.map.resMax[i]) || 0), left = this.leftAt(name);
+    const res = CFG.GATHER[S.map.terrain[i]].res, NM = { wood: 'Wood', stone: 'Stone', food: 'Food' };
+    return had > 0 ? deed + ': ' + NM[res] + ' ' + Math.max(0, Math.min(had, had - left)) + '/' + had : deed;
+  },
+  fellLine(coming) {
+    this.naming('wood');
+    return coming ? 'The last trees of the grove are falling. Keep chopping.' : 'Fell the last trees of the grove. A camp stands on the stumps.';
+  },
+  breakLine(coming) {
+    this.naming('stone');
+    return coming ? 'The rock is nearly broken. Keep at it.' : 'Break the last of the rock. A quarry stands where it was.';
+  },
+  // the player's finished station of a kind, and the hands working it
+  station(key) { return S.buildings.find(b => b.owner === 'P' && b.key === key && !(b.construction > 0)) || null; },
+  crew(key) { const b = this.station(key); return b ? Bld.workersAssigned(b) : 0; },
+  stationView(key) { const b = this.station(key) || this.siteOf(key); return b ? { x: Bld.cx(b), y: Bld.cy(b), r: 0.6 } : null; },
+  // the hall's rally set ON the station (Units.rallyPlan: a villager trained there works it)
+  rallied(key) { const tc = this.tc(), b = this.station(key); return !!(tc && b && tc.rally && tc.rally.bid === b.id); },
+  /* the rally's three taps: the hall, its Set rally chip, the station — the last while
+     the hall's rally waits for its tap (UI.settingRally) */
+  rallyRing(key) {
+    const tc = this.tc(), b = this.station(key);
+    if (!tc || !b) return null;
+    if (UI.settingRally === tc.id) return { x: Bld.cx(b), y: Bld.cy(b), r: 0.9 };
+    return this.hallRing('#panel .pchip[data-act="rally"]')();
+  },
+  // a second villager: one more than the first lesson trained, or one in the hall's queue
+  trained2() { const tc = this.tc(); return this.vils().length > this._n0 + 1 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
+  trained3() { const tc = this.tc(); return this.vils().length > this._n0 + 2 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
   farmGoal() {
     if (this.bare()) return this.buildGoal('farm', 'Build a farm');
     const i = this.bushTile(), had = Math.round((S.map.resMax && S.map.resMax[i]) || 0), left = this.bushLeft();
@@ -773,6 +819,62 @@ const Prologue = {
            joins our clan.'"): a beat of its own before the next instruction */
         { id: 'newcomer', face: 'excited', text: 'A new villager joins our clan! More hands for food, wood and stone.', auto: 5600,
           goal: 'A new villager', look: () => P.newcomerView() },
+        /* STATIONS THAT NEVER RUN OUT, AND THE RALLY THAT FILLS THEM (operator, build 193:
+           "Have the player create a second villager … teach them how to use the move / set
+           rally button to have a villager automatically start traveling to and collecting
+           resources when they're created at the Town Center … the creation of a wood
+           chopping station and an ore mining station and show the player putting up to two
+           villagers on one of those stations … the stations will allow them to collect
+           resources much faster and they don't expire which leaves people stranded after
+           they chopped down a grove or a berry bush"). The grove Mira named is felled to its
+           stumps (its woodcutter left standing idle) and a lumber camp raised there; the
+           hall's rally is set on the camp, and the villager trained next walks there and
+           works it — two to the camp; then the rock is broken bare and a quarry raised on it.
+           The stand round each opens to hand-gathering once its station stands
+           (Scenarios.RULES.prologue_1.strict), and game 1's stations outwork a hand
+           (CFG.MODES.prologue_1.output), so what Mira says of them is true here */
+        { id: 'lumber', face: 'thinking', text: 'Groves run out and leave hands idle. A lumber camp never does. Build one here.', key: 'lumber',
+          cost: () => P.spentCost('forest', 'lumber'), goal: () => P.spentGoal('forest', 'lumber', 'Fell the grove', 'Build a lumber camp'),
+          when: () => (P.spent('forest') && P.afford('lumber')) || P.has('lumber'),
+          hold: (c) => P.spent('forest') ? P.needLine('A lumber camp', null, c) : P.fellLine(c),
+          on: () => Scenarios.unlock('lumber'),
+          ring: P.buildRing('lumber', 'forest'), taps: () => { const r = P.buildRing('lumber', 'forest')(); return r ? [r] : []; },
+          ack: () => P.has('lumber'), site: () => P.siteOf('lumber'), wait: 'The lumber camp is going up.',
+          done: () => P.has('lumber', true), praise: 'A lumber camp!' },
+        { id: 'rally', face: 'point', text: 'Tap the hall, then Set rally, then the camp. New villagers go straight there.',
+          goal: 'Set the hall\'s rally on the camp',
+          ring: () => P.rallyRing('lumber'), taps: () => { const r = P.rallyRing('lumber'); return r ? [r] : []; },
+          done: () => P.rallied('lumber'), praise: 'Good.' },
+        { id: 'train2', face: 'point', text: 'Now train a villager. They walk to the camp and start chopping.', unit: 'villager',
+          goal: () => 'Train a villager' + (P.afford2('villager') ? '' : ': ' + P.priceLine(P.trainPrice('villager'))),
+          when: () => P.afford2('villager') || P.trained2(), hold: (c) => P.trainLine(c),
+          ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]'),
+          taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
+          ack: () => P.trained2(), wait: 'The new villager is on the way to the camp.',
+          done: () => P.crew('lumber') >= 2, look: () => P.stationView('lumber') },
+        { id: 'stations', face: 'excited', text: 'Two at the camp! A station works faster than hands, and never runs out.', auto: 6400,
+          goal: 'Two at the lumber camp', look: () => P.stationView('lumber'), on: () => P.flutter('wood', true) },
+        { id: 'quarry', face: 'point', text: 'Now a quarry where you broke the rock. It never runs out either.', key: 'quarry',
+          cost: () => P.spentCost('stone', 'quarry'), goal: () => P.spentGoal('stone', 'quarry', 'Break the rock', 'Build a quarry'),
+          when: () => (P.spent('stone') && P.afford('quarry')) || P.has('quarry'),
+          hold: (c) => P.spent('stone') ? P.needLine('A quarry', null, c) : P.breakLine(c),
+          on: () => Scenarios.unlock('quarry'),
+          ring: P.buildRing('quarry', 'stone'), taps: () => { const r = P.buildRing('quarry', 'stone')(); return r ? [r] : []; },
+          ack: () => P.has('quarry'), site: () => P.siteOf('quarry'), wait: 'The quarry is going up.',
+          done: () => P.has('quarry', true), praise: 'A quarry!' },
+        /* …and the rally MOVED there (operator: "the move / set rally button"): the hall's
+           chip reads Move rally once a rally stands, and the next villager works the quarry */
+        { id: 'rally2', face: 'point', text: 'Tap the hall, then Move rally, then the quarry.',
+          goal: 'Move the hall\'s rally to the quarry',
+          ring: () => P.rallyRing('quarry'), taps: () => { const r = P.rallyRing('quarry'); return r ? [r] : []; },
+          done: () => P.rallied('quarry'), praise: 'Good.' },
+        { id: 'train3', face: 'point', text: 'Train one more villager. They go straight to the quarry.', unit: 'villager',
+          goal: () => 'Train a villager' + (P.afford2('villager') ? '' : ': ' + P.priceLine(P.trainPrice('villager'))),
+          when: () => P.afford2('villager') || P.trained3(), hold: (c) => P.trainLine(c),
+          ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]'),
+          taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
+          ack: () => P.trained3(), wait: 'The new villager is on the way to the quarry.',
+          done: () => P.crew('quarry') >= 2, look: () => P.stationView('quarry'), praise: 'Both stations full!' },
         { id: 'grow', face: 'thinking', text: 'Next, a bigger hall. Gather the food, wood and stone it needs.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
@@ -783,7 +885,8 @@ const Prologue = {
           goal: 'Raise the hall', ring: P.hallRing('#panel [data-act="upgrade"]'),
           taps: () => { const r = P.hallRing('#panel [data-act="upgrade"]')(); return r ? [r] : []; },
           ack: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0); },
-          site: () => P.tcWorks(), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
+          // one builder (build 193): every other hand stands at a station by now, and the guide never empties one
+          site: () => P.tcWorks(), hands: 1, handsText: 'Send villagers to build it. Many hands, quick work.',
           wait: 'Everyone helps. The hall is rising.', waitFace: 'proud',
           done: () => { const tc = P.tc(); return !!tc && tc.level >= 2; } },
       ];
@@ -2440,18 +2543,14 @@ const Prologue = {
     if (Screens.leaveEnd) Screens.leaveEnd(go); else go();
     return true;
   },
-  // the line under the score
+  /* the line under the score: a DEFEAT's reason and its encouragement. A
+     win says nothing there (operator, build 192: "eliminate the extra text
+     below") — its doors already say "Continue the journey" */
   endLine() {
-    if (typeof S === 'undefined' || !S || !S.scenario || !S.over) return '';
-    const g = Scenarios.game();
-    if (!S.over.win) {
-      const c = S.over.cause;
-      return (c === 'rival_wonder' ? 'The other clan raised their Wonder first.'
-        : c === 'tc_destroyed' ? 'Our hall fell this time.' : 'Not this time.') + ' Try again — the clan believes in you.';
-    }
-    if (g === 1) return 'Your journey has begun: ' + this.NAMES[2] + ' is next.';
-    if (g === 2) return 'One road left: ' + this.NAMES[3] + '.';
-    return 'The journey is complete. Every world is yours now.';
+    if (typeof S === 'undefined' || !S || !S.scenario || !S.over || S.over.win) return '';
+    const c = S.over.cause;
+    return (c === 'rival_wonder' ? 'The other clan raised their Wonder first.'
+      : c === 'tc_destroyed' ? 'Our hall fell this time.' : 'Not this time.') + ' Try again — the clan believes in you.';
   },
   onScreen(name) {
     if (name !== 'playing' && this._el && !this._held) this._el.root.style.display = 'none';

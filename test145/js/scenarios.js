@@ -65,8 +65,11 @@ const Scenarios = {
       game: 1, mode: 'prologue_1', title: 'The First Fire',
       start: { food: 15, wood: 5, stone: 0, gold: 0 },
       storey: 1,
-      // the hall asks for all three goods the game teaches (food, wood, stone)
-      tc: { 2: { cost: { wood: 100, food: 50, stone: 40 }, time: 2, support: { n: 1, lv: 1 } } },
+      /* the hall asks for all three goods the game teaches (food, wood, stone) — and,
+         since build 193, enough of them that the lumber camp and the quarry earn it
+         (operator: "use that as a way for the player to gather even more resources
+         to then ultimately build the town center … more like 4 to 5 minutes") */
+      tc: { 2: { cost: { wood: 650, food: 350, stone: 450 }, time: 2, support: { n: 1, lv: 1 } } },
       allowed: [],
       win: { hall: 2 },
       draft: false, stock: 1.4,
@@ -80,13 +83,18 @@ const Scenarios = {
       strict: {
         gather: {
           food: { mark: 'berries', r: 0, wide: 3, after: 'farm', why: 'Pick the berries Mira showed you.' },
-          wood: { mark: 'forest', r: 2.5, why: 'Cut the trees Mira showed you.' },
-          stone: { mark: 'stone', r: 2.5, why: 'Break the grey rocks Mira showed you.' },
+          /* the grove and the rock Mira names are felled and broken BARE first: a lumber
+             camp then stands on the stumps and a quarry on the broken rock (build 193),
+             and the stand round each opens once its station is raised */
+          wood: { mark: 'forest', r: 0, wide: 2.5, after: 'lumber', why: 'Cut the trees Mira showed you.' },
+          stone: { mark: 'stone', r: 0, wide: 2.5, after: 'quarry', why: 'Break the grey rocks Mira showed you.' },
         },
         fishWhy: 'Not here. Gather where Mira points.',
         sites: {
           house: { mark: 'houseSite', why: 'The house goes beside the berry bush.' },
           farm: { mark: 'berries', why: 'The farm goes where the berries grew.' },
+          lumber: { mark: 'forest', why: 'The lumber camp goes on the trees you felled.' },
+          quarry: { mark: 'stone', why: 'The quarry goes where you broke the rock.' },
         },
       },
     },

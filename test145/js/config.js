@@ -1618,7 +1618,12 @@ const PROLOGUE_QUIET = { waveFirst: 1e9, barbMult: 0, campMult: 0, deathEvery: [
   animalMax: 0, animalChance: 0, aiHarass: 0 };
 CFG.MODES.prologue_1 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
   name: 'The First Fire', base: 'calm', hidden: true, prologue: 1,
-  aiOff: true, gather: 1.25,
+  /* output: game 1's stations (and the farm, and the hall's gold) work two and a
+     half times the full game's level-1 pace, so a lumber camp's hand outworks a
+     woodcutter there, as Mira says it does (build 193: "the stations will allow
+     them to collect resources much faster") — in the full game a level-1 station
+     only matches one and pulls ahead with its storeys */
+  aiOff: true, gather: 1.25, output: 2.5,
 });
 CFG.MODES.prologue_2 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
   name: 'The Growing Clan', base: 'calm', hidden: true, prologue: 2,
