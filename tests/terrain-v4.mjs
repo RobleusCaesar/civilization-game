@@ -34,6 +34,10 @@
       behind the pause menu nothing is prefetched; and under the classic
       painters, the kill switch and the title's demo it asks for nothing.
 
+   THE CHUNKS MEET WITHOUT A SEAM (build 191):
+  13. Every chunk of ground and every tile of road lands on whole device
+      pixels, neighbours edge to edge, so a GPU canvas draws no grid line.
+
      node tests/terrain-v4.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -555,6 +559,122 @@ for (const [name, q, setup] of [['theClassicLink', '?terrain=classic', null], ['
   });
   ck('theTitlesDemoPrefetchesNothing', d.demo && d.current === 'title' && d.pf === 0 && d.chunks === 0 && d.pending === 0, JSON.stringify(d));
   await ctx.close();
+}
+/* ---- 13. THE CHUNKS MEET WITHOUT A SEAM (operator, build 191: "grid lines are appearing
+   on the map… on mobile there are no lines… You should never see grid lines"). A chunk, and a
+   tile of road, is drawn into a world rect whose edges fall between device pixels at most
+   zooms; desktop Chrome's GPU canvas antialiases the edge of every image, so the pixel two
+   neighbours share was covered twice at part strength and the ground under them showed
+   through: a dark hairline every eight tiles. R.snapper puts every rect on whole device
+   pixels. 13a measures the rects themselves (any browser); 13b the pixels, on a GPU-backed
+   canvas, with the snap stood down as the control — the control must SEE the seam, or the
+   pixel check is blind on this host and says so. ---- */
+const seamWorld = async (p, z, dx, dy) => p.evaluate(async ([z, dx, dy]) => {
+  G.newGame('bay31', 'moderate', 'medium'); Screens._demo = false; S.paused = true; Screens.show('playing');
+  for (let i = 0; i < 400 && !TerrainX.ready; i++) await new Promise(r => setTimeout(r, 50));
+  const tc = S.buildings.find(b => b.key === 'tc' && b.owner === 'P'), TL = CFG.TILE;
+  // three tiles of road on open grass by the hall, so a road's joins are drawn too
+  let rd = null;
+  for (let r = 3; r < 9 && !rd; r++) for (let oy = -r; oy <= r && !rd; oy++) {
+    const y = tc.y + oy, x = tc.x - r;
+    if ([0, 1, 2].every(k => S.map.terrain[y * CFG.W + x + k] === T.GRASS && !Bld.at(x + k, y))) rd = { x, y };
+  }
+  if (rd) { S.map.roads = S.map.roads || {}; for (let k = 0; k < 3; k++) S.map.roads[rd.y * CFG.W + rd.x + k] = 1; Roads._n = -1; }
+  R.cam.z = z;
+  R.cam.x = Math.floor((tc.x * TL - R.viewW() / z / 2) / 256) * 256 + dx;
+  R.cam.y = Math.floor((tc.y * TL - R.viewH() / z / 2) / 256) * 256 + dy;
+  await TerrainX.whenIdle(30000);
+  TerrainX.tOverride = 1;
+  return { ready: TerrainX.ready, on: TerrainX.on, road: !!rd };
+}, [z, dx, dy]);
+/* the rects drawn by the ground's chunks and the road's tiles, in device pixels */
+const seamRects = (p) => p.evaluate(() => {
+  const out = { chunk: [], road: [] }; let who = null;
+  // the chunks' own pictures (and the stand-in's): the water life drawn inside drawGround is one overlay, no mosaic
+  const pics = new Set([TerrainX.thumb]); for (const c of TerrainX.chunks.values()) if (c && c.img) pics.add(c.img);
+  const dg = TerrainX.drawGround, rdw = Roads.draw, di = CanvasRenderingContext2D.prototype.drawImage;
+  TerrainX.drawGround = function () { who = 'chunk'; try { return dg.apply(this, arguments); } finally { who = null; } };
+  Roads.draw = function () { who = 'road'; try { return rdw.apply(this, arguments); } finally { who = null; } };
+  CanvasRenderingContext2D.prototype.drawImage = function (img) {
+    if (who && this.canvas === R.cv && (arguments.length === 5 || arguments.length === 9)) {
+      const a = Array.prototype.slice.call(arguments, arguments.length - 4), m = this.getTransform();
+      // a road's tile is a TL-square; its decor (overlapping by design) is not a mosaic
+      if ((who === 'chunk' && pics.has(img)) || (who === 'road' && a[2] === a[3] && Math.abs(a[2] - CFG.TILE) < 2))
+        out[who].push([m.a * a[0] + m.e, m.d * a[1] + m.f, m.a * (a[0] + a[2]) + m.e, m.d * (a[1] + a[3]) + m.f]);
+    }
+    return di.apply(this, arguments);
+  };
+  try { R.draw(0); } finally { TerrainX.drawGround = dg; Roads.draw = rdw; CanvasRenderingContext2D.prototype.drawImage = di; }
+  return out;
+});
+const seamVerdict = (rects) => {
+  const frac = v => Math.abs(v - Math.round(v)), whole = rects.every(r => r.every(v => frac(v) < 1e-6));
+  let joins = 0, gaps = 0;
+  for (const A of rects) for (const B of rects) {
+    if (A === B) continue;
+    if (Math.abs(B[1] - A[1]) < 2 && Math.abs(B[0] - A[2]) < 2) { joins++; if (Math.abs(B[0] - A[2]) > 1e-6) gaps++; }
+    if (Math.abs(B[0] - A[0]) < 2 && Math.abs(B[1] - A[3]) < 2) { joins++; if (Math.abs(B[1] - A[3]) > 1e-6) gaps++; }
+  }
+  const fracEdges = rects.reduce((n, r) => n + r.filter(v => frac(v) > 0.05).length, 0);
+  return { n: rects.length, whole, joins, gaps, fracEdges };
+};
+{
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.25 });
+  const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(String(e)));
+  await p.goto('file://' + join(root, 'index.html'));
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
+  const w = await seamWorld(p, 1.98, 13.37, 7.71);
+  const on = await seamRects(p);
+  const snap = await p.evaluate(() => { const s = R.snapper; R.snapper = undefined; return !!s; });
+  const off = await seamRects(p);
+  await p.evaluate(() => { delete R.snapper; });
+  const vc = seamVerdict(on.chunk), vr = seamVerdict(on.road), oc = seamVerdict(off.chunk), orr = seamVerdict(off.road);
+  ck('theGroundsChunksLandOnWholeDevicePixels', w.on && w.ready && snap && vc.n >= 4 && vc.whole && vc.joins > 0 && vc.gaps === 0,
+    `${vc.n} chunks at zoom 1.98 on a 1.25x screen: whole ${vc.whole}, ${vc.joins} joins, ${vc.gaps} apart`);
+  ck('andARoadsTilesToo', w.road && vr.n >= 3 && vr.whole && vr.joins > 0 && vr.gaps === 0,
+    `${vr.n} road tiles: whole ${vr.whole}, ${vr.joins} joins, ${vr.gaps} apart`);
+  ck('andTheProbeSeesTheSplitEdgesWithoutTheSnap', oc.fracEdges > 0 && orr.fracEdges > 0 && !oc.whole,
+    `snap stood down: ${oc.fracEdges} chunk edges and ${orr.fracEdges} road edges between device pixels`);
+  ck('andNothingThrew', !p.errs.length, p.errs.join(' | ') || 'clean');
+  await ctx.close();
+}
+{
+  // a GPU-backed canvas, the desktop's: ANGLE over SwiftShader
+  let g = null;
+  try { g = await pw.chromium.launch({ args: ['--allow-file-access-from-files', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-accelerated-2d-canvas'] }); } catch (e) { g = null; }
+  if (!g) ck('noSeamIsDrawnOnAGpuCanvas', true, 'no GPU-backed browser on this host: the rects (13a) hold');
+  else {
+    const ctx = await g.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+    const p = await ctx.newPage();
+    await p.goto('file://' + join(root, 'index.html'));
+    await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
+    // zoom 2.5: a chunk is 640 device px, so every seam sits half a pixel in
+    await seamWorld(p, 2.5, 0.2, 0.2);
+    const probe = () => p.evaluate(() => {
+      R.draw(0);
+      const cv = R.cv, gx = cv.getContext('2d'), W = cv.width, H = cv.height, z = R.cam.z * R.dpr, span = 256;
+      const d = gx.getImageData(0, 0, W, H).data, L = (x, y) => { const i = (y * W + x) * 4; return d[i] + d[i + 1] + d[i + 2]; };
+      const col = x => { let s = 0; for (let y = 70; y < H - 140; y++) s += L(x, y); return s; };
+      const row = y => { let s = 0; for (let x = 0; x < W; x++) s += L(x, y); return s; };
+      const dips = [];
+      for (let c = Math.ceil(R.cam.x / span); (c * span - R.cam.x) * z < W - 3; c++) {
+        const x = Math.floor((c * span - R.cam.x) * z); if (x < 3) continue;
+        const r = col(x) / ((col(x - 2) + col(x + 2)) / 2); dips.push(['x' + x, +r.toFixed(3)]);
+      }
+      for (let c = Math.ceil(R.cam.y / span); (c * span - R.cam.y) * z < H - 3; c++) {
+        const y = Math.floor((c * span - R.cam.y) * z); if (y < 3) continue;
+        const r = row(y) / ((row(y - 2) + row(y + 2)) / 2); dips.push(['y' + y, +r.toFixed(3)]);
+      }
+      return dips;
+    });
+    const on = await probe();
+    await p.evaluate(() => { R.snapper = undefined; });
+    const off = await probe();
+    const seen = d => d.filter(([, r]) => r < 0.96).length;
+    if (!off.length || !seen(off)) ck('noSeamIsDrawnOnAGpuCanvas', on.length > 0 && !seen(on), `probe blind on this host (the control drew no seam: ${JSON.stringify(off)}); the rects (13a) hold`);
+    else ck('noSeamIsDrawnOnAGpuCanvas', on.length > 0 && !seen(on), `snapped ${JSON.stringify(on)} against the control's ${JSON.stringify(off)} (a seam darkens its line by 4% or more)`);
+    await ctx.close(); await g.close();
+  }
 }
 await b.close();
 

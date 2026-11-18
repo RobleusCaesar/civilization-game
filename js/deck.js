@@ -582,7 +582,9 @@ const Deck = {
     if (!this.on() || !tier) return null;
     const col = this.col(), key = 'pro:' + game;
     if (col.runs[key]) return null;
-    const id = this.rollCard(tier, Math.random);
+    // the game's own card when it names one of its tier (the catalog holds only live cards); else one rolled from the tier
+    const pick = CFG.PROLOGUE.PICK && CFG.PROLOGUE.PICK[game], pc = pick && this.card(pick);
+    const id = pc && pc.tier === tier ? pick : this.rollCard(tier, Math.random);
     this._add(id, 1);
     col.runs[key] = [{ id, tier, bonus: false, prologue: game }];
     if (runId && !/^seed:/.test(runId)) this._queue({ op: 'prologue', run: runId, game, card: id });

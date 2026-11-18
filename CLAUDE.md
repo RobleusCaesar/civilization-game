@@ -1542,9 +1542,11 @@ LAKES: a home island joined to the rival's mainland by a land bridge, four
 islets, two lakes; the hunt — a lone deer held grazing in sight until struck
 (`still` in the map's animals: its `wanderT`, or it walked off toward the
 islet herd before the hunter came) — and a hunter's lodge on the ground it
-fell on (`Prologue.huntSpot`), a road, a barracks, an archery range, a
+fell on (`Prologue.huntSpot`), a road, the deck's first play (Master
+Builders, game 1's prize, where held — **THE CARD LESSON** below), a
+warning of its own (`danger`), a barracks, an archery range, a
 watchtower by the bridge manned by the range's first archer, the wall across
-the bridge, then the deck's first play; all of it paid from the stores, only
+the bridge; all of it paid from the stores, only
 the hall's storey gathered for; a rival at peace) and **The Two Roads**
 (three of the six friendly origins in `CFG.PROLOGUE.ORIGINS`, a barracks
 and three soldiers, a lumber camp, a quarry and a farm on their own worked
@@ -1652,12 +1654,16 @@ HOME BURNED OFF THE MAP** (operator, build 183, on a game-1 screenshot: "it
 doesn't make sense to build a new villager next to the burned out village …
 the survivors of a clan that was attacked by another clan. Tiny dread, not
 too much over explaining"): no journey world lays `ruins` or their rubble
-ground (`noJourneyWorldOpensBesideABurnedVillage`); Mira says it in her first
-line ("Another clan burned our home. We few escaped." —
-`andSaysAnotherClanBurnedTheOldHome`), game 1's last word leaves the hook
-("May they never see its smoke"), game 2's riders are "not the ones who
-burned us", and game 3 opens "They have found us", so its "march on their
-hall" is that clan's. Nothing more is explained. **THE
+ground (`noJourneyWorldOpensBesideABurnedVillage`). Game 1 OPENS ON THE NEW
+LAND (operator, build 191: "Rewrite the first line to something like, 'We
+have arrived in an untamed world. Send our people to gather food so we do not
+go hungry.'" — fitted to fifteen words: "We've arrived in an untamed world. Send
+people for food so we don't go hungry.", `andOpensOnAnUntamedWorld`), and the
+burned home is its LAST word, the hook ("Our first fire burns, chief. May the
+clan that burned our home never see it." —
+`andHerLastWordNamesTheClanThatBurnedTheirHome`); game 2's riders are "not
+the ones who burned us", and game 3 opens "They have found us", so its "march
+on their hall" is that clan's. Nothing more is explained. **THE
 BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
 the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
 NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE
@@ -1707,6 +1713,63 @@ or at once when the hand is off the screen; the people chip flutters for
 the first house finished (its room) and the first villager born, once
 each a game. What was answered rides the save (`S.pro.fl`), so a Continue
 answers nothing twice, and a save from before build 185 answers nothing.
+**AND IT IS SEEN** (operator, build 191: "Make the gold that appears around
+the resources when they're collected a little more obvious, and last a
+little longer. We really want to connect what happens in the game to the
+resources in the top bar"): the ring is 3px with a halo behind the chip and
+breathes twice over `FLUTTER_MS` (2.8 s), sixteen sparks are thrown farther,
+the number stays gold longer; `flutter(chip, true)` — the homestead's two
+chips and the first newborn — breathes three times over `FLUTTER_BIG_MS`
+(3.6 s) with a second wave of sparks. **GAME 1 SAYS WHY, BEFORE AND AFTER**
+(the same ruling: "Give instructions before and after, especially on this
+first game"): it opens "We've arrived in an untamed world. Send people for
+food so we don't go hungry." (**THE OLD HOME BURNED OFF THE MAP** above);
+the house is what shelters people; the bond line says it in numbers
+("Beside a home, a farm grows 10% more food. The home fits one more
+villager." — `theFarmBesideTheHouseBondsAndMiraSaysWhatItGives`); the train
+beat says why ("More hands gather more", its held line `trainLine`: "Next,
+gather food at the berries to train a new villager."); a NEWCOMER beat of its
+own, happy (`excited`), meets the first villager born ("A new villager joins
+our clan! More hands for food, wood and stone." —
+`aNewVillagerIsMetWithAHappyLineOfItsOwn`) before the hall's gathering
+("Next, a bigger hall. Gather the food, wood and stone it needs.") and the
+raise ("Tap the hall, then Upgrade. A bigger hall, a stronger clan.").
+**THE CARD LESSON PLAYS MASTER BUILDERS** (`CFG.PROLOGUE.PICK`,
+`Deck.prologue`, `Prologue.deckPick`; tests/prologue.mjs
+`andItIsMasterBuilders`, `gameTwoPlaysMasterBuildersBeforeTheBarracks` —
+operator, build 191: "For game 1, make Master Builder the default card. It
+fits perfectly with the Level 2 hall being built … If we don't have a
+specific card we play for a specific reason in game 2 … we could rely on
+this card for the teaching"): game 1's win pays Master Builders (a Bronze
+card, so 0018's `grant_prologue` takes it as any of its tier — no
+migration); game 2's card lesson comes after the road and BEFORE the
+barracks, names the card when held ("Cards can help. Play Master Builders:
+our next buildings stand at once.") and `deckPick` takes it first, so the
+barracks, range and tower stand the moment they are placed; a device that
+holds none plays any card as before. Then **WHY A BARRACKS** (`danger`, the
+same day: "add a little more context … these are dangerous times … If it
+can't fit on 1 card, maybe we expand to 2 cards"): "Dangerous times. Wolves,
+raiders, or the clan that burned us may strike.", then "So we need soldiers.
+Build a barracks to train them." (`andTheBarracksLineSaysWhy`).
+**GAME 2 MENDS, ASKS A GREY BUTTON, AND KEEPS TO ITS SIDE OF THE WALL** (the
+same day, three rulings; tests/prologue.mjs `thenTheScoutsDamageIsMended`,
+`aGreyButtonIsTappedAndSaysWhatIsMissing`, `andNoGatherRingPointsPastTheWall`):
+right after the scout falls, `mend` ("teach the player how to repair a wall
+by clicking on the wall that is on fire") rings a villager, then the most
+hurt section (`Prologue.hurtFort`), and holds until it is whole — passed
+over when he landed no blow. Before the hall's gathering, `greyed` ("teach
+them that they can click on greyed out things and then see a notification
+about what they're missing … right beneath Mira") rings the hall's grey
+Upgrade; a tap on any `#panel .cant` is the deed (`_greyAt`, a capture
+listener), and the refusal now NAMES the shortfall for everyone:
+`Bld.canUpgrade` carries `short` (`Bld.shortfall`: "123 wood and 5 stone")
+and the panel toasts "Not enough resources: still needs …", under her card
+like every toast. And every gather target the guide picks (`workFor`) is on
+the HOME SIDE of the player's wall line when that side holds any
+(`Prologue.homeSide`: a flood from the hall's doorstep with every wall and
+gate of the player's — built, rising or open — as solid; "this instruction
+sends someone to build north of the wall we just created … send them to one
+of the bushes inside the players territory").
 **THE GUIDE ANSWERS A TAP WITHIN A SECOND**
 (`_phaseOf` / `_viewOf` / `_show`, tests/prologue.mjs
 `andEveryTapWasAnsweredWithinASecond` and its game 2 and 3 twins — operator,
@@ -7753,6 +7816,22 @@ counts ROCK — a green skirt weighs `KIT_GREEN_W` 0.3 — and a tile needs
 per pixel only on a border, or the worst map's first bake rose from ~0.9s to
 ~1.5s); **ORCHARDS ARE SCATTERED** (twelve variants per density, small and
 large trees mixed, never in rows).
+**THE CHUNKS MEET WITHOUT A SEAM** (`R.snapper`, `TerrainX.drawGround` /
+`drawStandIn`, `Roads.draw`; tests/terrain-v4.mjs §13 — operator, build 191:
+"grid lines are appearing on the map… on mobile there are no lines… You
+should never see grid lines"): a chunk (and a tile of road) is drawn into a
+world rect whose edges fall between device pixels at most zooms, and a
+GPU-backed canvas (desktop Chrome) antialiases the edge of every image it
+draws, so the pixel two neighbours share was covered twice at part strength
+and the black under the ground showed through — a dark hairline every eight
+tiles. The headless software canvas the suites ran on drew no seam, which is
+how it shipped. `R.snapper(g)` moves each rect to whole device pixels under
+the transform in force, every edge rounded on its own, so neighbours meet
+edge to edge (half a device pixel of movement at most; a rotating transform
+is left alone). Anything else drawn as ABUTTING pictures goes through it
+too. §13a measures the rects (any browser, the snap stood down as the
+control); §13b reads the pixels in a GPU-backed Chromium (ANGLE over
+SwiftShader) and says so when the control shows no seam there.
 
 **TERRAIN V5 — THE LAND'S REGIONAL CHARACTER** (`js/terrain-v5.js`, the `P5`
 branches of `tools/terrain-core.src.js`; `tests/terrain-v4.mjs` §8–11; operator,

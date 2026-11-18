@@ -1639,6 +1639,11 @@ CFG.PROLOGUE = {
   GAMES: 3,
   // the card each game's win pays, once per player, ever (migration 0018's grant_prologue)
   CARD: { 1: 'bronze', 2: 'iron', 3: 'imperial' },
+  /* …and the card itself where a game names one (operator, build 191: "For game 1, make
+     Master Builder the default card. It fits perfectly with the Level 2 hall being built,
+     and honestly it's a helpful card for future first games"): of that game's tier, so
+     0018's grant_prologue takes it as it takes any; game 2's card lesson plays it */
+  PICK: { 1: 'master_builders' },
   /* THE ORIGINS GAME 3 DEALS (three of these six): easy to read, each changes
      the opening where the player can see it on day one, none needs water or
      a shore — Homesteader and Refugee Host (more hands at once), Grainkeeper,

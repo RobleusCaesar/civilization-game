@@ -19,6 +19,22 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 191, date: '2026-11-18', title: 'No more grid lines',
+    items: [
+      'Faint grid lines no longer cross the map on a computer. The ground and the roads now meet without a seam at every zoom.',
+      'The First Fire opens on the new land: Mira tells you the clan has arrived in an untamed world and needs food.',
+      'Mira now says what a home beside a farm gives you: a tenth more food and room for one more villager.',
+      'She explains why you train villagers, cheers when the first new villager joins the clan, and tells you how to raise the hall.',
+      'The gold sparkle on the top bar is brighter and lasts longer, so you can see each harvest arrive.',
+      'Winning the first game now always earns Master Builders, and the second game teaches you to play it before your barracks, range and tower go up.',
+      'Before the barracks, Mira warns that wolves, raiders and the clan that burned your home may strike.',
+      'After the scout falls, Mira shows you how to mend the damaged wall with a villager.',
+      'Tapping a grey Upgrade button now tells you exactly what you are still missing, and the second game shows you how.',
+      'Mira only sends your people to gather on your own side of the wall.',
+      'The burned home is now her last word in the first game, a hint of who is still out there.',
+    ],
+  },
+  {
     build: 190, date: '2026-11-18', title: 'A farm beside the home',
     items: [
       'In The First Fire, Mira has you build your first house right beside the berry bush, and once the bush is picked bare, a farm on the soil it leaves.',

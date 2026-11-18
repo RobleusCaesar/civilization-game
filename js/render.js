@@ -6934,6 +6934,24 @@ const R = {
 
   viewW() { return this.cv.width / this.dpr; },
   viewH() { return this.cv.height / this.dpr; },
+  /* A MOSAIC MEETS WITHOUT A SEAM (tests/terrain-v4.mjs §13 — operator, build 191:
+     "grid lines are appearing on the map… You should never see grid lines"). Anything
+     drawn as abutting pictures — the V4 ground's chunks, a road's tiles — lands its edges
+     between device pixels at most zooms, and a GPU-backed canvas (desktop Chrome)
+     antialiases the edge of every image it draws: the pixel two neighbours share is
+     covered twice at part strength and what lies under them shows through as a hairline.
+     R.snapper(g) answers a function that moves a world rect to whole device pixels under
+     the transform in force, each edge rounded on its own, so two neighbours round their
+     shared edge alike and meet edge to edge. A picture moves half a device pixel at most;
+     a transform that rotates is handed back unchanged. */
+  snapper(g) {
+    const m = g.getTransform();
+    if (m.b || m.c || !m.a || !m.d) return (x, y, w, h) => [x, y, w, h];
+    return (x, y, w, h) => {
+      const X0 = Math.round(m.a * x + m.e), Y0 = Math.round(m.d * y + m.f), X1 = Math.round(m.a * (x + w) + m.e), Y1 = Math.round(m.d * (y + h) + m.f);
+      return [(X0 - m.e) / m.a, (Y0 - m.f) / m.d, (X1 - X0) / m.a, (Y1 - Y0) / m.d];
+    };
+  },
   // the camera's band in (fractional) tiles — what the building loop culls to
   viewTiles() {
     const TL = CFG.TILE, x0 = this.cam.x / TL, y0 = this.cam.y / TL;

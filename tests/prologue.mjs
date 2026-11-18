@@ -668,7 +668,9 @@ const endScreen = async (p) => {
     const v = P._shown;
     return { id: v.id, phase: v.phase, line: line0, good: v.good, inHand: tile(v.ring.call(P)), none: tile(none), taps, price: JSON.stringify(P.goalCost()) };
   });
-  ck('aHeldLineAndItsRingNameOneGood', tr.id === 'train' && tr.phase === 'held' && /needs more food/.test(tr.line) && /berries/.test(tr.line)
+  /* …and says WHY (operator, build 191: "Next we must collect more food so we can expand and
+     add more villagers … Make why we create villagers more obvious") */
+  ck('aHeldLineAndItsRingNameOneGood', tr.id === 'train' && tr.phase === 'held' && /gather food/.test(tr.line) && /berries/.test(tr.line) && /new villager/.test(tr.line)
     && tr.good === 'food' && tr.inHand === 'food' && tr.none === 'hand' && tr.taps[0] === 'hand' && tr.taps[1] === 'food' && tr.price === '{"food":50}', JSON.stringify(tr));
   // a building's own price, never the hall's; and the named good, never spread(), for the hand in hand
   const bk = await p.evaluate(() => {
@@ -1137,19 +1139,24 @@ const endScreen = async (p) => {
     const P = Prologue, m = Scenarios.live().marks;
     UI.exitPlacement && UI.exitPlacement();
     window.__fl2 = [];
-    const real = P.flutter; P.flutter = function (c) { window.__fl2.push(c); return real.call(this, c); };
+    window.__big = {};
+    const real = P.flutter; P.flutter = function (c, big) { window.__fl2.push(c); if (big) window.__big[c] = 1; return real.call(this, c, big); };
     const h = Bld.place('P', 'house', m.houseSite[0], m.houseSite[1], { free: true, noAutoAssign: true }); Bld.finish(h);
     const f = Bld.place('P', 'farm', m.berries[0], m.berries[1], { free: true, noAutoAssign: true });
     G.simStep(0.05, 0.05);
     const wait = P._shown && P._shown.phase;
     Bld.finish(f);
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
-    const out = { wait, line: P._el.txt.textContent, id: P._shown && P._shown.id, bonded: !!Bld.homesteadOf(f), fl: window.__fl2.slice(),
+    const out = { wait, line: P._el.txt.textContent, id: P._shown && P._shown.id, bonded: !!Bld.homesteadOf(f), fl: window.__fl2.slice(), big: window.__big,
       room: Bld.homesteadPop ? Bld.homesteadPop(h) : null };
     P.flutter = real;
     return out;
   });
-  ck('theFarmBesideTheHouseBondsAndMiraSaysWhatItGives', bond.bonded && bond.id === 'bond' && /home beside its farm/.test(bond.line) && bond.fl.includes('food') && bond.fl.includes('pop'),
+  /* in numbers (operator, build 191: "explain what the player gets by building a house next to
+     a farm. Make the dazzle a little more noticeable"): the line says the tenth and the bed,
+     and both chips flutter big */
+  ck('theFarmBesideTheHouseBondsAndMiraSaysWhatItGives', bond.bonded && bond.id === 'bond' && /10% more food/.test(bond.line) && /one more villager/.test(bond.line)
+    && bond.fl.includes('food') && bond.fl.includes('pop') && bond.big.food && bond.big.pop,
     JSON.stringify(bond));
   await ctx.close();
 }
@@ -1180,9 +1187,11 @@ const endScreen = async (p) => {
       nob: document.body.classList.contains('pro-nobuild'), tab: !!(tg && getComputedStyle(tg).display !== 'none') };
   });
   ck('andGameOneOpensWithNoBuildMenu', e1.nob && !e1.tab, 'pro-nobuild ' + e1.nob + ', Build tab shown ' + e1.tab);
-  ck('theGuideSpeaksFirst', e1.up && /berries/i.test(e1.txt), JSON.stringify(e1));
-  // and says in a breath why the clan starts again: another clan burned its home (the hook of game 3)
-  ck('andSaysAnotherClanBurnedTheOldHome', /another clan/i.test(e1.txt) && /burn/i.test(e1.txt), e1.txt);
+  ck('theGuideSpeaksFirst', e1.up && /food/i.test(e1.txt), JSON.stringify(e1));
+  /* and opens on the new land (operator, build 191: "Rewrite the first line to something
+     like, 'We have arrived in an untamed world. Send our people to gather food so we do
+     not go hungry.'") — the burned home is game 1's last word now (below) */
+  ck('andOpensOnAnUntamedWorld', /untamed world/i.test(e1.txt) && /hungry/i.test(e1.txt) && !/burn/i.test(e1.txt), e1.txt);
   const run = await follow(p, 700);
   ck('gameOneIsWonByFollowingTheGuideAlone', run.over && run.clicks > 4, `over ${run.over} at ${run.clk.toFixed(0)} s of play, ${run.clicks} taps, lines ${run.seen.map(s => s.id).join(' › ')}`);
   ck('andEveryLineItSaidWasShort', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
@@ -1203,7 +1212,15 @@ const endScreen = async (p) => {
   ck('andTheFarmStandsOnThePickedBushBondedToTheHouse', ['farm', 'bond'].every(k => win.done.includes(k)) && win.farm && win.house && win.bond
     && ord.indexOf('house') < ord.indexOf('farm') && ord.indexOf('farm') < ord.indexOf('bond') && ord.indexOf('bond') < ord.indexOf('train'),
     JSON.stringify({ farm: win.farm, house: win.house, bond: win.bond }) + ' ' + ord.join(' › '));
+  /* THE NEWCOMER IS MET (operator, build 191: "when the villager was created the game skipped
+     right to 'Raise the hall!' Give Mira a happy look and say, 'A new villager joins our
+     clan.'"): a line of its own, happy, between the training and the hall's gathering */
+  const nc = run.seen.find(s => s.id === 'newcomer');
+  ck('aNewVillagerIsMetWithAHappyLineOfItsOwn', !!nc && win.done.includes('newcomer') && ord.indexOf('train') < ord.indexOf('newcomer') && ord.indexOf('newcomer') < ord.indexOf('grow')
+    && run.said.some(t => /A new villager joins our clan/.test(t)), (nc ? JSON.stringify(nc) : 'never said') + ' ' + ord.join(' › '));
   ck('theHallWinsAndTheGuideHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
+  // …and it names the clan that burned the old home: the hook game 2's riders and game 3's raid answer
+  ck('andHerLastWordNamesTheClanThatBurnedTheirHome', /burned our home/i.test(win.txt), win.txt);
   await p.waitForFunction(() => Prologue._asking, null, { timeout: 12000 }).catch(() => {});
   const ask = await p.evaluate(() => ({ asking: !!Prologue._asking, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '', name: (document.querySelector('#proElder .peIn') || {}).value || '' }));
   ck('andAsksWhatThePeopleShouldCallTheChief', ask.asking && /call you/i.test(ask.txt) && ask.name.length > 1, JSON.stringify(ask));
@@ -1213,6 +1230,9 @@ const endScreen = async (p) => {
   const chief = await p.evaluate(() => localStorage.getItem('neo-chief'));
   ck('theNameIsTheChiefs', chief === 'Tester', 'neo-chief ' + chief);
   ck('theFirstWinPaysOneBronzeCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:1': ['bronze'] }), JSON.stringify(end.runs));
+  // …and it is Master Builders (operator, build 191: "For game 1, make Master Builder the default card")
+  const pro1 = await p.evaluate(() => { try { return (Deck.col().runs['pro:1'] || []).map(c => c.id); } catch (e) { return String(e); } });
+  ck('andItIsMasterBuilders', JSON.stringify(pro1) === '["master_builders"]', JSON.stringify(pro1));
   ck('andTheEndScreenOpensTheJourneysTwoDoors', end.doors.includes('pro-next:Continue the journey') && end.doors.includes('pro-random:Play a random world'), end.doors.join(', '));
   ck('andSaysWhatComesNext', /Growing Clan/.test(end.line), end.line);
   ck('theWinIsKeptOnTheDevice', !!(end.prog.done && end.prog.done[1]), JSON.stringify(end.prog));
@@ -1270,6 +1290,8 @@ const endScreen = async (p) => {
 /* ---- 4. game 2, by following the guide: the deck is taught, the hall rises to 3 ---- */
 {
   const { p, ctx } = await page('?prologue=1', { 1: Date.now() - 60000 });
+  // the card game 1's win paid (CFG.PROLOGUE.PICK): the card lesson plays it
+  await p.evaluate(() => { Deck._add('master_builders', 1); Deck.saveCol(); });
   await p.click('#btnBegin');
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   await p.waitForTimeout(3000);
@@ -1284,7 +1306,23 @@ const endScreen = async (p) => {
     const bd = Bld.damage;
     Bld.damage = function (b, amt) { if (b && b.owner === 'P' && b.key === 'wall' && Prologue.scout && Prologue.scout()) window.__scout.wall++; return bd.apply(this, arguments); };
     const t = UI._showToast;
-    if (t) UI._showToast = function (msg) { if (Prologue._shown && /^(wall|scout|gate)/.test(Prologue._shown.id)) window.__scout.toasts.push(String(msg)); return t.apply(this, arguments); };
+    window.__grey = [];
+    if (t) UI._showToast = function (msg) {
+      if (Prologue._shown && /^(wall|scout|gate)/.test(Prologue._shown.id)) window.__scout.toasts.push(String(msg));
+      if (/still needs/.test(String(msg))) window.__grey.push(String(msg));
+      return t.apply(this, arguments);
+    };
+    // every gather target the guide points at, and whether it stood on the town's side of the wall
+    window.__out = [];
+    const wf = Prologue.workFor;
+    Prologue.workFor = function (u, res) {
+      const r = wf.apply(this, arguments);
+      if (r && Prologue.lineForts().length === 3) {
+        const h = Prologue.homeSide(), i = (r.y | 0) * CFG.W + (r.x | 0);
+        if (h && !(h[i - 1] || h[i + 1] || h[i - CFG.W] || h[i + CFG.W])) window.__out.push((res || '?') + ' at ' + (r.x | 0) + ',' + (r.y | 0));
+      }
+      return r;
+    };
   });
   const run = await follow(p, 1400);
   const g2w = await p.evaluate(() => ({ done: Object.keys((S.pro && S.pro.done) || {}),
@@ -1293,7 +1331,9 @@ const endScreen = async (p) => {
     scout: window.__scout, scoutLeft: !!Prologue.scout(),
     roads: Object.keys((S.map && S.map.roads) || {}).length + S.buildings.filter(b => b.owner === 'P' && b.key === 'road').length,
     up: S.units.filter(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)).length,
-    lodgeAt: (S.buildings.find(b => b.owner === 'P' && b.key === 'lodge') || {}), tc: Bld.tcOf('P') }));
+    lodgeAt: (S.buildings.find(b => b.owner === 'P' && b.key === 'lodge') || {}), tc: Bld.tcOf('P'),
+    playedIds: (S.deck && S.deck.played) || [], mbPlayed: JSON.stringify((S.deck && S.deck.played) || []).includes('master_builders'),
+    grey: window.__grey, out: window.__out, hurt: !!Prologue.hurtFort() }));
   const lodgeD = g2w.lodgeAt.x != null ? Math.hypot(g2w.lodgeAt.x - g2w.tc.x, g2w.lodgeAt.y - g2w.tc.y) : 99;
   /* THE LAKE ISLES' SIX WORKS (operator, build 184: "Add roads, hunters lodge, barracks,
      archers towers and walls to level 2"): each taught and standing, an archer on the
@@ -1311,8 +1351,29 @@ const endScreen = async (p) => {
     && g2w.line.length === 3, `lines ${order.join(' › ')}; the line ${g2w.line.join(', ')}`);
   ck('thenAScoutComesToTheWallAndFallsToTheTowersArcher', g2w.done.includes('scout') && at('scout') > at('wall3') && !g2w.scoutLeft
     && g2w.scout.fromTower >= 3 && g2w.scout.fromTower === g2w.scout.hits, JSON.stringify(g2w.scout));
-  ck('thenASectionIsCutIntoAGateAndOpened', ['gate', 'opengate'].every(k => g2w.done.includes(k)) && at('gate') > at('scout') && at('opengate') > at('gate') && at('deck') > at('opengate')
+  /* THE CARD LESSON PLAYS GAME 1's MASTER BUILDERS BEFORE THE BARRACKS (operator, build 191),
+     so the barracks, range and tower stand the moment they are placed; then a warning of its
+     own says why a barracks ("these are dangerous times … animals, enemy villagers, or the
+     others"), then the instruction */
+  ck('gameTwoPlaysMasterBuildersBeforeTheBarracks', g2w.done.includes('deck') && at('road') < at('deck') && at('deck') < at('danger') && at('danger') < at('barracks')
+    && run.said.some(t => /Play Master Builders/.test(t)) && g2w.mbPlayed,
+    `lines ${order.join(' › ')}; played ${JSON.stringify(g2w.playedIds)}`);
+  ck('andTheBarracksLineSaysWhy', g2w.done.includes('danger') && run.said.some(t => /Dangerous times/.test(t) && /clan that burned us/.test(t))
+    && run.said.some(t => /So we need soldiers\. Build a barracks/.test(t)), [...run.said].filter(t => /Dangerous|barracks/i.test(t)).join(' | '));
+  ck('thenASectionIsCutIntoAGateAndOpened', ['gate', 'opengate'].every(k => g2w.done.includes(k)) && at('gate') > at('scout') && at('opengate') > at('gate')
     && g2w.line.filter(x => x === 'gate').length === 1 && g2w.line.filter(x => x === 'wall').length === 2, `the line ${g2w.line.join(', ')}; lines ${order.join(' › ')}`);
+  /* MEND WHAT HE BROKE (operator, build 191): right after the scout, a villager is sent to the
+     hurt section and it is whole again before the gate is cut */
+  ck('thenTheScoutsDamageIsMended', g2w.scout.wall > 0 && g2w.done.includes('mend') && at('scout') < at('mend') && at('mend') < at('gate') && !g2w.hurt
+    && run.said.some(t => /Mend the damaged wall/.test(t)), `blows on the wall ${g2w.scout.wall}; lines ${order.join(' › ')}; still hurt ${g2w.hurt}`);
+  /* A GREY BUTTON SAYS WHAT IT IS MISSING (operator, build 191): before the hall's gathering,
+     the grey Upgrade is tapped and the refusal names the goods still wanting */
+  ck('aGreyButtonIsTappedAndSaysWhatIsMissing', g2w.done.includes('greyed') && at('greyed') < at('grow') && g2w.grey.length > 0 && /\d+ (food|wood|stone|gold)/.test(g2w.grey[0]),
+    `toasts ${JSON.stringify(g2w.grey)}; lines ${order.join(' › ')}`);
+  /* THE HOME SIDE OF THE WALL (operator, build 191: "this instruction sends someone to build north
+     of the wall we just created … send them to one of the bushes inside the players territory"):
+     once the line stands, no gather ring points past it */
+  ck('andNoGatherRingPointsPastTheWall', !g2w.out.length, g2w.out.slice(0, 6).join('; ') || 'all inside');
   ck('andTheLineToolSaysNothingOverTheGuide', !g2w.scout.toasts.some(t => /Drag along|Wall line|needs a builder|walled in|under attack/i.test(t)), g2w.scout.toasts.join(' | ') || 'quiet');
   ck('gameTwoIsWonByFollowingTheGuideAlone', run.over && run.played >= 1, `over ${run.over} at ${run.clk.toFixed(0)} s, ${run.clicks} taps, cards played ${run.played}, lines ${run.seen.map(s => s.id).join(' › ')}`);
   ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
