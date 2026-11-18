@@ -6695,6 +6695,7 @@ const R = {
     this._sky = null; this._fireFx = null; this._shake = null; this._flash = null; this._burnLayout = null; this._smoulder = null;   // the sky's acts are render state too
     this.bondSparks = [];                                        // …nor a homestead's gold
     this.roadSparks = [];                                        // …nor a road's twinkle
+    this._gSel = new Map(); this._gSelB = new Map();             // …nor a ring's snap (R.GRING: reused ids start afresh)
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
     // caller has somewhere better to spend the wait (see deferBake)
@@ -12390,6 +12391,337 @@ const R = {
     g.restore();
     return { x: sx, y: sy, r: rr, head, span, w: w0 };
   },
+  /* THE GOLD RING ON THE GROUND (operator, build 188, on a phone shot of the
+     journey's ring hanging over a villager: "it's pretty generic, it just
+     kind of floats over the character … higher quality, higher pixel count
+     … a ring around the character, but the ring is on the ground, and where
+     the character is standing the ring goes behind the character … it
+     should pulse … little sparkles going upwards toward the sky … a little
+     narrower … anchored to the ground … once you click on there's a tiny
+     flurry of gold sparkles … branch it over to normal play, any mode: when
+     you click people they are highlighted … visible, but not overwhelm the
+     screen"). ONE PAINTER for every ring that says "this one": a unit's (an
+     ellipse with his soles in its middle), a tile's (a rounder ellipse
+     round the ground it marks) and a building's (a wide ellipse round the
+     foot of its art). It is laid ON THE GROUND, before whatever stands
+     there is drawn — the unit's sprite, the building's art, a bush or a tree
+     laid back from the terrain cache — so the ring runs BEHIND it and is
+     seen broken where the body stands. A bevelled gold band at the device's
+     own pixels on a dark ink edge (thin gold over the meadow reads olive; the
+     ink keeps it gold), its crest lit from the north-west, in three styles:
+       'sel'    the player's own in hand: a glint runs round it, and the
+                moment it is taken it SNAPS (lands from wider) and throws a
+                flurry of gold sparks (drawGRingBurst)
+       'foe'    anyone else's in hand: rust, still, no flurry
+       'guide'  the journey's chosen one (Prologue.groundRings): a broader
+                band that breathes, a halo of light, a ripple rolling out of
+                it each breath, motes and twinkles rising off it toward the
+                sky — the ones off its far side behind whatever stands in it,
+                the near ones in front — fading in and out as the line moves
+     Everything is a pure function of the render clock and the thing's id (a
+     frozen frame is a still frame), no RNG, nothing in S or a save, clipped
+     to the board; reduced motion keeps the ring and drops the movement. */
+  GRING: {
+    ratio: 0.42,      // a unit's ring: ry / rx (his shadow's own plane is 0.375)
+    unitR: 11.5,      // world px: its half-width at a 32 box (the kind's box scales it)
+    footY: 12,        // world px below his logical y: the foot of his box…
+    footIn: 3.2,      // …less this (× the box's scale): where his soles are drawn, so he stands in its middle
+    tileR: 0.74,      // tiles: a ringed tile's half-width at most…
+    tileRatio: 0.72,  // …and its depth (the ground is seen from high above)
+    bldW: 0.74,       // a building's ring: its half-width as a share of the footprint's side (+ bldPad)…
+    bldPad: 0.12,     // tiles
+    bldY: 0.66,       // …its centre this far down the footprint (the art stands on its front)…
+    bldRatio: 0.52,   // …and its depth
+    flat: 0.72,       // an ellipse's band lies on the ground: its front and back this thin
+    band: 1.75,       // CSS px of gold at play zoom (thinner zoomed out; the guide's ×1.3)
+    ink: 0.9,         // CSS px of dark ink each side of the band
+    glintS: 2.8,      // s a lap of the glint round a ring in hand
+    pulseS: 1.6,      // s a breath of the guide's ring
+    snapS: 0.36,      // s a ring taken in hand takes to land
+    burstS: 0.75,     // s the flurry flies
+    burstN: 14,       // sparks in one unit's flurry (a crowd taken at once throws fewer each)
+    burstMax: 56,     // …about this many in all when a crowd is taken (two each at the least)
+    glintMax: 6,      // the glint runs round the rings of at most this many in hand (a crowd's are calm)
+    motes: 9,         // the guide's rising motes
+    rise: 1.3,        // tiles one climbs
+    fadeIn: 0.42,     // s the guide's ring takes to arrive…
+    fadeOut: 0.3,     // …and to go
+  },
+  // a unit's ring, in world px, at his drawn feet (wx, wy: tiles — a builder's lean)
+  gringOfUnit(u, wx, wy) {
+    const G = this.GRING, TL = CFG.TILE, s = this.unitBox(u) / TL;
+    const rx = G.unitR * s * (Units.isNaval && Units.isNaval(u) ? 1.3 : 1);
+    return { cx: wx * TL, cy: wy * TL + G.footY - G.footIn * s, rx, ry: rx * G.ratio };
+  },
+  // a tile's (x, y: tiles — the mark's own centre; r its reach in tiles)
+  gringOfTile(x, y, r) {
+    const G = this.GRING, TL = CFG.TILE, rx = TL * Math.max(0.5, Math.min(G.tileR, (r || 0.8) * 0.92));
+    return { cx: x * TL, cy: y * TL, rx, ry: rx * G.tileRatio };
+  },
+  // a building's: an ellipse round the foot of its art (which stands on the footprint's front)
+  gringOfBld(b) {
+    const G = this.GRING, TL = CFG.TILE, bs = Bld.size(b), bw = bs * TL, rx = bw * G.bldW + G.bldPad * TL;
+    return { cx: (b.x + bs / 2) * TL, cy: b.y * TL + bw * G.bldY, rx, ry: rx * G.bldRatio };
+  },
+  _gStill() {
+    const n = performance.now();
+    if (this._gStillAt == null || n - this._gStillAt > 2000) {
+      this._gStillAt = n;
+      try { this._gStillV = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { this._gStillV = false; }
+    }
+    return this._gStillV;
+  },
+  _gClip(g) {
+    if (!this.boardPx) return;
+    const b = this.boardPx();
+    g.beginPath(); g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); g.clip();
+  },
+  /* draws ring q (world px — a gringOf* answer) in style st, o = { a its
+     strength (a fade), s its scale (a snap), t the render clock (s), seed
+     (the thing's id), flash (0..1: the crest burns white as it lands) } */
+  drawGRing(g, q, st, o) {
+    o = o || {};
+    const a = o.a == null ? 1 : o.a;
+    if (!q || !g || !g.getTransform || !(a > 0.01)) return;
+    const G = this.GRING, m = g.getTransform(), k = Math.hypot(m.a, m.b) || 1, u = this.dpr || 1;
+    const sx = m.a * q.cx + m.c * q.cy + m.e, sy = m.b * q.cx + m.d * q.cy + m.f;
+    const guide = st === 'guide', foe = st === 'foe', still = this._gStill();
+    const t = o.t || 0, seed = o.seed || 0, z = (this.cam && this.cam.z) || 1;
+    const bw = Math.max(1.05, Math.min(2.3, 0.92 + 0.5 * z)) * G.band / 1.75 * (guide ? 1.3 : 1) * u, ink = G.ink * u;
+    const beat = guide && !still ? Math.sin((t / G.pulseS + seed * 0.137) * Math.PI * 2) : 0;
+    const sc = (o.s || 1) * (1 + 0.045 * beat), fy = G.flat;
+    const hx = q.rx * k * sc, hy = q.ry * k * sc / fy;
+    if (hx < 2 * u) return;
+    const W = g.canvas ? g.canvas.width : 1e9, H = g.canvas ? g.canvas.height : 1e9, pad = hx * 0.7 + 14 * u;
+    if (sx + hx + pad < 0 || sx - hx - pad > W || sy + hy * fy + pad < 0 || sy - hy * fy - pad > H) return;
+    const path = f => { g.beginPath(); g.ellipse(0, 0, Math.max(0.5, hx * f), Math.max(0.5, hy * f), 0, 0, Math.PI * 2); };
+    const T = this.LIGHT.TONE.gold, K = this.FX_TIE;
+    // the glint runs round a ring of our own — never a crowd's (a crowd in hand is calm)
+    const glint = !foe && !still && !!g.createConicGradient && (guide || this._gSel.size <= G.glintMax);
+    g.save();
+    this._gClip(g);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    /* A RING AT REST is laid from its own picture, made once for its size
+       (_gPic): the band and its crest never change, so a crowd in hand costs a
+       blit a man — the running glint alone is drawn live over it */
+    if (!guide && sc === 1 && !(o.flash > 0.01)) {
+      const c = this._gPic(foe, hx, hy, bw, ink, fy);
+      const ox = Math.round(sx - c.width / 2), oy = Math.round(sy - c.height / 2);
+      g.globalAlpha = a;
+      g.drawImage(c, ox, oy);
+      if (glint) { g.translate(ox + c.width / 2, oy + c.height / 2); g.scale(1, fy); this._gGlint(g, path, t, seed, false, bw); }
+      g.restore();
+      return;
+    }
+    g.translate(sx, sy);
+    g.scale(1, fy);                        // the stroke lies on the ground too: thinner at its front and back
+    g.lineJoin = 'round';
+    // 1 THE GUIDE'S LIGHT — a halo round the band and a ripple rolling out of
+    // it each breath: light (its hue tied to its lift, R.FX_TIE), never paint
+    if (guide) {
+      const light = (f, widths, lifts) => {
+        g.globalCompositeOperation = 'color';
+        const hue = g.globalCompositeOperation === 'color';
+        if (hue) for (let i = 0; i < widths.length; i++) { g.globalAlpha = Math.min(1, K * lifts[i]); g.strokeStyle = T.hue; g.lineWidth = widths[i]; path(f); g.stroke(); }
+        g.globalCompositeOperation = 'screen';
+        for (let i = 0; i < widths.length; i++) { g.globalAlpha = Math.min(1, lifts[i] * (hue ? 1 : 0.7)); g.strokeStyle = T.ramp[3]; g.lineWidth = widths[i] * 0.8; path(f); g.stroke(); }
+        g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      };
+      const br = 0.8 + 0.2 * beat;
+      light(1, [bw * 5.4, bw * 3.4, bw * 2], [0.035 * a * br, 0.065 * a * br, 0.11 * a * br]);
+      if (!still) {
+        const p = (((t / G.pulseS + seed * 0.137 + 0.25) % 1) + 1) % 1, f = Math.pow(1 - p, 1.7) * a;
+        if (f > 0.02) light(1 + 0.42 * p, [bw * 2.6, bw * 1.3], [0.06 * f, 0.13 * f]);
+      }
+    }
+    // 2–3 THE INK AND THE BAND
+    g.globalAlpha = a;
+    this._gBand(g, path, foe, bw, ink);
+    // 4 THE GLINT: a white-hot head running round a ring of our own, its tail behind it
+    if (glint) this._gGlint(g, path, t, seed, guide, bw);
+    // 5 A RING JUST TAKEN burns white along its crest as it lands
+    if (o.flash > 0.01) { g.globalAlpha = a * Math.min(1, o.flash); g.strokeStyle = 'rgba(' + this.rgbOf(T.hot) + ',0.95)'; g.lineWidth = bw * 0.5; path(1); g.stroke(); }
+    g.restore();
+  },
+  /* the ink and the bevelled band of a ring (path(f) its ellipse, the transform
+     already at its centre and laid on the ground): a dark edge both sides — what
+     keeps it gold over the meadow — a deep gold rim, a brighter gold core, and
+     a crest lit from the north-west, dimming round to the south-east */
+  _gBand(g, path, foe, bw, ink) {
+    g.lineJoin = 'round';
+    g.strokeStyle = foe ? 'rgba(42,10,4,0.62)' : 'rgba(26,14,4,0.64)';
+    g.lineWidth = bw + ink * 2; path(1); g.stroke();
+    const C = foe ? ['#86281a', '#cf5a3c', '#ffd8c6'] : ['#b9781f', '#f2c35a', '#fff3cc'];
+    g.strokeStyle = C[0]; g.lineWidth = bw; path(1); g.stroke();
+    g.strokeStyle = C[1]; g.lineWidth = bw * 0.62; path(1); g.stroke();
+    const crest = 'rgba(' + this.rgbOf(C[2]) + ',';
+    if (g.createConicGradient) {
+      const cg = g.createConicGradient(-Math.PI * 0.75, 0, 0);
+      const lit = foe ? 0.55 : 0.95, dim = foe ? 0.08 : 0.16;
+      cg.addColorStop(0, crest + lit + ')'); cg.addColorStop(0.25, crest + (dim + lit) / 2.4 + ')');
+      cg.addColorStop(0.5, crest + dim + ')'); cg.addColorStop(0.75, crest + (dim + lit) / 2.4 + ')'); cg.addColorStop(1, crest + lit + ')');
+      g.strokeStyle = cg;
+    } else g.strokeStyle = crest + (foe ? 0.3 : 0.5) + ')';
+    g.lineWidth = bw * 0.26; path(1); g.stroke();
+  },
+  // the glint: a white-hot head on a lap of the ring, its tail of light behind it
+  _gGlint(g, path, t, seed, guide, bw) {
+    const G = this.GRING, T = this.LIGHT.TONE.gold;
+    const ga = (((t / (guide ? G.glintS * 0.8 : G.glintS) + seed * 0.29) % 1) + 1) % 1 * Math.PI * 2;
+    const cg = g.createConicGradient(ga, 0, 0), hot = 'rgba(' + this.rgbOf(T.hot) + ',', crest = 'rgba(' + this.rgbOf('#fff3cc') + ',';
+    cg.addColorStop(0, hot + '1)'); cg.addColorStop(0.014, hot + '0)'); cg.addColorStop(0.84, crest + '0)'); cg.addColorStop(0.97, crest + '0.7)'); cg.addColorStop(1, hot + '1)');
+    g.strokeStyle = cg; g.lineWidth = bw * 0.6; path(1); g.stroke();
+  },
+  /* a ring at rest's own picture: its band drawn once at its size, at the
+     device's pixels, and kept (the last few sizes: a pinch makes new ones) */
+  _gPics: new Map(),
+  _gPic(foe, hx, hy, bw, ink, fy) {
+    const key = (foe ? 'f' : 's') + Math.round(hx * 4) + ',' + Math.round(hy * 4) + ',' + Math.round(bw * 8) + ',' + Math.round(ink * 8);
+    let c = this._gPics.get(key);
+    if (c) { this._gPics.delete(key); this._gPics.set(key, c); return c; }
+    const half = bw / 2 + ink + 2;
+    c = document.createElement('canvas');
+    c.width = 2 * Math.ceil(hx + half); c.height = 2 * Math.ceil((hy + half) * fy);
+    const x = c.getContext('2d');
+    x.translate(c.width / 2, c.height / 2);
+    x.scale(1, fy);
+    this._gBand(x, f => { x.beginPath(); x.ellipse(0, 0, Math.max(0.5, hx * f), Math.max(0.5, hy * f), 0, 0, Math.PI * 2); }, foe, bw, ink);
+    this._gPics.set(key, c);
+    if (this._gPics.size > 24) this._gPics.delete(this._gPics.keys().next().value);
+    return c;
+  },
+  /* THE GUIDE'S MOTES rising off ring q toward the sky — `back` true: those
+     whose foot is on the ring's far side (drawn before what stands in it, so
+     they rise behind it); false: the near ones (drawn after, in front). Each on
+     its own loop, a fresh place on the ring every climb. */
+  drawGRingMotes(g, q, o, back) {
+    const G = this.GRING, TL = CFG.TILE, a = o.a == null ? 1 : o.a, t = o.t || 0, seed = o.seed || 0, sc = o.s || 1;
+    if (!(a > 0.02) || this._gStill()) return;
+    g.save();
+    this._gClip(g);
+    for (let i = 0; i < G.motes; i++) {
+      const h0 = this._fxHash(i, seed), h1 = this._fxHash(seed + 3, i), sp = 0.34 + 0.22 * h1;
+      const run = t * sp + h0, ph = run - Math.floor(run), cyc = Math.floor(run);
+      const ang = this._fxHash(i * 31 + cyc, seed + 11) * Math.PI * 2, sn = Math.sin(ang);
+      if ((sn < 0) !== !!back) continue;
+      // a mote grows in and SHRINKS away — never fades: gold thinned over the meadow goes brown
+      const size = Math.min(1, ph / 0.12) * Math.min(1, (1 - ph) / 0.45);
+      if (size < 0.06) continue;
+      const x = q.cx + Math.cos(ang) * q.rx * sc + Math.sin(ph * 5.2 + i * 1.7) * 2.2;
+      const y = q.cy + sn * q.ry * sc - ph * G.rise * TL * (0.75 + 0.5 * h1);
+      if (i % 3 === 0) this.fxSpark(g, x, y, (2.3 + 1.3 * h1) * size * (0.8 + 0.2 * Math.sin(ph * 19 + i)), a, 'gold', { rot: ph * 1.6 });
+      else this.fxDot(g, x, y, (1.05 + 0.5 * h0) * size, a, 'gold');
+    }
+    g.restore();
+  },
+  /* THE FLURRY: a ring taken in hand throws gold sparks off itself, out
+     along the ground and up toward the sky, slowing as they fade, and a
+     breath of light rolls out of it — `age` s after it was taken; n sparks
+     (a crowd taken at once throws fewer each) */
+  drawGRingBurst(g, q, age, seed, n) {
+    const G = this.GRING, TL = CFG.TILE, p = age / G.burstS;
+    if (!(p >= 0 && p < 1) || !(n > 0) || this._gStill()) return;
+    g.save();
+    this._gClip(g);
+    // the sparks SHRINK as they go, never fade (gold thinned over the meadow goes brown)
+    const e = 1 - Math.pow(1 - p, 2.4), size = Math.min(1, (1 - p) / 0.6);
+    if (p < 0.45) this.fxRing(g, q.cx, q.cy, q.rx * (1 + 0.65 * e), 0.55 * (1 - p / 0.45), 'gold', { css: 1.7, squash: q.ry / q.rx });
+    for (let i = 0; i < n; i++) {
+      const h0 = this._fxHash(i, seed), h1 = this._fxHash(seed + 7, i), h2 = this._fxHash(i + 13, seed + 5);
+      const ang = (i + 0.4 * h0) / n * Math.PI * 2, c = Math.cos(ang), sn = Math.sin(ang);
+      const out = (0.3 + 0.6 * h1) * q.rx * e;                       // out along the ground…
+      const up = (0.3 + 0.7 * h2) * TL * 0.9 * e;                     // …and up toward the sky
+      const x = q.cx + c * (q.rx + out), y = q.cy + sn * (q.ry + out * q.ry / q.rx) - up;
+      if (i % 2) this.fxSpark(g, x, y, (2.2 + 1.1 * h2) * size, 1, 'gold', { rot: ang + p * 2.5 });
+      else this.fxDot(g, x, y, 1.25 * size, 1, 'gold');
+    }
+    g.restore();
+  },
+  /* WHAT WAS TAKEN IN HAND, AND WHEN: the moment a unit or a building enters
+     the selection its ring snaps and throws its flurry. Read off UI.sel each
+     frame, so every way of taking something in hand — a tap, a double tap, a
+     banner, the panel — gets it and nothing has to remember to ask. Render
+     state only (R.onNewGame forgets it). */
+  _gSel: new Map(),
+  _gSelB: new Map(),
+  gringTick(selIds, bid, now) {
+    const G = this.GRING;
+    let fresh = 0;
+    if (selIds) for (const id of selIds) if (!this._gSel.has(id)) fresh++;
+    const n = fresh ? Math.max(2, Math.min(G.burstN, Math.floor(G.burstMax / fresh))) : 0;
+    if (selIds) for (const id of selIds) if (!this._gSel.has(id)) this._gSel.set(id, { t0: now, n });
+    for (const id of this._gSel.keys()) if (!selIds || !selIds.has(id)) this._gSel.delete(id);
+    if (bid != null && !this._gSelB.has(bid)) this._gSelB.set(bid, { t0: now, n: G.burstN });
+    for (const id of this._gSelB.keys()) if (id !== bid) this._gSelB.delete(id);
+  },
+  // the snap of a ring taken in hand at `now`: { a, s, flash, age, n } (a ring long held: still)
+  gringSel(rec, now) {
+    if (!rec) return { a: 1, s: 1, flash: 0, age: 1e9, n: 0 };
+    const G = this.GRING, age = now - rec.t0, p = Math.max(0, Math.min(1, age / G.snapS));
+    if (this._gStill()) return { a: Math.min(1, p * 3), s: 1, flash: 0, age, n: 0 };
+    const c1 = 1.70158, c3 = c1 + 1, back = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+    return { a: Math.min(1, p * 3.2), s: 1.34 - 0.34 * back, flash: Math.max(0, 1 - age / (G.snapS * 1.5)), age, n: rec.n };
+  },
+  /* a ring laid on the ground UNDER what stands in it (q: a gringOf* answer;
+     rec: its taking in hand, or null; gr: the journey's ring there, or null):
+     the band and its far motes now, and what gringOver draws after the body */
+  gringUnder(g, q, owner, seed, rec, gr, now) {
+    const G = this.GRING, own = owner === 'P', sl = rec ? this.gringSel(rec, now) : null;
+    // in hand: the ring snaps in (the journey's ring, leaving as the line moves on, crosses it)
+    if (sl) this.drawGRing(g, q, own ? 'sel' : 'foe', { a: sl.a, s: sl.s, t: now, seed, flash: sl.flash });
+    const o = gr ? { a: gr.a, s: gr.s, t: now, seed } : null;
+    if (o) { this.drawGRing(g, q, 'guide', o); this.drawGRingMotes(g, q, o, true); }
+    return { q, o, st: o ? 'guide' : own ? 'sel' : 'foe', seed, burst: sl && own && sl.age < G.burstS ? sl : null };
+  },
+  gringOver(g, r) {
+    if (r.st === 'guide') this.drawGRingMotes(g, r.q, r.o, false);
+    if (r.burst) this.drawGRingBurst(g, r.q, r.burst.age, r.seed, r.burst.n);
+  },
+  /* THE JOURNEY'S RINGS this frame (Prologue.groundRings — the guide's own
+     fade in and out), sorted by what they stand round: a unit (by id), a
+     building (by id: a {x,y} mark on a footprint rings the footprint) or a
+     plain tile (a list). Null with no journey ring. */
+  gringGuide(now) {
+    const P = window.Prologue;
+    if (!P || !P.groundRings || !S || !S.scenario) return null;
+    let list = null;
+    try { list = P.groundRings(now); } catch (e) { list = null; }
+    if (!list || !list.length) return null;
+    const out = { units: new Map(), blds: new Map(), tiles: [] };
+    for (const r of list) {
+      const raw = r.raw;
+      if (!raw) continue;
+      if (raw.u !== undefined) { if (!out.units.has(raw.u)) out.units.set(raw.u, r); continue; }
+      if (raw.x === undefined) continue;
+      const b = Bld.at(Math.floor(raw.x), Math.floor(raw.y));
+      if (b && b.key !== 'road') { if (!out.blds.has(b.id)) out.blds.set(b.id, r); }
+      else out.tiles.push(r);
+    }
+    return out;
+  },
+  /* a guide's ring round a plain tile: laid on the ground, and then whatever
+     stands on that ground — the bush, the tree, the stone, laid back from the
+     terrain cache (under V4 a layer of objects over open transparency) — goes
+     back over it, so the ring runs behind them as it runs behind a man. Under
+     the classic painters the cache is opaque ground: nothing is laid back. */
+  drawGRingTile(g, r, now) {
+    const raw = r.raw, q = this.gringOfTile(raw.x, raw.y, raw.r), o = { a: r.a, s: r.s, t: now, seed: r.seed || 0 };
+    this.drawGRing(g, q, 'guide', o);
+    this.drawGRingMotes(g, q, o, true);
+    const TX = window.TerrainX;
+    if (this.terrainCache && TX && TX.on && TX._painted) {
+      const TL = CFG.TILE, ex = q.rx * 1.25 + 4, x0 = Math.max(0, Math.floor(q.cx - ex)), y0 = Math.max(0, Math.floor(q.cy - q.ry - TL * 1.3));
+      const x1 = Math.min(this.terrainCache.width, Math.ceil(q.cx + ex)), y1 = Math.min(this.terrainCache.height, Math.ceil(q.cy + q.ry * 1.25 + 4));
+      if (x1 > x0 && y1 > y0) {
+        g.save();
+        this._gClip(g);
+        // the 9-argument form: the V4 hook lays its ground only under a whole-cache draw
+        g.drawImage(this.terrainCache, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+        g.restore();
+      }
+    }
+    this.drawGRingMotes(g, q, o, false);
+  },
   cardBldLooks() {
     if (!window.Deck) return null;
     let out = null;
@@ -15936,6 +16268,14 @@ const R = {
        — so the box is measured in FOOTPRINTS around the footprint, plus a
        tile. A building wholly outside it cannot put a pixel on screen.
        Render-only: nothing the sim reads is filtered. */
+    /* THE GOLD RINGS (R.GRING): what is in hand and what the journey points
+       at, worked out once for the frame — the building pass and the unit pass
+       both lay them on the ground under what stands in them */
+    const gNow = performance.now() / 1000;
+    const gSel = !UI.sel ? null : UI.sel.type === 'unit' ? new Set([UI.sel.id]) : UI.sel.type === 'group' ? new Set(UI.sel.ids) : null;
+    const gSelB = UI.sel && UI.sel.type === 'bld' ? UI.sel.id : null;
+    this.gringTick(gSel, gSelB, gNow);
+    const gGuide = this.gringGuide(gNow);
     const { x0: cvx0, y0: cvy0, x1: cvx1, y1: cvy1 } = this.viewTiles();
     const blds = [];
     for (const b of S.buildings) {
@@ -15981,6 +16321,8 @@ const R = {
     if (window.Roads && Roads.draw) Roads.draw(g);
     // THE GROUND UNDER A BUILDING (js/footing.js): every building's shadow and yard, before any building
     if (window.Footing && Footing.ground) Footing.ground(g, blds);
+    // the journey's ring round a plain tile (a bush, a tree, a stone): on the ground, behind what grows there
+    if (gGuide) for (const r of gGuide.tiles) this.drawGRingTile(g, r, gNow);
     for (const b of blds) {
       if (b.key === 'road') continue;   // a road site is drawn with the roads, as ground
       const bs = Bld.size(b);
@@ -15992,6 +16334,9 @@ const R = {
       if (!this._bHasFort && (b.key === 'wall' || b.key === 'gate' || b.key === 'tower')) this._bHasFort = true;
       const bx = b.x * TL, by = b.y * TL, bw = bs * TL;
       if (b._fall) { this.drawHallFall(g, b, bx, by, bw); continue; }
+      // a building in hand, or the one the journey points at, stands in its gold ring on the ground
+      const gBr = gSelB === b.id || (gGuide && gGuide.blds.has(b.id))
+        ? this.gringUnder(g, this.gringOfBld(b), b.owner, b.id + 7919, gSelB === b.id ? this._gSelB.get(b.id) : null, gGuide && gGuide.blds.get(b.id), gNow) : null;
       if (b.construction > 0 || b.upgrading > 0) {
         // a work site — going up for the first time OR being upgraded. Both
         // wear the scaffold so it's plainly unusable until the work is done.
@@ -16134,10 +16479,8 @@ const R = {
       if (b.key === 'wonder' && !(b.construction > 0)) this.drawWonderShine(g, b, bx, by, bw);
       this.drawBurn(g, b, bx, by, bw);   // fires ride on work sites and finished buildings alike
       if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
-      if (UI.sel && UI.sel.type === 'bld' && UI.sel.id === b.id) {
-        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
-        g.strokeRect(bx + 0.5, by + 0.5, bw - 1, bw - 1);
-      }
+      // its near motes, and the flurry the moment it was taken in hand
+      if (gBr) this.gringOver(g, gBr);
     }
     g.restore();
 
@@ -16300,10 +16643,18 @@ const R = {
       const lean = this.workLean(u);
       const wx = lean ? lean.x : u.x, wy = lean ? lean.y : u.y;
       const ux = wx * TL - B / 2, uy = wy * TL + TL / 2 - CFG.SPRITE_LIFT - B;
-      if (selIds && selIds.has(u.id)) {
-        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
-        g.beginPath(); g.ellipse(wx * TL, wy * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
-      }
+      /* THE GOLD RING ON THE GROUND (R.GRING): one in hand, or the one the
+         journey points at, stands in its ring — laid now, before his body, so
+         the ring runs behind him; the near motes and the flurry after him */
+      const gRing = (selIds && selIds.has(u.id)) || (gGuide && gGuide.units.has(u.id));
+      // sheet units get the renderer's shadow; the procedural cast has its own
+      // baked in and must never receive a second (sheetUnit). Naval sheets bake
+      // their own WATER shadow — a ground ellipse under a hull reads as a
+      // sandbar, so boats are skipped too. It is laid UNDER his ring: the gold
+      // lies over the shade on the ground, never dimmed by it.
+      const gShade = !(u.dieT != null && u.dieT > 0) && !(u.burnT > 0) && this.sheetUnit(u) && !Units.isNaval(u) && !u.spectral;
+      if (gShade) this.drawUnitShadow(g, u, wx, wy);
+      const gUr = gRing ? this.gringUnder(g, this.gringOfUnit(u, wx, wy), u.owner, u.id, selIds && selIds.has(u.id) ? this._gSel.get(u.id) : null, gGuide && gGuide.units.get(u.id), gNow) : null;
       // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
       // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
       if (u.dieT != null && u.dieT > 0) {
@@ -16366,11 +16717,7 @@ const R = {
           g.globalAlpha = 1;
         }
       } else {
-        // sheet units get the renderer's shadow; the procedural cast has
-        // its own baked in and must never receive a second (sheetUnit).
-        // Naval sheets bake their own WATER shadow — a ground ellipse
-        // under a hull reads as a sandbar, so boats are skipped too.
-        if (this.sheetUnit(u) && !Units.isNaval(u) && !u.spectral) this.drawUnitShadow(g, u, wx, wy);
+        // (his shadow is laid above, under his ring)
         const img = this.unitSprite(u), D = this.frameBox(u, img, B);
         const dx0 = wx * TL - D / 2, dy0 = this.frameTop(wy, B, D);
         /* A CARD'S OWN PEOPLE wear their own look (js/deckfx-army.js): the
@@ -16385,6 +16732,7 @@ const R = {
         // a blow just taken: one white beat over the sprite (js/battlefx.js)
         if (bfx && !u.spectral) bfx.drawFlash(g, u, img, dx0, dy0, D, D);
       }
+      if (gUr) this.gringOver(g, gUr);
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard
         g.fillStyle = u.owner === 'P' ? '#c0e8ff' : '#ffb0a0';
         for (let ci = 0; ci < u.cargo.length; ci++)
@@ -16411,10 +16759,8 @@ const R = {
       if ((u.spectral || this.summons.length) && this.unitHidden(u)) continue;   // not out of its light / the ground yet
       const B = this.unitBox(u);
       const ux = u.x * TL - B / 2, uy = u.y * TL + TL / 2 - CFG.SPRITE_LIFT - B;
-      if (selIds && selIds.has(u.id)) {
-        g.strokeStyle = '#e8c15a'; g.lineWidth = 1.5;
-        g.beginPath(); g.ellipse(u.x * TL, u.y * TL + 10, 10, 5, 0, 0, Math.PI * 2); g.stroke();
-      }
+      if (selIds && selIds.has(u.id)) this.drawGRing(g, this.gringOfUnit(u, u.x, u.y), u.owner === 'P' ? 'sel' : 'foe', { a: 0.85, t: gNow, seed: u.id });
+      else if (gGuide && gGuide.units.has(u.id)) { const gr = gGuide.units.get(u.id); this.drawGRing(g, this.gringOfUnit(u, u.x, u.y), 'guide', { a: 0.85 * gr.a, s: gr.s, t: gNow, seed: u.id }); }
       g.globalAlpha = 0.32;
       const img = this.unitSprite(u), D = this.frameBox(u, img, B);
       // a ghost's silhouette is its cold light, never a colour soldier's

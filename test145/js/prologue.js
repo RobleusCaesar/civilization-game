@@ -1671,7 +1671,7 @@ const Prologue = {
       const lk = this._shown.look.call(this);
       if (lk) this._look(lk, this._resolve(lk), B);
     }
-    this._ringTo(E, open ? tgt : null);
+    this._ringTo(E, open ? tgt : null, raw);
     // the task line: the standing objective, whatever line is up
     this._task(E);
     // the line: open, or folded to its strip once the player is working on it
@@ -1748,10 +1748,20 @@ const Prologue = {
     const cv = R.cv && R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { left: 0, top: 0 };
     return { x: cv.left + (wx * TL - R.cam.x) * z, y: cv.top + (wy * TL - R.cam.y) * z - lift * z, r: rr * TL * z };
   },
-  _ringTo(E, t) {
+  _ringTo(E, t, raw) {
     const r = E.ring;
+    /* a target in the world is ringed ON THE GROUND by the renderer (R.drawGRing); the
+       element stays, unseen, where it is. A man up a tower's stairs or on its platform
+       stands on no ground the renderer rings: his ring stays the element's, as it was */
+    let ground = !!(t && !t.rect && raw && (raw.u !== undefined || raw.x !== undefined));
+    if (ground && raw.u !== undefined) {
+      const u = typeof Units !== 'undefined' && Units.get ? Units.get(raw.u) : null;
+      if (!u || u.perch || u.climb) ground = false;
+    }
+    this._gSet(ground ? raw : null);
     if (!t) { r.style.display = 'none'; return; }
     r.style.display = '';
+    r.classList.toggle('ground', ground);
     if (t.rect) {
       /* a box hugs its element 5px outside it — but never past the screen's
          edge: round a full-width button (a panel's one action, the wall's
@@ -1770,6 +1780,42 @@ const Prologue = {
       r.style.left = (t.x - rad) + 'px'; r.style.top = (t.y - rad) + 'px';
       r.style.width = r.style.height = (rad * 2) + 'px';
     }
+  },
+  /* THE RING ON THE GROUND (operator, build 188: "it just kind of floats over
+     the character … a ring around the character, but the ring is on the
+     ground … the fade in and fade out with … gold sparkles"). A target in
+     the world — a unit, a tile, a building — is ringed by the renderer
+     (R.drawGRing, its 'guide' style: at his feet, behind him, breathing,
+     motes rising off it), and #proRing stands over it unseen (`.ground`):
+     the taps and the checks still read where the ring is. The ring fades in
+     where the line points and out where it pointed; R asks for both each
+     frame (groundRings). Render state, never in S or a save. */
+  _gr: null,
+  _grOut: [],
+  _gKey(raw) { return raw.u !== undefined ? 'u' + raw.u : 't' + Math.round(raw.x * 4) + ',' + Math.round(raw.y * 4); },
+  _gSet(raw) {
+    const now = performance.now() / 1000, k = raw ? this._gKey(raw) : null;
+    if (this._gr && this._gr.w !== S) { this._gr = null; this._grOut = []; }
+    if ((this._gr ? this._gr.k : null) === k) { if (raw) this._gr.raw = raw; return; }
+    if (this._gr) { this._grOut.push({ k: this._gr.k, raw: this._gr.raw, t1: now, seed: this._gr.seed }); if (this._grOut.length > 4) this._grOut.shift(); }
+    this._gr = raw ? { k, raw, t0: now, w: S, seed: raw.u !== undefined ? raw.u : Math.round(raw.x * 7 + raw.y * 13) } : null;
+  },
+  // the rings R draws this frame: { raw, a (its fade), s (its scale), seed }
+  groundRings(now) {
+    const E = this._el;
+    if (!E || E.root.style.display === 'none' || !S || !S.scenario) return [];
+    if (this._gr && this._gr.w !== S) { this._gr = null; this._grOut = []; }
+    const G = (typeof R !== 'undefined' && R.GRING) || { fadeIn: 0.42, fadeOut: 0.3 }, out = [];
+    if (this._gr) {
+      const p = Math.max(0, Math.min(1, (now - this._gr.t0) / G.fadeIn)), e = 1 - Math.pow(1 - p, 3);
+      out.push({ raw: this._gr.raw, a: e, s: 1 + 0.24 * (1 - e), seed: this._gr.seed });
+    }
+    this._grOut = this._grOut.filter(o => now - o.t1 < G.fadeOut && now >= o.t1);
+    for (const o of this._grOut) {
+      const p = (now - o.t1) / G.fadeOut;
+      out.push({ raw: o.raw, a: 1 - p, s: 1 + 0.1 * p, seed: o.seed });
+    }
+    return out;
   },
   /* THE TASK LINE (operator, build 186): the standing objective, in the card's
      header where her name stood, and on the folded strip. A goal is "Head" or
@@ -2318,6 +2364,8 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
   pointer-events: none; animation: proPulse 1.4s ease-in-out infinite; box-sizing: border-box; }
 #proRing.box { border-radius: 10px; }
 #proRing.box.wide { animation-name: proPulseW; }
+/* a target in the world is ringed on the ground by the renderer (R.drawGRing): the element stands there unseen */
+#proRing.ground { border-color: transparent; box-shadow: none; animation: none; }
 @keyframes proPulse { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.12); opacity: .55 } }
 @keyframes proPulseW { 0%,100% { opacity: 1 } 50% { opacity: .5 } }
 #proElder { position: fixed; display: none; box-sizing: border-box; pointer-events: auto; padding: 12px 34px 13px 12px; gap: 12px; align-items: center;
