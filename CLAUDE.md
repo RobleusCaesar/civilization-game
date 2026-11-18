@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 teaches food, wood and stone, game 2 is islands and lakes and teaches the hunt and the lodge where the deer fell (near home), a road, a barracks, a range, a manned tower and a wall, game 3 the stations on their worked ground and the seam; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 teaches food, wood and stone, game 2 is islands and lakes and teaches the hunt and the lodge where the deer fell (near home), a road, a barracks, a range, a manned tower and a wall, game 3 the stations on their worked ground and the seam; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1599,7 +1599,7 @@ BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
 the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
 NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE
 SCRIPT** (`Prologue.SCRIPTS[g]`) is beats — a line of fifteen words or fewer
-with ONE instruction, a face, a goal for the tracker, `when` (held until true;
+with ONE instruction, a face, a goal for the card's task line, `when` (held until true;
 its `hold(coming)` line says what it is short of — "A house needs more wood.
 Gather it at the trees.", and once every hand is on it "… It is coming in."),
 `ack` (the ORDER given: the line answers the order, never its result),
@@ -1705,8 +1705,43 @@ tap on it lets it go — game 2's farm looped there);
 the ✓ is rung only while the ghost's verdict is good, a ghost a slip moved is
 pointed back to its site (a tap jumps it there), and a placement armed afresh
 seats again; the idle hand's arrival shows the target once more wherever the
-camera went; and the toasts step below the goal tracker AND the guide's card
-seated at the top (`_toastStep`, `--pro-h`). **MIRA** (`Prologue.NAME` /
+camera went; and the toasts step below the guide's card or its strip
+(`_toastStep`, `--pro-h`). **THE CARD STAYS AT THE TOP AND CARRIES THE TASK**
+(`Prologue._seat` / `_task` / `_fitTask` / `_cardOver` / `_mapStep`,
+tests/prologue.mjs §2f — operator, build 186, with two phone shots: "The
+instructions keep changing from the bottom to the top. Since the build menu
+is in the bottom, let's fix the instructions to the top … instead a separate
+gold tag for the task (e.g. Build a Wall) … incorporate that into the image
+text … The key is not to make the instructions any taller … the 'New' tag in
+the build menu is cut off"): ONE SEAT under the top bar (and under the
+rival's wonder banner while it stands) — a phone's whole width, a desktop's
+420 at the left, a phone on its side 44% at the left — never moved to clear
+a target. The look brings what a line points at into the ground the card
+leaves open (beside a narrow card, else below it, each landing tried where
+the clamped camera can really go), and it asks of where the card SITS,
+shown or not (`_cardOver`): asked of the card's display, a card folded over
+its target vouched for the ground and nothing moved — on a phone on its
+side the card and its strip both stood aside and no line showed at all. A
+target the camera cannot bring out folds the card to its strip while it
+lasts (the strip too, if it covers it). There is no tracker: the card's
+header line, where her name stood, carries the goal — "Deed" or "Deed: Food
+30/50 · Wood 5/30" (`buildGoal`), each good drawn with the top bar's own
+icon (`TASK_IC`, a drawn house for the hall's support), at exactly the
+height her name took (12px + 4.5px), so the card is no taller for it; it
+never wraps (`_fitTask`: the goods already in give way, then the type steps
+down, then the diamond goes, then the goods close up, then the deed is cut);
+on the operator's 430px phone no deed of the journey is cut short. Her name
+is a gold plate on her portrait's frame, the fold arrow (▴) at the card's
+foot so the line has the margin. FOLDED, the card is a strip in its own
+corner — her portrait and the same task line, ▾ to open it where it was. An
+OPENED MAP over the card's corner stands below it (`--pro-map`, read by
+#miniWrap and #miniToggle), and back in its corner beside the strip. A build
+card is ringed from the moment the menu opens, riding in with it from past
+the screen's edge, but never while its middle crosses the strip of the bar's
+own wood between the menu's edge and the screen's (`_resolve`): a tap there
+landed on nothing (and held to the menu, the ring came a second late). And a card's NEW tag is whole: the
+menu reaches 6px up into the bar's padding and its margin takes the 6px
+back (`#buildmenu`), since a scroller clips at its padding box. **MIRA** (`Prologue.NAME` /
 `FACES` / `_warmFaces`, `assets/ui/mira/`, tests/prologue.mjs
 `herNineFacesAreDrawnAndEveryLineWearsOne` — operator, build 181: "Swap the
 image of the village elder for a younger woman … pretty but not aggressively

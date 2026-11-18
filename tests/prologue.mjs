@@ -772,6 +772,180 @@ const endScreen = async (p) => {
   await ctx.close();
 }
 
+/* ---- 2f. THE CARD STAYS AT THE TOP AND CARRIES THE TASK (operator, build 186,
+   with two phone shots: "The instructions keep changing from the bottom to the
+   top. Since the build menu is in the bottom, let's fix the instructions to the
+   top, so they don't shift all over the place. Additionally, instead a separate
+   gold tag for the task (e.g. Build a Wall), why don't we incorporate that into
+   the image text, maybe where it says Mira … The key is not to make the
+   instructions any taller … the 'New' tag in the build menu is cut off").
+     ONE SEAT    the card stands under the top bar whatever its line points at
+                 — the Build tab, a card in the open menu, a villager low or
+                 high on the screen (the look brings a covered target out
+                 below it); the old seats flipped between the foot and the
+                 top with the target
+     THE TASK    there is no separate tracker: the card's header line — where
+                 her name stood — carries the standing objective, her name is
+                 a plate on her portrait, and the card is exactly as tall as
+                 the same line was under the old "MIRA" header; on the
+                 operator's 430px phone no deed of the journey is cut short
+     FOLDED      a strip in the card's own corner, with the same task line;
+                 a tap opens the card where it was
+     THE MAP     opened over the card's corner, it stands below the card
+     NEW         a build card's NEW tag is whole inside the menu, and the card
+                 itself has not moved ---- */
+{
+  const ctx = await b.newContext({ viewport: { width: 430, height: 727 }, deviceScaleFactor: 2 });
+  await ctx.addInitScript((d) => {
+    try { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('neo-prologue', JSON.stringify({ v: 1, at: Date.now() - 600000, veteran: false, done: d })); sessionStorage.setItem('seeded', '1'); } } catch (e) {}
+  }, { 1: Date.now() - 60000 });
+  const p = await ctx.newPage();
+  p.on('pageerror', e => errs.push(String(e)));
+  await p.goto('file://' + join(root, 'index.html') + '?prologue=1', { waitUntil: 'domcontentloaded' });
+  await p.waitForFunction(() => window.Screens && Screens.current === 'title' && !document.getElementById('splash'), null, { timeout: 30000 }).catch(() => {});
+  await p.waitForTimeout(500);
+  await p.click('#btnBegin').catch(() => {});
+  await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_2', null, { timeout: 40000 }).catch(() => {});
+  await p.waitForTimeout(3500);   // the establishing glide
+  const at = (id, res) => p.evaluate(([id, res]) => {
+    const P = Prologue;
+    if (UI.cancelPlacement) UI.cancelPlacement();
+    UI.deselect && UI.deselect();
+    if (UI.setMenuCollapsed) UI.setMenuCollapsed(true);
+    Object.assign(S.res, res);
+    // the beat afresh: a line once asked stays asked, whatever the stores do after
+    delete S.pro.said[id]; delete S.pro.done[id];
+    S.pro.i = P._beats.findIndex(x => x.id === id); P._shown = null; P._viewKey = null; P._aside = null;
+    P._collapsed = false; P._userHid = false;
+    for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
+    return P._shown && P._shown.id;
+  }, [id, res]);
+  const card = () => p.evaluate(() => {
+    const E = Prologue._dom(), r = E.elder.getBoundingClientRect(), ring = Prologue._el.ring;
+    const rr = ring.style.display !== 'none' ? ring.getBoundingClientRect() : null;
+    return { shown: E.elder.style.display !== 'none', x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: r.height,
+      bottom: r.bottom, ring: rr && { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2 }, sel: (Prologue._shown && Prologue._shown.ring && (Prologue._shown.ring.call(Prologue) || {}).sel) || null };
+  });
+  // the tower beat, its line pointing four ways
+  const seen = [];
+  await at('tower', { wood: 200, stone: 200, gold: 100 });
+  await p.waitForTimeout(500);
+  seen.push(['the Build tab', await card()]);
+  await p.evaluate(() => { UI.deselect && UI.deselect(); if (UI.setMenuCollapsed) UI.setMenuCollapsed(false); });
+  await p.waitForTimeout(700);
+  seen.push(['a card in the open menu', await card()]);
+  // a villager to send, parked under the card's own seat: the look brings it out below
+  await at('tower', { wood: 10, stone: 5 });
+  await p.evaluate(() => {
+    const P = Prologue, s = P._seatBox, ring = P._shown.ring.call(P), z = R.cam.z, TL = CFG.TILE;
+    if (!ring || ring.u === undefined && ring.x === undefined) return;
+    const u = ring.u !== undefined ? Units.get(ring.u) : null, wx = u ? u.x : ring.x, wy = u ? u.y - CFG.SPRITE_LIFT / TL : ring.y;
+    R.cam.x = wx * TL - (s.x + s.w / 2) / z; R.cam.y = wy * TL - (s.y + s.h / 2) / z; if (R.clampCam) R.clampCam();
+    P._looked = null; P._lookStuck = null;
+  });
+  await p.waitForTimeout(1200);   // the look's glide
+  const low = await card();
+  seen.push(['a target that was under it', low]);
+  const under = await p.evaluate(() => { const P = Prologue, t = P._resolve(P._shown.ring.call(P)); return t ? { covered: P._seatCovers(P._seatBox, P._seatBox.w, P._seatBox.h, t), hit: (document.elementFromPoint(t.x, t.y) || {}).id } : null; });
+  const s0 = seen[0][1];
+  ck('theCardStaysAtTheTopWhateverItsLinePointsAt', seen.every(([, c]) => c.shown && c.x === s0.x && c.y === s0.y) && s0.y < 727 * 0.25
+    && seen[0][1].sel === '#bmToggle' && /^\.bbtn/.test(seen[1][1].sel || '') && !seen[2][1].sel,
+    seen.map(([k, c]) => `${k} (${c.sel || 'the world'}): ${c.shown ? c.x + ',' + c.y : 'hidden'}`).join('; '));
+  ck('andATargetUnderItIsBroughtOutBelow', !!under && !under.covered && under.hit === 'c' && !!low.ring && low.ring.y > low.bottom, JSON.stringify({ under, ring: low.ring, cardBottom: low.bottom }));
+  // the task rides in the card: no tracker, the header line carries it, her name is on her portrait
+  const task = await p.evaluate(() => {
+    const E = Prologue._dom(), row = E.elder.querySelector('.peTask'), nm = E.elder.querySelector('.peName'), pic = E.elder.querySelector('.pePic');
+    const rr = row.getBoundingClientRect(), cs = getComputedStyle(row), er = E.elder.getBoundingClientRect(), nr = nm.getBoundingClientRect();
+    return { tracker: !!document.getElementById('proGoal'), text: row.textContent, head: row.querySelector('.pgt').textContent,
+      icons: row.querySelectorAll('.pgn svg').length, oneLine: rr.height <= 13.5, foot: rr.height + parseFloat(cs.marginBottom),
+      name: nm.textContent, onPic: pic.contains(nm), plateIn: nr.bottom <= er.bottom - 5 && nr.top >= er.top };
+  });
+  ck('theTaskRidesInTheCardWhereHerNameStood', !task.tracker && task.head === 'Build a watchtower' && task.icons === 2 && task.oneLine && task.foot <= 16.6 && /Wood 10\/45/.test(task.text),
+    JSON.stringify(task));
+  ck('andHerNameIsAPlateOnHerPortrait', task.name === 'Mira' && task.onPic && task.plateIn, JSON.stringify({ name: task.name, onPic: task.onPic, plateIn: task.plateIn }));
+  // no taller: the same line under the old "MIRA" header (11.5px, 5px under it) measures the same card
+  const tall = await p.evaluate(async () => {
+    const E = Prologue._dom(), row = E.elder.querySelector('.peTask'), out = [];
+    for (const line of ['Build a watchtower.', 'A tower needs more stone. Gather it at the grey rocks.', 'Walls keep raiders out. Build one on the land bridge, where the riders will come across.']) {
+      Prologue._shown = Object.assign({}, Prologue._shown, { text: line }); Prologue.say(line, 'point');
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const now = E.elder.getBoundingClientRect().height;
+      const old = document.createElement('b');
+      old.textContent = 'Mira'; old.style.cssText = "display:block;font:700 11.5px/1 'Cinzel','Times New Roman',Georgia,serif;letter-spacing:1.6px;text-transform:uppercase;margin:0 0 5px";
+      row.style.display = 'none'; row.parentNode.insertBefore(old, row);
+      const was = E.elder.getBoundingClientRect().height;
+      old.remove(); row.style.display = '';
+      out.push({ line: line.length, now: Math.round(now * 10) / 10, was: Math.round(was * 10) / 10 });
+    }
+    return out;
+  });
+  ck('andTheCardIsNoTallerForCarryingIt', tall.every(t => t.now <= t.was + 0.5), JSON.stringify(tall));
+  // folded: a strip in the card's own corner with the same task, and a tap opens the card where it was
+  await p.click('#proElder .peHide');
+  await p.waitForTimeout(300);
+  const fold = await p.evaluate(() => { const m = document.getElementById('proMini'), r = m.getBoundingClientRect(); return { shown: getComputedStyle(m).display !== 'none', x: Math.round(r.left), y: Math.round(r.top), h: r.height, task: m.querySelector('.peTask').textContent, card: getComputedStyle(document.getElementById('proElder')).display }; });
+  await p.click('#proMini');
+  await p.waitForTimeout(300);
+  const back = await card();
+  ck('foldedTheCardIsAStripInItsOwnCornerThatKeepsTheTask', fold.shown && fold.card === 'none' && fold.x === s0.x && fold.y === s0.y && fold.h <= 48 && /Build a watchtower/.test(fold.task) && back.shown && back.x === s0.x && back.y === s0.y,
+    JSON.stringify({ fold, back: { shown: back.shown, x: back.x, y: back.y } }));
+  // an opened map stands below the open card, and back in its corner beside the strip
+  const map = await p.evaluate(async () => {
+    UI.setMiniCollapsed(false);
+    await new Promise(r => setTimeout(r, 250));
+    const mr = document.getElementById('miniWrap').getBoundingClientRect(), er = document.getElementById('proElder').getBoundingClientRect();
+    Prologue._collapsed = true;
+    await new Promise(r => setTimeout(r, 250));
+    const mr2 = document.getElementById('miniWrap').getBoundingClientRect(), sr = document.getElementById('proMini').getBoundingClientRect();
+    Prologue._collapsed = false;
+    UI.setMiniCollapsed(true);
+    await new Promise(r => setTimeout(r, 100));
+    return { mapTop: mr.top, cardBottom: er.bottom, mapTop2: mr2.top, stripRight: sr.right, mapLeft2: mr2.left };
+  });
+  ck('anOpenedMapStandsBelowTheCard', map.mapTop >= map.cardBottom && map.mapTop2 < map.cardBottom && map.stripRight <= map.mapLeft2, JSON.stringify(map));
+  // no deed of the journey is cut short on this 430px phone, its goods at their longest
+  const cut = await p.evaluate(async () => {
+    const P = Prologue, E = P._dom(), row = E.elder.querySelector('.peTask'), out = [];
+    for (const g of [1, 2, 3]) {
+      const beats = (P.SCRIPTS[g] ? P.SCRIPTS[g].call(P) : []);
+      for (const b of beats) {
+        if (!b.goal) continue;
+        // every good one short of its price: the longest numbers the line can show
+        const real = P.costLine, realH = P.hallNeeds, realA = P.afford, realA2 = P.afford2;
+        const long = c => Object.keys(c || {}).filter(k => c[k]).map(k => k[0].toUpperCase() + k.slice(1) + ' ' + (c[k] - 1) + '/' + c[k]).join(' · ');
+        // game 3's monument is a fraction of the full price (CFG.MODES.prologue_3.wonderCost), as Bld.effCost reads it there
+        const price = key => { const c = Bld.effCost('P', key), f = key === 'wonder' && (CFG.MODES['prologue_' + g] || {}).wonderCost;
+          const base = Bld.buildSpec('wonder', 'P').lv.cost;
+          return f ? Object.fromEntries(Object.entries(base).map(([k, v]) => [k, Math.round(v * (f[k] != null ? f[k] : 1))])) : c; };
+        P.costLine = key => long(price(key)); P.afford = () => false; P.afford2 = () => false;
+        P.hallNeeds = () => long(Scenarios.RULES['prologue_' + g].tc[g + 1].cost) + ' · Buildings 2/3';
+        let txt = '';
+        try { txt = typeof b.goal === 'function' ? b.goal.call(P) : b.goal; } catch (e) { txt = ''; }
+        P.costLine = real; P.hallNeeds = realH; P.afford = realA; P.afford2 = realA2;
+        if (!txt) continue;
+        P._goalBeat = { goal: txt }; P._task(E); P._fitTask(row);
+        const t = row.querySelector('.pgt');
+        out.push({ g, id: b.id, txt, cut: t.scrollWidth > t.clientWidth + 0.5, fit: row.className.replace('peTask', '').trim() });
+      }
+    }
+    P._goalBeat = null; P._taskTxt = null;
+    return out;
+  });
+  const cutShort = cut.filter(c => c.cut);
+  ck('noDeedOfTheJourneyIsCutShortOnThisPhone', cut.length >= 20 && !cutShort.length, cutShort.length ? cutShort.map(c => `g${c.g} ${c.id}: "${c.txt}" (${c.fit})`).join('; ') : cut.length + ' task lines whole');
+  // the NEW tag is whole inside the menu, and the card under it has not moved
+  const nw = await p.evaluate(async () => {
+    UI.deselect && UI.deselect(); if (UI.setMenuCollapsed) UI.setMenuCollapsed(false);
+    await new Promise(r => setTimeout(r, 300));
+    const c = document.querySelector('#buildmenu .bbtn.new'), m = document.getElementById('buildmenu'), bar = document.getElementById('bottombar');
+    if (!c) return null;
+    const cr = c.getBoundingClientRect(), mr = m.getBoundingClientRect(), br = bar.getBoundingClientRect(), tag = getComputedStyle(c, '::before');
+    return { tagTop: cr.top + parseFloat(tag.top), menuTop: mr.top, cardTop: cr.top, barTop: br.top, barPad: parseFloat(getComputedStyle(bar).paddingTop), content: tag.content };
+  });
+  ck('aNewTagIsWholeInsideTheMenu', !!nw && /NEW/.test(nw.content) && nw.tagTop >= nw.menuTop - 0.5 && Math.abs(nw.cardTop - (nw.barTop + nw.barPad)) <= 1, JSON.stringify(nw));
+  await ctx.close();
+}
+
 /* ---- 2c. THE BEGIN PLATE IS READ (operator, on a phone: "The first fire
    text isn't visible and it looks crowded. It also appears to be imposed
    over the bevel of the button. Make it visible and make everything
