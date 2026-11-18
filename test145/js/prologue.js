@@ -479,7 +479,7 @@ const Prologue = {
      line drag, which takes no ✓) */
   lineRing(key, site) {
     return () => {
-      if (UI.placing === key) return this.mark(site);
+      if (UI.placing === key) return this.siteMark(site);
       const card = '.bbtn[data-key="' + key + '"]';
       if (this.vis(card)) return { sel: card };
       if (this.vis('#panel [data-act="gobuild"]')) return { sel: '#panel [data-act="gobuild"]' };
@@ -747,13 +747,49 @@ const Prologue = {
           when: () => P.has('tower', true) && !!(P.bow() || P.manned()),
           ring: () => P.manRing(), taps: () => P.manTaps(),
           done: () => P.manned(), praise: 'Sharp eyes up there!' },
+        /* THE WALL, THE SCOUT AND THE GATE (operator, build 187: "get them to
+           place it and then place the wall next to it, and then another wall.
+           It shows a completed wall. Then show an enemy coming to scout and
+           getting shot at by the archer … Then maybe teach the player how to
+           build a gate out of a wall and why this is helpful. THEN we can move
+           on to the Town Center upgrade"): three sections across the land
+           bridge, one beside the other, each with a hand on it; the finished
+           line; a scout of the wild country who comes to it and is shot down
+           from the tower; a gate cut into it, and opened */
         { id: 'wall', face: 'point', text: 'Walls keep raiders out. Build one on the land bridge.', key: 'wall',
-          goal: () => P.buildGoal('wall', 'Build a wall'),
-          when: () => P.afford('wall') || P.has('wall'), hold: (c) => P.needLine('A wall', null, c),
+          goal: () => P.wallGoal(),
+          when: () => P.afford('wall') || P.laidOnLine() >= 1, hold: (c) => P.needLine('A wall', null, c),
           on: () => Scenarios.unlock('wall'),
-          ring: P.lineRing('wall', 'wallSite'), taps: () => { const r = P.lineRing('wall', 'wallSite')(); return r ? [r] : []; },
-          ack: () => P.has('wall'), site: () => P.siteOf('wall'), wait: 'The wall is going up.',
-          done: () => P.raised('wall'), praise: 'A strong wall!' },
+          ring: P.lineRing('wall', () => P.nextLineTile()), taps: () => { const r = P.lineRing('wall', () => P.nextLineTile())(); return r ? [r] : []; },
+          ack: () => P.laidOnLine() >= 1, site: () => P.lineSite(),
+          done: () => P.laidOnLine() >= 1 && !P.lineSite(), praise: 'Good!' },
+        { id: 'wall2', face: 'point', text: 'Now build another right beside it.', key: 'wall',
+          goal: () => P.wallGoal(),
+          when: () => P.afford('wall') || P.laidOnLine() >= 2, hold: (c) => P.needLine('A wall', null, c),
+          ring: P.lineRing('wall', () => P.nextLineTile()), taps: () => { const r = P.lineRing('wall', () => P.nextLineTile())(); return r ? [r] : []; },
+          ack: () => P.laidOnLine() >= 2, site: () => P.lineSite(),
+          done: () => P.laidOnLine() >= 2 && !P.lineSite(), praise: 'Good!' },
+        { id: 'wall3', face: 'point', text: 'And one more to close the bridge.', key: 'wall',
+          goal: () => P.wallGoal(),
+          when: () => P.afford('wall') || P.laidOnLine() >= 3, hold: (c) => P.needLine('A wall', null, c),
+          ring: P.lineRing('wall', () => P.nextLineTile()), taps: () => { const r = P.lineRing('wall', () => P.nextLineTile())(); return r ? [r] : []; },
+          ack: () => P.laidOnLine() >= 3, site: () => P.lineSite(), wait: 'The wall is going up.',
+          done: () => P.lineDone(), praise: 'The bridge is closed!' },
+        // shown, never asked: no ring and no hand — the view on the wall while the archer shoots
+        { id: 'scout', face: 'surprised', text: 'A scout comes! Watch our archer on the tower.',
+          goal: 'Watch the tower',
+          on: () => P.sendScout(), look: () => P.wallView(),
+          done: () => P.scoutDone(), praise: 'The wall held!' },
+        { id: 'gate', face: 'point', text: 'A gate opens for us, never raiders. Build one in the wall.',
+          goal: () => P.gateGoal(), cost: () => P.gateCost(),
+          when: () => P.canGate() || !!P.gateOnLine(), hold: (c) => P.needLine('A gate', null, c),
+          ring: () => P.gateRing(), taps: () => { const r = P.gateRing(); return r ? [r] : []; },
+          ack: () => !!P.gateOnLine(), site: () => P.gateSite(), wait: 'The gate is going up.',
+          done: () => { const g = P.gateOnLine(); return !!g && !(g.construction > 0); }, praise: 'Well built!' },
+        { id: 'opengate', face: 'point', text: 'Gates start shut. Tap the gate and open it.',
+          goal: 'Open the gate',
+          ring: () => P.openRing(), taps: () => { const r = P.openRing(); return r ? [r] : []; },
+          done: () => { const g = P.gateOnLine(); return !!g && !(g.construction > 0) && !g.raised; }, praise: 'Our people pass freely!' },
         { id: 'deck', face: 'point', text: 'You carry cards. Tap your deck and play one.',
           goal: 'Play a card',
           skipIf: () => !(window.Deck && Deck.on && Deck.on() && Deck.total && Deck.total() > 0),
@@ -908,6 +944,120 @@ const Prologue = {
     G.reveal && G.reveal(Math.floor(from.x), Math.floor(from.y), 3);
   },
 
+  /* GAME 2's WALL ACROSS THE LAND BRIDGE (operator, build 187: "get them to
+     place it and then place the wall next to it, and then another wall. It
+     shows a completed wall"): three sections across the bridge, west to east
+     (the marks wall1..3), each laid by hand — Build, Wall, the ringed tile.
+     One builder walks a line section by section (units.js), so a section
+     waiting while its neighbour goes up is attended, never "nobody building it" */
+  LINE: ['wall1', 'wall2', 'wall3'],
+  lineTiles() { return this.LINE.map(m => this.mark(m)).filter(Boolean); },
+  fortOn(t) {
+    if (!t) return null;
+    const b = Bld.at(t.x | 0, t.y | 0);
+    return b && b.owner === 'P' && (b.key === 'wall' || b.key === 'gate') ? b : null;
+  },
+  lineForts() { return this.lineTiles().map(t => this.fortOn(t)).filter(Boolean); },
+  laidOnLine() { return this.lineForts().length; },
+  // the next section: the first gap beside a section already laid, else the first gap
+  nextLineTile() {
+    const ts = this.lineTiles(), has = ts.map(t => !!this.fortOn(t));
+    for (let i = 0; i < ts.length; i++) if (!has[i] && (has[i - 1] || has[i + 1])) return ts[i];
+    for (let i = 0; i < ts.length; i++) if (!has[i]) return ts[i];
+    return null;
+  },
+  buildsOn(u, b) { return !!(u.task && u.task.type === 'build' && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id)); },
+  // a section going up with no hand anywhere on the line: the one to send a builder to
+  lineSite() {
+    const up = this.lineForts().filter(b => b.construction > 0);
+    if (!up.length) return null;
+    const crew = S.units.some(u => u.owner === 'P' && up.some(b => this.buildsOn(u, b)));
+    return crew ? null : up[0];
+  },
+  lineDone() { const f = this.lineForts(); return f.length === this.LINE.length && f.every(b => !(b.construction > 0)); },
+  wallGoal() {
+    const n = this.laidOnLine();
+    return n >= this.LINE.length || this.afford('wall') ? 'Close the bridge: Walls ' + n + '/' + this.LINE.length
+      : 'Close the bridge: ' + this.costLine('wall');
+  },
+
+  /* THE SCOUT AT THE WALL (operator, build 187: "show an enemy coming to scout
+     and getting shot at by the archer. This gives the basic premise of
+     protection"): one light raider of the wild country comes out of the wood
+     across the bridge at SCOUT_PACE (slow enough to be watched coming), hunting
+     the player's works alone (hostileTo 'P'), and batters the closed wall while
+     the archer on the tower shoots him down. The guide only SHOWS it — no ring
+     (a ring is a tap), the view on the wall (`look`: the mainland he comes down
+     above it, the tower below), his ground lit while he comes (watch(), read by
+     G.updateVisibility), his blows on the wall the guide's own news (no "under
+     attack" toast while her line is up) — and moves on when he falls. With
+     nobody up the tower he gives up after SCOUT_DAYS and goes home, so the
+     lesson never waits on a fight that cannot happen. */
+  SCOUT_DAYS: 4,
+  SCOUT_PACE: 0.6,
+  scout() { return S.units.find(u => u.proScout && u.hp > 0) || null; },
+  sendScout() {
+    if (!S.pro || S.pro.scouted || typeof G === 'undefined' || !G.spawnBarb) return;   // G is a script const: never window.G
+    const from = this.mark('scoutFrom'); if (!from) return;
+    let u = null;
+    try { u = G.spawnBarb('light', Math.floor(from.x), Math.floor(from.y), { tribe: 'wolf' }); } catch (e) {}
+    if (!u) return;
+    u.proScout = 1; u.hostileTo = 'P'; u.style = 'band'; u.tribe = u.tribe || 'wolf';
+    u.speed = +(u.speed * this.SCOUT_PACE).toFixed(3);   // he creeps in, slow enough to be watched coming
+    S.pro.scouted = 1;
+    S.pro.scoutDay = S.day + (S.dayT || 0) / CFG.DAY_MS;
+  },
+  scoutDone() { const u = this.scout(); return !!(S.pro && S.pro.scouted) && (!u || !!u.fled); },
+  _scoutTick() {
+    const u = this.scout();
+    if (!u || u.fled || !S.pro || S.pro.scoutDay == null) return;
+    if (S.day + (S.dayT || 0) / CFG.DAY_MS - S.pro.scoutDay < this.SCOUT_DAYS) return;
+    u.fled = true; u.tUnit = 0; u.tBld = 0; u.path = null;
+    try { if (typeof Combat !== 'undefined' && Combat.raiderLeave) Combat.raiderLeave(u); } catch (e) {}
+  },
+  // his ground, lit while he comes to the wall (G.updateVisibility)
+  watch() {
+    if (typeof S === 'undefined' || !S || !S.scenario) return null;
+    const u = this.scout();
+    return u && !u.fled ? { x: u.x, y: u.y, r: 2 } : null;
+  },
+  // the scene: the bridge's wall with the mainland it faces and the tower behind it
+  wallView() { const m = this.mark('wall2'); return m ? { x: m.x, y: m.y, r: 0.5 } : null; },
+
+  /* THE GATE (operator, build 187: "teach the player how to build a gate out
+     of a wall and why this is helpful"): a section of the line, selected, is
+     cut into a gate ("Build Gate" on its panel); a player's gate is finished
+     shut, and its lever opens it — open, it lets the tribe's own people
+     through and nobody else. The middle section, unless the scout dented it:
+     a villager in hand, tapping a dented wall, is sent to mend it instead of
+     choosing it. */
+  gateOnLine() { return this.lineForts().find(b => b.key === 'gate') || null; },
+  gateSite() { const g = this.gateOnLine(); return g && g.construction > 0 ? g : null; },
+  gateWall() {
+    const walls = this.lineForts().filter(b => b.key === 'wall' && !(b.construction > 0));
+    if (!walls.length) return null;
+    const whole = b => b.hp >= b.maxhp, mid = this.fortOn(this.mark('wall2'));
+    if (mid && mid.key === 'wall' && !(mid.construction > 0) && whole(mid)) return mid;
+    return walls.find(whole) || walls[0];
+  },
+  gateCost() {
+    const w = this.gateWall();
+    return w && typeof UI !== 'undefined' && UI.gateConvertCost ? UI.gateConvertCost(w) : Bld.effCost('P', 'gate');
+  },
+  canGate() { return Bld.canAfford(this.gateCost(), S.res); },
+  gateGoal() { return this.canGate() || this.gateOnLine() ? 'Build a gate' : 'Build a gate: ' + this.priceLine(this.gateCost()); },
+  gateRing() {
+    if (this.gateOnLine()) return null;
+    const b = this.selBld('wall');
+    if (b && this.lineForts().includes(b) && this.vis('#panel [data-act="togate"]')) return { sel: '#panel [data-act="togate"]' };
+    const w = this.gateWall(); return w ? { x: Bld.cx(w), y: Bld.cy(w), r: 0.9 } : null;
+  },
+  openRing() {
+    const g = this.gateOnLine(); if (!g || g.construction > 0) return null;
+    if (this.selBld('gate') === g && this.vis('#panel [data-act="drawbridge"]')) return { sel: '#panel [data-act="drawbridge"]' };
+    return { x: Bld.cx(g), y: Bld.cy(g), r: 0.9 };
+  },
+
   /* CONTEXTUAL LINES: said over the current beat while their condition holds
      (N seconds steady), then the beat comes back. IDLE HANDS and THE WRONG
      WORK are no longer asides: a beat that waits on goods (held, or a
@@ -939,12 +1089,19 @@ const Prologue = {
     if (this.selVil()) return [at];
     const v = this.idleVil(); return v ? [{ u: v.id }, at] : [];
   },
-  // a site or a storey going up with nobody at it
+  /* a site or a storey going up with nobody at it — but a stretch of wall,
+     gate or road with a hand on the stretch beside it is attended: the
+     builder walks on to the next section by himself (the work order), so
+     three sections laid one after the other are one job, not two idle ones */
+  LINE_KEYS: { wall: 1, gate: 1, road: 1 },
   unbuilt() {
+    const on = (u, b) => u.owner === 'P' && u.task && (u.task.type === 'build') && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id);
     for (const b of S.buildings) {
       if (b.owner !== 'P' || !(b.construction > 0 || b.upgrading > 0)) continue;
-      const at = S.units.some(u => u.owner === 'P' && u.task && (u.task.type === 'build') && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id));
-      if (!at) return b;
+      if (S.units.some(u => on(u, b))) continue;
+      if (this.LINE_KEYS[b.key] && b.construction > 0 && S.buildings.some(o => o !== b && o.owner === 'P' && this.LINE_KEYS[o.key] && o.construction > 0 &&
+        Math.hypot(o.x - b.x, o.y - b.y) <= 6 && S.units.some(u => on(u, o)))) continue;
+      return b;
     }
     return null;
   },
@@ -1175,6 +1332,7 @@ const Prologue = {
     if (!S.pro) return;
     this._clk += (dt > 0 ? dt : 0);
     this._chipWatch();
+    this._scoutTick();
     const P = S.pro, now = this.now();
     for (let step = 0; step < 4; step++) {
       let b = this.beat();
@@ -1232,7 +1390,7 @@ const Prologue = {
     if (ph === 'gwait') return named({ face: 'pleased', text: () => b.hold && !S.pro.said[b.id] ? b.hold.call(P, true) : txt(b.gwait) });
     if (ph === 'hands') return Object.assign(base, { face: 'point', text: txt(b.handsText) || 'Now send a villager to build it.', ring: () => P.handsRing(b), taps: () => P.handsTaps(b) });
     if (ph === 'wait') return Object.assign(base, { face: b.waitFace || 'pleased', text: txt(b.wait), ring: () => P.gatherRing(true), taps: () => P.gatherTaps(true) });
-    return Object.assign(base, { face: b.face, text: txt(b.text), ring: b.ring, taps: b.taps, auto: b.auto, gather: b.gather });
+    return Object.assign(base, { face: b.face, text: txt(b.text), ring: b.ring, taps: b.taps, auto: b.auto, gather: b.gather, look: b.look });
   },
   /* a view's key: the beat, the phase — and, for a line that names a good, the
      good it would name NOW (need() is kept while still short, so the key moves
@@ -1351,15 +1509,28 @@ const Prologue = {
      an attack, except the scripted raid's, which the guide's own line
      announces. */
   KEEP: /☠|famine|desert|starv|was killed|monument|has raised|has fallen/i,
+  /* THE LINE TOOL'S OWN WORDS (operator, build 187, laying the bridge's three
+     sections): the arming instruction ("Drag along the ground…") and the
+     line's summary ("Wall line: 1 section — builder en route…", "…needs a
+     builder") are the guide's in a journey world — her ring shows where to tap
+     and her line asks for hands; three sections said seven things over her.
+     The seal warning is hers too while her own line asked for the closing
+     stone (the gate is the next lesson); anywhere else it is said as ever. */
+  toolQuiet(what) {
+    if (typeof S === 'undefined' || !S || !S.scenario || S.over || (window.Screens && Screens._demo) || !this._beats) return false;
+    if (what === 'sealed') { const v = this._shown; return !!(v && /^wall/.test(v.id)); }
+    return true;
+  },
   quiet(msg, warn, refusal) {
     if (refusal || typeof S === 'undefined' || !S || !S.scenario || (window.Screens && Screens._demo)) return false;
     const m = String(msg == null ? '' : msg);
     if (/under attack/i.test(m)) return this._raidSaid();
     return !this.KEEP.test(m);
   },
-  // the guide is already telling the player about the raiders (game 3's raid line, raiders in the field)
+  // the guide is already telling the player about the raiders (game 3's raid line, raiders in the field — or game 2's scout at the wall)
   _raidSaid() {
     const v = this._shown;
+    if (v && v.id === 'scout' && this.scout()) return true;
     return !!(v && v.id === 'raid' && this.raiders && this.raiders().length);
   },
 
@@ -1494,6 +1665,12 @@ const Prologue = {
        it into the open — a ring drawn over the hall's panel was tapped, and
        the tap landed on its Cancel */
     const open = Screens.current === 'playing' && !this._held ? this._look(raw, tgt, B) : true;
+    /* a line that asks nothing and SHOWS something (game 2's scout at the
+       wall): no ring, but the look brings what it is about into the open */
+    if (!raw && !this._aside && this._shown && this._shown.look && Screens.current === 'playing' && !this._held) {
+      const lk = this._shown.look.call(this);
+      if (lk) this._look(lk, this._resolve(lk), B);
+    }
     this._ringTo(E, open ? tgt : null);
     // the task line: the standing objective, whatever line is up
     this._task(E);
@@ -1576,11 +1753,19 @@ const Prologue = {
     if (!t) { r.style.display = 'none'; return; }
     r.style.display = '';
     if (t.rect) {
+      /* a box hugs its element 5px outside it — but never past the screen's
+         edge: round a full-width button (a panel's one action, the wall's
+         Build Gate) three of its four sides stood off the glass (build 187),
+         and a box that wide pulses in light, not in size */
       r.classList.add('box');
-      r.style.left = (t.rect.left - 5) + 'px'; r.style.top = (t.rect.top - 5) + 'px';
-      r.style.width = (t.rect.width + 10) + 'px'; r.style.height = (t.rect.height + 10) + 'px';
+      const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+      const l = Math.max(3, t.rect.left - 5), tp = Math.max(3, t.rect.top - 5);
+      const rt = Math.min(vw - 3, t.rect.right + 5), bt = Math.min(vh - 3, t.rect.bottom + 5);
+      r.style.left = l + 'px'; r.style.top = tp + 'px';
+      r.style.width = Math.max(0, rt - l) + 'px'; r.style.height = Math.max(0, bt - tp) + 'px';
+      r.classList.toggle('wide', rt - l > vw * 0.8);
     } else {
-      r.classList.remove('box');
+      r.classList.remove('box'); r.classList.remove('wide');
       const rad = Math.max(18, t.r);
       r.style.left = (t.x - rad) + 'px'; r.style.top = (t.y - rad) + 'px';
       r.style.width = r.style.height = (rad * 2) + 'px';
@@ -1608,18 +1793,23 @@ const Prologue = {
       row.dataset.fit = '';
     }
   },
-  TASK_IC: { Food: 'food', Wood: 'wood', Stone: 'stone', Gold: 'gold', Buildings: 'bld' },
+  TASK_IC: { Food: 'food', Wood: 'wood', Stone: 'stone', Gold: 'gold', Buildings: 'bld', Walls: 'wall' },
   // a building of the hall's support, in the bar's own drawing hand (ink edge, lit plane)
   BLD_SVG: '<svg class="pic" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 23 L10 41.6 L38 41.6 L38 23" fill="#d6bf93" stroke="#140d06" stroke-width="2.4" stroke-linejoin="round"/>' +
     '<path d="M12.6 25 L12.6 39.4 L20 39.4 L20 25 Z" fill="#ecdcb6"/><path d="M28 41.6 L28 30.4 Q24 26.6 20 30.4 L20 41.6 Z" fill="#5c3b1c" stroke="#140d06" stroke-width="1.8" stroke-linejoin="round"/>' +
     '<path d="M3.8 26 L24 6.8 L44.2 26 Z" fill="#b5862f" stroke="#140d06" stroke-width="2.6" stroke-linejoin="round"/><path d="M8.6 23.6 L24 9.2 L28.2 13 L14.8 25.2 Z" fill="#efc76c"/>' +
     '<path d="M16.4 22.4 L24.6 14.8 M30.6 16.4 L37.4 22.6 M34 15.2 L39 19.8" stroke="#7d5821" stroke-width="1.3" stroke-linecap="round"/></svg>',
+  // a stretch of wall, in the same hand: a crenellated run of dressed stone, lit from the top left
+  WALL_SVG: '<svg class="pic" viewBox="0 0 48 48" aria-hidden="true"><path d="M4.6 41.6 L4.6 13.6 L13 13.6 L13 21 L19.8 21 L19.8 13.6 L28.2 13.6 L28.2 21 L35 21 L35 13.6 L43.4 13.6 L43.4 41.6 Z" fill="#a99a7a" stroke="#140d06" stroke-width="2.4" stroke-linejoin="round"/>' +
+    '<path d="M6.8 15.8 L10.8 15.8 L10.8 19.4 L6.8 19.4 Z M22 15.8 L26 15.8 L26 19.4 L22 19.4 Z M37.2 15.8 L41.2 15.8 L41.2 19.4 L37.2 19.4 Z M6.8 23.2 L41.2 23.2 L41.2 25.6 L6.8 25.6 Z" fill="#e3d6b4"/>' +
+    '<path d="M5.8 31 L42.2 31 M5.8 36.4 L42.2 36.4 M16 25.6 L16 31 M30 25.6 L30 31 M10 31 L10 36.4 M23 31 L23 36.4 M36.6 31 L36.6 36.4 M16.4 36.4 L16.4 41 M30.4 36.4 L30.4 41" stroke="#5f5440" stroke-width="1.4" stroke-linecap="round"/></svg>',
   _taskItem(it) {
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const m = /^(Food|Wood|Stone|Gold|Buildings) (\d+)\/(\d+)$/.exec(it);
+    const m = /^(Food|Wood|Stone|Gold|Buildings|Walls) (\d+)\/(\d+)$/.exec(it);
     if (!m) return '<span class="pgi">' + esc(it) + '</span>';
     let ic = '';
     if (m[1] === 'Buildings') ic = this.BLD_SVG;
+    else if (m[1] === 'Walls') ic = this.WALL_SVG;
     else {
       const s = document.querySelector('#topbar svg.ric[data-ic="' + this.TASK_IC[m[1]] + '"]');
       if (s) ic = s.outerHTML.replace('class="ric"', 'class="pic"');
@@ -2127,7 +2317,9 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #proRing { position: fixed; border-radius: 50%; border: 3px solid #ffd77a; box-shadow: 0 0 0 2px rgba(20,12,4,.75), 0 0 14px 2px rgba(255,205,96,.55);
   pointer-events: none; animation: proPulse 1.4s ease-in-out infinite; box-sizing: border-box; }
 #proRing.box { border-radius: 10px; }
+#proRing.box.wide { animation-name: proPulseW; }
 @keyframes proPulse { 0%,100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.12); opacity: .55 } }
+@keyframes proPulseW { 0%,100% { opacity: 1 } 50% { opacity: .5 } }
 #proElder { position: fixed; display: none; box-sizing: border-box; pointer-events: auto; padding: 12px 34px 13px 12px; gap: 12px; align-items: center;
   display: flex; color: #f1e5cb; border-radius: 2px;
   background: repeating-linear-gradient(92deg, rgba(255,214,150,0.022) 0 1px, rgba(0,0,0,0) 1px 6px, rgba(0,0,0,0.05) 6px 7px, rgba(0,0,0,0) 7px 13px),
