@@ -19,6 +19,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 188, date: '2026-11-18', title: 'A ring of gold underfoot',
+    items: [
+      'Whoever you select now stands in a ring of gold laid on the ground at their feet. It runs behind them where they stand, so it reads as part of the world rather than floating over it.',
+      'Taking someone in hand throws up a small flurry of gold sparks, the ring lands from a little wider, and a glint runs round it while you hold a few.',
+      'Select a whole army and their rings stay calm, so the field never fills with sparkle.',
+      'A selected building stands in a gold ring round its foot, and an enemy you select wears a rust red one.',
+      'On the journey, the ring that shows where to tap now lies on the ground too, round the person, tree or bush it means, breathing gently with gold motes rising off it, and it fades from one target to the next.',
+      'With reduced motion turned on in your device, the rings stay still.',
+    ],
+  },
+  {
     build: 187, date: '2026-11-18', title: 'A journey for your first three games',
     items: [
       'A new player now begins with a short journey of three games, each on a hand-made world, with Mira, the clan\'s young storyteller, at your side.',

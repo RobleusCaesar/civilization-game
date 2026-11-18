@@ -304,6 +304,7 @@ node tests/resource-front.mjs  # a gatherer working a resource from the NORTH is
 node tests/dock-shore.mjs      # a dock stands on its shore: the fuller flank is the shore, a half-land flank slides the jetty onto the land, the picture seated so its sill or footing stands on the bank at every level and facing, a site the same; a picture only
 node tests/building-fire.mjs # every other building burns in its own art (R.FIRE_ART: 13 kinds, 37 levels): catch, blaze and gutted by the burn phase, every strip on disk at its size, each loop starting on its still, no paper-white flash; nothing asked at boot, by the demo or by a whole town, a hurt building asks for its own strips once; a site, an upgrade or a redrawn picture keeps the old look; it lands on the finished picture at every kind and level; one picture for every caller, no flame sprite over it, the rival's too; smoke and embers draw no RNG, write nothing and stay under their caps, nothing in the black, and a burning house puffs no hearth smoke; a house falls in its own place onto its own pinned ruin, the footing and the remains waiting for it
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
+node tests/ground-ring.mjs    # the gold ring on the ground: laid before the body (its far arc behind him, its near arc whole), at the device's pixels, gold not olive, the snap and the flurry on taking (fewer each in a crowd), a foe's rust, a building's round its foot, a still frame and no RNG, nothing in the black, still under reduced motion, a crowd calm and a blit a man; the journey's ring on the ground (#proRing unseen over it), breathing with motes, fading from target to target, behind the crowns
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
@@ -1865,6 +1866,59 @@ BE PASTED BEFORE THE PROLOGUE GOES LIVE, AFTER 0016 AND 0017** (re-pasting
 0018 after any of them), or every journey row and card is refused. 0017 (the
 retired first game's server half) stays in the repo: 0018 builds on its
 checks, and the dashboard's First game section reads it.
+
+**THE GOLD RING ON THE GROUND** (`R.GRING`, `R.drawGRing` / `_gBand` /
+`_gGlint` / `_gPic` / `drawGRingMotes` / `drawGRingBurst` / `gringTick` /
+`gringSel` / `gringUnder` / `gringOver` / `gringGuide` / `drawGRingTile`,
+`Prologue._gSet` / `groundRings`; tests/ground-ring.mjs — operator, build
+188, on a phone shot of the journey's ring hanging over a villager: "pretty
+generic, it just kind of floats over the character … a ring around the
+character, but the ring is on the ground … where the character is standing
+the ring goes behind the character … pulse … sparkles going upwards … a
+little narrower … a tiny flurry of gold sparkles … in any mode … visible,
+but not overwhelm the screen … high pixel"). ONE PAINTER for every ring that
+says "this one": a unit's (an ellipse with his soles in its middle,
+`gringOfUnit` — the kind's box scales it, a hull's ×1.3), a plain tile's
+(`gringOfTile`) and a building's (round the foot of its art, `gringOfBld`;
+the old box on its roofline is gone). **IT IS LAID ON THE GROUND BEFORE
+WHATEVER STANDS IN IT** — the unit's sprite (`gringUnder` in the unit pass,
+the near motes and the flurry after him, `gringOver`), the building's art,
+and round a tile the terrain cache laid back over it under V4 (a transparent
+object layer; the classic cache is opaque ground, so nothing is relaid) — so
+its far arc runs BEHIND the body, the crowns and the bushes, and its near arc
+is whole in front of the feet. The unit's own shadow is laid under it now
+(the gold is never dimmed by it), the same pixels as before when nothing is
+in hand. **A BAND AT THE DEVICE'S PIXELS**: a dark ink edge both sides (thin
+gold over the meadow reads olive), a deep gold rim, a brighter core and a
+crest lit from the north-west (conic), on the ground's plane (its front and
+back thinner), clipped to the board, no RNG, a pure function of the clock
+and the id. Styles: `'sel'` (the player's own in hand: a glint runs round
+it — only while at most `glintMax` (6) are in hand; a crowd's are calm),
+`'foe'` (anyone else's: rust, no glint, no flurry) and `'guide'` (the
+journey's: a broader band that breathes, a halo of hue-tied light and a
+ripple each breath, motes rising off it, the far ones behind what stands in
+it). **TAKEN IN HAND** (`gringTick`, read off `UI.sel` each frame, so every
+way of selecting gets it): the ring lands from wider (`gringSel`, an
+ease-out-back from 1.34 over `snapS`), its crest flashes white, and it throws
+a flurry (`drawGRingBurst`: sparks out along the ground and up, SHRINKING as
+they go — gold thinned over grass goes brown — and a breath of light);
+`burstN` (14) sparks, fewer each when a crowd is taken at once (about
+`burstMax` 56 in all, two each at the least). Render state only (`_gSel`, `_gSelB`, forgotten by
+`R.onNewGame`). **A RING AT REST IS A BLIT**: its band never changes, so it
+is drawn once per size into a picture (`_gPic`, the last 24 sizes) and laid
+at a whole device pixel; only the glint is drawn live — thirty in hand cost
+a tenth of five plain strokes each (measured against that twin). **THE
+JOURNEY'S RING IS THE RENDERER'S** (`Prologue._ringTo` → `_gSet`): a world
+target (a unit, a tile, a building under a mark) is ringed on the ground,
+fading in where the line points (`fadeIn` 0.42 s, from 1.24×) and out where
+it pointed (`fadeOut` 0.3 s); `#proRing` stays exactly where it was, unseen
+(`.ground`: no border, shadow or pulse), so every tap and check that reads
+its rect is unchanged. A box round a button stays the DOM's. Reduced motion
+keeps every ring still: no snap, flurry, glint, breath or motes. The perched
+bow's ring on the rail (`Lookout.draw`) is the same painter at his size.
+**A test that edits terrain after `G.newGame` must rebuild the V4 world**
+(`TerrainX.rebuildAll()` once `TerrainX.ready`): its water outline is taken
+inside newGame, and a meadow painted over a lake still shimmers underneath.
 
 **THE VOTE OFFER IS RETIRED** (build 176 — operator: "146 players saw it, 1
 voted. Remove it"). `js/vote.js`, its tag, `CFG.CARDS.VOTE`, both hooks
