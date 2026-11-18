@@ -439,6 +439,8 @@ const endScreen = async (p) => {
     cur: Screens.current,
     doors: [...document.querySelectorAll('.ceBtns [data-act]')].filter(x => x.offsetParent).map(x => x.dataset.act + ':' + x.textContent.trim()),
     line: (document.querySelector('.ceNext') || {}).textContent || '',
+    // the board's held line in the score box, if it is SHOWN (a journey game says nothing there)
+    note: (() => { const n = document.getElementById('savedNote'); return n && n.getClientRects().length ? n.textContent : ''; })(),
     prog: JSON.parse(localStorage.getItem('neo-prologue') || '{}'),
     runs: Object.fromEntries(Object.entries(Deck.col().runs || {}).filter(([k]) => /^pro:/.test(k)).map(([k, v]) => [k, v.map(c => c.tier)])),
     total: Deck.total(),
@@ -1234,7 +1236,9 @@ const endScreen = async (p) => {
   const pro1 = await p.evaluate(() => { try { return (Deck.col().runs['pro:1'] || []).map(c => c.id); } catch (e) { return String(e); } });
   ck('andItIsMasterBuilders', JSON.stringify(pro1) === '["master_builders"]', JSON.stringify(pro1));
   ck('andTheEndScreenOpensTheJourneysTwoDoors', end.doors.includes('pro-next:Continue the journey') && end.doors.includes('pro-random:Play a random world'), end.doors.join(', '));
-  ck('andSaysWhatComesNext', /Growing Clan/.test(end.line), end.line);
+  /* nothing under the score but the score (operator, build 192, on game 1's
+     end: "eliminate the extra text below") — the doors say what comes next */
+  ck('andSaysNothingUnderTheScore', !end.line && !end.note, JSON.stringify({ line: end.line, note: end.note }));
   ck('theWinIsKeptOnTheDevice', !!(end.prog.done && end.prog.done[1]), JSON.stringify(end.prog));
   ck('andStaysOffTheWorldBoard', !!end.hold && /journey/i.test(end.hold), end.hold);
   /* THE NEXT GAME WAITS BEHIND THE REWARD (Prologue._armNext): founded once the
@@ -1382,7 +1386,7 @@ const endScreen = async (p) => {
   ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
   const end = await endScreen(p);
   ck('theSecondWinPaysOneIronCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:2': ['iron'] }), JSON.stringify(end.runs));
-  ck('andOffersTheThirdGame', end.doors.includes('pro-next:Continue the journey') && /Two Roads/.test(end.line), end.doors.join(', ') + ' / ' + end.line);
+  ck('andOffersTheThirdGame', end.doors.includes('pro-next:Continue the journey') && !end.line && !end.note, end.doors.join(', ') + ' / ' + end.line + ' / ' + end.note);
   // the third game waits behind this reward too, and its origin cards are its first screen
   await p.waitForFunction(() => Prologue.holding() && S.scenario === 'prologue_3', null, { timeout: 20000 }).catch(() => {});
   const g3 = await p.evaluate(() => {
@@ -1431,8 +1435,8 @@ const endScreen = async (p) => {
   ck('andEveryLineOfGameThreeWasShort', run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   const end = await endScreen(p);
   ck('theThirdWinPaysOneImperialCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:3': ['imperial'] }), JSON.stringify(end.runs));
-  ck('andTheJourneyEndsOpeningTheWholeGame', end.doors.includes('pro-open:Your own world') && /journey is complete/i.test(end.line) && Object.keys(end.prog.done || {}).length === 3,
-    end.doors.join(', ') + ' / ' + end.line);
+  ck('andTheJourneyEndsOpeningTheWholeGame', end.doors.includes('pro-open:Your own world') && !end.line && !end.note && Object.keys(end.prog.done || {}).length === 3,
+    end.doors.join(', ') + ' / ' + end.line + ' / ' + end.note);
   const after = await p.evaluate(() => { Screens.show('title'); return { active: Prologue.active(), begin: !!document.getElementById('btnBegin') }; });
   ck('andTheTitleIsTheOrdinaryOneAfter', !after.active && !after.begin, JSON.stringify(after));
   await ctx.close();

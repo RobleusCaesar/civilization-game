@@ -524,10 +524,19 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.readyEarly = DeckScreens._ready;
     const until = (f, ms) => new Promise(r => { const t0 = performance.now(); const k = () => (f() || performance.now() - t0 > ms) ? r(f()) : setTimeout(k, 30); k(); });
     out.settled = await until(() => DeckScreens._ready, 15000);
-    // a tap turns it over, a tap turns it back
-    const mv = root.querySelector('.ceMove');
-    mv.click(); out.flip1 = root.querySelector('.ceMove .ccard').classList.contains('flip');
-    mv.click(); out.flip2 = root.querySelector('.ceMove .ccard').classList.contains('flip');
+    /* a tap HOLDS IT UP TO BE READ (build 192): the closer look, grown and
+       turned to its back; a tap on it turns it over and back; the ✕ puts it
+       down; the card on the plinth never turned */
+    const mv = root.querySelector('.ceMove'), look = root.querySelector('.ceLook'), lc = () => look.querySelector('.ccard');
+    const plinthW = root.querySelector('.ceMove .ccard').getBoundingClientRect().width;
+    mv.click();
+    out.lookUp = !look.hidden && !!lc() && lc().dataset.card === 'swift_raiders';
+    out.flip1 = await until(() => lc() && lc().classList.contains('flip'), 2000);
+    out.lookW = { look: lc().offsetWidth, plinth: plinthW, eff: parseFloat(getComputedStyle(lc().querySelector('.cc-eff')).fontSize) };
+    look.querySelector('.ceLookCard').click(); out.flip2 = lc().classList.contains('flip');
+    out.plinthTurned = root.querySelector('.ceMove .ccard').classList.contains('flip');
+    look.querySelector('[data-act="unlook"]').click();
+    out.down = await until(() => look.hidden, 2000);
     out.total = Deck.total();
     out.tile0 = +root.querySelector('.ceTileN').textContent;
     root.querySelector('[data-act="claim"]').click();
@@ -545,7 +554,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   });
   ck('aGreatVictoryEarnsTwo', a.great === 2, a.great + ' cards');
   ck('theCardRisesFromThePlinth', a.rising && !a.readyEarly && a.settled, `animating ${a.rising}, settled ${a.settled}`);
-  ck('aFlipTurnsItOverAndBack', a.flip1 && !a.flip2, `first tap ${a.flip1}, second ${a.flip2}`);
+  ck('aTapHoldsTheCardUpToBeRead', a.lookUp && a.flip1 && !a.flip2 && !a.plinthTurned && a.down &&
+    a.lookW.look > a.lookW.plinth && a.lookW.eff >= 12,
+    `held up ${a.lookUp}, turned to its back ${a.flip1}, a tap turns it back ${!a.flip2}, put down ${a.down}; ${JSON.stringify(a.lookW)}`);
   ck('claimFliesItToTheDeck', a.flying && a.tile1 === a.tile0 + 1, `in flight ${a.flying}, ${a.tile0} -> ${a.tile1}`);
   ck('theBonusRisesOnlyAfterTheFirstIsClaimed', !a.secondEarly && a.bonus && /bonus card/i.test(a.kick) && a.rising2 && a.waits === 'claim',
     `early ${a.secondEarly}, then ${a.bonus}, "${a.kick}", buttons ${a.waits}`);
@@ -667,10 +678,10 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     const zoom = scr.querySelector('.clZoom'), zc = () => zoom.querySelector('.ccard');
     // layout widths: the enlarged card is mid-flight out of the cell, scaled by its transform
     out.zoomed = !zoom.hidden && !!zc() && zc().offsetWidth > cell.offsetWidth * 1.5;
-    // the same closer look as the deck's lift (Deck.liftFit): six tenths of the
-    // face the room used to give it, a whole multiple, its back's words kept
-    { const vp = DeckScreens._vp(), room = Math.min(vp.w - 48, 352, (vp.h - 190) * Deck.W / Deck.H);
-      const was = Deck.fit(room), lf = Deck.liftFit(room), fw = parseFloat(zc().style.getPropertyValue('--w'));
+    // the card held up to be READ (Deck.lookFit, the reward screen's own look):
+    // a whole multiple, no smaller than LOOK_MIN where the room allows, its back's words aimed at LOOK_TU
+    { const room = DeckScreens.lookRoom();
+      const was = Deck.fit(room), lf = Deck.lookFit(room), fw = parseFloat(zc().style.getPropertyValue('--w'));
       out.zoomW = { was: +was.w.toFixed(2), want: +(lf.w - 0.01).toFixed(2), got: +fw.toFixed(2),
         tu: parseFloat(zc().querySelector('.cc-txt').style.getPropertyValue('--tu')) || null, u: parseFloat(zc().style.getPropertyValue('--u')) }; }
     zoom.querySelector('.clZCard').click(); out.f1 = zc().classList.contains('flip');
@@ -693,8 +704,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     return out;
   });
   ck('theCollectionOpens', a.current === 'cards', a.current);
-  ck('andItsCloserLookIsTheDecksOwn', !!a.zoomW && Math.abs(a.zoomW.got - a.zoomW.want) < 0.05 && a.zoomW.got < a.zoomW.was &&
-    (a.zoomW.tu == null || (a.zoomW.tu > a.zoomW.u && a.zoomW.tu <= a.zoomW.was / 176 + 1e-6)),
+  ck('andItsCloserLookIsTheDecksOwn', !!a.zoomW && Math.abs(a.zoomW.got - a.zoomW.want) < 0.05 && a.zoomW.got <= a.zoomW.was + 0.01 &&
+    a.zoomW.got >= Math.min(a.zoomW.was, 260) - 0.5 &&
+    (a.zoomW.tu == null || (a.zoomW.tu > a.zoomW.u && a.zoomW.tu <= Math.max(a.zoomW.was / 176, 2) + 1e-6)),
     JSON.stringify(a.zoomW));
   ck('itsTabsCountWhatIsHeld', a.tabs === a.want, a.tabs);
   ck('eachTierShowsItsCompletion', a.pct === a.wantPct, `${a.pct} vs ${a.wantPct}`);
@@ -965,6 +977,47 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   ck('everyPartStandsOneSpaceApart', bad.length === 0, bad.join(' | ') || seen.join('; '));
 }
 
+/* ================= 5f. THE CARD AS BIG AS THE ROOM, ITS BACK READ =================
+   Operator, build 192, on a 393x664 phone in Safari: "make the card on the
+   pedestal bigger. On both mobile and web when you click the card to see the
+   back it's unreadable. The card needs to be bigger so you can actually read
+   what's written." The plinth's card was 117px there (the window under
+   720px tall) and its back read at 4.8px. Now: on a phone the card grows a
+   whole multiple at a time while every space keeps FIT_KEEP and nothing
+   scrolls (176px there, 235 on a 390x844); and a tap holds it up in the
+   closer look (Deck.lookFit) — never smaller than the plinth's card, its
+   effect read at 12px or more, every word inside its paper — at every size
+   the game is played at. */
+{
+  const bad = [], seen = [];
+  for (const [w, h, dpr, want] of [[393, 664, 3, 176], [390, 844, 3, 234.6], [430, 932, 3, 234.6], [375, 667, 2, 176], [768, 1024, 2, 352], [1280, 720, 1, 176], [1440, 900, 2, 352]]) {
+    const p = await page({ w, h, dpr, reduce: true });
+    await p.evaluate(SETUP);
+    const r = await p.evaluate(async () => {
+      CFG.CARDS.ON = true;
+      __fresh();
+      window.__run({ seed: 'ds-room', win: true, cards: [['bronze', 'master_builders']] });
+      const root = document.getElementById('cardEnd'), sc = root.querySelector('.ceScroll');
+      const R = el => el.getBoundingClientRect();
+      const face = root.querySelector('.ceMove .ccard'), fw = R(face).width;
+      const sp = [...root.querySelectorAll('.ceSp')].filter(e => e.getClientRects().length).map(e => +R(e).height.toFixed(1));
+      const k = fw * devicePixelRatio / Deck.W;
+      root.querySelector('.ceMove').click();
+      const lc = root.querySelector('.ceLook .ccard'), txt = lc.querySelector('.cc-txt');
+      const out = { cw: +fw.toFixed(1), whole: Math.abs(k - Math.round(k)) < 0.02, sp, scroll: sc.scrollHeight - sc.clientHeight,
+        look: +R(lc).width.toFixed(1), back: lc.classList.contains('flip'), eff: +parseFloat(getComputedStyle(lc.querySelector('.cc-eff')).fontSize).toFixed(2),
+        inPaper: txt.scrollHeight <= txt.clientHeight + 1, keep: DeckScreens.FIT_KEEP };
+      DeckScreens._unlook(true);
+      return out;
+    });
+    await p.close();
+    const ok = r.whole && r.scroll <= 1 && r.cw >= want - 0.5 && r.sp.every(v => v >= r.keep - 0.5) &&
+      r.back && r.look >= r.cw - 0.5 && r.eff >= 12 && r.inPaper;
+    (ok ? seen : bad).push(`${w}x${h}@${dpr}: card ${r.cw}px${r.sp.length ? ', spaces ' + Math.min(...r.sp) + 'px+' : ''}; held up ${r.look}px, effect ${r.eff}px${ok ? '' : ' ' + JSON.stringify(r)}`);
+  }
+  ck('theCardStandsAsBigAsTheRoomAndItsBackReads', bad.length === 0, bad.join(' | ') || seen.join('; '));
+}
+
 /* ================= 6. THE FIT ================= */
 {
   const fit = [], tight = [];
@@ -972,7 +1025,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   for (const [w, h, dpr, scrolls] of [[390, 844, 3, false], [1280, 800, 1, false], [320, 568, 3, true]]) {
     const p = await page({ w, h, dpr, reduce: true });
     await p.evaluate(SETUP);
-    const r = await p.evaluate(() => {
+    const r = await p.evaluate(async () => {
       CFG.CARDS.ON = true;
       __fresh();
       // two played cards with long names: the line wraps, and the screen must still fit
@@ -981,6 +1034,9 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
       // the live site's first-time winner: the board's rank, name box and note are lent in
       Screens._promptName('Name your chief for the world board.');
       const rank = document.getElementById('vicRank'); if (rank) { rank.style.display = 'block'; rank.textContent = '#12 of 340 this week'; }
+      // a page from disk has no cloud, so nothing was set aside for them: the card is fitted
+      // again (smaller) the moment they come in, before the frame is painted (DeckScreens._watchFit)
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const root = document.getElementById('cardEnd'), sc = root.querySelector('.ceScroll');
       const sz = el => { const r = el.getBoundingClientRect(); return Math.min(r.width, r.height); };
       const small = [...root.querySelectorAll('button')].filter(el => el.getClientRects().length && sz(el) < 44).map(el => el.dataset.act);

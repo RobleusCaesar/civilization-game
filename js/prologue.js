@@ -2440,18 +2440,14 @@ const Prologue = {
     if (Screens.leaveEnd) Screens.leaveEnd(go); else go();
     return true;
   },
-  // the line under the score
+  /* the line under the score: a DEFEAT's reason and its encouragement. A
+     win says nothing there (operator, build 192: "eliminate the extra text
+     below") — its doors already say "Continue the journey" */
   endLine() {
-    if (typeof S === 'undefined' || !S || !S.scenario || !S.over) return '';
-    const g = Scenarios.game();
-    if (!S.over.win) {
-      const c = S.over.cause;
-      return (c === 'rival_wonder' ? 'The other clan raised their Wonder first.'
-        : c === 'tc_destroyed' ? 'Our hall fell this time.' : 'Not this time.') + ' Try again — the clan believes in you.';
-    }
-    if (g === 1) return 'Your journey has begun: ' + this.NAMES[2] + ' is next.';
-    if (g === 2) return 'One road left: ' + this.NAMES[3] + '.';
-    return 'The journey is complete. Every world is yours now.';
+    if (typeof S === 'undefined' || !S || !S.scenario || !S.over || S.over.win) return '';
+    const c = S.over.cause;
+    return (c === 'rival_wonder' ? 'The other clan raised their Wonder first.'
+      : c === 'tc_destroyed' ? 'Our hall fell this time.' : 'Not this time.') + ' Try again — the clan believes in you.';
   },
   onScreen(name) {
     if (name !== 'playing' && this._el && !this._held) this._el.root.style.display = 'none';

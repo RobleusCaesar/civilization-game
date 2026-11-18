@@ -176,6 +176,7 @@ const DeckScreens = {
     this._render(play, fresh);
     // the world board, exactly as the victory scene posts it (Screens._offerSubmit)
     if (win) Screens._offerSubmit();
+    this._watchFit();
     return true;
   },
 
@@ -239,7 +240,8 @@ const DeckScreens = {
     }
     const note = document.getElementById('savedNote');
     if (note) note.textContent = '';   // never let a prior run's note linger
-    if (hold && note) { note.textContent = hold; note.style.color = 'var(--dim)'; note.style.display = 'block'; }
+    // a journey game is held off the board without a word said (build 192): its score box is the score alone
+    if (hold && note && !S.scenario) { note.textContent = hold; note.style.color = 'var(--dim)'; note.style.display = 'block'; }
     const board = document.getElementById('endBoard');
     if (board) board.innerHTML = '';
   },
@@ -256,6 +258,99 @@ const DeckScreens = {
     if (w >= 900 && w / h >= 1.25) return Deck.fit(Math.min(352, (h - 146) / per * Deck.W)).w;
     const f = Deck.fit(h >= 720 ? 176 : 132);
     return f.w >= 110 ? f.w : Deck.fit(176).w;
+  },
+
+  /* THE CARD STANDS AS BIG AS THE ROOM LETS IT (operator, build 192: "make
+     the card on the pedestal bigger"). _cardW is the floor, chosen before
+     anything is laid out; on a phone the column is then MEASURED and the
+     card grows a whole multiple at a time while every space between the
+     parts keeps FIT_KEEP and nothing scrolls, never past FIT_MAX or a plinth
+     wider than the column. A 393x664 phone in Safari stood its card at 117px
+     with 35px spaces: it stands at 176 now; a 390x844 phone at 235. A wide
+     window lays the card beside the run and _cardW already sizes it by the
+     window's height. It is measured with the score at its final number (the
+     count-up starts at 0, and a long score wraps) and, where the world board
+     may yet ask the chief's name (Screens._entry on a page with a cloud),
+     with the name box and its note in place — so the card never jumps when
+     they come in. Asked again when the column's words change anyway (a late
+     font, the board's own lines): then it only ever SHRINKS, so a card that
+     grew into the room never pushes the buttons off the screen and never
+     jumps bigger under the player's eyes. */
+  FIT_KEEP: 12, FIT_MAX: 352,
+  _fitCard(root, shrinkOnly) {
+    const v = this._view;
+    if (!v || !root) return;
+    const main = root.querySelector('.ceMain'), sc = root.querySelector('.ceScroll'), col = root.querySelector('.ceIn');
+    const P = this.PLINTH, cur = v.cw, base = shrinkOnly ? Math.min(this._cardW(), cur) : this._cardW();
+    const set = w => {
+      v.cw = w;
+      root.style.setProperty('--cw', w + 'px');
+      root.style.setProperty('--ch', (w * Deck.H / Deck.W) + 'px');
+      root.style.setProperty('--u', (w / Deck.W) + 'px');
+    };
+    if (!main || !main.getClientRects().length || getComputedStyle(main).flexDirection === 'row') { set(base); return base; }
+    const dpr = Math.max(1, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+    // measured as it will stand: the final score, and the board's name box where it may yet come in
+    const undo = [], scoreEl = root.querySelector('.ceScoreN');
+    if (scoreEl) {
+      const t0 = scoreEl.textContent;
+      scoreEl.textContent = v.score.toLocaleString();
+      undo.push(() => { scoreEl.textContent = t0; });
+    }
+    if (typeof Screens !== 'undefined' && Screens._entry && !Screens._submitted && window.Backend && Backend.configured) {
+      for (const [id, disp, txt] of [['nameRow', 'flex', ''], ['savedNote', 'block', 'Name your chief to put this score on the board']]) {
+        const el = document.getElementById(id);
+        if (!el || !root.contains(el) || getComputedStyle(el).display !== 'none') continue;
+        const d0 = el.style.display, x0 = el.textContent;
+        el.style.display = disp;
+        if (txt && !x0) el.textContent = txt;
+        undo.push(() => { el.style.display = d0; if (txt && !x0) el.textContent = x0; });
+      }
+    }
+    const sps = [...root.querySelectorAll('.ceSp')].filter(e => e.getClientRects().length);
+    const roomy = () => sc.scrollHeight - sc.clientHeight <= 1 && sps.every(e => e.getBoundingClientRect().height >= this.FIT_KEEP - 0.5);
+    let best = base;
+    set(base);
+    if (roomy()) {
+      for (let k = Math.round(base * dpr / Deck.W) + 1; k < 64; k++) {
+        const w = Deck.W * k / dpr;
+        if (w > this.FIT_MAX + 0.01 || w * P.w / Deck.W > col.clientWidth || (shrinkOnly && w > cur + 0.01)) break;
+        set(w);
+        if (!roomy()) break;
+        best = w;
+      }
+    }
+    set(best);
+    while (undo.length) undo.pop()();
+    this._fitH = this._infoH(root);
+    return best;
+  },
+  // the column's words, never its spaces (which give way to the card)
+  _infoH(root) {
+    const i = root && root.querySelector('.ceInfo');
+    return i ? [...i.children].filter(e => !e.classList.contains('ceSp')).reduce((h, e) => h + e.getBoundingClientRect().height, 0) : 0;
+  },
+  /* the column's words may change after the screen is drawn (the board's
+     name box, a note, a font landing): the card is fitted again, and the
+     face on the plinth rebuilt at its new size if the size moved */
+  _watchFit() {
+    const root = this._rootEl(), info = root && root.querySelector('.ceInfo');
+    if (this._fitObs) { this._fitObs.disconnect(); this._fitObs = null; }
+    if (!info || typeof ResizeObserver !== 'function') return;
+    const gen = this._gen;
+    this._fitObs = new ResizeObserver(() => {
+      if (gen !== this._gen || Screens.current !== 'endgame') return;
+      if (Math.abs(this._infoH(root) - (this._fitH || 0)) < 2) return;
+      const was = this._view && this._view.cw;
+      this._fitCard(root, true);
+      const v = this._view, face = root.querySelector('.ceMove .ccard');
+      if (v && v.cw !== was && face && !this._flying) {
+        const flip = face.classList.contains('flip'), nf = Deck.face(face.dataset.card, { w: v.cw, back: flip });
+        for (const a of ['role', 'aria-label']) if (face.getAttribute(a)) nf.setAttribute(a, face.getAttribute(a));
+        face.replaceWith(nf);
+      }
+    });
+    for (const el of info.children) if (!el.classList.contains('ceSp')) this._fitObs.observe(el);
   },
 
   _rootEl() { return document.getElementById('cardEnd'); },
@@ -307,6 +402,10 @@ const DeckScreens = {
       '<i class="ceVig"></i><i class="ceLines"></i>' +
       `<button class="ceDeck" type="button" data-act="deck" aria-label="Your cards">${this.DECK_SVG}<b class="ceDeckN"></b></button>` +
       '<div class="ceFly"></div>' +
+      /* THE CARD HELD UP TO BE READ (build 192): a tap on the card on the
+         plinth lifts it here, turned to its back, at a size its words read */
+      `<div class="ceLook" hidden><button class="ceLookX" type="button" data-act="unlook" aria-label="Close">${this.CLOSE_SVG}</button>` +
+        '<div class="ceLookCard" data-act="lookflip"></div><p class="ceLookCap">Tap the card to turn it over</p></div>' +
       /* ONE SPACE BETWEEN EVERY PART (operator, 2026-10-28: "very crowded…
          shift the card and title down, and the claim button up so they're
          centered and equally spaced out"): a .ceSp before the title, between
@@ -339,7 +438,10 @@ const DeckScreens = {
                  score is one row there), so the mark is the only line under it */
               `<p class="ceMeta"><span class="ceDay">Day ${S.day}${mode ? ' · ' + this.esc(mode) : ''}</span>` +
               (this._playedN() ? `<span class="ceAssist">${this.DECK_SVG}<span>Card-assisted</span></span>` : '') + '</p>' +
-              // THE PROLOGUE ends on its journey's line (Prologue.endLine)
+              /* THE PROLOGUE's defeat says why (Prologue.endLine); a journey
+                 WIN says nothing under its score (operator, build 192, on the
+                 end of game 1: "eliminate the extra text below") — the doors
+                 name the next game */
               ((window.Prologue && Prologue.endLine && Prologue.endLine())
                 ? `<p class="ceNext">${this.esc(Prologue.endLine())}</p>` : '') +
               '<div class="ceRank"></div><div class="ceBoard"></div></div>' +
@@ -391,6 +493,11 @@ const DeckScreens = {
     this._setButtons(v.claimed >= v.cards.length ? 'done' : 'claim');
     this._paintCounts();
 
+    // the card as big as the room under the banner lets it stand (DeckScreens._fitCard),
+    // measured with the plate under it already naming the card
+    this._looking = false;
+    this._plate(v.cards[v.claimed] || null);
+    this._fitCard(root);
     // what stands on the plinth: the next card to claim, or nothing
     const first = v.cards[v.claimed];
     const T = this._timeline(first ? first.tier : null, true);
@@ -594,6 +701,8 @@ const DeckScreens = {
   },
 
   _click(e) {
+    // a tap on the dark round the card held up puts it back
+    if (e.target.classList && e.target.classList.contains('ceLook')) return this._unlook(false);
     const a = e.target.closest('[data-act]');
     if (!a) {
       // a tap anywhere during the reveal hurries it along
@@ -602,6 +711,8 @@ const DeckScreens = {
     }
     const act = a.dataset.act;
     if (act === 'card') return this._tapCard();
+    if (act === 'unlook') return this._unlook(false);
+    if (act === 'lookflip') return this._lookFlip();
     if (act === 'claim') return this.claim();
     if (this._flying) return;
     if (act === 'deck') {
@@ -620,12 +731,60 @@ const DeckScreens = {
     if (act === 'replay') { this._skip(); Screens.endReplay(); return; }
     if (act === 'menu') { this._skip(); Screens.endMenu(); }
   },
+  /* A TAP ON THE CARD HOLDS IT UP TO BE READ (operator, build 192: "when you
+     click the card to see the back it's unreadable. The card needs to be
+     bigger so you can actually read what's written"). It used to turn over
+     where it stood, and on a phone the plinth's card is 117-176px: its back
+     read at 5-7px. Now it lifts out of the plinth into the closer look
+     (Deck.lookFit, the collection's own), grows and turns to its back; a tap
+     on it turns it over and back, the dark round it, the ✕ or Escape put it
+     down. The card on the plinth never moves: CLAIM is exactly as it was. */
   _tapCard() {
     if (!this._ready) { this._skip(); return; }
-    const face = this._rootEl().querySelector('.ceMove .ccard');
+    const root = this._rootEl(), src = root.querySelector('.ceMove .ccard');
+    if (!src || this._flying) return;
+    const look = root.querySelector('.ceLook'), host = look.querySelector('.ceLookCard'), id = src.dataset.card;
+    // never smaller than the card it lifts off the plinth (a tablet's stands at 352)
+    const room = this.lookRoom(), lf = Deck.lookFit(room), calm = this.reduced();
+    const w = Math.max(lf.w, Math.min(src.offsetWidth, Deck.fit(room).w) + 0.01);
+    const face = Deck.face(id, { w, back: calm });
+    host.innerHTML = '';
+    host.appendChild(face);
+    look.hidden = false;
+    Deck.backText(face, lf.tu);
+    this._looking = true;
+    this.cue('ok');
+    if (calm) return;
+    // it grows out of the card on the plinth, then turns to its back
+    const a = src.getBoundingClientRect(), b = face.getBoundingClientRect();
+    const s = a.width / b.width, dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
+    face.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${s})` }, { transform: 'none' }],
+      { duration: 340, easing: 'cubic-bezier(.3,1.32,.5,1)' });
+    look.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+    const gen = this._gen;
+    setTimeout(() => { if (gen === this._gen && this._looking && face.isConnected) face.classList.add('flip'); }, 300);
+  },
+  _lookFlip() {
+    const face = this._rootEl() && this._rootEl().querySelector('.ceLook .ccard');
     if (!face) return;
     face.classList.toggle('flip');
     this.cue('ok');
+  },
+  _unlook(now) {
+    const root = this._rootEl(), look = root && root.querySelector('.ceLook');
+    this._looking = false;
+    if (!look || look.hidden) return;
+    const done = () => { if (this._looking) return; look.hidden = true; look.querySelector('.ceLookCard').innerHTML = ''; };
+    if (now || this.reduced()) { done(); return; }
+    const anim = look.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: 'ease-in' });
+    anim.onfinish = done;
+    setTimeout(done, 260);
+  },
+  /* the room the closer look has: the screen less its gutters, the ✕ above
+     and the caption below — the collection's and the reward screen's alike */
+  lookRoom() {
+    const vp = this._vp();
+    return Math.min(vp.w - 40, 352, (vp.h - 120) * Deck.W / Deck.H);
   },
 
   /* CLAIM: the card flies to the deck at the top of the screen and the
@@ -636,6 +795,7 @@ const DeckScreens = {
   claim() {
     const v = this._view, root = this._rootEl();
     if (!v || !root || this._flying || v.claimed >= v.cards.length) return;
+    if (this._looking) this._unlook(true);
     /* a tap during the reveal only hurries it along — the button is
        still invisible then, and a tap where it is about to appear must
        not take a card the player has not yet seen rise */
@@ -1264,8 +1424,8 @@ const DeckScreens = {
   _zoom(cell) {
     const scr = document.getElementById('scrCards'), zoom = scr.querySelector('.clZoom'), host = zoom.querySelector('.clZCard');
     const vp = this._vp();
-    // six tenths of the face the room used to give it, its back's words kept (Deck.liftFit)
-    const lf = Deck.liftFit(Math.min(vp.w - 48, 352, (vp.h - 190) * Deck.W / Deck.H)), w = lf.w;
+    // the card held up to be READ (Deck.lookFit): big enough that its back's words are
+    const lf = Deck.lookFit(this.lookRoom()), w = lf.w;
     const id = cell.dataset.card;
     let face, cap;
     if (id) {
@@ -1316,6 +1476,7 @@ const DeckScreens = {
     this._listening = true;
     Deck.onChange(() => this._paintCounts());
     document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && Screens.current === 'endgame' && this._looking) { this._unlook(false); return; }
       if (e.key !== 'Escape' || Screens.current !== 'cards') return;
       if (this._zoomed) this._zoomClose(false); else this.closeCollection();
     });
@@ -1965,6 +2126,15 @@ DeckScreens.CSS = `
 #scrCards .clX svg { width: 16px; height: 16px; }
 #scrCards .clZCard { cursor: pointer; }
 #scrCards .clZCap { margin: 0; max-width: 340px; color: var(--dim); font-size: 13px; text-align: center; }
+/* the reward screen's card held up to be read (DeckScreens._tapCard) */
+#cardEnd .ceLook { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: calc(var(--safe-top) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); background: rgba(6,5,3,0.88); }
+#cardEnd .ceLook[hidden] { display: none; }
+#cardEnd .ceLookX { position: absolute; top: calc(var(--safe-top) + 10px); right: 12px; width: 48px; height: 48px; border: 1px solid #3a2e1d;
+  border-radius: 10px; background: #1b150e; color: var(--text, #efe4cd); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+#cardEnd .ceLookX svg { width: 16px; height: 16px; }
+#cardEnd .ceLookCard { cursor: pointer; }
+#cardEnd .ceLookCap { margin: 0; max-width: 340px; color: #b9ab90; font: 13px/1.35 Georgia, 'Times New Roman', serif; text-align: center; }
 
 /* LESS MOTION: the same screen, arrived at without movement — nothing spins
    or drifts, the reveal is never played (DeckScreens.reduced), and what

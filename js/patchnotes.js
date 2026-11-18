@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 192, date: '2026-11-18', title: 'A card you can read',
+    items: [
+      'The reward card on the pedestal stands bigger, as big as your screen has room for.',
+      'Tap the reward card to hold it up close: it turns to its back, large enough to read every word. Tap it again to turn it over, or tap outside it to put it down.',
+      'The same closer look in your card collection is larger too, so every card can be read on a phone.',
+      'A journey win no longer prints extra lines under your score.',
+    ],
+  },
+  {
     build: 191, date: '2026-11-18', title: 'No more grid lines',
     items: [
       'Faint grid lines no longer cross the map on a computer. The ground and the roads now meet without a seam at every zoom.',

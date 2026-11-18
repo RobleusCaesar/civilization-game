@@ -1210,6 +1210,15 @@ they left. Rules:
   face's own. On the 3x phone 5 of 36 keep 14.4px, the median reads 12.2, the
   wordiest 10. The paper's box is already the frame's whole clear window
   below the pennant — there is no more room to give the words.
+  **THE CARD HELD UP TO BE READ** (`Deck.lookFit`, `DeckScreens.lookRoom`,
+  deck-screens §5f — operator, build 192: "when you click the card to see the
+  back it's unreadable. The card needs to be bigger so you can actually read
+  what's written"): the COLLECTION's zoom and the REWARD screen's look (the
+  in-game lift keeps liftFit) take liftFit's size but never under `LOOK_MIN`
+  (260) CSS px where the room allows — 293 on a 3x phone, 264 on a 2x, 352 on
+  a 1x window — with the back's words aimed at `LOOK_TU` (the 352 face's,
+  14.4px) and stepped down only as far as the paper needs; the room is the
+  screen less 40px across and 120px down.
 - **EVERY RUNNING CARD IS SEEN, OR COUNTED** (`DeckUI._fitChips`): chips that
   fit are whole, the rest a `+k` badge whose tap names them, and a card held
   as CHARGES wears a chip like a timer (**THE TOWN'S CARDS**). A chip is its
@@ -1948,7 +1957,9 @@ the end screen's doors are the journey's (`endRow`: Continue the journey /
 Play a random world; after game 3, Your own world; a loss, Try again, which
 founds that world afresh — a lost game 3 still earns the ordinary defeat card
 by its deeds); every journey win is held off the world board
-(`Screens.boardHold`). Game 3's draft is explained by Mira in one line
+(`Screens.boardHold`), without a word said under its score (build 192: a
+journey win's end screen is the score and its doors; a loss keeps its one
+line, the reason and "Try again"). Game 3's draft is explained by Mira in one line
 (`#proDraft`), never the old help panel, and the rival's intel is not posted
 over a journey game (`Cards.announceRival`). **GAME 3'S CLOCK** (measured with
 the guide-following bot): the Wonder at 480 food and wood, 240 stone and 120
@@ -2107,6 +2118,15 @@ they left. Rules:
   face's own. On the 3x phone 5 of 36 keep 14.4px, the median reads 12.2, the
   wordiest 10. The paper's box is already the frame's whole clear window
   below the pennant — there is no more room to give the words.
+  **THE CARD HELD UP TO BE READ** (`Deck.lookFit`, `DeckScreens.lookRoom`,
+  deck-screens §5f — operator, build 192: "when you click the card to see the
+  back it's unreadable. The card needs to be bigger so you can actually read
+  what's written"): the COLLECTION's zoom and the REWARD screen's look (the
+  in-game lift keeps liftFit) take liftFit's size but never under `LOOK_MIN`
+  (260) CSS px where the room allows — 293 on a 3x phone, 264 on a 2x, 352 on
+  a 1x window — with the back's words aimed at `LOOK_TU` (the 352 face's,
+  14.4px) and stepped down only as far as the paper needs; the room is the
+  screen less 40px across and 120px down.
 - **EVERY RUNNING CARD IS SEEN, OR COUNTED** (`DeckUI._fitChips`): chips that
   fit are whole, the rest a `+k` badge whose tap names them, and a card held
   as CHARGES wears a chip like a timer (**THE TOWN'S CARDS**). A chip is its
@@ -2688,7 +2708,24 @@ lines. **On a phone the score is ONE row** ("Final score: N", the day and
 difficulty gone, the card-assisted mark the only line under it — operator,
 2026-10-29: "the bottom buttons cut off… cut the one sentence about the day
 and difficulty"; deck-screens `onAPhoneTheScoreIsOneRowWithNoDayLine`); a wide
-window keeps all three lines. On a phone the Leaderboard rides the buttons' row as a square navy
+window keeps all three lines. **THE CARD STANDS AS BIG AS THE ROOM, AND A TAP HOLDS IT UP TO BE READ**
+(`DeckScreens._fitCard` / `_watchFit` / `_tapCard`, `FIT_KEEP` 12, `FIT_MAX`
+352; deck-screens §5f — operator, build 192, on a 393x664 Safari phone whose
+card stood at 117px: "make the card on the pedestal bigger… when you click
+the card to see the back it's unreadable"): `_cardW` is only the floor; on a
+phone the column is MEASURED and the card grows a whole multiple at a time
+while every space keeps `FIT_KEEP` and nothing scrolls (176 there, 235 on a
+390x844, 352 on a portrait tablet), measured with the plate already naming
+the card, the score at its final number and — on a page with a cloud whose
+win may yet be asked a name — the name box and its note in place, so nothing
+jumps when they come in; a later change of the column's words re-fits it
+SHRINKING only (a ResizeObserver on the column's parts, never its spaces).
+A tap on the card no longer turns it where it stands: it grows into a closer
+look (`.ceLook`, `Deck.lookFit`, never smaller than the plinth's card) and
+turns to its back; a tap turns it over and back, the dark round it, the ✕ or
+Escape put it down, CLAIM puts it down first. A JOURNEY WIN says nothing under
+its score (`Prologue.endLine` is a defeat's alone; the board's held line is
+not shown for `S.scenario`). On a phone the Leaderboard rides the buttons' row as a square navy
 plaque with a podium (`PODIUM_SVG`, aria-label "Leaderboard") — under Claim
 it sat below the fold. A WIDE window keeps the run beside the card with
 the played list, the deck tile, its own gaps and the Leaderboard in its

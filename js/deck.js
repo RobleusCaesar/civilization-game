@@ -839,6 +839,23 @@ const Deck = {
     const k = Math.max(1, Math.ceil(was.k * this.LIFT_SCALE - 1e-9), Math.min(was.k, Math.ceil(dpr - 1e-9)));
     return { w: this.W * k / dpr + 0.01, tu: was.w / this.W };
   },
+  /* THE CARD HELD UP TO BE READ (operator, build 192, on the reward screen:
+     "when you click the card to see the back it's unreadable. The card needs
+     to be bigger so you can actually read what's written"): the reward
+     screen's closer look and the collection's. liftFit's six tenths, but
+     never smaller than LOOK_MIN CSS px where the room allows — on a 3x phone
+     293 (liftFit gave 176-235), on a 2x phone 264 (liftFit gave 176), on a 1x
+     window 352 — and the back's words aimed
+     at LOOK_TU (the 352px face's, 14.4px), stepped down by backText only as
+     far as THAT card's paper needs. A short window keeps what fits. */
+  LOOK_MIN: 260, LOOK_TU: 2,
+  lookFit(cssW) {
+    const dpr = Math.max(1, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+    const was = this.fit(cssW), lf = this.liftFit(cssW);
+    const k0 = Math.round((lf.w - 0.01) * dpr / this.W), kMin = Math.ceil(this.LOOK_MIN * dpr / this.W - 1e-9);
+    const k = Math.min(was.k, Math.max(k0, kMin));
+    return { w: this.W * k / dpr + 0.01, tu: Math.max(was.w / this.W, this.LOOK_TU) };
+  },
   /* …and its back keeps the words it was read at: set in --tu at the old
      size, stepped down only as far as THIS card's text needs to fit its
      paper, never below the face's own size. Asked once the face is laid out
