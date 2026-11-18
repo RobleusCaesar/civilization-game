@@ -73,10 +73,11 @@ const Scenarios = {
     },
     prologue_2: {
       game: 2, mode: 'prologue_2', title: 'The Growing Clan',
-      // its six lessons are built, not saved for: the stores pay for the lodge,
-      // a road, the barracks, the range, the tower and a wall, and only the
-      // hall's storey is gathered for (operator, build 184)
-      start: { food: 150, wood: 330, stone: 130, gold: 40 },
+      // its lessons are built, not saved for: the stores pay for the lodge, a
+      // road, the barracks, the range, the tower, three stretches of wall and
+      // the gate cut into them, and only the hall's storey is gathered for
+      // (operator, builds 184 and 187)
+      start: { food: 150, wood: 420, stone: 130, gold: 55 },
       storey: 2,
       tc: { 3: { cost: { wood: 220, stone: 120 }, time: 3, support: { n: 3, lv: 1 } } },
       allowed: ['house'],

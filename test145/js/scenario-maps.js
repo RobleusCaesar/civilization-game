@@ -253,6 +253,10 @@ const SCENARIO_MAPS = {
    "rangeSite": [8, 19],
    "towerSite": [17, 18],
    "wallSite": [18, 14],
+   "wall1": [17, 14],
+   "wall2": [18, 14],
+   "wall3": [19, 14],
+   "scoutFrom": [20, 7],
    "stone": [17, 27],
    "berries": [8, 26],
    "forest": [5, 25]

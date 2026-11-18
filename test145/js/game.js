@@ -664,6 +664,11 @@ const G = {
       // the animal strife is heard across the valley: its ground is in sight while it rages
       const sf = S.strife;
       if (sf && sf.phase === 'fight') mark(sf.x, sf.y, CFG.STRIFE.watchR);
+      /* THE JOURNEY'S SCOUT (js/prologue.js, game 2): the guide says "a scout
+         comes", so his road to the wall is in sight while he walks it —
+         the lesson is watching the archer shoot him, not a fight in the dark */
+      const pw = window.Prologue && Prologue.watch ? Prologue.watch() : null;
+      if (pw) mark(pw.x | 0, pw.y | 0, pw.r);
       /* THE CARD-LIT MAP (js/deckfx-rival.js): ground a card put on the map
          is not ground the player's own people have seen — until they do.
          Everything marked above is REAL sight, so it clears the card's mark
