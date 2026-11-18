@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 194, date: '2026-11-18', title: 'More hands, faster',
+    items: [
+      'While you gather for the bigger hall in The First Fire, Mira tells you to train more villagers when you have food to spare: more hands gather faster.',
+    ],
+  },
+  {
     build: 193, date: '2026-11-18', title: 'Camps that never run out',
     items: [
       'The First Fire is longer: after your first new villager, Mira has you build a lumber camp where the grove was felled and a quarry where the rock was broken.',
