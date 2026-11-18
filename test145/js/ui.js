@@ -3208,9 +3208,11 @@ const UI = {
           // clear-first click — and tuck the menu away for a full view of the board
           this.settingRally = b2.id;
           this.setMenuCollapsed(true, true);
-          this.toast(b2.rally
-            ? 'Tap a new spot to move the rally — or tap the building to clear it'
-            : 'Tap a spot to rally — new units head there (tap the building to cancel)', 'note');
+          // (in a journey world the guide's line and ring say where: Prologue.toolQuiet)
+          if (!(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('rally')))
+            this.toast(b2.rally
+              ? 'Tap a new spot to move the rally — or tap the building to clear it'
+              : 'Tap a spot to rally — new units head there (tap the building to cancel)', 'note');
         }
         else if (btn.dataset.act === 'levy') {
           if (S.levy) {
