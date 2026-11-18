@@ -465,9 +465,7 @@ const Prologue = {
       }
       const card = '.bbtn[data-key="' + key + '"]';
       if (this.vis(card)) return { sel: card };
-      if (this.vis('#panel [data-act="gobuild"]')) return { sel: '#panel [data-act="gobuild"]' };
-      if (this.vis('#bmToggle')) return { sel: '#bmToggle' };
-      return null;
+      return this.buildDoor();
     };
   },
   // the ghost seats itself on the authored site once per placement (never fights a drag)
@@ -483,6 +481,16 @@ const Prologue = {
     UI.placeGhost = { x, y, set: true };
     try { if (UI._placeCheck) UI._placeCheck(); } catch (e) {}
   },
+  /* THE WAY INTO THE BUILD MENU: a villager in hand opens it from his panel; with
+     anything else in hand (the hall, after a training) its panel's ✕ comes first —
+     with a panel up the Build tab only folds that panel and the menu never opens
+     (build 195: game 1's road beat rang the tab for good behind the hall's panel) */
+  buildDoor() {
+    if (this.vis('#panel [data-act="gobuild"]')) return { sel: '#panel [data-act="gobuild"]' };
+    if (UI.sel && !this.selVil() && this.vis('#panelClose')) return { sel: '#panelClose' };
+    if (this.vis('#bmToggle')) return { sel: '#bmToggle' };
+    return null;
+  },
   /* THE LINE CHAIN (a road, a wall): the Build tab → the card → the site
      itself, where one tap lays a stretch (a drag lays a longer one: UI's
      line drag, which takes no ✓) */
@@ -491,9 +499,7 @@ const Prologue = {
       if (UI.placing === key) return this.siteMark(site);
       const card = '.bbtn[data-key="' + key + '"]';
       if (this.vis(card)) return { sel: card };
-      if (this.vis('#panel [data-act="gobuild"]')) return { sel: '#panel [data-act="gobuild"]' };
-      if (this.vis('#bmToggle')) return { sel: '#bmToggle' };
-      return null;
+      return this.buildDoor();
     };
   },
   hallRing(sel) {
