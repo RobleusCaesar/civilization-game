@@ -700,6 +700,15 @@ const Prologue = {
   },
   // a second villager: one more than the first lesson trained, or one in the hall's queue
   trained2() { const tc = this.tc(); return this.vils().length > this._n0 + 1 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
+  /* the tip's moment (game 1's hall gathering): a villager can be trained now (its
+     price, a free place, the hall's queue), none is already on the way, and the
+     food left after it still covers the hall's own — the tip never delays the hall */
+  spareHands() {
+    const tc = this.tc(); if (!tc || tc.upgrading > 0 || !this.afford2('villager')) return false;
+    if (tc.queue && tc.queue.some(q => q.unit === 'villager')) return false;
+    const price = this.trainPrice('villager') || {}, lv = CFG.BUILDINGS.tc.levels[tc.level], hall = (lv && lv.cost) || {};
+    return (S.res.food || 0) - (price.food || 0) >= (hall.food || 0);
+  },
   trained3() { const tc = this.tc(); return this.vils().length > this._n0 + 2 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
   farmGoal() {
     if (this.bare()) return this.buildGoal('farm', 'Build a farm');
@@ -875,8 +884,16 @@ const Prologue = {
           taps: () => { const r = P.hallRing('#panel [data-act="train"][data-unit="villager"]')(); return r ? [r] : []; },
           ack: () => P.trained3(), wait: 'The new villager is on the way to the quarry.',
           done: () => P.crew('quarry') >= 2, look: () => P.stationView('quarry'), praise: 'Both stations full!' },
+        /* MORE HANDS GATHER FASTER (operator, build 194, on the hall's long wait at
+           221/650 wood with 864 food banked: "Give a tip here that the player should
+           create more villagers to collect resources faster"): while every hand is at
+           work and food is to spare, the waiting line is the tip, ringing the hall's
+           Train Villager; the villager it brings stands by the full quarry and the
+           gather line sends them out — and the tip comes back until the houses are full */
         { id: 'grow', face: 'thinking', text: 'Next, a bigger hall. Gather the food, wood and stone it needs.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
+          tip: { when: () => P.spareHands(), face: 'excited', text: 'Food to spare! Train more villagers. More hands gather faster.',
+            ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]') },
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
           praise: 'We have enough!' },
@@ -1620,7 +1637,7 @@ const Prologue = {
       if (b.site && this._needsHands(b)) return 'hands';
       if (b.wait) return 'wait';
     }
-    if (b.gather && b.gwait && S.pro.said[b.id] && !this.gatherRing()) return 'gwait';
+    if (b.gather && b.gwait && S.pro.said[b.id] && !this.gatherRing()) return b.tip && b.tip.when.call(this) ? 'tip' : 'gwait';
     return 'ask';
   },
   // the line a phase says, and what it rings (a view: the bot, the frame and the hand all read it)
@@ -1634,6 +1651,8 @@ const Prologue = {
     // every hand is on it: said at once, so a tap that sent the last one is answered
     if (ph === 'gwait') return named({ face: 'pleased', text: () => b.hold && !S.pro.said[b.id] ? b.hold.call(P, true) : txt(b.gwait) });
     if (ph === 'hands') return Object.assign(base, { face: 'point', text: txt(b.handsText) || 'Now send a villager to build it.', ring: () => P.handsRing(b), taps: () => P.handsTaps(b) });
+    // every hand at work and a hand to spare: the beat's tip, ringing what acts on it
+    if (ph === 'tip') return Object.assign(base, { face: b.tip.face || 'point', text: txt(b.tip.text), ring: b.tip.ring, taps: () => { const r = b.tip.ring.call(P); return r ? [r] : []; } });
     if (ph === 'wait') return Object.assign(base, { face: b.waitFace || 'pleased', text: txt(b.wait), ring: () => P.gatherRing(true), taps: () => P.gatherTaps(true) });
     return Object.assign(base, { face: b.face, text: txt(b.text), ring: b.ring, taps: b.taps, auto: b.auto, gather: b.gather, look: b.look });
   },
@@ -1663,11 +1682,11 @@ const Prologue = {
       this.track('shown', { game: Scenarios.game(), beat: b.id, i: P.i });
     }
     // the last hand sent: the waiting line answers it
-    if (ph === 'gwait' && prev && prev.beat === b && (prev.phase === 'held' || prev.phase === 'ask') && !this._praise) this._praise = 'Good.';
+    if (ph === 'gwait' && prev && prev.beat === b && (prev.phase === 'held' || prev.phase === 'ask' || prev.phase === 'tip') && !this._praise) this._praise = 'Good.';
     /* a gather line asked again (a hand went idle, a good ran short — or the
        good it named came in and the next is short): why, not the lesson again;
        a line naming a good rings that good */
-    if (ph === 'ask' && b.gather && prev && prev.beat === b && (prev.phase === 'gwait' || (prev.phase === 'ask' && prev.good))) {
+    if (ph === 'ask' && b.gather && prev && prev.beat === b && (prev.phase === 'gwait' || prev.phase === 'tip' || (prev.phase === 'ask' && prev.good))) {
       this._said = null;
       v.text = this.gatherLine(); v.face = 'point'; v.good = this._said;
       if (v.good) { v.ring = () => this.gatherRing(false, v.good); v.taps = () => this.gatherTaps(false, v.good); }
@@ -1705,7 +1724,7 @@ const Prologue = {
   _quietNow() {
     const v = this._shown, now = this.now();
     if ((window.DeckUI && DeckUI.open) || (window.Deck && Deck.acting && Deck.acting())) return false;   // her card is hidden: the news would be said to nobody
-    if (!v || v.phase === 'wait' || v.phase === 'held' || v.phase === 'gwait' || v.auto) return true;
+    if (!v || v.phase === 'wait' || v.phase === 'held' || v.phase === 'gwait' || v.phase === 'tip' || v.auto) return true;
     return now - this._lineT0 > 6000 && now - this._lastIn > 3000;
   },
   _asides(dt) {
