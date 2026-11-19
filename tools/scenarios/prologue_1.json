@@ -95,8 +95,12 @@
    29,
    3
   ],
-  "roadSite": [
+  "roadFrom": [
    16,
+   20
+  ],
+  "roadTo": [
+   20,
    20
   ],
   "stone": [

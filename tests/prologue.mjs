@@ -122,8 +122,31 @@ const page = async (q, done) => {
            … Do the same with the hunting hut"): the road's ground beside the lumber camp's
            grove (an edge, so the camp works a tenth better), and the deer grazing in sight
            of the village, where a lodge may stand once it falls */
-        o.road = place('road', 'roadSite');
-        o.roadTouchesCamp = !!(m.roadSite && m.forest && Math.abs(m.roadSite[0] - m.forest[0]) + Math.abs(m.roadSite[1] - m.forest[1]) === 1);
+        /* …and the road JOINS the village (operator, build 199: "have the road stretch
+           between two or three locations cause then we also teach the player how to click
+           and drag"): one straight line of open ground, roadFrom to roadTo, on an edge of
+           the grove the lumber camp stands on, of the hall and of the bush the farm stands
+           on — every stretch placeable, and a road off the line refused by the lesson until
+           the whole line is down */
+        Scenarios.unlock('road');
+        const line = Scenarios.pathTiles(['roadFrom', 'roadTo']);
+        const verdict = (x, y) => { const v = Bld.canPlace('P', 'road', x, y, { noCost: true, noSeal: true }); return v && v.ok ? 'ok' : (v && (v.code || v.why)); };
+        const edge = (t, x0, y0, s) => (t[0] >= x0 && t[0] < x0 + s && (t[1] === y0 - 1 || t[1] === y0 + s)) || (t[1] >= y0 && t[1] < y0 + s && (t[0] === x0 - 1 || t[0] === x0 + s));
+        const tc0 = Bld.tcOf('P');
+        o.road = { n: line.length, tiles: line.map(t => verdict(t[0], t[1])),
+          camp: !!m.forest && line.some(t => edge(t, m.forest[0], m.forest[1], 1)),
+          hall: tc0 ? line.filter(t => edge(t, tc0.x, tc0.y, Bld.size(tc0))).length : 0,
+          farm: !!m.berries && line.some(t => edge(t, m.berries[0], m.berries[1], 1)) };
+        // open grass beside the line: refused while the line waits, free once it is laid
+        let off = null;
+        for (const t of line) for (const dy of [1, -1]) {
+          const x = t[0], y = t[1] + dy;
+          if (!off && S.map.terrain[y * W + x] === T.GRASS && !Bld.at(x, y) && !line.some(q => q[0] === x && q[1] === y)) off = [x, y];
+        }
+        o.road.off = off ? verdict(off[0], off[1]) : 'no open ground beside the line';
+        const laid = line.map(t => Bld.place('P', 'road', t[0], t[1], { free: true, noAutoAssign: true }));
+        o.road.offAfter = off ? verdict(off[0], off[1]) : null;
+        S.buildings = S.buildings.filter(b => !laid.includes(b)); Bld._block = null;
         G.updateVisibility();
         const deer = S.units.filter(u => u.owner === 'W' && u.kind === 'deer');
         const d0 = m.deer && deer.find(u => Math.hypot(u.x - m.deer[0] - 0.5, u.y - m.deer[1] - 0.5) < 1.5);
@@ -276,7 +299,11 @@ const page = async (q, done) => {
   ck('andItsThreeWallSectionsCloseTheLandBridge', g2.line.every(v => v === 'ok') && g2.scoutWood && g2.lineShuts,
     `sections ${g2.line.join(', ')}; scout's wood on the mainland ${g2.scoutWood}; closed by the three ${g2.lineShuts}`);
   // the road and the hunt moved to game 1 (operator, build 195)
-  ck('gameOnesRoadGroundTouchesTheLumberCampsGrove', g1.road === 'ok' && g1.roadTouchesCamp, 'road ' + g1.road + ', an edge of the grove ' + g1.roadTouchesCamp + ' ' + JSON.stringify(g1.marks.roadSite));
+  /* build 199: the road is a dragged LINE joining the camp, the hall and the farm (it was one
+     stretch beside the camp, "a single individual road in front of the town center") */
+  ck('gameOnesRoadJoinsTheCampTheHallAndTheFarm', g1.road.n >= 4 && g1.road.tiles.every(v => v === 'ok') && g1.road.camp && g1.road.hall >= 2 && g1.road.farm,
+    JSON.stringify(g1.road) + ' ' + JSON.stringify([g1.marks.roadFrom, g1.marks.roadTo]));
+  ck('andARoadGoesOnlyOnItsLineUntilTheLineIsDown', g1.road.off === 'lesson' && g1.road.offAfter === 'ok', `beside the line: ${g1.road.off}, once it is laid: ${g1.road.offAfter}`);
   ck('andItsDeerGrazesInSightWhereALodgeMayStand', g1.deer.mark && g1.deer.seen && g1.deer.reach && g1.lodge === 'ok', JSON.stringify(g1.deer) + ' lodge ' + g1.lodge);
   /* build 185: at a deer's 20 health a villager's hunt bolted it from blow to
      blow, away from the hunter and so from the hall — three hunts in ten ended
@@ -394,7 +421,7 @@ const READ = () => {
     else if (el && el.id !== 'c') blocked = el.id || String(el.className);
   }
   let taps = [];
-  try { taps = rb && rb.taps ? (rb.taps.call(P) || []).map(t => { const q = P._resolve(t); return q && (q.rect || P._open(q.x, q.y)) ? { x: Math.round(q.x), y: Math.round(q.y), u: t.u !== undefined, k: kOf(t) } : null; }).filter(Boolean) : []; } catch (e) {}
+  try { taps = rb && rb.taps ? (rb.taps.call(P) || []).map(t => { const q = P._resolve(t); return q && (q.rect || P._open(q.x, q.y)) ? { x: Math.round(q.x), y: Math.round(q.y), u: t.u !== undefined, k: kOf(t), to: q.to ? { x: Math.round(q.to.x), y: Math.round(q.to.y) } : null } : null; }).filter(Boolean) : []; } catch (e) {}
   /* a line whose instruction NAMES a good ("Send someone to gather berries",
      "Now send someone to cut wood", "…the grey rocks for stone", "A villager
      needs more food. Gather it at the berries.") and a ring drawn on a tile of
@@ -415,7 +442,8 @@ const READ = () => {
   return { over: !!S.over, id: line ? (P._aside ? 'aside:' : '') + line.id : '', phase: (line && line.phase) || '', auto: !!(line && line.auto), wrong,
     goal: E && E.goal.style.display !== 'none' ? E.goal.textContent : '', gliding: !!P._gliding,
     txt: E ? E.txt.textContent : '', open: !!(E && E.elder.style.display !== 'none' && E.root.style.display !== 'none'),
-    key, ring: r ? { x: Math.round(r.x), y: Math.round(r.y) } : null, blocked, taps, vil: !!P.selVil(), clk: P.now() / 1000,
+    // a DRAG's ring carries where it ends (game 1's road, build 199): the follower drags it, as a person does
+    key, ring: r ? { x: Math.round(r.x), y: Math.round(r.y), to: r.to ? { x: Math.round(r.to.x), y: Math.round(r.to.y) } : null } : null, blocked, taps, vil: !!P.selVil(), clk: P.now() / 1000,
     acting: !!((window.Deck && Deck.acting && Deck.acting()) || (window.DeckUI && DeckUI.playing)),
     // how long nobody has touched the game — the idle hand's own clock (Prologue._lastIn: a tap or a new line)
     idle: (P.now() - (P._lastIn || 0)) / 1000,
@@ -450,7 +478,7 @@ const follow = async (p, maxT) => {
     if (!ran) { const w = Math.min(sec, 0.25); await p.waitForTimeout(w * 1000); off += w; }
   };
   const read = async () => { const r = await p.evaluate(READ); r.clk += off; return r; };
-  const seen = [], slow = [], blocked = [], wrong = [], said = new Set();
+  const seen = [], slow = [], blocked = [], wrong = [], said = new Set(), drags = [];
   let clicks = 0, last = '', lastKey = null, keySince = 0, lastTap = null, pend = null, minFood = Infinity;
   let st = await read();
   const t0 = st.clk;
@@ -491,9 +519,17 @@ const follow = async (p, maxT) => {
       await p.waitForTimeout(60);
       const fr = await read();
       const q2 = fr.ring && fr.key === tg.k ? fr.ring : fr.taps.find(t => t.k === tg.k);
-      if (!q2 || q2.x < 4 || q2.y < 4 || q2.x > W - 4 || q2.y > H - 4) { st = fr; if (!q2) continue; }
+      const outOf = q => q.x < 4 || q.y < 4 || q.x > W - 4 || q.y > H - 4;
+      if (!q2 || outOf(q2) || (q2.to && outOf(q2.to))) { st = fr; if (!q2) continue; }
       else {
-        await p.mouse.click(q2.x, q2.y); clicks++;
+        /* a ring with a far end is a DRAG (the road): pressed on the near ring, carried
+           along the gold dashes, lifted on the far one — a tap there lays one stretch */
+        if (q2.to) {
+          await p.mouse.move(q2.x, q2.y); await p.mouse.down();
+          await p.mouse.move(q2.to.x, q2.to.y, { steps: 12 }); await p.mouse.up();
+          drags.push({ t: Math.round(fr.clk - t0), line: fr.id, k: tg.k });
+        } else await p.mouse.click(q2.x, q2.y);
+        clicks++;
         lastTap = { t: fr.clk, k: tg.k };
         pend = { t0: fr.clk, key: tg.k, txt: fr.txt, goal: fr.goal, line: fr.id };
         await p.waitForTimeout(40);
@@ -510,7 +546,7 @@ const follow = async (p, maxT) => {
     st = await read();
   }
   await p.evaluate(() => { if (G.__realStep) { G.simStep = G.__realStep; delete G.__realStep; } });
-  return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, wrong, played: st.played, minFood };
+  return { over: st.over, clk: st.clk - t0, clicks, drags, seen, said: [...said], slow, blocked, wrong, played: st.played, minFood };
 };
 // the end screen's card, claimed, and the doors it leaves
 const endScreen = async (p) => {
@@ -1297,6 +1333,8 @@ const endScreen = async (p) => {
       camp: !!camp, quarry: !!quarry, crew: camp ? Bld.workersAssigned(camp) : 0, qcrew: quarry ? Bld.workersAssigned(quarry) : 0, rally: !!(tc && quarry && tc.rally && tc.rally.bid === quarry.id),
       // the road beside the camp (and the camp's tenth more for it), and the lodge where the deer fell
       roads: Object.keys((S.map && S.map.roads) || {}).length, boost: !!(camp && Bld.roadBoost && Bld.roadBoost(camp)),
+      // the dragged line: every stretch of it a road, and the hall it passes boosted too
+      line: Prologue.roadLine().map(t => !!(S.map.roads && S.map.roads[t[1] * CFG.W + t[0]])), hallBoost: !!(tc && Bld.roadBoost && Bld.roadBoost(tc)),
       lodge: (() => { const l = S.buildings.find(b => b.owner === 'P' && b.key === 'lodge'); if (!l) return null;
         const h = S.map.hunted || {}; return { hunted: !!h[l.y * CFG.W + l.x], fromDeer: +Math.hypot(l.x - m.deer[0], l.y - m.deer[1]).toFixed(1), done: !(l.construction > 0), crew: Bld.workersAssigned(l) }; })(),
       vils: S.units.filter(u => u.owner === 'P' && u.kind === 'villager').length, wood: rate(camp, 'wood', T.FOREST), stone: rate(quarry, 'stone', T.HILLS) };
@@ -1348,10 +1386,18 @@ const endScreen = async (p) => {
      the hunting hut"): the hall named, a road laid beside the lumber camp (which then works
      a tenth better, and she says so), a deer hunted and a lodge raised where it fell — all
      after the stations are full and before the hall's last gathering */
-  ck('gameOneLaysARoadBesideTheLumberCampWhileTheHallIsGatheredFor', ['hallnext', 'road', 'roadboost'].every(k => win.done.includes(k))
+  ck('gameOneLaysARoadWhileTheHallIsGatheredFor', ['hallnext', 'road', 'roadboost'].every(k => win.done.includes(k))
     && at('train3') < at('hallnext') && at('hallnext') < at('road') && at('road') < at('roadboost') && at('roadboost') < at('grow')
-    && win.roads > 0 && win.boost && run.said.some(t => /lay a road beside the lumber camp/.test(t)) && run.said.some(t => /10% faster/.test(t)),
-    `road tiles ${win.roads}, camp boosted ${win.boost}; ${ord.join(' › ')}`);
+    && win.boost && run.said.some(t => /10% faster/.test(t)), `road tiles ${win.roads}, camp boosted ${win.boost}; ${ord.join(' › ')}`);
+  /* …DRAGGED, from the lumber camp past the hall to the farm (operator, build 199: "we don't want
+     them to just stick a single individual road in front of the town center … have the road
+     stretch between two or three locations cause then we also teach the player how to click and
+     drag"): the line names the drag and its three places, the follower — tapping and dragging only
+     what she rings — lays it in one drag, every stretch of it is a road, and the hall it passes
+     works a tenth better as well as the camp */
+  ck('andTheRoadIsDraggedFromTheCampPastTheHallToTheFarm', run.said.some(t => /drag a road from the camp past the hall to the farm/.test(t))
+    && run.drags.some(d => d.line === 'road') && win.line.length >= 4 && win.line.every(Boolean) && win.hallBoost && run.said.some(t => /camp and the hall/.test(t)),
+    `drags ${JSON.stringify(run.drags)}; line ${JSON.stringify(win.line)}; hall boosted ${win.hallBoost}`);
   ck('andHuntsADeerAndRaisesAHuntersLodgeWhereItFell', ['hunt', 'lodge'].every(k => win.done.includes(k))
     && at('roadboost') < at('hunt') && at('hunt') < at('lodge') && at('lodge') < at('grow')
     && !!win.lodge && win.lodge.hunted && win.lodge.fromDeer <= 2 && win.lodge.done && win.lodge.crew > 0,

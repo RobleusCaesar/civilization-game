@@ -125,7 +125,8 @@ const SCENARIO_MAPS = {
    "forest": [15, 20],
    "houseSite": [21, 21],
    "rivalPocket": [29, 3],
-   "roadSite": [16, 20],
+   "roadFrom": [16, 20],
+   "roadTo": [20, 20],
    "stone": [21, 15]
   },
   "tileStock": {

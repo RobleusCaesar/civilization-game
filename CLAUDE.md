@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road dragged from the camp past the hall to the farm, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1667,14 +1667,25 @@ here that the player should create more villagers to collect resources
 faster"): in game 1's `grow`, while every hand is at work (the beat's
 `gwait`), a villager can be trained (`afford2`: price, room, queue), none is
 on the way and the food left after it still covers the hall's own, the
-waiting line is the tip ("Food to spare! Train more villagers. More hands
-gather faster.") ringing the hall's Train Villager; the villager stands by
-the full quarry (the rally's rule) and the gather line sends them out, and
-the tip comes back until the houses are full (the follower trains to
-the cap of 10, and its game 1 falls to 310 s). **THE WAIT TEACHES THE ROAD
+waiting line is the tip ringing the hall's Train Villager; the villager
+stands by the full quarry (the rally's rule) and the gather line sends them
+out, and the tip comes back until the houses are full (the follower trains
+to the cap of 10, and its game 1 falls to 310 s). **THE TIP SAYS WHERE THEY
+GO** (`Prologue.tipLine`, build 199 — operator, on the tip after the lodge:
+"it has you placed them on the quarry and you already have two people on the
+quarry … create more villagers and send them to collect ore and wood so that
+you can upgrade your town center"): "Train more villagers and send them for
+stone and wood, to raise our hall." — the goods the hall's storey is still
+short of, the scarcest first, never food (the tip asks only when food is to
+spare); it was "Food to spare! Train more villagers. More hands gather
+faster.", and the newcomer then stood by the full quarry with nothing said
+of where to go. **THE WAIT TEACHES THE ROAD
 AND THE HUNT** (`hallnext`, `road`, `roadboost`, `hunt`, `lodge` between
-`train3` and `grow`; `Prologue.paved`, the map's `roadSite` and `deer` marks;
-tests/prologue.mjs `gameOneLaysARoadBesideTheLumberCampWhileTheHallIsGatheredFor`,
+`train3` and `grow`; the map's `roadFrom` / `roadTo` and `deer` marks;
+tests/prologue.mjs `gameOneLaysARoadWhileTheHallIsGatheredFor`,
+`andTheRoadIsDraggedFromTheCampPastTheHallToTheFarm`,
+`gameOnesRoadJoinsTheCampTheHallAndTheFarm`,
+`andARoadGoesOnlyOnItsLineUntilTheLineIsDown`,
 `andHuntsADeerAndRaisesAHuntersLodgeWhereItFell` — operator, build 195:
 "Teach the player about roads while the villagers are collecting resources
 (pull that back from game 2). We need to fill some of the time while the
@@ -1682,13 +1693,45 @@ villagers collect resources. Do the same with the hunting hut … most key
 basic economics and movement which also gives a resource bump. This creates
 a solid foundation for level 2"): once both stations are full Mira names the
 hall ("Our stations will gather what it needs"), and while they work she has
-a road laid on `roadSite`, the tile on the lumber camp's east edge, so the
-camp takes the road's tenth (`Bld.roadBoost`; she says it, the wood chip
-flutters), then a deer hunted (a `still` one, `hp` 2, on `deer` by the
-woods) and a hunter's lodge raised where it fell; the road and the lodge
+a road DRAGGED from the lumber camp past the hall to the farm (below), so the
+camp and the hall take the road's tenth (`Bld.roadBoost`; she says it, the
+wood chip flutters), then a deer hunted (a `still` one, `hp` 2, on `deer` by
+the woods) and a hunter's lodge raised where it fell; the road and the lodge
 cards are open from game 2's start (`allowed`) and game 2 opens on a
 `welcome` line instead of the hunt. The follower's game 1: 336 s, 81 taps
-(the road, the hunt and the lodge 192–213 s). **THE BUILD CHAIN CLOSES
+(the road, the hunt and the lodge 192–213 s). **THE ROAD IS DRAGGED, AND
+JOINS THE VILLAGE** (`Scenarios.pathTiles` / `roadAt`, the `path` rule in
+`Scenarios.RULES.prologue_1.strict.sites.road`, `Prologue.roadLine` /
+`roadLeft` / `roadLaid` / `roadPaved` / `roadCost` / `roadRing` / `dragHint`,
+`DRAG_HAND_MS` / `DRAG_CYCLE`, `R.drawGuideDrag` — operator, build 199, on a
+phone shot of one ringed tile between the camp and the hall: "we don't want
+them to just stick a single individual road in front of the town center …
+have the road stretch between two or three locations cause then we also teach
+the player how to click and drag … longer road looks better but it also
+connects two or three different buildings"): the line is the straight run of
+open ground from the map's `roadFrom` to its `roadTo` (row 20, x 16–20, five
+stretches), on an edge of the lumber camp's grove, along the hall's south
+side and on the farm's bush — "While they work, drag a road from the camp
+past the hall to the farm." Its price is the whole line's (`roadCost`, the
+stretches still to lay; 50 wood, 25 stone), held until it is in. Armed, the
+ring is the LINE: a ground ring at each end of what is still to lay (the far
+one `groundRings`' second), gold dashes marching between with an arrowhead
+where the finger lifts (`R.drawGuideDrag`, from `R.draw` after the road
+sparks, ink under gold at the device's pixels, clipped to the board, still
+under reduced motion, put away while the player's own drag shows its plan),
+and the hand showing the DRAG almost at once — `DRAG_HAND_MS` (900) of quiet,
+never the game's idle wait, since nobody reads "drag" off a ring — resting on
+the near ring, pressing, sliding along the dashes, lifting, fading
+(`DRAG_CYCLE` 2.4 s), never over a finger already down (`UI.pointers`). The
+look brings the line out by its middle and counts it in view only with both
+ends open (`_look`'s `to`). Every stretch goes on the line until the whole
+line is laid, as a site or a road (`siteRefusal`'s `path`: code `'lesson'`,
+"Lay the road along the line Mira shows you."), so a drag that wanders lays
+the line and spends nothing on the wander; a tap lays one stretch and the
+ring moves to what is left. The beat's deed is the whole line laid
+(`roadLaid`), its result every stretch a road (`roadPaved`), and
+`roadboost` says "The camp and the hall now work 10% faster." The follower
+drags any ring with a far end (`READ`'s `to`, `run.drags`). **THE BUILD CHAIN CLOSES
 ANOTHER PANEL FIRST** (`Prologue.buildDoor`, asked by `buildRing` and
 `lineRing`): with the hall in hand after a training, the Build tab only
 folds the hall's panel and the menu never opens, so the guide rings the

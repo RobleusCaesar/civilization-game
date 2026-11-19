@@ -749,6 +749,16 @@ const Prologue = {
     const price = this.trainPrice('villager') || {}, lv = CFG.BUILDINGS.tc.levels[tc.level], hall = (lv && lv.cost) || {};
     return (S.res.food || 0) - (price.food || 0) >= (hall.food || 0);
   },
+  /* the tip's words (build 199): train, and where to send them — the goods the hall
+     is still short of, the scarcest first ("stone and wood"); never food, which the
+     tip asks for only when there is food to spare */
+  tipLine() {
+    const c = this.goalCost() || {}, have = k => S.res[k] || 0;
+    const short = Object.keys(c).filter(k => k !== 'food' && (c[k] || 0) > have(k))
+      .sort((a, b) => (c[b] - have(b)) / c[b] - (c[a] - have(a)) / c[a]);
+    const goods = !short.length ? 'wood and stone' : short.length === 1 ? short[0] : short.slice(0, -1).join(', ') + ' and ' + short[short.length - 1];
+    return 'Train more villagers and send them for ' + goods + ', to raise our hall.';
+  },
   trained3() { const tc = this.tc(); return this.vils().length > this._n0 + 2 || !!(tc && tc.queue && tc.queue.some(q => q.unit === 'villager')); },
   farmGoal() {
     if (this.bare()) return this.buildGoal('farm', 'Build a farm');
@@ -934,14 +944,21 @@ const Prologue = {
            hunter's lodge raised where it fell */
         { id: 'hallnext', face: 'thinking', text: 'Next, a bigger hall. Our stations will gather what it needs.', auto: 5600,
           goal: () => 'Raise the hall: ' + P.hallNeeds(), look: () => P.stationView('lumber') },
-        { id: 'road', face: 'point', text: 'While they work, lay a road beside the lumber camp.', key: 'road',
-          goal: 'Lay a road',
-          when: () => P.afford('road') || P.laid(), hold: (c) => P.needLine('A road', null, c),
+        /* …and the road JOINS the village (operator, build 199: "we don't want them to just
+           stick a single individual road in front of the town center … have the road stretch
+           between two or three locations cause then we also teach the player how to click and
+           drag"): one drag from the lumber camp's door, past the hall's, to the farm's — a ring
+           at each end, gold dashes between and the hand sliding from one to the other (roadRing),
+           every stretch of it on that line (Scenarios.RULES.prologue_1.strict.sites.road) */
+        { id: 'road', face: 'point', text: 'While they work, drag a road from the camp past the hall to the farm.', key: 'road',
+          goal: () => 'Lay a road' + (Bld.canAfford(P.roadCost(), S.res) ? '' : ': ' + P.priceLine(P.roadCost())),
+          cost: () => P.roadCost(),
+          when: () => Bld.canAfford(P.roadCost(), S.res) || P.roadLeft().length < P.roadLine().length, hold: (c) => P.needLine('The road', null, c),
           on: () => Scenarios.unlock('road'),
-          ring: P.lineRing('road', 'roadSite'), taps: () => { const r = P.lineRing('road', 'roadSite')(); return r ? [r] : []; },
-          ack: () => P.laid(), site: () => P.siteOf('road'), wait: 'The road is going down.',
-          done: () => P.paved(), praise: 'A fine road!' },
-        { id: 'roadboost', face: 'excited', text: 'On a road, the camp works 10% faster. Our people walk faster on roads.', auto: 6400,
+          ring: () => P.roadRing(), taps: () => { const r = P.roadRing(); return r ? [r] : []; },
+          ack: () => P.roadLaid(), site: () => P.siteOf('road'), wait: 'The road is going down.',
+          done: () => P.roadPaved(), praise: 'A fine road!' },
+        { id: 'roadboost', face: 'excited', text: 'The camp and the hall now work 10% faster. People walk faster on roads.', auto: 6400,
           goal: 'Roads: faster work, faster feet', look: () => P.stationView('lumber'), on: () => P.flutter('wood', true) },
         { id: 'hunt', face: 'point', text: 'A deer grazes nearby. Send someone to hunt it.',
           goal: 'Hunt a deer', ring: () => P.huntRing(), taps: () => P.huntTaps(),
@@ -959,10 +976,14 @@ const Prologue = {
            create more villagers to collect resources faster"): while every hand is at
            work and food is to spare, the waiting line is the tip, ringing the hall's
            Train Villager; the villager it brings stands by the full quarry and the
-           gather line sends them out — and the tip comes back until the houses are full */
+           gather line sends them out — and the tip comes back until the houses are full.
+           It says WHERE they go (operator, build 199: "it has you placed them on the
+           quarry and you already have two people on the quarry … create more villagers
+           and send them to collect ore and wood so that you can upgrade your town
+           center"): to the goods the hall is still short of (tipLine) */
         { id: 'grow', face: 'thinking', text: 'The hall needs more yet. Gather the food, wood and stone.', gather: true,
           gwait: () => 'Our hall must grow. The ' + P.naming(P.need()) + ' is coming in.',
-          tip: { when: () => P.spareHands(), face: 'excited', text: 'Food to spare! Train more villagers. More hands gather faster.',
+          tip: { when: () => P.spareHands(), face: 'excited', text: () => P.tipLine(),
             ring: P.hallRing('#panel [data-act="train"][data-unit="villager"]') },
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           done: () => { const tc = P.tc(); return !!tc && (tc.level >= 2 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
@@ -2060,6 +2081,55 @@ const Prologue = {
   laid() { return this.has('road') || !!(S.map && S.map.roads && Object.keys(S.map.roads).length); },
   // ground paved and nothing of the line still going down (the road's boost is a finished road's)
   paved() { return !this.has('road') && !!(S.map && S.map.roads && Object.keys(S.map.roads).length); },
+  /* THE ROAD THAT JOINS THE VILLAGE (operator, build 199: "we don't want them to just
+     stick a single individual road in front of the town center … have the road stretch
+     between two or three locations cause then we also teach the player how to click and
+     drag"): game 1's road is the straight line from the map's roadFrom to its roadTo —
+     past the lumber camp's door, the hall's and the farm's — and it is DRAGGED */
+  roadLine() { return window.Scenarios && Scenarios.pathTiles ? Scenarios.pathTiles(['roadFrom', 'roadTo']) : []; },
+  // the stretches of the line not yet laid, in order from the camp
+  roadLeft() { return this.roadLine().filter(t => !Scenarios.roadAt(t[0], t[1])); },
+  // the whole line laid (going down or done): the drag's deed
+  roadLaid() { return this.roadLine().length > 0 && !this.roadLeft().length; },
+  // …and every stretch of it finished (the road's boost is a finished road's)
+  roadPaved() {
+    const line = this.roadLine();
+    return line.length > 0 && line.every(t => !!(S.map.roads && S.map.roads[t[1] * CFG.W + t[0]]));
+  },
+  // the price of the stretches still to lay (the beat's own: its held line names what it is short of)
+  roadCost() {
+    const c = Bld.effCost('P', 'road') || {}, n = Math.max(1, this.roadLeft().length), out = {};
+    for (const k in c) out[k] = c[k] * n;
+    return out;
+  },
+  /* THE DRAG CHAIN: the Build tab → the road's card (NEW) → the line still to lay,
+     from its first stretch to its last: a ring at each end, gold dashes marching
+     between, and the hand pressing at one end and sliding to the other (a drag —
+     a tap lays one stretch). One stretch left is a tap and rings as one */
+  roadRing() {
+    if (UI.placing === 'road') {
+      const left = this.roadLeft();
+      if (!left.length) return null;
+      const a = left[0], b = left[left.length - 1];
+      return { x: a[0] + 0.5, y: a[1] + 0.5, r: 0.7, to: left.length > 1 ? { x: b[0] + 0.5, y: b[1] + 0.5 } : null };
+    }
+    const card = '.bbtn[data-key="road"]';
+    if (this.vis(card)) return { sel: card };
+    return this.buildDoor();
+  },
+  /* what R draws for a drag this frame (R.drawGuideDrag): the ringed line's two ends
+     in world tiles, while its ring stands on the ground; null otherwise */
+  dragHint() {
+    const g = this._gr;
+    if (!g || g.w !== S || !g.raw || !g.raw.to) return null;
+    // a drag being made shows its own plan (the road's ghost): the dashes stand aside under it
+    if (typeof UI !== 'undefined' && UI.wallDrag) return null;
+    const E = this._el;
+    if (!E || E.root.style.display === 'none' || E.ring.style.display === 'none') return null;
+    const now = performance.now() / 1000, F = (typeof R !== 'undefined' && R.GRING && R.GRING.fadeIn) || 0.42;
+    const p = Math.max(0, Math.min(1, (now - g.t0) / F));
+    return { x0: g.raw.x, y0: g.raw.y, x1: g.raw.to.x, y1: g.raw.to.y, a: 1 - Math.pow(1 - p, 3) };
+  },
   /* THE TOWER'S BOW (game 2): an archer on the ground who could go up, the
      one in hand, and whether any is up there (or on the stairs, or on his
      way — the order is the answer, Lookout.sentUp) */
@@ -2725,7 +2795,10 @@ const Prologue = {
     if (wx === undefined) return null;
     const z = R.cam.z, TL = CFG.TILE;
     const cv = R.cv && R.cv.getBoundingClientRect ? R.cv.getBoundingClientRect() : { left: 0, top: 0 };
-    return { x: cv.left + (wx * TL - R.cam.x) * z, y: cv.top + (wy * TL - R.cam.y) * z - lift * z, r: rr * TL * z };
+    const out = { x: cv.left + (wx * TL - R.cam.x) * z, y: cv.top + (wy * TL - R.cam.y) * z - lift * z, r: rr * TL * z };
+    // a DRAG (game 1's road): where it ends, on the screen too
+    if (t.to) out.to = { x: cv.left + (t.to.x * TL - R.cam.x) * z, y: cv.top + (t.to.y * TL - R.cam.y) * z };
+    return out;
   },
   _ringTo(E, t, raw) {
     const r = E.ring;
@@ -2788,6 +2861,9 @@ const Prologue = {
     if (this._gr) {
       const p = Math.max(0, Math.min(1, (now - this._gr.t0) / G.fadeIn)), e = 1 - Math.pow(1 - p, 3);
       out.push({ raw: this._gr.raw, a: e, s: 1 + 0.24 * (1 - e), seed: this._gr.seed });
+      // a drag rings its far end too (the gold dashes between are R's: dragHint)
+      const to = this._gr.raw.to;
+      if (to) out.push({ raw: { x: to.x, y: to.y, r: this._gr.raw.r }, a: e * 0.85, s: 1 + 0.24 * (1 - e), seed: this._gr.seed + 31 });
     }
     this._grOut = this._grOut.filter(o => now - o.t1 < G.fadeOut && now >= o.t1);
     for (const o of this._grOut) {
@@ -2934,7 +3010,9 @@ const Prologue = {
     const us = typeof UI !== 'undefined' && UI.sel ? UI.sel : null;
     const sel = us ? us.type + ':' + (us.id != null ? us.id : (us.ids ? us.ids.join(',') : '')) : '';
     const key = (v.id || '') + ':' + (v.phase || '') + ':' + (raw.u !== undefined ? 'u' + raw.u : (raw.x | 0) + ',' + (raw.y | 0)) + ':' + sel;
-    const m = 24, inView = tgt.x > m && tgt.x < B.vw - m && tgt.y > B.top + m && tgt.y < B.bot - m && this._open(tgt.x, tgt.y) && !this._cardOver(tgt);
+    const m = 24, inV = q => q.x > m && q.x < B.vw - m && q.y > B.top + m && q.y < B.bot - m && this._open(q.x, q.y) && !this._cardOver(q);
+    // a drag is in view only with BOTH its ends (the road: the camp's door and the farm's)
+    const inView = inV(tgt) && (!tgt.to || inV({ x: tgt.to.x, y: tgt.to.y, r: tgt.r }));
     const here = () => ({ x: cam.x, y: cam.y, z: cam.z });
     if (this._looked === key) {
       if (inView || this._lookStuck === key) return true;
@@ -2947,6 +3025,8 @@ const Prologue = {
     this._looked = key; this._lookAt = t;
     let wx = raw.x, wy = raw.y;
     if (raw.u !== undefined) { const u = Units.get(raw.u); if (!u) return false; wx = u.x; wy = u.y - CFG.SPRITE_LIFT / CFG.TILE; }
+    // …and a drag is brought out by its middle, so both ends land in the open
+    if (raw.to) { wx = (raw.x + raw.to.x) / 2; wy = (raw.y + raw.to.y) / 2; }
     /* into the middle of the ground the card leaves open: beside a narrow card,
        else below it — and below it too when the map's edge holds the target
        under a narrow one (a phone on its side). Each landing is tried where
@@ -3029,16 +3109,38 @@ const Prologue = {
      nothing done on an action beat, a hand shows the taps, one after the
      other, until the player acts */
   IDLE_MS: 6000,
+  /* A DRAG IS SHOWN, NOT GUESSED (build 199): nobody reads "drag" off a ring — a ring
+     says tap, and a tap lays one stretch of road — so the hand shows a drag almost at
+     once (DRAG_HAND_MS after the last touch or the new line, never the game's idle
+     wait): it rests on the near ring, presses, slides along the gold dashes to the far
+     ring, lifts, and fades, over DRAG_CYCLE */
+  DRAG_HAND_MS: 900,
+  DRAG_CYCLE: 2400,
   _handTick(E, b, now) {
     const h = E.hand;
     const can = b && !b.auto && b.taps && !this._asking && !(window.DeckUI && DeckUI.open) && Screens.current === 'playing';
-    if (!can || now - this._lastIn < this.space().idle) { h.style.display = 'none'; this._hand = null; return; }
+    if (!can) { h.style.display = 'none'; this._hand = null; return; }
+    const taps = (b.taps.call(this) || []).map(t => this._resolve(t)).filter(t => t && (t.rect || this._open(t.x, t.y)));
+    const drag = taps.length && taps[0].to ? taps[0] : null;
+    // …and never over a finger doing it: a press held on the map is the drag being made
+    const held = !!(drag && typeof UI !== 'undefined' && UI.pointers && UI.pointers.size);
+    if (held || now - this._lastIn < (drag ? this.DRAG_HAND_MS : this.space().idle)) { h.style.display = 'none'; this._hand = null; return; }
     if (!this._hand) {
       this._hand = { t0: now, i: 0 }; this._handN++; if (this._handN === 1) this._collapsed = false;
       this._looked = null;   // a player who has stopped is shown the target again, wherever the camera went
     }
-    const taps = (b.taps.call(this) || []).map(t => this._resolve(t)).filter(t => t && (t.rect || this._open(t.x, t.y)));
     if (!taps.length) { h.style.display = 'none'; return; }
+    if (drag) {
+      const f = ((now - this._hand.t0) % this.DRAG_CYCLE) / this.DRAG_CYCLE;
+      const s = f < 0.18 ? 0 : f > 0.78 ? 1 : (f - 0.18) / 0.6, e = s < 0.5 ? 2 * s * s : 1 - Math.pow(2 - 2 * s, 2) / 2;
+      const x = drag.x + (drag.to.x - drag.x) * e, y = drag.y + (drag.to.y - drag.y) * e;
+      h.style.display = 'block';
+      h.style.opacity = f > 0.9 ? String(Math.max(0, (1 - f) / 0.1).toFixed(2)) : '';
+      h.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+      h.classList.toggle('press', f > 0.12 && f < 0.84);
+      return;
+    }
+    if (h.style.opacity) h.style.opacity = '';
     const CYCLE = 1500, k = (now - this._hand.t0) / CYCLE, i = Math.floor(k) % taps.length, f = k - Math.floor(k);
     const p = taps[i], q = taps[(i + taps.length - 1) % taps.length];
     const mv = Math.min(1, f / 0.35), e = 1 - Math.pow(1 - mv, 3);

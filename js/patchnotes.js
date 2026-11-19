@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 199, date: '2026-11-19', title: 'A road that joins the village',
+    items: [
+      'In The First Fire, the road lesson now has you drag one road from the lumber camp, past the hall, to the farm, and the camp and the hall both work faster for it.',
+      'Mira shows you how: a gold ring at each end, a gold line between them, and a hand that slides along it.',
+      'Her tip to train more villagers now says where to send them: to the wood or stone the hall still needs.',
+    ],
+  },
+  {
     build: 198, date: '2026-11-19', title: 'A touch of gold',
     items: [
       'In the journey, whatever Mira points at now shimmers in gold: a glow round its outline, a gleam running across it, and gold leaf drifting up into the sky.',
