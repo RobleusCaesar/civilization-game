@@ -514,6 +514,27 @@
      its progress a thin gold bar under the words, a tap to call it off. */
   .abtn .cwTrack { display: block; width: 78%; height: 4px; margin-top: 4px; border-radius: 2px; overflow: hidden; background: rgba(0,0,0,.4); }
   .abtn .cwBar { display: block; height: 100%; background: var(--gold); }
+  /* THE TRAIN BUTTON SHOWS ITS WORK (UI.paintTraining, tests/train-progress.mjs):
+     a gold rim and the count of its kind waiting while any are, the one in
+     training a gold bar filling along its foot, the queue line gold. The bar
+     and the count are laid over the button, so it never changes size. */
+  #panel .abtn[data-act="train"] { position: relative; }
+  .abtn .tq { position: absolute; top: 4px; right: 5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    background: linear-gradient(180deg, #f4d77a, #c9952f); color: #2a1a06; font-size: 11px; font-weight: 800; line-height: 18px;
+    text-align: center; box-shadow: 0 0 0 1.5px #1a1209, 0 1px 3px rgba(0,0,0,.55); pointer-events: none; }
+  .abtn .tq:empty { display: none; }
+  .abtn .ttrack { position: absolute; left: 12%; right: 12%; bottom: 4px; height: 4px; border-radius: 2px; overflow: hidden;
+    background: rgba(0,0,0,.45); opacity: 0; pointer-events: none; }
+  .abtn .ttrack.on { opacity: 1; }
+  .abtn .tbar { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #c9952f, #f4d77a); box-shadow: 0 0 6px rgba(244,215,122,.7); }
+  .abtn.trn { border-color: rgba(232,193,90,.85); box-shadow: inset 0 1px 0 var(--edge), 0 0 0 1px rgba(232,193,90,.35), 0 0 10px rgba(232,193,90,.28); }
+  .abtn.trn.cant { opacity: 0.8; }
+  .abtn.trn.cant small { opacity: 0.55; }
+  .abtn.tpause .tbar { background: #8a7a55; box-shadow: none; }
+  .abtn.tgo { animation: tgo .5s ease-out; }
+  @keyframes tgo { 0% { background: #6a5320; box-shadow: 0 0 0 2px rgba(244,215,122,.9), 0 0 16px rgba(244,215,122,.75); } 100% { } }
+  @media (prefers-reduced-motion: reduce) { .abtn.tgo { animation: none; } }
+  #panel .ptools .psub.qon { color: var(--gold); font-weight: 700; }
   .abtn {
     min-height: 44px; padding: 4px 12px; border: 1px solid #241d15; border-radius: 10px;
     background: var(--btn); color: var(--text); font-size: 12px; font-weight: 700;
@@ -2234,59 +2255,59 @@
 
 </div>
 
-<script src="js/feedback.js?v=200"></script>
-<script src="js/config.js?v=200"></script>
-<script src="js/audio.js?v=200"></script>
-<script src="js/config.supabase.js?v=200"></script>
-<script src="js/vendor/supabase.js?v=200"></script>
-<script src="js/backend.js?v=200"></script>
-<script src="js/competition.js?v=200"></script>
-<script src="js/score.js?v=200"></script>
-<script src="js/cards.js?v=200"></script>
-<script src="js/deck.js?v=200"></script>
-<script src="js/artstyle.js?v=200"></script>
-<script src="js/sprites.js?v=200"></script>
-<script src="js/formations.js?v=200"></script>
-<script src="js/relics.js?v=200"></script>
-<script src="js/assets.js?v=200"></script>
-<script src="js/dev.js?v=200"></script>
-<script src="js/map.js?v=200"></script>
-<script src="js/buildings.js?v=200"></script>
-<script src="js/units.js?v=200"></script>
-<script src="js/combat.js?v=200"></script>
-<script src="js/ai.js?v=200"></script>
-<script src="js/render.js?v=200"></script>
-<script src="js/battlefx.js?v=200"></script>
-<script src="js/goldfx.js?v=200"></script>
-<script src="js/footing.js?v=200"></script>
-<script src="js/ruins.js?v=200"></script>
-<script src="js/roads.js?v=200"></script>
-<script src="js/beasts.js?v=200"></script>
-<script src="js/defeatart.js?v=200"></script>
-<script src="js/victoryart.js?v=200"></script>
-<script src="js/ui.js?v=200"></script>
-<script src="js/lookout.js?v=200"></script>
-<script src="js/screens.js?v=200"></script>
-<script src="js/patchnotes.js?v=200"></script>
-<script src="js/settings.js?v=200"></script>
-<script src="js/board.js?v=200"></script>
-<script src="js/pages.js?v=200"></script>
-<script src="js/titlescreen.js?v=200"></script>
-<script src="js/tutorial.js?v=200"></script>
-<script src="js/scenario-maps.js?v=200"></script>
-<script src="js/scenarios.js?v=200"></script>
-<script src="js/prologue.js?v=200"></script>
-<script src="js/deckfx.js?v=200"></script>
-<script src="js/deckfx-town.js?v=200"></script>
-<script src="js/deckfx-army.js?v=200"></script>
-<script src="js/deckfx-growth.js?v=200"></script>
-<script src="js/deckfx-rival.js?v=200"></script>
-<script src="js/deckui.js?v=200"></script>
-<script src="js/deckscreens.js?v=200"></script>
-<script src="js/cardintro.js?v=200"></script>
-<script src="js/game.js?v=200"></script>
-<script src="js/terrain-core.js?v=200"></script>
-<script src="js/terrain.js?v=200"></script>
-<script src="js/terrain-v5.js?v=200"></script>
+<script src="js/feedback.js?v=201"></script>
+<script src="js/config.js?v=201"></script>
+<script src="js/audio.js?v=201"></script>
+<script src="js/config.supabase.js?v=201"></script>
+<script src="js/vendor/supabase.js?v=201"></script>
+<script src="js/backend.js?v=201"></script>
+<script src="js/competition.js?v=201"></script>
+<script src="js/score.js?v=201"></script>
+<script src="js/cards.js?v=201"></script>
+<script src="js/deck.js?v=201"></script>
+<script src="js/artstyle.js?v=201"></script>
+<script src="js/sprites.js?v=201"></script>
+<script src="js/formations.js?v=201"></script>
+<script src="js/relics.js?v=201"></script>
+<script src="js/assets.js?v=201"></script>
+<script src="js/dev.js?v=201"></script>
+<script src="js/map.js?v=201"></script>
+<script src="js/buildings.js?v=201"></script>
+<script src="js/units.js?v=201"></script>
+<script src="js/combat.js?v=201"></script>
+<script src="js/ai.js?v=201"></script>
+<script src="js/render.js?v=201"></script>
+<script src="js/battlefx.js?v=201"></script>
+<script src="js/goldfx.js?v=201"></script>
+<script src="js/footing.js?v=201"></script>
+<script src="js/ruins.js?v=201"></script>
+<script src="js/roads.js?v=201"></script>
+<script src="js/beasts.js?v=201"></script>
+<script src="js/defeatart.js?v=201"></script>
+<script src="js/victoryart.js?v=201"></script>
+<script src="js/ui.js?v=201"></script>
+<script src="js/lookout.js?v=201"></script>
+<script src="js/screens.js?v=201"></script>
+<script src="js/patchnotes.js?v=201"></script>
+<script src="js/settings.js?v=201"></script>
+<script src="js/board.js?v=201"></script>
+<script src="js/pages.js?v=201"></script>
+<script src="js/titlescreen.js?v=201"></script>
+<script src="js/tutorial.js?v=201"></script>
+<script src="js/scenario-maps.js?v=201"></script>
+<script src="js/scenarios.js?v=201"></script>
+<script src="js/prologue.js?v=201"></script>
+<script src="js/deckfx.js?v=201"></script>
+<script src="js/deckfx-town.js?v=201"></script>
+<script src="js/deckfx-army.js?v=201"></script>
+<script src="js/deckfx-growth.js?v=201"></script>
+<script src="js/deckfx-rival.js?v=201"></script>
+<script src="js/deckui.js?v=201"></script>
+<script src="js/deckscreens.js?v=201"></script>
+<script src="js/cardintro.js?v=201"></script>
+<script src="js/game.js?v=201"></script>
+<script src="js/terrain-core.js?v=201"></script>
+<script src="js/terrain.js?v=201"></script>
+<script src="js/terrain-v5.js?v=201"></script>
 </body>
 </html>

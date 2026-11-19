@@ -253,6 +253,7 @@ node tests/rival-geo.mjs      # the chief reads its map: never razes its hall, t
 node tests/ai-coverage.mjs    # the rival keeps up: every building and unit in AI.KNOWS, training lines off the config, personas and cards ask only for what exists, every mode carries the dials, the sea is the pathfinder's sea, every landform read and thought on
 node tests/rival-scorecard.mjs # a whole game on every landform through tools/ai-harness.mjs, against universal gates
 node tests/rival-strength.mjs # the rewritten war brain: the anchor, the inner market, the engine road, the sea patrol — and 3 fortified towns razed end to end
+node tests/train-progress.mjs # the train button shows its work: a gold rim and its kind's count while queued, a bar filling on the one being trained, the queue line gold and naming him ("Training Villager… 1/3"), "Training paused" for the masons, nothing moves
 node tests/train-spawn.mjs   # a trained unit stands on REALLY open ground, or waits in reserve until there is some; a player's Barracks/Range site finishing sends its first Defender/archer (a gift, not training)
 node tests/homestead.mjs     # a house broadside-on to a farm bonds the two: +10% food, +1 villager, gold sparks — and it all goes away with either half
 node tests/origin-cards.mjs  # the 26-card draft: ten strategy-openers plant real buildings; every boon reads through a named hook; 64-grid motifs
@@ -432,6 +433,25 @@ has none), greyed (`.cant`, still clickable) while `rankCheck` says no, and
 a greyed tap toasts its reason ("Axeman needs a Barracks at level 2", or
 the price); its state rides in `panelSig` (`u.kind` and the check's code)
 so it lights the moment the yard finishes.
+
+**THE TRAIN BUTTON SHOWS ITS WORK** (`UI.paintTraining` / `queueLine` /
+`trainFlash`, `Bld.trainNow`; tests/train-progress.mjs — operator, build 201:
+"when you click to build a villager it's not always obvious that something is
+happening … on the button itself … we show the progress bar of someone being
+created … carry that through to the military units … if somebody is queued …
+say something like training in progress and have it be a gold color"): every
+train button of a yard in hand (the hall, the yards, the dock, the sappers'
+camp — one loop draws them) wears a gold rim (`.trn`) and its kind's count
+(`.tq`) while any are queued, the queue's head a gold bar filling along its
+foot (`.ttrack.on` / `.tbar`), and a tap that queued someone flashes it
+(`.tgo`, still under reduced motion); the queue line reads "Queue: 0/N" grey
+when empty and "Training Villager… 1/3" in gold (`.qon`) when not, "Training
+paused (upgrading)" while the masons have the yard. The bar and the count are
+laid OVER the button, so queueing moves nothing, and ONE painter
+(`paintTraining`) runs at render and every refresh. The share done is read off
+the entry's whole time (`T`, pushed by `Bld.train`); an entry without one (an
+older save, a test's hand-laid queue) takes the yard's own time for its kind.
+A picture only: no rule reads it.
 
 **THE YARD SENDS ITS FIRST SOLDIER** (`Bld.giftFirst`, `CFG.BUILDINGS`
 barracks/range `firstUnit`; tests/train-spawn.mjs §7 — operator, build 152:

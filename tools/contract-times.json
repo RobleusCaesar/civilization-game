@@ -94,6 +94,7 @@
   "stable-art.mjs": 3,
   "tap-audit.mjs": 45,
   "tc-upgrade.mjs": 4,
+  "train-progress.mjs": 4,
   "telemetry.mjs": 37,
   "terrain-v4.mjs": 95,
   "test-page.mjs": 12,
