@@ -294,10 +294,15 @@ const G = {
        .revealRival): its hall's ground is charted and the hall remembered,
        so the road to "raze their hall" is on the map from day one */
     if ((CFG.MODES[mode] || {}).revealRival) {
-      const rt = Bld.tcOf('A');
+      const rt = Bld.tcOf('A'), rr = CFG.MODES[mode].revealRival;
       if (rt) {
-        this.reveal(rt.x + 1, rt.y + 1, 3);
-        if (S.map.seenB) S.map.seenB[MapGen.idx(rt.x, rt.y)] = { key: rt.key, level: rt.level, owner: rt.owner, tribe: rt.tribe };
+        // a number is the radius charted (game 3 shows the rival's walled town whole); true, the hall's ground
+        const rad = typeof rr === 'number' ? rr : 3;
+        this.reveal(rt.x + 1, rt.y + 1, rad);
+        if (S.map.seenB) for (const b of S.buildings) {
+          if (b.owner !== 'A' || (b !== rt && Math.hypot(b.x - rt.x, b.y - rt.y) > rad)) continue;
+          S.map.seenB[MapGen.idx(b.x, b.y)] = { key: b.key, level: b.level, owner: b.owner, tribe: b.tribe };
+        }
       }
     }
     Cards.deal(pk, pkA, persona);
@@ -668,7 +673,7 @@ const G = {
          comes", so his road to the wall is in sight while he walks it —
          the lesson is watching the archer shoot him, not a fight in the dark */
       const pw = window.Prologue && Prologue.watch ? Prologue.watch() : null;
-      if (pw) mark(pw.x | 0, pw.y | 0, pw.r);
+      if (pw) for (const w of [].concat(pw)) if (w) mark(w.x | 0, w.y | 0, w.r);
       /* THE CARD-LIT MAP (js/deckfx-rival.js): ground a card put on the map
          is not ground the player's own people have seen — until they do.
          Everything marked above is REAL sight, so it clears the card's mark
@@ -831,6 +836,10 @@ const G = {
   applyFoodUpkeep(owner) {
     const store = owner === 'P' ? S : S.ai;
     if (!store || !store.res) return;
+    /* a SCRIPTED rival (its mode's aiOff: the journey's first and third games)
+       has no economy to feed anyone — what the map lays down is the whole of
+       it, so its garrison neither eats nor deserts before the battle it is for */
+    if (owner === 'A' && this.modeCfg().aiOff) return;
     const res = store.res;
     res.food -= Units.foodUpkeep(owner);
     if (res.food >= 0) {

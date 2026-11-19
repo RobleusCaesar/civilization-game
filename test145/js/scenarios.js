@@ -102,29 +102,46 @@ const Scenarios = {
     },
     prologue_2: {
       game: 2, mode: 'prologue_2', title: 'The Growing Clan',
-      // its lessons are built, not saved for: the stores pay for the barracks,
-      // the range, the tower, three stretches of wall and the gate cut into
-      // them, and only the hall's storey is gathered for (operator, builds 184
-      // and 187); the road and the hunter's lodge are game 1's since build 195
-      // ("pull that back from game 2"), so their price left the stores and
-      // their cards are open from the start
-      start: { food: 150, wood: 360, stone: 125, gold: 50 },
+      /* its lessons are built, not saved for: the stores pay for the barracks,
+         the range, the tower, three stretches of wall and the gate cut into
+         them (operator, builds 184 and 187), and since build 196 the dock, a
+         fishing boat and the transport that carries two hands to the far isle.
+         The home isle holds no gold seam and one small rock (the map's
+         homeStone, 60 stone: a player who spent the stores' stone on a road can
+         still raise the tower, never the hall by it alone): the hall's next
+         storey wants the far isle's stone and gold (the dock lesson's reason —
+         operator: "really spend some time on teaching the player the dock").
+         Game 1's stations are open in the menu from the start. */
+      start: { food: 150, wood: 560, stone: 160, gold: 80 },
       storey: 2,
-      tc: { 3: { cost: { wood: 220, stone: 120 }, time: 3, support: { n: 3, lv: 1 } } },
-      allowed: ['house', 'road', 'lodge'],
+      tc: { 3: { cost: { wood: 220, stone: 100, gold: 50 }, time: 3, support: { n: 3, lv: 1 } } },
+      allowed: ['house', 'road', 'lodge', 'farm', 'lumber', 'quarry'],
       win: { hall: 3 },
       draft: false, stock: 1.3,
     },
+    /* THE RECKONING (build 196: "create a pitched battle between the two
+       villages, but set it up in the way where the player is set up for
+       Success … knock down walls attack the buildings and then ultimately
+       destroy the town center"): the clan opens grown — its hall at the third
+       storey, its stations worked, a barracks, a range, a sappers' camp and a
+       trading post standing, an army on the field — across a river from the
+       rival's walled town. No quarry stands: the stone in the stores pays the
+       barracks' and the range's storeys, the workshop, the stable, the catapult
+       and the bridge (370) and leaves the war camp at the front (250) one
+       caravan short — the post's lesson buys that last 60 with wood, while the
+       stable rises. The workshop, the stable and the war camp are this game's
+       new cards (the script opens them, marked NEW). The wood pays for the whole
+       making-ready from the stores (two storeys, six ranks, the workshop, the
+       trade, the stable, two riders, the catapult, the sapper, his bridge and
+       the war camp: about 1,630, the lumber camp's hands topping it up), so the
+       lessons are about the army, never a wait at the trees. */
     prologue_3: {
-      game: 3, mode: 'prologue_3', title: 'The Two Roads',
-      start: { food: 300, wood: 380, stone: 120, gold: 60 },
-      storey: 1,
-      // what games 1 and 2 taught; the camps, the quarry and the farm are
-      // this game's lessons (their cards arrive marked NEW), and a seam is
-      // claimed, never built (the mine has no card)
-      allowed: ['house', 'road', 'lodge', 'barracks', 'range', 'tower', 'wall', 'mine'],
+      game: 3, mode: 'prologue_3', title: 'The Reckoning',
+      start: { food: 1200, wood: 1600, stone: 560, gold: 300 },
+      storey: 3,
+      allowed: ['house', 'road', 'lodge', 'farm', 'lumber', 'quarry', 'barracks', 'range', 'tower', 'wall', 'dock', 'sapper', 'trade', 'mine'],
       win: { standard: true },
-      draft: true, stock: 2,
+      draft: true, stock: 1.5,
     },
   },
   def(id) {
@@ -252,14 +269,30 @@ const Scenarios = {
     // the hall's starting storey (game 2 opens grown) — a founding raise, no news
     const tc = Bld.tcOf('P');
     if (tc) for (let lv = 1; lv < (sc.storey || 1); lv++) Bld.finishUpgrade(tc, true);
-    // the people
-    for (const u of (sc.units || [])) Units.spawn(u.kind || 'villager', 'P', u.x, u.y);
-    // the buildings already standing
-    for (const b of (sc.buildings || [])) {
-      const own = b.owner || 'P';
+    // the people (the rival's are placed once its hall stands, below)
+    const stationed = [];
+    for (const u of (sc.units || [])) if ((u.owner || 'P') === 'P') {
+      const nu = Units.spawn(u.kind || 'villager', 'P', u.x, u.y);
+      if (nu && u.female) nu.female = true;
+      // a hand already at work on a station the map raises (game 3's grown town)
+      if (nu && Array.isArray(u.work)) stationed.push([nu, u.work]);
+    }
+    // the buildings already standing (the rival's too, below)
+    const raise = (b, own) => {
       G.clearFootprint(b.x, b.y, b.key);
       const nb = Bld.place(own, b.key, b.x, b.y, { free: true, instant: true, noAutoAssign: true });
       if (nb) for (let lv = 1; lv < (b.level || 1); lv++) Bld.finishUpgrade(nb, true);
+      /* a yard's rally set by the map (game 3: every yard musters on the field
+         by the hall, so the army stands together for Group nearby) */
+      if (nb && Array.isArray(b.rally)) nb.rally = { x: b.rally[0], y: b.rally[1] };
+      return nb;
+    };
+    for (const b of (sc.buildings || [])) if ((b.owner || 'P') === 'P') raise(b, 'P');
+    for (const [nu, w] of stationed) {
+      const b = Bld.at(w[0], w[1]);
+      if (!b || b.owner !== 'P' || Bld.workersAssigned(b) >= Bld.maxWorkers(b)) continue;
+      nu.task = { type: 'work', id: b.id }; nu.tUnit = 0; nu.tBld = 0;
+      Units.setPath(nu, b.x, b.y);
     }
     // worked ground is the player's own (a station may stand on it: tests/worked-ground.mjs)
     for (let i = 0; i < S.map.terrain.length; i++) {
@@ -278,6 +311,17 @@ const Scenarios = {
     const seat = sc.rival || (sc.marks && sc.marks.rivalPocket && { x: sc.marks.rivalPocket[0], y: sc.marks.rivalPocket[1] });
     if (seat) AI.init(seat, pkA);
     else AI.init({ x: CFG.W - 4, y: CFG.H - 4 }, pkA);
+    /* THE RIVAL'S TOWN AS THE MAP DRAWS IT (game 3's pitched battle): its hall's
+       storey, its walls, towers and works, and its own people — placed once its
+       hall stands. A scripted rival (its mode's aiOff) builds and trains nothing
+       more: what the map lays down is the whole of it. */
+    const atc = Bld.tcOf('A');
+    if (atc) for (let lv = 1; lv < (sc.rivalLevel || 1); lv++) Bld.finishUpgrade(atc, true);
+    for (const b of (sc.buildings || [])) if (b.owner === 'A') raise(b, 'A');
+    for (const u of (sc.units || [])) if (u.owner === 'A') {
+      const nu = Units.spawn(u.kind || 'villager', 'A', u.x, u.y);
+      if (nu && u.female) nu.female = true;
+    }
     /* the animals. One marked `still` grazes where it was put until something
        frightens it (game 2's lesson deer: a lone deer roams, and left to it
        walked off toward the herd across the water before the hunt began) —
@@ -310,6 +354,8 @@ const Scenarios = {
     // valley; game 2 its own island and the land bridge, the rival's shore
     // left in the fog for its riders to come out of)
     if (sc.reveal && sc.reveal > 6) G.reveal(Bld.cx(tc) | 0, Bld.cy(tc) | 0, sc.reveal);
+    // …and ground charted beyond it (game 2's far isle, which the map lesson points at)
+    for (const a of (sc.revealAlso || [])) if (Array.isArray(a) && a.length >= 3) G.reveal(a[0], a[1], a[2]);
     S.map.biome = sc.region || null;
     S.map.worldName = sc.title;
   },
