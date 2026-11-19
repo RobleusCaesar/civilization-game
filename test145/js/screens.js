@@ -2487,6 +2487,8 @@ const Screens = {
     });
     this.el('chiefInput').addEventListener('change', e => {
       if (window.Backend && Backend.isReady()) Backend.setChiefName(e.target.value);
+      const nm = String(e.target.value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+      if (nm) try { localStorage.setItem('neo-chief', nm); } catch (err) {}
     });
     on('btnExportId', async () => {
       const r = Backend.exportIdentity();
