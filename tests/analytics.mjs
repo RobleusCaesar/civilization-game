@@ -1185,7 +1185,7 @@ const unlock = async (p, pass) => {
     JSON.stringify(v.t));
   ck('andTheSplitBarAddsUpToTheGames', Math.abs(v.split - 100) < 0.5 && /Won 3/.test(v.key) && /Lost 1/.test(v.key) && /Quit from the menu 1/.test(v.key) && /Closed the game mid-run 1/.test(v.key),
     v.split.toFixed(1) + '% across ' + v.splitN + ' results: ' + v.key);
-  ck('theReleasesComeFromThePatchNotes', v.rel >= 5 && v.cmp === 10 && /^Build 1\d\d · /.test(v.relFirst), v.rel + ' releases offered (newest "' + v.relFirst + '"), ' + v.cmp + ' comparison rows');
+  ck('theReleasesComeFromThePatchNotes', v.rel >= 5 && v.cmp === 10 && /^Build \d{3,} · /.test(v.relFirst), v.rel + ' releases offered (newest "' + v.relFirst + '"), ' + v.cmp + ' comparison rows');
   {
     /* the picker's value is the BUILD; it opens on the newest release with a
        KNOWN moment — the database's when it parses and is not before the
