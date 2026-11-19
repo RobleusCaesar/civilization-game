@@ -1240,6 +1240,8 @@ const Bld = {
     // the good news, and one of the few sounds that is NOT throttled: a work
     // finishing is a one-off the player has waited days for
     if (b.owner === 'P' && typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
+    // …and SEEN: it pops into its place in gold the first time it is drawn (js/goldfx.js — a picture only)
+    if (b.owner === 'P' && window.GoldFX && GoldFX.popBld) GoldFX.popBld(b, 'build');
     /* A PLAYER GATE IS BORN CLOSED (tests/drawbridge.mjs) — every tier, the
        drawbridge rule generalized: a door nobody chose to open must never be
        a road into the castle, and the first opening runs the ordinary toggle
@@ -1528,6 +1530,8 @@ const Bld = {
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
+    // a storey raised pops into its place in gold (js/goldfx.js — a card's raising is its own act, and drops it)
+    if (b.owner === 'P' && window.GoldFX && GoldFX.popBld) GoldFX.popBld(b, 'up');
     // THE PROLOGUE's goal (js/scenarios.js): a hall reaching the storey its
     // scenario asks for wins the game
     if (b.owner === 'P' && b.key === 'tc' && window.Scenarios && Scenarios.onHall) Scenarios.onHall(b);
@@ -1940,6 +1944,8 @@ const Bld = {
   releaseTrained(b, kind, spot, gift) {
     const nu = Units.spawn(kind, b.owner, spot.x, spot.y);
     if (b.owner === 'P' && typeof Sound !== 'undefined') Sound.play('train');
+    // out of the yard he pops into existence in gold (js/goldfx.js — a picture only)
+    if (b.owner === 'P' && window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(nu, 'train');
     if (b.owner === 'P' && gift) { /* told by the finish line */ }
     else if (b.owner === 'P') {
       /* A UNIT READY OFF THE OPEN VIEW IS A NOTE, one a burst (tests/

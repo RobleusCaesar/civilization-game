@@ -116,6 +116,8 @@ const Units = {
     u.atk = (probe.atk + (u.skyIron ? 1 : 0)) * vet;
     u.def = probe.def; u.speed = probe.speed;
     if (window.Assets && Assets.loadUnitsArt) { try { Assets.loadUnitsArt([u]); } catch (e) { /* the stand-in draws */ } }
+    // risen a rank, he springs up in a flash of gold (js/goldfx.js — a picture only)
+    if (window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(u, 'rank');
     return c;
   },
 
