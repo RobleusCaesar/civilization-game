@@ -1571,7 +1571,7 @@ ground, every tile it names blocking a raider's feet), CARDS SAID PLAINLY
 by the range's first archer, the wall across the bridge, its scout, mend and
 gate (**THE BRIDGE, THE SCOUT AND THE GATE** below), then THE DOCK (`dock`,
 `fishboat`, `fish`, `transport`, `board`, `sail`, `claim`, `islestone`: a
-dock on the east shore, a fishing boat sent to the leaping shoal, a
+dock on the east shore, a fishing boat sent onto the water ("tap a spot in the water" — any water with fish in it will do; build 199 retired "the fish leaping", which sent players looking for a leap), a
 transport, two villagers aboard, sailed to the far isle, one claiming its
 gold seam and one breaking its stone) — operator, build 196: "you'll really
 need to spend some time on teaching the player the dock". The home isle

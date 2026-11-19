@@ -1145,7 +1145,12 @@ const Prologue = {
           taps: () => R1(P.yardRing('dock', '#panel [data-act="train"][data-unit="fishboat"]')()),
           ack: () => P.coming('dock', 'fishboat') > 0, wait: 'The boat is nearly built.',
           done: () => P.units('fishboat').length > 0, praise: 'A boat!' },
-        { id: 'fish', face: 'point', text: 'Select the boat, then tap the fish leaping in the water.',
+        /* ANY water (operator, build 199: "it says to tap the leaping fish … people are gonna
+           look for leaping fish … you can tap anywhere in the water and the boat will go and
+           start fishing"): a boat fishes any water with fish in it (Units.assignFish slides to
+           the nearest free shoal), so the line asks for a spot in the water; the ring still
+           offers one, beside the authored shoal (fishSpot) */
+        { id: 'fish', face: 'point', text: 'Select the boat, then tap a spot in the water to start fishing.',
           goal: 'Send the boat fishing', ring: () => P.fishRing(), taps: () => P.fishTaps(),
           done: () => P.units('fishboat').some(u => u.task && u.task.type === 'fish'), praise: 'Fresh fish for the clan!' },
         { id: 'transport', face: 'thinking', text: 'Now a transport. It carries our people across the water.',

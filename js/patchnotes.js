@@ -24,6 +24,7 @@ const PATCH_NOTES = [
       'In The First Fire, the road lesson now has you drag one road from the lumber camp, past the hall, to the farm, and the camp and the hall both work faster for it.',
       'Mira shows you how: a gold ring at each end, a gold line between them, and a hand that slides along it.',
       'Her tip to train more villagers now says where to send them: to the wood or stone the hall still needs.',
+      'In The Growing Clan, she asks you to tap a spot in the water to send the fishing boat out, instead of looking for leaping fish.',
     ],
   },
   {
