@@ -12803,6 +12803,36 @@ const R = {
     const r = spr._cfArt ? this.artRect(spr, bx, by, bw, bw) : { x: bx, y: by, w: bw, h: bw };
     return { img: spr, x: r.x, y: r.y, w: r.w, h: r.h };
   },
+  /* THE JOURNEY'S DRAG (Prologue.dragHint — game 1's road since build 199: "have the
+     road stretch between two or three locations … teach the player how to click and
+     drag"): gold dashes marching over the ground from the ring the drag starts on to
+     the ring it ends on, an arrowhead at the far end. Gold on a dark ink underlay
+     (thin gold alone over the meadow reads olive), smooth at the device's pixels,
+     clipped to the board; the dashes stand still under reduced motion. A picture
+     only: it fades in with the line's ring and goes with it */
+  drawGuideDrag(g, d) {
+    const TL = CFG.TILE, x0 = d.x0 * TL, y0 = d.y0 * TL, x1 = d.x1 * TL, y1 = d.y1 * TL;
+    const L = Math.hypot(x1 - x0, y1 - y0);
+    if (!(L > TL * 0.9) || !(d.a > 0.01)) return;
+    const ux = (x1 - x0) / L, uy = (y1 - y0) / L, pad = TL * 0.46;
+    const ax = x0 + ux * pad, ay = y0 + uy * pad, bx = x1 - ux * (pad + 7), by = y1 - uy * (pad + 7);
+    const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const off = still ? 0 : -((performance.now() / 42) % 16);
+    this.clipBoard(g, () => {
+      g.globalAlpha = Math.min(1, d.a);
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      const seg = () => { g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke(); };
+      g.setLineDash([8, 8]); g.lineDashOffset = off;
+      g.strokeStyle = 'rgba(24,15,6,0.62)'; g.lineWidth = 4.6; seg();
+      g.strokeStyle = '#f2c95c'; g.lineWidth = 2.4; seg();
+      g.setLineDash([]);
+      // the arrowhead: where the finger lifts
+      const hx = x1 - ux * pad, hy = y1 - uy * pad, wv = 7, ln = 10;
+      const tri = () => { g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx - ux * ln - uy * wv, hy - uy * ln + ux * wv); g.lineTo(hx - ux * ln + uy * wv, hy - uy * ln - ux * wv); g.closePath(); };
+      tri(); g.strokeStyle = 'rgba(24,15,6,0.62)'; g.lineWidth = 3; g.stroke();
+      tri(); g.fillStyle = '#f2c95c'; g.fill();
+    });
+  },
   // a building that is a piece of a line never gives or springs on its own (it would come away from its neighbours)
   gFixed(b) {
     return b.key === 'wall' || b.key === 'gate' || (b.key === 'tower' && MapGen.inB(b.x, b.y) && !!this.towerLinkMask(b.x, b.y).mask);
@@ -17438,6 +17468,13 @@ const R = {
     this.drawBondSparks(g, dt);
     // …and so does a road's small twinkle where it reaches a building
     this.drawRoadSparks(g, dt);
+
+    // the journey's drag (game 1's road): gold dashes from the near ring to the far one
+    if (window.Prologue && Prologue.dragHint) {
+      let dh = null;
+      try { dh = Prologue.dragHint(); } catch (e) { dh = null; }
+      if (dh) this.drawGuideDrag(g, dh);
+    }
 
     // placement ghost
     if (UI.placing === 'road' && UI.wallGhost && UI.wallGhost.length && window.Roads && Roads.drawGhost) {
