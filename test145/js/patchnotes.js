@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 202, date: '2026-11-19', title: 'Mira knows what you are short of',
+    items: [
+      'When something is waiting on resources, Mira now names the one you are actually short of. The bridge in The Reckoning used to ask for wood when it needed stone.',
+      'She also says where to get it: the berries, the trees or the grey rocks, the trading post when there is nothing to gather nearby, and your hall or gold mine for gold.',
+      'The Reckoning starts with more stone, so a chief who builds extra upgrades still has enough for the bridge and the war camp.',
+    ],
+  },
+  {
     build: 201, date: '2026-11-19', title: 'You can see who is being trained',
     items: [
       'Tapping Train now flashes the button gold, and while someone is in training the button wears a gold rim, a count of how many of that kind are waiting, and a gold bar that fills as they are trained.',

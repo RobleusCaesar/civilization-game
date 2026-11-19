@@ -143,7 +143,7 @@ const Scenarios = {
        lessons are about the army, never a wait at the trees. */
     prologue_3: {
       game: 3, mode: 'prologue_3', title: 'The Reckoning',
-      start: { food: 1200, wood: 1600, stone: 560, gold: 300 },
+      start: { food: 1200, wood: 1600, stone: 800, gold: 300 },   // build 202: a margin for a chief who raises more than the lesson asks (was 560)
       storey: 3,
       allowed: ['house', 'road', 'lodge', 'farm', 'lumber', 'quarry', 'barracks', 'range', 'tower', 'wall', 'dock', 'sapper', 'trade', 'mine'],
       win: { standard: true },
