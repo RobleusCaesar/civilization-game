@@ -1086,12 +1086,16 @@ const CFG = {
   // within this radius (tiles) of the tapped one — one grouping sphere for both
   GROUP_R: 6,
 
-  // WAR CAMP: soldiers standing within this many tiles of a forward camp are mended
-  // (a field hospital), and the only structures you may raise at a forward camp are
+  // WAR CAMP: soldiers standing within this many tiles of a forward camp's EDGE are
+  // mended (a field hospital: Bld.healZoneFor adds the footprint's reach) — 2, so
+  // every tile TOUCHING the camp counts, a man two to a tile off its middle and the
+  // corner tiles included (at 1.5 a 2×2 camp's corners fell outside: a soldier
+  // standing beside the camp read "near Town Center", build 196), and the only
+  // structures you may raise at a forward camp are
   // these military/support ones — no relocating your economy to the front line.
   // The Dock counts as military here: a beachhead needs its warships and
   // transports staged at the front, not a long sail from home.
-  WARCAMP_HEAL: 1.5,
+  WARCAMP_HEAL: 2,
   STAGING_BUILD: ['barracks', 'stable', 'range', 'siege', 'sapper', 'tower', 'wall', 'gate', 'warcamp', 'dock'],
 
   // barbarian pressure: a spice, not a kingmaker — bands come less often and
@@ -1611,9 +1615,8 @@ const CFG = {
                            raiders, no deaths, no predators, no events
      2  THE GROWING CLAN — the rival lives and explores at peace; still no
                            raiders, deaths or predators
-     3  THE TWO ROADS    — the old first-game profile (the measured dials):
-                           a slower rival with a softer hall shown on the
-                           map, a cheap Wonder clock, light late wilds */
+     3  THE RECKONING    — a pitched battle: the rival's walled town is the
+                           map's, scripted (aiOff), at war from the start */
 const PROLOGUE_QUIET = { waveFirst: 1e9, barbMult: 0, campMult: 0, deathEvery: [1e9, 1e9],
   animalMax: 0, animalChance: 0, aiHarass: 0 };
 CFG.MODES.prologue_1 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
@@ -1629,15 +1632,19 @@ CFG.MODES.prologue_2 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
   name: 'The Growing Clan', base: 'calm', hidden: true, prologue: 2,
   gather: 1.2, aiWonderDay: 1e9, revealRival: false,
 });
-CFG.MODES.prologue_3 = Object.assign({}, CFG.MODES.calm, {
-  name: 'The Two Roads', base: 'calm', hidden: true, prologue: 3,
-  aiOutput: 0.8, aiVillCap: 9, aiVillEvery: 14, aiBuildEvery: 3, aiArmyCap: 2, aiArmyDiv: 22,
-  aiHallTake: 1.8, aiWonderDay: 90, revealRival: true,
-  // the Elder's road: 480 food and wood, 240 stone, 120 gold (the hall's own
-  // trickle pays the gold), raised in about a third of the days; the rival
-  // breaks ground no sooner than day 90, a clear quarter hour of race
-  wonderCost: { food: 0.08, wood: 0.08, stone: 0.06, gold: 0.08 }, wonderTime: 0.35, gather: 1.25,
-  waveFirst: 1e9, barbMult: 0.6, campMult: 0, deathEvery: [1e9, 1e9], animalMax: 0, animalChance: 0,
+/* 3  THE RECKONING (build 196: "create a pitched battle between the two
+   villages, but set it up in the way where the player is set up for Success …
+   knock down walls attack the buildings and then ultimately destroy the town
+   center"): the rival's walled town is the MAP's (its hall, palisade, towers
+   and garrison — Scenarios.populate), it builds and trains nothing more
+   (aiOff: a scripted rival, its garrison sallying out on cue — Prologue.sally),
+   and the war is on from the first morning (no truce). No wilds, no deaths, no
+   events: the battle is the lesson. The clan's grown stations work at a
+   level-3 town's pace (output). revealRival charts its town's ground (a radius
+   of 9) and remembers every work of it in sight there. */
+CFG.MODES.prologue_3 = Object.assign({}, CFG.MODES.calm, PROLOGUE_QUIET, {
+  name: 'The Reckoning', base: 'calm', hidden: true, prologue: 3,
+  aiOff: true, peace: false, revealRival: 9, gather: 1.25, output: 1.5,
 });
 CFG.PROLOGUE = {
   ON: true,
@@ -1647,14 +1654,18 @@ CFG.PROLOGUE = {
   /* …and the card itself where a game names one (operator, build 191: "For game 1, make
      Master Builder the default card. It fits perfectly with the Level 2 hall being built,
      and honestly it's a helpful card for future first games"): of that game's tier, so
-     0018's grant_prologue takes it as it takes any; game 2's card lesson plays it */
-  PICK: { 1: 'master_builders' },
+     0018's grant_prologue takes it as it takes any; game 2's card lesson plays it.
+     Game 2's win pays Iron Legion (build 196), and game 3's battle plays it:
+     six champions march out of the hall to join the army */
+  PICK: { 1: 'master_builders', 2: 'iron_legion' },
   /* THE ORIGINS GAME 3 DEALS (three of these six): easy to read, each changes
-     the opening where the player can see it on day one, none needs water or
-     a shore — Homesteader and Refugee Host (more hands at once), Grainkeeper,
-     Timberwright and Stoneheart (a worked station standing on day one),
-     Bowyer (an Archery Range and its archers: the road by force) */
-  ORIGINS: ['homesteader', 'refugeehost', 'grainkeeper', 'timberwright', 'stoneheart', 'bowyer'],
+     the opening where the player can see it on day one — and since build 196
+     game 3 is a pitched battle, so four are a war chief's: Warlord (more
+     spears now), Horselord (a rider, far sight, swifter horse — and a free
+     rider when the stable the lesson raises stands), Ironhand (cheaper,
+     tougher soldiers), Bowyer (another range and its archers); Homesteader
+     and Refugee Host (more hands at once) keep an economy card in the hand */
+  ORIGINS: ['warlord', 'horselord', 'ironhand', 'bowyer', 'homesteader', 'refugeehost'],
 };
 // the mode a table keyed by difficulty reads for a profile (Calm for the first game)
 CFG.baseMode = m => (CFG.MODES[m] && CFG.MODES[m].base) || m;

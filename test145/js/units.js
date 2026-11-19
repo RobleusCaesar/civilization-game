@@ -1152,6 +1152,9 @@ const Units = {
   // DENSE RANKS (tests/army-groups.mjs): two units of the same KIND share a
   // tile, so a war party lands as a tight block instead of a sprawl — half the
   // footprint, same melee-front / ranged-behind order.
+  // THREE RANKS (operator, build 196: "soldiers in front, archers in the middle
+  // and siege engines in the back"): the engines (a catapult, a ballista, a
+  // trebuchet, a siege tower) march behind the bows instead of among them.
   formationMove(units, tx, ty, domain) {
     if (!units.length) return;
     const cx = units.reduce((s, u) => s + u.x, 0) / units.length;
@@ -1162,8 +1165,8 @@ const Units = {
     const start = Path.passable(tx, ty, 'P', domain) ? { x: tx, y: ty }
       : MapGen.findNear(tx, ty, 6, (x, y) => Path.passable(x, y, 'P', domain));
     if (!start) { for (const u of units) this.moveTo(u, tx, ty); return; }
-    // melee front, and same kinds adjacent so they pair onto shared tiles
-    const rank = u => (CFG.UNITS[u.kind].rng ? 1 : 0);
+    // melee front, bows behind, engines last — and same kinds adjacent so they pair onto shared tiles
+    const rank = u => (this.isSiege(u) || u.kind === 'ballista' ? 2 : CFG.UNITS[u.kind].rng ? 1 : 0);
     const order = units.slice().sort((a, b) => rank(a) - rank(b) ||
       (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
     let needed = 0;
