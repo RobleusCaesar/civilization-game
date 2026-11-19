@@ -97,6 +97,12 @@ const Scenarios = {
           farm: { mark: 'berries', why: 'The farm goes where the berries grew.' },
           lumber: { mark: 'forest', why: 'The lumber camp goes on the trees you felled.' },
           quarry: { mark: 'stone', why: 'The quarry goes where you broke the rock.' },
+          /* the road is DRAGGED from the lumber camp past the hall to the farm (operator,
+             build 199: "have the road stretch between two or three locations … then we
+             also teach the player how to click and drag"): every stretch of it goes on
+             Mira's line until the whole line is down, so a drag that wanders lays only
+             the line and spends nothing on the wander */
+          road: { path: ['roadFrom', 'roadTo'], why: 'Lay the road along the line Mira shows you.' },
         },
       },
     },
@@ -191,10 +197,33 @@ const Scenarios = {
   siteRefusal(key, x, y) {
     const st = this.strictOf(), s = st && st.sites && st.sites[key];
     if (!s || typeof S === 'undefined' || !S) return null;
+    // a LINE (the road): any tile of it, until every tile of it carries a road
+    if (s.path) {
+      const line = this.pathTiles(s.path);
+      if (!line.length || line.some(t => t[0] === x && t[1] === y)) return null;
+      return line.every(t => this.roadAt(t[0], t[1])) ? null : s.why;
+    }
     const sc = this.live(), m = sc.marks && sc.marks[s.mark];
     if (!m || (x === m[0] && y === m[1])) return null;
     if (S.buildings.some(b => b.owner === 'P' && b.key === key && b.x === m[0] && b.y === m[1])) return null;
     return s.why;
+  },
+  /* the tiles of a straight line between two of the live world's marks, from
+     the first — a road the lesson asks for. Empty when either mark is missing
+     or the two share neither a row nor a column (a drag lays a straight line) */
+  pathTiles(names) {
+    const sc = this.live(), mk = sc && sc.marks, a = mk && mk[names[0]], b = mk && mk[names[1]];
+    if (!a || !b || (a[0] !== b[0] && a[1] !== b[1])) return [];
+    const n = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])), sx = Math.sign(b[0] - a[0]), sy = Math.sign(b[1] - a[1]), out = [];
+    for (let k = 0; k <= n; k++) out.push([a[0] + sx * k, a[1] + sy * k]);
+    return out;
+  },
+  // a road of the player's on the tile: finished (ground) or a stretch still going down
+  roadAt(x, y) {
+    if (typeof S === 'undefined' || !S || !S.map) return false;
+    if (S.map.roads && S.map.roads[y * CFG.W + x]) return true;
+    const b = typeof Bld !== 'undefined' && Bld.at ? Bld.at(x, y) : null;
+    return !!(b && b.key === 'road' && b.owner === 'P');
   },
 
   /* THE TERRAIN, in MapGen.generate's own shape. Stock follows the generator's
