@@ -1562,6 +1562,19 @@ const Bld = {
     return { ok: true, cost };
   },
 
+  /* WHO IS BEING TRAINED, AND HOW FAR ALONG (UI.paintTraining, tests/train-progress.mjs):
+     the queue's head, its share done (0..1) off the whole time it was queued
+     with — an entry from an older save, or laid by hand, has none, so the
+     yard's own time for that kind stands in — and whether the yard has
+     stopped for its masons. Read-only: a picture of the queue, never a rule. */
+  trainNow(b) {
+    const q = b && b.queue && b.queue[0];
+    if (!q) return null;
+    const spec = ((this.def(b.key) || {}).train || {})[q.unit];
+    const T = Math.max(q.T || (spec && spec.time) || 0, q.t, 1e-6);
+    return { unit: q.unit, frac: Math.max(0, Math.min(1, 1 - q.t / T)), paused: !!(b.upgrading || b.wallUp > 0) };
+  },
+
   train(b, unitKey) {
     const c = this.canTrain(b, unitKey);
     if (!c.ok) return false;
@@ -1573,7 +1586,7 @@ const Bld = {
       time *= 0.5; S.trainDiscount--;
       if (S.trainDiscount === 0) G.log('🎶 The last work song fades — training returns to its usual pace.');
     }
-    b.queue.push({ unit: unitKey, t: time });
+    b.queue.push({ unit: unitKey, t: time, T: time });   // T: the whole time, for the button's bar
     if (b.owner === 'P') G.noteAct();   // only the player's own tap trains for 'P'
     return true;
   },

@@ -2784,9 +2784,52 @@ const UI = {
      at the gate, so the panel says so; it is patched in place, so the count
      falls to nothing on its own the moment the ground clears. */
   queueLine(b) {
-    const held = (b.hold && b.hold.length) || 0;
-    return `Queue: ${b.queue.length}/${Bld.queueCap(b)}` +
-      (held ? ` — ⚠ ${held} waiting for open ground` : '');
+    const held = (b.hold && b.hold.length) || 0, now = Bld.trainNow ? Bld.trainNow(b) : null;
+    const nm = now && CFG.UNITS[now.unit] ? CFG.UNITS[now.unit].name : '';
+    /* SOMETHING IS HAPPENING, SAID (operator, build 201: "if nobody is queued
+       then maybe it's that current light gray color but if somebody is queued,
+       then … say something like training in progress and have it be a gold
+       color and then show it as like one of three"): an empty yard reads as it
+       did; a working one names who is being trained, in gold (paintTraining) */
+    const head = !now ? `Queue: ${b.queue.length}/${Bld.queueCap(b)}`
+      : (now.paused ? `Training paused (${b.upgrading ? 'upgrading' : 'wall works'})` : `Training ${nm}…`) + ` ${b.queue.length}/${Bld.queueCap(b)}`;
+    return head + (held ? ` — ⚠ ${held} waiting for open ground` : '');
+  },
+  /* THE TRAIN BUTTON SHOWS ITS WORK (operator, build 201: "when you click to
+     build a villager it's not always obvious that something is happening … on
+     the button itself … we show the progress bar of someone being created and
+     will need to carry that through to the military units as well"): every
+     train button of the yard in hand — the hall, the yards, the dock, the
+     sappers' camp — wears a gold rim and the count of its kind waiting in the
+     queue while any are, and the one being trained a gold bar filling along
+     its foot; the queue line turns gold and names him. ONE painter, asked by
+     the render and by every refresh, so it moves without a relayout. */
+  paintTraining(b) {
+    const panel = document.getElementById('panel');
+    if (!panel || !b) return;
+    const now = Bld.trainNow ? Bld.trainNow(b) : null, count = {};
+    for (const q of b.queue || []) count[q.unit] = (count[q.unit] || 0) + 1;
+    panel.querySelectorAll('[data-act="train"]').forEach(btn => {
+      const uk = btn.dataset.unit, n = count[uk] || 0, head = !!now && now.unit === uk;
+      btn.classList.toggle('trn', n > 0);
+      btn.classList.toggle('tpause', head && now.paused);
+      const tq = btn.querySelector('.tq'), bar = btn.querySelector('.tbar');
+      if (tq) { const t = n ? String(n) : ''; if (tq.textContent !== t) tq.textContent = t; }
+      if (bar) {
+        const w = head ? Math.round(now.frac * 1000) / 10 + '%' : '0%';
+        if (bar.style.width !== w) bar.style.width = w;
+        bar.parentNode.classList.toggle('on', head);
+      }
+    });
+    const q = document.getElementById('qLine');
+    if (q) { const t = this.queueLine(b); if (q.textContent !== t) q.textContent = t; q.classList.toggle('qon', !!now); }
+  },
+  /* a tap that queued someone flashes the button gold at once: the order is
+     heard before the bar has anything to show */
+  trainFlash(btn) {
+    if (!btn) return;
+    btn.classList.remove('tgo'); void btn.offsetWidth; btn.classList.add('tgo');
+    clearTimeout(btn._tgo); btn._tgo = setTimeout(() => btn.classList.remove('tgo'), 520);
   },
 
   refreshPanel() {
@@ -2840,10 +2883,9 @@ const UI = {
       const b = Bld.get(this.sel.id);
       if (!b) return;
       const panel = document.getElementById('panel');
-      const q = document.getElementById('qLine');
-      if (q) q.textContent = this.queueLine(b);
       panel.querySelectorAll('[data-act="train"]').forEach(btn =>
         btn.classList.toggle('cant', !Bld.canTrain(b, btn.dataset.unit).ok));
+      this.paintTraining(b);
       const shN = document.getElementById('shelterN');
       if (shN) shN.textContent =
         S.units.filter(u => u.owner === 'P' && Units.isVillager(u)).length + ' at work — all to shelter';
@@ -3057,7 +3099,7 @@ const UI = {
           for (const [uk, spec] of Object.entries(d.train)) {
             const ct = Bld.canTrain(b, uk);
             const tCost = window.Cards ? Cards.trainCost('P', uk, spec.cost) : spec.cost;
-            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(tCost)}</small></button>`;
+            html += `<button class="abtn ${ct.ok ? '' : 'cant'}" data-act="train" data-unit="${uk}">Train ${CFG.UNITS[uk].name}<small>${Bld.costStr(tCost)}</small><span class="tq" aria-hidden="true"></span><span class="ttrack" aria-hidden="true"><span class="tbar"></span></span></button>`;
           }
           // the TC's shelter button rides beside Train Villager so the grid
           // stays packed — pointless buttons below simply don't render
@@ -3164,12 +3206,14 @@ const UI = {
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
       this.iconInto(ic, this.panelIconSprite(b));
+      if (b.owner === 'P') this.paintTraining(b);
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
         if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); } }
         else if (btn.dataset.act === 'train') {
           if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true);
+          else this.trainFlash(btn);
           this.refreshMenu();
           this.refreshPanel();   // in-place queue/affordability update — no rebuild, no layout jump
           return;
