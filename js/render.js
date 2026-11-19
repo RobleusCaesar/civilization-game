@@ -6774,6 +6774,7 @@ const R = {
     this.bondSparks = [];                                        // …nor a homestead's gold
     this.roadSparks = [];                                        // …nor a road's twinkle
     this._gSel = new Map(); this._gSelB = new Map();             // …nor a ring's snap (R.GRING: reused ids start afresh)
+    if (window.GoldFX && GoldFX.forget) GoldFX.forget();         // …nor a pop waiting to be drawn (js/goldfx.js)
     this._repaintQ = null;                                       // …nor a half-drained repaint tail
     // pre-render the full terrain layer once — or mark it due, when the
     // caller has somewhere better to spend the wait (see deferBake)
@@ -7907,8 +7908,12 @@ const R = {
     if (b.key === 'gate') { if (deck) this.drawDrawbridge(g, b, bx, by, bw, 0, false); this.drawGateWorks(g, b, bx, by, bw, 0, false); }
     // its footing's standing things go back with it, in the pass's own order (js/footing.js)
     if (window.Footing && Footing.back) Footing.back(g, b);
+    // …and a building giving or springing (js/goldfx.js) is laid back as the pass laid it this frame
+    const gz = this._gZoom.size ? this._gZoom.get(b.id) : null;
+    if (gz) { g.save(); g.translate(gz.px, gz.py); g.scale(gz.sx, gz.sy); g.translate(-gz.px, -gz.py); }
     this.blitBld(g, spr, bx, by, bw, bw);
     if (b.key === 'tower') { this.drawTowerWalk(g, b, bx, by, bw); if (window.Lookout) Lookout.draw(g, b); }
+    if (gz) g.restore();
     if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); if (deck) this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
     if (window.Footing && Footing.front) Footing.front(g, b);
     if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
@@ -12534,7 +12539,7 @@ const R = {
     glintS: 2.8,      // s a lap of the glint round a ring in hand
     pulseS: 1.6,      // s a breath of the guide's ring
     snapS: 0.36,      // s a ring taken in hand takes to land
-    burstS: 0.75,     // s the flurry flies
+    burstS: 1.05,     // s the flurry flies (GoldFX.C.burstS: the taking's burst, js/goldfx.js)
     burstN: 14,       // sparks in one unit's flurry (a crowd taken at once throws fewer each)
     burstMax: 56,     // …about this many in all when a crowd is taken (two each at the least)
     glintMax: 6,      // the glint runs round the rings of at most this many in hand (a crowd's are calm)
@@ -12714,7 +12719,10 @@ const R = {
      along the ground and up toward the sky, slowing as they fade, and a
      breath of light rolls out of it — `age` s after it was taken; n sparks
      (a crowd taken at once throws fewer each) */
-  drawGRingBurst(g, q, age, seed, n) {
+  drawGRingBurst(g, q, age, seed, n, side) {
+    // THE TAKING'S BURST is GoldFX's (js/goldfx.js): sparks thrown up and
+    // falling back, leaf lifting off, a flash and a ring rolling out at the foot
+    if (window.GoldFX && GoldFX.burst) return GoldFX.burst(g, q, age, seed, n, side);
     const G = this.GRING, TL = CFG.TILE, p = age / G.burstS;
     if (!(p >= 0 && p < 1) || !(n > 0) || this._gStill()) return;
     g.save();
@@ -12747,7 +12755,7 @@ const R = {
     const n = fresh ? Math.max(2, Math.min(G.burstN, Math.floor(G.burstMax / fresh))) : 0;
     if (selIds) for (const id of selIds) if (!this._gSel.has(id)) this._gSel.set(id, { t0: now, n });
     for (const id of this._gSel.keys()) if (!selIds || !selIds.has(id)) this._gSel.delete(id);
-    if (bid != null && !this._gSelB.has(bid)) this._gSelB.set(bid, { t0: now, n: G.burstN });
+    if (bid != null && !this._gSelB.has(bid)) this._gSelB.set(bid, { t0: now, n: G.burstN + 8 });   // a building throws a broader burst round its foot
     for (const id of this._gSelB.keys()) if (id !== bid) this._gSelB.delete(id);
   },
   // the snap of a ring taken in hand at `now`: { a, s, flash, age, n } (a ring long held: still)
@@ -12761,18 +12769,46 @@ const R = {
   /* a ring laid on the ground UNDER what stands in it (q: a gringOf* answer;
      rec: its taking in hand, or null; gr: the journey's ring there, or null):
      the band and its far motes now, and what gringOver draws after the body */
-  gringUnder(g, q, owner, seed, rec, gr, now) {
+  /* …and THE GOLD that stands with it (js/goldfx.js): `pic` the picture
+     it stands in ({img, x, y, w, h}, world px — its silhouette is what the
+     guide's halo and rim hug and what flashes as it is taken), `pop` its pop
+     (GoldFX.popOf) and `kind` 'u' (a man) or 'b' (a building). A ring with
+     neither a hand on it nor the guide's eye draws nothing of its own. */
+  gringUnder(g, q, owner, seed, rec, gr, now, pic, pop, kind) {
     const G = this.GRING, own = owner === 'P', sl = rec ? this.gringSel(rec, now) : null;
     // in hand: the ring snaps in (the journey's ring, leaving as the line moves on, crosses it)
     if (sl) this.drawGRing(g, q, own ? 'sel' : 'foe', { a: sl.a, s: sl.s, t: now, seed, flash: sl.flash });
     const o = gr ? { a: gr.a, s: gr.s, t: now, seed } : null;
-    if (o) { this.drawGRing(g, q, 'guide', o); this.drawGRingMotes(g, q, o, true); }
-    return { q, o, st: o ? 'guide' : own ? 'sel' : 'foe', seed, burst: sl && own && sl.age < G.burstS ? sl : null };
+    if (o) this.drawGRing(g, q, 'guide', o);
+    const r = { q, o, st: o ? 'guide' : own ? 'sel' : 'foe', seed, burst: sl && own && sl.age < G.burstS ? sl : null,
+      pic: pic || null, pop: pop || null, kind: kind || 'u', sl: own ? sl : null, selAge: sl && own ? sl.age : null };
+    const F = window.GoldFX && GoldFX.under ? GoldFX : null;
+    if (F) F.under(g, r, now);
+    else if (o) this.drawGRingMotes(g, q, o, true);
+    return r;
   },
   gringOver(g, r) {
+    const F = window.GoldFX && GoldFX.over ? GoldFX : null;
+    if (F) { F.over(g, r); return; }
     if (r.st === 'guide') this.drawGRingMotes(g, r.q, r.o, false);
     if (r.burst) this.drawGRingBurst(g, r.q, r.burst.age, r.seed, r.burst.n);
   },
+  // the picture the gold hugs: a finished building's own — its plain look (a
+  // fire's frames land on it, R.FIRE_ART), where the building pass lays it
+  gPicBld(b) {
+    if (!b || b.construction > 0 || b.upgrading > 0 || b._fall || b.key === 'road') return null;
+    const spr = this.wornSprite(b, true);
+    if (!spr || !(spr.width > 0)) return null;
+    const TL = CFG.TILE, bs = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = bs * TL;
+    const r = spr._cfArt ? this.artRect(spr, bx, by, bw, bw) : { x: bx, y: by, w: bw, h: bw };
+    return { img: spr, x: r.x, y: r.y, w: r.w, h: r.h };
+  },
+  // a building that is a piece of a line never gives or springs on its own (it would come away from its neighbours)
+  gFixed(b) {
+    return b.key === 'wall' || b.key === 'gate' || (b.key === 'tower' && MapGen.inB(b.x, b.y) && !!this.towerLinkMask(b.x, b.y).mask);
+  },
+  // the spring under way round a building's foot this frame (R.draw's building pass; _redrawPic asks it too)
+  _gZoom: new Map(),
   /* THE JOURNEY'S RINGS this frame (Prologue.groundRings — the guide's own
      fade in and out), sorted by what they stand round: a unit (by id), a
      building (by id: a {x,y} mark on a footprint rings the footprint) or a
@@ -12803,7 +12839,10 @@ const R = {
   drawGRingTile(g, r, now) {
     const raw = r.raw, q = this.gringOfTile(raw.x, raw.y, raw.r), o = { a: r.a, s: r.s, t: now, seed: r.seed || 0 };
     this.drawGRing(g, q, 'guide', o);
-    this.drawGRingMotes(g, q, o, true);
+    const F = window.GoldFX && GoldFX.flakes ? GoldFX : null, still = this._gStill();
+    const leaf = side => { g.save(); this._gClip(g); F.flakes(g, q, null, null, o, 't', side); g.restore(); };
+    if (F) { if (!still) leaf('back'); }
+    else this.drawGRingMotes(g, q, o, true);
     const TX = window.TerrainX;
     if (this.terrainCache && TX && TX.on && TX._painted) {
       const TL = CFG.TILE, ex = q.rx * 1.25 + 4, x0 = Math.max(0, Math.floor(q.cx - ex)), y0 = Math.max(0, Math.floor(q.cy - q.ry - TL * 1.3));
@@ -12816,7 +12855,8 @@ const R = {
         g.restore();
       }
     }
-    this.drawGRingMotes(g, q, o, false);
+    if (F) { if (!still) leaf('front'); }
+    else this.drawGRingMotes(g, q, o, false);
   },
   cardBldLooks() {
     if (!window.Deck) return null;
@@ -16372,6 +16412,9 @@ const R = {
     const gSelB = UI.sel && UI.sel.type === 'bld' ? UI.sel.id : null;
     this.gringTick(gSel, gSelB, gNow);
     const gGuide = this.gringGuide(gNow);
+    const gFx = window.GoldFX && GoldFX.popOf && GoldFX.zoom ? GoldFX : null;   // the shimmer, the taking, the pop (js/goldfx.js)
+    if (gFx && gFx.frameStart) gFx.frameStart();                                // one new silhouette this frame
+    this._gZoom.clear();
     const { x0: cvx0, y0: cvy0, x1: cvx1, y1: cvy1 } = this.viewTiles();
     const blds = [];
     for (const b of S.buildings) {
@@ -16430,9 +16473,17 @@ const R = {
       if (!this._bHasFort && (b.key === 'wall' || b.key === 'gate' || b.key === 'tower')) this._bHasFort = true;
       const bx = b.x * TL, by = b.y * TL, bw = bs * TL;
       if (b._fall) { this.drawHallFall(g, b, bx, by, bw); continue; }
-      // a building in hand, or the one the journey points at, stands in its gold ring on the ground
-      const gBr = gSelB === b.id || (gGuide && gGuide.blds.has(b.id))
-        ? this.gringUnder(g, this.gringOfBld(b), b.owner, b.id + 7919, gSelB === b.id ? this._gSelB.get(b.id) : null, gGuide && gGuide.blds.get(b.id), gNow) : null;
+      // a building in hand, or the one the journey points at, stands in its gold ring on the ground —
+      // and one just finished, or just risen a storey, pops into its place (js/goldfx.js; a card's
+      // act raising it is its own pop)
+      let gPop = null;
+      if (gFx && b.owner === 'P' && gFx._pops.size) {
+        if ((this._cardHeld && this._cardHeld.has(b.id)) || (this.cardShows.length && this.cardShows.some(s => s.bid === b.id))) gFx.popDrop('b' + b.id);
+        else gPop = gFx.popOf('b' + b.id, gNow);
+      }
+      const gBr = gSelB === b.id || (gGuide && gGuide.blds.has(b.id)) || gPop
+        ? this.gringUnder(g, this.gringOfBld(b), b.owner, b.id + 7919, gSelB === b.id ? this._gSelB.get(b.id) : null, gGuide && gGuide.blds.get(b.id), gNow,
+          this.gPicBld(b), gPop, 'b') : null;
       if (b.construction > 0 || b.upgrading > 0) {
         // a work site — going up for the first time OR being upgraded. Both
         // wear the scaffold so it's plainly unusable until the work is done.
@@ -16540,13 +16591,25 @@ const R = {
         if (window.Footing && Footing.back) Footing.back(g, b);
         // a siege stone just landed on it: it flinches (js/battlefx.js)
         const jolt = window.BattleFX && BattleFX._bHit.size ? BattleFX.bldJolt(b) : 0;
+        /* TAKEN IN HAND IT GIVES, AND A POP SPRINGS IT INTO ITS PLACE
+           (js/goldfx.js): a squash and a spring about the middle of its foot —
+           its picture and what stands on it (the walk, the lookout), never
+           its ground — and the white gold of a pop over it, springing with it */
+        const gz = gBr && gFx && !this.gFixed(b) ? gFx.zoom(gBr, gNow) : null;
+        if (gz) {
+          const px = bx + bw / 2, py = by + bw;
+          g.save(); g.translate(px, py); g.scale(gz.sx, gz.sy); g.translate(-px, -py);
+          this._gZoom.set(b.id, { px, py, sx: gz.sx, sy: gz.sy });
+        }
         this.blitBld(g, spr, bx + jolt, by, bw, bw);
         if (jolt || (window.BattleFX && BattleFX._bHit.size)) BattleFX.drawBldFlash(g, b, spr, bx + jolt, by, bw);
+        if (gBr && gFx && gFx.flash) gFx.flash(g, gBr);
         // …and the walk running south out of it comes half way up its front
         if (b.key === 'tower') this.drawTowerWalk(g, b, bx, by, bw);
         // …and its lookout stands on the open platform (js/lookout.js)
         if (b.key === 'tower' && window.Lookout) Lookout.draw(g, b);
         if (b.key === 'gate') this.drawGateWalk(g, b, bx, by, bw);
+        if (gz) g.restore();
         // the hedge's long grass and bushes standing in front of its foot (js/footing.js)
         if (window.Footing && Footing.front) Footing.front(g, b);
         // …and one that falls toward us swings over its own archway — the
@@ -16742,7 +16805,14 @@ const R = {
       /* THE GOLD RING ON THE GROUND (R.GRING): one in hand, or the one the
          journey points at, stands in its ring — laid now, before his body, so
          the ring runs behind him; the near motes and the flurry after him */
-      const gRing = (selIds && selIds.has(u.id)) || (gGuide && gGuide.units.has(u.id));
+      /* …and THE GOLD (js/goldfx.js): his own picture, measured once, is what
+         the guide's halo hugs and what flashes as he is taken in hand; a man
+         just out of the yard or risen a rank pops into his place */
+      const gLive = !(u.dieT != null && u.dieT > 0) && !(u.burnT > 0);
+      const gImg = gLive ? this.unitSprite(u) : null, gD = gImg ? this.frameBox(u, gImg, B) : 0;
+      const gDx = wx * TL - gD / 2, gDy = gImg ? this.frameTop(wy, B, gD) : 0;
+      const gUPop = gFx && gLive && u.owner === 'P' && gFx._pops.size ? gFx.popOf('u' + u.id, gNow) : null;
+      const gRing = (selIds && selIds.has(u.id)) || (gGuide && gGuide.units.has(u.id)) || !!gUPop;
       // sheet units get the renderer's shadow; the procedural cast has its own
       // baked in and must never receive a second (sheetUnit). Naval sheets bake
       // their own WATER shadow — a ground ellipse under a hull reads as a
@@ -16750,7 +16820,8 @@ const R = {
       // lies over the shade on the ground, never dimmed by it.
       const gShade = !(u.dieT != null && u.dieT > 0) && !(u.burnT > 0) && this.sheetUnit(u) && !Units.isNaval(u) && !u.spectral;
       if (gShade) this.drawUnitShadow(g, u, wx, wy);
-      const gUr = gRing ? this.gringUnder(g, this.gringOfUnit(u, wx, wy), u.owner, u.id, selIds && selIds.has(u.id) ? this._gSel.get(u.id) : null, gGuide && gGuide.units.get(u.id), gNow) : null;
+      const gUr = gRing ? this.gringUnder(g, this.gringOfUnit(u, wx, wy), u.owner, u.id, selIds && selIds.has(u.id) ? this._gSel.get(u.id) : null, gGuide && gGuide.units.get(u.id), gNow,
+        gImg && !u.spectral ? { img: gImg, x: gDx, y: gDy, w: gD, h: gD } : null, gUPop, 'u') : null;
       // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
       // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
       if (u.dieT != null && u.dieT > 0) {
@@ -16814,8 +16885,10 @@ const R = {
         }
       } else {
         // (his shadow is laid above, under his ring)
-        const img = this.unitSprite(u), D = this.frameBox(u, img, B);
-        const dx0 = wx * TL - D / 2, dy0 = this.frameTop(wy, B, D);
+        const img = gImg, D = gD, dx0 = gDx, dy0 = gDy;
+        // taken in hand he gives, and a pop springs him up out of the ground — about his soles (js/goldfx.js)
+        const gz = gUr && gFx ? gFx.zoom(gUr, gNow) : null;
+        if (gz) { const px = wx * TL, py = dy0 + D; g.save(); g.translate(px, py); g.scale(gz.sx, gz.sy); g.translate(-px, -py); }
         /* A CARD'S OWN PEOPLE wear their own look (js/deckfx-army.js): the
            spectral host translucent and shimmering, a war-wolf's collar in the
            tribe's dye, a veteran's rank. Draw time only — the frame tapped
@@ -16827,6 +16900,8 @@ const R = {
         } else g.drawImage(img, dx0, dy0, D, D);
         // a blow just taken: one white beat over the sprite (js/battlefx.js)
         if (bfx && !u.spectral) bfx.drawFlash(g, u, img, dx0, dy0, D, D);
+        if (gUr && gFx && gFx.flash) gFx.flash(g, gUr);
+        if (gz) g.restore();
       }
       if (gUr) this.gringOver(g, gUr);
       if (u.cargo && u.cargo.length) {                 // one pip per soldier aboard

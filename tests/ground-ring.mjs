@@ -51,9 +51,50 @@
                                      crowns (the wood laid back over it); a man
                                      up a tower keeps the element's ring
 
+   …AND THE GOLD THAT SAYS "THIS ONE", AND "WELL DONE" (js/goldfx.js —
+   operator, build 198: "the buildings … almost shimmering gold around them
+   with the flakes … rising up into the sky … the ring should be tied around
+   them … a little burst of gold … a nice little gold pop when they are
+   finished"):
+
+     THE GUIDE'S HALO HUGS ITS OWN   lit round a building's outline and over
+     OUTLINE                         its roof, never out where a box would be;
+                                     gold, not olive
+     GOLD LEAF RISES OFF IT          into the sky, in several bands over the
+                                     roof (and over a man's head)
+     A SHEEN RUNS ACROSS IT          now and then, moving, never off its own
+                                     picture
+     A MAN IS WOUND ROUND WITH LIGHT  light crossing in front of him and passing
+                                     behind him over one climb, swinging out
+                                     round his waist
+     TAKEN IN HAND A WORK BURSTS     gold round its foot, then nothing once it
+     AND GIVES                       is long held; it springs and settles; a
+                                     wall or a gate never springs; a crowd in
+                                     hand neither gives nor flashes
+     THE POPS                        a work finished flashes its picture gold
+                                     and is done by 2 s; a man trained or risen
+                                     a rank pops the same; a pop nobody saw is
+                                     let go; never the rival's
+     EVERY HOOK ASKS                 Bld.finish, Bld.finishUpgrade,
+                                     Bld.releaseTrained, Units.rankUp — the
+                                     player's alone
+     A STILL FRAME, NO RNG           the gold at one clock is one picture
+     ONE NEW SILHOUETTE A FRAME      a group taken at once is measured one
+                                     picture a frame
+     REDUCED MOTION                  the halo stands still; nothing bursts or
+                                     pops
+
    Run after touching: R.GRING and its painters, the unit pass and the
    building pass in R.draw, R.drawUnitShadow, Lookout.draw's ring,
-   Prologue._ringTo / _gSet / groundRings, #proRing's CSS. */
+   Prologue._ringTo / _gSet / groundRings, #proRing's CSS; GoldFX.under /
+   GoldFX.over / GoldFX.halo / GoldFX.rim / GoldFX.sheen / GoldFX.flakes /
+   GoldFX.leaf / GoldFX.orbit / GoldFX.sparkles / GoldFX.burst /
+   GoldFX.streak / GoldFX.popUnder / GoldFX.popOver / GoldFX.popOf /
+   GoldFX.popBld / GoldFX.popUnit / GoldFX.popDrop / GoldFX.zoom /
+   GoldFX.flash / GoldFX.sil / GoldFX.silOf / GoldFX._build /
+   GoldFX.frameStart / GoldFX._inBoard, R.gringUnder / R.gringOver /
+   R.gPicBld / R.gFixed, and the pop hooks in Bld.finish /
+   Bld.finishUpgrade / Bld.releaseTrained / Units.rankUp. */
 import { join, dirname } from 'node:path';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -464,6 +505,340 @@ const Pt = await p.evaluate(() => {
 });
 ck('aCrowdInHandCostsLittle', Pt.ring <= 0.5 * Pt.ref,
   `a resting ring in a crowd ${Pt.ring} ms, five plain strokes of its size ${Pt.ref} ms (×${(Pt.ring / Math.max(1e-6, Pt.ref)).toFixed(2)})`);
+
+/* ---- 10. THE GOLD THAT SAYS "THIS ONE", AND "WELL DONE" (js/goldfx.js) ----
+   a house raised in the meadow; the guide's chosen one named by the test
+   (R.gringGuide answers window.__gg); a painter or two of GoldFX muted for a
+   measure that wants one of them alone */
+await p.evaluate(() => {
+  const ids = window.__ids;
+  const house = Bld.place('P', 'house', ids.x0 + 6, ids.y0 + 7, { free: true, instant: true });
+  ids.house = house.id;
+  UI.sel = null;
+  const real = R.gringGuide;
+  window.__gg = null;
+  R.gringGuide = function (now) { return window.__gg ? window.__gg() : real.call(R, now); };
+  window.__ggOn = (bid, uid) => () => ({ units: new Map(uid ? [[uid, { raw: { u: uid }, a: 1, s: 1 }]] : []),
+    blds: new Map(bid ? [[bid, { raw: { x: 0, y: 0 }, a: 1, s: 1 }]] : []), tiles: [] });
+  window.__mute = (names, fn) => {
+    const keep = [];
+    for (const k of names) {
+      const o = k.startsWith('R.') ? R : GoldFX, m = k.replace(/^R\./, '');
+      keep.push([o, m, o[m]]); o[m] = () => null;
+    }
+    try { return fn(); } finally { for (const [o, m, f] of keep) o[m] = f; }
+  };
+  // the device crop round a building's whole picture: `up` tiles of sky over it, `side` px either side, `down` tiles under its foot
+  window.__bcrop = (b, up, side, down) => {
+    const RG = window.__RG, TL = CFG.TILE, z = RG.z(), pic = R.gPicBld(b);
+    const [ax0, ay0] = RG.dev(pic.x, pic.y), [ax1, ay1] = RG.dev(pic.x + pic.w, pic.y + pic.h);
+    const x = Math.round(ax0 - side), y = Math.round(ay0 - up * TL * z);
+    return { r: { x, y, w: Math.round(ax1 + side) - x, h: Math.round(ay1 + down * TL * z) - y }, pic, ax0, ay0, ax1, ay1, z };
+  };
+  // a picture's opaque pixels laid into a crop, and every pixel's distance from them (device px, chamfer)
+  window.__mask = (k) => {
+    const { r, pic, ax0, ay0, ax1, ay1 } = k, W = r.w, H = r.h;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+    x.drawImage(pic.img, ax0 - r.x, ay0 - r.y, ax1 - ax0, ay1 - ay0);
+    const al = x.getImageData(0, 0, W, H).data, M = new Uint8Array(W * H), D = new Float32Array(W * H);
+    let top = H;
+    for (let i = 0; i < W * H; i++) { const o = al[i * 4 + 3] > 128; M[i] = o ? 1 : 0; D[i] = o ? 0 : 1e9; if (o) top = Math.min(top, (i / W) | 0); }
+    const a = 1, d2 = 1.414;
+    for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) {
+      const i = y * W + xx; let v = D[i];
+      if (xx > 0) v = Math.min(v, D[i - 1] + a);
+      if (y > 0) { v = Math.min(v, D[i - W] + a); if (xx > 0) v = Math.min(v, D[i - W - 1] + d2); if (xx < W - 1) v = Math.min(v, D[i - W + 1] + d2); }
+      D[i] = v;
+    }
+    for (let y = H - 1; y >= 0; y--) for (let xx = W - 1; xx >= 0; xx--) {
+      const i = y * W + xx; let v = D[i];
+      if (xx < W - 1) v = Math.min(v, D[i + 1] + a);
+      if (y < H - 1) { v = Math.min(v, D[i + W] + a); if (xx < W - 1) v = Math.min(v, D[i + W + 1] + d2); if (xx > 0) v = Math.min(v, D[i + W - 1] + d2); }
+      D[i] = v;
+    }
+    return { M, D, top, W, H };
+  };
+  R.cam.z = 2; R.centerOn(house.x + 0.5, house.y);
+});
+await settle(p);
+await p.evaluate(() => { for (let i = 0; i < 8; i++) R.draw(0); });   // the house's footing measured and laid
+
+/* 10a. THE GUIDE'S SHIMMER ON A BUILDING */
+const GB = await p.evaluate(() => {
+  const RG = window.__RG, TL = CFG.TILE, b = S.buildings.find(o => o.id === window.__ids.house), C = GoldFX.C;
+  const k = window.__bcrop(b, 3, 160, 0.3), r = k.r, mk = window.__mask(k), z = k.z, on = window.__ggOn(b.id, null);
+  const pair = (ms, mute) => {
+    RG.at(ms);
+    return window.__mute(mute.concat(['R.drawGRing']), () => { window.__gg = on; const A = RG.frame(r); window.__gg = null; const B = RG.frame(r); return { A, d: RG.diff(A, B) }; });
+  };
+  // the halo alone (its rim with it): round its own outline, over its roof, never a box
+  const reachIn = C.haloB * z, reachOut = C.haloB * z * 2.6 + 8, lit = new Uint8Array(r.w * r.h);
+  let tone = null;
+  for (const ms of [100000, 100500, 101000, 101500]) {
+    const { A, d } = pair(ms, ['flakes', 'sparkles', 'sheen']);
+    for (let i = 0; i < d.length; i++) if (d[i] > 30) lit[i] = 1;
+    if (ms === 100000) tone = RG.tone(A, d, 30);
+  }
+  let band = 0, near = 0, far = 0, farA = 0, roof = 0;
+  for (let i = 0; i < lit.length; i++) {
+    const D = mk.D[i], y = (i / r.w) | 0;
+    if (D > 0 && D <= reachIn) { band++; if (lit[i]) near++; }
+    if (D > reachOut) { farA++; if (lit[i]) far++; }
+    if (y < mk.top && lit[i]) roof++;
+  }
+  // the gold leaf alone: tumbling up off its ring and its roof into the sky
+  const bands = new Set(); let frames = 0, high = 0, leafTone = null;
+  for (const ms of [102000, 102350, 102700, 103050, 103400, 103750]) {
+    const { A, d } = pair(ms, ['halo', 'rim', 'sheen', 'sparkles']);
+    let n = 0;
+    for (let i = 0; i < d.length; i++) {
+      if (d[i] <= 30) continue;
+      const y = (i / r.w) | 0, above = mk.top - y;
+      if (above > 0.7 * TL * z) { n++; bands.add(Math.floor(above / (0.5 * TL * z))); }
+    }
+    if (n > 0) frames++;
+    high += n;
+    if (!leafTone || n > 0) leafTone = leafTone || RG.tone(A, d, 30);
+  }
+  // the sheen alone: across its own picture now and then, never off it
+  const sh = [];
+  for (let k2 = 0; k2 < 40; k2++) {
+    const { d } = pair(104000 + k2 * 65, ['halo', 'rim', 'flakes', 'sparkles']);
+    let n = 0, sx = 0, out = 0;
+    for (let i = 0; i < d.length; i++) {
+      if (d[i] <= 30) continue;
+      if (mk.M[i]) { n++; sx += i % r.w; } else if (mk.D[i] > 3) out++;
+    }
+    sh.push({ n, x: n ? sx / n : 0, out });
+  }
+  let moved = 0;
+  for (let i = 1; i < sh.length; i++) if (sh[i].n > 80 && sh[i - 1].n > 80 && Math.abs(sh[i].x - sh[i - 1].x) >= 6) moved++;
+  return { band, near, far, farA, roof, reachIn: Math.round(reachIn), reachOut: Math.round(reachOut), tone,
+    frames, high, bands: bands.size, leafTone,
+    shOn: sh.filter(s => s.n > 80).length, shOff: sh.filter(s => s.n === 0).length, shOut: Math.max(...sh.map(s => s.out)), moved, shN: sh.map(s => s.n) };
+});
+ck('theGuidesHaloHugsABuildingsOwnOutline', GB.near >= 0.4 * GB.band && GB.roof >= 40 && GB.far <= Math.max(6, 0.001 * GB.farA),
+  `${GB.near} of the ${GB.band} px within ${GB.reachIn} px of its outline lit, ${GB.roof} above its roof; ${GB.far} of the ${GB.farA} px farther than ${GB.reachOut} px (a box would light them)`);
+ck('andItIsGoldNotOlive', GB.tone.hue >= 30 && GB.tone.hue <= 55 && GB.tone.bright[0] >= GB.tone.bright[1] && GB.tone.bright[1] > GB.tone.bright[2],
+  `the halo's core: hue ${GB.tone.hue}° (${GB.tone.n} px), its bright band rgb(${GB.tone.bright})`);
+ck('andGoldLeafRisesOffItIntoTheSky', GB.frames >= 4 && GB.bands >= 3 && GB.leafTone && GB.leafTone.hue >= 28 && GB.leafTone.hue <= 55,
+  `leaf more than 0.7 tile over its roof in ${GB.frames} of 6 frames (${GB.high} px), in ${GB.bands} half-tile bands of sky; hue ${GB.leafTone && GB.leafTone.hue}°`);
+ck('andASheenRunsAcrossItsOwnPictureNowAndThen', GB.shOn >= 4 && GB.shOff >= 12 && GB.moved >= 2 && GB.shOut <= 4,
+  `lit in ${GB.shOn} of 40 frames over a sheen's cycle, dark in ${GB.shOff}, moving across it in ${GB.moved}; ${GB.shOut} px off its picture at most — ${GB.shN.join('/')}`);
+
+/* 10b. A MAN IN THE GUIDE IS TIED ROUND WITH LIGHT */
+const GU = await p.evaluate(() => {
+  const RG = window.__RG, TL = CFG.TILE, u = S.units.find(v => v.id === window.__ids.vil), on = window.__ggOn(null, u.id);
+  const q = R.gringOfUnit(u, u.x, u.y), z = RG.z(), [cx, cy] = RG.dev(q.cx, q.cy);
+  const r = { x: Math.round(cx - 170), y: Math.round(cy - 300), w: 340, h: 340 }, W = r.w;
+  const rows = [];
+  for (let k = 0; k < 22; k++) {
+    RG.at(110000 + k * 100);
+    const f = window.__mute(['halo', 'rim', 'flakes', 'sparkles', 'R.drawGRing'], () => {
+      window.__gg = on; const F = RG.frame(r), FB = RG.blank(u.id, () => RG.frame(r));
+      window.__gg = null; const N = RG.frame(r), NB = RG.blank(u.id, () => RG.frame(r));
+      return { F, FB, N, NB };
+    });
+    window.__gg = null;
+    const dB = RG.diff(f.N, f.NB), body = RG.box(dB, W, 30), d = RG.diff(f.F, f.N), dl = RG.diff(f.FB, f.NB);
+    // his body's inside (three px in from its edge), above his soles
+    const inside = i => {
+      const x = i % W, y = (i / W) | 0;
+      if (y > body.y1 - 6) return false;
+      for (let yy = y - 3; yy <= y + 3; yy++) for (let xx = x - 3; xx <= x + 3; xx++) if (!(dB[yy * W + xx] > 30)) return false;
+      return true;
+    };
+    let front = 0, hid = 0, out = 0;
+    const mid = (body.x0 + body.x1) / 2, half = (body.x1 - body.x0) / 2, bh = body.y1 - body.y0;
+    for (let i = 0; i < d.length; i++) {
+      const x = i % W, y = (i / W) | 0;
+      if (dB[i] > 30 && (d[i] > 40 || dl[i] > 40) && inside(i)) { if (d[i] > 40) front++; else if (dl[i] > 40 && d[i] <= 12) hid++; }
+      if (y > body.y0 + 0.25 * bh && y < body.y1 - 0.15 * bh && Math.abs(x - mid) > half + 6 && d[i] > 30) out++;
+    }
+    rows.push({ front, hid, out });
+  }
+  // the leaf over his head (the leaf alone)
+  RG.at(113000);
+  let crown = 0;
+  for (const ms of [113000, 113400, 113800, 114200]) {
+    RG.at(ms);
+    const d = window.__mute(['halo', 'rim', 'sparkles', 'orbit'], () => { window.__gg = on; const A = RG.frame(r); window.__gg = null; return RG.diff(A, RG.frame(r)); });
+    const dB = RG.diff(RG.frame(r), RG.blank(u.id, () => RG.frame(r))), body = RG.box(dB, W, 30);
+    for (let i = 0; i < d.length; i++) if (d[i] > 30 && ((i / W) | 0) < body.y0 - 0.25 * TL * z) crown++;
+  }
+  return { front: rows.filter(o => o.front > 0).length, hid: rows.filter(o => o.hid > 0).length, out: rows.filter(o => o.out > 0).length,
+    fpx: rows.map(o => o.front).join('/'), hpx: rows.map(o => o.hid).join('/'), crown };
+});
+ck('aManInTheGuideIsWoundRoundWithLight', GU.front >= 2 && GU.hid >= 2 && GU.out >= 12,
+  `over one climb (22 frames): light crosses in front of him in ${GU.front}, passes behind him in ${GU.hid}, swings out round his waist in ${GU.out} — front ${GU.fpx}; behind ${GU.hpx}`);
+ck('andGoldLeafRisesOverHisHead', GU.crown >= 20, `${GU.crown} px of leaf over his crown across four frames`);
+
+/* 10c. TAKEN IN HAND, A BUILDING GIVES AND BURSTS GOLD AT ITS FOOT, THEN SETTLES */
+const TB = await p.evaluate(() => {
+  const RG = window.__RG, b = S.buildings.find(o => o.id === window.__ids.house);
+  const k = window.__bcrop(b, 2.5, 220, 0.6), r = k.r;
+  const above = () => { const d = RG.diff(window.__mute(['R.drawGRing'], () => RG.frame(r)), RG.bare(r)); let n = 0; for (let i = 0; i < d.length; i++) if (d[i] > 30) n++; return n; };
+  // the give alone: the picture sprung, against the same frame with the spring held
+  const give = () => window.__mute(['flash', 'under', 'over'], () => { const A = RG.frame(r), B = window.__mute(['zoom'], () => RG.frame(r)); const d = RG.diff(A, B); let n = 0; for (let i = 0; i < d.length; i++) if (d[i] > 30) n++; return n; });
+  UI.sel = null; RG.at(120000);
+  UI.sel = { type: 'bld', id: b.id }; RG.at(121000);
+  RG.at(121030); const g0 = give();
+  RG.at(121150); const up = above();
+  RG.at(121700); const g1 = give();
+  RG.at(123000); const rest = above();
+  UI.sel = null; RG.at(124000);
+  const fixed = { wall: R.gFixed({ key: 'wall', x: 1, y: 1 }), gate: R.gFixed({ key: 'gate', x: 1, y: 1 }), house: R.gFixed(b) };
+  // a crowd taken in hand neither gives nor flashes (more than glintMax in hand is calm)
+  const keep = R._gSel, crowd = new Map(); for (let i = 0; i < R.GRING.glintMax + 2; i++) crowd.set(930000 + i, { t0: 0, n: 3 });
+  const rec = { kind: 'u', sl: { s: 1 }, selAge: 0.05, pic: { img: null, x: 0, y: 0, w: 1, h: 1 } };
+  let calm;
+  R._gSel = crowd; try { calm = { zoom: GoldFX.zoom(rec, 0), flash: GoldFX._flashA(rec) }; } finally { R._gSel = keep; }
+  return { g0, up, g1, rest, fixed, calm };
+});
+ck('aBuildingTakenInHandBurstsGoldAtItsFoot', TB.up >= 400 && TB.rest === 0,
+  `${TB.up} device px round it are the taking's 0.15 s after it is taken (its ring left out), ${TB.rest} once it is long held`);
+ck('andItGivesThenSettles', TB.g0 >= 200 && TB.g1 === 0 && TB.fixed.wall && TB.fixed.gate && !TB.fixed.house && TB.calm.zoom === null && TB.calm.flash === 0,
+  `the spring moves ${TB.g0} px of its picture 0.03 s after it is taken, ${TB.g1} at 0.7 s; a wall ${TB.fixed.wall ? 'never springs' : 'SPRINGS'}, a gate ${TB.fixed.gate ? 'never springs' : 'SPRINGS'}; a crowd in hand: zoom ${TB.calm.zoom}, flash ${TB.calm.flash}`);
+
+/* 10d. THE POPS: a work finished, a man out of the yard, a man risen a rank */
+const PB = await p.evaluate(() => {
+  const RG = window.__RG, TL = CFG.TILE, b = S.buildings.find(o => o.id === window.__ids.house), u = S.units.find(v => v.id === window.__ids.vil);
+  const k = window.__bcrop(b, 2.5, 240, 0.9), rb = k.r;
+  const q = R.gringOfUnit(u, u.x, u.y), [cx, cy] = RG.dev(q.cx, q.cy), ru = { x: Math.round(cx - 200), y: Math.round(cy - 320), w: 400, h: 400 };
+  const pop = r => { const A = RG.frame(r), B = window.__mute(['popOf'], () => RG.frame(r)), d = RG.diff(A, B); let n = 0; for (let i = 0; i < d.length; i++) if (d[i] > 30) n++; return { n, A, B }; };
+  GoldFX.forget(); UI.sel = null;
+  RG.at(130000); GoldFX.popBld(b, 'build'); RG.at(130000);
+  RG.at(130100); const w = pop(rb);
+  // its own picture's pixels, how bright: flashed gold, against the same frame with no pop
+  const kk = window.__bcrop(b, 0.2, 40, 0.1), mkk = window.__mask(kk);
+  const lum = F => { let s = 0, n = 0; for (let i = 0; i < mkk.M.length; i++) if (mkk.M[i]) { s += F[i * 4] + F[i * 4 + 1] + F[i * 4 + 2]; n++; } return n ? s / n / 3 : 0; };
+  const lumA = lum(RG.frame(kk.r)), lumB = window.__mute(['popOf'], () => lum(RG.frame(kk.r)));
+  RG.at(132000); const w2 = pop(rb);
+  RG.at(140000); GoldFX.popUnit(u, 'train'); RG.at(140000);
+  RG.at(140080); const t = pop(ru);
+  RG.at(141500); const t2 = pop(ru);
+  RG.at(150000); GoldFX.popUnit(u, 'rank'); RG.at(150000);
+  RG.at(150120); const k1 = pop(ru);
+  RG.at(152000); const k2 = pop(ru);
+  // a pop nobody saw is let go (a work finished off the view is news, not a pop)
+  GoldFX.popBld(b, 'up'); RG.at(160000 + GoldFX.C.popWait * 1000 + 600);
+  const late = GoldFX._pops.has('b' + b.id);
+  // never the rival's
+  const foe = S.units.find(v => v.id === window.__ids.foe), ra = S.buildings.find(o => o.owner === 'A');
+  GoldFX.popUnit(foe, 'train'); GoldFX.popBld(ra, 'build');
+  const rival = GoldFX._pops.size;
+  GoldFX.forget();
+  return { w: w.n, w2: w2.n, lumA: Math.round(lumA), lumB: Math.round(lumB), t: t.n, t2: t2.n, k1: k1.n, k2: k2.n, late, rival };
+});
+ck('aWorkFinishedPopsIntoItsPlaceInGold', PB.w >= 1500 && PB.lumA >= PB.lumB + 25 && PB.w2 === 0,
+  `0.1 s in, ${PB.w} device px are the pop's (its picture ${PB.lumB} → ${PB.lumA} bright, flashed gold); ${PB.w2} at 2 s`);
+ck('aManOutOfTheYardOrRisenARankPopsInGold', PB.t >= 400 && PB.t2 === 0 && PB.k1 >= 400 && PB.k2 === 0,
+  `trained: ${PB.t} px at 0.08 s, ${PB.t2} at 1.5 s; risen a rank: ${PB.k1} px at 0.12 s, ${PB.k2} at 2 s`);
+ck('andAPopNobodySawIsLetGoAndTheRivalHasNone', !PB.late && PB.rival === 0,
+  `a pop first drawn past its wait: ${PB.late ? 'STILL WAITING' : 'let go'}; the rival's pops: ${PB.rival}`);
+
+/* 10e. EVERY HOOK ASKS FOR ITS POP: Bld.finish, Bld.finishUpgrade, Bld.releaseTrained, Units.rankUp — the player's alone */
+const WI = await p.evaluate(() => {
+  const ids = window.__ids, made = new Set(), units = new Set(), out = {};
+  const typeOf = k => (GoldFX._pops.get(k) || {}).type || null;
+  GoldFX.forget();
+  const site = Bld.place('P', 'house', ids.x0 + 1, ids.y0 + 9, { free: true }); made.add(site.id);
+  Bld.finish(site); out.build = typeOf('b' + site.id);
+  site.upgrading = 1; Bld.finishUpgrade(site); out.up = typeOf('b' + site.id);
+  const tc = S.buildings.find(o => o.id === ids.tc);
+  const nu = Bld.releaseTrained(tc, 'villager', { x: ids.x0 + 2.5, y: ids.y0 + 9.5 }, false); units.add(nu.id);
+  out.train = typeOf('u' + nu.id);
+  const yard = Bld.place('P', 'barracks', ids.x0 + 10, ids.y0 + 1, { free: true, instant: true }); made.add(yard.id);
+  yard.level = 3;
+  const keep = Object.assign({}, S.res); for (const r in S.res) S.res[r] = 9999;
+  const d = Units.spawn('defender', 'P', ids.x0 + 10.5, ids.y0 + 3.5); units.add(d.id);
+  const c = Units.rankUp(d); out.rank = c && c.ok ? typeOf('u' + d.id) : 'refused: ' + (c && c.why);
+  Object.assign(S.res, keep);
+  const rs = Bld.place('A', 'house', ids.x0 + 1, ids.y0 + 1, { free: true }); made.add(rs.id);
+  const n0 = GoldFX._pops.size;
+  Bld.finish(rs); rs.upgrading = 1; Bld.finishUpgrade(rs);
+  const rtc = S.buildings.find(o => o.owner === 'A' && o.key === 'tc');
+  const ru = rtc ? Bld.releaseTrained(rtc, 'villager', { x: ids.x0 + 1.5, y: ids.y0 + 2.5 }, false) : null;
+  if (ru) units.add(ru.id);
+  out.rival = GoldFX._pops.size - n0;
+  S.buildings = S.buildings.filter(o => !made.has(o.id)); S.units = S.units.filter(o => !units.has(o.id));
+  Bld._block = null; GoldFX.forget();
+  return out;
+});
+ck('everyFinishAndRiseAsksForItsPopThePlayersAlone', WI.build === 'build' && WI.up === 'up' && WI.train === 'train' && WI.rank === 'rank' && WI.rival === 0,
+  JSON.stringify(WI));
+
+/* 10f. A STILL FRAME, NO RNG — the guide on a building and a man, a pop playing, a man just taken */
+const SF = await p.evaluate(() => {
+  const RG = window.__RG, b = S.buildings.find(o => o.id === window.__ids.house), u = S.units.find(v => v.id === window.__ids.vil);
+  const both = window.__ggOn(b.id, u.id);
+  window.__gg = both; UI.sel = null; RG.at(170000);
+  GoldFX.popBld(b, 'build'); UI.sel = { type: 'unit', id: u.id }; RG.at(170500);
+  RG.at(170650);
+  const W = R.cv.width, H = R.cv.height, rng = S.rngState, mr = Math.random;
+  let calls = 0; Math.random = function () { calls++; return mr(); };
+  let a, c, c1, c2;
+  try {
+    RG.draw(); a = R.g.getImageData(0, 0, W, H).data; c1 = calls;
+    RG.draw(); c = R.g.getImageData(0, 0, W, H).data;
+    c2 = calls - c1;
+    const gg = window.__gg; window.__gg = null;
+    window.__mute(['popOf'], () => RG.bare({ x: 0, y: 0, w: 1, h: 1 }));
+    window.__gg = gg;
+  } finally { Math.random = mr; }
+  const c3 = calls - c1 - c2;
+  let moved = 0; for (let i = 0; i < a.length; i++) if (a[i] !== c[i]) moved++;
+  window.__gg = null; UI.sel = null; GoldFX.forget(); RG.at(171000);
+  return { moved, c2, c3, rngSame: S.rngState === rng };
+});
+ck('andTheGoldIsAStillFrameThatDrawsNoRng', SF.moved === 0 && SF.c2 === SF.c3 && SF.rngSame,
+  `${SF.moved} bytes moved between two draws at one clock (a guide on a work and a man, a pop, a taking); Math.random ${SF.c2} times a frame with the gold, ${SF.c3} without; S.rngState ${SF.rngSame ? 'untouched' : 'MOVED'}`);
+
+/* 10h. A GROUP TAKEN IN HAND MEASURES ONE NEW SILHOUETTE A FRAME (a picture read back costs a few ms on a phone) */
+const SB = await p.evaluate(() => {
+  const RG = window.__RG, ids = window.__ids, made = [];
+  ['villager', 'defender', 'archer', 'axeman'].forEach((kd, i) => { const v = Units.spawn(kd, 'P', ids.x0 + 0.5 + i, ids.y0 + 2.5); v.task = null; v.path = null; v.female = false; made.push(v); });
+  UI.sel = null; RG.at(190000);
+  GoldFX._silC = new Map();                  // nothing measured yet
+  const real = GoldFX._build; let n = 0, per = [];
+  GoldFX._build = function () { n++; return real.apply(GoldFX, arguments); };
+  try {
+    UI.sel = { type: 'group', ids: made.map(v => v.id) }; window.__ms = 191000;
+    for (let f = 0; f < 6; f++) { const n0 = n; R.draw(0); per.push(n - n0); }
+  } finally { GoldFX._build = real; }
+  UI.sel = null; S.units = S.units.filter(v => !made.includes(v)); RG.at(192000);
+  return { per, imgs: new Set(made.map(v => R.unitSprite(v))).size };
+});
+ck('aGroupTakenInHandMeasuresOneNewSilhouetteAFrame', SB.imgs >= 3 && SB.per.slice(0, SB.imgs).every(x => x === 1) && SB.per.slice(SB.imgs).every(x => x === 0),
+  `four men of four kinds taken at once (${SB.imgs} pictures): ${SB.per.join('/')} silhouettes measured in the frames after`);
+
+/* 10g. REDUCED MOTION: the halo stands still, nothing bursts or pops */
+await p.emulateMedia({ reducedMotion: 'reduce' });
+const RMo = await p.evaluate(() => {
+  const RG = window.__RG, b = S.buildings.find(o => o.id === window.__ids.house), k = window.__bcrop(b, 2.5, 160, 0.3), r = k.r;
+  R._gStillAt = null;
+  const on = window.__ggOn(b.id, null), smoke = R.drawHearthSmoke;
+  R.drawHearthSmoke = () => {};
+  let X, Y, N;
+  try {
+    window.__gg = on; RG.at(180000); X = RG.frame(r);
+    RG.at(181300); Y = RG.frame(r);
+    window.__gg = null; N = RG.frame(r);
+  } finally { R.drawHearthSmoke = smoke; }
+  let moved = 0, lit = 0;
+  for (let i = 0; i < X.length; i += 4) { if (Math.abs(X[i] - Y[i]) + Math.abs(X[i + 1] - Y[i + 1]) + Math.abs(X[i + 2] - Y[i + 2]) > 6) moved++; if (Math.abs(Y[i] - N[i]) + Math.abs(Y[i + 1] - N[i + 1]) + Math.abs(Y[i + 2] - N[i + 2]) > 30) lit++; }
+  GoldFX.popBld(b, 'build'); RG.at(182000);
+  const pop = GoldFX._pops.has('b' + b.id);
+  UI.sel = { type: 'bld', id: b.id }; RG.at(183000); RG.at(183100);
+  const d = RG.diff(window.__mute(['R.drawGRing'], () => RG.frame(r)), RG.bare(r)); let up = 0; for (let i = 0; i < d.length; i++) if (d[i] > 30) up++;
+  UI.sel = null; RG.at(184000);
+  return { moved, lit, pop, up };
+});
+await p.emulateMedia({ reducedMotion: 'no-preference' });
+await p.evaluate(() => { R._gStillAt = null; });
+ck('underReducedMotionTheGoldStandsStill', RMo.lit >= 200 && RMo.moved === 0 && !RMo.pop && RMo.up === 0,
+  `the guide's still halo: ${RMo.lit} px lit, ${RMo.moved} moved in 1.3 s; a pop ${RMo.pop ? 'PLAYS' : 'is let go'}; taking a work throws ${RMo.up} px`);
 await p.context().close();
 
 /* ---- 9. THE JOURNEY'S RING ---- */

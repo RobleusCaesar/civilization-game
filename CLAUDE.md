@@ -304,7 +304,7 @@ node tests/resource-front.mjs  # a gatherer working a resource from the NORTH is
 node tests/dock-shore.mjs      # a dock stands on its shore: the fuller flank is the shore, a half-land flank slides the jetty onto the land, the picture seated so its sill or footing stands on the bank at every level and facing, a site the same; a picture only
 node tests/building-fire.mjs # every other building burns in its own art (R.FIRE_ART: 13 kinds, 37 levels): catch, blaze and gutted by the burn phase, every strip on disk at its size, each loop starting on its still, no paper-white flash; nothing asked at boot, by the demo or by a whole town, a hurt building asks for its own strips once; a site, an upgrade or a redrawn picture keeps the old look; it lands on the finished picture at every kind and level; one picture for every caller, no flame sprite over it, the rival's too; smoke and embers draw no RNG, write nothing and stay under their caps, nothing in the black, and a burning house puffs no hearth smoke; a house falls in its own place onto its own pinned ruin, the footing and the remains waiting for it
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
-node tests/ground-ring.mjs    # the gold ring on the ground: laid before the body (its far arc behind him, its near arc whole), at the device's pixels, gold not olive, the snap and the flurry on taking (fewer each in a crowd), a foe's rust, a building's round its foot, a still frame and no RNG, nothing in the black, still under reduced motion, a crowd calm and a blit a man; the journey's ring on the ground (#proRing unseen over it), breathing with motes, fading from target to target, behind the crowns
+node tests/ground-ring.mjs    # the gold ring on the ground: laid before the body (its far arc behind him, its near arc whole), at the device's pixels, gold not olive, the snap and the flurry on taking (fewer each in a crowd), a foe's rust, a building's round its foot, a still frame and no RNG, nothing in the black, still under reduced motion, a crowd calm and a blit a man; the journey's ring on the ground (#proRing unseen over it), breathing with motes, fading from target to target, behind the crowns; the gold that says "this one" (js/goldfx.js): the guide's halo hugging a work's own outline and over its roof (never a box), a sheen across its own picture now and then, gold leaf rising into the sky, a man wound round with light (in front of him and behind); taken in hand a work bursts gold at its foot and springs (never a wall or a gate, never a crowd); a work finished or raised and a man trained or ranked pop in gold — every hook asks, the player's alone, a pop nobody saw let go; a still frame and no RNG; one new silhouette a frame; still under reduced motion
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
 ```
 
@@ -2214,6 +2214,56 @@ it pointed (`fadeOut` 0.3 s); `#proRing` stays exactly where it was, unseen
 its rect is unchanged. A box round a button stays the DOM's. Reduced motion
 keeps every ring still: no snap, flurry, glint, breath or motes. The perched
 bow's ring on the rail (`Lookout.draw`) is the same painter at his size.
+**THE GOLD THAT SAYS "THIS ONE", AND "WELL DONE"** (`js/goldfx.js`,
+`GoldFX`; `R.gringUnder` / `gringOver` / `gPicBld` / `gFixed` / `_gZoom`, the
+pop hooks in `Bld.finish` / `finishUpgrade` / `releaseTrained` and
+`Units.rankUp`; tests/ground-ring.mjs §10 — operator, build 198: "We want the
+buildings to almost be shimmering gold around them with the flakes looking
+like they're rising up into the sky, same with the villagers, the ring should
+be tied around them … a little burst of gold maybe at the base or around the
+building … a nice little gold pop when they are finished and pop into
+existence"). Three moments, one gold, laid round R.GRING's ring through
+`gringUnder` / `gringOver` (a record of the ring, the thing's own picture —
+`gPicBld`, a unit's frame — its pop and its taking). **THE GUIDE'S SHIMMER**
+(the journey's chosen one, `R.gringGuide`): its own silhouette haloed in gold
+(a band hugging the outline, its hue pass first and its lift after,
+`R.FX_TIE` — the blur's long tail read as a brown smear, so the profile is a
+smoothstep) and rimmed from within; a sheen running across its own picture
+every `sheenS` (2.6 s), a building's alone (across a man it was a wash over
+his body); sparkles winking on its outline; gold leaf tumbling up off the
+ring and its roofline into the sky — opaque two-tone leaf that shrinks away,
+never thinned over the meadow; and round a man two lights winding up from
+his feet to over his head, behind him and in front (`orbit`): the ring tied
+round him. **THE TAKING** (anything of the player's taken in hand, while no
+more than `glintMax` are): it gives — a squash and a spring about the middle
+of its foot (`GoldFX.zoom`, kept on `R._gZoom` for `_redrawPic`) — its
+outline flashes gold, a flash and two rings roll out over the ground at its
+base, comet sparks leap off it and leaf lifts away; a wall, a gate or a
+line-bonded tower never springs (`R.gFixed`: it would come away from its
+neighbours). **THE POP** (a work finished or a storey raised, a man out of
+the yard, a man risen a rank — the player's alone): it springs into place in
+a flash of white gold (`GoldFX.flash`, its own picture tinted), two rings
+roll out, sparks fly, leaf drifts up; a trained man grows up out of the
+ground, a ranked one stretches. Its clock starts the first time it is drawn,
+one not drawn inside `popWait` (2.2 s) is let go (a work finished off the
+view is news, not a pop), and a card's act holding the old look
+(`R._cardHeld`, a show's veil — Master Builders, Enlightenment) drops it: the
+act is its pop. **NO RAYS BEHIND A WORK**: warm light fanned off a roof read
+as flames, and fire is the town's one alarm. **A PICTURE ONLY**: a pure
+function of the render clock and the id, no RNG, nothing in S or a save
+(`GoldFX.forget` from `R.onNewGame`), clipped to the board; a man drawn over
+the board's edge neither springs nor flashes (`_inBoard` — the unit pass is
+not clipped); under reduced motion the halo stands still and nothing bursts,
+springs or pops. **ONE NEW SILHOUETTE A FRAME** (`sil` / `_build` /
+`frameStart`, `C.silPerFrame` 1): a picture's silhouette is measured once
+(a coarse grid blurred out for the halo, a finer one in for the rim, the
+outline's points) into an LRU of 18 pictures, and reading a picture back
+costs a few ms on a phone (about 20 ms for a house in headless SwiftShader),
+so a group taken in hand or a man walking through his frames is measured one
+picture a frame — a halo landing a frame late is never seen. The gold's own
+drawing is under 1 ms of main-thread recording a frame with a guided work and
+a guided man (measured); every hook guards on the method it calls.
+
 **A test that edits terrain after `G.newGame` must rebuild the V4 world**
 (`TerrainX.rebuildAll()` once `TerrainX.ready`): its water outline is taken
 inside newGame, and a meadow painted over a lake still shimmers underneath.

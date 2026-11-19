@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 198, date: '2026-11-19', title: 'A touch of gold',
+    items: [
+      'In the journey, whatever Mira points at now shimmers in gold: a glow round its outline, a gleam running across it, and gold leaf drifting up into the sky.',
+      'A villager or soldier she points at has two lights winding up round him, from his feet to over his head.',
+      'Tapping one of your units or buildings gives a burst of gold at its base and a little bounce.',
+      'A building that finishes or rises a level pops into place in a flash of gold, and so does a unit fresh from training or raised a rank.',
+    ],
+  },
+  {
     build: 197, date: '2026-11-19', title: 'A farm for the growing clan',
     items: [
       'The Growing Clan now opens with a working farm beside a home, so your soldiers never go hungry while you learn the walls and the dock.',
