@@ -224,6 +224,12 @@ const SCENARIO_MAPS = {
     "kind": "villager",
     "x": 15,
     "y": 23
+   },
+   {
+    "kind": "villager",
+    "x": 8,
+    "y": 25,
+    "work": [9, 25]
    }
   ],
   "animals": [
@@ -231,11 +237,6 @@ const SCENARIO_MAPS = {
     "kind": "deer",
     "x": 14,
     "y": 29
-   },
-   {
-    "kind": "deer",
-    "x": 29,
-    "y": 24
    },
    {
     "kind": "deer",
@@ -262,6 +263,11 @@ const SCENARIO_MAPS = {
     "key": "house",
     "x": 16,
     "y": 22
+   },
+   {
+    "key": "farm",
+    "x": 9,
+    "y": 25
    }
   ],
   "ruins": [],
@@ -518,13 +524,13 @@ const SCENARIO_MAPS = {
   "animals": [
    {
     "kind": "deer",
-    "x": 10,
-    "y": 17
+    "x": 4,
+    "y": 13
    },
    {
     "kind": "deer",
-    "x": 11,
-    "y": 17
+    "x": 5,
+    "y": 13
    },
    {
     "kind": "deer",

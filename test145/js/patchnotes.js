@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 197, date: '2026-11-19', title: 'A farm for the growing clan',
+    items: [
+      'The Growing Clan now opens with a working farm beside a home, so your soldiers never go hungry while you learn the walls and the dock.',
+      'Tapping the gold seam on the far isle always claims it now. A deer grazing there could turn the tap into a hunt.',
+    ],
+  },
+  {
     build: 196, date: '2026-11-19', title: 'The Growing Clan and The Reckoning',
     items: [
       'The First Fire now opens in a cozy wooded glen, with forest closing in round the valley.',
