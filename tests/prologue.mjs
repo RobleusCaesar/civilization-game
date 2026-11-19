@@ -322,23 +322,47 @@ const page = async (q, done) => {
      aside, the line that asks a gathering beat again, and the draft's. (The
      praise for a deed rides on the next line only while the two fit —
      Prologue._show — so it is held by the game itself.) */
+  /* …with the chief's name in them (build 200): every line that says it is
+     measured holding a name of two words */
   const lines = await p.evaluate(() => {
     const out = [], P = Prologue, txt = (t, a) => typeof t === 'function' ? t.call(P, a) : t;
+    let was = null; try { was = localStorage.getItem('neo-chief'); localStorage.setItem('neo-chief', 'Rowan Ashford'); } catch (e) {}
     for (const g of [1, 2, 3]) {
       Scenarios.found('prologue_' + g);
       P.onWorldChange();
       for (const bt of P._beats) {
         for (const [k, t] of [['', txt(bt.text)], [':hold', bt.hold && txt(bt.hold, false)], [':holdWait', bt.hold && txt(bt.hold, true)],
-          [':hands', txt(bt.handsText)], [':wait', txt(bt.wait)], [':gwait', txt(bt.gwait)]]) if (t || k === '') out.push({ g, id: bt.id + k, t });
+          [':hands', txt(bt.handsText)], [':wait', txt(bt.wait)], [':gwait', txt(bt.gwait)], [':praise', txt(bt.praise)]]) if (t || k === '') out.push({ g, id: bt.id + k, t });
       }
       for (const a of P.ASIDES) out.push({ g, id: 'aside:' + a.id, t: txt(a.text) });
       out.push({ g, id: 'gatherLine', t: P.gatherLine() });
     }
     out.push({ id: 'draft', t: P.DRAFT_LINE });
+    try { if (was == null) localStorage.removeItem('neo-chief'); else localStorage.setItem('neo-chief', was); } catch (e) {}
     return out;
   });
   const long = lines.filter(l => !l.t || String(l.t).split(/\s+/).filter(Boolean).length > 15);
   ck('noLineTheGuideSaysRunsPastFifteenWords', lines.length > 40 && !long.length, long.length ? long.map(l => l.g + ':' + l.id + ' "' + l.t + '"').join('; ') : lines.length + ' lines');
+  /* THE CHIEF'S NAME IN HER MOUTH (operator, build 200: "Whatever the player names
+     themselves at the end of level one, can we dynamically insert it into this first
+     text box in level two as well as maybe sprinkle it throughout a few other places
+     in level two and level three"): game 2 opens on it, and a few lines of games 2
+     and 3 carry it; with no name chosen she says "chief" as before, never the
+     stand-in name she offers in the box, and a name typed with the title on it is
+     not hailed twice */
+  const named = lines.filter(l => /Chief Rowan Ashford/.test(l.t));
+  const hail = await p.evaluate(() => {
+    const P = Prologue, at = v => { try { if (v == null) localStorage.removeItem('neo-chief'); else localStorage.setItem('neo-chief', v); } catch (e) {} return [P.hail(), P.hail(true)]; };
+    let was = null; try { was = localStorage.getItem('neo-chief'); } catch (e) {}
+    const r = { none: at(null), plain: at('Ada'), titled: at('chief Rob'), spaced: at('  Ada   Lovelace ') };
+    at(was);
+    return r;
+  });
+  ck('gameTwoOpensOnTheChiefsName', named.some(l => l.g === 2 && l.id === 'welcome' && /^Welcome back, Chief Rowan Ashford\./.test(l.t)), named.map(l => l.g + ':' + l.id).join(', '));
+  ck('andAFewLinesOfGamesTwoAndThreeCarryIt', named.filter(l => l.g === 2).length >= 3 && named.filter(l => l.g === 3).length >= 3 && !named.some(l => l.g === 1),
+    named.map(l => l.g + ':' + l.id + ' "' + l.t + '"').join('; '));
+  ck('andWithNoNameSheSaysChief', JSON.stringify(hail) === JSON.stringify({ none: ['chief', 'Chief'], plain: ['Chief Ada', 'Chief Ada'], titled: ['Chief Rob', 'Chief Rob'], spaced: ['Chief Ada Lovelace', 'Chief Ada Lovelace'] }),
+    JSON.stringify(hail));
   /* HER FACES (operator, build 181: "a younger woman … double or triple the
      number of images … more diversity in the character"): nine faces of one
      woman, each a 256px picture on disk (her 128px master doubled), hard
@@ -1602,6 +1626,9 @@ const endScreen = async (p) => {
      clock; a person reads, looks and slips — the band holds it from collapsing or swelling */
   ck('andGameTwosPaceIsKept', run.over && run.clk >= 300 && run.clk <= 720, run.clk.toFixed(0) + ' s of play');
   ck('gameTwoIsWonByFollowingTheGuideAlone', run.over && run.played >= 1, `over ${run.over} at ${run.clk.toFixed(0)} s, ${run.clicks} taps, cards played ${run.played}, lines ${run.seen.map(s => s.id).join(' › ')}`);
+  // …and she calls the chief by the name chosen at the end of game 1 ("Tester", above)
+  ck('andMiraCallsTheChiefByTheNameTheyChose', run.said.some(t => /^Welcome back, Chief Tester\./.test(t)) && run.said.filter(t => /Chief Tester/.test(t)).length >= 2,
+    run.said.filter(t => /chief/i.test(t)).join(' | ') || 'never');
   ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapOfGameTwoWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andItsRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
@@ -1673,6 +1700,8 @@ const endScreen = async (p) => {
   ck('andEveryTapOfGameThreeWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andGameThreesRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
   ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
+  ck('andGameThreeCallsTheChiefByNameToo', run.said.some(t => /^Chief Tester, the clan that burned us/.test(t)) && run.said.filter(t => /Chief Tester/.test(t)).length >= 2,
+    run.said.filter(t => /chief/i.test(t)).join(' | ') || 'never');
   ck('andEveryLineOfGameThreeWasShort', run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   const end = await endScreen(p);
   ck('theThirdWinPaysOneImperialCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:3': ['imperial'] }), JSON.stringify(end.runs));

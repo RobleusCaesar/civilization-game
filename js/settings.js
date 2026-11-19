@@ -556,6 +556,9 @@ const SettingsPage = {
       const what = this.el.querySelector('.sxWhat'); if (what) what.style.display = f.attach ? '' : 'none';
     } else if (t.id === 'sxChief') {
       if (window.Backend && Backend.isReady()) { this._chief = t.value; Backend.setChiefName(t.value); }
+      // the journey's guide calls the chief by this name too (Prologue.hail)
+      const nm = String(t.value || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+      if (nm) try { localStorage.setItem('neo-chief', nm); } catch (err) {}
     }
   },
 

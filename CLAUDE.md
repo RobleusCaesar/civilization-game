@@ -1809,10 +1809,23 @@ people for food so we don't go hungry.", `andOpensOnAnUntamedWorld`), and the
 burned home is its LAST word, the hook ("Our first fire burns, chief. May the
 clan that burned our home never see it." —
 `andHerLastWordNamesTheClanThatBurnedTheirHome`); game 2's riders are "not
-the ones who burned us", and game 3 opens on that clan ("The clan that
-burned our home lives across the river. Today it ends.") and ends on it
-("Their hall is ash. The clan that burned us is no more, chief."). Nothing
-more is explained. **THE
+the ones who burned us", and game 3 opens on that clan ("Chief …, the clan
+that burned us lives across the river. Today it ends.") and ends on it
+("Their hall is ash. The clan that burned us is no more, Chief …."). Nothing
+more is explained. **SHE CALLS THE CHIEF BY NAME** (`Prologue.named` /
+`hail`, tests/prologue.mjs `gameTwoOpensOnTheChiefsName` and the follower's
+`andMiraCallsTheChiefByTheNameTheyChose` — operator, build 200: "Whatever the
+player names themselves at the end of level one, can we dynamically insert it
+into this first text box in level two as well as maybe sprinkle it throughout
+a few other places in level two and level three"): the name chosen after game
+1 (`neo-chief`; a rename on the Settings page writes it there too) is said in
+game 2's welcome ("Welcome back, Chief Tester."), the wall's praise after the
+scout, the hall's gathering line, the hall's end; and in game 3's opening, Army
+1's praise, the strike on their hall and the end. Lines and praise may be
+functions (`_praise` resolves one). With no name chosen she says "chief" —
+never the stand-in `chiefName()` offers in the box — and a name typed with the
+title ("Chief Rob") is not hailed twice. Every line that carries it is measured
+holding a two-word name inside her fifteen words. **THE
 BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
 the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
 NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE

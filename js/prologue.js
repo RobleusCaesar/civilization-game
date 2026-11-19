@@ -1010,7 +1010,7 @@ const Prologue = {
            — a boat to fish, a transport to carry hands to the isle where the stone and the
            gold lie — and the hall's third storey, raised on that stone. More room than game
            1 (SPACE[2]): a line's ring waits a few seconds for the player to find the way. */
-        { id: 'welcome', face: 'pleased', text: 'Welcome back, chief. Our clan has grown on these lake isles.', auto: 5200,
+        { id: 'welcome', face: 'pleased', text: () => 'Welcome back, ' + P.hail() + '. Our clan has grown on these lake isles.', auto: 5200,
           goal: 'The Growing Clan' },
         /* THE MAP (build 196: "We want to teach about the map"): open it, carry the view to
            the isle by a tap on it, come home the same way, fold it away */
@@ -1109,7 +1109,7 @@ const Prologue = {
         { id: 'scout', face: 'surprised', text: 'A scout comes! Watch our archer on the tower.',
           goal: 'Watch the tower',
           on: () => P.sendScout(), look: () => P.wallView(),
-          done: () => P.scoutDone(), praise: 'The wall held!' },
+          done: () => P.scoutDone(), praise: () => 'The wall held, ' + P.hail() + '!' },
         { id: 'mend', face: 'point', text: 'Mend the damaged wall: tap a villager, then the wall.',
           goal: 'Mend the wall', skipIf: () => !P.hurtFort(),
           ring: () => P.handsRing({ site: () => P.hurtFort() }), taps: () => P.handsTaps({ site: () => P.hurtFort() }),
@@ -1184,7 +1184,7 @@ const Prologue = {
           taps: () => R1(P.hallRing('#panel [data-act="upgrade"]')()),
           done: () => P._greyAt > (P._beatT0 || 0) || (() => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); })(),
           praise: 'See? It says what is missing.' },
-        { id: 'grow', face: 'thinking', text: 'Now raise the hall again. Gather what it needs.', gather: true,
+        { id: 'grow', face: 'thinking', text: () => P.hail(true) + ', our hall can rise again. Gather what it needs.', gather: true,
           gwait: () => 'The hall will rise again. The ' + P.naming(P.need()) + ' is coming in.',
           goal: () => 'Raise the hall: ' + P.hallNeeds(), ring: () => P.gatherRing(), taps: () => P.gatherTaps(),
           done: () => { const tc = P.tc(); return !!tc && (tc.level >= 3 || tc.upgrading > 0 || Bld.canUpgrade(tc).ok); },
@@ -1215,7 +1215,7 @@ const Prologue = {
            its ranks; the garrison sallies (Chaos), the wall is broken (Siege), a tower and
            then their hall are struck down (Strike). The lines say what and why; the ring
            waits long for the player (SPACE[3]), and the view only shows the subject. */
-        { id: 'arrive', face: 'determined', text: 'The clan that burned our home lives across the river. Today it ends.', auto: 6400,
+        { id: 'arrive', face: 'determined', text: () => P.hail(true) + ', the clan that burned us lives across the river. Today it ends.', auto: 6400,
           goal: 'The Reckoning', look: () => P.mark('rivalHall'), on: () => P.lineCount() },
         { id: 'plan', face: 'thinking', text: 'A wall and two towers guard their hall. We make ready, then march.', auto: 6400,
           goal: 'Make ready, then march', look: () => P.mark('gate') },
@@ -1324,7 +1324,7 @@ const Prologue = {
         { id: 'save', face: 'point', hint: 'new', text: 'Save them as Army 1. Its banner calls them back anytime.',
           goal: 'Save Army 1',
           ring: () => P.saveRing(), taps: () => R1(P.saveRing()),
-          done: () => P.army(1).length > 0, praise: 'Army 1 is ready!' },
+          done: () => P.army(1).length > 0, praise: () => 'Army 1 is ready, ' + P.hail() + '!' },
         { id: 'legion', face: 'excited', text: 'Cards can turn a battle. Play Iron Legion: six champions join Army 1.',
           goal: 'Play Iron Legion', skipIf: () => !P.holds('iron_legion') && !P.playedCard('iron_legion'),
           ring: () => P.deckRing(), taps: () => R1(P.deckRing()),
@@ -1378,7 +1378,7 @@ const Prologue = {
         { id: 'hall', still: true, face: 'excited', text: 'The way is open. Strike their hall and end this!',
           goal: 'Raze their hall',
           ring: () => P.tacticsRing('strike', () => P.foeHall()), taps: () => R1(P.tacticsRing('strike', () => P.foeHall())),
-          ack: () => P.striking('tc'), wait: 'Bring it down, chief!', waitFace: 'determined',
+          ack: () => P.striking('tc'), wait: () => 'Bring it down, ' + P.hail() + '!', waitFace: 'determined',
           done: () => !Bld.tcOf('A') },
       ];
     },
@@ -2452,7 +2452,7 @@ const Prologue = {
       shown_ms: Math.round(((P.t[b.id] != null ? P.t[b.id] : 0)) * 1000),
       done_ms: Math.round((S.playtime || 0) * 1000), hints: this._handN, hand: this._handN ? 1 : 0 });
     this._advance(b);
-    this._praise = b.praise || '';
+    this._praise = (typeof b.praise === 'function' ? b.praise.call(this) : b.praise) || '';
     /* SPACE: games 2 and 3 let the deed land — its praise stands alone a
        breath (SPACE[g].breath) before the next line asks anything; a deed with
        no praise of its own is answered all the same, so no tap goes unanswered */
@@ -3306,8 +3306,8 @@ const Prologue = {
     this._held = { win, msg, s0: S, g };
     this._shown = null; this._viewKey = null; this._aside = null; this._goalBeat = null;
     this._collapsed = false; this._userHid = false;
-    this.say(g === 1 ? 'Our first fire burns, chief. May the clan that burned our home never see it.' : g === 2 ? 'A great hall! The clan is proud, chief.'
-      : 'Their hall is ash. The clan that burned us is no more, chief.', 'proud');
+    this.say(g === 1 ? 'Our first fire burns, chief. May the clan that burned our home never see it.' : g === 2 ? 'A great hall! The clan is proud of you, ' + this.hail() + '.'
+      : 'Their hall is ash. The clan that burned us is no more, ' + this.hail() + '.', 'proud');
     try { if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete'); } catch (e) {}
     const tc = this.tc(), at = g === 3 ? this.mark('rivalHall') : tc ? { x: tc.x + 1, y: tc.y + 1 } : null;
     if (at) { const t = this._resolve(at); if (t) this._burst(this._dom(), t.x, t.y); }
@@ -3336,6 +3336,22 @@ const Prologue = {
     let h = 2166136261; for (let i = 0; i < uid.length; i++) { h ^= uid.charCodeAt(i); h = Math.imul(h, 16777619); }
     return this.CHIEFS[(h >>> 0) % this.CHIEFS.length] || 'Runa';
   },
+  /* THE CHIEF'S NAME IN HER MOUTH (operator, build 200: "Whatever the player
+     names themselves at the end of level one, can we dynamically insert it into
+     this first text box in level two as well as maybe sprinkle it throughout a
+     few other places in level two and level three so it makes the game feel a
+     little more customized"): the name chosen after game 1 (`neo-chief`; a
+     rename on the Settings page is mirrored there too), never the stand-in
+     chiefName() offers a player who has not chosen one — with none she says
+     "chief", as she always did. A name typed with the title already on it
+     ("Chief Rob") is not hailed twice. Every line that carries it holds a name
+     of two words inside her fifteen. */
+  named() {
+    let n = '';
+    try { n = localStorage.getItem('neo-chief') || ''; } catch (e) {}
+    return String(n).replace(/\s+/g, ' ').trim().replace(/^chief\s+/i, '').slice(0, 24).trim();
+  },
+  hail(cap) { const n = this.named(); return n ? 'Chief ' + n : (cap ? 'Chief' : 'chief'); },
   askName() {
     if (!this._held) return;
     this._asking = true;

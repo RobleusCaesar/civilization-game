@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 200, date: '2026-11-19', title: 'Mira knows your name',
+    items: [
+      'The name you choose at the end of The First Fire is the name Mira calls you by in The Growing Clan and The Reckoning: she welcomes you back by it, and says it again at the big moments.',
+      'Changing your chief name in Settings changes what she calls you too.',
+    ],
+  },
+  {
     build: 199, date: '2026-11-19', title: 'A road that joins the village',
     items: [
       'In The First Fire, the road lesson now has you drag one road from the lumber camp, past the hall, to the farm, and the camp and the hall both work faster for it.',
