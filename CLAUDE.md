@@ -2193,10 +2193,26 @@ barracks, three houses, a farm, five defenders and three archers —
 `Scenarios.populate` places the rival's own buildings and people once its
 hall stands; its deer graze in the west, clear of the field the army marches
 to, since a tap on a beast is a hunt — game 2's isle deer stood on the gold
-seam and turned the claim into one). No quarry stands: the stores (1,200 food, 1,600 wood, 560
-stone, 300 gold) pay the storeys, the workshop, the stable, the catapult and
-the bridge and leave the war camp one caravan short, which the trading
-post's lesson buys with wood. THE MAKING READY: `barracks2` (the yard's
+seam and turned the claim into one). No quarry stands: the stores (1,200 food, 1,600 wood, 800
+stone, 300 gold) pay the storeys, the workshop, the stable, the catapult, the
+bridge and the war camp with about 180 stone to spare (build 202 — it was 560
+and one caravan short, and the operator, raising more than the lesson asked,
+met a bridge with no stone at all), and the trading post's lesson still buys
+stone with wood. **SHE NAMES THE GOOD THAT IS SHORT, AND WHERE IT COMES FROM**
+(`Prologue.needLine` / `howGet` / `byTrade` / `shortRing`, tests/prologue.mjs
+`heldLinesNameTheGoodThatIsShort` — operator, build 202: "whenever you're short
+a RESOURCE, the notification from Mira should be intelligent about what
+RESOURCE you're short of"): a held line reads the beat's OWN price (`cost`,
+`key`, `unit`; the bridge names `CFG.TERRAFORM.bridgeCost` — without one it
+fell back on the hall's next storey, which asked wood); gold, which no hand
+gathers, is named only once food, wood and stone are in; and the line says
+where this world really has the good — stone or gold by trade at the
+trading post where no rock stands within 18 of the hall or no mine stands
+(the ring on the post's panel, "The caravan brings it soon." while one is
+out), gold from the mine or the hall's own trickle (no ring), else the
+berries, the trees, the grey rocks. The contract holds every held beat of the
+three games, each good of its price short in turn, to a line naming THAT
+good. THE MAKING READY: `barracks2` (the yard's
 storey), `rankup` (three defenders to axemen by the gold chevrons —
 **A SOLDIER RISES A RANK**), `workshop`, `trade` (wood for stone), `stable`
 and two `riders`, `range2` and `longbow` ("You know the way": the same two

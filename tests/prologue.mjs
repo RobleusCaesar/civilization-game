@@ -366,6 +366,36 @@ const page = async (q, done) => {
   ck('gameTwoOpensOnTheChiefsName', named.some(l => l.g === 2 && l.id === 'welcome' && /^Welcome back, Chief Rowan Ashford\./.test(l.t)), named.map(l => l.g + ':' + l.id).join(', '));
   ck('andAFewLinesOfGamesTwoAndThreeCarryIt', named.filter(l => l.g === 2).length >= 3 && named.filter(l => l.g === 3).length >= 3 && !named.some(l => l.g === 1),
     named.map(l => l.g + ':' + l.id + ' "' + l.t + '"').join('; '));
+  /* SHE NAMES THE GOOD THAT IS SHORT (operator, build 202, on game 3's bridge:
+     "it needs more wood but actually what you need is more Stone … whenever
+     you're short a RESOURCE, the notification from Mira should be intelligent
+     about what RESOURCE you're short of"): every held beat of the three games,
+     each good of its own price short in turn and the rest plentiful, is held
+     (its price is what gates it) and its first sentence names THAT good and no
+     other — gold included, which no hand gathers */
+  const short = await p.evaluate(() => {
+    const P = Prologue, bad = [], GOODS = { food: /berr(y|ies)|\bfood\b/i, wood: /\bwood|timber|\btrees?\b/i, stone: /\bstone|\brocks?\b/i, gold: /\bgold\b/i };
+    let n = 0;
+    for (const g of [1, 2, 3]) {
+      Scenarios.found('prologue_' + g); P.onWorldChange();
+      P._beats.forEach((bt, i) => {
+        if (!bt.hold) return;
+        S.pro.i = i;
+        const cost = P.goalCost(bt) || {};
+        for (const r of ['food', 'wood', 'stone', 'gold']) {
+          if (!cost[r]) continue;
+          S.res = { food: 99999, wood: 99999, stone: 99999, gold: 99999 }; S.res[r] = Math.max(0, cost[r] - 1); P._needS = null;
+          const line = typeof bt.hold === 'function' ? bt.hold.call(P, false) : bt.hold;
+          const first = String(line).split(/(?<=[.!?])\s+/)[0] || '', hits = Object.keys(GOODS).filter(k => GOODS[k].test(first));
+          const held = bt.when ? !bt.when.call(P) : true;
+          n++;
+          if (!held || hits.length !== 1 || hits[0] !== r) bad.push(g + ':' + bt.id + ' short of ' + r + (held ? '' : ' (not held)') + ' → "' + line + '"');
+        }
+      });
+    }
+    return { n, bad };
+  });
+  ck('heldLinesNameTheGoodThatIsShort', short.n > 40 && !short.bad.length, short.bad.join('; ') || short.n + ' shortfalls named');
   ck('andWithNoNameSheSaysChief', JSON.stringify(hail) === JSON.stringify({ none: ['chief', 'Chief'], plain: ['Chief Ada', 'Chief Ada'], titled: ['Chief Rob', 'Chief Rob'], spaced: ['Chief Ada Lovelace', 'Chief Ada Lovelace'] }),
     JSON.stringify(hail));
   /* HER FACES (operator, build 181: "a younger woman … double or triple the
