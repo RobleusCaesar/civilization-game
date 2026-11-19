@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 201, date: '2026-11-19', title: 'You can see who is being trained',
+    items: [
+      'Tapping Train now flashes the button gold, and while someone is in training the button wears a gold rim, a count of how many of that kind are waiting, and a gold bar that fills as they are trained.',
+      'Under the buttons, the queue line turns gold and names who is being trained, like Training Villager 1 of 3, and says when training is paused for an upgrade.',
+      'This works the same at the Town Center, every military yard and the dock.',
+    ],
+  },
+  {
     build: 200, date: '2026-11-19', title: 'Mira knows your name',
     items: [
       'The name you choose at the end of The First Fire is the name Mira calls you by in The Growing Clan and The Reckoning: she welcomes you back by it, and says it again at the big moments.',
