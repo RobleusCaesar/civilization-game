@@ -1675,11 +1675,14 @@ const Prologue = {
     const c = this.champs(); if (!c.length) return false;
     return this.selArmy().filter(u => u.kind === 'elite').length >= Math.min(4, c.length);
   },
-  // the whole army in hand: six or more, the champions and the host together
+  /* the whole army in hand: six or more, and with the card's champions most of
+     them AND at least half the host — the champions' own group (the step
+     before) is never the army */
   grouped() {
     const sel = this.selArmy(); if (sel.length < 6) return false;
-    if (!this.champs().length) return true;
-    return sel.some(u => u.kind === 'elite') && sel.some(u => u.kind !== 'elite');
+    const c = this.champs(); if (!c.length) return true;
+    const host = this.host().length, hostIn = sel.filter(u => u.kind !== 'elite' && u.kind !== 'sapper').length;
+    return sel.filter(u => u.kind === 'elite').length >= Math.min(4, c.length) && hostIn >= Math.max(1, Math.ceil(host * 0.5));
   },
   champRing() {
     const s = UI.sel;
