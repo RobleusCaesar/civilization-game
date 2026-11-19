@@ -282,7 +282,7 @@ node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, 
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
-node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 teaches food, wood and stone, game 2 is islands and lakes and teaches the hunt and the lodge where the deer fell (near home), a road, a barracks, a range, a manned tower and a wall, game 3 the stations on their worked ground and the seam; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
+node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
@@ -1540,7 +1540,8 @@ them), or every step row is refused.
 tests/telemetry.mjs §12 — operator, the Prologue brief: "short, beautiful,
 obvious, and ends in a win … SIMPLE. SIMPLE. SIMPLE."). It SUPERSEDES the
 first game of build 178: the `first_quick` profile is gone from the client
-and its dials are game 3's. A brand-new device plays THREE authored games in
+(its dials were game 3's until build 196 made game 3 a battle). A brand-new
+device plays THREE authored games in
 order and is never offered difficulty, the old lesson's checkbox or an origin
 choice before the third: **The First Fire** (raise the hall to level 2:
 select, berries, wood, stone, a house beside the berry bush, the farm on the
@@ -1553,25 +1554,43 @@ grazing in sight until struck (`still` in the map's animals: its `wanderT`,
 or it walked off before the hunter came) — and a hunter's lodge on the
 ground it fell on (`Prologue.huntSpot`), then the upgrade and its builder —
 its storey asks for all three goods; no rival in reach — `aiOff`, its hall
-in a sealed pocket), **The Growing Clan** (level 3, on ISLANDS AND
-LAKES: a home island joined to the rival's mainland by a land bridge, four
-islets, two lakes; a welcome, the deck's first play (Master
-Builders, game 1's prize, where held — **THE CARD LESSON** below), a
-warning of its own (`danger`), a barracks, an archery range, a
-watchtower by the bridge manned by the range's first archer, the wall across
-the bridge; all of it paid from the stores, only
-the hall's storey gathered for; a rival at peace) and **The Two Roads**
-(three of the six friendly origins in `CFG.PROLOGUE.ORIGINS`, a barracks
-and three soldiers, a lumber camp, a quarry and a farm on their own worked
-ground and a gold seam claimed — a station an origin planted passes its line
-unsaid and still opens its card (`unlocks`) — then a raid of two light
-raiders from the map's edge, then the Wonder — saved for, raised on its
-site, built — or the rival's hall razed) — operator, build 184: "Move wood,
-food and stone education to level 1. Add roads, hunters lodge, barracks,
-archers towers and walls to level 2. Add the other key buildings to level 3
-… the level 2 map … something like islands and lakes". The stable, the
-dock, the trading post and the siege workshop want a higher hall than the
-journey's and are left to the full game. **GAME 1 IS TAUGHT ON ITS OWN GROUND**
+in a sealed pocket; since build 196 a wooded glen, its east and south
+closed by forest — operator: "I really like cozy kind of Woodland places …
+create some more wood some more natural barriers"), **The Growing Clan**
+(level 3, about ten minutes, on ISLANDS AND LAKES: a home isle joined to
+the rival's mainland by a land bridge, a far isle, lakes; a welcome, THE MAP
+(`map`, `mapjump`, `islet`, `maphome`, `mapfold`: the top bar's map button,
+a tap on the far isle that carries the view there, a tap on the village that
+brings it home, the map folded away), THE LAND AS A DEFENCE (`nature`,
+`nature2`: water and mountains guard the isle, thick woods and berry bushes
+block the way too, only the land bridge is open — each said over its own
+ground, every tile it names blocking a raider's feet), CARDS SAID PLAINLY
+(`cards`: what a card is, then the deck's first play — Master Builders, game
+1's prize, where held, **THE CARD LESSON** below), a warning of its own
+(`danger`), a barracks, an archery range, a watchtower by the bridge manned
+by the range's first archer, the wall across the bridge, its scout, mend and
+gate (**THE BRIDGE, THE SCOUT AND THE GATE** below), then THE DOCK (`dock`,
+`fishboat`, `fish`, `transport`, `board`, `sail`, `claim`, `islestone`: a
+dock on the east shore, a fishing boat sent to the leaping shoal, a
+transport, two villagers aboard, sailed to the far isle, one claiming its
+gold seam and one breaking its stone) — operator, build 196: "you'll really
+need to spend some time on teaching the player the dock". The home isle
+holds NO gold seam and ONE rock (`homeStone`, 60 stone by `tileStock` — a
+safety valve: a player who spent the stores' stone on a road or a lumber
+camp can still raise the tower, never the hall by it alone): the hall's
+next storey (220 wood, 100 stone, 50 gold) wants the far isle's stone and
+gold — the dock's reason (`andTheHomeIsleKeepsALittleStone`). A third
+cottage by the bridge (16,22) anchors the tower's site from the first
+morning (`BUILD_RANGE` 8), so a barracks dragged elsewhere never strands it. Everything else is paid from the stores (150 food, 560 wood, 160
+stone, 80 gold); game 1's stations are open in its menu from the start; a
+rival at peace) and **The Reckoning** (**THE RECKONING** below: a pitched
+battle against the rival's walled town, about fifteen minutes) — operator,
+build 196: "Look at the remaining buildings and teach how to use those
+buildings across those two games … create a pitched battle between the two
+villages, but set it up in the way where the player is set up for Success
+… knock down walls attack the buildings and then ultimately destroy the
+town center". The journey now teaches every building the full game offers
+but the Wonder. **GAME 1 IS TAUGHT ON ITS OWN GROUND**
 (`Scenarios.RULES.prologue_1.strict`, `Scenarios.mayGather` / `gatherWhy` /
 `fishWhy` / `siteRefusal`, the map's `tileStock`, `UI.lessonOk` /
 `lessonBars`, `Prologue.idleVil(near)`; tests/prologue.mjs §2g — operator,
@@ -1739,8 +1758,10 @@ people for food so we don't go hungry.", `andOpensOnAnUntamedWorld`), and the
 burned home is its LAST word, the hook ("Our first fire burns, chief. May the
 clan that burned our home never see it." —
 `andHerLastWordNamesTheClanThatBurnedTheirHome`); game 2's riders are "not
-the ones who burned us", and game 3 opens "They have found us", so its "march
-on their hall" is that clan's. Nothing more is explained. **THE
+the ones who burned us", and game 3 opens on that clan ("The clan that
+burned our home lives across the river. Today it ends.") and ends on it
+("Their hall is ash. The clan that burned us is no more, chief."). Nothing
+more is explained. **THE
 BUILD MENU IS DISCLOSED** (`S.allow`, `Scenarios.allows` / `unlock`): what
 the lesson has not reached is HIDDEN, never greyed, a card it unlocks wears
 NEW, and game 1 opens with no menu at all (`body.pro-nobuild`). **THE
@@ -1823,7 +1844,13 @@ migration); game 2's card lesson comes after the road and BEFORE the
 barracks, names the card when held ("Cards can help. Play Master Builders:
 our next buildings stand at once.") and `deckPick` takes it first, so the
 barracks, range and tower stand the moment they are placed; a device that
-holds none plays any card as before. Then **WHY A BARRACKS** (`danger`, the
+holds none plays any card as before. Since build 196 a line of its own says
+what a card IS before the play ("Cards are gifts our wins bring. Each one
+helps once, then it is spent." — `cards`, the operator: "I know we already
+teach about cards but just make sure that that is sort of well explained"),
+and game 2's win pays IRON LEGION (`CFG.PROLOGUE.PICK[2]`, an Iron card, so
+0018 takes it as any of its tier), which game 3's battle plays: six champions
+out of the hall to join Army 1. Then **WHY A BARRACKS** (`danger`, the
 same day: "add a little more context … these are dangerous times … If it
 can't fit on 1 card, maybe we expand to 2 cards"): "Dangerous times. Wolves,
 raiders, or the clan that burned us may strike.", then "So we need soldiers.
@@ -1874,7 +1901,8 @@ seconds before the run is called, and the follower stepped `G.simStep`
 straight through `S.paused`, so a fast runner simulated ~800 s inside the
 victory beat and the rival's Wonder landed first. A paused world (the
 marvel, the deck's sheet) is now waited out in real time and the follower's
-clock runs on through the wait; game 3 is won at ~250 s. A ring drawn past
+clock runs on through the wait; that game 3 was won at ~250 s (the battle
+since build 196, at ~500 s). A ring drawn past
 the screen's edge is BLOCKED there, like one under a bar — but for the beat
 its target is sliding in (a build card the guide is scrolling into the menu,
 the deck's sheet rising from below: an animation running on it or round it,
@@ -2029,18 +2057,103 @@ by its deeds); every journey win is held off the world board
 journey win's end screen is the score and its doors; a loss keeps its one
 line, the reason and "Try again"). Game 3's draft is explained by Mira in one line
 (`#proDraft`), never the old help panel, and the rival's intel is not posted
-over a journey game (`Cards.announceRival`). **GAME 3'S CLOCK** (measured with
-the guide-following bot): the Wonder at 480 food and wood, 240 stone and 120
-gold (`wonderCost`), raised in 0.35 of its days, gathering at 1.25, rich
-stores (`start`, `stock` 2, a berry grove by the hall) and the rival's own
-race from day 90 (`aiWonderDay`) — a quarter hour of slack. **THE WINDOW TRAP
-AGAIN**: the raid never spawned while `raid()` asked `window.G` (a script
-const — undefined); ask `typeof G`, `typeof UI`, `typeof Units`. **0018 MUST
+over a journey game (`Cards.announceRival`). Game 3's clock is the
+battle's (**THE RECKONING** below). **THE WINDOW TRAP AGAIN**: the old game
+3's raid never spawned while it asked `window.G` (a script const —
+undefined); ask `typeof G`, `typeof UI`, `typeof Units`. **0018 MUST
 BE PASTED BEFORE THE PROLOGUE GOES LIVE, AFTER 0016 AND 0017** (re-pasting
 0008/0012/0013/0016/0017 narrows the telemetry kinds or modes again — paste
 0018 after any of them), or every journey row and card is refused. 0017 (the
 retired first game's server half) stays in the repo: 0018 builds on its
 checks, and the dashboard's First game section reads it.
+
+**SPACE TO THINK** (`Prologue.SPACE` / `space()` / `_hintOpen`, the
+praise's breath in the beat's advance; tests/prologue.mjs — operator, build
+196: "We dictate pretty much every single button clicking game one in game
+two we want to give them a little bit of space to determine what to do and
+then in game three, we really wanna back off and give them a lot more space
+… make sure that you're giving enough time and space for the player in
+between actions"). Four dials a game, `{ ring, fresh, idle, breath }`: game
+1 `{0, 0, 6000, 0}`, game 2 `{3500, 1500, 9000, 1400}`, game 3 `{8000,
+3500, 14000, 2200}` ms. `ring` — a line's ring, and the look that brings its
+target into the open, wait that long with no input before they show: the
+player is left to find the way first, and once a ring has shown for a view
+(`_hintKey === _viewKey`) the chain follows at once. `fresh` — the same wait
+for a control the player has never met (`hint: 'new'`: the map button, the
+rank chevrons, Tactics, a banner), shorter. `idle` — the hand's wait (game
+1's old `IDLE_MS`), counted from the last input OR the last new line
+(`_lastIn`). `breath` — after a deed its praise stands alone (no ring, no
+hand, the goal ticked "✓ …") before the next line asks anything; game 1 says
+both in one breath, and a deed with no praise of its own answers "Good." so
+no tap goes unanswered. **THE FOLLOWER MODELS THE REAL HAND**: its `idle` is
+`P.now() - P._lastIn` against `space().idle` — a "ring unchanged for six
+seconds" model tapped before the game's own hand would ever have shown.
+
+**THE RECKONING** (game 3, `CFG.MODES.prologue_3`, `Scenarios.RULES.prologue_3`,
+`tools/scenarios/prologue_3.json`, `Prologue` from `arrive` to `hall` and
+`_sallyTick` / `_hunt` / `regroup` / `campRing` / `healRing`;
+tests/prologue.mjs §2 and §5 — operator, build 196: "teach about putting
+units together like soldiers in front archers in the middle and siege
+engines in the back talk about how you group up armies to create armies and
+then talk about how you can send the entire army, how you can create
+strategies for those armies in game three create a pitched battle between
+the two villages … Focus on teaching them how to knock down walls attack the
+buildings and then ultimately destroy the town center"). THE TWO TOWNS ARE
+THE MAP'S: the clan opens grown (`storey` 3; four level-2 houses, a lumber
+camp and two farms worked by hands the map puts on them — a unit's `work`;
+a barracks, a range, a level-2 sappers' camp and a level-2 trading post; five
+defenders and three archers; every yard's `rally` set on the field by the
+hall, so the army stands together) across a river from the rival's walled
+town (`rivalLevel` 3: ten level-2 wall sections, a gate, two towers, a
+barracks, three houses, a farm, five defenders and three archers —
+`Scenarios.populate` places the rival's own buildings and people once its
+hall stands). No quarry stands: the stores (1,200 food, 1,600 wood, 560
+stone, 300 gold) pay the storeys, the workshop, the stable, the catapult and
+the bridge and leave the war camp one caravan short, which the trading
+post's lesson buys with wood. THE MAKING READY: `barracks2` (the yard's
+storey), `rankup` (three defenders to axemen by the gold chevrons —
+**A SOLDIER RISES A RANK**), `workshop`, `trade` (wood for stone), `stable`
+and two `riders`, `range2` and `longbow` ("You know the way": the same two
+steps asked again with room to think), a `catapult`, a `sapper` and his
+`bridge` over the river's narrows, a `warcamp` across it. THE ARMY: `group`
+(Group nearby on a soldier), `save` (Army 1), `legion` (Iron Legion — game
+2's prize, `CFG.PROLOGUE.PICK[2]` — whose six champions join Army 1,
+`joinLegion`), `banner` (the top bar's Army 1 calls them all), `march` (a tap
+on the field over the bridge; the march keeps THREE RANKS — soldiers lead,
+bows follow, engines last, `Units.formationMove`'s rank 2 for a siege
+engine). THE BATTLE, one doctrine a lesson under ⚔ Tactics: `sally` — the
+garrison marches out of its gate onto the field (Chaos), `heal` — a hurt
+soldier mended beside the war camp, `siege` — their wall broken (Siege; its
+done counts sections against `S.pro.wall1`, taken when its line is said), `strike` — a tower that
+shoots us, `yard` — their barracks ("Strike it before their hall"), `hall` —
+their hall razed: the win. THE SCRIPTED RIVAL (`aiOff`: `AI.glance` and
+`AI.daily` never run, so it keeps no eyes and builds nothing; its soldiers
+neither eat nor desert — `G.applyFoodUpkeep` skips a scripted 'A') is moved
+by `_sallyTick`: the army's first man over the river starts the sally (1),
+the garrison walks out through the gate, then each takes the nearest of ours
+(2) and `_hunt` re-marks any whose mark fell on the nearest of ours it can
+SEE within 14 (Combat drops a mark the wall hides, and an 'A' unit with
+`assault` set is handed to `Combat.aiRaidSeek`, which wanders under aiOff —
+so `assault` is always false); a catapult of ours that Chaos turns on their
+wall, gate or tower during the sally stands down, so the wall is left for
+its own lesson; beaten (3), `regroup()` stands the army's Chaos down, walks
+the hurt into the war camp's heal ring two to a tile (`campRing`: open tiles
+within its reach + `WARCAMP_HEAL` - 0.45 of its middle) and gathers the rest
+beside it. No reserve is held back: Strike ignores whoever strikes the army,
+and a reserve that came out under it once cost the game. Their works stand
+in sight from the moment the army crosses (`Prologue.watch`: the hall, the
+breach, the gate and their barracks while it stands; the war camp's site
+while it rises), so a siege or a strike is ordered on a building the player
+SEES, and the town is charted from the start (`revealRival: 9`: every rival building
+within nine tiles of its hall remembered in `S.map.seenB`). THE HEAL
+(`WARCAMP_HEAL` 2, was 1.5; `UI.healWhere`): every tile touching a 2×2 camp
+heals, a man standing off his tile's middle and the corner tiles included,
+and the unit panel's Heal says "near hall or camp" while a camp stands (a
+hull's "near Dock", else "near Town Center"). MEASURED with the follower
+(the real hand, `SPACE[3]`): won by razing the hall in 499–503 s of play, 74
+taps, every line said; game 2 393–400 s, 83 taps. A person reads, looks and
+hesitates where the bot does not, so both land inside the operator's bands
+(game 2 ten minutes, game 3 fifteen, two to five either way).
 
 **THE GOLD RING ON THE GROUND** (`R.GRING`, `R.drawGRing` / `_gBand` /
 `_gGlint` / `_gPic` / `drawGRingMotes` / `drawGRingBurst` / `gringTick` /

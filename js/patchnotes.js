@@ -19,6 +19,23 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 196, date: '2026-11-19', title: 'The Growing Clan and The Reckoning',
+    items: [
+      'The First Fire now opens in a cozy wooded glen, with forest closing in round the valley.',
+      'The Growing Clan teaches the map: open it, tap the far isle to fly there, then come home.',
+      'Mira shows how water, mountains, thick woods and berry bushes guard your isle, leaving only the land bridge open.',
+      'She explains what a card is before you play your first one.',
+      'A new dock lesson: build a dock, send a fishing boat to the leaping fish, then sail two villagers to the far isle to claim its gold and break its stone.',
+      'The third game is now The Reckoning, a pitched battle against the clan that burned your home.',
+      'Get ready by upgrading your barracks and range, raising soldiers a rank with the gold chevrons, and building a siege workshop and a stable. You also trade at the market, bridge the river with a sapper, and raise a war camp across it.',
+      'Then gather your army, save it as Army 1, and send it marching by its banner: soldiers in front, archers in the middle, engines at the back.',
+      'Win the battle with the three tactics: Chaos when their soldiers rush out, Siege to break their wall, and Strike for their tower, their barracks and finally their hall.',
+      'Winning The Growing Clan now earns the Iron Legion card, and The Reckoning has you play it.',
+      'Mira gives you more room to work things out yourself in the second game, and more again in the third.',
+      'Hurt soldiers now heal on every tile touching a war camp, and the Heal button says where they can heal.',
+    ],
+  },
+  {
     build: 195, date: '2026-11-18', title: 'Roads and the hunt come first',
     items: [
       'The bigger hall in The First Fire now costs 500 wood and 500 stone.',

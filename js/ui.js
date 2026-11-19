@@ -2627,6 +2627,13 @@ const UI = {
     return net;
   },
 
+  /* where a unit out of reach goes to be mended (the Heal button's place word):
+     a hull to a Dock; a land unit to the hall — or "hall or camp" once a War
+     Camp of its tribe stands, which mends beside it too (Bld.healZoneFor) */
+  healWhere(u) {
+    if (Units.isNaval(u)) return 'Dock';
+    return S.buildings.some(b => b.owner === u.owner && b.key === 'warcamp' && Bld.done(b)) ? 'hall or camp' : 'Town Center';
+  },
   healCost(u) {
     const base = CFG.HEAL_FOOD[u.kind];
     if (!base) return 0;
@@ -2817,7 +2824,7 @@ const UI = {
       // must agree with the same throttled branch or it overwrites a settled
       // "Cooldown…" label with a stale price the button no longer honours.
       if (u) hc.textContent = this.healThrottled(u) ? 'Cooldown…'
-        : Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
+        : Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + this.healWhere(u);
     }
     // tick every works call-off's days and bar in place (no relayout) — a
     // building's own panel and a builder's alike (worksButton, data-bid)
@@ -3434,7 +3441,7 @@ const UI = {
         (gSiegeable ? `<button class="abtn ${gStrat === 'siege' ? 'sel' : ''}" data-act="gstrat" data-strat="siege">⚙️ Siege<small>the line shields the guns</small></button>` : '') +
         `<button class="abtn ${gStrat === 'chaos' ? 'sel' : ''}" data-act="gstrat" data-strat="chaos">🔥 Chaos<small>attack all within reach</small></button>` +
         `<button class="abtn ${gStrat === 'strike' ? 'sel' : ''}" data-act="gstrat" data-strat="strike">⚡ Strike<small>everyone on ONE target</small></button>`) : '';
-      html += `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (melee front, archers behind), or an enemy / rival building to attack together.'}</span>`}` +
+      html += `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${fleet ? 'Tap water to sail together, or an enemy ship / coastal target to attack.' : 'Tap a tile to march (soldiers lead, archers follow, engines last), or an enemy / rival building to attack together.'}</span>`}` +
         (gLaden.length ? `<button class="abtn" data-act="gunload">⚓ Unload all<small>${gAboard} aboard</small></button>` : '') +
         (gDefEligible.length ? `<button class="abtn ${gAllDef ? 'sel' : ''}" data-act="gdefend">${gAllDef ? '🛡 Stand Down' : '🛡 Defend'}</button>` : '') +
         (gBusy ? `<button class="abtn" data-act="stop">✋ Halt</button>` : '') +
@@ -3578,7 +3585,7 @@ const UI = {
         const inZone = Bld.inHealZone(u);
         const throttled = this.healThrottled(u);
         const ok = inZone && S.res.food >= hc && !throttled;
-        const sub = throttled ? 'Cooldown…' : inZone ? Bld.costStr({ food: hc }) : 'near ' + (Units.isNaval(u) ? 'Dock' : 'Town Center');
+        const sub = throttled ? 'Cooldown…' : inZone ? Bld.costStr({ food: hc }) : 'near ' + this.healWhere(u);
         html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${sub}</small></button>`;
       }
       // Unload renders only with someone aboard — an empty hull's button could
@@ -3801,7 +3808,7 @@ const UI = {
         // rate-limited BEFORE the zone/afford checks: this is the reason that
         // actually applies mid-fight, where both of those are already fine
         if (this.healThrottled(u2)) { this.toast('Healed enough — let them rest', true); return; }
-        if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : 'Can only heal within the Town Center grounds', true); return; }
+        if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : this.healWhere(u2) === 'Town Center' ? 'Can only heal within the Town Center grounds' : 'Can only heal near the Town Center or a War Camp', true); return; }
         const cost = this.healCost(u2);
         if (S.res.food < cost) { this.toast('Not enough food', true); return; }
         S.res.food -= cost;

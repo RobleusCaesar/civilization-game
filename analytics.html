@@ -202,7 +202,7 @@
     <div class="card wrap" style="margin-top:10px"><table id="tLeftAt"></table><div class="note" id="firstMinNote" style="margin-top:8px"></div></div>
 
     <h2>Prologue</h2>
-    <p class="why">A new device plays three guided games before the full game opens: The First Fire, The Growing Clan and The Two Roads. Each game's starts, how many finished and how fast a win came; the journey player by player (a rung counts only players who won the one before); every line the guide (Mira) showed, how many games got past it, how long it took and how often the hand had to point; and players whose first game was the journey beside everyone else's first game, played again within a week (counted once that week has passed). Needs migration 0018.</p>
+    <p class="why">A new device plays three guided games before the full game opens: The First Fire, The Growing Clan and The Reckoning. Each game's starts, how many finished and how fast a win came; the journey player by player (a rung counts only players who won the one before); every line the guide (Mira) showed, how many games got past it, how long it took and how often the hand had to point; and players whose first game was the journey beside everyone else's first game, played again within a week (counted once that week has passed). Needs migration 0018.</p>
     <div class="card wrap"><table id="tProGames"></table></div>
     <div class="card wrap" style="margin-top:10px"><table id="tProJourney"></table></div>
     <div class="card wrap" style="margin-top:10px"><table id="tProBeats"></table></div>
@@ -799,7 +799,7 @@ async function loadFirstMinute() {
 }
 
 /* THE PROLOGUE (migration 0018's analytics_prologue) */
-const PRO_GAME = { 1: 'The First Fire', 2: 'The Growing Clan', 3: 'The Two Roads' };
+const PRO_GAME = { 1: 'The First Fire', 2: 'The Growing Clan', 3: 'The Reckoning' };
 const PRO_CHOICE = { journey: 'Continue the journey', random: 'A random world', retry: 'Try again', open: 'Your own world', menu: 'Menu', named: 'Named their chief', other: 'Other' };
 function proMins(s) { return s == null ? '—' : (s < 600 ? (s / 60).toFixed(1) : Math.round(s / 60)) + ' min'; }
 async function loadPrologue() {
@@ -825,7 +825,7 @@ async function loadPrologue() {
   part($('tProJourney'), () => {
     const J = D.journey || {}, base = J.started1 || 0;
     const rungs = [['Began The First Fire', J.started1], ['Won it', J.won1], ['Began The Growing Clan', J.started2], ['Won it', J.won2],
-      ['Began The Two Roads', J.started3], ['Won it (the journey done)', J.won3]];
+      ['Began The Reckoning', J.started3], ['Won it (the journey done)', J.won3]];
     table($('tProJourney'), ['The journey, player by player', 'Players'], base ? rungs.map(([k, n]) => [k, rate(n || 0, base)]) : [],
       'Nobody began the journey in this period.');
   });

@@ -9,13 +9,18 @@
                   on ground the village walks to; game 1 shows its whole
                   valley and no rival (berries, wood, stone, a house, a road
                   beside the lumber camp, a deer to hunt); game 2 is islands
-                  and lakes — ground for a barracks, a range, a tower and the three wall
-                  sections that close the land bridge (a scout comes out of
-                  the wood beyond it, is shot down from the tower, and a
-                  section is cut into a gate and opened); game 3 has the
-                  worked ground for its lumber camp,
-                  quarry and farm, a gold seam, and deals three of the six
-                  friendly origins.
+                  and lakes — a home isle guarded by water, mountains and
+                  wood, ground for a barracks, a range, a tower and the
+                  three wall sections that close the land bridge (a scout
+                  comes out of the wood beyond it, is shot down from the
+                  tower, and a section is cut into a gate and opened), a
+                  dock on the east shore, a shoal to fish and a far isle
+                  with the stone and the gold seam the hall's storey wants;
+                  game 3 (the battle) is the clan's grown town across a
+                  river from the rival's walled one — the narrows a sapper
+                  spans, the field the army musters on, the war camp's
+                  ground over the river — and deals three of the six war
+                  origins.
      THE TITLE    a fresh device sees one BEGIN (the game's name, N of 3) and
                   a small Skip; New Game, the board, the cards and Load are
                   put away; the next world waits behind the title, and BEGIN
@@ -177,16 +182,57 @@ const page = async (q, done) => {
         for (const [x, y] of lineT) Bld.place('P', 'wall', x, y, { free: true, noAutoAssign: true });
         const shut = Path.reachFrom(home, true);
         o.lineShuts = lineT.length === 3 && sfI >= 0 && !!shut && !shut[sfI];
+        /* THE DOCK AND THE ISLE (build 196: "you'll really need to spend some time on teaching
+           the player the dock"): the dock's ground on the east shore, a shoal to fish in the
+           water it opens on, and the isle the transport lands on — its gold seam and its stone,
+           out of reach on foot and one water away by boat; and the guards the nature lines name,
+           a mountain and a thick wood (build 196: "using water and mountains as a natural defense") */
+        const ti = k => m[k] ? S.map.terrain[m[k][1] * W + m[k][0]] : -1;
+        o.dock = place('dock', 'dockSite');
+        o.shoal = m.shoal ? { t: tn(ti('shoal')), fish: !!Units.fishableTile(m.shoal[0], m.shoal[1]) } : null;
+        o.isle = ['islet', 'isletShore', 'gold', 'stone'].map(k => m[k] ? { k, t: tn(ti(k)), foot: near(m[k][0], m[k][1]) } : { k, t: 'no mark', foot: true });
+        const body = new Uint8Array(W * CFG.H), q = [], wetW = i => S.map.terrain[i] === T.WATER;
+        if (m.dockSite) for (let dy = -1; dy <= 2; dy++) for (let dx = -1; dx <= 2; dx++) {
+          const x = m.dockSite[0] + dx, y = m.dockSite[1] + dy, i = y * W + x;
+          if (MapGen.onBoard(x, y) && wetW(i) && !body[i]) { body[i] = 1; q.push(i); }
+        }
+        while (q.length) {
+          const i = q.pop(), x = i % W, y = (i / W) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, j = ny * W + nx; if (MapGen.onBoard(nx, ny) && !body[j] && wetW(j)) { body[j] = 1; q.push(j); } }
+        }
+        o.sail = { shore: !!(m.isletShore && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => body[(m.isletShore[1] + dy) * W + m.isletShore[0] + dx])),
+          shoal: !!(m.shoal && body[m.shoal[1] * W + m.shoal[0]]) };
+        o.guards = { mtn: tn(ti('mtn')), woods: tn(ti('woods')) };
+        /* A LITTLE STONE AT HOME (build 196): the far isle's deposit is the hall's, but one
+           rock at the mountain's foot keeps a player who spent the stores' stone (a road, a
+           lumber camp) able to raise the tower — never enough for the hall by itself */
+        o.homeStone = m.homeStone ? { t: tn(ti('homeStone')), stock: S.map.resAmount[m.homeStone[1] * W + m.homeStone[0]], foot: near(m.homeStone[0], m.homeStone[1]) } : null;
+        o.hallStone = ((Scenarios.RULES.prologue_2.tc || {})[3] || { cost: {} }).cost.stone || 0;
       }
       if (g === 3) {
-        o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
-        o.barracks = place('barracks', 'barracksSite');
-        o.wonder = place('wonder', 'wonderSite');
-        // the stations' worked ground (a felled stand, broken rock, picked-bare soil) and the seam
-        o.lumber = place('lumber', 'stumps'); o.quarry = place('quarry', 'pebbles'); o.farm = place('farm', 'barren');
+        /* THE RECKONING (build 196: "create a pitched battle between the two villages, but set
+           it up in the way where the player is set up for Success"): the clan's grown town on
+           the south bank (a third storey, the yards to raise), the river between, its narrows
+           the one place a bridge spans, the field and the war camp's ground beyond it, and the
+           rival's walled town — a wall, its gate, two towers, a barracks and the hall — each
+           where the guide's lines point */
+        const ti = k => m[k] ? S.map.terrain[m[k][1] * W + m[k][0]] : -1;
+        o.hall = Bld.tcOf('P') && Bld.tcOf('P').level;
+        o.workshop = place('siege', 'workshopSite'); o.stable = place('stable', 'stableSite');
         o.hand = (S.draft && S.draft.hand || []).map(c => c.key);
         o.pool = CFG.PROLOGUE.ORIGINS.slice();
         o.rivalSeen = S.buildings.some(x => x.owner === 'A' && x.key === 'tc' && S.map.explored[x.y * W + x.x]);
+        const aAt = (k, key) => { if (!m[k]) return 'no mark'; const b = Bld.at(m[k][0], m[k][1]); return !b ? 'nothing' : b.owner === 'A' && b.key === key ? 'ok' : b.owner + ' ' + b.key; };
+        o.line = { breach: aAt('breach', 'wall'), gate: aAt('gate', 'gate'), towerW: aAt('towerW', 'tower'), towerE: aAt('towerE', 'tower'), hall: aAt('rivalHall', 'tc') };
+        o.yard = S.buildings.some(b => b.owner === 'A' && b.key === 'barracks');
+        o.river = { river: tn(ti('river')), narrows: tn(ti('narrows')), span: !!(m.narrows && Terraform.bridgeCrossing(m.narrows[0], m.narrows[1], 'P')),
+          muster: !!(m.muster && near(m.muster[0], m.muster[1])), field: !!(m.field && near(m.field[0], m.field[1])), camp: !!(m.campSite && near(m.campSite[0], m.campSite[1])) };
+        // …and one bridge at the narrows opens the field to the army's feet
+        if (m.narrows) Bld.buildBridge('P', m.narrows[0], m.narrows[1]);
+        Bld._block = null;
+        const after = Path.reachFrom(home) || new Uint8Array(W * CFG.H);
+        o.river.bridged = !!(m.field && [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => after[(m.field[1] + dy) * W + m.field[0] + dx]));
+        o.camp = place('warcamp', 'campSite');
       }
       out[g] = o;
     }
@@ -211,8 +257,16 @@ const page = async (q, done) => {
      different from the last one. It should be something like islands and lakes") */
   ck('gameTwoIsIslandsAndLakes', g2.isles >= 4 && g2.lakes >= 2 && g2.water >= 0.35,
     `${g2.isles} land masses, ${g2.lakes} lakes, water ${g2.water} of the board`);
-  ck('andOpensGrownWithNoRelic', g2.hall === 2 && !g2.relic && markOn(g2, 'stone', 'HILLS') && g2.berryKind === 'berry',
-    `hall ${g2.hall}, relic ${g2.relic}, stone ${JSON.stringify(g2.marks.stone)}, berry ${g2.berryKind}`);
+  ck('andOpensGrownWithNoRelic', g2.hall === 2 && !g2.relic && markOn(g2, 'berries', 'FERTILE') && g2.berryKind === 'berry',
+    `hall ${g2.hall}, relic ${g2.relic}, berries ${JSON.stringify(g2.marks.berries)}, berry ${g2.berryKind}`);
+  ck('gameTwosDockStandsOnTheEastShoreBesideAShoal', g2.dock === 'ok' && g2.shoal && g2.shoal.t === 'WATER' && g2.shoal.fish && g2.sail.shoal,
+    `dock ${g2.dock}, shoal ${JSON.stringify(g2.shoal)}, in the dock's water ${g2.sail.shoal}`);
+  ck('andItsIsleIsReachedOnlyByBoat', g2.isle.every(x => x.t !== 'no mark' && !x.foot) && g2.isle.find(x => x.k === 'gold').t === 'GOLDORE'
+    && g2.isle.find(x => x.k === 'stone').t === 'HILLS' && g2.sail.shore, JSON.stringify(g2.isle) + ' shore by boat ' + g2.sail.shore);
+  // "Thick woods and berry bushes block the way too": its mark stands on one of the two
+  ck('andTheMountainAndTheWoodsItsLinesNameAreThere', g2.guards.mtn === 'MOUNTAIN' && ['FOREST', 'FERTILE'].includes(g2.guards.woods), JSON.stringify(g2.guards));
+  ck('andTheHomeIsleKeepsALittleStone', !!g2.homeStone && g2.homeStone.t === 'HILLS' && g2.homeStone.foot && g2.homeStone.stock >= 45 && g2.homeStone.stock < g2.hallStone,
+    JSON.stringify(g2.homeStone) + ' (the hall wants ' + g2.hallStone + ')');
   ck('gameTwosLessonsStandWhereTheGuideSays', ['barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
     ['barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
   ck('andItsThreeWallSectionsCloseTheLandBridge', g2.line.every(v => v === 'ok') && g2.scoutWood && g2.lineShuts,
@@ -225,12 +279,11 @@ const page = async (q, done) => {
      11+ tiles out, and the lodge with them. The lesson deer falls to the first */
   ck('andFallsToTheFirstBlowWhereItGrazes', g1.deer.oneBlow, JSON.stringify(g1.deer));
   ck('andGameOnesHallAsksFiveHundredWoodAndStone', g1.hallCost && g1.hallCost.wood === 500 && g1.hallCost.stone === 500, JSON.stringify(g1.hallCost));
-  ck('gameThreesSitesStandWhereTheGuideSays', g3.barracks === 'ok' && g3.wonder === 'ok' && markOn(g3, 'stone', 'HILLS') && g3.berryKind === 'berry' && markOn(g3, 'gold', 'GOLDORE'),
-    `barracks ${g3.barracks}, wonder ${g3.wonder}, stone ${JSON.stringify(g3.marks.stone)}, gold ${JSON.stringify(g3.marks.gold)}, berry ${g3.berryKind}`);
-  // the other key buildings (operator, build 184): each station on the ground its own work left
-  ck('gameThreesStationsStandOnTheirOwnWorkedGround', g3.lumber === 'ok' && g3.quarry === 'ok' && g3.farm === 'ok'
-    && markOn(g3, 'stumps', 'STUMPS') && markOn(g3, 'pebbles', 'PEBBLES') && markOn(g3, 'barren', 'BARREN'),
-    `lumber ${g3.lumber}, quarry ${g3.quarry}, farm ${g3.farm}, marks ${['stumps', 'pebbles', 'barren'].map(k => JSON.stringify(g3.marks[k])).join(' ')}`);
+  ck('gameThreesYardsStandWhereTheGuideSays', g3.hall === 3 && g3.workshop === 'ok' && g3.stable === 'ok' && g3.camp === 'ok',
+    `hall ${g3.hall}, workshop ${g3.workshop}, stable ${g3.stable}, war camp ${g3.camp}`);
+  ck('andTheirLineIsAWallAGateTwoTowersABarracksAndAHall', Object.values(g3.line).every(v => v === 'ok') && g3.yard, JSON.stringify(g3.line) + ' barracks ' + g3.yard);
+  ck('andTheRiverStopsTheMarchUntilABridgeSpansItsNarrows', g3.river.river === 'WATER' && g3.river.narrows === 'WATER' && g3.river.span && g3.river.muster
+    && !g3.river.field && !g3.river.camp && g3.river.bridged, JSON.stringify(g3.river));
   ck('gameThreeDealsThreeOfTheSixFriendlyOrigins', g3.hand.length === 3 && g3.hand.every(k => g3.pool.includes(k)) && g3.rivalSeen,
     `${g3.hand.join(', ')} of ${g3.pool.join(', ')}; rival hall shown ${g3.rivalSeen}`);
   /* EVERY LINE IS SHORT: each beat's ask, its waiting-on-goods lines (a hand
@@ -316,7 +369,8 @@ const READ = () => {
   try { raw = rb && rb.ring ? rb.ring.call(P) : null; } catch (e) {}
   const drawn = !!(E && E.ring.style.display !== 'none');
   const r = raw && drawn ? P._resolve(raw) : null;
-  const kOf = t => t.sel ? 'sel:' + t.sel : t.u !== undefined ? 'u:' + t.u : 'tile:' + Math.floor(t.x) + ',' + Math.floor(t.y);
+  // a ring on the minimap (game 2's map lesson: a point on #mini) is keyed by the map's own pixel
+  const kOf = t => t.mini ? 'mini:' + t.mini.join(',') : t.sel ? 'sel:' + t.sel : t.u !== undefined ? 'u:' + t.u : 'tile:' + Math.floor(t.x) + ',' + Math.floor(t.y);
   const key = r ? kOf(raw) : null;
   // where the drawn ring stands, a tap must land on the world (or on the element it rings)
   let blocked = null;
@@ -332,7 +386,7 @@ const READ = () => {
   if (offScreen && !sliding) blocked = 'off the screen';
   else if (r && !offScreen) {
     const el = document.elementFromPoint(r.x, r.y);
-    if (raw.sel) { const t = document.querySelector(raw.sel); if (el && t && !t.contains(el)) blocked = el.id || String(el.className); }
+    if (raw.sel || raw.mini) { const t = document.querySelector(raw.sel || '#mini'); if (el && t && !t.contains(el)) blocked = el.id || String(el.className); }
     else if (el && el.id !== 'c') blocked = el.id || String(el.className);
   }
   let taps = [];
@@ -359,10 +413,13 @@ const READ = () => {
     txt: E ? E.txt.textContent : '', open: !!(E && E.elder.style.display !== 'none' && E.root.style.display !== 'none'),
     key, ring: r ? { x: Math.round(r.x), y: Math.round(r.y) } : null, blocked, taps, vil: !!P.selVil(), clk: P.now() / 1000,
     acting: !!((window.Deck && Deck.acting && Deck.acting()) || (window.DeckUI && DeckUI.playing)),
+    // how long nobody has touched the game — the idle hand's own clock (Prologue._lastIn: a tap or a new line)
+    idle: (P.now() - (P._lastIn || 0)) / 1000,
     played: S.deck && S.deck.played ? S.deck.played.length : 0 };
 };
 const follow = async (p, maxT) => {
-  const RT = 0.6, RETRY = 4, ANSWER = 1.0;
+  // the hand's wait is the game's own (SPACE[g].idle: 6 s, 9 s, 14 s by game)
+  const RT = 0.6, RETRY = 4, ANSWER = 1.0, HAND = await p.evaluate(() => Prologue.space().idle / 1000);
   await p.evaluate(() => {
     if (G.__realStep) return;
     G.__realStep = G.simStep;
@@ -414,7 +471,10 @@ const follow = async (p, maxT) => {
       else if (dt > ANSWER + 0.05) { slow.push(`${pend.t0.toFixed(1)}s [${pend.line}] ${pend.key}: nothing for ${dt.toFixed(1)} s`); pend = null; }
     }
     // the drawn ring; with none, the hand's taps — seen only once the idle hand comes (Prologue.IDLE_MS)
-    let q = st.ring ? [{ x: st.ring.x, y: st.ring.y, k: st.key }] : (st.clk - keySince >= 6 ? st.taps : []);
+    /* …measured as the game measures it, from the last touch or the last line: counted from
+       the ring's last change instead, a hand idle since the battle's long waiting lines tapped
+       the next line's targets before its own ring (or the hand) was ever shown */
+    let q = st.ring ? [{ x: st.ring.x, y: st.ring.y, k: st.key }] : (st.idle >= HAND ? st.taps : []);
     if (!st.ring && q.length > 1 && q[0].u && st.vil) q = q.slice(1);
     const tg = q[0];
     const again = lastTap && tg && lastTap.k === tg.k && st.clk - lastTap.t >= RETRY;
@@ -434,6 +494,11 @@ const follow = async (p, maxT) => {
         continue;
       }
     }
+    /* a card's act plays on the page's clock (Deck.acting: the legion's champions march out
+       of the hall in their beams): the world runs with it in real time, as it does for a
+       person — stepped a whole sim second at a time the act was 210 s of sim before it let
+       the next line be said */
+    if (st.acting) { await p.waitForTimeout(100); await step(0.1); st = await read(); continue; }
     await step(pend || st.clk - keySince < RT + 0.15 ? 0.1 : 1.0);
     st = await read();
   }
@@ -463,20 +528,18 @@ const endScreen = async (p) => {
    pace: a mark under the minimap, where a tap moves the camera and nobody is
    sent; a ghost a slip moved onto ground it cannot take, with the guide still
    ringing the greyed ✓; a toast written over the Elder's line). Played in
-   game 3 since build 184: its gold seam is a mark a hand is sent to, its farm
-   a ghost seated on picked-bare soil — with an origin that plants no station,
-   so the farm's line is still to be said ---- */
+   game 3 since build 196 (the battle): its march line rings the field over the
+   river with the army in hand, a mark a party is sent to, and its siege
+   workshop is a ghost seated on its authored site ---- */
 {
   const { p, ctx } = await page('?prologue=1', { 1: Date.now() - 120000, 2: Date.now() - 60000 });
   await p.click('#btnBegin').catch(() => {});
   await p.waitForFunction(() => Screens.current === 'draft', null, { timeout: 40000 }).catch(() => {});
-  await p.evaluate(() => {
-    const plants = ['grainkeeper', 'timberwright', 'stoneheart'], h = (S.draft && S.draft.hand) || [];
-    let i = h.findIndex(c => !plants.includes(c.key)); if (i < 0) i = 0;
-    Cards.pick(i); Screens.enterGame();
-  });
+  await p.evaluate(() => { Cards.pick(0); Screens.enterGame(); });
   await p.waitForFunction(() => Screens.current === 'playing' && S.scenario === 'prologue_3', null, { timeout: 40000 }).catch(() => {});
   await p.waitForTimeout(3500);   // the establishing glide
+  // these checks are about WHERE a ring stands, never when: game 3's wait for it (SPACE[3]) is game 1's here
+  await p.evaluate(() => { Prologue.SPACE[3] = Object.assign({}, Prologue.SPACE[1]); });
   /* A LESSON OPENS CLEAN (operator, build 182): the map folded, the unit tips put
      away (Mira teaches), the map button and the panel's ℹ️ there to bring them back */
   const clean = await p.evaluate(() => {
@@ -489,14 +552,14 @@ const endScreen = async (p) => {
     return out;
   });
   ck('aLessonOpensWithTheMapFoldedAndTheTipsPutAway', clean.folded && clean.mapBtn && !clean.tips && clean.info === 'ℹ️', JSON.stringify(clean));
-  // the seam's line, a villager in hand, and its mark parked under the minimap (a player who opened it)
+  // the march line, the army in hand, and its field parked under the minimap (a player who opened it)
   const pre = await p.evaluate(() => {
     const P = Prologue;
     UI.setMiniCollapsed(false);
-    S.pro.i = P._beats.findIndex(b => b.id === 'mine'); P._shown = null; P._aside = null;
+    S.pro.i = P._beats.findIndex(b => b.id === 'march'); P._shown = null; P._aside = null;
+    UI.sel = { type: 'group', ids: P.armyUnits().map(u => u.id) }; UI.renderPanel();
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
-    const v = P.vils()[0]; UI.select('unit', v.id);
-    const m = P.mark('gold', 1), mini = document.getElementById('miniWrap').getBoundingClientRect();
+    const m = P.mark('field', 1), mini = document.getElementById('miniWrap').getBoundingClientRect();
     const z = R.cam.z, TL = CFG.TILE, sx = mini.left + mini.width / 2, sy = mini.top + mini.height / 2;
     R.cam.x = m.x * TL - sx / z; R.cam.y = m.y * TL - sy / z;
     P._looked = null;
@@ -509,30 +572,34 @@ const endScreen = async (p) => {
     const el = t && document.elementFromPoint(t.x, t.y);
     return { at: t && [Math.round(t.x), Math.round(t.y)], hit: el && (el.id || el.className) };
   });
-  ck('theGuideNeverRingsAMarkUnderTheMinimap', pre.line === 'mine' && pre.under && !pre.open && post.hit === 'c',
+  ck('theGuideNeverRingsAMarkUnderTheMinimap', pre.line === 'march' && pre.under && !pre.open && post.hit === 'c',
     `before: ${JSON.stringify(pre)}; after: ${JSON.stringify(post)}`);
-  // the farm's line: the ghost on its site, then a slip onto the berries beside it
+  // the workshop's line: the ghost on its site, then a slip onto the barracks beside it
   const g = await p.evaluate(() => {
     const P = Prologue;
     UI.deselect && UI.deselect();
-    S.pro.i = P._beats.findIndex(b => b.id === 'farm'); P._shown = null; P._aside = null;
-    Scenarios.unlock('farm'); S.res.wood = Math.max(S.res.wood, 500);
+    S.pro.i = P._beats.findIndex(b => b.id === 'workshop'); P._shown = null; P._aside = null;
+    Scenarios.unlock('siege');
+    for (const k of ['food', 'wood', 'stone', 'gold']) S.res[k] = Math.max(S.res[k], 900);
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
-    UI.enterPlacement('farm');
+    // the site in the middle of the view (the look's job in play), so its ✓ has room under it
+    const m = P.mark('workshopSite', 1), z = R.cam.z, TL = CFG.TILE;
+    R.cam.x = m.x * TL - (innerWidth / 2) / z; R.cam.y = m.y * TL - (innerHeight / 2) / z; if (R.clampCam) R.clampCam();
+    UI.enterPlacement('siege');
     return { line: P._shown && P._shown.id, placing: UI.placing };
   });
   await p.waitForTimeout(400);
   const seated = await p.evaluate(() => {
-    const P = Prologue, m = P.mark('barren', 0.5), ring = P._shown.ring.call(P), v = UI.placeVerdict, gh = UI.placeGhost;
+    const P = Prologue, m = P.mark('workshopSite', 0.5), ring = P._shown.ring.call(P), v = UI.placeVerdict, gh = UI.placeGhost;
     return { ring: ring && (ring.sel || 'tile'), ghost: gh && [gh.x, gh.y], site: [Math.floor(m.x), Math.floor(m.y)], ok: !!(v && v.ok) };
   });
   const slip = await p.evaluate(() => {
-    const P = Prologue, b = P.mark('berries', 0.5);
+    const P = Prologue, b = P.mark('barracks', 0.5);
     UI.placeGhost = { x: Math.floor(b.x), y: Math.floor(b.y), set: true }; UI._placeCheck();
     const ring = P._shown.ring.call(P);
     return { ok: UI.placeVerdict && UI.placeVerdict.ok, ring: ring && (ring.sel || [Math.floor(ring.x), Math.floor(ring.y)]) };
   });
-  ck('aGhostASlipMovedIsPointedBackToItsSite', g.line === 'farm' && seated.ring === '#placeOk' && seated.ok && slip.ok === false && Array.isArray(slip.ring) && slip.ring[0] === seated.site[0] && slip.ring[1] === seated.site[1],
+  ck('aGhostASlipMovedIsPointedBackToItsSite', g.line === 'workshop' && seated.ring === '#placeOk' && seated.ok && slip.ok === false && Array.isArray(slip.ring) && slip.ring[0] === seated.site[0] && slip.ring[1] === seated.site[1],
     `${JSON.stringify(g)} seated ${JSON.stringify(seated)} slip ${JSON.stringify(slip)}`);
   // and a tap there carries it back (the ✓ answers again) — the look brings the site into view first
   await p.waitForTimeout(800);
@@ -546,10 +613,10 @@ const endScreen = async (p) => {
     UI.cancelPlacement && UI.cancelPlacement();
     const P = Prologue, E = P._dom();
     // the ring low on the screen: the card takes the top seat
-    S.pro.i = P._beats.findIndex(b => b.id === 'mine'); P._shown = null; P._aside = null;
+    S.pro.i = P._beats.findIndex(b => b.id === 'march'); P._shown = null; P._aside = null;
+    UI.sel = { type: 'group', ids: P.armyUnits().map(u => u.id) }; UI.renderPanel();
     for (let i = 0; i < 4; i++) G.simStep(0.05, 0.05);
-    const v = P.vils()[0]; UI.select('unit', v.id);
-    const m = P.mark('gold', 1), z = R.cam.z, TL = CFG.TILE;
+    const m = P.mark('field', 1), z = R.cam.z, TL = CFG.TILE;
     R.cam.x = m.x * TL - (innerWidth / 2) / z; R.cam.y = m.y * TL - (innerHeight * 0.8) / z;
     P._gliding = true;   // no glide: the camera stays where it was put (a look waits on a glide in flight)
     UI.toast('A word from the world, long enough to need a whole line here', 'note', 6000);
@@ -841,6 +908,8 @@ const endScreen = async (p) => {
   await p.waitForTimeout(3500);   // the establishing glide
   const at = (id, res) => p.evaluate(([id, res]) => {
     const P = Prologue;
+    // where a ring stands and what the look brings out, never when: game 2's wait (SPACE[2]) is game 1's here
+    P.SPACE[2] = Object.assign({}, P.SPACE[1]);
     if (UI.cancelPlacement) UI.cancelPlacement();
     UI.deselect && UI.deselect();
     if (UI.setMenuCollapsed) UI.setMenuCollapsed(true);
@@ -945,12 +1014,10 @@ const endScreen = async (p) => {
         // every good one short of its price: the longest numbers the line can show
         const real = P.costLine, realH = P.hallNeeds, realA = P.afford, realA2 = P.afford2;
         const long = c => Object.keys(c || {}).filter(k => c[k]).map(k => k[0].toUpperCase() + k.slice(1) + ' ' + (c[k] - 1) + '/' + c[k]).join(' · ');
-        // game 3's monument is a fraction of the full price (CFG.MODES.prologue_3.wonderCost), as Bld.effCost reads it there
-        const price = key => { const c = Bld.effCost('P', key), f = key === 'wonder' && (CFG.MODES['prologue_' + g] || {}).wonderCost;
-          const base = Bld.buildSpec('wonder', 'P').lv.cost;
-          return f ? Object.fromEntries(Object.entries(base).map(([k, v]) => [k, Math.round(v * (f[k] != null ? f[k] : 1))])) : c; };
-        P.costLine = key => long(price(key)); P.afford = () => false; P.afford2 = () => false;
-        P.hallNeeds = () => long(Scenarios.RULES['prologue_' + g].tc[g + 1].cost) + ' · Buildings 2/3';
+        P.costLine = key => long(Bld.effCost('P', key)); P.afford = () => false; P.afford2 = () => false;
+        // the hall's next storey where the game raises one (game 3 opens on its top storey and raises none)
+        const tcs = (Scenarios.RULES['prologue_' + g].tc || {})[g + 1];
+        P.hallNeeds = () => tcs ? long(tcs.cost) + ' · Buildings 2/3' : '';
         let txt = '';
         try { txt = typeof b.goal === 'function' ? b.goal.call(P) : b.goal; } catch (e) { txt = ''; }
         P.costLine = real; P.hallNeeds = realH; P.afford = realA; P.afford2 = realA2;
@@ -1286,7 +1353,7 @@ const endScreen = async (p) => {
   ck('andAStationsHandOutworksAHandHere', win.wood && win.stone && win.wood.st > win.wood.hand && win.stone.st > win.stone.hand,
     JSON.stringify({ wood: win.wood, stone: win.stone }));
   ck('theHallWinsAndTheGuideHasTheLastWord', win.win && win.cause === 'hall' && win.cur === 'playing' && /first fire/i.test(win.txt), JSON.stringify(win));
-  // …and it names the clan that burned the old home: the hook game 2's riders and game 3's raid answer
+  // …and it names the clan that burned the old home: the hook game 2's riders and game 3's battle answer
   ck('andHerLastWordNamesTheClanThatBurnedTheirHome', /burned our home/i.test(win.txt), win.txt);
   await p.waitForFunction(() => Prologue._asking, null, { timeout: 12000 }).catch(() => {});
   const ask = await p.evaluate(() => ({ asking: !!Prologue._asking, txt: (document.querySelector('#proElder .peTxt') || {}).textContent || '', name: (document.querySelector('#proElder .peIn') || {}).value || '' }));
@@ -1387,8 +1454,9 @@ const endScreen = async (p) => {
     Prologue.workFor = function (u, res) {
       const r = wf.apply(this, arguments);
       if (r && Prologue.lineForts().length === 3) {
-        const h = Prologue.homeSide(), i = (r.y | 0) * CFG.W + (r.x | 0);
-        if (h && !(h[i - 1] || h[i + 1] || h[i - CFG.W] || h[i + CFG.W])) window.__out.push((res || '?') + ' at ' + (r.x | 0) + ',' + (r.y | 0));
+        const h = Prologue.homeSide(), i = (r.y | 0) * CFG.W + (r.x | 0), ui = (u.y | 0) * CFG.W + (u.x | 0);
+        // judged for a hand on the home side alone: one the transport landed on the isle works the isle (build 196)
+        if (h && h[ui] && !(h[i - 1] || h[i + 1] || h[i - CFG.W] || h[i + CFG.W])) window.__out.push((res || '?') + ' at ' + (r.x | 0) + ',' + (r.y | 0));
       }
       return r;
     };
@@ -1401,7 +1469,10 @@ const endScreen = async (p) => {
     up: S.units.filter(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)).length,
     tc: Bld.tcOf('P'),
     playedIds: (S.deck && S.deck.played) || [], mbPlayed: JSON.stringify((S.deck && S.deck.played) || []).includes('master_builders'),
-    grey: window.__grey, out: window.__out, hurt: !!Prologue.hurtFort() }));
+    grey: window.__grey, out: window.__out, hurt: !!Prologue.hurtFort(),
+    fishing: S.units.filter(u => u.owner === 'P' && u.kind === 'fishboat' && u.task && u.task.type === 'fish').length,
+    isle: Prologue.onIsle(), mine: S.buildings.some(b => b.owner === 'P' && b.key === 'mine'),
+    transport: S.units.some(u => u.owner === 'P' && u.kind === 'transport'), dock: S.buildings.some(b => b.owner === 'P' && b.key === 'dock' && !(b.construction > 0)) }));
   /* THE LAKE ISLES' WORKS (operator, build 184: "Add roads, hunters lodge, barracks,
      archers towers and walls to level 2"; the road and the lodge went to game 1 in build
      195): the clan greeted, each work taught and standing, an archer on the tower */
@@ -1442,6 +1513,31 @@ const endScreen = async (p) => {
      once the line stands, no gather ring points past it */
   ck('andNoGatherRingPointsPastTheWall', !g2w.out.length, g2w.out.slice(0, 6).join('; ') || 'all inside');
   ck('andTheLineToolSaysNothingOverTheGuide', !g2w.scout.toasts.some(t => /Drag along|Wall line|needs a builder|walled in|under attack/i.test(t)), g2w.scout.toasts.join(' | ') || 'quiet');
+  /* THE MAP (build 196: "We want to teach about the map"): opened from its button, a tap
+     on the small isle flies the view there, a tap on the village brings it home, and it is
+     folded again — before the defences are raised */
+  ck('gameTwoTeachesTheMap', ['map', 'mapjump', 'islet', 'maphome', 'mapfold'].every(k => g2w.done.includes(k))
+    && at('map') < at('mapjump') && at('mapjump') < at('maphome') && at('maphome') < at('mapfold') && at('mapfold') < at('barracks'),
+    `lines ${order.join(' › ')}`);
+  /* THE LAND GUARDS ITSELF (build 196: "using water and mountains as a natural defense,
+     berries and wood or defenses as well"): said before a wall is laid, the land bridge the
+     one way in — the reason the wall goes there */
+  ck('andWhatTheLandItselfGuards', ['nature', 'nature2'].every(k => g2w.done.includes(k)) && at('nature2') < at('wall')
+    && run.said.some(t => /Water and mountains guard our isle/.test(t)) && run.said.some(t => /woods and berry bushes block the way/.test(t)),
+    [...run.said].filter(t => /guard|block/.test(t)).join(' | ') || 'not said');
+  /* THE DOCK (build 196: "you'll really need to spend some time on teaching the player the
+     dock cause that's very important"): raised on the east shore, a fishing boat sent onto the
+     shoal, a transport, two villagers aboard, the crossing, and on the isle the gold seam
+     claimed (a mine) and its stone broken */
+  ck('andTheDockCarriesTheClanToTheIsle', ['dock', 'fishboat', 'fish', 'transport', 'board', 'sail', 'claim', 'islestone'].every(k => g2w.done.includes(k))
+    && at('dock') < at('fish') && at('fish') < at('board') && at('board') < at('sail') && at('sail') < at('claim')
+    && g2w.dock && g2w.transport && g2w.fishing > 0 && g2w.isle > 0 && g2w.mine,
+    `lines ${order.join(' › ')}; fishing ${g2w.fishing}, on the isle ${g2w.isle}, mine ${g2w.mine}`);
+  /* ITS PACE (build 196: "game two should roughly last 10 minutes … 2 to 5 minutes in either
+     direction … fine"): the follower, who waits for every ring as SPACE[2] holds it back and
+     taps a reaction time after, plays it in about six and a half minutes of the world's
+     clock; a person reads, looks and slips — the band holds it from collapsing or swelling */
+  ck('andGameTwosPaceIsKept', run.over && run.clk >= 300 && run.clk <= 720, run.clk.toFixed(0) + ' s of play');
   ck('gameTwoIsWonByFollowingTheGuideAlone', run.over && run.played >= 1, `over ${run.over} at ${run.clk.toFixed(0)} s, ${run.clicks} taps, cards played ${run.played}, lines ${run.seen.map(s => s.id).join(' › ')}`);
   ck('andEveryLineItSaidWasShortToo', run.said.length > 5 && run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
   ck('andEveryTapOfGameTwoWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
@@ -1462,9 +1558,11 @@ const endScreen = async (p) => {
   await ctx.close();
 }
 
-/* ---- 5. game 3: the origin cards, the raid, the two roads ---- */
+/* ---- 5. game 3: THE RECKONING — the origin cards, making ready, the army, the battle ---- */
 {
   const { p, ctx } = await page('?prologue=1', { 1: Date.now() - 120000, 2: Date.now() - 60000 });
+  // the card game 2's win paid (CFG.PROLOGUE.PICK): the battle plays it
+  await p.evaluate(() => { Deck._add('iron_legion', 1); Deck.saveCol(); });
   await p.click('#btnBegin');
   await p.waitForFunction(() => Screens.current === 'draft' || Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   const d = await p.evaluate(() => {
@@ -1480,18 +1578,35 @@ const endScreen = async (p) => {
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   await p.waitForTimeout(3000);
   const run = await follow(p, 2400);
-  const fin = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, march: !!(S.pro && S.pro.march), wonder: S.buildings.some(x => x.owner === 'P' && x.key === 'wonder'), done: Object.keys((S.pro && S.pro.done) || {}),
-    has: ['lumber', 'quarry', 'farm', 'mine'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)), allow: S.allow.slice() }));
-  const ids = run.seen.map(s => s.id);
-  ck('gameThreeIsWonByFollowingTheGuideAlone', run.over && fin.win, `over ${run.over} at ${run.clk.toFixed(0)} s, ${JSON.stringify(fin)}, ${run.clicks} taps, lines ${ids.join(' › ')}`);
-  ck('andTheRaidIsMetAndBeaten', ids.includes('raid') && fin.done.includes('raid'), ids.join(' › ') + ' / done ' + fin.done.join(','));
-  /* THE OTHER KEY BUILDINGS (operator, build 184): a lumber camp, a quarry and a farm on
-     their own worked ground, and the gold seam claimed — each taught (or planted by the
-     origin, its card opened all the same) before the raid */
-  ck('andGameThreeTeachesTheStationsAndTheSeam', ['lumber', 'quarry', 'farm', 'mine'].every(k => fin.done.includes(k) && fin.has.includes(k))
-    && ['lumber', 'quarry', 'farm'].every(k => fin.allow.includes(k)) && ids.indexOf('raid') > Math.max(...['lumber', 'quarry', 'farm', 'mine'].map(k => ids.indexOf(k))),
-    `done ${fin.done.join(',')}; standing ${fin.has.join(',')}; menu ${fin.allow.join(',')}; lines ${ids.join(' › ')}`);
-  ck('andTheWonderIsTheRoadTheGuideWalks', ['save', 'wonder'].every(x => ids.includes(x) && fin.done.includes(x)) && fin.wonder, ids.join(' › ') + ' / done ' + fin.done.join(','));
+  const fin = await p.evaluate(() => ({ win: !!(S.over && S.over.win), cause: S.over && S.over.cause, done: Object.keys((S.pro && S.pro.done) || {}),
+    lv: { barracks: Prologue.lv('barracks'), range: Prologue.lv('range') },
+    has: ['siege', 'stable', 'warcamp'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k && !(b.construction > 0))),
+    bridges: (S.bridges || []).filter(b => b.owner === 'P').length, legion: JSON.stringify((S.deck && S.deck.played) || []).includes('iron_legion'),
+    foe: S.buildings.filter(b => b.owner === 'A').map(b => b.key) }));
+  const ids = run.seen.map(s => s.id), at = id => ids.indexOf(id);
+  ck('gameThreeIsWonByFollowingTheGuideAlone', run.over && fin.win && fin.cause === 'razed_rival_tc', `over ${run.over} at ${run.clk.toFixed(0)} s, ${JSON.stringify(fin)}, ${run.clicks} taps, lines ${ids.join(' › ')}`);
+  /* MAKE READY (build 196: "how you would go about upgrading individual units … the remaining
+     buildings"): a stronger barracks and a soldier raised a rank by its chevrons, a siege
+     workshop, stone bought at the trading post, a stable and its riders, the range raised and
+     its archers made longbows, a catapult, a sapper and his bridge over the river's narrows,
+     and a war camp beyond it — all before the march */
+  const ready = ['barracks2', 'rankup', 'workshop', 'trade', 'stable', 'riders', 'range2', 'longbow', 'catapult', 'sapper', 'bridge', 'warcamp'];
+  ck('andItMakesReadyBeforeItMarches', ready.every(k => fin.done.includes(k) && at(k) >= 0 && at(k) < at('march')) && fin.lv.barracks >= 2 && fin.lv.range >= 2
+    && fin.has.length === 3 && fin.bridges > 0, `done ${fin.done.join(',')}; levels ${JSON.stringify(fin.lv)}; standing ${fin.has.join(',')}; bridges ${fin.bridges}; lines ${ids.join(' › ')}`);
+  ck('andItRaisesASoldierARankByTheChevrons', run.said.some(t => /tap the gold chevrons/.test(t)) && at('rankup') < at('longbow'), [...run.said].filter(t => /rank|chevron|longbow/i.test(t)).join(' | '));
+  /* THE ARMY (build 196: "talk about how you group up armies to create armies and then talk
+     about how you can send the entire army"): grouped on the field, saved as Army 1, joined by
+     a card's champions, called by its banner and marched in its ranks */
+  ck('andItGathersSavesAndCallsAnArmy', ['group', 'save', 'banner', 'march'].every(k => fin.done.includes(k)) && at('group') < at('save') && at('save') < at('banner') && at('banner') < at('march')
+    && fin.legion && fin.done.includes('legion'), `lines ${ids.join(' › ')}; legion played ${fin.legion}`);
+  ck('andTheRanksAreSaidAsTheyMarch', run.said.some(t => /Soldiers lead, archers follow, engines come last/.test(t)), [...run.said].filter(t => /lead|follow/.test(t)).join(' | ') || 'not said');
+  /* THE BATTLE (build 196: "Focus on teaching them how to knock down walls attack the buildings
+     and then ultimately destroy the town center"): the garrison sallies and falls to Chaos, the
+     wall to Siege, a tower, their barracks and then the hall to Strike — in that order */
+  ck('andThePitchedBattleIsFoughtByItsDoctrines', ['sally', 'siege', 'strike', 'yard'].every(k => fin.done.includes(k))
+    && at('march') < at('sally') && at('sally') < at('siege') && at('siege') < at('strike') && at('strike') < at('yard') && at('yard') < at('hall')
+    && !fin.foe.includes('barracks') && !fin.foe.includes('tc'), `lines ${ids.join(' › ')}; their works left ${fin.foe.join(',')}`);
+  ck('andGameThreesPaceIsKept', run.over && run.clk >= 360 && run.clk <= 960, run.clk.toFixed(0) + ' s of play');
   ck('andEveryTapOfGameThreeWasAnsweredWithinASecond', run.clicks > 4 && !run.slow.length, run.slow.join('; ') || run.clicks + ' taps');
   ck('andGameThreesRingWasNeverDrawnWhereATapCannotLand', !run.blocked.length, run.blocked.join('; ') || 'clear');
   ck('andItRangTheGoodItsLineNamed', !run.wrong.length, run.wrong.join('; ') || 'agreed');
@@ -1512,9 +1627,10 @@ const endScreen = async (p) => {
   await p.waitForFunction(() => Screens.current === 'draft', null, { timeout: 30000 }).catch(() => {});
   await p.evaluate(() => { Cards.pick(0); Screens.enterGame(); });
   await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
-  await p.evaluate(() => G.end(false, 'The other clan raised their Wonder.', 'rival_wonder'));
+  // game 3 is a battle (build 196): its loss is the clan's hall falling
+  await p.evaluate(() => G.end(false, 'Our hall has fallen.', 'tc_destroyed'));
   const end = await endScreen(p);
-  ck('aLostThirdGameOffersToTryAgain', end.doors.includes('pro-retry:Try again') && /Wonder first/.test(end.line), end.doors.join(', ') + ' / ' + end.line);
+  ck('aLostThirdGameOffersToTryAgain', end.doors.includes('pro-retry:Try again') && /Our hall fell/.test(end.line), end.doors.join(', ') + ' / ' + end.line);
   await p.click('.ceBtns [data-act="pro-retry"]');
   await p.waitForFunction(() => Screens.current === 'draft' || Screens.current === 'playing', null, { timeout: 30000 }).catch(() => {});
   const r = await p.evaluate(() => ({ cur: Screens.current, scen: S.scenario, over: !!S.over }));
