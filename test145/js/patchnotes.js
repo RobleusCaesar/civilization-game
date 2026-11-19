@@ -19,6 +19,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 203, date: '2026-11-19', title: 'The Reckoning ends with a story',
+    items: [
+      'When their hall falls, Mira thanks you by your chosen name, tells you the clan is free, and sends you on to the full game.',
+      'Iron Legion is now played before the army is gathered: its champions march over to join the others, and then the whole army is grouped and saved as Army 1.',
+      'Mira says more clearly that every military yard can be upgraded, just like your hall.',
+    ],
+  },
+  {
     build: 202, date: '2026-11-19', title: 'Mira knows what you are short of',
     items: [
       'When something is waiting on resources, Mira now names the one you are actually short of. The bridge in The Reckoning used to ask for wood when it needed stone.',
