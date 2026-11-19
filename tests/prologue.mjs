@@ -69,7 +69,12 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
 const page = async (q, done) => {
   const ctx = await b.newContext({ viewport: { width: W, height: H } });
   if (done) await ctx.addInitScript((d) => {
-    try { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('neo-prologue', JSON.stringify({ v: 1, at: Date.now() - 600000, veteran: false, done: d })); sessionStorage.setItem('seeded', '1'); } } catch (e) {}
+    try { if (!sessionStorage.getItem('seeded')) {
+      localStorage.setItem('neo-prologue', JSON.stringify({ v: 1, at: Date.now() - 600000, veteran: false, done: d }));
+      // a game 1 won is a chief named at its end (section 3 names one "Tester")
+      if (d && d[1]) localStorage.setItem('neo-chief', 'Tester');
+      sessionStorage.setItem('seeded', '1');
+    } } catch (e) {}
   }, done);
   const p = await ctx.newPage();
   p.on('pageerror', e => errs.push(String(e)));
