@@ -537,7 +537,8 @@ const Prologue = {
       if (w > bw) { bw = w; best = k; }
     }
     if (best) { this._needS = { b, r: best }; return best; }
-    return (S.res.food || 0) < (S.res.wood || 0) ? 'food' : 'wood';
+    // a goal with no price of its own the guide can read: the good the town holds least of
+    return ['food', 'wood', 'stone'].reduce((a, k) => ((S.res[k] || 0) < (S.res[a] || 0) ? k : a), 'food');
   },
   // a line names the good it asks for: the view keeps it (its ring sends hands there)
   naming(r) { this._said = r; return r; },
@@ -1294,9 +1295,9 @@ const Prologue = {
           ring: YARD('sapper', 'sapper'), taps: () => R1(YARD('sapper', 'sapper')()),
           ack: () => P.coming('sapper', 'sapper') > 0, wait: 'The sapper is on the way.',
           done: () => P.units('sapper').length > 0 || P.bridged(), praise: 'A sapper!' },
-        { id: 'bridge', face: 'point', hint: 'new', text: "Select the sapper, tap Bridge, then the river's narrow water.",
+        { id: 'bridge', face: 'point', hint: 'new', text: "Select the sapper, tap Bridge, then the river's narrow water.", cost: () => Object.assign({}, CFG.TERRAFORM.bridgeCost),
           goal: 'Bridge the river', look: () => P.mark('narrows'),
-          when: () => P.canBridge() || P.bridging() || P.bridged(), hold: (c) => P.needLine('A bridge', null, c),
+          when: () => P.canBridge() || P.bridging() || P.bridged(), hold: (c) => P.stoneHold(c, 'A bridge'), holdRing: () => P.stoneRing(),
           ring: () => P.bridgeRing(), taps: () => R1(P.bridgeRing()),
           ack: () => P.bridging() || P.bridged(), wait: 'The sapper builds the bridge.',
           done: () => P.bridged(), praise: 'The river is ours to cross!' },
@@ -2163,9 +2164,42 @@ const Prologue = {
   /* THE LINE OF A HELD BEAT: what it is short of, in the guide's words —
      true whether or not a hand is free to move (the ring says which) */
   WHERE: { food: 'the berries', wood: 'the trees', stone: 'the grey rocks', gold: 'the gold seam' },
+  /* SHE NAMES THE GOOD THAT IS SHORT, AND WHERE IT COMES FROM (operator, build
+     202, on game 3's bridge: "it needs more wood but actually what you need is
+     more Stone … in general whenever you're short a RESOURCE, the notification
+     from Mira should be intelligent about what RESOURCE you're short of"): the
+     good is read off the beat's own price (goalCost — a beat that names none
+     fell back on the hall's next storey, which asks wood); gold, which no hand
+     gathers, is named once the gatherable goods are in, and every good is sent
+     where this world really has it: stone to the trading post where no rock
+     stands near the hall, gold to the mine, the post, or the hall's own
+     trickle (tests/prologue.mjs heldLinesNameTheGoodThatIsShort) */
+  goldShort() { const c = this.goalCost() || {}; return (c.gold || 0) > (S.res.gold || 0); },
+  gatherShort() { const c = this.goalCost() || {}; return ['food', 'wood', 'stone'].some(k => (c[k] || 0) > (S.res[k] || 0)); },
+  rocksNear() {
+    const tc = this.tc(); if (!tc) return true;
+    for (let y = Math.max(0, tc.y - 18); y <= Math.min(CFG.H - 1, tc.y + 18); y++)
+      for (let x = Math.max(0, tc.x - 18); x <= Math.min(CFG.W - 1, tc.x + 18); x++)
+        if (S.map.terrain[y * CFG.W + x] === T.HILLS && (S.map.resAmount[y * CFG.W + x] || 0) > 0) return true;
+    return false;
+  },
+  // a good this world gives by trade, not by hand: gold with no mine, stone with no rock near
+  byTrade(r) { return this.has('trade', true) && ((r === 'gold' && !this.has('mine', true)) || (r === 'stone' && !this.rocksNear())); },
+  payFor(r) { return ['wood', 'food', 'stone'].filter(k => k !== r).reduce((a, k) => ((S.res[k] || 0) > (S.res[a] || 0) ? k : a)); },
+  howGet(r, coming) {
+    if (this.byTrade(r)) return this.caravanFor(r) ? 'The caravan brings it soon.' : 'Trade ' + this.payFor(r) + ' for it at the trading post.';
+    if (r === 'gold') return this.has('mine', true) ? 'Our gold mine brings it in.' : 'Our hall makes a little each day.';
+    return coming ? 'It is coming in.' : 'Gather it at ' + (this.WHERE[r] || 'the hills') + '.';
+  },
   needLine(thing, res, coming) {
-    const r = this.naming(res || this.need());
-    return thing + ' needs more ' + r + (coming ? '. It is coming in.' : '. Gather it at ' + (this.WHERE[r] || 'the hills') + '.');
+    const r = this.naming(res || (!this.gatherShort() && this.goldShort() ? 'gold' : this.need()));
+    return thing + ' needs more ' + r + '. ' + this.howGet(r, coming);
+  },
+  // what a held line's ring points at: the trading post for a good bought there, nothing for the hall's gold, else the hands
+  shortRing(good, taps) {
+    if (good && this.byTrade(good)) { const t = this.caravanFor(good) ? null : this.tradeRing(good, this.payFor(good)); return taps ? (t ? [t] : []) : t; }
+    if (good === 'gold') return taps ? [] : null;
+    return taps ? this.gatherTaps(false, good || false) : this.gatherRing(false, good || false);
   },
   // the line when a gather beat needs a hand again
   gatherLine() {
@@ -2383,7 +2417,7 @@ const Prologue = {
     const txt = t => typeof t === 'function' ? t.call(P) : t;
     // a line that names a good keeps it (`good`), and its ring sends hands to that good
     const named = (o) => { P._said = null; const text = o.text(); return Object.assign(base, o, { text, good: P._said,
-      ring: () => P.gatherRing(false, base.good || false), taps: () => P.gatherTaps(false, base.good || false), gather: true }); };
+      ring: () => P.shortRing(base.good), taps: () => P.shortRing(base.good, true), gather: true }); };
     // a beat that rings its own target while held (game 3's catapult: the trading post)
     if (ph === 'held' && b.holdRing) return Object.assign(base, { face: b.holdFace || 'thinking', text: txt(b.hold),
       ring: b.holdRing, taps: () => { const r = b.holdRing.call(P); return r ? [r] : []; } });
