@@ -41,6 +41,15 @@
    "kind": "villager",
    "x": 15,
    "y": 23
+  },
+  {
+   "kind": "villager",
+   "x": 8,
+   "y": 25,
+   "work": [
+    9,
+    25
+   ]
   }
  ],
  "animals": [
@@ -48,11 +57,6 @@
    "kind": "deer",
    "x": 14,
    "y": 29
-  },
-  {
-   "kind": "deer",
-   "x": 29,
-   "y": 24
   },
   {
    "kind": "deer",
@@ -79,6 +83,11 @@
    "key": "house",
    "x": 16,
    "y": 22
+  },
+  {
+   "key": "farm",
+   "x": 9,
+   "y": 25
   }
  ],
  "relic": null,

@@ -208,6 +208,9 @@ const page = async (q, done) => {
            lumber camp) able to raise the tower — never enough for the hall by itself */
         o.homeStone = m.homeStone ? { t: tn(ti('homeStone')), stock: S.map.resAmount[m.homeStone[1] * W + m.homeStone[0]], foot: near(m.homeStone[0], m.homeStone[1]) } : null;
         o.hallStone = ((Scenarios.RULES.prologue_2.tc || {})[3] || { cost: {} }).cost.stone || 0;
+        /* NOTHING GRAZES ON THE SEAM (build 197): a deer put on the far isle wandered over
+           the gold seam, and the claim's tap landed on it and sent the villager hunting */
+        o.seamBeasts = m.gold ? S.units.filter(u => u.owner === 'W' && Math.hypot(u.x - m.gold[0] - 0.5, u.y - m.gold[1] - 0.5) < 6).length : -1;
       }
       if (g === 3) {
         /* THE RECKONING (build 196: "create a pitched battle between the two villages, but set
@@ -267,6 +270,7 @@ const page = async (q, done) => {
   ck('andTheMountainAndTheWoodsItsLinesNameAreThere', g2.guards.mtn === 'MOUNTAIN' && ['FOREST', 'FERTILE'].includes(g2.guards.woods), JSON.stringify(g2.guards));
   ck('andTheHomeIsleKeepsALittleStone', !!g2.homeStone && g2.homeStone.t === 'HILLS' && g2.homeStone.foot && g2.homeStone.stock >= 45 && g2.homeStone.stock < g2.hallStone,
     JSON.stringify(g2.homeStone) + ' (the hall wants ' + g2.hallStone + ')');
+  ck('andNothingGrazesOnTheGoldSeam', g2.seamBeasts === 0, `wild beasts within 6 tiles of the seam: ${g2.seamBeasts}`);
   ck('gameTwosLessonsStandWhereTheGuideSays', ['barracks', 'range', 'tower', 'wall'].every(k => g2[k] === 'ok'),
     ['barracks', 'range', 'tower', 'wall'].map(k => k + ' ' + g2[k]).join(', '));
   ck('andItsThreeWallSectionsCloseTheLandBridge', g2.line.every(v => v === 'ok') && g2.scoutWood && g2.lineShuts,
@@ -415,7 +419,9 @@ const READ = () => {
     acting: !!((window.Deck && Deck.acting && Deck.acting()) || (window.DeckUI && DeckUI.playing)),
     // how long nobody has touched the game — the idle hand's own clock (Prologue._lastIn: a tap or a new line)
     idle: (P.now() - (P._lastIn || 0)) / 1000,
-    played: S.deck && S.deck.played ? S.deck.played.length : 0 };
+    played: S.deck && S.deck.played ? S.deck.played.length : 0,
+    // the granary and the soldiers it feeds: a famine walks a soldier off (Units.desertHungry)
+    food: S.res ? Math.round(S.res.food) : 0, troops: S.units.filter(u => u.owner === 'P' && Units.isMilitary(u) && Units.mortal(u)).length };
 };
 const follow = async (p, maxT) => {
   // the hand's wait is the game's own (SPACE[g].idle: 6 s, 9 s, 14 s by game)
@@ -445,12 +451,13 @@ const follow = async (p, maxT) => {
   };
   const read = async () => { const r = await p.evaluate(READ); r.clk += off; return r; };
   const seen = [], slow = [], blocked = [], wrong = [], said = new Set();
-  let clicks = 0, last = '', lastKey = null, keySince = 0, lastTap = null, pend = null;
+  let clicks = 0, last = '', lastKey = null, keySince = 0, lastTap = null, pend = null, minFood = Infinity;
   let st = await read();
   const t0 = st.clk;
   for (let k = 0; k < 20000 && !st.over && st.clk - t0 < maxT; k++) {
     if (st.id && st.id !== last) { seen.push({ id: st.id, t: Math.round(st.clk - t0) }); last = st.id; }
     if (st.open && st.txt && !said.has(st.txt)) said.add(st.txt);
+    if (st.food < minFood) minFood = st.food;
     if (st.blocked && blocked.length < 6) blocked.push(`${st.clk.toFixed(1)}s ${st.id} ${st.key} under ${st.blocked}`);
     if (st.wrong && wrong.length < 6) wrong.push(`${st.clk.toFixed(1)}s ${st.id}: ${st.wrong} ("${st.txt}")`);
     if (st.key !== lastKey) { lastKey = st.key; keySince = st.clk; }
@@ -503,7 +510,7 @@ const follow = async (p, maxT) => {
     st = await read();
   }
   await p.evaluate(() => { if (G.__realStep) { G.simStep = G.__realStep; delete G.__realStep; } });
-  return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, wrong, played: st.played };
+  return { over: st.over, clk: st.clk - t0, clicks, seen, said: [...said], slow, blocked, wrong, played: st.played, minFood };
 };
 // the end screen's card, claimed, and the doors it leaves
 const endScreen = async (p) => {
@@ -1472,7 +1479,10 @@ const endScreen = async (p) => {
     grey: window.__grey, out: window.__out, hurt: !!Prologue.hurtFort(),
     fishing: S.units.filter(u => u.owner === 'P' && u.kind === 'fishboat' && u.task && u.task.type === 'fish').length,
     isle: Prologue.onIsle(), mine: S.buildings.some(b => b.owner === 'P' && b.key === 'mine'),
-    transport: S.units.some(u => u.owner === 'P' && u.kind === 'transport'), dock: S.buildings.some(b => b.owner === 'P' && b.key === 'dock' && !(b.construction > 0)) }));
+    transport: S.units.some(u => u.owner === 'P' && u.kind === 'transport'), dock: S.buildings.some(b => b.owner === 'P' && b.key === 'dock' && !(b.construction > 0)),
+    // the clan's farm from game 1: bonded to its house (a homestead) and worked
+    farm: (() => { const f = S.buildings.find(b => b.owner === 'P' && b.key === 'farm'); return f ? { bond: +Bld.homesteadMult(f).toFixed(2), worked: Bld.workersAssigned(f) } : null; })(),
+    troops: S.units.filter(u => u.owner === 'P' && Units.isMilitary(u)).length }));
   /* THE LAKE ISLES' WORKS (operator, build 184: "Add roads, hunters lodge, barracks,
      archers towers and walls to level 2"; the road and the lodge went to game 1 in build
      195): the clan greeted, each work taught and standing, an archer on the tower */
@@ -1512,6 +1522,13 @@ const endScreen = async (p) => {
      of the wall we just created … send them to one of the bushes inside the players territory"):
      once the line stands, no gather ring points past it */
   ck('andNoGatherRingPointsPastTheWall', !g2w.out.length, g2w.out.slice(0, 6).join('; ') || 'all inside');
+  /* NOBODY GOES HUNGRY ON THE LAKE ISLES (build 197): the clan opens with game 1's farm,
+     bonded to a house and worked from the first morning. A soldier eats half again a
+     villager's share and nothing in the lesson gathers food before the fishing boat, so
+     without it the granary ran dry about the gate and the tower's archer deserted (build
+     195's CI: "A hungry Archer deserts"); a reader slower than the follower starved sooner */
+  ck('andTheGrowingClanNeverGoesHungry', run.minFood > 0 && !!g2w.farm && g2w.farm.bond > 1 && g2w.farm.worked > 0 && g2w.troops >= 2,
+    `lowest food ${run.minFood}; the farm ${JSON.stringify(g2w.farm)}; soldiers ${g2w.troops}`);
   ck('andTheLineToolSaysNothingOverTheGuide', !g2w.scout.toasts.some(t => /Drag along|Wall line|needs a builder|walled in|under attack/i.test(t)), g2w.scout.toasts.join(' | ') || 'quiet');
   /* THE MAP (build 196: "We want to teach about the map"): opened from its button, a tap
      on the small isle flies the view there, a tap on the village brings it home, and it is

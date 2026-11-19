@@ -1581,7 +1581,15 @@ camp can still raise the tower, never the hall by it alone): the hall's
 next storey (220 wood, 100 stone, 50 gold) wants the far isle's stone and
 gold — the dock's reason (`andTheHomeIsleKeepsALittleStone`). A third
 cottage by the bridge (16,22) anchors the tower's site from the first
-morning (`BUILD_RANGE` 8), so a barracks dragged elsewhere never strands it. Everything else is paid from the stores (150 food, 560 wood, 160
+morning (`BUILD_RANGE` 8), so a barracks dragged elsewhere never strands it. The clan's farm
+from game 1 stands at (9,25), bonded to the house north of it and worked from
+the first morning by a sixth villager (build 197, `andTheGrowingClanNeverGoesHungry`):
+a soldier eats half again a villager's share and nothing in the lesson
+gathers food before the fishing boat, so the granary ran dry about the gate
+and the tower's archer deserted (build 195's CI, "A hungry Archer deserts")
+— a reader slower than the follower starved sooner. No beast grazes on the far
+isle (`andNothingGrazesOnTheGoldSeam`): a deer put there wandered over the
+gold seam, and the claim's tap landed on it and sent the villager hunting. Everything else is paid from the stores (150 food, 560 wood, 160
 stone, 80 gold); game 1's stations are open in its menu from the start; a
 rival at peace) and **The Reckoning** (**THE RECKONING** below: a pitched
 battle against the rival's walled town, about fifteen minutes) — operator,
@@ -2107,7 +2115,9 @@ hall, so the army stands together) across a river from the rival's walled
 town (`rivalLevel` 3: ten level-2 wall sections, a gate, two towers, a
 barracks, three houses, a farm, five defenders and three archers —
 `Scenarios.populate` places the rival's own buildings and people once its
-hall stands). No quarry stands: the stores (1,200 food, 1,600 wood, 560
+hall stands; its deer graze in the west, clear of the field the army marches
+to, since a tap on a beast is a hunt — game 2's isle deer stood on the gold
+seam and turned the claim into one). No quarry stands: the stores (1,200 food, 1,600 wood, 560
 stone, 300 gold) pay the storeys, the workshop, the stable, the catapult and
 the bridge and leave the war camp one caravan short, which the trading
 post's lesson buys with wood. THE MAKING READY: `barracks2` (the yard's
