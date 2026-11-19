@@ -1830,9 +1830,19 @@ burned home is its LAST word, the hook ("Our first fire burns, chief. May the
 clan that burned our home never see it." —
 `andHerLastWordNamesTheClanThatBurnedTheirHome`); game 2's riders are "not
 the ones who burned us", and game 3 opens on that clan ("Chief …, the clan
-that burned us lives across the river. Today it ends.") and ends on it
-("Their hall is ash. The clan that burned us is no more, Chief …."). Nothing
-more is explained. **SHE CALLS THE CHIEF BY NAME** (`Prologue.named` /
+that burned us lives across the river. Today it ends.") and ends on it.
+**HER LAST WORDS ARE THREE CARDS** (`Prologue.endLines` / `_endSay`,
+tests/prologue.mjs `andHerLastWordsThankTheChiefAndSendThemOn` — operator,
+build 203: "maybe Mia comes back and says congratulations chief … you're free
+and you won't have to be chased out anymore … then we wanna send off now you
+know the basics future games will allow you to explore and build new villages
+and advance new technologies"): "Their hall is ash. The clan that burned us is
+no more.", "Congratulations, Chief …! We are free. No one will chase us out
+again.", "You know the basics now. Future games let you explore, build
+villages and advance technology." — each held for its words' reading time
+before the end screen (games 1 and 2 keep their one line and 3.4 s); the
+`hall` beat asks "Destroy their hall! Protect our clan for good and secure
+our valley home." Nothing more is explained. **SHE CALLS THE CHIEF BY NAME** (`Prologue.named` /
 `hail`, tests/prologue.mjs `gameTwoOpensOnTheChiefsName` and the follower's
 `andMiraCallsTheChiefByTheNameTheyChose` — operator, build 200: "Whatever the
 player names themselves at the end of level one, can we dynamically insert it
@@ -2213,14 +2223,29 @@ out), gold from the mine or the hall's own trickle (no ring), else the
 berries, the trees, the grey rocks. The contract holds every held beat of the
 three games, each good of its price short in turn, to a line naming THAT
 good. THE MAKING READY: `barracks2` (the yard's
-storey), `rankup` (three defenders to axemen by the gold chevrons —
+storey, said as the hall's own lesson — "Like our hall, our yards can rise";
+operator, build 203: "show the upgrade of one of the military buildings … so
+that we really reiterate that you can upgrade these buildings overtime" — and
+a yard raised before she asks is still SAID, `barracks2told` / `range2told`:
+an auto line when the beat was passed over unsaid, `S.pro.said` 0), `rankup` (three defenders to axemen by the gold chevrons —
 **A SOLDIER RISES A RANK**), `workshop`, `trade` (wood for stone), `stable`
 and two `riders`, `range2` and `longbow` ("You know the way": the same two
 steps asked again with room to think), a `catapult`, a `sapper` and his
-`bridge` over the river's narrows, a `warcamp` across it. THE ARMY: `group`
-(Group nearby on a soldier), `save` (Army 1), `legion` (Iron Legion — game
-2's prize, `CFG.PROLOGUE.PICK[2]` — whose six champions join Army 1,
-`joinLegion`), `banner` (the top bar's Army 1 calls them all), `march` (a tap
+`bridge` over the river's narrows, a `warcamp` across it. THE ARMY, AS IT
+IS REALLY MADE (operator, build 203: "before we group the army, let's play
+iron Legion. Let's have the soldiers march over next to the rest of the army
+… then let's click a soldier then let's group them up then let's save them as
+army one"; `andTheLegionIsPlayedAndMarchedToTheArmyBeforeItIsGroupedAndSaved`):
+`legion` (Iron Legion — game 2's prize, `CFG.PROLOGUE.PICK[2]` — six
+champions land by the hall), `champs` (a champion, Group nearby —
+`champRing`), `join` (a tap on open ground beside the host — `besideArmy`,
+toward the champions, never on a unit, never over the river; done when two
+in three stand within 5 of the host, `champsHome`), `group` (the soldier
+whose Group nearby takes the most of the army — `groupRing` — held until the
+champions arrive; done only with champions AND the host in hand,
+`grouped`), `save` (Army 1; a champion left off the roster is folded in,
+`joinLegion`, the card's promise), `banner` (the top bar's Army 1 calls them
+all), `march` (a tap
 on the field over the bridge; the march keeps THREE RANKS — soldiers lead,
 bows follow, engines last, `Units.formationMove`'s rank 2 for a siege
 engine). THE BATTLE, one doctrine a lesson under ⚔ Tactics: `sally` — the

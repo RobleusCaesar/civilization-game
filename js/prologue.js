@@ -1221,14 +1221,17 @@ const Prologue = {
         { id: 'plan', face: 'thinking', text: 'A wall and two towers guard their hall. We make ready, then march.', auto: 6400,
           goal: 'Make ready, then march', look: () => P.mark('gate') },
         // a stronger yard first: its next rank is what the chevrons raise a soldier to
-        { id: 'barracks2', face: 'point', text: 'Upgrade our barracks. A stronger yard trains stronger soldiers.',
+        { id: 'barracks2', face: 'point', text: 'Like our hall, our yards can rise. Upgrade the barracks: it trains stronger soldiers.',
           cost: () => P.upCost('barracks'), goal: () => P.upGoal('barracks', 'Upgrade the barracks'),
           when: () => P.canUp('barracks') || P.upping('barracks') || P.lv('barracks') >= 2,
           hold: (c) => P.needLine('The barracks', null, c), look: () => P.bldView('barracks'),
           ring: P.yardRing('barracks', '#panel [data-act="upgrade"]'), taps: () => R1(P.yardRing('barracks', '#panel [data-act="upgrade"]')()),
           ack: () => P.upping('barracks') || P.lv('barracks') >= 2, site: () => P.upSite('barracks'), hands: 2,
           handsText: 'Send villagers to build it. Many hands, quick work.', wait: 'The barracks is rising.',
-          done: () => P.lv('barracks') >= 2, praise: 'A stronger barracks!' },
+          done: () => P.lv('barracks') >= 2, praise: 'Level 2! The barracks trains axemen now.' },
+        // raised before she asked (passed over unsaid, S.pro.said 0): the lesson is still said
+        { id: 'barracks2told', face: 'proud', text: 'Our barracks already stands at level 2. Every yard can rise.', auto: 5200,
+          skipIf: () => S.pro.said.barracks2 !== 0, look: () => P.bldView('barracks') },
         /* A SOLDIER RISES A RANK (build 196: "how you would go about upgrading individual
            units"): the gold chevrons beside the ℹ️ on a soldier's own panel (Units.rankUp) */
         { id: 'rankup', face: 'point', hint: 'new', text: 'Soldiers can rise a rank now. Select a defender, then tap the gold chevrons.',
@@ -1268,14 +1271,16 @@ const Prologue = {
         /* THE BOWS RISE TOO (build 196: "how you would go about upgrading individual units"):
            the same two steps as the barracks — the yard's storey, then each man's chevrons —
            asked a second time with room to think: the line names the deed, the ring waits */
-        { id: 'range2', face: 'point', text: 'Our archers can rise too. Upgrade the archery range.',
+        { id: 'range2', face: 'point', text: 'Every yard can rise. Upgrade the archery range: it trains longbows.',
           cost: () => P.upCost('range'), goal: () => P.upGoal('range', 'Upgrade the range'),
           when: () => P.canUp('range') || P.upping('range') || P.lv('range') >= 2,
           hold: (c) => P.needLine('The range', null, c), look: () => P.bldView('range'),
           ring: P.yardRing('range', '#panel [data-act="upgrade"]'), taps: () => R1(P.yardRing('range', '#panel [data-act="upgrade"]')()),
           ack: () => P.upping('range') || P.lv('range') >= 2, site: () => P.upSite('range'), hands: 2,
           handsText: 'Send villagers to build it.', wait: 'The range is rising.',
-          done: () => P.lv('range') >= 2, praise: 'A stronger range!' },
+          done: () => P.lv('range') >= 2, praise: 'Level 2! The range trains longbows now.' },
+        { id: 'range2told', face: 'proud', text: 'Our archery range already stands at level 2. It trains longbows.', auto: 5200,
+          skipIf: () => S.pro.said.range2 !== 0, look: () => P.bldView('range') },
         { id: 'longbow', face: 'thinking', text: 'Now raise three archers to longbows. You know the way.',
           goal: () => 'Longbows ' + Math.min(3, P.units('longbow').length) + '/3',
           ring: () => P.rankRing('archer', 'range'), taps: () => R1(P.rankRing('archer', 'range')),
@@ -1317,20 +1322,39 @@ const Prologue = {
            create armies and then … how you can send the entire army"): Group nearby, saved to
            a banner, the banner calls them all wherever they stand, and a march keeps its ranks
            (Units.formationMove: soldiers lead, archers follow, engines last) */
-        { id: 'group', face: 'point', hint: 'new', text: 'Gather the army: select a soldier on the field, then tap Group nearby.',
-          goal: 'Group the army', look: () => P.mark('muster'),
-          when: () => !P.training(), hold: () => 'Our new soldiers are nearly ready.', holdRing: () => null,
-          ring: () => P.groupRing(), taps: () => R1(P.groupRing()),
-          done: () => P.selArmy().length >= 6 || P.army(1).length > 0, praise: 'A war party!' },
-        { id: 'save', face: 'point', hint: 'new', text: 'Save them as Army 1. Its banner calls them back anytime.',
-          goal: 'Save Army 1',
-          ring: () => P.saveRing(), taps: () => R1(P.saveRing()),
-          done: () => P.army(1).length > 0, praise: () => 'Army 1 is ready, ' + P.hail() + '!' },
-        { id: 'legion', face: 'excited', text: 'Cards can turn a battle. Play Iron Legion: six champions join Army 1.',
+        /* THE CARD FIRST, THEN THE WHOLE ARMY (operator, build 203: "before we group the
+           army, let's play iron Legion. Let's have the soldiers march over next to the rest
+           of the army … then let's click a soldier then let's group them up then let's save
+           them as army one because that's how it actually happens in the game"): the
+           champions land by the hall, are grouped and walked to the muster, and only then
+           is the whole army grouped and saved — nothing joins a banner by itself */
+        { id: 'legion', face: 'excited', text: 'Cards can turn a battle. Play Iron Legion: six champions join our army.',
           goal: 'Play Iron Legion', skipIf: () => !P.holds('iron_legion') && !P.playedCard('iron_legion'),
           ring: () => P.deckRing(), taps: () => R1(P.deckRing()),
           ack: () => P.playedCard('iron_legion'),
-          done: () => P.playedCard('iron_legion') && !(window.Deck && Deck.acting && Deck.acting()) && P.joinLegion(), praise: 'Six champions!' },
+          done: () => P.playedCard('iron_legion') && !(window.Deck && Deck.acting && Deck.acting()) && P.champs().length > 0, praise: 'Six champions!' },
+        { id: 'champs', face: 'point', hint: 'new', text: 'Select a champion, then tap Group nearby.',
+          goal: 'Group the champions', look: () => P.champsAt(),
+          skipIf: () => !S.pro.said.champs && (!P.champs().length || P.champsHome()),
+          ring: () => P.champRing(), taps: () => R1(P.champRing()),
+          done: () => P.champsInHand() || P.champsSent() || P.champsHome(), praise: 'The champions are with you.' },
+        { id: 'join', face: 'point', text: 'Now tap the ground beside our army. They march to join it.',
+          goal: 'Join the army', look: () => P.besideArmy(),
+          skipIf: () => !S.pro.said.join && (!P.champs().length || P.champsHome()),
+          ring: () => P.joinRing(), taps: () => R1(P.joinRing()),
+          ack: () => P.champsSent(), wait: 'The champions march to join the army.',
+          done: () => P.champsHome(), praise: 'The army stands together!' },
+        { id: 'group', face: 'point', text: () => P.champs().length ? 'Now the whole army: select a soldier, then tap Group nearby.' : 'Gather the army: select a soldier on the field, then tap Group nearby.',
+          goal: 'Group the army', look: () => P.mark('muster'),
+          when: () => !P.training() && (!P.champs().length || P.champsHome()),
+          hold: () => P.training() ? 'Our new soldiers are nearly ready.' : 'The champions are on their way.', holdRing: () => null,
+          ring: () => P.groupRing(), taps: () => R1(P.groupRing()),
+          done: () => P.grouped() || P.army(1).length > 0, praise: 'The whole army, in hand!' },
+        { id: 'save', face: 'point', hint: 'new', text: 'Save them as Army 1. Its banner calls them back anytime.',
+          goal: 'Save Army 1',
+          ring: () => P.saveRing(), taps: () => R1(P.saveRing()),
+          // a champion left off the roster is folded in (joinLegion): the card said they join the army
+          done: () => P.army(1).length > 0 && (P.joinLegion(), true), praise: () => 'Army 1 is ready, ' + P.hail() + '!' },
         { id: 'banner', face: 'point', hint: 'new', text: "Tap Army 1's banner at the top. Every soldier in it answers.",
           goal: 'Call Army 1', ring: () => P.bannerRing(), taps: () => R1(P.bannerRing()),
           done: () => P._bannerAt > (P._beatT0 || 0), praise: 'All of them, at once.' },
@@ -1376,7 +1400,7 @@ const Prologue = {
           ring: () => P.tacticsRing('strike', () => P.foeBld('barracks')), taps: () => R1(P.tacticsRing('strike', () => P.foeBld('barracks'))),
           ack: () => P.striking('barracks'), wait: 'Bring it down! No more soldiers will come.', waitFace: 'determined',
           done: () => !P.foeBld('barracks'), praise: 'Their barracks burns!' },
-        { id: 'hall', still: true, face: 'excited', text: 'The way is open. Strike their hall and end this!',
+        { id: 'hall', still: true, face: 'excited', text: 'Destroy their hall! Protect our clan for good and secure our valley home.',
           goal: 'Raze their hall',
           ring: () => P.tacticsRing('strike', () => P.foeHall()), taps: () => R1(P.tacticsRing('strike', () => P.foeHall())),
           ack: () => P.striking('tc'), wait: () => 'Bring it down, ' + P.hail() + '!', waitFace: 'determined',
@@ -1590,9 +1614,14 @@ const Prologue = {
       const u = Units.get(s.id);
       if (u && u.owner === 'P' && Units.isMilitary(u) && this.vis('#panel [data-act="group"]')) return { sel: '#panel [data-act="group"]' };
     }
-    const m = this.mark('muster');
-    let best = null, bd = 1e9;
-    for (const u of this.armyUnits()) { const d = m ? (u.x - m.x) ** 2 + (u.y - m.y) ** 2 : 0; if (d < bd) { bd = d; best = u; } }
+    // the soldier whose Group nearby takes the most of the army (ties: nearest the muster)
+    const m = this.mark('muster'), us = this.armyUnits().filter(u => u.kind !== 'sapper'), R2 = (CFG.GROUP_R || 6) - 0.5;
+    let best = null, bn = -1, bd = 1e9;
+    for (const u of us) {
+      const n = us.filter(o => Math.hypot(o.x - u.x, o.y - u.y) <= R2).length;
+      const d = m ? (u.x - m.x) ** 2 + (u.y - m.y) ** 2 : 0;
+      if (n > bn || (n === bn && d < bd)) { bn = n; bd = d; best = u; }
+    }
     return best ? { u: best.id } : null;
   },
   saveRing() {
@@ -1613,6 +1642,73 @@ const Prologue = {
     if (add.length) { S.armies[1] = a.concat(add); try { UI.renderArmyBar(); } catch (e) {} }
     return true;
   },
+  /* THE CHAMPIONS JOIN THE ARMY (build 203): the card's six land by the hall; the
+     host is the rest of the army, standing on the muster field (the yards rally there) */
+  champs() { return S.units.filter(u => u.owner === 'P' && u.kind === 'elite' && u.hp > 0 && !u.spectral); },
+  _mid(us) {
+    if (!us.length) return null;
+    let x = 0, y = 0; for (const u of us) { x += u.x; y += u.y; }
+    return { x: x / us.length, y: y / us.length };
+  },
+  champsAt() { const c = this._mid(this.champs()); return c ? { x: c.x, y: c.y, r: 1.4 } : null; },
+  host() { return this.armyUnits().filter(u => u.kind !== 'elite' && u.kind !== 'sapper'); },
+  hostAt() {
+    const m = this.mark('muster'), h = this.host();
+    const near = m ? h.filter(u => Math.hypot(u.x - m.x, u.y - m.y) <= 7) : h;
+    return this._mid(near.length ? near : h) || m;
+  },
+  // two in three of the champions within reach of the host (where Group nearby takes them all)
+  _champsBy(test) {
+    const c = this.champs(); if (!c.length) return true;
+    return c.filter(test).length >= Math.ceil(c.length * 0.67);
+  },
+  champsHome() {
+    const h = this.hostAt(); if (!h) return true;
+    return this._champsBy(u => Math.hypot(u.x - h.x, u.y - h.y) <= 5);
+  },
+  champsSent() {
+    const h = this.hostAt(); if (!h) return true;
+    return this._champsBy(u => Math.hypot(u.x - h.x, u.y - h.y) <= 5
+      || (u.task && u.task.type === 'move' && u.task.x != null && Math.hypot(u.task.x - h.x, u.task.y - h.y) <= 5));
+  },
+  champsInHand() {
+    const c = this.champs(); if (!c.length) return false;
+    return this.selArmy().filter(u => u.kind === 'elite').length >= Math.min(4, c.length);
+  },
+  // the whole army in hand: six or more, the champions and the host together
+  grouped() {
+    const sel = this.selArmy(); if (sel.length < 6) return false;
+    if (!this.champs().length) return true;
+    return sel.some(u => u.kind === 'elite') && sel.some(u => u.kind !== 'elite');
+  },
+  champRing() {
+    const s = UI.sel;
+    if (s && s.type === 'unit') {
+      const u = Units.get(s.id);
+      if (u && u.owner === 'P' && u.kind === 'elite' && this.vis('#panel [data-act="group"]')) return { sel: '#panel [data-act="group"]' };
+    }
+    const c = this.champs(), m = this._mid(c); if (!m) return null;
+    let best = null, bd = 1e9;
+    for (const u of c) { const d = (u.x - m.x) ** 2 + (u.y - m.y) ** 2; if (d < bd) { bd = d; best = u; } }
+    return best ? { u: best.id } : null;
+  },
+  // open ground beside the host, toward the champions: a tap there walks them over
+  besideArmy() {
+    const h = this.hostAt(); if (!h) return null;
+    const c = this._mid(this.champs()) || h, riv = this.riverY();
+    let best = null, bs = 1e9;
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+      const x = Math.floor(h.x) + dx, y = Math.floor(h.y) + dy, cx = x + 0.5, cy = y + 0.5;
+      if (!MapGen.onBoard(x, y) || cy < riv + 0.6 || !Path.passable(x, y, 'P') || Bld.at(x, y)) continue;
+      if (S.map.explored && !S.map.explored[MapGen.idx(x, y)]) continue;
+      if (S.units.some(u => u.hp > 0 && Math.hypot(u.x - cx, u.y - cy) < 1.1)) continue;
+      const dh = Math.hypot(cx - h.x, cy - h.y); if (dh < 2) continue;
+      const sc = Math.abs(dh - 3) + 0.2 * Math.hypot(cx - c.x, cy - c.y);
+      if (sc < bs) { bs = sc; best = { x: cx, y: cy, r: 0.8 }; }
+    }
+    return best;
+  },
+  joinRing() { return this.champsInHand() ? this.besideArmy() : this.champRing(); },
   riverY() { const m = this.mark('narrows'); return m ? (m.y | 0) - 0.5 : 20; },
   marchRing() {
     if (!this.armySelected() && this.selArmy().length < 4) return this.bannerRing() || this.groupRing();
@@ -3340,17 +3436,36 @@ const Prologue = {
     this._held = { win, msg, s0: S, g };
     this._shown = null; this._viewKey = null; this._aside = null; this._goalBeat = null;
     this._collapsed = false; this._userHid = false;
-    this.say(g === 1 ? 'Our first fire burns, chief. May the clan that burned our home never see it.' : g === 2 ? 'A great hall! The clan is proud of you, ' + this.hail() + '.'
-      : 'Their hall is ash. The clan that burned us is no more, ' + this.hail() + '.', 'proud');
     try { if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete'); } catch (e) {}
+    this._endSay(this.endLines(g), 0, () => { if (g === 1) this.askName(); else this.release(); });
     const tc = this.tc(), at = g === 3 ? this.mark('rivalHall') : tc ? { x: tc.x + 1, y: tc.y + 1 } : null;
     if (at) { const t = this._resolve(at); if (t) this._burst(this._dom(), t.x, t.y); }
-    this._heldT = setTimeout(() => { if (g === 1) this.askName(); else this.release(); }, 3400);
     if (!this._visL) {
       this._visL = true;
       document.addEventListener('visibilitychange', () => { if (document.hidden && this._held) this.release(); });
     }
     return true;
+  },
+  /* HER LAST WORDS (game 3, build 203 — operator: "when the fight is over, maybe
+     Mira comes back and says congratulations chief … you're free and you won't have
+     to be chased out anymore … then we wanna send off now you know the basics future
+     games will allow you to explore and build new villages and advance new
+     technologies"): the clan that burned them is gone, the chief is thanked by name,
+     and the journey hands over to the whole game. Each card stands for its words'
+     reading time (a lone line, the old 3.4 s) before the end screen. */
+  endLines(g) {
+    if (g === 1) return [['Our first fire burns, chief. May the clan that burned our home never see it.', 'proud']];
+    if (g === 2) return [['A great hall! The clan is proud of you, ' + this.hail() + '.', 'proud']];
+    return [['Their hall is ash. The clan that burned us is no more.', 'proud'],
+      ['Congratulations, ' + this.hail(true) + '! We are free. No one will chase us out again.', 'excited'],
+      ['You know the basics now. Future games let you explore, build villages and advance technology.', 'pleased']];
+  },
+  _endSay(lines, i, then) {
+    if (!this._held) return;
+    const [t, f] = lines[i];
+    this.say(t, f);
+    const ms = lines.length === 1 ? 3400 : Math.max(3600, 1500 + 270 * t.split(/\s+/).length);
+    this._heldT = setTimeout(() => { if (i + 1 < lines.length) this._endSay(lines, i + 1, then); else then(); }, ms);
   },
   release() {
     clearTimeout(this._heldT);

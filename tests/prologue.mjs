@@ -341,6 +341,7 @@ const page = async (q, done) => {
       }
       for (const a of P.ASIDES) out.push({ g, id: 'aside:' + a.id, t: txt(a.text) });
       out.push({ g, id: 'gatherLine', t: P.gatherLine() });
+      if (P.endLines) P.endLines(g).forEach(([t], i) => out.push({ g, id: 'end' + i, t }));
     }
     out.push({ id: 'draft', t: P.DRAFT_LINE });
     try { if (was == null) localStorage.removeItem('neo-chief'); else localStorage.setItem('neo-chief', was); } catch (e) {}
@@ -1707,7 +1708,17 @@ const endScreen = async (p) => {
     lv: { barracks: Prologue.lv('barracks'), range: Prologue.lv('range') },
     has: ['siege', 'stable', 'warcamp'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k && !(b.construction > 0))),
     bridges: (S.bridges || []).filter(b => b.owner === 'P').length, legion: JSON.stringify((S.deck && S.deck.played) || []).includes('iron_legion'),
-    foe: S.buildings.filter(b => b.owner === 'A').map(b => b.key) }));
+    foe: S.buildings.filter(b => b.owner === 'A').map(b => b.key),
+    army1: (S.armies && S.armies[1] || []).map(id => Units.get(id)).filter(Boolean).map(u => u.kind) }));
+  /* HER LAST WORDS (build 203): after the hall falls she says three cards before the end
+     screen — the clan that burned them gone, the chief thanked by name, the send-off */
+  const last = [];
+  for (let k = 0; k < 120; k++) {
+    const t = await p.evaluate(() => ({ cur: Screens.current, txt: Prologue._el && Prologue._el.root.style.display !== 'none' ? Prologue._el.txt.textContent : '' }));
+    if (t.txt && last[last.length - 1] !== t.txt) last.push(t.txt);
+    if (t.cur === 'endgame') break;
+    await p.waitForTimeout(250);
+  }
   const ids = run.seen.map(s => s.id), at = id => ids.indexOf(id);
   ck('gameThreeIsWonByFollowingTheGuideAlone', run.over && fin.win && fin.cause === 'razed_rival_tc', `over ${run.over} at ${run.clk.toFixed(0)} s, ${JSON.stringify(fin)}, ${run.clicks} taps, lines ${ids.join(' › ')}`);
   /* MAKE READY (build 196: "how you would go about upgrading individual units … the remaining
@@ -1724,6 +1735,19 @@ const endScreen = async (p) => {
      a card's champions, called by its banner and marched in its ranks */
   ck('andItGathersSavesAndCallsAnArmy', ['group', 'save', 'banner', 'march'].every(k => fin.done.includes(k)) && at('group') < at('save') && at('save') < at('banner') && at('banner') < at('march')
     && fin.legion && fin.done.includes('legion'), `lines ${ids.join(' › ')}; legion played ${fin.legion}`);
+  /* THE CARD BEFORE THE BANNER (build 203: "before we group the army, let's play iron Legion.
+     Let's have the soldiers march over next to the rest of the army … then let's click a
+     soldier then let's group them up then let's save them as army one"): the champions are
+     played, grouped and walked to the host, and only then is the whole army grouped and saved */
+  ck('andTheLegionIsPlayedAndMarchedToTheArmyBeforeItIsGroupedAndSaved', at('legion') >= 0 && at('legion') < at('group')
+    && ['champs', 'join'].every(k => fin.done.includes(k)) && (at('champs') < 0 || (at('legion') < at('champs') && at('champs') < at('group')))
+    && (at('join') < 0 || (at('legion') < at('join') && at('join') < at('group')))
+    && run.said.some(t => /^Now the whole army: select a soldier/.test(t))
+    && fin.army1.filter(k => k === 'elite').length >= 4 && fin.army1.some(k => k !== 'elite'),
+    `lines ${ids.join(' › ')}; Army 1 ${fin.army1.join(',')}`);
+  ck('andTheYardsRiseInSoManyWords', run.said.some(t => /^Like our hall, our yards can rise\. Upgrade the barracks/.test(t))
+    && run.said.some(t => /^Every yard can rise\. Upgrade the archery range/.test(t)) && at('barracks2') < at('rankup') && at('range2') < at('longbow'),
+    [...run.said].filter(t => /yard|barracks|range/i.test(t)).join(' | '));
   ck('andTheRanksAreSaidAsTheyMarch', run.said.some(t => /Soldiers lead, archers follow, engines come last/.test(t)), [...run.said].filter(t => /lead|follow/.test(t)).join(' | ') || 'not said');
   /* THE BATTLE (build 196: "Focus on teaching them how to knock down walls attack the buildings
      and then ultimately destroy the town center"): the garrison sallies and falls to Chaos, the
@@ -1738,6 +1762,10 @@ const endScreen = async (p) => {
   ck('andGameThreeCallsTheChiefByNameToo', run.said.some(t => /^Chief Tester, the clan that burned us/.test(t)) && run.said.filter(t => /Chief Tester/.test(t)).length >= 2,
     run.said.filter(t => /chief/i.test(t)).join(' | ') || 'never');
   ck('andEveryLineOfGameThreeWasShort', run.said.every(t => t.split(/\s+/).filter(Boolean).length <= 15), run.said.filter(t => t.split(/\s+/).filter(Boolean).length > 15).join(' | ') || run.said.length + ' lines');
+  ck('andHerLastWordsThankTheChiefAndSendThemOn', last.length >= 3 && /The clan that burned us is no more/.test(last[0])
+    && /^Congratulations, Chief Tester! We are free\. No one will chase us out again\.$/.test(last[1])
+    && /^You know the basics now\. Future games let you explore/.test(last[2])
+    && last.every(t => t.split(/\s+/).filter(Boolean).length <= 15), last.join(' | ') || 'nothing said');
   const end = await endScreen(p);
   ck('theThirdWinPaysOneImperialCard', JSON.stringify(end.runs) === JSON.stringify({ 'pro:3': ['imperial'] }), JSON.stringify(end.runs));
   ck('andTheJourneyEndsOpeningTheWholeGame', end.doors.includes('pro-open:Your own world') && !end.line && !end.note && Object.keys(end.prog.done || {}).length === 3,
