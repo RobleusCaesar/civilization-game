@@ -12,6 +12,8 @@
      node tools/contracts.mjs shard I N
          shard I of N, balanced by tools/contract-times.json — what the
          GitHub Actions run (.github/workflows/contracts.yml) calls
+     node tools/contracts.mjs plan [N]
+         print the N shards (default 8) and each one's modelled seconds
      node tools/contracts.mjs run a.mjs b.mjs …
          the named suites
 
@@ -185,10 +187,19 @@ const why = (log) => {
    before), the test's own fixed reference workload disagreeing with itself
    by 1.3-1.65x on the same run. They run after the crowd, one at a time —
    the rerun-alone rule's own condition, from the start — so a red one is a
-   slower frame, never a busier machine. The balance is left as it is: it
-   only decides which shard, and re-weighting would re-roll every
-   neighbour. */
+   slower frame, never a busier machine. The plan below knows they run
+   alone (a SOLO suite's seconds are added after its shard's crowd), so a
+   stopwatch suite is given a shard with a light crowd, never stacked behind
+   a full one. */
 const SOLO = new Set(['land.mjs', 'deck-ui.mjs']);
+
+/* EACH SUITE'S SECONDS ON CI (tools/contract-times.json: the median of the
+   Contracts runs' own "PASS x.mjs Ns" lines, crowd suites timed two to a
+   runner as CI runs them, SOLO ones alone). A suite missing from it is
+   guessed at 30. */
+let TIMES = {};
+try { TIMES = JSON.parse(readFileSync(join(root, 'tools/contract-times.json'), 'utf8')); } catch (e) {}
+const secs = f => TIMES[f] || 30;
 
 async function runAll(list, lanes) {
   const out = [];
@@ -198,7 +209,11 @@ async function runAll(list, lanes) {
       console.log((r.ok ? 'PASS ' : 'FAIL ') + f + ' ' + r.s + 's' + tag); if (!r.ok) console.log(why(r.log));
     }
   };
-  const crowd = list.filter(f => !SOLO.has(f)), solo = list.filter(f => SOLO.has(f));
+  /* THE LONGEST FIRST: a lane takes the next suite the moment it is free, so
+     starting the long ones first lets the short ones fill in round them and
+     the lanes finish together (alphabetical order left a three-minute suite
+     to start last and run on alone). */
+  const crowd = list.filter(f => !SOLO.has(f)).sort((a, b) => secs(b) - secs(a) || a.localeCompare(b)), solo = list.filter(f => SOLO.has(f));
   await Promise.all(Array.from({ length: Math.max(1, lanes) }, lane(crowd, '')));
   await lane(solo, ' (alone)')();
   // the rerun-alone rule: a failure is measured again with the machine to itself
@@ -216,18 +231,32 @@ async function runAll(list, lanes) {
   return failed.length ? 1 : 0;
 }
 
-// shard I of N: longest-first into the lightest shard, by the measured times
-function shard(i, n) {
-  let times = {};
-  try { times = JSON.parse(readFileSync(join(root, 'tools/contract-times.json'), 'utf8')); } catch (e) {}
-  const t = f => times[f] || 30;
-  const bins = Array.from({ length: n }, () => ({ s: 0, list: [] }));
-  for (const f of ALL.slice().sort((a, b) => t(b) - t(a) || a.localeCompare(b))) {
-    const b = bins.reduce((x, y) => (y.s < x.s ? y : x));
-    b.list.push(f); b.s += t(f);
+/* SHARD I OF N, PLACED SO THE SHARDS FINISH TOGETHER. A shard's time is
+   modelled the way runAll spends it — its crowd `lanes` at a time, longest
+   first, each suite into the lane that frees first, then its SOLO suites one
+   after another — and each suite, longest first, goes where it leaves the
+   longest shard shortest. The old plan summed seconds as if one lane ran
+   everything and knew nothing of SOLO, so a stopwatch suite's minutes were
+   stacked after a full crowd: the run waited 6.7 minutes on one shard while
+   others were done in 3. Every runner computes the same plan from the same
+   file, so the shards never overlap or leave a suite out. */
+function plan(n, ln) {
+  const bins = Array.from({ length: n }, () => ({ lanes: Array(Math.max(1, ln)).fill(0), solo: 0, list: [] }));
+  const wallOf = (b, f) => {
+    if (SOLO.has(f)) return Math.max(...b.lanes) + b.solo + secs(f);
+    const l = b.lanes.slice().sort((x, y) => x - y); l[0] += secs(f);
+    return Math.max(...l) + b.solo;
+  };
+  for (const f of ALL.slice().sort((a, b) => secs(b) - secs(a) || a.localeCompare(b))) {
+    let best = bins[0], bw = Infinity;
+    for (const b of bins) { const w = wallOf(b, f); if (w < bw - 1e-9) { bw = w; best = b; } }
+    if (SOLO.has(f)) best.solo += secs(f);
+    else { const k = best.lanes.indexOf(Math.min(...best.lanes)); best.lanes[k] += secs(f); }
+    best.list.push(f);
   }
-  return bins[i - 1].list.sort();
+  return bins.map(b => ({ list: b.list.sort(), s: Math.max(...b.lanes) + b.solo }));
 }
+function shard(i, n) { return plan(n, lanes)[i - 1].list; }
 
 const VALUED = new Set(['--lanes', '--logs']);   // the flags that take a value
 const [cmd, ...rest] = process.argv.slice(2).filter((a, k, all) => !(a.startsWith('--') || (k > 0 && VALUED.has(all[k - 1]))));
@@ -247,8 +276,12 @@ if (cmd === 'affected') {
   const [i, n] = rest.map(Number);
   if (!(i >= 1 && i <= n)) { console.log('usage: contracts.mjs shard I N'); process.exit(2); }
   const list = shard(i, n);
-  console.log(`shard ${i} of ${n}: ${list.join(' ')}`);
+  console.log(`shard ${i} of ${n} (about ${plan(n, lanes)[i - 1].s}s): ${list.join(' ')}`);
   code = await runAll(list, lanes);
+} else if (cmd === 'plan') {
+  // the shards as CI will run them, and the modelled seconds of each
+  const n = +rest[0] || 8;
+  plan(n, lanes).forEach((b, k) => console.log(`shard ${k + 1} of ${n}: about ${Math.round(b.s)}s — ${b.list.join(' ')}`));
 } else if (cmd === 'run') {
   const list = rest.map(f => basename(f).endsWith('.mjs') ? basename(f) : basename(f) + '.mjs').filter(f => src[f] != null);
   code = await runAll(list, lanes);

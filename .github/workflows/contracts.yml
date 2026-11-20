@@ -5,7 +5,10 @@ name: Contracts
 # runners by tools/contracts.mjs (balanced on tools/contract-times.json),
 # each judged by its exit code, a failure rerun once alone before it counts.
 # Main is fast-forwarded only once this run is green on the branch. Docs-only
-# pushes skip it.
+# pushes skip it, and so does a push to main: main only ever moves by
+# fast-forward to a commit whose branch run was green — the same tree, tested
+# — so running it again there was the whole sweep twice for every release (a
+# hand-started run can still judge main).
 #
 # THE SMOOTHNESS GATE (tools/perf-gate.mjs, CLAUDE.md "THE SMOOTHNESS GATE")
 # runs beside the shards on four runners of its own: each plays the candidate
@@ -15,7 +18,7 @@ name: Contracts
 
 on:
   push:
-    branches: ['**']
+    branches-ignore: ['main']
     paths-ignore: ['**/*.md']
   workflow_dispatch:
     inputs:

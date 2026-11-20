@@ -1041,7 +1041,7 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       if (el && el.id === 'c' && sy > 150 && sy < innerHeight - 200) return { sx, sy };
     }
     return null;
-    function T_GRASS() { return window.T ? T.GRASS : 0; }
+    function T_GRASS() { return typeof T !== 'undefined' ? T.GRASS : 0; }
   });
   if (tapAt) { await p.mouse.click(tapAt.sx, tapAt.sy); await p.waitForTimeout(150); }
   await p.evaluate(() => {

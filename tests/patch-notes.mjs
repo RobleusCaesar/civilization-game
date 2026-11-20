@@ -2,12 +2,16 @@
    settings page (js/settings.js).
 
    THE OPERATOR'S RULE: "whenever we push things to main moving forward, add
-   user friendly notes to this section." So:
+   user friendly notes to this section" — narrowed after build 207: "maybe
+   smaller features like button text change doesn't get a release note, and
+   that's left for really big things". So:
 
-   1. THE NEWEST NOTE IS THIS BUILD. Its `build` equals the shared code
-      version every js/ script tag in index.html carries (?v=N). A deploy that
-      bumps the code version without writing a note fails here — which is the
-      whole point: the notes cannot quietly fall behind.
+   1. THE NEWEST NOTE IS NEVER AHEAD OF THE CODE. Its `build` is at most the
+      shared code version every js/ script tag in index.html carries (?v=N):
+      a release a player would notice adds a note for its own build, and a
+      small one (a word, a button's text, a fix nobody would miss) bumps the
+      version and ships without one. A note numbered past the code is a
+      typo, or a note for a build that never shipped.
    2. NEWEST FIRST, honestly dated: builds strictly descending, dates real
       calendar days (YYYY-MM-DD) and never rising as the builds fall.
    3. WRITTEN FOR PLAYERS: every entry has a title and at least one item, and
@@ -45,8 +49,8 @@ const N = sandbox.window.__N || [];
 
 ck('theScriptTagsShareOneCodeVersion', vs.length > 20 && vs.every(v => v === codeV), 'v=' + codeV + ' on ' + vs.length + ' tags');
 ck('patchnotesLoadsAtThatVersion', /<script src="js\/patchnotes\.js\?v=(\d+)"/.test(html) && +html.match(/js\/patchnotes\.js\?v=(\d+)/)[1] === codeV, '');
-ck('theNewestNoteIsThisBuild', N.length > 0 && +N[0].build === codeV,
-  'newest note build ' + (N[0] && N[0].build) + ' vs code ?v=' + codeV + ' — every push to main adds a note');
+ck('theNewestNoteIsNeverAheadOfTheCode', N.length > 0 && +N[0].build <= codeV,
+  'newest note build ' + (N[0] && N[0].build) + ' vs code ?v=' + codeV + ' — a note is for a build that shipped');
 let desc = true, datesOk = true, dateOrder = true, why = [];
 for (let i = 0; i < N.length; i++) {
   const n = N[i];

@@ -71,7 +71,8 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
   const found = [];
   const walk = (dir) => {
     for (const e of readdirSync(dir)) {
-      if (e === '.git' || e === 'node_modules') continue;
+      // .claude is local-only (gitignored): a workflow's worktrees hold whole copies of the repo
+      if (e === '.git' || e === 'node_modules' || e === '.claude') continue;
       const f = join(dir, e);
       let st; try { st = statSync(f); } catch (err) { continue; }
       if (st.isDirectory()) walk(f);

@@ -9,31 +9,49 @@ both; GitHub Pages serves `main`.
 
 Operator, 2026-10-28: "Every time you push a new feature, are you or do you
 have to retest the entire game? … Three hours of work for seemingly simple
-fixes isn't scalable." The full sweep is 92 browser-driven suites, about an
-hour on this 4-core sandbox and slower beside agents. So:
+fixes isn't scalable." The full sweep is 120 browser-driven suites, well
+over an hour on this 4-core sandbox and slower beside agents. So:
 
-- **While building, run what the change can break**: `node tools/contracts.mjs
-  affected` (against `origin/main`, working tree included; `A..B` for a
-  range; `--list` to only print). It takes a SMOKE set (boot, tap-audit,
-  placement, patch-notes) plus every suite that NAMES a member the diff
-  touches — the method or config key each changed line sits in (`AI.maybeWonder`,
-  `CFG.CARDS`, `Bld.canPlace`). The scripts share globals and every suite
-  boots the whole game, so there is no import graph to read; a change to a
-  core member (`G.newGame`, `G.loadJSON`) honestly selects nearly everything,
-  and a fix in one system selects its own handful (the big-defeat card rule:
-  20 of 92). It is the fast first answer, never the last one.
+- **A small change goes straight to CI** (operator, after build 207: "I want
+  to avoid turning every release into some marathon period of running
+  tests"): push the branch and let the sweep judge it — twelve machines
+  answer in about five minutes, sooner than this sandbox runs a dozen suites.
+  Run suites here only while ITERATING on something risky, and only the ones
+  you are working against: `node tools/contracts.mjs affected` (against
+  `origin/main`, working tree included; `A..B` for a range; `--list` to only
+  print) takes a SMOKE set (boot, tap-audit, placement, patch-notes) plus
+  every suite that NAMES a member the diff touches — the method or config key
+  each changed line sits in (`AI.maybeWonder`, `CFG.CARDS`, `Bld.canPlace`).
+  The scripts share globals and every suite boots the whole game, so there
+  is no import graph to read; a change to a core member (`G.newGame`,
+  `G.loadJSON`) honestly selects nearly everything, and a fix in one system
+  selects its own handful (a one-line ui.js fix: 5-14 of 120). It is the
+  fast first answer, never the last one.
 - **The full sweep is GitHub Actions'** (`.github/workflows/contracts.yml`):
-  every push to any branch runs all of `tests/*.mjs`, eight shards in
-  parallel balanced on `tools/contract-times.json`, each suite judged by its
-  exit code and a failure rerun ONCE, alone, before it counts (CLAUDE.md's
-  rerun-alone rule for wall-clock checks, made mechanical — and a suite that
-  passes only alone is printed FLAKY, never silently green). The STOPWATCH
-  suites (`SOLO` in tools/contracts.mjs: land.mjs, deck-ui.mjs) never run in
-  the crowd: they run alone after it — beside terrain-v4.mjs's workers
-  land.mjs measured the neighbour, red on build 128's own post-merge sweep.
-  A new suite that times real work joins `SOLO`. Docs-only pushes skip it.
-  Locally, `node tools/contracts.mjs all --lanes 2` is the same sweep — and
-  `shard I N` RUNS that shard; it is not a listing.
+  every push to a branch runs all of `tests/*.mjs`, eight shards in
+  parallel, each suite judged by its exit code and a failure rerun ONCE,
+  alone, before it counts (CLAUDE.md's rerun-alone rule for wall-clock
+  checks, made mechanical — and a suite that passes only alone is printed
+  FLAKY, never silently green). The STOPWATCH suites (`SOLO` in
+  tools/contracts.mjs: land.mjs, deck-ui.mjs) never run in the crowd: they
+  run alone after it — beside terrain-v4.mjs's workers land.mjs measured the
+  neighbour, red on build 128's own post-merge sweep. A new suite that times
+  real work joins `SOLO`. Docs-only pushes skip it, and so do pushes to main
+  (main only moves by fast-forward to a commit whose branch run was green:
+  re-running it there was the whole sweep twice a release).
+  **THE SHARDS FINISH TOGETHER** (`plan` in tools/contracts.mjs; `node
+  tools/contracts.mjs plan 8` prints it): `tools/contract-times.json` holds
+  each suite's MEDIAN seconds on CI (read off the runs' own "PASS x.mjs Ns"
+  lines), and the planner models a shard the way `runAll` spends it — the
+  crowd two lanes at a time, LONGEST FIRST, then the SOLO suites one after
+  another — placing each suite where it leaves the longest shard shortest.
+  The old plan summed seconds as if one lane ran everything and knew nothing
+  of SOLO: deck-ui's four minutes were stacked behind a full crowd, and the
+  run waited 6.7 minutes on one shard while others were done in 3. The
+  longest single suite (prologue.mjs, ~4.3 min) is now the floor; refresh
+  the medians when a suite's time moves a lot. Locally, `node
+  tools/contracts.mjs all --lanes 2` is the same sweep — and `shard I N`
+  RUNS that shard; it is not a listing.
 - **Main moves only when that run is green on the branch.** The rule below
   still binds: a red check blocks the merge. **That run includes THE
   SMOOTHNESS GATE** (below): a candidate that plays worse than the reference
@@ -46,6 +64,15 @@ hour on this 4-core sandbox and slower beside agents. So:
 - New suite? Add its measured seconds to `tools/contract-times.json` (or the
   shards will guess 30), and map any new non-script path in `PATHS` in
   `tools/contracts.mjs`.
+- **A WAIT THAT CAN NEVER BE TRUE COSTS ITS WHOLE TIMEOUT, SILENTLY.** A
+  `waitForFunction(…).catch(() => {})` whose predicate asks `window.G`,
+  `window.Sprites`, `window.CFG`, `window.T` or `window.Combat` is never true
+  — those are script-level consts, never on `window` (the window.G trap) — so
+  it burns the full bound and carries on as if it had waited:
+  wall-tower-bond.mjs spent 180 of its 183 seconds that way, every run, for
+  months. Ask `typeof Sprites !== 'undefined'` (or the bare name inside the
+  predicate's own try), and when a suite's time jumps, look for a timeout it
+  swallows before anything else.
 
 **THE SMOOTHNESS GATE** (`tools/perf-gate.mjs`, `tools/perf-reference.json`,
 the `smoothness` and `smoothness-verdict` jobs of the Contracts workflow —
@@ -247,17 +274,27 @@ change and `… art` when a PNG moves — and note an ART bump bumps BOTH, becau
 tag. `tests/art-pipeline.mjs` keeps the invariant
 (`theScriptTagsShareOneVersionNoOlderThanTheArt`).
 
-## Every push to main adds a patch note
+## A release players would notice adds a patch note
 
 Standing rule (operator, 2026-10-27: "Whenever we push things to Main moving
-forward, add user friendly notes to this section"). Every push to main puts a
-new entry at the TOP of `js/patchnotes.js` whose `build` equals the shared
-code `?v=` on the script tags — `tests/patch-notes.mjs` goes red the moment
-they disagree, so a deploy without its note cannot pass the sweep. Lines are
-what a PLAYER would notice, in plain sentences: no camelCase, dotted names,
-brackets or file names (the contract refuses them). A day's work is one
-entry; a fix nobody can see needs no line. Bump the code version FIRST, then
-write the note for that number.
+forward, add user friendly notes to this section"; narrowed after build 207:
+"maybe smaller features like button text change doesn't get a release note,
+and that's left for really big things, like the major re-architecture we just
+completed on the onboarding for new players"). A release a player would
+notice and care about — a new feature, a rework, a fix to something they hit
+— puts a new entry at the TOP of `js/patchnotes.js` whose `build` is the
+shared code `?v=` on the script tags. A small one (a word, a button's text, a
+fix nobody would miss, a test or a tool) still BUMPS THE CODE VERSION — the
+`?v=` is what makes a phone fetch the new scripts — and ships without a note;
+the newest note then simply stays the last notable build's.
+`tests/patch-notes.mjs` goes red only on a note numbered PAST the code. Lines
+are what a PLAYER would notice, in plain sentences: no camelCase, dotted
+names, brackets or file names (the contract refuses them). A day's work is
+one entry. Bump the code version FIRST, then write the note for that number.
+The dashboard's "did the update help?" picker lists the NOTED builds
+(`releases()` in analytics.html reads the notes), so it offers exactly the
+releases worth comparing; an un-noted build's games fall in the window of
+the noted release before it.
 
 ## Other checked-in contracts
 
@@ -354,7 +391,7 @@ node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's 
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road dragged from the camp past the hall to the farm, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
-node tests/patch-notes.mjs   # every push to main adds a player-facing patch note: the newest note is this build's ?v=, newest first, player words only, the unread dot
+node tests/patch-notes.mjs   # a release players would notice adds a player-facing note: the newest note never ahead of the code's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
 node tests/card-intro.mjs    # the card announcement: the switch ships on, and thrown off builds nothing (no element, stylesheet, listener, write or art fetch); once per device over the title after the splash (a blocked storage: once a session), never over a run, the reward screen or the lesson; X/Escape/backdrop close; five screens by NEXT/BACK/dots/arrows/swipe; real catalog faces at whole device pixels; the operator's words word for word, every number the rule's own, every tier's line backed by its own tier's cards; the chrome is vector or 3x its CSS size; the prizes wear no beast; the tiers a level screen of their own; the X clear of the laurels; no spark behind the copy; fits 320–1920 at rest; a wide panel at seven tenths; the defeat shield broken with blood behind it; reopened from the collection
 node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers

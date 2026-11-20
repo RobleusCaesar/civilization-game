@@ -70,18 +70,21 @@ await p.evaluate(() => { R.holdBake = false; R.ensureTerrain(); });
    the old half-stone, half-timber storey — the materials checks would then
    pin whichever art won the race with the loader (bounded; a PNG that never
    lands leaves the procedural tower, which those checks then fail). */
-await p.waitForFunction(() => window.Sprites && Sprites.building.tower.every(t => t && t._cfArt),
+await p.waitForFunction(() => typeof Sprites !== 'undefined' && Sprites.building.tower.every(t => t && t._cfArt),
   null, { timeout: 90000 }).catch(() => {});
 /* …and so is the WALL KIT (assets/fort): the curtain, the wall towers and the
    gatehouses are drawn PNGs now, composed on Assets.FORT_GEO's tall canvas,
    and every check below reads the drawn pieces. Wait for all nine. */
-await p.waitForFunction(() => window.Sprites && Sprites.towerArt && [0, 1, 2].every(i =>
+await p.waitForFunction(() => typeof Sprites !== 'undefined' && Sprites.towerArt && [0, 1, 2].every(i =>
   Sprites.towerArt[i] && Sprites.wallMask[i][10]._cfArt && Sprites.gateMask[i][0]._cfArt && Sprites.gateMask[i][0]._cfArt.fort),
   null, { timeout: 90000 }).catch(() => {});
 /* (Both bounds are generous on purpose: 30s was measured running OUT under a
    contract sweep beside another Chromium, and the L2 material check then read
    the procedural mural tower — red on a commit that touched no wall. A bound
-   only costs time when the art genuinely never lands.) */
+   only costs time when the art genuinely never lands.) Both predicates ask
+   `typeof Sprites`: Sprites is a script-level const, so they asked
+   `window.Sprites` — undefined, the window.G trap — and for months each wait
+   burned its whole 90 seconds and carried on, 180 of the suite's 183. */
 
 const out = await p.evaluate(() => {
   const res = {}, fails = [];

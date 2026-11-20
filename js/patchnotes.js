@@ -1,10 +1,13 @@
 "use strict";
 /* PATCH NOTES — what changed, in the players' own words (tests/patch-notes.mjs).
 
-   THE RULE: every push to main adds an entry here, at the TOP, and its
-   `build` is the shared code version every `js/` script tag in index.html
-   carries (`?v=N`). The contract fails the moment the two disagree, so a
-   deploy without a note cannot pass the sweep.
+   THE RULE: a release a player would notice and care about (a new feature,
+   a rework, a fix to something they hit) adds an entry here, at the TOP, and
+   its `build` is the shared code version every `js/` script tag in
+   index.html carries (`?v=N`) on that release. A small one — a word, a
+   button's text, a fix nobody would miss — still bumps the version and
+   ships without one (operator, after build 207). The contract fails only on
+   a note numbered past the code.
 
    HOW TO WRITE ONE. Newest first. `date` is the day it shipped (YYYY-MM-DD),
    `title` a few words a player would use, and `items` the changes a PLAYER

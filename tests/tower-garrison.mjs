@@ -202,7 +202,7 @@ const out = await p.evaluate(() => {
     // a tower shoots only what the player sees (build 151, Combat.perchSees),
     // and the map newGame left was laid before freeVis was set
     G.freeVis = true; G.updateVisibility();
-    if (window.Combat) Combat.scanT = 0;
+    if (typeof Combat !== 'undefined') Combat.scanT = 0;   // a script-level const: window.Combat is undefined
   };
   const put = (k, x, y, lv, owner) => {
     const bb = Bld.place(owner || 'P', k, x, y, { free: true, instant: true });
