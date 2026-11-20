@@ -49,7 +49,13 @@ over an hour on this 4-core sandbox and slower beside agents. So:
   of SOLO: deck-ui's four minutes were stacked behind a full crowd, and the
   run waited 6.7 minutes on one shard while others were done in 3. The
   longest single suite (prologue.mjs, ~4.3 min) is now the floor; refresh
-  the medians when a suite's time moves a lot. Locally, `node
+  the medians when a suite's time moves a lot. **AND NO JOB WAITS ON A
+  MIRROR**: Playwright's `--with-deps` installs nine font packages the runner
+  image lacks from whichever Ubuntu mirror the runner draws, and some crawl —
+  in most runs one job spent 70-340 s on setup while the rest took 30, and the
+  run waited for it. The fonts are cached (`~/pw-fonts`) and installed
+  offline with dpkg; anything Playwright still finds missing takes the old
+  road, which fills the cache. Locally, `node
   tools/contracts.mjs all --lanes 2` is the same sweep — and `shard I N`
   RUNS that shard; it is not a listing.
 - **Main moves only when that run is green on the branch.** The rule below

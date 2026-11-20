@@ -64,10 +64,46 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-1.56.1-${{ runner.os }}
+      # THE FONTS COME FROM THE CACHE TOO. --with-deps installs nine font
+      # packages this runner image lacks (everything else on Playwright's list
+      # is already here) from whichever Ubuntu mirror the runner draws, and
+      # some draw one at kilobytes a second: in most runs one job spent 70-340 s
+      # on setup while the others took 30, and the whole run waited for it.
+      # Cached, the same packages install offline with dpkg; anything
+      # Playwright still finds missing takes the old road, which fills the cache.
+      - uses: actions/cache@v4
+        with:
+          path: ~/pw-fonts
+          key: playwright-fonts-1.56.1-${{ runner.os }}
       - name: Playwright and Chromium
         run: |
           npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium
+          sudo rm -f /var/lib/man-db/auto-update
+          if compgen -G "$HOME/pw-fonts/*.deb" > /dev/null; then
+            sudo dpkg -i --refuse-downgrade --skip-same-version "$HOME"/pw-fonts/*.deb > /dev/null || true
+          fi
+          missing=$(node -e '
+            try {
+              const pc = "./node_modules/playwright-core/lib/server/";
+              const p = require(pc + "registry/nativeDeps.js").deps[require(pc + "utils/hostPlatform.js").hostPlatform];
+              const { execFileSync } = require("child_process");
+              for (const k of [...p.tools, ...p.chromium]) {
+                let s = ""; try { s = execFileSync("dpkg-query", ["-W", "-f=${Status}", k], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch (e) {}
+                if (!/ ok installed$/.test(s)) console.log(k);
+              }
+            } catch (e) { console.log("?"); }')
+          if [ -n "$missing" ]; then
+            echo "Installing system packages:" $missing
+            # keep what apt downloads, so the fonts can be cached for next time
+            sudo rm -f /etc/apt/apt.conf.d/docker-clean
+            echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-debs > /dev/null
+            npx playwright install --with-deps chromium
+            debs=$(ls /var/cache/apt/archives/fonts-*.deb /var/cache/apt/archives/xfonts-*.deb 2>/dev/null || true)
+            if [ -n "$debs" ]; then mkdir -p ~/pw-fonts && cp $debs ~/pw-fonts/; fi
+          else
+            echo "Every system package Playwright needs is installed"
+            npx playwright install chromium
+          fi
       # tests/analytics.mjs starts its own PostgreSQL (initdb / pg_ctl)
       - name: PostgreSQL binaries
         run: ls /usr/lib/postgresql/*/bin/initdb || (sudo apt-get update -qq && sudo apt-get install -y -qq postgresql)
@@ -104,10 +140,46 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-1.56.1-${{ runner.os }}
+      # THE FONTS COME FROM THE CACHE TOO. --with-deps installs nine font
+      # packages this runner image lacks (everything else on Playwright's list
+      # is already here) from whichever Ubuntu mirror the runner draws, and
+      # some draw one at kilobytes a second: in most runs one job spent 70-340 s
+      # on setup while the others took 30, and the whole run waited for it.
+      # Cached, the same packages install offline with dpkg; anything
+      # Playwright still finds missing takes the old road, which fills the cache.
+      - uses: actions/cache@v4
+        with:
+          path: ~/pw-fonts
+          key: playwright-fonts-1.56.1-${{ runner.os }}
       - name: Playwright and Chromium
         run: |
           npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
-          npx playwright install --with-deps chromium
+          sudo rm -f /var/lib/man-db/auto-update
+          if compgen -G "$HOME/pw-fonts/*.deb" > /dev/null; then
+            sudo dpkg -i --refuse-downgrade --skip-same-version "$HOME"/pw-fonts/*.deb > /dev/null || true
+          fi
+          missing=$(node -e '
+            try {
+              const pc = "./node_modules/playwright-core/lib/server/";
+              const p = require(pc + "registry/nativeDeps.js").deps[require(pc + "utils/hostPlatform.js").hostPlatform];
+              const { execFileSync } = require("child_process");
+              for (const k of [...p.tools, ...p.chromium]) {
+                let s = ""; try { s = execFileSync("dpkg-query", ["-W", "-f=${Status}", k], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch (e) {}
+                if (!/ ok installed$/.test(s)) console.log(k);
+              }
+            } catch (e) { console.log("?"); }')
+          if [ -n "$missing" ]; then
+            echo "Installing system packages:" $missing
+            # keep what apt downloads, so the fonts can be cached for next time
+            sudo rm -f /etc/apt/apt.conf.d/docker-clean
+            echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-debs > /dev/null
+            npx playwright install --with-deps chromium
+            debs=$(ls /var/cache/apt/archives/fonts-*.deb /var/cache/apt/archives/xfonts-*.deb 2>/dev/null || true)
+            if [ -n "$debs" ]; then mkdir -p ~/pw-fonts && cp $debs ~/pw-fonts/; fi
+          else
+            echo "Every system package Playwright needs is installed"
+            npx playwright install chromium
+          fi
       - name: Play the candidate and the reference
         env:
           CAND: ${{ inputs.candidate }}
