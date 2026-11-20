@@ -19,6 +19,12 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 204, date: '2026-11-20', title: 'A softer guiding light',
+    items: [
+      'In the first three games, the golden glow around whatever Mira points at is gentler, while its sparkles, ring and rising gold leaf stay the same.',
+    ],
+  },
+  {
     build: 203, date: '2026-11-19', title: 'The Reckoning ends with a story',
     items: [
       'When their hall falls, Mira thanks you by your chosen name, tells you the clan is free, and sends you on to the full game.',
