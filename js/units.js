@@ -57,6 +57,11 @@ const Units = {
     // card's stamps above but never takes a blade the player's yards earned
     if (S.starfall && !opts.card) G.skyIron(u);
     S.units.push(u);
+    /* ITS OWN ART, THE MOMENT IT EXISTS (Assets.wantUnit, build 207): a run no
+       longer installs every army up front, so whatever comes into the world —
+       a trained soldier, a card's legion, a band off the map — asks for the
+       strips it draws with (deduped; a founding asks for its own world) */
+    if (window.Assets && Assets.wantUnit) Assets.wantUnit(u);
     return u;
   },
 
@@ -1956,6 +1961,13 @@ const Units = {
         if (!onTile) {
           if (this.followPath(u, dt) && !((u.x | 0) === t.x && (u.y | 0) === t.y)) u.task = null;
         } else {
+          /* AT ANCHOR THE OARS ARE SHIPPED (build 207): a boat already on its
+             shoal (an origin's boats are set down on theirs, and a boat can
+             slide onto the tile mid-step) never asks followPath again, so the
+             one-step path stayed in hand, Units.moving answered yes, and it
+             was drawn rowing on the spot for as long as it fished. The beach
+             fisher below has always let his path go on arrival. */
+          if (u.path) { u.path = null; u.pathI = 0; }
           const idx = MapGen.idx(t.x, t.y);
           if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
           // fish feed whichever tribe cast the nets — the rival runs boats too

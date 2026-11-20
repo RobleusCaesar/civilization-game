@@ -292,7 +292,8 @@ node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand
 node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch (and the testers' land switch is put away for now); ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
 node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
 node tests/hud-info.mjs      # the four goods and the people on ONE row, one width; food's net in its note (never the bar) and its number red only when it runs dry within days; numbers shorten DOWN (12.4k) and the note says them whole; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
-node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
+node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced a step at a time and warmed behind the plaque, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
+node tests/art-budget.mjs    # art for what the world can show, and the frame for the game: a founding asks for what the world holds or its yards can raise (never both tribes' whole armies), a new world lets the last one's dye go and the frames do not grow game after game, a unit asks for its strips when it comes into the world (the rival's under the fog in the background, the title's demo nothing), a yard for what it can raise and a storey for its next rank, a held army card for what it summons; while a world is played the background tier waits for the frame loop (a quick frame installs in its room, a slow one nothing but never four running, two strips on the wire); a boat at anchor ships its oars; an ended run stands its people down; the journey opens on every view of its glide with no blurred ground; the water turns slower on a device that cannot keep up
 node tests/roads.mjs         # the road builder: Road beside House arms the line drag; orthogonal tiles only; 10 wood + 5 stone a tile, under a wall's price and time; a villager builds it and the finished site becomes ground (no building, same passability, spent ground paved); the player's units walk faster on it and route onto it, the rival's do not; the worn paths stand down; seamless tiles, turns and crossroads, no two alike, nothing over water; a house takes the ground; a save keeps them; the roads follow the hall's level for nothing (worn track, earth road, kerbed via), the same quickening at each, the menu card with them; every player gate carries the hall's road through its passage and a tile out, never into its flank, nothing laid; CFG.ROADS.ON false brings the worn paths back; a building of the player's a road meets edge-on works a tenth better (stations yield, yards and the hall train, the post's caravans, forts take less, a house holds one more), never on top of a homestead, gone with the road, gold on its panel, promised on the placement chip, one small twinkle
 node tests/pages.mjs         # the Load and Guide pages: the settings page's chrome round their own ids (#loadBack, #loadTitle, #slotList, #btnImportFile, #howPanels, #howDots); a slot is its picture, name and one line with Load, rename and a two-tap delete; Save game from the pause menu; the guide turns like the announcement (BACK, NEXT, a dot a page, arrow keys, Done goes back, opens on page one); the night from the title, the game from the pause menu; the guide's art Scale2x 256px, lazy, never fetched at boot; within their pixels at 3x; fits 320–1440
 node tests/world-board.mjs   # the world board: a podium for the top three and the ranks to tenth, one row per chief, a place is its name, points, difficulty and place alone (no day, wins, origin, card mark, chief count or words below), the filter put away (and still working flipped back on), ONE PAGE WITH ALL TEN (nothing scrolls, the frame as tall as what it holds, centred; a short window presses the rows, puts the hidden device's note away and shrinks the podium, never leaving a rank off — 1280x720 showed nine), your best at the foot past tenth, your own devices left off (0014); before 0014 the table read as ever and nothing new sent; once board_top answers a post carries the origin card and the card mark; a test build posts nothing; vector chrome within its pixels, nothing off the page 320–1440; the board lifts the reward card a tier (top ten half the time, podium always, never past its table's top), end to end
@@ -6396,6 +6397,75 @@ past the cap (desktop-layout). A harness
 that measures the first minute must compare UNROUNDED times: rounding the
 gap's start against the entry moment dropped the entry gap about half the
 time and read as a 1.78× regression that was not there.
+**ART FOR WHAT THE WORLD CAN SHOW, AND THE FRAME FOR THE GAME** (build 207,
+`Assets.wantUnit` / `wantYard` / `_wantOk` / `_keepKey` / `pruneUnitArt` /
+`frameTick`, `G._founding`, `Deck.wantArt`, `Prologue.glideViews`,
+`TerrainX.prefetchViews` / `viewFrac(views)` / `LIFE_SLOW_MS`,
+`Footing.tick` / `warm`; tests/art-budget.mjs, footing.mjs's pacing block —
+operator: "Tried playing two games back to back on main and the characters
+had lots of frozen movements, stutter steps, the initial map area loaded in
+blocky … the game should be smooth, the initial map area should pop right
+in"). MEASURED, the root: every founding asked for BOTH tribes' WHOLE armies
+and sapper sets in the background (~970 strips), cut every one into frame
+canvases on the main thread through the first minute of play, and let
+nothing go — the tunic rides in every dyed key and a run rolls a fresh one,
+so a second game installed a second set beside the first (285 MB of frames
+after one game, 405 after two, 509 after three; the contract's same world in
+a new tunic: 9,398 frames, then 14,249 — now 2,998 and 2,998). **A STRIP IS
+ASKED FOR WHEN THE WORLD CAN SHOW IT SOON**: a founding or a load asks
+counted for what the opening world shows (as before) and in the background
+only for what the world HOLDS (`artPresent('A')`, the wild and the bands)
+and what each yard can raise at its level (`wantYard`). A unit asks for its
+own strips the moment it exists (`Units.spawn` → `wantUnit`: counted for the
+player's own or one in sight, else the background), a queued one in its yard
+(`Bld.train`), a yard when it is laid (`Bld.place`) or raised a storey
+(`finishUpgrade`), a held army card for the people it summons
+(`Deck.wantArt`). Never for the title's demo world, and never while a world
+is being FOUNDED (`G._founding`: its units spawn before the tier caches drop;
+the founding asks once its world is built, and a frame clears the flag so a
+founding that throws never holds the asks). **A NEW WORLD LETS THE LAST ONE'S
+DYE GO** (`pruneUnitArt`, from `newGame` / `loadJSON` for a real world and
+from a hall's or a sappers' camp's new storey): every installed dyed set this
+world will never draw (another tunic, a tier left behind) is dropped, its
+queued strips with it, and a strip already on the wire installs into nothing
+(`setUnitFrames` asks `_keepKey` first). The tunic and the tier ride in every
+dyed key, so the key is the whole question; an undyed key (a deer, a war
+band) belongs to every world. **WHILE A WORLD IS PLAYED THE BACKGROUND TIER
+WAITS FOR THE FRAME LOOP**: at most `LATE_AHEAD` (2) background strips are
+on the wire or waiting to install, and they install in `Assets.frameTick`
+after the draw, in the room the frame leaves (`FRAME_INSTALL_MS` 4, at most
+four fifths of the smoothed display period less the frame's own work); a
+frame with no room installs nothing, never `LATE_SKIP` (4) running. The
+between-frames slices install only counted strips while a world is played,
+and everything again off it (a menu, the reward screen, a hidden tab). A
+strip is decoded off the main thread (`img.decode()`) before its install,
+and dyed once on one reused scratch. **THE JOURNEY OPENS ON EVERY VIEW OF ITS
+GLIDE** (`Prologue.glideViews`: the establishing shot's five views in WORLD
+PIXELS — the warm-up handed TerrainX the glide's TILE numbers as pixels, so
+the top-left corner was painted and the glide started over blurred stand-in
+ground); `TerrainX.prefetchViews` asks for them in the order they are shown
+and keeps them from eviction, and the press waits for
+`viewFrac(glideViews)` under the same caps as any opening view. Pressed at
+once, the live build drew 185 stand-in chunks in its first three seconds;
+now none. **A BOAT AT ANCHOR SHIPS ITS OARS** (the fish branch drops its path
+on its own shoal — it kept a one-step path and was drawn rowing on the spot
+for as long as it fished), and **AN ENDED RUN STANDS ITS PEOPLE DOWN**
+(`R.unitPose` answers idle for a walk while `S.over`: the walk is driven by
+distance and the sim stops, so a man mid-path froze mid-stride through the
+ending's held beat). **THE WATER KEEPS TO THE DEVICE'S PACE**: `drawGround`
+smooths the played frame interval (`_dgIv`), and past `LIFE_SLOW_MS` (40)
+the ripples recompose at most `LIFE_SLOW_HZ` (6) times a second for at least
+8 s (a compose is pattern fills and masks the browser rasterises after the
+call returns, where no timer can see it — a fifth of every second on a
+4x-throttled phone); a device that keeps up keeps all twelve turns.
+**A FOOTING IS MEASURED A STEP AT A TIME** (`Footing.tick` runs one building's
+measurement as a generator, `buildSteps`, under its budget: a frame with no
+budget left takes one step, the largest about a millisecond against 17-50 ms
+for a whole building in one frame), and `Footing.warm` measures the opening
+world's buildings behind the plaque and the title. Measured on the phone
+profile (4x CPU), game 1: 6.5 → 11.3 frames a second once the world is open,
+10.1 → 13.5 while walking, background installs 14.4 → 5 ms a frame, heap 77
+→ 57 MB. The contract runs red on build 206 in 20 of its 26 checks.
 **THE TRIAL AND ORIGIN CARDS** (`CardFace` and `Screens._burnCard` in
 js/screens.js, art in `assets/icons/cards/`, tests/draft-cards.mjs — operator,
 once the deck shipped: the difficulty and origin screens "feel bland…

@@ -133,6 +133,10 @@ const G = {
   newGame(seed, modeKey, sizeKey, persona, tunic) {
     // nothing painted while the world is being assembled (R.holdTerrain)
     R.holdTerrain();
+    /* …and no unit or yard asks for its strips while it is (Assets._wantOk):
+       the founding asks for its own world once it is built, below. A frame
+       clears it too (G.frame), so a founding that throws never leaves it set. */
+    this._founding = true;
     /* THE PROLOGUE'S WORLDS (js/scenarios.js): an authored world rides
        G._scenario for exactly this founding (Scenarios.found). Its rules over
        CFG come off first, whoever founds next — the scenario puts its own
@@ -429,11 +433,26 @@ const G = {
          else is fetched behind them in the background tier, first the
          player's own army, then the rival's people under the fog. The keep
          asks for what an origin card plants (Cards.pick). */
+      /* AND NOTHING THE WORLD CANNOT SHOW (build 207 — the operator, two games
+         back to back: "lots of frozen movements, stutter steps"). The
+         background tier used to be both tribes' WHOLE armies and sapper sets,
+         ~970 strips installed on the main thread through the first minute of
+         every game, and never let go: a second game held a second set in its
+         new tunic (285 MB of frames after one game, 405 MB after two). Now the
+         last world's dye is let go (Assets.pruneUnitArt), and the background
+         asks for what this world HOLDS — the rival's people under the fog, a
+         band at its fire — and what each yard can raise (Assets.wantYard). A
+         soldier asks for his own strips when he is queued (Bld.train) or
+         comes into the world (Units.spawn), a yard when it is laid (Bld.place)
+         or raised a storey, a held army card for what it summons. */
+      this._founding = false;
+      if (Assets.pruneUnitArt) Assets.pruneUnitArt();
       Assets.loadUnitsArt(this.artShown());
-      Assets.loadMilitaryArt('P', true); Assets.loadSapperArt('P', true);
-      Assets.loadVillagerArt('A', true);
-      Assets.loadMilitaryArt('A', true); Assets.loadSapperArt('A', true);
+      Assets.loadUnitsArt(this.artPresent('A'), true);
+      Assets.loadUnitsArt(S.units.filter(u => u.owner !== 'P' && u.owner !== 'A'), true);
+      if (Assets.wantYard) for (const b of S.buildings) Assets.wantYard(b, b.level, true);
     }
+    this._founding = false;
     // seed the homestead memory QUIETLY: a town that starts or loads already
     // bonded keeps its bonus without celebrating bonds it has had for days
     Bld.syncHomesteads(true);
@@ -465,13 +484,17 @@ const G = {
   },
   warmTribes() {
     if (typeof Sprites === 'undefined' || !Sprites.barbFor) return;
-    const want = new Set(['sea']);
-    for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) want.add(b.tribe);
-    for (const u of S.units) if (u.owner === 'R' && u.tribe) want.add(u.tribe);
+    const want = new Set(['sea']), held = new Set();
+    for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) held.add(b.tribe);
+    for (const u of S.units) if (u.owner === 'R' && u.tribe) held.add(u.tribe);
+    for (const t of held) want.add(t);
     for (const t of want) Sprites.barbFor(t);
-    // …and their drawn bands, in the background tier (Assets.BARB_ART)
-    if (typeof Assets !== 'undefined' && Assets.loadBarbArt && !(window.Screens && Screens._demo))
-      Assets.loadBarbArt([...want], true);
+    /* …and the drawn bands of the peoples this world HOLDS, in the background
+       tier (Assets.BARB_ART). Not the Sea Folk's unless they are here: a crew
+       asks for its own look when it comes into the world (Assets.wantUnit),
+       a long sail before it lands (build 207) */
+    if (typeof Assets !== 'undefined' && Assets.loadBarbArt && !(window.Screens && Screens._demo) && held.size)
+      Assets.loadBarbArt([...held], true);
   },
   /* WHAT THE OPENING WORLD SHOWS — the units whose strips a founding or a
      load waits for (newGame, loadJSON, Cards.pick). artPresent: every unit
@@ -3475,11 +3498,15 @@ const G = {
        villagers, and anything of any owner on ground in sight (the rival's
        villagers included, then); everything else goes behind, in the
        background tier. */
+    // …and nothing it cannot show (build 207, see G.newGame): the last world's
+    // dye is let go, and the background is what this world holds and can raise
+    this._founding = false;
+    if (Assets.pruneUnitArt) Assets.pruneUnitArt();
     Assets.loadUnitsArt(this.artShown());
     Assets.loadUnitsArt(this.artPresent('A').filter(u => u.kind !== 'villager'));
     Assets.loadVillagerArt('P', true); Assets.loadVillagerArt('A', true);
-    Assets.loadMilitaryArt('P', true); Assets.loadMilitaryArt('A', true);
-    Assets.loadSapperArt('P', true); Assets.loadSapperArt('A', true);
+    Assets.loadUnitsArt(S.units.filter(u => u.owner !== 'P' && u.owner !== 'A'), true);
+    if (Assets.wantYard) for (const b of S.buildings) Assets.wantYard(b, b.level, true);
     // seed the homestead memory QUIETLY: a town that loads already bonded keeps
     // its bonus without celebrating bonds it has had for a hundred days
     Bld.syncHomesteads(true);
@@ -3588,8 +3615,10 @@ const G = {
     }
   },
   frame(t) {
-    const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
+    const f0 = performance.now(), gap = t - G.lastT;
+    const dt = Math.min(0.1, gap / 1000 || 0.016);
     G.lastT = t;
+    if (G._founding) G._founding = false;   // a founding that threw (G.newGame) never holds the art asks
     if (S && !S.paused && !S.over) {
       /* THE TUTORIAL's slow-motion (js/tutorial.js): while a note is up the
          SIM runs at Tutorial.simScale (×0.2) so a new player can read without
@@ -3675,7 +3704,14 @@ const G = {
         // behind the plaque the press is waiting on this ground (enterGame): every frame, and
         // every arrival in; behind the draft the cards are moving, so a glance rate and one
         G._pfT = performance.now();
-        G._safe(() => { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z, Screens._entering ? 6 : 0); }, 'prefetch');
+        G._safe(() => {
+          // a journey world opens on its glide: every view of it (Prologue.glideViews, build 207)
+          const vs = S.scenario && window.Prologue && Prologue.glideViews && TerrainX.prefetchViews ? Prologue.glideViews() : null;
+          if (vs && vs.length) TerrainX.prefetchViews(vs, Screens._entering ? 6 : 0);
+          else { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z, Screens._entering ? 6 : 0); }
+        }, 'prefetch');
+        // …and the ground under its buildings, measured in the same wait (Footing.warm, build 207)
+        if (window.Footing && Footing.warm) G._safe(() => Footing.warm(Screens._entering ? 6 : 2), 'footing');
       }
       /* the title is ready when the GLEN is on screen (tests/boot.mjs): the
          painted backdrop is opaque, so the demo world behind it can bake
@@ -3699,6 +3735,12 @@ const G = {
       // UI.refresh on purpose: a resource number counting up holds the bar.
       if (window.Deck && window.DeckUI) G._safe(() => { if (Deck.on()) DeckUI.frame(dt); }, 'deck');
     }
+    /* THE BACKGROUND ART GOES IN IN THE TIME A FRAME LEAVES (Assets.frameTick,
+       build 207): while a world is played, a strip nobody is waiting for is
+       installed here, after the frame's own work and only in what is left of
+       it, never in the between-frames slices that took ten milliseconds
+       before every frame of a game's first minute */
+    if (window.Assets && Assets.frameTick) G._safe(() => Assets.frameTick(performance.now() - f0, gap), 'art');
     requestAnimationFrame(G.frame);
   },
 };

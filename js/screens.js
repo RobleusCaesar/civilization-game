@@ -554,7 +554,9 @@ const Screens = {
        and the bake are in, so a slow phone opens on the stand-in rather than
        stalling. No work is added: the prefetch was already painting this
        ground behind the plaque; the plaque now covers it. */
-    const ground = () => !window.TerrainX || !TerrainX.viewFrac || TerrainX.viewFrac() >= 1;
+    // (a journey world opens on its glide: the press waits for every view of it — Prologue.glideViews)
+    const glide = () => (S && S.scenario && window.Prologue && Prologue.glideViews) ? Prologue.glideViews() : null;
+    const ground = () => !window.TerrainX || !TerrainX.viewFrac || TerrainX.viewFrac(glide()) >= 1;
     const rest = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
     const ready = () => rest() && ground();
     if (ready()) { this._enterNow(); return; }

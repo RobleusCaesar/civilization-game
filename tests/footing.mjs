@@ -22,7 +22,10 @@
      THE DOOR IS CLEAR  no bush or tuft of a hedge stands in front of the door
      A PICTURE ONLY     no rule, save byte or RNG draw moves; Math.random is
                         never called
-     PACED              a frame with no budget left measures one building
+     PACED              a measurement is taken in steps: a frame with no budget
+                        left takes one step, the queue always moves, no step
+                        is half a whole building's work, and the stepped
+                        picture is the whole one cell for cell (build 207)
      A NEW LOOK         a burning building's art re-measures its footing
      TRIMMED            each layer canvas is cut to what it holds
      EVERY HOUSE ITS    seven yards a house (Footing.HOME: a woodpile and chopping
@@ -213,11 +216,21 @@ await frames(p, 3);
 // ---- paced, re-measured, trimmed -------------------------------------------------
 {
   const r = await p.evaluate(async ids => {
-    Footing._c.clear(); Footing._q.length = 0; Footing._qs.clear();
+    const reset = () => { Footing._c.clear(); Footing._q.length = 0; Footing._qs.clear(); Footing._job = null; };
     const all = S.buildings.filter(o => Footing.look(o) !== 'none');
-    for (const o of all) { Footing._q.push(o.id); Footing._qs.add(o.id); }
+    const queue = list => { for (const o of list) { Footing._q.push(o.id); Footing._qs.add(o.id); } };
+    const pix = e => e.L.map(L => L ? Array.from(L.cv.getContext('2d').getImageData(0, 0, L.cv.width, L.cv.height).data).join(',') + '@' + [L.x, L.y, L.w, L.h].join(',') : 'null').join('|');
+    // each building measured whole (the old way: one call, no budget), timed
+    reset(); const whole = new Map(); let wholeMax = 0;
+    for (const o of all) { queue([o]); const t0 = performance.now(); Footing.flush(); wholeMax = Math.max(wholeMax, performance.now() - t0); whole.set(o.id, pix(Footing._c.get(o.id))); }
+    // …and stepped, a frame with no budget at a time: one step a call, the queue always moving
+    reset(); queue(all);
     Footing.tick(0);
-    const one = Footing._c.size;
+    const one = Footing._c.size, inHand = !!Footing._job;
+    let calls = 1, stepMax = 0;
+    while ((Footing._q.length || Footing._job) && calls < 20000) { const t0 = performance.now(); Footing.tick(0); stepMax = Math.max(stepMax, performance.now() - t0); calls++; }
+    let same = 0; for (const o of all) if (Footing._c.get(o.id) && pix(Footing._c.get(o.id)) === whole.get(o.id)) same++;
+    reset(); queue(all);
     Footing.flush();
     // a burning building wears darker art: its footing is measured again
     const house = S.buildings.find(o => o.id === ids.barracks), was = Footing._c.get(ids.barracks).spr;
@@ -234,10 +247,22 @@ await frames(p, 3);
     // burns in its own art — R.FIRE_ART, tests/building-fire.mjs — draws its
     // fire frame on the same foot, and a frame changing nine times a second is
     // no reason to measure the ground again)
-    return { one, all: all.length, recast: !!now && now.spr !== was && now.spr === R.wornSprite(Object.assign({}, house, { hp: Math.round(house.maxhp * 0.5) }), true),
+    return { one, inHand, calls, stepMax: +stepMax.toFixed(2), wholeMax: +wholeMax.toFixed(2), same, all: all.length,
+      recast: !!now && now.spr !== was && now.spr === R.wornSprite(Object.assign({}, house, { hp: Math.round(house.maxhp * 0.5) }), true),
       avg: Math.round(cells / Math.max(1, n)), worst };
   }, town.ids);
-  ck('aFrameWithNoBudgetLeftMeasuresOneBuilding', r.one === 1 && r.all > 5, `${r.one} of ${r.all}`);
+  /* PACED (build 207 — the operator, two games back to back: "frozen movements,
+     stutter steps"). A measurement used to be taken whole, so a frame with no
+     budget left still paid a whole building — 17-50 ms for a hall on a desktop,
+     at every game's first frame and whenever a building near the hall changed.
+     It is taken in steps now: a frame with no budget takes ONE step (a measurement
+     in hand, maybe nothing finished), the queue still always moves, the largest
+     step is under half the largest whole measurement, and the stepped picture
+     is the whole one cell for cell. */
+  ck('aFrameWithNoBudgetLeftTakesOneStep', r.one <= 1 && (r.inHand || r.one === 1) && r.all > 5, `${r.one} finished, one in hand: ${r.inHand}, of ${r.all}`);
+  ck('andTheQueueAlwaysMoves', r.same === r.all && r.calls < 20000, `${r.calls} steps for ${r.all} buildings, ${r.same} finished`);
+  ck('andNoStepIsHalfAWholeBuilding', r.stepMax < r.wholeMax * 0.5, `largest step ${r.stepMax} ms, largest whole building ${r.wholeMax} ms`);
+  ck('andTheSteppedPictureIsTheWholeOne', r.same === r.all, `${r.same} of ${r.all} cell for cell`);
   ck('aBurningBuildingIsMeasuredAgain', r.recast, String(r.recast));
   ck('theLayersAreCutToWhatTheyHold', r.avg < 45000 && r.worst < 140000, `avg ${r.avg} cells a building, worst ${r.worst} (untrimmed: ~110k / ~200k)`);
 }

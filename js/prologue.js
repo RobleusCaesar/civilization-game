@@ -203,11 +203,40 @@ const Prologue = {
     this._warmFaces();   // her nine faces, fetched while the world is founded
     return true;
   },
-  // the establishing glide's opening view: its ground asked for too
+  // the establishing glide's views: their ground asked for too
   _warmGlide() {
-    const sc = Scenarios.live();
-    if (!sc || !sc.glideFrom || !window.TerrainX || !TerrainX.prefetch || !TerrainX.on) return;
-    try { const z = Math.max(R.minZoom ? R.minZoom() : 0.5, sc.glideFrom.z || 0.9); TerrainX.prefetch(sc.glideFrom.x + 0.5, sc.glideFrom.y + 0.5, z, 0); } catch (e) {}
+    if (!window.TerrainX || !TerrainX.prefetchViews || !TerrainX.on) return;
+    try { const v = this.glideViews(); if (v) TerrainX.prefetchViews(v, 0); } catch (e) {}
+  },
+  /* WHAT THE GLIDE SHOWS (build 207): the views the establishing shot passes
+     through, [cx, cy, z] in WORLD PIXELS — its start, three steps of its way
+     and its end, each placed by the camera's own clamp — so their ground is
+     painted before the world opens (TerrainX.prefetchViews, and the press
+     waits for them, Screens.enterGame). The warm-up used to hand TerrainX the
+     start's TILE numbers as pixels, which asked for the map's top-left corner,
+     and the journey opened on blurred stand-in ground where its glide began.
+     Cached per world and screen size; null for a world with no camera. */
+  glideViews() {
+    const sc = typeof Scenarios !== 'undefined' && Scenarios.live && Scenarios.live();
+    if (!sc || !sc.camera || typeof R === 'undefined' || !R.centerOn) return null;
+    const key = R.viewW() + 'x' + R.viewH() + (R.defaultZoom ? '@' + R.defaultZoom() : '');
+    if (this._gv && this._gv.s === S && this._gv.k === key) return this._gv.v;
+    const cam = { x: R.cam.x, y: R.cam.y, z: R.cam.z }, out = [];
+    try {
+      const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const z1 = R.defaultZoom ? R.defaultZoom() : R.cam.z;
+      const b = [sc.camera.x + 0.5, sc.camera.y + 0.5];
+      const z0 = sc.glideFrom ? Math.max(R.minZoom ? R.minZoom() : 0.5, Math.min(z1, sc.glideFrom.z || 0.9)) : z1;
+      const a = sc.glideFrom && !reduced ? [sc.glideFrom.x + 0.5, sc.glideFrom.y + 0.5] : b;
+      const steps = a === b ? [1] : [0, 0.25, 0.5, 0.75, 1];
+      for (const e of steps) {
+        R.cam.z = z0 + (z1 - z0) * e;
+        R.centerOn(a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e);
+        out.push([R.cam.x + R.viewW() / R.cam.z / 2, R.cam.y + R.viewH() / R.cam.z / 2, R.cam.z]);
+      }
+    } finally { R.cam.x = cam.x; R.cam.y = cam.y; R.cam.z = cam.z; }
+    this._gv = { s: S, k: key, v: out };
+    return out;
   },
 
   /* BEGIN: the held world opens; anything else founds the next game first */

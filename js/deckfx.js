@@ -99,7 +99,13 @@ Object.assign(Deck, {
     if (typeof Assets === 'undefined' || !Assets.wantFx) return;
     for (const k of id ? [id] : Object.keys(this.FX)) {
       const fx = this.FX[k];
-      if (fx && fx.art && this.count(k) > 0) Assets.wantFx(fx.art, { prio: 'high' });
+      if (!fx || this.count(k) <= 0) continue;
+      if (fx.art) Assets.wantFx(fx.art, { prio: 'high' });
+      /* …and the people an army card summons, in the background (build 207):
+         a run no longer installs every army at its founding, so the Legion's
+         champions are fetched while the card is held, not as it lands */
+      const list = fx.LIST || (fx.KIND ? [{ kind: fx.KIND }] : null);
+      if (list && Assets.wantUnit) for (const e of list) Assets.wantUnit({ kind: e.kind, owner: 'P' }, true);
     }
   },
   // a live timed card that asks for a world cue by name (R.drawCardWorld)

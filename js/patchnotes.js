@@ -19,6 +19,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 207, date: '2026-11-20', title: 'Smoother play, game after game',
+    items: [
+      'Playing several games in a row no longer slows the game down: the second and third games run as smoothly as the first.',
+      'People and soldiers walk and fight smoothly from the first minute, with no frozen steps or stutters while the game loads its pictures.',
+      'The first three games open on their own ground: the sweep over the valley no longer starts on blurry, blocky land.',
+      'Fishing boats rest on the water while they fish, instead of rowing on the spot.',
+      'When a game ends, everyone stands still instead of freezing in the middle of a step.',
+      'On slower phones the water ripples more gently, so the rest of the game stays smooth.',
+    ],
+  },
+  {
     build: 206, date: '2026-11-20', title: 'A cleaner title menu',
     items: [
       'The title menu now matches the Settings page: dark plates with a fine gold line, easy to read at a glance.',

@@ -848,6 +848,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     const q0 = Assets._stripQ.length + Assets._stripQLate.length;
     Assets.loadVillagerArt('P');
     out.reAskAdds = Assets._stripQ.length + Assets._stripQLate.length - q0;
+    // (a founding no longer asks for an army nobody has, build 207: the lancer
+    // is put in the background tier by hand, as a yard that can raise him would)
+    Assets.loadMilitaryArt('P', true, ['lancer']);
     const lanceLate0 = cnt(Assets._stripQLate, /unit-lancer-/), pend0 = Assets.pending, q1 = Assets._stripQ.length + Assets._stripQLate.length;
     Assets.loadMilitaryArt('P', false, ['lancer']);
     out.promote = { lateBefore: lanceLate0, counted: cnt(Assets._stripQ, /unit-lancer-/), lateAfter: cnt(Assets._stripQLate, /unit-lancer-/),
@@ -926,14 +929,17 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     `${r.queued} queued at the founding, never more than ${r.maxFly} of ${r.flightCap} on the wire`);
   ck('andTheyAreCountedUntilInstalled', r.peopleLeftAtReady === 0 && r.villagerDrawn,
     `ready after ${r.readyIn}ms with ${r.peopleLeftAtReady} people strips still to install; the player's villagers drawn: ${r.villagerDrawn}`);
+  /* …AND NOTHING THE WORLD CANNOT SHOW (build 207): the rival's people under
+     the fog go behind, but no army and no sappers nobody has — a yard asks for
+     its ranks when it is laid, a soldier for his strips when he is queued */
   ck('theFoundingCountsOnlyWhatTheWorldShows',
     !r.rivalSeen && r.countedVillager === 144 && r.lateVillager === 144 &&
-      (r.archerPresent || (r.countedArcher === 0 && r.lateArcher === 48)) &&
-      !r.pKinds.includes('sapper') && r.countedSapper === 0 && r.lateSapper === 64,
+      (r.archerPresent || (r.countedArcher === 0 && r.lateArcher === 0)) &&
+      !r.pKinds.includes('sapper') && r.countedSapper === 0 && r.lateSapper === 0,
     `the player's kinds ${r.pKinds.join('/')}, no rival villager in sight (${!r.rivalSeen}); villager strips ${r.countedVillager} counted / ${r.lateVillager} behind; ` +
-    `archer ${r.countedArcher} counted / ${r.lateArcher} behind (none standing); sapper ${r.countedSapper} counted / ${r.lateSapper} behind`);
+    `archer ${r.countedArcher} counted / ${r.lateArcher} behind (none standing, no range); sapper ${r.countedSapper} counted / ${r.lateSapper} behind (no camp)`);
   ck('aStripAskedTwiceIsFetchedOnce',
-    r.reAskAdds === 0 && r.promote.lateBefore === 48 && r.promote.counted === 24 && r.promote.lateAfter === 24 &&
+    r.reAskAdds === 0 && r.promote.lateBefore === 24 && r.promote.counted === 24 && r.promote.lateAfter === 0 &&
       r.promote.pendingRose === 24 && r.promote.added === 0,
     `the player's villagers asked again: +${r.reAskAdds} on the wire; the lancer moved forward: ${JSON.stringify(r.promote)}`);
   ck('aStripIsDyedOnceNotPerFrame', r.reads === 1 && r.dyed && r.frames === 9,
@@ -1108,13 +1114,20 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
       const m = await enter();
       out[key] = { seed: S.seed, kinds, missing: m.n, of: m.of, units: m.units, who: m.who, nc: nc.n, ncWho: nc.who };
     }
-    // a soldier trained after the world opened: the background tier has run on
-    await until(() => Assets.allArtReady(), 300000);
+    /* a soldier trained after the world opened: his strips are asked for when
+       his yard is laid (Assets.wantYard) and again when he is queued (Bld.train),
+       so by the day he walks out they are installed (build 207 — a founding no
+       longer installs every army it might one day field) */
     {
-      const tc = Bld.tcOf('P'), s = MapGen.findNear(tc.x + 1, tc.y + 3, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
+      const tc = Bld.tcOf('P'), site = MapGen.findNear(tc.x + 4, tc.y + 4, 8, (x, y) => Bld.canPlace('P', 'barracks', x, y, { noCost: true, noSeal: true }).ok);
+      const yard = site && Bld.place('P', 'barracks', site.x, site.y, { free: true, instant: true });
+      const askedByYard = !!(Assets._stripLive['defender-p-' + G.tunicOf('P') + '|s|walk'] || (Assets.unitArt['defender-p-' + G.tunicOf('P')]));
+      if (yard) { S.res.food += 500; S.res.wood += 500; S.res.gold += 200; Bld.train(yard, 'defender'); }
+      await until(() => Assets.allArtReady(), 300000);
+      const s = MapGen.findNear(tc.x + 1, tc.y + 3, 4, (x, y) => Path.passable(x, y, 'P') && !Bld.at(x, y));
       const u = s && Units.spawn('defender', 'P', s.x, s.y);
       const m = u ? missing([u]) : { n: -1, of: 0 };
-      out.trainedLater = { missing: m.n, of: m.of, allArt: Assets.allArtReady() };
+      out.trainedLater = { missing: m.n, of: m.of, allArt: Assets.allArtReady(), yard: !!yard, askedByYard };
     }
     // a CONTINUE with the rival in sight: a rival villager and spearman and a
     // deer beside the player's hall, saved, then loaded on a cold cache
@@ -1147,8 +1160,9 @@ const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : 
     ['A:villager', 'A:defender', 'W:deer'].every(k => r.continue.seen.includes(k)) && r.continue.of > 0 && r.continue.missing === 0 && r.continue.nc === 0,
     `in sight at the load: ${r.continue.seen.join(', ')}; ${r.continue.missing}/${r.continue.of} strips missing at the opening${r.continue.missing ? ' ' + JSON.stringify(r.continue.who) : ''}, ` +
     `${r.continue.nc} never counted${r.continue.nc ? ' ' + JSON.stringify(r.continue.ncWho) : ''}`);
-  ck('andASoldierTrainedLaterFindsHisWaiting', r.trainedLater.of > 0 && r.trainedLater.missing === 0,
-    `a spearman spawned once the background tier ran: ${r.trainedLater.missing}/${r.trainedLater.of} strips missing`);
+  ck('andASoldierTrainedLaterFindsHisWaiting', r.trainedLater.yard && r.trainedLater.askedByYard && r.trainedLater.of > 0 && r.trainedLater.missing === 0,
+    `a barracks laid (${r.trainedLater.yard}) asked for its spearman's strips (${r.trainedLater.askedByYard}); ` +
+    `a spearman spawned once he was queued: ${r.trainedLater.missing}/${r.trainedLater.of} strips missing`);
   ck('theOpeningWorldsRunClean', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)).length === 0, errs[0] || 'no page errors');
   await p.close();
 }

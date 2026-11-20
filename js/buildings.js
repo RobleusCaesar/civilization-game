@@ -1156,6 +1156,8 @@ const Bld = {
       paid: paid || {},
     };
     S.buildings.push(b);
+    // a yard's ranks are fetched while it rises (Assets.wantYard, build 207)
+    if (d.train && window.Assets && Assets.wantYard) Assets.wantYard(b);
     // a building raised on a road takes the ground (js/roads.js)
     if (key !== 'road' && window.Roads && Roads.clearUnder) Roads.clearUnder(x, y, b.sz || 1);
     // a site the PLAYER chose and paid for is an order given today (G.noteAct —
@@ -1437,6 +1439,17 @@ const Bld = {
     this.pay(d.levels[b.level].cost, b.owner === 'P' ? S.res : S.ai.res);
     b.upgrading = this.upgradeTime(b);
     b.upgTotal = b.upgrading;   // remembered so the progress bar knows the full span
+    /* THE NEXT STOREY'S PEOPLE ARE FETCHED WHILE IT RISES (build 207): a hall
+       or a sappers' camp going up a level re-dresses its people the moment it
+       finishes, so their new look is asked for now, in the background — by
+       the day the masons are done it is installed, and nobody turns into the
+       procedural stand-in for the seconds a fetch takes. */
+    if (window.Assets && Assets.loadVillagerArt && b.key === 'tc' && Assets.VILLAGER_TIER_BY_TC) {
+      const t = Assets.VILLAGER_TIER_BY_TC[b.level + 1];
+      if (t && Assets._wantOk && Assets._wantOk()) Assets.loadVillagerArt(b.owner, true, t);
+    }
+    if (window.Assets && Assets.loadSapperArt && b.key === 'sapper' && Assets._wantOk && Assets._wantOk())
+      Assets.loadSapperArt(b.owner, true, Math.min(3, b.level + 1));
     if (b.owner === 'P') {
       G.noteAct();   // the player's own order (only the panel upgrades for 'P')
       /* EVERY HAND ON THE SCAFFOLD. Upgrades need a villager on site, same as
@@ -1505,16 +1518,21 @@ const Bld = {
        rises, so the tier cache drops here and the new tier's sheets are
        asked for; every villager resolves the new key on its next draw
        (there is no per-unit sprite cache to invalidate — measured). */
+    // (the rival's people, under the fog, are re-dressed in the background tier)
     if (b.key === 'tc') {
       if (window.R) R._vTier = null;
-      if (window.Assets && Assets.loadVillagerArt) Assets.loadVillagerArt(b.owner);
+      if (window.Assets && Assets.loadVillagerArt) Assets.loadVillagerArt(b.owner, b.owner !== 'P');
     }
     // …and a Sappers' Camp reaching a new level re-dresses its engineers
     // the same way (the sapper tier reads the owner's best finished camp)
     if (b.key === 'sapper') {
       if (window.R) R._sTier = null;
-      if (window.Assets && Assets.loadSapperArt) Assets.loadSapperArt(b.owner);
+      if (window.Assets && Assets.loadSapperArt) Assets.loadSapperArt(b.owner, b.owner !== 'P');
     }
+    // the look a storey left behind is let go (nobody is drawn in it again)
+    if ((b.key === 'tc' || b.key === 'sapper') && window.Assets && Assets.pruneUnitArt) Assets.pruneUnitArt();
+    // a yard a storey up asks for the ranks it can now raise (Assets.wantYard, build 207)
+    if (window.Assets && Assets.wantYard) Assets.wantYard(b, b.level);
     // (a card's raising charts nothing itself: the taller building's own
     // sight opens the ground on the next visibility pass, as any building's does)
     if (b.owner === 'P' && !byCard) {
@@ -1588,6 +1606,8 @@ const Bld = {
     }
     b.queue.push({ unit: unitKey, t: time, T: time });   // T: the whole time, for the button's bar
     if (b.owner === 'P') G.noteAct();   // only the player's own tap trains for 'P'
+    // his strips while he trains, in the background: he walks out wearing them (Assets.wantUnit, build 207)
+    if (window.Assets && Assets.wantUnit) Assets.wantUnit({ kind: unitKey, owner: b.owner, x: b.x, y: b.y }, true);
     return true;
   },
 

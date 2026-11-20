@@ -14781,6 +14781,12 @@ const R = {
   unitPose(u) {
     const vil = u.kind === 'villager';
     if (G.eclipseAwe(u)) return 'idle';      // stopped dead, staring at the swallowed sun
+    /* A RUN THAT HAS ENDED STANDS ITS PEOPLE DOWN (build 207): the sim stops
+       with the run (S.over) while the world stays on screen for the ending's
+       held beat — Mira's last word, a hall coming down — and the walk is
+       driven by distance, so a man stopped mid-path froze mid-stride for
+       seconds. He stands instead (idle keeps its own clock). */
+    const walk = S && S.over ? 'idle' : 'walk';
     if (u.strife && u.strifePose) return u.strifePose;   // ANIMAL STRIFE: Combat.strifeStep says what the body does
     /* in a fight: villagers swing a pickaxe (guard), soldiers thrust a
        spear — but only within striking distance, the same gate the
@@ -14799,7 +14805,7 @@ const R = {
       const rng = (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5) + 0.3;
       if (!ft || Math.hypot(ft.x - u.x, ft.y - u.y) <= rng)
         return vil ? 'guard' : 'fight';
-      return 'walk';
+      return walk;
     }
     const fb = u.tBld && Bld.get(u.tBld);
     /* AT A BUILDING, THE POSE ASKS THE STRIKE'S OWN REACH (Combat.bldReach;
@@ -14820,7 +14826,7 @@ const R = {
       const reach = (typeof Combat !== 'undefined' && Combat.bridgeReach) ? Combat.bridgeReach(u) : 1.3;
       if (Math.hypot(u.tBridge.x + 0.5 - u.x, u.tBridge.y + 0.5 - u.y) <= reach + 0.05) return vil ? 'guard' : 'fight';
     }
-    if (Units.moving(u)) return 'walk';
+    if (Units.moving(u)) return walk;
     if (u.eating) return 'eat';              // a wolf at the kill (Units.wolfFeed); no eat sheet → idle
     const t = u.task;
     if (t) {
