@@ -1029,19 +1029,20 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   await p.evaluate(() => { try { if (window.Tutorial && Tutorial.skip) Tutorial.skip(); } catch (e) {} try { Screens.hideVictoryPaths(); } catch (e) {} });
   await p.waitForTimeout(300);
   const tapAt = await p.evaluate(() => {
-    const tc = S.buildings.find(x => x.key === 'tc' && x.owner === 'P'), T = CFG.TILE;
+    // TL, not T: T is the game's terrain enum (a script-level const), and a
+    // local T (the tile size) shadowed it, so the grass test read a number
+    const tc = S.buildings.find(x => x.key === 'tc' && x.owner === 'P'), TL = CFG.TILE;
     const v = S.units.find(u => u.owner === 'P' && u.kind === 'villager');
     UI.sel = { type: 'unit', id: v.id };
     // a free grass tile a few tiles from the hall, on screen
     for (let r = 3; r < 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const x = tc.x + dx, y = tc.y + dy;
-      if (!Path.passable(x, y, 'P') || Bld.at(x, y) || S.map.terrain[y * CFG.W + x] !== T_GRASS()) continue;
-      const sx = ((x + 0.5) * T - R.cam.x) * R.cam.z, sy = ((y + 0.5) * T - R.cam.y) * R.cam.z;
+      if (!Path.passable(x, y, 'P') || Bld.at(x, y) || S.map.terrain[y * CFG.W + x] !== T.GRASS) continue;
+      const sx = ((x + 0.5) * TL - R.cam.x) * R.cam.z, sy = ((y + 0.5) * TL - R.cam.y) * R.cam.z;
       const el = document.elementFromPoint(sx, sy);
       if (el && el.id === 'c' && sy > 150 && sy < innerHeight - 200) return { sx, sy };
     }
     return null;
-    function T_GRASS() { return typeof T !== 'undefined' ? T.GRASS : 0; }
   });
   if (tapAt) { await p.mouse.click(tapAt.sx, tapAt.sy); await p.waitForTimeout(150); }
   await p.evaluate(() => {
