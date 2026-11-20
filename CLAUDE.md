@@ -6225,7 +6225,9 @@ any other way (a test's `Screens.show('playing')`) answers unknown.
 lesson's fields (`tutorial`, `tut_src`, `tut_skip_at`) went with it in build
 208: no row carries them, and `loadJSON` drops a save's `tut` and
 `tutSkipAt` (`noRowCarriesTheOldLessonsFields`,
-`andTheOldLessonsStateIsDroppedAtLoad`).
+`andTheOldLessonsStateIsDroppedAtLoad`) — and the rider its scripted scout
+was, if the save was made mid-ride (`u.tutScout`, which nothing steers now;
+`andItsScriptedScoutRidesOffWithIt`).
 **THE TOKEN STAYS CURRENT** (§8, PX-50 part 1): supabase-js renews the token
 hourly into a NEW session object, and `Backend.session` kept the old one, so
 every fire-and-forget row went out under a dead Bearer (`_rest` refreshes
@@ -10084,7 +10086,9 @@ and every later game plays untaught. What it shared lives on:
 the device counts the random worlds it founds (stepped in `draftTap`, never a
 Replay or a journey world), seeded at its first read from any trace of
 earlier play (the finished-run ledger, a bound slot, a crash snapshot, the
-draft help dismissed) — the journey's veteran rule reads it. **THE MEMORY HAS
+draft help dismissed) — the journey's veteran rule reads it (tests/prologue.mjs
+§8: `aFreshDeviceHasFoundedNothingAndIsSent`,
+`aDeviceWithAnyTraceOfEarlierPlayIsAVeteran`, `aReplayFoundsNoNewGame`). **THE MEMORY HAS
 A FALLBACK** (`Screens.lsGet` / `lsSet` / `lsDel` / `_mem`): a storage that
 THROWS (iOS "Block All Cookies", a partitioned iframe) keeps those keys, and
 the Calm modal's `neo-victory-seen`, in a per-session map, so the promise

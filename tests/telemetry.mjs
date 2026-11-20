@@ -781,9 +781,17 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       // step: both are dropped at load, never carried on)
       const old = JSON.parse(G.saveJSON()); delete old.stats.firstActS;
       old.stats.tutSkipAt = 'tapVillager'; old.tut = { on: true, phase: 1, step: 2, done: { welcome: 1 }, fired: {} };
+      // …and, saved while the lesson's scripted scout was riding, that rider:
+      // nothing steers it now, so it leaves with the lesson; every other unit stays
+      const ids0 = old.units.map(u => u.id);
+      const base = old.units.find(u => u.owner === 'A') || old.units[0];
+      old.units.push(Object.assign(JSON.parse(JSON.stringify(base)),
+        { id: 999999, kind: 'rider', owner: 'A', scouting: true, tutScout: true, strat: 'strike', task: null, path: null }));
       G.loadJSON(JSON.stringify(old)); Screens._demo = false; Screens._enterNow();
       out.oldLoaded = { first: S.stats.firstActS === undefined ? 'absent' : S.stats.firstActS,
-        skipKept: 'tutSkipAt' in S.stats, tutKept: 'tut' in S };
+        skipKept: 'tutSkipAt' in S.stats, tutKept: 'tut' in S,
+        scoutKept: S.units.some(u => u.tutScout || u.id === 999999),
+        othersKept: ids0.length > 0 && ids0.every(id => S.units.some(u => u.id === id)) };
       S.day = 7; G.noteAct();
       S.day = 8; await hide(); const oe = left(S.runId); await show();
       out.oldRow = oe && ('first_act_s' in oe.props) ? oe.props.first_act_s : 'absent';
@@ -827,6 +835,8 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   ck('aPreStampSaveThatActedReadsUnknown', r.oldLoaded && r.oldLoaded.first !== 'absent' && r.oldRow === null,
     JSON.stringify({ loaded: r.oldLoaded, row: r.oldRow }));
   ck('andTheOldLessonsStateIsDroppedAtLoad', r.oldLoaded && r.oldLoaded.skipKept === false && r.oldLoaded.tutKept === false,
+    JSON.stringify(r.oldLoaded));
+  ck('andItsScriptedScoutRidesOffWithIt', r.oldLoaded && r.oldLoaded.scoutKept === false && r.oldLoaded.othersKept === true,
     JSON.stringify(r.oldLoaded));
   ck('andOneThatNeverActedLearnsItsFirstOrder', r.old0First === 33, 'first act after loading ' + r.old0First);
   // PRIVACY: integers, booleans, null or a short enum — nothing else, anywhere

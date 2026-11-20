@@ -1853,6 +1853,34 @@ const endScreen = async (p) => {
   });
   ck('aVeteranDeviceIsNeverSentOnTheJourney', r.vet === true, 'veteran ' + r.vet);
   ck('anOrdinaryWorldCarriesNoScenarioAndNoElder', !r.scen && !r.elder && !r.nob && r.allows, JSON.stringify(r));
+  /* THE COUNT THE JOURNEY READS (Screens.gamesFounded, once the old lesson's
+     own suite went with it in build 208): a fresh device has founded nothing
+     and is sent; a device that never kept a count but carries any trace of
+     earlier play is seeded a veteran on its first read; and a Replay
+     re-founds a world already counted, so it steps nothing */
+  const c = await p.evaluate(() => {
+    const KEYS = ['neo-games', 'neo-finished-seeds', 'neo-active-slot', 'neo-emergency', 'neo-draft-help'];
+    const wipe = () => { for (const k of KEYS) { try { localStorage.removeItem(k); } catch (e) {} } Screens._mem = {}; };
+    const q = Prologue._q;
+    const decide = () => { try { localStorage.removeItem('neo-prologue'); } catch (e) {} Prologue._q = null; const v = Prologue.prog().veteran; Prologue._q = q; return v; };
+    wipe();
+    const fresh = { n: Screens.gamesFounded(), vet: decide() };
+    const seeded = {};
+    for (const k of KEYS.slice(1)) {
+      wipe();
+      try { localStorage.setItem(k, k === 'neo-finished-seeds' ? '["12345"]' : '1'); } catch (e) {}
+      seeded[k] = { n: Screens.gamesFounded(), vet: decide() };
+    }
+    wipe();
+    try { localStorage.setItem('neo-games', '5'); } catch (e) {}
+    const seed0 = S.seed, before = Screens.gamesFounded();
+    let err = null;
+    try { Screens.replayRun(); } catch (e) { err = String(e && e.message || e); }
+    return { fresh, seeded, replay: { before, after: Screens.gamesFounded(), same: S.seed === seed0, scen: S.scenario || null, err } };
+  });
+  ck('aFreshDeviceHasFoundedNothingAndIsSent', c.fresh.n === 0 && c.fresh.vet === false, JSON.stringify(c.fresh));
+  ck('aDeviceWithAnyTraceOfEarlierPlayIsAVeteran', Object.values(c.seeded).every(s => s.n === 1 && s.vet === true), JSON.stringify(c.seeded));
+  ck('aReplayFoundsNoNewGame', c.replay.before === 5 && c.replay.after === 5 && c.replay.same && !c.replay.scen && !c.replay.err, JSON.stringify(c.replay));
   await ctx.close();
 }
 

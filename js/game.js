@@ -3302,8 +3302,12 @@ const G = {
     // has given none learns its first.
     if (data.stats.firstActS === undefined) data.stats.firstActS = data.stats.actDays ? -1 : null;
     // the old opt-in lesson is gone (build 208): a save from before carries its
-    // state and its skip step, which nothing reads now — dropped, never carried on
+    // state and its skip step, which nothing reads now — dropped, never carried on.
+    // A save made while its scripted scout was riding carries that rider too
+    // (`tutScout`): the lesson steered it and nothing else ever will, so it
+    // rides off with the lesson rather than standing frozen at the town's edge
     delete data.tut; delete data.stats.tutSkipAt;
+    if (Array.isArray(data.units)) data.units = data.units.filter(u => !(u && u.tutScout));
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
