@@ -2762,6 +2762,13 @@ function LAND_STEPS(v) { return 16; }
         ph: (Math.PI / 2 + 2 * Math.PI) / 2.3 - 2, col: '#e8d070' });                          // in its turn window
       const flock = () => ({ kind: 'flock', x: 46.2, y: 11.6, dir: 1, vx: 1.5, vy: 0.1, t: 2, ttl: 7, ph: -1, n: 4 });
       R.ambientT = 1e9; R.smokeT = 1e9;                     // nothing new is spawned
+      /* AND A FOOTING FINISHED IN A FRAME IS DRAWN WHOLE IN IT (build 207): the
+         footings are measured a step at a time now, and the frame that finished
+         one laid its hedge (F.back / F.front) but not its ground (laid before
+         the step ran) — CI's runner, slow enough to leave a step for the frozen
+         draws, read 11,281 bytes moved. Every footing is left to measure here, so
+         the first frozen draw finishes them on any machine. */
+      if (window.Footing && Footing._c) { Footing._c.clear(); Footing._q.length = 0; Footing._qs.clear(); Footing._job = null; }
       const pnow = performance.now, tFix = pnow.call(performance), mr = Math.random;
       const grab = () => R.g.getImageData(0, 0, R.cv.width, R.cv.height).data;
       const diff = (X, Y) => { let n = 0; for (let i = 0; i < X.length; i++) if (X[i] !== Y[i]) n++; return n; };

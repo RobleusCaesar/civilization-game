@@ -605,8 +605,8 @@ const Footing = (() => {
     return b.key + '|' + b.level + '|' + b.x + ',' + b.y + '|' + bs + '|' + look + '|' + (h >>> 0);
   }
   // the building's footing if it is measured and current; queue it otherwise (a stale one still draws)
-  function entry(b) {
-    const look = F.look(b); if (look === 'none') return null;
+  function entry(b, lk) {
+    const look = lk || F.look(b); if (look === 'none') return null;
     const spr = R.wornSprite(b, true), sig = sigOf(b, look);
     let e = F._c.get(b.id);
     if (!e || e.sig !== sig || e.spr !== spr) {
@@ -665,13 +665,21 @@ const Footing = (() => {
   }
   const seen = b => { const bs = Bld.size(b);
     for (let y = 0; y < bs; y++) for (let x = 0; x < bs; x++) if (G.visibleAt(b.x + x, b.y + y)) return true; return false; };
-  // the ground layer of every building about to be drawn — before any of them
+  /* the ground layer of every building about to be drawn — before any of them.
+     The queue's step comes FIRST (build 207): a measurement finished in this
+     frame's step used to lay its back and front with the building (F.back /
+     F.front read the cache after it) but its ground only from the next frame,
+     so for one frame a hedge stood on bare grass — and at a frozen clock two
+     draws differed (tests/land.mjs aFrozenFrameIsAStillFrame, on a runner slow
+     enough to leave a step for it). Now every layer of a frame reads one cache. */
   F.ground = function (g, blds) {
     if (!F.on()) return;
     if (F._world !== S.map) { F._world = S.map; F._c.clear(); F._q.length = 0; F._qs.clear(); F._job = null; }
     F._frame++;
-    for (const b of blds) { if (!seen(b)) continue; const e = entry(b); if (e) blit(g, e.L[0]); }
+    const vis = [];
+    for (const b of blds) { if (!seen(b)) continue; const lk = F.look(b); if (lk !== 'none') { vis.push(b); entry(b, lk); } }
     F.tick(F.BUDGET_MS);
+    for (const b of vis) { const e = F._c.get(b.id); if (e) blit(g, e.L[0]); }
     if (F._frame % 300 === 0) for (const [id, e] of F._c) if (F._frame - e.used > 600) F._c.delete(id);
   };
   F.back = function (g, b) { if (!F.on()) return; const e = F._c.get(b.id); if (e && F.look(b) !== 'none') blit(g, e.L[1]); };

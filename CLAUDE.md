@@ -6465,7 +6465,11 @@ call returns, where no timer can see it — a fifth of every second on a
 **A FOOTING IS MEASURED A STEP AT A TIME** (`Footing.tick` runs one building's
 measurement as a generator, `buildSteps`, under its budget: a frame with no
 budget left takes one step, the largest about a millisecond against 17-50 ms
-for a whole building in one frame), and `Footing.warm` measures the opening
+for a whole building in one frame), the step runs BEFORE any layer of the frame
+is laid (`Footing.ground`: queue, step, then the ground layers — a footing
+finished in a frame is drawn whole in it; laid first, its hedge stood on bare
+grass for a frame and two frozen draws differed, land.mjs §19b now leaves every
+footing to measure), and `Footing.warm` measures the opening
 world's buildings behind the plaque and the title. Measured on the phone
 profile (4x CPU), game 1: 6.5 → 11.3 frames a second once the world is open,
 10.1 → 13.5 while walking, background installs 14.4 → 5 ms a frame, heap 77
