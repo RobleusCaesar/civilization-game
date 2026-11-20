@@ -149,7 +149,10 @@ const b = await pw.chromium.launch({ args: ['--allow-file-access-from-files'] })
   ck('aFreshDeviceHasUnreadNotes', r.unseenFresh === true && r.tabDotBefore === true, JSON.stringify({ unseen: r.unseenFresh, tab: r.tabDotBefore }));
   ck('andTheDoorWearsTheDotToo', r.titleDotFresh === true && r.plaque.child, 'title Settings plaque');
   ck('andThePlaqueKeepsItsCarving', r.plaque.body && r.plaque.studs, JSON.stringify(r.plaque) + ' — the dot is a child, never the plaque\'s own ::before/::after');
-  ck('openingTheTabClearsIt', r.tabDotAfter === false && r.unseenAfter === false && r.titleDotAfter === false && +r.stored === codeV,
+  // the tab remembers the NEWEST NOTE read, never the code's ?v=: a small
+  // release bumps the code and ships no note (CLAUDE.md), and the dot must not
+  // come back for a build with nothing new to read
+  ck('openingTheTabClearsIt', r.tabDotAfter === false && r.unseenAfter === false && r.titleDotAfter === false && +r.stored === +N[0].build,
     JSON.stringify({ tab: r.tabDotAfter, unseen: r.unseenAfter, door: r.titleDotAfter, stored: r.stored }));
   ck('aNewerBuildBringsItBack', r.tabDotNewer === true && r.titleDotNewer === true, JSON.stringify({ tab: r.tabDotNewer, door: r.titleDotNewer }));
   ck('andAThrowingStorageStillClearsItForTheSession', r.blockedBefore === true && r.blockedAfter === false,
