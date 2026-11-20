@@ -462,6 +462,10 @@ the player can attack across it, but there's no dedicated "attack bridge" tap).
   anonymous sign-ins) turns cloud saves on with no other changes.
 - Warship pathing to distant coastal targets is best-effort BFS — fine on
   lakes, untested on huge island maps.
+- GitHub Pages may rate-limit a first visit: a cold load makes ~1,000
+  requests (~160 of them art probes that 404). Seen once, on a phone in a
+  private tab, after build 208; deferred — see CLAUDE.md, **A FIRST VISIT IS
+  ABOUT A THOUSAND REQUESTS**.
 
 ## Quick start on a laptop
 

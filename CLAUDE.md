@@ -6667,6 +6667,34 @@ card instead; the real-time failsafe still collapses a card whatever the
 fire does. **A PAINTER STANDS DOWN**: without the title's helpers (a cached
 older titlescreen.js) the frames are not built and the old wood face shows.
 
+**A FIRST VISIT IS ABOUT A THOUSAND REQUESTS, AND GITHUB PAGES MAY THROTTLE
+IT** (noted 2026-11-20, after build 208 — operator: "make note of it. We can
+always reassess at some point in the future"; DEFERRED, nothing changed). The
+operator, in a private tab on a phone on mobile data, got GitHub Pages' own
+"Rate limit exceeded" page for clanfire.online. It was not an outage: the
+build-208 deploy was healthy, and the page names the one IP address it
+blocked. GitHub documents only that Pages "rate limits may apply" (an HTTP 429
+with an explanation page) and publishes no threshold. **Measured** (a fresh
+Playwright context with the iPhone 13 profile, `?prologue=1` so it meets the
+journey as a new device does, the repo served by a local static server sending
+`max-age=600`, every hit counted AT THE SERVER): about 965 requests to show the
+title (the journey's first world is founded behind it) and about 1,000 a
+minute into game 1, each a distinct path; about 160 are 404s, art probed by
+filename that does not exist (building slots ~85, tree styles ~33, terrain
+variants ~15, relic and unit probes ~8 each), and the unit strips are the
+biggest share (~333). A private tab caches nothing, so every reload repeats
+all of it, and a mobile carrier often shares one public IPv4 address among
+many phones. **A ROLLBACK DOES NOT HELP**: the 429 is served before any of the
+game's code runs, and build 207 makes the same requests (one script more).
+**When reassessed, two levers**: fewer requests — a checked-in list of which
+art files exist would remove the ~160 misses but breaks **Art lands by
+FILENAME, never by manifest** (the operator's call), and packing the unit
+strips into fewer files is the other big cut; or IPv6 — the blocked page
+showed an IPv4 address on an IPv6-first mobile network, which suggests the
+domain has no AAAA records, and with GitHub Pages' AAAA records at the
+registrar a phone would reach Pages from its own address rather than a shared
+one (check the DNS first; nothing in the repo can see it).
+
 **THE TEST BUILD** (`Backend.testSlot`, tests/telemetry.mjs): a build the
 operator plays before it ships goes up as a TEST PAGE beside the live game,
 and since build 146 there is ONE, at a URL that never changes:
