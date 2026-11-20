@@ -77,8 +77,9 @@ const TitleScreen = {
 
   /* ---------------- the plaques ---------------- */
   // btnBegin: the prologue's one plaque (js/prologue.js), New Game's gold
-  KIND: { btnTitleNew: 'gold', btnBegin: 'gold', btnTitleBoard: 'navy', btnContinue: 'wood' },
-  ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnBegin: 'flame', btnTitleBoard: 'trophy',
+  // btnBegin wears 'ember' (a near-black hearth face under its gold wordmark) and no icon
+  KIND: { btnTitleNew: 'gold', btnBegin: 'ember', btnTitleBoard: 'navy', btnContinue: 'wood' },
+  ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnTitleBoard: 'trophy',
     btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleLoad: 'scroll', btnTitleCards: 'cards' },
   dress() {
     if (!this.el) return;
@@ -138,6 +139,9 @@ const TitleScreen = {
     wood: { stops: ['#5b3a1e', '#4a2e16', '#3b2410', '#2c1a0a'], grain: '#120700', light: '#c9925a', groove: '#120800' },
     minor: { stops: ['#55361c', '#452b15', '#37210f', '#2a190a'], grain: '#120700', light: '#c9925a', groove: '#120800' },
     navy: { stops: ['#2d3b5c', '#223050', '#1a2541', '#121a30'], grain: '#050913', light: '#9fb6e8', groove: '#060a16' },
+    // the hearth: the BEGIN plate (js/prologue.js), dark enough that its gold
+    // wordmark stands on it as the logo's letters stand on the night
+    ember: { stops: ['#38200f', '#2a170a', '#1e0f05', '#140902'], grain: '#000000', light: '#d99a55', groove: '#0a0400', noKnot: true },
     // the gold plate is METAL, not pale wood: banded like struck leaf, its
     // grain no more than a brushing
     gold: { stops: ['#fbe49a', '#ecc25e', '#d8a444', '#c99235', '#e0b14e', '#a8721f'], at: [0, 0.3, 0.5, 0.56, 0.8, 1],
@@ -187,7 +191,7 @@ const TitleScreen = {
       s += `<path d="${d}" fill="none" stroke="${dark ? F.grain : F.light}" stroke-opacity="${f(op)}" stroke-width="${f(0.5 + rnd() * 0.8)}"/>`;
     }
     // a knot, off to one side of the label (wood only)
-    if (!F.brush && (!minor || rnd() < 0.6)) {
+    if (!F.brush && !F.noKnot && (!minor || rnd() < 0.6)) {
       const kx = (rnd() < 0.5 ? 0.12 + rnd() * 0.12 : 0.76 + rnd() * 0.12) * w, ky = h * (0.3 + rnd() * 0.4), kr = 2.2 + rnd() * 1.6;
       for (let r = 0; r < 3; r++) {
         s += `<ellipse cx="${f(kx)}" cy="${f(ky)}" rx="${f(kr * (2.3 + r * 1.5))}" ry="${f(kr * (0.55 + r * 0.42))}" fill="none" stroke="${F.grain}" stroke-opacity="${f(0.22 - r * 0.05)}" stroke-width=".7"/>`;

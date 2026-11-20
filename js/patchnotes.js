@@ -19,6 +19,13 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 206, date: '2026-11-20', title: 'A Begin button worth pressing',
+    items: [
+      'The Begin button on the title is redrawn in the same golden lettering as the Clanfire logo, on a dark hearth plate that glows like firelight.',
+      'The name of the next game now sits on a blue ribbon like the one under the logo, easy to read at a glance.',
+    ],
+  },
+  {
     build: 205, date: '2026-11-20', title: 'The tower guards the land bridge, and a calmer isle',
     items: [
       'In the second game the watchtower now goes up on the land bridge itself, as part of the wall.',

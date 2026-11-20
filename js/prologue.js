@@ -118,12 +118,19 @@ const Prologue = {
     if (!btn) {
       btn = document.createElement('button');
       btn.className = 'abtn big'; btn.id = 'btnBegin'; btn.type = 'button';
-      btn.innerHTML = '<span class="blab">Begin</span><small></small>';
+      // the word is the logo's own lettering (assets/ui/title/begin.png), on the
+      // hearth plate, the game's name on the logo's blue ribbon under it
+      const v = (typeof CFG !== 'undefined' && CFG.ART_V) ? '?v=' + CFG.ART_V : '';
+      btn.setAttribute('aria-label', 'Begin');
+      btn.innerHTML = '<span class="bglow" aria-hidden="true"></span><span class="bfire" aria-hidden="true"></span>' +
+        '<span class="blab"><span class="bword"><img src="assets/ui/title/begin.png' + v + '" alt="Begin" width="611" height="183" draggable="false">' +
+        '<i class="bshine" aria-hidden="true"></i></span></span><small></small>';
       btn.addEventListener('click', () => this.begin());
       menu.insertBefore(btn, menu.firstChild);
     }
     const sm = btn.querySelector('small');
     if (sm) sm.textContent = this.NAMES[g] + ' · ' + g + ' of 3';
+    btn.setAttribute('aria-label', 'Begin: ' + this.NAMES[g] + ', ' + g + ' of 3');
     if (!skip) {
       skip = document.createElement('button');
       skip.id = 'btnSkipJourney'; skip.type = 'button'; skip.className = 'proSkip';
@@ -3745,21 +3752,44 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad { display: none !important; }
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }
-#scrTitle #btnBegin small { display: block; margin-top: 3px; font: 600 12px/1.2 Georgia,serif; letter-spacing: .3px; text-transform: none; opacity: .85; }
-/* THE BEGIN PLATE (the night title's gold): the word and the game's name
-   share one centre line — the flame hangs left of the word and an empty
-   twin balances it on the right — and both sit inside the carved groove
-   (8.6px in from the rim), the name struck into the gold in dark ink like
-   the word (cream on gold could not be read, and on a 58px plate the line
-   lay across the bottom bevel) */
-#scrTitle.t2 .plaques #btnBegin { --bi: 27px; min-height: 76px; padding: 10px 14px; }
-#scrTitle.t2 #btnBegin .t2i { width: var(--bi); height: var(--bi); }
-#scrTitle.t2 #btnBegin .blab::after { content: ''; flex: 0 0 auto; width: var(--bi); }
-#scrTitle.t2 .plaques #btnBegin small { margin-top: 4px; font: 700 13px/1.15 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.3px;
-  text-transform: none; white-space: nowrap; color: #4a2709; opacity: 1; text-shadow: 0 1px 0 rgba(255,243,205,.62); }
+/* THE BEGIN PLATE: the logo's own lettering on a hearth-dark plate (TitleScreen's
+   'ember' face), the game's name on the logo's blue ribbon under it; firelight
+   breathes behind the plate and a shine runs over the letters now and then —
+   the one thing on the title asking to be pressed */
+#scrTitle.t2 .plaques #btnBegin { min-height: 0; padding: 13px 14px 12px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 7px; isolation: isolate; overflow: visible; }
+#scrTitle #btnBegin .blab { display: block; gap: 0; line-height: 0; }
+#scrTitle #btnBegin .bword { position: relative; display: block; line-height: 0; }
+#scrTitle #btnBegin .bword img { display: block; height: 56px; width: auto; max-width: 100%;
+  filter: drop-shadow(0 3px 2px rgba(0,0,0,.55)); -webkit-user-drag: none; user-select: none; }
+#scrTitle #btnBegin .bshine { position: absolute; inset: 0; pointer-events: none;
+  -webkit-mask: url(assets/ui/title/begin.png) center / 100% 100% no-repeat; mask: url(assets/ui/title/begin.png) center / 100% 100% no-repeat;
+  background: linear-gradient(105deg, rgba(255,255,240,0) 42%, rgba(255,255,236,.8) 50%, rgba(255,255,240,0) 58%) no-repeat;
+  background-size: 260% 100%; background-position: 130% 0; animation: proShine 4.2s ease-in-out 1.2s infinite; }
+@keyframes proShine { 0% { background-position: 130% 0; } 38%, 100% { background-position: -30% 0; } }
+#scrTitle #btnBegin .bglow { position: absolute; z-index: -2; left: -16px; right: -16px; top: -14px; bottom: -14px; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255,168,58,.55), rgba(255,120,30,.2) 62%, rgba(255,110,20,0));
+  animation: proGlow 2.6s ease-in-out infinite alternate; }
+@keyframes proGlow { from { opacity: .4; transform: scale(.97); } to { opacity: 1; transform: scale(1.03); } }
+#scrTitle #btnBegin .bfire { position: absolute; z-index: -1; left: 9px; right: 9px; top: 9px; bottom: 9px; pointer-events: none;
+  background: radial-gradient(60% 75% at 50% 62%, rgba(255,150,46,.34), rgba(255,110,24,.1) 60%, rgba(255,100,20,0) 80%); }
+#scrTitle #btnBegin small { position: relative; display: block; margin: 0; padding: 4px 15px 5px; white-space: nowrap;
+  font: 700 12.5px/1.15 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.4px; text-transform: uppercase;
+  color: #f6e8c2; opacity: 1; text-shadow: 0 1px 0 #041327, 0 0 3px rgba(4,19,39,.8);
+  background: linear-gradient(#2366b0, #174d8f 48%, #0f3768);
+  box-shadow: 0 0 0 1.5px #06142a, inset 0 0 0 1px #4fa0ea, inset 0 2px 0 rgba(255,255,255,.12), 0 3px 3px rgba(0,0,0,.45); }
+#scrTitle #btnBegin small::before, #scrTitle #btnBegin small::after { content: ''; display: block; position: absolute; z-index: -1;
+  top: 5px; bottom: -5px; width: 18px; background: linear-gradient(#123d72, #0b2a52); box-shadow: inset 0 0 0 1px #06142a; }
+#scrTitle #btnBegin small::before { left: -12px; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 7px 50%); }
+#scrTitle #btnBegin small::after { right: -12px; clip-path: polygon(0 0, 100% 0, calc(100% - 7px) 50%, 100% 100%, 0 100%); }
 @media (max-height: 600px) {
-  #scrTitle.t2 .plaques #btnBegin { --bi: 23px; min-height: 64px; padding: 8px 12px; }
-  #scrTitle.t2 .plaques #btnBegin small { margin-top: 2px; font-size: 12px; }
+  #scrTitle.t2 .plaques #btnBegin { padding: 10px 12px 9px; gap: 5px; }
+  #scrTitle #btnBegin .bword img { height: 46px; }
+  #scrTitle #btnBegin small { font-size: 11.5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #scrTitle #btnBegin .bshine { display: none; }
+  #scrTitle #btnBegin .bglow { animation: none; opacity: .75; }
 }
 #scrTitle .proSkip { display: block; margin: 14px auto 0; padding: 8px 14px; border: 0; background: none; cursor: pointer;
   color: rgba(243,226,180,.72); font: 600 13px/1 Georgia,serif; text-decoration: underline; text-underline-offset: 3px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
