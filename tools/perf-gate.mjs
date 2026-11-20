@@ -346,9 +346,10 @@ const session = async (pw, base, which) => {
          work (ground arriving after the pan, a footing measured, a bake
          slice), so the view is settled first and the FASTEST of many
          batches is read: the draw itself, nothing queued behind it. Batches
-         of 24 because the clock ticks in 0.1 ms. Measured: the same build
-         reads 0.125-0.15 ms on this sandbox, a build with 0.3 ms added to
-         every draw 0.46-0.49 ms. */
+         of 24 because the clock ticks in 0.1 ms. Measured in this session on
+         this sandbox: build 207 against itself 0.238 / 0.233 ms, and a build
+         with 0.3 ms added to every draw 0.221 → 0.537 ms (held); the median
+         of a few batches had read one build 0.29 and 0.47. */
       step('worlds: the world pass');
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       await p.evaluate(() => {

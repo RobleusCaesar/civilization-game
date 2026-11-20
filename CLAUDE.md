@@ -68,8 +68,9 @@ town, `R.draw` alone at full speed: the view settled for 4 s, then the
 FASTEST of 24 batches of 24 draws — a live draw also does its frame's share
 of background work, ground arriving or a footing measured, and the median
 over a few batches read the same build 0.29 and 0.47 ms; the fastest batch
-reads it 0.125-0.15 and a build with 0.3 ms added to every draw 0.46-0.49),
-the unit art held after the second world, the JS heap, and any error. **THE WORLD PASS WAS AN
+reads build 207 against itself 0.238 and 0.233, and a build with 0.3 ms
+added to every draw 0.221 → 0.537, held), the unit art held after the
+second world, the JS heap, and any error. **THE WORLD PASS WAS AN
 ABSOLUTE NUMBER** (tests/land.mjs `theWorldPassFrameStaysCheap`, 1.5 ms p95,
 set on this sandbox where it reads 0.7-1.0) and GitHub's slower runners read
 1.50 at the line on unchanged render code (Contracts runs 345 and 348): the
@@ -93,7 +94,9 @@ runners themselves differed by 30% in speed, which is why only same-runner
 ratios are read); build 206 — the stutter the operator reported — is HELD on
 six on this sandbox: keep to playing +71% (its second world waited 8.2 s for
 a second army's art), blocky ground 1 → 38 draws, frame time while opening
-+48% and while playing +37%, p95 +38%, unit art 143 → 426 MB. Two figures
++48% and while playing +37%, p95 +38%, unit art 143 → 426 MB; and on four on
+CI's runners (a hand-started run, 206 against 207): frame time while opening
++67% and while playing +35%, p95 +49%, unit art 143 → 426 MB. Two figures
 are loose on purpose: the journey's BEGIN to playing (a race with the
 prefetch, ±20% between identical runs) and the p99 tail (one machine read 142
 to 238 ms across four sessions of one build), whose +60% only catches a NEW
