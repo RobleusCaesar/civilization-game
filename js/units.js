@@ -120,10 +120,73 @@ const Units = {
     u.maxhp = Math.round(probe.maxhp * vet); u.hp = Math.max(1, Math.round(frac * u.maxhp));
     u.atk = (probe.atk + (u.skyIron ? 1 : 0)) * vet;
     u.def = probe.def; u.speed = probe.speed;
+    // a veteran's standing was of the rank he left: re-stamped, it is gone
+    this.clearVeteran(u);
     if (window.Assets && Assets.loadUnitsArt) { try { Assets.loadUnitsArt([u]); } catch (e) { /* the stand-in draws */ } }
     // risen a rank, he springs up in a flash of gold (js/goldfx.js — a picture only)
     if (window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(u, 'rank');
     return c;
+  },
+
+  /* VETERANS OF THE FIELD (tests/veterans.mjs — operator, build 209: "if any
+     military unit gets into a fight… and gets hurt and then they are either
+     brought back to a war camp or to the main town center and they get
+     healed… when they're done healing they level up to a veteran… they'll
+     still keep whatever their rank is… If they get upgraded to the next
+     level… they lose their veteran standing… the veteran level should
+     always exist between the two levels of units… so it doesn't massively
+     tip the balance"). A soldier of the player's hurt in a fight and healed
+     where the land mends (UI's Heal: the hall's ring or beside a War Camp,
+     Bld.healZoneFor) comes back a VETERAN OF HIS RANK: CFG.VETERAN more
+     health and a harder blow (an engine's stone too, Combat.bldAtkOf), the
+     Veterans card's gold pip over his head (R.rankPip), "Veteran Defender"
+     on his panel and in the chronicle (nameOf). The bonus is STAMPED like
+     every stat (maxhp, atk) and remembered — u.vetOf, the kind he earned it
+     as; u.vetHp / u.vetAtk, what it added — so it rides the save and comes
+     off exactly. It is a standing OF HIS RANK: a rank-up (rankUp) or the
+     card's promotion re-stamps him as the new rank and it is gone, and
+     isVeteran asks vetOf === kind, so any path that changes his kind ends
+     it. Never twice; never beside the card's own veteran (u.vet, ×1.25,
+     which replaces it — Deck.veteran); never a hull (they mend at a dock),
+     an unarmed engine, a ghost or a war-wolf; never the rival's (the rival
+     raises no ranks either). */
+  isVeteran(u) { return !!(u && u.vetOf && u.vetOf === u.kind); },
+  veteranOk(u) {
+    if (!u || u.owner !== 'P' || u.spectral || u.warWolf || u.vet || this.isVeteran(u)) return false;
+    if (!this.isMilitary(u) || this.isNaval(u)) return false;
+    const base = CFG.UNITS[u.kind];
+    return !!(base && base.atk > 0 && CFG.HEAL_FOOD[u.kind]);
+  },
+  makeVeteran(u) {
+    if (!this.veteranOk(u)) return false;
+    const V = CFG.VETERAN || { hp: 0.15, atk: 0.15 };
+    const frac = u.maxhp > 0 ? u.hp / u.maxhp : 1;
+    const addHp = Math.max(1, Math.round(u.maxhp * V.hp)), addAtk = u.atk * V.atk;
+    u.vetOf = u.kind; u.vetHp = addHp; u.vetAtk = addAtk;
+    u.maxhp += addHp; u.atk += addAtk;
+    u.hp = Math.max(1, Math.round(frac * u.maxhp));
+    return true;
+  },
+  // the standing's stamps taken off exactly (the card's own veteran replaces it)
+  unVeteran(u) {
+    if (!u || !u.vetOf) return;
+    if (this.isVeteran(u)) {
+      const frac = u.maxhp > 0 ? u.hp / u.maxhp : 1;
+      u.maxhp = Math.max(1, u.maxhp - (u.vetHp || 0)); u.atk -= (u.vetAtk || 0);
+      u.hp = Math.max(1, Math.round(frac * u.maxhp));
+    }
+    this.clearVeteran(u);
+  },
+  // after a re-stamp (a rank-up, the card's promotion) the stamps are gone already
+  clearVeteran(u) { if (u) { delete u.vetOf; delete u.vetHp; delete u.vetAtk; } },
+  // an engine's stone is never stamped (Combat.bldAtkOf reads the kind's), so it asks
+  vetMult(u) { return this.isVeteran(u) ? 1 + ((CFG.VETERAN || {}).atk || 0) : 1; },
+  // the name a unit goes by: a card's own people first (js/deckfx-army.js)
+  nameOf(u) {
+    const card = window.Deck && Deck.unitName ? Deck.unitName(u) : null;
+    if (card) return card;
+    const nm = CFG.UNITS[u.kind].name;
+    return this.isVeteran(u) ? 'Veteran ' + nm : nm;
   },
 
   isMilitary(u) {
@@ -2857,7 +2920,7 @@ const Units = {
       // without an alarm: fifteen red "was killed" toasts for a host that was
       // always going to fade would bury every line that matters
       if (u.owner === 'P' && !u.krakenTaken && !u.spectral)
-        G.log(`${(window.Deck && Deck.unitName && Deck.unitName(u)) || CFG.UNITS[u.kind].name} was killed`, true);
+        G.log(`${this.nameOf(u)} was killed`, true);
       if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)
         G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
       // any wild animal killed by a tribe yields meat

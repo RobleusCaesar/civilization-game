@@ -16958,7 +16958,11 @@ const R = {
         if ((u.spectral || u.warWolf || u.vet || u.ranked || (window.Deck && Deck._swingUntil && Deck.swinging && Deck.swinging())) && window.Deck && Deck.drawUnit) {
           try { Deck.drawUnit(g, u, img, dx0, dy0, D); }
           catch (err) { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(img, dx0, dy0, D, D); }
-        } else g.drawImage(img, dx0, dy0, D, D);
+        } else {
+          g.drawImage(img, dx0, dy0, D, D);
+          // a veteran of the field wears the gold pip of his standing (Units.isVeteran)
+          if (u.vetOf && Units.isVeteran && Units.isVeteran(u)) this.rankPip(g, dx0, dy0, D, 2, img);
+        }
         // a blow just taken: one white beat over the sprite (js/battlefx.js)
         if (bfx && !u.spectral) bfx.drawFlash(g, u, img, dx0, dy0, D, D);
         if (gUr && gFx && gFx.flash) gFx.flash(g, gUr);
@@ -17759,6 +17763,46 @@ const R = {
     g.fillRect(x, y, w, h);
     g.fillStyle = col;
     g.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
+  },
+
+  /* THE RANK PIP over a soldier's head (moved here from js/deckfx-army.js in
+     build 209: the field's veterans wear it too — Units.isVeteran — so it is
+     the game's, and the Veterans card's drawRank asks for it). A hard
+     diamond with a dark rim, gold for a veteran (n 2), steel for a soldier
+     the card raised to his hall's champion (n 1), set on the frame's own head
+     (headTop: its first opaque row, measured once per frame) so it rides the
+     walk and the stride, a world pixel's gap above the hair. `bright`: the
+     frame a card's rank lands, the diamond white-hot. */
+  RANK_PIP: { 2: ['#3a2408', '#ffd45e', '#fff3b0'], 1: ['#26303c', '#b9c8da', '#ffffff'] },
+  _headC: new WeakMap(),
+  headTop(img) {
+    let h = this._headC.get(img);
+    if (h != null) return h;
+    h = 0.12;
+    try {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const q = c.getContext('2d'); q.drawImage(img, 0, 0);
+      const d = q.getImageData(0, 0, c.width, c.height).data;
+      for (let y = 0; y < c.height; y++) {
+        let on = false;
+        for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 128) { on = true; break; }
+        if (on) { h = y / c.height; break; }
+      }
+    } catch (e) { /* a tainted frame keeps the guess: the pip still shows */ }
+    this._headC.set(img, h);
+    return h;
+  },
+  rankPip(g, x, y, D, n, img, bright) {
+    const P = this.RANK_PIP[n >= 2 ? 2 : 1], cx = Math.round(x + D / 2);
+    const top = Math.round(y + (img ? this.headTop(img) : 0.12) * D) - 7;   // the diamond's top: 5 tall, a pixel's gap
+    // the dark rim: a diamond a pixel larger all round, laid first
+    g.fillStyle = P[0];
+    [1, 3, 5, 7, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top - 1 + r, w, 1));
+    // the body, and its lit corner
+    g.fillStyle = bright ? '#ffffff' : P[1];
+    [1, 3, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top + r, w, 1));
+    g.fillStyle = bright ? '#ffffff' : P[2]; g.fillRect(cx - 1, top + 1, 1, 1); g.fillRect(cx, top, 1, 1);
+    return { x: cx + 0.5, y: top + 2.5 };
   },
 
   // small minimap snapshot for cloud-save slot cards

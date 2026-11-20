@@ -1074,6 +1074,13 @@ const CFG = {
   HEAL_RADIUS: 5,          // tiles from the TC centre at level 1
   HEAL_DOCK_TOUCH: 2,      // ships repair at ANY owned dock, but must be touching it or ≤1 tile off (from the dock's edge)
   HEAL_RADIUS_STEP: 0.15,
+  /* VETERANS OF THE FIELD (Units.makeVeteran, tests/veterans.mjs): a soldier
+     of the player's hurt in a fight and healed at the hall or a war camp comes
+     back a veteran of his rank — this much more health and attack (an engine's
+     stone too). Small on purpose: it must sit UNDER the next rank wherever the
+     next rank is stronger (a Veteran Defender strikes 9 to the Axeman's 11),
+     and stay well under the Veterans card's ×1.25 (js/deckfx-army.js). */
+  VETERAN: { hp: 0.15, atk: 0.15 },
   // PER-UNIT HEAL LIMIT — closes the "stand in the TC ring and spam Heal
   // through a live fight" exploit: a unit takes free hits forever if you can
   // just top it off between blows. At most HEAL_LIMIT_N heals per unit in any

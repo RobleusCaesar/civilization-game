@@ -2589,7 +2589,8 @@ const UI = {
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
       this.armyOfUnit(u),   // …and Remove Army appears the moment this one is the last of it
       u.perch ? 'P' : u.climb ? 'C' : '-',   // up a tower, on its stairs, or on the ground (js/lookout.js)
-      u.kind, (c => c ? c.code : '-')(Units.rankCheck ? Units.rankCheck(u) : null)];   // the rank button greys and lights without a tap
+      u.kind, (c => c ? c.code : '-')(Units.rankCheck ? Units.rankCheck(u) : null),   // the rank button greys and lights without a tap
+      Units.isVeteran(u)];   // a veteran's name, stats and pip
     // the works this builder is on: the Cancel button rides its id, so it
     // appears, arms and disappears with the site itself
     const cw = this.villagerBuildSite(u);
@@ -2633,6 +2634,28 @@ const UI = {
   healWhere(u) {
     if (Units.isNaval(u)) return 'Dock';
     return S.buildings.some(b => b.owner === u.owner && b.key === 'warcamp' && Bld.done(b)) ? 'hall or camp' : 'Town Center';
+  },
+  // the Heal button's small line: the price where they can be mended (and the
+  // standing it brings: Units.veteranOk), where to go when they cannot
+  healSub(u) {
+    if (this.healThrottled(u)) return 'Cooldown…';
+    if (!Bld.inHealZone(u)) return 'near ' + this.healWhere(u);
+    return Bld.costStr({ food: this.healCost(u) }) + (Units.veteranOk(u) ? ' · Veteran' : '');
+  },
+  // what a veteran of the field has, in the rule's own numbers (CFG.VETERAN)
+  veteranLine() {
+    const V = CFG.VETERAN || {}, h = Math.round((V.hp || 0) * 100), a = Math.round((V.atk || 0) * 100);
+    return h === a ? `A veteran: ${h}% more health and attack, until they rise a rank.`
+      : `A veteran: ${h}% more health and ${a}% more attack, until they rise a rank.`;
+  },
+  // a soldier mended into a veteran: said once, seen over him, heard, and popped in gold
+  veteranNews(u) {
+    const nm = CFG.UNITS[u.kind].name, V = CFG.VETERAN || {};
+    R.float(u.x, u.y - 0.9, '⬆ Veteran', '#f0c75a');
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete');
+    if (window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(u, 'rank');
+    const h = Math.round((V.hp || 0) * 100), a = Math.round((V.atk || 0) * 100);
+    G.log(`Your ${nm} is now a Veteran ${nm}: ` + (h === a ? `+${h}% health and attack` : `+${h}% health, +${a}% attack`), 'note');
   },
   healCost(u) {
     const base = CFG.HEAL_FOOD[u.kind];
@@ -2734,7 +2757,8 @@ const UI = {
   rankBtn(u) {
     const c = Units.rankCheck ? Units.rankCheck(u) : null;
     if (!c) return '';
-    const name = c.ok ? `Upgrade to ${CFG.UNITS[c.to].name} — ${Bld.costStr(c.cost)}` : c.why;
+    const name = (c.ok ? `Upgrade to ${CFG.UNITS[c.to].name} — ${Bld.costStr(c.cost)}` : c.why) +
+      (Units.isVeteran(u) ? ' (a veteran starts over at the new rank)' : '');
     return `<button class="abtn prank${c.ok ? '' : ' cant'}" data-act="rankup" title="${name}" aria-label="${name}">${this.RANK_SVG}</button>`;
   },
   killPlank(act, line, small) {
@@ -2866,8 +2890,7 @@ const UI = {
       // above); this patches the drifting cost number in between them, so it
       // must agree with the same throttled branch or it overwrites a settled
       // "Cooldown…" label with a stale price the button no longer honours.
-      if (u) hc.textContent = this.healThrottled(u) ? 'Cooldown…'
-        : Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + this.healWhere(u);
+      if (u) hc.textContent = this.healSub(u);
     }
     // tick every works call-off's days and bar in place (no relayout) — a
     // building's own panel and a builder's alike (worksButton, data-bid)
@@ -3570,7 +3593,7 @@ const UI = {
       if (!u) { this.deselect(); return; }
       // a card's own people go by their own names (js/deckfx-army.js:
       // a War-wolf, a Spectral Champion, a Veteran Lancer)
-      const nm = (window.Deck && Deck.unitName && Deck.unitName(u)) || CFG.UNITS[u.kind].name;
+      const nm = Units.nameOf(u);
       const own = u.owner === 'P';
       let hint = (own && window.Deck && Deck.unitHint && Deck.unitHint(u)) || (!own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${(CFG.MEAT && CFG.MEAT[u.kind]) || CFG.MEAT_DROP} food).`
@@ -3592,6 +3615,8 @@ const UI = {
         : Units.isTransport(u) ? `Select soldiers or villagers and tap this hull to board — it carries ${CFG.UNITS[u.kind].cap}. Tap a shore tile to land them, or water to row.`
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.');
+      if (own && Units.isVeteran(u)) hint += ' ' + this.veteranLine();
+      else if (own && Units.veteranOk(u)) hint += ' Hurt in a fight and healed at your hall or a war camp, they come back a veteran.';
       if (!own && !Units.isPassive(u)) {
         const stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
           (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0));
@@ -3629,8 +3654,8 @@ const UI = {
         const inZone = Bld.inHealZone(u);
         const throttled = this.healThrottled(u);
         const ok = inZone && S.res.food >= hc && !throttled;
-        const sub = throttled ? 'Cooldown…' : inZone ? Bld.costStr({ food: hc }) : 'near ' + this.healWhere(u);
-        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${sub}</small></button>`;
+        const vt = Units.veteranOk(u) ? ' title="Healed after a fight, they come back a veteran"' : '';
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal"${vt}>❤️ Heal<small id="healCost">${this.healSub(u)}</small></button>`;
       }
       // Unload renders only with someone aboard — an empty hull's button could
       // only toast a refusal, and the capacity now rides in the hint line
@@ -3860,6 +3885,9 @@ const UI = {
         u2.hp = u2.maxhp;
         R.float(u2.x, u2.y - 0.5, '❤', '#8ae08a');
         this.toast(`Healed for ${cost} food`);
+        // VETERANS OF THE FIELD: hurt in a fight and mended here, a soldier
+        // comes back a veteran of his rank (Units.makeVeteran)
+        if (Units.makeVeteran(u2)) this.veteranNews(u2);
         this.renderPanel();
       });
       const gobuild = panel.querySelector('[data-act="gobuild"]');

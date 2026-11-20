@@ -155,8 +155,9 @@ const Combat = {
     const ba = CFG.UNITS[u.kind].bldAtk;
     if (!ba) return 0;
     // a VETERAN engine (js/deckfx-army.js, u.vet) throws its stone a quarter
-    // harder; a live card may soften a tribe's engines (the Swallowed Sun)
-    const vet = u.vet || 1;
+    // harder, a veteran of the field (Units.isVeteran) by CFG.VETERAN; a live
+    // card may soften a tribe's engines (the Swallowed Sun)
+    const vet = (u.vet || 1) * (u.vetOf && Units.vetMult ? Units.vetMult(u) : 1);
     return window.Deck && Deck.mult ? Math.round(ba * vet * Deck.mult('bldAtk', u.owner, u)) : Math.round(ba * vet);
   },
 

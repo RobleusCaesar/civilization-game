@@ -341,6 +341,7 @@ node tests/drawbridge.mjs      # every gate's door works: L1 leaves, L2 portcull
 node tests/tc-upgrade.mjs      # the hall rises on the town's shoulders — 3 buildings at its own level
 node tests/banish.mjs          # a villager can be sent away for good — the pop cap is all you get back
 node tests/rank-up.mjs         # a soldier rises a rank on the spot: his yard's own line, half the rank's price, gated on the yard's level, a bow on a tower too; greyed and said when it cannot
+node tests/veterans.mjs        # a soldier hurt in a fight and healed at the hall or a war camp comes back a veteran of his rank: CFG.VETERAN more health and attack, under the next rank on every ladder, the card's gold pip in the world, lost on a rank-up and earned again; never twice, never the rival's, a hull, a ghost or a war-wolf; the card's veteran replaces it exactly; kept in a save
 node tests/build-cancel.mjs    # works can be called off until they finish — everything paid comes back, clean ground, every hand freed; the order's own button BECOMES the call-off (upgrades, sites, the wall works, a span's reinforcing); every panel two buttons to a row, none full width unless alone
 node tests/board-post.mjs      # every victory goes on the world board — the name box is on the scene, leaving still posts, the cloud gets a second chance, file:// never touches the cloud; a card-assisted win asks a board not asked yet and goes up marked
 node tests/worked-ground.mjs   # a station stands only on ground its own resource was taken out of
@@ -539,6 +540,46 @@ has none), greyed (`.cant`, still clickable) while `rankCheck` says no, and
 a greyed tap toasts its reason ("Axeman needs a Barracks at level 2", or
 the price); its state rides in `panelSig` (`u.kind` and the check's code)
 so it lights the moment the yard finishes.
+
+**VETERANS OF THE FIELD** (`Units.isVeteran` / `veteranOk` / `makeVeteran` /
+`unVeteran` / `clearVeteran` / `vetMult` / `nameOf`, `CFG.VETERAN`,
+`UI.healSub` / `veteranLine` / `veteranNews`, `R.rankPip`; tests/veterans.mjs
+— operator, build 209: "if any military unit gets into a fight or an
+engagement and gets hurt and then they are either brought back to a war camp
+or to the main town center and they get healed when they're done healing
+they level up to a veteran… If they get upgraded to the next level… they
+lose their veteran standing… the veteran level should always exist between
+the two levels of units… so it doesn't like massively tipped the balance").
+A soldier of the player's — a land fighter with a weapon and a heal price,
+never a hull (they mend at a dock), a siege tower, a ghost, a war-wolf, a
+villager or a sapper — hurt and healed by the panel's Heal where the land
+mends (`Bld.healZoneFor`: the hall's ring or beside a War Camp) comes back a
+VETERAN OF HIS RANK: `CFG.VETERAN` (0.15) more health and attack, an
+engine's stone too (`Combat.bldAtkOf` asks `vetMult`), "Veteran Defender" on
+his panel and in the chronicle (`nameOf`), and the Veterans card's gold pip
+over his head. **STAMPED, NOT DERIVED**: the bonus goes onto `u.maxhp` and
+`u.atk` like every stat, and what it added is kept (`u.vetOf` the kind he
+earned it as, `u.vetHp` / `u.vetAtk`), so it rides the save and comes off
+exactly. **A STANDING OF HIS RANK**: `isVeteran` asks `vetOf === kind`, and a
+rank-up (`Units.rankUp`) or the card's promotion (`Deck.promote`) re-stamps
+him as the new rank and clears it — he can earn it again there; the rank
+button's title says so. **BETWEEN THE RANKS** (pinned on every ladder): 15%
+sits under the next rank wherever the next rank is stronger (a Veteran
+Defender strikes 9.2 to the Axeman's 11; the second ranks are sidegrades, so
+a Defender already out-lasts an Axeman and the veteran's edge there is its
+blow). **NEVER TWICE, NEVER BESIDE THE CARD'S**: the card's own veteran
+(`u.vet`, ×1.25) REPLACES it (`Deck.veteran` calls `unVeteran` first), and a
+card veteran earns none. **THE PLAYER'S ALONE**: the rival raises no ranks
+and its own mending (`AI.mendTheHurt`) makes none. **THE PIP IS THE GAME'S
+NOW** (`R.rankPip` / `R.headTop`, moved from js/deckfx-army.js, whose
+`drawRank` / `headTop` are doors to them): the unit pass draws it over a
+field veteran, and `Deck.drawUnit` paints a card unit's gold when it is
+either kind of veteran. The Heal button's small line says "· Veteran" when
+the heal will make one, the hint line says how it is earned, and the heal
+that makes one says it once (`G.log` 'note', quiet in a journey world), a
+float, the rank-up's sound and its gold pop. Perched bows draw no pip
+(neither kind; `Lookout.draw` never did). The `window.Units` trap again: a
+card file must ask `typeof Units`.
 
 **THE TRAIN BUTTON SHOWS ITS WORK** (`UI.paintTraining` / `queueLine` /
 `trainFlash`, `Bld.trainNow`; tests/train-progress.mjs — operator, build 201:

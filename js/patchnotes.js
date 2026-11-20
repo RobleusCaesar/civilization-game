@@ -22,6 +22,14 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 209, date: '2026-11-20', title: 'Veterans of the field',
+    items: [
+      'A soldier who is hurt in a fight and healed at your Town Center or a War Camp comes back a veteran, with a gold badge over their head.',
+      'A veteran keeps their rank and has 15 percent more health and attack, still short of the next rank up. Siege engines throw their stones harder too.',
+      'The Heal button tells you when healing will make a veteran. Upgrading a veteran to the next rank starts them fresh, and they can earn it again there.',
+    ],
+  },
+  {
     build: 207, date: '2026-11-20', title: 'Smoother play, game after game',
     items: [
       'Playing several games in a row no longer slows the game down: the second and third games run as smoothly as the first.',
