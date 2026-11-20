@@ -377,6 +377,21 @@ const Scenarios = {
        carries any (operator, build 183: the old village burned OFF the map —
        a new home is not raised beside the ashes of the last one); the
        format keeps them for a later campaign. */
+    /* THE TOWN'S OWN ROADS (build 205 — operator: "In the level 2 and level 3 towns,
+       add a few premade stretches of roads … between the buildings so it feels more
+       like a lived in town"): straight runs [x0, y0, x1, y1] laid as finished roads
+       (S.map.roads, at the hall's level like every road) on open grass no building
+       stands on. Game 1 carries none: it teaches the road. */
+    if (!S.map.roads) S.map.roads = {};
+    for (const s of (sc.roads || [])) {
+      const [x0, y0, x1, y1] = s, n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let k = 0; k <= n; k++) {
+        const x = x0 + Math.sign(x1 - x0) * k, y = y0 + Math.sign(y1 - y0) * k;
+        if (!MapGen.onBoard(x, y) || Bld.at(x, y)) continue;
+        const i = y * CFG.W + x;
+        if (S.map.terrain[i] === T.GRASS) S.map.roads[i] = 1;
+      }
+    }
     S.ruins = (sc.ruins || []).map(r => ({ x: r.x, y: r.y, sz: r.sz || 1, c: r.c, v: r.v || 1, m: r.m ? 1 : 0, day: 0 }));
     if (window.Ruins && Ruins.want) for (const r of S.ruins) Ruins.want(r.c, r.v);
     // how far the land is known at the first morning (game 1 shows its whole
