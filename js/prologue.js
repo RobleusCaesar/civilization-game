@@ -2016,6 +2016,10 @@ const Prologue = {
      lesson never waits on a fight that cannot happen. */
   SCOUT_DAYS: 4,
   SCOUT_PACE: 0.6,
+  /* …and hardier than a raider (build 205): with the tower on the neck its archer reaches him
+     from the wood's edge, and at a raider's hp he fell before landing a blow, so the wall
+     was never hurt and the mend lesson was passed over */
+  SCOUT_HP: 3,
   scout() { return S.units.find(u => u.proScout && u.hp > 0) || null; },
   sendScout() {
     if (!S.pro || S.pro.scouted || typeof G === 'undefined' || !G.spawnBarb) return;   // G is a script const: never window.G
@@ -2025,6 +2029,7 @@ const Prologue = {
     if (!u) return;
     u.proScout = 1; u.hostileTo = 'P'; u.style = 'band'; u.tribe = u.tribe || 'wolf';
     u.speed = +(u.speed * this.SCOUT_PACE).toFixed(3);   // he creeps in, slow enough to be watched coming
+    u.maxhp = Math.round(u.maxhp * this.SCOUT_HP); u.hp = u.maxhp;
     S.pro.scouted = 1;
     S.pro.scoutDay = S.day + (S.dayT || 0) / CFG.DAY_MS;
   },

@@ -1622,7 +1622,7 @@ const endScreen = async (p) => {
   ck('andTheBarracksLineSaysWhy', g2w.done.includes('danger') && run.said.some(t => /Dangerous times/.test(t) && /clan that burned us/.test(t))
     && run.said.some(t => /So we need soldiers\. Build a barracks/.test(t)), [...run.said].filter(t => /Dangerous|barracks/i.test(t)).join(' | '));
   ck('thenASectionIsCutIntoAGateAndOpened', ['gate', 'opengate'].every(k => g2w.done.includes(k)) && at('gate') > at('scout') && at('opengate') > at('gate')
-    && g2w.line.filter(x => x === 'gate').length === 1 && g2w.line.filter(x => x === 'wall').length === 2, `the line ${g2w.line.join(', ')}; lines ${order.join(' › ')}`);
+    && g2w.line.filter(x => x === 'gate').length === 1 && g2w.line.filter(x => x === 'wall').length === g2w.need - 1, `the line ${g2w.line.join(', ')}; lines ${order.join(' › ')}`);
   /* MEND WHAT HE BROKE (operator, build 191): right after the scout, a villager is sent to the
      hurt section and it is whole again before the gate is cut */
   ck('thenTheScoutsDamageIsMended', g2w.scout.wall > 0 && g2w.done.includes('mend') && at('scout') < at('mend') && at('mend') < at('gate') && !g2w.hurt

@@ -262,8 +262,8 @@ const SCENARIO_MAPS = {
    },
    {
     "key": "house",
-    "x": 16,
-    "y": 22
+    "x": 17,
+    "y": 20
    },
    {
     "key": "farm",

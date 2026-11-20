@@ -1600,7 +1600,7 @@ safety valve: a player who spent the stores' stone on a road or a lumber
 camp can still raise the tower, never the hall by it alone): the hall's
 next storey (220 wood, 100 stone, 50 gold) wants the far isle's stone and
 gold — the dock's reason (`andTheHomeIsleKeepsALittleStone`). A third
-cottage by the bridge (16,22) anchors the tower's site from the first
+cottage by the bridge (17,20 since build 205, the tower on the neck) anchors the tower's site from the first
 morning (`BUILD_RANGE` 8), so a barracks dragged elsewhere never strands it. The clan's farm
 from game 1 stands at (9,25), bonded to the house north of it and worked from
 the first morning by a sixth villager (build 197, `andTheGrowingClanNeverGoesHungry`):
