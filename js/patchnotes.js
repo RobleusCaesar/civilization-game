@@ -22,7 +22,7 @@ const PATCH_NOTES = [
     build: 206, date: '2026-11-20', title: 'A cleaner title menu',
     items: [
       'The title menu now matches the Settings page: dark plates with a fine gold line, easy to read at a glance.',
-      'The main button, Begin (or New game), is the one lit in gold, so it is always easy to find. The name of your next game sits just under Begin.',
+      'The main button is the one lit in gold: Begin on the journey, New game after it, so it is always easy to find. The name of your next game sits just under Begin.',
     ],
   },
   {
