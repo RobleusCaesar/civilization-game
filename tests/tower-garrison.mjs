@@ -177,7 +177,14 @@ const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('console', m => { if (m.type() === 'error' && !m.text().includes('ERR_FILE_NOT_FOUND')) errs.push('console: ' + m.text()); });
 await p.goto('file://' + join(root, 'index.html?terrain=classic'), { waitUntil: 'domcontentloaded' });
 await p.waitForFunction(() => window.Screens && Screens.current === 'title', null, { timeout: 60000 });
-await p.evaluate(() => { Boot.force(); Screens._demo = false; G.newGame('lookout', 'moderate', 'large'); Screens.show('playing'); S.paused = true; });
+await p.evaluate(() => {
+  Boot.force(); Screens._demo = false; G.newGame('lookout', 'moderate', 'large'); Screens.show('playing'); S.paused = true;
+  /* the bows' own strips, asked for here: this contract measures the drawn men
+     (build 207 — a founding no longer installs every army it might one day
+     field, and a bow spawned below asks for his strips as he comes into the
+     world, too late for a check made in the same step) */
+  for (const o of ['P', 'A']) Assets.loadMilitaryArt(o, false, ['archer', 'longbow', 'marksman']);
+});
 await p.waitForFunction(() => typeof Sprites !== 'undefined' && Sprites.towerArt && [0, 1, 2].every(i => Sprites.towerArt[i]) &&
   (!Assets.allArtReady || Assets.allArtReady()), null, { timeout: 120000 }).catch(() => {});
 
