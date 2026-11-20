@@ -19,6 +19,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 205, date: '2026-11-20', title: 'The tower guards the land bridge, and a calmer isle',
+    items: [
+      'In the second game the watchtower now goes up on the land bridge itself, as part of the wall.',
+      'A tower or other building you put where a wall should go now counts as part of the wall, so the lesson always carries on.',
+      'The small isle across the water is calmer and prettier: one gold seam, one stone, and open meadow with a few trees.',
+      'The villages of the second and third games now start with a few roads already laid between their buildings.',
+    ],
+  },
+  {
     build: 204, date: '2026-11-20', title: 'A softer guiding light',
     items: [
       'In the first three games, the golden glow around whatever Mira points at is gentler, while its sparkles, ring and rising gold leaf stay the same.',
