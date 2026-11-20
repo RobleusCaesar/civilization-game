@@ -35,7 +35,9 @@ hour on this 4-core sandbox and slower beside agents. So:
   Locally, `node tools/contracts.mjs all --lanes 2` is the same sweep — and
   `shard I N` RUNS that shard; it is not a listing.
 - **Main moves only when that run is green on the branch.** The rule below
-  still binds: a red check blocks the merge.
+  still binds: a red check blocks the merge. **That run includes THE
+  SMOOTHNESS GATE** (below): a candidate that plays worse than the reference
+  build on a simulated slow phone is red, and waits like any red check.
 - **A small fix branches from what is live**, never on top of unreleased
   work — the three-hour wait above was three five-line fixes queued behind an
   unfinished analytics update.
@@ -44,6 +46,58 @@ hour on this 4-core sandbox and slower beside agents. So:
 - New suite? Add its measured seconds to `tools/contract-times.json` (or the
   shards will guess 30), and map any new non-script path in `PATHS` in
   `tools/contracts.mjs`.
+
+**THE SMOOTHNESS GATE** (`tools/perf-gate.mjs`, `tools/perf-reference.json`,
+the `smoothness` and `smoothness-verdict` jobs of the Contracts workflow —
+operator, after build 207 fixed two games back to back: "Oh my gosh, that's so
+so much better. Would you add that as a check before releases go out to ensure
+new features haven't caused game degradation"). **WHAT IT PLAYS**: a fresh
+browser at 390x844@3 with the main thread 4x slower (Chrome's CPU throttling,
+the profile build 207 was measured on) plays the journey's first game (BEGIN
+pressed the moment it can be, the opening glide, villagers walking), then, as
+a returning player, two random worlds back to back (two fixed seeds, two
+tunics, the founding's own rolls seeded so every build founds the same world;
+trial, draft, keep, the opening, villagers walking, the camera carried out
+and back; Menu to the title between). **WHAT IT READS**, all from outside the
+game (its own rAF probe, `TerrainX.stats.standIn`, `Assets.unitArt`, Chrome's
+heap, page errors and `Feedback.runErrs`): BEGIN to playing, keep to playing,
+blocky stand-in ground drawn while a world opens, the frame time while
+opening and while playing, the slowest 5% and 1% of play frames, walkers
+frozen mid-stride, the unit art held after the second world, the JS heap,
+and any error. **SIDE BY SIDE, NEVER AGAINST A NUMBER**: a frame time is a
+fact about the machine as much as the game, so the candidate is never judged
+against figures written down elsewhere. The REFERENCE build is played on the
+same machine in the same job, sessions interleaved; four runners each play
+one session of each build (two of them the reference first), and a metric
+fails only when the MEDIAN of the four ratios is past its `rel` AND the median
+change is past its `abs` (the `METRICS` table). Any candidate error, or a
+candidate that cannot be played, holds the release; a reference that cannot be
+played drops its runner from the vote (three must vote). **THE REFERENCE
+MOVES ONLY BY RULING**: it is the last build the operator called smooth
+(build 207, `e4c12ec`), not whatever shipped last, so ten small slowdowns can
+never add up to one big one. A knowingly heavier change that the operator
+accepts moves it: one line in `tools/perf-reference.json`, the ruling in its
+`why`. **CALIBRATED BOTH WAYS** (this 4-core sandbox, one session each): 207
+against itself moved nothing past a third of its allowance (frame times ±2%,
+p95/p99 ±5%, art and heap identical, the opens ±8% for the worlds and +22%
+for the journey, the noisiest number); build 206 — the stutter the operator
+reported — is HELD on six: keep to playing +71% (its second world waited 8.2 s
+for a second army's art), blocky ground 1 → 38 draws, frame time while opening
++48% and while playing +37%, p95 +38%, unit art 143 → 426 MB. A count of
+stutters (frames over 2.5x the typical) read 4 and 15 a minute on two runs of
+the same build — a handful of events a session — so it is printed, never
+judged; the p99 tail judges the same thing steadily. **RUN IT HERE** before a
+heavy change goes up: `node tools/perf-gate.mjs` (this working tree against
+the reference, two sessions each, ~7 minutes); `--cand REF` / `--ref REF`
+judge any two builds. **IN CI** the verdict is the `Smoothness verdict` job's
+log and the run page's summary table; a hand-started run of the workflow
+(`candidate`, `reference`, `only_smoothness`) judges any two commits on
+GitHub's own machines without the shards. **THE DRIVER MUST PLAY THE
+REFERENCE TOO**: it drives `Screens.startNewGame` / `foundRun` / `draftTap` /
+`quitToTitle`, `Prologue.holding`, `#btnBegin`, `Units.moveTo`, `R.cam` /
+`R.clampCam`, `R.unitPose`, `TerrainX.stats` and `Assets.unitArt`; a change
+to any of them keeps the gate driving build 207 as well, or moves the
+reference by ruling. Main itself is not re-judged (its branch run was).
 
 ## Tap & selection contract — DO NOT re-break
 

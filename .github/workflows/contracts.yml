@@ -6,23 +6,45 @@ name: Contracts
 # each judged by its exit code, a failure rerun once alone before it counts.
 # Main is fast-forwarded only once this run is green on the branch. Docs-only
 # pushes skip it.
+#
+# THE SMOOTHNESS GATE (tools/perf-gate.mjs, CLAUDE.md "THE SMOOTHNESS GATE")
+# runs beside the shards on four runners of its own: each plays the candidate
+# and the reference build (tools/perf-reference.json) on a simulated slow
+# phone, interleaved, and the verdict job holds the run red when the candidate
+# plays worse. A red verdict is a red run: the release waits.
 
 on:
   push:
     branches: ['**']
     paths-ignore: ['**/*.md']
   workflow_dispatch:
+    inputs:
+      candidate:
+        description: 'Smoothness gate: the build to judge (a commit or branch; empty = this ref)'
+        required: false
+        default: ''
+      reference:
+        description: 'Smoothness gate: the build to judge it against (empty = tools/perf-reference.json)'
+        required: false
+        default: ''
+      only_smoothness:
+        description: 'Run only the smoothness gate (skip the contract shards)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# a push supersedes the last push's run; a hand-started run (a smoothness
+# check of two named builds) never cancels one, nor is cancelled by one
 concurrency:
-  group: contracts-${{ github.ref }}
+  group: contracts-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   contracts:
     name: Contracts ${{ matrix.shard }}/8
+    if: ${{ !inputs.only_smoothness }}
     runs-on: ubuntu-24.04   # pinned: Playwright 1.56.1 cannot install Chromium on ubuntu-latest (26.04)
     timeout-minutes: 45
     strategy:
@@ -54,3 +76,63 @@ jobs:
           name: contract-logs-${{ matrix.shard }}
           path: contract-logs
           retention-days: 7
+
+  # each runner plays one session of each build, half of them the reference
+  # first; main itself is not re-judged (its branch run already was)
+  smoothness:
+    name: Smoothness ${{ matrix.runner }}/4
+    if: ${{ github.event_name == 'workflow_dispatch' || github.ref_name != 'main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: 1, order: rc }
+          - { runner: 2, order: cr }
+          - { runner: 3, order: rc }
+          - { runner: 4, order: cr }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.56.1-${{ runner.os }}
+      - name: Playwright and Chromium
+        run: |
+          npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Play the candidate and the reference
+        env:
+          CAND: ${{ inputs.candidate }}
+          REF: ${{ inputs.reference }}
+        run: |
+          node tools/perf-gate.mjs measure --runner runner-${{ matrix.runner }} --order ${{ matrix.order }} \
+            --out perf-${{ matrix.runner }}.json ${CAND:+--cand "$CAND"} ${REF:+--ref "$REF"}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ matrix.runner }}
+          path: perf-${{ matrix.runner }}.json
+          retention-days: 14
+
+  smoothness-verdict:
+    name: Smoothness verdict
+    needs: smoothness
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || github.ref_name != 'main') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: perf-*
+          merge-multiple: true
+      - name: The verdict
+        run: node tools/perf-gate.mjs judge perf-*.json --min-runners 3
