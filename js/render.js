@@ -7745,7 +7745,14 @@ const R = {
      transparent ground: the classic cache paints its ground opaque and would
      lay a square of grass over him. A burning wood is drawn elsewhere and
      is skipped. Purely a picture: R.unitHit is untouched. Answers how many
-     tiles it laid. */
+     tiles it laid.
+     THE BAND ABOVE THE TILE (`OVER`) is there for the south tile's art that
+     rises above its own top — a crown, a tall bush. Where that band lies in
+     HIS OWN row it also holds the art of the tiles beside him, so a resource
+     tile there is left out of it: a miner working a pile from the east had
+     the boulder beside him laid over the head of his pick whenever the tile
+     south-west of him was ore too (five frames of twelve of his swing,
+     tests/resource-front.mjs). */
   RES_FRONT: { KNEE: 0.34, OVER: 0.4, SIDE: 0.25 },
   occludeByResource(g, u) {
     const TX = window.TerrainX;
@@ -7760,20 +7767,38 @@ const R = {
     const ux0 = wx * TL - B / 2, ux1 = wx * TL + B / 2;
     let n = 0, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
     const rects = [];
+    const add = (x0, y0, x1, y1) => {
+      if (x1 <= x0 || y1 <= y0) return false;
+      rects.push([x0, y0, x1 - x0, y1 - y0]);
+      bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1);
+      return true;
+    };
+    const isRes = (x, y) => {
+      if (!MapGen.onBoard(x, y)) return false;
+      const t = terr[MapGen.idx(x, y)];
+      return t === T.FOREST || t === T.HILLS || t === T.FERTILE;
+    };
+    const row = u.y | 0, own = u.x | 0;
     const tx0 = Math.floor(ux0 / TL), tx1 = Math.floor((ux1 - 0.01) / TL);
     const ty0 = Math.floor(foot / TL), ty1 = Math.floor(bot / TL);
     for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
       if (!MapGen.onBoard(tx, ty)) continue;
       const i = MapGen.idx(tx, ty), t = terr[i];
       if (t !== T.FOREST && t !== T.HILLS && t !== T.FERTILE) continue;
-      if (ty <= (u.y | 0)) continue;                               // not south of the ground he stands on
+      if (ty <= row) continue;                                      // not south of the ground he stands on
       if (t === T.FOREST && this.burningAt && this.burningAt(i)) continue;
       const x0 = Math.max(ux0, (tx - F.SIDE) * TL), x1 = Math.min(ux1, (tx + 1 + F.SIDE) * TL);
-      const y0 = Math.max(knee, (ty - F.OVER) * TL), y1 = Math.min(bot, (ty + 1) * TL);
-      if (x1 <= x0 || y1 <= y0) continue;
-      rects.push([x0, y0, x1 - x0, y1 - y0]);
-      bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1);
-      n++;
+      const yb = Math.max(knee, (ty - F.OVER) * TL), ym = Math.max(yb, ty * TL), y1 = Math.min(bot, (ty + 1) * TL);
+      if (x1 <= x0 || y1 <= yb) continue;
+      let laid = add(x0, ym, x1, y1);                               // the tile's own rows
+      if (ym > yb) {                                                // the band above it
+        if (ty - 1 !== row) laid = add(x0, yb, x1, ym) || laid;
+        else for (let cx = Math.floor(x0 / TL); cx * TL < x1; cx++) {
+          if (cx !== own && isRes(cx, row)) continue;               // a resource beside him stays behind
+          laid = add(Math.max(x0, cx * TL), yb, Math.min(x1, (cx + 1) * TL), ym) || laid;
+        }
+      }
+      if (laid) n++;
     }
     if (!n) return 0;
     // ONE draw through one clip: two tiles' rects overlap at their edges, and

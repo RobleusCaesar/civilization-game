@@ -28,6 +28,7 @@ const PATCH_NOTES = [
       'When a game ends, everyone stands still instead of freezing in the middle of a step.',
       'On slower phones the water ripples more gently, so the rest of the game stays smooth.',
       'The golden glow round whatever Mira points at stays gold as it breathes, never fading to a muddy green.',
+      'A miner working a stone pile from the side keeps his whole pick in view instead of losing its head behind the rock.',
     ],
   },
   {

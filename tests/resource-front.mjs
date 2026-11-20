@@ -17,7 +17,10 @@
      THE ART COVERS HIM    the art is laid back over him from his knees down,
                            and not one pixel above his knees changes
      ONLY FROM THE NORTH   a man east of the same pile, or south of it, keeps
-                           his old picture: nothing is laid over him
+                           his old picture: nothing is laid over him, at
+                           any frame of his swing, a man's or a woman's
+                           (the band above the ore tile south-west of him
+                           never lays the boulder beside him over his pick)
      A SPECK IS NOT A WALL a scree pebble in his columns does not lift him
      A PICTURE ONLY        no S field moves; the taps (R.unitHit) are the sim's
      CLASSIC STANDS DOWN   under ?terrain=classic (an opaque cache) nothing is
@@ -185,7 +188,62 @@ const px = await p.evaluate((ids) => {
 ck('theArtIsLaidOverHisLegs', px.pile && px.pile.below > 20 && ['wood', 'fruit', 'fruit2'].filter(k => px[k] && px[k].below > 20).length >= 2, JSON.stringify(px));
 ck('andNothingAboveHisKnees', Object.values(px).every(o => o.above === 0), JSON.stringify(Object.fromEntries(Object.entries(px).map(([k, o]) => [k, o.above]))));
 ck('andTheFrameIsStill', Object.values(px).every(o => o.noise === 0), 'two identical draws differ by ' + Object.values(px).map(o => o.noise).join('/'));
-ck('aManBesideItKeepsHisPicture', px.east && px.east.below === 0 && px.south && px.south.below === 0, `east ${px.east && px.east.below}, south ${px.south && px.south.below}`);
+
+/* A MAN BESIDE IT KEEPS HIS PICTURE, AT EVERY FRAME OF HIS SWING. A work
+   pose's frame is read off the unit's own clock (u.animT, random from the
+   spawn), so one draw checks one frame of the swing — and only once the
+   test drew the real villager strips (build 207: a unit asks for its own
+   art) did a man working the pile from the east show the fault, in five
+   frames of twelve, at random: the band above the ore tile south-west of
+   him laid the boulder BESIDE him over the head of his pick. So each frame
+   of each man's strip, a man and a woman, is drawn in turn, with the
+   occlusion and without it, and not one pixel of him below the knee may
+   change. */
+const beside = await p.evaluate((ids) => {
+  const TL = CFG.TILE, c = R.canvas || document.getElementById('c'), g2 = c.getContext('2d');
+  const dpr = c.width / R.viewW();
+  const realOcc = R.occludeByResource, realSpr = R.unitSprite, now = performance.now, t0 = now.call(performance);
+  const sx = w => Math.round((w - R.cam.x) * R.cam.z * dpr), sy = w => Math.round((w - R.cam.y) * R.cam.z * dpr);
+  const out = {};
+  performance.now = () => t0;
+  try {
+    for (const k of ['east', 'south']) {
+      const u = S.units.find(o => o.id === ids[k]);
+      if (!u) { out[k] = { missing: true }; continue; }
+      const sex = u.female;
+      for (const fem of [false, true]) {
+        u.female = fem;
+        const fr = R.sheetFrames(u), n = fr && fr.length ? fr.length : 0, key = R._sheetKey, below = [];
+        const l = R.workLean(u) || u, B = R.unitBox(u), foot = l.y * TL + TL / 2 - CFG.SPRITE_LIFT;
+        const knee = sy(foot - TL * R.RES_FRONT.KNEE) - 1;
+        const X0 = Math.max(0, sx(l.x * TL - B / 2)), X1 = Math.min(c.width, sx(l.x * TL + B / 2));
+        const Y0 = Math.max(0, sy(foot - B * 1.1)), Y1 = Math.min(c.height, sy(foot + 2));
+        for (let f = 0; f < Math.max(1, n); f++) {
+          // his strip's frame f, whatever his clock says; everyone else as ever
+          R.unitSprite = function (v) {
+            if (v === u) { const a = this.sheetFrames(v); if (a && a.length) return a[f % a.length]; }
+            return realSpr.call(this, v);
+          };
+          R.draw(0); const on = g2.getImageData(X0, Y0, X1 - X0, Y1 - Y0).data;
+          R.occludeByResource = () => 0; R.draw(0); const off = g2.getImageData(X0, Y0, X1 - X0, Y1 - Y0).data;
+          R.occludeByResource = realOcc;
+          let d = 0;
+          for (let y = Math.max(Y0, knee); y < Y1; y++) for (let x = X0; x < X1; x++) {
+            const i = ((y - Y0) * (X1 - X0) + (x - X0)) * 4;
+            if (on[i] !== off[i] || on[i + 1] !== off[i + 1] || on[i + 2] !== off[i + 2]) d++;
+          }
+          below.push(d);
+        }
+        out[k + (fem ? 'F' : 'M')] = { key, frames: n, below };
+      }
+      u.female = sex;
+    }
+  } finally { R.unitSprite = realSpr; R.occludeByResource = realOcc; performance.now = now; }
+  return out;
+}, sc.ids);
+const bes = Object.values(beside);
+ck('aManBesideItKeepsHisPicture', bes.length === 4 && bes.every(o => o.frames > 1 && o.below.every(d => d === 0)),
+  Object.entries(beside).map(([k, o]) => `${k} ${o.missing ? 'missing' : (o.frames + ' frames: ' + o.below.join(' '))}`).join('; '));
 
 // A SPECK IS NOT A WALL: two opaque pixels in his columns, high in the tile, change nothing
 const speck = await p.evaluate((ids) => {
