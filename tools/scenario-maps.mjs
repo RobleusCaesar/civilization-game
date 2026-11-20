@@ -16,7 +16,7 @@ const ARGS = process.argv.slice(2), CHECK = ARGS.includes('--check'), DIR = ARGS
 const SRC = DIR ? path.resolve(DIR) : path.join(ROOT, 'tools', 'scenarios');
 const OUT = path.join(ROOT, 'js', 'scenario-maps.js');
 const CHARS = new Set('#.T~rb^g,:_x'.split(''));
-const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'rivalLevel', 'reveal', 'revealAlso', 'units', 'animals', 'buildings', 'ruins', 'relic', 'camera', 'glideFrom', 'marks', 'tileStock'];
+const KEEP = ['title', 'seed', 'region', 'landform', 'variant', 'rows', 'hall', 'rival', 'rivalLevel', 'reveal', 'revealAlso', 'units', 'animals', 'buildings', 'ruins', 'roads', 'relic', 'camera', 'glideFrom', 'marks', 'tileStock'];
 
 const maps = {};
 const errs = [];

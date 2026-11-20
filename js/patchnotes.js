@@ -24,6 +24,7 @@ const PATCH_NOTES = [
       'In the second game the watchtower now goes up on the land bridge itself, as part of the wall.',
       'A tower or other building you put where a wall should go now counts as part of the wall, so the lesson always carries on.',
       'The small isle across the water is calmer and prettier: one gold seam, one stone, and open meadow with a few trees.',
+      'The villages of the second and third games now start with a few roads already laid between their buildings.',
     ],
   },
   {
