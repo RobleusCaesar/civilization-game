@@ -53,6 +53,7 @@ const GoldFX = {
     haloLift: 0.9, rimLift: 0.95,            // their lift at full strength (the halo's at the outline)
     workHalo: 110, workRim: 150,             // the masks' grids: at most this many cells a side
     silPerFrame: 1,                          // new silhouettes measured in one frame (a second waits a frame)
+    guideGlow: 0.6,                          // the guide's halo and rim, a share of full (build 204: 40% softer)
     breathMin: 0.66,                         // the halo's lift at the low of a breath, a share of its high
     // ---- THE GUIDE'S SHIMMER
     sheenS: 2.6, sheenRun: 0.95, sheenW: 0.34, sheenLift: 0.62,   // a sheen every sheenS s, crossing in sheenRun
@@ -615,7 +616,7 @@ const GoldFX = {
     // THE GUIDE: its halo breathing behind it, leaf climbing behind it, a light winding round behind him
     if (o) {
       const beat = still ? 1 : 0.5 + 0.5 * Math.sin((o.t / R.GRING.pulseS + (o.seed || 0) * 0.137) * Math.PI * 2);
-      if (S) this.halo(g, S, r.pic, o.a * (still ? 0.8 : this.C.breathMin + (1 - this.C.breathMin) * beat));
+      if (S) this.halo(g, S, r.pic, this.C.guideGlow * o.a * (still ? 0.8 : this.C.breathMin + (1 - this.C.breathMin) * beat));
       if (!still) {
         this.flakes(g, r.q, r.pic, S, o, r.kind || 't', 'back');
         if (r.kind === 'u') this.orbit(g, r.q, r.pic, o, 'back');
@@ -638,7 +639,7 @@ const GoldFX = {
     R._gClip(g);
     if (o) {
       const beat = still ? 1 : 0.5 + 0.5 * Math.sin((o.t / R.GRING.pulseS + (o.seed || 0) * 0.137) * Math.PI * 2);
-      if (S) this.rim(g, S, r.pic, o.a * (still ? 0.7 : 0.5 + 0.5 * beat));
+      if (S) this.rim(g, S, r.pic, this.C.guideGlow * o.a * (still ? 0.7 : 0.5 + 0.5 * beat));
       if (!still) {
         // (a sheen across a man is a wash over his whole body: his rim and the lights round him are his shimmer)
         if (S && r.pic && r.kind === 'b') this.sheen(g, r.pic, o.t, o.a, o.seed || 0);
