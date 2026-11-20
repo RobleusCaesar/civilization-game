@@ -33,10 +33,12 @@ over an hour on this 4-core sandbox and slower beside agents. So:
   alone, before it counts (CLAUDE.md's rerun-alone rule for wall-clock
   checks, made mechanical — and a suite that passes only alone is printed
   FLAKY, never silently green). The STOPWATCH suites (`SOLO` in
-  tools/contracts.mjs: land.mjs, deck-ui.mjs) never run in the crowd: they
-  run alone after it — beside terrain-v4.mjs's workers land.mjs measured the
-  neighbour, red on build 128's own post-merge sweep. A new suite that times
-  real work joins `SOLO`. Docs-only pushes skip it, and so do pushes to main
+  tools/contracts.mjs: land.mjs, deck-ui.mjs, terrain-v4.mjs) never run in the
+  crowd: they run alone after it — beside terrain-v4.mjs's workers land.mjs
+  measured the neighbour, red on build 128's own post-merge sweep, and beside a
+  heavy neighbour terrain-v4's own warm Continue missed its ground cap (red in
+  the crowd, green alone, and the rerun was its shard's longest wait). A new
+  suite that times real work joins `SOLO`. Docs-only pushes skip it, and so do pushes to main
   (main only moves by fast-forward to a commit whose branch run was green:
   re-running it there was the whole sweep twice a release).
   **THE SHARDS FINISH TOGETHER** (`plan` in tools/contracts.mjs; `node

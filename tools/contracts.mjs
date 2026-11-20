@@ -187,11 +187,15 @@ const why = (log) => {
    before), the test's own fixed reference workload disagreeing with itself
    by 1.3-1.65x on the same run. They run after the crowd, one at a time —
    the rerun-alone rule's own condition, from the start — so a red one is a
-   slower frame, never a busier machine. The plan below knows they run
-   alone (a SOLO suite's seconds are added after its shard's crowd), so a
-   stopwatch suite is given a shard with a light crowd, never stacked behind
-   a full one. */
-const SOLO = new Set(['land.mjs', 'deck-ui.mjs']);
+   slower frame, never a busier machine. terrain-v4.mjs joined them once the
+   shards finished together: its warm Continue must open on its own ground
+   before GROUND_MAX_MS, and beside a heavy neighbour the plaque held 9.2 s
+   (red in the crowd on CI and here, green alone, and a rerun is a shard's
+   longest wait); alone it also leaves every other suite its cores. The plan
+   below knows they run alone (a SOLO suite's seconds are added after its
+   shard's crowd), so a stopwatch suite is given a shard with a light crowd,
+   never stacked behind a full one. */
+const SOLO = new Set(['land.mjs', 'deck-ui.mjs', 'terrain-v4.mjs']);
 
 /* EACH SUITE'S SECONDS ON CI (tools/contract-times.json: the median of the
    Contracts runs' own "PASS x.mjs Ns" lines, crowd suites timed two to a
