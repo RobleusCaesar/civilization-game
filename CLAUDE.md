@@ -63,8 +63,18 @@ game (its own rAF probe, `TerrainX.stats.standIn`, `Assets.unitArt`, Chrome's
 heap, page errors and `Feedback.runErrs`): BEGIN to playing, keep to playing,
 blocky stand-in ground drawn while a world opens, the frame time while
 opening and while playing, the slowest 5% and 1% of play frames, walkers
-frozen mid-stride, the unit art held after the second world, the JS heap,
-and any error. **SIDE BY SIDE, NEVER AGAINST A NUMBER**: a frame time is a
+frozen mid-stride, THE WORLD PASS (the cost of drawing one frame of the
+town, `R.draw` alone at full speed: the view settled for 4 s, then the
+FASTEST of 24 batches of 24 draws — a live draw also does its frame's share
+of background work, ground arriving or a footing measured, and the median
+over a few batches read the same build 0.29 and 0.47 ms; the fastest batch
+reads it 0.125-0.15 and a build with 0.3 ms added to every draw 0.46-0.49),
+the unit art held after the second world, the JS heap, and any error. **THE WORLD PASS WAS AN
+ABSOLUTE NUMBER** (tests/land.mjs `theWorldPassFrameStaysCheap`, 1.5 ms p95,
+set on this sandbox where it reads 0.7-1.0) and GitHub's slower runners read
+1.50 at the line on unchanged render code (Contracts runs 345 and 348): the
+gate judges it now, beside the reference build, and land.mjs's ceiling is a
+2.5 ms backstop. **SIDE BY SIDE, NEVER AGAINST A NUMBER**: a frame time is a
 fact about the machine as much as the game, so the candidate is never judged
 against figures written down elsewhere. The REFERENCE build is played on the
 same machine in the same job, sessions interleaved; four runners each play
@@ -77,16 +87,19 @@ MOVES ONLY BY RULING**: it is the last build the operator called smooth
 (build 207, `e4c12ec`), not whatever shipped last, so ten small slowdowns can
 never add up to one big one. A knowingly heavier change that the operator
 accepts moves it: one line in `tools/perf-reference.json`, the ruling in its
-`why`. **CALIBRATED BOTH WAYS** (this 4-core sandbox, one session each): 207
-against itself moved nothing past a third of its allowance (frame times ±2%,
-p95/p99 ±5%, art and heap identical, the opens ±8% for the worlds and +22%
-for the journey, the noisiest number); build 206 — the stutter the operator
-reported — is HELD on six: keep to playing +71% (its second world waited 8.2 s
-for a second army's art), blocky ground 1 → 38 draws, frame time while opening
-+48% and while playing +37%, p95 +38%, unit art 143 → 426 MB. A count of
-stutters (frames over 2.5x the typical) read 4 and 15 a minute on two runs of
-the same build — a handful of events a session — so it is printed, never
-judged; the p99 tail judges the same thing steadily. **RUN IT HERE** before a
+`why`. **CALIBRATED BOTH WAYS**: build 207 against itself on CI's four runners
+moved every judged figure 5% or less (frame times 1%, art and heap 0%; the
+runners themselves differed by 30% in speed, which is why only same-runner
+ratios are read); build 206 — the stutter the operator reported — is HELD on
+six on this sandbox: keep to playing +71% (its second world waited 8.2 s for
+a second army's art), blocky ground 1 → 38 draws, frame time while opening
++48% and while playing +37%, p95 +38%, unit art 143 → 426 MB. Two figures
+are loose on purpose: the journey's BEGIN to playing (a race with the
+prefetch, ±20% between identical runs) and the p99 tail (one machine read 142
+to 238 ms across four sessions of one build), whose +60% only catches a NEW
+hitch. A count of stutters (frames over 2.5x the typical) read 4 and 15 a
+minute on two runs of one build — a handful of events a session — so it is
+printed, never judged. **RUN IT HERE** before a
 heavy change goes up: `node tools/perf-gate.mjs` (this working tree against
 the reference, two sessions each, ~7 minutes); `--cand REF` / `--ref REF`
 judge any two builds. **IN CI** the verdict is the `Smoothness verdict` job's

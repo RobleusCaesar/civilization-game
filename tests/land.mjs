@@ -2025,7 +2025,16 @@ const wetBoot = `Boot.force(); G.newGame('verify7','moderate','xlarge');
    exact measurement there (DevArt.benchEditCost), which is how the number
    gets re-baselined against the truth. */
 {
-  const LIVE = { bakeMs: 1300, frameP95: 1.5 };   // LAND_REFRESH's own ceilings, no multiplier
+  /* THE WORLD PASS'S CEILING IS A BACKSTOP (the smoothness gate, after build
+     207). It was LAND_REFRESH's own 1.5 ms, set on this 4-core sandbox, where
+     the pass reads 0.7-1.0 ms p95; GitHub's slower runners read 1.50 at the
+     line on unchanged render code (Contracts runs 345 and 348, both reads of
+     the retry), so the bar failed on the hardware, not on the diff. The cost
+     of drawing a frame of the town is now judged by tools/perf-gate.mjs,
+     against the reference build on the same machine (the fastest of 24
+     batches of draws, held past +25% and 0.05 ms), and this ceiling only
+     catches a frame grown past anything a machine explains. */
+  const LIVE = { bakeMs: 1300, frameP95: 2.5 };
   /* SHORE, RE-BASELINED 2026-09-04 FOR THE DERIVED REPAINT RING. A repaint
      used to reset ±2 around every changed tile; it now resets what the
      change can actually reach (R.groundRing): ±3 when a wood stands within

@@ -17,7 +17,8 @@
    counters, Chrome's heap): how long a press takes to open the world, the
    blocky stand-in ground drawn while a world opens, the frame time while a
    world opens and while it is played, the slow frames (stutter), walkers that
-   stand frozen mid-stride, the unit art held after the second world, the heap,
+   stand frozen mid-stride, the cost of drawing one frame of the town at full
+   speed (the world pass), the unit art held after the second world, the heap,
    and any error.
 
    WHY SIDE BY SIDE. A frame time is a fact about the machine as much as the
@@ -88,8 +89,9 @@ const METRICS = [
   { key: 'openFrame', name: 'frame time while opening', unit: 'ms', rel: 0.20, abs: 12 },
   { key: 'playFrame', name: 'frame time while playing', unit: 'ms', rel: 0.15, abs: 8 },
   { key: 'playP95', name: 'slowest frames while playing (p95)', unit: 'ms', rel: 0.25, abs: 25 },
-  { key: 'playP99', name: 'worst frames while playing (p99)', unit: 'ms', rel: 0.35, abs: 40 },
+  { key: 'playP99', name: 'worst frames while playing (p99)', unit: 'ms', rel: 0.6, abs: 60 },
   { key: 'frozen', name: 'walkers frozen mid-stride', unit: '%', abs: 3 },
+  { key: 'passMin', name: 'drawing one frame of the town, full speed', unit: 'ms', rel: 0.25, abs: 0.05 },
   { key: 'artMB', name: 'unit art held after two games', unit: 'MB', rel: 0.15, abs: 20 },
   { key: 'heapMB', name: 'JS heap after two games', unit: 'MB', rel: 0.20, abs: 15 },
 ];
@@ -241,7 +243,10 @@ const PIN_FOUNDING = () => {
 
 // ─── one session: the journey's first game, then two worlds back to back ──
 const session = async (pw, base, which) => {
-  const out = { build: which, ok: true, step: '', errors: [], journey: null, worlds: [], heapMB: null, art: [] };
+  const out = { build: which, ok: true, step: '', errors: [], runErrs: [], journey: null, worlds: [], heapMB: null, art: [] };
+  // the game's own tally of the faults it caught (Feedback.runErrs) is the
+  // RUN's and starts again with each world, so it is read as each one ends
+  const tally = async (p) => out.runErrs.push(await p.evaluate(() => window.Feedback && Number.isFinite(Feedback.runErrs) ? Feedback.runErrs : 0));
   const browser = await pw.chromium.launch({ args: ['--enable-precise-memory-info'] });
   const errs = (p) => {
     p.on('pageerror', e => out.errors.push('page: ' + String(e).slice(0, 300)));
@@ -277,6 +282,7 @@ const session = async (pw, base, which) => {
       await p.evaluate(() => __pg.mark('walk'));
       await p.evaluate((s) => __pg.walkers(s), PLAY.walkS);
       await p.evaluate(() => __pg.mark('walkEnd'));
+      await tally(p);
       const r = await read(p);
       out.journey = { ...r, press: await p.evaluate(() => [__pg.press, __pg.pressSI]) };
       await ctx.close();
@@ -323,6 +329,7 @@ const session = async (pw, base, which) => {
         await p.evaluate(({ t, s }) => __pg.pan(t, s * 1000), { t: PLAY.panTiles, s: PLAY.panS });
         await p.evaluate(() => __pg.mark('panEnd'));
         out.art.push(await p.evaluate(() => __pg.artMB()));
+        await tally(p);
         out.worlds.push({ seed: W.seed, tunic: await p.evaluate(() => S.tunic && S.tunic.P), mapSeed: await p.evaluate(() => S.seed) });
         if (g < PLAY.worlds.length - 1) {
           step(`world ${g + 1}: menu to title`);
@@ -331,8 +338,32 @@ const session = async (pw, base, which) => {
           await p.waitForTimeout(1000);
         }
       }
-      step('worlds: heap');
+      /* THE WORLD PASS, on the machine's own time: the cost of drawing one
+         frame of the town (R.draw alone: the sim is not stepped), the main
+         thread at full speed — land.mjs's measurement, read here beside the
+         reference instead of against a number written down on another
+         computer. A live R.draw also does the frame's share of background
+         work (ground arriving after the pan, a footing measured, a bake
+         slice), so the view is settled first and the FASTEST of many
+         batches is read: the draw itself, nothing queued behind it. Batches
+         of 24 because the clock ticks in 0.1 ms. Measured: the same build
+         reads 0.125-0.15 ms on this sandbox, a build with 0.3 ms added to
+         every draw 0.46-0.49 ms. */
+      step('worlds: the world pass');
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await p.evaluate(() => {
+        const tc = S.buildings.find(b => b.key === 'tc' && b.owner === 'P');
+        R.cam.z = 1.5; if (tc) R.centerOn(tc.x + 0.5, tc.y + 0.5);
+      });
+      await p.waitForTimeout(4000);
+      out.pass = await p.evaluate(() => {
+        for (let k = 0; k < 60; k++) R.draw(0.016);
+        const bm = [];
+        for (let b = 0; b < 24; b++) { const t = performance.now(); for (let k = 0; k < 24; k++) R.draw(0.016); bm.push((performance.now() - t) / 24); }
+        bm.sort((a, b) => a - b);
+        return { min: bm[0], p25: bm[6], med: (bm[11] + bm[12]) / 2 };
+      });
+      step('worlds: heap');
       await cdp.send('HeapProfiler.enable');
       await cdp.send('HeapProfiler.collectGarbage');
       const h = await cdp.send('Runtime.getHeapUsage');
@@ -401,19 +432,24 @@ const scoreSession = (s) => {
     playP95: q(playIv, 0.95),
     /* the worst 1% of the frames pooled over every play window: a stutter is
        a handful of frames a session (the day's tick, ground arriving under a
-       pan), so counting them is a coin toss and their tail is not */
+       pan), so counting them is a coin toss. Their tail is steadier but still
+       the noisiest figure judged (one machine read 142 to 238 ms across four
+       sessions of one build), so its allowance only catches a NEW hitch: the
+       broad slowdowns are p95's and the means' to catch */
     playP99: q(playIv, 0.99),
     stutter: playS > 0 ? playIv.filter(x => x > 2.5 * typical).length / (playS / 60) : NaN,   // reported, never judged
     frozen: walk[0] ? 100 * walk[1] / walk[0] : 0,
     artMB: art ? art.mb : NaN,
+    passMin: s.pass ? s.pass.min : NaN,
+    passMed: s.pass ? s.pass.med : NaN,   // reported: the settled view's typical draw, background work and all
     heapMB: s.heapMB,
-    errors: s.errors.length + ((J && J.runErrs) || 0) + ((G && G.runErrs) || 0),
+    errors: s.errors.length + (s.runErrs || []).reduce((x, y) => x + (y || 0), 0),
     _opens: opens.map(Math.round), _frames: playIv.length, _art: s.art,
   };
 };
 
 // ─── the verdict over every runner's file ─────────────────────────────────
-const fmt = (v, unit) => !Number.isFinite(v) ? '—' : unit === 'ms' || unit === 'draws' ? String(Math.round(v)) : v.toFixed(1);
+const fmt = (v, unit) => !Number.isFinite(v) ? '—' : unit === 'ms' && Math.abs(v) < 1 ? v.toFixed(3) : unit === 'ms' && Math.abs(v) < 10 ? v.toFixed(2) : unit === 'ms' || unit === 'draws' ? String(Math.round(v)) : v.toFixed(1);
 const judge = (files) => {
   const runs = files.map(f => JSON.parse(readFileSync(f, 'utf8')));
   const meta = runs[0].meta;
@@ -475,7 +511,7 @@ const judge = (files) => {
   lines.push('');
   for (const pr of perRunner) {
     const d = (k, f) => ['ref', 'cand'].map(b => pr.by[b].map(x => f(x[k])).join(' ')).join(' / ');
-    lines.push(`- ${pr.runner}: opens (ms) ${d('_opens', v => '[' + v.join(',') + ']')}; playing frames ${d('_frames', v => v)}; frame ms ${d('playFrame', v => Math.round(v))}`);
+    lines.push(`- ${pr.runner}: opens (ms) ${d('_opens', v => '[' + v.join(',') + ']')}; playing frames ${d('_frames', v => v)}; frame ms ${d('playFrame', v => Math.round(v))}; p95 ${d('playP95', v => Math.round(v))}; p99 ${d('playP99', v => Math.round(v))}; town frame ${d('passMin', v => v.toFixed(3))} (median ${d('passMed', v => v.toFixed(3))}); stutters/min ${d('stutter', v => v.toFixed(1))}`);
   }
   if (notes.length) { lines.push(''); for (const n of notes) lines.push('- note: ' + n); }
   if (fails.length) { lines.push(''); lines.push('Held because:'); for (const f of fails) lines.push('- ' + f); }
@@ -502,7 +538,7 @@ const measure = async ({ order, rounds, out, runner }) => {
     const s = await session(pw, which === 'ref' ? srvR.base : srvC.base, which);
     const sc = scoreSession(s);
     console.log(`[perf-gate]   ${which.padEnd(4)} ${((Date.now() - t0) / 1000).toFixed(0)}s ` + (sc
-      ? `open ${sc._opens.join('/')} ms, ground ${sc.standIn}, frame open ${sc.openFrame.toFixed(0)} play ${sc.playFrame.toFixed(0)} p95 ${sc.playP95.toFixed(0)} p99 ${sc.playP99.toFixed(0)}, stutter ${sc.stutter.toFixed(1)}/min, frozen ${sc.frozen.toFixed(1)}%, art ${sc.artMB.toFixed(0)} MB, heap ${Number(sc.heapMB).toFixed(0)} MB, errors ${sc.errors}`
+      ? `open ${sc._opens.join('/')} ms, ground ${sc.standIn}, frame open ${sc.openFrame.toFixed(0)} play ${sc.playFrame.toFixed(0)} p95 ${sc.playP95.toFixed(0)} p99 ${sc.playP99.toFixed(0)}, stutter ${sc.stutter.toFixed(1)}/min, frozen ${sc.frozen.toFixed(1)}%, pass ${Number(sc.passMin).toFixed(3)}/${Number(sc.passMed).toFixed(3)} ms, art ${sc.artMB.toFixed(0)} MB, heap ${Number(sc.heapMB).toFixed(0)} MB, errors ${sc.errors}`
       : `FAILED at ${s.step}: ${s.error}`));
     sessions.push(s);
   }
