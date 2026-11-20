@@ -19,10 +19,9 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 206, date: '2026-11-20', title: 'A Begin button worth pressing',
+    build: 206, date: '2026-11-20', title: 'A cleaner Begin button',
     items: [
-      'The Begin button on the title is redrawn in the same golden lettering as the Clanfire logo, on a dark hearth plate that glows like firelight.',
-      'The name of the next game now sits on a blue ribbon like the one under the logo, easy to read at a glance.',
+      'The Begin button on the title is cleaner and easier to read: warm gold letters on a dark plate that glows like firelight, with the name of the next game in small letters underneath.',
     ],
   },
   {

@@ -1793,23 +1793,22 @@ is a veteran and never sent; `?prologue=reset` forgets the record,
 `?prologue=1` or `reset`. **THE TITLE** wears one BEGIN ("The First Fire · 1
 of 3") and a small "Skip the journey" (two taps; `skip` writes the record and
 spends the old lesson's two teaching games); New Game, the board, the cards
-and Load are put away. **THE BEGIN PLATE WEARS THE LOGO'S LETTERING** (tests/prologue.mjs §2c
-`theBeginPlateWearsTheLogosLetteringAndItsNameIsRead` — operator, build 206,
-on the gold plate: "hard to read and honestly looks bad especially relative
-to the logo … inviting the player to click and play is essential"): the word
-is a picture in the logo's own lettering (`assets/ui/title/begin.png`, 611x183:
-chunky slab letters, a lemon face banded to amber, a chamfered bevel lit from
-the top-left, a brown block below, a dark outline — drawn by a scratch script
-from the logo's sampled colours, never AI lettering), shown 56px tall (46 on a
-short window), on a hearth-dark plate (`TitleScreen` kind `'ember'`, no
-knot, no icon); the game's name is cream Cinzel caps on the logo's blue
-ribbon (`small`, its tails `::before`/`::after`), its text still "The First
-Fire · 1 of 3". Firelight breathes behind the plate (`.bglow`, opacity and
-scale only), a warm pool sits inside it (`.bfire`) and a shine crosses the
-letters every 4.2 s (`.bshine`, masked by the wordmark); reduced motion keeps
-the glow still and drops the shine. Measured at six sizes: the word drawn and
-centred, the name centred and 4.5:1 on its ribbon, both inside the groove,
-never over each other. A new picture at the root rides the test push. The next world is founded BEHIND the title in place of
+and Load are put away. **THE BEGIN PLATE LEADS BY LIGHT** (tests/prologue.mjs §2c
+`theBeginPlateLeadsByLightAndItsNameIsRead` — operator, build 206: the gold
+plate was "hard to read … looks bad relative to the logo … inviting the player
+to click and play is essential"; a wordmark in the logo's own 3D lettering over
+a blue ribbon was then "too large, looks too much like the logo … busy …
+amateur. Do some research"). The research's rule: the logo is the hero, the
+play button the strongest BUTTON — the other plaques' own frame, one clean
+face, set apart by warm light, never by size or ornament, the chapter a quiet
+line. So: `TitleScreen` kind `'ember'` (a hearth-dark face, no knot, no icon),
+"Begin" in Cinzel caps (23px, 21 on a short window) filled with a lit gold
+gradient (`background-clip: text`) and a slow sheen every 5.5 s, "The First
+Fire · 1 of 3" in small cream caps under it, a warm pool inside (`.bfire`) and
+firelight breathing round the plate (`.bglow`, opacity only); reduced motion
+keeps both still. Measured at six sizes: the name 4.5:1 on the plate, both
+centred inside the groove and balanced, the name on one line, the word under
+half the logo's height. Do not bring back a picture wordmark or a ribbon. The next world is founded BEHIND the title in place of
 the demo (`Prologue.preload` from `Screens.onTitle`, `holding()`), so BEGIN
 opens that very world, its ground and art already asked for. **THE WORLDS
 ARE DATA** (`SCENARIO_MAPS[id]`: 38 rows of `#.T~rb^g,:_x`, the halls, the
