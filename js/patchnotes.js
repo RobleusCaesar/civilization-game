@@ -27,6 +27,7 @@ const PATCH_NOTES = [
       'Fishing boats rest on the water while they fish, instead of rowing on the spot.',
       'When a game ends, everyone stands still instead of freezing in the middle of a step.',
       'On slower phones the water ripples more gently, so the rest of the game stays smooth.',
+      'The golden glow round whatever Mira points at stays gold as it breathes, never fading to a muddy green.',
     ],
   },
   {

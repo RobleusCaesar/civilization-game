@@ -580,6 +580,15 @@ const GB = await p.evaluate(() => {
     for (let i = 0; i < d.length; i++) if (d[i] > 30) lit[i] = 1;
     if (ms === 100000) tone = RG.tone(A, d, 30);
   }
+  /* …and gold at EVERY point of its breath (build 207): the clock is frozen at an
+     offset of the page's own (window.__T0), so one fixed moment fell anywhere in the
+     breath, and since build 204's softer glow the faint end read khaki — hue 59°, a
+     third of the cycle, a third of the runs. Twelve moments across one breath. */
+  const P = R.GRING.pulseS * 1000, k0 = Math.ceil((100000 + window.__T0) / P), breath = [];
+  for (let j = 0; j < 12; j++) {
+    const { A, d } = pair(Math.round((k0 + j / 12) * P - window.__T0), ['flakes', 'sparkles', 'sheen']);
+    breath.push(RG.tone(A, d, 30));
+  }
   let band = 0, near = 0, far = 0, farA = 0, roof = 0;
   for (let i = 0; i < lit.length; i++) {
     const D = mk.D[i], y = (i / r.w) | 0;
@@ -614,14 +623,18 @@ const GB = await p.evaluate(() => {
   }
   let moved = 0;
   for (let i = 1; i < sh.length; i++) if (sh[i].n > 80 && sh[i - 1].n > 80 && Math.abs(sh[i].x - sh[i - 1].x) >= 6) moved++;
-  return { band, near, far, farA, roof, reachIn: Math.round(reachIn), reachOut: Math.round(reachOut), tone,
+  return { band, near, far, farA, roof, reachIn: Math.round(reachIn), reachOut: Math.round(reachOut), tone, breath,
     frames, high, bands: bands.size, leafTone,
     shOn: sh.filter(s => s.n > 80).length, shOff: sh.filter(s => s.n === 0).length, shOut: Math.max(...sh.map(s => s.out)), moved, shN: sh.map(s => s.n) };
 });
 ck('theGuidesHaloHugsABuildingsOwnOutline', GB.near >= 0.4 * GB.band && GB.roof >= 40 && GB.far <= Math.max(6, 0.001 * GB.farA),
   `${GB.near} of the ${GB.band} px within ${GB.reachIn} px of its outline lit, ${GB.roof} above its roof; ${GB.far} of the ${GB.farA} px farther than ${GB.reachOut} px (a box would light them)`);
-ck('andItIsGoldNotOlive', GB.tone.hue >= 30 && GB.tone.hue <= 55 && GB.tone.bright[0] >= GB.tone.bright[1] && GB.tone.bright[1] > GB.tone.bright[2],
-  `the halo's core: hue ${GB.tone.hue}° (${GB.tone.n} px), its bright band rgb(${GB.tone.bright})`);
+{
+  const gold = t => t.hue >= 30 && t.hue <= 55 && t.bright[0] >= t.bright[1] && t.bright[1] > t.bright[2];
+  const worst = GB.breath.reduce((w, t) => (t.hue > w.hue ? t : w), GB.breath[0]);
+  ck('andItIsGoldNotOlive', gold(GB.tone) && GB.breath.every(gold),
+    `the halo's core: hue ${GB.tone.hue}° (${GB.tone.n} px), its bright band rgb(${GB.tone.bright}); across its breath hue ${GB.breath.map(t => t.hue).join('/')}°, the faintest rgb(${worst.bright})`);
+}
 ck('andGoldLeafRisesOffItIntoTheSky', GB.frames >= 4 && GB.bands >= 3 && GB.leafTone && GB.leafTone.hue >= 28 && GB.leafTone.hue <= 55,
   `leaf more than 0.7 tile over its roof in ${GB.frames} of 6 frames (${GB.high} px), in ${GB.bands} half-tile bands of sky; hue ${GB.leafTone && GB.leafTone.hue}°`);
 ck('andASheenRunsAcrossItsOwnPictureNowAndThen', GB.shOn >= 4 && GB.shOff >= 12 && GB.moved >= 2 && GB.shOut <= 4,

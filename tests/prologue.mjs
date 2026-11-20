@@ -1520,8 +1520,13 @@ const endScreen = async (p) => {
     return { inCards, back: Screens.current, doors, held: Prologue.holding() && S.scenario };
   });
   ck('andTheCollectionLeadsBackToTheReward', col.inCards === 'cards' && col.back === 'endgame' && col.doors.includes('pro-next') && col.held === 'prologue_2', JSON.stringify(col));
-  // …and CONTINUE THE JOURNEY opens it at once: no plaque, the very world that waited
-  await p.waitForFunction(() => { R.cam.z = R.defaultZoom(); return TerrainX.viewFrac() >= 1 && Assets.artReady() && !R._bakeDue && !R._bake; },
+  /* …and CONTINUE THE JOURNEY opens it at once: no plaque, the very world that waited.
+     The wait is the press's own (Screens.enterGame's ready): the art, the bake, and since
+     build 207 the ground under every view of the world's opening glide (Prologue.glideViews)
+     — the journey opened on blurred stand-in ground where its glide began, and a reader who
+     has read the reward has that ground painted behind it */
+  await p.waitForFunction(() => { R.cam.z = R.defaultZoom(); const gv = Prologue.glideViews ? Prologue.glideViews() : null;
+    return TerrainX.viewFrac() >= 1 && TerrainX.viewFrac(gv) >= 1 && Assets.artReady() && !R._bakeDue && !R._bake; },
     null, { timeout: 30000, polling: 250 }).catch(() => {});
   const go = await p.evaluate(() => {
     window.__held2 = S;
