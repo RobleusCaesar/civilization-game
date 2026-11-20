@@ -26,10 +26,25 @@
       make sure it fits in screen"): a few words, wholly on the glass from
       320px to 1280px, clear of the minimap and of every toast — it heads the
       toast column, and the toasts step down below it.
+   8. TWO ROADS TO VICTORY (Screens.showVictoryPaths): the first Calm game
+      opens on a modal — the rival's hall, this run's own monument with its
+      price — once per device (and once a session where storage throws),
+      only where the mode offers the Wonder, never on Moderate; it slows the
+      world while it has the floor, is shown by _enterNow (never under the
+      art plaque) and leaving the game removes it. The Wonder's build card is
+      dressed as the goal: gold rim, a victory ribbon, a live "% saved" line,
+      never ghosted like an unaffordable hut.
+   9. THE RIVAL'S INTEL WAITS TO BE READ (Cards.announceRival, PX-10c):
+      never posted while the Calm modal has the floor or the game is not on
+      screen, posted once when it is, and dropped — never posted late — for
+      another world or past its wait.
+   (8 and 9 lived in the old tutorial's suite until it was retired, build 208.)
 
    Run after touching: Combat.hostile/hostileUnits, G.breakPeace, the attack
    order sites in ui.js/units.js, AI.choosePosture/maybeWonder/wonderWatch,
-   Bld.effCost, UI.tickWonderWarn, CFG.MODES.calm.
+   Bld.effCost, UI.tickWonderWarn, CFG.MODES.calm, Screens.showVictoryPaths /
+   victoryPathsDue / modalUp, UI.refreshMenu's wonder card,
+   Cards.announceRival.
 
      node tests/calm-peace.mjs      # exits non-zero on any regression */
 import { dirname, join } from 'node:path';
@@ -337,6 +352,174 @@ for (const [w, h] of [[320, 640], [390, 844], [430, 932], [844, 390], [1280, 800
     r.toasts.length + ' toasts; first at ' + (r.toasts[0] && r.toasts[0].t.toFixed(1)) + ' under a banner ending ' + r.b.b.toFixed(1));
   ck('andTheyComeBackUpWhenItGoes@' + tag, r.after === '0px', r.after);
 }
+
+// ---- 8 + 9. the first Calm game's two roads, and the rival's intel that waits ----
+await p.setViewportSize({ width: 390, height: 844 });
+const vp = await p.evaluate(async () => {
+  const res = {}, fails = [];
+  const ck = (n, ok, i) => { res[n] = (ok ? 'PASS' : 'FAIL') + (i ? ' — ' + i : ''); if (!ok) fails.push(n); };
+  const fresh = (seed, mode) => {
+    G.newGame(seed, mode || 'calm', 'medium');
+    Screens._demo = false; Screens.show('playing'); S.paused = true;
+    Combat.scanT = 0; Units.herdClock = 0;
+  };
+  const wipeSeen = () => { try { localStorage.removeItem('neo-victory-seen'); } catch (e) {} };
+
+  // ---- 8. two roads to victory: the Calm modal and the Wonder card ----
+  {
+    wipeSeen();
+    fresh('122', 'moderate');
+    ck('noModalOnModerate', Screens.victoryPathsDue() === false && !UI.wonderOffered(), String(UI.wonderOffered()));
+    fresh('123', 'calm');
+    ck('theFirstCalmGameIsDueAModal', Screens.victoryPathsDue() === true, '');
+    const modal = Screens.showVictoryPaths();
+    ck('theModalStands', !!document.getElementById('victoryModal') && Screens.modalUp(), '');
+    const txt = modal.textContent;
+    const wcost = CFG.BUILDINGS.wonder.levels[0].cost;
+    ck('itNamesBothRoads', /Town Center/.test(txt) && txt.includes(CFG.BUILDINGS.wonder.name) && txt.includes(String(wcost.wood)) && txt.includes(String(wcost.gold)),
+      txt.slice(0, 200));
+    const painted = (cv) => { try { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n; } catch (e) { return -1; } };
+    const arts = Array.from(modal.querySelectorAll('canvas.vpArt'));
+    ck('bothRoadsAreDrawn', arts.length === 2 && arts.every(c => painted(c) > 200), arts.map(painted).join('/'));
+    ck('itIsStampedSeenWhenShown', localStorage.getItem('neo-victory-seen') === '1', String(localStorage.getItem('neo-victory-seen')));
+    ck('andNeverDealtTwice', Screens.victoryPathsDue() === false, '');
+    document.getElementById('vpGotIt').click();
+    ck('gotItTakesItDown', !Screens.modalUp() && Screens._modalUp === false, '');
+    // leaving the game removes it
+    wipeSeen();
+    Screens.showVictoryPaths();
+    Screens.show('paused');
+    ck('leavingTheGameRemovesIt', !Screens.modalUp() && Screens._modalUp === false, '');
+    Screens.show('playing'); S.paused = true;
+    // it is SHOWN by _enterNow (deferred from draftTap), never under the art plaque
+    wipeSeen();
+    Screens._victoryPathsPending = true;
+    G._freshRun = false; Screens._enterNow();
+    ck('theModalIsShownWhenTheWorldIs', Screens.modalUp() && Screens._victoryPathsPending === false, '');
+    ck('andItSlowsTheWorldWhileItHasTheFloor', Screens._modalUp === true && Screens.MODAL_SLOW > 0 && Screens.MODAL_SLOW < 1 &&
+      /Screens\._modalUp/.test(G.frame.toString()) && /MODAL_SLOW/.test(G.frame.toString()), 'MODAL_SLOW ' + Screens.MODAL_SLOW);
+    // the price wraps between its pairs; nothing overflows the card at phone width
+    {
+      const card = document.querySelector('#victoryModal .vpCard'), price = document.querySelector('#victoryModal .vpPrice');
+      ck('thePriceWrapsInsideTheCard', !!card && !!price && getComputedStyle(price).whiteSpace !== 'nowrap' && card.scrollWidth <= card.clientWidth + 1,
+        card ? card.scrollWidth + '/' + card.clientWidth + ' ' + (price && getComputedStyle(price).whiteSpace) : 'no card');
+    }
+    document.getElementById('vpGotIt').click();
+    S.paused = true;
+    // THE MEMORY HAS A FALLBACK: a storage that THROWS still shows it once a
+    // session (never every game), and the games-founded count still steps
+    {
+      const gi = Storage.prototype.getItem, si = Storage.prototype.setItem, ri = Storage.prototype.removeItem;
+      Storage.prototype.getItem = Storage.prototype.setItem = Storage.prototype.removeItem = function () { throw new Error('storage blocked'); };
+      Screens._mem = {};
+      try {
+        fresh('125', 'calm');
+        const due = Screens.victoryPathsDue();
+        Screens.showVictoryPaths(); Screens.hideVictoryPaths();
+        const once = Screens.victoryPathsDue() === false && Screens._mem['neo-victory-seen'] === '1';
+        const n0 = Screens.gamesFounded(); Screens.noteGameFounded();
+        const steps = Screens.gamesFounded() === n0 + 1;
+        ck('aBlockedStorageStillShowsItOnceASession', due && once && steps, JSON.stringify({ due, once, steps }));
+      } finally { Storage.prototype.getItem = gi; Storage.prototype.setItem = si; Storage.prototype.removeItem = ri; Screens._mem = {}; }
+    }
+    // the Wonder card reads as the goal
+    fresh('126', 'calm');
+    UI.refreshMenu();
+    const wb = document.querySelector('.bbtn[data-key="wonder"]');
+    ck('theWonderCardIsDressedAsTheGoal', !!wb && wb.classList.contains('wonder') && !!wb.querySelector('.bwin') && !!wb.querySelector('.bprog') && wb.style.display !== 'none',
+      wb ? wb.className + ' ' + wb.style.display : 'no card');
+    const prog = () => wb.querySelector('.bprog').textContent;
+    ck('itSaysHowFarTheTownHasSaved', /^\d+% saved$/.test(prog()), prog());
+    ck('andIsNeverGhostedLikeAHut', parseFloat(getComputedStyle(wb).opacity) >= 0.8, getComputedStyle(wb).opacity);
+    for (const k in wcost) S.res[k] = wcost[k];
+    UI.refreshMenu();
+    ck('paidInFullItSaysReady', prog() === 'Ready to raise', prog());
+    S.res.wood = Math.floor(wcost.wood / 2);
+    UI.refreshMenu();
+    ck('theScarcestPileSetsTheFigure', prog() === '50% saved', prog());
+    // ground broken: the goods are spent, so the card reports the works, not "0% saved"
+    {
+      const tc = Bld.tcOf('P'); let site = null;
+      for (let r = 3; r <= 12 && !site; r++) for (let dy = -r; dy <= r && !site; dy++) for (let dx = -r; dx <= r && !site; dx++) {
+        const x = (tc.x + dx) | 0, y = (tc.y + dy) | 0;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !MapGen.onBoard(x, y)) continue;
+        const c = Bld.canPlace('P', 'wonder', x, y, { noCost: true, noSeal: true });
+        if (c && c.ok) site = Bld.place('P', 'wonder', x, y, { free: true });
+      }
+      UI.refreshMenu();
+      ck('onceGroundIsBrokenTheCardReportsTheWorks', !!site && /^Rising — \d+ days$/.test(prog()), site ? prog() : 'no site could be laid');
+      if (site) { site.construction = 0; UI.refreshMenu(); }
+      ck('andRaisedOnceItStands', !!site && prog() === 'Raised', prog());
+    }
+    wipeSeen();
+  }
+
+  // ---- 9. the rival's intel waits for a screen that can show it (PX-10c) ----
+  {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // a post is waited for as a CONDITION, bounded (the post polls every 250ms
+    // and a loaded runner can stretch that past any fixed sleep); an absence
+    // is still read after a fixed beat
+    const until = async (f, ms) => { const t = performance.now(); while (!f() && performance.now() - t < ms) await sleep(50); };
+    const box = document.getElementById('toasts');
+    const intel = () => [...box.querySelectorAll('.toast')].filter(el => /Rival origin|Scouts whisper/.test(el.textContent)).length;
+    const logged = () => S.log.filter(l => /Rival origin|Scouts whisper/.test(l.msg)).length;
+    const wipe = () => { box.innerHTML = ''; UI._toastAt = {}; };
+    // the first Calm game opens on the modal — the intel waits it out, then posts once
+    {
+      wipeSeen(); fresh('200', 'calm'); wipe();
+      Screens.showVictoryPaths();
+      Cards.announceRival();
+      const under = intel();
+      await sleep(700);
+      const stillUnder = intel();
+      document.getElementById('vpGotIt').click();
+      await until(() => intel() >= 2, 5000);
+      const after = intel(), afterLog = logged();
+      await sleep(700);
+      ck('theRivalsIntelWaitsForTheModalToGo', under === 0 && stillUnder === 0 && after === 2 && afterLog === 2 && intel() === 2 && logged() === 2,
+        JSON.stringify({ under, stillUnder, after, afterLog, later: intel(), laterLog: logged() }));
+    }
+    // …and never under a shell screen: it waits for the game itself
+    {
+      wipeSeen(); fresh('202', 'calm'); wipe();
+      Screens.show('paused');
+      Cards.announceRival();
+      const hidden = intel();
+      Screens.show('playing'); S.paused = true;
+      await until(() => intel() >= 2, 5000);
+      ck('itWaitsForTheGameToBeOnScreen', hidden === 0 && intel() === 2, JSON.stringify({ hidden, after: intel() }));
+    }
+    // …it is this world's news alone: another world taking the glass drops it
+    {
+      wipeSeen(); fresh('203', 'calm'); wipe();
+      Screens.showVictoryPaths();
+      Cards.announceRival();
+      Screens.hideVictoryPaths();
+      fresh('204', 'calm'); wipe();
+      await sleep(700);
+      ck('anotherWorldNeverWearsIt', intel() === 0 && logged() === 0, JSON.stringify({ toasts: intel(), log: logged() }));
+    }
+    // …and too late is never: past its wait it is dropped, not posted into a column nobody reads
+    {
+      const was = Cards.INTEL_WAIT_MS;
+      Cards.INTEL_WAIT_MS = 300;
+      try {
+        wipeSeen(); fresh('205', 'calm'); wipe();
+        Screens.showVictoryPaths();
+        Cards.announceRival();
+        await sleep(800);
+        Screens.hideVictoryPaths();
+        await sleep(700);
+        ck('pastItsWaitTheIntelIsDropped', intel() === 0 && logged() === 0, JSON.stringify({ toasts: intel(), log: logged() }));
+      } finally { Cards.INTEL_WAIT_MS = was; }
+    }
+    Screens.hideVictoryPaths();
+    wipe(); wipeSeen();
+  }
+  return { res, fails };
+});
+Object.assign(out.res, vp.res); out.fails.push(...vp.fails);
 
 console.log(JSON.stringify(out.res, null, 1));
 console.log(out.fails.length ? 'FAILURES: ' + out.fails.join(', ') : 'ALL CALM-PEACE CHECKS PASS');

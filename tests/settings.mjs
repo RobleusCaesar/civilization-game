@@ -12,9 +12,10 @@
    2. ONLY REAL SETTINGS. The page's controls are exactly the known set —
       nothing unrecognised — and each one changes what it says it changes:
       the two audio switches and their dials (Sound), the autosave cadence
-      (Backend.autosaveDays and its key), the guided lesson
-      (Screens.tutorialWanted), the unit tips (UI.helpHidden). No Controls
-      tab, no Graphics tab, no language picker. A card with nothing real in
+      (Backend.autosaveDays and its key), the unit tips (UI.helpHidden). No
+      Controls tab, no Graphics tab, no language picker — and no lesson
+      switch since the old opt-in lesson was retired (build 208; the journey
+      teaches a new player now). A card with nothing real in
       it is not drawn: the chief's name waits for the cloud, the save-file
       button for a game in progress.
    3. THE CADENCE IS SMALL: one segmented bar on one row, measured at 390.
@@ -214,7 +215,7 @@ const open = async (opts) => {
     // the tabs: exactly these five
     o.tabs = Array.from(document.querySelectorAll('#scrSetx .sxTab')).map(t => t.dataset.tab).join(',');
     // every control on every tab, named by what it does
-    const KNOWN = /^(tog:tut|tog:unithelp|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush)$/;
+    const KNOWN = /^(tog:unithelp|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush)$/;
     o.controls = [];
     for (const t of SettingsPage.TABS) {
       SettingsPage.open(t.k);
@@ -271,15 +272,9 @@ const open = async (opts) => {
     o.oldSeg = { h: Math.round(oc.getBoundingClientRect().height), w: Math.round(oc.getBoundingClientRect().width) };
     sc.classList.remove('show');
 
-    // GENERAL: the lesson and the unit tips
+    // GENERAL: the unit tips (and no lesson switch: the old lesson is gone)
     SettingsPage.open('general');
-    localStorage.removeItem('neo-tutorial-ask');
-    SettingsPage.open('general');
-    const before = Screens.tutorialWanted();
-    q('[data-act="tut"]').click();
-    o.tut = { before, after: Screens.tutorialWanted(), key: localStorage.getItem('neo-tutorial-ask'), aria: q('[data-act="tut"]').getAttribute('aria-checked') };
-    q('[data-act="tut"]').click();
-    o.tutBack = Screens.tutorialWanted();
+    o.lessonGone = !q('[data-act="tut"]') && !/guided lesson/i.test(document.getElementById('scrSetx').textContent);
     const hh = UI.helpHidden;
     q('[data-act="unithelp"]').click();
     o.unit = { before: hh, after: UI.helpHidden, key: localStorage.getItem('neo-unit-help') };
@@ -306,8 +301,7 @@ const open = async (opts) => {
   ck('theCadenceIsOneSmallBar', r.seg.n === 4 && r.seg.rows === 1 && r.seg.h <= 34 && r.seg.w <= 320 &&
     r.seg.h * r.seg.w < 0.7 * r.oldSeg.h * r.oldSeg.w,
     JSON.stringify(r.seg) + ' vs the old ' + r.oldSeg.w + 'x' + r.oldSeg.h);
-  ck('theLessonSwitchIsTheLessonChoice', r.tut.after === !r.tut.before && r.tut.key === (r.tut.before ? '0' : '1') && r.tut.aria === String(r.tut.after) && r.tutBack === r.tut.before,
-    JSON.stringify(r.tut));
+  ck('theOldLessonSwitchIsGone', r.lessonGone === true, String(r.lessonGone));
   ck('theUnitTipsSwitchIsTheUnitTips', r.unit.after === !r.unit.before && r.unit.key === (r.unit.after ? '1' : '0'), JSON.stringify(r.unit));
   ck('theConditionalCardsAppearWhenTheyAreReal', r.saveFile && r.idRows && r.chief && r.chiefName === 'Ashka',
     JSON.stringify({ file: r.saveFile, id: r.idRows, chief: r.chief, name: r.chiefName }));
@@ -325,32 +319,6 @@ const open = async (opts) => {
       cards: document.querySelectorAll('#scrSetx .sxCard').length };
   });
   ck('aCardWithNothingRealIsNotDrawn', !r.chief && !r.file && !r.id && r.cards === 1, JSON.stringify(r));
-  await ctx.close();
-}
-
-/* …and ticking the lesson on HERE never arms it on a world it cannot teach:
-   a pending draft on an archipelago is founded again when it shows (the
-   draft toggle's own MAP-V01 rule, reached from Settings) */
-{
-  const { ctx, p } = await open({ tag: 'lesson' });
-  const r = await p.evaluate(async () => {
-    const frames = (n) => new Promise(res => { const f = () => (n-- <= 0 ? res() : requestAnimationFrame(f)); f(); });
-    Screens.lsSet('neo-tutorial-ask', '0');
-    Screens.newPrefs.mode = 'moderate';
-    let tries = 0;
-    do { Screens.foundRun(); tries++; } while (Screens.teachableWorld() && tries < 12);
-    const before = { teachable: Screens.teachableWorld(), seed: S.seed, pending: !!(S.draft && !S.draft.done) };
-    Screens.show('title');
-    Screens.backTo = 'title'; Screens.show('settings'); SettingsPage.open('general');
-    document.querySelector('#scrSetx [data-act="tut"]').click();
-    const wanted = Screens.tutorialWanted();
-    document.querySelector('#scrSetx .sxBack').click();
-    Screens.show('newgame'); Screens.startNewGame();          // the same trial: the pending draft resumes…
-    for (let i = 0; i < 40 && Screens.teachableWorld() === false; i++) await frames(2);
-    return { before, wanted, after: { teachable: Screens.teachableWorld(), seed: S.seed, cur: Screens.current } };
-  });
-  ck('aLessonTickedHereIsNeverArmedOnAnUnteachableWorld', !r.before.teachable && r.before.pending && r.wanted && r.after.teachable && r.after.seed !== r.before.seed && r.after.cur === 'draft',
-    JSON.stringify(r));
   await ctx.close();
 }
 

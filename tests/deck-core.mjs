@@ -26,8 +26,8 @@
                      included; a DEFEAT earns for a real fight, counted in
                      DEEDS (CFG.CARDS.LOSS_DEEDS): a passive Hard run, end to
                      end in the real sim, reads 0 and earns nothing (origin
-                     prebuilds, the start package, the tutorial and its
-                     larder add nothing); a token effort (one house, one
+                     prebuilds and the start package add nothing); a token
+                     effort (one house, one
                      villager) reads 2 and is told how far it got; a
                      scripted player who builds and trains for five minutes
                      on Hard and is razed earns. The two traps the naive
@@ -62,8 +62,9 @@
                      too, its grant op in that collection's own queue — one
                      made for a device that had none — so ?cards=0 gives it
                      back and it syncs; a re-dealt toy never banks a run twice
-     THE LESSON      while the tutorial's spine runs the door refuses (the
-                     deck is not in the game yet) and the card stays
+     THE LESSON      while the journey holds the deck back (its first game,
+                     its second until Mira teaches the deck) the door
+                     refuses and the card stays
      ONE WORD        "deck" is the card collection alone: the origin
                      draft's help deals three ORIGIN cards
 
@@ -278,16 +279,22 @@ const d = await p.evaluate((counts) => {
   out.played = JSON.stringify(S.deck.played);
   out.consumeQueued = Deck.col().queue.filter(q => q.op === 'consume').length;
   out.rngSame = S.rngState === rng0;
-  // THE LESSON HAS THE FLOOR (ruling 12): while the tutorial's spine runs the
-  // door refuses and the card stays; once the spine is done it plays
+  // THE LESSON HAS THE FLOOR (ruling 12): while the journey holds the deck
+  // back (Prologue.deckHolds: its first game, its second until the card
+  // lesson) the door refuses and the card stays; once it lets go it plays
   Deck._add('__ok', 1);
-  const tut0 = S.tut, food0 = S.res.food;
-  S.tut = { on: true, phase: 1, step: 3, done: {}, fired: {} };
-  const held = Deck.play('__ok');
-  out.lesson = { ok: held.ok, why: held.why, left: Deck.count('__ok'), food: S.res.food - food0 };
-  S.tut.phase = 2;
-  out.lesson.after = Deck.play('__ok').ok;
-  S.tut = tut0;
+  const sc0 = S.scenario, dh0 = Prologue.deckHolds, food0 = S.res.food;
+  let holds = true;
+  S.scenario = 'prologue_1'; Prologue.deckHolds = () => holds;
+  try {
+    const held = Deck.play('__ok');
+    out.lesson = { ok: held.ok, why: held.why, left: Deck.count('__ok'), food: S.res.food - food0 };
+    holds = false;
+    out.lesson.after = Deck.play('__ok').ok;
+    // …and outside a journey world it never holds, whatever the journey says
+    holds = true; S.scenario = sc0;
+    out.lesson.outside = Deck.lessonHolds();
+  } finally { S.scenario = sc0; Prologue.deckHolds = dh0; }
   S.deck.played.pop();
   // S.deck rides the save, and an old save is backfilled
   const json = G.saveJSON();
@@ -330,7 +337,7 @@ ck('aCardIsTakenOnlyWhenItApplies', d.door.ok && d.door.okLeft === 0 && !d.door.
   !d.door.boom && d.door.boomLeft === 1, JSON.stringify(d.door));
 ck('aCardYouDoNotHoldCannotBePlayed', !d.none.ok, d.none.why);
 ck('theLessonHasTheFloor', !d.lesson.ok && d.lesson.why === 'Finish the lesson first — your deck opens when it ends.' &&
-  d.lesson.left === 1 && d.lesson.food === 0 && d.lesson.after, JSON.stringify(d.lesson));
+  d.lesson.left === 1 && d.lesson.food === 0 && d.lesson.after && d.lesson.outside === false, JSON.stringify(d.lesson));
 ck('theRunRemembersWhatItPlayed', JSON.parse(d.played).length === 1 && d.consumeQueued === 1, d.played);
 ck('nothingDrawsFromTheRunsRng', d.rngSame);
 ck('theRunStateRidesASave', d.rides && d.backfill, `rides ${d.rides}, backfill ${d.backfill}`);
@@ -348,13 +355,11 @@ const SIM = `window.__sim = (o) => {
   let rs = o.rs || 1;
   Math.random = () => { rs = (rs * 16807) % 2147483647; return (rs - 1) / 2147483646; };
   Screens._demo = false;
-  try { localStorage.setItem('neo-tutorial-ask', o.tut ? '1' : '0'); } catch (e) {}
   G.newGame(o.seed, o.mode || 'hard', 'medium');
   S.draft.hand = [{ key: o.origin, roll: Cards.DEFS[o.origin].roll() }];
   Cards.pick(0);
   Screens.show('playing'); S.paused = false;
   Combat.scanT = 0; Units.herdClock = 0;
-  if (o.tut) Tutorial.maybeStart();
   const tc0 = Bld.tcOf('P');
   const vills = () => S.units.filter(u => u.owner === 'P' && Units.isVillager(u));
   const spot = (key) => MapGen.findNear(tc0.x + 1, tc0.y + 1, 9, (x, y) => Bld.canPlace('P', key, x, y).ok);
@@ -419,7 +424,6 @@ const SIM = `window.__sim = (o) => {
     G.dragonT = (G.dragonT || 0) - dt;
     if (G.dragonT <= 0) { G.dragonT = 1.3; G.maybeDragon(); G.maybeSons(); G.maybeCache(); G.maybeWinter(); G.maybePlague(); }
     G.visT -= dt; if (G.visT <= 0) { G.visT = 0.35; G.updateVisibility(); }
-    if (S.tut && S.tut.on) Tutorial.tick(dt);
   }
   // the hall falls to the world — through the real door, so the end screen settles it
   if (!S.over) { const tc = Bld.tcOf('P'); if (tc) Bld.damage(tc, 1e7); }
@@ -427,7 +431,7 @@ const SIM = `window.__sim = (o) => {
   return { day: S.day, cause: S.over && S.over.cause, win: !!(S.over && S.over.win), deeds: d.n, parts: d.parts, act: st.actDays,
     razed: st.razed, gathered: Math.round(st.gathered), built: st.built, trained: st.trained, secs: Math.round(S.playtime),
     granted: !!Deck.col().runs[rep.key], why: (DeckScreens._view && DeckScreens._view.why) || '',
-    tut: !!(S.tut && S.tut.on), report: G.runReport('loss', 'tc_destroyed', false).props };
+    report: G.runReport('loss', 'tc_destroyed', false).props };
 };`;
 const e = await p.evaluate(async (SIM) => {
   eval(SIM);
@@ -446,9 +450,6 @@ const e = await p.evaluate(async (SIM) => {
   for (const [seed, origin] of [['passive-marinerb', 'mariner'], ['passive-grainkeepera', 'grainkeeper'], ['passive-delvera', 'delver'],
     ['passive-bowyera', 'bowyer'], ['passive-huntlorda', 'huntlord'], ['passive-timberwrighta', 'timberwright']])
     out.passive.push(Object.assign({ origin }, __sim(N({ seed, origin }))));
-  // …and the same with the tutorial on: its larder, its scout, its free house
-  // (which needs a site the player laid) add nothing either
-  out.tutPassive = __sim(N({ seed: 'passive-tut', origin: 'forager', tut: true }));
   // A TOKEN EFFORT: one house and one villager, then hands off
   out.token = __sim(N({ seed: 'active-token-0', origin: 'homesteader', bot: 'token', act: 400, rs: 7 }));
   // FIVE MINUTES ON HARD: a player who builds, trains and gathers for 30
@@ -464,10 +465,9 @@ const e = await p.evaluate(async (SIM) => {
   return out;
 }, SIM);
 const pv = e.passive, CFG_LOSS = 5;
-ck('aPassiveHardDefeatEarnsNothing', pv.every(r => !r.win && r.deeds === 0 && r.act === 0 && !r.granted) &&
-  e.tutPassive.deeds === 0 && e.tutPassive.act === 0 && !e.tutPassive.granted,
+ck('aPassiveHardDefeatEarnsNothing', pv.every(r => !r.win && r.deeds === 0 && r.act === 0 && !r.granted),
   pv.map(r => `${r.origin} d${r.day} ${r.deeds} deeds on ${r.act} days (razed ${r.razed}, gathered ${r.gathered})`).join('; ') +
-  `; tutorial d${e.tutPassive.day} ${e.tutPassive.deeds} on ${e.tutPassive.act} days — no automation stamps a day`);
+  ' — no automation stamps a day');
 ck('aTokenEffortIsToldHowFarItGot', e.token.deeds === 2 && e.token.act === 1 && !e.token.granted &&
   e.token.why === 'Build, train, gather, upgrade or raze to earn a card from a defeat — 2 of 5 deeds, orders given on 1 of 6 days.',
   `${e.token.deeds} deeds (${JSON.stringify(e.token.parts)}) on ${e.token.act} days, granted ${e.token.granted}, "${e.token.why}"`);
@@ -915,19 +915,13 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   ck('everyLoadOfTheLinkDealsAfresh', a2.reloaded === 36, `${a2.reloaded} after a reload`);
   ck('andARedealtToyNeverBanksARunTwice', a2.rebank.again && a2.rebank.same && a2.rebank.toy === 36, JSON.stringify(a2.rebank));
   ck('andTheLinkIsReadWithTheSwitchOn', a2.spent === 35 && a2.switchOn === 36, `${a2.spent} → ${a2.switchOn} with CFG.CARDS.ON`);
-  // a load WITHOUT it keeps the deck it dealt and the device's switch — and
-  // a TEST deck never hides behind the lesson: a tester on a fresh device gets
-  // the tutorial switched on by itself, and the link must not read as broken
+  // a load WITHOUT it keeps the deck it dealt and the device's switch
   await load('');
   const a3 = await p2.evaluate(() => {
     Deck.ensureStarter();
-    const tut0 = S.tut; S.tut = { on: true, phase: 1, step: 3, done: {}, fired: {} };
-    const o = { on: Deck.on(), total: Deck.total(), held: Deck.lessonHolds() };
-    S.tut = tut0;
-    return o;
+    return { on: Deck.on(), total: Deck.total() };
   });
   ck('andAPlainLoadKeepsIt', a3.on && a3.total === 36, `on ${a3.on}, ${a3.total}`);
-  ck('andATestDeckNeverWaitsForTheLesson', a3.held === false, `held behind the spine: ${a3.held}`);
   /* ?cards=0 forgets the device switch AND the toy deck (a test deck never
      syncs, so a device left holding one would never sync again) — and hands
      back the REAL collection the link put aside, exactly as it was stored:

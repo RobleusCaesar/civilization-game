@@ -38,13 +38,15 @@
                               WHERE the page was left (at: title / prep /
                               draft / game) and whether a world was ever
                               entered; run_start says how long the press
-                              waited behind the plaque (prep_ms) and why the
-                              lesson is on or off (tut_src); every ending,
-                              real and closed_tab, carries first_act_s,
-                              tut_skip_at, wall_s and resume_prep_ms — null
+                              waited behind the plaque (prep_ms); every
+                              ending, real and closed_tab, carries
+                              first_act_s, wall_s and resume_prep_ms — null
                               when unknown, never absent — and 'seconds'
                               keeps its formula. Integers, booleans and short
-                              enums only.
+                              enums only. The old opt-in lesson's fields
+                              (tutorial, tut_src, tut_skip_at) went with it
+                              in build 208: no row carries them, and a save
+                              that does loads without them.
      AND THE TOKEN STAYS      (§8, PX-50 part 1) the access token the client
      CURRENT                  renews (about hourly) is the one the next row
                               carries — a sign-out or another player's
@@ -52,7 +54,7 @@
 
    Run after touching: Backend._emit / build / telemetryAllowed / logRunEnd,
    Backend.init / logRunStart / endSession, G.end / runReport / noteAct,
-   Screens.enterGame / _enterNow, Tutorial.skip, Feedback.noteError /
+   Screens.enterGame / _enterNow, Feedback.noteError /
    resetRunErrors, Screens.show, the S.played / S.stats backfills in
    loadJSON, or any analytics migration.
 
@@ -642,13 +644,14 @@ const MOCK = `
   await p.close();
 }
 
-// ---- 7. THE FIRST MINUTE (PX-49): where a new player stops, how soon they act, whether the plaque or the lesson loses them ----
+// ---- 7. THE FIRST MINUTE (PX-49): where a new player stops, how soon they act, whether the plaque loses them ----
 /* 147 of 353 new players never had a game last a minute, and nothing they
    sent said why: a page left before the world opened sent {seconds, build}
-   and no more; a lesson skipped anywhere read as step 20; and the play clock
-   (dt capped at 0.1 s a frame) runs short on a slow phone. The rows now say
-   it — additive props only, and 'seconds' is never redefined. */
-const AT = ['title', 'prep', 'draft', 'game'], SRC = ['auto', 'ticked', 'declined', 'none'], FORM = ['phone', 'tablet', 'desktop'];
+   and no more; and the play clock (dt capped at 0.1 s a frame) runs short
+   on a slow phone. The rows now say it — additive props only, and 'seconds'
+   is never redefined. */
+const AT = ['title', 'prep', 'draft', 'game'], FORM = ['phone', 'tablet', 'desktop'];
+const GONE = ['tutorial', 'tut_src', 'tut_skip_at'];   // the old opt-in lesson's fields, retired in build 208
 const isInt = v => typeof v === 'number' && Number.isInteger(v);
 {
   const p = await b.newPage({ viewport: { width: 430, height: 880 } });
@@ -673,8 +676,6 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
     const holdArt = () => { Assets.artReady = () => false; Assets.whenIdle = () => new Promise(res => { release = res; }); };
     const freeArt = () => { Assets.artReady = ar; Assets.whenIdle = wi; if (release) release(); release = null; };
     const entered = async () => { for (let i = 0; i < 150 && (Screens.current !== 'playing' || Screens._entering); i++) await tick(20); };
-    const keep = (k, v) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); };
-    const ask0 = localStorage.getItem('neo-tutorial-ask'), games0 = localStorage.getItem('neo-games');
     const realNow = Date.now; let off = 0;
     Date.now = () => realNow.call(Date) + off;   // the wall clock, moved on by hand
     // the ground under the opening view counts as in: what is measured here is the
@@ -686,7 +687,6 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       out.sTitle = session();
 
       // A FOUNDED RUN, at its origin cards
-      keep('neo-tutorial-ask', null); keep('neo-games', '5');      // a veteran: no lesson
       G.newGame('fm-draft', 'moderate', 'medium'); Screens._demo = false;
       Screens.show('draft');
       out.draftShown = Screens.current === 'draft';
@@ -716,26 +716,14 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       out.warmEntered = Screens.current === 'playing';
       out.warmStart = (last('run_start') || {}).props || null;
 
-      // WHY THE LESSON IS ON OR OFF, in four words
-      out.src = {};
-      for (const [name, ask, games] of [['auto', null, '0'], ['ticked', '1', '5'], ['declined', '0', '0'], ['none', null, '5']]) {
-        keep('neo-tutorial-ask', ask); keep('neo-games', games);
-        G.newGame('fm-src-' + name, 'moderate', 'medium'); Screens._demo = false;
-        Tutorial.maybeStart();
-        Screens._enterNow();
-        const s = (last('run_start') || {}).props || {};
-        out.src[name] = { src: s.tut_src, tutorial: s.tutorial };
-      }
-      keep('neo-tutorial-ask', null); keep('neo-games', '5');
-
-      // EVERY ENDING carries the four, null when unknown, never absent
+      // EVERY ENDING carries the three, null when unknown, never absent
       G.newGame('fm-end', 'moderate', 'medium'); Screens._demo = false;
       Screens._enterNow();
       const id = S.runId;
       S.day = 2; S.playtime = 20.2;
       await hide(); const e0 = left(id); await show();
-      out.e0 = e0 && { has: ['first_act_s', 'tut_skip_at', 'wall_s', 'resume_prep_ms'].map(k => k in (e0.props || {})),
-        first: e0.props.first_act_s, skip: e0.props.tut_skip_at, wall: e0.props.wall_s, resume: e0.props.resume_prep_ms };
+      out.e0 = e0 && { has: ['first_act_s', 'wall_s', 'resume_prep_ms'].map(k => k in (e0.props || {})),
+        first: e0.props.first_act_s, wall: e0.props.wall_s, resume: e0.props.resume_prep_ms };
       // the run's FIRST ORDER, on the play clock; later orders never move it
       S.playtime = 42.4; G.noteAct();
       S.playtime = 50; G.noteAct();
@@ -753,30 +741,15 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       S.playtime = 50.4;
       G.end(false, 'test', 'tc_destroyed'); await tick();
       const e2 = last('run_end', x => x.run_id === id && x.cause === 'tc_destroyed');
-      out.e2 = e2 && { has: ['first_act_s', 'tut_skip_at', 'wall_s', 'resume_prep_ms'].map(k => k in (e2.props || {})),
-        first: e2.props.first_act_s, wall: e2.props.wall_s, seconds: e2.seconds, skip: e2.props.tut_skip_at, resume: e2.props.resume_prep_ms };
+      out.e2 = e2 && { has: ['first_act_s', 'wall_s', 'resume_prep_ms'].map(k => k in (e2.props || {})),
+        first: e2.props.first_act_s, wall: e2.props.wall_s, seconds: e2.seconds, resume: e2.props.resume_prep_ms };
       Screens.show('title');
 
-      // THE LESSON LEFT AT A STEP: tut_skip_at is that step's id, and a second
-      // skip (from the deck's one owed note) never moves it
-      keep('neo-tutorial-ask', '1');
-      G.newGame('fm-skip', 'moderate', 'medium'); Screens._demo = false;
-      Tutorial.maybeStart(); Screens._enterNow();
-      const idS = S.runId;
-      S.tut.done = { welcome: 1, resources: 1 }; S.tut.step = 2;
-      out.skipWant = Tutorial.STEPS[2].id;
-      Tutorial.skip();
-      out.skipFirst = S.stats.tutSkipAt;
-      out.skipDeckOnly = !!S.tut.deckOnly;
-      Tutorial.skip();
-      out.skipSecond = S.stats.tutSkipAt;
-      S.day = 2; await hide(); const ks = left(idS); await show();
-      out.skipRow = ks && ks.props.tut_skip_at;
-      // both ride the save
+      // THE FIRST ORDER RIDES THE SAVE
+      G.newGame('fm-save', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
       S.playtime = 12.6; G.noteAct();
       G.loadJSON(G.saveJSON()); Screens._demo = false;
-      out.saved = { skip: S.stats.tutSkipAt, first: S.stats.firstActS };
-      keep('neo-tutorial-ask', null);
+      out.saved = { first: S.stats.firstActS };
       Screens.show('title');
 
       // A CONTINUED world sends no run_start: its wait behind the plaque rides
@@ -804,9 +777,13 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
       // the first came: it reads unknown, never the clock at its next order…
       G.newGame('fm-old', 'moderate', 'medium'); Screens._demo = false; Screens._enterNow();
       S.playtime = 500; S.day = 6; S.stats.actDays = 4; S.stats.actDay = 5;
-      const old = JSON.parse(G.saveJSON()); delete old.stats.firstActS; delete old.stats.tutSkipAt;
+      // (a save from build 207 also carries the old lesson's state and its skip
+      // step: both are dropped at load, never carried on)
+      const old = JSON.parse(G.saveJSON()); delete old.stats.firstActS;
+      old.stats.tutSkipAt = 'tapVillager'; old.tut = { on: true, phase: 1, step: 2, done: { welcome: 1 }, fired: {} };
       G.loadJSON(JSON.stringify(old)); Screens._demo = false; Screens._enterNow();
-      out.oldLoaded = { first: S.stats.firstActS === undefined ? 'absent' : S.stats.firstActS, skip: S.stats.tutSkipAt === undefined ? 'absent' : S.stats.tutSkipAt };
+      out.oldLoaded = { first: S.stats.firstActS === undefined ? 'absent' : S.stats.firstActS,
+        skipKept: 'tutSkipAt' in S.stats, tutKept: 'tut' in S };
       S.day = 7; G.noteAct();
       S.day = 8; await hide(); const oe = left(S.runId); await show();
       out.oldRow = oe && ('first_act_s' in oe.props) ? oe.props.first_act_s : 'absent';
@@ -819,10 +796,8 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
 
       // every row this page sent: the new props are integers, booleans, null or a short enum
       out.all = rows().map(x => ({ kind: x.kind, cause: x.cause || null, props: x.props || {} }));
-      out.stepIds = Tutorial.STEPS.map(s => s.id).concat(Tutorial.EVENTS.map(e => e.id));
     } finally {
       Date.now = realNow; if (vf) TerrainX.viewFrac = vf;
-      keep('neo-tutorial-ask', ask0); keep('neo-games', games0);
       delete document.hidden; delete document.visibilityState;
     }
     return out;
@@ -834,29 +809,25 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   ck('andBehindThePlaque', r.plaqueUp && sp.at === 'prep' && sp.entered === false, JSON.stringify({ plaque: r.plaqueUp, row: sp }));
   ck('andInAWorldItEntered', sg.at === 'game' && sg.entered === true, JSON.stringify(sg));
   const s1 = r.start1 || {}, sw = r.warmStart || {};
-  ck('runStartSaysHowLongThePressWaited', isInt(s1.prep_ms) && s1.prep_ms >= 400 && s1.prep_ms < 8000 && s1.tut_src === 'none' &&
+  ck('runStartSaysHowLongThePressWaited', isInt(s1.prep_ms) && s1.prep_ms >= 400 && s1.prep_ms < 8000 &&
     s1.form === 'desktop' && s1.standalone === false, JSON.stringify(s1));
   ck('andAWarmPressWaitedNotAtAll', r.warmEntered && sw.prep_ms === 0, JSON.stringify({ entered: r.warmEntered, start: sw }));
-  const sr = r.src || {};
-  ck('runStartSaysWhyTheLessonIsOnOrOff', SRC.every(k => sr[k] && sr[k].src === k) &&
-    sr.auto.tutorial === true && sr.ticked.tutorial === true && sr.declined.tutorial === false && sr.none.tutorial === false, JSON.stringify(sr));
   const e0 = r.e0 || {};
-  ck('everyEndingCarriesTheFirstMinuteFields', e0.has && e0.has.every(Boolean) && e0.first === null && e0.skip === null &&
+  ck('everyEndingCarriesTheFirstMinuteFields', e0.has && e0.has.every(Boolean) && e0.first === null &&
     isInt(e0.wall) && e0.resume === null, JSON.stringify(e0));
   ck('firstActIsTheRunsFirstOrderOnThePlayClock', r.firstActStat === 42 && r.e1 && r.e1.first === 42 && r.e2 && r.e2.first === 42,
     JSON.stringify({ stat: r.firstActStat, e1: r.e1 && r.e1.first, e2: r.e2 && r.e2.first }));
   ck('wallSecondsSitBesideSecondsNeverReplacingThem', r.e1 && r.e1.seconds === 50 && r.e1.wall >= 80 && r.e1.wall <= 82 &&
     r.e2 && r.e2.seconds === 50 && r.e2.wall >= 80 && r.e2.wall <= 82, JSON.stringify({ e1: r.e1, e2: r.e2 }));
-  ck('andARealEndingCarriesThemToo', r.e2 && r.e2.has && r.e2.has.every(Boolean) && r.e2.skip === null && r.e2.resume === null, JSON.stringify(r.e2));
-  ck('tutSkipAtNamesTheStepTheLessonWasLeftOn', r.skipWant === 'tapVillager' && r.skipFirst === 'tapVillager' && r.skipRow === 'tapVillager',
-    JSON.stringify({ want: r.skipWant, first: r.skipFirst, row: r.skipRow }));
-  ck('andASecondSkipNeverMovesIt', r.skipSecond === 'tapVillager', JSON.stringify({ deckOnly: r.skipDeckOnly, second: r.skipSecond }));
-  ck('bothRideTheSave', r.saved && r.saved.skip === 'tapVillager' && r.saved.first === 13, JSON.stringify(r.saved));
+  ck('andARealEndingCarriesThemToo', r.e2 && r.e2.has && r.e2.has.every(Boolean) && r.e2.resume === null, JSON.stringify(r.e2));
+  ck('theFirstOrderRidesTheSave', r.saved && r.saved.first === 13, JSON.stringify(r.saved));
   const c = r.cont || {};
   ck('aContinuedWorldsWaitRidesItsEndings', c.noStart === true && isInt(c.resume) && c.resume >= 300 && c.resume < 8000, JSON.stringify(c));
   ck('andItsWallClockCarriesOnFromItsSeconds', c.seconds === 310 && c.wall >= 320 && c.wall <= 322, JSON.stringify(c));
-  ck('aPreStampSaveThatActedReadsUnknown', r.oldLoaded && r.oldLoaded.first !== 'absent' && r.oldLoaded.skip === null && r.oldRow === null,
+  ck('aPreStampSaveThatActedReadsUnknown', r.oldLoaded && r.oldLoaded.first !== 'absent' && r.oldRow === null,
     JSON.stringify({ loaded: r.oldLoaded, row: r.oldRow }));
+  ck('andTheOldLessonsStateIsDroppedAtLoad', r.oldLoaded && r.oldLoaded.skipKept === false && r.oldLoaded.tutKept === false,
+    JSON.stringify(r.oldLoaded));
   ck('andOneThatNeverActedLearnsItsFirstOrder', r.old0First === 33, 'first act after loading ' + r.old0First);
   // PRIVACY: integers, booleans, null or a short enum — nothing else, anywhere
   const bad = [];
@@ -865,13 +836,16 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
     if (x.kind === 'session') {
       if (!AT.includes(pr.at) || typeof pr.entered !== 'boolean' || !FORM.includes(pr.form) || typeof pr.standalone !== 'boolean') bad.push(x);
     } else if (x.kind === 'run_start') {
-      if (!isInt(pr.prep_ms) || pr.prep_ms < 0 || !SRC.includes(pr.tut_src) || !FORM.includes(pr.form) || typeof pr.standalone !== 'boolean') bad.push(x);
+      if (!isInt(pr.prep_ms) || pr.prep_ms < 0 || !FORM.includes(pr.form) || typeof pr.standalone !== 'boolean') bad.push(x);
     } else if (x.kind === 'run_end') {
       const okInt = v => v === null || (isInt(v) && v >= 0);
-      if (!okInt(pr.first_act_s) || !okInt(pr.wall_s) || !okInt(pr.resume_prep_ms) ||
-        !(pr.tut_skip_at === null || (r.stepIds || []).includes(pr.tut_skip_at))) bad.push(x);
+      if (!okInt(pr.first_act_s) || !okInt(pr.wall_s) || !okInt(pr.resume_prep_ms)) bad.push(x);
     }
   }
+  // …and none of the old lesson's fields rides any row
+  const stale = (r.all || []).filter(x => (x.kind === 'run_start' || x.kind === 'run_end') && GONE.some(k => k in x.props));
+  ck('noRowCarriesTheOldLessonsFields', (r.all || []).some(x => x.kind === 'run_start') && (r.all || []).some(x => x.kind === 'run_end') && stale.length === 0,
+    stale.length + ' rows ' + JSON.stringify(stale.slice(0, 1)).slice(0, 300));
   ck('theFirstMinuteSpeaksInNumbersBooleansAndShortEnums', (r.all || []).length > 10 && bad.length === 0,
     bad.length + ' bad of ' + (r.all || []).length + ' ' + JSON.stringify(bad.slice(0, 2)).slice(0, 600));
   ck('theFirstMinutePageThrewNothing', errs.length === 0, errs.slice(0, 2).join(' | '));
@@ -1025,8 +999,8 @@ const isInt = v => typeof v === 'number' && Number.isInteger(v);
   await press('#draftCards > :nth-child(1)');
   await p.waitForFunction(() => Screens.current === 'playing' && !Screens._entering, null, { timeout: 60000 });
   await p.waitForTimeout(500);
-  // put any lesson card away so the map takes the taps
-  await p.evaluate(() => { try { if (window.Tutorial && Tutorial.skip) Tutorial.skip(); } catch (e) {} try { Screens.hideVictoryPaths(); } catch (e) {} });
+  // put the Calm modal away (if one is up) so the map takes the taps
+  await p.evaluate(() => { try { Screens.hideVictoryPaths(); } catch (e) {} });
   await p.waitForTimeout(300);
   const tapAt = await p.evaluate(() => {
     // TL, not T: T is the game's terrain enum (a script-level const), and a

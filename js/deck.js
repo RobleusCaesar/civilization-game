@@ -660,33 +660,23 @@ const Deck = {
      for a targeted card, apply(tgt) → {ok, why}, at: 'tc'|'bar'|'target' —
      where the play animation bursts, end(entry) for a timed card's expiry }. */
   FX: {},
-  /* THE LESSON HAS THE FLOOR (operator ruling 12): while the tutorial's
-     spine runs (S.tut on, phase 1) the deck is not in the game — DeckUI
-     builds no button and no sheet (DeckUI.tutHides asks this), and the door
-     refuses as a backstop. The moment the spine is done (the capstone
-     answered, or the lesson skipped) the deck walks in, in the same run. */
+  /* THE LESSON HAS THE FLOOR (operator ruling 12): the journey keeps the
+     deck out of its first game and brings it into the second when Mira
+     teaches it (Prologue.deckHolds) — for a test deck too: the journey is
+     played as a new player plays it. While it holds, DeckUI builds no button
+     and no sheet (DeckUI.lessonHides asks this) and the door refuses as a
+     backstop; the moment it lets go the deck walks in, in the same run. */
   lessonHolds() {
-    /* …except for a TEST deck (?cards=all): a tester on a fresh device or a
-       private tab gets the lesson switched on by itself for the first two
-       games, and a test link whose deck then hides for the whole spine reads
-       as broken. Theirs stands from the first morning; the note still rings
-       it once the spine is done. */
     if (typeof S === 'undefined' || !S) return false;
-    /* THE PROLOGUE keeps the deck out of its first game and brings it into
-       the second when its Elder teaches it (Prologue.deckHolds) — for a test
-       deck too: the journey is played as a new player plays it */
-    if (S.scenario && window.Prologue && Prologue.deckHolds) return !!Prologue.deckHolds();
-    return !!S.tut && !!S.tut.on && S.tut.phase === 1 && !this.isTest();
+    return !!(S.scenario && window.Prologue && Prologue.deckHolds && Prologue.deckHolds());
   },
-  /* A CARD HAS THE FLOOR (tests/tutorial.mjs §15 — the five-player
-     playtest, on the operator's own path: a fresh device arms the tutorial by
-     itself, and its held note came back 0.2–1 s after every landing, dimming
-     the act under its spotlight, sitting over the result toast and running
-     the WHOLE ACT at its ×0.2 slow motion — the dragon's 3 s took 15). The
-     deck only had the floor while its sheet, aim or flight was up, and the
-     acts run for seconds after that. ONE predicate for "a card is being
-     played, or its act is still running", so the tutorial — and anything
-     else that would talk over a card — asks the same question:
+  /* A CARD HAS THE FLOOR (the five-player playtest: a lesson's note came
+     back 0.2–1 s after every landing, dimming the act and sitting over the
+     result toast). The deck only had the floor while its sheet, aim or
+     flight was up, and the acts run for seconds after that. ONE predicate
+     for "a card is being played, or its act is still running", so the
+     journey's guide (Prologue) — and anything else that would talk over a
+     card — asks the same question:
        the deck's own floor  the sheet, the aim, the flight (DeckUI.hasFloor)
        a card's moment       R.cardShows (every show is a few seconds), a
                              summons' light (R.summons) and a fallen star's

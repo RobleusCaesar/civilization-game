@@ -292,6 +292,8 @@ const session = async (pw, base, which) => {
       const ctx = await context();
       await ctx.addInitScript(() => {
         try {
+          // neo-tutorial-ask: the reference build (207) still carries the old
+          // opt-in lesson (retired in 208); '0' keeps it off there
           if (!sessionStorage.getItem('pg-seeded')) {
             for (const [k, v] of [['neo-tutorial-ask', '0'], ['neo-games', '9'], ['neo-draft-help', '1'], ['neo-cards-intro', '1'], ['neo-victory-seen', '1']]) localStorage.setItem(k, v);
             sessionStorage.setItem('pg-seeded', '1');

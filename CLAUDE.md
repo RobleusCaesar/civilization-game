@@ -211,7 +211,7 @@ never leave the test failing or weaken a threshold without explaining why.
 PX-12, PX-17): rule 4's reason has to be READ. **A TOAST HOLDS FOR ITS
 WORDS**: max(3.2 s, 1.2 s + 0.26 s a word); a toast with no words shows
 nothing, and five at most are on screen. **THE COLLAPSE IS ASKED FOR**:
-`UI.toast(msg, warn, ms, dedupe, news)` drops a repeat inside six seconds
+`UI.toast(msg, warn, ms, dedupe)` drops a repeat inside six seconds
 (`UI._toastAt`, still the map five contracts reset) only under `dedupe`,
 which `G.log` sets for every game event. A refusal to the player's tap always
 shows: a repeat of a toast still on screen REPLACES it (`UI._toastEl`, keyed
@@ -225,20 +225,11 @@ NOWHERE** (only `G.log` writes the event log): an armed mode's instruction
 (it eats like soldiers) pass 'note'; putting a tool or a doctrine down stays
 silent; an order acknowledgement passes none; the sapper's no-ground refusal
 warns.
-**THE LESSON HOLD IS FOR THE WORLD'S NEWS ALONE, AND ONLY WHILE THE CARD IS
-READ** (§2–2b, tests/tutorial.mjs §19b and §20): while
-`Tutorial.noteReading()` holds — a fresh card's reading time by the toast's
-own rule, max(3.2 s, 1.2 s + 0.26 s a word), and the BREATH after one (read
-guarded, on the method; an older tutorial.js without it holds on `noteUp`) —
-only a note marked `news` (G.log's, the "N ready" fold) waits, three at most,
-the oldest giving way, and it shows the moment the card has been read, under
-the card (its seat steps the column down, `--tut-h`). Nothing is dropped for
-waiting: the first cut held news for as long as a card STOOD and dropped it
-after 20 s, and a card that waits on the player's deed stands for minutes, so
-a tutorial game — every new player's first two — never showed the rival's
-intel, a spent tile or an off-view "finished" (the build 128 review). A
-warning, or a note answering the player's own act (every 'note' raised in
-ui.js), shows at once — held, the tap reads as dead (rule 4).
+**EVERY TOAST SHOWS THE MOMENT IT IS ASKED FOR** (§2): the world's news, a
+warning and a note answering the player's own act alike — a held answer reads
+as a dead tap (rule 4). The old opt-in lesson held the world's news back while
+its card was read; that hold went with the lesson (build 208). The journey
+keeps its one voice its own way (`Prologue.quiet`, **THE PROLOGUE** below).
 **"X UNDER ATTACK!" ON THE FIRST BLOW** after ten quiet seconds, per
 building, from anyone but the player (`Combat._alarmAt`, real time, keyed on
 S, never saved; a plain `G.log` at every difficulty, never foeNote); the old
@@ -358,9 +349,8 @@ node tests/art-pipeline.mjs    # PNG art lands by FILENAME alone; one anchoring 
 node tests/placement.mjs       # ONE placement truth (canPlace codes); ghost+confirm flow; the seal clamp; AI parity
 node tests/boot.mjs            # frame one is the logo; no chrome before a game; the notch inset
 node tests/land.mjs            # the coast is TRACED and the rock field SCATTERED, not tiled; tile data still decides everything; formation art (§17) writes no map array, packs deterministically, re-solves one region per edit; the small stones between the piles are the piles' own stone (§9d: their kit, their colours, a rim as dark for its size, no two neighbours alike, the chips in their ramp)
-node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder, and its countdown banner fits every screen
+node tests/calm-peace.mjs      # Calm starts at PEACE: nobody auto-engages until the player's first strike; the rival races for its own wonder, and its countdown banner fits every screen; the first Calm game opens on its two roads to victory (once a device, a session where storage throws, the Wonder card dressed as the goal) and the rival's intel waits for a screen that can show it
 node tests/mountain.mjs        # a mountain is an extruded OBJECT: lifted top, cliff face, occlusion strips; the art leaves its tiles, the rules never do; no mountain tile is an invisible wall
-node tests/tutorial.mjs        # the game teaches itself: zero cost off, out-of-order tolerant, saves mid-lesson, the scout draws no RNG; auto-on for the first two games, the Calm victory modal, the Wonder card as the goal; a card's act has the floor (no note, no dim, no slow motion), the deck's note retires with the deck
 node tests/muster-horn.mjs   # one tap calls the workforce in, one tap sends it back to its posts
 node tests/levy.mjs          # the village under arms: derived membership, soldier's upkeep, works nothing, holds the town
 node tests/tree-fall.mjs     # a felled wood goes over on screen — every tree about its own foot
@@ -380,7 +370,7 @@ node tests/island-maps.mjs   # the sea is never bulldozed: land-OR-sea reachabil
 node tests/amphibious.mjs    # the rival fights across the sea: the sea-only read, TIDEWRACK outranking land plans, the crossing end to end in the real sim, stranded hulls sail home, the coast answers a seen sail
 node tests/tribe-traits.mjs  # each people keeps its home ground (sea=coast, wolf=carved forest alcove, flint=stone, woad=meadow, broken=gold) and its one habit: wolf pack tactics, flint brutes, the Broken's deserter toll, the Woadkin painting, Sea Folk longboat sorties end to end
 node tests/relics.mjs        # the wilderness relic: tile data bit-identical on/off, seed-deterministic placement with manners, discovery grants once (gold on its own scale) and rides the save, the AI stays blind, 404 art falls back to the placeholder
-node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, tutorial forces Valley·Classic, saves carry the world's name
+node tests/variants.mjs      # 16 landform variants: classic byte-identical, every combo×size playable+symmetric, difficulty leans the size, a pinned seed founds that world once, saves carry the world's name
 node tests/animal-art.mjs    # character-class art path: 8-way facing from real displacement (WeakMap, never in a save), strip sheets slice+set playback, per-lookup fallback to the procedural cast; each animal strip holds ITS OWN view (front/rear narrow, profiles wide)
 node tests/archer-art.mjs    # archer line plumbing: military sheet keys {kind}-{p|a}-{tunic} recolored at install, no kind in the boot probe, ranged fight pose vs buildings at reach, deterministic miss overshoot, capped fire-arrow ground strikes
 node tests/audio.mjs         # the game's voice: nothing fetched before a gesture, two switches and two dials (mute and zero are one state); the recorded theme, the battle that answers the player's attack (timed on the march, back to the theme when it ends), and the effects heard by what the camera sees (a quiet din of work, blows capped and muted, the foe faint unless alone); a recording that will not play stands down to the synthesised voice
@@ -405,7 +395,7 @@ node tests/card-intro.mjs    # the card announcement: the switch ships on, and t
 node tests/draft-cards.mjs   # the trial and origin cards: no card art at boot, every card made ready while the title is read (the New Game tap builds nothing and its first frame wears every frame and picture; the draft finds its pictures waiting), both card screens on the night painting with the world under it undrawn, vector frames handed over as one SVG picture each, icons at the screen's own pixels, every origin's words fit at three sizes, the burn's fine fire on a held clock (every frame drawn, a rising front, the card gone, the canvas gone, torn down on leaving, a fade under reduced motion), and the wood face standing in without the title's helpers
 node tests/beasts.mjs        # the dragon and the kraken: drawn strips on demand — asked high the moment a card is held, the landing waits ≤0.6 s for them — every beat draws (art or fallback), one whole scale, a picture never writes S or draws the RNG, the jaws over the fire, the kraken in open water and wholly on the board, its sea on the sea; the card's dragon in from the board's side, nothing in the black
 node tests/terrain-v4.mjs    # the V4 ground: a played world wears it, the title's demo does not; four ways back (?terrain=classic, ?terrain=v4 undoes it, CFG.TERRAIN.V4 off, a worker fault); no rule moves; a chunk is a pure function of the world (and of a save); an edit paints what a rebuild would — the core's chunks AND the game's own layer over them; nothing in the black; the worn roads still show; a healthy V4 layer is not a purge; js/terrain-core.js is its source built; V5: a played world wears the region its landform calls for, changes no rule, shows a player no switch (and the testers' land switch is put away for now); ?biome=v4 is V4 byte for byte (remembered until ?biome=auto), CFG.TERRAIN.V5 off and a field fault stand it down; the cached fields are never stale and an edit near food or a new building paints what a rebuild would
-node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; a lesson holds only the world's news; the first blow alarms; unseen news is a note
+node tests/feedback.mjs      # a toast holds for its words; a refusal's repeat answers; a toast with no level shows nowhere; every toast shows at once; the first blow alarms; unseen news is a note
 node tests/hud-info.mjs      # the four goods and the people on ONE row, one width; food's net in its note (never the bar) and its number red only when it runs dry within days; numbers shorten DOWN (12.4k) and the note says them whole; every chip answers a tap; nothing spills at 320; no two targets overlap; a spent tile is news
 node tests/footing.mjs       # the ground under a building: a cast shadow under every building, a yard of worn earth round the workplaces, a hedge round the homes and free-standing towers; nothing for forts, the dock, a bonded tower or a site; open ground only, the door kept clear; no rule, save or RNG moves; paced a step at a time and warmed behind the plaque, re-measured, trimmed; CFG.FOOTING.ON / ?footing=0 stand it down
 node tests/art-budget.mjs    # art for what the world can show, and the frame for the game: a founding asks for what the world holds or its yards can raise (never both tribes' whole armies), a new world lets the last one's dye go and the frames do not grow game after game, a unit asks for its strips when it comes into the world (the rival's under the fog in the background, the title's demo nothing), a yard for what it can raise and a storey for its next rank, a held army card for what it summons; while a world is played the background tier waits for the frame loop (a quick frame installs in its room, a slow one nothing but never four running, two strips on the wire); a boat at anchor ships its oars; an ended run stands its people down; the journey opens on every view of its glide with no blurred ground; the water turns slower on a device that cannot keep up
@@ -520,12 +510,12 @@ tower tells the player what it needs at every moment it is looked at: the
 placement chip on a valid spot ("🏹 Shoots only with archers on it",
 `UI._placeDomSync`), the finish line (a `'note'`, "…it shoots only with
 archers on it: select archers, then tap the tower") while no bow of the
-player's stands on ANY tower — and never while the lesson's own manTower
-card is still to come (one voice) — the upgrade line when the masons sent
+player's stands on ANY tower, the upgrade line when the masons sent
 its bows down ("Send archers back up", nothing sends them back by itself),
-and the empty tower's panel naming the Archery Range. The lesson raises the
-range before the tower and teaches the tower MANNED (**THE TUTORIAL**), and
-the Guide's tower page is "Man your towers".
+and the empty tower's panel naming the Archery Range. The journey raises the
+range before the tower and teaches the tower MANNED (game 2's tower by the
+bridge, manned by the range's first archer — **THE PROLOGUE**), and the
+Guide's tower page is "Man your towers".
 **A SOLDIER RISES A RANK** (`Units.rankLine` / `rankNext` / `rankCheck` /
 `rankUp`, `UI.rankBtn` / `RANK_SVG`; tests/rank-up.mjs — operator, build
 174: "allow the player to upgrade those units… pay a fee and upgrade to an
@@ -1364,28 +1354,23 @@ they left. Rules:
   WALL-CLOCK: under a loaded machine `deck-ui.mjs` flakes on any commit, so
   rerun it alone before believing it. The reward is GRANTED when the screen
   opens (idempotent per run); CLAIM only flies it to the deck.
-- **THE LESSON HAS THE FLOOR** (`Deck.lessonHolds`, tests/tutorial.mjs §14):
-  while the tutorial's SPINE runs (phase 1) DeckUI builds no button, timer or
-  sheet (`DeckUI.tutHides`) and `Deck.canPlay` refuses as a backstop; the
-  starter hand still lands. The capstone answered or the lesson skipped, the
-  deck ARRIVES in the same run (`DeckUI._arriveFlare`, a ring of hard gold
-  pixels) and the last note (`Tutorial.EVENTS` 'deck') says to tap it. A skip
-  mid-spine keeps the teacher for that one note (`S.tut.deckOnly`), a skip ON
-  that note is its answer, and with the cards off the note is never waited
-  for. A TEST deck never waits for the lesson (the tutorial turns itself on
-  for a fresh device's first two games, and a test link whose deck hid read
-  as broken). The deck's note RETIRES with the deck (`retire`, §16): put
-  away with no chime when the last card goes, never shown over an empty one.
-- **A CARD HAS THE FLOOR** (`Deck.acting()`, tests/tutorial.mjs §15): the
-  tutorial is on for a fresh device's first two games, and it smothered every
-  act — dim, ring and note over the show, the world at 0.2× (the dragon's
-  act took 19.6 s). `Deck.acting()` is the ONE question "is a card being
-  played, or its act still running" (the deck's floor, a show, summons, a
-  star's settling sky, the strike, the kraken, the card's dragon and the view
-  it borrowed — never the world's own beasts); while it holds,
-  `Tutorial._cardHolds` puts the lesson away at full speed, and the booked
-  note returns after `BREATH` once the act's toast is read (`ACT_TOAST_S`, 6
-  at most), on an opaque card.
+- **THE LESSON HAS THE FLOOR** (`Deck.lessonHolds`, tests/deck-core.mjs
+  `theLessonHasTheFloor`): while the journey holds the deck back
+  (`Prologue.deckHolds` — its first game, and its second until Mira teaches
+  the deck) DeckUI builds no button, timer or sheet (`DeckUI.lessonHides`)
+  and `Deck.canPlay` refuses as a backstop; the starter hand still lands.
+  The moment it lets go, the deck ARRIVES in the same run (`DeckUI._arrive`,
+  a ring of gold sparks off the button) — a test deck too: the journey is
+  played as a new player plays it. Outside a journey world nothing holds it
+  (the old opt-in lesson's spine held it too, until that lesson was retired
+  in build 208).
+- **A CARD HAS THE FLOOR** (`Deck.acting()`): the ONE question "is a card
+  being played, or its act still running" (the deck's floor, a show,
+  summons, a star's settling sky, the strike, the kraken, the card's dragon
+  and the view it borrowed — never the world's own beasts). The journey's
+  guide asks it: her card stands aside and no news is said over an act, and
+  a beat whose deed is a card's play is done only once the act is over
+  (tests/prologue.mjs).
 - **THE TEST LINK** (`?cards=all`, deck-core): every load carrying it turns
   the deck on and deals a fresh TEST deck, one of every card — read before
   the switch, so it still deals once `CFG.CARDS.ON` ships true. A test deck
@@ -1678,8 +1663,8 @@ obvious, and ends in a win … SIMPLE. SIMPLE. SIMPLE."). It SUPERSEDES the
 first game of build 178: the `first_quick` profile is gone from the client
 (its dials were game 3's until build 196 made game 3 a battle). A brand-new
 device plays THREE authored games in
-order and is never offered difficulty, the old lesson's checkbox or an origin
-choice before the third: **The First Fire** (raise the hall to level 2:
+order and is never offered difficulty or an origin choice before the
+third: **The First Fire** (raise the hall to level 2:
 select, berries, wood, stone, a house beside the berry bush, the farm on the
 bush's picked-bare soil and the homestead the two make, a villager, a
 lumber camp on the felled grove, the hall's rally set on it and a second
@@ -1907,8 +1892,8 @@ decided once: a device with any trace of earlier play (`Screens.gamesFounded`)
 is a veteran and never sent; `?prologue=reset` forgets the record,
 `?prologue=0` is off, and an automated browser meets it only with
 `?prologue=1` or `reset`. **THE TITLE** wears one BEGIN ("The First Fire · 1
-of 3") and a small "Skip the journey" (two taps; `skip` writes the record and
-spends the old lesson's two teaching games); New Game, the board, the cards
+of 3") and a small "Skip the journey" (two taps; `skip` writes the record);
+New Game, the board, the cards
 and Load are put away. **THE BEGIN PLATE IS THE SETTINGS PAGE'S LIT PLATE** (tests/prologue.mjs §2c
 `theBeginPlateIsTheSettingsPagesLitPlate` — operator, build 206: the gold
 plate was "hard to read … looks bad relative to the logo … inviting the player
@@ -2219,7 +2204,7 @@ and no other picture is fetched again — redraw her again and step it again.
 "Start with the map hidden / collapsed … it makes things confusing to have
 it open … Start with the villager instructions hidden too … keep everything
 as clean as possible"): every journey world opens with the map folded
-(`UI.setMiniCollapsed(true)`, the old lesson's own move), the top bar's map
+(`UI.setMiniCollapsed(true)`), the top bar's map
 button bringing it back; and the unit tips start put away for EVERY player
 now (`UI.helpHidden`: `neo-unit-help` '0' shows them, '1' or never chosen
 hides them) — the panel's ℹ️ shows them and the choice is remembered, so a
@@ -2626,28 +2611,23 @@ they left. Rules:
   WALL-CLOCK: under a loaded machine `deck-ui.mjs` flakes on any commit, so
   rerun it alone before believing it. The reward is GRANTED when the screen
   opens (idempotent per run); CLAIM only flies it to the deck.
-- **THE LESSON HAS THE FLOOR** (`Deck.lessonHolds`, tests/tutorial.mjs §14):
-  while the tutorial's SPINE runs (phase 1) DeckUI builds no button, timer or
-  sheet (`DeckUI.tutHides`) and `Deck.canPlay` refuses as a backstop; the
-  starter hand still lands. The capstone answered or the lesson skipped, the
-  deck ARRIVES in the same run (`DeckUI._arriveFlare`, a ring of hard gold
-  pixels) and the last note (`Tutorial.EVENTS` 'deck') says to tap it. A skip
-  mid-spine keeps the teacher for that one note (`S.tut.deckOnly`), a skip ON
-  that note is its answer, and with the cards off the note is never waited
-  for. A TEST deck never waits for the lesson (the tutorial turns itself on
-  for a fresh device's first two games, and a test link whose deck hid read
-  as broken). The deck's note RETIRES with the deck (`retire`, §16): put
-  away with no chime when the last card goes, never shown over an empty one.
-- **A CARD HAS THE FLOOR** (`Deck.acting()`, tests/tutorial.mjs §15): the
-  tutorial is on for a fresh device's first two games, and it smothered every
-  act — dim, ring and note over the show, the world at 0.2× (the dragon's
-  act took 19.6 s). `Deck.acting()` is the ONE question "is a card being
-  played, or its act still running" (the deck's floor, a show, summons, a
-  star's settling sky, the strike, the kraken, the card's dragon and the view
-  it borrowed — never the world's own beasts); while it holds,
-  `Tutorial._cardHolds` puts the lesson away at full speed, and the booked
-  note returns after `BREATH` once the act's toast is read (`ACT_TOAST_S`, 6
-  at most), on an opaque card.
+- **THE LESSON HAS THE FLOOR** (`Deck.lessonHolds`, tests/deck-core.mjs
+  `theLessonHasTheFloor`): while the journey holds the deck back
+  (`Prologue.deckHolds` — its first game, and its second until Mira teaches
+  the deck) DeckUI builds no button, timer or sheet (`DeckUI.lessonHides`)
+  and `Deck.canPlay` refuses as a backstop; the starter hand still lands.
+  The moment it lets go, the deck ARRIVES in the same run (`DeckUI._arrive`,
+  a ring of gold sparks off the button) — a test deck too: the journey is
+  played as a new player plays it. Outside a journey world nothing holds it
+  (the old opt-in lesson's spine held it too, until that lesson was retired
+  in build 208).
+- **A CARD HAS THE FLOOR** (`Deck.acting()`): the ONE question "is a card
+  being played, or its act still running" (the deck's floor, a show,
+  summons, a star's settling sky, the strike, the kraken, the card's dragon
+  and the view it borrowed — never the world's own beasts). The journey's
+  guide asks it: her card stands aside and no news is said over an act, and
+  a beat whose deed is a card's play is done only once the act is over
+  (tests/prologue.mjs).
 - **THE TEST LINK** (`?cards=all`, deck-core): every load carrying it turns
   the deck on and deals a fresh TEST deck, one of every card — read before
   the switch, so it still deals once `CFG.CARDS.ON` ships true. A test deck
@@ -6225,19 +6205,14 @@ It is still one row a page load, so a page hidden at the title and played
 later reads 'title': a visit, never a duration. run_start carries `prep_ms`
 (wall time from `enterGame` to the world opening, a hidden tab included; 0
 EXACTLY when it opened in the press's own task, the `_prepSync` microtask
-flag, so a forced layout on a busy phone never reads as a plaque) and
-`tut_src` ('auto', the first-two-games default; 'ticked', an explicit '1';
-'declined', an explicit '0': unticked, or a lesson skipped before; 'none');
-both rows carry `form` ('phone' | 'tablet' | 'desktop', from the primary
+flag, so a forced layout on a busy phone never reads as a plaque); both
+rows carry `form` ('phone' | 'tablet' | 'desktop', from the primary
 pointer and the screen's short side, 600: the DEVICE, where `device` is the
 window) and `standalone`. Every ending (`G.runReport`, real or closed_tab)
 carries, null when unknown, never absent: `first_act_s` (stamped once in
 `G.noteAct` BEFORE its once-a-day return, `S.stats.firstActS`; an older save
 that already gave orders backfills -1, never the clock at its next order,
-and one that gave none learns its first), `tut_skip_at`
-(`S.stats.tutSkipAt`, the FIRST skip's step, stamped in `Tutorial.skip`
-before the step jumps to the end; a skip after the spine names the note on
-show, since step and event ids are disjoint), `wall_s` (BESIDE 'seconds',
+and one that gave none learns its first), `wall_s` (BESIDE 'seconds',
 never replacing it: the run's seconds with this page's share on the VISIBLE
 wall clock, `Screens._vis`; a pause still counts there, so the two bracket
 the time played) and `resume_prep_ms` (a Continue's plaque wait, since a
@@ -6245,8 +6220,12 @@ Continue sends no run_start). The opening record is a WeakMap on the world
 (`Screens._opened`), set the first time a world reaches `_enterNow` in a page
 and never again on a resume from the pause menu, never saved; a world shown
 any other way (a test's `Screens.show('playing')`) answers unknown.
-`firstActS` / `tutSkipAt` are the save's only additions (null in `newGame`,
-backfilled in `loadJSON`), and build 127 loads a save that carries them.
+`firstActS` is the save's only addition (null in `newGame`, backfilled in
+`loadJSON`), and build 127 loads a save that carries it. The old opt-in
+lesson's fields (`tutorial`, `tut_src`, `tut_skip_at`) went with it in build
+208: no row carries them, and `loadJSON` drops a save's `tut` and
+`tutSkipAt` (`noRowCarriesTheOldLessonsFields`,
+`andTheOldLessonsStateIsDroppedAtLoad`).
 **THE TOKEN STAYS CURRENT** (§8, PX-50 part 1): supabase-js renews the token
 hourly into a NEW session object, and `Backend.session` kept the old one, so
 every fire-and-forget row went out under a dead Bearer (`_rest` refreshes
@@ -6845,7 +6824,7 @@ pushes the `<picture>` past it.
 (tests/desktop-layout.mjs §3, PX-14): the folded build tab (22px tall), Pause
 and Menu (34x34) and the minimap's fold (30x30) each get an INVISIBLE reach,
 a positioned pseudo-element, so `getBoundingClientRect`, the art and the
-tutorial's ring never move. §3 measures the hit box as a finger meets it,
+journey's ring never move. §3 measures the hit box as a finger meets it,
 `elementFromPoint` on a whole-pixel grid reaching 24px past the drawn box (a
 12px margin under-reads the tab as 40). The tab's (`#bmToggle::before`;
 `::after` is the Master Builders badge) reaches 16px up and 6px down, its
@@ -8371,7 +8350,7 @@ the global `.cant` ghosting reads as a rendering bug on a solid plaque).
 emoji — Apple's glossy 3D set beside pixel art is the loudest "web page"
 tell there is. The three HERO plaques carry an inline pixel-SVG (`.pxi`,
 `shape-rendering: crispEdges`), which is part of what marks them primary;
-the narrow secondary row (Settings / Tutorial / Load) is deliberately TEXT
+the narrow secondary row (Settings / Guide / Load) is deliberately TEXT
 ONLY, because an icon in a plaque that size costs about a third of the
 label's room and forces the type down to fine print beside the big three.
 Two checks, so the split is intentional rather than drift:
@@ -9225,8 +9204,7 @@ every pass (2-3.4s frozen foundings on xlarge Karst); felling one tree only
 merges the components touching it, so the largest body it leaves is
 max(1 + its distinct neighbours, the largest other) — identical picks, 256
 maps byte-identical, the slowest 3,440ms → 44ms. Every one of these changes
-the rnd stream, so every seed's world re-deals once; the tutorial's forced
-Valley·Classic is untouched as a RULE.
+the rnd stream, so every seed's world re-deals once.
 **NOTHING IS WALKED IN THE BLACK, HERE EITHER**: the clamp's reach flood and
 landmass labels used `inB`, which includes the off-map rim, so seats joined
 only along the void read as "reachable by land" and nothing was carved (two
@@ -10095,202 +10073,39 @@ NEITHER of (`FAILURES` needs the S, and `FAIL\b` fails on the `U` of FAILURE).
 A sweep written that way reported 39/39 green while tap-audit had been red for
 four commits. Use `if node "$f" >/dev/null 2>&1; then pass; else fail; fi`.
 
-**THE TUTORIAL** (`tests/tutorial.mjs`, all of `js/tutorial.js`): two
-playtesters could not find the game under the interface, so the game teaches
-itself — but only when asked. **The checkbox on the Origin Card screen**
-(`#btnTutToggle`, persisted as localStorage `neo-tutorial-ask`) is the only
-way in: `Tutorial.maybeStart()` is called from the draft screen's Begin
-button alone, so a loaded save, the pause screen's Resume and the title demo
-can never start one. **ALL COPY LIVES IN `Tutorial.TEXT`** — one entry per
-step/event id, ≤2 short sentences, `<b>` emphasis allowed, a function entry
-for dynamic bits (the rival's tunic colour, the calm/war win conditions).
-Edit copy there and nowhere else.
-**The engine is data-driven**: `Tutorial.STEPS` is phase 1's ordered spine
-(hall → resources → select → the three gathers → gold → house → train → fog
-→ **the map** → **barracks → soldier → guard → range → tower → man the
-tower → wall** → win
-conditions → **the standing goal** → the TC2 upgrade → the capstone;
-the GOAL step is what closes the silent gap a playtest reported ("it feels
-like the training ends abruptly"): after the win conditions the spine used
-to go quiet until the hall happened to become affordable, so `tcGoal` now
-names the objective, prices it from `CFG.BUILDINGS.tc.levels`, counts the
-LIVE shortfall (goods and missing support buildings both), and flips its
-second sentence to "tap the Town Center and start it" the moment it is
-payable — an info step on purpose, so it never holds the world in slow
-motion while the player goes and gathers; the HOUSE comes BEFORE
-training because a start package can open at the population cap, and the
-TOWN comes before the hall — a playtest found the upgrade being talked
-about twice and offered unaffordably). **The lesson opens with the minimap
-FOLDED** (`UI.setMiniCollapsed(true)` in maybeStart — bare `UI`, never
-`window.UI`, the window.G trap) and the `minimap` step after the fog
-lesson rings the top bar's map button (`#mapBtn`, beside the cards — the ▴ under an open map folds it; folded, nothing floats over the world) until the player unfolds it. **Build steps use
-the GUIDED CHAIN anchor** (`Tutorial._buildAnchor`): the menu CARD when
-the build menu is open, the villager panel's `[data-act="gobuild"]` Build
-button when a villager is selected, and the nearest villager in the world
-when neither — a playtest found the barracks note ringing the Build tab
-while the hall's panel covered the menu. **The first spear answers at
-once** (`S.tut.soldierGiven`, beside houseGiven in `_scanSteps`): the
-first defender queued during the lesson has its timer zeroed and the REAL
-trainer spawns it; the `guard` step then asks for a real walk order
-(task `move` on any own military unit).
-`Tutorial.EVENTS` is everything contextual — the scripted scout, the calm
-truce, worked ground → stations, dock/sapper notes, **the builder lesson**
-(`buildHands`, `urgent` like the scout: a foundation standing 5s with no
-villager building it — the auto-dispatch's grace — fires "tap a villager,
-then the site" ringed on the site itself, because with every hand out
-gathering the site sits at nothing and reads as a bug), and phase 2's
-one-shots (Trading Post at TC3, siege practice, the win nudge, mortality
-via `Tutorial.note` from `G.tickMortality`); the old military/defense/
-wall-practice notes are RETIRED — the spine's own barracks/tower/wall
-steps carry that teaching now, gates included. A step with `adv` is
-action-gated and completes itself; one without carries the Got-it button;
-`when` holds a step silently (the world runs free while nothing is on show).
-**EVERY BUYING STEP HOLDS UNTIL IT IS PAYABLE** (a playtest met "Not
-enough resources" behind the upgrade note): house/barracks/tower/wall ask
-`Tutorial._afford` (effCost + canAfford), train asks for pop ROOM and
-food, and tcReady asks `Bld.canUpgrade(tc).ok` — which carries the whole
-gate, three finished buildings AND the goods. **The lesson's larder**
-(`maybeStart`): a tutorial start is topped up to wood 260 / stone 120 /
-gold 35 — enough for the taught builds (the Archery Range joined them in
-build 152), a top-up never a cut, and never enough for the hall upgrade,
-because earning that is the lesson's arc. **THE BOWS BEFORE THE TOWER**
-(build 152): the `range` step comes before `tower` (its first archer
-reports the day it stands, **THE YARD SENDS ITS FIRST SOLDIER**), and
-`manTower` after it holds for a finished tower and a bow (or a finished
-range to train one), rings the bow on the ground, the tower once a bow is
-in hand, and with no bow at all the range's Train Archer; the ORDER that
-sends a bow up answers it (`Lookout.sentUp`), as a walk order answers the
-guard step. In real play the barracks' first Defender answers the soldier
-step the moment the site finishes, so the lesson goes straight to posting
-him.
-**THE SPINE HAS RIGHT OF WAY**: contextual notes fire only in the quiet
-stretches (a held step, phase 2), ≥25s apart — except the scout, whose
-`urgent` flag lets it preempt, because it is on screen NOW. The `_lastEvAt`
-spacing gate initializes to `-1e9`, NEVER 0 — `performance.now()` starts
-near zero, so a 0 initial value silently blocks every note for the first
-25 seconds of a page load (found by the contract test, invisible in play).
-**And every answered note leaves A BREATH** (`Tutorial.BREATH`, 1s of
-`_gapT`): completing one note and presenting the next in the same frame
-read as being rushed (playtest feedback), so both presentation gates hold
-for the beat — the spotlight drops, the world runs at full speed, then the
-next note arrives. Any test that answers a note and asserts the next one
-must tick THROUGH the breath. **The lesson's first house is raised in a
-blink** (`S.tut.houseGiven`, the check at the top of `_scanSteps`): the
-house step leads straight into training, which needs the roof FINISHED
-for the room it grants — so the first house site laid while the house
-step is untaught completes via the real `Bld.finish` on the next scan.
-One house only, tutorial only, and a start-package house that satisfied
-the step early earns nothing; every later house builds at its real pace.
-**Out-of-order tolerance**: every later step's `adv` is scanned in the
-background, so a deed done early skips its telling — which is why advance
-conditions are STATELESS reads of S (a task on a forest tile, a queue with
-an entry, `UI.sel` holding a villager), never counters captured at show
-time. **It never takes control**: input is never blocked, the camera glide
-is ~0.45s and any touch cancels it, and the sim runs SLOW (×0.2 via
-`Tutorial.simScale`, read in `G.frame`) while a note is up — never paused,
-and a canvas touch 800ms after the note releases full speed. **The fog
-lesson BORROWS the camera** (`zoomOut: true` → `Tutorial._zoomToFog`):
-with the town filling the screen the "darkness" it names is nowhere in
-sight, so the note glides the zoom out until the explored ground plus a
-band of fog fits the view (only ever OUT, never past the pinch floor 0.5)
-and hands the zoom back when answered (`_zRestore`); any touch cancels
-both and the restore is forfeited — the player took the camera. **Zero cost
-off**: everything gates on `S.tut && S.tut.on` at the G.frame call sites;
-no DOM, no listeners, no scans exist until a run opts in, and skip/completion
-remove them again. **State split**: `S.tut` (phase/step/done/fired/the
-scout's schedule) rides in every save — `loadJSON` backfills `null` — while
-everything transient (DOM refs, pan lerp, throttles, `simScale`) lives on
-the Tutorial module and is reset by `Tutorial.onWorldChange()` from
-newGame/loadJSON, the `R.collapses` rule. **The scripted scout** never
-touches `G.rand` (its day, 9–13, hashes off the seed string — the
-`G.rollWonder` rule) and never fights: `u.strat = 'strike'` keeps it out of
-`Combat.acquire`, `u.scouting` keeps the rival AI's defend-stamp off it, the
-steer re-asserts its fixed-geometry ride every ~0.7s against anything else
-that grabs it, and it despawns after its loop or 2 days. **The overlay**
-(`#tutDim` at z8, `#tutUI` at z15) darkens only the WORLD — the dim sits
-below the HUD's z10, so every button stays bright and tappable — and both
-elements are in the `body:not(.ingame)` hide list, so shell screens cover
-them for free. **A UI target's spotlight is a RECTANGLE hugging the
-element, with the card seated right beside it** (under the resource bar,
-above a build-menu card): the circular hole, sized to a bar's whole width,
-drew a giant half-circle clipped by the screen edge — reported from a real
-phone playtest as "confusing". World targets keep the circle and the
-opposite-half card rule. **A ringed build-menu CARD is scrolled into the middle of the menu**
-(`Tutorial._scrollCardIntoView`, from a playtest: the barracks card sits
-past the fold of the horizontally-scrolling menu, so opening Build showed
-a highlight the player could not see). **UNTIL IT IS SEEN, THEN NEVER
-AGAIN** (`UI.cardIntoView`, the journey's rule too — build 182): it was one
-shot "however it lands", and on a busy phone the shot landed on a menu still
-being laid out, or a menu the beat's own unlock then rebuilt back to its
-start, and the ring stood past the screen's edge for good (tests/prologue.mjs
-`aRingedCardIsBroughtIntoViewEvenWhenItsFirstScrollIsUndone`, red on the
-one-shot). Now it centres the card when first ringed and, a beat apart
-(`CARD_RETRY_MS` 900, a smooth scroll left to land), asks again while the
-card is not whole inside the menu and the screen, `CARD_TRIES` (3) at most;
-once the card has been seen whole the tutorial never takes control — a
-player who scrolls elsewhere is left alone. The state re-arms on any frame
-whose anchor is NOT a menu card (closing the menu makes `_buildAnchor` fall
-back to the villager), so each fresh opening centres again.
-**The house step rings the HOUSE CARD itself**
-(`.bbtn[data-key="house"]`) whenever the build menu is open, and only a
-closed menu falls back to ringing the toggle. The title's old "Tutorial" button was renamed **"Guide"**
-(it opens the static manual) so the two never collide — "How to play"
-measured 0.4px too wide for its plaque at 320px, which
-`noTitleLabelRunsOffItsPlaque` catches and nothing else does.
+**THE OLD OPT-IN LESSON IS RETIRED** (build 208 — operator: "remove the old
+opt-in tutorial… The Journey now teaches new players, and the only way into
+the old tutorial is the checkbox on the origin screen"): `js/tutorial.js`,
+its overlay (`#tutDim`, `#tutUI`), the origin screen's checkbox
+(`#btnTutToggle`, `neo-tutorial-ask`), the Settings switch, its toast hold
+and its suite are gone; the journey (**THE PROLOGUE**) teaches a new device
+and every later game plays untaught. What it shared lives on:
+**GAMES FOUNDED** (`Screens.gamesFounded` / `noteGameFounded`, `neo-games`):
+the device counts the random worlds it founds (stepped in `draftTap`, never a
+Replay or a journey world), seeded at its first read from any trace of
+earlier play (the finished-run ledger, a bound slot, a crash snapshot, the
+draft help dismissed) — the journey's veteran rule reads it. **THE MEMORY HAS
+A FALLBACK** (`Screens.lsGet` / `lsSet` / `lsDel` / `_mem`): a storage that
+THROWS (iOS "Block All Cookies", a partitioned iframe) keeps those keys, and
+the Calm modal's `neo-victory-seen`, in a per-session map, so the promise
+holds for the session and nothing is permanent (calm-peace §8). **A PINNED
+WORLD** (`?seed=…&size=…`) founds exactly that world, once
+(tests/variants.mjs §4); nothing forces Valley·Classic any more. **A RINGED
+BUILD CARD IS BROUGHT INTO VIEW UNTIL IT IS SEEN, THEN NEVER AGAIN**
+(`UI.cardIntoView`, asked by `Prologue._cardInView`; tests/prologue.mjs
+`aRingedCardIsBroughtIntoViewEvenWhenItsFirstScrollIsUndone` — build 182): a
+one-shot scroll landed, on a busy phone, on a menu still being laid out, or
+one the beat's own unlock then rebuilt back to its start, and the ring stood
+past the screen's edge for good. It centres the card when first ringed and,
+a beat apart (`CARD_RETRY_MS` 900, a smooth scroll left to land), asks again
+while the card is not whole inside the menu and the screen, `CARD_TRIES` (3)
+at most; once the card has been seen whole the player's own scrolling is
+never fought. The caller re-arms it by clearing its state when its ring
+leaves the menu.
 
-**THE FIRST TWO GAMES TEACH THEMSELVES** (`tests/tutorial.mjs` §12, the
-retention pass): the tutorial ran THREE times in the first 191 real games —
-an opt-in checkbox on a screen a new player is already reading past.
-`Screens.tutorialWanted()` is now the ONE read of "does this run get the
-teacher" (foundRun's Valley·Classic force, `syncTutToggle`, the toggle's
-tap and `Tutorial.maybeStart` all ask it): an explicit choice in
-`neo-tutorial-ask` ('1'/'0') wins outright; with the checkbox never touched
-the teacher is ON while the local count of TEACHABLE games founded
-(`neo-games`, stepped by `noteGameFounded` in `draftTap` alone — a Replay
-never arms the teacher, so it spends no slot) is under `TUT_AUTO_GAMES` (2),
-and off from the third game. Six rules around it. **A Skip records the opt-out**
-(`Tutorial.skip` writes '0'): game two must never re-arm a lesson the player
-refused twice over. **A returning player is a veteran**: the first read of
-`neo-games` on a device with any trace of earlier play (the finished-run
-ledger, a bound slot, a crash snapshot, the draft help dismissed) seeds the
-count at `TUT_AUTO_GAMES`, so the launch that shipped this did not teach
-the people who taught us. **The count steps AFTER the arming read** in
-`draftTap` (`maybeStart` → `noteGameFounded` → `enterGame`), or game two
-reads 2 and gets nothing. The toggle shows the EFFECTIVE state (auto-on
-reads as on) and a tap writes the opposite as an explicit choice.
-**THE MEMORY HAS A FALLBACK** (`Screens.lsGet` / `lsSet` / `_mem`, from the
-adversarial review): a storage that THROWS (iOS "Block All Cookies", a
-partitioned iframe) used to swallow every read into the auto-on default AND
-every write — the toggle could not turn it off, the count never stepped,
-the modal came back every game, forever. Those keys live in a per-session
-map when storage is unavailable, so the promise holds for the session and
-nothing is permanent. **THE PIN OUTRANKS THE AUTO-ON** (`foundRun`,
-`_pinnedRun`): "the tutorial outranks the pin" was written when `tut` meant
-the checkbox; a new player arriving by a shared `?seed=` link must get the
-world they were sent, so an AUTO want yields to the pin and the pinned run
-neither arms the teacher nor spends a slot — an EXPLICIT checkbox still
-wins and still forces Valley·Classic·medium.
-**TICKING THE BOX RE-FOUNDS THE WORLD; FINISHING THE LESSON SPENDS IT**
-(`Screens.teachableWorld` / `refoundForLesson`, audit MAP-V01/MAP-01, pinned
-in §12): the Valley·Classic·medium force is decided in `foundRun`, which has
-already run by the time the draft's checkbox is on screen — so ticking it
-armed the lesson on whatever world was rolled (12 of 12: archipelagos,
-karsts, xlarge fjords). Ticking it ON over an un-kept draft on an
-unteachable world founds the run again under the rule, the startNewGame way
-(two rAFs, `_founding`). Only that direction: unticking keeps the world and
-re-ticking on a teachable one founds nothing, so the box is never a free
-re-deal of the cards. And an explicit '1' is SPENT when the capstone
-completes (`lsDel`): it used to force every later game onto the valley and
-re-arm the lesson until unticked. An explicit '0' is never touched.
-**And the run_start row tells the truth now**: `_enterNow` logs
-`tutorial: !!(S.tut && S.tut.on)`, and `maybeStart` used to run AFTER
-`enterGame` — so the board's "3 tutorials in 191 games" was really the
-count of cold-cache runs where the art plaque happened to delay the log
-past the arming. The order is pinned (`theTeacherIsArmedBeforeTheRunIsLogged`).
-
-**TWO ROADS TO VICTORY** (`tests/tutorial.mjs` §13, `Screens.showVictoryPaths`):
-nobody has ever won by the Wonder — 0 in every Calm game logged — and the
-tutorial's one line about it arrives fifteen steps in, on a run that opted
+**TWO ROADS TO VICTORY** (tests/calm-peace.mjs §8, `Screens.showVictoryPaths`):
+nobody had ever won by the Wonder — 0 in every Calm game logged — and the
+old lesson's one line about it arrived fifteen steps in, on a run that opted
 in. So the FIRST Calm game opens on a short modal: the rival's red hall on
 one side, THIS run's own monument on the other (the same drawables the build
 menu paints — `Sprites.buildingA.tc`, `Sprites.building.wonder[0]`), the
@@ -10299,17 +10114,16 @@ price and the 45 days under it, and where the button is. Once per device
 re-deals it), only where the mode offers the Wonder (`UI.wonderOffered` —
 the build menu's own gate, so Moderate never sees it), dismissed by its
 button, the backdrop or Escape, removed by leaving the game
-(`Screens.show` → `hideVictoryPaths`). z25: over the tutorial's card (15)
-and the placement chrome (20), under the shell (30). **It is DUE in
+(`Screens.show` → `hideVictoryPaths`). z25: over the placement chrome (20),
+under the shell (30). **It is DUE in
 `draftTap` but SHOWN by `_enterNow`** (`_victoryPathsPending`): on a cold
 cache `enterGame` parks behind the art plaque for seconds, and a modal
 appended under the shell then was stamped seen, its Escape live, and
 invisible. **And it slows the world while it has the floor**
 (`Screens._modalUp`, a flag `G.frame` reads — never a DOM query per frame —
-at the tutorial's own `Tutorial.SLOW`): two paragraphs on day one must not
-hand the rival a day and a half. **The tutorial holds
-its notes while it has the floor** (`Screens.modalUp` in `_updateDisplay`
-and `_checkEvents`) and resumes on dismissal — two things to read at once
+at `Screens.MODAL_SLOW`, 0.2): two paragraphs on day one must not hand the
+rival a day and a half. **What would talk over it waits**
+(`Screens.modalUp`: the rival's intel, below) — two things to read at once
 is the failure this exists to prevent. Half the monuments carry their own
 article ("The Sun Obelisk"), so the headline is "Raise " + the name, never
 "Raise the The …". The price wraps between its icon-number pairs (nowrap
@@ -10330,52 +10144,7 @@ position stays last: it is the end of the game. **The price itself is untouched 
 15,000 of each is reachable in a Calm run is Phase 4's question, argued
 with numbers there.
 
-**THE RING IS ONE THE PLAYER CAN SEE** (`Tutorial._inFreeBand`,
-tests/tutorial.mjs §17, PX-05): `R.onScreen` (untouched) counts ground under
-the villager panel, or half a tile past the edge, as seen. The ring's point
-(the overlay's own maths, `SPRITE_LIFT` included) must lie 0.3 tile inside
-the band no HUD covers (under `#topbar`, above `#bottombar` and `#bmToggle`,
-inside the canvas), over the world canvas by `document.elementFromPoint`;
-`_panTo` asks it instead of `R.onScreen`, since the screen's own middle can
-sit under a tall panel. **AND NOT UNDER ITS OWN CARD** (§17b, the build 128
-review): the card seats by the ring (bottom when the ring is above 48% of
-the view, top when below), so on a 320 px phone the band's middle put the
-ring under the card it then got. `_inFreeBand` also refuses a ring the card
-WILL cover (`_cardRectFor`: `_syncOverlay`'s own seat rules, the card
-measured unseen by `_cardH`, since the look runs as the note is told), and
-`_ringRow` lands it in the larger part of the band the card does not take,
-clear by the ring's radius and on its own side of the 48% line. **A PHONE ON
-ITS SIDE** (`_sideSeat`: wider than 1.3× its height and under 520 px tall)
-has no room above or below with the panel up, so a world target's card sits
-BESIDE the ring, in the half it is not in, narrowed to the room beside it
-(`_sideW`, 260–400 px; a target at the map's edge clamps the camera and
-keeps the ring mid-screen), and the ring glides to the left half. **THE LOOK**
-(`Tutorial._looks`) runs at most twice a note: as it is told, and for a
-gather lesson (`selLook`) at the first villager selected, whose panel covers
-the tile named; a villager already in hand at presentation is that
-selection. It never runs while `UI.pointers` holds a finger (it waits for
-the lift and measures again, so a ring the player dragged into view is left
-alone) nor while `Screens.current` is not 'playing'; any touch still cancels
-a glide, and reduced motion makes every lesson camera move at once
-(`_glide`).
-**A NOTE THAT WAITS ON A DEED CAN BE PUT AWAY** (§18, PX-29): an action-gated
-CONTEXTUAL note (buildHands, workedGround, station) shows `#tutNext` as
-"Dismiss", booked for good through `_completeShow`; spine steps never do,
-their deeds ARE the lesson. The worked-ground note names the station its
-ground carries (`Tutorial._workedKind`, from the nearest explored worked
-tile, the one it rings), holds until that station is payable and rings its
-card; its words stay in `Tutorial.TEXT`, and over stumps they are word for
-word what they were.
-**THE TOASTS STEP BELOW THE LESSON CARD** (§19): while a card sits at the
-TOP, `#toasts` adds `--tut-h` to its `top` (on `<body>`: the card's bottom
-minus the column's top, else 0px; measured only when a new note, the seat,
-the window or the wonder banner moves, and written only when it changes).
-`Tutorial.noteUp()` is public, asked guarded: true while a card is up or in
-its BREATH, false with the teacher off, after the run, or under a card's act;
-`Tutorial.noteReading()` narrows it to a card still being READ (its words'
-time from `_shownAt`, `_readMs`, set as it is presented) and the breath — the
-one the toast hold asks (**THE LESSON HOLD** above).
-**THE RIVAL'S INTEL WAITS TO BE READ** (`Cards.announceRival`, §20, PX-10c):
+**THE RIVAL'S INTEL WAITS TO BE READ** (`Cards.announceRival`, tests/calm-peace.mjs §9, PX-10c):
 the two lines wait for their own world until `Screens.current === 'playing'`
 and `!Screens.modalUp()` (polled every 250 ms), and past
 `Cards.INTEL_WAIT_MS` (60 s from the founding) or under another world they

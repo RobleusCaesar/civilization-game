@@ -24,7 +24,7 @@
      - on the TITLE, after the boot splash has lifted and the title's own
        plaques have arrived (AFTER_LIFT_MS past Boot.done)
      - over the title's demo world — never over a run in progress, a pending
-       draft, the reward screen or the tutorial's lesson (_canAuto)
+       draft, the reward screen or the journey's lesson (_canAuto)
    It is stamped seen when it is SHOWN (the victory-paths modal's rule): a
    reload half way through never deals it again, and the collection's
    "How cards work" (and ?cardsintro=1) bring it back on purpose.
@@ -118,7 +118,6 @@ const CardIntro = {
     if (!window.Deck || !Deck.on() || this.open) return false;
     if (!window.Screens || Screens.current !== 'title' || Screens._founding) return false;
     if (typeof S !== 'undefined' && S && !Screens._demo) return false;
-    if (typeof S !== 'undefined' && S && S.tut && S.tut.on) return false;
     if (Deck.lessonHolds && Deck.lessonHolds()) return false;
     // a new device on its journey learns the cards from the Elder (js/prologue.js)
     if (window.Prologue && Prologue.active && Prologue.active()) return false;

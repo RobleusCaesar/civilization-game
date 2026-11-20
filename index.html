@@ -214,9 +214,8 @@
   /* ---- toasts / event log ---- */
   #toasts {
     /* --ww-h: the rival-wonder banner's height while it heads the column;
-       --tut-h: how far a lesson card seated at the top reaches past it (js/tutorial.js);
        --pro-h: the journey guide's card fixed at the top, or its folded strip (js/prologue.js) */
-    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px) + var(--tut-h, 0px) + var(--pro-h, 0px));
+    position: absolute; left: 8px; top: calc(var(--safe-top) + var(--hud-top) - 6px + var(--ww-h, 0px) + var(--pro-h, 0px));
     z-index: 9; display: flex; flex-direction: column; gap: 4px; pointer-events: none;
     max-width: 66%;   /* clears the minimap, which now shares the top strip */
   }
@@ -358,7 +357,7 @@
   .bbtn canvas { width: 40px; height: 40px; image-rendering: pixelated; }
   .bbtn .bname { font-size: 9px; font-weight: 700; }
   .bbtn .bcost { font-size: 9px; color: var(--dim); }
-  /* THE WONDER CARD IS THE GOAL (UI.buildMenu, tests/tutorial.mjs): gold rim,
+  /* THE WONDER CARD IS THE GOAL (UI.buildMenu, tests/calm-peace.mjs): gold rim,
      a victory ribbon, room for its four-resource price, and a live "% saved"
      line — and it is never ghosted to 45% like an unaffordable hut, because
      "saving for it" is the state it lives in for most of a run */
@@ -383,10 +382,9 @@
     .bbtn.wonder, .bbtn.wonder .bwin { transition: none; }
   }
 
-  /* ---- TWO ROADS TO VICTORY (Screens.showVictoryPaths, tests/tutorial.mjs) ----
-     the first Calm game's opening modal: z25 — over the tutorial's card (z15)
-     and the placement chrome (z20), under the shell (z30) so pausing covers
-     it. The card speaks in the draft overlay's voice. */
+  /* ---- TWO ROADS TO VICTORY (Screens.showVictoryPaths, tests/calm-peace.mjs) ----
+     the first Calm game's opening modal: z25 — over the placement chrome
+     (z20), under the shell (z30) so pausing covers it. The card speaks in the draft overlay's voice. */
   #victoryModal {
     position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center;
     background: rgba(13,11,8,0.72); padding: 16px;
@@ -618,8 +616,6 @@
   body:not(.ingame) #armyBar,
   body:not(.ingame) #toasts,
   body:not(.ingame) #wonderWarn,
-  body:not(.ingame) #tutDim,
-  body:not(.ingame) #tutUI,
   body:not(.ingame) #placeUI { display: none !important; }
   /* the rival-wonder countdown (tests/calm-peace.mjs): a standing warning,
      not a toast — it holds the screen for as long as the monument rises,
@@ -638,45 +634,6 @@
     padding: 5px 10px; border-radius: 6px; white-space: normal; overflow-wrap: anywhere;
     box-shadow: 0 2px 10px rgba(0,0,0,0.5);
     display: none;
-  }
-
-  /* ---- THE TUTORIAL (js/tutorial.js, tests/tutorial.mjs) ----
-     #tutDim sits BELOW the HUD (z8 < topbar's z10) so the spotlight darkens
-     only the world and every button stays bright and tappable; the ring,
-     arrow and text card ride above the bars at z15. Nothing here takes a
-     pointer event except the card's own buttons. */
-  #tutDim {
-    position: fixed; z-index: 8; pointer-events: none; border-radius: 50%;
-    box-shadow: 0 0 0 9999px rgba(10,8,5,0.42); display: none;
-  }
-  #tutUI { position: fixed; inset: 0; z-index: 15; pointer-events: none; display: none; }
-  #tutRing {
-    position: absolute; border: 3px solid #e8b64c; border-radius: 50%;
-    box-shadow: 0 0 12px rgba(232,182,76,0.65), inset 0 0 10px rgba(232,182,76,0.35);
-    animation: tutPulse 1.6s ease-in-out infinite; display: none;
-  }
-  @keyframes tutPulse {
-    0%, 100% { transform: scale(1); opacity: 0.9; }
-    50% { transform: scale(1.06); opacity: 0.55; }
-  }
-  #tutArrow {
-    position: absolute; font-size: 26px; color: #e8b64c; display: none;
-    text-shadow: 0 2px 6px #000; animation: tutPulse 1.2s ease-in-out infinite;
-  }
-  #tutPanel {
-    position: absolute; left: 50%; transform: translateX(-50%);
-    width: min(92vw, 400px); pointer-events: auto;
-    background: rgba(28,20,11,0.95); border: 1px solid #5c421f; border-radius: 10px;
-    color: #f4dfc0; padding: 10px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.55);
-    font-size: 13px; line-height: 1.45;
-  }
-  #tutTxt b { color: #ffd77e; }
-  #tutRow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-  #tutNext { min-height: 44px; flex: 0 0 auto; padding: 0 18px; }
-  #tutNum { color: #a8916b; font-size: 11px; }
-  #tutSkip {
-    margin-left: auto; background: none; border: none; color: #a8916b;
-    font-size: 12px; min-height: 44px; padding: 0 6px; text-decoration: underline;
   }
 
   /* ---- game shell: full-viewport screens over the canvas ---- */
@@ -1516,14 +1473,6 @@
   #draftOverlay p { font-size: 14px; line-height: 1.6; max-width: 330px; }
   #draftOverlay b { color: var(--gold); }
 
-  /* the tutorial switch: one word, one green check. On = the lit gold-rim
-     state with the check; off = the same button a shade darker, check gone —
-     the state reads at a glance instead of in a sentence */
-  .tutbtn { flex-direction: row; gap: 8px; font-weight: 800; font-size: 14px; padding: 4px 22px; }
-  .tutbtn .tik { color: #7fc45a; font-weight: 900; font-size: 16px; display: none; }
-  .tutbtn.sel .tik { display: inline; }
-  .tutbtn:not(.sel) { filter: brightness(0.72); color: var(--dim); }
-
   /* THE GUIDE: swipe pages, each one picture + a few lines, centred like a
      card — a pitch for the game, not a manual. The icon is PixelLab art in
      the origin-card style (authored 128px, shown 96px, pixelated), carrying
@@ -1940,7 +1889,6 @@
       <!-- no Begin button and no rival panel: keeping a card IS starting the
            game (Screens.draftTap), and the rival's origin arrives in-game as
            a notification, gated by difficulty (Cards.announceRival) -->
-      <button class="abtn tutbtn" id="btnTutToggle" style="max-width:200px;min-height:44px">Tutorial<span class="tik">✓</span></button>
     </div>
     <!-- back to the trial pick — the world and the dealt hand STAY (backing
          out is never a reroll; see Screens.startNewGame's resume) -->
@@ -2255,59 +2203,58 @@
 
 </div>
 
-<script src="js/feedback.js?v=207"></script>
-<script src="js/config.js?v=207"></script>
-<script src="js/audio.js?v=207"></script>
-<script src="js/config.supabase.js?v=207"></script>
-<script src="js/vendor/supabase.js?v=207"></script>
-<script src="js/backend.js?v=207"></script>
-<script src="js/competition.js?v=207"></script>
-<script src="js/score.js?v=207"></script>
-<script src="js/cards.js?v=207"></script>
-<script src="js/deck.js?v=207"></script>
-<script src="js/artstyle.js?v=207"></script>
-<script src="js/sprites.js?v=207"></script>
-<script src="js/formations.js?v=207"></script>
-<script src="js/relics.js?v=207"></script>
-<script src="js/assets.js?v=207"></script>
-<script src="js/dev.js?v=207"></script>
-<script src="js/map.js?v=207"></script>
-<script src="js/buildings.js?v=207"></script>
-<script src="js/units.js?v=207"></script>
-<script src="js/combat.js?v=207"></script>
-<script src="js/ai.js?v=207"></script>
-<script src="js/render.js?v=207"></script>
-<script src="js/battlefx.js?v=207"></script>
-<script src="js/goldfx.js?v=207"></script>
-<script src="js/footing.js?v=207"></script>
-<script src="js/ruins.js?v=207"></script>
-<script src="js/roads.js?v=207"></script>
-<script src="js/beasts.js?v=207"></script>
-<script src="js/defeatart.js?v=207"></script>
-<script src="js/victoryart.js?v=207"></script>
-<script src="js/ui.js?v=207"></script>
-<script src="js/lookout.js?v=207"></script>
-<script src="js/screens.js?v=207"></script>
-<script src="js/patchnotes.js?v=207"></script>
-<script src="js/settings.js?v=207"></script>
-<script src="js/board.js?v=207"></script>
-<script src="js/pages.js?v=207"></script>
-<script src="js/titlescreen.js?v=207"></script>
-<script src="js/tutorial.js?v=207"></script>
-<script src="js/scenario-maps.js?v=207"></script>
-<script src="js/scenarios.js?v=207"></script>
-<script src="js/prologue.js?v=207"></script>
-<script src="js/deckfx.js?v=207"></script>
-<script src="js/deckfx-town.js?v=207"></script>
-<script src="js/deckfx-army.js?v=207"></script>
-<script src="js/deckfx-growth.js?v=207"></script>
-<script src="js/deckfx-rival.js?v=207"></script>
-<script src="js/deckui.js?v=207"></script>
-<script src="js/deckscreens.js?v=207"></script>
-<script src="js/cardintro.js?v=207"></script>
-<script src="js/game.js?v=207"></script>
-<script src="js/terrain-core.js?v=207"></script>
-<script src="js/terrain.js?v=207"></script>
-<script src="js/terrain-v5.js?v=207"></script>
+<script src="js/feedback.js?v=208"></script>
+<script src="js/config.js?v=208"></script>
+<script src="js/audio.js?v=208"></script>
+<script src="js/config.supabase.js?v=208"></script>
+<script src="js/vendor/supabase.js?v=208"></script>
+<script src="js/backend.js?v=208"></script>
+<script src="js/competition.js?v=208"></script>
+<script src="js/score.js?v=208"></script>
+<script src="js/cards.js?v=208"></script>
+<script src="js/deck.js?v=208"></script>
+<script src="js/artstyle.js?v=208"></script>
+<script src="js/sprites.js?v=208"></script>
+<script src="js/formations.js?v=208"></script>
+<script src="js/relics.js?v=208"></script>
+<script src="js/assets.js?v=208"></script>
+<script src="js/dev.js?v=208"></script>
+<script src="js/map.js?v=208"></script>
+<script src="js/buildings.js?v=208"></script>
+<script src="js/units.js?v=208"></script>
+<script src="js/combat.js?v=208"></script>
+<script src="js/ai.js?v=208"></script>
+<script src="js/render.js?v=208"></script>
+<script src="js/battlefx.js?v=208"></script>
+<script src="js/goldfx.js?v=208"></script>
+<script src="js/footing.js?v=208"></script>
+<script src="js/ruins.js?v=208"></script>
+<script src="js/roads.js?v=208"></script>
+<script src="js/beasts.js?v=208"></script>
+<script src="js/defeatart.js?v=208"></script>
+<script src="js/victoryart.js?v=208"></script>
+<script src="js/ui.js?v=208"></script>
+<script src="js/lookout.js?v=208"></script>
+<script src="js/screens.js?v=208"></script>
+<script src="js/patchnotes.js?v=208"></script>
+<script src="js/settings.js?v=208"></script>
+<script src="js/board.js?v=208"></script>
+<script src="js/pages.js?v=208"></script>
+<script src="js/titlescreen.js?v=208"></script>
+<script src="js/scenario-maps.js?v=208"></script>
+<script src="js/scenarios.js?v=208"></script>
+<script src="js/prologue.js?v=208"></script>
+<script src="js/deckfx.js?v=208"></script>
+<script src="js/deckfx-town.js?v=208"></script>
+<script src="js/deckfx-army.js?v=208"></script>
+<script src="js/deckfx-growth.js?v=208"></script>
+<script src="js/deckfx-rival.js?v=208"></script>
+<script src="js/deckui.js?v=208"></script>
+<script src="js/deckscreens.js?v=208"></script>
+<script src="js/cardintro.js?v=208"></script>
+<script src="js/game.js?v=208"></script>
+<script src="js/terrain-core.js?v=208"></script>
+<script src="js/terrain.js?v=208"></script>
+<script src="js/terrain-v5.js?v=208"></script>
 </body>
 </html>

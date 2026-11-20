@@ -9,8 +9,7 @@
 
    ONLY REAL SETTINGS. Every control on this page changes something the game
    actually reads — the autosave cadence (Backend.autosaveDays), the two audio
-   switches and their dials (js/audio.js), the guided lesson for the next new
-   game (Screens.tutorialWanted), the how-to text on unit panels
+   switches and their dials (js/audio.js), the how-to text on unit panels
    (UI.helpHidden), the chief's name and the recovery token (Backend). There
    is no language picker, no graphics toggle and no controls page, because
    the game has none of those, and a section with nothing real in it is not
@@ -268,9 +267,7 @@ const SettingsPage = {
         `<div class="sxField"><input class="sxIn" id="sxChief" maxlength="24" placeholder="Name your chief" autocomplete="off" aria-label="Chief’s name" value="${this.attr(this._chief || '')}"></div>` +
         `<p class="sxNote">Your village: <b>${this.esc(Backend.villageName(Backend.uid))}</b></p>`);
     }
-    const tut = typeof Screens !== 'undefined' ? Screens.tutorialWanted() : false;
     h += this.card('Help & Tips',
-      this.row('Guided lesson', '<span class="sxTutSub"></span>', this.toggle('tut', tut, 'Guided lesson in your next new game')) +
       this.row('Unit tips', 'The how-to text on a selected unit’s panel.', this.toggle('unithelp', !(typeof UI !== 'undefined' && UI.helpHidden), 'Show unit tips')));
     if (this.gameLive() && S.log && S.log.length) {
       const err = (typeof G !== 'undefined' && G.lastFrameError)
@@ -282,15 +279,6 @@ const SettingsPage = {
     return h;
   },
   paintGeneral() {
-    const sub = this.el.querySelector('.sxTutSub');
-    if (sub && typeof Screens !== 'undefined') {
-      const v = Screens.lsGet('neo-tutorial-ask');
-      sub.textContent = v === '1' ? 'On — your next new game teaches the basics.'
-        : v === '0' ? 'Off — new games start without the lesson.'
-          : (Screens.tutorialWanted() ? 'On for your first two games, then off by itself.' : 'Off — you’ve played your first two games.');
-    }
-    const t = this.el.querySelector('[data-act="tut"]');
-    if (t && typeof Screens !== 'undefined') this._setTog(t, Screens.tutorialWanted());
     const u = this.el.querySelector('[data-act="unithelp"]');
     if (u) this._setTog(u, !(typeof UI !== 'undefined' && UI.helpHidden));
     // the chief's name is the cloud's: asked once per showing, written into
@@ -505,16 +493,7 @@ const SettingsPage = {
     }
   },
   toggleAct(a) {
-    if (a === 'tut' && typeof Screens !== 'undefined') {
-      const v = Screens.tutorialWanted();
-      Screens.lsSet('neo-tutorial-ask', v ? '0' : '1');
-      /* a pending, un-kept draft on a world the lesson cannot teach is founded
-         again the moment the draft shows (Screens.onDraft) — the draft
-         toggle's own rule (audit MAP-V01), so ticking it here can never arm
-         the lesson on an archipelago */
-      if (!v) Screens._lessonRefound = true;
-      this.paintGeneral();
-    } else if (a === 'unithelp' && typeof UI !== 'undefined') {
+    if (a === 'unithelp' && typeof UI !== 'undefined') {
       UI.helpHidden = !UI.helpHidden;
       this._set('neo-unit-help', UI.helpHidden ? '1' : '0');
       try { if (UI.renderPanel && this.gameLive()) UI.renderPanel(); } catch (e) {}

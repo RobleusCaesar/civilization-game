@@ -12,7 +12,7 @@
                        and a reload never shows it again; ?cardsintro=1 brings
                        it back on purpose; a throwing localStorage still shows
                        it once and never twice in the session
-     NEVER OVER A RUN  never over a game, the reward screen or the tutorial's
+     NEVER OVER A RUN  never over a game, the reward screen or the journey's
                        lesson, and leaving the screen it stands over takes it
                        away
      THE CLOSE         X (44px), Escape and the backdrop each close it; a tap
@@ -267,11 +267,11 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
     CardIntro._armed = false; CardIntro.maybeShow();
     await wait(1300);
     out.openAtEnd = CardIntro.open;
-    // the title, with a lesson running in S (a pending tutorial world)
+    // the title, with the journey's lesson holding the deck back
     Screens._demo = true; Screens.show('title');
-    S.tut = { on: true, phase: 1 };
-    out.lesson = CardIntro._canAuto();
-    S.tut = null;
+    const sc0 = S.scenario, dh0 = Prologue.deckHolds;
+    S.scenario = 'prologue_1'; Prologue.deckHolds = () => true;
+    try { out.lesson = CardIntro._canAuto(); } finally { S.scenario = sc0; Prologue.deckHolds = dh0; }
     out.titleOk = CardIntro._canAuto();
     return out;
   });

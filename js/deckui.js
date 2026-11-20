@@ -67,21 +67,20 @@ const DeckUI = {
     return typeof S !== 'undefined' && !!S && !!S.map && !S.over &&
       !!window.Screens && Screens.current === 'playing' && !Screens._demo;
   },
-  // the deck has the floor: the tutorial holds its notes (Screens.modalUp)
-  // and the toasts ride above the sheet
+  // the deck has the floor: the rival's intel waits (Screens.modalUp) and
+  // the toasts ride above the sheet
   hasFloor() { return this.open || !!this.aim || !!this.playing; },
   _calm() {
     try { return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   },
 
-  /* THE TUTORIAL HAS THE FLOOR (operator ruling 12): while the lesson's
-     spine is still running (S.tut on, phase 1) the deck is not in the game —
-     no button, no timers, no sheet — because a first game already has more
-     to read than it can hold. The starter hand still lands (ensureStarter,
-     the title already dealt it). The moment the spine is done — the capstone
-     answered, or the lesson skipped — the deck walks in, in that same run,
-     and the tutorial's last note rings it (Tutorial.EVENTS 'deck'). */
-  tutHides() {
+  /* THE LESSON HAS THE FLOOR (operator ruling 12): while the journey holds
+     the deck back (Deck.lessonHolds — its first game) the deck is not in the
+     game — no button, no timers, no sheet — because a first game already has
+     more to read than it can hold. The starter hand still lands
+     (ensureStarter, the title already dealt it). The moment the lesson lets
+     go the deck walks in, in that same run, and Mira names it. */
+  lessonHides() {
     // one predicate, in deck.js beside the door that refuses on it (guarded on
     // the method it calls: a cached older deck.js must stand down, not throw)
     return !!(window.Deck && Deck.lessonHolds && Deck.lessonHolds());
@@ -102,7 +101,7 @@ const DeckUI = {
       if (this.hasFloor() || this._ticks.length) this.reset();
       return;
     }
-    if (this.tutHides()) {
+    if (this.lessonHides()) {
       if (!this._starter) { this._starter = true; Deck.ensureStarter(); }
       if (this.built && !this._shy) this._stand(false);
       this._waited = true;
@@ -147,7 +146,7 @@ const DeckUI = {
     if (on) { this.syncBadge(true); this._fitChips(); this._warm(); }
   },
   /* coming in mid-run, the deck ARRIVES: the button drops into the bar with
-     a pop, so the eye has found it before the tutorial's note names it */
+     a pop, so the eye has found it before the lesson names it */
   _arrive() {
     if (!this.el) return;
     this.arrivedAt = performance.now();
@@ -375,7 +374,7 @@ const DeckUI = {
   },
 
   openSheet() {
-    if (this.open || this.playing || !this.live() || this.tutHides()) return;
+    if (this.open || this.playing || !this.live() || this.lessonHides()) return;
     if (UI.exitPlacement) UI.exitPlacement();   // a ghost under the sheet would be two modes at once
     this._hold();
     this.open = true;
@@ -2063,10 +2062,6 @@ body.dk-floor.dk-lifted #toasts { z-index: 23; }
 /* an act's cinema cut has its top bar across the glass: the toasts step down
    below it for as long as it is in (Deck.armyFx.cineToasts sets the depth) */
 #toasts { transform: translateY(var(--dk-cine, 0px)); }
-/* a tutorial note already on screen steps aside while the deck has the floor
-   (its dim sits over the reticle otherwise); it is back the moment the deck
-   lets go, its state untouched */
-body.dk-floor #tutDim, body.dk-floor #tutUI { visibility: hidden !important; }
 body.dk-aiming #bottombar { visibility: hidden; }
 #deckBtn { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 #deckBtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }

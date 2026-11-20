@@ -13,8 +13,8 @@
                        top bar keeps its height at phone and desktop widths
                        and nothing in its row overlaps
      THE PAUSE         opening pauses the world; closing gives back exactly
-                       what was there; while it is up the tutorial holds its
-                       notes (Screens.modalUp)
+                       what was there; while it is up the deck has the floor
+                       (Screens.modalUp — the rival's intel waits for it)
      THE SHEET         grouped by tier, highest first; a card that cannot be
                        played is greyed with its reason; an empty deck says
                        how to earn one; every face carries its art
@@ -300,7 +300,7 @@ const pz = await p.evaluate(async () => {
 ck('openingPausesTheWorld', pz.paused && pz.label === '▶' && pz.open && pz.shown && pz.frozen, JSON.stringify({ paused: pz.paused, label: pz.label, frozen: pz.frozen }));
 ck('closingGivesBackWhatWasThere', pz.after === false && pz.label2 === '⏸' && pz.hidden && pz.keptPaused && pz.esc,
   `running→${pz.after}, paused→${pz.keptPaused}, escape ${pz.esc}`);
-ck('theTutorialHoldsItsNotesWhileTheDeckIsUp', pz.modal === true && pz.modal2 === false);
+ck('theDeckHasTheFloorWhileItIsUp', pz.modal === true && pz.modal2 === false);
 
 /* ================= 4. THE SHEET ================= */
 const sh = await p.evaluate(async () => {
@@ -1049,21 +1049,6 @@ ck('aFingerTapLightsTheGoButton', touchSeq.every(s => !s.off && /✓ Here/.test(
   touchSeq.slice(1).every(s => s.set && s.x === s.want.x && s.y === s.want.y) &&
   !!touchGot && touchGot.x === tt[1].t.x + 0.5 && touchGot.y === tt[1].t.y + 0.5,
   touchSeq.map(s => `${s.at}: ${s.off ? 'GREY' : 'lit'} "${s.label}"`).join('; ') + ` → played at ${JSON.stringify(touchGot)}`);
-// a tutorial note already on screen steps aside while the deck has the floor
-await aimOpen();
-const tut = await p.evaluate(async () => {
-  const wait = ms => new Promise(r => setTimeout(r, ms));
-  const mk = id => { let e = document.getElementById(id); if (!e) { e = document.createElement('div'); e.id = id; e.dataset.fake = '1'; document.body.appendChild(e); } return e; };
-  const dim = mk('tutDim'), card = mk('tutUI');
-  const during = [getComputedStyle(dim).visibility, getComputedStyle(card).visibility];
-  DeckUI.endAim();
-  await wait(30);
-  const after = [getComputedStyle(dim).visibility, getComputedStyle(card).visibility];
-  for (const e of [dim, card]) if (e.dataset.fake) e.remove();
-  return { during, after };
-});
-ck('aTutorialNoteStepsAsideForTheAim', tut.during.every(v => v === 'hidden') && tut.after.every(v => v === 'visible'),
-  `during ${tut.during.join('/')}, after ${tut.after.join('/')}`);
 /* THE PAUSE GIVEN BACK is the one the player last chose: paused before the
    deck opened, then ▶ pressed while aiming — the landing must not pause the
    world the player just set running */

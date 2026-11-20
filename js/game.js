@@ -236,9 +236,8 @@ const G = {
                // (G.noteAct): a fight is engagement over time, never one burst
                handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0,
                // THE FIRST MINUTE (PX-49, G.runReport): the play-clock second of
-               // the run's first order (G.noteAct) and the lesson's step a skip
-               // left it on (Tutorial.skip) — null until they happen
-               firstActS: null, tutSkipAt: null },
+               // the run's first order (G.noteAct) — null until it happens
+               firstActS: null },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -250,7 +249,6 @@ const G = {
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
       deck: { played: [], fx: [], charges: {} },   // THE CARD SYSTEM (js/deck.js): cards played this run, live timers, charges
-      tut: null,                 // THE TUTORIAL (js/tutorial.js): armed only by the draft screen's checkbox
       log: [],
     };
     Bld._block = null;
@@ -397,7 +395,6 @@ const G = {
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one
     UI._threatAt = -1e9; UI._threatC = null;   // the hall's emergency calls start a world hidden
-    if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
     if (window.Prologue) Prologue.onWorldChange();   // the Elder's script is this world's (js/prologue.js)
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // the deck's sheet, aim and flight (nothing, with cards off)
@@ -563,7 +560,7 @@ const G = {
     // game-event notes dedupe (repeat "under attack" spam collapses); the
     // full history always lands in the event log above. Hands back the toast
     // shown, if one was (Bld.releaseTrained folds a burst into one)
-    return UI.toast(msg, warn, ms, !refusal, true);   // the world's news: it may wait out a lesson's note
+    return UI.toast(msg, warn, ms, !refusal);
   },
 
   /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war
@@ -604,8 +601,7 @@ const G = {
      upgrading (buildings.js — paths no automation takes for 'P'), and in
      ui.js wherever a tap, a drag or a panel button actually changes an
      order. Never by a rally point, a horn-less return to work, an origin
-     card's boats, the tutorial or a card: none of those is the player
-     playing that day. One stamp a day at most; rides the save in S.stats. */
+     card's boats or a card: none of those is the player playing that day. One stamp a day at most; rides the save in S.stats. */
   noteAct() {
     if (typeof S === 'undefined' || !S || !S.stats || S.over) return;
     if (window.Screens && Screens._demo) return;
@@ -2315,7 +2311,6 @@ const G = {
     // NEVER foeNote: that is difficulty-gated enemy intel. A death in the
     // village is the player's own news and is told at every difficulty.
     this.log('☠ ' + cause.line, true, 5200);
-    if (window.Tutorial) Tutorial.note('mortality');   // the tutorial explains the first one
     S.nextDeath = S.day + this.rollDeathGap();
     return cause;
   },
@@ -3032,7 +3027,7 @@ const G = {
         walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,
         explored: ex && ex.length ? Math.round(100 * seen / ex.length) : 0,
         ...(charted ? { explored_card: Math.round(100 * charted / ex.length) } : {}),
-        tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null,
+        card, origin: S.origin || null,
         // S.wonder is the run's OFFERED wonder key, not a built flag —
         // "did they raise it" is already carried by cause === 'wonder'
         wonder_key: S.wonder || null,
@@ -3060,15 +3055,14 @@ const G = {
         special_day: S.specialDay || null,
         // THE FIRST MINUTE (PX-49): on every ending, real and closed_tab,
         // null when unknown and never absent. The play clock's second of the
-        // run's first order; the lesson's step a skip left it on; wall_s
-        // BESIDE 'seconds', never replacing it — the run's seconds with this
-        // page's share timed by the wall clock while the page is in view (the
-        // play clock adds at most 0.1 s a frame, so a slow phone counts short;
-        // pauses still count here, so the two bracket the time played); and,
+        // run's first order; wall_s BESIDE 'seconds', never replacing it —
+        // the run's seconds with this page's share timed by the wall clock
+        // while the page is in view (the play clock adds at most 0.1 s a
+        // frame, so a slow phone counts short; pauses still count here, so
+        // the two bracket the time played); and,
         // for a world this page CONTINUED (which sends no run_start), how long
         // its press waited behind "Preparing the world…"
         first_act_s: (typeof st.firstActS === 'number' && st.firstActS >= 0) ? st.firstActS : null,
-        tut_skip_at: (typeof st.tutSkipAt === 'string' && st.tutSkipAt) ? st.tutSkipAt.slice(0, 24) : null,
         wall_s: (op && Screens._vis) ? Math.round(op.play + Math.max(0, Screens._vis() - op.vis) / 1000) : null,
         resume_prep_ms: op && op.resumeMs != null ? op.resumeMs : null,
         // THE GAME'S OWN ERRORS (build 107; the dashboard's "hit an error"
@@ -3305,9 +3299,11 @@ const G = {
     if (data.stats.actDays == null) { data.stats.actDays = Math.max(0, data.day | 0); data.stats.actDay = data.day | 0; }
     // …nor when the first order came (first_act_s): a save that has given
     // orders reads unknown (-1), never the clock at its next one; a save that
-    // has given none learns its first. And no lesson's skip was remembered.
+    // has given none learns its first.
     if (data.stats.firstActS === undefined) data.stats.firstActS = data.stats.actDays ? -1 : null;
-    if (data.stats.tutSkipAt === undefined) data.stats.tutSkipAt = null;
+    // the old opt-in lesson is gone (build 208): a save from before carries its
+    // state and its skip step, which nothing reads now — dropped, never carried on
+    delete data.tut; delete data.stats.tutSkipAt;
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
@@ -3346,7 +3342,6 @@ const G = {
           if (u.female == null) u.female = Math.random() < 0.5;
         } else if (u.beast && u.campId && byCamp[u.campId]) u.tribe = byCamp[u.campId];   // a fire's beasts are its people's
     }
-    if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
     if (!data.map.burnt) data.map.burnt = {};         // the dry summer's ash ground (pre-ash saves: none)
@@ -3451,7 +3446,6 @@ const G = {
     if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     UI._threatAt = -1e9; UI._threatC = null;
-    if (window.Tutorial) Tutorial.onWorldChange();
     if (window.Prologue) Prologue.onWorldChange();   // a prologue save picks its script up where it was
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // a load mid-aim puts the card back, untouched
@@ -3553,7 +3547,7 @@ const G = {
      units, combat, then the world's own clocks — so a headless harness that
      steps the game calls this and picks up every tick added later without
      being edited. `dt` is the REAL frame time: the fog's refresh cadence has
-     always counted that, not the scaled time (a tutorial note's slow motion
+     always counted that, not the scaled time (the Calm modal's slow motion
      never slowed the fog), and a caller with no real clock passes none and
      gets sdt. What stays in G.frame: the pause/over gate, the slow-motion
      scale, S.playtime (real seconds) and everything drawn or shown. */
@@ -3620,16 +3614,12 @@ const G = {
     G.lastT = t;
     if (G._founding) G._founding = false;   // a founding that threw (G.newGame) never holds the art asks
     if (S && !S.paused && !S.over) {
-      /* THE TUTORIAL's slow-motion (js/tutorial.js): while a note is up the
-         SIM runs at Tutorial.simScale (×0.2) so a new player can read without
-         the world running away — render and UI below stay on real dt, so the
-         game never looks frozen. Scale 1 (a single multiply) whenever the
-         tutorial is off, which is every run without the checkbox. */
-      let scale = (S.tut && S.tut.on && window.Tutorial && Tutorial.simScale) || 1;
-      // the first Calm game's victory modal has the floor: the same slow
-      // motion a tutorial note gets, so reading it costs the town nothing
-      // (Screens.showVictoryPaths; a flag, never a DOM query per frame)
-      if (window.Screens && Screens._modalUp) scale = Math.min(scale, (window.Tutorial && Tutorial.SLOW) || 0.2);
+      /* SLOW MOTION while the first Calm game's victory modal has the floor
+         (Screens.showVictoryPaths): the SIM runs at Screens.MODAL_SLOW (×0.2)
+         so reading two paragraphs on day one costs the town nothing — render
+         and UI below stay on real dt, so the game never looks frozen. A flag,
+         never a DOM query per frame; scale 1 (a single multiply) otherwise. */
+      const scale = (window.Screens && Screens._modalUp) ? (Screens.MODAL_SLOW || 0.2) : 1;
       const sdt = dt * scale;
       S.playtime = (S.playtime || 0) + dt;
       G.simStep(sdt, dt);
@@ -3723,10 +3713,6 @@ const G = {
       if (window.Boot && !Boot.ready && window.Screens && Screens.current === 'title'
           && (G.titleGlenUp() || (!skip && R.terrainCache && !R._bake && !R._bakeDue))) Boot.markReady();
       G._safe(() => UI.refresh(dt), 'ui');
-      // THE TUTORIAL (js/tutorial.js): a run without the checkbox pays this
-      // one falsy check and nothing else — no DOM, no listeners, no scans
-      if (S.tut && S.tut.on && window.Tutorial)
-        G._safe(() => Tutorial.tick(dt), 'tutorial');
       // THE PROLOGUE's Elder, pulse, hand and goal (js/prologue.js): its
       // pictures every frame, paused or not; one falsy read elsewhere
       if (window.Prologue && Prologue.frame && (S.scenario || Prologue.up)) G._safe(() => Prologue.frame(dt), 'prologue');

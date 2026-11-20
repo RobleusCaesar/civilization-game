@@ -1477,7 +1477,7 @@
     Screens._demo = false;
     Screens.show('playing');
     quiet();
-    S.paused = false; S.tut = null; G.freeVis = false;
+    S.paused = false; G.freeVis = false;
     /* THE MODULE CLOCKS START AT ZERO (CLAUDE.md's module-clock note). These
        live on their modules, not in S, so G.newGame never resets them and the
        title's demo world has been advancing them on real time since the page

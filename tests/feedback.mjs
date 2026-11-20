@@ -26,13 +26,11 @@
        on screen replaces it with ONE fresh node that shakes (warnings only,
        never a note). A toast holds max(3.2 s, 1.2 s + 0.26 s a word), then
        fades as before. Never more than five on screen.
-     - While a lesson's card is being read (Tutorial.noteReading: its words'
-       time, and the breath after one), the WORLD'S NEWS waits — three at
-       most, the oldest giving way — and is shown once the card has been
-       read; nothing is dropped for waiting (a card that waits on a deed can
-       stand for minutes: the build 128 review found a 20 s drop lost every
-       piece of news in a tutorial game). A warning, and a note answering the
-       player's own tap, show at once.
+     - Every toast shows the moment it is asked for: the world's news, a
+       warning, and a note answering the player's own tap alike. (The old
+       opt-in lesson held the world's news back while its card was read; the
+       lesson and its hold were retired in build 208. The journey keeps its
+       one voice its own way: Prologue.quiet, pinned in tests/prologue.mjs.)
      - The armed modes say what to do next ('note'); an order acknowledgement
        says nothing (the calm-screen rule).
      - "X under attack!" sounds on the first blow after ten quiet seconds, per
@@ -254,98 +252,41 @@ ck('aCallWithNoLevelIsShownNowhere', one.silent === 0, `${one.silent} nodes`);
     rule ? `animation ${rule[1]} (moves ${!!shake && MOVES.test(shake)}); reduced motion: ${guard ? guard[1] + (still ? ', still' : ', MOVES') : 'NO GUARD'}` : 'no .toast.shake rule');
 }
 
-/* ---- 2. WHILE A LESSON'S CARD IS READ, THE WORLD'S NEWS WAITS (PX-06) ----
-   The hold asks Tutorial.noteReading (the card's reading time and the breath
-   after one), stubbed here; tests/tutorial.mjs §19b holds the real card to it.
-   The build 128 review changed two rules: news is no longer dropped after
-   20 s of waiting (a card that waits on a deed stands for minutes, and every
-   piece of news in a tutorial game was lost), and at most three wait. */
-const hold = await p.evaluate(async () => {
+/* ---- 2. EVERY TOAST SHOWS THE MOMENT IT IS ASKED FOR ----
+   The old opt-in lesson held the world's news back while its card was read
+   (PX-06's lesson hold, three at most, the oldest giving way). The lesson was
+   retired in build 208 and its hold with it: the world's news, a warning, the
+   answer to the player's own tap and a tapped number's note all show at once,
+   and nothing of the hold is left behind to hold them. */
+const now = await p.evaluate(async () => {
   const out = {};
   __fb.setup('fb-2');
-  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteReading'), real = Tutorial.noteReading;
-  let up = true;
-  Tutorial.noteReading = () => up;
-  const pn = performance.now.bind(performance); let off = 0;
-  const wait = ms => new Promise(r => setTimeout(r, ms));
-  // a condition, never a fixed nap: a loaded machine delays the timers
-  const until = async (fn, ms) => { const t0 = pn(); while (!fn() && pn() - t0 < ms) await wait(50); return fn(); };
-  try {
-    // the WORLD'S news comes through G.log (it waits out the card's reading);
-    // the answer to the player's own tap never waits (section 2b below)
-    G.log('A hut is finished off in the hills', 'note');
-    UI.toast('Not enough resources', true);
-    out.noteHeld = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
-    out.warnAtOnce = __fb.shown(/Not enough resources/).length === 1;
-    await wait(700);
-    out.stillHeld = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
-    up = false;
-    out.shownAfter = await until(() => __fb.shown(/A hut is finished/).length === 1, 6000);
-    // nothing is dropped for waiting: news held past twenty seconds still comes
-    // once the card has been read (it used to be dropped, unread)
-    up = true; __fb.clear();
-    G.log('A long-awaited piece of news', 'note');
-    performance.now = () => pn() + off;
-    off = 21000;
-    up = false;
-    out.lateShown = await until(() => __fb.shown(/A long-awaited piece of news/).length === 1, 6000);
-    performance.now = pn;
-    // three at most wait, and the oldest gives way
-    up = true; __fb.clear();
-    for (const w of ['first', 'second', 'third', 'fourth']) G.log('The ' + w + ' word from afar', 'note');
-    out.heldNone = __fb.nodes().filter(n => /word from afar/.test(n.textContent)).length === 0;
-    up = false;
-    out.newestThree = await until(() => ['second', 'third', 'fourth'].every(w => __fb.shown(new RegExp('The ' + w + ' word')).length === 1), 6000);
-    out.oldestGaveWay = __fb.nodes().filter(n => /The first word from afar/.test(n.textContent)).length === 0;
-  } finally {
-    performance.now = pn;
-    if (had) Tutorial.noteReading = real; else delete Tutorial.noteReading;
-  }
-  // with no lesson predicate at all, nothing is held
+  G.log('A hut is finished off in the hills', 'note');
+  out.newsAtOnce = __fb.shown(/A hut is finished/).length === 1;
+  UI.toast('Not enough resources', true);
+  out.warnAtOnce = __fb.shown(/Not enough resources/).length === 1;
+  UI.toast('Drag along the ground to lay a wall — release to build', 'note');
+  out.answerAtOnce = __fb.shown(/Drag along the ground to lay a wall/).length === 1;
+  // the real path: a top-bar number tapped says what it means
   UI._toastAt = {};
-  UI.toast('An ordinary note', 'note');
-  out.noPredicateNoHold = __fb.shown(/An ordinary note/).length === 1;
+  const before = __fb.nodes().length;
+  const chip = document.querySelector('#topbar [data-chip="food"]');
+  if (chip) chip.click();
+  out.chipAtOnce = !!chip && __fb.nodes().length > before;
+  // four pieces of the world's news in a row: all four, none held back
+  __fb.clear();
+  for (const w of ['first', 'second', 'third', 'fourth']) G.log('The ' + w + ' word from afar', 'note');
+  out.allFour = ['first', 'second', 'third', 'fourth'].every(w => __fb.shown(new RegExp('The ' + w + ' word')).length === 1);
+  // and nothing of the old hold is left
+  out.noHold = typeof Tutorial === 'undefined' && !('_toastHeld' in UI) && !('_flushHeld' in UI) && !('_lessonReading' in UI);
   return out;
 });
-ck('aNoteWaitsWhileTheLessonsCardIsRead', hold.noteHeld && hold.stillHeld, JSON.stringify(hold));
-ck('aWarningShowsAtOnceOverTheLesson', hold.warnAtOnce, '');
-ck('andTheNoteComesOnceTheCardIsRead', hold.shownAfter, '');
-ck('aNoteIsNeverDroppedForWaiting', hold.lateShown, '');
-ck('threeAtMostWaitAndTheOldestGivesWay', hold.heldNone && hold.newestThree && hold.oldestGaveWay, '');
-ck('withNoLessonNothingIsHeld', hold.noPredicateNoHold, '');
-
-/* ---- 2b. THE ANSWER TO THE PLAYER'S OWN TAP NEVER WAITS (integration) ----
-   The lesson hold is for the WORLD'S news (G.log, the "N ready" fold). A
-   note that answers what the player just did (a station's "no ground yet",
-   the wall's how-to, a top-bar number's explanation, Build's hint) must show
-   at once over the lesson card, or a tap reads as dead: the tap contract's
-   rule 4, no silent failure. Red on the merged lanes (PX-06's hold kept
-   every note back), green once the hold asks for news alone. */
-const answer = await p.evaluate(async () => {
-  const out = {};
-  __fb.setup('fb-2b');
-  const had = Object.prototype.hasOwnProperty.call(Tutorial, 'noteReading'), real = Tutorial.noteReading;
-  Tutorial.noteReading = () => true;
-  try {
-    UI.toast('Drag along the ground to lay a wall — release to build', 'note');
-    out.answerAtOnce = __fb.shown(/Drag along the ground to lay a wall/).length === 1;
-    // the real path: a top-bar number tapped during a lesson says what it means
-    UI._toastAt = {};
-    const before = __fb.nodes().length;
-    const chip = document.querySelector('#topbar [data-chip="food"]');
-    if (chip) chip.click();
-    out.chipAtOnce = !!chip && __fb.nodes().length > before;
-    // and the world's news still waits behind the same lesson
-    G.log('A hut is finished off in the hills', 'note');
-    out.newsStillWaits = __fb.nodes().filter(n => /A hut is finished/.test(n.textContent)).length === 0;
-  } finally {
-    if (had) Tutorial.noteReading = real; else delete Tutorial.noteReading;
-  }
-  return out;
-});
-ck('anAnswerToTheTapShowsAtOnceOverTheLesson', answer.answerAtOnce, JSON.stringify(answer));
-ck('andATappedNumberExplainsItselfOverTheLesson', answer.chipAtOnce, '');
-ck('whileTheWorldsNewsStillWaits', answer.newsStillWaits, '');
+ck('theWorldsNewsShowsAtOnce', now.newsAtOnce, JSON.stringify(now));
+ck('aWarningShowsAtOnce', now.warnAtOnce, '');
+ck('anAnswerToTheTapShowsAtOnce', now.answerAtOnce, '');
+ck('andATappedNumberExplainsItself', now.chipAtOnce, '');
+ck('newsIsNeverHeldBack', now.allFour, '');
+ck('noLessonHoldIsLeft', now.noHold, '');
 
 /* ---- 3. THE ARMED MODES SAY WHAT TO DO NEXT (PX-12) ---- */
 const arm = await p.evaluate(async () => {

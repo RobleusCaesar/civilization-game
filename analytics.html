@@ -266,7 +266,6 @@
       <div class="card wrap" style="margin-top:10px"><table id="tOrigin"></table></div>
       <div class="card wrap" style="margin-top:10px"><table id="tTiers"></table></div>
       <div class="card wrap" style="margin-top:10px"><table id="tPlays"></table></div>
-      <div class="card wrap" style="margin-top:10px"><table id="tTut"></table></div>
     </details>
   </div>
 
@@ -511,7 +510,7 @@ const RESULT = [
 ];
 // every element the dashboard door fills
 const DASH_PARTS = ['stamp', 'kpis', 'split', 'splitKey', 'chart', 'chartKey', 'funnel', 'outcomes', 'funnelNote', 'tLeft', 'tMode', 'tCards', 'cardsNote',
-  'tErr', 'tDevice', 'tLand', 'tOrigin', 'tTiers', 'tPlays', 'tTut'];
+  'tErr', 'tDevice', 'tLand', 'tOrigin', 'tTiers', 'tPlays'];
 
 function render(d) {
   DATA = d;
@@ -574,8 +573,6 @@ function render(d) {
     table($('tTiers'), ['Cards earned, by tier', 'Earned'],
       Object.keys(T).sort((a, b) => rank(a) - rank(b)).map(t => [(TIER.find(x => x[0] === t) || [, t])[1], num(T[t])]), 'No cards earned in this period.');
     table($('tPlays'), ['Most played cards', 'Plays'], (C.top_played || []).map(r => [cardName(r.card), num(r.plays)]), 'No cards played in this period.');
-    const TU = d.tutorial || {};
-    table($('tTut'), ['With the tutorial', 'Games', 'Finished', 'Won'], TU.games ? [['Tutorial on', num(TU.games), num(TU.finished), num(TU.won)]] : [], 'No tutorial games in this period.');
   });
   part($('tErr'), () => table($('tErr'), ['First error of the game', 'Games', 'Players', 'Newest build', 'Last seen'],
     (d.errors_top || []).map(r => [{ td: `<td class="err-msg">${esc(r.err)}</td>` }, num(r.games), num(r.players), r.build == null ? '—' : r.build, when(r.last)]),

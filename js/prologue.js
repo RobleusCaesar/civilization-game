@@ -44,8 +44,8 @@ const Prologue = {
     } catch (e) {}
   },
   /* the device's record, decided ONCE: a device with any trace of earlier
-     play (the old lesson's veteran rule — a finished run, a slot, a crash
-     snapshot, the draft help read) is a veteran and never sent on the
+     play (Screens.gamesFounded — a world founded, a finished run, a slot, a
+     crash snapshot, the draft help read) is a veteran and never sent on the
      journey; a fresh one is. ?prologue=reset forgets the record (testing). */
   prog() {
     if (this._q === 'reset' && !this._reset) {
@@ -74,26 +74,18 @@ const Prologue = {
     if (p.skipped || p.veteran) return false;
     return this.next() <= 3;
   },
-  // the old lesson stands down for a device the journey has taught, or that skipped it
-  taught() {
-    const p = this._get();
-    return !!(p && !p.veteran && (p.skipped || (p.done && p.done[1])));
-  },
   next() { const d = this.prog().done; for (let g = 1; g <= 3; g++) if (!d[g]) return g; return 4; },
   markDone(g) {
     const p = this.prog();
     if (p.done[g]) return;
     p.done[g] = Date.now();
     this._set(p);
-    // the journey over, the old lesson's two teaching games are spent too
-    if (g >= 3 && window.Screens && Screens.lsSet && Screens.gamesFounded && Screens.gamesFounded() < 2) Screens.lsSet('neo-games', '2');
   },
   skip(from) {
     const p = this.prog();
     p.skipped = Date.now();
     this._set(p);
     this.track('skip', { from: from || 'title', game: this.next() });
-    if (window.Screens && Screens.lsSet && Screens.gamesFounded && Screens.gamesFounded() < 2) Screens.lsSet('neo-games', '2');
   },
 
   /* ================= TELEMETRY (Backend.lesson, migration 0018) ================= */
@@ -2944,7 +2936,7 @@ const Prologue = {
   },
   /* a card past the menu's fold is no target at all: it is brought into the
      menu's view until it is SEEN there, and the player's own scrolling is left
-     alone after that (UI.cardIntoView — the lesson's rule too) */
+     alone after that (UI.cardIntoView) */
   _cardSt: null,
   _cardInView(sel) { if (UI.cardIntoView) UI.cardIntoView(sel, this._cardSt || (this._cardSt = {})); },
   // a target, resolved to the screen: {x,y,r} world, {u} a unit, {sel} an element

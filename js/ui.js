@@ -180,7 +180,7 @@ const UI = {
       // difficulty has been chosen
       if (key === 'wonder') btn.style.display = 'none';
       /* THE WONDER CARD READS AS THE GOAL, NOT AS A PRICE YOU CANNOT PAY
-         (tests/tutorial.mjs, the retention pass — 0 Wonder wins in every
+         (tests/calm-peace.mjs, the retention pass — 0 Wonder wins in every
          Calm game logged): last in the row and greyed to 45% for the whole
          run, it was the one card nobody ever scrolled to. It wears a gold
          rim and a "victory" ribbon, and under the price it says how far the
@@ -2174,8 +2174,8 @@ const UI = {
     }
   },
   /* A RINGED BUILD CARD IS BROUGHT INTO THE MENU'S VIEW — and the job is done
-     only once the card is SEEN there (build 182; the one rule the lesson and
-     the journey share: Tutorial._scrollCardIntoView, Prologue._cardInView).
+     only once the card is SEEN there (build 182; the journey's rule,
+     Prologue._cardInView).
      It was one shot "however it lands", and on a busy phone it landed on a
      menu still being laid out (nothing to scroll yet), or its smooth scroll
      was undone when the menu was rebuilt for the very card it had unlocked —
@@ -4131,37 +4131,19 @@ const UI = {
      refusal answering the player's own tap always shows: a repeat of one
      still on screen REPLACES it with one fresh node, and a warning's repeat
      shakes (a note's never does), so a second tap never reads as dead.
-     WHILE A LESSON'S CARD IS BEING READ (Tutorial.noteReading: its words'
-     time, and the breath after one) the WORLD'S NEWS waits (`news`: G.log's
-     notes and the "N ready" fold), three at most, the oldest giving way, and
-     is shown the moment the card has been read — under the card, whose seat
-     steps the column down (--tut-h), never over it; nothing is dropped for
-     waiting (a card that waits on a deed can stand for minutes, and a 20 s
-     drop lost every piece of news in a tutorial game). A cached older
-     tutorial.js without noteReading holds on noteUp, as before. Everything
-     else shows at once: a warning, and
-     a note that answers what the player just did (a station's "no ground
-     yet", the wall's how-to, a tapped top-bar number) — held, the tap would
-     read as dead (the tap contract's rule 4). Every map here is UI-local,
-     keyed on S. */
+     Every toast shows the moment it is asked for (a held answer reads as a
+     dead tap, the tap contract's rule 4). Every map here is UI-local, keyed
+     on S. */
   _toastEl: null,     // message key → the node on screen (a repeat replaces it)
-  _toastHeld: null,   // news waiting out a lesson card's reading: { msg, ms, at }, three at most
   _toastS: null,
-  _toastFlush: 0,
-  toast(msg, warn, ms, dedupe, news) {
+  toast(msg, warn, ms, dedupe) {
     if (!warn || msg == null) return null;
     msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
     if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
-    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
-    if (warn === 'note' && news && this._lessonReading()) {
-      this._toastHeld.push({ msg, ms, at: now });
-      while (this._toastHeld.length > 3) this._toastHeld.shift();   // the oldest gives way
-      if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
-      return null;
-    }
+    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); }
     return this._showToast(msg, warn, ms, key, dedupe);
   },
   _showToast(msg, warn, ms, key, dedupe) {
@@ -4184,26 +4166,6 @@ const UI = {
     setTimeout(() => { el.style.opacity = '0'; }, hold);
     setTimeout(() => { el.remove(); if (this._toastEl && this._toastEl.get(key) === el) this._toastEl.delete(key); }, hold + 700);
     return el;
-  },
-  // is a lesson card still being read? (guarded on the method it calls; an
-  // older tutorial.js without noteReading answers by noteUp, as before)
-  _lessonReading() {
-    const T = window.Tutorial;
-    if (!T) return false;
-    if (T.noteReading) return !!T.noteReading();
-    return !!(T.noteUp && T.noteUp());
-  },
-  // the held news comes out once the card has been read (or answered, and its
-  // breath has passed); a new world drops it
-  _flushHeld() {
-    this._toastFlush = 0;
-    const q = this._toastHeld;
-    if (!q || !q.length || this._toastS !== S) return;
-    if (this._lessonReading()) {
-      this._toastFlush = setTimeout(() => this._flushHeld(), 250);
-      return;
-    }
-    for (const h of q.splice(0)) this._showToast(h.msg, 'note', h.ms, h.msg.replace(/\d+/g, '#'));
   },
   /* THE OPEN VIEW (PX-17): is this world point on the part of the screen the
      player can actually see — under the top bar, above the bottom bar (and

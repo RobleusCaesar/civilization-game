@@ -13,8 +13,8 @@
       scarcity-symmetry rule: a variant may starve a resource, never one
       player).
    4. THE ROLL: difficulty leans the size (soft — all sizes possible), the
-      landform lands uniform-ish, and the tutorial forces Valley · Classic
-      at medium.
+      landform lands uniform-ish, and a pinned world (?seed=…&size=…) is
+      founded exactly, once — the next New Game rolls fresh.
    5. SAVES round-trip the rolled landform/variant/worldName; a pre-variant
       save (no such fields) still loads and shows its landform.
    6. THE AI SURVIVES THE LEAN VARIANTS: on Steppe (wood-starved) and Great
@@ -155,9 +155,9 @@ const out = await p.evaluate(() => {
       broken.length ? broken.join(' | ') : 'seats meet, both hold every resource, camps + gold seated');
   }
 
-  // ---- 4. the roll: size lean, uniform landform, the tutorial's forced map ----
+  // ---- 4. the roll: size lean, uniform landform, a pinned world ----
   {
-    try { localStorage.setItem('neo-tutorial-ask', '0'); localStorage.setItem('neo-draft-help', '1'); } catch (e) {}
+    try { localStorage.setItem('neo-draft-help', '1'); } catch (e) {}
     Screens._demo = false;
     const counts = {};
     const lfCounts = {};
@@ -183,16 +183,26 @@ const out = await p.evaluate(() => {
     ck('everyLandformComesUp',
       ['valley', 'lakeland', 'highlands', 'islands'].every(lf => (lfCounts[lf] || 0) > 0),
       JSON.stringify(lfCounts));
-    // the tutorial never gambles
-    try { localStorage.setItem('neo-tutorial-ask', '1'); } catch (e) {}
-    Screens._founding = false;
-    Screens.foundRun();
-    ck('theTutorialForcesValleyClassicMedium',
-      S.map.landform === 'valley' && S.map.variant === 'classic' && S.sizeKey === 'medium',
-      S.map.worldName + ' at ' + S.sizeKey);
-    try { localStorage.setItem('neo-tutorial-ask', '0'); } catch (e) {}
+    // a pinned world (?seed=…&size=…) is founded exactly — and only once
+    {
+      const back = location.pathname + location.search + location.hash;
+      let pinned = '', consumed = false, after = '';
+      try {
+        history.replaceState(null, '', location.pathname + '?seed=4242&size=large' + location.hash);
+        Screens._founding = false;
+        Screens.foundRun();
+        pinned = S.seed + ' at ' + S.sizeKey;
+        consumed = !/[?&](seed|size)=/.test(location.search);
+        Screens._founding = false;
+        Screens.foundRun();
+        after = S.seed;
+      } catch (e) { pinned = 'threw: ' + e.message; }
+      finally { try { history.replaceState(null, '', back); } catch (e) {} }
+      ck('aPinnedWorldIsFoundedOnce', pinned === '4242 at large' && consumed && after !== '4242',
+        JSON.stringify({ pinned, consumed, after }));
+    }
     ck('theWorldIsNamedOnArrival',
-      typeof S.map.worldName === 'string' && S.map.worldName.indexOf('Valley') === 0 &&
+      typeof S.map.worldName === 'string' && S.map.worldName === MapGen.worldName(S.map.landform, S.map.variant) &&
       document.getElementById('draftWorld').textContent.includes(S.map.worldName),
       document.getElementById('draftWorld').textContent);
   }

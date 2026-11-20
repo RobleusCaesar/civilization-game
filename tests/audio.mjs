@@ -394,7 +394,7 @@ ck('andTheGeneratedBedStandsInForIt',
     };
     G.newGame('aud-dead', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); S.paused = false;
     const r0 = __dev.resumes;
-    // the first minute's call sites: a tutorial note, a ghost turning red, the
+    // the first minute's call sites: a card lifted, a ghost turning red, the
     // confirm, a villager trained, a death on camera, the bond, the dry
     // summer's strike — and twenty taps
     UI.cue('ok'); UI.cue('bad'); UI.cue('confirm'); Sound.play('train'); Sound.play('die');

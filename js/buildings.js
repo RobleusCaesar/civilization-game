@@ -1311,15 +1311,12 @@ const Bld = {
           G.log(`${this.def(b.key).name} complete — its first ${CFG.UNITS[this.def(b.key).firstUnit].name} reports for duty`, 'note');
         else G.log(`${this.def(b.key).name} complete`, news);
       } else if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length) &&
-                 !S.units.some(u => u.owner === 'P' && u.perch) &&
-                 !(S.tut && S.tut.on && S.tut.phase === 1 && !(S.tut.done || {}).manTower)) {
+                 !S.units.some(u => u.owner === 'P' && u.perch)) {
         /* AN EMPTY TOWER SAYS WHAT IT NEEDS (operator, build 152: "update the
            tower notes / instructions to let players know they need to create
            archers and station them in the towers for actual defense"): while
            no bow of the player's stands on any tower, a finished one tells
-           them how — once they man one, the plain news returns (and while
-           the lesson's own "man the tower" card is still to come, the card
-           says it: one voice, not two) */
+           them how — once they man one, the plain news returns */
         G.log(`${this.def(b.key).name} complete — it shoots only with archers on it: select archers, then tap the tower`, 'note');
       } else {
         G.log(`${this.def(b.key).name} complete`, news);
