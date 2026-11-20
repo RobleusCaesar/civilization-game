@@ -285,7 +285,7 @@ const SCENARIO_MAPS = {
   "marks": {
    "barracksSite": [14, 19],
    "rangeSite": [8, 19],
-   "towerSite": [19, 18],
+   "towerSite": [19, 14],
    "wall1": [19, 14],
    "wall2": [20, 14],
    "wall3": [21, 14],

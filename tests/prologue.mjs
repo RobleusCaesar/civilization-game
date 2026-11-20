@@ -1566,7 +1566,7 @@ const endScreen = async (p) => {
     const wf = Prologue.workFor;
     Prologue.workFor = function (u, res) {
       const r = wf.apply(this, arguments);
-      if (r && Prologue.lineForts().length === 3) {
+      if (r && Prologue.lineDone()) {
         const h = Prologue.homeSide(), i = (r.y | 0) * CFG.W + (r.x | 0), ui = (u.y | 0) * CFG.W + (u.x | 0);
         // judged for a hand on the home side alone: one the transport landed on the isle works the isle (build 196)
         if (h && h[ui] && !(h[i - 1] || h[i + 1] || h[i - CFG.W] || h[i + CFG.W])) window.__out.push((res || '?') + ' at ' + (r.x | 0) + ',' + (r.y | 0));
@@ -1578,6 +1578,8 @@ const endScreen = async (p) => {
   const g2w = await p.evaluate(() => ({ done: Object.keys((S.pro && S.pro.done) || {}),
     has: ['barracks', 'range', 'tower', 'wall', 'gate'].filter(k => S.buildings.some(b => b.owner === 'P' && b.key === k)),
     line: Prologue.lineForts().map(b => b.key + (b.construction > 0 ? ' site' : '') + (b.raised ? ' shut' : '')),
+    need: Prologue.lineNeed(), towerOn: (() => { const t = S.buildings.find(b => b.owner === 'P' && b.key === 'tower'), m = Prologue.mark('towerSite');
+      return !!t && !!m && t.x === (m.x | 0) && t.y === (m.y | 0) && Prologue.lineTiles().some(l => (l.x | 0) === t.x && (l.y | 0) === t.y) && Prologue.lineTaken(m); })(),
     scout: window.__scout, scoutLeft: !!Prologue.scout(),
     up: S.units.filter(u => u.owner === 'P' && window.Lookout && Lookout.sentUp(u)).length,
     tc: Bld.tcOf('P'),
@@ -1601,9 +1603,14 @@ const endScreen = async (p) => {
      anyone behind it), then a section is cut into a gate and the gate is opened —
      and while those lines are up the line tool says nothing over the guide */
   const order = run.seen.map(s => s.id), at = id => order.indexOf(id);
-  ck('andItLaysTheWallASectionAtATimeUntilTheBridgeIsClosed', ['wall', 'wall2', 'wall3'].every(k => g2w.done.includes(k)) && at('wall') < at('wall2') && at('wall2') < at('wall3')
-    && g2w.line.length === 3, `lines ${order.join(' › ')}; the line ${g2w.line.join(', ')}`);
-  ck('thenAScoutComesToTheWallAndFallsToTheTowersArcher', g2w.done.includes('scout') && at('scout') > at('wall3') && !g2w.scoutLeft
+  /* THE TOWER STANDS ON THE NECK (build 205 — operator: "Let's build the tower on the neck
+     of the land … I did it already on this one and now the game is stuck"): the tower is
+     raised on the line's west tile, the line asks walls only of the tiles still open (two),
+     and the third wall's line is never said over a closed bridge */
+  ck('andTheTowerStandsOnTheNeckAsPartOfTheLine', g2w.towerOn && g2w.need === 2 && at('wall3') < 0, `tower on the neck ${g2w.towerOn}; walls asked ${g2w.need}; wall3 said at ${at('wall3')}`);
+  ck('andItLaysTheWallASectionAtATimeUntilTheBridgeIsClosed', ['wall', 'wall2', 'wall3'].every(k => g2w.done.includes(k)) && at('wall') >= 0 && at('wall') < at('wall2')
+    && g2w.line.length === g2w.need, `lines ${order.join(' › ')}; the line ${g2w.line.join(', ')}`);
+  ck('thenAScoutComesToTheWallAndFallsToTheTowersArcher', g2w.done.includes('scout') && at('scout') > at('wall2') && !g2w.scoutLeft
     && g2w.scout.fromTower >= 3 && g2w.scout.fromTower === g2w.scout.hits, JSON.stringify(g2w.scout));
   /* THE CARD LESSON PLAYS GAME 1's MASTER BUILDERS BEFORE THE BARRACKS (operator, build 191),
      so the barracks, range and tower stand the moment they are placed; then a warning of its

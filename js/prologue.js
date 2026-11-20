@@ -1070,7 +1070,7 @@ const Prologue = {
           ack: () => P.has('range'), site: () => P.siteOf('range'), hands: 2, handsText: 'Send villagers to build it. Many hands, quick work.',
           wait: 'The range is going up.',
           done: () => P.has('range', true), praise: 'A range, and its first archer!' },
-        { id: 'tower', face: 'point', text: 'Build a watchtower by the land bridge.', key: 'tower',
+        { id: 'tower', face: 'point', text: 'Build a watchtower on the neck of the land bridge.', key: 'tower',
           goal: () => P.buildGoal('tower', 'Build a watchtower'),
           when: () => P.afford('tower') || P.has('tower'), hold: (c) => P.needLine('A tower', null, c),
           on: () => Scenarios.unlock('tower'), look: () => P.mark('towerSite'),
@@ -1093,15 +1093,16 @@ const Prologue = {
           on: () => Scenarios.unlock('wall'), look: () => P.mark('wall2'),
           ring: P.lineRing('wall', () => P.nextLineTile()), taps: () => R1(P.lineRing('wall', () => P.nextLineTile())()),
           ack: () => P.laidOnLine() >= 1, site: () => P.lineSite(),
-          done: () => P.laidOnLine() >= 1 && !P.lineSite(), praise: 'Good!' },
+          done: () => (P.laidOnLine() >= 1 || P.lineDone()) && !P.lineSite(), praise: () => P.lineDone() ? 'The bridge is closed!' : 'Good!' },
         { id: 'wall2', face: 'point', text: 'Now build another right beside it.', key: 'wall',
           goal: () => P.wallGoal(),
           when: () => P.afford('wall') || P.laidOnLine() >= 2, hold: (c) => P.needLine('A wall', null, c),
           ring: P.lineRing('wall', () => P.nextLineTile()), taps: () => R1(P.lineRing('wall', () => P.nextLineTile())()),
           ack: () => P.laidOnLine() >= 2, site: () => P.lineSite(),
-          done: () => P.laidOnLine() >= 2 && !P.lineSite(), praise: 'Good!' },
+          done: () => (P.laidOnLine() >= 2 || P.lineDone()) && !P.lineSite(), praise: () => P.lineDone() ? 'The bridge is closed!' : 'Good!' },
         { id: 'wall3', face: 'point', text: 'And one more to close the bridge.', key: 'wall',
           goal: () => P.wallGoal(),
+          skipIf: () => P.lineNeed() < 3,
           when: () => P.afford('wall') || P.laidOnLine() >= 3, hold: (c) => P.needLine('A wall', null, c),
           ring: P.lineRing('wall', () => P.nextLineTile()), taps: () => R1(P.lineRing('wall', () => P.nextLineTile())()),
           ack: () => P.laidOnLine() >= 3, site: () => P.lineSite(), wait: 'The wall is going up.',
@@ -1957,6 +1958,17 @@ const Prologue = {
     return b && b.owner === 'P' && (b.key === 'wall' || b.key === 'gate') ? b : null;
   },
   lineForts() { return this.lineTiles().map(t => this.fortOn(t)).filter(Boolean); },
+  /* A LINE TILE ALREADY TAKEN (build 205 — operator, game 2: "I did it already on this
+     one and now the game is stuck … leave a little flexibility"): the tower is raised ON
+     the neck, and a player may set it (or anything else of theirs) on any tile of the
+     line. That tile is the line's already: it seals the bridge as a section does, so the
+     wall lessons ask only for the tiles still open, and never for ground nobody can build */
+  lineTaken(t) {
+    if (!t) return false;
+    const b = Bld.at(t.x | 0, t.y | 0);
+    return !!b && b.owner === 'P' && b.key !== 'wall' && b.key !== 'gate';
+  },
+  lineNeed() { return this.lineTiles().filter(t => !this.lineTaken(t)).length; },
   // the most hurt finished section of the line (the scout's work), or null when all are whole
   hurtFort() {
     let w = null, wr = 1;
@@ -1969,7 +1981,7 @@ const Prologue = {
   laidOnLine() { return this.lineForts().length; },
   // the next section: the first gap beside a section already laid, else the first gap
   nextLineTile() {
-    const ts = this.lineTiles(), has = ts.map(t => !!this.fortOn(t));
+    const ts = this.lineTiles(), has = ts.map(t => !!this.fortOn(t) || this.lineTaken(t));
     for (let i = 0; i < ts.length; i++) if (!has[i] && (has[i - 1] || has[i + 1])) return ts[i];
     for (let i = 0; i < ts.length; i++) if (!has[i]) return ts[i];
     return null;
@@ -1982,10 +1994,11 @@ const Prologue = {
     const crew = S.units.some(u => u.owner === 'P' && up.some(b => this.buildsOn(u, b)));
     return crew ? null : up[0];
   },
-  lineDone() { const f = this.lineForts(); return f.length === this.LINE.length && f.every(b => !(b.construction > 0)); },
+  lineDone() { const f = this.lineForts(), n = this.lineNeed(); return f.length >= n && f.every(b => !(b.construction > 0)); },
   wallGoal() {
     const n = this.laidOnLine();
-    return n >= this.LINE.length || this.afford('wall') ? 'Close the bridge: Walls ' + n + '/' + this.LINE.length
+    const need = this.lineNeed();
+    return n >= need || this.afford('wall') ? 'Close the bridge: Walls ' + n + '/' + need
       : 'Close the bridge: ' + this.costLine('wall');
   },
 

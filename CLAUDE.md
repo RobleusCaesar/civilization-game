@@ -1768,7 +1768,7 @@ place it and then place the wall next to it, and then another wall. It shows
 a completed wall. Then show an enemy coming to scout and getting shot at by
 the archer. This gives the basic premise of protection. Then maybe teach the
 player how to build a gate out of a wall and why this is helpful. THEN we can
-move on to the Town Center upgrade"). Six beats where one stood: `wall`,
+move on to the Town Center upgrade"). **THE TOWER STANDS ON THE NECK** (build 205 — operator: "Let's build the tower on the neck of the land … I did it already on this one and now the game is stuck"): `towerSite` is the line's west tile (`wall1`, 19,14), and any tile of the line a building of the player's already takes (`Prologue.lineTaken`) is the line's — the wall beats ask only for the tiles still open (`lineNeed`), `wall3` is passed over when two close the bridge, and the praise that closes it says so; a tower set on any line tile never strands the lesson. Six beats where one stood: `wall`,
 `wall2`, `wall3` lay the three sections of the land bridge (the map's
 `wall1..3` marks), each asked the moment the last is laid and crewed, the
 ring on the next gap BESIDE a section already down; a section with nobody on
