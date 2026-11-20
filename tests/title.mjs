@@ -44,10 +44,13 @@
       logo and every plaque inside the window, the logo clear of the menu,
       the right picture for the window, and the campfire's light never under
       a plaque on a phone.
-   7. THE PLAQUES BEHAVE: New Game is the gold plate, a press sends a plaque
-      2px down into its frame, Continue's "no saves yet" sits flat and stays
-      legible, the pause menu's plaques are untouched, and a player who asks
-      for less motion gets no embers.
+   7. THE PLAQUES BEHAVE: they are the settings page's plates (build 206 —
+      the operator: "intuitive and clean… re-review the settings menu because
+      I really like that"), its stepped corner and thin gold line, no straps,
+      bosses or grain; New Game is the ONE lit plate (the settings page's
+      chosen tab), a press sends a plate 2px down into its frame, Continue's
+      "no saves yet" sits flat and stays legible, the pause menu's plaques
+      are untouched, and a player who asks for less motion gets no embers.
    8. THE TITLE SAYS WHAT HAPPENED: a Continue whose save will not open says
       why on the shell's own line (#shellMsg, Screens.say — a toast is hidden
       off the playing screen), SEEN at 320x568 through 1440x900: on top at
@@ -447,11 +450,23 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
   const r = await p.evaluate(() => {
     const kind = id => document.getElementById(id).dataset.t2;
     const c = document.getElementById('btnContinue');
-    return { gold: kind('btnTitleNew'), navy: kind('btnTitleBoard'), cont: kind('btnContinue'),
+    const shown = [...document.querySelectorAll('#scrTitle .tmenu .abtn')].filter(e => e.getBoundingClientRect().width > 0);
+    // every plate the settings page's: its stepped corner, its line(s), no straps, bosses or grain
+    const plates = shown.map(e => {
+      const f = e.querySelector(':scope > .t2f');
+      return { id: e.id, kind: e.dataset.t2, notch: !!(f && f.querySelector('clipPath path[d^="M0,5H3V3H5V0"]')),
+        gold: !!(f && f.querySelector('rect[stroke="#f2cf6c"]')), caps: f ? f.querySelectorAll('circle, ellipse').length : -1,
+        grain: f ? f.querySelectorAll('path[stroke-opacity]').length : -1 };
+    });
+    return { lit: kind('btnTitleNew'), board: kind('btnTitleBoard'), cont: kind('btnContinue'), plates,
       cant: c.classList.contains('cant'), contF: c.querySelector('.t2f') ? getComputedStyle(c.querySelector('.t2f')).filter : 'no frame',
       contOp: getComputedStyle(c).opacity, small: c.querySelector('small').textContent.trim() };
   });
-  ck('newGameIsTheGoldPlate', r.gold === 'gold' && r.navy === 'navy' && r.cont === 'wood', `New Game ${r.gold}, Leaderboard ${r.navy}, Continue ${r.cont}`);
+  ck('newGameIsTheOneLitPlate', r.lit === 'lit' && r.board === 'plate' && r.cont === 'plate' && r.plates.filter(q => q.kind === 'lit').length === 1,
+    `New Game ${r.lit}, Leaderboard ${r.board}, Continue ${r.cont}, lit: ${r.plates.filter(q => q.kind === 'lit').map(q => q.id).join(', ')}`);
+  const odd = r.plates.filter(q => !q.notch || q.caps || q.grain || (q.kind === 'lit') !== q.gold);
+  ck('andEveryPlateIsTheSettingsPagesPlate', r.plates.length >= 7 && odd.length === 0,
+    odd.length ? JSON.stringify(odd) : `${r.plates.length} plates: the stepped corner, the line(s), no caps or grain; the gold line only on the lit one`);
   ck('andANoSavesContinueSitsFlat', r.cant && r.contF === 'none' && r.contOp === '1' && r.small.length > 0, `cant=${r.cant}, its frame's drop: ${r.contF}, "${r.small}"`);
   const top0 = await p.evaluate(() => document.getElementById('btnTitleBoard').getBoundingClientRect().top);
   const bx = await p.evaluate(() => { const q = document.getElementById('btnTitleBoard').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });

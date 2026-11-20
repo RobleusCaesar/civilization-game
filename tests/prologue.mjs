@@ -1148,23 +1148,26 @@ const endScreen = async (p) => {
   await ctx.close();
 }
 
-/* ---- 2c. THE BEGIN PLATE IS READ, AND LEADS BY LIGHT (build 206 — the
-   operator, on the gold plate: "hard to read and honestly looks bad
+/* ---- 2c. THE BEGIN PLATE IS THE SETTINGS PAGE'S LIT PLATE (build 206 —
+   the operator, on a gold plate: "hard to read and honestly looks bad
    especially relative to the logo … inviting the player to click and play is
-   essential"; then, on a wordmark in the logo's own lettering over a blue
-   ribbon: "too large, looks too much like the logo … busy … do some
-   research"). The research's answer: the logo is the hero and the play
-   button the strongest BUTTON — the other plaques' frame, one clean face,
-   warm light rather than size or ornament, the chapter a quiet line. So the
-   plate is TitleScreen's 'ember' face, the word Cinzel caps in lit gold, the
-   name small caps under it. Measured at six sizes: the name reads on the
-   plate (4.5:1, the plate measured with the name hidden), the word and the
-   name share the plate's centre line, both inside the carved groove with
-   room and balanced above and below, the name on one line, the word smaller
+   essential"; on a wordmark in the logo's own lettering over a blue ribbon:
+   "too large, looks too much like the logo … busy … do some research"; then,
+   on the menu: "rebuild to something that looks intuitive and clean.
+   Re-review the settings menu because I really like that"). The research's
+   answer: the logo is the hero, the play button the strongest BUTTON, every
+   menu one component. So BEGIN wears TitleScreen's 'lit' plate — the very
+   plate New Game wears after the journey, the settings page's chosen tab:
+   its stepped corner, its bright gold line with a darker one inside it, no
+   straps, bosses or grain — and it is the one lit plate on the title, the
+   tallest and widest. Measured at six sizes: the name reads on the plate
+   (4.5:1, the plate measured with the name hidden), the word and the name
+   share the plate's centre line, both clear of its lines and balanced above
+   and below, the name on one line and clear of the corners, the word smaller
    than the logo's letters. ---- */
 {
   const { p, ctx } = await page('?prologue=reset');
-  const GROOVE = 8.6, CAPS = 24;
+  const LINES = 4.5, CORNER = 12;
   const sizes = [[430, 727], [390, 664], [375, 560], [320, 480], [844, 390], [1440, 900]];
   const lum = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
   const bad = [], read = [];
@@ -1176,8 +1179,14 @@ const endScreen = async (p) => {
       if (!btn || !sm || !lab) return null;
       const box = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; };
       const logo = document.querySelector('#scrTitle .thead img, #scrTitle #logoArt');
-      const s = getComputedStyle(sm);
-      return { kind: btn.dataset.t2 || '', b: box(btn), s: box(sm), l: box(lab), word: lab.textContent.trim(), fs: parseFloat(getComputedStyle(lab).fontSize),
+      const s = getComputedStyle(sm), f = btn.querySelector(':scope > .t2f');
+      const shown = [...document.querySelectorAll('#scrTitle .tmenu .abtn')].filter(e => e.getBoundingClientRect().width > 0);
+      return { kind: btn.dataset.t2 || '', newKind: TitleScreen.KIND.btnTitleNew,
+        frame: f ? { notch: !!f.querySelector('clipPath path[d^="M0,5H3V3H5V0"]'), gold: !!f.querySelector('rect[stroke="#f2cf6c"]'),
+          caps: f.querySelectorAll('circle').length } : null,
+        lit: shown.filter(e => e.dataset.t2 === 'lit').map(e => e.id),
+        biggest: shown.every(e => e === btn || (e.offsetHeight < btn.offsetHeight && e.offsetWidth <= btn.offsetWidth)),
+        b: box(btn), s: box(sm), l: box(lab), word: lab.textContent.trim(), fs: parseFloat(getComputedStyle(lab).fontSize),
         logo: logo && logo.offsetHeight ? box(logo) : null, color: s.color, lh: parseFloat(s.lineHeight) || 16 };
     });
     if (!m) { bad.push(`${w}x${h}: no BEGIN plate`); continue; }
@@ -1198,20 +1207,23 @@ const endScreen = async (p) => {
     const cx = m.b.x + m.b.w / 2, top = m.l.y - m.b.y, bottom = m.b.y + m.b.h - (m.s.y + m.s.h);
     const wordOff = Math.abs(m.l.x + m.l.w / 2 - cx), nameOff = Math.abs(m.s.x + m.s.w / 2 - cx);
     const why = [];
-    if (m.kind !== 'ember') why.push(`plate ${m.kind}`);
+    if (m.kind !== 'lit' || m.newKind !== 'lit') why.push(`plate ${m.kind}, New Game's ${m.newKind}`);
+    if (!m.frame || !m.frame.notch || !m.frame.gold || m.frame.caps) why.push(`frame ${JSON.stringify(m.frame)}`);
+    if (m.lit.length !== 1 || m.lit[0] !== 'btnBegin') why.push(`lit plates: ${m.lit.join(', ') || 'none'}`);
+    if (!m.biggest) why.push('another plate as big');
     if (!/^begin$/i.test(m.word)) why.push(`the word reads "${m.word}"`);
     if (contrast < 4.5) why.push(`name ${contrast.toFixed(2)}:1 on the plate`);
     if (wordOff > 2.5) why.push(`BEGIN ${wordOff.toFixed(1)}px off the centre`);
     if (nameOff > 2) why.push(`name ${nameOff.toFixed(1)}px off the centre`);
-    if (Math.min(top, bottom) < GROOVE + 1.5) why.push(`inside the groove by ${(Math.min(top, bottom) - GROOVE).toFixed(1)}px`);
+    if (Math.min(top, bottom) < LINES + 3) why.push(`${Math.min(top, bottom).toFixed(1)}px from the plate's edge`);
     if (Math.abs(top - bottom) > 3) why.push(`${top.toFixed(1)}px above, ${bottom.toFixed(1)}px below`);
     if (m.s.h > m.lh * 1.5) why.push('name on two lines');
-    if (m.s.w > m.b.w - 2 * CAPS) why.push('name under the corner caps');
+    if (m.s.w > m.b.w - 2 * CORNER) why.push('name into the corners');
     if (m.logo && m.fs * 0.75 > m.logo.h * 0.5) why.push(`the word ${m.fs}px beside a ${m.logo.h.toFixed(0)}px logo`);
     read.push(`${w}x${h} ${contrast.toFixed(1)}:1 ${top.toFixed(0)}/${bottom.toFixed(0)} plate ${m.b.h.toFixed(0)}`);
     if (why.length) bad.push(`${w}x${h} (${m.kind}): ${why.join(', ')}`);
   }
-  ck('theBeginPlateLeadsByLightAndItsNameIsRead', bad.length === 0, bad.join(' | ') || read.join('; '));
+  ck('theBeginPlateIsTheSettingsPagesLitPlate', bad.length === 0, bad.join(' | ') || read.join('; '));
   await ctx.close();
 }
 

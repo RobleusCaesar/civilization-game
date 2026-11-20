@@ -118,11 +118,10 @@ const Prologue = {
     if (!btn) {
       btn = document.createElement('button');
       btn.className = 'abtn big'; btn.id = 'btnBegin'; btn.type = 'button';
-      // one clean word, the strongest button but never a rival to the logo:
-      // the other plaques' frame on a hearth-dark face, the word in lit gold
+      // one clean word on the lit plate (TitleScreen.KIND): the strongest
+      // button, never a rival to the logo
       btn.setAttribute('aria-label', 'Begin');
-      btn.innerHTML = '<span class="bglow" aria-hidden="true"></span><span class="bfire" aria-hidden="true"></span>' +
-        '<span class="blab">Begin</span><small></small>';
+      btn.innerHTML = '<span class="bglow" aria-hidden="true"></span><span class="blab">Begin</span><small></small>';
       btn.addEventListener('click', () => this.begin());
       menu.insertBefore(btn, menu.firstChild);
     }
@@ -3750,42 +3749,35 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad { display: none !important; }
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }
-/* THE BEGIN PLATE (build 206 — the operator: clean and professional, never
-   the logo again): the title's own plaque frame on a hearth-dark face, the
-   word in one clean face (Cinzel caps) lit gold, the chapter a quiet line of
-   small caps under it. It leads the menu by light, not by size or ornament:
-   a warm pool inside, firelight breathing round it, a slow sheen across the
-   word now and then. */
-#scrTitle.t2 .plaques #btnBegin { min-height: 66px; padding: 11px 14px 10px; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 5px; isolation: isolate; overflow: visible; }
-#scrTitle.t2 #btnBegin .blab { display: block; padding-left: .3em; font: 700 23px/1 'Cinzel','Times New Roman',Georgia,serif;
-  letter-spacing: .3em; text-transform: uppercase; color: #f6d47a; text-shadow: none;
-  background: linear-gradient(100deg, rgba(255,255,255,0) 40%, rgba(255,252,235,.85) 50%, rgba(255,255,255,0) 60%) no-repeat,
-    linear-gradient(#fff4cf 8%, #f7d57c 46%, #e2a943 92%);
-  background-size: 300% 100%, 100% 100%; background-position: 160% 0, 0 0;
-  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 1.5px 0 rgba(10,4,0,.95)) drop-shadow(0 0 6px rgba(255,170,60,.28));
-  animation: proSheen 5.5s ease-in-out 1.5s infinite; }
-@keyframes proSheen { 0% { background-position: 160% 0, 0 0; } 30%, 100% { background-position: -60% 0, 0 0; } }
+/* THE BEGIN PLATE (build 206 — the operator, on two Begin buttons: "clean
+   and professionally made… re-review the settings menu because I really
+   like that"): the settings page's LIT plate (TitleScreen.plaque, kind
+   'lit'), the one primary on the title, full width and the tallest; the
+   word in cream Roman caps, the chapter a quiet line of small caps under
+   it, a soft warm light breathing round it. Hierarchy by light and size,
+   never by ornament. */
+#scrTitle.t2 .plaques #btnBegin { min-height: 64px; padding: 10px 14px 9px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; isolation: isolate; overflow: visible; }
+#scrTitle.t2 #btnBegin .blab { display: block; padding-left: .26em; font: 700 22px/1 'Cinzel','Times New Roman',Georgia,serif;
+  letter-spacing: .26em; text-transform: uppercase; color: #fff0bf;
+  text-shadow: 0 1px 0 #000, 0 0 1px rgba(0,0,0,.7), 0 0 12px rgba(255,196,96,.35); }
 #scrTitle.t2 .plaques #btnBegin small { display: block; margin: 0; white-space: nowrap; opacity: 1;
-  font: 600 11px/1.2 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .16em; text-transform: uppercase;
-  color: #d9c69c; text-shadow: 0 1px 0 rgba(0,0,0,.85); }
+  font: 600 10.5px/1.2 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .16em; text-transform: uppercase;
+  color: #e8d39b; text-shadow: 0 1px 0 rgba(0,0,0,.9); }
 #scrTitle #btnBegin .bglow { position: absolute; z-index: -2; left: -10px; right: -10px; top: -9px; bottom: -9px; pointer-events: none;
-  background: radial-gradient(closest-side, rgba(255,160,55,.32), rgba(255,120,30,.1) 65%, rgba(255,110,20,0));
-  animation: proGlow 3s ease-in-out infinite alternate; }
+  background: radial-gradient(closest-side, rgba(255,186,80,.24), rgba(255,150,50,.07) 72%, rgba(255,140,40,0));
+  animation: proGlow 3.6s ease-in-out infinite alternate; }
 @keyframes proGlow { from { opacity: .45; } to { opacity: 1; } }
-#scrTitle #btnBegin .bfire { position: absolute; z-index: -1; left: 9px; right: 9px; top: 9px; bottom: 9px; pointer-events: none;
-  background: radial-gradient(55% 80% at 50% 55%, rgba(255,150,46,.2), rgba(255,110,24,.05) 65%, rgba(255,100,20,0) 85%); }
 @media (max-height: 600px) {
-  #scrTitle.t2 .plaques #btnBegin { min-height: 58px; padding: 8px 12px; gap: 4px; }
-  #scrTitle.t2 #btnBegin .blab { font-size: 21px; }
+  #scrTitle.t2 .plaques #btnBegin { min-height: 56px; padding: 7px 12px; gap: 5px; }
+  #scrTitle.t2 #btnBegin .blab { font-size: 20px; }
 }
-@media (prefers-reduced-motion: reduce) {
-  #scrTitle.t2 #btnBegin .blab { animation: none; }
-  #scrTitle #btnBegin .bglow { animation: none; opacity: .7; }
-}
-#scrTitle .proSkip { display: block; margin: 14px auto 0; padding: 8px 14px; border: 0; background: none; cursor: pointer;
-  color: rgba(243,226,180,.72); font: 600 13px/1 Georgia,serif; text-decoration: underline; text-underline-offset: 3px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+@media (prefers-reduced-motion: reduce) { #scrTitle #btnBegin .bglow { animation: none; opacity: .8; } }
+/* the third thing on the title: a quiet line of small caps, never a web link */
+#scrTitle .proSkip { display: block; min-height: 40px; margin: 8px auto 0; padding: 10px 18px; border: 0; background: none; cursor: pointer;
+  color: rgba(232,211,155,.82); font: 600 11.5px/1.2 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .18em; text-transform: uppercase;
+  text-shadow: 0 1px 0 #000, 0 0 6px rgba(0,0,0,.85); -webkit-tap-highlight-color: transparent; }
+@media (hover: hover) { #scrTitle .proSkip:hover { color: #f3e2b4; } }
 #scrTitle .proSkip.arm { color: #ffd77a; }
 `;
     document.head.appendChild(st);

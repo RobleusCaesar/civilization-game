@@ -1793,22 +1793,26 @@ is a veteran and never sent; `?prologue=reset` forgets the record,
 `?prologue=1` or `reset`. **THE TITLE** wears one BEGIN ("The First Fire · 1
 of 3") and a small "Skip the journey" (two taps; `skip` writes the record and
 spends the old lesson's two teaching games); New Game, the board, the cards
-and Load are put away. **THE BEGIN PLATE LEADS BY LIGHT** (tests/prologue.mjs §2c
-`theBeginPlateLeadsByLightAndItsNameIsRead` — operator, build 206: the gold
+and Load are put away. **THE BEGIN PLATE IS THE SETTINGS PAGE'S LIT PLATE** (tests/prologue.mjs §2c
+`theBeginPlateIsTheSettingsPagesLitPlate` — operator, build 206: the gold
 plate was "hard to read … looks bad relative to the logo … inviting the player
 to click and play is essential"; a wordmark in the logo's own 3D lettering over
 a blue ribbon was then "too large, looks too much like the logo … busy …
-amateur. Do some research"). The research's rule: the logo is the hero, the
-play button the strongest BUTTON — the other plaques' own frame, one clean
-face, set apart by warm light, never by size or ornament, the chapter a quiet
-line. So: `TitleScreen` kind `'ember'` (a hearth-dark face, no knot, no icon),
-"Begin" in Cinzel caps (23px, 21 on a short window) filled with a lit gold
-gradient (`background-clip: text`) and a slow sheen every 5.5 s, "The First
-Fire · 1 of 3" in small cream caps under it, a warm pool inside (`.bfire`) and
-firelight breathing round the plate (`.bglow`, opacity only); reduced motion
-keeps both still. Measured at six sizes: the name 4.5:1 on the plate, both
-centred inside the groove and balanced, the name on one line, the word under
-half the logo's height. Do not bring back a picture wordmark or a ribbon. The next world is founded BEHIND the title in place of
+amateur. Do some research"; then, of the menu: "rebuild to something that
+looks intuitive and clean. Re-review the settings menu because I really like
+that"). The research's rule: the logo is the hero, the play button the
+strongest BUTTON, and every menu ONE component (a player builds a map of it).
+So BEGIN wears `TitleScreen` kind `'lit'` — the plate New Game wears after the
+journey, the settings page's chosen tab (**THE TITLE WEARS THE SETTINGS PAGE'S
+PLATES**, below) — full width and the tallest (64px, 56 on a short window),
+"Begin" in cream Cinzel caps (22px, 20 short), "The First Fire · 1 of 3" in
+small caps under it, a soft warm light breathing round the plate (`.bglow`,
+opacity only; reduced motion keeps it still); "Skip the journey" is a quiet
+line of small caps, never a web link. Measured at six sizes: the one lit plate
+and the biggest, the name 4.5:1 on the plate, both centred and clear of the
+plate's lines, balanced, the name on one line, the word under half the logo's
+height. Do not bring back a picture wordmark, a ribbon, an ember face or a
+carved plaque. The next world is founded BEHIND the title in place of
 the demo (`Prologue.preload` from `Screens.onTitle`, `holding()`), so BEGIN
 opens that very world, its ground and art already asked for. **THE WORLDS
 ARE DATA** (`SCENARIO_MAPS[id]`: 38 rows of `#.T~rb^g,:_x`, the halls, the
@@ -2951,14 +2955,25 @@ the master's pixels split and none blurred; `Boot.t2fit` draws nearest-neighbour
 down on 1x. Its URLs (`T2_SRC`/`T2_IMG`) are markup in all but name: the
 `?v=` is hand-kept and must equal `CFG.ART_V`. **THE PLAQUES ARE VECTORS
 BUILT TO THEIR BOX** (`TitleScreen.plaque`, one inline SVG per plaque in CSS
-pixels, rebuilt by a ResizeObserver): walnut with grain, a gold-leaf rim, a
-carved groove, a gold strap and garnet boss on every corner. New Game is the
-gold plate, the Leaderboard navy (the reward screen's pair), Continue and the
-minor row walnut, with vector icons throughout — the secondary row included,
+pixels, rebuilt by a ResizeObserver). **THE TITLE WEARS THE SETTINGS PAGE'S
+PLATES** (build 206, `TitleScreen.PLATE` / `notch`; tests/title.mjs
+`newGameIsTheOneLitPlate`, `andEveryPlateIsTheSettingsPagesPlate` — operator:
+"intuitive and clean… re-review the settings menu because I really like
+that"): the carved walnut — grain, gold-leaf rim, groove, a strap and garnet
+on every corner, New Game gold, the Leaderboard navy — is gone. Every plate is
+js/settings.js's `.sxBtn` drawn as vectors: its stepped corner (`notch`, the
+settings `--chamfer`), its face gradient, a 2px dark edge with one thin gold
+line inside it, a band of light along its top and of shade along its foot,
+cream Cinzel caps; the ONE primary (New Game; BEGIN on the journey) is `'lit'`,
+the settings page's chosen tab (`.sxTab.on`: an amber face, a bright gold line
+with a darker one inside it, cream letters). Hierarchy by light and size,
+never by ornament. Vector icons throughout — the secondary row included,
 since two by two leaves every label room at 320px. No stepped or pixel icon;
 every raster but the backdrop is within its pixels at 3x. A press moves the
 plate with `translate`, never `transform`: the pop-in's held frame swallows a
-pressed transform (it always did on the old title). Everything is scoped to
+pressed transform (it always did on the old title); `.hi` / `.lo` / `.dim`
+are the press's layers. `TitleScreen.caps` / `metal` / `oct` stay for the
+trial and origin cards (`CardFace`). Everything is scoped to
 `#scrTitle.t2`, so the pause menu's `.plaques` are untouched. **THE FIRE
 BURNS AND THE COMET BLAZES** (operator: "the fire just has a few sparks, same
 with the comet… make those a little more animated"): a breath of light, a
