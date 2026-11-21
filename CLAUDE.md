@@ -1792,6 +1792,38 @@ line that sends a hand to a good rings the idle hand NEAREST that good
 (`idleVil(near)` from `sendTo`): the hand nearest the hall was sent to the
 trees and stood on the spot of the one already beside them, and the stone's
 ring fell on the pair; the woodcutter starts a tile off the forest's stand.
+**NO WAY TO STALL THE LESSON** (`Scenarios.siteHeld` / `siteLost` /
+`lineTaken` / `_starved` / `_reach` / `lessonTile`, `UI.lessonSend`, the
+rules' `sent` and `spentWhy`; tests/prologue.mjs
+`theLessonsSitesAreKeptForTheirOwnBuildings` and the four checks round it —
+a playtest, build 210: "if you build a house on the first patch of land meant
+for a farm idk if it's a softlock … stuck on cutting the trees mira showed
+me … i can't cut any old tree"). The house rule freed itself once a house
+stood, so a second house could take the farm's spent soil, the camp's stumps,
+the quarry's rock or the road's line, and the lesson waited on a building that
+could stand nowhere. Every lesson site is now KEPT for its own building
+(`siteHeld`, code `'lesson'`, "Mira keeps this ground for the farm.") until a
+building of that kind stands anywhere, the road's line until it is laid; a
+save from before (another building already on the site, `siteLost`) frees
+that building to stand elsewhere and opens its good's stand, and a stretch of
+the line a building stands on is passed over (`roadLeft`, `roadPaved`). A
+good's stand also opens (`wide`) once its mark is SPENT while the player is
+short of that good for the current beat's own price (`_starved`, never the
+hall's fallback) — the extra houses ate the grove's wood and the camp could
+not be paid for. An order on a good the lesson names, off its ground, is the
+player asking for that good: the hand is SENT to the nearest workable tile of
+the lesson's ground (`lessonTile` → `UI.lessonSend`, from the tap, the drag
+and the idle-villager convenience) with a note in the rule's `sent` words
+("Off to the trees Mira showed you."); only with nothing there to work is it
+refused, in `spentWhy` words once the mark is spent ("The grove is felled. A
+lumber camp opens the woods."). `Units.assignGather` stays the refusing
+backstop. **AND A RELIC TO FIND** (the same playtest: "explored the starter
+map looking for easter eggs"): game 1's map lays the Broken Aqueduct by the
+south pond (`relic` in tools/scenarios/prologue_1.json), standing ghosted in
+the charted fog from the first frame and found only when one of the clan SEES
+it (`S.relic.sight`, `Relics.checkDiscovery` reads `G.vis`, not the revealed
+map); Mira says the find (`Prologue.ASIDES` 'relic', once, over whatever she
+was saying) and its toast stands down in a journey world (`Prologue.quiet`).
 **GAME 1 RAISES TWO STATIONS AND TEACHES THE RALLY** (`lumber`, `rally`,
 `train2`, `stations`, `quarry`, `rally2`, `train3` between `newcomer` and
 `grow`; `Prologue.spent` / `spentCost` / `spentGoal` / `fellLine` /
@@ -4430,7 +4462,16 @@ cleared): it pans, and never starts a wall or sapper line, a move order or a
 tap. When a third finger lifts, the pinch is re-measured from the two still
 down. **A STILL PRESS IS A TAP FOR UP TO A SECOND**, timed by the events' own
 stamps (`UI._tapTime`: `e.timeStamp`, else `performance.now()`), never the
-handler's clock. **THE WHEEL ZOOMS IN PROPORTION**: deltaY read in its own
+handler's clock. **A QUICK CLICK THAT SLID A LITTLE IS STILL A CLICK**
+(`UI.QUICK_MS` 250, `QUICK_SLOP` 16, the `flick` in the pointerup handler;
+same test §12 — a playtest, build 210: "sometimes had villager be non
+responsive when clicking quick. other times a circle and a line pointing to
+the movement location"): a press lifted inside QUICK_MS whose travel never
+passed QUICK_SLOP is a tap where it was PRESSED — the camera nudge it made is
+given back (`downAt.panX` / `panY`, only this press's own pan) and a move
+tether it drew is let go without an order; a longer or slower drag is a pan or
+a drag as ever, and the finger left after a pinch (`noTap`) is never one.
+**THE WHEEL ZOOMS IN PROPORTION**: deltaY read in its own
 units (lines ×16, pages × the window), `exp(−dy × 0.0015)` an event, clamped
 0.8…1.25; a ctrl+wheel is a trackpad pinch, `exp(−dy / 100)`; the canvas
 swallows `contextmenu` (a right-click is an order), while the HUD and the

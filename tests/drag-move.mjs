@@ -557,6 +557,59 @@ const drag = async (from, to) => {
   ck('aTapHeardLateIsStillATap', late, late ? 'selected' : 'an 80 ms tap behind a 600 ms busy frame was dropped');
 }
 
+/* ---- 12. A QUICK CLICK THAT SLID A LITTLE IS STILL A CLICK (build 210, a playtest:
+   "sometimes had villager be non responsive when clicking quick. other times a circle and
+   a line pointing to the movement location"). A press lifted inside UI.QUICK_MS that
+   never travelled past UI.QUICK_SLOP is a tap where it was pressed: the camera nudge it
+   made is given back and a tether it drew is let go. A longer flick still pans. ---- */
+{
+  const sc = await setup('dm12', tc => {
+    S.units = S.units.filter(z => z.owner !== 'W');
+    const v = Units.spawn('villager', 'P', tc.x + 3, tc.y + 3);
+    const d = Units.spawn('defender', 'P', tc.x + 6, tc.y + 6);
+    UI.select('unit', v.id);
+    return { v: v.id, d: d.id, pts: { ground: { x: tc.x + 5.5, y: tc.y + 2.5 }, d: { x: d.x, y: d.y, lift: 1 } } };
+  });
+  const mc = await p.context().newCDPSession(p);
+  const nap = ms => new Promise(r => setTimeout(r, ms));
+  const flick = async (from, dx, dy, ms) => {
+    const t0 = Date.now() / 1000, n = 4;
+    await mc.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y, timestamp: t0 - 0.05 });
+    await mc.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1, timestamp: t0 });
+    for (let i = 1; i <= n; i++)
+      await mc.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + dx * i / n, y: from.y + dy * i / n, button: 'left', buttons: 1, timestamp: t0 + ms / 1000 * i / (n + 1) });
+    await mc.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x + dx, y: from.y + dy, button: 'left', buttons: 0, clickCount: 1, timestamp: t0 + ms / 1000 });
+    await nap(60);
+  };
+  const cam = () => p.evaluate(() => [R.cam.x, R.cam.y]);
+  // (a) a villager in hand, a 12 px flick on open ground in 110 ms: a walk order, the camera kept
+  const c0 = await cam();
+  await flick(sc.screen.ground, 12, 4, 110);
+  const a = await p.evaluate(({ v }) => { const u = Units.get(v); return { moving: !!(u.path && u.pathI < u.path.length), sel: JSON.stringify(UI.sel) }; }, sc);
+  const c1 = await cam();
+  // (b) a soldier in hand, a 12 px flick ON him: no tether, and exactly what a still click there does
+  const soldier = ({ d }) => { const u = Units.get(d); return { task: u.task && u.task.type, tether: !!UI.moveDrag, sel: !!(UI.sel && UI.sel.id === d) }; };
+  const reset = ({ d }) => { const u = Units.get(d); u.path = null; u.task = null; UI.select('unit', d); };
+  await nap(450);
+  await p.evaluate(reset, sc);
+  await flick(sc.screen.d, 0, 0, 90);
+  const still = await p.evaluate(soldier, sc);
+  await nap(450);
+  await p.evaluate(reset, sc);
+  await flick(sc.screen.d, 10, -7, 120);
+  const b2 = await p.evaluate(soldier, sc);
+  b2.still = still;
+  // (c) a 60 px flick in 110 ms is a pan, as ever
+  await nap(450);
+  await p.evaluate(() => UI.deselect());
+  const c2 = await cam();
+  await flick(sc.screen.ground, 60, 0, 110);
+  const c3 = await cam();
+  ck('aQuickClickThatSlidIsStillAnOrder', a.moving && Math.abs(c1[0] - c0[0]) < 0.01 && Math.abs(c1[1] - c0[1]) < 0.01, JSON.stringify({ a, cam: [c0, c1] }));
+  ck('andAQuickClickOnTheSelectionDrawsNoTether', !b2.tether && b2.sel && b2.task === still.task && still.sel, JSON.stringify(b2));
+  ck('butALongerFlickStillPans', Math.abs(c3[0] - c2[0]) > 10, JSON.stringify([c2, c3]));
+}
+
 console.log(JSON.stringify(res, null, 1));
 console.log(fails.length ? 'FAILURES: ' + fails.join(', ') : 'ALL DRAG-MOVE CHECKS PASS');
 console.log('errors:', errs.filter(e => !/supabase|fetch|TUNNEL|net::/.test(e)));

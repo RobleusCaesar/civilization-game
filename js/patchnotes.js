@@ -22,6 +22,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 210, date: '2026-11-21', title: 'A smoother first game',
+    items: [
+      'In the first game, the ground Mira keeps for the farm, the camps and the road stays free, so a house built in the wrong spot can no longer stall the lesson.',
+      'Tapping a tree, bush or rock away from the one Mira showed sends your villager to hers, and a note says so.',
+      'If you run short of wood or stone for the next step, the trees and rocks around her spot open up, so you are never stuck.',
+      'A quick click that slides a little still counts as a click, so your villagers answer every quick order.',
+      'Something very old lies hidden by the pond in the first valley. Go and find it.',
+    ],
+  },
+  {
     build: 209, date: '2026-11-20', title: 'Veterans of the field',
     items: [
       'A soldier who is hurt in a fight and healed at your Town Center or a War Camp comes back a veteran, with a gold badge over their head.',

@@ -42,6 +42,7 @@ const UI = {
   CONFIRM_GAP_MS: 400,
   _armedAt: { confirmDemolish: 0, confirmCancel: 0 },
   _tapTime(e) { return (e && e.timeStamp > 0) ? e.timeStamp : performance.now(); },
+  QUICK_MS: 250, QUICK_SLOP: 16,   // a flick this short and this small is a tap (build 210)
   armConfirm(slot, id, e) { this[slot] = id; this._armedAt[slot] = this._tapTime(e); this.renderPanel(); },
   confirmTooSoon(slot, e) { return this._tapTime(e) - (this._armedAt[slot] || 0) < this.CONFIRM_GAP_MS; },
   wallDrag: null,        // tile chain while dragging a wall line
@@ -430,14 +431,19 @@ const UI = {
             this.downAt.moved = true;
             px = e.clientX - this.downAt.x; py = e.clientY - this.downAt.y;
           }
+          if (this.downAt) this.downAt.far = Math.max(this.downAt.far || 0, Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y));
           if (this.downAt && this.downAt.moved) {
             if (this.moveDragArm) {
               // the press started on the selection — this drag is an order, not
               // a pan: keep the tether pinned to the finger for the ghost
               this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
             } else {
+              const c0x = R.cam.x, c0y = R.cam.y;
               R.cam.x -= px / R.cam.z; R.cam.y -= py / R.cam.z;
               R.clampCam();
+              // what this press moved the camera by (a flick gives it back)
+              this.downAt.panX = (this.downAt.panX || 0) + R.cam.x - c0x;
+              this.downAt.panY = (this.downAt.panY || 0) + R.cam.y - c0y;
             }
           }
         }
@@ -467,6 +473,19 @@ const UI = {
       // changes it is an ORDER given today (G.noteAct — a defeat's card asks
       // on how many days the player played, never how many things got done)
       const was = this._orderSnap();
+      // A QUICK CLICK THAT SLID A LITTLE IS STILL A CLICK (build 210, a
+      // playtest: "sometimes had villager be non responsive when clicking quick.
+      // other times a circle and a line pointing to the movement location").
+      // A press lifted inside QUICK_MS that never travelled past QUICK_SLOP is
+      // a tap where it was PRESSED: the nudge it gave the camera is given back
+      // and a tether it drew is let go. A pan or a drag is longer, or slower.
+      const da = this.downAt;
+      const flick = !!(da && da.moved && !da.noTap && !this.placeDragging && !this.wallDrag && !this.terraDrag &&
+        this._tapTime(e) - da.t < this.QUICK_MS && (da.far || 0) <= this.QUICK_SLOP);
+      if (flick) {
+        this.moveDrag = null; this.moveDragArm = null;
+        if (da.panX || da.panY) { R.cam.x -= da.panX || 0; R.cam.y -= da.panY || 0; R.clampCam(); }
+      }
       if (this.placeDragging) {
         // release parks the ghost where it sits and offers ✓/✗
         this.placeDragging = false;
@@ -482,7 +501,7 @@ const UI = {
         // release = the order lands where the finger lifted
         this.commitMoveDrag(e.clientX, e.clientY);
         this.moveDrag = null; this.moveDragArm = null;
-      } else if (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000) {
+      } else if (flick || (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000)) {
         // A STILL PRESS IS A TAP for up to a second (PX-27): one that never
         // crossed the slop has no other meaning, so a deliberate half-second
         // press selects instead of doing nothing (it was 400 ms, read off the
@@ -490,11 +509,12 @@ const UI = {
         // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
         // like unit within the grouping sphere, so a whole trebuchet line / fleet of
         // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
+        const tx = flick ? da.x : e.clientX, ty = flick ? da.y : e.clientY;
         const now = performance.now(), lt = this.lastTap;
-        const dbl = lt && (now - lt.t) < 350 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 24;
-        this.lastTap = dbl ? null : { x: e.clientX, y: e.clientY, t: now };
-        if (dbl) this.handleDoubleTap(e.clientX, e.clientY);
-        else this.handleTap(e.clientX, e.clientY);
+        const dbl = lt && (now - lt.t) < 350 && Math.hypot(tx - lt.x, ty - lt.y) < 24;
+        this.lastTap = dbl ? null : { x: tx, y: ty, t: now };
+        if (dbl) this.handleDoubleTap(tx, ty);
+        else this.handleTap(tx, ty);
         // THE FIRST MINUTE: the first tap on a played world's map (Backend.step)
         if (was && window.Backend && Backend.step) Backend.step('map_tap');
       }
@@ -508,7 +528,7 @@ const UI = {
         // re-armed as a drag already under way, so it can never start a wall,
         // terraform or move drag, nor be taken for a tap when it lifts
         const [rest] = [...this.pointers.values()];
-        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true };
+        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true, noTap: true };
         this.moveDragArm = null; this.pinchMid = null;
       } else if (this.pointers.size === 2) {
         // a third finger lifted: the pinch goes on with the two still down,
@@ -1245,6 +1265,18 @@ const UI = {
   lessonOk(x, y) {
     return !(window.Scenarios && Scenarios.mayGather) || Scenarios.mayGather(x, y);
   },
+  /* …AND A GOOD THE LESSON NAMES IS FETCHED FROM ITS OWN GROUND (build 210,
+     a playtest: "I can't cut any old tree"). An order on a tree past Mira's
+     grove is the player asking for wood, so the hand goes to the nearest tile
+     of the lesson's ground it can work, and a note says where (rule 4: never
+     a silent order). False: nothing there to send it to — refuse as before. */
+  lessonSend(u, x, y) {
+    if (!window.Scenarios || !Scenarios.lessonTile || !u) return false;
+    const t = Scenarios.lessonTile(x, y, (tx, ty) => this.gatherable(u, tx, ty), u);
+    if (!t || !Units.assignGather(u, t.x, t.y)) return false;
+    this.toast(t.say || ('Gathering ' + t.res), 'note');
+    return true;
+  },
   lessonBars(x, y, fish) {
     if (!window.Scenarios) return false;
     const why = fish ? (Scenarios.fishWhy && Scenarios.fishWhy()) : (Scenarios.gatherWhy && Scenarios.gatherWhy(x, y));
@@ -1531,6 +1563,7 @@ const UI = {
       if (rt) {
         const wk = this.gatherable(sel, rt.x, rt.y) ? rt : this.gatherFallback(sel, rt.x, rt.y);
         if (wk && Units.assignGather(sel, wk.x, wk.y)) this.dispatchedWorker();
+        else if (this.lessonSend(sel, rt.x, rt.y)) this.dispatchedWorker();
         else if (!this.lessonBars(rt.x, rt.y)) this.toast('No clear ground to stand beside that resource', true);
         return;
       }
@@ -1826,6 +1859,7 @@ const UI = {
             // stand that can be worked before refusing (see gatherFallback)
             const wk = this.gatherable(sel, gt.x, gt.y) ? gt : this.gatherFallback(sel, gt.x, gt.y);
             if (wk && Units.assignGather(sel, wk.x, wk.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedWorker(); }
+            else if (this.lessonSend(sel, gt.x, gt.y)) this.dispatchedWorker();
             else if (!this.lessonBars(gt.x, gt.y)) this.toast('No clear ground to stand beside that resource', true);
             return;
           }
@@ -1922,7 +1956,11 @@ const UI = {
     // selected → send an idle villager
     if (explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && !this.sel) {
       if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
-      if (this.lessonBars(tile.x, tile.y)) return;
+      if (!this.lessonOk(tile.x, tile.y)) {
+        const idle0 = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
+        if (!(idle0 && this.lessonSend(idle0, tile.x, tile.y))) this.lessonBars(tile.x, tile.y);
+        return;
+      }
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignGather(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to gather');

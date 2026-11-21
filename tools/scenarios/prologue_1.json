@@ -63,7 +63,11 @@
   }
  ],
  "buildings": [],
- "relic": null,
+ "relic": {
+    "key": "aqueduct",
+    "x": 19,
+    "y": 32
+  },
  "ruins": [],
  "camera": {
   "x": 18,

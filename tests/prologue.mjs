@@ -161,6 +161,26 @@ const page = async (q, done) => {
         if (d0) { G.noteHunt(d0.x | 0, d0.y | 0); o.lodge = place('lodge', 'deer'); }
         // the hall's storey, 500 wood and 500 stone (operator, build 195)
         o.hallCost = Scenarios.RULES.prologue_1.tc[2].cost;
+        /* THE EASTER EGG (build 210, a playtest: "explored the starter map looking for easter
+           eggs"): one of the ten relics lies by the south pond, charted from the first frame but
+           found only when one of the clan SEES it; the find pays once and Mira says what it gave */
+        const rl = S.relic;
+        o.relic = rl ? { key: rl.key, found0: rl.found, sight: !!rl.sight, charted: !!S.map.explored[rl.y * W + rl.x], reach: near(rl.x, rl.y - 1) || near(rl.x + 1, rl.y + rl.h) } : null;
+        if (rl) {
+          const res = Relics.DEFS[rl.key].res, s0 = S.res[res] || 0, aside = Prologue.ASIDES.find(a => a.id === 'relic');
+          o.relic.asideBefore = aside ? !!aside.test.call(Prologue) : null;
+          const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u)), vx = v.x, vy = v.y, demo0 = Screens._demo;
+          Screens._demo = false;   // the probe's world stands behind the title: the find is a played world's
+          v.x = rl.x + 1.5; v.y = rl.y - 1.5; G.updateVisibility();
+          o.relic.found = rl.found; o.relic.gain = (S.res[res] || 0) - s0; o.relic.amount = rl.amount;
+          G.updateVisibility();
+          o.relic.paidOnce = (S.res[res] || 0) - s0 === rl.amount;
+          o.relic.aside = aside ? !!aside.test.call(Prologue) : null;
+          o.relic.text = aside ? aside.text : '';
+          o.relic.words = o.relic.text.split(/\s+/).filter(Boolean).length;
+          v.x = vx; v.y = vy; S.res[res] = s0; rl.found = 0; rl.amount = 0; G.updateVisibility();
+          Screens._demo = demo0;
+        }
       }
       if (g === 2) {
         o.berryKind = m.berries ? R.fertileKindAt(m.berries[0], m.berries[1]) : null;
@@ -314,6 +334,10 @@ const page = async (q, done) => {
      blow, away from the hunter and so from the hall — three hunts in ten ended
      11+ tiles out, and the lodge with them. The lesson deer falls to the first */
   ck('andFallsToTheFirstBlowWhereItGrazes', g1.deer.oneBlow, JSON.stringify(g1.deer));
+  ck('gameOneHidesARelicThatIsSeenToBeFound', !!g1.relic && g1.relic.key === 'aqueduct' && g1.relic.sight && g1.relic.charted && g1.relic.reach && !g1.relic.found0 && g1.relic.asideBefore === false
+    && g1.relic.found > 0 && g1.relic.gain > 0 && g1.relic.paidOnce, JSON.stringify(g1.relic));
+  ck('andMiraSaysWhatItGave', g1.relic && g1.relic.aside === true && /Broken Aqueduct/.test(g1.relic.text) && g1.relic.text.includes(String(g1.relic.amount)) && g1.relic.words <= 15,
+    g1.relic && g1.relic.text);
   ck('andGameOnesHallAsksFiveHundredWoodAndStone', g1.hallCost && g1.hallCost.wood === 500 && g1.hallCost.stone === 500, JSON.stringify(g1.hallCost));
   ck('gameThreesYardsStandWhereTheGuideSays', g3.hall === 3 && g3.workshop === 'ok' && g3.stable === 'ok' && g3.camp === 'ok',
     `hall ${g3.hall}, workshop ${g3.workshop}, stable ${g3.stable}, war camp ${g3.camp}`);
@@ -1269,27 +1293,56 @@ const endScreen = async (p) => {
   ck('eachGoodsLineRingsTheIdleHandNearestItsWork', g.rung.length === 3 && g.rung.every((r, i) => r.line === ['open', 'wood', 'stone'][i] && r.nearest),
     JSON.stringify(g.rung));
   ck('andNoTwoVillagersStandOnOneSpot', g.rung.every(r => r.clear >= 0.9) && g.min >= 1, `rung clear of the others by ${g.rung.map(r => r.clear).join(', ')} tiles; at work ${g.min} apart; then ${g.at}`);
-  // an order off the lesson's ground: refused, in the lesson's words, with the hand in hand and with none
+  // an order off the lesson's ground (build 210, a playtest: "I can't cut any old tree"): the hand is
+  // SENT to the ground Mira showed, with a note saying so — in hand or idle; the direct order stays refused
   const off = await p.evaluate(() => {
-    const P = Prologue, W = CFG.W, x = 9, y = 18, shown = [], real = UI._showToast;
+    const P = Prologue, W = CFG.W, x = 9, y = 18, shown = [], real = UI._showToast, m = Scenarios.live().marks.forest;
     UI._showToast = function (msg) { shown.push(String(msg)); return real.apply(this, arguments); };
     const pre = { forest: S.map.terrain[y * W + x] === T.FOREST, seen: !!S.map.explored[y * W + x], may: Scenarios.mayGather(x, y) };
-    const v = P.vils().find(o => P.onRes(o, 'wood')) || P.vils()[0], task0 = JSON.stringify(v.task);
+    const v = P.vils().find(o => P.onRes(o, 'wood')) || P.vils()[0];
     const z = R.cam.z, TL = CFG.TILE, sx = innerWidth / 2, sy = innerHeight / 2;
     R.cam.x = (x + 0.5) * TL - sx / z; R.cam.y = (y + 0.5) * TL - sy / z;
+    const atMark = u => !!(u.task && u.task.type === 'gather' && u.task.x === m[0] && u.task.y === m[1]);
     UI.select('unit', v.id);
     UI._toastAt = {}; UI.handleTap(sx, sy);
-    const held = { msgs: shown.slice(), task: JSON.stringify(v.task) === task0 };
+    const held = { msgs: shown.slice(), sent: atMark(v), sel: UI.sel };
     shown.length = 0; UI.deselect && UI.deselect();
-    const idle = P.vils()[0]; idle.task = null; idle.path = null;
+    const idle = P.vils().find(o => o !== v) || P.vils()[0]; idle.task = null; idle.path = null;
     UI._toastAt = {}; UI.handleTap(sx, sy);
-    const none = { msgs: shown.slice(), task: !idle.task };
+    const none = { msgs: shown.slice(), sent: atMark(idle) };
+    idle.task = null; idle.path = null;
     const direct = Units.assignGather(idle, x, y);
+    // the grove felled and wood in the store: the refusal says what opens the woods
+    const mi = m[1] * W + m[0], amt0 = S.map.resAmount[mi], ter0 = S.map.terrain[mi], w0 = S.res.wood, i0 = S.pro.i;
+    S.map.resAmount[mi] = 0; S.map.terrain[mi] = CFG.DEPLETED[T.FOREST]; S.res.wood = 9999;   // felled to stumps, as the work leaves it
+    shown.length = 0; UI._toastAt = {}; UI.handleTap(sx, sy);
+    const spent = { msgs: shown.slice(), task: !idle.task };
+    // …and short of the wood the beat asks, the woods round the grove open (no lesson waits on wood it cannot cut)
+    let near = null;
+    for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2 && !near; dx++) {
+      const tx = m[0] + dx, ty = m[1] + dy, i = ty * W + tx;
+      if ((dx || dy) && Math.hypot(dx, dy) <= 2.5 && S.map.terrain[i] === T.FOREST && S.map.resAmount[i] > 0) near = [tx, ty];
+    }
+    // the farm's beat on the bush's picked-bare soil asks wood (the house beside it had spent the grove's)
+    const bm = Scenarios.live().marks.berries, bi = bm[1] * W + bm[0], bt0 = S.map.terrain[bi], ba0 = S.map.resAmount[bi];
+    S.map.terrain[bi] = CFG.DEPLETED[T.FERTILE]; S.map.resAmount[bi] = 0;
+    const dn0 = S.pro.done.lumber, why = { done: !!dn0, lost: Scenarios.siteLost('lumber') };
+    delete S.pro.done.lumber;
+    S.pro.i = P._beats.findIndex(b => b.id === 'farm'); Scenarios._needC = null;
+    why.price = JSON.stringify(P.goalCost(P.beat()));
+    const rich = near ? Scenarios.mayGather(near[0], near[1]) : null;
+    S.res.wood = 0; Scenarios._needC = null;
+    const starved = near ? Scenarios.mayGather(near[0], near[1]) : null;
+    S.map.resAmount[mi] = amt0; S.map.terrain[mi] = ter0; S.map.terrain[bi] = bt0; S.map.resAmount[bi] = ba0;
+    S.res.wood = w0; S.pro.i = i0; Scenarios._needC = null;
+    if (dn0) S.pro.done.lumber = dn0;
     UI._showToast = real;
-    return { pre, held, none, direct };
+    return { pre, held, none, direct, spent, near, rich, starved, why };
   });
-  ck('aGatherOffTheLessonsGroundIsRefusedInItsWords', off.pre.forest && off.pre.seen && !off.pre.may && off.held.task && off.held.msgs.includes('Cut the trees Mira showed you.')
-    && off.none.task && off.none.msgs.includes('Cut the trees Mira showed you.') && off.direct === false, JSON.stringify(off));
+  ck('aGatherOffTheLessonsGroundIsSentToMirasGround', off.pre.forest && off.pre.seen && !off.pre.may && off.held.sent && off.held.msgs.includes('Off to the trees Mira showed you.') && !off.held.sel
+    && off.none.sent && off.none.msgs.includes('Off to the trees Mira showed you.') && off.direct === false, JSON.stringify(off));
+  ck('andOnceItsGroundIsSpentTheRefusalSaysWhatOpensTheWoods', off.spent.task && off.spent.msgs.includes('The grove is felled. A lumber camp opens the woods.'), JSON.stringify(off.spent));
+  ck('andAPlayerShortOfTheWoodTheLessonAsksMayCutTheTreesRoundIt', !!off.near && off.rich === false && off.starved === true, `tile ${off.near}: rich ${off.rich}, short ${off.starved} ${JSON.stringify(off.why)}`);
   // the two buildings the game teaches stand on their sites and nowhere else, until one stands there
   const site = await p.evaluate(() => {
     const m = Scenarios.live().marks, cp = (k, x, y) => { const v = Bld.canPlace('P', k, x, y, { noCost: true, noSeal: true }); return v.ok ? 'ok' : v.code + ': ' + v.why; };
@@ -1302,6 +1355,44 @@ const endScreen = async (p) => {
   });
   ck('theHouseAndTheFarmStandOnlyOnTheirSites', site.house === 'ok' && site.side === 1 && site.houseElse === 'lesson: The house goes beside the berry bush.' && site.farmElse === 'lesson: The farm goes where the berries grew.',
     JSON.stringify(site));
+  // THE LESSON'S SITES ARE KEPT (build 210, a playtest: a second house on the berry bush's spent soil, and
+  // the farm could stand nowhere): once a house stands, another house may not take the farm's soil, the
+  // camp's stumps, the quarry's broken rock or the road's line; and an older save whose farm site a house
+  // already holds lets the farm stand elsewhere and opens the bushes
+  const kept = await p.evaluate(() => {
+    const m = Scenarios.live().marks, W = CFG.W, line = Scenarios.pathTiles(['roadFrom', 'roadTo']);
+    const cp = (k, x, y) => { const v = Bld.canPlace('P', k, x, y, { noCost: true, noSeal: true }); return v.ok ? 'ok' : v.code + ': ' + v.why; };
+    const a0 = S.allow.slice(), keep = [], t0 = {};
+    for (const k of ['house', 'farm', 'road']) Scenarios.unlock(k);
+    const spend = (mk, t) => { const i = m[mk][1] * W + m[mk][0]; t0[i] = [S.map.terrain[i], S.map.resAmount[i]]; S.map.terrain[i] = t; S.map.resAmount[i] = 0; };
+    spend('berries', CFG.DEPLETED[T.FERTILE]); spend('forest', CFG.DEPLETED[T.FOREST]); spend('stone', CFG.DEPLETED[T.HILLS]);
+    Bld._block = null;
+    const h1 = Bld.place('P', 'house', m.houseSite[0], m.houseSite[1], { free: true, instant: true }); keep.push(h1);
+    const out = {
+      onFarm: cp('house', m.berries[0], m.berries[1]), onCamp: cp('house', m.forest[0], m.forest[1]),
+      onQuarry: cp('house', m.stone[0], m.stone[1]), onRoad: line.length ? cp('house', line[2][0], line[2][1]) : 'no line',
+      farmOwn: cp('farm', m.berries[0], m.berries[1]),
+    };
+    // an older save: a house already stands on the farm's soil
+    const h2 = Bld.place('P', 'house', m.berries[0], m.berries[1], { free: true, instant: true }); keep.push(h2);
+    Bld._block = null;
+    let bush = null;
+    for (let dy = -3; dy <= 3 && !bush; dy++) for (let dx = -3; dx <= 3 && !bush; dx++) {
+      const tx = m.berries[0] + dx, ty = m.berries[1] + dy, i = ty * W + tx;
+      if ((dx || dy) && Math.hypot(dx, dy) <= 3 && S.map.terrain[i] === T.FERTILE && S.map.resAmount[i] > 0) bush = [tx, ty];
+    }
+    out.lost = Scenarios.siteLost('farm');
+    out.bush = bush ? Scenarios.mayGather(bush[0], bush[1]) : null;
+    out.farmElse = cp('farm', m.berries[0] - 1, m.berries[1] + 1);
+    for (const b of keep) if (b) { const j = S.buildings.indexOf(b); if (j >= 0) S.buildings.splice(j, 1); }
+    for (const i in t0) { S.map.terrain[i] = t0[i][0]; S.map.resAmount[i] = t0[i][1]; }
+    Bld._block = null; S.allow = a0;
+    return out;
+  });
+  const keptWords = k => 'lesson: Mira keeps this ground for the ' + k + '.';
+  ck('theLessonsSitesAreKeptForTheirOwnBuildings', kept.onFarm === keptWords('farm') && kept.onCamp === keptWords('lumber camp') && kept.onQuarry === keptWords('quarry')
+    && kept.onRoad === keptWords('road') && kept.farmOwn === 'ok', JSON.stringify(kept));
+  ck('andASaveWhoseFarmSiteIsTakenLetsTheFarmStandElsewhere', kept.lost === true && kept.bush === true && !/^lesson/.test(kept.farmElse), JSON.stringify(kept));
   // the farm's line: held while the bush stands (pick it bare), then on the wood, then the build chain onto its soil
   const fm = await p.evaluate(() => {
     const P = Prologue, m = Scenarios.live().marks, W = CFG.W, bi = m.berries[1] * W + m.berries[0];

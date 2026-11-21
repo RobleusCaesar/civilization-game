@@ -2141,6 +2141,19 @@ const Prologue = {
       taps() { const b = this.unbuilt(), v = this.idleVil(); return [v && !this.selVil() ? { u: v.id } : null, b ? { x: Bld.cx(b), y: Bld.cy(b), r: 1 } : null].filter(Boolean); } },
     { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares these lakes. Not the ones who burned us.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
       test() { return Scenarios.game() === 2 && S.units.some(u => u.owner === 'A' && G.visibleAt && G.visibleAt(u.x | 0, u.y | 0)); } },
+    /* THE EASTER EGG (build 210, a playtest: "explored the starter map looking for
+       easter eggs"): game 1 hides one of the ten wilderness relics by the south pond,
+       where the cattle graze — standing in the remembered fog from the first frame,
+       found when one of the clan sees it (Relics.checkDiscovery's `sight`). The find
+       is the world's news, which a journey world does not toast (quiet), so she says
+       it, once, over whatever she was saying — and her line comes back after */
+    { id: 'relic', face: 'surprised', hold: 0, once: true, auto: 5600, keepRing: true,
+      get text() {
+        const r = typeof S !== 'undefined' && S && S.relic, d = r && window.Relics && Relics.DEFS[r.key];
+        return d && r.found ? 'Look, ' + d.name.replace(/^The /, 'the ') + '! Older than any clan. It gave us ' + r.amount + ' ' + d.res + '.'
+          : 'Look! Old stones, older than any clan.';
+      },
+      test() { return !!(S.relic && S.relic.found); } },
   ],
   // the hands building a site or a storey
   builders(b) { return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'build' && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id)); },
@@ -2236,13 +2249,14 @@ const Prologue = {
      past the lumber camp's door, the hall's and the farm's — and it is DRAGGED */
   roadLine() { return window.Scenarios && Scenarios.pathTiles ? Scenarios.pathTiles(['roadFrom', 'roadTo']) : []; },
   // the stretches of the line not yet laid, in order from the camp
-  roadLeft() { return this.roadLine().filter(t => !Scenarios.roadAt(t[0], t[1])); },
+  // a stretch another building already stands on (a save from before the line was kept) is passed over
+  roadLeft() { return this.roadLine().filter(t => !Scenarios.roadAt(t[0], t[1]) && !(Scenarios.lineTaken && Scenarios.lineTaken(t[0], t[1]))); },
   // the whole line laid (going down or done): the drag's deed
   roadLaid() { return this.roadLine().length > 0 && !this.roadLeft().length; },
   // …and every stretch of it finished (the road's boost is a finished road's)
   roadPaved() {
     const line = this.roadLine();
-    return line.length > 0 && line.every(t => !!(S.map.roads && S.map.roads[t[1] * CFG.W + t[0]]));
+    return line.length > 0 && line.every(t => !!(S.map.roads && S.map.roads[t[1] * CFG.W + t[0]]) || !!(Scenarios.lineTaken && Scenarios.lineTaken(t[0], t[1])));
   },
   // the price of the stretches still to lay (the beat's own: its held line names what it is short of)
   roadCost() {
