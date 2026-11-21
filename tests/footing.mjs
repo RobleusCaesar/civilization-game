@@ -220,15 +220,33 @@ await frames(p, 3);
     const all = S.buildings.filter(o => Footing.look(o) !== 'none');
     const queue = list => { for (const o of list) { Footing._q.push(o.id); Footing._qs.add(o.id); } };
     const pix = e => e.L.map(L => L ? Array.from(L.cv.getContext('2d').getImageData(0, 0, L.cv.width, L.cv.height).data).join(',') + '@' + [L.x, L.y, L.w, L.h].join(',') : 'null').join('|');
+    /* THE TWO FIGURES ARE THE CLEANEST OF FIVE PASSES (build 211): a stopwatch
+       read over hundreds of steps keeps whatever pause the machine took in any
+       one of them (a collection, the scheduler), and a lone 5-12 ms pause read
+       as "a step half a building" on CI's run 363 and, with this same probe, on
+       build 210 too (one run in four here; its largest step swung 0.8-10.8 ms
+       between runs while a real step is about one). Each figure is a pass's
+       largest, and the pass that ran cleanest is the one judged: a pause has to
+       land in all five to count, and a step that really does half a building's
+       work does it in every pass. The threshold is untouched. */
+    const PASSES = 5;
+    const whole = new Map(); let wholeMax = Infinity;
     // each building measured whole (the old way: one call, no budget), timed
-    reset(); const whole = new Map(); let wholeMax = 0;
-    for (const o of all) { queue([o]); const t0 = performance.now(); Footing.flush(); wholeMax = Math.max(wholeMax, performance.now() - t0); whole.set(o.id, pix(Footing._c.get(o.id))); }
+    for (let pass = 0; pass < PASSES; pass++) {
+      reset(); let mx = 0;
+      for (const o of all) { queue([o]); const t0 = performance.now(); Footing.flush(); mx = Math.max(mx, performance.now() - t0); if (!pass) whole.set(o.id, pix(Footing._c.get(o.id))); }
+      wholeMax = Math.min(wholeMax, mx);
+    }
     // …and stepped, a frame with no budget at a time: one step a call, the queue always moving
-    reset(); queue(all);
-    Footing.tick(0);
-    const one = Footing._c.size, inHand = !!Footing._job;
-    let calls = 1, stepMax = 0;
-    while ((Footing._q.length || Footing._job) && calls < 20000) { const t0 = performance.now(); Footing.tick(0); stepMax = Math.max(stepMax, performance.now() - t0); calls++; }
+    let one = 0, inHand = false, calls = 0, stepMax = Infinity;
+    for (let pass = 0; pass < PASSES; pass++) {
+      reset(); queue(all);
+      Footing.tick(0);
+      if (!pass) { one = Footing._c.size; inHand = !!Footing._job; }
+      let k = 1, mx = 0;
+      while ((Footing._q.length || Footing._job) && k < 20000) { const t0 = performance.now(); Footing.tick(0); mx = Math.max(mx, performance.now() - t0); k++; }
+      calls = k; stepMax = Math.min(stepMax, mx);
+    }
     let same = 0; for (const o of all) if (Footing._c.get(o.id) && pix(Footing._c.get(o.id)) === whole.get(o.id)) same++;
     reset(); queue(all);
     Footing.flush();
@@ -257,8 +275,8 @@ await frames(p, 3);
      at every game's first frame and whenever a building near the hall changed.
      It is taken in steps now: a frame with no budget takes ONE step (a measurement
      in hand, maybe nothing finished), the queue still always moves, the largest
-     step is under half the largest whole measurement, and the stepped picture
-     is the whole one cell for cell. */
+     step is under half the largest whole measurement (each the cleanest of five
+     passes), and the stepped picture is the whole one cell for cell. */
   ck('aFrameWithNoBudgetLeftTakesOneStep', r.one <= 1 && (r.inHand || r.one === 1) && r.all > 5, `${r.one} finished, one in hand: ${r.inHand}, of ${r.all}`);
   ck('andTheQueueAlwaysMoves', r.same === r.all && r.calls < 20000, `${r.calls} steps for ${r.all} buildings, ${r.same} finished`);
   ck('andNoStepIsHalfAWholeBuilding', r.stepMax < r.wholeMax * 0.5, `largest step ${r.stepMax} ms, largest whole building ${r.wholeMax} ms`);

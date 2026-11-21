@@ -244,6 +244,8 @@
     background: #000; line-height: 0;
   }
   #mini { width: 96px; height: 96px; image-rendering: pixelated; }
+  /* the view's frame rides its own layer over the map (R.miniCam, build 211): it never takes a tap */
+  #miniCam { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
   #miniToggle {
     position: absolute; right: 6px; z-index: 9;
     top: calc(var(--safe-top) + var(--hud-top) + 106px + var(--pro-map, 0px));   /* bottom-right of the map; --pro-map: below the journey guide's card (js/prologue.js) */

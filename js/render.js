@@ -673,6 +673,18 @@ const R = {
     this.g = this.cv.getContext('2d');
     this.mini = document.getElementById('mini');
     this.mg = this.mini.getContext('2d');
+    /* THE VIEW'S FRAME RIDES ITS OWN LAYER (build 211, R.drawMiniView): a
+       transparent canvas laid over the map in #miniWrap, never taking a tap,
+       so the frame can follow the camera every frame without the map being
+       copied — copying it made the canvas rasterise its four thousand fills
+       on the spot, a millisecond more on every repaint (tests/land.mjs). */
+    try {
+      const mc = this.miniCam = document.createElement('canvas');
+      mc.id = 'miniCam'; mc.setAttribute('aria-hidden', 'true');
+      mc.width = this.mini.width; mc.height = this.mini.height;
+      this.mini.insertAdjacentElement('afterend', mc);
+      this.mcg = mc.getContext('2d');
+    } catch (e) { this.miniCam = this.mcg = null; }
     window.addEventListener('resize', () => this.resize());
     // the measured-viewport fit (index.html's boot block) re-pins the page
     // height and announces it — the canvas must follow the same measurement
@@ -6757,7 +6769,8 @@ const R = {
     if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
     this._resTops = null;                                        // the art a gatherer stands behind (resTopAt) is this world's
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
-    this._miniBase = null; this._miniCamKey = '';                // the minimap's kept picture is the last world's
+    if (this.miniCam) { this.miniCam.width = this.mini.width; this.miniCam.height = this.mini.height; }   // the frame's layer takes the map's size (and is cleared by it)
+    this._miniCamKey = '';                                       // …and lays the new world's frame at once
     this._wakes = null;                                          // …and so is every hull's wake
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
@@ -17915,6 +17928,7 @@ const R = {
       const g = c.getContext('2d');
       g.imageSmoothingEnabled = false;
       g.drawImage(this.mini, 0, 0, 72, 72);
+      if (this.miniCam) g.drawImage(this.miniCam, 0, 0, 72, 72);   // the frame rides its own layer now; the picture keeps it
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   },
@@ -17967,20 +17981,13 @@ const R = {
     // through a spy in their hall (js/deckfx-rival.js) — nothing with none
     if (window.Deck && Deck.drawMini && S.deck) Deck.drawMini(g);
     /* THE VIEW'S FRAME FOLLOWS THE CAMERA EVERY FRAME (build 211,
-       tests/feel.mjs): the map itself repaints twice a second, as ever, but
-       its picture WITHOUT the frame is kept, so R.drawMiniView can lay the
-       frame where the camera is now — a glide, a pan or a drag across the
-       map no longer leaves the frame half a second behind. */
-    const cv = g.canvas;
-    let base = this._miniBase;
-    if (!base || base.width !== cv.width || base.height !== cv.height) {
-      base = this._miniBase = document.createElement('canvas');
-      base.width = cv.width; base.height = cv.height;
-    }
-    const bg = base.getContext('2d');
-    bg.clearRect(0, 0, base.width, base.height);
-    bg.drawImage(cv, 0, 0);
-    this.strokeMiniCam(g);
+       tests/feel.mjs): the map itself repaints twice a second, as ever, and
+       the frame is laid on its own layer over it (R.miniCam), where the
+       camera is NOW — a glide, a pan or a drag across the map no longer
+       leaves it half a second behind. With no layer (a page that could not
+       make one) the frame is drawn on the map as it always was. */
+    if (this.mcg) this.drawMiniView(true);
+    else this.strokeMiniCam(g);
   },
   // the camera's rect on the minimap, in its 2px-a-tile units
   _miniCamRect() {
@@ -17993,15 +18000,18 @@ const R = {
     g.strokeRect(r[0], r[1], r[2], r[3]);
     this._miniCamKey = r.map(v => Math.round(v * 4)).join(',');
   },
-  // the kept picture and the frame where the camera is now: only when the
-  // camera has moved, and never while the map is folded away
+  // the frame where the camera is now, on its own layer: only when the
+  // camera has moved, and never while the map is folded away (a folded map
+  // forgets the frame it drew, so opening it lays the frame afresh)
   drawMiniView(force) {
-    const base = this._miniBase, g = this.mg;
-    if (!base || !g || base.width !== g.canvas.width || base.height !== g.canvas.height) return;
-    if (!force && typeof UI !== 'undefined' && UI.miniCollapsed) return;
+    const g = this.mcg;
+    if (!g) return;
+    if (!force && typeof UI !== 'undefined' && UI.miniCollapsed) { this._miniCamKey = ''; return; }
+    const cv = g.canvas;
+    if (cv.width !== this.mini.width || cv.height !== this.mini.height) { cv.width = this.mini.width; cv.height = this.mini.height; force = true; }
     const k = this._miniCamRect().map(v => Math.round(v * 4)).join(',');
     if (!force && k === this._miniCamKey) return;
-    g.drawImage(base, 0, 0);
+    g.clearRect(0, 0, cv.width, cv.height);
     this.strokeMiniCam(g);
   },
 };

@@ -6664,6 +6664,15 @@ world's buildings behind the plaque and the title. Measured on the phone
 profile (4x CPU), game 1: 6.5 → 11.3 frames a second once the world is open,
 10.1 → 13.5 while walking, background installs 14.4 → 5 ms a frame, heap 77
 → 57 MB. The contract runs red on build 206 in 20 of its 26 checks.
+**ITS STOPWATCH READS THE CLEANEST OF FIVE PASSES** (footing.mjs
+`andNoStepIsHalfAWholeBuilding`, build 211): the largest step, read once
+over several hundred steps, kept whatever pause the machine took in any one
+of them — Contracts run 363 read 12.4 ms against 13.8 in the crowd and 5.1
+against 8.3 alone, and build 210 failed the same probe one run in four here
+(its largest step swung 0.8-10.8 ms while a real step is about one). Each
+figure is now a pass's largest and the cleanest of five passes is judged;
+the half-a-building threshold is untouched, and a mutant whose `tick(0)`
+drains a whole building still reads 9.4 against 9.4 and fails.
 **THE TRIAL AND ORIGIN CARDS** (`CardFace` and `Screens._burnCard` in
 js/screens.js, art in `assets/icons/cards/`, tests/draft-cards.mjs — operator,
 once the deck shipped: the difficulty and origin screens "feel bland…
@@ -6883,10 +6892,18 @@ home and takes the hall in hand, B the build menu, M the map. Never with
 ctrl/meta/alt, in an input, off the playing screen or while `Screens.modalUp()`
 or the deck has the floor. **THE MINIMAP DRAGS** (pointer capture on `#mini`,
 `Feel.miniTo`) **AND ITS FRAME FOLLOWS THE CAMERA** (`R.drawMiniView` /
-`strokeMiniCam` / `_miniCamRect`, `R._miniBase`): `drawMini` keeps its
-picture without the frame, and every R.draw lays the frame where the camera
-is when it has moved (never while the map is folded); the map itself still
-repaints twice a second. **AN ALARM SHOWS WHERE** (`Feel.alarm` / `ping`,
+`strokeMiniCam` / `_miniCamRect`, `R.miniCam`): the frame rides its own
+transparent layer over the map (`#miniCam`, made in `R.init`, inside
+`#miniWrap`, no taps), redrawn by every R.draw when the camera has moved
+(never while the map is folded); the map itself still repaints twice a
+second and the save's thumbnail lays the layer over its copy. **THE MAP IS
+NEVER COPIED TO LAY IT**: the first cut kept a copy of the map without the
+frame, and copying a canvas makes it rasterise its four thousand deferred
+fills on the spot — a millisecond on every repaint, which is what Contracts
+run 363 read in land.mjs `theWorldPassFrameStaysCheap` (2.7-2.8 ms against
+its 2.5 backstop; build 210 read 1.1 here with the same probe, the copy
+2.3, the layer 1.2). `onItsOwnLayerTheMapIsNeverCopied` holds both painters
+to no `drawImage` / `getImageData`. **AN ALARM SHOWS WHERE** (`Feel.alarm` / `ping`,
 from `Combat.hitBuilding`'s first-blow alarm): the map pings the spot (a red
 ring in `#miniWrap`, at most four), a folded map glows its button
 (`#mapBtn.alarm`), and the toast carries a `.tgo` button — the one part of a

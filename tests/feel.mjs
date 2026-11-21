@@ -28,7 +28,7 @@
     10  A BOAT LEAVES A WAKE (R.drawWakes): only while it moves, only on
         water the player sees, never in a save, a still frame is still.
 
-   Run this after touching js/feel.js, R.drawWakes / drawMiniView, the
+   Run this after touching js/feel.js, R.drawWakes / drawMiniView / miniCam, the
    btnPause handler, Screens.enterGame's zoom line, Units.personName,
    Bld.canTrain / canUpgrade's refusals, or a refusal toast in ui.js.
 
@@ -217,29 +217,45 @@ await play('feel-1');
   await p.mouse.up();
   const end = await ev(() => { const x = R.cam.x, y = R.cam.y; R.centerOn(0.6 * CFG.W, 0.55 * CFG.H); const w = { x: R.cam.x, y: R.cam.y }; R.cam.x = x; R.cam.y = y; return Math.hypot(x - w.x, y - w.y); });
   ck('aPressThatSlidesSweepsTheView', Math.abs(mid.x - 0.5 * 65) < 40 && end < 30, `mid-drag at ${mid.x.toFixed(1)},${mid.y.toFixed(1)}; ${end.toFixed(1)} px from the release point`);
-  // the frame is laid where the camera is NOW, between the map's own repaints
+  // the frame is laid where the camera is NOW, between the map's own repaints,
+  // on its own layer over the map (R.miniCam): the map itself is never copied
   const f = await ev(() => {
     R.centerOn(CFG.W * 0.3, CFG.H * 0.3);
     R.drawMini();
     const old = R._miniCamRect();
+    const W = R.mg.canvas.width, H = R.mg.canvas.height;
+    const map0 = R.mg.getImageData(0, 0, W, H).data;
     R.centerOn(CFG.W * 0.62, CFG.H * 0.6);
     const now = R._miniCamRect();
     R.drawMiniView();
-    // every pixel the frame changed against the kept picture lies on the NEW frame
-    const W = R.mg.canvas.width, H = R.mg.canvas.height;
-    const a = R.mg.getImageData(0, 0, W, H).data, bse = R._miniBase.getContext('2d').getImageData(0, 0, W, H).data;
+    const map1 = R.mg.getImageData(0, 0, W, H).data;
+    let mapMoved = 0; for (let i = 0; i < map0.length; i++) if (map0[i] !== map1[i]) mapMoved++;
+    const L = R.miniCam, lc = L && L.getContext('2d');
+    const a = lc ? lc.getImageData(0, 0, L.width, L.height).data : [];
     const onRect = (r, x, y) => { const inX = x >= r[0] - 1.5 && x <= r[0] + r[2] + 1.5, inY = y >= r[1] - 1.5 && y <= r[1] + r[3] + 1.5;
       return (inX && (Math.abs(y - r[1]) <= 1.5 || Math.abs(y - r[1] - r[3]) <= 1.5)) || (inY && (Math.abs(x - r[0]) <= 1.5 || Math.abs(x - r[0] - r[2]) <= 1.5)); };
-    let diff = 0, onNew = 0, onOldOnly = 0;
+    let lit = 0, onNew = 0, onOldOnly = 0;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = (y * W + x) * 4;
-      if (a[i] === bse[i] && a[i + 1] === bse[i + 1] && a[i + 2] === bse[i + 2]) continue;
-      diff++; if (onRect(now, x + 0.5, y + 0.5)) onNew++; else if (onRect(old, x + 0.5, y + 0.5)) onOldOnly++;
+      if (!a[i + 3]) continue;
+      lit++; if (onRect(now, x + 0.5, y + 0.5)) onNew++; else if (onRect(old, x + 0.5, y + 0.5)) onOldOnly++;
     }
-    return { diff, onNew, onOldOnly, moved: Math.hypot(now[0] - old[0], now[1] - old[1]) };
+    // the layer lies exactly on the map, at its pixels, and never takes a tap
+    const mr = R.mini.getBoundingClientRect(), lr = L ? L.getBoundingClientRect() : null;
+    const aligned = !!lr && ['left', 'top', 'width', 'height'].every(k => Math.abs(mr[k] - lr[k]) < 0.5);
+    const noTap = !!L && getComputedStyle(L).pointerEvents === 'none';
+    const sameSize = !!L && L.width === W && L.height === H;
+    /* …and the map is never copied or read back to lay it: a copy made the
+       canvas rasterise its fills on the spot, a millisecond on every repaint
+       (tests/land.mjs theWorldPassFrameStaysCheap read 2.2-2.8ms against 1.2) */
+    const srcMini = String(R.drawMini), srcView = String(R.drawMiniView);
+    const noCopy = !/drawImage|getImageData|createElement/.test(srcMini) && !/drawImage|getImageData|createElement/.test(srcView);
+    return { lit, onNew, onOldOnly, moved: Math.hypot(now[0] - old[0], now[1] - old[1]), mapMoved, aligned, noTap, sameSize, noCopy };
   });
-  ck('theFrameFollowsTheCamera', f.moved > 4 && f.diff > 20 && f.onNew === f.diff && f.onOldOnly === 0,
-    `${f.diff} frame pixels, ${f.onNew} on the camera's rect now, ${f.onOldOnly} left where it was`);
+  ck('theFrameFollowsTheCamera', f.moved > 4 && f.lit > 20 && f.onNew === f.lit && f.onOldOnly === 0,
+    `${f.lit} frame pixels, ${f.onNew} on the camera's rect now, ${f.onOldOnly} left where it was`);
+  ck('onItsOwnLayerTheMapIsNeverCopied', f.mapMoved === 0 && f.aligned && f.noTap && f.sameSize && f.noCopy,
+    JSON.stringify({ mapMoved: f.mapMoved, aligned: f.aligned, noTap: f.noTap, sameSize: f.sameSize, noCopy: f.noCopy }));
 }
 
 /* ---- 4. an alarm shows where ---- */
