@@ -14,7 +14,7 @@
      · own transport under the finger     → board
      · enemy building / bridge            → attack / sever
      · villager onto a standing resource  → gather (dispatch deselects, as taps do)
-     · anything else on explored ground   → walk there (green confirm pulse)
+     · anything else on explored ground   → walk there (the order's mark where it lands)
      · unexplored ground                  → the fog is not a wall (§8): the
        first dark rank beside explored ground is orderable, deeper black
        clamps to the nearest pointable tile, only the deep void refuses

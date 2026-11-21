@@ -37,6 +37,29 @@
         the chips of the goods short (Feel.short), a full town the people
         chip (Feel.popFull) — the answer and its reason in one glance.
 
+   …and build 212's ten, the same kind of thing:
+     9  EVERY ORDER SHOWS WHERE IT LANDS (markOrders / ringsFor). A walk ends
+        in two gold rings closing on a pin, a hand sent to work rings the work
+        it was sent to, an attack rings its mark in rust — on the ground, in
+        R.GRING's own painter, whatever the gesture (a tap or a drag). The
+        order is read off UI._orderSnap's before-and-after, so no branch of
+        the tap has to remember to say it.
+    10  A WORK'S HANDS, AND A HAND'S WORK. A station or a site in hand rings
+        the people working it; a villager in hand rings the work they are
+        at (a soldier the foe he is fighting) — quiet rings, no glint.
+    11  NEWS SAYS WHERE (goThere). A building finished, a soldier trained or a
+        tile run out off the view carries the toast's small ➜, as an alarm's
+        always did.
+    12  THE THING YOU WANTED, READY. A build card, an upgrade or a training
+        refused for the goods is remembered (five minutes); the moment the
+        goods are there a note says so and the card or the button lights
+        gold — never in a journey world, where Mira has the one voice.
+    13  MORE KEYS: ? shows every key on one card, . takes the next idle
+        villager in hand, and Escape steps back from the shell's pages too.
+   The health bar's bite, the flying rally flag, the glinting seams and the
+   fireflies are the renderer's (R.barBite, drawRallyFlag, drawSeamGlints,
+   drawFireflies), the loading plaque's tips Screens.showPrep's.
+
    The boat wakes are the renderer's (R.drawWakes), the villagers' names
    Units.personName's, the Resume that keeps the view Screens.enterGame's.
    Every hook elsewhere guards on the method it calls (`typeof Feel` — the
@@ -53,8 +76,14 @@ const Feel = {
   TIP_REST_MS: 450,         // a resting pointer reads after this long
   TIP_SLOP: 6,              // …and the reading goes when it moves this far
   PING_MS: 2600,
+  MARK: { move: 0.8, work: 0.85, attack: 0.85 },   // s an order's mark is drawn
+  CREW_A: 0.55,             // a work's hands: a quiet ring
+  WANT_MS: 300000,          // a thing refused for its goods is remembered this long
+  WANT_CHECK_MS: 500,
+  READY_MS: 2600,           // …and its card or button shines this long once the goods are in
 
   // ---- state: UI-local, never in S or a save ----
+  _mark: null, _upAt: null, _want: null, _wantT: 0, _ready: null, _idleAt: 0, _keys: null, _keysOn: false,
   _held: null, _panK: 0, _glide: null,
   _userPause: false, _userPauseS: null, _veilOn: false,
   _cursor: '', _cur: null, _curT: 0, _curDirty: false,
@@ -93,6 +122,14 @@ const Feel = {
     document.body.insertBefore(veil, shell || null);
     document.body.insertBefore(tip, shell || null);
     this._veil = veil; this._tip = tip;
+    // the keys, on one card (?)
+    const keys = document.createElement('div');
+    keys.id = 'feelKeys'; keys.setAttribute('aria-hidden', 'true');
+    keys.innerHTML = this.KEYS_HTML;
+    document.body.insertBefore(keys, shell || null);
+    this._keys = keys;
+    // a press anywhere puts the card away (and goes on to do what it does)
+    document.addEventListener('pointerdown', () => { if (this._keysOn) this.showKeys(false); }, true);
     this._buildCursors();
     // the keys
     document.addEventListener('keydown', e => this.onKey(e));
@@ -108,6 +145,9 @@ const Feel = {
       cv.addEventListener('pointerdown', () => { this._glide = null; this.hideTip(); }, true);
       // a click may have changed what is in hand: the cursor reads again
       cv.addEventListener('pointerup', () => { this._curDirty = true; this._curT = 0; });
+      // …and where the finger or the mouse lifted, for the order's mark (it
+      // runs before the tap's own handler: a target's capture listeners first)
+      cv.addEventListener('pointerup', e => { this._upAt = { x: e.clientX, y: e.clientY }; }, true);
       cv.addEventListener('wheel', () => this.hideTip(), { passive: true });
     }
     // the minimap: a press that slides sweeps the view along with it
@@ -181,7 +221,7 @@ const Feel = {
     this._veilOn = on;
     if (on) {
       const h = v.querySelector('.pvHint');
-      if (h) h.textContent = this._mouse ? 'Press Space or ▶ to resume' : 'Tap ▶ to resume';
+      if (h) h.textContent = this._mouse ? 'Press Space or ▶ to resume · ? for every key' : 'Tap ▶ to resume';
     }
     v.classList.toggle('on', on);
     // a reading under the plate is clutter: it goes, and waits for the next move
@@ -202,7 +242,14 @@ const Feel = {
         if (!e.repeat && Screens.enterGame) Screens.enterGame();
         e.preventDefault(); return;
       }
+      // a shell page: Escape is its own back plaque (the board, the guide, the
+      // saves, the settings, the trial pick and the origin draft)
+      if (e.key === 'Escape' && typeof Screens !== 'undefined' && Screens.current !== 'playing') {
+        if (!e.repeat && this.shellEscape()) e.preventDefault();
+        return;
+      }
       if (!this.inGame() || this.blocked()) return;
+      if (e.key === '?') { if (!e.repeat) { this._mouse = true; this.showKeys(!this._keysOn); } e.preventDefault(); return; }
       const code = e.code;
       if (this.PAN[code]) { this._held.add(code); this._mouse = true; e.preventDefault(); return; }
       if (e.repeat) return;
@@ -220,6 +267,7 @@ const Feel = {
       const d = /^(?:Digit|Numpad)([1-9])$/.exec(code);
       if (d) { if (this.army(+d[1])) e.preventDefault(); return; }
       if (code === 'KeyH' || e.key === 'Home') { if (this.home()) e.preventDefault(); return; }
+      if (e.key === '.' || code === 'Period' || code === 'NumpadDecimal') { this.nextIdle(); e.preventDefault(); return; }
       if (code === 'KeyB') { this.buildKey(); e.preventDefault(); return; }
       if (code === 'KeyM') { if (typeof UI !== 'undefined' && UI.setMiniCollapsed) UI.setMiniCollapsed(!UI.miniCollapsed); e.preventDefault(); }
     } catch (err) { /* a key never throws into the game */ }
@@ -227,6 +275,7 @@ const Feel = {
   // Escape steps back one thing at a time, and from nothing to the menu
   escape() {
     if (typeof UI === 'undefined') return;
+    if (this._keysOn) { this.showKeys(false); return; }
     if (UI.placing) {
       // a building's ghost answers Escape itself (UI.init's own key); a wall
       // or a road line has no ghost, so Escape puts the line tool down here
@@ -272,6 +321,49 @@ const Feel = {
     else { if (UI.sel) UI.deselect(); UI.setMenuCollapsed(false); }
   },
 
+  // .: the next idle villager taken in hand, the view carried to them, in turn
+  nextIdle() {
+    if (typeof UI === 'undefined' || UI.placing || !S || !S.units) return;
+    const idle = S.units.filter(u => u.owner === 'P' && Units.isVillager(u) && !(Units.isLevied && Units.isLevied(u)) &&
+      !u.task && !u.tUnit && !(u.dieT > 0)).sort((a, b) => a.id - b.id);
+    if (!idle.length) { UI.toast('Nobody is idle', 'note'); return; }
+    const next = idle.find(u => u.id > this._idleAt) || idle[0];
+    this._idleAt = next.id;
+    UI.select('unit', next.id);
+    this.glideTo(next.x, next.y);
+  },
+  // ?: the keys on one card — put away by ? again, Escape or any press
+  showKeys(on) {
+    if (!this._keys) return;
+    on = !!on && this.inGame();
+    this._keysOn = on;
+    this._keys.classList.toggle('on', on);
+    if (on) this.hideTip();
+  },
+  /* Escape on a shell page is the page's own way back — the same element the
+     player would press, so where it leads is never a second copy of the rule */
+  SHELL_BACK: { load: 'loadBack', howto: 'howBack', leaders: 'ldrBack', newgame: 'ngBack', settings: 'setBack' },
+  shellEscape() {
+    if (typeof Screens === 'undefined') return false;
+    const cur = Screens.current;
+    const shown = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+    if (cur === 'settings' && window.SettingsPage && SettingsPage.live && SettingsPage.live() && SettingsPage.back) { SettingsPage.back(); return true; }
+    if (cur === 'draft') {
+      const ov = document.getElementById('draftOverlay');
+      if (ov && ov.style.display !== 'none' && shown(ov)) {
+        const ok = document.getElementById('btnDraftGotIt');
+        if (ok) ok.click(); else ov.style.display = 'none';
+        return true;
+      }
+      const back = document.getElementById('btnDraftBack');   // hidden once a card is kept: the burn has the floor
+      if (shown(back)) { back.click(); return true; }
+      return false;
+    }
+    const id = this.SHELL_BACK[cur], back = id && document.getElementById(id);
+    if (shown(back)) { back.click(); return true; }
+    return false;
+  },
+
   /* a glide to a world point (tiles): eased, ~a third of a second, the end
      clamped as R.centerOn clamps it. Reduced motion lands it at once. */
   glideTo(tx, ty) {
@@ -292,6 +384,9 @@ const Feel = {
     if (!this.ON || !this._inited) return;
     dt = Math.max(0, Math.min(0.05, dt || 0));
     this.syncVeil();
+    if (this._keysOn && (!this.inGame() || this.blocked())) this.showKeys(false);
+    if (this._want && performance.now() - this._wantT >= this.WANT_CHECK_MS) { this._wantT = performance.now(); this._wantCheck(); }
+    if (this._ready) this._readyPaint();
     const g = this._glide;
     if (g) {
       g.t += dt;
@@ -343,17 +438,21 @@ const Feel = {
 
   /* ---------------- 4. alerts that show where ---------------- */
   alarm(node, x, y) {
+    try { this.ping(x, y); } catch (e) {}
+    this.goThere(node, x, y);
+  },
+  /* the toast's small ➜ (x, y in tiles): the one part of a toast that takes a
+     tap, and the view glides there. News from off the view wears it too. */
+  goThere(node, x, y) {
     try {
-      this.ping(x, y);
-      if (node && node.isConnected && !node.querySelector('.tgo')) {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'tgo';
-        b.title = 'Go there'; b.setAttribute('aria-label', 'Go there');
-        b.innerHTML = this.GO_SVG;
-        b.addEventListener('click', ev => { ev.stopPropagation(); this.glideTo(x, y); });
-        node.classList.add('hasGo');
-        node.appendChild(b);
-      }
+      if (!this.ON || !node || !node.isConnected || node.querySelector('.tgo')) return;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'tgo';
+      b.title = 'Go there'; b.setAttribute('aria-label', 'Go there');
+      b.innerHTML = this.GO_SVG;
+      b.addEventListener('click', ev => { ev.stopPropagation(); this.glideTo(x, y); });
+      node.classList.add('hasGo');
+      node.appendChild(b);
     } catch (e) {}
   },
   ping(x, y) {
@@ -578,10 +677,197 @@ const Feel = {
   },
 
   /* ---------------- 8. the bar points at what is missing ---------------- */
-  short(cost) {
+  short(cost, what) {
     if (!cost || typeof S === 'undefined' || !S || !S.res) return;
     for (const k of ['food', 'wood', 'stone', 'gold'])
       if ((cost[k] || 0) > 0 && (S.res[k] || 0) < cost[k]) this.flashChip(k);
+    // …and what was asked for is remembered: the goods in, it says so (_wantCheck)
+    if (what && what.kind) {
+      try {
+        const w = Object.assign({}, what, { at: performance.now(), s: S });
+        if (w.kind === 'build') w.n = this._countKey(w.key);
+        if (w.kind === 'train') { const b = Bld.get(w.bid); w.q0 = b && b.queue ? b.queue.slice() : []; }
+        this._want = w; this._wantT = performance.now();
+      } catch (e) {}
+    }
+  },
+  _countKey(key) { let n = 0; for (const b of S.buildings) if (b.owner === 'P' && b.key === key) n++; return n; },
+  _a(name) { return /^the\s/i.test(name) ? name : (/^[aeiou]/i.test(name) ? 'an ' : 'a ') + name; },
+  /* THE THING YOU WANTED, READY: asked twice a second while something waits.
+     It is let go when it is done another way (the building raised, the storey
+     begun, the soldier queued), when the world changes, or after WANT_MS. */
+  _wantCheck() {
+    const w = this._want;
+    if (!w) return;
+    try {
+      if (typeof S === 'undefined' || !S || w.s !== S || S.over || performance.now() - w.at > this.WANT_MS) { this._want = null; return; }
+      if (!this.inGame() || this.blocked()) return;      // it waits behind the menu or a card
+      let ok = false, line = '', b = null;
+      if (w.kind === 'build') {
+        const d = CFG.BUILDINGS[w.key];
+        if (!d || this._countKey(w.key) > w.n) { this._want = null; return; }
+        const tc = Bld.tcOf('P');
+        ok = Bld.canAfford(Bld.effCost('P', w.key)) && !(d.reqTC && (!tc || tc.level < d.reqTC));
+        line = 'Enough to ' + (w.key === 'wonder' ? 'raise ' : 'build ') + this._a(d.name) + ' now.';
+      } else {
+        b = Bld.get(w.bid);
+        if (!b || b.owner !== 'P') { this._want = null; return; }
+        if (w.kind === 'up') {
+          if (b.level !== w.lv || b.upgrading > 0) { this._want = null; return; }
+          ok = Bld.canUpgrade(b).ok;
+          line = `Enough to raise the ${Bld.def(b.key).name} to Lv ${b.level + 1} now.`;
+        } else if (w.kind === 'train') {
+          if (b.queue && b.queue.some(e => e.unit === w.unit && !(w.q0 || []).includes(e))) { this._want = null; return; }
+          ok = Bld.canTrain(b, w.unit).ok;
+          const un = CFG.UNITS[w.unit];
+          line = 'Enough to train ' + this._a(un ? un.name : w.unit) + ' now.';
+        } else { this._want = null; return; }
+      }
+      if (!ok) return;
+      this._want = null;
+      if (S.scenario) return;                  // a journey world: Mira says what comes next
+      const node = typeof UI !== 'undefined' && UI.toast ? UI.toast(line, 'note') : null;
+      if (b && node && UI.inOpenBand && !UI.inOpenBand(Bld.cx(b), Bld.cy(b))) this.goThere(node, Bld.cx(b), Bld.cy(b));
+      this._ready = { kind: w.kind, key: w.key, bid: w.bid, unit: w.unit, until: performance.now() + this.READY_MS };
+      this._readyPaint();
+    } catch (e) { this._want = null; }
+  },
+  // the card or the button shines gold while it is said (laid again if the panel is redrawn)
+  _readyPaint() {
+    const r = this._ready;
+    if (!r) return;
+    const on = performance.now() < r.until && this.inGame();
+    let els = [];
+    if (on) {
+      if (r.kind === 'build') els = document.querySelectorAll('#buildmenu .bbtn[data-key="' + r.key + '"]');
+      else if (typeof UI !== 'undefined' && UI.sel && UI.sel.type === 'bld' && UI.sel.id === r.bid)
+        els = document.querySelectorAll(r.kind === 'up' ? '#panel [data-act="upgrade"]' : '#panel [data-act="train"][data-unit="' + r.unit + '"]');
+      for (const el of els) if (!el.classList.contains('fkReady')) el.classList.add('fkReady');
+      return;
+    }
+    document.querySelectorAll('.fkReady').forEach(el => el.classList.remove('fkReady'));
+    this._ready = null;
+  },
+
+  /* ---------------- 9–10. rings that point ----------------
+     The mark of the order just given, and a work's hands round the work in
+     hand: what R.draw's building and unit passes and its tile rings lay on
+     the ground (R.drawGRing / drawMarkTile), read once a frame. A picture of
+     orders already given — it gives none, and nothing here reaches S. */
+  markOrders(was) {
+    try {
+      if (!this.ON || !was || typeof S === 'undefined' || !S || !S.units) return;
+      const prev = new Map();
+      for (let i = 1; i + 7 < was.length; i += 8) prev.set(was[i], i);
+      let atk = null, work = null;
+      const moves = [];
+      for (const u of S.units) {
+        if (u.owner !== 'P') continue;
+        const i = prev.get(u);
+        if (i == null) continue;               // born in the gesture: nobody's order
+        if (was[i + 1] === u.task && was[i + 2] === u.path && was[i + 3] === u.tUnit && was[i + 4] === u.tBld && was[i + 5] === u.tBridge) continue;
+        const m = this.markOf(u);
+        if (!m) continue;
+        if (m.kind === 'attack') { if (!atk) atk = m; }
+        else if (m.kind === 'work') { if (!work) work = m; }
+        else moves.push(m);
+      }
+      let m = atk || work;
+      if (!m && moves.length) {
+        // a party walks to a formation round the tile pressed: the mark is on the tile pressed
+        m = moves[0];
+        const up = this._upAt && typeof R !== 'undefined' && R.screenToWorld ? R.screenToWorld(this._upAt.x, this._upAt.y) : null;
+        if (up && moves.length > 1) {
+          const ux = up.x / CFG.TILE, uy = up.y / CFG.TILE;
+          let bd = Infinity;
+          for (const c of moves) { const d = Math.hypot(c.x - ux, c.y - uy); if (d < bd) { bd = d; m = c; } }
+        }
+      }
+      if (!m) return;
+      m.t0 = performance.now() / 1000; m.life = this.MARK[m.kind] || 0.8; m.s = S;
+      this._mark = m;
+    } catch (e) {}
+  },
+  // what one unit's new order points at (null: nothing to mark — a halt, the horn, a banishing)
+  markOf(u) {
+    const t = u.task || null;
+    const foe = id => { const o = id && Units.get(id); return o && o.owner !== 'P' ? o : null; };
+    const o = foe(u.tUnit) || (t && t.on ? foe(t.on) : null);
+    if (o) return { kind: 'attack', uid: o.id, st: 'foe' };
+    if (u.tBld) { const b = Bld.get(u.tBld); if (b && b.owner !== 'P') return { kind: 'attack', bid: b.id, st: 'foe' }; }
+    if (u.tBridge && u.tBridge.x != null) return { kind: 'attack', x: u.tBridge.x + 0.5, y: u.tBridge.y + 0.5, st: 'foe' };
+    if (!t) return null;
+    const ty = t.type;
+    if ((ty === 'build' || ty === 'work' || ty === 'mantower') && t.id) { const b = Bld.get(t.id); if (b) return { kind: 'work', bid: b.id, st: 'sel' }; }
+    if (ty === 'board' && t.id) { const tr = Units.get(t.id); if (tr) return { kind: 'work', uid: tr.id, st: 'sel' }; }
+    if ((ty === 'gather' || ty === 'claim' || ty === 'fish' || ty === 'shorefish' || ty === 'terraform') && t.x != null) return { kind: 'work', x: t.x + 0.5, y: t.y + 0.5, st: 'sel' };
+    if ((ty === 'move' || ty === 'unload') && t.x != null) return { kind: 'move', x: t.x + 0.5, y: t.y + 0.5, st: 'sel' };
+    return null;
+  },
+  /* the rings this frame lays: { units: id → ring, blds: id → ring, tiles: [ring] },
+     or null. now: the render clock in seconds (R.draw's gNow). A ring carries
+     drawGRing's own options; calm (no glint) because it only points. */
+  ringsFor(now) {
+    if (!this.ON || typeof S === 'undefined' || !S || !S.units || !this.inGame()) return null;
+    let out = null;
+    const put = (kind, key, o) => {
+      out = out || { units: new Map(), blds: new Map(), tiles: [] };
+      if (kind === 'u') out.units.set(key, o); else if (kind === 'b') out.blds.set(key, o); else out.tiles.push(o);
+    };
+    if (!(typeof UI !== 'undefined' && UI.placing)) this._crewRings(put);
+    const m = this._mark;
+    if (m) {
+      const T = now - m.t0;
+      if (m.s !== S || T > m.life || T < -0.25) this._mark = null;
+      else this._markRings(m, Math.max(0, T), now, put);
+    }
+    return out;
+  },
+  _markRings(m, T, now, put) {
+    const still = this._reduced(), L = m.life;
+    const a = Math.max(0, Math.min(1, T / 0.07, (L - T) / 0.3));
+    const ease = x => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3);
+    if (m.kind === 'move') {
+      // two rings close on the spot, the second a beat behind and inside the first, over a pin
+      const p1 = still ? 1 : ease(T / 0.42), T2 = T - 0.09, p2 = still ? 1 : ease(T2 / 0.38);
+      put('t', 0, { x: m.x, y: m.y, r: 0.62, st: 'sel', a: a * 0.95, s: 1.8 - 0.8 * p1, calm: 1, cover: 1, dot: a, t: now });
+      if (still || T2 > 0) put('t', 0, { x: m.x, y: m.y, r: 0.62, st: 'sel', a: a * 0.62 * Math.min(1, still ? 1 : T2 / 0.07), s: 1.45 - 0.85 * p2, calm: 1, cover: 1, t: now });
+      return;
+    }
+    // a work rings in gold and an attack in rust: in from a little wider, burning white as it lands
+    const s0 = m.kind === 'attack' ? 1.55 : 1.3, p = still ? 1 : ease(T / 0.3);
+    const o = { st: m.st, a, s: s0 - (s0 - 1) * p, flash: still ? 0 : Math.max(0, 1 - T / 0.34), calm: 1, t: now };
+    if (m.uid) put('u', m.uid, o);
+    else if (m.bid) put('b', m.bid, o);
+    else put('t', 0, Object.assign(o, { x: m.x, y: m.y, r: 0.78, cover: 1 }));
+  },
+  // a work in hand rings its hands; a hand in hand rings its work (or, a soldier, his foe)
+  _crewRings(put) {
+    const sel = typeof UI !== 'undefined' && UI.sel;
+    if (!sel) return;
+    const quiet = st => ({ st, a: this.CREW_A, s: 1, calm: 1 });
+    if (sel.type === 'bld') {
+      const b = Bld.get(sel.id);
+      if (!b || b.owner !== 'P') return;
+      for (const u of S.units) {
+        if (u.owner !== 'P' || !u.task || u.task.id !== b.id) continue;
+        const ty = u.task.type;
+        if (ty === 'work' || ty === 'build' || ty === 'mantower') put('u', u.id, quiet('sel'));
+      }
+      return;
+    }
+    if (sel.type !== 'unit') return;
+    const u = Units.get(sel.id);
+    if (!u || u.owner !== 'P') return;
+    const f = u.tUnit && Units.get(u.tUnit);
+    if (f && f.owner !== 'P') { put('u', f.id, quiet('foe')); return; }
+    const fb = u.tBld && Bld.get(u.tBld);
+    if (fb && fb.owner !== 'P') { put('b', fb.id, quiet('foe')); return; }
+    const t = u.task;
+    if (!t) return;
+    if ((t.type === 'work' || t.type === 'build' || t.type === 'mantower') && t.id) { const b = Bld.get(t.id); if (b) put('b', b.id, quiet('sel')); }
+    else if ((t.type === 'gather' || t.type === 'claim' || t.type === 'fish' || t.type === 'shorefish') && t.x != null)
+      put('t', 0, Object.assign(quiet('sel'), { x: t.x + 0.5, y: t.y + 0.5, r: 0.7, cover: 1, a: this.CREW_A * 0.9 }));
   },
   popFull() { this.flashChip('pop'); },
   flashChip(k) {
@@ -632,6 +918,18 @@ const Feel = {
       } catch (e) {}
     }
   },
+  KEYS_HTML: '<div class="fkPlate"><b class="fkHead">Keys</b><dl>' +
+    '<dt><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Move the view</dd>' +
+    '<dt><kbd>+</kbd><kbd>−</kbd></dt><dd>Zoom in and out</dd>' +
+    '<dt><kbd>Space</kbd></dt><dd>Pause</dd>' +
+    '<dt><kbd>Esc</kbd></dt><dd>Step back, then the menu</dd>' +
+    '<dt><kbd>H</kbd></dt><dd>Home to the hall</dd>' +
+    '<dt><kbd>.</kbd></dt><dd>Next idle villager</dd>' +
+    '<dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Your saved armies</dd>' +
+    '<dt><kbd>B</kbd></dt><dd>Build menu</dd>' +
+    '<dt><kbd>M</kbd></dt><dd>Map</dd>' +
+    '<dt><kbd>?</kbd></dt><dd>These keys</dd>' +
+    '</dl><small>Press ? or Esc to put this away</small></div>',
   PAUSE_SVG: '<svg class="pvIcon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="4" width="4.6" height="16" rx="1.4" fill="#f2cf73" stroke="#140d06" stroke-width="1.2"/><rect x="13.9" y="4" width="4.6" height="16" rx="1.4" fill="#f2cf73" stroke="#140d06" stroke-width="1.2"/></svg>',
   GO_SVG: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.6" fill="none" stroke="#f2cf73" stroke-width="1.4"/><circle cx="8" cy="8" r="2.2" fill="#f2cf73"/><path d="M8 0.6 V3.4 M8 12.6 V15.4 M0.6 8 H3.4 M12.6 8 H15.4" stroke="#f2cf73" stroke-width="1.4" stroke-linecap="round"/></svg>',
 
@@ -676,6 +974,23 @@ body:not(.ingame) #pauseVeil, body:not(.ingame) #feelTip { display: none !import
 #miniWrap .mping::after { animation-delay: .45s; }
 @keyframes mping { from { transform: scale(.12); opacity: 1; } to { transform: scale(1); opacity: 0; } }
 #mapBtn.alarm { animation: mapAlarm .75s ease-in-out 3; }
+#feelKeys { position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center; pointer-events: none; }
+#feelKeys.on { display: flex; animation: pvIn .16s ease-out; }
+body:not(.ingame) #feelKeys { display: none !important; }
+#feelKeys .fkPlate { pointer-events: auto; cursor: pointer; padding: 13px 22px 11px; border-radius: 8px; color: #e9dcbd;
+  background: rgba(18,13,8,0.94); border: 1px solid rgba(214,174,90,0.6);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.65), 0 10px 30px rgba(0,0,0,0.6); max-width: calc(100vw - 32px); }
+#feelKeys .fkHead { display: block; text-align: center; margin-bottom: 9px; font-family: var(--menufont, serif); font-size: 16px;
+  font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #f2cf73; text-shadow: 0 2px 0 #000; }
+#feelKeys dl { display: grid; grid-template-columns: auto auto; gap: 6px 14px; margin: 0; align-items: center; }
+#feelKeys dt { justify-self: end; white-space: nowrap; color: #a89a7a; font-size: 11px; }
+#feelKeys dd { margin: 0; font-size: 12.5px; color: #d8cba8; white-space: nowrap; }
+#feelKeys kbd { display: inline-block; min-width: 13px; padding: 1px 5px 2px; margin: 0 1px; border-radius: 4px; text-align: center;
+  font: 700 11px/1.35 system-ui, -apple-system, sans-serif; color: #f2e4c2; background: linear-gradient(#3b2b18, #231810);
+  border: 1px solid rgba(214,174,90,0.55); box-shadow: 0 2px 0 #0b0704; }
+#feelKeys small { display: block; text-align: center; margin-top: 10px; font-size: 11px; color: #a89a7a; }
+#buildmenu .bbtn.fkReady, #panel .fkReady { animation: fkReady .8s ease-in-out 3; }
+@keyframes fkReady { 50% { box-shadow: 0 0 0 2px #f2c35a, 0 0 14px rgba(242,195,90,.85), inset 0 0 10px rgba(255,230,160,.3); filter: brightness(1.12); } }
 @keyframes mapAlarm { 50% { box-shadow: 0 0 0 2px #ff5a3c, 0 0 12px rgba(255,90,60,.9); } }
 #topbar .res.short { animation: chipShort .9s ease-out; }
 #topbar .res.short > span { color: #ff9a86; }
@@ -689,6 +1004,8 @@ body:not(.ingame) #pauseVeil, body:not(.ingame) #feelTip { display: none !import
   #miniWrap .mping::before, #miniWrap .mping::after { animation: none; opacity: .9; transform: scale(.6); }
   #topbar .res.short { animation: none; box-shadow: inset 0 1px 2px rgba(0,0,0,.55), 0 0 0 2px rgba(255,96,64,.9); }
   #mapBtn.alarm { animation: none; box-shadow: 0 0 0 2px #ff5a3c; }
+  #feelKeys.on { animation: none; }
+  #buildmenu .bbtn.fkReady, #panel .fkReady { animation: none; box-shadow: 0 0 0 2px #f2c35a; }
 }`;
     document.head.appendChild(st);
   },

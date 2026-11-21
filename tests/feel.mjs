@@ -28,9 +28,37 @@
     10  A BOAT LEAVES A WAKE (R.drawWakes): only while it moves, only on
         water the player sees, never in a save, a still frame is still.
 
+   …and build 212's ten (operator: "10 more refinements… small refinements
+   and tweaks that make the game feel high quality, intentional and
+   thoughtful"):
+    11  EVERY ORDER SHOWS WHERE IT LANDS: a walk two gold rings closing on a
+        pin, a hand sent to work a ring round the work, an attack a rust
+        ring round its mark — gone after its beat, a still frame still, never
+        round a foe in the fog.
+    12  A WORK'S HANDS, AND A HAND'S WORK: a station in hand rings its
+        workers, a worker in hand rings the station (quiet rings).
+    13  THE BAR SHOWS THE BITE: a blow leaves a pale chunk where the health
+        was, held a beat and drained; a bar with no one behind it is the old
+        bar, byte for byte.
+    14  THE RALLY FLAG FLIES, and nothing of it lies in the black.
+    15  GOLD SEAMS GLINT — only seams in sight, never under a mine.
+    16  FIREFLIES on a deep night at the woods' edge — never by day, in the
+        fog or in the black.
+    17  THE THING YOU WANTED, READY: a card or a training refused for goods
+        says so once the goods are in, and shines; built another way, it is
+        let go; a journey world says nothing (Mira's voice).
+    18  NEWS OFF THE VIEW SAYS WHERE: a building finished off the view wears
+        the toast's way there; one on the view does not.
+    19  MORE KEYS: ? shows every key, . takes the next idle villager in turn,
+        and Escape steps back from a shell page.
+    20  THE LOADING PLAQUE wears the HUD's walnut and gold and says one thing
+        worth knowing — never in a journey world.
+
    Run this after touching js/feel.js, R.drawWakes / drawMiniView / miniCam, the
    btnPause handler, Screens.enterGame's zoom line, Units.personName,
-   Bld.canTrain / canUpgrade's refusals, or a refusal toast in ui.js.
+   Bld.canTrain / canUpgrade's refusals, or a refusal toast in ui.js — or
+   R.drawGRing / drawMarkTile / drawRallyFlag / drawSeamGlints /
+   drawFireflies / bar / barBite, UI._orderSnap, Bld.goNews, Screens.showPrep.
 
      node tests/feel.mjs      # exits non-zero on any regression          */
 import { dirname, join } from 'node:path';
@@ -462,6 +490,311 @@ await play('feel-1');
   }
   const nw = await ev(() => { G.newGame('feel-10b', 'calm', 'medium'); return R._wakes == null || R._wakes.size === 0; });
   ck('aNewWorldForgetsEveryWake', nw);
+}
+
+/* ---- 11. every order shows where it lands ---- */
+{
+  await play('feel-11');
+  const t = await ev(() => {
+    const W = CFG.W, terr = S.map.terrain;
+    const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+    let grass = null, wood = null;
+    for (let r = 3; r < 14; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const x = (v.x | 0) + dx, y = (v.y | 0) + dy;
+      if (!MapGen.onBoard(x, y) || !MapGen.onBoard(x, y + 1)) continue;
+      if (!grass && terr[y * W + x] === T.GRASS && !Bld.at(x, y) && !S.units.some(o => Math.hypot(o.x - x - 0.5, o.y - y - 0.5) < 1.6)) grass = { x, y };
+      if (!wood && terr[y * W + x] === T.FOREST && S.map.resAmount[y * W + x] > 0 && terr[(y + 1) * W + x] === T.GRASS && !Bld.at(x, y + 1)) wood = { x, y };
+    }
+    return { vid: v.id, grass, wood };
+  });
+  const tapTile = async (x, y) => { const pt = await onScreen(x, y); await p.mouse.click(pt.x, pt.y); await p.waitForTimeout(90); };
+  await ev((vid) => { UI.select('unit', vid); }, t.vid);
+  await tapTile(t.grass.x, t.grass.y);
+  const m1 = await ev(() => { const m = Feel._mark, now = performance.now() / 1000, r = Feel.ringsFor(now);
+    const sig = o => o && JSON.stringify({ t: o.tiles, u: [...o.units], b: [...o.blds] });
+    return { kind: m && m.kind, x: m && m.x, y: m && m.y, tiles: r ? r.tiles.length : 0, dot: r && r.tiles.some(q => q.dot > 0),
+      still: sig(Feel.ringsFor(now)) === sig(Feel.ringsFor(now)) }; });
+  ck('aWalkMarksWhereItLands', m1.kind === 'move' && m1.x === t.grass.x + 0.5 && m1.y === t.grass.y + 0.5 && m1.tiles === 2 && m1.dot,
+    JSON.stringify(m1));
+  ck('andTheMarkIsAPureFunctionOfTheClock', m1.still, 'two asks at one moment lay the same rings');
+  // it is laid on the ground, in the frame's own pass
+  const drawn = await ev(() => { let n = 0; const o = R.drawMarkTile; R.drawMarkTile = function (...a) { n++; return o.apply(this, a); }; R.draw(0); R.drawMarkTile = o; return n; });
+  ck('andIsDrawnOnTheGround', drawn >= 1, drawn + ' tile ring(s) laid by R.draw');
+  await p.waitForTimeout(1000);
+  ck('andIsGoneAfterItsBeat', await ev(() => { Feel.ringsFor(performance.now() / 1000); return Feel._mark === null; }));
+  // a hand sent to the woods rings the woods
+  await ev((vid) => { UI.select('unit', vid); }, t.vid);
+  await tapTile(t.wood.x, t.wood.y);
+  const m2 = await ev((vid) => ({ kind: Feel._mark && Feel._mark.kind, x: Feel._mark && Feel._mark.x, y: Feel._mark && Feel._mark.y, task: Units.get(vid).task && Units.get(vid).task.type }), t.vid);
+  ck('aHandSentToWorkRingsTheWork', m2.task === 'gather' && m2.kind === 'work' && m2.x === t.wood.x + 0.5 && m2.y === t.wood.y + 0.5, JSON.stringify(m2));
+  // a soldier sent at a wolf rings the wolf in rust — and never through the fog
+  const w = await ev((g) => {
+    const s = Units.spawn('defender', 'P', g.x - 1.5, g.y + 0.5);
+    const wolf = Units.spawn('wolf', 'W', g.x + 0.5, g.y + 0.5); wolf.aggro = 0; wolf.path = null;
+    UI.select('unit', s.id);
+    R.centerOn(wolf.x, wolf.y); const TL = CFG.TILE, z = R.cam.z;
+    return { sid: s.id, wid: wolf.id, x: (wolf.x * TL - R.cam.x) * z, y: (wolf.y * TL - CFG.SPRITE_LIFT - R.cam.y) * z };
+  }, t.grass);
+  await p.mouse.click(w.x, w.y); await p.waitForTimeout(80);
+  const m3 = await ev((w) => { const m = Feel._mark, r = Feel.ringsFor(performance.now() / 1000), o = r && r.units.get(w.wid);
+    let foe = 0; const d = R.drawGRing; R.drawGRing = function (g, q, st, o2) { if (st === 'foe') foe++; return d.apply(this, arguments); };
+    R.draw(0);
+    const was = G.visibleAt; G.visibleAt = (x, y) => false; let hid = foe; R.draw(0); hid = foe - hid; G.visibleAt = was; R.drawGRing = d;
+    return { kind: m && m.kind, uid: m && m.uid, st: o && o.st, drawn: foe - hid, hid }; }, w);
+  ck('anAttackRingsItsMarkInRust', m3.kind === 'attack' && m3.uid === w.wid && m3.st === 'foe' && m3.drawn >= 1, JSON.stringify(m3));
+  ck('andNeverRoundAFoeInTheFog', m3.hid === 0, m3.hid + ' rust ring(s) with the wolf unseen');
+}
+
+/* ---- 12. a work's hands, and a hand's work ---- */
+{
+  await play('feel-12');
+  const c = await ev(() => {
+    const tc = Bld.tcOf('P'); S.res.wood = S.res.food = S.res.stone = S.res.gold = 5000;
+    let farm = null;
+    for (let r = 2; r < 10 && !farm; r++) for (let dy = -r; dy <= r && !farm; dy++) for (let dx = -r; dx <= r && !farm; dx++) {
+      const x = tc.x + dx, y = tc.y + dy;
+      if (!MapGen.onBoard(x, y)) continue;
+      const was = S.map.terrain[MapGen.idx(x, y)];
+      if (was !== T.GRASS || Bld.at(x, y)) continue;
+      S.map.terrain[MapGen.idx(x, y)] = T.BARREN;
+      if (Bld.canPlace('P', 'farm', x, y, { noCost: true }).ok) farm = Bld.place('P', 'farm', x, y, { free: true, instant: true });
+      else S.map.terrain[MapGen.idx(x, y)] = was;
+    }
+    const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
+    v.task = { type: 'work', id: farm.id }; v.path = null;
+    UI.select('bld', farm.id);
+    const r1 = Feel.ringsFor(performance.now() / 1000);
+    UI.select('unit', v.id);
+    const r2 = Feel.ringsFor(performance.now() / 1000);
+    UI.deselect();
+    const r3 = Feel.ringsFor(performance.now() / 1000);
+    return { hands: r1 && r1.units.has(v.id) && r1.units.get(v.id).calm === 1, work: r2 && r2.blds.has(farm.id), none: !r3 || (!r3.units.size && !r3.blds.size && !r3.tiles.length) };
+  });
+  ck('aStationInHandRingsItsHands', !!c.hands, JSON.stringify(c));
+  ck('andAHandInHandRingsItsWork', !!c.work && c.none, JSON.stringify(c));
+}
+
+/* ---- 13. the bar shows the bite ---- */
+{
+  await play('feel-13');
+  const b13 = await ev(() => {
+    const d = Units.spawn('defender', 'P', CFG.W / 2, CFG.H / 2);
+    const max = d.maxhp;
+    Units.damage(d, Math.round(max * 0.4), null);
+    const now = performance.now() / 1000, frac = d.hp / max;
+    const g0 = R._barGhost(d, now, frac), C = R.BAR_BITE;
+    const later = R._barGhost(d, now + C.hold + 1 / C.drain + 0.05, frac);
+    // drawn: a pale chunk between the health and where it was; no `who`, the old bar
+    const cv = document.createElement('canvas'); cv.width = 100; cv.height = 4; const g = cv.getContext('2d');
+    R.bar(g, 0, 0, 100, 4, frac, '#7dbb5e', d);
+    const at = x => Array.from(g.getImageData(x, 1, 1, 1).data);
+    const pale = at(Math.round(100 * (frac + (g0 - frac) / 2)));
+    g.clearRect(0, 0, 100, 4); R.bar(g, 0, 0, 100, 4, frac, '#7dbb5e');
+    const plain = at(Math.round(100 * (frac + (g0 - frac) / 2)));
+    return { pre: 1, g0, frac, later, pale, plain };
+  });
+  ck('aBlowLeavesTheBite', Math.abs(b13.g0 - 1) < 1e-9 && b13.frac < 0.7, `the bar was at ${b13.g0}, now ${b13.frac.toFixed(2)}`);
+  ck('whichDrainsAway', Math.abs(b13.later - b13.frac) < 1e-9, `${b13.later} once it has drained`);
+  ck('drawnPaleBetweenTheTwo', b13.pale[0] > 220 && b13.pale[1] > 200 && b13.plain[0] < 60, JSON.stringify({ pale: b13.pale, plain: b13.plain }));
+}
+
+/* ---- 14. the rally flag flies, and nothing of it lies in the black ---- */
+{
+  await play('feel-14');
+  const f = await ev(() => {
+    S.res.wood = S.res.food = S.res.stone = S.res.gold = 5000;
+    const tc = Bld.tcOf('P');
+    // the flag on the board's first playable row, the camera at the edge, so the black is in view
+    // the flag's foot on the first playable row's top: its pole rises into the black
+    tc.rally = { x: tc.x + 1, y: 0.55 };   // its foot at 1.05 tiles (rallyPoint adds the half)
+    UI.select('bld', tc.id);
+    R.cam.z = 2; R.centerOn(tc.x + 1, 1); R.clampCam();
+    let n = 0; const o = R.drawRallyFlag; R.drawRallyFlag = function (...a) { n++; return o.apply(this, a); };
+    const pn = performance.now; const t0 = pn.call(performance); performance.now = () => t0;
+    const W = R.cv.width, H = R.cv.height;
+    const bp = R.boardPx(), z = R.cam.z * R.dpr;
+    const sy0 = (bp.y0 - R.cam.y) * z;   // the board's top edge on the canvas
+    const probe = () => {
+      R.draw(0); const a = R.g.getImageData(0, 0, W, H).data;
+      const keep = R.drawRallyFlag; R.drawRallyFlag = () => {}; R.draw(0); const b = R.g.getImageData(0, 0, W, H).data; R.drawRallyFlag = keep;
+      let diff = 0, out = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4;
+        if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) { diff++; if (y < sy0 - 0.5) out++; } }
+      return { diff, out };
+    };
+    const real = probe();
+    // the control: with the board's clip stood down the probe must see the pole in the black
+    const clip = R._gClip; R._gClip = () => {}; const ctl = probe(); R._gClip = clip;
+    R.drawRallyFlag = o; performance.now = pn;
+    return { n, diff: real.diff, out: real.out, ctl: ctl.out, sy0: Math.round(sy0) };
+  });
+  ck('theRallyFlagFlies', f.n >= 1 && f.diff > 40, `${f.n} draw(s), ${f.diff} pixels its own`);
+  ck('andNothingOfItLiesInTheBlack', f.out === 0, `${f.out} of its pixels above the board's edge (row ${f.sy0})`);
+  ck('andTheProbeCanSeeOneThere', f.ctl > 0, `${f.ctl} with the clip stood down`);
+}
+
+/* ---- 15. gold seams glint, 16. fireflies on a deep night ---- */
+{
+  await play('feel-15');
+  const s15 = await ev(() => {
+    const W = CFG.W;
+    let seam = null;
+    for (let y = 3; y < CFG.H - 3 && !seam; y++) for (let x = 3; x < W - 3 && !seam; x++) if (S.map.terrain[y * W + x] === T.GOLDORE && !Bld.at(x, y)) seam = { x, y };
+    if (!seam) { seam = { x: Math.floor(W / 2), y: Math.floor(CFG.H / 2) }; S.map.terrain[seam.y * W + seam.x] = T.GOLDORE; }
+    R.cam.z = 2; R.centerOn(seam.x + 0.5, seam.y + 0.5);
+    // a moment the seam's own rhythm is lit
+    const h = ((seam.x * 73856093) ^ (seam.y * 19349663)) >>> 0, C = R.GLINT;
+    const per = C.period + (h % 97) / 97 * 1.6;
+    const tLit = Math.ceil(1000 / per) * per - (h % 1000) / 1000 * per + C.life / 2;
+    const pn = performance.now;
+    const count = (fn) => { const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height; const g = cv.getContext('2d');
+      g.setTransform(R.cam.z * R.dpr, 0, 0, R.cam.z * R.dpr, -R.cam.x * R.cam.z * R.dpr, -R.cam.y * R.cam.z * R.dpr);
+      let n = 0; const f0 = g.fill.bind(g); g.fill = (...a) => { n++; return f0(...a); }; fn(g); return n; };
+    performance.now = () => tLit * 1000;
+    const lit = count(g => R.drawSeamGlints(g));
+    const was = G.visibleAt; G.visibleAt = () => false; const fog = count(g => R.drawSeamGlints(g)); G.visibleAt = was;
+    const ba = Bld.at; Bld.at = (x, y) => (x === seam.x && y === seam.y) ? { key: 'mine' } : ba.call(Bld, x, y);
+    const mined = count(g => R.drawSeamGlints(g)); Bld.at = ba;
+    performance.now = pn;
+    // fireflies: a deep night at a wood's edge, never by day, never in the fog
+    const terr = S.map.terrain; let edge = null;
+    for (let y = 4; y < CFG.H - 4 && !edge; y++) for (let x = 4; x < W - 4 && !edge; x++) {
+      if (terr[y * W + x] !== T.GRASS) continue; let n = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (terr[(y + dy) * W + x + dx] === T.FOREST) n++;
+      if (n >= 6) edge = { x, y };
+    }
+    R.centerOn(edge.x + 0.5, edge.y + 0.5);
+    const ff = (k) => { const dp = R.dayPhase, dk = R._dusk; R._dusk = null; R.dayPhase = () => ({ k, warm: 0, dayF: 0.5 });
+      const cv = document.createElement('canvas'); cv.width = R.cv.width; cv.height = R.cv.height; const g = cv.getContext('2d');
+      let n = 0; const d0 = g.drawImage.bind(g); g.drawImage = (...a) => { n++; return d0(...a); };
+      R.drawFireflies(g); R.dayPhase = dp; R._dusk = dk; return n; };
+    const night = ff(0.95), day = ff(0);
+    const was2 = G.visibleAt; G.visibleAt = () => false; const ffFog = ff(0.95); G.visibleAt = was2;
+    const src = String(R.drawFireflies);
+    return { lit, fog, mined, night, day, ffFog, clip: /boardPx\(\)/.test(src) && /clip\(\)/.test(src) };
+  });
+  ck('aSeamInSightGlints', s15.lit > 0, s15.lit + ' fill(s) at its lit moment');
+  ck('butNeverInTheFogOrUnderAMine', s15.fog === 0 && s15.mined === 0, JSON.stringify({ fog: s15.fog, mined: s15.mined }));
+  ck('fireflyLightOnADeepNight', s15.night > 0 && s15.day === 0, `${s15.night} at night, ${s15.day} by day`);
+  ck('neverInTheFogNorTheBlack', s15.ffFog === 0 && s15.clip, JSON.stringify({ fog: s15.ffFog, clipped: s15.clip }));
+}
+
+/* ---- 17. the thing you wanted, ready ---- */
+{
+  await play('feel-17');
+  await ev(() => { UI.deselect(); UI.setMenuCollapsed(false); document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); UI._toastAt = {}; });
+  await p.waitForTimeout(100);
+  const a = await ev(() => { S.res.wood = 0; S.res.stone = 0; S.res.gold = 0; UI.refreshMenu && UI.refreshMenu();
+    const btn = document.querySelector('#buildmenu .bbtn[data-key="barracks"]'); btn.click();
+    const w = Feel._want && Feel._want.key; if (UI.placing) UI.exitPlacement(); UI.setMenuCollapsed(false); return w; });
+  await ev(() => { S.res.wood = 5000; S.res.stone = 5000; S.res.gold = 5000; });
+  await p.waitForTimeout(800);
+  const r = await ev(() => ({ said: [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent).filter(x => /Enough to build a Barracks now/.test(x)).length,
+    lit: !!document.querySelector('#buildmenu .bbtn[data-key="barracks"].fkReady'), left: !!Feel._want }));
+  ck('aRefusedCardIsRemembered', a === 'barracks', String(a));
+  ck('andSaysSoWhenTheGoodsAreIn', r.said === 1 && r.lit && !r.left, JSON.stringify(r));
+  // raised another way meanwhile: let go, nothing said
+  const b2 = await ev(async () => {
+    document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); UI._toastAt = {};
+    S.res.wood = 0; S.res.stone = 0; S.res.gold = 0;
+    document.querySelector('#buildmenu .bbtn[data-key="house"]').click(); if (UI.placing) UI.exitPlacement(); UI.setMenuCollapsed(false);
+    const tc = Bld.tcOf('P'); let done = false;
+    for (let r = 2; r < 9 && !done; r++) for (let dy = -r; dy <= r && !done; dy++) for (let dx = -r; dx <= r && !done; dx++) {
+      if (Bld.canPlace('P', 'house', tc.x + dx, tc.y + dy, { noCost: true }).ok) { Bld.place('P', 'house', tc.x + dx, tc.y + dy, { free: true, instant: true }); done = true; } }
+    S.res.wood = 5000; await new Promise(r => setTimeout(r, 800));
+    return { said: [...document.querySelectorAll('#toasts .toast')].some(t => /Enough to build a House/.test(t.textContent)), left: !!Feel._want };
+  });
+  ck('builtAnotherWayItIsLetGo', !b2.said && !b2.left, JSON.stringify(b2));
+  // a training: said in its own words
+  const c = await ev(async () => {
+    document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); UI._toastAt = {};
+    const tc = Bld.tcOf('P'); S.res.food = 0; UI.select('bld', tc.id); UI.renderPanel();
+    document.querySelector('#panel [data-act="train"][data-unit="villager"]').click();
+    const w = Feel._want && Feel._want.kind;
+    S.res.food = 5000; await new Promise(r => setTimeout(r, 800));
+    return { w, said: [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent).filter(x => /Enough to train a Villager now/.test(x)).length };
+  });
+  ck('aTrainingSaysItInItsOwnWords', c.w === 'train' && c.said === 1, JSON.stringify(c));
+  // a journey world: Mira has the one voice
+  const j = await ev(async () => {
+    document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); UI._toastAt = {};
+    const tc = Bld.tcOf('P'); S.res.food = 0; UI.select('bld', tc.id); UI.renderPanel();
+    document.querySelector('#panel [data-act="train"][data-unit="villager"]').click();
+    const sc = S.scenario; S.scenario = 'prologue_x';
+    S.res.food = 5000; await new Promise(r => setTimeout(r, 800));
+    S.scenario = sc;
+    return { said: [...document.querySelectorAll('#toasts .toast')].some(t => /Enough to/.test(t.textContent)), left: !!Feel._want };
+  });
+  ck('aJourneyWorldSaysNothing', !j.said && !j.left, JSON.stringify(j));
+}
+
+/* ---- 18. news off the view says where ---- */
+{
+  await play('feel-18');
+  const n = await ev(() => {
+    const tc = Bld.tcOf('P'); S.res.wood = 5000;
+    const site = () => { for (let r = 3; r < 12; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      if (Bld.canPlace('P', 'house', tc.x + dx, tc.y + dy, { noCost: true }).ok) return Bld.place('P', 'house', tc.x + dx, tc.y + dy, { free: true }); } return null; };
+    const last = () => [...document.querySelectorAll('#toasts .toast')].pop();
+    document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); UI._toastAt = {};
+    const a = site(); R.centerOn(a.x > CFG.W / 2 ? 3 : CFG.W - 4, a.y > CFG.H / 2 ? 3 : CFG.H - 4);
+    const offView = !UI.inOpenBand(Bld.cx(a), Bld.cy(a));
+    Bld.finish(a); const t1 = last();
+    document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); UI._toastAt = {};
+    const b = site(); R.centerOn(Bld.cx(b), Bld.cy(b)); Bld.finish(b); const t2 = last();
+    return { offView, go: !!(t1 && t1.querySelector('.tgo')), onView: !!(t2 && t2.querySelector('.tgo')) };
+  });
+  ck('newsOffTheViewSaysWhere', n.offView && n.go, JSON.stringify(n));
+  ck('newsOnTheViewNeedsNoWay', !n.onView, JSON.stringify(n));
+}
+
+/* ---- 19. more keys ---- */
+{
+  await play('feel-19');
+  await p.mouse.move(5, 400);
+  await p.keyboard.press('Shift+Slash'); await p.waitForTimeout(120);
+  const k1 = await ev(() => ({ on: Feel._keysOn, disp: getComputedStyle(document.getElementById('feelKeys')).display, words: document.getElementById('feelKeys').textContent }));
+  await p.keyboard.press('Escape'); await p.waitForTimeout(80);
+  const k2 = await ev(() => ({ on: Feel._keysOn, scr: Screens.current }));
+  ck('aQuestionMarkShowsEveryKey', k1.on && k1.disp === 'flex' && /Next idle villager/.test(k1.words) && /Home to the hall/.test(k1.words), JSON.stringify({ on: k1.on, disp: k1.disp }));
+  ck('andEscapePutsItAwayFirst', !k2.on && k2.scr === 'playing', JSON.stringify(k2));
+  const ids = await ev(() => { const vs = S.units.filter(u => u.owner === 'P' && Units.isVillager(u)); vs.forEach(u => { u.task = null; u.path = null; u.tUnit = 0; }); UI.deselect(); return vs.map(u => u.id).sort((a, b) => a - b); });
+  const seen = [];
+  for (let i = 0; i < ids.length + 1; i++) { await p.keyboard.press('Period'); await p.waitForTimeout(60); seen.push(await ev(() => UI.sel && UI.sel.type === 'unit' ? UI.sel.id : null)); }
+  ck('aDotTakesTheNextIdleVillagerInTurn', ids.length >= 2 && seen.slice(0, ids.length).every((id, i) => id === ids[i]) && seen[ids.length] === ids[0],
+    `${seen.join(',')} over idle ${ids.join(',')}`);
+  await ev(() => { Screens.backTo = 'paused'; Screens.show('howto'); });
+  await p.waitForTimeout(150);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+  const s1 = await ev(() => Screens.current);
+  await ev(() => { Screens.backTo = 'paused'; Screens.show('settings'); });
+  await p.waitForTimeout(150);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+  const s2 = await ev(() => Screens.current);
+  ck('escapeStepsBackFromAShellPage', s1 === 'paused' && s2 === 'paused', `guide → ${s1}, settings → ${s2}`);
+  await ev(() => Screens.enterGame());
+  await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 20000 });
+}
+
+/* ---- 20. the loading plaque ---- */
+{
+  await play('feel-20');
+  const q = await ev(() => {
+    Screens.showPrep(true);
+    const el = document.getElementById('prep'), tip = document.getElementById('prepTip'), fill = document.getElementById('prepFill');
+    const a = { shown: getComputedStyle(el).display === 'flex', tip: tip && tip.textContent, tipShown: !!tip && getComputedStyle(tip).display !== 'none', fill: !!fill,
+      title: (document.getElementById('prepTitle') || {}).textContent };
+    Screens.showPrep(false);
+    const sc = S.scenario; S.scenario = 'prologue_x'; Screens.showPrep(true);
+    const j = getComputedStyle(document.getElementById('prepTip')).display === 'none';
+    Screens.showPrep(false); S.scenario = sc;
+    const hidden = getComputedStyle(document.getElementById('prep')).display === 'none';
+    return { ...a, journey: j, hidden, tips: Screens.PREP_TIPS.length };
+  });
+  ck('thePlaqueSaysOneThingWorthKnowing', q.shown && q.tipShown && q.fill && /^TIP/.test(q.tip) && /Preparing the world/.test(q.title), JSON.stringify(q));
+  ck('butNotInAJourneyWorld', q.journey && q.hidden, JSON.stringify({ journey: q.journey, hidden: q.hidden }));
 }
 
 ck('noPageErrors', errs.length === 0, errs.slice(0, 3).join(' | '));

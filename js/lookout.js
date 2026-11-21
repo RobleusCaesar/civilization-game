@@ -587,7 +587,7 @@ const Lookout = {
         let x = s.x - w / 2, y = s.head - 3.5;
         if (mid !== null) x = i === 0 ? Math.min(x, mid - 0.75 - w) : Math.max(x, mid + 0.75);
         if (y + 2 > towerBar - 0.5 && y < towerBar + 3.5) y = towerBar - 3;
-        R.bar(g, x, y, w, 2, u.hp / u.maxhp, u.owner === 'P' ? '#7dbb5e' : '#e06550');
+        R.bar(g, x, y, w, 2, u.hp / u.maxhp, u.owner === 'P' ? '#7dbb5e' : '#e06550', u);
       }
     });
   },

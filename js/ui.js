@@ -211,7 +211,7 @@ const UI = {
         // "scout the spot you're saving for" state, with ✓ disabled
         // …and the top bar points at whatever is short of it (js/feel.js)
         const cost0 = Bld.effCost('P', key), afford0 = Bld.canAfford(cost0);
-        if (!afford0 && typeof Feel !== 'undefined' && Feel.short) Feel.short(cost0);
+        if (!afford0 && typeof Feel !== 'undefined' && Feel.short) Feel.short(cost0, { kind: 'build', key, name: d.name });
         if (this.isLine(key) && !afford0) { this.toast('Not enough resources: still needs ' + Bld.shortfall(cost0), true); return; }
         this.deselect();
         // tuck the build menu away so the whole map is visible to pick a site
@@ -527,6 +527,8 @@ const UI = {
       if (was && this._orderMoved(was)) {
         G.noteAct();
         if (window.Backend && Backend.step && this._villagerMoved(was)) Backend.step('villager');
+        // every order shows where it lands, tap or drag (js/feel.js, build 212)
+        if (typeof Feel !== 'undefined' && Feel.markOrders) Feel.markOrders(was);
       }
       if (this.pointers.size < 2) this.pinchD = 0;
       if (pinchEnds) {
@@ -773,7 +775,7 @@ const UI = {
     const r = Bld.canPlace('P', key, g.x, g.y);
     if (!r.ok) {
       this.toast(r.why, true);
-      if (r.code === 'cost' && typeof Feel !== 'undefined' && Feel.short) Feel.short(Bld.effCost('P', key));   // the bar points at what is short
+      if (r.code === 'cost' && typeof Feel !== 'undefined' && Feel.short) Feel.short(Bld.effCost('P', key), { kind: 'build', key, name: Bld.def(key).name });   // the bar points at what is short
       this.buildPlaceMap();                  // the world moved — show the new truth
       this._placeCheck();
       return;
@@ -3278,13 +3280,13 @@ const UI = {
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
-        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); if (cu.cost && typeof Feel !== 'undefined' && Feel.short) Feel.short(cu.cost); } }
+        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); if (cu.cost && typeof Feel !== 'undefined' && Feel.short) Feel.short(cu.cost, cu.short ? { kind: 'up', bid: b2.id, lv: b2.level } : null); } }
         else if (btn.dataset.act === 'train') {
           if (!Bld.train(b2, btn.dataset.unit)) {
             // the refusal names what is short, and the top bar points at it (js/feel.js)
             const ct = Bld.canTrain(b2, btn.dataset.unit);
             this.toast(ct.short ? 'Not enough resources: still needs ' + ct.short : ct.why, true);
-            if (typeof Feel !== 'undefined') { if (ct.cost && Feel.short) Feel.short(ct.cost); else if (ct.code === 'pop' && Feel.popFull) Feel.popFull(); }
+            if (typeof Feel !== 'undefined') { if (ct.cost && Feel.short) Feel.short(ct.cost, ct.short ? { kind: 'train', bid: b2.id, unit: btn.dataset.unit } : null); else if (ct.code === 'pop' && Feel.popFull) Feel.popFull(); }
           }
           else this.trainFlash(btn);
           this.refreshMenu();

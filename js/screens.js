@@ -692,17 +692,75 @@ const Screens = {
     }
   },
   /* the plaque: made on first use, inline-styled like the splash so it needs
-     no stylesheet, and it says what it waits for */
+     no stylesheet, and it says what it waits for. It wears the HUD's own
+     material (build 212): a walnut plate on a gold hairline, its name in the
+     menu's Cinzel caps, a gold bar in a dark groove — and, while it waits, one
+     thing worth knowing (PREP_TIPS), the next one each time and every few
+     seconds. Never in a journey world: there Mira has the one voice. */
+  PREP_TIPS: [
+    'A house beside a farm makes a homestead: the field gives more, and the house holds one more.',
+    'Lumber camps stand on felled woods, quarries on broken rock, farms on picked-bare soil.',
+    'Archers on a tower see farther, shoot farther and take less harm.',
+    'Roads speed your people, and most buildings beside one work a tenth better.',
+    'A soldier hurt in a fight and healed at the hall or a war camp comes back a veteran.',
+    'Walk a villager to a gold seam to claim it as a mine.',
+    'Stone never grows back. Woods and fields do, in time.',
+    'Tap a counter on the top bar to see what comes in each day.',
+    'A gate opens for your own people, never for raiders.',
+    'Press on a unit you hold and drag: it goes there, and stays in hand.',
+  ],
+  PREP_TIP_DESK: 'In a game, press ? to see every key.',
+  PREP_TIP_MS: 5600,
+  _prepTipText() {
+    const list = this.PREP_TIPS.slice();
+    try { if (matchMedia('(hover: hover) and (pointer: fine)').matches) list.push(this.PREP_TIP_DESK); } catch (e) {}
+    let i = 0;
+    try { i = (parseInt(this.lsGet ? this.lsGet('neo-prep-tip') : localStorage.getItem('neo-prep-tip'), 10) || 0) % list.length; } catch (e) {}
+    try { const v = String((i + 1) % list.length); if (this.lsSet) this.lsSet('neo-prep-tip', v); else localStorage.setItem('neo-prep-tip', v); } catch (e) {}
+    return list[i];
+  },
   showPrep(on) {
     let el = document.getElementById('prep');
     if (!el && !on) return;
     if (!el) {
       el = document.createElement('div'); el.id = 'prep';
       el.setAttribute('style', 'position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(13,11,8,0.55);pointer-events:none');
-      el.innerHTML = '<div style="padding:14px 22px;border-radius:10px;background:#1a1610;color:#e8dcc0;font:600 15px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,0.5);text-align:center"><div>Preparing the world…</div><div id="prepBar" style="margin-top:10px;height:6px;width:180px;background:#3a3125;border-radius:3px;overflow:hidden"><div id="prepFill" style="height:100%;width:0;background:#e8c15a"></div></div></div>';
+      el.innerHTML =
+        '<div id="prepPlate" style="width:min(330px,calc(100vw - 48px));box-sizing:border-box;padding:15px 22px 13px;border-radius:6px;text-align:center;' +
+          'background:linear-gradient(180deg,#2c2116 0%,#1b130c 100%);border:1px solid rgba(214,174,90,0.75);color:#e8dcc0;' +
+          'box-shadow:0 0 0 1px #000,inset 0 1px 0 rgba(255,236,190,0.14),inset 0 0 0 3px rgba(0,0,0,0.22),0 10px 32px rgba(0,0,0,0.6);' +
+          'font:500 13px/1.45 system-ui,-apple-system,sans-serif">' +
+        '<div id="prepTitle" style="font-family:var(--menufont,Georgia,serif);font-weight:700;font-size:15px;letter-spacing:2.5px;text-transform:uppercase;color:#f2cf73;text-shadow:0 2px 0 #000">Preparing the world…</div>' +
+        '<div id="prepBar" style="margin:11px 0 0;height:8px;width:100%;box-sizing:border-box;background:#0f0b07;border:1px solid rgba(214,174,90,0.45);border-radius:4px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.7)">' +
+          '<div id="prepFill" style="height:100%;width:0;background:linear-gradient(180deg,#ffe9a6 0%,#f2c35a 45%,#b9781f 100%);box-shadow:0 0 6px rgba(242,195,90,0.55)"></div></div>' +
+        '<div id="prepTip" style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(214,174,90,0.22);min-height:2.9em;color:#d8cba8;font-size:12.5px;transition:opacity .35s ease"></div>' +
+        '</div>';
       document.body.appendChild(el);
     }
     el.style.display = on ? 'flex' : 'none';
+    // one tip, said in full, and the next a few seconds on (a journey world says none)
+    const tipEl = document.getElementById('prepTip');
+    if (tipEl) {
+      const journey = !!(window.S && S.scenario);
+      tipEl.style.display = on && !journey ? '' : 'none';
+      clearTimeout(this._tipT);
+      if (on && !journey) {
+        const say = () => {
+          tipEl.innerHTML = '<b style="color:#e7c27a;font-size:10.5px;letter-spacing:1.5px;margin-right:6px">TIP</b>' + this._prepTipText().replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+          tipEl.style.opacity = '1';
+        };
+        say();
+        const next = () => {
+          if (el.style.display === 'none') return;
+          let still = false;
+          try { still = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+          if (still) say(); else { tipEl.style.opacity = '0'; this._tipT = setTimeout(() => { if (el.style.display !== 'none') say(); }, 360); }
+          this._tipT2 = setTimeout(next, this.PREP_TIP_MS);
+        };
+        clearTimeout(this._tipT2);
+        this._tipT2 = setTimeout(next, this.PREP_TIP_MS);
+      } else clearTimeout(this._tipT2);
+    }
     if (on) {
       const fill = document.getElementById('prepFill');
       const total = Math.max(1, (window.Assets && Assets.pending) || 1); this._prepTotal = Math.max(this._prepTotal || 0, total);

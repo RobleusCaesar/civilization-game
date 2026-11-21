@@ -1961,7 +1961,9 @@ const Units = {
                 : 'The soil here is spent — a farm may stand on it';
               // the first spent tile of a world is a note on the screen, then one
               // every few game days (UI.idleNote); the chronicle keeps them all
-              G.log(`${what} — villager idle`, UI.idleNote ? UI.idleNote() : undefined);
+              const said = G.log(`${what} — villager idle`, UI.idleNote ? UI.idleNote() : undefined);
+              // …off the open view, the note carries the way to the idle hand (js/feel.js)
+              if (said && typeof Feel !== 'undefined' && Feel.goThere && UI.inOpenBand && !UI.inOpenBand(u.x, u.y)) Feel.goThere(said, u.x, u.y);
             }
             u.task = null;
           }
@@ -2121,7 +2123,10 @@ const Units = {
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
-            if (u.owner === 'P') G.log('This shoal is fished out — villager idle', UI.idleNote ? UI.idleNote() : undefined);
+            if (u.owner === 'P') {
+              const said = G.log('This shoal is fished out — villager idle', UI.idleNote ? UI.idleNote() : undefined);
+              if (said && typeof Feel !== 'undefined' && Feel.goThere && UI.inOpenBand && !UI.inOpenBand(u.x, u.y)) Feel.goThere(said, u.x, u.y);
+            }
             u.task = null;
           }
         }
@@ -2862,6 +2867,8 @@ const Units = {
 
   damage(u, amt, attackerId, attackerOwner) {
     u.hp -= Math.max(1, amt);
+    // the bar shows the bite (R.barBite, a picture: the level the blow took it from)
+    if (window.R && R.barBite) R.barBite(u, (u.hp + Math.max(1, amt)) / u.maxhp);
     const attacker = attackerId ? this.get(attackerId) : null;
     /* THE SOUND OF A FIGHT WE ARE IN. Either side of the blow being ours is
        what makes it audible: a scrap between barbarians and the rival across

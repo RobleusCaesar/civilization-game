@@ -22,6 +22,21 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 212, date: '2026-11-21', title: 'Thoughtful details',
+    items: [
+      'Every order shows where it lands: a walk lays a gold ring and a pin on the spot, work rings the tree, rock or building, and an attack rings its target in red.',
+      'Select a building to see the people working it ringed in gold, or select a worker or a soldier to see what they are working on or fighting.',
+      'When something is hit, the health it just lost stays pale on its bar for a moment, then drains away.',
+      'A rally point is a little flag on a pole now, waving in the wind.',
+      'Gold seams catch the light and glint now and then.',
+      'On the darkest nights, fireflies drift over the meadows.',
+      'If you could not afford a building, an upgrade or a soldier, the game tells you the moment you can, and its card or button glows gold.',
+      'News from off the screen, like a finished building, a trained soldier or a villager whose trees ran out, has a button that takes you there.',
+      'On a computer, press the question mark key to see every key, and the full stop key to find your idle villagers one by one. Escape now steps back from the menu pages too.',
+      'While a world is prepared, the loading plaque shows a gold bar and a tip worth knowing.',
+    ],
+  },
+  {
     build: 211, date: '2026-11-21', title: 'Small touches',
     items: [
       'Pause with the button or the Space bar and the world dims under a clear Paused sign. Resuming from the menu keeps your view where you left it.',

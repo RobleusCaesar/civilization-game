@@ -414,7 +414,7 @@ node tests/building-fire.mjs # every other building burns in its own art (R.FIRE
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
 node tests/ground-ring.mjs    # the gold ring on the ground: laid before the body (its far arc behind him, its near arc whole), at the device's pixels, gold not olive, the snap and the flurry on taking (fewer each in a crowd), a foe's rust, a building's round its foot, a still frame and no RNG, nothing in the black, still under reduced motion, a crowd calm and a blit a man; the journey's ring on the ground (#proRing unseen over it), breathing with motes, fading from target to target, behind the crowns; the gold that says "this one" (js/goldfx.js): the guide's halo hugging a work's own outline and over its roof (never a box), gold at every point of its breath, a sheen across its own picture now and then, gold leaf rising into the sky, a man wound round with light (in front of him and behind); taken in hand a work bursts gold at its foot and springs (never a wall or a gate, never a crowd); a work finished or raised and a man trained or ranked pop in gold — every hook asks, the player's alone, a pop nobody saw let go; a still frame and no RNG; one new silhouette a frame; still under reduced motion
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
-node tests/feel.mjs          # the small things: Space and ⏸ pause under a PAUSED plate (a held pause none), a Resume keeps the zoom; the keyboard (arrows/WASD, +/−, Esc steps back, H home, 1–9 banners, B, M), never in a field, under a modifier or a modal; the minimap drags and its frame follows the camera; an alarm pings the map and its toast glides there; a mouse cursor says what a click does, fog-honest; a resting mouse reads the stock left ("Last seen" in the fog, nothing in the black) and goes when the ground moves; the build cards explain themselves; a refusal flashes the goods short; a villager's name, stable through a save, the player's own alone; a wake only under way, only on water in sight, never saved
+node tests/feel.mjs          # the small things: Space and ⏸ pause under a PAUSED plate (a held pause none), a Resume keeps the zoom; the keyboard (arrows/WASD, +/−, Esc steps back, H home, 1–9 banners, B, M), never in a field, under a modifier or a modal; the minimap drags and its frame follows the camera; an alarm pings the map and its toast glides there; a mouse cursor says what a click does, fog-honest; a resting mouse reads the stock left ("Last seen" in the fog, nothing in the black) and goes when the ground moves; the build cards explain themselves; a refusal flashes the goods short; a villager's name, stable through a save, the player's own alone; a wake only under way, only on water in sight, never saved; and build 212's: an order's mark where it lands (a walk's ring and pin, the work in gold, a foe in rust, never in the fog), gone after its beat, a pure function of the clock; a work's hands and a hand's work ringed; a blow's bite pale on the bar, then drained; the rally flag flies and nothing of it lies in the black; a seam in sight glints, never in the fog or under a mine; fireflies on a deep night, never in the fog or the black; a thing refused for its goods says when they are in (never in a journey world); news off the view says where; ? shows every key, . takes the next idle villager, Escape steps back off a shell page; the loading plaque's tip (none in a journey world)
 ```
 
 **THE RALLY IS AN ORDER IN WAITING** (`Units.rallyPlan` / `rallyTo` /
@@ -4437,7 +4437,8 @@ destination ring, drawn in render.js) → `UI.commitMoveDrag` on release. The
 release NEVER re-selects. Semantics are movement-first but honour intent:
 enemy under the finger → attack, own transport → board, enemy building /
 bridge → attack/sever, villager onto a resource → gather (dispatch deselects,
-as taps do), explored ground → walk (green `UI.moveFlash` confirm pulse).
+as taps do), explored ground → walk (`UI.moveFlash`; since build 212 its
+picture is the order's mark, `Feel.markOrders`, for a tap and a drag alike).
 **THE FOG IS NOT A WALL** (same test §8, taps and drags alike — from a
 playtest: pushing a scout forward felt "stilted", because the vision frontier
 is ragged and a tap that LOOKS just past the faded edge landed on black and
@@ -6955,6 +6956,80 @@ on water tiles the player SEES, clipped to the board, smooth at the device's
 resolution; render state (`R._wakes`, a Map by unit id) forgotten with the
 hull and by `R.onNewGame`, never in a save, and two draws at dt 0 move
 nothing. And the double tap's toast says "3 axemen" (`UI.plural`).
+
+**AND THE SMALL THINGS ARE THOUGHT THROUGH** (build 212, `js/feel.js` beside
+build 211's pieces, `R.barBite` / `drawMarkTile` / `drawRallyFlag` /
+`drawSeamGlints` / `drawFireflies`, `Bld.goNews`, `Screens.PREP_TIPS`;
+tests/feel.mjs §11–20 — operator: "Give me 10 more refinements under the same
+structure, focus on small refinements and tweaks that make the game feel high
+quality, intentional and thoughtful"). Build 211's rules hold: a PICTURE or an
+INPUT CONVENIENCE, no rule reads it, nothing in S or a save, no RNG (a glint,
+a firefly and a mark are functions of the clock and a stamp or a tile hash,
+so two draws at one moment are one frame), every hook guarded on its own line
+(`typeof Feel !== 'undefined' && Feel.x` — `everyHookAsksForFeelFirst` greps
+for it, comments included). **EVERY ORDER SHOWS WHERE IT LANDS**
+(`Feel.markOrders(was)`, from the canvas pointerup beside `G.noteAct`, read
+off `UI._orderSnap`'s before and after, so every tap and drag branch is
+covered without touching one): the first unit whose order changed answers
+`Feel.markOf(u)` — a foe it was sent at (a unit, a building, a span) is rung
+in rust, the works, station, tower or own hull it was sent to in gold, a
+resource tile or a shoal on its tile, a walk's end twice (a ring landing from
+wide, a second behind it) with a small gold pin in its middle
+(`R.drawMarkTile`), the walk nearest where the finger lifted; one mark at a
+time for `MARK` (0.8–0.85 s), a tile's ring laid back under what grows there
+(the guide's tile ring rule). `UI.moveFlash` is still set (drag-move reads
+it). **A WORK'S HANDS, AND A HAND'S WORK** (`Feel._crewRings`, asked by
+`ringsFor` before the mark, which overwrites it): a player building in hand
+rings the hands working it (work, build, a tower's bows) in a quiet ring
+(`CREW_A`, calm, no glint); one unit in hand rings what it works, or the foe
+it marks in rust (the unit pass draws only what the player sees, so a foe's
+ring is fog-honest by construction); none while a placement is armed. **THE
+HEALTH BAR SHOWS THE BITE** (`R.barBite`, stamped by `Units.damage` and
+`Bld.damage`, `R.BAR_BITE`): what a blow took stays a pale chunk on the bar
+for `hold` (0.32 s), then drains at `drain` (1.1 of the bar a second); the
+stamp is a WeakMap keyed on the thing, and `R.bar`'s one new argument is
+`who` (a call without it draws the old bar byte for byte; `Lookout` passes
+its man). **THE RALLY FLAG FLIES** (`R.drawRallyFlag`, for the yard in
+hand): a pole planted with its own shadow, a swallow-tailed pennant in the
+tribe's dye waving in the wind, a gold finial, and a marching dash line from
+the yard; at the device's pixels, clipped to the board (pinned with a control
+that finds it in the black with the clip stood down — `Units.rallyPoint` adds
+half a tile, so a test rally sits half a tile higher than its foot), still
+under reduced motion. **GOLD SEAMS GLINT** (`R.drawSeamGlints`, `R.GLINT`): a
+four-pointed star winks now and then on a seam the clan SEES, each seam on its
+own rhythm off its tile hash; never under a mine, in the fog or the black.
+**FIREFLIES ON A DEEP NIGHT** (`R.drawFireflies`, `R.FIREFLY`): once the
+night's tint passes `k` (0.3), at most `max` (36) drift and blink over grass
+in sight beside a wood, the water or a field (one tile in `every`, 4) — a
+soft glow round a hard core at the device's pixels, clipped to the board. A
+loop over the view's tiles takes `R.viewTiles()` FLOORED and CEILED: its
+bounds are fractional, and a fractional index reads nothing. **THE THING YOU
+WANTED, READY** (`Feel.short` remembers a build card, upgrade or training
+refused for its goods; `_wantCheck` every `WANT_CHECK_MS`): the moment it can
+be paid a note says so once ("Enough to build a farm now.", "…to raise the
+Barracks to Lv 2 now.", "…to train an archer now.", with a way there when the
+yard is off the view) and its card or button glows gold for `READY_MS`
+(`.fkReady`: three soft pulses, a steady rim under reduced motion); let go
+when it is done another way (one more of it stands, the level moved, one of
+that unit queued), the world changes, the run ends or `WANT_MS` (5 min)
+passes; SILENT in a journey world (Mira's one voice). **NEWS OFF THE VIEW
+SAYS WHERE** (`Feel.goThere`, `Bld.goNews`): a work finished or raised a
+storey, a soldier out of the yard (the folded line too) and a villager left
+idle by a felled grove or a fished-out shoal, toasted for something
+`UI.inOpenBand` puts under the bars or off the view, carry the alarm's `.tgo`
+button that glides there; on the open view they carry none. **MORE KEYS**
+(`Feel.onKey`): `?` shows every key on a plate (`#feelKeys`, put away by `?`,
+Escape or any press), the full stop takes the next idle villager in turn
+(`nextIdle`: by id, the view glides to them, "Nobody is idle" when nobody
+is), and Escape steps back off the shell pages (`shellEscape`: Load, Guide,
+the board, New Game and Settings press their own back; the draft closes its
+help first); the card announcement and the reward screen keep theirs. The
+pause veil's line names `?`. **THE LOADING PLAQUE** (`Screens.showPrep`):
+walnut and gold, Cinzel caps, a gold bar in a dark groove, and under a
+hairline one TIP from `PREP_TIPS` (the next each load, `neo-prep-tip`, and
+every `PREP_TIP_MS` while it stands; a mouse and keyboard add the keys tip),
+none in a journey world; `#prep`, `#prepBar` and `#prepFill` keep their ids
+and their meaning.
 
 **THE HUD'S NUMBERS TELL THE TRUTH AND EXPLAIN THEMSELVES**
 (`UI.incomePerDay` / `handRate` / `smoothNet` / `chipNote` / `idleNote`

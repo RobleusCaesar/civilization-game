@@ -1277,6 +1277,7 @@ const Bld = {
          dragged line finishes ten sections at a time. */
       const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
         !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
+      let said = null;
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
@@ -1297,9 +1298,9 @@ const Bld = {
             u.task = { type: 'work', id: b.id }; u.path = null; crew++;
           }
         }
-        G.log(`${this.def(b.key).name} complete — ${crew > 1 ? 'its builders stay on to work it' : 'the builder stays on to work it'}`, news);
+        said = G.log(`${this.def(b.key).name} complete — ${crew > 1 ? 'its builders stay on to work it' : 'the builder stays on to work it'}`, news);
       } else if (this.def(b.key).needsWorker) {
-        G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
+        said = G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
       } else if (this.def(b.key).firstUnit && (b.level || 1) === 1) {
         /* A FINISH THAT HANDS THE PLAYER SOMETHING IS NEWS WHEREVER IT IS
            (tests/train-spawn.mjs): the yard's first soldier is a unit the
@@ -1308,8 +1309,8 @@ const Bld = {
         // (with no ground to stand on it waits at the gate, and holdTrained's
         // own warning says so — one line, not two)
         if (this.giftFirst(b))
-          G.log(`${this.def(b.key).name} complete — its first ${CFG.UNITS[this.def(b.key).firstUnit].name} reports for duty`, 'note');
-        else G.log(`${this.def(b.key).name} complete`, news);
+          said = G.log(`${this.def(b.key).name} complete — its first ${CFG.UNITS[this.def(b.key).firstUnit].name} reports for duty`, 'note');
+        else said = G.log(`${this.def(b.key).name} complete`, news);
       } else if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length) &&
                  !S.units.some(u => u.owner === 'P' && u.perch)) {
         /* AN EMPTY TOWER SAYS WHAT IT NEEDS (operator, build 152: "update the
@@ -1317,10 +1318,12 @@ const Bld = {
            archers and station them in the towers for actual defense"): while
            no bow of the player's stands on any tower, a finished one tells
            them how — once they man one, the plain news returns */
-        G.log(`${this.def(b.key).name} complete — it shoots only with archers on it: select archers, then tap the tower`, 'note');
+        said = G.log(`${this.def(b.key).name} complete — it shoots only with archers on it: select archers, then tap the tower`, 'note');
       } else {
-        G.log(`${this.def(b.key).name} complete`, news);
+        said = G.log(`${this.def(b.key).name} complete`, news);
       }
+      // …and news of a work off the open view carries the way there (js/feel.js)
+      this.goNews(said, b);
     }
     /* TAMING ON BUILD (tests/wild-grass.mjs): the wild sward around the new
        building goes down — captured BEFORE the repaint so the flatten lifts
@@ -1342,6 +1345,15 @@ const Bld = {
     if (b.owner === 'P') this.roadSparkle(b);
   },
 
+  /* NEWS OFF THE OPEN VIEW TAKES YOU THERE (js/feel.js, build 212): a line
+     about a work of the player's that stands off the view or under the bars
+     carries the toast's small ◎, which glides the view to it. A picture and a
+     camera: nothing in S. */
+  goNews(node, b) {
+    if (!node || !b || b.owner !== 'P') return;
+    if (typeof UI !== 'undefined' && UI.inOpenBand && UI.inOpenBand(this.cx(b), this.cy(b))) return;
+    if (typeof Feel !== 'undefined' && Feel.goThere) Feel.goThere(node, this.cx(b), this.cy(b));
+  },
   // any of the OWNER'S villagers currently working this site (construction/upgrade/repair)?
   hasWorker(b) {
     return S.units.some(u => u.owner === b.owner && u.task && u.task.type === 'build' && u.task.id === b.id);
@@ -1540,8 +1552,8 @@ const Bld = {
       // the masons sent the tower's bows down the stairs (Lookout.tick), and
       // nothing sends them back: an empty tower shoots nothing, so it says so
       if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length))
-        G.log(`${this.def(b.key).name} reached Lv ${b.level}! Send archers back up — it shoots only with archers on it`, 'note');
-      else G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news);
+        this.goNews(G.log(`${this.def(b.key).name} reached Lv ${b.level}! Send archers back up — it shoots only with archers on it`, 'note'), b);
+      else this.goNews(G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news), b);
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
@@ -1997,7 +2009,8 @@ const Bld = {
           if (r.el && r.el.isConnected) r.el.remove();
           const many = r.kind ? (/man$/.test(name) ? name.slice(0, -3) + 'men' : name + 's').toLowerCase() : 'units';
           r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note');
-        } else this._readyAt.at.set(b.id, { t: now, n: 1, kind, el: G.log(`${name} ready`, 'note') });
+          this.goNews(r.el, b);
+        } else { const el = G.log(`${name} ready`, 'note'); this.goNews(el, b); this._readyAt.at.set(b.id, { t: now, n: 1, kind, el }); }
       }
       if (S.stats) S.stats.trained++;
     }
@@ -2347,6 +2360,8 @@ const Bld = {
     // a profile's rival hall may come down sooner (CFG.MODES.prologue_3.aiHallTake)
     if (b.owner === 'A' && b.key === 'tc') { const ht = (CFG.MODES[S.mode] || {}).aiHallTake; if (ht > 0) amt *= ht; }
     b.hp -= amt;
+    // the bar shows the bite (R.barBite, a picture: the level the blow took it from)
+    if (window.R && R.barBite) R.barBite(b, (b.hp + amt) / b.maxhp);
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
     if (b.hp <= 0) {
