@@ -414,6 +414,7 @@ node tests/building-fire.mjs # every other building burns in its own art (R.FIRE
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
 node tests/ground-ring.mjs    # the gold ring on the ground: laid before the body (its far arc behind him, its near arc whole), at the device's pixels, gold not olive, the snap and the flurry on taking (fewer each in a crowd), a foe's rust, a building's round its foot, a still frame and no RNG, nothing in the black, still under reduced motion, a crowd calm and a blit a man; the journey's ring on the ground (#proRing unseen over it), breathing with motes, fading from target to target, behind the crowns; the gold that says "this one" (js/goldfx.js): the guide's halo hugging a work's own outline and over its roof (never a box), gold at every point of its breath, a sheen across its own picture now and then, gold leaf rising into the sky, a man wound round with light (in front of him and behind); taken in hand a work bursts gold at its foot and springs (never a wall or a gate, never a crowd); a work finished or raised and a man trained or ranked pop in gold — every hook asks, the player's alone, a pop nobody saw let go; a still frame and no RNG; one new silhouette a frame; still under reduced motion
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
+node tests/feel.mjs          # the small things: Space and ⏸ pause under a PAUSED plate (a held pause none), a Resume keeps the zoom; the keyboard (arrows/WASD, +/−, Esc steps back, H home, 1–9 banners, B, M), never in a field, under a modifier or a modal; the minimap drags and its frame follows the camera; an alarm pings the map and its toast glides there; a mouse cursor says what a click does, fog-honest; a resting mouse reads the stock left ("Last seen" in the fog, nothing in the black) and goes when the ground moves; the build cards explain themselves; a refusal flashes the goods short; a villager's name, stable through a save, the player's own alone; a wake only under way, only on water in sight, never saved
 ```
 
 **THE RALLY IS AN ORDER IN WAITING** (`Units.rallyPlan` / `rallyTo` /
@@ -6850,6 +6851,93 @@ bottom bar's head alike, and they carry NO backdrop blur — it
 re-blurred the moving map under a 94%-opaque bar every frame. The build cards
 are smooth raised plates (the grain is the bar's, not every card's). The deck
 sheet and the aim bar read the same variable and wear the same walnut.
+
+**THE SMALL THINGS SIMPLY WORK** (`js/feel.js`, `Feel`, tests/feel.mjs —
+operator, build 211: "find 10 things in the game that you could improve,
+refine, modify or update that would make the game experience feel higher
+quality… small to medium in size, low risk… don't majorly change or
+obviously break the game"). Ten pieces, each a PICTURE or an INPUT
+CONVENIENCE: no rule reads them, nothing lands in S or a save, no RNG is
+drawn (`Math.random` included — the file's source is held to it), and every
+hook elsewhere asks `typeof Feel` (the window trap: `window.Feel` is set at
+the file's foot for anything that asks it that way). `Feel.ON` false builds
+nothing. **THE PAUSE YOU CAN SEE** (`Feel.setPause` / `playerPaused` /
+`syncVeil`, `#pauseVeil`): the player's OWN pause — the ⏸ button and Space —
+dims the world's edges under a PAUSED plate (z 8, pointer-events none, under
+every bar); a pause somebody else holds (the deck's sheet, a card in the air,
+the Wonder's held frame, a load) wears none, and the veil forgets itself when
+S.paused is let go or the world changes. **A RESUME KEEPS THE VIEW**:
+`Screens.enterGame` set `R.cam.z = R.defaultZoom()` on every entry, so a
+Resume from the pause menu snapped the zoom back; it now skips a world this
+page already opened (`Screens._opened.has(S)`) — a fresh or loaded world
+still opens at its own zoom (tests/desktop-layout.mjs). **THE KEYBOARD**
+(`Feel.onKey`, on `document`, registered at the end of `UI.init`, so the
+placement keys and the deck's Escape — which call `preventDefault` — run
+first): arrows/WASD glide (`PAN_PX` screen px a second, easing in over
+`PAN_EASE`, read in `Feel.tick` from `UI.refresh` every frame, paused or not),
++/− zoom about the centre (`UI.zoomAt`), Space pauses (a focused button is
+blurred so Space never also presses it), Escape steps back one thing (a line
+tool, an armed rally or sapper tool, the selection, then the pause menu; on
+the pause menu it resumes), 1–9 a saved banner (`UI.selectArmy`), H glides
+home and takes the hall in hand, B the build menu, M the map. Never with
+ctrl/meta/alt, in an input, off the playing screen or while `Screens.modalUp()`
+or the deck has the floor. **THE MINIMAP DRAGS** (pointer capture on `#mini`,
+`Feel.miniTo`) **AND ITS FRAME FOLLOWS THE CAMERA** (`R.drawMiniView` /
+`strokeMiniCam` / `_miniCamRect`, `R._miniBase`): `drawMini` keeps its
+picture without the frame, and every R.draw lays the frame where the camera
+is when it has moved (never while the map is folded); the map itself still
+repaints twice a second. **AN ALARM SHOWS WHERE** (`Feel.alarm` / `ping`,
+from `Combat.hitBuilding`'s first-blow alarm): the map pings the spot (a red
+ring in `#miniWrap`, at most four), a folded map glows its button
+(`#mapBtn.alarm`), and the toast carries a `.tgo` button — the one part of a
+toast that takes a tap (`pointer-events: auto`, an invisible reach) — that
+glides the view there (`Feel.glideTo`: eased, a third to two thirds of a
+second, landing at once under reduced motion; any press on the map takes the
+view back). A journey world's quiet attack line (`Prologue.quiet`) stays
+quiet. **A CURSOR THAT SAYS WHAT A CLICK WILL DO** (`Feel.intent` /
+`cursorAt` / `setCursor`, a mouse only, at most every `CUR_MS`): a sword over
+a foe with fighters in hand, an axe / pick / sickle over work a villager in
+hand can take (the gather table and `UI.lessonOk`), a hammer over a site or a
+hurt building of the player's, a crosshair while a rally or tool is armed, a
+hand over anything that can be taken in hand, the plain arrow elsewhere.
+Fog-honest (`G.visibleAt`; a unit dead-on by `R.unitHit` at 0.55, the tap's
+own radius). The cursors are SVG drawn once into 1x and 2x PNGs behind an
+`image-set()` (the `-webkit-` spelling where only it parses), the SVG data
+URL until they decode. **HOVER TO READ** (`Feel.infoAt` / `mapTip`,
+`#feelTip`, a mouse only): a pointer at rest for `TIP_REST_MS` reads what it
+rests on — a unit's name (`Units.personName`) and health, a building's level,
+health and crew, a tile's stock ("64 wood left"), a spent tile's next use —
+and only what the player can see: in the fog's memory a resource tile says
+"Last seen", in the black nothing. It goes when the mouse moves `TIP_SLOP`,
+a press or a wheel lands, the pause veil rises, or the camera moves under a
+still mouse (`_tipCam`; the rest clock starts again). **THE BUILD CARDS
+EXPLAIN THEMSELVES** (`Feel.cardTip`, a mouse over `#buildmenu .bbtn`): the
+def's `desc`, and what it still waits on ("Needs Town Center Lv 2", or "Still
+needs …" from `Bld.shortfall`). The descs were shown nowhere before, and five
+were wrong under the worked-ground rule (a farm "thrives beside fertile
+soil", a camp is "built near forest"); they now say where each really stands.
+**THE BAR POINTS AT WHAT IS MISSING** (`Feel.short` / `popFull` /
+`flashChip`, `.res.short`): a refusal for goods flashes the chips of the
+goods short and names the shortfall ("Not enough resources: still needs 50
+food") — the build card, the train, upgrade, gate, bridge and heal buttons,
+the sapper's fee and the placement ✓ alike; `Bld.canTrain` carries `cost` and
+`short` (and `code: 'pop'` for a full town, which flashes the people chip),
+`Bld.canUpgrade` carries `cost`, the `why` words unchanged. **A VILLAGER HAS
+A NAME** (`CFG.NAMES`, `Units.personName`): the player's villagers only
+(never the rival's, a soldier or a ghost), from a list by sex, a hash of the
+world's seed and the unit's id — the same through a save and a load, nothing
+stored or rolled; her panel's title is her name with her kind beside it
+(`.pkind`), and the mortality line says who died (`cause.said`: every
+`CFG.DEATHS` line opens "A villager", replaced by the name; `cause.line`
+stays the table's). **A BOAT LEAVES A WAKE** (`R.drawWakes`, `R.WAKE`, in the
+unit pass right after the living water): a hull under way trails a fading
+foam V from its waterline, two arms widening as they age, broken into dashes
+by a hash of each point's own stamp, a churn just behind; sampled as the hull
+MOVES (a hull at anchor lays nothing, a jump resets it), each arm drawn only
+on water tiles the player SEES, clipped to the board, smooth at the device's
+resolution; render state (`R._wakes`, a Map by unit id) forgotten with the
+hull and by `R.onNewGame`, never in a save, and two draws at dt 0 move
+nothing. And the double tap's toast says "3 axemen" (`UI.plural`).
 
 **THE HUD'S NUMBERS TELL THE TRUTH AND EXPLAIN THEMSELVES**
 (`UI.incomePerDay` / `handRate` / `smoothNet` / `chipNote` / `idleNote`

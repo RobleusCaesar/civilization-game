@@ -2310,7 +2310,11 @@ const G = {
     this._dying = { id: u.id, t: ((CFG.MORTALITY || {}).warnMs || 1000) / 1000 };
     // NEVER foeNote: that is difficulty-gated enemy intel. A death in the
     // village is the player's own news and is told at every difficulty.
-    this.log('☠ ' + cause.line, true, 5200);
+    // …and it says WHO (Units.personName, build 211): every line opens on
+    // "A villager", and the villager the player knew by name is named there
+    const who = Units.personName ? Units.personName(u) : null;
+    cause.said = who ? cause.line.replace(/^A villager\b/, who) : cause.line;
+    this.log('☠ ' + cause.said, true, 5200);
     S.nextDeath = S.day + this.rollDeathGap();
     return cause;
   },

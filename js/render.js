@@ -6757,6 +6757,8 @@ const R = {
     if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
     this._resTops = null;                                        // the art a gatherer stands behind (resTopAt) is this world's
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
+    this._miniBase = null; this._miniCamKey = '';                // the minimap's kept picture is the last world's
+    this._wakes = null;                                          // …and so is every hull's wake
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
     this._mtn = null; this._mtnKey = '';                         // re-trace the mountain regions for the new map
@@ -15722,6 +15724,103 @@ const R = {
      sets it, accumulates the foam stroke and the tile pass separately so
      the new frame work can be measured in isolation. */
   _prof: null,
+  /* THE BOAT LEAVES A WAKE (build 211, tests/feel.mjs): a hull under way
+     draws a fading foam V behind it on the water, two arms widening from its
+     stern as they age, and a little churn just behind it. Smooth light at the
+     device's own resolution (EFFECTS ARE DRAWN AT THE DEVICE'S OWN
+     RESOLUTION), clipped to the board, and only over WATER THE PLAYER SEES —
+     every point of a trail is asked G.visibleAt, so a wake never draws a
+     hull's road through the fog. A picture only: a Map keyed by the unit's id
+     (never in S or a save, no RNG), sampled as the hull MOVES — a hull at
+     anchor lays nothing, and a frozen frame is a still frame — and forgotten
+     with the hull, a jump (a load, a muster) or a new world. */
+  WAKE: { life: 1.15, gap: 4, max: 24, arm0: 1.6, arm1: 14, alpha: 0.42, churn: 0.4 },
+  drawWakes(g, dt) {
+    if (!S || !S.units || !S.map) return;
+    const W = this.WAKE, TL = CFG.TILE, Gr = this.GRING;
+    const t = this._wakeT = (this._wakeT || 0) + (dt || 0);
+    let m = this._wakes;
+    let any = false;
+    for (const u of S.units) {
+      if (!Units.isNaval || !Units.isNaval(u)) continue;
+      if (!m) m = this._wakes = new Map();
+      const s = this.unitBox(u) / TL;
+      const x = u.x * TL, y = u.y * TL + Gr.footY - Gr.footIn * s;
+      let tr = m.get(u.id);
+      if (!tr) { tr = { pts: [], seen: t }; m.set(u.id, tr); }
+      tr.seen = t;
+      const p0 = tr.pts[0];
+      if (!p0 || Math.hypot(x - p0.x, y - p0.y) > TL * 1.6) tr.pts = [{ x, y, t }];   // a jump is no road
+      else if (Math.hypot(x - p0.x, y - p0.y) >= W.gap) {
+        tr.pts.unshift({ x, y, t });
+        if (tr.pts.length > W.max) tr.pts.length = W.max;
+      }
+      while (tr.pts.length && t - tr.pts[tr.pts.length - 1].t > W.life) tr.pts.pop();
+      if (tr.pts.length > 1) any = true;
+      tr.hx = x; tr.hy = y;   // the stern as it is drawn now, so the wake meets the hull
+    }
+    if (!m) return;
+    for (const [id, tr] of m) if (tr.seen !== t || !tr.pts.length) m.delete(id);
+    if (!any) return;
+    const terr = S.map.terrain;
+    const wet = (px, py) => {
+      const tx = Math.floor(px / TL), ty = Math.floor(py / TL);
+      if (!MapGen.onBoard(tx, ty) || !G.visibleAt(tx, ty)) return false;
+      const k = terr[MapGen.idx(tx, ty)];
+      return k === T.WATER || k === T.MOAT;
+    };
+    const px = this.fxPx(g);
+    this.clipBoard(g, () => {
+      g.lineCap = 'round';
+      for (const tr of m.values()) {
+        const P = tr.pts;
+        if (P.length < 2) continue;
+        // the arms: each point pushed out from the track, wider as it ages
+        let prevL = null, prevR = null, prevA = 0, prevOkL = false, prevOkR = false;
+        for (let i = 0; i < P.length; i++) {
+          const q = P[i], nx = P[Math.min(P.length - 1, i + 1)], pv = P[Math.max(0, i - 1)];
+          let dx = pv.x - nx.x, dy = pv.y - nx.y;
+          const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+          const age = Math.min(1, (t - q.t) / W.life);
+          const w = W.arm0 + (W.arm1 - W.arm0) * Math.sqrt(age);
+          const back = age * 2.5;   // the arms trail a little behind the track
+          const L = { x: q.x - dy * w - dx * back, y: q.y + dx * w - dy * back };
+          const R2 = { x: q.x + dy * w - dx * back, y: q.y - dx * w - dy * back };
+          // each arm only on water: near a shore the foam stops at the waterline
+          const okL = wet(L.x, L.y), okR = wet(R2.x, R2.y);
+          const a = W.alpha * Math.pow(1 - age, 1.6);
+          /* FOAM, NOT A LINE: each arm is broken into dashes that break up
+             further as they age — a hash of the point's own stamp, so a
+             dash stays a dash as it drifts back (never a flicker) */
+          const hsh = (((q.t * 1000) | 0) * 2654435761) >>> 0;
+          const gapP = 0.12 + age * 0.5;
+          const dL = okL && prevOkL && ((hsh >>> 4) & 1023) / 1024 >= gapP;
+          const dR = okR && prevOkR && ((hsh >>> 16) & 1023) / 1024 >= gapP;
+          if (prevL && (a > 0.01 || prevA > 0.01) && (dL || dR)) {
+            g.strokeStyle = 'rgba(236,246,255,' + (Math.round((a + prevA) * 500) / 1000) + ')';
+            g.lineWidth = px * (1.6 - age * 0.7);
+            g.beginPath();
+            if (dL) { g.moveTo(prevL.x, prevL.y); g.lineTo(L.x, L.y); }
+            if (dR) { g.moveTo(prevR.x, prevR.y); g.lineTo(R2.x, R2.y); }
+            g.stroke();
+          }
+          prevL = L; prevR = R2; prevA = a; prevOkL = okL; prevOkR = okR;
+        }
+        // the churn: a soft white streak just behind the stern
+        const q1 = P[Math.min(P.length - 1, 3)];
+        if (wet(tr.hx, tr.hy) && wet(q1.x, q1.y)) {
+          const a = W.churn * Math.max(0, 1 - (t - P[0].t) / 0.5);
+          if (a > 0.02) {
+            g.strokeStyle = 'rgba(248,252,255,' + (Math.round(a * 1000) / 1000) + ')';
+            g.lineWidth = px * 2.2;
+            g.beginPath(); g.moveTo(tr.hx, tr.hy);
+            for (let i = 1; i <= Math.min(3, P.length - 1); i++) g.lineTo(P[i].x, P[i].y);
+            g.stroke();
+          }
+        }
+      }
+    });
+  },
   drawLivingWater(g, dt) {
     const TL = CFG.TILE;
     this.fishClock = (this.fishClock || 0) + dt;
@@ -16820,6 +16919,8 @@ const R = {
     // it lives ON the water's surface, so a hull floats OVER a jumping fish,
     // never under one (the operator's transport-raft report).
     this.drawLivingWater(g, dt);
+    // …and a hull under way leaves a wake on that surface (R.drawWakes)
+    this.drawWakes(g, dt);
 
     /* THE MOUNTAINS DRAW HERE, interleaved with the units by ground row —
        the whole point of cutting each region into row strips (buildMtnLayer).
@@ -17754,6 +17855,7 @@ const R = {
     // …and a hall falls: the glide, the thud, the words (THE HALL ON FIRE)
     if (this.hallFall) this.drawHallFallSky(g, dt);
 
+    this.drawMiniView();   // the map's view frame follows the camera every frame
     this.miniT -= dt;
     if (this.miniT <= 0) { this.miniT = 0.5; this.drawMini(); }
   },
@@ -17864,11 +17966,43 @@ const R = {
     // …and what a card put on the map: a relic marked, the rival's people seen
     // through a spy in their hall (js/deckfx-rival.js) — nothing with none
     if (window.Deck && Deck.drawMini && S.deck) Deck.drawMini(g);
-    // camera rect
+    /* THE VIEW'S FRAME FOLLOWS THE CAMERA EVERY FRAME (build 211,
+       tests/feel.mjs): the map itself repaints twice a second, as ever, but
+       its picture WITHOUT the frame is kept, so R.drawMiniView can lay the
+       frame where the camera is now — a glide, a pan or a drag across the
+       map no longer leaves the frame half a second behind. */
+    const cv = g.canvas;
+    let base = this._miniBase;
+    if (!base || base.width !== cv.width || base.height !== cv.height) {
+      base = this._miniBase = document.createElement('canvas');
+      base.width = cv.width; base.height = cv.height;
+    }
+    const bg = base.getContext('2d');
+    bg.clearRect(0, 0, base.width, base.height);
+    bg.drawImage(cv, 0, 0);
+    this.strokeMiniCam(g);
+  },
+  // the camera's rect on the minimap, in its 2px-a-tile units
+  _miniCamRect() {
     const TL = CFG.TILE;
+    return [this.cam.x / TL * 2, this.cam.y / TL * 2, this.viewW() / this.cam.z / TL * 2, this.viewH() / this.cam.z / TL * 2];
+  },
+  strokeMiniCam(g) {
+    const r = this._miniCamRect();
     g.strokeStyle = '#f0e6d0'; g.lineWidth = 1;
-    g.strokeRect(this.cam.x / TL * 2, this.cam.y / TL * 2,
-      this.viewW() / this.cam.z / TL * 2, this.viewH() / this.cam.z / TL * 2);
+    g.strokeRect(r[0], r[1], r[2], r[3]);
+    this._miniCamKey = r.map(v => Math.round(v * 4)).join(',');
+  },
+  // the kept picture and the frame where the camera is now: only when the
+  // camera has moved, and never while the map is folded away
+  drawMiniView(force) {
+    const base = this._miniBase, g = this.mg;
+    if (!base || !g || base.width !== g.canvas.width || base.height !== g.canvas.height) return;
+    if (!force && typeof UI !== 'undefined' && UI.miniCollapsed) return;
+    const k = this._miniCamRect().map(v => Math.round(v * 4)).join(',');
+    if (!force && k === this._miniCamKey) return;
+    g.drawImage(base, 0, 0);
+    this.strokeMiniCam(g);
   },
 };
 // classic-script top-level `const` bindings are NOT global-object properties,

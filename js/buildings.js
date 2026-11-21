@@ -1415,7 +1415,7 @@ const Bld = {
         `(have ${this.tcSupport(b)})` };
     }
     const res = b.owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources', short: this.shortfall(next.cost, res) };
+    if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources', short: this.shortfall(next.cost, res), cost: next.cost };
     return { ok: true, cost: next.cost };
   },
 
@@ -1569,11 +1569,13 @@ const Bld = {
     if (spec.reqLevel && b.level < spec.reqLevel) return { ok: false, why: `Needs Lv ${spec.reqLevel}` };
     if (b.queue.length >= this.queueCap(b)) return { ok: false, why: 'Queue full' };
     if (b.owner === 'P' && Units.popUsed('P') + b.queue.length >= Bld.popCap('P'))
-      return { ok: false, why: 'Population cap — build houses' };
+      return { ok: false, why: 'Population cap — build houses', code: 'pop' };
     const res = b.owner === 'P' ? S.res : S.ai.res;
     // ORIGIN CARDS: the Ironhand's soldiers come cheaper
     const cost = window.Cards ? Cards.trainCost(b.owner, unitKey, spec.cost) : spec.cost;
-    if (!this.canAfford(cost, res)) return { ok: false, why: 'Not enough resources' };
+    // the refusal carries the price and what is short of it, so the panel can
+    // say it and the top bar can point at it (build 211, js/feel.js)
+    if (!this.canAfford(cost, res)) return { ok: false, why: 'Not enough resources', cost, short: this.shortfall(cost, res) };
     return { ok: true, cost };
   },
 

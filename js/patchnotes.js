@@ -22,6 +22,21 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 211, date: '2026-11-21', title: 'Small touches',
+    items: [
+      'Pause with the button or the Space bar and the world dims under a clear Paused sign. Resuming from the menu keeps your view where you left it.',
+      'On a computer the keyboard plays too: arrows or WASD move the view, plus and minus zoom, Escape steps back, H takes you home, 1 to 9 call your saved armies, B opens the build menu and M the map.',
+      'Drag across the map in the corner to sweep your view over the land, and its frame now follows your view smoothly.',
+      'When a building is under attack, the map flashes where it is, and the warning has a button that takes you straight there.',
+      'With a mouse, the pointer shows what a click will do: an axe over trees, a pick over stone, a sword over an enemy.',
+      'Rest the mouse on the land to read it: how much wood or stone is left, or how hurt a soldier is.',
+      'Hover a building card to read what it does and what it still needs. The farm, camps, quarry and house now say where they can really be built.',
+      'When you cannot afford something, the goods you are short of flash in the top bar, and the message says how much more you need.',
+      'Your villagers have names now, and when one dies, the news says who it was.',
+      'Boats leave a foamy wake as they sail.',
+    ],
+  },
+  {
     build: 210, date: '2026-11-21', title: 'A smoother first game',
     items: [
       'In the first game, the ground Mira keeps for the farm, the camps and the road stays free, so a house built in the wrong spot can no longer stall the lesson.',

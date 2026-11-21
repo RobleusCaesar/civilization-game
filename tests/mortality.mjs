@@ -182,8 +182,13 @@ const out = await p.evaluate(() => {
       cause.bucket !== 'general',
       cause ? cause.bucket + ': ' + cause.line : 'no cause');
     ck('theNewsIsToldOnHard',
-      said.some(m => /☠/.test(m) && m.indexOf(cause.line) >= 0),
+      said.some(m => /☠/.test(m) && m.indexOf(cause.said || cause.line) >= 0),
       said.filter(m => /☠/.test(m))[0] || 'nothing said');
+    // build 211: the news names the villager the player knew (Units.personName)
+    ck('andTheNewsSaysWhoItWas',
+      !!cause && !!cause.said && cause.said !== cause.line && !/^A villager\b/.test(cause.said) &&
+      cause.said.endsWith(cause.line.replace(/^A villager\b/, '')),
+      cause ? cause.said : 'no cause');
     ck('andTheyKeelOverWhereTheyStood', R.deaths.length === 1, R.deaths.length + ' fall(s) playing');
     ck('theClockRewinds', S.nextDeath > S.day, 'next on day ' + S.nextDeath);
   }

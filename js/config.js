@@ -250,7 +250,7 @@ const CFG = {
        the work first and the rule after it, told as a note — the first tap
        teaches the rule. `whyGround` stays the refusal on a tile. */
     farm: {
-      name: 'Farm', desc: 'Steady food while a villager works it. Thrives beside fertile soil.', needsWorker: true,
+      name: 'Farm', desc: 'Steady food while a villager works it. Stands on soil picked bare; half again beside an orchard or berry patch.', needsWorker: true,
       near: { terrain: T.FERTILE, mult: 1.5, radius: 1 },
       onWorked: T.BARREN,
       whyGround: 'Nothing has ever grown here and nothing plans to start. A farm goes on soil already picked bare — an orchard or a berry patch your people have harvested out.',
@@ -262,7 +262,7 @@ const CFG = {
       ],
     },
     lodge: {
-      name: "Hunter's Lodge", desc: 'Food per worker (up to 2). Build near forest.', needsWorker: true,
+      name: "Hunter's Lodge", desc: 'Food per worker (up to 2). Raised where an animal fell; half again near the woods.', needsWorker: true,
       maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       onHunted: true,
@@ -279,7 +279,7 @@ const CFG = {
        TC 1: the quarry never costs stone and the camp never costs wood, so a
        map starved of one resource always leaves a road back to it. */
     lumber: {
-      name: 'Lumber Camp', desc: 'Wood per worker (up to 2). Build near forest.', needsWorker: true,
+      name: 'Lumber Camp', desc: 'Wood per worker (up to 2). Built on the stumps of a felled stand; half again beside living woods.', needsWorker: true,
       maxWorkers: 2,
       near: { terrain: T.FOREST, mult: 1.5, radius: 2 },
       onWorked: T.STUMPS,
@@ -292,7 +292,7 @@ const CFG = {
       ],
     },
     quarry: {
-      name: 'Quarry', desc: 'Stone per worker (up to 2). Build near hills.', needsWorker: true,
+      name: 'Quarry', desc: 'Stone per worker (up to 2). Stands where rock was broken open; half again beside unbroken stone.', needsWorker: true,
       maxWorkers: 2,
       near: { terrain: T.HILLS, mult: 1.5, radius: 2 },
       onWorked: T.PEBBLES,
@@ -353,7 +353,7 @@ const CFG = {
       levels: [ { cost: { wood: 10, stone: 5 }, time: 0.33, hp: 40 } ],
     },
     house: {
-      name: 'House', desc: 'Raises population cap.',
+      name: 'House', desc: 'Room for more people. Broadside-on to a farm it makes a homestead: more food and one more villager.',
       levels: [
         { cost: { wood: 30 },             time: 1, hp: 80,  pop: 4 },
         { cost: { wood: 70 },             time: 1, hp: 110, pop: 7 },
@@ -799,6 +799,24 @@ const CFG = {
     goldRate: 0.14,   // gold received per good paid (deliberately awful)
     keep: 250,        // never pay a resource down past this
     floor: { food: 200, wood: 160, stone: 120, gold: 0 },   // standing needs
+  },
+
+  /* A VILLAGER HAS A NAME (build 211, Units.personName, tests/feel.mjs): the
+     player's own hands are people — her name heads her panel, and the news
+     of a death says who it was. Picked by a hash of the world's seed and the
+     villager's id (never an RNG draw, nothing stored), from the clan's own
+     corner of the old world: Gaulish, Gaelic, Brittonic, Norse, Greek and
+     Latin names, short enough for a phone's panel. Two can share a name, as
+     neighbours in a village do. Never the guide's own (Mira). */
+  NAMES: {
+    m: ['Aedan', 'Alaric', 'Arlo', 'Bran', 'Brennus', 'Cato', 'Corin', 'Dagan', 'Dorran', 'Emrys',
+        'Faolan', 'Fintan', 'Galen', 'Garth', 'Hakon', 'Idris', 'Ivo', 'Jory', 'Kael', 'Leof',
+        'Lugh', 'Madoc', 'Marek', 'Niall', 'Odo', 'Oren', 'Pell', 'Rowan', 'Sten', 'Taran',
+        'Teague', 'Torin', 'Ulf', 'Varro', 'Wynn', 'Ewan', 'Silvan', 'Bodric', 'Cael', 'Dunstan'],
+    f: ['Aila', 'Ailsa', 'Brigid', 'Bryn', 'Cerys', 'Cora', 'Dana', 'Deirdre', 'Eira', 'Elva',
+        'Fenna', 'Fia', 'Greer', 'Gwen', 'Halla', 'Ione', 'Isolde', 'Junia', 'Keira', 'Lia',
+        'Livia', 'Maeve', 'Morwen', 'Nessa', 'Nia', 'Orla', 'Petra', 'Rhea', 'Rhona', 'Sela',
+        'Tamsin', 'Tova', 'Una', 'Vesna', 'Wren', 'Ysolt', 'Bree', 'Edda', 'Thea', 'Senna'],
   },
 
   /* HOW THEY WENT. Keyed by what the villager was DOING — the station it was

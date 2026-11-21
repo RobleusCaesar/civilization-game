@@ -188,6 +188,21 @@ const Units = {
     const nm = CFG.UNITS[u.kind].name;
     return this.isVeteran(u) ? 'Veteran ' + nm : nm;
   },
+  /* A VILLAGER'S OWN NAME (CFG.NAMES, build 211): the player's villagers
+     only — never the rival's, a ghost or a soldier — the same every time it
+     is asked, through a save and a load, because it is a hash of the world's
+     seed and the unit's id: no RNG is drawn and nothing is stored. */
+  personName(u) {
+    if (!u || u.owner !== 'P' || !this.isVillager(u) || u.spectral) return null;
+    const L = CFG.NAMES && CFG.NAMES[u.female ? 'f' : 'm'];
+    if (!L || !L.length) return null;
+    const sd = String((typeof S !== 'undefined' && S && S.seed != null) ? S.seed : '');
+    let h = (2166136261 ^ (u.id | 0)) >>> 0;
+    for (let i = 0; i < sd.length; i++) h = Math.imul(h ^ sd.charCodeAt(i), 16777619) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+    h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0;
+    return L[((h ^ (h >>> 15)) >>> 0) % L.length];
+  },
 
   isMilitary(u) {
     return u.kind === 'defender' || u.kind === 'axeman' || u.kind === 'elite' ||

@@ -534,7 +534,10 @@ const Screens = {
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
-    R.cam.z = R.defaultZoom();   // never the demo's leftover (tests/desktop-layout.mjs)
+    // never the demo's leftover (tests/desktop-layout.mjs) — but a world this
+    // page already opened (a Resume from the pause menu) keeps the view the
+    // player left it at: the zoom snapped back to the default on every Resume
+    if (!(this._opened && this._opened.has && this._opened.has(S))) R.cam.z = R.defaultZoom();
     /* THE WORLD IS PLAYED WITH ITS ART ON. A run founded on a cold cache
        could reach this press before the strips and the kit had landed; it
        used to enter anyway, procedural, and snap a few seconds in. Now the

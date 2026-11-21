@@ -164,6 +164,9 @@ const UI = {
       el.addEventListener('click', e => { say(e); if (e.detail) el.blur(); });
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); say(e); } });
     });
+    // the small things that should simply work (js/feel.js): the keyboard,
+    // the pause veil, the minimap drag, the alert's way there, the cursor
+    if (typeof Feel !== 'undefined' && Feel.init) { try { Feel.init(); } catch (e) {} }
   },
 
   /* ---------------- build menu ---------------- */
@@ -206,7 +209,10 @@ const UI = {
         if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
         // NOT affordable is no longer a refusal — placement opens in its amber
         // "scout the spot you're saving for" state, with ✓ disabled
-        if (this.isLine(key) && !Bld.canAfford(Bld.effCost('P', key))) { this.toast('Not enough resources', true); return; }
+        // …and the top bar points at whatever is short of it (js/feel.js)
+        const cost0 = Bld.effCost('P', key), afford0 = Bld.canAfford(cost0);
+        if (!afford0 && typeof Feel !== 'undefined' && Feel.short) Feel.short(cost0);
+        if (this.isLine(key) && !afford0) { this.toast('Not enough resources: still needs ' + Bld.shortfall(cost0), true); return; }
         this.deselect();
         // tuck the build menu away so the whole map is visible to pick a site
         // (keepPlacing: don't cancel the building we just chose)
@@ -767,6 +773,7 @@ const UI = {
     const r = Bld.canPlace('P', key, g.x, g.y);
     if (!r.ok) {
       this.toast(r.why, true);
+      if (r.code === 'cost' && typeof Feel !== 'undefined' && Feel.short) Feel.short(Bld.effCost('P', key));   // the bar points at what is short
       this.buildPlaceMap();                  // the world moved — show the new truth
       this._placeCheck();
       return;
@@ -1920,7 +1927,7 @@ const UI = {
           if (mode === 'clear' && (tier < 3 || !Terraform.isClearable(tile.x, tile.y))) { this.toast('Clear a forest 🌲 / rock 🪨 / orchard tile', true); return; }
           if (mode === 'mound' && (tier < 3 || !Terraform.isMoundable(tile.x, tile.y, sel.owner))) { this.toast('Mound: raise open ground, or fill water within 2 tiles of shore', true); return; }
           const fee = CFG.TERRAFORM[mode + 'Cost'];
-          if (fee && !Bld.canAfford(fee)) { this.toast(`The sappers want paying — ${Bld.costStr(fee)} per tile`, true); return; }
+          if (fee && !Bld.canAfford(fee)) { this.toast(`The sappers want paying — ${Bld.costStr(fee)} per tile`, true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short(fee); return; }
           if (Units.assignTerraform(sel, tile.x, tile.y, mode)) {
             this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉'
               : mode === 'mound' ? 'Sapper raising a mound ⛰' : 'Sapper breaching ⛏');
@@ -2061,7 +2068,7 @@ const UI = {
     this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
     const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
-    this.toast(`Selected ${ids.length} ${label}${ids.length > 1 ? 's' : ''} nearby`);
+    this.toast(`Selected ${ids.length} ${this.plural(label, ids.length)} nearby`);   // "3 axemen", never "3 axemans"
   },
 
   select(type, id) {
@@ -3271,9 +3278,14 @@ const UI = {
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
-        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); } }
+        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); if (cu.cost && typeof Feel !== 'undefined' && Feel.short) Feel.short(cu.cost); } }
         else if (btn.dataset.act === 'train') {
-          if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true);
+          if (!Bld.train(b2, btn.dataset.unit)) {
+            // the refusal names what is short, and the top bar points at it (js/feel.js)
+            const ct = Bld.canTrain(b2, btn.dataset.unit);
+            this.toast(ct.short ? 'Not enough resources: still needs ' + ct.short : ct.why, true);
+            if (typeof Feel !== 'undefined') { if (ct.cost && Feel.short) Feel.short(ct.cost); else if (ct.code === 'pop' && Feel.popFull) Feel.popFull(); }
+          }
           else this.trainFlash(btn);
           this.refreshMenu();
           this.refreshPanel();   // in-place queue/affordability update — no rebuild, no layout jump
@@ -3365,7 +3377,7 @@ const UI = {
         }
         else if (btn.dataset.act === 'togate') {
           const net = this.gateConvertCost(b2);
-          if (!Bld.canAfford(net)) { this.toast('Not enough resources', true); return; }
+          if (!Bld.canAfford(net)) { this.toast('Not enough resources: still needs ' + Bld.shortfall(net), true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short(net); return; }
           Bld.pay(net, S.res);
           const spec = Bld.buildSpec('gate');
           const lv = spec.lv;
@@ -3479,7 +3491,11 @@ const UI = {
         // orders the WORKS — the stone is paid now, the span is raised over the
         // next few days by a sapper standing at it (no more instant arches)
         if (Bld.orderBridgeUpgrade(b2)) { this.toast('Bridge works laid out — Lv ' + b2.upTo); this.renderPanel(); this.refreshMenu(); }
-        else this.toast('Not enough resources', true);
+        else {
+          const nx = CFG.BRIDGE.levels[b2.level] && CFG.BRIDGE.levels[b2.level].cost;
+          this.toast(nx && !Bld.canAfford(nx) ? 'Not enough resources: still needs ' + Bld.shortfall(nx) : 'Not enough resources', true);
+          if (nx && typeof Feel !== 'undefined' && Feel.short) Feel.short(nx);
+        }
       });
       panel.querySelectorAll('[data-act="brcancel"]').forEach(bc => bc.addEventListener('click', e => {
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y);
@@ -3679,8 +3695,10 @@ const UI = {
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
       // a soldier's next rank rides the header beside the ℹ️ (UI.rankBtn)
       const rank = own && !kill ? this.rankBtn(u) : '';
+      // a villager of the player's is a person: her name first, her kind beside it (Units.personName)
+      const pn = own && Units.personName ? Units.personName(u) : null;
       html += `<div class="phead${(kill || rank) && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
-        <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
+        <div class="ptitle">${own ? '' : '☠ '}${pn ? pn + ` <span class="pkind">${nm}</span>` : nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}${Units.isTransport(u) ? ' · Carries ' + CFG.UNITS[u.kind].cap : ''}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}${kill}${rank}<button class="abtn" id="panelClose">✕</button></div>
@@ -3917,7 +3935,7 @@ const UI = {
         if (this.healThrottled(u2)) { this.toast('Healed enough — let them rest', true); return; }
         if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : this.healWhere(u2) === 'Town Center' ? 'Can only heal within the Town Center grounds' : 'Can only heal near the Town Center or a War Camp', true); return; }
         const cost = this.healCost(u2);
-        if (S.res.food < cost) { this.toast('Not enough food', true); return; }
+        if (S.res.food < cost) { this.toast('Not enough food', true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short({ food: cost }); return; }
         S.res.food -= cost;
         this.noteHeal(u2);
         u2.hp = u2.maxhp;
@@ -4142,6 +4160,7 @@ const UI = {
   },
   refresh(dt) {
     this.tickPlacement(dt);   // per-frame: edge scroll + ghost DOM must not wait on the throttle
+    if (typeof Feel !== 'undefined' && Feel.tick) { try { Feel.tick(dt); } catch (e) {} }   // the held keys, a glide, the pause veil
     this.refreshT -= dt;
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
@@ -4266,7 +4285,9 @@ const UI = {
     document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
     document.getElementById('btnPause').addEventListener('click', e => {
       S.paused = !S.paused;
-      e.target.textContent = S.paused ? '▶' : '⏸';
+      e.currentTarget.textContent = S.paused ? '▶' : '⏸';
+      // the player's own pause wears the veil (js/feel.js); a held one never does
+      if (typeof Feel !== 'undefined' && Feel.playerPaused) Feel.playerPaused(S.paused);
     });
   },
 
