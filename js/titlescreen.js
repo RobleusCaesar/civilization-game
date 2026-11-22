@@ -79,9 +79,10 @@ const TitleScreen = {
      THE TITLE WEARS THE SETTINGS PAGE'S PLATES (build 206 — the operator, on
      the carved plaques and two Begin buttons after them: "intuitive and
      clean… re-review the settings menu because I really like that"). One
-     component for every menu: a dark plate with stepped corners (the
-     settings page's --chamfer), a dark edge and one thin gold line inside
-     it, a hair of light along its top and a step of shade along its foot.
+     component for every menu: a dark plate with cut corners (the
+     settings page's --chamfer, 45° since build 215), a dark edge and one thin
+     gold line inside it, gilded at the corners, a hair of light along its top
+     and a step of shade along its foot.
      The ONE primary (BEGIN on the journey, New Game after it) is LIT — the
      settings page's chosen tab: a warm amber face, a bright gold line with a
      darker one inside it, cream letters. Hierarchy by light and size, never
@@ -148,16 +149,31 @@ const TitleScreen = {
      it, the light along the top and the shade along the foot */
   PLATE: {
     plate: { stops: ['#3b3020', '#2c2316', '#241c11'], at: [0, 0.5, 1], edge: '#120c05',
-      lines: ['rgba(214,170,74,0.55)'], top: 'rgba(255,240,200,0.06)', foot: 'rgba(0,0,0,0.28)' },
+      lines: ['rgba(214,170,74,0.55)'], gild: 'rgba(240,206,118,0.9)', top: 'rgba(255,240,200,0.06)', foot: 'rgba(0,0,0,0.28)' },
     lit: { stops: ['#6a4f22', '#4a3515', '#3a280f'], at: [0, 0.55, 1], edge: '#1a1005',
       lines: ['#f2cf6c', '#8a6420'], top: 'rgba(255,236,170,0.12)', foot: 'rgba(0,0,0,0.25)' },
   },
-  /* the settings page's stepped corner (its --chamfer): a 5px corner cut in
-     two steps of 3 and 2, the pixel-art corner every one of its plates wears */
+  /* the settings page's corner (its --chamfer, the HUD's --hud-chamfer): a
+     4px 45° cut. It was a stepped pixel corner until build 215, which cut the
+     plate's lines off at every corner and left a gap there (the operator:
+     "connect all the corners"); the lines now follow it round (ring). */
+  CUT: 4,
   notch(w, h) {
-    const f = n => this.f(n), W = f(w), H = f(h);
-    return `M0,5H3V3H5V0H${f(w - 5)}V3H${f(w - 3)}V5H${W}V${f(h - 5)}H${f(w - 3)}V${f(h - 3)}H${f(w - 5)}V${H}` +
-      `H5V${f(h - 3)}H3V${f(h - 5)}H0Z`;
+    const f = n => this.f(n), c = this.CUT;
+    return `M0,${c}L${c},0H${f(w - c)}L${f(w)},${c}V${f(h - c)}L${f(w - c)},${f(h)}H${c}L0,${f(h - c)}Z`;
+  },
+  /* the cut outline drawn d pixels in: a line at d runs unbroken round the
+     corner (on a 45° cut the corner moves in by d·(√2−1)) */
+  ring(w, h, d) {
+    const f = n => this.f(n), k = this.CUT + d * (Math.SQRT2 - 1);
+    return `M${f(k)},${f(d)}H${f(w - k)}L${f(w - d)},${f(k)}V${f(h - k)}L${f(w - k)},${f(h - d)}H${f(k)}L${f(d)},${f(h - k)}V${f(k)}Z`;
+  },
+  /* the quiet plate's gilded corners (the HUD's --plate-rim): the gold line
+     brightened a few pixels either side of each cut */
+  gild(w, h, d, a) {
+    const f = n => this.f(n), k = this.CUT + d * (Math.SQRT2 - 1);
+    return `M${f(d)},${f(a)}V${f(k)}L${f(k)},${f(d)}H${f(a)}M${f(w - a)},${f(d)}H${f(w - k)}L${f(w - d)},${f(k)}V${f(a)}` +
+      `M${f(w - d)},${f(h - a)}V${f(h - k)}L${f(w - k)},${f(h - d)}H${f(w - a)}M${f(a)},${f(h - d)}H${f(k)}L${f(d)},${f(h - k)}V${f(h - a)}`;
   },
   /* ONE PLATE, drawn to w x h CSS pixels: the face, the shade along its foot
      and the light along its top, the gold line(s), the dark edge — the
@@ -179,9 +195,10 @@ const TitleScreen = {
       `<rect class="lo" width="${f(w)}" height="10" fill="#000" fill-opacity=".3"/>` +
       `<rect class="dim" width="${f(w)}" height="${f(h)}" fill="#000"/>`;
     P.lines.forEach((c, i) => {
-      s += `<rect x="${2.5 + i}" y="${2.5 + i}" width="${f(w - 5 - 2 * i)}" height="${f(h - 5 - 2 * i)}" fill="none" stroke="${c}" stroke-width="1"/>`;
+      s += `<path d="${this.ring(w, h, 2.5 + i)}" fill="none" stroke="${c}" stroke-width="1"/>`;
     });
-    s += `<rect x="1" y="1" width="${f(w - 2)}" height="${f(h - 2)}" fill="none" stroke="${P.edge}" stroke-width="2"/></g>`;
+    if (P.gild) s += `<path d="${this.gild(w, h, 2.5, 10)}" fill="none" stroke="${P.gild}" stroke-width="1"/>`;
+    s += `<path d="${this.ring(w, h, 1)}" fill="none" stroke="${P.edge}" stroke-width="2"/></g>`;
     return s;
   },
   /* A GOLD CAP ON EVERY CORNER, the way a chest's corners are bound: a

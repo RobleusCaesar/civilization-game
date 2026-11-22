@@ -3138,9 +3138,11 @@ PLATES** (build 206, `TitleScreen.PLATE` / `notch`; tests/title.mjs
 "intuitive and clean… re-review the settings menu because I really like
 that"): the carved walnut — grain, gold-leaf rim, groove, a strap and garnet
 on every corner, New Game gold, the Leaderboard navy — is gone. Every plate is
-js/settings.js's `.sxBtn` drawn as vectors: its stepped corner (`notch`, the
-settings `--chamfer`), its face gradient, a 2px dark edge with one thin gold
-line inside it, a band of light along its top and of shade along its foot,
+js/settings.js's `.sxBtn` drawn as vectors: its corner (`notch`, the
+settings `--chamfer` — a 4px 45° cut since build 215, the lines drawn along
+it by `ring` so they turn the corner unbroken, the quiet plate's gilded by
+`gild`: **THE PLATE IS CLOSED**), its face gradient, a 2px dark edge with one
+thin gold line inside it, a band of light along its top and of shade along its foot,
 cream Cinzel caps; the ONE primary (New Game; BEGIN on the journey) is `'lit'`,
 the settings page's chosen tab (`.sxTab.on`: an amber face, a bright gold line
 with a darker one inside it, cream letters). Hierarchy by light and size,
@@ -6956,14 +6958,38 @@ different resources unique to our game don't reuse any emojis… quality pixel
 count… carry through a consistent style… the Settings page… carry that
 through into the pause menu as well as into the overall game UI… collapse
 the pause menu and the settings menu into a single menu"). **ONE PLATE**:
-every control of the bars is the settings page's plate — the stepped corner
-(`--hud-chamfer`, the settings `--chamfer`), a dark face under a thin gold
-rim drawn by a `::before` UNDER the content (the plate `isolation: isolate`),
-and a LIT amber face for what is open or chosen (the map shown, the build
-card picked, the BUILD button). **THE GOODS ARE DRAWN PICTURES**
+every control of the bars is the settings page's plate — its corner
+(`--hud-chamfer`, the settings `--chamfer`), a face drawn by a `::before`
+UNDER the content (the plate `isolation: isolate`), and a LIT amber face for
+what is open or chosen (the map shown, the build card picked, the tier in
+view). **THE PLATE IS CLOSED** (build 215 — the operator, on build 214's
+stepped corners: "there's not anything in the corner… connect all the
+corners… make the boxes a little lighter… fade in just a little bit more to
+the background… but let you know that those are each separate
+containers"): the corner is a 4px 45° cut and the rim a nine-slice vector
+(`border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px
+stretch`, index.html `:root`), so the dark edge and the gold line turn every
+corner unbroken — an inset box-shadow rim is cut off by the clip and leaves
+a gap, so a plate never wears one. The face is the `background`, laid
+`border-box` under the rim, the top light and the foot's shade folded into
+it as gradients (`--plate-face`: the bar's wood showing through it;
+`--plate-face-solid` over the map; `--plate-face-lit`, `--plate-face-red`).
+The quiet rim gilds its corners a little (the flourish the operator pointed
+at on the build frame); `--plate-rim-lit`, `-red`, `-redq`, `-gold` (the Send
+plate), `-thin` and `-line` (a small chip's: the cadence bar, a rank, a
+readout — laid on an `::after` over the chip, since its own box carries no
+border). ONE rim for every plate in the game: the HUD, the merged menu
+(js/settings.js), the Load and Guide pages (js/pages.js — their `.plaques`
+buttons wear it too, the carved walnut and its nailheads standing down
+there), the board (js/board.js) and the title's vector plates
+(`TitleScreen.notch` / `ring` / `gild`: the same cut, the lines drawn along
+it). Regenerate a rim with the nine-slice's own geometry (96 units, 4 a CSS
+pixel, a 16-unit corner; a line at d units in turns its corner d·(√2−1)
+further in). **THE GOODS ARE DRAWN PICTURES**
 (`assets/ui/hud/`, 128px PNG8 made with PixelLab — meat, logs, a stone
-block, a gold heap, a pair of villagers; the day's sun and moon; the map,
-the cards, the BUILD hammers; the armies' helmet, bow, horse and ship): no
+block, a gold coin with two stacked behind it (build 215; `res-gold.png` at
+`?v=2`), a pair of villagers; the day's sun and moon; the map,
+the cards, the BUILD medallion; the armies' helmet, bow, horse and ship): no
 emoji is shown anywhere in the HUD, and every one is drawn at or under its
 pixels at 3x (≤42 CSS px). They carry their own hand-kept `?v=1` in index.html,
 ui.js and deckui.js: redraw one under its name and step it everywhere it is
@@ -6988,8 +7014,13 @@ toggle below it. **THE ⏸ IS GONE**: the gear opens the one menu, which
 pauses; Space still pauses under the veil (`Feel.setPause`), and Escape
 still opens and closes the menu. **THE BOTTOM** (`#bottombar[data-bm]`,
 written by `UI.syncBottomToggle` alone): `closed` — nothing in hand, the
-menu folded — is no bar at all but the BUILD BUTTON, 84px square at the
-map's bottom left, lit, its hammers over the word; `open` is the build panel,
+menu folded — is no bar at all but the BUILD BUTTON at the map's bottom
+left: since build 215 (the operator: "a nicer looking build button… 50%
+nicer… more attractive to click on") a gold medallion (`build-medal.png`,
+PixelLab, 256px PNG8 at 84 CSS px) over a soft gold glow (`.bmGlow`), the
+word on the BUILD banner's own ribbon across its foot (`.bmRib`,
+`UI.bannerSvg`), 88×100 as drawn and hit, the plate itself standing down
+(desktop-layout §3); `open` is the build panel,
 a carved frame across the bottom with the BUILD banner on its top edge
 (`UI.bannerSvg`), the settings page's corners (`SettingsPage.cornerSvg`)
 and a 44px ✕ on its right corner (the cards start below its foot:
@@ -6997,16 +7028,47 @@ desktop-layout `butTheBuildCardsKeepEveryPixel`); `panel` a selection's panel
 in the same frame with "▾ Hide"; `panelmin` "▴ Panel", a 44px plate where
 BUILD stands. `#bmToggle` is the one control in all four (the journey rings
 it) and is never `position: fixed` (the guide asks `offsetParent`). **THE
-BUILD CARDS** are bigger framed plates (90×112, a desktop 96×122), the
-picture first (`UI.iconInto`, idempotent, at `MENU_ICON_PX`), the name in the
-menus' caps, the price in the bar's own pictures with a good the town is
-short of in red (`UI.costHtml`) — what is needed reads beside what is had.
+BUILD CARDS** are framed plates, tight (build 215 — "there's just a little
+bit of space underneath the image… shrink down the entire build menu… make
+sure that's tight"): the picture (50px, 60 on a desktop), the name in the
+menus' caps in a two-line box, and the price RIGHT under it in the bar's own
+pictures with a good the town is short of in red (`UI.costHtml`) — what is
+needed reads beside what is had. The price never wraps: a card is
+`width: max-content` with a floor (80px, 90 on a desktop) and its name held
+to the floor's width, so only the price widens one (War Camp's 350/250/150
+spilled past a fixed wider card), and the row is `align-items: flex-start`,
+so no card stretches to a taller neighbour. **THE MENU WEARS ITS OWN ART**
+(build 215 — "create a stylized image for each of the buildings… close… we
+don't wanna bait and switch the player… 25% more stylized, 25% nicer"):
+`assets/ui/build/{key}.png` (the road and the wall by the tier they would
+be raised at, `{key}-l{n}.png`; the monument this run rolled,
+`wonder-{monument}.png`) — PixelLab dioramas, each made from the shipped
+building's own PNG as its reference (the HUD's wood as the style image), the
+building on a small island of grass, 128px masters Scale2x'd to 256px PNG8
+(`MENU_ART_V`, hand-kept). `UI.wantMenuArt` asks for them 1.2 s after a real
+world opens (`Screens.show('playing')`, never the demo or the boot), and
+`UI.menuIconSprite` hands one back the moment it has landed — the live
+sprite until then, and for any key without one. The panel, the placement
+ghost and the map always wear the building's own art.
 **A GOOD IN THE TEXT IS ITS PICTURE** (`UI.iconHtml` / `iconText`, `.ri`):
 prices, panels, toasts and the chips' notes show the drawn goods; the emoji
 stays in the text node, pushed out of a box that shows the picture, so a
 reader, a copy and every test that reads `textContent` still read the glyph.
 ✨ is gold only before a number. **THE CARDS' SHEET WEARS THE BUILD PANEL'S
 FRAME** (the CARDS banner, the corners, the ✕ a plate on its corner).
+**ITS TIERS ARE TABS ACROSS THE SHEET** (build 215 — "I just don't like the
+UI of clicking the different colors for the different card groups plus it
+leaves a bunch of excess space on the left-hand side… a design update that
+helps you navigate the card menu… get rid of some of the extra space at the
+bottom… bring the whole card menu down a little bit"; `DeckUI._tierTab`,
+tests/deck-ui.mjs `andEveryTabNamesItsTierAcrossTheSheet`): all five tiers,
+highest first, edge to edge, each the HUD's plate with its gem, its count
+and its NAME in its own colour (a desktop sets each on one line); one the
+deck holds none of sits dim and shut; the tab of the tier in view is lit
+(`_litTier`) and a tap jumps the row to it (`jumpTier`). The row carries no
+heading of its own (a thin gold rule parts one tier's cards from the next),
+the grip it never showed takes no room, and "Tap a card to look closer" is
+gone: the sheet is 38px shorter on a phone.
 **THE PAUSE MENU AND THE SETTINGS ARE ONE PAGE** (`SettingsPage` serves
 `Screens.show('settings')` and `show('paused')`; tests/settings.mjs,
 tests/feel.mjs `theMenuIsThePause`): opened from a game it is headed PAUSED
@@ -10285,7 +10347,11 @@ changed — and guessing is what was broken. The PLACEMENT GHOST needed no
 change: it already went through `R.bldSprite`, which is why the ghost was
 right while the menu was stale. Neither icon may use `R.bldSprite`
 directly — it hands a wall or gate its AUTO-TILED mask, the wrong picture
-for a 64px icon.
+for a 64px icon. **The build menu's own picture outranks the live one once it has
+landed** (build 215, **THE MENU WEARS ITS OWN ART**): `menuIconSprite` asks
+`UI.menuArt[UI.menuArtName(key)]` first and falls back to exactly this live
+drawable — the rule above holds for every key that has none yet, and the
+menu still never paints a stale picture.
 
 **Art lands by FILENAME, never by manifest** (`tests/art-pipeline.mjs`, full
 rules in `ART_PLAN.md`): `assets/buildings/{id}-l{level}.png` — all lowercase

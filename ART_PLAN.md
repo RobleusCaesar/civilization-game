@@ -1233,6 +1233,39 @@ under its name steps that number wherever it is written (index.html, ui.js
 `HUD_ART`, deckui.js). A good in a line of text wears the same picture (the
 `.ri` box), so a price reads in the bar's own goods everywhere.
 
+**Build 215** redrew two of them under their names and added one:
+`res-gold.png` is a single gold coin with two stacked behind it (the operator:
+"maybe just go to like a single gold coin… shrink that down"; now `?v=2`
+wherever it is written), and the BUILD button is `build-medal.png` — a gold
+medallion round crossed hammers, 256px PNG8 shown at 84 CSS px (the button
+lays the word on the build banner's ribbon across its foot; `build.png`
+stays for the panel-folded states).
+
+## The build menu's own pictures (assets/ui/build/, build 215)
+
+```
+assets/ui/build/{key}.png          house barracks farm lumber quarry lodge tower
+                                   stable range siege sapper warcamp trade dock
+assets/ui/build/{key}-l{n}.png     road-l1..3, wall-l1..3 — by the tier it would be raised at
+assets/ui/build/wonder-{m}.png     henge colossus moai pyramid obelisk temple
+                                   sphinx flame totems sundial — the monument this run rolled
+```
+
+The operator: "create a stylized image for each of the buildings… doesn't have
+to be the actual image that is built in the game, we want it to look close. We
+don't wanna bait and switch the player… 25% more stylized, 25% nicer". So each
+is a small DIORAMA of the shipped building — the building on a thin oval island
+of grass, seen from the same high front camera — made with PixelLab
+`create_image_pro` at 128×128 with the shipped PNG as the REFERENCE (from the
+live site's URL: uploads are refused here) and `assets/ui/hud/res-wood.png` as
+the style image (outline, shading, detail), so the set reads as one family with
+the HUD. Pick the candidate closest to the building as it stands in the game —
+the same roof, material and silhouette — and never one with flags, banners or
+torches the building does not carry. Then Scale2x (ImageMagick `-define
+magnify:method=scale2x -magnify`) to 256px and `-colors 255 PNG8:` with hard
+alpha. Shown at 50-60 CSS px. A picture redrawn under its name steps
+`UI.MENU_ART_V` (js/ui.js). A key with no file keeps the live sprite.
+
 ## Win / loss screen art
 
 `assets/endgame/{win|loss}/{calm|moderate|hard}/{n}.png` — full details and

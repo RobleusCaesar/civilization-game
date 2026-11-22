@@ -410,9 +410,8 @@ const WorldBoard = {
 };
 
 WorldBoard.CSS = `
-#scrLeaders.wb { --chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
-    calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
-    calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px));
+/* the plate is closed (build 215): the HUD's 45° corner and its unbroken rim (index.html --plate-rim) */
+#scrLeaders.wb { --chamfer: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
   --ink: #f3e2b4; --txt: #e8dcbd; --dim: #ab9c7e; --sans: -apple-system, "Segoe UI", Roboto, sans-serif;
   background: none; color: var(--txt); font-family: var(--menufont); align-items: center; justify-content: center; padding: 0; }
 #scrLeaders.wb [hidden] { display: none !important; }
@@ -425,7 +424,8 @@ WorldBoard.CSS = `
 #scrLeaders.wb .wbBack { position: relative; isolation: isolate; width: 46px; height: 44px; min-height: 0; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: pointer;
   color: #f1d17a; display: flex; align-items: center; justify-content: center; box-shadow: none; -webkit-appearance: none; appearance: none; }
 #scrLeaders.wb .wbBack::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#3b3020, #241c11); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.6), inset 0 10px 0 rgba(255,240,200,0.06); }
+  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(#3b3020, #241c11) border-box; }
 #scrLeaders.wb .wbBack svg { width: 18px; height: 18px; filter: drop-shadow(0 1px 0 #000); }
 #scrLeaders.wb .wbBack:active { transform: translateY(2px); }
 #scrLeaders.wb .wbTrophy { width: 38px; height: 38px; flex: 0 0 auto; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.7)); }
@@ -453,8 +453,12 @@ WorldBoard.CSS = `
 /* ---- the filters: two small segmented bars (the settings page's cadence bar) ---- */
 #scrLeaders.wb .wbBar { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 10px; padding: 10px 8px 10px; position: relative; z-index: 2;
   border-bottom: 1px solid rgba(214,170,74,0.22); box-shadow: 0 1px 0 rgba(0,0,0,0.5); }
-#scrLeaders.wb .wbSeg { display: flex; height: 32px; clip-path: var(--chamfer); background: #120d07; padding: 2px; gap: 2px;
-  box-shadow: inset 0 0 0 1px #050302, inset 0 0 0 2px rgba(214,170,74,0.45); flex: 1 1 260px; max-width: 360px; }
+#scrLeaders.wb .wbSeg { position: relative; display: flex; height: 32px; clip-path: var(--chamfer); background: #120d07; padding: 2px; gap: 2px;
+  flex: 1 1 260px; max-width: 360px; }
+/* a chip's closed rim rides over it (the inset line was cut off at the corner) */
+#scrLeaders.wb .wbSeg::after, #scrLeaders.wb .wbRk::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  border: 8px solid transparent; border-image: var(--plate-rim-thin) 32 / 8px stretch; }
+#scrLeaders.wb .wbRk::after { border-image-source: var(--plate-rim-line); }
 #scrLeaders.wb .wbWhen { flex: 0 1 200px; }
 /* each button starts at its own label's width and the rest is shared: an
    even split cut MODERATE short at 320px on another machine's fonts */
@@ -477,8 +481,9 @@ WorldBoard.CSS = `
 #scrLeaders.wb .wbRetry { align-self: center; position: relative; isolation: isolate; height: 38px; min-height: 0; padding: 0 18px; border: 0; background: none; cursor: pointer;
   color: #f4e8cc; font: 700 12.5px/1 var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; text-shadow: 0 1px 0 rgba(0,0,0,0.85); box-shadow: none; }
 #scrLeaders.wb .wbRetry::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
-  box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.48), inset 0 10px 0 rgba(255,240,200,0.06), inset 0 -8px 0 rgba(0,0,0,0.28); }
+  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(0deg, rgba(0,0,0,0.28), rgba(0,0,0,0) 8px) border-box,
+    linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%) border-box; }
 
 /* ---- the podium ---- */
 #scrLeaders.wb .wbPodium { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 6px;
@@ -536,8 +541,8 @@ WorldBoard.CSS = `
 #scrLeaders.wb .wbRow { display: flex; align-items: center; gap: 10px; min-height: var(--rowh, 44px); padding: 2px 10px 2px 6px; background: rgba(8,6,3,0.45);
   box-shadow: inset 0 0 0 1px rgba(214,170,74,0.14); }
 #scrLeaders.wb .wbRow:nth-child(odd) { background: rgba(20,14,8,0.5); }
-#scrLeaders.wb .wbRk { flex: 0 0 auto; min-width: 36px; height: 30px; padding: 0 4px; display: flex; align-items: center; justify-content: center; clip-path: var(--chamfer);
-  font: 700 13px/1 var(--menufont); color: var(--ink); font-variant-numeric: tabular-nums; background: rgba(8,6,3,0.8); box-shadow: inset 0 0 0 1px rgba(214,170,74,0.4); }
+#scrLeaders.wb .wbRk { flex: 0 0 auto; min-width: 36px; height: 30px; padding: 0 4px; display: flex; align-items: center; justify-content: center; clip-path: var(--chamfer); position: relative;
+  font: 700 13px/1 var(--menufont); color: var(--ink); font-variant-numeric: tabular-nums; background: rgba(8,6,3,0.8); }
 #scrLeaders.wb .wbWhoR { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
 #scrLeaders.wb .wbWhoR b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 15px/1.15 var(--menufont); letter-spacing: 1.4px;
   text-transform: uppercase; color: #f2e4c1; }
@@ -546,7 +551,8 @@ WorldBoard.CSS = `
 #scrLeaders.wb .wbRow .wbPts { flex: 0 0 auto; min-width: 58px; text-align: right; font: 800 15px/1 var(--menufont); color: #f0cd6e; font-variant-numeric: tabular-nums;
   text-shadow: 0 1.5px 0 rgba(0,0,0,0.9); }
 #scrLeaders.wb .wbRow.mine { background: linear-gradient(90deg, rgba(122,88,30,0.55), rgba(60,42,14,0.5)); box-shadow: inset 0 0 0 1px #f2cf6c, inset 0 0 0 2px rgba(60,40,10,0.8); }
-#scrLeaders.wb .wbRow.mine .wbRk { color: #2b1906; background: linear-gradient(#f4d272, #c8942f); box-shadow: inset 0 0 0 1px #fff0b8; }
+#scrLeaders.wb .wbRow.mine .wbRk { color: #2b1906; background: linear-gradient(#f4d272, #c8942f); }
+#scrLeaders.wb .wbRow.mine .wbRk::after { display: none; }
 /* the tightest rows (WorldBoard._fit's last step): the rank chip and the padding step down so a row can be ROW_FLOOR */
 #scrLeaders.wb .wbList.wbTight { gap: 2px; margin-top: 4px; }
 #scrLeaders.wb .wbList.wbTight .wbRow { padding-top: 1px; padding-bottom: 1px; }

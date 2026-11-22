@@ -357,8 +357,10 @@ ck('anEmptyDeckSaysHowToEarnOne', /win a game/i.test(sh.empty) && /lose/i.test(s
 /* A FULL DECK JUMPS BY TIER, AND ITS FACES ARE BUILT ONCE (playtest g2/g3):
    36 cards in one row took about nine swipes on a 390px phone to reach the
    bronze ones, and every open rebuilt all 36 faces in the tap (55-120ms).
-   The head carries the tiers held as gems, highest first; a tap on one
-   brings that tier's name to the row's left edge and lights its gem. A
+   The head carries the tiers as named tabs, highest first (build 215: all
+   five across the sheet, each its gem, its count and its name; one the deck
+   holds none of dim and shut); a tap on one brings that tier's cards to the
+   row's left edge and lights its tab. A
    second open hands back the very faces the first built; a card whose
    count changes is the one face rebuilt. */
 const sj = await p.evaluate(async () => {
@@ -371,7 +373,12 @@ const sj = await p.evaluate(async () => {
   document.getElementById('deckBtn').click(); await wait(450);
   const tabs = [...document.querySelectorAll('#dkSheet .dkTier')];
   out.tabs = tabs.map(t => t.dataset.tier).join(',');
-  out.counts = tabs.map(t => t.textContent).join(',');
+  out.counts = tabs.map(t => (t.querySelector('b') || {}).textContent).join(',');
+  out.names = tabs.map(t => (t.querySelector('.dkTn') || {}).textContent).join(',');
+  // the strip runs the sheet's width: no more than a gutter either side of it
+  const sr = document.querySelector('#dkSheet .dkTiers').getBoundingClientRect(), pr = document.querySelector('#dkSheet .dkPanel').getBoundingClientRect();
+  out.span = Math.round(Math.max(sr.left - pr.left, pr.right - sr.right));
+  out.fits = tabs.every(t => { const n = t.querySelector('.dkTn'); return n && n.scrollWidth <= n.clientWidth + 0.5 && t.getBoundingClientRect().height >= 44; });
   const row = document.querySelector('#dkSheet .dkRow'), gem = document.querySelector('#dkSheet .dkTier[data-tier="bronze"]');
   if (gem) gem.click();
   // the row glides there: read once it has come to rest
@@ -402,7 +409,9 @@ const sj = await p.evaluate(async () => {
   return out;
 });
 ck('aFullDeckJumpsByTier', sj.tabs === 'enlight,imperial,iron,bronze,stone' && /^\d+(,\d+){4}$/.test(sj.counts) && Math.abs(sj.edge) <= 2 && sj.lit === 'bronze',
-  `gems ${sj.tabs} (${sj.counts}); bronze jumped to ${sj.edge}px from the edge, lit ${sj.lit}`);
+  `tabs ${sj.tabs} (${sj.counts}); bronze jumped to ${sj.edge}px from the edge, lit ${sj.lit}`);
+ck('andEveryTabNamesItsTierAcrossTheSheet', sj.names === 'Enlightenment,Imperial,Iron,Bronze,Stone' && sj.span <= 12 && sj.fits,
+  `${sj.names}; the strip ${sj.span}px from the sheet's edge at most; every name whole on a 44px tab: ${sj.fits}`);
 ck('andItsFacesAreBuiltOnce', sj.n === 36 && sj.reused === 36 && sj.rebuilt === 'harvest_festival',
   `${sj.reused} of ${sj.n} faces handed back on the second open; rebuilt after a change: ${sj.rebuilt || 'none'}`);
 

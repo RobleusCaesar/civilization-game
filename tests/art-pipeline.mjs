@@ -626,6 +626,10 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
     {
       G.newGame('articon', 'calm', 'medium');
       Screens._demo = false; Screens.show('playing'); S.paused = true;
+      // the house's own build-menu picture (assets/ui/build/, build 215) has
+      // not landed here: asked and missing, the live art is the menu's
+      const hadOwn = UI.menuArt ? UI.menuArt.house : undefined;
+      if (UI.menuArt) UI.menuArt.house = false;
       for (let i = 0; i < 4; i++) UI.refresh(0.3);   // refresh() is throttled at 0.25s
       const btn = document.querySelector('.bbtn[data-key="house"]');
       const ic = btn && btn.querySelector('canvas');
@@ -645,6 +649,14 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       for (let i = 0; i < 4; i++) UI.refresh(0.3);
       ck('aLaterRedesignLandsToo', !!ic && ic._cfIcon === art2, '');
       ck('theGhostFollowsTheRedesign', R.bldSprite(ghostB, 1) === art2, '');
+      // THE MENU WEARS ITS OWN ART (build 215): its own picture, once landed,
+      // outranks the live one in the menu alone — the ghost keeps the building's
+      const own = document.createElement('canvas'); own.width = own.height = 64;
+      UI.menuArt.house = own;
+      for (let i = 0; i < 4; i++) UI.refresh(0.3);
+      ck('theMenuWearsItsOwnArtOnceLanded', UI.menuIconSprite('house') === own && !!ic && ic._cfIcon === own && R.bldSprite(ghostB, 1) === art2, '');
+      UI.menuArt.house = false;
+      for (let i = 0; i < 4; i++) UI.refresh(0.3);
       // repainting the SAME drawable is free — that is what makes asking
       // every frame affordable
       let paints = 0;
@@ -653,6 +665,7 @@ const merge = (out) => { Object.assign(res, out.res); fails.push(...out.fails); 
       UI.iconInto(ic, art2); UI.iconInto(ic, art2);
       CanvasRenderingContext2D.prototype.drawImage = realDraw;
       ck('repaintingTheSameArtIsFree', paints === 0, paints + ' redundant draws');
+      if (UI.menuArt) UI.menuArt.house = hadOwn;
     }
 
     // ---- 6. no dev surface without the flag ----

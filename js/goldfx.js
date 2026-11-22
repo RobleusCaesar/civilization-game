@@ -680,11 +680,15 @@ const GoldFX = {
   /* a pop's light under it and its rings on the ground — no rays standing
      behind a work: fanned up off a roof over the meadow, warm light reads as
      flames, and a building in flames is the one alarm in the game */
+  // a pop's sparks: a work's 22; a man's 14, but for a man trained outside the journey half that (R.gFlurry)
+  _popN(p) {
+    if (p.type === 'build' || p.type === 'up') return 22;
+    return p.type === 'train' && R.gFlurry ? Math.max(2, Math.round(14 * R.gFlurry())) : 14;
+  },
   popUnder(g, r, S) {
     const p = r.pop, q = r.q, TL = CFG.TILE, ry = q.ry / q.rx;
-    const work = p.type === 'build' || p.type === 'up';
     // the burst: bigger for a work, a man's own for a man
-    this.burst(g, q, p.age, r.seed + 17, work ? 22 : 14, 'back', true);
+    this.burst(g, q, p.age, r.seed + 17, this._popN(p), 'back', true);
     if (p.type === 'rank' || p.type === 'train') {
       // rings climbing up him: risen in rank, or out into the world
       for (let k = 0; k < 3; k++) {
@@ -696,10 +700,10 @@ const GoldFX = {
     }
   },
   popOver(g, r, S) {
-    const p = r.pop, work = p.type === 'build' || p.type === 'up';
-    this.burst(g, r.q, p.age, r.seed + 17, work ? 22 : 14, 'front', true);
-    // stars winking on its outline as it lands
-    if (S && r.pic && p.age < 1.1) this.sparkles(g, S, r.pic, { a: Math.min(1, (1.1 - p.age) / 0.4), t: p.age * 2.2, seed: r.seed + 41 }, work ? 6 : 3);
+    const p = r.pop, work = p.type === 'build' || p.type === 'up', n = this._popN(p);
+    this.burst(g, r.q, p.age, r.seed + 17, n, 'front', true);
+    // stars winking on its outline as it lands (a man's fewer with his sparks)
+    if (S && r.pic && p.age < 1.1) this.sparkles(g, S, r.pic, { a: Math.min(1, (1.1 - p.age) / 0.4), t: p.age * 2.2, seed: r.seed + 41 }, work ? 6 : n < 14 ? 2 : 3);
   },
 };
 window.GoldFX = GoldFX;

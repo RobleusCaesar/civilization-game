@@ -319,15 +319,30 @@ const Bq = await p.evaluate(() => {
   const crowd = R._gSel.get(900001).n;
   R.gringTick(new Set([900100]), null, 21);
   const one = R._gSel.get(900100).n;
+  // a journey world keeps the whole flurry; play throws half (build 215)
+  const sc0 = S.scenario;
+  S.scenario = 'prologue_1';
+  R.gringTick(new Set([900200]), null, 21.5);
+  const oneJ = R._gSel.get(900200).n;
+  const popJ = ['train', 'rank', 'build'].map(t => GoldFX._popN({ type: t })).join(',');
+  S.scenario = sc0;
+  const pop = ['train', 'rank', 'build'].map(t => GoldFX._popN({ type: t })).join(',');
   R.gringTick(new Set([u.id]), null, 22);    // the villager back in hand (the frames re-take him)
-  return { fly, rest, snap: snap.map(s => ({ s: +s.s.toFixed(3), a: +s.a.toFixed(2), f: +s.flash.toFixed(2) })), crowd, one, max: R.GRING.burstMax };
+  return { fly, rest, snap: snap.map(s => ({ s: +s.s.toFixed(3), a: +s.a.toFixed(2), f: +s.flash.toFixed(2) })), crowd, one, oneJ, pop, popJ,
+    max: R.GRING.burstMax, n0: R.GRING.burstN, k: R.FLURRY_PLAY };
 });
 ck('aUnitTakenInHandThrowsAFlurryOfGoldSparksUp', Bq.fly >= 40 && Bq.rest === 0,
   `${Bq.fly} device px lit above the ring 0.15 s after he is taken, ${Bq.rest} once it is long held`);
 ck('andItsRingLandsFromWider', Bq.snap[0].s > 1.1 && Bq.snap[0].f > 0.5 && Math.abs(Bq.snap[2].s - 1) < 0.02 && Bq.snap[3].s === 1 && Bq.snap[3].a === 1 && Bq.snap[3].f === 0,
   JSON.stringify(Bq.snap));
-ck('andACrowdTakenAtOnceThrowsFewerEach', Bq.one === 14 && Bq.crowd * 10 <= Bq.max && Bq.crowd >= 2,
-  `one unit: ${Bq.one} sparks; each of ten at once: ${Bq.crowd} (about ${Bq.max} in all)`);
+ck('andACrowdTakenAtOnceThrowsFewerEach', Bq.one === Math.round(Bq.n0 * Bq.k) && Bq.crowd * 10 <= Bq.max * Bq.k && Bq.crowd >= 2,
+  `one unit: ${Bq.one} sparks; each of ten at once: ${Bq.crowd} (about ${Bq.max * Bq.k} in all)`);
+/* HALF THE FLURRY OUTSIDE THE JOURNEY (build 215 — the operator: "reduce the
+   gold Flurry sparkles by 50% when a new player is created or when you click
+   an existing character"): in play a man taken in hand throws half the
+   journey's sparks and a man trained half its pop; a rank and a work keep theirs */
+ck('outsideTheJourneyAManThrowsHalfTheFlurry', Bq.k === 0.5 && Bq.oneJ === Bq.n0 && Bq.one * 2 === Bq.oneJ && Bq.pop === '7,14,22' && Bq.popJ === '14,14,22',
+  `taken in hand: ${Bq.one} in play, ${Bq.oneJ} in the journey; the pop (train, rank, work): ${Bq.pop} in play, ${Bq.popJ} in the journey`);
 
 /* ---- 3. A FOE'S RING IS RUST, AND THROWS NOTHING ---- */
 const C = await p.evaluate(() => {

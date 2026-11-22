@@ -78,11 +78,41 @@
        moves and the whole stack rides up with it. tests/deck-ui.mjs
        andAToastSaidMidCutStandsBelowTheBar holds the toasts off the bar. */
     --hud-top: 107px;
-    /* THE HUD'S PLATE CORNER: the settings page's stepped chamfer (js/settings.js
-       --chamfer), one value for every plate of the bars and the menu (build 214) */
-    --hud-chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
-      calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
-      calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px));
+    /* THE PLATE IS CLOSED (build 215 — the operator, on build 214's stepped
+       corners: "there's not anything in the corner… connect all the corners";
+       the banner over the build panel was the style he pointed at). Every
+       plate of the bars, the panels and the menu is one shape: a 4px 45°
+       chamfer (--hud-chamfer clips its face) with a rim that runs UNBROKEN
+       round it — a nine-slice vector (--plate-rim, 4 units a CSS pixel,
+       8px corners), so the dark edge and the gold line turn every corner,
+       where the old inset box-shadows were cut off by the clip and left a
+       gap. The quiet plate gilds its corners a little and lets the wood
+       through its face (--plate-face), so the boxes read as separate
+       containers without shouting; the lit plate is what is open or chosen. */
+    --hud-chamfer: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+    --plate-rim: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M16.83 2H79.17L94 16.83V79.17L79.17 94H16.83L2 79.17V16.83Z' fill='none' stroke='%230b0703' stroke-opacity='0.78' stroke-width='4'/%3E%3Cpath d='M18.49 6H77.51L90 18.49V77.51L77.51 90H18.49L6 77.51V18.49Z' fill='none' stroke='%23d6aa4a' stroke-opacity='0.32' stroke-width='4'/%3E%3Cpath d='M6 30V18.49L18.49 6H30M66 6H77.51L90 18.49V30M90 66V77.51L77.51 90H66M30 90H18.49L6 77.51V66' fill='none' stroke='%23e7c46c' stroke-opacity='.8' stroke-width='4'/%3E%3C/svg%3E");
+    --plate-rim-lit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M16.83 2H79.17L94 16.83V79.17L79.17 94H16.83L2 79.17V16.83Z' fill='none' stroke='%231a1005' stroke-width='4'/%3E%3Cpath d='M18.49 6H77.51L90 18.49V77.51L77.51 90H18.49L6 77.51V18.49Z' fill='none' stroke='%23f2cf6c' stroke-width='4'/%3E%3Cpath d='M20.14 10H75.86L86 20.14V75.86L75.86 86H20.14L10 75.86V20.14Z' fill='none' stroke='%238a6420' stroke-width='4'/%3E%3C/svg%3E");
+    --plate-rim-red: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M16.83 2H79.17L94 16.83V79.17L79.17 94H16.83L2 79.17V16.83Z' fill='none' stroke='%231d0804' stroke-width='4'/%3E%3Cpath d='M18.49 6H77.51L90 18.49V77.51L77.51 90H18.49L6 77.51V18.49Z' fill='none' stroke='%23ffb08a' stroke-width='4'/%3E%3C/svg%3E");
+    --plate-rim-redq: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M16.83 2H79.17L94 16.83V79.17L79.17 94H16.83L2 79.17V16.83Z' fill='none' stroke='%23140604' stroke-opacity='0.85' stroke-width='4'/%3E%3Cpath d='M18.49 6H77.51L90 18.49V77.51L77.51 90H18.49L6 77.51V18.49Z' fill='none' stroke='%23e0785a' stroke-opacity='0.42' stroke-width='4'/%3E%3C/svg%3E");
+    /* the menu's own rims (js/settings.js, js/pages.js, js/board.js): the gold
+       plate (Send), and a small chip's (the cadence bar, a rank, a readout) */
+    --plate-rim-gold: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M17.66 4H78.34L92 17.66V78.34L78.34 92H17.66L4 78.34V17.66Z' fill='none' stroke='%232a1906' stroke-width='8'/%3E%3Cpath d='M20.14 10H75.86L86 20.14V75.86L75.86 86H20.14L10 75.86V20.14Z' fill='none' stroke='%23fff0b8' stroke-width='4'/%3E%3Cpath d='M22.63 16H73.37L80 22.63V73.37L73.37 80H22.63L16 73.37V22.63Z' fill='none' stroke='%23b8862a' stroke-width='8'/%3E%3Cpath d='M25.11 22H70.89L74 25.11V70.89L70.89 74H25.11L22 70.89V25.11Z' fill='none' stroke='%234a3008' stroke-width='4'/%3E%3C/svg%3E");
+    --plate-rim-thin: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M16.83 2H79.17L94 16.83V79.17L79.17 94H16.83L2 79.17V16.83Z' fill='none' stroke='%23050302' stroke-width='4'/%3E%3Cpath d='M18.49 6H77.51L90 18.49V77.51L77.51 90H18.49L6 77.51V18.49Z' fill='none' stroke='%23d6aa4a' stroke-opacity='0.45' stroke-width='4'/%3E%3C/svg%3E");
+    --plate-rim-line: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'%3E%3Cpath d='M16.83 2H79.17L94 16.83V79.17L79.17 94H16.83L2 79.17V16.83Z' fill='none' stroke='%23d6aa4a' stroke-opacity='0.42' stroke-width='4'/%3E%3C/svg%3E");
+    /* the faces: the quiet plate lets the bar's wood through; a plate that
+       floats over the map (the bottom bar's toggle) is the same, made solid */
+    --plate-face: linear-gradient(rgba(255,238,200,.05), rgba(255,238,200,0) 11px) border-box,
+      linear-gradient(0deg, rgba(0,0,0,.2), rgba(0,0,0,0) 9px) border-box,
+      linear-gradient(rgba(86,64,40,.46) 0%, rgba(48,35,21,.48) 55%, rgba(20,14,8,.54) 100%) border-box;
+    --plate-face-solid: linear-gradient(rgba(255,238,200,.05), rgba(255,238,200,0) 11px) border-box,
+      linear-gradient(0deg, rgba(0,0,0,.2), rgba(0,0,0,0) 9px) border-box,
+      linear-gradient(#3a2c1c 0%, #2b2015 55%, #1b130b 100%) border-box;
+    --plate-face-lit: linear-gradient(rgba(255,236,170,.12), rgba(255,236,170,0) 11px) border-box,
+      linear-gradient(0deg, rgba(0,0,0,.25), rgba(0,0,0,0) 9px) border-box,
+      linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%) border-box;
+    --plate-face-red: linear-gradient(rgba(255,200,170,.12), rgba(255,200,170,0) 10px) border-box,
+      linear-gradient(0deg, rgba(0,0,0,.3), rgba(0,0,0,0) 8px) border-box,
+      linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%) border-box;
     /* the title's display face (self-hosted, OFL, latin subset, wght 400-700) */
     --pxfont: 'Pixelify Sans', -apple-system, "Segoe UI", Roboto, sans-serif;
     /* the MENU face: inscriptional Roman caps, matching the lettering on the
@@ -168,12 +198,14 @@
   #bottombar::before { top: 0; }
   .trow { display: flex; align-items: center; gap: 4px; }
   .trow + .trow { margin-top: 4px; }
-  /* THE PLATE: the face is a ::before under the content (the plate isolates it) */
+  /* THE PLATE: the face is a ::before under the content (the plate isolates
+     it), clipped to the chamfer, its rim the closed nine-slice (--plate-rim) */
   .res, #rDay, #topbar .iconbtn { position: relative; isolation: isolate; }
-  .res::before, #rDay::before, #topbar .iconbtn::before {
+  .res::before, #rDay::before, #topbar .iconbtn::before, #bmToggle::before, .bbtn::after,
+  #panel .abtn::before, .hplate::before, #panel .pchip::before {
     content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-    background: linear-gradient(#2d2317 0%, #1f180f 55%, #161009 100%);
-    box-shadow: inset 0 0 0 2px #0d0804, inset 0 0 0 3px rgba(214,170,74,.55), inset 0 10px 0 rgba(255,240,200,.05), inset 0 -8px 0 rgba(0,0,0,.28);
+    border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch;
+    background: var(--plate-face); box-shadow: none;
   }
   /* ONE ROW HOLDS WHAT THE TOWN HOLDS (operator, build 154: "move the
      population stat to the same row as the other resources… balance out
@@ -181,10 +213,12 @@
      and the people are five plates of ONE width — flex-basis 0 shares the
      row evenly, and min-width at the plate's own content lets one whose
      number needs more take it while the rest share what is left, so no
-     number is ever clipped. Each good wears its own drawn picture, big
-     enough to tell at a glance (operator, build 214: "make the icons for the
-     different resources unique to our game… quality pixel count so it's easy
-     for the player to visually see what each resource is"). The food rate
+     number is ever clipped. Each good wears its own drawn picture (operator,
+     build 214: "make the icons for the different resources unique to our
+     game… quality pixel count so it's easy for the player to visually see
+     what each resource is"), a fifth smaller since build 215 ("Shrink down
+     the resource icons… maybe just go to like a single gold coin"): gold is
+     a coin stamped with the clan's flame, two more behind it. The food rate
      does not ride the plate: a tap on it says the day's sums, and the number
      itself turns red when the store will run dry within days (UI.refresh).
      A number past 9,999 shortens to 12.4k (UI.fmtRes). */
@@ -194,7 +228,7 @@
     flex: 1 1 0; min-width: auto; max-width: 170px;
     font-size: var(--res-fs, 16px); color: #f7ead0; text-shadow: 0 1px 0 #000, 0 0 4px rgba(0,0,0,.55);
   }
-  .res .ric { width: var(--res-ic, 28px); height: var(--res-ic, 28px); flex: 0 0 auto; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+  .res .ric { width: var(--res-ic, 24px); height: var(--res-ic, 24px); flex: 0 0 auto; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
   .res:active::before, #rDay:active::before { filter: brightness(1.25); }
   #rFood.low { color: #ff8a80; }
   /* THE PLATES ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a plate
@@ -204,13 +238,13 @@
   #topbar .trow:first-child { justify-content: center; }
   /* (measured with the widest numbers the bar prints — "9999", "99.9k",
      "64/60" — so the five always share one row: tests/hud-info.mjs) */
-  @media (max-width: 480px) { #topbar { --res-ic: 28px; --res-fs: 16px; --res-gap: 2px; --res-pl: 2px; --res-pr: 3px; } #topbar .trow:first-child { gap: 3px; } }
-  @media (max-width: 420px) { #topbar { --res-ic: 27px; --res-fs: 15.5px; } }
-  @media (max-width: 400px) { #topbar { --res-ic: 25px; --res-fs: 15px; } }
-  @media (max-width: 382px) { #topbar { --res-ic: 24px; --res-fs: 14.5px; } }
-  @media (max-width: 368px) { #topbar { --res-ic: 23px; --res-fs: 14px; --res-gap: 1px; --res-pr: 2px; } }
-  @media (max-width: 348px) { #topbar { --res-ic: 22px; --res-fs: 13px; } }
-  @media (max-width: 330px) { #topbar { --res-ic: 20px; --res-fs: 12.5px; } }
+  @media (max-width: 480px) { #topbar { --res-ic: 22px; --res-fs: 16px; --res-gap: 3px; --res-pl: 3px; --res-pr: 4px; } #topbar .trow:first-child { gap: 3px; } }
+  @media (max-width: 420px) { #topbar { --res-ic: 21px; --res-fs: 15.5px; } }
+  @media (max-width: 400px) { #topbar { --res-ic: 20px; --res-fs: 15px; } }
+  @media (max-width: 382px) { #topbar { --res-ic: 19px; --res-fs: 14.5px; } }
+  @media (max-width: 368px) { #topbar { --res-ic: 18px; --res-fs: 14px; --res-gap: 2px; --res-pr: 3px; } }
+  @media (max-width: 348px) { #topbar { --res-ic: 17px; --res-fs: 13px; } }
+  @media (max-width: 330px) { #topbar { --res-ic: 16px; --res-fs: 12.5px; } }
   /* THE DAY'S PLATE: the sun by day and the moon by night (UI.refresh reads
      R.dayPhase), the count in the menus' own caps */
   #rDay { display: flex; align-items: center; height: 40px; padding: 0 10px 0 33px; flex: 0 0 auto;
@@ -249,8 +283,7 @@
   #topbar .iconbtn:focus-visible, .res:focus-visible, #rDay:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
   #mapBtn { margin-left: auto; }
   #mapBtn[aria-pressed="true"]::before, #topbar .iconbtn.on::before {
-    background: linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
-    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.12), inset 0 -8px 0 rgba(0,0,0,.25);
+    background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit);
   }
   /* …and on a narrow phone the second row makes room: the plates step down
      to 40, 37 and 36 wide (still 44 tall), so three banners, the running cards'
@@ -377,28 +410,36 @@
     -webkit-appearance: none; appearance: none; pointer-events: auto;
     left: 10px; top: -30px; height: 30px;
   }
-  #bmToggle::before {
-    content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-    background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
-    box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,.55), inset 0 10px 0 rgba(255,240,200,.06), inset 0 -8px 0 rgba(0,0,0,.28);
-  }
+  /* (the plate rule above draws it; it floats over the map, so its face is solid) */
+  #bmToggle::before { background: var(--plate-face-solid); }
   #bmToggle:active { transform: translateY(1px); }
   #bmToggle:active::before { filter: brightness(1.2); }
   #bmToggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   #bmToggle .bmIc { display: none; pointer-events: none; }
-  /* closed: THE BUILD BUTTON */
+  /* closed: THE BUILD BUTTON (build 215 — the operator: "Create a nicer
+     looking build button… more pixels, better quality image… make that build
+     button look more attractive to click on"): a drawn medallion, a gold rim
+     round a carved walnut face with a golden cottage and two crossed hammers
+     (assets/ui/hud/build-medal.png, PixelLab, 256px for 84 CSS px), on a warm
+     light, with the build panel's own banner across its foot saying BUILD —
+     the panel it opens wears the same banner, so the closed and the open
+     menu read as one thing. The box is the target: 88x100, as drawn. */
   #bottombar[data-bm="closed"] #bmToggle {
-    top: auto; left: calc(env(safe-area-inset-left, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 12px);
-    width: 84px; height: 84px; padding: 0; flex-direction: column; gap: 3px;
-    font-size: 15px; letter-spacing: 1.6px; color: #fff0bf;
+    top: auto; left: calc(env(safe-area-inset-left, 0px) + 8px); bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 10px);
+    width: 88px; height: 100px; padding: 0; display: block;
   }
-  #bottombar[data-bm="closed"] #bmToggle::before {
-    background: radial-gradient(ellipse 80% 60% at 50% 35%, rgba(255,214,120,.22), rgba(0,0,0,0) 70%), linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
-    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 0 0 6px rgba(26,16,5,.85),
-      inset 0 0 0 7px rgba(242,207,108,.35), inset 0 12px 0 rgba(255,236,170,.10), inset 0 -10px 0 rgba(0,0,0,.25);
-  }
-  #bottombar[data-bm="closed"] #bmToggle .bmIc { display: block; width: 40px; height: 40px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.75)); }
-  #bottombar[data-bm="closed"] #bmToggle { filter: drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
+  #bottombar[data-bm="closed"] #bmToggle::before { display: none; }
+  #bmToggle .bmGlow, #bmToggle .bmMed, #bmToggle .bmRib { display: none; pointer-events: none; }
+  #bottombar[data-bm="closed"] #bmToggle .bmGlow { display: block; position: absolute; left: -6px; right: -6px; top: -6px; height: 96px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, rgba(255,206,110,.42) 0%, rgba(255,186,80,.16) 46%, rgba(255,186,80,0) 68%); }
+  #bottombar[data-bm="closed"] #bmToggle .bmMed { display: block; position: absolute; left: 2px; top: 0; width: 84px; height: 84px;
+    filter: drop-shadow(0 3px 3px rgba(0,0,0,.65)); }
+  #bottombar[data-bm="closed"] #bmToggle .bmRib { display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; }
+  #bmToggle .bmRib svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+  #bmToggle .bmRib b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 1px;
+    font: 800 15px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: #fbe39a; text-shadow: 0 2px 0 #000, 0 0 5px rgba(0,0,0,.6); }
+  #bottombar[data-bm="closed"] #bmToggle:active { transform: translateY(2px) scale(.97); }
+  #bottombar[data-bm="closed"] #bmToggle:active .bmMed { filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)) brightness(1.12); }
   /* open: the ✕ on the frame's right corner, a finger wide (44px) — the
      cards start below its foot, so no card loses a pixel to it
      (tests/desktop-layout.mjs butTheBuildCardsKeepEveryPixel) */
@@ -412,7 +453,7 @@
     height: 44px; padding: 0 16px; font-size: 13px;
   }
   #buildmenu {
-    display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    display: flex; align-items: flex-start; gap: 7px; overflow-x: auto; -webkit-overflow-scrolling: touch;
     touch-action: pan-x; padding-bottom: 2px;
     /* a scroller clips at its padding box, and a card's NEW tag rides 6px over
        its top edge (js/prologue.js): the box reaches 6px up into the bar's own
@@ -421,45 +462,50 @@
     padding-top: 6px; margin-top: -6px;
     scrollbar-width: thin; scrollbar-color: rgba(214,170,74,.45) transparent;
   }
-  /* THE BUILD CARDS (build 214): bigger, framed, the picture first, the name
-     in the menus' caps and the price in the bar's own pictures — a good the
-     town is short of in red, so what is needed reads beside what is had
-     (UI.costHtml). A card the hall has not reached yet is dimmed and says
-     so; one merely short keeps its picture whole. */
+  /* THE BUILD CARDS (build 214, tightened at 215 — the operator: "there's just
+     a little bit of space underneath the image… it makes the whole building
+     menu look unnecessarily elongated… make sure that's tight"): the drawn
+     picture (UI.menuIconSprite: the build menu's own art), the name in the
+     menus' caps in a two-line box, and the price RIGHT under it in the bar's
+     own pictures — a good the town is short of in red (UI.costHtml). The
+     price never wraps (a three-good price was a second line, and every card
+     in the row stretched to it): a card is as wide as its price needs and
+     never narrower than the row's (max-content; the name is held to the
+     narrow card's width, so only the price can widen one — War Camp's
+     350/250/150 spilled past a fixed wider card), and the row keeps each
+     card at its own height. A card the hall has not reached yet is dimmed
+     and says so; one merely short keeps its picture whole. */
   .bbtn {
-    position: relative; isolation: isolate; flex: 0 0 auto; width: 90px; min-height: 112px; border: 0; border-radius: 6px;
+    position: relative; isolation: isolate; flex: 0 0 auto; width: max-content; min-width: 80px; border: 0; border-radius: 0;
     background: none; color: #f3e6c8; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-    gap: 2px; padding: 8px 4px 7px; cursor: pointer; font-family: inherit;
+    gap: 1px; padding: 6px 3px 6px; cursor: pointer; font-family: inherit;
   }
-  .bbtn::after {
-    content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-    background: radial-gradient(ellipse 85% 50% at 50% 32%, rgba(130,92,44,.32), rgba(0,0,0,0) 72%), linear-gradient(#2e2417 0%, #211a10 55%, #18120a 100%);
-    box-shadow: inset 0 0 0 2px #0d0804, inset 0 0 0 3px rgba(214,170,74,.48), inset 0 10px 0 rgba(255,240,200,.05), inset 0 -10px 0 rgba(0,0,0,.25);
-  }
+  /* (the plate rule at the top bar draws its face and closed rim) */
+  .bbtn::after { background: radial-gradient(ellipse 80% 46% at 50% 30%, rgba(150,108,52,.26), rgba(0,0,0,0) 72%) border-box, var(--plate-face); }
   .bbtn:active { transform: translateY(1px); }
   .bbtn:active::after { filter: brightness(1.2); }
-  .bbtn.sel::after {
-    background: radial-gradient(ellipse 85% 50% at 50% 32%, rgba(255,214,120,.25), rgba(0,0,0,0) 72%), linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
-    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.12), inset 0 -10px 0 rgba(0,0,0,.25);
-  }
+  .bbtn.sel::after { background: radial-gradient(ellipse 80% 46% at 50% 30%, rgba(255,214,120,.25), rgba(0,0,0,0) 72%) border-box, var(--plate-face-lit);
+    border-image-source: var(--plate-rim-lit); }
   .bbtn.sel { filter: drop-shadow(0 0 6px rgba(242,207,108,.5)); }
   .bbtn.locked { opacity: .5; }
-  .bbtn canvas { width: 54px; height: 54px; flex: 0 0 auto; }
-  .bbtn .bname { font: 700 11.5px/1.12 var(--menufont); color: #f3e2b4; letter-spacing: .1px; text-align: center; text-shadow: 0 1px 0 #000;
-    min-height: 2.24em; display: flex; align-items: center; justify-content: center; padding: 0 1px; }
-  .bbtn .bcost { width: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1px 5px; margin-top: auto; padding-top: 4px;
-    border-top: 1px solid rgba(214,170,74,.22); font: 700 12px/1.25 -apple-system, "Segoe UI", Roboto, sans-serif; color: #eadcbd;
-    font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 #000; letter-spacing: -.2px; }
+  .bbtn canvas { width: 50px; height: 50px; flex: 0 0 auto; }
+  .bbtn .bname { font: 700 11px/1.1 var(--menufont); color: #f3e2b4; letter-spacing: .1px; text-align: center; text-shadow: 0 1px 0 #000;
+    min-height: 2.2em; max-width: 74px; display: flex; align-items: center; justify-content: center; padding: 0 1px; }
+  .bbtn .bcost { width: 100%; display: flex; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 4px; margin-top: 1px; padding-top: 3px;
+    border-top: 1px solid rgba(214,170,74,.22); font: 700 12px/1.2 -apple-system, "Segoe UI", Roboto, sans-serif; color: #eadcbd;
+    font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 #000; letter-spacing: -.3px; white-space: nowrap; }
   .bbtn .bcost .bc { white-space: nowrap; }
   .bbtn .bcost .bc.short { color: #ff8f78; }
-  .bbtn .bcost .ri { width: 14px; height: 14px; vertical-align: -3px; margin-right: 1px; }
-  .bbtn .blk { font: 700 10px/1.2 -apple-system, "Segoe UI", Roboto, sans-serif; color: #e9b37a; text-align: center; }
+  .bbtn .bcost .ri { width: 13px; height: 13px; vertical-align: -2px; margin-right: 1px; }
+  .bbtn .blk { font: 700 9.5px/1.2 -apple-system, "Segoe UI", Roboto, sans-serif; color: #e9b37a; text-align: center; white-space: nowrap; letter-spacing: -.2px; }
   /* THE WONDER CARD IS THE GOAL (UI.buildMenu, tests/calm-peace.mjs): gold rim,
      a victory ribbon, room for its four-resource price, and a live "% saved"
      line — and it is never ghosted to 45% like an unaffordable hut, because
      "saving for it" is the state it lives in for most of a run */
   .bbtn.wonder { width: 104px; transition: filter 1.4s ease; filter: drop-shadow(0 0 6px rgba(232,193,90,.45)); }
-  .bbtn.wonder::after { box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.08), inset 0 -10px 0 rgba(0,0,0,.25); }
+  .bbtn.wonder::after { border-image-source: var(--plate-rim-lit); }
+  /* its four goods share two lines; the row lets it stand taller than the rest */
+  .bbtn.wonder .bcost { flex-wrap: wrap; gap: 1px 4px; }
   .bbtn.wonder.cant, .bbtn.wonder.locked { opacity: 0.88; }
   .bbtn.wonder .bwin {
     font: 800 8.5px/1 var(--menufont); color: var(--gold); letter-spacing: .08em; text-transform: uppercase;
@@ -484,7 +530,7 @@
   .ri[data-r="food"] { background-image: url("assets/ui/hud/res-food.png?v=1"); }
   .ri[data-r="wood"] { background-image: url("assets/ui/hud/res-wood.png?v=1"); }
   .ri[data-r="stone"] { background-image: url("assets/ui/hud/res-stone.png?v=1"); }
-  .ri[data-r="gold"] { background-image: url("assets/ui/hud/res-gold.png?v=1"); }
+  .ri[data-r="gold"] { background-image: url("assets/ui/hud/res-gold.png?v=2"); }
 
   /* ---- TWO ROADS TO VICTORY (Screens.showVictoryPaths, tests/calm-peace.mjs) ----
      the first Calm game's opening modal: z25 — over the placement chrome
@@ -719,38 +765,31 @@
      the top bar's and the build cards' (index.html --hud-chamfer). */
   #panel .abtn, .hplate { position: relative; isolation: isolate; border: 0; border-radius: 0; background: none; box-shadow: none;
     color: #f4e8cc; text-shadow: 0 1px 0 rgba(0,0,0,.85); }
-  #panel .abtn::before, .hplate::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-    background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
-    box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,.48), inset 0 10px 0 rgba(255,240,200,.06), inset 0 -8px 0 rgba(0,0,0,.28); }
+  /* (the plate rule at the top bar draws the face and the closed rim) */
   #panel .abtn:active, .hplate:active { background: none; transform: translateY(1px); }
   #panel .abtn:active::before, .hplate:active::before { filter: brightness(1.2); }
   #panel .abtn small { color: #c2b28e; }
   #panel .abtn .bic { width: 22px; height: 22px; vertical-align: -6px; margin-right: 6px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
-  #panel .abtn.sel::before, #panel .abtn.on::before {
-    background: linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
-    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.12), inset 0 -8px 0 rgba(0,0,0,.25); }
+  #panel .abtn.sel::before, #panel .abtn.on::before { background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit); }
   #panel .abtn.sel { background: none; }
-  #panel .abtn.danger::before { background: linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%);
-    box-shadow: inset 0 0 0 2px #1d0804, inset 0 0 0 3px #ffb08a, inset 0 10px 0 rgba(255,200,170,.12), inset 0 -8px 0 rgba(0,0,0,.3); }
+  #panel .abtn.danger::before { background: linear-gradient(rgba(255,200,170,.12), rgba(255,200,170,0) 10px) border-box,
+    linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%) border-box; border-image-source: var(--plate-rim-red); }
   /* training: the plate's rim goes gold and glows (UI.paintTraining's .trn) */
   #panel .abtn.trn { box-shadow: none; filter: drop-shadow(0 0 5px rgba(232,193,90,.45)); }
-  #panel .abtn.trn::before { box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 10px 0 rgba(255,236,170,.08), inset 0 -8px 0 rgba(0,0,0,.25); }
+  #panel .abtn.trn::before { border-image-source: var(--plate-rim-lit); }
   /* the rare act's red plate, quiet at rest (UI.killBtn) */
   #panel .abtn.pkill { background: none; }
-  #panel .abtn.pkill::before { background: linear-gradient(#4d2a1b 0%, #3c2115 55%, #301a10 100%);
-    box-shadow: inset 0 0 0 2px #140604, inset 0 0 0 3px rgba(224,120,90,.45), inset 0 10px 0 rgba(255,200,170,.05), inset 0 -8px 0 rgba(0,0,0,.28); }
+  #panel .abtn.pkill::before { background: linear-gradient(#4d2a1b 0%, #3c2115 55%, #301a10 100%) border-box; border-image-source: var(--plate-rim-redq); }
   #panel .abtn.pkill.armed { box-shadow: none; filter: drop-shadow(0 0 5px rgba(224,101,80,.55)); }
-  #panel .abtn.pkill.armed::before { background: linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%);
-    box-shadow: inset 0 0 0 2px #1d0804, inset 0 0 0 3px #ffb08a, inset 0 10px 0 rgba(255,200,170,.12), inset 0 -8px 0 rgba(0,0,0,.3); }
+  #panel .abtn.pkill.armed::before { background: linear-gradient(rgba(255,200,170,.12), rgba(255,200,170,0) 10px) border-box,
+    linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%) border-box; border-image-source: var(--plate-rim-red); }
   /* the header's small plates (✕, ℹ️/−, the rank, the red act) a finger
      square, and still where the header places them: the plate rule above
      (#panel .abtn, position relative) outranks their own ids, so they say
      absolute again here (tests/rank-up.mjs theButtonSitsBesideTheInfo) */
   #panel #panelClose, #panel #helpToggle, #panel .abtn.prank, #panel .abtn.pkill { position: absolute; min-width: 42px; min-height: 42px; padding: 4px 8px; }
   #panel .pchip { border: 0; border-radius: 0; background: none; position: relative; isolation: isolate; color: #f0e2bd; }
-  #panel .pchip::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
-    background: linear-gradient(#33281a, #231a0f); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,.32), inset 0 8px 0 rgba(255,240,200,.04); }
-  #panel .pchip.on::before { box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(242,207,108,.75), inset 0 8px 0 rgba(255,240,200,.06); }
+  #panel .pchip.on::before { background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit); }
   #panel .pchip:active { background: none; transform: translateY(1px); }
 
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
@@ -1198,9 +1237,9 @@
     /* a desktop has the room for a map you can read */
     #mini { width: 148px; height: 148px; }
     #miniToggle { top: calc(var(--safe-top) + var(--hud-top) + 163px + var(--pro-map, 0px)); }
-    .bbtn { width: 96px; min-height: 122px; }
-    .bbtn canvas { width: 64px; height: 64px; }
-    .bbtn .bname { font-size: 12.5px; }
+    .bbtn { min-width: 90px; }
+    .bbtn canvas { width: 60px; height: 60px; }
+    .bbtn .bname { font-size: 12px; max-width: 84px; }
     .bbtn .bcost { font-size: 12.5px; }
     .bbtn.wonder { width: 112px; }
 
@@ -1978,7 +2017,7 @@
     <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store. Tap to see what comes in and what is eaten a day."><img class="ric" data-ic="food" src="assets/ui/hud/res-food.png?v=1" alt="" draggable="false" decoding="async"><span id="rFood">0</span></span>
     <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><img class="ric" data-ic="wood" src="assets/ui/hud/res-wood.png?v=1" alt="" draggable="false" decoding="async"><span id="rWood">0</span></span>
     <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><img class="ric" data-ic="stone" src="assets/ui/hud/res-stone.png?v=1" alt="" draggable="false" decoding="async"><span id="rStone">0</span></span>
-    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><img class="ric" data-ic="gold" src="assets/ui/hud/res-gold.png?v=1" alt="" draggable="false" decoding="async"><span id="rGold">0</span></span>
+    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><img class="ric" data-ic="gold" src="assets/ui/hud/res-gold.png?v=2" alt="" draggable="false" decoding="async"><span id="rGold">0</span></span>
     <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><img class="ric" data-ic="pop" src="assets/ui/hud/res-pop.png?v=1" alt="" draggable="false" decoding="async"><span id="rPop">0/0</span></span>
   </div>
   <div class="trow">
@@ -2392,59 +2431,59 @@
 
 </div>
 
-<script src="js/feedback.js?v=214"></script>
-<script src="js/config.js?v=214"></script>
-<script src="js/audio.js?v=214"></script>
-<script src="js/config.supabase.js?v=214"></script>
-<script src="js/vendor/supabase.js?v=214"></script>
-<script src="js/backend.js?v=214"></script>
-<script src="js/competition.js?v=214"></script>
-<script src="js/score.js?v=214"></script>
-<script src="js/cards.js?v=214"></script>
-<script src="js/deck.js?v=214"></script>
-<script src="js/artstyle.js?v=214"></script>
-<script src="js/sprites.js?v=214"></script>
-<script src="js/formations.js?v=214"></script>
-<script src="js/relics.js?v=214"></script>
-<script src="js/assets.js?v=214"></script>
-<script src="js/dev.js?v=214"></script>
-<script src="js/map.js?v=214"></script>
-<script src="js/buildings.js?v=214"></script>
-<script src="js/units.js?v=214"></script>
-<script src="js/combat.js?v=214"></script>
-<script src="js/ai.js?v=214"></script>
-<script src="js/render.js?v=214"></script>
-<script src="js/battlefx.js?v=214"></script>
-<script src="js/goldfx.js?v=214"></script>
-<script src="js/footing.js?v=214"></script>
-<script src="js/ruins.js?v=214"></script>
-<script src="js/roads.js?v=214"></script>
-<script src="js/beasts.js?v=214"></script>
-<script src="js/defeatart.js?v=214"></script>
-<script src="js/victoryart.js?v=214"></script>
-<script src="js/ui.js?v=214"></script>
-<script src="js/feel.js?v=214"></script>
-<script src="js/lookout.js?v=214"></script>
-<script src="js/screens.js?v=214"></script>
-<script src="js/patchnotes.js?v=214"></script>
-<script src="js/settings.js?v=214"></script>
-<script src="js/board.js?v=214"></script>
-<script src="js/pages.js?v=214"></script>
-<script src="js/titlescreen.js?v=214"></script>
-<script src="js/scenario-maps.js?v=214"></script>
-<script src="js/scenarios.js?v=214"></script>
-<script src="js/prologue.js?v=214"></script>
-<script src="js/deckfx.js?v=214"></script>
-<script src="js/deckfx-town.js?v=214"></script>
-<script src="js/deckfx-army.js?v=214"></script>
-<script src="js/deckfx-growth.js?v=214"></script>
-<script src="js/deckfx-rival.js?v=214"></script>
-<script src="js/deckui.js?v=214"></script>
-<script src="js/deckscreens.js?v=214"></script>
-<script src="js/cardintro.js?v=214"></script>
-<script src="js/game.js?v=214"></script>
-<script src="js/terrain-core.js?v=214"></script>
-<script src="js/terrain.js?v=214"></script>
-<script src="js/terrain-v5.js?v=214"></script>
+<script src="js/feedback.js?v=215"></script>
+<script src="js/config.js?v=215"></script>
+<script src="js/audio.js?v=215"></script>
+<script src="js/config.supabase.js?v=215"></script>
+<script src="js/vendor/supabase.js?v=215"></script>
+<script src="js/backend.js?v=215"></script>
+<script src="js/competition.js?v=215"></script>
+<script src="js/score.js?v=215"></script>
+<script src="js/cards.js?v=215"></script>
+<script src="js/deck.js?v=215"></script>
+<script src="js/artstyle.js?v=215"></script>
+<script src="js/sprites.js?v=215"></script>
+<script src="js/formations.js?v=215"></script>
+<script src="js/relics.js?v=215"></script>
+<script src="js/assets.js?v=215"></script>
+<script src="js/dev.js?v=215"></script>
+<script src="js/map.js?v=215"></script>
+<script src="js/buildings.js?v=215"></script>
+<script src="js/units.js?v=215"></script>
+<script src="js/combat.js?v=215"></script>
+<script src="js/ai.js?v=215"></script>
+<script src="js/render.js?v=215"></script>
+<script src="js/battlefx.js?v=215"></script>
+<script src="js/goldfx.js?v=215"></script>
+<script src="js/footing.js?v=215"></script>
+<script src="js/ruins.js?v=215"></script>
+<script src="js/roads.js?v=215"></script>
+<script src="js/beasts.js?v=215"></script>
+<script src="js/defeatart.js?v=215"></script>
+<script src="js/victoryart.js?v=215"></script>
+<script src="js/ui.js?v=215"></script>
+<script src="js/feel.js?v=215"></script>
+<script src="js/lookout.js?v=215"></script>
+<script src="js/screens.js?v=215"></script>
+<script src="js/patchnotes.js?v=215"></script>
+<script src="js/settings.js?v=215"></script>
+<script src="js/board.js?v=215"></script>
+<script src="js/pages.js?v=215"></script>
+<script src="js/titlescreen.js?v=215"></script>
+<script src="js/scenario-maps.js?v=215"></script>
+<script src="js/scenarios.js?v=215"></script>
+<script src="js/prologue.js?v=215"></script>
+<script src="js/deckfx.js?v=215"></script>
+<script src="js/deckfx-town.js?v=215"></script>
+<script src="js/deckfx-army.js?v=215"></script>
+<script src="js/deckfx-growth.js?v=215"></script>
+<script src="js/deckfx-rival.js?v=215"></script>
+<script src="js/deckui.js?v=215"></script>
+<script src="js/deckscreens.js?v=215"></script>
+<script src="js/cardintro.js?v=215"></script>
+<script src="js/game.js?v=215"></script>
+<script src="js/terrain-core.js?v=215"></script>
+<script src="js/terrain.js?v=215"></script>
+<script src="js/terrain-v5.js?v=215"></script>
 </body>
 </html>

@@ -454,8 +454,9 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     // every plate the settings page's: its stepped corner, its line(s), no straps, bosses or grain
     const plates = shown.map(e => {
       const f = e.querySelector(':scope > .t2f');
-      return { id: e.id, kind: e.dataset.t2, notch: !!(f && f.querySelector('clipPath path[d^="M0,5H3V3H5V0"]')),
-        gold: !!(f && f.querySelector('rect[stroke="#f2cf6c"]')), caps: f ? f.querySelectorAll('circle, ellipse').length : -1,
+      // the corner: the HUD's 45° cut (build 215), the lines run round it unbroken
+      return { id: e.id, kind: e.dataset.t2, notch: !!(f && f.querySelector('clipPath path[d^="M0,4L4,0H"]')),
+        gold: !!(f && f.querySelector('[stroke="#f2cf6c"]')), caps: f ? f.querySelectorAll('circle, ellipse').length : -1,
         grain: f ? f.querySelectorAll('path[stroke-opacity]').length : -1 };
     });
     return { lit: kind('btnTitleNew'), board: kind('btnTitleBoard'), cont: kind('btnContinue'), plates,
@@ -466,7 +467,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     `New Game ${r.lit}, Leaderboard ${r.board}, Continue ${r.cont}, lit: ${r.plates.filter(q => q.kind === 'lit').map(q => q.id).join(', ')}`);
   const odd = r.plates.filter(q => !q.notch || q.caps || q.grain || (q.kind === 'lit') !== q.gold);
   ck('andEveryPlateIsTheSettingsPagesPlate', r.plates.length >= 7 && odd.length === 0,
-    odd.length ? JSON.stringify(odd) : `${r.plates.length} plates: the stepped corner, the line(s), no caps or grain; the gold line only on the lit one`);
+    odd.length ? JSON.stringify(odd) : `${r.plates.length} plates: the cut corner, the line(s), no caps or grain; the gold line only on the lit one`);
   ck('andANoSavesContinueSitsFlat', r.cant && r.contF === 'none' && r.contOp === '1' && r.small.length > 0, `cant=${r.cant}, its frame's drop: ${r.contF}, "${r.small}"`);
   const top0 = await p.evaluate(() => document.getElementById('btnTitleBoard').getBoundingClientRect().top);
   const bx = await p.evaluate(() => { const q = document.getElementById('btnTitleBoard').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; });
