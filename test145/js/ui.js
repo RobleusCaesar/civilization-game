@@ -42,6 +42,7 @@ const UI = {
   CONFIRM_GAP_MS: 400,
   _armedAt: { confirmDemolish: 0, confirmCancel: 0 },
   _tapTime(e) { return (e && e.timeStamp > 0) ? e.timeStamp : performance.now(); },
+  QUICK_MS: 250, QUICK_SLOP: 16,   // a flick this short and this small is a tap (build 210)
   armConfirm(slot, id, e) { this[slot] = id; this._armedAt[slot] = this._tapTime(e); this.renderPanel(); },
   confirmTooSoon(slot, e) { return this._tapTime(e) - (this._armedAt[slot] || 0) < this.CONFIRM_GAP_MS; },
   wallDrag: null,        // tile chain while dragging a wall line
@@ -82,26 +83,36 @@ const UI = {
      changed — and guessing is exactly what was broken, since building PNGs
      decode asynchronously LONG after the menu was laid out at boot, so the
      icon kept the procedural drawing for the whole session. */
-  iconInto(ic, spr) {
+  /* `px` is the canvas's own size: the build cards hold theirs at 192 (build
+     214 — a 58px card picture on a 3x phone is 174 device pixels, and a 64px
+     canvas blown up to it was the soft icon the critique saw); the panel's
+     keeps 64. A call that names no size keeps the size the canvas was given
+     (so asking again stays free, tests/art-pipeline.mjs). Procedural art is
+     drawn nearest-neighbour into it (whole multiples of its 32px grid), PNG
+     art smoothly. */
+  iconInto(ic, spr, px) {
     if (!spr) return;
-    if (ic._cfIcon === spr) return;   // already showing this exact drawable
-    ic._cfIcon = spr;
-    ic.width = 64; ic.height = 64;
+    px = px || ic._cfPx || 64;
+    if (ic._cfIcon === spr && ic.width === px) return;   // already showing this exact drawable
+    ic._cfIcon = spr; ic._cfPx = px;
+    ic.width = px; ic.height = px;
     const g = ic.getContext('2d');
     // hand-authored PNG art keeps its aspect in the menu too — fit within the
     // icon, feet on the floor (the same reading as R.blitBld's anchor rule)
     if (spr._cfArt && spr.height !== spr.width) {
-      g.imageSmoothingEnabled = true;
-      const s = Math.min(64 / spr.width, 64 / spr.height);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      const s = Math.min(px / spr.width, px / spr.height);
       const w = spr.width * s, h = spr.height * s;
-      g.drawImage(spr, (64 - w) / 2, 64 - h, w, h);
+      g.drawImage(spr, (px - w) / 2, px - h, w, h);
       return;
     }
     // PNG art downscales smoothly (a 256px master decimated nearest-neighbour
     // shimmers); procedural pixel art keeps its hard-edged look
     g.imageSmoothingEnabled = !!spr._cfArt;
-    g.drawImage(spr, 0, 0, spr.width, spr.height, 0, 0, 64, 64);
+    if (spr._cfArt) g.imageSmoothingQuality = 'high';
+    g.drawImage(spr, 0, 0, spr.width, spr.height, 0, 0, px, px);
   },
+  MENU_ICON_PX: 192,
 
   init() {
     /* desktop parity for placement mode: Esc = the ✗ (discard the ghost,
@@ -139,8 +150,8 @@ const UI = {
     // the enemy monument rises — the days on it are the whole endgame clock
     setInterval(() => { try { this.tickWonderWarn(); } catch (e) {} }, 900);
     // the HUD's material (--wood-tex) is a vector in index.html's :root now —
-    // drawn at the screen's own pixels, present from the first paint — and so
-    // are the top bar's resource icons (the .ric SVGs in its markup, build 154)
+    // drawn at the screen's own pixels, present from the first paint — and
+    // the top bar's goods are drawn pictures in its markup (the .ric imgs, build 214)
     this.buildMenu();
     this.bindCanvas();
     this.bindButtons();
@@ -163,6 +174,9 @@ const UI = {
       el.addEventListener('click', e => { say(e); if (e.detail) el.blur(); });
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); say(e); } });
     });
+    // the small things that should simply work (js/feel.js): the keyboard,
+    // the pause veil, the minimap drag, the alert's way there, the cursor
+    if (typeof Feel !== 'undefined' && Feel.init) { try { Feel.init(); } catch (e) {} }
   },
 
   /* ---------------- build menu ---------------- */
@@ -180,7 +194,7 @@ const UI = {
       // difficulty has been chosen
       if (key === 'wonder') btn.style.display = 'none';
       /* THE WONDER CARD READS AS THE GOAL, NOT AS A PRICE YOU CANNOT PAY
-         (tests/tutorial.mjs, the retention pass — 0 Wonder wins in every
+         (tests/calm-peace.mjs, the retention pass — 0 Wonder wins in every
          Calm game logged): last in the row and greyed to 45% for the whole
          run, it was the one card nobody ever scrolled to. It wears a gold
          rim and a "victory" ribbon, and under the price it says how far the
@@ -192,10 +206,12 @@ const UI = {
         btn.appendChild(rib);
       }
       const ic = document.createElement('canvas');
-      this.iconInto(ic, this.menuIconSprite(key));
+      this.iconInto(ic, this.menuIconSprite(key), this.MENU_ICON_PX);
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
-      const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
+      const co = document.createElement('div'); co.className = 'bcost';
+      const cost0 = Bld.effCost('P', key);
+      co.innerHTML = this.costHtml(cost0); co.dataset.c = Bld.costStr(cost0);
       btn.appendChild(nm); btn.appendChild(co);
       if (key === 'wonder') { const pg = document.createElement('div'); pg.className = 'bprog'; btn.appendChild(pg); }
       btn.addEventListener('click', () => {
@@ -205,7 +221,10 @@ const UI = {
         if (d.reqTC && (!tc || tc.level < d.reqTC)) { this.toast(`Needs Town Center Lv ${d.reqTC}`, true); return; }
         // NOT affordable is no longer a refusal — placement opens in its amber
         // "scout the spot you're saving for" state, with ✓ disabled
-        if (this.isLine(key) && !Bld.canAfford(Bld.effCost('P', key))) { this.toast('Not enough resources', true); return; }
+        // …and the top bar points at whatever is short of it (js/feel.js)
+        const cost0 = Bld.effCost('P', key), afford0 = Bld.canAfford(cost0);
+        if (!afford0 && typeof Feel !== 'undefined' && Feel.short) Feel.short(cost0, { kind: 'build', key, name: d.name });
+        if (this.isLine(key) && !afford0) { this.toast('Not enough resources: still needs ' + Bld.shortfall(cost0), true); return; }
         this.deselect();
         // tuck the build menu away so the whole map is visible to pick a site
         // (keepPlacing: don't cancel the building we just chose)
@@ -340,10 +359,18 @@ const UI = {
       const gated = CFG.BUILDINGS[key].reqTC && (!tc || tc.level < CFG.BUILDINGS[key].reqTC);
       b.classList.toggle('sel', this.placing === key);
       b.classList.toggle('cant', gated || !Bld.canAfford(cost));
+      // a card the hall has not reached is LOCKED (dimmed, it says what it
+      // waits for); one merely short keeps its picture whole and reds the
+      // goods it is short of (the research's rule: what is needed beside
+      // what is had, never colour alone — the number is the count)
+      b.classList.toggle('locked', !!gated);
       const co = b.querySelector('.bcost');
       if (co) {
-        const txt = Bld.costStr(cost);
-        if (co.textContent !== txt) co.textContent = txt;
+        const sig = Bld.costStr(cost) + '|' + this.shortKeys(cost) + '|' + (gated ? CFG.BUILDINGS[key].reqTC : 0);
+        if (co.dataset.sig !== sig) {
+          co.dataset.sig = sig; co.dataset.c = Bld.costStr(cost);
+          co.innerHTML = gated ? `<span class="blk">Needs hall Lv ${CFG.BUILDINGS[key].reqTC}</span>` : this.costHtml(cost);
+        }
       }
       /* THE ICON FOLLOWS THE ART, every frame. iconInto no-ops unless the
          drawable actually changed, so this covers all of it with one rule:
@@ -351,8 +378,46 @@ const UI = {
          under the running game, the wall's tier stepping to stone, and this
          run's rolled monument. */
       const ic = b.querySelector('canvas');
-      if (ic) this.iconInto(ic, this.menuIconSprite(key));
+      if (ic) this.iconInto(ic, this.menuIconSprite(key), this.MENU_ICON_PX);
     });
+  },
+
+  /* ---------------- A GOOD IN THE TEXT IS ITS PICTURE (build 214) ----------------
+     Every price the game writes (Bld.costStr: "🪵 60 🪨 5") is shown in the
+     HUD with the bar's own drawn goods (.ri, index.html) — the operator:
+     "make the icons for the different resources unique to our game, don't
+     reuse any emojis". The glyph stays inside the .ri box (pushed out of
+     sight by the stylesheet), so the text a reader, a copy or a test reads
+     is the very string the game wrote. ✨ is gold only before a number —
+     elsewhere it is a sparkle (a relic, Enlightenment). Only game-generated
+     text comes here; a toast is escaped first. */
+  RI_RE: /(\u{1F356}|\u{1FAB5}|\u{1FAA8})|\u2728(?=[\s\u00a0]*[\d+\u2212-])/gu,
+  RI_OF: { '\u{1F356}': 'food', '\u{1FAB5}': 'wood', '\u{1FAA8}': 'stone', '\u2728': 'gold' },
+  iconHtml(h) {
+    h = String(h == null ? '' : h);
+    if (!/[\u{1F356}\u{1FAB5}\u{1FAA8}\u2728]/u.test(h)) return h;
+    // never inside a tag (an attribute may carry a price, e.g. a title)
+    return h.replace(/(<[^>]*>)|([^<]+)/g, (m, tag, txt) => tag ? tag
+      : txt.replace(this.RI_RE, g => `<i class="ri" data-r="${this.RI_OF[g]}">${g}</i>`));
+  },
+  iconText(el, msg) {
+    const esc = String(msg).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const h = this.iconHtml(esc);
+    if (h === esc) el.textContent = msg; else el.innerHTML = h;
+  },
+  // a build card's price: each good its picture and its number, a good the town is short of in red
+  costHtml(cost) {
+    const parts = [];
+    for (const k in cost) {
+      const short = S && S.res && (S.res[k] || 0) < cost[k];
+      parts.push(`<span class="bc${short ? ' short' : ''}"><i class="ri" data-r="${k}">${Bld.resIcon(k)}</i>${cost[k]}</span>`);
+    }
+    return parts.join(' ') || 'free';
+  },
+  shortKeys(cost) {
+    let k2 = '';
+    if (S && S.res) for (const k in cost) if ((S.res[k] || 0) < cost[k]) k2 += k[0];
+    return k2;
   },
 
   /* ---------------- canvas input ---------------- */
@@ -361,13 +426,18 @@ const UI = {
     cv.addEventListener('pointerdown', e => {
       cv.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // the right and the middle mouse buttons MOVE THE MAP, whatever is
+      // armed (tests/box-select.mjs): they never grab the ghost, paint a line
+      // or start a sapper's cut — a desktop player told "right-drag moves the
+      // map" must never lay and pay for a wall with it
+      const panBtn = e.pointerType === 'mouse' && e.button !== 0;
       if (this.pointers.size === 1) {
-        if (this.isLine(this.placing)) {
+        if (this.isLine(this.placing) && !panBtn) {
           // drag paints a wall (or road) line instead of panning
           this.wallDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateWallGhost();
           this.downAt = null;
-        } else if (this.placing && this.placeGhost && this._onPlaceGhost(e.clientX, e.clientY)) {
+        } else if (this.placing && this.placeGhost && !panBtn && this._onPlaceGhost(e.clientX, e.clientY)) {
           // the press landed ON the ghost: this drag moves the BUILDING, not
           // the camera. A press elsewhere still pans — sighting the ground is
           // half of placing well.
@@ -375,7 +445,7 @@ const UI = {
           this.placePtr = { x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch' };
           this.placeGhostTo(e.clientX, e.clientY, e.pointerType === 'touch');
           this.downAt = null;
-        } else if (this.armedSapper()) {
+        } else if (this.armedSapper() && !panBtn) {
           // a sapper tool is armed: drag paints a line of tiles to dig/clear
           this.terraDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateTerraGhost();
@@ -390,6 +460,11 @@ const UI = {
           // moves past the tap threshold falls through to the ordinary tap,
           // so plain taps on your own units are completely unchanged.
           this.moveDragArm = (!this.placing && !this.settingRally) ? this.dragMoveAnchor(e.clientX, e.clientY) : null;
+          // A BOX ON THE DESKTOP (tests/box-select.mjs): a LEFT mouse press
+          // anywhere off the selection arms a selection box, the way every
+          // desktop strategy game draws one. Right and middle drags still pan.
+          const bw = (!this.moveDragArm && this.boxCanArm(e)) ? R.screenToWorld(e.clientX, e.clientY) : null;
+          this.boxArm = bw ? { wx: bw.x, wy: bw.y } : null;
         }
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
@@ -401,6 +476,7 @@ const UI = {
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
         this.moveDrag = null; this.moveDragArm = null; // …and the move tether
+        if (this.boxArm || this.boxDrag) { this.boxArm = null; this.boxDrag = null; this.boxSync(); }
         this.placeDragging = false; this.placePtr = null;   // ghost stays put; fingers zoom
       }
       e.preventDefault();
@@ -430,14 +506,26 @@ const UI = {
             this.downAt.moved = true;
             px = e.clientX - this.downAt.x; py = e.clientY - this.downAt.y;
           }
+          if (this.downAt) this.downAt.far = Math.max(this.downAt.far || 0, Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y));
           if (this.downAt && this.downAt.moved) {
             if (this.moveDragArm) {
               // the press started on the selection — this drag is an order, not
               // a pan: keep the tether pinned to the finger for the ghost
               this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
+            } else if (this.boxArm) {
+              // a left mouse drag off the selection: the box grows from where
+              // it was pressed (held on the GROUND, so the keys may move the
+              // view under it) to where the mouse is now
+              this.boxDrag = { wx: this.boxArm.wx, wy: this.boxArm.wy, sx: e.clientX, sy: e.clientY, shift: !!e.shiftKey };
+              this.boxSync();
+              if (typeof Feel !== 'undefined' && Feel.setCursor) Feel.setCursor('aim');   // a crosshair while it is drawn
             } else {
+              const c0x = R.cam.x, c0y = R.cam.y;
               R.cam.x -= px / R.cam.z; R.cam.y -= py / R.cam.z;
               R.clampCam();
+              // what this press moved the camera by (a flick gives it back)
+              this.downAt.panX = (this.downAt.panX || 0) + R.cam.x - c0x;
+              this.downAt.panY = (this.downAt.panY || 0) + R.cam.y - c0y;
             }
           }
         }
@@ -467,6 +555,20 @@ const UI = {
       // changes it is an ORDER given today (G.noteAct — a defeat's card asks
       // on how many days the player played, never how many things got done)
       const was = this._orderSnap();
+      // A QUICK CLICK THAT SLID A LITTLE IS STILL A CLICK (build 210, a
+      // playtest: "sometimes had villager be non responsive when clicking quick.
+      // other times a circle and a line pointing to the movement location").
+      // A press lifted inside QUICK_MS that never travelled past QUICK_SLOP is
+      // a tap where it was PRESSED: the nudge it gave the camera is given back
+      // and a tether it drew is let go. A pan or a drag is longer, or slower.
+      const da = this.downAt;
+      const flick = !!(da && da.moved && !da.noTap && !this.placeDragging && !this.wallDrag && !this.terraDrag &&
+        this._tapTime(e) - da.t < this.QUICK_MS && (da.far || 0) <= this.QUICK_SLOP);
+      if (flick) {
+        this.moveDrag = null; this.moveDragArm = null;
+        this.boxDrag = null;   // …and a box that never grew past a flick is a click too
+        if (da.panX || da.panY) { R.cam.x -= da.panX || 0; R.cam.y -= da.panY || 0; R.clampCam(); }
+      }
       if (this.placeDragging) {
         // release parks the ghost where it sits and offers ✓/✗
         this.placeDragging = false;
@@ -482,7 +584,11 @@ const UI = {
         // release = the order lands where the finger lifted
         this.commitMoveDrag(e.clientX, e.clientY);
         this.moveDrag = null; this.moveDragArm = null;
-      } else if (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000) {
+      } else if (this.boxDrag) {
+        // release = everyone the box holds is taken in hand (Shift: added)
+        this.boxDrag.sx = e.clientX; this.boxDrag.sy = e.clientY;
+        this.commitBox(!!e.shiftKey);
+      } else if (flick || (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000)) {
         // A STILL PRESS IS A TAP for up to a second (PX-27): one that never
         // crossed the slop has no other meaning, so a deliberate half-second
         // press selects instead of doing nothing (it was 400 ms, read off the
@@ -490,17 +596,23 @@ const UI = {
         // a second quick tap on (nearly) the same spot is a DOUBLE-TAP: select every
         // like unit within the grouping sphere, so a whole trebuchet line / fleet of
         // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
+        const tx = flick ? da.x : e.clientX, ty = flick ? da.y : e.clientY;
         const now = performance.now(), lt = this.lastTap;
-        const dbl = lt && (now - lt.t) < 350 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 24;
-        this.lastTap = dbl ? null : { x: e.clientX, y: e.clientY, t: now };
-        if (dbl) this.handleDoubleTap(e.clientX, e.clientY);
-        else this.handleTap(e.clientX, e.clientY);
+        // a SHIFT-click with a mouse adds the unit under it to what is in hand
+        // (or takes it out) — never half of a double-click
+        const mouse = e.pointerType === 'mouse', shift = mouse && e.shiftKey && e.button === 0;
+        const dbl = !shift && lt && (now - lt.t) < 350 && Math.hypot(tx - lt.x, ty - lt.y) < 24;
+        this.lastTap = dbl || shift ? null : { x: tx, y: ty, t: now };
+        if (dbl) this.handleDoubleTap(tx, ty, mouse);
+        else if (!(shift && this.shiftPick(tx, ty))) this.handleTap(tx, ty);
         // THE FIRST MINUTE: the first tap on a played world's map (Backend.step)
         if (was && window.Backend && Backend.step) Backend.step('map_tap');
       }
       if (was && this._orderMoved(was)) {
         G.noteAct();
         if (window.Backend && Backend.step && this._villagerMoved(was)) Backend.step('villager');
+        // every order shows where it lands, tap or drag (js/feel.js, build 212)
+        if (typeof Feel !== 'undefined' && Feel.markOrders) Feel.markOrders(was);
       }
       if (this.pointers.size < 2) this.pinchD = 0;
       if (pinchEnds) {
@@ -508,7 +620,7 @@ const UI = {
         // re-armed as a drag already under way, so it can never start a wall,
         // terraform or move drag, nor be taken for a tap when it lifts
         const [rest] = [...this.pointers.values()];
-        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true };
+        this.downAt = { x: rest.x, y: rest.y, t: this._tapTime(e), moved: true, noTap: true };
         this.moveDragArm = null; this.pinchMid = null;
       } else if (this.pointers.size === 2) {
         // a third finger lifted: the pinch goes on with the two still down,
@@ -517,12 +629,16 @@ const UI = {
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
         this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       }
-      if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
+      if (this.pointers.size === 0) {
+        this.downAt = null; this.moveDragArm = null;
+        if (this.boxArm || this.boxDrag) { this.boxArm = null; this.boxDrag = null; this.boxSync(); }
+      }
     };
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', e => {
       this.pointers.delete(e.pointerId);
       this.downAt = null;
+      if (this.boxArm || this.boxDrag) { this.boxArm = null; this.boxDrag = null; this.boxSync(); }
       this.wallDrag = null; this.wallGhost = null;
       this.terraDrag = null; this.terraGhost = null;
       this.moveDrag = null; this.moveDragArm = null;
@@ -544,6 +660,14 @@ const UI = {
     // a right-click is an order on the map (it always was) — never the
     // browser's menu too; the HUD and the minimap keep theirs
     cv.addEventListener('contextmenu', e => e.preventDefault());
+    // Shift pressed or let go mid-box: the box's count says "add" at once
+    const boxShift = e => {
+      if (e.key !== 'Shift' || !this.boxDrag) return;
+      this.boxDrag.shift = e.type === 'keydown';
+      this.boxSync();
+    };
+    document.addEventListener('keydown', boxShift);
+    document.addEventListener('keyup', boxShift);
 
     document.getElementById('mini').addEventListener('pointerdown', e => {
       const r = e.target.getBoundingClientRect();
@@ -747,6 +871,7 @@ const UI = {
     const r = Bld.canPlace('P', key, g.x, g.y);
     if (!r.ok) {
       this.toast(r.why, true);
+      if (r.code === 'cost' && typeof Feel !== 'undefined' && Feel.short) Feel.short(Bld.effCost('P', key), { kind: 'build', key, name: Bld.def(key).name });   // the bar points at what is short
       this.buildPlaceMap();                  // the world moved — show the new truth
       this._placeCheck();
       return;
@@ -756,8 +881,11 @@ const UI = {
        to a site that is already finished; a station takes its hand from
        Deck.masterRaise. The rival and a wall line never come through here. */
     const mb = window.Deck && Deck.masterHand ? Deck.masterHand('P', key) : 0;
-    const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true } : { builderId: this.builderFor });
-    if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, this.builderFor);
+    // a party's Build sends every one of them (builderIds); one villager's, that one
+    const crew = this.chosenBuilders();
+    const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true }
+      : crew.length > 1 ? { builderIds: crew.map(u => u.id) } : { builderId: crew.length ? crew[0].id : this.builderFor });
+    if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, crew.length ? crew[0].id : this.builderFor);
     if (nb && window.Backend && Backend.step) Backend.step('building');   // the first minute
     // a sealing placement was allowed, and is ACKNOWLEDGED — the player chose
     // to shut their own people in, and the toast marks the moment they did
@@ -782,7 +910,7 @@ const UI = {
   exitPlacement() {
     this.placing = null;
     this.placeTile = null;
-    this.builderFor = null;
+    this.builderFor = null; this.builderIds = null;
     this.placeGhost = null;
     this.placeMap = null;
     this.placeMapStamp = null;
@@ -978,7 +1106,7 @@ const UI = {
     else if (v && v.ok && (road = this.placeWouldRoad(g, false))) { msg = road; boon = true; }
     if (msg) {
       why.style.display = 'block';
-      if (why.textContent !== msg) why.textContent = msg;
+      if (why._msg !== msg) { why._msg = msg; this.iconText(why, msg); }
       const cw = Math.min(260, why.offsetWidth || 160), ch = 30;
       let cx2 = sx + sw / 2 - cw / 2;
       // opposite side of the pair: buttons beneath → chip above, and back —
@@ -1176,7 +1304,10 @@ const UI = {
     }
     if (sealed && !(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('sealed'))) this.toast('Your town is walled in — only a gate lets your people out', true);
     if (placed) {
-      const v = Units.nearestIdleVillager(first.x, first.y);
+      // a PARTY's Build raises the line with all its hands (a single
+      // villager's Build keeps the old rule: the nearest idle hand)
+      const crew = this.builderIds && this.builderIds.length ? this.chosenBuilders() : [];
+      const v = crew[0] || Units.nearestIdleVillager(first.x, first.y);
       // start at the RIGHT end of the line: the nearest section whose finished
       // wall doesn't cut the builder off from the rest (Units.pickWorkOrder —
       // tests/work-order.mjs). Across a choke the pick falls to the FAR side,
@@ -1191,13 +1322,17 @@ const UI = {
       // player is told it happened (an unmarked toast is shown nowhere) — but
       // in a journey world the guide says it (her next line, or her ask for
       // hands), and seven of these over three sections buried her
-      const sent = !!(v && Units.assignBuild(v, start));
+      let sent = false;
+      if (crew.length) for (const u of crew) { Units.assignBuild(u, start); if (u.task && u.task.type === 'build' && u.task.id === start.id) sent = true; }
+      else sent = !!(v && Units.assignBuild(v, start));
+      const hands = crew.length > 1 ? `${crew.length} builders` : 'builder';
+      this.builderIds = null;
       if (!(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('laid'))) {
         if (road) {
-          if (sent) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — a builder is on the way. More hands build it faster.`, 'note');
+          if (sent) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — ${crew.length > 1 ? hands + ' are' : 'a builder is'} on the way. More hands build it faster.`, 'note');
           else this.toast(`Road laid out (${placed}) — it needs a builder`, true);
         } else if (sent)
-          this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
+          this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — ${hands} en route. Tap villagers → wall to add hands.`, 'note');
         else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
       }
       // done drawing — drop out of placement so stray taps don't add walls
@@ -1244,6 +1379,18 @@ const UI = {
      guide's ring shows where the work is. */
   lessonOk(x, y) {
     return !(window.Scenarios && Scenarios.mayGather) || Scenarios.mayGather(x, y);
+  },
+  /* …AND A GOOD THE LESSON NAMES IS FETCHED FROM ITS OWN GROUND (build 210,
+     a playtest: "I can't cut any old tree"). An order on a tree past Mira's
+     grove is the player asking for wood, so the hand goes to the nearest tile
+     of the lesson's ground it can work, and a note says where (rule 4: never
+     a silent order). False: nothing there to send it to — refuse as before. */
+  lessonSend(u, x, y) {
+    if (!window.Scenarios || !Scenarios.lessonTile || !u) return false;
+    const t = Scenarios.lessonTile(x, y, (tx, ty) => this.gatherable(u, tx, ty), u);
+    if (!t || !Units.assignGather(u, t.x, t.y)) return false;
+    this.toast(t.say || ('Gathering ' + t.res), 'note');
+    return true;
   },
   lessonBars(x, y, fish) {
     if (!window.Scenarios) return false;
@@ -1407,6 +1554,744 @@ const UI = {
     return MapGen.findNear(tile.x, tile.y, this.FOG_REACH, open);
   },
 
+  /* ============ BOX SELECT AND THE WORK PARTY (tests/box-select.mjs) ============
+     Operator, build 213, from a player's request: "On desktop, let's add the
+     ability to drag and multi select units and send them somewhere… We have
+     to be careful… because villagers do different work from soldiers,
+     stations only have room for two villagers". Every desktop strategy game
+     draws a box with a LEFT mouse drag (Age of Empires, StarCraft, Warcraft,
+     0 A.D.), orders with a click, and moves the map with the middle or the
+     right button, the arrow keys or WASD — all of which already moved it here.
+     So, with a mouse (a touch, a pen and every other drag are untouched):
+       · a left drag that starts OFF the selection draws the box — one that
+         starts ON it is still the move order (tests/drag-move.mjs) — and a
+         right or middle drag still pans; Settings can hand the left drag back
+         to the map (neo-box-select '0', boxOn)
+       · the box takes the player's own people whose DRAWN bodies it touches,
+         never a bow at his tower post (the area-selection rule), a man on the
+         stairs, a ghost still under the ground or a villager walking out of
+         the valley, and never anything under the bars (what cannot be seen is
+         not taken); its first corner is held on the GROUND, so a key that
+         moves the view keeps it where it was pressed
+       · SOLDIERS FIRST (Age of Empires' "easy drag military"): with a soldier,
+         a hull of war or a levied hand in the box it takes those alone; with
+         none, the villagers; with none of them, the sappers; then the fishing
+         boats. ONE PARTY AT A TIME, because a party's orders are its own work;
+         the box's count says who it will take, the toast who it left out
+       · Shift + drag adds to what is in hand, Shift + click adds or takes out
+         one — more of the SAME party only; a double-click takes every villager
+         (sapper, boat) of that kind nearby, as a double-tap always took a
+         soldier's kind
+     A party in hand takes a tap the way a foreman shares the work out
+     (partyOrder): a resource ONE HAND TO A TILE across its stand before any
+     tile takes a second (a spent tile leaves its gatherer idle, so two on one
+     is work lost), a station filled to its places and the rest sent to the
+     next works of its kind nearby, then to its own good by hand round it, a
+     site built by all of them, a gold seam claimed by as many as the mine
+     holds, a shoal fished from its free sides, a boat to each free water. A
+     FULL station is still a look, for a party as for one (rule 6). Whoever is
+     put to work leaves the hand (the dispatched-worker rule); whoever found
+     no room stays in it, and the toast says so (rule 4). */
+  SPREAD_R: 5,     // how far round a tapped tile a party looks for more of the same good
+  SPILL_R: 8,      // how far round a station it looks for the next works of its kind, and its good
+  boxArm: null,    // { wx, wy } world px where a left mouse press armed a box
+  boxDrag: null,   // { wx, wy, sx, sy, shift } once it has moved past the slop
+  builderIds: null,   // the villagers a party's Build sends to the next site placed
+  boxOn() {
+    if (this._boxOn == null) {
+      let v = null;
+      try { v = localStorage.getItem('neo-box-select'); } catch (e) {}
+      this._boxOn = v !== '0';
+    }
+    return this._boxOn;
+  },
+  setBoxOn(on) {
+    this._boxOn = !!on;
+    try { localStorage.setItem('neo-box-select', on ? '1' : '0'); } catch (e) {}
+  },
+  boxCanArm(e) {
+    return !!e && e.pointerType === 'mouse' && e.button === 0 && this.boxOn() && !this.placing && !this.settingRally &&
+      typeof S !== 'undefined' && !!S && !!S.units && !S.over &&
+      typeof Screens !== 'undefined' && Screens.current === 'playing' && !Screens._demo;
+  },
+  // the PARTY a unit of the player's belongs to: soldiers, hulls of war and a
+  // levied hand 'mil' (the war party's own set), villagers 'vil', sappers
+  // 'sap', fishing boats 'fish' — anything else (a war-wolf, who answers to
+  // the hall) is left to a tap of its own
+  unitClass(u) {
+    if (!u || u.owner !== 'P') return null;
+    if (this.groupable(u)) return 'mil';
+    if (Units.isVillager(u)) return 'vil';
+    if (Units.isSapper(u)) return 'sap';
+    if (u.kind === 'fishboat') return 'fish';
+    return null;
+  },
+  // a group's party: a war party whenever one of them fights (every group
+  // before build 213 was one), else the party of its people
+  groupClass(ids) {
+    let c = null;
+    for (const id of ids || []) {
+      const k = this.unitClass(Units.get(id));
+      if (k === 'mil') return 'mil';
+      if (!c) c = k;
+    }
+    return c || 'mil';
+  },
+  // the player's own people in hand, and their party
+  selIds() {
+    const s = this.sel;
+    const ids = !s ? [] : s.type === 'unit' ? [s.id] : s.type === 'group' ? s.ids || [] : [];
+    return ids.filter(id => { const u = Units.get(id); return u && u.owner === 'P'; });
+  },
+  selClassNow() {
+    const ids = this.selIds();
+    if (!ids.length) return null;
+    return this.sel.type === 'unit' ? this.unitClass(Units.get(ids[0])) : this.groupClass(ids);
+  },
+  PARTY_NOUN: { mil: ['soldier', 'soldiers'], vil: ['villager', 'villagers'], sap: ['sapper', 'sappers'], fish: ['boat', 'boats'], hull: ['transport', 'transports'] },
+  partyNoun(cls, n) { const w = this.PARTY_NOUN[cls] || ['unit', 'units']; return n + ' ' + w[n === 1 ? 0 : 1]; },
+  byNear(list, x, y) { return list.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)); },
+
+  // the box on the screen, in CSS px: its first corner where it was pressed
+  // on the ground, its second at the mouse, both kept to the open band
+  boxRect() {
+    const d = this.boxDrag;
+    if (!d) return null;
+    const z = R.cam.z, ax = (d.wx - R.cam.x) * z, ay = (d.wy - R.cam.y) * z;
+    // the bars are read once a box (they do not move while it is drawn)
+    const arm = this.boxArm || {};
+    if (arm.band === undefined) arm.band = R.openBand ? R.openBand() : null;
+    const band = arm.band, dpr = R.dpr || 1;
+    const top = band ? band.y0 / dpr : 0, bot = band ? band.y1 / dpr : R.viewH(), W = R.viewW();
+    const cl = (v, a, b) => Math.max(a, Math.min(b, v));
+    return {
+      x0: cl(Math.min(ax, d.sx), 0, W), x1: cl(Math.max(ax, d.sx), 0, W),
+      y0: cl(Math.min(ay, d.sy), top, bot), y1: cl(Math.max(ay, d.sy), top, bot),
+      ax, ay, top, bot,
+    };
+  },
+  // whom a box over the screen rect r would take: { ids, cls, left } — `left`
+  // counts the other parties' people it passed over. `add`: more of the party
+  // in hand (Shift), never another party.
+  boxPick(r, add) {
+    const out = { ids: [], cls: null, left: {} };
+    if (!r || typeof S === 'undefined' || !S || !S.units) return out;
+    const TL = CFG.TILE, z = R.cam.z, lift = CFG.SPRITE_LIFT / TL;
+    const x0 = (r.x0 / z + R.cam.x) / TL, x1 = (r.x1 / z + R.cam.x) / TL;
+    const y0 = (r.y0 / z + R.cam.y) / TL, y1 = (r.y1 / z + R.cam.y) / TL;
+    // a troop hull ('hull') sails with the war party, but no box takes one
+    // over the villagers working the shore it is moored at
+    const by = { mil: [], vil: [], sap: [], fish: [], hull: [] };
+    for (const u of S.units) {
+      const c = this.unitClass(u);
+      if (!c || !(u.hp > 0) || this.sentUp(u) || (R.unitHidden && R.unitHidden(u))) continue;
+      if (u.task && u.task.type === 'banish') continue;   // walking out of the valley for good
+      // the DRAWN body: lifted, and a big unit's box higher still (R.unitHit's centre)
+      const s = (R.unitBox ? R.unitBox(u) : TL) / TL, cy = u.y - lift - (s - 1) / 2, rad = 0.3 * s;
+      const nx = Math.max(x0, Math.min(x1, u.x)), ny = Math.max(y0, Math.min(y1, cy));
+      if (Math.hypot(u.x - nx, cy - ny) > rad) continue;
+      by[c === 'mil' && Units.isTransport(u) ? 'hull' : c].push(u.id);
+    }
+    const cur = add ? this.selClassNow() : null;
+    const pick = cur || ['mil', 'vil', 'sap', 'fish', 'hull'].find(k => by[k].length) || null;
+    out.cls = pick === 'hull' ? 'mil' : pick;
+    if (out.cls === 'mil') { out.ids = by.mil.concat(by.hull); by.mil = []; by.hull = []; }
+    else if (out.cls) { out.ids = by[out.cls]; by[out.cls] = []; }
+    for (const k in by) if (by[k].length) out.left[k] = by[k].length;
+    return out;
+  },
+  boxNoun(pick) {
+    const n = pick.ids.length;
+    if (pick.cls === 'mil' && pick.ids.every(id => { const u = Units.get(id); return u && Units.isNaval(u); }))
+      return n + (n === 1 ? ' ship' : ' ships');
+    return this.partyNoun(pick.cls, n);
+  },
+  boxLeft(pick) {
+    const k = Object.keys(pick.left);
+    return k.length ? k.map(c => this.partyNoun(c, pick.left[c])).join(', ') + ' left out' : '';
+  },
+  /* THE BOX, DRAWN: a DOM frame over the map (index.html #selBox) — a gold
+     line between two dark ink edges with gold corners, so it reads over
+     meadow, water and rock alike and never washes the ground; its count rides
+     the corner the mouse holds. The people it would take wear a quiet gold
+     ring until the release (js/feel.js reads _boxIds in its ringsFor). */
+  boxSync() {
+    const d = this.boxDrag;
+    let el = this._boxEl;
+    if (!d) {
+      if (el) el.style.display = 'none';
+      this._boxIds = null;
+      return;
+    }
+    if (!el) {
+      el = this._boxEl = document.createElement('div');
+      el.id = 'selBox'; el.setAttribute('aria-hidden', 'true');
+      el.innerHTML = '<i class="sbC sbTL"></i><i class="sbC sbTR"></i><i class="sbC sbBL"></i><i class="sbC sbBR"></i><b class="sbN"></b>';
+      document.body.insertBefore(el, document.getElementById('shell') || null);
+    }
+    const r = this.boxRect(), pick = this.boxPick(r, d.shift);
+    this._boxIds = new Set(pick.ids);
+    el.style.display = 'block';
+    el.style.left = r.x0 + 'px'; el.style.top = r.y0 + 'px';
+    el.style.width = Math.max(0, r.x1 - r.x0) + 'px'; el.style.height = Math.max(0, r.y1 - r.y0) + 'px';
+    // the count (game words only — no player text ever reaches this line)
+    const n = pick.ids.length, left = this.boxLeft(pick);
+    const html = n ? (d.shift && this.selIds().length ? '+' : '') + this.boxNoun(pick) + (left ? `<small>${left}</small>` : '') : '';
+    const lab = el.querySelector('.sbN');
+    if (lab.innerHTML !== html) lab.innerHTML = html;
+    const right = d.sx >= r.ax, below = d.sy >= r.ay;
+    // a count that would land under a bar stays inside the box instead
+    const inside = below ? r.y1 > r.bot - 30 : r.y0 < r.top + 30;
+    lab.className = 'sbN ' + (right ? 'r' : 'l') + ' ' + (below ? 'b' : 't') + (inside ? ' in' : '');
+  },
+  // release: everyone the box holds is taken in hand (Shift: added to it)
+  commitBox(add) {
+    const r = this.boxRect(), pick = this.boxPick(r, add);
+    this.boxArm = null; this.boxDrag = null; this.boxSync();
+    this.boxTold();
+    const cur = add ? this.selIds() : [];
+    let ids = pick.ids;
+    const adding = add && cur.length && pick.cls && this.selClassNow() === pick.cls;
+    if (adding) ids = cur.concat(pick.ids.filter(id => !cur.includes(id)));
+    const left = this.boxLeft(pick);
+    if (!ids.length || (adding && ids.length === cur.length)) {
+      // an empty box takes nothing and drops nothing
+      if (left && adding) this.toast(`${left} — Shift adds only more ${this.PARTY_NOUN[pick.cls][1]}`, 'note');
+      return;
+    }
+    if (ids.length === 1) this.select('unit', ids[0]);
+    else this.takeGroup(ids);
+    // who was left out: the box's count says it while it is drawn, so the
+    // toast says how to take them only the first time a session — a Shift
+    // that could not add is an answer to that act, every time (rule 4)
+    if (left && adding) this.toast(`${left} — Shift adds only more ${this.PARTY_NOUN[pick.cls][1]}`, 'note');
+    else if (left && !this._boxLeftTold) {
+      this._boxLeftTold = true;
+      this.toast(`${pick.cls === 'mil' ? 'Soldiers first: ' : ''}${left}. Drag round them alone to take them.`, 'note');
+    }
+  },
+  cancelBox() {
+    if (!this.boxArm && !this.boxDrag) return false;
+    this.boxArm = null; this.boxDrag = null; this.boxSync();
+    this.downAt = null;   // the rest of the press neither pans nor clicks
+    return true;
+  },
+  takeGroup(ids) {
+    this.sel = { type: 'group', ids };
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0;
+    this.terraMode = null; this.tradeNeed = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.renderPanel();
+  },
+  // the first box a device draws says how the map moves now (once a device)
+  boxTold() {
+    if (this._boxTold) return;
+    this._boxTold = true;
+    let seen = null;
+    try { seen = localStorage.getItem('neo-box-told'); } catch (e) {}
+    if (seen) return;
+    try { localStorage.setItem('neo-box-told', '1'); } catch (e) {}
+    this.toast('Drag a box to take a group in hand. Move the map with a right-drag, the arrow keys or WASD.', 'note');
+  },
+  // SHIFT + CLICK: one more of the party in hand, or one taken out of it.
+  // False: not a unit of that party under the mouse — an ordinary click.
+  shiftPick(sx, sy) {
+    if (typeof S === 'undefined' || !S || S.over || !S.units) return false;
+    const w = R.screenToWorld(sx, sy), wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
+    let hit = null, hd = 0.55;   // dead-on only (the tap contract's steal radius)
+    for (const u of S.units) {
+      if (u.owner !== 'P') continue;
+      const d = R.unitHit(u, wx, wy);
+      if (d < hd) { hd = d; hit = u; }
+    }
+    if (!hit || this.sentUp(hit)) return false;
+    const k = this.unitClass(hit), cur = this.selIds();
+    if (!k || !cur.length || this.selClassNow() !== k) return false;
+    if (cur.includes(hit.id)) {
+      const ids = cur.filter(id => id !== hit.id);
+      if (!ids.length) { this.deselect(); return true; }
+      this.sel = ids.length === 1 ? { type: 'unit', id: ids[0] } : { type: 'group', ids };
+      this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;
+      this.renderPanel();
+      return true;
+    }
+    this.takeGroup(cur.concat(hit.id));
+    return true;
+  },
+
+  /* ---- THE WORK PARTY'S ORDERS ---- */
+  /* the ground the party can walk to (a gate of the player's is open to
+     them), flooded once per land it stands on: `any` is the union, `of(u)`
+     the land of one of them — a box can span two shores, and a villager
+     sent to work he cannot walk to would stand at the waterline for good */
+  partyReach(mem) {
+    const lands = [], of = new Map();
+    for (const u of mem) {
+      const i = MapGen.idx(u.x | 0, u.y | 0);
+      let r = lands.find(l => l[i]) || null;
+      if (!r) {
+        try {
+          r = Path.reachFrom([{ x: u.x | 0, y: u.y | 0 }], false, 'P');
+          if (!r[i]) {
+            // standing where nobody can stand (the ground changed under him):
+            // his land is the ground beside him, and none at all is "unknown"
+            const seeds = [];
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+              const x = (u.x | 0) + dx, y = (u.y | 0) + dy;
+              if (MapGen.inB(x, y) && Path.passable(x, y, 'P')) seeds.push({ x, y });
+            }
+            r = seeds.length ? Path.reachFrom(seeds, false, 'P') : null;
+          }
+        } catch (e) { r = null; }
+        if (r) lands.push(r);
+      }
+      of.set(u, r);
+    }
+    let any = lands[0] || null;
+    if (lands.length > 1) {
+      any = new Uint8Array(lands[0].length);
+      for (const l of lands) for (let k = 0; k < l.length; k++) if (l[k]) any[k] = 1;
+    }
+    return { any, of: u => of.get(u) || null };
+  },
+  // can this one of the party walk onto (or beside) tile x, y?
+  canReach(reach, u, x, y) {
+    const r = reach && reach.of(u);
+    return !r || !!r[MapGen.idx(x, y)] || this.edgeIn(x, y, r);
+  },
+  // a tile someone could stand beside: a free side the party can walk to
+  edgeIn(x, y, reach) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      if (reach ? reach[MapGen.idx(nx, ny)] : (Path.passable(nx, ny, 'P') && !Bld.at(nx, ny))) return true;
+    }
+    return false;
+  },
+  // the living good a station is raised on the ground of (a camp's woods, a
+  // quarry's rock, a farm's berries); null for a lodge or a mine
+  livingOf(def) {
+    if (!def || def.onWorked == null || !CFG.DEPLETED) return null;
+    for (const t in CFG.GATHER) if (CFG.DEPLETED[t] === def.onWorked) return +t;
+    return null;
+  },
+  /* A RESOURCE IS SHARED OUT, ONE HAND TO A TILE (the gather task leaves a
+     villager idle when its tile is spent, so two on one tile is work lost):
+     every tile of the same good within SPREAD_R the party can stand beside,
+     nearest the tap first, takes the nearest hand; then, while hands are
+     left, each takes a second side, a third… Returns those put to work. */
+  spreadGather(vills, tx, ty, reach) {
+    const g0 = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
+    if (!g0 || !vills.length) return [];
+    if (!reach) reach = this.partyReach(vills);
+    const R2 = this.SPREAD_R, tiles = [];
+    for (let dy = -R2; dy <= R2; dy++) for (let dx = -R2; dx <= R2; dx++) {
+      const x = tx + dx, y = ty + dy, d = Math.hypot(dx, dy);
+      if (d > R2 || !MapGen.onBoard(x, y)) continue;
+      const i = MapGen.idx(x, y), g = CFG.GATHER[S.map.terrain[i]];
+      if (!g || g.res !== g0.res || !(S.map.resAmount[i] > 0) || !S.map.explored[i] || !this.lessonOk(x, y)) continue;
+      if (!this.edgeIn(x, y, reach.any)) continue;
+      tiles.push({ x, y, d });
+    }
+    tiles.sort((a, b) => a.d - b.d);
+    // who already works each tile — never this party, who are given new work
+    const mine = new Set(vills), worked = new Map();
+    for (const o of S.units) if (o.owner === 'P' && !mine.has(o) && o.task && o.task.type === 'gather') {
+      const k = o.task.x + ',' + o.task.y;
+      worked.set(k, (worked.get(k) || 0) + 1);
+    }
+    let left = vills.slice();
+    const placed = [];
+    for (let pass = 0; pass < 4 && left.length; pass++) {
+      for (const t of tiles) {
+        if (!left.length) break;
+        const k = t.x + ',' + t.y, n = worked.get(k) || 0;
+        if (n !== pass) continue;
+        // the nearest hand that can walk to it takes it (a path is asked of
+        // three at most — the cheap questions come first)
+        left = this.byNear(left, t.x + 0.5, t.y + 0.5);
+        for (let i = 0, tries = 0; i < left.length && tries < 3; i++) {
+          const u = left[i];
+          if (!this.canReach(reach, u, t.x, t.y) || !this.gatherable(u, t.x, t.y) || !Units.gatherRoom(u, t.x, t.y)) continue;
+          tries++;
+          const was = u.task;
+          Units.assignGather(u, t.x, t.y);
+          if (u.task === was || !u.task || u.task.type !== 'gather') continue;
+          placed.push(u); left.splice(i, 1); worked.set(k, n + 1);
+          break;
+        }
+      }
+    }
+    return placed;
+  },
+  // whoever was put to work leaves the hand (the dispatched-worker rule);
+  // whoever found no room stays in it, ready for the next order
+  partyKeep(mem, placed) {
+    const put = new Set(placed);
+    const rest = mem.filter(u => !put.has(u)).map(u => u.id);
+    if (!rest.length) { this.dispatchedWorker(); return; }
+    this.sel = rest.length === 1 ? { type: 'unit', id: rest[0] } : { type: 'group', ids: rest };
+    this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;
+    this.renderPanel();
+  },
+  /* A PARTY'S ORDER (handleTap's group branch, and commitMoveDrag's with
+     o.drag — the release is movement-first, as a war party's is). True: an
+     order was given or its refusal said; false: the tap falls through to the
+     (re)selection, as a war party's does on one of the player's own. */
+  partyOrder(o) {
+    const mem = o.ids.map(id => Units.get(id)).filter(u => u && u.owner === 'P' && this.unitClass(u) === o.cls);
+    if (!mem.length) return false;
+    if (o.cls === 'vil') return this.villagersOrder(mem, o);
+    if (o.cls === 'fish') return this.boatsOrder(mem, o);
+    return this.sappersOrder(mem, o);
+  },
+  // a foe or a beast under the finger: everyone who can reach it goes for it
+  // (a single villager's own order — a hunt, or a stand against a raider)
+  partyAttack(mem, foe, noun) {
+    const at = mem.filter(u => !Combat.canEngage || Combat.canEngage(u, foe));
+    if (!at.length) return false;
+    if (foe.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
+    for (const u of at) {
+      u.task = { type: 'attack', on: foe.id }; u.tUnit = foe.id; u.tBld = 0;
+      u.anchor = { x: foe.x, y: foe.y }; u.defend = false; u.assault = true;
+    }
+    this.toast(foe.owner === 'W' ? `${this.partyNoun(noun, at.length)} on the hunt` : `${this.partyNoun(noun, at.length)} attack!`);
+    return true;
+  },
+  partyWalk(mem, o) {
+    const wt = o.explored ? o.tile : this.fogWalkTarget(o.tile);   // the fog is not a wall
+    if (!wt) { this.toast('Unexplored', true); return true; }
+    for (const u of mem) u.defend = false;
+    Units.groupMove(mem.map(u => u.id), wt.x, wt.y);
+    if (o.flash) o.flash(wt);
+    return true;
+  },
+  villagersOrder(mem, o) {
+    const { tile, wx, wy, tapUnit, hitBld, explored } = o;
+    const tT = S.map.terrain[MapGen.idx(tile.x, tile.y)];
+    if (tapUnit && tapUnit.owner !== 'P') return this.partyAttack(mem, tapUnit, 'vil');
+    if (tapUnit && tapUnit.owner === 'P' && Units.isTransport(tapUnit)) {
+      let n = 0;
+      for (const u of this.byNear(mem, tapUnit.x, tapUnit.y)) if (Units.isBoardable(u) && Units.orderBoard(u, tapUnit)) n++;
+      this.toast(n ? `${n} boarding — the ${CFG.UNITS[tapUnit.kind].name} holds ${CFG.UNITS[tapUnit.kind].cap}`
+        : 'Transport is full (or away from shore)', !n);
+      return true;
+    }
+    if (tapUnit) return false;   // another of ours, tapped dead-on: take it in hand instead
+    const gatherAim = explored && CFG.GATHER[tT];
+    if (!o.drag) {
+      // works of ours under the finger, or a sliver off it — the same reach a
+      // single villager's tap has, never stolen from a resource or the water
+      const ownBld = (hitBld && hitBld.owner === 'P') ? hitBld
+        : (!hitBld && !gatherAim && tT !== T.WATER && o.bldNear
+            ? o.bldNear(0.42, b2 => b2.owner === 'P' && (b2.construction > 0 || b2.upgrading > 0 ||
+                b2.hp < b2.maxhp || Bld.def(b2.key).needsWorker))
+            : null);
+      if (ownBld) {
+        if (ownBld.construction > 0 || ownBld.upgrading > 0 || ownBld.hp < ownBld.maxhp) return this.partyBuild(mem, ownBld);
+        if (Bld.def(ownBld.key).needsWorker) return this.partyStation(mem, ownBld, o.sx, o.sy);
+        return false;   // finished works of ours: a look at them
+      }
+    }
+    if (!explored) return this.partyWalk(mem, o);
+    // a resource — the tile itself, or the one the finger clearly aimed at
+    const gt = CFG.GATHER[tT] ? tile : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
+      CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0 && this.lessonOk(x, y), o.drag ? 0.42 : undefined);
+    if (gt) return this.partyGather(mem, gt);
+    if (!o.drag && Bld.seamAt(tile.x, tile.y)) return this.partySeam(mem, tile);
+    if (!o.drag && tT === T.WATER) return this.partyShoreFish(mem, tile);
+    return this.partyWalk(mem, o);
+  },
+  partyGather(mem, gt) {
+    const reach = this.partyReach(mem);
+    const placed = this.spreadGather(mem, gt.x, gt.y, reach);
+    if (!placed.length) {
+      // the lesson's own ground (game 1): each hand fetches the good from where Mira showed
+      let sent = 0;
+      for (const u of mem) { const was = u.task; if (this.lessonSend(u, gt.x, gt.y) && u.task !== was) { placed.push(u); sent++; } }
+      if (!sent) {
+        if (!this.lessonBars(gt.x, gt.y)) this.toast('No clear ground to stand beside that resource', true);
+        return true;
+      }
+      this.partyKeep(mem, placed);
+      return true;
+    }
+    const res = placed[0].task && placed[0].task.res;
+    const left = mem.filter(u => !placed.includes(u)), rest = left.length;
+    const cut = left.every(u => !this.canReach(reach, u, gt.x, gt.y));   // across the water from it
+    this.toast(`${this.partyNoun('vil', placed.length)} gathering ${res}` +
+      (rest ? ` — ${rest} ${cut ? 'cannot reach it and stay' : 'still'} in hand${cut ? '' : ', no room left there'}` : ''), rest ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  partyBuild(mem, b) {
+    const fix = !(b.construction > 0) && !(b.upgrading > 0);
+    const placed = [], reach = this.partyReach(mem), sz = Bld.size(b);
+    // the works are reached from any tile of the plot or beside it
+    const reaches = u => {
+      const r = reach.of(u);
+      if (!r) return true;
+      for (let y = b.y - 1; y <= b.y + sz; y++) for (let x = b.x - 1; x <= b.x + sz; x++)
+        if (MapGen.inB(x, y) && r[MapGen.idx(x, y)]) return true;
+      return false;
+    };
+    for (const u of mem) {
+      if (!reaches(u)) continue;
+      Units.assignBuild(u, b);
+      if (u.task && u.task.type === 'build' && u.task.id === b.id) placed.push(u);
+    }
+    if (!placed.length) {
+      if (!this.levyBlocks(mem[0])) this.toast('No way through to those works', true);
+      return true;
+    }
+    const rest = mem.length - placed.length;
+    this.toast(`${this.partyNoun('vil', placed.length)} sent to ${fix ? 'repair' : 'build'} the ${Bld.def(b.key).name}` +
+      (rest ? ` — ${rest} cannot reach it and stay in hand` : ''), rest ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  /* A STATION HOLDS ITS PLACES AND NO MORE (the operator: "stations only have
+     room for two villagers"): its free places take the nearest hands, the next
+     works of its kind within SPILL_R take more, then its own good by hand
+     round it (a camp's woods, a quarry's rock, a farm's berries); whoever is
+     left stays in hand. A full one, with none of the party on it, is a LOOK. */
+  partyStation(mem, b, sx, sy) {
+    const name = Bld.def(b.key).name;
+    const on = (u, w) => u.task && u.task.type === 'work' && u.task.id === w.id;
+    const placed = mem.filter(u => on(u, b));
+    let room = Bld.maxWorkers(b) - Bld.workersAssigned(b);
+    const room0 = room;
+    if (room <= 0 && !placed.length) {
+      if (!this._stationLook) {          // one bounce only: the second pass has no selection
+        this._stationLook = true;
+        this.deselect();
+        try { this.handleTap(sx, sy); } finally { this._stationLook = false; }
+      }
+      return true;
+    }
+    const work = (u, w) => { u.task = { type: 'work', id: w.id }; u.tUnit = 0; u.tBld = 0; Units.setPath(u, w.x, w.y); };
+    const got = { here: 0, next: 0, hand: 0 };
+    let rest = mem.filter(u => !on(u, b));
+    const reach = rest.length ? this.partyReach(rest) : null;
+    for (const u of this.byNear(rest, b.x + 0.5, b.y + 0.5)) {
+      if (room <= 0) break;
+      if (!this.canReach(reach, u, b.x, b.y)) continue;   // a station across the water is not his
+      work(u, b); placed.push(u); got.here++; room--;
+    }
+    rest = rest.filter(u => !placed.includes(u));
+    if (rest.length) {
+      const next = S.buildings.filter(w => w !== b && w.owner === 'P' && w.key === b.key && !(w.construction > 0) &&
+          !(w.upgrading > 0) && Math.hypot(w.x - b.x, w.y - b.y) <= this.SPILL_R && (!reach || !reach.any || reach.any[MapGen.idx(w.x, w.y)]))
+        .sort((p, q) => Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y));
+      for (const w of next) {
+        let r2 = Bld.maxWorkers(w) - Bld.workersAssigned(w);
+        for (const u of this.byNear(rest, w.x + 0.5, w.y + 0.5)) {
+          if (r2 <= 0) break;
+          if (!this.canReach(reach, u, w.x, w.y)) continue;
+          work(u, w); placed.push(u); got.next++; r2--;
+        }
+        rest = rest.filter(u => !placed.includes(u));
+        if (!rest.length) break;
+      }
+    }
+    const terr = this.livingOf(Bld.def(b.key));
+    const res = terr != null && CFG.GATHER[terr] ? CFG.GATHER[terr].res : '';
+    if (rest.length && terr != null) {
+      const near = MapGen.findNear(b.x, b.y, this.SPILL_R, (x, y) => {
+        const i = MapGen.idx(x, y);
+        return S.map.terrain[i] === terr && S.map.resAmount[i] > 0 && !!S.map.explored[i] && this.lessonOk(x, y) && this.edgeIn(x, y, reach && reach.any);
+      });
+      if (near) {
+        const g2 = this.spreadGather(rest, near.x, near.y, reach);
+        for (const u of g2) placed.push(u);
+        got.hand = g2.length;
+        rest = rest.filter(u => !g2.includes(u));
+      }
+    }
+    const parts = [];
+    if (got.here) parts.push(`${got.here} to the ${name}`);
+    if (got.next) parts.push(`${got.next} to the next ${name}`);
+    if (got.hand) parts.push(`${got.hand} gathering ${res} beside it`);
+    if (rest.length && parts.length) parts.push(`${rest.length} still in hand`);
+    // all of them where they were sent: an acknowledgement (the marks say it);
+    // a split or a hand left over is news the player is told
+    const split = got.next || got.hand || rest.length;
+    this.toast(parts.length ? parts.join(', ') : !rest.length ? `Already working the ${name}`
+      : room0 > 0 ? `No way through to the ${name}` : `The ${name} is full`,
+      !parts.length ? rest.length > 0 : split ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  // a gold seam: as many as the mine holds walk out to claim it (or to take it)
+  partySeam(mem, tile) {
+    const c = Bld.canClaimSeam('P', tile.x, tile.y);
+    if (!c.ok) { this.toast(c.why, true); return true; }
+    const held = Bld.at(tile.x, tile.y), ours = !!(held && held.key === 'mine' && held.owner === 'P');
+    const cap = ours ? Bld.maxWorkers(held) : ((CFG.BUILDINGS.mine && CFG.BUILDINGS.mine.maxWorkers) || 2);
+    const there = u => u.owner === 'P' && u.task && ((u.task.type === 'claim' && u.task.x === tile.x && u.task.y === tile.y) ||
+      (ours && u.task.type === 'work' && u.task.id === held.id));
+    const placed = mem.filter(there);
+    let room = cap - S.units.filter(there).length;
+    const free = mem.filter(u => !placed.includes(u)), reach = free.length ? this.partyReach(free) : null;
+    for (const u of this.byNear(free, tile.x + 0.5, tile.y + 0.5)) {
+      if (room <= 0) break;
+      if (!this.canReach(reach, u, tile.x, tile.y)) continue;
+      Units.assignMine(u, tile.x, tile.y);
+      if (there(u)) { placed.push(u); room--; }
+    }
+    if (!placed.length) { this.toast(held ? 'The mine is fully crewed' : 'No way through to that seam', true); return true; }
+    const rest = mem.length - placed.length;
+    this.toast((held && !ours ? `${placed.length} marching out to take the gold mine ⛏` : ours ? `${placed.length} heading to the gold mine ⛏`
+      : `${placed.length} heading out to claim the gold seam ⛏`) + (rest ? ` — it takes ${cap}; ${rest} still in hand` : ''), rest ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  // a shoal: one line to a shoal round it first, then a second free side
+  partyShoreFish(mem, tile) {
+    if (!(MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0)) {
+      this.toast('No fish here — watch for fish breaking the surface', true);
+      return true;
+    }
+    if (this.lessonBars(tile.x, tile.y, true)) return true;
+    const reach = this.partyReach(mem), mine = new Set(mem);
+    const taken = new Set(), fished = new Set();
+    for (const u of S.units) if (u.owner === 'P' && !mine.has(u) && u.task && u.task.type === 'shorefish') {
+      taken.add(u.task.sx + ',' + u.task.sy); fished.add(u.task.x + ',' + u.task.y);
+    }
+    const slots = [], R2 = 4;
+    for (let dy = -R2; dy <= R2; dy++) for (let dx = -R2; dx <= R2; dx++) {
+      const x = tile.x + dx, y = tile.y + dy, d = Math.hypot(dx, dy);
+      if (d > R2 || !MapGen.shoal(x, y)) continue;
+      const i = MapGen.idx(x, y);
+      if (!(S.map.resAmount[i] > 0) || !S.map.explored[i]) continue;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ex = x + ox, ey = y + oy;
+        if (!MapGen.inB(ex, ey) || !Path.passable(ex, ey, 'P') || Bld.at(ex, ey)) continue;
+        if (reach.any && !reach.any[MapGen.idx(ex, ey)]) continue;
+        slots.push({ x, y, ex, ey, d });
+      }
+    }
+    slots.sort((a, b) => a.d - b.d);
+    let left = mem.slice();
+    const placed = [];
+    for (let pass = 0; pass < 2 && left.length; pass++) {
+      for (const s of slots) {
+        if (!left.length) break;
+        const ek = s.ex + ',' + s.ey, sk = s.x + ',' + s.y;
+        if (taken.has(ek) || (pass === 0 && fished.has(sk))) continue;
+        // the nearest line that can walk to this side of it
+        const u = this.byNear(left, s.ex + 0.5, s.ey + 0.5).find(v => { const r = reach.of(v); return !r || r[MapGen.idx(s.ex, s.ey)]; });
+        if (!u) continue;
+        const was = u.task;
+        Units.assignShoreFish(u, s.x, s.y, { x: s.ex, y: s.ey });
+        if (u.task === was || !u.task || u.task.type !== 'shorefish') continue;
+        placed.push(u); left = left.filter(v => v !== u); taken.add(ek); fished.add(sk);
+      }
+    }
+    if (!placed.length) { this.toast('No clear shore to fish from', true); return true; }
+    this.toast(`${this.partyNoun('vil', placed.length)} fishing from the shore 🎣` + (left.length ? ` — ${left.length} still in hand, no shore left` : ''), left.length ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  boatsOrder(mem, o) {
+    const { tile, tapUnit, explored } = o;
+    if (tapUnit && tapUnit.owner === 'P') return false;   // one of ours, dead-on: take it in hand
+    if (explored && Units.fishableTile(tile.x, tile.y)) {
+      // each boat to free water: the first takes the tile, the rest slide to
+      // the nearest free shoal round it (Units.assignFish, one boat per tile)
+      const placed = [];
+      for (const u of this.byNear(mem, tile.x + 0.5, tile.y + 0.5)) {
+        const was = u.task;
+        Units.assignFish(u, tile.x, tile.y);
+        if (u.task !== was && u.task && u.task.type === 'fish') placed.push(u);
+      }
+      if (!placed.length) { this.toast('No free water with fish here', true); return true; }
+      const rest = mem.length - placed.length;
+      this.toast(`${this.partyNoun('fish', placed.length)} fishing 🐟` + (rest ? ` — ${rest} found no free water` : ''), rest ? 'note' : undefined);
+      this.partyKeep(mem, placed);
+      return true;
+    }
+    if (!o.drag && o.hitBld && o.hitBld.owner === 'P') return false;   // our own works: a look
+    return this.partyWalk(mem, o);
+  },
+  sappersOrder(mem, o) {
+    const { tile, tapUnit, explored } = o;
+    if (tapUnit && tapUnit.owner !== 'P') return this.partyAttack(mem, tapUnit, 'sap') || this.partyWalk(mem, o);
+    if (tapUnit) return false;
+    if (!o.drag) {
+      // a span being reinforced: every sapper on the works (the clock is the bridge's)
+      const brW = explored && Bld.bridgeAt ? Bld.bridgeAt(tile.x, tile.y) : null;
+      if (brW && brW.owner === 'P' && brW.upgrading > 0) {
+        const placed = mem.filter(u => Units.assignTerraform(u, tile.x, tile.y, 'bridgeup'));
+        if (!placed.length) { this.toast('No clear footing beside the bridge', true); return true; }
+        this.toast(`${this.partyNoun('sap', placed.length)} reinforcing the bridge 🌉`);
+        this.partyKeep(mem, placed);
+        return true;
+      }
+      if (o.hitBld && o.hitBld.owner === 'P') return false;
+    }
+    return this.partyWalk(mem, o);
+  },
+  /* THE PARTY'S PANEL: who they are, what they are doing (panelSub, ticked in
+     place), what a tap does, and — for villagers — Build, which sends all of
+     them to raise the next site placed (builderIds). */
+  partyLine(ids) {
+    const n = {}, put = (k, v) => { n[k] = (n[k] || 0) + (v || 1); };
+    for (const id of ids) {
+      const u = Units.get(id);
+      if (!u) continue;
+      const t = u.task, ty = t && t.type;
+      if (ty === 'gather') put('gathering ' + (t.res || 'goods'));
+      else if (ty === 'build') put('building');
+      else if (ty === 'work' || ty === 'claim') put('at the works');
+      else if (ty === 'fish' || ty === 'shorefish') put('fishing');
+      else if (ty === 'terraform') put('digging');
+      else if (u.tUnit || ty === 'attack') put('fighting');
+      else if (ty === 'board') put('boarding');
+      else if (Units.moving(u) || ty === 'move') put('walking');
+      else put('idle');
+    }
+    const order = Object.keys(n).sort((a, b) => (a === 'idle') - (b === 'idle') || n[b] - n[a]);
+    return order.slice(0, 3).map(k => `${n[k]} ${k}`).join(' · ');
+  },
+  renderParty(panel) {
+    this.sel.ids = this.sel.ids.filter(id => Units.get(id));
+    if (!this.sel.ids.length) { this.deselect(); return false; }
+    if (this.sel.ids.length === 1) { this.sel = { type: 'unit', id: this.sel.ids[0] }; this.renderPanel(); return false; }
+    const cls = this.groupClass(this.sel.ids), n = this.sel.ids.length;
+    const first = Units.get(this.sel.ids[0]);
+    const head = { vil: '👥 Villagers', sap: '⛏ Sappers', fish: '🐟 Fishing Boats' }[cls] || '👥 Party';
+    const hint = {
+      vil: 'Tap trees, rock or berries and they share the work out; a station and they fill its places; a site and they all build it.',
+      sap: 'Tap ground to walk together, or a bridge being reinforced to put them all on it. Take one in hand for the tools.',
+      fish: 'Tap fish and they share the water out, or open water to sail together.',
+    }[cls] || '';
+    panel.innerHTML = `<div class="phead"><canvas id="pIcon"></canvas><div>
+        <div class="ptitle">${head} <span style="color:var(--gold)">(${n})</span></div>
+        <div class="psub">${this.panelSub()}</div></div>
+        <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>` +
+      `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${hint}</span>`}` +
+      (cls === 'vil' ? `<button class="abtn" data-act="ggobuild"><img class="bic" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false">Build<small>they all raise it</small></button>` : '') +
+      `</div>`;
+    const ic = panel.querySelector('#pIcon');
+    if (ic && first) this.iconInto(ic, R.unitSprite(first));
+    const gb = panel.querySelector('[data-act="ggobuild"]');
+    if (gb) gb.addEventListener('click', () => {
+      const ids = this.sel.ids.filter(id => { const u = Units.get(id); return u && Units.isVillager(u) && !Units.isLevied(u); });
+      if (this.menuCollapsed) this.setMenuCollapsed(false);
+      this.deselect();          // brings the build menu back
+      this.builderFor = null; this.builderIds = ids;   // after deselect's bookkeeping
+      if (!(S && S.scenario)) this.toast(`Pick a building, then tap a site — these ${ids.length} villagers will build it`, 'note');
+    });
+    return true;
+  },
+  // the villagers chosen to build what is placed next: a party's Build, else a
+  // single villager's (builderFor), alive, and still free to work
+  chosenBuilders() {
+    const ids = this.builderIds && this.builderIds.length ? this.builderIds : this.builderFor ? [this.builderFor] : [];
+    return ids.map(id => Units.get(id)).filter(u => u && u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u));
+  },
+
   commitMoveDrag(sx, sy) {
     if (!S || S.over || !this.sel) return;
     const tile = R.screenToTile(sx, sy);
@@ -1432,6 +2317,20 @@ const UI = {
     };
     const flash = (at) => { const p2 = at || tile; this.moveFlash = { x: p2.x, y: p2.y, t: 0.9, life: 0.9 }; };
 
+    // a WORK PARTY dragged: movement-first like a war party — a foe, a hull to
+    // board, a resource for villagers or fish for boats, else a walk
+    if (this.sel.type === 'group' && this.groupClass(this.sel.ids) !== 'mil') {
+      const ids = this.sel.ids.filter(id => Units.get(id));
+      if (!ids.length) { this.deselect(); return; }
+      this.sel.ids = ids;
+      const tapUnit = (hitUnit && hitUnit.owner === 'P' && !Units.isTransport(hitUnit)) ? null : hitUnit;
+      const o = { ids, cls: this.groupClass(ids), tile, wx, wy, sx, sy, tapUnit, hitBld, explored, drag: true, flash };
+      if (!this.partyOrder(o)) {
+        const mem = ids.map(id => Units.get(id)).filter(Boolean);
+        this.partyWalk(mem, o);
+      }
+      return;
+    }
     if (this.sel.type === 'group') {
       const ids = this.sel.ids.filter(id => Units.get(id));
       if (!ids.length) { this.deselect(); return; }
@@ -1531,6 +2430,7 @@ const UI = {
       if (rt) {
         const wk = this.gatherable(sel, rt.x, rt.y) ? rt : this.gatherFallback(sel, rt.x, rt.y);
         if (wk && Units.assignGather(sel, wk.x, wk.y)) this.dispatchedWorker();
+        else if (this.lessonSend(sel, rt.x, rt.y)) this.dispatchedWorker();
         else if (!this.lessonBars(rt.x, rt.y)) this.toast('No clear ground to stand beside that resource', true);
         return;
       }
@@ -1636,8 +2536,25 @@ const UI = {
     }
     const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
 
+    // orders for a selected WORK PARTY — villagers, sappers or fishing boats
+    // taken in hand by a box (partyOrder): the work is shared out
+    if (this.sel && this.sel.type === 'group' && this.groupClass(this.sel.ids) !== 'mil') {
+      const ids = this.sel.ids.filter(id => Units.get(id));
+      if (!ids.length) { this.deselect(); return; }
+      this.sel.ids = ids;
+      // taps are ORDERS while a party is selected: another own unit only
+      // steals the tap when hit dead-on (transports stay easy to board) —
+      // and, as for one villager, a resource under the finger outranks a
+      // bystander merely overlapping its tile (tap rule 2: tighter there)
+      const cls = this.groupClass(ids);
+      const gatherAim = cls === 'vil' && explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]];
+      const steal = deadOn && !(gatherAim && unitD > 0.32);
+      const tapUnit = (hitUnit && hitUnit.owner === 'P' && !steal && !Units.isTransport(hitUnit)) ? null : hitUnit;
+      if (this.partyOrder({ ids, cls, tile, wx, wy, sx, sy, tapUnit, hitBld, explored, bldNear })) return;
+      // tapped one of our own units/buildings: fall through and reselect it
+    }
     // orders for a selected war party
-    if (this.sel && this.sel.type === 'group') {
+    else if (this.sel && this.sel.type === 'group') {
       const ids = this.sel.ids.filter(id => Units.get(id));
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
@@ -1826,6 +2743,7 @@ const UI = {
             // stand that can be worked before refusing (see gatherFallback)
             const wk = this.gatherable(sel, gt.x, gt.y) ? gt : this.gatherFallback(sel, gt.x, gt.y);
             if (wk && Units.assignGather(sel, wk.x, wk.y)) { this.toast('Gathering ' + sel.task.res); this.dispatchedWorker(); }
+            else if (this.lessonSend(sel, gt.x, gt.y)) this.dispatchedWorker();
             else if (!this.lessonBars(gt.x, gt.y)) this.toast('No clear ground to stand beside that resource', true);
             return;
           }
@@ -1886,7 +2804,7 @@ const UI = {
           if (mode === 'clear' && (tier < 3 || !Terraform.isClearable(tile.x, tile.y))) { this.toast('Clear a forest 🌲 / rock 🪨 / orchard tile', true); return; }
           if (mode === 'mound' && (tier < 3 || !Terraform.isMoundable(tile.x, tile.y, sel.owner))) { this.toast('Mound: raise open ground, or fill water within 2 tiles of shore', true); return; }
           const fee = CFG.TERRAFORM[mode + 'Cost'];
-          if (fee && !Bld.canAfford(fee)) { this.toast(`The sappers want paying — ${Bld.costStr(fee)} per tile`, true); return; }
+          if (fee && !Bld.canAfford(fee)) { this.toast(`The sappers want paying — ${Bld.costStr(fee)} per tile`, true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short(fee); return; }
           if (Units.assignTerraform(sel, tile.x, tile.y, mode)) {
             this.toast(mode === 'dig' ? 'Sapper digging ⛏' : mode === 'bridge' ? 'Sapper raising a bridge 🌉'
               : mode === 'mound' ? 'Sapper raising a mound ⛰' : 'Sapper breaching ⛏');
@@ -1922,7 +2840,11 @@ const UI = {
     // selected → send an idle villager
     if (explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]] && !this.sel) {
       if (S.levy) { this.toast('⚔ The levy is under arms — stand it down first', true); return; }
-      if (this.lessonBars(tile.x, tile.y)) return;
+      if (!this.lessonOk(tile.x, tile.y)) {
+        const idle0 = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
+        if (!(idle0 && this.lessonSend(idle0, tile.x, tile.y))) this.lessonBars(tile.x, tile.y);
+        return;
+      }
       const idle = S.units.find(u => u.owner === 'P' && Units.isVillager(u) && !u.task && !u.tUnit);
       if (idle && Units.assignGather(idle, tile.x, tile.y)) {
         this.toast('Idle villager sent to gather');
@@ -1959,7 +2881,9 @@ const UI = {
   },
   // can a unit anchor a double-tap group? only army/fleet units — the same set the
   // "Group nearby / Group fleet" button forms (soldiers & siege on land; warships,
-  // fireships & transports at sea). Villagers, sappers and fishing boats are left out.
+  // fireships & transports at sea). Villagers, sappers and fishing boats are left
+  // out — but for a mouse's double-click, which takes their kind as a work party
+  // (handleDoubleTap, unitClass; tests/box-select.mjs)
   groupable(u) { return Units.isMilitary(u) || Units.isFleetable(u) || Units.isLevied(u); },
   /* A BOW ON A TOWER IS AT HIS POST, NOT IN A PARTY (js/lookout.js, build
      150): on the platform, on its stairs or walking to man one, a double
@@ -1991,7 +2915,7 @@ const UI = {
   // DOUBLE-TAP: select every like unit (see sameSelType) within the grouping sphere
   // of the tapped one — a trebuchet line, a wing of cavalry, a flotilla of transports
   // pulled cleanly out of a mixed army so it can be ordered on its own.
-  handleDoubleTap(sx, sy) {
+  handleDoubleTap(sx, sy, mouse) {
     if (!S || S.over) return;
     // while placing, a fast second tap is just another placement tap — the
     // ghost jumps, nothing gets group-selected out from under the mode
@@ -2011,19 +2935,23 @@ const UI = {
     // into a group, nor anchors one (build 150 — "archers in the towers
     // shouldn't be selectable… only when they're on the ground"): a double
     // tap on him is an ordinary tap, which takes him alone in hand.
-    if (!hit || !this.groupable(hit) || this.sentUp(hit)) { this.handleTap(sx, sy); return; }
+    // A DOUBLE-CLICK (a mouse, build 213) takes a villager's, a sapper's or a
+    // boat's kind nearby too, now that a work party can be ordered as one
+    // (tests/box-select.mjs); a double-tap on a phone keeps to the soldiers
+    const party = mouse && hit && !this.groupable(hit) ? this.unitClass(hit) : null;
+    if (!hit || !(this.groupable(hit) || party) || this.sentUp(hit)) { this.handleTap(sx, sy); return; }
     const R2 = CFG.GROUP_R;
     const ids = S.units
-      .filter(o => o.owner === 'P' && this.groupable(o) && !this.sentUp(o) && this.sameSelType(o, hit) &&
-        Math.hypot(o.x - hit.x, o.y - hit.y) <= R2)
+      .filter(o => o.owner === 'P' && (party ? this.unitClass(o) === party : this.groupable(o)) && !this.sentUp(o) &&
+        this.sameSelType(o, hit) && Math.hypot(o.x - hit.x, o.y - hit.y) <= R2)
       .map(o => o.id);
     if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
     this.sel = { type: 'group', ids };
     if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
-    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
     const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
-    this.toast(`Selected ${ids.length} ${label}${ids.length > 1 ? 's' : ''} nearby`);
+    this.toast(`Selected ${ids.length} ${this.plural(label, ids.length)} nearby`);   // "3 axemen", never "3 axemans"
   },
 
   select(type, id) {
@@ -2032,7 +2960,7 @@ const UI = {
       const su = Units.get(id); if (su && su.owner === 'P') Sound.ui('select');
     }
     this.sel = { type, id };
-    this.builderFor = null;
+    this.builderFor = null; this.builderIds = null;
     this.confirmDemolish = 0; this.confirmCancel = 0;
     this.terraMode = null;      // a fresh selection drops any armed sapper tool
     this.tradeNeed = null;      // …and rewinds the Trading Post to "what do you need?"
@@ -2042,7 +2970,7 @@ const UI = {
   },
   selectBridge(x, y) {
     this.sel = { type: 'bridge', x, y };
-    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   deselect() {
@@ -2068,17 +2996,35 @@ const UI = {
   panelMinMode() { return !!this.sel; },
   /* THE ONE LABEL AUTHORITY (called on select, renderPanel, deselect, and
      after any minimize — setMenuCollapsed defers here too, so no second
-     writer can disagree). A CLOSED state names what tapping brings back
-     ("🔨 Build ▴" / "▴ Panel"); the OPEN state says what tapping does
-     ("▾ Hide") — the bare ▾ read as decoration, not a control, in the same
-     playtest that found the six-button war party filling the screen. */
+     writer can disagree). A CLOSED state names what tapping brings back (the
+     BUILD button / "▴ Panel"); an OPEN state says what tapping does (the
+     build panel's ✕, "Close the build menu"; a selection's "▾ Hide") — the
+     bare ▾ read as decoration, not a control, in the same playtest that
+     found the six-button war party filling the screen. And the bar's whole
+     STATE rides the same writer (build 214): #bottombar's data-bm is what
+     the stylesheet draws — closed (the BUILD button standing on the map),
+     open (the framed build panel, its banner and ✕), panel and panelmin —
+     so the label and the picture can never disagree. */
   syncBottomToggle() {
     const t = document.getElementById('bmToggle');
     if (!t) return;
-    t.textContent = this.panelMinMode()
-      ? (this.panelHidden ? '▴ Panel' : '▾ Hide')            // one panel minimize/restore
-      : (this.menuCollapsed ? '🔨 Build ▴' : '▾ Hide');      // the Build-menu toggle
+    const bar = document.getElementById('bottombar');
+    const mode = this.panelMinMode() ? (this.panelHidden ? 'panelmin' : 'panel') : (this.menuCollapsed ? 'closed' : 'open');
+    if (bar && bar.dataset.bm !== mode) bar.dataset.bm = mode;
+    if (t.dataset.mode === mode) return;
+    t.dataset.mode = mode;
+    if (mode === 'closed') {
+      t.innerHTML = `<img class="bmIc" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false"><span>Build</span>`;
+      t.setAttribute('aria-label', 'Build'); t.title = 'Build (B)';
+    } else if (mode === 'open') {
+      t.textContent = '✕';
+      t.setAttribute('aria-label', 'Close the build menu'); t.title = 'Close (B)';
+    } else {
+      t.textContent = mode === 'panelmin' ? '▴ Panel' : '▾ Hide';   // one panel minimize/restore
+      t.setAttribute('aria-label', mode === 'panelmin' ? 'Show the panel' : 'Hide the panel'); t.title = '';
+    }
   },
+  HUD_ART: 'assets/ui/hud/',
   // minimize/restore the selection panel for a non-villager (keeps the selection
   // live so the unit still answers taps on the open board below)
   togglePanelMin() {
@@ -2141,7 +3087,7 @@ const UI = {
     return false;
   },
   // panel buttons that only turn the page — never an order (UI.init's listener)
-  VIEW_ACTS: { tradeneed: 1, tradeback: 1, gtactics: 1, gobuild: 1, garmysave: 1, garmyremove: 1, armyremove: 1 },
+  VIEW_ACTS: { tradeneed: 1, tradeback: 1, gtactics: 1, gobuild: 1, ggobuild: 1, garmysave: 1, garmyremove: 1, armyremove: 1 },
 
   // the − / ℹ️ button on unit panels: tuck the how-to text away (or bring it
   // back), and remember the choice on this device across games
@@ -2174,8 +3120,8 @@ const UI = {
     }
   },
   /* A RINGED BUILD CARD IS BROUGHT INTO THE MENU'S VIEW — and the job is done
-     only once the card is SEEN there (build 182; the one rule the lesson and
-     the journey share: Tutorial._scrollCardIntoView, Prologue._cardInView).
+     only once the card is SEEN there (build 182; the journey's rule,
+     Prologue._cardInView).
      It was one shot "however it lands", and on a busy phone it landed on a
      menu still being laid out (nothing to scroll yet), or its smooth scroll
      was undone when the menu was rebuilt for the very card it had unlocked —
@@ -2362,49 +3308,8 @@ const UI = {
     }
     this.sel = { type: 'group', ids: ground };
     if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
-    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
-  },
-  /* THE BANNERS ARE DRAWN (build 154): the saved armies ride the top bar's
-     second row now, beside the map and the deck, so they are chrome — vectors
-     at the screen's own pixels, never blown-up pixel art (the deck's rule) —
-     where they were 21x28 sprites stamped on the map. An army flies a bronze
-     helmet under a red crest, a fleet a striped sail over a shielded hull;
-     the button carries the army's NUMBER (1, 2 or 3), which the old banner
-     told by fanning one, two or three helmets. No ids, no gradients: the
-     light and shade are flat fills (the deck icon's rule). */
-  ARMY_SVG: {
-    helm:
-      '<path d="M8.6 17.2 Q9.6 4.6 24 4.2 Q38.4 4.6 39.4 17.2 L33.8 17.2 Q33 10.4 24 10.2 Q15 10.4 14.2 17.2 Z" fill="#a8392a" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/>' +
-      '<path d="M11.4 13.4 Q13.4 6.8 24 6.6 Q29.6 6.7 32.6 8.6" stroke="#d65d42" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-      '<path d="M13.6 9.6 L15.2 11.4 M17.4 7.4 L18.4 9.6 M21.6 6.4 L22 8.8 M26.2 6.4 L25.8 8.8 M30.4 7.4 L29.4 9.6 M34.2 9.6 L32.6 11.4" stroke="#6e2216" stroke-width="1.1" stroke-linecap="round"/>' +
-      '<path d="M10.4 39.6 L10.6 24.4 C10.8 16 16.6 11.8 24 11.8 C31.4 11.8 37.2 16 37.4 24.4 L37.6 39.6 C37.6 42.4 35.6 44 33 44 L28.4 44 L27.4 31.4 L20.6 31.4 L19.6 44 L15 44 C12.4 44 10.4 42.4 10.4 39.6 Z" fill="#b8913f" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/>' +
-      '<path d="M13 30 C12.8 20.4 17 15 23.2 14.4 C19 17.6 16.4 22.6 16.2 30.2 Z" fill="#e2c477"/>' +
-      '<path d="M34.6 24.6 C34.4 18.8 31.6 15.6 27.6 14.6 C31.6 17.6 33 22 33.2 41.6 L35.2 41 C35.4 35 35 29 34.6 24.6 Z" fill="#87652a"/>' +
-      '<path d="M13.6 22.6 Q18 20.8 22.2 22.2 L22.2 26 L25.8 26 L25.8 22.2 Q30 20.8 34.4 22.6 L34 26.6 Q29.6 27.8 27.2 27.8 L27.2 31.6 L20.8 31.6 L20.8 27.8 Q18.4 27.8 14 26.6 Z" fill="#1d150c" stroke="#140d06" stroke-width="1.2" stroke-linejoin="round"/>' +
-      '<path d="M22.4 26.2 L22.4 31.2" stroke="#87652a" stroke-width="0.9"/>' +
-      '<path d="M14 19.2 Q24 15 34 19.2" stroke="#87652a" stroke-width="1.1" fill="none" stroke-dasharray="1.2 2.4" stroke-linecap="round"/>',
-    ship:
-      '<path d="M3 42.6 Q8 40.4 13 42.6 T23 42.6 T33 42.6 T45 42.6" stroke="#4a7fb0" stroke-width="2.4" fill="none" stroke-linecap="round"/>' +
-      '<path d="M24 31 L24 4.6" stroke="#140d06" stroke-width="3.6" stroke-linecap="round"/>' +
-      '<path d="M24 31 L24 4.6" stroke="#7a5a2c" stroke-width="1.6" stroke-linecap="round"/>' +
-      '<path d="M11 8.4 L37 8.4 Q38.6 17 36.4 25.4 L11.6 25.4 Q9.4 17 11 8.4 Z" fill="#e6dab6" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/>' +
-      '<path d="M15.6 8.8 Q14.6 17 15.8 25 L20 25 Q18.8 17 19.8 8.8 Z M28.2 8.8 Q29.2 17 28 25 L32.2 25 Q33.4 17 32.4 8.8 Z" fill="#a8392a"/>' +
-      '<path d="M11.8 9.8 Q10.8 16 11.8 22" stroke="#fff8e0" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
-      '<path d="M10 8.4 L38 8.4" stroke="#140d06" stroke-width="2.4" stroke-linecap="round"/>' +
-      '<path d="M4.2 26.6 Q6.4 30.2 9.4 30.6 L38.6 30.6 Q41.6 30.2 43.8 26.6 Q44.6 33.6 39.6 38.6 Q36 41.4 30 41.4 L18 41.4 Q12 41.4 8.4 38.6 Q3.4 33.6 4.2 26.6 Z" fill="#7a5a2c" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/>' +
-      '<path d="M7.6 35 Q12 37.6 18 37.8 L30 37.8 Q36 37.6 40.4 35" stroke="#5a3f1c" stroke-width="1.2" fill="none"/>' +
-      '<path d="M6 30.4 Q9 33.6 13 34 L35 34 Q39 33.6 42 30.4" stroke="#a07a40" stroke-width="1.2" fill="none"/>' +
-      '<circle cx="12" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="12" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="18" cy="30.4" r="2.9" fill="#e6dab6" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="18" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="24" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="24" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="30" cy="30.4" r="2.9" fill="#e6dab6" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="30" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="36" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="36" cy="30.4" r="0.9" fill="#140d06"/>',
   },
   // a banner flies the ship when MOST of its roster floats — one scout tagging
   // along with a fleet should not turn it back into an army
@@ -2415,8 +3320,24 @@ const UI = {
     for (const id of alive) { const u = Units.get(id); if (u && Units.isNaval(u)) sea++; }
     return sea * 2 > alive.length;
   },
+  /* WHAT THE ARMY MOSTLY IS (build 214): a fleet a ship, else the larger of
+     its riders (the stable's own line), its bows (a range of their own, never
+     an engine) and everyone else on foot — the banner wears that one's
+     drawn picture (assets/ui/hud/army-*.png). A tie goes to the foot. */
+  armyKind(n) {
+    if (this.armyIsNaval(n)) return 'ship';
+    const horse = (CFG.BUILDINGS.stable && CFG.BUILDINGS.stable.train) || {};
+    let foot = 0, bow = 0, rider = 0;
+    for (const id of this.armyAlive(n)) {
+      const u = Units.get(id); if (!u) continue;
+      if (horse[u.kind]) rider++;
+      else if (CFG.UNITS[u.kind].rng && !Units.isSiege(u) && u.kind !== 'ballista') bow++;
+      else foot++;
+    }
+    return rider > foot && rider >= bow ? 'horse' : bow > foot && bow > rider ? 'bow' : 'foot';
+  },
   armyIcon(n) {
-    return `<svg viewBox="0 0 48 48" aria-hidden="true">${this.ARMY_SVG[this.armyIsNaval(n) ? 'ship' : 'helm']}</svg>`;
+    return `<img class="aic" src="${this.HUD_ART}army-${this.armyKind(n)}.png?v=1" alt="" draggable="false">`;
   },
   renderArmyBar() {
     const bar = document.getElementById('armyBar');
@@ -2469,7 +3390,7 @@ const UI = {
   tickArmies() {
     if (!window.S || !S.units) return;
     this.pruneArmies();
-    const sig = S.armies ? [1, 2, 3].map(n => (S.armies[n] || []).length).join(',') : '';
+    const sig = S.armies ? [1, 2, 3].map(n => (S.armies[n] || []).length + (this.armyAlive(n).length ? this.armyKind(n) : '')).join(',') : '';
     if (sig !== this._armySig) { this._armySig = sig; this.renderArmyBar(); }
   },
 
@@ -2561,7 +3482,8 @@ const UI = {
       const busy = mem.some(o => this.unitBusy(o));
       const siegeable = land.length > 0 && Units.siegeArtillery(land).length > 0;
       const aboard = mem.reduce((n, o) => n + (Units.isTransport(o) && o.cargo ? o.cargo.length : 0), 0);
-      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat +
+      // the party (a war party, or villagers, sappers, boats in hand) picks the panel
+      return 'g|' + this.groupClass(this.sel.ids) + '|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat +
         '|' + busy + '|' + siegeable + '|' + (aboard > 0);
     }
     if (this.sel.type === 'bridge') {
@@ -2589,7 +3511,8 @@ const UI = {
       Units.isLevied(u),                     // under arms: Build hides, the hint changes
       this.armyOfUnit(u),   // …and Remove Army appears the moment this one is the last of it
       u.perch ? 'P' : u.climb ? 'C' : '-',   // up a tower, on its stairs, or on the ground (js/lookout.js)
-      u.kind, (c => c ? c.code : '-')(Units.rankCheck ? Units.rankCheck(u) : null)];   // the rank button greys and lights without a tap
+      u.kind, (c => c ? c.code : '-')(Units.rankCheck ? Units.rankCheck(u) : null),   // the rank button greys and lights without a tap
+      Units.isVeteran(u)];   // a veteran's name, stats and pip
     // the works this builder is on: the Cancel button rides its id, so it
     // appears, arms and disappears with the site itself
     const cw = this.villagerBuildSite(u);
@@ -2633,6 +3556,28 @@ const UI = {
   healWhere(u) {
     if (Units.isNaval(u)) return 'Dock';
     return S.buildings.some(b => b.owner === u.owner && b.key === 'warcamp' && Bld.done(b)) ? 'hall or camp' : 'Town Center';
+  },
+  // the Heal button's small line: the price where they can be mended (and the
+  // standing it brings: Units.veteranOk), where to go when they cannot
+  healSub(u) {
+    if (this.healThrottled(u)) return 'Cooldown…';
+    if (!Bld.inHealZone(u)) return 'near ' + this.healWhere(u);
+    return Bld.costStr({ food: this.healCost(u) }) + (Units.veteranOk(u) ? ' · Veteran' : '');
+  },
+  // what a veteran of the field has, in the rule's own numbers (CFG.VETERAN)
+  veteranLine() {
+    const V = CFG.VETERAN || {}, h = Math.round((V.hp || 0) * 100), a = Math.round((V.atk || 0) * 100);
+    return h === a ? `A veteran: ${h}% more health and attack, until they rise a rank.`
+      : `A veteran: ${h}% more health and ${a}% more attack, until they rise a rank.`;
+  },
+  // a soldier mended into a veteran: said once, seen over him, heard, and popped in gold
+  veteranNews(u) {
+    const nm = CFG.UNITS[u.kind].name, V = CFG.VETERAN || {};
+    R.float(u.x, u.y - 0.9, '⬆ Veteran', '#f0c75a');
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete');
+    if (window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(u, 'rank');
+    const h = Math.round((V.hp || 0) * 100), a = Math.round((V.atk || 0) * 100);
+    G.log(`Your ${nm} is now a Veteran ${nm}: ` + (h === a ? `+${h}% health and attack` : `+${h}% health, +${a}% attack`), 'note');
   },
   healCost(u) {
     const base = CFG.HEAL_FOOD[u.kind];
@@ -2734,7 +3679,8 @@ const UI = {
   rankBtn(u) {
     const c = Units.rankCheck ? Units.rankCheck(u) : null;
     if (!c) return '';
-    const name = c.ok ? `Upgrade to ${CFG.UNITS[c.to].name} — ${Bld.costStr(c.cost)}` : c.why;
+    const name = (c.ok ? `Upgrade to ${CFG.UNITS[c.to].name} — ${Bld.costStr(c.cost)}` : c.why) +
+      (Units.isVeteran(u) ? ' (a veteran starts over at the new rank)' : '');
     return `<button class="abtn prank${c.ok ? '' : ' cant'}" data-act="rankup" title="${name}" aria-label="${name}">${this.RANK_SVG}</button>`;
   },
   killPlank(act, line, small) {
@@ -2844,13 +3790,13 @@ const UI = {
        Everything in it is game-generated (names from CFG, numbers we
        computed); no player text ever reaches this line. */
     const el = document.querySelector('#panel .phead .psub');
-    if (el) { const sub = this.panelSub(); if (el.innerHTML !== sub) el.innerHTML = sub; }
+    if (el) { const sub = this.iconHtml(this.panelSub()); if (el._sub !== sub && el.innerHTML !== sub) { el._sub = sub; el.innerHTML = sub; } }
     // THE LIVE LINE: what the unit is doing and what it is netting, patched in
     // place every tick so it can change without relaying out the whole panel
     if (this.sel.type === 'unit') {
       const wk = document.getElementById('pWork');
       const wu = Units.get(this.sel.id);
-      if (wk && wu && wu.owner === 'P') wk.innerHTML = this.workLine(wu);
+      if (wk && wu && wu.owner === 'P') { const wl = this.iconHtml(this.workLine(wu)); if (wk._wl !== wl) { wk._wl = wl; wk.innerHTML = wl; } }
     }
     // the panel icon follows the art too (a PNG that decoded after the panel
     // was laid out, or the ?dev=1 preview swapping it under a live game) —
@@ -2866,8 +3812,7 @@ const UI = {
       // above); this patches the drifting cost number in between them, so it
       // must agree with the same throttled branch or it overwrites a settled
       // "Cooldown…" label with a stale price the button no longer honours.
-      if (u) hc.textContent = this.healThrottled(u) ? 'Cooldown…'
-        : Bld.inHealZone(u) ? Bld.costStr({ food: this.healCost(u) }) : 'near ' + this.healWhere(u);
+      if (u) { const t = this.healSub(u); if (hc._t !== t) { hc._t = t; this.iconText(hc, t); } }
     }
     // tick every works call-off's days and bar in place (no relayout) — a
     // building's own panel and a builder's alike (worksButton, data-bid)
@@ -2978,7 +3923,8 @@ const UI = {
       }
       return sub;
     }
-    if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
+    if (this.sel.type === 'group') return this.groupClass(this.sel.ids) === 'mil'
+      ? this.groupComposition(this.sel.ids) : this.partyLine(this.sel.ids);   // a party says what it is doing
     if (this.sel.type === 'bridge') { const br = Bld.bridgeAt(this.sel.x, this.sel.y); return br ? `HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water` : ''; }
     const u = Units.get(this.sel.id);
     return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}` : '';
@@ -3006,7 +3952,7 @@ const UI = {
         <button class="abtn" id="panelClose">✕</button></div>`;
       html += `<div class="psub" style="padding:4px 10px 2px;line-height:1.5">${def.flavor}</div>`;
       html += `<div class="psub" style="padding:6px 10px 8px;color:var(--gold)">Found here on day ${r.found} — +${r.amount} ${def.res}.</div>`;
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = document.getElementById('pIcon');
       if (ic) this.iconInto(ic, Relics.art(r.key));
       const close = panel.querySelector('#panelClose');
@@ -3201,7 +4147,7 @@ const UI = {
         html += `<span class="psub">Enemy structure — order defenders to attack it.</span>`;
       }
       html += '</div>';
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
@@ -3210,9 +4156,14 @@ const UI = {
       panel.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', e => {
         const b2 = Bld.get(this.sel.id);
         if (!b2) return;
-        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); } }
+        if (btn.dataset.act === 'upgrade') { if (!Bld.upgrade(b2)) { const cu = Bld.canUpgrade(b2); this.toast(cu.short ? 'Not enough resources: still needs ' + cu.short : cu.why, true); if (cu.cost && typeof Feel !== 'undefined' && Feel.short) Feel.short(cu.cost, cu.short ? { kind: 'up', bid: b2.id, lv: b2.level } : null); } }
         else if (btn.dataset.act === 'train') {
-          if (!Bld.train(b2, btn.dataset.unit)) this.toast(Bld.canTrain(b2, btn.dataset.unit).why, true);
+          if (!Bld.train(b2, btn.dataset.unit)) {
+            // the refusal names what is short, and the top bar points at it (js/feel.js)
+            const ct = Bld.canTrain(b2, btn.dataset.unit);
+            this.toast(ct.short ? 'Not enough resources: still needs ' + ct.short : ct.why, true);
+            if (typeof Feel !== 'undefined') { if (ct.cost && Feel.short) Feel.short(ct.cost, ct.short ? { kind: 'train', bid: b2.id, unit: btn.dataset.unit } : null); else if (ct.code === 'pop' && Feel.popFull) Feel.popFull(); }
+          }
           else this.trainFlash(btn);
           this.refreshMenu();
           this.refreshPanel();   // in-place queue/affordability update — no rebuild, no layout jump
@@ -3304,7 +4255,7 @@ const UI = {
         }
         else if (btn.dataset.act === 'togate') {
           const net = this.gateConvertCost(b2);
-          if (!Bld.canAfford(net)) { this.toast('Not enough resources', true); return; }
+          if (!Bld.canAfford(net)) { this.toast('Not enough resources: still needs ' + Bld.shortfall(net), true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short(net); return; }
           Bld.pay(net, S.res);
           const spec = Bld.buildSpec('gate');
           const lv = spec.lv;
@@ -3404,7 +4355,7 @@ const UI = {
         html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
       }
       html += '</div>';
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       if (ic) { ic.width = ic.height = 44; const g2 = ic.getContext('2d'); g2.imageSmoothingEnabled = false;
         g2.fillStyle = lv >= 3 ? '#8f8f86' : '#6e5024'; g2.fillRect(4, 15, 36, 14);
@@ -3418,7 +4369,11 @@ const UI = {
         // orders the WORKS — the stone is paid now, the span is raised over the
         // next few days by a sapper standing at it (no more instant arches)
         if (Bld.orderBridgeUpgrade(b2)) { this.toast('Bridge works laid out — Lv ' + b2.upTo); this.renderPanel(); this.refreshMenu(); }
-        else this.toast('Not enough resources', true);
+        else {
+          const nx = CFG.BRIDGE.levels[b2.level] && CFG.BRIDGE.levels[b2.level].cost;
+          this.toast(nx && !Bld.canAfford(nx) ? 'Not enough resources: still needs ' + Bld.shortfall(nx) : 'Not enough resources', true);
+          if (nx && typeof Feel !== 'undefined' && Feel.short) Feel.short(nx);
+        }
       });
       panel.querySelectorAll('[data-act="brcancel"]').forEach(bc => bc.addEventListener('click', e => {
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y);
@@ -3436,6 +4391,9 @@ const UI = {
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
       }));
+    } else if (this.sel.type === 'group' && this.groupClass(this.sel.ids.filter(id => Units.get(id))) !== 'mil') {
+      // a WORK PARTY's own panel (villagers, sappers, fishing boats)
+      if (!this.renderParty(panel)) return;
     } else if (this.sel.type === 'group') {
       this.sel.ids = this.sel.ids.filter(id => Units.get(id));
       if (this.sel.ids.length === 0) { this.deselect(); return; }
@@ -3494,7 +4452,7 @@ const UI = {
           : armySlot ? `<button class="abtn" data-act="garmysave">🪖 Save as Army ${armySlot}<small>recall it from the banner</small></button>`
           : gMil.length ? `<button class="abtn cant" data-act="garmysave">🪖 Armies full<small>remove one to save</small></button>` : '') +
         `</div>`;
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       this.iconInto(ic, R.unitSprite(first));
       const gsave = panel.querySelector('[data-act="garmysave"]');
@@ -3570,7 +4528,7 @@ const UI = {
       if (!u) { this.deselect(); return; }
       // a card's own people go by their own names (js/deckfx-army.js:
       // a War-wolf, a Spectral Champion, a Veteran Lancer)
-      const nm = (window.Deck && Deck.unitName && Deck.unitName(u)) || CFG.UNITS[u.kind].name;
+      const nm = Units.nameOf(u);
       const own = u.owner === 'P';
       let hint = (own && window.Deck && Deck.unitHint && Deck.unitHint(u)) || (!own ? (
           Units.isPassive(u) ? `Wild game — send a villager or defender to hunt it (+${(CFG.MEAT && CFG.MEAT[u.kind]) || CFG.MEAT_DROP} food).`
@@ -3592,6 +4550,8 @@ const UI = {
         : Units.isTransport(u) ? `Select soldiers or villagers and tap this hull to board — it carries ${CFG.UNITS[u.kind].cap}. Tap a shore tile to land them, or water to row.`
         : Units.isNaval(u) ? 'Tap an enemy or rival building near the shore to attack, or water to sail.'
         : 'Tap a tile to move, or an enemy to attack.');
+      if (own && Units.isVeteran(u)) hint += ' ' + this.veteranLine();
+      else if (own && Units.veteranOk(u)) hint += ' Hurt in a fight and healed at your hall or a war camp, they come back a veteran.';
       if (!own && !Units.isPassive(u)) {
         const stack = S.units.filter(o => o.owner !== 'P' && !Units.isPassive(o) &&
           (o.x | 0) === (u.x | 0) && (o.y | 0) === (u.y | 0));
@@ -3616,8 +4576,10 @@ const UI = {
       const helpBtn = own ? `<button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button>` : '';
       // a soldier's next rank rides the header beside the ℹ️ (UI.rankBtn)
       const rank = own && !kill ? this.rankBtn(u) : '';
+      // a villager of the player's is a person: her name first, her kind beside it (Units.personName)
+      const pn = own && Units.personName ? Units.personName(u) : null;
       html += `<div class="phead${(kill || rank) && helpBtn ? ' k3' : ''}"><canvas id="pIcon"></canvas><div>
-        <div class="ptitle">${own ? '' : '☠ '}${nm}</div>
+        <div class="ptitle">${own ? '' : '☠ '}${pn ? pn + ` <span class="pkind">${nm}</span>` : nm}</div>
         <div class="psub">HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}${Units.isTransport(u) ? ' · Carries ' + CFG.UNITS[u.kind].cap : ''}</div>
         <div class="pwork" id="pWork">${own ? this.workLine(u) : ''}</div></div>
         ${helpBtn}${kill}${rank}<button class="abtn" id="panelClose">✕</button></div>
@@ -3629,8 +4591,8 @@ const UI = {
         const inZone = Bld.inHealZone(u);
         const throttled = this.healThrottled(u);
         const ok = inZone && S.res.food >= hc && !throttled;
-        const sub = throttled ? 'Cooldown…' : inZone ? Bld.costStr({ food: hc }) : 'near ' + this.healWhere(u);
-        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal">❤️ Heal<small id="healCost">${sub}</small></button>`;
+        const vt = Units.veteranOk(u) ? ' title="Healed after a fight, they come back a veteran"' : '';
+        html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="heal"${vt}>❤️ Heal<small id="healCost">${this.healSub(u)}</small></button>`;
       }
       // Unload renders only with someone aboard — an empty hull's button could
       // only toast a refusal, and the capacity now rides in the hint line
@@ -3665,7 +4627,8 @@ const UI = {
       if (own && Units.isVillager(u)) {
         // under arms there is nothing Build could answer — the panel shows
         // only what can act; the hint line carries the why
-        if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
+        // the BUILD button's own drawn hammers (build 214), the same act
+        if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild"><img class="bic" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false">Build</button>`;
         /* …and if they are raising something, the works can be called off
            from right here — the same button the building's own panel shows,
            gone the moment there is nothing being raised. */
@@ -3720,7 +4683,7 @@ const UI = {
       if (soleArmy)
         html += `<button class="abtn" data-act="armyremove">🪖 Remove Army ${soleArmy}<small>the last of it — frees its banner</small></button>`;
       html += '</div>';
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       this.iconInto(ic, R.unitSprite(u));
       const stop = panel.querySelector('[data-act="stop"]');
@@ -3854,12 +4817,15 @@ const UI = {
         if (this.healThrottled(u2)) { this.toast('Healed enough — let them rest', true); return; }
         if (!Bld.inHealZone(u2)) { this.toast(Units.isNaval(u2) ? 'Ships heal at a Dock — move closer' : this.healWhere(u2) === 'Town Center' ? 'Can only heal within the Town Center grounds' : 'Can only heal near the Town Center or a War Camp', true); return; }
         const cost = this.healCost(u2);
-        if (S.res.food < cost) { this.toast('Not enough food', true); return; }
+        if (S.res.food < cost) { this.toast('Not enough food', true); if (typeof Feel !== 'undefined' && Feel.short) Feel.short({ food: cost }); return; }
         S.res.food -= cost;
         this.noteHeal(u2);
         u2.hp = u2.maxhp;
         R.float(u2.x, u2.y - 0.5, '❤', '#8ae08a');
         this.toast(`Healed for ${cost} food`);
+        // VETERANS OF THE FIELD: hurt in a fight and mended here, a soldier
+        // comes back a veteran of his rank (Units.makeVeteran)
+        if (Units.makeVeteran(u2)) this.veteranNews(u2);
         this.renderPanel();
       });
       const gobuild = panel.querySelector('[data-act="gobuild"]');
@@ -3867,7 +4833,7 @@ const UI = {
         const vid = this.sel.id;
         if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
-        this.builderFor = vid;    // after deselect/select bookkeeping
+        this.builderFor = vid; this.builderIds = null;   // after deselect/select bookkeeping
         // the journey's guide says it and rings the card: no second voice over her line
         if (!(S && S.scenario)) this.toast('Pick a building, then tap a site — this villager will build it', 'note');
       });
@@ -4076,6 +5042,8 @@ const UI = {
   },
   refresh(dt) {
     this.tickPlacement(dt);   // per-frame: edge scroll + ghost DOM must not wait on the throttle
+    if (this.boxDrag) { try { this.boxSync(); } catch (e) {} }   // a box held on the ground follows the view
+    if (typeof Feel !== 'undefined' && Feel.tick) { try { Feel.tick(dt); } catch (e) {} }   // the held keys, a glide, the pause veil
     this.refreshT -= dt;
     if (this.refreshT > 0) return;
     this.refreshT = 0.25;
@@ -4098,7 +5066,7 @@ const UI = {
     document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
     const pop = Units.popUsed('P') + '/' + Bld.popCap('P');
     document.getElementById('rPop').textContent = pop;
-    document.getElementById('rDay').textContent = 'Day ' + S.day;
+    this.paintDay();
     // the chips' names say their numbers too (role=button names itself by its label)
     const name = (id, s) => { const el = this._chipEl && this._chipEl[id]; if (el && el.getAttribute('aria-label') !== s) el.setAttribute('aria-label', s); };
     name('food', 'Food ' + food + (net ? ', ' + net : ''));
@@ -4131,37 +5099,19 @@ const UI = {
      refusal answering the player's own tap always shows: a repeat of one
      still on screen REPLACES it with one fresh node, and a warning's repeat
      shakes (a note's never does), so a second tap never reads as dead.
-     WHILE A LESSON'S CARD IS BEING READ (Tutorial.noteReading: its words'
-     time, and the breath after one) the WORLD'S NEWS waits (`news`: G.log's
-     notes and the "N ready" fold), three at most, the oldest giving way, and
-     is shown the moment the card has been read — under the card, whose seat
-     steps the column down (--tut-h), never over it; nothing is dropped for
-     waiting (a card that waits on a deed can stand for minutes, and a 20 s
-     drop lost every piece of news in a tutorial game). A cached older
-     tutorial.js without noteReading holds on noteUp, as before. Everything
-     else shows at once: a warning, and
-     a note that answers what the player just did (a station's "no ground
-     yet", the wall's how-to, a tapped top-bar number) — held, the tap would
-     read as dead (the tap contract's rule 4). Every map here is UI-local,
-     keyed on S. */
+     Every toast shows the moment it is asked for (a held answer reads as a
+     dead tap, the tap contract's rule 4). Every map here is UI-local, keyed
+     on S. */
   _toastEl: null,     // message key → the node on screen (a repeat replaces it)
-  _toastHeld: null,   // news waiting out a lesson card's reading: { msg, ms, at }, three at most
   _toastS: null,
-  _toastFlush: 0,
-  toast(msg, warn, ms, dedupe, news) {
+  toast(msg, warn, ms, dedupe) {
     if (!warn || msg == null) return null;
     msg = String(msg);
     const key = msg.replace(/\d+/g, '#');
     const now = performance.now();
     if (dedupe && now - (this._toastAt[key] || -1e9) < 6000) return null;
     this._toastAt[key] = now;
-    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); this._toastHeld = []; }
-    if (warn === 'note' && news && this._lessonReading()) {
-      this._toastHeld.push({ msg, ms, at: now });
-      while (this._toastHeld.length > 3) this._toastHeld.shift();   // the oldest gives way
-      if (!this._toastFlush) this._toastFlush = setTimeout(() => this._flushHeld(), 250);
-      return null;
-    }
+    if (!this._toastEl || this._toastS !== S) { this._toastS = S; this._toastEl = new Map(); }
     return this._showToast(msg, warn, ms, key, dedupe);
   },
   _showToast(msg, warn, ms, key, dedupe) {
@@ -4177,33 +5127,13 @@ const UI = {
     // the shake answers a REFUSAL's second tap: a warning the player's own act
     // raised (no collapse asked for) — never a note, never the world's news
     el.className = 'toast' + (alarm ? ' warn' : '') + (repeat && warn === true && !dedupe ? ' shake' : '');
-    el.textContent = msg;
+    this.iconText(el, msg);   // a price in it wears the bar's own goods (UI.iconHtml)
     box.appendChild(el);
     this._toastEl.set(key, el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
     setTimeout(() => { el.style.opacity = '0'; }, hold);
     setTimeout(() => { el.remove(); if (this._toastEl && this._toastEl.get(key) === el) this._toastEl.delete(key); }, hold + 700);
     return el;
-  },
-  // is a lesson card still being read? (guarded on the method it calls; an
-  // older tutorial.js without noteReading answers by noteUp, as before)
-  _lessonReading() {
-    const T = window.Tutorial;
-    if (!T) return false;
-    if (T.noteReading) return !!T.noteReading();
-    return !!(T.noteUp && T.noteUp());
-  },
-  // the held news comes out once the card has been read (or answered, and its
-  // breath has passed); a new world drops it
-  _flushHeld() {
-    this._toastFlush = 0;
-    const q = this._toastHeld;
-    if (!q || !q.length || this._toastS !== S) return;
-    if (this._lessonReading()) {
-      this._toastFlush = setTimeout(() => this._flushHeld(), 250);
-      return;
-    }
-    for (const h of q.splice(0)) this._showToast(h.msg, 'note', h.ms, h.msg.replace(/\d+/g, '#'));
   },
   /* THE OPEN VIEW (PX-17): is this world point on the part of the screen the
      player can actually see — under the top bar, above the bottom bar (and
@@ -4235,12 +5165,64 @@ const UI = {
     for (const id of ['miniToggle', 'mapBtn'])
       document.getElementById(id).addEventListener('click', () =>
         this.setMiniCollapsed(!this.miniCollapsed));
+    /* THE ONE MENU (build 214 — the operator: "collapse the pause menu and the
+       settings menu into a single menu… we don't need two buttons"): the gear
+       opens it, and it pauses the world while it is up (Screens.onPaused).
+       The ⏸ that sat beside it is gone; Space still pauses under the veil. */
     document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
-    document.getElementById('btnPause').addEventListener('click', e => {
-      S.paused = !S.paused;
-      e.target.textContent = S.paused ? '▶' : '⏸';
-    });
+    // its gear is the settings page's own picture: the markup's ?v= is a
+    // first guess for the parse, CFG.ART_V the truth (an art bump restamps it)
+    const gear = document.querySelector('#btnMenu .hic');
+    if (gear && typeof CFG !== 'undefined' && CFG.ART_V) {
+      const want = 'assets/ui/settings/tab-general.png?v=' + CFG.ART_V;
+      if (gear.getAttribute('src') !== want) gear.setAttribute('src', want);
+    }
+    // the frame's corners and the BUILD banner (vectors, at the screen's own pixels)
+    this.dressBottom();
+  },
+  /* the carved frame's dress: the settings page's corner ornament at the two
+     top corners, and the BUILD banner over an open build panel — built once */
+  dressBottom() {
+    const bar = document.getElementById('bottombar');
+    if (!bar || bar._dressed) return;
+    bar._dressed = true;
+    if (typeof SettingsPage !== 'undefined' && SettingsPage.cornerSvg)
+      for (const [c, fx] of [['tl', 0], ['tr', 1]]) {
+        const i = document.createElement('i'); i.className = 'bmC ' + c; i.setAttribute('aria-hidden', 'true');
+        i.innerHTML = SettingsPage.cornerSvg('bmc' + c, fx, 0);
+        bar.insertBefore(i, bar.firstChild);
+      }
+    const ban = document.createElement('div'); ban.id = 'bmBanner'; ban.setAttribute('aria-hidden', 'true');
+    ban.innerHTML = this.bannerSvg(176, 38, 'bmb') + `<b><img src="${this.HUD_ART}build.png?v=1" alt="">Build</b>`;
+    bar.insertBefore(ban, bar.firstChild);
+    this.syncBottomToggle();
+  },
+  /* A BANNER (the mockup's ribbon over a panel): a dark plate with pointed
+     ends, a dark edge, a gold rim and a hairline inside it, a stud at each
+     end — vectors at the box's own size, shared by the build panel and the
+     cards' sheet (js/deckui.js) */
+  bannerSvg(w, h, id) {
+    const p = 13, m = h / 2;
+    const pts = (i) => `${i},${m} ${p + i * 0.6},${i} ${w - p - i * 0.6},${i} ${w - i},${m} ${w - p - i * 0.6},${h - i} ${p + i * 0.6},${h - i}`;
+    return `<svg viewBox="-2 -2 ${w + 4} ${h + 4}" aria-hidden="true" focusable="false"><defs>` +
+      `<linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a3618"/><stop offset=".5" stop-color="#2c2012"/><stop offset="1" stop-color="#1c140b"/></linearGradient>` +
+      `<linearGradient id="${id}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0b0"/><stop offset=".45" stop-color="#e2b24c"/><stop offset="1" stop-color="#8f6418"/></linearGradient></defs>` +
+      `<polygon points="${pts(0)}" fill="url(#${id}f)" stroke="#0b0704" stroke-width="4" stroke-linejoin="round"/>` +
+      `<polygon points="${pts(1.5)}" fill="none" stroke="url(#${id}g)" stroke-width="2" stroke-linejoin="round"/>` +
+      `<polygon points="${pts(4.5)}" fill="none" stroke="#f3d27a" stroke-opacity=".35" stroke-width="1" stroke-linejoin="round"/>` +
+      `<path d="M${p + 4},${m} l4,-4 4,4 -4,4z M${w - p - 4},${m} l-4,-4 -4,4 4,4z" fill="url(#${id}g)" stroke="#0b0704" stroke-width=".9"/></svg>`;
   },
 
+  /* THE DAY'S PLATE (UI.refresh): "Day" in its own span (.dW) — it stands
+     down on the narrowest phones and on a second row the armies and the
+     running cards crowd — the number never; the moon by night (R.dayPhase's
+     k, the dusk tint's own). Written only when the day moves. */
+  paintDay() {
+    const dEl = document.getElementById('rDay');
+    if (!dEl || !window.S) return;
+    if (dEl._d !== S.day || dEl.textContent !== 'Day ' + S.day) { dEl._d = S.day; dEl.innerHTML = '<span class="dW">Day </span>' + S.day; }
+    const night = !!(window.R && R.dayPhase && R.dayPhase().k > 0.35);
+    if (dEl.classList.contains('night') !== night) dEl.classList.toggle('night', night);
+  },
   showEnd(win, msg) { Screens.showEnd(win, msg); },
 };

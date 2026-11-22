@@ -99,7 +99,13 @@ Object.assign(Deck, {
     if (typeof Assets === 'undefined' || !Assets.wantFx) return;
     for (const k of id ? [id] : Object.keys(this.FX)) {
       const fx = this.FX[k];
-      if (fx && fx.art && this.count(k) > 0) Assets.wantFx(fx.art, { prio: 'high' });
+      if (!fx || this.count(k) <= 0) continue;
+      if (fx.art) Assets.wantFx(fx.art, { prio: 'high' });
+      /* …and the people an army card summons, in the background (build 207):
+         a run no longer installs every army at its founding, so the Legion's
+         champions are fetched while the card is held, not as it lands */
+      const list = fx.LIST || (fx.KIND ? [{ kind: fx.KIND }] : null);
+      if (list && Assets.wantUnit) for (const e of list) Assets.wantUnit({ kind: e.kind, owner: 'P' }, true);
     }
   },
   // a live timed card that asks for a world cue by name (R.drawCardWorld)
@@ -644,8 +650,8 @@ Object.assign(Deck.FX, {
        on the line's middle while the beast wheels overhead. Once the act has
        gone and its fire has caught, the view glides back to the zoom and the
        place the player had. A touch or the wheel gives the camera back on
-       the spot, and it is never yanked back after (the tutorial's borrowed
-       zoom keeps the same terms). Reduced motion borrows nothing. */
+       the spot, and it is never yanked back after. Reduced motion borrows
+       nothing. */
     CAM: { z: 1.3, zMax: 2.6, fill: 0.66, art: 250, rise: 2.0, back: 0.8, glide: 0.75, follow: 4.2, hold: 0.55 },
     _cam: null, _camFor: null,
     // where the view looks while the act runs (tiles): the head of the line,

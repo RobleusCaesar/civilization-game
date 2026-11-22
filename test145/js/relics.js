@@ -181,7 +181,10 @@ const Relics = {
     if (!r || r.found || this.MAX_PER_MAP < 1) return;
     if (window.Screens && Screens._demo) return;      // the title demo does not go treasure-hunting
     if (G.freeVis) return;                            // a dev x-ray is not exploration
-    const expl = S.map.explored, idx = MapGen.idx;
+    /* a relic placed with `sight` (a journey world, whose map opens revealed —
+       Scenarios.populate) is found when one of the clan SEES it, not when its
+       tile is merely charted */
+    const expl = r.sight ? (G.vis || []) : S.map.explored, idx = MapGen.idx;
     let seen = false;
     for (let dy = 0; dy < r.h && !seen; dy++) for (let dx = 0; dx < r.w; dx++)
       if (expl[idx(r.x + dx, r.y + dy)]) { seen = true; break; }
@@ -195,7 +198,9 @@ const Relics = {
       R.startBondSpark(r.x + r.w / 2 - 0.5, r.y + r.h / 2 - 0.5);
       R.float(r.x + r.w / 2, r.y + r.h / 2 - 0.6, '+' + amt + ' ' + def.res, '#ffe9a3');
     }
-    if (window.UI && UI.toast) UI.toast(`✨ ${def.name} — +${amt} ${def.res}`);
+    // a journey world's guide says the find herself (Prologue's 'relic' aside): one voice
+    const said = `✨ ${def.name} — +${amt} ${def.res}`;
+    if (window.UI && UI.toast && !(window.Prologue && Prologue.quiet && Prologue.quiet(said))) UI.toast(said);
     G.log(`✨ ${def.name} found — +${amt} ${def.res}`, true);
   },
 

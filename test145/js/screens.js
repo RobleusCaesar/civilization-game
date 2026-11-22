@@ -100,6 +100,9 @@ const Screens = {
        test link turned on it stands in for #scrSettings; everywhere else the
        old screen shows exactly as it did. One predicate, SettingsPage.live(). */
     if (name === 'settings' && window.SettingsPage && SettingsPage.live()) scr = SettingsPage.mount();
+    /* …and so does the PAUSE (build 214): the gear opens the one menu, which
+       is the settings page headed PAUSED on its Game tab (SettingsPage.onShow) */
+    else if (name === 'paused' && window.SettingsPage && SettingsPage.live()) scr = SettingsPage.mount();
     if (scr) scr.classList.add('show');
     this._confirmQuit = false;
     if (name === 'title') this.onTitle();
@@ -534,7 +537,10 @@ const Screens = {
     this._entering = true;   // until _enterNow: no demo may replace this world
     this._demo = false;
     G.freeVis = false;
-    R.cam.z = R.defaultZoom();   // never the demo's leftover (tests/desktop-layout.mjs)
+    // never the demo's leftover (tests/desktop-layout.mjs) — but a world this
+    // page already opened (a Resume from the pause menu) keeps the view the
+    // player left it at: the zoom snapped back to the default on every Resume
+    if (!(this._opened && this._opened.has && this._opened.has(S))) R.cam.z = R.defaultZoom();
     /* THE WORLD IS PLAYED WITH ITS ART ON. A run founded on a cold cache
        could reach this press before the strips and the kit had landed; it
        used to enter anyway, procedural, and snap a few seconds in. Now the
@@ -554,7 +560,9 @@ const Screens = {
        and the bake are in, so a slow phone opens on the stand-in rather than
        stalling. No work is added: the prefetch was already painting this
        ground behind the plaque; the plaque now covers it. */
-    const ground = () => !window.TerrainX || !TerrainX.viewFrac || TerrainX.viewFrac() >= 1;
+    // (a journey world opens on its glide: the press waits for every view of it — Prologue.glideViews)
+    const glide = () => (S && S.scenario && window.Prologue && Prologue.glideViews) ? Prologue.glideViews() : null;
+    const ground = () => !window.TerrainX || !TerrainX.viewFrac || TerrainX.viewFrac(glide()) >= 1;
     const rest = () => window.Assets && Assets.artReady && Assets.artReady() && !R._bakeDue && !R._bake;
     const ready = () => rest() && ground();
     if (ready()) { this._enterNow(); return; }
@@ -642,12 +650,9 @@ const Screens = {
         G._freshRun = false;
         const card = (S.draft && S.draft.done && S.draft.hand && S.draft.pickI != null
           && S.draft.hand[S.draft.pickI]) ? S.draft.hand[S.draft.pickI].key : null;
-        // why the lesson is on or off: the explicit choice, else the auto-on for a first game
-        const ask = this.lsGet('neo-tutorial-ask'), tutOn = !!(S.tut && S.tut.on);
         Backend.logRunStart({
           mode: S.mode, landform: S.map && S.map.landform, size: S.sizeKey,
-          tutorial: tutOn, card, origin: S.origin || null, seed: String(S.seed || ''),
-          prepMs, tutSrc: tutOn ? (ask === '1' ? 'ticked' : 'auto') : (ask === '0' ? 'declined' : 'none'),
+          card, origin: S.origin || null, seed: String(S.seed || ''), prepMs,
         });
         S.runId = Backend.runId;   // rides in the save, so a Continue ends the same run
         if (window.Feedback) Feedback.runKey = S.runId;   // the error tally is this run's
@@ -661,7 +666,7 @@ const Screens = {
       }
     } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
-    document.getElementById('btnPause').textContent = '⏸';
+    { const pb = document.getElementById('btnPause'); if (pb) pb.textContent = '⏸'; }   // (the ⏸ left the bar in build 214)
     this.show('playing');
     this.unsay();   // nothing the shell said follows the player into the game
     // the world board is looked at while the game is played: a win reads
@@ -690,17 +695,76 @@ const Screens = {
     }
   },
   /* the plaque: made on first use, inline-styled like the splash so it needs
-     no stylesheet, and it says what it waits for */
+     no stylesheet, and it says what it waits for. It wears the HUD's own
+     material (build 212): a walnut plate on a gold hairline, its name in the
+     menu's Cinzel caps, a gold bar in a dark groove — and, while it waits, one
+     thing worth knowing (PREP_TIPS), the next one each time and every few
+     seconds. Never in a journey world: there Mira has the one voice. */
+  PREP_TIPS: [
+    'A house beside a farm makes a homestead: the field gives more, and the house holds one more.',
+    'Lumber camps stand on felled woods, quarries on broken rock, farms on picked-bare soil.',
+    'Archers on a tower see farther, shoot farther and take less harm.',
+    'Roads speed your people, and most buildings beside one work a tenth better.',
+    'A soldier hurt in a fight and healed at the hall or a war camp comes back a veteran.',
+    'Walk a villager to a gold seam to claim it as a mine.',
+    'Stone never grows back. Woods and fields do, in time.',
+    'Tap a counter on the top bar to see what comes in each day.',
+    'A gate opens for your own people, never for raiders.',
+    'Press on a unit you hold and drag: it goes there, and stays in hand.',
+  ],
+  PREP_TIP_DESK: 'In a game, press ? to see every key.',
+  PREP_TIP_BOX: 'Drag a box round your people to take a group in hand. Right-drag moves the map.',
+  PREP_TIP_MS: 5600,
+  _prepTipText() {
+    const list = this.PREP_TIPS.slice();
+    try { if (matchMedia('(hover: hover) and (pointer: fine)').matches) list.push(this.PREP_TIP_DESK, this.PREP_TIP_BOX); } catch (e) {}
+    let i = 0;
+    try { i = (parseInt(this.lsGet ? this.lsGet('neo-prep-tip') : localStorage.getItem('neo-prep-tip'), 10) || 0) % list.length; } catch (e) {}
+    try { const v = String((i + 1) % list.length); if (this.lsSet) this.lsSet('neo-prep-tip', v); else localStorage.setItem('neo-prep-tip', v); } catch (e) {}
+    return list[i];
+  },
   showPrep(on) {
     let el = document.getElementById('prep');
     if (!el && !on) return;
     if (!el) {
       el = document.createElement('div'); el.id = 'prep';
       el.setAttribute('style', 'position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:rgba(13,11,8,0.55);pointer-events:none');
-      el.innerHTML = '<div style="padding:14px 22px;border-radius:10px;background:#1a1610;color:#e8dcc0;font:600 15px/1.4 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,0.5);text-align:center"><div>Preparing the world…</div><div id="prepBar" style="margin-top:10px;height:6px;width:180px;background:#3a3125;border-radius:3px;overflow:hidden"><div id="prepFill" style="height:100%;width:0;background:#e8c15a"></div></div></div>';
+      el.innerHTML =
+        '<div id="prepPlate" style="width:min(330px,calc(100vw - 48px));box-sizing:border-box;padding:15px 22px 13px;border-radius:6px;text-align:center;' +
+          'background:linear-gradient(180deg,#2c2116 0%,#1b130c 100%);border:1px solid rgba(214,174,90,0.75);color:#e8dcc0;' +
+          'box-shadow:0 0 0 1px #000,inset 0 1px 0 rgba(255,236,190,0.14),inset 0 0 0 3px rgba(0,0,0,0.22),0 10px 32px rgba(0,0,0,0.6);' +
+          'font:500 13px/1.45 system-ui,-apple-system,sans-serif">' +
+        '<div id="prepTitle" style="font-family:var(--menufont,Georgia,serif);font-weight:700;font-size:15px;letter-spacing:2.5px;text-transform:uppercase;color:#f2cf73;text-shadow:0 2px 0 #000">Preparing the world…</div>' +
+        '<div id="prepBar" style="margin:11px 0 0;height:8px;width:100%;box-sizing:border-box;background:#0f0b07;border:1px solid rgba(214,174,90,0.45);border-radius:4px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.7)">' +
+          '<div id="prepFill" style="height:100%;width:0;background:linear-gradient(180deg,#ffe9a6 0%,#f2c35a 45%,#b9781f 100%);box-shadow:0 0 6px rgba(242,195,90,0.55)"></div></div>' +
+        '<div id="prepTip" style="margin-top:11px;padding-top:9px;border-top:1px solid rgba(214,174,90,0.22);min-height:2.9em;color:#d8cba8;font-size:12.5px;transition:opacity .35s ease"></div>' +
+        '</div>';
       document.body.appendChild(el);
     }
     el.style.display = on ? 'flex' : 'none';
+    // one tip, said in full, and the next a few seconds on (a journey world says none)
+    const tipEl = document.getElementById('prepTip');
+    if (tipEl) {
+      const journey = !!(window.S && S.scenario);
+      tipEl.style.display = on && !journey ? '' : 'none';
+      clearTimeout(this._tipT);
+      if (on && !journey) {
+        const say = () => {
+          tipEl.innerHTML = '<b style="color:#e7c27a;font-size:10.5px;letter-spacing:1.5px;margin-right:6px">TIP</b>' + this._prepTipText().replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+          tipEl.style.opacity = '1';
+        };
+        say();
+        const next = () => {
+          if (el.style.display === 'none') return;
+          let still = false;
+          try { still = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+          if (still) say(); else { tipEl.style.opacity = '0'; this._tipT = setTimeout(() => { if (el.style.display !== 'none') say(); }, 360); }
+          this._tipT2 = setTimeout(next, this.PREP_TIP_MS);
+        };
+        clearTimeout(this._tipT2);
+        this._tipT2 = setTimeout(next, this.PREP_TIP_MS);
+      } else clearTimeout(this._tipT2);
+    }
     if (on) {
       const fill = document.getElementById('prepFill');
       const total = Math.max(1, (window.Assets && Assets.pending) || 1); this._prepTotal = Math.max(this._prepTotal || 0, total);
@@ -804,43 +868,23 @@ const Screens = {
        is enforced the way the old landform picker enforced it: roll seeds
        until the draw comes up — generation is cheap). The variant rides the
        seed itself (map.js), so whatever seed satisfies the landform brings
-       its own variant honestly. Size leans by difficulty (SIZE_LEAN).
-
-       THE TUTORIAL NEVER GAMBLES: a first game with the teacher on is
-       forced onto Valley · Classic at medium — its lessons anchor to
-       forest, water and open ground, and a player learning the game should
-       not be learning it on an archipelago. */
-    /* …and THE PIN OUTRANKS THE AUTO-ON. "The tutorial outranks the pin"
-       (below) was written when `tut` meant the checkbox; with the teacher on
-       by default for a device's first two games, a new player who arrives
-       by a shared ?seed= link would be handed Valley·Classic·medium instead
-       of the world they were sent — and the pin silently consumed. An
-       EXPLICIT checkbox still wins; an auto want yields to the pin, and the
-       pinned run neither arms the teacher nor spends one of the two slots
-       (draftTap reads _pinnedRun). */
-    const pinRaw = (location.search.match(/[?&]seed=([^&]+)/) || [])[1] || '';
-    this._pinnedRun = !!pinRaw && !this.tutorialExplicit();
-    const tut = this.tutorialWanted() && !this._pinnedRun;
+       its own variant honestly. Size leans by difficulty (SIZE_LEAN). */
     const lean = this.SIZE_LEAN[p.mode] || this.SIZE_LEAN.moderate;
     let roll = Math.random(), size = lean[0][0];
     for (const [k, w] of lean) { if ((roll -= w) <= 0) { size = k; break; } }
-    if (tut) size = 'medium';
     /* A PINNED WORLD (?seed=…&size=…): the URL names the seed and the run
        founds exactly that world instead of rolling one — the replay door
        for a seed read off the victory screen, and the only way to reach a
        named world on a phone. Size must ride along (the same seed lays a
        different map at a different size); it defaults to medium when the
        URL names only the seed. Everything else — difficulty, tunic, the
-       card deal — plays out as normal. Three rules the adversarial review
-       wrote: THE TUTORIAL OUTRANKS THE PIN (its Valley·Classic·medium
-       force exists so lessons anchored to forest and water always can
-       complete — a shared link must not gamble a first game away); a
-       malformed percent-escape falls back to the raw string instead of
-       throwing New Game dead; and the pin is ONE-SHOT — consumed on the
+       card deal — plays out as normal. Two rules the adversarial review
+       wrote: a malformed percent-escape falls back to the raw string
+       instead of throwing New Game dead; and the pin is ONE-SHOT — consumed on the
        found, so the NEXT New Game rolls fresh (an iOS home-screen launch
        keeps its query string forever, and a sticky pin would refound the
        same world for eternity with no way off it). */
-    const qSeedRaw = (!tut && (location.search.match(/[?&]seed=([^&]+)/) || [])[1]) || '';
+    const qSeedRaw = (location.search.match(/[?&]seed=([^&]+)/) || [])[1] || '';
     let qSeed = '';
     if (qSeedRaw) { try { qSeed = decodeURIComponent(qSeedRaw); } catch (e) { qSeed = qSeedRaw; } }
     const qSize = (location.search.match(/[?&]size=(medium|large|xlarge)/) || [])[1] || '';
@@ -856,12 +900,11 @@ const Screens = {
         history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
       } catch (e) { /* an exotic embedder without history — the pin just stays */ }
     } else {
-      const wantLf = tut ? 'valley'
-        : ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
+      const wantLf = ['valley', 'lakeland', 'highlands', 'islands'][(Math.random() * 4) | 0];
       for (let i = 0; i < 160; i++) {
         const s = String((Math.random() * 1e9) | 0);
         const g = MapGen.generate(s, undefined, true);   // the name alone (MapGen.generate's peek)
-        if (g.landform === wantLf && (!tut || g.variant === 'classic')) { seed = s; break; }
+        if (g.landform === wantLf) { seed = s; break; }
       }
       if (!seed) seed = String((Math.random() * 1e9) | 0);   // the roll stands anyway
     }
@@ -926,34 +969,24 @@ const Screens = {
       kept = Cards.pick(Math.max(0, Math.min(D.hand.length - 1, r.pickI)));
     this.enterGame();
     if (window.Cards) Cards.announceRival();
-    // deliberately NO Tutorial.maybeStart: a replay is never a first game —
-    // and so it spends none of the two teaching games (noteGameFounded)
+    // a replay re-founds a world already counted: no noteGameFounded here
     if (kept) this._replayCardNote(kept);
   },
 
-  /* ================= THE FIRST TWO GAMES TEACH THEMSELVES =================
-     (tests/tutorial.mjs, the retention pass) The tutorial ran THREE times in
-     the first 191 real games: an opt-in checkbox on a screen a new player is
-     already reading past. It is on by default for a player's first two games
-     now and off from the third, on a LOCAL count of games founded (the two
-     founding sites below — keeping a card, and Replay). The checkbox stays
-     and still wins: an explicit choice ('1'/'0' in neo-tutorial-ask) is
-     honoured whatever the count says, and a two-tap Skip mid-lesson RECORDS
-     the opt-out (Tutorial.skip), so game two never re-arms a lesson the
-     player has already refused. A returning player with any local trace of
-     earlier play (a finished-run ledger, a bound slot, a crash snapshot, the
-     draft help dismissed) is seeded as a veteran — the first launch after
-     this ships must not teach the people who taught us. */
-  TUT_AUTO_GAMES: 2,
+  /* ================= GAMES FOUNDED (the journey's veteran rule) =================
+     A LOCAL count of the random worlds this device has founded (neo-games,
+     stepped by draftTap). The journey reads it when it decides, once, who it
+     is for (Prologue.prog): a device with any trace of earlier play is a
+     veteran and is never sent on it. A device that never kept a count is
+     seeded from the evidence of earlier play — a finished-run ledger, a
+     bound slot, a crash snapshot, the draft help dismissed. */
   /* THE MEMORY HAS A FALLBACK (from the adversarial review): every read here
      used to swallow a storage that THROWS (iOS "Block All Cookies", Firefox
-     with storage off, a partitioned iframe) and fall through to the auto-on
-     default — and every WRITE was swallowed too, so the toggle could not
-     turn it off, the count never stepped, and the Calm modal came back every
-     game: on, forever, with no way out. With storage unavailable the keys
-     live in a per-session map instead: the promise holds for the session
-     (two games, the modal once, a toggle that answers) and nothing is
-     permanent because nothing was ever remembered. */
+     with storage off, a partitioned iframe), and every WRITE was swallowed
+     too, so the count never stepped and the Calm modal came back every game.
+     With storage unavailable the keys live in a per-session map instead: the
+     promise holds for the session (the modal once) and nothing is permanent
+     because nothing was ever remembered. */
   _mem: {},
   lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return Object.prototype.hasOwnProperty.call(this._mem, k) ? this._mem[k] : null; } },
   lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { this._mem[k] = v; } },
@@ -964,59 +997,30 @@ const Screens = {
     // first read ever: seed from the evidence, then remember the seed
     const veteran = !!(this.lsGet('neo-finished-seeds') || this.lsGet('neo-active-slot') ||
       this.lsGet('neo-emergency') || this.lsGet('neo-draft-help'));
-    const n = veteran ? this.TUT_AUTO_GAMES : 0;
+    const n = veteran ? 1 : 0;
     this.lsSet('neo-games', String(n));
     return n;
   },
-  /* the count is of TEACHABLE foundings — keeping a card. A Replay never
-     arms the teacher (a replay is never a first game), so it must not spend
-     one of the two: a new player who loses game one early and taps Replay
-     would otherwise reach their next New Game with both slots gone. */
+  // a card kept is a world founded (draftTap); a Replay re-founds a world already counted
   noteGameFounded() {
     const n = this.gamesFounded() + 1;
     this.lsSet('neo-games', String(n));
     return n;
   },
-  // the ONE read of "does this run get the teacher": the explicit switch, else the count
-  tutorialWanted() {
-    const v = this.lsGet('neo-tutorial-ask');
-    if (v === '1') return true;
-    if (v === '0') return false;
-    // a device the prologue has taught (or that skipped it) is never handed the old lesson by default
-    if (window.Prologue && Prologue.taught && Prologue.taught()) return false;
-    return this.gamesFounded() < this.TUT_AUTO_GAMES;
-  },
-  tutorialExplicit() { return this.lsGet('neo-tutorial-ask') === '1'; },
   // how many cloud saves this player holds (onTitle's listSaves; 0 until it answers)
   _cloudSaves: 0,
-  // the world foundRun forces for a lesson: the only one the lesson promises
-  teachableWorld() {
-    return !!(window.S && S.map && S.map.landform === 'valley' && S.map.variant === 'classic' && S.sizeKey === 'medium');
-  },
-  // found the run again under the tutorial's rule, the startNewGame way:
-  // say so first, do the work after the next paint, swallow a second press
-  refoundForLesson() {
-    if (this._founding) return;
-    this._founding = true;
-    const b = this.el('btnTutToggle');
-    if (b) b.classList.add('busy');
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try { this.foundRun(); }
-      finally { this._founding = false; if (b) b.classList.remove('busy'); }
-    }));
-  },
 
   /* ================= TWO ROADS TO VICTORY (the Calm modal) =================
-     (tests/tutorial.mjs) Nobody has ever won by the Wonder — 0 of every Calm
-     game logged — and the tutorial's one line about it arrives fifteen steps
-     in, on a run that opted in. So the FIRST Calm game opens on a short
+     (tests/calm-peace.mjs) Nobody had ever won by the Wonder — 0 of every
+     Calm game logged — and nothing in the game said it was there. So the
+     FIRST Calm game opens on a short
      modal: the rival's hall on one side, this run's own monument on the
      other, the price under it, and where the button is. Once per device
      (neo-victory-seen, stamped when it is SHOWN, so a pause or a reload
      never re-deals it), only where the mode actually offers the Wonder
      (UI.wonderOffered — the same gate the build menu asks), dismissed by
-     its button, the backdrop or Escape. The tutorial holds its notes while
-     it is up (Screens.modalUp), so the two never stack. */
+     its button, the backdrop or Escape. The rival's intel waits while it is
+     up (Screens.modalUp, Cards.announceRival), so the two never stack. */
   victoryPathsDue() {
     if (!window.S || this._demo || S.over) return false;
     // bare UI, NEVER window.UI — UI is a script-level const and window.UI is
@@ -1027,12 +1031,14 @@ const Screens = {
     return true;
   },
   /* _modalUp is a flag, not a DOM query: G.frame reads it every frame to
-     slow the world while the modal has the floor (the tutorial's own ×0.2,
-     Tutorial.SLOW — a first-time player reading two paragraphs on day one
-     should not hand the rival a day and a half for free) */
+     slow the world while the modal has the floor (MODAL_SLOW, ×0.2 — a
+     first-time player reading two paragraphs on day one should not hand the
+     rival a day and a half for free) */
   _modalUp: false,
-  // …and so does the in-game deck while its sheet, aim or flight is up
-  // (js/deckui.js) — a lesson note under a card is two things to read at once
+  MODAL_SLOW: 0.2,
+  // something has the floor: the Calm modal, the journey asking, or the
+  // in-game deck while its sheet, aim or flight is up (js/deckui.js) — the
+  // rival's intel waits for all of them (Cards.announceRival)
   modalUp() {
     return (this._modalUp && !!document.getElementById('victoryModal')) ||
       !!(window.Prologue && Prologue.modalUp && Prologue.modalUp()) ||
@@ -1053,7 +1059,8 @@ const Screens = {
     const d = CFG.BUILDINGS.wonder, lv = (d.levels || [])[0] || {};
     const cost = (Bld.effCost && Bld.effCost('P', 'wonder')) || lv.cost || {};
     const days = Math.max(1, Math.round((lv.time || 45) * (Bld.wonderTimeMult ? Bld.wonderTimeMult() : 1)));
-    const price = Bld.costStr ? Bld.costStr(cost) : '';
+    // (each good the bar's own drawn picture — UI.iconHtml, build 214)
+    const price = Bld.costStr ? (typeof UI !== 'undefined' && UI.iconHtml ? UI.iconHtml(Bld.costStr(cost)) : Bld.costStr(cost)) : '';
     const el = document.createElement('div');
     el.id = 'victoryModal';
     el.innerHTML =
@@ -1202,26 +1209,6 @@ const Screens = {
     this.el('draftOverlay').style.display = seen ? 'none' : 'flex';
     // the journey's draft is explained by the Elder in one line, never the help panel
     if (window.Prologue && Prologue.onDraft) { try { Prologue.onDraft(); } catch (e) {} }
-    this.syncTutToggle();
-    // a prologue draft is part of its lesson: the old lesson's switch is not offered there
-    { const tt = this.el('btnTutToggle'); if (tt) tt.style.display = (window.S && S.scenario) ? 'none' : ''; }
-    /* SETTINGS CAN TICK THE LESSON ON TOO (js/settings.js). A pending draft on
-       a world the lesson cannot teach is founded again here — the draft
-       toggle's own rule (audit MAP-V01) — so the lesson is never armed on an
-       archipelago. The flag is set by that one toggle alone, so no other road
-       into the draft changes. */
-    if (this._lessonRefound) {
-      this._lessonRefound = false;
-      if (this.tutorialWanted() && !this.teachableWorld()) this.refoundForLesson();
-    }
-  },
-
-  // the Tutorial choice remembers itself across runs. The button carries its
-  // own checkmark span (.tik) — state is the .sel class, never rewritten text
-  syncTutToggle() {
-    const b = this.el('btnTutToggle');
-    if (!b) return;
-    b.classList.toggle('sel', this.tutorialWanted());   // the EFFECTIVE state: auto-on shows as on
   },
 
   draftTap(i, el) {
@@ -1239,9 +1226,7 @@ const Screens = {
        no rival panel: keeping a card is the decision, so asking for a third
        tap to confirm a confirmation was a toll on every single run. The
        burn plays for a beat so the choice still lands, then the world
-       opens. THE TUTORIAL'S ONE ENTRY POINT lives here now (it was on the
-       old Begin): a loaded save and the pause screen's Resume also pass
-       through enterGame and must never arm one. */
+       opens. */
     Cards.pick(i);
     if (window.Backend && Backend.step) Backend.step('picked');
     /* THE KEEP SEALS THE DOOR. The pick is applied and the run is committed
@@ -1266,19 +1251,8 @@ const Screens = {
     setTimeout(() => {
       if (!window.S || S.seed !== runSeed || this.current !== 'draft') return;
       this._demo = false;
-      /* THE TEACHER IS ARMED BEFORE THE RUN IS LOGGED: enterGame → _enterNow
-         writes the run_start row with `tutorial: !!(S.tut && S.tut.on)`, and
-         maybeStart used to run AFTER it — so the row said "no tutorial" for
-         every lesson that ever ran (the board's "3 in 191" was the count of
-         cold-cache runs where the art plaque happened to delay the log).
-         And the games-founded count steps AFTER the arming read, so game
-         two reads 1, not 2. A PINNED run (a shared ?seed= link that beat an
-         auto want, foundRun) arms nothing and spends nothing. */
-      if (!this._pinnedRun && !(window.S && S.scenario)) {
-        if (window.Tutorial) Tutorial.maybeStart();
-        this.noteGameFounded();
-      }
-      this._pinnedRun = false;
+      // one more world founded on this device (the journey's veteran rule)
+      if (!(window.S && S.scenario)) this.noteGameFounded();
       /* the Calm modal is DUE here but SHOWN by _enterNow, once the playing
          screen is actually up: on a cold cache enterGame parks behind the
          art plaque for seconds, and a modal appended under the shell then
@@ -1766,11 +1740,14 @@ const Screens = {
     // no world-name line here (operator: the landform label is not always
     // an accurate read of the map, and the wordmark carries the screen)
     const q = this.el('btnQuitTitle');
-    q.textContent = 'Menu';
+    const live = window.SettingsPage && SettingsPage.live();
+    q.textContent = live ? 'Main menu' : 'Menu';
     q.classList.remove('danger');
     const r = this.el('btnResign');
     if (r) { r.textContent = 'Resign'; r.classList.remove('danger'); }
     this._confirmResign = false;
+    // THE ONE MENU: the pause is the settings page on its Game tab
+    if (live) SettingsPage.onShow('game');
   },
 
   // the running chronicle — rendered wherever it lives (Settings, now)
@@ -2390,24 +2367,7 @@ const Screens = {
       this._trialArmed = v;
       this.el('ngHint').textContent = 'Tap again to select your trial';
     }));
-    // the origin draft — keeping a card starts the game (see draftTap;
-    // that is also the tutorial's one entry point now)
-    on('btnTutToggle', () => {
-      // a tap is an EXPLICIT choice, the opposite of whatever the button showed
-      const v = this.tutorialWanted();
-      this.lsSet('neo-tutorial-ask', v ? '0' : '1');
-      this.syncTutToggle();
-      /* TICKING IT ON RE-FOUNDS THE WORLD (audit MAP-V01). The forcing
-         ("the tutorial never gambles": Valley · Classic · medium) is decided
-         in foundRun, which has already run by the time this checkbox is on
-         screen — so ticking it armed the lesson on whatever world had been
-         rolled: an archipelago, a karst, an xlarge fjord, 12 times in 12.
-         An UN-KEPT draft on a world the lesson cannot teach is founded again
-         under the new rule. Only this direction: unticking leaves the
-         world alone, and re-ticking on a teachable world founds nothing, so
-         the checkbox can never become a free re-deal of the cards. */
-      if (!v && window.S && S.draft && !S.draft.done && !this._demo && !this.teachableWorld()) this.refoundForLesson();
-    });
+    // the origin draft — keeping a card starts the game (see draftTap)
     on('btnDraftHelp', () => { this.el('draftOverlay').style.display = 'flex'; });
     // back to the trial pick; the pending draft rides S and resumes intact
     on('btnDraftBack', () => this.show(window.S && S.scenario ? 'title' : 'newgame'));

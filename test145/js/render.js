@@ -673,6 +673,18 @@ const R = {
     this.g = this.cv.getContext('2d');
     this.mini = document.getElementById('mini');
     this.mg = this.mini.getContext('2d');
+    /* THE VIEW'S FRAME RIDES ITS OWN LAYER (build 211, R.drawMiniView): a
+       transparent canvas laid over the map in #miniWrap, never taking a tap,
+       so the frame can follow the camera every frame without the map being
+       copied — copying it made the canvas rasterise its four thousand fills
+       on the spot, a millisecond more on every repaint (tests/land.mjs). */
+    try {
+      const mc = this.miniCam = document.createElement('canvas');
+      mc.id = 'miniCam'; mc.setAttribute('aria-hidden', 'true');
+      mc.width = this.mini.width; mc.height = this.mini.height;
+      this.mini.insertAdjacentElement('afterend', mc);
+      this.mcg = mc.getContext('2d');
+    } catch (e) { this.miniCam = this.mcg = null; }
     window.addEventListener('resize', () => this.resize());
     // the measured-viewport fit (index.html's boot block) re-pins the page
     // height and announces it — the canvas must follow the same measurement
@@ -6757,6 +6769,9 @@ const R = {
     if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
     this._resTops = null;                                        // the art a gatherer stands behind (resTopAt) is this world's
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
+    if (this.miniCam) { this.miniCam.width = this.mini.width; this.miniCam.height = this.mini.height; }   // the frame's layer takes the map's size (and is cleared by it)
+    this._miniCamKey = '';                                       // …and lays the new world's frame at once
+    this._wakes = null;                                          // …and so is every hull's wake
     this._vTier = null;                                          // villager tiers recompute from THIS run's Town Centers
     this._sTier = null;                                          // …and sapper tiers from its Sappers' Camps
     this._mtn = null; this._mtnKey = '';                         // re-trace the mountain regions for the new map
@@ -7745,7 +7760,14 @@ const R = {
      transparent ground: the classic cache paints its ground opaque and would
      lay a square of grass over him. A burning wood is drawn elsewhere and
      is skipped. Purely a picture: R.unitHit is untouched. Answers how many
-     tiles it laid. */
+     tiles it laid.
+     THE BAND ABOVE THE TILE (`OVER`) is there for the south tile's art that
+     rises above its own top — a crown, a tall bush. Where that band lies in
+     HIS OWN row it also holds the art of the tiles beside him, so a resource
+     tile there is left out of it: a miner working a pile from the east had
+     the boulder beside him laid over the head of his pick whenever the tile
+     south-west of him was ore too (five frames of twelve of his swing,
+     tests/resource-front.mjs). */
   RES_FRONT: { KNEE: 0.34, OVER: 0.4, SIDE: 0.25 },
   occludeByResource(g, u) {
     const TX = window.TerrainX;
@@ -7760,20 +7782,38 @@ const R = {
     const ux0 = wx * TL - B / 2, ux1 = wx * TL + B / 2;
     let n = 0, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
     const rects = [];
+    const add = (x0, y0, x1, y1) => {
+      if (x1 <= x0 || y1 <= y0) return false;
+      rects.push([x0, y0, x1 - x0, y1 - y0]);
+      bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1);
+      return true;
+    };
+    const isRes = (x, y) => {
+      if (!MapGen.onBoard(x, y)) return false;
+      const t = terr[MapGen.idx(x, y)];
+      return t === T.FOREST || t === T.HILLS || t === T.FERTILE;
+    };
+    const row = u.y | 0, own = u.x | 0;
     const tx0 = Math.floor(ux0 / TL), tx1 = Math.floor((ux1 - 0.01) / TL);
     const ty0 = Math.floor(foot / TL), ty1 = Math.floor(bot / TL);
     for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
       if (!MapGen.onBoard(tx, ty)) continue;
       const i = MapGen.idx(tx, ty), t = terr[i];
       if (t !== T.FOREST && t !== T.HILLS && t !== T.FERTILE) continue;
-      if (ty <= (u.y | 0)) continue;                               // not south of the ground he stands on
+      if (ty <= row) continue;                                      // not south of the ground he stands on
       if (t === T.FOREST && this.burningAt && this.burningAt(i)) continue;
       const x0 = Math.max(ux0, (tx - F.SIDE) * TL), x1 = Math.min(ux1, (tx + 1 + F.SIDE) * TL);
-      const y0 = Math.max(knee, (ty - F.OVER) * TL), y1 = Math.min(bot, (ty + 1) * TL);
-      if (x1 <= x0 || y1 <= y0) continue;
-      rects.push([x0, y0, x1 - x0, y1 - y0]);
-      bx0 = Math.min(bx0, x0); by0 = Math.min(by0, y0); bx1 = Math.max(bx1, x1); by1 = Math.max(by1, y1);
-      n++;
+      const yb = Math.max(knee, (ty - F.OVER) * TL), ym = Math.max(yb, ty * TL), y1 = Math.min(bot, (ty + 1) * TL);
+      if (x1 <= x0 || y1 <= yb) continue;
+      let laid = add(x0, ym, x1, y1);                               // the tile's own rows
+      if (ym > yb) {                                                // the band above it
+        if (ty - 1 !== row) laid = add(x0, yb, x1, ym) || laid;
+        else for (let cx = Math.floor(x0 / TL); cx * TL < x1; cx++) {
+          if (cx !== own && isRes(cx, row)) continue;               // a resource beside him stays behind
+          laid = add(Math.max(x0, cx * TL), yb, Math.min(x1, (cx + 1) * TL), ym) || laid;
+        }
+      }
+      if (laid) n++;
     }
     if (!n) return 0;
     // ONE draw through one clip: two tiles' rects overlap at their edges, and
@@ -7916,7 +7956,7 @@ const R = {
     if (gz) g.restore();
     if (b.key === 'gate') { this.drawGateWalk(g, b, bx, by, bw); this.drawGateWorks(g, b, bx, by, bw, 0, true); if (deck) this.drawDrawbridge(g, b, bx, by, bw, 0, true); }
     if (window.Footing && Footing.front) Footing.front(g, b);
-    if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
+    if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e', b);
   },
   /* THE DRAWN GATEHOUSE'S DOOR (Assets.FORT_DOOR, operator: "make the doors
      transparent instead of black when they're open… just open or closed with
@@ -12597,8 +12637,9 @@ const R = {
     if (sx + hx + pad < 0 || sx - hx - pad > W || sy + hy * fy + pad < 0 || sy - hy * fy - pad > H) return;
     const path = f => { g.beginPath(); g.ellipse(0, 0, Math.max(0.5, hx * f), Math.max(0.5, hy * f), 0, 0, Math.PI * 2); };
     const T = this.LIGHT.TONE.gold, K = this.FX_TIE;
-    // the glint runs round a ring of our own — never a crowd's (a crowd in hand is calm)
-    const glint = !foe && !still && !!g.createConicGradient && (guide || this._gSel.size <= G.glintMax);
+    // the glint runs round a ring of our own — never a crowd's (a crowd in hand is calm),
+    // nor a ring that only points (an order's mark, a work's hands: o.calm, js/feel.js)
+    const glint = !o.calm && !foe && !still && !!g.createConicGradient && (guide || this._gSel.size <= G.glintMax);
     g.save();
     this._gClip(g);
     g.setTransform(1, 0, 0, 1, 0, 0);
@@ -14781,6 +14822,12 @@ const R = {
   unitPose(u) {
     const vil = u.kind === 'villager';
     if (G.eclipseAwe(u)) return 'idle';      // stopped dead, staring at the swallowed sun
+    /* A RUN THAT HAS ENDED STANDS ITS PEOPLE DOWN (build 207): the sim stops
+       with the run (S.over) while the world stays on screen for the ending's
+       held beat — Mira's last word, a hall coming down — and the walk is
+       driven by distance, so a man stopped mid-path froze mid-stride for
+       seconds. He stands instead (idle keeps its own clock). */
+    const walk = S && S.over ? 'idle' : 'walk';
     if (u.strife && u.strifePose) return u.strifePose;   // ANIMAL STRIFE: Combat.strifeStep says what the body does
     /* in a fight: villagers swing a pickaxe (guard), soldiers thrust a
        spear — but only within striking distance, the same gate the
@@ -14799,7 +14846,7 @@ const R = {
       const rng = (CFG.UNITS[u.kind].rng || CFG.MELEE_RANGE || 1.5) + 0.3;
       if (!ft || Math.hypot(ft.x - u.x, ft.y - u.y) <= rng)
         return vil ? 'guard' : 'fight';
-      return 'walk';
+      return walk;
     }
     const fb = u.tBld && Bld.get(u.tBld);
     /* AT A BUILDING, THE POSE ASKS THE STRIKE'S OWN REACH (Combat.bldReach;
@@ -14820,7 +14867,7 @@ const R = {
       const reach = (typeof Combat !== 'undefined' && Combat.bridgeReach) ? Combat.bridgeReach(u) : 1.3;
       if (Math.hypot(u.tBridge.x + 0.5 - u.x, u.tBridge.y + 0.5 - u.y) <= reach + 0.05) return vil ? 'guard' : 'fight';
     }
-    if (Units.moving(u)) return 'walk';
+    if (Units.moving(u)) return walk;
     if (u.eating) return 'eat';              // a wolf at the kill (Units.wolfFeed); no eat sheet → idle
     const t = u.task;
     if (t) {
@@ -15691,6 +15738,103 @@ const R = {
      sets it, accumulates the foam stroke and the tile pass separately so
      the new frame work can be measured in isolation. */
   _prof: null,
+  /* THE BOAT LEAVES A WAKE (build 211, tests/feel.mjs): a hull under way
+     draws a fading foam V behind it on the water, two arms widening from its
+     stern as they age, and a little churn just behind it. Smooth light at the
+     device's own resolution (EFFECTS ARE DRAWN AT THE DEVICE'S OWN
+     RESOLUTION), clipped to the board, and only over WATER THE PLAYER SEES —
+     every point of a trail is asked G.visibleAt, so a wake never draws a
+     hull's road through the fog. A picture only: a Map keyed by the unit's id
+     (never in S or a save, no RNG), sampled as the hull MOVES — a hull at
+     anchor lays nothing, and a frozen frame is a still frame — and forgotten
+     with the hull, a jump (a load, a muster) or a new world. */
+  WAKE: { life: 1.15, gap: 4, max: 24, arm0: 1.6, arm1: 14, alpha: 0.42, churn: 0.4 },
+  drawWakes(g, dt) {
+    if (!S || !S.units || !S.map) return;
+    const W = this.WAKE, TL = CFG.TILE, Gr = this.GRING;
+    const t = this._wakeT = (this._wakeT || 0) + (dt || 0);
+    let m = this._wakes;
+    let any = false;
+    for (const u of S.units) {
+      if (!Units.isNaval || !Units.isNaval(u)) continue;
+      if (!m) m = this._wakes = new Map();
+      const s = this.unitBox(u) / TL;
+      const x = u.x * TL, y = u.y * TL + Gr.footY - Gr.footIn * s;
+      let tr = m.get(u.id);
+      if (!tr) { tr = { pts: [], seen: t }; m.set(u.id, tr); }
+      tr.seen = t;
+      const p0 = tr.pts[0];
+      if (!p0 || Math.hypot(x - p0.x, y - p0.y) > TL * 1.6) tr.pts = [{ x, y, t }];   // a jump is no road
+      else if (Math.hypot(x - p0.x, y - p0.y) >= W.gap) {
+        tr.pts.unshift({ x, y, t });
+        if (tr.pts.length > W.max) tr.pts.length = W.max;
+      }
+      while (tr.pts.length && t - tr.pts[tr.pts.length - 1].t > W.life) tr.pts.pop();
+      if (tr.pts.length > 1) any = true;
+      tr.hx = x; tr.hy = y;   // the stern as it is drawn now, so the wake meets the hull
+    }
+    if (!m) return;
+    for (const [id, tr] of m) if (tr.seen !== t || !tr.pts.length) m.delete(id);
+    if (!any) return;
+    const terr = S.map.terrain;
+    const wet = (px, py) => {
+      const tx = Math.floor(px / TL), ty = Math.floor(py / TL);
+      if (!MapGen.onBoard(tx, ty) || !G.visibleAt(tx, ty)) return false;
+      const k = terr[MapGen.idx(tx, ty)];
+      return k === T.WATER || k === T.MOAT;
+    };
+    const px = this.fxPx(g);
+    this.clipBoard(g, () => {
+      g.lineCap = 'round';
+      for (const tr of m.values()) {
+        const P = tr.pts;
+        if (P.length < 2) continue;
+        // the arms: each point pushed out from the track, wider as it ages
+        let prevL = null, prevR = null, prevA = 0, prevOkL = false, prevOkR = false;
+        for (let i = 0; i < P.length; i++) {
+          const q = P[i], nx = P[Math.min(P.length - 1, i + 1)], pv = P[Math.max(0, i - 1)];
+          let dx = pv.x - nx.x, dy = pv.y - nx.y;
+          const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d;
+          const age = Math.min(1, (t - q.t) / W.life);
+          const w = W.arm0 + (W.arm1 - W.arm0) * Math.sqrt(age);
+          const back = age * 2.5;   // the arms trail a little behind the track
+          const L = { x: q.x - dy * w - dx * back, y: q.y + dx * w - dy * back };
+          const R2 = { x: q.x + dy * w - dx * back, y: q.y - dx * w - dy * back };
+          // each arm only on water: near a shore the foam stops at the waterline
+          const okL = wet(L.x, L.y), okR = wet(R2.x, R2.y);
+          const a = W.alpha * Math.pow(1 - age, 1.6);
+          /* FOAM, NOT A LINE: each arm is broken into dashes that break up
+             further as they age — a hash of the point's own stamp, so a
+             dash stays a dash as it drifts back (never a flicker) */
+          const hsh = (((q.t * 1000) | 0) * 2654435761) >>> 0;
+          const gapP = 0.12 + age * 0.5;
+          const dL = okL && prevOkL && ((hsh >>> 4) & 1023) / 1024 >= gapP;
+          const dR = okR && prevOkR && ((hsh >>> 16) & 1023) / 1024 >= gapP;
+          if (prevL && (a > 0.01 || prevA > 0.01) && (dL || dR)) {
+            g.strokeStyle = 'rgba(236,246,255,' + (Math.round((a + prevA) * 500) / 1000) + ')';
+            g.lineWidth = px * (1.6 - age * 0.7);
+            g.beginPath();
+            if (dL) { g.moveTo(prevL.x, prevL.y); g.lineTo(L.x, L.y); }
+            if (dR) { g.moveTo(prevR.x, prevR.y); g.lineTo(R2.x, R2.y); }
+            g.stroke();
+          }
+          prevL = L; prevR = R2; prevA = a; prevOkL = okL; prevOkR = okR;
+        }
+        // the churn: a soft white streak just behind the stern
+        const q1 = P[Math.min(P.length - 1, 3)];
+        if (wet(tr.hx, tr.hy) && wet(q1.x, q1.y)) {
+          const a = W.churn * Math.max(0, 1 - (t - P[0].t) / 0.5);
+          if (a > 0.02) {
+            g.strokeStyle = 'rgba(248,252,255,' + (Math.round(a * 1000) / 1000) + ')';
+            g.lineWidth = px * 2.2;
+            g.beginPath(); g.moveTo(tr.hx, tr.hy);
+            for (let i = 1; i <= Math.min(3, P.length - 1); i++) g.lineTo(P[i].x, P[i].y);
+            g.stroke();
+          }
+        }
+      }
+    });
+  },
   drawLivingWater(g, dt) {
     const TL = CFG.TILE;
     this.fishClock = (this.fishClock || 0) + dt;
@@ -16183,6 +16327,8 @@ const R = {
     // the WILDERNESS RELIC lies in the land the same way (js/relics.js):
     // above the ground, below everything that moves or stands
     if (window.Relics) Relics.draw(g);
+    // …and a gold seam the clan can see winks now and then (build 212)
+    this.drawSeamGlints(g);
     // …and the swards flattening before a new building lie in the grass they
     // came from — over the kept bake, under everything that moves or stands
     this.drawTamings(g, dt);
@@ -16442,6 +16588,10 @@ const R = {
     const gSelB = UI.sel && UI.sel.type === 'bld' ? UI.sel.id : null;
     this.gringTick(gSel, gSelB, gNow);
     const gGuide = this.gringGuide(gNow);
+    // …and the rings that only POINT (js/feel.js, build 212): where the last
+    // order lands, and a work's hands round the work in hand (or the reverse)
+    let gMk = null;
+    if (typeof Feel !== 'undefined' && Feel.ringsFor) { try { gMk = Feel.ringsFor(gNow); } catch (e) { gMk = null; } }
     const gFx = window.GoldFX && GoldFX.popOf && GoldFX.zoom ? GoldFX : null;   // the shimmer, the taking, the pop (js/goldfx.js)
     if (gFx && gFx.frameStart) gFx.frameStart();                                // one new silhouette this frame
     this._gZoom.clear();
@@ -16492,6 +16642,8 @@ const R = {
     if (window.Footing && Footing.ground) Footing.ground(g, blds);
     // the journey's ring round a plain tile (a bush, a tree, a stone): on the ground, behind what grows there
     if (gGuide) for (const r of gGuide.tiles) this.drawGRingTile(g, r, gNow);
+    // an order's mark on open ground or a worked tile, behind what grows there (js/feel.js)
+    if (gMk && gMk.tiles) for (const t of gMk.tiles) this.drawMarkTile(g, t, gNow);
     for (const b of blds) {
       if (b.key === 'road') continue;   // a road site is drawn with the roads, as ground
       const bs = Bld.size(b);
@@ -16514,6 +16666,7 @@ const R = {
       const gBr = gSelB === b.id || (gGuide && gGuide.blds.has(b.id)) || gPop
         ? this.gringUnder(g, this.gringOfBld(b), b.owner, b.id + 7919, gSelB === b.id ? this._gSelB.get(b.id) : null, gGuide && gGuide.blds.get(b.id), gNow,
           this.gPicBld(b), gPop, 'b') : null;
+      if (!gBr && gMk && gMk.blds) { const mk = gMk.blds.get(b.id); if (mk) this.drawGRing(g, this.gringOfBld(b), mk.st, mk); }
       if (b.construction > 0 || b.upgrading > 0) {
         // a work site — going up for the first time OR being upgraded. Both
         // wear the scaffold so it's plainly unusable until the work is done.
@@ -16667,7 +16820,7 @@ const R = {
       // a finished WONDER is never just another building on the map
       if (b.key === 'wonder' && !(b.construction > 0)) this.drawWonderShine(g, b, bx, by, bw);
       this.drawBurn(g, b, bx, by, bw);   // fires ride on work sites and finished buildings alike
-      if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e');
+      if (b.hp < b.maxhp) this.bar(g, bx + 3, by - 4, bw - 6, 3, b.hp / b.maxhp, '#7dbb5e', b);
       // its near motes, and the flurry the moment it was taken in hand
       if (gBr) this.gringOver(g, gBr);
     }
@@ -16789,6 +16942,8 @@ const R = {
     // it lives ON the water's surface, so a hull floats OVER a jumping fish,
     // never under one (the operator's transport-raft report).
     this.drawLivingWater(g, dt);
+    // …and a hull under way leaves a wake on that surface (R.drawWakes)
+    this.drawWakes(g, dt);
 
     /* THE MOUNTAINS DRAW HERE, interleaved with the units by ground row —
        the whole point of cutting each region into row strips (buildMtnLayer).
@@ -16852,6 +17007,7 @@ const R = {
       if (gShade) this.drawUnitShadow(g, u, wx, wy);
       const gUr = gRing ? this.gringUnder(g, this.gringOfUnit(u, wx, wy), u.owner, u.id, selIds && selIds.has(u.id) ? this._gSel.get(u.id) : null, gGuide && gGuide.units.get(u.id), gNow,
         gImg && !u.spectral ? { img: gImg, x: gDx, y: gDy, w: gD, h: gD } : null, gUPop, 'u') : null;
+      if (!gUr && gMk && gMk.units) { const mk = gMk.units.get(u.id); if (mk) this.drawGRing(g, this.gringOfUnit(u, wx, wy), mk.st, mk); }
       // draw every unit into a TILE-sized box: 32px sheets render 1:1 (unchanged),
       // while the hi-res 64px villager sheet shows at the SAME size but twice as crisp
       if (u.dieT != null && u.dieT > 0) {
@@ -16927,7 +17083,11 @@ const R = {
         if ((u.spectral || u.warWolf || u.vet || u.ranked || (window.Deck && Deck._swingUntil && Deck.swinging && Deck.swinging())) && window.Deck && Deck.drawUnit) {
           try { Deck.drawUnit(g, u, img, dx0, dy0, D); }
           catch (err) { g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.drawImage(img, dx0, dy0, D, D); }
-        } else g.drawImage(img, dx0, dy0, D, D);
+        } else {
+          g.drawImage(img, dx0, dy0, D, D);
+          // a veteran of the field wears the gold pip of his standing (Units.isVeteran)
+          if (u.vetOf && Units.isVeteran && Units.isVeteran(u)) this.rankPip(g, dx0, dy0, D, 2, img);
+        }
         // a blow just taken: one white beat over the sprite (js/battlefx.js)
         if (bfx && !u.spectral) bfx.drawFlash(g, u, img, dx0, dy0, D, D);
         if (gUr && gFx && gFx.flash) gFx.flash(g, gUr);
@@ -16941,7 +17101,7 @@ const R = {
       }
       // the bar keeps the cast's own width, centred over the kind's box
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
-        u.owner === 'P' ? '#7dbb5e' : '#e06550');
+        u.owner === 'P' ? '#7dbb5e' : '#e06550', u);
       this.occludeByResource(g, u);
       this.occludeByForts(g, u);
     }
@@ -16968,7 +17128,7 @@ const R = {
       g.drawImage(u.spectral && window.Deck && Deck.GHOST ? this.tintOf(img, Deck.GHOST) : img, u.x * TL - D / 2, this.frameTop(u.y, B, D), D, D);
       g.globalAlpha = 1;
       if (u.hp < u.maxhp) this.bar(g, ux + (B - TL) / 2 + 6, uy - 2, TL - 12, 2.5, u.hp / u.maxhp,
-        u.owner === 'P' ? '#7dbb5e' : '#e06550');
+        u.owner === 'P' ? '#7dbb5e' : '#e06550', u);
     }
     /* …and the PLACEMENT GRID keeps the last word over the rock (the hard
        rule from the phase-2 brief: the grid reads from tile data and renders
@@ -17540,20 +17700,13 @@ const R = {
       }
       g.restore();
     }
-    // …and the "order landed" pulse where a drag was released: a quick green
-    // double-ring that expands and fades, so the hand-off is unmistakable
+    // …and the "order landed" beat where a drag was released. Its picture is
+    // the ORDER'S MARK now (js/feel.js, build 212: every order, tap or drag,
+    // marks where it lands, on the ground under whatever stands there) — the
+    // drag's own record keeps its clock, so nothing that reads it moves
     if (UI.moveFlash) {
-      const f = UI.moveFlash;
-      f.t -= dt;
-      if (f.t <= 0) { UI.moveFlash = null; }
-      else {
-        const k = f.t / f.life, done = 1 - k;
-        const fx = (f.x + 0.5) * TL, fy = (f.y + 0.5) * TL;
-        g.strokeStyle = 'rgba(138,224,138,' + (0.75 * k) + ')'; g.lineWidth = 2.5;
-        g.beginPath(); g.arc(fx, fy, 4 + done * 15, 0, Math.PI * 2); g.stroke();
-        g.strokeStyle = 'rgba(138,224,138,' + (0.45 * k) + ')'; g.lineWidth = 1.5;
-        g.beginPath(); g.arc(fx, fy, 2 + done * 9, 0, Math.PI * 2); g.stroke();
-      }
+      UI.moveFlash.t -= dt;
+      if (UI.moveFlash.t <= 0) UI.moveFlash = null;
     }
 
     // rally point flag / rally-setting range ring — the orbit, like every
@@ -17564,17 +17717,8 @@ const R = {
     }
     if (UI.sel && UI.sel.type === 'bld') {
       const rb = Bld.get(UI.sel.id);
-      if (rb && rb.rally) {
-        // on the thing it names (a transport moves, and the flag rides it)
-        const rp = Units.rallyPoint(rb.rally);
-        const fx = rp.x * TL, fy = rp.y * TL;
-        g.strokeStyle = 'rgba(232,193,90,0.5)'; g.lineWidth = 1;
-        g.beginPath(); g.moveTo(Bld.cx(rb) * TL, Bld.cy(rb) * TL); g.lineTo(fx, fy); g.stroke();
-        g.strokeStyle = '#e8c15a'; g.lineWidth = 2;
-        g.beginPath(); g.moveTo(fx, fy + 6); g.lineTo(fx, fy - 8); g.stroke();
-        g.fillStyle = '#e8c15a';
-        g.beginPath(); g.moveTo(fx, fy - 8); g.lineTo(fx + 8, fy - 5); g.lineTo(fx, fy - 2); g.fill();
-      }
+      // on the thing it names (a transport moves, and the flag rides it)
+      if (rb && rb.rally) this.drawRallyFlag(g, rb);
     }
     // rally CONFIRM flourish: a placed rally auto-deselects, so flash the flag it
     // dropped for a beat — an expanding pulse + a popped-in flag that fades out —
@@ -17701,6 +17845,8 @@ const R = {
         }
       }
     }
+    // …and on a deep night the fireflies come out over the edges of the woods (build 212)
+    this.drawFireflies(g);
 
     // THE SWALLOWED SUN: the moon's shadow, the sky and the stars (R.drawEclipse)
     g.save(); this.drawEclipse(g); g.restore();
@@ -17719,15 +17865,286 @@ const R = {
     // …and a hall falls: the glide, the thud, the words (THE HALL ON FIRE)
     if (this.hallFall) this.drawHallFallSky(g, dt);
 
+    this.drawMiniView();   // the map's view frame follows the camera every frame
     this.miniT -= dt;
     if (this.miniT <= 0) { this.miniT = 0.5; this.drawMini(); }
   },
 
-  bar(g, x, y, w, h, frac, col) {
+  /* THE BAR SHOWS THE BITE (build 212, tests/feel.mjs): a blow leaves a pale
+     chunk where the health was, held a beat and then drained away, so the
+     size of each hit is read off the bar itself — the first blow on a fresh
+     soldier included. R.barBite stamps the level the blow took the bar FROM
+     (Units.damage, Bld.damage); the chunk drawn is a pure function of the
+     clock and that stamp, so two draws at one moment draw the same bar. A
+     picture only: the stamp lives in a WeakMap keyed on the unit or the
+     building, never in S, and `who` is the one new argument (a caller that
+     passes none draws the old bar, byte for byte). */
+  BAR_BITE: { hold: 0.32, drain: 1.1 },    // s the chunk holds; share of the bar a second it drains
+  _barBite: new WeakMap(),
+  barBite(who, pre) {
+    if (!who || typeof who !== 'object' || !(who.maxhp > 0) || !(pre >= 0)) return;
+    const now = performance.now() / 1000;
+    const cur = this._barGhost(who, now, Math.max(0, who.hp) / who.maxhp);
+    this._barBite.set(who, { top: Math.min(1, Math.max(cur, pre)), at: now });
+  },
+  _barGhost(who, now, frac) {
+    const r = this._barBite.get(who);
+    if (!r) return frac;
+    const C = this.BAR_BITE;
+    return Math.max(frac, r.top - C.drain * Math.max(0, now - r.at - C.hold));
+  },
+  bar(g, x, y, w, h, frac, col, who) {
+    const f = Math.max(0, Math.min(1, frac));
     g.fillStyle = 'rgba(0,0,0,0.6)';
     g.fillRect(x, y, w, h);
+    if (who && typeof who === 'object') {
+      const gh = Math.min(1, this._barGhost(who, performance.now() / 1000, f));
+      if (gh > f + 0.002) { g.fillStyle = 'rgba(250,232,176,0.95)'; g.fillRect(x + w * f, y, w * (gh - f), h); }
+    }
     g.fillStyle = col;
-    g.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
+    g.fillRect(x, y, w * f, h);
+  },
+
+  /* AN ORDER'S MARK ON A TILE (js/feel.js, build 212): the ground ring of
+     R.GRING, laid where a walk ends or round the tile a hand was sent to work,
+     and — as the guide's tile ring is (drawGRingTile) — whatever grows on that
+     ground laid back over it from the terrain cache under V4, so the ring
+     runs behind the tree or the stone it names. A walk's mark lands with a
+     small gold pin in its middle. t: { x, y (tiles, centre), r, st, a, s,
+     flash, calm, dot } — the answer js/feel.js's ringsFor gives. */
+  drawMarkTile(g, t, now) {
+    const q = this.gringOfTile(t.x, t.y, t.r);
+    this.drawGRing(g, q, t.st, t);
+    if (t.dot > 0.01) {
+      const m = g.getTransform(), u = this.dpr || 1;
+      const sx = m.a * q.cx + m.c * q.cy + m.e, sy = m.b * q.cx + m.d * q.cy + m.f;
+      g.save();
+      this._gClip(g);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = Math.min(1, t.dot);
+      const rr = 3.1 * u;
+      g.beginPath(); g.ellipse(sx, sy, rr + 1.3 * u, (rr + 1.3 * u) * 0.62, 0, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(26,14,4,0.66)'; g.fill();
+      g.beginPath(); g.ellipse(sx, sy, rr, rr * 0.62, 0, 0, Math.PI * 2);
+      g.fillStyle = t.st === 'foe' ? '#cf5a3c' : '#f2c35a'; g.fill();
+      g.beginPath(); g.ellipse(sx - rr * 0.25, sy - rr * 0.2, rr * 0.45, rr * 0.28, 0, 0, Math.PI * 2);
+      g.fillStyle = t.st === 'foe' ? '#ffd8c6' : '#fff3cc'; g.fill();
+      g.restore();
+    }
+    const TX = window.TerrainX;
+    if (t.cover && this.terrainCache && TX && TX.on && TX._painted) {
+      const TL = CFG.TILE, sc = t.s || 1, ex = q.rx * 1.3 * sc + 4;
+      const x0 = Math.max(0, Math.floor(q.cx - ex)), y0 = Math.max(0, Math.floor(q.cy - q.ry * sc - TL * 1.3));
+      const x1 = Math.min(this.terrainCache.width, Math.ceil(q.cx + ex)), y1 = Math.min(this.terrainCache.height, Math.ceil(q.cy + q.ry * 1.3 * sc + 4));
+      if (x1 > x0 && y1 > y0) {
+        g.save();
+        this._gClip(g);
+        // the 9-argument form: the V4 hook lays its ground only under a whole-cache draw
+        g.drawImage(this.terrainCache, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+        g.restore();
+      }
+    }
+  },
+
+  /* THE RALLY FLAG FLIES (build 212): the yard in hand shows where its people
+     will go as a real flag — a pole planted on the ground with its own small
+     shadow, a pennant in the village's own dye catching the wind, a gold
+     finial — and a marching line of gold dashes from the yard to it (the
+     tether's language). Smooth, at the device's own pixels, clipped to the
+     board; a picture of b.rally, which nothing reads back. */
+  drawRallyFlag(g, rb) {
+    const TL = CFG.TILE, rp = Units.rallyPoint(rb.rally);
+    const m = g.getTransform(), k = Math.hypot(m.a, m.b) || 1, u = this.dpr || 1;
+    const P = (wx, wy) => [m.a * wx + m.c * wy + m.e, m.b * wx + m.d * wy + m.f];
+    const [fx, fy] = P(rp.x * TL, rp.y * TL), [ax, ay] = P(Bld.cx(rb) * TL, Bld.cy(rb) * TL);
+    const now = performance.now() / 1000, zs = Math.max(0.85, Math.min(1.6, k / (u * 1.5))) * u;
+    const still = this._gStill();
+    const dye = (Sprites.tunicCol || {})[G.tunicOf ? G.tunicOf('P') : ''] || { body: '#3f6d99', accent: '#2c4e70' };
+    g.save();
+    this._gClip(g);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    // the line: from the yard's middle to a little short of the pole's foot
+    const dx = fx - ax, dy = fy - ay, L = Math.hypot(dx, dy);
+    if (L > 14 * u) {
+      const ex = fx - dx / L * 7 * zs, ey = fy - dy / L * 7 * zs;
+      const dash = [6 * u, 5 * u];
+      g.setLineDash(dash);
+      g.lineDashOffset = still ? 0 : -(now * 14 * u) % (11 * u);
+      g.beginPath(); g.moveTo(ax, ay); g.lineTo(ex, ey);
+      g.strokeStyle = 'rgba(26,14,4,0.5)'; g.lineWidth = 3.4 * u; g.stroke();
+      g.strokeStyle = 'rgba(244,206,104,0.9)'; g.lineWidth = 1.6 * u; g.stroke();
+      g.setLineDash([]);
+    }
+    // the pole's foot on the ground, and the pole
+    const H = 21 * zs, top = fy - H;
+    g.beginPath(); g.ellipse(fx + 1.5 * zs, fy, 4.6 * zs, 1.9 * zs, 0, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(20,14,8,0.38)'; g.fill();
+    g.beginPath(); g.moveTo(fx, fy); g.lineTo(fx, top);
+    g.strokeStyle = '#1a1009'; g.lineWidth = 2.8 * zs; g.stroke();
+    g.strokeStyle = '#8a5d32'; g.lineWidth = 1.4 * zs; g.stroke();
+    // the pennant: a swallow-tailed cloth whose fly end lags in the wind
+    const cw = 12.5 * zs, ch = 8 * zs, y0 = top + 1.2 * zs, N = 8;
+    const wave = i => still ? 0 : Math.sin(now * 4.2 - i * 0.85) * ch * 0.16 * (i / N);
+    const xs = [], ys = [];
+    for (let i = 0; i <= N; i++) { xs.push(fx + 0.9 * zs + cw * i / N); ys.push(wave(i)); }
+    g.beginPath();
+    g.moveTo(xs[0], y0 + ys[0]);
+    for (let i = 1; i <= N; i++) g.lineTo(xs[i], y0 + ys[i] + ch * 0.06 * (i / N));
+    g.lineTo(xs[N] - cw * 0.2, y0 + ch * 0.5 + ys[N]);          // the swallow tail's notch
+    g.lineTo(xs[N], y0 + ch + ys[N] - ch * 0.06);
+    for (let i = N - 1; i >= 0; i--) g.lineTo(xs[i], y0 + ch * (1 - 0.1 * (i / N)) + ys[i]);
+    g.closePath();
+    g.fillStyle = dye.body; g.fill();
+    g.strokeStyle = 'rgba(20,12,6,0.85)'; g.lineWidth = 1.1 * u; g.stroke();
+    // a band of its own darker dye across the cloth, and the light on its upper fold
+    g.beginPath();
+    for (let i = 0; i <= N - 2; i++) g[i ? 'lineTo' : 'moveTo'](xs[i], y0 + ch * 0.62 + ys[i]);
+    g.strokeStyle = dye.accent; g.lineWidth = ch * 0.2; g.stroke();
+    g.beginPath();
+    for (let i = 0; i <= N - 2; i++) g[i ? 'lineTo' : 'moveTo'](xs[i], y0 + ch * 0.2 + ys[i]);
+    g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = ch * 0.12; g.stroke();
+    // the finial
+    g.beginPath(); g.arc(fx, top - 0.6 * zs, 2 * zs, 0, Math.PI * 2);
+    g.fillStyle = '#1a1009'; g.fill();
+    g.beginPath(); g.arc(fx, top - 0.6 * zs, 1.3 * zs, 0, Math.PI * 2);
+    g.fillStyle = '#f2c35a'; g.fill();
+    g.restore();
+  },
+
+  /* GOLD SEAMS GLINT (build 212): now and then a small four-pointed star
+     winks on a seam the clan can SEE — the one ground on the map worth a
+     second look, saying so without a word. Each seam keeps its own slow
+     rhythm off its tile hash (no RNG, a pure function of the clock); never on
+     a seam a mine stands on, never in the fog or the black. */
+  GLINT: { period: 3.4, life: 0.55 },
+  drawSeamGlints(g) {
+    if (this._gStill() || !S || !S.map) return;
+    const v = this.viewTiles(), TL = CFG.TILE, W = CFG.W, terr = S.map.terrain;
+    const x0 = Math.floor(v.x0), y0 = Math.floor(v.y0), x1 = Math.ceil(v.x1), y1 = Math.ceil(v.y1);
+    const now = performance.now() / 1000, C = this.GLINT, m = g.getTransform(), u = this.dpr || 1;
+    const k = Math.hypot(m.a, m.b) || 1;
+    let drawn = 0;
+    for (let y = Math.max(1, y0); y <= Math.min(CFG.H - 2, y1); y++) for (let x = Math.max(1, x0); x <= Math.min(W - 2, x1); x++) {
+      if (terr[y * W + x] !== T.GOLDORE) continue;
+      const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      const per = C.period + (h % 97) / 97 * 1.6, ph = ((now + (h % 1000) / 1000 * per) % per);
+      if (ph > C.life) continue;
+      if (!G.visibleAt(x, y) || Bld.at(x, y)) continue;
+      const p = ph / C.life, a = Math.sin(p * Math.PI);
+      const wx = (x + 0.28 + ((h >>> 8) % 45) / 100) * TL, wy = (y + 0.3 + ((h >>> 16) % 40) / 100) * TL;
+      const sx = m.a * wx + m.c * wy + m.e, sy = m.b * wx + m.d * wy + m.f;
+      const rad = (2.2 + 3.4 * a) * Math.max(0.8, Math.min(1.5, k / (u * 1.7))) * u;
+      if (!drawn++) { g.save(); this._gClip(g); g.setTransform(1, 0, 0, 1, 0, 0); }
+      const glow = g.createRadialGradient(sx, sy, 0, sx, sy, rad * 1.5);
+      glow.addColorStop(0, 'rgba(255,240,190,' + (0.55 * a) + ')'); glow.addColorStop(1, 'rgba(255,214,110,0)');
+      g.fillStyle = glow; g.beginPath(); g.arc(sx, sy, rad * 1.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(255,250,228,' + Math.min(1, a * 1.2) + ')';
+      const s = rad, n = rad * 0.16;
+      g.beginPath();
+      g.moveTo(sx, sy - s); g.lineTo(sx + n, sy - n); g.lineTo(sx + s, sy); g.lineTo(sx + n, sy + n);
+      g.lineTo(sx, sy + s); g.lineTo(sx - n, sy + n); g.lineTo(sx - s, sy); g.lineTo(sx - n, sy - n);
+      g.closePath(); g.fill();
+    }
+    if (drawn) g.restore();
+  },
+
+  /* FIREFLIES ON A DARK NIGHT (build 212): when the long cycle's night is
+     deep (R.dayPhase), a few fireflies drift and blink over the grass at the
+     edge of the woods and the water the clan can see — the quiet moment the
+     night has been missing. A pure function of the clock and each tile's
+     hash: no RNG, nothing in S, capped, never in the fog or the black, and
+     still (a steady glow) under reduced motion. */
+  FIREFLY: { k: 0.3, max: 36, every: 4 },
+  _ffSprite: null,
+  drawFireflies(g) {
+    const ph = this._dusk || this.dayPhase();
+    const C = this.FIREFLY;
+    if (!(ph.k > C.k) || !S || !S.map) return;
+    const night = Math.min(1, (ph.k - C.k) / (1 - C.k) * 1.4);
+    const v = this.viewTiles(), TL = CFG.TILE, W = CFG.W, terr = S.map.terrain;
+    const x0 = Math.floor(v.x0), y0 = Math.floor(v.y0), x1 = Math.ceil(v.x1), y1 = Math.ceil(v.y1);
+    const now = performance.now() / 1000, still = this._gStill(), u = this.dpr || 1, z = this.cam.z * u;
+    if (!this._ffSprite) {
+      const c = document.createElement('canvas'); c.width = c.height = 32;
+      const cg = c.getContext('2d'), rg = cg.createRadialGradient(16, 16, 0, 16, 16, 16);
+      rg.addColorStop(0, 'rgba(255,252,214,1)'); rg.addColorStop(0.16, 'rgba(246,240,150,0.9)');
+      rg.addColorStop(0.4, 'rgba(214,236,110,0.34)'); rg.addColorStop(0.7, 'rgba(200,226,90,0.1)'); rg.addColorStop(1, 'rgba(190,220,80,0)');
+      cg.fillStyle = rg; cg.fillRect(0, 0, 32, 32);
+      this._ffSprite = c;
+    }
+    const near = (x, y) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const t = terr[(y + dy) * W + x + dx];
+        if (t === T.FOREST || t === T.WATER || t === T.FERTILE) return true;
+      }
+      return false;
+    };
+    let n = 0;
+    g.save();
+    { const bp = this.boardPx(); g.setTransform(z, 0, 0, z, -this.cam.x * z, -this.cam.y * z); g.beginPath(); g.rect(bp.x0, bp.y0, bp.x1 - bp.x0, bp.y1 - bp.y0); g.clip(); }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    for (let y = Math.max(2, y0); y <= Math.min(CFG.H - 3, y1) && n < C.max; y++) for (let x = Math.max(2, x0); x <= Math.min(W - 3, x1) && n < C.max; x++) {
+      const h = ((x * 2654435761) ^ (y * 40503)) >>> 0;
+      if (h % C.every) continue;
+      if (terr[y * W + x] !== T.GRASS || !near(x, y) || !G.visibleAt(x, y) || Bld.at(x, y)) continue;
+      n++;
+      const p1 = (h >>> 4) % 628 / 100, p2 = (h >>> 12) % 628 / 100, sp = 0.35 + (h >>> 20) % 30 / 100;
+      const wx = (x + 0.5 + (still ? 0 : 0.42 * Math.sin(now * sp + p1))) * TL;
+      const wy = (y + 0.45 + (still ? 0 : 0.3 * Math.sin(now * sp * 1.3 + p2)) - (still ? 0 : 0.12 * Math.sin(now * 2.1 + p1))) * TL;
+      // a slow blink over a glow that never quite goes out
+      const blink = still ? 0.7 : 0.22 + 0.78 * Math.pow(Math.max(0, Math.sin(now * (0.9 + sp) + p2 * 1.7)), 2);
+      const a = night * blink;
+      if (a < 0.03) continue;
+      const sx = (wx - this.cam.x) * z, sy = (wy - this.cam.y) * z, fr = (6 + 6 * a) * u;
+      g.globalAlpha = Math.min(1, a);
+      g.drawImage(this._ffSprite, sx - fr, sy - fr, fr * 2, fr * 2);
+      // …its body: a hard little light at the device's pixels
+      g.globalAlpha = Math.min(1, 0.35 + a);
+      g.fillStyle = '#fffbd6';
+      g.beginPath(); g.arc(sx, sy, (1 + 0.7 * a) * u, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+  },
+
+  /* THE RANK PIP over a soldier's head (moved here from js/deckfx-army.js in
+     build 209: the field's veterans wear it too — Units.isVeteran — so it is
+     the game's, and the Veterans card's drawRank asks for it). A hard
+     diamond with a dark rim, gold for a veteran (n 2), steel for a soldier
+     the card raised to his hall's champion (n 1), set on the frame's own head
+     (headTop: its first opaque row, measured once per frame) so it rides the
+     walk and the stride, a world pixel's gap above the hair. `bright`: the
+     frame a card's rank lands, the diamond white-hot. */
+  RANK_PIP: { 2: ['#3a2408', '#ffd45e', '#fff3b0'], 1: ['#26303c', '#b9c8da', '#ffffff'] },
+  _headC: new WeakMap(),
+  headTop(img) {
+    let h = this._headC.get(img);
+    if (h != null) return h;
+    h = 0.12;
+    try {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      const q = c.getContext('2d'); q.drawImage(img, 0, 0);
+      const d = q.getImageData(0, 0, c.width, c.height).data;
+      for (let y = 0; y < c.height; y++) {
+        let on = false;
+        for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 128) { on = true; break; }
+        if (on) { h = y / c.height; break; }
+      }
+    } catch (e) { /* a tainted frame keeps the guess: the pip still shows */ }
+    this._headC.set(img, h);
+    return h;
+  },
+  rankPip(g, x, y, D, n, img, bright) {
+    const P = this.RANK_PIP[n >= 2 ? 2 : 1], cx = Math.round(x + D / 2);
+    const top = Math.round(y + (img ? this.headTop(img) : 0.12) * D) - 7;   // the diamond's top: 5 tall, a pixel's gap
+    // the dark rim: a diamond a pixel larger all round, laid first
+    g.fillStyle = P[0];
+    [1, 3, 5, 7, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top - 1 + r, w, 1));
+    // the body, and its lit corner
+    g.fillStyle = bright ? '#ffffff' : P[1];
+    [1, 3, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top + r, w, 1));
+    g.fillStyle = bright ? '#ffffff' : P[2]; g.fillRect(cx - 1, top + 1, 1, 1); g.fillRect(cx, top, 1, 1);
+    return { x: cx + 0.5, y: top + 2.5 };
   },
 
   // small minimap snapshot for cloud-save slot cards
@@ -17738,6 +18155,7 @@ const R = {
       const g = c.getContext('2d');
       g.imageSmoothingEnabled = false;
       g.drawImage(this.mini, 0, 0, 72, 72);
+      if (this.miniCam) g.drawImage(this.miniCam, 0, 0, 72, 72);   // the frame rides its own layer now; the picture keeps it
       return c.toDataURL('image/png');
     } catch (e) { return null; }
   },
@@ -17789,11 +18207,39 @@ const R = {
     // …and what a card put on the map: a relic marked, the rival's people seen
     // through a spy in their hall (js/deckfx-rival.js) — nothing with none
     if (window.Deck && Deck.drawMini && S.deck) Deck.drawMini(g);
-    // camera rect
+    /* THE VIEW'S FRAME FOLLOWS THE CAMERA EVERY FRAME (build 211,
+       tests/feel.mjs): the map itself repaints twice a second, as ever, and
+       the frame is laid on its own layer over it (R.miniCam), where the
+       camera is NOW — a glide, a pan or a drag across the map no longer
+       leaves it half a second behind. With no layer (a page that could not
+       make one) the frame is drawn on the map as it always was. */
+    if (this.mcg) this.drawMiniView(true);
+    else this.strokeMiniCam(g);
+  },
+  // the camera's rect on the minimap, in its 2px-a-tile units
+  _miniCamRect() {
     const TL = CFG.TILE;
+    return [this.cam.x / TL * 2, this.cam.y / TL * 2, this.viewW() / this.cam.z / TL * 2, this.viewH() / this.cam.z / TL * 2];
+  },
+  strokeMiniCam(g) {
+    const r = this._miniCamRect();
     g.strokeStyle = '#f0e6d0'; g.lineWidth = 1;
-    g.strokeRect(this.cam.x / TL * 2, this.cam.y / TL * 2,
-      this.viewW() / this.cam.z / TL * 2, this.viewH() / this.cam.z / TL * 2);
+    g.strokeRect(r[0], r[1], r[2], r[3]);
+    this._miniCamKey = r.map(v => Math.round(v * 4)).join(',');
+  },
+  // the frame where the camera is now, on its own layer: only when the
+  // camera has moved, and never while the map is folded away (a folded map
+  // forgets the frame it drew, so opening it lays the frame afresh)
+  drawMiniView(force) {
+    const g = this.mcg;
+    if (!g) return;
+    if (!force && typeof UI !== 'undefined' && UI.miniCollapsed) { this._miniCamKey = ''; return; }
+    const cv = g.canvas;
+    if (cv.width !== this.mini.width || cv.height !== this.mini.height) { cv.width = this.mini.width; cv.height = this.mini.height; force = true; }
+    const k = this._miniCamRect().map(v => Math.round(v * 4)).join(',');
+    if (!force && k === this._miniCamKey) return;
+    g.clearRect(0, 0, cv.width, cv.height);
+    this.strokeMiniCam(g);
   },
 };
 // classic-script top-level `const` bindings are NOT global-object properties,

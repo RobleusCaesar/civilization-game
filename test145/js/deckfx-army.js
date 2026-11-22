@@ -509,8 +509,12 @@ Object.assign(Deck, {
     u.maxhp = probe.maxhp; u.hp = Math.max(1, Math.round(frac * u.maxhp));
     u.atk = probe.atk + (u.skyIron ? 1 : 0);
     u.def = probe.def; u.speed = probe.speed;
+    // a veteran of the field's standing was of the rank he left (Units.isVeteran)
+    if (typeof Units !== 'undefined' && Units.clearVeteran) Units.clearVeteran(u);
   },
   veteran(u) {
+    // the card's veteran REPLACES a veteran of the field's standing: never both
+    if (typeof Units !== 'undefined' && Units.unVeteran) Units.unVeteran(u);
     const frac = u.maxhp > 0 ? u.hp / u.maxhp : 1;
     u.vet = this.VET;
     u.maxhp = Math.round(u.maxhp * this.VET); u.hp = Math.max(1, Math.round(frac * u.maxhp));
@@ -537,7 +541,8 @@ Object.assign(Deck, {
      and a handful of 2px squares; the tinted frame is R.tintOf's cache. */
   drawUnit(g, u, img, x, y, D) {
     if (this._swingUntil) img = this.swingFrame(u) || img;   // an engine set down swings its arm once
-    const rank = u.vet ? 2 : u.ranked ? 1 : 0;
+    // gold for a veteran, the card's or the field's (Units.isVeteran); steel for a raised champion
+    const rank = u.vet || (u.vetOf && typeof Units !== 'undefined' && Units.isVeteran && Units.isVeteran(u)) ? 2 : u.ranked ? 1 : 0;
     if (u.spectral) { this.drawGhost(g, u, img, x, y, D); if (rank) this.drawRank(g, x, y, D, rank, img); return; }
     g.drawImage(img, x, y, D, D);   // (a war-wolf's collar is in its frames: warWolfKey)
     // (a rank the Veterans wave has not reached yet is not worn yet)
@@ -705,40 +710,10 @@ Object.assign(Deck, {
      the stride, a world pixel's gap above the hair. `bright`: the frame its
      rank lands, the diamond white-hot (the Veterans show lays its glint of
      light over the middle this answers). */
-  PIP: { 2: ['#3a2408', '#ffd45e', '#fff3b0'], 1: ['#26303c', '#b9c8da', '#ffffff'] },
-  _headC: new WeakMap(),
-  headTop(img) {
-    let h = this._headC.get(img);
-    if (h != null) return h;
-    h = 0.12;
-    try {
-      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-      const q = c.getContext('2d'); q.drawImage(img, 0, 0);
-      const d = q.getImageData(0, 0, c.width, c.height).data;
-      for (let y = 0; y < c.height; y++) {
-        let on = false;
-        for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3] > 128) { on = true; break; }
-        if (on) { h = y / c.height; break; }
-      }
-    } catch (e) { /* a tainted frame keeps the guess: the pip still shows */ }
-    this._headC.set(img, h);
-    return h;
-  },
-  drawRank(g, x, y, D, n, img, bright) {
-    const P = this.PIP[n >= 2 ? 2 : 1], cx = Math.round(x + D / 2);
-    const top = Math.round(y + (img ? this.headTop(img) : 0.12) * D) - 7;   // the diamond's top: 5 tall, a pixel's gap
-    // the dark rim: a diamond a pixel larger all round, laid first
-    g.fillStyle = P[0];
-    [1, 3, 5, 7, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top - 1 + r, w, 1));
-    // the body, and its lit corner
-    g.fillStyle = bright ? '#ffffff' : P[1];
-    [1, 3, 5, 3, 1].forEach((w, r) => g.fillRect(cx - (w >> 1), top + r, w, 1));
-    g.fillStyle = bright ? '#ffffff' : P[2]; g.fillRect(cx - 1, top + 1, 1, 1); g.fillRect(cx, top, 1, 1);
-    // (the frame it lands, the badge is white-hot; its catch of LIGHT is the
-    // show's, a smooth star at the device's own resolution — R.fxSpark over
-    // the point answered here. It was four one-pixel bars, a pixel crosshair)
-    return { x: cx + 0.5, y: top + 2.5 };
-  },
+  // the pip is the game's own painter (R.rankPip, js/render.js): the field's
+  // veterans wear it too, so it moved there in build 209 — these stay as doors
+  headTop(img) { return R.headTop(img); },
+  drawRank(g, x, y, D, n, img, bright) { return R.rankPip(g, x, y, D, n, img, bright); },
   /* A SOLDIER LIT ON HIS OWN PIXELS (Veterans): the frame drawn on an
      offscreen canvas and the light laid over it source-atop, so it covers
      exactly what he is and nothing round him — every alpha of the frame

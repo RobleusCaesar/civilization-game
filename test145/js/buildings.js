@@ -1156,6 +1156,8 @@ const Bld = {
       paid: paid || {},
     };
     S.buildings.push(b);
+    // a yard's ranks are fetched while it rises (Assets.wantYard, build 207)
+    if (d.train && window.Assets && Assets.wantYard) Assets.wantYard(b);
     // a building raised on a road takes the ground (js/roads.js)
     if (key !== 'road' && window.Roads && Roads.clearUnder) Roads.clearUnder(x, y, b.sz || 1);
     // a site the PLAYER chose and paid for is an order given today (G.noteAct —
@@ -1199,12 +1201,18 @@ const Bld = {
       // building (or one placed already-built) expands the view
       if (opts.instant) G.reveal(x + (this.size(key) >> 1), y + (this.size(key) >> 1), d.levels[0].vision || 4);
       if (!opts.instant && !opts.noAutoAssign) {
+        // a WORK PARTY's Build (UI.builderIds, tests/box-select.mjs): every one
+        // of them is pulled off whatever they were doing to raise it
+        const crew = (opts.builderIds || []).map(id => S.units.find(u => u.id === id && u.owner === 'P' && Units.isVillager(u))).filter(Boolean);
+        let sent = 0;
+        for (const u of crew) { Units.assignBuild(u, b); if (u.task && u.task.type === 'build' && u.task.id === b.id) sent++; }
         // an explicitly chosen builder is pulled off whatever it was doing
-        let v = opts.builderId
+        let v = !sent && opts.builderId
           ? S.units.find(u => u.id === opts.builderId && u.owner === 'P' && Units.isVillager(u))
           : null;
-        if (!v) v = Units.nearestIdleVillager(x, y);
-        if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
+        if (!v && !sent) v = Units.nearestIdleVillager(x, y);
+        if (sent) G.log(`${d.name} site laid out — ${sent > 1 ? sent + ' villagers head' : 'a villager heads'} over`);
+        else if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
         else if (S.levy) G.log(`${d.name} site laid out — the levy is under arms; the works wait for the stand-down`, true);
         else G.log(`${d.name} needs a builder — tap a villager, then the site`, true);
       }
@@ -1275,6 +1283,7 @@ const Bld = {
          dragged line finishes ten sections at a time. */
       const news = b.key !== 'wall' && b.key !== 'gate' && typeof UI !== 'undefined' && UI.inOpenBand &&
         !UI.inOpenBand(this.cx(b), this.cy(b)) ? 'note' : undefined;
+      let said = null;
       // production buildings need a hand on deck — the builder stays to work it
       if (this.def(b.key).needsWorker && builder && Units.isVillager(builder)) {
         builder.task = { type: 'work', id: b.id };
@@ -1295,9 +1304,9 @@ const Bld = {
             u.task = { type: 'work', id: b.id }; u.path = null; crew++;
           }
         }
-        G.log(`${this.def(b.key).name} complete — ${crew > 1 ? 'its builders stay on to work it' : 'the builder stays on to work it'}`, news);
+        said = G.log(`${this.def(b.key).name} complete — ${crew > 1 ? 'its builders stay on to work it' : 'the builder stays on to work it'}`, news);
       } else if (this.def(b.key).needsWorker) {
-        G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
+        said = G.log(`${this.def(b.key).name} complete — needs a villager to work it`, true);
       } else if (this.def(b.key).firstUnit && (b.level || 1) === 1) {
         /* A FINISH THAT HANDS THE PLAYER SOMETHING IS NEWS WHEREVER IT IS
            (tests/train-spawn.mjs): the yard's first soldier is a unit the
@@ -1306,22 +1315,21 @@ const Bld = {
         // (with no ground to stand on it waits at the gate, and holdTrained's
         // own warning says so — one line, not two)
         if (this.giftFirst(b))
-          G.log(`${this.def(b.key).name} complete — its first ${CFG.UNITS[this.def(b.key).firstUnit].name} reports for duty`, 'note');
-        else G.log(`${this.def(b.key).name} complete`, news);
+          said = G.log(`${this.def(b.key).name} complete — its first ${CFG.UNITS[this.def(b.key).firstUnit].name} reports for duty`, 'note');
+        else said = G.log(`${this.def(b.key).name} complete`, news);
       } else if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length) &&
-                 !S.units.some(u => u.owner === 'P' && u.perch) &&
-                 !(S.tut && S.tut.on && S.tut.phase === 1 && !(S.tut.done || {}).manTower)) {
+                 !S.units.some(u => u.owner === 'P' && u.perch)) {
         /* AN EMPTY TOWER SAYS WHAT IT NEEDS (operator, build 152: "update the
            tower notes / instructions to let players know they need to create
            archers and station them in the towers for actual defense"): while
            no bow of the player's stands on any tower, a finished one tells
-           them how — once they man one, the plain news returns (and while
-           the lesson's own "man the tower" card is still to come, the card
-           says it: one voice, not two) */
-        G.log(`${this.def(b.key).name} complete — it shoots only with archers on it: select archers, then tap the tower`, 'note');
+           them how — once they man one, the plain news returns */
+        said = G.log(`${this.def(b.key).name} complete — it shoots only with archers on it: select archers, then tap the tower`, 'note');
       } else {
-        G.log(`${this.def(b.key).name} complete`, news);
+        said = G.log(`${this.def(b.key).name} complete`, news);
       }
+      // …and news of a work off the open view carries the way there (js/feel.js)
+      this.goNews(said, b);
     }
     /* TAMING ON BUILD (tests/wild-grass.mjs): the wild sward around the new
        building goes down — captured BEFORE the repaint so the flatten lifts
@@ -1343,6 +1351,15 @@ const Bld = {
     if (b.owner === 'P') this.roadSparkle(b);
   },
 
+  /* NEWS OFF THE OPEN VIEW TAKES YOU THERE (js/feel.js, build 212): a line
+     about a work of the player's that stands off the view or under the bars
+     carries the toast's small ◎, which glides the view to it. A picture and a
+     camera: nothing in S. */
+  goNews(node, b) {
+    if (!node || !b || b.owner !== 'P') return;
+    if (typeof UI !== 'undefined' && UI.inOpenBand && UI.inOpenBand(this.cx(b), this.cy(b))) return;
+    if (typeof Feel !== 'undefined' && Feel.goThere) Feel.goThere(node, this.cx(b), this.cy(b));
+  },
   // any of the OWNER'S villagers currently working this site (construction/upgrade/repair)?
   hasWorker(b) {
     return S.units.some(u => u.owner === b.owner && u.task && u.task.type === 'build' && u.task.id === b.id);
@@ -1416,7 +1433,7 @@ const Bld = {
         `(have ${this.tcSupport(b)})` };
     }
     const res = b.owner === 'P' ? S.res : S.ai.res;
-    if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources', short: this.shortfall(next.cost, res) };
+    if (!this.canAfford(next.cost, res)) return { ok: false, why: 'Not enough resources', short: this.shortfall(next.cost, res), cost: next.cost };
     return { ok: true, cost: next.cost };
   },
 
@@ -1437,6 +1454,17 @@ const Bld = {
     this.pay(d.levels[b.level].cost, b.owner === 'P' ? S.res : S.ai.res);
     b.upgrading = this.upgradeTime(b);
     b.upgTotal = b.upgrading;   // remembered so the progress bar knows the full span
+    /* THE NEXT STOREY'S PEOPLE ARE FETCHED WHILE IT RISES (build 207): a hall
+       or a sappers' camp going up a level re-dresses its people the moment it
+       finishes, so their new look is asked for now, in the background — by
+       the day the masons are done it is installed, and nobody turns into the
+       procedural stand-in for the seconds a fetch takes. */
+    if (window.Assets && Assets.loadVillagerArt && b.key === 'tc' && Assets.VILLAGER_TIER_BY_TC) {
+      const t = Assets.VILLAGER_TIER_BY_TC[b.level + 1];
+      if (t && Assets._wantOk && Assets._wantOk()) Assets.loadVillagerArt(b.owner, true, t);
+    }
+    if (window.Assets && Assets.loadSapperArt && b.key === 'sapper' && Assets._wantOk && Assets._wantOk())
+      Assets.loadSapperArt(b.owner, true, Math.min(3, b.level + 1));
     if (b.owner === 'P') {
       G.noteAct();   // the player's own order (only the panel upgrades for 'P')
       /* EVERY HAND ON THE SCAFFOLD. Upgrades need a villager on site, same as
@@ -1505,16 +1533,21 @@ const Bld = {
        rises, so the tier cache drops here and the new tier's sheets are
        asked for; every villager resolves the new key on its next draw
        (there is no per-unit sprite cache to invalidate — measured). */
+    // (the rival's people, under the fog, are re-dressed in the background tier)
     if (b.key === 'tc') {
       if (window.R) R._vTier = null;
-      if (window.Assets && Assets.loadVillagerArt) Assets.loadVillagerArt(b.owner);
+      if (window.Assets && Assets.loadVillagerArt) Assets.loadVillagerArt(b.owner, b.owner !== 'P');
     }
     // …and a Sappers' Camp reaching a new level re-dresses its engineers
     // the same way (the sapper tier reads the owner's best finished camp)
     if (b.key === 'sapper') {
       if (window.R) R._sTier = null;
-      if (window.Assets && Assets.loadSapperArt) Assets.loadSapperArt(b.owner);
+      if (window.Assets && Assets.loadSapperArt) Assets.loadSapperArt(b.owner, b.owner !== 'P');
     }
+    // the look a storey left behind is let go (nobody is drawn in it again)
+    if ((b.key === 'tc' || b.key === 'sapper') && window.Assets && Assets.pruneUnitArt) Assets.pruneUnitArt();
+    // a yard a storey up asks for the ranks it can now raise (Assets.wantYard, build 207)
+    if (window.Assets && Assets.wantYard) Assets.wantYard(b, b.level);
     // (a card's raising charts nothing itself: the taller building's own
     // sight opens the ground on the next visibility pass, as any building's does)
     if (b.owner === 'P' && !byCard) {
@@ -1525,8 +1558,8 @@ const Bld = {
       // the masons sent the tower's bows down the stairs (Lookout.tick), and
       // nothing sends them back: an empty tower shoots nothing, so it says so
       if (b.key === 'tower' && !(window.Lookout && Lookout.crew && Lookout.crew(b).length))
-        G.log(`${this.def(b.key).name} reached Lv ${b.level}! Send archers back up — it shoots only with archers on it`, 'note');
-      else G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news);
+        this.goNews(G.log(`${this.def(b.key).name} reached Lv ${b.level}! Send archers back up — it shoots only with archers on it`, 'note'), b);
+      else this.goNews(G.log(`${this.def(b.key).name} reached Lv ${b.level}!`, news), b);
       if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('complete', this.cx(b), this.cy(b));
       if (lv.vision) G.reveal(b.x, b.y, lv.vision);
     }
@@ -1554,11 +1587,13 @@ const Bld = {
     if (spec.reqLevel && b.level < spec.reqLevel) return { ok: false, why: `Needs Lv ${spec.reqLevel}` };
     if (b.queue.length >= this.queueCap(b)) return { ok: false, why: 'Queue full' };
     if (b.owner === 'P' && Units.popUsed('P') + b.queue.length >= Bld.popCap('P'))
-      return { ok: false, why: 'Population cap — build houses' };
+      return { ok: false, why: 'Population cap — build houses', code: 'pop' };
     const res = b.owner === 'P' ? S.res : S.ai.res;
     // ORIGIN CARDS: the Ironhand's soldiers come cheaper
     const cost = window.Cards ? Cards.trainCost(b.owner, unitKey, spec.cost) : spec.cost;
-    if (!this.canAfford(cost, res)) return { ok: false, why: 'Not enough resources' };
+    // the refusal carries the price and what is short of it, so the panel can
+    // say it and the top bar can point at it (build 211, js/feel.js)
+    if (!this.canAfford(cost, res)) return { ok: false, why: 'Not enough resources', cost, short: this.shortfall(cost, res) };
     return { ok: true, cost };
   },
 
@@ -1588,6 +1623,8 @@ const Bld = {
     }
     b.queue.push({ unit: unitKey, t: time, T: time });   // T: the whole time, for the button's bar
     if (b.owner === 'P') G.noteAct();   // only the player's own tap trains for 'P'
+    // his strips while he trains, in the background: he walks out wearing them (Assets.wantUnit, build 207)
+    if (window.Assets && Assets.wantUnit) Assets.wantUnit({ kind: unitKey, owner: b.owner, x: b.x, y: b.y }, true);
     return true;
   },
 
@@ -1977,8 +2014,9 @@ const Bld = {
           G.log(`${name} ready`);
           if (r.el && r.el.isConnected) r.el.remove();
           const many = r.kind ? (/man$/.test(name) ? name.slice(0, -3) + 'men' : name + 's').toLowerCase() : 'units';
-          r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note', undefined, false, true);
-        } else this._readyAt.at.set(b.id, { t: now, n: 1, kind, el: G.log(`${name} ready`, 'note') });
+          r.el = UI.toast(`${this.def(b.key).name}: ${r.n} ${many} ready`, 'note');
+          this.goNews(r.el, b);
+        } else { const el = G.log(`${name} ready`, 'note'); this.goNews(el, b); this._readyAt.at.set(b.id, { t: now, n: 1, kind, el }); }
       }
       if (S.stats) S.stats.trained++;
     }
@@ -2328,6 +2366,8 @@ const Bld = {
     // a profile's rival hall may come down sooner (CFG.MODES.prologue_3.aiHallTake)
     if (b.owner === 'A' && b.key === 'tc') { const ht = (CFG.MODES[S.mode] || {}).aiHallTake; if (ht > 0) amt *= ht; }
     b.hp -= amt;
+    // the bar shows the bite (R.barBite, a picture: the level the blow took it from)
+    if (window.R && R.barBite) R.barBite(b, (b.hp + amt) / b.maxhp);
     // ring the rival's town alarm — idle soldiers converge (see AI.daily)
     if (b.owner === 'A' && S.ai && !wild) S.ai.alarm = { x: b.x, y: b.y, day: S.day };
     if (b.hp <= 0) {

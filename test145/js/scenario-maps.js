@@ -109,7 +109,11 @@ const SCENARIO_MAPS = {
   ],
   "buildings": [],
   "ruins": [],
-  "relic": null,
+  "relic": {
+   "key": "aqueduct",
+   "x": 19,
+   "y": 32
+  },
   "camera": {
    "x": 18,
    "y": 19

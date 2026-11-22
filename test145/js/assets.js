@@ -1592,9 +1592,12 @@ const Assets = {
      the pixels cannot be read; the frames then copy the strip as it is. */
   _dyeStrip(img, tunic) {
     if (!this._dyes(tunic)) return null;
-    const c = document.createElement('canvas');
-    c.width = img.width; c.height = img.height;
+    // ONE scratch for every strip (the frames are cut from it before the next
+    // install), so a run's thousand dyes allocate one canvas, not a thousand
+    const c = this._dyeScr || (this._dyeScr = document.createElement('canvas'));
+    if (c.width !== img.width || c.height !== img.height) { c.width = img.width; c.height = img.height; }
     const g = c.getContext('2d', { willReadFrequently: true });
+    g.clearRect(0, 0, c.width, c.height);
     g.drawImage(img, 0, 0);
     let d;
     try { d = g.getImageData(0, 0, c.width, c.height); }
@@ -1611,10 +1614,11 @@ const Assets = {
      missing file is the default state — the procedural villager stands.
      `later`: the background tier (see loadMilitaryArt) — the rival's people
      under the fog are fetched behind everything the opening world shows. */
-  loadVillagerArt(owner, later) {
+  loadVillagerArt(owner, later, tier) {
     // typeof guards — G is a script-level const (window.G is undefined)
     if (!window.R || typeof G === 'undefined') return;
-    const tier = R.villagerTier(owner);
+    // `tier`: a storey still being raised (Bld.upgrade fetches its look ahead, in the background)
+    tier = tier || R.villagerTier(owner);
     const fac = owner === 'A' ? 'a' : 'p';
     const tunic = G.tunicOf(owner);
     for (const sex of ['m', 'f']) for (const dir of this.UNIT_DIRS8) for (const pose of this.VILLAGER_POSES) {
@@ -1765,9 +1769,9 @@ const Assets = {
                       walk: ['s','se','e','ne','n','nw','w','sw'],
                       dig: ['s','e','n','w'], bridge: ['s','e','n','w'],
                       clear: ['s','e','n','w'], mound: ['s','e','n','w'] },
-  loadSapperArt(owner, later) {          // `later`: see loadMilitaryArt
+  loadSapperArt(owner, later, tier) {    // `later`: see loadMilitaryArt; `tier`: see loadVillagerArt
     if (!window.R || typeof G === 'undefined') return;
-    const tier = R.sapperTier(owner);
+    tier = tier || R.sapperTier(owner);
     const fac = owner === 'A' ? 'a' : 'p';
     const tunic = G.tunicOf(owner);
     const key = 'sapper-' + fac + '-' + tunic + '-l' + tier;
@@ -1840,20 +1844,25 @@ const Assets = {
     const id = key + '|' + dir + '|' + pose, live = this._stripLive[id];
     if (live) { if (!late && live.late) this._promote(live); return; }
     const img = new Image();
-    const rec = { img, late: !!late, holds: [late ? this._holdLate() : this._hold(false)] };
+    const rec = { img, key, late: !!late, holds: [late ? this._holdLate() : this._hold(false)] };
     // spent once the strip is installed (or has failed): every hold it took, either tier
     const done = () => { if (this._stripLive[id] === rec) delete this._stripLive[id]; for (const h of rec.holds) h(); };
     done.late = rec.late;                      // what the boot contract tells apart in the install queue
     rec.done = done;
     this._stripLive[id] = rec;
-    const landed = () => { this._stripFlying--; this._pumpStrips(); };
-    img.onload = () => { landed(); this._queueInstall(() => this.setUnitFrames(key, dir, pose, img, tunic), done); };
+    const landed = () => { this._stripFlying--; if (rec.lateFly) { rec.lateFly = false; this._lateFly--; } this._pumpStrips(); };
+    /* DECODED OFF THE MAIN THREAD (build 207): the first drawImage of an
+       undecoded PNG decodes it right there, inside the install; img.decode()
+       does it on the browser's own threads and the install only copies. A
+       strip that will not decode still installs (or fails) as before. */
+    const install = () => this._queueInstall(() => { if (this._keepKey(key, true)) this.setUnitFrames(key, dir, pose, img, tunic); }, done);
+    img.onload = () => { landed(); if (typeof img.decode === 'function') img.decode().then(install, install); else install(); };
     img.onerror = () => {                      // absent art is the default state
       landed(); done();
       if (retry) this._retryLater([key, dir, pose, url, tunic]);
     };
     this._prio(img, late ? 'low' : this.stripPrio());
-    rec.entry = [img, url];
+    rec.entry = [img, url, rec];
     const queue = late ? this._stripQLate : this._stripQ;
     if (front) queue.unshift(rec.entry); else queue.push(rec.entry);
     this._pumpStrips();
@@ -1897,9 +1906,32 @@ const Assets = {
        is minutes of a villager drawn procedural from some facings) */
     for (let i = q.length - 1; i >= 0; i--) { const [key, dir, pose, url, tunic] = q[i]; this._stripLoad(key, dir, pose, url, tunic, true, false, true); }
   },
+  /* THE BACKGROUND TIER KEEPS TO THE GAME'S PACE (build 207). While a world
+     is being played, a background strip is put on the wire only when fewer
+     than LATE_AHEAD are flying or waiting to install, and is installed by
+     the frame loop in the time a frame leaves (frameTick) — never by the
+     between-frames slices, which ran ten milliseconds of installs before
+     every frame for the whole first minute of a game. A counted strip (what
+     a press waits for) still goes first and installs at once. */
+  LATE_AHEAD: 2,
+  _lateFly: 0,
+  _playing() {
+    return typeof Screens !== 'undefined' && Screens.current === 'playing' &&
+      !(typeof document !== 'undefined' && document.hidden);
+  },
+  _lateWaiting() {
+    let n = this._lateFly;
+    for (const e of this._installQ) if (e[1] && e[1].late) n++;
+    return n;
+  },
   _pumpStrips() {
     while (this._stripFlying < this.STRIP_FLIGHT) {
-      const next = this._stripQ.shift() || this._stripQLate.shift();
+      let next = this._stripQ.shift();
+      if (!next) {
+        if (this._stripQLate.length && this._playing() && this._lateWaiting() >= this.LATE_AHEAD) return;
+        next = this._stripQLate.shift();
+        if (next && next[2]) { next[2].lateFly = true; this._lateFly++; }
+      }
       if (!next) return;
       this._stripFlying++;
       next[0].src = next[1];
@@ -1908,8 +1940,39 @@ const Assets = {
   _queueInstall(fn, done) {
     this._installQ.push([fn, done]);
     if (this._installOn) return;
+    // while a world is played a background strip waits for the frame loop (frameTick)
+    if (done && done.late && this._playing()) return;
     this._installOn = true;
     this._nextSlice();
+  },
+  /* the frame loop's share of the background tier (G.frame, after the draw):
+     strips for at most FRAME_INSTALL_MS of this frame, none on a frame that
+     came late (a slow device catches up on the next quick one), never more
+     than LATE_SKIP frames running without one. `intervalMs` is the time
+     since the last frame. */
+  FRAME_INSTALL_MS: 4,
+  LATE_SKIP: 4,
+  _period: 16.7,
+  frameTick(workMs, intervalMs) {
+    // the display's own frame period, smoothed (60 Hz, 120 Hz, a slow phone's 30)
+    if (intervalMs > 0 && intervalMs < 100) this._period += (intervalMs - this._period) * 0.1;
+    if (this._installOn || !this._installQ.length) { if (this._stripQLate.length) this._pumpStrips(); return; }
+    // nothing played (a menu, the reward screen, a hidden tab): the slices take the background again
+    if (!this._playing()) { this._installOn = true; this._nextSlice(); return; }
+    /* only in the time this frame leaves before the display wants the next
+       one (four fifths of its period, less what the frame has spent); a frame
+       with no room skips, and never more than LATE_SKIP running — then one
+       strip goes in anyway, so a slow device still gets there */
+    const room = Math.min(this.FRAME_INSTALL_MS, this._period * 0.8 - workMs);
+    if (room < 1 && (this._lateSkipped = (this._lateSkipped || 0) + 1) <= this.LATE_SKIP) return;
+    this._lateSkipped = 0;
+    const t0 = performance.now();
+    do {
+      const [fn, done] = this._installQ.shift();
+      try { fn(); } catch (e) { /* a bad strip keeps the procedural cast */ }
+      if (done) done();
+    } while (this._installQ.length && performance.now() - t0 < room);
+    this._pumpStrips();
   },
   /* the next slice as its own task, after whatever is waiting — a message
      rather than a timer, whose 4ms clamp on a chain left the thread idle */
@@ -1923,15 +1986,100 @@ const Assets = {
   },
   _drainInstalls() {
     const budget = (typeof document !== 'undefined' && document.getElementById('splash')) ? 40 : this.INSTALL_MS;
-    const t0 = performance.now();
-    while (this._installQ.length) {
-      const [fn, done] = this._installQ.shift();
+    const t0 = performance.now(), playing = this._playing();
+    let i = 0;
+    while (i < this._installQ.length) {
+      // a world being played keeps its background strips for the frame loop's spare time
+      if (playing && this._installQ[i][1] && this._installQ[i][1].late) { i++; continue; }
+      const [fn, done] = this._installQ.splice(i, 1)[0];
       try { fn(); } catch (e) { /* a bad strip keeps the procedural cast */ }
       if (done) done();
       if (performance.now() - t0 >= budget) break;
     }
-    if (this._installQ.length) this._nextSlice();
+    const more = playing ? this._installQ.some(e => !(e[1] && e[1].late)) : this._installQ.length > 0;
+    if (more) this._nextSlice();
     else this._installOn = false;
+  },
+  /* ======= ART FOR WHAT THE WORLD CAN SHOW, AND NO MORE (build 207) =======
+     The operator, playing two games back to back: "lots of frozen movements,
+     stutter steps, the initial map area loaded in blocky". Measured: every
+     founding asked for BOTH tribes' whole armies and sapper sets in the
+     background tier, ~970 strips, and nothing was ever let go — one game held
+     12,211 frame canvases (285 MB of pixels), and since a run rolls a fresh
+     tunic and the tunic rides in every dyed key, the second game installed a
+     second set beside the first: 405 MB, 509 MB after a third. On a phone
+     that is memory the GPU and the canvases fight over, and the installs ran
+     on the main thread through the first minute of every game.
+     Now a strip is asked for when the world can show it SOON: a unit asks for
+     its own art the moment it exists (wantUnit, from Units.spawn) or is
+     queued in a yard (Bld.train); a yard asks for what it can raise when it
+     is laid or raised a storey (wantYard); a held army card for what it
+     summons (Deck.wantArt). A founding or a load asks counted for what the
+     opening world shows and, in the background, for every unit it holds. And
+     each real world lets the last one's dye go (pruneUnitArt). */
+  // the strips one unit (or {kind, owner}) draws with: counted when the player
+  // will see it now (their own, or in sight), else in the background
+  wantUnit(u, later) {
+    if (!u || !this._wantOk()) return;
+    const seen = u.owner === 'P' || (u.x != null && typeof G !== 'undefined' && G.visibleAt && G.visibleAt(u.x | 0, u.y | 0));
+    try { this.loadUnitsArt([u], later != null ? later : !seen); } catch (e) { /* the procedural cast stands in */ }
+  },
+  /* never for the title's demo world (it wears no strips), and never while a
+     world is being FOUNDED (G._founding): its units are spawned before the
+     tier caches drop, and the founding asks for its own world once it is
+     built (G.newGame's art block) */
+  _wantOk() {
+    if (typeof S === 'undefined' || !S) return false;
+    if (typeof Screens !== 'undefined' && Screens._demo) return false;
+    return !(typeof G !== 'undefined' && G._founding);
+  },
+  // what a yard can raise at this level, in the background (`force`: a
+  // founding's or a load's own art block, which keep their own guards)
+  wantYard(b, lv, force) {
+    if (!b || !(force || this._wantOk())) return;
+    const d = typeof Bld !== 'undefined' && Bld.def && Bld.def(b.key);
+    if (!d || !d.train) return;
+    const level = lv || b.level || 1, list = [];
+    for (const k in d.train) { const sp = d.train[k]; if (sp && (sp.reqLevel || 1) <= level) list.push({ kind: k, owner: b.owner }); }
+    if (list.length) try { this.loadUnitsArt(list, true); } catch (e) { /* the procedural cast stands in */ }
+  },
+  /* does the world in hand still draw with this key? A dyed key carries its
+     faction, its tunic and (villagers, sappers) its tier; an undyed one (a
+     deer, a war band, a pale wolf) belongs to every world. */
+  _keepKey(key, loose) {
+    if (typeof S === 'undefined' || !S || !S.tunic || typeof G === 'undefined' || !G.tunicOf) return true;
+    const own = f => (f === 'a' ? 'A' : 'P');
+    let m = /^villager-([pa])-([a-z]+)-l(\d)-[mf]$/.exec(key);
+    if (m) return m[2] === G.tunicOf(own(m[1])) && (loose || !(window.R && R.villagerTier && +m[3] !== R.villagerTier(own(m[1]))));
+    m = /^sapper-([pa])-([a-z]+)-l(\d)$/.exec(key);
+    if (m) return m[2] === G.tunicOf(own(m[1])) && (loose || !(window.R && R.sapperTier && +m[3] !== R.sapperTier(own(m[1]))));
+    m = /^wolf-war-([a-z]+)$/.exec(key);
+    if (m) return m[1] === G.tunicOf('P');
+    m = /^([a-z]+)-([pa])-([a-z]+)$/.exec(key);
+    if (m && this.MILITARY_ART[m[1]]) return m[3] === G.tunicOf(own(m[2]));
+    return true;
+  },
+  /* A NEW WORLD LETS THE LAST ONE'S DYE GO: every installed dyed set this
+     world will never draw with (another run's tunic, a tier its halls have
+     left behind) is dropped, and whatever of it is still on the wire is
+     installed into nothing (setUnitFrames is asked _keepKey first). Called
+     by G.newGame and G.loadJSON for a real world, never the title's demo. */
+  pruneUnitArt() {
+    let n = 0;
+    for (const k of Object.keys(this.unitArt)) {
+      if (this._keepKey(k)) continue;
+      delete this.unitArt[k]; n++;
+      if (this._battleAsked) delete this._battleAsked[k];
+      if (typeof BattleFX !== 'undefined' && BattleFX._wanted && BattleFX._wanted.delete) BattleFX._wanted.delete(k);
+    }
+    // …and a strip of such a key still waiting for the wire is never fetched
+    // (one already flying lands and is dropped at its install)
+    for (const q of [this._stripQ, this._stripQLate]) for (let i = q.length - 1; i >= 0; i--) {
+      const rec = q[i][2];
+      if (rec && rec.key && !this._keepKey(rec.key, true)) { q.splice(i, 1); rec.done(); }
+    }
+    this._retryQ = this._retryQ.filter(r => this._keepKey(r[0], true));
+    return n;
   },
   unitArt: {},
   unitStem(kind, dir, pose) { return 'unit-' + kind + '-' + dir + '-' + pose; },

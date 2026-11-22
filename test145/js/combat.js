@@ -135,7 +135,10 @@ const Combat = {
       const now = performance.now(), last = this._alarmAt.at.get(b.id);
       if (last == null || now - last >= 10000) {
         this._alarmAt.at.set(b.id, now);
-        G.log(`${Bld.def(b.key).name} under attack!`, true);
+        const node = G.log(`${Bld.def(b.key).name} under attack!`, true);
+        // …and WHERE (js/feel.js): the map pings the spot and the toast carries
+        // a way there; a journey world's quiet line (Prologue.quiet) stays quiet
+        if (typeof Feel !== 'undefined' && Feel.alarm && (node || !S.scenario)) Feel.alarm(node, Bld.cx(b), Bld.cy(b));
       }
     }
     /* THE HORN. This is the only unprompted defensive alarm the game has —
@@ -155,8 +158,9 @@ const Combat = {
     const ba = CFG.UNITS[u.kind].bldAtk;
     if (!ba) return 0;
     // a VETERAN engine (js/deckfx-army.js, u.vet) throws its stone a quarter
-    // harder; a live card may soften a tribe's engines (the Swallowed Sun)
-    const vet = u.vet || 1;
+    // harder, a veteran of the field (Units.isVeteran) by CFG.VETERAN; a live
+    // card may soften a tribe's engines (the Swallowed Sun)
+    const vet = (u.vet || 1) * (u.vetOf && Units.vetMult ? Units.vetMult(u) : 1);
     return window.Deck && Deck.mult ? Math.round(ba * vet * Deck.mult('bldAtk', u.owner, u)) : Math.round(ba * vet);
   },
 

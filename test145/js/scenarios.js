@@ -84,12 +84,15 @@ const Scenarios = {
          soil, so the two bond (Scenarios.mayGather / siteRefusal) */
       strict: {
         gather: {
-          food: { mark: 'berries', r: 0, wide: 3, after: 'farm', why: 'Pick the berries Mira showed you.' },
+          food: { mark: 'berries', r: 0, wide: 3, after: 'farm', why: 'Pick the berries Mira showed you.',
+            sent: 'Off to the berry bush Mira showed you.', spentWhy: 'The bush is picked bare. A farm opens the other bushes.' },
           /* the grove and the rock Mira names are felled and broken BARE first: a lumber
              camp then stands on the stumps and a quarry on the broken rock (build 193),
              and the stand round each opens once its station is raised */
-          wood: { mark: 'forest', r: 0, wide: 2.5, after: 'lumber', why: 'Cut the trees Mira showed you.' },
-          stone: { mark: 'stone', r: 0, wide: 2.5, after: 'quarry', why: 'Break the grey rocks Mira showed you.' },
+          wood: { mark: 'forest', r: 0, wide: 2.5, after: 'lumber', why: 'Cut the trees Mira showed you.',
+            sent: 'Off to the trees Mira showed you.', spentWhy: 'The grove is felled. A lumber camp opens the woods.' },
+          stone: { mark: 'stone', r: 0, wide: 2.5, after: 'quarry', why: 'Break the grey rocks Mira showed you.',
+            sent: 'Off to the grey rocks Mira showed you.', spentWhy: 'The rock is broken. A quarry opens the other rocks.' },
         },
         fishWhy: 'Not here. Gather where Mira points.',
         sites: {
@@ -180,33 +183,145 @@ const Scenarios = {
     if (!r.rule) return false;
     const sc = this.live(), m = sc.marks && sc.marks[r.rule.mark];
     if (!m) return true;
-    const open = r.rule.after && S.pro && S.pro.done && S.pro.done[r.rule.after];
-    const reach = open && r.rule.wide != null ? r.rule.wide : (r.rule.r || 0);
-    return Math.hypot(x - m[0], y - m[1]) <= reach + 1e-6;
+    return Math.hypot(x - m[0], y - m[1]) <= this._reach(r.res, r.rule, m) + 1e-6;
+  },
+  /* how far round its mark a good may be gathered: `r`, or `wide` once the
+     beat `after` is done — OR once the lesson would otherwise leave the player
+     with no way to get it (build 210, a playtest: "stuck on cutting the trees
+     … i can't cut any old tree"). Two such ways: the station's site is LOST
+     (another building stands on it, siteLost), or the mark is SPENT while the
+     player is short of that good for what the lesson asks next (`_starved`:
+     extra houses had spent the grove's wood, the farm still wanted 60, and
+     every other tree stayed shut until the lumber camp two beats later) */
+  _reach(res, rule, m) {
+    const open = rule.after && ((S.pro && S.pro.done && S.pro.done[rule.after]) || this.siteLost(rule.after) || this._starved(res, m));
+    return open && rule.wide != null ? rule.wide : (rule.r || 0);
+  },
+  /* the mark holds none of its good any more, and the player has less of it
+     than the guide's current beat asks (Prologue.goalCost). Asked per tile by
+     the guide's own scans, so the answer is kept for a tenth of a second */
+  _starved(res, m) {
+    const i = m[1] * CFG.W + m[0], g = CFG.GATHER[S.map.terrain[i]];
+    if (g && g.res === res && S.map.resAmount[i] > 0) return false;
+    const now = typeof performance !== 'undefined' ? performance.now() : 0, c = this._needC;
+    let need;
+    if (c && c.s === S && c.res === res && now - c.t < 100) need = c.need;
+    else {
+      need = 0;
+      // the beat's OWN price (a building, a unit, its cost) — never goalCost's fallback,
+      // the hall's next storey, which every line without a price would ask
+      try {
+        const P = window.Prologue, b = P && P.beat ? P.beat() : null;
+        const gc = b && (b.cost || b.key || b.unit) ? P.goalCost(b) : null;
+        need = (gc && gc[res]) || 0;
+      } catch (e) {}
+      this._needC = { s: S, res, t: now, need };
+    }
+    return (S.res[res] || 0) < need;
+  },
+  /* THE WORK IS CARRIED OUT WHERE THE LESSON ALLOWS (build 210): an order on
+     a good the lesson names, off its ground, while its own ground still holds
+     some, is the player asking for that GOOD — the hand is sent to the nearest
+     tile of the lesson's ground that `ok(x, y)` (the unit can work) accepts.
+     null: the order stands refused (the good is not the lesson's, its ground
+     is spent, or no tile there can be worked) */
+  lessonTile(x, y, ok, from) {
+    const r = this._gatherRule(x, y);
+    if (!r || !r.rule || this.mayGather(x, y)) return null;
+    const sc = this.live(), m = sc.marks && sc.marks[r.rule.mark];
+    if (!m) return null;
+    const reach = this._reach(r.res, r.rule, m), R = Math.ceil(reach);
+    let best = null, bd = 1e9;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const tx = m[0] + dx, ty = m[1] + dy;
+      if (Math.hypot(dx, dy) > reach + 1e-6 || !MapGen.inB(tx, ty)) continue;
+      const i = ty * CFG.W + tx, g = CFG.GATHER[S.map.terrain[i]];
+      if (!g || g.res !== r.res || !(S.map.resAmount[i] > 0) || (ok && !ok(tx, ty))) continue;
+      const d = from ? Math.hypot(tx + 0.5 - from.x, ty + 0.5 - from.y) : Math.hypot(dx, dy);
+      if (d < bd) { bd = d; best = { x: tx, y: ty, res: r.res, say: r.rule.sent || null }; }
+    }
+    return best;
   },
   // the words a refused gather is answered with (null: not refused)
   gatherWhy(x, y) {
     if (this.mayGather(x, y)) return null;
     const r = this._gatherRule(x, y), st = this.strictOf();
-    return (r && r.rule && r.rule.why) || (st && st.fishWhy) || 'Not here.';
+    if (r && r.rule) {
+      // the mark spent: the station is what opens the stand, and the words say so
+      const sc = this.live(), m = sc.marks && sc.marks[r.rule.mark];
+      const i = m ? m[1] * CFG.W + m[0] : -1, g = i >= 0 ? CFG.GATHER[S.map.terrain[i]] : null;
+      if (m && !(g && g.res === r.res && S.map.resAmount[i] > 0) && r.rule.spentWhy) return r.rule.spentWhy;
+      if (r.rule.why) return r.rule.why;
+    }
+    return (st && st.fishWhy) || 'Not here.';
   },
   // a shoal is a good no lesson of game 1 names: line-fishing waits for the full game
   fishWhy() { const st = this.strictOf(); return st && st.gather && !st.gather.fish ? (st.fishWhy || 'Not here.') : null; },
   /* a building the lesson teaches stands on its site and nowhere else — until
      one of its kind stands there, when the rule has done its work */
   siteRefusal(key, x, y) {
-    const st = this.strictOf(), s = st && st.sites && st.sites[key];
-    if (!s || typeof S === 'undefined' || !S) return null;
+    const st = this.strictOf();
+    if (!st || !st.sites || typeof S === 'undefined' || !S) return null;
+    // THE LESSON'S SITES ARE KEPT for the lessons (build 210, a playtest: a second
+    // house went up on the berry bush's spent soil, and the farm the lesson
+    // waited for could stand nowhere — the game stalled for good)
+    const held = this.siteHeld(key, x, y);
+    if (held) return held;
+    const s = st.sites[key];
+    if (!s) return null;
     // a LINE (the road): any tile of it, until every tile of it carries a road
     if (s.path) {
       const line = this.pathTiles(s.path);
       if (!line.length || line.some(t => t[0] === x && t[1] === y)) return null;
-      return line.every(t => this.roadAt(t[0], t[1])) ? null : s.why;
+      return line.every(t => this.roadAt(t[0], t[1]) || this.lineTaken(t[0], t[1])) ? null : s.why;
     }
     const sc = this.live(), m = sc.marks && sc.marks[s.mark];
     if (!m || (x === m[0] && y === m[1])) return null;
     if (S.buildings.some(b => b.owner === 'P' && b.key === key && b.x === m[0] && b.y === m[1])) return null;
+    // a site something else already stands on (an older save) frees its building
+    if (this.siteLost(key)) return null;
     return s.why;
+  },
+  /* a building of another kind on a lesson site its own building has not
+     taken: refused in words that name what the ground is kept for. A site is
+     kept until a building of its kind stands anywhere (its own rule puts it
+     there), the road's line until the whole line is laid */
+  siteHeld(key, x, y) {
+    const st = this.strictOf(), sc = this.live();
+    if (!st || !st.sites || !sc) return null;
+    const sz = (typeof Bld !== 'undefined' && Bld.size) ? Bld.size(key) : 1;
+    const covers = (tx, ty) => tx >= x && tx < x + sz && ty >= y && ty < y + sz;
+    for (const k in st.sites) {
+      if (k === key) continue;
+      const s = st.sites[k], name = (CFG.BUILDINGS[k] && CFG.BUILDINGS[k].name || k).toLowerCase();
+      if (s.path) {
+        const line = this.pathTiles(s.path);
+        if (!line.length || line.every(t => this.roadAt(t[0], t[1]) || this.lineTaken(t[0], t[1]))) continue;
+        if (line.some(t => covers(t[0], t[1]) && !this.roadAt(t[0], t[1]))) return 'Mira keeps this ground for the ' + name + '.';
+        continue;
+      }
+      const m = sc.marks && sc.marks[s.mark];
+      if (!m || !covers(m[0], m[1])) continue;
+      if (S.buildings.some(b => b.owner === 'P' && b.key === k)) continue;
+      return 'Mira keeps this ground for the ' + name + '.';
+    }
+    return null;
+  },
+  /* a lesson building's site with another of the player's buildings on it (a
+     save from before the sites were kept): the building may then stand on any
+     ground its own rules allow, and its good's stand opens (mayGather) */
+  siteLost(key) {
+    const st = this.strictOf(), sc = this.live(), s = st && st.sites && st.sites[key];
+    if (!s || s.path || !sc || typeof S === 'undefined' || !S) return false;
+    const m = sc.marks && sc.marks[s.mark];
+    if (!m || S.buildings.some(b => b.owner === 'P' && b.key === key)) return false;
+    const b = typeof Bld !== 'undefined' && Bld.at ? Bld.at(m[0], m[1]) : null;
+    return !!(b && b.key !== key);
+  },
+  // a stretch of the road's line another of the player's buildings stands on (an older save)
+  lineTaken(x, y) {
+    const b = typeof Bld !== 'undefined' && Bld.at ? Bld.at(x, y) : null;
+    return !!(b && b.owner === 'P' && b.key !== 'road');
   },
   /* the tiles of a straight line between two of the live world's marks, from
      the first — a road the lesson asks for. Empty when either mark is missing
@@ -364,11 +479,15 @@ const Scenarios = {
       if (u && a.still) u.wanderT = 1e9;
       if (u && a.hp > 0) { u.maxhp = a.hp; u.hp = a.hp; }
     }
-    // a relic waiting to be found (no journey map carries one since build 184; the format keeps it)
+    // a relic waiting to be found (game 1's since build 210 — the old one went with build 184's map)
     S.relic = null;
     if (sc.relic && window.Relics && Relics.DEFS && Relics.DEFS[sc.relic.key]) {
       const d = Relics.DEFS[sc.relic.key];
-      S.relic = { key: sc.relic.key, x: sc.relic.x, y: sc.relic.y, w: d.w || 1, h: d.h || 1, found: 0, amount: 0 };
+      /* `sight`: a journey world opens with its map revealed, so a relic there is
+         found when a person of the clan SEES it (Relics.checkDiscovery), never by
+         the map it was drawn on — it stands in the remembered fog until then,
+         a landmark that asks to be walked to */
+      S.relic = { key: sc.relic.key, x: sc.relic.x, y: sc.relic.y, w: d.w || 1, h: d.h || 1, found: 0, amount: 0, sight: true };
     }
     /* AUTHORED RUINS: what a razed building leaves, drawn by the ruins pass
        (js/ruins.js) on its rubble ground ('x'). Authored rubble is put on no
