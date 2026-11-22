@@ -12789,11 +12789,20 @@ const R = {
      state only (R.onNewGame forgets it). */
   _gSel: new Map(),
   _gSelB: new Map(),
+  /* HALF THE FLURRY OUTSIDE THE JOURNEY (build 215 — the operator: "outside
+     of the first three levels that are the tutorial… reduce the gold Flurry
+     sparkles by 50% when a new player is created or when you click an
+     existing character… it's just a little distracting"): a man taken in hand
+     or trained throws this share of the journey's sparks (and leaf with them,
+     GoldFX.burst); a work keeps its own. The journey keeps them all — there
+     the gold is a lesson's answer. */
+  FLURRY_PLAY: 0.5,
+  gFlurry() { return window.S && S.scenario ? 1 : this.FLURRY_PLAY; },
   gringTick(selIds, bid, now) {
-    const G = this.GRING;
+    const G = this.GRING, k = this.gFlurry();
     let fresh = 0;
     if (selIds) for (const id of selIds) if (!this._gSel.has(id)) fresh++;
-    const n = fresh ? Math.max(2, Math.min(G.burstN, Math.floor(G.burstMax / fresh))) : 0;
+    const n = fresh ? Math.max(2, Math.min(Math.round(G.burstN * k), Math.floor(G.burstMax * k / fresh))) : 0;
     if (selIds) for (const id of selIds) if (!this._gSel.has(id)) this._gSel.set(id, { t0: now, n });
     for (const id of this._gSel.keys()) if (!selIds || !selIds.has(id)) this._gSel.delete(id);
     if (bid != null && !this._gSelB.has(bid)) this._gSelB.set(bid, { t0: now, n: G.burstN + 8 });   // a building throws a broader burst round its foot
