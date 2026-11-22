@@ -24,7 +24,7 @@
    Run this after touching any of:
      units.js — formationMove / groupMove
      ui.js — armyAlive/pruneArmies/armyOf/nextArmySlot/saveArmy/removeArmy/
-             selectArmy/armyIsNaval/ARMY_SVG/armyIcon/
+             selectArmy/armyIsNaval/armyKind/armyIcon/
              renderArmyBar/tickArmies, the group panel buttons, unitBusy/
              groupmatesNear/panelSig, syncBottomToggle/setMenuCollapsed
      render.js — onScreen
@@ -224,22 +224,31 @@ const out = await p.evaluate(() => {
     UI.removeArmy(nf);
     const nm = UI.saveArmy(mixed);
     ck('mostOfItAfloatIsStillAFleet', UI.armyIsNaval(nm) === true, '2 hulls to 1 pair of boots');
-    // the art itself (build 154: vectors, the deck icon's rule): the ship is
-    // its own drawing, on the helmet's own 48x48 box, with no ids to collide
-    const A = UI.ARMY_SVG || {};
-    ck('theShipIsItsOwnDrawing', !!A.ship && !!A.helm && A.ship !== A.helm, '');
-    ck('theShipFitsTheHelmetsFootprint', /viewBox="0 0 48 48"/.test(UI.armyIcon(nm)) && /viewBox="0 0 48 48"/.test(UI.armyIcon(na)), 'one 48x48 box for both');
-    ck('theBannersCarryNoIdsOrGradients', ![A.ship, A.helm].some(m => /\bid=|Gradient|url\(/.test(m || '')), 'flat fills, nothing looked up document-wide');
+    /* the art itself (build 214: the HUD's drawn pictures, assets/ui/hud —
+       "make sure that there are quality pixel count"): a banner wears what
+       its army MOSTLY is — a ship for a fleet, a bow for the archers, a horse
+       for the riders, a helmet for everyone else on foot (a tie: the foot) */
+    const bows = [mk('archer', tc.x + 5, tc.y + 3), mk('archer', tc.x + 6, tc.y + 3), mk('defender', tc.x + 7, tc.y + 3)];
+    const horse = [mk('rider', tc.x + 5, tc.y + 5), mk('rider', tc.x + 6, tc.y + 5), mk('defender', tc.x + 7, tc.y + 5)];
+    UI.removeArmy(na);
+    const nb = UI.saveArmy(bows.map(u => u.id)), nh = UI.saveArmy(horse.map(u => u.id));
+    const na2 = UI.saveArmy(foot.map(u => u.id));
+    const kinds = { fleet: UI.armyKind(nm), bows: UI.armyKind(nb), riders: UI.armyKind(nh), mixed: UI.armyKind(na2) };
+    ck('eachArmyFliesWhatItMostlyIs', kinds.fleet === 'ship' && kinds.bows === 'bow' && kinds.riders === 'horse' && kinds.mixed === 'foot', JSON.stringify(kinds));
+    ck('andItsBannerIsThatPicture', [nm, nb, nh, na2].every(n => new RegExp('assets/ui/hud/army-' + UI.armyKind(n) + '\\.png').test(UI.armyIcon(n)) && /^<img /.test(UI.armyIcon(n))),
+      [nm, nb, nh, na2].map(n => UI.armyIcon(n).match(/army-\w+/)[0]).join(', '));
     // and the banner the fleet actually renders differs from an army's
-    ck('theRailTellsThemApart', UI.armyIcon(nm) !== UI.armyIcon(na), 'fleet banner vs army banner');
+    ck('theRailTellsThemApart', UI.armyIcon(nm) !== UI.armyIcon(na2), 'fleet banner vs army banner');
+    for (const n of [nb, nh, na2]) UI.removeArmy(n);
   }
 
   /* ---- 5c. THE BANNERS RIDE THE TOP BAR (operator, build 154: "move the
      Army 1, 2, and 3 icons to the left hand side of the second row (the one
      with the map, pause and settings buttons). This keeps our game UI /
      screen as clean as possible") — they stood on the map under the minimap.
-     Each is a button of the row's own kind, drawn (an inline SVG, never a
-     stamped canvas), carrying its number and its name. ---- */
+     Each is a button of the row's own kind, wearing its drawn picture
+     (build 214: an <img> of assets/ui/hud, never a stamped canvas), carrying
+     its number and its name. ---- */
   {
     const tc = setup('ag5c');
     const g = [[mk('defender', tc.x + 2, tc.y)], [mk('archer', tc.x + 4, tc.y)], [mk('fireship', tc.x + 2, tc.y + 2), mk('fireship', tc.x + 3, tc.y + 2)]];
@@ -252,7 +261,8 @@ const out = await p.evaluate(() => {
     const day = document.getElementById('rDay').getBoundingClientRect(), tb = document.getElementById('topbar').getBoundingClientRect();
     ck('andStandLeftOfTheDayInsideTheBar', btns.length === 3 && btns.every(b2 => { const q = b2.getBoundingClientRect(); return q.width > 0 && q.right <= day.left && q.top >= tb.top && q.bottom <= tb.bottom; }),
       btns.map(b2 => { const q = b2.getBoundingClientRect(); return `${b2.dataset.army}: ${Math.round(q.left)}..${Math.round(q.right)}`; }).join(', ') + ` | the day starts at ${Math.round(day.left)}`);
-    ck('eachIsADrawnButtonOfTheRow', btns.every(b2 => b2.classList.contains('iconbtn') && !!b2.querySelector('svg') && !b2.querySelector('canvas')), '');
+    ck('eachIsADrawnButtonOfTheRow', btns.every(b2 => b2.classList.contains('iconbtn') && !!b2.querySelector('img.aic[src*="assets/ui/hud/army-"]') && !b2.querySelector('canvas')),
+      btns.map(b2 => (b2.querySelector('img') || {}).src || 'no picture').join(', '));
     const said = btns.map(b2 => ({ n: b2.dataset.army, num: (b2.querySelector('.armyN') || {}).textContent, name: b2.getAttribute('aria-label') }));
     ck('andCarriesItsNumberAndName', said.length === 3 && said.every((x, i) => x.n === String(ns[i]) && x.num === x.n && (x.name === 'Army ' + x.n || x.name === 'Fleet ' + x.n)) &&
       said[2].name === 'Fleet ' + ns[2], said.map(x => `${x.num} "${x.name}"`).join(', '));
@@ -382,10 +392,13 @@ const out = await p.evaluate(() => {
        (syncBottomToggle — setMenuCollapsed defers to it), closed states NAME
        what tapping brings back, and a selection's tab is a panel minimize for
        EVERY selection — the old villager exemption relabeled the tab
-       "🔨 Build" over a panel it would actually restore. */
+       "🔨 Build" over a panel it would actually restore. Since build 214 the
+       open build panel closes on a ✕ at its frame's corner, named for what
+       it does. */
     const tog = () => document.getElementById('bmToggle').textContent;
     UI.deselect(); UI.setMenuCollapsed(false);
-    ck('openMenuSaysHide', tog() === '▾ Hide', tog());
+    const tg = document.getElementById('bmToggle');
+    ck('openMenuSaysClose', tog() === '✕' && /close/i.test(tg.getAttribute('aria-label') || ''), `${tog()} "${tg.getAttribute('aria-label')}"`);
     UI.setMenuCollapsed(true);
     ck('closedMenuSaysBuild', /Build/.test(tog()), tog());
     UI.select('unit', a1.id);

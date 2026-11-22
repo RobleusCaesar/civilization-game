@@ -1085,7 +1085,8 @@ const endScreen = async (p) => {
     const E = Prologue._dom(), row = E.elder.querySelector('.peTask'), nm = E.elder.querySelector('.peName'), pic = E.elder.querySelector('.pePic');
     const rr = row.getBoundingClientRect(), cs = getComputedStyle(row), er = E.elder.getBoundingClientRect(), nr = nm.getBoundingClientRect();
     return { tracker: !!document.getElementById('proGoal'), text: row.textContent, head: row.querySelector('.pgt').textContent,
-      icons: row.querySelectorAll('.pgn svg').length, oneLine: rr.height <= 13.5, foot: rr.height + parseFloat(cs.marginBottom),
+      // each good drawn with the top bar's own picture (build 214: an <img>, the vector before it)
+      icons: row.querySelectorAll('.pgn img.pic[src*="assets/ui/hud/res-"]').length, oneLine: rr.height <= 13.5, foot: rr.height + parseFloat(cs.marginBottom),
       name: nm.textContent, onPic: pic.contains(nm), plateIn: nr.bottom <= er.bottom - 5 && nr.top >= er.top };
   });
   ck('theTaskRidesInTheCardWhereHerNameStood', !task.tracker && task.head === 'Build a watchtower' && task.icons === 2 && task.oneLine && task.foot <= 16.6 && /Wood 10\/45/.test(task.text),

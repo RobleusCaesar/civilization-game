@@ -100,6 +100,9 @@ const Screens = {
        test link turned on it stands in for #scrSettings; everywhere else the
        old screen shows exactly as it did. One predicate, SettingsPage.live(). */
     if (name === 'settings' && window.SettingsPage && SettingsPage.live()) scr = SettingsPage.mount();
+    /* …and so does the PAUSE (build 214): the gear opens the one menu, which
+       is the settings page headed PAUSED on its Game tab (SettingsPage.onShow) */
+    else if (name === 'paused' && window.SettingsPage && SettingsPage.live()) scr = SettingsPage.mount();
     if (scr) scr.classList.add('show');
     this._confirmQuit = false;
     if (name === 'title') this.onTitle();
@@ -663,7 +666,7 @@ const Screens = {
       }
     } catch (e) { /* analytics may never keep a player out of their game */ }
     S.paused = false;
-    document.getElementById('btnPause').textContent = '⏸';
+    { const pb = document.getElementById('btnPause'); if (pb) pb.textContent = '⏸'; }   // (the ⏸ left the bar in build 214)
     this.show('playing');
     this.unsay();   // nothing the shell said follows the player into the game
     // the world board is looked at while the game is played: a win reads
@@ -1056,7 +1059,8 @@ const Screens = {
     const d = CFG.BUILDINGS.wonder, lv = (d.levels || [])[0] || {};
     const cost = (Bld.effCost && Bld.effCost('P', 'wonder')) || lv.cost || {};
     const days = Math.max(1, Math.round((lv.time || 45) * (Bld.wonderTimeMult ? Bld.wonderTimeMult() : 1)));
-    const price = Bld.costStr ? Bld.costStr(cost) : '';
+    // (each good the bar's own drawn picture — UI.iconHtml, build 214)
+    const price = Bld.costStr ? (typeof UI !== 'undefined' && UI.iconHtml ? UI.iconHtml(Bld.costStr(cost)) : Bld.costStr(cost)) : '';
     const el = document.createElement('div');
     el.id = 'victoryModal';
     el.innerHTML =
@@ -1736,11 +1740,14 @@ const Screens = {
     // no world-name line here (operator: the landform label is not always
     // an accurate read of the map, and the wordmark carries the screen)
     const q = this.el('btnQuitTitle');
-    q.textContent = 'Menu';
+    const live = window.SettingsPage && SettingsPage.live();
+    q.textContent = live ? 'Main menu' : 'Menu';
     q.classList.remove('danger');
     const r = this.el('btnResign');
     if (r) { r.textContent = 'Resign'; r.classList.remove('danger'); }
     this._confirmResign = false;
+    // THE ONE MENU: the pause is the settings page on its Game tab
+    if (live) SettingsPage.onShow('game');
   },
 
   // the running chronicle — rendered wherever it lives (Settings, now)

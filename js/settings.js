@@ -37,13 +37,27 @@ const SettingsPage = {
     try { return !!(window.Deck && Deck.devOn && Deck.devOn()); } catch (e) { return false; }
   },
 
+  /* THE PAUSE MENU AND THE SETTINGS ARE ONE PAGE (build 214 — the operator:
+     "collapse the pause menu and the settings menu into a single menu… The
+     Settings menu is what's going to carry through… strategically cut things
+     from the settings menu so that we don't have too much bloat in there and
+     then whatever was in the pause menu if it's not in the settings, menu
+     needs to be carried over"). Opened from a game (the gear, Escape,
+     Screens.show('paused')) it is headed PAUSED and opens on the GAME tab —
+     Resume, Save, Load, the Guide, the main menu and Resign, the old pause
+     menu's own buttons moved in whole (their ids and handlers are
+     Screens.bind's), and this run's chronicle; from the title it is the
+     Settings, without that tab. Audio folded into General (one tab fewer to
+     look through, and a phone's strip keeps five). */
   TABS: [
+    { k: 'game', name: 'Game', inGame: true },
     { k: 'general', name: 'General' },
-    { k: 'audio', name: 'Audio' },
     { k: 'saves', name: 'Saves' },
     { k: 'feedback', name: 'Feedback' },
     { k: 'notes', name: 'Patch Notes', short: 'Notes' },
   ],
+  inGame: false,
+  tabsLive() { return this.TABS.filter(t => !t.inGame || this.inGame); },
   tab: 'general',
   el: null,
 
@@ -201,7 +215,7 @@ const SettingsPage = {
     });
     el.querySelector('.sxNav').addEventListener('keydown', e => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      const ks = this.TABS.map(t => t.k);
+      const ks = this.tabsLive().map(t => t.k);
       const i = ks.indexOf(this.tab), d = (e.key === 'ArrowDown' || e.key === 'ArrowRight') ? 1 : -1;
       this.open(ks[(i + d + ks.length) % ks.length]);
       const nb = el.querySelector(`.sxTab[data-tab="${this.tab}"]`); if (nb) nb.focus();
@@ -214,21 +228,35 @@ const SettingsPage = {
     return el;
   },
 
+  /* back: from the title's Settings, the title; from a game, the game — the
+     menu IS the pause, so leaving it resumes (Screens.enterGame, as Resume) */
   back() {
     if (typeof Screens === 'undefined') return;
+    if (this.inGame && Screens.current === 'paused') { Screens.enterGame(); return; }
     Screens.show(Screens.backTo === 'paused' ? 'paused' : 'title');
   },
 
-  // Screens.show('settings') calls this every time the page is shown
-  onShow() {
+  // Screens.show('settings') and Screens.show('paused') call this every time
+  // the page is shown; `want` is the tab to open ('game' from the pause)
+  onShow(want) {
     this.mount();
     this._chiefAsked = false;
-    this.open(this.tab || 'general');
+    this.inGame = this.gameLive() && typeof Screens !== 'undefined' && (Screens.current === 'paused' || Screens.backTo === 'paused');
+    this.el.classList.toggle('sxInGame', this.inGame);
+    const h2 = this.el.querySelector('.sxHead h2'), gear = this.el.querySelector('.sxGear');
+    if (h2) h2.textContent = this.inGame ? 'Paused' : 'Settings';
+    if (gear) { const src = this.art(this.inGame ? 'tab-game' : 'tab-general'); if (gear.getAttribute('src') !== src) gear.setAttribute('src', src); }
+    const back = this.el.querySelector('.sxBack');
+    if (back) back.setAttribute('aria-label', this.inGame ? 'Resume' : 'Back');
+    let k = want || this.tab || 'general';
+    if (k === 'game' && !this.inGame) k = 'general';
+    this.open(k);
     this.paintDots();
   },
 
   open(k) {
-    if (!this.TABS.some(t => t.k === k)) k = 'general';
+    if (k === 'audio') k = 'general';   // the old Audio tab lives in General now
+    if (!this.tabsLive().some(t => t.k === k)) k = 'general';
     this.tab = k;
     for (const b of this.el.querySelectorAll('.sxTab')) {
       const on = b.dataset.tab === k;
@@ -238,10 +266,21 @@ const SettingsPage = {
     }
     this.el.dataset.tab = k;
     const pane = this.el.querySelector('.sxPane');
-    pane.innerHTML = this['tab_' + k]();
+    /* THE PAUSE'S BUTTONS NEVER LEAVE THE DOCUMENT: the game and its tests
+       find them by id at any moment (Screens.onPaused writes the way out's
+       label before the page is shown), so another tab parks them in a hidden
+       holder of this page rather than dropping them with the pane
+       (tests/finished-run-continue.mjs §7j) */
+    if (this._game && this._game.parentNode === pane) this.parkGame();
+    if (k === 'game') {
+      // the pause menu's own buttons, moved in whole (their handlers ride them)
+      pane.textContent = '';
+      pane.appendChild(this.gameNode());
+      this.paintGame();
+      pane.insertAdjacentHTML('beforeend', this.chronicle());
+    } else pane.innerHTML = this['tab_' + k]();
     pane.scrollTop = 0;
-    if (k === 'audio') this.paintAudio();
-    if (k === 'general') this.paintGeneral();
+    if (k === 'general') { this.paintGeneral(); this.paintAudio(); }
     if (k === 'feedback') this.paintForm();
     if (k === 'notes') this.markNotesSeen();
     this.paintDots();
@@ -259,9 +298,71 @@ const SettingsPage = {
   },
   gameLive() { return !!(window.S && S.map && typeof Screens !== 'undefined' && !Screens._demo); },
 
+  /* ---------------- GAME (in a game only) ---------------- */
+  /* built ONCE: the old pause menu's buttons are MOVED here (their ids are
+     what the game and its tests press, their handlers Screens.bind's), and
+     dressed as this page's plates — Resume the one lit plate, the way out
+     kept apart from it, at the foot (the research: a risky target far from
+     a frequent one) */
+  _game: null,
+  gameNode() {
+    if (this._game) return this._game;
+    const g = document.createElement('div');
+    g.className = 'sxGame';
+    const take = (id, cls, label) => {
+      const b = document.getElementById(id);
+      if (!b) return null;
+      b.className = 'sxBtn ' + cls;
+      if (label) b.textContent = label;
+      return b;
+    };
+    const card = (title, cls) => { const c = document.createElement('section'); c.className = 'sxCard ' + (cls || ''); if (title) { const h = document.createElement('h3'); h.textContent = title; c.appendChild(h); } return c; };
+    const row = (...bs) => { const r = document.createElement('div'); r.className = 'sxGRow'; for (const b of bs) if (b) r.appendChild(b); return r; };
+    const play = card('', 'sxGPlay');
+    const res = take('btnPauseResume', 'sxGo', 'Resume');
+    if (res) play.appendChild(row(res));
+    play.appendChild(row(take('btnPauseSave', 'sxG', 'Save game'), take('btnPauseLoad', 'sxG', 'Load game')));
+    play.appendChild(row(take('btnPauseHow', 'sxG', 'Guide')));
+    const saved = document.createElement('p'); saved.className = 'sxNote sxSaved'; play.appendChild(saved);
+    g.appendChild(play);
+    const leave = card('Leave this game', 'sxGLeave');
+    leave.appendChild(row(take('btnQuitTitle', 'sxG sxQuiet', 'Main menu'), take('btnResign', 'sxG sxQuiet', 'Resign')));
+    const lp = document.createElement('p'); lp.className = 'sxNote';
+    lp.textContent = 'Resign ends this game as a defeat. The main menu keeps it to Continue later.';
+    leave.appendChild(lp);
+    g.appendChild(leave);
+    this._game = g;
+    return g;
+  },
+  // a price in a line wears the bar's own drawn goods (UI.iconHtml), as the toasts do
+  goods(h) { return typeof UI !== 'undefined' && UI.iconHtml ? UI.iconHtml(h) : h; },
+  parkGame() {
+    if (!this._game || !this.el) return;
+    let park = this.el.querySelector('.sxPark');
+    if (!park) { park = document.createElement('div'); park.className = 'sxPark'; park.hidden = true; this.el.appendChild(park); }
+    park.appendChild(this._game);
+  },
+  // the save line: when this game was last saved, in its own days
+  paintGame() {
+    const p = this._game && this._game.querySelector('.sxSaved');
+    if (!p) return;
+    const d = typeof Screens !== 'undefined' ? Screens.lastSavedDay : null;
+    p.textContent = !(window.S && S.day) ? '' : d && d >= S.day ? 'Saved today (day ' + S.day + ').'
+      : d > 0 ? 'Last saved on day ' + d + ' — it is day ' + S.day + ' now.' : 'Not saved yet. Autosave keeps a copy as you play.';
+  },
+  // this run's event log, under the game's own buttons
+  chronicle() {
+    if (!(this.gameLive() && S.log && S.log.length)) return '';
+    const err = (typeof G !== 'undefined' && G.lastFrameError)
+      ? `<div class="sxErr">⚠ ${this.esc(String(G.lastFrameError).split('\n')[0]).slice(0, 160)}</div>` : '';
+    return this.card('Chronicle',
+      `<details class="sxFold"><summary>This run’s event log<span>${S.log.length > 30 ? 'latest 30' : S.log.length + ' entries'}</span></summary>` +
+      `<div class="sxLog">${err}${S.log.slice(0, 30).map(l => `<div><b>Day ${this.esc(l.day)}</b> ${this.goods(this.esc(l.msg))}</div>`).join('')}</div></details>`);
+  },
+
   /* ---------------- GENERAL ---------------- */
   tab_general() {
-    let h = '';
+    let h = this.soundCard();
     if (window.Backend && Backend.isReady()) {
       h += this.card('Your Chief',
         this.row('Chief’s name', 'Shown with your scores on the world board.',
@@ -277,13 +378,7 @@ const SettingsPage = {
     if (this.hasMouse()) h += this.card('Mouse',
       this.row('Drag to select', 'A left drag on the map draws a box round your people. Off, it moves the map.',
         this.toggle('boxselect', this.boxOn(), 'Drag to select')));
-    if (this.gameLive() && S.log && S.log.length) {
-      const err = (typeof G !== 'undefined' && G.lastFrameError)
-        ? `<div class="sxErr">⚠ ${this.esc(String(G.lastFrameError).split('\n')[0]).slice(0, 160)}</div>` : '';
-      h += this.card('Chronicle',
-        `<details class="sxFold"><summary>This run’s event log<span>${S.log.length > 30 ? 'latest 30' : S.log.length + ' entries'}</span></summary>` +
-        `<div class="sxLog">${err}${S.log.slice(0, 30).map(l => `<div><b>Day ${this.esc(l.day)}</b> ${this.esc(l.msg)}</div>`).join('')}</div></details>`);
-    }
+    // (the chronicle is the Game tab's now, beside the game it tells)
     return h;
   },
   hasMouse() { try { return matchMedia('(any-pointer: fine)').matches; } catch (e) { return false; } },
@@ -311,18 +406,18 @@ const SettingsPage = {
     b.setAttribute('aria-checked', on ? 'true' : 'false');
   },
 
-  /* ---------------- AUDIO ---------------- */
-  tab_audio() {
+  /* ---------------- SOUND (General's first card; the Audio tab it was) ---------------- */
+  soundCard() {
     const one = (bus, label, sub) =>
       `<div class="sxAud" data-bus="${bus}">` +
         this.row(label, sub, this.toggle('mute-' + bus, true, label)) +
         `<div class="sxDial"><input class="sxVol" type="range" min="0" max="100" step="5" data-bus="${bus}" aria-label="${this.attr(label)} volume"><output class="sxPct">0%</output></div>` +
       '</div>';
-    return this.card('Audio',
-      one('music', 'Music', 'The fireside tune under the game.') +
-      one('sfx', 'Sound effects', 'Axes, horns, battle and the clicks of the menus.') +
-      '<p class="sxNote">The music is four recorded tunes that take turns every few minutes, and battle music plays when your army attacks. Each tune downloads only when its turn comes.</p>');
+    return this.card('Sound',
+      one('music', 'Music', 'Plays four recorded tunes in turn, and battle music when your army attacks.') +
+      one('sfx', 'Sound effects', 'Axes, horns, battle and the clicks of the menus.'));
   },
+  tab_audio() { return this.soundCard(); },
   /* the audio rows read Sound's LIVE state every time — one source of truth
      for "is the music on", the same rule Screens.paintAudioRows keeps for the
      old page: the switch shows whether anything will be HEARD (switch and
@@ -628,6 +723,28 @@ SettingsPage.CSS = `
 #scrSetx .sxDot { display: none; position: absolute; top: 6px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #e2412b;
   box-shadow: 0 0 0 2px #1d1007, 0 0 7px rgba(255,90,60,0.75); }
 #scrSetx .sxTab.hasDot .sxDot { display: block; }
+/* THE GAME TAB is the pause's, so it shows only over a game (sxInGame) */
+#scrSetx .sxPark { display: none !important; }
+#scrSetx .sxTab[data-tab="game"] { display: none; }
+#scrSetx.sxInGame .sxTab[data-tab="game"] { display: flex; }
+#scrSetx .sxGame .sxGRow { display: flex; gap: 10px; margin-top: 10px; }
+#scrSetx .sxGame .sxGRow:first-of-type { margin-top: 0; }
+#scrSetx .sxGame .sxCard h3 + .sxGRow { margin-top: 10px; }
+#scrSetx .sxGame .sxBtn { flex: 1 1 0; min-width: 0; height: 48px; padding: 0 10px; font-size: 14px; letter-spacing: 1.6px; }
+#scrSetx .sxGame .sxGo { height: 60px; font-size: 19px; letter-spacing: 4px; color: #fff3c8; }
+#scrSetx .sxGame .sxGo::before { background: radial-gradient(ellipse 70% 80% at 50% 30%, rgba(255,214,120,.22), rgba(0,0,0,0) 70%), linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
+  box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 12px 0 rgba(255,236,170,0.12), inset 0 -10px 0 rgba(0,0,0,0.25); }
+#scrSetx .sxGame .sxQuiet { height: 44px; font-size: 12.5px; color: #d9caa6; }
+#scrSetx .sxGame .sxBtn.danger { color: #ffe3d6; }
+#scrSetx .sxGame .sxBtn.danger::before { background: linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%);
+  box-shadow: inset 0 0 0 2px #1d0804, inset 0 0 0 3px #ffb08a, inset 0 10px 0 rgba(255,200,170,0.12), inset 0 -8px 0 rgba(0,0,0,0.3); }
+#scrSetx .sxGame .sxSaved { text-align: center; margin-top: 12px; }
+/* a narrow phone keeps every plate's words on one line */
+@media (max-width: 359px) {
+  #scrSetx .sxGame .sxBtn:not(.sxGo) { padding: 0 6px; letter-spacing: .6px; white-space: nowrap; }
+  #scrSetx .sxGame .sxQuiet { font-size: 12px; }
+}
+#scrSetx .sxGame .sxGLeave .sxNote { margin-top: 10px; }
 #scrSetx .sxChev { display: none; }
 #scrSetx .sxRailFoot { display: none; }
 
@@ -838,9 +955,13 @@ SettingsPage.CSS = `
   #scrSetx .sxTab img { width: 28px; height: 28px; }
   #scrSetx .sxRailFoot { display: none; }
 }
-/* the narrowest phones: the strip keeps its five */
+/* the narrowest phones: the strip keeps its five — over a game the Game tab
+   makes it five again (build 214), so there each plate takes its own word's
+   width and shares what is left, rather than five equal plates the longest
+   words crowd (tests/settings.mjs itFitsAt320x568OverAGame) */
 @media (max-width: 359px) {
-  #scrSetx .sxTab { font-size: 8.5px; letter-spacing: 0.2px; }
+  #scrSetx .sxNav { gap: 4px; padding-left: 4px; padding-right: 4px; }
+  #scrSetx .sxTab { flex: 1 1 auto; padding-left: 5px; padding-right: 5px; font-size: 8.5px; letter-spacing: 0.2px; }
   #scrSetx .sxTab img { width: 24px; height: 24px; }
   #scrSetx .sxHead h2 { font-size: 24px; }
 }

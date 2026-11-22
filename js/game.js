@@ -398,7 +398,7 @@ const G = {
     if (window.Prologue) Prologue.onWorldChange();   // the Elder's script is this world's (js/prologue.js)
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // the deck's sheet, aim and flight (nothing, with cards off)
-    document.getElementById('btnPause').textContent = '⏸';
+    { const pb = document.getElementById('btnPause'); if (pb) pb.textContent = '⏸'; }   // (the ⏸ left the bar in build 214)
     // opening notes linger twice as long — there's a lot to take in on day 1
     // (a prologue world's first words are the Elder's — js/prologue.js)
     if (!sc) {
@@ -3449,7 +3449,7 @@ const G = {
     Bld._block = null;
     this.setWonder(S.wonder);   // name, blurb and artwork follow the saved roll
     S.paused = true;
-    document.getElementById('btnPause').textContent = '▶';
+    { const pb = document.getElementById('btnPause'); if (pb) pb.textContent = '▶'; }   // (the ⏸ left the bar in build 214)
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown

@@ -83,26 +83,36 @@ const UI = {
      changed — and guessing is exactly what was broken, since building PNGs
      decode asynchronously LONG after the menu was laid out at boot, so the
      icon kept the procedural drawing for the whole session. */
-  iconInto(ic, spr) {
+  /* `px` is the canvas's own size: the build cards hold theirs at 192 (build
+     214 — a 58px card picture on a 3x phone is 174 device pixels, and a 64px
+     canvas blown up to it was the soft icon the critique saw); the panel's
+     keeps 64. A call that names no size keeps the size the canvas was given
+     (so asking again stays free, tests/art-pipeline.mjs). Procedural art is
+     drawn nearest-neighbour into it (whole multiples of its 32px grid), PNG
+     art smoothly. */
+  iconInto(ic, spr, px) {
     if (!spr) return;
-    if (ic._cfIcon === spr) return;   // already showing this exact drawable
-    ic._cfIcon = spr;
-    ic.width = 64; ic.height = 64;
+    px = px || ic._cfPx || 64;
+    if (ic._cfIcon === spr && ic.width === px) return;   // already showing this exact drawable
+    ic._cfIcon = spr; ic._cfPx = px;
+    ic.width = px; ic.height = px;
     const g = ic.getContext('2d');
     // hand-authored PNG art keeps its aspect in the menu too — fit within the
     // icon, feet on the floor (the same reading as R.blitBld's anchor rule)
     if (spr._cfArt && spr.height !== spr.width) {
-      g.imageSmoothingEnabled = true;
-      const s = Math.min(64 / spr.width, 64 / spr.height);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      const s = Math.min(px / spr.width, px / spr.height);
       const w = spr.width * s, h = spr.height * s;
-      g.drawImage(spr, (64 - w) / 2, 64 - h, w, h);
+      g.drawImage(spr, (px - w) / 2, px - h, w, h);
       return;
     }
     // PNG art downscales smoothly (a 256px master decimated nearest-neighbour
     // shimmers); procedural pixel art keeps its hard-edged look
     g.imageSmoothingEnabled = !!spr._cfArt;
-    g.drawImage(spr, 0, 0, spr.width, spr.height, 0, 0, 64, 64);
+    if (spr._cfArt) g.imageSmoothingQuality = 'high';
+    g.drawImage(spr, 0, 0, spr.width, spr.height, 0, 0, px, px);
   },
+  MENU_ICON_PX: 192,
 
   init() {
     /* desktop parity for placement mode: Esc = the ✗ (discard the ghost,
@@ -140,8 +150,8 @@ const UI = {
     // the enemy monument rises — the days on it are the whole endgame clock
     setInterval(() => { try { this.tickWonderWarn(); } catch (e) {} }, 900);
     // the HUD's material (--wood-tex) is a vector in index.html's :root now —
-    // drawn at the screen's own pixels, present from the first paint — and so
-    // are the top bar's resource icons (the .ric SVGs in its markup, build 154)
+    // drawn at the screen's own pixels, present from the first paint — and
+    // the top bar's goods are drawn pictures in its markup (the .ric imgs, build 214)
     this.buildMenu();
     this.bindCanvas();
     this.bindButtons();
@@ -196,10 +206,12 @@ const UI = {
         btn.appendChild(rib);
       }
       const ic = document.createElement('canvas');
-      this.iconInto(ic, this.menuIconSprite(key));
+      this.iconInto(ic, this.menuIconSprite(key), this.MENU_ICON_PX);
       btn.appendChild(ic);
       const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = d.name;
-      const co = document.createElement('div'); co.className = 'bcost'; co.textContent = Bld.costStr(Bld.effCost('P', key));
+      const co = document.createElement('div'); co.className = 'bcost';
+      const cost0 = Bld.effCost('P', key);
+      co.innerHTML = this.costHtml(cost0); co.dataset.c = Bld.costStr(cost0);
       btn.appendChild(nm); btn.appendChild(co);
       if (key === 'wonder') { const pg = document.createElement('div'); pg.className = 'bprog'; btn.appendChild(pg); }
       btn.addEventListener('click', () => {
@@ -347,10 +359,18 @@ const UI = {
       const gated = CFG.BUILDINGS[key].reqTC && (!tc || tc.level < CFG.BUILDINGS[key].reqTC);
       b.classList.toggle('sel', this.placing === key);
       b.classList.toggle('cant', gated || !Bld.canAfford(cost));
+      // a card the hall has not reached is LOCKED (dimmed, it says what it
+      // waits for); one merely short keeps its picture whole and reds the
+      // goods it is short of (the research's rule: what is needed beside
+      // what is had, never colour alone — the number is the count)
+      b.classList.toggle('locked', !!gated);
       const co = b.querySelector('.bcost');
       if (co) {
-        const txt = Bld.costStr(cost);
-        if (co.textContent !== txt) co.textContent = txt;
+        const sig = Bld.costStr(cost) + '|' + this.shortKeys(cost) + '|' + (gated ? CFG.BUILDINGS[key].reqTC : 0);
+        if (co.dataset.sig !== sig) {
+          co.dataset.sig = sig; co.dataset.c = Bld.costStr(cost);
+          co.innerHTML = gated ? `<span class="blk">Needs hall Lv ${CFG.BUILDINGS[key].reqTC}</span>` : this.costHtml(cost);
+        }
       }
       /* THE ICON FOLLOWS THE ART, every frame. iconInto no-ops unless the
          drawable actually changed, so this covers all of it with one rule:
@@ -358,8 +378,46 @@ const UI = {
          under the running game, the wall's tier stepping to stone, and this
          run's rolled monument. */
       const ic = b.querySelector('canvas');
-      if (ic) this.iconInto(ic, this.menuIconSprite(key));
+      if (ic) this.iconInto(ic, this.menuIconSprite(key), this.MENU_ICON_PX);
     });
+  },
+
+  /* ---------------- A GOOD IN THE TEXT IS ITS PICTURE (build 214) ----------------
+     Every price the game writes (Bld.costStr: "🪵 60 🪨 5") is shown in the
+     HUD with the bar's own drawn goods (.ri, index.html) — the operator:
+     "make the icons for the different resources unique to our game, don't
+     reuse any emojis". The glyph stays inside the .ri box (pushed out of
+     sight by the stylesheet), so the text a reader, a copy or a test reads
+     is the very string the game wrote. ✨ is gold only before a number —
+     elsewhere it is a sparkle (a relic, Enlightenment). Only game-generated
+     text comes here; a toast is escaped first. */
+  RI_RE: /(\u{1F356}|\u{1FAB5}|\u{1FAA8})|\u2728(?=[\s\u00a0]*[\d+\u2212-])/gu,
+  RI_OF: { '\u{1F356}': 'food', '\u{1FAB5}': 'wood', '\u{1FAA8}': 'stone', '\u2728': 'gold' },
+  iconHtml(h) {
+    h = String(h == null ? '' : h);
+    if (!/[\u{1F356}\u{1FAB5}\u{1FAA8}\u2728]/u.test(h)) return h;
+    // never inside a tag (an attribute may carry a price, e.g. a title)
+    return h.replace(/(<[^>]*>)|([^<]+)/g, (m, tag, txt) => tag ? tag
+      : txt.replace(this.RI_RE, g => `<i class="ri" data-r="${this.RI_OF[g]}">${g}</i>`));
+  },
+  iconText(el, msg) {
+    const esc = String(msg).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const h = this.iconHtml(esc);
+    if (h === esc) el.textContent = msg; else el.innerHTML = h;
+  },
+  // a build card's price: each good its picture and its number, a good the town is short of in red
+  costHtml(cost) {
+    const parts = [];
+    for (const k in cost) {
+      const short = S && S.res && (S.res[k] || 0) < cost[k];
+      parts.push(`<span class="bc${short ? ' short' : ''}"><i class="ri" data-r="${k}">${Bld.resIcon(k)}</i>${cost[k]}</span>`);
+    }
+    return parts.join(' ') || 'free';
+  },
+  shortKeys(cost) {
+    let k2 = '';
+    if (S && S.res) for (const k in cost) if ((S.res[k] || 0) < cost[k]) k2 += k[0];
+    return k2;
   },
 
   /* ---------------- canvas input ---------------- */
@@ -1048,7 +1106,7 @@ const UI = {
     else if (v && v.ok && (road = this.placeWouldRoad(g, false))) { msg = road; boon = true; }
     if (msg) {
       why.style.display = 'block';
-      if (why.textContent !== msg) why.textContent = msg;
+      if (why._msg !== msg) { why._msg = msg; this.iconText(why, msg); }
       const cw = Math.min(260, why.offsetWidth || 160), ch = 30;
       let cx2 = sx + sw / 2 - cw / 2;
       // opposite side of the pair: buttons beneath → chip above, and back —
@@ -2213,7 +2271,7 @@ const UI = {
         <div class="psub">${this.panelSub()}</div></div>
         <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>` +
       `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${hint}</span>`}` +
-      (cls === 'vil' ? `<button class="abtn" data-act="ggobuild">🔨 Build<small>they all raise it</small></button>` : '') +
+      (cls === 'vil' ? `<button class="abtn" data-act="ggobuild"><img class="bic" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false">Build<small>they all raise it</small></button>` : '') +
       `</div>`;
     const ic = panel.querySelector('#pIcon');
     if (ic && first) this.iconInto(ic, R.unitSprite(first));
@@ -2938,17 +2996,35 @@ const UI = {
   panelMinMode() { return !!this.sel; },
   /* THE ONE LABEL AUTHORITY (called on select, renderPanel, deselect, and
      after any minimize — setMenuCollapsed defers here too, so no second
-     writer can disagree). A CLOSED state names what tapping brings back
-     ("🔨 Build ▴" / "▴ Panel"); the OPEN state says what tapping does
-     ("▾ Hide") — the bare ▾ read as decoration, not a control, in the same
-     playtest that found the six-button war party filling the screen. */
+     writer can disagree). A CLOSED state names what tapping brings back (the
+     BUILD button / "▴ Panel"); an OPEN state says what tapping does (the
+     build panel's ✕, "Close the build menu"; a selection's "▾ Hide") — the
+     bare ▾ read as decoration, not a control, in the same playtest that
+     found the six-button war party filling the screen. And the bar's whole
+     STATE rides the same writer (build 214): #bottombar's data-bm is what
+     the stylesheet draws — closed (the BUILD button standing on the map),
+     open (the framed build panel, its banner and ✕), panel and panelmin —
+     so the label and the picture can never disagree. */
   syncBottomToggle() {
     const t = document.getElementById('bmToggle');
     if (!t) return;
-    t.textContent = this.panelMinMode()
-      ? (this.panelHidden ? '▴ Panel' : '▾ Hide')            // one panel minimize/restore
-      : (this.menuCollapsed ? '🔨 Build ▴' : '▾ Hide');      // the Build-menu toggle
+    const bar = document.getElementById('bottombar');
+    const mode = this.panelMinMode() ? (this.panelHidden ? 'panelmin' : 'panel') : (this.menuCollapsed ? 'closed' : 'open');
+    if (bar && bar.dataset.bm !== mode) bar.dataset.bm = mode;
+    if (t.dataset.mode === mode) return;
+    t.dataset.mode = mode;
+    if (mode === 'closed') {
+      t.innerHTML = `<img class="bmIc" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false"><span>Build</span>`;
+      t.setAttribute('aria-label', 'Build'); t.title = 'Build (B)';
+    } else if (mode === 'open') {
+      t.textContent = '✕';
+      t.setAttribute('aria-label', 'Close the build menu'); t.title = 'Close (B)';
+    } else {
+      t.textContent = mode === 'panelmin' ? '▴ Panel' : '▾ Hide';   // one panel minimize/restore
+      t.setAttribute('aria-label', mode === 'panelmin' ? 'Show the panel' : 'Hide the panel'); t.title = '';
+    }
   },
+  HUD_ART: 'assets/ui/hud/',
   // minimize/restore the selection panel for a non-villager (keeps the selection
   // live so the unit still answers taps on the open board below)
   togglePanelMin() {
@@ -3235,47 +3311,6 @@ const UI = {
     this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
-  /* THE BANNERS ARE DRAWN (build 154): the saved armies ride the top bar's
-     second row now, beside the map and the deck, so they are chrome — vectors
-     at the screen's own pixels, never blown-up pixel art (the deck's rule) —
-     where they were 21x28 sprites stamped on the map. An army flies a bronze
-     helmet under a red crest, a fleet a striped sail over a shielded hull;
-     the button carries the army's NUMBER (1, 2 or 3), which the old banner
-     told by fanning one, two or three helmets. No ids, no gradients: the
-     light and shade are flat fills (the deck icon's rule). */
-  ARMY_SVG: {
-    helm:
-      '<path d="M8.6 17.2 Q9.6 4.6 24 4.2 Q38.4 4.6 39.4 17.2 L33.8 17.2 Q33 10.4 24 10.2 Q15 10.4 14.2 17.2 Z" fill="#a8392a" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/>' +
-      '<path d="M11.4 13.4 Q13.4 6.8 24 6.6 Q29.6 6.7 32.6 8.6" stroke="#d65d42" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-      '<path d="M13.6 9.6 L15.2 11.4 M17.4 7.4 L18.4 9.6 M21.6 6.4 L22 8.8 M26.2 6.4 L25.8 8.8 M30.4 7.4 L29.4 9.6 M34.2 9.6 L32.6 11.4" stroke="#6e2216" stroke-width="1.1" stroke-linecap="round"/>' +
-      '<path d="M10.4 39.6 L10.6 24.4 C10.8 16 16.6 11.8 24 11.8 C31.4 11.8 37.2 16 37.4 24.4 L37.6 39.6 C37.6 42.4 35.6 44 33 44 L28.4 44 L27.4 31.4 L20.6 31.4 L19.6 44 L15 44 C12.4 44 10.4 42.4 10.4 39.6 Z" fill="#b8913f" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/>' +
-      '<path d="M13 30 C12.8 20.4 17 15 23.2 14.4 C19 17.6 16.4 22.6 16.2 30.2 Z" fill="#e2c477"/>' +
-      '<path d="M34.6 24.6 C34.4 18.8 31.6 15.6 27.6 14.6 C31.6 17.6 33 22 33.2 41.6 L35.2 41 C35.4 35 35 29 34.6 24.6 Z" fill="#87652a"/>' +
-      '<path d="M13.6 22.6 Q18 20.8 22.2 22.2 L22.2 26 L25.8 26 L25.8 22.2 Q30 20.8 34.4 22.6 L34 26.6 Q29.6 27.8 27.2 27.8 L27.2 31.6 L20.8 31.6 L20.8 27.8 Q18.4 27.8 14 26.6 Z" fill="#1d150c" stroke="#140d06" stroke-width="1.2" stroke-linejoin="round"/>' +
-      '<path d="M22.4 26.2 L22.4 31.2" stroke="#87652a" stroke-width="0.9"/>' +
-      '<path d="M14 19.2 Q24 15 34 19.2" stroke="#87652a" stroke-width="1.1" fill="none" stroke-dasharray="1.2 2.4" stroke-linecap="round"/>',
-    ship:
-      '<path d="M3 42.6 Q8 40.4 13 42.6 T23 42.6 T33 42.6 T45 42.6" stroke="#4a7fb0" stroke-width="2.4" fill="none" stroke-linecap="round"/>' +
-      '<path d="M24 31 L24 4.6" stroke="#140d06" stroke-width="3.6" stroke-linecap="round"/>' +
-      '<path d="M24 31 L24 4.6" stroke="#7a5a2c" stroke-width="1.6" stroke-linecap="round"/>' +
-      '<path d="M11 8.4 L37 8.4 Q38.6 17 36.4 25.4 L11.6 25.4 Q9.4 17 11 8.4 Z" fill="#e6dab6" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/>' +
-      '<path d="M15.6 8.8 Q14.6 17 15.8 25 L20 25 Q18.8 17 19.8 8.8 Z M28.2 8.8 Q29.2 17 28 25 L32.2 25 Q33.4 17 32.4 8.8 Z" fill="#a8392a"/>' +
-      '<path d="M11.8 9.8 Q10.8 16 11.8 22" stroke="#fff8e0" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
-      '<path d="M10 8.4 L38 8.4" stroke="#140d06" stroke-width="2.4" stroke-linecap="round"/>' +
-      '<path d="M4.2 26.6 Q6.4 30.2 9.4 30.6 L38.6 30.6 Q41.6 30.2 43.8 26.6 Q44.6 33.6 39.6 38.6 Q36 41.4 30 41.4 L18 41.4 Q12 41.4 8.4 38.6 Q3.4 33.6 4.2 26.6 Z" fill="#7a5a2c" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/>' +
-      '<path d="M7.6 35 Q12 37.6 18 37.8 L30 37.8 Q36 37.6 40.4 35" stroke="#5a3f1c" stroke-width="1.2" fill="none"/>' +
-      '<path d="M6 30.4 Q9 33.6 13 34 L35 34 Q39 33.6 42 30.4" stroke="#a07a40" stroke-width="1.2" fill="none"/>' +
-      '<circle cx="12" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="12" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="18" cy="30.4" r="2.9" fill="#e6dab6" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="18" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="24" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="24" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="30" cy="30.4" r="2.9" fill="#e6dab6" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="30" cy="30.4" r="0.9" fill="#140d06"/>' +
-      '<circle cx="36" cy="30.4" r="2.9" fill="#a8392a" stroke="#140d06" stroke-width="1.2"/>' +
-      '<circle cx="36" cy="30.4" r="0.9" fill="#140d06"/>',
-  },
   // a banner flies the ship when MOST of its roster floats — one scout tagging
   // along with a fleet should not turn it back into an army
   armyIsNaval(n) {
@@ -3285,8 +3320,24 @@ const UI = {
     for (const id of alive) { const u = Units.get(id); if (u && Units.isNaval(u)) sea++; }
     return sea * 2 > alive.length;
   },
+  /* WHAT THE ARMY MOSTLY IS (build 214): a fleet a ship, else the larger of
+     its riders (the stable's own line), its bows (a range of their own, never
+     an engine) and everyone else on foot — the banner wears that one's
+     drawn picture (assets/ui/hud/army-*.png). A tie goes to the foot. */
+  armyKind(n) {
+    if (this.armyIsNaval(n)) return 'ship';
+    const horse = (CFG.BUILDINGS.stable && CFG.BUILDINGS.stable.train) || {};
+    let foot = 0, bow = 0, rider = 0;
+    for (const id of this.armyAlive(n)) {
+      const u = Units.get(id); if (!u) continue;
+      if (horse[u.kind]) rider++;
+      else if (CFG.UNITS[u.kind].rng && !Units.isSiege(u) && u.kind !== 'ballista') bow++;
+      else foot++;
+    }
+    return rider > foot && rider >= bow ? 'horse' : bow > foot && bow > rider ? 'bow' : 'foot';
+  },
   armyIcon(n) {
-    return `<svg viewBox="0 0 48 48" aria-hidden="true">${this.ARMY_SVG[this.armyIsNaval(n) ? 'ship' : 'helm']}</svg>`;
+    return `<img class="aic" src="${this.HUD_ART}army-${this.armyKind(n)}.png?v=1" alt="" draggable="false">`;
   },
   renderArmyBar() {
     const bar = document.getElementById('armyBar');
@@ -3339,7 +3390,7 @@ const UI = {
   tickArmies() {
     if (!window.S || !S.units) return;
     this.pruneArmies();
-    const sig = S.armies ? [1, 2, 3].map(n => (S.armies[n] || []).length).join(',') : '';
+    const sig = S.armies ? [1, 2, 3].map(n => (S.armies[n] || []).length + (this.armyAlive(n).length ? this.armyKind(n) : '')).join(',') : '';
     if (sig !== this._armySig) { this._armySig = sig; this.renderArmyBar(); }
   },
 
@@ -3739,13 +3790,13 @@ const UI = {
        Everything in it is game-generated (names from CFG, numbers we
        computed); no player text ever reaches this line. */
     const el = document.querySelector('#panel .phead .psub');
-    if (el) { const sub = this.panelSub(); if (el.innerHTML !== sub) el.innerHTML = sub; }
+    if (el) { const sub = this.iconHtml(this.panelSub()); if (el._sub !== sub && el.innerHTML !== sub) { el._sub = sub; el.innerHTML = sub; } }
     // THE LIVE LINE: what the unit is doing and what it is netting, patched in
     // place every tick so it can change without relaying out the whole panel
     if (this.sel.type === 'unit') {
       const wk = document.getElementById('pWork');
       const wu = Units.get(this.sel.id);
-      if (wk && wu && wu.owner === 'P') wk.innerHTML = this.workLine(wu);
+      if (wk && wu && wu.owner === 'P') { const wl = this.iconHtml(this.workLine(wu)); if (wk._wl !== wl) { wk._wl = wl; wk.innerHTML = wl; } }
     }
     // the panel icon follows the art too (a PNG that decoded after the panel
     // was laid out, or the ?dev=1 preview swapping it under a live game) —
@@ -3761,7 +3812,7 @@ const UI = {
       // above); this patches the drifting cost number in between them, so it
       // must agree with the same throttled branch or it overwrites a settled
       // "Cooldown…" label with a stale price the button no longer honours.
-      if (u) hc.textContent = this.healSub(u);
+      if (u) { const t = this.healSub(u); if (hc._t !== t) { hc._t = t; this.iconText(hc, t); } }
     }
     // tick every works call-off's days and bar in place (no relayout) — a
     // building's own panel and a builder's alike (worksButton, data-bid)
@@ -3901,7 +3952,7 @@ const UI = {
         <button class="abtn" id="panelClose">✕</button></div>`;
       html += `<div class="psub" style="padding:4px 10px 2px;line-height:1.5">${def.flavor}</div>`;
       html += `<div class="psub" style="padding:6px 10px 8px;color:var(--gold)">Found here on day ${r.found} — +${r.amount} ${def.res}.</div>`;
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = document.getElementById('pIcon');
       if (ic) this.iconInto(ic, Relics.art(r.key));
       const close = panel.querySelector('#panelClose');
@@ -4096,7 +4147,7 @@ const UI = {
         html += `<span class="psub">Enemy structure — order defenders to attack it.</span>`;
       }
       html += '</div>';
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       // the panel icon follows the work-site stage (tests/build-stages.mjs):
       // ground broken → the raising → the (nearly finished) building itself
@@ -4304,7 +4355,7 @@ const UI = {
         html += `<button class="abtn ${ok ? '' : 'cant'}" data-act="brup">⬆ Reinforce to Lv ${lv + 1}<small>${Bld.costStr(cost)} · ${days}d · needs a sapper${ok ? '' : ' — need resources'}</small></button>`;
       }
       html += '</div>';
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       if (ic) { ic.width = ic.height = 44; const g2 = ic.getContext('2d'); g2.imageSmoothingEnabled = false;
         g2.fillStyle = lv >= 3 ? '#8f8f86' : '#6e5024'; g2.fillRect(4, 15, 36, 14);
@@ -4401,7 +4452,7 @@ const UI = {
           : armySlot ? `<button class="abtn" data-act="garmysave">🪖 Save as Army ${armySlot}<small>recall it from the banner</small></button>`
           : gMil.length ? `<button class="abtn cant" data-act="garmysave">🪖 Armies full<small>remove one to save</small></button>` : '') +
         `</div>`;
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       this.iconInto(ic, R.unitSprite(first));
       const gsave = panel.querySelector('[data-act="garmysave"]');
@@ -4576,7 +4627,8 @@ const UI = {
       if (own && Units.isVillager(u)) {
         // under arms there is nothing Build could answer — the panel shows
         // only what can act; the hint line carries the why
-        if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild">🔨 Build</button>`;
+        // the BUILD button's own drawn hammers (build 214), the same act
+        if (!Units.isLevied(u)) html += `<button class="abtn" data-act="gobuild"><img class="bic" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false">Build</button>`;
         /* …and if they are raising something, the works can be called off
            from right here — the same button the building's own panel shows,
            gone the moment there is nothing being raised. */
@@ -4631,7 +4683,7 @@ const UI = {
       if (soleArmy)
         html += `<button class="abtn" data-act="armyremove">🪖 Remove Army ${soleArmy}<small>the last of it — frees its banner</small></button>`;
       html += '</div>';
-      panel.innerHTML = html;
+      panel.innerHTML = this.iconHtml(html);
       const ic = panel.querySelector('#pIcon');
       this.iconInto(ic, R.unitSprite(u));
       const stop = panel.querySelector('[data-act="stop"]');
@@ -5014,7 +5066,7 @@ const UI = {
     document.getElementById('rGold').textContent = this.fmtRes(S.res.gold);
     const pop = Units.popUsed('P') + '/' + Bld.popCap('P');
     document.getElementById('rPop').textContent = pop;
-    document.getElementById('rDay').textContent = 'Day ' + S.day;
+    this.paintDay();
     // the chips' names say their numbers too (role=button names itself by its label)
     const name = (id, s) => { const el = this._chipEl && this._chipEl[id]; if (el && el.getAttribute('aria-label') !== s) el.setAttribute('aria-label', s); };
     name('food', 'Food ' + food + (net ? ', ' + net : ''));
@@ -5075,7 +5127,7 @@ const UI = {
     // the shake answers a REFUSAL's second tap: a warning the player's own act
     // raised (no collapse asked for) — never a note, never the world's news
     el.className = 'toast' + (alarm ? ' warn' : '') + (repeat && warn === true && !dedupe ? ' shake' : '');
-    el.textContent = msg;
+    this.iconText(el, msg);   // a price in it wears the bar's own goods (UI.iconHtml)
     box.appendChild(el);
     this._toastEl.set(key, el);
     while (box.children.length > 5) box.removeChild(box.firstChild);
@@ -5113,14 +5165,64 @@ const UI = {
     for (const id of ['miniToggle', 'mapBtn'])
       document.getElementById(id).addEventListener('click', () =>
         this.setMiniCollapsed(!this.miniCollapsed));
+    /* THE ONE MENU (build 214 — the operator: "collapse the pause menu and the
+       settings menu into a single menu… we don't need two buttons"): the gear
+       opens it, and it pauses the world while it is up (Screens.onPaused).
+       The ⏸ that sat beside it is gone; Space still pauses under the veil. */
     document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
-    document.getElementById('btnPause').addEventListener('click', e => {
-      S.paused = !S.paused;
-      e.currentTarget.textContent = S.paused ? '▶' : '⏸';
-      // the player's own pause wears the veil (js/feel.js); a held one never does
-      if (typeof Feel !== 'undefined' && Feel.playerPaused) Feel.playerPaused(S.paused);
-    });
+    // its gear is the settings page's own picture: the markup's ?v= is a
+    // first guess for the parse, CFG.ART_V the truth (an art bump restamps it)
+    const gear = document.querySelector('#btnMenu .hic');
+    if (gear && typeof CFG !== 'undefined' && CFG.ART_V) {
+      const want = 'assets/ui/settings/tab-general.png?v=' + CFG.ART_V;
+      if (gear.getAttribute('src') !== want) gear.setAttribute('src', want);
+    }
+    // the frame's corners and the BUILD banner (vectors, at the screen's own pixels)
+    this.dressBottom();
+  },
+  /* the carved frame's dress: the settings page's corner ornament at the two
+     top corners, and the BUILD banner over an open build panel — built once */
+  dressBottom() {
+    const bar = document.getElementById('bottombar');
+    if (!bar || bar._dressed) return;
+    bar._dressed = true;
+    if (typeof SettingsPage !== 'undefined' && SettingsPage.cornerSvg)
+      for (const [c, fx] of [['tl', 0], ['tr', 1]]) {
+        const i = document.createElement('i'); i.className = 'bmC ' + c; i.setAttribute('aria-hidden', 'true');
+        i.innerHTML = SettingsPage.cornerSvg('bmc' + c, fx, 0);
+        bar.insertBefore(i, bar.firstChild);
+      }
+    const ban = document.createElement('div'); ban.id = 'bmBanner'; ban.setAttribute('aria-hidden', 'true');
+    ban.innerHTML = this.bannerSvg(176, 38, 'bmb') + `<b><img src="${this.HUD_ART}build.png?v=1" alt="">Build</b>`;
+    bar.insertBefore(ban, bar.firstChild);
+    this.syncBottomToggle();
+  },
+  /* A BANNER (the mockup's ribbon over a panel): a dark plate with pointed
+     ends, a dark edge, a gold rim and a hairline inside it, a stud at each
+     end — vectors at the box's own size, shared by the build panel and the
+     cards' sheet (js/deckui.js) */
+  bannerSvg(w, h, id) {
+    const p = 13, m = h / 2;
+    const pts = (i) => `${i},${m} ${p + i * 0.6},${i} ${w - p - i * 0.6},${i} ${w - i},${m} ${w - p - i * 0.6},${h - i} ${p + i * 0.6},${h - i}`;
+    return `<svg viewBox="-2 -2 ${w + 4} ${h + 4}" aria-hidden="true" focusable="false"><defs>` +
+      `<linearGradient id="${id}f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a3618"/><stop offset=".5" stop-color="#2c2012"/><stop offset="1" stop-color="#1c140b"/></linearGradient>` +
+      `<linearGradient id="${id}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff0b0"/><stop offset=".45" stop-color="#e2b24c"/><stop offset="1" stop-color="#8f6418"/></linearGradient></defs>` +
+      `<polygon points="${pts(0)}" fill="url(#${id}f)" stroke="#0b0704" stroke-width="4" stroke-linejoin="round"/>` +
+      `<polygon points="${pts(1.5)}" fill="none" stroke="url(#${id}g)" stroke-width="2" stroke-linejoin="round"/>` +
+      `<polygon points="${pts(4.5)}" fill="none" stroke="#f3d27a" stroke-opacity=".35" stroke-width="1" stroke-linejoin="round"/>` +
+      `<path d="M${p + 4},${m} l4,-4 4,4 -4,4z M${w - p - 4},${m} l-4,-4 -4,4 4,4z" fill="url(#${id}g)" stroke="#0b0704" stroke-width=".9"/></svg>`;
   },
 
+  /* THE DAY'S PLATE (UI.refresh): "Day" in its own span (.dW) — it stands
+     down on the narrowest phones and on a second row the armies and the
+     running cards crowd — the number never; the moon by night (R.dayPhase's
+     k, the dusk tint's own). Written only when the day moves. */
+  paintDay() {
+    const dEl = document.getElementById('rDay');
+    if (!dEl || !window.S) return;
+    if (dEl._d !== S.day || dEl.textContent !== 'Day ' + S.day) { dEl._d = S.day; dEl.innerHTML = '<span class="dW">Day </span>' + S.day; }
+    const night = !!(window.R && R.dayPhase && R.dayPhase().k > 0.35);
+    if (dEl.classList.contains('night') !== night) dEl.classList.toggle('night', night);
+  },
   showEnd(win, msg) { Screens.showEnd(win, msg); },
 };

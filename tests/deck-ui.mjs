@@ -192,11 +192,13 @@ const on = await p.evaluate(async ({ enter, fx }) => {
   const btn = document.getElementById('deckBtn');
   out.built = DeckUI.built;
   out.visible = !!(btn && btn.offsetParent);
-  out.inRow = btn && btn.nextElementSibling === document.getElementById('btnPause');
+  // before the ONE menu (build 214: the ⏸ it once sat before is gone — the menu pauses)
+  out.inRow = btn && btn.nextElementSibling === document.getElementById('btnMenu');
   out.listeners = window.__dkL;
   out.badge = btn.querySelector('.dkBadge').textContent;
   out.total = Deck.total();   // the starter hand, dealt when the deck is built
-  out.drawn = !btn.textContent.replace(/\d+/g, '').trim() && !!btn.querySelector('svg.dkIco');
+  // a drawn picture of a hand of cards (assets/ui/hud/cards.png, the HUD's own), never a glyph
+  out.drawn = !btn.textContent.replace(/\d+/g, '').trim() && !!btn.querySelector('img.dkIco[src*="assets/ui/hud/cards.png"]');
   Deck._add('__bar', 2); Deck.saveCol();
   out.badge2 = btn.querySelector('.dkBadge').textContent; out.total2 = Deck.total();
   out.css = !!document.getElementById('deckUiCss');
@@ -208,7 +210,7 @@ const on = await p.evaluate(async ({ enter, fx }) => {
   out.backInGame = !!btn.offsetParent;
   return out;
 }, { enter: enterGame.toString(), fx: fixtures.toString() });
-ck('theButtonShowsInALiveGame', on.built && on.visible && on.inRow && on.css, `in row 2 before ⏸: ${on.inRow}`);
+ck('theButtonShowsInALiveGame', on.built && on.visible && on.inRow && on.css, `in row 2 before the menu: ${on.inRow}`);
 ck('andTheProbeSeesItsListeners', on.listeners > 0, on.listeners + ' listeners once built');
 ck('theBadgeCarriesTheCount', on.badge === String(on.total) && on.total === 3 && on.badge2 === String(on.total2) && on.total2 === 5,
   `starter ${on.badge}/${on.total}, then ${on.badge2}/${on.total2}`);
@@ -243,12 +245,13 @@ for (const [w, h] of [[320, 568], [360, 780], [390, 844], [430, 880], [900, 700]
     const full = bar.offsetHeight;
     const r = id => document.getElementById(id).getBoundingClientRect();
     const rows = [...bar.querySelectorAll('.trow')].map(x => x.getBoundingClientRect());
-    const ids = ['armyBar', 'dkTimers', 'rDay', 'mapBtn', 'deckBtn', 'btnPause', 'btnMenu'];
+    const ids = ['armyBar', 'dkTimers', 'rDay', 'mapBtn', 'deckBtn', 'btnMenu'];
     const rects = ids.map(r);
     let overlap = null;
     for (let i = 0; i + 1 < rects.length; i++) if (rects[i].width && rects[i + 1].width && rects[i].right > rects[i + 1].left + 0.5) overlap = ids[i] + '>' + ids[i + 1];
     const out = { w, bare, full, overlap, oneRow: w >= 900 ? Math.abs((rows[0].top + rows[0].bottom) - (rows[1].top + rows[1].bottom)) < 4 : rows[1].top >= rows[0].bottom,
-      btnH: Math.round(r('deckBtn').height), hit: Math.round(parseFloat(getComputedStyle(btn, '::after').top)),
+      // a reach past the drawing, if the button wears one (build 214's plates are 44px as drawn and wear none)
+      btnH: Math.round(r('deckBtn').height), hit: (() => { const a = getComputedStyle(btn, '::after'); return a.content && a.content !== 'none' && a.content !== 'normal' ? Math.round(parseFloat(a.top) || 0) : 0; })(),
       armies: document.querySelectorAll('#armyBar button').length, past: Math.round(r('btnMenu').right - bar.getBoundingClientRect().right) };
     for (const n of [1, 2, 3]) UI.removeArmy(n);
     S.units = S.units.filter(u => !armyIds.includes(u.id));
@@ -270,35 +273,35 @@ ck('theTouchTargetReaches44', layout.every(l => l.btnH + 2 * -l.hit >= 44), layo
 const pz = await p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const out = {};
-  const btn = document.getElementById('deckBtn'), pb = document.getElementById('btnPause');
-  S.paused = false; pb.textContent = '⏸';
+  const btn = document.getElementById('deckBtn');
+  S.paused = false;
   const day0 = S.dayT;
   btn.click();
-  out.paused = S.paused; out.label = pb.textContent; out.open = DeckUI.open;
+  out.paused = S.paused; out.open = DeckUI.open;
   out.modal = Screens.modalUp();
   out.shown = getComputedStyle(document.getElementById('dkSheet')).display !== 'none';
   await wait(300);
   out.frozen = S.dayT === day0;
   document.querySelector('#dkSheet .dkClose').click();
   await __until(() => getComputedStyle(document.getElementById('dkSheet')).display === 'none');
-  out.after = S.paused; out.label2 = pb.textContent;
+  out.after = S.paused;
   out.hidden = getComputedStyle(document.getElementById('dkSheet')).display === 'none';
   out.modal2 = Screens.modalUp();
   // paused before: stays paused after
-  S.paused = true; pb.textContent = '▶';
+  S.paused = true;
   btn.click(); await wait(250);
   document.querySelector('#dkSheet .dkBack').click(); await wait(400);
-  out.keptPaused = S.paused === true && pb.textContent === '▶';
+  out.keptPaused = S.paused === true;
   // Escape closes it too, and gives the pause back
-  S.paused = false; pb.textContent = '⏸';
+  S.paused = false;
   btn.click(); await wait(250);
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await wait(400);
   out.esc = !DeckUI.open && S.paused === false;
   return out;
 });
-ck('openingPausesTheWorld', pz.paused && pz.label === '▶' && pz.open && pz.shown && pz.frozen, JSON.stringify({ paused: pz.paused, label: pz.label, frozen: pz.frozen }));
-ck('closingGivesBackWhatWasThere', pz.after === false && pz.label2 === '⏸' && pz.hidden && pz.keptPaused && pz.esc,
+ck('openingPausesTheWorld', pz.paused && pz.open && pz.shown && pz.frozen, JSON.stringify({ paused: pz.paused, frozen: pz.frozen }));
+ck('closingGivesBackWhatWasThere', pz.after === false && pz.hidden && pz.keptPaused && pz.esc,
   `running→${pz.after}, paused→${pz.keptPaused}, escape ${pz.esc}`);
 ck('theDeckHasTheFloorWhileItIsUp', pz.modal === true && pz.modal2 === false);
 
@@ -761,7 +764,6 @@ const aimOpen = () => p.evaluate(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   if (Deck.count('__aim') < 1) { Deck.col().counts.__aim = 2; Deck.saveCol(); }
   S.paused = false;
-  document.getElementById('btnPause').textContent = '⏸';
   document.getElementById('deckBtn').click(); await wait(400);
   document.querySelector('#dkSheet .dkCell[data-card="__aim"]').click(); await wait(250);
   document.querySelector('#dkInsp .dkPlay').click(); await wait(300);
@@ -811,14 +813,14 @@ const go = await p.evaluate(async () => {
   document.querySelector('#dkAimBar .dkAGo').click();
   await __idle();
   return { want, cross, got: window.__got[0], spent: n0 - Deck.count('__aim'), aim: !!DeckUI.aim, paused: S.paused,
-    label: document.getElementById('btnPause').textContent, bar: getComputedStyle(document.getElementById('bottombar')).visibility };
+    bar: getComputedStyle(document.getElementById('bottombar')).visibility };
 });
 ck('confirmPlaysAtTheChosenTile', go.got && go.got.x === go.want.x && go.got.y === go.want.y && go.spent === 1,
   `played at ${JSON.stringify(go.got)}, chose the middle of ${JSON.stringify(go.want)}`);
 // the effect takes a WORLD POINT (js/deckfx.js), and it is the reticle's cross
 ck('theBlowLandsOnTheReticlesCross', go.got && Math.hypot(go.got.x - go.cross.x, go.got.y - go.cross.y) < 0.06,
   `cross at ${go.cross.x.toFixed(2)},${go.cross.y.toFixed(2)}; played at ${go.got && go.got.x},${go.got && go.got.y}`);
-ck('andTheWorldIsGivenBack', !go.aim && go.paused === false && go.label === '⏸' && go.bar === 'visible');
+ck('andTheWorldIsGivenBack', !go.aim && go.paused === false && go.bar === 'visible');
 // a warning is shown before confirming, and asked twice
 const a2 = await aimOpen();
 const wr = await p.evaluate(async () => {
@@ -1163,7 +1165,8 @@ const strip = await p.evaluate(async () => {
     await __until(() => document.querySelectorAll('#dkTimers .dkT').length >= 1);
     await new Promise(r => setTimeout(r, 300));
     document.getElementById('rPop').textContent = '6/13';
-    document.getElementById('rDay').textContent = 'Day 12';
+    // the day as the game writes it (the word in its own span, UI.paintDay)
+    { const d0 = S.day; S.day = 12; UI.paintDay(); S.day = d0; }
     DeckUI._fitChips();
     const shown = () => [...document.querySelectorAll('#dkTimers .dkT')].filter(e => getComputedStyle(e).display !== 'none');
     const sr = () => document.getElementById('dkTimers').getBoundingClientRect();
@@ -1283,7 +1286,7 @@ const wc = await p.evaluate(async ({ enter }) => {
   document.getElementById('deckBtn').click(); await wait(300);
   G.loadJSON(G.saveJSON());
   await wait(150);
-  out.load = !DeckUI.open && S.paused === true && document.getElementById('btnPause').textContent === '▶';
+  out.load = !DeckUI.open && S.paused === true;
   Screens.show('playing');
   return out;
 }, { enter: enterGame.toString() });

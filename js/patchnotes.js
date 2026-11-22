@@ -22,6 +22,16 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 214, date: '2026-11-22', title: 'A bigger, clearer look',
+    items: [
+      'The bar across the top is bigger and easier to read, and every good wears its own drawn picture: meat for food, logs for wood, a block of stone, a heap of gold and a pair of villagers for your people.',
+      'Build is now a big button at the bottom left of the map. It opens a framed build menu with larger cards, and every card shows its price in the same pictures as the bar at the top, in red where you are short.',
+      'Your cards open in the same carved frame as the build menu.',
+      'The pause menu and the settings are one menu now. The gear at the top right pauses the game and opens on a Game tab with Resume, Save, Load, the Guide, the main menu and Resign, beside your settings.',
+      'Sound now lives on the General tab, the day shows a sun by day and a moon by night, and a saved army shows a helmet, a bow, a horse or a ship for what it mostly is.',
+    ],
+  },
+  {
     build: 213, date: '2026-11-22', title: 'Select a group with the mouse',
     items: [
       'On a computer, drag a box on the map with the mouse to select a group. Soldiers come first: with none in the box it takes your villagers, then sappers, then fishing boats.',

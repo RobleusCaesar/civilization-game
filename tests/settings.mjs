@@ -201,6 +201,8 @@ const open = async (opts) => {
     Screens.backTo = 'title'; Screens.show('settings');
     o.live = SettingsPage.live();
     o.title = { cur: Screens.current, nu: shown('scrSetx'), old: shown('scrSettings') };
+    const tabsShown = () => Array.from(document.querySelectorAll('#scrSetx .sxTab')).filter(t => getComputedStyle(t).display !== 'none').map(t => t.dataset.tab).join(',');
+    o.tabsTitle = tabsShown();
     document.querySelector('#scrSetx .sxBack').click();
     o.backToTitle = Screens.current;
     // …and from the pause menu, through its own button
@@ -212,10 +214,12 @@ const open = async (opts) => {
     o.backToPause = Screens.current;
     Screens.backTo = 'paused'; Screens.show('settings');
 
-    // the tabs: exactly these five
-    o.tabs = Array.from(document.querySelectorAll('#scrSetx .sxTab')).map(t => t.dataset.tab).join(',');
-    // every control on every tab, named by what it does
-    const KNOWN = /^(tog:unithelp|tog:boxselect|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush)$/;
+    // the tabs: these five over a game (the pause's Game tab first), the four without it from the title
+    o.tabs = tabsShown();
+    // every control on every tab, named by what it does — the settings, and
+    // over a game the pause's own six (build 214: the pause menu and the
+    // settings are one page; their ids are what the game presses)
+    const KNOWN = /^(tog:unithelp|tog:boxselect|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush|in:btnPauseResume|in:btnPauseSave|in:btnPauseLoad|in:btnPauseHow|in:btnQuitTitle|in:btnResign)$/;
     o.controls = [];
     for (const t of SettingsPage.TABS) {
       SettingsPage.open(t.k);
@@ -233,6 +237,13 @@ const open = async (opts) => {
     }
     o.unknown = o.controls.filter(c => !KNOWN.test(c));
     o.hasSelect = !!document.querySelector('#scrSetx select');
+    // the pause's buttons never leave the document, whichever tab is open
+    // (the game finds them by id: Screens.onPaused writes the way out's label)
+    const six = ['btnPauseResume', 'btnPauseSave', 'btnPauseLoad', 'btnPauseHow', 'btnQuitTitle', 'btnResign'];
+    o.parked = six.filter(id => !(document.getElementById(id) && document.getElementById(id).isConnected));
+    Screens.show('paused');
+    o.pausedAgain = { cur: Screens.current, tab: SettingsPage.tab, inPane: six.every(id => !!document.querySelector('#scrSetx .sxPane #' + id)) };
+    Screens.backTo = 'paused'; Screens.show('settings');
 
     // AUDIO: the switches and the dials change Sound
     SettingsPage.open('audio');
@@ -296,8 +307,11 @@ const open = async (opts) => {
   ck('itIsTheNewPage', r.live && r.title.cur === 'settings' && r.title.nu && !r.title.old, JSON.stringify(r.title));
   ck('reachableFromTheTitleAndThePause', r.backToTitle === 'title' && r.pause.cur === 'settings' && r.pause.nu && r.backToPause === 'paused',
     JSON.stringify({ t: r.backToTitle, p: r.pause, back: r.backToPause }));
-  ck('fiveTabsNoControlsNoGraphics', r.tabs === 'general,audio,saves,feedback,notes', r.tabs);
+  ck('fiveTabsInAGameFourAtTheTitle', r.tabs === 'game,general,saves,feedback,notes' && r.tabsTitle === 'general,saves,feedback,notes',
+    `in a game: ${r.tabs}; from the title: ${r.tabsTitle}`);
   ck('everyControlIsARealSetting', r.unknown.length === 0 && !r.hasSelect, r.unknown.join(',') || r.controls.length + ' controls, all known');
+  ck('thePausesButtonsNeverLeaveTheDocument', r.parked.length === 0 && r.pausedAgain.cur === 'paused' && r.pausedAgain.tab === 'game' && r.pausedAgain.inPane,
+    r.parked.length ? 'gone after another tab: ' + r.parked.join(', ') : JSON.stringify(r.pausedAgain));
   ck('theDragToSelectSwitchSwitchesWhatALeftDragDoes', r.box.shown === r.box.mouse && (!r.box.shown ||
     (r.box.before === true && r.box.after === false && r.box.key === '0' && r.box.aria === 'false' && r.box.back === true)), JSON.stringify(r.box));
   ck('theMusicSwitchSwitchesTheMusic', r.musicOff.on === false && r.musicOff.key === '0' && r.musicOff.aria === 'false' && r.musicOff.pct === 'Off' && r.musicOn === true,
@@ -594,7 +608,11 @@ const open = async (opts) => {
     const { ctx, p } = await open({ vp: { width: w, height: h }, tag: 'chrome' + w });
     await p.evaluate(() => { Screens.backTo = 'title'; Screens.show('settings'); });
     const r = await probe(p);
-    vectors = Math.max(vectors, r.vectors);
+    // …and the same page over a game (the pause, its Game tab and gear-hourglass emblem)
+    await p.evaluate(() => { G.newGame('chrome', 'moderate', 'medium'); Screens._demo = false; Screens.show('paused'); });
+    const rg = await probe(p);
+    r.out.push(...rg.out);
+    vectors = Math.max(vectors, r.vectors, rg.vectors);
     for (const x of r.out) {
       seen.add(x.name);
       if (x.scene) {
@@ -616,16 +634,20 @@ const open = async (opts) => {
   for (const o of over) { const k = o.split(' ')[0], r = +/\((\d+\.\d+)x/.exec(o)[1]; if (!worst[k] || r > worst[k].r) worst[k] = { r, o }; }
   const pieces = Object.values(worst).sort((a, b) => b.r - a.r).map(w => w.o);
   ck('noChromeIsShownPastItsPixelsAt3x', over.length === 0 && seen.size >= 10,
-    over.length ? pieces.length + ' piece(s): ' + pieces.join('; ') : seen.size + ' rasters measured on 8 sizes × 5 tabs, all at or under their pixels at 3x');
+    over.length ? pieces.length + ' piece(s): ' + pieces.join('; ') : seen.size + ' rasters measured on 8 sizes, every tab, from the title and over a game, all at or under their pixels at 3x');
   ck('theFrameCornersAreVectors', vectors === 4 && !seen.has('corner.png'), vectors + ' vector corners');
   ck('andThePaintingIsNeverStretchedOnADesktop', scenes.length === 0 && seen.has('notes-art.png'), scenes[0] || 'the patch-notes painting stays within 2x its pixels at 2x');
 }
 
-/* ---- 6. it fits, every tab, at six sizes — a phone on its side among them ---- */
-for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1080], [844, 390]]) {
-  const { ctx, p } = await open({ vp: { width: w, height: h }, tag: 'fit' + w });
-  const r = await p.evaluate(async () => {
-    Screens.backTo = 'title'; Screens.show('settings');
+/* ---- 6. it fits, every tab, at six sizes — a phone on its side among them —
+   from the title and over a game (build 214: the pause is this page, with
+   its Game tab first, so a phone's strip holds five) ---- */
+for (const [w, h, door] of [[390, 844, 'title'], [430, 932, 'title'], [768, 1024, 'title'], [1440, 900, 'title'], [1920, 1080, 'title'], [844, 390, 'title'],
+  [320, 568, 'game'], [390, 844, 'game'], [430, 932, 'game'], [1440, 900, 'game'], [844, 390, 'game']]) {
+  const { ctx, p } = await open({ vp: { width: w, height: h }, tag: 'fit' + w + door });
+  const r = await p.evaluate(async (door) => {
+    if (door === 'game') { G.newGame('fit', 'moderate', 'medium'); Screens._demo = false; Screens.show('paused'); }
+    else { Screens.backTo = 'title'; Screens.show('settings'); }
     const bad = [], hts = [];
     for (const t of SettingsPage.TABS) {
       SettingsPage.open(t.k);
@@ -644,6 +666,7 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1
       if (pane.scrollWidth > pane.clientWidth + 1) bad.push(t.k + ': pane scrolls sideways ' + pane.scrollWidth + '>' + pane.clientWidth);
       if (fr.left < 0 || fr.right > innerWidth + 0.5 || fr.bottom > innerHeight + 0.5 || fr.top < 0) bad.push(t.k + ': frame outside ' + JSON.stringify([fr.left, fr.top, fr.right, fr.bottom]));
       for (const tab of el.querySelectorAll('.sxTab')) {
+        if (getComputedStyle(tab).display === 'none') continue;   // the Game tab is shown over a game alone
         const lab = Array.from(tab.querySelectorAll('.sxTn, .sxTs')).find(x => getComputedStyle(x).display !== 'none');
         const tr = tab.getBoundingClientRect(), lr = lab.getBoundingClientRect();
         // a rail plaque stays inside the frame (a phone on its side ran the fifth one out through its foot)
@@ -657,8 +680,8 @@ for (const [w, h] of [[390, 844], [430, 932], [768, 1024], [1440, 900], [1920, 1
     }
     if (hts.length && Math.max(...hts) - Math.min(...hts) > 0.5) bad.push('the frame changes height between tabs: ' + hts.map(v => v.toFixed(0)).join('/'));
     return { bad, rail: getComputedStyle(document.querySelector('#scrSetx .sxNav')).flexDirection };
-  });
-  ck('itFitsAt' + w + 'x' + h, r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || 'every tab, nav ' + r.rail);
+  }, door);
+  ck('itFitsAt' + w + 'x' + h + (door === 'game' ? 'OverAGame' : ''), r.bad.length === 0, r.bad.slice(0, 3).join(' | ') || 'every tab, nav ' + r.rail);
   await ctx.close();
 }
 

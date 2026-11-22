@@ -411,7 +411,7 @@ ck('theKeyboardReachesTheChipsAndAClickLeavesNoFocus', !keys.focusLeft && keys.e
 
 /* ---- 3. THE CHIPS AND THE BUTTONS CARRY A NAME (PX-18) ---- */
 const names = await p.evaluate(() => ['#topbar .trow:first-child .res:nth-child(1)', '#topbar .trow:first-child .res:nth-child(2)',
-  '#topbar .trow:first-child .res:nth-child(3)', '#topbar .trow:first-child .res:nth-child(4)', '#topbar .trow:first-child .res:nth-child(5)', '#rDay', '#btnPause', '#btnMenu']
+  '#topbar .trow:first-child .res:nth-child(3)', '#topbar .trow:first-child .res:nth-child(4)', '#topbar .trow:first-child .res:nth-child(5)', '#rDay', '#mapBtn', '#btnMenu']
   .map(s => { const el = document.querySelector(s); return { s, title: el && el.getAttribute('title'), aria: el && el.getAttribute('aria-label') }; }));
 const unnamed = names.filter(n => !n.title || !n.aria);
 ck('theChipsAndButtonsCarryNames', !unnamed.length,

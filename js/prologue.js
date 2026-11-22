@@ -2973,11 +2973,15 @@ const Prologue = {
       /* a build card scrolling in (UI.cardIntoView) is ringed from the moment the
          menu opens — the ring rides in with it from past the screen's edge — but
          not while its middle crosses the strip of the bar's own wood between the
-         menu's edge and the screen's, where a tap lands on nothing */
+         menu's edge and the screen's, where a tap lands on nothing — the menu's
+         right edge itself included: a box's right edge is OUTSIDE it to the
+         browser's hit test (build 214's wider cards let a scroll rest with the
+         Dock card's middle on exactly that pixel, tests/prologue.mjs
+         andItsRingWasNeverDrawnWhereATapCannotLand) */
       const box = el.closest && el.closest('#buildmenu');
       if (box) {
         const b = box.getBoundingClientRect(), cx = r.left + r.width / 2;
-        if ((cx < b.left && cx >= 0) || (cx > b.right && cx <= innerWidth)) return null;
+        if ((cx < b.left && cx >= 0) || (cx >= b.right && cx <= innerWidth)) return null;
       }
       return { rect: r, x: r.left + r.width / 2, y: r.top + r.height / 2 };
     }
@@ -3107,7 +3111,8 @@ const Prologue = {
     if (m[1] === 'Buildings') ic = this.BLD_SVG;
     else if (m[1] === 'Walls') ic = this.WALL_SVG;
     else {
-      const s = document.querySelector('#topbar svg.ric[data-ic="' + this.TASK_IC[m[1]] + '"]');
+      // the bar's own drawn good (an <img> since build 214; the vector before it)
+      const s = document.querySelector('#topbar .ric[data-ic="' + this.TASK_IC[m[1]] + '"]');
       if (s) ic = s.outerHTML.replace('class="ric"', 'class="pic"');
     }
     return '<span class="pgi' + (+m[2] >= +m[3] ? ' ok' : '') + '">' + ic + '<span class="sr">' + m[1] + ' </span>' + m[2] + '/' + m[3] + '</span>';

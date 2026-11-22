@@ -193,14 +193,14 @@ const Feel = {
   // the buttons say their keys where a mouse can ask
   titles() {
     const t = (id, s) => { const el = document.getElementById(id); if (el) el.title = s; };
-    t('btnPause', 'Pause or resume (Space)');
     t('btnMenu', 'Menu (Esc)');
     t('mapBtn', 'Map (M)');
     t('bmToggle', 'Build menu (B)');
   },
 
   /* ---------------- 1. the pause ---------------- */
-  // the player's own pause: the ⏸ button and Space
+  // the player's own pause: Space (the ⏸ button it shared left the bar in
+  // build 214 — the gear's one menu pauses under its own page)
   setPause(on) {
     if (typeof S === 'undefined' || !S) return;
     S.paused = !!on;

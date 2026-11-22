@@ -389,7 +389,7 @@ node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
-node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
+node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), and since build 214 the pause too (over a game its Game tab first: five tabs, four from the title), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road dragged from the camp past the hall to the farm, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # a release players would notice adds a player-facing note: the newest note never ahead of the code's ?v=, newest first, player words only, the unread dot
 node tests/title.mjs         # the night title, PUBLIC since build 106: every device in every case of the link and the storage, the glen retired (the markup IS the night, one fetch for both pictures), the splash IS the title's scene, vector plaques built to their box, the art by filename with its hand-kept ?v=, the fit at seven sizes
@@ -415,7 +415,7 @@ node tests/building-fire.mjs # every other building burns in its own art (R.FIRE
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
 node tests/ground-ring.mjs    # the gold ring on the ground: laid before the body (its far arc behind him, its near arc whole), at the device's pixels, gold not olive, the snap and the flurry on taking (fewer each in a crowd), a foe's rust, a building's round its foot, a still frame and no RNG, nothing in the black, still under reduced motion, a crowd calm and a blit a man; the journey's ring on the ground (#proRing unseen over it), breathing with motes, fading from target to target, behind the crowns; the gold that says "this one" (js/goldfx.js): the guide's halo hugging a work's own outline and over its roof (never a box), gold at every point of its breath, a sheen across its own picture now and then, gold leaf rising into the sky, a man wound round with light (in front of him and behind); taken in hand a work bursts gold at its foot and springs (never a wall or a gate, never a crowd); a work finished or raised and a man trained or ranked pop in gold — every hook asks, the player's alone, a pop nobody saw let go; a still frame and no RNG; one new silhouette a frame; still under reduced motion
 node tests/tower-garrison.mjs # the open towers: the PNGs keep their size, every pixel solid or clear; two bows to a platform, a second up or down the stairs out of sight and out of reach, twice the sight and the reach — the reach ending at the ground the platform lights, a foe in the dark never struck, one walking into the light struck, nothing the player cannot see marked, the placement ring that reach — only bows and engines answer them; the player's tower shoots ONLY through its bows (empty it looses nothing and its panel says so, the rival's still fire by themselves); up there every bow hits a quarter again his own ground blow and is a quarter tougher, the same at every storey (the stone tower's signal fire lifts the ground, never its own bows), two base archers out-shooting the old tower on the wattle and timber storeys, the number floated the number taken, an engine's stone covered as it lands; a bow sent up leaves the selection, offers no Defend or Stop up there, and no area selection (a double tap, Group nearby, a banner) takes him — a tap on him does; the rival's bows mark them first, an order off the platform takes the stairs first; the tower takes its lookout when it falls (a fall drawn), a demolition lets them down; an intact wall blocks sight both ways, a diagonal run too, a breach or an open gate lets it through, a bow on a tower sees over; drawn INSIDE the platform: whole, a man's size beside the villagers (eight tenths of one on a free tower, his height on a wall tower), his body between the outer posts in every facing and frame (a loosed arrow or a bow may cross the edge, a drawn bow arm reach a sixth of him over the rail, never his body), the tower's own front (rail, posts, merlons, the ladder's top) over him pixel for pixel, most of him over the rail, the measurements the art's own, his feet on his place whichever way he faces, two hurt men's bars side by side; tapped where drawn, told what to shoot by a tap (a soldier, a house) and shooting it from up there, carried by a save
-node tests/feel.mjs          # the small things: Space and ⏸ pause under a PAUSED plate (a held pause none), a Resume keeps the zoom; the keyboard (arrows/WASD, +/−, Esc steps back, H home, 1–9 banners, B, M), never in a field, under a modifier or a modal; the minimap drags and its frame follows the camera; an alarm pings the map and its toast glides there; a mouse cursor says what a click does, fog-honest; a resting mouse reads the stock left ("Last seen" in the fog, nothing in the black) and goes when the ground moves; the build cards explain themselves; a refusal flashes the goods short; a villager's name, stable through a save, the player's own alone; a wake only under way, only on water in sight, never saved; and build 212's: an order's mark where it lands (a walk's ring and pin, the work in gold, a foe in rust, never in the fog), gone after its beat, a pure function of the clock; a work's hands and a hand's work ringed; a blow's bite pale on the bar, then drained; the rally flag flies and nothing of it lies in the black; a seam in sight glints, never in the fog or under a mine; fireflies on a deep night, never in the fog or the black; a thing refused for its goods says when they are in (never in a journey world); news off the view says where; ? shows every key, . takes the next idle villager, Escape steps back off a shell page; the loading plaque's tip (none in a journey world)
+node tests/feel.mjs          # the small things: Space pauses under a PAUSED plate (a held pause none), the gear's one menu pauses and its Resume gives the world back, a Resume keeps the zoom; the keyboard (arrows/WASD, +/−, Esc steps back, H home, 1–9 banners, B, M), never in a field, under a modifier or a modal; the minimap drags and its frame follows the camera; an alarm pings the map and its toast glides there; a mouse cursor says what a click does, fog-honest; a resting mouse reads the stock left ("Last seen" in the fog, nothing in the black) and goes when the ground moves; the build cards explain themselves; a refusal flashes the goods short; a villager's name, stable through a save, the player's own alone; a wake only under way, only on water in sight, never saved; and build 212's: an order's mark where it lands (a walk's ring and pin, the work in gold, a foe in rust, never in the fog), gone after its beat, a pure function of the clock; a work's hands and a hand's work ringed; a blow's bite pale on the bar, then drained; the rally flag flies and nothing of it lies in the black; a seam in sight glints, never in the fog or under a mine; fireflies on a deep night, never in the fog or the black; a thing refused for its goods says when they are in (never in a journey world); news off the view says where; ? shows every key, . takes the next idle villager, Escape steps back off a shell page; the loading plaque's tip (none in a journey world)
 ```
 
 **THE RALLY IS AN ORDER IN WAITING** (`Units.rallyPlan` / `rallyTo` /
@@ -3050,7 +3050,9 @@ on the new cards, marked NEW.
 save rate options buttons are too large… let's add the ability to send in
 crash reports, bugs, and new product ideas… include under settings Patch /
 Update notes… overhaul the whole settings section"). A carved, tabbed page —
-General, Audio, Saves, Feedback, Patch Notes — PUBLIC since build 106 (it
+General, Saves, Feedback, Patch Notes (Audio folded into General at build
+214, and over a game the pause's Game tab heads them: **THE HUD IS BIG,
+DRAWN AND ONE MENU**) — PUBLIC since build 106 (it
 was staged behind the card test link from build 100): `SettingsPage.live()`
 is `PUBLIC || Deck.devOn()` and `PUBLIC` is true. The old screen stays in
 the markup byte for byte (pinned by a hash) as the page's STAND-DOWN — a
@@ -4753,15 +4755,17 @@ vanishes on its own (`UI.tickArmies`, ~1s heartbeat from `UI.init`).
 **THE BANNERS RIDE THE TOP BAR** (operator, build 154: "move the Army 1, 2,
 and 3 icons to the left hand side of the second row… This keeps our game UI /
 screen as clean as possible"): `#armyBar` is the first thing in the top bar's
-second row (the day, the map, the deck, Pause and Menu after it), where it
-stood on the map under the minimap. Each banner is a button of the row's own
-kind (`.iconbtn`, so it takes the 44px reach every top-bar button has) holding
-the army's helmet — or a fleet's ship — as a VECTOR (`UI.ARMY_SVG`,
-`UI.armyIcon`: top-bar chrome at the screen's own pixels, the deck icon's
-rule — no ids, no gradients) and its NUMBER (`.armyN`), which the old 21x28
-pixel banner told by fanning one, two or three helmets; its name says "Army
-N" or "Fleet N". Empty, the strip takes no room (`:empty`). Tapping one
-selects the army.
+second row (the cards' timers, the day, the map, the cards and the menu after
+it), where it stood on the map under the minimap. Each banner is a plate of
+the row's own kind (`.iconbtn`, 44px tall as drawn) wearing the drawn picture
+of what the army MOSTLY is (build 214, `UI.armyKind` / `UI.armyIcon`,
+`assets/ui/hud/army-{foot,bow,horse,ship}.png`: a fleet a ship, else the most
+of its riders — the stable's own line —, its bows — never an engine — or
+everyone else on foot, a tie going to the foot) and its NUMBER (`.armyN`, on
+a gold boss), which the old 21x28 pixel banner told by fanning one, two or
+three helmets; its name says "Army N" or "Fleet N". Empty, the strip takes no
+room (`:empty`). Tapping one selects the army. (The build 154 vector helmet
+and ship, `UI.ARMY_SVG`, went with the drawn pictures.)
 **The camera only moves when the army is nowhere to be seen** — `R.onScreen`
 tests each member's sprite box against the visible band, discounting what the
 HUD covers (`topReserve` / `bottomReserve`), so one soldier half off the edge
@@ -4802,9 +4806,12 @@ TEACHES (sapper tools name the camp tier that unlocks them; train buttons
 show the price you can't yet pay).
 **And the bottom-bar toggle tells the truth** (same test): `syncBottomToggle`
 is the label's ONE writer (`setMenuCollapsed` defers to it — it used to write
-its own, and the two disagreed), closed states NAME what tapping brings back
-("🔨 Build ▴" / "▴ Panel") and the open state says what tapping does
-("▾ Hide" — the bare ▾ read as decoration). `panelMinMode` is now simply
+its own, and the two disagreed), and since build 214 it writes the bar's
+state too (`#bottombar[data-bm]`, **THE HUD IS BIG, DRAWN AND ONE MENU**):
+closed states NAME what tapping brings back (the BUILD button / "▴ Panel")
+and the open states say what tapping does (the build panel's ✕, named "Close
+the build menu"; a selection's "▾ Hide" — the bare ▾ read as decoration).
+`panelMinMode` is now simply
 "is anything selected": the old villager exemption relabeled the tab
 "🔨 Build" over a panel it would actually restore — a label that lied.
 
@@ -6929,13 +6936,98 @@ data URL in the stylesheet — dark walnut with a long, faint grain from two
 stitched `feTurbulence` layers — so the browser draws it at the screen's own
 pixels from the first paint (it was a 64px canvas tile made by ui.js and
 blown up 3x on a phone). The bars are OPAQUE `--hud-wood` lit from their
-outer edge, with a dark rule and a gold hairline (`--inlay`, one solid line
-edge to edge, at 0.42 — operator: "solid across the entire way… a little
-subtler") along the edge that meets the map — the top bar's foot and the
-bottom bar's head alike, and they carry NO backdrop blur — it
-re-blurred the moving map under a 94%-opaque bar every frame. The build cards
-are smooth raised plates (the grain is the bar's, not every card's). The deck
-sheet and the aim bar read the same variable and wear the same walnut.
+outer edge, and they carry NO backdrop blur — it re-blurred the moving map
+under a 94%-opaque bar every frame. Where a bar meets the map it wears a
+carved trim since build 214 (`#topbar::after`, `#bottombar::before`: a dark
+line, two of gold, a dark line — the build 154 hairline, `--inlay` at 0.42,
+was "a little subtler" for a bar of chips; the framed panels below asked for
+the frame's own edge). The deck sheet and the aim bar read the same variable
+and wear the same walnut.
+
+**THE HUD IS BIG, DRAWN AND ONE MENU** (build 214 — a player's critique the
+operator called valid: "the UI is too small and didn't catch the eye at all.
+'Build' button is just a very small button at the bottom left corner of the
+screen that I didn't even notice existed even as it blinked… fatigue from
+trying to absorb informations from the screen since it's scattered, the
+total resources gathered are on top of the screen, the amount of resources
+needed are on the bottom of the screen, and they're all very small"; then,
+with two mockups: "make things a little bigger make the icons for the
+different resources unique to our game don't reuse any emojis… quality pixel
+count… carry through a consistent style… the Settings page… carry that
+through into the pause menu as well as into the overall game UI… collapse
+the pause menu and the settings menu into a single menu"). **ONE PLATE**:
+every control of the bars is the settings page's plate — the stepped corner
+(`--hud-chamfer`, the settings `--chamfer`), a dark face under a thin gold
+rim drawn by a `::before` UNDER the content (the plate `isolation: isolate`),
+and a LIT amber face for what is open or chosen (the map shown, the build
+card picked, the BUILD button). **THE GOODS ARE DRAWN PICTURES**
+(`assets/ui/hud/`, 128px PNG8 made with PixelLab — meat, logs, a stone
+block, a gold heap, a pair of villagers; the day's sun and moon; the map,
+the cards, the BUILD hammers; the armies' helmet, bow, horse and ship): no
+emoji is shown anywhere in the HUD, and every one is drawn at or under its
+pixels at 3x (≤42 CSS px). They carry their own hand-kept `?v=1` in index.html,
+ui.js and deckui.js: redraw one under its name and step it everywhere it is
+written. **THE TOP BAR**: five plates of one width on the first row (food,
+wood, stone, gold, people — the build 154 rule), 40px tall, their picture,
+type and gaps stepped down by width in tiers MEASURED with the widest numbers
+the bar prints ("9999", "99.9k", "64/60": tests/hud-info.mjs
+noChipSpillsOnAPhone — re-measure if a plate changes); the second row the
+saved armies at its left, the running cards' timers, the DAY plate (its sun
+by day, its moon by night — `#rDay.night`, read off `R.dayPhase` in
+`UI.refresh`), then the map, the cards and the ONE menu (the settings gear)
+at its right. Those buttons are 44px tall AS DRAWN (44, 40, 37 or 36 wide
+by the phone's width), so no invisible reach hangs round them; a desktop stands both rows on one line (56px). The cards' button is
+lifted over its row (`#deckBtn` z-index 1) so the menu beside it never cuts
+its count's ring. When the saved armies AND the running cards both want a
+phone's second row, the day drops its word ("☀ 12", a `:has()` rule) so a
+chip and its count keep room (deck-ui `andTheBadgeIsWhole`; 320px still
+shows nothing rather than half a button). `--hud-top` is the bar's height
+plus 6 (107 on a phone, 62 on a desktop): the toasts and the rival's wonder
+banner hang from its foot (`--hud-top - 6px`), the framed minimap and its
+toggle below it. **THE ⏸ IS GONE**: the gear opens the one menu, which
+pauses; Space still pauses under the veil (`Feel.setPause`), and Escape
+still opens and closes the menu. **THE BOTTOM** (`#bottombar[data-bm]`,
+written by `UI.syncBottomToggle` alone): `closed` — nothing in hand, the
+menu folded — is no bar at all but the BUILD BUTTON, 84px square at the
+map's bottom left, lit, its hammers over the word; `open` is the build panel,
+a carved frame across the bottom with the BUILD banner on its top edge
+(`UI.bannerSvg`), the settings page's corners (`SettingsPage.cornerSvg`)
+and a 44px ✕ on its right corner (the cards start below its foot:
+desktop-layout `butTheBuildCardsKeepEveryPixel`); `panel` a selection's panel
+in the same frame with "▾ Hide"; `panelmin` "▴ Panel", a 44px plate where
+BUILD stands. `#bmToggle` is the one control in all four (the journey rings
+it) and is never `position: fixed` (the guide asks `offsetParent`). **THE
+BUILD CARDS** are bigger framed plates (90×112, a desktop 96×122), the
+picture first (`UI.iconInto`, idempotent, at `MENU_ICON_PX`), the name in the
+menus' caps, the price in the bar's own pictures with a good the town is
+short of in red (`UI.costHtml`) — what is needed reads beside what is had.
+**A GOOD IN THE TEXT IS ITS PICTURE** (`UI.iconHtml` / `iconText`, `.ri`):
+prices, panels, toasts and the chips' notes show the drawn goods; the emoji
+stays in the text node, pushed out of a box that shows the picture, so a
+reader, a copy and every test that reads `textContent` still read the glyph.
+✨ is gold only before a number. **THE CARDS' SHEET WEARS THE BUILD PANEL'S
+FRAME** (the CARDS banner, the corners, the ✕ a plate on its corner).
+**THE PAUSE MENU AND THE SETTINGS ARE ONE PAGE** (`SettingsPage` serves
+`Screens.show('settings')` and `show('paused')`; tests/settings.mjs,
+tests/feel.mjs `theMenuIsThePause`): opened from a game it is headed PAUSED
+under the hourglass (`assets/ui/settings/tab-game.png`) and opens on its
+GAME tab — Resume (the lit plate), Save game and Load game, the Guide, then
+apart from them "Leave this game" (Main menu, Resign) and this run's
+chronicle; from the title it is the Settings with four tabs and no Game tab.
+The old pause menu's buttons are MOVED into it once (`SettingsPage.gameNode`)
+with their ids and `Screens.bind`'s handlers, and the old `#scrPaused` and
+`#scrSettings` markup stays byte for byte as the stand-down (title.mjs and
+settings.mjs pin it by hash). Its back arrow, like Resume, goes back into the
+game through `Screens.enterGame`. Audio is the first card of General now
+(`soundCard`; `open('audio')` lands there). On the narrowest phones the tab
+strip's plates take their own word's width (settings `itFitsAt320x568OverAGame`).
+The journey's guide counts the build menu's right edge as OUTSIDE it, as the
+browser's hit test does (`Prologue._resolve`): the wider cards let a smooth
+scroll pass with the Dock card's middle on exactly that pixel, and a ring
+there stood over the bar's wood (prologue
+`andItsRingWasNeverDrawnWhereATapCannotLand`). The BUILD button stays at the
+bottom LEFT, as the mockup has it; the research note (a right thumb reaches
+the bottom right) was weighed and the mockup kept.
 
 **THE SMALL THINGS SIMPLY WORK** (`js/feel.js`, `Feel`, tests/feel.mjs —
 operator, build 211: "find 10 things in the game that you could improve,
@@ -6947,7 +7039,7 @@ drawn (`Math.random` included — the file's source is held to it), and every
 hook elsewhere asks `typeof Feel` (the window trap: `window.Feel` is set at
 the file's foot for anything that asks it that way). `Feel.ON` false builds
 nothing. **THE PAUSE YOU CAN SEE** (`Feel.setPause` / `playerPaused` /
-`syncVeil`, `#pauseVeil`): the player's OWN pause — the ⏸ button and Space —
+`syncVeil`, `#pauseVeil`): the player's OWN pause — Space (the ⏸ button it shared went with build 214; the gear's menu pauses under its own page) —
 dims the world's edges under a PAUSED plate (z 8, pointer-events none, under
 every bar); a pause somebody else holds (the deck's sheet, a card in the air,
 the Wonder's held frame, a load) wears none, and the veil forgets itself when
@@ -7157,11 +7249,13 @@ more takes it and the rest share (flex-grow stays 1 — desktop-layout reads
 it) — capped at 150px and centred where a wide phone has room to spare; the
 narrower phones step the type, the icon and the padding down rather than clip
 a number. **THE ICONS ARE DRAWN** ("increase the pixel count… right now
-they're fuzzy blobs"): meat on the bone, a stack of logs, a split stone, gold
-coins with a glint and two of the tribe, inline SVGs in the markup (`.ric`,
-`data-ic`) — where they were 8x8 sprites stretched to 15px — and the deck's
-flying goods clone them (`DeckUI._spray`; `Sprites.icons` stays for the
-procedural asset slot alone). **A NUMBER SHORTENS DOWN, NEVER UP**
+they're fuzzy blobs"): meat on the bone, a stack of logs, a block of stone,
+a heap of gold and a pair of villagers — inline SVGs in the markup at build
+154, drawn pixel-art pictures since build 214 (`.ric` imgs, `data-ic`,
+`assets/ui/hud/res-*.png`; **THE HUD IS BIG, DRAWN AND ONE MENU**) — where
+they were 8x8 sprites stretched to 15px; the deck's flying goods and the
+journey's first harvest clone them (`DeckUI._spray`, `Prologue.fly`;
+`Sprites.icons` stays for the procedural asset slot alone). **A NUMBER SHORTENS DOWN, NEVER UP**
 (`UI.fmtRes`: "when resources get to higher numbers… decimals and 'k'"):
 exact to 9,999, then 12.4k, 123k, 1.2M (whole-number division, floored, five
 characters at most — 12,450 reads 12.4k, never a price it cannot pay), and
@@ -7189,33 +7283,25 @@ is dropped by Chromium); below 900px nothing changes. `boot.mjs` reads the
 splash as a fixed slice of the SOURCE — a long comment inside the element
 pushes the `<picture>` past it.
 
-**A PHONE'S SMALL CONTROLS HIT AT 44 PX, AND LOOK THE SAME**
-(tests/desktop-layout.mjs §3, PX-14): the folded build tab (22px tall), Pause
-and Menu (34x34) and the minimap's fold (30x30) each get an INVISIBLE reach,
-a positioned pseudo-element, so `getBoundingClientRect`, the art and the
-journey's ring never move. §3 measures the hit box as a finger meets it,
-`elementFromPoint` on a whole-pixel grid reaching 24px past the drawn box (a
-12px margin under-reads the tab as 40). The tab's (`#bmToggle::before`;
-`::after` is the Master Builders badge) reaches 16px up and 6px down, its
-WIDTH its own, **ONLY WHILE FOLDED**
-(`:has(~ #buildmenu[style*="display: none"]):not(:has(~ #panel.show))`): an
-open tab rises with the panel a tap opens, and the click that follows the
-touch landed on its reach and hid that panel; a folded tab only ever moves
-down, away from a finger. A browser without `:has()` keeps the old 22px; if
-the fold stops being an inline `display: none`, the reach turns off silently
-and §3 goes red. Pause and Menu take the bar's 5px above and below
-(`#topbar .iconbtn::after`, the Map and Cards buttons' rule), never past the
-bar nor across the 3px between buttons: 34x44 on a phone, 44x44 on a wide
-window. The deck's count badge is lifted (`z-index: 1`; it takes no taps)
-and §3 holds its pixels to 127's paint order. The minimap's fold reaches
-into the 4px gap under the map, never onto it, 10px down and out to the
-screen's edge (44x44); the army banners that stood under it ride the top bar
-since build 154, and the saved armies' buttons take the row's own reach. The trade, measured with real
-touches at 390x844@3: with a villager selected and the panel folded, every
-pixel the tab's reach gains is a walk order taken from the world, one for
-one; an open tab takes nothing 127 did not; and Chromium's touch adjustment
-stacks on top (the folded tab answers ~24px above its top there).
-**"IS THIS TAP ON THE WORLD?" IS ASKED OF `elementFromPoint(x, y)`**, never
+**A PHONE'S CONTROLS HIT AT 44 PX, AND LOOK IT** (tests/desktop-layout.mjs
+§3, PX-14; build 214): PX-14 hung INVISIBLE reaches round a 22px folded
+build tab and 34x34 Pause and Menu buttons. Since build 214 the folded build
+menu is the BUILD button, 84px square, and the top bar's buttons and the
+folded panel's tab are 44px tall AS DRAWN, so the drawn box IS the hit box
+and no reach is hung on them (§3 holds hit = drawn, a tap 12-16px above the
+BUILD button for the world, and the open panel's ✕ off every build card,
+with a probe that pushes the ✕ over the card under it and must see the
+theft). §3 measures the hit box as a finger meets it, `elementFromPoint` on
+a whole-pixel grid reaching 24px past the drawn box. An OPEN control takes
+no pixel beyond its drawing: a tap that selects a unit lifts the panel, and
+the tab with it, under the finger, and the click that follows the touch
+landed on an open tab's reach and hid the panel it had just opened (the
+control check gives the open tab a reach and must see the click taken). The
+deck's count badge stays whole beside the menu (the deck button lifted,
+`z-index: 1`; §3 lifts it further and must see nothing change, and drops it
+and must see the ring cut). The minimap's fold, still drawn 30x30, keeps its
+invisible reach into the gap under the map, never onto it, 10px down and out
+to the screen's edge (44x44). **"IS THIS TAP ON THE WORLD?" IS ASKED OF `elementFromPoint(x, y)`**, never
 of a drawn rect: no reach lies inside one.
 
 **The muster horn** (`tests/muster-horn.mjs`): the Town Center's lever, and

@@ -226,14 +226,18 @@ const DeckUI = {
        day is 110px even at 320). It is the HUD's own 44×34 button, because a
        44px-tall one grows the bar and R.topReserve has already latched its
        height; an invisible ::after takes the touch target to 44px instead. */
-    const pause = document.getElementById('btnPause');
-    const row = pause.parentNode;
+    /* …before the ONE menu (build 214: the ⏸ it sat before is gone — the menu
+       pauses), and it wears the HUD's drawn picture of a hand of cards
+       (assets/ui/hud/cards.png, like the map and the menu beside it) */
+    const menu = document.getElementById('btnMenu');
+    const row = menu.parentNode;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'iconbtn';
     btn.id = 'deckBtn';
-    btn.innerHTML = this.STACK_SVG + '<b class="dkBadge"></b>';
-    row.insertBefore(btn, pause);
+    btn.setAttribute('aria-label', 'Cards');
+    btn.innerHTML = '<img class="hic dkIco" src="assets/ui/hud/cards.png?v=1" alt="" draggable="false" decoding="async"><b class="dkBadge"></b>';
+    row.insertBefore(btn, menu);
     btn.addEventListener('click', () => this.toggle());
     // the timers of the cards still running sit beside the tribe, where the
     // row has room; empty, the strip takes no space at all (:empty)
@@ -346,7 +350,7 @@ const DeckUI = {
     this._pause = null;
     if (!p || p.world !== S) return;
     // only OUR pause is given back: if something else moved it meanwhile —
-    // the HUD's own ⏸ while aiming — the deck does not overrule it
+    // the player's own Space while aiming — the deck does not overrule it
     if (S.paused === true) S.paused = p.was;
     this._pauseBtn();
   },
@@ -449,6 +453,24 @@ const DeckUI = {
       '</div>';
     document.body.appendChild(root);
     const q = s => root.querySelector(s);
+    /* THE SHEET WEARS THE BUILD PANEL'S FRAME (build 214 — the operator: "we
+       should replicate this higher quality look and feel with the card menu
+       that pops up at the bottom as well"): the CARDS banner on its top edge
+       (UI.bannerSvg, the build panel's own), the settings page's corners and
+       the carved trim; the ✕ a plate on the frame's right corner */
+    if (typeof UI !== 'undefined' && UI.bannerSvg) {
+      const pn = q('.dkPanel');
+      const ban = document.createElement('div'); ban.className = 'dkBanner'; ban.setAttribute('aria-hidden', 'true');
+      ban.innerHTML = UI.bannerSvg(176, 38, 'dkb') + '<b><img src="assets/ui/hud/cards.png?v=1" alt="">Cards</b>';
+      pn.insertBefore(ban, pn.firstChild);
+      if (typeof SettingsPage !== 'undefined' && SettingsPage.cornerSvg)
+        for (const [c, fx] of [['tl', 0], ['tr', 1]]) {
+          const i = document.createElement('i'); i.className = 'dkC ' + c; i.setAttribute('aria-hidden', 'true');
+          i.innerHTML = SettingsPage.cornerSvg('dkc' + c, fx, 0);
+          pn.insertBefore(i, pn.firstChild);
+        }
+      q('.dkClose').classList.add('hplate');
+    }
     this.sheet = { root, back: q('.dkBack'), panel: q('.dkPanel'), row: q('.dkRow'), count: q('.dkCount'), hint: q('.dkHint'), grab: q('.dkGrab'),
       tiers: q('.dkTiers') };
     q('.dkBack').addEventListener('click', () => this.closeSheet());
@@ -2063,10 +2085,13 @@ body.dk-floor.dk-lifted #toasts { z-index: 23; }
    below it for as long as it is in (Deck.armyFx.cineToasts sets the depth) */
 #toasts { transform: translateY(var(--dk-cine, 0px)); }
 body.dk-aiming #bottombar { visibility: hidden; }
-#deckBtn { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-#deckBtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
-#deckBtn .dkIco { width: 24px; height: 24px; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
-#deckBtn .dkBadge { position: absolute; top: -5px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
+/* the HUD's own plate (index.html #topbar .iconbtn, build 214): 44px tall as
+   drawn, so no invisible reach; the count on a gold-rimmed boss at its corner,
+   the button lifted (z-index) so the menu beside it never paints over the ring
+   (tests/desktop-layout.mjs theDeckCountKeepsItsRing) */
+#deckBtn { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+#deckBtn .dkIco { width: 30px; height: 30px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+#deckBtn .dkBadge { position: absolute; z-index: 1; top: -3px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
   border-radius: 9px; background: #1c140c; border: 1.5px solid var(--gold); color: #f3e2b4; pointer-events: none;
   font: 800 11px/15px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.6); }
 #deckBtn.empty .dkBadge { display: none; }
@@ -2107,6 +2132,27 @@ body.dk-aiming #bottombar { visibility: hidden; }
   background: var(--panel-bg); background-image: var(--wood-tex); border-radius: 16px 16px 0 0;
   border-top: 2px solid #5c421f; box-shadow: inset 0 1px 0 rgba(232,200,140,.22), 0 -10px 30px rgba(0,0,0,.6);
   padding: 4px 0 calc(env(safe-area-inset-bottom, 0px) + 8px); will-change: transform; }
+/* the frame (build 214): square to the screen, the carved trim along its top,
+   the banner and the corners riding over its edge */
+#dkSheet .dkPanel { border-radius: 0; border-top: 0; padding-top: 10px;
+  background-color: var(--hud-wood, #1b140d);
+  background-image: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(120,84,40,.22), rgba(0,0,0,0) 70%), linear-gradient(0deg, rgba(0,0,0,.26), rgba(255,222,160,.05) 60%, rgba(255,222,160,.08)), var(--wood-tex);
+  box-shadow: 0 -1px 0 #0a0704, 0 -10px 30px rgba(0,0,0,.6); }
+#dkSheet .dkPanel::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; pointer-events: none;
+  background: linear-gradient(#0b0704 0 1px, #f0cc6e 1px 2px, #a8782a 2px 3px, #0b0704 3px 4px); }
+#dkSheet .dkBanner { position: absolute; left: 50%; top: -19px; z-index: 2; width: 176px; height: 38px; margin-left: -88px; pointer-events: none; }
+#dkSheet .dkBanner svg { display: block; width: 100%; height: 100%; overflow: visible; }
+#dkSheet .dkBanner b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 7px; padding-top: 1px;
+  font: 800 18px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: #f6dc8c; text-shadow: 0 2px 0 #000, 0 0 6px rgba(0,0,0,.6); }
+#dkSheet .dkBanner b img { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.8)); }
+#dkSheet .dkC { position: absolute; z-index: 1; top: -5px; width: 30px; height: 30px; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+#dkSheet .dkC svg { display: block; width: 100%; height: 100%; overflow: visible; }
+#dkSheet .dkC.tl { left: -5px; }
+#dkSheet .dkC.tr { right: -5px; transform: scaleX(-1); }
+#dkSheet .dkGrip { visibility: hidden; }
+#dkSheet .dkPanel:has(.dkBanner) .dkTitle { display: none; }
+#dkSheet .dkClose.hplate { position: absolute; z-index: 3; right: 12px; top: -20px; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0;
+  font: 400 20px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #f3e2b4; }
 #dkSheet .dkGrab { touch-action: none; cursor: grab; }
 #dkSheet .dkGrip { display: block; width: 46px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: #6e5024; }
 #dkSheet .dkHead { display: flex; align-items: center; gap: 10px; padding: 0 6px 0 16px; min-height: 46px; }

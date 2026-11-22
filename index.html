@@ -70,13 +70,19 @@
     --safe-min: 0px;
     --edge-clear: 0px;
     --safe-top: calc(max(env(safe-area-inset-top, 0px), var(--safe-min)) + var(--edge-clear));
-    /* HOW FAR DOWN THE TOP BAR REACHES. Four things hang off it — the
-       toasts, the minimap, its toggle and the army bar — and they were four
-       copies of the same 88px, measured off a bar that stacks two rows. The
-       desktop bar is one row (see the ≥900px block), so the number moves
-       and the whole stack rides up with it instead of floating 30px below
-       a bar that is no longer there. */
-    --hud-top: 88px;
+    /* HOW FAR DOWN THE TOP BAR REACHES, plus a 6px step: the toasts and the
+       rival's wonder banner hang from its foot (--hud-top - 6px), the
+       minimap and its toggle a little below it. One number, measured off a
+       bar that stacks two rows of 40px and 44px plates (build 214: 101px);
+       the desktop bar is one row (see the ≥900px block, 56px), so the number
+       moves and the whole stack rides up with it. tests/deck-ui.mjs
+       andAToastSaidMidCutStandsBelowTheBar holds the toasts off the bar. */
+    --hud-top: 107px;
+    /* THE HUD'S PLATE CORNER: the settings page's stepped chamfer (js/settings.js
+       --chamfer), one value for every plate of the bars and the menu (build 214) */
+    --hud-chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
+      calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
+      calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px));
     /* the title's display face (self-hosted, OFL, latin subset, wght 400-700) */
     --pxfont: 'Pixelify Sans', -apple-system, "Segoe UI", Roboto, sans-serif;
     /* the MENU face: inscriptional Roman caps, matching the lettering on the
@@ -132,84 +138,146 @@
   @supports (height: 100dvh) { html, body { height: 100dvh; } }
   #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-  /* ---- top resource bar ---- */
+  /* ---- THE HUD IS CARVED (build 214 — operator, on a player's critique: "the
+     UI is too small and didn't catch the eye at all… I want you to take that
+     style [the settings page's], and carry that through into the pause menu
+     as well as into the overall game UI"). ONE PLATE everywhere: the settings
+     page's stepped corner (--hud-chamfer), a dark face lit from above, a gold
+     rim inside a dark edge, a lit amber face for what is on or chosen. Every
+     picture on it is a drawn icon of the game's own (assets/ui/hud, PixelLab,
+     128px shown at ≤42 CSS px, so within its pixels on a 3x phone), never an
+     emoji. ---- */
   #topbar {
     position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-    padding: calc(var(--safe-top) + 5px) 6px 5px 6px;
-    /* opaque walnut, lit from above, a dark rule and the gold inlay at its
-       foot (::after) — and no backdrop blur: it was re-blurring the moving
-       map under a bar that was 94% opaque, every frame, for nothing */
+    padding: calc(var(--safe-top) + 6px) 6px 7px 6px;
+    /* opaque walnut, lit from above, a carved gold trim at its foot (::after)
+       — and no backdrop blur: it was re-blurring the moving map under a bar
+       that was 94% opaque, every frame, for nothing */
     background-color: var(--hud-wood);
     background-image: linear-gradient(180deg, rgba(255,222,160,.06), rgba(0,0,0,.22)), var(--wood-tex);
     box-shadow: 0 1px 0 #0a0704, 0 4px 10px rgba(0,0,0,.35);
-    font-size: 12.5px; font-weight: 700; white-space: nowrap;
+    font-size: 15px; font-weight: 700; white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
+  /* the trim where a bar meets the map: a dark line, two of gold, a dark line */
   #topbar::after, #bottombar::before {
-    content: ''; position: absolute; left: 0; right: 0; height: 1px; pointer-events: none; background: var(--inlay);
+    content: ''; position: absolute; left: 0; right: 0; height: 4px; pointer-events: none;
+    background: linear-gradient(#0b0704 0 1px, #f0cc6e 1px 2px, #a8782a 2px 3px, #0b0704 3px 4px);
   }
-  #topbar::after { bottom: 1px; }
-  #bottombar::before { top: 1px; }
-  .trow { display: flex; align-items: center; gap: 5px; }
+  #topbar::after { bottom: -1px; }
+  #bottombar::before { top: 0; }
+  .trow { display: flex; align-items: center; gap: 4px; }
   .trow + .trow { margin-top: 4px; }
-  /* ONE ROW HOLDS WHAT THE TOWN HOLDS (operator, build 154: "move the
-     population stat to the same row as the other resources… remove excess
-     empty space on that row and try to balance out population stat and all
-     resources", tests/hud-info.mjs): the four goods and the people are five
-     chips of ONE width — flex-basis 0 shares the row evenly, and min-width at
-     the chip's own content lets a chip whose number needs more take it while
-     the rest share what is left, so no number is ever clipped. The food rate
-     no longer rides the chip ("+35/d"): a tap on it says the day's sums, and
-     the number itself turns red when the store will run dry within days
-     (UI.refresh). A number past 9,999 shortens to 12.4k (UI.fmtRes). */
-  .res {
-    display: flex; align-items: center; justify-content: center; gap: 4px;
-    padding: 2px 6px; background: rgba(6,4,2,.42); border-radius: 8px;
-    border: 1px solid rgba(0,0,0,.55); box-shadow: inset 0 1px 2px rgba(0,0,0,.55), 0 1px 0 rgba(232,200,140,.10);
-    flex: 1 1 0; min-width: auto; max-width: 150px; font-size: 13px;
+  /* THE PLATE: the face is a ::before under the content (the plate isolates it) */
+  .res, #rDay, #topbar .iconbtn { position: relative; isolation: isolate; }
+  .res::before, #rDay::before, #topbar .iconbtn::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+    background: linear-gradient(#2d2317 0%, #1f180f 55%, #161009 100%);
+    box-shadow: inset 0 0 0 2px #0d0804, inset 0 0 0 3px rgba(214,170,74,.55), inset 0 10px 0 rgba(255,240,200,.05), inset 0 -8px 0 rgba(0,0,0,.28);
   }
-  /* THE ICONS ARE DRAWN (operator: "increase the pixel count of the art work
-     so it's more clear what the resource icon relates to. Right now they're
-     fuzzy blobs"): meat on the bone, a stack of logs, a split stone, gold
-     coins with a glint and two of the tribe — vectors in the markup, crisp at
-     the screen's own pixels like the map and the deck beside them (UI chrome
-     is never blown-up pixel art), where they were 8x8 sprites stretched to
-     15px. The deck's flying goods wear the same pictures (DeckUI._spray). */
-  .res .ric { width: 20px; height: 20px; flex: 0 0 auto; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.5)); }
+  /* ONE ROW HOLDS WHAT THE TOWN HOLDS (operator, build 154: "move the
+     population stat to the same row as the other resources… balance out
+     population stat and all resources", tests/hud-info.mjs): the four goods
+     and the people are five plates of ONE width — flex-basis 0 shares the
+     row evenly, and min-width at the plate's own content lets one whose
+     number needs more take it while the rest share what is left, so no
+     number is ever clipped. Each good wears its own drawn picture, big
+     enough to tell at a glance (operator, build 214: "make the icons for the
+     different resources unique to our game… quality pixel count so it's easy
+     for the player to visually see what each resource is"). The food rate
+     does not ride the plate: a tap on it says the day's sums, and the number
+     itself turns red when the store will run dry within days (UI.refresh).
+     A number past 9,999 shortens to 12.4k (UI.fmtRes). */
+  .res {
+    display: flex; align-items: center; justify-content: center; gap: var(--res-gap, 4px);
+    height: 40px; padding: 0 var(--res-pr, 7px) 0 var(--res-pl, 5px);
+    flex: 1 1 0; min-width: auto; max-width: 170px;
+    font-size: var(--res-fs, 16px); color: #f7ead0; text-shadow: 0 1px 0 #000, 0 0 4px rgba(0,0,0,.55);
+  }
+  .res .ric { width: var(--res-ic, 28px); height: var(--res-ic, 28px); flex: 0 0 auto; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+  .res:active::before, #rDay:active::before { filter: brightness(1.25); }
   #rFood.low { color: #ff8a80; }
-  /* THE CHIPS ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a chip holds
-     its number at every width: the narrower phones step the type, the icon and
-     the gaps down a little rather than clip one. */
+  /* THE PLATES ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a plate
+     holds its number at every width: the narrower phones step the type, the
+     picture and the gaps down a little rather than clip one. */
   #topbar [data-chip] { cursor: pointer; }
   #topbar .trow:first-child { justify-content: center; }
-  @media (max-width: 400px) {
-    #topbar .trow:first-child { gap: 3px; }
-    #topbar .trow:first-child .res { gap: 3px; padding-left: 4px; padding-right: 4px; font-size: 12.5px; }
-    .res .ric { width: 19px; height: 19px; }
-  }
-  @media (max-width: 350px) {
-    #topbar .trow:first-child .res { gap: 2px; padding-left: 2px; padding-right: 2px; font-size: 12px; }
-    .res .ric { width: 17px; height: 17px; }
-  }
-  #rDay { margin-left: auto; color: var(--gold); padding-right: 4px; }
+  /* (measured with the widest numbers the bar prints — "9999", "99.9k",
+     "64/60" — so the five always share one row: tests/hud-info.mjs) */
+  @media (max-width: 480px) { #topbar { --res-ic: 28px; --res-fs: 16px; --res-gap: 2px; --res-pl: 2px; --res-pr: 3px; } #topbar .trow:first-child { gap: 3px; } }
+  @media (max-width: 420px) { #topbar { --res-ic: 27px; --res-fs: 15.5px; } }
+  @media (max-width: 400px) { #topbar { --res-ic: 25px; --res-fs: 15px; } }
+  @media (max-width: 382px) { #topbar { --res-ic: 24px; --res-fs: 14.5px; } }
+  @media (max-width: 368px) { #topbar { --res-ic: 23px; --res-fs: 14px; --res-gap: 1px; --res-pr: 2px; } }
+  @media (max-width: 348px) { #topbar { --res-ic: 22px; --res-fs: 13px; } }
+  @media (max-width: 330px) { #topbar { --res-ic: 20px; --res-fs: 12.5px; } }
+  /* THE DAY'S PLATE: the sun by day and the moon by night (UI.refresh reads
+     R.dayPhase), the count in the menus' own caps */
+  #rDay { display: flex; align-items: center; height: 40px; padding: 0 10px 0 33px; flex: 0 0 auto;
+    color: #f2cf6c; font-family: var(--menufont); font-size: 15px; letter-spacing: .4px; text-shadow: 0 1px 0 #000, 0 0 4px rgba(0,0,0,.6); }
+  #rDay::after { content: ''; position: absolute; left: 6px; top: 50%; width: 24px; height: 24px; margin-top: -12px; pointer-events: none;
+    background: url("assets/ui/hud/day-sun.png?v=1") center / contain no-repeat; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+  #rDay.night::after { background-image: url("assets/ui/hud/day-moon.png?v=1"); }
+  #rDay .dW { white-space: pre; }
   /* THE SAVED ARMIES RIDE THE SECOND ROW'S LEFT (operator, build 154: "move
      the Army 1, 2, and 3 icons to the left hand side of the second row… This
-     keeps our game UI / screen as clean as possible"; tests/army-groups.mjs):
-     they stood on the map under the minimap. Each is a button of the row's
-     own kind (the 44px reach of every top-bar button), the army's helmet — or
-     a fleet's ship — drawn as a vector, and its number. Empty, the strip takes
-     no room at all. */
-  #armyBar { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+     keeps our game UI / screen as clean as possible"; tests/army-groups.mjs).
+     Each is a plate of the row with a drawn picture of what the army mostly
+     is — a helmet for foot, a bow for the archers, a horse for the riders, a
+     ship for a fleet (UI.armyKind) — and its number on a gold boss. Empty,
+     the strip takes no room at all. */
+  #armyBar { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
   #armyBar:empty { display: none; }
-  #armyBar .iconbtn { min-width: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-  #armyBar svg { width: 26px; height: 26px; display: block; margin-left: -7px; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
-  #armyBar .armyN { position: absolute; right: 4px; bottom: 3px; font-size: 12px; font-weight: 800; line-height: 1;
-    color: var(--gold); text-shadow: 0 1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, 0 -1px 0 #000; pointer-events: none; }
+  #armyBar .aic { width: 30px; height: 30px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+  #armyBar .armyN { position: absolute; right: 1px; bottom: 1px; z-index: 1; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
+    border-radius: 8px; font: 800 11px/16px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; color: #2b1906; pointer-events: none;
+    background: radial-gradient(circle at 35% 30%, #fff3c8, #e2b24c 60%, #9c6f1f); box-shadow: 0 0 0 1.5px #1d1007; }
   .iconbtn {
     min-width: 44px; min-height: 34px; border: none; border-radius: 8px;
     background: var(--btn); color: var(--text); font-size: 15px; font-weight: 700;
   }
   .iconbtn:active { background: var(--btn-hi); }
+  /* THE TOP BAR'S BUTTONS ARE A FINGER TALL AS DRAWN (44px, the research's
+     floor — PX-14 hung an invisible reach round a 34px drawing; the plates
+     are simply that big now). The map, the cards and the ONE menu sit right;
+     a lit plate is what is open. */
+  #topbar .iconbtn { width: 44px; height: 44px; min-width: 0; min-height: 0; padding: 0; border-radius: 0; background: none;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; cursor: pointer; }
+  #topbar .iconbtn .hic { width: 30px; height: 30px; display: block; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+  #topbar .iconbtn:active { background: none; transform: translateY(1px); }
+  #topbar .iconbtn:active::before { filter: brightness(1.25); }
+  #topbar .iconbtn:focus-visible, .res:focus-visible, #rDay:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+  #mapBtn { margin-left: auto; }
+  #mapBtn[aria-pressed="true"]::before, #topbar .iconbtn.on::before {
+    background: linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
+    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.12), inset 0 -8px 0 rgba(0,0,0,.25);
+  }
+  /* …and on a narrow phone the second row makes room: the plates step down
+     to 40, 37 and 36 wide (still 44 tall), so three banners, the running cards'
+     timers, the day and the three buttons fit at 320 (tests/hud-info.mjs
+     noTwoTopBarTargetsOverlap, tests/deck-ui.mjs theRowFitsEveryWidth) */
+  @media (max-width: 400px) {
+    #topbar .trow + .trow .iconbtn { width: 40px; }
+    #rDay { padding-right: 8px; font-size: 14px; }
+  }
+  @media (max-width: 382px) {
+    #topbar .trow + .trow .iconbtn { width: 37px; }
+    #topbar .iconbtn .hic, #armyBar .aic { width: 28px; height: 28px; }
+  }
+  /* …and when the saved armies AND the running cards both want the row, the
+     day drops its word ("☀ 12"), so the cards' timers keep room for a chip and
+     its count (DeckUI._fitChips; tests/deck-ui.mjs andTheBadgeIsWhole) */
+  @media (max-width: 480px) {
+    #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay .dW { display: none; }
+    #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay { padding-right: 8px; }
+  }
+  @media (max-width: 370px) {
+    #topbar .trow + .trow .iconbtn { width: 36px; }
+    #topbar .iconbtn .hic, #armyBar .aic { width: 27px; height: 27px; }
+    #rDay { padding: 0 7px 0 29px; }
+    #rDay::after { left: 5px; width: 21px; height: 21px; margin-top: -10.5px; }
+    #rDay .dW { display: none; }
+  }
 
   /* ---- toasts / event log ---- */
   #toasts {
@@ -235,12 +303,14 @@
   @keyframes toastFlare { from { background: rgba(96,32,22,0.96); } }
 
   /* ---- minimap ---- */
-  /* minimap lives top-right, clear of the (almost always open) bottom menu */
+  /* minimap lives top-right, clear of the (almost always open) bottom menu —
+     in a carved frame of the HUD's own: a gold bead inside a dark edge and a
+     walnut band, like the settings page's frame (build 214) */
   #miniWrap {
-    position: absolute; right: 6px; top: calc(var(--safe-top) + var(--hud-top) + var(--pro-map, 0px));
-    z-index: 9; border: 3px solid #5c421f; border-radius: 5px; overflow: hidden;
-    outline: 1px solid #241d15;
-    box-shadow: inset 0 0 0 1px rgba(232,200,140,0.25), 0 2px 6px rgba(0,0,0,0.5);
+    position: absolute; right: 9px; top: calc(var(--safe-top) + var(--hud-top) + 2px + var(--pro-map, 0px));
+    z-index: 9; border: 2px solid #d2a346; border-radius: 3px; overflow: hidden;
+    outline: 2px solid #0b0704;
+    box-shadow: 0 0 0 4px #3a2b1a, 0 0 0 5px #0b0704, 0 4px 10px rgba(0,0,0,0.6);
     background: #000; line-height: 0;
   }
   #mini { width: 96px; height: 96px; image-rendering: pixelated; }
@@ -248,141 +318,173 @@
   #miniCam { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
   #miniToggle {
     position: absolute; right: 6px; z-index: 9;
-    top: calc(var(--safe-top) + var(--hud-top) + 106px + var(--pro-map, 0px));   /* bottom-right of the map; --pro-map: below the journey guide's card (js/prologue.js) */
+    top: calc(var(--safe-top) + var(--hud-top) + 111px + var(--pro-map, 0px));   /* under the framed map; --pro-map: below the journey guide's card (js/prologue.js) */
     min-width: 30px; min-height: 30px; border: 1px solid #4a4232; border-radius: 8px;
     background: var(--bar-bg); color: var(--dim); font-size: 12px; font-weight: 700;
   }
   /* …and it hits at 44x44 though it is drawn 30x30 (PX-14): an invisible
-     reach into the 4px gap under the map (never onto it — the map's own
+     reach into the gap under the map's frame (never onto the map — its own
      canvas scrubs the view), 10px down, 8px left and 6px right, to the
-     screen's edge. The 1px border is the extra pixel in each number. (The
-     saved armies' banners stood under it until build 154; they ride the top
-     bar now, and nothing floats under the fold.) */
+     screen's edge. The 1px border is the extra pixel in each number. */
   #miniToggle::after { content: ''; position: absolute; top: -5px; bottom: -11px; left: -9px; right: -7px; }
-  /* THE MAP LIVES IN THE TOP BAR, beside the cards (operator, 2026-10-29:
-     "move the map icon up into the header… to keep the game UI clean"). It
-     opens and folds the minimap, which still unfolds in its own corner with
-     the ▴ under it; folded, nothing floats over the world at all. A drawn
-     icon, like the deck's (UI chrome is never an emoji), lit while open. */
-  #mapBtn { position: relative; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-  #mapBtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
-  #mapBtn svg { width: 24px; height: 24px; display: block; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
-  #mapBtn[aria-pressed="true"] { background: var(--btn-hi); box-shadow: inset 0 -2px 0 rgba(232,193,90,.55); }
-  /* EVERY TOP-BAR BUTTON IS A FINGER TALL (PX-14, tests/desktop-layout.mjs
-     §3): Pause and Menu were drawn 34x34 with nothing round them, where the
-     map and the deck already took the bar's 5px above and below. One rule
-     for all four now; the reach stays inside the bar, and no width is taken
-     from the 3px between them. */
-  #topbar .iconbtn { position: relative; }
-  #topbar .iconbtn::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
-  /* …and a positioned Pause paints over whatever positioned thing came
-     before it, which is the deck's count badge: it hangs 6px past the deck
-     button into a phone's 3px gap, and its gold ring lost its right edge
-     under Pause. The badge takes no taps (pointer-events: none), so lifting
-     it gives back 127's picture and moves no hit. */
-  #topbar #deckBtn .dkBadge { z-index: 1; }
-  /* …and on a phone the second row makes room for it: four 34px buttons sit
-     where three 44px ones did, so the saved armies, two running cards' timers
-     and the day still fit beside them (tests/deck-ui.mjs theRowFitsEveryWidth).
-     The touch target keeps its height (::after on the drawn ones). */
-  @media (max-width: 899px) {
-    #topbar .trow + .trow { gap: 3px; }
-    #topbar .trow + .trow .iconbtn { min-width: 34px; }
-    #topbar #armyBar .iconbtn { min-width: 34px; }
-    #rDay { padding-right: 0; }
-  }
-  @media (max-width: 350px) {
-    #topbar #armyBar .iconbtn { min-width: 30px; }
-    #armyBar svg { width: 24px; height: 24px; margin-left: -6px; }
-    #armyBar .armyN { right: 3px; font-size: 11px; }
-  }
 
-  /* ---- bottom bar ---- */
+  /* ---- THE BOTTOM: the BUILD button, the build panel, the selection panel ----
+     (build 214 — a player: ""Build" button is just a very small button at the
+     bottom left corner of the screen that I didn't even notice existed even
+     as it blinked"). #bottombar's data-bm, written by UI.syncBottomToggle
+     (the ONE writer), says which of four it is:
+       closed   nothing in hand, the menu folded: no bar at all — the BUILD
+                button stands on the map at the bottom left, big and labelled
+       open     the build panel: a carved frame across the bottom, the BUILD
+                banner on its top edge and a ✕ at its right
+       panel    a selection's panel in the same frame, "▾ Hide" on its edge
+       panelmin the panel folded away: "▴ Panel" where BUILD stands
+     #bmToggle is the one control in all four (the journey rings it), and it
+     is never position:fixed — the guide asks offsetParent to see it. */
   #bottombar {
     position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
     background-color: var(--hud-wood);
-    background-image: linear-gradient(0deg, rgba(0,0,0,.24), rgba(255,222,160,.05) 60%, rgba(255,222,160,.07)), var(--wood-tex);
-    box-shadow: 0 -1px 0 #0a0704, 0 -4px 10px rgba(0,0,0,.35);
-    /* hug the buttons: keep just enough home-indicator clearance, not a full
+    background-image: radial-gradient(ellipse 70% 120% at 50% 0%, rgba(120,84,40,.22), rgba(0,0,0,0) 70%),
+      linear-gradient(0deg, rgba(0,0,0,.26), rgba(255,222,160,.05) 60%, rgba(255,222,160,.08)), var(--wood-tex);
+    box-shadow: 0 -1px 0 #0a0704, 0 -5px 12px rgba(0,0,0,.4);
+    /* hug the cards: keep just enough home-indicator clearance, not a full
        safe-area gap of blank wood below the build menu */
-    padding: 6px 6px calc(env(safe-area-inset-bottom) / 2 + 4px) 6px;
+    padding: 12px 8px calc(env(safe-area-inset-bottom) / 2 + 8px) 8px;
   }
+  #bottombar[data-bm="closed"], #bottombar[data-bm="panelmin"] {
+    background: none; box-shadow: none; padding: 0; height: 1px; pointer-events: none;
+  }
+  #bottombar[data-bm="closed"]::before, #bottombar[data-bm="panelmin"]::before,
+  #bottombar[data-bm="closed"] .bmC, #bottombar[data-bm="panelmin"] .bmC { display: none; }
+  /* the frame's carved corners: the settings page's own ornament (SettingsPage.cornerSvg) */
+  #bottombar .bmC { position: absolute; z-index: 1; top: -5px; width: 30px; height: 30px; pointer-events: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+  #bottombar .bmC svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  #bottombar .bmC.tl { left: -5px; }
+  #bottombar .bmC.tr { right: -5px; transform: scaleX(-1); }
+  /* the banner over an open build panel */
+  #bmBanner { display: none; position: absolute; left: 50%; top: -19px; z-index: 2; width: 176px; height: 38px; margin-left: -88px; pointer-events: none; }
+  #bmBanner svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  #bottombar[data-bm="open"] #bmBanner { display: block; }
+  #bmBanner b { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 7px;
+    font: 800 18px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: #f6dc8c;
+    text-shadow: 0 2px 0 #000, 0 0 6px rgba(0,0,0,.6); padding-top: 1px; }
+  #bmBanner b img { width: 24px; height: 24px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.8)); }
+  /* THE ONE CONTROL, a plate in every state */
   #bmToggle {
-    position: absolute; top: -22px; left: 8px;
-    min-width: 44px; height: 22px; border: 1px solid #0a0704; border-bottom: none;
-    border-radius: 8px 8px 0 0; color: var(--dim);
-    background-color: var(--hud-wood);
-    background-image: linear-gradient(180deg, rgba(255,222,160,.09), rgba(255,222,160,.04)), var(--wood-tex);
-    box-shadow: inset 0 1px 0 rgba(232,193,90,.28);
-    font-size: 11px; font-weight: 700; padding: 0 10px;
+    position: absolute; isolation: isolate; z-index: 3; border: 0; background: none; padding: 0 12px; cursor: pointer;
+    color: #f3e2b4; font: 800 12px/1 var(--menufont); letter-spacing: 1px; text-transform: uppercase; text-shadow: 0 1px 0 #000;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
+    -webkit-appearance: none; appearance: none; pointer-events: auto;
+    left: 10px; top: -30px; height: 30px;
   }
-  /* THE FOLDED TAB IS A FINGER TALL WHERE IT IS DRAWN 22px (PX-14,
-     tests/desktop-layout.mjs §3): every gather, build or station order folds
-     the menu, and this tab is the only way back — a tap 12-16px above it
-     used to land in the world. An invisible reach 16px up and 6px down (the
-     bar's own top padding) makes the hit box 44px; its width stays the
-     tab's own. FOLDED ONLY — the menu tucked away and no panel up — because
-     an OPEN tab moves: a tap that selects a unit lifts the panel, and the
-     tab with it, under the finger, and the click the browser sends after
-     the tap lands where the finger was. A reach there hid the panel the tap
-     had just opened (measured, a 22px band became 44) and took ground taps
-     from placement. The folded tab only moves DOWN, away from any finger.
-     ::before, because ::after is the Master Builders badge
-     (js/deckfx-town.js). The 1px border is why it reads -17px. */
-  #bmToggle:has(~ #buildmenu[style*="display: none"]):not(:has(~ #panel.show))::before {
-    content: ''; position: absolute; left: -1px; right: -1px; top: -17px; bottom: -6px;
+  #bmToggle::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+    background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
+    box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,.55), inset 0 10px 0 rgba(255,240,200,.06), inset 0 -8px 0 rgba(0,0,0,.28);
+  }
+  #bmToggle:active { transform: translateY(1px); }
+  #bmToggle:active::before { filter: brightness(1.2); }
+  #bmToggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  #bmToggle .bmIc { display: none; pointer-events: none; }
+  /* closed: THE BUILD BUTTON */
+  #bottombar[data-bm="closed"] #bmToggle {
+    top: auto; left: calc(env(safe-area-inset-left, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 12px);
+    width: 84px; height: 84px; padding: 0; flex-direction: column; gap: 3px;
+    font-size: 15px; letter-spacing: 1.6px; color: #fff0bf;
+  }
+  #bottombar[data-bm="closed"] #bmToggle::before {
+    background: radial-gradient(ellipse 80% 60% at 50% 35%, rgba(255,214,120,.22), rgba(0,0,0,0) 70%), linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
+    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 0 0 6px rgba(26,16,5,.85),
+      inset 0 0 0 7px rgba(242,207,108,.35), inset 0 12px 0 rgba(255,236,170,.10), inset 0 -10px 0 rgba(0,0,0,.25);
+  }
+  #bottombar[data-bm="closed"] #bmToggle .bmIc { display: block; width: 40px; height: 40px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.75)); }
+  #bottombar[data-bm="closed"] #bmToggle { filter: drop-shadow(0 4px 6px rgba(0,0,0,.55)); }
+  /* open: the ✕ on the frame's right corner, a finger wide (44px) — the
+     cards start below its foot, so no card loses a pixel to it
+     (tests/desktop-layout.mjs butTheBuildCardsKeepEveryPixel) */
+  #bottombar[data-bm="open"] { padding-top: 24px; }
+  #bottombar[data-bm="open"] #bmToggle {
+    left: auto; right: 12px; top: -24px; width: 44px; height: 44px; padding: 0; font: 400 21px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0;
+  }
+  /* the panel folded: "▴ Panel" stands where BUILD does */
+  #bottombar[data-bm="panelmin"] #bmToggle {
+    top: auto; left: calc(env(safe-area-inset-left, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 12px);
+    height: 44px; padding: 0 16px; font-size: 13px;
   }
   #buildmenu {
-    display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
     touch-action: pan-x; padding-bottom: 2px;
     /* a scroller clips at its padding box, and a card's NEW tag rides 6px over
        its top edge (js/prologue.js): the box reaches 6px up into the bar's own
        padding and the margin takes it back, so nothing moves and the tag is
        whole (operator, build 186: "the 'New' tag in the build menu is cut off") */
     padding-top: 6px; margin-top: -6px;
+    scrollbar-width: thin; scrollbar-color: rgba(214,170,74,.45) transparent;
   }
+  /* THE BUILD CARDS (build 214): bigger, framed, the picture first, the name
+     in the menus' caps and the price in the bar's own pictures — a good the
+     town is short of in red, so what is needed reads beside what is had
+     (UI.costHtml). A card the hall has not reached yet is dimmed and says
+     so; one merely short keeps its picture whole. */
   .bbtn {
-    flex: 0 0 auto; width: 66px; min-height: 72px; border: 1px solid #0d0905; border-radius: 10px;
-    /* a smooth raised plate on the grained bar: the grain is the bar's, not
-       every card's, or the row reads as busy */
-    background: linear-gradient(180deg, #33281a, #251c12);
-    box-shadow: inset 0 1px 0 rgba(255,226,170,.10), 0 1px 2px rgba(0,0,0,.45);
-    color: var(--text); display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 2px; padding: 4px 2px;
+    position: relative; isolation: isolate; flex: 0 0 auto; width: 90px; min-height: 112px; border: 0; border-radius: 6px;
+    background: none; color: #f3e6c8; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    gap: 2px; padding: 8px 4px 7px; cursor: pointer; font-family: inherit;
   }
-  .bbtn:active { background: var(--btn-hi); }
-  .bbtn.sel {
-    border-color: var(--gold); background: linear-gradient(180deg, #5a4a2b, #463820);
-    box-shadow: 0 0 10px rgba(232, 193, 90, 0.45), inset 0 1px 0 var(--edge);
+  .bbtn::after {
+    content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+    background: radial-gradient(ellipse 85% 50% at 50% 32%, rgba(130,92,44,.32), rgba(0,0,0,0) 72%), linear-gradient(#2e2417 0%, #211a10 55%, #18120a 100%);
+    box-shadow: inset 0 0 0 2px #0d0804, inset 0 0 0 3px rgba(214,170,74,.48), inset 0 10px 0 rgba(255,240,200,.05), inset 0 -10px 0 rgba(0,0,0,.25);
   }
-  .bbtn.cant { opacity: 0.45; }
-  .bbtn canvas { width: 40px; height: 40px; image-rendering: pixelated; }
-  .bbtn .bname { font-size: 9px; font-weight: 700; }
-  .bbtn .bcost { font-size: 9px; color: var(--dim); }
+  .bbtn:active { transform: translateY(1px); }
+  .bbtn:active::after { filter: brightness(1.2); }
+  .bbtn.sel::after {
+    background: radial-gradient(ellipse 85% 50% at 50% 32%, rgba(255,214,120,.25), rgba(0,0,0,0) 72%), linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
+    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.12), inset 0 -10px 0 rgba(0,0,0,.25);
+  }
+  .bbtn.sel { filter: drop-shadow(0 0 6px rgba(242,207,108,.5)); }
+  .bbtn.locked { opacity: .5; }
+  .bbtn canvas { width: 54px; height: 54px; flex: 0 0 auto; }
+  .bbtn .bname { font: 700 11.5px/1.12 var(--menufont); color: #f3e2b4; letter-spacing: .1px; text-align: center; text-shadow: 0 1px 0 #000;
+    min-height: 2.24em; display: flex; align-items: center; justify-content: center; padding: 0 1px; }
+  .bbtn .bcost { width: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1px 5px; margin-top: auto; padding-top: 4px;
+    border-top: 1px solid rgba(214,170,74,.22); font: 700 12px/1.25 -apple-system, "Segoe UI", Roboto, sans-serif; color: #eadcbd;
+    font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 #000; letter-spacing: -.2px; }
+  .bbtn .bcost .bc { white-space: nowrap; }
+  .bbtn .bcost .bc.short { color: #ff8f78; }
+  .bbtn .bcost .ri { width: 14px; height: 14px; vertical-align: -3px; margin-right: 1px; }
+  .bbtn .blk { font: 700 10px/1.2 -apple-system, "Segoe UI", Roboto, sans-serif; color: #e9b37a; text-align: center; }
   /* THE WONDER CARD IS THE GOAL (UI.buildMenu, tests/calm-peace.mjs): gold rim,
      a victory ribbon, room for its four-resource price, and a live "% saved"
      line — and it is never ghosted to 45% like an unaffordable hut, because
      "saving for it" is the state it lives in for most of a run */
-  .bbtn.wonder {
-    width: 86px; border-color: var(--gold);
-    box-shadow: inset 0 1px 0 var(--edge), 0 0 8px rgba(232,193,90,0.35);
-    transition: border-color 1.4s ease, box-shadow 1.4s ease;
-  }
-  .bbtn.wonder.cant { opacity: 0.85; }
+  .bbtn.wonder { width: 104px; transition: filter 1.4s ease; filter: drop-shadow(0 0 6px rgba(232,193,90,.45)); }
+  .bbtn.wonder::after { box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.08), inset 0 -10px 0 rgba(0,0,0,.25); }
+  .bbtn.wonder.cant, .bbtn.wonder.locked { opacity: 0.88; }
   .bbtn.wonder .bwin {
-    font-size: 8px; font-weight: 900; color: var(--gold); letter-spacing: .05em; text-transform: uppercase;
+    font: 800 8.5px/1 var(--menufont); color: var(--gold); letter-spacing: .08em; text-transform: uppercase;
     overflow: hidden; max-height: 14px;
     transition: opacity 1.1s ease, max-height 1.4s ease;
   }
-  .bbtn.wonder .bprog { font-size: 9px; font-weight: 700; color: var(--gold); }
+  .bbtn.wonder .bprog { font: 700 10px/1.2 -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--gold); }
   /* …and after its five minutes it settles into the row (UI.wonderShouting).
-     The rim and the ribbon go; the gold "% saved" line stays, because that
-     is the part that is information rather than decoration. */
-  .bbtn.wonder.settled { border-color: #241d15; box-shadow: inset 0 1px 0 var(--edge); }
+     The ribbon goes; the gold "% saved" line stays, because that is the part
+     that is information rather than decoration. */
+  .bbtn.wonder.settled { filter: none; }
   .bbtn.wonder.settled .bwin { opacity: 0; max-height: 0; }
   @media (prefers-reduced-motion: reduce) {
     .bbtn.wonder, .bbtn.wonder .bwin { transition: none; }
   }
+  /* A GOOD IN THE TEXT IS ITS PICTURE (UI.iconHtml / UI.iconText): every
+     price the HUD shows wears the bar's own drawn goods, never an emoji. The
+     glyph stays in the text (a reader, a test and a copy still read it) and
+     is pushed out of a box that shows the picture instead. */
+  .ri { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -0.24em; margin: 0 .1em 0 0; overflow: hidden; white-space: nowrap;
+    text-indent: 3em; color: transparent; font-style: normal; background: center / contain no-repeat; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
+  .ri[data-r="food"] { background-image: url("assets/ui/hud/res-food.png?v=1"); }
+  .ri[data-r="wood"] { background-image: url("assets/ui/hud/res-wood.png?v=1"); }
+  .ri[data-r="stone"] { background-image: url("assets/ui/hud/res-stone.png?v=1"); }
+  .ri[data-r="gold"] { background-image: url("assets/ui/hud/res-gold.png?v=1"); }
 
   /* ---- TWO ROADS TO VICTORY (Screens.showVictoryPaths, tests/calm-peace.mjs) ----
      the first Calm game's opening modal: z25 — over the placement chrome
@@ -496,7 +598,7 @@
   #panel.show { display: block; }
   #panel .phead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   #panel .phead canvas { width: 44px; height: 44px; image-rendering: pixelated; flex: 0 0 auto; }
-  #panel .phead > div { flex: 1; min-width: 0; padding-right: 96px; }  /* clear the −/ℹ️ + ✕ */
+  #panel .phead > div { flex: 1; min-width: 0; padding-right: 104px; }  /* clear the −/ℹ️ + ✕ (42px plates) */
   #panel .ptitle { font-size: 14px; font-weight: 800; }
   /* a villager's own name heads her panel; her kind rides beside it, quieter (build 211) */
   #panel .ptitle .pkind { font-size: 11px; font-weight: 600; color: var(--dim); margin-left: 3px; letter-spacing: .2px; }
@@ -607,7 +709,49 @@
   .abtn.prank { position: absolute; right: 106px; margin-top: -2px; min-width: 40px; padding: 4px 8px;
     display: inline-flex; align-items: center; justify-content: center; }
   .abtn.prank svg { display: block; }
-  #panel .phead.k3 > div { padding-right: 144px; }   /* clear the red button, the −/ℹ️ and the ✕ */
+  #panel .phead.k3 > div { padding-right: 152px; }   /* clear the red button, the −/ℹ️ and the ✕ (42px plates) */
+
+  /* THE PANEL'S BUTTONS ARE THE MENU'S PLATES (build 214 — the operator: "make
+     sure that the design is consistent between the game, the settings menu,
+     and the pause menu"): the settings page's chamfered plate with its gold
+     rim and lit top (::before, under the words), the lit amber plate for
+     what is on, the red one for what throws something away. One recipe with
+     the top bar's and the build cards' (index.html --hud-chamfer). */
+  #panel .abtn, .hplate { position: relative; isolation: isolate; border: 0; border-radius: 0; background: none; box-shadow: none;
+    color: #f4e8cc; text-shadow: 0 1px 0 rgba(0,0,0,.85); }
+  #panel .abtn::before, .hplate::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+    background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
+    box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,.48), inset 0 10px 0 rgba(255,240,200,.06), inset 0 -8px 0 rgba(0,0,0,.28); }
+  #panel .abtn:active, .hplate:active { background: none; transform: translateY(1px); }
+  #panel .abtn:active::before, .hplate:active::before { filter: brightness(1.2); }
+  #panel .abtn small { color: #c2b28e; }
+  #panel .abtn .bic { width: 22px; height: 22px; vertical-align: -6px; margin-right: 6px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.7)); }
+  #panel .abtn.sel::before, #panel .abtn.on::before {
+    background: linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
+    box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,.12), inset 0 -8px 0 rgba(0,0,0,.25); }
+  #panel .abtn.sel { background: none; }
+  #panel .abtn.danger::before { background: linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%);
+    box-shadow: inset 0 0 0 2px #1d0804, inset 0 0 0 3px #ffb08a, inset 0 10px 0 rgba(255,200,170,.12), inset 0 -8px 0 rgba(0,0,0,.3); }
+  /* training: the plate's rim goes gold and glows (UI.paintTraining's .trn) */
+  #panel .abtn.trn { box-shadow: none; filter: drop-shadow(0 0 5px rgba(232,193,90,.45)); }
+  #panel .abtn.trn::before { box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 10px 0 rgba(255,236,170,.08), inset 0 -8px 0 rgba(0,0,0,.25); }
+  /* the rare act's red plate, quiet at rest (UI.killBtn) */
+  #panel .abtn.pkill { background: none; }
+  #panel .abtn.pkill::before { background: linear-gradient(#4d2a1b 0%, #3c2115 55%, #301a10 100%);
+    box-shadow: inset 0 0 0 2px #140604, inset 0 0 0 3px rgba(224,120,90,.45), inset 0 10px 0 rgba(255,200,170,.05), inset 0 -8px 0 rgba(0,0,0,.28); }
+  #panel .abtn.pkill.armed { box-shadow: none; filter: drop-shadow(0 0 5px rgba(224,101,80,.55)); }
+  #panel .abtn.pkill.armed::before { background: linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%);
+    box-shadow: inset 0 0 0 2px #1d0804, inset 0 0 0 3px #ffb08a, inset 0 10px 0 rgba(255,200,170,.12), inset 0 -8px 0 rgba(0,0,0,.3); }
+  /* the header's small plates (✕, ℹ️/−, the rank, the red act) a finger
+     square, and still where the header places them: the plate rule above
+     (#panel .abtn, position relative) outranks their own ids, so they say
+     absolute again here (tests/rank-up.mjs theButtonSitsBesideTheInfo) */
+  #panel #panelClose, #panel #helpToggle, #panel .abtn.prank, #panel .abtn.pkill { position: absolute; min-width: 42px; min-height: 42px; padding: 4px 8px; }
+  #panel .pchip { border: 0; border-radius: 0; background: none; position: relative; isolation: isolate; color: #f0e2bd; }
+  #panel .pchip::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+    background: linear-gradient(#33281a, #231a0f); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,.32), inset 0 8px 0 rgba(255,240,200,.04); }
+  #panel .pchip.on::before { box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(242,207,108,.75), inset 0 8px 0 rgba(255,240,200,.06); }
+  #panel .pchip:active { background: none; transform: translateY(1px); }
 
   .mrow { display: flex; gap: 8px; margin: 8px 0; align-items: center; }
   .mrow .abtn { flex: 1; }
@@ -1033,7 +1177,9 @@
        menu left a third of its width empty on the right: it centres now,
        and `safe` keeps a menu wider than the bar scrolling from its start. */
     #topbar .trow:first-child { justify-content: space-evenly; }   /* the goods and the people */
-    .res { flex: 0 1 150px; }
+    .res { flex: 0 1 160px; height: 44px; }
+    #topbar { --res-ic: 30px; --res-fs: 17px; }
+    #rDay { height: 44px; }
     #buildmenu::before, #buildmenu::after { content: ''; margin: auto; }   /* centres; collapses to 0 when the row overflows, so it still scrolls from its start */
 
     /* ONE ROW, NOT TWO (operator, 2026-09-22). The tribe, the day and the two
@@ -1044,11 +1190,19 @@
        so the phone keeps exactly the layout it had. R.clampCam and the
        vignette both measure #topbar's real height, so the map gains the
        space back without anything being told about it. */
-    :root { --hud-top: 58px; }                             /* one row, so everything below it rides up */
-    #topbar { display: flex; align-items: center; gap: 10px; }
-    #topbar .trow:first-child { flex: 1 1 auto; min-width: 0; }
-    #topbar .trow + .trow { margin-top: 0; flex: 0 0 auto; gap: 8px; }
-    #rDay { margin-left: 0; }
+    :root { --hud-top: 62px; }                             /* one row (56px), so everything below it rides up */
+    #topbar { display: flex; align-items: center; gap: 12px; padding-bottom: 6px; }
+    #topbar .trow:first-child { flex: 1 1 auto; min-width: 0; gap: 6px; }
+    #topbar .trow + .trow { margin-top: 0; flex: 0 0 auto; gap: 6px; }
+    #mapBtn { margin-left: 6px; }
+    /* a desktop has the room for a map you can read */
+    #mini { width: 148px; height: 148px; }
+    #miniToggle { top: calc(var(--safe-top) + var(--hud-top) + 163px + var(--pro-map, 0px)); }
+    .bbtn { width: 96px; min-height: 122px; }
+    .bbtn canvas { width: 64px; height: 64px; }
+    .bbtn .bname { font-size: 12.5px; }
+    .bbtn .bcost { font-size: 12.5px; }
+    .bbtn.wonder { width: 112px; }
 
     /* FOUR ACROSS, NOT TWO (operator, 2026-09-22). A Town Center's seven
        actions made a 2x4 slab of wood halfway up a 900px window; the same
@@ -1816,19 +1970,22 @@
 <canvas id="c"></canvas>
 
 <div id="topbar">
+  <!-- THE HUD WEARS THE SETTINGS PAGE'S CARVED WOOD (build 214, the GUI overhaul):
+       every good a plate with its own drawn picture (assets/ui/hud — no emoji),
+       the second row the saved armies, the day, the map, the cards and the ONE
+       menu (the pause menu and the settings are one page now). -->
   <div class="trow">
-    <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store. Tap to see what comes in and what is eaten a day."><svg class="ric" data-ic="food" viewBox="0 0 48 48" aria-hidden="true"><path d="M24.5 23.5 L37 11" stroke="#140d06" stroke-width="10.4" stroke-linecap="round"/><circle cx="36.6" cy="6.9" r="5.3" fill="#140d06"/><circle cx="41.1" cy="11.4" r="5.3" fill="#140d06"/><path d="M24.5 23.5 L37 11" stroke="#e9e0c6" stroke-width="6.6" stroke-linecap="round"/><circle cx="36.6" cy="6.9" r="3.5" fill="#e9e0c6"/><circle cx="41.1" cy="11.4" r="3.5" fill="#e9e0c6"/><path d="M34.6 5.6 Q36.4 4.4 38.2 5.6" stroke="#fffaea" stroke-width="1.2" fill="none" stroke-linecap="round"/><path d="M27 19.4 L34 12.4" stroke="#c9bd9b" stroke-width="1.6" stroke-linecap="round"/><path d="M6.2 29.5 C4.6 20.4 11.8 13.2 20.6 13.6 C27.6 13.9 32.6 19.6 32 26.4 C31.3 34.6 24.2 41.8 15.8 41.6 C10.8 41.5 7.1 37.2 6.2 29.5 Z" fill="#a8452a" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/><path d="M9.4 34.8 C14.6 38.6 23.8 37.6 29.4 30.2 C28.4 36.6 22.6 41 15.8 40.8 C12.6 40.7 10.6 38.4 9.4 34.8 Z" fill="#6e2a18"/><path d="M9.2 27.4 C8.6 21.4 13.4 16.6 19.6 16.6 C24 16.6 27.4 19 28.4 22.6 C24.6 19.8 19 19.6 14.8 22.4 C12.2 24.2 10.4 26.4 9.2 27.4 Z" fill="#d9774a"/><ellipse cx="13.6" cy="21.6" rx="2.6" ry="1.5" transform="rotate(-38 13.6 21.6)" fill="#ffd2a8"/><path d="M15.4 30.2 Q19.4 27.4 23.6 28.6 M13.8 34 Q18.2 31.6 22.4 32.6" stroke="#7e2f1b" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg><span id="rFood">0</span></span>
-    <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><svg class="ric" data-ic="wood" viewBox="0 0 48 48" aria-hidden="true"><path d="M16.4 36.2 L11.2 31.6" stroke="#140d06" stroke-width="20.8" stroke-linecap="round"/><path d="M16.4 36.2 L11.2 31.6" stroke="#5c3a19" stroke-width="16.8" stroke-linecap="round"/><path d="M5.8 29 Q8.2 25.2 12.8 23.8" stroke="#8a5e2e" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M34 36.2 L28.8 31.6" stroke="#140d06" stroke-width="20.8" stroke-linecap="round"/><path d="M34 36.2 L28.8 31.6" stroke="#5c3a19" stroke-width="16.8" stroke-linecap="round"/><path d="M23.4 29 Q25.8 25.2 30.4 23.8" stroke="#8a5e2e" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M25.2 21.2 L20 16.6" stroke="#140d06" stroke-width="20.8" stroke-linecap="round"/><path d="M25.2 21.2 L20 16.6" stroke="#5c3a19" stroke-width="16.8" stroke-linecap="round"/><path d="M14.6 14 Q17 10.2 21.6 8.8" stroke="#8a5e2e" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="16.4" cy="36.2" r="8.4" fill="#6b4320" stroke="#140d06" stroke-width="2"/><circle cx="16.7" cy="36.5" r="6.3" fill="#e3b778"/><path d="M11.3 34.9 A5.5 5.5 0 0 1 17.6 30.5" stroke="#f9e2b4" stroke-width="1.4" fill="none" stroke-linecap="round"/><circle cx="16.7" cy="36.5" r="3.8" fill="none" stroke="#b07a3c" stroke-width="1.1"/><circle cx="16.7" cy="36.5" r="1.4" fill="#b07a3c"/><circle cx="34" cy="36.2" r="8.4" fill="#6b4320" stroke="#140d06" stroke-width="2"/><circle cx="34.3" cy="36.5" r="6.3" fill="#e3b778"/><path d="M28.9 34.9 A5.5 5.5 0 0 1 35.2 30.5" stroke="#f9e2b4" stroke-width="1.4" fill="none" stroke-linecap="round"/><circle cx="34.3" cy="36.5" r="3.8" fill="none" stroke="#b07a3c" stroke-width="1.1"/><circle cx="34.3" cy="36.5" r="1.4" fill="#b07a3c"/><circle cx="25.2" cy="21.2" r="8.4" fill="#6b4320" stroke="#140d06" stroke-width="2"/><circle cx="25.5" cy="21.5" r="6.3" fill="#e3b778"/><path d="M20.1 19.9 A5.5 5.5 0 0 1 26.4 15.5" stroke="#f9e2b4" stroke-width="1.4" fill="none" stroke-linecap="round"/><circle cx="25.5" cy="21.5" r="3.8" fill="none" stroke="#b07a3c" stroke-width="1.1"/><circle cx="25.5" cy="21.5" r="1.4" fill="#b07a3c"/></svg><span id="rWood">0</span></span>
-    <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><svg class="ric" data-ic="stone" viewBox="0 0 48 48" aria-hidden="true"><path d="M12.6 37.6 L9.4 24.4 L17.6 12.6 L30.6 9.4 L40.4 17.4 L42.6 31.6 L35.4 40.2 L22 41.8 Z" fill="#a3a097" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/><path d="M9.8 24.4 L17.6 12.8 L30.6 9.6 L28.2 21.6 L18.6 26.2 Z" fill="#d9d6cc"/><path d="M30.6 9.6 L40.2 17.4 L42.4 31.4 L33.2 26.6 L28.2 21.6 Z" fill="#7d7a71"/><path d="M28.2 21.6 L33.2 26.6 L42.4 31.4 L35.4 40 L30.6 31.2 Z" fill="#5f5c55"/><path d="M18.6 26.2 L28.2 21.6 L33.2 26.6 L30.6 31.2" stroke="#4c4a44" stroke-width="1.2" fill="none" stroke-linejoin="round"/><path d="M12 22 L17.8 14.2 L26.4 11.8" stroke="#f4f2ea" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.4 41.4 L5.6 33.8 L12.6 29.4 L20.2 31.8 L22.6 39.2 L16.4 43.6 L8.6 43.8 Z" fill="#b1aea4" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/><path d="M5.8 33.8 L12.6 29.6 L20 31.8 L14.6 35.6 L6.2 36.6 Z" fill="#e3e0d6"/><path d="M20 31.8 L22.4 39.2 L16.4 43.4 L14.6 35.6 Z" fill="#6c6961"/></svg><span id="rStone">0</span></span>
-    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><svg class="ric" data-ic="gold" viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="31" cy="34.4" rx="11.6" ry="4.6" fill="#8f5f14" stroke="#140d06" stroke-width="2"/><path d="M19.4 34.4 L19.4 30.6 A11.6 4.6 0 0 1 42.6 30.6 L42.6 34.4" fill="#b98422" stroke="#140d06" stroke-width="2"/><ellipse cx="31" cy="30.6" rx="11.6" ry="4.6" fill="#8f5f14" stroke="#140d06" stroke-width="2"/><path d="M19.4 30.6 L19.4 26.8 A11.6 4.6 0 0 1 42.6 26.8 L42.6 30.6" fill="#c9922a" stroke="#140d06" stroke-width="2"/><ellipse cx="31" cy="26.8" rx="11.6" ry="4.6" fill="#f2c94e" stroke="#140d06" stroke-width="2"/><ellipse cx="31" cy="26.8" rx="7.2" ry="2.6" fill="none" stroke="#c9922a" stroke-width="1.1"/><path d="M22.4 31.6 L22.4 33.2 M27 32.4 L27 34.6 M35 32.4 L35 34.6 M39.6 31.6 L39.6 33.2" stroke="#7a4f10" stroke-width="1"/><circle cx="17.4" cy="30" r="12.4" fill="#c9922a" stroke="#140d06" stroke-width="2.2"/><circle cx="16.6" cy="29.2" r="10.6" fill="#f2c94e"/><circle cx="16.6" cy="29.2" r="7" fill="none" stroke="#c9922a" stroke-width="1.4"/><path d="M9.2 25.6 A8.4 8.4 0 0 1 15.6 20.4" stroke="#fff3c2" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M16.6 25 L17.8 28 L20.8 29.2 L17.8 30.4 L16.6 33.4 L15.4 30.4 L12.4 29.2 L15.4 28 Z" fill="#c9922a"/><path d="M37.6 4.4 L39 10 L44.6 11.4 L39 12.8 L37.6 18.4 L36.2 12.8 L30.6 11.4 L36.2 10 Z" fill="#fff6d0" stroke="#140d06" stroke-width="1" stroke-linejoin="round"/></svg><span id="rGold">0</span></span>
-    <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><svg class="ric" data-ic="pop" viewBox="0 0 48 48" aria-hidden="true"><circle cx="32.6" cy="13.4" r="6.4" fill="#c99360" stroke="#140d06" stroke-width="2"/><path d="M26.4 12.2 Q27 6.8 32.6 6.8 Q38.4 6.8 38.8 12.4 Q35.6 9.8 32.6 10.4 Q29.4 9.6 26.4 12.2 Z" fill="#4a3620"/><path d="M21.6 34 Q22.4 22.6 32.6 22.4 Q42.8 22.6 43.6 34 Z" fill="#2f5b80" stroke="#140d06" stroke-width="2" stroke-linejoin="round"/><circle cx="18.6" cy="17.6" r="7.8" fill="#e2ab74" stroke="#140d06" stroke-width="2.2"/><path d="M10.8 16.2 Q11.4 9.4 18.6 9.4 Q25.8 9.4 26.4 16.4 Q22.6 13.2 18.6 13.8 Q14.4 13 10.8 16.2 Z" fill="#5a3e22"/><path d="M13.4 15.6 Q14.4 13.6 16.4 13.8" stroke="#8a6a44" stroke-width="1" fill="none" stroke-linecap="round"/><path d="M4.6 42.4 Q5.4 28.4 18.6 28 Q31.8 28.4 32.6 42.4 Z" fill="#4a90c2" stroke="#140d06" stroke-width="2.2" stroke-linejoin="round"/><path d="M7.6 39.2 Q8.8 31.2 17.6 30.6" stroke="#9ccbea" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M14.8 28.4 L18.6 33.6 L22.4 28.4" stroke="#20415e" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg><span id="rPop">0/0</span></span>
+    <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store. Tap to see what comes in and what is eaten a day."><img class="ric" data-ic="food" src="assets/ui/hud/res-food.png?v=1" alt="" draggable="false" decoding="async"><span id="rFood">0</span></span>
+    <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><img class="ric" data-ic="wood" src="assets/ui/hud/res-wood.png?v=1" alt="" draggable="false" decoding="async"><span id="rWood">0</span></span>
+    <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><img class="ric" data-ic="stone" src="assets/ui/hud/res-stone.png?v=1" alt="" draggable="false" decoding="async"><span id="rStone">0</span></span>
+    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><img class="ric" data-ic="gold" src="assets/ui/hud/res-gold.png?v=1" alt="" draggable="false" decoding="async"><span id="rGold">0</span></span>
+    <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><img class="ric" data-ic="pop" src="assets/ui/hud/res-pop.png?v=1" alt="" draggable="false" decoding="async"><span id="rPop">0/0</span></span>
   </div>
   <div class="trow">
     <div id="armyBar"></div>
     <span id="rDay" data-chip="day" role="button" tabindex="0" aria-label="Day" title="The day. Tap to see how long a day lasts.">Day 1</span>
-    <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M5 12 L17 8 L31 12 L43 8 L43 40 L31 44 L17 40 L5 44 Z" fill="#e6cf95" stroke="#140d06" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 8 L31 12 L31 44 L17 40 Z" fill="#7a5a2a" fill-opacity=".22"/><path d="M6.4 11.6 L17 8.2" stroke="#fff6d6" stroke-opacity=".75" stroke-width="1" stroke-linecap="round"/><path d="M5.9 22 Q11 18.4 15 21.6 Q12.6 26.4 5.9 26.6 Z" fill="#6f9fd6" stroke="#3d5f86" stroke-width=".8"/><path d="M20 15.6 Q27 13.4 33.6 17.4 Q38.6 15.6 41.6 19 L41.6 31 Q35 34.6 28.4 31.4 Q22.6 33.6 19.2 29 Q16.6 22.4 20 15.6 Z" fill="#7d9a4c" stroke="#3e5222" stroke-width=".9"/><path d="M24 23.6 L26.6 21.4 L29.4 24 Z" fill="#a8977a" stroke="#4a3f2c" stroke-width=".6"/><path d="M9 35.4 Q14 31.6 19.6 33.6 T30 30.4 T36.4 24.6" fill="none" stroke="#8a2a1c" stroke-width="1.5" stroke-dasharray="2.2 2" stroke-linecap="round"/><path d="M34.2 22.2 L38.6 26.6 M38.6 22.2 L34.2 26.6" stroke="#b3241a" stroke-width="2" stroke-linecap="round"/></svg></button>
-    <button class="iconbtn" id="btnPause" title="Pause or resume" aria-label="Pause or resume">⏸</button>
-    <button class="iconbtn" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
+    <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><img class="hic" src="assets/ui/hud/map.png?v=1" alt="" draggable="false" decoding="async"></button>
+    <button class="iconbtn" id="btnMenu" type="button" title="Menu" aria-label="Menu"><img class="hic" src="assets/ui/settings/tab-general.png?v=71" alt="" draggable="false" decoding="async"></button>
   </div>
 </div>
 
@@ -2235,59 +2392,59 @@
 
 </div>
 
-<script src="js/feedback.js?v=213"></script>
-<script src="js/config.js?v=213"></script>
-<script src="js/audio.js?v=213"></script>
-<script src="js/config.supabase.js?v=213"></script>
-<script src="js/vendor/supabase.js?v=213"></script>
-<script src="js/backend.js?v=213"></script>
-<script src="js/competition.js?v=213"></script>
-<script src="js/score.js?v=213"></script>
-<script src="js/cards.js?v=213"></script>
-<script src="js/deck.js?v=213"></script>
-<script src="js/artstyle.js?v=213"></script>
-<script src="js/sprites.js?v=213"></script>
-<script src="js/formations.js?v=213"></script>
-<script src="js/relics.js?v=213"></script>
-<script src="js/assets.js?v=213"></script>
-<script src="js/dev.js?v=213"></script>
-<script src="js/map.js?v=213"></script>
-<script src="js/buildings.js?v=213"></script>
-<script src="js/units.js?v=213"></script>
-<script src="js/combat.js?v=213"></script>
-<script src="js/ai.js?v=213"></script>
-<script src="js/render.js?v=213"></script>
-<script src="js/battlefx.js?v=213"></script>
-<script src="js/goldfx.js?v=213"></script>
-<script src="js/footing.js?v=213"></script>
-<script src="js/ruins.js?v=213"></script>
-<script src="js/roads.js?v=213"></script>
-<script src="js/beasts.js?v=213"></script>
-<script src="js/defeatart.js?v=213"></script>
-<script src="js/victoryart.js?v=213"></script>
-<script src="js/ui.js?v=213"></script>
-<script src="js/feel.js?v=213"></script>
-<script src="js/lookout.js?v=213"></script>
-<script src="js/screens.js?v=213"></script>
-<script src="js/patchnotes.js?v=213"></script>
-<script src="js/settings.js?v=213"></script>
-<script src="js/board.js?v=213"></script>
-<script src="js/pages.js?v=213"></script>
-<script src="js/titlescreen.js?v=213"></script>
-<script src="js/scenario-maps.js?v=213"></script>
-<script src="js/scenarios.js?v=213"></script>
-<script src="js/prologue.js?v=213"></script>
-<script src="js/deckfx.js?v=213"></script>
-<script src="js/deckfx-town.js?v=213"></script>
-<script src="js/deckfx-army.js?v=213"></script>
-<script src="js/deckfx-growth.js?v=213"></script>
-<script src="js/deckfx-rival.js?v=213"></script>
-<script src="js/deckui.js?v=213"></script>
-<script src="js/deckscreens.js?v=213"></script>
-<script src="js/cardintro.js?v=213"></script>
-<script src="js/game.js?v=213"></script>
-<script src="js/terrain-core.js?v=213"></script>
-<script src="js/terrain.js?v=213"></script>
-<script src="js/terrain-v5.js?v=213"></script>
+<script src="js/feedback.js?v=214"></script>
+<script src="js/config.js?v=214"></script>
+<script src="js/audio.js?v=214"></script>
+<script src="js/config.supabase.js?v=214"></script>
+<script src="js/vendor/supabase.js?v=214"></script>
+<script src="js/backend.js?v=214"></script>
+<script src="js/competition.js?v=214"></script>
+<script src="js/score.js?v=214"></script>
+<script src="js/cards.js?v=214"></script>
+<script src="js/deck.js?v=214"></script>
+<script src="js/artstyle.js?v=214"></script>
+<script src="js/sprites.js?v=214"></script>
+<script src="js/formations.js?v=214"></script>
+<script src="js/relics.js?v=214"></script>
+<script src="js/assets.js?v=214"></script>
+<script src="js/dev.js?v=214"></script>
+<script src="js/map.js?v=214"></script>
+<script src="js/buildings.js?v=214"></script>
+<script src="js/units.js?v=214"></script>
+<script src="js/combat.js?v=214"></script>
+<script src="js/ai.js?v=214"></script>
+<script src="js/render.js?v=214"></script>
+<script src="js/battlefx.js?v=214"></script>
+<script src="js/goldfx.js?v=214"></script>
+<script src="js/footing.js?v=214"></script>
+<script src="js/ruins.js?v=214"></script>
+<script src="js/roads.js?v=214"></script>
+<script src="js/beasts.js?v=214"></script>
+<script src="js/defeatart.js?v=214"></script>
+<script src="js/victoryart.js?v=214"></script>
+<script src="js/ui.js?v=214"></script>
+<script src="js/feel.js?v=214"></script>
+<script src="js/lookout.js?v=214"></script>
+<script src="js/screens.js?v=214"></script>
+<script src="js/patchnotes.js?v=214"></script>
+<script src="js/settings.js?v=214"></script>
+<script src="js/board.js?v=214"></script>
+<script src="js/pages.js?v=214"></script>
+<script src="js/titlescreen.js?v=214"></script>
+<script src="js/scenario-maps.js?v=214"></script>
+<script src="js/scenarios.js?v=214"></script>
+<script src="js/prologue.js?v=214"></script>
+<script src="js/deckfx.js?v=214"></script>
+<script src="js/deckfx-town.js?v=214"></script>
+<script src="js/deckfx-army.js?v=214"></script>
+<script src="js/deckfx-growth.js?v=214"></script>
+<script src="js/deckfx-rival.js?v=214"></script>
+<script src="js/deckui.js?v=214"></script>
+<script src="js/deckscreens.js?v=214"></script>
+<script src="js/cardintro.js?v=214"></script>
+<script src="js/game.js?v=214"></script>
+<script src="js/terrain-core.js?v=214"></script>
+<script src="js/terrain.js?v=214"></script>
+<script src="js/terrain-v5.js?v=214"></script>
 </body>
 </html>

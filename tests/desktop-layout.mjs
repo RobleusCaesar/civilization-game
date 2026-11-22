@@ -33,16 +33,17 @@
                                      half a row instead of all of it — so a
                                      Town Center's seven actions are two rows
                                      of wood, not four. The phone keeps two.
-     A PHONE'S SMALL CONTROLS HIT    the folded build tab (22px tall, and the
-     AT 44 PX, AND LOOK THE SAME     only way back after every order folds
-                                     the menu), Pause and Menu (34px) and
-                                     the minimap's fold (30px) each carry an
-                                     invisible extension that takes the hit
-                                     box to 44px where it has room; nothing
-                                     they are drawn with changes, the room
-                                     they take is room nobody else had, and
-                                     an OPEN tab, which moves under the
-                                     finger, takes none (§3, PX-14).
+     A PHONE'S CONTROLS HIT AT       the folded build menu is a BUILD
+     44 PX, AND LOOK IT              button 84px square (the only way back
+                                     after every order folds the menu), the
+                                     top bar's buttons and the folded
+                                     panel's tab 44px tall as drawn (build
+                                     214); the minimap's fold (30px) still
+                                     carries an invisible extension to 44.
+                                     The room each takes is room nobody
+                                     else had, and an OPEN control, which
+                                     moves under the finger, takes none
+                                     beyond its drawing (§3, PX-14).
 
    Run after touching: R.minZoom / defaultZoom / clampCam / resize, the pinch
    handler in ui.js, Screens.enterGame, or the #topbar / #buildmenu /
@@ -200,17 +201,17 @@ async function boot(vp) {
   await p.close();
 }
 
-/* ---- 3. A PHONE'S SMALL CONTROLS HIT AT 44 PX, AND LOOK THE SAME (PX-14) ----
+/* ---- 3. A PHONE'S CONTROLS HIT AT 44 PX, AND LOOK IT (PX-14; build 214) ----
    Every gather, build or station order folds the build menu by design, and
    the way back was a tab 22px tall at the bottom-left: a tap 12-16px above
-   it landed in the world. Pause and Menu were 34x34 and 3px apart, the
-   minimap's fold 30x30. Each now carries an invisible extension — a pseudo-
-   element, so the drawn box (getBoundingClientRect) cannot see it — and it
-   is measured as a finger meets it: elementFromPoint on a whole-pixel grid
-   round the drawn box with a 24px margin, kept wherever it answers the
-   control. Heights reach 44; the tab and the top-bar buttons keep their
-   WIDTHS by design (the tab is already 55-75 wide, and four 34px buttons 3px
-   apart have no width to give), the fold grows both ways.
+   it landed in the world, and a player "didn't even notice [it] existed".
+   Since build 214 it is a BUILD BUTTON, 84px square and labelled, standing
+   on the map; the top bar's buttons and the folded panel's tab are 44px tall
+   AS DRAWN — the invisible reaches PX-14 hung round 22-34px drawings are
+   gone, so the drawn box IS the hit box. Each is measured as a finger meets
+   it: elementFromPoint on a whole-pixel grid round the drawn box with a 24px
+   margin, kept wherever it answers the control. The minimap's fold, still
+   drawn 30x30, keeps its reach and grows both ways.
    THE TAB'S REACH IS THE FOLDED TAB'S ALONE. An open tab moves: a tap that
    selects a unit lifts the panel, and the tab with it, under the finger,
    and the click the browser sends after the tap lands where the finger
@@ -271,17 +272,20 @@ for (const ph of [
     const f = tabState('folded');
     const cx = Math.round((f.drawn.l + f.drawn.r) / 2);
     out.near = [12, 16].map(d => ({ d, on: owns(tab, cx, Math.floor(f.drawn.t) - d) }));
-    // the open tab over the build menu, and the cards under it keep every pixel
+    // the open panel's ✕ on the frame, and the cards under it keep every pixel
     UI.setMenuCollapsed(false); await sl(120);
     tabState('open');
     const cards = [...document.querySelectorAll('#buildmenu .bbtn')].filter(live);
     out.cardsLost = cards.map(c => stolen(c, tab));
     out.cardN = cards.length;
-    // …and the PROBE can see a stolen pixel: a reach pushed down over the cards must show up
+    // …and the PROBE can see a stolen pixel: the ✕'s face pushed 12px down over
+    // the card in its own column must show up
+    const tq = tab.getBoundingClientRect();
+    const under = cards.find(c => { const q = c.getBoundingClientRect(); return q.left < tq.right && q.right > tq.left; }) || cards[cards.length - 1];
     const leak = document.createElement('style');
-    leak.textContent = '#bmToggle::before{content:"";position:absolute;left:0;right:0;top:0;bottom:-12px !important}';
+    leak.textContent = '#bmToggle::before{bottom:-12px !important}';
     document.head.appendChild(leak); await sl(30);
-    out.leakSeen = stolen(cards[0], tab);
+    out.leakSeen = stolen(under, tab);
     leak.remove(); await sl(30);
     // a villager selected: the tab rides over the panel, whose buttons keep every pixel
     const v = S.units.find(u => u.owner === 'P' && Units.isVillager(u));
@@ -311,36 +315,40 @@ for (const ph of [
     return out;
   });
   const T = r.tab, sz = o => `${o.hit.w}x${o.hit.h} hit, drawn ${o.drawn.w}x${o.drawn.h}`;
-  ck(`theFoldedBuildTabHitsAt44_${ph.k}`, T.folded.hit.h >= 44 && T.folded.drawn.h <= 24,
-    `"${T.folded.label}" ${sz(T.folded)} (a slim tab, a finger-high target)`);
-  ck(`andTapsJustAboveItFindIt_${ph.k}`, r.near.every(n => n.on), r.near.map(n => `${n.d}px above: ${n.on ? 'the tab' : 'MISSED'}`).join(', '));
+  ck(`theFoldedBuildButtonIsBigAndHitsWhereItIsDrawn_${ph.k}`, /build/i.test(T.folded.label) && T.folded.drawn.w >= 72 && T.folded.drawn.h >= 72
+    && Math.abs(T.folded.hit.w - T.folded.drawn.w) <= 1.5 && Math.abs(T.folded.hit.h - T.folded.drawn.h) <= 1.5,
+    `"${T.folded.label}" ${sz(T.folded)} (a big labelled button, its drawing the target)`);
+  ck(`andATapJustAboveItIsTheWorlds_${ph.k}`, r.near.every(n => !n.on), r.near.map(n => `${n.d}px above: ${n.on ? 'TAKEN BY THE BUTTON' : 'the world'}`).join(', '));
   ck(`andItsWidthIsItsOwn_${ph.k}`, ['folded', 'open', 'panel', 'panelFolded'].every(k => Math.abs(T[k].hit.w - T[k].drawn.w) <= 1.5),
     ['folded', 'open', 'panel', 'panelFolded'].map(k => `${T[k].label}: ${T[k].hit.w} vs drawn ${T[k].drawn.w}`).join('; '));
-  ck(`andSoDoesTheFoldedPanelsTab_${ph.k}`, T.panelFolded.hit.h >= 44 && T.panelFolded.drawn.h <= 24,
+  ck(`andTheFoldedPanelsTabIsAFingerTallAsDrawn_${ph.k}`, T.panelFolded.hit.h >= 44 && Math.abs(T.panelFolded.hit.h - T.panelFolded.drawn.h) <= 1.5,
     `"${T.panelFolded.label}" ${sz(T.panelFolded)} (a unit selected, its panel tucked away)`);
+  ck(`andTheOpenPanelsCloseIsAFingerToo_${ph.k}`, T.open.hit.w >= 43.5 && T.open.hit.h >= 43.5, `"${T.open.label}" ${sz(T.open)}`);
   ck(`butAnOpenTabReachesNoFurtherThanItIsDrawn_${ph.k}`, ['open', 'panel'].every(k => T[k].hit.h <= Math.ceil(T[k].drawn.h) + 1),
     ['open', 'panel'].map(k => `"${T[k].label}" ${sz(T[k])}`).join('; ') + ' (an open tab moves under the finger)');
   ck(`butTheBuildCardsKeepEveryPixel_${ph.k}`, r.cardN > 0 && r.cardsLost.every(n => n === 0),
     `${r.cardN} cards on screen, pixels the tab took from each: ${r.cardsLost.join(',')}`);
   ck(`andThePanelsButtonsToo_${ph.k}`, r.panelN > 0 && r.panelLost.every(n => n === 0),
     `${r.panelN} buttons, pixels the tab took from each: ${r.panelLost.join(',')}`);
-  ck(`andTheProbeCanSeeAStolenPixel_${ph.k}`, r.leakSeen > 0, `a reach pushed 12px down over the first card took ${r.leakSeen} of its pixels`);
+  ck(`andTheProbeCanSeeAStolenPixel_${ph.k}`, r.leakSeen > 0, `the ✕ pushed 12px down over the card under it took ${r.leakSeen} of its pixels`);
   if (r.badge) ck(`theMasterBuildersBadgeKeepsItsShape_${ph.k}`, /⚒/.test(r.badge.content) && r.badge.w > 0 && r.badge.w < r.badge.tabW && r.badge.h < 20 && r.badge.hit.h >= 44,
     `badge ${r.badge.content} ${Math.round(r.badge.w)}x${Math.round(r.badge.h)} on a ${Math.round(r.badge.tabW)}px tab, the tab still ${r.badge.hit.w}x${r.badge.hit.h} under it`);
-  const pm = r.top.filter(t => t.id === 'btnPause' || t.id === 'btnMenu');
-  ck(`pauseAndMenuHitAt44Tall_${ph.k}`, pm.length === 2 && r.top.every(t => t.hit.h >= 44 && t.drawn.h <= 34.5 && Math.abs(t.hit.w - t.drawn.w) <= 1.5),
+  // the ONE menu (build 214: the ⏸ beside it went — the menu pauses), the map and the cards
+  const pm = r.top.filter(t => t.id === 'btnMenu' || t.id === 'mapBtn');
+  ck(`theTopBarsButtonsAreAFingerTallAsDrawn_${ph.k}`, pm.length === 2 && !r.top.some(t => t.id === 'btnPause')
+    && r.top.every(t => t.hit.h >= 44 && Math.abs(t.hit.h - t.drawn.h) <= 1.5 && Math.abs(t.hit.w - t.drawn.w) <= 1.5),
     r.top.map(t => `${t.id} ${sz(t)}`).join('; '));
   ck(`andNoTopBarButtonReachesPastTheBar_${ph.k}`, r.top.every(t => t.hit.t >= Math.floor(r.bar.t) && t.hit.b <= Math.ceil(r.bar.b)),
     `bar ${Math.round(r.bar.t)}..${Math.round(r.bar.b)}: ` + r.top.map(t => `${t.id} ${t.hit.t}..${t.hit.b}`).join(', '));
   ck(`theMinimapFoldHitsAt44_${ph.k}`, r.fold.hit.w >= 44 && r.fold.hit.h >= 44 && r.fold.drawn.w <= 30.5 && r.fold.drawn.h <= 30.5, sz(r.fold));
   ck(`andTheMapUnderItKeepsEveryPixel_${ph.k}`, r.fold.miniLost === 0 && r.fold.hit.b <= Math.ceil(r.fold.drawn.b) + 12,
     `minimap pixels the fold took: ${r.fold.miniLost}; the fold's reach ends at ${r.fold.hit.b}, ${Math.round(r.fold.hit.b - r.fold.drawn.b)}px under its drawn foot (the army banners ride the top bar since build 154)`);
-  /* …and THE DECK'S COUNT KEEPS ITS RING. Pause's reach needs Pause
-     positioned, and a positioned Pause paints over the count badge, which
-     hangs 6px past the deck button into a phone's 3px gap (its gold ring
-     lost its right edge). The badge's box must look the same as it does
-     with Pause and Menu static, 127's paint order; the control takes the
-     badge's lift away and must see the ring cut. */
+  /* …and THE DECK'S COUNT KEEPS ITS RING. The count badge hangs past the
+     deck button's corner toward the menu beside it, and a positioned
+     neighbour later in the row paints over it (127's Pause cut its gold ring's
+     right edge). The deck button is lifted over its row: lifted further, the
+     badge's box must look the same; the control drops the lift and must see
+     the ring cut. */
   const badgeShot = async (css) => {
     const box = await p.evaluate(async (css) => {
       let st = document.getElementById('badgeProbe');
@@ -356,12 +364,12 @@ for (const ph of [
     return box ? (await p.screenshot({ clip: box })).toString('base64') : null;
   };
   const shotNow = await badgeShot('');
-  const shotOld = await badgeShot('#topbar #btnPause, #topbar #btnMenu { position: static !important; } #topbar #btnPause::after, #topbar #btnMenu::after { display: none !important; }');
-  const shotCut = await badgeShot('#topbar #deckBtn .dkBadge { z-index: auto !important; }');
+  const shotOld = await badgeShot('#topbar #deckBtn { z-index: 9 !important; }');
+  const shotCut = await badgeShot('#topbar #deckBtn { z-index: auto !important; }');
   await badgeShot('');
   ck(`theDeckCountKeepsItsRing_${ph.k}`, !!shotNow && shotNow === shotOld,
-    shotNow ? (shotNow === shotOld ? 'the badge reads as it does with Pause static' : 'Pause is drawn over the badge') : 'no badge on the deck button');
-  ck(`andTheProbeCanSeeACutRing_${ph.k}`, !!shotNow && shotCut !== shotNow, 'with the badge left under Pause, its box differs: ' + (shotCut !== shotNow));
+    shotNow ? (shotNow === shotOld ? 'the badge reads as it does lifted over everything' : 'the menu is drawn over the badge') : 'no badge on the deck button');
+  ck(`andTheProbeCanSeeACutRing_${ph.k}`, !!shotNow && shotCut !== shotNow, 'with the badge left under the menu, its box differs: ' + (shotCut !== shotNow));
   /* …and A TAP THAT OPENS THE PANEL KEEPS IT. A villager stands in the tab's
      own column, 8px above where its panel will lift the tab; a real touch tap
      selects it, the panel rises under the finger, and the click the browser

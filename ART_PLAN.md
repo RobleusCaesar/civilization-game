@@ -1210,6 +1210,29 @@ Authored to the SAME rules as the Origin Card icons above (flat frontal,
 centered single silhouette, hard alpha, thin dark outline, the earthy
 palette) — PixelLab pixen, `no_background: true`, one generation each.
 
+## The HUD's pictures (assets/ui/hud/, build 214)
+
+```
+assets/ui/hud/res-{food,wood,stone,gold,pop}.png    128×128, PNG8, hard alpha
+assets/ui/hud/day-{sun,moon}.png                    the day plate, by day and by night
+assets/ui/hud/{map,cards,build}.png                 the top bar's buttons and the BUILD button
+assets/ui/hud/army-{foot,bow,horse,ship}.png        a saved army's banner, by what it mostly is
+assets/ui/settings/tab-game.png                     the one menu's Game tab and PAUSED emblem
+```
+
+The operator's ask after a player's critique: "make the icons for the
+different resources unique to our game, don't reuse any emojis… quality
+pixel count so it's easy for the player to visually see what each resource
+is". Made with PixelLab, one subject each, flat frontal, a single centred
+silhouette with a thin dark outline in the earthy palette, then reduced to a
+palette PNG with hard alpha. They are CHROME: drawn at or under their pixels
+on a 3x screen — 128px shown at 42 CSS px at most (the bar's goods 20-30px,
+the BUILD hammers 40px), smoothed down by the browser, never blown up. They
+are referenced by markup and code with a hand-kept `?v=1`; a picture redrawn
+under its name steps that number wherever it is written (index.html, ui.js
+`HUD_ART`, deckui.js). A good in a line of text wears the same picture (the
+`.ri` box), so a price reads in the bar's own goods everywhere.
+
 ## Win / loss screen art
 
 `assets/endgame/{win|loss}/{calm|moderate|hard}/{n}.png` — full details and

@@ -55,7 +55,7 @@
         worth knowing — never in a journey world.
 
    Run this after touching js/feel.js, R.drawWakes / drawMiniView / miniCam, the
-   btnPause handler, Screens.enterGame's zoom line, Units.personName,
+   btnMenu handler (the one menu), Screens.enterGame's zoom line, Units.personName,
    Bld.canTrain / canUpgrade's refusals, or a refusal toast in ui.js — or
    R.drawGRing / drawMarkTile / drawRallyFlag / drawSeamGlints /
    drawFireflies / bar / barBite, UI._orderSnap, Bld.goNews, Screens.showPrep.
@@ -127,20 +127,27 @@ await play('feel-1');
   await p.keyboard.press('Space');
   await p.waitForTimeout(120);
   const a = await ev(() => { const v = document.getElementById('pauseVeil');
-    return { paused: S.paused, on: v.classList.contains('on'), disp: getComputedStyle(v).display, btn: document.getElementById('btnPause').textContent,
-      words: v.textContent }; });
-  ck('spacePausesUnderAPlate', a.paused && a.on && a.disp === 'flex' && a.btn === '▶' && /paused/i.test(a.words),
+    return { paused: S.paused, on: v.classList.contains('on'), disp: getComputedStyle(v).display, words: v.textContent }; });
+  ck('spacePausesUnderAPlate', a.paused && a.on && a.disp === 'flex' && /paused/i.test(a.words),
     JSON.stringify(a));
   await p.keyboard.press('Space');
   await p.waitForTimeout(80);
-  const b2 = await ev(() => ({ paused: S.paused, on: document.getElementById('pauseVeil').classList.contains('on'), btn: document.getElementById('btnPause').textContent }));
-  ck('andSpaceResumes', !b2.paused && !b2.on && b2.btn === '⏸', JSON.stringify(b2));
-  // the ⏸ button is the same pause
-  await p.click('#btnPause'); await p.waitForTimeout(80);
-  const c = await ev(() => ({ paused: S.paused, on: document.getElementById('pauseVeil').classList.contains('on') }));
-  await p.click('#btnPause'); await p.waitForTimeout(80);
-  const c2 = await ev(() => ({ paused: S.paused, on: document.getElementById('pauseVeil').classList.contains('on') }));
-  ck('theButtonWearsTheSameVeil', c.paused && c.on && !c2.paused && !c2.on, JSON.stringify([c, c2]));
+  const b2 = await ev(() => ({ paused: S.paused, on: document.getElementById('pauseVeil').classList.contains('on') }));
+  ck('andSpaceResumes', !b2.paused && !b2.on, JSON.stringify(b2));
+  /* THE ONE MENU IS THE PAUSE (build 214 — the ⏸ beside the menu went: "we
+     don't need two buttons"): the gear pauses the world under the menu's
+     Game tab, and its Resume gives the world back */
+  await p.click('#btnMenu'); await p.waitForTimeout(150);
+  const c = await ev(() => ({ cur: Screens.current, paused: S.paused, tab: SettingsPage.tab, inGame: SettingsPage.inGame,
+    resume: !!document.querySelector('#scrSetx.show .sxPane #btnPauseResume'), head: document.querySelector('#scrSetx .sxHead h2').textContent }));
+  // Resume is the real door (Screens.enterGame), which waits behind its
+  // plaque for any art this test's world never asked to wait for
+  await p.click('#btnPauseResume');
+  await p.waitForFunction(() => Screens.current === 'playing', null, { timeout: 40000 }).catch(() => {});
+  await p.waitForTimeout(120);
+  const c2 = await ev(() => ({ cur: Screens.current, paused: S.paused }));
+  ck('theMenuIsThePause', c.cur === 'paused' && c.paused && c.tab === 'game' && c.inGame && c.resume && /paused/i.test(c.head)
+    && c2.cur === 'playing' && !c2.paused, JSON.stringify([c, c2]));
   // a pause somebody else holds (a card in the air, the Wonder's frame) wears none of it
   const d = await ev(async () => { S.paused = true; await new Promise(r => setTimeout(r, 120));
     const on = document.getElementById('pauseVeil').classList.contains('on'); S.paused = false; return on; });
@@ -229,8 +236,9 @@ await play('feel-1');
   await p.keyboard.press('KeyM'); await p.waitForTimeout(60);
   const mm2 = await ev(() => UI.miniCollapsed);
   ck('bFoldsTheMenuAndMTheMap', bm === true && bm2 === false && mm === true && mm2 === false, JSON.stringify([bm, bm2, mm, mm2]));
-  const t = await ev(() => ({ pause: document.getElementById('btnPause').title, menu: document.getElementById('btnMenu').title, map: document.getElementById('mapBtn').title }));
-  ck('theButtonsSayTheirKeys', /Space/.test(t.pause) && /Esc/.test(t.menu) && /\(M\)/.test(t.map), JSON.stringify(t));
+  // (the ⏸ is gone: Space is said on the pause veil's own plate and the keys' plate)
+  const t = await ev(() => ({ menu: document.getElementById('btnMenu').title, map: document.getElementById('mapBtn').title }));
+  ck('theButtonsSayTheirKeys', /Esc/.test(t.menu) && /\(M\)/.test(t.map), JSON.stringify(t));
 }
 
 /* ---- 3. the minimap drags, and its frame follows the camera ---- */
