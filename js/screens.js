@@ -710,10 +710,11 @@ const Screens = {
     'Press on a unit you hold and drag: it goes there, and stays in hand.',
   ],
   PREP_TIP_DESK: 'In a game, press ? to see every key.',
+  PREP_TIP_BOX: 'Drag a box round your people to take a group in hand. Right-drag moves the map.',
   PREP_TIP_MS: 5600,
   _prepTipText() {
     const list = this.PREP_TIPS.slice();
-    try { if (matchMedia('(hover: hover) and (pointer: fine)').matches) list.push(this.PREP_TIP_DESK); } catch (e) {}
+    try { if (matchMedia('(hover: hover) and (pointer: fine)').matches) list.push(this.PREP_TIP_DESK, this.PREP_TIP_BOX); } catch (e) {}
     let i = 0;
     try { i = (parseInt(this.lsGet ? this.lsGet('neo-prep-tip') : localStorage.getItem('neo-prep-tip'), 10) || 0) % list.length; } catch (e) {}
     try { const v = String((i + 1) % list.length); if (this.lsSet) this.lsSet('neo-prep-tip', v); else localStorage.setItem('neo-prep-tip', v); } catch (e) {}

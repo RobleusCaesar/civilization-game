@@ -368,13 +368,18 @@ const UI = {
     cv.addEventListener('pointerdown', e => {
       cv.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // the right and the middle mouse buttons MOVE THE MAP, whatever is
+      // armed (tests/box-select.mjs): they never grab the ghost, paint a line
+      // or start a sapper's cut — a desktop player told "right-drag moves the
+      // map" must never lay and pay for a wall with it
+      const panBtn = e.pointerType === 'mouse' && e.button !== 0;
       if (this.pointers.size === 1) {
-        if (this.isLine(this.placing)) {
+        if (this.isLine(this.placing) && !panBtn) {
           // drag paints a wall (or road) line instead of panning
           this.wallDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateWallGhost();
           this.downAt = null;
-        } else if (this.placing && this.placeGhost && this._onPlaceGhost(e.clientX, e.clientY)) {
+        } else if (this.placing && this.placeGhost && !panBtn && this._onPlaceGhost(e.clientX, e.clientY)) {
           // the press landed ON the ghost: this drag moves the BUILDING, not
           // the camera. A press elsewhere still pans — sighting the ground is
           // half of placing well.
@@ -382,7 +387,7 @@ const UI = {
           this.placePtr = { x: e.clientX, y: e.clientY, touch: e.pointerType === 'touch' };
           this.placeGhostTo(e.clientX, e.clientY, e.pointerType === 'touch');
           this.downAt = null;
-        } else if (this.armedSapper()) {
+        } else if (this.armedSapper() && !panBtn) {
           // a sapper tool is armed: drag paints a line of tiles to dig/clear
           this.terraDrag = [R.screenToTile(e.clientX, e.clientY)];
           this.updateTerraGhost();
@@ -397,6 +402,11 @@ const UI = {
           // moves past the tap threshold falls through to the ordinary tap,
           // so plain taps on your own units are completely unchanged.
           this.moveDragArm = (!this.placing && !this.settingRally) ? this.dragMoveAnchor(e.clientX, e.clientY) : null;
+          // A BOX ON THE DESKTOP (tests/box-select.mjs): a LEFT mouse press
+          // anywhere off the selection arms a selection box, the way every
+          // desktop strategy game draws one. Right and middle drags still pan.
+          const bw = (!this.moveDragArm && this.boxCanArm(e)) ? R.screenToWorld(e.clientX, e.clientY) : null;
+          this.boxArm = bw ? { wx: bw.x, wy: bw.y } : null;
         }
       } else if (this.pointers.size === 2) {
         const [a, b] = [...this.pointers.values()];
@@ -408,6 +418,7 @@ const UI = {
         this.wallDrag = null; this.wallGhost = null;   // pinch cancels the line
         this.terraDrag = null; this.terraGhost = null;
         this.moveDrag = null; this.moveDragArm = null; // …and the move tether
+        if (this.boxArm || this.boxDrag) { this.boxArm = null; this.boxDrag = null; this.boxSync(); }
         this.placeDragging = false; this.placePtr = null;   // ghost stays put; fingers zoom
       }
       e.preventDefault();
@@ -443,6 +454,13 @@ const UI = {
               // the press started on the selection — this drag is an order, not
               // a pan: keep the tether pinned to the finger for the ghost
               this.moveDrag = { ax: this.moveDragArm.ax, ay: this.moveDragArm.ay, sx: e.clientX, sy: e.clientY };
+            } else if (this.boxArm) {
+              // a left mouse drag off the selection: the box grows from where
+              // it was pressed (held on the GROUND, so the keys may move the
+              // view under it) to where the mouse is now
+              this.boxDrag = { wx: this.boxArm.wx, wy: this.boxArm.wy, sx: e.clientX, sy: e.clientY, shift: !!e.shiftKey };
+              this.boxSync();
+              if (typeof Feel !== 'undefined' && Feel.setCursor) Feel.setCursor('aim');   // a crosshair while it is drawn
             } else {
               const c0x = R.cam.x, c0y = R.cam.y;
               R.cam.x -= px / R.cam.z; R.cam.y -= py / R.cam.z;
@@ -490,6 +508,7 @@ const UI = {
         this._tapTime(e) - da.t < this.QUICK_MS && (da.far || 0) <= this.QUICK_SLOP);
       if (flick) {
         this.moveDrag = null; this.moveDragArm = null;
+        this.boxDrag = null;   // …and a box that never grew past a flick is a click too
         if (da.panX || da.panY) { R.cam.x -= da.panX || 0; R.cam.y -= da.panY || 0; R.clampCam(); }
       }
       if (this.placeDragging) {
@@ -507,6 +526,10 @@ const UI = {
         // release = the order lands where the finger lifted
         this.commitMoveDrag(e.clientX, e.clientY);
         this.moveDrag = null; this.moveDragArm = null;
+      } else if (this.boxDrag) {
+        // release = everyone the box holds is taken in hand (Shift: added)
+        this.boxDrag.sx = e.clientX; this.boxDrag.sy = e.clientY;
+        this.commitBox(!!e.shiftKey);
       } else if (flick || (this.downAt && !this.downAt.moved && this._tapTime(e) - this.downAt.t < 1000)) {
         // A STILL PRESS IS A TAP for up to a second (PX-27): one that never
         // crossed the slop has no other meaning, so a deliberate half-second
@@ -517,10 +540,13 @@ const UI = {
         // transports peels out of a mixed army in one gesture. Otherwise, a normal tap.
         const tx = flick ? da.x : e.clientX, ty = flick ? da.y : e.clientY;
         const now = performance.now(), lt = this.lastTap;
-        const dbl = lt && (now - lt.t) < 350 && Math.hypot(tx - lt.x, ty - lt.y) < 24;
-        this.lastTap = dbl ? null : { x: tx, y: ty, t: now };
-        if (dbl) this.handleDoubleTap(tx, ty);
-        else this.handleTap(tx, ty);
+        // a SHIFT-click with a mouse adds the unit under it to what is in hand
+        // (or takes it out) — never half of a double-click
+        const mouse = e.pointerType === 'mouse', shift = mouse && e.shiftKey && e.button === 0;
+        const dbl = !shift && lt && (now - lt.t) < 350 && Math.hypot(tx - lt.x, ty - lt.y) < 24;
+        this.lastTap = dbl || shift ? null : { x: tx, y: ty, t: now };
+        if (dbl) this.handleDoubleTap(tx, ty, mouse);
+        else if (!(shift && this.shiftPick(tx, ty))) this.handleTap(tx, ty);
         // THE FIRST MINUTE: the first tap on a played world's map (Backend.step)
         if (was && window.Backend && Backend.step) Backend.step('map_tap');
       }
@@ -545,12 +571,16 @@ const UI = {
         this.pinchD = Math.hypot(a.x - b.x, a.y - b.y);
         this.pinchMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       }
-      if (this.pointers.size === 0) { this.downAt = null; this.moveDragArm = null; }
+      if (this.pointers.size === 0) {
+        this.downAt = null; this.moveDragArm = null;
+        if (this.boxArm || this.boxDrag) { this.boxArm = null; this.boxDrag = null; this.boxSync(); }
+      }
     };
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', e => {
       this.pointers.delete(e.pointerId);
       this.downAt = null;
+      if (this.boxArm || this.boxDrag) { this.boxArm = null; this.boxDrag = null; this.boxSync(); }
       this.wallDrag = null; this.wallGhost = null;
       this.terraDrag = null; this.terraGhost = null;
       this.moveDrag = null; this.moveDragArm = null;
@@ -572,6 +602,14 @@ const UI = {
     // a right-click is an order on the map (it always was) — never the
     // browser's menu too; the HUD and the minimap keep theirs
     cv.addEventListener('contextmenu', e => e.preventDefault());
+    // Shift pressed or let go mid-box: the box's count says "add" at once
+    const boxShift = e => {
+      if (e.key !== 'Shift' || !this.boxDrag) return;
+      this.boxDrag.shift = e.type === 'keydown';
+      this.boxSync();
+    };
+    document.addEventListener('keydown', boxShift);
+    document.addEventListener('keyup', boxShift);
 
     document.getElementById('mini').addEventListener('pointerdown', e => {
       const r = e.target.getBoundingClientRect();
@@ -785,8 +823,11 @@ const UI = {
        to a site that is already finished; a station takes its hand from
        Deck.masterRaise. The rival and a wall line never come through here. */
     const mb = window.Deck && Deck.masterHand ? Deck.masterHand('P', key) : 0;
-    const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true } : { builderId: this.builderFor });
-    if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, this.builderFor);
+    // a party's Build sends every one of them (builderIds); one villager's, that one
+    const crew = this.chosenBuilders();
+    const nb = Bld.place('P', key, g.x, g.y, mb ? { noAutoAssign: true }
+      : crew.length > 1 ? { builderIds: crew.map(u => u.id) } : { builderId: crew.length ? crew[0].id : this.builderFor });
+    if (mb && nb && Deck.masterRaise) Deck.masterRaise(nb, crew.length ? crew[0].id : this.builderFor);
     if (nb && window.Backend && Backend.step) Backend.step('building');   // the first minute
     // a sealing placement was allowed, and is ACKNOWLEDGED — the player chose
     // to shut their own people in, and the toast marks the moment they did
@@ -811,7 +852,7 @@ const UI = {
   exitPlacement() {
     this.placing = null;
     this.placeTile = null;
-    this.builderFor = null;
+    this.builderFor = null; this.builderIds = null;
     this.placeGhost = null;
     this.placeMap = null;
     this.placeMapStamp = null;
@@ -1205,7 +1246,10 @@ const UI = {
     }
     if (sealed && !(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('sealed'))) this.toast('Your town is walled in — only a gate lets your people out', true);
     if (placed) {
-      const v = Units.nearestIdleVillager(first.x, first.y);
+      // a PARTY's Build raises the line with all its hands (a single
+      // villager's Build keeps the old rule: the nearest idle hand)
+      const crew = this.builderIds && this.builderIds.length ? this.chosenBuilders() : [];
+      const v = crew[0] || Units.nearestIdleVillager(first.x, first.y);
       // start at the RIGHT end of the line: the nearest section whose finished
       // wall doesn't cut the builder off from the rest (Units.pickWorkOrder —
       // tests/work-order.mjs). Across a choke the pick falls to the FAR side,
@@ -1220,13 +1264,17 @@ const UI = {
       // player is told it happened (an unmarked toast is shown nowhere) — but
       // in a journey world the guide says it (her next line, or her ask for
       // hands), and seven of these over three sections buried her
-      const sent = !!(v && Units.assignBuild(v, start));
+      let sent = false;
+      if (crew.length) for (const u of crew) { Units.assignBuild(u, start); if (u.task && u.task.type === 'build' && u.task.id === start.id) sent = true; }
+      else sent = !!(v && Units.assignBuild(v, start));
+      const hands = crew.length > 1 ? `${crew.length} builders` : 'builder';
+      this.builderIds = null;
       if (!(window.Prologue && Prologue.toolQuiet && Prologue.toolQuiet('laid'))) {
         if (road) {
-          if (sent) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — a builder is on the way. More hands build it faster.`, 'note');
+          if (sent) this.toast(`Road: ${placed} stretch${placed > 1 ? 'es' : ''} — ${crew.length > 1 ? hands + ' are' : 'a builder is'} on the way. More hands build it faster.`, 'note');
           else this.toast(`Road laid out (${placed}) — it needs a builder`, true);
         } else if (sent)
-          this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — builder en route. Tap villagers → wall to add hands.`, 'note');
+          this.toast(`Wall line: ${placed} section${placed > 1 ? 's' : ''} — ${hands} en route. Tap villagers → wall to add hands.`, 'note');
         else this.toast(`Wall line placed (${placed}) — needs a builder`, true);
       }
       // done drawing — drop out of placement so stray taps don't add walls
@@ -1448,6 +1496,744 @@ const UI = {
     return MapGen.findNear(tile.x, tile.y, this.FOG_REACH, open);
   },
 
+  /* ============ BOX SELECT AND THE WORK PARTY (tests/box-select.mjs) ============
+     Operator, build 213, from a player's request: "On desktop, let's add the
+     ability to drag and multi select units and send them somewhere… We have
+     to be careful… because villagers do different work from soldiers,
+     stations only have room for two villagers". Every desktop strategy game
+     draws a box with a LEFT mouse drag (Age of Empires, StarCraft, Warcraft,
+     0 A.D.), orders with a click, and moves the map with the middle or the
+     right button, the arrow keys or WASD — all of which already moved it here.
+     So, with a mouse (a touch, a pen and every other drag are untouched):
+       · a left drag that starts OFF the selection draws the box — one that
+         starts ON it is still the move order (tests/drag-move.mjs) — and a
+         right or middle drag still pans; Settings can hand the left drag back
+         to the map (neo-box-select '0', boxOn)
+       · the box takes the player's own people whose DRAWN bodies it touches,
+         never a bow at his tower post (the area-selection rule), a man on the
+         stairs, a ghost still under the ground or a villager walking out of
+         the valley, and never anything under the bars (what cannot be seen is
+         not taken); its first corner is held on the GROUND, so a key that
+         moves the view keeps it where it was pressed
+       · SOLDIERS FIRST (Age of Empires' "easy drag military"): with a soldier,
+         a hull of war or a levied hand in the box it takes those alone; with
+         none, the villagers; with none of them, the sappers; then the fishing
+         boats. ONE PARTY AT A TIME, because a party's orders are its own work;
+         the box's count says who it will take, the toast who it left out
+       · Shift + drag adds to what is in hand, Shift + click adds or takes out
+         one — more of the SAME party only; a double-click takes every villager
+         (sapper, boat) of that kind nearby, as a double-tap always took a
+         soldier's kind
+     A party in hand takes a tap the way a foreman shares the work out
+     (partyOrder): a resource ONE HAND TO A TILE across its stand before any
+     tile takes a second (a spent tile leaves its gatherer idle, so two on one
+     is work lost), a station filled to its places and the rest sent to the
+     next works of its kind nearby, then to its own good by hand round it, a
+     site built by all of them, a gold seam claimed by as many as the mine
+     holds, a shoal fished from its free sides, a boat to each free water. A
+     FULL station is still a look, for a party as for one (rule 6). Whoever is
+     put to work leaves the hand (the dispatched-worker rule); whoever found
+     no room stays in it, and the toast says so (rule 4). */
+  SPREAD_R: 5,     // how far round a tapped tile a party looks for more of the same good
+  SPILL_R: 8,      // how far round a station it looks for the next works of its kind, and its good
+  boxArm: null,    // { wx, wy } world px where a left mouse press armed a box
+  boxDrag: null,   // { wx, wy, sx, sy, shift } once it has moved past the slop
+  builderIds: null,   // the villagers a party's Build sends to the next site placed
+  boxOn() {
+    if (this._boxOn == null) {
+      let v = null;
+      try { v = localStorage.getItem('neo-box-select'); } catch (e) {}
+      this._boxOn = v !== '0';
+    }
+    return this._boxOn;
+  },
+  setBoxOn(on) {
+    this._boxOn = !!on;
+    try { localStorage.setItem('neo-box-select', on ? '1' : '0'); } catch (e) {}
+  },
+  boxCanArm(e) {
+    return !!e && e.pointerType === 'mouse' && e.button === 0 && this.boxOn() && !this.placing && !this.settingRally &&
+      typeof S !== 'undefined' && !!S && !!S.units && !S.over &&
+      typeof Screens !== 'undefined' && Screens.current === 'playing' && !Screens._demo;
+  },
+  // the PARTY a unit of the player's belongs to: soldiers, hulls of war and a
+  // levied hand 'mil' (the war party's own set), villagers 'vil', sappers
+  // 'sap', fishing boats 'fish' — anything else (a war-wolf, who answers to
+  // the hall) is left to a tap of its own
+  unitClass(u) {
+    if (!u || u.owner !== 'P') return null;
+    if (this.groupable(u)) return 'mil';
+    if (Units.isVillager(u)) return 'vil';
+    if (Units.isSapper(u)) return 'sap';
+    if (u.kind === 'fishboat') return 'fish';
+    return null;
+  },
+  // a group's party: a war party whenever one of them fights (every group
+  // before build 213 was one), else the party of its people
+  groupClass(ids) {
+    let c = null;
+    for (const id of ids || []) {
+      const k = this.unitClass(Units.get(id));
+      if (k === 'mil') return 'mil';
+      if (!c) c = k;
+    }
+    return c || 'mil';
+  },
+  // the player's own people in hand, and their party
+  selIds() {
+    const s = this.sel;
+    const ids = !s ? [] : s.type === 'unit' ? [s.id] : s.type === 'group' ? s.ids || [] : [];
+    return ids.filter(id => { const u = Units.get(id); return u && u.owner === 'P'; });
+  },
+  selClassNow() {
+    const ids = this.selIds();
+    if (!ids.length) return null;
+    return this.sel.type === 'unit' ? this.unitClass(Units.get(ids[0])) : this.groupClass(ids);
+  },
+  PARTY_NOUN: { mil: ['soldier', 'soldiers'], vil: ['villager', 'villagers'], sap: ['sapper', 'sappers'], fish: ['boat', 'boats'], hull: ['transport', 'transports'] },
+  partyNoun(cls, n) { const w = this.PARTY_NOUN[cls] || ['unit', 'units']; return n + ' ' + w[n === 1 ? 0 : 1]; },
+  byNear(list, x, y) { return list.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)); },
+
+  // the box on the screen, in CSS px: its first corner where it was pressed
+  // on the ground, its second at the mouse, both kept to the open band
+  boxRect() {
+    const d = this.boxDrag;
+    if (!d) return null;
+    const z = R.cam.z, ax = (d.wx - R.cam.x) * z, ay = (d.wy - R.cam.y) * z;
+    // the bars are read once a box (they do not move while it is drawn)
+    const arm = this.boxArm || {};
+    if (arm.band === undefined) arm.band = R.openBand ? R.openBand() : null;
+    const band = arm.band, dpr = R.dpr || 1;
+    const top = band ? band.y0 / dpr : 0, bot = band ? band.y1 / dpr : R.viewH(), W = R.viewW();
+    const cl = (v, a, b) => Math.max(a, Math.min(b, v));
+    return {
+      x0: cl(Math.min(ax, d.sx), 0, W), x1: cl(Math.max(ax, d.sx), 0, W),
+      y0: cl(Math.min(ay, d.sy), top, bot), y1: cl(Math.max(ay, d.sy), top, bot),
+      ax, ay, top, bot,
+    };
+  },
+  // whom a box over the screen rect r would take: { ids, cls, left } — `left`
+  // counts the other parties' people it passed over. `add`: more of the party
+  // in hand (Shift), never another party.
+  boxPick(r, add) {
+    const out = { ids: [], cls: null, left: {} };
+    if (!r || typeof S === 'undefined' || !S || !S.units) return out;
+    const TL = CFG.TILE, z = R.cam.z, lift = CFG.SPRITE_LIFT / TL;
+    const x0 = (r.x0 / z + R.cam.x) / TL, x1 = (r.x1 / z + R.cam.x) / TL;
+    const y0 = (r.y0 / z + R.cam.y) / TL, y1 = (r.y1 / z + R.cam.y) / TL;
+    // a troop hull ('hull') sails with the war party, but no box takes one
+    // over the villagers working the shore it is moored at
+    const by = { mil: [], vil: [], sap: [], fish: [], hull: [] };
+    for (const u of S.units) {
+      const c = this.unitClass(u);
+      if (!c || !(u.hp > 0) || this.sentUp(u) || (R.unitHidden && R.unitHidden(u))) continue;
+      if (u.task && u.task.type === 'banish') continue;   // walking out of the valley for good
+      // the DRAWN body: lifted, and a big unit's box higher still (R.unitHit's centre)
+      const s = (R.unitBox ? R.unitBox(u) : TL) / TL, cy = u.y - lift - (s - 1) / 2, rad = 0.3 * s;
+      const nx = Math.max(x0, Math.min(x1, u.x)), ny = Math.max(y0, Math.min(y1, cy));
+      if (Math.hypot(u.x - nx, cy - ny) > rad) continue;
+      by[c === 'mil' && Units.isTransport(u) ? 'hull' : c].push(u.id);
+    }
+    const cur = add ? this.selClassNow() : null;
+    const pick = cur || ['mil', 'vil', 'sap', 'fish', 'hull'].find(k => by[k].length) || null;
+    out.cls = pick === 'hull' ? 'mil' : pick;
+    if (out.cls === 'mil') { out.ids = by.mil.concat(by.hull); by.mil = []; by.hull = []; }
+    else if (out.cls) { out.ids = by[out.cls]; by[out.cls] = []; }
+    for (const k in by) if (by[k].length) out.left[k] = by[k].length;
+    return out;
+  },
+  boxNoun(pick) {
+    const n = pick.ids.length;
+    if (pick.cls === 'mil' && pick.ids.every(id => { const u = Units.get(id); return u && Units.isNaval(u); }))
+      return n + (n === 1 ? ' ship' : ' ships');
+    return this.partyNoun(pick.cls, n);
+  },
+  boxLeft(pick) {
+    const k = Object.keys(pick.left);
+    return k.length ? k.map(c => this.partyNoun(c, pick.left[c])).join(', ') + ' left out' : '';
+  },
+  /* THE BOX, DRAWN: a DOM frame over the map (index.html #selBox) — a gold
+     line between two dark ink edges with gold corners, so it reads over
+     meadow, water and rock alike and never washes the ground; its count rides
+     the corner the mouse holds. The people it would take wear a quiet gold
+     ring until the release (js/feel.js reads _boxIds in its ringsFor). */
+  boxSync() {
+    const d = this.boxDrag;
+    let el = this._boxEl;
+    if (!d) {
+      if (el) el.style.display = 'none';
+      this._boxIds = null;
+      return;
+    }
+    if (!el) {
+      el = this._boxEl = document.createElement('div');
+      el.id = 'selBox'; el.setAttribute('aria-hidden', 'true');
+      el.innerHTML = '<i class="sbC sbTL"></i><i class="sbC sbTR"></i><i class="sbC sbBL"></i><i class="sbC sbBR"></i><b class="sbN"></b>';
+      document.body.insertBefore(el, document.getElementById('shell') || null);
+    }
+    const r = this.boxRect(), pick = this.boxPick(r, d.shift);
+    this._boxIds = new Set(pick.ids);
+    el.style.display = 'block';
+    el.style.left = r.x0 + 'px'; el.style.top = r.y0 + 'px';
+    el.style.width = Math.max(0, r.x1 - r.x0) + 'px'; el.style.height = Math.max(0, r.y1 - r.y0) + 'px';
+    // the count (game words only — no player text ever reaches this line)
+    const n = pick.ids.length, left = this.boxLeft(pick);
+    const html = n ? (d.shift && this.selIds().length ? '+' : '') + this.boxNoun(pick) + (left ? `<small>${left}</small>` : '') : '';
+    const lab = el.querySelector('.sbN');
+    if (lab.innerHTML !== html) lab.innerHTML = html;
+    const right = d.sx >= r.ax, below = d.sy >= r.ay;
+    // a count that would land under a bar stays inside the box instead
+    const inside = below ? r.y1 > r.bot - 30 : r.y0 < r.top + 30;
+    lab.className = 'sbN ' + (right ? 'r' : 'l') + ' ' + (below ? 'b' : 't') + (inside ? ' in' : '');
+  },
+  // release: everyone the box holds is taken in hand (Shift: added to it)
+  commitBox(add) {
+    const r = this.boxRect(), pick = this.boxPick(r, add);
+    this.boxArm = null; this.boxDrag = null; this.boxSync();
+    this.boxTold();
+    const cur = add ? this.selIds() : [];
+    let ids = pick.ids;
+    const adding = add && cur.length && pick.cls && this.selClassNow() === pick.cls;
+    if (adding) ids = cur.concat(pick.ids.filter(id => !cur.includes(id)));
+    const left = this.boxLeft(pick);
+    if (!ids.length || (adding && ids.length === cur.length)) {
+      // an empty box takes nothing and drops nothing
+      if (left && adding) this.toast(`${left} — Shift adds only more ${this.PARTY_NOUN[pick.cls][1]}`, 'note');
+      return;
+    }
+    if (ids.length === 1) this.select('unit', ids[0]);
+    else this.takeGroup(ids);
+    // who was left out: the box's count says it while it is drawn, so the
+    // toast says how to take them only the first time a session — a Shift
+    // that could not add is an answer to that act, every time (rule 4)
+    if (left && adding) this.toast(`${left} — Shift adds only more ${this.PARTY_NOUN[pick.cls][1]}`, 'note');
+    else if (left && !this._boxLeftTold) {
+      this._boxLeftTold = true;
+      this.toast(`${pick.cls === 'mil' ? 'Soldiers first: ' : ''}${left}. Drag round them alone to take them.`, 'note');
+    }
+  },
+  cancelBox() {
+    if (!this.boxArm && !this.boxDrag) return false;
+    this.boxArm = null; this.boxDrag = null; this.boxSync();
+    this.downAt = null;   // the rest of the press neither pans nor clicks
+    return true;
+  },
+  takeGroup(ids) {
+    this.sel = { type: 'group', ids };
+    if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0;
+    this.terraMode = null; this.tradeNeed = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.renderPanel();
+  },
+  // the first box a device draws says how the map moves now (once a device)
+  boxTold() {
+    if (this._boxTold) return;
+    this._boxTold = true;
+    let seen = null;
+    try { seen = localStorage.getItem('neo-box-told'); } catch (e) {}
+    if (seen) return;
+    try { localStorage.setItem('neo-box-told', '1'); } catch (e) {}
+    this.toast('Drag a box to take a group in hand. Move the map with a right-drag, the arrow keys or WASD.', 'note');
+  },
+  // SHIFT + CLICK: one more of the party in hand, or one taken out of it.
+  // False: not a unit of that party under the mouse — an ordinary click.
+  shiftPick(sx, sy) {
+    if (typeof S === 'undefined' || !S || S.over || !S.units) return false;
+    const w = R.screenToWorld(sx, sy), wx = w.x / CFG.TILE, wy = w.y / CFG.TILE;
+    let hit = null, hd = 0.55;   // dead-on only (the tap contract's steal radius)
+    for (const u of S.units) {
+      if (u.owner !== 'P') continue;
+      const d = R.unitHit(u, wx, wy);
+      if (d < hd) { hd = d; hit = u; }
+    }
+    if (!hit || this.sentUp(hit)) return false;
+    const k = this.unitClass(hit), cur = this.selIds();
+    if (!k || !cur.length || this.selClassNow() !== k) return false;
+    if (cur.includes(hit.id)) {
+      const ids = cur.filter(id => id !== hit.id);
+      if (!ids.length) { this.deselect(); return true; }
+      this.sel = ids.length === 1 ? { type: 'unit', id: ids[0] } : { type: 'group', ids };
+      this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;
+      this.renderPanel();
+      return true;
+    }
+    this.takeGroup(cur.concat(hit.id));
+    return true;
+  },
+
+  /* ---- THE WORK PARTY'S ORDERS ---- */
+  /* the ground the party can walk to (a gate of the player's is open to
+     them), flooded once per land it stands on: `any` is the union, `of(u)`
+     the land of one of them — a box can span two shores, and a villager
+     sent to work he cannot walk to would stand at the waterline for good */
+  partyReach(mem) {
+    const lands = [], of = new Map();
+    for (const u of mem) {
+      const i = MapGen.idx(u.x | 0, u.y | 0);
+      let r = lands.find(l => l[i]) || null;
+      if (!r) {
+        try {
+          r = Path.reachFrom([{ x: u.x | 0, y: u.y | 0 }], false, 'P');
+          if (!r[i]) {
+            // standing where nobody can stand (the ground changed under him):
+            // his land is the ground beside him, and none at all is "unknown"
+            const seeds = [];
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+              const x = (u.x | 0) + dx, y = (u.y | 0) + dy;
+              if (MapGen.inB(x, y) && Path.passable(x, y, 'P')) seeds.push({ x, y });
+            }
+            r = seeds.length ? Path.reachFrom(seeds, false, 'P') : null;
+          }
+        } catch (e) { r = null; }
+        if (r) lands.push(r);
+      }
+      of.set(u, r);
+    }
+    let any = lands[0] || null;
+    if (lands.length > 1) {
+      any = new Uint8Array(lands[0].length);
+      for (const l of lands) for (let k = 0; k < l.length; k++) if (l[k]) any[k] = 1;
+    }
+    return { any, of: u => of.get(u) || null };
+  },
+  // can this one of the party walk onto (or beside) tile x, y?
+  canReach(reach, u, x, y) {
+    const r = reach && reach.of(u);
+    return !r || !!r[MapGen.idx(x, y)] || this.edgeIn(x, y, r);
+  },
+  // a tile someone could stand beside: a free side the party can walk to
+  edgeIn(x, y, reach) {
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (!MapGen.inB(nx, ny)) continue;
+      if (reach ? reach[MapGen.idx(nx, ny)] : (Path.passable(nx, ny, 'P') && !Bld.at(nx, ny))) return true;
+    }
+    return false;
+  },
+  // the living good a station is raised on the ground of (a camp's woods, a
+  // quarry's rock, a farm's berries); null for a lodge or a mine
+  livingOf(def) {
+    if (!def || def.onWorked == null || !CFG.DEPLETED) return null;
+    for (const t in CFG.GATHER) if (CFG.DEPLETED[t] === def.onWorked) return +t;
+    return null;
+  },
+  /* A RESOURCE IS SHARED OUT, ONE HAND TO A TILE (the gather task leaves a
+     villager idle when its tile is spent, so two on one tile is work lost):
+     every tile of the same good within SPREAD_R the party can stand beside,
+     nearest the tap first, takes the nearest hand; then, while hands are
+     left, each takes a second side, a third… Returns those put to work. */
+  spreadGather(vills, tx, ty, reach) {
+    const g0 = CFG.GATHER[S.map.terrain[MapGen.idx(tx, ty)]];
+    if (!g0 || !vills.length) return [];
+    if (!reach) reach = this.partyReach(vills);
+    const R2 = this.SPREAD_R, tiles = [];
+    for (let dy = -R2; dy <= R2; dy++) for (let dx = -R2; dx <= R2; dx++) {
+      const x = tx + dx, y = ty + dy, d = Math.hypot(dx, dy);
+      if (d > R2 || !MapGen.onBoard(x, y)) continue;
+      const i = MapGen.idx(x, y), g = CFG.GATHER[S.map.terrain[i]];
+      if (!g || g.res !== g0.res || !(S.map.resAmount[i] > 0) || !S.map.explored[i] || !this.lessonOk(x, y)) continue;
+      if (!this.edgeIn(x, y, reach.any)) continue;
+      tiles.push({ x, y, d });
+    }
+    tiles.sort((a, b) => a.d - b.d);
+    // who already works each tile — never this party, who are given new work
+    const mine = new Set(vills), worked = new Map();
+    for (const o of S.units) if (o.owner === 'P' && !mine.has(o) && o.task && o.task.type === 'gather') {
+      const k = o.task.x + ',' + o.task.y;
+      worked.set(k, (worked.get(k) || 0) + 1);
+    }
+    let left = vills.slice();
+    const placed = [];
+    for (let pass = 0; pass < 4 && left.length; pass++) {
+      for (const t of tiles) {
+        if (!left.length) break;
+        const k = t.x + ',' + t.y, n = worked.get(k) || 0;
+        if (n !== pass) continue;
+        // the nearest hand that can walk to it takes it (a path is asked of
+        // three at most — the cheap questions come first)
+        left = this.byNear(left, t.x + 0.5, t.y + 0.5);
+        for (let i = 0, tries = 0; i < left.length && tries < 3; i++) {
+          const u = left[i];
+          if (!this.canReach(reach, u, t.x, t.y) || !this.gatherable(u, t.x, t.y) || !Units.gatherRoom(u, t.x, t.y)) continue;
+          tries++;
+          const was = u.task;
+          Units.assignGather(u, t.x, t.y);
+          if (u.task === was || !u.task || u.task.type !== 'gather') continue;
+          placed.push(u); left.splice(i, 1); worked.set(k, n + 1);
+          break;
+        }
+      }
+    }
+    return placed;
+  },
+  // whoever was put to work leaves the hand (the dispatched-worker rule);
+  // whoever found no room stays in it, ready for the next order
+  partyKeep(mem, placed) {
+    const put = new Set(placed);
+    const rest = mem.filter(u => !put.has(u)).map(u => u.id);
+    if (!rest.length) { this.dispatchedWorker(); return; }
+    this.sel = rest.length === 1 ? { type: 'unit', id: rest[0] } : { type: 'group', ids: rest };
+    this.confirmDemolish = 0; this.confirmCancel = 0; this.tacticsOpen = false;
+    this.renderPanel();
+  },
+  /* A PARTY'S ORDER (handleTap's group branch, and commitMoveDrag's with
+     o.drag — the release is movement-first, as a war party's is). True: an
+     order was given or its refusal said; false: the tap falls through to the
+     (re)selection, as a war party's does on one of the player's own. */
+  partyOrder(o) {
+    const mem = o.ids.map(id => Units.get(id)).filter(u => u && u.owner === 'P' && this.unitClass(u) === o.cls);
+    if (!mem.length) return false;
+    if (o.cls === 'vil') return this.villagersOrder(mem, o);
+    if (o.cls === 'fish') return this.boatsOrder(mem, o);
+    return this.sappersOrder(mem, o);
+  },
+  // a foe or a beast under the finger: everyone who can reach it goes for it
+  // (a single villager's own order — a hunt, or a stand against a raider)
+  partyAttack(mem, foe, noun) {
+    const at = mem.filter(u => !Combat.canEngage || Combat.canEngage(u, foe));
+    if (!at.length) return false;
+    if (foe.owner === 'A') G.breakPeace();   // the first strike ends the calm truce
+    for (const u of at) {
+      u.task = { type: 'attack', on: foe.id }; u.tUnit = foe.id; u.tBld = 0;
+      u.anchor = { x: foe.x, y: foe.y }; u.defend = false; u.assault = true;
+    }
+    this.toast(foe.owner === 'W' ? `${this.partyNoun(noun, at.length)} on the hunt` : `${this.partyNoun(noun, at.length)} attack!`);
+    return true;
+  },
+  partyWalk(mem, o) {
+    const wt = o.explored ? o.tile : this.fogWalkTarget(o.tile);   // the fog is not a wall
+    if (!wt) { this.toast('Unexplored', true); return true; }
+    for (const u of mem) u.defend = false;
+    Units.groupMove(mem.map(u => u.id), wt.x, wt.y);
+    if (o.flash) o.flash(wt);
+    return true;
+  },
+  villagersOrder(mem, o) {
+    const { tile, wx, wy, tapUnit, hitBld, explored } = o;
+    const tT = S.map.terrain[MapGen.idx(tile.x, tile.y)];
+    if (tapUnit && tapUnit.owner !== 'P') return this.partyAttack(mem, tapUnit, 'vil');
+    if (tapUnit && tapUnit.owner === 'P' && Units.isTransport(tapUnit)) {
+      let n = 0;
+      for (const u of this.byNear(mem, tapUnit.x, tapUnit.y)) if (Units.isBoardable(u) && Units.orderBoard(u, tapUnit)) n++;
+      this.toast(n ? `${n} boarding — the ${CFG.UNITS[tapUnit.kind].name} holds ${CFG.UNITS[tapUnit.kind].cap}`
+        : 'Transport is full (or away from shore)', !n);
+      return true;
+    }
+    if (tapUnit) return false;   // another of ours, tapped dead-on: take it in hand instead
+    const gatherAim = explored && CFG.GATHER[tT];
+    if (!o.drag) {
+      // works of ours under the finger, or a sliver off it — the same reach a
+      // single villager's tap has, never stolen from a resource or the water
+      const ownBld = (hitBld && hitBld.owner === 'P') ? hitBld
+        : (!hitBld && !gatherAim && tT !== T.WATER && o.bldNear
+            ? o.bldNear(0.42, b2 => b2.owner === 'P' && (b2.construction > 0 || b2.upgrading > 0 ||
+                b2.hp < b2.maxhp || Bld.def(b2.key).needsWorker))
+            : null);
+      if (ownBld) {
+        if (ownBld.construction > 0 || ownBld.upgrading > 0 || ownBld.hp < ownBld.maxhp) return this.partyBuild(mem, ownBld);
+        if (Bld.def(ownBld.key).needsWorker) return this.partyStation(mem, ownBld, o.sx, o.sy);
+        return false;   // finished works of ours: a look at them
+      }
+    }
+    if (!explored) return this.partyWalk(mem, o);
+    // a resource — the tile itself, or the one the finger clearly aimed at
+    const gt = CFG.GATHER[tT] ? tile : this.snapNear(wx, wy, (x, y) => S.map.explored[MapGen.idx(x, y)] &&
+      CFG.GATHER[S.map.terrain[MapGen.idx(x, y)]] && S.map.resAmount[MapGen.idx(x, y)] > 0 && this.lessonOk(x, y), o.drag ? 0.42 : undefined);
+    if (gt) return this.partyGather(mem, gt);
+    if (!o.drag && Bld.seamAt(tile.x, tile.y)) return this.partySeam(mem, tile);
+    if (!o.drag && tT === T.WATER) return this.partyShoreFish(mem, tile);
+    return this.partyWalk(mem, o);
+  },
+  partyGather(mem, gt) {
+    const reach = this.partyReach(mem);
+    const placed = this.spreadGather(mem, gt.x, gt.y, reach);
+    if (!placed.length) {
+      // the lesson's own ground (game 1): each hand fetches the good from where Mira showed
+      let sent = 0;
+      for (const u of mem) { const was = u.task; if (this.lessonSend(u, gt.x, gt.y) && u.task !== was) { placed.push(u); sent++; } }
+      if (!sent) {
+        if (!this.lessonBars(gt.x, gt.y)) this.toast('No clear ground to stand beside that resource', true);
+        return true;
+      }
+      this.partyKeep(mem, placed);
+      return true;
+    }
+    const res = placed[0].task && placed[0].task.res;
+    const left = mem.filter(u => !placed.includes(u)), rest = left.length;
+    const cut = left.every(u => !this.canReach(reach, u, gt.x, gt.y));   // across the water from it
+    this.toast(`${this.partyNoun('vil', placed.length)} gathering ${res}` +
+      (rest ? ` — ${rest} ${cut ? 'cannot reach it and stay' : 'still'} in hand${cut ? '' : ', no room left there'}` : ''), rest ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  partyBuild(mem, b) {
+    const fix = !(b.construction > 0) && !(b.upgrading > 0);
+    const placed = [], reach = this.partyReach(mem), sz = Bld.size(b);
+    // the works are reached from any tile of the plot or beside it
+    const reaches = u => {
+      const r = reach.of(u);
+      if (!r) return true;
+      for (let y = b.y - 1; y <= b.y + sz; y++) for (let x = b.x - 1; x <= b.x + sz; x++)
+        if (MapGen.inB(x, y) && r[MapGen.idx(x, y)]) return true;
+      return false;
+    };
+    for (const u of mem) {
+      if (!reaches(u)) continue;
+      Units.assignBuild(u, b);
+      if (u.task && u.task.type === 'build' && u.task.id === b.id) placed.push(u);
+    }
+    if (!placed.length) {
+      if (!this.levyBlocks(mem[0])) this.toast('No way through to those works', true);
+      return true;
+    }
+    const rest = mem.length - placed.length;
+    this.toast(`${this.partyNoun('vil', placed.length)} sent to ${fix ? 'repair' : 'build'} the ${Bld.def(b.key).name}` +
+      (rest ? ` — ${rest} cannot reach it and stay in hand` : ''), rest ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  /* A STATION HOLDS ITS PLACES AND NO MORE (the operator: "stations only have
+     room for two villagers"): its free places take the nearest hands, the next
+     works of its kind within SPILL_R take more, then its own good by hand
+     round it (a camp's woods, a quarry's rock, a farm's berries); whoever is
+     left stays in hand. A full one, with none of the party on it, is a LOOK. */
+  partyStation(mem, b, sx, sy) {
+    const name = Bld.def(b.key).name;
+    const on = (u, w) => u.task && u.task.type === 'work' && u.task.id === w.id;
+    const placed = mem.filter(u => on(u, b));
+    let room = Bld.maxWorkers(b) - Bld.workersAssigned(b);
+    const room0 = room;
+    if (room <= 0 && !placed.length) {
+      if (!this._stationLook) {          // one bounce only: the second pass has no selection
+        this._stationLook = true;
+        this.deselect();
+        try { this.handleTap(sx, sy); } finally { this._stationLook = false; }
+      }
+      return true;
+    }
+    const work = (u, w) => { u.task = { type: 'work', id: w.id }; u.tUnit = 0; u.tBld = 0; Units.setPath(u, w.x, w.y); };
+    const got = { here: 0, next: 0, hand: 0 };
+    let rest = mem.filter(u => !on(u, b));
+    const reach = rest.length ? this.partyReach(rest) : null;
+    for (const u of this.byNear(rest, b.x + 0.5, b.y + 0.5)) {
+      if (room <= 0) break;
+      if (!this.canReach(reach, u, b.x, b.y)) continue;   // a station across the water is not his
+      work(u, b); placed.push(u); got.here++; room--;
+    }
+    rest = rest.filter(u => !placed.includes(u));
+    if (rest.length) {
+      const next = S.buildings.filter(w => w !== b && w.owner === 'P' && w.key === b.key && !(w.construction > 0) &&
+          !(w.upgrading > 0) && Math.hypot(w.x - b.x, w.y - b.y) <= this.SPILL_R && (!reach || !reach.any || reach.any[MapGen.idx(w.x, w.y)]))
+        .sort((p, q) => Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y));
+      for (const w of next) {
+        let r2 = Bld.maxWorkers(w) - Bld.workersAssigned(w);
+        for (const u of this.byNear(rest, w.x + 0.5, w.y + 0.5)) {
+          if (r2 <= 0) break;
+          if (!this.canReach(reach, u, w.x, w.y)) continue;
+          work(u, w); placed.push(u); got.next++; r2--;
+        }
+        rest = rest.filter(u => !placed.includes(u));
+        if (!rest.length) break;
+      }
+    }
+    const terr = this.livingOf(Bld.def(b.key));
+    const res = terr != null && CFG.GATHER[terr] ? CFG.GATHER[terr].res : '';
+    if (rest.length && terr != null) {
+      const near = MapGen.findNear(b.x, b.y, this.SPILL_R, (x, y) => {
+        const i = MapGen.idx(x, y);
+        return S.map.terrain[i] === terr && S.map.resAmount[i] > 0 && !!S.map.explored[i] && this.lessonOk(x, y) && this.edgeIn(x, y, reach && reach.any);
+      });
+      if (near) {
+        const g2 = this.spreadGather(rest, near.x, near.y, reach);
+        for (const u of g2) placed.push(u);
+        got.hand = g2.length;
+        rest = rest.filter(u => !g2.includes(u));
+      }
+    }
+    const parts = [];
+    if (got.here) parts.push(`${got.here} to the ${name}`);
+    if (got.next) parts.push(`${got.next} to the next ${name}`);
+    if (got.hand) parts.push(`${got.hand} gathering ${res} beside it`);
+    if (rest.length && parts.length) parts.push(`${rest.length} still in hand`);
+    // all of them where they were sent: an acknowledgement (the marks say it);
+    // a split or a hand left over is news the player is told
+    const split = got.next || got.hand || rest.length;
+    this.toast(parts.length ? parts.join(', ') : !rest.length ? `Already working the ${name}`
+      : room0 > 0 ? `No way through to the ${name}` : `The ${name} is full`,
+      !parts.length ? rest.length > 0 : split ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  // a gold seam: as many as the mine holds walk out to claim it (or to take it)
+  partySeam(mem, tile) {
+    const c = Bld.canClaimSeam('P', tile.x, tile.y);
+    if (!c.ok) { this.toast(c.why, true); return true; }
+    const held = Bld.at(tile.x, tile.y), ours = !!(held && held.key === 'mine' && held.owner === 'P');
+    const cap = ours ? Bld.maxWorkers(held) : ((CFG.BUILDINGS.mine && CFG.BUILDINGS.mine.maxWorkers) || 2);
+    const there = u => u.owner === 'P' && u.task && ((u.task.type === 'claim' && u.task.x === tile.x && u.task.y === tile.y) ||
+      (ours && u.task.type === 'work' && u.task.id === held.id));
+    const placed = mem.filter(there);
+    let room = cap - S.units.filter(there).length;
+    const free = mem.filter(u => !placed.includes(u)), reach = free.length ? this.partyReach(free) : null;
+    for (const u of this.byNear(free, tile.x + 0.5, tile.y + 0.5)) {
+      if (room <= 0) break;
+      if (!this.canReach(reach, u, tile.x, tile.y)) continue;
+      Units.assignMine(u, tile.x, tile.y);
+      if (there(u)) { placed.push(u); room--; }
+    }
+    if (!placed.length) { this.toast(held ? 'The mine is fully crewed' : 'No way through to that seam', true); return true; }
+    const rest = mem.length - placed.length;
+    this.toast((held && !ours ? `${placed.length} marching out to take the gold mine ⛏` : ours ? `${placed.length} heading to the gold mine ⛏`
+      : `${placed.length} heading out to claim the gold seam ⛏`) + (rest ? ` — it takes ${cap}; ${rest} still in hand` : ''), rest ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  // a shoal: one line to a shoal round it first, then a second free side
+  partyShoreFish(mem, tile) {
+    if (!(MapGen.shoal(tile.x, tile.y) && S.map.resAmount[MapGen.idx(tile.x, tile.y)] > 0)) {
+      this.toast('No fish here — watch for fish breaking the surface', true);
+      return true;
+    }
+    if (this.lessonBars(tile.x, tile.y, true)) return true;
+    const reach = this.partyReach(mem), mine = new Set(mem);
+    const taken = new Set(), fished = new Set();
+    for (const u of S.units) if (u.owner === 'P' && !mine.has(u) && u.task && u.task.type === 'shorefish') {
+      taken.add(u.task.sx + ',' + u.task.sy); fished.add(u.task.x + ',' + u.task.y);
+    }
+    const slots = [], R2 = 4;
+    for (let dy = -R2; dy <= R2; dy++) for (let dx = -R2; dx <= R2; dx++) {
+      const x = tile.x + dx, y = tile.y + dy, d = Math.hypot(dx, dy);
+      if (d > R2 || !MapGen.shoal(x, y)) continue;
+      const i = MapGen.idx(x, y);
+      if (!(S.map.resAmount[i] > 0) || !S.map.explored[i]) continue;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ex = x + ox, ey = y + oy;
+        if (!MapGen.inB(ex, ey) || !Path.passable(ex, ey, 'P') || Bld.at(ex, ey)) continue;
+        if (reach.any && !reach.any[MapGen.idx(ex, ey)]) continue;
+        slots.push({ x, y, ex, ey, d });
+      }
+    }
+    slots.sort((a, b) => a.d - b.d);
+    let left = mem.slice();
+    const placed = [];
+    for (let pass = 0; pass < 2 && left.length; pass++) {
+      for (const s of slots) {
+        if (!left.length) break;
+        const ek = s.ex + ',' + s.ey, sk = s.x + ',' + s.y;
+        if (taken.has(ek) || (pass === 0 && fished.has(sk))) continue;
+        // the nearest line that can walk to this side of it
+        const u = this.byNear(left, s.ex + 0.5, s.ey + 0.5).find(v => { const r = reach.of(v); return !r || r[MapGen.idx(s.ex, s.ey)]; });
+        if (!u) continue;
+        const was = u.task;
+        Units.assignShoreFish(u, s.x, s.y, { x: s.ex, y: s.ey });
+        if (u.task === was || !u.task || u.task.type !== 'shorefish') continue;
+        placed.push(u); left = left.filter(v => v !== u); taken.add(ek); fished.add(sk);
+      }
+    }
+    if (!placed.length) { this.toast('No clear shore to fish from', true); return true; }
+    this.toast(`${this.partyNoun('vil', placed.length)} fishing from the shore 🎣` + (left.length ? ` — ${left.length} still in hand, no shore left` : ''), left.length ? 'note' : undefined);
+    this.partyKeep(mem, placed);
+    return true;
+  },
+  boatsOrder(mem, o) {
+    const { tile, tapUnit, explored } = o;
+    if (tapUnit && tapUnit.owner === 'P') return false;   // one of ours, dead-on: take it in hand
+    if (explored && Units.fishableTile(tile.x, tile.y)) {
+      // each boat to free water: the first takes the tile, the rest slide to
+      // the nearest free shoal round it (Units.assignFish, one boat per tile)
+      const placed = [];
+      for (const u of this.byNear(mem, tile.x + 0.5, tile.y + 0.5)) {
+        const was = u.task;
+        Units.assignFish(u, tile.x, tile.y);
+        if (u.task !== was && u.task && u.task.type === 'fish') placed.push(u);
+      }
+      if (!placed.length) { this.toast('No free water with fish here', true); return true; }
+      const rest = mem.length - placed.length;
+      this.toast(`${this.partyNoun('fish', placed.length)} fishing 🐟` + (rest ? ` — ${rest} found no free water` : ''), rest ? 'note' : undefined);
+      this.partyKeep(mem, placed);
+      return true;
+    }
+    if (!o.drag && o.hitBld && o.hitBld.owner === 'P') return false;   // our own works: a look
+    return this.partyWalk(mem, o);
+  },
+  sappersOrder(mem, o) {
+    const { tile, tapUnit, explored } = o;
+    if (tapUnit && tapUnit.owner !== 'P') return this.partyAttack(mem, tapUnit, 'sap') || this.partyWalk(mem, o);
+    if (tapUnit) return false;
+    if (!o.drag) {
+      // a span being reinforced: every sapper on the works (the clock is the bridge's)
+      const brW = explored && Bld.bridgeAt ? Bld.bridgeAt(tile.x, tile.y) : null;
+      if (brW && brW.owner === 'P' && brW.upgrading > 0) {
+        const placed = mem.filter(u => Units.assignTerraform(u, tile.x, tile.y, 'bridgeup'));
+        if (!placed.length) { this.toast('No clear footing beside the bridge', true); return true; }
+        this.toast(`${this.partyNoun('sap', placed.length)} reinforcing the bridge 🌉`);
+        this.partyKeep(mem, placed);
+        return true;
+      }
+      if (o.hitBld && o.hitBld.owner === 'P') return false;
+    }
+    return this.partyWalk(mem, o);
+  },
+  /* THE PARTY'S PANEL: who they are, what they are doing (panelSub, ticked in
+     place), what a tap does, and — for villagers — Build, which sends all of
+     them to raise the next site placed (builderIds). */
+  partyLine(ids) {
+    const n = {}, put = (k, v) => { n[k] = (n[k] || 0) + (v || 1); };
+    for (const id of ids) {
+      const u = Units.get(id);
+      if (!u) continue;
+      const t = u.task, ty = t && t.type;
+      if (ty === 'gather') put('gathering ' + (t.res || 'goods'));
+      else if (ty === 'build') put('building');
+      else if (ty === 'work' || ty === 'claim') put('at the works');
+      else if (ty === 'fish' || ty === 'shorefish') put('fishing');
+      else if (ty === 'terraform') put('digging');
+      else if (u.tUnit || ty === 'attack') put('fighting');
+      else if (ty === 'board') put('boarding');
+      else if (Units.moving(u) || ty === 'move') put('walking');
+      else put('idle');
+    }
+    const order = Object.keys(n).sort((a, b) => (a === 'idle') - (b === 'idle') || n[b] - n[a]);
+    return order.slice(0, 3).map(k => `${n[k]} ${k}`).join(' · ');
+  },
+  renderParty(panel) {
+    this.sel.ids = this.sel.ids.filter(id => Units.get(id));
+    if (!this.sel.ids.length) { this.deselect(); return false; }
+    if (this.sel.ids.length === 1) { this.sel = { type: 'unit', id: this.sel.ids[0] }; this.renderPanel(); return false; }
+    const cls = this.groupClass(this.sel.ids), n = this.sel.ids.length;
+    const first = Units.get(this.sel.ids[0]);
+    const head = { vil: '👥 Villagers', sap: '⛏ Sappers', fish: '🐟 Fishing Boats' }[cls] || '👥 Party';
+    const hint = {
+      vil: 'Tap trees, rock or berries and they share the work out; a station and they fill its places; a site and they all build it.',
+      sap: 'Tap ground to walk together, or a bridge being reinforced to put them all on it. Take one in hand for the tools.',
+      fish: 'Tap fish and they share the water out, or open water to sail together.',
+    }[cls] || '';
+    panel.innerHTML = `<div class="phead"><canvas id="pIcon"></canvas><div>
+        <div class="ptitle">${head} <span style="color:var(--gold)">(${n})</span></div>
+        <div class="psub">${this.panelSub()}</div></div>
+        <button class="abtn" id="helpToggle" title="${this.helpHidden ? 'Show unit tips' : 'Hide unit tips'}">${this.helpHidden ? 'ℹ️' : '−'}</button><button class="abtn" id="panelClose">✕</button></div>` +
+      `<div class="pactions">${this.helpHidden ? '' : `<span class="psub">${hint}</span>`}` +
+      (cls === 'vil' ? `<button class="abtn" data-act="ggobuild">🔨 Build<small>they all raise it</small></button>` : '') +
+      `</div>`;
+    const ic = panel.querySelector('#pIcon');
+    if (ic && first) this.iconInto(ic, R.unitSprite(first));
+    const gb = panel.querySelector('[data-act="ggobuild"]');
+    if (gb) gb.addEventListener('click', () => {
+      const ids = this.sel.ids.filter(id => { const u = Units.get(id); return u && Units.isVillager(u) && !Units.isLevied(u); });
+      if (this.menuCollapsed) this.setMenuCollapsed(false);
+      this.deselect();          // brings the build menu back
+      this.builderFor = null; this.builderIds = ids;   // after deselect's bookkeeping
+      if (!(S && S.scenario)) this.toast(`Pick a building, then tap a site — these ${ids.length} villagers will build it`, 'note');
+    });
+    return true;
+  },
+  // the villagers chosen to build what is placed next: a party's Build, else a
+  // single villager's (builderFor), alive, and still free to work
+  chosenBuilders() {
+    const ids = this.builderIds && this.builderIds.length ? this.builderIds : this.builderFor ? [this.builderFor] : [];
+    return ids.map(id => Units.get(id)).filter(u => u && u.owner === 'P' && Units.isVillager(u) && !Units.isLevied(u));
+  },
+
   commitMoveDrag(sx, sy) {
     if (!S || S.over || !this.sel) return;
     const tile = R.screenToTile(sx, sy);
@@ -1473,6 +2259,20 @@ const UI = {
     };
     const flash = (at) => { const p2 = at || tile; this.moveFlash = { x: p2.x, y: p2.y, t: 0.9, life: 0.9 }; };
 
+    // a WORK PARTY dragged: movement-first like a war party — a foe, a hull to
+    // board, a resource for villagers or fish for boats, else a walk
+    if (this.sel.type === 'group' && this.groupClass(this.sel.ids) !== 'mil') {
+      const ids = this.sel.ids.filter(id => Units.get(id));
+      if (!ids.length) { this.deselect(); return; }
+      this.sel.ids = ids;
+      const tapUnit = (hitUnit && hitUnit.owner === 'P' && !Units.isTransport(hitUnit)) ? null : hitUnit;
+      const o = { ids, cls: this.groupClass(ids), tile, wx, wy, sx, sy, tapUnit, hitBld, explored, drag: true, flash };
+      if (!this.partyOrder(o)) {
+        const mem = ids.map(id => Units.get(id)).filter(Boolean);
+        this.partyWalk(mem, o);
+      }
+      return;
+    }
     if (this.sel.type === 'group') {
       const ids = this.sel.ids.filter(id => Units.get(id));
       if (!ids.length) { this.deselect(); return; }
@@ -1678,8 +2478,25 @@ const UI = {
     }
     const hitBridge = (explored && Bld.bridgeAt) ? Bld.bridgeAt(tile.x, tile.y) : null;
 
+    // orders for a selected WORK PARTY — villagers, sappers or fishing boats
+    // taken in hand by a box (partyOrder): the work is shared out
+    if (this.sel && this.sel.type === 'group' && this.groupClass(this.sel.ids) !== 'mil') {
+      const ids = this.sel.ids.filter(id => Units.get(id));
+      if (!ids.length) { this.deselect(); return; }
+      this.sel.ids = ids;
+      // taps are ORDERS while a party is selected: another own unit only
+      // steals the tap when hit dead-on (transports stay easy to board) —
+      // and, as for one villager, a resource under the finger outranks a
+      // bystander merely overlapping its tile (tap rule 2: tighter there)
+      const cls = this.groupClass(ids);
+      const gatherAim = cls === 'vil' && explored && CFG.GATHER[S.map.terrain[MapGen.idx(tile.x, tile.y)]];
+      const steal = deadOn && !(gatherAim && unitD > 0.32);
+      const tapUnit = (hitUnit && hitUnit.owner === 'P' && !steal && !Units.isTransport(hitUnit)) ? null : hitUnit;
+      if (this.partyOrder({ ids, cls, tile, wx, wy, sx, sy, tapUnit, hitBld, explored, bldNear })) return;
+      // tapped one of our own units/buildings: fall through and reselect it
+    }
     // orders for a selected war party
-    if (this.sel && this.sel.type === 'group') {
+    else if (this.sel && this.sel.type === 'group') {
       const ids = this.sel.ids.filter(id => Units.get(id));
       if (!ids.length) { this.deselect(); return; }
       this.sel.ids = ids;
@@ -2006,7 +2823,9 @@ const UI = {
   },
   // can a unit anchor a double-tap group? only army/fleet units — the same set the
   // "Group nearby / Group fleet" button forms (soldiers & siege on land; warships,
-  // fireships & transports at sea). Villagers, sappers and fishing boats are left out.
+  // fireships & transports at sea). Villagers, sappers and fishing boats are left
+  // out — but for a mouse's double-click, which takes their kind as a work party
+  // (handleDoubleTap, unitClass; tests/box-select.mjs)
   groupable(u) { return Units.isMilitary(u) || Units.isFleetable(u) || Units.isLevied(u); },
   /* A BOW ON A TOWER IS AT HIS POST, NOT IN A PARTY (js/lookout.js, build
      150): on the platform, on its stairs or walking to man one, a double
@@ -2038,7 +2857,7 @@ const UI = {
   // DOUBLE-TAP: select every like unit (see sameSelType) within the grouping sphere
   // of the tapped one — a trebuchet line, a wing of cavalry, a flotilla of transports
   // pulled cleanly out of a mixed army so it can be ordered on its own.
-  handleDoubleTap(sx, sy) {
+  handleDoubleTap(sx, sy, mouse) {
     if (!S || S.over) return;
     // while placing, a fast second tap is just another placement tap — the
     // ghost jumps, nothing gets group-selected out from under the mode
@@ -2058,16 +2877,20 @@ const UI = {
     // into a group, nor anchors one (build 150 — "archers in the towers
     // shouldn't be selectable… only when they're on the ground"): a double
     // tap on him is an ordinary tap, which takes him alone in hand.
-    if (!hit || !this.groupable(hit) || this.sentUp(hit)) { this.handleTap(sx, sy); return; }
+    // A DOUBLE-CLICK (a mouse, build 213) takes a villager's, a sapper's or a
+    // boat's kind nearby too, now that a work party can be ordered as one
+    // (tests/box-select.mjs); a double-tap on a phone keeps to the soldiers
+    const party = mouse && hit && !this.groupable(hit) ? this.unitClass(hit) : null;
+    if (!hit || !(this.groupable(hit) || party) || this.sentUp(hit)) { this.handleTap(sx, sy); return; }
     const R2 = CFG.GROUP_R;
     const ids = S.units
-      .filter(o => o.owner === 'P' && this.groupable(o) && !this.sentUp(o) && this.sameSelType(o, hit) &&
-        Math.hypot(o.x - hit.x, o.y - hit.y) <= R2)
+      .filter(o => o.owner === 'P' && (party ? this.unitClass(o) === party : this.groupable(o)) && !this.sentUp(o) &&
+        this.sameSelType(o, hit) && Math.hypot(o.x - hit.x, o.y - hit.y) <= R2)
       .map(o => o.id);
     if (ids.length <= 1) { this.select('unit', hit.id); return; }   // it's the only one — just select it
     this.sel = { type: 'group', ids };
     if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
-    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
     const label = Units.isTransport(hit) ? 'transport' : CFG.UNITS[hit.kind].name.toLowerCase();
     this.toast(`Selected ${ids.length} ${this.plural(label, ids.length)} nearby`);   // "3 axemen", never "3 axemans"
@@ -2079,7 +2902,7 @@ const UI = {
       const su = Units.get(id); if (su && su.owner === 'P') Sound.ui('select');
     }
     this.sel = { type, id };
-    this.builderFor = null;
+    this.builderFor = null; this.builderIds = null;
     this.confirmDemolish = 0; this.confirmCancel = 0;
     this.terraMode = null;      // a fresh selection drops any armed sapper tool
     this.tradeNeed = null;      // …and rewinds the Trading Post to "what do you need?"
@@ -2089,7 +2912,7 @@ const UI = {
   },
   selectBridge(x, y) {
     this.sel = { type: 'bridge', x, y };
-    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   deselect() {
@@ -2188,7 +3011,7 @@ const UI = {
     return false;
   },
   // panel buttons that only turn the page — never an order (UI.init's listener)
-  VIEW_ACTS: { tradeneed: 1, tradeback: 1, gtactics: 1, gobuild: 1, garmysave: 1, garmyremove: 1, armyremove: 1 },
+  VIEW_ACTS: { tradeneed: 1, tradeback: 1, gtactics: 1, gobuild: 1, ggobuild: 1, garmysave: 1, garmyremove: 1, armyremove: 1 },
 
   // the − / ℹ️ button on unit panels: tuck the how-to text away (or bring it
   // back), and remember the choice on this device across games
@@ -2409,7 +3232,7 @@ const UI = {
     }
     this.sel = { type: 'group', ids: ground };
     if (typeof Sound !== 'undefined' && Sound.ui) Sound.ui('select');
-    this.builderFor = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
+    this.builderFor = null; this.builderIds = null; this.confirmDemolish = 0; this.confirmCancel = 0; this.terraMode = null; this.panelHidden = false; this.tacticsOpen = false;
     this.renderPanel();
   },
   /* THE BANNERS ARE DRAWN (build 154): the saved armies ride the top bar's
@@ -2608,7 +3431,8 @@ const UI = {
       const busy = mem.some(o => this.unitBusy(o));
       const siegeable = land.length > 0 && Units.siegeArtillery(land).length > 0;
       const aboard = mem.reduce((n, o) => n + (Units.isTransport(o) && o.cargo ? o.cargo.length : 0), 0);
-      return 'g|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat +
+      // the party (a war party, or villagers, sappers, boats in hand) picks the panel
+      return 'g|' + this.groupClass(this.sel.ids) + '|' + mem.length + '|' + (defEl > 0) + '|' + mem.every(o => !Units.canDefend(o) || !o.defend) + '|' + gStrat +
         '|' + busy + '|' + siegeable + '|' + (aboard > 0);
     }
     if (this.sel.type === 'bridge') {
@@ -3048,7 +3872,8 @@ const UI = {
       }
       return sub;
     }
-    if (this.sel.type === 'group') return this.groupComposition(this.sel.ids);
+    if (this.sel.type === 'group') return this.groupClass(this.sel.ids) === 'mil'
+      ? this.groupComposition(this.sel.ids) : this.partyLine(this.sel.ids);   // a party says what it is doing
     if (this.sel.type === 'bridge') { const br = Bld.bridgeAt(this.sel.x, this.sel.y); return br ? `HP ${Math.ceil(br.hp)}/${br.maxhp} · a crossing over water` : ''; }
     const u = Units.get(this.sel.id);
     return u ? `HP ${Math.ceil(u.hp)}/${u.maxhp} · ATK ${this.atkShown(u)} · DEF ${Units.effDef(u)}` : '';
@@ -3515,6 +4340,9 @@ const UI = {
         const b2 = Bld.bridgeAt(this.sel.x, this.sel.y); if (b2) Bld.removeBridge(b2);
         this.deselect();
       }));
+    } else if (this.sel.type === 'group' && this.groupClass(this.sel.ids.filter(id => Units.get(id))) !== 'mil') {
+      // a WORK PARTY's own panel (villagers, sappers, fishing boats)
+      if (!this.renderParty(panel)) return;
     } else if (this.sel.type === 'group') {
       this.sel.ids = this.sel.ids.filter(id => Units.get(id));
       if (this.sel.ids.length === 0) { this.deselect(); return; }
@@ -3953,7 +4781,7 @@ const UI = {
         const vid = this.sel.id;
         if (this.menuCollapsed) this.setMenuCollapsed(false);
         this.deselect();          // brings the build menu back
-        this.builderFor = vid;    // after deselect/select bookkeeping
+        this.builderFor = vid; this.builderIds = null;   // after deselect/select bookkeeping
         // the journey's guide says it and rings the card: no second voice over her line
         if (!(S && S.scenario)) this.toast('Pick a building, then tap a site — this villager will build it', 'note');
       });
@@ -4162,6 +4990,7 @@ const UI = {
   },
   refresh(dt) {
     this.tickPlacement(dt);   // per-frame: edge scroll + ghost DOM must not wait on the throttle
+    if (this.boxDrag) { try { this.boxSync(); } catch (e) {} }   // a box held on the ground follows the view
     if (typeof Feel !== 'undefined' && Feel.tick) { try { Feel.tick(dt); } catch (e) {} }   // the held keys, a glide, the pause veil
     this.refreshT -= dt;
     if (this.refreshT > 0) return;

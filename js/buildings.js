@@ -1201,12 +1201,18 @@ const Bld = {
       // building (or one placed already-built) expands the view
       if (opts.instant) G.reveal(x + (this.size(key) >> 1), y + (this.size(key) >> 1), d.levels[0].vision || 4);
       if (!opts.instant && !opts.noAutoAssign) {
+        // a WORK PARTY's Build (UI.builderIds, tests/box-select.mjs): every one
+        // of them is pulled off whatever they were doing to raise it
+        const crew = (opts.builderIds || []).map(id => S.units.find(u => u.id === id && u.owner === 'P' && Units.isVillager(u))).filter(Boolean);
+        let sent = 0;
+        for (const u of crew) { Units.assignBuild(u, b); if (u.task && u.task.type === 'build' && u.task.id === b.id) sent++; }
         // an explicitly chosen builder is pulled off whatever it was doing
-        let v = opts.builderId
+        let v = !sent && opts.builderId
           ? S.units.find(u => u.id === opts.builderId && u.owner === 'P' && Units.isVillager(u))
           : null;
-        if (!v) v = Units.nearestIdleVillager(x, y);
-        if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
+        if (!v && !sent) v = Units.nearestIdleVillager(x, y);
+        if (sent) G.log(`${d.name} site laid out — ${sent > 1 ? sent + ' villagers head' : 'a villager heads'} over`);
+        else if (v && Units.assignBuild(v, b)) G.log(`${d.name} site laid out — a villager heads over`);
         else if (S.levy) G.log(`${d.name} site laid out — the levy is under arms; the works wait for the stand-down`, true);
         else G.log(`${d.name} needs a builder — tap a villager, then the site`, true);
       }

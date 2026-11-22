@@ -10,7 +10,9 @@
    ONLY REAL SETTINGS. Every control on this page changes something the game
    actually reads — the autosave cadence (Backend.autosaveDays), the two audio
    switches and their dials (js/audio.js), the how-to text on unit panels
-   (UI.helpHidden), the chief's name and the recovery token (Backend). There
+   (UI.helpHidden), what a mouse's left drag does — a box round the player's
+   people, or the map (UI.boxOn; shown only where there is a mouse) — the
+   chief's name and the recovery token (Backend). There
    is no language picker, no graphics toggle and no controls page, because
    the game has none of those, and a section with nothing real in it is not
    drawn: the chief's-name card waits for the cloud, the save-file button for
@@ -269,6 +271,12 @@ const SettingsPage = {
     }
     h += this.card('Help & Tips',
       this.row('Unit tips', 'The how-to text on a selected unit’s panel.', this.toggle('unithelp', !(typeof UI !== 'undefined' && UI.helpHidden), 'Show unit tips')));
+    // A MOUSE'S LEFT DRAG (UI.boxOn, tests/box-select.mjs): a box round your
+    // people, or — switched off, for a trackpad say — the map. A real setting
+    // only where there is a mouse, so a phone never shows it.
+    if (this.hasMouse()) h += this.card('Mouse',
+      this.row('Drag to select', 'A left drag on the map draws a box round your people. Off, it moves the map.',
+        this.toggle('boxselect', this.boxOn(), 'Drag to select')));
     if (this.gameLive() && S.log && S.log.length) {
       const err = (typeof G !== 'undefined' && G.lastFrameError)
         ? `<div class="sxErr">⚠ ${this.esc(String(G.lastFrameError).split('\n')[0]).slice(0, 160)}</div>` : '';
@@ -278,9 +286,13 @@ const SettingsPage = {
     }
     return h;
   },
+  hasMouse() { try { return matchMedia('(any-pointer: fine)').matches; } catch (e) { return false; } },
+  boxOn() { return !(typeof UI !== 'undefined' && UI.boxOn && !UI.boxOn()); },
   paintGeneral() {
     const u = this.el.querySelector('[data-act="unithelp"]');
     if (u) this._setTog(u, !(typeof UI !== 'undefined' && UI.helpHidden));
+    const bx = this.el.querySelector('[data-act="boxselect"]');
+    if (bx) this._setTog(bx, this.boxOn());
     // the chief's name is the cloud's: asked once per showing, written into
     // whichever input is on screen when the answer lands (a tab switch in the
     // meantime builds a new one)
@@ -493,7 +505,10 @@ const SettingsPage = {
     }
   },
   toggleAct(a) {
-    if (a === 'unithelp' && typeof UI !== 'undefined') {
+    if (a === 'boxselect' && typeof UI !== 'undefined' && UI.setBoxOn) {
+      UI.setBoxOn(!this.boxOn());
+      this.paintGeneral();
+    } else if (a === 'unithelp' && typeof UI !== 'undefined') {
       UI.helpHidden = !UI.helpHidden;
       this._set('neo-unit-help', UI.helpHidden ? '1' : '0');
       try { if (UI.renderPanel && this.gameLive()) UI.renderPanel(); } catch (e) {}

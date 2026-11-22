@@ -317,6 +317,7 @@ node tests/barb-sense.mjs      # barbarians attack any land unit, leave when stu
 node tests/rival-crossing.mjs  # AI reaches its own works, eats before hoarding, bridges around towers; a stuck blind chief still crosses
 node tests/finished-run-continue.mjs # a win never clobbers a save slot; Continue retires the whole run
 node tests/drag-move.mjs       # drag-to-move: press ON the selection + drag = order, never a reselect
+node tests/box-select.mjs      # a mouse's left drag draws the box: soldiers first, then villagers, sappers, fishing boats; never a bow at his post or anything under the bars; right/middle drags and a touch still pan; Shift adds, a double-click takes a villager's kind; a work party shares out — one hand to a tile, a station to its places then the next works and its own good, a full station a look, a seam to the mine's crew, a shoal by its free sides; who is at work leaves the hand; every work the order lands on is marked
 node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged in reshaped ground
 node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
 node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
@@ -4453,7 +4454,11 @@ HOLDS, which the fog exists to hide, so they keep the hard explored gate (an
 unexplored tap with a villager goes straight to the clamped walk, never into
 those branches). Sub-threshold presses fall through to the ordinary tap
 byte-for-byte (tap-audit still rules); drags starting OFF the selection still
-pan; wall/terraform line-drags keep right of way at pointerdown.
+pan — a touch, a pen, a mouse's right or middle button; a mouse's LEFT drag
+off the selection is the selection box since build 213 (**BOX SELECT AND
+THE WORK PARTY**, below); wall/terraform line-drags keep right of way at
+pointerdown, for every button but a mouse's right and middle, which always
+pan.
 **THE MAP STAYS UNDER THE FINGERS** (`UI.bindCanvas`, same test §9–11): a
 pinch zooms about where the fingers WERE and carries that ground to where
 they ARE (`UI.pinchMid`), so two fingers moved together pan and a travelling
@@ -4490,6 +4495,76 @@ remembers when it was armed, and a confirming tap under 400 ms after, by the
 taps' own timestamps, is ignored — still armed, no toast. The contracts fire
 a double-tap's second tap in the first's task (a 120 ms nap measured
 200–600 ms on a loaded host) and wait 450 ms before a deliberate one.
+
+**BOX SELECT AND THE WORK PARTY** (`UI.boxCanArm` / `boxRect` / `boxPick` /
+`boxSync` / `commitBox` / `shiftPick` / `cancelBox`, `UI.partyOrder` and its
+helpers, `UI.renderParty` / `chosenBuilders`, `Bld.place`'s `builderIds`,
+`Feel.markOrders`' `more`; tests/box-select.mjs — operator, build 213, from a
+player's request: "On desktop, let's add the ability to drag and multi select
+units and send them somewhere… We have to be careful… because villagers do
+different work from soldiers, stations only have room for two villagers").
+**THE DESKTOP STRATEGY GAME'S MOUSE** (Age of Empires, StarCraft, 0 A.D.): a
+LEFT mouse drag that starts off the selection draws a box (a DOM frame,
+`#selBox`, kept to the open band between the bars, its first corner held on
+the GROUND so a key may move the view under it, a count of who it takes and
+who it leaves out at the mouse's corner, a quiet gold ring on each it would
+take, `Feel.ringsFor` via `UI._boxIds`); one that starts ON the selection is
+still the move order; the RIGHT and MIDDLE buttons always pan (`panBtn` in
+pointerdown: they never grab the placement ghost, paint a wall or road line,
+or start a sapper's cut — a player told "right-drag moves the map" must never
+lay and pay for a wall with it), and a touch or a pen is untouched. Placing a
+building, the left button is the placement's (the ghost rides the mouse).
+Settings' "Drag to select" (`neo-box-select` '0', `UI.boxOn` / `setBoxOn`,
+shown only where `(any-pointer: fine)`) hands the left drag back to the map.
+The first box a device draws says how the map moves now (`neo-box-told`).
+**WHO A BOX TAKES**: the player's own people whose DRAWN body (R.unitHit's
+centre, a big box's too) it touches — never a bow at his tower post or on
+the stairs (`UI.sentUp`, the area-selection rule), a ghost under the ground
+(`R.unitHidden`), a villager walking out of the valley, or anything under
+the bars. ONE PARTY AT A TIME, SOLDIERS FIRST (AoE's "easy drag military";
+`UI.unitClass`): soldiers, hulls of war and a levied hand (`groupable`,
+'mil'), else villagers ('vil'), else sappers ('sap'), else fishing boats
+('fish'), and a troop hull last ('hull' — it sails with a war party, but a
+box over the villagers working the shore it is moored at takes the
+villagers). A war-wolf answers to the hall and is left to its own tap. Shift
++ drag adds, Shift + click adds or takes out one — more of the SAME party
+only (a Shift box of another party takes nothing and says so); a mouse's
+double-click takes the kind of a villager, sapper or boat nearby
+(`handleDoubleTap`'s `mouse`; a phone's double-tap keeps to soldiers).
+`UI.groupClass` is a group's party ('mil' whenever one of them fights — every
+group before build 213 was one) and picks the panel (`panelSig` carries it):
+a work party's panel (`renderParty`) says what they are doing (`partyLine`
+in `panelSub`), what a tap does, and — villagers — Build.
+**A WORK PARTY TAKES A TAP THE WAY A FOREMAN SHARES THE WORK OUT**
+(`partyOrder`, from handleTap and commitMoveDrag — a drag movement-first):
+a resource ONE HAND TO A TILE (`spreadGather`: every tile of that good within
+`SPREAD_R` 5 the party can stand beside, nearest the tap first, before any
+tile takes a second side — the gather task leaves a hand idle when its tile
+is spent, so two on one is work lost); a station filled to its PLACES and no
+more (`partyStation`: `maxWorkers − workersAssigned`, walkers counted), the
+rest sent to the next works of its kind within `SPILL_R` 8 that the party can
+walk to, then to the station's own good by hand round it (`livingOf`: a
+camp's woods, a quarry's rock, a farm's berries); a FULL station is a LOOK,
+for a party as for one (tap rule 6); a site or a hurt building built by all
+of them; a gold seam claimed by as many as the mine holds (`partySeam`); a
+shoal fished from its free sides, a shoal each first (`partyShoreFish`,
+`Units.assignShoreFish`'s `edge`); fishing boats to free water each
+(`assignFish` slides); a foe or a beast attacked or hunted by all who can
+reach it (`G.breakPeace` on the rival's, the sixth attack site); an own
+transport boarded; anything else a walk together. Reach is the party's own
+(`Path.reachFrom`'s `owner`: their gates open). The lesson's ground holds for
+a party as for one (`lessonOk`, `lessonSend`, `lessonBars`); tap rule 2's
+tighter steal on a resource tile holds too. **WHO IS AT WORK LEAVES THE
+HAND** (the dispatched-worker rule); whoever found no room stays in it
+(`partyKeep`). **A WHOLE ORDER IS NOT TOASTED** (an acknowledgement passes no
+level, the house rule) — `Feel.markOrders` rings EVERY work the order landed
+on, each a beat after the last (`MARK_MORE` 11, `MARK_STEP` 0.05 s); a split
+or a hand left over is a 'note' ("2 to the Lumber Camp, 2 to the next Lumber
+Camp, 1 gathering wood beside it"), a refusal warns (rule 4). **A PARTY'S
+BUILD** (`ggobuild`, `UI.builderIds`, a view act): every one of them raises
+the next site placed (`Bld.place`'s `builderIds`) or the start of a wall or
+road line; a single villager's Build keeps `builderFor`. The Guide's first
+page and a loading tip say it. Nothing here reaches S or a save.
 
 **Chase commit & ground rescue** (`tests/chase-commit.mjs`): the "attacker
 stuck in the trees" glitch. The close-range straight steer (`d < 3` in
@@ -6977,7 +7052,9 @@ resource tile or a shoal on its tile, a walk's end twice (a ring landing from
 wide, a second behind it) with a small gold pin in its middle
 (`R.drawMarkTile`), the walk nearest where the finger lifted; one mark at a
 time for `MARK` (0.8–0.85 s), a tile's ring laid back under what grows there
-(the guide's tile ring rule). `UI.moveFlash` is still set (drag-move reads
+(the guide's tile ring rule) — and a work party's one order (build 213) rings
+every distinct work it landed on with it (`m.more`, each `MARK_STEP` after
+the last, the mark's life lengthened to match). `UI.moveFlash` is still set (drag-move reads
 it). **A WORK'S HANDS, AND A HAND'S WORK** (`Feel._crewRings`, asked by
 `ringsFor` before the mark, which overwrites it): a player building in hand
 rings the hands working it (work, build, a tower's bows) in a quiet ring

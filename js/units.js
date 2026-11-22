@@ -879,8 +879,9 @@ const Units = {
     return this.setPath(u, tx, ty);
   },
 
-  // villagers can line-fish a shoal from the beach beside it
-  assignShoreFish(u, tx, ty) {
+  // villagers can line-fish a shoal from the beach beside it (`edge`: the one
+  // side to stand on — a work party shares a shoal's sides out, UI.partyShoreFish)
+  assignShoreFish(u, tx, ty, edge) {
     if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     if (u.owner === 'P' && window.Scenarios && Scenarios.fishWhy && Scenarios.fishWhy()) return false;   // not a lesson's good
     if (!this.isVillager(u) || !MapGen.shoal(tx, ty) || S.map.resAmount[MapGen.idx(tx, ty)] <= 0)
@@ -889,6 +890,7 @@ const Units = {
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = tx + ox, y = ty + oy;
       if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
+      if (edge && (x !== edge.x || y !== edge.y)) continue;
       const dd = Math.hypot(u.x - x, u.y - y);
       if (dd < bd) { bd = dd; best = { x, y }; }
     }

@@ -22,6 +22,17 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
+    build: 213, date: '2026-11-22', title: 'Select a group with the mouse',
+    items: [
+      'On a computer, drag a box on the map with the mouse to select a group. Soldiers come first: with none in the box it takes your villagers, then sappers, then fishing boats.',
+      'Hold Shift while you drag or click to add to the group or take one out, and double click a villager to select the villagers nearby.',
+      'A group of villagers shares the work out. Tap trees, rock or berries and each takes a spot of their own. Tap a camp and it takes the two it holds, while the rest go to the next camp or gather beside it. Tap a building site and they all build it.',
+      'Villagers in a group leave your selection once they are at work, and anyone who found no room stays selected, ready for another order.',
+      'Select a group of villagers and press Build, and every one of them raises the next building you place.',
+      'On a computer the right mouse button, the arrow keys or WASD move the map. If you would rather the left drag move it, switch off Drag to select in the settings.',
+    ],
+  },
+  {
     build: 212, date: '2026-11-21', title: 'Thoughtful details',
     items: [
       'Every order shows where it lands: a walk lays a gold ring and a pin on the spot, work rings the tree, rock or building, and an attack rings its target in red.',

@@ -21,7 +21,11 @@
    And the surrounding input modes are undisturbed:
      · a press that never crosses the drag threshold is an ordinary TAP —
        selection behaviour is byte-for-byte the old one (tap-audit still rules)
-     · a drag that starts anywhere OFF the selection still PANS the camera
+     · a drag that starts anywhere OFF the selection still PANS the camera —
+       a touch, a pen, and a mouse's right or middle button. A mouse's LEFT
+       drag off the selection draws the selection box since build 213 (the
+       desktop strategy game's way; tests/box-select.mjs), and §4 and §12c
+       say so: it takes nobody over open ground and moves no view
      · wall-line and sapper-line drags keep right of way (checked at
        pointerdown before the move-arm)
 
@@ -75,12 +79,12 @@ const setup = (seed, fn, pg = p) => pg.evaluate(({ seed, fn }) => {
     [k, at(v.x, v.y - (v.lift ? lift : 0))])) };
 }, { seed, fn: fn.toString() });
 
-const drag = async (from, to) => {
+const drag = async (from, to, button = 'left') => {
   await p.mouse.move(from.x, from.y);
-  await p.mouse.down();
+  await p.mouse.down({ button });
   await p.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
   await p.mouse.move(to.x, to.y, { steps: 4 });
-  await p.mouse.up();
+  await p.mouse.up({ button });
 };
 
 // ---- 1. THE crowded tile: six archers on one spot, drag the selected one out —
@@ -142,7 +146,9 @@ const drag = async (from, to) => {
   ck('jiggleIsATapNotAnOrder', !r.task && !r.moving && r.sel === JSON.stringify({ type: 'unit', id: sc.id }), JSON.stringify(r));
 }
 
-// ---- 4. a drag that starts OFF the selection still pans the camera ----
+// ---- 4. a drag that starts OFF the selection still pans the camera (a mouse's
+//         right button here; a touch's in §9) — and a mouse's LEFT one draws the
+//         selection box, which over open ground takes nobody and moves no view ----
 {
   const sc = await setup('dm4', tc => {
     const u = Units.spawn('defender', 'P', tc.x + 3, tc.y + 3);
@@ -150,11 +156,15 @@ const drag = async (from, to) => {
     return { id: u.id, cam0: { x: R.cam.x, y: R.cam.y },
              pts: { from: { x: tc.x + 6.5, y: tc.y + 5.5 }, to: { x: tc.x + 4.5, y: tc.y + 3.5 } } };
   });
-  await drag(sc.screen.from, sc.screen.to);
-  const r = await p.evaluate(({ id, cam0 }) => {
+  const look = ({ id, cam0 }) => {
     const u = Units.get(id);
-    return { panned: Math.hypot(R.cam.x - cam0.x, R.cam.y - cam0.y) > 4, task: u.task && u.task.type };
-  }, { id: sc.id, cam0: sc.cam0 });
+    return { panned: Math.hypot(R.cam.x - cam0.x, R.cam.y - cam0.y) > 4, task: u.task && u.task.type, sel: JSON.stringify(UI.sel) };
+  };
+  await drag(sc.screen.from, sc.screen.to);
+  const l = await p.evaluate(look, { id: sc.id, cam0: sc.cam0 });
+  ck('offSelectionLeftDragIsTheBoxNotAnOrder', !l.panned && !l.task && l.sel === JSON.stringify({ type: 'unit', id: sc.id }), JSON.stringify(l));
+  await drag(sc.screen.from, sc.screen.to, 'right');
+  const r = await p.evaluate(look, { id: sc.id, cam0: sc.cam0 });
   ck('offSelectionDragStillPans', r.panned && !r.task, JSON.stringify(r));
 }
 
@@ -376,6 +386,10 @@ const drag = async (from, to) => {
     const before = await cam();
     const fx = a.x - 30;
     for (let k = 1; k <= 8; k++) { await touch('touchMove', [{ x: fx + dir * 10 * k, y: a.y - 4 * k, id: 1 }]); await nap(16); }
+    // a touch move is delivered with its frame: on a loaded host the last one
+    // waits for the next, so the read waits two frames (the pan was read one
+    // move short, 75.4 of 86.2 px, on the build before this check was touched)
+    await tp.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
     const mid = await tp.evaluate(() => ({ cam: { x: R.cam.x, y: R.cam.y, z: R.cam.z }, wallDrag: !!UI.wallDrag, terraDrag: !!UI.terraDrag,
       moveDrag: !!UI.moveDrag, moveDragArm: !!UI.moveDragArm, downAt: UI.downAt && { moved: UI.downAt.moved } }));
     await touch('touchEnd', []);
@@ -572,13 +586,13 @@ const drag = async (from, to) => {
   });
   const mc = await p.context().newCDPSession(p);
   const nap = ms => new Promise(r => setTimeout(r, ms));
-  const flick = async (from, dx, dy, ms) => {
-    const t0 = Date.now() / 1000, n = 4;
+  const flick = async (from, dx, dy, ms, button = 'left') => {
+    const t0 = Date.now() / 1000, n = 4, bs = button === 'left' ? 1 : button === 'right' ? 2 : 4;
     await mc.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y, timestamp: t0 - 0.05 });
-    await mc.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1, timestamp: t0 });
+    await mc.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button, buttons: bs, clickCount: 1, timestamp: t0 });
     for (let i = 1; i <= n; i++)
-      await mc.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + dx * i / n, y: from.y + dy * i / n, button: 'left', buttons: 1, timestamp: t0 + ms / 1000 * i / (n + 1) });
-    await mc.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x + dx, y: from.y + dy, button: 'left', buttons: 0, clickCount: 1, timestamp: t0 + ms / 1000 });
+      await mc.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + dx * i / n, y: from.y + dy * i / n, button, buttons: bs, timestamp: t0 + ms / 1000 * i / (n + 1) });
+    await mc.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from.x + dx, y: from.y + dy, button, buttons: 0, clickCount: 1, timestamp: t0 + ms / 1000 });
     await nap(60);
   };
   const cam = () => p.evaluate(() => [R.cam.x, R.cam.y]);
@@ -599,15 +613,20 @@ const drag = async (from, to) => {
   await flick(sc.screen.d, 10, -7, 120);
   const b2 = await p.evaluate(soldier, sc);
   b2.still = still;
-  // (c) a 60 px flick in 110 ms is a pan, as ever
+  // (c) a 60 px flick in 110 ms is a pan, as ever (the right button: a left
+  //     one is the selection box, build 213 — over open ground it moves no view)
   await nap(450);
   await p.evaluate(() => UI.deselect());
   const c2 = await cam();
-  await flick(sc.screen.ground, 60, 0, 110);
+  await flick(sc.screen.ground, 60, 0, 110, 'right');
   const c3 = await cam();
+  await nap(450);
+  await flick(sc.screen.ground, 60, 0, 110);
+  const c4 = await cam(), boxSel = await p.evaluate(() => JSON.stringify(UI.sel));
   ck('aQuickClickThatSlidIsStillAnOrder', a.moving && Math.abs(c1[0] - c0[0]) < 0.01 && Math.abs(c1[1] - c0[1]) < 0.01, JSON.stringify({ a, cam: [c0, c1] }));
   ck('andAQuickClickOnTheSelectionDrawsNoTether', !b2.tether && b2.sel && b2.task === still.task && still.sel, JSON.stringify(b2));
   ck('butALongerFlickStillPans', Math.abs(c3[0] - c2[0]) > 10, JSON.stringify([c2, c3]));
+  ck('andALeftOneIsTheBoxThatTakesNobodyThere', Math.abs(c4[0] - c3[0]) < 0.01 && boxSel === 'null', JSON.stringify({ c3, c4, boxSel }));
 }
 
 console.log(JSON.stringify(res, null, 1));

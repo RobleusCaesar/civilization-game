@@ -1637,12 +1637,13 @@ const Path = {
   // wall/gate SITE under construction as already solid (movement doesn't, see
   // Bld.rebuildBlock, but a seal check that ignored intent would approve a dig
   // whose pocket closes the day the walls finish).
-  reachFrom(spots, wallSitesSolid) {
+  reachFrom(spots, wallSitesSolid, owner) {
     const W = CFG.W, H = CFG.H;
     const open = new Uint8Array(W * H);
     const q = [];
+    // `owner`: whose gates open (UI.partyReach asks for the player's own)
     const push = (x, y) => {
-      if (!this.passable(x, y)) return;
+      if (!this.passable(x, y, owner)) return;
       if (wallSitesSolid) {
         const b = Bld.at(x, y);
         if (b && b.construction > 0 && (b.key === 'wall' || b.key === 'gate')) return;

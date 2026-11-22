@@ -215,7 +215,7 @@ const open = async (opts) => {
     // the tabs: exactly these five
     o.tabs = Array.from(document.querySelectorAll('#scrSetx .sxTab')).map(t => t.dataset.tab).join(',');
     // every control on every tab, named by what it does
-    const KNOWN = /^(tog:unithelp|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush)$/;
+    const KNOWN = /^(tog:unithelp|tog:boxselect|tog:mute-sfx|tog:mute-music|vol:sfx|vol:music|cad:[0125]|in:sxChief|act:export-file|act:export-id|act:import-id|kind:(bug|idea|crash|other)|in:sxEmail|in:sxName|in:sxMsg|in:sxAttach|send|act:flush)$/;
     o.controls = [];
     for (const t of SettingsPage.TABS) {
       SettingsPage.open(t.k);
@@ -279,6 +279,14 @@ const open = async (opts) => {
     q('[data-act="unithelp"]').click();
     o.unit = { before: hh, after: UI.helpHidden, key: localStorage.getItem('neo-unit-help') };
     q('[data-act="unithelp"]').click();
+    // a mouse's left drag: the box round the player's people, or the map (UI.boxOn)
+    const bx = q('[data-act="boxselect"]');
+    o.box = { shown: !!bx, mouse: matchMedia('(any-pointer: fine)').matches };
+    if (bx) {
+      o.box.before = UI.boxOn(); bx.click();
+      o.box.after = UI.boxOn(); o.box.key = localStorage.getItem('neo-box-select'); o.box.aria = bx.getAttribute('aria-checked');
+      bx.click(); o.box.back = UI.boxOn();
+    }
     o.chief = !!q('#sxChief');
     await new Promise(r => setTimeout(r, 200));
     o.chiefName = q('#sxChief') ? q('#sxChief').value : null;
@@ -290,6 +298,8 @@ const open = async (opts) => {
     JSON.stringify({ t: r.backToTitle, p: r.pause, back: r.backToPause }));
   ck('fiveTabsNoControlsNoGraphics', r.tabs === 'general,audio,saves,feedback,notes', r.tabs);
   ck('everyControlIsARealSetting', r.unknown.length === 0 && !r.hasSelect, r.unknown.join(',') || r.controls.length + ' controls, all known');
+  ck('theDragToSelectSwitchSwitchesWhatALeftDragDoes', r.box.shown === r.box.mouse && (!r.box.shown ||
+    (r.box.before === true && r.box.after === false && r.box.key === '0' && r.box.aria === 'false' && r.box.back === true)), JSON.stringify(r.box));
   ck('theMusicSwitchSwitchesTheMusic', r.musicOff.on === false && r.musicOff.key === '0' && r.musicOff.aria === 'false' && r.musicOff.pct === 'Off' && r.musicOn === true,
     JSON.stringify(r.musicOff) + ' then ' + r.musicOn);
   ck('theEffectsSwitchSwitchesTheEffects', r.sfxOff.on === false && r.sfxOff.key === '0' && r.sfxOn === true, JSON.stringify(r.sfxOff));

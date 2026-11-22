@@ -415,6 +415,32 @@
     #victoryModal .vpArt { width: 72px; height: 72px; }
   }
 
+  /* ---- THE SELECTION BOX (UI.boxSync, tests/box-select.mjs): a gold line
+     between two dark ink edges and gold corners, so it reads over meadow,
+     water and rock alike, and never a wash over the ground; its count at the
+     corner the mouse holds (inside the box where a bar would cover it) ---- */
+  #selBox { position: fixed; z-index: 8; display: none; pointer-events: none; box-sizing: border-box;
+    border: 1px solid #f2cf73; background: rgba(12,9,5,0.08);
+    box-shadow: 0 0 0 1px rgba(20,13,6,0.85), inset 0 0 0 1px rgba(20,13,6,0.55); }
+  body:not(.ingame) #selBox { display: none !important; }
+  #selBox .sbC { position: absolute; width: 8px; height: 8px; border: 0 solid #f2cf73; filter: drop-shadow(0 0 1px #140d06); }
+  #selBox .sbTL { left: -3px; top: -3px; border-left-width: 2px; border-top-width: 2px; }
+  #selBox .sbTR { right: -3px; top: -3px; border-right-width: 2px; border-top-width: 2px; }
+  #selBox .sbBL { left: -3px; bottom: -3px; border-left-width: 2px; border-bottom-width: 2px; }
+  #selBox .sbBR { right: -3px; bottom: -3px; border-right-width: 2px; border-bottom-width: 2px; }
+  #selBox .sbN { position: absolute; white-space: nowrap; font-size: 11.5px; font-weight: 600; line-height: 1.25;
+    color: #f2e3bd; background: rgba(18,14,9,0.9); border: 1px solid rgba(232,193,90,0.55); border-radius: 3px; padding: 2px 7px 3px; }
+  #selBox .sbN:empty { display: none; }
+  #selBox .sbN small { display: block; font-size: 10.5px; font-weight: 400; color: #b9a77e; }
+  #selBox .sbN.r { right: -1px; }
+  #selBox .sbN.l { left: -1px; }
+  #selBox .sbN.b { top: 100%; margin-top: 6px; }
+  #selBox .sbN.t { bottom: 100%; margin-bottom: 6px; }
+  #selBox .sbN.in.b { top: auto; bottom: 5px; margin: 0; }
+  #selBox .sbN.in.t { bottom: auto; top: 5px; margin: 0; }
+  #selBox .sbN.in.r { right: 5px; }
+  #selBox .sbN.in.l { left: 5px; }
+
   /* ---- placement mode: the ✓/✗ pair and the reason chip ---- */
   #placeUI { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; }
   #placeBtns { position: absolute; left: 0; top: 0; display: flex; gap: 20px; pointer-events: none; }
@@ -2102,8 +2128,10 @@
         <h3>Welcome to the valley</h3>
         <p>A campfire, a handful of villagers, a wild green valley — and a rival
           chief across the map who wants all of it.</p>
-        <p><b>Drag</b> to look around, <b>pinch</b> to zoom, <b>tap</b> to act.
-          That's every control in the game.</p>
+        <p><b>Drag</b> to look around, <b>pinch</b> to zoom, <b>tap</b> to act.</p>
+        <p>With a mouse, <b>drag a box</b> round your people to take them
+          together, and <b>right-drag</b> to look around. That's every control
+          in the game.</p>
       </div></section>
       <section><div class="gpage">
         <img class="gart" src="assets/ui/guide/hall-2x.png" alt="" width="96" height="96" loading="lazy" decoding="async">
@@ -2207,59 +2235,59 @@
 
 </div>
 
-<script src="js/feedback.js?v=212"></script>
-<script src="js/config.js?v=212"></script>
-<script src="js/audio.js?v=212"></script>
-<script src="js/config.supabase.js?v=212"></script>
-<script src="js/vendor/supabase.js?v=212"></script>
-<script src="js/backend.js?v=212"></script>
-<script src="js/competition.js?v=212"></script>
-<script src="js/score.js?v=212"></script>
-<script src="js/cards.js?v=212"></script>
-<script src="js/deck.js?v=212"></script>
-<script src="js/artstyle.js?v=212"></script>
-<script src="js/sprites.js?v=212"></script>
-<script src="js/formations.js?v=212"></script>
-<script src="js/relics.js?v=212"></script>
-<script src="js/assets.js?v=212"></script>
-<script src="js/dev.js?v=212"></script>
-<script src="js/map.js?v=212"></script>
-<script src="js/buildings.js?v=212"></script>
-<script src="js/units.js?v=212"></script>
-<script src="js/combat.js?v=212"></script>
-<script src="js/ai.js?v=212"></script>
-<script src="js/render.js?v=212"></script>
-<script src="js/battlefx.js?v=212"></script>
-<script src="js/goldfx.js?v=212"></script>
-<script src="js/footing.js?v=212"></script>
-<script src="js/ruins.js?v=212"></script>
-<script src="js/roads.js?v=212"></script>
-<script src="js/beasts.js?v=212"></script>
-<script src="js/defeatart.js?v=212"></script>
-<script src="js/victoryart.js?v=212"></script>
-<script src="js/ui.js?v=212"></script>
-<script src="js/feel.js?v=212"></script>
-<script src="js/lookout.js?v=212"></script>
-<script src="js/screens.js?v=212"></script>
-<script src="js/patchnotes.js?v=212"></script>
-<script src="js/settings.js?v=212"></script>
-<script src="js/board.js?v=212"></script>
-<script src="js/pages.js?v=212"></script>
-<script src="js/titlescreen.js?v=212"></script>
-<script src="js/scenario-maps.js?v=212"></script>
-<script src="js/scenarios.js?v=212"></script>
-<script src="js/prologue.js?v=212"></script>
-<script src="js/deckfx.js?v=212"></script>
-<script src="js/deckfx-town.js?v=212"></script>
-<script src="js/deckfx-army.js?v=212"></script>
-<script src="js/deckfx-growth.js?v=212"></script>
-<script src="js/deckfx-rival.js?v=212"></script>
-<script src="js/deckui.js?v=212"></script>
-<script src="js/deckscreens.js?v=212"></script>
-<script src="js/cardintro.js?v=212"></script>
-<script src="js/game.js?v=212"></script>
-<script src="js/terrain-core.js?v=212"></script>
-<script src="js/terrain.js?v=212"></script>
-<script src="js/terrain-v5.js?v=212"></script>
+<script src="js/feedback.js?v=213"></script>
+<script src="js/config.js?v=213"></script>
+<script src="js/audio.js?v=213"></script>
+<script src="js/config.supabase.js?v=213"></script>
+<script src="js/vendor/supabase.js?v=213"></script>
+<script src="js/backend.js?v=213"></script>
+<script src="js/competition.js?v=213"></script>
+<script src="js/score.js?v=213"></script>
+<script src="js/cards.js?v=213"></script>
+<script src="js/deck.js?v=213"></script>
+<script src="js/artstyle.js?v=213"></script>
+<script src="js/sprites.js?v=213"></script>
+<script src="js/formations.js?v=213"></script>
+<script src="js/relics.js?v=213"></script>
+<script src="js/assets.js?v=213"></script>
+<script src="js/dev.js?v=213"></script>
+<script src="js/map.js?v=213"></script>
+<script src="js/buildings.js?v=213"></script>
+<script src="js/units.js?v=213"></script>
+<script src="js/combat.js?v=213"></script>
+<script src="js/ai.js?v=213"></script>
+<script src="js/render.js?v=213"></script>
+<script src="js/battlefx.js?v=213"></script>
+<script src="js/goldfx.js?v=213"></script>
+<script src="js/footing.js?v=213"></script>
+<script src="js/ruins.js?v=213"></script>
+<script src="js/roads.js?v=213"></script>
+<script src="js/beasts.js?v=213"></script>
+<script src="js/defeatart.js?v=213"></script>
+<script src="js/victoryart.js?v=213"></script>
+<script src="js/ui.js?v=213"></script>
+<script src="js/feel.js?v=213"></script>
+<script src="js/lookout.js?v=213"></script>
+<script src="js/screens.js?v=213"></script>
+<script src="js/patchnotes.js?v=213"></script>
+<script src="js/settings.js?v=213"></script>
+<script src="js/board.js?v=213"></script>
+<script src="js/pages.js?v=213"></script>
+<script src="js/titlescreen.js?v=213"></script>
+<script src="js/scenario-maps.js?v=213"></script>
+<script src="js/scenarios.js?v=213"></script>
+<script src="js/prologue.js?v=213"></script>
+<script src="js/deckfx.js?v=213"></script>
+<script src="js/deckfx-town.js?v=213"></script>
+<script src="js/deckfx-army.js?v=213"></script>
+<script src="js/deckfx-growth.js?v=213"></script>
+<script src="js/deckfx-rival.js?v=213"></script>
+<script src="js/deckui.js?v=213"></script>
+<script src="js/deckscreens.js?v=213"></script>
+<script src="js/cardintro.js?v=213"></script>
+<script src="js/game.js?v=213"></script>
+<script src="js/terrain-core.js?v=213"></script>
+<script src="js/terrain.js?v=213"></script>
+<script src="js/terrain-v5.js?v=213"></script>
 </body>
 </html>

@@ -390,7 +390,7 @@ const G = {
     this.updateVisibility();
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // ghost, grid, ✓/✗ — all of it
-    UI.builderFor = null;
+    UI.builderFor = null; UI.builderIds = null;
     UI.settingRally = null; UI.rallyRing = null; UI.rallyFlash = null;
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one

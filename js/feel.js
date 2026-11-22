@@ -43,7 +43,9 @@
         it was sent to, an attack rings its mark in rust — on the ground, in
         R.GRING's own painter, whatever the gesture (a tap or a drag). The
         order is read off UI._orderSnap's before-and-after, so no branch of
-        the tap has to remember to say it.
+        the tap has to remember to say it. A work party's one order (build
+        213) rings every work it landed on, each a beat after the last — the
+        tile each hand took, the next camp the spill went to.
     10  A WORK'S HANDS, AND A HAND'S WORK. A station or a site in hand rings
         the people working it; a villager in hand rings the work they are
         at (a soldier the foe he is fighting) — quiet rings, no glint.
@@ -77,7 +79,9 @@ const Feel = {
   TIP_SLOP: 6,              // …and the reading goes when it moves this far
   PING_MS: 2600,
   MARK: { move: 0.8, work: 0.85, attack: 0.85 },   // s an order's mark is drawn
+  MARK_MORE: 11, MARK_STEP: 0.05,   // the other works a party's one order lands on, each a beat after the last
   CREW_A: 0.55,             // a work's hands: a quiet ring
+  BOX_A: 0.7,               // those a box being drawn would take (UI.boxSync)
   WANT_MS: 300000,          // a thing refused for its goods is remembered this long
   WANT_CHECK_MS: 500,
   READY_MS: 2600,           // …and its card or button shines this long once the goods are in
@@ -276,6 +280,7 @@ const Feel = {
   escape() {
     if (typeof UI === 'undefined') return;
     if (this._keysOn) { this.showKeys(false); return; }
+    if (UI.cancelBox && UI.cancelBox()) return;   // a box being drawn is put down first
     if (UI.placing) {
       // a building's ghost answers Escape itself (UI.init's own key); a wall
       // or a road line has no ghost, so Escape puts the line tool down here
@@ -760,7 +765,7 @@ const Feel = {
       const prev = new Map();
       for (let i = 1; i + 7 < was.length; i += 8) prev.set(was[i], i);
       let atk = null, work = null;
-      const moves = [];
+      const moves = [], works = [], wkeys = new Set();
       for (const u of S.units) {
         if (u.owner !== 'P') continue;
         const i = prev.get(u);
@@ -769,9 +774,15 @@ const Feel = {
         const m = this.markOf(u);
         if (!m) continue;
         if (m.kind === 'attack') { if (!atk) atk = m; }
-        else if (m.kind === 'work') { if (!work) work = m; }
+        else if (m.kind === 'work') {
+          // a party shares its work out (UI.partyOrder): every work it lands on is marked
+          const k = m.uid ? 'u' + m.uid : m.bid ? 'b' + m.bid : m.x + ',' + m.y;
+          if (!wkeys.has(k)) { wkeys.add(k); works.push(m); }
+          if (!work) work = m;
+        }
         else moves.push(m);
       }
+      if (work && !atk && works.length > 1) work.more = works.slice(1, this.MARK_MORE + 1);
       let m = atk || work;
       if (!m && moves.length) {
         // a party walks to a formation round the tile pressed: the mark is on the tile pressed
@@ -784,7 +795,7 @@ const Feel = {
         }
       }
       if (!m) return;
-      m.t0 = performance.now() / 1000; m.life = this.MARK[m.kind] || 0.8; m.s = S;
+      m.t0 = performance.now() / 1000; m.life = (this.MARK[m.kind] || 0.8) + (m.more ? m.more.length * this.MARK_STEP : 0); m.s = S;
       this._mark = m;
     } catch (e) {}
   },
@@ -815,6 +826,9 @@ const Feel = {
       if (kind === 'u') out.units.set(key, o); else if (kind === 'b') out.blds.set(key, o); else out.tiles.push(o);
     };
     if (!(typeof UI !== 'undefined' && UI.placing)) this._crewRings(put);
+    // a box being drawn (UI.boxSync): the people it would take, ringed until the release
+    const bx = typeof UI !== 'undefined' && UI._boxIds;
+    if (bx && bx.size) for (const id of bx) put('u', id, { st: 'sel', a: this.BOX_A, s: 1, calm: 1 });
     const m = this._mark;
     if (m) {
       const T = now - m.t0;
@@ -835,6 +849,15 @@ const Feel = {
       return;
     }
     // a work rings in gold and an attack in rust: in from a little wider, burning white as it lands
+    this._workRing(m, T, now, a, put);
+    // a party's other works land one after another, a beat apart (a function of the clock)
+    if (m.more) m.more.forEach((w, i) => {
+      const Tw = still ? T : T - (i + 1) * this.MARK_STEP;
+      if (Tw > 0 || still) this._workRing(w, Tw, now, Math.max(0, Math.min(1, still ? 1 : Tw / 0.07, (L - T) / 0.3)), put);
+    });
+  },
+  _workRing(m, T, now, a, put) {
+    const still = this._reduced(), ease = x => 1 - Math.pow(1 - Math.max(0, Math.min(1, x)), 3);
     const s0 = m.kind === 'attack' ? 1.55 : 1.3, p = still ? 1 : ease(T / 0.3);
     const o = { st: m.st, a, s: s0 - (s0 - 1) * p, flash: still ? 0 : Math.max(0, 1 - T / 0.34), calm: 1, t: now };
     if (m.uid) put('u', m.uid, o);
@@ -929,6 +952,11 @@ const Feel = {
     '<dt><kbd>B</kbd></dt><dd>Build menu</dd>' +
     '<dt><kbd>M</kbd></dt><dd>Map</dd>' +
     '<dt><kbd>?</kbd></dt><dd>These keys</dd>' +
+    '</dl><b class="fkHead fkSub">Mouse</b><dl>' +
+    '<dt>Drag</dt><dd>Select a group: soldiers first, else villagers</dd>' +
+    '<dt><kbd>Shift</kbd> + drag or click</dt><dd>Add to it, or take one out</dd>' +
+    '<dt>Double-click</dt><dd>Everyone of that kind nearby</dd>' +
+    '<dt>Right-drag</dt><dd>Move the view</dd>' +
     '</dl><small>Press ? or Esc to put this away</small></div>',
   PAUSE_SVG: '<svg class="pvIcon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="4" width="4.6" height="16" rx="1.4" fill="#f2cf73" stroke="#140d06" stroke-width="1.2"/><rect x="13.9" y="4" width="4.6" height="16" rx="1.4" fill="#f2cf73" stroke="#140d06" stroke-width="1.2"/></svg>',
   GO_SVG: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.6" fill="none" stroke="#f2cf73" stroke-width="1.4"/><circle cx="8" cy="8" r="2.2" fill="#f2cf73"/><path d="M8 0.6 V3.4 M8 12.6 V15.4 M0.6 8 H3.4 M12.6 8 H15.4" stroke="#f2cf73" stroke-width="1.4" stroke-linecap="round"/></svg>',
@@ -982,6 +1010,7 @@ body:not(.ingame) #feelKeys { display: none !important; }
   box-shadow: 0 0 0 1px rgba(0,0,0,0.65), 0 10px 30px rgba(0,0,0,0.6); max-width: calc(100vw - 32px); }
 #feelKeys .fkHead { display: block; text-align: center; margin-bottom: 9px; font-family: var(--menufont, serif); font-size: 16px;
   font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #f2cf73; text-shadow: 0 2px 0 #000; }
+#feelKeys .fkSub { margin: 12px 0 7px; font-size: 13px; letter-spacing: 2.5px; }
 #feelKeys dl { display: grid; grid-template-columns: auto auto; gap: 6px 14px; margin: 0; align-items: center; }
 #feelKeys dt { justify-self: end; white-space: nowrap; color: #a89a7a; font-size: 11px; }
 #feelKeys dd { margin: 0; font-size: 12.5px; color: #d8cba8; white-space: nowrap; }
