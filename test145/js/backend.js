@@ -564,12 +564,11 @@ const Backend = {
       run_id: this.runId, kind: 'run_start',
       mode: info.mode || null, landform: info.landform || null, size: info.size || null,
       device: this.deviceKind(),
-      props: Object.assign({ tutorial: !!info.tutorial, card: info.card || null, origin: info.origin || null, seed: info.seed || null,
+      props: Object.assign({ card: info.card || null, origin: info.origin || null, seed: info.seed || null,
         // THE FIRST MINUTE (PX-49, tests/telemetry.mjs §7): how long the press
         // waited behind "Preparing the world…" (0 when the world was ready at
-        // once), and why the lesson is on or off ('auto' | 'ticked' |
-        // 'declined' | 'none') — both measured by Screens._enterNow
-        prep_ms: Math.max(0, Math.round(+info.prepMs || 0)), tut_src: info.tutSrc || null }, this.formFacts(), this.sourceFacts(false)),
+        // once), measured by Screens._enterNow
+        prep_ms: Math.max(0, Math.round(+info.prepMs || 0)) }, this.formFacts(), this.sourceFacts(false)),
     });
     return { ok: true };
   },

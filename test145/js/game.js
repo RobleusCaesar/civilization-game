@@ -133,6 +133,10 @@ const G = {
   newGame(seed, modeKey, sizeKey, persona, tunic) {
     // nothing painted while the world is being assembled (R.holdTerrain)
     R.holdTerrain();
+    /* …and no unit or yard asks for its strips while it is (Assets._wantOk):
+       the founding asks for its own world once it is built, below. A frame
+       clears it too (G.frame), so a founding that throws never leaves it set. */
+    this._founding = true;
     /* THE PROLOGUE'S WORLDS (js/scenarios.js): an authored world rides
        G._scenario for exactly this founding (Scenarios.found). Its rules over
        CFG come off first, whoever founds next — the scenario puts its own
@@ -232,9 +236,8 @@ const G = {
                // (G.noteAct): a fight is engagement over time, never one burst
                handGathered: 0, handRazed: 0, handKills: 0, actDays: 0, actDay: 0,
                // THE FIRST MINUTE (PX-49, G.runReport): the play-clock second of
-               // the run's first order (G.noteAct) and the lesson's step a skip
-               // left it on (Tutorial.skip) — null until they happen
-               firstActS: null, tutSkipAt: null },
+               // the run's first order (G.noteAct) — null until it happens
+               firstActS: null },
       nextId: 1,
       wave: { next: CFG.MODES[mode].waveFirst, count: 0, lastDay: 0 },
       // THE CALM TRUCE (tests/calm-peace.mjs): true while neither tribe may
@@ -246,7 +249,6 @@ const G = {
       ai: null,
       boons: { P: {}, A: {} },   // ORIGIN CARDS: each side's kept-card modifiers
       deck: { played: [], fx: [], charges: {} },   // THE CARD SYSTEM (js/deck.js): cards played this run, live timers, charges
-      tut: null,                 // THE TUTORIAL (js/tutorial.js): armed only by the draft screen's checkbox
       log: [],
     };
     Bld._block = null;
@@ -388,16 +390,15 @@ const G = {
     this.updateVisibility();
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // ghost, grid, ✓/✗ — all of it
-    UI.builderFor = null;
+    UI.builderFor = null; UI.builderIds = null;
     UI.settingRally = null; UI.rallyRing = null; UI.rallyFlash = null;
     UI._healLog = {};   // real-time heal-spam limit is UI-local — a fresh game must not
                          // inherit a stale cooldown on whatever unit id collides with an old one
     UI._threatAt = -1e9; UI._threatC = null;   // the hall's emergency calls start a world hidden
-    if (window.Tutorial) Tutorial.onWorldChange();   // drop any old run's overlay/pan/slow
     if (window.Prologue) Prologue.onWorldChange();   // the Elder's script is this world's (js/prologue.js)
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // the deck's sheet, aim and flight (nothing, with cards off)
-    document.getElementById('btnPause').textContent = '⏸';
+    { const pb = document.getElementById('btnPause'); if (pb) pb.textContent = '⏸'; }   // (the ⏸ left the bar in build 214)
     // opening notes linger twice as long — there's a lot to take in on day 1
     // (a prologue world's first words are the Elder's — js/prologue.js)
     if (!sc) {
@@ -429,11 +430,26 @@ const G = {
          else is fetched behind them in the background tier, first the
          player's own army, then the rival's people under the fog. The keep
          asks for what an origin card plants (Cards.pick). */
+      /* AND NOTHING THE WORLD CANNOT SHOW (build 207 — the operator, two games
+         back to back: "lots of frozen movements, stutter steps"). The
+         background tier used to be both tribes' WHOLE armies and sapper sets,
+         ~970 strips installed on the main thread through the first minute of
+         every game, and never let go: a second game held a second set in its
+         new tunic (285 MB of frames after one game, 405 MB after two). Now the
+         last world's dye is let go (Assets.pruneUnitArt), and the background
+         asks for what this world HOLDS — the rival's people under the fog, a
+         band at its fire — and what each yard can raise (Assets.wantYard). A
+         soldier asks for his own strips when he is queued (Bld.train) or
+         comes into the world (Units.spawn), a yard when it is laid (Bld.place)
+         or raised a storey, a held army card for what it summons. */
+      this._founding = false;
+      if (Assets.pruneUnitArt) Assets.pruneUnitArt();
       Assets.loadUnitsArt(this.artShown());
-      Assets.loadMilitaryArt('P', true); Assets.loadSapperArt('P', true);
-      Assets.loadVillagerArt('A', true);
-      Assets.loadMilitaryArt('A', true); Assets.loadSapperArt('A', true);
+      Assets.loadUnitsArt(this.artPresent('A'), true);
+      Assets.loadUnitsArt(S.units.filter(u => u.owner !== 'P' && u.owner !== 'A'), true);
+      if (Assets.wantYard) for (const b of S.buildings) Assets.wantYard(b, b.level, true);
     }
+    this._founding = false;
     // seed the homestead memory QUIETLY: a town that starts or loads already
     // bonded keeps its bonus without celebrating bonds it has had for days
     Bld.syncHomesteads(true);
@@ -465,13 +481,17 @@ const G = {
   },
   warmTribes() {
     if (typeof Sprites === 'undefined' || !Sprites.barbFor) return;
-    const want = new Set(['sea']);
-    for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) want.add(b.tribe);
-    for (const u of S.units) if (u.owner === 'R' && u.tribe) want.add(u.tribe);
+    const want = new Set(['sea']), held = new Set();
+    for (const b of S.buildings) if (b.key === 'raidercamp' && b.tribe) held.add(b.tribe);
+    for (const u of S.units) if (u.owner === 'R' && u.tribe) held.add(u.tribe);
+    for (const t of held) want.add(t);
     for (const t of want) Sprites.barbFor(t);
-    // …and their drawn bands, in the background tier (Assets.BARB_ART)
-    if (typeof Assets !== 'undefined' && Assets.loadBarbArt && !(window.Screens && Screens._demo))
-      Assets.loadBarbArt([...want], true);
+    /* …and the drawn bands of the peoples this world HOLDS, in the background
+       tier (Assets.BARB_ART). Not the Sea Folk's unless they are here: a crew
+       asks for its own look when it comes into the world (Assets.wantUnit),
+       a long sail before it lands (build 207) */
+    if (typeof Assets !== 'undefined' && Assets.loadBarbArt && !(window.Screens && Screens._demo) && held.size)
+      Assets.loadBarbArt([...held], true);
   },
   /* WHAT THE OPENING WORLD SHOWS — the units whose strips a founding or a
      load waits for (newGame, loadJSON, Cards.pick). artPresent: every unit
@@ -540,7 +560,7 @@ const G = {
     // game-event notes dedupe (repeat "under attack" spam collapses); the
     // full history always lands in the event log above. Hands back the toast
     // shown, if one was (Bld.releaseTrained folds a burst into one)
-    return UI.toast(msg, warn, ms, !refusal, true);   // the world's news: it may wait out a lesson's note
+    return UI.toast(msg, warn, ms, !refusal);
   },
 
   /* ENEMY / RAIDER INTEL — telegraphs of the rival's plans (campaigns, war
@@ -581,8 +601,7 @@ const G = {
      upgrading (buildings.js — paths no automation takes for 'P'), and in
      ui.js wherever a tap, a drag or a panel button actually changes an
      order. Never by a rally point, a horn-less return to work, an origin
-     card's boats, the tutorial or a card: none of those is the player
-     playing that day. One stamp a day at most; rides the save in S.stats. */
+     card's boats or a card: none of those is the player playing that day. One stamp a day at most; rides the save in S.stats. */
   noteAct() {
     if (typeof S === 'undefined' || !S || !S.stats || S.over) return;
     if (window.Screens && Screens._demo) return;
@@ -2291,8 +2310,11 @@ const G = {
     this._dying = { id: u.id, t: ((CFG.MORTALITY || {}).warnMs || 1000) / 1000 };
     // NEVER foeNote: that is difficulty-gated enemy intel. A death in the
     // village is the player's own news and is told at every difficulty.
-    this.log('☠ ' + cause.line, true, 5200);
-    if (window.Tutorial) Tutorial.note('mortality');   // the tutorial explains the first one
+    // …and it says WHO (Units.personName, build 211): every line opens on
+    // "A villager", and the villager the player knew by name is named there
+    const who = Units.personName ? Units.personName(u) : null;
+    cause.said = who ? cause.line.replace(/^A villager\b/, who) : cause.line;
+    this.log('☠ ' + cause.said, true, 5200);
     S.nextDeath = S.day + this.rollDeathGap();
     return cause;
   },
@@ -3009,7 +3031,7 @@ const G = {
         walls: st.walls || 0, upgrades: st.upgrades || 0, razed: st.razed || 0,
         explored: ex && ex.length ? Math.round(100 * seen / ex.length) : 0,
         ...(charted ? { explored_card: Math.round(100 * charted / ex.length) } : {}),
-        tutorial: !!(S.tut && S.tut.on), card, origin: S.origin || null,
+        card, origin: S.origin || null,
         // S.wonder is the run's OFFERED wonder key, not a built flag —
         // "did they raise it" is already carried by cause === 'wonder'
         wonder_key: S.wonder || null,
@@ -3037,15 +3059,14 @@ const G = {
         special_day: S.specialDay || null,
         // THE FIRST MINUTE (PX-49): on every ending, real and closed_tab,
         // null when unknown and never absent. The play clock's second of the
-        // run's first order; the lesson's step a skip left it on; wall_s
-        // BESIDE 'seconds', never replacing it — the run's seconds with this
-        // page's share timed by the wall clock while the page is in view (the
-        // play clock adds at most 0.1 s a frame, so a slow phone counts short;
-        // pauses still count here, so the two bracket the time played); and,
+        // run's first order; wall_s BESIDE 'seconds', never replacing it —
+        // the run's seconds with this page's share timed by the wall clock
+        // while the page is in view (the play clock adds at most 0.1 s a
+        // frame, so a slow phone counts short; pauses still count here, so
+        // the two bracket the time played); and,
         // for a world this page CONTINUED (which sends no run_start), how long
         // its press waited behind "Preparing the world…"
         first_act_s: (typeof st.firstActS === 'number' && st.firstActS >= 0) ? st.firstActS : null,
-        tut_skip_at: (typeof st.tutSkipAt === 'string' && st.tutSkipAt) ? st.tutSkipAt.slice(0, 24) : null,
         wall_s: (op && Screens._vis) ? Math.round(op.play + Math.max(0, Screens._vis() - op.vis) / 1000) : null,
         resume_prep_ms: op && op.resumeMs != null ? op.resumeMs : null,
         // THE GAME'S OWN ERRORS (build 107; the dashboard's "hit an error"
@@ -3282,9 +3303,15 @@ const G = {
     if (data.stats.actDays == null) { data.stats.actDays = Math.max(0, data.day | 0); data.stats.actDay = data.day | 0; }
     // …nor when the first order came (first_act_s): a save that has given
     // orders reads unknown (-1), never the clock at its next one; a save that
-    // has given none learns its first. And no lesson's skip was remembered.
+    // has given none learns its first.
     if (data.stats.firstActS === undefined) data.stats.firstActS = data.stats.actDays ? -1 : null;
-    if (data.stats.tutSkipAt === undefined) data.stats.tutSkipAt = null;
+    // the old opt-in lesson is gone (build 208): a save from before carries its
+    // state and its skip step, which nothing reads now — dropped, never carried on.
+    // A save made while its scripted scout was riding carries that rider too
+    // (`tutScout`): the lesson steered it and nothing else ever will, so it
+    // rides off with the lesson rather than standing frozen at the town's edge
+    delete data.tut; delete data.stats.tutSkipAt;
+    if (Array.isArray(data.units)) data.units = data.units.filter(u => !(u && u.tutScout));
     if (!data.map.seenTerrain) data.map.seenTerrain = data.map.terrain.slice();
     if (!data.map.seenB) data.map.seenB = {};
     if (!data.map.decay) data.map.decay = {};
@@ -3323,7 +3350,6 @@ const G = {
           if (u.female == null) u.female = Math.random() < 0.5;
         } else if (u.beast && u.campId && byCamp[u.campId]) u.tribe = byCamp[u.campId];   // a fire's beasts are its people's
     }
-    if (data.tut === undefined) data.tut = null;      // pre-tutorial saves: no guidance mid-run
     if (!data.map.fishBack) data.map.fishBack = {};   // pre-fishery saves: no shoals on the clock yet
     if (!data.map.hunted) data.map.hunted = {};       // pre-worked-ground saves: the record starts empty
     if (!data.map.burnt) data.map.burnt = {};         // the dry summer's ash ground (pre-ash saves: none)
@@ -3423,12 +3449,11 @@ const G = {
     Bld._block = null;
     this.setWonder(S.wonder);   // name, blurb and artwork follow the saved roll
     S.paused = true;
-    document.getElementById('btnPause').textContent = '▶';
+    { const pb = document.getElementById('btnPause'); if (pb) pb.textContent = '▶'; }   // (the ⏸ left the bar in build 214)
     UI.deselect();
     if (UI.exitPlacement) UI.exitPlacement();   // a load mid-placement cancels the mode whole
     UI._healLog = {};   // see newGame — a loaded save must not inherit a stale cooldown
     UI._threatAt = -1e9; UI._threatC = null;
-    if (window.Tutorial) Tutorial.onWorldChange();
     if (window.Prologue) Prologue.onWorldChange();   // a prologue save picks its script up where it was
     if (window.Sound) Sound.onWorldChange();        // throttle clocks are per-world, like R's one-shots
     if (window.DeckUI) DeckUI.onWorldChange();      // a load mid-aim puts the card back, untouched
@@ -3475,11 +3500,15 @@ const G = {
        villagers, and anything of any owner on ground in sight (the rival's
        villagers included, then); everything else goes behind, in the
        background tier. */
+    // …and nothing it cannot show (build 207, see G.newGame): the last world's
+    // dye is let go, and the background is what this world holds and can raise
+    this._founding = false;
+    if (Assets.pruneUnitArt) Assets.pruneUnitArt();
     Assets.loadUnitsArt(this.artShown());
     Assets.loadUnitsArt(this.artPresent('A').filter(u => u.kind !== 'villager'));
     Assets.loadVillagerArt('P', true); Assets.loadVillagerArt('A', true);
-    Assets.loadMilitaryArt('P', true); Assets.loadMilitaryArt('A', true);
-    Assets.loadSapperArt('P', true); Assets.loadSapperArt('A', true);
+    Assets.loadUnitsArt(S.units.filter(u => u.owner !== 'P' && u.owner !== 'A'), true);
+    if (Assets.wantYard) for (const b of S.buildings) Assets.wantYard(b, b.level, true);
     // seed the homestead memory QUIETLY: a town that loads already bonded keeps
     // its bonus without celebrating bonds it has had for a hundred days
     Bld.syncHomesteads(true);
@@ -3526,7 +3555,7 @@ const G = {
      units, combat, then the world's own clocks — so a headless harness that
      steps the game calls this and picks up every tick added later without
      being edited. `dt` is the REAL frame time: the fog's refresh cadence has
-     always counted that, not the scaled time (a tutorial note's slow motion
+     always counted that, not the scaled time (the Calm modal's slow motion
      never slowed the fog), and a caller with no real clock passes none and
      gets sdt. What stays in G.frame: the pause/over gate, the slow-motion
      scale, S.playtime (real seconds) and everything drawn or shown. */
@@ -3588,19 +3617,17 @@ const G = {
     }
   },
   frame(t) {
-    const dt = Math.min(0.1, (t - G.lastT) / 1000 || 0.016);
+    const f0 = performance.now(), gap = t - G.lastT;
+    const dt = Math.min(0.1, gap / 1000 || 0.016);
     G.lastT = t;
+    if (G._founding) G._founding = false;   // a founding that threw (G.newGame) never holds the art asks
     if (S && !S.paused && !S.over) {
-      /* THE TUTORIAL's slow-motion (js/tutorial.js): while a note is up the
-         SIM runs at Tutorial.simScale (×0.2) so a new player can read without
-         the world running away — render and UI below stay on real dt, so the
-         game never looks frozen. Scale 1 (a single multiply) whenever the
-         tutorial is off, which is every run without the checkbox. */
-      let scale = (S.tut && S.tut.on && window.Tutorial && Tutorial.simScale) || 1;
-      // the first Calm game's victory modal has the floor: the same slow
-      // motion a tutorial note gets, so reading it costs the town nothing
-      // (Screens.showVictoryPaths; a flag, never a DOM query per frame)
-      if (window.Screens && Screens._modalUp) scale = Math.min(scale, (window.Tutorial && Tutorial.SLOW) || 0.2);
+      /* SLOW MOTION while the first Calm game's victory modal has the floor
+         (Screens.showVictoryPaths): the SIM runs at Screens.MODAL_SLOW (×0.2)
+         so reading two paragraphs on day one costs the town nothing — render
+         and UI below stay on real dt, so the game never looks frozen. A flag,
+         never a DOM query per frame; scale 1 (a single multiply) otherwise. */
+      const scale = (window.Screens && Screens._modalUp) ? (Screens.MODAL_SLOW || 0.2) : 1;
       const sdt = dt * scale;
       S.playtime = (S.playtime || 0) + dt;
       G.simStep(sdt, dt);
@@ -3675,7 +3702,14 @@ const G = {
         // behind the plaque the press is waiting on this ground (enterGame): every frame, and
         // every arrival in; behind the draft the cards are moving, so a glance rate and one
         G._pfT = performance.now();
-        G._safe(() => { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z, Screens._entering ? 6 : 0); }, 'prefetch');
+        G._safe(() => {
+          // a journey world opens on its glide: every view of it (Prologue.glideViews, build 207)
+          const vs = S.scenario && window.Prologue && Prologue.glideViews && TerrainX.prefetchViews ? Prologue.glideViews() : null;
+          if (vs && vs.length) TerrainX.prefetchViews(vs, Screens._entering ? 6 : 0);
+          else { const z = R.defaultZoom(); TerrainX.prefetch(R.cam.x + R.viewW() / z / 2, R.cam.y + R.viewH() / z / 2, z, Screens._entering ? 6 : 0); }
+        }, 'prefetch');
+        // …and the ground under its buildings, measured in the same wait (Footing.warm, build 207)
+        if (window.Footing && Footing.warm) G._safe(() => Footing.warm(Screens._entering ? 6 : 2), 'footing');
       }
       /* the title is ready when the GLEN is on screen (tests/boot.mjs): the
          painted backdrop is opaque, so the demo world behind it can bake
@@ -3687,10 +3721,6 @@ const G = {
       if (window.Boot && !Boot.ready && window.Screens && Screens.current === 'title'
           && (G.titleGlenUp() || (!skip && R.terrainCache && !R._bake && !R._bakeDue))) Boot.markReady();
       G._safe(() => UI.refresh(dt), 'ui');
-      // THE TUTORIAL (js/tutorial.js): a run without the checkbox pays this
-      // one falsy check and nothing else — no DOM, no listeners, no scans
-      if (S.tut && S.tut.on && window.Tutorial)
-        G._safe(() => Tutorial.tick(dt), 'tutorial');
       // THE PROLOGUE's Elder, pulse, hand and goal (js/prologue.js): its
       // pictures every frame, paused or not; one falsy read elsewhere
       if (window.Prologue && Prologue.frame && (S.scenario || Prologue.up)) G._safe(() => Prologue.frame(dt), 'prologue');
@@ -3699,6 +3729,12 @@ const G = {
       // UI.refresh on purpose: a resource number counting up holds the bar.
       if (window.Deck && window.DeckUI) G._safe(() => { if (Deck.on()) DeckUI.frame(dt); }, 'deck');
     }
+    /* THE BACKGROUND ART GOES IN IN THE TIME A FRAME LEAVES (Assets.frameTick,
+       build 207): while a world is played, a strip nobody is waiting for is
+       installed here, after the frame's own work and only in what is left of
+       it, never in the between-frames slices that took ten milliseconds
+       before every frame of a game's first minute */
+    if (window.Assets && Assets.frameTick) G._safe(() => Assets.frameTick(performance.now() - f0, gap), 'art');
     requestAnimationFrame(G.frame);
   },
 };

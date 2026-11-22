@@ -14,6 +14,9 @@
     on: false, opt: {}, chunks: new Map(), dirty: new Set(), pending: new Map(), gen: new Map(),
     stats: { ms: [], recv: 0, thumbs: 0 }, workers: [], rr: 0, core: null,
     MAX_CHUNKS: 24,
+    /* frames slower than LIFE_SLOW_MS (smoothed, while a world is played) and the
+       water recomposes at most LIFE_SLOW_HZ times a second for the next 8 s (drawWaterLife) */
+    LIFE_SLOW_MS: 40, LIFE_SLOW_HZ: 6,
 
     // ---- the world the core needs ---------------------------------------------------
     terr() { return S.map.seenTerrain || S.map.terrain; },
@@ -259,15 +262,52 @@
       return asked;
     },
 
+    /* A WORLD THAT OPENS ON A GLIDE (the journey's establishing shot,
+       Prologue.glideViews) shows several views in its first seconds, not one:
+       the chunks of each [cx, cy, z] (world px, zoom), in the order shown,
+       each view's nearest its own centre first, `pad` chunks round each. */
+    _viewsChunks(views, pad) {
+      const span = CH * TL, nC = Math.ceil(CFG.W / CH), nR = Math.ceil(CFG.H / CH), seen = new Set(), out = [];
+      for (const [cx, cy, z] of views) {
+        const hw = R.viewW() / z / 2, hh = R.viewH() / z / 2, list = [];
+        for (let b = Math.max(0, Math.floor((cy - hh) / span) - pad); b <= Math.min(nR - 1, Math.floor((cy + hh) / span) + pad); b++)
+          for (let a = Math.max(0, Math.floor((cx - hw) / span) - pad); a <= Math.min(nC - 1, Math.floor((cx + hw) / span) + pad); a++) list.push([a, b]);
+        const d = ([a, b]) => Math.hypot((a + 0.5) * span - cx, (b + 0.5) * span - cy);
+        list.sort((A, B) => d(A) - d(B));
+        for (const c of list) { const k = c[0] + ',' + c[1]; if (!seen.has(k)) { seen.add(k); out.push(c); } }
+      }
+      return out;
+    },
+    /* prefetch() for a glide: every view's ground asked for, in the order the
+       glide shows them, and all of it kept from eviction until the first draw
+       (build 207 — the journey opened on the stand-in where its glide began,
+       because only the view it ends on was asked for) */
+    prefetchViews(views, takeMs) {
+      if (!this.on || !this.ready || !this.workers.length || !views || !views.length) return 0;
+      this.takeArrivals();
+      if (takeMs > 0) for (const t = performance.now() + takeMs; this._arrive && this._arrive.length && performance.now() < t;) this.takeArrivals();
+      const order = this._viewsChunks(views, 1);
+      this._want = order;
+      const cap = Math.max(1, this.workers.length) + 1;
+      let asked = 0;
+      for (const [a, b] of order) {
+        if (this.pending.size >= cap) break;
+        const k = a + ',' + b;
+        if ((!this.chunks.has(k) || this.dirty.has(k)) && !this.pending.has(k)) { this.request(a, b); asked++; }
+      }
+      return asked;
+    },
+
     /* THE VILLAGE OPENS ON ITS OWN GROUND (Screens.enterGame, tests/terrain-v4.mjs
        §12): how much of the view the world will open on is real ground, 0..1 —
-       the chunks under this camera, at the zoom enterGame has given it. 1 when
-       V4 is not the painter (the classic painters, the kill switch, a failure)
-       or has no worker to paint with: then it has nothing of its own to wait for. */
-    viewFrac() {
+       the chunks under this camera, at the zoom enterGame has given it (or,
+       `views` given, under every view of a glide). 1 when V4 is not the painter
+       (the classic painters, the kill switch, a failure) or has no worker to
+       paint with: then it has nothing of its own to wait for. */
+    viewFrac(views) {
       if (!this.on || (this.ready && !this.workers.length)) return 1;
       if (!this.ready) return 0;
-      const v = this.viewChunks(0); if (!v.length) return 1;
+      const v = views && views.length ? this._viewsChunks(views, 0) : this.viewChunks(0); if (!v.length) return 1;
       let have = 0; for (const [a, b] of v) if (this.chunks.has(a + ',' + b)) have++;
       return have / v.length;
     },
@@ -279,6 +319,13 @@
     _snapper(g) { return R.snapper ? R.snapper(g) : (x, y, w, h) => [x, y, w, h]; },
     drawGround(g) {
       const span = CH * TL, sm = g.imageSmoothingEnabled, snap = this._snapper(g);
+      // the pace the world is really drawn at (drawWaterLife's slow device), from a played world's frames alone
+      const tNow = performance.now();
+      if (typeof Screens !== 'undefined' && Screens.current === 'playing') {
+        const iv = this._dgT ? tNow - this._dgT : 0;
+        if (iv > 0 && iv < 250) this._dgIv = this._dgIv == null ? iv : this._dgIv + (iv - this._dgIv) * 0.05;
+        this._dgT = tNow;
+      } else this._dgT = 0;
       this.schedule();
       for (const [cx, cy] of this.viewChunks(0)) {
         const c = this.chunks.get(cx + ',' + cy), d = snap(cx * span, cy * span, span, span);
@@ -362,12 +409,20 @@
     // and the result goes over the ground in one draw. The scratch is only recomposed when an
     // animation frame turns or the grid box moves; otherwise last frame's is drawn again.
     _scr(n) { const k = '_s' + n; return this[k] || (this[k] = document.createElement('canvas')); },
-    _cut(dst, frames, fi, ox, oy, bx, by, w, h, masks, key) {
+    _cut(dst, frames, fi, ox, oy, bx, by, w, h, masks, key, mk) {
       const g = dst.getContext('2d'), T = frames[0].width;
       g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, w, h);
       const pat = g.createPattern(frames[fi], 'repeat'); pat.setTransform(new DOMMatrix([1, 0, 0, 1, -(((bx - ox) % T) + T) % T, -(((by - oy) % T) + T) % T])); g.fillStyle = pat; g.fillRect(0, 0, w, h);
-      const M = this._scr('m'), mg = M.getContext('2d'); mg.clearRect(0, 0, w, h);
-      for (const [X0, Y0, a] of masks) { const m = a[key]; if (m) mg.drawImage(m[0], X0 + m[1] - bx, Y0 + m[2] - by); }
+      /* the water's mask is the same picture until the box moves or a chunk's
+         water changes (`mk`, the box and the mask generation): one per layer,
+         drawn once and kept, never redrawn for every frame of a ripple */
+      const M = this._scr('m' + key), mg = M.getContext('2d');
+      if (M._mk !== mk || mk == null) {
+        if (M.width < w || M.height < h) { M.width = Math.max(M.width, w); M.height = Math.max(M.height, h); }
+        mg.clearRect(0, 0, w, h);
+        for (const [X0, Y0, a] of masks) { const m = a[key]; if (m) mg.drawImage(m[0], X0 + m[1] - bx, Y0 + m[2] - by); }
+        M._mk = mk;
+      }
       g.globalCompositeOperation = 'destination-in'; g.drawImage(M, 0, 0); g.globalCompositeOperation = 'source-over';
     },
     drawWaterLife(g) {
@@ -384,11 +439,22 @@
       // are not redone more than four times a second until the camera settles
       const now = performance.now(), mv = this._lastCam ? Math.hypot(vx0 - this._lastCam[0], vy0 - this._lastCam[1]) : 0; this._lastCam = [vx0, vy0];
       const hold = mv > (this.opt.fastPx || 5) && now - (this._lastCompose || 0) < 250;
+      /* …and on a device that cannot keep up the water turns slower (build
+         207): a compose is pattern fills and masks over the whole box, and the
+         browser does that work after this call returns, where no timer here
+         can see it — on a 4x-throttled phone it took a fifth of every second.
+         So the device's own pace decides: frames slower than LIFE_SLOW_MS
+         (smoothed) and the ripples recompose at most LIFE_SLOW_HZ times a
+         second, for at least eight seconds (a pace the water itself set must
+         not flip it back and forth). A device that keeps up keeps all twelve. */
+      const thr = this.opt.lifeSlowMs != null ? this.opt.lifeSlowMs : this.LIFE_SLOW_MS;
+      if ((this._dgIv || 0) > thr) this._lifeSlowTill = now + 8000;
+      const slow = !hold && this._lifeBox && now < (this._lifeSlowTill || 0) && now - (this._lastCompose || 0) < 1000 / this.LIFE_SLOW_HZ;
       // the composed box keeps a margin round the view and is only moved when the view leaves it
       const need = [Math.max(bx0, vx0), Math.max(by0, vy0), Math.min(bx1, vx1), Math.min(by1, vy1)];
       if (list.length && need[2] > need[0] && need[3] > need[1]) {
         const MG = this.opt.lifeMargin || 64, lb = this._lifeBox;
-        let box = hold && lb ? lb : lb && lb[0] <= need[0] && lb[1] <= need[1] && lb[0] + lb[2] >= need[2] && lb[1] + lb[3] >= need[3] && this._lifeBK && this._lifeBK.endsWith('|' + (this._maskGen | 0)) ? lb : null;
+        let box = (hold || slow) && lb ? lb : lb && lb[0] <= need[0] && lb[1] <= need[1] && lb[0] + lb[2] >= need[2] && lb[1] + lb[3] >= need[3] && this._lifeBK && this._lifeBK.endsWith('|' + (this._maskGen | 0)) ? lb : null;
         if (!box) {
           const x0 = Math.floor(Math.max(bx0, vx0 - MG) / G_) * G_, y0 = Math.floor(Math.max(by0, vy0 - MG) / G_) * G_;
           const x1 = Math.ceil(Math.min(bx1, vx1 + MG) / G_) * G_, y1 = Math.ceil(Math.min(by1, vy1 + MG) / G_) * G_;
@@ -402,10 +468,11 @@
         const bk = box.join(',') + '|' + (this._maskGen | 0), kA = bk + '|' + fr + ',' + wx + ',' + wy, kB = bk + '|' + fc;
         const A = this._scr('a'), B = this._scr('b'), boxChanged = bk !== this._lifeBK;
         const size = c => { if (c.width < box[2] || c.height < box[3]) { c.width = Math.max(c.width, box[2]); c.height = Math.max(c.height, box[3]); } };
-        const P_ = this._scr('p'); if (boxChanged) { size(A); size(B); size(P_); size(this._scr('m')); }
+        const P_ = this._scr('p'); if (boxChanged) { size(A); size(B); size(P_); }   // (each layer's mask sizes itself, _cut)
         let did = 0;
-        if (!hold && kA !== this._kA && (boxChanged || this._kB === kB || this._lastDid !== 'a')) { this._cut(A, this.rip, fr, wx, wy, box[0], box[1], box[2], box[3], list, 'sm'); this._kA = kA; did = 'a'; }
-        if (!hold && kB !== this._kB && (boxChanged || !did)) { this._cut(B, this.caus, fc, 0, 0, box[0], box[1], box[2], box[3], list, 'cm'); this._kB = kB; did = did ? 'ab' : 'b'; }
+        const go = !hold && !slow;
+        if (go && kA !== this._kA && (boxChanged || this._kB === kB || this._lastDid !== 'a')) { this._cut(A, this.rip, fr, wx, wy, box[0], box[1], box[2], box[3], list, 'sm', bk); this._kA = kA; did = 'a'; }
+        if (go && kB !== this._kB && (boxChanged || !did)) { this._cut(B, this.caus, fc, 0, 0, box[0], box[1], box[2], box[3], list, 'cm', bk); this._kB = kB; did = did ? 'ab' : 'b'; }
         if (did) { this._lastDid = did; this._lastCompose = now; this.stats.lifeComposes = (this.stats.lifeComposes || 0) + 1;
           // the two laid together once, so the screen takes one draw a frame
           const pg = P_.getContext('2d'), [, , w, h] = box; pg.clearRect(0, 0, w, h);
@@ -582,7 +649,8 @@
       this.stopWorkers(); this.releaseAll(); this.setPainters(false);
     },
     stopWorkers() { for (const w of this.workers) w.terminate(); this.workers = []; this.pending.clear(); this._arrive = []; },
-    releaseAll() { for (const c of this.chunks.values()) this.release(c); this.chunks.clear(); this.dirty.clear(); this.gen.clear(); this._warmQ = null; this._warmDone = false; this._th = new Set(); this._lifeKey = this._kA = this._kB = this._lifeBK = null; this._lifeBox = null; },
+    releaseAll() { for (const c of this.chunks.values()) this.release(c); this.chunks.clear(); this.dirty.clear(); this.gen.clear(); this._warmQ = null; this._warmDone = false; this._th = new Set(); this._lifeKey = this._kA = this._kB = this._lifeBK = null; this._lifeBox = null;
+      for (const k of ['msm', 'mcm']) if (this['_s' + k]) this['_s' + k]._mk = null; },
 
     install(opt) {
       this.opt = opt || {};

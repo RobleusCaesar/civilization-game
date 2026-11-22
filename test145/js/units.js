@@ -57,6 +57,11 @@ const Units = {
     // card's stamps above but never takes a blade the player's yards earned
     if (S.starfall && !opts.card) G.skyIron(u);
     S.units.push(u);
+    /* ITS OWN ART, THE MOMENT IT EXISTS (Assets.wantUnit, build 207): a run no
+       longer installs every army up front, so whatever comes into the world —
+       a trained soldier, a card's legion, a band off the map — asks for the
+       strips it draws with (deduped; a founding asks for its own world) */
+    if (window.Assets && Assets.wantUnit) Assets.wantUnit(u);
     return u;
   },
 
@@ -115,10 +120,88 @@ const Units = {
     u.maxhp = Math.round(probe.maxhp * vet); u.hp = Math.max(1, Math.round(frac * u.maxhp));
     u.atk = (probe.atk + (u.skyIron ? 1 : 0)) * vet;
     u.def = probe.def; u.speed = probe.speed;
+    // a veteran's standing was of the rank he left: re-stamped, it is gone
+    this.clearVeteran(u);
     if (window.Assets && Assets.loadUnitsArt) { try { Assets.loadUnitsArt([u]); } catch (e) { /* the stand-in draws */ } }
     // risen a rank, he springs up in a flash of gold (js/goldfx.js — a picture only)
     if (window.GoldFX && GoldFX.popUnit) GoldFX.popUnit(u, 'rank');
     return c;
+  },
+
+  /* VETERANS OF THE FIELD (tests/veterans.mjs — operator, build 209: "if any
+     military unit gets into a fight… and gets hurt and then they are either
+     brought back to a war camp or to the main town center and they get
+     healed… when they're done healing they level up to a veteran… they'll
+     still keep whatever their rank is… If they get upgraded to the next
+     level… they lose their veteran standing… the veteran level should
+     always exist between the two levels of units… so it doesn't massively
+     tip the balance"). A soldier of the player's hurt in a fight and healed
+     where the land mends (UI's Heal: the hall's ring or beside a War Camp,
+     Bld.healZoneFor) comes back a VETERAN OF HIS RANK: CFG.VETERAN more
+     health and a harder blow (an engine's stone too, Combat.bldAtkOf), the
+     Veterans card's gold pip over his head (R.rankPip), "Veteran Defender"
+     on his panel and in the chronicle (nameOf). The bonus is STAMPED like
+     every stat (maxhp, atk) and remembered — u.vetOf, the kind he earned it
+     as; u.vetHp / u.vetAtk, what it added — so it rides the save and comes
+     off exactly. It is a standing OF HIS RANK: a rank-up (rankUp) or the
+     card's promotion re-stamps him as the new rank and it is gone, and
+     isVeteran asks vetOf === kind, so any path that changes his kind ends
+     it. Never twice; never beside the card's own veteran (u.vet, ×1.25,
+     which replaces it — Deck.veteran); never a hull (they mend at a dock),
+     an unarmed engine, a ghost or a war-wolf; never the rival's (the rival
+     raises no ranks either). */
+  isVeteran(u) { return !!(u && u.vetOf && u.vetOf === u.kind); },
+  veteranOk(u) {
+    if (!u || u.owner !== 'P' || u.spectral || u.warWolf || u.vet || this.isVeteran(u)) return false;
+    if (!this.isMilitary(u) || this.isNaval(u)) return false;
+    const base = CFG.UNITS[u.kind];
+    return !!(base && base.atk > 0 && CFG.HEAL_FOOD[u.kind]);
+  },
+  makeVeteran(u) {
+    if (!this.veteranOk(u)) return false;
+    const V = CFG.VETERAN || { hp: 0.15, atk: 0.15 };
+    const frac = u.maxhp > 0 ? u.hp / u.maxhp : 1;
+    const addHp = Math.max(1, Math.round(u.maxhp * V.hp)), addAtk = u.atk * V.atk;
+    u.vetOf = u.kind; u.vetHp = addHp; u.vetAtk = addAtk;
+    u.maxhp += addHp; u.atk += addAtk;
+    u.hp = Math.max(1, Math.round(frac * u.maxhp));
+    return true;
+  },
+  // the standing's stamps taken off exactly (the card's own veteran replaces it)
+  unVeteran(u) {
+    if (!u || !u.vetOf) return;
+    if (this.isVeteran(u)) {
+      const frac = u.maxhp > 0 ? u.hp / u.maxhp : 1;
+      u.maxhp = Math.max(1, u.maxhp - (u.vetHp || 0)); u.atk -= (u.vetAtk || 0);
+      u.hp = Math.max(1, Math.round(frac * u.maxhp));
+    }
+    this.clearVeteran(u);
+  },
+  // after a re-stamp (a rank-up, the card's promotion) the stamps are gone already
+  clearVeteran(u) { if (u) { delete u.vetOf; delete u.vetHp; delete u.vetAtk; } },
+  // an engine's stone is never stamped (Combat.bldAtkOf reads the kind's), so it asks
+  vetMult(u) { return this.isVeteran(u) ? 1 + ((CFG.VETERAN || {}).atk || 0) : 1; },
+  // the name a unit goes by: a card's own people first (js/deckfx-army.js)
+  nameOf(u) {
+    const card = window.Deck && Deck.unitName ? Deck.unitName(u) : null;
+    if (card) return card;
+    const nm = CFG.UNITS[u.kind].name;
+    return this.isVeteran(u) ? 'Veteran ' + nm : nm;
+  },
+  /* A VILLAGER'S OWN NAME (CFG.NAMES, build 211): the player's villagers
+     only — never the rival's, a ghost or a soldier — the same every time it
+     is asked, through a save and a load, because it is a hash of the world's
+     seed and the unit's id: no RNG is drawn and nothing is stored. */
+  personName(u) {
+    if (!u || u.owner !== 'P' || !this.isVillager(u) || u.spectral) return null;
+    const L = CFG.NAMES && CFG.NAMES[u.female ? 'f' : 'm'];
+    if (!L || !L.length) return null;
+    const sd = String((typeof S !== 'undefined' && S && S.seed != null) ? S.seed : '');
+    let h = (2166136261 ^ (u.id | 0)) >>> 0;
+    for (let i = 0; i < sd.length; i++) h = Math.imul(h ^ sd.charCodeAt(i), 16777619) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+    h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0;
+    return L[((h ^ (h >>> 15)) >>> 0) % L.length];
   },
 
   isMilitary(u) {
@@ -796,8 +879,9 @@ const Units = {
     return this.setPath(u, tx, ty);
   },
 
-  // villagers can line-fish a shoal from the beach beside it
-  assignShoreFish(u, tx, ty) {
+  // villagers can line-fish a shoal from the beach beside it (`edge`: the one
+  // side to stand on — a work party shares a shoal's sides out, UI.partyShoreFish)
+  assignShoreFish(u, tx, ty, edge) {
     if (this.isLevied(u)) return false;   // under arms — the levy works nothing (tests/levy.mjs)
     if (u.owner === 'P' && window.Scenarios && Scenarios.fishWhy && Scenarios.fishWhy()) return false;   // not a lesson's good
     if (!this.isVillager(u) || !MapGen.shoal(tx, ty) || S.map.resAmount[MapGen.idx(tx, ty)] <= 0)
@@ -806,6 +890,7 @@ const Units = {
     for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = tx + ox, y = ty + oy;
       if (!Path.passable(x, y, u.owner) || Bld.at(x, y)) continue;
+      if (edge && (x !== edge.x || y !== edge.y)) continue;
       const dd = Math.hypot(u.x - x, u.y - y);
       if (dd < bd) { bd = dd; best = { x, y }; }
     }
@@ -1878,7 +1963,9 @@ const Units = {
                 : 'The soil here is spent — a farm may stand on it';
               // the first spent tile of a world is a note on the screen, then one
               // every few game days (UI.idleNote); the chronicle keeps them all
-              G.log(`${what} — villager idle`, UI.idleNote ? UI.idleNote() : undefined);
+              const said = G.log(`${what} — villager idle`, UI.idleNote ? UI.idleNote() : undefined);
+              // …off the open view, the note carries the way to the idle hand (js/feel.js)
+              if (said && typeof Feel !== 'undefined' && Feel.goThere && UI.inOpenBand && !UI.inOpenBand(u.x, u.y)) Feel.goThere(said, u.x, u.y);
             }
             u.task = null;
           }
@@ -1956,6 +2043,13 @@ const Units = {
         if (!onTile) {
           if (this.followPath(u, dt) && !((u.x | 0) === t.x && (u.y | 0) === t.y)) u.task = null;
         } else {
+          /* AT ANCHOR THE OARS ARE SHIPPED (build 207): a boat already on its
+             shoal (an origin's boats are set down on theirs, and a boat can
+             slide onto the tile mid-step) never asks followPath again, so the
+             one-step path stayed in hand, Units.moving answered yes, and it
+             was drawn rowing on the spot for as long as it fished. The beach
+             fisher below has always let his path go on arrival. */
+          if (u.path) { u.path = null; u.pathI = 0; }
           const idx = MapGen.idx(t.x, t.y);
           if (S.map.terrain[idx] !== T.WATER) { u.task = null; continue; }
           // fish feed whichever tribe cast the nets — the rival runs boats too
@@ -2031,7 +2125,10 @@ const Units = {
           if (S.map.resAmount[idx] <= 0.001) {
             S.map.resAmount[idx] = 0;
             G.scheduleFishReturn(idx);   // the shoal comes back in time
-            if (u.owner === 'P') G.log('This shoal is fished out — villager idle', UI.idleNote ? UI.idleNote() : undefined);
+            if (u.owner === 'P') {
+              const said = G.log('This shoal is fished out — villager idle', UI.idleNote ? UI.idleNote() : undefined);
+              if (said && typeof Feel !== 'undefined' && Feel.goThere && UI.inOpenBand && !UI.inOpenBand(u.x, u.y)) Feel.goThere(said, u.x, u.y);
+            }
             u.task = null;
           }
         }
@@ -2772,6 +2869,8 @@ const Units = {
 
   damage(u, amt, attackerId, attackerOwner) {
     u.hp -= Math.max(1, amt);
+    // the bar shows the bite (R.barBite, a picture: the level the blow took it from)
+    if (window.R && R.barBite) R.barBite(u, (u.hp + Math.max(1, amt)) / u.maxhp);
     const attacker = attackerId ? this.get(attackerId) : null;
     /* THE SOUND OF A FIGHT WE ARE IN. Either side of the blow being ours is
        what makes it audible: a scrap between barbarians and the rival across
@@ -2845,7 +2944,7 @@ const Units = {
       // without an alarm: fifteen red "was killed" toasts for a host that was
       // always going to fade would bury every line that matters
       if (u.owner === 'P' && !u.krakenTaken && !u.spectral)
-        G.log(`${(window.Deck && Deck.unitName && Deck.unitName(u)) || CFG.UNITS[u.kind].name} was killed`, true);
+        G.log(`${this.nameOf(u)} was killed`, true);
       if (u.owner === 'P' && this.isTransport(u) && u.cargo && u.cargo.length)
         G.log(`💀 ${u.cargo.length} soldier${u.cargo.length > 1 ? 's' : ''} lost with the hull`, true);
       // any wild animal killed by a tribe yields meat

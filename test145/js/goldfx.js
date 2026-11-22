@@ -245,14 +245,18 @@ const GoldFX = {
     const kx = pic.w / gr.gw, ky = pic.h / gr.gh;
     return [pic.x - gr.p * kx, pic.y - gr.p * ky, gr.W * kx, gr.H * ky];
   },
-  // THE HALO behind it: light out of its outline, its hue tied to its lift (R.FX_TIE)
-  halo(g, S, pic, a) {
+  /* THE HALO behind it: light out of its outline, its hue tied to its lift (R.FX_TIE).
+     `hueA`, given, is the hue pass's own strength: the guide's breath moves the
+     LIGHT alone and holds its gold at the crest's, because a hue thinned with the
+     light lets the meadow back in — at the faint end of build 204's softer breath
+     the halo's core read khaki (hue 59°, tests/ground-ring.mjs andItIsGoldNotOlive) */
+  halo(g, S, pic, a, hueA) {
     if (!S || !(a > 0.01)) return;
     const [x, y, w, h] = this._at(S.halo, pic);
     g.save();
     g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
     g.globalCompositeOperation = 'color';
-    if (g.globalCompositeOperation === 'color') { g.globalAlpha = Math.min(1, a * 1.15); g.drawImage(S.halo.hue, x, y, w, h); }
+    if (g.globalCompositeOperation === 'color') { g.globalAlpha = Math.min(1, (hueA != null ? Math.max(a, hueA) : a) * 1.15); g.drawImage(S.halo.hue, x, y, w, h); }
     g.globalCompositeOperation = 'screen';
     g.globalAlpha = Math.min(1, a);
     g.drawImage(S.halo.lift, x, y, w, h);
@@ -616,7 +620,9 @@ const GoldFX = {
     // THE GUIDE: its halo breathing behind it, leaf climbing behind it, a light winding round behind him
     if (o) {
       const beat = still ? 1 : 0.5 + 0.5 * Math.sin((o.t / R.GRING.pulseS + (o.seed || 0) * 0.137) * Math.PI * 2);
-      if (S) this.halo(g, S, r.pic, this.C.guideGlow * o.a * (still ? 0.8 : this.C.breathMin + (1 - this.C.breathMin) * beat));
+      // the light breathes, its gold holds at the crest's (halo's hueA)
+      const glow = this.C.guideGlow * o.a;
+      if (S) this.halo(g, S, r.pic, glow * (still ? 0.8 : this.C.breathMin + (1 - this.C.breathMin) * beat), glow * (still ? 0.8 : 1));
       if (!still) {
         this.flakes(g, r.q, r.pic, S, o, r.kind || 't', 'back');
         if (r.kind === 'u') this.orbit(g, r.q, r.pic, o, 'back');

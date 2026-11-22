@@ -1,10 +1,13 @@
 "use strict";
 /* PATCH NOTES — what changed, in the players' own words (tests/patch-notes.mjs).
 
-   THE RULE: every push to main adds an entry here, at the TOP, and its
-   `build` is the shared code version every `js/` script tag in index.html
-   carries (`?v=N`). The contract fails the moment the two disagree, so a
-   deploy without a note cannot pass the sweep.
+   THE RULE: a release a player would notice and care about (a new feature,
+   a rework, a fix to something they hit) adds an entry here, at the TOP, and
+   its `build` is the shared code version every `js/` script tag in
+   index.html carries (`?v=N`) on that release. A small one — a word, a
+   button's text, a fix nobody would miss — still bumps the version and
+   ships without one (operator, after build 207). The contract fails only on
+   a note numbered past the code.
 
    HOW TO WRITE ONE. Newest first. `date` is the day it shipped (YYYY-MM-DD),
    `title` a few words a player would use, and `items` the changes a PLAYER
@@ -18,6 +21,95 @@
    open, the rest folded, and a red dot on the tab until the newest has been
    seen on this device. */
 const PATCH_NOTES = [
+  {
+    build: 214, date: '2026-11-22', title: 'A bigger, clearer look',
+    items: [
+      'The bar across the top is bigger and easier to read, and every good wears its own drawn picture: meat for food, logs for wood, a block of stone, a heap of gold and a pair of villagers for your people.',
+      'Build is now a big button at the bottom left of the map. It opens a framed build menu with larger cards, and every card shows its price in the same pictures as the bar at the top, in red where you are short.',
+      'Your cards open in the same carved frame as the build menu.',
+      'The pause menu and the settings are one menu now. The gear at the top right pauses the game and opens on a Game tab with Resume, Save, Load, the Guide, the main menu and Resign, beside your settings.',
+      'Sound now lives on the General tab, the day shows a sun by day and a moon by night, and a saved army shows a helmet, a bow, a horse or a ship for what it mostly is.',
+    ],
+  },
+  {
+    build: 213, date: '2026-11-22', title: 'Select a group with the mouse',
+    items: [
+      'On a computer, drag a box on the map with the mouse to select a group. Soldiers come first: with none in the box it takes your villagers, then sappers, then fishing boats.',
+      'Hold Shift while you drag or click to add to the group or take one out, and double click a villager to select the villagers nearby.',
+      'A group of villagers shares the work out. Tap trees, rock or berries and each takes a spot of their own. Tap a camp and it takes the two it holds, while the rest go to the next camp or gather beside it. Tap a building site and they all build it.',
+      'Villagers in a group leave your selection once they are at work, and anyone who found no room stays selected, ready for another order.',
+      'Select a group of villagers and press Build, and every one of them raises the next building you place.',
+      'On a computer the right mouse button, the arrow keys or WASD move the map. If you would rather the left drag move it, switch off Drag to select in the settings.',
+    ],
+  },
+  {
+    build: 212, date: '2026-11-21', title: 'Thoughtful details',
+    items: [
+      'Every order shows where it lands: a walk lays a gold ring and a pin on the spot, work rings the tree, rock or building, and an attack rings its target in red.',
+      'Select a building to see the people working it ringed in gold, or select a worker or a soldier to see what they are working on or fighting.',
+      'When something is hit, the health it just lost stays pale on its bar for a moment, then drains away.',
+      'A rally point is a little flag on a pole now, waving in the wind.',
+      'Gold seams catch the light and glint now and then.',
+      'On the darkest nights, fireflies drift over the meadows.',
+      'If you could not afford a building, an upgrade or a soldier, the game tells you the moment you can, and its card or button glows gold.',
+      'News from off the screen, like a finished building, a trained soldier or a villager whose trees ran out, has a button that takes you there.',
+      'On a computer, press the question mark key to see every key, and the full stop key to find your idle villagers one by one. Escape now steps back from the menu pages too.',
+      'While a world is prepared, the loading plaque shows a gold bar and a tip worth knowing.',
+    ],
+  },
+  {
+    build: 211, date: '2026-11-21', title: 'Small touches',
+    items: [
+      'Pause with the button or the Space bar and the world dims under a clear Paused sign. Resuming from the menu keeps your view where you left it.',
+      'On a computer the keyboard plays too: arrows or WASD move the view, plus and minus zoom, Escape steps back, H takes you home, 1 to 9 call your saved armies, B opens the build menu and M the map.',
+      'Drag across the map in the corner to sweep your view over the land, and its frame now follows your view smoothly.',
+      'When a building is under attack, the map flashes where it is, and the warning has a button that takes you straight there.',
+      'With a mouse, the pointer shows what a click will do: an axe over trees, a pick over stone, a sword over an enemy.',
+      'Rest the mouse on the land to read it: how much wood or stone is left, or how hurt a soldier is.',
+      'Hover a building card to read what it does and what it still needs. The farm, camps, quarry and house now say where they can really be built.',
+      'When you cannot afford something, the goods you are short of flash in the top bar, and the message says how much more you need.',
+      'Your villagers have names now, and when one dies, the news says who it was.',
+      'Boats leave a foamy wake as they sail.',
+    ],
+  },
+  {
+    build: 210, date: '2026-11-21', title: 'A smoother first game',
+    items: [
+      'In the first game, the ground Mira keeps for the farm, the camps and the road stays free, so a house built in the wrong spot can no longer stall the lesson.',
+      'Tapping a tree, bush or rock away from the one Mira showed sends your villager to hers, and a note says so.',
+      'If you run short of wood or stone for the next step, the trees and rocks around her spot open up, so you are never stuck.',
+      'A quick click that slides a little still counts as a click, so your villagers answer every quick order.',
+      'Something very old lies hidden by the pond in the first valley. Go and find it.',
+    ],
+  },
+  {
+    build: 209, date: '2026-11-20', title: 'Veterans of the field',
+    items: [
+      'A soldier who is hurt in a fight and healed at your Town Center or a War Camp comes back a veteran, with a gold badge over their head.',
+      'A veteran keeps their rank and has 15 percent more health and attack, still short of the next rank up. Siege engines throw their stones harder too.',
+      'The Heal button tells you when healing will make a veteran. Upgrading a veteran to the next rank starts them fresh, and they can earn it again there.',
+    ],
+  },
+  {
+    build: 207, date: '2026-11-20', title: 'Smoother play, game after game',
+    items: [
+      'Playing several games in a row no longer slows the game down: the second and third games run as smoothly as the first.',
+      'People and soldiers walk and fight smoothly from the first minute, with no frozen steps or stutters while the game loads its pictures.',
+      'The first three games open on their own ground: the sweep over the valley no longer starts on blurry, blocky land.',
+      'Fishing boats rest on the water while they fish, instead of rowing on the spot.',
+      'When a game ends, everyone stands still instead of freezing in the middle of a step.',
+      'On slower phones the water ripples more gently, so the rest of the game stays smooth.',
+      'The golden glow round whatever Mira points at stays gold as it breathes, never fading to a muddy green.',
+      'A miner working a stone pile from the side keeps his whole pick in view instead of losing its head behind the rock.',
+    ],
+  },
+  {
+    build: 206, date: '2026-11-20', title: 'A cleaner title menu',
+    items: [
+      'The title menu now matches the Settings page: dark plates with a fine gold line, easy to read at a glance.',
+      'The main button is the one lit in gold: Begin on the journey, New game after it, so it is always easy to find. The name of your next game sits just under Begin.',
+    ],
+  },
   {
     build: 205, date: '2026-11-20', title: 'The tower guards the land bridge, and a calmer isle',
     items: [

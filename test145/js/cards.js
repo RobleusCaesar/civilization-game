@@ -647,7 +647,7 @@ const Cards = {
     if (S.scenario) return;
     const cd = this.DEFS[D.rival.pick.key];
     if (!cd) return;
-    /* …AND IT WAITS TO BE READ (PX-10c, tests/tutorial.mjs §20). The first
+    /* …AND IT WAITS TO BE READ (PX-10c, tests/calm-peace.mjs §9). The first
        in-game moment is not always one the player can read: on a cold cache
        the world is still behind its art plaque, and a device's first Calm
        game opens on the "Two roads to victory" modal — the toast column sits

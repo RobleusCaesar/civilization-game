@@ -75,16 +75,25 @@ const TitleScreen = {
     return tbg.querySelector('img.t2img') || tbg.querySelector('img');
   },
 
-  /* ---------------- the plaques ---------------- */
-  // btnBegin: the prologue's one plaque (js/prologue.js), New Game's gold
-  KIND: { btnTitleNew: 'gold', btnBegin: 'gold', btnTitleBoard: 'navy', btnContinue: 'wood' },
-  ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnBegin: 'flame', btnTitleBoard: 'trophy',
+  /* ---------------- the plaques ----------------
+     THE TITLE WEARS THE SETTINGS PAGE'S PLATES (build 206 — the operator, on
+     the carved plaques and two Begin buttons after them: "intuitive and
+     clean… re-review the settings menu because I really like that"). One
+     component for every menu: a dark plate with stepped corners (the
+     settings page's --chamfer), a dark edge and one thin gold line inside
+     it, a hair of light along its top and a step of shade along its foot.
+     The ONE primary (BEGIN on the journey, New Game after it) is LIT — the
+     settings page's chosen tab: a warm amber face, a bright gold line with a
+     darker one inside it, cream letters. Hierarchy by light and size, never
+     by ornament: no straps, bosses, grain or knots. */
+  KIND: { btnTitleNew: 'lit', btnBegin: 'lit' },
+  ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnTitleBoard: 'trophy',
     btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleLoad: 'scroll', btnTitleCards: 'cards' },
   dress() {
     if (!this.el) return;
     for (const b of this.el.querySelectorAll('.tmenu .abtn')) {
       if (b.querySelector(':scope > .t2f')) continue;
-      const kind = this.KIND[b.id] || (b.closest('.trow3') ? 'minor' : 'wood');
+      const kind = this.KIND[b.id] || (b.closest('.trow3') ? 'minor' : 'plate');
       b.dataset.t2 = kind;
       const f = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       f.setAttribute('class', 't2f');
@@ -108,7 +117,7 @@ const TitleScreen = {
     f.setAttribute('viewBox', `0 0 ${w} ${h}`);
     f.setAttribute('width', w);
     f.setAttribute('height', h);
-    f.innerHTML = this.plaque(w, h, b.dataset.t2 || 'wood', b.id || 'p');
+    f.innerHTML = this.plaque(w, h, b.dataset.t2 || 'plate');
   },
 
   /* ---------------- vector helpers ---------------- */
@@ -134,75 +143,45 @@ const TitleScreen = {
     return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">` +
       c.map((s, i) => `<stop offset="${at[i]}" stop-color="${s}"/>`).join('') + '</linearGradient>';
   },
-  FACE: {
-    wood: { stops: ['#5b3a1e', '#4a2e16', '#3b2410', '#2c1a0a'], grain: '#120700', light: '#c9925a', groove: '#120800' },
-    minor: { stops: ['#55361c', '#452b15', '#37210f', '#2a190a'], grain: '#120700', light: '#c9925a', groove: '#120800' },
-    navy: { stops: ['#2d3b5c', '#223050', '#1a2541', '#121a30'], grain: '#050913', light: '#9fb6e8', groove: '#060a16' },
-    // the gold plate is METAL, not pale wood: banded like struck leaf, its
-    // grain no more than a brushing
-    gold: { stops: ['#fbe49a', '#ecc25e', '#d8a444', '#c99235', '#e0b14e', '#a8721f'], at: [0, 0.3, 0.5, 0.56, 0.8, 1],
-      grain: '#6a3e0a', light: '#fff6d2', groove: '#4a2a06', brush: true },
+  /* the plates, in the settings page's own colours (js/settings.js: .sxBtn,
+     .sxTab.on): the face's gradient, the dark edge, the gold line(s) inside
+     it, the light along the top and the shade along the foot */
+  PLATE: {
+    plate: { stops: ['#3b3020', '#2c2316', '#241c11'], at: [0, 0.5, 1], edge: '#120c05',
+      lines: ['rgba(214,170,74,0.55)'], top: 'rgba(255,240,200,0.06)', foot: 'rgba(0,0,0,0.28)' },
+    lit: { stops: ['#6a4f22', '#4a3515', '#3a280f'], at: [0, 0.55, 1], edge: '#1a1005',
+      lines: ['#f2cf6c', '#8a6420'], top: 'rgba(255,236,170,0.12)', foot: 'rgba(0,0,0,0.25)' },
   },
-
-  /* ONE PLAQUE, drawn to w x h CSS pixels. Outermost in: an ink line, the
-     gold-leaf rim (lit along its top), an ink seat, the face with its grain,
-     the bevel (top light, foot shade — swapped when pressed), a carved
-     groove one step in, and a gold cap on every corner with a garnet set in
-     it. Ids are unique per plaque; nothing here is a raster. */
-  plaque(w, h, kind, seed) {
-    const n = 't2' + (++this._n), f = n2 => this.f(n2), F = this.FACE[kind] || this.FACE.wood;
-    const minor = kind === 'minor', c = minor ? 6 : 8, rim = minor ? 2.4 : 3.2;
-    const R = 1 + rim, rnd = this.rng(seed + kind);
-    const gid = n + 'g', fid = n + 'f', cid = n + 'c', bid = n + 'b', did = n + 'd', mid = n + 'm';
+  /* the settings page's stepped corner (its --chamfer): a 5px corner cut in
+     two steps of 3 and 2, the pixel-art corner every one of its plates wears */
+  notch(w, h) {
+    const f = n => this.f(n), W = f(w), H = f(h);
+    return `M0,5H3V3H5V0H${f(w - 5)}V3H${f(w - 3)}V5H${W}V${f(h - 5)}H${f(w - 3)}V${f(h - 3)}H${f(w - 5)}V${H}` +
+      `H5V${f(h - 3)}H3V${f(h - 5)}H0Z`;
+  },
+  /* ONE PLATE, drawn to w x h CSS pixels: the face, the shade along its foot
+     and the light along its top, the gold line(s), the dark edge — the
+     settings page's box-shadow stack, as vectors — all inside the stepped
+     corners. The pressed state's layers (.hi, .lo, .dim) ride along, so the
+     press stays the plate going down into its frame. Nothing is a raster. */
+  plaque(w, h, kind) {
+    const n = 't2' + (++this._n), P = this.PLATE[kind === 'lit' ? 'lit' : 'plate'], f = v => this.f(v);
+    const fid = n + 'f', cid = n + 'c';
     let s = '<defs>' +
-      this.metal(gid, 'gold', 0, 0, 0, h) +
-      this.metal(mid, kind === 'gold' ? 'dark' : 'gold', 0, 0, 0, 22) +
       `<linearGradient id="${fid}" x1="0" y1="0" x2="0" y2="1">` +
-        F.stops.map((col, i) => `<stop offset="${(F.at || [0, 0.42, 0.62, 1])[i]}" stop-color="${col}"/>`).join('') + '</linearGradient>' +
-      `<linearGradient id="${bid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="${kind === 'gold' ? 0.34 : 0.13}"/>` +
-        '<stop offset=".34" stop-color="#fff" stop-opacity="0"/><stop offset=".7" stop-color="#000" stop-opacity="0"/>' +
-        `<stop offset="1" stop-color="#000" stop-opacity="${kind === 'gold' ? 0.22 : 0.34}"/></linearGradient>` +
-      `<linearGradient id="${did}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".42"/>` +
-        '<stop offset=".4" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity=".06"/></linearGradient>' +
-      `<clipPath id="${cid}"><path d="${this.oct(w, h, c, R + 0.6)}"/></clipPath>` +
-      '</defs>';
-    // the rim: ink, gold leaf, a hair of light along the top, the ink seat
-    s += `<path d="${this.oct(w, h, c, 0)}" fill="#0b0602"/>` +
-      `<path d="${this.oct(w, h, c, 1)}" fill="url(#${gid})"/>` +
-      `<path d="M${f(c + 0.65)},1.6 H${f(w - c - 0.65)}" stroke="#fff6d4" stroke-opacity=".6" stroke-width=".7"/>` +
-      `<path d="${this.oct(w, h, c, R)}" fill="#120a03"/>`;
-    // the face and its grain
-    s += `<g clip-path="url(#${cid})"><rect width="${w}" height="${h}" fill="url(#${fid})"/>`;
-    const lines = Math.max(5, Math.round(h / (F.brush ? 2.6 : 4.2)));
-    for (let i = 0; i < lines; i++) {
-      const y0 = R + 1 + (h - 2 * R - 2) * (i + rnd() * 0.8) / lines;
-      const amp = F.brush ? 0.1 + rnd() * 0.25 : 0.4 + rnd() * 1.3, wl = 46 + rnd() * 70, ph = rnd() * 6.28;
-      let d = `M${f(-4)},${f(y0 + Math.sin(ph) * amp)}`;
-      for (let x = -4; x < w + 8; x += wl / 4) {
-        const x2 = x + wl / 4, y2 = y0 + Math.sin(ph + (x2 / wl) * 6.28) * amp;
-        d += `S${f(x2 - wl / 10)},${f(y2)} ${f(x2)},${f(y2)}`;
-      }
-      const dark = rnd() < 0.78;
-      const op = F.brush ? (dark ? 0.04 + rnd() * 0.05 : 0.12 + rnd() * 0.1) : (dark ? 0.16 + rnd() * 0.2 : 0.05 + rnd() * 0.06);
-      s += `<path d="${d}" fill="none" stroke="${dark ? F.grain : F.light}" stroke-opacity="${f(op)}" stroke-width="${f(0.5 + rnd() * 0.8)}"/>`;
-    }
-    // a knot, off to one side of the label (wood only)
-    if (!F.brush && (!minor || rnd() < 0.6)) {
-      const kx = (rnd() < 0.5 ? 0.12 + rnd() * 0.12 : 0.76 + rnd() * 0.12) * w, ky = h * (0.3 + rnd() * 0.4), kr = 2.2 + rnd() * 1.6;
-      for (let r = 0; r < 3; r++) {
-        s += `<ellipse cx="${f(kx)}" cy="${f(ky)}" rx="${f(kr * (2.3 + r * 1.5))}" ry="${f(kr * (0.55 + r * 0.42))}" fill="none" stroke="${F.grain}" stroke-opacity="${f(0.22 - r * 0.05)}" stroke-width=".7"/>`;
-      }
-      s += `<ellipse cx="${f(kx)}" cy="${f(ky)}" rx="${f(kr * 1.1)}" ry="${f(kr * 0.42)}" fill="${F.grain}" fill-opacity=".3"/>`;
-    }
-    s += `<rect class="hi" width="${w}" height="${h}" fill="url(#${bid})"/>` +
-      `<rect class="lo" width="${w}" height="${h}" fill="url(#${did})"/>` +
-      `<rect class="dim" width="${w}" height="${h}" fill="#000"/></g>`;
-    // the carved groove, one step in from the rim: a dark cut with light on its lower lip
-    const gi = R + (minor ? 3.2 : 4.4);
-    s += `<path d="${this.oct(w, h, c, gi)}" fill="none" stroke="${F.groove}" stroke-opacity="${kind === 'gold' ? 0.5 : 0.62}" stroke-width="1"/>` +
-      `<path d="${this.oct(w, h, c, gi + 0.9)}" fill="none" stroke="${F.light}" stroke-opacity="${kind === 'gold' ? 0.45 : 0.1}" stroke-width=".6"/>`;
-    // the corner caps
-    s += this.caps(w, h, c, minor, mid, kind);
+        P.stops.map((c, i) => `<stop offset="${P.at[i]}" stop-color="${c}"/>`).join('') + '</linearGradient>' +
+      `<clipPath id="${cid}"><path d="${this.notch(w, h)}"/></clipPath>` +
+      '</defs>' +
+      `<g clip-path="url(#${cid})">` +
+      `<rect width="${f(w)}" height="${f(h)}" fill="url(#${fid})"/>` +
+      `<rect y="${f(h - 8)}" width="${f(w)}" height="8" fill="${P.foot}"/>` +
+      `<rect class="hi" width="${f(w)}" height="10" fill="${P.top}"/>` +
+      `<rect class="lo" width="${f(w)}" height="10" fill="#000" fill-opacity=".3"/>` +
+      `<rect class="dim" width="${f(w)}" height="${f(h)}" fill="#000"/>`;
+    P.lines.forEach((c, i) => {
+      s += `<rect x="${2.5 + i}" y="${2.5 + i}" width="${f(w - 5 - 2 * i)}" height="${f(h - 5 - 2 * i)}" fill="none" stroke="${c}" stroke-width="1"/>`;
+    });
+    s += `<rect x="1" y="1" width="${f(w - 2)}" height="${f(h - 2)}" fill="none" stroke="${P.edge}" stroke-width="2"/></g>`;
     return s;
   },
   /* A GOLD CAP ON EVERY CORNER, the way a chest's corners are bound: a
@@ -371,32 +350,33 @@ TitleScreen.CSS = `
 #scrTitle.t2 .tbg { background: #0a0d18; }
 #scrTitle.t2 .thead { background: radial-gradient(60% 80% at 50% 50%, rgba(4,6,14,0.42), rgba(4,6,14,0) 72%); }
 #scrTitle.t2 .tmenu { width: min(352px, 90vw); gap: 12px; margin-top: 24px; }
-#scrTitle.t2 .plaques .abtn { color: #f4e7c8; min-height: 54px; font-size: 16.5px; letter-spacing: 2.2px;
-  text-shadow: 0 1px 0 rgba(8,4,0,0.95), 0 0 1px rgba(8,4,0,0.8), 0 2px 7px rgba(0,0,0,0.5);
+/* THE SETTINGS PAGE'S PLATES (TitleScreen.plaque): cream Roman caps with a
+   hard dark under-edge on a dark plate; the one primary lit */
+#scrTitle.t2 .plaques .abtn { color: #f1e4c6; min-height: 54px; font-size: 15.5px; font-weight: 700; letter-spacing: 2px;
+  text-shadow: 0 1px 0 #000, 0 0 2px rgba(0,0,0,0.6);
   cursor: pointer; -webkit-tap-highlight-color: transparent; transition: translate 70ms ease-out; }
 #scrTitle.t2 .plaques .abtn.big { min-height: 58px; }
 #scrTitle.t2 .plaques .abtn::before, #scrTitle.t2 .plaques .abtn::after { display: none; }
 #scrTitle.t2 .t2f { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; overflow: visible;
-  filter: drop-shadow(0 3px 0 rgba(0,0,0,0.55)) drop-shadow(0 7px 12px rgba(0,0,0,0.42)); }
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,0.6)) drop-shadow(0 6px 10px rgba(0,0,0,0.42)); }
 #scrTitle.t2 .t2f .lo, #scrTitle.t2 .t2f .dim { opacity: 0; }
 #scrTitle.t2 .pxi { display: none; }
-#scrTitle.t2 .blab { gap: 11px; }
-#scrTitle.t2 .t2i { width: 25px; height: 25px; flex: 0 0 auto; overflow: visible;
-  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.55)); }
-/* New Game is the gold plate, its lettering struck into it */
-#scrTitle.t2 .abtn[data-t2="gold"] { color: #2a1505; font-size: 18px; letter-spacing: 2.6px;
-  text-shadow: 0 1px 0 rgba(255,243,205,0.65); }
-#scrTitle.t2 .abtn[data-t2="gold"] .t2i { width: 27px; height: 27px; filter: drop-shadow(0 1px 0 rgba(255,243,205,0.6)); }
-#scrTitle.t2 .abtn[data-t2="navy"] { color: #e3e9f6; }
-#scrTitle.t2 .plaques .abtn small { color: rgba(242,228,196,0.74); letter-spacing: 1.6px; font-size: 10px; margin-top: 3px;
+#scrTitle.t2 .blab { gap: 10px; }
+#scrTitle.t2 .t2i { width: 22px; height: 22px; flex: 0 0 auto; overflow: visible;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
+/* the lit plate: the settings page's chosen tab — cream letters, the icon
+   catching the light */
+#scrTitle.t2 .abtn[data-t2="lit"] { color: #fff0bf; letter-spacing: 2.4px; }
+#scrTitle.t2 .abtn[data-t2="lit"] .t2i { filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)) drop-shadow(0 0 6px rgba(255,210,110,0.45)); }
+#scrTitle.t2 .plaques .abtn small { color: rgba(232,211,155,0.86); letter-spacing: 1.6px; font-size: 10px; margin-top: 3px;
   text-shadow: 0 1px 0 rgba(0,0,0,0.9); }
 /* the minor row: smaller plates, their icon and word on one line */
-#scrTitle.t2 .plaques .trow3 { gap: 12px; }
-#scrTitle.t2 .plaques .trow3.clFour .abtn { flex: 1 1 calc(50% - 6px); }
+#scrTitle.t2 .plaques .trow3 { gap: 10px; }
+#scrTitle.t2 .plaques .trow3.clFour .abtn { flex: 1 1 calc(50% - 5px); }
 /* three across (the deck switched off: no Cards plaque) has no room for an
    icon beside a word — the row reads as words, as it always did */
 #scrTitle.t2 .plaques .trow3:not(.clFour) .t2i { display: none; }
-#scrTitle.t2 .plaques .trow3 .abtn { min-height: 48px; font-size: 13.5px; letter-spacing: 1.3px; padding: 4px 6px; }
+#scrTitle.t2 .plaques .trow3 .abtn { min-height: 48px; font-size: 13px; letter-spacing: 1.4px; padding: 4px 6px; color: #e9dcbd; }
 #scrTitle.t2 .trow3 .blab { gap: 7px; }
 #scrTitle.t2 .trow3 .t2i { width: 18px; height: 18px; }
 @media (max-width: 359px) {
@@ -404,15 +384,15 @@ TitleScreen.CSS = `
   #scrTitle.t2 .trow3 .blab { gap: 5px; }
   #scrTitle.t2 .trow3 .t2i { width: 16px; height: 16px; }
 }
-/* the patch notes' unread dot (js/settings.js) rides the top rim, clear of
-   the corner caps and of the word */
-#scrTitle.t2 .sxDoorDot { top: -4px; right: 24px; }
+/* the patch notes' unread dot (js/settings.js) sits in the plate's corner,
+   as it sits in the settings page's tab */
+#scrTitle.t2 .sxDoorDot { top: 6px; right: 7px; width: 9px; height: 9px; }
 /* the deck's count: a gold-ringed coin beside the word */
 #scrTitle.t2 #btnTitleCards .clN { height: 19px; min-width: 19px; line-height: 17px; margin-left: 7px; padding: 0 5px;
   background: radial-gradient(circle at 50% 35%, #3a2410, #170c03); border: 1px solid #e0b252;
   box-shadow: 0 0 0 1px rgba(0,0,0,0.6); color: #ffe7a8; font-size: 11px; text-shadow: none; }
 /* pressed: the plate goes down into its frame — the drop collapses, the
-   bevel turns over, the face takes a step of shade */
+   light along its top turns to shade, the face takes a step of shade */
 /* translate, not transform: the pop-in holds its last transform frame on
    the plaques (fill-mode both), which would swallow a pressed transform */
 #scrTitle.t2 .plaques .abtn:active:not(.cant) { transform: none; translate: 0 2px; filter: none; }
@@ -421,7 +401,7 @@ TitleScreen.CSS = `
 #scrTitle.t2 .plaques .abtn:active:not(.cant) .t2f .lo { opacity: 1; }
 #scrTitle.t2 .plaques .abtn:active:not(.cant) .t2f .dim { opacity: 0.16; }
 @media (hover: hover) {
-  #scrTitle.t2 .plaques .abtn:hover:not(.cant) .t2f { filter: drop-shadow(0 3px 0 rgba(0,0,0,0.55)) drop-shadow(0 0 10px rgba(240,190,90,0.28)) drop-shadow(0 7px 12px rgba(0,0,0,0.42)); }
+  #scrTitle.t2 .plaques .abtn:hover:not(.cant) .t2f { filter: drop-shadow(0 2px 0 rgba(0,0,0,0.6)) drop-shadow(0 0 9px rgba(240,190,90,0.3)) drop-shadow(0 6px 10px rgba(0,0,0,0.42)); }
 }
 #scrTitle.t2 .plaques .abtn:focus-visible { outline: 2px solid #f2cf73; outline-offset: 3px; }
 /* DISABLED SITS FLUSH AND WASHED: no drop, a cold face, the word still read */
@@ -443,9 +423,9 @@ TitleScreen.CSS = `
 @media (min-width: 1200px) and (min-height: 800px) {
   #scrTitle.t2 #logoArt { width: 360px; }
   #scrTitle.t2 .tmenu { width: 388px; gap: 13px; margin-top: 28px; }
-  #scrTitle.t2 .plaques .abtn { min-height: 56px; font-size: 17.5px; }
+  #scrTitle.t2 .plaques .abtn { min-height: 56px; font-size: 16.5px; }
   #scrTitle.t2 .plaques .abtn.big { min-height: 60px; }
-  #scrTitle.t2 .plaques .trow3 .abtn { min-height: 50px; font-size: 14px; }
+  #scrTitle.t2 .plaques .trow3 .abtn { min-height: 50px; font-size: 13.5px; }
 }
 /* ---- the fire's own life ---- */
 #scrTitle.t2 .t2amb { position: absolute; z-index: 0; left: 0; top: 0; width: 0; height: 0; pointer-events: none; --u: 2; }

@@ -44,8 +44,8 @@ const Prologue = {
     } catch (e) {}
   },
   /* the device's record, decided ONCE: a device with any trace of earlier
-     play (the old lesson's veteran rule — a finished run, a slot, a crash
-     snapshot, the draft help read) is a veteran and never sent on the
+     play (Screens.gamesFounded — a world founded, a finished run, a slot, a
+     crash snapshot, the draft help read) is a veteran and never sent on the
      journey; a fresh one is. ?prologue=reset forgets the record (testing). */
   prog() {
     if (this._q === 'reset' && !this._reset) {
@@ -74,26 +74,18 @@ const Prologue = {
     if (p.skipped || p.veteran) return false;
     return this.next() <= 3;
   },
-  // the old lesson stands down for a device the journey has taught, or that skipped it
-  taught() {
-    const p = this._get();
-    return !!(p && !p.veteran && (p.skipped || (p.done && p.done[1])));
-  },
   next() { const d = this.prog().done; for (let g = 1; g <= 3; g++) if (!d[g]) return g; return 4; },
   markDone(g) {
     const p = this.prog();
     if (p.done[g]) return;
     p.done[g] = Date.now();
     this._set(p);
-    // the journey over, the old lesson's two teaching games are spent too
-    if (g >= 3 && window.Screens && Screens.lsSet && Screens.gamesFounded && Screens.gamesFounded() < 2) Screens.lsSet('neo-games', '2');
   },
   skip(from) {
     const p = this.prog();
     p.skipped = Date.now();
     this._set(p);
     this.track('skip', { from: from || 'title', game: this.next() });
-    if (window.Screens && Screens.lsSet && Screens.gamesFounded && Screens.gamesFounded() < 2) Screens.lsSet('neo-games', '2');
   },
 
   /* ================= TELEMETRY (Backend.lesson, migration 0018) ================= */
@@ -118,12 +110,16 @@ const Prologue = {
     if (!btn) {
       btn = document.createElement('button');
       btn.className = 'abtn big'; btn.id = 'btnBegin'; btn.type = 'button';
-      btn.innerHTML = '<span class="blab">Begin</span><small></small>';
+      // one clean word on the lit plate (TitleScreen.KIND): the strongest
+      // button, never a rival to the logo
+      btn.setAttribute('aria-label', 'Begin');
+      btn.innerHTML = '<span class="bglow" aria-hidden="true"></span><span class="blab">Begin</span><small></small>';
       btn.addEventListener('click', () => this.begin());
       menu.insertBefore(btn, menu.firstChild);
     }
     const sm = btn.querySelector('small');
     if (sm) sm.textContent = this.NAMES[g] + ' · ' + g + ' of 3';
+    btn.setAttribute('aria-label', 'Begin: ' + this.NAMES[g] + ', ' + g + ' of 3');
     if (!skip) {
       skip = document.createElement('button');
       skip.id = 'btnSkipJourney'; skip.type = 'button'; skip.className = 'proSkip';
@@ -199,11 +195,40 @@ const Prologue = {
     this._warmFaces();   // her nine faces, fetched while the world is founded
     return true;
   },
-  // the establishing glide's opening view: its ground asked for too
+  // the establishing glide's views: their ground asked for too
   _warmGlide() {
-    const sc = Scenarios.live();
-    if (!sc || !sc.glideFrom || !window.TerrainX || !TerrainX.prefetch || !TerrainX.on) return;
-    try { const z = Math.max(R.minZoom ? R.minZoom() : 0.5, sc.glideFrom.z || 0.9); TerrainX.prefetch(sc.glideFrom.x + 0.5, sc.glideFrom.y + 0.5, z, 0); } catch (e) {}
+    if (!window.TerrainX || !TerrainX.prefetchViews || !TerrainX.on) return;
+    try { const v = this.glideViews(); if (v) TerrainX.prefetchViews(v, 0); } catch (e) {}
+  },
+  /* WHAT THE GLIDE SHOWS (build 207): the views the establishing shot passes
+     through, [cx, cy, z] in WORLD PIXELS — its start, three steps of its way
+     and its end, each placed by the camera's own clamp — so their ground is
+     painted before the world opens (TerrainX.prefetchViews, and the press
+     waits for them, Screens.enterGame). The warm-up used to hand TerrainX the
+     start's TILE numbers as pixels, which asked for the map's top-left corner,
+     and the journey opened on blurred stand-in ground where its glide began.
+     Cached per world and screen size; null for a world with no camera. */
+  glideViews() {
+    const sc = typeof Scenarios !== 'undefined' && Scenarios.live && Scenarios.live();
+    if (!sc || !sc.camera || typeof R === 'undefined' || !R.centerOn) return null;
+    const key = R.viewW() + 'x' + R.viewH() + (R.defaultZoom ? '@' + R.defaultZoom() : '');
+    if (this._gv && this._gv.s === S && this._gv.k === key) return this._gv.v;
+    const cam = { x: R.cam.x, y: R.cam.y, z: R.cam.z }, out = [];
+    try {
+      const reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const z1 = R.defaultZoom ? R.defaultZoom() : R.cam.z;
+      const b = [sc.camera.x + 0.5, sc.camera.y + 0.5];
+      const z0 = sc.glideFrom ? Math.max(R.minZoom ? R.minZoom() : 0.5, Math.min(z1, sc.glideFrom.z || 0.9)) : z1;
+      const a = sc.glideFrom && !reduced ? [sc.glideFrom.x + 0.5, sc.glideFrom.y + 0.5] : b;
+      const steps = a === b ? [1] : [0, 0.25, 0.5, 0.75, 1];
+      for (const e of steps) {
+        R.cam.z = z0 + (z1 - z0) * e;
+        R.centerOn(a[0] + (b[0] - a[0]) * e, a[1] + (b[1] - a[1]) * e);
+        out.push([R.cam.x + R.viewW() / R.cam.z / 2, R.cam.y + R.viewH() / R.cam.z / 2, R.cam.z]);
+      }
+    } finally { R.cam.x = cam.x; R.cam.y = cam.y; R.cam.z = cam.z; }
+    this._gv = { s: S, k: key, v: out };
+    return out;
   },
 
   /* BEGIN: the held world opens; anything else founds the next game first */
@@ -2116,6 +2141,19 @@ const Prologue = {
       taps() { const b = this.unbuilt(), v = this.idleVil(); return [v && !this.selVil() ? { u: v.id } : null, b ? { x: Bld.cx(b), y: Bld.cy(b), r: 1 } : null].filter(Boolean); } },
     { id: 'rival', face: 'surprised', text: 'Riders! Another clan shares these lakes. Not the ones who burned us.', hold: 0.5, once: true, auto: 4200, quiet: true, keepRing: true,
       test() { return Scenarios.game() === 2 && S.units.some(u => u.owner === 'A' && G.visibleAt && G.visibleAt(u.x | 0, u.y | 0)); } },
+    /* THE EASTER EGG (build 210, a playtest: "explored the starter map looking for
+       easter eggs"): game 1 hides one of the ten wilderness relics by the south pond,
+       where the cattle graze — standing in the remembered fog from the first frame,
+       found when one of the clan sees it (Relics.checkDiscovery's `sight`). The find
+       is the world's news, which a journey world does not toast (quiet), so she says
+       it, once, over whatever she was saying — and her line comes back after */
+    { id: 'relic', face: 'surprised', hold: 0, once: true, auto: 5600, keepRing: true,
+      get text() {
+        const r = typeof S !== 'undefined' && S && S.relic, d = r && window.Relics && Relics.DEFS[r.key];
+        return d && r.found ? 'Look, ' + d.name.replace(/^The /, 'the ') + '! Older than any clan. It gave us ' + r.amount + ' ' + d.res + '.'
+          : 'Look! Old stones, older than any clan.';
+      },
+      test() { return !!(S.relic && S.relic.found); } },
   ],
   // the hands building a site or a storey
   builders(b) { return S.units.filter(u => u.owner === 'P' && u.task && u.task.type === 'build' && (u.task.id === b.id || u.task.b === b.id || u.task.bid === b.id)); },
@@ -2211,13 +2249,14 @@ const Prologue = {
      past the lumber camp's door, the hall's and the farm's — and it is DRAGGED */
   roadLine() { return window.Scenarios && Scenarios.pathTiles ? Scenarios.pathTiles(['roadFrom', 'roadTo']) : []; },
   // the stretches of the line not yet laid, in order from the camp
-  roadLeft() { return this.roadLine().filter(t => !Scenarios.roadAt(t[0], t[1])); },
+  // a stretch another building already stands on (a save from before the line was kept) is passed over
+  roadLeft() { return this.roadLine().filter(t => !Scenarios.roadAt(t[0], t[1]) && !(Scenarios.lineTaken && Scenarios.lineTaken(t[0], t[1]))); },
   // the whole line laid (going down or done): the drag's deed
   roadLaid() { return this.roadLine().length > 0 && !this.roadLeft().length; },
   // …and every stretch of it finished (the road's boost is a finished road's)
   roadPaved() {
     const line = this.roadLine();
-    return line.length > 0 && line.every(t => !!(S.map.roads && S.map.roads[t[1] * CFG.W + t[0]]));
+    return line.length > 0 && line.every(t => !!(S.map.roads && S.map.roads[t[1] * CFG.W + t[0]]) || !!(Scenarios.lineTaken && Scenarios.lineTaken(t[0], t[1])));
   },
   // the price of the stretches still to lay (the beat's own: its held line names what it is short of)
   roadCost() {
@@ -2911,7 +2950,7 @@ const Prologue = {
   },
   /* a card past the menu's fold is no target at all: it is brought into the
      menu's view until it is SEEN there, and the player's own scrolling is left
-     alone after that (UI.cardIntoView — the lesson's rule too) */
+     alone after that (UI.cardIntoView) */
   _cardSt: null,
   _cardInView(sel) { if (UI.cardIntoView) UI.cardIntoView(sel, this._cardSt || (this._cardSt = {})); },
   // a target, resolved to the screen: {x,y,r} world, {u} a unit, {sel} an element
@@ -2934,11 +2973,15 @@ const Prologue = {
       /* a build card scrolling in (UI.cardIntoView) is ringed from the moment the
          menu opens — the ring rides in with it from past the screen's edge — but
          not while its middle crosses the strip of the bar's own wood between the
-         menu's edge and the screen's, where a tap lands on nothing */
+         menu's edge and the screen's, where a tap lands on nothing — the menu's
+         right edge itself included: a box's right edge is OUTSIDE it to the
+         browser's hit test (build 214's wider cards let a scroll rest with the
+         Dock card's middle on exactly that pixel, tests/prologue.mjs
+         andItsRingWasNeverDrawnWhereATapCannotLand) */
       const box = el.closest && el.closest('#buildmenu');
       if (box) {
         const b = box.getBoundingClientRect(), cx = r.left + r.width / 2;
-        if ((cx < b.left && cx >= 0) || (cx > b.right && cx <= innerWidth)) return null;
+        if ((cx < b.left && cx >= 0) || (cx >= b.right && cx <= innerWidth)) return null;
       }
       return { rect: r, x: r.left + r.width / 2, y: r.top + r.height / 2 };
     }
@@ -3068,7 +3111,8 @@ const Prologue = {
     if (m[1] === 'Buildings') ic = this.BLD_SVG;
     else if (m[1] === 'Walls') ic = this.WALL_SVG;
     else {
-      const s = document.querySelector('#topbar svg.ric[data-ic="' + this.TASK_IC[m[1]] + '"]');
+      // the bar's own drawn good (an <img> since build 214; the vector before it)
+      const s = document.querySelector('#topbar .ric[data-ic="' + this.TASK_IC[m[1]] + '"]');
       if (s) ic = s.outerHTML.replace('class="ric"', 'class="pic"');
     }
     return '<span class="pgi' + (+m[2] >= +m[3] ? ' ok' : '') + '">' + ic + '<span class="sr">' + m[1] + ' </span>' + m[2] + '/' + m[3] + '</span>';
@@ -3745,24 +3789,35 @@ body.pro-nobuild #bmToggle, body.pro-nobuild #buildmenu, body.pro-nobuild #panel
 #scrTitle.pro #btnTitleNew, #scrTitle.pro #btnTitleBoard, #scrTitle.pro #btnTitleCards, #scrTitle.pro #btnTitleLoad { display: none !important; }
 #scrTitle.pro #btnContinue.cant { display: none !important; }
 #scrTitle.pro .trow3 { grid-template-columns: 1fr 1fr; }
-#scrTitle #btnBegin small { display: block; margin-top: 3px; font: 600 12px/1.2 Georgia,serif; letter-spacing: .3px; text-transform: none; opacity: .85; }
-/* THE BEGIN PLATE (the night title's gold): the word and the game's name
-   share one centre line — the flame hangs left of the word and an empty
-   twin balances it on the right — and both sit inside the carved groove
-   (8.6px in from the rim), the name struck into the gold in dark ink like
-   the word (cream on gold could not be read, and on a 58px plate the line
-   lay across the bottom bevel) */
-#scrTitle.t2 .plaques #btnBegin { --bi: 27px; min-height: 76px; padding: 10px 14px; }
-#scrTitle.t2 #btnBegin .t2i { width: var(--bi); height: var(--bi); }
-#scrTitle.t2 #btnBegin .blab::after { content: ''; flex: 0 0 auto; width: var(--bi); }
-#scrTitle.t2 .plaques #btnBegin small { margin-top: 4px; font: 700 13px/1.15 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: 1.3px;
-  text-transform: none; white-space: nowrap; color: #4a2709; opacity: 1; text-shadow: 0 1px 0 rgba(255,243,205,.62); }
+/* THE BEGIN PLATE (build 206 — the operator, on two Begin buttons: "clean
+   and professionally made… re-review the settings menu because I really
+   like that"): the settings page's LIT plate (TitleScreen.plaque, kind
+   'lit'), the one primary on the title, full width and the tallest; the
+   word in cream Roman caps, the chapter a quiet line of small caps under
+   it, a soft warm light breathing round it. Hierarchy by light and size,
+   never by ornament. */
+#scrTitle.t2 .plaques #btnBegin { min-height: 64px; padding: 10px 14px 9px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px; isolation: isolate; overflow: visible; }
+#scrTitle.t2 #btnBegin .blab { display: block; padding-left: .26em; font: 700 22px/1 'Cinzel','Times New Roman',Georgia,serif;
+  letter-spacing: .26em; text-transform: uppercase; color: #fff0bf;
+  text-shadow: 0 1px 0 #000, 0 0 1px rgba(0,0,0,.7), 0 0 12px rgba(255,196,96,.35); }
+#scrTitle.t2 .plaques #btnBegin small { display: block; margin: 0; white-space: nowrap; opacity: 1;
+  font: 600 10.5px/1.2 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .16em; text-transform: uppercase;
+  color: #e8d39b; text-shadow: 0 1px 0 rgba(0,0,0,.9); }
+#scrTitle #btnBegin .bglow { position: absolute; z-index: -2; left: -10px; right: -10px; top: -9px; bottom: -9px; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(255,186,80,.24), rgba(255,150,50,.07) 72%, rgba(255,140,40,0));
+  animation: proGlow 3.6s ease-in-out infinite alternate; }
+@keyframes proGlow { from { opacity: .45; } to { opacity: 1; } }
 @media (max-height: 600px) {
-  #scrTitle.t2 .plaques #btnBegin { --bi: 23px; min-height: 64px; padding: 8px 12px; }
-  #scrTitle.t2 .plaques #btnBegin small { margin-top: 2px; font-size: 12px; }
+  #scrTitle.t2 .plaques #btnBegin { min-height: 56px; padding: 7px 12px; gap: 5px; }
+  #scrTitle.t2 #btnBegin .blab { font-size: 20px; }
 }
-#scrTitle .proSkip { display: block; margin: 14px auto 0; padding: 8px 14px; border: 0; background: none; cursor: pointer;
-  color: rgba(243,226,180,.72); font: 600 13px/1 Georgia,serif; text-decoration: underline; text-underline-offset: 3px; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+@media (prefers-reduced-motion: reduce) { #scrTitle #btnBegin .bglow { animation: none; opacity: .8; } }
+/* the third thing on the title: a quiet line of small caps, never a web link */
+#scrTitle .proSkip { display: block; min-height: 40px; margin: 8px auto 0; padding: 10px 18px; border: 0; background: none; cursor: pointer;
+  color: rgba(232,211,155,.82); font: 600 11.5px/1.2 'Cinzel','Times New Roman',Georgia,serif; letter-spacing: .18em; text-transform: uppercase;
+  text-shadow: 0 1px 0 #000, 0 0 6px rgba(0,0,0,.85); -webkit-tap-highlight-color: transparent; }
+@media (hover: hover) { #scrTitle .proSkip:hover { color: #f3e2b4; } }
 #scrTitle .proSkip.arm { color: #ffd77a; }
 `;
     document.head.appendChild(st);

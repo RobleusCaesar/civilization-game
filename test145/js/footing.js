@@ -114,7 +114,7 @@ const Footing = (() => {
   };
 
   // ---- a building's ground plan, measured off its own sprite ----------------
-  function prep(b, spr) {
+  function* prep(b, spr) {
     const TL = CFG.TILE, bs = Bld.size(b), bx = b.x * TL, by = b.y * TL, bw = bs * TL;
     const r = spr && spr._cfArt ? R.artRect(spr, bx, by, bw, bw) : { x: bx, y: by, w: bw, h: bw };
     const ox = Math.floor(bx - 26), oy = Math.floor(Math.min(r.y, by) - 6);
@@ -131,6 +131,7 @@ const Footing = (() => {
         read = true;
       } catch (e) { /* a tainted picture (a page from disk): stand in a block for it below */ }
     }
+    yield;
     const fpTop = (by - oy) * K, fpBot = (by + bw - oy) * K, fpL = (bx - ox) * K, fpR = (bx + bw - ox) * K;
     if (!read) {   // the footprint, roofed — enough to seat it, never a guess at the art
       const top = Math.round((r.y - oy) * K), inset = Math.round((fpR - fpL) * 0.1);
@@ -146,14 +147,18 @@ const Footing = (() => {
     for (let y = baseTop; y < H; y++) for (let x = 0; x < W; x++) if (op[y * W + x]) { dist[y * W + x] = 0; if (x < bl) bl = x; if (x > br) br = x; if (y > bb) bb = y; }
     if (br < 0) { bl = fpL; br = fpR - 1; bb = fpBot - 1; for (let y = baseTop; y < fpBot; y++) for (let x = fpL; x < fpR; x++) dist[y * W + x] = 0; }
     const HW = 1, VW = 1.7, DW = Math.hypot(1, 1.7);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; let d = dist[i];
+    yield;
+    for (let y = 0; y < H; y++) { for (let x = 0; x < W; x++) { const i = y * W + x; let d = dist[i];
       if (x > 0) d = Math.min(d, dist[i - 1] + HW);
       if (y > 0) { d = Math.min(d, dist[i - W] + VW); if (x > 0) d = Math.min(d, dist[i - W - 1] + DW); if (x < W - 1) d = Math.min(d, dist[i - W + 1] + DW); }
       dist[i] = d; }
-    for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) { const i = y * W + x; let d = dist[i];
+      if ((y & 63) === 63) yield; }
+    yield;
+    for (let y = H - 1; y >= 0; y--) { for (let x = W - 1; x >= 0; x--) { const i = y * W + x; let d = dist[i];
       if (x < W - 1) d = Math.min(d, dist[i + 1] + HW);
       if (y < H - 1) { d = Math.min(d, dist[i + W] + VW); if (x < W - 1) d = Math.min(d, dist[i + W + 1] + DW); if (x > 0) d = Math.min(d, dist[i + W - 1] + DW); }
       dist[i] = d; }
+      if ((y & 63) === 0) yield; }
     // where it may paint: open ground (grass, stumps, picked-bare soil) or a building's own plot,
     // on the board — never water, a wood, rock, ore or the black beyond the rim
     const ok = new Uint8Array(W * H);
@@ -164,8 +169,10 @@ const Footing = (() => {
       if (MapGen.onBoard(tx, ty)) { const t = S.map.terrain[ty * CFG.W + tx]; v = (t === T.GRASS || t === T.STUMPS || t === T.BARREN || Bld.at(tx, ty)) ? 1 : 0; }
       tOk.set(ty * 4096 + tx, v);
     }
+    yield;
     for (let y = 0; y < H; y++) { const ty = Math.floor((oy + y / K) / TL);
       for (let x = 0; x < W; x++) ok[y * W + x] = tOk.get(ty * 4096 + Math.floor((ox + x / K) / TL)) || 0; }
+    yield;
     // the door: the middle of the foot
     const dx = Math.round((fpL + fpR) / 2);
     let dy = -1; for (let x = dx - 4; x <= dx + 4; x++) if (x >= 0 && x < W) dy = Math.max(dy, foot[x]);
@@ -197,9 +204,9 @@ const Footing = (() => {
   };
 
   // packed earth round the walls, wider at the door, its edge broken into the grass
-  function yardEarth(Q) {
+  function* yardEarth(Q) {
     const R0 = Q.big ? 12 : 8, lobe = Q.big ? 9 : 6, lobeW = Q.big ? 12 : 9, edge = 6 * K, s = 5;
-    for (let y = 0; y < Q.H; y++) for (let x = 0; x < Q.W; x++) {
+    for (let y = 0; y < Q.H; y++) { if ((y & 15) === 15) yield; for (let x = 0; x < Q.W; x++) {
       const i = y * Q.W + x; if (!Q.ok[i] || Q.op[i]) continue;
       const d = Q.dist[i];
       const dirY = y > Q.bb ? 1.4 : y < Q.baseTop ? 0.55 : 1;
@@ -220,7 +227,8 @@ const Footing = (() => {
       if (t > 1.2 && (x & 3) === 1 && (y & 3) === 1 && hx(wx(Q, x) >> 2, wy(Q, y) >> 2, s + 21) < 0.06) {
         put(Q, 0, x, y, P.stone[3]); put(Q, 0, x + 1, y, P.stone[2]); put(Q, 0, x, y + 1, P.stone[1]); put(Q, 0, x + 1, y + 1, P.stone[1]);
       }
-    }
+    } }
+    yield;
     // a few tufts survive at the yard's edge
     for (let k = 0; k < 5; k++) {
       const a = rnd(Q, k) * Math.PI * 2, rr = (Q.big ? 15 : 11) * K;
@@ -560,22 +568,32 @@ const Footing = (() => {
   }
 
   // ---- measure one building into its three trimmed canvases -----------------
-  function build(b, spr, look) {
-    const Q = prep(b, spr), vr = F.variant(b, look);
+  /* A MEASUREMENT IS TAKEN IN STEPS (build 207): a hall's yard is a few
+     hundred thousand cells of distance fields and noise, 17-50 ms on a desktop
+     and four times that on a phone, and it was taken whole inside one frame —
+     at every game's first frame, and again whenever a building finished, rose
+     a storey or had a tree felled beside it. Each pass now yields (the long
+     ones every few dozen rows), so F.tick spends its budget and the rest waits
+     for the next frame. The picture is the same cell for cell. */
+  function* buildSteps(b, spr, look) {
+    const Q = yield* prep(b, spr), vr = F.variant(b, look);
     Q.v = vr.v; Q.side = vr.side; Q.lay = vr.lay; Q.home = b.key === 'house';
-    if (look === 'yard') { yardEarth(Q); cast(Q, 0.3); contact(Q, 0.8); workYard(Q); }
-    else if (look === 'hedge') { cast(Q, 0.3); contact(Q, 0.85); hedge(Q); }
-    else { cast(Q, 0.3); contact(Q, 1.15); if (b.key !== 'raidercamp') shadowTouches(Q); }
-    return Q.L.map(A => {
+    if (look === 'yard') { yield* yardEarth(Q); cast(Q, 0.3); yield; contact(Q, 0.8); yield; workYard(Q); }
+    else if (look === 'hedge') { cast(Q, 0.3); yield; contact(Q, 0.85); yield; hedge(Q); }
+    else { cast(Q, 0.3); yield; contact(Q, 1.15); if (b.key !== 'raidercamp') { yield; shadowTouches(Q); } }
+    const out = [];
+    for (const A of Q.L) {
+      yield;
       let x0 = Q.W, y0 = Q.H, x1 = -1, y1 = -1;
       for (let y = 0; y < Q.H; y++) for (let x = 0; x < Q.W; x++) if (A[(y * Q.W + x) * 4 + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-      if (x1 < 0) return null;
+      if (x1 < 0) { out.push(null); continue; }
       const w = x1 - x0 + 1, h = y1 - y0 + 1, cv = document.createElement('canvas'); cv.width = w; cv.height = h;
       const id = new ImageData(w, h);
       for (let y = 0; y < h; y++) id.data.set(A.subarray(((y + y0) * Q.W + x0) * 4, ((y + y0) * Q.W + x1 + 1) * 4), y * w * 4);
       cv.getContext('2d').putImageData(id, 0, 0);
-      return { cv, x: Q.ox + x0 / K, y: Q.oy + y0 / K, w: w / K, h: h / K };
-    });
+      out.push({ cv, x: Q.ox + x0 / K, y: Q.oy + y0 / K, w: w / K, h: h / K });
+    }
+    return out;
   }
   // what the footing depends on: the kind, level, place, look, and the ground round it
   function sigOf(b, look) {
@@ -587,8 +605,8 @@ const Footing = (() => {
     return b.key + '|' + b.level + '|' + b.x + ',' + b.y + '|' + bs + '|' + look + '|' + (h >>> 0);
   }
   // the building's footing if it is measured and current; queue it otherwise (a stale one still draws)
-  function entry(b) {
-    const look = F.look(b); if (look === 'none') return null;
+  function entry(b, lk) {
+    const look = lk || F.look(b); if (look === 'none') return null;
     const spr = R.wornSprite(b, true), sig = sigOf(b, look);
     let e = F._c.get(b.id);
     if (!e || e.sig !== sig || e.spr !== spr) {
@@ -598,20 +616,47 @@ const Footing = (() => {
     if (e) e.used = F._frame;
     return e;
   }
+  /* the queue, drained a step at a time under `budget` ms (null: to the end).
+     One measurement is in hand at a time (F._job); its building stays in the
+     queue's set until it is done, so the frame loop never queues it twice.
+     A frame with no budget left still takes one step, so the queue always moves. */
+  F._job = null;
   F.tick = function (budget) {
     const t0 = performance.now();
-    while (F._q.length) {
-      const id = F._q.shift(); F._qs.delete(id);
-      const b = S.buildings.find(o => o.id === id), look = b && F.look(b);
-      if (b && look !== 'none') {
+    for (;;) {
+      if (!F._job) {
+        if (!F._q.length) return;
+        const id = F._q.shift();
+        const b = S.buildings.find(o => o.id === id), look = b && F.look(b);
+        if (!b || look === 'none') { F._qs.delete(id); continue; }
         const spr = R.wornSprite(b, true);
-        try { F._c.set(id, { sig: sigOf(b, look), spr, L: build(b, spr, look), used: F._frame }); }
-        catch (e) { F._c.delete(id); }                                  // a painter stands down rather than throwing
+        F._job = { id, b, spr, sig: sigOf(b, look), g: buildSteps(b, spr, look) };
       }
-      if (budget != null && performance.now() - t0 > budget) break;
+      const j = F._job;
+      let r = null;
+      try { r = j.g.next(); }
+      catch (e) { F._c.delete(j.id); r = null; }                         // a painter stands down rather than throwing
+      if (!r || r.done) {
+        F._job = null; F._qs.delete(j.id);
+        // (a building gone while it was measured leaves nothing behind)
+        if (r && S.buildings.includes(j.b)) F._c.set(j.id, { sig: j.sig, spr: j.spr, L: r.value, used: F._frame });
+      }
+      if (budget != null && performance.now() - t0 >= budget) return;
     }
   };
   F.flush = () => F.tick(null);
+  /* THE OPENING WORLD WEARS ITS FOOTINGS FROM ITS FIRST FRAME (build 207): a
+     measurement is taken in steps now, so a world opened cold would show its
+     buildings bare for the first frames. G.frame asks while the world waits
+     behind a screen (the origin cards, the loading plaque, the journey's
+     title): every building the opening view shows is queued and measured in
+     the time given. Nothing is drawn. */
+  F.warm = function (budget) {
+    if (!F.on() || typeof S === 'undefined' || !S || !S.map || !S.buildings) return;
+    if (F._world !== S.map) { F._world = S.map; F._c.clear(); F._q.length = 0; F._qs.clear(); F._job = null; }
+    for (const b of S.buildings) if (seen(b)) entry(b);
+    F.tick(budget);
+  };
   function blit(g, L) {
     if (!L) return;
     const s = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false;
@@ -620,13 +665,21 @@ const Footing = (() => {
   }
   const seen = b => { const bs = Bld.size(b);
     for (let y = 0; y < bs; y++) for (let x = 0; x < bs; x++) if (G.visibleAt(b.x + x, b.y + y)) return true; return false; };
-  // the ground layer of every building about to be drawn — before any of them
+  /* the ground layer of every building about to be drawn — before any of them.
+     The queue's step comes FIRST (build 207): a measurement finished in this
+     frame's step used to lay its back and front with the building (F.back /
+     F.front read the cache after it) but its ground only from the next frame,
+     so for one frame a hedge stood on bare grass — and at a frozen clock two
+     draws differed (tests/land.mjs aFrozenFrameIsAStillFrame, on a runner slow
+     enough to leave a step for it). Now every layer of a frame reads one cache. */
   F.ground = function (g, blds) {
     if (!F.on()) return;
-    if (F._world !== S.map) { F._world = S.map; F._c.clear(); F._q.length = 0; F._qs.clear(); }
+    if (F._world !== S.map) { F._world = S.map; F._c.clear(); F._q.length = 0; F._qs.clear(); F._job = null; }
     F._frame++;
-    for (const b of blds) { if (!seen(b)) continue; const e = entry(b); if (e) blit(g, e.L[0]); }
+    const vis = [];
+    for (const b of blds) { if (!seen(b)) continue; const lk = F.look(b); if (lk !== 'none') { vis.push(b); entry(b, lk); } }
     F.tick(F.BUDGET_MS);
+    for (const b of vis) { const e = F._c.get(b.id); if (e) blit(g, e.L[0]); }
     if (F._frame % 300 === 0) for (const [id, e] of F._c) if (F._frame - e.used > 600) F._c.delete(id);
   };
   F.back = function (g, b) { if (!F.on()) return; const e = F._c.get(b.id); if (e && F.look(b) !== 'none') blit(g, e.L[1]); };
