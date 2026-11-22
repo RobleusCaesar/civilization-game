@@ -283,7 +283,12 @@ const { RX, RY } = W0;
       const walk = y => { const u = Units.spawn('villager', 'P', RX + 2.5, y + 0.5); u.path = [{ x: RX + 9, y }]; u.pathI = 0;
         const x0 = u.x; for (let k = 0; k < 10; k++) Units.followPath(u, 0.05); const dd = u.x - x0; S.units.splice(S.units.indexOf(u), 1); return dd; };
       out[lv] = { level: Roads.level(), key: t ? t.k.slice(-1) : null, fill, kerb, mortar, sig: h >>> 0, seam,
-        speed: +(walk(RY + 10) / walk(RY + 12)).toFixed(3), card: UI.menuIconSprite('road') === Sprites.building.road[lv - 1] };
+        // the card is the hall's road: the build menu's own picture of that road
+        // once it has landed (assets/ui/build/road-lN.png, build 215), the
+        // painter's own card until then
+        speed: +(walk(RY + 10) / walk(RY + 12)).toFixed(3),
+        card: UI.menuArtName('road') === 'road-l' + lv &&
+          UI.menuIconSprite('road') === ((UI.menuArt && UI.menuArt['road-l' + lv]) || Sprites.building.road[lv - 1]) };
     }
     tc.level = window.__lv0;
     const cards = Sprites.building.road.map(c => c.toDataURL());
