@@ -223,9 +223,8 @@ const ShellPages = {
 };
 
 ShellPages.CSS = `
-.screen.pg { --chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
-    calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
-    calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px));
+/* the plate is closed (build 215): the HUD's 45° corner and its unbroken rim (index.html --plate-rim) */
+.screen.pg { --chamfer: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
   --txt: #e8dcbd; --dim: #ab9c7e; --sans: -apple-system, "Segoe UI", Roboto, sans-serif;
   background: none; color: var(--txt); font-family: var(--menufont); align-items: center; justify-content: center; padding: 0; }
 .screen.pg [hidden] { display: none !important; }
@@ -240,7 +239,8 @@ ShellPages.CSS = `
 .screen.pg .pgBack { position: relative; isolation: isolate; width: 46px; height: 44px; min-height: 0; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: pointer;
   color: #f1d17a; display: flex; align-items: center; justify-content: center; box-shadow: none; -webkit-appearance: none; appearance: none; }
 .screen.pg .pgBack::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#3b3020, #241c11); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.6), inset 0 10px 0 rgba(255,240,200,0.06); }
+  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(#3b3020, #241c11) border-box; }
 .screen.pg .pgBack svg { width: 18px; height: 18px; filter: drop-shadow(0 1px 0 #000); }
 .screen.pg .pgBack:active { transform: translateY(2px); }
 .screen.pg .pgEmb { width: 38px; height: 38px; flex: 0 0 auto; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.7)); }
@@ -271,8 +271,21 @@ ShellPages.CSS = `
   background: linear-gradient(90deg, transparent, #c99a40 25%, #f6d27a 50%, #c99a40 75%, transparent) center / 100% 1px no-repeat; }
 .screen.pg .grule::after { content: ''; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; transform: translate(-50%, -50%) rotate(45deg);
   background: #f6d27a; box-shadow: 0 0 0 1px #3a2208, 0 0 8px rgba(255,210,100,.7); }
-/* the title's plaques, a size down to sit in a list */
+/* the title's plaques, a size down to sit in a list — and since build 215 the
+   menu's own plate (the pause menu these pages open from): a 45° corner with
+   its rim unbroken round it, where the carved walnut's stepped corner cut its
+   rim off; Load is the lit plate, an armed delete the red one, no nailheads */
 .screen.pg .plaques .abtn { min-height: 44px; padding: 0 16px; font-size: 14px; letter-spacing: 1.2px; display: inline-flex; align-items: center; justify-content: center; }
+.screen.pg .plaques .abtn::before { clip-path: var(--chamfer); border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(0deg, rgba(0,0,0,0.28), rgba(0,0,0,0) 8px) border-box,
+    linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%) border-box; filter: drop-shadow(0 2px 0 rgba(10,7,3,0.5)); }
+.screen.pg .plaques .abtn::after { display: none; }
+.screen.pg .plaques .abtn.gold::before { background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit); box-shadow: none; }
+.screen.pg .plaques .abtn.gold { color: #fff3c8; }
+.screen.pg .plaques .abtn.danger::before { background: var(--plate-face-red); border-image-source: var(--plate-rim-red); box-shadow: none; }
+.screen.pg .plaques .abtn:active:not(.cant)::before, .screen.pg .plaques .abtn.gold:active:not(.cant)::before { box-shadow: none; filter: none; }
+.screen.pg .plaques .abtn:active:not(.cant) { transform: translateY(2px); filter: brightness(0.88); }
+.screen.pg .plaques .abtn.cant::before { box-shadow: none; filter: none; }
 .screen.pg .plaques .abtn .blab { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .screen.pg .pgIc { width: 20px; height: 20px; flex: 0 0 auto; filter: drop-shadow(0 1px 0 rgba(0,0,0,0.6)); }
 .screen.pg .pgArr { width: 7px; height: 10px; flex: 0 0 auto; }

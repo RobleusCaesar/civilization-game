@@ -666,9 +666,12 @@ SettingsPage.CSS = `
 .sxDoorDot { position: absolute; z-index: 2; top: 7px; right: 8px; width: 10px; height: 10px; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle at 35% 30%, #ff8a6e, #e2412b 60%, #a8220f); box-shadow: 0 0 0 2px #1d1007, 0 0 8px rgba(255,90,60,0.75); }
 
-#scrSetx { --chamfer: polygon(0 5px, 3px 5px, 3px 3px, 5px 3px, 5px 0, calc(100% - 5px) 0, calc(100% - 5px) 3px, calc(100% - 3px) 3px,
-    calc(100% - 3px) 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 3px) calc(100% - 5px), calc(100% - 3px) calc(100% - 3px),
-    calc(100% - 5px) calc(100% - 3px), calc(100% - 5px) 100%, 5px 100%, 5px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 5px), 0 calc(100% - 5px));
+/* THE PLATE IS CLOSED (build 215, the HUD's own: index.html --hud-chamfer /
+   --plate-rim): a 4px 45° corner, and the rim a nine-slice vector that runs
+   unbroken round it — the old inset box-shadows were cut off by the stepped
+   corner and left a gap ("connect all the corners"). A plate's face is its
+   background, laid border-box under the rim. */
+#scrSetx { --chamfer: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
   --gold: #e8c15a; --rim: #d4a540; --ink: #f3e2b4; --txt: #e8dcbd; --dim: #ab9c7e; --fc: rgba(214,170,74,0.6); --fc2: rgba(214,170,74,0.16);
   background: none; color: var(--txt); font-family: var(--menufont); align-items: center; }
 #scrSetx .sxShade { position: absolute; inset: 0; pointer-events: none;
@@ -679,8 +682,8 @@ SettingsPage.CSS = `
   padding: calc(var(--safe-top) + 10px) 14px 10px; }
 #scrSetx .sxBack { position: relative; isolation: isolate; width: 46px; height: 44px; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: pointer;
   color: #f1d17a; display: flex; align-items: center; justify-content: center; -webkit-appearance: none; appearance: none; }
-#scrSetx .sxBack::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#3b3020, #241c11); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.6), inset 0 10px 0 rgba(255,240,200,0.06); }
+#scrSetx .sxBack::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer); border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(#3b3020, #241c11) border-box; }
 #scrSetx .sxBack svg { width: 18px; height: 18px; filter: drop-shadow(0 1px 0 #000); }
 #scrSetx .sxBack:active { transform: translateY(2px); }
 #scrSetx .sxGear { width: 38px; height: 38px; flex: 0 0 auto; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.7)); }
@@ -710,14 +713,14 @@ SettingsPage.CSS = `
 #scrSetx .sxTab { position: relative; isolation: isolate; flex: 1 1 0; min-width: 0; height: 62px; padding: 6px 2px 5px; border: 0; background: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #d9caa6;
   font: 700 clamp(8.5px, 2.4vw, 10px)/1 var(--menufont); letter-spacing: 0; text-transform: uppercase; -webkit-appearance: none; appearance: none; }
-#scrSetx .sxTab::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#33281a, #231a0f); box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.3), inset 0 10px 0 rgba(255,240,200,0.04), inset 0 -8px 0 rgba(0,0,0,0.25); }
+#scrSetx .sxTab::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer); border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.04), rgba(255,240,200,0) 10px) border-box, linear-gradient(0deg, rgba(0,0,0,0.25), rgba(0,0,0,0) 8px) border-box,
+    linear-gradient(#33281a, #231a0f) border-box; }
 #scrSetx .sxTab img { width: 28px; height: 28px; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)) saturate(0.8) brightness(0.86); }
 #scrSetx .sxTab .sxTn, #scrSetx .sxTab .sxTs { white-space: nowrap; text-shadow: 0 1px 0 #000; }
 #scrSetx .sxTab .sxTs { display: none; }
 #scrSetx .sxTab.on { color: #fff0bf; }
-#scrSetx .sxTab.on::before { background: linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
-  box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 10px 0 rgba(255,236,170,0.12), inset 0 -8px 0 rgba(0,0,0,0.25); }
+#scrSetx .sxTab.on::before { background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit); }
 #scrSetx .sxTab.on img { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)) drop-shadow(0 0 6px rgba(255,210,110,0.45)); }
 #scrSetx .sxTab:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 #scrSetx .sxDot { display: none; position: absolute; top: 6px; right: 7px; width: 9px; height: 9px; border-radius: 50%; background: #e2412b;
@@ -732,12 +735,11 @@ SettingsPage.CSS = `
 #scrSetx .sxGame .sxCard h3 + .sxGRow { margin-top: 10px; }
 #scrSetx .sxGame .sxBtn { flex: 1 1 0; min-width: 0; height: 48px; padding: 0 10px; font-size: 14px; letter-spacing: 1.6px; }
 #scrSetx .sxGame .sxGo { height: 60px; font-size: 19px; letter-spacing: 4px; color: #fff3c8; }
-#scrSetx .sxGame .sxGo::before { background: radial-gradient(ellipse 70% 80% at 50% 30%, rgba(255,214,120,.22), rgba(0,0,0,0) 70%), linear-gradient(#6a4f22 0%, #4a3515 55%, #3a280f 100%);
-  box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420, inset 0 12px 0 rgba(255,236,170,0.12), inset 0 -10px 0 rgba(0,0,0,0.25); }
+#scrSetx .sxGame .sxGo::before { background: radial-gradient(ellipse 70% 80% at 50% 30%, rgba(255,214,120,.22), rgba(0,0,0,0) 70%) border-box, var(--plate-face-lit);
+  border-image-source: var(--plate-rim-lit); }
 #scrSetx .sxGame .sxQuiet { height: 44px; font-size: 12.5px; color: #d9caa6; }
 #scrSetx .sxGame .sxBtn.danger { color: #ffe3d6; }
-#scrSetx .sxGame .sxBtn.danger::before { background: linear-gradient(#8a2c1c 0%, #6b1f13 55%, #561810 100%);
-  box-shadow: inset 0 0 0 2px #1d0804, inset 0 0 0 3px #ffb08a, inset 0 10px 0 rgba(255,200,170,0.12), inset 0 -8px 0 rgba(0,0,0,0.3); }
+#scrSetx .sxGame .sxBtn.danger::before { background: var(--plate-face-red); border-image-source: var(--plate-rim-red); }
 #scrSetx .sxGame .sxSaved { text-align: center; margin-top: 12px; }
 /* a narrow phone keeps every plate's words on one line */
 @media (max-width: 359px) {
@@ -798,13 +800,17 @@ SettingsPage.CSS = `
 #scrSetx .sxVol:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 #scrSetx .sxPct { flex: 0 0 auto; min-width: 58px; height: 30px; display: flex; align-items: center; justify-content: center;
   font: 700 13px/1 var(--menufont); color: var(--ink); font-variant-numeric: tabular-nums; background: rgba(8,6,3,0.7);
-  box-shadow: inset 0 0 0 1px rgba(214,170,74,0.4); clip-path: var(--chamfer); }
+  position: relative; clip-path: var(--chamfer); }
+/* a small chip's closed rim rides over it (the inset line was cut off at the corner) */
+#scrSetx .sxPct::after, #scrSetx .sxSeg::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  border: 8px solid transparent; border-image: var(--plate-rim-line) 32 / 8px stretch; }
+#scrSetx .sxSeg::after { border-image-source: var(--plate-rim-thin); }
 #scrSetx .sxAud.muted .sxVol { opacity: 0.5; }
 #scrSetx .sxAud.muted .sxPct { color: #8f8167; }
 
 /* the cadence: ONE small segmented bar (the old one was four 54px plaques) */
-#scrSetx .sxSeg { display: flex; width: 100%; max-width: 300px; height: 32px; margin: 2px 0 2px; clip-path: var(--chamfer);
-  background: #120d07; box-shadow: inset 0 0 0 1px #050302, inset 0 0 0 2px rgba(214,170,74,0.45); padding: 2px; gap: 2px; }
+#scrSetx .sxSeg { position: relative; display: flex; width: 100%; max-width: 300px; height: 32px; margin: 2px 0 2px; clip-path: var(--chamfer);
+  background: #120d07; padding: 2px; gap: 2px; }
 #scrSetx .sxSeg button { flex: 1 1 0; min-width: 0; height: 100%; border: 0; padding: 0 4px; cursor: pointer; white-space: nowrap;
   background: linear-gradient(#2c2216, #1f170e); color: #cdbd99; font: 700 11.5px/1 var(--menufont); letter-spacing: 0.6px; text-transform: uppercase;
   -webkit-appearance: none; appearance: none; }
@@ -816,9 +822,9 @@ SettingsPage.CSS = `
 #scrSetx .sxBtn, #scrSetx .sxSend { position: relative; isolation: isolate; flex: 0 0 auto; border: 0; background: none; cursor: pointer;
   -webkit-appearance: none; appearance: none; text-transform: uppercase; font-family: var(--menufont); }
 #scrSetx .sxBtn { height: 38px; padding: 0 16px; color: #f4e8cc; font-size: 12.5px; font-weight: 700; letter-spacing: 1.4px; text-shadow: 0 1px 0 rgba(0,0,0,0.85); }
-#scrSetx .sxBtn::before, #scrSetx .sxSend::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer);
-  background: linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%);
-  box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.48), inset 0 10px 0 rgba(255,240,200,0.06), inset 0 -8px 0 rgba(0,0,0,0.28); }
+#scrSetx .sxBtn::before, #scrSetx .sxSend::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer); border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(rgba(255,240,200,0.06), rgba(255,240,200,0) 10px) border-box, linear-gradient(0deg, rgba(0,0,0,0.28), rgba(0,0,0,0) 8px) border-box,
+    linear-gradient(#3b3020 0%, #2c2316 50%, #241c11 100%) border-box; }
 #scrSetx .sxBtn:active, #scrSetx .sxSend:active { transform: translateY(2px); filter: brightness(0.9); }
 
 /* folds */
@@ -839,12 +845,11 @@ SettingsPage.CSS = `
 #scrSetx .sxKind { position: relative; isolation: isolate; min-width: 0; height: 58px; padding: 6px 2px; border: 0; background: none; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #d9caa6;
   font: 700 10.5px/1.05 var(--menufont); letter-spacing: 0.4px; text-transform: uppercase; text-align: center; -webkit-appearance: none; appearance: none; }
-#scrSetx .sxKind::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer); background: linear-gradient(#30261a, #20180e);
-  box-shadow: inset 0 0 0 2px #120c05, inset 0 0 0 3px rgba(214,170,74,0.26); }
+#scrSetx .sxKind::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--chamfer); border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; box-shadow: none;
+  background: linear-gradient(#30261a, #20180e) border-box; }
 #scrSetx .sxKind img { width: 21px; height: 21px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.7)); }
 #scrSetx .sxKind.on { color: #fff0bf; }
-#scrSetx .sxKind.on::before { background: linear-gradient(#5d451e, #3c2a10);
-  box-shadow: inset 0 0 0 2px #1a1005, inset 0 0 0 3px #f2cf6c, inset 0 0 0 4px #8a6420; }
+#scrSetx .sxKind.on::before { background: linear-gradient(#5d451e, #3c2a10) border-box; border-image-source: var(--plate-rim-lit); }
 #scrSetx .sxLbl { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 6px; font: 700 12px/1 var(--menufont); letter-spacing: 1.6px;
   text-transform: uppercase; color: #e8d39b; }
 #scrSetx .sxLbl em { font: italic 600 11px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; text-transform: none; color: #8f8167; }
@@ -872,9 +877,9 @@ SettingsPage.CSS = `
   -webkit-user-select: text; user-select: text; touch-action: pan-y; }
 #scrSetx .sxSend { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; min-height: 54px; margin-top: 16px;
   color: #2b1906; font-size: 16px; font-weight: 700; letter-spacing: 2.4px; text-shadow: 0 1px 0 rgba(255,240,190,0.55); }
-#scrSetx .sxSend::before { background: linear-gradient(#f0cd6e 0%, #d7a542 46%, #b8862c 54%, #93661c 100%);
-  box-shadow: inset 0 0 0 2px #2a1906, inset 0 0 0 3px #fff0b8, inset 0 0 0 5px #b8862a, inset 0 0 0 6px #4a3008,
-    inset 0 12px 0 rgba(255,250,220,0.22), inset 0 -10px 0 rgba(60,30,0,0.22); filter: drop-shadow(0 3px 0 rgba(0,0,0,0.5)); }
+#scrSetx .sxSend::before { background: linear-gradient(rgba(255,250,220,0.22), rgba(255,250,220,0) 12px) border-box, linear-gradient(0deg, rgba(60,30,0,0.22), rgba(60,30,0,0) 10px) border-box,
+    linear-gradient(#f0cd6e 0%, #d7a542 46%, #b8862c 54%, #93661c 100%) border-box;
+  border-image-source: var(--plate-rim-gold); filter: drop-shadow(0 3px 0 rgba(0,0,0,0.5)); }
 #scrSetx .sxSend.busy { animation: btnBusy 1s ease-in-out infinite; pointer-events: none; }
 #scrSetx .sxDia { width: 7px; height: 7px; background: currentColor; opacity: 0.75; transform: rotate(45deg); }
 #scrSetx .sxStatus { min-height: 18px; margin: 10px 0 0; text-align: center; font: 600 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--dim); }

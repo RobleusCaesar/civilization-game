@@ -114,6 +114,51 @@ const UI = {
   },
   MENU_ICON_PX: 192,
 
+  /* THE BUILD MENU WEARS ITS OWN PICTURES (build 215 — the operator: "create a
+     stylized image for each of the buildings… doesn't have to be the actual
+     image that is built in the game, we want it to look close. We don't want
+     to bait and switch the player… 25% more stylized, 25% nicer"). Each card
+     shows a drawn icon of its building standing on a small island of its own
+     ground (assets/ui/build/{key}.png, PixelLab, each made FROM that
+     building's own art); the road's and the wall's follow their tier as the
+     cards always have ({key}-l{n}.png), the Wonder's its run's monument
+     (wonder-{monument}.png). They are fetched a beat after a real world opens
+     (Screens.show('playing') → wantMenuArt — never at boot, never for the
+     title's demo), at low priority, and painted by the same idempotent
+     iconInto. A card whose picture has not landed, or 404s, shows the
+     building's live art as before; the panel, the placement ghost and the
+     map always draw the live art (tests/art-pipeline.mjs §5b). Redraw one
+     under its name and step MENU_ART_V. */
+  MENU_ART_DIR: 'assets/ui/build/',
+  MENU_ART_V: 1,
+  MENU_ART_TIERS: { road: 3, wall: 3 },
+  menuArt: {},      // name → the decoded picture; null while on the wire, false once it failed
+  menuArtName(key) {
+    if (key === 'wonder') return window.S && S.wonder ? 'wonder-' + S.wonder : null;
+    const n = this.MENU_ART_TIERS[key];
+    return n ? key + '-l' + Math.max(1, Math.min(n, this.menuIconLevel(key))) : key;
+  },
+  wantMenuArt() {
+    const names = [];
+    for (const key of this.MENU_KEYS) {
+      const d = CFG.BUILDINGS[key];
+      if (!d || d.noMenu) continue;
+      if (key === 'wonder') { if (this.wonderOffered() && window.S && S.wonder) names.push('wonder-' + S.wonder); continue; }
+      const n = this.MENU_ART_TIERS[key];
+      if (n) { for (let i = 1; i <= n; i++) names.push(key + '-l' + i); } else names.push(key);
+    }
+    for (const nm of names) {
+      if (this.menuArt[nm] !== undefined) continue;   // asked already: on the wire, landed or failed
+      this.menuArt[nm] = null;
+      const img = new Image();
+      img.decoding = 'async';
+      try { img.fetchPriority = 'low'; } catch (e) {}
+      img.onload = () => { img._cfArt = true; this.menuArt[nm] = img; try { this.refreshMenu(); } catch (e) {} };
+      img.onerror = () => { this.menuArt[nm] = false; };
+      img.src = this.MENU_ART_DIR + nm + '.png?v=' + this.MENU_ART_V;
+    }
+  },
+
   init() {
     /* desktop parity for placement mode: Esc = the ✗ (discard the ghost,
        menu back with the choice intact), Enter = the ✓. Installed ONCE, for
@@ -264,6 +309,8 @@ const UI = {
      installs hand-authored PNGs — so new art lands here automatically.
      The wonder is the one key whose art is rolled per run. */
   menuIconSprite(key) {
+    const nm = this.menuArtName(key), own = nm && this.menuArt[nm];
+    if (own) return own;   // the build menu's own drawn picture (MENU_ART_DIR), once it has landed
     if (key === 'wonder') return (Sprites.building.wonder || [])[0];
     const fam = Sprites.building[key] || [];
     return fam[Math.min(fam.length, this.menuIconLevel(key)) - 1];
@@ -3014,7 +3061,9 @@ const UI = {
     if (t.dataset.mode === mode) return;
     t.dataset.mode = mode;
     if (mode === 'closed') {
-      t.innerHTML = `<img class="bmIc" src="${this.HUD_ART}build.png?v=1" alt="" draggable="false"><span>Build</span>`;
+      // the medallion on its light, and the build panel's banner across its foot (index.html)
+      t.innerHTML = `<i class="bmGlow" aria-hidden="true"></i><img class="bmMed" src="${this.HUD_ART}build-medal.png?v=1" alt="" draggable="false">` +
+        `<span class="bmRib">${this.bannerSvg(88, 26, 'bmrib')}<b>Build</b></span>`;
       t.setAttribute('aria-label', 'Build'); t.title = 'Build (B)';
     } else if (mode === 'open') {
       t.textContent = '✕';

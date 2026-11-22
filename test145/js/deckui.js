@@ -544,9 +544,19 @@ const DeckUI = {
 
      A FULL DECK IS 36 CARDS IN ONE ROW (playtest g2: about nine swipes on a
      390px phone to reach the bronze ones), so the sheet's head carries the
-     tiers as gems — one per tier held, in the row's order, with its count —
-     and a tap on one jumps the row to that tier (jumpTier); the gem of the
-     tier in view is lit as the row moves (_litTier).
+     tiers — and a tap on one jumps the row to that tier (jumpTier); the tab
+     of the tier in view is lit as the row moves (_litTier).
+
+     THE TIERS ARE TABS, NAMED, ACROSS THE WHOLE SHEET (build 215 — the
+     operator, on build 214's gems huddled at the right: "I just don't like
+     the UI of clicking the different colors for the different card groups
+     plus it leaves a bunch of excess space on the left-hand side… a design
+     update that helps you navigate the card menu"): all five tiers, highest
+     first, each the HUD's plate with its gem, its count and its NAME in its
+     own colour; one the deck holds none of sits dim and cannot be tapped,
+     so the ladder reads the same every time. The tab says which tier is in
+     view, so the row carries no heading of its own: a thin rule parts one
+     tier's cards from the next, and the sheet is a line shorter for it.
 
      AND A FACE IS BUILT ONCE (playtest g3: every open rebuilt all 36 faces
      synchronously, 55-120ms on a desktop): each cell is kept under the card
@@ -580,32 +590,38 @@ const DeckUI = {
     const keep = {};
     for (const t of tiers) {
       const mine = owned.filter(o => o.card.tier === t.k);
-      if (!mine.length) continue;
+      if (!mine.length) { s.tiers.appendChild(this._tierTab(t, 0)); continue; }
       const g = document.createElement('div');
       g.className = 'dkGroup';
       g.dataset.tier = t.k;
+      g.setAttribute('role', 'group');
+      g.setAttribute('aria-label', t.name);
       g.style.setProperty('--tc', t.col);
-      g.innerHTML = `<b class="dkGroupHd">${t.name}</b><div class="dkCards"></div>`;
+      g.innerHTML = '<div class="dkCards"></div>';
       const cards = g.querySelector('.dkCards');
       for (const o of mine) { cards.appendChild(this._cell(o, w)); keep[o.card.id] = 1; }
       s.row.appendChild(g);
-      // the tier's gem in the head, with how many of the tier are held
-      const held = mine.reduce((a, o) => a + o.n, 0);
-      const tb = document.createElement('button');
-      tb.type = 'button';
-      tb.className = 'dkTier';
-      tb.dataset.tier = t.k;
-      tb.setAttribute('role', 'tab');
-      tb.setAttribute('aria-label', `${t.name}: ${held} ${held === 1 ? 'card' : 'cards'}`);
-      tb.style.setProperty('--tc', t.col);
-      tb.innerHTML = `${this.GEM_SVG}<b>${held}</b>`;
-      s.tiers.appendChild(tb);
+      // the tier's tab in the head, with how many of the tier are held
+      s.tiers.appendChild(this._tierTab(t, mine.reduce((a, o) => a + o.n, 0)));
     }
     // a card no longer held lets its cell go
     for (const id in this._cells) if (!keep[id]) delete this._cells[id];
-    s.hint.textContent = 'Tap a card to look closer';
+    s.hint.textContent = '';
     // read on the next frame: a layout forced here would be paid in the tap
     requestAnimationFrame(() => this._litTier());
+  },
+  // one tier's tab: its gem, its count and its name; none held, it sits dim
+  _tierTab(t, held) {
+    const tb = document.createElement('button');
+    tb.type = 'button';
+    tb.className = 'dkTier' + (held ? '' : ' none');
+    tb.dataset.tier = t.k;
+    tb.setAttribute('role', 'tab');
+    tb.setAttribute('aria-label', `${t.name}: ${held} ${held === 1 ? 'card' : 'cards'}`);
+    if (!held) tb.disabled = true;
+    tb.style.setProperty('--tc', t.col);
+    tb.innerHTML = `${this.GEM_SVG}<b>${held}</b><span class="dkTn">${t.name}</span>`;
+    return tb;
   },
   /* a tier's gem: a faceted diamond cut in the tier's colour (currentColor),
      drawn smooth — chrome, never stepped pixels — its facets lit and shaded
@@ -2156,30 +2172,57 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkSheet .dkGrab { touch-action: none; cursor: grab; }
 #dkSheet .dkGrip { display: block; width: 46px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: #6e5024; }
 #dkSheet .dkHead { display: flex; align-items: center; gap: 10px; padding: 0 6px 0 16px; min-height: 46px; }
+/* THE FRAMED SHEET (build 215): the grip it never showed takes no room, and
+   the head is the tier tabs alone, under the banner's foot */
+#dkSheet .dkPanel:has(.dkBanner) .dkGrip { display: none; }
+#dkSheet .dkPanel:has(.dkBanner) .dkHead { display: block; min-height: 0; padding: 13px 10px 0; }
 #dkSheet .dkTitle { font-family: var(--menufont); font-weight: 700; font-size: 17px; letter-spacing: 1.6px; text-transform: uppercase;
   color: #f2e6cd; text-shadow: 0 2px 0 rgba(20,12,4,.85); }
 #dkSheet .dkCount { color: var(--dim); font-size: 12px; font-weight: 700; }
 #dkSheet .dkClose { margin-left: 0; width: 46px; height: 46px; font-size: 16px; flex: 0 0 auto; }
-/* the tiers as gems: a tap jumps the row to that tier (DeckUI.jumpTier) */
+/* THE TIERS ARE TABS ACROSS THE SHEET (DeckUI._tierTab, jumpTier): the
+   HUD's plate each (its closed rim, its quiet face; the tier in view lit),
+   the gem and the count over the tier's NAME in its own colour. A tab is as
+   wide as its name needs and the rest share the width alike, so the strip
+   runs edge to edge with nothing left over. A desktop sets each on one line. */
 #dkSheet .dkTitle { white-space: nowrap; flex: 0 0 auto; }
-#dkSheet .dkTiers { margin-left: auto; display: flex; gap: 1px; flex: 0 1 auto; min-width: 0; }
-#dkSheet .dkTier { position: relative; display: inline-flex; align-items: center; gap: 3px; height: 34px; min-width: 0; padding: 0 4px;
-  border: 0; border-radius: 6px; background: none; color: var(--tc); cursor: pointer;
-  font: 800 11.5px/1 -apple-system, "Segoe UI", Roboto, sans-serif; }
-#dkSheet .dkTier::after { content: ''; position: absolute; left: 0; right: 0; top: -5px; bottom: -5px; }
-#dkSheet .dkTier b { color: #f3e2b4; text-shadow: 0 1px 0 #000; }
-#dkSheet .dkTier.on { background: rgba(0,0,0,.38); box-shadow: inset 0 -2px 0 var(--tc); }
+#dkSheet .dkCount { display: none; }
+#dkSheet .dkTiers { display: flex; gap: 4px; max-width: 680px; margin: 0 auto; }
+#dkSheet .dkTier { position: relative; isolation: isolate; flex: 1 1 0; min-width: max-content; height: 44px; padding: 4px 6px;
+  display: grid; grid-template-columns: auto auto; grid-template-rows: 18px 12px; justify-content: center; align-content: center;
+  column-gap: 4px; row-gap: 2px; border: 0; border-radius: 0; background: none; color: var(--tc); cursor: pointer; -webkit-appearance: none; appearance: none; }
+#dkSheet .dkTier::before { content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
+  border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch; background: var(--plate-face); }
+#dkSheet .dkTier.on::before { background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit); }
+#dkSheet .dkTier:active:not(:disabled) { transform: translateY(1px); }
+#dkSheet .dkTier .dkGem { width: 14px; height: 14px; align-self: center; justify-self: end; }
+#dkSheet .dkTier b { justify-self: start; font: 800 13px/18px -apple-system, "Segoe UI", Roboto, sans-serif; color: #f3e2b4; text-shadow: 0 1px 0 #000;
+  font-variant-numeric: tabular-nums; }
+#dkSheet .dkTier .dkTn { grid-column: 1 / -1; text-align: center; white-space: nowrap; font: 700 9px/12px var(--menufont); letter-spacing: .2px;
+  text-transform: uppercase; color: var(--tc); text-shadow: 0 1px 0 #000; }
+#dkSheet .dkTier.on b { color: #fff3c8; }
+#dkSheet .dkTier.on .dkTn { filter: brightness(1.18); }
+#dkSheet .dkTier.none { opacity: .4; cursor: default; }
+#dkSheet .dkTier:focus-visible { outline: 2px solid var(--gold, #e8c15a); outline-offset: 1px; }
 #dkSheet .dkGem { width: 14px; height: 14px; display: block; flex: 0 0 auto; }
-@media (max-width: 430px) { #dkSheet .dkCount { display: none; } #dkSheet .dkTitle { font-size: 15px; letter-spacing: 1.1px; } }
-/* the narrowest phones give the head to the gems: the sheet is the deck either way */
-@media (max-width: 359px) { #dkSheet .dkTitle { display: none; } }
+@media (max-width: 359px) {
+  #dkSheet .dkPanel:has(.dkBanner) .dkHead { padding-left: 8px; padding-right: 8px; }
+  #dkSheet .dkTiers { gap: 3px; }
+  #dkSheet .dkTier { padding: 4px 4px; }
+  #dkSheet .dkTier .dkTn { font-size: 8px; letter-spacing: 0; }
+}
+@media (min-width: 900px) {
+  #dkSheet .dkTier { grid-template-columns: auto auto auto; grid-template-rows: 1fr; align-items: center; column-gap: 7px; height: 42px; padding: 0 16px; }
+  #dkSheet .dkTier .dkTn { grid-column: auto; order: 1; font-size: 11px; letter-spacing: 1px; }
+  #dkSheet .dkTier b { order: 2; }
+}
 #dkSheet .dkRow { display: flex; gap: 22px; overflow-x: auto; overflow-y: hidden; touch-action: pan-x; overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch; padding: 2px 16px 4px; scroll-padding: 0 16px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 #dkSheet .dkRow::before, #dkSheet .dkRow::after { content: ''; margin: auto; }
-#dkSheet .dkGroup { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
-#dkSheet .dkGroupHd { display: flex; align-items: center; gap: 7px; height: 18px; color: var(--tc);
-  font: 700 11px var(--menufont); letter-spacing: 1.4px; text-transform: uppercase; text-shadow: 0 1px 0 #000; }
-#dkSheet .dkGroupHd::before { content: ''; width: 7px; height: 7px; background: var(--tc); transform: rotate(45deg); }
+#dkSheet .dkGroup { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; }
+/* a thin rule between one tier's cards and the next (the tab names the tier) */
+#dkSheet .dkGroup + .dkGroup::before { content: ''; position: absolute; left: -12px; top: 14px; bottom: 34px; width: 1px; pointer-events: none;
+  background: linear-gradient(rgba(214,170,74,0), rgba(214,170,74,.5) 18%, rgba(214,170,74,.5) 82%, rgba(214,170,74,0)); }
 #dkSheet .dkCards { display: flex; gap: 10px; }
 #dkSheet .dkCell { flex: 0 0 auto; width: var(--cw); display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 10px 0 0; border: 0; background: none; color: inherit; scroll-snap-align: start; cursor: pointer; }
@@ -2199,6 +2242,10 @@ body.dk-aiming #bottombar { visibility: hidden; }
    still flies back into its own slot, and the row is back the moment it lands */
 #dkSheet.dkLifted .dkPanel > * { visibility: hidden; }
 #dkSheet .dkHint { text-align: center; color: var(--dim); font-size: 11px; margin: 4px 16px 0; min-height: 14px; }
+/* the framed sheet says nothing under its cards (a tap on one is plain), and
+   its foot is the cards' own captions: the bar's line of hint is gone */
+#dkSheet .dkPanel:has(.dkBanner) .dkHint { display: none; }
+#dkSheet .dkPanel:has(.dkBanner) { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 6px); }
 #dkSheet .dkEmpty { margin: 6px auto 10px; max-width: 360px; display: flex; flex-direction: column; align-items: center; gap: 8px;
   text-align: center; color: var(--dim); font-size: 13px; line-height: 1.45; padding: 0 8px; }
 #dkSheet .dkEmpty b { font-family: var(--menufont); color: #f2e6cd; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; }
