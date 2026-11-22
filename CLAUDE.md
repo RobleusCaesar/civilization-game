@@ -5881,7 +5881,7 @@ shake, the impact and the birds), since the full burst hid the roof going.
 held edit (`R.groundHeld`) — waits until the fall is down and
 `_releaseGround` paints it; without it a pale V4 scar spread under a hall
 still standing in its flames, and the cache's ruin showed through the caved
-roof. **THE DUSK COVERS THE WHOLE OPEN MAP** (`R.openBand`, build 173 — operator, with a screenshot: the defeat's dusk stopped a panel's height above a folded build menu): the band every act's dark is fitted to is MEASURED off `#topbar` and `#bottombar` as they stand, never `bottomReserve` (the OPEN menu's height, learned once); a hidden bar falls back to the reserves. **THE CURTAIN WAITS FOR IT**: a fall the player SEES (`R.hallFall`) is
+roof. **THE DUSK COVERS THE WHOLE OPEN MAP** (`R.openBand`, build 173 — operator, with a screenshot: the defeat's dusk stopped a panel's height above a folded build menu): the band every act's dark is fitted to is MEASURED off `#topbar` and `#bottombar` as they stand, never `bottomReserve` (the OPEN menu's height, learned once); a hidden bar falls back to the reserves. It reads the bars' bounding rects, never `offsetHeight`, which rounds to a whole CSS pixel: the cinema cut's bars ask it too (`armyFx.frame`), since build 214's 168.75px build panel left the lower bar half a device pixel short (tests/deck-army.mjs `theHeldBeatIsACinemaCut`). **THE CURTAIN WAITS FOR IT**: a fall the player SEES (`R.hallFall`) is
 the run's last beat — the camera settles it a little above the middle, the
 edges darken, "YOUR HALL HAS FALLEN" or "THE RIVAL'S HALL HAS FALLEN" goes up
 under it (`R.actTitle`'s `y`), and `G.end` holds the end screen `holdMs`

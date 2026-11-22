@@ -1155,6 +1155,15 @@ Deck.armyFx = {
   frame() {
     const now = performance.now();
     if (this._frame && now - this._frame.at < 500) return this._frame;
+    /* the band every act's dark is fitted to (R.openBand): the bars' own
+       edges as they stand, rounded in device pixels. offsetHeight rounds a
+       bar to a whole CSS pixel, and the build panel of build 214 stands
+       168.75px tall: the lower bar ended half a device pixel short of it,
+       a row of map between the cut and the panel. */
+    if (R.openBand && R.cv) {
+      const b = R.openBand();
+      return (this._frame = { at: now, top: b.y0, bot: R.cv.height - b.y1 });
+    }
     const dpr = R.dpr || 1, tb = document.getElementById('topbar'), bb = document.getElementById('bottombar');
     const vis = el => el && el.offsetParent !== null ? el.offsetHeight : 0;
     return (this._frame = { at: now, top: (vis(tb) * dpr) || (R.topReserve || 0) * dpr, bot: (vis(bb) * dpr) || (R.bottomReserve || 0) * dpr });
