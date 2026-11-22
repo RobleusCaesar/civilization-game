@@ -46,7 +46,7 @@
       a plaque on a phone.
    7. THE PLAQUES BEHAVE: they are the settings page's plates (build 206 —
       the operator: "intuitive and clean… re-review the settings menu because
-      I really like that"), its stepped corner and thin gold line, no straps,
+      I really like that"), its cut corner and thin gold line, no straps,
       bosses or grain; New Game is the ONE lit plate (the settings page's
       chosen tab), a press sends a plate 2px down into its frame, Continue's
       "no saves yet" sits flat and stays legible, the pause menu's plaques
@@ -451,7 +451,7 @@ const nightReqs = reqs => reqs.filter(u => /assets\/ui\/title\//.test(u)).map(u 
     const kind = id => document.getElementById(id).dataset.t2;
     const c = document.getElementById('btnContinue');
     const shown = [...document.querySelectorAll('#scrTitle .tmenu .abtn')].filter(e => e.getBoundingClientRect().width > 0);
-    // every plate the settings page's: its stepped corner, its line(s), no straps, bosses or grain
+    // every plate the settings page's: its cut corner, its line(s), no straps, bosses or grain
     const plates = shown.map(e => {
       const f = e.querySelector(':scope > .t2f');
       // the corner: the HUD's 45° cut (build 215), the lines run round it unbroken

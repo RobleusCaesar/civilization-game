@@ -1183,7 +1183,8 @@ const endScreen = async (p) => {
    answer: the logo is the hero, the play button the strongest BUTTON, every
    menu one component. So BEGIN wears TitleScreen's 'lit' plate — the very
    plate New Game wears after the journey, the settings page's chosen tab:
-   its stepped corner, its bright gold line with a darker one inside it, no
+   its cut corner (build 215: a 45° cut its lines turn unbroken), its bright
+   gold line with a darker one inside it, no
    straps, bosses or grain — and it is the one lit plate on the title, the
    tallest and widest. Measured at six sizes: the name reads on the plate
    (4.5:1, the plate measured with the name hidden), the word and the name
@@ -1207,8 +1208,8 @@ const endScreen = async (p) => {
       const s = getComputedStyle(sm), f = btn.querySelector(':scope > .t2f');
       const shown = [...document.querySelectorAll('#scrTitle .tmenu .abtn')].filter(e => e.getBoundingClientRect().width > 0);
       return { kind: btn.dataset.t2 || '', newKind: TitleScreen.KIND.btnTitleNew,
-        frame: f ? { notch: !!f.querySelector('clipPath path[d^="M0,5H3V3H5V0"]'), gold: !!f.querySelector('rect[stroke="#f2cf6c"]'),
-          caps: f.querySelectorAll('circle').length } : null,
+        frame: f ? { notch: !!f.querySelector('clipPath path[d^="M0,4L4,0H"]'), gold: !!f.querySelector('[stroke="#f2cf6c"]'),
+          caps: f.querySelectorAll('circle, ellipse').length } : null,
         lit: shown.filter(e => e.dataset.t2 === 'lit').map(e => e.id),
         biggest: shown.every(e => e === btn || (e.offsetHeight < btn.offsetHeight && e.offsetWidth <= btn.offsetWidth)),
         b: box(btn), s: box(sm), l: box(lab), word: lab.textContent.trim(), fs: parseFloat(getComputedStyle(lab).fontSize),
