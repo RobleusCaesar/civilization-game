@@ -22,14 +22,15 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 216, date: '2026-11-23', title: 'A bigger, clearer look',
+    build: 217, date: '2026-11-23', title: 'A bigger, clearer look',
     items: [
-      'The bar across the top is bigger and easier to read, and every good wears its own drawn picture: meat for food, logs for wood, a block of stone, a gold coin and a pair of villagers for your people.',
-      'Build is now a big gold medallion at the bottom left of the map. It opens a framed build menu where every building has its own painted picture, and every card shows its price in the same pictures as the bar at the top, in red where you are short.',
+      'The bar across the top is one carved walnut panel in aged bronze, with no boxes in it. Every good wears its own drawn picture beside a larger total: meat for food, logs for wood, stone blocks, gold nuggets and a pair of villagers for your people.',
+      'The day has its own sun, and a moon by night, and the map, your cards and the menu are drawn pictures of their own.',
+      'Build is one bronze medallion with two crossed gold hammers at the bottom left of the map. It opens a framed build menu where every building has its own painted picture, and every card shows its price in the same pictures as the bar at the top, in red where you are short.',
       'Your cards open in the same carved frame, with a tab for each tier across the top that names it and jumps straight to its cards.',
       'The pause menu and the settings are one menu now. The gear at the top right pauses the game and opens on a Game tab with Resume, Save, Load, the Guide, the main menu and Resign, beside your settings.',
       'Every button and box has clean, unbroken corners, and the boxes are a little quieter so the map comes first.',
-      'Sound now lives on the General tab, the day shows a sun by day and a moon by night, and a saved army shows a helmet, a bow, a horse or a ship for what it mostly is.',
+      'Sound now lives on the General tab, and a saved army shows a helmet, a bow, a horse or a ship for what it mostly is.',
       'The gold sparkle when you select one of your people or train a new one is half as busy, outside the journey.',
       'Villagers standing on picked-bare soil stand on top of it again, instead of sinking into it up to the waist.',
     ],

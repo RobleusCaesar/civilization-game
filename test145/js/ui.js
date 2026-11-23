@@ -3061,9 +3061,8 @@ const UI = {
     if (t.dataset.mode === mode) return;
     t.dataset.mode = mode;
     if (mode === 'closed') {
-      // the medallion on its light, and the build panel's banner across its foot (index.html)
-      t.innerHTML = `<i class="bmGlow" aria-hidden="true"></i><img class="bmMed" src="${this.HUD_ART}build-medal.png?v=1" alt="" draggable="false">` +
-        `<span class="bmRib">${this.bannerSvg(88, 26, 'bmrib')}<b>Build</b></span>`;
+      // one cohesive medallion, BUILD on its own plaque (index.html, build 217)
+      t.innerHTML = `<img class="bmMed" src="${this.HUD_ART}build-medal.png?v=2" alt="" draggable="false"><span class="bmTx">Build</span>`;   // the word is the picture's; the text is for a reader
       t.setAttribute('aria-label', 'Build'); t.title = 'Build (B)';
     } else if (mode === 'open') {
       t.textContent = '✕';
@@ -4924,14 +4923,15 @@ const UI = {
   /* ---------------- top bar / periodic refresh ---------------- */
   /* A CHIP'S NUMBER FITS ITS CHIP (operator, build 154: "when resources get
      to higher numbers, thousands or tens of thousands we might run out of
-     space and have to start using decimals and 'k'"): exact to 9,999 — four
-     digits fit every phone — then 12.4k, 123k and 1.2M, never more than five
-     characters. Shortened DOWN, never up: 12,450 is 12.4k, because a store
-     that reads as 12.5k would promise a price it cannot pay. The chip's note
-     says the exact number (fmtFull). */
+     space and have to start using decimals and 'k'"): exact to 9,999 — with
+     its thousands comma since build 217, as the operator's mockup set it
+     ("1,954") — then 12.4k, 123k and 1.2M, never more than five characters.
+     Shortened DOWN, never up: 12,450 is 12.4k, because a store that reads as
+     12.5k would promise a price it cannot pay. The chip's note says the
+     exact number (fmtFull). */
   fmtRes(n) {
     n = Math.max(0, Math.floor(+n || 0));
-    if (n < 10000) return String(n);
+    if (n < 10000) return this.fmtFull(n);
     // whole-number division throughout, so a float never rounds a step up
     for (const [s, u] of [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']]) {
       if (n < s * 100) return (Math.floor(n / (s / 10)) / 10).toFixed(1).replace(/\.0$/, '') + u;   // 12.4k, 1.2M
@@ -5219,13 +5219,7 @@ const UI = {
        opens it, and it pauses the world while it is up (Screens.onPaused).
        The ⏸ that sat beside it is gone; Space still pauses under the veil. */
     document.getElementById('btnMenu').addEventListener('click', () => Screens.show('paused'));
-    // its gear is the settings page's own picture: the markup's ?v= is a
-    // first guess for the parse, CFG.ART_V the truth (an art bump restamps it)
-    const gear = document.querySelector('#btnMenu .hic');
-    if (gear && typeof CFG !== 'undefined' && CFG.ART_V) {
-      const want = 'assets/ui/settings/tab-general.png?v=' + CFG.ART_V;
-      if (gear.getAttribute('src') !== want) gear.setAttribute('src', want);
-    }
+    // its gear is the header's own picture (assets/ui/hud/gear.png, build 217)
     // the frame's corners and the BUILD banner (vectors, at the screen's own pixels)
     this.dressBottom();
   },
