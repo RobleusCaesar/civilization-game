@@ -203,7 +203,7 @@ const CardIntro = {
   PAGES: ['hello', 'earn', 'play', 'tiers', 'legends'],
   copy() {
     const f = this.facts();
-    const t = f.tiers, legend = t[4] || { name: 'Enlightenment', rarity: 'Legendary' };
+    const t = f.tiers, legend = t[4] || { name: 'Mythic', rarity: 'Legendary' };
     return {
       hello: {
         kick: 'New feature', title: 'Cards',
