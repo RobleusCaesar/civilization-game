@@ -322,7 +322,7 @@ node tests/chase-commit.mjs    # a hunter commits to its detour; no unit wedged 
 node tests/defend-hold.mjs     # Defend holds at the DEFENSES: tight ring, tower lanes, behind walls
 node tests/work-order.mjs      # wall/trench lines never box the worker in — far side of a choke first
 node tests/sapper-fees.mjs     # sapper services bill per tile, dearer by tier, exactly once, never into debt
-node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on drawn, numbered banners at the left of the top bar's second row
+node tests/army-groups.mjs     # dense 2-per-tile formations; three saved armies on drawn, numbered banners in the top bar's second row, between the day and the buttons, which never move for them
 node tests/boats-moat-scuttle.mjs # a moat is open water to hulls; Scuttle sinks a boat, frees its pop, refunds nothing
 node tests/army-strategies.mjs # the three assault doctrines (Siege/Chaos/Strike) — for the player AND the rival
 node tests/build-stages.mjs    # work sites show 3 staged looks at 1/3 intervals — DERIVED from the target art; a stage on the finished canvas takes the finished rect; the stations own upgrade-shaped sets
@@ -4756,9 +4756,11 @@ rest, and the NEXT save fills the gap; a banner whose last soldier falls
 vanishes on its own (`UI.tickArmies`, ~1s heartbeat from `UI.init`).
 **THE BANNERS RIDE THE TOP BAR** (operator, build 154: "move the Army 1, 2,
 and 3 icons to the left hand side of the second row… This keeps our game UI /
-screen as clean as possible"): `#armyBar` is the first thing in the top bar's
-second row (the cards' timers, the day, the map, the cards and the menu after
-it), where it stood on the map under the minimap. Each banner is a plate of
+screen as clean as possible"): `#armyBar` rides the top bar's second row,
+where it stood on the map under the minimap — since build 218 in its MIDDLE
+(`#hudMid`, with the cards' timers after it), between the day at the row's
+left and the map, the cards and the menu at its right, centred, so a banner
+coming or going moves neither (**THE ROW STANDS STILL**). Each banner is a plate of
 the row's own kind (`.iconbtn`, 44px tall as drawn) wearing the drawn picture
 of what the army MOSTLY is (build 214, `UI.armyKind` / `UI.armyIcon`,
 `assets/ui/hud/army-{foot,bow,horse,ship}.png`: a fleet a ship, else the most
@@ -7036,20 +7038,34 @@ must be), 44px tall, their picture, type and gaps stepped down by width in
 tiers MEASURED with the widest numbers the bar prints ("9,999", "99.9k",
 "64/60": tests/hud-info.mjs noChipSpillsOnAPhone — re-measure if a group
 changes); a total under 10,000 carries its thousands comma (`UI.fmtRes` →
-`fmtFull`, as the mockup sets it: "1,954"). The second row: the saved
-armies at its left, the running cards' timers, the DAY (a 34px sun by day,
-the moon by night — `#rDay.night`, read off `R.dayPhase` in `UI.refresh` —
-and "Day N" in the serif, 22px), then the map, the cards and the ONE menu
-(`assets/ui/hud/gear.png`) at its right, standalone pictures 44px square as
-drawn, so no invisible reach hangs round them. A held control, or the map
-while it is shown, lifts a restrained gold glow (a `drop-shadow`), never a
-frame. The cards' count is a dark oval in a gold ring in the serif. A
-crowded second row (saved armies or running cards, `:has()`) closes its
-gaps from 14px to 3px and its buttons step to 40 (≤400px) or 36 (≤370px)
-wide; when both want a phone's row the day drops its word ("☀ 12") so a
-chip and its count keep room (deck-ui `andTheBadgeIsWhole`; 320px still
-shows nothing rather than half a button). A desktop stands both rows on one
-line (56px, no seam). The cards' button is lifted over its row (`#deckBtn`
+`fmtFull`, as the mockup sets it: "1,954"). The second row: the DAY at its
+left (a 34px sun by day, the moon by night — `#rDay.night`, read off
+`R.dayPhase` in `UI.refresh` — and "Day N" in the serif, 22px), the map, the
+cards and the ONE menu (`assets/ui/hud/gear.png`, `#hudNav`) at its right,
+standalone pictures 44px square as drawn, so no invisible reach hangs round
+them, and BETWEEN them (`#hudMid`) the saved armies and the running cards'
+timers. A held control, or the map while it is shown, lifts a restrained
+gold glow (a `drop-shadow`), never a frame. The cards' count is a dark oval
+in a gold ring in the serif. **THE ROW STANDS STILL** (build 218 — the
+operator, with a phone shot of two armies shoving the day right: "We don't
+want to push the day to the right as you add armies… center the armies
+between the day and the map, cards and setting button. Things should look
+stable"): the day and the three buttons are the same size and in the same
+place whatever else is in the row (army-groups `andNothingElseInTheRowMoves`,
+deck-ui `andTheDayAndTheButtonsStandStill`); the row steps down BY ITS WIDTH
+alone (≤400px the day's type and the buttons' room, ≤382px buttons 40 wide,
+≤370px 37 wide and the day without its word), never by what it holds — the
+old crowded-row `:has()` rules are gone. The armies and the timers are
+centred in the room between (#hudMid's `::before` / `::after` grow, and take
+nothing when it is full), and what does not fit gives way THERE alone: the
+timers fold into a "+k" first (`DeckUI._fitChips`; `#dkTimers` shrinks 60
+times faster), then the banners close up (44px apart down to 32, 30 at
+≤382px). On a 390px phone that room holds three banners, or one banner and a
+chip with its count (deck-ui `andTheBadgeIsWhole`), and three banners leave
+the timers no room at all: they show nothing rather than half a button (the
+one case where a running card is not seen on a phone). A desktop stands both rows on one line
+(56px, no seam), the middle a fixed 196px so the day never slides there
+either. The cards' button is lifted over its row (`#deckBtn`
 z-index 1); since build 217 its count stands clear of the menu, and
 desktop-layout's control pulls the menu under it to prove the probe still
 sees a cut. `--hud-top` is the bar's height plus 6 (108 on a phone, 62 on a

@@ -283,16 +283,31 @@
     background: url("assets/ui/hud/day-sun.png?v=2") center / contain no-repeat; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
   #rDay.night::after { background-image: url("assets/ui/hud/day-moon.png?v=2"); background-size: 29px auto; }   /* the moon's own pixels: 89px across */
   #rDay .dW { white-space: pre; }
-  /* THE SAVED ARMIES RIDE THE SECOND ROW'S LEFT (operator, build 154: "move
-     the Army 1, 2, and 3 icons to the left hand side of the second row… This
-     keeps our game UI / screen as clean as possible"; tests/army-groups.mjs).
-     Each is a drawn picture of what the army mostly is — a helmet for foot, a
-     bow for the archers, a horse for the riders, a ship for a fleet
-     (UI.armyKind) — and its number on a gold boss. Empty, the strip takes no
-     room at all. */
-  #armyBar { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+  /* THE SECOND ROW STANDS STILL (operator, build 218, with a phone shot of
+     two saved armies shoving the day right: "We don't want to push the day to
+     the right as you add armies… center the armies between the day and the
+     map, cards and setting button. Things should look stable";
+     tests/army-groups.mjs andNothingElseInTheRowMoves). The day's sun stands
+     at the row's left and the map, the cards and the menu (#hudNav) at its
+     right, each the same size whatever else is in the row; the saved armies
+     and the running cards' timers ride between them (#hudMid), centred in
+     the room the two leave (its spacers grow; they take nothing when the
+     middle is full). What does not fit there gives way in the middle alone:
+     the timers fold into a "+k" first (DeckUI._fitChips), then the banners
+     close up, to 32px apart at the least. Each banner is a drawn picture of
+     what the army mostly is — a helmet for foot, a bow for the archers, a
+     horse for the riders, a ship for a fleet (UI.armyKind) — and its number
+     on a gold boss. */
+  #topbar .trow + .trow { gap: 6px; padding: 0 4px 0 6px; }
+  #hudMid { flex: 1 1 0; min-width: 0; height: 44px; display: flex; align-items: center; }
+  #hudMid::before, #hudMid::after { content: ''; flex: 1 1 0; min-width: 0; }
+  #hudNav { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+  #armyBar { display: flex; align-items: center; gap: 2px; flex: 0 1 auto; min-width: 0; }
   #armyBar:empty { display: none; }
-  #armyBar .aic { width: 30px; height: 30px; display: block; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
+  #topbar #armyBar .iconbtn { flex: 0 1 44px; min-width: 32px; }
+  #hudMid #dkTimers { flex-shrink: 60; }   /* the timers fold before a banner closes up */
+  #armyBar:not(:empty) + #dkTimers { margin-left: 4px; }
+  #armyBar .aic { width: 30px; height: 30px; display: block; flex: 0 0 auto; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
   #armyBar .armyN { position: absolute; right: 1px; bottom: 2px; z-index: 1; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
     border-radius: 8px; font: 700 12px/15px var(--numfont); text-align: center; color: #2b1906; pointer-events: none;
     background: radial-gradient(circle at 35% 30%, #fff3c8, #e2b24c 60%, #9c6f1f); box-shadow: 0 0 0 1.5px #1d1007; }
@@ -312,44 +327,30 @@
     filter: drop-shadow(0 0 4px rgba(244,196,96,.7)) drop-shadow(0 2px 1px rgba(0,0,0,.7));
   }
   #topbar .iconbtn:focus-visible, .res:focus-visible, #rDay:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
-  #mapBtn { margin-left: auto; }
-  #topbar .trow + .trow { gap: 14px; padding: 0 4px 0 6px; }
-  /* a crowded row (saved armies, running cards) closes its gaps up first */
-  #topbar .trow + .trow:has(> #armyBar:not(:empty)), #topbar .trow + .trow:has(> #dkTimers:not(:empty)) { gap: 3px; padding: 0 2px; }
-  #topbar .trow + .trow:has(> #armyBar:not(:empty)) #rDay, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) #rDay { padding: 0 4px 0 38px; }
-  #topbar .trow + .trow:has(> #armyBar:not(:empty)) #rDay::after, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) #rDay::after { left: 2px; width: 32px; height: 32px; margin-top: -16px; }
+  /* …and a narrower phone steps the row down BY ITS WIDTH, never by what is
+     in it: the day's type and sun, the buttons' width (still 44 tall) and
+     the room between them, so three banners stand between the day and the
+     buttons at 320 (tests/hud-info.mjs noTwoTopBarTargetsOverlap,
+     tests/deck-ui.mjs theRowFitsEveryWidth) */
   @media (max-width: 400px) {
-    #topbar .trow + .trow:has(> #armyBar:not(:empty)) .iconbtn, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) .iconbtn { width: 40px; }
-  }
-  /* …and on a narrow phone the second row makes room: the buttons step down
-     to 40, 37 and 36 wide (still 44 tall), so three banners, the running
-     cards' timers, the day and the three buttons fit at 320 (tests/hud-info.mjs
-     noTwoTopBarTargetsOverlap, tests/deck-ui.mjs theRowFitsEveryWidth) */
-  @media (max-width: 400px) {
-    #topbar .trow + .trow:not(:has(> #armyBar:not(:empty))):not(:has(> #dkTimers:not(:empty))) { gap: 12px; }
+    #hudNav { gap: 4px; }
     #rDay { font-size: 21px; padding-right: 6px; }
   }
   @media (max-width: 382px) {
-    #topbar .trow + .trow:not(:has(> #armyBar:not(:empty))):not(:has(> #dkTimers:not(:empty))) { gap: 4px; }
-    #topbar .trow + .trow .iconbtn { width: 40px; }
+    #topbar .trow + .trow { gap: 4px; }
+    #hudNav { gap: 2px; }
+    #hudNav .iconbtn { width: 40px; }
     #topbar .iconbtn .hic { height: 29px; }
     #armyBar .aic { width: 28px; height: 28px; }
+    #topbar #armyBar .iconbtn { min-width: 30px; }
     #rDay { font-size: 20px; padding-left: 40px; }
     #rDay::after { width: 31px; height: 31px; margin-top: -15.5px; }
   }
-  /* …and when the saved armies AND the running cards both want the row, the
-     day drops its word ("☀ 12"), so the cards' timers keep room for a chip and
-     its count (DeckUI._fitChips; tests/deck-ui.mjs andTheBadgeIsWhole) */
-  @media (max-width: 480px) {
-    #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay .dW { display: none; }
-    #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay { padding-right: 4px; }
-  }
   @media (max-width: 370px) {
-    #topbar .trow + .trow { gap: 2px; }
-    #topbar .trow + .trow .iconbtn { width: 37px; }
-    #topbar .trow + .trow:has(> #armyBar:not(:empty)) .iconbtn, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) .iconbtn { width: 36px; }
+    #topbar .trow + .trow { gap: 2px; padding: 0 2px 0 4px; }
+    #hudNav { gap: 0; }
+    #hudNav .iconbtn { width: 37px; }
     #topbar .iconbtn .hic { height: 28px; }
-    #armyBar .aic { width: 28px; height: 28px; }
     #rDay { padding: 0 4px 0 34px; font-size: 19px; }
     #rDay::after { left: 2px; width: 28px; height: 28px; margin-top: -14px; }
     #rDay .dW { display: none; }
@@ -1274,7 +1275,10 @@
     #topbar .trow:first-child { flex: 1 1 auto; min-width: 0; gap: 6px; }
     #topbar .trow + .trow { margin-top: 0; flex: 0 0 auto; gap: 10px; }
     #topbar .trow + .trow::before { display: none; }   /* side by side: no seam between them */
-    #mapBtn { margin-left: 6px; }
+    /* the armies' and the cards' room is a fixed width here too, so the day
+       never slides along the bar as they come and go */
+    #hudMid { flex: 0 0 196px; }
+    #hudNav { gap: 10px; }
     /* a desktop has the room for a map you can read */
     #mini { width: 148px; height: 148px; }
     #miniToggle { top: calc(var(--safe-top) + var(--hud-top) + 163px + var(--pro-map, 0px)); }
@@ -2052,8 +2056,11 @@
 <div id="topbar">
   <!-- THE HEADER (build 217, the operator's mockup): one walnut panel in aged
        bronze trim; every good its own drawn picture (assets/ui/hud — no emoji)
-       and its total, the second row the saved armies, the day's sun, the map,
-       the cards and the ONE menu (the pause menu and the settings are one page). -->
+       and its total; the second row the day's sun at its left, the map, the
+       cards and the ONE menu at its right, and between them (#hudMid) the
+       saved armies and the running cards, centred — so nothing that comes or
+       goes there moves the day or the buttons (build 218). The pause menu and
+       the settings are one page. -->
   <div class="trow">
     <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store. Tap to see what comes in and what is eaten a day."><img class="ric" data-ic="food" src="assets/ui/hud/res-food.png?v=3" alt="" draggable="false" decoding="async"><span id="rFood">0</span></span>
     <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><img class="ric" data-ic="wood" src="assets/ui/hud/res-wood.png?v=3" alt="" draggable="false" decoding="async"><span id="rWood">0</span></span>
@@ -2062,10 +2069,12 @@
     <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><img class="ric" data-ic="pop" src="assets/ui/hud/res-pop.png?v=3" alt="" draggable="false" decoding="async"><span id="rPop">0/0</span></span>
   </div>
   <div class="trow">
-    <div id="armyBar"></div>
     <span id="rDay" data-chip="day" role="button" tabindex="0" aria-label="Day" title="The day. Tap to see how long a day lasts.">Day 1</span>
-    <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><img class="hic" src="assets/ui/hud/map.png?v=2" alt="" draggable="false" decoding="async"></button>
-    <button class="iconbtn" id="btnMenu" type="button" title="Menu" aria-label="Menu"><img class="hic" src="assets/ui/hud/gear.png?v=1" alt="" draggable="false" decoding="async"></button>
+    <div id="hudMid"><div id="armyBar"></div></div>
+    <div id="hudNav">
+      <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><img class="hic" src="assets/ui/hud/map.png?v=2" alt="" draggable="false" decoding="async"></button>
+      <button class="iconbtn" id="btnMenu" type="button" title="Menu" aria-label="Menu"><img class="hic" src="assets/ui/hud/gear.png?v=1" alt="" draggable="false" decoding="async"></button>
+    </div>
   </div>
 </div>
 
@@ -2472,59 +2481,59 @@
 
 </div>
 
-<script src="js/feedback.js?v=217"></script>
-<script src="js/config.js?v=217"></script>
-<script src="js/audio.js?v=217"></script>
-<script src="js/config.supabase.js?v=217"></script>
-<script src="js/vendor/supabase.js?v=217"></script>
-<script src="js/backend.js?v=217"></script>
-<script src="js/competition.js?v=217"></script>
-<script src="js/score.js?v=217"></script>
-<script src="js/cards.js?v=217"></script>
-<script src="js/deck.js?v=217"></script>
-<script src="js/artstyle.js?v=217"></script>
-<script src="js/sprites.js?v=217"></script>
-<script src="js/formations.js?v=217"></script>
-<script src="js/relics.js?v=217"></script>
-<script src="js/assets.js?v=217"></script>
-<script src="js/dev.js?v=217"></script>
-<script src="js/map.js?v=217"></script>
-<script src="js/buildings.js?v=217"></script>
-<script src="js/units.js?v=217"></script>
-<script src="js/combat.js?v=217"></script>
-<script src="js/ai.js?v=217"></script>
-<script src="js/render.js?v=217"></script>
-<script src="js/battlefx.js?v=217"></script>
-<script src="js/goldfx.js?v=217"></script>
-<script src="js/footing.js?v=217"></script>
-<script src="js/ruins.js?v=217"></script>
-<script src="js/roads.js?v=217"></script>
-<script src="js/beasts.js?v=217"></script>
-<script src="js/defeatart.js?v=217"></script>
-<script src="js/victoryart.js?v=217"></script>
-<script src="js/ui.js?v=217"></script>
-<script src="js/feel.js?v=217"></script>
-<script src="js/lookout.js?v=217"></script>
-<script src="js/screens.js?v=217"></script>
-<script src="js/patchnotes.js?v=217"></script>
-<script src="js/settings.js?v=217"></script>
-<script src="js/board.js?v=217"></script>
-<script src="js/pages.js?v=217"></script>
-<script src="js/titlescreen.js?v=217"></script>
-<script src="js/scenario-maps.js?v=217"></script>
-<script src="js/scenarios.js?v=217"></script>
-<script src="js/prologue.js?v=217"></script>
-<script src="js/deckfx.js?v=217"></script>
-<script src="js/deckfx-town.js?v=217"></script>
-<script src="js/deckfx-army.js?v=217"></script>
-<script src="js/deckfx-growth.js?v=217"></script>
-<script src="js/deckfx-rival.js?v=217"></script>
-<script src="js/deckui.js?v=217"></script>
-<script src="js/deckscreens.js?v=217"></script>
-<script src="js/cardintro.js?v=217"></script>
-<script src="js/game.js?v=217"></script>
-<script src="js/terrain-core.js?v=217"></script>
-<script src="js/terrain.js?v=217"></script>
-<script src="js/terrain-v5.js?v=217"></script>
+<script src="js/feedback.js?v=218"></script>
+<script src="js/config.js?v=218"></script>
+<script src="js/audio.js?v=218"></script>
+<script src="js/config.supabase.js?v=218"></script>
+<script src="js/vendor/supabase.js?v=218"></script>
+<script src="js/backend.js?v=218"></script>
+<script src="js/competition.js?v=218"></script>
+<script src="js/score.js?v=218"></script>
+<script src="js/cards.js?v=218"></script>
+<script src="js/deck.js?v=218"></script>
+<script src="js/artstyle.js?v=218"></script>
+<script src="js/sprites.js?v=218"></script>
+<script src="js/formations.js?v=218"></script>
+<script src="js/relics.js?v=218"></script>
+<script src="js/assets.js?v=218"></script>
+<script src="js/dev.js?v=218"></script>
+<script src="js/map.js?v=218"></script>
+<script src="js/buildings.js?v=218"></script>
+<script src="js/units.js?v=218"></script>
+<script src="js/combat.js?v=218"></script>
+<script src="js/ai.js?v=218"></script>
+<script src="js/render.js?v=218"></script>
+<script src="js/battlefx.js?v=218"></script>
+<script src="js/goldfx.js?v=218"></script>
+<script src="js/footing.js?v=218"></script>
+<script src="js/ruins.js?v=218"></script>
+<script src="js/roads.js?v=218"></script>
+<script src="js/beasts.js?v=218"></script>
+<script src="js/defeatart.js?v=218"></script>
+<script src="js/victoryart.js?v=218"></script>
+<script src="js/ui.js?v=218"></script>
+<script src="js/feel.js?v=218"></script>
+<script src="js/lookout.js?v=218"></script>
+<script src="js/screens.js?v=218"></script>
+<script src="js/patchnotes.js?v=218"></script>
+<script src="js/settings.js?v=218"></script>
+<script src="js/board.js?v=218"></script>
+<script src="js/pages.js?v=218"></script>
+<script src="js/titlescreen.js?v=218"></script>
+<script src="js/scenario-maps.js?v=218"></script>
+<script src="js/scenarios.js?v=218"></script>
+<script src="js/prologue.js?v=218"></script>
+<script src="js/deckfx.js?v=218"></script>
+<script src="js/deckfx-town.js?v=218"></script>
+<script src="js/deckfx-army.js?v=218"></script>
+<script src="js/deckfx-growth.js?v=218"></script>
+<script src="js/deckfx-rival.js?v=218"></script>
+<script src="js/deckui.js?v=218"></script>
+<script src="js/deckscreens.js?v=218"></script>
+<script src="js/cardintro.js?v=218"></script>
+<script src="js/game.js?v=218"></script>
+<script src="js/terrain-core.js?v=218"></script>
+<script src="js/terrain.js?v=218"></script>
+<script src="js/terrain-v5.js?v=218"></script>
 </body>
 </html>

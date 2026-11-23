@@ -29,7 +29,8 @@
              groupmatesNear/panelSig, syncBottomToggle/setMenuCollapsed
      render.js — onScreen
      game.js — S.armies init in newGame, the loadJSON armies migration
-     index.html — #armyBar (the top bar's second row since build 154)
+     index.html — #armyBar (the top bar's second row since build 154, its
+                  middle #hudMid since build 218)
 
      node tests/army-groups.mjs      # exits non-zero on any regression
 
@@ -248,19 +249,40 @@ const out = await p.evaluate(() => {
      screen as clean as possible") — they stood on the map under the minimap.
      Each is a button of the row's own kind, wearing its drawn picture
      (build 214: an <img> of assets/ui/hud, never a stamped canvas), carrying
-     its number and its name. ---- */
+     its number and its name. SINCE BUILD 218 THEY RIDE ITS MIDDLE (operator,
+     with a phone shot of two armies shoving the day right: "We don't want to
+     push the day to the right as you add armies… center the armies between
+     the day and the map, cards and setting button. Things should look
+     stable"): the day heads the row, the map, the cards and the menu end it
+     (#hudNav), and the banners stand between them in #hudMid, centred in
+     the room the two leave — and neither the day nor a button moves a pixel
+     as banners come and go. ---- */
   {
     const tc = setup('ag5c');
+    const nav = () => ['rDay', 'mapBtn', 'deckBtn', 'btnMenu'].map(id => { const e = document.getElementById(id); if (!e) return id + ' missing'; const q = e.getBoundingClientRect(); return `${id} ${q.left.toFixed(1)}..${q.right.toFixed(1)} w${q.width.toFixed(1)}`; }).join(', ');
+    UI.tickArmies();
+    const still = nav();
+    const solo = UI.saveArmy([mk('defender', tc.x + 2, tc.y + 1).id]);
+    UI.tickArmies();
+    const one = nav(), mid = document.getElementById('hudMid'), ab = document.getElementById('armyBar');
+    const mq = mid ? mid.getBoundingClientRect() : null, aq = ab.getBoundingClientRect();
+    const off = mq ? Math.abs((aq.left + aq.right) / 2 - (mq.left + mq.right) / 2) : 99;
+    UI.removeArmy(solo);
+    UI.tickArmies();
     const g = [[mk('defender', tc.x + 2, tc.y)], [mk('archer', tc.x + 4, tc.y)], [mk('fireship', tc.x + 2, tc.y + 2), mk('fireship', tc.x + 3, tc.y + 2)]];
     const ns = g.map(units => UI.saveArmy(units.map(u => u.id)));
     UI.tickArmies();
+    const three = nav();
     const bar = document.getElementById('armyBar'), row2 = document.querySelector('#topbar .trow + .trow');
     const btns = [...bar.querySelectorAll('button')];
-    ck('theBannersRideTheSecondRowsLeft', !!row2 && row2.contains(bar) && row2.firstElementChild === bar &&
-      !document.querySelector('body > #armyBar'), row2 ? 'first in the row: #' + (row2.firstElementChild && row2.firstElementChild.id) : 'no second row');
-    const day = document.getElementById('rDay').getBoundingClientRect(), tb = document.getElementById('topbar').getBoundingClientRect();
-    ck('andStandLeftOfTheDayInsideTheBar', btns.length === 3 && btns.every(b2 => { const q = b2.getBoundingClientRect(); return q.width > 0 && q.right <= day.left && q.top >= tb.top && q.bottom <= tb.bottom; }),
-      btns.map(b2 => { const q = b2.getBoundingClientRect(); return `${b2.dataset.army}: ${Math.round(q.left)}..${Math.round(q.right)}`; }).join(', ') + ` | the day starts at ${Math.round(day.left)}`);
+    ck('theBannersRideTheSecondRowsMiddle', !!row2 && !!mid && row2.contains(bar) && bar.parentNode === mid && row2.firstElementChild && row2.firstElementChild.id === 'rDay' &&
+      row2.lastElementChild && row2.lastElementChild.id === 'hudNav' && !document.querySelector('body > #armyBar'),
+      row2 ? [...row2.children].map(e => '#' + e.id).join(' ') + ' | the banners in #' + (bar.parentNode && bar.parentNode.id) : 'no second row');
+    const day = document.getElementById('rDay').getBoundingClientRect(), map = document.getElementById('mapBtn').getBoundingClientRect(), tb = document.getElementById('topbar').getBoundingClientRect();
+    ck('andStandBetweenTheDayAndTheButtonsInsideTheBar', btns.length === 3 && btns.every(b2 => { const q = b2.getBoundingClientRect(); return q.width > 0 && q.left >= day.right && q.right <= map.left && q.top >= tb.top && q.bottom <= tb.bottom; }),
+      btns.map(b2 => { const q = b2.getBoundingClientRect(); return `${b2.dataset.army}: ${Math.round(q.left)}..${Math.round(q.right)}`; }).join(', ') + ` | the day ends at ${Math.round(day.right)}, the map starts at ${Math.round(map.left)}`);
+    ck('andALoneBannerStandsInTheMiddleOfTheRoom', off < 1, `${off.toFixed(1)}px off the middle of the room`);
+    ck('andNothingElseInTheRowMoves', still === one && one === three, `no banner: ${still} | one: ${one === still ? 'the same' : one} | three: ${three === still ? 'the same' : three}`);
     ck('eachIsADrawnButtonOfTheRow', btns.every(b2 => b2.classList.contains('iconbtn') && !!b2.querySelector('img.aic[src*="assets/ui/hud/army-"]') && !b2.querySelector('canvas')),
       btns.map(b2 => (b2.querySelector('img') || {}).src || 'no picture').join(', '));
     const said = btns.map(b2 => ({ n: b2.dataset.army, num: (b2.querySelector('.armyN') || {}).textContent, name: b2.getAttribute('aria-label') }));
