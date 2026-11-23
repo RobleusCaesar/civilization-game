@@ -679,7 +679,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
       const gems = lis.map(li => R(li.querySelector('.ciGem'))), names = lis.map(li => li.querySelector('b')),
         rars = lis.map(li => li.querySelector('small')), lines = lis.map(li => li.querySelector('.ciTd'));
       const cx = q => q.left + q.width / 2, spread = a => Math.max(...a) - Math.min(...a), fx = a => a.map(v => v.toFixed(1)).join('/');
-      if (names[0].textContent !== 'Stone' || names[4].textContent !== 'Enlightenment') out.bad.push(`the rows run ${names.map(n => n.textContent).join(',')}`);
+      if (names[0].textContent !== 'Stone' || names[4].textContent !== 'Mythic') out.bad.push(`the rows run ${names.map(n => n.textContent).join(',')}`);
       if (spread(gems.map(q => q.width)) > 0.5 || spread(gems.map(q => q.height)) > 0.5) out.bad.push('gems differ in size ' + fx(gems.map(q => q.width)));
       if (spread(gems.map(cx)) > 0.5) out.bad.push('gems off one column ' + fx(gems.map(cx)));
       if (spread(names.map(e => R(e).left)) > 0.5) out.bad.push('names not in one column ' + fx(names.map(e => R(e).left)));

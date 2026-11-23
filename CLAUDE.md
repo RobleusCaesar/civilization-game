@@ -7053,9 +7053,11 @@ between the day and the map, cards and setting button. Things should look
 stable"): the day and the three buttons are the same size and in the same
 place whatever else is in the row (army-groups `andNothingElseInTheRowMoves`,
 deck-ui `andTheDayAndTheButtonsStandStill`); the row steps down BY ITS WIDTH
-alone (≤400px the day's type and the buttons' room, ≤382px buttons 40 wide,
-≤370px 37 wide and the day without its word), never by what it holds — the
-old crowded-row `:has()` rules are gone. The armies and the timers are
+alone (≤430px the buttons 6px apart, ≤400px the day's type, the buttons 40
+wide and 4px apart, ≤382px 2px apart, ≤370px 37 wide and the day without its
+word), never by what it holds — the old crowded-row `:has()` rules are gone;
+on a 390px phone the room between holds two cards' timers with two-digit
+days beside "Day 12" (deck-ui `twoRunningCardsFitAPhonesRow`). The armies and the timers are
 centred in the room between (#hudMid's `::before` / `::after` grow, and take
 nothing when it is full), and what does not fit gives way THERE alone: the
 timers fold into a "+k" first (`DeckUI._fitChips`; `#dkTimers` shrinks 60
@@ -7123,7 +7125,15 @@ prices, panels, toasts and the chips' notes show the drawn goods; the emoji
 stays in the text node, pushed out of a box that shows the picture, so a
 reader, a copy and every test that reads `textContent` still read the glyph.
 ✨ is gold only before a number. **THE CARDS' SHEET WEARS THE BUILD PANEL'S
-FRAME** (the CARDS banner, the corners, the ✕ a plate on its corner).
+FRAME** (the CARDS banner, the corners, the ✕ on its corner the build
+panel's own: 44px, its face SOLID over the map — build 219, the operator: "The
+'x' should not be transparent. Match the [one] from the build menu").
+**THE FIFTH TIER IS MYTHIC** (build 219 — the operator, on its tab running
+past its plate: "Enlightenment is too long and overruns the space. Let's
+rename to Mythic"): `Deck.TIERS`' name for the key `'enlight'`, which stays
+the key (the saves, the cloud's catalog and every migration know it by it);
+the CARD named Enlightenment keeps its name, and where these notes say "an
+Enlightenment card" or "the Enlightenment tier" the player reads Mythic.
 **ITS TIERS ARE TABS ACROSS THE SHEET** (build 215 — "I just don't like the
 UI of clicking the different colors for the different card groups plus it
 leaves a bunch of excess space on the left-hand side… a design update that

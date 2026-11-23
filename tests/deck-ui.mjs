@@ -418,7 +418,7 @@ const sj = await p.evaluate(async () => {
 });
 ck('aFullDeckJumpsByTier', sj.tabs === 'enlight,imperial,iron,bronze,stone' && /^\d+(,\d+){4}$/.test(sj.counts) && Math.abs(sj.edge) <= 2 && sj.lit === 'bronze',
   `tabs ${sj.tabs} (${sj.counts}); bronze jumped to ${sj.edge}px from the edge, lit ${sj.lit}`);
-ck('andEveryTabNamesItsTierAcrossTheSheet', sj.names === 'Enlightenment,Imperial,Iron,Bronze,Stone' && sj.span <= 12 && sj.fits,
+ck('andEveryTabNamesItsTierAcrossTheSheet', sj.names === 'Mythic,Imperial,Iron,Bronze,Stone' && sj.span <= 12 && sj.fits,
   `${sj.names}; the strip ${sj.span}px from the sheet's edge at most; every name whole on a 44px tab: ${sj.fits}`);
 ck('andItsFacesAreBuiltOnce', sj.n === 36 && sj.reused === 36 && sj.rebuilt === 'harvest_festival',
   `${sj.reused} of ${sj.n} faces handed back on the second open; rebuilt after a change: ${sj.rebuilt || 'none'}`);

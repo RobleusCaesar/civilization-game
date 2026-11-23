@@ -2175,8 +2175,12 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkSheet .dkC.tr { right: -5px; transform: scaleX(-1); }
 #dkSheet .dkGrip { visibility: hidden; }
 #dkSheet .dkPanel:has(.dkBanner) .dkTitle { display: none; }
-#dkSheet .dkClose.hplate { position: absolute; z-index: 3; right: 12px; top: -20px; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0;
-  font: 400 20px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #f3e2b4; }
+/* the ✕ is the build panel's own (build 219 — operator: "The 'x' should not be
+   transparent. Match the [one] from the build menu"): a finger wide, on the
+   frame's right corner, its plate's face SOLID, since the map shows under it */
+#dkSheet .dkClose.hplate { position: absolute; z-index: 3; right: 12px; top: -22px; width: 44px; height: 44px; min-width: 0; min-height: 0; padding: 0;
+  font: 400 21px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; color: #f3e2b4; }
+#dkSheet .dkClose.hplate::before { background: var(--plate-face-solid); }
 #dkSheet .dkGrab { touch-action: none; cursor: grab; }
 #dkSheet .dkGrip { display: block; width: 46px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: #6e5024; }
 #dkSheet .dkHead { display: flex; align-items: center; gap: 10px; padding: 0 6px 0 16px; min-height: 46px; }

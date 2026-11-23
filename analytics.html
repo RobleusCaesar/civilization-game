@@ -568,7 +568,7 @@ function render(d) {
     table($('tOrigin'), ['Origin card', 'Games', 'Win rate'],
       (d.by_origin || []).map(r => [r.origin, num(r.games), rate(r.won || 0, (r.won || 0) + (r.lost || 0))]), 'No origin cards recorded in this period.');
     // the deck's five tiers, in order (js/deck.js Deck.TIERS)
-    const TIER = [['stone', 'Stone'], ['bronze', 'Bronze'], ['iron', 'Iron'], ['imperial', 'Imperial'], ['enlight', 'Enlightenment']];
+    const TIER = [['stone', 'Stone'], ['bronze', 'Bronze'], ['iron', 'Iron'], ['imperial', 'Imperial'], ['enlight', 'Mythic']];
     const T = C.earned_by_tier || {}, rank = t => { const i = TIER.findIndex(x => x[0] === t); return i < 0 ? 99 : i; };
     table($('tTiers'), ['Cards earned, by tier', 'Earned'],
       Object.keys(T).sort((a, b) => rank(a) - rank(b)).map(t => [(TIER.find(x => x[0] === t) || [, t])[1], num(T[t])]), 'No cards earned in this period.');
