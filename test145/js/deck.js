@@ -27,12 +27,17 @@
 
 const Deck = {
   /* ---------------- what a card IS ---------------- */
+  /* The fifth tier is MYTHIC on every screen (operator, build 219, on its
+     tab running past its plate: "Enlightenment is too long and overruns
+     the space. Let's rename to Mythic"); its key stays 'enlight', the word
+     the saves, the cloud's catalog and every migration know it by, and the
+     CARD named Enlightenment keeps its name. */
   TIERS: [
     { k: 'stone',    name: 'Stone',         rarity: 'Common',    col: '#9a968c', glow: 'rgba(200,196,186,0.55)', rank: 0 },
     { k: 'bronze',   name: 'Bronze',        rarity: 'Uncommon',  col: '#c98446', glow: 'rgba(232,150,80,0.6)',   rank: 1 },
     { k: 'iron',     name: 'Iron',          rarity: 'Rare',      col: '#7f9ab8', glow: 'rgba(140,180,230,0.65)', rank: 2 },
     { k: 'imperial', name: 'Imperial',      rarity: 'Epic',      col: '#e9dfc7', glow: 'rgba(255,236,170,0.7)',  rank: 3 },
-    { k: 'enlight',  name: 'Enlightenment', rarity: 'Legendary', col: '#ffd45e', glow: 'rgba(255,214,94,0.85)',  rank: 4 },
+    { k: 'enlight',  name: 'Mythic',        rarity: 'Legendary', col: '#ffd45e', glow: 'rgba(255,214,94,0.85)',  rank: 4 },
   ],
   /* The 36 cards, exactly as approved at Gate 1 (assets/masters/cards/
      catalog-gate1.cjs carries the reasoning behind every number). `target`:

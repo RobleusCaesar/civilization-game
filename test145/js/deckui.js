@@ -239,11 +239,15 @@ const DeckUI = {
     btn.innerHTML = '<img class="hic dkIco" src="assets/ui/hud/cards.png?v=2" alt="" draggable="false" decoding="async"><b class="dkBadge"></b>';
     row.insertBefore(btn, menu);
     btn.addEventListener('click', () => this.toggle());
-    // the timers of the cards still running sit beside the tribe, where the
-    // row has room; empty, the strip takes no space at all (:empty)
+    // the timers of the cards still running ride the second row's middle,
+    // after the saved armies, between the day and the buttons (build 218:
+    // nothing that comes or goes there moves the day); empty, the strip
+    // takes no space at all (:empty)
     const tm = document.createElement('span');
     tm.id = 'dkTimers';
-    row.insertBefore(tm, document.getElementById('rDay'));
+    const mid = document.getElementById('hudMid');
+    if (mid) mid.appendChild(tm);
+    else row.insertBefore(tm, document.getElementById('rDay'));
     this.el = { btn, badge: btn.querySelector('.dkBadge'), timers: tm };
     this._chips = {};
     Deck.onChange(() => this._changed());
@@ -1294,14 +1298,15 @@ const DeckUI = {
         // appear (beside the tribe) — and so does one held as charges, whose
         // chip appears there too — anything else on the resource bar itself
         const chipped = Deck.card(id).days || (Deck.FX[id] && Deck.FX[id].chip);
-        // the timers' strip sits after the saved armies at the second row's
-        // head (build 154): a new chip lands past the last one shown, else
-        // past the armies' banners, else at the row's own start
-        const row2 = document.querySelector('#topbar .trow + .trow');
+        // the timers' strip rides the second row's middle after the saved
+        // armies (build 218): a new chip lands past the last one shown, else
+        // past the armies' banners, else in the middle of the room between
+        // the day and the buttons
+        const row2 = document.querySelector('#topbar .trow + .trow'), mid = document.getElementById('hudMid');
         const lead = [this.el && this.el.timers, document.getElementById('armyBar')].find(e => e && e.offsetWidth);
-        const at = chipped ? (lead || row2) : document.querySelector('#topbar .trow');
+        const at = chipped ? (lead || mid || row2) : document.querySelector('#topbar .trow');
         const r = at ? at.getBoundingClientRect() : { left: 0, top: 0, right: 0, width: vw, height: 30 };
-        chips.push({ res: null, x: chipped ? (lead ? r.right + 20 : r.left + 20) : r.left + r.width / 2, y: r.top + r.height / 2 });
+        chips.push({ res: null, x: chipped ? (lead ? r.right + 20 : mid ? r.left + r.width / 2 : r.left + 20) : r.left + r.width / 2, y: r.top + r.height / 2 });
       }
       /* a card whose goods ARRIVE in the world (Deck.FX[id].showAtHall — the
          town's goods land in a moment at the hall's door) brings the hall on
@@ -2126,7 +2131,8 @@ body.dk-aiming #bottombar { visibility: hidden; }
    cut its top half off), and an equal negative margin on top keeps the
    row's height exactly as it was. Since build 154 the saved armies share the
    row and can fill it, so the RIGHT padding stays a spacer (no negative
-   margin there): a badge never reaches the day beside it. */
+   margin there): a badge never reaches the map beside it (since build 218
+   the strip rides the row's middle, between the day and the buttons). */
 #dkTimers { display: flex; gap: 3px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 6px 6px 0 0; margin: -6px 0 0 0; }
 #dkTimers:empty { display: none; }
 /* the count in the HUD's own type (the bar's face, weight and size, its own
@@ -2169,8 +2175,12 @@ body.dk-aiming #bottombar { visibility: hidden; }
 #dkSheet .dkC.tr { right: -5px; transform: scaleX(-1); }
 #dkSheet .dkGrip { visibility: hidden; }
 #dkSheet .dkPanel:has(.dkBanner) .dkTitle { display: none; }
-#dkSheet .dkClose.hplate { position: absolute; z-index: 3; right: 12px; top: -20px; width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0;
-  font: 400 20px/1 -apple-system, "Segoe UI", Roboto, sans-serif; color: #f3e2b4; }
+/* the ✕ is the build panel's own (build 219 — operator: "The 'x' should not be
+   transparent. Match the [one] from the build menu"): a finger wide, on the
+   frame's right corner, its plate's face SOLID, since the map shows under it */
+#dkSheet .dkClose.hplate { position: absolute; z-index: 3; right: 12px; top: -22px; width: 44px; height: 44px; min-width: 0; min-height: 0; padding: 0;
+  font: 400 21px/1 -apple-system, "Segoe UI", Roboto, sans-serif; letter-spacing: 0; color: #f3e2b4; }
+#dkSheet .dkClose.hplate::before { background: var(--plate-face-solid); }
 #dkSheet .dkGrab { touch-action: none; cursor: grab; }
 #dkSheet .dkGrip { display: block; width: 46px; height: 5px; margin: 4px auto 0; border-radius: 3px; background: #6e5024; }
 #dkSheet .dkHead { display: flex; align-items: center; gap: 10px; padding: 0 6px 0 16px; min-height: 46px; }
