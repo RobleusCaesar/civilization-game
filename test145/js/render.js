@@ -6768,6 +6768,7 @@ const R = {
   onNewGame() {
     if (window.Lookout) Lookout.onWorldChange();                 // a fall in flight belongs to the last world
     this._resTops = null;                                        // the art a gatherer stands behind (resTopAt) is this world's
+    this._floors = null;                                         // …and so are the floors he stands on (floorAt)
     this.mini.width = CFG.W * 2; this.mini.height = CFG.H * 2;   // map size varies per game
     if (this.miniCam) { this.miniCam.width = this.mini.width; this.miniCam.height = this.mini.height; }   // the frame's layer takes the map's size (and is cleared by it)
     this._miniCamKey = '';                                       // …and lays the new world's frame at once
@@ -7767,8 +7768,58 @@ const R = {
      tile there is left out of it: a miner working a pile from the east had
      the boulder beside him laid over the head of his pick whenever the tile
      south-west of him was ore too (five frames of twelve of his swing,
-     tests/resource-front.mjs). */
-  RES_FRONT: { KNEE: 0.34, OVER: 0.4, SIDE: 0.25 },
+     tests/resource-front.mjs).
+     …AND NEVER THE GROUND HE STANDS ON (a playtest, build 216, with a
+     screenshot: a woodcutter on picked-bare soil chopping the wood south of
+     it, drawn cut off at the knees — "a villager disappears into the farm").
+     The band lies in the tile NORTH of the resource, and the cache there
+     holds that tile's own picture too: transparent ground with objects over
+     it almost everywhere on the V4 layer, but spent soil paints a FLOOR,
+     opaque edge to edge (so do an earthwork, burnt ground, a star's crater).
+     Laid back over him, the floor buried his legs in the ground he stood
+     on. So the band is never laid over a tile R.floorAt reads as a floor,
+     and R.resTopAt never reads that floor as the art's top. */
+  RES_FRONT: { KNEE: 0.34, OVER: 0.4, SIDE: 0.25, FLOOR: 0.75 },
+  /* is the cache over tile tx,ty a FLOOR across world columns x0..x1 — at
+     least FLOOR of its pixels opaque in the rows ABOVE the band (rows a
+     south tile's art never rises into, so whatever is there is the tile's
+     own)? Grass, water and the grass-floored resources are transparent
+     ground by construction and are never read (a pixel read stalls a
+     phone's frame); anything else is read off the cache like resTopAt, kept
+     per tile for RES_BEHIND.MS. A cache the page cannot read (a page from
+     disk taints it) answers by the floors the painter lays. */
+  _floors: null,
+  floorAt(tx, ty, x0, x1) {
+    const c = this.terrainCache;
+    if (!c || !MapGen.onBoard(tx, ty)) return false;
+    const TL = CFG.TILE, F = this.RES_FRONT, i = ty * CFG.W + tx;
+    const t = (S.map.seenTerrain || S.map.terrain)[i];
+    if (t === T.GRASS || t === T.WATER || t === T.MOAT || GROUND_GRAIN.has(t)) return false;
+    if (!this._floorBad) {
+      const cache = this._floors || (this._floors = new Map()), now = performance.now();
+      let e = cache.get(i);
+      if (!e || now - e.t > this.RES_BEHIND.MS || e.c !== c) {
+        const h = Math.max(1, Math.round((1 - F.OVER) * TL));
+        let d = null;
+        try { d = c.getContext('2d').getImageData(tx * TL, ty * TL, TL, h).data; }
+        catch (err) { this._floorBad = true; }                     // tainted: never ask again
+        if (d) {
+          const m = new Uint8Array(TL * h);
+          for (let k = 0; k < m.length; k++) m[k] = d[k * 4 + 3] > 200 ? 1 : 0;
+          if (cache.size > 256) cache.clear();
+          cache.set(i, e = { t: now, c, h, m });
+        }
+      }
+      if (!this._floorBad && e) {
+        const a = Math.max(0, Math.floor(x0) - tx * TL), b = Math.min(TL - 1, Math.ceil(x1) - 1 - tx * TL);
+        if (b < a) return false;
+        let on = 0;
+        for (let y = 0; y < e.h; y++) for (let x = a; x <= b; x++) on += e.m[y * TL + x];
+        return on >= F.FLOOR * e.h * (b - a + 1);
+      }
+    }
+    return t === T.BARREN || t === T.TRENCH || t === T.MOUND;
+  },
   occludeByResource(g, u) {
     const TX = window.TerrainX;
     if (!this.terrainCache || !TX || !TX.on || !TX._painted) return 0;
@@ -7807,10 +7858,11 @@ const R = {
       if (x1 <= x0 || y1 <= yb) continue;
       let laid = add(x0, ym, x1, y1);                               // the tile's own rows
       if (ym > yb) {                                                // the band above it
-        if (ty - 1 !== row) laid = add(x0, yb, x1, ym) || laid;
-        else for (let cx = Math.floor(x0 / TL); cx * TL < x1; cx++) {
-          if (cx !== own && isRes(cx, row)) continue;               // a resource beside him stays behind
-          laid = add(Math.max(x0, cx * TL), yb, Math.min(x1, (cx + 1) * TL), ym) || laid;
+        for (let cx = Math.floor(x0 / TL); cx * TL < x1; cx++) {
+          const a = Math.max(x0, cx * TL), z = Math.min(x1, (cx + 1) * TL);
+          if (ty - 1 === row && cx !== own && isRes(cx, row)) continue;   // a resource beside him stays behind
+          if (this.floorAt(cx, ty - 1, a, z)) continue;             // …and the floor under him stays under him
+          laid = add(a, yb, z, ym) || laid;
         }
       }
       if (laid) n++;
@@ -15338,8 +15390,12 @@ const R = {
     const a = Math.max(0, Math.round(cx - K.BODY) - e.x0), b = Math.min(TL - 1, Math.round(cx + K.BODY) - e.x0);
     if (b < a) return null;
     const need = Math.min(K.WIDE, b - a + 1);
+    // the band above the tile lies in the tile north of it: over a floor there
+    // (spent soil, opaque edge to edge) it is that tile's own ground, never art
+    // rising out of this one, so the search starts at this tile's own top
+    const y00 = this.floorAt(tx, ty - 1, cx - K.BODY, cx + K.BODY + 1) ? Math.max(0, ty * TL - e.y0) : 0;
     let run = 0;
-    for (let y = 0; y < e.h; y++) {
+    for (let y = y00; y < e.h; y++) {
       let n = 0;
       for (let x = a; x <= b; x++) n += e.m[y * TL + x];
       run = n >= need ? run + 1 : 0;
