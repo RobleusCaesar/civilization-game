@@ -21,6 +21,10 @@
                            any frame of his swing, a man's or a woman's
                            (the band above the ore tile south-west of him
                            never lays the boulder beside him over his pick)
+     THE FLOOR STAYS UNDER  the band above the south tile is never laid over a
+       HIM                 tile that paints a floor of its own (picked-bare
+                           soil): every unit on it kept from the waist down,
+                           and the floor is never read as the art's top
      A SPECK IS NOT A WALL a scree pebble in his columns does not lift him
      A PICTURE ONLY        no S field moves; the taps (R.unitHit) are the sim's
      CLASSIC STANDS DOWN   under ?terrain=classic (an opaque cache) nothing is
@@ -273,6 +277,57 @@ const pure = await p.evaluate((ids) => {
   return { same: a === snap(), hit };
 }, sc.ids);
 ck('aPictureOnly', pure.same && pure.hit < 1e-9, JSON.stringify(pure));
+
+/* …AND THE GROUND HE STANDS ON STAYS UNDER HIM (a playtest, build 216, with a
+   screenshot: a woodcutter on picked-bare soil chopping the wood south of it,
+   drawn cut off at the knees — "a villager disappears into the farm"). The
+   band above the south tile is laid for the art that rises out of it, but it
+   lies in HIS tile, and spent soil paints a floor there that is opaque edge
+   to edge: laid back over him, it buried his legs in the ground he stood on.
+   His tile turned to spent soil: R.floorAt reads it as a floor, nothing is
+   laid in his own tile's band (not one pixel of it changes with the
+   occlusion on or off), the art's top is read off the wood alone (never the
+   floor's first row), and he still goes behind the wood. The control lays
+   the band anyway (R.floorAt answering no) and must see it bury him. */
+const soil = await p.evaluate((ids) => {
+  const u = S.units.find(o => o.id === ids.wood), TL = CFG.TILE;
+  if (!u || !u.task) return { missing: true };
+  const own = u.x | 0, row = u.y | 0, i = MapGen.idx(own, row), was = S.map.terrain[i];
+  const c = R.canvas || document.getElementById('c'), g2 = c.getContext('2d'), dpr = c.width / R.viewW();
+  const sx = w => Math.round((w - R.cam.x) * R.cam.z * dpr), sy = w => Math.round((w - R.cam.y) * R.cam.z * dpr);
+  const now = performance.now, t0 = now.call(performance), realOcc = R.occludeByResource, realFloor = R.floorAt;
+  const fresh = () => { R._resTops = null; R._floors = null; };
+  const band = () => {
+    const l = R.workLean(u) || u, B = R.unitBox(u);
+    const X0 = Math.max(0, sx(l.x * TL - B / 2)), X1 = Math.min(c.width, sx(l.x * TL + B / 2));
+    const Y0 = Math.max(0, sy((u.task.y - R.RES_FRONT.OVER) * TL)), Y1 = Math.min(c.height, sy(u.task.y * TL));
+    R.draw(0); const on = g2.getImageData(X0, Y0, X1 - X0, Y1 - Y0).data;
+    R.occludeByResource = () => 0; R.draw(0); const off = g2.getImageData(X0, Y0, X1 - X0, Y1 - Y0).data;
+    R.occludeByResource = realOcc;
+    let d = 0;
+    for (let k = 0; k < on.length; k += 4) if (on[k] !== off[k] || on[k + 1] !== off[k + 1] || on[k + 2] !== off[k + 2]) d++;
+    return { laid: d, ly: +l.y.toFixed(3), top: R.resTopAt(u.task.x, u.task.y, u.x * TL) };
+  };
+  performance.now = () => t0;
+  try {
+    S.map.terrain[i] = S.map.seenTerrain[i] = T.BARREN;
+    R.drawTileAt(own, row); fresh();
+    const floor = typeof R.floorAt === 'function' ? R.floorAt(own, row, u.x * TL - 5, u.x * TL + 6) : 'none';
+    const fixed = band();
+    R.floorAt = () => false; fresh();
+    const control = band();
+    return { floor, fixed, control, y: +u.y.toFixed(3), ty: u.task.y, TL };
+  } finally {
+    R.occludeByResource = realOcc; R.floorAt = realFloor; performance.now = now;
+    S.map.terrain[i] = S.map.seenTerrain[i] = was; R.drawTileAt(own, row); fresh();
+  }
+}, sc.ids);
+ck('theSpentSoilHeStandsOnIsAFloor', soil.floor === true, JSON.stringify(soil));
+ck('andItIsNeverLaidOverHim', !!soil.fixed && soil.fixed.laid === 0, JSON.stringify(soil.fixed));
+ck('andTheArtsTopIsTheWoodsNotTheFloors', !!soil.fixed && soil.fixed.top != null && soil.fixed.top >= soil.ty * soil.TL - 0.5,
+  `top ${soil.fixed && soil.fixed.top} against the wood's own top ${soil.ty * soil.TL}`);
+ck('andHeStillGoesBehindTheWood', !!soil.fixed && soil.fixed.ly > soil.y + 0.05, `drawn ${soil.fixed && soil.fixed.ly} vs stands ${soil.y}`);
+ck('andTheProbeCanSeeTheFloorBuryHim', !!soil.control && soil.control.laid > 40, JSON.stringify(soil.control));
 await p.close();
 
 // CLASSIC STANDS DOWN

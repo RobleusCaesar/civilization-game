@@ -409,7 +409,7 @@ node tests/barb-bands.mjs    # every band its own fight: light / mid / heavy tie
 node tests/barb-art.mjs      # the wild country's people are drawn: every people's raider man, raider woman and brute in eight facings and three poses, a raider drawn in a 28 box and a light skirmisher in a 26 (their strips fill the frame, so at the cast's 32 they stood the brute's height), a brute 80px into a 40 box, a head over the raider by the drawn ink, a strike's bigger frame on the same feet; a band wears its camp's people and its own sex; the title asks for none of them
 node tests/ruins.mjs         # a razed building leaves its own remains on the rubble: charred stakes for a palisade, a rubble heap for stone walls and towers, a burnt hut, a fallen stone house, a wrecked yard, a great hall's shell, a camp's compound; still walkable, no RNG, in every save, gone with the healed ground or under a new building, never from a site called off
 node tests/hall-fire.mjs     # the Town Center burns in its own art: catch, blaze and gutted by the burn phase, at its own level, landing on the finished picture; asked the first time a hall is hurt, never at boot or by the demo; one picture for every caller, no flame sprite over it; the smoke and sparks draw no RNG and nothing in the black; it falls in its own place and the ground waits for it; a fall the player sees holds the end screen a beat (a hidden page, a new world, an unseen fall, no fall art: at once), in the defeat's words or the victory's
-node tests/resource-front.mjs  # a gatherer working a resource from the NORTH is drawn behind it: his feet a set depth below the art's top in his columns (measured off the V4 cache, specks ignored, the step held), the art laid back over him from the knees down and never above; from the side or the south nothing changes, at every frame of the swing (a man's and a woman's, each drawn in turn); the classic renderer stands down; a picture only
+node tests/resource-front.mjs  # a gatherer working a resource from the NORTH is drawn behind it: his feet a set depth below the art's top in his columns (measured off the V4 cache, specks ignored, the step held), the art laid back over him from the knees down and never above; from the side or the south nothing changes, at every frame of the swing (a man's and a woman's, each drawn in turn); the floor he stands on (picked-bare soil) is never laid over him, nor read as the art's top; the classic renderer stands down; a picture only
 node tests/dock-shore.mjs      # a dock stands on its shore: the fuller flank is the shore, a half-land flank slides the jetty onto the land, the picture seated so its sill or footing stands on the bank at every level and facing, a site the same; a picture only
 node tests/building-fire.mjs # every other building burns in its own art (R.FIRE_ART: 13 kinds, 37 levels): catch, blaze and gutted by the burn phase, every strip on disk at its size, each loop starting on its still, no paper-white flash; nothing asked at boot, by the demo or by a whole town, a hurt building asks for its own strips once; a site, an upgrade or a redrawn picture keeps the old look; it lands on the finished picture at every kind and level; one picture for every caller, no flame sprite over it, the rival's too; smoke and embers draw no RNG, write nothing and stay under their caps, nothing in the black, and a burning house puffs no hearth smoke; a house falls in its own place onto its own pinned ruin, the footing and the remains waiting for it
 node tests/battle-fx.mjs     # the fight as a picture: off draws nothing; no S write, no RNG, nothing in the black or the fog; capped; the impact frame on the blow; strikes rotate, never twice running, a wind-up never past its blow; the dead lie where they were drawn, then go (ash for the burned, nothing in the fog, arrows only from a bow); a miss stands in the ground; a stone digs a crater, a bolt none, a house flinches; nothing on a building's own art; its own random stream, never the page's; strips lazy, the dye's two blues, the table the disk, deaths lie down
@@ -5216,7 +5216,25 @@ off the unit's own clock (`u.animT`, random from the spawn), so the contract
 draws every frame of the beside men's strips in turn, never one at random —
 the fault stayed hidden while the test's villagers drew the procedural cast
 (the test founds its world under the title's demo flag, and only build 207's
-`Units.spawn` asked for the strips). **ONLY THE V4 LAYER**: there the cache holds the
+`Units.spawn` asked for the strips). **…AND NEVER THE FLOOR HE STANDS ON**
+(`R.floorAt`, `RES_FRONT.FLOOR`, build 216 — operator, with a screenshot of a
+woodcutter on picked-bare soil chopping the wood south of it: "a villager
+disappears into the farm, instead of standing on top of it"): the band lies in
+the tile NORTH of the resource, and the cache there holds that tile's own
+picture too — transparent ground almost everywhere on the V4 layer, but spent
+soil paints a floor opaque edge to edge (so can an earthwork, burnt ground, a
+crater), and laid back over him it buried every unit standing on it to the
+waist, a bystander as much as the woodcutter, and `resTopAt` read its first
+row as the art's top so the woodcutter was never put behind the wood. A tile
+whose rows above the band are at least `FLOOR` (0.75) opaque in the columns in
+question is a floor: the band is never laid over it and `resTopAt` starts at
+the south tile's own top there. Grass, water and the grass-floored resources
+are transparent by construction and never read (a pixel read stalls a phone's
+frame); anything else is read off the cache, kept per tile for 1.5 s, and a
+cache the page cannot read answers by the painter's floors (spent soil, a
+trench, a mound). The contract turns the woodcutter's tile to spent soil and
+holds the band at 0 pixels laid, with a control that lays it anyway and must
+see it bury him. **ONLY THE V4 LAYER**: there the cache holds the
 objects over transparent ground; the classic painters' cache is opaque ground
 and would lay a square of grass over him, so under `?terrain=classic` (and on
 a page from disk, whose tainted cache cannot be read) nothing is measured and
