@@ -237,6 +237,11 @@ for (const [w, h] of [[320, 568], [360, 780], [390, 844], [430, 880], [900, 700]
     // the height with the deck's chrome taken out, against the height with it in
     const tm = document.getElementById('dkTimers');
     const fixed = () => ['rDay', 'mapBtn', 'deckBtn', 'btnMenu'].map(id => { const q = document.getElementById(id).getBoundingClientRect(); return `${id} ${q.left.toFixed(1)}..${q.right.toFixed(1)}`; }).join(', ');
+    // the day's NUMBER held while it is measured: a day turning over in the
+    // waits below widens "Day 9" to "Day 10", which is the text, not the row
+    // (CI read the day 3px wider at 1440 for exactly that)
+    const paintDay = UI.paintDay;
+    UI.paintDay = () => {};
     const still = fixed();
     const tc = Bld.tcOf('P'), armyIds = [];
     for (let k = 0; k < 3; k++) { const u = Units.spawn('defender', 'P', tc.x + 3 + k, tc.y + 3); armyIds.push(u.id); UI.saveArmy([u.id]); }
@@ -252,6 +257,7 @@ for (const [w, h] of [[320, 568], [360, 780], [390, 844], [430, 880], [900, 700]
     const r = id => document.getElementById(id).getBoundingClientRect();
     const rows = [...bar.querySelectorAll('.trow')].map(x => x.getBoundingClientRect());
     const moved = fixed() === still ? null : fixed() + ' (was ' + still + ')';
+    UI.paintDay = paintDay;
     const ids = ['rDay', 'armyBar', 'dkTimers', 'mapBtn', 'deckBtn', 'btnMenu'];
     const rects = ids.map(r);
     let overlap = null;
