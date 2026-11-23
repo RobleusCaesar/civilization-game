@@ -52,6 +52,14 @@
        is never a small tile blown up; it is markup, so it is there from the first paint. */
     --wood-tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='256'%3E%3Cfilter id='a' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0024 0.085' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.85 0 0 0 0 0.66 0 0 0 0 0.40 0 0 0 0.5 -0.22'/%3E%3C/filter%3E%3Cfilter id='b' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.0032 0.15' numOctaves='2' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.03 0 0 0 0 0.02 0 0 0 0 0.01 0 0 0 0.7 -0.30'/%3E%3C/filter%3E%3Crect width='512' height='256' fill='%231b140d'/%3E%3Crect width='512' height='256' filter='url(%23a)'/%3E%3Crect width='512' height='256' filter='url(%23b)'/%3E%3C/svg%3E");
     --hud-wood: #1b140d;
+    /* THE HEADER'S FRAME (build 217): a thin double trim of aged bronze and
+       a carved knot at each corner, drawn as vectors at the screen's pixels */
+    --numfont: 'Crimson', Georgia, 'Times New Roman', serif;
+    --hdr-trim: linear-gradient(#120a04 0 1px, #b8864a 1px 2.5px, #170c05 2.5px 3.5px, #e0ad6c 3.5px 4.5px, #9a6a34 4.5px 5.5px, #120a04 5.5px 6.5px);
+    --hdr-knot: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2736%27%20height=%2730%27%20viewBox=%270%200%2036%2030%27%3E%3Cg%3E%3Cdefs%3E%3ClinearGradient%20id=%27b%27%20x1=%270%27%20y1=%270%27%20x2=%270%27%20y2=%271%27%3E%3Cstop%20offset=%270%27%20stop-color=%27%23e8bb78%27/%3E%3Cstop%20offset=%27.4%27%20stop-color=%27%23bb8745%27/%3E%3Cstop%20offset=%271%27%20stop-color=%27%237c5226%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath%20d=%27M.5%20.6H29.5L34.8%203.6L29.5%206.6H21.4L10.6%2017.6C7.6%2020.6%205.2%2024%203.4%2029.4H.5Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%271.2%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M1.7%201.8H29%27%20stroke=%27%23ffe0a8%27%20stroke-opacity=%27.6%27%20stroke-width=%27.8%27%20fill=%27none%27/%3E%3Cpath%20d=%27M4.4%204.8H17.6L5.6%2016.6Z%27%20fill=%27%2324130a%27%20stroke=%27%231a0e04%27%20stroke-width=%27.9%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M6.8%207.2H12.6L6.8%2012.8Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%27.8%27%20stroke-linejoin=%27round%27/%3E%3C/g%3E%3C/svg%3E");
+    --hdr-knot-r: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2736%27%20height=%2730%27%20viewBox=%270%200%2036%2030%27%3E%3Cg%20transform=%27translate%2836%200%29%20scale%28-1%201%29%27%3E%3Cdefs%3E%3ClinearGradient%20id=%27b%27%20x1=%270%27%20y1=%270%27%20x2=%270%27%20y2=%271%27%3E%3Cstop%20offset=%270%27%20stop-color=%27%23e8bb78%27/%3E%3Cstop%20offset=%27.4%27%20stop-color=%27%23bb8745%27/%3E%3Cstop%20offset=%271%27%20stop-color=%27%237c5226%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath%20d=%27M.5%20.6H29.5L34.8%203.6L29.5%206.6H21.4L10.6%2017.6C7.6%2020.6%205.2%2024%203.4%2029.4H.5Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%271.2%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M1.7%201.8H29%27%20stroke=%27%23ffe0a8%27%20stroke-opacity=%27.6%27%20stroke-width=%27.8%27%20fill=%27none%27/%3E%3Cpath%20d=%27M4.4%204.8H17.6L5.6%2016.6Z%27%20fill=%27%2324130a%27%20stroke=%27%231a0e04%27%20stroke-width=%27.9%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M6.8%207.2H12.6L6.8%2012.8Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%27.8%27%20stroke-linejoin=%27round%27/%3E%3C/g%3E%3C/svg%3E");
+    --hdr-knot-b: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2736%27%20height=%2730%27%20viewBox=%270%200%2036%2030%27%3E%3Cg%20transform=%27translate%280%2030%29%20scale%281%20-1%29%27%3E%3Cdefs%3E%3ClinearGradient%20id=%27b%27%20x1=%270%27%20y1=%270%27%20x2=%270%27%20y2=%271%27%3E%3Cstop%20offset=%270%27%20stop-color=%27%23e8bb78%27/%3E%3Cstop%20offset=%27.4%27%20stop-color=%27%23bb8745%27/%3E%3Cstop%20offset=%271%27%20stop-color=%27%237c5226%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath%20d=%27M.5%20.6H29.5L34.8%203.6L29.5%206.6H21.4L10.6%2017.6C7.6%2020.6%205.2%2024%203.4%2029.4H.5Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%271.2%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M1.7%201.8H29%27%20stroke=%27%23ffe0a8%27%20stroke-opacity=%27.6%27%20stroke-width=%27.8%27%20fill=%27none%27/%3E%3Cpath%20d=%27M4.4%204.8H17.6L5.6%2016.6Z%27%20fill=%27%2324130a%27%20stroke=%27%231a0e04%27%20stroke-width=%27.9%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M6.8%207.2H12.6L6.8%2012.8Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%27.8%27%20stroke-linejoin=%27round%27/%3E%3C/g%3E%3C/svg%3E");
+    --hdr-knot-br: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2736%27%20height=%2730%27%20viewBox=%270%200%2036%2030%27%3E%3Cg%20transform=%27translate%2836%2030%29%20scale%28-1%20-1%29%27%3E%3Cdefs%3E%3ClinearGradient%20id=%27b%27%20x1=%270%27%20y1=%270%27%20x2=%270%27%20y2=%271%27%3E%3Cstop%20offset=%270%27%20stop-color=%27%23e8bb78%27/%3E%3Cstop%20offset=%27.4%27%20stop-color=%27%23bb8745%27/%3E%3Cstop%20offset=%271%27%20stop-color=%27%237c5226%27/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath%20d=%27M.5%20.6H29.5L34.8%203.6L29.5%206.6H21.4L10.6%2017.6C7.6%2020.6%205.2%2024%203.4%2029.4H.5Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%271.2%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M1.7%201.8H29%27%20stroke=%27%23ffe0a8%27%20stroke-opacity=%27.6%27%20stroke-width=%27.8%27%20fill=%27none%27/%3E%3Cpath%20d=%27M4.4%204.8H17.6L5.6%2016.6Z%27%20fill=%27%2324130a%27%20stroke=%27%231a0e04%27%20stroke-width=%27.9%27%20stroke-linejoin=%27round%27/%3E%3Cpath%20d=%27M6.8%207.2H12.6L6.8%2012.8Z%27%20fill=%27url%28%23b%29%27%20stroke=%27%231a0e04%27%20stroke-width=%27.8%27%20stroke-linejoin=%27round%27/%3E%3C/g%3E%3C/svg%3E");
     /* the gold inlay along a bar's inner edge: one hairline, faded at both ends */
     /* the gold inlay where a bar meets the map: one solid line, edge to edge,
        on both bars, a shade quieter than the plates' own gold */
@@ -75,11 +83,11 @@
     /* HOW FAR DOWN THE TOP BAR REACHES, plus a 6px step: the toasts and the
        rival's wonder banner hang from its foot (--hud-top - 6px), the
        minimap and its toggle a little below it. One number, measured off a
-       bar that stacks two rows of 40px and 44px plates (build 214: 101px);
+       panel of two 44px rows inside its bronze trims (build 217: 102px);
        the desktop bar is one row (see the ≥900px block, 56px), so the number
        moves and the whole stack rides up with it. tests/deck-ui.mjs
        andAToastSaidMidCutStandsBelowTheBar holds the toasts off the bar. */
-    --hud-top: 107px;
+    --hud-top: 108px;
     /* THE PLATE IS CLOSED (build 215 — the operator, on build 214's stepped
        corners: "there's not anything in the corner… connect all the corners";
        the banner over the build panel was the style he pointed at). Every
@@ -145,6 +153,11 @@
     font-weight: 400 700; font-style: normal; font-display: swap;
   }
   @font-face {
+    font-family: 'Crimson';
+    src: url('assets/ui/crimson.woff2') format('woff2');
+    font-weight: 500 700; font-style: normal; font-display: swap;
+  }
+  @font-face {
     font-family: 'Cinzel';
     src: url('assets/ui/cinzel.woff2') format('woff2');
     font-weight: 400 900; font-style: normal; font-display: swap;
@@ -170,41 +183,61 @@
   @supports (height: 100dvh) { html, body { height: 100dvh; } }
   #c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-  /* ---- THE HUD IS CARVED (build 214 — operator, on a player's critique: "the
-     UI is too small and didn't catch the eye at all… I want you to take that
-     style [the settings page's], and carry that through into the pause menu
-     as well as into the overall game UI"). ONE PLATE everywhere: the settings
-     page's stepped corner (--hud-chamfer), a dark face lit from above, a gold
-     rim inside a dark edge, a lit amber face for what is on or chosen. Every
-     picture on it is a drawn icon of the game's own (assets/ui/hud, PixelLab,
-     128px shown at ≤42 CSS px, so within its pixels on a 3x phone), never an
-     emoji. ---- */
+  /* ---- THE HEADER IS PART OF THE CIVILIZATION (build 217 — the operator,
+     with a drawn mockup: "Eliminate the heavy rectangular frames… Use subtle
+     shadows, wood grain, aged bronze, and restrained highlights instead of
+     multiple competing ornamental borders… a consistent visual language of
+     dark walnut, aged bronze, parchment, and gold. Let the game world remain
+     the visual centerpiece"). The bar is ONE walnut panel framed by two thin
+     aged-bronze trims (a double line, --hdr-trim) with a carved knot at each
+     corner (--hdr-knot), its two rows parted by a plank seam. Nothing on it
+     wears a plate: each good is its drawn picture (assets/ui/hud, PixelLab
+     redraws of the mockup's own icons, 128px masters shown at ≤34 CSS px, so
+     within their pixels on a 3x phone) with its total beside it, large, in
+     a book serif (Crimson Pro, self-hosted); the day is a sun (a moon by
+     night) and "Day N" in the same serif; the map, the cards and the ONE
+     menu are standalone pictures. A held or open control lifts a restrained
+     gold glow, never a frame. ---- */
   #topbar {
     position: absolute; top: 0; left: 0; right: 0; z-index: 10;
-    padding: calc(var(--safe-top) + 6px) 6px 7px 6px;
-    /* opaque walnut, lit from above, a carved gold trim at its foot (::after)
-       — and no backdrop blur: it was re-blurring the moving map under a bar
-       that was 94% opaque, every frame, for nothing */
+    padding: calc(var(--safe-top) + 6px) 6px 6px 6px;
+    /* the knots (the right pair mirrored), the top trim at the panel's head
+       (the status band above it is plain walnut), then the walnut itself,
+       lit from above. No backdrop blur: the panel is opaque. */
     background-color: var(--hud-wood);
-    background-image: linear-gradient(180deg, rgba(255,222,160,.06), rgba(0,0,0,.22)), var(--wood-tex);
-    box-shadow: 0 1px 0 #0a0704, 0 4px 10px rgba(0,0,0,.35);
-    font-size: 15px; font-weight: 700; white-space: nowrap;
-    font-variant-numeric: tabular-nums;
+    background-image:
+      var(--hdr-knot), var(--hdr-knot-r), var(--hdr-knot-b), var(--hdr-knot-br),
+      var(--hdr-trim),
+      linear-gradient(180deg, rgba(160,96,38,.44), rgba(110,62,24,.36) 45%, rgba(84,46,17,.40)), var(--wood-tex);
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+    background-size: 34px 28px, 34px 28px, 34px 28px, 34px 28px, 100% 6.5px, auto, auto;
+    background-position: left 0 top var(--safe-top), right 0 top var(--safe-top), left 0 bottom 0, right 0 bottom 0,
+      left 0 top var(--safe-top), 0 0, 0 0;
+    box-shadow: 0 2px 0 rgba(0,0,0,.35), 0 5px 12px rgba(0,0,0,.38);
+    font-size: 15px; font-weight: 600; white-space: nowrap;
+    font-variant-numeric: lining-nums tabular-nums;
   }
-  /* the trim where a bar meets the map: a dark line, two of gold, a dark line */
-  #topbar::after, #bottombar::before {
-    content: ''; position: absolute; left: 0; right: 0; height: 4px; pointer-events: none;
+  /* the bottom trim, where the panel meets the map; the build panel's carved
+     frame keeps its own gold line (#bottombar::before) */
+  #topbar::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 6.5px; pointer-events: none;
+    background: var(--hdr-trim) 0 0 / 100% 6.5px no-repeat;
+  }
+  #bottombar::before {
+    content: ''; position: absolute; left: 0; right: 0; height: 4px; pointer-events: none; top: 0;
     background: linear-gradient(#0b0704 0 1px, #f0cc6e 1px 2px, #a8782a 2px 3px, #0b0704 3px 4px);
   }
-  #topbar::after { bottom: -1px; }
-  #bottombar::before { top: 0; }
-  .trow { display: flex; align-items: center; gap: 4px; }
-  .trow + .trow { margin-top: 4px; }
-  /* THE PLATE: the face is a ::before under the content (the plate isolates
-     it), clipped to the chamfer, its rim the closed nine-slice (--plate-rim) */
-  .res, #rDay, #topbar .iconbtn { position: relative; isolation: isolate; }
-  .res::before, #rDay::before, #topbar .iconbtn::before, #bmToggle::before, .bbtn::after,
-  #panel .abtn::before, .hplate::before, #panel .pchip::before {
+  .trow { display: flex; align-items: center; gap: 4px; height: 44px; }
+  /* the plank seam between the rows: a dark joint over a lit edge */
+  .trow + .trow { margin-top: 2px; position: relative; }
+  .trow + .trow::before {
+    content: ''; position: absolute; left: -6px; right: -6px; top: -2px; height: 2px; pointer-events: none;
+    background: linear-gradient(#0a0603 0 1px, rgba(255,214,150,.10) 1px 2px);
+  }
+  /* THE PLATE (the build panel, the selection panel and their chips): the
+     face is a ::before under the content (the plate isolates it), clipped
+     to the chamfer, its rim the closed nine-slice (--plate-rim) */
+  #bmToggle::before, .bbtn::after, #panel .abtn::before, .hplate::before, #panel .pchip::before {
     content: ''; position: absolute; inset: 0; z-index: -1; clip-path: var(--hud-chamfer);
     border: 8px solid transparent; border-image: var(--plate-rim) 32 / 8px stretch;
     background: var(--plate-face); box-shadow: none;
@@ -212,105 +245,115 @@
   /* ONE ROW HOLDS WHAT THE TOWN HOLDS (operator, build 154: "move the
      population stat to the same row as the other resources… balance out
      population stat and all resources", tests/hud-info.mjs): the four goods
-     and the people are five plates of ONE width — flex-basis 0 shares the
-     row evenly, and min-width at the plate's own content lets one whose
-     number needs more take it while the rest share what is left, so no
-     number is ever clipped. Each good wears its own drawn picture (operator,
-     build 214: "make the icons for the different resources unique to our
-     game… quality pixel count so it's easy for the player to visually see
-     what each resource is"), a fifth smaller since build 215 ("Shrink down
-     the resource icons… maybe just go to like a single gold coin"): gold is
-     a coin stamped with the clan's flame, two more behind it. The food rate
-     does not ride the plate: a tap on it says the day's sums, and the number
-     itself turns red when the store will run dry within days (UI.refresh).
-     A number past 9,999 shortens to 12.4k (UI.fmtRes). */
+     and the people are five groups spread evenly across the row, each its
+     picture and its total (build 217: "Larger, custom pixel-art illustrations
+     with consistent scale and visual weight. Keep totals prominent"). A group
+     is a finger tall and answers a tap; a held one glows. The food rate does
+     not ride the row: a tap on it says the day's sums, and the number itself
+     turns red when the store will run dry within days (UI.refresh). A number
+     past 9,999 shortens to 12.4k (UI.fmtRes). */
+  #topbar .trow:first-child { justify-content: center; gap: 1px; padding: 0 2px; }
   .res {
-    display: flex; align-items: center; justify-content: center; gap: var(--res-gap, 4px);
-    height: 40px; padding: 0 var(--res-pr, 7px) 0 var(--res-pl, 5px);
-    flex: 1 1 0; min-width: auto; max-width: 170px;
-    font-size: var(--res-fs, 16px); color: #f7ead0; text-shadow: 0 1px 0 #000, 0 0 4px rgba(0,0,0,.55);
+    position: relative; display: flex; align-items: center; justify-content: center; gap: var(--res-gap, 5px);
+    height: 44px; padding: 0 1.5px; flex: 1 1 0; min-width: auto; max-width: 160px;
+    font: 600 var(--res-fs, 18px)/1 var(--numfont); color: #f4e4b8; letter-spacing: .1px;
+    text-shadow: 0 1px 0 #000, 0 2px 3px rgba(0,0,0,.7);
   }
-  .res .ric { width: var(--res-ic, 24px); height: var(--res-ic, 24px); flex: 0 0 auto; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
-  .res:active::before, #rDay:active::before { filter: brightness(1.25); }
+  .res .ric { height: var(--res-ic, 25px); width: auto; flex: 0 0 auto; display: block; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
+  .res:active .ric, #rDay:active::after { filter: drop-shadow(0 0 4px rgba(244,196,96,.75)) drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
+  .res:active { color: #fff3cf; }
   #rFood.low { color: #ff8a80; }
-  /* THE PLATES ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a plate
+  /* THE GROUPS ANSWER A TAP (UI.chipNote, tests/hud-info.mjs) — and a group
      holds its number at every width: the narrower phones step the type, the
      picture and the gaps down a little rather than clip one. */
   #topbar [data-chip] { cursor: pointer; }
-  #topbar .trow:first-child { justify-content: center; }
   /* (measured with the widest numbers the bar prints — "9999", "99.9k",
      "64/60" — so the five always share one row: tests/hud-info.mjs) */
-  @media (max-width: 480px) { #topbar { --res-ic: 22px; --res-fs: 16px; --res-gap: 3px; --res-pl: 3px; --res-pr: 4px; } #topbar .trow:first-child { gap: 3px; } }
-  @media (max-width: 420px) { #topbar { --res-ic: 21px; --res-fs: 15.5px; } }
-  @media (max-width: 400px) { #topbar { --res-ic: 20px; --res-fs: 15px; } }
-  @media (max-width: 382px) { #topbar { --res-ic: 19px; --res-fs: 14.5px; } }
-  @media (max-width: 368px) { #topbar { --res-ic: 18px; --res-fs: 14px; --res-gap: 2px; --res-pr: 3px; } }
-  @media (max-width: 348px) { #topbar { --res-ic: 17px; --res-fs: 13px; } }
-  @media (max-width: 330px) { #topbar { --res-ic: 16px; --res-fs: 12.5px; } }
-  /* THE DAY'S PLATE: the sun by day and the moon by night (UI.refresh reads
-     R.dayPhase), the count in the menus' own caps */
-  #rDay { display: flex; align-items: center; height: 40px; padding: 0 10px 0 33px; flex: 0 0 auto;
-    color: #f2cf6c; font-family: var(--menufont); font-size: 15px; letter-spacing: .4px; text-shadow: 0 1px 0 #000, 0 0 4px rgba(0,0,0,.6); }
-  #rDay::after { content: ''; position: absolute; left: 6px; top: 50%; width: 24px; height: 24px; margin-top: -12px; pointer-events: none;
-    background: url("assets/ui/hud/day-sun.png?v=1") center / contain no-repeat; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
-  #rDay.night::after { background-image: url("assets/ui/hud/day-moon.png?v=1"); }
+  @media (max-width: 420px) { #topbar { --res-ic: 24px; --res-fs: 17.5px; } }
+  @media (max-width: 400px) { #topbar { --res-ic: 24px; --res-fs: 17px; --res-gap: 3px; } }
+  @media (max-width: 382px) { #topbar { --res-ic: 23px; --res-fs: 16px; } }
+  @media (max-width: 368px) { #topbar { --res-ic: 22px; --res-fs: 15.5px; --res-gap: 3px; } }
+  @media (max-width: 348px) { #topbar { --res-ic: 20px; --res-fs: 15px; } }
+  @media (max-width: 330px) { #topbar { --res-ic: 19px; --res-fs: 14px; --res-gap: 2px; } }
+  /* THE DAY: its own sun emblem (the moon by night — UI.refresh reads
+     R.dayPhase) and "Day N" in the header's serif, integrated into the
+     panel rather than boxed */
+  #rDay { position: relative; display: flex; align-items: center; height: 44px; padding: 0 8px 0 44px; flex: 0 0 auto;
+    color: #f3dfa6; font: 600 22px/1 var(--numfont); letter-spacing: .2px;
+    text-shadow: 0 1px 0 #000, 0 2px 3px rgba(0,0,0,.7); }
+  #rDay::after { content: ''; position: absolute; left: 4px; top: 50%; width: 34px; height: 34px; margin-top: -17px; pointer-events: none;
+    background: url("assets/ui/hud/day-sun.png?v=2") center / contain no-repeat; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
+  #rDay.night::after { background-image: url("assets/ui/hud/day-moon.png?v=2"); background-size: 29px auto; }   /* the moon's own pixels: 89px across */
   #rDay .dW { white-space: pre; }
   /* THE SAVED ARMIES RIDE THE SECOND ROW'S LEFT (operator, build 154: "move
      the Army 1, 2, and 3 icons to the left hand side of the second row… This
      keeps our game UI / screen as clean as possible"; tests/army-groups.mjs).
-     Each is a plate of the row with a drawn picture of what the army mostly
-     is — a helmet for foot, a bow for the archers, a horse for the riders, a
-     ship for a fleet (UI.armyKind) — and its number on a gold boss. Empty,
-     the strip takes no room at all. */
-  #armyBar { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+     Each is a drawn picture of what the army mostly is — a helmet for foot, a
+     bow for the archers, a horse for the riders, a ship for a fleet
+     (UI.armyKind) — and its number on a gold boss. Empty, the strip takes no
+     room at all. */
+  #armyBar { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
   #armyBar:empty { display: none; }
-  #armyBar .aic { width: 30px; height: 30px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
-  #armyBar .armyN { position: absolute; right: 1px; bottom: 1px; z-index: 1; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
-    border-radius: 8px; font: 800 11px/16px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; color: #2b1906; pointer-events: none;
+  #armyBar .aic { width: 30px; height: 30px; display: block; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
+  #armyBar .armyN { position: absolute; right: 1px; bottom: 2px; z-index: 1; min-width: 16px; height: 16px; padding: 0 3px; box-sizing: border-box;
+    border-radius: 8px; font: 700 12px/15px var(--numfont); text-align: center; color: #2b1906; pointer-events: none;
     background: radial-gradient(circle at 35% 30%, #fff3c8, #e2b24c 60%, #9c6f1f); box-shadow: 0 0 0 1.5px #1d1007; }
   .iconbtn {
     min-width: 44px; min-height: 34px; border: none; border-radius: 8px;
     background: var(--btn); color: var(--text); font-size: 15px; font-weight: 700;
   }
   .iconbtn:active { background: var(--btn-hi); }
-  /* THE TOP BAR'S BUTTONS ARE A FINGER TALL AS DRAWN (44px, the research's
-     floor — PX-14 hung an invisible reach round a 34px drawing; the plates
-     are simply that big now). The map, the cards and the ONE menu sit right;
-     a lit plate is what is open. */
-  #topbar .iconbtn { width: 44px; height: 44px; min-width: 0; min-height: 0; padding: 0; border-radius: 0; background: none;
+  /* THE MAP, THE CARDS AND THE ONE MENU are standalone pictures, a finger
+     square as drawn (44px — no invisible reach), no frame round them. */
+  #topbar .iconbtn { position: relative; width: 44px; height: 44px; min-width: 0; min-height: 0; padding: 0; border-radius: 0; background: none;
     display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; cursor: pointer; }
-  #topbar .iconbtn .hic { width: 30px; height: 30px; display: block; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
+  #topbar .iconbtn .hic { width: auto; height: 30px; display: block; pointer-events: none; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }
   #topbar .iconbtn:active { background: none; transform: translateY(1px); }
-  #topbar .iconbtn:active::before { filter: brightness(1.25); }
+  #topbar .iconbtn:active .hic, #topbar .iconbtn:active .aic,
+  #mapBtn[aria-pressed="true"] .hic, #topbar .iconbtn.on .hic {
+    filter: drop-shadow(0 0 4px rgba(244,196,96,.7)) drop-shadow(0 2px 1px rgba(0,0,0,.7));
+  }
   #topbar .iconbtn:focus-visible, .res:focus-visible, #rDay:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
   #mapBtn { margin-left: auto; }
-  #mapBtn[aria-pressed="true"]::before, #topbar .iconbtn.on::before {
-    background: var(--plate-face-lit); border-image-source: var(--plate-rim-lit);
+  #topbar .trow + .trow { gap: 14px; padding: 0 4px 0 6px; }
+  /* a crowded row (saved armies, running cards) closes its gaps up first */
+  #topbar .trow + .trow:has(> #armyBar:not(:empty)), #topbar .trow + .trow:has(> #dkTimers:not(:empty)) { gap: 3px; padding: 0 2px; }
+  #topbar .trow + .trow:has(> #armyBar:not(:empty)) #rDay, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) #rDay { padding: 0 4px 0 38px; }
+  #topbar .trow + .trow:has(> #armyBar:not(:empty)) #rDay::after, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) #rDay::after { left: 2px; width: 32px; height: 32px; margin-top: -16px; }
+  @media (max-width: 400px) {
+    #topbar .trow + .trow:has(> #armyBar:not(:empty)) .iconbtn, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) .iconbtn { width: 40px; }
   }
-  /* …and on a narrow phone the second row makes room: the plates step down
-     to 40, 37 and 36 wide (still 44 tall), so three banners, the running cards'
-     timers, the day and the three buttons fit at 320 (tests/hud-info.mjs
+  /* …and on a narrow phone the second row makes room: the buttons step down
+     to 40, 37 and 36 wide (still 44 tall), so three banners, the running
+     cards' timers, the day and the three buttons fit at 320 (tests/hud-info.mjs
      noTwoTopBarTargetsOverlap, tests/deck-ui.mjs theRowFitsEveryWidth) */
   @media (max-width: 400px) {
-    #topbar .trow + .trow .iconbtn { width: 40px; }
-    #rDay { padding-right: 8px; font-size: 14px; }
+    #topbar .trow + .trow:not(:has(> #armyBar:not(:empty))):not(:has(> #dkTimers:not(:empty))) { gap: 12px; }
+    #rDay { font-size: 21px; padding-right: 6px; }
   }
   @media (max-width: 382px) {
-    #topbar .trow + .trow .iconbtn { width: 37px; }
-    #topbar .iconbtn .hic, #armyBar .aic { width: 28px; height: 28px; }
+    #topbar .trow + .trow:not(:has(> #armyBar:not(:empty))):not(:has(> #dkTimers:not(:empty))) { gap: 4px; }
+    #topbar .trow + .trow .iconbtn { width: 40px; }
+    #topbar .iconbtn .hic { height: 29px; }
+    #armyBar .aic { width: 28px; height: 28px; }
+    #rDay { font-size: 20px; padding-left: 40px; }
+    #rDay::after { width: 31px; height: 31px; margin-top: -15.5px; }
   }
   /* …and when the saved armies AND the running cards both want the row, the
      day drops its word ("☀ 12"), so the cards' timers keep room for a chip and
      its count (DeckUI._fitChips; tests/deck-ui.mjs andTheBadgeIsWhole) */
   @media (max-width: 480px) {
     #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay .dW { display: none; }
-    #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay { padding-right: 8px; }
+    #topbar .trow:has(> #armyBar:not(:empty)):has(> #dkTimers:not(:empty)) #rDay { padding-right: 4px; }
   }
   @media (max-width: 370px) {
-    #topbar .trow + .trow .iconbtn { width: 36px; }
-    #topbar .iconbtn .hic, #armyBar .aic { width: 27px; height: 27px; }
-    #rDay { padding: 0 7px 0 29px; }
-    #rDay::after { left: 5px; width: 21px; height: 21px; margin-top: -10.5px; }
+    #topbar .trow + .trow { gap: 2px; }
+    #topbar .trow + .trow .iconbtn { width: 37px; }
+    #topbar .trow + .trow:has(> #armyBar:not(:empty)) .iconbtn, #topbar .trow + .trow:has(> #dkTimers:not(:empty)) .iconbtn { width: 36px; }
+    #topbar .iconbtn .hic { height: 28px; }
+    #armyBar .aic { width: 28px; height: 28px; }
+    #rDay { padding: 0 4px 0 34px; font-size: 19px; }
+    #rDay::after { left: 2px; width: 28px; height: 28px; margin-top: -14px; }
     #rDay .dW { display: none; }
   }
 
@@ -418,30 +461,27 @@
   #bmToggle:active::before { filter: brightness(1.2); }
   #bmToggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   #bmToggle .bmIc { display: none; pointer-events: none; }
-  /* closed: THE BUILD BUTTON (build 215 — the operator: "Create a nicer
-     looking build button… more pixels, better quality image… make that build
-     button look more attractive to click on"): a drawn medallion, a gold rim
-     round a carved walnut face with a golden cottage and two crossed hammers
-     (assets/ui/hud/build-medal.png, PixelLab, 256px for 84 CSS px), on a warm
-     light, with the build panel's own banner across its foot saying BUILD —
-     the panel it opens wears the same banner, so the closed and the open
-     menu read as one thing. The box is the target: 88x100, as drawn. */
+  /* closed: THE BUILD BUTTON (build 217 — the operator, with a drawn mockup:
+     "Replace the current awkward stacked icon-and-label treatment with one
+     cohesive circular medallion. Crossed hammers, subtle gold detailing, and
+     a clear BUILD label. Make it large enough to be an obvious primary
+     action, but about 25% smaller than the example"): ONE picture
+     (assets/ui/hud/build-medal.png, the mockup's own medallion keyed off its
+     grass, 289x255) — an aged-bronze ring riveted round a walnut face, two
+     crossed gold hammers, laurels, and BUILD on its plaque — at 89 CSS px
+     wide, a quarter under the mockup's 121, within its pixels on a 3x phone.
+     No glow, no ribbon, no plate: the box is the target, 89x79 as drawn. */
   #bottombar[data-bm="closed"] #bmToggle {
-    top: auto; left: calc(env(safe-area-inset-left, 0px) + 8px); bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 10px);
-    width: 88px; height: 100px; padding: 0; display: block;
+    top: auto; left: calc(env(safe-area-inset-left, 0px) + 10px); bottom: calc(env(safe-area-inset-bottom, 0px) / 2 + 12px);
+    width: 89px; height: 79px; padding: 0; display: block;
   }
   #bottombar[data-bm="closed"] #bmToggle::before { display: none; }
-  #bmToggle .bmGlow, #bmToggle .bmMed, #bmToggle .bmRib { display: none; pointer-events: none; }
-  #bottombar[data-bm="closed"] #bmToggle .bmGlow { display: block; position: absolute; left: -6px; right: -6px; top: -6px; height: 96px; border-radius: 50%;
-    background: radial-gradient(circle at 50% 50%, rgba(255,206,110,.42) 0%, rgba(255,186,80,.16) 46%, rgba(255,186,80,0) 68%); }
-  #bottombar[data-bm="closed"] #bmToggle .bmMed { display: block; position: absolute; left: 2px; top: 0; width: 84px; height: 84px;
-    filter: drop-shadow(0 3px 3px rgba(0,0,0,.65)); }
-  #bottombar[data-bm="closed"] #bmToggle .bmRib { display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 30px; }
-  #bmToggle .bmRib svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
-  #bmToggle .bmRib b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 1px;
-    font: 800 15px/1 var(--menufont); letter-spacing: 2px; text-transform: uppercase; color: #fbe39a; text-shadow: 0 2px 0 #000, 0 0 5px rgba(0,0,0,.6); }
+  #bmToggle .bmMed { display: none; pointer-events: none; }
+  #bottombar[data-bm="closed"] #bmToggle .bmMed { display: block; position: absolute; left: 0; top: 0; width: 89px; height: 79px;
+    filter: drop-shadow(0 3px 3px rgba(0,0,0,.6)); }
+  #bmToggle .bmTx { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   #bottombar[data-bm="closed"] #bmToggle:active { transform: translateY(2px) scale(.97); }
-  #bottombar[data-bm="closed"] #bmToggle:active .bmMed { filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)) brightness(1.12); }
+  #bottombar[data-bm="closed"] #bmToggle:active .bmMed { filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)) brightness(1.1); }
   /* open: the ✕ on the frame's right corner, a finger wide (44px) — the
      cards start below its foot, so no card loses a pixel to it
      (tests/desktop-layout.mjs butTheBuildCardsKeepEveryPixel) */
@@ -529,10 +569,10 @@
      is pushed out of a box that shows the picture instead. */
   .ri { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -0.24em; margin: 0 .1em 0 0; overflow: hidden; white-space: nowrap;
     text-indent: 3em; color: transparent; font-style: normal; background: center / contain no-repeat; filter: drop-shadow(0 1px 0 rgba(0,0,0,.6)); }
-  .ri[data-r="food"] { background-image: url("assets/ui/hud/res-food.png?v=1"); }
-  .ri[data-r="wood"] { background-image: url("assets/ui/hud/res-wood.png?v=1"); }
-  .ri[data-r="stone"] { background-image: url("assets/ui/hud/res-stone.png?v=1"); }
-  .ri[data-r="gold"] { background-image: url("assets/ui/hud/res-gold.png?v=2"); }
+  .ri[data-r="food"] { background-image: url("assets/ui/hud/res-food.png?v=3"); }
+  .ri[data-r="wood"] { background-image: url("assets/ui/hud/res-wood.png?v=3"); }
+  .ri[data-r="stone"] { background-image: url("assets/ui/hud/res-stone.png?v=3"); }
+  .ri[data-r="gold"] { background-image: url("assets/ui/hud/res-gold.png?v=3"); }
 
   /* ---- TWO ROADS TO VICTORY (Screens.showVictoryPaths, tests/calm-peace.mjs) ----
      the first Calm game's opening modal: z25 — over the placement chrome
@@ -1219,7 +1259,7 @@
        and `safe` keeps a menu wider than the bar scrolling from its start. */
     #topbar .trow:first-child { justify-content: space-evenly; }   /* the goods and the people */
     .res { flex: 0 1 160px; height: 44px; }
-    #topbar { --res-ic: 30px; --res-fs: 17px; }
+    #topbar { --res-ic: 27px; --res-fs: 19px; }   /* 27: the people's picture is 83px tall, so within its pixels at 3x */
     #rDay { height: 44px; }
     #buildmenu::before, #buildmenu::after { content: ''; margin: auto; }   /* centres; collapses to 0 when the row overflows, so it still scrolls from its start */
 
@@ -1234,7 +1274,8 @@
     :root { --hud-top: 62px; }                             /* one row (56px), so everything below it rides up */
     #topbar { display: flex; align-items: center; gap: 12px; padding-bottom: 6px; }
     #topbar .trow:first-child { flex: 1 1 auto; min-width: 0; gap: 6px; }
-    #topbar .trow + .trow { margin-top: 0; flex: 0 0 auto; gap: 6px; }
+    #topbar .trow + .trow { margin-top: 0; flex: 0 0 auto; gap: 10px; }
+    #topbar .trow + .trow::before { display: none; }   /* side by side: no seam between them */
     #mapBtn { margin-left: 6px; }
     /* a desktop has the room for a map you can read */
     #mini { width: 148px; height: 148px; }
@@ -2011,22 +2052,22 @@
 <canvas id="c"></canvas>
 
 <div id="topbar">
-  <!-- THE HUD WEARS THE SETTINGS PAGE'S CARVED WOOD (build 214, the GUI overhaul):
-       every good a plate with its own drawn picture (assets/ui/hud — no emoji),
-       the second row the saved armies, the day, the map, the cards and the ONE
-       menu (the pause menu and the settings are one page now). -->
+  <!-- THE HEADER (build 217, the operator's mockup): one walnut panel in aged
+       bronze trim; every good its own drawn picture (assets/ui/hud — no emoji)
+       and its total, the second row the saved armies, the day's sun, the map,
+       the cards and the ONE menu (the pause menu and the settings are one page). -->
   <div class="trow">
-    <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store. Tap to see what comes in and what is eaten a day."><img class="ric" data-ic="food" src="assets/ui/hud/res-food.png?v=1" alt="" draggable="false" decoding="async"><span id="rFood">0</span></span>
-    <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><img class="ric" data-ic="wood" src="assets/ui/hud/res-wood.png?v=1" alt="" draggable="false" decoding="async"><span id="rWood">0</span></span>
-    <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><img class="ric" data-ic="stone" src="assets/ui/hud/res-stone.png?v=1" alt="" draggable="false" decoding="async"><span id="rStone">0</span></span>
-    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><img class="ric" data-ic="gold" src="assets/ui/hud/res-gold.png?v=2" alt="" draggable="false" decoding="async"><span id="rGold">0</span></span>
-    <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><img class="ric" data-ic="pop" src="assets/ui/hud/res-pop.png?v=1" alt="" draggable="false" decoding="async"><span id="rPop">0/0</span></span>
+    <span class="res" data-chip="food" role="button" tabindex="0" aria-label="Food" title="Food in store. Tap to see what comes in and what is eaten a day."><img class="ric" data-ic="food" src="assets/ui/hud/res-food.png?v=3" alt="" draggable="false" decoding="async"><span id="rFood">0</span></span>
+    <span class="res" data-chip="wood" role="button" tabindex="0" aria-label="Wood" title="Wood in store. Tap to see what brings it in."><img class="ric" data-ic="wood" src="assets/ui/hud/res-wood.png?v=3" alt="" draggable="false" decoding="async"><span id="rWood">0</span></span>
+    <span class="res" data-chip="stone" role="button" tabindex="0" aria-label="Stone" title="Stone in store. Tap to see what brings it in."><img class="ric" data-ic="stone" src="assets/ui/hud/res-stone.png?v=3" alt="" draggable="false" decoding="async"><span id="rStone">0</span></span>
+    <span class="res" data-chip="gold" role="button" tabindex="0" aria-label="Gold" title="Gold in store. Tap to see what brings it in."><img class="ric" data-ic="gold" src="assets/ui/hud/res-gold.png?v=3" alt="" draggable="false" decoding="async"><span id="rGold">0</span></span>
+    <span class="res" id="rPopChip" data-chip="pop" role="button" tabindex="0" aria-label="Population" title="Your people, and the room the houses and the hall make. Tap for more."><img class="ric" data-ic="pop" src="assets/ui/hud/res-pop.png?v=3" alt="" draggable="false" decoding="async"><span id="rPop">0/0</span></span>
   </div>
   <div class="trow">
     <div id="armyBar"></div>
     <span id="rDay" data-chip="day" role="button" tabindex="0" aria-label="Day" title="The day. Tap to see how long a day lasts.">Day 1</span>
-    <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><img class="hic" src="assets/ui/hud/map.png?v=1" alt="" draggable="false" decoding="async"></button>
-    <button class="iconbtn" id="btnMenu" type="button" title="Menu" aria-label="Menu"><img class="hic" src="assets/ui/settings/tab-general.png?v=71" alt="" draggable="false" decoding="async"></button>
+    <button class="iconbtn" id="mapBtn" type="button" aria-label="Map" aria-pressed="true"><img class="hic" src="assets/ui/hud/map.png?v=2" alt="" draggable="false" decoding="async"></button>
+    <button class="iconbtn" id="btnMenu" type="button" title="Menu" aria-label="Menu"><img class="hic" src="assets/ui/hud/gear.png?v=1" alt="" draggable="false" decoding="async"></button>
   </div>
 </div>
 
@@ -2433,59 +2474,59 @@
 
 </div>
 
-<script src="test145/js/feedback.js?v=216"></script>
-<script src="test145/js/config.js?v=216"></script>
-<script src="test145/js/audio.js?v=216"></script>
-<script src="test145/js/config.supabase.js?v=216"></script>
-<script src="test145/js/vendor/supabase.js?v=216"></script>
-<script src="test145/js/backend.js?v=216"></script>
-<script src="test145/js/competition.js?v=216"></script>
-<script src="test145/js/score.js?v=216"></script>
-<script src="test145/js/cards.js?v=216"></script>
-<script src="test145/js/deck.js?v=216"></script>
-<script src="test145/js/artstyle.js?v=216"></script>
-<script src="test145/js/sprites.js?v=216"></script>
-<script src="test145/js/formations.js?v=216"></script>
-<script src="test145/js/relics.js?v=216"></script>
-<script src="test145/js/assets.js?v=216"></script>
-<script src="test145/js/dev.js?v=216"></script>
-<script src="test145/js/map.js?v=216"></script>
-<script src="test145/js/buildings.js?v=216"></script>
-<script src="test145/js/units.js?v=216"></script>
-<script src="test145/js/combat.js?v=216"></script>
-<script src="test145/js/ai.js?v=216"></script>
-<script src="test145/js/render.js?v=216"></script>
-<script src="test145/js/battlefx.js?v=216"></script>
-<script src="test145/js/goldfx.js?v=216"></script>
-<script src="test145/js/footing.js?v=216"></script>
-<script src="test145/js/ruins.js?v=216"></script>
-<script src="test145/js/roads.js?v=216"></script>
-<script src="test145/js/beasts.js?v=216"></script>
-<script src="test145/js/defeatart.js?v=216"></script>
-<script src="test145/js/victoryart.js?v=216"></script>
-<script src="test145/js/ui.js?v=216"></script>
-<script src="test145/js/feel.js?v=216"></script>
-<script src="test145/js/lookout.js?v=216"></script>
-<script src="test145/js/screens.js?v=216"></script>
-<script src="test145/js/patchnotes.js?v=216"></script>
-<script src="test145/js/settings.js?v=216"></script>
-<script src="test145/js/board.js?v=216"></script>
-<script src="test145/js/pages.js?v=216"></script>
-<script src="test145/js/titlescreen.js?v=216"></script>
-<script src="test145/js/scenario-maps.js?v=216"></script>
-<script src="test145/js/scenarios.js?v=216"></script>
-<script src="test145/js/prologue.js?v=216"></script>
-<script src="test145/js/deckfx.js?v=216"></script>
-<script src="test145/js/deckfx-town.js?v=216"></script>
-<script src="test145/js/deckfx-army.js?v=216"></script>
-<script src="test145/js/deckfx-growth.js?v=216"></script>
-<script src="test145/js/deckfx-rival.js?v=216"></script>
-<script src="test145/js/deckui.js?v=216"></script>
-<script src="test145/js/deckscreens.js?v=216"></script>
-<script src="test145/js/cardintro.js?v=216"></script>
-<script src="test145/js/game.js?v=216"></script>
-<script src="test145/js/terrain-core.js?v=216"></script>
-<script src="test145/js/terrain.js?v=216"></script>
-<script src="test145/js/terrain-v5.js?v=216"></script>
+<script src="test145/js/feedback.js?v=217"></script>
+<script src="test145/js/config.js?v=217"></script>
+<script src="test145/js/audio.js?v=217"></script>
+<script src="test145/js/config.supabase.js?v=217"></script>
+<script src="test145/js/vendor/supabase.js?v=217"></script>
+<script src="test145/js/backend.js?v=217"></script>
+<script src="test145/js/competition.js?v=217"></script>
+<script src="test145/js/score.js?v=217"></script>
+<script src="test145/js/cards.js?v=217"></script>
+<script src="test145/js/deck.js?v=217"></script>
+<script src="test145/js/artstyle.js?v=217"></script>
+<script src="test145/js/sprites.js?v=217"></script>
+<script src="test145/js/formations.js?v=217"></script>
+<script src="test145/js/relics.js?v=217"></script>
+<script src="test145/js/assets.js?v=217"></script>
+<script src="test145/js/dev.js?v=217"></script>
+<script src="test145/js/map.js?v=217"></script>
+<script src="test145/js/buildings.js?v=217"></script>
+<script src="test145/js/units.js?v=217"></script>
+<script src="test145/js/combat.js?v=217"></script>
+<script src="test145/js/ai.js?v=217"></script>
+<script src="test145/js/render.js?v=217"></script>
+<script src="test145/js/battlefx.js?v=217"></script>
+<script src="test145/js/goldfx.js?v=217"></script>
+<script src="test145/js/footing.js?v=217"></script>
+<script src="test145/js/ruins.js?v=217"></script>
+<script src="test145/js/roads.js?v=217"></script>
+<script src="test145/js/beasts.js?v=217"></script>
+<script src="test145/js/defeatart.js?v=217"></script>
+<script src="test145/js/victoryart.js?v=217"></script>
+<script src="test145/js/ui.js?v=217"></script>
+<script src="test145/js/feel.js?v=217"></script>
+<script src="test145/js/lookout.js?v=217"></script>
+<script src="test145/js/screens.js?v=217"></script>
+<script src="test145/js/patchnotes.js?v=217"></script>
+<script src="test145/js/settings.js?v=217"></script>
+<script src="test145/js/board.js?v=217"></script>
+<script src="test145/js/pages.js?v=217"></script>
+<script src="test145/js/titlescreen.js?v=217"></script>
+<script src="test145/js/scenario-maps.js?v=217"></script>
+<script src="test145/js/scenarios.js?v=217"></script>
+<script src="test145/js/prologue.js?v=217"></script>
+<script src="test145/js/deckfx.js?v=217"></script>
+<script src="test145/js/deckfx-town.js?v=217"></script>
+<script src="test145/js/deckfx-army.js?v=217"></script>
+<script src="test145/js/deckfx-growth.js?v=217"></script>
+<script src="test145/js/deckfx-rival.js?v=217"></script>
+<script src="test145/js/deckui.js?v=217"></script>
+<script src="test145/js/deckscreens.js?v=217"></script>
+<script src="test145/js/cardintro.js?v=217"></script>
+<script src="test145/js/game.js?v=217"></script>
+<script src="test145/js/terrain-core.js?v=217"></script>
+<script src="test145/js/terrain.js?v=217"></script>
+<script src="test145/js/terrain-v5.js?v=217"></script>
 </body>
 </html>

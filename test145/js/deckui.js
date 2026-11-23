@@ -236,7 +236,7 @@ const DeckUI = {
     btn.className = 'iconbtn';
     btn.id = 'deckBtn';
     btn.setAttribute('aria-label', 'Cards');
-    btn.innerHTML = '<img class="hic dkIco" src="assets/ui/hud/cards.png?v=1" alt="" draggable="false" decoding="async"><b class="dkBadge"></b>';
+    btn.innerHTML = '<img class="hic dkIco" src="assets/ui/hud/cards.png?v=2" alt="" draggable="false" decoding="async"><b class="dkBadge"></b>';
     row.insertBefore(btn, menu);
     btn.addEventListener('click', () => this.toggle());
     // the timers of the cards still running sit beside the tribe, where the
@@ -461,7 +461,7 @@ const DeckUI = {
     if (typeof UI !== 'undefined' && UI.bannerSvg) {
       const pn = q('.dkPanel');
       const ban = document.createElement('div'); ban.className = 'dkBanner'; ban.setAttribute('aria-hidden', 'true');
-      ban.innerHTML = UI.bannerSvg(176, 38, 'dkb') + '<b><img src="assets/ui/hud/cards.png?v=1" alt="">Cards</b>';
+      ban.innerHTML = UI.bannerSvg(176, 38, 'dkb') + '<b><img src="assets/ui/hud/cards.png?v=2" alt="">Cards</b>';
       pn.insertBefore(ban, pn.firstChild);
       if (typeof SettingsPage !== 'undefined' && SettingsPage.cornerSvg)
         for (const [c, fx] of [['tl', 0], ['tr', 1]]) {
@@ -2106,10 +2106,12 @@ body.dk-aiming #bottombar { visibility: hidden; }
    the button lifted (z-index) so the menu beside it never paints over the ring
    (tests/desktop-layout.mjs theDeckCountKeepsItsRing) */
 #deckBtn { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-#deckBtn .dkIco { width: 30px; height: 30px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.75)); }
-#deckBtn .dkBadge { position: absolute; z-index: 1; top: -3px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
-  border-radius: 9px; background: #1c140c; border: 1.5px solid var(--gold); color: #f3e2b4; pointer-events: none;
-  font: 800 11px/15px -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,.6); }
+#deckBtn .dkIco { width: auto; height: 30px; display: block; filter: drop-shadow(0 2px 1px rgba(0,0,0,.7)); }   /* 91px tall: within its pixels at 3x */
+/* the count on a dark oval in a gold ring, in the header's serif (build 217) */
+#deckBtn .dkBadge { position: absolute; z-index: 1; top: -1px; right: -7px; min-width: 23px; height: 17px; padding: 0 5px; box-sizing: border-box;
+  border-radius: 9px; background: radial-gradient(ellipse at 50% 35%, #3a2414, #160c05 75%); border: 1.5px solid #d9a94e; color: #f6e6bd; pointer-events: none;
+  font: 700 13px/14px var(--numfont, Georgia, serif); font-variant-numeric: lining-nums; text-align: center;
+  box-shadow: 0 0 0 1px #0d0703, 0 1px 3px rgba(0,0,0,.6); }
 #deckBtn.empty .dkBadge { display: none; }
 .dkArrive { position: fixed; width: 0; height: 0; z-index: 12; pointer-events: none; }
 .dkArrive i { position: absolute; left: 0; top: 0; border-radius: 50%; box-shadow: 0 0 0 1px rgba(13,11,8,.85), 0 1.5px 0 #5c3a1c; }
