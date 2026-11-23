@@ -365,7 +365,9 @@ for (const ph of [
   };
   const shotNow = await badgeShot('');
   const shotOld = await badgeShot('#topbar #deckBtn { z-index: 9 !important; }');
-  const shotCut = await badgeShot('#topbar #deckBtn { z-index: auto !important; }');
+  // (since build 217 the count stands clear of the menu, 14px of walnut
+  // between them: the control pulls the menu under the badge as well)
+  const shotCut = await badgeShot('#topbar #deckBtn { z-index: auto !important; } #topbar #btnMenu { margin-left: -30px !important; }');
   await badgeShot('');
   ck(`theDeckCountKeepsItsRing_${ph.k}`, !!shotNow && shotNow === shotOld,
     shotNow ? (shotNow === shotOld ? 'the badge reads as it does lifted over everything' : 'the menu is drawn over the badge') : 'no badge on the deck button');

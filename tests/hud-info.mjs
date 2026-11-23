@@ -434,8 +434,8 @@ for (const w of [320, 360, 390]) {
     const set = (id, v) => { document.getElementById(id).textContent = v; };
     let even = null;
     try {
-      for (const [food, wood, stone, gold, pop] of [['368', '75', '40', '12', '7/10'], ['9999', '9999', '9999', '9999', '60/60'],
-        ['99.9k', '123k', '9999', '1.2M', '64/60'], ['12.4k', '99.9k', '999k', '9.9M', '60/60']]) {
+      for (const [food, wood, stone, gold, pop] of [['368', '75', '40', '12', '7/10'], ['9,999', '9,999', '9,999', '9,999', '60/60'],
+        ['99.9k', '123k', '9,999', '1.2M', '64/60'], ['12.4k', '99.9k', '999k', '9.9M', '60/60']]) {
         set('rFood', food); set('rWood', wood); set('rStone', stone); set('rGold', gold); set('rPop', pop);
         const rr = row.getBoundingClientRect();
         const tops = new Set(chips.map(c => Math.round(c.getBoundingClientRect().top)));
@@ -456,7 +456,7 @@ ck('andTheFiveAreOneWidth', fit.every(f => f.even <= 1.5), fit.map(f => `${f.w}:
 
 /* ---- 4b. A NUMBER SHORTENS DOWN, NEVER UP, AND THE NOTE SAYS IT ALL (build 154) ---- */
 const nums = await p.evaluate(() => {
-  const cases = [[0, '0'], [7.9, '7'], [9999, '9999'], [10000, '10k'], [12450, '12.4k'], [12499, '12.4k'], [99999, '99.9k'],
+  const cases = [[0, '0'], [7.9, '7'], [1954, '1,954'], [9999, '9,999'], [10000, '10k'], [12450, '12.4k'], [12499, '12.4k'], [99999, '99.9k'],
     [100000, '100k'], [123456, '123k'], [999999, '999k'], [1000000, '1M'], [1250000, '1.2M'], [9999999, '9.9M']];
   const bad = cases.filter(([n, want]) => UI.fmtRes(n) !== want).map(([n, want]) => `${n} → "${UI.fmtRes(n)}" (want "${want}")`);
   const long = [0, 9999, 99999, 123456, 999999, 9999999, 123456789].filter(n => UI.fmtRes(n).length > 5).map(n => UI.fmtRes(n));
@@ -466,7 +466,7 @@ const nums = await p.evaluate(() => {
   return { bad, long, wood, full: UI.fmtFull(1234567) };
 });
 ck('aNumberShortensDownNeverUp', !nums.bad.length && !nums.long.length,
-  nums.bad.length ? nums.bad.join('; ') : nums.long.length ? 'too long: ' + nums.long.join(', ') : '9999 stays exact, 12,450 is 12.4k, 123,456 is 123k, 1,250,000 is 1.2M — five characters at most');
+  nums.bad.length ? nums.bad.join('; ') : nums.long.length ? 'too long: ' + nums.long.join(', ') : '9,999 stays exact (with its comma), 12,450 is 12.4k, 123,456 is 123k, 1,250,000 is 1.2M — five characters at most');
 ck('andTheNoteSaysTheWholeNumber', nums.wood === 'Wood 12,450' && nums.full === '1,234,567', `"${nums.wood}", ${nums.full}`);
 
 /* ---- 5. NO TWO TAP TARGETS IN THE TOP BAR OVERLAP (a G/matrix-style probe:

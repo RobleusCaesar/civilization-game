@@ -471,7 +471,7 @@ const playBar = (pg) => pg.evaluate(async () => {
   out.food = atDoor;
   // the bar passes through the numbers between, and arrives at what the door
   // left (the village eats once the world resumes, so a little under it)
-  const nums = seen.map(Number);
+  const nums = seen.map(t => Number(String(t).replace(/,/g, '')));   // the bar prints 1,954 (build 217)
   out.ticked = nums.some(v => v > afterDoor - 250 && v < afterDoor - 5) && Math.max(...nums) >= afterDoor - 3 && nums[nums.length - 1] >= afterDoor - 15;
   out.seen = [...new Set(seen)].join('→');
   out.toast = [...document.querySelectorAll('#toasts .toast')].map(t => t.textContent).join(' | ');

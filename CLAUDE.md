@@ -7004,41 +7004,75 @@ there), the board (js/board.js) and the title's vector plates
 it). Regenerate a rim with the nine-slice's own geometry (96 units, 4 a CSS
 pixel, a 16-unit corner; a line at d units in turns its corner d·(√2−1)
 further in). **THE GOODS ARE DRAWN PICTURES**
-(`assets/ui/hud/`, 128px PNG8 made with PixelLab — meat, logs, a stone
-block, a gold coin with two stacked behind it (build 215; `res-gold.png` at
-`?v=2`), a pair of villagers; the day's sun and moon; the map,
-the cards, the BUILD medallion; the armies' helmet, bow, horse and ship): no
-emoji is shown anywhere in the HUD, and every one is drawn at or under its
-pixels at 3x (≤42 CSS px). They carry their own hand-kept `?v=1` in index.html,
-ui.js and deckui.js: redraw one under its name and step it everywhere it is
-written. **THE TOP BAR**: five plates of one width on the first row (food,
-wood, stone, gold, people — the build 154 rule), 40px tall, their picture,
-type and gaps stepped down by width in tiers MEASURED with the widest numbers
-the bar prints ("9999", "99.9k", "64/60": tests/hud-info.mjs
-noChipSpillsOnAPhone — re-measure if a plate changes); the second row the
-saved armies at its left, the running cards' timers, the DAY plate (its sun
-by day, its moon by night — `#rDay.night`, read off `R.dayPhase` in
-`UI.refresh`), then the map, the cards and the ONE menu (the settings gear)
-at its right. Those buttons are 44px tall AS DRAWN (44, 40, 37 or 36 wide
-by the phone's width), so no invisible reach hangs round them; a desktop stands both rows on one line (56px). The cards' button is
-lifted over its row (`#deckBtn` z-index 1) so the menu beside it never cuts
-its count's ring. When the saved armies AND the running cards both want a
-phone's second row, the day drops its word ("☀ 12", a `:has()` rule) so a
+(`assets/ui/hud/`, PNG8 made with PixelLab — since build 217 the operator's
+own mockup icons, cropped from his drawing and redrawn crisp on transparency
+at 128px (`edit_image_pro_flash`, the crop as the source), trimmed to their
+ink: meat, logs, stone blocks, gold nuggets, a pair of villagers; the day's
+sun and a moon in its style (an edit of the sun); the map scroll, the cards'
+war banner (its "36" badge cut out of the crop by mirroring the banner's
+left half), the gear; the armies' helmet, bow, horse and ship): no emoji is
+shown anywhere in the HUD, and every one is drawn at or under its pixels at
+3x — sized by HEIGHT (`width: auto`), since a trimmed picture is not square
+and an `object-fit` box counts its empty side (deck-screens
+`theChromeIsDrawnAtTheDevicesResolution` read the cards' 91px-tall banner
+in a 34px box). They carry their own hand-kept `?v=` in index.html, ui.js
+and deckui.js (res-* `?v=3`, day-sun/moon and map `?v=2`, cards `?v=2`,
+gear `?v=1`): redraw one under its name and step it everywhere it is
+written. **THE HEADER IS PART OF THE CIVILIZATION** (build 217 — the
+operator, with a drawn mockup: "Eliminate the heavy rectangular frames… Use
+subtle shadows, wood grain, aged bronze, and restrained highlights… a
+consistent visual language of dark walnut, aged bronze, parchment, and gold.
+Let the game world remain the visual centerpiece"): ONE warm walnut panel
+(`--wood-tex` under a warm lift) framed by two thin aged-bronze double
+trims (`--hdr-trim`, 6.5px) with a carved knot at each corner
+(`--hdr-knot`, `-r`, `-b`, `-br`: one SVG, mirrored), its two rows parted
+by a plank seam (`.trow + .trow::before`). NOTHING ON IT WEARS A PLATE —
+the top bar left the shared plate rule; the build panel, the selection
+panel and their chips keep it. Each good is its picture and its total in
+a book serif (Crimson Pro, `assets/ui/crimson.woff2`, `--numfont`:
+subset to basic Latin, weights 500-700, 21KB), five groups of one width on
+the first row (the build 154 rule: `flex: 1 1 0`, content-wide where it
+must be), 44px tall, their picture, type and gaps stepped down by width in
+tiers MEASURED with the widest numbers the bar prints ("9,999", "99.9k",
+"64/60": tests/hud-info.mjs noChipSpillsOnAPhone — re-measure if a group
+changes); a total under 10,000 carries its thousands comma (`UI.fmtRes` →
+`fmtFull`, as the mockup sets it: "1,954"). The second row: the saved
+armies at its left, the running cards' timers, the DAY (a 34px sun by day,
+the moon by night — `#rDay.night`, read off `R.dayPhase` in `UI.refresh` —
+and "Day N" in the serif, 22px), then the map, the cards and the ONE menu
+(`assets/ui/hud/gear.png`) at its right, standalone pictures 44px square as
+drawn, so no invisible reach hangs round them. A held control, or the map
+while it is shown, lifts a restrained gold glow (a `drop-shadow`), never a
+frame. The cards' count is a dark oval in a gold ring in the serif. A
+crowded second row (saved armies or running cards, `:has()`) closes its
+gaps from 14px to 3px and its buttons step to 40 (≤400px) or 36 (≤370px)
+wide; when both want a phone's row the day drops its word ("☀ 12") so a
 chip and its count keep room (deck-ui `andTheBadgeIsWhole`; 320px still
-shows nothing rather than half a button). `--hud-top` is the bar's height
-plus 6 (107 on a phone, 62 on a desktop): the toasts and the rival's wonder
-banner hang from its foot (`--hud-top - 6px`), the framed minimap and its
+shows nothing rather than half a button). A desktop stands both rows on one
+line (56px, no seam). The cards' button is lifted over its row (`#deckBtn`
+z-index 1); since build 217 its count stands clear of the menu, and
+desktop-layout's control pulls the menu under it to prove the probe still
+sees a cut. `--hud-top` is the bar's height plus 6 (108 on a phone, 62 on a
+desktop): the toasts and the rival's wonder banner hang from its foot
+(`--hud-top - 6px`), the framed minimap and its
 toggle below it. **THE ⏸ IS GONE**: the gear opens the one menu, which
 pauses; Space still pauses under the veil (`Feel.setPause`), and Escape
 still opens and closes the menu. **THE BOTTOM** (`#bottombar[data-bm]`,
 written by `UI.syncBottomToggle` alone): `closed` — nothing in hand, the
 menu folded — is no bar at all but the BUILD BUTTON at the map's bottom
-left: since build 215 (the operator: "a nicer looking build button… 50%
-nicer… more attractive to click on") a gold medallion (`build-medal.png`,
-PixelLab, 256px PNG8 at 84 CSS px) over a soft gold glow (`.bmGlow`), the
-word on the BUILD banner's own ribbon across its foot (`.bmRib`,
-`UI.bannerSvg`), 88×100 as drawn and hit, the plate itself standing down
-(desktop-layout §3); `open` is the build panel,
+left: since build 217 ONE cohesive medallion (the operator: "Replace the
+current awkward stacked icon-and-label treatment with one cohesive circular
+medallion. Crossed hammers, subtle gold detailing, and a clear BUILD label…
+about 25% smaller than the example"): `build-medal.png` IS the mockup's own
+medallion — an aged-bronze riveted ring round a walnut face, two crossed
+gold hammers, laurels, BUILD on its plaque — keyed off the drawing's grass
+(the ring and plaque solid by shape, the laurels by a red-over-green key,
+green despilled), 289x255 palette PNG with alpha, at 89x79 CSS px (a
+quarter under the mockup's 121), within its pixels at 3x. No glow, no
+ribbon, no plate: the box is the target, 89x79 as drawn and hit
+(desktop-layout §3); the word is the picture's, and a clipped `.bmTx` span
+carries "Build" for a reader (army-groups `closedMenuSaysBuild` reads the
+text); `open` is the build panel,
 a carved frame across the bottom with the BUILD banner on its top edge
 (`UI.bannerSvg`), the settings page's corners (`SettingsPage.cornerSvg`)
 and a 44px ✕ on its right corner (the cards start below its foot:
