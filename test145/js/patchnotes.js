@@ -22,7 +22,7 @@
    seen on this device. */
 const PATCH_NOTES = [
   {
-    build: 215, date: '2026-11-22', title: 'A bigger, clearer look',
+    build: 216, date: '2026-11-23', title: 'A bigger, clearer look',
     items: [
       'The bar across the top is bigger and easier to read, and every good wears its own drawn picture: meat for food, logs for wood, a block of stone, a gold coin and a pair of villagers for your people.',
       'Build is now a big gold medallion at the bottom left of the map. It opens a framed build menu where every building has its own painted picture, and every card shows its price in the same pictures as the bar at the top, in red where you are short.',
@@ -31,6 +31,7 @@ const PATCH_NOTES = [
       'Every button and box has clean, unbroken corners, and the boxes are a little quieter so the map comes first.',
       'Sound now lives on the General tab, the day shows a sun by day and a moon by night, and a saved army shows a helmet, a bow, a horse or a ship for what it mostly is.',
       'The gold sparkle when you select one of your people or train a new one is half as busy, outside the journey.',
+      'Villagers standing on picked-bare soil stand on top of it again, instead of sinking into it up to the waist.',
     ],
   },
   {
