@@ -7039,8 +7039,11 @@ tiers MEASURED with the widest numbers the bar prints ("9,999", "99.9k",
 "64/60": tests/hud-info.mjs noChipSpillsOnAPhone — re-measure if a group
 changes); a total under 10,000 carries its thousands comma (`UI.fmtRes` →
 `fmtFull`, as the mockup sets it: "1,954"). The second row: the DAY at its
-left (a 34px sun by day, the moon by night — `#rDay.night`, read off
-`R.dayPhase` in `UI.refresh` — and "Day N" in the serif, 22px), the map, the
+left (a sun by day, the moon by night — `#rDay.night`, read off
+`R.dayPhase` in `UI.refresh` — and "Day N" in the serif, both THE GOODS'
+OWN SIZE, `--res-ic` and `--res-fs`, stepping down with them at every width:
+build 220, the operator: "shrink the sun/moon and day text so it's the same
+size as the icons and text on the top row… it looks off"), the map, the
 cards and the ONE menu (`assets/ui/hud/gear.png`, `#hudNav`) at its right,
 standalone pictures 44px square as drawn, so no invisible reach hangs round
 them, and BETWEEN them (`#hudMid`) the saved armies and the running cards'
@@ -7053,7 +7056,7 @@ between the day and the map, cards and setting button. Things should look
 stable"): the day and the three buttons are the same size and in the same
 place whatever else is in the row (army-groups `andNothingElseInTheRowMoves`,
 deck-ui `andTheDayAndTheButtonsStandStill`); the row steps down BY ITS WIDTH
-alone (≤430px the buttons 6px apart, ≤400px the day's type, the buttons 40
+alone (≤430px the buttons 6px apart, ≤400px the buttons 40
 wide and 4px apart, ≤382px 2px apart, ≤370px 37 wide and the day without its
 word), never by what it holds — the old crowded-row `:has()` rules are gone;
 on a 390px phone the room between holds two cards' timers with two-digit
