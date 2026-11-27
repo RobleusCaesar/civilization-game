@@ -7070,7 +7070,11 @@ chip with its count (deck-ui `andTheBadgeIsWhole`), and three banners leave
 the timers no room at all: they show nothing rather than half a button (the
 one case where a running card is not seen on a phone). A desktop stands both rows on one line
 (56px, no seam), the middle a fixed 196px so the day never slides there
-either. The cards' button is lifted over its row (`#deckBtn`
+either — a WIDTH, never a flex-basis alone (build 221, a player on Windows
+Firefox: "There is no button": Firefox and Safari size the row from its
+items' widths and ignore a basis, so the row came out 196px short and the
+map, the cards and the menu stood past the right of the screen;
+tests/desktop-layout.mjs §1b emulates their reading at seven laptop sizes). The cards' button is lifted over its row (`#deckBtn`
 z-index 1); since build 217 its count stands clear of the menu, and
 desktop-layout's control pulls the menu under it to prove the probe still
 sees a cut. `--hud-top` is the bar's height plus 6 (108 on a phone, 62 on a
