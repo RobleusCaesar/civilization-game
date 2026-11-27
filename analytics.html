@@ -208,6 +208,13 @@
     <div class="card wrap" style="margin-top:10px"><table id="tProBeats"></table></div>
     <div class="card wrap" style="margin-top:10px"><table id="tProAgain"></table><div class="note" id="proNote" style="margin-top:8px"></div></div>
 
+    <h2>Gold and the store</h2>
+    <p class="why">The gold finished games paid (one gold for every 200 points, 10 at the least and 150 at the most; the journey's games 25, 35 and 50), by outcome and difficulty, with the median and the 90th percentile and how many grants hit the cap or the floor; what the store sold, by tier and by card; the purses of everyone who earned or spent in the period; how often the store was opened and a card was short; and players who bought for the first time in the period beside players who earned but never bought, played again within a week (counted once that week has passed). Needs migration 0019.</p>
+    <div class="card wrap"><table id="tGoldEarned"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tGoldSpent"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tGoldCards"></table></div>
+    <div class="card wrap" style="margin-top:10px"><table id="tGoldAgain"></table><div class="note" id="goldNote" style="margin-top:8px"></div></div>
+
     <h2>Traffic</h2>
     <p class="why">Where visits come from (the site that sent each one), and the players and games each site brought, counted by the site a device FIRST came from. The vote-for-a-card offer was retired in build 176; its old rows are kept and summed in one line. Recorded from build 134; a device that played before then reads "Before tracking".</p>
     <div class="card wrap"><table id="tSrc"></table></div>
@@ -295,7 +302,7 @@ let DRAFTS = {};
    must never paint over a newer filter); a Lock moves the epoch, so nothing
    still in flight can paint the last session back. */
 let EPOCH = 0;
-const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0, fmin: 0, pro: 0 };
+const SEQ = { dash: 0, cmp: 0, inbox: 0, mine: 0, traffic: 0, fmin: 0, pro: 0, gold: 0 };
 const live = (sec, my, ep) => my === SEQ[sec] && ep === EPOCH;
 // the operator's own days: the daily chart is bucketed in this time zone
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; } })();
@@ -842,6 +849,51 @@ async function loadPrologue() {
   });
 }
 
+/* GOLD AND THE STORE (migration 0019's analytics_gold) */
+const GOLD_TIER = { stone: 'Stone', bronze: 'Bronze', iron: 'Iron', imperial: 'Imperial', enlight: 'Mythic' };
+const GOLD_MODE = { calm: 'Calm', moderate: 'Moderate', hard: 'Hard', journey: 'Journey', other: 'Other' };
+async function loadGold() {
+  const my = ++SEQ.gold, ep = EPOCH, tok = TOKEN;
+  const f = filters();
+  const r = await rpc('analytics_gold', { p_token: tok, p_from: f.p_from, p_to: f.p_to, p_everyone: f.p_everyone });
+  if (!live('gold', my, ep)) return;
+  if (badToken(r)) { lock('That passphrase was not accepted.'); return; }
+  if (!answered(r)) {
+    const why = missing(r) ? 'The gold section needs migration 0019 (supabase/migrations/0019_gold_store.sql).' : couldNot(r);
+    for (const id of ['tGoldEarned', 'tGoldSpent', 'tGoldCards', 'tGoldAgain']) table($(id), [], [], why);
+    $('goldNote').textContent = '';
+    return;
+  }
+  const D = r.data || {};
+  part($('tGoldEarned'), () => {
+    const E = (Array.isArray(D.earned) ? D.earned : []).filter(e => e && e.grants);
+    const OUT = { win: 'Won', loss: 'Lost (earned by its deeds)', prologue: 'Journey game won' };
+    table($('tGoldEarned'), ['Gold earned', 'Difficulty', 'Grants', 'Players', 'Gold', 'Median', '90th pct', 'At the cap', 'At the floor'],
+      E.map(e => [OUT[e.outcome] || e.outcome, GOLD_MODE[e.mode] || e.mode, num(e.grants), num(e.players), num(e.gold), num(e.median), num(e.p90),
+        rate(e.capped || 0, e.grants || 0), rate(e.floored || 0, e.grants || 0)]), 'No gold was earned in this period.');
+  });
+  part($('tGoldSpent'), () => {
+    const Sp = D.spent || {}, B = D.balance || {}, St = D.store || {};
+    const T = (Array.isArray(D.tiers) ? D.tiers : []).filter(t => t && t.purchases);
+    table($('tGoldSpent'), ['Gold spent', 'Purchases', 'Gold'],
+      [['Every card', num(Sp.purchases || 0) + (Sp.players ? ' by ' + num(Sp.players) + ' players' : ''), num(Sp.gold || 0)]]
+        .concat(T.map(t => [GOLD_TIER[t.tier] || t.tier, num(t.purchases), num(t.gold)])), 'Nothing was bought in this period.');
+    $('goldNote').textContent = `Purses of the ${num(B.players || 0)} players who earned or spent: average ${num(B.avg)}, median ${num(B.median)}, 90th percentile ${num(B.p90)}; ` +
+      `${num(B.zero || 0)} empty, ${num(B.can_buy || 0)} holding enough for the cheapest card. The store was opened ${num(St.visits || 0)} times by ${num(St.players || 0)} players; ` +
+      `a card was too dear ${num(St.short || 0)} times (${num(St.short_players || 0)} players).`;
+  });
+  part($('tGoldCards'), () => {
+    const C = (Array.isArray(D.cards) ? D.cards : []).filter(c => c && c.purchases);
+    table($('tGoldCards'), ['Card bought', 'Tier', 'Purchases', 'Gold'],
+      C.map(c => [String(c.card).replace(/_/g, ' '), GOLD_TIER[c.tier] || c.tier, num(c.purchases), num(c.gold)]), 'No card was bought in this period.');
+  });
+  part($('tGoldAgain'), () => {
+    const A = D.again || {}, row = (label, c) => { c = c || {}; return [label, num(c.players || 0), rate(c.again || 0, c.n || 0)]; };
+    table($('tGoldAgain'), ['Players', 'In the period', 'Played again within a week'],
+      [row('Bought a card (first purchase in the period)', A.buyers), row('Earned gold, never bought', A.others)], 'No gold moved in this period.');
+  });
+}
+
 async function loadTraffic() {
   const my = ++SEQ.traffic, ep = EPOCH, tok = TOKEN;
   const f = filters();
@@ -1160,7 +1212,7 @@ async function loadAll(verify) {
 }
 function others() {
   part(null, fillReleases);
-  return Promise.allSettled([loadCompare(), loadFirstMinute(), loadPrologue(), loadTraffic(), loadInbox(), loadMine()]);
+  return Promise.allSettled([loadCompare(), loadFirstMinute(), loadPrologue(), loadGold(), loadTraffic(), loadInbox(), loadMine()]);
 }
 function enter(tok) {
   try { sessionStorage.setItem(KEY, tok); } catch (e) {}

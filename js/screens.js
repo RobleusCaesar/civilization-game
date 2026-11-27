@@ -78,6 +78,11 @@ const Screens = {
 
   show(name, opts) {
     opts = opts || {};
+    /* THE STORE IS THE MAIN MENU'S ALONE (js/store.js): asked of the screen
+       it is opened from, never over a game — anywhere else it is the title */
+    if (name === 'store' && !(window.Store && Store.allowed())) name = 'title';
+    // coins in the air belong to the screen that threw them (js/gold.js)
+    if (name !== this.current && window.Gold && Gold.stop) Gold.stop();
     this.current = name;
     // THE FIRST MINUTE: the origin cards are dealt (Backend.step, once a page)
     if (name === 'draft' && window.Backend && Backend.step) Backend.step('origin');
@@ -95,6 +100,7 @@ const Screens = {
     // …and entering a game always retires the boot splash, whatever the timer
     if (name === 'playing' && window.Boot) Boot.force();
     for (const s of document.querySelectorAll('.screen')) s.classList.remove('show');
+    if (name === 'store' && window.Store) Store.mount();
     let scr = this.el('scr' + name[0].toUpperCase() + name.slice(1));
     /* THE NEW SETTINGS PAGE IS STAGED (js/settings.js): on a device the card
        test link turned on it stands in for #scrSettings; everywhere else the
@@ -113,6 +119,7 @@ const Screens = {
     else if (name === 'paused') this.onPaused();
     else if (name === 'leaders') this.onLeaders();
     else if (name === 'howto') { if (window.ShellPages && ShellPages.onGuide) ShellPages.onGuide(); }
+    else if (name === 'store') { if (window.Store) Store.onShow(); }
     else if (name === 'endgame') this.onEndgame(opts);
     else if (name === 'doomed') this.onDoomed();
     else if (name === 'playing') {
@@ -217,7 +224,7 @@ const Screens = {
   /* the Load and Guide pages stand on the night when opened from the title;
      from the pause menu the game itself stays behind them (js/pages.js) */
   nightBehind(name) {
-    return name === 'newgame' || name === 'draft' || name === 'leaders' ||
+    return name === 'newgame' || name === 'draft' || name === 'leaders' || name === 'store' ||
       ((name === 'load' || name === 'howto') && this.backTo !== 'paused');
   },
   wearNight() {
@@ -355,6 +362,8 @@ const Screens = {
     else finish(window.Backend && Backend.configured ? 'no saves yet' : 'cloud saves off', false);
     // THE CARD SYSTEM's plaque and starter hand (js/deckscreens.js) — an early return with the switch off
     if (window.DeckScreens) { try { DeckScreens.onTitle(); } catch (e) { console.error('card title plaque', e); } }
+    // THE PURSE AND THE STORE's plaque (js/gold.js) — an early return with the gold switched off
+    if (window.Gold && Gold.onTitle) { try { Gold.onTitle(); } catch (e) { console.error('store plaque', e); } }
     // THE NIGHT TITLE (js/titlescreen.js) — staged; an early return everywhere else.
     // After the deck's plaque, so the Cards plaque is dressed with the rest.
     if (window.TitleScreen) { try { TitleScreen.onTitle(); } catch (e) { console.error('night title', e); } }

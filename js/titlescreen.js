@@ -89,7 +89,7 @@ const TitleScreen = {
      by ornament: no straps, bosses, grain or knots. */
   KIND: { btnTitleNew: 'lit', btnBegin: 'lit' },
   ICON: { btnContinue: 'resume', btnTitleNew: 'flame', btnTitleBoard: 'trophy',
-    btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleLoad: 'scroll', btnTitleCards: 'cards' },
+    btnTitleSettings: 'gear', btnTitleHow: 'book', btnTitleLoad: 'scroll', btnTitleCards: 'cards', btnTitleStore: 'pouch' },
   dress() {
     if (!this.el) return;
     for (const b of this.el.querySelectorAll('.tmenu .abtn')) {
@@ -252,6 +252,12 @@ const TitleScreen = {
     scroll: '<path d="M6.6,4.4 H17.6 C19,4.4 19.8,5.4 19.8,6.6 C19.8,7.8 19,8.6 17.8,8.6 V17.4 C17.8,18.8 16.8,19.8 15.4,19.8 H5.6 C4.2,19.8 3.6,18.8 3.6,17.8 C3.6,16.6 4.4,15.8 5.6,15.8 H6.4 V6.6 C6.4,5.4 6.2,4.4 6.6,4.4 Z" fill="url(#G)" stroke="#0b0602" stroke-width="1.15" stroke-linejoin="round"/>' +
       '<path d="M17.8,8.6 H15.6 M5.6,15.8 C6.8,15.8 7.6,16.6 7.6,17.8 C7.6,18.8 7,19.8 5.6,19.8" fill="none" stroke="#0b0602" stroke-width="1"/>' +
       '<path d="M9,8.8 H15.2 M9,11.4 H15.2 M9,14 H13.6" stroke="#5e3c10" stroke-width=".9" stroke-linecap="round"/>',
+    // the Store (js/gold.js): a coin pouch, its neck tied with a cord, a coin struck on it
+    pouch: '<path d="M8.7,7.4 C7.1,5.8 7.5,3.4 9.4,3.4 C10.5,3.4 11,4.3 12,4.3 C13,4.3 13.5,3.4 14.6,3.4 C16.5,3.4 16.9,5.8 15.3,7.4 Z" fill="url(#G)" stroke="#0b0602" stroke-width="1.1" stroke-linejoin="round"/>' +
+      '<path d="M9.2,7.4 C5.2,9.4 3.7,13.1 4.3,16.5 C4.9,19.8 8,21 12,21 C16,21 19.1,19.8 19.7,16.5 C20.3,13.1 18.8,9.4 14.8,7.4 Z" fill="url(#G)" stroke="#0b0602" stroke-width="1.15" stroke-linejoin="round"/>' +
+      '<path d="M8.4,7.5 H15.6" stroke="#5e3c10" stroke-width="1.5" stroke-linecap="round"/><path d="M15.4,7.6 C16.8,8.4 17.6,9.6 17.4,10.8" fill="none" stroke="#5e3c10" stroke-width="1" stroke-linecap="round"/>' +
+      '<circle cx="12" cy="14.8" r="3" fill="none" stroke="#5e3c10" stroke-width="1.1"/><circle cx="12" cy="14.8" r="1.1" fill="#5e3c10"/>' +
+      '<path d="M7.2,11.6 C6.4,13 6.2,14.6 6.6,16" fill="none" stroke="#fff6cf" stroke-opacity=".6" stroke-width=".9" stroke-linecap="round"/>',
     cards: '<g transform="rotate(-14 12 13)"><rect x="4.4" y="5" width="10.4" height="14.6" rx="1.6" fill="url(#G)" stroke="#0b0602" stroke-width="1.1"/><rect x="6.2" y="6.9" width="6.8" height="7.4" rx=".6" fill="#5e3c10" fill-opacity=".55"/></g>' +
       '<g transform="rotate(10 12 13)"><rect x="9.6" y="4.2" width="10.4" height="14.6" rx="1.6" fill="url(#G)" stroke="#0b0602" stroke-width="1.1"/><rect x="11.4" y="6.1" width="6.8" height="7.4" rx=".6" fill="#7a1e10" fill-opacity=".8"/>' +
       '<path d="M14.8,8 L16.4,9.8 L14.8,11.6 L13.2,9.8 Z" fill="#ffd27a"/></g>',

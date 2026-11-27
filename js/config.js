@@ -1606,20 +1606,64 @@ const CFG = {
        nothing, because it does not go on the board. ON false: no lift. */
     BOARD: { ON: true, TOP: 10, PODIUM: 3, LIFT: 0.5 },
     // [stone, bronze, iron, imperial, enlight] percentages, approved at Gate 1
-    // (bigloss: the operator's ruling above)
+    // (bigloss: the operator's ruling above). CARDS ARE ALSO BOUGHT NOW
+    // (CFG.GOLD, the store), so the earned ones are rarer (operator, the Gold
+    // & Card Store brief: "Mythic drop odds halved across every table. Shift
+    // that weight to Stone and Bronze"): Moderate's Mythic 5 → 2.5 and Hard's
+    // 25 → 12.5, the half taken split evenly between Stone and Bronze. The
+    // other tables never rolled a Mythic and are as approved. Migration
+    // 0019 lets the server pay a Moderate win in Stone and a Hard win in Stone
+    // or Bronze (tests/deck-sync.mjs holds the two halves equal).
     DROPS: {
       loss:     [85, 15, 0, 0, 0],
       bigloss:  [0, 60, 40, 0, 0],
       calm:     [40, 40, 17, 3, 0],
-      moderate: [0, 35, 40, 20, 5],
-      hard:     [0, 0, 30, 45, 25],
+      moderate: [1.25, 36.25, 40, 20, 2.5],
+      hard:     [6.25, 6.25, 30, 45, 12.5],
     },
-    // a win before this day is a GREAT victory (+1 card). The server computes
-    // the live medians from real wins; these are the offline fallback.
+    // a win before this day is a GREAT victory (a chance at a second card).
+    // The server computes the live medians from real wins; these are the
+    // offline fallback.
     MEDIAN_DAY: { calm: 160, moderate: 120, hard: 120 },
+    /* THE BONUS CARD IS A CHANCE NOW (the same brief: "The bonus second card
+       becomes much rarer — halve it at least"): a great victory rolls its
+       second card BONUS of the time, where it always did — a little over a
+       third. The roll is the drop's own (Math.random), never the run's. */
+    BONUS: 0.35,
     PITY: 15,             // wins without an Enlightenment card before one is guaranteed
     STARTER: ['forager_cache', 'fallen_timber', 'willing_hands'],
     QUEUE_MAX: 200,       // offline writes waiting for the cloud
+  },
+
+  /* GOLD AND THE STORE (js/gold.js, js/store.js, migration 0019; tests/
+     gold.mjs — operator, the Gold & Card Store brief). Every finished game
+     that earns a card (Deck.eligible: a win always, a defeat with the deeds
+     and days) also earns GOLD: one for every RATE points of the FINAL score
+     (the end screen's number, the difficulty multiplier in), never under
+     FLOOR (so a defeat still pays) and never over CAP. A journey game's win
+     pays its PROLOGUE sum instead, once per game. The gold buys cards at the
+     main menu's store: a card's price is its tier's (PRICE), or its own
+     (CARD_PRICE); a purchase over CONFIRM_OVER asks first. The server is the
+     purse (0019's gold_rate(), gold_floor(), gold_cap(), gold_prologue() and
+     card_prices — tests/deck-sync.mjs holds every number equal); the device
+     keeps a mirror to show it at once.
+     CALIBRATED on the score table's own bands (CFG.SCORE: an average
+     Moderate win 5,000–10,000, Calm half, Hard nearly double; the
+     operator's 33,000-point Hard defeat the high end): a Calm win pays
+     ~12–25, a Moderate win ~25–50, a Hard win ~45–100, a defeat that earns
+     its card mostly the floor to ~25, and only an epic run (30,000+) meets
+     the cap. The dashboard's Gold section reads the real figures.
+     TEST is the purse the test page (and the ?cards=all test deck) holds. */
+  GOLD: {
+    ON: true,
+    RATE: 200,
+    FLOOR: 10,
+    CAP: 150,
+    PROLOGUE: { 1: 25, 2: 35, 3: 50 },
+    PRICE: { stone: 40, bronze: 100, iron: 200, imperial: 500, enlight: 800 },
+    CARD_PRICE: { dragonfire: 1000 },
+    CONFIRM_OVER: 200,
+    TEST: 3000,
   },
 };
 

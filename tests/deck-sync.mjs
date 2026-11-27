@@ -153,6 +153,10 @@ const MOCK = `
       },
     };
     const rest = (method, path, body) => {
+      // the PURSE's doors (0019, js/gold.js) are tests/gold.mjs's to judge:
+      // this suite's sequences are the cards' own, so they are answered with
+      // nothing and never written down here
+      if (['/rpc/my_gold', '/rpc/grant_gold', '/rpc/grant_prologue_gold', '/rpc/buy_card'].includes(path)) return null;
       st.calls.push({ method, path, uid: st.uid, body: body == null ? null : JSON.parse(JSON.stringify(body)) });
       // a request that dies: the REAL transport (Backend._rest's catch) says
       // so on backend-status before it gives up — the mock path does not, so

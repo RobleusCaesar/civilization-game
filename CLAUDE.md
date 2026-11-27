@@ -390,6 +390,7 @@ node tests/deck-army.mjs     # the army cards: one muster (open ground, one to a
 node tests/deck-growth.mjs   # richer = more in total (the seam gives 40% more, the ground stripped at its pace); the bounty's ring from the hall's middle, worn as the orbit with nothing grown; quicker hands raise sites, upgrades, the masons and a span, never repair, training, earthworks or the rival's; the blight is the rival's, fog-honest, leaves the truce; Enlightenment to the hall's level, works finished and paid back, nothing scored; YOUR Wonder a quarter cheaper and twice as fast, never finished by a card, the card landing on the works; the land's looks under the people and the fog; nothing drawn in the black; Enlightenment's town rises a beam at a time, the Foundation and Marble say what they gave
 node tests/deck-rival.mjs    # rival and sky: a card's map is never the tribe's eyes (score, foreignHome, aim, PLACEMENT and the grid, the live layers, rim, memory, relic; the world's reveal hands it back); the fire's watch (fed again: 3 more days), the map's mark, the spy's ghosts, silhouettes and their card in their voice; the pact waits for a spared rival but never long, never turns on you, and a no-road band spends its charge; the sun halves their sight, softens every blow, keeps every war band home; the kraken's four hulls, 600 to the shore, the 40% hall, asked of what you know at war and at peace, one beast to a cluster; the truce asked of what the player knows, asked twice, afresh after a put-back; off and idle change nothing; the fire seated off every roof and its find drawing no RNG, the pact's bands wearing a chip and mustering on the rival's side, every act lettered through one title
 node tests/deck-sync.mjs     # the deck's cloud: in order, a duplicate done, an unreached op (and slow_down) kept, a poisoned 4xx stepped past, no_run waits on its evidence (sent first, its owner's, aged out), the record replaces the mirror and a card it takes back is SAID, one mirror per player, two tabs never erase each other, one old save is one run; off (not even a listener) / disk / a test deck never sync; 0008 sealed, idempotent, its resend guard, evidence order, catalog, loss-deeds and pity the game's; the drop tiers read from every migration, 0011 one changed line of the door and its big-loss number the game's
+node tests/gold.mjs          # gold and the trader: a run pays gold once (1 a 200 points, floor 10, cap 150; a defeat by the card rule), the journey its fixed purse once a player, never below nothing; the purchase is ONE door (buy_card) under the player's lock, its id kept for a lost answer, two tabs never spend one coin twice; a stopped card drain never spins; the store is the main menu's alone (never in a game, never in the journey); 0019 sealed, idempotent, its numbers the game's; the end screen's coins and the store's flight, a short purse said in red; the test page's purse
 node tests/settings.mjs      # the settings page, PUBLIC since build 106 (every device; the old screen stays in the markup as the stand-down and still paints itself switched off), and since build 214 the pause too (over a game its Game tab first: five tabs, four from the title), only real settings, a small cadence bar, the feedback form's email + Supabase copy + outbox, the error ring, the inbox never in the page source, no chrome past its own pixels at 3x, one frame height on every wide tab, the fit at every size
 node tests/prologue.mjs      # the journey: three authored worlds, every mark on its own ground; game 1 (a wooded glen) teaches food, wood and stone, the stations, the rally, a road dragged from the camp past the hall to the farm, the hunt and the lodge where the deer fell; game 2 is islands and lakes and teaches the map, the land as a defence, what a card is, a barracks, a range, a manned tower, the wall, its gate and the dock (a boat fishing, a transport sailing two hands to the far isle's seam and stone); game 3 is a pitched battle — a yard's storey and a soldier's rank, a workshop, the trading post, a stable, a sapper's bridge, a war camp, Group nearby, Army 1's banner, a march in three ranks, Chaos on the sally, a heal by the war camp, Siege on the wall, Strike on a tower, their barracks and their hall; each game's ring, look and hand wait their game's SPACE; one BEGIN and a two-tap skip, its name read in dark ink on the gold, centred under the word inside the groove at six sizes; each game won by following Mira's rings alone, every tap answered within a second, no ring drawn where a tap cannot land and every ring on the good its line names, no line past fifteen words; a held line names its own beat's price and keeps that good while it is short; the first berries, wood and stone flutter their chips gold, and the first house and newborn the people chip, once each a game (carried in the save); her nine faces on disk; her card stays at the top whatever its line points at (a covered target is brought out below it), carries the task where her name stood (her name a plate on her portrait) and is no taller for it, folds to a strip in its own corner that keeps the task, an opened map stands below it, no deed of the journey is cut short at 430px, and a NEW tag is whole in the menu; a lesson opens with the map folded and the unit tips put away; a ringed build card is brought into view until it is seen, even when its first scroll is undone, and then left to the player; a paused world (the Wonder's held frame) is not stepped; a journey world toasts only what the guide does not say (a refusal, a famine, an attack); the guide never rings under the minimap, a slipped ghost is pointed back, a toast lands below her line; the hall's last word, the chief's name, one card a game ever (Bronze, Iron, Imperial), the journey's doors, off the board; a lost third game tries again; a veteran never meets it
 node tests/patch-notes.mjs   # a release players would notice adds a player-facing note: the newest note never ahead of the code's ?v=, newest first, player words only, the unread dot
@@ -1531,6 +1532,93 @@ save be won six times for six cards. The server re-checks the row's
 card taken back. 0008 is ONE idempotent paste (a retired card goes `active =
 false`, never deleted) and never touches `analytics_summary` (the Cards
 section has its own `analytics_cards`).
+
+**GOLD AND THE TRADER** (`js/gold.js` `Gold`, `js/store.js` `Store`, the
+purse in js/deck.js, `CFG.GOLD`, migration `0019_gold_store.sql`,
+tests/gold.mjs — operator, build 223: "finished games convert score to gold
+… a trader's stall … coins burst from the plinth … Nothing merges to main
+without my score"). **WHAT EARNS IT**: a run that earns a card earns gold —
+the SAME rule (`Deck.eligible`: a win always, a defeat by its deeds and
+days), never the brief's "10 minutes and 500 points", which the card rule
+retired long ago (`Deck.goldFor`): `floor(final score / RATE 200)`, at least
+`FLOOR` (10), at most `CAP` (150), the final score the end screen's
+(`S.over.score`, the difficulty IN). The journey pays a fixed purse a game
+instead (`PROLOGUE` 25 / 35 / 50), once a player, held off by its own
+ledger (`pro:N`). The score and the board are untouched. **THE PURSE IS THE
+COLLECTION'S** (`c.gold`, `c.goldRuns` the runs paid, `c.buys` the
+purchases by id, `c.pend` a purchase whose answer was lost, `c.prices` the
+record's own when they moved), never in `S`; a test deck's is the toy purse
+(`TEST` 3,000, dealt once). **ITS OPS RIDE A QUEUE OF THEIR OWN** (`c.gq`:
+`gold` → `grant_gold(p_run_id, p_outcome)`, `gold_pro` →
+`grant_prologue_gold(p_run_id, p_game)`) behind the card ops in the same
+drain (`_syncGoldOps`), and the record's `my_gold()` replaces the mirror's
+purse only when nothing is waiting, no purchase is in flight and no write
+moved the collection since the drain began (`c.rev`). **EVERY OP OF BOTH
+QUEUES IS MARKED SEEN AT THE DRAIN'S START** (`op.q = 1`): an op still
+unmarked when the drain ends tells it more was written meanwhile and it runs
+again in the next microtask, so a gold op left unmarked behind a stopped
+card drain spun the page forever — no frame, the telemetry suite's renderer
+dead at 7 GB (`aStoppedCardDrainNeverSpins`, asked from outside the page
+with its own timer, so a spinning page fails instead of hanging the suite).
+**THE PURCHASE IS ONE DOOR** (`Gold.buy` → `buy_card(p_card_key,
+p_purchase_id, p_price)`): the record takes the gold, adds the card and
+writes the purchase in one transaction under the player's advisory lock
+(`clanfire-deck:` + uid), guarded `update … where balance >= price` and a
+`check (balance >= 0)`, so two taps, two tabs or two devices never spend one
+coin twice. A purchase whose answer never came keeps its id (`c.pend`,
+`PEND_MS` 15 min) and BUY asks the same question again — "already", never a
+second card for one press (`Backend._retry` retries the transport for the
+same reason). Gold still on its way up is synced first; a short purse with
+gold still queued says so ("still on its way"), never "not enough". A device
+the cloud never answers for (a test deck, a test build, a page from disk)
+buys from its mirror by the same rules under `navigator.locks`
+('clanfire-purse') with the disk re-read first. No selling back; duplicates
+allowed; a card held 999 times is `full`. **PRICES**
+(`CFG.GOLD.PRICE` by tier, `CARD_PRICE` for one card; the record's
+`card_prices` the same): Stone 40, Bronze 100, Iron 200, Imperial 500,
+Mythic 800, Dragonfire 1,000; a price the record moved answers
+`price_changed` and the store shows the record's. Over `CONFIRM_OVER` (200)
+the BUY asks twice, the second tap at least `CONFIRM_GAP_MS` after the first
+(the house's two-tap rule). **THE STORE IS THE MAIN MENU'S ALONE**
+(`Store.allowed`: from the title or the store itself, never the journey's
+title, never a game — `Screens.show('store')` from anywhere else lands on the
+title): the title's pouch plate under the hero plates (`#btnTitleStore`,
+`TitleScreen.ICON` 'pouch', the purse on it) and Settings' Your Purse card.
+It stands on the trader's stall (`assets/ui/store/stall-{wide,tall}`, Scale2x
+of the masters, the night's dark under them) with the purse always in view,
+every card by tier, highest first, as many columns as whole-pixel faces fit
+(three on a 390px phone). A tap lifts the card (`Deck.lookFit`), a tap turns
+it, BUY under it; a short purse shows the price red and "N more gold needed"
+on a button that still answers (never a dead button). A purchase flies coins
+from the purse to the card (`Gold.fly`), the card into the deck, the counts
+moving as each lands; under reduced motion it all lands at once. **THE END
+SCREEN SAYS THE GOLD FIRST** (`DeckScreens._goldRow` / `_goldReveal` /
+`_goldFinal`): the gold earned is the score block's headline (the score under
+it, the board's line under that), coins burst off the plinth and stream into
+the purse beside it, which ticks up with a chime per coin and settles with an
+overshoot; a skip lands it at once; a short phone puts gold and score on one
+row and the purse away. **THE COINS ARE ONE MINT** (`assets/ui/gold/`: the
+coin's sixteen-frame spin and eight-frame glint and the purse, PixelLab art
+from one approved master in `assets/masters/gold/`), a picture only — the
+books are written before a coin moves (`Gold.stop` on leaving the screen).
+**THE DROPS MOVED WITH IT**: Moderate's Mythic share halved (5 → 2.5, the rest
+to Stone and Bronze: [1.25, 36.25, 40, 20, 2.5]), Hard's (25 → 12.5: [6.25,
+6.25, 30, 45, 12.5]); the great win's second card is a chance now (`BONUS`
+0.35, was every great win); loss, big loss and Calm unchanged; the pity stays
+15 (stretching it to 20 is the operator's call). 0019 seeds the server's
+tiers to match (a Moderate Stone, a Hard Stone and Bronze). **THE TEST PAGE'S
+PURSE** (`Gold.testLink`, a test deck only): `?gold=reset` deals the toy purse
+again and forgets its ledger and purchases, `?gold=N` sets it; the link is
+taken out of the address once read. The test page re-deals its deck on every
+load, so a bought card's count resets there; the purse does not. **THE
+DASHBOARD** (`analytics_gold`, analytics.html's Gold section): gold earned by
+outcome and difficulty, spent, purchases by card and tier, the average purse,
+and whether buyers come back. Telemetry kind `store` (`open`, `short`,
+`buy`). **0019 MUST BE PASTED AFTER 0018** (and again after any
+re-paste of 0008, 0011, 0012, 0013, 0016, 0017 or 0018, which narrow the
+telemetry kinds or the drop tiers); until it is, the purse is earned and held
+on the device and the store answers "not open yet". Off (`CFG.GOLD.ON` false,
+or the deck off) nothing is drawn, asked or written.
 
 **THE LOAD AND GUIDE PAGES** (`js/pages.js`, `ShellPages`, tests/pages.mjs —
 operator, 2026-11-04: "Update the design of the Load and Guide pages so they
@@ -3190,8 +3278,8 @@ most desktops already showed it), so the panel's HEIGHT is measured
 its tallest screen needs on a 1x or 2x screen (~626), one height for all five
 screens, never its old 770. **The operator's words, word for word**: EARN
 THEM reads "Every victory earns a card, and so do hard-fought losses.", the
-victory road "A good win +1 card, a hard-fought win +2 cards." over its +1 /
-+2 card pips (each count kept with its pips, `.ciG`), and the defeat road is
+victory road "A good win +1 card, a hard-fought win a chance at +2 cards."
+(build 223: the second card is a chance now) over its +1 / +2 card pips (each count kept with its pips, `.ciG`), and the defeat road is
 its heading and one line — the deeds and days meters and the verb list are
 gone. Its emblem is a TORN WAR BANNER (`CardIntro.SVG.fight`): crimson
 cloth torn into strips at the fly, holes burnt through it, an arrow in the

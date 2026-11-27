@@ -480,7 +480,7 @@ const openNow = p => p.evaluate(() => { if (!CardIntro.open) CardIntro.show('tit
   /* the operator's lines (2026-10-28), word for word — "hard-fought" wears
      its hyphen, as the defeat road's own heading always has */
   ck('theEarnScreenSaysWhatTheOperatorSaid', a.earnSub === 'Every victory earns a card, and so do hard-fought losses.' &&
-    a.winLine === 'A good win +1 card, a hard-fought win +2 cards.', `${a.earnSub} | ${a.winLine}`);
+    a.winLine === 'A good win +1 card, a hard-fought win a chance at +2 cards.', `${a.earnSub} | ${a.winLine}`);
   ck('theDefeatRoadIsItsHeadingAndOneLine', a.meters === 0 && a.lossLines.join(' | ') === 'H3:A hard-fought defeat | P:Still a card, if you did the work.',
     `${a.meters} meters/notes; ${a.lossLines.join(' | ')}`);
   ck('thePrizesSayWhatTheOperatorSaid', a.legendsSub === 'The harder the fight, the rarer the card.' && !a.legendsFoot, `${a.legendsSub} | foot: ${a.legendsFoot || 'none'}`);

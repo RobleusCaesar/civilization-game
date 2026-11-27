@@ -130,6 +130,10 @@ const SETUP = `window.__run = (o) => {
   if (o.played) S.deck.played.push(...o.played);
   if (o.cards) {
     let i = 0, j = 0;
+    /* a great win's second card is a roll since build 223 (CFG.CARDS.BONUS):
+       the fixture loads it too — two cards asked for, two cards granted */
+    window.__bonus = window.__bonus == null ? CFG.CARDS.BONUS : window.__bonus;
+    CFG.CARDS.BONUS = o.cards.length > 1 ? 1 : window.__bonus;
     window.__roll = window.__roll || { t: Deck.rollTier, c: Deck.rollCard };
     Deck.rollTier = () => o.cards[Math.min(i++, o.cards.length - 1)][0];
     Deck.rollCard = () => o.cards[Math.min(j++, o.cards.length - 1)][1];
@@ -198,6 +202,7 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
     out.big = btn ? btn.classList.contains('big') : true;
     out.emoji = btn ? /[\u{1F000}-\u{1FAFF}\u{2190}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/u.test(btn.textContent) : true;
     out.heroes = document.querySelectorAll('#scrTitle .tmenu .abtn.big').length;
+    out.store = !!document.getElementById('btnTitleStore');
     out.total = Deck.total();
     out.hand = JSON.stringify(Deck.col().counts);
     Screens.show('title');   // a second visit deals nothing more
@@ -207,7 +212,8 @@ window.__shown = (el) => !!el && el.getClientRects().length > 0 && getComputedSt
   });
   ck('theTitleWearsACardsPlaque', a.on && a.inRow && a.four && a.label === 'Cards' && !a.svg && !a.big && !a.emoji,
     `in the secondary row ${a.inRow}, folded ${a.four}, "${a.label}", icon ${a.svg}, emoji ${a.emoji}`);
-  ck('andTheHeroPlaquesAreStillThree', a.heroes === 3, a.heroes + ' hero plaques');
+  // the three, and since build 223 the Store with the purse on it (js/gold.js)
+  ck('andTheHeroPlaquesAreStillThree', a.heroes === 3 + (a.store ? 1 : 0), a.heroes + ' hero plaques' + (a.store ? ' (the Store among them)' : ''));
   ck('theStarterHandIsDealtOnceOnTheTitle', a.total === 3 && a.total2 === 3 && a.one === 1 && a.n === '3', `${a.hand}, plaque says ${a.n}`);
   /* the same measurement tests/boot.mjs noTitleLabelRunsOffItsPlaque makes,
      with the fourth plaque in the row: four across cannot fit "Settings",

@@ -304,6 +304,18 @@ const Deck = {
     if (!c.runs || typeof c.runs !== 'object') c.runs = {};
     if (!Array.isArray(c.queue)) c.queue = [];
     if (!c.medians || typeof c.medians !== 'object') c.medians = {};
+    /* THE PURSE (CFG.GOLD, js/gold.js): the gold on hand, never below zero;
+       what each run paid (goldRuns, the gold's own ledger — a run is paid
+       once); the gold ops still to send (gq — their OWN queue, so a gold
+       door the server does not have yet never holds a card op back); the
+       purchases already applied here (buys, by purchase id: a retry whose
+       first answer was lost adds its card once); and the store's prices as
+       the record last said them */
+    c.gold = Math.max(0, Math.floor(+c.gold || 0));
+    if (!c.goldRuns || typeof c.goldRuns !== 'object') c.goldRuns = {};
+    if (!Array.isArray(c.gq)) c.gq = [];
+    if (!c.buys || typeof c.buys !== 'object') c.buys = {};
+    if (c.prices && typeof c.prices !== 'object') delete c.prices;
     // drop anything the catalog no longer knows — a retired card must never
     // reach a renderer that would look it up and find nothing
     for (const id of Object.keys(c.counts)) if (!this.card(id) || !(c.counts[id] > 0)) delete c.counts[id];
@@ -318,6 +330,10 @@ const Deck = {
     const keys = Object.keys(c.runs);
     if (keys.length > 60) for (const k of keys.slice(0, keys.length - 60)) delete c.runs[k];
     if (c.queue.length > CFG.CARDS.QUEUE_MAX) c.queue.splice(0, c.queue.length - CFG.CARDS.QUEUE_MAX);
+    // …and the purse's: its ledger outlives the end screen, its queue the cap
+    if (c.goldRuns) { const gk = Object.keys(c.goldRuns); if (gk.length > 60) for (const k of gk.slice(0, gk.length - 60)) delete c.goldRuns[k]; }
+    if (Array.isArray(c.gq) && c.gq.length > CFG.CARDS.QUEUE_MAX) c.gq.splice(0, c.gq.length - CFG.CARDS.QUEUE_MAX);
+    if (c.buys) { const bk = Object.keys(c.buys); if (bk.length > 40) for (const k of bk.slice(0, bk.length - 40)) delete c.buys[k]; }
     this._set(this.KEY, JSON.stringify(c));
     // what the disk now READS (a write refused by a full disk leaves the old)
     this._colRaw = this._get(this.KEY);
@@ -343,6 +359,49 @@ const Deck = {
   onChange(fn) { this._subs.push(fn); },
   _changed() { for (const f of this._subs) { try { f(); } catch (e) {} } },
   _queue(op) { const c = this.col(); if (c.test) return; c.queue.push(Object.assign({ at: Date.now() }, op)); },
+  // the purse's own queue (a test deck's gold is a toy, queued nowhere)
+  _queueGold(op) { const c = this.col(); if (c.test) return; c.gq.push(Object.assign({ at: Date.now() }, op)); },
+
+  /* ---------------- GOLD (CFG.GOLD) ----------------
+     what a finished run pays: nothing where it earns no card (Deck.eligible
+     — the same rule, word for word), else one gold for every RATE points of
+     its FINAL score, never under FLOOR, never over CAP. The server pays its
+     own sum off the run's run_end row (0019's gold_amount) — the same
+     number the end screen shows. */
+  goldOn() { return this.on() && !!(typeof CFG !== 'undefined' && CFG.GOLD && CFG.GOLD.ON); },
+  goldFor(rep) {
+    if (!this.goldOn() || !rep || !this.eligible(rep).ok) return 0;
+    const G = CFG.GOLD, sc = Math.max(0, +rep.score || 0);
+    return Math.min(G.CAP, Math.max(G.FLOOR, Math.floor(sc / G.RATE)));
+  },
+  gold() { return this.goldOn() ? this.col().gold : 0; },
+  // the store's price of a card: the record's, else its own, else its tier's
+  price(id) {
+    const c = this.card(id), G = typeof CFG !== 'undefined' && CFG.GOLD;
+    if (!c || !G) return 0;
+    const rec = this.col().prices, p = rec && +rec[id];
+    if (p > 0 && p <= 100000) return Math.floor(p);
+    return (G.CARD_PRICE && G.CARD_PRICE[id]) || G.PRICE[c.tier] || 0;
+  },
+  /* pays a run its gold, once (the key is the run's, the card's own): on the
+     mirror at once, its op queued for the record — and banked in a set-aside
+     real collection when a test deck is held (EARNED IS EARNED, below) */
+  _payGold(col, rep, real) {
+    if (!this.goldOn()) return 0;
+    if (col.goldRuns[rep.key] != null) return col.goldRuns[rep.key];
+    const amt = this.goldFor(rep);
+    if (!(amt > 0)) return 0;
+    col.goldRuns[rep.key] = amt;
+    col.gold += amt;
+    const op = { op: 'gold', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', amount: amt };
+    if (rep.runId && !/^seed:/.test(rep.runId)) this._queueGold(op);
+    if (real && real.goldRuns && real.goldRuns[rep.key] == null) {
+      real.goldRuns[rep.key] = amt;
+      real.gold = Math.max(0, Math.floor(+real.gold || 0)) + amt;
+      if (rep.runId && !/^seed:/.test(rep.runId)) real.gq.push(Object.assign({ at: Date.now() }, op));
+    }
+    return amt;
+  },
 
   /* THE STARTER HAND: every player without a collection gets three Stone
      cards once — including today's players, the day the switch is thrown. */
@@ -382,9 +441,14 @@ const Deck = {
       const raw = this._get(this.KEY);
       if (raw) this._set(this.REAL_KEY, raw); else this._del(this.REAL_KEY);
     }
+    /* …and its PURSE is a toy too (CFG.GOLD.TEST): dealt once, then kept
+       across loads, so a test page's purchases and earnings carry on until
+       its reset link (Gold.testLink) deals it again */
+    const wasTest = !!c.test;
     c.counts = {}; c.seen = {}; c.runs = {}; c.queue = []; c.pity = 0;
     c.starter = c.starter || Date.now();
     c.test = Date.now();
+    if (!wasTest) { c.gold = (CFG.GOLD && CFG.GOLD.TEST) || 0; c.goldRuns = {}; c.gq = []; c.buys = {}; delete c.prices; }
     for (const card of this.CATALOG) this._add(card.id, 1);
     this.saveCol();
     return this.total();
@@ -528,16 +592,19 @@ const Deck = {
   settle(rep, rng) {
     if (!this.on() || !rep) return { ok: false, why: '', cards: [] };
     const col = this.col();
-    if (col.runs[rep.key]) return { ok: true, again: true, cards: col.runs[rep.key].map(x => Object.assign({}, x)), great: col.runs[rep.key].length > 1 };
+    // the run's gold, as its ledger has it (0 for a run that paid none)
+    const paid = () => this.goldOn() ? (col.goldRuns[rep.key] || 0) : 0;
+    if (col.runs[rep.key]) return { ok: true, again: true, cards: col.runs[rep.key].map(x => Object.assign({}, x)), great: col.runs[rep.key].length > 1, gold: paid() };
     const el = this.eligible(rep);
-    if (!el.ok) return { ok: false, why: el.why, cards: [] };
+    if (!el.ok) return { ok: false, why: el.why, cards: [], gold: 0 };
     // a TEST deck held: the earning is real all the same (_stashRead, below)
     const real = col.test ? this._stashRead() : null;
     if (real && real.runs[rep.key]) {
       // banked before (a re-dealt toy deck forgot it): the record is never paid twice
       col.runs[rep.key] = real.runs[rep.key].map(x => Object.assign({}, x));
+      if (this.goldOn() && real.goldRuns && real.goldRuns[rep.key] != null && col.goldRuns[rep.key] == null) col.goldRuns[rep.key] = real.goldRuns[rep.key];
       this.saveCol();
-      return { ok: true, again: true, cards: col.runs[rep.key].map(x => Object.assign({}, x)), great: col.runs[rep.key].length > 1 };
+      return { ok: true, again: true, cards: col.runs[rep.key].map(x => Object.assign({}, x)), great: col.runs[rep.key].length > 1, gold: paid() };
     }
     const w = this.table(rep), great = this.great(rep);
     const cards = [];
@@ -545,7 +612,10 @@ const Deck = {
     // the pity that may force a legend is the REAL collection's when a toy
     // deck is held — the record's count, and the one the server re-derives
     const pity = real ? real.pity : col.pity;
-    for (let i = 0; i < (great ? 2 : 1); i++) {
+    /* A GREAT VICTORY'S SECOND CARD IS A CHANCE (CFG.CARDS.BONUS), rolled on
+       the drop's own stream before the cards — never the run's RNG */
+    const two = great && (rng || Math.random)() < (CFG.CARDS.BONUS != null ? CFG.CARDS.BONUS : 1);
+    for (let i = 0; i < (two ? 2 : 1); i++) {
       let tier, lift = false;
       if (i === 0 && rep.win && pity >= CFG.CARDS.PITY) { tier = 'enlight'; forced = true; }
       else {
@@ -565,13 +635,15 @@ const Deck = {
     // the cause and the deeds ride the op, so the server can re-run the earn
     // rule (Deck.eligible) on the grant itself as well as on the run's row
     const op = { op: 'grant', run: rep.runId, key: rep.key, outcome: rep.win ? 'win' : 'loss', mode: rep.mode,
-      cause: rep.cause, deeds: rep.deeds | 0, act_days: rep.actDays | 0, cards: cards.map(c => c.id), great, pity: forced };
+      cause: rep.cause, deeds: rep.deeds | 0, act_days: rep.actDays | 0, cards: cards.map(c => c.id), great: two, pity: forced };
     this._queue(op);
+    // …and its GOLD, on the same ledger key (banked in the real collection too)
+    const gold = this._payGold(col, rep, real);
     if (real) this._stashGrant(real, rep, cards, op);
     this.saveCol();
     for (const c of cards) this.track('card_granted', { card: c.id, tier: c.tier, outcome: rep.win ? 'win' : 'loss', difficulty: rep.mode, bonus: c.bonus, run: rep.runId,
       ...(rep.place ? { place: rep.place | 0, lift: !!c.lift } : {}) });
-    return { ok: true, cards, great, pity: forced, place: rep.place || null };
+    return { ok: true, cards, great: two, pity: forced, place: rep.place || null, gold };
   },
   /* THE PROLOGUE'S CARD (CFG.PROLOGUE.CARD, js/scenarios.js): a prologue
      game's win pays exactly ONE card, of its game's tier — Bronze, Iron,
@@ -593,9 +665,19 @@ const Deck = {
     this._add(id, 1);
     col.runs[key] = [{ id, tier, bonus: false, prologue: game }];
     if (runId && !/^seed:/.test(runId)) this._queue({ op: 'prologue', run: runId, game, card: id });
+    /* …and THE JOURNEY'S GOLD (CFG.GOLD.PROLOGUE): a fixed sum a game, once a
+       player ever, on the same ledger key — 0019's grant_prologue_gold */
+    let gold = 0;
+    const pg = this.goldOn() && CFG.GOLD.PROLOGUE && CFG.GOLD.PROLOGUE[game];
+    if (pg > 0 && col.goldRuns[key] == null) {
+      gold = pg;
+      col.goldRuns[key] = gold;
+      col.gold += gold;
+      if (runId && !/^seed:/.test(runId)) this._queueGold({ op: 'gold_pro', run: runId, game, amount: gold });
+    }
     this.saveCol();
     this.track('card_granted', { card: id, tier, outcome: 'prologue', difficulty: (typeof S !== 'undefined' && S && S.mode) || null, bonus: false, run: runId || null });
-    return { id, tier };
+    return { id, tier, gold };
   },
   /* EARNED IS EARNED (tests/deck-core.mjs — the playtest's test-link slice).
      ?cards=all's toy deck outlives the link on purpose (a phone relaunched
@@ -622,6 +704,9 @@ const Deck = {
     if (!s.runs || typeof s.runs !== 'object') s.runs = {};
     if (!Array.isArray(s.queue)) s.queue = [];
     if (!s.medians || typeof s.medians !== 'object') s.medians = {};
+    s.gold = Math.max(0, Math.floor(+s.gold || 0));
+    if (!s.goldRuns || typeof s.goldRuns !== 'object') s.goldRuns = {};
+    if (!Array.isArray(s.gq)) s.gq = [];
     return s;
   },
   _stashGrant(s, rep, cards, op) {
@@ -1203,7 +1288,8 @@ Object.assign(Deck, {
       const st = this._syncState();
       // mid-drain, the drain itself looks for new ops when it finishes
       if (st.busy || st.nudge) return;
-      if (!this.col().queue.some(op => !op.q)) return;
+      const c = this.col();
+      if (!c.queue.some(op => !op.q) && !c.gq.some(op => !op.q)) return;
       st.nudge = setTimeout(() => { st.nudge = 0; this.sync('change'); }, 40);
     } catch (e) {}
   },
@@ -1267,7 +1353,11 @@ Object.assign(Deck, {
     const mine = () => this._col === c && B.uid === uid && !this._diskMoved();
     const lost = () => (B.uid !== uid ? 'switched' : 'moved');
     if (!mine()) return this._syncMoved(out, lost(), c);
+    // every op this drain has SEEN, the purse's too: only an op queued while
+    // it runs asks for another (a gold op left unmarked behind a stopped card
+    // drain asked again forever, a microtask loop that never let a frame draw)
     for (const op of c.queue) op.q = 1;
+    for (const op of c.gq) op.q = 1;
     const held = {};   // card id → its adding op is waiting (its run_end, or a refused shape)
     const bad = [];    // ops the server refused by their shape this drain
     let stop = '', heard = false;
@@ -1324,17 +1414,102 @@ Object.assign(Deck, {
       }
     }
     if (stop === 'moved' || stop === 'switched') return this._syncMoved(out, stop, c);
+    /* THE PURSE'S OWN QUEUE, after the cards' (js/gold.js, migration 0019):
+       a gold door the record does not have yet (a 404 before 0019 is
+       pasted) holds back only the gold, never a card op or the cards'
+       reconcile */
+    /* …and only behind a card drain that ran clean: a record not reached,
+       or asking us to slow down, is the same record for the gold */
+    let gstop = stop || '';
+    if (!stop) {
+      gstop = await this._syncGoldOps(c, mine, lost, out);
+      if (gstop === 'moved' || gstop === 'switched') return this._syncMoved(out, gstop, c);
+    }
     st.moves = 0;
     out.kept = c.queue.length;
+    out.goldKept = c.gq.length;
     this._syncSave(c);
     // the retry first: a reconcile that finds the disk moved schedules its own
-    this._syncLater(c.queue.length > 0);
+    this._syncLater(c.queue.length > 0 || c.gq.length > 0);
     if (!stop && !c.queue.length && mine()) out.reconciled = await this._syncReconcile(c, uid);
+    if (!gstop && !c.gq.length && mine()) out.goldReconciled = await this._syncGoldReconcile(c, uid);
     out.ok = !stop && !c.queue.length;
     out.why = stop || (c.queue.length ? 'held' : '');
     // an op queued while this drain was in flight goes out right behind it
-    if (mine() && c.queue.some(op => !op.q)) st.again = true;
+    if (mine() && (c.queue.some(op => !op.q) || c.gq.some(op => !op.q))) st.again = true;
     return out;
+  },
+  /* the gold ops, in order, through the same verdicts as the cards': done
+     and dropped leave the queue, 'no_run' waits (and is given up after
+     NO_RUN_DAYS and NO_RUN_TRIES), a refusal by shape is stepped past and
+     given up after BAD_TRIES and BAD_DAYS, not reached stops the gold drain */
+  async _syncGoldOps(c, mine, lost, out) {
+    out.goldSent = 0;
+    for (const op of c.gq) op.q = 1;
+    for (const op of c.gq.slice()) {
+      const v = await this._syncDeliverGold(op);
+      if (!mine()) return lost();
+      if (v.asked) out.goldSent++;
+      op.n = (op.n || 0) + 1;
+      op.why = v.why;
+      if (v.verdict === 'wait') {
+        op.wait = op.wait || Date.now();
+        if (op.n >= this.SYNC.NO_RUN_TRIES && Date.now() - op.wait > this.SYNC.NO_RUN_DAYS * 864e5) v.verdict = 'drop';
+      }
+      if (v.verdict === 'bad') {
+        op.bad = op.bad || Date.now();
+        if (op.n >= this.SYNC.BAD_TRIES && Date.now() - op.bad > this.SYNC.BAD_DAYS * 864e5) v.verdict = 'drop';
+      }
+      if (v.verdict === 'done' || v.verdict === 'drop') {
+        const i = c.gq.indexOf(op);
+        if (i >= 0) c.gq.splice(i, 1);
+        if (v.verdict === 'drop') this._syncNote(op, v.why);
+      } else if (v.verdict === 'stop') return v.why || 'network';
+    }
+    return '';
+  },
+  async _syncDeliverGold(op) {
+    const B = window.Backend;
+    let name, args;
+    if (op.op === 'gold') {
+      if (!op.run) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_gold';
+      args = { p_run_id: String(op.run), p_outcome: op.outcome || null };
+    } else if (op.op === 'gold_pro') {
+      if (!op.run || !op.game) return { verdict: 'drop', why: 'no_run_id' };
+      name = 'grant_prologue_gold';
+      args = { p_run_id: String(op.run), p_game: op.game | 0 };
+    } else return { verdict: 'drop', why: 'unknown_op' };
+    let r;
+    try { r = await B.rpc(name, args); } catch (e) { r = null; }
+    const v = this._syncVerdict(r);
+    v.asked = true;
+    return v;
+  },
+  /* THE PURSE AS THE RECORD HOLDS IT: my_gold() replaces the balance once
+     nothing is waiting — never mid-purchase, never for another player, never
+     an answer to a question asked before a purchase changed the purse here
+     (c.rev) — and brings the price list with it */
+  async _syncGoldReconcile(c, uid) {
+    const rev = c.rev | 0;
+    let r;
+    try { r = await window.Backend.rpc('my_gold', {}); } catch (e) { return false; }
+    if (!r || !r.ok || !r.data || r.data.ok !== true) return false;
+    const d = r.data;
+    if (this._col !== c || window.Backend.uid !== uid || (d.uid && d.uid !== uid) || c.gq.length || (c.rev | 0) !== rev) return false;
+    if (window.Gold && Gold._buying) return false;
+    if (this._diskMoved()) { this._syncMoved({}, 'moved'); return false; }
+    const g = Math.floor(+d.gold);
+    if (!(g >= 0)) return false;
+    c.gold = g;
+    if (d.prices && typeof d.prices === 'object') {
+      const pr = {};
+      for (const id of Object.keys(d.prices)) { const v = Math.floor(+d.prices[id]); if (this.card(id) && v > 0 && v <= 100000) pr[id] = v; }
+      c.prices = pr;
+    }
+    c.goldSynced = Date.now();
+    this._syncSave(c);
+    return true;
   },
   /* the mirror moved under a drain: another player signed in (their sign-in
      brings its own sync), or ANOTHER TAB wrote the disk — then this drain
@@ -1444,14 +1619,16 @@ Object.assign(Deck, {
   },
   /* THE RECORD: my_cards() replaces the counts once nothing is waiting */
   async _syncReconcile(c, uid) {
+    const rev = c.rev | 0;
     let r;
     try { r = await window.Backend.rpc('my_cards', {}); } catch (e) { return false; }
     if (!r || !r.ok || !r.data || r.data.ok !== true) return false;
     const d = r.data;
     // still about THIS mirror: the same player, the same disk, and nothing
     // queued meanwhile (a card played while the answer was in flight would
-    // come back to life, and another tab's op would be saved over)
-    if (this._col !== c || window.Backend.uid !== uid || (d.uid && d.uid !== uid) || c.queue.length) return false;
+    // come back to life, and another tab's op would be saved over) — nor a
+    // card BOUGHT meanwhile (c.rev, js/gold.js), which the answer predates
+    if (this._col !== c || window.Backend.uid !== uid || (d.uid && d.uid !== uid) || c.queue.length || (c.rev | 0) !== rev) return false;
     if (this._diskMoved()) { this._syncMoved({}, 'moved'); return false; }
     const before = Object.assign({}, c.counts);
     const counts = {};

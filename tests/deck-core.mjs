@@ -145,8 +145,10 @@ ck('fourCardsAreAimed', a.targeted === 'dragonfire,scouts_fire,starfall', a.targ
 ck('theSwitchShipsOn', a.shipsOn && a.onOn && !a.offOn, a.shipsOn ? 'CFG.CARDS.ON is true, and thrown off the deck is off' : 'CFG.CARDS.ON is FALSE');
 ck('offMeansNothingHappens', !a.offStarter && !a.offStored && !a.offSettle && !a.offPlay,
   `starter ${a.offStarter}, stored ${a.offStored}, settle ${a.offSettle}, play ${a.offPlay}`);
+// build 223 (the operator's gold-and-store brief): the Mythic odds halved on
+// every table that rolls them, the weight given to Stone and Bronze
 ck('theDropTablesAreTheApprovedOnes',
-  a.tables === JSON.stringify({ loss: [85, 15, 0, 0, 0], bigloss: [0, 60, 40, 0, 0], calm: [40, 40, 17, 3, 0], moderate: [0, 35, 40, 20, 5], hard: [0, 0, 30, 45, 25] }) && a.sums === '100,100,100,100,100',
+  a.tables === JSON.stringify({ loss: [85, 15, 0, 0, 0], bigloss: [0, 60, 40, 0, 0], calm: [40, 40, 17, 3, 0], moderate: [1.25, 36.25, 40, 20, 2.5], hard: [6.25, 6.25, 30, 45, 12.5] }) && a.sums === '100,100,100,100,100',
   a.sums);
 
 const c = await p.evaluate(() => {
@@ -1037,7 +1039,7 @@ ck('noCardPlayIsADeed', nc.moved.length === 0 && nc.measured.length >= 5 && nc.c
   });
   ck('theBigLossLineIsTheOperators', r.line === 20000 && r.table === '[0,60,40,0,0]', `${r.line}, ${r.table}`);
   ck('aDefeatAtTheLineRollsTheBigTable', r.tAt === '[0,60,40,0,0]' && r.tUnder === '[85,15,0,0,0]' && r.tNone === '[85,15,0,0,0]' &&
-    r.tWin === JSON.stringify([0, 0, 30, 45, 25]),
+    r.tWin === JSON.stringify([6.25, 6.25, 30, 45, 12.5]),
     `20,000 ${r.tAt}; 19,999 ${r.tUnder}; no score ${r.tNone}; a win at 90,000 ${r.tWin}`);
   ck('aBigDefeatPaysBronzeOrIronNeverStone', r.big.per.length === 1 && r.big.per[0] === 1 && !r.big.t.stone &&
     r.big.t.bronze > 0 && r.big.t.iron > 0 && !r.big.t.imperial && !r.big.t.enlight &&

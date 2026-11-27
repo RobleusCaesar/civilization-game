@@ -370,6 +370,16 @@ const SettingsPage = {
         `<div class="sxField"><input class="sxIn" id="sxChief" maxlength="24" placeholder="Name your chief" autocomplete="off" aria-label="Chief’s name" value="${this.attr(this._chief || '')}"></div>` +
         `<p class="sxNote">Your village: <b>${this.esc(Backend.villageName(Backend.uid))}</b></p>`);
     }
+    /* THE PURSE (js/gold.js): the gold on hand and how it is earned; the
+       Trader's door only where the store may open (the title's Settings,
+       never the pause over a game, never the journey's title) */
+    if (window.Gold && Gold.on()) {
+      h += this.card('Your Purse',
+        this.row('Gold', `Earned by finishing games: one for every ${CFG.GOLD.RATE} points. Spend it on cards at the Trader.`,
+          `<span class="sxGold">${Gold.mark(22)}<b>${Gold.fmt(Gold.balance())}</b></span>`) +
+        (!this.inGame && window.Store && Store.allowed()
+          ? this.row('The Trader', 'Every card, for gold.', '<button class="sxBtn" type="button" data-act="store">Open the store</button>') : ''));
+    }
     h += this.card('Help & Tips',
       this.row('Unit tips', 'The how-to text on a selected unit’s panel.', this.toggle('unithelp', !(typeof UI !== 'undefined' && UI.helpHidden), 'Show unit tips')));
     // A MOUSE'S LEFT DRAG (UI.boxOn, tests/box-select.mjs): a box round your
@@ -591,6 +601,7 @@ const SettingsPage = {
     if (a === 'export-file') { const b = document.getElementById('btnExportFile'); if (b) b.click(); }
     else if (a === 'export-id') { const b = document.getElementById('btnExportId'); if (b) b.click(); }
     else if (a === 'import-id') { const b = document.getElementById('btnImportId'); if (b) b.click(); }
+    else if (a === 'store' && window.Store) Store.open('settings');
     else if (a === 'flush' && window.Feedback) {
       this.status('Sending…');
       Feedback.flush().then(() => {

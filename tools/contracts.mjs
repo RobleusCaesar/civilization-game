@@ -60,7 +60,9 @@ const PATHS = [
   // the HUD's drawn pictures (build 214): the bar's goods, the day, the buttons, the banners
   [/^assets\/ui\/hud\//, ['hud-info.mjs', 'desktop-layout.mjs', 'deck-ui.mjs', 'army-groups.mjs', 'prologue.mjs', 'art-pipeline.mjs']],
   [/^analytics\.html$/, ['analytics.mjs', 'telemetry.mjs']],
-  [/^supabase\//, ['analytics.mjs', 'telemetry.mjs', 'deck-sync.mjs', 'deck-core.mjs']],
+  [/^supabase\//, ['analytics.mjs', 'telemetry.mjs', 'deck-sync.mjs', 'deck-core.mjs', 'gold.mjs']],
+  // the purse's coins and the Trader's stall (build 223, js/gold.js, js/store.js)
+  [/^assets\/ui\/(gold|store)\//, ['gold.mjs', 'deck-screens.mjs', 'title.mjs', 'art-pipeline.mjs']],
   [/^assets\/ui\//, ['boot.mjs', 'title.mjs', 'settings.mjs', 'art-pipeline.mjs']],
   [/^assets\/cards\//, ['deck-ui.mjs', 'deck-screens.mjs', 'card-intro.mjs', 'art-pipeline.mjs']],
   [/^assets\/endgame\//, ['deck-screens.mjs', 'art-pipeline.mjs']],
