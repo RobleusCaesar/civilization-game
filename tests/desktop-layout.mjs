@@ -174,6 +174,48 @@ async function boot(vp) {
   await p.close();
 }
 
+// ---- 1b. the map, the cards and the menu stand on the screen in every browser ----
+/* Build 221, a player on Windows Firefox: "There is no button". The one-line
+   bar's second row is `flex: 0 0 auto`, so its width is its items'
+   max-content, and #hudMid's 196px was only a flex-basis: Chromium counts a
+   basis there, Firefox and WebKit size the row from the items' own widths
+   and ignore it. Their row came out 196px short, the middle overflowed it,
+   and the three buttons stood past the right of the screen. Chromium is all
+   the suite has, so the other engines' reading is EMULATED: the row sized to
+   its max-content with every flex-basis taken out of the reckoning — on
+   build 220 that reading is 196px short of the real row (red), and the
+   buttons are then measured inside the window. */
+{
+  const sizes = [[900, 700], [1024, 700], [1280, 720], [1366, 768], [1440, 900], [1536, 864], [1920, 1080]];
+  for (const [w, h] of sizes) {
+    const { p, errs } = await boot({ width: w, height: h });
+    const r = await p.evaluate(async () => {
+      G.newGame('layout-nav', 'moderate', 'medium'); Screens._demo = false; Screens.show('playing'); S.day = 113;
+      await new Promise(r => setTimeout(r, 300));
+      const row2 = document.querySelector('#topbar .trow + .trow');
+      const ids = ['mapBtn', 'deckBtn', 'btnMenu'];
+      const onScreen = () => ids.map(id => { const e = document.getElementById(id); if (!e || !e.offsetParent) return id + ' missing';
+        const q = e.getBoundingClientRect(); return q.left >= 0 && q.right <= innerWidth + 0.5 ? null : `${id} at ${Math.round(q.left)}–${Math.round(q.right)}`; }).filter(Boolean);
+      const o = { real: onScreen(), rowW: Math.round(row2.getBoundingClientRect().width) };
+      // the other engines: the row's max-content with no flex-basis counted
+      const kids = [...row2.children];
+      kids.forEach(k => { k.dataset.fb = k.style.flexBasis; k.style.flexBasis = 'auto'; });
+      row2.style.width = 'max-content'; row2.style.flex = 'none';
+      o.otherW = Math.round(row2.getBoundingClientRect().width);
+      kids.forEach(k => { k.style.flexBasis = k.dataset.fb; });   // the items lay out as they do there; only the row's size was theirs
+      row2.style.width = o.otherW + 'px';
+      await new Promise(r => requestAnimationFrame(r));
+      o.other = onScreen();
+      row2.style.width = ''; row2.style.flex = '';
+      return o;
+    });
+    ck(`theButtonsStandOnTheScreen_${w}`, r.real.length === 0 && r.other.length === 0 && Math.abs(r.otherW - r.rowW) <= 1,
+      `${w}x${h}: row 2 ${r.rowW}px here, ${r.otherW}px as Firefox/Safari size it; off the screen here: ${r.real.join(', ') || 'none'}, there: ${r.other.join(', ') || 'none'}`);
+    ck(`theNavSizesThrewNothing_${w}`, errs.length === 0, errs.slice(0, 2).join(' | '));
+    await p.close();
+  }
+}
+
 // ---- 2. a phone: untouched ----
 {
   const { p, errs } = await boot({ width: 390, height: 844 });

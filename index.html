@@ -1286,7 +1286,13 @@
     #topbar .trow + .trow::before { display: none; }   /* side by side: no seam between them */
     /* the armies' and the cards' room is a fixed width here too, so the day
        never slides along the bar as they come and go */
-    #hudMid { flex: 0 0 196px; }
+    /* …and it is a WIDTH, never a flex-basis alone (build 221 — a player on
+       Windows Firefox: "There is no button"): Firefox and Safari size the
+       row from its items' own widths and ignore a flex-basis there, so the
+       row came out 196px short, the middle overflowed it and pushed the
+       map, the cards and the menu off the right of the screen
+       (tests/desktop-layout.mjs andTheButtonsStandOnTheScreen) */
+    #hudMid { flex: 0 0 196px; width: 196px; }
     #hudNav { gap: 10px; }
     /* a desktop has the room for a map you can read */
     #mini { width: 148px; height: 148px; }
@@ -2490,59 +2496,59 @@
 
 </div>
 
-<script src="js/feedback.js?v=220"></script>
-<script src="js/config.js?v=220"></script>
-<script src="js/audio.js?v=220"></script>
-<script src="js/config.supabase.js?v=220"></script>
-<script src="js/vendor/supabase.js?v=220"></script>
-<script src="js/backend.js?v=220"></script>
-<script src="js/competition.js?v=220"></script>
-<script src="js/score.js?v=220"></script>
-<script src="js/cards.js?v=220"></script>
-<script src="js/deck.js?v=220"></script>
-<script src="js/artstyle.js?v=220"></script>
-<script src="js/sprites.js?v=220"></script>
-<script src="js/formations.js?v=220"></script>
-<script src="js/relics.js?v=220"></script>
-<script src="js/assets.js?v=220"></script>
-<script src="js/dev.js?v=220"></script>
-<script src="js/map.js?v=220"></script>
-<script src="js/buildings.js?v=220"></script>
-<script src="js/units.js?v=220"></script>
-<script src="js/combat.js?v=220"></script>
-<script src="js/ai.js?v=220"></script>
-<script src="js/render.js?v=220"></script>
-<script src="js/battlefx.js?v=220"></script>
-<script src="js/goldfx.js?v=220"></script>
-<script src="js/footing.js?v=220"></script>
-<script src="js/ruins.js?v=220"></script>
-<script src="js/roads.js?v=220"></script>
-<script src="js/beasts.js?v=220"></script>
-<script src="js/defeatart.js?v=220"></script>
-<script src="js/victoryart.js?v=220"></script>
-<script src="js/ui.js?v=220"></script>
-<script src="js/feel.js?v=220"></script>
-<script src="js/lookout.js?v=220"></script>
-<script src="js/screens.js?v=220"></script>
-<script src="js/patchnotes.js?v=220"></script>
-<script src="js/settings.js?v=220"></script>
-<script src="js/board.js?v=220"></script>
-<script src="js/pages.js?v=220"></script>
-<script src="js/titlescreen.js?v=220"></script>
-<script src="js/scenario-maps.js?v=220"></script>
-<script src="js/scenarios.js?v=220"></script>
-<script src="js/prologue.js?v=220"></script>
-<script src="js/deckfx.js?v=220"></script>
-<script src="js/deckfx-town.js?v=220"></script>
-<script src="js/deckfx-army.js?v=220"></script>
-<script src="js/deckfx-growth.js?v=220"></script>
-<script src="js/deckfx-rival.js?v=220"></script>
-<script src="js/deckui.js?v=220"></script>
-<script src="js/deckscreens.js?v=220"></script>
-<script src="js/cardintro.js?v=220"></script>
-<script src="js/game.js?v=220"></script>
-<script src="js/terrain-core.js?v=220"></script>
-<script src="js/terrain.js?v=220"></script>
-<script src="js/terrain-v5.js?v=220"></script>
+<script src="js/feedback.js?v=221"></script>
+<script src="js/config.js?v=221"></script>
+<script src="js/audio.js?v=221"></script>
+<script src="js/config.supabase.js?v=221"></script>
+<script src="js/vendor/supabase.js?v=221"></script>
+<script src="js/backend.js?v=221"></script>
+<script src="js/competition.js?v=221"></script>
+<script src="js/score.js?v=221"></script>
+<script src="js/cards.js?v=221"></script>
+<script src="js/deck.js?v=221"></script>
+<script src="js/artstyle.js?v=221"></script>
+<script src="js/sprites.js?v=221"></script>
+<script src="js/formations.js?v=221"></script>
+<script src="js/relics.js?v=221"></script>
+<script src="js/assets.js?v=221"></script>
+<script src="js/dev.js?v=221"></script>
+<script src="js/map.js?v=221"></script>
+<script src="js/buildings.js?v=221"></script>
+<script src="js/units.js?v=221"></script>
+<script src="js/combat.js?v=221"></script>
+<script src="js/ai.js?v=221"></script>
+<script src="js/render.js?v=221"></script>
+<script src="js/battlefx.js?v=221"></script>
+<script src="js/goldfx.js?v=221"></script>
+<script src="js/footing.js?v=221"></script>
+<script src="js/ruins.js?v=221"></script>
+<script src="js/roads.js?v=221"></script>
+<script src="js/beasts.js?v=221"></script>
+<script src="js/defeatart.js?v=221"></script>
+<script src="js/victoryart.js?v=221"></script>
+<script src="js/ui.js?v=221"></script>
+<script src="js/feel.js?v=221"></script>
+<script src="js/lookout.js?v=221"></script>
+<script src="js/screens.js?v=221"></script>
+<script src="js/patchnotes.js?v=221"></script>
+<script src="js/settings.js?v=221"></script>
+<script src="js/board.js?v=221"></script>
+<script src="js/pages.js?v=221"></script>
+<script src="js/titlescreen.js?v=221"></script>
+<script src="js/scenario-maps.js?v=221"></script>
+<script src="js/scenarios.js?v=221"></script>
+<script src="js/prologue.js?v=221"></script>
+<script src="js/deckfx.js?v=221"></script>
+<script src="js/deckfx-town.js?v=221"></script>
+<script src="js/deckfx-army.js?v=221"></script>
+<script src="js/deckfx-growth.js?v=221"></script>
+<script src="js/deckfx-rival.js?v=221"></script>
+<script src="js/deckui.js?v=221"></script>
+<script src="js/deckscreens.js?v=221"></script>
+<script src="js/cardintro.js?v=221"></script>
+<script src="js/game.js?v=221"></script>
+<script src="js/terrain-core.js?v=221"></script>
+<script src="js/terrain.js?v=221"></script>
+<script src="js/terrain-v5.js?v=221"></script>
 </body>
 </html>
