@@ -215,9 +215,24 @@ const Gold = {
       menu.insertBefore(b, menu.querySelector('.trow2') || null);
     }
     this.paintTitle();
+    this._warmStall();
     if (!this._titleSub && window.Deck && Deck.onChange) { this._titleSub = true; Deck.onChange(() => this.paintTitle()); }
     // the record's purse, asked as the title is read (a sign-in brings its own sync)
     if (this.mode() === 'cloud' && !this._titleSynced) { this._titleSynced = true; try { Deck.sync('title'); } catch (e) {} }
+  },
+  /* the stall's painting is fetched while the title is read, in idle time —
+     one picture, the one the store's <picture> will choose (wide on a
+     landscape window, webp) — so the store never opens on a bare night */
+  _warmStall() {
+    if (this._warmed || typeof Image === 'undefined') return;
+    this._warmed = true;
+    const go = () => {
+      let wide = false;
+      try { wide = matchMedia('(min-aspect-ratio: 4/3)').matches; } catch (e) {}
+      const v = (typeof CFG !== 'undefined' && CFG.ART_V) || 1;
+      try { new Image().src = 'assets/ui/store/stall-' + (wide ? 'wide' : 'tall') + '.webp?v=' + v; } catch (e) {}
+    };
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 8000 }); else setTimeout(go, 3000);
   },
   paintTitle() {
     const b = document.getElementById('btnTitleStore');
